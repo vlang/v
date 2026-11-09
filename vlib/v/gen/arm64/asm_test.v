@@ -10,6 +10,32 @@ const rd_mask = u32(0x1F)
 const rn_shift = 5
 const rm_shift = 16
 
+fn test_atomic_encoders_match_reference() {
+	// ldarb w1, [x2] / ldarh w3, [x4] / ldar w5, [x6] / ldar x7, [x8]
+	assert asm_ldar(1, 2, 0) == 0x08DFFC41
+	assert asm_ldar(3, 4, 1) == 0x48DFFC83
+	assert asm_ldar(5, 6, 2) == 0x88DFFCC5
+	assert asm_ldar(7, 8, 3) == 0xC8DFFD07
+	// stlrb w1, [x2] / stlrh w3, [x4] / stlr w5, [x6] / stlr x7, [x8]
+	assert asm_stlr(1, 2, 0) == 0x089FFC41
+	assert asm_stlr(3, 4, 1) == 0x489FFC83
+	assert asm_stlr(5, 6, 2) == 0x889FFCC5
+	assert asm_stlr(7, 8, 3) == 0xC89FFD07
+	// ldaxrb w1, [x2] / ldaxrh w3, [x4] / ldaxr w5, [x6] / ldaxr x7, [x8]
+	assert asm_ldaxr(1, 2, 0) == 0x085FFC41
+	assert asm_ldaxr(3, 4, 1) == 0x485FFC83
+	assert asm_ldaxr(5, 6, 2) == 0x885FFCC5
+	assert asm_ldaxr(7, 8, 3) == 0xC85FFD07
+	// stlxrb w9, w1, [x2] / stlxrh w10, w3, [x4]
+	assert asm_stlxr(9, 1, 2, 0) == 0x0809FC41
+	assert asm_stlxr(10, 3, 4, 1) == 0x480AFC83
+	// stlxr w11, w5, [x6] / stlxr w12, x7, [x8]
+	assert asm_stlxr(11, 5, 6, 2) == 0x880BFCC5
+	assert asm_stlxr(12, 7, 8, 3) == 0xC80CFD07
+	// dmb ish
+	assert asm_dmb_ish() == 0xD5033BBF
+}
+
 fn test_double_precision_encoders_match_reference() {
 	// fadd d0, d1, d2 / fadd d5, d6, d7
 	assert asm_fadd_d(0, 1, 2) == 0x1E622820

@@ -982,6 +982,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.emit_alloca_address(8, val_id)
 			g.store_val(8, val_id)
 		}
+		.atomic_load, .atomic_store, .atomic_xchg, .atomic_add, .atomic_sub, .cmpxchg, .fence {
+			g.gen_atomic(val_id, instr)
+		}
 		.store {
 			if instr.operands.len < 2 {
 				return

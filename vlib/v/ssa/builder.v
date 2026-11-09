@@ -6221,31 +6221,28 @@ fn (mut b Builder) generate_libc_realloc_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
-// register_prealloc_atomic_stubs updates register prealloc atomic stubs state for ssa.
+// register_prealloc_atomic_stubs defines the allocator's atomics, which work on
+// `int` fields and return what the C helpers of the same names return.
 fn (mut b Builder) register_prealloc_atomic_stubs() {
-	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
-	mut p1_ptr := []TypeID{}
-	p1_ptr << ptr_i64
-	if load_id := b.register_runtime_function('v_prealloc_atomic_load_i32', b.i64_type, p1_ptr) {
-		b.generate_atomic_load_i64_body(load_id)
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	if load_id := b.register_runtime_function('v_prealloc_atomic_load_i32', b.i32_type, [
+		ptr_i8,
+	]) {
+		b.generate_atomic_load_body(load_id, b.i32_type)
 	}
-
-	mut p2 := []TypeID{}
-	p2 << ptr_i64
-	p2 << b.i64_type
-	if add_id := b.register_runtime_function('v_prealloc_atomic_add_i32', b.i64_type, p2) {
-		b.generate_atomic_add_i64_body(add_id)
+	p2 := [ptr_i8, b.i32_type]
+	if add_id := b.register_runtime_function('v_prealloc_atomic_add_i32', b.i32_type, p2) {
+		b.generate_prealloc_atomic_add_body(add_id)
 	}
-	if store_id := b.register_runtime_function('v_prealloc_atomic_store_i32', b.i64_type, p2) {
-		b.generate_atomic_store_i64_body(store_id)
+	if store_id := b.register_runtime_function('v_prealloc_atomic_store_i32', b.i32_type, p2) {
+		b.generate_atomic_exchange_body(store_id, b.i32_type)
 	}
-
-	mut p3 := []TypeID{}
-	p3 << ptr_i64
-	p3 << b.i64_type
-	p3 << b.i64_type
-	if cas_id := b.register_runtime_function('v_prealloc_atomic_cas_i32', b.i64_type, p3) {
-		b.generate_atomic_cas_i64_body(cas_id)
+	if cas_id := b.register_runtime_function('v_prealloc_atomic_cas_i32', b.i32_type, [
+		ptr_i8,
+		b.i32_type,
+		b.i32_type,
+	]) {
+		b.generate_prealloc_atomic_cas_body(cas_id)
 	}
 }
 
@@ -6259,7 +6256,7 @@ fn (mut b Builder) register_atomic_builtin_stubs() {
 	mut fence_params := []TypeID{}
 	fence_params << b.i64_type
 	if fence_id := b.register_runtime_c_function('atomic_thread_fence', b.void_type, fence_params) {
-		b.generate_void_return_body(fence_id)
+		b.generate_atomic_fence_body(fence_id)
 	}
 	if cpu_relax_id := b.register_runtime_c_function('cpu_relax', b.void_type, []TypeID{}) {
 		b.generate_void_return_body(cpu_relax_id)
@@ -6284,10 +6281,10 @@ fn (mut b Builder) register_atomic_scalar_stubs(suffix string, typ TypeID) {
 		b.generate_atomic_exchange_body(exchange_id, typ)
 	}
 	if fetch_add_id := b.register_runtime_c_function('atomic_fetch_add_${suffix}', typ, p2) {
-		b.generate_atomic_fetch_add_body(fetch_add_id, typ)
+		b.generate_atomic_fetch_body(fetch_add_id, typ, .atomic_add, .add)
 	}
 	if fetch_sub_id := b.register_runtime_c_function('atomic_fetch_sub_${suffix}', typ, p2) {
-		b.generate_atomic_fetch_sub_body(fetch_sub_id, typ)
+		b.generate_atomic_fetch_body(fetch_sub_id, typ, .atomic_sub, .sub)
 	}
 
 	mut p3 := []TypeID{}
@@ -6296,10 +6293,10 @@ fn (mut b Builder) register_atomic_scalar_stubs(suffix string, typ TypeID) {
 	p3 << typ
 	if strong_id := b.register_runtime_c_function('atomic_compare_exchange_strong_${suffix}',
 		b.i1_type, p3) {
-		b.generate_atomic_compare_exchange_body(strong_id, typ)
+		b.generate_atomic_compare_exchange_body(strong_id, typ, typ)
 	}
 	if weak_id := b.register_runtime_c_function('atomic_compare_exchange_weak_${suffix}', b.i1_type, p3) {
-		b.generate_atomic_compare_exchange_body(weak_id, typ)
+		b.generate_atomic_compare_exchange_body(weak_id, typ, typ)
 	}
 }
 
@@ -6308,23 +6305,23 @@ fn (mut b Builder) register_atomic_ptr_stubs() {
 	mut p1 := []TypeID{}
 	p1 << ptr_i8
 	if load_id := b.register_runtime_c_function('atomic_load_ptr', ptr_i8, p1) {
-		b.generate_atomic_load_ptr_body(load_id)
+		b.generate_atomic_load_body(load_id, ptr_i8)
 	}
 
 	mut p2 := []TypeID{}
 	p2 << ptr_i8
 	p2 << ptr_i8
 	if store_id := b.register_runtime_c_function('atomic_store_ptr', b.void_type, p2) {
-		b.generate_atomic_store_ptr_body(store_id)
+		b.generate_atomic_store_body(store_id, ptr_i8)
 	}
 	if exchange_id := b.register_runtime_c_function('atomic_exchange_ptr', ptr_i8, p2) {
-		b.generate_atomic_exchange_ptr_body(exchange_id)
+		b.generate_atomic_exchange_body(exchange_id, ptr_i8)
 	}
 	if fetch_add_id := b.register_runtime_c_function('atomic_fetch_add_ptr', ptr_i8, p2) {
-		b.generate_atomic_fetch_add_ptr_body(fetch_add_id)
+		b.generate_atomic_fetch_body(fetch_add_id, ptr_i8, .atomic_add, .add)
 	}
 	if fetch_sub_id := b.register_runtime_c_function('atomic_fetch_sub_ptr', ptr_i8, p2) {
-		b.generate_atomic_fetch_sub_ptr_body(fetch_sub_id)
+		b.generate_atomic_fetch_body(fetch_sub_id, ptr_i8, .atomic_sub, .sub)
 	}
 
 	mut p3 := []TypeID{}
@@ -6332,10 +6329,10 @@ fn (mut b Builder) register_atomic_ptr_stubs() {
 	p3 << ptr_i8
 	p3 << b.i64_type
 	if strong_id := b.register_runtime_c_function('atomic_compare_exchange_strong_ptr', b.i1_type, p3) {
-		b.generate_atomic_compare_exchange_ptr_body(strong_id)
+		b.generate_atomic_compare_exchange_body(strong_id, ptr_i8, b.i64_type)
 	}
 	if weak_id := b.register_runtime_c_function('atomic_compare_exchange_weak_ptr', b.i1_type, p3) {
-		b.generate_atomic_compare_exchange_ptr_body(weak_id)
+		b.generate_atomic_compare_exchange_body(weak_id, ptr_i8, b.i64_type)
 	}
 }
 
@@ -6344,13 +6341,21 @@ fn (mut b Builder) generate_void_return_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// target_lowers_atomics reports whether the code generator has instructions for
+// the atomic operations. The other SSA targets keep plain loads and stores, which
+// are only right for a program that runs on one thread.
+fn (b &Builder) target_lowers_atomics() bool {
+	return b.m.target.arch == 'arm64'
+}
+
 fn (mut b Builder) generate_atomic_load_body(func_id int, typ TypeID) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_typ := b.m.type_store.get_ptr(typ)
 	entry := b.m.add_block(func_id, 'entry')
 	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
 	ptr := b.block_instr1(.bitcast, entry, ptr_typ, ptr_raw)
-	value := b.block_instr1(.load, entry, typ, ptr)
+	op := if b.target_lowers_atomics() { OpCode.atomic_load } else { OpCode.load }
+	value := b.block_instr1(op, entry, typ, ptr)
 	b.block_instr1(.ret, entry, b.void_type, value)
 }
 
@@ -6361,7 +6366,8 @@ fn (mut b Builder) generate_atomic_store_body(func_id int, typ TypeID) {
 	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
 	value := b.func_add_argument(func_id, typ, 'value')
 	ptr := b.block_instr1(.bitcast, entry, ptr_typ, ptr_raw)
-	b.block_instr2(.store, entry, b.void_type, value, ptr)
+	op := if b.target_lowers_atomics() { OpCode.atomic_store } else { OpCode.store }
+	b.block_instr2(op, entry, b.void_type, value, ptr)
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
@@ -6372,53 +6378,66 @@ fn (mut b Builder) generate_atomic_exchange_body(func_id int, typ TypeID) {
 	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
 	value := b.func_add_argument(func_id, typ, 'value')
 	ptr := b.block_instr1(.bitcast, entry, ptr_typ, ptr_raw)
-	old := b.block_instr1(.load, entry, typ, ptr)
-	b.block_instr2(.store, entry, b.void_type, value, ptr)
+	old := if b.target_lowers_atomics() {
+		b.block_instr2(.atomic_xchg, entry, typ, ptr, value)
+	} else {
+		loaded := b.block_instr1(.load, entry, typ, ptr)
+		b.block_instr2(.store, entry, b.void_type, value, ptr)
+		loaded
+	}
 	b.block_instr1(.ret, entry, b.void_type, old)
 }
 
-fn (mut b Builder) generate_atomic_fetch_add_body(func_id int, typ TypeID) {
+// generate_atomic_fetch_body defines a fetch-and-add or fetch-and-subtract: it
+// returns the value from before the operation.
+fn (mut b Builder) generate_atomic_fetch_body(func_id int, typ TypeID, atomic_op OpCode, plain_op OpCode) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_typ := b.m.type_store.get_ptr(typ)
 	entry := b.m.add_block(func_id, 'entry')
 	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
 	delta := b.func_add_argument(func_id, typ, 'delta')
 	ptr := b.block_instr1(.bitcast, entry, ptr_typ, ptr_raw)
-	old := b.block_instr1(.load, entry, typ, ptr)
-	new_value := b.block_instr2(.add, entry, typ, old, delta)
-	b.block_instr2(.store, entry, b.void_type, new_value, ptr)
+	old := if b.target_lowers_atomics() {
+		b.block_instr2(atomic_op, entry, typ, ptr, delta)
+	} else {
+		loaded := b.block_instr1(.load, entry, typ, ptr)
+		new_value := b.block_instr2(plain_op, entry, typ, loaded, delta)
+		b.block_instr2(.store, entry, b.void_type, new_value, ptr)
+		loaded
+	}
 	b.block_instr1(.ret, entry, b.void_type, old)
 }
 
-fn (mut b Builder) generate_atomic_fetch_sub_body(func_id int, typ TypeID) {
-	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_typ := b.m.type_store.get_ptr(typ)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	delta := b.func_add_argument(func_id, typ, 'delta')
-	ptr := b.block_instr1(.bitcast, entry, ptr_typ, ptr_raw)
-	old := b.block_instr1(.load, entry, typ, ptr)
-	new_value := b.block_instr2(.sub, entry, typ, old, delta)
-	b.block_instr2(.store, entry, b.void_type, new_value, ptr)
-	b.block_instr1(.ret, entry, b.void_type, old)
-}
-
-fn (mut b Builder) generate_atomic_compare_exchange_body(func_id int, typ TypeID) {
+// generate_atomic_compare_exchange_body defines the C11 form: `expected` points
+// at the value to compare, and receives what memory held when the exchange fails.
+fn (mut b Builder) generate_atomic_compare_exchange_body(func_id int, typ TypeID, desired_param TypeID) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_typ := b.m.type_store.get_ptr(typ)
 	entry := b.m.add_block(func_id, 'entry')
 	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
 	expected_raw := b.func_add_argument(func_id, ptr_i8, 'expected')
-	desired := b.func_add_argument(func_id, typ, 'desired')
+	desired_raw := b.func_add_argument(func_id, desired_param, 'desired')
+	desired := if desired_param == typ {
+		desired_raw
+	} else {
+		b.block_instr1(.bitcast, entry, typ, desired_raw)
+	}
 	ptr := b.block_instr1(.bitcast, entry, ptr_typ, ptr_raw)
 	expected := b.block_instr1(.bitcast, entry, ptr_typ, expected_raw)
-	old := b.block_instr1(.load, entry, typ, ptr)
 	expected_value := b.block_instr1(.load, entry, typ, expected)
-	ok := b.block_instr2(.eq, entry, b.i1_type, old, expected_value)
 	then_block := b.m.add_block(func_id, 'cas_store')
 	else_block := b.m.add_block(func_id, 'cas_fail')
+	real := b.target_lowers_atomics()
+	old := if real {
+		b.block_instr3(.cmpxchg, entry, typ, ptr, expected_value, desired)
+	} else {
+		b.block_instr1(.load, entry, typ, ptr)
+	}
+	ok := b.block_instr2(.eq, entry, b.i1_type, old, expected_value)
 	b.block_instr3(.br, entry, b.void_type, ok, ValueID(then_block), ValueID(else_block))
-	b.block_instr2(.store, then_block, b.void_type, desired, ptr)
+	if !real {
+		b.block_instr2(.store, then_block, b.void_type, desired, ptr)
+	}
 	one := b.m.get_or_add_const(b.i1_type, '1')
 	zero := b.m.get_or_add_const(b.i1_type, '0')
 	b.block_instr1(.ret, then_block, b.void_type, one)
@@ -6426,135 +6445,60 @@ fn (mut b Builder) generate_atomic_compare_exchange_body(func_id int, typ TypeID
 	b.block_instr1(.ret, else_block, b.void_type, zero)
 }
 
-fn (mut b Builder) generate_atomic_load_ptr_body(func_id int) {
-	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
+fn (mut b Builder) generate_atomic_fence_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
-	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	ptr := b.block_instr1(.bitcast, entry, ptr_ptr_i8, ptr_raw)
-	value := b.block_instr1(.load, entry, ptr_i8, ptr)
-	b.block_instr1(.ret, entry, b.void_type, value)
-}
-
-fn (mut b Builder) generate_atomic_store_ptr_body(func_id int) {
-	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	value := b.func_add_argument(func_id, ptr_i8, 'value')
-	ptr := b.block_instr1(.bitcast, entry, ptr_ptr_i8, ptr_raw)
-	b.block_instr2(.store, entry, b.void_type, value, ptr)
+	if b.target_lowers_atomics() {
+		b.block_instr0(.fence, entry, b.void_type)
+	}
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
-fn (mut b Builder) generate_atomic_exchange_ptr_body(func_id int) {
+// generate_prealloc_atomic_add_body returns the value after the addition, unlike
+// atomic_fetch_add.
+fn (mut b Builder) generate_prealloc_atomic_add_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
+	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
 	entry := b.m.add_block(func_id, 'entry')
 	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	value := b.func_add_argument(func_id, ptr_i8, 'value')
-	ptr := b.block_instr1(.bitcast, entry, ptr_ptr_i8, ptr_raw)
-	old := b.block_instr1(.load, entry, ptr_i8, ptr)
-	b.block_instr2(.store, entry, b.void_type, value, ptr)
-	b.block_instr1(.ret, entry, b.void_type, old)
-}
-
-fn (mut b Builder) generate_atomic_fetch_add_ptr_body(func_id int) {
-	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	delta := b.func_add_argument(func_id, ptr_i8, 'delta')
-	ptr := b.block_instr1(.bitcast, entry, ptr_ptr_i8, ptr_raw)
-	old := b.block_instr1(.load, entry, ptr_i8, ptr)
-	new_value := b.block_instr2(.add, entry, ptr_i8, old, delta)
-	b.block_instr2(.store, entry, b.void_type, new_value, ptr)
-	b.block_instr1(.ret, entry, b.void_type, old)
-}
-
-fn (mut b Builder) generate_atomic_fetch_sub_ptr_body(func_id int) {
-	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	delta := b.func_add_argument(func_id, ptr_i8, 'delta')
-	ptr := b.block_instr1(.bitcast, entry, ptr_ptr_i8, ptr_raw)
-	old := b.block_instr1(.load, entry, ptr_i8, ptr)
-	new_value := b.block_instr2(.sub, entry, ptr_i8, old, delta)
-	b.block_instr2(.store, entry, b.void_type, new_value, ptr)
-	b.block_instr1(.ret, entry, b.void_type, old)
-}
-
-fn (mut b Builder) generate_atomic_compare_exchange_ptr_body(func_id int) {
-	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
-	expected_raw := b.func_add_argument(func_id, ptr_i8, 'expected')
-	desired_raw := b.func_add_argument(func_id, b.i64_type, 'desired')
-	desired := b.block_instr1(.bitcast, entry, ptr_i8, desired_raw)
-	ptr := b.block_instr1(.bitcast, entry, ptr_ptr_i8, ptr_raw)
-	expected := b.block_instr1(.bitcast, entry, ptr_ptr_i8, expected_raw)
-	old := b.block_instr1(.load, entry, ptr_i8, ptr)
-	expected_value := b.block_instr1(.load, entry, ptr_i8, expected)
-	ok := b.block_instr2(.eq, entry, b.i1_type, old, expected_value)
-	then_block := b.m.add_block(func_id, 'cas_store')
-	else_block := b.m.add_block(func_id, 'cas_fail')
-	b.block_instr3(.br, entry, b.void_type, ok, ValueID(then_block), ValueID(else_block))
-	b.block_instr2(.store, then_block, b.void_type, desired, ptr)
-	one := b.m.get_or_add_const(b.i1_type, '1')
-	zero := b.m.get_or_add_const(b.i1_type, '0')
-	b.block_instr1(.ret, then_block, b.void_type, one)
-	b.block_instr2(.store, else_block, b.void_type, old, expected)
-	b.block_instr1(.ret, else_block, b.void_type, zero)
-}
-
-// generate_atomic_load_i64_body supports generate atomic load i64 body handling for Builder.
-fn (mut b Builder) generate_atomic_load_i64_body(func_id int) {
-	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
-	value := b.block_instr1(.load, entry, b.i64_type, ptr)
-	b.block_instr1(.ret, entry, b.void_type, value)
-}
-
-// generate_atomic_store_i64_body supports generate atomic store i64 body handling for Builder.
-fn (mut b Builder) generate_atomic_store_i64_body(func_id int) {
-	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
-	value := b.func_add_argument(func_id, b.i64_type, 'value')
-	b.block_instr2(.store, entry, b.void_type, value, ptr)
-	b.block_instr1(.ret, entry, b.void_type, value)
-}
-
-// generate_atomic_add_i64_body supports generate atomic add i64 body handling for Builder.
-fn (mut b Builder) generate_atomic_add_i64_body(func_id int) {
-	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
-	entry := b.m.add_block(func_id, 'entry')
-	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
-	delta := b.func_add_argument(func_id, b.i64_type, 'delta')
-	old := b.block_instr1(.load, entry, b.i64_type, ptr)
-	new_value := b.block_instr2(.add, entry, b.i64_type, old, delta)
+	delta := b.func_add_argument(func_id, b.i32_type, 'delta')
+	ptr := b.block_instr1(.bitcast, entry, ptr_i32, ptr_raw)
+	if b.target_lowers_atomics() {
+		old := b.block_instr2(.atomic_add, entry, b.i32_type, ptr, delta)
+		b.block_instr1(.ret, entry, b.void_type, b.block_instr2(.add, entry, b.i32_type, old,
+			delta))
+		return
+	}
+	old := b.block_instr1(.load, entry, b.i32_type, ptr)
+	new_value := b.block_instr2(.add, entry, b.i32_type, old, delta)
 	b.block_instr2(.store, entry, b.void_type, new_value, ptr)
 	b.block_instr1(.ret, entry, b.void_type, new_value)
 }
 
-// generate_atomic_cas_i64_body converts generate atomic cas i64 body data for ssa.
-fn (mut b Builder) generate_atomic_cas_i64_body(func_id int) {
-	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+// generate_prealloc_atomic_cas_body takes `expected` by value and returns 1 when
+// the exchange happened.
+fn (mut b Builder) generate_prealloc_atomic_cas_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
 	entry := b.m.add_block(func_id, 'entry')
-	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
-	expected := b.func_add_argument(func_id, b.i64_type, 'expected')
-	desired := b.func_add_argument(func_id, b.i64_type, 'desired')
-	old := b.block_instr1(.load, entry, b.i64_type, ptr)
-	ok := b.block_instr2(.eq, entry, b.i1_type, old, expected)
+	ptr_raw := b.func_add_argument(func_id, ptr_i8, 'ptr')
+	expected := b.func_add_argument(func_id, b.i32_type, 'expected')
+	desired := b.func_add_argument(func_id, b.i32_type, 'desired')
+	ptr := b.block_instr1(.bitcast, entry, ptr_i32, ptr_raw)
 	then_block := b.m.add_block(func_id, 'cas_store')
 	else_block := b.m.add_block(func_id, 'cas_done')
+	real := b.target_lowers_atomics()
+	old := if real {
+		b.block_instr3(.cmpxchg, entry, b.i32_type, ptr, expected, desired)
+	} else {
+		b.block_instr1(.load, entry, b.i32_type, ptr)
+	}
+	ok := b.block_instr2(.eq, entry, b.i1_type, old, expected)
 	b.block_instr3(.br, entry, b.void_type, ok, ValueID(then_block), ValueID(else_block))
-	b.block_instr2(.store, then_block, b.void_type, desired, ptr)
-	one := b.m.get_or_add_const(b.i64_type, '1')
-	zero := b.m.get_or_add_const(b.i64_type, '0')
+	if !real {
+		b.block_instr2(.store, then_block, b.void_type, desired, ptr)
+	}
+	one := b.m.get_or_add_const(b.i32_type, '1')
+	zero := b.m.get_or_add_const(b.i32_type, '0')
 	b.block_instr1(.ret, then_block, b.void_type, one)
 	b.block_instr1(.ret, else_block, b.void_type, zero)
 }

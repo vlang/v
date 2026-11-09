@@ -473,6 +473,32 @@ fn asm_blr(rn Reg) u32 {
 	return 0xD63F0000 | (u32(rn) << 5)
 }
 
+// ldar: load-acquire of 1 << size bytes, zero-extended.
+fn asm_ldar(rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x08DFFC00 | (u32(rn) << 5) | u32(rt)
+}
+
+// stlr: store-release of the low 1 << size bytes of rt.
+fn asm_stlr(rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x089FFC00 | (u32(rn) << 5) | u32(rt)
+}
+
+// ldaxr: load-acquire exclusive of 1 << size bytes, zero-extended.
+fn asm_ldaxr(rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x085FFC00 | (u32(rn) << 5) | u32(rt)
+}
+
+// stlxr: store-release exclusive; rs is 0 when the store happened. It must differ
+// from rt and rn.
+fn asm_stlxr(rs Reg, rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x0800FC00 | (u32(rs) << 16) | (u32(rn) << 5) | u32(rt)
+}
+
+// dmb ish
+fn asm_dmb_ish() u32 {
+	return 0xD5033BBF
+}
+
 // cbnz rt, #imm19
 fn asm_cbnz(rt Reg, rel19 i32) u32 {
 	return 0xB5000000 | ((u32(rel19) & 0x7FFFF) << 5) | u32(rt)

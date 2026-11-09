@@ -47,8 +47,14 @@ pub enum OpCode {
 	get_element_ptr
 	heap_alloc // Heap allocate memory for a type (malloc+zero): returns ptr
 	fence      // Memory ordering barrier
-	cmpxchg    // Atomic compare-exchange
-	atomicrmw  // Atomic read-modify-write
+	// Sequentially consistent atomics. Every one but atomic_store and fence
+	// yields the value that memory held before it.
+	atomic_load  // atomic_load ptr
+	atomic_store // atomic_store value, ptr
+	atomic_xchg  // atomic_xchg ptr, value
+	atomic_add   // atomic_add ptr, delta
+	atomic_sub   // atomic_sub ptr, delta
+	cmpxchg      // cmpxchg ptr, expected, desired
 	// Comparisons
 	lt
 	gt

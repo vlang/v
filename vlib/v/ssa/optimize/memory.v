@@ -188,7 +188,8 @@ fn optimize_memory(mut m ssa.Module) {
 }
 
 fn memory_operation_may_write(op ssa.OpCode) bool {
-	return op in [.call, .call_indirect, .call_sret, .atomicrmw, .cmpxchg, .fence, .inline_asm, .heap_alloc]
+	return op in [.call, .call_indirect, .call_sret, .atomic_load, .atomic_store, .atomic_xchg, .atomic_add,
+		.atomic_sub, .cmpxchg, .fence, .inline_asm, .heap_alloc]
 }
 
 // memory_forget removes the entries `address` may overwrite.
