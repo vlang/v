@@ -9440,8 +9440,31 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 		if ret_type == b.void_type
 			|| (b.is_option_type(ret_type) && b.option_value_type(ret_type) == b.void_type) {
 			b.emit_void_return()
+		} else {
+			// The checker rejects a missing return, so only a chain lowered from
+			// `return match` can get here, for a value no branch names, such as an
+			// out-of-range cast. Left open, the block has no code and control runs
+			// into whatever is laid out next. Stop instead, as Zig's
+			// `analyzeSwitchRuntimeBlock` panics with `corrupt_switch` and Odin's
+			// `lb_end_procedure_body` closes every open block.
+			b.build_missing_result_panic(node)
 		}
 	}
+}
+
+// build_missing_result_panic ends the current block with a panic naming the
+// function that has no value to return.
+fn (mut b Builder) build_missing_result_panic(node flat.Node) {
+	if panic_fn := b.runtime_fn_lookup('panic') {
+		mut text := 'fn ${b.m.funcs[b.cur_func].name}: no branch for the value'
+		if file := b.a.source_files[int(node.pos.id)] {
+			text += ' at ${file.position(node.pos)}'
+		}
+		message := b.m.add_value(.string_literal, b.str_type, text, 0)
+		panic_ref := b.m.add_value(.func_ref, b.void_type, 'panic', panic_fn)
+		b.emit2(.call, b.void_type, panic_ref, message)
+	}
+	b.emit0(.unreachable, b.void_type)
 }
 
 // emit_void_return returns the success value for result/option void functions.

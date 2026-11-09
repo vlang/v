@@ -847,3 +847,41 @@ fn main() {
 		assert output == 'true false true true false', output
 	}
 }
+
+// `return match` over a value no branch names, such as an out-of-range cast,
+// stops the program. It used to run into the next block and spin there.
+fn test_return_match_without_a_matching_branch_stops() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_ssa_no_branch_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, "enum Color {
+	red
+	green
+}
+
+fn name(c Color) string {
+	return match c {
+		.red { 'red' }
+		.green { 'green' }
+	}
+}
+
+fn main() {
+	println(name(.green))
+	println(name(unsafe { Color(99) }))
+}
+") or { panic(err) }
+		output := os.join_path(root, 'main')
+		compiled := cmdexec.run(@VEXE, ['-w', '-b', 'arm64', '-o', output, source])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run_with_timeout(output, []string{}, 20000)
+		assert run.exit_code == 1, run.output
+		assert run.output.contains('green'), run.output
+		assert run.output.contains('fn name: no branch for the value'), run.output
+	}
+}
