@@ -3202,9 +3202,24 @@ fn (g &Parser) overloaded_stored_equality_source(left string, right string, typ 
 }
 
 fn (g &Parser) struct_equality_is_supported(typ u32, seen []u32) bool {
+	cacheable := seen.len == 0 && !isnil(g.type_descriptor_memo)
+	if cacheable {
+		if supported := g.type_descriptor_memo.equality_support[typ] { return supported }
+	}
 	mut visited := map[u32]bool{}
 	for previous in seen { visited[previous] = true }
-	return g.struct_equality_is_supported_visit(typ, mut visited)
+	supported := g.struct_equality_is_supported_visit(typ, mut visited)
+	// A recursive visit may assume an ancestor is supported to break a cycle.
+	// Only a complete root walk establishes an answer independent of that assumption.
+	if cacheable {
+		mut memo := g.type_descriptor_memo
+		memo.equality_support[typ] = supported
+		if supported {
+			// Every node reached by a successful complete walk is supported too.
+			for reached, _ in visited { memo.equality_support[reached] = true }
+		}
+	}
+	return supported
 }
 
 fn (g &Parser) struct_equality_is_supported_visit(typ u32, mut visited map[u32]bool) bool {

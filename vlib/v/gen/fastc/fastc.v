@@ -1055,6 +1055,12 @@ fn (local FastcLocal) original_is_reference() bool {
 	return local.is_reference
 }
 
+// Rare terminal option guards keep their boxed storage out of the hot local record.
+struct FastcOptionOrigin {
+	source string
+	typ    u32
+}
+
 struct FastcLocalScopeChange {
 	name         string
 	previous     FastcLocal
@@ -1495,6 +1501,12 @@ struct FastcTypeDescriptorMemoEntry {
 	value u32
 }
 
+struct FastcDirectMemberMemoEntry {
+	receiver u32
+	field    string
+	typ      u32
+}
+
 struct FastcTypeDescriptorMemo {
 mut:
 	semantic_keys          [64]FastcTypeDescriptorMemoEntry
@@ -1503,6 +1515,8 @@ mut:
 	direct_member_field    string
 	direct_member_type     u32
 	direct_member_known    bool
+	direct_members         [64]FastcDirectMemberMemoEntry
+	equality_support       map[u32]bool
 }
 
 struct Parser {
@@ -1607,6 +1621,7 @@ mut:
 	resolved_name_memo          map[string]string
 	declared_type_key_memo      map[u32]FastcMemoEntry
 	locals                      map[string]FastcLocal
+	option_origins              map[string]FastcOptionOrigin
 	local_scope_changes         []FastcLocalScopeChange
 	local_scope_depth           int
 	functions                   map[string]FastcFunctionSignature
@@ -3564,12 +3579,20 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 // `ranges` inside [window_start, window_end).
 fn fastc_window_ranges(ranges []int, window_start int, window_end int) []int {
 	mut out := []int{}
-	for i := 0; i + 1 < ranges.len; i += 2 {
+	// Find the first range whose end is beyond the window's start.
+	mut low := 0
+	mut high := ranges.len / 2
+	for low < high {
+		mid := low + (high - low) / 2
+		if ranges[mid * 2 + 1] <= window_start {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	for i := low * 2; i + 1 < ranges.len; i += 2 {
 		start := ranges[i]
 		end := ranges[i + 1]
-		if end <= window_start {
-			continue
-		}
 		if start >= window_end {
 			break
 		}
@@ -3580,15 +3603,19 @@ fn fastc_window_ranges(ranges []int, window_start int, window_end int) []int {
 }
 
 fn fastc_range_is_kept(ranges []int, start int, end int) bool {
-	for i := 0; i + 1 < ranges.len; i += 2 {
-		if ranges[i] <= start && end <= ranges[i + 1] {
-			return true
-		}
-		if ranges[i] > start {
-			break
+	// The ranges are ordered and disjoint. Only the last range beginning at
+	// or before start can contain the complete queried span.
+	mut low := 0
+	mut high := ranges.len / 2
+	for low < high {
+		mid := low + (high - low) / 2
+		if ranges[mid * 2] <= start {
+			low = mid + 1
+		} else {
+			high = mid
 		}
 	}
-	return false
+	return low > 0 && end <= ranges[low * 2 - 1]
 }
 
 fn fastc_native_implementation_include(line string) bool {

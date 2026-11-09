@@ -100,7 +100,11 @@ $if !skip_fastc ? {
 		for i, index in generation.units.extern_indexes {
 			externs[index] = generation.units.extern_texts[i]
 		}
-		mut sources := generation.units.native_headers.clone()
+		mut sources := []string{cap: generation.units.native_headers.len}
+		for header in generation.units.native_headers {
+			// Match the resolved include paths used by the program-side filter.
+			sources << os.real_path(header)
+		}
 		for i in 0 .. generation.units.head_end {
 			piece := externs[i] or { generation.c_pieces[i] }
 			head.write_string(piece)
@@ -361,7 +365,17 @@ $if !skip_fastc ? {
 		key := 'fastc-content:' + canonical
 		if refresh { stats.file_signatures.delete(key) }
 		if signature := stats.file_signatures[key] { return signature }
-		mut file := os.open(canonical) or { return '' }
+		signature := v3_fastc_native_read_signature(canonical)
+		if signature == '' { return '' }
+		stats.file_signatures[key] = signature
+		stats.dependency_file_reads++
+		return signature
+	}
+
+	// Manifest validation reads each named input once. Opening that path already
+	// follows symlinks; it needs neither another realpath walk nor a memo table.
+	fn v3_fastc_native_read_signature(path string) string {
+		mut file := os.open(path) or { return '' }
 		defer { file.close() }
 		mut buffer := [64 * 1024]u8{}
 		mut buffered := 0
@@ -379,10 +393,7 @@ $if !skip_fastc ? {
 			}
 		}
 		if buffered > 0 { digest = contenthash.sum64(buffer[..buffered], digest) }
-		signature := 'word-v1:' + digest.hex()
-		stats.file_signatures[key] = signature
-		stats.dependency_file_reads++
-		return signature
+		return 'word-v1:' + digest.hex()
 	}
 
 	// Validate opaque native inputs concurrently. SDK manifests contain thousands
@@ -431,9 +442,8 @@ $if !skip_fastc ? {
 	}
 
 	fn v3_fastc_native_dependencies_match(dependencies []string, signatures []string) bool {
-		mut stats := CObjectCacheStats{}
 		for i, dependency in dependencies {
-			if v3_fastc_native_file_signature(dependency, false, mut stats) != signatures[i] {
+			if v3_fastc_native_read_signature(dependency) != signatures[i] {
 				return false
 			}
 		}

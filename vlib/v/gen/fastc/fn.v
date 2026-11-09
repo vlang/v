@@ -670,6 +670,11 @@ fn (mut g Parser) temporary_name(_ string) string {
 	return name
 }
 
+// callback_signature_key separates callback metadata from emitted C temporary names.
+fn (mut g Parser) callback_signature_key() string {
+	return g.current_function + ':' + g.temporary_name('callback_signature')
+}
+
 fn (g &Parser) temporary_namespace(kind string) string {
 	mut index := 0
 	for {
@@ -803,6 +808,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.last_function_c_name = ''
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	if g.option_origins.len > 0 { g.option_origins = map[string]FastcOptionOrigin{} }
 	g.temp_id = 0
 	g.direct_array_access = g.pending_direct_array_access
 	g.pending_direct_array_access = false
@@ -1497,6 +1503,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 fn (mut g Parser) parse_script() ! {
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	if g.option_origins.len > 0 { g.option_origins = map[string]FastcOptionOrigin{} }
 	g.has_main = true
 	main_name := fastc_c_main_name(g.prefs)
 	g.protos.writeln('int ${main_name}(void);')

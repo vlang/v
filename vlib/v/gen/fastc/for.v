@@ -310,7 +310,7 @@ fn (mut g Parser) parse_for() !bool {
 				if signature.callable_index_depth == 1 {
 					callback_name := if value_name == '' { name } else { value_name }
 					local := g.locals[callback_name] or { FastcLocal{} }
-					key := g.temporary_name('iter_callback_signature')
+					key := g.callback_signature_key()
 					g.mono_functions[key] = FastcFunctionSignature{ ...signature, callable_index_depth: 0 }
 					g.locals[callback_name] = FastcLocal{ ...local, fn_return_type: signature.return_type, fn_option_value_type: signature.option_type, fn_signature_key: key }
 				}
