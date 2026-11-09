@@ -1436,6 +1436,7 @@ pub mut:
 	checked_comptime_method_calls map[u64][]ComptimeMethodCallInstance
 	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool                 // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
+	monomorphize_for_diagnostics  bool                 // a check monomorphizes only for what instances report, such as a shadowed global
 	check_program_lib_instances   bool                 // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
 	library_instances             int                  // the instances of library generics that such a check cloned
 	library_headers               int                  // how many of them it cloned without their bodies (see transform.LibraryBodies)
@@ -2039,6 +2040,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checked_comptime_method_calls:         map[u64][]ComptimeMethodCallInstance{}
 		comptime_method_calls_by_decl:         map[int]map[int]bool{}
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
+		monomorphize_for_diagnostics:          tc.monomorphize_for_diagnostics
 		check_program_lib_instances:           tc.check_program_lib_instances
 		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root

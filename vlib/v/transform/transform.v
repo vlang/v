@@ -2725,6 +2725,13 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 // body, or, in an incremental rebuild, left it to the cached build. Only the
 // functions that a specialization makes reachable are then lowered here. A
 // check monomorphizes the tree as it was parsed and passes false.
+// only_collects_diagnostics reports whether this pass exists for the diagnostics
+// of generic instances, as `-check` and the instance check of a build do, and its
+// tree is discarded. Lowering for C generation has no diagnostics to give.
+fn (t &Transformer) only_collects_diagnostics() bool {
+	return !isnil(t.tc) && (t.tc.check_concrete_generic_bodies || t.tc.monomorphize_for_diagnostics)
+}
+
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec, after_transform bool) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
@@ -2781,13 +2788,17 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.transform_late_used_fn_bodies(t.used_fns_log, late_log_start, late_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late: ${time.ticks() - debug_started} ms')
-		remaining_match_log_start := t.used_fns_log.len
-		t.lower_remaining_matches_in_used_fns()
-		t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
-		remaining_match_log_end := t.used_fns_log.len
-		t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
-		late_log_start = t.used_fns_log.len
-		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
+		// Lowering `match` prepares a body for C generation. A check stops at the
+		// diagnostics of its instances.
+		if !t.only_collects_diagnostics() {
+			remaining_match_log_start := t.used_fns_log.len
+			t.lower_remaining_matches_in_used_fns()
+			t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
+			remaining_match_log_end := t.used_fns_log.len
+			t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
+			late_log_start = t.used_fns_log.len
+			t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
+		}
 		// A late non-generic body can expose a generic-struct method call. That call
 		// grows reachability without immediately queuing a specialization; the next
 		// pass's generic-struct method scan materializes it from the new used name.

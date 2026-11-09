@@ -14172,7 +14172,9 @@ pub fn run(args []string) {
 				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
+					pre_tc.monomorphize_for_diagnostics = true
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
+					pre_tc.monomorphize_for_diagnostics = false
 				}
 			}
 			pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
