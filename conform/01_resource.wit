@@ -1,9 +1,0 @@
-package example:demo@0.1.0;
-
-interface types {
-	resource file {
-		constructor(path: string);
-		read: func() -> string;
-		write: func(data: string);
-	}
-}

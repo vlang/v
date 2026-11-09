@@ -1,5 +1,0 @@
-package example:demo@0.1.0;
-
-interface types {
-	async-fn: func() -> future<string>;
-}
