@@ -37,3 +37,9 @@ fn main() {
 
 This module does not perform verification of the WebAssembly output.
 Use a tool like `wasm-validate` to validate, and `wasm-dis` to show a decompiled form.
+
+## Component model
+
+`component.v` provides experimental helpers to wrap a core WebAssembly module into a
+WebAssembly component (`wrap_core_module`) and to lift exported functions with
+primitive signatures.
