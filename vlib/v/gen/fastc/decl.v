@@ -2101,11 +2101,14 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	initializer_order := fastc_runtime_constant_order(values, runtime_constants, true) or {
 		fastc_runtime_constant_order(values, runtime_constants, false)!
 	}
-	mut module_initializers := map[string]string{}
+	mut module_initializer_lines := map[string][]string{}
 	for index in initializer_order {
 		value := values[index]
-		previous := module_initializers[value.module_name] or { '' }
-		module_initializers[value.module_name] = previous + '\t${value.c_name} = ${value.value};\n'
+		module_initializer_lines[value.module_name] << '\t${value.c_name} = ${value.value};\n'
+	}
+	mut module_initializers := map[string]string{}
+	for module_name, lines in module_initializer_lines {
+		module_initializers[module_name] = lines.join('')
 	}
 	if macros.len > 0 {
 		macros.writeln('')
