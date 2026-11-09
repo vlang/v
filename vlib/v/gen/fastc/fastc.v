@@ -2383,6 +2383,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// see the same files.
 	constant_candidates := fastc_constant_candidates(ordered_sources, constant_sources, constant_spans)
 	mut parallel_constant_results := []FastcConstantFileResult{}
+	mut seeded_constant_files := []FastcSeededConstantFile{}
 	if fastc_field_defaults_reference_constants(struct_field_info, constants) {
 		seed_ctx := FastcConstantGenContext{
 			prefs:                     unsafe { prefs }
@@ -2407,12 +2408,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			public_globals:            public_globals
 		}
 		parallel_constant_results = fastc_parse_constant_files_parallel(&seed_ctx, constant_candidates, constant_types)
-		fastc_seed_constant_types(&seed_ctx, constant_candidates, parallel_constant_results, mut constant_types)
+		seeded_constant_files = fastc_seed_constant_types(&seed_ctx, constant_candidates,
+			parallel_constant_results, mut constant_types)
 	}
 	// The struct field defaults render on a worker while the constants are
 	// pre-parsed; a constant file that consulted them is re-parsed after.
 	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.enum_field_names, type_output.alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
-	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, mut constant_types)!
+	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, seeded_constant_files, mut constant_types)!
 	struct_field_info = constant_output.struct_field_info.move()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {

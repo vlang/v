@@ -1781,7 +1781,17 @@ fn fastc_constant_candidates(ordered_sources []FastcSourceFile, constant_sources
 // types available to struct field defaults. Independent results from the
 // authoritative parallel pass are reused; only order-dependent candidates are
 // parsed again before the defaults are rendered.
-fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSourceFile, parallel_results []FastcConstantFileResult, mut constant_types flat.TypeTextBindings) {
+// FastcSeededConstantFile is the in-order seed parse of a constant file whose
+// initializers read constants of other files, with the types those constants had.
+struct FastcSeededConstantFile {
+	result FastcConstantFileResult
+	// external_types holds the type of every constant of another file that the
+	// initializers depend on, as the seed parse saw it (0 when it was unknown).
+	external_types map[string]u32
+}
+
+fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSourceFile, parallel_results []FastcConstantFileResult, mut constant_types flat.TypeTextBindings) []FastcSeededConstantFile {
+	mut seeded := []FastcSeededConstantFile{len: candidates.len}
 	for index, candidate in candidates {
 		if index < parallel_results.len {
 			result := parallel_results[index]
@@ -1795,12 +1805,51 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 		}
 		result := fastc_parse_constant_file(ctx, candidate, constant_types)
 		if result.failed {
-			return
+			return seeded
+		}
+		seeded[index] = FastcSeededConstantFile{
+			result:         result
+			external_types: fastc_constant_external_types(result, constant_types)
 		}
 		for key, typ in result.constant_types.ids {
 			constant_types.set_id(key, typ)
 		}
 	}
+	return seeded
+}
+
+// fastc_constant_external_types returns the types `constant_types` holds for the
+// constants of other files that the file's initializers depend on.
+fn fastc_constant_external_types(result FastcConstantFileResult, constant_types flat.TypeTextBindings) map[string]u32 {
+	mut declared := map[string]bool{}
+	for value in result.values {
+		declared[value.key] = true
+	}
+	mut types := map[string]u32{}
+	for value in result.values {
+		for dependency in value.dependencies {
+			if dependency !in declared {
+				types[dependency] = constant_types.value_id(dependency)
+			}
+		}
+	}
+	return types
+}
+
+// fastc_seeded_constant_file_reusable reports whether the seed parse of a file is
+// what an in-order parse from `constant_types` yields: type inference consults only
+// the types of the constants an initializer depends on (see
+// fastc_constant_file_is_independent), and none of those changed since.
+fn fastc_seeded_constant_file_reusable(seeded FastcSeededConstantFile, constant_types flat.TypeTextBindings) bool {
+	if seeded.result.failed || seeded.result.used_field_defaults || seeded.result.values.len == 0 {
+		return false
+	}
+	for dependency, typ in seeded.external_types {
+		if constant_types.value_id(dependency) != typ {
+			return false
+		}
+	}
+	return true
 }
 
 fn fastc_field_defaults_reference_constants(struct_field_info map[string][]FastcStructField, constants map[string]string) bool {
@@ -1870,7 +1919,7 @@ fn fastc_v_string_end(source string, quote int, raw bool) int {
 	return source.len
 }
 
-fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[u32]FastcDeclaredTypeKind, enum_flags map[u32]bool, enum_field_types flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[u64]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, mut constant_types flat.TypeTextBindings) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[u32]FastcDeclaredTypeKind, enum_flags map[u32]bool, enum_field_types flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[u64]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, seeded []FastcSeededConstantFile, mut constant_types flat.TypeTextBindings) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
@@ -1947,8 +1996,14 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 				continue
 			}
 		}
-		serial_count++
-		serial := fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
+		mut serial := FastcConstantFileResult{}
+		if index < seeded.len && fastc_seeded_constant_file_reusable(seeded[index], constant_types) {
+			// The seed pass already parsed this file in order with the same inputs.
+			serial = seeded[index].result
+		} else {
+			serial_count++
+			serial = fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
+		}
 		if serial.failed {
 			return error(serial.error_message)
 		}
