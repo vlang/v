@@ -423,8 +423,8 @@ pub:
 	strategy      Strategy = .default
 }
 
-// compresses an array of bytes using zstd and returns the compressed bytes in a new array
-// extra compression parameters can be set by `params`
+// compresses an array of bytes using zstd and returns the compressed bytes in a new array.
+// Extra compression parameters can be set by `params`.
 // Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := zstd.compress(b, compression_level: 10)!; assert cmpr.len < b.len; dc := zstd.decompress(cmpr)!; assert b == dc
 pub fn compress(data []u8, params CompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_compressBound(data.len)
@@ -445,8 +445,8 @@ pub:
 	window_log_max int
 }
 
-// decompresses an array of bytes using zstd and returns the decompressed bytes in a new array
-// extra decompression parameters can be set by `params`
+// decompresses an array of bytes using zstd and returns the decompressed bytes in a new array.
+// Extra decompression parameters can be set by `params`.
 // Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := zstd.compress(b, compression_level: 10)!; assert cmpr.len < b.len; dc := zstd.decompress(cmpr)!; assert b == dc
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_getFrameContentSize(data.data, frame_header_size_max)
