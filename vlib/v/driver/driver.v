@@ -14740,6 +14740,7 @@ pub fn run(args []string) {
 		}
 		if arm64_link_mode == .external || arm64_unknown_c_constants.len > 0 {
 			arm64_c_side_info = arm64_c_side(Arm64CSideOptions{
+				no_cache:           no_cache
 				a:                  a
 				prefs:              prefs
 				user_c_flags:       user_c_flags
@@ -14758,12 +14759,10 @@ pub fn run(args []string) {
 			} else {
 				arm64_unknown_c_constants
 			}
-			arm64_c_constants = arm64_probe_c_constants(constant_names, arm64_c_side_info.support.text,
-				arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
+			arm64_c_constants = arm64_probe_c_constants(constant_names, arm64_c_side_info)
 			b.step('arm64 C constants')
 			if arm64_link_mode == .external {
-				arm64_c_struct_layouts = arm64_probe_c_struct_layouts(arm64_c_structs(a),
-					arm64_c_side_info.support.text, arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
+				arm64_c_struct_layouts = arm64_probe_c_struct_layouts(arm64_c_structs(a), arm64_c_side_info)
 				b.step('arm64 C struct layouts')
 			}
 		}
@@ -14831,8 +14830,7 @@ pub fn run(args []string) {
 			g.freestanding = 'freestanding' in prefs.user_defines
 			g.gc_runtime = 'gcboehm' in prefs.user_defines && arm64_link_mode == .external
 			if arm64_link_mode == .external {
-				probed := arm64_probe_c_functions(g.c_extern_call_names(), arm64_c_side_info.support.text,
-					arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
+				probed := arm64_probe_c_functions(g.c_extern_call_names(), arm64_c_side_info)
 				mut kinds := map[string]arm64.CFunctionKind{}
 				for name, kind in probed {
 					kinds[name] = if kind == .macro { arm64.CFunctionKind.macro } else { .internal }

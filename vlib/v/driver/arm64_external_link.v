@@ -6,6 +6,7 @@ import v.flat
 import v.gen.c as cgen
 import v.pref
 import v.tempname
+import time
 
 // External linking for the native arm64 backend on macOS.
 //
@@ -285,6 +286,7 @@ fn native_c_visit_directive_module(mod string, by_module map[string][]NativeCDir
 // Arm64CSideOptions holds what the C side of an arm64 program needs from the
 // driver.
 struct Arm64CSideOptions {
+	no_cache bool
 	a                  &flat.FlatAst     = unsafe { nil }
 	prefs              &pref.Preferences = unsafe { nil }
 	user_c_flags       []string
@@ -303,6 +305,8 @@ mut:
 	flags        []string // the user's and the program's `#flag`s
 	support      NativeCSupportSource
 	compile_args []string // without the input and output
+	target       pref.Target
+	no_cache     bool
 	wrappers     string   // C wrappers for macros and static functions (arm64.Gen.c_function_wrappers)
 }
 
@@ -337,8 +341,8 @@ fn arm64_c_side(opts Arm64CSideOptions) !Arm64CSide {
 		// A header can be Objective-C on its own (vlib/macos/objc_bridge.h uses
 		// `__bridge` casts). Only the compiler can tell: when the unit does not
 		// compile as C, it is compiled as Objective-C, a superset of C.
-		objective_c = !arm64_c_unit_compiles(compiler, args, support.text, ['-std=gnu11'])
-			&& arm64_c_unit_compiles(compiler, args, support.text, ['-x', 'objective-c'])
+		objective_c = arm64_c_side_is_objective_c(compiler, args, support.text, prefs.target,
+			opts.no_cache)
 	}
 	if objective_c {
 		args << ['-x', 'objective-c']
@@ -351,21 +355,176 @@ fn arm64_c_side(opts Arm64CSideOptions) !Arm64CSide {
 		flags:        flags
 		support:      support
 		compile_args: args
+		target:       prefs.target
+		no_cache:     opts.no_cache
 	}
+}
+
+// Caching the C side. The compiler parses the program's headers (sokol, AppKit)
+// for every probe and for the support object, which is most of a rebuild. Like
+// Go's action cache (cmd/go/internal/work/exec.go, buildActionID) and Zig's
+// manifests (lib/std/Build/Cache.zig), a result is keyed by compiler, arguments,
+// text and the signatures of every header the unit includes. The bookkeeping is
+// the driver's cache for C objects; only the unit's name and text are ours.
+const arm64_c_cache_directory = 'v3_thirdparty_objs'
+const arm64_c_object_cache_stats = &CObjectCacheStats{}
+
+// One record per process: it remembers `cc --version` and file signatures.
+fn arm64_cache_stats() &CObjectCacheStats {
+	return arm64_c_object_cache_stats
+}
+
+fn arm64_cache_dir() string {
+	return os.join_path(os.vtmp_dir(), arm64_c_cache_directory)
+}
+
+fn arm64_text_hash(parts ...string) string {
+	mut hash := u64(1469598103934665603)
+	for part in parts {
+		hash = c_hash_bytes(hash, part.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	return hash.hex()
+}
+
+// arm64_cached_unit_paths returns the source and object paths of a C unit,
+// writing the source the first time it is seen.
+fn arm64_cached_unit_paths(text string) !(string, string) {
+	dir := arm64_cache_dir()
+	ensure_native_object_cache_dir(dir)!
+	name := 'arm64_unit_${arm64_text_hash(text)}'
+	source := os.join_path(dir, '${name}.c')
+	if !os.is_file(source) {
+		staged := '${source}.tmp.${tempname.unique_token()}'
+		os.write_file(staged, text)!
+		publish_native_c_object(staged, source)!
+	}
+	return source, os.join_path(dir, '${name}.o')
+}
+
+// arm64_cached_object returns the object of a unit when the manifest of its last
+// compile still matches every header, without running the compiler.
+fn arm64_cached_object(compiler string, args []string, text string, target pref.Target) ?string {
+	_, object := arm64_cached_unit_paths(text) or { return none }
+	mut stats := arm64_cache_stats()
+	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, args, target, mut stats)
+	sheet := manifest + '.stat'
+	if cached := arm64_stat_sheet_object(sheet) {
+		return cached
+	}
+	cached := valid_c_object_manifest(manifest, mut stats)?
+	arm64_write_stat_sheet(sheet, cached, manifest)
+	return cached
+}
+
+// arm64_stat_sheet_object returns the object of a sheet whose dependencies all
+// keep the size and time they had when their contents were last checked. Like
+// Zig's manifests (lib/std/Build/Cache.zig), stat first and hash only what moved:
+// the probes of a Cocoa program depend on 1500 headers.
+fn arm64_stat_sheet_object(sheet string) ?string {
+	lines := os.read_lines(sheet) or { return none }
+	if lines.len < 2 || !os.is_file(lines[0]) {
+		return none
+	}
+	for line in lines[1..] {
+		fields := line.split('\t')
+		if fields.len != 3 {
+			return none
+		}
+		attr := os.stat(fields[0]) or { return none }
+		if attr.size.str() != fields[1] || attr.mtime.str() != fields[2] {
+			return none
+		}
+	}
+	return lines[0]
+}
+
+// arm64_write_stat_sheet records the dependencies of a validated manifest. A
+// file modified within the last two seconds is not recorded, so a later edit in
+// the same timestamp tick is seen (Zig's isProblematicTimestamp).
+fn arm64_write_stat_sheet(sheet string, object string, manifest string) {
+	content := os.read_lines(manifest) or { return }
+	now := time.now().unix()
+	mut out := [object]
+	for line in content {
+		if !line.starts_with('dependency=') {
+			continue
+		}
+		path := line.all_after('dependency=').all_before_last('\t')
+		attr := os.stat(path) or { return }
+		if attr.mtime >= now - 2 {
+			return
+		}
+		out << '${path}\t${attr.size}\t${attr.mtime}'
+	}
+	os.write_lines(sheet, out) or {}
+}
+
+// arm64_compile_unit compiles a C unit and returns its object, from the cache
+// when nothing changed. A failed compile returns the compiler's output.
+fn arm64_compile_unit(compiler string, args []string, text string, target pref.Target, no_cache bool) !string {
+	if !no_cache {
+		if object := arm64_cached_object(compiler, args, text, target) {
+			return object
+		}
+	}
+	source, object := arm64_cached_unit_paths(text)!
+	mut stats := arm64_cache_stats()
+	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, args, target, mut stats)
+	dependencies := c_object_dependencies(compiler, args, source)
+	// A probe's `#line "__v_cconst__"` is not a file, but `-M` lists it.
+	files := dependencies.files.filter(os.is_file(it))
+	key := c_object_cache_name(object, compiler, args, files, target, false, mut stats)
+	published := os.join_path(arm64_cache_dir(), key)
+	if !no_cache && !dependencies.used_fallback && os.is_file(published) {
+		write_c_object_manifest(manifest, published, files, mut stats) or {}
+		return published
+	}
+	staged := '${published}.tmp.${tempname.unique_token()}'
+	mut compile_args := args.clone()
+	compile_args << ['-c', source, '-o', staged]
+	result := cmdexec.run(compiler, compile_args)
+	if result.exit_code != 0 {
+		os.rm(staged) or {}
+		return error(result.output)
+	}
+	if dependencies.used_fallback {
+		return staged
+	}
+	publish_native_c_object(staged, published)!
+	write_c_object_manifest(manifest, published, files, mut stats) or {}
+	return published
 }
 
 // arm64_c_unit_compiles reports whether `text` passes the C compiler's syntax
 // and semantic checks with `args` and `mode`.
-fn arm64_c_unit_compiles(compiler string, args []string, text string, mode []string) bool {
-	source := os.join_path(os.vtmp_dir(), 'v3_arm64_c_check_${os.getpid()}_${tempname.unique_token()}.c')
-	os.write_file(source, text) or { return false }
-	defer {
-		os.rm(source) or {}
-	}
+fn arm64_c_unit_compiles(compiler string, args []string, text string, mode []string, target pref.Target, no_cache bool) bool {
 	mut check_args := args.clone()
 	check_args << mode
-	check_args << ['-fsyntax-only', source]
-	return cmdexec.run(compiler, check_args).exit_code == 0
+	arm64_compile_unit(compiler, check_args, text, target, no_cache) or { return false }
+	return true
+}
+
+// arm64_c_side_is_objective_c decides whether the C side must be compiled as
+// Objective-C and remembers the answer while its object stays valid.
+fn arm64_c_side_is_objective_c(compiler string, args []string, text string, target pref.Target, no_cache bool) bool {
+	marker := os.join_path(arm64_cache_dir(), 'arm64_language_${arm64_text_hash(compiler, args.join(' '),
+		text)}')
+	objc_mode := ['-x', 'objective-c']
+	c_mode := ['-std=gnu11']
+	if !no_cache {
+		if language := os.read_file(marker) {
+			mut mode_args := args.clone()
+			mode_args << if language == 'objc' { objc_mode } else { c_mode }
+			if _ := arm64_cached_object(compiler, mode_args, text, target) {
+				return language == 'objc'
+			}
+		} else {}
+	}
+	objective_c := !arm64_c_unit_compiles(compiler, args, text, c_mode, target, no_cache)
+		&& arm64_c_unit_compiles(compiler, args, text, objc_mode, target, no_cache)
+	os.write_file(marker, if objective_c { 'objc' } else { 'c' }) or {}
+	return objective_c
 }
 
 // Arm64ExternalLink holds what arm64_external_link needs from the driver.
@@ -384,22 +543,12 @@ struct Arm64ExternalLink {
 // arm64_external_link compiles the program's C side and links it with the
 // generator's object through the system C compiler driver.
 fn arm64_external_link(side Arm64CSide, opts Arm64ExternalLink) ! {
-	token := '${os.getpid()}_${tempname.unique_token()}'
-	support_source := os.join_path(os.vtmp_dir(), 'v3_arm64_c_${token}.c')
-	support_object := os.join_path(os.vtmp_dir(), 'v3_arm64_c_${token}.o')
-	defer {
-		os.rm(support_source) or {}
-		os.rm(support_object) or {}
-	}
-	os.write_file(support_source, side.support.text + side.wrappers)!
-	mut cc_args := side.compile_args.clone()
-	cc_args << ['-c', support_source, '-o', support_object]
 	if opts.show_cc {
-		println('${side.compiler} ${cc_args.join(' ')}')
+		println('${side.compiler} ${side.compile_args.join(' ')} -c <C side>')
 	}
-	compiled := cmdexec.run(side.compiler, cc_args)
-	if compiled.exit_code != 0 {
-		return error('arm64: compiling the C side of the program failed:\n${compiled.output}')
+	support_object := arm64_compile_unit(side.compiler, side.compile_args, side.support.text +
+		side.wrappers, side.target, side.no_cache) or {
+		return error('arm64: compiling the C side of the program failed:\n${err}')
 	}
 
 	mut link_flags := x64_native_link_flags(side.flags)
@@ -521,60 +670,63 @@ fn arm64_probe_compile_flags(compiler string) []string {
 }
 
 // arm64_run_probe compiles the probe lines written by `lines` for the entries
-// still in `keep`, after `prefix` (the program's C side and any preamble), into
-// `object`. Each line carries a `#line` in `probe_file`, so a line that is an
-// error (a name or field the headers do not have) is dropped and the probe is
-// compiled again, as cgo does. The loop ends because every round removes at
+// still in `keep`, after `prefix` (the program's C side and any preamble), and
+// returns the object. Each line carries a `#line` in `probe_file`, so a line that
+// is an error (a name or field the headers do not have) is dropped and the probe
+// is compiled again, as cgo does. The loop ends because every round removes at
 // least one line; when none can be blamed, the C side itself does not compile
-// and the real compile reports it.
-fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, probe_file string, prefix string, compiler string, compile_args []string, object string) bool {
-	source := object.all_before_last('.') + '.c'
-	defer {
-		os.rm(source) or {}
+// and the real compile reports it. A later build with the same lines reuses the
+// surviving set, and its object, while the headers are unchanged.
+fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, probe_file string, prefix string, side Arm64CSide) ?string {
+	mut args := side.compile_args.clone()
+	args << arm64_probe_compile_flags(side.compiler)
+	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler,
+		args.join(' '), prefix, lines(keep))}')
+	if !side.no_cache {
+		if saved := os.read_file(keep_file) {
+			if saved.len == keep.len {
+				mut candidate := []bool{len: keep.len}
+				for i in 0 .. saved.len {
+					candidate[i] = saved[i] == `1`
+				}
+				if object := arm64_cached_object(side.compiler, args, prefix + lines(candidate), side.target) {
+					keep = candidate.clone()
+					return object
+				}
+			}
+		} else {}
 	}
 	for {
-		os.write_file(source, prefix + lines(keep)) or { return false }
-		mut args := compile_args.clone()
-		args << arm64_probe_compile_flags(compiler)
-		args << ['-c', source, '-o', object]
-		res := cmdexec.run(compiler, args)
-		if res.exit_code == 0 {
-			return true
-		}
-		mut dropped := false
-		for line in res.output.split_into_lines() {
-			if !line.starts_with('${probe_file}:') {
-				continue
+		object := arm64_compile_unit(side.compiler, args, prefix + lines(keep), side.target,
+			side.no_cache) or {
+			mut dropped := false
+			for line in err.msg().split_into_lines() {
+				if !line.starts_with('${probe_file}:') {
+					continue
+				}
+				index := line.all_after(':').all_before(':').int() - 1
+				if index >= 0 && index < keep.len && keep[index] {
+					keep[index] = false
+					dropped = true
+				}
 			}
-			index := line.all_after(':').all_before(':').int() - 1
-			if index >= 0 && index < keep.len && keep[index] {
-				keep[index] = false
-				dropped = true
+			if !dropped {
+				return none
 			}
+			continue
 		}
-		if !dropped {
-			return false
-		}
+		os.write_file(keep_file, keep.map(if it { '1' } else { '0' }).join('')) or {}
+		return object
 	}
-	return false
-}
-
-fn arm64_probe_object_path(kind string) string {
-	return os.join_path(os.vtmp_dir(), 'v3_arm64_${kind}_${os.getpid()}_${tempname.unique_token()}.o')
+	return none
 }
 
 // arm64_compile_probe runs a probe after the system headers and returns the
 // symbols with `symbol_prefix` and which lines were kept.
-fn arm64_compile_probe(count int, lines fn ([]bool) string, probe_file string, symbol_prefix string, support_text string, compiler string, compile_args []string) ?(map[string][]u8, []bool) {
-	object := arm64_probe_object_path('probe')
-	defer {
-		os.rm(object) or {}
-	}
+fn arm64_compile_probe(count int, lines fn ([]bool) string, probe_file string, symbol_prefix string, side Arm64CSide) ?(map[string][]u8, []bool) {
 	mut keep := []bool{len: count, init: true}
-	if !arm64_run_probe(mut keep, lines, probe_file, support_text + arm64_probe_preamble(), compiler,
-		compile_args, object) {
-		return none
-	}
+	object := arm64_run_probe(mut keep, lines, probe_file, side.support.text + arm64_probe_preamble(),
+		side)?
 	symbols := macho_object_symbol_bytes(object, symbol_prefix) or { return none }
 	return symbols, keep
 }
@@ -589,14 +741,14 @@ fn arm64_probe_symbol_i64(symbols map[string][]u8, name string) ?i64 {
 
 // arm64_probe_c_constants returns the values of the arithmetic C constants
 // among `names`, read from the program's C side.
-fn arm64_probe_c_constants(names []string, support_text string, compiler string, compile_args []string) map[string]Arm64CConstant {
+fn arm64_probe_c_constants(names []string, side Arm64CSide) map[string]Arm64CConstant {
 	mut result := map[string]Arm64CConstant{}
 	if names.len == 0 {
 		return result
 	}
 	symbols, keep := arm64_compile_probe(names.len, fn [names] (keep []bool) string {
 		return arm64_c_constant_probe_lines(names, keep)
-	}, arm64_c_constant_probe_file, '___v_cconst_', support_text, compiler, compile_args) or {
+	}, arm64_c_constant_probe_file, '___v_cconst_', side) or {
 		return result
 	}
 	for i, name in names {
@@ -717,7 +869,7 @@ fn arm64_c_struct_probe_lines(structs []Arm64CStruct, keep []bool) string {
 // from the C compiler, like cgo's -godefs: V declarations of C structs often
 // list only the fields a binding reads (vglyph's `C.FT_GlyphSlotRec`), so their
 // offsets cannot be computed from the V declaration.
-fn arm64_probe_c_struct_layouts(structs []Arm64CStruct, support_text string, compiler string, compile_args []string) map[string]Arm64CStructLayout {
+fn arm64_probe_c_struct_layouts(structs []Arm64CStruct, side Arm64CSide) map[string]Arm64CStructLayout {
 	mut result := map[string]Arm64CStructLayout{}
 	mut count := 0
 	for st in structs {
@@ -728,7 +880,7 @@ fn arm64_probe_c_struct_layouts(structs []Arm64CStruct, support_text string, com
 	}
 	symbols, keep := arm64_compile_probe(count, fn [structs] (keep []bool) string {
 		return arm64_c_struct_probe_lines(structs, keep)
-	}, arm64_c_struct_probe_file, '___v_cstruct_', support_text, compiler, compile_args) or {
+	}, arm64_c_struct_probe_file, '___v_cstruct_', side) or {
 		return result
 	}
 	mut line := 0
@@ -790,24 +942,18 @@ fn arm64_c_function_probe_lines(names []string, keep []bool) string {
 	return lines.join('\n') + '\n'
 }
 
-fn arm64_probe_c_functions(names []string, support_text string, compiler string, compile_args []string) map[string]Arm64CFunctionKind {
+fn arm64_probe_c_functions(names []string, side Arm64CSide) map[string]Arm64CFunctionKind {
 	mut result := map[string]Arm64CFunctionKind{}
 	if names.len == 0 {
 		return result
-	}
-	object := arm64_probe_object_path('cfn')
-	defer {
-		os.rm(object) or {}
 	}
 	mut keep := []bool{len: names.len}
 	for i, name in names {
 		keep[i] = arm64_is_c_identifier(name)
 	}
-	if !arm64_run_probe(mut keep, fn [names] (keep []bool) string {
+	object := arm64_run_probe(mut keep, fn [names] (keep []bool) string {
 		return arm64_c_function_probe_lines(names, keep)
-	}, arm64_c_function_probe_file, support_text, compiler, compile_args, object) {
-		return result
-	}
+	}, arm64_c_function_probe_file, side.support.text, side) or { return result }
 	symbols := macho_object_symbols(object) or { return result }
 	mut local_functions := map[string]bool{}
 	mut macros := map[string]bool{}

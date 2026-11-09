@@ -314,3 +314,35 @@ fn main() {
 		assert run.output.trim_space() == '42', run.output
 	}
 }
+
+// C probes are cached by their headers: editing a header must change the value
+// a rebuild reads, and an unchanged rebuild must keep it.
+fn test_arm64_c_probes_follow_their_headers() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_external_cache_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'v.mod'), '')!
+		header := os.join_path(root, 'value.h')
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(source, '#include "@VMODROOT/value.h"
+
+fn main() {
+	println(int(C.PROBE_VALUE))
+}
+')!
+		for value in ['11', '11', '22'] {
+			os.write_file(header, '#define PROBE_VALUE ${value}\n')!
+			compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-d', 'arm64_external_link', '-o', output,
+				source])
+			assert compiled.exit_code == 0, compiled.output
+			run := cmdexec.run(output, []string{})
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == value, run.output
+		}
+	}
+}
