@@ -9609,7 +9609,7 @@ $if !skip_fastc ? {
 				}
 			}
 		}
-		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.source,
+		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.pieces,
 			build_dir, payload_cache_enabled)
 		// The program's translation units are compiled by concurrent TinyCC
 		// processes and linked; a program that does not split is compiled as
