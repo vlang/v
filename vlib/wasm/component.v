@@ -215,7 +215,7 @@ pub fn wrap_core_module(core []u8) []u8 {
 		out << u8(0x00)
 		mut payload := []u8{}
 		payload << core
-		write_section(mut out, 1, payload)
+		write_section(mut out, int(ComponentSection.core_module_section), payload)
 		return out
 	}
 
@@ -298,19 +298,19 @@ pub fn wrap_core_module(core []u8) []u8 {
 	out << u8(0x00)
 
 	// type section id 7
-	write_section(mut out, 7, type_payload)
+	write_section(mut out, int(ComponentSection.type_section), type_payload)
 	// core module section id 1
 	mut mod_payload := []u8{}
 	mod_payload << core
-	write_section(mut out, 1, mod_payload)
+	write_section(mut out, int(ComponentSection.core_module_section), mod_payload)
 	// core instance section id 2
-	write_section(mut out, 2, coreinst_payload)
+	write_section(mut out, int(ComponentSection.core_instance_section), coreinst_payload)
 	// alias section id 6
-	write_section(mut out, 6, alias_payload)
+	write_section(mut out, int(ComponentSection.alias_section), alias_payload)
 	// canon section id 8
-	write_section(mut out, 8, canon_payload)
+	write_section(mut out, int(ComponentSection.canon_section), canon_payload)
 	// export section id 11
-	write_section(mut out, 11, export_payload)
+	write_section(mut out, int(ComponentSection.export_section), export_payload)
 
 	return out
 }
