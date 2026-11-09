@@ -58,7 +58,7 @@ pub fn (mut c ServerContext) add_trailer(key string, value string) {
 	c.resp_trailers[key.to_lower()] << value
 }
 
-// Service is implemented by generated <Name>Service dispatch structs;
+// Service is implemented by generated `<Name>Service` dispatch structs;
 // found=false means the path belongs to another service.
 pub interface Service {
 mut:

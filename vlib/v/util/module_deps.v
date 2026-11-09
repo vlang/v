@@ -59,7 +59,7 @@ fn tools_with_dev_dependencies() []string {
 }
 
 // check_module_is_installed makes sure that `modulename` is present in ~/.vmodules,
-// cloning it from https://github.com/vlang/<modulename> when it is not. With
+// cloning it from `https://github.com/vlang/<modulename>` when it is not. With
 // `need_update` set, an already installed module is refreshed with `v update`.
 // A failed update is only a warning: updates fail on transient network problems,
 // and the copy that is already there usually still works.

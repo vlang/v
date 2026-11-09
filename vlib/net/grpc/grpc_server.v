@@ -16,7 +16,7 @@ import net.http
 
 const grpc_content_type = 'application/grpc+proto'
 
-// GrpcService is the native-gRPC dispatch a generated <Name>Service satisfies
+// GrpcService is the native-gRPC dispatch a generated `<Name>Service` satisfies
 // (alongside Service, the Connect one): a list of request message payloads in,
 // a list of response message payloads out — so one call covers unary (one in,
 // one out), server-streaming (one in, many out), and client-streaming (many in,

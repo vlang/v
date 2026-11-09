@@ -1373,11 +1373,11 @@ mut:
 	end   int
 }
 
-// parse_multipart_form parses an http request body, given a boundary string
+// parse_multipart_form parses an http request body, given a boundary string.
 // For more details about multipart forms, see:
-//   https://datatracker.ietf.org/doc/html/rfc2183
-//   https://datatracker.ietf.org/doc/html/rfc2388
-//   https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+// - https://datatracker.ietf.org/doc/html/rfc2183
+// - https://datatracker.ietf.org/doc/html/rfc2388
+// - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
 pub fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	// dump(body)
 	// dump(boundary)

@@ -4,13 +4,15 @@ module cbor
 // appeared on the wire. Useful for caching/forwarding code that wants to
 // defer decoding of a nested field.
 //
-//   struct Envelope {
-//       id      int
-//       payload cbor.RawMessage   // bytes preserved as-is
-//   }
+// ```v ignore
+// struct Envelope {
+// 	id      int
+// 	payload cbor.RawMessage // bytes preserved as-is
+// }
 //
-//   raw  := cbor.decode[cbor.RawMessage](bytes)!
-//   back := cbor.encode(raw, cbor.EncodeOpts{})!  // identical bytes
+// raw := cbor.decode[cbor.RawMessage](bytes)!
+// back := cbor.encode(raw, cbor.EncodeOpts{})! // identical bytes
+// ```
 pub struct RawMessage {
 pub mut:
 	data []u8
