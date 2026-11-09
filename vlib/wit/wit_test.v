@@ -37,6 +37,10 @@ world app {
 	assert w.exports.len == 1
 	// round-trip type str
 	assert prim_type('s32').str() == 's32'
+
+	generated := doc.to_v()
+	assert generated.contains('pub struct Point')
+	assert generated.contains('pub fn add')
 }
 
 fn test_parse_list_option_result() {
