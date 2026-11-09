@@ -273,6 +273,11 @@ static string v_fastc_bool_str(bool value) { return value ? "true" : "false"; }
 
 #define V_FASTC_SCANNED_ALLOC(size) malloc(size)
 #define V_FASTC_SCANNED_FREE(pointer) free(pointer)
+static void *v_fastc_heap_copy(const void *value, usize size) {
+	void *copy = V_FASTC_SCANNED_ALLOC(size);
+	if (copy != NULL) memcpy(copy, value, size);
+	return copy;
+}
 static void *v_fastc_interface_box(const void *value, usize size) {
 	void *copy = malloc(size);
 	if (copy != NULL) memcpy(copy, value, size);
@@ -582,6 +587,20 @@ static void *v_fastc_interface_box(const void *value, usize size) {
 	return copy;
 }
 #endif
+
+/* V-owned pointers can be passed to free(), unlike the internal arena boxes. */
+#if defined(_WIN32) && !defined(V_FASTC_GC_HEAP)
+extern void *_aligned_malloc(size_t, size_t);
+#endif
+static void *v_fastc_heap_copy(const void *value, usize size) {
+#if defined(_WIN32) && !defined(V_FASTC_GC_HEAP)
+	void *copy = _aligned_malloc(size, 1);
+#else
+	void *copy = V_FASTC_SCANNED_ALLOC(size);
+#endif
+	if (copy != NULL) memcpy(copy, value, size);
+	return copy;
+}
 
 static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};
 static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }
