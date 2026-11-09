@@ -56,6 +56,7 @@ struct CoreFuncType {
 
 struct CoreExport {
 	name string
+	kind u8
 	idx  int
 }
 
@@ -140,9 +141,7 @@ fn parse_core_module(core []u8) ([]CoreExport, []CoreFuncType, []int, int, []int
 				kind := core[i]
 				i++
 				idx := read_uleb128(core, &i)
-				if kind == 0 {
-					exports << CoreExport{ name: name, idx: idx }
-				}
+				exports << CoreExport{ name: name, kind: kind, idx: idx }
 			}
 		}
 		i = end
@@ -176,9 +175,19 @@ fn write_section(mut out []u8, id u8, payload []u8) {
 pub fn wrap_core_module(core []u8) []u8 {
 	// If we can lift at least one function, produce a richer component.
 	exports, types, _defined, _, func_typeidx := parse_core_module(core)
+	// Detect memory and realloc exports for canonical opts.
+	mut has_memory := false
+	mut realloc_idx := -1
+	for e in exports {
+		if e.kind == 2 { has_memory = true }
+		if e.kind == 0 && (e.name == 'cabi_realloc' || e.name == 'realloc') {
+			realloc_idx = e.idx
+		}
+	}
 	// Determine liftable exports.
 	mut liftable := []CoreExport{}
 	for e in exports {
+		if e.kind != 0 { continue }
 		// map export idx to typeidx
 		ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
 		if ti < 0 || ti >= types.len { continue }
@@ -271,7 +280,18 @@ pub fn wrap_core_module(core []u8) []u8 {
 		canon_payload << u8(0x00)
 		canon_payload << u8(0x00) // func sort
 		canon_payload << leb128.encode_u32(u32(i)) // core func idx (alias index)
-		canon_payload << leb128.encode_u32(0) // opts count
+		// opts
+		mut opts := []u8{}
+		if has_memory {
+			opts << u8(0x03)
+			opts << leb128.encode_u32(0)
+		}
+		if realloc_idx >= 0 {
+			opts << u8(0x04)
+			opts << leb128.encode_u32(u32(realloc_idx))
+		}
+		canon_payload << leb128.encode_u32(u32(opts.len))
+		canon_payload << opts
 		canon_payload << leb128.encode_u32(u32(i)) // type idx
 	}
 
