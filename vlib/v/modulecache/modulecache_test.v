@@ -1634,3 +1634,21 @@ fn test_real_source_paths_are_resolved_once_until_they_are_frozen() {
 	manager.remember_source_path('late_given.v', '/resolved/late_given.v')
 	assert manager.real_source_path('late_given.v') == os.real_path('late_given.v')
 }
+
+fn test_cached_directive_text_keeps_include_ordering_directives() {
+	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')
+	for directive in ['preinclude', 'postinclude'] {
+		system := flat.Node{
+			kind:  .directive
+			value: directive
+			typ:   flat.source_type_id('<X11/Xlib.h>')
+		}
+		assert cached_directive_text(system, '/v', source_file) == '#${directive} <X11/Xlib.h>'
+		expanded := flat.Node{
+			kind:  .directive
+			value: directive
+			typ:   flat.source_type_id('"@VEXEROOT/vlib/macos/objc_bridge.h"')
+		}
+		assert cached_directive_text(expanded, '/v', source_file) == '#${directive} "/v/vlib/macos/objc_bridge.h"'
+	}
+}

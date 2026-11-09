@@ -852,7 +852,7 @@ fn signature_directive_mentions_pseudo(source string, start int, names []string)
 		pos++
 	}
 	directive := source[name_start..pos]
-	scan_quoted := directive in ['include', 'insert', 'flag']
+	scan_quoted := directive in ['include', 'insert', 'preinclude', 'postinclude', 'flag']
 	for pos < source.len && source[pos] != `\n` {
 		if pos + 1 < source.len && source[pos] == `/` && source[pos + 1] == `/` {
 			for pos < source.len && source[pos] != `\n` {
@@ -7003,8 +7003,8 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 }
 
 fn cached_directive_text(node flat.Node, vroot string, source_file string) string {
-	if node.value !in ['include', 'insert', 'flag', 'pkgconfig', 'define', 'undef', 'ifdef', 'ifndef',
-		'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
+	if node.value !in ['include', 'insert', 'preinclude', 'postinclude', 'flag', 'pkgconfig', 'define',
+		'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
 		return ''
 	}
 	value := cached_directive_value(node.value, node.typ_text(), vroot, source_file)
@@ -7016,7 +7016,7 @@ fn cached_directive_value(directive string, value string, vroot string, source_f
 		return cached_resolve_flag_value(value, vroot, source_file)
 	}
 	result := cached_expand_pseudo_paths(value, vroot, source_file)
-	if directive in ['include', 'insert'] {
+	if directive in ['include', 'insert', 'preinclude', 'postinclude'] {
 		return cached_resolve_relative_include_path(result, source_file)
 	}
 	return result
