@@ -7140,7 +7140,11 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					'&(${source})'
 				}
 				storage := g.collection_storage_type(value_type)
-				missing := g.map_lookup_missing_value_expression(value_type)
+				missing := if fastc_typed_option_payload(value_type) != none {
+					'(${storage}){.state=2}'
+				} else {
+					g.map_lookup_missing_value_expression(value_type)
+				}
 				map_value := if fastc_is_pointer_type(current_type) {
 					'*(${source})'
 				} else {

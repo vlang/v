@@ -1769,7 +1769,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 		}
 	}
 	g.expected_expression_type = branch_expected_type_source_id
-	then_expr := if g.tok == .key_return {
+	mut then_expr := if g.tok == .key_return {
 		g.read_return_expression_branch()!
 	} else {
 		g.read_block_expression_value()!
@@ -1813,11 +1813,20 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	} else {
 		flat.source_type_int
 	}
+	result_c_type := fastc_output_c_type(flat.source_type_name(result_type))
+	// A returning branch can carry an enclosing `or` block's unreachable payload.
+	// Discard that value and use this conditional's result type for the assignment.
+	if then_type_source_id == u32(0) {
+		then_expr = '({ (void)(${then_expr}); (${result_c_type}){0}; })'
+	}
+	if else_type_source_id == u32(0) {
+		else_expr = '({ (void)(${else_expr}); (${result_c_type}){0}; })'
+	}
 	g.last_expression_type = result_type
 	g.expected_expression_type = outer_expected_type_source_id
 	g.last_expression = []FastcExpressionToken{}
 	result_var := g.temporary_name('if_result')
-	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${fastc_output_c_type(flat.source_type_name(result_type))} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
+	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${result_c_type} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
 }
 
 // fastc_plan_is_bare_local reports whether a member-smart-cast plan narrows a bare local

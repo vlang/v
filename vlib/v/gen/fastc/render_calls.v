@@ -107,19 +107,18 @@ fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToke
 		is_storage: g.member_expression_refers_to_storage(base_tokens)
 	}]
 	members << tokens[close + 1..]
-	if mapped := g.render_map_expression(members) {
-		return mapped
-	}
 	if indexed := g.render_array_access_expression(members) {
 		return indexed
 	}
-	member_source := g.render_raw_expression_tokens(members) or { return none }
-	if method := g.render_method_call_expression(members, member_source) { return method }
-	source := g.render_member_receiver(members) or { return none }
-	return FastcRenderedExpression{
-		source: source
-		typ:    g.infer_expression_type(members) or { return none }
+	// Member reads materialize map receivers before their keys and preserve stored options.
+	if source := g.render_member_receiver(members) {
+		return FastcRenderedExpression{
+			source: source
+			typ:    g.infer_expression_type(members) or { return none }
+		}
 	}
+	member_source := g.render_raw_expression_tokens(members) or { return none }
+	return g.render_method_call_expression(members, member_source)
 }
 
 fn fastc_expression_has_pointer_type_sizeof(tokens []FastcExpressionToken) bool {

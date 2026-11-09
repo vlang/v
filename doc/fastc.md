@@ -101,6 +101,7 @@ Ordinary programs support the following constructs:
   arithmetic and compound assignments.
 - Parallel declarations of option fields retain their payload types for guards and fallbacks.
 - Struct-valued result fallbacks support conditionals that return from both branches.
+  Nested multi-return guards keep their own result type when a branch returns.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for
@@ -110,6 +111,7 @@ Ordinary programs support the following constructs:
 - Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
   and `.len`.
   Lookup of an absent key returns the value type's zero value.
+  Call-backed map reads evaluate the receiver before the key and retain stored option values.
 - Array and map element reads in local initializers and function arguments.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 
