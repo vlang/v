@@ -10939,6 +10939,45 @@ reuses its executable while none of its inputs change.
 If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
 V does not infer the language from header contents.
 
+**Passing C structs by value**
+
+A V `struct Foo` and a C `struct Foo` are distinct types, even when their fields match.
+For a C function that takes or returns a struct by value, redeclare the native type with
+`struct C.Foo`. If the header defines a typedef, also use `@[typedef]`.
+A public type alias can expose it under a V module name:
+
+```v oksyntax
+module native
+
+#include "native.h"
+
+@[typedef]
+pub struct C.CallbackInfo {
+pub:
+	callback fn (voidptr) = unsafe { nil }
+	userdata voidptr
+}
+
+pub type CallbackInfo = C.CallbackInfo
+
+fn C.request(info C.CallbackInfo)
+
+// request passes the native callback-info value to C.
+pub fn request(info CallbackInfo) {
+	C.request(info)
+}
+```
+
+Callers can then use `native.CallbackInfo{callback: on_ready, userdata: data}`.
+The alias preserves the native type's identity; casting a separately declared V struct
+to its own V type does not convert it to the native C type.
+Use the exact C field names in the redeclaration and initializer, including camel case.
+Apply the same rule to nested structs, structs passed to callbacks, and returned structs.
+For example, a WebGPU binding needs native declarations for `WGPURequestAdapterCallbackInfo`,
+`WGPUStringView`, and `WGPUFuture`, rather than separate V structs with those names.
+Keep the field types consistent with the header too: C `size_t` corresponds to V `uint`,
+while C `int` corresponds to V `i32`.
+
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a
 library, but its .h header declares dozens of them, you will only need to declare that single
