@@ -276,6 +276,12 @@ const arm64_gc_runtime_symbols = {
 	'dlopen':          'v_gc_dlopen'
 }
 
+// text_exceeds_branch_range reports whether the code is too large for the `bl`
+// relocations the built-in linker can resolve, which reach 128 MiB.
+pub fn (g &Gen) text_exceeds_branch_range() bool {
+	return g.text_offset() >= (1 << 27)
+}
+
 // write_object writes the generated code as a relocatable Mach-O object for
 // the system linker (external linking).
 pub fn (mut g Gen) write_object(output string) ! {
@@ -500,9 +506,13 @@ fn (g &Gen) align_global_offset(offset u64, global_index int) u64 {
 	return (offset + alignment - 1) & ~(alignment - 1)
 }
 
+const wyhash_secret_bytes = u64(32)
+
 // gen_pre_pass emits pre pass output for arm64.
 fn (mut g Gen) gen_pre_pass() {
-	mut data_offset := u64(0)
+	// `__wyp` comes first, so everything after it is zeros the object can keep
+	// out of the file (see write_object).
+	mut data_offset := wyhash_secret_bytes
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
 			continue
@@ -516,9 +526,19 @@ fn (mut g Gen) gen_pre_pass() {
 
 // gen_post_pass emits post pass output for arm64.
 fn (mut g Gen) gen_post_pass() {
-	// `C._wyp` is a generated C constant that map hashing reads by name. Its
-	// bytes follow the globals' data, so the globals' offsets stay valid.
-	mut globals_end := u64(0)
+	// `C._wyp` is a generated C constant that map hashing reads by name. It sits
+	// at the start of the data, before the globals.
+	g.macho.add_symbol('__wyp', 0, true, 3)
+	secrets := [u64(0x2d358dccaa6c78a5), u64(0x8bb84b93962eacc9), u64(0x4b33a62ed433d4a3),
+		u64(0x4d5a2da51de1aa47)]
+	for secret in secrets {
+		mut bytes := []u8{len: 8}
+		for i in 0 .. 8 {
+			bytes[i] = u8(secret >> (i * 8))
+		}
+		g.macho.data_data << bytes
+	}
+	mut globals_end := wyhash_secret_bytes
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
 			continue
@@ -529,29 +549,6 @@ fn (mut g Gen) gen_post_pass() {
 	}
 	for g.macho.data_data.len < int(globals_end) {
 		g.macho.data_data << 0
-	}
-	g.macho.add_symbol('__wyp', u64(g.macho.data_data.len), true, 3)
-	secrets := [u64(0x2d358dccaa6c78a5), u64(0x8bb84b93962eacc9), u64(0x4b33a62ed433d4a3),
-		u64(0x4d5a2da51de1aa47)]
-	for secret in secrets {
-		mut bytes := []u8{len: 8}
-		for i in 0 .. 8 {
-			bytes[i] = u8(secret >> (i * 8))
-		}
-		g.macho.data_data << bytes
-	}
-	for gi in 0 .. g.m.globals.len {
-		if g.m.globals[gi].linkage == .external {
-			continue
-		}
-		for g.macho.data_data.len % 8 != 0 {
-			g.macho.data_data << 0
-		}
-		size := g.m.type_size(g.m.globals[gi].typ)
-		actual := if size > 0 { size } else { 8 }
-		for _ in 0 .. actual {
-			g.macho.data_data << 0
-		}
 	}
 
 	// `@[export: 'name']` functions are also reachable under their C name, which

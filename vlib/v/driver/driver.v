@@ -14868,7 +14868,25 @@ pub fn run(args []string) {
 					eprintln(err.msg())
 					exit(1)
 				}
-			} else if arm64_link_mode == .external {
+			} else if arm64_link_mode == .external || g.text_exceeds_branch_range() {
+				if arm64_link_mode != .external {
+					// The built-in linker has no thunks for `bl` beyond 128 MiB; the
+					// system linker inserts them (Zig: src/link/MachO/Thunk.zig).
+					arm64_c_side_info = arm64_c_side(Arm64CSideOptions{
+						no_cache:           no_cache
+						a:                  a
+						prefs:              prefs
+						user_c_flags:       user_c_flags
+						environment_cflags: environment_c_flags
+						optimization_flags: v3_prod_c_object_optimization_flags(is_prod,
+							no_prod_options, false, parallel_cc, false)
+						c_compiler:         c_compiler
+						compiler_explicit:  c_compiler_explicit
+					}) or {
+						eprintln(err.msg())
+						exit(1)
+					}
+				}
 				obj_file := os.join_path(os.vtmp_dir(), 'v3_arm64_${os.getpid()}_${tempname.unique_token()}.o')
 				g.write_object(obj_file) or {
 					eprintln(err.msg())

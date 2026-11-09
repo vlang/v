@@ -1253,9 +1253,8 @@ fn (mut l Linker) write_text_with_relocations() {
 				}
 				rel := i64(sym_addr) - i64(pc)
 				if rel < -(i64(1) << 27) || rel >= (i64(1) << 27) {
-					// Zig and ld64 insert thunks (src/link/MachO/Thunk.zig). Programs of
-					// this size link externally, where the system linker does that.
-					eprintln('LINKER: `${sym_name}` is out of `bl` range; link with -d arm64_external_link')
+					// Larger programs never reach here: the driver links them externally.
+					eprintln('LINKER: `${sym_name}` is out of `bl` range')
 					exit(1)
 				}
 				imm26 := (rel >> 2) & 0x3FFFFFF

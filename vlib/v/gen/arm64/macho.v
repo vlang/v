@@ -158,6 +158,7 @@ const n_ext = u8(0x01)
 const n_undf = u8(0x00)
 const n_sect = u8(0x0e)
 const s_regular = u32(0)
+const s_zerofill = u32(1)
 const s_attr_debug = u32(0x02000000)
 const unwind_arm64_mode_frame = u32(0x04000000)
 const s_attr_pure_instructions = u32(0x80000000)
@@ -206,8 +207,12 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	const_addr := text_len
 	const_len := m.str_data.len
 	data_addr := (const_addr + const_len + 15) & ~15
-	data_len := m.data_data.len
-	unwind_addr := (data_addr + data_len + 7) & ~7
+	// Trailing zero bytes are not stored: they become `__bss`, as a C compiler
+	// emits zero-initialized globals (S_ZEROFILL).
+	data_file_len := m.data_file_len()
+	bss_addr_in_data := data_addr + data_file_len
+	bss_len := m.data_data.len - data_file_len
+	unwind_addr := (data_addr + data_file_len + 7) & ~7
 
 	// Generator symbol values are already the section addresses used below: text
 	// offsets, `text_len + string offset` and `align8(text_len + strings) + data
@@ -248,6 +253,20 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		return compare_strings(m.symbols[*a].name, m.symbols[*b].name)
 	})
 
+	// The `__bss` symbols move with their section, after `__compact_unwind`.
+	size_only_entries, _ := m.compact_unwind([]int{len: m.symbols.len}, shadowed)
+	unwind_size := size_only_entries.len
+	final_bss_addr := (unwind_addr + unwind_size + 15) & ~15
+	bss_section := fn [bss_addr_in_data] (sym Symbol) u8 {
+		return if sym.sect == 3 && sym.value >= u64(bss_addr_in_data) { u8(5) } else { sym.sect }
+	}
+	bss_value := fn [bss_addr_in_data, final_bss_addr] (sym Symbol) u64 {
+		return if sym.sect == 3 && sym.value >= u64(bss_addr_in_data) {
+			sym.value - u64(bss_addr_in_data) + u64(final_bss_addr)
+		} else {
+			sym.value
+		}
+	}
 	mut strtab := []u8{cap: m.str_table.len + 64}
 	strtab << 0
 	mut symtab := []u8{cap: (m.symbols.len + shadowed.len) * 16}
@@ -262,13 +281,14 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		} else {
 			reloc_index[i] = out_index
 		}
-		write_nlist(mut symtab, mut strtab, name, n_sect, sym.sect, 0, sym.value)
+		write_nlist(mut symtab, mut strtab, name, n_sect, bss_section(sym), 0, bss_value(sym))
 		out_index++
 	}
 	for i in ext_syms {
 		sym := m.symbols[i]
 		reloc_index[i] = out_index
-		write_nlist(mut symtab, mut strtab, sym.name, n_sect | n_ext, sym.sect, sym.desc, sym.value)
+		write_nlist(mut symtab, mut strtab, sym.name, n_sect | n_ext, bss_section(sym), sym.desc,
+			bss_value(sym))
 		out_index++
 	}
 	for i in undef_syms {
@@ -284,7 +304,8 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 
 	unwind_entries, unwind_relocs := m.compact_unwind(reloc_index, shadowed)
 	unwind_len := unwind_entries.len
-	n_sects := 4
+	n_sects := 5
+	bss_addr := (unwind_addr + unwind_len + 15) & ~15
 	header_size := 32
 	seg_cmd_size := 72 + 80 * n_sects
 	build_version_cmd_size := 24
@@ -296,6 +317,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	const_off := text_off + const_addr
 	data_off := text_off + data_addr
 	seg_filesize := unwind_addr + unwind_len
+	seg_vmsize := bss_addr + bss_len
 	reloc_off := (text_off + seg_filesize + 7) & ~7
 	unwind_reloc_off := reloc_off + m.relocs.len * 8
 	sym_off := unwind_reloc_off + unwind_relocs.len
@@ -316,7 +338,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	write_u32_le(mut buf, u32(seg_cmd_size))
 	write_string_fixed(mut buf, '', 16)
 	write_u64_le(mut buf, 0) // vmaddr
-	write_u64_le(mut buf, u64(seg_filesize)) // vmsize
+	write_u64_le(mut buf, u64(seg_vmsize)) // vmsize
 	write_u64_le(mut buf, u64(text_off)) // fileoff
 	write_u64_le(mut buf, u64(seg_filesize)) // filesize
 	write_u32_le(mut buf, 7) // maxprot
@@ -328,10 +350,11 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		m.relocs.len, s_regular | s_attr_pure_instructions | s_attr_some_instructions)
 	write_section_64(mut buf, '__const', '__TEXT', const_addr, const_len, const_off, 0, 0, 0,
 		s_regular)
-	write_section_64(mut buf, '__data', '__DATA', data_addr, data_len, data_off, 4, 0, 0,
+	write_section_64(mut buf, '__data', '__DATA', data_addr, data_file_len, data_off, 4, 0, 0,
 		s_regular)
 	write_section_64(mut buf, '__compact_unwind', '__LD', unwind_addr, unwind_len,
 		text_off + unwind_addr, 3, unwind_reloc_off, unwind_relocs.len / 8, s_attr_debug)
+	write_section_64(mut buf, '__bss', '__DATA', bss_addr, bss_len, 0, 4, 0, 0, s_zerofill)
 
 	// LC_BUILD_VERSION
 	write_u32_le(mut buf, u32(lc_build_version_cmd))
@@ -371,7 +394,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	for buf.len < data_off {
 		buf << 0
 	}
-	buf << m.data_data
+	buf << m.data_data[..data_file_len]
 	for buf.len < text_off + unwind_addr {
 		buf << 0
 	}
@@ -402,6 +425,16 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	if !write_file_array_raw(path, buf) {
 		return error('failed to write Mach-O object `${path}`')
 	}
+}
+
+// data_file_len returns how much of the data must be stored, aligned so `__bss`
+// can start right after it.
+fn (m &MachOObject) data_file_len() int {
+	mut end := m.data_data.len
+	for end > 0 && m.data_data[end - 1] == 0 {
+		end--
+	}
+	return arm64_min_int((end + 15) & ~15, m.data_data.len)
 }
 
 // compact_unwind returns the `__LD,__compact_unwind` entries of the object, one

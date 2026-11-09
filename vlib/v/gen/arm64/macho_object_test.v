@@ -213,8 +213,8 @@ fn test_write_object_is_a_relocatable_object_for_the_system_linker() {
 	assert o.symbols[helper_index].typ == 0x0f
 	assert o.symbols[helper_index].value == 20
 	counter := o.symbols[names.index('_counter')]
-	assert counter.sect == 3
-	assert counter.value == 40
+	assert counter.sect == 5
+	assert counter.value >= o.sections['__bss'][0]
 	string_symbol := o.symbols[names.index('L_str_0')]
 	assert string_symbol.sect == 2
 	assert string_symbol.value == 28
