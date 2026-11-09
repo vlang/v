@@ -81,6 +81,9 @@ fn vup_report_fixture() !(string, string, string, string) {
 
 	bin_dir := os.join_path(root, 'bin')
 	os.mkdir_all(bin_dir)!
+	// OpenBSD's POSIX shell has no printf builtin; expose it to the isolated PATH.
+	printf := os.find_abs_path_of_executable('printf')!
+	os.symlink(printf, os.join_path(bin_dir, 'printf'))!
 	// Every stand-in records its call in `calls.log`, so a test can tell that an
 	// update never started.
 	log_call := 'printf "%s %s\\n" "\${0##*/}" "\$*" >> ' +
