@@ -211,6 +211,17 @@ helpers used by Windows backtraces must work with this reduced runtime. To rerun
 ./v test vlib/v/driver/windows_icon_test.v
 ```
 
+Cached module objects may call interface methods declared in a module rebuilt from source.
+Those dispatchers, their concrete methods and transitive callees must remain available when
+cached callers' bodies are absent from the reachability scan. The example build covers this
+through `net.http`, SOCKS and
+`examples/web_crawler`. The focused dispatch regression is:
+
+```sh
+./v test vlib/v/gen/c/interface_test.v
+./v test vlib/v/markused/library_frontier_test.v
+```
+
 ### Testing the resume behavior
 
 On macOS or Linux with a working V compiler, run:
