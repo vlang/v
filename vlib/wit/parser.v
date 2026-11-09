@@ -20,11 +20,13 @@ pub fn parse(src string) !WitDoc {
 
 fn (mut p Parser) parse_doc() !WitDoc {
 	mut doc := WitDoc{}
+	p.skip_attributes()
 	// package
 	if p.peek_ident() == 'package' {
 		doc.package = p.parse_package()!
 	}
 	for p.peek_kind() != .eof {
+		p.skip_attributes()
 		if p.peek_ident() == 'interface' {
 			iface := p.parse_interface()!
 			doc.interfaces << iface
@@ -131,6 +133,7 @@ fn (mut p Parser) parse_interface() !WitInterface {
 }
 
 fn (mut p Parser) parse_item() !WitItem {
+	p.skip_attributes()
 	// use
 	if p.peek_ident() == 'use' {
 		u := p.parse_use()!
@@ -294,6 +297,7 @@ fn (mut p Parser) parse_resource() !WitResource {
 	mut r := WitResource{ name: name }
 	p.expect_punct('{')!
 	for !(p.peek().kind == .punct && p.peek().val == '}') {
+		p.skip_attributes()
 		if p.peek_ident() == 'constructor' {
 			p.advance()
 			p.expect_punct('(')!
@@ -446,6 +450,7 @@ fn (mut p Parser) parse_world(mut doc WitDoc) !WitWorld {
 	p.expect_punct('{')!
 	for !(p.peek().kind == .punct && p.peek().val == '}') {
 		if p.peek().kind == .eof { return error('unterminated world') }
+		p.skip_attributes()
 		kind := p.peek_ident()
 		if kind == 'import' || kind == 'export' {
 			is_export := kind == 'export'
@@ -491,8 +496,10 @@ fn (mut p Parser) parse_world(mut doc WitDoc) !WitWorld {
 		}
 		if kind == 'include' {
 			p.advance()
-			_ := p.expect_ident()!
-			if p.peek().kind == .punct && (p.peek().val == ';' || p.peek().val == ',') {
+			for p.peek().kind != .eof && !(p.peek().kind == .punct && p.peek().val == ';') {
+				p.advance()
+			}
+			if p.peek().kind == .punct && p.peek().val == ';' {
 				p.advance()
 			}
 			continue
@@ -501,6 +508,30 @@ fn (mut p Parser) parse_world(mut doc WitDoc) !WitWorld {
 	}
 	p.expect_punct('}')!
 	return w
+}
+
+fn (mut p Parser) skip_attributes() {
+	for p.peek().kind == .punct && p.peek().val == '@' {
+		p.advance()
+		if p.peek().kind == .ident { p.advance() }
+		if p.peek().kind == .punct && p.peek().val == '(' {
+			mut depth := 0
+			for p.idx < p.toks.len {
+				if p.peek().kind == .punct && p.peek().val == '(' {
+					depth++
+					p.advance()
+					continue
+				}
+				if p.peek().kind == .punct && p.peek().val == ')' {
+					depth--
+					p.advance()
+					if depth <= 0 { break }
+					continue
+				}
+				p.advance()
+			}
+		}
+	}
 }
 
 fn (mut p Parser) parse_inline_interface(mut doc WitDoc, name string) !WitInterface {

@@ -13,7 +13,7 @@ pub fn (d WitDoc) to_v() string {
 			match it.kind {
 				.record {
 					if r := it.record {
-						out << 'pub struct ${to_v_ident(r.name)} {'
+						out << 'pub struct ${to_v_type_name(r.name)} {'
 						for f in r.fields {
 							out << '\t${to_v_ident(f.name)} ${wit_type_to_v(f.typ)}'
 						}
@@ -22,7 +22,7 @@ pub fn (d WitDoc) to_v() string {
 				}
 				.enum_ {
 					if e := it.enum_ {
-						out << 'pub enum ${to_v_ident(e.name)} {'
+						out << 'pub enum ${to_v_type_name(e.name)} {'
 						for c in e.cases {
 							out << '\t${to_v_ident(c)}'
 						}
@@ -39,9 +39,35 @@ pub fn (d WitDoc) to_v() string {
 						out << '// variant ${v.name}'
 					}
 				}
+				.resource {
+					if r := it.resource {
+						out << 'pub struct ${to_v_type_name(r.name)} {}'
+						for m in r.methods {
+							mut ps := []string{}
+							for p in m.params {
+								ps << '${to_v_ident(p.name)} ${wit_type_to_v(p.typ)}'
+							}
+							mut rs := ''
+							if m.results.len == 1 {
+								rs = wit_type_to_v(m.results[0])
+							} else if m.results.len > 1 {
+								mut ts := []string{}
+								for r2 in m.results { ts << wit_type_to_v(r2) }
+								rs = '(${ts.join(', ')})'
+							}
+							if rs != '' {
+								out << 'pub fn (mut self ${to_v_type_name(r.name)}) ${to_v_ident(m.name)}(${ps.join(', ')}) ${rs} {'
+							} else {
+								out << 'pub fn (mut self ${to_v_type_name(r.name)}) ${to_v_ident(m.name)}(${ps.join(', ')}) {'
+							}
+							out << '\tpanic("TODO: implement")'
+							out << '}'
+						}
+					}
+				}
 				.type_alias {
 					if t := it.type_def {
-						out << 'pub type ${to_v_ident(t.name)} = ${wit_type_to_v(t.typ)}'
+						out << 'pub type ${to_v_type_name(t.name)} = ${wit_type_to_v(t.typ)}'
 					}
 				}
 				.func {
@@ -76,6 +102,14 @@ fn to_v_ident(s string) string {
 	return r
 }
 
+fn to_v_type_name(s string) string {
+	mut r := s.replace('-', '_')
+	if r.len == 0 { return r }
+	// capitalize first letter
+	r = r[0].ascii_str().to_upper() + r[1..]
+	return r
+}
+
 fn wit_type_to_v(t WitType) string {
 	match t.kind {
 		.prim {
@@ -96,7 +130,13 @@ fn wit_type_to_v(t WitType) string {
 				else { '/*${t.prim}*/' }
 			}
 		}
-		.named { return to_v_ident(t.name) }
+		.named {
+			n := t.name
+			if n == '_' { return 'void' }
+			if n.starts_with('borrow<') || n.starts_with('own<') { return 'voidptr' }
+			if n == 'pollable' { return 'int' }
+			return to_v_type_name(n)
+		}
 		.list {
 			if t.items.len > 0 { return '[]${wit_type_to_v(t.items[0])}' }
 			return '[]u8'
@@ -106,8 +146,9 @@ fn wit_type_to_v(t WitType) string {
 			return '?voidptr'
 		}
 		.result {
-			if t.items.len > 0 { return '!${wit_type_to_v(t.items[0])}' }
-			return '!voidptr'
+			if t.items.len == 0 { return '!' }
+			if t.items[0].kind == .named && t.items[0].name == '_' { return '!' }
+			return '!${wit_type_to_v(t.items[0])}'
 		}
 		.tuple {
 			mut ts := []string{}
