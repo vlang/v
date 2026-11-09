@@ -83,8 +83,8 @@ fn satan(x f64) f64 {
 // atan returns the arctangent, in radians, of x.
 //
 // special cases are:
-// atan(±0) = ±0
-// atan(±inf) = ±pi/2.0
+// - `atan(±0) = ±0`
+// - `atan(±inf) = ±pi/2.0`
 pub fn atan(x f64) f64 {
 	if x == 0 {
 		return x
@@ -167,8 +167,8 @@ Floating-point arcsine and arccosine.
 // asin returns the arcsine, in radians, of x.
 //
 // special cases are:
-// asin(±0) = ±0
-// asin(x) = nan if x < -1 or x > 1
+// - `asin(±0) = ±0`
+// - `asin(x) = nan if x < -1 or x > 1`
 pub fn asin(x_ f64) f64 {
 	mut x := x_
 	if x == 0.0 {

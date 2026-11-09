@@ -492,10 +492,10 @@ pub fn (mut c CCtx) set(c_param CParameter, val int) ! {
 }
 
 // compress_stream2 do stream compress on `input`, and store compressed data in `output`.
-// `mode`:
-// 	.zstd_e_continue => continue stream compression.
-// 	.zstd_e_flush => flush data
-// 	.zstd_e_end => it is the last frame
+// `mode` can be:
+// - `.zstd_e_continue` => continue stream compression.
+// - `.zstd_e_flush` => flush data
+// - `.zstd_e_end` => it is the last frame
 pub fn (mut c CCtx) compress_stream2(output &OutBuffer, input &InBuffer, mode EndDirective) !uint {
 	res := C.ZSTD_compressStream2(c.ctx, output, input, mode)
 	check_error(res)!
@@ -552,17 +552,21 @@ pub fn (mut d DCtx) free_dctx() uint {
 // So, when `store_array`, it will cause memory fsanitize fail with 'use-of-uninitialized-value'.
 // It can be safely ignored.
 // For example, following struct may cause memory fsanitize fail:
+// ```v ignore
 // struct MemoryTrace {
 // 	operation u8
 // 	address   u64
 // 	size      u8
 // }
-// By changing it into following , you can pass the memory fsanitize check :
+// ```
+// By changing it into following, you can pass the memory fsanitize check:
+// ```v ignore
 // struct MemoryTrace {
 // 	operation u64
 // 	address   u64
 // 	size      u64
 // }
+// ```
 pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	mut fout := os.open_file(fname, 'wb')!
 	mut cctx := new_cctx(params)!
