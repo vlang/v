@@ -177,6 +177,7 @@ fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
 
 fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 	$if bsd || linux {
+		cc := os.find_abs_path_of_executable('clang') or { return }
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_header_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -188,11 +189,12 @@ fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, '#ifndef V3_USER_PARALLEL_H\n#define V3_USER_PARALLEL_H\nstatic inline int v3_user_parallel_header_value(void) { return 42; }\n#endif\n')!
 		os.write_file(source, '#flag -I @DIR\n#include "parallel.h"\n\nfn C.v3_user_parallel_header_value() int\n\nfn main() { println(C.v3_user_parallel_header_value()) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', cc, '-nocache',
 			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
-		assert !build.output.contains('unit_0.c'), build.output
-		assert build.output.contains('src.c'), build.output
+		// A header with only an inline function is the same in every unit, so the
+		// program splits, and its units still find the user's `parallel.h`.
+		assert build.output.contains('unit_1.c'), build.output
 		run_result := cmdexec.run(output, [])
 		assert run_result.exit_code == 0, run_result.output
 		assert run_result.output.trim_space() == '42'
@@ -211,7 +213,7 @@ fn test_v3_parallel_cc_falls_back_for_native_static_state() {
 		header := os.join_path_single(root, 'state.h')
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, 'static int v3_parallel_state;\nstatic inline int v3_parallel_next(void) { return ++v3_parallel_state; }\n')!
-		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
+		os.write_file(source, '#flag -I @DIR\n#include <state.h>\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
 		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
 			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
@@ -220,6 +222,40 @@ fn test_v3_parallel_cc_falls_back_for_native_static_state() {
 		run_result := cmdexec.run(output, [])
 		assert run_result.exit_code == 0, run_result.output
 		assert run_result.output.trim_space() == '1\n2'
+	}
+}
+
+fn test_v3_parallel_cc_require_split_refuses_instead_of_one_c_unit() {
+	$if !windows {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_require_split_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		old_value := os.getenv_opt(v3_parallel_cc_require_split_env)
+		os.setenv(v3_parallel_cc_require_split_env, '1', true)
+		defer {
+			if value := old_value {
+				os.setenv(v3_parallel_cc_require_split_env, value, true)
+			} else {
+				os.unsetenv(v3_parallel_cc_require_split_env)
+			}
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		header := os.join_path_single(root, 'state.h')
+		output := os.join_path_single(root, 'main')
+		os.write_file(header, 'static int v3_parallel_state;\nstatic inline int v3_parallel_next(void) { return ++v3_parallel_state; }\n')!
+		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-o', output, source])
+		assert build.exit_code == v3_parallel_cc_split_refused_exit_code, build.output
+		assert build.output.contains('cannot split this program into C units'), build.output
+		assert build.output.contains('state.h'), build.output
+		assert !os.exists(output)
+		object_build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc',
+			'-nocache', '-o', output + '.o', source])
+		assert object_build.exit_code == v3_parallel_cc_split_refused_exit_code, object_build.output
+		assert object_build.output.contains('selected compiler or build options'), object_build.output
+		assert !os.exists(output + '.o')
 	}
 }
 
@@ -310,4 +346,144 @@ fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
 			}
 		}
 	}
+}
+
+fn test_v3_parallel_cc_compiles_native_source_callers_in_the_first_unit() {
+	// Objective-C sources are the native sources that only the first unit includes.
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_native_source_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		native := os.join_path_single(root, 'native.m')
+		output := os.join_path_single(root, 'main')
+		// Only the first unit compiles a native source: its static helper, its
+		// external function and its macro are not declared anywhere else.
+		os.write_file(native, '#define NATIVE_SCALE 3\nstatic int native_helper(int x) { return x * NATIVE_SCALE; }\nint native_triple(int x) { return native_helper(x); }\n')!
+		os.write_file(source, '#include "@DIR/native.m"\n\nfn C.native_triple(x int) int\nfn C.native_helper(x int) int\n\nfn helper(x int) int { return C.native_helper(x) }\nfn triple(x int) int { return C.native_triple(x) }\nfn twice(x int) int { return x * 2 }\nfn main() { println(triple(7) + helper(2) + twice(3)) }\n')!
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('unit_0.c'), build.output
+		assert build.output.contains('unit_1.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '33'
+	}
+}
+
+fn test_v3_parallel_cc_defines_embedded_payloads_once() {
+	$if bsd || linux || macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_embed_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		output := os.join_path_single(root, 'main')
+		// One payload fits a single C object, the other is split into chunks.
+		mut small := []u8{len: 10000}
+		mut large := []u8{len: 200000}
+		for i in 0 .. small.len {
+			small[i] = u8(i * 7)
+		}
+		for i in 0 .. large.len {
+			large[i] = u8(i * 13 + 1)
+		}
+		os.write_file_array(os.join_path_single(root, 'small.bin'), small)!
+		os.write_file_array(os.join_path_single(root, 'large.bin'), large)!
+		os.write_file(source, "fn sum(data []u8) u64 {\n\tmut total := u64(0)\n\tfor b in data {\n\t\ttotal += b\n\t}\n\treturn total\n}\n\nfn small_sum() u64 {\n\tfile := \$embed_file('small.bin')\n\treturn sum(file.to_bytes())\n}\n\nfn large_sum() u64 {\n\tfile := \$embed_file('large.bin')\n\treturn sum(file.to_bytes())\n}\n\nfn main() { println('\${small_sum()} \${large_sum()}') }\n")!
+		mut expected_small := u64(0)
+		mut expected_large := u64(0)
+		for b in small {
+			expected_small += b
+		}
+		for b in large {
+			expected_large += b
+		}
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('unit_1.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '${expected_small} ${expected_large}'
+	}
+}
+
+// Check native ownership through both the ordinary and requested split build paths.
+fn run_v3_parallel_cc_native_ownership_case(name string, header string, program string, expected string, expect_split bool) ! {
+	$if bsd || linux || macos {
+		cc := os.find_abs_path_of_executable('clang') or { return }
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_ownership_${name}_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		source := os.join_path(root, 'main.c.v')
+		output := os.join_path(root, 'main')
+		os.write_file(os.join_path(root, 'native.h'), header)!
+		os.write_file(source, '#include "@DIR/native.h"\n' + program)!
+		for parallel in [false, true] {
+			mut args := ['-cc', cc, '-gc', 'none', '-nocache', '-no-retry-compilation', '-showcc',
+				'-o', output]
+			if parallel { args << '-parallel-cc' }
+			args << source
+			build := cmdexec.run(v3_parallel_cc_test_compiler(), args)
+			assert build.exit_code == 0, '${name}, parallel=${parallel}: ${build.output}'
+			if parallel {
+				assert build.output.contains('unit_1.c') == expect_split, build.output
+				if !expect_split {
+					assert build.output.contains('src.c'), build.output
+				}
+			}
+			run_result := cmdexec.run(output, []string{})
+			assert run_result.exit_code == 0, '${name}, parallel=${parallel}: ${run_result.output}'
+			assert run_result.output.trim_space() == expected, run_result.output
+		}
+	}
+}
+
+fn test_v3_parallel_cc_keeps_native_external_definitions_in_one_unit() {
+	program := 'fn C.native_value() int\nfn main() { println(C.native_value()) }\n'
+	run_v3_parallel_cc_native_ownership_case('extern_initializer',
+		'extern int counter = 3;\nstatic inline int native_value(void) { return counter + 4; }\n',
+		program, '7', false)!
+	run_v3_parallel_cc_native_ownership_case('extern_inline',
+		'extern inline int native_value(void) { return 7; }\n', program, '7', false)!
+}
+
+fn test_v3_parallel_cc_can_split_unused_native_constants() {
+	run_v3_parallel_cc_native_ownership_case('unused_constant',
+		'static const int sentinel = 7;\n#define UNUSED_ADDRESS() (&sentinel)\nstatic inline int native_value(void) { return 7; }\n',
+		'fn C.native_value() int\nfn main() { println(C.native_value()) }\n', '7', true)!
+}
+
+fn test_v3_parallel_cc_preserves_native_constant_address_identity() {
+	program := 'fn C.native_identity() voidptr
+fn first() voidptr { return C.native_identity() }
+fn second() voidptr { return C.native_identity() }
+fn main() {
+	assert first() == second()
+	println("same identity")
+}
+'
+	run_v3_parallel_cc_native_ownership_case('global_constant',
+		'static const int sentinel = 7;\nstatic inline void *native_identity(void) { return (void*)&sentinel; }\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('local_constant',
+		'static inline void *native_identity(void) { static const int sentinel = 7; return (void*)&sentinel; }\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('macro_constant',
+		'#define NATIVE_SENTINEL(name) static const int name = 7;\nNATIVE_SENTINEL(sentinel)\nstatic inline void *native_identity(void) { return (void*)&sentinel; }\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('macro_accessor',
+		'static const int sentinel = 7;\n#define native_identity() ((void*)&sentinel)\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('pasted_accessor',
+		'static const int sentinel = 7;\n#define JOIN(a,b) a##b\n#define native_identity() ((void*)&JOIN(senti,nel))\n',
+		program, 'same identity', false)!
 }

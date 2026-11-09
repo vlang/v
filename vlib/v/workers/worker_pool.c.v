@@ -230,6 +230,17 @@ pub fn new(size int) &Pool {
 	if v3_pool_size_limit > 0 && wanted > v3_pool_size_limit {
 		wanted = v3_pool_size_limit
 	}
+	return new_pool(wanted)
+}
+
+// new_subprocess_pool creates size workers without the limit_pool_size cap. That
+// cap bounds the compiler's own arena memory in parallel stages; workers that
+// mostly wait for child processes (such as C compiler jobs) do not grow it.
+pub fn new_subprocess_pool(size int) &Pool {
+	return new_pool(if size < 0 { 0 } else { size })
+}
+
+fn new_pool(wanted int) &Pool {
 	// Compiler phases deliberately oversubscribe the workers with small chunks
 	// so that uneven AST bodies do not leave cores idle. Buffer the whole normal
 	// batch: otherwise Pool.run has to wait for early completions while it is

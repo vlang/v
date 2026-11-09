@@ -1208,9 +1208,12 @@ mut:
 	// Set when the driver stores long `$embed_file` payloads through the
 	// assembler (see embed_incbin_payloads); the set of objects it does that for
 	// is derived on first use.
-	embed_incbin               bool
-	embed_incbin_syms          map[string]bool
-	embed_incbin_syms_ready    bool
+	embed_incbin            bool
+	embed_incbin_syms       map[string]bool
+	embed_incbin_syms_ready bool
+	// embed_blob_segment holds the `$embed_file` payload definitions of a program
+	// split for parallel C compilation; it becomes the first body segment.
+	embed_blob_segment         strings.Builder
 	cache_native_input_paths   map[string]bool
 	program_body_only          bool
 	cached_program_cleanup     bool
@@ -4523,6 +4526,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.register_interface_strings()
 	g.string_literals()
 	g.gen_embed_file_blobs()
+	if g.embed_blob_segment.len > 0 {
+		// First, so that size balancing gives the payload bytes a unit of their own.
+		g.fn_segs.prepend(g.embed_blob_segment.str())
+	}
 	if !g.cache_split {
 		g.gen_top_level_asm()
 		if g.parallel_interface_stubs.len > 0 {
