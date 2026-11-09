@@ -676,7 +676,7 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 	}
 	mut hash := u64(14695981039346656037)
 	// The resolver version separates memo layouts and implicit dependencies.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-5')
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-6')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -1322,12 +1322,41 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 		}
 	} else {
 		module_dir = prefs.get_module_path(imported_module, source_path)
+		root := prefs.module_resolution_root
+		if root != '' && module_dir != root && !module_dir.starts_with(root + os.path_separator) {
+			// Only a lookup that left the project can be shadowed by one of its modules.
+			if project_dir := fastc_project_module_dir(imported_module, root) {
+				module_dir = project_dir
+			}
+		}
 	}
 	if prefs.building_v && !canonical && !prefs.target_libc_headers {
 		module_dir = os.real_path(module_dir)
 	}
 	module_path_cache[module_cache_key] = module_dir
 	return module_dir
+}
+
+// fastc_project_module_dir resolves an import to a module of the project rooted at
+// `root`, which the C backend's resolver prefers to vlib: a project module named like
+// a vlib module (Vox's `clipboard`) shadows it in every importing directory.
+fn fastc_project_module_dir(imported_module string, root string) ?string {
+	top_name := imported_module.all_before('.')
+	if os.is_dir(os.join_path_single(root, top_name)) {
+		if alias_path := pref.resolve_module_alias_path(root, imported_module) {
+			return alias_path
+		}
+	} else {
+		return none
+	}
+	path := os.join_path_single(root, imported_module.replace('.', os.path_separator))
+	entries := os.ls(path) or { return none }
+	for entry in entries {
+		if entry.ends_with('.v') {
+			return path
+		}
+	}
+	return none
 }
 
 fn fastc_target_module_from_root(root string, module_name string) string {
