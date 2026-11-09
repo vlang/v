@@ -647,6 +647,9 @@ fn test_transparent_fallback_installation_preserves_diagnostics() {
 				os.join_path(release, 'vlib', 'json2')] {
 				os.mkdir_all(directory)!
 			}
+			// OpenBSD's /bin/sh has no printf builtin; expose it to this isolated PATH.
+			printf := os.find_abs_path_of_executable('printf')!
+			os.symlink(printf, os.join_path(bin, 'printf'))!
 			os.write_file(os.join_path(root, 'GNUmakefile'), '')!
 			dispatcher := os.join_path(root, 'v')
 			os.cp(@VEXE, dispatcher)!
