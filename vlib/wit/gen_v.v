@@ -1,6 +1,33 @@
 module wit
 
 pub fn (d WitDoc) to_v() string {
+	// collect defined type names first
+	mut defined := map[string]bool{}
+	for iface in d.interfaces {
+		for it in iface.items {
+			match it.kind {
+				.record {
+					if r := it.record { defined[r.name] = true }
+				}
+				.enum_ {
+					if e := it.enum_ { defined[e.name] = true }
+				}
+				.variant {
+					if v := it.variant { defined[v.name] = true }
+				}
+				.flags {
+					if f := it.flags { defined[f.name] = true }
+				}
+				.resource {
+					if r := it.resource { defined[r.name] = true }
+				}
+				.type_alias {
+					if t := it.type_def { defined[t.name] = true }
+				}
+				else {}
+			}
+		}
+	}
 	mut out := []string{}
 	if d.package.name != '' {
 		out << '// package: ${d.package.namespace}:${d.package.name}'
@@ -15,7 +42,7 @@ pub fn (d WitDoc) to_v() string {
 					if r := it.record {
 						out << 'pub struct ${to_v_type_name(r.name)} {'
 						for f in r.fields {
-							out << '\t${to_v_ident(f.name)} ${wit_type_to_v(f.typ)}'
+							out << '\t${to_v_ident(f.name)} ${wit_type_to_v(f.typ, defined)}'
 						}
 						out << '}'
 					}
@@ -29,12 +56,20 @@ pub fn (d WitDoc) to_v() string {
 						out << '}'
 					}
 				}
+				.flags {
+					if f := it.flags {
+						out << 'pub type ${to_v_type_name(f.name)} = int'
+						for i, fl in f.flags {
+							out << 'pub const ${to_v_ident(f.name)}_${to_v_ident(fl)} = ${1 << i}'
+						}
+					}
+				}
 				.variant {
 					if v := it.variant {
 						for c in v.cases {
 							if ct := c.typ {
 								out << 'pub struct ${to_v_type_name(v.name)}_${to_v_type_name(c.name)} {'
-								out << '\tvalue ${wit_type_to_v(ct)}'
+								out << '\tvalue ${wit_type_to_v(ct, defined)}'
 								out << '}'
 							} else {
 								out << 'pub struct ${to_v_type_name(v.name)}_${to_v_type_name(c.name)} {}'
@@ -47,12 +82,9 @@ pub fn (d WitDoc) to_v() string {
 						out << 'pub type ${to_v_type_name(v.name)} = ${cases.join(' | ')}'
 					}
 				}
-				.flags {
-					if f := it.flags {
-						out << 'pub type ${to_v_type_name(f.name)} = int'
-						for i, fl in f.flags {
-							out << 'pub const ${to_v_ident(f.name)}_${to_v_ident(fl)} = ${1 << i}'
-						}
+				.type_alias {
+					if t := it.type_def {
+						out << 'pub type ${to_v_type_name(t.name)} = ${wit_type_to_v(t.typ, defined)}'
 					}
 				}
 				.resource {
@@ -61,14 +93,14 @@ pub fn (d WitDoc) to_v() string {
 						for m in r.methods {
 							mut ps := []string{}
 							for p in m.params {
-								ps << '${to_v_ident(p.name)} ${wit_type_to_v(p.typ)}'
+								ps << '${to_v_ident(p.name)} ${wit_type_to_v(p.typ, defined)}'
 							}
 							mut rs := ''
 							if m.results.len == 1 {
-								rs = wit_type_to_v(m.results[0])
+								rs = wit_type_to_v(m.results[0], defined)
 							} else if m.results.len > 1 {
 								mut ts := []string{}
-								for r2 in m.results { ts << wit_type_to_v(r2) }
+								for r2 in m.results { ts << wit_type_to_v(r2, defined) }
 								rs = '(${ts.join(', ')})'
 							}
 							if rs != '' {
@@ -81,11 +113,6 @@ pub fn (d WitDoc) to_v() string {
 						}
 					}
 				}
-				.type_alias {
-					if t := it.type_def {
-						out << 'pub type ${to_v_type_name(t.name)} = ${wit_type_to_v(t.typ)}'
-					}
-				}
 				.use {
 					if u := it.use_ {
 						out << '// use ${u.path} { ${u.items.join(', ')} }'
@@ -94,16 +121,22 @@ pub fn (d WitDoc) to_v() string {
 				.func {
 					if f := it.func {
 						mut ps := []string{}
-						for p in f.params { ps << '${to_v_ident(p.name)} ${wit_type_to_v(p.typ)}' }
-						mut rs := 'void'
+						for p in f.params {
+							ps << '${to_v_ident(p.name)} ${wit_type_to_v(p.typ, defined)}'
+						}
+						mut rs := ''
 						if f.results.len == 1 {
-							rs = wit_type_to_v(f.results[0])
+							rs = wit_type_to_v(f.results[0], defined)
 						} else if f.results.len > 1 {
 							mut ts := []string{}
-							for r in f.results { ts << wit_type_to_v(r) }
+							for r in f.results { ts << wit_type_to_v(r, defined) }
 							rs = '(${ts.join(', ')})'
 						}
-						out << 'pub fn ${to_v_ident(f.name)}(${ps.join(', ')}) ${rs} {'
+						if rs != '' {
+							out << 'pub fn ${to_v_ident(f.name)}(${ps.join(', ')}) ${rs} {'
+						} else {
+							out << 'pub fn ${to_v_ident(f.name)}(${ps.join(', ')}) {'
+						}
 						out << '\tpanic("TODO: implement")'
 						out << '}'
 					}
@@ -116,20 +149,23 @@ pub fn (d WitDoc) to_v() string {
 }
 
 fn to_v_ident(s string) string {
-	// convert kebab-case to snake_case
 	mut r := s.replace('-', '_')
+	r = r.trim_left('%')
+	if r.len == 0 || (r[0] >= `0` && r[0] <= `9`) {
+		r = 'arg_' + r
+	}
 	return r
 }
 
 fn to_v_type_name(s string) string {
 	mut r := s.replace('-', '_')
+	r = r.trim_left('%')
 	if r.len == 0 { return r }
-	// capitalize first letter
 	r = r[0].ascii_str().to_upper() + r[1..]
 	return r
 }
 
-fn wit_type_to_v(t WitType) string {
+fn wit_type_to_v(t WitType, defined map[string]bool) string {
 	match t.kind {
 		.prim {
 			return match t.prim {
@@ -154,24 +190,28 @@ fn wit_type_to_v(t WitType) string {
 			if n == '_' { return 'void' }
 			if n.starts_with('borrow<') || n.starts_with('own<') { return 'voidptr' }
 			if n == 'pollable' { return 'int' }
+			if n !in defined { return 'voidptr' }
 			return to_v_type_name(n)
 		}
 		.list {
-			if t.items.len > 0 { return '[]${wit_type_to_v(t.items[0])}' }
+			if t.items.len > 0 { return '[]${wit_type_to_v(t.items[0], defined)}' }
 			return '[]u8'
 		}
 		.option {
-			if t.items.len > 0 { return '?${wit_type_to_v(t.items[0])}' }
+			if t.items.len > 0 { return '?${wit_type_to_v(t.items[0], defined)}' }
 			return '?voidptr'
 		}
 		.result {
 			if t.items.len == 0 { return '!' }
 			if t.items[0].kind == .named && t.items[0].name == '_' { return '!' }
-			return '!${wit_type_to_v(t.items[0])}'
+			okstr := wit_type_to_v(t.items[0], defined)
+			// V cannot express result<option<T>, E> as !?T; collapse to ?T.
+			if okstr.starts_with('?') { return okstr }
+			return '!${okstr}'
 		}
 		.tuple {
 			mut ts := []string{}
-			for it in t.items { ts << wit_type_to_v(it) }
+			for it in t.items { ts << wit_type_to_v(it, defined) }
 			return '(${ts.join(', ')})'
 		}
 	}

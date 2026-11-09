@@ -1,5 +1,7 @@
 module wit
 
+import os
+
 fn test_parse_basic() {
 	src := '
 package example:demo@0.1.0;
@@ -46,6 +48,16 @@ world app {
 	printed := doc2.str()
 	assert printed.contains('interface types')
 	assert printed.contains('record point')
+}
+
+fn test_wasi_fs_types_codegen_compiles() {
+	src := os.read_file('vlib/wasm/wit/testdata/wasi/fs_types.wit') or { panic(err) }
+	doc := parse(src) or { panic(err) }
+	generated := doc.to_v()
+	assert generated.len > 0
+	os.write_file('vlib/wasm/wit/testdata/wasi/fs_types_generated.v', generated) or { panic(err) }
+	res := os.exec(['v', '-check', 'vlib/wasm/wit/testdata/wasi/fs_types_generated.v'])
+	assert res.exit_code == 0, res.output
 }
 
 fn test_parse_list_option_result() {
