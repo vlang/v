@@ -357,6 +357,8 @@ shell/editor after that, so that it can pick up the new PATH variable.
 > `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
 
+`v symlink` preserves shared compiler temporary files, including the directory selected by `VTMP`.
+
 ## Editor/IDE Plugins
 
 - [Atom](https://github.com/vlang/awesome-v#atom)
