@@ -124,6 +124,15 @@ $if !skip_fastc ? {
 		return true
 	}
 
+	// v3_fastc_hash_pieces hashes text pieces in order without joining them.
+	fn v3_fastc_hash_pieces(pieces []string, seed u64) u64 {
+		mut hash := seed
+		for piece in pieces {
+			hash = contenthash.sum64_string(piece, hash)
+		}
+		return hash
+	}
+
 	// wait reports whether every pending manifest validated.
 	fn (mut validation V3FastcNativeValidation) wait() bool {
 		mut valid := true
@@ -164,7 +173,7 @@ $if !skip_fastc ? {
 	fn v3_fastc_native_bridge(generation &fastc.GenerationResult, prefs &pref.Preferences, flags []string, sdk string, mut validation V3FastcNativeValidation) !V3FastcNativeBridge {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		sw := time.new_stopwatch()
-		mut head := strings.new_builder(65536)
+		mut head := []string{cap: generation.units.head_end}
 		mut externs := map[int]string{}
 		for i, index in generation.units.extern_indexes {
 			externs[index] = generation.units.extern_texts[i]
@@ -176,7 +185,7 @@ $if !skip_fastc ? {
 		}
 		for i in 0 .. generation.units.head_end {
 			piece := externs[i] or { generation.c_pieces[i] }
-			head.write_string(piece)
+			head << piece
 			if !piece.contains('#include') && !piece.contains('#import') {
 				continue
 			}
@@ -200,7 +209,7 @@ $if !skip_fastc ? {
 		// Only the platform compiler opens the headers and native implementations.
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
 		ensure_native_object_cache_dir(dir)!
-		declarations := v3_fastc_native_declarations(dir, head.str())
+		declarations := v3_fastc_native_declarations(dir, head)
 		bindings := v3_tcc_dylib_function_bindings(functions).owner
 		adapters := v3_fastc_native_args_adapters(generation, prefs, functions)
 		mut owner_builder := strings.new_builder(declarations.len + bindings.len + adapters.len * 512)
@@ -396,20 +405,22 @@ $if !skip_fastc ? {
 	// v3_fastc_native_declarations derives the native owner's declarations from the program
 	// head. It is a function of that text and of this compiler, so the result is kept beside
 	// the native cache under both; recomputing it dominated reuse of a warm native library.
-	fn v3_fastc_native_declarations(dir string, head string) string {
+	// The head is hashed piece by piece; its text is joined only when the declarations
+	// are not cached yet.
+	fn v3_fastc_native_declarations(dir string, head []string) string {
 		executable := os.executable()
 		identity := modulecache.file_metadata_signature(executable)
 		if identity == '' {
-			return v3_fastc_native_owner_declarations(modulecache.declaration_header(head))
+			return v3_fastc_native_owner_declarations(modulecache.declaration_header(head.join('')))
 		}
-		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-declarations-v1'.bytes())
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-declarations-v2'.bytes())
 		hash = c_hash_bytes(hash, '${executable}\x00${identity}\x00'.bytes())
-		hash = contenthash.sum64_string(head, hash)
+		hash = v3_fastc_hash_pieces(head, hash)
 		path := os.join_path(dir, 'declarations_${hash.hex()}.h')
 		if cached := os.read_file(path) {
 			return cached
 		}
-		declarations := v3_fastc_native_owner_declarations(modulecache.declaration_header(head))
+		declarations := v3_fastc_native_owner_declarations(modulecache.declaration_header(head.join('')))
 		staged := path + '.tmp.' + tempname.unique_token()
 		os.write_file(staged, declarations) or { return declarations }
 		os.mv(staged, path) or { os.rm(staged) or {} }
@@ -543,25 +554,41 @@ $if !skip_fastc ? {
 	}
 
 	fn v3_fastc_native_program_dependencies(pieces []string, units fastc.FastcUnitLayout, flags []string, sdk string, target pref.Target, jobs int, mut validation V3FastcNativeValidation) ![]string {
-		mut source := strings.new_builder(65536)
-		for i in 0 .. units.head_end {
-			index := units.extern_indexes.index(i)
-			source.write_string(if index >= 0 { units.extern_texts[index] } else { pieces[i] })
+		mut externs := map[int]string{}
+		for i, index in units.extern_indexes {
+			externs[index] = units.extern_texts[i]
 		}
-		text := source.str()
+		mut head := []string{cap: units.head_end}
+		for i in 0 .. units.head_end {
+			head << externs[i] or { pieces[i] }
+		}
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
-		path := os.join_path(dir, 'consumer_' + contenthash.sum64_string(text, u64(1469598103934665603)).hex() + '.c')
-		if !os.is_file(path) {
-			staged := path + '.tmp.' + tempname.unique_token()
-			os.write_file(staged, text)!
-			publish_native_c_object(staged, path)!
+		path := os.join_path(dir, 'consumer_v2_' + v3_fastc_hash_pieces(head, u64(1469598103934665603)).hex() + '.c')
+		// The directives key is a function of the consumer text, which its path names.
+		// It is kept beside the text, so a reused head is neither joined nor scanned.
+		// Rename the file when v3_fastc_preprocessor_lines changes.
+		directives_path := path + '.directives-v1'
+		mut directives_key := ''
+		if os.is_file(path) {
+			directives_key = os.read_file(directives_path) or { '' }
+		}
+		if directives_key == '' {
+			text := head.join('')
+			if !os.is_file(path) {
+				staged := path + '.tmp.' + tempname.unique_token()
+				os.write_file(staged, text)!
+				publish_native_c_object(staged, path)!
+			}
+			directives_key = c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(text).bytes()).hex()
+			staged_key := directives_path + '.tmp.' + tempname.unique_token()
+			os.write_file(staged_key, directives_key) or {}
+			os.mv(staged_key, directives_path) or { os.rm(staged_key) or {} }
 		}
 		mut args := flags.clone()
 		if sdk != '' { args << ['-isysroot', sdk] }
 		// Declarations cannot change which headers the C compiler opens. Reuse the
 		// compiler's previous answer for the same directives, compiler and flags while
 		// every listed header keeps its content.
-		directives_key := c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(text).bytes()).hex()
 		manifest := c_object_manifest_path(dir, os.join_path(dir, 'consumer_directives_' + directives_key + '.c'), '/usr/bin/clang', args, target, mut validation.stats)
 		canonical_path := os.real_path(path)
 		if cached := v3_fastc_read_program_dependencies(manifest) {
