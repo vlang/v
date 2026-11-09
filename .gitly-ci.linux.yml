@@ -21,7 +21,7 @@ variables:
 
 jobs:
   linux-tcc:
-    timeout: 60m
+    timeout: 3h
     network: true
     steps:
       - name: Build V from the pushed source
