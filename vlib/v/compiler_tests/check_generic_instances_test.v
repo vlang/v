@@ -102,6 +102,8 @@ fn test_an_instance_asked_for_by_a_smartcast_receiver_is_reported() {
 		'mut_match_arm': "fn f(mut s Sum) string {\n\treturn match mut s {\n\t\tBox[int] { s.label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tmut s := Sum('a')\n\tprintln(f(mut s))\n}\n"
 		'if_is':         "fn f(s Sum) string {\n\tif s is Box[int] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
 		'field':         "fn f(h Holder) string {\n\treturn match h.s {\n\t\tBox[int] { h.s.label() }\n\t\tstring { h.s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Holder{ s: Sum('a') }))\n}\n"
+		'paren':         "fn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { (s).label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'nested_paren':  "fn f(h Holder) string {\n\tif h.s is Box[int] {\n\t\treturn ((h.s)).label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Holder{ s: Sum('a') }))\n}\n"
 		'none_guard':    "fn f(b ?Box[int]) string {\n\tif b != none {\n\t\treturn b.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(none))\n}\n"
 	}
 	for name, body in bodies {
