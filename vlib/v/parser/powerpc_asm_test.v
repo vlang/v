@@ -35,8 +35,26 @@ fn counter() u32 {
 }
 
 fn test_powerpc_structured_assembly_is_not_silently_lowered_with_another_isa() {
-	diagnostics := powerpc_asm_diagnostics('fn main() { asm ppc { sync } }', 'ppc')
-	assert diagnostics.any(it.message == 'PowerPC inline assembly requires the `raw` modifier')
+	for arch in ['ppc', 'amd64'] {
+		for body in ['sync', 'sync ; ; ; memory', '; ; ; r0'] {
+			diagnostics := powerpc_asm_diagnostics('fn main() { asm ppc { ${body} } }', arch)
+			assert diagnostics.any(it.message == 'PowerPC inline assembly requires the `raw` modifier'), '${arch}: ${body}: ${diagnostics}'
+		}
+	}
+}
+
+fn test_powerpc_empty_assembly_is_architecture_independent() {
+	for arch in ['ppc', 'amd64'] {
+		diagnostics := powerpc_asm_diagnostics('fn main() { asm ppc {} }', arch)
+		assert diagnostics.len == 0, '${arch}: ${diagnostics}'
+	}
+}
+
+fn test_powerpc_memory_only_barrier_is_architecture_independent() {
+	for arch in ['ppc', 'amd64'] {
+		diagnostics := powerpc_asm_diagnostics('fn main() { asm ppc { ; ; ; memory } }', arch)
+		assert diagnostics.len == 0, '${arch}: ${diagnostics}'
+	}
 }
 
 fn test_powerpc_raw_assembly_still_rejects_wrong_target_and_intel_modifier() {

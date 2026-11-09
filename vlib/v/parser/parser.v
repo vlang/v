@@ -11655,9 +11655,6 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	if !p.prefs.is_fmt {
-		if pref.normalized_arch(asm_arch) == 'ppc' && !is_raw {
-			p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
-		}
 		if is_goto && p.prefs.backend != 'c' {
 			p.record_diagnostic('`asm goto` is only supported by the C backend', asm_pos)
 		}
@@ -11734,6 +11731,9 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	}
 	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
+	if !p.prefs.is_fmt && normalized_asm_arch == 'ppc' && !is_raw && has_unsupported_content {
+		p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
+	}
 	// An empty template with only a memory clobber is architecture independent;
 	// it lowers to a compiler barrier even when the block names another ISA.
 	can_lower := (!has_unsupported_content && has_memory_clobber)
