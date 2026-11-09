@@ -22,7 +22,7 @@ Rows = WIT constructs. Columns = parse / print / codegen / validate.
 | tuple<...> | ✅ | ✅ | ✅ | ❌ |
 | own<T> | ✅ | ✅ | ⚠️ | ❌ |
 | borrow<T> | ✅ | ✅ | ⚠️ | ❌ |
-| map<K, V> | ✅ | ✅ | ⚠️ | ❌ |
+| map<K, V> | ✅ | ✅ | ✅ | ❌ |
 | async/future/stream | ✅ | ✅ | ⚠️ | ❌ |
 | use | ✅ | ✅ | ⚠️ | ❌ |
 | include | ✅ | ⚠️ | ❌ | ❌ |
