@@ -29,14 +29,30 @@ pub fn (d WitDoc) to_v() string {
 						out << '}'
 					}
 				}
-				.flags {
-					if f := it.flags {
-						out << '// flags ${f.name}: ${f.flags.join(', ')}'
-					}
-				}
 				.variant {
 					if v := it.variant {
-						out << '// variant ${v.name}'
+						for c in v.cases {
+							if ct := c.typ {
+								out << 'pub struct ${to_v_type_name(v.name)}_${to_v_type_name(c.name)} {'
+								out << '\tvalue ${wit_type_to_v(ct)}'
+								out << '}'
+							} else {
+								out << 'pub struct ${to_v_type_name(v.name)}_${to_v_type_name(c.name)} {}'
+							}
+						}
+						mut cases := []string{}
+						for c in v.cases {
+							cases << '${to_v_type_name(v.name)}_${to_v_type_name(c.name)}'
+						}
+						out << 'pub type ${to_v_type_name(v.name)} = ${cases.join(' | ')}'
+					}
+				}
+				.flags {
+					if f := it.flags {
+						out << 'pub type ${to_v_type_name(f.name)} = int'
+						for i, fl in f.flags {
+							out << 'pub const ${to_v_ident(f.name)}_${to_v_ident(fl)} = ${1 << i}'
+						}
 					}
 				}
 				.resource {
