@@ -14857,7 +14857,7 @@ pub fn run(args []string) {
 				arm64_c_side_info.wrappers = g.c_function_wrappers(kinds)
 				b.step('arm64 C functions')
 			}
-			g.gen()
+			g.gen_parallel(a.worker_pool)
 			b.step('arm64 gen')
 
 			// Hot code reloading: write raw machine code for a single function
