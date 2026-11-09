@@ -174,16 +174,17 @@ done
 	default_build := pgo_test_run(root, tool, [], false, '2', '')
 	assert default_build.exit_code == 0, default_build.output
 	default_calls := os.read_file(os.join_path(root, 'calls'))!
-	assert !default_calls.contains('-compile-backend'), default_calls
-	assert !default_calls.contains('-b fastc '), default_calls
-	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, default_calls
+	assert default_calls.contains('-compile-backend fastc'), default_calls
+	assert !default_calls.contains('-d skip_fastc'), default_calls
+	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 4, default_calls
+	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 2, default_calls
 	for extra in [([]string{}), ['-no-parallel']] {
 		os.write_file(os.join_path(root, 'calls'), '')!
 		serial := pgo_test_run(root, tool, extra, false, if extra.len == 0 { '1' } else { '2' }, '')
 		assert serial.exit_code == 0, serial.output
 		serial_calls := os.read_file(os.join_path(root, 'calls'))!
-		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 1, serial_calls
-		assert !serial_calls.contains('-b fastc '), serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 1, serial_calls
 	}
 	for extra in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-define', 'skip_fastc=1']] {
 		os.write_file(os.join_path(root, 'calls'), '')!

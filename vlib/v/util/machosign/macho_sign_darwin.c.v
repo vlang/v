@@ -33,6 +33,7 @@ fn fastc_sign_macho_adhoc_mapped(path string) ! {
 	}
 	load_commands := file[..patch.load_end].clone()
 	fixups := file[patch.fixups_start..patch.fixups_end].clone()
+	text := file[patch.text_start..patch.text_end].clone()
 	tail := file[patch.tail_start..patch.final_len].clone()
 	if unsafe { C.munmap(mapped, uint(capacity)) } != 0 {
 		out.close()
@@ -51,6 +52,12 @@ fn fastc_sign_macho_adhoc_mapped(path string) ! {
 	}
 	if fixups.len > 0 {
 		out.write_to(u64(patch.fixups_start), fixups) or {
+			out.close()
+			return err
+		}
+	}
+	if text.len > 0 {
+		out.write_to(u64(patch.text_start), text) or {
 			out.close()
 			return err
 		}

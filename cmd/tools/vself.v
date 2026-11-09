@@ -37,6 +37,12 @@ fn main() {
 	fastc_self_build := self_backend == 'fastc'
 	arm64_self_build := self_backend == 'arm64'
 	c_self_build := self_backend == 'c'
+	if c_self_build && '-prod' in effective_args && self_build_trains_fastc(effective_args) {
+		// A lazy backend is built without optimization. Production compilers must
+		// carry FastC themselves so both Clang optimization and PGO cover it.
+		args << ['-compile-backend', 'fastc']
+		effective_args = effective_self_build_args(args)
+	}
 	if fastc_self_build && '-prod' in effective_args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
 		exit(1)
@@ -729,7 +735,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 }
 
 fn self_build_trains_fastc(args []string) bool {
-	mut includes_fastc := false
+	mut includes_fastc := '-prod' in args
 	for i, arg in args {
 		if arg == '-old-compiler' {
 			return false

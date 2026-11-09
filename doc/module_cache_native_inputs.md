@@ -56,3 +56,21 @@ Native object identities include the environment that selects C headers and libr
 `CPATH`, `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH`, MSVC's `INCLUDE`/`LIB` and toolchain/SDK selection.
 Changing those variables invalidates link plans and object manifests even if the previous headers
 still exist unchanged. Prebuilt objects supplied by the application remain application inputs.
+
+The web stack's Brotli binding uses `dl` directly, so it has no bundled native loader header.
+Zstd is built as a separate `#flag` object, whose C compiler dependency manifest controls reuse;
+its implementation is not copied into V module objects. With Clang or GCC on Unix, importing
+`net.http`, `net.websocket`, or `veb` therefore retains the ordinary module cache. Windows SChannel still
+uses the conservative fallback for its bundled implementation and opaque context layout.
+
+The shipped mbedTLS public include tree and V's two mbedTLS helper headers have an explicit
+interface-only contract: ABI types and inline helpers may appear in every cached unit, while
+library state belongs to the separate `#flag` objects. A fresh C compiler dependency manifest
+tracks their complete include closure before reuse. Other native headers and forced macro files
+keep the conservative fallback. Alternate mbedTLS and PSA configuration files, PSA configuration
+overrides, and opaque compiler options also bypass this contract. The selected C preprocessor
+rejects date/time macro uses with `-Werror=date-time`, with warning suppression removed from this
+safety check, and its output is discarded. TinyCC requires the audited bundled interface
+snapshot, verified by an opaque SHA-256 inventory. Editing, adding, or removing a bundled
+interface header retains the fallback until its ownership and determinism are reviewed and the
+snapshot is updated. V does not infer contracts by inspecting header contents.

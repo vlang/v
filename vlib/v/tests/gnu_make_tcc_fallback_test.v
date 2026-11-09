@@ -12,6 +12,7 @@ const linux_amd64_sysinclude_paths = '{B}/include:/usr/local/include/x86_64-linu
 
 struct TccHistoryFixture {
 	root             string
+	branch           string
 	remote           string
 	source           string
 	tmp_dir          string
@@ -367,7 +368,11 @@ fi
 '
 }
 
-fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool) string {
+// gc_compatible_tcc_script stands in for a TCC bundle that compiles the Boehm probe.
+// With `requires_u128_define`, it behaves like TCC on a host whose arm64 kernel
+// headers use `__u128` in <asm/sigcontext.h>: the probe compiles only with the
+// define that V passes there. Without it, the define must be absent.
+fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool, requires_u128_define bool) string {
 	include_environment_check := if requires_include_environment {
 		'
 if [ -z "\${C_INCLUDE_PATH:-}" ] && [ -z "\${CPATH:-}" ]; then
@@ -377,6 +382,19 @@ fi
 '
 	} else {
 		''
+	}
+	u128_define_check := if requires_u128_define {
+		'if [ "\$has_u128_define" != 1 ]; then
+	echo "/usr/include/asm/sigcontext.h:81: error: \';\' expected (got \'__u128\')" >&2
+	exit 5
+fi
+'
+	} else {
+		'if [ "\$has_u128_define" = 1 ]; then
+	echo "unexpected -D__u128 for this architecture" >&2
+	exit 6
+fi
+'
 	}
 	return tcc_probe_script_prefix(version, includes_local) + include_environment_check +
 		'
@@ -390,9 +408,11 @@ has_gc_threads=0
 has_thread_local_alloc=0
 has_builtin_atomic=0
 has_libgc=0
+has_u128_define=0
 while [ "\$#" -gt 0 ]; do
 	case "\$1" in
 		-I*/thirdparty/libgc/include) has_gc_include=1 ;;
+		-D__u128=__uint128_t) has_u128_define=1 ;;
 		-DGC_THREADS=1) has_gc_threads=1 ;;
 		-DTHREAD_LOCAL_ALLOC=1) has_thread_local_alloc=1 ;;
 		-DGC_BUILTIN_ATOMIC=1) has_builtin_atomic=1 ;;
@@ -410,7 +430,7 @@ done
 if [ -z "\$out" ] || [ "\$has_gc_include" != 1 ] || [ "\$has_gc_threads" != 1 ] || [ "\$has_thread_local_alloc" != 1 ] || [ "\$has_builtin_atomic" != 1 ] || [ "\$has_libgc" != 1 ]; then
 	exit 2
 fi
-{
+' + u128_define_check + '{
 	echo "#!/bin/sh"
 	echo "echo v-tcc-host-boehm-probe"
 } > "\$out"
@@ -419,15 +439,19 @@ chmod +x "\$out"
 }
 
 fn compatible_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true, false)
+	return gc_compatible_tcc_script(version, true, false, false)
 }
 
 fn missing_local_include_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, false, false)
+	return gc_compatible_tcc_script(version, false, false, false)
 }
 
 fn include_environment_dependent_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true, true)
+	return gc_compatible_tcc_script(version, true, true, false)
+}
+
+fn arm64_uapi_u128_tcc_script(version string) string {
+	return gc_compatible_tcc_script(version, true, false, true)
 }
 
 fn runtime_incompatible_tcc_script(version string) string {
@@ -493,6 +517,11 @@ fn create_musl_branch(root string, remote string) {
 }
 
 fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
+	return new_tcc_history_fixture_for_arch(with_compatible_ancestor, 'amd64')
+}
+
+fn new_tcc_history_fixture_for_arch(with_compatible_ancestor bool, arch string) TccHistoryFixture {
+	branch := 'thirdparty-linux-${arch}'
 	root := os.join_path(os.vtmp_dir(), 'v_make_tcc_history_${rand.ulid()}')
 	remote := os.join_path(root, 'tccbin.git')
 	source := os.join_path(root, 'linux-source')
@@ -512,7 +541,7 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 	os.symlink(git_argv_path, os.join_path(vroot, 'cmd', 'tools', 'git_argv.sh')) or { panic(err) }
 	run_checked('git init --quiet --bare ${os.quoted_path(remote)}')
 	configure_source_repo(source)
-	run_checked('git -C ${os.quoted_path(source)} checkout --quiet -b thirdparty-linux-amd64')
+	run_checked('git -C ${os.quoted_path(source)} checkout --quiet -b ${branch}')
 	mut compatible_sha := ''
 	if with_compatible_ancestor {
 		commit_bundle_state(source, 'compatible-v0', compatible_tcc_script('compatible-tcc-v0'),
@@ -526,17 +555,18 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 	incompatible_sha := commit_bundle_state(source, 'include-environment-dependent',
 		include_environment_dependent_tcc_script('include-environment-dependent-tcc'),
 		'include-environment-dependent-libgc\n')
-	run_checked('git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(remote)} HEAD:refs/heads/thirdparty-linux-amd64')
+	run_checked('git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(remote)} HEAD:refs/heads/${branch}')
 	create_unknown_branch(root, remote)
 	create_musl_branch(root, remote)
 
 	// Keep fixture intent independent from the compiler flags of the outer test lane.
 	// Individual scenarios can still override VFLAGS after these default arguments.
-	make_args := 'VROOT=${os.quoted_path(vroot)} TCCREPO=${os.quoted_path('file://${remote}')} TMPDIR=${os.quoted_path(tmp_dir)} TCCOS=linux TCCARCH=amd64 VFLAGS='
+	make_args := 'VROOT=${os.quoted_path(vroot)} TCCREPO=${os.quoted_path('file://${remote}')} TMPDIR=${os.quoted_path(tmp_dir)} TCCOS=linux TCCARCH=${arch} VFLAGS='
 	fresh_cmd := 'make --no-print-directory -C ${os.quoted_path(vroot)} fresh_tcc ${make_args}'
 	latest_cmd := 'make --no-print-directory -C ${os.quoted_path(vroot)} latest_tcc ${make_args}'
 	return TccHistoryFixture{
 		root:             root
+		branch:           branch
 		remote:           remote
 		source:           source
 		tmp_dir:          tmp_dir
@@ -892,6 +922,28 @@ fn test_linux_tcc_accepts_compatible_bundle_without_usr_local_include() {
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
 	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'compatible-without-local-include-libgc\n'
+	assert !os.exists(compatible_marker_dir(fixture))
+	assert_clean_checkout(fixture.tcc_dir)
+}
+
+fn test_linux_arm64_tcc_probe_defines_u128_for_uapi_headers() {
+	if os.user_os() != 'linux' {
+		return
+	}
+	fixture := new_tcc_history_fixture_for_arch(false, 'aarch64')
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+
+	head_sha := commit_bundle_state(fixture.source, 'arm64-uapi-u128',
+		arm64_uapi_u128_tcc_script('arm64-uapi-u128-tcc'), 'arm64-uapi-u128-libgc\n')
+	run_checked('git -C ${os.quoted_path(fixture.source)} push --quiet ${os.quoted_path(fixture.remote)} HEAD:refs/heads/${fixture.branch}')
+
+	fresh_result := os.exec(os.split_args(fixture.fresh_cmd) or { panic(err) })
+	assert fresh_result.exit_code == 0, fresh_result.output
+	assert !fresh_result.output.contains('is not host-compatible'), fresh_result.output
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-aarch64'
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == head_sha
 	assert !os.exists(compatible_marker_dir(fixture))
 	assert_clean_checkout(fixture.tcc_dir)
 }

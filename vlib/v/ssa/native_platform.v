@@ -2,12 +2,11 @@ module ssa
 
 // native_platform_constant returns the native runtime constants for the host
 // ABI used by direct code generation.
-fn native_platform_constant(name string) ?i64 {
-	$if linux {
+fn native_platform_constant(name string, target TargetData) ?i64 {
+	if target.is_linux() {
 		return native_linux_constant(name)
-	} $else {
-		return native_darwin_constant(name)
 	}
+	return native_darwin_constant(name)
 }
 
 fn native_linux_constant(name string) ?i64 {
@@ -114,7 +113,7 @@ fn native_darwin_constant(name string) ?i64 {
 // native_errno_addr accesses the host libc's thread-local errno.
 fn (mut b Builder) native_errno_addr() ValueID {
 	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
-	symbol := $if linux { '__errno_location' } $else { '__error' }
+	symbol := if b.m.target.is_linux() { '__errno_location' } else { '__error' }
 	if symbol !in b.fn_ids {
 		b.register_extern(symbol, ptr_i32, [])
 	}

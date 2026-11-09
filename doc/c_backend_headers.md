@@ -23,6 +23,8 @@ available even when the same V file includes an unrelated system header.
 With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
 This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
 such as ARM newlib.
+V still supplies its internal `qsort_callback_func` alias for the native C callback type,
+including in freestanding builds that use target libc headers.
 Explicit headers for other C libraries remain included. Core SDK headers are also
 restored when another binding requests headers, so native declarations stay authoritative
 regardless of source collection order.

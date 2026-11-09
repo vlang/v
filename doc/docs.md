@@ -65,8 +65,10 @@ V keeps using the system compiler without checking the branch again; run
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
-After a successful update, `v up` runs `v wipe-cache` to clear module, object,
-temporary, and compiled tool caches, even when V is already up to date.
+After a successful update that changes the V checkout or TCC, or rebuilds the compiler,
+`v up` runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches.
+When nothing changes, the caches are preserved. If the TCC revision cannot be determined,
+the caches are cleared conservatively.
 Subsequent builds recreate the caches they need. Previously recorded build
 configurations and test selectors are not replayed. A failed cache cleanup
 makes `v up` fail.
@@ -555,6 +557,23 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
+A call returning multiple values can supply consecutive parameters of a non-variadic
+function or method. It can appear before or after ordinary arguments, as long as the
+expanded values match the receiving parameters. The returning function is evaluated once.
+
+```v
+fn pair() (int, int) {
+	return 2, 3
+}
+
+fn digits(a int, b int, c int) int {
+	return a * 100 + b * 10 + c
+}
+
+assert digits(pair(), 4) == 234
+assert digits(1, pair()) == 123
+```
+
 ## Symbol visibility
 
 ```v
@@ -769,12 +788,18 @@ overflow wraps.
 
 The compiler does not require a 128-bit C type. Every operation becomes a call
 to a small helper, and the helper has two implementations: the C compiler's own
-`__int128` where it exists (gcc, clang), and one built from 64-bit limbs
-everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
-struct. Both answer identically, down to the rounding of a cast to `f64`: the
-whole 128-bit magnitude is rounded once, rather than each limb on its own. Pass
+`__int128` where the C toolchain supports it, and one built from 64-bit limbs
+elsewhere, where a 128-bit value is a struct. The MSVC ABI uses this struct
+representation with both MSVC and `clang-cl`; its runtime does not supply Clang's
+native 128-bit division helpers. GCC and Clang for other ABIs keep using the
+native type where available. Both implementations answer identically, down to
+the rounding of a cast to `f64`: the whole 128-bit magnitude is rounded once,
+rather than each limb on its own. Pass
 `-d v3_no_native_int128` to force the portable implementation on a compiler that
 has the native type.
+
+C functions exchanging these values with V must use declarations matching the
+selected representation, including the struct representation with `clang-cl`.
 
 Managed arrays of wide integers and structs containing them retain 16-byte
 element alignment on both 32-bit and 64-bit targets, including after growth or cloning.
@@ -8385,6 +8410,14 @@ project that locks other revisions of the same packages switches them back. Use
    An unrelated enclosing Git checkout does not override this root. Without a
    manifest, a discovered Git root is used instead.
 
+   `backend: 'fastc'` makes the project build with the [FastC backend](fastc.md)
+   by default. It applies to every build, run, and test whose input file or
+   folder belongs to that `v.mod`, the same as passing `-b fastc`. An explicit
+   `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
+   given with `-e` or on standard input belongs to no project, and each target
+   of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
+   `fastc`, `arm64`, `x64`, and `wasm`.
+
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
    ```v
@@ -10908,6 +10941,45 @@ reuses its executable while none of its inputs change.
 If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
 V does not infer the language from header contents.
 
+**Passing C structs by value**
+
+A V `struct Foo` and a C `struct Foo` are distinct types, even when their fields match.
+For a C function that takes or returns a struct by value, redeclare the native type with
+`struct C.Foo`. If the header defines a typedef, also use `@[typedef]`.
+A public type alias can expose it under a V module name:
+
+```v oksyntax
+module native
+
+#include "native.h"
+
+@[typedef]
+pub struct C.CallbackInfo {
+pub:
+	callback fn (voidptr) = unsafe { nil }
+	userdata voidptr
+}
+
+pub type CallbackInfo = C.CallbackInfo
+
+fn C.request(info C.CallbackInfo)
+
+// request passes the native callback-info value to C.
+pub fn request(info CallbackInfo) {
+	C.request(info)
+}
+```
+
+Callers can then use `native.CallbackInfo{callback: on_ready, userdata: data}`.
+The alias preserves the native type's identity; casting a separately declared V struct
+to its own V type does not convert it to the native C type.
+Use the exact C field names in the redeclaration and initializer, including camel case.
+Apply the same rule to nested structs, structs passed to callbacks, and returned structs.
+For example, a WebGPU binding needs native declarations for `WGPURequestAdapterCallbackInfo`,
+`WGPUStringView`, and `WGPUFuture`, rather than separate V structs with those names.
+Keep the field types consistent with the header too: C `size_t` corresponds to V `uint`,
+while C `int` corresponds to V `i32`.
+
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a
 library, but its .h header declares dozens of them, you will only need to declare that single
@@ -11679,6 +11751,19 @@ assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a l
 function unless it is an unquoted numeric label, uses `%=`, or is exported with `.globl`,
 `.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
 not a numeric local label.
+
+The 32-bit PowerPC C target (`-arch ppc`) supports `asm ppc raw`, including named
+operands, clobbers and assembly at module scope. Use GNU PowerPC assembler syntax
+inside the templates; the C compiler must support the target. Structured PowerPC
+assembly without `raw` is not supported. For example:
+
+```v ignore
+mut ticks := u32(0)
+asm volatile ppc raw {
+    "mftb %[ticks]"
+    ; [ticks] "=r" (ticks)
+}
+```
 
 In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
 width of the register or named operand it acts on, and reports an error for a mismatch, as the

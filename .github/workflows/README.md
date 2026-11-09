@@ -228,6 +228,17 @@ packages the workflow actually needs.
 
 ## MemorySanitizer dependencies
 
+MemorySanitizer jobs use `ubuntu-24.04` and its default Clang 18 toolchain for
+instrumented V compilers, instrumented tests, and the private database libraries.
+Ubuntu 22.04's Clang 14 runtime
+lacks the `stat64`/`lstat64` interceptors needed by SQLite's large-file pathname
+checks. Even an instrumented SQLite library then sees stale shadow memory after
+a successful `lstat64` call when opening a database on disk. Clang 18 supplies
+these interceptors, preserving the normal disk-path and symbolic-link checks.
+The AddressSanitizer and UndefinedBehaviorSanitizer jobs stay on `ubuntu-22.04`.
+MemorySanitizer uses the explicit dependency install rather than the shared
+sanitizer apt cache, whose key does not distinguish Ubuntu versions.
+
 The `memory-clang` self-test job builds a pinned libpq with MemorySanitizer, including its
 bundled support objects. The distribution library is not instrumented and can leave sanitizer
 shadow memory stale when it constructs buffers inside `PQconnectdb`. The job selects the private

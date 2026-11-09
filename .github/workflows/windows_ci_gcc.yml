@@ -425,8 +425,8 @@ jobs:
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler gcc `
-            -ExpectedCompositeSha256 'dc3e1236e7f6a19de0821a0b7211e40a43d04fbc2d5429f920a11d8d0887c518' `
-            -ExpectedRunnerSha256 'dd6d20079a1392eb0738df31a9c95f0c1414a810f15d9879a33a9abffb9e8e5f'
+            -ExpectedCompositeSha256 'd0d7a9b22f096fe0b2ca9946528869c078768307f6ea946b6c3831838f736ad6' `
+            -ExpectedRunnerSha256 '81239b57fe28268ac90008aeb53d6a2f1a1adbe0873e5a4a13465b16984b2715'
       - name: Package 2 native Win32 RED matrix
         id: package_2_native_win32_red_matrix
         if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
@@ -443,7 +443,7 @@ jobs:
             -Compiler gcc `
             -Expectation Green `
             -ExpectedOracleSha256 '2884f7b9b9d9b64852dae48718126368c6bfed9026813298505512bbed3b64ab' `
-            -ExpectedNativeTestSha256 'c85dc17d04e6978206babf63bb158d8a97c1e0e43d561c6d228dc9e172378e00' `
+            -ExpectedNativeTestSha256 'd394e8641ec422f354de0c611a57a3b86bf0b38ca7691cb2771cb5a00cafde70' `
             -ExpectedPublicTestSha256 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234' `
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
@@ -453,7 +453,7 @@ jobs:
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
             -ExpectedGreenSurfaceSha256 'e35dc0154c627c87e71845643e68dcc7c65e6b8bc4e6402ee6d4df48b4b5a980' `
-            -ExpectedRunnerSha256 '174769778f4006955214ae63a1102f429f0455b1f24329405515743ed4efa59c'
+            -ExpectedRunnerSha256 '60df7476bd1d87127d92d38caf19ae2bed1ed01110341dc067c9ea5bf117bf29'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
         if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}

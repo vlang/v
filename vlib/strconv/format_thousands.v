@@ -16,23 +16,38 @@ pub:
 
 pub type SeparatorOptions = string | Separator
 
-// Numeric is the set of built-in numeric types accepted by `format_thousands`:
-// `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `uint`,
-// `f32` and `f64`. Generic code that forwards a `T` to it can use
-// `[T strconv.Numeric]` as its constraint. The deprecated `isize` remains accepted.
-pub type Numeric = isize
-	| int
-	| i8
-	| i16
-	| i32
-	| i64
-	| u8
-	| u16
-	| u32
-	| u64
-	| uint
-	| f32
-	| f64
+// Numeric is the set of built-in numeric types accepted by `format_thousands`.
+// Generic code can use `[T strconv.Numeric]` as its constraint.
+// FastC uses `int` and `uint` for platform-width integers; the C backend also
+// accepts the deprecated `isize` during migration.
+$if fastc_backend ? {
+	pub type Numeric = int
+		| i8
+		| i16
+		| i32
+		| i64
+		| u8
+		| u16
+		| u32
+		| u64
+		| uint
+		| f32
+		| f64
+} $else {
+	pub type Numeric = isize
+		| int
+		| i8
+		| i16
+		| i32
+		| i64
+		| u8
+		| u16
+		| u32
+		| u64
+		| uint
+		| f32
+		| f64
+}
 
 // is_all_digits reports whether every byte in `s` is an ASCII digit (`0`-`9`).
 // An empty string reports `true` (vacuously), matching how `insert_thousands_sep`

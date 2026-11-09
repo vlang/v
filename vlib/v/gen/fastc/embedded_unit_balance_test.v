@@ -40,3 +40,34 @@ fn test_constant_macro_dependencies_have_prototypes_in_every_unit() {
 	}
 	assert fastc_render_c_unit(pieces, &units, 1, 1, 2).contains('int helper(void);')
 }
+
+fn test_large_embedded_payloads_leave_the_first_unit() {
+	definition := 'const u8 __vf_embed_resource[] = "${'x'.repeat(fastc_payload_unit_min_bytes)}";\n'
+	declaration := 'extern const u8 __vf_embed_resource[];\n'
+	mut pieces := [definition]
+	for _ in 0 .. 16 {
+		pieces << 'f'.repeat(1000)
+	}
+	units := FastcUnitLayout{
+		head_end:       1
+		solo_end:       1
+		unit_starts:    []int{len: 17, init: index + 1}
+		extern_indexes: [0]
+		define_texts:   [definition]
+		extern_texts:   [declaration]
+	}
+	split := fastc_split_payload_unit(pieces, units, 4)
+	assert split.source == 'typedef unsigned char u8;\n' + definition
+	assert split.units.define_texts == [declaration]
+	assert fastc_render_c_unit(pieces, &split.units, 0, 0, 1).contains(declaration)
+	// A build that keeps one unit retains the definition in place.
+	single := fastc_split_payload_unit(pieces, units, 1)
+	assert single.source == ''
+	assert single.units.define_texts == [definition]
+	// Small payloads are not worth a separate object.
+	small := FastcUnitLayout{
+		...units
+		define_texts: ['const u8 __vf_embed_small[] = "x";\n']
+	}
+	assert fastc_split_payload_unit(pieces, small, 4).source == ''
+}
