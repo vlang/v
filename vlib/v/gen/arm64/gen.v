@@ -264,8 +264,16 @@ const arm64_gc_runtime_symbols = {
 // write_object writes the generated code as a relocatable Mach-O object for
 // the system linker (external linking).
 pub fn (mut g Gen) write_object(output string) ! {
+	mut exported := {
+		'_main': true
+	}
+	for fn_name, cname in g.m.export_aliases {
+		exported['_' + cname] = true
+		exported['_' + fn_name] = cname == fn_name
+	}
 	g.macho.write_object(output, MachOObjectOptions{
 		freestanding: g.freestanding
+		exported:     exported
 	})!
 }
 

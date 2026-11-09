@@ -24,6 +24,8 @@ int32_t ext_call_back(int32_t value);
 const external_link_source = '#include "ext.h"
 int32_t v_ext_callback(int32_t value);
 int32_t ext_call_back(int32_t value) { return v_ext_callback(value) + 1; }
+int32_t ext_same_name(void) { return 7; }
+int32_t ext_call_same_name(void) { return ext_same_name(); }
 '
 
 const external_link_program = 'module main
@@ -45,6 +47,11 @@ fn C.ext_make_pair(x f64, times i32) C.ext_pair
 fn C.ext_half(x f64) f64
 fn C.ext_call_back(value i32) i32
 fn C.CFAbsoluteTimeGetCurrent() f64
+fn C.ext_call_same_name() i32
+
+fn ext_same_name() i32 {
+	return 40
+}
 
 @[export: \'v_ext_callback\']
 fn ext_callback(value i32) i32 {
@@ -60,6 +67,7 @@ fn main() {
 	println(C.ext_half(3.0))
 	println(int(C.EXT_RED) + int(C.EXT_LIMIT))
 	println(f64(C.EXT_SCALE))
+	println(ext_same_name() + C.ext_call_same_name())
 	println(C.ext_call_back(4))
 	println(C.CFAbsoluteTimeGetCurrent() > 0)
 }
@@ -72,6 +80,7 @@ const external_link_expected = '5
 1.5
 45
 2.5
+47
 41
 true'
 

@@ -171,7 +171,14 @@ fn test_write_object_is_a_relocatable_object_for_the_system_linker() {
 	defer {
 		os.rm(path) or {}
 	}
-	m.write_object(path, MachOObjectOptions{})!
+	m.write_object(path, MachOObjectOptions{
+		exported: {
+			'_main':    true
+			'_helper':  true
+			'_malloc':  true
+			'_counter': true
+		}
+	})!
 	o := parse_object(os.read_bytes(path)!)
 	assert o.filetype == 1 // MH_OBJECT
 	assert o.platform == 1 // macOS
@@ -250,4 +257,26 @@ fn test_encode_macos_version() {
 	assert encode_macos_version('11.0') == 0x000b0000
 	assert encode_macos_version('14.5') == 0x000e0500
 	assert encode_macos_version('10.15.7') == 0x000a0f07
+}
+
+// Definitions stay local unless they are exported, so V's own names cannot
+// clash with C code linked next to the object.
+fn test_write_object_keeps_unexported_definitions_local() {
+	mut m := MachOObject.new()
+	m.text_data << [u8(0xc0), 0x03, 0x5f, 0xd6]
+	m.add_symbol('_main', 0, true, 1)
+	m.add_symbol('_print', 0, true, 1)
+	path := os.join_path(os.vtmp_dir(), 'arm64_object_local_${os.getpid()}.o')
+	defer {
+		os.rm(path) or {}
+	}
+	m.write_object(path, MachOObjectOptions{
+		exported: {
+			'_main': true
+		}
+	})!
+	o := parse_object(os.read_bytes(path)!)
+	names := o.symbols.map(it.name)
+	assert o.symbols[names.index('_main')].typ == 0x0f
+	assert o.symbols[names.index('_print')].typ == 0x0e
 }

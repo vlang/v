@@ -139,6 +139,9 @@ pub struct MachOObjectOptions {
 pub:
 	// freestanding keeps the program's own definitions of libc-named symbols.
 	freestanding bool
+	// exported lists the symbols C code may reference: `_main` and the
+	// `@[export]` names.
+	exported map[string]bool
 	// min_os is the minimum macOS version recorded in LC_BUILD_VERSION, as
 	// `major.minor` (default 11.0, the first macOS release for Apple silicon).
 	min_os string = '11.0'
@@ -188,10 +191,11 @@ fn encode_macos_version(version string) u32 {
 // private symbols, so neither V code nor C libraries linked next to it can
 // recurse into the wrapper.
 //
-// The `v3_*` runtime helpers the generator synthesizes (`v3_pthread_create`,
-// `v3_modulecache_file_metadata`, ...) are the native copies of C helpers that
-// a program may also link as objects (`#flag @VEXEROOT/.../pthread_helper.o`).
-// They stay local to the object, so both can be linked.
+// Like Go's machosymtab1 (cmd/link/internal/ld/macho.go), which marks a symbol
+// N_EXT only when it is exported, V's own definitions stay local to the object:
+// `fn print` or a runtime helper with the name of a C function (`v3_pthread_create`
+// and pthread_helper.o) must not clash with C code linked next to it. Only
+// `opts.exported` names and the program's own libc-named definitions stay external.
 pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! {
 	text_len := m.text_data.len
 	const_addr := text_len
@@ -222,7 +226,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 				shadowed[i] = true
 				local_syms << i
 				undef_syms << i
-			} else if sym.type_ & n_ext != 0 && !sym.name.starts_with('_v3_') {
+			} else if sym.type_ & n_ext != 0 && (opts.exported[sym.name] || sym.name in local_runtime) {
 				ext_syms << i
 			} else {
 				local_syms << i
