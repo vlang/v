@@ -12,6 +12,14 @@ fn C.v3_modulecache_file_metadata(&char, &u64, &u64, &u64, &u64, &u64, &u64, &u6
 // times in 2 second steps and HFS+ in 1 second steps.
 const coarse_mtime_recent_seconds = 3
 
+fn C.atomic_load_u32(voidptr) u32
+
+fn C.atomic_store_u32(voidptr, u32)
+
+fn C.atomic_compare_exchange_strong_u32(voidptr, voidptr, u32) bool
+
+fn C.cpu_relax()
+
 // file_metadata_signature returns a precise identity for an unchanged cache input.
 // Include the running compiler build so a memoized source signature cannot survive
 // a compiler update and make a new checker replay stale cached diagnostics.

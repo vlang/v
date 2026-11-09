@@ -48,3 +48,17 @@ fn test_file_hash_memo_skips_files_modified_during_the_build() {
 	assert first == file_signature_uncached(path)
 	assert 'fnv\t${path}' !in g_file_hash_memo.entries
 }
+
+fn test_build_start_time_is_one_time_for_all_threads() {
+	mut threads := []thread (u64, u64){}
+	for _ in 0 .. 8 {
+		threads << spawn build_start_mtime()
+	}
+	seconds, nanoseconds := build_start_mtime()
+	assert seconds > 0
+	for t in threads {
+		other_seconds, other_nanoseconds := t.wait()
+		assert other_seconds == seconds
+		assert other_nanoseconds == nanoseconds
+	}
+}

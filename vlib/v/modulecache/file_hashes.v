@@ -35,11 +35,9 @@ __global g_file_hash_memo &FileHashMemo
 // start of the build, as the timestamp file of a Zig cache manifest marks it.
 __global g_build_start_mtime_seconds u64
 __global g_build_start_mtime_nanoseconds u64
-__global g_build_start_mtime_once &sync.Once
-
-fn init() {
-	g_build_start_mtime_once = sync.new_once()
-}
+// 0 before the first use, 1 while one thread sets the time, 2 once it is set. It
+// needs no setup, as a module `init` that the compiler's own build leaves out would.
+__global g_build_start_mtime_state u32
 
 fn init_build_start_mtime() {
 	marker := os.join_path(os.vtmp_dir(), 'v3_build_start.${os.getpid()}')
@@ -58,7 +56,17 @@ fn init_build_start_mtime() {
 // build_start_mtime returns the modification time that marks the start of the
 // build (see g_build_start_mtime_seconds).
 fn build_start_mtime() (u64, u64) {
-	g_build_start_mtime_once.do(init_build_start_mtime)
+	if C.atomic_load_u32(&g_build_start_mtime_state) != 2 {
+		mut unset := u32(0)
+		if C.atomic_compare_exchange_strong_u32(&g_build_start_mtime_state, &unset, 1) {
+			init_build_start_mtime()
+			C.atomic_store_u32(&g_build_start_mtime_state, 2)
+		} else {
+			for C.atomic_load_u32(&g_build_start_mtime_state) != 2 {
+				C.cpu_relax()
+			}
+		}
+	}
 	return g_build_start_mtime_seconds, g_build_start_mtime_nanoseconds
 }
 
