@@ -136,6 +136,10 @@ toolchain behavior.
 Avoid switching macOS runners in broad CI changes unless the PR explains the expected
 architecture and toolchain impact.
 
+The main macOS CI matrix uses `macos-15` and `macos-26` Apple Silicon runners.
+GitHub retired macOS 14 images on November 2, 2026; see the
+[retirement announcement](https://github.com/actions/runner-images/issues/13518).
+
 ### Rare platform and architecture lanes
 
 Workflows for FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`, and similar lanes often
@@ -170,7 +174,7 @@ inventory.
 | `windows-2025` | GCC Windows lane and selected Windows checks. |
 | `windows-2022` | MSVC and TCC Windows lanes. |
 | `windows-11-arm` | Native ARM64 Windows release artifact lane. |
-| `macos-14` | Apple Silicon CI lanes. |
+| `macos-15`, `macos-26` | Apple Silicon macOS CI lanes. |
 | `macos-15-intel` | Intel macOS release artifact lane. |
 | `*-latest` | Small utility, smoke, or intentionally floating lanes. |
 
