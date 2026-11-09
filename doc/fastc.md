@@ -98,6 +98,8 @@ Ordinary programs support the following constructs:
   from C calls. Assigning `nil` to a typed pointer still requires `unsafe`.
 - Method calls on pointer fields promoted through embedded structs, including calls inside
   arithmetic and compound assignments.
+- Parallel declarations of option fields retain their payload types for guards and fallbacks.
+- Struct-valued result fallbacks support conditionals that return from both branches.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for

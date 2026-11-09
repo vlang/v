@@ -2371,6 +2371,16 @@ fn (g &Parser) option_branch_expression(wrapper_source_id u32, value_type_source
 
 fn (mut g Parser) read_return_expression_branch() !string {
 	g.expect(.key_return)!
+	// A final conditional in an `or` block can return from both arms. Its
+	// unreachable value still has to match the fallback's C payload type.
+	unreachable_value := if g.or_value_capture && g.or_value_expected_type !in [
+		u32(0),
+		flat.source_type_void,
+	] {
+		'(${fastc_output_c_type(flat.source_type_name(g.or_value_expected_type))}){0}'
+	} else {
+		'0'
+	}
 	if fastc_trim_pointer_type(g.return_type) == fastc_type_multi_return {
 		mut values := []string{}
 		for {
@@ -2385,7 +2395,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		g.consume_statement_end()
 		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
-		return '({ return ${fastc_multi_return_literal(values)}; 0; })'
+		return '({ return ${fastc_multi_return_literal(values)}; ${unreachable_value}; })'
 	}
 	previous_expected := g.expected_expression_type
 	g.expected_expression_type = if g.return_type in [fastc_type_option, fastc_type_result] {
@@ -2415,7 +2425,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		return_value = g.option_success_expression(g.return_type, value_base, value)
 	}
 	g.last_expression_type = u32(0)
-	return '({ return ${return_value}; 0; })'
+	return '({ return ${return_value}; ${unreachable_value}; })'
 }
 
 fn (g &Parser) expected_enum_shorthand_expression() ?string {
