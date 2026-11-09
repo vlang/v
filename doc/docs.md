@@ -11752,6 +11752,19 @@ function unless it is an unquoted numeric label, uses `%=`, or is exported with 
 `.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
 not a numeric local label.
 
+The 32-bit PowerPC C target (`-arch ppc`) supports `asm ppc raw`, including named
+operands, clobbers and assembly at module scope. Use GNU PowerPC assembler syntax
+inside the templates; the C compiler must support the target. Structured PowerPC
+assembly without `raw` is not supported. For example:
+
+```v ignore
+mut ticks := u32(0)
+asm volatile ppc raw {
+    "mftb %[ticks]"
+    ; [ticks] "=r" (ticks)
+}
+```
+
 In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
 width of the register or named operand it acts on, and reports an error for a mismatch, as the
 GNU assembler does. Use an operand modifier such as `%k[name]` to select a narrower view of a
