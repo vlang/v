@@ -125,7 +125,7 @@ jobs:
       - name: Upload result file
         uses: actions/upload-artifact@v7
         with:
-          name: program-output
+          name: json-decode-benchmark-output
           path: vlib/json2/tests/bench_out.md
 
   inline_benchmark_footprint_json_encode:
@@ -149,7 +149,7 @@ jobs:
       - name: Upload result file
         uses: actions/upload-artifact@v7
         with:
-          name: program-output
+          name: json-encode-benchmark-output
           path: vlib/v/tests/bench/bench_json_vs_json2_out.md
 
   build_on_ubuntu_25_ci:

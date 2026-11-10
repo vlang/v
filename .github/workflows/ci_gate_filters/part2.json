@@ -43,7 +43,8 @@
       "vlib/net/http/http*.v",
       "vlib/net/http/h2spec/**",
       "vlib/net/mbedtls/**",
-      ".github/workflows/h2spec.yml"
+      ".github/workflows/h2spec.yml",
+      ".github/workflows/ci_master.yml"
     ],
     "permissions": "contents: read",
     "inline": true

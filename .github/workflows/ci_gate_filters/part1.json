@@ -5,7 +5,8 @@
     "mode": "paths",
     "patterns": [
       "vlib/json2/**",
-      ".github/workflows/benchmark_footprint_json_decode.yml"
+      ".github/workflows/benchmark_footprint_json_decode.yml",
+      ".github/workflows/ci_master.yml"
     ],
     "permissions": "contents: read",
     "inline": true
@@ -18,7 +19,8 @@
       "vlib/json2/**",
       "!vlib/json2/strict/**",
       "!vlib/json2/tests/**",
-      ".github/workflows/benchmark_footprint_json_encode.yml"
+      ".github/workflows/benchmark_footprint_json_encode.yml",
+      ".github/workflows/ci_master.yml"
     ],
     "permissions": "contents: read",
     "inline": true

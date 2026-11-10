@@ -34,6 +34,26 @@ class GatePathsTests(unittest.TestCase):
         self.assertTrue(gate.should_run(files, self.entries["workflow_lint.yml"]))
         self.assertFalse(gate.should_run(files, self.entries["other_ci.yml"]))
 
+    def test_caller_changes_run_formerly_self_selecting_inlined_workflows(self):
+        files = [str(gate.CALLER)]
+        for workflow in (
+            "benchmark_footprint_json_decode.yml",
+            "benchmark_footprint_json_encode.yml",
+            "h2spec.yml",
+            "toml_ci.yml",
+            "vinix_ci.yml",
+            "wasm_backend_ci.yml",
+            "workflow_lint.yml",
+        ):
+            with self.subTest(workflow=workflow):
+                self.assertTrue(gate.should_run(files, self.entries[workflow]))
+        self.assertFalse(gate.should_run(files, self.entries["module_docs_lint.yml"]))
+
+    def test_unfiltered_workflow_runs_on_empty_diff(self):
+        self.assertTrue(gate.should_run([], self.entries["tccbin_automation_contract.yml"]))
+        self.assertFalse(gate.should_run([], self.entries["wasm_backend_ci.yml"]))
+        self.assertFalse(gate.should_run([], self.entries["linux_ci.yml"]))
+
     def test_failure_to_compute_diff_runs_all(self):
         self.assertTrue(all(gate.should_run(None, e) for e in self.entries.values()))
 

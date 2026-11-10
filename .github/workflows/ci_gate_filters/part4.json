@@ -7,6 +7,7 @@
       "vlib/**",
       ".github/actions/setup-v/**",
       "**/toml_ci.yml",
+      ".github/workflows/ci_master.yml",
       "!**.md",
       "!vlib/v/gen/fastc/**",
       "!vlib/v/fastcdriver/**"
@@ -68,6 +69,7 @@
       "**.md",
       "**.yml",
       "!**/vinix_ci.yml",
+      "!.github/workflows/ci_master.yml",
       "cmd/tools/vrepl.v",
       "vlib/v/gen/fastc/**",
       "vlib/v/fastcdriver/**"
@@ -141,6 +143,7 @@
       "vlib/v/gen/wasm/tests_decompile/**.v",
       "vlib/v/gen/wasm/tests_decompile/**.vv",
       "**/wasm_backend_ci.yml",
+      ".github/workflows/ci_master.yml",
       "!vlib/v/gen/fastc/**",
       "!vlib/v/fastcdriver/**"
     ],

@@ -69,7 +69,7 @@ def path_is_selected(path, mode, patterns):
 
 
 def should_run(changed, entry):
-    return changed is None or any(
+    return changed is None or entry["mode"] == "all" or any(
         path_is_selected(path, entry["mode"], entry["patterns"]) for path in changed
     )
 
