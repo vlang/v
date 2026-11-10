@@ -9368,11 +9368,7 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 		tc.source_texts_by_file[scan.name] = scan.source
 		tc.source_texts_by_id[scan.file_id] = scan.source
 		if scan.file_id >= 0 && scan.file_id < tc.malformed_const_source_states.len {
-			tc.malformed_const_source_states[scan.file_id] = if scan.source.contains('cosnt') {
-				u8(2)
-			} else {
-				u8(1)
-			}
+			tc.malformed_const_source_states[scan.file_id] = if scan.has_cosnt { u8(2) } else { u8(1) }
 		}
 		for line in scan.lines {
 			tc.multiple_module_import_lines[multiple_module_import_line_key(scan.file_id, line)] = true
@@ -9401,6 +9397,9 @@ mut:
 	read   bool
 	source string
 	lines  []int
+	// The text holds the misspelled keyword `cosnt` somewhere (see
+	// malformed_const_source_states).
+	has_cosnt bool
 }
 
 fn (mut scan ImportLineScan) run() {
@@ -9409,6 +9408,7 @@ fn (mut scan ImportLineScan) run() {
 	}
 	scan.read = true
 	scan.lines = module_import_lines(scan.source)
+	scan.has_cosnt = scan.source.contains('cosnt')
 }
 
 struct ImportLineScanArgs {
