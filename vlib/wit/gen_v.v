@@ -103,7 +103,16 @@ pub fn (d WitDoc) to_v() string {
 								for r2 in m.results { ts << wit_type_to_v(r2, defined) }
 								rs = '(${ts.join(', ')})'
 							}
-							if rs != '' {
+							if m.is_static {
+								// WIT static methods have no self; emit a plain
+								// namespaced function.
+								sig := if rs != '' {
+									'${ps.join(', ')}) ${rs} {'
+								} else {
+									'${ps.join(', ')}) {'
+								}
+								out << 'pub fn ${to_v_ident(r.name)}_${to_v_ident(m.name)}(' + sig
+							} else if rs != '' {
 								out << 'pub fn (mut self ${to_v_type_name(r.name)}) ${to_v_ident(m.name)}(${ps.join(', ')}) ${rs} {'
 							} else {
 								out << 'pub fn (mut self ${to_v_type_name(r.name)}) ${to_v_ident(m.name)}(${ps.join(', ')}) {'
@@ -190,6 +199,9 @@ fn wit_type_to_v(t WitType, defined map[string]bool) string {
 			if n == '_' { return 'void' }
 			if n.starts_with('borrow<') || n.starts_with('own<') { return 'voidptr' }
 			if n == 'pollable' { return 'int' }
+			// Async surface types (future<T>, stream<T>) and other externals
+			// map to voidptr: only the surface (types, imports, exports) is
+			// generated; runtime support is out of scope.
 			if n !in defined { return 'voidptr' }
 			return to_v_type_name(n)
 		}
