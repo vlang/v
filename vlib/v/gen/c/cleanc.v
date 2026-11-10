@@ -70,6 +70,10 @@ const body_sum_name_query_slots = 256
 const body_promoted_miss_slots = 1024
 const body_struct_decl_query_slots = 256
 const body_alias_type_name_slots = 1024
+const body_call_name_slots = 1024
+const body_ident_annotation_slots = 1024
+const body_variadic_query_slots = 512
+const body_param_types_query_slots = 1024
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -490,6 +494,16 @@ mut:
 	callback []string
 }
 
+// CStructRefsHandoff delivers referenced_c_struct_ids to an interface scan that
+// was started before the master collected them. The master fills the fields
+// and then sends on `ch`.
+struct CStructRefsHandoff {
+	ch chan bool
+mut:
+	ids   map[u32]bool
+	ready bool
+}
+
 // PreseedTypeSeen deduplicates type walks during C generation. It is part of
 // FlatGen even in serial-only builds because declaration preseeding is shared.
 struct PreseedTypeSeen {
@@ -561,11 +575,14 @@ struct BodyStructDeclQuery {
 
 // BodyFieldTypeQuery memoizes one owner/field type query of the current body.
 struct BodyFieldTypeQuery {
+mut:
 	type_id    u32
 	generation u32
 	found      bool
 	field      string
 	value      types.Type
+	// The interned reference of `value`, filled by the first query that wants one.
+	canonical &types.Type = unsafe { nil }
 }
 
 // BodyCalleeReturnQuery memoizes the declared return type of a plain callee
@@ -576,6 +593,34 @@ struct BodyCalleeReturnQuery {
 	found      bool
 	value      types.Type
 	canonical  &types.Type = unsafe { nil }
+}
+
+// BodyCallNameQuery memoizes direct_call_name for one callee name, and whether a
+// call node of that name takes direct_call_name_for_call_node's declared,
+// non-generic rule (`node_rule`: 0 unknown, 1 yes, 2 no).
+struct BodyCallNameQuery {
+mut:
+	name       string
+	generation u32
+	has_direct bool
+	node_rule  u8
+	value      string
+}
+
+// BodyParamTypesQuery memoizes param_types_for for one name and fallback.
+struct BodyParamTypesQuery {
+	name       string
+	fallback   string
+	generation u32
+	value      []types.Type
+}
+
+// BodyVariadicQuery memoizes fn_decl_is_variadic for one name and fallback.
+struct BodyVariadicQuery {
+	name       string
+	fallback   string
+	generation u32
+	value      bool
 }
 
 @[heap]
@@ -621,6 +666,19 @@ mut:
 	exact_import_found  []bool
 	exact_import_values []types.Type
 	callee_returns      []BodyCalleeReturnQuery
+	// name_generation tags the tables keyed by a name or a type spelling. Their
+	// answers depend on the key, the module and the file only, so they are kept
+	// for consecutive bodies of one module and file (see reset_body_name_memo).
+	name_generation    u32
+	name_context_valid bool
+	call_names         []BodyCallNameQuery
+	// usable_ident_annotation_type results by annotation spelling: the parsed
+	// reference, or nil for an annotation an identifier cannot use.
+	ident_ann_ids    []u32
+	ident_ann_gens   []u32
+	ident_ann_values []&types.Type
+	variadic_queries []BodyVariadicQuery
+	param_queries    []BodyParamTypesQuery
 }
 
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
@@ -657,6 +715,12 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			// zeroed sum type values are never observed.
 			exact_import_values: unsafe { []types.Type{len: body_exact_import_slots} }
 			callee_returns:      []BodyCalleeReturnQuery{len: body_callee_return_slots}
+			call_names:          []BodyCallNameQuery{len: body_call_name_slots}
+			ident_ann_ids:       []u32{len: body_ident_annotation_slots}
+			ident_ann_gens:      []u32{len: body_ident_annotation_slots}
+			ident_ann_values:    unsafe { []&types.Type{len: body_ident_annotation_slots} }
+			variadic_queries:    []BodyVariadicQuery{len: body_variadic_query_slots}
+			param_queries:       []BodyParamTypesQuery{len: body_param_types_query_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -680,34 +744,67 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		for i in 0 .. memo.exact_import_gens.len {
 			memo.exact_import_gens[i] = 0
 		}
-		for i in 0 .. memo.callee_returns.len {
-			memo.callee_returns[i] = BodyCalleeReturnQuery{}
-		}
-		for i in 0 .. memo.field_queries.len {
-			memo.field_queries[i] = BodyFieldTypeQuery{}
-		}
-		for i in 0 .. memo.method_queries.len {
-			memo.method_queries[i] = BodyMethodQuery{}
-		}
-		for i in 0 .. memo.sum_name_queries.len {
-			memo.sum_name_queries[i] = BodySumNameQuery{}
-		}
-		for i in 0 .. memo.promoted_misses.len {
-			memo.promoted_misses[i] = BodyPromotedMissQuery{}
-		}
-		for i in 0 .. memo.struct_decls.len {
-			memo.struct_decls[i] = BodyStructDeclQuery{}
-		}
-		for i in 0 .. memo.alias_type_names.len {
-			memo.alias_type_names[i] = BodyAliasTypeNameQuery{}
-		}
 		memo.generation = 1
+	}
+	// The name-keyed entries of the previous body stay valid while this body has
+	// the same module and file, and no arena that owns them was left in between.
+	same_name_context := memo.name_context_valid && !isnil(g.tc) && memo.file == g.tc.cur_file
+		&& memo.module == g.tc.cur_module
+	if !same_name_context {
+		memo.name_generation++
+		if memo.name_generation == 0 {
+			for i in 0 .. memo.callee_returns.len {
+				memo.callee_returns[i] = BodyCalleeReturnQuery{}
+			}
+			for i in 0 .. memo.field_queries.len {
+				memo.field_queries[i] = BodyFieldTypeQuery{}
+			}
+			for i in 0 .. memo.method_queries.len {
+				memo.method_queries[i] = BodyMethodQuery{}
+			}
+			for i in 0 .. memo.sum_name_queries.len {
+				memo.sum_name_queries[i] = BodySumNameQuery{}
+			}
+			for i in 0 .. memo.promoted_misses.len {
+				memo.promoted_misses[i] = BodyPromotedMissQuery{}
+			}
+			for i in 0 .. memo.struct_decls.len {
+				memo.struct_decls[i] = BodyStructDeclQuery{}
+			}
+			for i in 0 .. memo.alias_type_names.len {
+				memo.alias_type_names[i] = BodyAliasTypeNameQuery{}
+			}
+			for i in 0 .. memo.call_names.len {
+				memo.call_names[i] = BodyCallNameQuery{}
+			}
+			for i in 0 .. memo.ident_ann_gens.len {
+				memo.ident_ann_gens[i] = 0
+			}
+			for i in 0 .. memo.variadic_queries.len {
+				memo.variadic_queries[i] = BodyVariadicQuery{}
+			}
+			for i in 0 .. memo.param_queries.len {
+				memo.param_queries[i] = BodyParamTypesQuery{}
+			}
+			memo.name_generation = 1
+		}
 	}
 	if !isnil(g.tc) {
 		memo.file = g.tc.cur_file
 		memo.module = g.tc.cur_module
+		memo.name_context_valid = true
 	}
 	memo.active = true
+}
+
+// reset_body_name_memo drops the name-keyed body memo entries before a run of
+// function bodies. The entries own strings and types of the arena that was
+// current when they were stored; every such run (one batch or chunk) starts
+// here, so no entry outlives the scratch arena of the run that stored it.
+fn (mut g FlatGen) reset_body_name_memo() {
+	if !isnil(g.usable_expr_type_memo) {
+		g.usable_expr_type_memo.name_context_valid = false
+	}
 }
 
 fn (mut g FlatGen) end_usable_expr_type_memo() {
@@ -751,9 +848,11 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
-	ast_string_literals_parsed     int // how many leading ast_string_literals come from parsed nodes
+	ast_string_literals_interned   bool // preintern_ast_string_literals already ran beside the interface scan
+	ast_string_literals_parsed     int  // how many leading ast_string_literals come from parsed nodes
 	referenced_c_struct_ids        map[u32]bool
 	referenced_c_struct_ids_ready  bool
+	c_struct_refs_handoff          &CStructRefsHandoff = unsafe { nil } // set on a parallel interface scan worker
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -771,6 +870,10 @@ mut:
 	parallel_init_defs             string
 	parallel_const_code            string
 	parallel_support_ready         bool
+	parallel_string_literal_defs   string
+	parallel_string_literal_count  int
+	parallel_embed_blobs           string
+	parallel_embed_blobs_ready     bool
 	test_files                     map[string]bool
 	show_test_stats                bool
 	show_test_summary              bool
@@ -1128,6 +1231,7 @@ mut:
 	qualified_enum_method_cache     &ContextStringLookupCache     = unsafe { nil }
 	import_type_cache               &ImportTypeCache              = unsafe { nil }
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
+	embedded_fields_lane            voidptr                     // helper thread building embedded_fields_by_type, see start_embedded_fields_lane
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
@@ -1228,6 +1332,10 @@ mut:
 	// has to visit (see shared_scan_node_relevant), set by the parallel info scan.
 	shared_scan_bits       []u64
 	shared_scan_bits_ready bool
+	// expr_c_struct_refs is what collect_expr_c_struct_type_refs finds, collected
+	// by the parallel sizing scan of collect_gen_info for referenced_c_structs.
+	expr_c_struct_refs       map[u32]bool
+	expr_c_struct_refs_ready bool
 }
 
 struct TypeMetadataTextCache {
@@ -3896,8 +4004,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.sizeof_offsetof_nodes_ready = false
 	g.shared_scan_bits = []u64{}
 	g.shared_scan_bits_ready = false
+	g.expr_c_struct_refs = map[u32]bool{}
+	g.expr_c_struct_refs_ready = false
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
+	g.ast_string_literals_interned = false
 	g.ast_string_literals_parsed = 0
 	g.referenced_c_struct_ids = map[u32]bool{}
 	g.referenced_c_struct_ids_ready = false
@@ -3920,6 +4031,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.parallel_init_defs = ''
 	g.parallel_const_code = ''
 	g.parallel_support_ready = false
+	g.parallel_string_literal_defs = ''
+	g.parallel_string_literal_count = 0
+	g.parallel_embed_blobs = ''
+	g.parallel_embed_blobs_ready = false
 	g.coverage_files.clear()
 	g.coverage_counter_count = 0
 	g.profile_counters = []ProfileCounterMeta{}
@@ -4118,7 +4233,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
 	g.import_type_cache = &ImportTypeCache{}
-	g.embedded_fields_by_type.clear()
+	// The previous table can be storage of a helper arena that is gone by now.
+	g.embedded_fields_by_type = map[u32][]types.StructField{}
 	g.param_types_by_short.clear()
 	g.generic_method_candidates.clear()
 	g.spawn_wrapper_names.clear()
@@ -4191,7 +4307,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_c_typedef_shadow_names()
 	g.precompute_local_name_exceptions()
 	// Interface workers must share the same referenced C layouts as declaration emission.
-	if g.tc.structs.keys().any(flat.source_type_query(it).has(.c_prefix)) {
+	// A parallel interface scan starts first and takes the set when the master has it.
+	mut defer_c_struct_refs := false
+	$if !v3_no_parallel ? {
+		defer_c_struct_refs = g.scope_parallel_workers && !effective_no_parallel
+			&& g.incremental_fn_names.len == 0
+	}
+	has_c_structs := g.tc.structs.keys().any(flat.source_type_query(it).has(.c_prefix))
+	if has_c_structs && !defer_c_struct_refs {
 		g.ensure_referenced_c_struct_ids()
 	}
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -4227,8 +4350,25 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			// Freeze it before the worker shares its storage.
 			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
+				// The scan's checker reads the master's type cache as its base while
+				// the master resolves the referenced C structs below.
+				g.tc.freeze_type_cache_for_forks()
+				mut c_struct_refs := &CStructRefsHandoff{
+					ch: chan bool{cap: 1}
+				}
 				iface_worker = g.new_interface_impl_scan_worker()
+				iface_worker.c_struct_refs_handoff = c_struct_refs
 				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+				// Most of the scan is the IError implementer list, which does not
+				// need the referenced C structs: collect them meanwhile.
+				if has_c_structs {
+					g.ensure_referenced_c_struct_ids()
+				}
+				c_struct_refs.ids = g.referenced_c_struct_ids
+				c_struct_refs.ready = g.referenced_c_struct_ids_ready
+				c_struct_refs.ch <- true
+				g.timing_profile('  [ttime]   cg c struct refs ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+				cgsw.restart()
 			}
 		} else {
 			g.collect_interface_impls()
@@ -4247,6 +4387,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			}
 			g.precompute_generic_fn_key_index()
 		}
+		if parallel_iface_scan {
+			$if !v3_no_parallel ? {
+				// The master would only wait for the interface scan now. Number the
+				// AST literals meanwhile: prepare_pre_dispatch_master does it next,
+				// right after the struct default literals above, and nothing in
+				// between interns a string.
+				g.preintern_ast_string_literals()
+				g.ast_string_literals_interned = true
+			}
+		}
 		if !parallel_iface_scan {
 			g.precompute_embedded_fields()
 		}
@@ -4255,6 +4405,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if parallel_iface_scan {
 			$if !v3_no_parallel ? {
 				_ = iface_threads[0].wait()
+				g.tc.discard_type_cache_overlay_after_forks()
 				g.publish_interface_impl_scan(mut iface_worker)
 				g.precompute_required_interface_dispatch_methods()
 				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
@@ -4517,7 +4668,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
-	g.gen_embed_file_blobs()
+	if g.parallel_embed_blobs_ready {
+		g.sb.write_string(g.parallel_embed_blobs)
+		unsafe { g.parallel_embed_blobs.free() }
+		g.parallel_embed_blobs = ''
+	} else {
+		g.gen_embed_file_blobs()
+	}
 	if !g.cache_split {
 		g.gen_top_level_asm()
 		if g.parallel_interface_stubs.len > 0 {
@@ -5326,10 +5483,37 @@ mut:
 	return_type        &types.Type = types.empty_type
 	decl_is_variadic   bool
 	first_param_is_mut bool
-	// registration is precomputed by the parallel prep when signature
-	// registration is deferred (has_registration).
+	// has_registration: the parallel prep also built the alias registration,
+	// for deferred signature registration. It is kept in the list of the prep
+	// task (CollectGenFnPrepJob.registrations), not copied per declaration.
 	has_registration bool
-	registration     FnSignatureRegistration
+}
+
+// CollectGenFnPrepJob holds what one parallel prep task resolved: the used
+// function declarations among the top-level positions below `end`, in order.
+struct CollectGenFnPrepJob {
+mut:
+	end       int
+	positions []i32
+	preps     []CollectGenFnPrep
+	// One registration per entry of `preps` when the task built them.
+	registrations []FnSignatureRegistration
+}
+
+// CollectGenFnPreps is the result of collect_gen_info_fn_preps; `jobs` cover
+// consecutive ranges of the top-level nodes. It is not ready when the
+// signatures were not resolved in parallel.
+struct CollectGenFnPreps {
+mut:
+	ready bool
+	jobs  []CollectGenFnPrepJob
+}
+
+// moved_collect_gen_fn_prep returns `prep`; pushing a call result does not
+// deep-copy it.
+@[inline]
+fn moved_collect_gen_fn_prep(prep CollectGenFnPrep) CollectGenFnPrep {
+	return prep
 }
 
 struct FnSignatureRegistration {
@@ -5348,6 +5532,13 @@ struct FnSignatureRegistration {
 @[inline]
 fn cgen_moved_string(s string) string {
 	return s
+}
+
+// moved_fn_signature_registrations returns `registrations`; pushing a call
+// result does not deep-copy the list.
+@[inline]
+fn moved_fn_signature_registrations(registrations []FnSignatureRegistration) []FnSignatureRegistration {
+	return registrations
 }
 
 // moved_fn_signature_registration returns `registration`; pushing a call
@@ -5491,6 +5682,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	g.unused_param_seen = &UnusedParamSeen{}
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	type_index_args, type_index_threads := g.start_type_indexes(no_parallel)
+	g.start_embedded_fields_lane(no_parallel)
 	if no_parallel && g.incremental_fn_names.len == 0 {
 		// Serial body generation needs the same immutable lookup tables as the
 		// worker path. Building the field index once here keeps scoped batches
@@ -5501,7 +5693,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
 	g.main_type_aliases_absent = !g.tc_has_main_type_alias()
-	g.build_sparse_call_name_index()
+	if type_index_threads.len == 0 {
+		g.build_sparse_call_name_index()
+	} else {
+		// The type index thread builds it; finish_type_indexes installs it.
+		g.sparse_call_name_index_ready = false
+	}
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		presw.restart()
@@ -5531,7 +5728,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut preferred_shared_fn_file_ranks := map[string]int{}
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
-	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
+	// Deferred signature registrations that were not prepared in parallel.
+	mut fn_signature_registrations := []FnSignatureRegistration{}
 	top_level_nodes := g.top_level_nodes()
 	if g.output_cross_c {
 		g.index_cross_directive_guards()
@@ -5539,7 +5737,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut cisub_sw := time.new_stopwatch()
 	g.finish_type_indexes(type_index_args, type_index_threads)
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
-	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
+	has_parallel_fn_preps := fn_preps.ready
+	// The prepared declarations are consumed in top-level order.
+	mut prep_job := 0
+	mut prep_idx := 0
 	if profile {
 		g.timing_profile('  [ttime]   ci fn preps      ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cisub_sw.restart()
@@ -5585,10 +5786,17 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 		if kind_id == 61 {
 			ci_t0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
-			mut prep := if has_parallel_fn_preps {
-				fn_preps[top_level_pos]
-			} else {
-				CollectGenFnPrep{}
+			mut prep := CollectGenFnPrep{}
+			if has_parallel_fn_preps {
+				for prep_job < fn_preps.jobs.len && top_level_pos >= fn_preps.jobs[prep_job].end {
+					prep_job++
+					prep_idx = 0
+				}
+				if prep_job < fn_preps.jobs.len && prep_idx < fn_preps.jobs[prep_job].positions.len
+					&& fn_preps.jobs[prep_job].positions[prep_idx] == top_level_pos {
+					prep = fn_preps.jobs[prep_job].preps[prep_idx]
+					prep_idx++
+				}
 			}
 			if (has_parallel_fn_preps && !prep.prepared) || (!has_parallel_fn_preps && g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module)) {
 				if g.incremental_fn_names.len == 0 {
@@ -5601,11 +5809,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			}
 			// The three node maps are filled after this loop (nothing here reads
 			// them), beside the signature registrations.
-			fn_node_regs << FnDeclNodeReg{
+			// Both names are AST text that outlives the list: do not copy them.
+			fn_node_regs << moved_fn_decl_node_reg(FnDeclNodeReg{
 				name:   node.value
 				module: cur_module
 				id:     flat.NodeId(node_idx)
-			}
+			})
 			ci_p0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
 			if !has_parallel_fn_preps {
 				prep = g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
@@ -5650,9 +5859,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					if shared_params.any(it) {
 						g.has_shared_params = true
 					}
-					// The prepared registration lives as long as fn_preps; apply
-					// copies what it keeps, so do not deep-copy it here first.
-					fn_signature_registrations << moved_fn_signature_registration(prep.registration)
+					// The registration stays in its prep task's list, which is
+					// applied as a whole below: the lists are in declaration order.
 				} else {
 					fn_signature_registrations << g.prepare_fn_signature_registration(node.value, qualify_name_in_module(cur_module, node.value), ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
 				}
@@ -5879,8 +6087,15 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		cisub_sw.restart()
 	}
 	if defer_fn_signature_registrations {
-		g.reserve_fn_signature_registrations(fn_signature_registrations)
-		g.apply_fn_signature_registrations(fn_signature_registrations, fn_node_regs)
+		// Either every used declaration was prepared in parallel, with its
+		// registration, or none was.
+		mut registration_lists := [][]FnSignatureRegistration{cap: fn_preps.jobs.len + 1}
+		for job in fn_preps.jobs {
+			registration_lists << moved_fn_signature_registrations(job.registrations)
+		}
+		registration_lists << moved_fn_signature_registrations(fn_signature_registrations)
+		g.reserve_fn_signature_registrations(registration_lists)
+		g.apply_fn_signature_registrations(registration_lists, fn_node_regs)
 	} else {
 		for which in 0 .. 3 {
 			g.register_fn_decl_nodes(fn_node_regs, which)
@@ -5985,30 +6200,55 @@ fn (g &FlatGen) parsed_node_end() int {
 // call nodes only in that map; cgen reads it about half a million times for a
 // self-host build, and the tables are read-only for the rest of cgen.
 fn (mut g FlatGen) build_sparse_call_name_index() {
+	g.install_sparse_call_name_index(new_sparse_call_name_index(g.tc, g.a.nodes.len))
+}
+
+// SparseCallNameIndex is what build_sparse_call_name_index installs.
+struct SparseCallNameIndex {
+	ready  bool
+	base   int
+	index  []u32
+	values []string
+}
+
+fn (mut g FlatGen) install_sparse_call_name_index(built SparseCallNameIndex) {
 	g.sparse_call_name_index_ready = false
-	if isnil(g.tc) || !g.tc.parallel_check_sparse || !isnil(g.tc.fork_overlay)
-		|| g.tc.check_range_lo != 0 || g.tc.check_range_hi < 0 {
+	if !built.ready {
 		return
 	}
-	base := g.tc.check_range_hi + 1
-	n := g.a.nodes.len
+	g.sparse_call_name_index = built.index
+	g.sparse_call_name_values = built.values
+	g.sparse_call_name_index_base = built.base
+	g.sparse_call_name_index_ready = true
+}
+
+// new_sparse_call_name_index builds the tables for an AST of `n` nodes. It only
+// reads the checker's resolved-call map, which cgen never writes.
+fn new_sparse_call_name_index(tc &types.TypeChecker, n int) SparseCallNameIndex {
+	if isnil(tc) || !tc.parallel_check_sparse || !isnil(tc.fork_overlay) || tc.check_range_lo != 0
+		|| tc.check_range_hi < 0 {
+		return SparseCallNameIndex{}
+	}
+	base := tc.check_range_hi + 1
 	if base >= n {
-		return
+		return SparseCallNameIndex{}
 	}
 	mut index := []u32{len: n - base}
-	mut values := []string{len: g.tc.sparse_resolved_call_names.len}
+	mut values := []string{len: tc.sparse_resolved_call_names.len}
 	mut count := 0
-	for idx, name in g.tc.sparse_resolved_call_names {
+	for idx, name in tc.sparse_resolved_call_names {
 		if idx >= base && idx < n && count < values.len {
 			values[count] = name
 			count++
 			index[idx - base] = u32(count)
 		}
 	}
-	g.sparse_call_name_index = index
-	g.sparse_call_name_values = values
-	g.sparse_call_name_index_base = base
-	g.sparse_call_name_index_ready = true
+	return SparseCallNameIndex{
+		ready:  true
+		base:   base
+		index:  index
+		values: values
+	}
 }
 
 // resolved_call_name is tc.resolved_call_name, answering transform-created
@@ -12764,22 +13004,27 @@ fn (g &FlatGen) fn_signature_registration_in_module(module_name string, name str
 
 // Size deferred signature maps from the aliases and flags they will receive.
 // Most compilations have few variadics and no shared parameters.
-fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatureRegistration) {
+@[direct_array_access]
+fn (mut g FlatGen) reserve_fn_signature_registrations(registration_lists [][]FnSignatureRegistration) {
 	mut names := u32(0)
 	mut variadics := u32(0)
 	mut shared_names := u32(0)
 	mut mutable := u32(0)
-	for registration in registrations {
-		aliases := u32(registration.alias_count)
-		names += aliases + 1
-		if registration.is_variadic {
-			variadics += aliases + 1
-		}
-		if registration.shared_params.len > 0 {
-			shared_names += aliases
-		}
-		if registration.is_mut {
-			mutable += aliases
+	for registrations in registration_lists {
+		for i in 0 .. registrations.len {
+			// Read the entry in place: it is some 200 bytes.
+			registration := unsafe { &registrations[i] }
+			aliases := u32(registration.alias_count)
+			names += aliases + 1
+			if registration.is_variadic {
+				variadics += aliases + 1
+			}
+			if registration.shared_params.len > 0 {
+				shared_names += aliases
+			}
+			if registration.is_mut {
+				mutable += aliases
+			}
 		}
 	}
 	g.fn_decl_param_types.reserve(u32(g.fn_decl_param_types.len) + names)
@@ -12793,7 +13038,19 @@ fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatur
 // apply_fn_signature_registration_group fills.
 const fn_signature_registration_groups = 5
 
-fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatureRegistration, group int) {
+// apply_fn_signature_registration_groups applies one group of every
+// registration, list by list, in declaration order.
+@[direct_array_access]
+fn (mut g FlatGen) apply_fn_signature_registration_groups(registration_lists [][]FnSignatureRegistration, group int) {
+	for registrations in registration_lists {
+		for i in 0 .. registrations.len {
+			// Read the entry in place: it is some 200 bytes.
+			g.apply_fn_signature_registration_group(unsafe { &registrations[i] }, group)
+		}
+	}
+}
+
+fn (mut g FlatGen) apply_fn_signature_registration_group(registration &FnSignatureRegistration, group int) {
 	match group {
 		0 {
 			g.fn_decl_param_types[registration.module_key] = registration.ptypes
@@ -12856,6 +13113,13 @@ struct FnDeclNodeReg {
 	name   string
 	module string
 	id     flat.NodeId
+}
+
+// moved_fn_decl_node_reg returns `reg`; pushing a call result does not
+// deep-copy its names.
+@[inline]
+fn moved_fn_decl_node_reg(reg FnDeclNodeReg) FnDeclNodeReg {
+	return reg
 }
 
 // register_fn_decl_nodes applies deferred register_fn_decl_node calls to one of
@@ -14688,7 +14952,7 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 &types.Type) ?u32 {
 	key := (kind << 32) | u64(name_id)
 	slot := int(((u64(name_id) * u64(0x9e3779b1)) >> 7) & u64(body_sum_name_query_slots - 1))
 	entry := unsafe { &memo.sum_name_queries[slot] }
-	if entry.generation == memo.generation && entry.key == key {
+	if entry.generation == memo.name_generation && entry.key == key {
 		if entry.found {
 			return entry.value
 		}
@@ -14697,13 +14961,13 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 &types.Type) ?u32 {
 	result := g.sum_type_name_for_nominal(clean) or {
 		memo.sum_name_queries[slot] = BodySumNameQuery{
 			key:        key
-			generation: memo.generation
+			generation: memo.name_generation
 		}
 		return none
 	}
 	memo.sum_name_queries[slot] = BodySumNameQuery{
 		key:        key
-		generation: memo.generation
+		generation: memo.name_generation
 		found:      true
 		value:      result
 	}
@@ -15495,6 +15759,7 @@ fn (mut g FlatGen) precompute_const_short_index() {
 		return
 	}
 	idx.call_names = [64]u64{}
+	idx.call_name_bits = [const_call_name_bit_words]u64{}
 	for name, _ in g.const_vals { idx.mark_call_name(name) }
 	for name, _ in g.tc.const_exprs { idx.mark_call_name(name) }
 	for name, _ in g.tc.const_types { idx.mark_call_name(name) }

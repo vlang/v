@@ -1381,6 +1381,9 @@ pub mut:
 	transform_borrow_params                 map[int][]bool
 	transform_call_provenance_borrow_params map[int][]bool
 	transform_borrow_node_count             int
+	// transform_borrow_handover_unused says that no monomorphization stage follows
+	// the transform stage, so the summaries above have no reader.
+	transform_borrow_handover_unused bool
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
@@ -7058,6 +7061,14 @@ pub mut:
 	scope_key_module  string
 	scope_key_context u32
 	scope_key_valid   bool
+	// Identifiers that static_assoc_type_candidates found no type for, with the
+	// context and table sizes that answer was computed against.
+	no_static_type_module      string
+	no_static_type_file        string
+	no_static_type_mode        bool
+	no_static_type_fingerprint int = -1
+	no_static_type_generics    int
+	no_static_type_ids         [64]u32
 }
 
 // qualify_table_fingerprint tracks growth of every declared-type table
