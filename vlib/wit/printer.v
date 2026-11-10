@@ -31,6 +31,10 @@ pub fn (d WitDoc) str() string {
 						for m in r.methods {
 							mut ps := []string{}
 							for p in m.params { ps << '${p.name}: ${p.typ.str()}' }
+							if m.name == 'constructor' {
+								out << ('\t\tconstructor(' + ps.join(', ') + ');')
+								continue
+							}
 							if m.results.len == 0 {
 								out << '\t\t${m.name}: func(${ps.join(', ')});'
 							} else if m.results.len == 1 {

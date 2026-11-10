@@ -23,6 +23,11 @@ pub fn echo_len(s string) int {
 	return s.len
 }
 
+@[export: 'first_byte']
+pub fn first_byte(s string) u8 {
+	return s[0]
+}
+
 fn main() {}
 "
 
@@ -324,15 +329,13 @@ fn test_cabi_wrapper_simulation() {
 		pos++
 		_ = c
 	}
-	// find the inner single-pointer function index
-	inner_type := CabiTypeSig{
-		params:  [u8(0x7f)]
-		results: [u8(0x7f)]
-	}
+	// the inner single-pointer function index is discovered from the wrapper's
+	// own call target below; here just require that some unexported (i32)->i32
+	// function exists at all.
 	mut inner_idx := -1
 	for fi, ti in funcs {
 		t := sigs[ti]
-		if t.params == inner_type.params && t.results == inner_type.results {
+		if t.params == [u8(0x7f)] && t.results == [u8(0x7f)] {
 			global_idx := n_imports + fi
 			mut exported := false
 			for _, eidx in exports {
@@ -341,7 +344,7 @@ fn test_cabi_wrapper_simulation() {
 					break
 				}
 			}
-			if !exported {
+			if !exported && inner_idx == -1 {
 				inner_idx = global_idx
 			}
 		}
@@ -456,7 +459,17 @@ fn test_cabi_wrapper_simulation() {
 				assert false, 'unexpected wrapper op ${op:02x} in case ${ci}'
 			}
 		}
-		assert called == inner_idx, 'wrapper must call the inner function'
+		// the wrapper's own call target must be an unexported single-pointer func
+		called_sig := sigs[funcs[called - n_imports]]
+		assert called_sig.params == [u8(0x7f)], 'callee takes one i32'
+		assert called_sig.results == [u8(0x7f)], 'callee returns i32'
+		mut called_exported := false
+		for _, eidx in exports {
+			if eidx == called {
+				called_exported = true
+			}
+		}
+		assert !called_exported, 'callee must be the unexported inner function'
 		assert stack.len == 1, 'wrapper must leave exactly the call result'
 		// the materialized V string the inner function will read
 		mut got_ptr := 0
@@ -490,6 +503,47 @@ fn test_cabi_native_len_semantics() {
 	assert 'hello'[0] == `h`
 	pinned := 'héllo'[..2]
 	assert pinned.len == 2, 'a 2-byte slice has len 2'
+}
+
+fn test_cabi_runtime_node() {
+	b := cabi_test_module_bytes(cabi_guest_source, true)
+	node := os.find_abs_path_of_executable('node') or {
+		panic('node is required to run the cabi runtime test')
+	}
+	dir := os.join_path(os.vtmp_dir(), 'cabi_run_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	wasm_path := os.join_path(dir, 'guest.wasm')
+	os.write_file_array(wasm_path, b) or { panic(err) }
+	mjs := 'import assert from \'node:assert/strict\';
+import { readFileSync } from \'node:fs\';
+const bytes = readFileSync(process.argv[2]);
+const { instance } = await WebAssembly.instantiate(bytes, {});
+const mem = () => new Uint8Array(instance.exports.memory.buffer);
+const echo_len = instance.exports.echo_len;
+const first_byte = instance.exports.first_byte;
+function put(off, arr) { mem().set(arr, off); }
+// hello -> 5
+put(4096, [104, 101, 108, 108, 111]);
+assert.equal(echo_len(4096, 5), 5);
+assert.equal(first_byte(4096, 5), 104);
+// empty -> 0
+assert.equal(echo_len(4096, 0), 0);
+// h + U+00E9 + llo is 6 UTF-8 bytes, not 5 codepoints
+put(8192, [104, 195, 169, 108, 108, 111]);
+assert.equal(echo_len(8192, 6), 6);
+assert.equal(first_byte(8192, 6), 104);
+// length pins to what the host passes, not the NUL scan
+assert.equal(echo_len(8192, 2), 2);
+console.log(\'cabi-runtime-ok echo_len=5,0,6 first_byte=104 pin=2\');
+'
+	runner := os.join_path(dir, 'check.mjs')
+	os.write_file(runner, mjs) or { panic(err) }
+	result := os.exec([node, runner, wasm_path])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('cabi-runtime-ok'), result.output
 }
 
 fn test_cabi_parity_shim() {
