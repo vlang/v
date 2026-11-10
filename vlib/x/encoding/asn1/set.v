@@ -63,11 +63,11 @@ pub fn (s Set) tag() Tag {
 // Note: Required for DER encoding.
 // The encodings of the component values of a set value shall appear in an order determined by their tags.
 // The canonical order for tags is based on the outermost tag of each type and is defined as follows:
-//   a) those elements or alternatives with universal class tags shall appear first, followed by those with
-//      application class tags, followed by those with context-specific tags, followed by those with private class
-//      tags;
-//   b) within each class of tags, the elements or alternatives shall appear in ascending order of their tag
-//      numbers.
+// - a) those elements or alternatives with universal class tags shall appear first, followed by those with
+//   application class tags, followed by those with context-specific tags, followed by those with private class
+//   tags;
+// - b) within each class of tags, the elements or alternatives shall appear in ascending order of their tag
+//   numbers.
 pub fn (s Set) payload() ![]u8 {
 	// workaround by working with the copy of Set, changing it to 'mut s Set` would encounter some issues
 	// ie, with messages `asn1.Set` incorrectly implements method `payload` of interface `asn1.Element`:

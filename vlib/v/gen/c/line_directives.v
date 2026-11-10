@@ -104,6 +104,60 @@ fn (mut g FlatGen) write_line_directive_text(directive string) {
 	g.line_start = true
 }
 
+// gen_race_string_read records the original header before a string is passed by value.
+// C compiler instrumentation can miss the argument copy, while reads inside the callee
+// only describe its private copy. Keep the source address in one temporary: an indexed
+// string can have side effects in its index expression.
+fn (mut g FlatGen) gen_race_string_read(id flat.NodeId) bool {
+	if !g.race || types.unalias_type(g.usable_expr_type(id)) !is types.String
+		|| !g.race_string_read_is_lvalue(id) {
+		return false
+	}
+	pointer := g.tmp_name()
+	g.write('({ const string* ${pointer} = &(')
+	g.gen_expr(id)
+	g.write('); __tsan_read_range((void*)${pointer}, sizeof(*${pointer})); *${pointer}; })')
+	return true
+}
+
+// Calls, map lookups, and overloaded indexes may produce C temporaries. Only take
+// the address of storage that the normal expression path already reads as an lvalue.
+fn (mut g FlatGen) race_string_read_is_lvalue(id flat.NodeId) bool {
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		.ident { true }
+		.prefix { node.op == .mul }
+		.selector, .paren {
+			node.children_count > 0 && g.race_string_read_is_lvalue(g.a.child(&node, 0))
+		}
+		.index {
+			if node.value == 'range' || node.children_count == 0 {
+				return false
+			}
+			base_id := g.a.child(&node, 0)
+			mut base_type := *g.usable_expr_type(base_id)
+			if storage_type := g.const_storage_type_from_node(g.a.nodes[int(base_id)]) {
+				base_type = storage_type
+			}
+			// Match both index-call paths before treating an array alias as storage.
+			if _ := g.tc.index_overload_call_info(base_type, false) {
+				return false
+			}
+			if node.children_count == 2 {
+				if info := g.tc.index_operator_call_info(g.usable_expr_type(base_id), '[]') {
+					if info.params.len >= 2 {
+						return false
+					}
+				}
+			}
+			concrete_type := concrete_receiver_type(base_type)
+			(concrete_type is types.Array || concrete_type is types.ArrayFixed)
+				&& g.race_string_read_is_lvalue(base_id)
+		}
+		else { false }
+	}
+}
+
 // gen_race_blank_read generates `_ = expr` in a race build. Like Go, V reads the value of
 // `expr`, but the C compiler does not load a struct for `(void)(expr)`, and drops a value
 // that is computed without side effects, like `c.n + 1`: a race on what `expr` reads would

@@ -191,7 +191,11 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	// Size the compound literal explicitly. TinyCC mis-accounts an unsized
 	// `(T[]){a, b}` whose elements are struct values rather than brace
 	// initializers, and aborts with an internal `initializer overflow`.
-	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[${count}]){')
+	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), ')
+	if g.ccompiler == 'cplusplus' {
+		g.write('__v3_internal_symbol_cpp_array(')
+	}
+	g.write('(${c_elem}[${count}]){')
 	for i in 0 .. count {
 		if i > 0 {
 			g.write(', ')
@@ -212,6 +216,9 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		g.gen_expr_with_expected_type(child_id, canonical_elem_type)
 	}
 	g.write('}')
+	if g.ccompiler == 'cplusplus' {
+		g.write(')')
+	}
 	if aligned {
 		g.write(', __alignof__(${sizeof_elem})')
 	}
@@ -330,6 +337,14 @@ fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected t
 		return true
 	}
 	return false
+}
+
+// gen_fixed_array_copy_data_arg keeps temporary array storage alive through an
+// immediate copy while retaining the normal nested-array lowering.
+fn (mut g FlatGen) gen_fixed_array_copy_data_arg(id flat.NodeId, arr types.ArrayFixed) {
+	g.write(g.cpp_copy_source_prefix())
+	g.gen_fixed_array_data_arg(id, arr)
+	g.write(g.cpp_copy_source_suffix())
 }
 
 // gen_fixed_array_data_arg emits fixed array data arg output for c.
@@ -566,6 +581,12 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	node := g.a.nodes[int(id)]
+	// A literal is never a fixed array and an address is a pointer: both are
+	// rejected below without resolving the expression.
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.string_interp] || (node.kind == .prefix && node.op == .amp) {
+		return false
+	}
 	// A parameter's declared type wins; resolve the expression type only otherwise.
 	mut actual := types.Type(types.void_)
 	mut has_param_type := false
@@ -679,6 +700,14 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	}
 	gated := node.op == .gated_index
 	if base_is_string {
+		if g.race {
+			g.write(if gated { 'string__substr_ni(' } else { 'string__substr(' })
+			if !g.gen_race_string_read(base_id) {
+				g.write(base_value_str)
+			}
+			g.write(', ${start_str}, ${end_str})')
+			return
+		}
 		if gated {
 			g.write('string__substr_ni(${base_value_str}, ${start_str}, ${end_str})')
 		} else {
@@ -1592,7 +1621,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 	} else {
 		0
 	}
-	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${ct}), (${ct}[]){')
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${ct}), ${g.cpp_copy_source_prefix()}(${ct}[]){')
 	if node.value == 'range' {
 		g.gen_slice_index_value_from_index_range(node)
 	} else {
@@ -1603,7 +1632,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 			g.gen_slice_index_value(g.a.child(&node, i))
 		}
 	}
-	g.write('})')
+	g.write('}${g.cpp_copy_source_suffix()})')
 }
 
 fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
@@ -2007,7 +2036,7 @@ fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Nod
 	// records the helper as the target of an append it lowered, which tells the two
 	// apart where the module has such a global.
 	if _ := g.global_type_for_ident(target) {
-		recorded := g.tc.resolved_call_name(id) or { '' }
+		recorded := g.resolved_call_name(id) or { '' }
 		if recorded != target {
 			return false
 		}

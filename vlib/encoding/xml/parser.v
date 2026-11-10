@@ -92,9 +92,8 @@ fn parse_attributes_with_entities(attribute_contents string, entities map[string
 						if key in attributes {
 							return error('Duplicate XML attribute: ${key}')
 						}
-						attributes[key] = unescape_text(attribute_contents[value_span.start..value_span.end],
-							entities: entities
-						)!
+						value := attribute_contents[value_span.start..value_span.end]
+						attributes[key] = decode_owned_text(value, entities)!
 
 						key_span.start = index + 1
 						key_span.end = index + 1
@@ -570,9 +569,11 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 }
 
 fn append_text_run(mut children []XMLNodeContents, mut pending []XMLNodeContents, mut contents strings.Builder, entities map[string]string) ! {
-	text := contents.str()
-	if text.len > 0 {
-		pending << text
+	if contents.len > 0 {
+		pending << contents.str()
+	}
+	if pending.len == 0 {
+		return
 	}
 	// Comments split text fragments, but only element boundaries trim the whole text run.
 	for i in 0 .. pending.len {
@@ -614,7 +615,7 @@ fn append_text_run(mut children []XMLNodeContents, mut pending []XMLNodeContents
 	for item in pending {
 		if item is string {
 			if item.len > 0 {
-				children << unescape_text(item.replace('\r\n', '\n'), entities: entities)!
+				children << decode_owned_text(item.replace('\r\n', '\n'), entities)!
 			}
 		} else {
 			children << item
@@ -623,8 +624,17 @@ fn append_text_run(mut children []XMLNodeContents, mut pending []XMLNodeContents
 	pending.clear()
 }
 
+// The caller already owns content. Plain ASCII does not need entity decoding
+// or a second copy; non-ASCII retains unescape_text's UTF-8 handling.
+fn decode_owned_text(content string, entities map[string]string) !string {
+	if !content.contains_u8(`&`) && content.is_pure_ascii() {
+		return content
+	}
+	return unescape_text(content, entities: entities)
+}
+
 fn parse_children(name string, attributes map[string]string, entities map[string]string, mut reader io.Reader) !XMLNode {
-	mut inner_contents := strings.new_builder(default_string_builder_cap)
+	mut inner_contents := strings.new_builder(0)
 
 	mut children := []XMLNodeContents{}
 	mut pending := []XMLNodeContents{}
@@ -637,9 +647,8 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 				second_char := next_char(mut reader, mut local_buf)!
 				match second_char {
 					`!` {
-						text := inner_contents.str()
-						if text.len > 0 {
-							pending << text
+						if inner_contents.len > 0 {
+							pending << inner_contents.str()
 						}
 						// Comment, CDATA
 						mut next_two := [u8(0), 0]
@@ -676,11 +685,13 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 							return error('Invalid XML. Incomplete node end.')
 						}
 
-						mut ending_chars := name.bytes()
-						ending_chars << `>`
-
-						if node_end_buffer != ending_chars {
+						if node_end_buffer[name.len] != `>` {
 							return error('XML node <${name}> not closed.')
+						}
+						for i, byte in name {
+							if node_end_buffer[i] != byte {
+								return error('XML node <${name}> not closed.')
+							}
 						}
 
 						append_text_run(mut children, mut pending, mut inner_contents, entities)!
@@ -738,8 +749,14 @@ fn parse_node_with_entities(first_char u8, entities map[string]string, mut reade
 
 	tag_contents := contents.str().trim_space()
 
-	parts := tag_contents.split_any(' \t\r\n')
-	name := if parts.len > 0 { parts[0].trim_right('/') } else { '' }
+	mut name_end := 0
+	for name_end < tag_contents.len && tag_contents[name_end] !in [` `, `\t`, `\r`, `\n`] {
+		name_end++
+	}
+	for name_end > 0 && tag_contents[name_end - 1] == `/` {
+		name_end--
+	}
+	name := tag_contents[..name_end]
 	if name == '' {
 		return error('XML node is missing name.')
 	}
@@ -789,10 +806,16 @@ pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 		}
 	}
 
-	mut entities := default_entities.clone()
+	// Borrow the read-only defaults until a DTD entity requires a private map.
+	mut entities := unsafe { default_entities }
+	mut owns_entities := false
 	if prolog.doctype.dtd is DocumentTypeDefinition {
 		for item in prolog.doctype.dtd.list {
 			if item is DTDEntity {
+				if !owns_entities {
+					entities = default_entities.clone()
+					owns_entities = true
+				}
 				entities[item.name] = item.value
 			}
 		}

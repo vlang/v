@@ -36,7 +36,7 @@ mut:
 	level  int
 	prefix string
 
-	output strings.Builder = strings.new_builder(2048)
+	output strings.Builder = strings.new_builder(128)
 }
 
 // encode encodes a value as JSON, or JSON5 with `json5: true`.
@@ -467,7 +467,8 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 				unsafe { key.free() }
 			}
 		}
-		unsafe { source_keys.free() }
+		raw_source_keys := unsafe { &array(&source_keys) }
+		unsafe { raw_source_keys.free() }
 	}
 	mut keys := []EncoderMapKey[K]{cap: val.len}
 	defer {

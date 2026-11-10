@@ -3,6 +3,7 @@ module main
 import net.http
 import json2
 import os
+import test_utils
 
 const srv_original_dir = os.getwd()
 const srv_root = os.join_path(os.vtmp_dir(), 'vpm_server_tests')
@@ -24,24 +25,14 @@ fn srv_info(name string, version string, checksum string) ModuleInfo {
 struct RunningRegistry {
 mut:
 	base   string
-	server &http.Server
+	server test_utils.MockHttpServer
 }
 
 fn start_registry(r Registry) !RunningRegistry {
-	// The server is held by reference: `listen_and_serve` takes it by `mut`, and
-	// spawning a method on a by-value receiver does not compile.
-	mut srv := &http.Server{
-		addr:                 ':0'
-		handler:              RegistryHandler{
-			registry: r
-		}
-		show_startup_message: false
-	}
-	spawn srv.listen_and_serve()
-	srv.wait_till_running()!
+	server := test_utils.start_mock_http_server(RegistryHandler{ registry: r })!
 	return RunningRegistry{
-		base:   'http://127.0.0.1:${srv.listener.addr()!.port()!}'
-		server: srv
+		base:   server.base_url
+		server: server
 	}
 }
 

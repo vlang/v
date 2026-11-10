@@ -19,24 +19,46 @@ pub enum FileBufferMode {
 // Note: f.setvbuf() may be used only after opening a file stream, and before any other operations have been performed on it.
 @[unsafe]
 pub fn (mut f File) setvbuf(buffer &char, mode FileBufferMode, size uint) int {
-	return C.setvbuf(f.cfile, buffer, int(mode), size)
+	$if freestanding || syscalls {
+		// stdio buffering does not exist without libc; writes go straight to
+		// the file descriptor
+		return 0
+	}
+	$if !freestanding && !syscalls {
+		return C.setvbuf(f.cfile, buffer, int(mode), size)
+	}
 }
 
 // set_buffer sets the buffer for the file, and the file buffering mode (see also os.FileBufferMode).
 // Unlike File.setvbuf, it allows you to pass an existing V []u8 array directly.
 // Note: f.set_buffer() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_buffer(mut buffer []u8, mode FileBufferMode) int {
-	return unsafe { f.setvbuf(buffer.data, mode, uint(buffer.len)) }
+	$if freestanding || syscalls {
+		return 0
+	}
+	$if !freestanding && !syscalls {
+		return unsafe { f.setvbuf(buffer.data, mode, uint(buffer.len)) }
+	}
 }
 
 // set_line_buffered sets the file buffering mode to FileBufferMode.line_buffered.
 // Note: f.set_line_buffered() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_line_buffered() {
-	unsafe { f.setvbuf(&char(nil), .line_buffered, uint(0)) }
+	$if freestanding || syscalls {
+		return
+	}
+	$if !freestanding && !syscalls {
+		unsafe { f.setvbuf(&char(nil), .line_buffered, uint(0)) }
+	}
 }
 
 // set_unbuffered sets the file buffering mode to FileBufferMode.not_buffered.
 // Note: f.set_unbuffered() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_unbuffered() {
-	unsafe { f.setvbuf(&char(nil), .not_buffered, uint(0)) }
+	$if freestanding || syscalls {
+		return
+	}
+	$if !freestanding && !syscalls {
+		unsafe { f.setvbuf(&char(nil), .not_buffered, uint(0)) }
+	}
 }

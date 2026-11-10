@@ -50,6 +50,16 @@ fn test_process_pipe_descriptors_reach_eof_without_close() {
 		child.stdin_write('hello\n')
 		child.wait()
 		assert child.code == 0
+		// Check after the child exits so a failing assertion cannot strand its read.
+		$if linux {
+			$if !freestanding && !syscalls {
+				$if !vlibc ? {
+					for fd in fds {
+						assert C.fcntl(fd, C.F_GETFD) & C.FD_CLOEXEC != 0
+					}
+				}
+			}
+		}
 		for fd in fds[1..] {
 			flags := C.fcntl(fd, C.F_GETFL)
 			assert C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK) == 0

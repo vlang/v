@@ -107,6 +107,11 @@ fn test_tcc_with_prod_requested_finds_tinycc_under_another_name() {
 	}
 	alias_path := os.join_path(root, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	// Shared TinyCC builds need their adjacent DLL even to print the version.
+	libtcc := os.join_path(os.dir(bundled), 'libtcc.dll')
+	if os.is_file(libtcc) {
+		os.cp(libtcc, os.join_path(root, 'libtcc.dll')) or { panic(err) }
+	}
 	assert tcc_with_prod_requested(['-prod', '-cc', alias_path])
 	assert !tcc_with_prod_requested(['-cc', alias_path])
 }

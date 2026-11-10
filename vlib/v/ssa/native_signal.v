@@ -6,13 +6,13 @@ fn (mut b Builder) register_native_signal_helpers() {
 	b.register_extern('sigaction', b.i32_type, [b.i32_type, ptr_i8, ptr_i8])
 	b.register_extern('raise', b.i32_type, [b.i32_type])
 	mut action_type := TypeID(0)
-	$if linux {
+	if b.m.target.is_linux() {
 		action_type = b.m.type_store.register(Type{
 			kind:        .struct_t
 			fields:      [ptr_i8, b.m.type_store.get_array(b.u64_type, 16), b.i32_type, ptr_i8]
 			field_names: ['handler', 'mask', 'flags', 'restorer']
 		})
-	} $else {
+	} else {
 		action_type = b.m.type_store.register(Type{
 			kind:        .struct_t
 			fields:      [ptr_i8, b.u32_type, b.i32_type]
@@ -20,13 +20,13 @@ fn (mut b Builder) register_native_signal_helpers() {
 		})
 	}
 	mut stack_type := TypeID(0)
-	$if linux {
+	if b.m.target.is_linux() {
 		stack_type = b.m.type_store.register(Type{
 			kind:        .struct_t
 			fields:      [ptr_i8, b.i32_type, b.u64_type]
 			field_names: ['pointer', 'flags', 'size']
 		})
-	} $else {
+	} else {
 		stack_type = b.m.type_store.register(Type{
 			kind:        .struct_t
 			fields:      [ptr_i8, b.u64_type, b.i32_type]
@@ -65,13 +65,13 @@ fn (mut b Builder) generate_native_signal_install(func_id int, fallback_addr Val
 	install := b.m.add_block(func_id, 'signal_install_handlers')
 	b.block_instr3(.br, entry, b.void_type, query_ok, ValueID(check_stack), ValueID(install))
 	mut flags_index := 2
-	$if linux {
+	if b.m.target.is_linux() {
 		flags_index = 1
 	}
 	flags_ptr := b.block_struct_field_ptr(check_stack, old_stack, stack_type, flags_index)
 	flags := b.block_instr1(.load, check_stack, b.i32_type, flags_ptr)
 	mut disabled_value := '4'
-	$if linux {
+	if b.m.target.is_linux() {
 		disabled_value = '2'
 	}
 	disabled_mask := b.m.get_or_add_const(b.i32_type, disabled_value)
@@ -86,12 +86,12 @@ fn (mut b Builder) generate_native_signal_install(func_id int, fallback_addr Val
 	b.block_instr3(.br, allocate_stack, b.void_type, allocated, ValueID(register_stack), ValueID(install))
 	new_stack := b.block_instr0(.alloca, register_stack, b.m.type_store.get_ptr(stack_type))
 	new_stack_raw := b.block_instr1(.bitcast, register_stack, ptr_i8, new_stack)
-	$if linux {
+	if b.m.target.is_linux() {
 		for i, value in [stack_memory, zero, stack_size] {
 			field := b.block_struct_field_ptr(register_stack, new_stack, stack_type, i)
 			b.block_instr2(.store, register_stack, b.void_type, value, field)
 		}
-	} $else {
+	} else {
 		for i, value in [stack_memory, stack_size, zero] {
 			field := b.block_struct_field_ptr(register_stack, new_stack, stack_type, i)
 			b.block_instr2(.store, register_stack, b.void_type, value, field)
@@ -135,7 +135,7 @@ fn (mut b Builder) generate_native_signal_install_one(func_id int, action_type T
 	// Darwin keeps custom and ignored actions under kernel control, including one-shot handlers.
 	b.block_instr3(.br, check_default, b.void_type, is_default, ValueID(install), ValueID(done))
 	new_action := b.block_instr0(.alloca, install, b.m.type_store.get_ptr(action_type))
-	$if linux {
+	if b.m.target.is_linux() {
 		previous_mask_ptr := b.block_struct_field_ptr(install, previous, action_type, 1)
 		previous_mask := b.block_instr1(.load, install,
 			b.m.type_store.types[action_type].fields[1], previous_mask_ptr)
@@ -149,7 +149,7 @@ fn (mut b Builder) generate_native_signal_install_one(func_id int, action_type T
 		}
 		restorer_ptr := b.block_struct_field_ptr(install, new_action, action_type, 3)
 		b.block_instr2(.store, install, b.void_type, nil_ptr, restorer_ptr)
-	} $else {
+	} else {
 		previous_mask_ptr := b.block_struct_field_ptr(install, previous, action_type, 1)
 		previous_mask := b.block_instr1(.load, install, b.u32_type, previous_mask_ptr)
 		previous_flags_ptr := b.block_struct_field_ptr(install, previous, action_type, 2)

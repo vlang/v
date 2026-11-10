@@ -734,6 +734,20 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				return array_type
 			}
+			if init_open == start + 1 && init_open + 2 == end && tokens[init_open + 1].tok == .rcbr
+				&& fastc_scalar_zero_literal_type(tokens[start].lit) != none {
+				return flat.source_type_id(fastc_primitive_c_type(tokens[start].lit) or { tokens[start].lit })
+			}
+			if tokens[start].tok == .name && tokens[start].lit == 'map' {
+				// `map[K]V{...}`, with or without entries.
+				if close := fastc_matching_delimiter_before(tokens, init_open, end, .lcbr, .rcbr) {
+					if close == end - 1 {
+						if map_type := g.map_initializer_type(tokens[start..init_open]) {
+							return map_type
+						}
+					}
+				}
+			}
 			break
 		}
 	}
@@ -845,9 +859,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					}
 				}
 				function_key := g.function_key_for_call(tokens, call_name_index)
-				signature := if function_key in g.functions {
-					g.functions[function_key]
-				} else {
+				signature := g.functions[function_key] or {
 					g.mono_functions[function_key] or { FastcFunctionSignature{} }
 				}
 				if signature.return_type != 0 {
@@ -927,12 +939,15 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if receiver_type == u32(0) {
 			continue
 		}
-		if tokens[i].lit in ['map', 'filter', 'any', 'all', 'count'] && flat.source_type_query(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type))).has(.c_array_prefix) {
+		if tokens[i].lit in ['map', 'filter', 'any', 'all', 'count'] && (flat.source_type_query(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type))).has(.c_array_prefix) || flat.source_type_query(fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))).has(.c_fixed_array_prefix)) {
 			// The magic closure methods change the result type: `filter` keeps the array,
 			// `count` is an int, `any`/`all` are bools, and `map` yields an array of the
 			// closure's element type (inferred with `it` bound to the element).
 			method := tokens[i].lit
 			if method == 'filter' {
+				if flat.source_type_query(fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))).has(.c_fixed_array_prefix) {
+					return fastc_array_c_type_id(g.array_element_type(receiver_type) or { return u32(0) })
+				}
 				return fastc_trim_pointer_type(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type)))
 			}
 			if method == 'count' {
@@ -1035,6 +1050,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
 			return flat.source_type_string
+		}
+		if tokens[i].lit == 'type_idx' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
+			return flat.source_type_int
 		}
 	}
 	if end - start >= 3 && tokens[end - 2].tok == .dot && tokens[end - 1].tok == .name {
@@ -1157,6 +1175,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					&& g.is_reference_local_base(tokens[start..open_index], base_type) {
 					// Slicing a `mut` string local copies bytes of the string it refers to.
 					return flat.source_type_syntax(base_type).c_pointer_base()
+				}
+				if flat.source_type_query(base_layout_id).has(.c_array_prefix) {
+					// Slicing an array behind a pointer (a `mut` parameter) yields an array value.
+					return fastc_trim_pointer_type(base_type)
 				}
 				return base_type
 			}
@@ -1632,6 +1654,9 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 
 						current_type = fastc_array_c_type_id(fastc_normalize_inferred_type(element))
 					}
+				} else if flat.source_type_query(current_layout_id).has(.c_array_prefix) {
+					// Slicing an array behind a pointer yields an array value.
+					current_type = fastc_trim_pointer_type(current_type)
 				}
 			} else if current_layout_id == flat.source_type_string || g.is_string_layout(current_type) {
 				current_type = g.indexed_string_type(current_type, tokens[start..index])
@@ -2195,6 +2220,26 @@ fn fastc_clean_decimal_literal_is_type_sensitive(clean string) bool {
 	return false
 }
 
+// fastc_clean_decimal_literal_fits_i64 reports whether the decimal digits `clean`
+// are at most the largest i64.
+fn fastc_clean_decimal_literal_fits_i64(clean string) bool {
+	mut first_digit := 0
+	for first_digit < clean.len && clean[first_digit] == `0` {
+		first_digit++
+	}
+	digits_len := clean.len - first_digit
+	i64_max_literal := '9223372036854775807'
+	if digits_len != i64_max_literal.len {
+		return digits_len < i64_max_literal.len
+	}
+	for i in 0 .. digits_len {
+		if clean[first_digit + i] != i64_max_literal[i] {
+			return clean[first_digit + i] < i64_max_literal[i]
+		}
+	}
+	return true
+}
+
 @[inline]
 fn fastc_number_without_separators(literal string) string {
 	if literal.index_u8(`_`) < 0 {
@@ -2241,7 +2286,7 @@ fn fastc_number_is_float(number string) bool {
 // A V integer literal is an `int`, the platform's width; a bare C literal is a 32-bit
 // `int`, so `1 << 51` would overflow.
 fn fastc_shift_operand_number(number string) string {
-	if number.ends_with('ULL') || fastc_number_is_float(number) {
+	if number.ends_with('LL') || fastc_number_is_float(number) {
 		return number
 	}
 	return '((${fastc_output_c_type('int')})${number})'
@@ -2256,7 +2301,12 @@ fn fastc_c_selfhost_number(literal string) string {
 			''
 		}}'
 	}
-	if fastc_clean_decimal_literal_is_type_sensitive(clean) || fastc_clean_nondecimal_literal_is_type_sensitive(clean) {
+	if fastc_clean_decimal_literal_is_type_sensitive(clean) {
+		// A V decimal literal is signed: `-2147483648` must not negate an unsigned
+		// value. Only one beyond the i64 range is a u64.
+		return clean + if fastc_clean_decimal_literal_fits_i64(clean) { 'LL' } else { 'ULL' }
+	}
+	if fastc_clean_nondecimal_literal_is_type_sensitive(clean) {
 		return clean + 'ULL'
 	}
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {

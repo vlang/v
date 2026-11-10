@@ -5,6 +5,32 @@ fn test_ci_argv_uses_the_checkout_v() {
 	assert ci_argv(['./v2', '-o', 'v3'], '/vroot/v') == ['./v2', '-o', 'v3']
 }
 
+fn test_ci_argv_resolves_the_compiler_through_valgrind() {
+	compiler := '/checkout with spaces/v'
+	assert ci_argv(['valgrind', '--error-exitcode=1', 'v', '-o', 'v.c', 'cmd/v'], compiler) == [
+		'valgrind',
+		'--error-exitcode=1',
+		compiler,
+		'-o',
+		'v.c',
+		'cmd/v',
+	]
+	assert ci_argv(['env', 'VJOBS=1', 'valgrind', '--tool=memcheck', 'v', 'main.v'], compiler) == [
+		'env',
+		'VJOBS=1',
+		'valgrind',
+		'--tool=memcheck',
+		compiler,
+		'main.v',
+	]
+	assert ci_argv(['valgrind', '--log-file=v', './program', 'v'], compiler) == [
+		'valgrind',
+		'--log-file=v',
+		'./program',
+		'v',
+	]
+}
+
 fn test_ci_argv_runs_assignments_through_env() {
 	assert ci_argv(['VJOBS=1', 'v', 'test-self'], '/vroot/v') == ['env', 'VJOBS=1', '/vroot/v',
 		'test-self']

@@ -1,18 +1,12 @@
 name: Compiler process regressions
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'vlib/v/cmdexec/**'
-      - 'vlib/v/util/vflags/**'
-      - 'cmd/v/**'
-      - 'vlib/v/driver/**'
-      - '.github/workflows/process_regressions_ci.yml'
+  workflow_call:
+
   workflow_dispatch:
 
 concurrency:
-  group: process-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: process-regressions-process_regressions_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -26,13 +20,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            build: make
             v: ./v
-          - os: macos-14
-            build: make
+          - os: macos-15
             v: ./v
           - os: windows-2025
-            build: .\makev.bat -gcc
             v: ./v.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -44,9 +35,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V with the system C compiler
+      # A private Windows tool cache keeps nested 'v test' launches from
+      # rebuilding cmd/tools/vtest.exe over an executable another test is using.
+      - name: Prepare private tool cache (Windows)
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Prepare optimized V compiler
         id: build
-        run: ${{ matrix.build }}
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Check executable resolution
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v

@@ -1,0 +1,80 @@
+name: FastC CI
+
+# FastC (`-b fastc`) is an opt-in backend, so the platform workflows skip pushes that
+# change only FastC. This workflow covers it on those pushes instead: compiler_ci.yml
+# runs the FastC unit tests on Linux, and the jobs below cover macOS arm64 and Windows.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: fastc-fastc_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fastc-macos:
+    if: github.ref == 'refs/heads/master'
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      VFLAGS: -cc clang
+      VTEST_FAIL_FAST: '1'
+      # Three test workers fit the 3-CPU/7 GB Apple-silicon runners.
+      VJOBS: '3'
+      V_MACOS_V3_NO_FALLBACK: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        id: build
+        uses: ./.github/actions/setup-v
+      - name: FastC ARM64 condition regressions
+        run: ./v -d arm64 -silent test vlib/v/gen/fastc/if_condition_arm64_test.v
+      - name: Build and run hello world with -b fastc
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          # FastC always compiles with the bundled TinyCC and rejects `-cc`.
+          VFLAGS: ''
+        run: |
+          set -euo pipefail
+          ./v -b fastc -o "$RUNNER_TEMP/hello_fastc" examples/hello_world.v
+          output="$("$RUNNER_TEMP/hello_fastc")"
+          if [ "$output" != 'Hello, World!' ]; then
+            echo "::error::unexpected -b fastc hello world output: '$output'"
+            exit 1
+          fi
+      - name: FastC tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -silent test vlib/v/gen/fastc/ vlib/v/fastcdriver/
+
+  fastc-windows:
+    if: github.ref == 'refs/heads/master'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Build and run hello world with -b fastc
+        run: |
+          .\v.exe -b fastc -o hello_fastc.exe examples\hello_world.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "v -b fastc failed with exit code $LASTEXITCODE"
+          }
+          $output = (.\hello_fastc.exe | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "hello_fastc.exe failed with exit code $LASTEXITCODE"
+          }
+          if ($output -ne 'Hello, World!') {
+            throw "unexpected -b fastc hello world output: '$output'"
+          }

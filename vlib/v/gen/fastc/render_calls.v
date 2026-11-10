@@ -110,13 +110,15 @@ fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToke
 	if indexed := g.render_array_access_expression(members) {
 		return indexed
 	}
-	member_source := g.render_raw_expression_tokens(members) or { return none }
-	if method := g.render_method_call_expression(members, member_source) { return method }
-	source := g.render_member_receiver(members) or { return none }
-	return FastcRenderedExpression{
-		source: source
-		typ:    g.infer_expression_type(members) or { return none }
+	// Member reads materialize map receivers before their keys and preserve stored options.
+	if source := g.render_member_receiver(members) {
+		return FastcRenderedExpression{
+			source: source
+			typ:    g.infer_expression_type(members) or { return none }
+		}
 	}
+	member_source := g.render_raw_expression_tokens(members) or { return none }
+	return g.render_method_call_expression(members, member_source)
 }
 
 fn fastc_expression_has_pointer_type_sizeof(tokens []FastcExpressionToken) bool {
@@ -237,6 +239,9 @@ fn (g &Parser) typeof_display_name(typ_id u32) string {
 	}
 	if fastc_primitive_c_type_id(typ_id) != none {
 		return typ
+	}
+	if payload := fastc_typed_option_payload(typ_id) {
+		return '?' + g.typeof_display_name(payload)
 	}
 	if flat.source_type_query(typ_id).has(.c_array_prefix) {
 		if element := g.array_element_type(typ_id) {
@@ -380,6 +385,9 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			return none
 		}
 		c_type = (g.type_from_expression_tokens(tokens[type_start..i]) or { u32(0) })
+		if c_type == u32(0) && is_option_cast {
+			c_type = g.fixed_array_type_from_expression_tokens(tokens[type_start..i]) or { u32(0) }
+		}
 		if c_type == u32(0) && i == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name && tokens[2].lit.len > 0 && tokens[2].lit[0].is_capital() && 'C.${tokens[2].lit}' !in g.functions {
 			c_type = flat.source_type_id(tokens[2].lit)
 		}
@@ -419,6 +427,22 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 				g.option_success_expression(flat.source_type_id('Option'), c_type, inner)
 			}
 			typ:    fastc_type_option
+		}
+	}
+	// `&Sum(variant)` first constructs a sum carrier, then gives that computed
+	// value stable storage. Reinterpreting a struct variant as Sum* is invalid C.
+	if g.selfhost && tokens[0].tok == .amp && flat.source_type_syntax(c_type).c_pointer_depth() == 1 {
+		base := fastc_trim_pointer_type(c_type)
+		if flat.source_type_name(base) in g.sum_types {
+			inner_type := g.infer_expression_type(inner_tokens) or { u32(0) }
+			if inner_type != 0 && !fastc_is_pointer_type(inner_type)
+				&& (inner_type == base || g.sumtype_has_variant(base, fastc_normalize_inferred_type(inner_type))) {
+				boxed := g.render_cast_expression(tokens[1..]) or { return none }
+				return FastcRenderedExpression{
+					source: g.value_address_expression(base, boxed.source, []FastcExpressionToken{})
+					typ:    c_type
+				}
+			}
 		}
 	}
 	// A conversion into a boxed sum type (`Expr(EmptyExpr(0))`) is a box, not a C cast: the
@@ -900,7 +924,8 @@ fn (g &Parser) resolve_method(receiver_type u32, name string) (string, []string)
 		}
 	}
 	layout_type := flat.source_type_name(fastc_trim_pointer_type(receiver_type))
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return direct, []string{} }
+	for field in fields {
 		if !field.name.starts_with('__embedded_') {
 			continue
 		}
@@ -1011,6 +1036,12 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 		// A call operand (`Stmt(f(node.arr[0]))`): the raw streamed text leaves the call's
 		// arguments un-lowered (e.g. an array index on a match-cast member stays an invalid C
 		// `[0]` on the array header), so render it through the argument path.
+		g.render_call_argument_expression(inner_tokens, actual_type) or {
+			rendered_expression[prefix.len..rendered_expression.len - 2]
+		}
+	} else if fastc_expression_tokens_contain(inner_tokens, .lsbr) {
+		// An indexed operand (`Shape(shapes[i])`): the raw streamed text keeps the V index
+		// on the array header, which is not valid C, so lower it through the argument path.
 		g.render_call_argument_expression(inner_tokens, actual_type) or {
 			rendered_expression[prefix.len..rendered_expression.len - 2]
 		}

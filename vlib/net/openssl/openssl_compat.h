@@ -5,6 +5,83 @@
 #include <openssl/pem.h>
 #include <openssl/x509_vfy.h>
 
+#if defined(__linux__)
+#include <sys/socket.h>
+
+/* Keep OpenSSL's socket ownership, reads and controls, but suppress SIGPIPE
+ * per send rather than changing the application's process-wide handler. */
+static BIO_METHOD *v_net_openssl_socket_method = NULL;
+
+static int v_net_openssl_socket_write(BIO *bio, const char *data, int len) {
+	BIO_clear_retry_flags(bio);
+	int result = (int)send(BIO_get_fd(bio, NULL), data, len, MSG_NOSIGNAL);
+	if (result <= 0 && BIO_sock_should_retry(result)) {
+		BIO_set_retry_write(bio);
+	}
+	return result;
+}
+
+static int v_net_openssl_socket_puts(BIO *bio, const char *data) {
+	return v_net_openssl_socket_write(bio, data, (int)strlen(data));
+}
+
+static int v_net_openssl_init_socket_bio(void) {
+	if (v_net_openssl_socket_method != NULL) {
+		return 1;
+	}
+#if (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL) \
+	|| (!defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER < 0x10100000L)
+	static BIO_METHOD method;
+	method = *BIO_s_socket();
+	method.bwrite = v_net_openssl_socket_write;
+	method.bputs = v_net_openssl_socket_puts;
+	v_net_openssl_socket_method = &method;
+#else
+	const BIO_METHOD *socket_method = BIO_s_socket();
+	BIO_METHOD *method = BIO_meth_new(BIO_TYPE_SOCKET, "V socket");
+	if (method == NULL) {
+		return 0;
+	}
+	if (!BIO_meth_set_write(method, v_net_openssl_socket_write)
+			|| !BIO_meth_set_puts(method, v_net_openssl_socket_puts)
+			|| !BIO_meth_set_read(method, BIO_meth_get_read(socket_method))
+			|| !BIO_meth_set_ctrl(method, BIO_meth_get_ctrl(socket_method))
+			|| !BIO_meth_set_create(method, BIO_meth_get_create(socket_method))
+			|| !BIO_meth_set_destroy(method, BIO_meth_get_destroy(socket_method))) {
+		BIO_meth_free(method);
+		return 0;
+	}
+	/* Initialized once by the V module, before application threads start. */
+	v_net_openssl_socket_method = method;
+#endif
+	return 1;
+}
+#else
+static int v_net_openssl_init_socket_bio(void) {
+	return 1;
+}
+#endif
+
+static int v_net_openssl_SSL_set_fd(SSL *ssl, int fd) {
+#if defined(__linux__)
+	if (v_net_openssl_socket_method == NULL) {
+		return 0;
+	}
+	BIO *bio = BIO_new(v_net_openssl_socket_method);
+	if (bio == NULL) {
+		return 0;
+	}
+	if (BIO_set_fd(bio, fd, BIO_NOCLOSE) != 1) {
+		BIO_free(bio);
+		return 0;
+	}
+	SSL_set_bio(ssl, bio, bio);
+	return 1;
+#else
+	return SSL_set_fd(ssl, fd);
+#endif
+}
+
 static int v_net_openssl_pem_read_reached_eof(void) {
 	unsigned long err = ERR_peek_last_error();
 	if (err == 0) {
@@ -302,14 +379,14 @@ static int v_net_openssl_init_ssl(void) {
 	if (SSL_library_init() != 1) {
 		return 0;
 	}
-	return v_net_openssl_init_alpn_select_state_index();
+	return v_net_openssl_init_alpn_select_state_index() && v_net_openssl_init_socket_bio();
 }
 #else
 static int v_net_openssl_init_ssl(void) {
 	if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0) != 1) {
 		return 0;
 	}
-	return v_net_openssl_init_alpn_select_state_index();
+	return v_net_openssl_init_alpn_select_state_index() && v_net_openssl_init_socket_bio();
 }
 #endif
 

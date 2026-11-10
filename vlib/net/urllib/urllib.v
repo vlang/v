@@ -1015,10 +1015,12 @@ pub fn split_host_port(hostport string) (string, string) {
 
 // valid_userinfo reports whether s is a valid userinfo string per RFC 3986
 // Section 3.2.1:
+// ```
 // userinfo    = *( unreserved / pct-encoded / sub-delims / ':' )
 // unreserved  = ALPHA / DIGIT / '-' / '.' / '_' / '~'
 // sub-delims  = '!' / '$' / '&' / ''' / '(' / ')'
-// / '*' / '+' / ',' / ';' / '='
+//             / '*' / '+' / ',' / ';' / '='
+// ```
 //
 // It doesn't validate pct-encoded. The caller does that via fn unescape.
 pub fn valid_userinfo(s string) bool {
@@ -1070,4 +1072,16 @@ fn unhex(c u8) u8 {
 		return c - `A` + 10
 	}
 	return 0
+}
+
+// join_host_port joins host and port into a network address of the form
+// `host:port`. The colon is retained when port is empty. IPv6 addresses are
+// bracketed, and an already bracketed host is preserved. No validation or
+// service-name resolution is performed.
+pub fn join_host_port(host string, port string) string {
+	mut h := host
+	if h.contains(':') && !h.starts_with('[') {
+		h = '[' + h + ']'
+	}
+	return h + ':' + port
 }

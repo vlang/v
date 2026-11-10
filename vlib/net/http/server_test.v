@@ -2,6 +2,7 @@
 import log
 import net
 import net.http
+import io
 import time
 
 const atimeout = 500 * time.millisecond
@@ -671,6 +672,62 @@ fn test_server_max_keep_alive_requests() {
 	} else {
 		assert false, 'expected KeepAliveHandler, got ${typeof(server.handler).name}'
 	}
+}
+
+struct RequestBodyEchoHandler {}
+
+fn (mut handler RequestBodyEchoHandler) handle(req http.Request) http.Response {
+	return http.Response{
+		body: req.data
+	}
+}
+
+fn test_server_rejects_oversized_http1_body_before_handler() {
+	mut server := &http.Server{
+		accept_timeout:              atimeout
+		read_timeout:                5 * time.second
+		worker_num:                  1
+		max_http1_request_body_size: 4
+		handler:                     RequestBodyEchoHandler{}
+		addr:                        '127.0.0.1:18204'
+		show_startup_message:        false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running()!
+
+	mut allowed_conn := net.dial_tcp('127.0.0.1:18204')!
+	allowed_conn.set_read_timeout(5 * time.second)
+	allowed_conn.write_string('POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest')!
+	allowed_response := read_http_response(mut allowed_conn)!
+	assert allowed_response.starts_with('HTTP/1.1 200 OK\r\n')
+	assert allowed_response.ends_with('test')
+	allowed_conn.close() or {}
+
+	mut oversized_conn := net.dial_tcp('127.0.0.1:18204')!
+	oversized_conn.set_read_timeout(5 * time.second)
+	oversized_conn.write_string('POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n')!
+	oversized_response := read_http_response(mut oversized_conn)!
+	assert oversized_response.starts_with('HTTP/1.1 413 Request Entity Too Large\r\n')
+	assert oversized_response.to_lower().contains('content-length: 0\r\n')
+	assert oversized_response.to_lower().contains('connection: close\r\n')
+	mut extra := []u8{len: 1}
+	if n := oversized_conn.read(mut extra) {
+		assert n == 0, 'server kept an oversized request connection open'
+	} else {
+		assert err is io.Eof
+	}
+	oversized_conn.close() or {}
+
+	mut malformed_conn := net.dial_tcp('127.0.0.1:18204')!
+	malformed_conn.set_read_timeout(5 * time.second)
+	malformed_conn.write_string('POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\n\r\n')!
+	malformed_response := read_http_response(mut malformed_conn)!
+	assert malformed_response.starts_with('HTTP/1.1 400 Bad Request\r\n')
+	assert malformed_response.to_lower().contains('connection: close\r\n')
+	malformed_conn.close() or {}
+
+	server.stop()
+	t.wait()
 }
 
 fn read_http_response(mut conn net.TcpConn) !string {

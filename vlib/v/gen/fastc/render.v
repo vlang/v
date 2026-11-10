@@ -177,11 +177,22 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 			initializer := '(builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 			return FastcRenderedExpression{
 				source: if flat.source_type_query(map_type).has(.c_pointer_suffix) {
-					'((${flat.source_type_name(map_type)})${fastc_box_expression(flat.source_type_name(fastc_trim_pointer_type(map_type)), initializer)})'
+					'((${flat.source_type_name(map_type)})${fastc_heap_copy_expression(flat.source_type_name(fastc_trim_pointer_type(map_type)), initializer)})'
 				} else {
 					initializer
 				}
 				typ:    map_type
+			}
+		}
+	}
+	// A typed literal with entries, `map[K]V{key: value}`.
+	if literal_open > 0 && literal_open + 1 < tokens.len - 1 && tokens.last().tok == .rcbr
+		&& tokens[0].tok == .name && tokens[0].lit == 'map' {
+		if map_type := g.map_initializer_type(tokens[..literal_open]) {
+			if !flat.source_type_query(map_type).has(.c_pointer_suffix) {
+				if literal := g.render_map_literal_argument(tokens[literal_open..], map_type) {
+					return literal
+				}
 			}
 		}
 	}
@@ -878,7 +889,7 @@ fn (g &Parser) value_address_expression(value_type_source_id u32, expression str
 			|| (it.tok == .name && it.lit.contains('(')))
 	if needs_storage {
 		storage_type := fastc_output_c_type(value_type)
-		return '(${storage_type} *)${fastc_box_expression(storage_type, expression)}'
+		return '(${storage_type} *)${fastc_heap_copy_expression(storage_type, expression)}'
 	}
 	return '&(${expression})'
 }
@@ -990,7 +1001,7 @@ fn (g &Parser) print_value_string_expression(value string, value_type u32, value
 		} else {
 			'(${value}).data'
 		}
-		return '${helper}((${flat.source_type_name(element_type)} *)(${data_source}))'
+		return '${helper}((${w.collection_storage_type(element_type)} *)(${data_source}))'
 	}
 	return w.fastc_struct_field_str_expression(value, type_name_id)
 }
@@ -1044,7 +1055,7 @@ fn (g &Parser) render_struct_literal_with_defaults(c_type_source_id u32, layout_
 		'(${base_type}){0}'
 	}
 	result := if flat.source_type_query(c_type_source_id).has(.c_pointer_suffix) {
-		'(${c_type})v_fastc_interface_box(&__vf_sd, sizeof(${base_type}))'
+		'(${c_type})v_fastc_heap_copy(&__vf_sd, sizeof(${base_type}))'
 	} else {
 		'__vf_sd'
 	}
@@ -1079,7 +1090,7 @@ fn (g &Parser) render_empty_struct_initializer(c_type_source_id u32) string {
 	}
 	if rendered_fields.len == 0 {
 		if flat.source_type_query(c_type_source_id).has(.c_pointer_suffix) {
-			return '(${c_type})v_fastc_interface_box(&(${layout_type}){0}, sizeof(${layout_type}))'
+			return '(${c_type})v_fastc_heap_copy(&(${layout_type}){0}, sizeof(${layout_type}))'
 		}
 		return '(${c_type}){0}'
 	}
@@ -1104,7 +1115,7 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 	if !field.is_shared_pointer {
 		return value
 	}
-	return '({ ${field.typ_text()} __vf_shared_field_value = (${value}); (${field.typ_text()}*)v_fastc_interface_box(&__vf_shared_field_value, sizeof(${field.typ_text()})); })'
+	return '({ ${field.typ_text()} __vf_shared_field_value = (${value}); (${field.typ_text()}*)v_fastc_heap_copy(&__vf_shared_field_value, sizeof(${field.typ_text()})); })'
 }
 
 fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
@@ -1112,10 +1123,8 @@ fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
 		return false
 	}
 	layout_type := flat.source_type_name(fastc_trim_pointer_type(g.underlying_alias_type(c_type)))
-	if layout_type !in g.struct_field_info {
-		return false
-	}
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return false }
+	for field in fields {
 		if field.default_value != '' || field.typ == fastc_type_option {
 			return true
 		}
@@ -1385,7 +1394,9 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	if g.selfhost && operator == .assign && left_type in [fastc_type_option, fastc_type_result] && option_payload_type != u32(0) {
 		rhs_type := fastc_normalize_inferred_type(g.infer_expression_type(rhs_tokens) or { u32(0) })
 		if rhs_type !in [fastc_type_option, fastc_type_result] && fastc_typed_option_payload(rhs_type) == none {
-			if fastc_trim_pointer_type(rhs_type) == fastc_type_ierror {
+			// An `IError` stores an error, except into a `?IError` whose payload it is.
+			if fastc_trim_pointer_type(rhs_type) == fastc_type_ierror
+				&& fastc_trim_pointer_type(option_payload_type) != fastc_type_ierror {
 				right = '(__v_result){.err=${right}, .state=1}'
 			} else {
 				// `right` already holds the fully lowered RHS; for a narrowing boolean it
@@ -1910,10 +1921,25 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	}
 	if flat.source_type_query(left_layout_query_type_id).has(.c_fixed_array_prefix) {
 		length := fastc_fixed_array_length_id(left_layout_query_type_id) or { return none }
-		left_data := g.render_fixed_array_equality_data(left_tokens, left_type) or { return none }
-		right_data := g.render_fixed_array_equality_data(right_tokens, right_type) or {
-			return none
+		mut setup := ''
+		mut data := []string{}
+		for i, operand in [left_tokens, right_tokens] {
+			typ := if i == 0 { left_type } else { right_type }
+			if g.fixed_array_uses_raw_storage(operand) {
+				data << g.render_fixed_array_equality_data(operand, typ) or { return none }
+			} else {
+				name := if i == 0 {
+					'__vf_array_eq_left_value'
+				} else {
+					'__vf_array_eq_right_value'
+				}
+				value := g.render_call_argument_expression(operand, typ) or { return none }
+				setup += '${flat.source_type_name(typ)} ${name} = (${value}); '
+				data << name + if fastc_is_pointer_type(typ) { '->data' } else { '.data' }
+			}
 		}
+		left_data := data[0]
+		right_data := data[1]
 		element_comparison := if resolved_element == flat.source_type_string {
 			'builtin__string_eq(__vf_array_eq_left[__vf_array_eq_index], __vf_array_eq_right[__vf_array_eq_index])'
 		} else {
@@ -1921,7 +1947,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 		}
 		result := if operator == .ne { '!__vf_array_equal' } else { '__vf_array_equal' }
 		return FastcRenderedExpression{
-			source: '({ ${element_storage_type} *__vf_array_eq_left = (${element_storage_type} *)(${left_data}); ${element_storage_type} *__vf_array_eq_right = (${element_storage_type} *)(${right_data}); bool __vf_array_equal = true; for (int __vf_array_eq_index = 0; __vf_array_eq_index < ${length}; __vf_array_eq_index++) { if (!(${element_comparison})) { __vf_array_equal = false; break; } } ${result}; })'
+			source: '({ ${setup}${element_storage_type} *__vf_array_eq_left = (${element_storage_type} *)(${left_data}); ${element_storage_type} *__vf_array_eq_right = (${element_storage_type} *)(${right_data}); bool __vf_array_equal = true; for (int __vf_array_eq_index = 0; __vf_array_eq_index < ${length}; __vf_array_eq_index++) { if (!(${element_comparison})) { __vf_array_equal = false; break; } } ${result}; })'
 			typ:    flat.source_type_bool
 		}
 	}
@@ -3105,7 +3131,7 @@ fn (g &Parser) render_refined_enum_logical_expression(left_tokens []FastcExpress
 	} else {
 		return none
 	}
-	subject := fastc_c_identifier(local_name)
+	subject := fastc_c_value_identifier(local_name)
 	access := if flat.source_type_query(boxed_type).has(.c_pointer_suffix) { '->' } else { '.' }
 	type_test := '((${subject}${access}_typ) == __v_typeid_${flat.source_type_name(enum_type)})'
 	concrete := '*((${flat.source_type_name(enum_type)} *)${subject}${access}_object)'
@@ -3174,9 +3200,24 @@ fn (g &Parser) overloaded_stored_equality_source(left string, right string, typ 
 }
 
 fn (g &Parser) struct_equality_is_supported(typ u32, seen []u32) bool {
+	cacheable := seen.len == 0 && !isnil(g.type_descriptor_memo)
+	if cacheable {
+		if supported := g.type_descriptor_memo.equality_support[typ] { return supported }
+	}
 	mut visited := map[u32]bool{}
 	for previous in seen { visited[previous] = true }
-	return g.struct_equality_is_supported_visit(typ, mut visited)
+	supported := g.struct_equality_is_supported_visit(typ, mut visited)
+	// A recursive visit may assume an ancestor is supported to break a cycle.
+	// Only a complete root walk establishes an answer independent of that assumption.
+	if cacheable {
+		mut memo := g.type_descriptor_memo
+		memo.equality_support[typ] = supported
+		if supported {
+			// Every node reached by a successful complete walk is supported too.
+			for reached, _ in visited { memo.equality_support[reached] = true }
+		}
+	}
+	return supported
 }
 
 fn (g &Parser) struct_equality_is_supported_visit(typ u32, mut visited map[u32]bool) bool {
@@ -3463,8 +3504,18 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			right_tokens := tokens[i + 1..]
 			left_inferred_type := g.infer_expression_type(left_tokens) or { return none }
 			right_inferred_type := g.infer_expression_type(right_tokens) or { return none }
-			left_type := fastc_normalize_inferred_type(left_inferred_type)
-			right_type := fastc_normalize_inferred_type(right_inferred_type)
+			mut left_type := fastc_normalize_inferred_type(left_inferred_type)
+			mut right_type := fastc_normalize_inferred_type(right_inferred_type)
+			// A member narrowed to a struct variant reads through a pointer view, but
+			// `a.v == b.v` still compares the variant values.
+			left_view := g.narrowed_member_value_type(left_tokens)
+			right_view := g.narrowed_member_value_type(right_tokens)
+			if left_view != u32(0) {
+				left_type = left_view
+			}
+			if right_view != u32(0) {
+				right_type = right_view
+			}
 			if fastc_is_pointer_type(left_type) || fastc_is_pointer_type(right_type) {
 				return none
 			}
@@ -3509,8 +3560,14 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			if left_layout != right_layout || left_key !in g.declared_kinds || g.declared_kinds[left_key] != .struct_ || !g.struct_equality_is_supported(left_type, []u32{}) {
 				return none
 			}
-			left := g.render_comparison_operand(left_tokens, left_type) or { return none }
-			right := g.render_comparison_operand(right_tokens, right_type) or { return none }
+			mut left := g.render_comparison_operand(left_tokens, left_type) or { return none }
+			mut right := g.render_comparison_operand(right_tokens, right_type) or { return none }
+			if left_view != u32(0) {
+				left = '(*(${left}))'
+			}
+			if right_view != u32(0) {
+				right = '(*(${right}))'
+			}
 			equality := g.struct_equality_source('__vf_eq_left', '__vf_eq_right', left_type, []u32{}, 0)
 			result := if item.tok == .ne { '!(${equality})' } else { equality }
 			return FastcRenderedExpression{
@@ -3520,6 +3577,22 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 		}
 	}
 	return none
+}
+
+// narrowed_member_value_type returns the value variant type of a member path narrowed to a
+// struct variant, whose view is a pointer to the boxed payload, or 0.
+fn (g &Parser) narrowed_member_value_type(tokens []FastcExpressionToken) u32 {
+	path := fastc_indexed_member_chain_path(tokens) or { return u32(0) }
+	cast := g.member_smartcasts[path] or { return u32(0) }
+	value_type := if cast.value_type != u32(0) {
+		cast.value_type
+	} else {
+		fastc_trim_pointer_type(cast.typ)
+	}
+	if !fastc_is_pointer_type(cast.typ) || fastc_is_pointer_type(value_type) {
+		return u32(0)
+	}
+	return value_type
 }
 
 // render_sum_type_equality lowers `left == SumType(operand)` (both of sum type
@@ -4800,7 +4873,7 @@ fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToke
 		return none
 	}
 	if !is_scalar && !g.is_plain_aggregate_value_type(expected_type) { return none }
-	return if local.c_name != '' { local.c_name } else { fastc_c_identifier(item.lit) }
+	return if local.c_name != '' { local.c_name } else { fastc_c_value_identifier(item.lit) }
 }
 
 // render_selfhost_plain_member_call_argument preserves the ordinary member
@@ -5267,7 +5340,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		// address of a statement-expression local would immediately dangle.
 		iface_type := fastc_trim_pointer_type(expected_type_source_id)
 		boxed := g.interface_value_expression(iface_type, actual_type, rendered)
-		return '({ ${flat.source_type_name(iface_type)} __vf_iface_ref = ${boxed}; (${flat.source_type_name(iface_type)} *)v_fastc_interface_box(&__vf_iface_ref, sizeof(${flat.source_type_name(iface_type)})); })'
+		return '({ ${flat.source_type_name(iface_type)} __vf_iface_ref = ${boxed}; (${flat.source_type_name(iface_type)} *)v_fastc_heap_copy(&__vf_iface_ref, sizeof(${flat.source_type_name(iface_type)})); })'
 	}
 	if g.should_box_variant(expected_type_source_id, actual_type) {
 		return g.interface_value_expression(expected_type_source_id, actual_type, rendered)
@@ -5443,12 +5516,8 @@ fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?st
 		return none
 	}
 	method_key, _ := g.resolve_method(receiver_type, tokens.last().lit)
-	signature := if method_key in g.functions {
-		g.functions[method_key]
-	} else if method_key in g.mono_functions {
-		g.mono_functions[method_key]
-	} else {
-		return none
+	signature := g.functions[method_key] or {
+		g.mono_functions[method_key] or { return none }
 	}
 	if signature.parameter_types.ids.len == 0 {
 		return none
@@ -5608,6 +5677,17 @@ fn (g &Parser) sumtype_has_variant(sum_type u32, variant u32) bool {
 // no primitive implementers, so primitives are only boxed for sum types).
 fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 	if actual_type == 0 || fastc_is_pointer_type(expected_type) || !g.is_boxed_type(expected_type) {
+		return false
+	}
+	// An Option or Result wraps a value; only a declared option variant is boxed as one.
+	unwrapped := fastc_trim_pointer_type(fastc_normalize_inferred_type(actual_type))
+	if unwrapped in [fastc_type_option, fastc_type_result]
+		|| fastc_typed_option_payload(unwrapped) != none {
+		return g.sumtype_has_variant(expected_type, unwrapped)
+	}
+	if unwrapped == fastc_type_multi_return {
+		// The values of `return match x { a { one, two } }` are a tuple, whatever its
+		// first component's type is.
 		return false
 	}
 	resolved_actual := g.underlying_alias_type(actual_type)
@@ -5774,7 +5854,7 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 	if flat.source_type_query(map_type).has(.c_pointer_suffix) {
 		map_source = '*(${map_source})'
 	}
-	key_source := g.render_membership_candidate(lookup_tokens[open + 1..lookup_tokens.len - 1], key_type) or { return none }
+	key_source := g.render_call_argument_expression(lookup_tokens[open + 1..lookup_tokens.len - 1], key_type) or { return none }
 	stored_payload := fastc_typed_option_payload(value_type) or { u32(0) }
 	option_value_type := if address_of_value {
 		fastc_with_pointer_depth(value_type, 1)
@@ -7065,7 +7145,11 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					'&(${source})'
 				}
 				storage := g.collection_storage_type(value_type)
-				missing := g.map_lookup_missing_value_expression(value_type)
+				missing := if fastc_typed_option_payload(value_type) != none {
+					'(${storage}){.state=2}'
+				} else {
+					g.map_lookup_missing_value_expression(value_type)
+				}
 				map_value := if fastc_is_pointer_type(current_type) {
 					'*(${source})'
 				} else {

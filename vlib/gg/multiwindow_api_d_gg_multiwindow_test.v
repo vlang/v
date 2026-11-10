@@ -358,6 +358,7 @@ struct X11OffscreenReadbackTestState {
 mut:
 	image                    WindowImageId
 	attachments              WindowAttachmentsId
+	pipeline                 WindowSglPipelineId
 	readback                 WindowReadbackId
 	expected_submitted_frame u64
 	pending_after_request    bool
@@ -423,6 +424,15 @@ fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_availa
 					state.attachments = resources.make_attachments(WindowAttachmentsConfig{
 						colors: [state.image]
 					})!
+					mut recipe := gfx.PipelineDesc{
+						depth:        gfx.DepthState{
+							pixel_format:  .depth
+							write_enabled: true
+						}
+						sample_count: 4
+					}
+					recipe.colors[0].pixel_format = .bgra8
+					state.pipeline = resources.make_sgl_pipeline(&recipe)!
 				})!
 			}
 			frame_fn:    fn [mut state] (mut context WindowContext) ! {
@@ -433,8 +443,9 @@ fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_availa
 				context.with_offscreen_sgl(WindowOffscreenPassConfig{
 					attachments: state.attachments
 					action:      gfx.create_clear_pass_action(0, 0, 0, 1)
-				}, fn (mut drawing WindowSglContext) ! {
+				}, fn [state] (mut drawing WindowSglContext) ! {
 					drawing.defaults()
+					assert_x11_offscreen_pipeline_formats(drawing)
 					drawing.matrix_mode_projection()
 					drawing.load_identity()
 					drawing.ortho(0, 4, 4, 0, -1, 1)
@@ -443,10 +454,17 @@ fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_availa
 					drawing.v2f_c4b(2, 0, 255, 0, 0, 255)
 					drawing.v2f_c4b(2, 2, 255, 0, 0, 255)
 					drawing.v2f_c4b(0, 2, 255, 0, 0, 255)
+					drawing.end()
+					drawing.load_pipeline(state.pipeline)!
+					assert_x11_offscreen_pipeline_formats(drawing)
+					drawing.begin_quads()
 					drawing.v2f_c4b(2, 0, 0, 255, 0, 255)
 					drawing.v2f_c4b(4, 0, 0, 255, 0, 255)
 					drawing.v2f_c4b(4, 1, 0, 255, 0, 255)
 					drawing.v2f_c4b(2, 1, 0, 255, 0, 255)
+					drawing.end()
+					drawing.load_default_pipeline()
+					drawing.begin_quads()
 					drawing.v2f_c4b(2, 1, 255, 255, 0, 255)
 					drawing.v2f_c4b(4, 1, 255, 255, 0, 255)
 					drawing.v2f_c4b(4, 2, 255, 255, 0, 255)
@@ -475,6 +493,7 @@ fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_availa
 			}
 			cleanup_fn:  fn [mut state] (mut context WindowCleanupContext) ! {
 				context.with_resources(fn [mut state] (mut resources WindowResourceContext) ! {
+					resources.retire_sgl_pipeline(state.pipeline)!
 					resources.retire_attachments(state.attachments)!
 					resources.retire_image(state.image)!
 				})!
@@ -513,6 +532,17 @@ fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_availa
 		}
 	} $else {
 		return
+	}
+}
+
+fn assert_x11_offscreen_pipeline_formats(drawing &WindowSglContext) {
+	for pipeline in drawing.r.current_pipeline().pips {
+		assert gfx.query_pipeline_state(pipeline) == .valid
+		desc := gfx.query_pipeline_desc(pipeline)
+		assert desc.colors[0].pixel_format == .rgba8
+		assert desc.depth.pixel_format == .none
+		assert !desc.depth.write_enabled
+		assert desc.sample_count == 1
 	}
 }
 

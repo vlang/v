@@ -1,59 +1,32 @@
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:25: notice: script mode started here
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:8: warning: module 'def (abc.def)' is imported but never used. Use `import def (abc.def) as _`, to silence this warning, or just remove the unused import line
     1 | import abc.def { const, global }
-      |                         ~~~~~~
+      |        ~~~~~~~
     2 | import xyz.qwe
     3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:18: error: import syntax error, please specify a valid fn or type name
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:8: warning: module 'qwe (xyz.qwe)' is imported but never used. Use `import qwe (xyz.qwe) as _`, to silence this warning, or just remove the unused import line
+    1 | import abc.def { const, global }
+    2 | import xyz.qwe
+      |        ~~~~~~~
+    3 |
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:1: builder error: cannot import module "abc.def" (not found)
+    1 | import abc.def { const, global }
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:18: error: module `abc.def` has no constant or function `const`
     1 | import abc.def { const, global }
       |                  ~~~~~
     2 | import xyz.qwe
     3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:23: error: cannot import multiple modules at a time
-    1 | import abc.def { const, global }
-      |                       ^
-    2 | import xyz.qwe
-    3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:25: error: `global` evaluated but not used
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:25: error: module `abc.def` has no constant or function `global`
     1 | import abc.def { const, global }
       |                         ~~~~~~
     2 | import xyz.qwe
     3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:32: error: invalid expression: unexpected token `}`
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:1: builder error: cannot import module "xyz.qwe" (not found)
     1 | import abc.def { const, global }
-      |                                ^
     2 | import xyz.qwe
+      | ~~~~~~~~~~~~~~
     3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:32: error: expression evaluated but not used
-    1 | import abc.def { const, global }
-      |                                ^
-    2 | import xyz.qwe
-    3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:4:4: error: all definitions must occur before code in script mode
-    2 | import xyz.qwe
-    3 | 
     4 | fn abc() {
-      |    ~~~
-    5 | }
-vlib/v/checker/tests/with_check_option/v_import_const.vv:2:8: error: undefined ident: `xyz`
-    1 | import abc.def { const, global }
-    2 | import xyz.qwe
-      |        ~~~
-    3 | 
-    4 | fn abc() {
-vlib/v/checker/tests/with_check_option/v_import_const.vv:2:12: error: `xyz` does not return a value
-    1 | import abc.def { const, global }
-    2 | import xyz.qwe
-      |            ~~~
-    3 | 
-    4 | fn abc() {
-vlib/v/checker/tests/with_check_option/v_import_const.vv:1:1: error: invalid return type in fn ``
-    1 | import abc.def { const, global }
-      | ^
-    2 | import xyz.qwe
-    3 |
-vlib/v/checker/tests/with_check_option/v_import_const.vv:4:8: error: unknown function: 
-    2 | import xyz.qwe
-    3 | 
-    4 | fn abc() {
-      |        ^
-    5 | }

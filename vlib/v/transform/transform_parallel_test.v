@@ -5221,7 +5221,7 @@ fn test_transform_worker_records_struct_operators_in_private_map() {
 	assert master.used_struct_operator_fns['main.Point.==']
 }
 
-fn test_shared_transform_worker_reads_immutable_used_fn_snapshot() {
+fn test_transform_worker_reads_immutable_used_fn_snapshot() {
 	$if !v3_no_parallel ? {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
@@ -5229,14 +5229,15 @@ fn test_shared_transform_worker_reads_immutable_used_fn_snapshot() {
 			'main': true
 		})
 		master.retain_worker_results = true
-		master.node_context_read_only = true
 		shared_used_fns := master.used_fns.clone()
-		master.used_fns_root = unsafe { &shared_used_fns }
+		master.used_fns_helper_snapshot = unsafe { &shared_used_fns }
 
 		worker_tc := tc.fork_for_parallel_transform(&a)
 		mut worker := master.fork_worker(&a, worker_tc)
 		assert worker.used_fn_contains_name('main')
-
+		assert voidptr(worker.used_fns_parent) == voidptr(master.used_fns_helper_snapshot)
+		assert isnil(worker.used_fns_root)
+		// Inserting into the master's live map must not touch the helper's view.
 		master.mark_used_fn_key('master_only')
 		assert !worker.used_fn_contains_name('master_only')
 		worker.mark_used_fn_key('worker_only')

@@ -1,3 +1,6 @@
+@[attribute]
+struct Run {}
+
 // A method selected by reflection can become reachable only during transform.
 // Its bound callbacks (and their dependencies) must not be stripped.
 struct ReflectedCallbackWindow {
@@ -13,7 +16,7 @@ mut:
 	calls int
 }
 
-@[run]
+@[Run]
 fn (mut m ReflectedCallbackModel) run_file(w &ReflectedCallbackWindow) {
 	w.run_worker(m.poll_status)
 }
@@ -27,7 +30,7 @@ mut:
 	calls int
 }
 
-@[run]
+@[Run]
 fn (mut m ChainedReflectedCallbackModel) run_file(w &ReflectedCallbackWindow) {
 	w.run_worker(m.poll_status)
 }
@@ -46,7 +49,7 @@ fn reflected_callback_increment(value int) int {
 
 fn invoke_reflected_callbacks[T](mut model T, window &ReflectedCallbackWindow) {
 	$for method in T.methods {
-		if 'run' in method.attrs {
+		if 'Run' in method.attrs {
 			model.$method(window)
 		}
 	}
@@ -86,7 +89,7 @@ mut:
 	calls int
 }
 
-@[run]
+@[Run]
 fn (mut m ReflectedInterfaceCallbackModel) run_file(w &ReflectedCallbackWindow) {
 	m.calls = w.run_value_worker(m.poller.poll)
 }

@@ -82,7 +82,7 @@ jobs:
       - name: Build the local compiler
         run: |
           make
-          ./v -o ./vnew cmd/v
+          VFLAGS= sh cmd/tools/build_vprod.sh ./v ./vnew clang
       - name: Resolve the active handoff without state mutation
         if: needs.resolver.outputs.mode == 'handoff'
         env:

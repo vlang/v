@@ -29,7 +29,7 @@ pub mut:
 	read_timeout  i64        = 30 * time.second // timeout for reading the response; applies to plain http and to direct https requests
 	write_timeout i64        = 30 * time.second // timeout for writing the request; applies to plain http (write timeouts are not enforced on the SSL write path yet)
 
-	validate                 bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
+	validate                 bool = true // abort on an invalid certificate; false skips it, except HTTP/3 which always verifies
 	verify                   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert                     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key                 string // the path to a key.pem file, containing private keys for the client certificate(s)

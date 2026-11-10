@@ -1,5 +1,5 @@
 import toml
-import strconv
+import math
 
 const toml_text = '
 modules = [ "ui", "toml" ]
@@ -107,10 +107,8 @@ fn test_inf_and_nan_query() {
 	value := toml_doc.value('values.nan').string()
 	assert value == 'nan'
 
-	mut value_u64 := toml_doc.value('values.inf').u64()
-	assert value_u64 == strconv.double_plus_infinity
-	value_u64 = toml_doc.value('values.minus-inf').u64()
-	assert value_u64 == strconv.double_minus_infinity
+	assert math.is_inf(toml_doc.value('values.inf').f64(), 1)
+	assert math.is_inf(toml_doc.value('values.minus-inf').f64(), -1)
 }
 
 fn test_any_value_query_2() {

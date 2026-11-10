@@ -5,15 +5,20 @@ module cbor
 // encoder copies them verbatim, so malformed output corrupts the
 // surrounding stream.
 //
-// Example:
+// For example:
 //
-//   struct Ipv4 { mut: octets [4]u8 }
+// ```v ignore
+// struct Ipv4 {
+// mut:
+// 	octets [4]u8
+// }
 //
-//   pub fn (ip Ipv4) to_cbor() []u8 {
-//       mut p := cbor.new_packer(cbor.EncodeOpts{})
-//       p.pack_bytes(ip.octets[..])
-//       return p.bytes().clone()
-//   }
+// pub fn (ip Ipv4) to_cbor() []u8 {
+// 	mut p := cbor.new_packer(cbor.EncodeOpts{})
+// 	p.pack_bytes(ip.octets[..])
+// 	return p.bytes().clone()
+// }
+// ```
 pub interface Marshaler {
 	to_cbor() []u8
 }
@@ -24,7 +29,9 @@ pub interface Marshaler {
 //
 // Implementers use a mut receiver:
 //
-//   pub fn (mut ip Ipv4) from_cbor(data []u8) ! { ... }
+// ```v ignore
+// pub fn (mut ip Ipv4) from_cbor(data []u8) ! { ... }
+// ```
 pub interface Unmarshaler {
 mut:
 	from_cbor(data []u8) !

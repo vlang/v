@@ -9,6 +9,12 @@ fn C.CGContextRelease(context voidptr)
 fn C.CGContextSetRGBFillColor(context voidptr, red f64, green f64, blue f64, alpha f64)
 fn C.CGContextSetRGBStrokeColor(context voidptr, red f64, green f64, blue f64, alpha f64)
 
+fn test_darwin_window_refresh_compiles_with_arc() {
+	// Reach the dispatch call when compiling with sokol's -fobjc-arc flag.
+	// The callback also supports programs without an active window.
+	darwin_window_refresh()
+}
+
 fn test_darwin_rectangle_bridge_uses_sdk_geometry() {
 	assert C.gg_darwin_mouse_in_rect(2, 3, 0, 0, 5, 6, false)
 	assert !C.gg_darwin_mouse_in_rect(7, 3, 0, 0, 5, 6, false)

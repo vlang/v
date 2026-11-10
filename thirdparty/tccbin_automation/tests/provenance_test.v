@@ -1491,10 +1491,8 @@ fn prepare_toolchain_observation_fixture(suffix string) ToolchainObservationFixt
 	profile_path := os.join_path(automation, profile_relative_path)
 	os.mkdir_all(os.dir(profile_path)) or { panic(err) }
 	os.write_file(profile_path, profile_source) or { panic(err) }
-	mut registry_source := os.read_file(os.join_path(automation_root(), 'targets.json')) or {
-		panic(err)
-	}
-	binding_marker := '"toolchain_profile": {\n        "profile_id": null,\n        "profile_path": null,\n        "profile_sha256": null\n      }'
+	mut registry_source := dormant_registry_source(automation_root())
+	binding_marker := dormant_toolchain_binding
 	assert registry_source.count(binding_marker) == 6
 	registry_source = registry_source.replace_once(binding_marker,
 		'"toolchain_profile": {\n        "profile_id": "freebsd-amd64-synthetic-v1",\n        "profile_path": "${profile_relative_path}",\n        "profile_sha256": "${profile_sha256}"\n      }')
@@ -2314,7 +2312,8 @@ fn test_native_validation_capsule_authenticates_windows_matrix_evidence() {
 	capsule_root := os.join_path(os.real_path(fixture.base), 'native-validation-capsule')
 	names := t2c_write_native_validation_capsule(capsule_root, matrix_source, fixture.authority,
 		false)
-	assert names.len == 47
+	// 59 lane results plus the producer and validator toolchain evidence.
+	assert names.len == 61
 	capsule := bin.authenticate_native_validation_capsule(fixture.automation_root, authenticated,
 		subject, capsule_root) or { panic(err) }
 	assert bin.authenticated_native_validation_capsule_digest(capsule) or { panic(err) } == t2c_expected_capsule_digest(subject,
@@ -2903,7 +2902,8 @@ fn test_native_lane_matrix_file_authenticates_windows_consumers_and_expected_cou
 	assert matrix_digest == sha256_bytes(matrix_source.bytes())
 	root := bin.parse_strict_json(matrix_source) or { panic(err) }
 	results := (root.object_value('results') or { panic('results missing') }).array_value
-	assert results.len == 45
+	// 27 non-patch results and two lanes for each of the fixture's 16 patches.
+	assert results.len == 59
 	mut openlibm_indexes := []int{}
 	mut groups := []string{}
 	for index, result in results {

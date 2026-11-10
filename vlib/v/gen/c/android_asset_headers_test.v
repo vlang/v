@@ -39,11 +39,12 @@ fn android_asset_header_test_gen_with_cached_owner(program string, cached_owner 
 	g.tc = &tc
 	g.compiler_vroot = @VEXEROOT
 	g.set_target(prefs.target)
-	used_fns := {
+	// The returned generator keeps this map header beyond the factory's stack frame.
+	used_fns := &map[string]bool{
 		'main':      true
 		'main.main': true
 	}
-	g.used_fns = &used_fns
+	g.used_fns = used_fns
 	for header in ['<android/asset_manager.h>', '<android/asset_manager_jni.h>',
 		'<android/native_activity.h>'] {
 		g.collect_c_directive('os', flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id(header) },

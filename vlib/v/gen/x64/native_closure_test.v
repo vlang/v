@@ -1,11 +1,14 @@
 module x64
 
 import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+
+$if linux && amd64 {
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_spawn_noreturn_worker_preserves_parent_execution() {
 	$if linux && amd64 {

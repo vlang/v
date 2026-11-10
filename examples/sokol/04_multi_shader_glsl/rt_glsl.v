@@ -109,7 +109,7 @@ fn cube_vertices() []Vertex_t {
 
 fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDesc, indices []u16) {
 	mut vert_buffer_desc := gfx.BufferDesc{}
-	unsafe { vmemset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
+	unsafe { vmemset(&vert_buffer_desc, 0, int(sizeof(vert_buffer_desc))) }
 	vert_buffer_desc.label = c'cube-vertices'
 	vert_buffer_desc.size = uint(vertices.len) * sizeof(Vertex_t)
 	vert_buffer_desc.data = gfx.Range{
@@ -120,7 +120,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	mut index_buffer_desc := gfx.BufferDesc{}
-	unsafe { vmemset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
+	unsafe { vmemset(&index_buffer_desc, 0, int(sizeof(index_buffer_desc))) }
 	index_buffer_desc.label = c'cube-indices'
 	index_buffer_desc.size = uint(indices.len) * sizeof(u16)
 	index_buffer_desc.data = gfx.Range{
@@ -134,7 +134,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 	shader := gfx.make_shader(shader_desc)
 
 	mut pipdesc := gfx.PipelineDesc{}
-	unsafe { vmemset(&pipdesc, 0, sizeof(pipdesc)) }
+	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 	pipdesc.label = c'glsl_shader pipeline'
 	pipdesc.layout.buffers[0].stride = int(sizeof(Vertex_t))
 
@@ -152,7 +152,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 	pipdesc.cull_mode = .back
 
 	mut bind := gfx.Bindings{}
-	unsafe { vmemset(&bind, 0, sizeof(bind)) }
+	unsafe { vmemset(&bind, 0, int(sizeof(bind))) }
 	bind.vertex_buffers[0] = vbuf
 	bind.index_buffer = ibuf
 	bind.fs.images[C.SLOT_tex] = app.texture

@@ -13,10 +13,10 @@ fn C.exit(int)
 fn v3_map_str_piece(p voidptr, kind int, bytes int, fixed_len int) string { return "" }
 fn main() {
 	s := "hello"
-	if v3_map_str_piece(&s, 1, 16, 0) != "\'hello\'" { C.exit(1) }
+	if v3_map_str_piece(&s, 1, sizeof(string), 0) != "\'hello\'" { C.exit(1) }
 	i8_value := i8(-7)
 	i16_value := i16(-1234)
-	i32_value := -42
+	i32_value := i32(-42)
 	i64_value := i64(-9223372036854775807) - 1
 	if v3_map_str_piece(&i8_value, 2, 1, 0) != "-7" { C.exit(2) }
 	if v3_map_str_piece(&i16_value, 2, 2, 0) != "-1234" { C.exit(3) }
@@ -51,8 +51,8 @@ fn main() {
 	if v3_map_str_piece(&a64, 6, 16, 2) != "[1.5, -2.0]" { C.exit(17) }
 	d32 := [f32(1.5), f32(-2.0)]
 	d64 := [f64(1.5), f64(-2.0)]
-	if v3_map_str_piece(&d32, 6, 32, 0) != "[1.5, -2.0]" { C.exit(18) }
-	if v3_map_str_piece(&d64, 6, 32, 0) != "[1.5, -2.0]" { C.exit(19) }
+	if v3_map_str_piece(&d32, 6, sizeof([]f32), 0) != "[1.5, -2.0]" { C.exit(18) }
+	if v3_map_str_piece(&d64, 6, sizeof([]f64), 0) != "[1.5, -2.0]" { C.exit(19) }
 }
 ')
 	}
@@ -71,7 +71,7 @@ fn main() {
 	if v3_map_str(numbers, 1, 2, 0) != "{\'two\': -2}" { C.exit(2) }
 	key := "three"
 	value := 3
-	v3_map_set_sized(&numbers, &key, &value, 16, 4)
+	v3_map_set_sized(&numbers, &key, &value, sizeof(string), sizeof(int))
 	if v3_map_str(numbers, 1, 2, 0) != "{\'two\': -2, \'three\': 3}" { C.exit(3) }
 	empty := map[string]int{}
 	if v3_map_str(empty, 1, 2, 0) != "{}" { C.exit(4) }

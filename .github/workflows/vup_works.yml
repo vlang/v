@@ -1,20 +1,10 @@
 name: Upgrading from a previous release with v up works
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '**.vv'
-      - '**.out'
-      - '!**/vup_works.yml'
-      - '!cmd/tools/vup.v'
-      - 'cmd/tools/vrepl.v'
+  workflow_call:
 
 concurrency:
-  group: vup-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vup-vup_works-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -41,7 +31,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build v
-        run: make && ./v symlink && ./v version
+        uses: ./.github/actions/setup-v
+        with:
+          version: true
 
       - name: Build the current updater
         # The current updater imports newer stdlib modules that are absent from older ZIPs.
@@ -63,7 +55,8 @@ jobs:
 
       - name: Extract ZIP 1, no changes
         run: |
-          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR"
+          bash .github/workflows/extract_v_release.sh "${{ matrix.zip }}" "$VDIR"
           cd "$VDIR/v"
           ./v version
           ./v up
@@ -71,7 +64,8 @@ jobs:
 
       - name: Extract ZIP 2, with local changes
         run: |
-          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR"
+          bash .github/workflows/extract_v_release.sh "${{ matrix.zip }}" "$VDIR"
           touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
           cd "$VDIR/v"
           ./v version
@@ -80,7 +74,8 @@ jobs:
 
       - name: Extract ZIP 3, run the current updater on the released compiler
         run: |
-          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR"
+          bash .github/workflows/extract_v_release.sh "${{ matrix.zip }}" "$VDIR"
           cd "$VDIR/v"
           ./v version
           VEXE="$PWD/v" "$RUNNER_TEMP/vup-current"
@@ -88,7 +83,8 @@ jobs:
 
       - name: Extract ZIP 4, run the current updater with local changes
         run: |
-          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR"
+          bash .github/workflows/extract_v_release.sh "${{ matrix.zip }}" "$VDIR"
           touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
           cd "$VDIR/v"
           ./v version

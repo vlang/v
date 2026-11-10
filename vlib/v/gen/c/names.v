@@ -10,6 +10,18 @@ fn c_name(name string) string {
 	return naming.c_name(name)
 }
 
+const const_call_name_bit_words = 4096
+
+// const_call_name_bit returns the `call_name_bits` slot of a call name suffix.
+@[direct_array_access; inline]
+fn const_call_name_bit(suffix string) u32 {
+	mut hash := u32(2166136261)
+	for i in 0 .. suffix.len {
+		hash = (hash ^ u32(suffix[i])) * 16777619
+	}
+	return (hash ^ (hash >> 15)) & u32(const_call_name_bit_words * 64 - 1)
+}
+
 // CNameCache memoizes naming.c_name results. c_name is a pure function called
 // hundreds of thousands of times per build over a few tens of thousands of
 // distinct names; the cache lives on the heap so `&FlatGen` query methods can
@@ -21,10 +33,14 @@ mut:
 	base             &CNameCache = unsafe { nil }
 	last_name        string
 	last_value       string
-	recent_names     [1024]string
-	recent_values    [1024]string
-	recent_populated [1024]bool
+	recent_names     [c_name_recent_slots]string
+	recent_values    [c_name_recent_slots]string
+	recent_populated [c_name_recent_slots]bool
 }
+
+// A body batch names a few thousand distinct symbols; the slots keep most of
+// them out of the slower cache levels.
+const c_name_recent_slots = 4096
 
 @[direct_array_access; inline]
 fn c_name_recent_slot(name string) int {
@@ -45,7 +61,7 @@ fn c_name_recent_slot(name string) int {
 		key ^= (u64(name[0]) << 8) ^ (u64(name[name.len >> 1]) << 16) ^ (u64(name[name.len - 1]) << 24)
 	}
 	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
-	return int((key >> 32) & 1023)
+	return int((key >> 32) & (c_name_recent_slots - 1))
 }
 
 // c_name_shape classifies the identifier and dotted fast paths in one scan.
@@ -71,6 +87,9 @@ fn c_name_shape(name string) u8 {
 	}
 	return shape
 }
+
+// c_name_shape_unknown marks a shape that has not been scanned yet.
+const c_name_shape_unknown = u8(255)
 
 @[inline]
 fn c_name_is_pre_sanitized(name string) bool {
@@ -121,6 +140,9 @@ mut:
 	call_const_exprs_count    int
 	call_const_types_count    int
 	call_const_suffixes_count int
+	// A second filter over a hash of the whole suffix: `call_names` indexes a few
+	// bytes and passes about half of the absent names of a large program.
+	call_name_bits [const_call_name_bit_words]u64
 }
 
 // FnNameFactCache memoizes per-fn-name conclusions (1 = yes, -1 = no) that
@@ -628,6 +650,7 @@ fn (g &FlatGen) cname_uncached(name string) string {
 	mut cache := g.c_name_cache
 	// c_name is pure, so every cache level holds the same C name for `name`: the
 	// base's recent slots can answer before the map lookups.
+	mut shape := c_name_shape_unknown
 	if !isnil(cache.base) {
 		if cached := cache.base.recent(name) {
 			cache.last_name = name
@@ -635,12 +658,33 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+		// An already mangled name is its own C name. Deciding that takes one scan
+		// of the name, less than the two map probes and the insert that would
+		// record it in this private overlay, so such names only use its recent slots.
+		shape = c_name_shape(name)
+		if shape == 3 && !naming.word_name_needs_internal_namespace(name) {
+			cache.last_name = name
+			cache.last_value = name
+			cache.remember(name, name)
+			return name
+		}
 	}
 	if cached := cache.entries[name] {
 		cache.last_name = name
 		cache.last_value = cached
 		cache.remember(name, cached)
 		return cached
+	}
+	// A plain name that is no reserved word, libc collision or special symbol is
+	// its own C name on every cache level.
+	plain_identity := shape == 1 && name != 'malloc' && name != 'int_str' && name != 'exit'
+		&& !c_name_is_string_literal_symbol(name) && !naming.plain_name_may_be_reserved(name)
+	if plain_identity {
+		cache.entries[name] = name
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
 	}
 	if !isnil(cache.base) {
 		if cached := cache.base.entries[name] {
@@ -650,11 +694,16 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			return cached
 		}
 	}
-	shape := c_name_shape(name)
+	if shape == c_name_shape_unknown {
+		shape = c_name_shape(name)
+	}
 	// A plain spelling without `__` cannot contain the internal prefix, a static
 	// marker, or an operator method. Preserve those rewrites for other names.
-	needs_internal_namespace := (shape == 0 || shape & 2 != 0)
-		&& naming.c_name_needs_internal_namespace(name)
+	needs_internal_namespace := if shape == 0 {
+		naming.c_name_needs_internal_namespace(name)
+	} else {
+		shape & 2 != 0 && naming.word_name_needs_internal_namespace(name)
+	}
 	if !needs_internal_namespace && shape == 3 {
 		cache.entries[name] = name
 		cache.last_name = name
@@ -720,12 +769,18 @@ fn c_escape(s string) string {
 // c_escape_into appends the C-escaped form of s to out, without the temporary
 // builder and copy that c_escape needs for its return value.
 fn c_escape_into(mut out strings.Builder, s string) {
+	c_escape_bytes_into(mut out, s, false)
+}
+
+// c_escape_bytes_into can restrict literal bodies to ASCII without changing
+// the filename spelling used by C include and line directives.
+fn c_escape_bytes_into(mut out strings.Builder, s string, ascii_only bool) {
 	// Copy runs of bytes that need no escape in one write; literal tables are
 	// mostly plain text, and a per-byte write dominated emitting them.
 	mut run_start := 0
 	for i in 0 .. s.len {
 		b := s[i]
-		if b >= 32 && b != 127 && b != `\\` && b != `"` {
+		if b >= 32 && b != 127 && b != `\\` && b != `"` && (!ascii_only || b < 128) {
 			continue
 		}
 		if i > run_start {
@@ -749,7 +804,7 @@ fn c_escape_into(mut out strings.Builder, s string) {
 				out.write_string('\\r')
 			}
 			else {
-				if b < 32 || b == 127 {
+				if b < 32 || b == 127 || (ascii_only && b >= 128) {
 					v := int(b)
 					out.write_u8(`\\`)
 					out.write_u8(u8(`0` + ((v >> 6) & 7)))
@@ -767,7 +822,8 @@ fn c_escape_into(mut out strings.Builder, s string) {
 }
 
 // c_literal_escape_into splits escaped literal bodies between complete escapes.
-// Even a four-byte octal escape fits within the source-line chunk bound.
+// Octal escapes preserve arbitrary V bytes in UTF-8 C source, including malformed
+// UTF-8 that MSVC cannot preprocess. Each escape fits within the source-line bound.
 fn c_literal_escape_into(mut out strings.Builder, s string) {
 	max_bytes := c_string_literal_chunk_len / 4
 	mut start := 0
@@ -783,7 +839,7 @@ fn c_literal_escape_into(mut out strings.Builder, s string) {
 		if end == start {
 			end = if s.len - start > max_bytes { start + max_bytes } else { s.len }
 		}
-		c_escape_into(mut out, s[start..end])
+		c_escape_bytes_into(mut out, s[start..end], true)
 		start = end
 	}
 }

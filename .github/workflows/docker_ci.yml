@@ -1,18 +1,10 @@
 name: Docker CI
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/docker_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: docker-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: docker-docker_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -51,8 +43,10 @@ jobs:
           gcc --version
       - name: Add dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Trust mounted checkout for container Git
+        run: git config --global --add safe.directory "$(pwd -P)"
       - name: Build V
-        run: CC=gcc make
+        run: CC=gcc make && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Run only essential tests
@@ -77,8 +71,10 @@ jobs:
           persist-credentials: false
       - name: Add dependencies
         run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Trust mounted checkout for container Git
+        run: git config --global --add safe.directory "$(pwd -P)"
       - name: Build V
-        run: make
+        run: make && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: Check if vpm compiles with tcc
         run: ./v -show-c-output -showcc -no-retry-compilation -cc tcc cmd/tools/vpm
       - name: Run only builtin and math tests
@@ -96,7 +92,9 @@ jobs:
       image: thevlang/vlang:ubuntu-build
       env:
         V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -cc musl-gcc -gc none
+        # Tests that opt into Boehm need a musl-built collector; Ubuntu's system
+        # libgc and the prebuilt TCC archive target glibc. GC-none builds are unchanged.
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:
@@ -105,8 +103,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
+        run: echo "$VFLAGS" && make -j4 && ./v -prod -cg -o v cmd/v
       - name: Verify `v test` works
+        env:
+          VTOOLS_CACHE_VERBOSE: '1'
+          VTEST_SHOW_CMD: '1'
+          VTEST_SHOW_START: '1'
         run: |
           echo "$VFLAGS"
           ./v cmd/tools/test_if_v_test_system_works.v

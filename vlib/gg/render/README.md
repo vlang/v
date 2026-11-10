@@ -2,6 +2,12 @@
 
 V implementation of sokol-gl for gg.
 
+Set `Desc.color_format`, `Desc.depth_format`, and `Desc.sample_count` to match the render pass.
+Use `.none` as the depth format for a target without a depth attachment. Explicit context formats
+apply to both the default pipeline and pipelines created from a caller's recipe; depth writes are
+disabled for a target without depth. Unspecified formats keep the existing graphics defaults and
+recipe formats. A zero sample count falls back to one.
+
 Call `Context.destroy()` before graphics shutdown to release its vertex buffer,
 default pipelines, image, sampler, shader, and commit listener. Repeated calls are safe.
 Pipelines returned by `Context.make_pipeline()` remain owned by the caller; release

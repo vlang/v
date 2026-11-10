@@ -7,6 +7,85 @@ compilers. Runner selection should therefore be intentional: use stable runner
 images where reproducibility matters, and use newer runner images where the goal is
 early compatibility feedback.
 
+
+## Master push gate
+
+All master-push CI is orchestrated by `ci_master.yml`. Its shared gate
+first runs `bootstrapping_ci.yml` and the Linux/Windows `makev_ci.yml`
+bootstrap contract matrices, then uses the optimized compiler to execute
+`test-cleancode` and `test-fmt` in order. All other push CI jobs depend
+on successful formatting; failure or cancellation of either bootstrap
+workflow prevents any downstream tests or deployments from starting.
+
+Existing suites are called as reusable workflows via `workflow_call`, with
+eight small, formerly standalone checks inlined in the caller to respect
+GitHub Actions' 50-unique-reusable-workflow limit. Original ordered path
+filters live in `ci_gate_filters/*.json` and are applied by
+`ci_gate_paths.py` to the exact before/after SHAs from the push. An
+unavailable diff conservatively runs all suites instead of skipping them.
+The gate validator rejects newly added direct-push workflows that would
+bypass this dependency.
+
+When adding or changing a master-push suite, update the caller and path
+manifest together. Scheduled, manually dispatched and pull-request workflows
+retain their independent existing triggers; their non-push invocations are
+not part of this master-push gate.
+
+## Optimized test compilers
+
+Ordinary test jobs use `.github/actions/setup-v` to install a compiler built with
+`v self -prod`. This optimizes the compiler itself. Each job's `VFLAGS`, C compiler,
+sanitizer flags and debug/release test variants still control the programs under test.
+
+The bootstrap workflow produces and checks compilers for Linux x64, macOS ARM64,
+macOS x64 and Windows x64. Linux is built on Ubuntu 22.04 so the binary also runs on
+the newer glibc runners. All producers must pass before downstream master jobs start.
+A failed gate skips the dependent jobs before they consume runner time.
+
+Each producer uploads a seven-day artifact named `vprod-<platform>-<full-commit-sha>`.
+It contains `<full-commit-sha>-<platform>` and its `.sha256` checksum. The setup action
+uses these artifacts within the same master workflow run and verifies their checksum,
+checkout commit and platform before installing them as `v` or `v.exe`. Rerunning a
+producer replaces its workflow artifact. The binaries are available from the `vlang/v`
+Actions run page, outside GitHub Releases, and require no additional token or secret.
+
+Shared compilers resolve their standard library from the checkout containing the installed
+executable. This supports nested `working-directory` checkouts and compilation from external
+project directories. A standalone compiler outside a checkout retains its build-time source
+root as a fallback.
+
+After all four producers succeed, a separate job removes older compiler artifacts from
+completed `CI master` push runs. It preserves artifacts belonging to the current run,
+newer runs and runs still in progress, and only deletes names matching the owning run's
+exact commit and one of the four producer platforms. Other test artifacts are unaffected.
+An older commit's rerun cannot remove newer binaries. Cleanup uses the automatic
+`GITHUB_TOKEN` with `actions: write` only in that job; test jobs keep their existing
+permissions. Cleanup failure does not block tests, and seven-day expiry bounds retention
+when no later successful bootstrap performs cleanup.
+
+Standalone jobs and reruns whose artifacts were removed build an optimized compiler
+locally. The setup action also supports `use-prebuilt: false` for jobs that require a native
+build. Shell-only jobs can call `prepare_v.sh`; set `V_CI_SOURCE_BUILD=1` to ignore a supplied
+prebuilt compiler and optionally `V_CI_CC` to choose the optimizing C compiler.
+`prepare_v.ps1` provides the corresponding Windows build/install step.
+
+Alpine/musl, Android, BSD and other CPU architectures build natively. Bootstrap, update,
+prebuilt-release and compiler-under-test checks retain their specific build recipes;
+ordinary tests use the optimized driver. Instrumented compiler builds retain their sanitizer
+flags and add `-prod`. Compiler self-build checks use separate executables or restore the
+optimized driver afterward. Setup still provisions TCC, libgc and bootstrap sources.
+
+Compiler CI also sets `V3_TEST_PROD_COMPILER=1` so `test_all.vsh` optimizes the separate
+V3 drivers it creates for unit tests and examples. Plain nested compiler builds share that
+optimized driver; requests with custom build options still build their own compiler. The unit
+job builds it once before starting its shards, which each receive a private copy. Local runs
+can select another optimizing C compiler with `V3_TEST_PROD_COMPILER_CC`.
+
+Changes to shared compiler setup or the bootstrap workflow select all master suites, even
+when a suite's normal path filter would skip them. Local setup regression checks are
+`python3 .github/workflows/prepare_v_test.py` and `python3 cmd/tools/windows_ci_test.py`;
+artifact cleanup checks are `python3 .github/workflows/cleanup_vprod_test.py`.
+
 ## CI lanes
 
 CI runs only for commits on `master`. Pull requests, merge queues, tags, and pushes
@@ -136,6 +215,13 @@ toolchain behavior.
 Avoid switching macOS runners in broad CI changes unless the PR explains the expected
 architecture and toolchain impact.
 
+The main macOS CI matrix uses `macos-15` and `macos-26` Apple Silicon runners.
+CI lanes previously pinned to `macos-14` now use `macos-15` to retain Apple Silicon
+coverage on a supported image. Prebuilt smoke tests select `macos-15` for ARM64 and
+`macos-15-intel` for x86_64 so each release archive runs on its native architecture.
+GitHub retired macOS 14 images on November 2, 2026; see the
+[retirement announcement](https://github.com/actions/runner-images/issues/13518).
+
 ### Rare platform and architecture lanes
 
 Workflows for FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`, and similar lanes often
@@ -169,7 +255,8 @@ inventory.
 | `ubuntu-22.04` | Some sanitizer, release, and architecture lanes. |
 | `windows-2025` | GCC Windows lane and selected Windows checks. |
 | `windows-2022` | MSVC and TCC Windows lanes. |
-| `macos-14` | Apple Silicon CI lanes. |
+| `windows-11-arm` | Native ARM64 Windows release artifact lane. |
+| `macos-15`, `macos-26` | Apple Silicon macOS CI lanes. |
 | `macos-15-intel` | Intel macOS release artifact lane. |
 | `*-latest` | Small utility, smoke, or intentionally floating lanes. |
 
@@ -177,10 +264,32 @@ Current release and artifact exceptions that intentionally use floating runners:
 
 - `release_ci.yml` uses `windows-latest` for `v_windows.zip` so the published
   Windows artifact tracks GitHub's current hosted Windows toolchain.
+- Its `windows-11-arm` lane builds `v_windows_arm64.zip` with native MSVC tools using
+  `cmd/tools/builders/windows_arm64_release.ps1`. The script checks PE architecture
+  for the x64 bootstrap and the native ARM64 compiler stages, application smoke test,
+  and release tools. The transient x64 bootstrap runs under Windows 11's emulation;
+  all shipped binaries are ARM64.
+  The ARM64 package uses `-cc msvc` and does not contain the x64 TCC bundle.
+  Tags that predate the ARM64 bootstrap script skip this lane and its archive.
 - `release_ci.yml` uses `ubuntu-latest` only for the release publishing job; the
   job assembles already-built artifacts and does not compile platform binaries.
-- `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
-  published release ZIPs against GitHub's current hosted macOS and Windows images.
+- `prebuilt.yml` uses `windows-latest` to smoke-test the published Windows release
+  ZIP against GitHub's current hosted Windows image. Its macOS jobs pin the runner
+  architecture to match each release ZIP.
+
+## Ecosystem module cache
+
+`make` warms separate core module cache entries for native programs and tests, using
+the same compiler and GC flags for both. Keep its C compiler configuration aligned
+with the later builds: the macOS GUI jobs select `-cc clang`
+before `make`, matching the GUI script. The other app and VPM jobs retain their
+default compiler selection. Explicit compiler, debug, and production options use
+their own cache configurations, as do different C flags and interface implementations.
+
+`should-compile-all` uses the default C backend for ordinary native examples so they
+can link the cached modules. It still selects JS and Wasm for their filename suffixes
+and overrides an inherited backend when selecting C examples. An explicit `-b c`
+requests a complete C translation unit and bypasses the module cache.
 
 ## Apt package cache profiles
 
@@ -204,12 +313,41 @@ When migrating a workflow, keep the job's explicit install step until CI proves 
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
 
+## MemorySanitizer dependencies
+
+MemorySanitizer jobs use `ubuntu-24.04` and its default Clang 18 toolchain for
+instrumented V compilers, instrumented tests, and the private database libraries.
+Ubuntu 22.04's Clang 14 runtime
+lacks the `stat64`/`lstat64` interceptors needed by SQLite's large-file pathname
+checks. Even an instrumented SQLite library then sees stale shadow memory after
+a successful `lstat64` call when opening a database on disk. Clang 18 supplies
+these interceptors, preserving the normal disk-path and symbolic-link checks.
+The AddressSanitizer and UndefinedBehaviorSanitizer jobs stay on `ubuntu-22.04`.
+MemorySanitizer uses the explicit dependency install rather than the shared
+sanitizer apt cache, whose key does not distinguish Ubuntu versions.
+
+The `memory-clang` self-test job builds a pinned libpq with MemorySanitizer, including its
+bundled support objects. The distribution library is not instrumented and can leave sanitizer
+shadow memory stale when it constructs buffers inside `PQconnectdb`. The job selects the private
+build through `PKG_CONFIG_PATH` and `LD_LIBRARY_PATH`; PostgreSQL tests keep their normal
+assertions.
+The other sanitizer jobs continue using the distribution library. OpenSSL remains a system
+dependency, so this does not claim that every external library has MemorySanitizer coverage.
+
+## Release upgrade checks
+
+The upgrade checks in `vup_works.yml` extract release ZIPs with `ditto` on macOS and
+`unzip` on Linux. The macOS archives contain symbolic links for their bundled libraries.
+All four upgrade scenarios start with a fresh extraction and stop if extraction fails
+or the released compiler is missing or not executable.
+
 ## Rebuilding release binaries
 
 `Release CI` builds without publishing when its workflow file changes on `master`.
 To publish ZIPs for an existing `weekly.*` or `0.*` tag, dispatch the workflow from `master`
 and set `release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag,
-builds all five platform archives, and attaches them to the corresponding release. Existing
+builds the five original platform archives and, when supported by the tag, Windows ARM64,
+and attaches them to the corresponding release. Existing
 assets with the same filenames are replaced; release descriptions, names, and prerelease status
 are kept. The publishing job runs only after every platform build succeeds, and upload errors
 fail it. Tag pushes do not start workflows.

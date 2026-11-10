@@ -269,7 +269,12 @@ pub fn (mut tx Tx) orm_commit() ! {
 }
 
 // orm_rollback rolls back the Tx.
+// It does nothing when the Tx already finished, e.g. after a failed `orm_commit`, which ends the
+// transaction on the server and releases the Tx, so `orm.transaction` reports only the commit error.
 pub fn (mut tx Tx) orm_rollback() ! {
+	if tx.done {
+		return
+	}
 	tx.rollback()!
 }
 

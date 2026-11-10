@@ -1,21 +1,10 @@
 name: C2V apps
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/c2v_ci.yml'
-      - 'doc/**'
-      - 'examples/**'
-      - 'tutorials/**'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: c2v-c2v_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -31,7 +20,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Set 8.8.8.8 as dns server
         run: |
@@ -57,6 +46,14 @@ jobs:
       - name: Build original Chocolate Doom
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          # Remove this patch once Doom links the Boehm runtime supplied by V.
+          doom_checkout=~/code/doom
+          doom_patch="$GITHUB_WORKSPACE/.github/doom_boehm_link.patch"
+          if git -C "$doom_checkout" apply --check "$doom_patch"; then
+            git -C "$doom_checkout" apply "$doom_patch"
+          else
+            git -C "$doom_checkout" apply --reverse --check "$doom_patch"
+          fi
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
@@ -79,7 +76,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Set 8.8.8.8 as dns server
         run: |
@@ -121,6 +118,14 @@ jobs:
       - name: Build original Chocolate Doom
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          # Remove this patch once Doom links the Boehm runtime supplied by V.
+          doom_checkout=~/code/doom
+          doom_patch="$GITHUB_WORKSPACE/.github/doom_boehm_link.patch"
+          if git -C "$doom_checkout" apply --check "$doom_patch"; then
+            git -C "$doom_checkout" apply "$doom_patch"
+          else
+            git -C "$doom_checkout" apply --reverse --check "$doom_patch"
+          fi
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom

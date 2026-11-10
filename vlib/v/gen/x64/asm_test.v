@@ -135,3 +135,39 @@ fn test_c_integer_returns_are_extended_before_use() {
 		}
 	}
 }
+
+fn test_x64_inline_asm_immediate_widths() {
+	mut g := Gen.new(ssa.Module.new())
+	asm_imm_reg_op(mut g, 'addq', rax, 127)
+	asm_imm_reg_op(mut g, 'subq', rcx, -128)
+	asm_imm_reg_op(mut g, 'addq', rax, 256)
+	asm_imm_reg_op(mut g, 'xorq', r8, -129)
+	assert g.elf.text_data == [
+		// addq rax, 127: 48 83 /0 ib
+		u8(0x48),
+		0x83,
+		0xc0,
+		0x7f,
+		// subq rcx, -128: 48 83 /5 ib
+		0x48,
+		0x83,
+		0xe9,
+		0x80,
+		// addq rax, 256: 48 81 /0 id
+		0x48,
+		0x81,
+		0xc0,
+		0x00,
+		0x01,
+		0x00,
+		0x00,
+		// xorq r8, -129: 49 81 /6 id
+		0x49,
+		0x81,
+		0xf0,
+		0x7f,
+		0xff,
+		0xff,
+		0xff,
+	]
+}

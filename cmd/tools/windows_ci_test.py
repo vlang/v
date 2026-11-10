@@ -27,6 +27,53 @@ def workflow_sources():
             for cc in COMPILERS}
 
 
+def workflow_block(source, name, indent):
+    pattern = (r'^' + ' ' * indent + re.escape(name) + r':\n(.*?)'
+               r'(?=^ {0,' + str(indent) + r'}\S|\Z)')
+    blocks = re.findall(pattern, source, re.M | re.S)
+    if len(blocks) != 1:
+        raise ValueError(f'expected one workflow block: {name}')
+    return blocks[0]
+
+
+def validate_master_bootstrap_contract(workflow, master):
+    # Every master push now covers all W3/W4/W5 inputs through the shared gate.
+    push = workflow_block(workflow_block(master, 'on', 0), 'push', 2)
+    if push.strip() != 'branches: [master]':
+        raise ValueError('master push must be unfiltered')
+    triggers = workflow_block(workflow, 'on', 0)
+    if not re.search(r'^  workflow_call:\s*$', triggers, re.M):
+        raise ValueError('Windows bootstrap must expose workflow_call')
+    if re.search(r'^  (push|pull_request|merge_group):', triggers, re.M):
+        raise ValueError('Windows bootstrap must use the master caller')
+    jobs = workflow_block(master, 'jobs', 0)
+    for name, filename in (('bootstrap', 'bootstrapping_ci.yml'),
+                           ('windows-bootstrap-contracts', 'makev_ci.yml')):
+        caller = workflow_block(jobs, name, 2)
+        if not re.search(r'^    uses: \./\.github/workflows/' + re.escape(filename) + r'$',
+                         caller, re.M):
+            raise ValueError(f'{name} must call {filename}')
+        if re.search(r'^    (if|needs|continue-on-error):', caller, re.M):
+            raise ValueError(f'{name} must run unconditionally')
+    formatting = workflow_block(jobs, 'formatting', 2)
+    needs = re.findall(r'^    needs: \[([^\]]+)\]$', formatting, re.M)
+    if len(needs) != 1 or {name.strip() for name in needs[0].split(',')} != {
+            'bootstrap', 'windows-bootstrap-contracts'}:
+        raise ValueError('formatting must depend on both bootstrap workflows')
+    if re.search(r'^    if:', formatting, re.M):
+        raise ValueError('formatting must retain the default success condition')
+    contracts = workflow_block(workflow_block(workflow, 'jobs', 0), 'bootstrap-contracts', 2)
+    if not re.search(r"^    if: github.ref == 'refs/heads/master'$", contracts, re.M):
+        raise ValueError('bootstrap contracts must run on master')
+    if '        os: [ubuntu-latest, windows-latest]\n' not in contracts:
+        raise ValueError('bootstrap contracts must cover Linux and Windows')
+    if re.search(r'^ +continue-on-error:', contracts, re.M):
+        raise ValueError('bootstrap contract failures must fail the gate')
+    for script in ('makev_test.py', 'windows_ci_test.py', 'windows_w4_ci_test.py'):
+        if f'        run: python cmd/tools/{script}\n' not in contracts:
+            raise ValueError(f'bootstrap contracts must run {script}')
+
+
 def build_scripts(workflows):
     # These workflows use literal run blocks at the same indentation. Fail if
     # that layout changes instead of silently losing build-step coverage.
@@ -236,6 +283,54 @@ class WorkflowConfigurationTests(unittest.TestCase):
                 validate_file_hash(path, expected)
 
 
+class MasterBootstrapContractTests(unittest.TestCase):
+    def setUp(self):
+        self.workflow = (WORKFLOWS / 'makev_ci.yml').read_text(encoding='utf-8')
+        self.master = (WORKFLOWS / 'ci_master.yml').read_text(encoding='utf-8')
+
+    def test_all_master_pushes_run_bootstrap_contracts(self):
+        validate_master_bootstrap_contract(self.workflow, self.master)
+
+    def test_master_push_cannot_filter_inputs(self):
+        for rule in ("    paths: ['makev.bat']\n", "    paths-ignore: ['vlib/**']\n",
+                     '    branches-ignore: [master]\n'):
+            changed = self.master.replace('    branches: [master]\n',
+                                          '    branches: [master]\n' + rule, 1)
+            with self.subTest(rule=rule), self.assertRaisesRegex(ValueError, 'unfiltered'):
+                validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_bootstrap_caller_cannot_be_skipped_or_replaced(self):
+        for changed in (
+            self.master.replace('  windows-bootstrap-contracts:\n',
+                                '  windows-bootstrap-contracts:\n    if: false\n', 1),
+            self.master.replace('uses: ./.github/workflows/makev_ci.yml',
+                                'uses: ./.github/workflows/windows_ci_gcc.yml', 1),
+        ):
+            with self.subTest(master=changed), self.assertRaises(ValueError):
+                validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_formatting_requires_successful_bootstrap(self):
+        for changed in (
+            self.master.replace('needs: [bootstrap, windows-bootstrap-contracts]',
+                                'needs: [bootstrap]', 1),
+            self.master.replace('  formatting:\n', '  formatting:\n    if: always()\n', 1),
+        ):
+            with self.subTest(master=changed), self.assertRaisesRegex(ValueError, 'formatting'):
+                validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_reusable_bootstrap_retains_both_platforms_and_commands(self):
+        mutations = [self.workflow.replace('  workflow_call:\n', '', 1),
+                     self.workflow.replace('os: [ubuntu-latest, windows-latest]',
+                                           'os: [ubuntu-latest]', 1),
+                     self.workflow.replace('    runs-on:',
+                                           '    continue-on-error: true\n    runs-on:', 1)]
+        mutations += [self.workflow.replace(f'run: python cmd/tools/{script}', 'run: echo skipped', 1)
+                      for script in ('makev_test.py', 'windows_ci_test.py', 'windows_w4_ci_test.py')]
+        for changed in mutations:
+            with self.subTest(workflow=changed), self.assertRaises(ValueError):
+                validate_master_bootstrap_contract(changed, self.master)
+
+
 class W3SourceTests(unittest.TestCase):
     def test_pinned_sources_and_cases_exist(self):
         surface, cases = validate_w3_metadata(
@@ -265,8 +360,8 @@ class W5SourceTests(unittest.TestCase):
             supplied = dict(re.findall(r"-(Expected\w+) '([0-9a-f]{64})'", call[1]))
             self.assertEqual(supplied, pins, cc)
         workflow = (WORKFLOWS / 'makev_ci.yml').read_text(encoding='utf-8')
-        for path in list(files) + [(WORKFLOWS / W5_RUNNER).relative_to(ROOT).as_posix()]:
-            self.assertIn(f"      - '{path}'\n", workflow, path)
+        master = (WORKFLOWS / 'ci_master.yml').read_text(encoding='utf-8')
+        validate_master_bootstrap_contract(workflow, master)
 
     def test_changed_source_pin_requires_a_new_composite(self):
         changed = re.sub(r"(Path = '[^']+'; Known = ')[0-9a-f]{64}",
@@ -442,6 +537,148 @@ int main(void) {
         self.assertEqual(calls, ['1'])
 
 
+class OptimizedCompilerPreparationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.pwsh = shutil.which('pwsh')
+        compiler = shutil.which('gcc' if os.name == 'nt' else 'cc')
+        if not cls.pwsh or not compiler:
+            raise unittest.SkipTest('requires PowerShell and a C compiler')
+        cls.temp = tempfile.TemporaryDirectory(prefix='optimized compiler probe ')
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.root = Path(cls.temp.name)
+        source = cls.root / 'probe.c'
+        source.write_text(r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+int main(int argc, char **argv) {
+    FILE *calls = fopen(getenv("VTEST_PREPARE_CALLS"), "a");
+    if (!calls) return 90;
+    fprintf(calls, "VFLAGS=%s|VEXE=%s|", getenv("VFLAGS") ? getenv("VFLAGS") : "<unset>",
+            getenv("VEXE") ? getenv("VEXE") : "<unset>");
+    for (int i = 1; i < argc; ++i) fprintf(calls, "%s%s", i == 1 ? "" : " ", argv[i]);
+    fputc('\n', calls);
+    fclose(calls);
+    if (argc > 1 && strcmp(argv[1], "self") == 0) {
+        int status = atoi(getenv("VTEST_PREPARE_BUILD_EXIT"));
+        if (status) return status;
+        const char *output = NULL;
+        for (int i = 1; i + 1 < argc; ++i) {
+            if (strcmp(argv[i], "-o") == 0) output = argv[i + 1];
+        }
+        if (!output) return 91;
+        FILE *in = fopen(argv[0], "rb"), *out = fopen(output, "wb");
+        if (!in || !out) return 92;
+        int byte;
+        while ((byte = fgetc(in)) != EOF) fputc(byte, out);
+        fputs("optimized compiler fixture", out);
+        fclose(in);
+        fclose(out);
+#ifndef _WIN32
+        chmod(output, 0700);
+#endif
+        return 0;
+    }
+    return atoi(getenv("VTEST_PREPARE_VERSION_EXIT"));
+}
+''', encoding='utf-8')
+        cls.binary = cls.root / 'probe.exe'
+        subprocess.run([compiler, '-o', str(cls.binary), str(source)],
+                       check=True, capture_output=True, text=True, timeout=60)
+
+    def run_preparation(self, prebuilt=False, checksum='valid', build_exit=0, version_exit=0):
+        with tempfile.TemporaryDirectory(prefix='prepare v contract ') as folder:
+            root = Path(folder)
+            original = root / 'v.exe'
+            shutil.copy2(self.binary, original)
+            before = original.read_bytes()
+            args = []
+            if prebuilt:
+                subprocess.run(['git', 'init', '--quiet', str(root)], check=True,
+                               capture_output=True, text=True)
+                subprocess.run(['git', '-C', str(root), '-c', 'user.name=CI fixture',
+                                '-c', 'user.email=ci@example.invalid', 'commit', '--quiet',
+                                '--allow-empty', '-m', 'fixture'], check=True,
+                               capture_output=True, text=True)
+                commit = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                                                 text=True).strip()
+                if checksum == 'wrong-commit':
+                    commit = '0' * 40
+                candidate = root / (commit + '-windows-x64')
+                candidate.write_bytes(before + b'prebuilt compiler fixture')
+                candidate.chmod(0o700)
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                name = candidate.name
+                if checksum == 'wrong-name':
+                    name = 'b' * 40
+                if checksum == 'wrong-hash':
+                    digest = '0' * 64
+                candidate.with_suffix('.sha256').write_text(f'{digest}  {name}\n', encoding='utf-8')
+                args = ['-Prebuilt', str(candidate)]
+            helper = str(WORKFLOWS / 'prepare_v.ps1').replace("'", "''")
+            quoted_args = ' '.join("'" + arg.replace("'", "''") + "'" for arg in args)
+            script = root / 'check.ps1'
+            script.write_text(
+                "$ErrorActionPreference = 'Stop'\n"
+                "$failure = $null\n"
+                f"try {{ & '{helper}' {quoted_args} }} catch {{ $failure = $_ }}\n"
+                "if ($env:VFLAGS -cne '-cc tcc -g' -or $env:VEXE -cne 'original-compiler') {\n"
+                "    throw 'Compiler preparation changed the test environment'\n}\n"
+                "Write-Host 'test environment restored'\n"
+                "if ($failure) { throw $failure }\n", encoding='utf-8')
+            calls = root / 'calls.txt'
+            env = dict(os.environ, VFLAGS='-cc tcc -g', VEXE='original-compiler',
+                       VTEST_PREPARE_CALLS=str(calls), VTEST_PREPARE_BUILD_EXIT=str(build_exit),
+                       VTEST_PREPARE_VERSION_EXIT=str(version_exit))
+            result = subprocess.run([self.pwsh, '-NoProfile', '-NonInteractive', '-File', str(script)],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=30)
+            return result, calls.read_text().splitlines() if calls.exists() else [], before == original.read_bytes()
+
+    def test_local_build_optimizes_only_the_compiler_and_restores_test_flags(self):
+        result, calls, original_preserved = self.run_preparation()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('test environment restored', result.stdout)
+        self.assertEqual(len(calls), 2)
+        self.assertIn('VFLAGS=<unset>|VEXE=<unset>|self -prod -parallel-cc -o ', calls[0])
+        self.assertEqual(calls[1], 'VFLAGS=<unset>|VEXE=<unset>|version')
+        self.assertFalse(original_preserved)
+
+    def test_checked_prebuilt_skips_compilation(self):
+        result, calls, original_preserved = self.run_preparation(prebuilt=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ['VFLAGS=<unset>|VEXE=<unset>|version'])
+        self.assertFalse(original_preserved)
+
+    def test_invalid_prebuilt_never_executes_or_replaces_the_working_compiler(self):
+        for checksum in ('wrong-name', 'wrong-hash', 'wrong-commit'):
+            with self.subTest(checksum=checksum):
+                result, calls, original_preserved = self.run_preparation(prebuilt=True, checksum=checksum)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(calls, [])
+                self.assertTrue(original_preserved)
+                self.assertIn('test environment restored', result.stdout)
+
+    def test_build_failure_keeps_the_working_compiler(self):
+        result, calls, original_preserved = self.run_preparation(build_exit=47)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('exit 47', result.stderr)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(original_preserved)
+        self.assertIn('test environment restored', result.stdout)
+
+    def test_version_failure_keeps_the_working_compiler(self):
+        result, calls, original_preserved = self.run_preparation(prebuilt=True, version_exit=48)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('exit 48', result.stderr)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(original_preserved)
+        self.assertIn('test environment restored', result.stdout)
+
+
 @unittest.skipUnless(os.name == 'nt', 'requires Windows process execution')
 class WindowsBuildExecutionTests(unittest.TestCase):
     @classmethod
@@ -514,11 +751,14 @@ int main(int argc, char **argv) {
                 self.assertEqual(calls, expected)
 
     def test_final_ecdsa_failure_is_preserved(self):
-        scripts = [s for _, s in build_scripts(workflow_sources()) if '-stats' in s]
+        source = workflow_sources()['gcc']
+        scripts = re.findall(
+            r'^      - name: Check ECDSA with the optimized compiler\n'
+            r'        run: (.+)\n', source, re.M)
         self.assertEqual(len(scripts), 1)
         result, calls = self.run_build(scripts[0], stats=49)
         self.assertEqual(result.returncode, 49, result.stdout + result.stderr)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls, ['-stats vlib/crypto/ecdsa/ecdsa_test.v'])
 
     def test_prepared_cache_passes_the_compilers_native_privacy_check(self):
         source = self.root / 'cache_privacy.c'

@@ -158,7 +158,6 @@ pub fn (e &GroupUnsupportedError) msg() string {
 }
 
 // unexpected_eof_at builds an UnexpectedEofError.
-@[cold]
 fn unexpected_eof_at(pos int, need int, remaining int) UnexpectedEofError {
 	return UnexpectedEofError{
 		pos:       pos
@@ -168,7 +167,6 @@ fn unexpected_eof_at(pos int, need int, remaining int) UnexpectedEofError {
 }
 
 // malformed_at builds a MalformedError.
-@[cold]
 fn malformed_at(pos int, reason string) MalformedError {
 	return MalformedError{
 		pos:    pos
@@ -177,7 +175,6 @@ fn malformed_at(pos int, reason string) MalformedError {
 }
 
 // wire_type_mismatch builds a WireTypeMismatchError.
-@[cold]
 fn wire_type_mismatch(field int, expected WireType, got WireType) WireTypeMismatchError {
 	return WireTypeMismatchError{
 		field:    field
@@ -187,7 +184,6 @@ fn wire_type_mismatch(field int, expected WireType, got WireType) WireTypeMismat
 }
 
 // unknown_wire_type builds an UnknownWireTypeError.
-@[cold]
 fn unknown_wire_type(pos int, got int) UnknownWireTypeError {
 	return UnknownWireTypeError{
 		pos: pos
@@ -196,7 +192,6 @@ fn unknown_wire_type(pos int, got int) UnknownWireTypeError {
 }
 
 // max_depth_exceeded builds a MaxDepthError.
-@[cold]
 fn max_depth_exceeded(pos int, max_depth int) MaxDepthError {
 	return MaxDepthError{
 		pos:       pos
@@ -205,7 +200,6 @@ fn max_depth_exceeded(pos int, max_depth int) MaxDepthError {
 }
 
 // max_length_exceeded builds a MaxLengthError.
-@[cold]
 fn max_length_exceeded(pos int, declared i64, max_length int) MaxLengthError {
 	return MaxLengthError{
 		pos:        pos
@@ -215,7 +209,6 @@ fn max_length_exceeded(pos int, declared i64, max_length int) MaxLengthError {
 }
 
 // invalid_utf8_at builds an InvalidUtf8Error.
-@[cold]
 fn invalid_utf8_at(pos int) InvalidUtf8Error {
 	return InvalidUtf8Error{
 		pos: pos
@@ -223,7 +216,6 @@ fn invalid_utf8_at(pos int) InvalidUtf8Error {
 }
 
 // unknown_field_at builds an UnknownFieldError.
-@[cold]
 fn unknown_field_at(pos int, number int) UnknownFieldError {
 	return UnknownFieldError{
 		pos:    pos
@@ -232,7 +224,6 @@ fn unknown_field_at(pos int, number int) UnknownFieldError {
 }
 
 // group_unsupported_at builds a GroupUnsupportedError.
-@[cold]
 fn group_unsupported_at(pos int, number int) GroupUnsupportedError {
 	return GroupUnsupportedError{
 		pos:    pos

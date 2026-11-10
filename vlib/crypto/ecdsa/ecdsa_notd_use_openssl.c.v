@@ -50,6 +50,9 @@ module ecdsa
 
 #flag windows -lws2_32
 
+// The bundled entropy provider calls CryptAcquireContext/CryptGenRandom.
+#flag windows -ladvapi32
+
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include
 
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include/everest

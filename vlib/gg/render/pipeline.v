@@ -19,6 +19,7 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 // shared sgl shader. The text atlas needs this: its fragment stage treats the
 // single-channel atlas's red channel as alpha, which the generic shader's
 // plain `texture * color` multiply renders as red glyphs and black quads.
+// Explicit context formats override the recipe to match the render target.
 pub fn (ctx &Context) make_pipeline_with_shader(desc gfx.PipelineDesc, shader gfx.Shader) Pipeline {
 	mut st := ctx.st
 	mut p := Pipeline{}
@@ -62,6 +63,15 @@ pub fn (ctx &Context) make_pipeline_with_shader(desc gfx.PipelineDesc, shader gf
 		d.layout.attrs[3].buffer_index = 0
 		d.index_type = .none
 		d.sample_count = st.sample_count
+		if st.color_format != ._default {
+			d.colors[0].pixel_format = st.color_format
+		}
+		if st.depth_format != ._default {
+			d.depth.pixel_format = st.depth_format
+		}
+		if st.depth_format == .none {
+			d.depth.write_enabled = false
+		}
 		d.face_winding = st.face_winding
 		if d.colors[0].write_mask == ._default {
 			d.colors[0].write_mask = .rgb

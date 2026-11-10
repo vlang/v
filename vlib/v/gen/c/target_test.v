@@ -361,6 +361,25 @@ fn test_cache_native_input_language_reports_source_language() {
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(mm_program)
 	assert cache_native_inputs_language(a, '', []string{}, false, 'clang', prefs.target) == 'objective-c++'
+	assert cache_native_inputs_need_objective_c(a, '', []string{}, false, 'clang', prefs.target)
+	assert !generated_c_unit_needs_objective_c(a, '', []string{}, false, 'clang', prefs.target)
+	// Only ordinary includes use separate wrappers. Explicit insertion still
+	// contributes the source language to the generated translation unit.
+	for directive in ['insert', 'preinclude', 'postinclude'] {
+		program := os.join_path(dir, '${directive}_program.v')
+		os.write_file(program, 'module sample\n#${directive} "impl.mm"\n')!
+		mut explicit_parser := parser.Parser.new(prefs)
+		explicit_ast := explicit_parser.parse_file(program)
+		assert generated_c_unit_needs_objective_c(explicit_ast, '', []string{}, false,
+			'clang', prefs.target), directive
+	}
+	// An active .m include still lives in the generated unit, even beside .mm.
+	mixed_program := os.join_path(dir, 'mixed_program.v')
+	os.write_file(mixed_program, 'module sample\n#include "impl.mm"\n#include "impl.m"\n')!
+	mut mixed_parser := parser.Parser.new(prefs)
+	mixed_ast := mixed_parser.parse_file(mixed_program)
+	assert generated_c_unit_needs_objective_c(mixed_ast, '', []string{}, false, 'clang',
+		prefs.target)
 }
 
 // Darwin header directives select Objective-C without opening the headers, while
@@ -385,6 +404,7 @@ fn test_cache_native_inputs_language_uses_objective_c_for_darwin_headers() {
 	mut p1 := parser.Parser.new(macos_prefs)
 	a1 := p1.parse_file(objc_program)
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
+	assert generated_c_unit_needs_objective_c(a1, '', []string{}, false, 'clang', macos_prefs.target)
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', ios) == 'objective-c'
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'tinyc', macos_prefs.target) == 'c'
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', linux) == 'c'
@@ -632,6 +652,23 @@ fn test_c_flag_linkage_uses_resolved_target_arguments() {
 	}
 }
 
+fn test_c_flag_library_options_ignore_path_and_macro_operands() {
+	for flag in ['-include /tmp/build-logs/helper.o', '-I /tmp/build-logs/include',
+		'-L /tmp/build-logs/lib', '-DNAME=-lfoo', '-D NAME=-lfoo', '-Wl,-rpath,/tmp/build-logs',
+		'-Wl,-L,/tmp/build-logs', '-Wl,--library-path,/tmp/build-logs'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('main', 'flags.c.v', flag)
+		assert !g.mods_with_c_libs['main'], flag
+	}
+	for flag in ['-lm', '-l foo', '-L /tmp/build-logs/lib -lfoo', '-Wl,-lfoo', '-Wl,-l,foo',
+		'-Wl,--library=foo', '-Wl,--library,foo', '/tmp/build-logs/libfoo.a'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('main', 'flags.c.v', flag)
+		assert g.mods_with_c_libs['main'], flag
+		assert !g.files_linking_c_sources['flags.c.v'], flag
+	}
+}
+
 fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected []string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_markers_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -653,4 +690,45 @@ fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected [
 	g.target = prefs.target
 	g.collect_c_flags_from_directives()
 	assert g.c_flags() == expected
+}
+
+fn test_os_execute_capture_flags_match_target_and_freestanding_mode() {
+	root := @VEXEROOT
+	os_dir := os.join_path(root, 'vlib', 'os')
+	// Directive expansion retains '/' separators; host-joined paths use '\\' on Windows.
+	helper := os.to_slash(os.join_path(os_dir, 'execute_capture_nix.o'))
+	for target_os in ['windows', 'linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
+		for freestanding in [false, true] {
+			for cross in [false, true] {
+				mut prefs := pref.new_preferences()
+				prefs.vroot = root
+				arch := if target_os == 'wasm32_emscripten' { 'wasm32' } else { 'amd64' }
+				prefs.target = pref.target_from(target_os, arch) or { panic(err) }
+				prefs.output_cross_c = cross
+				if freestanding {
+					prefs.user_defines << 'freestanding'
+				}
+				files := pref.get_v_files_from_dir_for_target(os_dir, prefs.user_defines, prefs.target)
+					.filter(os.file_name(it).starts_with('execute_capture_'))
+				mut p := parser.Parser.new(prefs)
+				a := p.parse_files(files)
+				assert p.diagnostics.len == 0, p.diagnostics.str()
+				expected := if target_os != 'windows' && !freestanding {
+					[helper]
+				} else {
+					[]string{}
+				}
+				flags := cache_directive_flags(a, root, prefs.target, map[string]string{}).map(os.to_slash(it))
+				assert flags == expected, '${target_os}, freestanding=${freestanding}, cross=${cross}: ${flags}'
+				mut g := FlatGen.new()
+				g.a = a
+				g.target = prefs.target
+				g.compiler_vroot = root
+				g.output_cross_c = cross
+				g.collect_c_flags_from_directives()
+				assert g.c_flags().map(os.to_slash(it)) == expected
+			}
+		}
+	}
 }

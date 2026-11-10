@@ -8,7 +8,8 @@ shift
 script_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
 
 # An optional -- separates linker inputs, which must follow the streamed source
-# for linkers using --as-needed. Reset -x so object files keep their own language.
+# for linkers using --as-needed. Reset -x before trailing arguments so object
+# files keep their own language. Omit the reset when the source is last, as Clang warns.
 remaining=$#
 source_added=0
 while [ "$remaining" -gt 0 ]; do
@@ -16,14 +17,17 @@ while [ "$remaining" -gt 0 ]; do
 	shift
 	remaining=$((remaining - 1))
 	if [ "$source_added" -eq 0 ] && [ "$arg" = -- ]; then
-		set -- "$@" -x c - -x none
+		set -- "$@" -x c -
+		if [ "$remaining" -gt 0 ]; then
+			set -- "$@" -x none
+		fi
 		source_added=1
 	else
 		set -- "$@" "$arg"
 	fi
 done
 if [ "$source_added" -eq 0 ]; then
-	set -- "$@" -x c - -x none
+	set -- "$@" -x c -
 fi
 
 # A FIFO keeps the snapshot streaming while allowing a POSIX shell to wait for

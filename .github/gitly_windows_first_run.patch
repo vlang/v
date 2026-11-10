@@ -1,0 +1,53 @@
+diff --git a/user/user.v b/user/user.v
+index a9165d5..caa1b7c 100644
+--- a/user/user.v
++++ b/user/user.v
+@@ -157,7 +157,7 @@ pub fn (mut app App) register_user(username string, password string, salt string
+ 
+ 		mut u := app.get_user_by_username(user.username) or {
+ 			app.info('User was not inserted')
+-			return error('user `${username}` was not inserted (lookup after insert failed: ${err})')
++			return error('user `${username}` was not inserted (lookup after insert failed)')
+ 		}
+ 
+ 		if u.password != user.password {
+diff --git a/user/user_routes.v b/user/user_routes.v
+index 95ad042..d1504b3 100644
+--- a/user/user_routes.v
++++ b/user/user_routes.v
+@@ -68,2 +68,18 @@
++// Keep registration before /:username: veb matches routes in declaration order.
++pub fn (mut app App) register(mut ctx Context) veb.Result {
++	if ctx.logged_in {
++		return ctx.redirect('/${ctx.user.username}')
++	}
++	csrf := rand.string(30)
++	ctx.set_cookie(name: 'csrf', value: csrf)
++
++	user_count := app.get_users_count_with_reconnect() or { return ctx.db_error(err) }
++	no_users := user_count == 0
++
++	ctx.current_path = ''
++
++	return $veb.html()
++}
++
+ @['/:username']
+ pub fn (mut app App) user(mut ctx Context, username string) veb.Result {
+@@ -192,16 +208,1 @@
+-pub fn (mut app App) register(mut ctx Context) veb.Result {
+-	if ctx.logged_in {
+-		return ctx.redirect('/${ctx.user.username}')
+-	}
+-	csrf := rand.string(30)
+-	ctx.set_cookie(name: 'csrf', value: csrf)
+-
+-	user_count := app.get_users_count_with_reconnect() or { return ctx.db_error(err) }
+-	no_users := user_count == 0
+-
+-	ctx.current_path = ''
+-
+-	return $veb.html()
+-}
+-
+ fn (mut app App) register_failed(mut ctx Context, no_redirect string, msg string) veb.Result {

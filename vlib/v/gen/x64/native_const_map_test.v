@@ -1,11 +1,13 @@
 module x64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if linux && amd64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_const_map_membership_and_value_addresses_use_typed_storage() {
 	$if linux && amd64 {

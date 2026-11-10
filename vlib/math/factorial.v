@@ -8,7 +8,7 @@ pub fn factorial(n f64) f64 {
 		return inf(1)
 	}
 	// Otherwise return n!.
-	if n == f64(i64(n)) && n >= 0.0 {
+	if n >= 0.0 && n == f64(i64(n)) {
 		return factorials_table[int(n)]
 	}
 	return gamma(n + 1.0)

@@ -145,7 +145,7 @@ pub fn (b &Builder) byte_at(n int) u8 {
 }
 
 // write_string appends the string `s` to the buffer.
-@[expand_simple_interpolation; inline]
+@[inline]
 pub fn (mut b Builder) write_string(s string) {
 	unsafe { b.write_ptr(s.str, s.len) }
 }

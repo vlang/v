@@ -91,6 +91,7 @@ fn main() {
 }
 ',
 	]) or { panic(err) }
+	// A live owner keeps the shared source at its first position, once.
 	assert flags == ['shared_native.c', 'retained_by_foreign_call.c', 'retained_by_blank_import.c',
-		'retained_by_initializer.c', 'shared_native.c'], flags.str()
+		'retained_by_initializer.c'], flags.str()
 }

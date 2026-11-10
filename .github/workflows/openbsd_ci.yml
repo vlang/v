@@ -2,21 +2,10 @@ name: CI OpenBSD
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - '**'
-      - '!**.md'
-      - '!**.yml'
-      - '!cmd/tools/**'
-      - '.github/workflows/openbsd_ci.yml'
-      - 'ci/openbsd_ci.vsh'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vwatch_stdin_test.v'
+  workflow_call:
 
 concurrency:
-  group: openbsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: openbsd-openbsd_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 ### See https://github.com/cross-platform-actions/action
@@ -29,7 +18,7 @@ jobs:
   tcc-openbsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,6 +38,7 @@ jobs:
         id: tests-openbsd-tcc
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Install packages needed to build examples
           sudo pkg_add mariadb-client postgresql-client
@@ -59,22 +49,24 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
-          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
-          # default per-process data-segment limit even though the VM has 8 GiB.
-          ulimit -d 4194304
+          # Cold V3 builds of the fast tool reserve more than 4 GiB of data.
+          # Give compiler arenas 6 GiB within this 8 GiB VM.
+          ulimit -d 6291456
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc tcc -no-retry-compilation'
           echo "::endgroup::"
+          # `all` runs every task, even after a failure, and lists the failed ones.
           ./v run ci/openbsd_ci.vsh all
 
   clang-openbsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -94,6 +86,7 @@ jobs:
         id: tests-openbsd-clang
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Install packages needed to build examples
           sudo pkg_add mariadb-client postgresql-client
@@ -105,14 +98,16 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
-          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
-          # default per-process data-segment limit even though the VM has 8 GiB.
-          ulimit -d 4194304
+          # Cold V3 builds of the fast tool reserve more than 4 GiB of data.
+          # Give compiler arenas 6 GiB within this 8 GiB VM.
+          ulimit -d 6291456
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc clang'
           echo "::endgroup::"
+          # `all` runs every task, even after a failure, and lists the failed ones.
           ./v run ci/openbsd_ci.vsh all

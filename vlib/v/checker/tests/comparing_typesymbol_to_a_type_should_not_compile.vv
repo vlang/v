@@ -1,17 +1,13 @@
-import v.ast
+import v.checker.tests.diagnostic_types as fixture
 
 fn main() {
-	t := ast.new_table()
-	ityp := ast.int_type
-	isym := t.sym(ityp)
-	println(ityp.debug())
-	println(isym)
-	println(isym.debug())
-	x := ityp == ast.string_type
-	// the next line should produce at least a warning, or even an error, without an explicit cast:
-	z := isym == ast.string_type
-	println(typeof(isym).name)
-	println(typeof(ast.string_type).name)
+	ityp := fixture.int_type
+	isym := &fixture.TypeSymbol{
+		typ: ityp
+	}
+	x := ityp == fixture.string_type
+	// A symbol pointer cannot be compared to a scalar type handle.
+	z := isym == fixture.string_type
 	println(x)
 	println(z)
 }
