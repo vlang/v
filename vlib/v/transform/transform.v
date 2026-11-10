@@ -18906,6 +18906,9 @@ fn (t &Transformer) optional_conversion_source_type(id flat.NodeId) u32 {
 
 @[direct_array_access]
 fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u32) flat.NodeId {
+	if int(id) >= 0 && target_type_id != u32(0) && t.literal_matches_plain_target(id, target_type_id) {
+		return id
+	}
 	target_shape := flat.source_type_shape(target_type_id)
 	if t.assert_watch.active {
 		if result := t.transform_watched_assert_operand(id, target_type_id) {
@@ -19218,6 +19221,28 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 		t.set_node_typ(int(expr), target_type_id)
 	}
 	return t.coerce_transformed_expr_to_type(expr, id, target_type_id)
+}
+
+// literal_matches_plain_target reports whether `id` is a scalar or string literal
+// whose own type is exactly the builtin target type. transform_expr_for_type then
+// returns the literal itself: none of its target conversions applies to `int`,
+// `bool`, `f64` or `string`, transform_expr leaves such a literal alone, and the
+// final coercion returns at once because node_type answers the target type for it.
+// The contexts that can still rewrite a literal (a watched assert operand, a live
+// reload rewrite, a pending shared-map read lock) keep the general path.
+@[direct_array_access; inline]
+fn (t &Transformer) literal_matches_plain_target(id flat.NodeId, target_type_id u32) bool {
+	matches := match t.a.nodes[int(id)].kind {
+		.int_literal { target_type_id == flat.source_type_int }
+		.bool_literal { target_type_id == flat.source_type_bool }
+		.float_literal { target_type_id == flat.source_type_f64 }
+		.string_literal {
+			target_type_id == flat.source_type_string && t.a.nodes[int(id)].children_count != 1
+		}
+		else { false }
+	}
+	return matches && !t.assert_watch.active && !t.live_reload_runtime
+		&& t.shared_map_read_locks.len == 0
 }
 
 // pointer_storage_expr_for_value_target keeps the storage pointer of a mutable
