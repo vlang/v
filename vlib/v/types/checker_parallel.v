@@ -738,8 +738,13 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() ([]Pass2FnPrep, []void
 // finish_pass2_ancillary_registrations replays independent signature tables on
 // separate pool lanes. Each lane preserves source order within its own map, so
 // duplicate declarations retain the serial checker's last-write semantics.
+// The collecting thread collects the deprecated symbols meanwhile, which
+// collection does right after pass 2: that walk reads the AST and fills the
+// deprecation and unsafe-function tables, none of which a lane touches, and
+// reads none of the tables the lanes fill.
 fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
+		tc.collect_deprecated_symbols()
 		return
 	}
 	tc.disable_call_flag_bloom()
@@ -748,20 +753,21 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group)
 		}
+		tc.collect_deprecated_symbols()
 	} else {
-		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups}
-		mut tasks := []workers.Task{cap: pass2_ancillary_groups}
-		for group in 0 .. pass2_ancillary_groups {
+		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups + 1}
+		mut tasks := []workers.Task{cap: pass2_ancillary_groups + 1}
+		for group in 0 .. pass2_ancillary_groups + 1 {
 			args << Pass2AncillaryArgs{
 				tc:    voidptr(tc)
 				group: group
 			}
 		}
-		for group in 0 .. pass2_ancillary_groups {
+		for group in 0 .. pass2_ancillary_groups + 1 {
 			tasks << workers.Task{
 				run:        pass2_ancillary_thread
 				arg:        unsafe { voidptr(&args[group]) }
-				force_sync: group == 0
+				force_sync: group == pass2_ancillary_groups
 			}
 		}
 		pool.run(tasks)
@@ -850,7 +856,12 @@ struct Pass2AncillaryArgs {
 fn pass2_ancillary_thread(arg voidptr) voidptr {
 	a := unsafe { &Pass2AncillaryArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
-	tc.apply_pass2_ancillary_group(a.group)
+	if a.group == pass2_ancillary_groups {
+		// The collecting thread's own task (finish_pass2_ancillary_registrations).
+		tc.collect_deprecated_symbols()
+	} else {
+		tc.apply_pass2_ancillary_group(a.group)
+	}
 	return unsafe { nil }
 }
 

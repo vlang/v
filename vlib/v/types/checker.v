@@ -4976,12 +4976,15 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	if parallel_pass2_ancillary {
 		tc.defer_fn_ancillary = false
+		// Also collects the deprecated symbols, beside the lanes.
 		tc.finish_pass2_ancillary_registrations()
 	}
 	// The registrations above copied what they keep of the preparations.
 	unsafe { pass2_preps.free() }
 	free_check_worker_scopes(checker_worker_pool(tc.a), pass2_scopes)
-	tc.collect_deprecated_symbols()
+	if !parallel_pass2_ancillary {
+		tc.collect_deprecated_symbols()
+	}
 	if p2_profile {
 		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
 	}
