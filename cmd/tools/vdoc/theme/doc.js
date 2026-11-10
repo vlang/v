@@ -83,10 +83,20 @@ function setupPlatformSelector() {
 		document.querySelectorAll('[data-platforms]').forEach((el) => {
 			el.hidden = platform !== '' && !el.dataset.platforms.split(' ').includes(platform);
 		});
-		document.querySelectorAll('.doc-toc a[href^="#"]').forEach((a) => {
-			const target = document.getElementById(decodeURIComponent(a.hash.slice(1)));
-			a.parentElement.hidden = !!target && target.hidden;
-		});
+		// The links of the table of contents, and of the symbols in the navigation of a page of
+		// one module, are checked from the last one, so that an entry is only hidden with its
+		// target when none of the entries inside it, like the methods of a type, are shown.
+		const links = document.querySelectorAll(
+			'.doc-toc a[href^="#"], header.doc-nav .content a[href^="#"]',
+		);
+		Array.from(links)
+			.reverse()
+			.forEach((a) => {
+				const target = document.getElementById(decodeURIComponent(a.hash.slice(1)));
+				const li = a.closest('li');
+				li.hidden =
+					!!target && !!target.closest('[hidden]') && !li.querySelector('li:not([hidden])');
+			});
 	};
 	let saved = '';
 	try {

@@ -524,7 +524,8 @@ while it scrolls. It takes no space, so that it is next to the name of the modul
 .doc-content [hidden] {
 	display: none !important;
 }
-.doc-toc li[hidden] {
+.doc-toc li[hidden],
+.doc-nav .content li[hidden] {
 	display: none;
 }
 .doc-content > .doc-node > .title > .link {
