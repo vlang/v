@@ -431,7 +431,15 @@ pub fn declarations_on_host(node DocNode) []DocNode {
 }
 
 // all_platforms returns the platforms that a symbol is available on, with all its variants.
+// The group of all the constants of a module is available wherever one of them is.
 pub fn all_platforms(node DocNode) []Platform {
+	if node.kind == .const_group && node.children.len > 0 {
+		mut platforms := all_platforms(node.children[0])
+		for child in node.children[1..] {
+			platforms = merge_platforms(platforms, all_platforms(child))
+		}
+		return platforms
+	}
 	mut platforms := node.platforms.clone()
 	for variant in node.variants {
 		platforms = merge_platforms(platforms, variant.platforms)

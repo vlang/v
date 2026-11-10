@@ -222,7 +222,8 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw str
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
+			[]))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
@@ -230,7 +231,7 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw str
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
 		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
 		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
-			cfg.include_examples))
+			cfg.include_examples, doc.all_platforms(cn)))
 		hw.write_string('\n')
 	}
 }
@@ -255,7 +256,8 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	if platform_selector != '' {
 		contents.writeln('<div class="platform-bar">${platform_selector}</div>')
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
+		[]))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -559,7 +561,10 @@ fn render_doc_markdown(source string, mut renderer markdown.HTMLRenderer) string
 		.replace('</li>\n</ol>', '</li></ol>')
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
+// doc_node_html returns the section of `dn`. A member of a type, like a method, is only shown with
+// the platform selector where its type is available, given by `parent_platforms`, even when it
+// is declared in a file of all of them.
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, parent_platforms []doc.Platform) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := new_doc_markdown_renderer(md_link_base)
@@ -581,7 +586,11 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		node_id = 'readme_${node_id}'
 		hash_link = ' <a href="#${node_id}">#</a>'
 	}
-	section_platforms := if head { '' } else { platforms_attr(doc.all_platforms(dn)) }
+	section_platforms := if head {
+		''
+	} else {
+		platforms_attr(within_platforms(doc.all_platforms(dn), parent_platforms))
+	}
 	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}"${section_platforms}>')
 	if dn.name != '' {
 		if dn.kind == .const_group {
@@ -650,6 +659,19 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// within_platforms returns the platforms of `platforms` that are also in `limit`, where no
+// platforms mean all of them. A symbol that would be left on none keeps its own platforms.
+fn within_platforms(platforms []doc.Platform, limit []doc.Platform) []doc.Platform {
+	if limit.len == 0 {
+		return platforms
+	}
+	if platforms.len == 0 {
+		return limit
+	}
+	common := platforms.filter(it in limit)
+	return if common.len == 0 { platforms } else { common }
 }
 
 // platforms_attr returns the `data-platforms` attribute of an element that is only about
