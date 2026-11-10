@@ -890,6 +890,31 @@ fn test_receipt_sees_a_file_added_to_an_output_directory_where_headers_are_searc
 	assert !v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
 }
 
+fn test_receipt_knows_an_output_directory_searched_through_a_link() {
+	f := receipt_fixture('output_header_link')!
+	link := f.root + '_link'
+	defer {
+		os.rm(link) or {}
+		os.rmdir_all(f.root) or {}
+	}
+	os.mkdir_all(f.cache_dir)!
+	os.symlink(f.root, link)!
+	age_unchanged_build_source(f.root)!
+	receipt := UnchangedBuildReceipt{
+		...f.receipt()
+		dirs:        [f.source_dir, link]
+		header_dirs: [link]
+		output_dir:  os.real_path(f.root)
+		output_name: os.file_name(f.destination)
+	}
+	stamp := v3_unchanged_build_stamp(receipt, f.cache_dir, '')
+	assert stamp.ok
+	assert v3_publish_unchanged_build(f.cache_dir, 'output_link', f.executable, stamp)
+	// The executable written into the directory is no new header there either.
+	assert v3_restore_unchanged_build(f.cache_dir, 'output_link', f.destination, '')
+	assert v3_restore_unchanged_build(f.cache_dir, 'output_link', f.destination, '')
+}
+
 // The tests below build programs and take long: a test after them would find
 // the files that it ages newer than the start of its process.
 

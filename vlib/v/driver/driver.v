@@ -5688,7 +5688,9 @@ fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, bui
 		}
 	}
 	for path in receipt.dirs {
-		kind := if path != receipt.output_dir {
+		// A directory of the search is known by the path that leads to it, which
+		// may differ from the output directory by a link on the way.
+		kind := if os.real_path(path) != os.real_path(receipt.output_dir) {
 			'dir'
 		} else if path in receipt.header_dirs {
 			'entries'
