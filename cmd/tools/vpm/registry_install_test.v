@@ -1,6 +1,7 @@
 module main
 
 import json2
+import net
 import net.http
 import os
 
@@ -50,10 +51,15 @@ struct RunningSource {
 
 fn start_source(paths map[string]string) !RunningSource {
 	mut log := &SourceLog{}
+	// Bind on the caller's thread so it never polls the server's mutable state
+	// or reads its listener while the serving thread initializes it.
+	// The listening socket queues requests until the server starts accepting.
+	listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
 	// The server is held by reference: `listen_and_serve` takes it by `mut`, and
 	// spawning a method on a by-value receiver does not compile.
 	mut srv := &http.Server{
-		addr:                 ':0'
+		listener:             *listener
 		handler:              SourceHandler{
 			paths: paths
 			log:   log
@@ -61,9 +67,8 @@ fn start_source(paths map[string]string) !RunningSource {
 		show_startup_message: false
 	}
 	spawn srv.listen_and_serve()
-	srv.wait_till_running()!
 	return RunningSource{
-		base:   'http://127.0.0.1:${srv.listener.addr()!.port()!}'
+		base:   'http://127.0.0.1:${port}'
 		server: srv
 		log:    log
 	}

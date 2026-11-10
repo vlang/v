@@ -80,8 +80,12 @@ jobs:
             mkdir -p "$logs/vtmp-$i"
             # A private VTMP per shard keeps the concurrent `v run` builds of test_all.vsh
             # apart. Every line of the shared live log is prefixed with its shard.
+            # A background job of a non-interactive shell ignores SIGINT and SIGQUIT, and
+            # the tests would inherit that; `env` restores the default handling, so that
+            # tests which interrupt the programs they start behave as in a foreground run.
             (
-              VTMP="$logs/vtmp-$i" ./v run vlib/v/test_all.vsh --units-only --shard "$i/$shards" 2>&1 \
+              VTMP="$logs/vtmp-$i" env --default-signal=INT,QUIT \
+                ./v run vlib/v/test_all.vsh --units-only --shard "$i/$shards" 2>&1 \
                 | tee "$logs/shard-$i.log" | sed -u "s|^|[$i/$shards] |"
               exit "${PIPESTATUS[0]}"
             ) &

@@ -298,9 +298,12 @@ jobs:
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
-            v retry -- sudo apt -qq update
-            v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
-            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev
+            # The Ubuntu HTTP apt mirror stalled during graphics package downloads.
+            # Use the official HTTPS mirror and bound each apt network request.
+            sudo sed -i 's@http://archive.ubuntu.com/@https://archive.ubuntu.com/@g' /etc/apt/apt-mirrors.txt
+            v retry -- sudo apt-get -o Acquire::Languages=none -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+            v retry -- sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -qq install -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
+            v retry -- sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -qq install -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev
           else
             v retry brew install libsodium pango fribidi pkg-config
           fi

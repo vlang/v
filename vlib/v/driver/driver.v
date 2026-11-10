@@ -7076,10 +7076,14 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
 }
 
-fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool, _scope voidptr) {
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_name_list []string, _scope voidptr) {
 	// Set difference instead of the former sort-and-merge: only a handful of
 	// signatures are added during transform, while sorting every fn name twice
 	// cost several ms per build.
+	mut original_names := map[string]bool{}
+	for name in original_name_list {
+		original_names[name] = true
+	}
 	mut added_names := []string{}
 	for name, _ in tc.fn_ret_types {
 		if name !in original_names {
@@ -13988,10 +13992,12 @@ pub fn run(args []string) {
 			base_type_count := pre_tc.type_count()
 			base_symbol_count := pre_tc.symbol_count()
 			base_text_count := a.text_values.len
-			mut original_signature_names := map[string]bool{}
-			for name, _ in pre_tc.fn_ret_types {
-				original_signature_names[name] = true
-			}
+			// Only the promotion of a released transform arena compares against these
+			// names; a set of all of them cost several times the list.
+			original_signature_names := pre_tc.fn_ret_types.keys()
+			// The summaries the transform stage hands over are read by the
+			// monomorphization stage alone, which a build without generics skips.
+			pre_tc.transform_borrow_handover_unused = !uses_generics
 			if verbose {
 				eprintln('  [ttime] tf signames        ${f64(tfpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 				tfpre_sw.restart()

@@ -119,6 +119,7 @@
       "**.yml",
       "!**/docker_ci.yml",
       "cmd/tools/**",
+      "!cmd/tools/test_if_v_test_system_works.v",
       "!cmd/tools/builders/**.v",
       "vlib/v/gen/fastc/**",
       "vlib/v/fastcdriver/**"

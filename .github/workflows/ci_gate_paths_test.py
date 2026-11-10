@@ -29,6 +29,14 @@ class GatePathsTests(unittest.TestCase):
             ["cmd/tools/mytool.v"], self.entries["linux_ci.yml"]
         ))
 
+    def test_docker_musl_harness_change_selects_docker_ci(self):
+        self.assertTrue(gate.should_run(
+            ["cmd/tools/test_if_v_test_system_works.v"], self.entries["docker_ci.yml"]
+        ))
+        self.assertFalse(gate.should_run(
+            ["cmd/tools/unrelated.v"], self.entries["docker_ci.yml"]
+        ))
+
     def test_workflow_only_changes_retain_lint(self):
         files = [".github/workflows/ci_master_core.yml"]
         self.assertTrue(gate.should_run(files, self.entries["workflow_lint.yml"]))

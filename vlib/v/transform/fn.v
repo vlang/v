@@ -20300,6 +20300,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, nod
 	return result_source_id
 }
 
+@[direct_array_access]
 fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.NodeId, node flat.Node) ?u32 {
 	if isnil(t.tc) {
 		return none
@@ -20308,6 +20309,134 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if is_builtin_collection_resolved_call(name) {
 		return none
 	}
+	keyed := t.resolved_call_declared_return_slot(name, node)
+	if keyed < 0 {
+		if result := t.resolved_call_declared_return_type(name, node) {
+			return result
+		}
+		return t.resolved_call_checked_return_type(id, node)
+	}
+	slot := keyed & 1023
+	form := u8(keyed >> 16)
+	mut cache := t.resolved_call_decl_cache
+	if cache.ret_states[slot] != 0 && cache.ret_forms[slot] == form
+		&& same_transform_text(cache.ret_names[slot], name) {
+		if cache.ret_states[slot] > 0 {
+			return cache.ret_results[slot]
+		}
+		return t.resolved_call_checked_return_type(id, node)
+	}
+	generation := cache.ret_generation
+	if result := t.resolved_call_declared_return_type(name, node) {
+		// Resolution can register a signature or a type; an answer computed across
+		// such a change is not published.
+		if cache.ret_generation == generation && t.resolved_call_return_tables_unchanged(cache) {
+			cache.ret_names[slot] = name
+			cache.ret_forms[slot] = form
+			cache.ret_results[slot] = result
+			cache.ret_states[slot] = 1
+		}
+		return result
+	}
+	if cache.ret_generation == generation && t.resolved_call_return_tables_unchanged(cache) {
+		cache.ret_names[slot] = name
+		cache.ret_forms[slot] = form
+		cache.ret_states[slot] = -1
+	}
+	return t.resolved_call_checked_return_type(id, node)
+}
+
+// resolved_call_return_tables_unchanged reports whether the file, module and
+// signature and type tables still are the ones the cached declared return types
+// were computed against.
+@[inline]
+fn (t &Transformer) resolved_call_return_tables_unchanged(cache &ResolvedCallDeclCache) bool {
+	return cache.ret_tc == voidptr(t.tc) && cache.ret_revision == t.tc.fn_ret_types_revision
+		&& cache.ret_tc_rets == t.tc.fn_ret_types.len
+		&& cache.ret_tc_modules == t.tc.fn_type_modules.len
+		&& cache.ret_tc_generics == t.tc.fn_generic_params.len
+		&& cache.ret_tc_texts == t.tc.fn_ret_type_texts.ids.len
+		&& cache.ret_tc_v_names == t.tc.v_fn_semantic_names.len
+		&& cache.ret_fn_count == t.fn_ret_types.ids.len
+		&& cache.ret_by_module == t.fn_ret_types_by_module.ids.len
+		&& cache.ret_type_tables == t.tc.structs.len + t.tc.type_aliases.ids.len +
+			t.tc.sum_types.ids.len + t.tc.interface_names.len + t.tc.enum_names.len
+		&& cache.ret_memo_names == t.memo_semantic_type_names
+		&& same_transform_text(cache.ret_module, t.cur_module)
+		&& same_transform_text(cache.ret_file, t.cur_file)
+}
+
+// resolved_call_declared_return_slot returns the cache slot (with the callee
+// form in bits 16 and up) of a call whose declared return type depends only on
+// its resolved name, or -1. That holds for a call without type arguments whose
+// callee is not a local binding: resolved_call_declared_return_type then reads the
+// node only to tell whether the callee is an identifier spelled like the resolved
+// name (form 1), like its last component (form 2), or no identifier (form 0).
+// Everything else it reads is the current file and module and the signature and
+// type tables, which the cache records and compares on every use.
+@[direct_array_access]
+fn (t &Transformer) resolved_call_declared_return_slot(name string, node flat.Node) int {
+	if isnil(t.resolved_call_decl_cache) || name.len == 0 || node.value.len != 0
+		|| node.children_count == 0 || node.call_type_args().len != 0 || name.starts_with('C.') {
+		return -1
+	}
+	fn_node := t.a.child_node(&node, 0)
+	mut form := 0
+	if fn_node.kind == .ident {
+		if t.var_type(fn_node.value) != 0 {
+			return -1
+		}
+		if fn_node.value == name {
+			form = 1
+		} else if fn_node.value == short_name_view(name) {
+			form = 2
+		} else {
+			return -1
+		}
+	} else if fn_node.kind == .index {
+		return -1
+	}
+	mut cache := t.resolved_call_decl_cache
+	if !t.resolved_call_return_tables_unchanged(cache) {
+		cache.ret_tc = voidptr(t.tc)
+		cache.ret_revision = t.tc.fn_ret_types_revision
+		cache.ret_tc_rets = t.tc.fn_ret_types.len
+		cache.ret_tc_modules = t.tc.fn_type_modules.len
+		cache.ret_tc_generics = t.tc.fn_generic_params.len
+		cache.ret_tc_texts = t.tc.fn_ret_type_texts.ids.len
+		cache.ret_tc_v_names = t.tc.v_fn_semantic_names.len
+		cache.ret_fn_count = t.fn_ret_types.ids.len
+		cache.ret_by_module = t.fn_ret_types_by_module.ids.len
+		cache.ret_type_tables = t.tc.structs.len + t.tc.type_aliases.ids.len +
+			t.tc.sum_types.ids.len + t.tc.interface_names.len + t.tc.enum_names.len
+		cache.ret_memo_names = t.memo_semantic_type_names
+		cache.ret_module = t.cur_module
+		cache.ret_file = t.cur_file
+		cache.ret_states = [1024]i8{}
+		cache.ret_generation++
+	}
+	return ((resolved_name_cache_slot(name, 1023) + form * 341) & 1023) | (form << 16)
+}
+
+// resolved_call_checked_return_type is the return type the checker recorded for
+// the call expression itself, used when its declaration names no usable one.
+fn (t &Transformer) resolved_call_checked_return_type(id flat.NodeId, node flat.Node) ?u32 {
+	if typ := t.tc.expr_type(id) {
+		if typ !is types.Unknown && typ !is types.Void {
+			candidate_source_id_7 := t.call_return_type_name(t.semantic_type_name(typ), node)
+			candidate_source_id_14 := candidate_source_id_7
+
+			if decl_type_is_usable(candidate_source_id_14) {
+				return candidate_source_id_7
+			}
+		}
+	}
+	return none
+}
+
+// resolved_call_declared_return_type derives the return type of a resolved call
+// from the declaration of `name`, as the caller's module spells it.
+fn (t &Transformer) resolved_call_declared_return_type(name string, node flat.Node) ?u32 {
 	if name.starts_with('C.') {
 		if module_name := t.tc.visible_c_fn_module(name) {
 			if ret := t.tc.c_fn_module_ret_types['${module_name}\x01${name}'] {
@@ -20396,16 +20525,6 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 
 			if decl_type_is_usable(candidate_source_id_13) || candidate_source_id_6 == flat.source_type_void {
 				return candidate_source_id_6
-			}
-		}
-	}
-	if typ := t.tc.expr_type(id) {
-		if typ !is types.Unknown && typ !is types.Void {
-			candidate_source_id_7 := t.call_return_type_name(t.semantic_type_name(typ), node)
-			candidate_source_id_14 := candidate_source_id_7
-
-			if decl_type_is_usable(candidate_source_id_14) {
-				return candidate_source_id_7
 			}
 		}
 	}
