@@ -1621,7 +1621,9 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		// Fuse body-local function-pointer discovery into the item cost walk so
 		// parallel type declarations see every typedef before their task starts.
 		// The globally numbered string table must also be complete before output.
-		g.preintern_ast_string_literals()
+		if !g.ast_string_literals_interned {
+			g.preintern_ast_string_literals()
+		}
 		g.timing_profile('  [ttime]       pm str walk  ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		pmsw.restart()
 		g.want_parallel_prep = true

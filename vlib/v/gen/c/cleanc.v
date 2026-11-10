@@ -761,7 +761,8 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
-	ast_string_literals_parsed     int // how many leading ast_string_literals come from parsed nodes
+	ast_string_literals_interned   bool // preintern_ast_string_literals already ran beside the interface scan
+	ast_string_literals_parsed     int  // how many leading ast_string_literals come from parsed nodes
 	referenced_c_struct_ids        map[u32]bool
 	referenced_c_struct_ids_ready  bool
 	c_struct_refs_handoff          &CStructRefsHandoff = unsafe { nil } // set on a parallel interface scan worker
@@ -3916,6 +3917,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.expr_c_struct_refs_ready = false
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
+	g.ast_string_literals_interned = false
 	g.ast_string_literals_parsed = 0
 	g.referenced_c_struct_ids = map[u32]bool{}
 	g.referenced_c_struct_ids_ready = false
@@ -4289,6 +4291,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 				g.precompute_non_generic_fn_index()
 			}
 			g.precompute_generic_fn_key_index()
+		}
+		if parallel_iface_scan {
+			$if !v3_no_parallel ? {
+				// The master would only wait for the interface scan now. Number the
+				// AST literals meanwhile: prepare_pre_dispatch_master does it next,
+				// right after the struct default literals above, and nothing in
+				// between interns a string.
+				g.preintern_ast_string_literals()
+				g.ast_string_literals_interned = true
+			}
 		}
 		if !parallel_iface_scan {
 			g.precompute_embedded_fields()
