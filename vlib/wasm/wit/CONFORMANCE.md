@@ -39,9 +39,10 @@ Function-signature shapes the component wrapper lifts today:
 |---|---|
 | primitive params/results (i32/i64/f32/f64) | ✅ |
 | single string param, `(i32, i32) -> r` core sig | ✅ |
-| string returns | ❌ (depends on Item 1 follow-up) |
-| lists / records / variants / resources | ❌ (depends on Item 1 follow-up) |
-| options / results / tuples / maps | ❌ (depends on Item 1 follow-up) |
+| multiple string params (each expands to `(i32, i32)`) | ✅ |
+| string returns, `(ptr, len)` pair via hidden sret slot | ✅ |
+| lists / records / variants / resources | ❌ (no canonical layout yet) |
+| options / results / tuples / maps | ❌ (no canonical layout yet) |
 
 ## Notes
 
