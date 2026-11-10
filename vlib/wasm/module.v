@@ -73,6 +73,13 @@ mut:
 	elements       []Element
 	debug          bool
 	mod_name       ?string
+	customs        []CustomSection
+}
+
+// add_custom_section appends a user custom section with the given name and
+// raw payload bytes.
+pub fn (mut mod Module) add_custom_section(name string, bytes []u8) {
+	mod.customs << CustomSection{ name: name, bytes: bytes.clone() }
 }
 
 struct Global {
@@ -108,6 +115,11 @@ struct DataSegment {
 	idx  ?int
 	data []u8
 	name ?string
+}
+
+struct CustomSection {
+	name  string
+	bytes []u8
 }
 
 struct Table {
