@@ -5641,7 +5641,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
 	g.main_type_aliases_absent = !g.tc_has_main_type_alias()
-	g.build_sparse_call_name_index()
+	if type_index_threads.len == 0 {
+		g.build_sparse_call_name_index()
+	} else {
+		// The type index thread builds it; finish_type_indexes installs it.
+		g.sparse_call_name_index_ready = false
+	}
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		presw.restart()
@@ -6135,30 +6140,55 @@ fn (g &FlatGen) parsed_node_end() int {
 // call nodes only in that map; cgen reads it about half a million times for a
 // self-host build, and the tables are read-only for the rest of cgen.
 fn (mut g FlatGen) build_sparse_call_name_index() {
+	g.install_sparse_call_name_index(new_sparse_call_name_index(g.tc, g.a.nodes.len))
+}
+
+// SparseCallNameIndex is what build_sparse_call_name_index installs.
+struct SparseCallNameIndex {
+	ready  bool
+	base   int
+	index  []u32
+	values []string
+}
+
+fn (mut g FlatGen) install_sparse_call_name_index(built SparseCallNameIndex) {
 	g.sparse_call_name_index_ready = false
-	if isnil(g.tc) || !g.tc.parallel_check_sparse || !isnil(g.tc.fork_overlay)
-		|| g.tc.check_range_lo != 0 || g.tc.check_range_hi < 0 {
+	if !built.ready {
 		return
 	}
-	base := g.tc.check_range_hi + 1
-	n := g.a.nodes.len
+	g.sparse_call_name_index = built.index
+	g.sparse_call_name_values = built.values
+	g.sparse_call_name_index_base = built.base
+	g.sparse_call_name_index_ready = true
+}
+
+// new_sparse_call_name_index builds the tables for an AST of `n` nodes. It only
+// reads the checker's resolved-call map, which cgen never writes.
+fn new_sparse_call_name_index(tc &types.TypeChecker, n int) SparseCallNameIndex {
+	if isnil(tc) || !tc.parallel_check_sparse || !isnil(tc.fork_overlay) || tc.check_range_lo != 0
+		|| tc.check_range_hi < 0 {
+		return SparseCallNameIndex{}
+	}
+	base := tc.check_range_hi + 1
 	if base >= n {
-		return
+		return SparseCallNameIndex{}
 	}
 	mut index := []u32{len: n - base}
-	mut values := []string{len: g.tc.sparse_resolved_call_names.len}
+	mut values := []string{len: tc.sparse_resolved_call_names.len}
 	mut count := 0
-	for idx, name in g.tc.sparse_resolved_call_names {
+	for idx, name in tc.sparse_resolved_call_names {
 		if idx >= base && idx < n && count < values.len {
 			values[count] = name
 			count++
 			index[idx - base] = u32(count)
 		}
 	}
-	g.sparse_call_name_index = index
-	g.sparse_call_name_values = values
-	g.sparse_call_name_index_base = base
-	g.sparse_call_name_index_ready = true
+	return SparseCallNameIndex{
+		ready:  true
+		base:   base
+		index:  index
+		values: values
+	}
 }
 
 // resolved_call_name is tc.resolved_call_name, answering transform-created

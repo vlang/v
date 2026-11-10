@@ -824,11 +824,13 @@ fn moved_fn_gen_item_sort_key(key FlatFnGenItemSortKey) FlatFnGenItemSortKey {
 // from the checker's (complete) type tables while collect_gen_info runs;
 // `scope` holds their storage until cgen output is done.
 struct TypeIndexArgs {
-	tc &types.TypeChecker
+	tc      &types.TypeChecker
+	n_nodes int
 mut:
 	scope       voidptr
 	field_index &StructFieldIndexBase = unsafe { nil }
 	type_names  &TypeNameShortIndex   = unsafe { nil }
+	call_names  SparseCallNameIndex
 }
 
 fn type_index_thread(arg voidptr) voidptr {
@@ -836,6 +838,7 @@ fn type_index_thread(arg voidptr) voidptr {
 	a.scope = cgen_worker_scope_begin(true)
 	a.field_index = new_struct_field_index_base(a.tc.structs)
 	a.type_names = new_type_name_short_index(a.tc)
+	a.call_names = new_sparse_call_name_index(a.tc, a.n_nodes)
 	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -845,7 +848,8 @@ fn type_index_thread(arg voidptr) voidptr {
 // uses them.
 fn (mut g FlatGen) start_type_indexes(no_parallel bool) (&TypeIndexArgs, []thread voidptr) {
 	mut args := &TypeIndexArgs{
-		tc: g.tc
+		tc:      g.tc
+		n_nodes: g.a.nodes.len
 	}
 	mut threads := []thread voidptr{cap: 1}
 	if !no_parallel && g.scope_parallel_workers && g.incremental_fn_names.len == 0 {
@@ -861,6 +865,7 @@ fn (mut g FlatGen) finish_type_indexes(args &TypeIndexArgs, threads []thread voi
 	_ = threads.wait()
 	g.struct_field_index_base = args.field_index
 	g.type_name_short_index = args.type_names
+	g.install_sparse_call_name_index(args.call_names)
 	if args.scope != unsafe { nil } {
 		g.parallel_worker_scopes << args.scope
 	}
