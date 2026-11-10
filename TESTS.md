@@ -62,7 +62,7 @@ uses the requested `-arch`, including when it differs from the runner's host arc
 
 By default, `v test` uses one parallel worker per CPU and budgets one worker per 2 GiB of
 memory, whichever is lower. On Linux it uses the lower of physical memory and the active
-cgroup memory limit.
+cgroup memory limit, and the lower of the CPU count and the cgroup CPU quota.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 

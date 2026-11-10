@@ -107,10 +107,27 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	return jobs
 }
 
-@[markused]
-fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+// CgroupLimit is a limit that the test runner reads from the directories of a cgroup.
+enum CgroupLimit {
+	memory_v1 // memory.limit_in_bytes, in bytes
+	memory_v2 // memory.max, in bytes
+	cpu_v1    // cpu.cfs_quota_us / cpu.cfs_period_us, in CPUs
+	cpu_v2    // cpu.max, in CPUs
+}
+
+fn (limit CgroupLimit) fs_type() string {
+	return if limit in [.memory_v1, .cpu_v1] { 'cgroup' } else { 'cgroup2' }
+}
+
+fn (limit CgroupLimit) controller() string {
+	return if limit in [.memory_v1, .memory_v2] { 'memory' } else { 'cpu' }
+}
+
+// cgroup_paths returns the unified (v2) cgroup path of /proc/self/cgroup, and the
+// v1 path of each controller.
+fn cgroup_paths(cgroups string) (string, map[string]string) {
 	mut v2_path := ''
-	mut v1_memory_path := ''
+	mut v1_paths := map[string]string{}
 	for line in cgroups.split_into_lines() {
 		first_separator := line.index(':') or { continue }
 		second_separator := line.index_after(':', first_separator + 1) or { continue }
@@ -118,22 +135,43 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 		cgroup_path := line[second_separator + 1..]
 		if controllers == '' {
 			v2_path = cgroup_path
-		} else if 'memory' in controllers.split(',') {
-			v1_memory_path = cgroup_path
+			continue
+		}
+		for controller in controllers.split(',') {
+			v1_paths[controller] = cgroup_path
 		}
 	}
-	if v1_memory_path != '' {
-		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup', 'memory.limit_in_bytes') {
+	return v2_path, v1_paths
+}
+
+fn cgroup_limit_from_contents(cgroups string, mountinfo string, v1 CgroupLimit, v2 CgroupLimit) !u64 {
+	v2_path, v1_paths := cgroup_paths(cgroups)
+	v1_path := v1_paths[v1.controller()] or { '' }
+	if v1_path != '' {
+		if limit := cgroup_limit_for_hierarchy(mountinfo, v1_path, v1) {
 			return limit
 		}
 	}
 	if v2_path != '' {
-		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+		return cgroup_limit_for_hierarchy(mountinfo, v2_path, v2)
 	}
-	return error('no cgroup memory limit found')
+	return error('no cgroup ${v2.controller()} limit found')
 }
 
-fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
+@[markused]
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	return cgroup_limit_from_contents(cgroups, mountinfo, .memory_v1, .memory_v2)
+}
+
+// cgroup_cpu_limit_from_contents returns the CPU quota of the cgroup, rounded up
+// to whole CPUs. `sysconf` reports the CPUs of the host, not this quota.
+@[markused]
+fn cgroup_cpu_limit_from_contents(cgroups string, mountinfo string) !int {
+	return int(cgroup_limit_from_contents(cgroups, mountinfo, .cpu_v1, .cpu_v2)!)
+}
+
+fn cgroup_limit_for_hierarchy(mountinfo string, cgroup_path string, kind CgroupLimit) !u64 {
+	fs_type := kind.fs_type()
 	for line in mountinfo.split_into_lines() {
 		parts := line.split(' - ')
 		if parts.len != 2 {
@@ -146,14 +184,15 @@ fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_ty
 		}
 		mount_root := decode_mountinfo_path(mount_parts[3])
 		mount_point := decode_mountinfo_path(mount_parts[4])
-		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+		if fs_parts[0] != fs_type
+			|| (fs_type == 'cgroup' && kind.controller() !in fs_parts[2].split(',')) {
 			continue
 		}
-		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path, limit_file) {
+		if limit := cgroup_limit_in_hierarchy(mount_root, mount_point, cgroup_path, kind) {
 			return limit
 		}
 	}
-	return error('no cgroup memory limit found')
+	return error('no cgroup ${kind.controller()} limit found')
 }
 
 fn decode_mountinfo_path(path string) string {
@@ -173,7 +212,7 @@ fn decode_mountinfo_path(path string) string {
 	return result.str()
 }
 
-fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+fn cgroup_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, kind CgroupLimit) !u64 {
 	mut relative_path := cgroup_path.trim_left('/')
 	trimmed_root := mount_root.trim_right('/')
 	if trimmed_root != '' {
@@ -186,13 +225,12 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 		// mount_root, so relative_path already maps from the visible mount point.
 	}
 	mut current_path := os.join_path(mount_point, relative_path)
-	mut memory_limit := u64(0)
+	mut lowest_limit := u64(0)
 	for {
-		if content := os.read_file(os.join_path(current_path, limit_file)) {
-			if limit := cgroup_memory_limit_value(content) {
-				if memory_limit == 0 || limit < memory_limit {
-					memory_limit = limit
-				}
+		// The effective limit of a cgroup is the lowest one along its ancestors.
+		if limit := cgroup_directory_limit(current_path, kind) {
+			if lowest_limit == 0 || limit < lowest_limit {
+				lowest_limit = limit
 			}
 		}
 		if current_path == mount_point {
@@ -204,10 +242,32 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 		}
 		current_path = parent_path
 	}
-	if memory_limit == 0 {
-		return error('cgroup memory limit is unlimited')
+	if lowest_limit == 0 {
+		return error('cgroup ${kind.controller()} limit is unlimited')
 	}
-	return memory_limit
+	return lowest_limit
+}
+
+fn cgroup_directory_limit(dir string, kind CgroupLimit) !u64 {
+	return match kind {
+		.memory_v1 {
+			cgroup_memory_limit_value(os.read_file(os.join_path(dir, 'memory.limit_in_bytes'))!)!
+		}
+		.memory_v2 {
+			cgroup_memory_limit_value(os.read_file(os.join_path(dir, 'memory.max'))!)!
+		}
+		.cpu_v1 {
+			cgroup_cpu_limit_value(os.read_file(os.join_path(dir, 'cpu.cfs_quota_us'))!,
+				os.read_file(os.join_path(dir, 'cpu.cfs_period_us'))!)!
+		}
+		.cpu_v2 {
+			fields := os.read_file(os.join_path(dir, 'cpu.max'))!.fields()
+			if fields.len != 2 {
+				return error('invalid cgroup cpu.max')
+			}
+			cgroup_cpu_limit_value(fields[0], fields[1])!
+		}
+	}
 }
 
 fn cgroup_memory_limit_value(content string) !u64 {
@@ -220,6 +280,21 @@ fn cgroup_memory_limit_value(content string) !u64 {
 		return error('invalid cgroup memory limit')
 	}
 	return limit
+}
+
+// cgroup_cpu_limit_value rounds a CPU quota up to whole CPUs: a quota of 150000 per
+// period of 100000 allows 2 workers. A quota of `max` (v2) or -1 (v1) is unlimited.
+fn cgroup_cpu_limit_value(quota_text string, period_text string) !u64 {
+	quota := quota_text.trim_space()
+	if quota == 'max' || quota.starts_with('-') {
+		return error('cgroup cpu limit is unlimited')
+	}
+	quota_us := quota.u64()
+	period_us := period_text.trim_space().u64()
+	if quota_us == 0 || period_us == 0 {
+		return error('invalid cgroup cpu limit')
+	}
+	return (quota_us + period_us - 1) / period_us
 }
 
 @[markused]
@@ -246,11 +321,31 @@ fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configur
 	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
 }
 
+@[markused]
+fn effective_test_cpus(cpu_jobs int, cgroup_cpu_limit int) int {
+	if cgroup_cpu_limit > 0 && cgroup_cpu_limit < cpu_jobs {
+		return cgroup_cpu_limit
+	}
+	return cpu_jobs
+}
+
+fn test_runner_cpus(cpu_jobs int) int {
+	$if linux {
+		cgroup_cpu_limit := cgroup_cpu_limit_from_contents(os.read_file('/proc/self/cgroup') or {
+			return cpu_jobs
+		}, os.read_file('/proc/self/mountinfo') or { return cpu_jobs }) or { return cpu_jobs }
+		return effective_test_cpus(cpu_jobs, cgroup_cpu_limit)
+	}
+	return cpu_jobs
+}
+
 fn test_runner_jobs(will_compile bool) int {
-	cpu_jobs := runtime.nr_jobs()
+	mut cpu_jobs := runtime.nr_jobs()
 	if !will_compile {
 		return test_session_jobs(false, cpu_jobs, 0, 0)
 	}
+	// In a container, the CPU quota of its cgroup bounds the workers that can run.
+	cpu_jobs = test_runner_cpus(cpu_jobs)
 	configured_jobs := os.getenv('VJOBS').int()
 	total_memory := test_runner_memory() or {
 		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)

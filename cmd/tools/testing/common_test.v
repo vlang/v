@@ -156,6 +156,48 @@ fn test_effective_test_memory_uses_lower_cgroup_limit() {
 	assert effective_test_memory(cgroup_memory_limit, physical_memory) == cgroup_memory_limit
 }
 
+fn test_cgroup_v2_cpu_limit_uses_lowest_quota_in_parents() {
+	mount_point := os.join_path(os.vtmp_dir(), 'testing_cgroup_cpu_limit_${os.getpid()}')
+	defer {
+		os.rmdir_all(mount_point) or {}
+	}
+	os.mkdir_all(os.join_path(mount_point, 'container', 'work'))!
+	os.write_file(os.join_path(mount_point, 'container', 'cpu.max'), '150000 100000\n')!
+	os.write_file(os.join_path(mount_point, 'container', 'work', 'cpu.max'), 'max 100000\n')!
+	cgroups := '0::/container/work'
+	mountinfo := '36 25 0:32 / ${mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw'
+	// 1.5 CPUs of quota allow 2 workers.
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo)! == 2
+	os.write_file(os.join_path(mount_point, 'container', 'cpu.max'), 'max 100000\n')!
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo) or { -1 } == -1
+}
+
+fn test_cgroup_v1_cpu_limit_reads_cfs_quota() {
+	mount_point := os.join_path(os.vtmp_dir(), 'testing_cgroup_cpu_limit_${os.getpid()}')
+	defer {
+		os.rmdir_all(mount_point) or {}
+	}
+	container := os.join_path(mount_point, 'docker', 'container')
+	os.mkdir_all(container)!
+	os.write_file(os.join_path(container, 'cpu.cfs_quota_us'), '200000\n')!
+	os.write_file(os.join_path(container, 'cpu.cfs_period_us'), '100000\n')!
+	cgroups := '4:cpu,cpuacct:/docker/container\n5:memory:/docker/container'
+	mountinfo := '29 23 0:26 / ${mount_point} rw,relatime - cgroup cgroup rw,cpu,cpuacct'
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo)! == 2
+	// The memory controller is not mounted there, so it has no memory limit.
+	assert cgroup_memory_limit_from_contents(cgroups, mountinfo) or { u64(0) } == 0
+	os.write_file(os.join_path(container, 'cpu.cfs_quota_us'), '-1\n')!
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo) or { -1 } == -1
+}
+
+fn test_effective_test_cpus_uses_lower_cgroup_limit() {
+	assert effective_test_cpus(64, 2) == 2
+	assert effective_test_cpus(4, 8) == 4
+	assert effective_test_cpus(10, 0) == 10
+	// A 2-CPU container on a 64-CPU host with 64 GiB runs 2 workers, not 32.
+	assert automatic_test_jobs(effective_test_cpus(64, 2), u64(64) * 1024 * 1024 * 1024, 0) == 2
+}
+
 fn test_os_suffix_selection_preserves_android_outside_termux() {
 	for suffix in ['_test.v', '_test.c.v'] {
 		file := 'fixture_android_outside_termux' + suffix
