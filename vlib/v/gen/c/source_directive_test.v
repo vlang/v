@@ -243,6 +243,11 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
+fn test_cross_bootstrap_pipe_macro_does_not_expand_in_c_prototype() {
+	assert c_macro_safe_extern_decl('v_os_process_pipe_cloexec_cross',
+		'i32 v_os_process_pipe_cloexec_cross(i32* fds);') == 'i32 (v_os_process_pipe_cloexec_cross)(i32* fds);'
+}
+
 fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()
