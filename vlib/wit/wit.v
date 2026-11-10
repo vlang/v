@@ -143,12 +143,19 @@ pub mut:
 	func      ?WitFunc
 }
 
+pub struct WitInclude {
+pub mut:
+	path         string
+	with_renames map[string]string
+}
+
 pub struct WitWorld {
 pub mut:
-	name    string
-	imports []WitWorldImport
-	exports []WitWorldExport
-	attrs   []string
+	name     string
+	imports  []WitWorldImport
+	exports  []WitWorldExport
+	includes []WitInclude
+	attrs    []string
 }
 
 pub struct WitPackage {

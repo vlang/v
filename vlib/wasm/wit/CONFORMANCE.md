@@ -26,10 +26,10 @@ Rows = WIT constructs. Columns = parse / print / codegen / validate.
 | string (return) | ✅ | ✅ | ✅ | ✅ |
 | async / future / stream | ✅ | ✅ | ✅ | ✅ |
 | use (incl. `as`) | ✅ | ✅ | ✅ | ✅ |
-| include | ✅ | ❌ | ❌ | ❌ |
-| include ... with | ✅ | ❌ | ❌ | ❌ |
+| include | ✅ | ✅ | ✅ | ✅ |
+| include ... with | ✅ | ✅ | ✅ | ✅ |
 | @since / @deprecated / @unstable | ✅ | ✅ | ✅ | ✅ |
-| @version on package | ✅ | ✅ | ✅ | ❌ |
+| @version on package | ✅ | ✅ | ✅ | ✅ |
 
 ## Component lift (core module -> component)
 
@@ -53,10 +53,11 @@ Function-signature shapes the component wrapper lifts today:
   only the surface (types, imports, exports) is generated, runtime support
   is out of scope.
 - **map codegen**: emitted as V `map<K, V>`.
-- **include / include ... with**: the parser consumes the clause but drops it
-  (parser.v world include branch keeps no AST node), so the printer cannot
-  re-emit it and codegen cannot resolve it. Smallest next step: add an
-  include node to WitWorld carrying the path plus `with` substitutions.
+- **include / include ... with**: parsed into `WitInclude` nodes carrying the
+  path plus `with` substitutions (aliases sorted for stable printing),
+  re-emitted verbatim, and resolved by validation (unknown targets and
+  unresolvable renames rejected; external package paths are allowed).
+  Worlds themselves are not codegened, so includes need no V output.
 - **static methods**: parsed (`is_static` on WitFunc), printed with the
   `static` keyword, codegened as namespaced functions (`Type_method`);
   a static method taking its own resource type is rejected
@@ -70,7 +71,9 @@ Function-signature shapes the component wrapper lifts today:
   Unknown `use` targets (`error_unknown_interface`) and members
   (`error_unresolved_use`) are rejected. Duplicate constructors are
   rejected (`error_duplicate_constructor`).
-- **validate**: no package-level checks exist yet.
+- **validate**: package declarations are checked for a namespace and a
+  semver `x.y.z` version (`error_invalid_package`,
+  `error_invalid_package_version`).
 - Resource methods have no implicit self parameter in WIT, so no
   receiver check applies; constructors are separated by the parser, so
   no constructor-as-method check applies.

@@ -517,12 +517,8 @@ fn (mut p Parser) parse_world(mut doc WitDoc) !WitWorld {
 		}
 		if kind == 'include' {
 			p.advance()
-			for p.peek().kind != .eof && !(p.peek().kind == .punct && p.peek().val == ';') {
-				p.advance()
-			}
-			if p.peek().kind == .punct && p.peek().val == ';' {
-				p.advance()
-			}
+			inc := p.parse_include()!
+			w.includes << inc
 			continue
 		}
 		return error('unexpected in world at ${p.pos()}')
@@ -586,6 +582,58 @@ fn (mut p Parser) collect_attributes() []string {
 		}
 	}
 	return out
+}
+
+// parse_include parses `include path [with { a as b, ... }] ;` where path is
+// a world reference like `base` or `wasi:clocks/imports@0.2.8`.
+fn (mut p Parser) parse_include() !WitInclude {
+	mut inc := WitInclude{}
+	mut path := p.expect_ident()!
+	for p.peek().kind == .punct
+		&& (p.peek().val == '/' || p.peek().val == ':' || p.peek().val == '@') {
+		sep := p.peek().val
+		p.advance()
+		if sep == '@' {
+			mut ver := ''
+			for p.peek().kind == .ident
+				|| (p.peek().kind == .punct && p.peek().val == '.'
+					&& p.idx + 1 < p.toks.len && p.toks[p.idx + 1].kind == .ident) {
+				ver += p.peek().val
+				p.advance()
+			}
+			path += '@' + ver
+		} else if sep == ':' {
+			path += ':'
+			path += p.expect_ident()!
+		} else {
+			path += '/' + p.expect_ident()!
+		}
+	}
+	inc.path = path
+	if p.peek_ident() == 'with' {
+		p.advance()
+		p.expect_punct('{')!
+		for !(p.peek().kind == .punct && p.peek().val == '}') {
+			if p.peek().kind == .eof {
+				return error('unterminated include with at ${p.pos()}')
+			}
+			old_name := p.expect_ident()!
+			mut new_name := old_name
+			if p.peek_ident() == 'as' {
+				p.advance()
+				new_name = p.expect_ident()!
+			}
+			inc.with_renames[new_name] = old_name
+			if p.peek().kind == .punct && p.peek().val == ',' {
+				p.advance()
+			}
+		}
+		p.expect_punct('}')!
+	}
+	if p.peek().kind == .punct && p.peek().val == ';' {
+		p.advance()
+	}
+	return inc
 }
 
 fn (mut p Parser) parse_inline_interface(mut doc WitDoc, name string) !WitInterface {

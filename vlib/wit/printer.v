@@ -101,6 +101,22 @@ pub fn (d WitDoc) str() string {
 			out << a
 		}
 		out << 'world ${w.name} {'
+		for inc in w.includes {
+			if inc.with_renames.len == 0 {
+				out << '\tinclude ${inc.path};'
+			} else {
+				mut parts := []string{}
+				for new_name, old_name in inc.with_renames {
+					if new_name == old_name {
+						parts << new_name
+					} else {
+						parts << '${old_name} as ${new_name}'
+					}
+				}
+				parts.sort()
+				out << '\tinclude ${inc.path} with { ${parts.join(', ')} };'
+			}
+		}
 		for imp in w.imports {
 			if f := imp.func {
 				out << '\timport ${imp.name}: ${wit_func_sig(f)};'

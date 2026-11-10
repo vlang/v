@@ -114,6 +114,41 @@ interface i {
 	validate(doc) or { panic(err) }
 }
 
+fn test_validate_unknown_include() {
+	expect_validate_error('package p:q;
+
+world base {
+	import x: func() -> u32;
+}
+
+world derived {
+	include missing;
+}
+', 'error_unknown_include')
+}
+
+fn test_validate_unresolved_include_item() {
+	expect_validate_error('package p:q;
+
+world base {
+	import x: func() -> u32;
+}
+
+world derived {
+	include base with { nope as renamed };
+}
+', 'error_unresolved_include')
+}
+
+fn test_validate_bad_package_version() {
+	expect_validate_error('package p:q@1.0;
+
+interface i {
+	f: func() -> u32;
+}
+', 'error_invalid_package_version')
+}
+
 fn test_validate_multi_interface_ok() {
 	src2 := 'package example:demo@0.1.0;
 

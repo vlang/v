@@ -180,6 +180,86 @@ pub fn validate(doc WitDoc) ! {
 		}
 		world_names[w.name] = true
 	}
+	// check package declaration
+	if doc.package.name != '' {
+		if doc.package.namespace == '' {
+			return error('error_invalid_package: package "${doc.package.name}" has no namespace')
+		}
+		if doc.package.version != '' {
+			parts := doc.package.version.split('.')
+			mut bad_version := parts.len != 3
+			if !bad_version {
+				for p in parts {
+					if p.len == 0 {
+						bad_version = true
+						break
+					}
+					for c in p.bytes() {
+						if c < `0` || c > `9` {
+							bad_version = true
+							break
+						}
+					}
+					if bad_version {
+						break
+					}
+				}
+			}
+			if bad_version {
+				return error('error_invalid_package_version: package version "${doc.package.version}" is not semver')
+			}
+		}
+	}
+	// check world includes resolve to a local world or interface
+	for w in doc.worlds {
+		for inc in w.includes {
+			if inc.path.contains(':') {
+				continue
+			}
+			mut base := inc.path
+			if base.contains('@') {
+				base = base.all_before('@')
+			}
+			if base.contains('/') {
+				base = base.all_after_last('/')
+			}
+			mut found := false
+			mut target_world := -1
+			for i, ww in doc.worlds {
+				if ww.name == base {
+					found = true
+					target_world = i
+					break
+				}
+			}
+			if !found {
+				for iface in doc.interfaces {
+					if iface.name == base {
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				return error('error_unknown_include: include of unknown "${inc.path}" in world "${w.name}"')
+			}
+			if target_world >= 0 {
+				tw := doc.worlds[target_world]
+				mut offered := map[string]bool{}
+				for imp in tw.imports {
+					offered[imp.name] = true
+				}
+				for exp in tw.exports {
+					offered[exp.name] = true
+				}
+				for _, old_name in inc.with_renames {
+					if old_name !in offered {
+						return error('error_unresolved_include: "${old_name}" not found in "${inc.path}"')
+					}
+				}
+			}
+		}
+	}
 	// check each interface
 	for iface in doc.interfaces {
 		// duplicate item names

@@ -121,6 +121,43 @@ world app {
 	assert gen.len >= 0
 }
 
+fn test_grammar_include_roundtrip() {
+	src := 'package p:q;
+
+world base {
+	import x: func() -> u32;
+	export y: func() -> u32;
+}
+
+world derived {
+	include base;
+}
+'
+	printed := grammar_roundtrip(src)
+	assert printed.contains('include base;')
+	gen := grammar_codegen_compiles('include', src)
+	assert gen.len >= 0
+	validate(parse(src) or { panic(err) }) or { panic(err) }
+}
+
+fn test_grammar_include_with_roundtrip() {
+	src := 'package p:q;
+
+world base {
+	import x: func() -> u32;
+}
+
+world derived {
+	include base with { x as renamed };
+}
+'
+	printed := grammar_roundtrip(src)
+	assert printed.contains('include base with { x as renamed };')
+	gen := grammar_codegen_compiles('include_with', src)
+	assert gen.len >= 0
+	validate(parse(src) or { panic(err) }) or { panic(err) }
+}
+
 fn test_grammar_attrs_roundtrip() {
 	src := 'package p:q;
 
