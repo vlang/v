@@ -43,6 +43,13 @@ mut:
 	nparams           int
 	cur_ret           ssa.TypeID
 	warnings          []string
+	// wasm_cabi enables canonical-ABI wrappers for exported string params.
+	wasm_cabi bool
+}
+
+// set_wasm_cabi enables canonical-ABI wrappers for exported string params.
+pub fn (mut g SSAGen) set_wasm_cabi(v bool) {
+	g.wasm_cabi = v
 }
 
 // new creates a WebAssembly generator for an SSA module.
@@ -140,9 +147,15 @@ pub fn (mut g SSAGen) gen() ! {
 		g.emit_function(fid)!
 	}
 	g.mod.add_export('memory', export_mem, 0)
+	if g.wasm_cabi {
+		g.mod.add_export('cabi_realloc', export_func, g.alloc_index)
+	}
 	mut used_exports := map[string]bool{}
 	used_exports['memory'] = true
 	used_exports['_start'] = true
+	if g.wasm_cabi {
+		used_exports['cabi_realloc'] = true
+	}
 	for fid in functions {
 		f := g.m.funcs[fid]
 		if g.configured && f.name !in g.exports {

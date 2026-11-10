@@ -11434,6 +11434,7 @@ pub fn run(args []string) {
 	prefs.target = target
 	prefs.component = component_flag
 	prefs.wit_file = wit_file_path
+	prefs.wasm_cabi = component_flag || 'wasm_cabi' in user_defines
 	if prefs.component {
 		if prefs.wit_file == '' {
 			eprintln('error: -component requires -wit <file.wit>')
@@ -14823,6 +14824,7 @@ pub fn run(args []string) {
 			}
 			m.release_codegen_analysis_metadata()
 			mut g := wasmgen.SSAGen.new(m)
+			g.set_wasm_cabi(prefs.wasm_cabi || prefs.component)
 			mut main_fn := config.main_fn
 			mut exports := config.exports.clone()
 			if main_fn.len == 0 {
