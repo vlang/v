@@ -6606,19 +6606,22 @@ fn cgen_type_contains_unknown(typ types.Type) bool {
 @[inline]
 fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
 	memo := g.usable_expr_type_memo
-	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0
-		|| !cgen_same_string(memo.module, g.tc.cur_module)
-		|| !cgen_same_string(memo.file, g.tc.cur_file) {
+	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0 {
+		return unsafe { nil }
+	}
+	// The memo's module and file usually are the checker's own string objects:
+	// compare the bytes only when they are not.
+	cur_module := g.tc.cur_module
+	if memo.module.len != cur_module.len
+		|| (unsafe { memo.module.str != cur_module.str } && memo.module != cur_module) {
+		return unsafe { nil }
+	}
+	cur_file := g.tc.cur_file
+	if memo.file.len != cur_file.len
+		|| (unsafe { memo.file.str != cur_file.str } && memo.file != cur_file) {
 		return unsafe { nil }
 	}
 	return memo
-}
-
-// cgen_same_string is `a == b` without comparing the bytes of one string object
-// with themselves; the body memo's module and file usually are the checker's.
-@[inline]
-fn cgen_same_string(a string, b string) bool {
-	return a.len == b.len && (unsafe { a.str == b.str } || a == b)
 }
 
 // declared_call_return_type_uncached also returns the canonical interned reference of
@@ -7524,10 +7527,11 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 
 // fixed_unchecked_node_type mirrors the checker's resolution of a node that has
 // no checked expression type when that resolution does not depend on operands,
-// scopes or memos: resolve_type_slow's literal table, and the comparison/logical
+// scopes or memos: resolve_type_slow's literal table, the comparison/logical
 // operator rule of resolve_type_nonliteral, which precedes every operand read
 // (and is only bypassed by a diagnostic on the node, so it is skipped when any
-// diagnostics exist).
+// diagnostics exist), and its rule for an unannotated `!x`, which only the
+// address-of and translated-file arithmetic rules precede.
 fn (g &FlatGen) fixed_unchecked_node_type(node &flat.Node) ?types.Type {
 	match node.kind {
 		.int_literal {
@@ -7555,6 +7559,12 @@ fn (g &FlatGen) fixed_unchecked_node_type(node &flat.Node) ?types.Type {
 		.infix {
 			if g.tc.errors.len == 0
 				&& node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return types.Type(types.bool_)
+			}
+		}
+		.prefix {
+			// An unannotated `!x` is a bool before its operand is read.
+			if node.op == .not && node.typ == 0 {
 				return types.Type(types.bool_)
 			}
 		}
@@ -10842,7 +10852,9 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 				|| name !in g.c_typedef_shadow_names) {
 			return false
 		}
-		return g.cname(name) in g.c_typedef_shadow_names
+		cname := g.cname(name)
+		return cgen_name_may_be_in(g.c_typedef_shadow_len_bits, cname)
+			&& cname in g.c_typedef_shadow_names
 	}
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
