@@ -8354,12 +8354,21 @@ fn (mut g FlatGen) preseed_type_alias_fn_ptr_types() {
 }
 
 fn (mut g FlatGen) preseed_fn_signature_fn_ptr_types() {
+	// Nearly every signature type registers nothing. Test that on the stored
+	// value: passing a type to preseed_fn_ptr_type copies it.
 	for _, params in g.fn_decl_param_types {
-		for typ in params {
-			g.preseed_fn_ptr_type(typ)
+		for i in 0 .. params.len {
+			// The parameter lists are not modified while they are scanned.
+			if preseed_fn_ptr_type_is_noop(unsafe { &params[i] }) {
+				continue
+			}
+			g.preseed_fn_ptr_type(params[i])
 		}
 	}
 	for _, typ in g.fn_decl_ret_types {
+		if preseed_fn_ptr_type_is_noop(typ) {
+			continue
+		}
 		g.preseed_fn_ptr_type(typ)
 	}
 }
@@ -8374,6 +8383,11 @@ fn (mut g FlatGen) preseed_sum_fn_ptr_types() {
 }
 
 fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
+	// Most declaration types hold no function, option or result type: check that
+	// before paying for the semantic hash of the dedup table.
+	if preseed_fn_ptr_type_is_noop(&typ) {
+		return
+	}
 	if !isnil(g.preseed_sig_type_seen) && !g.preseed_sig_type_seen.insert(typ) {
 		return
 	}
@@ -8421,6 +8435,39 @@ fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
 	if typ is types.MultiReturn {
 		for item in typ.types {
 			g.preseed_fn_ptr_type(item)
+		}
+	}
+}
+
+// preseed_fn_ptr_type_is_noop reports whether preseed_fn_ptr_type registers
+// nothing for `typ`: it descends exactly like that walk and finds no function,
+// option or result type.
+fn preseed_fn_ptr_type_is_noop(typ &types.Type) bool {
+	match typ {
+		types.FnType, types.OptionType, types.ResultType {
+			return false
+		}
+		types.Alias, types.Pointer {
+			return preseed_fn_ptr_type_is_noop(typ.base_type)
+		}
+		types.Array, types.ArrayFixed {
+			return preseed_fn_ptr_type_is_noop(typ.elem_type)
+		}
+		types.Map {
+			return preseed_fn_ptr_type_is_noop(typ.key_type)
+				&& preseed_fn_ptr_type_is_noop(typ.value_type)
+		}
+		types.MultiReturn {
+			for i in 0 .. typ.types.len {
+				// The walk only reads the type.
+				if !preseed_fn_ptr_type_is_noop(unsafe { &typ.types[i] }) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return true
 		}
 	}
 }
