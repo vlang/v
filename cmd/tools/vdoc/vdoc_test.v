@@ -683,6 +683,40 @@ fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
+fn test_the_table_of_contents_groups_the_functions_and_the_types() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_grouped_toc_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\npub const c = 1\n\npub fn run() {}\n\npub enum Mode {\n\tread\n}\n\npub struct File {}\n\npub fn (f File) close() {}\n\npub fn File.open() File {\n\treturn File{}\n}\n')!
+	d := doc.generate(dir, true, true, .auto)!
+	toc := grouped_toc_html(d.head, d.contents.arr())
+	assert toc.contains('<li><a href="#Constants">Constants</a></li>')
+	// The name stands out from the rest of the label, which is dimmed.
+	assert toc.contains('<summary>Functions <span class="toc-count">(1)</span></summary><ul><li><a href="#run" title="run()">run<span class="toc-detail">()</span></a></li></ul>')
+	// The types are sorted by name, and a type lists its static functions and its methods.
+	assert toc.contains('<summary>Types <span class="toc-count">(2)</span></summary>')
+	assert (toc.index('struct File') or { -1 }) < (toc.index('enum Mode') or { -1 })
+	assert toc.contains('<summary><a href="#File">struct File</a></summary><ul><li><a href="#File.open" title="File.open()">File.open<span class="toc-detail">()</span></a></li><li><a href="#File.close" title="(f File) close()"><span class="toc-detail">(f File) </span>close<span class="toc-detail">()</span></a></li></ul>')
+	assert toc.contains('<li><a href="#Mode">enum Mode</a></li>') || toc.contains('<a href="#Mode">enum Mode</a></summary>')
+}
+
+fn test_the_table_of_contents_shows_how_a_function_is_called() {
+	assert toc_call_label('pub fn abs_path(path string) string', 'abs_path') == 'abs_path(path)'
+	// A receiver is shown as it is declared, so that it shows if it is mutable or a reference.
+	assert toc_call_label('@[manualfree]\nfn (mut f File) read(mut buf []u8) !int', 'read') == '(mut f File) read(buf)'
+	assert toc_call_label('pub fn (f &File) eof() bool', 'eof') == '(f &File) eof()'
+	assert toc_call_label('pub fn (shared m  Map[K, V]) len() int', 'len') == '(shared m Map[K, V]) len()'
+	assert toc_call_label('pub fn File.open(path string, mode int) !File', 'File.open') == 'File.open(path, mode)'
+	// A generic function shows its type parameters.
+	assert toc_call_label('pub fn map[T, U](a []T, f fn (T) U) []U', 'map') == 'map[T, U](a, f)'
+	assert toc_call_label('pub fn (c Cache[K,V]) get[R](key K) ?R', 'get') == '(c Cache[K, V]) get[R](key)'
+	assert toc_call_label('pub fn join(base string, elems ...string) string', 'join') == 'join(base, elems)'
+	// A long signature can continue on the next lines.
+	assert toc_call_label('pub fn f(a int,\n\tb int) int', 'f') == 'f(a, b)'
+	assert toc_call_label('pub struct Point {}', 'Point') == 'Point'
+}
+
 fn test_markdown_renderer_supports_github_flavored_markdown() {
 	mut renderer := new_doc_markdown_renderer('')
 	// Bare URLs are links, without a `)` that closes no `(` of the URL.

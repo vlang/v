@@ -313,7 +313,7 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 		result = result.replace('{{ right_content }}', '')
 	} else {
 		result = result.replace('{{ right_content }}', if cfg.is_multi && d.head.name != 'README' {
-			'<div class="doc-toc"><ul>${symbols_toc_str}</ul></div>'
+			'<div class="doc-toc">${grouped_toc_html(d.head, dcs_contents)}</div>'
 		} else {
 			''
 		})
@@ -801,6 +801,213 @@ fn blockquote_payload_starts_new_block(payload string) bool {
 	}
 	line_before_spaces := payload.before(' ')
 	return line_before_spaces.count('#') == line_before_spaces.len
+}
+
+// grouped_toc_html returns the table of contents of a module, like the one of pkg.go.dev: its
+// overview, its constants, its functions, and its types, each with its methods. The functions
+// and the types can be collapsed.
+fn grouped_toc_html(head doc.DocNode, contents []doc.DocNode) string {
+	mut types := map[string]doc.DocNode{}
+	for cn in contents {
+		if cn.kind in [.struct, .enum, .interface, .typedef] {
+			types[cn.name] = cn
+		}
+	}
+	mut static_fns := map[string][]doc.DocNode{}
+	mut functions := []doc.DocNode{}
+	mut variables := []doc.DocNode{}
+	mut has_constants := false
+	for cn in contents {
+		match cn.kind {
+			.const_group {
+				has_constants = cn.children.len > 0 || cn.content != ''
+			}
+			.variable {
+				variables << cn
+			}
+			.function, .method {
+				// A static function, like `Mode.from`, is listed with its type.
+				type_name := cn.name.all_before_last('.')
+				if cn.name.contains('.') && type_name in types {
+					static_fns[type_name] << cn
+				} else {
+					functions << cn
+				}
+			}
+			else {}
+		}
+	}
+	mut toc := strings.new_builder(1024)
+	toc.write_string('<ul>')
+	if is_module_readme(head) && head.comments.len > 0 && head.comments[0].text.len > 0 {
+		toc.write_string('<li><a href="#readme_${slug(head.name)}">Overview</a></li>')
+	}
+	if has_constants {
+		toc.write_string('<li><a href="#Constants">Constants</a></li>')
+	}
+	if variables.len > 0 {
+		toc.write_string(toc_group_html('Variables', variables.map(toc_link_html(it.name,
+			it.name))))
+	}
+	if functions.len > 0 {
+		toc.write_string(toc_group_html('Functions', functions.map(toc_link_html(it.name,
+			toc_call_label(it.content, it.name)))))
+	}
+	mut type_entries := []string{}
+	mut type_names := types.keys()
+	type_names.sort()
+	for type_name in type_names {
+		t := types[type_name]
+		mut members := (static_fns[t.name] or { []doc.DocNode{} }).map(toc_link_html(it.name,
+			toc_call_label(it.content, it.name)))
+		members << t.children.map(toc_link_html('${t.name}.${it.name}', toc_call_label(it.content,
+			it.name)))
+		// A type without a declaration, like a private type with public methods, has no section.
+		label := html.escape('${t.kind} ${t.name}')
+		link := if t.content == '' {
+			label
+		} else {
+			'<a href="#${slug(t.name)}">${label}</a>'
+		}
+		type_entries << if members.len == 0 {
+			'<li>${link}</li>'
+		} else {
+			'<li><details><summary>${link}</summary><ul>${members.join('')}</ul></details></li>'
+		}
+	}
+	if type_entries.len > 0 {
+		toc.write_string(toc_group_html('Types', type_entries))
+	}
+	toc.write_string('</ul>')
+	return toc.str()
+}
+
+// toc_group_html returns a group of the table of contents, like the functions of a module, which
+// is collapsed, and shows how many entries it has.
+fn toc_group_html(title string, entries []string) string {
+	return '<li><details class="toc-group"><summary>${title} <span class="toc-count">(${entries.len})</span></summary><ul>${entries.join('')}</ul></details></li>'
+}
+
+// toc_link_html returns an entry of the table of contents, which links to the symbol `name`. In
+// a label like `(mut f File) read[T](buf)`, the name stands out from the rest, which is dimmed.
+fn toc_link_html(name string, label string) string {
+	mut receiver := ''
+	mut rest := label
+	if label.starts_with('(') {
+		receiver = label.all_before(') ') + ') '
+		rest = label.all_after(') ')
+	}
+	mut name_end := rest.len
+	for i, c in rest {
+		if c in [`[`, `(`] {
+			name_end = i
+			break
+		}
+	}
+	mut parts := ''
+	if receiver != '' {
+		parts += '<span class="toc-detail">${html.escape(receiver)}</span>'
+	}
+	parts += html.escape(rest[..name_end])
+	if name_end < rest.len {
+		parts += '<span class="toc-detail">${html.escape(rest[name_end..])}</span>'
+	}
+	return '<li><a href="#${slug(name)}" title="${html.escape(label)}">${parts}</a></li>'
+}
+
+// toc_call_label returns how the function or the method declared by `content` is called, with
+// the names of its parameters and the receiver of a method as it is declared, like
+// `abs_path(path)`, `File.open(path)`, `map[T, U](a, f)` or `(mut f File) read(buf)`, for the
+// table of contents.
+// It returns `name` for anything else.
+fn toc_call_label(content string, name string) string {
+	lines := content.split_into_lines()
+	// A long signature can continue on the next lines.
+	start := fn_line_index(lines)
+	if start < 0 {
+		return name
+	}
+	mut sig := lines[start..].map(it.trim_space()).join(' ').all_after('fn ').trim_space()
+	mut receiver := ''
+	if sig.starts_with('(') {
+		end := toc_closing_paren(sig, 0)
+		if end < 0 {
+			return name
+		}
+		receiver = '(${sig[1..end].fields().join(' ').replace(', ', ',').replace(',', ', ')}) '
+		sig = sig[end + 1..].trim_space()
+	}
+	open := sig.index_u8(`(`)
+	if open < 0 {
+		return name
+	}
+	close := toc_closing_paren(sig, open)
+	if close < 0 {
+		return name
+	}
+	// The name includes the parameters of a generic function, like `map[T, U]`.
+	fn_name := sig[..open].trim_space().replace(' ', '').replace(',', ', ')
+	params := toc_split_params(sig[open + 1..close]).map(toc_param_name(it))
+	return '${receiver}${fn_name}(${params.join(', ')})'
+}
+
+// fn_line_index returns the index of the line of `lines` that starts the declaration of a
+// function, or -1.
+fn fn_line_index(lines []string) int {
+	for i, line in lines {
+		if line.starts_with('fn ') || line.starts_with('pub fn ') {
+			return i
+		}
+	}
+	return -1
+}
+
+// toc_closing_paren returns the index of the `)` that closes the `(` at `open` in `s`, or -1.
+fn toc_closing_paren(s string, open int) int {
+	mut depth := 0
+	for i := open; i < s.len; i++ {
+		if s[i] in [`(`, `[`, `{`] {
+			depth++
+		} else if s[i] in [`)`, `]`, `}`] {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// toc_split_params splits the parameters of a function at the commas that separate them, and not
+// at the ones in their types, like in `f fn (int, int) int`.
+fn toc_split_params(params string) []string {
+	mut result := []string{}
+	mut depth := 0
+	mut start := 0
+	for i, c in params {
+		if c in [`(`, `[`, `{`] {
+			depth++
+		} else if c in [`)`, `]`, `}`] {
+			depth--
+		} else if c == `,` && depth == 0 {
+			result << params[start..i]
+			start = i + 1
+		}
+	}
+	if params[start..].trim_space() != '' {
+		result << params[start..]
+	}
+	return result
+}
+
+// toc_param_name returns the name of the parameter `param`, like `buf` for `mut buf []u8`, or its
+// type when it has no name.
+fn toc_param_name(param string) string {
+	words := param.fields().filter(it !in ['mut', 'shared'])
+	if words.len == 0 {
+		return ''
+	}
+	return words[0].trim_left('.')
 }
 
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
