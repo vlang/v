@@ -18426,8 +18426,9 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		return true
 	}
 	// These stdlib bindings remain necessary when unrelated modules use headers.
+	// In particular, some Linux headers hide pipe2 unless GNU feature macros are enabled.
 	if g.c_source_file_is_in_vlib(source_file)
-		&& cfn in ['_Exit', 'flock', 'v_os_fd_write_all', 'v_os_execute_capture_start',
+		&& cfn in ['_Exit', 'flock', 'pipe2', 'v_os_fd_write_all', 'v_os_execute_capture_start',
 			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
 		return true
 	}
@@ -18935,6 +18936,9 @@ fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
 // includes it into the same unit, as fontstash does under `-gc boehm`.
 const c_extern_exact_decls = {
 	'GC_noop1_ptr': 'void GC_noop1_ptr(volatile void*);'
+	// The SDK declares pipe2's first argument as an int[2], not int*.
+	// Match it to avoid GCC -Warray-parameter errors when both declarations appear.
+	'pipe2':        'i32 pipe2(i32 fds[2], i32 flags);'
 }
 
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
