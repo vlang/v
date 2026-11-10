@@ -14,7 +14,16 @@ pub struct Context {
 
 pub struct App {
 	veb.Middleware[Context]
-	started chan bool
+	started  chan bool
+	activity chan string = chan string{cap: 16}
+}
+
+pub fn (mut app App) before_handle_request(req http.Request) {
+	app.activity <- 'before:' + req.url
+}
+
+pub fn (mut app App) after_handle_request(req http.Request) {
+	app.activity <- 'after:' + req.url
 }
 
 fn passthrough_middleware(mut _ctx Context) bool {
@@ -57,4 +66,14 @@ fn test_veb_serves_https_requests() ! {
 	)!
 	assert res.status_code == 200
 	assert res.body == 'secure'
+	for expected in ['before:/', 'after:/'] {
+		select {
+			event := <-app.activity {
+				assert event == expected
+			}
+			5 * time.second {
+				return error('missing TLS activity hook: ${expected}')
+			}
+		}
+	}
 }
