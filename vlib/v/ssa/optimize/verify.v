@@ -809,7 +809,7 @@ fn verify_use_def_chains(m &ssa.Module) []VerifyError {
 		}
 	}
 	for val_id, users in expected_uses {
-		if val_id >= m.values.len {
+		if val_id >= m.values.len || !m.values[val_id].has_use_list() {
 			continue
 		}
 		actual := m.values[val_id].uses

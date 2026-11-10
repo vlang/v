@@ -32856,6 +32856,17 @@ fn (mut t Transformer) build_match_value_stmts(node flat.Node, target_name strin
 	return result
 }
 
+// match_subject_cannot_miss reports whether a `match` without `else` is one the
+// checker proved exhaustive: over a sum type or an enum.
+fn (mut t Transformer) match_subject_cannot_miss(expr_id flat.NodeId) bool {
+	typ := t.node_type(expr_id)
+	if t.is_sum_type_name(typ) {
+		return true
+	}
+	clean := flat.source_type_syntax(transform_trimmed_type_id(typ)).pointer_base()
+	return t.comptime_enum_members(clean).len > 0
+}
+
 // build_match_value_chain builds match value chain data for transform.
 fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_expr_id flat.NodeId, branches []flat.NodeId, idx int, target_name string, target_type_id u32) flat.NodeId {
 	if idx >= branches.len {
@@ -32914,6 +32925,11 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 	if idx + 1 < branches.len {
 		else_part := t.build_match_value_chain(match_expr_id, orig_expr_id, branches, idx + 1, target_name, target_type_id)
 		if_ids << else_part
+	} else if t.a.guard_exhaustive_match && t.match_subject_cannot_miss(orig_expr_id) {
+		// The native backend stops on a value no branch names, as it does for
+		// `return match`. The checker has already required exhaustive branches.
+		message := t.make_string_literal('match: no branch for the value')
+		if_ids << t.make_block([t.make_expr_stmt(t.make_call('panic', [message]))])
 	}
 	if_start := t.a.children.len
 	for id in if_ids {

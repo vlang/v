@@ -1882,6 +1882,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 	fs := new_scope(tc.file_scope)
 	return &TypeChecker{
 		a:                                     ast
+		constraints_scanned:                   tc.constraints_scanned
+		declares_constraints:                  tc.declares_constraints
 		compiler_vroot:                        tc.compiler_vroot
 		runtime_type_indexes:                  tc.runtime_type_indexes
 		module_search_paths:                   tc.module_search_paths
