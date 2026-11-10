@@ -9657,16 +9657,25 @@ $if !skip_fastc ? {
 				&& final_args[0] == os.join_path(build_dir, 'host_support_darwin.c')
 		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
-		// The pieces already identify the payload, wherever its object is stored.
-		payload_object := payload_compile.wait()
-		if payload_object.error != '' {
-			return V3FastCCompileResult{
-				command: cmdexec.display(tcc_path, compile_args)
-				output:  payload_object.error
+		// The pieces already identify the payload, wherever its object is stored. Only
+		// the link needs it, so a zygote build looks it up while its units compile.
+		mut payload_pending := uses_zygote
+		defer {
+			if payload_pending {
+				payload_compile.wait()
 			}
 		}
-		if payload_object.path != '' {
-			final_args << payload_object.path
+		if !payload_pending {
+			payload_object := payload_compile.wait()
+			if payload_object.error != '' {
+				return V3FastCCompileResult{
+					command: cmdexec.display(tcc_path, compile_args)
+					output:  payload_object.error
+				}
+			}
+			if payload_object.path != '' {
+				final_args << payload_object.path
+			}
 		}
 		// A restored link reuses the native inputs: they must be validated first.
 		if generation_link_cache_key != '' && !validation.wait() {
@@ -9808,6 +9817,22 @@ $if !skip_fastc ? {
 					return V3FastCCompileResult{
 						native_inputs_changed: true
 						cached_objects:        cached_objects
+					}
+				}
+				if payload_pending {
+					payload_pending = false
+					payload_object := payload_compile.wait()
+					if payload_object.error != '' {
+						fastc.fastc_discard_link(mut prepared_link)
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output:  payload_object.error
+						}
+					}
+					if payload_object.path != '' {
+						final_args << payload_object.path
+						display_args << payload_object.path
+						command = cmdexec.display(tcc_path, display_args)
 					}
 				}
 				finish_inputs := if preload_link { []string{} } else { link_inputs }
