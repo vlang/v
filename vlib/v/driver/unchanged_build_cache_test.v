@@ -3,6 +3,7 @@ module driver
 import os
 import crypto.sha256
 import time
+import v.pref
 
 fn age_unchanged_build_source(path string) ! {
 	// Recent whole-second mtimes cannot safely identify an unchanged source.
@@ -225,7 +226,6 @@ fn native_receipt_inputs(f ReceiptFixture, flags []string, probe string) Unchang
 		compiler:      'cc'
 		cache_dir:     f.cache_dir
 		target_os:     'linux'
-		vroot:         os.join_path(f.root, 'no_vroot')
 		project_roots: [f.root]
 	}
 }
@@ -564,7 +564,7 @@ fn test_project_manifest_inputs_walk_up_to_the_nearest_manifest() {
 	os.mkdir_all(source_dir)!
 	os.mkdir_all(selected)!
 	aged_write(os.join_path(project, 'v.mod'), "Module{ name: 'p' subdirs: ['selected', 'absent'] }\n")!
-	found := v3_project_manifest_inputs([source_dir], os.join_path(root, 'vroot'))
+	found := v3_project_manifest_inputs([source_dir])
 	assert os.real_path(os.join_path(project, 'v.mod')) in found.files
 	assert project in found.dirs
 	// A manifest created nearer to the sources would be the one that counts.
@@ -577,6 +577,18 @@ fn test_project_manifest_inputs_walk_up_to_the_nearest_manifest() {
 	assert os.join_path(project, 'absent') in found.missing
 }
 
+fn test_project_manifest_inputs_cover_projects_inside_the_v_checkout() {
+	vroot := os.real_path(@VEXEROOT)
+	// A project or an example inside the checkout selects its sources with its own manifest.
+	project := os.join_path(vroot, 'vlib', 'v', 'tests', 'project_with_c_code_2')
+	found := v3_project_manifest_inputs([project])
+	assert os.join_path(project, 'v.mod') in found.files
+	assert project in found.dirs
+	// A module of vlib reads the manifest of its own directory.
+	x11 := os.join_path(vroot, 'vlib', 'x', 'x11')
+	assert os.join_path(x11, 'v.mod') in v3_project_manifest_inputs([x11]).files
+}
+
 fn test_manifest_subdirs_are_recorded_by_the_path_that_leads_to_them() {
 	root := os.join_path(os.vtmp_dir(), 'v3_manifest_link_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
@@ -585,9 +597,31 @@ fn test_manifest_subdirs_are_recorded_by_the_path_that_leads_to_them() {
 	os.mkdir_all(project)!
 	aged_write(os.join_path(project, 'v.mod'), "Module{ name: 'p' subdirs: ['selected'] }\n")!
 	os.symlink(os.join_path(root, 'store', 'one'), os.join_path(project, 'selected'))!
-	found := v3_project_manifest_inputs([project], os.join_path(root, 'vroot'))
+	found := v3_project_manifest_inputs([project])
 	assert os.join_path(project, 'v.mod') in found.files
 	assert os.join_path(project, 'selected') in found.dirs
+}
+
+fn test_receipt_is_not_published_for_a_module_above_a_project_inside_the_v_checkout() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_in_vroot_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	vroot := os.join_path(root, 'vroot')
+	project := os.join_path(vroot, 'examples', 'a', 'b', 'project')
+	above := os.join_path(vroot, 'examples', 'foo')
+	os.mkdir_all(os.join_path(vroot, 'vlib', 'builtin'))!
+	aged_write(os.join_path(project, 'v.mod'), "Module{ name: 'project' }\n")!
+	aged_write(os.join_path(project, 'main.v'), 'import foo\n\nfn main() {}\n')!
+	aged_write(os.join_path(above, 'foo.v'), 'module foo\n')!
+	prefs := &pref.Preferences{
+		vroot:                  vroot
+		module_resolution_root: project
+	}
+	_, _, project_roots := v3_unchanged_build_roots(prefs)
+	assert v3_path_is_below_one_of(os.join_path(project, 'main.v'), project_roots)
+	assert v3_path_is_below_one_of(os.join_path(vroot, 'vlib', 'builtin', 'builtin.v'),
+		project_roots)
+	// A module found by walking up from the project is outside it, also in the checkout.
+	assert !v3_path_is_below_one_of(os.join_path(above, 'foo.v'), project_roots)
 }
 
 fn test_receipt_covers_the_headers_that_only_tinycc_includes() {

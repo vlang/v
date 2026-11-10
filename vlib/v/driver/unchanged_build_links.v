@@ -92,21 +92,20 @@ fn v3_unchanged_build_link_inputs(flags []string, compiler string, tcc_lib_dir s
 }
 
 // v3_project_manifest_inputs returns what decides which V sources a build takes
-// besides the directories of those sources: for each of them outside V itself, the
-// nearest `v.mod` with the directory that holds it, the absent `v.mod` and
-// `.v.mod.stop` of the directories on the way to it, and the directories that its
-// `subdirs` reach. `go build` reads go.mod again in every build
-// (load.PackagesAndErrors, modload.LoadPackages) and Odin gathers its files after
-// parsing them (cached.cpp, cache_gather_files); a receipt that skips the parser
-// has to compare what selects the sources instead.
-fn v3_project_manifest_inputs(source_dirs []string, vroot string) UnchangedBuildLinkInputs {
+// besides the directories of those sources: for each of them, the nearest `v.mod`
+// with the directory that holds it, the absent `v.mod` and `.v.mod.stop` of the
+// directories on the way to it, and the directories that its `subdirs` reach.
+// `go build` reads go.mod again in every build (load.PackagesAndErrors,
+// modload.LoadPackages) and Odin gathers its files after parsing them (cached.cpp,
+// cache_gather_files); a receipt that skips the parser has to compare what selects
+// the sources instead. A directory inside the V checkout is no exception: a
+// project or an example there selects its sources with its own `v.mod`, and a
+// module of vlib reads the `v.mod` of its directory (v3_directory_user_files).
+fn v3_project_manifest_inputs(source_dirs []string) UnchangedBuildLinkInputs {
 	mut result := UnchangedBuildLinkInputs{}
 	mut seen := map[string]bool{}
 	mut seen_subdirs := map[string]bool{}
 	for source_dir in source_dirs {
-		if v3_path_is_below(source_dir + os.path_separator, vroot.trim_right(os.path_separator)) {
-			continue
-		}
 		mut current := source_dir
 		for !seen[current] {
 			seen[current] = true

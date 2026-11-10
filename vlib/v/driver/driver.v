@@ -5768,7 +5768,6 @@ struct UnchangedBuildInputs {
 	build_time      string
 	target_os       string
 	packages        []string
-	vroot           string
 	// A source outside these roots was found by walking up from its importer,
 	// where a nearer directory of the same name would take its place.
 	project_roots []string
@@ -5809,19 +5808,7 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 	}
 	mut dirs := dir_set.keys()
 	dirs.sort()
-	// Bootstrap checkouts can symlink vlib to the original repository.
-	mut module_roots := [os.real_path(os.join_path(prefs.vroot, 'vlib'))]
-	module_roots << os.vmodules_paths().map(os.real_path(it))
-	module_roots << prefs.module_search_paths.map(os.real_path(it))
-	mut project_dirs := []string{}
-	if prefs.module_resolution_root != '' {
-		root := os.real_path(prefs.module_resolution_root)
-		project_dirs << root
-		project_dirs << util.nearest_vmod_root(root) or { root }
-	}
-	mut project_roots := [vroot.trim_right(os.path_separator)]
-	project_roots << module_roots
-	project_roots << project_dirs
+	module_roots, project_dirs, project_roots := v3_unchanged_build_roots(prefs)
 	return UnchangedBuildInputs{
 		sources:         sources
 		dirs:            dirs
@@ -5849,11 +5836,31 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 		build_time:      v3_unchanged_build_build_time(prefs)
 		target_os:       prefs.target.os.str()
 		packages:        v3_unchanged_build_pkgconfig_packages(a)
-		vroot:           vroot
 		project_roots:   project_roots
 		module_roots:    module_roots
 		project_dirs:    project_dirs
 	}
+}
+
+// v3_unchanged_build_roots returns where an import of a build can be found (the
+// module roots), the directories of its project, and the roots that each source
+// of its receipt has to be inside of. The V checkout is no root of its own: a
+// project inside it, as one below examples/, can find a module above itself by
+// walking up, like a project anywhere else, and its receipt is declined then.
+fn v3_unchanged_build_roots(prefs &pref.Preferences) ([]string, []string, []string) {
+	// Bootstrap checkouts can symlink vlib to the original repository.
+	mut module_roots := [os.real_path(os.join_path(prefs.vroot, 'vlib'))]
+	module_roots << os.vmodules_paths().map(os.real_path(it))
+	module_roots << prefs.module_search_paths.map(os.real_path(it))
+	mut project_dirs := []string{}
+	if prefs.module_resolution_root != '' {
+		root := os.real_path(prefs.module_resolution_root)
+		project_dirs << root
+		project_dirs << util.nearest_vmod_root(root) or { root }
+	}
+	mut project_roots := module_roots.clone()
+	project_roots << project_dirs
+	return module_roots, project_dirs, project_roots
 }
 
 // v3_unchanged_build_pkgconfig_packages returns the packages that the program's
@@ -6011,7 +6018,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	}
 	for found in [v3_unchanged_build_link_inputs(all_flags, manifest_compiler, inputs.tcc_lib_dir,
 		inputs.target_os, inputs.cache_dir), v3_pkgconfig_files(inputs.packages),
-		v3_project_manifest_inputs(inputs.dirs, inputs.vroot),
+		v3_project_manifest_inputs(inputs.dirs),
 		v3_module_shadow_inputs(inputs.dirs, inputs.module_roots, inputs.project_dirs)] {
 		if !found.ok {
 			unchanged_build_trace('cannot record: ${found.reason}')
