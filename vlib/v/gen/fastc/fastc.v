@@ -1480,6 +1480,10 @@ struct FastcTypeDeclarations {
 	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
 	// (see Parser.sum_type_variants).
 	sum_type_variants map[u64]bool
+	// Thread handle types embedded in struct fields. Their typedefs cannot come only
+	// from rendering `spawn` or `.wait()`: a self-host build skips the bodies of
+	// functions nothing calls, while every struct declaration is still emitted.
+	thread_types map[string]bool
 }
 
 struct FastcLoopBlockResult {
@@ -2616,6 +2620,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			spawn_helpers[name] = text
 		}
 		c_flags << output.c_flags
+	}
+	for thread_type, _ in type_output.thread_types {
+		if thread_type !in spawn_typedefs {
+			spawn_typedefs[thread_type] = fastc_thread_typedef(thread_type)
+		}
 	}
 	for name, text in global_output.function_typedefs {
 		spawn_typedefs[name] = text
