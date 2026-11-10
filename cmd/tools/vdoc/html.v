@@ -249,7 +249,8 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
+	contents.writeln(without_symbol_ids(vd.doc_node_html(d.head, '', head_md_link_base, true,
+		cfg.include_examples), dcs_contents))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -633,6 +634,25 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// without_symbol_ids returns the html of the module description `head_html`, whose headings,
+// like `# scrypt`, have other ids than the symbols of the module in `contents`, like `fn scrypt`,
+// so that the links to the symbols, like the ones of the table of contents, lead to them.
+fn without_symbol_ids(head_html string, contents []doc.DocNode) string {
+	mut result := head_html
+	for cn in contents {
+		for node in [cn, ...cn.children] {
+			id := get_node_id(node)
+			if id == '' {
+				continue
+			}
+			for level in 1 .. 7 {
+				result = result.replace('<h${level} id="${id}">', '<h${level} id="${id}-heading">')
+			}
+		}
+	}
+	return result
 }
 
 // declaration_html returns the signature of `dn`, after the platforms that it is available on,

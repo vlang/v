@@ -683,6 +683,26 @@ fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
+fn test_a_group_of_constants_is_named_after_its_first_constant() {
+	assert get_node_id(doc.DocNode{
+		kind:    .const_group
+		content: "@[markused]\nconst sep = '/'\nconst delim = ':'"
+	}) == 'sep'
+	assert get_node_id(doc.DocNode{
+		name: 'Constants'
+		kind: .const_group
+	}) == 'Constants'
+}
+
+fn test_a_heading_of_the_module_description_does_not_have_the_id_of_a_symbol() {
+	contents := [doc.DocNode{
+		name: 'scrypt'
+		kind: .function
+	}]
+	head := '<h1 id="scrypt">scrypt</h1>\n<h2 id="usage">Usage</h2>'
+	assert without_symbol_ids(head, contents) == '<h1 id="scrypt-heading">scrypt</h1>\n<h2 id="usage">Usage</h2>'
+}
+
 fn test_the_table_of_contents_groups_the_functions_and_the_types() {
 	dir := os.join_path(os.vtmp_dir(), 'vdoc_grouped_toc_${os.getpid()}')
 	os.rmdir_all(dir) or {}
