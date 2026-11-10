@@ -2,21 +2,10 @@ name: Package 2 multiwindow musl exclusion smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - '.github/workflows/multiwindow_musl_exclusion_smoke.yml'
-      - 'vlib/gg/multiwindow_render_runtime_contract_test.v'
-      - 'vlib/gg/multiwindow_services_contract_test.v'
-      - 'vlib/x/multiwindow/service_native_win32_no_flag_test.v'
-      - 'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v'
-      - 'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v'
-      - 'vlib/sokol/gfx/metal_private_hook_contract_test.v'
-      - 'cmd/tools/vtest-self.v'
+  workflow_call:
 
 concurrency:
-  group: package2-musl-exclusion-${{ github.workflow }}-${{ github.ref }}
+  group: package2-musl-exclusion-multiwindow_musl_exclusion_smoke-${{ github.ref }}
   cancel-in-progress: true
 
 env:

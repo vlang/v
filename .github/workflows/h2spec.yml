@@ -6,21 +6,10 @@
 name: h2spec conformance
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/net/http/h2_*.v'
-      - 'vlib/net/http/server*.v'
-      - 'vlib/net/http/http*.v'
-      - 'vlib/net/http/h2spec/**'
-      # `**` (not `*.v`): mbedtls.c.v #inserts mbedtls_helpers.h / mbedtls_threading.h,
-      # so TLS/ALPN behavior can change via the headers too (Codex P2).
-      - 'vlib/net/mbedtls/**'
-      - '.github/workflows/h2spec.yml'
+  workflow_call:
 
 concurrency:
-  group: h2spec-${{ github.workflow }}-${{ github.ref }}
+  group: h2spec-h2spec-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

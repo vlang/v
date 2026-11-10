@@ -8,18 +8,8 @@ name: Notices CI
 # reports the rest, ready to be added to the list once they are fixed.
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**'
-      - 'cmd/v/**'
-      - 'cmd/tools/vtest*.v'
-      - 'cmd/tools/testing/**'
-      - '**/notices_ci.yml'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - '!vlib/v/gen/fastc/**'
-      - '!vlib/v/fastcdriver/**'
+  workflow_call:
+
   schedule:
     # Weekly: the sweep runs the modules that are not gated yet, so it takes
     # longer than a PR lane may.
@@ -27,7 +17,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: notices-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: notices-notices_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

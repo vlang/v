@@ -24,12 +24,8 @@ name: macOS CI (gitly_ci)
 # serialized (one macOS CI job at a time) without dropping any commit.
 
 on:
-  push:
-    branches: [master]
-    paths-ignore:
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
+  workflow_call:
+
   workflow_dispatch:
 
 permissions:

@@ -2,23 +2,10 @@ name: vlib modules CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**.v'
-      - 'vlib/**.md'
-      - 'cmd/tools/vdoc/**.v'
-      - 'cmd/tools/vdoc/theme/**.js'
-      - 'cmd/tools/vdoc/theme/**.css'
-      - 'cmd/tools/vdoc/theme/**.svg'
-      - 'cmd/tools/vdoc/theme/**.html'
-      - '**/module_docs_ci.yml'
+  workflow_call:
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: module_docs-${{ github.workflow }}-${{ github.ref }}
+  group: module_docs-module_docs_ci-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 permissions:

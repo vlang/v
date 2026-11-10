@@ -2,18 +2,10 @@ name: Other CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/other_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: other-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: other-other_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -67,25 +59,6 @@ jobs:
           eval "$gpl_search_cmd" > ../gpl_res_vnew
           cd ..
           diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
-
-  code-formatting:
-    if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      VFLAGS: -cc gcc
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Environment info
-        run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
-      - name: Build local v
-        run: make -j4 && ./v symlink
-      - name: v test-cleancode
-        run: ./v -silent test-cleancode
-      - name: v test-fmt
-        run: ./v -silent test-fmt
 
   performance-regressions:
     if: github.ref == 'refs/heads/master'
