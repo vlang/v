@@ -13,14 +13,18 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 		// The tool cache rightly rejects those. Create an isolated, user-owned root
 		// with the same ACL preparation that the Windows CI jobs use.
 		configured := os.getenv('VTOOLS_CACHE_DIR')
-		cache_parent := if configured != '' { os.dir(configured) } else { root }
+		mut cache_parent := root
+		if configured != '' {
+			cache_parent = os.dir(configured)
+		}
 		env_file := os.join_path(root, 'private-cache-env.txt')
 		os.write_file(env_file, '')!
-		setup := cmdexec.run_in_merged_with_env('pwsh', ['-NoProfile', '-NonInteractive',
-			'-File', os.join_path(@VMODROOT, '.github', 'workflows', 'setup_windows_tool_cache.ps1'),
-			'-CacheParent', cache_parent], root, {
+		cache_script := os.join_path(@VMODROOT, '.github', 'workflows', 'setup_windows_tool_cache.ps1')
+		cache_args := ['-NoProfile', '-NonInteractive', '-File', cache_script, '-CacheParent', cache_parent]
+		setup_env := {
 			'GITHUB_ENV': env_file
-		})
+		}
+		setup := cmdexec.run_in_merged_with_env('pwsh', cache_args, root, setup_env)
 		assert setup.exit_code == 0, setup.output
 		assignments := os.read_file(env_file)!
 		paths := assignments.split_into_lines().filter(it.starts_with('VTOOLS_CACHE_DIR='))
