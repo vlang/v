@@ -701,6 +701,20 @@ fn test_the_table_of_contents_groups_the_functions_and_the_types() {
 	assert toc.contains('<li><a href="#Mode">enum Mode</a></li>') || toc.contains('<a href="#Mode">enum Mode</a></summary>')
 }
 
+fn test_the_table_of_contents_marks_the_deprecated_symbols() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_deprecated_toc_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), "module a\n\npub fn run() {}\n\n@[deprecated: 'use run() instead']\n@[deprecated_after: '2026-01-01']\npub fn old() {}\n\n@[deprecated]\npub struct Old {}\n")!
+	d := doc.generate(dir, true, true, .auto)!
+	toc := grouped_toc_html(d.head, d.contents.arr())
+	assert toc.contains('<li><a class="deprecated" href="#old" title="old(), deprecated: use run() instead"><span class="toc-label">old<span class="toc-detail">()</span></span><span class="toc-badge">deprecated</span></a></li>')
+	assert toc.contains('<li><a href="#run" title="run()">')
+	// Without a message, the tooltip only says that it is deprecated.
+	assert toc.contains('<a class="deprecated" href="#Old" title="struct Old"><span class="toc-label">struct Old</span><span class="toc-badge">deprecated</span></a>')
+}
+
 fn test_the_table_of_contents_shows_how_a_function_is_called() {
 	assert toc_call_label('pub fn abs_path(path string) string', 'abs_path') == 'abs_path(path)'
 	// A receiver is shown as it is declared, so that it shows if it is mutable or a reference.

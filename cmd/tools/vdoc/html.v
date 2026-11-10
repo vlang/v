@@ -847,11 +847,11 @@ fn grouped_toc_html(head doc.DocNode, contents []doc.DocNode) string {
 	}
 	if variables.len > 0 {
 		toc.write_string(toc_group_html('Variables', variables.map(toc_link_html(it.name,
-			it.name))))
+			it.name, it))))
 	}
 	if functions.len > 0 {
 		toc.write_string(toc_group_html('Functions', functions.map(toc_link_html(it.name,
-			toc_call_label(it.content, it.name)))))
+			toc_call_label(it.content, it.name), it))))
 	}
 	mut type_entries := []string{}
 	mut type_names := types.keys()
@@ -859,15 +859,17 @@ fn grouped_toc_html(head doc.DocNode, contents []doc.DocNode) string {
 	for type_name in type_names {
 		t := types[type_name]
 		mut members := (static_fns[t.name] or { []doc.DocNode{} }).map(toc_link_html(it.name,
-			toc_call_label(it.content, it.name)))
+			toc_call_label(it.content, it.name), it))
 		members << t.children.map(toc_link_html('${t.name}.${it.name}', toc_call_label(it.content,
-			it.name)))
+			it.name), it))
 		// A type without a declaration, like a private type with public methods, has no section.
-		label := html.escape('${t.kind} ${t.name}')
+		label := '${t.kind} ${t.name}'
 		link := if t.content == '' {
-			label
+			html.escape(label)
+		} else if deprecation := deprecation_of(t) {
+			'<a class="deprecated" href="#${slug(t.name)}" title="${html.escape(toc_title(label, deprecation))}"><span class="toc-label">${html.escape(label)}</span>${toc_deprecated_badge}</a>'
 		} else {
-			'<a href="#${slug(t.name)}">${label}</a>'
+			'<a href="#${slug(t.name)}">${html.escape(label)}</a>'
 		}
 		type_entries << if members.len == 0 {
 			'<li>${link}</li>'
@@ -888,9 +890,40 @@ fn toc_group_html(title string, entries []string) string {
 	return '<li><details class="toc-group"><summary>${title} <span class="toc-count">(${entries.len})</span></summary><ul>${entries.join('')}</ul></details></li>'
 }
 
-// toc_link_html returns an entry of the table of contents, which links to the symbol `name`. In
-// a label like `(mut f File) read[T](buf)`, the name stands out from the rest, which is dimmed.
-fn toc_link_html(name string, label string) string {
+const toc_deprecated_badge = '<span class="toc-badge">deprecated</span>'
+
+// deprecation_of returns the message of the `@[deprecated]` attribute of `dn`, or of one of its
+// declarations, which is empty when it has none, or `none` when `dn` is not deprecated.
+fn deprecation_of(dn doc.DocNode) ?string {
+	for tag in dn.tags {
+		attribute := tag.trim_string_left('@[').trim_string_right(']')
+		// `@[deprecated_after: 'date']` only comes with `@[deprecated]`.
+		if attribute.all_before(':').trim_space() == 'deprecated' {
+			return if attribute.contains(':') {
+				attribute.all_after(':').trim_space().trim('\'"')
+			} else {
+				''
+			}
+		}
+	}
+	for variant in dn.variants {
+		if message := deprecation_of(variant) {
+			return message
+		}
+	}
+	return none
+}
+
+// toc_title returns the tooltip of an entry of the table of contents, with the message of its
+// deprecation, if any.
+fn toc_title(label string, deprecation string) string {
+	return if deprecation == '' { label } else { '${label}, deprecated: ${deprecation}' }
+}
+
+// toc_link_html returns an entry of the table of contents, which links to the symbol `dn` named
+// `name`. In a label like `(mut f File) read[T](buf)`, the name stands out from the rest, which
+// is dimmed. A deprecated symbol is marked as such.
+fn toc_link_html(name string, label string, dn doc.DocNode) string {
 	mut receiver := ''
 	mut rest := label
 	if label.starts_with('(') {
@@ -911,6 +944,9 @@ fn toc_link_html(name string, label string) string {
 	parts += html.escape(rest[..name_end])
 	if name_end < rest.len {
 		parts += '<span class="toc-detail">${html.escape(rest[name_end..])}</span>'
+	}
+	if deprecation := deprecation_of(dn) {
+		return '<li><a class="deprecated" href="#${slug(name)}" title="${html.escape(toc_title(label, deprecation))}"><span class="toc-label">${parts}</span>${toc_deprecated_badge}</a></li>'
 	}
 	return '<li><a href="#${slug(name)}" title="${html.escape(label)}">${parts}</a></li>'
 }

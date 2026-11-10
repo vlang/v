@@ -654,6 +654,33 @@ hr {
 .doc-toc .toc-detail {
 	color: var(--toc-detail-color);
 }
+/* A deprecated symbol, with a badge that stays visible when its label is cut. */
+.doc-toc a.deprecated {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+/* A deprecated type with members stays on the line of its marker. */
+.doc-toc summary > a.deprecated {
+	display: inline-flex;
+	max-width: calc(100% - 1em);
+	vertical-align: bottom;
+}
+.doc-toc a.deprecated > .toc-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	text-decoration: line-through;
+}
+.doc-toc .toc-badge {
+	flex: none;
+	padding: 0 0.35rem;
+	border-radius: 100px;
+	font-size: 0.7rem;
+	font-weight: 500;
+	line-height: 1.4;
+	color: var(--attribute-deprecated-text-color);
+	background-color: var(--attribute-deprecated-background-color);
+}
 /* A type without a section of its own is not a heading of the table of contents. */
 .doc-toc .toc-group details > summary {
 	font-weight: 400;
