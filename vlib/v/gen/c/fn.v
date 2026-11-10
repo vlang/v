@@ -571,6 +571,7 @@ fn cache_fn_marker_key(file string, module_name string, name string) string {
 
 // gen_fn_items emits fn items output for c.
 fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
+	g.reset_body_name_memo()
 	for item in items {
 		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
 			continue
@@ -2487,6 +2488,7 @@ fn qualify_name_in_module(module_name string, name string) string {
 
 // gen_fn emits fn output for c.
 fn (mut g FlatGen) gen_fn(node flat.Node) {
+	g.reset_body_name_memo()
 	g.gen_fn_in_module(flat.empty_node, node, g.tc.cur_module, false)
 }
 

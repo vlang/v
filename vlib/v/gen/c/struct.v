@@ -4849,13 +4849,13 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 	}
 	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_alias_type_name_slots - 1))
 	entry := unsafe { &memo.alias_type_names[slot] }
-	if entry.generation == memo.generation && entry.type_id == type_name_id {
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id {
 		return entry.value
 	}
 	result := g.struct_init_import_alias_type_name_uncached(type_name_id)
 	memo.alias_type_names[slot] = BodyAliasTypeNameQuery{
 		type_id:    type_name_id
-		generation: memo.generation
+		generation: memo.name_generation
 		value:      result
 	}
 	return result
@@ -5085,7 +5085,7 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 	}
 	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_struct_decl_query_slots - 1))
 	entry := unsafe { &memo.struct_decls[slot] }
-	if entry.generation == memo.generation && entry.type_id == type_name_id {
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id {
 		if entry.found {
 			return entry.info
 		}
@@ -5094,13 +5094,13 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 	info := g.find_struct_decl_uncached(type_name_id) or {
 		memo.struct_decls[slot] = BodyStructDeclQuery{
 			type_id:    type_name_id
-			generation: memo.generation
+			generation: memo.name_generation
 		}
 		return none
 	}
 	memo.struct_decls[slot] = BodyStructDeclQuery{
 		type_id:    type_name_id
-		generation: memo.generation
+		generation: memo.name_generation
 		found:      true
 		info:       info
 	}
@@ -6147,14 +6147,14 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	}
 	slot := int((hash >> 7) & u64(body_promoted_miss_slots - 1))
 	entry := unsafe { &memo.promoted_misses[slot] }
-	if entry.generation == memo.generation && entry.name_id == name_id
+	if entry.generation == memo.name_generation && entry.name_id == name_id
 		&& entry.field == field_name {
 		return none
 	}
 	path := g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name) or {
 		memo.promoted_misses[slot] = BodyPromotedMissQuery{
 			name_id:    name_id
-			generation: memo.generation
+			generation: memo.name_generation
 			field:      field_name
 		}
 		return none

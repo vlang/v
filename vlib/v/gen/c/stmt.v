@@ -6669,13 +6669,13 @@ fn (g &FlatGen) ident_callee_declared_return_type(name string) (bool, types.Type
 	slot := c_name_recent_slot(name) & (body_callee_return_slots - 1)
 	// The masked slot is in bounds; borrow the entry without copying its type.
 	entry := unsafe { &memo.callee_returns[slot] }
-	if entry.generation == memo.generation && entry.name == name {
+	if entry.generation == memo.name_generation && entry.name == name {
 		return entry.found, entry.value, entry.canonical
 	}
 	found, ret, canonical := g.ident_callee_declared_return_type_uncached(name)
 	memo.callee_returns[slot] = BodyCalleeReturnQuery{
 		name:       name
-		generation: memo.generation
+		generation: memo.name_generation
 		found:      found
 		value:      ret
 		canonical:  canonical
@@ -7600,12 +7600,12 @@ fn (g &FlatGen) receiver_method_query(receiver_id u32, method string) BodyMethod
 	slot := body_owner_member_slot(receiver_id, method, body_method_query_slots)
 	// The masked slot is in bounds; borrow the entry without copying it.
 	entry := unsafe { &memo.method_queries[slot] }
-	if entry.generation == memo.generation && entry.type_id == receiver_id
+	if entry.generation == memo.name_generation && entry.type_id == receiver_id
 		&& entry.method == method {
 		return *entry
 	}
 	mut query := g.receiver_method_query_uncached(receiver_id, method)
-	query.generation = memo.generation
+	query.generation = memo.name_generation
 	memo.method_queries[slot] = query
 	return query
 }
@@ -9268,7 +9268,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	slot := body_owner_member_slot(type_name_id, field_name, body_field_type_query_slots)
 	// The masked slot is in bounds; borrow the entry without copying its type.
 	entry := unsafe { &memo.field_queries[slot] }
-	if entry.generation == memo.generation && entry.type_id == type_name_id
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id
 		&& entry.field == field_name {
 		if entry.found {
 			return entry.value
@@ -9278,7 +9278,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	if typ := g.usable_struct_field_type_uncached(type_name_id, field_name) {
 		memo.field_queries[slot] = BodyFieldTypeQuery{
 			type_id:    type_name_id
-			generation: memo.generation
+			generation: memo.name_generation
 			found:      true
 			field:      field_name
 			value:      typ
@@ -9287,7 +9287,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	}
 	memo.field_queries[slot] = BodyFieldTypeQuery{
 		type_id:    type_name_id
-		generation: memo.generation
+		generation: memo.name_generation
 		field:      field_name
 	}
 	return none

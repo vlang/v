@@ -631,6 +631,11 @@ mut:
 	exact_import_found  []bool
 	exact_import_values []types.Type
 	callee_returns      []BodyCalleeReturnQuery
+	// name_generation tags the tables keyed by a name or a type spelling. Their
+	// answers depend on the key, the module and the file only, so they are kept
+	// for consecutive bodies of one module and file (see reset_body_name_memo).
+	name_generation    u32
+	name_context_valid bool
 }
 
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
@@ -690,34 +695,55 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		for i in 0 .. memo.exact_import_gens.len {
 			memo.exact_import_gens[i] = 0
 		}
-		for i in 0 .. memo.callee_returns.len {
-			memo.callee_returns[i] = BodyCalleeReturnQuery{}
-		}
-		for i in 0 .. memo.field_queries.len {
-			memo.field_queries[i] = BodyFieldTypeQuery{}
-		}
-		for i in 0 .. memo.method_queries.len {
-			memo.method_queries[i] = BodyMethodQuery{}
-		}
-		for i in 0 .. memo.sum_name_queries.len {
-			memo.sum_name_queries[i] = BodySumNameQuery{}
-		}
-		for i in 0 .. memo.promoted_misses.len {
-			memo.promoted_misses[i] = BodyPromotedMissQuery{}
-		}
-		for i in 0 .. memo.struct_decls.len {
-			memo.struct_decls[i] = BodyStructDeclQuery{}
-		}
-		for i in 0 .. memo.alias_type_names.len {
-			memo.alias_type_names[i] = BodyAliasTypeNameQuery{}
-		}
 		memo.generation = 1
+	}
+	// The name-keyed entries of the previous body stay valid while this body has
+	// the same module and file, and no arena that owns them was left in between.
+	same_name_context := memo.name_context_valid && !isnil(g.tc) && memo.file == g.tc.cur_file
+		&& memo.module == g.tc.cur_module
+	if !same_name_context {
+		memo.name_generation++
+		if memo.name_generation == 0 {
+			for i in 0 .. memo.callee_returns.len {
+				memo.callee_returns[i] = BodyCalleeReturnQuery{}
+			}
+			for i in 0 .. memo.field_queries.len {
+				memo.field_queries[i] = BodyFieldTypeQuery{}
+			}
+			for i in 0 .. memo.method_queries.len {
+				memo.method_queries[i] = BodyMethodQuery{}
+			}
+			for i in 0 .. memo.sum_name_queries.len {
+				memo.sum_name_queries[i] = BodySumNameQuery{}
+			}
+			for i in 0 .. memo.promoted_misses.len {
+				memo.promoted_misses[i] = BodyPromotedMissQuery{}
+			}
+			for i in 0 .. memo.struct_decls.len {
+				memo.struct_decls[i] = BodyStructDeclQuery{}
+			}
+			for i in 0 .. memo.alias_type_names.len {
+				memo.alias_type_names[i] = BodyAliasTypeNameQuery{}
+			}
+			memo.name_generation = 1
+		}
 	}
 	if !isnil(g.tc) {
 		memo.file = g.tc.cur_file
 		memo.module = g.tc.cur_module
+		memo.name_context_valid = true
 	}
 	memo.active = true
+}
+
+// reset_body_name_memo drops the name-keyed body memo entries before a run of
+// function bodies. The entries own strings and types of the arena that was
+// current when they were stored; every such run (one batch or chunk) starts
+// here, so no entry outlives the scratch arena of the run that stored it.
+fn (mut g FlatGen) reset_body_name_memo() {
+	if !isnil(g.usable_expr_type_memo) {
+		g.usable_expr_type_memo.name_context_valid = false
+	}
 }
 
 fn (mut g FlatGen) end_usable_expr_type_memo() {
@@ -14745,7 +14771,7 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 &types.Type) ?u32 {
 	key := (kind << 32) | u64(name_id)
 	slot := int(((u64(name_id) * u64(0x9e3779b1)) >> 7) & u64(body_sum_name_query_slots - 1))
 	entry := unsafe { &memo.sum_name_queries[slot] }
-	if entry.generation == memo.generation && entry.key == key {
+	if entry.generation == memo.name_generation && entry.key == key {
 		if entry.found {
 			return entry.value
 		}
@@ -14754,13 +14780,13 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 &types.Type) ?u32 {
 	result := g.sum_type_name_for_nominal(clean) or {
 		memo.sum_name_queries[slot] = BodySumNameQuery{
 			key:        key
-			generation: memo.generation
+			generation: memo.name_generation
 		}
 		return none
 	}
 	memo.sum_name_queries[slot] = BodySumNameQuery{
 		key:        key
-		generation: memo.generation
+		generation: memo.name_generation
 		found:      true
 		value:      result
 	}
