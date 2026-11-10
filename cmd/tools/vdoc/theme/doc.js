@@ -92,7 +92,7 @@ function setupPlatformSelector() {
 		Array.from(links)
 			.reverse()
 			.forEach((a) => {
-				const target = document.getElementById(decodeURIComponent(a.hash.slice(1)));
+				const target = document.getElementById(decodedHash(a.hash));
 				const li = a.closest('li');
 				li.hidden =
 					!!target && !!target.closest('[hidden]') && !li.querySelector('li:not([hidden])');
@@ -115,7 +115,7 @@ function setupPlatformSelector() {
 	// A link to a symbol of another platform, like from the search, shows the symbols of all of
 	// them, instead of nothing. It does not change the platform that is kept for the other pages.
 	const showLinkTarget = () => {
-		const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+		const target = location.hash && document.getElementById(decodedHash(location.hash));
 		if (target && target.closest('[hidden]')) {
 			select.value = '';
 			show('');
@@ -124,6 +124,16 @@ function setupPlatformSelector() {
 	};
 	showLinkTarget();
 	window.addEventListener('hashchange', showLinkTarget);
+}
+
+// decodedHash returns the id that the fragment `hash` of a link, like `#Vec4.%`, leads to. A `%`
+// that does not encode a character, like in the name of an operator, is kept as it is.
+function decodedHash(hash) {
+	try {
+		return decodeURIComponent(hash.slice(1));
+	} catch (e) {
+		return hash.slice(1);
+	}
 }
 
 function setupMobileToggle() {
