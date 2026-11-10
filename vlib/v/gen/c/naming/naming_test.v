@@ -76,6 +76,17 @@ fn test_fn_ptr_encoded_round_trips_nested_keys() {
 	assert fn_ptr_encoded_params(nested_params) == [inner, 'i64']
 }
 
+// A GNU feature macro exposes libc basename(), which conflicts with a plain
+// V `fn basename(...)` unless C generation uses a disjoint identifier.
+fn test_basename_libc_collision_under_gnu_source() {
+	assert is_libc_collision('basename')
+	assert plain_name_may_be_reserved('basename')
+	assert c_name('basename') == '${internal_symbol_c_prefix}libc_basename'
+	assert c_name('basename') != c_name('v_basename')
+	assert c_name('basename') != c_name(c_name('basename'))
+	assert c_name('C.basename') == 'basename'
+}
+
 fn test_file_function_names_do_not_collide_with_libc() {
 	assert c_name('mktemp') == '${internal_symbol_c_prefix}libc_mktemp'
 	assert c_name('truncate') == '${internal_symbol_c_prefix}libc_truncate'

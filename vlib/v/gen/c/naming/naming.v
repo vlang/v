@@ -151,6 +151,7 @@ const libc_collisions = {
 	'alloca':   true
 	'acos':     true
 	'atexit':   true
+	'basename': true
 	'ceil':     true
 	'ceilf':    true
 	'close':    true
@@ -243,7 +244,7 @@ pub fn c_name(name string) string {
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
-	if n in ['mktemp', 'truncate', 'alloca'] {
+	if n in ['mktemp', 'truncate', 'alloca', 'basename'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n

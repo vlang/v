@@ -2,6 +2,10 @@ module os
 
 fn C.setpgid(pid i32, pgid i32) i32
 
+// glibc hides pipe2 without GNU feature macros, even when unistd.h is included.
+// Set this for the entire Linux C translation unit, including C2V projects.
+#flag linux -D_GNU_SOURCE
+
 // Cross-generated C snapshots cannot link native objects. The pipe2 declaration
 // is hidden by libc feature macros in some such builds, so declare the C ABI here.
 // Both the descriptor array and the flags use 32-bit C ints.

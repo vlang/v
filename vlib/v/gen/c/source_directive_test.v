@@ -20,6 +20,18 @@ fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
 	assert g.should_emit_c_extern_decl_from_file('request', user, 'main')
 }
 
+fn test_pipe2_prototype_survives_unrelated_system_headers() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	source := os.join_path(@VEXEROOT, 'vlib', 'os', 'process_nix.c.v')
+	g.add_c_directive('os', '#include <unistd.h>', false)
+	g.note_c_include_directive('os', source)
+	assert g.c_directives_use_system_libc()
+	assert g.should_emit_c_extern_decl_from_file('pipe2', source, 'os')
+	assert g.c_extern_decl_line(flat.Node{}, 'pipe2') == 'i32 pipe2(i32 fds[2], i32 flags);'
+	assert !g.should_emit_c_extern_decl_from_file('unrelated_external', source, 'os')
+}
+
 fn test_late_source_does_not_reemit_multiline_header_context() {
 	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' + '#endif'
 	directives := [

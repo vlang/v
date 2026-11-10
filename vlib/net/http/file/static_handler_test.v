@@ -136,8 +136,8 @@ fn test_the_query_string_and_percent_escapes_are_stripped() {
 	assert fetch(mut h, '/hello.txt?x=1').body == 'hello world'
 	// %68 is 'h'; the URL is decoded before the path is built
 	assert fetch(mut h, '/%68ello.txt').body == 'hello world'
-	// an escape that decodes to nothing useful just misses the file
-	assert fetch(mut h, '/%zz').status_code == 404
+	// A malformed escape is rejected before the file path is resolved.
+	assert fetch(mut h, '/%zz').status_code == 400
 }
 
 fn test_a_path_escaping_the_base_folder_is_forbidden() {

@@ -472,7 +472,7 @@ const ci_tasks = [
 	'verify_v_test_works_tcc',
 	'test_pure_v_math_module_tcc',
 	'test_inline_assembly',
-	'self_tests_tcc',
+	'self_tests_vprod_tcc',
 	'build_examples_tcc',
 	'run_submodule_example_tcc',
 	'build_tools_tcc',

@@ -43,6 +43,8 @@ jobs:
           gcc --version
       - name: Add dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Trust mounted checkout for container Git
+        run: git config --global --add safe.directory "$(pwd -P)"
       - name: Build V
         run: CC=gcc make && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: All code is formatted
@@ -69,6 +71,8 @@ jobs:
           persist-credentials: false
       - name: Add dependencies
         run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Trust mounted checkout for container Git
+        run: git config --global --add safe.directory "$(pwd -P)"
       - name: Build V
         run: make && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: Check if vpm compiles with tcc
