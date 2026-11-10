@@ -290,3 +290,148 @@ fn main() {
 }
 ')
 }
+
+// Collections as Vox's JPEG XL decoder spells them: an interface cast of an indexed
+// operand, fixed arrays of dynamic arrays and the reverse, an option cast of a fixed array,
+// an option cast that starts the line after a call, and a slice of a `mut` array parameter.
+fn test_fastc_vox_constructs_collection_casts_and_initializers() {
+	fastc_vox_construct_program('collections', r'module main
+
+interface Shape {
+	area() int
+}
+
+struct Square {
+	side int
+}
+
+fn (s Square) area() int {
+	return s.side * s.side
+}
+
+struct Info {
+	spot ?[4]f32
+	rows [3][]i32
+}
+
+struct Predictor {
+mut:
+	errors [][4]u32
+}
+
+struct Size {
+	width  int
+	height int
+}
+
+struct Frame {
+	side int
+}
+
+fn (f Frame) size() Size {
+	return Size{f.side, f.side * 2}
+}
+
+struct Cache {
+	cells int
+}
+
+struct Holder {
+	cache ?Cache
+}
+
+struct Channel {
+	buffer int
+}
+
+fn shapes(squares []Square) []Shape {
+	mut values := []Shape{cap: squares.len}
+	for index in 0 .. squares.len {
+		values << Shape(squares[index])
+	}
+	return values
+}
+
+fn info(kind int) Info {
+	mut rows := [3][]i32{}
+	for c in 0 .. 3 {
+		mut row := []i32{len: c + 1}
+		row[0] = i32(c * 5)
+		rows[c] = row
+	}
+	mut spot := ?[4]f32(none)
+	if kind == 2 {
+		mut values := [4]f32{}
+		for i in 0 .. 4 {
+			values[i] = f32(i) * 0.5
+		}
+		spot = values
+	}
+	return Info{
+		spot: spot
+		rows: rows
+	}
+}
+
+fn make_cache(width int, height int) !Cache {
+	if width < 0 {
+		return error("negative")
+	}
+	return Cache{width * height}
+}
+
+fn holder(frame Frame, curves ?int) !Holder {
+	cache := if extra := curves {
+		size := frame.size()
+		// The comment keeps the option cast on a line of its own.
+		?Cache(make_cache(size.width + extra, size.height)!)
+	} else {
+		?Cache(none)
+	}
+	return Holder{
+		cache: cache
+	}
+}
+
+fn buffers(mut channels []Channel, begin int, count int) []int {
+	outputs := channels[begin..begin + count].map(it.buffer)
+	channels << Channel{99}
+	return outputs
+}
+
+fn main() {
+	values := shapes([Square{2}, Square{3}])
+	assert values.len == 2
+	assert values[1].area() == 9
+	with_spot := info(2)
+	if spot := with_spot.spot {
+		assert spot[3] == 1.5
+	} else {
+		assert false
+	}
+	assert with_spot.rows[2].len == 3
+	assert with_spot.rows[1][0] == 5
+	assert info(0).spot == none
+	mut predictor := Predictor{
+		errors: [][4]u32{len: 4}
+	}
+	predictor.errors[2][1] = 7
+	mut local := [][4]u32{len: 2}
+	local[1][3] = 9
+	assert predictor.errors.len == 4
+	assert predictor.errors[2][1] + predictor.errors[0][0] + local[1][3] == 16
+	filled := holder(Frame{3}, ?int(1)) or { panic(err) }
+	if cache := filled.cache {
+		assert cache.cells == 24
+	} else {
+		assert false
+	}
+	empty := holder(Frame{3}, ?int(none)) or { panic(err) }
+	assert empty.cache == none
+	mut channels := [Channel{1}, Channel{3}, Channel{5}, Channel{7}]
+	assert buffers(mut channels, 1, 2) == [3, 5]
+	assert channels.len == 5
+	println("ok")
+}
+')
+}

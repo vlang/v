@@ -3985,7 +3985,11 @@ fn (g &Parser) semicolon_continues_expression() bool {
 		`*`,
 	] {
 		mut probe := g.s
-		return fastc_token_continues_expression(probe.scan())
+		next_token := probe.scan()
+		if next_token == .question && fastc_leading_question_starts_option_cast(g.s.src, probe.pos) {
+			return false
+		}
+		return fastc_token_continues_expression(next_token)
 	}
 	if g.s.src[offset] == `!` {
 		mut probe := g.s
@@ -4012,7 +4016,21 @@ fn (g &Parser) semicolon_continues_expression() bool {
 		// `&&` continues a logical expression; a lone `&` is unary address-of (new statement).
 		return offset + 1 < g.s.src.len && g.s.src[offset + 1] == `&`
 	}
+	if next == `?` && fastc_leading_question_starts_option_cast(g.s.src, offset) {
+		return false
+	}
 	return next in [`.`, `/`, `%`, `|`, `^`, `<`, `>`, `=`, `?`, `)`]
+}
+
+// fastc_leading_question_starts_option_cast reports whether the `?` that opens a line
+// spells an option type (`?Type(value)`), which starts a new statement instead of
+// propagating the expression on the line above.
+fn fastc_leading_question_starts_option_cast(src string, question_offset int) bool {
+	if question_offset < 0 || question_offset + 1 >= src.len || src[question_offset] != `?` {
+		return false
+	}
+	next := src[question_offset + 1]
+	return next.is_letter() || next in [`_`, `[`, `&`]
 }
 
 fn (g &Parser) semicolon_continues_value_expression(tokens []FastcExpressionToken) bool {
