@@ -53,7 +53,7 @@ typedef int64_t i64;
 typedef struct { void* _object; } IError;
 static IError builtin__none__, builtin__error_sentinel;
 // The allocator entry points ask the scoped arenas of the thread first
-// (vlib/builtin/arena.c.v). This program creates none.
+// (vlib/builtin/arena_notd_no_builtin_arena.c.v). This program creates none.
 static u32 g_arena_hooks_ready;
 static u8* (*g_arena_alloc_hook)();
 static u8* (*g_arena_realloc_hook)();

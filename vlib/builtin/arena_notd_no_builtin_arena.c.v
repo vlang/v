@@ -17,7 +17,8 @@ module builtin
 // The hooks in the allocation entry points are part of every program. Until
 // the program creates its first arena, each entry point only checks one
 // atomic global (see g_arena_hooks_ready). -prealloc and -gc vgc builds never
-// call into this file.
+// call into this file, and `-d no_builtin_arena`, which the FastC backend sets,
+// leaves it out.
 
 const arena_magic = u32(0x41524e41)
 const arena_default_chunk_size = int(64 * 1024)

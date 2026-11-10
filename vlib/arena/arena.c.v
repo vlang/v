@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module arena
 
-// The arenas live in builtin (vlib/builtin/arena.c.v).
+// The arenas live in builtin (vlib/builtin/arena_notd_no_builtin_arena.c.v).
 
 // Config holds the options for `new`.
 @[params]

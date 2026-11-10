@@ -9802,7 +9802,7 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 		'string.v',
 		'allocation.c.v',
 		// The allocation entry points check the hooks of scoped arenas in there.
-		'arena.c.v',
+		'arena_notd_no_builtin_arena.c.v',
 		'backtraces.c.v',
 		'backtraces_nix.c.v',
 		'builtin.c.v',
@@ -12552,6 +12552,11 @@ pub fn run(args []string) {
 			}
 			if 'v3_backend' !in prefs.user_defines {
 				prefs.user_defines << 'v3_backend'
+			}
+			// FastC has no scoped arenas: its C has no atomics of its own and does not
+			// call through function-typed globals (vlib/builtin/arena_notd_no_builtin_arena.c.v).
+			if 'no_builtin_arena' !in prefs.user_defines {
+				prefs.user_defines << 'no_builtin_arena'
 			}
 			if !fastc_cross_target && !c_compiler_explicit {
 				// Same-target FastC output is compiled by bundled TinyCC regardless of

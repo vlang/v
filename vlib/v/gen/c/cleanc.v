@@ -25470,7 +25470,7 @@ fn (g &FlatGen) global_is_thread_local(name string) bool {
 }
 
 // Each thread has its own stack of scoped arenas (see
-// vlib/builtin/arena.c.v), so a spawned thread starts with the
+// vlib/builtin/arena_notd_no_builtin_arena.c.v), so a spawned thread starts with the
 // default allocator.
 fn (g &FlatGen) is_builtin_arena_top(name string) bool {
 	return name == 'g_arena_top' && (g.global_modules[name] or { '' }) == 'builtin'
