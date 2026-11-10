@@ -859,9 +859,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					}
 				}
 				function_key := g.function_key_for_call(tokens, call_name_index)
-				signature := if function_key in g.functions {
-					g.functions[function_key]
-				} else {
+				signature := g.functions[function_key] or {
 					g.mono_functions[function_key] or { FastcFunctionSignature{} }
 				}
 				if signature.return_type != 0 {

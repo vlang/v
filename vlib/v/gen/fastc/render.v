@@ -1123,10 +1123,8 @@ fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
 		return false
 	}
 	layout_type := flat.source_type_name(fastc_trim_pointer_type(g.underlying_alias_type(c_type)))
-	if layout_type !in g.struct_field_info {
-		return false
-	}
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return false }
+	for field in fields {
 		if field.default_value != '' || field.typ == fastc_type_option {
 			return true
 		}
@@ -5518,12 +5516,8 @@ fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?st
 		return none
 	}
 	method_key, _ := g.resolve_method(receiver_type, tokens.last().lit)
-	signature := if method_key in g.functions {
-		g.functions[method_key]
-	} else if method_key in g.mono_functions {
-		g.mono_functions[method_key]
-	} else {
-		return none
+	signature := g.functions[method_key] or {
+		g.mono_functions[method_key] or { return none }
 	}
 	if signature.parameter_types.ids.len == 0 {
 		return none
@@ -7146,7 +7140,11 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					'&(${source})'
 				}
 				storage := g.collection_storage_type(value_type)
-				missing := g.map_lookup_missing_value_expression(value_type)
+				missing := if fastc_typed_option_payload(value_type) != none {
+					'(${storage}){.state=2}'
+				} else {
+					g.map_lookup_missing_value_expression(value_type)
+				}
 				map_value := if fastc_is_pointer_type(current_type) {
 					'*(${source})'
 				} else {

@@ -1040,12 +1040,12 @@ fn fastc_merge_reference_partial(chunk FastcReferencePartial, mut references map
 	for function_name in chunk.references.keys() {
 		mut combined := map[string]bool{}
 		if function_name in references {
-			combined = references[function_name].clone()
+			combined = references[function_name].move()
 		}
 		for referenced_name, _ in chunk.references[function_name] {
 			combined[referenced_name] = true
 		}
-		references[function_name] = combined.clone()
+		references[function_name] = combined.move()
 	}
 	for referenced_name, _ in chunk.top_level_references {
 		top_level_references[referenced_name] = true

@@ -129,7 +129,7 @@ fn (g &Parser) nil_starts_pointer_comparison(previous token.Token) bool {
 		tokens << FastcExpressionToken{ tok: kind, lit: look.lit }
 	}
 	typ := g.infer_expression_type(tokens) or { return false }
-	return g.nil_type_is_allowed(typ)
+	return g.nil_comparison_type_is_allowed(typ)
 }
 
 // nil_target_is_voidptr reports whether the value starting at the current `nil` is assigned to
@@ -166,7 +166,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 			}
 		}
 		typ := g.infer_expression_type(tokens[start..tokens.len - 1]) or { return false }
-		return g.nil_type_is_allowed(typ)
+		return g.nil_comparison_type_is_allowed(typ)
 	}
 	open := fastc_innermost_open_index(tokens)
 	if open >= 0 && tokens[open].tok == .lsbr
@@ -255,6 +255,12 @@ fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, st
 	}
 	fields := g.struct_field_info[flat.source_type_name(fastc_trim_pointer_type(struct_type_source_id))] or { return false }
 	return index < fields.len && g.nil_field_is_allowed(fields[index])
+}
+
+fn (g &Parser) nil_comparison_type_is_allowed(typ u32) bool {
+	if g.in_generic_placeholder { return false }
+	underlying := g.underlying_alias_type(typ)
+	return underlying == flat.source_type_voidptr || fastc_is_pointer_type(underlying)
 }
 
 fn (g &Parser) nil_type_is_allowed(typ u32) bool {

@@ -2287,6 +2287,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	mut values := []string{}
 	mut value_types := []u32{}
+	mut value_option_types := []u32{}
 	previous_expected_type := g.expected_expression_type
 	for {
 		// Each assignment value takes its context from the corresponding target.
@@ -2301,6 +2302,11 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 		}
 		values << item
 		value_types << g.last_expression_type
+		value_option_types << if g.last_expression_type in [fastc_type_option, fastc_type_result] {
+			g.option_value_type_for_expression(g.last_expression)
+		} else {
+			u32(0)
+		}
 		if g.tok != .comma {
 			break
 		}
@@ -2335,8 +2341,9 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				}
 				g.write_line('${flat.source_type_name(value_type)} ${fastc_c_value_identifier(name)} = ${temporaries[i]};')
 				g.set_scoped_local(name, FastcLocal{
-					is_mut: mutability[i]
-					typ:    value_type
+					is_mut:            mutability[i]
+					typ:               value_type
+					option_value_type: value_option_types[i]
 				})
 			}
 		} else {
