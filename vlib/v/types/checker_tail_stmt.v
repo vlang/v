@@ -15616,9 +15616,9 @@ mut:
 	// One bit per required method, by required_method_bit of its name: a key
 	// whose last component has no bit set names no required method.
 	required_method_bits [64]u64
-	receiver_parts    map[string]int
-	method_receivers  map[u64]bool
-	receiver_lookups  map[u32]ReceiverMethodLookup
+	receiver_parts       map[string]int
+	method_receivers     map[u64]bool
+	receiver_lookups     map[u32]ReceiverMethodLookup
 }
 
 // ReceiverMethodLookup is what memo_proves_no_receiver_method knows of a
