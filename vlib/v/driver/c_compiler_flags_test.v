@@ -2233,6 +2233,32 @@ fn test_v3_native_macos_selects_bundled_tcc_by_default() {
 	}
 }
 
+fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:  'linux'
+			c_compiler: compiler
+			is_tcc:     compiler == 'tinyc'
+			is_o:       true
+		})
+		assert plan.before_inputs.count('-D_GNU_SOURCE') == 1
+	}
+	for target_os in ['windows', 'macos', 'freebsd', 'openbsd'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ target_os: target_os })
+		assert '-D_GNU_SOURCE' !in plan.before_inputs
+	}
+	freestanding := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:     'linux'
+		is_freestanding: true
+	})
+	assert '-D_GNU_SOURCE' !in freestanding.before_inputs
+	provided := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:           'linux'
+		environment_c_flags: ['-D_GNU_SOURCE']
+	})
+	assert provided.before_inputs.count('-D_GNU_SOURCE') == 1
+}
+
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {
 	for compiler in ['gcc', 'clang', 'tinyc'] {
 		for strict in [false, true] {
