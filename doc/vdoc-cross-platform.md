@@ -21,6 +21,9 @@ only differ in their attributes, comments, layout, or the names of their paramet
 documented as one. Constants that follow each other and are available on the same platforms
 are documented together. Differences inside string literals remain distinct constant values.
 
+In the html output, a selector next to the name of the module shows only the symbols and the
+declarations of one platform. The selected platform is kept for the other modules.
+
 Examples, with `-check-examples` or `-unsafe-run-examples`, are only checked for the symbols
 that are available on the platform that `v doc` runs on. When declarations have different
 examples, the examples of the declaration for that platform are selected. This also applies

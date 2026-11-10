@@ -8,6 +8,7 @@
 	setupSearch();
 	setupCollapse();
 	setupCodeCopy();
+	setupPlatformSelector();
 })();
 
 function setupScrollSpy() {
@@ -16,8 +17,6 @@ function setupScrollSpy() {
 	if (!toc) {
 		return;
 	}
-	const sections = mainContent.querySelectorAll('section');
-	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
 	let lastActive = null;
 	let clickedScroll = false;
 	const handleScroll = debounce(() => {
@@ -28,9 +27,13 @@ function setupScrollSpy() {
 		if (lastActive) {
 			lastActive.classList.remove('active');
 		}
-		for (const [i, position] of sectionPositions.entries()) {
-			if (position >= mainContent.scrollTop) {
-				const link = toc.querySelector('a[href="#' + sections[i].id + '"]');
+		// The sections that the platform selector hides have no position.
+		const sections = Array.from(mainContent.querySelectorAll('section')).filter(
+			(section) => section.offsetParent !== null,
+		);
+		for (const section of sections) {
+			if (section.offsetTop >= mainContent.scrollTop) {
+				const link = toc.querySelector('a[href="#' + section.id + '"]');
 				if (link) {
 					// Set current menu link as active
 					link.classList.add('active');
@@ -62,6 +65,55 @@ function setupScrollSpy() {
 			clickedScroll = true;
 		}),
 	);
+}
+
+// setupPlatformSelector makes the platform selector of a page documented with `-os cross` show
+// only the symbols, and the declarations of them, that are available on the selected platform.
+function setupPlatformSelector() {
+	const select = document.querySelector('.platform-select');
+	if (!select) {
+		return;
+	}
+	const show = (platform) => {
+		if (platform === '') {
+			delete document.documentElement.dataset.platform;
+		} else {
+			document.documentElement.dataset.platform = platform;
+		}
+		document.querySelectorAll('[data-platforms]').forEach((el) => {
+			el.hidden = platform !== '' && !el.dataset.platforms.split(' ').includes(platform);
+		});
+		document.querySelectorAll('.doc-toc a[href^="#"]').forEach((a) => {
+			const target = document.getElementById(decodeURIComponent(a.hash.slice(1)));
+			a.parentElement.hidden = !!target && target.hidden;
+		});
+	};
+	let saved = '';
+	try {
+		saved = localStorage.getItem('vdoc-platform') || '';
+	} catch (e) {}
+	if (saved !== '' && Array.from(select.options).some((option) => option.value === saved)) {
+		select.value = saved;
+		show(saved);
+	}
+	select.addEventListener('change', () => {
+		show(select.value);
+		try {
+			localStorage.setItem('vdoc-platform', select.value);
+		} catch (e) {}
+	});
+	// A link to a symbol of another platform, like from the search, shows the symbols of all of
+	// them, instead of nothing. It does not change the platform that is kept for the other pages.
+	const showLinkTarget = () => {
+		const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+		if (target && target.closest('[hidden]')) {
+			select.value = '';
+			show('');
+			target.scrollIntoView();
+		}
+	};
+	showLinkTarget();
+	window.addEventListener('hashchange', showLinkTarget);
 }
 
 function setupMobileToggle() {

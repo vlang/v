@@ -222,14 +222,15 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw str
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples, ''))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := links.path_of(child.file_path)
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
 		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
-		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false, cfg.include_examples))
+		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
+			cfg.include_examples, ''))
 		hw.write_string('\n')
 	}
 }
@@ -249,7 +250,8 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
+		platform_selector_html(d)))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -553,7 +555,9 @@ fn render_doc_markdown(source string, mut renderer markdown.HTMLRenderer) string
 		.replace('</li>\n</ol>', '</li></ol>')
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
+// doc_node_html returns the html of the symbol `dn`. `title_extra` is added to its title, like the
+// platform selector of the module.
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, title_extra string) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := new_doc_markdown_renderer(md_link_base)
@@ -575,13 +579,15 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		node_id = 'readme_${node_id}'
 		hash_link = ' <a href="#${node_id}">#</a>'
 	}
-	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}">')
+	section_platforms := if head { '' } else { platforms_attr(doc.all_platforms(dn)) }
+	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}"${section_platforms}>')
 	if dn.name != '' {
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
 		}
+		dnw.write_string(title_extra)
 		if link != '' {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
 		}
@@ -601,18 +607,28 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	}
 	comments_apart := !head && dn.content.len > 0 && has_variant_comments(dn)
 	if !head && dn.content.len > 0 {
+		// Each declaration of a symbol with variants is in its own element, which the platform
+		// selector of the page shows only for its platforms.
+		if dn.variants.len > 0 {
+			dnw.write_string('<div class="declaration"${platforms_attr(dn.platforms)}>\n')
+		}
 		dnw.write_string(declaration_html(dn, attributes_in_signatures))
+		if dn.variants.len > 0 {
+			dnw.write_string('</div>\n')
+		}
 		// The comment is shown once, after all the declarations, unless they have their own.
 		if comments_apart {
 			dnw.writeln(md_content)
 		}
 		for variant in dn.variants {
+			dnw.write_string('<div class="declaration"${platforms_attr(variant.platforms)}>\n')
 			dnw.write_string(declaration_html(variant, true))
 			if has_own_comments(variant, dn) {
 				mut variant_renderer := new_doc_markdown_renderer(md_link_base)
 				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
 				dnw.writeln(render_doc_markdown(variant_comments, mut variant_renderer))
 			}
+			dnw.write_string('</div>\n')
 		}
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
@@ -633,6 +649,36 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// platforms_attr returns the `data-platforms` attribute of an element that is only about
+// `platforms`, or nothing when it is about all of them.
+fn platforms_attr(platforms []doc.Platform) string {
+	if platforms.len == 0 {
+		return ''
+	}
+	return ' data-platforms="${platforms.map(it.str()).join(' ')}"'
+}
+
+// platform_selector_html returns a selector that shows only the symbols of one platform, for the
+// documentation of `d` with `-os cross`, or nothing when no symbol of `d` is limited to some
+// platforms.
+fn platform_selector_html(d doc.Doc) string {
+	if !d.contents.values().any(has_platforms(it)) {
+		return ''
+	}
+	mut options := ['<option value="">All platforms</option>']
+	for platform in doc.cross_platforms {
+		options << '<option value="${platform}">${platform.display_name()}</option>'
+	}
+	return '<select class="platform-select" aria-label="Show the symbols of one platform">${options.join('')}</select>'
+}
+
+// has_platforms reports whether `dn`, one of its variants or one of its children is limited to
+// some platforms.
+fn has_platforms(dn doc.DocNode) bool {
+	return dn.platforms.len > 0 || dn.variants.any(it.platforms.len > 0)
+		|| dn.children.any(has_platforms(it))
 }
 
 // declaration_html returns the signature of `dn`, after the platforms that it is available on,

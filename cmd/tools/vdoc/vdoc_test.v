@@ -683,6 +683,26 @@ fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
+fn test_the_platform_selector_is_only_for_symbols_of_some_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_selector_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\npub fn everywhere() {}\n')!
+	everywhere := doc.generate(dir, true, true, .cross)!
+	assert platform_selector_html(everywhere) == ''
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\npub fn on_windows() {}\n')!
+	cross := doc.generate(dir, true, true, .cross)!
+	selector := platform_selector_html(cross)
+	assert selector.starts_with('<select class="platform-select"')
+	assert selector.contains('<option value="">All platforms</option>')
+	assert selector.contains('<option value="windows">Windows</option>')
+	assert platforms_attr(cross.contents['on_windows']!.platforms) == ' data-platforms="windows"'
+	assert platforms_attr(cross.contents['everywhere']!.platforms) == ''
+	// Without `-os cross`, no symbol is limited to some platforms.
+	assert platform_selector_html(doc.generate(dir, true, true, .windows)!) == ''
+}
+
 fn test_markdown_renderer_supports_github_flavored_markdown() {
 	mut renderer := new_doc_markdown_renderer('')
 	// Bare URLs are links, without a `)` that closes no `(` of the URL.

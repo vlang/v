@@ -432,7 +432,7 @@ pub fn declarations_on_host(node DocNode) []DocNode {
 }
 
 // all_platforms returns the platforms that a symbol is available on, with all its variants.
-fn all_platforms(node DocNode) []Platform {
+pub fn all_platforms(node DocNode) []Platform {
 	mut platforms := node.platforms.clone()
 	for variant in node.variants {
 		platforms = merge_platforms(platforms, variant.platforms)

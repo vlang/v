@@ -476,7 +476,7 @@ hr {
 	background-color: var(--attribute-deprecated-background-color);
 	color: var(--attribute-deprecated-text-color);
 }
-.doc-content > .doc-node > .platforms {
+.doc-content > .doc-node .platforms {
 	margin: 0.6rem 0 0;
 	padding: 0.4rem 0.8rem;
 	border-left: 3px solid var(--platforms-border-color);
@@ -485,10 +485,31 @@ hr {
 	max-width: none;
 }
 /* The note about the platforms sits on top of the declarations that it is about. */
-.doc-content > .doc-node > .platforms + .signature {
+html:not([data-platform]) .doc-content > .doc-node .platforms + .signature {
 	margin-top: 0;
 	border-top-left-radius: 0;
 	border-top-right-radius: 0;
+}
+/* With a platform selected, the symbols that are shown are all available on it. */
+html[data-platform] .doc-content > .doc-node .platforms {
+	display: none;
+}
+/* The platform selector of a module documented with `-os cross`. */
+.doc-content > .doc-node > .title > .platform-select {
+	margin-left: auto;
+	padding: 0.2rem 0.4rem;
+	font-family: Jost, sans-serif;
+	font-size: 0.9rem;
+	color: var(--text-color);
+	background-color: var(--code-background-color);
+	border: 1px solid var(--code-signature-border-color);
+	border-radius: 4px;
+}
+.doc-content [hidden] {
+	display: none !important;
+}
+.doc-toc li[hidden] {
+	display: none;
 }
 .doc-content > .doc-node > .title > .link {
 	display: flex;
