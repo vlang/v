@@ -297,6 +297,8 @@ fn test_receipt_sees_a_header_added_earlier_in_the_search() {
 	os.mkdir_all(earlier)!
 	aged_write(os.join_path(later, 'choice.h'), 'static int choice(void) { return 1; }\n')!
 	age_unchanged_build_source(earlier)!
+	// A directory where a header may be searched for is an input too.
+	age_unchanged_build_source(later)!
 	publish_native_receipt(f, 'search', native_receipt_inputs(f, ['-I', earlier, '-I', later],
 		'#include <choice.h>\n'))
 	aged_write(os.join_path(earlier, 'choice.h'), 'static int choice(void) { return 2; }\n')!
@@ -659,6 +661,8 @@ fn test_tracked_dependencies_search_the_directory_of_the_unit_first() {
 	assert deps.files.any(it.ends_with('later/choice.h'))
 	// A `choice.h` beside the unit would be included instead.
 	assert os.join_path(native, 'choice.h') in deps.missing
+	assert native in deps.dirs
+	assert later in deps.dirs
 }
 
 fn test_missing_include_candidates_start_in_the_directory_of_the_unit() {
@@ -677,6 +681,64 @@ fn test_missing_include_candidates_start_in_the_directory_of_the_unit() {
 	assert os.join_path(native, 'choice.h') in missing
 	without_unit := v3_missing_include_candidates(search, [later], read, [], time.utc().unix())?
 	assert os.join_path(native, 'choice.h') !in without_unit
+}
+
+fn test_header_search_dirs_leave_out_the_compiler_and_its_sdk() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_header_search_dirs_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	sdk := os.join_path(root, 'sdk')
+	system := os.join_path(sdk, 'usr', 'include')
+	given := os.join_path(root, 'given')
+	absent := os.join_path(root, 'absent')
+	own := os.join_path(root, 'own')
+	os.mkdir_all(system)!
+	os.mkdir_all(given)!
+	os.mkdir_all(own)!
+	search := V3IncludeSearch{
+		dirs: [given, system]
+	}
+	read := [os.join_path(system, 'stdio.h'), os.join_path(sdk, 'SDKSettings.json'),
+		os.join_path(own, 'own.h')]
+	dirs := v3_header_search_dirs(search, [given, absent], read, [os.join_path(root, 'unit.c')])
+	mut expected := [root, given, own]
+	expected.sort()
+	assert dirs == expected
+}
+
+fn test_header_search_tree_covers_every_directory_below() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_header_search_tree_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	include := os.join_path(root, 'include')
+	os.mkdir_all(os.join_path(include, 'a', 'b'))!
+	os.mkdir_all(os.join_path(include, '.app.v3cc.1'))!
+	os.mkdir_all(os.join_path(include, 'skipped', 'below'))!
+	tree := v3_header_search_tree([include], [os.join_path(include, 'skipped')], 10)?
+	assert tree == [include, os.join_path(include, 'a'), os.join_path(include, 'a', 'b')]
+	if _ := v3_header_search_tree([include], [], 2) {
+		assert false, 'a tree larger than the limit was accepted'
+	}
+}
+
+fn test_receipt_sees_a_file_added_to_an_output_directory_where_headers_are_searched() {
+	f := receipt_fixture('output_header_dir')!
+	defer { os.rmdir_all(f.root) or {} }
+	os.mkdir_all(f.cache_dir)!
+	age_unchanged_build_source(f.root)!
+	receipt := UnchangedBuildReceipt{
+		...f.receipt()
+		dirs:        [f.source_dir, f.root]
+		header_dirs: [f.root]
+		output_dir:  f.root
+		output_name: os.file_name(f.destination)
+	}
+	stamp := v3_unchanged_build_stamp(receipt, f.cache_dir, '')
+	assert stamp.ok
+	assert v3_publish_unchanged_build(f.cache_dir, 'output', f.executable, stamp)
+	// Restoring writes the executable into the directory: that is no new header.
+	assert v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
+	assert v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
+	os.write_file(os.join_path(f.root, 'optional.h'), '#define OPTIONAL 1\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
 }
 
 // The tests below build programs and take long: a test after them would find
@@ -763,5 +825,33 @@ fn test_receipt_scans_a_c_source_with_the_c_standard_of_the_build() {
 	os.write_file(os.join_path(project, 'other_value.h'), '#define NATIVE_VALUE 9\n')!
 	receipt_project_rebuilds(root, project, fn [project] () ! {
 		os.write_file(os.join_path(project, 'c11_value.h'), '#define NATIVE_VALUE 2\n')!
+	})!
+}
+
+fn test_receipt_sees_a_header_that_has_include_finds() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_has_include_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	include := os.join_path(project, 'include')
+	os.mkdir_all(include)!
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'optional' }\n")!
+	os.write_file(os.join_path(project, 'main.v'), '#flag -I @VMODROOT/include\n#include <receipt.h>\nfn C.receipt_value() int\n\nfn main() {\n\tprintln(C.receipt_value())\n}\n')!
+	os.write_file(os.join_path(include, 'receipt.h'), '#if __has_include("optional_value.h")\n#include "optional_value.h"\n#else\n#define RECEIPT_VALUE 1\n#endif\nstatic int receipt_value(void) { return RECEIPT_VALUE; }\n')!
+	receipt_project_rebuilds(root, project, fn [include] () ! {
+		os.write_file(os.join_path(include, 'optional_value.h'), '#define RECEIPT_VALUE 2\n')!
+	})!
+}
+
+fn test_receipt_sees_a_header_that_has_include_finds_below_a_directory() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_has_include_below_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	include := os.join_path(project, 'include')
+	os.mkdir_all(os.join_path(include, 'extra'))!
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'optional' }\n")!
+	os.write_file(os.join_path(project, 'main.v'), '#flag -I @VMODROOT/include\n#include <receipt.h>\nfn C.receipt_value() int\n\nfn main() {\n\tprintln(C.receipt_value())\n}\n')!
+	os.write_file(os.join_path(include, 'receipt.h'), '#if __has_include(<extra/optional_value.h>)\n#include <extra/optional_value.h>\n#else\n#define RECEIPT_VALUE 1\n#endif\nstatic int receipt_value(void) { return RECEIPT_VALUE; }\n')!
+	receipt_project_rebuilds(root, project, fn [include] () ! {
+		os.write_file(os.join_path(include, 'extra', 'optional_value.h'), '#define RECEIPT_VALUE 2\n')!
 	})!
 }

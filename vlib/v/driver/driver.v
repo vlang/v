@@ -601,7 +601,10 @@ struct CObjectDependencies {
 	files []string
 	// The paths where a file that is not there would have been read instead of
 	// one of `files` (v3_missing_include_candidates).
-	missing       []string
+	missing []string
+	// The directories, other than the compiler's own, whose entries decide what a
+	// `__has_include` finds (v3_header_search_dirs).
+	dirs          []string
 	used_fallback bool
 }
 
@@ -2217,6 +2220,7 @@ fn c_object_tracked_dependencies(compiler string, compile_args []string, source_
 	return CObjectDependencies{
 		files:   dependencies.files
 		missing: missing
+		dirs:    v3_header_search_dirs(search, given, read, unit)
 	}
 }
 
@@ -2230,14 +2234,46 @@ fn c_object_tracked_dependencies(compiler string, compile_args []string, source_
 // of the source decide which files it includes, so an edit of the program's code
 // reuses the list.
 fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args []string, source_file string, mut stats CObjectCacheStats) CObjectDependencies {
+	return cached_c_object_dependencies_of(cache_dir, compiler, compile_args, source_file,
+		V3HeaderDirScan{}, mut stats)
+}
+
+// v3_header_search_dir_limit is the most directories that a dependency scan for
+// a receipt watches for a header that `__has_include` may find. A build whose
+// headers can be searched for in more records no receipt.
+const v3_header_search_dir_limit = 1024
+
+// V3HeaderDirScan asks cached_c_object_dependencies_of for the directories, and
+// those below them, where a `__has_include` of the scanned files may find a file
+// (v3_header_search_tree), each kept in the manifest with its metadata. What is
+// below one of `skip` is left out: the directory of a probe that stands in for
+// a generated unit, which the build writes into a fresh directory.
+struct V3HeaderDirScan {
+	enabled bool
+	skip    []string
+}
+
+// cached_c_object_dependencies_of is cached_c_object_dependencies that also
+// returns the directories that `dirs` asks for. A manifest is valid only while
+// each of those directories keeps its metadata: a file added to one may be what a
+// `__has_include` finds, and V does not open the headers to tell which names
+// they ask about.
+fn cached_c_object_dependencies_of(cache_dir string, compiler string, compile_args []string, source_file string, dirs V3HeaderDirScan, mut stats CObjectCacheStats) CObjectDependencies {
 	source := os.read_file(source_file) or { '' }
 	if cache_dir.len == 0 || source.len == 0 {
+		if dirs.enabled {
+			return CObjectDependencies{
+				files:         [source_file]
+				used_fallback: true
+			}
+		}
 		return c_object_dependencies(compiler, compile_args, source_file)
 	}
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	for identity in ['v3-c-dependency-manifest-v4', compiler_path, compiler_version,
-		os.real_path(os.dir(source_file)), compile_args.join('\x00'), c_preprocessor_lines(source)] {
+		os.real_path(os.dir(source_file)), compile_args.join('\x00'), c_preprocessor_lines(source),
+		if dirs.enabled { 'dirs\x00' + dirs.skip.join('\x00') } else { '' }] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -2251,19 +2287,45 @@ fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args 
 		return CObjectDependencies{
 			files:   all
 			missing: manifest.missing
+			dirs:    manifest.dirs
 		}
 	}
 	stats.dependency_scans++
-	dependencies := c_object_tracked_dependencies(compiler, compile_args, source_file, '',
-		cache_dir)
+	mut dependencies := c_object_tracked_dependencies(compiler, compile_args, source_file,
+		'', cache_dir)
 	if dependencies.used_fallback {
 		return dependencies
 	}
+	searched := if dirs.enabled {
+		v3_header_search_tree(dependencies.dirs, dirs.skip, v3_header_search_dir_limit) or {
+			unchanged_build_trace('cannot watch the directories where the headers of ${source_file} may find a file: there are more than ${v3_header_search_dir_limit}, or one cannot be listed')
+			return CObjectDependencies{
+				files:         dependencies.files
+				used_fallback: true
+			}
+		}
+	} else {
+		[]string{}
+	}
+	dependencies = CObjectDependencies{
+		files:   dependencies.files
+		missing: dependencies.missing
+		dirs:    searched
+	}
 	source_real := os.real_path(source_file)
 	mut out := strings.new_builder(128 + dependencies.files.len * 96)
-	out.writeln('format=v3-c-dependency-manifest-v2')
+	out.writeln('format=v3-c-dependency-manifest-v3')
 	for path in dependencies.missing {
 		out.writeln('missing=${path}')
+	}
+	for dir in dependencies.dirs {
+		// A directory that changed while the compiler ran may not be the one it read.
+		signature := modulecache.file_metadata_signature(dir)
+		if signature.len == 0 || dir.contains_any('\t\n')
+			|| modulecache.file_changed_during_build(dir) {
+			return dependencies
+		}
+		out.writeln('dir=${dir}\t${signature}')
 	}
 	for dependency in dependencies.files {
 		if os.real_path(dependency) == source_real {
@@ -2356,11 +2418,12 @@ fn c_preprocessor_lines(text string) string {
 fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats) ?CObjectDependencies {
 	content := os.read_file(manifest_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 1 || lines[0] != 'format=v3-c-dependency-manifest-v2' {
+	if lines.len < 1 || lines[0] != 'format=v3-c-dependency-manifest-v3' {
 		return none
 	}
 	mut files := []string{cap: lines.len - 1}
 	mut missing := []string{}
+	mut dirs := []string{}
 	for line in lines[1..] {
 		if line.starts_with('missing=') {
 			path := line.all_after('missing=')
@@ -2368,6 +2431,15 @@ fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats
 				return none
 			}
 			missing << path
+			continue
+		}
+		if line.starts_with('dir=') {
+			entry := line.all_after('dir=')
+			tab := entry.last_index('\t') or { return none }
+			if tab == 0 || modulecache.file_metadata_signature(entry[..tab]) != entry[tab + 1..] {
+				return none
+			}
+			dirs << entry[..tab]
 			continue
 		}
 		if !line.starts_with('dependency=') {
@@ -2387,6 +2459,7 @@ fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats
 	return CObjectDependencies{
 		files:   files
 		missing: missing
+		dirs:    dirs
 	}
 }
 
@@ -5349,9 +5422,15 @@ struct UnchangedBuildReceipt {
 	files   []string
 	dirs    []string
 	missing []string
+	// header_dirs are those of `dirs` where a header may be searched for
+	// (v3_header_search_dirs): every entry of one of them counts.
+	header_dirs []string
 	// output_dir is the directory of the executable. Writing the executable
-	// changes its metadata, so its V entries are compared instead.
-	output_dir string
+	// changes its metadata, so its V entries are compared instead, or all its
+	// entries but the executable when it is one of header_dirs
+	// (v3_unchanged_build_entries_signature).
+	output_dir  string
+	output_name string
 }
 
 fn unchanged_build_trace(message string) {
@@ -5438,11 +5517,13 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string, 
 					sources << parts[1]
 				}
 			}
-			'dir', 'listing' {
+			'dir', 'listing', 'entries' {
 				signature := if parts.len != 3 {
 					''
 				} else if parts[0] == 'dir' {
 					modulecache.file_metadata_signature(parts[1])
+				} else if parts[0] == 'entries' {
+					v3_unchanged_build_entries_signature(parts[1], os.file_name(destination))
 				} else {
 					v3_large_cold_cache_directory_signature(parts[1])
 				}
@@ -5546,6 +5627,27 @@ fn v3_unchanged_build_copy(source string, destination string) bool {
 	return true
 }
 
+// v3_unchanged_build_entries_signature signs the names of the entries of the
+// output directory `dir` of a build whose headers may be searched for there: all
+// of them but the executable `output_name`, the copies of it that a build or a
+// restore writes beside it, its debug symbols, and the directories of builds
+// beside the output, which come and go.
+fn v3_unchanged_build_entries_signature(dir string, output_name string) string {
+	entries := os.ls(dir) or { return '' }
+	mut relevant := []string{cap: entries.len}
+	for entry in entries {
+		if entry == output_name || entry.contains('.v3cc.') || entry == '${output_name}.dSYM'
+			|| (entry.starts_with('${output_name}.')
+				&& (entry.ends_with('.tmp') || entry.contains('.tmp.'))) {
+			continue
+		}
+		kind := if os.is_dir(os.join_path_single(dir, entry)) { 'd' } else { 'f' }
+		relevant << '${kind}:${entry}'
+	}
+	relevant.sort()
+	return sha256.hexhash(relevant.join('\n'))
+}
+
 // UnchangedBuildStamp is the prepared body of a receipt (v3_unchanged_build_stamp),
 // written beside the executable once the build has produced it.
 struct UnchangedBuildStamp {
@@ -5586,11 +5688,17 @@ fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, bui
 		}
 	}
 	for path in receipt.dirs {
-		kind := if path == receipt.output_dir { 'listing' } else { 'dir' }
-		signature := if kind == 'dir' {
-			modulecache.file_metadata_signature(path)
+		kind := if path != receipt.output_dir {
+			'dir'
+		} else if path in receipt.header_dirs {
+			'entries'
 		} else {
-			v3_large_cold_cache_directory_signature(path)
+			'listing'
+		}
+		signature := match kind {
+			'dir' { modulecache.file_metadata_signature(path) }
+			'entries' { v3_unchanged_build_entries_signature(path, receipt.output_name) }
+			else { v3_large_cold_cache_directory_signature(path) }
 		}
 		if signature == '' || (kind == 'dir' && modulecache.file_changed_during_build(path)) {
 			unchanged_build_trace('cannot record: directory ${path} has no stable signature')
@@ -5672,6 +5780,8 @@ struct UnchangedBuildInputs {
 	// that the build compiles to an object of its own is compiled.
 	unit_mode_flags []string
 	object_mode     V3NativeObjectMode
+	// The name of the executable in output_dir.
+	output_name string
 }
 
 // v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
@@ -5713,6 +5823,7 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 		sources:         sources
 		dirs:            dirs
 		output_dir:      os.real_path(os.dir(executable))
+		output_name:     os.file_name(executable)
 		resources:       embedded_resource_paths(a)
 		flags:           flags
 		link_flags:      link_flags.clone()
@@ -5846,9 +5957,17 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 			}
 		}
 	}
+	// The probe stands in for the generated unit, which the build writes into a
+	// directory of its own; the debug symbols of the output are written beside it.
+	header_dirs := V3HeaderDirScan{
+		enabled: true
+		skip:    [os.real_path(inputs.cache_dir), os.join_path_single(inputs.output_dir,
+			'${inputs.output_name}.dSYM')]
+	}
+	mut header_dir_set := map[string]bool{}
 	for unit in units {
-		deps := cached_c_object_dependencies(inputs.cache_dir, unit.compiler, unit.args,
-			unit.path, mut stats)
+		deps := cached_c_object_dependencies_of(inputs.cache_dir, unit.compiler, unit.args,
+			unit.path, header_dirs, mut stats)
 		if deps.used_fallback {
 			unchanged_build_trace('cannot record: the native dependencies of ${unit.path} are unavailable')
 			return UnchangedBuildStamp{}
@@ -5861,6 +5980,9 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		for path in deps.missing {
 			missing_set[path] = true
 		}
+		for dir in deps.dirs {
+			header_dir_set[dir] = true
+		}
 	}
 	for flag in all_flags {
 		clean := flag.trim_space()
@@ -5869,6 +5991,13 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		}
 	}
 	mut dir_list := inputs.dirs.clone()
+	mut header_dir_list := header_dir_set.keys()
+	header_dir_list.sort()
+	for dir in header_dir_list {
+		if dir !in dir_list {
+			dir_list << dir
+		}
+	}
 	for found in [v3_unchanged_build_link_inputs(all_flags, manifest_compiler, inputs.tcc_lib_dir,
 		inputs.target_os, inputs.cache_dir), v3_pkgconfig_files(inputs.packages),
 		v3_project_manifest_inputs(inputs.dirs, inputs.vroot),
@@ -5894,11 +6023,13 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	mut missing := missing_set.keys()
 	missing.sort()
 	return v3_unchanged_build_stamp(UnchangedBuildReceipt{
-		sources:    inputs.sources
-		files:      files
-		dirs:       dir_list
-		missing:    missing
-		output_dir: inputs.output_dir
+		sources:     inputs.sources
+		files:       files
+		dirs:        dir_list
+		header_dirs: header_dir_list
+		missing:     missing
+		output_dir:  inputs.output_dir
+		output_name: inputs.output_name
 	}, inputs.cache_dir, inputs.build_time)
 }
 

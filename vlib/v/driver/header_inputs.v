@@ -302,7 +302,9 @@ fn v3_given_include_dirs(args []string, build_dir string) []string {
 // a name in quotation marks: that of each translation unit of `units`, and that of
 // each header of `read` that is not one of the compiler's own, in the directories
 // of its search that the arguments do not give (`given`). A header of the compiler
-// names its own neighbours, which change with the compiler.
+// names its own neighbours, which change with the compiler. So does a file that
+// the compiler reads beside one of those directories, as Clang reads the
+// SDKSettings.json of a macOS SDK that holds them.
 fn v3_include_quote_dirs(search V3IncludeSearch, given []string, read []string, units []string) []string {
 	own_roots := search.dirs.map(os.norm_path(it)).filter(it !in given)
 	mut quote_dirs := map[string]bool{}
@@ -311,13 +313,71 @@ fn v3_include_quote_dirs(search V3IncludeSearch, given []string, read []string, 
 	}
 	for path in read {
 		header := os.norm_path(path)
-		if !own_roots.any(v3_path_is_below(header, it)) {
-			quote_dirs[os.dir(header)] = true
+		dir := os.dir(header)
+		if !own_roots.any(v3_path_is_below(header, it) || v3_path_is_below(it, dir)) {
+			quote_dirs[dir] = true
 		}
 	}
 	mut dirs := quote_dirs.keys()
 	dirs.sort()
 	return dirs
+}
+
+// v3_header_search_dirs returns the directories, other than the compiler's own,
+// whose entries decide what a `__has_include` or `__has_include_next` of the units
+// `units` or of the headers `read` finds: the directories that `given` adds to the
+// search and are there, and the v3_include_quote_dirs. V does not open headers, so
+// it cannot tell which names they ask about; a file that appears in one of these
+// directories, or below one, may be one of them.
+fn v3_header_search_dirs(search V3IncludeSearch, given []string, read []string, units []string) []string {
+	mut dirs := map[string]bool{}
+	for dir in given {
+		if os.is_dir(dir) {
+			dirs[os.norm_path(dir)] = true
+		}
+	}
+	for dir in v3_include_quote_dirs(search, given, read, units) {
+		dirs[dir] = true
+	}
+	mut result := dirs.keys()
+	result.sort()
+	return result
+}
+
+// v3_header_search_tree returns `dirs` with every directory below them, or none
+// when there are more than `limit` of them: a name that a header asks
+// `__has_include` about can have parts of a path, so a file that appears in any of
+// them can be found. What is below one of `skip` is left out, and so are the
+// directories of a build beside its output, which come and go. A directory that a
+// link leads to is taken once.
+fn v3_header_search_tree(dirs []string, skip []string, limit int) ?[]string {
+	mut result := []string{}
+	mut seen := map[string]bool{}
+	mut pending := dirs.clone()
+	real_skip := skip.map(os.real_path(it))
+	for pending.len > 0 {
+		dir := pending.pop()
+		real := os.real_path(dir)
+		if seen[real] || real_skip.any(real == it || v3_path_is_below(real, it)) {
+			continue
+		}
+		seen[real] = true
+		result << dir
+		if result.len > limit {
+			return none
+		}
+		for entry in os.ls(dir) or { return none } {
+			if entry.contains('.v3cc.') {
+				continue
+			}
+			path := os.join_path_single(dir, entry)
+			if os.is_dir(path) {
+				pending << path
+			}
+		}
+	}
+	result.sort()
+	return result
 }
 
 // v3_missing_include_candidates returns the paths that have to stay absent for a
@@ -330,7 +390,7 @@ fn v3_include_quote_dirs(search V3IncludeSearch, given []string, read []string, 
 // unseen there. It returns none when one of the paths holds a file newer than
 // `before`, in seconds, from before the compiler started: that file may or may not
 // be what it read. V does not open the headers, so it cannot tell what a header
-// asks `__has_include` about.
+// asks `__has_include` about: v3_header_search_dirs covers that.
 fn v3_missing_include_candidates(search V3IncludeSearch, given []string, read []string, units []string, before i64) ?[]string {
 	roots := search.dirs.map(os.norm_path(it))
 	frameworks := search.frameworks.map(os.norm_path(it))

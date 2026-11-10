@@ -737,8 +737,11 @@ when the program uses them), the files its native directives read (the C compile
 manifest of those directives, taken with the C standard, target and other options of the
 compilation that reads them), the paths where a header would be found first, starting beside
 the translation unit, the bundled TinyCC headers when TinyCC compiles, embedded resources, the
-objects and libraries its flags name by path, and the listings of the source directories. When
-every file still has the recorded content, the build restores the recorded
+objects and libraries its flags name by path, and the listings of the source directories. V does
+not open headers to see what `__has_include` asks about, so the receipt also covers every
+directory outside the C compiler's own where a header may be searched for, with those below it;
+a build with more than 1024 of them records no receipt. When every file still has the recorded
+content, the build restores the recorded
 executable and does nothing else. It works with or without the module cache; a `-nocache`
 written by the user and `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` turn it off, and
 `V3_CACHE_TRACE=1` says why a receipt was not used or recorded.
