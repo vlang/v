@@ -11353,6 +11353,13 @@ pub fn run(args []string) {
 	} else {
 		resolve_vroot_for_input(prefs.vroot, input_file)
 	}
+	// Cgen derives its root from real source paths, while an input reached through a
+	// symlink (`/tmp` and `/var` on macOS) yields the unresolved spelling. Cached
+	// headers store paths under this root, so the two must be spelled the same for
+	// cgen to recognize the shipped runtime headers named in them.
+	if prefs.vroot.len > 0 {
+		prefs.vroot = os.real_path(prefs.vroot)
+	}
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	host_os := os.user_os()
 	host_target := pref.host_target()
