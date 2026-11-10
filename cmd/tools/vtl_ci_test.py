@@ -238,5 +238,60 @@ exit 97
                     self.assertFalse(marker.exists(), "installed dependencies after a failed checkout")
 
 
+    def test_vtl_uses_the_same_vsl_revision_as_vsl_jobs(self):
+        workflow = WORKFLOW.read_text()
+        vtl_job = workflow.split("  vtl-compiles:\n", 1)[1]
+        self.assertIn("VSL_CI_REVISION: ${{ needs.module-revisions.outputs.vsl }}", vtl_job)
+        self.assertLess(vtl_job.index("      - name: Install vtl\n"),
+                        vtl_job.index("      - name: Use VSL revision shared with VSL CI\n"))
+        script = self.workflow_script("vtl-compiles", "Use VSL revision shared with VSL CI")
+
+        origin = Path(self.temp.name) / "vsl-origin"
+        origin.mkdir()
+
+        def git(*args):
+            return subprocess.check_output(["git", "-c", "user.name=CI fixture", "-c",
+                "user.email=ci@example.invalid", "-c", "commit.gpgsign=false", *args],
+                cwd=origin, text=True, stderr=subprocess.DEVNULL).strip()
+
+        git("init")
+        (origin / "api.v").write_text("pub fn old_fft() {}\n")
+        git("add", ".")
+        git("commit", "-m", "Manifest-pinned VSL release")
+        old = git("rev-parse", "HEAD")
+        (origin / "api.v").write_text("pub fn create_complex_plan_f64() {}\n")
+        git("add", ".")
+        git("commit", "-m", "API required by current VTL")
+        selected = git("rev-parse", "HEAD")
+
+        home = Path(self.temp.name) / "home"
+        dependency = home / ".vmodules" / "vsl"
+        dependency.parent.mkdir(parents=True)
+        git("clone", "--quiet", str(origin), str(dependency))
+        git("-C", str(dependency), "checkout", "--detach", old)
+        self.compiler.write_text('''#!/bin/sh
+if [ "$1" = retry ] && [ "$2" = -- ]; then shift 2; exec "$@"; fi
+exit 97
+''')
+        self.compiler.chmod(0o755)
+
+        env = dict(os.environ, HOME=str(home), PATH=self.original_path,
+                   VSL_CI_REVISION=selected)
+        result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
+                                env=env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(git("-C", str(dependency), "rev-parse", "HEAD"), selected)
+        self.assertIn("create_complex_plan_f64", (dependency / "api.v").read_text())
+
+        # A missing pinned revision must stop the job instead of silently
+        # falling back to the manifest's old VSL release.
+        git("-C", str(dependency), "checkout", "--detach", old)
+        env["VSL_CI_REVISION"] = "0" * 40
+        failed = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
+                                env=env, text=True, capture_output=True, timeout=10)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(git("-C", str(dependency), "rev-parse", "HEAD"), old)
+
+
 if __name__ == "__main__":
     unittest.main()

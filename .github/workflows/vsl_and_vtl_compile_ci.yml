@@ -120,6 +120,7 @@ jobs:
       VTL_CI_BACKEND: ${{ matrix.backend }}
       VTL_CI_SHARD_INDEX: ${{ matrix.shard }}
       VTL_CI_SHARD_COUNT: '3'
+      VSL_CI_REVISION: ${{ needs.module-revisions.outputs.vsl }}
       VTL_CI_REVISION: ${{ needs.module-revisions.outputs.vtl }}
       # Fixes complaints about $TERM not being set when running the vtl test script
       # (a warning on Linux, but an error on macOS).
@@ -167,6 +168,16 @@ jobs:
           cd "$vtl_dir"
           # Install the pinned VTL manifest's dependencies, including its VSL version.
           v retry -- v install
+      - name: Use VSL revision shared with VSL CI
+        run: |
+          # VTL's tagged VSL dependency predates APIs required by current VTL.
+          # Replace the manifest-installed version with the revision that all
+          # VSL and VTL backends/shards agreed on before this run started.
+          vsl_dir="$HOME/.vmodules/vsl"
+          test -d "$vsl_dir/.git" || { echo "VTL did not install the VSL dependency" >&2; exit 1; }
+          v retry -- git -C "$vsl_dir" fetch --depth=1 origin "$VSL_CI_REVISION:refs/remotes/origin/ci-pinned"
+          git -C "$vsl_dir" checkout --detach "$VSL_CI_REVISION"
+          v retry -- git -C "$vsl_dir" submodule update --init --recursive --depth=1
       - name: Skip optional Vulkan examples on macOS
         if: runner.os == 'macOS'
         run: |
