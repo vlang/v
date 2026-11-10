@@ -274,6 +274,14 @@ pub fn c_name_needs_internal_namespace(name string) bool {
 		|| name.starts_with(internal_symbol_c_prefix) || is_operator_method_name(name)
 }
 
+// word_name_needs_internal_namespace is c_name_needs_internal_namespace for a name
+// of letters, digits, `_` and `.` only: such a name contains no static method
+// marker and does not end in an operator, which leaves the internal prefix.
+@[inline]
+pub fn word_name_needs_internal_namespace(name string) bool {
+	return name.starts_with(internal_symbol_c_prefix)
+}
+
 // is_operator_method_name reports whether name is the V name of an operator
 // overload method: a receiver, `.` and the operator (`Vec.+`, `Box[T].[]=`).
 @[direct_array_access]
@@ -540,6 +548,51 @@ pub fn global_rename(cname string) string {
 // is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
 pub fn is_reserved_word(name string) bool {
 	return name in reserved_words || name in cpp_reserved_words
+}
+
+// PlainNameFilter holds one bit per reserved word, C++ reserved word and libc
+// collision, indexed by a hash of the name.
+@[heap]
+struct PlainNameFilter {
+mut:
+	bits [64]u64
+}
+
+const plain_name_filter = new_plain_name_filter()
+
+@[direct_array_access; inline]
+fn plain_name_filter_bit(name string) u32 {
+	mut hash := u32(2166136261)
+	for i in 0 .. name.len {
+		hash = (hash ^ u32(name[i])) * 16777619
+	}
+	return (hash ^ (hash >> 15)) & 4095
+}
+
+fn new_plain_name_filter() &PlainNameFilter {
+	mut filter := &PlainNameFilter{}
+	for name, _ in reserved_words {
+		bit := plain_name_filter_bit(name)
+		filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+	}
+	for name, _ in cpp_reserved_words {
+		bit := plain_name_filter_bit(name)
+		filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+	}
+	for name, _ in libc_collisions {
+		bit := plain_name_filter_bit(name)
+		filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+	}
+	return filter
+}
+
+// plain_name_may_be_reserved is false only for a name that is neither a reserved
+// word nor a libc collision; a clear filter bit proves that with one scan of the
+// name instead of three table probes.
+@[direct_array_access; inline]
+pub fn plain_name_may_be_reserved(name string) bool {
+	bit := plain_name_filter_bit(name)
+	return plain_name_filter.bits[bit >> 6] & (u64(1) << (bit & 63)) != 0
 }
 
 // is_libc_collision reports whether name needs a prefix to avoid a libc symbol.

@@ -21,10 +21,14 @@ mut:
 	base             &CNameCache = unsafe { nil }
 	last_name        string
 	last_value       string
-	recent_names     [1024]string
-	recent_values    [1024]string
-	recent_populated [1024]bool
+	recent_names     [c_name_recent_slots]string
+	recent_values    [c_name_recent_slots]string
+	recent_populated [c_name_recent_slots]bool
 }
+
+// A body batch names a few thousand distinct symbols; the slots keep most of
+// them out of the slower cache levels.
+const c_name_recent_slots = 4096
 
 @[direct_array_access; inline]
 fn c_name_recent_slot(name string) int {
@@ -45,7 +49,7 @@ fn c_name_recent_slot(name string) int {
 		key ^= (u64(name[0]) << 8) ^ (u64(name[name.len >> 1]) << 16) ^ (u64(name[name.len - 1]) << 24)
 	}
 	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
-	return int((key >> 32) & 1023)
+	return int((key >> 32) & (c_name_recent_slots - 1))
 }
 
 // c_name_shape classifies the identifier and dotted fast paths in one scan.
@@ -71,6 +75,9 @@ fn c_name_shape(name string) u8 {
 	}
 	return shape
 }
+
+// c_name_shape_unknown marks a shape that has not been scanned yet.
+const c_name_shape_unknown = u8(255)
 
 @[inline]
 fn c_name_is_pre_sanitized(name string) bool {
@@ -628,6 +635,7 @@ fn (g &FlatGen) cname_uncached(name string) string {
 	mut cache := g.c_name_cache
 	// c_name is pure, so every cache level holds the same C name for `name`: the
 	// base's recent slots can answer before the map lookups.
+	mut shape := c_name_shape_unknown
 	if !isnil(cache.base) {
 		if cached := cache.base.recent(name) {
 			cache.last_name = name
@@ -635,12 +643,33 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+		// An already mangled name is its own C name. Deciding that takes one scan
+		// of the name, less than the two map probes and the insert that would
+		// record it in this private overlay, so such names only use its recent slots.
+		shape = c_name_shape(name)
+		if shape == 3 && !naming.word_name_needs_internal_namespace(name) {
+			cache.last_name = name
+			cache.last_value = name
+			cache.remember(name, name)
+			return name
+		}
 	}
 	if cached := cache.entries[name] {
 		cache.last_name = name
 		cache.last_value = cached
 		cache.remember(name, cached)
 		return cached
+	}
+	// A plain name that is no reserved word, libc collision or special symbol is
+	// its own C name on every cache level.
+	plain_identity := shape == 1 && name != 'malloc' && name != 'int_str' && name != 'exit'
+		&& !c_name_is_string_literal_symbol(name) && !naming.plain_name_may_be_reserved(name)
+	if plain_identity {
+		cache.entries[name] = name
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
 	}
 	if !isnil(cache.base) {
 		if cached := cache.base.entries[name] {
@@ -650,11 +679,16 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			return cached
 		}
 	}
-	shape := c_name_shape(name)
+	if shape == c_name_shape_unknown {
+		shape = c_name_shape(name)
+	}
 	// A plain spelling without `__` cannot contain the internal prefix, a static
 	// marker, or an operator method. Preserve those rewrites for other names.
-	needs_internal_namespace := (shape == 0 || shape & 2 != 0)
-		&& naming.c_name_needs_internal_namespace(name)
+	needs_internal_namespace := if shape == 0 {
+		naming.c_name_needs_internal_namespace(name)
+	} else {
+		shape & 2 != 0 && naming.word_name_needs_internal_namespace(name)
+	}
 	if !needs_internal_namespace && shape == 3 {
 		cache.entries[name] = name
 		cache.last_name = name

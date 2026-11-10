@@ -148,3 +148,30 @@ fn test_is_operator_method_name_only_matches_operator_methods() {
 		assert is_operator_method_name(name), name
 	}
 }
+
+fn test_word_name_needs_internal_namespace_matches_the_general_check() {
+	for name in ['main', 'strings__Builder__write', 'os.File.write', '__v3_internal_symbol_x',
+		'__v3_internal_symbol_a__b', 'a__v3_internal_symbol_', '_', 'a.b__c', '__v3_internal_symbol'] {
+		assert word_name_needs_internal_namespace(name) == c_name_needs_internal_namespace(name), name
+	}
+}
+
+fn test_plain_name_filter_admits_every_reserved_word_and_libc_collision() {
+	for name, _ in reserved_words {
+		assert plain_name_may_be_reserved(name), name
+	}
+	for name, _ in cpp_reserved_words {
+		assert plain_name_may_be_reserved(name), name
+	}
+	for name, _ in libc_collisions {
+		assert plain_name_may_be_reserved(name), name
+	}
+	mut passed := 0
+	for name in ['node', 'idx', 'value', 'result', 'i', 'name', 'typ', 'expr_id', 'lhs', 'rhs'] {
+		if !plain_name_may_be_reserved(name) {
+			assert !is_reserved_word(name) && !is_libc_collision(name), name
+			passed++
+		}
+	}
+	assert passed > 0
+}
