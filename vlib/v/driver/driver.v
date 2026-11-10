@@ -11287,6 +11287,21 @@ pub fn run(args []string) {
 		// The executable suffix does not belong to the requested generated C path.
 		bin_file = target_bin_file
 	}
+	if backend in ['c', 'fastc'] && target.os == 'wasm32_emscripten' && !c_only {
+		// The emscripten target links through emcc, so fail here with guidance
+		// instead of a generic missing-executable error later. Emitting only C
+		// (`-o file.c`) never reaches this point, so it stays toolchain-free.
+		cc_base := os.file_name(c_compiler).to_lower()
+		if c_compiler_explicit && cc_base in ['emcc', 'emcc.bat', 'em++', 'em++.bat'] {
+			if _ := os.find_abs_path_of_executable(c_compiler) {
+			} else {
+				eprintln('error: cannot build for target `wasm32_emscripten`: C compiler `${c_compiler}` was not found.')
+				eprintln('Install the Emscripten SDK (https://emscripten.org/docs/getting_started/downloads.html) and activate it so `emcc` is on PATH,')
+				eprintln('or build a native WebAssembly module instead, which needs no Emscripten: `v -b wasm -o out.wasm input.v`.')
+				exit(1)
+			}
+		}
+	}
 	validate_windows_icon_option(icon_path, target.os, backend, is_shared, is_o, c_only,
 		generate_c_project) or {
 		eprintln(err.msg())
