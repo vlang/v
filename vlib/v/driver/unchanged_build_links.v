@@ -73,8 +73,10 @@ fn v3_unchanged_build_link_inputs(flags []string, compiler string, tcc_lib_dir s
 			reason: inputs.reason()
 		}
 	}
+	// The linker opens each library by the path that it looks up: a symbolic link
+	// there may be pointed at another file, which the resolved path cannot tell.
 	mut result := UnchangedBuildLinkInputs{
-		files:   inputs.files.map(os.real_path(it))
+		files:   inputs.files.map(v3_receipt_lookup_path(it))
 		missing: inputs.missing
 	}
 	if inputs.unresolved.len > 0 {
@@ -100,6 +102,7 @@ fn v3_unchanged_build_link_inputs(flags []string, compiler string, tcc_lib_dir s
 fn v3_project_manifest_inputs(source_dirs []string, vroot string) UnchangedBuildLinkInputs {
 	mut result := UnchangedBuildLinkInputs{}
 	mut seen := map[string]bool{}
+	mut seen_subdirs := map[string]bool{}
 	for source_dir in source_dirs {
 		if v3_path_is_below(source_dir + os.path_separator, vroot.trim_right(os.path_separator)) {
 			continue
@@ -109,17 +112,17 @@ fn v3_project_manifest_inputs(source_dirs []string, vroot string) UnchangedBuild
 			seen[current] = true
 			manifest := os.join_path_single(current, 'v.mod')
 			if os.is_file(manifest) {
-				result.files << os.real_path(manifest)
+				result.files << manifest
 				result.dirs << current
 				for subdir in vmod_subdirs(current) or { []string{} } {
-					result.add_subdir_tree(os.join_path_single(current, subdir))
+					result.add_subdir_tree(os.join_path_single(current, subdir), mut seen_subdirs)
 				}
 				break
 			}
 			result.missing << manifest
 			stop := os.join_path_single(current, '.v.mod.stop')
 			if os.is_file(stop) {
-				result.files << os.real_path(stop)
+				result.files << stop
 				break
 			}
 			result.missing << stop
@@ -134,21 +137,25 @@ fn v3_project_manifest_inputs(source_dirs []string, vroot string) UnchangedBuild
 }
 
 // add_subdir_tree records a directory that a `subdirs` of a v.mod names and the
-// directories below it, which the sources of the module may come to be in.
-fn (mut result UnchangedBuildLinkInputs) add_subdir_tree(path string) {
+// directories below it, which the sources of the module may come to be in. Each
+// is recorded by the path that leads to it from the manifest, so that a symbolic
+// link on the way that comes to point elsewhere changes the receipt; `seen` holds
+// the resolved directories already walked, which a link may lead back to.
+fn (mut result UnchangedBuildLinkInputs) add_subdir_tree(path string, mut seen map[string]bool) {
 	if !os.is_dir(path) {
 		result.missing << path
 		return
 	}
+	result.dirs << path
 	real := os.real_path(path)
-	if real in result.dirs {
+	if seen[real] {
 		return
 	}
-	result.dirs << real
-	for entry in os.ls(real) or { []string{} } {
-		child := os.join_path_single(real, entry)
+	seen[real] = true
+	for entry in os.ls(path) or { []string{} } {
+		child := os.join_path_single(path, entry)
 		if os.is_dir(child) && !os.is_file(os.join_path_single(child, 'v.mod')) {
-			result.add_subdir_tree(child)
+			result.add_subdir_tree(child, mut seen)
 		}
 	}
 }
@@ -183,7 +190,7 @@ fn v3_module_shadow_inputs(source_dirs []string, module_roots []string, project_
 				}
 				seen[candidate] = true
 				if os.is_dir(candidate) {
-					result.dirs << os.real_path(candidate)
+					result.dirs << candidate
 				} else {
 					result.missing << candidate
 				}
@@ -192,6 +199,27 @@ fn v3_module_shadow_inputs(source_dirs []string, module_roots []string, project_
 		}
 	}
 	return result
+}
+
+// v3_receipt_lookup_path returns the path by which a build reads a file or lists
+// a directory, made absolute but not resolved. A receipt records that path and
+// not where it leads: its signatures follow symbolic links (stat and open), so
+// they cover both the resolution and the contents, while a resolved path would
+// keep validating the old target of a link that came to point elsewhere.
+fn v3_receipt_lookup_path(path string) string {
+	return if os.is_abs_path(path) { path } else { os.join_path_single(os.getwd(), path) }
+}
+
+// v3_source_lookup_dir returns the directory that a build found the source `path`
+// in, which resolves to `real`, when a symbolic link on the way makes it another
+// directory than the one that holds `real`, or ''. Its listing, which follows the
+// link, changes when the link comes to point elsewhere.
+fn v3_source_lookup_dir(path string, real string) string {
+	if path.len == 0 {
+		return ''
+	}
+	dir := os.dir(v3_receipt_lookup_path(path))
+	return if dir == os.dir(real) { '' } else { dir }
 }
 
 // v3_path_is_below_one_of reports whether `path` is inside one of `dirs`.
@@ -214,7 +242,7 @@ fn v3_pkgconfig_files(packages []string) UnchangedBuildLinkInputs {
 	}
 	for dir in dirs {
 		if os.is_dir(dir) {
-			result.dirs << os.real_path(dir)
+			result.dirs << v3_receipt_lookup_path(dir)
 		}
 	}
 	mut pending := packages.clone()
@@ -232,7 +260,7 @@ fn v3_pkgconfig_files(packages []string) UnchangedBuildLinkInputs {
 			result.reason = 'pkg-config does not find ${name}'
 			return result
 		}
-		result.files << os.real_path(pc_file)
+		result.files << v3_receipt_lookup_path(pc_file)
 		for option in ['--print-requires', '--print-requires-private'] {
 			requires := cmdexec.run('pkg-config', [option, name])
 			if requires.exit_code != 0 {

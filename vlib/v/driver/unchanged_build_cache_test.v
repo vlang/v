@@ -441,9 +441,10 @@ fn test_receipt_covers_every_form_of_a_library_however_it_is_linked() {
 		'-Wl,-Bdynamic', '-F${os.join_path(root, 'frameworks')}', '-framework', 'Native'],
 		'cc', '', 'linux', os.join_path(root, 'cache'))
 	assert found.ok, found.reason
-	assert os.real_path(os.join_path(lib_dir, 'libnative.a')) in found.files
-	assert os.real_path(os.join_path(lib_dir, 'libnative.so')) in found.files
-	assert os.real_path(os.join_path(framework_dir, 'Native')) in found.files
+	// Each is recorded by the path that the linker looks up, not by where it leads.
+	assert os.join_path(lib_dir, 'libnative.a') in found.files
+	assert os.join_path(lib_dir, 'libnative.so') in found.files
+	assert os.join_path(framework_dir, 'Native') in found.files
 	// A library added earlier in the search would be the one linked.
 	assert os.join_path(earlier, 'libnative.a') in found.missing
 	assert os.join_path(earlier, 'libnative.so') in found.missing
@@ -457,6 +458,82 @@ fn test_receipt_covers_every_form_of_a_library_however_it_is_linked() {
 		assert missing.ok
 		assert '/System/Library/CoreServices/SystemVersion.plist' in missing.files
 	}
+}
+
+// publish_receipt records `receipt` under `key` and checks that it restores.
+fn publish_receipt(f ReceiptFixture, key string, receipt UnchangedBuildReceipt) {
+	stamp := v3_unchanged_build_stamp(receipt, f.cache_dir, '')
+	assert stamp.ok
+	assert v3_publish_unchanged_build(f.cache_dir, key, f.executable, stamp)
+	assert v3_restore_unchanged_build(f.cache_dir, key, f.destination, '')
+}
+
+fn test_receipt_sees_a_library_link_that_comes_to_point_elsewhere() {
+	f := receipt_fixture('library_link')!
+	defer { os.rmdir_all(f.root) or {} }
+	lib_dir := os.join_path(f.root, 'lib')
+	aged_write(os.join_path(lib_dir, 'one.a'), '!<arch>\none\n')!
+	aged_write(os.join_path(lib_dir, 'two.a'), '!<arch>\ntwo\n')!
+	link := os.join_path(lib_dir, 'libreceipt.a')
+	os.symlink('one.a', link)!
+	found := v3_unchanged_build_link_inputs(['-L', lib_dir, '-Wl,-Bstatic', '-lreceipt', '-Wl,-Bdynamic'], 'cc', '', 'linux', f.cache_dir)
+	assert found.ok, found.reason
+	// The linker opens the archive by the path that it looks up.
+	assert link in found.files
+	publish_receipt(f, 'library_link', UnchangedBuildReceipt{
+		...f.receipt()
+		files:   found.files
+		missing: found.missing
+	})
+	// Both archives stay; only the link that the linker finds changes.
+	os.rm(link)!
+	os.symlink('two.a', link)!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'library_link', f.destination, '')
+}
+
+fn test_receipt_sees_a_module_directory_link_that_comes_to_point_elsewhere() {
+	f := receipt_fixture('module_link')!
+	defer { os.rmdir_all(f.root) or {} }
+	first := os.join_path(f.root, 'store', 'one')
+	second := os.join_path(f.root, 'store', 'two')
+	aged_write(os.join_path(first, 'value.v'), 'module value\n\npub fn get() int {\n\treturn 1\n}\n')!
+	aged_write(os.join_path(second, 'value.v'), 'module value\n\npub fn get() int {\n\treturn 2\n}\n')!
+	age_unchanged_build_source(first)!
+	age_unchanged_build_source(second)!
+	os.mkdir_all(os.join_path(f.source_dir, 'deps'))!
+	link := os.join_path(f.source_dir, 'deps', 'value')
+	os.symlink(first, link)!
+	found_as := os.join_path(link, 'value.v')
+	real := os.real_path(found_as)
+	assert v3_source_lookup_dir(found_as, real) == link
+	assert v3_source_lookup_dir(f.source, f.source) == ''
+	publish_native_receipt(f, 'module_link', UnchangedBuildInputs{
+		...native_receipt_inputs(f, [], '')
+		sources:       [f.source, real]
+		dirs:          [f.source_dir, os.dir(real)]
+		lookup_dirs:   [link]
+		// The sources of a build are its resolved paths.
+		project_roots: [f.root, os.real_path(f.root)]
+	})
+	os.rm(link)!
+	os.symlink(second, link)!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'module_link', f.destination, '')
+}
+
+fn test_receipt_sees_a_header_link_that_comes_to_point_elsewhere() {
+	f := receipt_fixture('header_link')!
+	defer { os.rmdir_all(f.root) or {} }
+	include := os.join_path(f.root, 'include')
+	aged_write(os.join_path(f.root, 'versions', 'one.h'), 'static int choice(void) { return 1; }\n')!
+	aged_write(os.join_path(f.root, 'versions', 'two.h'), 'static int choice(void) { return 2; }\n')!
+	os.mkdir_all(include)!
+	link := os.join_path(include, 'choice.h')
+	os.symlink(os.join_path(f.root, 'versions', 'one.h'), link)!
+	publish_native_receipt(f, 'header_link', native_receipt_inputs(f, ['-I', include],
+		'#include <choice.h>\n'))
+	os.rm(link)!
+	os.symlink(os.join_path(f.root, 'versions', 'two.h'), link)!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'header_link', f.destination, '')
 }
 
 fn test_receipt_is_not_published_with_an_unknown_linker_option() {
@@ -498,6 +575,19 @@ fn test_project_manifest_inputs_walk_up_to_the_nearest_manifest() {
 	// A directory that `subdirs` reaches can get sources without any being there yet.
 	assert selected in found.dirs
 	assert os.join_path(project, 'absent') in found.missing
+}
+
+fn test_manifest_subdirs_are_recorded_by_the_path_that_leads_to_them() {
+	root := os.join_path(os.vtmp_dir(), 'v3_manifest_link_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	os.mkdir_all(os.join_path(root, 'store', 'one'))!
+	os.mkdir_all(project)!
+	aged_write(os.join_path(project, 'v.mod'), "Module{ name: 'p' subdirs: ['selected'] }\n")!
+	os.symlink(os.join_path(root, 'store', 'one'), os.join_path(project, 'selected'))!
+	found := v3_project_manifest_inputs([project], os.join_path(root, 'vroot'))
+	assert os.join_path(project, 'v.mod') in found.files
+	assert os.join_path(project, 'selected') in found.dirs
 }
 
 fn test_receipt_covers_the_headers_that_only_tinycc_includes() {
@@ -622,9 +712,9 @@ fn test_pkgconfig_files_follow_requirements() {
 	os.setenv('PKG_CONFIG_PATH', root, true)
 	found := v3_pkgconfig_files(['receipttop'])
 	assert found.ok
-	assert os.real_path(os.join_path(root, 'receipttop.pc')) in found.files
-	assert os.real_path(os.join_path(root, 'receiptbase.pc')) in found.files
-	assert os.real_path(root) in found.dirs
+	assert os.join_path(root, 'receipttop.pc') in found.files
+	assert os.join_path(root, 'receiptbase.pc') in found.files
+	assert root in found.dirs
 	assert !v3_pkgconfig_files(['receipt_missing_package']).ok
 }
 

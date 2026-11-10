@@ -5750,8 +5750,11 @@ fn v3_publish_unchanged_build(cache_dir string, key string, executable string, s
 // right after parsing; v3_unchanged_build_prepare signs them on another thread
 // while the build goes on.
 struct UnchangedBuildInputs {
-	sources         []string
-	dirs            []string
+	sources []string
+	dirs    []string
+	// The directories that sources were found in through a symbolic link, by
+	// the path that leads to them (v3_source_lookup_dir).
+	lookup_dirs     []string
 	output_dir      string
 	resources       []string
 	flags           []string
@@ -5789,7 +5792,7 @@ struct UnchangedBuildInputs {
 // files that the program's native directives read (the C compiler's dependency
 // manifest of those directives, as Zig's whole cache manifest records the -MD
 // output of a compilation) and the objects and libraries its flags name by path.
-fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_files []string, c_flags []string, link_flags []string, compiler string, cache_dir string, executable string) UnchangedBuildInputs {
+fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_files []string, lookup_dirs []string, c_flags []string, link_flags []string, compiler string, cache_dir string, executable string) UnchangedBuildInputs {
 	mut flags := c_flags.clone()
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	tinycc := pref.ccompiler_is_tinycc(compiler)
@@ -5822,6 +5825,7 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 	return UnchangedBuildInputs{
 		sources:         sources
 		dirs:            dirs
+		lookup_dirs:     lookup_dirs
 		output_dir:      os.real_path(os.dir(executable))
 		output_name:     os.file_name(executable)
 		resources:       embedded_resource_paths(a)
@@ -5881,8 +5885,10 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	}
 	mut file_set := map[string]bool{}
 	mut missing_set := map[string]bool{}
+	// Every input is recorded by the path that the build reads it by
+	// (v3_receipt_lookup_path), which a symbolic link may lead elsewhere from.
 	for path in inputs.resources {
-		file_set[os.real_path(path)] = true
+		file_set[v3_receipt_lookup_path(path)] = true
 	}
 	// TinyCC cannot preprocess Objective-C and needs its host SDK flags to
 	// find system headers. The system compiler lists the same user and SDK
@@ -5890,7 +5896,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	manifest_compiler := if inputs.tcc_include_dir.len > 0 { 'cc' } else { inputs.compiler }
 	if inputs.tcc_include_dir.len > 0 {
 		for header in os.walk_ext(inputs.tcc_include_dir, '.h') {
-			file_set[os.real_path(header)] = true
+			file_set[v3_receipt_lookup_path(header)] = true
 		}
 	}
 	mut stats := CObjectCacheStats{}
@@ -5974,7 +5980,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		}
 		for path in deps.files {
 			if path != probe_path {
-				file_set[os.real_path(path)] = true
+				file_set[v3_receipt_lookup_path(path)] = true
 			}
 		}
 		for path in deps.missing {
@@ -5987,13 +5993,18 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	for flag in all_flags {
 		clean := flag.trim_space()
 		if clean.len > 0 && !clean.starts_with('-') && os.is_file(clean) {
-			file_set[os.real_path(clean)] = true
+			file_set[v3_receipt_lookup_path(clean)] = true
 		}
 	}
 	mut dir_list := inputs.dirs.clone()
 	mut header_dir_list := header_dir_set.keys()
 	header_dir_list.sort()
 	for dir in header_dir_list {
+		if dir !in dir_list {
+			dir_list << dir
+		}
+	}
+	for dir in inputs.lookup_dirs {
 		if dir !in dir_list {
 			dir_list << dir
 		}
@@ -12982,6 +12993,7 @@ pub fn run(args []string) {
 	mut unchanged_build_cache_dir := ''
 	mut unchanged_build_cache_key := ''
 	mut unchanged_build_source_files := []string{}
+	mut unchanged_build_lookup_dirs := []string{}
 	unchanged_build_cache_enabled := backend == 'c' && explicit_output && !should_run
 		&& !c_only && !is_o && !is_shared && !is_test_command && !is_debug && !race
 		&& !show_cc && !show_c_output && !keep_c && dump_files == ''
@@ -13785,20 +13797,29 @@ pub fn run(args []string) {
 		} else {
 			''
 		}
+		// A source found through a symbolic link is also recorded by the
+		// directory it was found in, which the link may come to lead elsewhere from.
+		mut lookup_dir_set := map[string]bool{}
 		for _, file in a.source_files {
 			path := a.real_source_path(file.name)
 			if cache_root.len > 0 && path.starts_with(cache_root) {
 				continue
 			}
 			source_set[path] = true
+			lookup_dir_set[v3_source_lookup_dir(file.name, path)] = true
 		}
 		for module_files in cache_state.module_sources.values() {
 			for module_file in module_files {
-				source_set[a.real_source_path(module_file)] = true
+				path := a.real_source_path(module_file)
+				source_set[path] = true
+				lookup_dir_set[v3_source_lookup_dir(module_file, path)] = true
 			}
 		}
 		unchanged_build_source_files = source_set.keys()
 		unchanged_build_source_files.sort()
+		lookup_dir_set.delete('')
+		unchanged_build_lookup_dirs = lookup_dir_set.keys()
+		unchanged_build_lookup_dirs.sort()
 	}
 
 	crun_may_reuse := (is_crun || is_direct_vsh) && should_run && !explicit_output
@@ -13817,7 +13838,8 @@ pub fn run(args []string) {
 	mut unchanged_build_inputs := UnchangedBuildInputs{}
 	if unchanged_build_cache_enabled {
 		unchanged_build_inputs = v3_unchanged_build_inputs(a, prefs, unchanged_build_source_files,
-			native_c_flags, link_ld_flags, c_compiler, unchanged_build_cache_dir, bin_file)
+			unchanged_build_lookup_dirs, native_c_flags, link_ld_flags, c_compiler,
+			unchanged_build_cache_dir, bin_file)
 	}
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
 		v3_native_inputs(a, prefs, user_files, native_c_flags)
