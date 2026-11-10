@@ -167,7 +167,18 @@ mut:
 	prepass_lines PrepassLineFile
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
-	batch_sources                     &BatchSources = unsafe { nil }
+	batch_sources &BatchSources = unsafe { nil }
+	// The files that the caller expects in the batch after the next one, and the
+	// parse of such files that the batch before this one did ahead of time (see
+	// speculate_next_batch).
+	next_batch_paths []string
+	speculated_batch voidptr // &SpeculatedBatch
+	// Set for a worker that parses files of the batch after the current one.
+	parses_ahead bool
+	// Texts that the caller read for the next parallel parse batch, which owns
+	// them from then on (see preload_batch_source), and the index of each by path.
+	batch_preloads                    []string
+	batch_preload_index               map[string]int
 	local_binding_undos               []LocalBindingUndo
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
