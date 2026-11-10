@@ -306,14 +306,13 @@ fn (mut d Doc) add_node(mut node DocNode) {
 		}
 		// A child that is declared for several platforms, like a method in `_nix.c.v` and
 		// `_windows.c.v`, is documented once, for all of them. A constant whose value differs,
-		// like `rtld_now = C.RTLD_NOW` on Unix and `rtld_now = 0` on Windows, is documented
-		// once for each value instead.
+		// like `rtld_now = C.RTLD_NOW` on Unix and `rtld_now = 0` on Windows, is documented with
+		// each of its values, like the variants of a function.
 		index_key := parent_name + '\n' + child_key(node)
 		children := d.contents[parent_name].children
 		for i in d.child_indices[index_key] {
 			child := children[i]
-			if child.kind == node.kind && (node.kind != .const_group
-				|| declaration_shape(child.content) == declaration_shape(node.content)) {
+			if child.kind == node.kind {
 				d.contents[parent_name].children[i] = merge_declaration(child, node)
 				return
 			}
@@ -1410,9 +1409,11 @@ fn (mut d Doc) group_platform_constants() {
 	consts := d.contents['Constants'] or { return }
 	mut grouped := []DocNode{cap: consts.children.len}
 	for child in consts.children {
-		if grouped.len > 0 && child.platforms.len > 0 && child.comments.len == 0 {
+		// A constant with a value for each platform is documented with all its values.
+		if grouped.len > 0 && child.platforms.len > 0 && child.comments.len == 0
+			&& child.variants.len == 0 {
 			last := grouped.last()
-			if last.platforms == child.platforms {
+			if last.platforms == child.platforms && last.variants.len == 0 {
 				grouped[grouped.len - 1].content += '\n' + child.content
 				continue
 			}

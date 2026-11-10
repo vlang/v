@@ -65,13 +65,15 @@ fn test_cross_documents_a_symbol_of_several_platforms_once() {
 	file_methods := d.contents['File']!.children.filter(it.name == 'close')
 	assert file_methods.len == 1
 	assert file_methods[0].platforms == []
-	// A constant with a different value on each platform is documented once for each value.
+	// A constant with a different value on each platform is documented with each value, like
+	// the variants of a function.
 	consts := d.contents['Constants']!.children.filter(child_key(it) == 'sep')
-	assert consts.map(it.content) == ["pub const sep = '/'", r"pub const sep = '\\'"]
+	assert consts.map(it.content) == ["pub const sep = '/'"]
 	assert platforms_note(consts[0].platforms, fn (name string) string {
 		return name
 	}) == 'Available on Unix only.'
-	assert consts[1].platforms == [.windows]
+	assert consts[0].variants.map(it.content) == [r"pub const sep = '\\'"]
+	assert consts[0].variants[0].platforms == [.windows]
 	mode := d.contents['Mode']!
 	assert mode.platforms == []
 	assert mode.children.filter(it.name == 'has').len == 1
@@ -84,16 +86,23 @@ fn test_cross_groups_the_constants_of_the_same_platforms() {
 	defer { os.rmdir_all(dir) or {} }
 	d := generate(dir, true, true, .cross)!
 	consts := d.contents['Constants']!.children.filter(child_key(it).starts_with('flag_'))
-	// A constant with a doc comment starts a new group, which the constants after it join.
+	// A constant with a doc comment starts a new group, which the constants after it join. A
+	// constant with a value for each platform is not in a group, so it has all its values.
 	assert consts.map(it.content) == [
-		'pub const flag_a = C.FLAG_A\npub const flag_b = C.FLAG_B',
+		'pub const flag_a = C.FLAG_A',
+		'pub const flag_b = C.FLAG_B',
 		'pub const flag_c = C.FLAG_C\npub const flag_d = C.FLAG_D',
 		'pub const flag_e = C.FLAG_E',
-		'pub const flag_a = 0\npub const flag_b = 0',
 	]
-	assert consts.map(it.comments.len) == [0, 1, 1, 0]
+	assert consts.map(it.variants.map(it.content)) == [
+		['pub const flag_a = 0'],
+		['pub const flag_b = 0'],
+		[]string{},
+		[]string{},
+	]
+	assert consts.map(it.comments.len) == [0, 0, 1, 1]
 	unix := cross_platforms.len - 1
-	assert consts.map(it.platforms.len) == [unix, unix, unix, 1]
+	assert consts.map(it.platforms.len) == [unix, unix, unix, unix]
 }
 
 fn test_cross_documents_each_different_declaration_of_a_symbol() {
@@ -221,9 +230,10 @@ fn test_cross_preserves_distinct_string_values_of_platform_constants() {
 	os.write_file(os.join_path(dir, 'value_windows.c.v'), "module value\n\npub const text = 'two spaces'\n")!
 	d := generate(dir, true, true, .cross)!
 	values := d.contents['Constants']!.children
-	assert values.len == 2
+	assert values.len == 1
 	assert values[0].platforms.len == cross_platforms.len - 1
-	assert values[1].platforms == [.windows]
+	assert values[0].variants.map(it.content) == ["pub const text = 'two spaces'"]
+	assert values[0].variants[0].platforms == [.windows]
 }
 
 fn test_declaration_shape_preserves_string_literal_contents() {
