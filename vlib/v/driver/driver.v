@@ -13237,6 +13237,8 @@ pub fn run(args []string) {
 	pre_tc.logical_file_order = logical_file_order
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
+	// Under -no-skip-unused, whether a function of the program uses `recover`; see set_program_uses_recover.
+	mut kept_code_uses_recover := false
 	mut incremental_stage_used_fns := map[string]bool{}
 	mut uses_generics := false
 	mut skip_transform_generics := true
@@ -13795,6 +13797,13 @@ pub fn run(args []string) {
 			mu_stage_sw.restart()
 		}
 		if no_skip_unused {
+			// Every concrete function is used here, `recover` among them, so that cannot
+			// say whether the program uses it. Any of them can run (an object file can
+			// export one), so the C backend's panic frames follow a scan of the
+			// declarations for the builtin `recover`, called or used as a value.
+			if backend == 'c' {
+				kept_code_uses_recover = modulecache.declarations_use_recover(a, markused_tc)
+			}
 			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc, test_files)
 		} else if generic_cache_hit && test_files.len == 0 {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
@@ -15211,6 +15220,9 @@ pub fn run(args []string) {
 			g.set_track_heap('track_heap' in prefs.user_defines)
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
+			if no_skip_unused {
+				g.set_program_uses_recover(kept_code_uses_recover)
+			}
 			if cache_state.manager.enabled {
 				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
 				g.set_cache_const_modules(cache_state.module_sources.keys(), cache_state.parsed_from_source.keys())
@@ -15322,6 +15334,9 @@ pub fn run(args []string) {
 			g.set_track_heap('track_heap' in prefs.user_defines)
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
+			if no_skip_unused {
+				g.set_program_uses_recover(kept_code_uses_recover)
+			}
 			if cache_state.manager.enabled {
 				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
 				g.set_cache_const_modules(cache_state.module_sources.keys(), cache_state.parsed_from_source.keys())
