@@ -138,13 +138,15 @@ jobs:
         id: build_fast
         if: ${{ success() && !cancelled() && steps.test_v_tutorials.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_fast_tcc
-      - name: V self compilation with default caching
+      # Disabled until the runner sets -d enable_usecache_test in VFLAGS;
+      # the task currently exits immediately and must not report green coverage.
+      - name: V self compilation with default caching (disabled)
         id: v_self_compilation_usecache
-        if: ${{ success() && !cancelled() && steps.build_fast.outcome == 'success' }}
+        if: ${{ false }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_tcc
       - name: Test password input
         id: test_password_input
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_fast.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_password_input_tcc
       - name: Test readline
         id: test_readline
@@ -237,13 +239,15 @@ jobs:
         id: v_self_compilation
         if: ${{ success() && !cancelled() && steps.run_sanitizers.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_gcc
-      - name: v self compilation with default caching
+      # Disabled until the runner sets -d enable_usecache_test in VFLAGS;
+      # the task currently exits immediately and must not report green coverage.
+      - name: v self compilation with default caching (disabled)
         id: v_self_compilation_usecache
-        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ false }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_gcc
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_gcc
       - name: Test pure V math module
         id: test_pure_v_math_module
@@ -362,13 +366,15 @@ jobs:
         id: v_self_compilation
         if: ${{ success() && !cancelled() && steps.run_sanitizers.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_clang
-      - name: v self compilation with default caching
+      # Disabled until the runner sets -d enable_usecache_test in VFLAGS;
+      # the task currently exits immediately and must not report green coverage.
+      - name: v self compilation with default caching (disabled)
         id: v_self_compilation_usecache
-        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ false }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_clang
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_clang
       - name: Test pure V math module
         id: test_pure_v_math_module
