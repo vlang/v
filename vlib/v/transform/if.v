@@ -2237,19 +2237,65 @@ fn (t &Transformer) post_if_exit_smartcasts(id flat.NodeId) []IsExprInfo {
 			return [info]
 		}
 	}
-	if t.stmt_definitely_exits(then_id) {
+	// Whether a branch exits only matters for a condition that can narrow: the
+	// two shape tests mirror the nodes extract_none_eq_exprs and collect_is_exprs
+	// read before anything else, so a condition they reject yields no smartcast.
+	if t.if_cond_is_eq_shape(cond_id) && t.stmt_definitely_exits(then_id) {
 		none_eq := t.extract_none_eq_exprs(cond_id)
 		if none_eq.len > 0 {
 			return none_eq
 		}
 	}
-	if node.children_count >= 3 {
+	if node.children_count >= 3 && t.if_cond_has_is_or_ne_shape(cond_id) {
 		else_id := t.a.child(&node, 2)
 		if t.stmt_definitely_exits(else_id) {
 			return t.extract_all_is_exprs(cond_id)
 		}
 	}
 	return []IsExprInfo{}
+}
+
+// if_cond_is_eq_shape reports whether a condition is an `==` comparison, in
+// parentheses or not: the only shape extract_none_eq_exprs reads further.
+@[direct_array_access]
+fn (t &Transformer) if_cond_is_eq_shape(cond_id flat.NodeId) bool {
+	mut id := cond_id
+	for int(id) >= 0 {
+		cond := &t.a.nodes[int(id)]
+		if cond.kind == .paren && cond.children_count > 0 {
+			id = t.a.children[cond.children_start]
+			continue
+		}
+		return cond.kind == .infix && cond.op == .eq && cond.children_count >= 2
+	}
+	return false
+}
+
+// if_cond_has_is_or_ne_shape reports whether a condition holds an `is` test or
+// a `!=` comparison where collect_is_exprs looks for one: at the top, in
+// parentheses, or in an `&&` chain.
+@[direct_array_access]
+fn (t &Transformer) if_cond_has_is_or_ne_shape(cond_id flat.NodeId) bool {
+	if int(cond_id) < 0 {
+		return false
+	}
+	cond := &t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		return t.if_cond_has_is_or_ne_shape(t.a.children[cond.children_start])
+	}
+	if cond.kind == .is_expr && cond.children_count >= 1 {
+		return true
+	}
+	if cond.kind == .infix && cond.children_count >= 2 {
+		if cond.op == .ne {
+			return true
+		}
+		if cond.op == .logical_and {
+			return t.if_cond_has_is_or_ne_shape(t.a.children[cond.children_start])
+				|| t.if_cond_has_is_or_ne_shape(t.a.children[cond.children_start + 1])
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) post_assert_smartcasts(id flat.NodeId) []IsExprInfo {
