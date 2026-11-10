@@ -1537,11 +1537,7 @@ pub mut:
 	selected_file_worklist []string
 	// The last path segment of every function signature key, armed for the
 	// duration of a reachability walk (see walk_fn_value_decl_key).
-	walk_fn_short_names       map[string]bool
-	walk_fn_short_names_ready bool
-	// A conservative filter over walk_fn_short_names: most identifiers of a body
-	// are locals, which it rejects without hashing them into the map.
-	walk_fn_short_names_bloom NameBloom
+	walk_fn_short_names &WalkFnShortNames = unsafe { nil }
 	// During a scoped check, sites that would gate on the called-fns closure park
 	// their candidate error here. Successful builds skip the closure entirely;
 	// the master computes it after checking only when a candidate needs filtering.
@@ -2080,8 +2076,6 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		selected_file_called_fns:              tc.selected_file_called_fns
 		selected_file_worklist:                tc.selected_file_worklist
 		walk_fn_short_names:                   tc.walk_fn_short_names
-		walk_fn_short_names_ready:             tc.walk_fn_short_names_ready
-		walk_fn_short_names_bloom:             tc.walk_fn_short_names_bloom
 		defer_ierror_gating:                   tc.defer_ierror_gating
 		pending_ierror_errors:                 []PendingIerrorError{}
 		top_level_idx:                         tc.top_level_idx
@@ -14404,7 +14398,6 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 	if tc.diagnostic_files.len == 0 {
 		return
 	}
-	tc.arm_walk_fn_short_names()
 	defer {
 		tc.disarm_walk_fn_short_names()
 	}
@@ -14413,59 +14406,116 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 	// scoped check runs it on a disposable fork and keeps only the reached names.
 	// Forks read the type cache through the overlay the scoped checks install.
 	if !tc.scope_parallel_check_workers || isnil(tc.type_cache) || isnil(tc.type_cache.base) {
+		tc.arm_walk_fn_short_names()
 		tc.collect_selected_file_called_fns_walk()
 		return
 	}
+	mut cfsw := time.new_stopwatch()
 	scope := check_worker_scope_begin(true)
+	mut body_scopes := []voidptr{}
+	decls := tc.arm_walk_fn_short_names_listing_decls(mut body_scopes)
+	arm_us := cfsw.elapsed().microseconds()
 	mut walker := tc.fork_for_parallel_check()
 	// Reachability reads prior diagnostics when resolving erroneous receivers.
 	// The owner stays idle, and this walk does not append diagnostics.
 	walker.errors = tc.errors
-	mut body_scopes := []voidptr{}
-	if walker.selected_file_reachability_parallel_available() {
-		walker.collect_selected_file_called_fns_walk()
-	} else if !walker.collect_selected_file_called_fns_walk_parallel(tc, mut body_scopes) {
+	mut scan := SelectedFnScan{}
+	scanned := walker.collect_selected_file_called_fns_walk_parallel(tc, decls, mut body_scopes, mut
+		scan)
+	if !scanned {
 		walker.collect_selected_file_called_fns_walk()
 	}
 	check_worker_scope_leave(scope)
+	walk_us := cfsw.elapsed().microseconds()
+	// The names live in the walk's arenas: the set keeps its own copies.
 	mut called := map[string]bool{}
-	called.reserve(u32(walker.selected_file_called_fns.len))
+	called.reserve(u32(walker.selected_file_called_fns.len + scan.reached_count))
 	for name, _ in walker.selected_file_called_fns {
-		called[name.clone()] = true
+		called[name] = true
+	}
+	for di, is_reached in scan.reached {
+		if is_reached {
+			called[scan.names[di]] = true
+			for name in scan.other_names[di] {
+				called[name] = true
+			}
+		}
 	}
 	tc.selected_file_called_fns = called.move()
+	set_us := cfsw.elapsed().microseconds()
+	tc.disarm_walk_fn_short_names()
 	free_check_worker_scopes(checker_worker_pool(tc.a), body_scopes)
 	check_worker_scope_free(scope)
+	tc.timing_profile('  [ttime]     ck cf names    ${f64(arm_us) / 1000.0:7.2f} ms, walk ${f64(walk_us - arm_us) / 1000.0:.2f} ms, set ${f64(set_us - walk_us) / 1000.0:.2f} ms, free ${f64(cfsw.elapsed().microseconds() - set_us) / 1000.0:.2f} ms')
+}
+
+// WalkFnShortNames holds the last path segment of every function signature key
+// (`name` of `mod.name`, `Type.name`, `C.name` and `name`) for a reachability
+// walk, whose forks share it read-only: those of the keys of fn_ret_types in
+// `ret` and those of fn_param_types in `param`, so that the pool can take the
+// two tables side by side (a serial build puts them all in `ret`). `bloom` is a
+// filter over both: most identifiers of a body are locals, which it rejects
+// without hashing them into the maps.
+@[heap]
+struct WalkFnShortNames {
+mut:
+	ret   map[string]bool
+	param map[string]bool
+	bloom &ConstSelectorBloom = unsafe { nil }
+}
+
+// walk_fn_short_names_mask sizes the filter of WalkFnShortNames for `count`
+// signature keys: tens of thousands of names in a large program.
+fn walk_fn_short_names_mask(count int) u32 {
+	mut nbits := u32(4096)
+	for u64(nbits) < u64(count) * 16 && nbits < (u32(1) << 24) {
+		nbits <<= 1
+	}
+	return nbits - 1
+}
+
+// collect_walk_fn_short_names adds the last path segment of the keys of one
+// signature table (fn_param_types, or else fn_ret_types) to `names` and `bits`.
+fn (tc &TypeChecker) collect_walk_fn_short_names(param_table bool, mut names map[string]bool, mut bits []u64, mask u32) {
+	if param_table {
+		for key, _ in tc.fn_param_types {
+			short_name := short_name_view(key)
+			names[short_name] = true
+			const_selector_bloom_add(mut bits, mask, short_name)
+		}
+		return
+	}
+	for key, _ in tc.fn_ret_types {
+		short_name := short_name_view(key)
+		names[short_name] = true
+		const_selector_bloom_add(mut bits, mask, short_name)
+	}
 }
 
 // arm_walk_fn_short_names indexes the last path segment of every function
-// signature key (`name` of `mod.name`, `Type.name`, `C.name` and `name`) for a
-// reachability walk; the walk's forks share the index read-only.
+// signature key for a reachability walk (see WalkFnShortNames).
 fn (mut tc TypeChecker) arm_walk_fn_short_names() {
+	count := tc.fn_ret_types.len + tc.fn_param_types.len
+	mask := walk_fn_short_names_mask(count)
+	mut bits := []u64{len: int((mask + 1) >> 6)}
 	mut names := map[string]bool{}
 	names.reserve(u32(tc.fn_ret_types.len))
-	for key, _ in tc.fn_ret_types {
-		names[short_name_view(key)] = true
+	tc.collect_walk_fn_short_names(false, mut names, mut bits, mask)
+	tc.collect_walk_fn_short_names(true, mut names, mut bits, mask)
+	tc.walk_fn_short_names = &WalkFnShortNames{
+		ret:   names.move()
+		bloom: &ConstSelectorBloom{
+			count: count
+			mask:  mask
+			bits:  bits
+		}
 	}
-	for key, _ in tc.fn_param_types {
-		names[short_name_view(key)] = true
-	}
-	mut bloom := NameBloom{}
-	for key, _ in names {
-		bloom.add(key)
-	}
-	bloom.count = u64(names.len)
-	tc.walk_fn_short_names = names.move()
-	tc.walk_fn_short_names_bloom = bloom
-	tc.walk_fn_short_names_ready = true
 }
 
 // disarm_walk_fn_short_names drops the index of arm_walk_fn_short_names once
 // the walk is over, so that later declarations cannot make it stale.
 fn (mut tc TypeChecker) disarm_walk_fn_short_names() {
-	tc.walk_fn_short_names = map[string]bool{}
-	tc.walk_fn_short_names_bloom = NameBloom{}
-	tc.walk_fn_short_names_ready = false
+	tc.walk_fn_short_names = unsafe { nil }
 }
 
 // walk_fn_value_decl_key is fn_value_decl_key for the reachability walk. Every
@@ -14474,9 +14524,10 @@ fn (mut tc TypeChecker) disarm_walk_fn_short_names() {
 // that ends no signature key is answered without the scope, import and
 // declaration lookups.
 fn (tc &TypeChecker) walk_fn_value_decl_key(node &flat.Node) ?string {
-	if tc.walk_fn_short_names_ready && node.value.len > 0 && node.value.index_u8(`.`) < 0
-		&& (tc.walk_fn_short_names_bloom.excludes(node.value, u64(tc.walk_fn_short_names.len))
-			|| node.value !in tc.walk_fn_short_names) {
+	names := tc.walk_fn_short_names
+	if !isnil(names) && node.value.len > 0 && node.value.index_u8(`.`) < 0
+		&& (names.bloom.excludes(node.value, names.bloom.count)
+			|| (node.value !in names.ret && node.value !in names.param)) {
 		return none
 	}
 	return tc.fn_value_decl_key(*node)
@@ -14509,6 +14560,7 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 	tc.cur_scope = tc.file_scope
 	mut smartcast_keys := &SmartcastKeyFilter{}
 	mut prev_top_level := -1
+	mut file_is_selected := tc.diagnostic_files[tc.cur_file]
 	for i in tc.top_level_idx {
 		range_lo := prev_top_level + 1
 		prev_top_level = i
@@ -14516,7 +14568,8 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
-				if i >= tc.a.user_code_start && tc.diagnostic_files[tc.cur_file] {
+				file_is_selected = tc.diagnostic_files[tc.cur_file]
+				if i >= tc.a.user_code_start && file_is_selected {
 					tc.collect_selected_file_top_level_called_fns(node)
 				}
 			}
@@ -14524,7 +14577,7 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				if i < tc.a.user_code_start || !tc.diagnostic_files[tc.cur_file] {
+				if i < tc.a.user_code_start || !file_is_selected {
 					continue
 				}
 				// A fn subtree is the node range since the previous top-level node.
@@ -14569,7 +14622,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 	// worklist of newly discovered called names. The former fixpoint re-scanned
 	// every node per round; this walks each reachable body exactly once (the
 	// first declaration wins for duplicate names, matching the old scan order).
-	decls := tc.selected_file_fn_decls()
+	decls := tc.selected_file_fn_decl_list()
 	tc.cur_scope = tc.file_scope
 	mut visited := map[string]bool{}
 	can_parallel := tc.selected_file_reachability_parallel_available()
@@ -14581,8 +14634,8 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 				continue
 			}
 			visited[name] = true
-			decl := decls[name] or { continue }
-			tc.collect_selected_decl_called_fns(decl, mut smartcast_keys)
+			di := decls.index[name] or { continue }
+			tc.collect_selected_decl_called_fns(decls.list[di], mut smartcast_keys)
 			continue
 		}
 		mut frontier := []SelectedFnDecl{}
@@ -14592,8 +14645,8 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 				continue
 			}
 			visited[name] = true
-			decl := decls[name] or { continue }
-			frontier << decl
+			di := decls.index[name] or { continue }
+			frontier << decls.list[di]
 		}
 		if tc.collect_selected_file_frontier_parallel(frontier) {
 			continue
@@ -14604,9 +14657,34 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 	}
 }
 
+// SelectedFnDecls is the first user-code fn_decl of every qualified name, in
+// declaration order: `names[i]` is the name of `list[i]`, and `index` finds `i`.
+struct SelectedFnDecls {
+mut:
+	list  []SelectedFnDecl
+	names []string
+	index map[string]int
+}
+
 // selected_file_fn_decls indexes the first user-code fn_decl per qualified name.
 fn (tc &TypeChecker) selected_file_fn_decls() map[string]SelectedFnDecl {
+	indexed := tc.selected_file_fn_decl_list()
 	mut decls := map[string]SelectedFnDecl{}
+	decls.reserve(u32(indexed.list.len))
+	for i, decl in indexed.list {
+		decls[indexed.names[i]] = decl
+	}
+	return decls
+}
+
+// selected_file_fn_decl_list lists the first user-code fn_decl per qualified name.
+fn (tc &TypeChecker) selected_file_fn_decl_list() &SelectedFnDecls {
+	mut decls := &SelectedFnDecls{}
+	// One key per fn_decl of a file: about as many as there are declarations.
+	fn_decls := tc.file_bare_fn_names.len
+	decls.list = []SelectedFnDecl{cap: fn_decls}
+	decls.names = []string{cap: fn_decls}
+	decls.index.reserve(u32(fn_decls))
 	mut cur_file := ''
 	mut cur_module := ''
 	mut prev_top_level := -1
@@ -14627,8 +14705,10 @@ fn (tc &TypeChecker) selected_file_fn_decls() map[string]SelectedFnDecl {
 					continue
 				}
 				qname := checker_qualified_fn_name(cur_module, node.value)
-				if qname !in decls {
-					decls[qname] = SelectedFnDecl{
+				if qname !in decls.index {
+					decls.index[qname] = decls.list.len
+					decls.names << qname
+					decls.list << SelectedFnDecl{
 						idx:  i
 						file: cur_file
 						mod:  cur_module

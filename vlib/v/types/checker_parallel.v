@@ -6323,57 +6323,153 @@ fn (tc &TypeChecker) tail_decl_ids_for(start int, end int) ([]i32, bool) {
 	return cache.tail_decl_ids, true
 }
 
+// min_parallel_walk_fn_names is the number of function signature keys from which
+// the pool takes their short names (see arm_walk_fn_short_names_listing_decls):
+// reading every key costs a few ms in a large program, and nothing in a small one.
+const min_parallel_walk_fn_names = 16_384
+
+// WalkFnNamesArgs is one pool task of arm_walk_fn_short_names_listing_decls: the
+// short names of one signature table, or the declarations of the walk.
+struct WalkFnNamesArgs {
+	tc          voidptr // &TypeChecker, which the tasks only read
+	list_decls  bool
+	param_table bool
+	mask        u32
+mut:
+	scope voidptr
+	names map[string]bool
+	bits  []u64
+	decls &SelectedFnDecls = unsafe { nil }
+}
+
+fn walk_fn_names_thread(arg voidptr) voidptr {
+	mut a := unsafe { &WalkFnNamesArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	a.scope = check_worker_scope_begin(true)
+	if a.list_decls {
+		a.decls = tc.selected_file_fn_decl_list()
+	} else {
+		mut names := map[string]bool{}
+		names.reserve(u32(if a.param_table { tc.fn_param_types.len } else { tc.fn_ret_types.len }))
+		mut bits := []u64{len: int((a.mask + 1) >> 6)}
+		tc.collect_walk_fn_short_names(a.param_table, mut names, mut bits, a.mask)
+		a.names = names.move()
+		a.bits = bits
+	}
+	check_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// arm_walk_fn_short_names_listing_decls is arm_walk_fn_short_names for a walk
+// that scans the bodies on the pool. Reading every signature key takes a while
+// in a large program, so the pool takes the two tables side by side there, and
+// lists the declarations to scan (see selected_file_fn_decl_list) meanwhile:
+// those are returned, or nil when the walk is to list them itself. The tasks
+// only read the checker, which does nothing else until they join. Their arenas
+// are appended to `scopes` for the caller to free after the walk.
+fn (mut tc TypeChecker) arm_walk_fn_short_names_listing_decls(mut scopes []voidptr) &SelectedFnDecls {
+	pool := checker_worker_pool(tc.a)
+	count := tc.fn_ret_types.len + tc.fn_param_types.len
+	if isnil(pool) || pool.size() == 0 || count < min_parallel_walk_fn_names {
+		tc.arm_walk_fn_short_names()
+		return unsafe { nil }
+	}
+	mask := walk_fn_short_names_mask(count)
+	mut args := []WalkFnNamesArgs{cap: 3}
+	for job in 0 .. 3 {
+		args << WalkFnNamesArgs{
+			tc:          voidptr(tc)
+			list_decls:  job == 2
+			param_table: job == 1
+			mask:        mask
+		}
+	}
+	mut tasks := []workers.Task{cap: 3}
+	for job in 0 .. 3 {
+		tasks << workers.Task{
+			run:        walk_fn_names_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	pool.run(tasks)
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			scopes << arg.scope
+		}
+	}
+	mut bits := unsafe { args[0].bits }
+	param_bits := args[1].bits
+	for i in 0 .. bits.len {
+		bits[i] |= param_bits[i]
+	}
+	tc.walk_fn_short_names = &WalkFnShortNames{
+		ret:   args[0].names
+		param: args[1].names
+		bloom: &ConstSelectorBloom{
+			count: count
+			mask:  mask
+			bits:  bits
+		}
+	}
+	return args[2].decls
+}
+
 // SelectedFnScanArgs is one pool task of collect_selected_file_called_fns_walk_parallel.
 struct SelectedFnScanArgs {
-	worker       voidptr // &TypeChecker fork used only by this task
-	decls        voidptr // &[]SelectedFnDecl
-	decl_index   voidptr // &SelectedFnDeclIndex
-	lists        voidptr // &[][]string, the called names per declaration
-	callee_decls voidptr // &[][]int, the index in `decls` of each called name, or -1
-	queue        chan int
-	chunk        int
+	worker voidptr // &TypeChecker fork used only by this task
+	decls  voidptr // &SelectedFnDecls
+	scan   voidptr // &SelectedFnScan
+	queue  chan int
+	chunk  int
 mut:
 	scope voidptr
 }
 
 const selected_fn_scan_chunk = 64
 
-// SelectedFnDeclIndex maps a function name to its index in the scanned declarations.
-struct SelectedFnDeclIndex {
+// SelectedFnScan is what the pool found in the bodies of the scanned declarations
+// (see SelectedFnDecls), and the declarations the selected files reach.
+struct SelectedFnScan {
 mut:
-	names map[string]int
+	names []string // the qualified name of each declaration
+	// The functions each declaration's body calls: the indexes of those that are
+	// declarations themselves, and the names of the others.
+	callee_decls [][]i32
+	other_names  [][]string
+	reached      []bool
+	// The reached declarations and the names they call that are not declarations.
+	reached_count int
 }
 
 fn selected_fn_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SelectedFnScanArgs(arg) }
 	a.scope = check_worker_scope_begin(true)
 	mut w := unsafe { &TypeChecker(a.worker) }
-	decls := unsafe { &[]SelectedFnDecl(a.decls) }
-	decl_index := unsafe { &SelectedFnDeclIndex(a.decl_index) }
-	mut lists := unsafe { &[][]string(a.lists) }
-	mut callee_decls := unsafe { &[][]int(a.callee_decls) }
+	decls := unsafe { &SelectedFnDecls(a.decls) }
+	mut scan := unsafe { &SelectedFnScan(a.scan) }
 	w.cur_scope = w.file_scope
+	mut smartcast_keys := &SmartcastKeyFilter{}
 	for {
 		start := <-a.queue or { break }
-		end := int_min(start + a.chunk, decls.len)
+		end := int_min(start + a.chunk, decls.list.len)
 		for i in start .. end {
-			decl := unsafe { decls[i] }
-			w.cur_file = decl.file
-			w.cur_module = decl.mod
 			w.selected_file_called_fns = map[string]bool{}
 			w.selected_file_worklist = []string{}
-			w.arm_body_resolve_memo(decl.idx - decl.cost + 1, decl.idx)
-			w.collect_selected_file_fn_body_called_fns(w.a.nodes[decl.idx])
-			w.disarm_body_resolve_memo()
-			// The worklist holds each name the body reaches once, in discovery order.
-			mut callees := []int{cap: w.selected_file_worklist.len}
+			w.collect_selected_decl_called_fns(decls.list[i], mut smartcast_keys)
+			// The worklist holds each name the body reaches once.
+			mut callees := []i32{cap: w.selected_file_worklist.len}
+			mut others := []string{}
 			for name in w.selected_file_worklist {
-				di := decl_index.names[name] or { -1 }
-				callees << di
+				if di := decls.index[name] {
+					callees << i32(di)
+				} else {
+					others << name
+				}
 			}
 			unsafe {
-				lists[i] = w.selected_file_worklist
-				callee_decls[i] = callees
+				scan.callee_decls[i] = callees
+				scan.other_names[i] = others
 			}
 		}
 	}
@@ -6381,13 +6477,17 @@ fn selected_fn_scan_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-// collect_selected_file_called_fns_walk_parallel computes the same called set as
-// collect_selected_file_called_fns_walk. Scanning a body depends only on its
+// collect_selected_file_called_fns_walk_parallel finds what
+// collect_selected_file_called_fns_walk does. Scanning a body depends only on its
 // declaration's file and module, so the pool scans every candidate body once,
-// each task on its own fork of `master`, and the walk then follows those lists.
-// The arenas backing the lists are appended to `body_scopes` for the caller to
-// free once it no longer needs the names. It returns false without a pool.
-fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, mut body_scopes []voidptr) bool {
+// each task on its own fork of `master`, and the walk then follows the calls from
+// the roots by declaration index. The candidates are `listed_decls`, or those of
+// selected_file_fn_decl_list when it is nil. It leaves the names the roots call
+// in the called set, and in `scan` the declarations reached from them, whose
+// names and calls complete the set. The arenas backing `scan` are appended to `body_scopes`
+// for the caller to free once it no longer needs the names. It returns false
+// without a pool.
+fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, listed_decls &SelectedFnDecls, mut body_scopes []voidptr, mut scan SelectedFnScan) bool {
 	pool := checker_worker_pool(tc.a)
 	if isnil(pool) || pool.size() == 0 {
 		return false
@@ -6399,35 +6499,37 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 	saved_memo := tc.body_resolve_memo
 	tc.body_resolve_memo = unsafe { nil }
 	defer { tc.body_resolve_memo = saved_memo }
+	mut cfsw := time.new_stopwatch()
 	tc.collect_selected_file_root_called_fns()
-	decls := tc.selected_file_fn_decls()
-	mut decl_list := []SelectedFnDecl{cap: decls.len}
-	mut decl_index := SelectedFnDeclIndex{}
-	decl_index.names.reserve(u32(decls.len))
-	for name, decl in decls {
-		decl_index.names[name] = decl_list.len
-		decl_list << decl
-	}
-	mut lists := [][]string{len: decl_list.len}
-	mut callee_decls := [][]int{len: decl_list.len}
+	roots_us := cfsw.elapsed().microseconds()
+	decls := if isnil(listed_decls) { tc.selected_file_fn_decl_list() } else { listed_decls }
+	decls_us := cfsw.elapsed().microseconds()
+	n_decls := decls.list.len
+	scan.names = decls.names
+	scan.callee_decls = [][]i32{len: n_decls}
+	scan.other_names = [][]string{len: n_decls}
 	chunk := selected_fn_scan_chunk
-	n_chunks := (decl_list.len + chunk - 1) / chunk
+	n_chunks := (n_decls + chunk - 1) / chunk
 	n_jobs := int_max(1, int_min(pool.size() + 1, n_chunks))
 	queue := chan int{cap: int_max(1, n_chunks)}
-	for start := 0; start < decl_list.len; start += chunk {
+	for start := 0; start < n_decls; start += chunk {
 		queue <- start
 	}
 	queue.close()
 	mut args := []SelectedFnScanArgs{cap: n_jobs}
 	for _ in 0 .. n_jobs {
+		mut worker := master.fork_for_parallel_check()
+		if tc.building_v_fast {
+			// As the walk of a compiler build always did: resolving a receiver reads
+			// the diagnostics reported so far. The master is idle until the scans join.
+			worker.errors = master.errors
+		}
 		args << SelectedFnScanArgs{
-			worker:       voidptr(master.fork_for_parallel_check())
-			decls:        unsafe { voidptr(&decl_list) }
-			decl_index:   unsafe { voidptr(&decl_index) }
-			lists:        unsafe { voidptr(&lists) }
-			callee_decls: unsafe { voidptr(&callee_decls) }
-			queue:        queue
-			chunk:        chunk
+			worker: voidptr(worker)
+			decls:  voidptr(decls)
+			scan:   voidptr(scan)
+			queue:  queue
+			chunk:  chunk
 		}
 	}
 	mut tasks := []workers.Task{cap: n_jobs}
@@ -6439,40 +6541,39 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 		}
 	}
 	pool.run(tasks)
+	scan_us := cfsw.elapsed().microseconds()
 	for arg in args {
 		if arg.scope != unsafe { nil } {
 			body_scopes << arg.scope
 		}
 	}
-	// Follow the lists from the roots by declaration index, then add the names
-	// each reached body calls: the set a walk by name builds, in another order.
-	mut reached := []bool{len: decl_list.len}
+	// Follow the calls from the roots by declaration index: a walk by name
+	// reaches the same declarations, in another order.
+	mut reached := []bool{len: n_decls}
 	mut stack := []int{cap: 1024}
 	for name in tc.selected_file_worklist {
-		if di := decl_index.names[name] {
+		if di := decls.index[name] {
 			stack << di
 		}
 	}
 	tc.selected_file_worklist.clear()
+	mut reached_count := 0
 	for stack.len > 0 {
 		di := stack.pop()
 		if reached[di] {
 			continue
 		}
 		reached[di] = true
-		for callee in callee_decls[di] {
-			if callee >= 0 && !reached[callee] {
-				stack << callee
+		reached_count += 1 + scan.other_names[di].len
+		for callee in scan.callee_decls[di] {
+			if !reached[callee] {
+				stack << int(callee)
 			}
 		}
 	}
-	for di, is_reached in reached {
-		if is_reached {
-			for name in lists[di] {
-				tc.selected_file_called_fns[name] = true
-			}
-		}
-	}
+	scan.reached = reached
+	scan.reached_count = reached_count
+	master.timing_profile('  [ttime]     ck cf roots    ${f64(roots_us) / 1000.0:7.2f} ms, decls ${f64(decls_us - roots_us) / 1000.0:.2f} ms (${n_decls}), scan ${f64(scan_us - decls_us) / 1000.0:.2f} ms, closure ${f64(cfsw.elapsed().microseconds() - scan_us) / 1000.0:.2f} ms')
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	tc.cur_scope = saved_scope
