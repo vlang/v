@@ -45,6 +45,10 @@ mut:
 	warnings          []string
 	// wasm_cabi enables canonical-ABI wrappers for exported string params.
 	wasm_cabi bool
+	// cabi_scratch is the linear-memory address of the 16-byte slot used by
+	// canonical-ABI string wrappers to materialize V strings. Reserved from
+	// module data before the stack area; -1 when cabi mode is off.
+	cabi_scratch int = -1
 }
 
 // set_wasm_cabi enables canonical-ABI wrappers for exported string params.
@@ -79,6 +83,16 @@ pub fn (mut g SSAGen) declare_imports(imports []WasmImport) {
 pub fn (mut g SSAGen) gen() ! {
 	functions := g.reachable_functions()!
 	g.collect_data(functions, g.reachable_values(functions))
+	if g.wasm_cabi {
+		// Reserve the canonical-ABI string scratch slot before the stack area
+		// so wrapper materializations never overlap stack frames.
+		aligned := (data_base + g.data.len + 3) & ~3
+		for g.data.len < aligned - data_base {
+			g.data << u8(0)
+		}
+		g.cabi_scratch = data_base + g.data.len
+		g.data << []u8{len: 16}
+	}
 	mut init := Code{}
 	g.stack_bottom = (data_base + g.data.len + 15) & ~15
 	stack_top := g.stack_bottom + 1024 * 1024
@@ -156,6 +170,10 @@ pub fn (mut g SSAGen) gen() ! {
 	if g.wasm_cabi {
 		used_exports['cabi_realloc'] = true
 	}
+	// cabi_wrapped collects exports that get a canonical-ABI string wrapper
+	// instead of a direct export: the inner function keeps its index but is
+	// not exported; the wrapper is exported under the original name.
+	mut cabi_wrapped := []CabiWrap{}
 	for fid in functions {
 		f := g.m.funcs[fid]
 		if g.configured && f.name !in g.exports {
@@ -170,8 +188,23 @@ pub fn (mut g SSAGen) gen() ! {
 			g.warnings << 'not exporting ${f.name.all_after_last('.')}: export name `${name}` is already in use'
 			continue
 		}
+		if g.wasm_cabi && g.cabi_wrappable(fid) {
+			cabi_wrapped << CabiWrap{
+				export_name: name
+				fid:         fid
+			}
+			used_exports[name] = true
+			continue
+		}
 		used_exports[name] = true
 		g.mod.add_export(name, export_func, g.fn_index[f.name])
+	}
+	for w in cabi_wrapped {
+		f := g.m.funcs[w.fid]
+		inner := g.fn_index[f.name]
+		str_typ := g.m.values[f.params[0]].typ
+		idx := g.emit_cabi_string_wrapper(inner, str_typ, g.wtype(f.typ))
+		g.mod.add_export(w.export_name, export_func, idx)
 	}
 	mut entry := Code{}
 	for name in g.init_fns {
@@ -194,6 +227,75 @@ pub fn (mut g SSAGen) gen() ! {
 		g.mod.add_data(data_base, g.data)
 	}
 	g.mod.add_data(nl_ptr, [u8(10)])
+}
+
+// CabiWrap describes an export that gets a canonical-ABI string wrapper.
+struct CabiWrap {
+	export_name string
+	fid         int
+}
+
+// cabi_string_param reports whether an SSA type is a V string struct
+// (fields str, len, is_lit as laid out by the SSA builder).
+fn (g &SSAGen) cabi_string_param(typ ssa.TypeID) bool {
+	if typ <= 0 || typ >= g.m.type_store.types.len {
+		return false
+	}
+	t := g.m.type_store.types[typ]
+	if t.kind != .struct_t {
+		return false
+	}
+	return t.field_names == ['str', 'len', 'is_lit']
+}
+
+// cabi_wrappable reports whether an exported function gets a canonical-ABI
+// string wrapper: exactly one string-typed param and an i32 or void result.
+fn (g &SSAGen) cabi_wrappable(fid int) bool {
+	f := g.m.funcs[fid]
+	if f.params.len != 1 {
+		return false
+	}
+	if !g.cabi_string_param(g.m.values[f.params[0]].typ) {
+		return false
+	}
+	return g.wtype(f.typ) in [.i32, .void]
+}
+
+// emit_cabi_string_wrapper emits a canonical-ABI wrapper for an exported
+// function taking a single V string: the wrapper has signature
+// (i32 ptr, i32 len) -> ret, materializes string{str: ptr, len: len,
+// is_lit: false} in the module scratch slot, and tail-calls the inner
+// function. The scratch slot is reserved once per module (see gen), so the
+// wrapper needs no locals and leaves the value stack balanced.
+// Limitation: the single scratch slot is not reentrant; nested wrapper calls
+// (host -> guest -> host -> guest) would clobber it. String returns, lists,
+// records, and variants are out of scope for this slice.
+fn (mut g SSAGen) emit_cabi_string_wrapper(inner_idx int, str_typ ssa.TypeID, ret WType) int {
+	off0 := g.m.struct_field_offset(str_typ, 0)
+	off1 := g.m.struct_field_offset(str_typ, 1)
+	off2 := g.m.struct_field_offset(str_typ, 2)
+	has_lit := g.m.type_store.types[str_typ].fields.len > 2
+	mut c := Code{}
+	c.i32_const(i64(g.cabi_scratch))
+	c.local_get(0)
+	c.i32_store(off0)
+	c.i32_const(i64(g.cabi_scratch))
+	c.local_get(1)
+	c.i32_store(off1)
+	if has_lit {
+		c.i32_const(i64(g.cabi_scratch))
+		c.i32_const(0)
+		c.i32_store8(off2)
+	}
+	c.i32_const(i64(g.cabi_scratch))
+	c.call(inner_idx)
+	c.end()
+	mut results := []u8{}
+	if ret != .void {
+		results << wt_valtype(ret)
+	}
+	ti := g.mod.add_type([valtype_i32, valtype_i32], results)
+	return g.mod.add_func(ti, [], c.bytes)
 }
 
 // write writes the generated module to path.
