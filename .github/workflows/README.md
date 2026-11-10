@@ -49,6 +49,11 @@ checkout commit and platform before installing them as `v` or `v.exe`. Rerunning
 producer replaces its workflow artifact. The binaries are available from the `vlang/v`
 Actions run page, outside GitHub Releases, and require no additional token or secret.
 
+Shared compilers resolve their standard library from the checkout containing the installed
+executable. This supports nested `working-directory` checkouts and compilation from external
+project directories. A standalone compiler outside a checkout retains its build-time source
+root as a fallback.
+
 After all four producers succeed, a separate job removes older compiler artifacts from
 completed `CI master` push runs. It preserves artifacts belonging to the current run,
 newer runs and runs still in progress, and only deletes names matching the owning run's
