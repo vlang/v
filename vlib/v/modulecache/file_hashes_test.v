@@ -18,10 +18,10 @@ fn test_file_hash_memo_reuses_hashes_until_the_file_changes() {
 	assert first == file_signature_uncached(path)
 	digest := file_sha256(path) or { panic('no digest') }
 	// The memo keeps both kinds of hashes, and a later build reads them back.
-	memo_text := os.read_file(os.join_path(dir, 'memo', file_hash_memo_name))!
+	memo_text := os.read_file(os.join_path(dir, 'memo', file_hash_memo_name, file_hash_memo_shard(path)))!
 	assert memo_text.contains('fnv\t') && memo_text.contains('${first}\n')
 	assert memo_text.contains('${digest}\n')
-	g_file_hash_memo.loaded = false
+	g_file_hash_memo.loaded = map[string]int{}
 	g_file_hash_memo.entries = map[string]string{}
 	assert file_signature(path) == first
 	// An edit changes the metadata, so the file is read again.
@@ -61,4 +61,34 @@ fn test_build_start_time_is_one_time_for_all_threads() {
 		assert other_seconds == seconds
 		assert other_nanoseconds == nanoseconds
 	}
+}
+
+fn test_file_hash_memo_reads_only_the_shards_of_the_files_it_hashes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_hash_shards_${os.getpid()}')
+	os.mkdir_all(os.join_path(dir, 'one'))!
+	os.mkdir_all(os.join_path(dir, 'two'))!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	enable_file_hash_memo(os.join_path(dir, 'memo'))
+	g_file_hash_memo.loaded = map[string]int{}
+	g_file_hash_memo.entries = map[string]string{}
+	old := time.utc().unix() - 600
+	mut paths := []string{}
+	for name in ['one', 'two'] {
+		path := os.join_path(dir, name, 'input.h')
+		os.write_file(path, 'int ${name};\n')!
+		os.utime(path, old, old)!
+		paths << path
+	}
+	assert file_hash_memo_shard(os.join_path(dir, 'one', 'other.h')) == file_hash_memo_shard(paths[0])
+	for path in paths {
+		file_signature(path)
+	}
+	g_file_hash_memo.loaded = map[string]int{}
+	g_file_hash_memo.entries = map[string]string{}
+	// A later build that hashes the file of one directory reads that shard alone.
+	assert file_signature(paths[0]) == file_signature_uncached(paths[0])
+	assert g_file_hash_memo.loaded.keys() == [file_hash_memo_shard(paths[0])]
+	assert 'fnv\t${paths[0]}' in g_file_hash_memo.entries
 }

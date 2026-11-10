@@ -18,15 +18,21 @@ import crypto.sha256
 // which can be several milliseconds on file systems with nanosecond timestamps,
 // could keep all of its metadata. Nor is a whole-second timestamp of a coarse
 // file system while it is recent (see coarse_mtime_is_recent).
+//
+// The memo is kept for every build of the user, so it grows with every file that
+// any build hashed. It is split by the directory of each file into
+// file_hash_memo_shards files, and a build reads only those of the directories
+// of the files that it hashes: what it reads follows its own inputs, as a Zig
+// manifest is one per compilation, not the size of all the memo.
 @[heap]
 struct FileHashMemo {
 mut:
-	mu     &sync.Mutex = sync.new_mutex()
-	path   string
-	loaded bool
+	mu  &sync.Mutex = sync.new_mutex()
+	dir string
+	// The shards that were read, with the number of their lines.
+	loaded map[string]int
 	// `kind\tpath` -> `metadata\thash`
 	entries map[string]string
-	lines   int
 }
 
 __global g_file_hash_memo &FileHashMemo
@@ -70,7 +76,12 @@ fn build_start_mtime() (u64, u64) {
 	return g_build_start_mtime_seconds, g_build_start_mtime_nanoseconds
 }
 
-const file_hash_memo_name = 'file_hashes.v2'
+// file_hash_memo_name is the directory of the shards of the memo in the memo
+// directory of a build.
+const file_hash_memo_name = 'file_hashes.v3'
+
+// file_hash_memo_shards is the number of files that the memo is split into.
+const file_hash_memo_shards = 256
 
 // enable_file_hash_memo makes file_signature and file_sha256 remember their
 // hashes in `dir`, which holds them for the builds that use it.
@@ -78,9 +89,14 @@ pub fn enable_file_hash_memo(dir string) {
 	if dir.len == 0 || !isnil(g_file_hash_memo) {
 		return
 	}
-	os.mkdir_all(dir) or { return }
+	memo_dir := os.join_path(dir, file_hash_memo_name)
+	if !os.is_dir(memo_dir) {
+		// The memo of earlier compilers was one file.
+		os.rm(os.join_path(dir, 'file_hashes.v2')) or {}
+	}
+	os.mkdir_all(memo_dir) or { return }
 	g_file_hash_memo = &FileHashMemo{
-		path: os.join_path(dir, file_hash_memo_name)
+		dir: memo_dir
 	}
 	// Mark the start of the build now, before any input is read.
 	_, _ = build_start_mtime()
@@ -182,8 +198,9 @@ fn memoized_file_hash(path string, kind string, compute fn (string) string) stri
 	}
 	key := '${kind}\t${path}'
 	metadata := '${m.device}:${m.inode}:${m.size}:${m.mtime_seconds}:${m.mtime_nanoseconds}:${m.ctime_seconds}:${m.ctime_nanoseconds}'
+	shard := file_hash_memo_shard(path)
 	memo.mu.lock()
-	memo.load()
+	memo.load(shard)
 	known := memo.entries[key] or { '' }
 	memo.mu.unlock()
 	if known.len > metadata.len && known[metadata.len] == `\t` && known.starts_with(metadata) {
@@ -193,7 +210,7 @@ fn memoized_file_hash(path string, kind string, compute fn (string) string) stri
 	if file_hash_is_valid(kind, hash) {
 		memo.mu.lock()
 		memo.entries[key] = '${metadata}\t${hash}'
-		memo.append('${key}\t${metadata}\t${hash}\n')
+		memo.append(shard, '${key}\t${metadata}\t${hash}\n')
 		memo.mu.unlock()
 	}
 	return hash
@@ -218,14 +235,29 @@ fn file_hash_is_valid(kind string, hash string) bool {
 	return true
 }
 
-// load reads the memo once; the holder of `mu` calls it. Only complete lines
-// count: an append of another build can be read half written.
-fn (mut memo FileHashMemo) load() {
-	if memo.loaded {
+// file_hash_memo_shard returns the name of the shard of the memo that holds the
+// hashes of `path`: the files of one directory are in one shard.
+fn file_hash_memo_shard(path string) string {
+	mut hash := u32(2166136261)
+	for c in os.dir(path) {
+		hash = (hash ^ u32(c)) * 16777619
+	}
+	return '${hash % file_hash_memo_shards:02x}'
+}
+
+// load reads the shard `shard` of the memo once; the holder of `mu` calls it.
+// Only complete lines count: an append of another build can be read half written.
+fn (mut memo FileHashMemo) load(shard string) {
+	if shard in memo.loaded {
 		return
 	}
-	memo.loaded = true
-	content := os.read_file(memo.path) or { return }
+	path := os.join_path_single(memo.dir, shard)
+	content := os.read_file(path) or {
+		memo.loaded[shard] = 0
+		return
+	}
+	mut lines := 0
+	mut entries := 0
 	mut start := 0
 	for start < content.len {
 		end := content.index_after_('\n', start)
@@ -234,31 +266,38 @@ fn (mut memo FileHashMemo) load() {
 		}
 		line := content[start..end]
 		start = end + 1
-		memo.lines++
+		lines++
 		fields := line.split('\t')
 		if fields.len != 4 || !file_hash_is_valid(fields[0], fields[3]) {
 			continue
 		}
-		memo.entries['${fields[0]}\t${fields[1]}'] = '${fields[2]}\t${fields[3]}'
-	}
-	// Later lines replace earlier ones. Rewrite a memo that grew mostly stale.
-	if memo.lines > 1024 && memo.lines > 2 * memo.entries.len {
-		mut out := []string{cap: memo.entries.len}
-		for key, value in memo.entries {
-			out << '${key}\t${value}\n'
+		key := '${fields[0]}\t${fields[1]}'
+		if key !in memo.entries {
+			entries++
 		}
-		temp := '${memo.path}.tmp.${os.getpid()}'
+		memo.entries[key] = '${fields[2]}\t${fields[3]}'
+	}
+	memo.loaded[shard] = lines
+	// Later lines replace earlier ones. Rewrite a shard that grew mostly stale.
+	if lines > 1024 && lines > 2 * entries {
+		mut out := []string{cap: entries}
+		for key, value in memo.entries {
+			if file_hash_memo_shard(key.all_after('\t')) == shard {
+				out << '${key}\t${value}\n'
+			}
+		}
+		temp := '${path}.tmp.${os.getpid()}'
 		os.write_file(temp, out.join('')) or { return }
-		os.mv(temp, memo.path) or { os.rm(temp) or {} }
-		memo.lines = memo.entries.len
+		os.mv(temp, path) or { os.rm(temp) or {} }
+		memo.loaded[shard] = out.len
 	}
 }
 
-// append records one line. Short appends to the same file from builds that run
-// at the same time do not interleave.
-fn (mut memo FileHashMemo) append(line string) {
-	mut file := os.open_append(memo.path) or { return }
+// append records one line in the shard `shard`. Short appends to the same file
+// from builds that run at the same time do not interleave.
+fn (mut memo FileHashMemo) append(shard string, line string) {
+	mut file := os.open_append(os.join_path_single(memo.dir, shard)) or { return }
 	defer { file.close() }
 	file.write_string(line) or {}
-	memo.lines++
+	memo.loaded[shard]++
 }
