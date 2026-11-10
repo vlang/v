@@ -246,7 +246,10 @@ mut:
 	// merge_regions_absorbed marks worker regions as already relocated *into*
 	// their final master slots by that same parallel pass, so merge_worker skips
 	// the bulk copies entirely and shifts ids with the offsets recorded below.
-	merge_regions_absorbed     bool
+	merge_regions_absorbed bool
+	// merge_before_join marks a merge_worker call made while other helpers still
+	// run: the master arrays have not reached their final length yet.
+	merge_before_join          bool
 	merge_absorbed_node_shift  i32
 	merge_absorbed_child_shift i32
 	// const_array_fixed_storage_cache avoids rescanning the complete AST for
@@ -6969,7 +6972,17 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			idx++
 		}
 	}
-	if w.ignored_comptime_for_log.len > 0 {
+	if w.ignored_comptime_for_log.len > 0 && t.merge_before_join {
+		// The flags cover the final node count, which is only known after the
+		// join; run_parallel_transform_shared applies the master's log then.
+		for idx in w.ignored_comptime_for_log {
+			t.ignored_comptime_for_log << if idx >= base_nodes {
+				idx + int(node_shift)
+			} else {
+				idx
+			}
+		}
+	} else if w.ignored_comptime_for_log.len > 0 {
 		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
 			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
 			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
