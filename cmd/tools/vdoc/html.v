@@ -256,7 +256,7 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	// The platform selector stays at the top of the page, so it is before the module.
 	platform_selector := platform_selector_html(d)
 	if platform_selector != '' {
-		contents.writeln('<div class="platform-bar">${platform_selector}</div>')
+		contents.writeln('<div class="platform-bar">${platform_selector}<script>${platform_early_js}</script></div>')
 	}
 	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
 		[]))
@@ -879,6 +879,11 @@ fn blockquote_payload_starts_new_block(payload string) bool {
 	line_before_spaces := payload.before(' ')
 	return line_before_spaces.count('#') == line_before_spaces.len
 }
+
+// platform_early_js applies the platform that was selected on another page, right after the
+// platform selector and before the symbols, so that the symbols of the other platforms are not
+// shown while the page loads. `doc.js` removes its style once it has hidden them.
+const platform_early_js = '(function(){try{var s=document.currentScript.previousElementSibling,p=localStorage.getItem(\'vdoc-platform\');if(!p||!Array.prototype.some.call(s.options,function(o){return o.value===p}))return;s.value=p;document.documentElement.dataset.platform=p;var st=document.createElement(\'style\');st.id=\'platform-early-style\';st.textContent=\'[data-platforms]:not([data-platforms~="\'+p+\'"]){display:none!important}\';document.head.appendChild(st)}catch(e){}})();'
 
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name == '' || dn.content.len == 0 { '' } else { slug(dn.name) }

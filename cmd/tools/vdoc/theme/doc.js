@@ -75,6 +75,8 @@ function setupPlatformSelector() {
 		return;
 	}
 	const show = (platform) => {
+		// The style that hid the symbols of the other platforms while the page loaded.
+		document.getElementById('platform-early-style')?.remove();
 		if (platform === '') {
 			delete document.documentElement.dataset.platform;
 		} else {

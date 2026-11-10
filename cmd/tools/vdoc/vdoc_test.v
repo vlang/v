@@ -719,6 +719,9 @@ fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_plat
 	page := os.read_file(os.join_path(html_dir, 'a.html'))!
 	assert page.contains('<section id="Handle.close" class="doc-node" data-platforms="windows">')
 	assert page.contains('<section id="Handle.new" class="doc-node" data-platforms="windows">')
+	// The platform of the other pages is applied before the symbols, while the page loads.
+	assert page.contains('<select class="platform-select"')
+	assert page.contains('<script>${platform_early_js}</script></div>')
 	// The section of all the constants has no constant to show on the other platforms.
 	assert page.contains('<section id="Constants" class="doc-node const" data-platforms="windows">')
 	assert within_platforms([], [.windows]) == [doc.Platform.windows]
