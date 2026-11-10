@@ -10863,8 +10863,11 @@ fn const_call_name_suffix(name string) string {
 }
 
 fn (mut idx ConstShortIndex) mark_call_name(name string) {
-	slot := global_name_filter_slot(const_call_name_suffix(name))
+	suffix := const_call_name_suffix(name)
+	slot := global_name_filter_slot(suffix)
 	idx.call_names[slot >> 6] |= u64(1) << u32(slot & 63)
+	bit := const_call_name_bit(suffix)
+	idx.call_name_bits[bit >> 6] |= u64(1) << (bit & 63)
 }
 
 // Normal generation freezes the const tables before sharing this index with workers.
@@ -10888,7 +10891,9 @@ fn (g &FlatGen) const_call_name_is_absent(node &flat.Node) bool {
 	}
 	slot := global_name_filter_slot(suffix)
 	if idx.call_names[slot >> 6] & (u64(1) << u32(slot & 63)) != 0 {
-		return false
+		// Marked names set both filters, so a clear bit here proves a miss too.
+		bit := const_call_name_bit(suffix)
+		return idx.call_name_bits[bit >> 6] & (u64(1) << (bit & 63)) == 0
 	}
 	return true
 }

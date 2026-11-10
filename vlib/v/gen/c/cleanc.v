@@ -15683,6 +15683,7 @@ fn (mut g FlatGen) precompute_const_short_index() {
 		return
 	}
 	idx.call_names = [64]u64{}
+	idx.call_name_bits = [const_call_name_bit_words]u64{}
 	for name, _ in g.const_vals { idx.mark_call_name(name) }
 	for name, _ in g.tc.const_exprs { idx.mark_call_name(name) }
 	for name, _ in g.tc.const_types { idx.mark_call_name(name) }

@@ -10,6 +10,18 @@ fn c_name(name string) string {
 	return naming.c_name(name)
 }
 
+const const_call_name_bit_words = 4096
+
+// const_call_name_bit returns the `call_name_bits` slot of a call name suffix.
+@[direct_array_access; inline]
+fn const_call_name_bit(suffix string) u32 {
+	mut hash := u32(2166136261)
+	for i in 0 .. suffix.len {
+		hash = (hash ^ u32(suffix[i])) * 16777619
+	}
+	return (hash ^ (hash >> 15)) & u32(const_call_name_bit_words * 64 - 1)
+}
+
 // CNameCache memoizes naming.c_name results. c_name is a pure function called
 // hundreds of thousands of times per build over a few tens of thousands of
 // distinct names; the cache lives on the heap so `&FlatGen` query methods can
@@ -128,6 +140,9 @@ mut:
 	call_const_exprs_count    int
 	call_const_types_count    int
 	call_const_suffixes_count int
+	// A second filter over a hash of the whole suffix: `call_names` indexes a few
+	// bytes and passes about half of the absent names of a large program.
+	call_name_bits [const_call_name_bit_words]u64
 }
 
 // FnNameFactCache memoizes per-fn-name conclusions (1 = yes, -1 = no) that
