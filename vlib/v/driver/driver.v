@@ -5972,10 +5972,17 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	}
 	// The probe stands in for the generated unit, which the build writes into a
 	// directory of its own; the debug symbols of the output are written beside it.
+	mut header_skip := [os.real_path(inputs.cache_dir), os.join_path_single(inputs.output_dir,
+		'${inputs.output_name}.dSYM')]
+	// The other caches of V are written during the build too, in V3CACHE when it
+	// is set, which may be below a directory of the search.
+	v3cache := os.getenv('V3CACHE')
+	if v3cache != '' {
+		header_skip << os.real_path(os.abs_path(v3cache))
+	}
 	header_dirs := V3HeaderDirScan{
 		enabled: true
-		skip:    [os.real_path(inputs.cache_dir), os.join_path_single(inputs.output_dir,
-			'${inputs.output_name}.dSYM')]
+		skip:    header_skip
 	}
 	mut header_dir_set := map[string]bool{}
 	for unit in units {

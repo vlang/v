@@ -305,6 +305,29 @@ fn test_receipt_sees_a_header_added_earlier_in_the_search() {
 	assert !v3_restore_unchanged_build(f.cache_dir, 'search', f.destination, '')
 }
 
+fn test_receipt_leaves_out_the_v3cache_below_a_directory_of_the_search() {
+	f := receipt_fixture('v3cache_below_search')!
+	previous := os.getenv_opt('V3CACHE')
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(f.root) or {}
+	}
+	include := os.join_path(f.root, 'include')
+	aged_write(os.join_path(include, 'choice.h'), 'static int choice(void) { return 1; }\n')!
+	// The other caches of the build are written while the receipt is prepared.
+	v3cache := os.join_path(include, 'v3cache')
+	os.mkdir_all(os.join_path(v3cache, 'objects'))!
+	os.write_file(os.join_path(v3cache, 'objects', 'fresh.o'), 'object')!
+	age_unchanged_build_source(include)!
+	os.setenv('V3CACHE', v3cache, true)
+	publish_native_receipt(f, 'v3cache_below', native_receipt_inputs(f, ['-I', include],
+		'#include <choice.h>\n'))
+}
+
 fn test_dependency_manifest_is_scanned_again_when_a_header_shadows_one_of_it() {
 	root := os.join_path(os.vtmp_dir(), 'v3_dependency_shadow_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
