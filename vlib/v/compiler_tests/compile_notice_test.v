@@ -38,7 +38,10 @@ fn main() {
 }
 ')!
 	for production in [false, true] {
-		mut args := [@VEXE, '-b', 'c', '-cc', 'clang', '-nocache']
+		mut args := [@VEXE, '-b', 'c', '-nocache']
+		$if !windows {
+			args << ['-cc', 'clang']
+		}
 		if production {
 			args << '-prod'
 		}
@@ -87,7 +90,10 @@ pub fn unused() {
 	input := os.join_path(root, 'main.v')
 	os.write_file(input, 'module main\nimport helper\nfn main() { assert helper.value == 1 }\n')!
 	for production in [false, true] {
-		mut args := [@VEXE, '-b', 'c', '-cc', 'clang', '-nocache']
+		mut args := [@VEXE, '-b', 'c', '-nocache']
+		$if !windows {
+			args << ['-cc', 'clang']
+		}
 		if production {
 			args << '-prod'
 		}
