@@ -4,9 +4,9 @@ import os
 import v.cmdexec
 import v.flat
 import v.gen.c as cgen
+import v.modulecache
 import v.pref
 import v.tempname
-import time
 
 // External linking for the native arm64 backend on macOS.
 //
@@ -410,66 +410,145 @@ fn arm64_cached_unit_paths(text string) !(string, string) {
 	return source, os.join_path(dir, '${name}.o')
 }
 
+// Arm64CInputs are the files that the C units of an arm64 build read and the
+// paths where a file would be read instead, as the compiler reported them for
+// each unit: its `-MD` list on a compile, the manifest of that list on a cache
+// hit, and what the link of the C compiler driver reads (add_link). The receipt
+// of the build lists them (Arm64CInputs.native), as Zig's whole cache manifest
+// takes in the depfile of every C object (Compilation.updateCObject): V opens no
+// header for it. `unknown` says why the inputs of a unit cannot be told, or is ''
+// when they can.
+struct Arm64CInputs {
+mut:
+	files   []string
+	missing []string
+	unknown string
+}
+
+// arm64_c_build_inputs records the C units of the main thread; a thread keeps
+// its own record and hands it back (Arm64PreparedLink).
+const arm64_c_build_inputs = &Arm64CInputs{}
+
+fn arm64_build_c_inputs() &Arm64CInputs {
+	return arm64_c_build_inputs
+}
+
+// add_dependencies records what a compile of the generated unit `source` read.
+fn (mut inputs Arm64CInputs) add_dependencies(dependencies &CObjectDependencies, source string) {
+	if dependencies.used_fallback {
+		inputs.fail('the C compiler did not tell what ${os.file_name(source)} read')
+		return
+	}
+	for path in dependencies.files {
+		if !arm64_is_generated_unit(path) {
+			inputs.files << os.abs_path(path)
+		}
+	}
+	inputs.missing << dependencies.missing
+}
+
+// add_manifest records the files and absent paths of the manifest of `object`.
+fn (mut inputs Arm64CInputs) add_manifest(manifest string, object string) {
+	lines := os.read_lines(manifest) or {
+		inputs.fail('the manifest of ${os.file_name(object)} cannot be read')
+		return
+	}
+	// Another build can replace the manifest after it was checked.
+	if lines.len < 2 || lines[1] != 'object=${object}' {
+		inputs.fail('the manifest of ${os.file_name(object)} changed')
+		return
+	}
+	for line in lines[2..] {
+		if line.starts_with('missing=') {
+			inputs.missing << line.all_after('missing=')
+		} else if line.starts_with('dependency=') {
+			path := line.all_after('dependency=').all_before_last('\t')
+			if !arm64_is_generated_unit(path) {
+				inputs.files << os.abs_path(path)
+			}
+		}
+	}
+}
+
+// arm64_is_generated_unit reports whether `path` is the source of a C unit that
+// arm64_cached_unit_paths wrote. It is named by its text, which the V sources
+// of the program decide, and can be newer than the build.
+fn arm64_is_generated_unit(path string) bool {
+	return os.file_name(path).starts_with('arm64_unit_') && os.dir(path) == arm64_cache_dir()
+}
+
+fn (mut inputs Arm64CInputs) fail(reason string) {
+	if inputs.unknown.len == 0 {
+		inputs.unknown = reason
+	}
+}
+
+fn (mut inputs Arm64CInputs) merge(other &Arm64CInputs) {
+	inputs.files << other.files
+	inputs.missing << other.missing
+	if other.unknown.len > 0 {
+		inputs.fail(other.unknown)
+	}
+}
+
+// native returns the inputs of the C side for the receipt of the build
+// (v3_unchanged_build_with_native_inputs), which signs them once the build is done:
+// a file written since the build began may not be what a compile read, and
+// declines the receipt (Zig's isProblematicTimestamp).
+fn (inputs &Arm64CInputs) native() UnchangedBuildNativeInputs {
+	return UnchangedBuildNativeInputs{
+		files:   arm64_sorted_distinct(inputs.files)
+		missing: arm64_sorted_distinct(inputs.missing)
+		unknown: inputs.unknown
+	}
+}
+
+// add_link records what the C compiler driver links for the command `args`, as
+// the C backend takes it from its link command (v3_program_link_inputs): the
+// objects and libraries that it names or finds, and the paths where a library
+// would be found first. What is below one of `made_dirs` is made by the build.
+fn (mut inputs Arm64CInputs) add_link(args []string, compiler string, target_os string, made_dirs []string) {
+	build_dir := os.getwd()
+	sdk := if target_os == 'macos' { cmdexec.macos_sdk_root() } else { '' }
+	manager := modulecache.Manager{}
+	link := v3_program_link_inputs(args, '', v3_default_link_library_dirs(&manager, compiler,
+		v3_link_search_args(args), sdk, build_dir), build_dir)
+	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{
+		told:        true
+		link_reason: link.reason()
+	}, false, &CObjectCacheStats{}, made_dirs)
+	if found.unknown.len > 0 {
+		inputs.fail(found.unknown)
+		return
+	}
+	inputs.files << found.files
+	inputs.missing << found.missing
+}
+
+fn arm64_sorted_distinct(paths []string) []string {
+	mut seen := map[string]bool{}
+	for path in paths {
+		seen[path] = true
+	}
+	mut result := seen.keys()
+	result.sort()
+	return result
+}
+
 // arm64_cached_object returns the object of a unit when the manifest of its last
 // compile still matches every header, without running the compiler.
 fn arm64_cached_object(compiler string, args []string, text string, target pref.Target) ?string {
 	mut stats := arm64_cache_stats()
-	return arm64_cached_object_with(compiler, args, text, target, mut stats)
+	mut inputs := arm64_build_c_inputs()
+	return arm64_cached_object_with(compiler, args, text, target, mut stats, mut inputs)
 }
 
-fn arm64_cached_object_with(compiler string, args []string, text string, target pref.Target, mut stats CObjectCacheStats) ?string {
+fn arm64_cached_object_with(compiler string, args []string, text string, target pref.Target, mut stats CObjectCacheStats, mut inputs Arm64CInputs) ?string {
 	_, object := arm64_cached_unit_paths(text) or { return none }
 	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, args, target, mut stats)
-	sheet := manifest + '.stat'
-	if cached := arm64_stat_sheet_object(sheet) {
-		return cached
-	}
 	cached := valid_c_object_manifest(manifest, mut stats)?
-	arm64_write_stat_sheet(sheet, cached, manifest)
+	inputs.add_manifest(manifest, cached)
 	return cached
-}
-
-// arm64_stat_sheet_object returns the object of a sheet whose dependencies all
-// keep the size and time they had when their contents were last checked. Like
-// Zig's manifests (lib/std/Build/Cache.zig), stat first and hash only what moved:
-// the probes of a Cocoa program depend on 1500 headers.
-fn arm64_stat_sheet_object(sheet string) ?string {
-	lines := os.read_lines(sheet) or { return none }
-	if lines.len < 2 || !os.is_file(lines[0]) {
-		return none
-	}
-	for line in lines[1..] {
-		fields := line.split('\t')
-		if fields.len != 3 {
-			return none
-		}
-		attr := os.stat(fields[0]) or { return none }
-		if attr.size.str() != fields[1] || attr.mtime.str() != fields[2] {
-			return none
-		}
-	}
-	return lines[0]
-}
-
-// arm64_write_stat_sheet records the dependencies of a validated manifest. A
-// file modified within the last two seconds is not recorded, so a later edit in
-// the same timestamp tick is seen (Zig's isProblematicTimestamp).
-fn arm64_write_stat_sheet(sheet string, object string, manifest string) {
-	content := os.read_lines(manifest) or { return }
-	now := time.now().unix()
-	mut out := [object]
-	for line in content {
-		if !line.starts_with('dependency=') {
-			continue
-		}
-		path := line.all_after('dependency=').all_before_last('\t')
-		attr := os.stat(path) or { return }
-		if attr.mtime >= now - 2 {
-			return
-		}
-		out << '${path}\t${attr.size}\t${attr.mtime}'
-	}
-	os.write_lines(sheet, out) or {}
 }
 
 // arm64_compile_unit compiles a C unit and returns its object, from the cache
@@ -480,14 +559,19 @@ fn arm64_write_stat_sheet(sheet string, object string, manifest string) {
 // with `-fsyntax-only` has no object; an empty file stands for its success.
 fn arm64_compile_unit(compiler string, args []string, text string, target pref.Target, no_cache bool) !string {
 	mut stats := arm64_cache_stats()
-	return arm64_compile_unit_with(compiler, args, text, target, no_cache, mut stats)
+	mut inputs := arm64_build_c_inputs()
+	return arm64_compile_unit_with(compiler, args, text, target, no_cache, mut stats, mut
+		inputs)
 }
 
-// arm64_compile_unit_with is arm64_compile_unit with the record of a thread: the
-// shared one remembers signatures in maps that only the main thread may touch.
-fn arm64_compile_unit_with(compiler string, args []string, text string, target pref.Target, no_cache bool, mut stats CObjectCacheStats) !string {
+// arm64_compile_unit_with is arm64_compile_unit with the records of a thread: the
+// shared ones remember signatures and inputs in maps and arrays that only the
+// main thread may touch.
+fn arm64_compile_unit_with(compiler string, args []string, text string, target pref.Target, no_cache bool, mut stats CObjectCacheStats, mut inputs Arm64CInputs) !string {
 	if !no_cache {
-		if object := arm64_cached_object_with(compiler, args, text, target, mut stats) {
+		if object := arm64_cached_object_with(compiler, args, text, target, mut stats, mut
+			inputs)
+		{
 			return object
 		}
 	}
@@ -499,6 +583,7 @@ fn arm64_compile_unit_with(compiler string, args []string, text string, target p
 		os.rm(depfile) or {}
 	}
 	syntax_only := '-fsyntax-only' in args
+	started := c_object_scan_start()
 	mut compile_args := args.clone()
 	compile_args << ['-MD', '-MT', 'v3cache', '-MF', depfile]
 	if syntax_only {
@@ -514,18 +599,40 @@ fn arm64_compile_unit_with(compiler string, args []string, text string, target p
 	if syntax_only {
 		os.write_file(staged, '')!
 	}
-	dependencies := c_object_dependencies_from_output(os.read_file(depfile) or { '' }, source)
-	if dependencies.used_fallback {
+	listed := c_object_dependencies_from_output(os.read_file(depfile) or { '' }, source)
+	// A probe's `#line "__v_cprobe__"` is not a file, but `-M` can list it.
+	dependencies := c_object_with_missing_candidates(compiler, args, CObjectDependencies{
+		...listed
+		files: listed.files.filter(os.is_file(it))
+	}, source, '', arm64_cache_dir(), started)
+	if dependencies.used_fallback || arm64_input_changed_since(dependencies.files, source, started) {
+		inputs.fail('the inputs of ${os.file_name(source)} changed or are not known')
 		return staged
 	}
+	inputs.add_dependencies(&dependencies, source)
 	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, args, target, mut stats)
-	// A probe's `#line "__v_cprobe__"` is not a file, but `-M` can list it.
-	files := dependencies.files.filter(os.is_file(it))
-	key := c_object_cache_name(object, compiler, args, files, target, false, mut stats)
+	key := c_object_cache_name(object, compiler, args, dependencies.files, target, false, mut stats)
 	published := os.join_path(arm64_cache_dir(), key)
 	publish_native_c_object(staged, published)!
-	write_c_object_manifest(manifest, published, files, mut stats) or {}
+	write_c_object_manifest(manifest, published, &dependencies, mut stats) or {}
 	return published
+}
+
+// arm64_input_changed_since reports whether a file of a compile, other than its
+// generated source, was written after the compile began. The depfile names the
+// files only once the compile is over, so there is no earlier hash to compare
+// with as compile_cached_c_source_object has: the signature taken now could
+// describe a later version of a header than the object was built from. Such an
+// object is used for this build and not published. Zig declines to trust a time
+// this recent as well (Cache.zig, isProblematicTimestamp); Go's action IDs hash
+// the inputs before the compile (work.Builder.buildActionID).
+fn arm64_input_changed_since(files []string, source string, started i64) bool {
+	for file in files {
+		if file != source && os.file_last_mod_unix(file) >= started {
+			return true
+		}
+	}
+	return false
 }
 
 // arm64_c_unit_compiles reports whether `text` passes the C compiler's syntax
@@ -579,10 +686,12 @@ struct Arm64LinkInputs {
 	no_std             bool
 }
 
-// Arm64PreparedLink is the result of preparing the link inputs on a thread.
+// Arm64PreparedLink is the result of preparing the link inputs on a thread,
+// with what its C compiles read.
 struct Arm64PreparedLink {
-	flags []string
-	error string
+	flags  []string
+	error  string
+	inputs Arm64CInputs
 }
 
 // arm64_prepare_link_inputs builds what the link needs and that does not depend
@@ -598,6 +707,8 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 	// Objects named by `#flag` (Boehm's gc.o, ...) are built from their adjacent
 	// sources with the program's compile flags.
 	mut stats := CObjectCacheStats{}
+	mut c_inputs := Arm64CInputs{}
+	requested := link_flags.clone()
 	link_flags = prepare_c_flags_for_link(link_flags, inputs.environment_cflags, []string{},
 		inputs.optimization_flags, inputs.c99, inputs.no_std, '', side.target_args, inputs.target,
 		side.compiler, false, os.vtmp_dir(), mut stats) or {
@@ -605,8 +716,51 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 			error: err.msg()
 		}
 	}
+	if stats.requests > 0 {
+		c_inputs.add_link_plan(arm64_link_plan_path(requested, side, inputs, mut stats),
+			stats.link_plan_signature)
+	}
+	flags := arm64_compile_link_sources(link_flags, side, inputs, mut c_inputs)
 	return Arm64PreparedLink{
-		flags: arm64_compile_link_sources(link_flags, side, inputs)
+		flags:  flags
+		inputs: c_inputs
+	}
+}
+
+// arm64_link_plan_path is the path of the link plan that prepare_c_flags_for_link
+// keeps for `flags` in arm64_prepare_link_inputs. The plan lists the files that
+// its objects were compiled from, with the program's target arguments.
+fn arm64_link_plan_path(flags []string, side Arm64CSide, inputs Arm64LinkInputs, mut stats CObjectCacheStats) string {
+	mut common_flags := inputs.optimization_flags.clone()
+	common_flags << c_object_compile_support_flags(flags)
+	plan := CObjectFlagPlan{
+		environment_flags: inputs.environment_cflags
+		primary_compiler:  side.compiler
+		common_flags:      common_flags
+	}
+	return c_link_plan_path(os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'), flags,
+		&plan, inputs.c99, inputs.no_std, '', side.target_args, inputs.target, side.compiler,
+		false, mut stats)
+}
+
+// add_link_plan records the files and absent paths of the link plan at `path`,
+// which has to be the plan whose signature preparing the link took: one that was
+// not written, because an object could not be cached, leaves them unknown.
+fn (mut inputs Arm64CInputs) add_link_plan(path string, signature string) {
+	if signature.len == 0 || modulecache.file_signature(path) != signature {
+		inputs.fail('the objects of the link have no plan')
+		return
+	}
+	lines := os.read_lines(path) or {
+		inputs.fail('the plan of the link cannot be read')
+		return
+	}
+	for line in lines {
+		if line.starts_with('missing=') {
+			inputs.missing << line.all_after('missing=')
+		} else if line.starts_with('dependency=') {
+			inputs.files << line.all_after('dependency=').all_before('\t')
+		}
 	}
 }
 
@@ -614,7 +768,7 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 // (`-x c file.c -x none`, fontstash_impl.c) by its cached object, compiled with
 // the program's flags. A source that does not compile stays in the command, whose
 // compiler reports the error.
-fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkInputs) []string {
+fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkInputs, mut c_inputs Arm64CInputs) []string {
 	mut result := []string{cap: flags.len}
 	mut args := side.target_args.clone()
 	args << ['-w', '-fwrapv', '-fno-common']
@@ -628,11 +782,13 @@ fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkI
 			&& flags[i + 4] == 'none' {
 			source := flags[i + 2].trim_space()
 			if object := arm64_compile_unit_with(side.compiler, args, '#include "${source}"\n',
-				side.target, side.no_cache, mut stats) {
+				side.target, side.no_cache, mut stats, mut c_inputs)
+			{
 				result << object
 				i += 5
 				continue
 			}
+			c_inputs.fail('${source} did not compile on its own')
 		}
 		result << flags[i]
 		i++
@@ -672,6 +828,9 @@ fn arm64_external_link(side Arm64CSide, opts Arm64ExternalLink) ! {
 		link_args << '-Wl,-stack_size,0x4000000'
 	}
 	link_args << ['-o', opts.output]
+	mut c_inputs := arm64_build_c_inputs()
+	c_inputs.add_link(link_args, side.compiler, opts.target.os.str(), [os.dir(opts.object),
+		arm64_cache_dir()])
 	if opts.show_cc {
 		println('${side.compiler} ${link_args.join(' ')}')
 	}

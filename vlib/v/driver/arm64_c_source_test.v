@@ -1,5 +1,7 @@
 module driver
 
+import os
+import time
 import v.flat
 import v.pref
 
@@ -174,4 +176,100 @@ fn test_arm64_c_compiler_replaces_tinycc() {
 	assert arm64_c_compiler('') == 'cc'
 	assert arm64_c_compiler('tcc') == 'cc'
 	assert arm64_c_compiler('clang') == 'clang'
+}
+
+// arm64_cache_fixture is a directory of headers and a C unit that names them, kept
+// apart from other runs by a comment. The headers are aged so that the cache takes
+// them as settled.
+fn arm64_cache_fixture(name string) (string, string) {
+	root := os.join_path(os.vtmp_dir(), 'arm64_c_cache_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	return root, '// ${root}\n#include <choice.h>\nint value(void) { return CHOICE; }\n'
+}
+
+fn arm64_cache_age(paths []string) {
+	stamp := time.utc().unix() - 30
+	for path in paths {
+		os.utime(path, stamp, stamp) or { panic(err) }
+	}
+}
+
+fn arm64_cache_hit(args []string, text string) ?string {
+	mut stats := CObjectCacheStats{}
+	mut inputs := Arm64CInputs{}
+	return arm64_cached_object_with('cc', args, text, pref.host_target(), mut stats, mut
+		inputs)
+}
+
+fn arm64_cache_compile(args []string, text string) string {
+	mut stats := CObjectCacheStats{}
+	mut inputs := Arm64CInputs{}
+	return arm64_compile_unit_with('cc', args, text, pref.host_target(), false, mut stats, mut
+		inputs) or { panic(err) }
+}
+
+// The depfile lists the header that was found, not the earlier directory where a
+// new one would be taken first.
+fn test_arm64_object_follows_a_header_added_earlier_in_the_search() {
+	$if macos && arm64 {
+		root, text := arm64_cache_fixture('earlier')
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		earlier := os.join_path(root, 'earlier')
+		later := os.join_path(root, 'later')
+		os.mkdir_all(earlier)!
+		os.mkdir_all(later)!
+		header := os.join_path(later, 'choice.h')
+		os.write_file(header, '#define CHOICE 1\n')!
+		arm64_cache_age([header, earlier, later])
+		args := ['-I', earlier, '-I', later]
+		first := arm64_cache_compile(args, text)
+		assert !first.contains('.tmp.'), first
+		assert arm64_cache_hit(args, text) or { '' } == first
+		os.write_file(os.join_path(earlier, 'choice.h'), '#define CHOICE 2\n')!
+		assert arm64_cache_hit(args, text) == none
+	}
+}
+
+// A file replaced with the same size and modification time has other contents.
+fn test_arm64_object_follows_a_header_with_the_same_size_and_time() {
+	$if macos && arm64 {
+		root, text := arm64_cache_fixture('same_stat')
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		header := os.join_path(root, 'choice.h')
+		os.write_file(header, '#define CHOICE 1\n')!
+		arm64_cache_age([header, root])
+		args := ['-I', root]
+		first := arm64_cache_compile(args, text)
+		unit, _ := arm64_cached_unit_paths(text)!
+		arm64_cache_age([unit])
+		assert arm64_cache_hit(args, text) or { '' } == first
+		before := os.stat(header)!
+		os.write_file(header, '#define CHOICE 2\n')!
+		os.utime(header, before.atime, before.mtime)!
+		after := os.stat(header)!
+		assert after.size == before.size && after.mtime == before.mtime
+		assert arm64_cache_hit(args, text) == none
+	}
+}
+
+// A header written once the compile began may be newer than the object.
+fn test_arm64_object_is_not_published_when_a_header_moved_during_the_compile() {
+	$if macos && arm64 {
+		root, text := arm64_cache_fixture('moved')
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		header := os.join_path(root, 'choice.h')
+		os.write_file(header, '#define CHOICE 1\n')!
+		args := ['-I', root]
+		first := arm64_cache_compile(args, text)
+		assert first.contains('.tmp.'), first
+		assert arm64_cache_hit(args, text) == none
+		os.rm(first) or {}
+	}
 }

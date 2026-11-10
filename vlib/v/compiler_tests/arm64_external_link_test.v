@@ -1,6 +1,7 @@
 module main
 
 import os
+import time
 import v.cmdexec
 
 // The arm64 backend links programs that bring C code with the system linker:
@@ -343,6 +344,156 @@ fn main() {
 			run := cmdexec.run(output, []string{})
 			assert run.exit_code == 0, run.output
 			assert run.output.trim_space() == value, run.output
+		}
+	}
+}
+
+// A build with nothing changed restores its executable before parsing, and any
+// input of the C side (a header included directly or from another header, a `.c`
+// named by `#flag` and its headers, the source beside a `.o`) makes it a miss.
+fn arm64_receipt_age(paths []string) {
+	stamp := time.utc().unix() - 10
+	for path in paths {
+		os.utime(path, stamp, stamp) or { panic(err) }
+	}
+}
+
+fn arm64_receipt_build(source string, output string, expected string) bool {
+	compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-show-timings', '-o', output, source])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(output, []string{})
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == expected, run.output
+	return compiled.output.contains('V3 unchanged build cache hit')
+}
+
+fn test_arm64_unchanged_build_restores_and_follows_its_inputs() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_receipt_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+			os.unsetenv('V3CACHE')
+			os.unsetenv('V3_CACHE_TRACE')
+		}
+		os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+		os.setenv('V3_CACHE_TRACE', '1', true)
+		files := {
+			'v.mod':     ''
+			'value.h':   '#include "nested.h"\n#define PROBE_VALUE NESTED_VALUE\n'
+			'nested.h':  '#define NESTED_VALUE 1\n'
+			'extra.c':   '#include "extra.h"\nint extra_value(void) { return EXTRA_VALUE; }\n'
+			'extra.h':   '#define EXTRA_VALUE 2\n'
+			'object.c':  '#include "object.h"\nint object_value(void) { return OBJECT_VALUE; }\n'
+			'object.h':  '#define OBJECT_VALUE 3\n'
+			'main.v':    '#flag -I @VMODROOT
+#flag @VMODROOT/extra.c
+#flag @VMODROOT/object.o
+#include "@VMODROOT/value.h"
+
+fn C.extra_value() int
+fn C.object_value() int
+
+fn main() {
+	println("0 \${int(C.PROBE_VALUE)} \${C.extra_value()} \${C.object_value()}")
+}
+'
+		}
+		mut paths := [root]
+		for name, content in files {
+			path := os.join_path(root, name)
+			os.write_file(path, content)!
+			paths << path
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		arm64_receipt_age(paths)
+		mut expected := '0 1 2 3'
+		assert !arm64_receipt_build(source, output, expected)
+		assert arm64_receipt_build(source, output, expected)
+		for edit in [
+			['main.v', 'println("0 ', 'println("9 ', '9 1 2 3'],
+			['nested.h', 'VALUE 1', 'VALUE 4', '9 4 2 3'],
+			['value.h', 'NESTED_VALUE\n', '(NESTED_VALUE + 1)\n', '9 5 2 3'],
+			['extra.c', 'return EXTRA_VALUE', 'return 1 + EXTRA_VALUE', '9 5 3 3'],
+			['extra.h', 'VALUE 2', 'VALUE 7', '9 5 8 3'],
+			['object.c', 'return OBJECT_VALUE', 'return 1 + OBJECT_VALUE', '9 5 8 4'],
+			['object.h', 'VALUE 3', 'VALUE 9', '9 5 8 10'],
+		] {
+			path := os.join_path(root, edit[0])
+			os.write_file(path, os.read_file(path)!.replace(edit[1], edit[2]))!
+			arm64_receipt_age(paths)
+			expected = edit[3]
+			assert !arm64_receipt_build(source, output, expected), edit[0]
+			assert arm64_receipt_build(source, output, expected), edit[0]
+		}
+	}
+}
+
+// The C side is compiled as GNU C11 for macOS 11.0, unlike the receipt's own scan
+// of the program's directives. A header that only the real compiles choose, in
+// the support unit, in a `#flag` source and in the source beside a `.o`, is an
+// input of the receipt all the same.
+fn test_arm64_unchanged_build_follows_the_headers_its_c_compiles_chose() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_receipt_flags_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+			os.unsetenv('V3CACHE')
+			os.unsetenv('V3_CACHE_TRACE')
+		}
+		os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+		os.setenv('V3_CACHE_TRACE', '1', true)
+		macos11 := '#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 120000'
+		files := {
+			'v.mod':      ''
+			'value.h':    '#if __STDC_VERSION__ == 201112L\n#include "c11.h"\n#else\n#define C11_VALUE 9\n#endif\n${macos11}\n#include "macos11.h"\n#else\n#define MACOS11_VALUE 9\n#endif\n'
+			'c11.h':      '#define C11_VALUE 1\n'
+			'macos11.h':  '#define MACOS11_VALUE 2\n'
+			'extra.c':    '${macos11}\n#include "extra11.h"\n#else\n#define EXTRA_VALUE 9\n#endif\nint extra_value(void) { return EXTRA_VALUE; }\n'
+			'extra11.h':  '#define EXTRA_VALUE 3\n'
+			'object.c':   '${macos11}\n#include "object11.h"\n#else\n#define OBJECT_VALUE 9\n#endif\nint object_value(void) { return OBJECT_VALUE; }\n'
+			'object11.h': '#define OBJECT_VALUE 4\n'
+			'main.v':     '#flag -I @VMODROOT
+#flag @VMODROOT/extra.c
+#flag @VMODROOT/object.o
+#include "@VMODROOT/value.h"
+
+fn C.extra_value() int
+fn C.object_value() int
+
+fn main() {
+	println("\${int(C.C11_VALUE)} \${int(C.MACOS11_VALUE)} \${C.extra_value()} \${C.object_value()}")
+}
+'
+		}
+		mut paths := [root]
+		for name, content in files {
+			path := os.join_path(root, name)
+			os.write_file(path, content)!
+			paths << path
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		arm64_receipt_age(paths)
+		mut expected := '1 2 3 4'
+		assert !arm64_receipt_build(source, output, expected)
+		assert arm64_receipt_build(source, output, expected)
+		for edit in [
+			['c11.h', 'VALUE 1', 'VALUE 5', '5 2 3 4'],
+			['macos11.h', 'VALUE 2', 'VALUE 6', '5 6 3 4'],
+			['extra11.h', 'VALUE 3', 'VALUE 7', '5 6 7 4'],
+			['object11.h', 'VALUE 4', 'VALUE 8', '5 6 7 8'],
+		] {
+			path := os.join_path(root, edit[0])
+			os.write_file(path, os.read_file(path)!.replace(edit[1], edit[2]))!
+			arm64_receipt_age(paths)
+			expected = edit[3]
+			assert !arm64_receipt_build(source, output, expected), edit[0]
+			assert arm64_receipt_build(source, output, expected), edit[0]
 		}
 	}
 }
