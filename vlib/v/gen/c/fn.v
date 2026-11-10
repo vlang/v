@@ -18028,14 +18028,14 @@ const c_cache_macro_sensitive_extern_symbols = {
 	'tanf':  true
 }
 
-// c_macro_safe_extern_decl parenthesizes the name of a math extern that <tgmath.h>
-// turns into a function-like macro (`double exp(double);` -> `double (exp)(double);`).
+// c_macro_safe_extern_decl protects function prototypes from same-named
+// function-like macros, including tgmath and the Linux cross-bootstrap pipe2 adapter.
 // Any program that includes a header pulling in <tgmath.h> hits this, not just
 // cache-split builds — notably gg's `gg_darwin.m` (Objective-C/Metal) brings it in,
 // so the parenthesized form must be emitted unconditionally. `(exp)(x)` is plain C
 // that calls the function and is inert when no such macro is present.
 fn c_macro_safe_extern_decl(cfn string, declaration string) string {
-	if cfn !in c_cache_macro_sensitive_extern_symbols {
+	if cfn !in c_cache_macro_sensitive_extern_symbols && cfn != 'v_os_process_pipe_cloexec_cross' {
 		return declaration
 	}
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
