@@ -5756,11 +5756,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			}
 			// The three node maps are filled after this loop (nothing here reads
 			// them), beside the signature registrations.
-			fn_node_regs << FnDeclNodeReg{
+			// Both names are AST text that outlives the list: do not copy them.
+			fn_node_regs << moved_fn_decl_node_reg(FnDeclNodeReg{
 				name:   node.value
 				module: cur_module
 				id:     flat.NodeId(node_idx)
-			}
+			})
 			ci_p0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
 			if !has_parallel_fn_preps {
 				prep = g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
@@ -13036,6 +13037,13 @@ struct FnDeclNodeReg {
 	name   string
 	module string
 	id     flat.NodeId
+}
+
+// moved_fn_decl_node_reg returns `reg`; pushing a call result does not
+// deep-copy its names.
+@[inline]
+fn moved_fn_decl_node_reg(reg FnDeclNodeReg) FnDeclNodeReg {
+	return reg
 }
 
 // register_fn_decl_nodes applies deferred register_fn_decl_node calls to one of
