@@ -1306,6 +1306,10 @@ pub mut:
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
+	// solo_starts index the pieces between head_end and solo_end at which a
+	// group of complete definitions begins. Every unit declares them, so a
+	// build that shares one parse of the head may spread them over its units.
+	solo_starts []int
 }
 
 // c_source joins the generated C pieces into one string.
@@ -3095,16 +3099,27 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_definition_prototypes(interface_dispatches)
 	pieces << shared_conditional_includes
 	head_end := pieces.len
+	mut solo_starts := []int{cap: 64}
+	solo_starts << pieces.len
 	pieces << fastc_piece(runtime_definitions)
+	// Every kept helper range holds complete functions.
+	helpers_start := pieces.len
 	fastc_collect_c_piece_ranges(mut pieces, type_output.enum_helper_texts, kept_helper_ranges)
+	for k in helpers_start .. pieces.len {
+		solo_starts << k
+	}
 	if spawn_helpers.len > 0 {
 		for spawn_helper_name in spawn_helper_names {
+			solo_starts << pieces.len
 			pieces << spawn_helpers[spawn_helper_name]
 			pieces << '\n'
 			pieces << '\n'
 		}
 	}
+	solo_starts << pieces.len
 	pieces << fastc_piece(interface_dispatches)
+	// The initializer, the cleanup hook and the entry are one function each.
+	solo_starts << pieces.len
 	if startup_initializers.len > 0 {
 		pieces << 'void v_fastc_init_globals(void) {'
 		pieces << '\n'
@@ -3113,6 +3128,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 		pieces << '\n'
 	}
+	solo_starts << pieces.len
 	if module_cleanup_calls.len > 0 {
 		pieces << 'void v_fastc_cleanup_modules(void) {'
 		pieces << '\n'
@@ -3181,6 +3197,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	units.extern_indexes = extern_indexes
 	units.extern_texts = extern_texts
 	units.define_texts = define_texts
+	units.solo_starts = solo_starts
 	if prune_unreachable {
 		units.prototype_start = prototype_start
 		units.prototype_end = prototype_end
@@ -3800,6 +3817,54 @@ fn fastc_extern_declarations(text string, as_extern bool) string {
 	return out.str()
 }
 
+// fastc_c_conditional_directive reports whether the line is `#if`, `#ifdef`,
+// `#ifndef`, `#elif`, `#else` or `#endif`.
+fn fastc_c_conditional_directive(line string) bool {
+	if line.len < 3 || line[0] != `#` {
+		return false
+	}
+	directive := line[1..].trim_left(' \t')
+	return directive.starts_with('if') || directive.starts_with('el')
+		|| directive.starts_with('endif')
+}
+
+// fastc_external_definitions returns only the definitions that
+// fastc_extern_declarations makes external. A translation unit that already
+// holds the `extern` declarations of `text` defines them with this. The
+// conditional directives around them stay, so the same alternative is defined.
+fn fastc_external_definitions(text string) string {
+	if !fastc_contains(text, 'static ') {
+		return ''
+	}
+	mut out := strings.new_builder(text.len)
+	lines := text.split_into_lines()
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
+		if fastc_c_conditional_directive(line) {
+			out.writeln(line)
+			i++
+			continue
+		}
+		if line.starts_with('static ') && line.contains(') {') {
+			out.writeln(fastc_external_function_header(line, false))
+			mut depth := line.count('{') - line.count('}')
+			i++
+			for i < lines.len && depth > 0 {
+				out.writeln(lines[i])
+				depth += lines[i].count('{') - lines[i].count('}')
+				i++
+			}
+			continue
+		}
+		if line.starts_with('static ') && !fastc_contains(line, '(') && line.ends_with(';') {
+			out.writeln(line['static '.len..])
+		}
+		i++
+	}
+	return out.str()
+}
+
 // fastc_parallel_worker_limit is the number of worker threads or compiler
 // processes a parallel phase may run at once: the CPU count, overridden by
 // VJOBS, and 1 when parallelism is disabled.
@@ -4088,6 +4153,9 @@ mut:
 	read_fds  []int
 	write_fds []int
 	active    bool
+pub mut:
+	// zygote compiles the units of a build that does not use the processes above.
+	zygote FastcZygote
 }
 
 // FastcFeedingCUnits holds the workers that copy rendered translation units

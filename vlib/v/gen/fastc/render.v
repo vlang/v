@@ -5685,6 +5685,11 @@ fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 		|| fastc_typed_option_payload(unwrapped) != none {
 		return g.sumtype_has_variant(expected_type, unwrapped)
 	}
+	if unwrapped == fastc_type_multi_return {
+		// The values of `return match x { a { one, two } }` are a tuple, whatever its
+		// first component's type is.
+		return false
+	}
 	resolved_actual := g.underlying_alias_type(actual_type)
 	if g.declared_kinds[g.semantic_type_key(resolved_actual)] == .struct_ {
 		return true

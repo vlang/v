@@ -1176,6 +1176,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					// Slicing a `mut` string local copies bytes of the string it refers to.
 					return flat.source_type_syntax(base_type).c_pointer_base()
 				}
+				if flat.source_type_query(base_layout_id).has(.c_array_prefix) {
+					// Slicing an array behind a pointer (a `mut` parameter) yields an array value.
+					return fastc_trim_pointer_type(base_type)
+				}
 				return base_type
 			}
 			if flat.source_type_query(base_layout_id).has(.c_map_prefix) {
@@ -1650,6 +1654,9 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 
 						current_type = fastc_array_c_type_id(fastc_normalize_inferred_type(element))
 					}
+				} else if flat.source_type_query(current_layout_id).has(.c_array_prefix) {
+					// Slicing an array behind a pointer yields an array value.
+					current_type = fastc_trim_pointer_type(current_type)
 				}
 			} else if current_layout_id == flat.source_type_string || g.is_string_layout(current_type) {
 				current_type = g.indexed_string_type(current_type, tokens[start..index])

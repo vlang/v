@@ -2943,7 +2943,9 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 			}
 			close := fastc_matching_rpar(tokens, open) or { continue }
 			if close == tokens.len - 1 {
-				return g.type_from_expression_tokens(tokens[1..open]) or { u32(0) }
+				return g.type_from_expression_tokens(tokens[1..open]) or {
+					g.fixed_array_type_from_expression_tokens(tokens[1..open]) or { u32(0) }
+				}
 			}
 			break
 		}

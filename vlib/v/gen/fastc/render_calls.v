@@ -385,6 +385,9 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			return none
 		}
 		c_type = (g.type_from_expression_tokens(tokens[type_start..i]) or { u32(0) })
+		if c_type == u32(0) && is_option_cast {
+			c_type = g.fixed_array_type_from_expression_tokens(tokens[type_start..i]) or { u32(0) }
+		}
 		if c_type == u32(0) && i == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name && tokens[2].lit.len > 0 && tokens[2].lit[0].is_capital() && 'C.${tokens[2].lit}' !in g.functions {
 			c_type = flat.source_type_id(tokens[2].lit)
 		}
@@ -1033,6 +1036,12 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 		// A call operand (`Stmt(f(node.arr[0]))`): the raw streamed text leaves the call's
 		// arguments un-lowered (e.g. an array index on a match-cast member stays an invalid C
 		// `[0]` on the array header), so render it through the argument path.
+		g.render_call_argument_expression(inner_tokens, actual_type) or {
+			rendered_expression[prefix.len..rendered_expression.len - 2]
+		}
+	} else if fastc_expression_tokens_contain(inner_tokens, .lsbr) {
+		// An indexed operand (`Shape(shapes[i])`): the raw streamed text keeps the V index
+		// on the array header, which is not valid C, so lower it through the argument path.
 		g.render_call_argument_expression(inner_tokens, actual_type) or {
 			rendered_expression[prefix.len..rendered_expression.len - 2]
 		}

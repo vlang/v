@@ -180,6 +180,11 @@ const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_tcc_dylib_flag = '-v3-internal-tcc-dylib'
 const v3_internal_tcc_no_retry_flag = '-v3-internal-tcc-no-retry'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
+
+// project_backend_flag precedes the `-b` that the launcher adds for the `backend` of a
+// project's v.mod. Such a backend is the project's default: unlike a `-b` on the command
+// line, it does not ask for the generated C to be kept next to the output.
+pub const project_backend_flag = '-v3-internal-project-backend'
 // The temporary sources of `-e` code and of standard input start with these names. They are
 // written to the working directory so that its modules resolve, but belong to no project.
 const v3_inline_source_prefix = '.v3_inline_'
@@ -9596,6 +9601,7 @@ $if !skip_fastc ? {
 		mut rendering_units := fastc.FastcRenderingCUnits{}
 		mut feeding_units := fastc.FastcFeedingCUnits{}
 		mut feeds_prestarted := false
+		mut zygote_plan := fastc.FastcZygotePlan{}
 		$if macos {
 			if !cache_enabled {
 				if uses_prestarted {
@@ -9608,11 +9614,17 @@ $if !skip_fastc ? {
 					}
 					feeds_prestarted = true
 				} else {
-					rendering_units =
-						fastc.fastc_begin_render_c_units(unit_prefix, pieces, units, jobs)
+					if jobs > 1 && fastc.fastc_zygote_accepts(&prestarted.zygote, compile_args) {
+						zygote_plan = fastc.fastc_zygote_plan(unit_prefix, pieces, units, fastc.fastc_zygote_unit_limit(prefs))
+					}
+					if zygote_plan.paths.len == 0 {
+						rendering_units =
+							fastc.fastc_begin_render_c_units(unit_prefix, pieces, units, jobs)
+					}
 				}
 			}
 		}
+		uses_zygote := zygote_plan.paths.len > 0
 		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.pieces,
 			build_dir, payload_cache_enabled)
 		// The program's translation units are compiled by concurrent TinyCC
@@ -9645,16 +9657,25 @@ $if !skip_fastc ? {
 				&& final_args[0] == os.join_path(build_dir, 'host_support_darwin.c')
 		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
-		// The pieces already identify the payload, wherever its object is stored.
-		payload_object := payload_compile.wait()
-		if payload_object.error != '' {
-			return V3FastCCompileResult{
-				command: cmdexec.display(tcc_path, compile_args)
-				output:  payload_object.error
+		// The pieces already identify the payload, wherever its object is stored. Only
+		// the link needs it, so a zygote build looks it up while its units compile.
+		mut payload_pending := uses_zygote
+		defer {
+			if payload_pending {
+				payload_compile.wait()
 			}
 		}
-		if payload_object.path != '' {
-			final_args << payload_object.path
+		if !payload_pending {
+			payload_object := payload_compile.wait()
+			if payload_object.error != '' {
+				return V3FastCCompileResult{
+					command: cmdexec.display(tcc_path, compile_args)
+					output:  payload_object.error
+				}
+			}
+			if payload_object.path != '' {
+				final_args << payload_object.path
+			}
 		}
 		// A restored link reuses the native inputs: they must be validated first.
 		if generation_link_cache_key != '' && !validation.wait() {
@@ -9682,6 +9703,8 @@ $if !skip_fastc ? {
 		mut unit_paths := []string{}
 		if feeds_prestarted {
 			unit_paths = feeding_units.paths.clone()
+		} else if uses_zygote {
+			unit_paths = zygote_plan.paths.clone()
 		} else if rendering_units.paths.len > 0 {
 			unit_paths = rendering_units.paths.clone()
 		}
@@ -9723,7 +9746,7 @@ $if !skip_fastc ? {
 				}
 			} else {
 				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_args, final_args)
-				preload_link := (feeds_prestarted || rendering_units.paths.len > 0)
+				preload_link := (feeds_prestarted || uses_zygote || rendering_units.paths.len > 0)
 					&& fastc.fastc_prepared_link_accepts_inputs(&prepared_link)
 				mut native_compile := fastc.FastcNativeCompile{}
 				defer {
@@ -9742,6 +9765,15 @@ $if !skip_fastc ? {
 						}
 					}
 					fastc.fastc_finish_prestarted_c_units(mut prestarted, mut feeding_units, prepared_units, mut prepared_link, preload_link) or {
+						fastc.fastc_discard_link(mut prepared_link)
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output:  err.msg()
+						}
+					}
+				} else if uses_zygote {
+					fastc.fastc_compile_zygote_c_units(mut prestarted.zygote, compile_args, link_inputs, pieces, units, zygote_plan, mut prepared_link, preload_link) or {
 						fastc.fastc_discard_link(mut prepared_link)
 						fastc.write_c_pieces(source_file, pieces) or {}
 						return V3FastCCompileResult{
@@ -9785,6 +9817,22 @@ $if !skip_fastc ? {
 					return V3FastCCompileResult{
 						native_inputs_changed: true
 						cached_objects:        cached_objects
+					}
+				}
+				if payload_pending {
+					payload_pending = false
+					payload_object := payload_compile.wait()
+					if payload_object.error != '' {
+						fastc.fastc_discard_link(mut prepared_link)
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output:  payload_object.error
+						}
+					}
+					if payload_object.path != '' {
+						final_args << payload_object.path
+						display_args << payload_object.path
+						command = cmdexec.display(tcc_path, display_args)
 					}
 				}
 				finish_inputs := if preload_link { []string{} } else { link_inputs }
@@ -9968,6 +10016,7 @@ pub fn run(args []string) {
 	mut explicit_output := false
 	mut backend := 'c'
 	mut backend_explicit := false
+	mut backend_from_project := false
 	mut target_os := os.user_os()
 	mut cross_output := false
 	mut target_os_explicit := false
@@ -10150,9 +10199,12 @@ pub fn run(args []string) {
 				no_cache = true
 			}
 			i += 2
+		} else if args[i] == project_backend_flag {
+			backend_from_project = true
+			i++
 		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
 			backend = normalize_backend_name(args[i + 1])
-			backend_explicit = true
+			backend_explicit = !backend_from_project
 			i += 2
 		} else if args[i] == '-cross' {
 			// A modifier, not a target: it combines with `-os`/`-cc`, as in
@@ -11665,12 +11717,22 @@ pub fn run(args []string) {
 					}
 				}
 			}
+			$if macos {
+				if !c_only && !c_compiler_explicit && !fastc_cross_target
+					&& prestart_workers.len == 0 {
+					// The process that will compile the C is forked before the
+					// generation makes this one large.
+					prestarted_fastc_units.zygote = fastc.fastc_start_zygote(fastc.fastc_zygote_unit_limit(prefs),
+						fastc.fastc_zygote_head_path(input_file))
+				}
+			}
 			defer {
 				$if macos {
 					if prestart_workers.len > 0 {
 						prestarted_fastc_units = prestart_workers[0].wait()
 					}
 					fastc.fastc_discard_prestarted_c_units(mut prestarted_fastc_units)
+					fastc.fastc_discard_zygote(mut prestarted_fastc_units.zygote)
 				}
 			}
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
@@ -11740,6 +11802,9 @@ pub fn run(args []string) {
 				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, parallel_cc, native_compiler_version, mut prestarted_fastc_units)
 			}
 
+			if os.getenv('FASTC_BENCH_PHASES') != '' {
+				eprintln('fastc-phase driver.compiled ${driver_sw.elapsed().microseconds()}us')
+			}
 			if (verbose || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
@@ -11800,6 +11865,9 @@ pub fn run(args []string) {
 				b.step('run')
 			}
 			b.print_report()
+			if os.getenv('FASTC_BENCH_PHASES') != '' {
+				eprintln('fastc-phase driver.done ${driver_sw.elapsed().microseconds()}us')
+			}
 			return
 		}
 	}

@@ -327,6 +327,14 @@ TinyCC (`thirdparty/tcc/tcc.exe`). The FastC self-host compiler described below 
 pthreads and uses header-free C ABI tables for macOS and glibc Linux, so `-selfhost -b fastc` and
 `v self -b fastc` reject Windows targets.
 
+The generated C is compiled as several translation units that share a head of declarations. On
+macOS, a compiler built by Clang parses that head once: before it generates C it forks a copy of
+itself, which holds one TinyCC state and, after the head, continues as one process per unit
+(`FastcZygote` in `vlib/v/gen/fastc/zygote.v`). Other compilers start one TinyCC process per unit.
+A large program also keeps its head in the temporary folder. A second copy parses that text while
+the next build generates its C, and the units start from it when the new head is the same text,
+as it is after an edit that only changes function bodies. `V3_FASTC_NO_ZYGOTE=1` turns both off.
+
 `-selfhost -b fastc -o v4 vlib/v/v.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v.fastcdriver` entry point and can build further FastC generations without
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
