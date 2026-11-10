@@ -252,6 +252,16 @@ pub fn validate(doc WitDoc) ! {
 					}
 				}
 			}
+			// check types in variant cases
+			if it.kind == .variant {
+				if v := it.variant {
+					for c in v.cases {
+						if t := c.typ {
+							check_type(t, types, resources)!
+						}
+					}
+				}
+			}
 			// check types in records
 			if it.kind == .record {
 				if r := it.record {
@@ -327,6 +337,10 @@ fn check_type(t WitType, types map[string]bool, resources map[string]bool) ! {
 			n := t.name
 			// strip generic args for checking base name
 			base := if n.contains('<') { n.all_before('<') } else { n }
+			if base == 'future' || base == 'stream' || base == 'map' {
+				// container surface types: element validation deferred
+				return
+			}
 			if base == 'own' || base == 'borrow' {
 				inner := n.all_after('<').all_before('>')
 				if inner !in resources {

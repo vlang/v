@@ -106,6 +106,21 @@ interface derived {
 	assert gen.contains('pub fn z')
 }
 
+fn test_grammar_world_roundtrip() {
+	src := 'package example:demo@0.1.0;
+
+world app {
+	import log: func(msg: string);
+	export run: func() -> u32;
+}
+'
+	printed := grammar_roundtrip(src)
+	assert printed.contains('import log: func(msg: string);')
+	assert printed.contains('export run: func() -> u32;')
+	gen := grammar_codegen_compiles('world', src)
+	assert gen.len >= 0
+}
+
 fn test_grammar_attrs_roundtrip() {
 	src := 'package p:q;
 

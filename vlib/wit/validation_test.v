@@ -97,6 +97,23 @@ interface i {
 ', 'error_static_method_takes_resource')
 }
 
+fn test_validate_containers_ok() {
+	src := 'package p:q;
+
+interface i {
+	resource handle {
+		constructor();
+	}
+	a: func() -> future<string>;
+	b: func() -> stream<u8>;
+	m: func() -> map<string, u32>;
+	t: func(h: own<handle>) -> borrow<handle>;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or { panic(err) }
+}
+
 fn test_validate_multi_interface_ok() {
 	src2 := 'package example:demo@0.1.0;
 
