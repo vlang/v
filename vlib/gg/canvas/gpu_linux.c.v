@@ -1,5 +1,7 @@
 module canvas
 
+// glibc exposes dl_phdr_info only with _GNU_SOURCE set before any headers.
+#flag linux -D_GNU_SOURCE
 #include "@DIR/gpu_egl_linux.h"
 
 fn C.v_canvas_egl_create(message &&char) voidptr
