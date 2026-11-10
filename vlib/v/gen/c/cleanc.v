@@ -5432,6 +5432,31 @@ mut:
 	registration     FnSignatureRegistration
 }
 
+// CollectGenFnPrepJob holds what one parallel prep task resolved: the used
+// function declarations among the top-level positions below `end`, in order.
+struct CollectGenFnPrepJob {
+mut:
+	end       int
+	positions []i32
+	preps     []CollectGenFnPrep
+}
+
+// CollectGenFnPreps is the result of collect_gen_info_fn_preps; `jobs` cover
+// consecutive ranges of the top-level nodes. It is not ready when the
+// signatures were not resolved in parallel.
+struct CollectGenFnPreps {
+mut:
+	ready bool
+	jobs  []CollectGenFnPrepJob
+}
+
+// moved_collect_gen_fn_prep returns `prep`; pushing a call result does not
+// deep-copy it.
+@[inline]
+fn moved_collect_gen_fn_prep(prep CollectGenFnPrep) CollectGenFnPrep {
+	return prep
+}
+
 struct FnSignatureRegistration {
 	module_key    string
 	short_name    string
@@ -5640,7 +5665,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut cisub_sw := time.new_stopwatch()
 	g.finish_type_indexes(type_index_args, type_index_threads)
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
-	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
+	has_parallel_fn_preps := fn_preps.ready
+	// The prepared declarations are consumed in top-level order.
+	mut prep_job := 0
+	mut prep_idx := 0
 	if profile {
 		g.timing_profile('  [ttime]   ci fn preps      ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cisub_sw.restart()
@@ -5686,10 +5714,17 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 		if kind_id == 61 {
 			ci_t0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
-			mut prep := if has_parallel_fn_preps {
-				fn_preps[top_level_pos]
-			} else {
-				CollectGenFnPrep{}
+			mut prep := CollectGenFnPrep{}
+			if has_parallel_fn_preps {
+				for prep_job < fn_preps.jobs.len && top_level_pos >= fn_preps.jobs[prep_job].end {
+					prep_job++
+					prep_idx = 0
+				}
+				if prep_job < fn_preps.jobs.len && prep_idx < fn_preps.jobs[prep_job].positions.len
+					&& fn_preps.jobs[prep_job].positions[prep_idx] == top_level_pos {
+					prep = fn_preps.jobs[prep_job].preps[prep_idx]
+					prep_idx++
+				}
 			}
 			if (has_parallel_fn_preps && !prep.prepared) || (!has_parallel_fn_preps && g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module)) {
 				if g.incremental_fn_names.len == 0 {

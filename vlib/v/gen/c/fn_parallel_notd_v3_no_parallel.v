@@ -67,13 +67,16 @@ mut:
 struct CollectGenInfoFnPrepArgs {
 	g            voidptr // read-only &FlatGen master
 	node_ids_ptr voidptr // &[]i32
-	preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
 	start        int
 	end          int
 	file         string
 	module_name  string
 	// registrations also builds each signature's alias registration.
 	registrations bool
+mut:
+	// The used function declarations of [start, end), in order.
+	positions []i32
+	preps     []CollectGenFnPrep
 }
 
 struct CollectGenInfoScanArgs {
@@ -156,13 +159,22 @@ fn flat_cgen_select_thread(arg voidptr) voidptr {
 }
 
 fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
-	a := unsafe { &CollectGenInfoFnPrepArgs(arg) }
+	mut a := unsafe { &CollectGenInfoFnPrepArgs(arg) }
 	master := unsafe { &FlatGen(a.g) }
 	mut view := master.new_collect_gen_info_view()
 	view.tc.cur_file = a.file
 	view.tc.cur_module = a.module_name
 	node_ids := unsafe { &[]i32(a.node_ids_ptr) }
-	mut preps := unsafe { &[]CollectGenFnPrep(a.preps_ptr) }
+	// One compact entry per used declaration: an entry is some 300 bytes, and
+	// most top-level nodes are no used function.
+	mut n_fns := 0
+	for pos in a.start .. a.end {
+		if unsafe { view.a.nodes[node_ids[pos]].kind } == .fn_decl {
+			n_fns++
+		}
+	}
+	a.positions = []i32{cap: n_fns}
+	a.preps = []CollectGenFnPrep{cap: n_fns}
 	mut cur_file := a.file
 	mut cur_module := a.module_name
 	for pos in a.start .. a.end {
@@ -183,9 +195,8 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 					prep.return_type)
 				prep.has_registration = true
 			}
-			unsafe {
-				preps[pos] = prep
-			}
+			a.positions << i32(pos)
+			a.preps << moved_collect_gen_fn_prep(prep)
 		}
 	}
 	return unsafe { nil }
@@ -1348,14 +1359,13 @@ fn (mut g FlatGen) finish_fixed_array_ret_wrappers(mut wrapper_workers []&FlatGe
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
 // worker pool. Registration stays serial in collect_gen_info, preserving all
 // source-order and duplicate-declaration semantics.
-fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, with_registrations bool) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, with_registrations bool) CollectGenFnPreps {
 	if no_parallel || isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0
 		|| node_ids.len < 2048 || os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
-		return []CollectGenFnPrep{}
+		return CollectGenFnPreps{}
 	}
 	n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, node_ids.len,
 		g.flat_cgen_job_limit())
-	mut preps := []CollectGenFnPrep{len: node_ids.len}
 	mut context_files := []string{len: n_jobs}
 	mut context_modules := []string{len: n_jobs}
 	mut cur_file := ''
@@ -1386,7 +1396,6 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, w
 		args << CollectGenInfoFnPrepArgs{
 			g:             voidptr(g)
 			node_ids_ptr:  unsafe { voidptr(&node_ids) }
-			preps_ptr:     unsafe { voidptr(&preps) }
 			start:         node_ids.len * job / n_jobs
 			end:           node_ids.len * (job + 1) / n_jobs
 			file:          context_files[job]
@@ -1402,6 +1411,29 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, w
 		}
 	}
 	g.a.worker_pool.run(tasks)
+	mut preps := CollectGenFnPreps{
+		ready: true
+		jobs:  []CollectGenFnPrepJob{cap: n_jobs}
+	}
+	for i in 0 .. args.len {
+		preps.jobs << CollectGenFnPrepJob{
+			end:       args[i].end
+			positions: moved_fn_prep_positions(args[i].positions)
+			preps:     moved_fn_preps(args[i].preps)
+		}
+	}
+	return preps
+}
+
+// moved_fn_prep_positions and moved_fn_preps return their argument: a call
+// result is stored without the deep copy of an addressable array.
+@[inline]
+fn moved_fn_prep_positions(positions []i32) []i32 {
+	return positions
+}
+
+@[inline]
+fn moved_fn_preps(preps []CollectGenFnPrep) []CollectGenFnPrep {
 	return preps
 }
 

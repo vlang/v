@@ -64,8 +64,8 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(_ bool) bool 
 	return false
 }
 
-fn (mut g FlatGen) collect_gen_info_fn_preps(_ []i32, _ bool, _ bool) []CollectGenFnPrep {
-	return []CollectGenFnPrep{}
+fn (mut g FlatGen) collect_gen_info_fn_preps(_ []i32, _ bool, _ bool) CollectGenFnPreps {
+	return CollectGenFnPreps{}
 }
 
 fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
