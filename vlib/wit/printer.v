@@ -1,5 +1,22 @@
 module wit
 
+fn wit_func_sig(f WitFunc) string {
+	mut ps := []string{}
+	for p in f.params {
+		ps << '${p.name}: ${p.typ.str()}'
+	}
+	if f.results.len == 0 {
+		return 'func(${ps.join(', ')})'
+	} else if f.results.len == 1 {
+		return 'func(${ps.join(', ')}) -> ${f.results[0].str()}'
+	}
+	mut rs := []string{}
+	for r in f.results {
+		rs << r.str()
+	}
+	return 'func(${ps.join(', ')}) -> (${rs.join(', ')})'
+}
+
 pub fn (d WitDoc) str() string {
 	mut out := []string{}
 	if d.package.name != '' {
@@ -9,8 +26,14 @@ pub fn (d WitDoc) str() string {
 	}
 	for iface in d.interfaces {
 		out << ''
+		for a in iface.attrs {
+			out << a
+		}
 		out << 'interface ${iface.name} {'
 		for it in iface.items {
+			for a in it.attrs {
+				out << '\t${a}'
+			}
 			if it.kind == .use {
 				if u := it.use_ {
 					out << '\tuse ${u.path}.{${u.items.join(', ')}};'
@@ -29,20 +52,24 @@ pub fn (d WitDoc) str() string {
 					if r := it.resource {
 						out << '\tresource ${r.name} {'
 						for m in r.methods {
+							for a in m.attrs {
+								out << '\t\t${a}'
+							}
 							mut ps := []string{}
 							for p in m.params { ps << '${p.name}: ${p.typ.str()}' }
 							if m.name == 'constructor' {
 								out << ('\t\tconstructor(' + ps.join(', ') + ');')
 								continue
 							}
+							prefix := if m.is_static { 'static ' } else { '' }
 							if m.results.len == 0 {
-								out << '\t\t${m.name}: func(${ps.join(', ')});'
+								out << '\t\t${m.name}: ${prefix}func(${ps.join(', ')});'
 							} else if m.results.len == 1 {
-								out << '\t\t${m.name}: func(${ps.join(', ')}) -> ${m.results[0].str()};'
+								out << '\t\t${m.name}: ${prefix}func(${ps.join(', ')}) -> ${m.results[0].str()};'
 							} else {
 								mut rs := []string{}
 								for rr in m.results { rs << rr.str() }
-								out << '\t\t${m.name}: func(${ps.join(', ')}) -> (${rs.join(', ')});'
+								out << '\t\t${m.name}: ${prefix}func(${ps.join(', ')}) -> (${rs.join(', ')});'
 							}
 						}
 						out << '\t}'
@@ -70,17 +97,20 @@ pub fn (d WitDoc) str() string {
 	}
 	for w in d.worlds {
 		out << ''
+		for a in w.attrs {
+			out << a
+		}
 		out << 'world ${w.name} {'
 		for imp in w.imports {
-			if imp.func != none {
-				out << '\timport ${imp.name}: func(...);'
+			if f := imp.func {
+				out << '\timport ${imp.name}: ${wit_func_sig(f)};'
 			} else if imp.interface != '' {
 				out << '\timport ${imp.name};'
 			}
 		}
 		for exp in w.exports {
-			if exp.func != none {
-				out << '\texport ${exp.name}: func(...);'
+			if f := exp.func {
+				out << '\texport ${exp.name}: ${wit_func_sig(f)};'
 			} else if exp.interface != '' {
 				out << '\texport ${exp.name};'
 			}

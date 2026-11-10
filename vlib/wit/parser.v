@@ -26,12 +26,14 @@ fn (mut p Parser) parse_doc() !WitDoc {
 		doc.package = p.parse_package()!
 	}
 	for p.peek_kind() != .eof {
-		p.skip_attributes()
+		attrs := p.collect_attributes()
 		if p.peek_ident() == 'interface' {
-			iface := p.parse_interface()!
+			mut iface := p.parse_interface()!
+			iface.attrs = attrs
 			doc.interfaces << iface
 		} else if p.peek_ident() == 'world' {
-			w := p.parse_world(mut doc)!
+			mut w := p.parse_world(mut doc)!
+			w.attrs = attrs
 			doc.worlds << w
 		} else {
 			return error('expected interface or world at ${p.pos()}')
@@ -133,46 +135,47 @@ fn (mut p Parser) parse_interface() !WitInterface {
 }
 
 fn (mut p Parser) parse_item() !WitItem {
-	p.skip_attributes()
+	attrs := p.collect_attributes()
 	// use
 	if p.peek_ident() == 'use' {
 		u := p.parse_use()!
-		return WitItem{ kind: .use, use_: u }
+		return WitItem{ kind: .use, use_: u, attrs: attrs }
 	}
 	// type alias
 	if p.peek_ident() == 'type' {
 		td := p.parse_type_def()!
-		return WitItem{ kind: .type_alias, type_def: td }
+		return WitItem{ kind: .type_alias, type_def: td, attrs: attrs }
 	}
 	// record
 	if p.peek_ident() == 'record' {
 		r := p.parse_record()!
-		return WitItem{ kind: .record, record: r }
+		return WitItem{ kind: .record, record: r, attrs: attrs }
 	}
 	// variant
 	if p.peek_ident() == 'variant' {
 		v := p.parse_variant()!
-		return WitItem{ kind: .variant, variant: v }
+		return WitItem{ kind: .variant, variant: v, attrs: attrs }
 	}
 	// enum
 	if p.peek_ident() == 'enum' {
 		e := p.parse_enum()!
-		return WitItem{ kind: .enum_, enum_: e }
+		return WitItem{ kind: .enum_, enum_: e, attrs: attrs }
 	}
 	// flags
 	if p.peek_ident() == 'flags' {
 		f := p.parse_flags()!
-		return WitItem{ kind: .flags, flags: f }
+		return WitItem{ kind: .flags, flags: f, attrs: attrs }
 	}
 	// resource
 	if p.peek_ident() == 'resource' {
 		r := p.parse_resource()!
-		return WitItem{ kind: .resource, resource: r }
+		return WitItem{ kind: .resource, resource: r, attrs: attrs }
 	}
 	// func item: name: func(...) or name: static func(...)
 	if p.peek().kind == .ident && p.idx + 1 < p.toks.len && p.toks[p.idx + 1].val == ':' {
-		f := p.parse_func_item()!
-		return WitItem{ kind: .func, func: f }
+		mut f := p.parse_func_item()!
+		f.attrs = attrs
+		return WitItem{ kind: .func, func: f, attrs: attrs }
 	}
 	return error('unexpected item at ${p.pos()}')
 }
@@ -305,13 +308,13 @@ fn (mut p Parser) parse_resource() !WitResource {
 	mut r := WitResource{ name: name }
 	p.expect_punct('{')!
 	for !(p.peek().kind == .punct && p.peek().val == '}') {
-		p.skip_attributes()
+		mattrs := p.collect_attributes()
 		if p.peek_ident() == 'constructor' {
 			p.advance()
 			p.expect_punct('(')!
 			params := p.parse_param_list()!
 			p.expect_punct(')')!
-			f := WitFunc{ name: 'constructor', params: params, results: [] }
+			f := WitFunc{ name: 'constructor', params: params, results: [], attrs: mattrs }
 			r.methods << f
 			if p.peek().kind == .punct && (p.peek().val == ';' || p.peek().val == ',') {
 				p.advance()
@@ -320,7 +323,8 @@ fn (mut p Parser) parse_resource() !WitResource {
 		}
 		// method: name: [static] func(...)
 		if p.peek().kind == .ident && p.idx + 1 < p.toks.len && p.toks[p.idx + 1].val == ':' {
-			f := p.parse_func_item()!
+			mut f := p.parse_func_item()!
+			f.attrs = mattrs
 			r.methods << f
 			continue
 		}
@@ -334,7 +338,11 @@ fn (mut p Parser) parse_func_item() !WitFunc {
 	name := p.expect_ident()!
 	p.expect_punct(':')!
 	// optional static
-	if p.peek_ident() == 'static' { p.advance() }
+	mut is_static := false
+	if p.peek_ident() == 'static' {
+		p.advance()
+		is_static = true
+	}
 	if p.peek_ident() == 'func' { p.advance() }
 	p.expect_punct('(')!
 	params := p.parse_param_list()!
@@ -345,7 +353,7 @@ fn (mut p Parser) parse_func_item() !WitFunc {
 		results = p.parse_result_list()!
 	}
 	if p.peek().kind == .punct && (p.peek().val == ';' || p.peek().val == ',') { p.advance() }
-	return WitFunc{ name: name, params: params, results: results }
+	return WitFunc{ name: name, params: params, results: results, is_static: is_static }
 }
 
 fn (mut p Parser) parse_param_list() ![]WitParam {
@@ -448,7 +456,7 @@ fn (mut p Parser) parse_type() !WitType {
 			args << p.parse_type()!.str()
 		}
 		p.expect_punct('>')!
-		return WitType{ kind: .named, name: '${name}<${args.join(", ")}>' }
+		return WitType{ kind: .named, name: '${name}<${args.join(', ')}>' }
 	}
 	if is_prim_name(name) {
 		return prim_type(name)
@@ -524,14 +532,37 @@ fn (mut p Parser) parse_world(mut doc WitDoc) !WitWorld {
 }
 
 fn (mut p Parser) skip_attributes() {
+	p.collect_attributes()
+}
+
+fn join_attr_parts(parts []string) string {
+	mut s := parts.join(' ')
+	s = s.replace('( ', '(')
+	s = s.replace(' )', ')')
+	s = s.replace(' . ', '.')
+	s = s.replace(' , ', ', ')
+	return s
+}
+
+// collect_attributes consumes @... attribute annotations and returns them in
+// canonical spacing (identical AST on reparse).
+fn (mut p Parser) collect_attributes() []string {
+	mut out := []string{}
 	for p.peek().kind == .punct && p.peek().val == '@' {
 		p.advance()
-		if p.peek().kind == .ident { p.advance() }
+		mut name := ''
+		if p.peek().kind == .ident {
+			name = p.peek().val
+			p.advance()
+		}
 		if p.peek().kind == .punct && p.peek().val == '(' {
-			mut depth := 0
+			p.advance()
+			mut parts := []string{}
+			mut depth := 1
 			for p.idx < p.toks.len {
 				if p.peek().kind == .punct && p.peek().val == '(' {
 					depth++
+					parts << '('
 					p.advance()
 					continue
 				}
@@ -539,12 +570,22 @@ fn (mut p Parser) skip_attributes() {
 					depth--
 					p.advance()
 					if depth <= 0 { break }
+					parts << ')'
 					continue
+				}
+				if p.peek().kind == .string {
+					parts << '"' + p.peek().val + '"'
+				} else {
+					parts << p.peek().val
 				}
 				p.advance()
 			}
+			out << '@' + name + '(' + join_attr_parts(parts) + ')'
+		} else {
+			out << '@' + name
 		}
 	}
+	return out
 }
 
 fn (mut p Parser) parse_inline_interface(mut doc WitDoc, name string) !WitInterface {

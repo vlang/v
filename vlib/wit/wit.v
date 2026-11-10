@@ -42,9 +42,11 @@ pub mut:
 
 pub struct WitFunc {
 pub mut:
-	name    string
-	params  []WitParam
-	results []WitType
+	name      string
+	params    []WitParam
+	results   []WitType
+	attrs     []string
+	is_static bool
 }
 
 pub struct WitRecord {
@@ -117,12 +119,14 @@ pub mut:
 	resource ?WitResource
 	type_def ?WitTypeDef
 	use_     ?WitUse
+	attrs    []string
 }
 
 pub struct WitInterface {
 pub mut:
 	name  string
 	items []WitItem
+	attrs []string
 }
 
 pub struct WitWorldImport {
@@ -144,6 +148,7 @@ pub mut:
 	name    string
 	imports []WitWorldImport
 	exports []WitWorldExport
+	attrs   []string
 }
 
 pub struct WitPackage {
