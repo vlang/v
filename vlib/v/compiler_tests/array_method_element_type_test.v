@@ -12,10 +12,13 @@ fn build(name string, source string) os.Result {
 
 fn test_bytestr_and_join_need_their_element_type() {
 	for name, source in {
-		'runes':   'fn main() {\n\tprintln([`a`, `b`].bytestr())\n}\n'
-		'mapped':  'fn main() {\n\tprintln([true].map(if it { `1` } else { `0` }).bytestr())\n}\n'
-		'ints':    'fn main() {\n\tprintln([1, 2].join(","))\n}\n'
-		'generic': 'fn pick[T](a []T) string {\n\treturn a.bytestr()\n}\n\nfn main() {\n\tprintln(pick([1]))\n}\n'
+		'runes':              'fn main() {\n\tprintln([`a`, `b`].bytestr())\n}\n'
+		'mapped':             'fn main() {\n\tprintln([true].map(if it { `1` } else { `0` }).bytestr())\n}\n'
+		'ints':               'fn main() {\n\tprintln([1, 2].join(","))\n}\n'
+		'generic':            'fn pick[T](a []T) string {\n\treturn a.bytestr()\n}\n\nfn main() {\n\tprintln(pick([1]))\n}\n'
+		'generic_join':       'fn pick[T](a []T) string {\n\treturn a.join(",")\n}\n\nfn main() {\n\tprintln(pick([1]))\n}\n'
+		'generic_join_array': 'fn pick[T](a T) string {\n\treturn a.join(",")\n}\n\nfn main() {\n\tprintln(pick([1, 2]))\n}\n'
+		'generic_join_field': 'struct S[T] {\n\titems []T\n}\n\nfn (s S[T]) all() string {\n\treturn s.items.join(",")\n}\n\nfn main() {\n\tprintln(S[int]{\n\t\titems: [1]\n\t}.all())\n}\n'
 	} {
 		result := build(name, source)
 		assert result.exit_code != 0, name
@@ -31,8 +34,19 @@ fn test_bytestr_and_join_keep_working_on_their_element_type() {
 		'alias':          'type Byte = u8\n\nfn main() {\n\tprintln([Byte(97)].map(u8(it)).bytestr())\n}\n'
 		'generic_bytes':  'fn pick[T](a []T) string {\n\treturn a.bytestr()\n}\n\nfn main() {\n\tprintln(pick([u8(97)]))\n}\n'
 		'generic_string': 'fn pick[T](a []T) string {\n\treturn a.join(",")\n}\n\nfn main() {\n\tprintln(pick(["a"]))\n}\n'
+		'generic_alias':  'type Str = string\n\nfn pick[T](a []T) string {\n\treturn a.join(",")\n}\n\nfn main() {\n\tprintln(pick([Str("a")]))\n}\n'
 	} {
 		result := build(name, source)
 		assert result.exit_code == 0, result.output
 	}
+}
+
+fn test_generic_join_calls_the_method_of_an_array_alias() {
+	source := 'type Ints = []int\n\nfn (a Ints) join(sep string) string {\n\treturn "ints" + sep\n}\n\nfn pick[T](a T) string {\n\treturn a.join(",")\n}\n\nfn main() {\n\tprintln(pick(Ints([1])))\n}\n'
+	result := build('generic_alias_method', source)
+	assert result.exit_code == 0, result.output
+	root := os.join_path(os.vtmp_dir(), 'array_method_element_${os.getpid()}')
+	run := os.exec([os.join_path(root, 'generic_alias_method')])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ints,'
 }
