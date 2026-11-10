@@ -22,6 +22,9 @@ const min_parallel_parse_bytes = 131072
 const max_parallel_parse_jobs = 18
 const max_parallel_parse_chunks = 48
 const parallel_parse_chunks_per_job = 2
+// More chunks than this cost more in worker setup and merge tasks than the
+// earlier start of the large files saves.
+const max_parallel_parse_isolated_chunks = 96
 const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
 
 struct ComptimeConstPrepassToken {
@@ -237,7 +240,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	if n_chunks < n_jobs {
 		n_chunks = n_jobs
 	}
-	bounds := parse_chunk_bounds(sizes, n_chunks)
+	bounds := parse_chunk_bounds_isolating(sizes, n_chunks)
+	n_chunks = bounds.len - 1
 	thread_count := n_chunks - 1
 	mut previous_const_names := p.comptime_string_consts.clone()
 	dispatch_file_id_start := p.next_file_id
@@ -1715,6 +1719,48 @@ fn parse_job_count(n_runtime_jobs int, n_files int) int {
 		n = n_files
 	}
 	return n
+}
+
+// parse_chunk_bounds_isolating is parse_chunk_bounds with every large file in a
+// chunk of its own. One thread parses a file, so the largest files decide how
+// long the pool runs: alone in their chunks they are the largest tasks, which
+// the queue starts first, instead of waiting behind the smaller files that
+// happen to precede them in a balanced range. The runs of files between them
+// are split by the same byte target.
+@[direct_array_access]
+fn parse_chunk_bounds_isolating(sizes []i64, n int) []int {
+	mut total := i64(0)
+	for size in sizes {
+		total += size + 1
+	}
+	target := total / i64(n) + 1
+	large := target / 2 + 1
+	mut bounds := []int{cap: 2 * n + 2}
+	bounds << 0
+	mut acc := i64(0)
+	for i in 0 .. sizes.len {
+		size := sizes[i] + 1
+		if size >= large {
+			if acc > 0 {
+				bounds << i
+			}
+			bounds << i + 1
+			acc = 0
+			continue
+		}
+		if acc > 0 && acc + size > target {
+			bounds << i
+			acc = 0
+		}
+		acc += size
+	}
+	if acc > 0 {
+		bounds << sizes.len
+	}
+	if bounds.len - 1 > max_parallel_parse_isolated_chunks {
+		return parse_chunk_bounds(sizes, n)
+	}
+	return bounds
 }
 
 // parse_chunk_bounds splits the file list into n contiguous ranges of roughly
