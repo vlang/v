@@ -10,10 +10,24 @@ const extended_payload16_end_byte = 4 // header length with 16-bit extended payl
 
 const extended_payload64_end_byte = 10
 
+// default_max_message_bytes bounds one complete incoming message, including all fragments.
+pub const default_max_message_bytes = 8 * 1024 * 1024
+
 // Fragment represents a websocket data fragment
 struct Fragment {
-	data   []u8   // included data payload data in a fragment
+mut:
+	data   []u8   // accumulated data payload for a fragmented message
 	opcode OPCode // interpretation of the payload data
+}
+
+fn (mut fragment Fragment) append_payload(payload []u8) {
+	if payload.len == 0 {
+		return
+	}
+	// No slices of an unfinished message are exposed, so growth can free old storage.
+	unsafe { fragment.data.flags.set(.noslices) }
+	fragment.data << payload
+	unsafe { fragment.data.flags.clear(.noslices) }
 }
 
 // Frame represents a data frame header
@@ -62,10 +76,38 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ! {
 			return error('unexpected control frame payload length')
 		}
 	}
-	if frame.fin == false && ws.fragments.len == 0 && frame.opcode == .continuation {
-		err_msg := 'unexecpected continuation, there are no frames to continue, ${frame}'
+	if ws.fragments.len > 0 && is_data_frame(frame.opcode) {
+		err_msg := 'unexpected data frame during fragmented message'
 		ws.close(1002, err_msg)!
 		return error(err_msg)
+	}
+	if ws.fragments.len == 0 && frame.opcode == .continuation {
+		err_msg := 'unexpected continuation without an open fragmented message'
+		ws.close(1002, err_msg)!
+		return error(err_msg)
+	}
+}
+
+// validate_message_length rejects oversized data frames before read_payload allocates.
+fn (mut ws Client) validate_message_length(frame &Frame) ! {
+	if is_control_frame(frame.opcode) {
+		return
+	}
+	if ws.max_message_bytes < 1 {
+		ws.close(1009, 'invalid message size limit')!
+		return error('websocket: max_message_bytes must be positive')
+	}
+	mut message_bytes := 0
+	for fragment in ws.fragments {
+		if fragment.data.len > ws.max_message_bytes - message_bytes {
+			ws.close(1009, 'message exceeds configured size limit')!
+			return error('websocket: message exceeds configured size limit of ${ws.max_message_bytes} bytes')
+		}
+		message_bytes += fragment.data.len
+	}
+	if frame.payload_len > ws.max_message_bytes - message_bytes {
+		ws.close(1009, 'message exceeds configured size limit')!
+		return error('websocket: message exceeds configured size limit of ${ws.max_message_bytes} bytes')
 	}
 }
 
@@ -100,6 +142,12 @@ fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 		return []u8{}
 	}
 	mut buffer := []u8{len: frame.payload_len}
+	mut keep_buffer := false
+	defer {
+		if !keep_buffer {
+			unsafe { buffer.free() }
+		}
+	}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
 		n := ws.socket_read_ptr(unsafe { &buffer[bytes_read] }, frame.payload_len - bytes_read)!
@@ -116,6 +164,7 @@ fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 			buffer[i] ^= frame.masking_key[i % 4] & 0xff
 		}
 	}
+	keep_buffer = true
 	return buffer
 }
 
@@ -135,6 +184,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 	for {
 		frame := ws.parse_frame_header()!
 		ws.validate_frame(&frame)!
+		ws.validate_message_length(&frame)!
 		frame_payload := ws.read_payload(&frame)!
 		if is_control_frame(frame.opcode) {
 			// Control frames can interject other frames
@@ -148,9 +198,17 @@ pub fn (mut ws Client) read_next_message() !Message {
 		// if the message is fragmented we just put it on fragments
 		// a fragment is allowed to have zero size payload
 		if !frame.fin {
-			ws.fragments << &Fragment{
-				data:   frame_payload
-				opcode: frame.opcode
+			if ws.fragments.len == 0 {
+				fragment := Fragment{
+					data:   frame_payload
+					opcode: frame.opcode
+				}
+				ws.fragments << fragment
+			} else {
+				ws.fragments[0].append_payload(frame_payload)
+				if frame_payload.len > 0 {
+					unsafe { frame_payload.free() }
+				}
 			}
 			continue
 		}
@@ -168,28 +226,48 @@ pub fn (mut ws Client) read_next_message() !Message {
 			return msg
 		}
 		defer {
-			for fragment in ws.fragments {
-				unsafe { fragment.data.free() }
+			ws.clear_fragments()
+		}
+		mut keep_frame_payload := false
+		defer {
+			if !keep_frame_payload && frame_payload.len > 0 {
+				unsafe { frame_payload.free() }
 			}
-			ws.fragments.clear()
 		}
 		if is_data_frame(frame.opcode) {
 			ws.close(0, '')!
 			return error('Unexpected frame opcode')
 		}
 		payload := ws.payload_from_fragments(frame_payload)!
+		mut keep_payload := false
+		defer {
+			if !keep_payload && payload.len > 0 {
+				unsafe { payload.free() }
+			}
+		}
 		opcode := ws.opcode_from_fragments()
 		ws.validate_utf_8(opcode, payload)!
 		msg := Message{
 			opcode:  opcode
 			payload: payload
 		}
-		unsafe {
-			frame_payload.free()
+		keep_payload = true
+		if frame_payload.len > 0 {
+			unsafe { frame_payload.free() }
 		}
+		keep_frame_payload = true
 		return msg
 	}
 	return error('none')
+}
+
+fn (mut ws Client) clear_fragments() {
+	for i in 0 .. ws.fragments.len {
+		if ws.fragments[i].data.len > 0 {
+			unsafe { ws.fragments[i].data.free() }
+		}
+	}
+	ws.fragments.clear()
 }
 
 // payload_from_fragments returns the whole payload from fragmented message
