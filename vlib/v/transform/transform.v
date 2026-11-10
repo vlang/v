@@ -31133,20 +31133,26 @@ fn (t &Transformer) raw_call_decl_return_type(id flat.NodeId, node flat.Node) ?u
 	if isnil(t.tc) {
 		return none
 	}
+	mut checked_name := ''
 	if name := t.tc.resolved_call_name(id) {
 		if raw_source_id := t.raw_return_type_for_fn_name(name, node) {
 			raw_source_id_6 := raw_source_id
 
 			return raw_source_id_6
 		}
+		checked_name = name
 	}
 	if node.kind == .call {
 		call_name := t.resolve_call_name(node)
 		if call_name.len > 0 {
-			if raw_source_id := t.raw_return_type_for_fn_name(call_name, node) {
-				raw_source_id_7 := raw_source_id
+			// The checker-selected name already had no raw alias return for this
+			// call; the same spelling cannot answer differently.
+			if !same_transform_text(call_name, checked_name) {
+				if raw_source_id := t.raw_return_type_for_fn_name(call_name, node) {
+					raw_source_id_7 := raw_source_id
 
-				return raw_source_id_7
+					return raw_source_id_7
+				}
 			}
 			if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
 				&& !call_name.contains('.') {
