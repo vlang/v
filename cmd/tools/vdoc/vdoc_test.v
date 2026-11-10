@@ -48,6 +48,28 @@ It also assists with composing and testing baz.'
 	assert trim_doc_node_description(mod, 'sep is "/" or "\\" on Windows') == 'sep is \\"/\\" or \\"\\\\\\" on Windows'
 }
 
+fn test_the_search_has_no_results_without_a_section() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_search_links_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'src', 'a'))!
+	defer { os.rmdir_all(dir) or {} }
+	// The private type has no section, unlike its public method.
+	os.write_file(os.join_path(dir, 'src', 'a', 'a.v'), 'module a\n\nstruct priv {}\n\n// run runs.\npub fn (p priv) run() {}\n\n// Pub is public.\npub struct Pub {}\n')!
+	out := os.join_path(dir, 'html')
+	res := os.exec_opt([vexe_path, 'doc', '-f', 'html', '-m', '-o', out, os.join_path(dir, 'src')])!
+	assert res.exit_code == 0, res.output
+	index := os.read_file(os.join_path(out, 'search_index.js'))!
+	assert !index.contains('"priv"'), index
+	assert index.contains('.html#priv.run"'), index
+	// Each result links to a section of its page.
+	links := index.all_after('var searchData').split('","').filter(it.contains('.html#'))
+	assert links.len == 2, index
+	for link in links {
+		page := os.read_file(os.join_path(out, link.all_before('#')))!
+		assert page.contains('id="${link.all_after('#')}"'), link
+	}
+}
+
 fn test_ignore_rules() {
 	os.write_file('.vdocignore', ['pattern1', 'pattern2', '/path1'].join_lines())!
 	os.mkdir('subdir')!
