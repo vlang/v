@@ -3078,6 +3078,9 @@ fn (t &Transformer) type_pattern_name(id flat.NodeId) u32 {
 
 // lower_array_membership_expr builds lower array membership expr data for transform.
 fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_id flat.NodeId, base_type_id u32, receiver_first bool, src flat.Node) ?flat.NodeId {
+	if result := t.lower_literal_bytes_membership(base_id, needle_id) {
+		return result
+	}
 	clean_base_type_source_id := t.membership_container_type(base_type_id)
 	clean_base_shape := flat.source_type_shape(clean_base_type_source_id)
 	base_is_fixed := t.is_fixed_array_type(clean_base_type_source_id)
