@@ -7071,6 +7071,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 	tc.sparse_resolved_call_names = clone_int_string_map(tc.sparse_resolved_call_names)
 	tc.sparse_resolved_fn_values = clone_int_string_map(tc.sparse_resolved_fn_values)
+	tc.smartcast_call_operands = tc.smartcast_call_operands.clone()
 	tc.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
 	tc.sparse_expr_type_values = clone_int_type_map(tc.sparse_expr_type_values)
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()

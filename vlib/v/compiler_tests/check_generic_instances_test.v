@@ -105,6 +105,10 @@ fn test_an_instance_asked_for_by_a_smartcast_receiver_is_reported() {
 		'paren':         "fn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { (s).label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
 		'nested_paren':  "fn f(h Holder) string {\n\tif h.s is Box[int] {\n\t\treturn ((h.s)).label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Holder{ s: Sum('a') }))\n}\n"
 		'none_guard':    "fn f(b ?Box[int]) string {\n\tif b != none {\n\t\treturn b.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(none))\n}\n"
+		// The narrowing after a guard that returns, and that of a captured value,
+		// are not found from the enclosing blocks: the checker records them.
+		'not_is_guard':  "fn f(s Sum) string {\n\tif s !is Box[int] {\n\t\treturn ''\n\t}\n\treturn s.label()\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'closure':       "fn f(s Sum) string {\n\tif s is Box[int] {\n\t\tg := fn [s] () string {\n\t\t\treturn s.label()\n\t\t}\n\t\treturn g()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
 	}
 	for name, body in bodies {
 		res := check_program('smartcast_${name}', box_with_label + body)
@@ -122,7 +126,7 @@ fn test_a_method_with_its_own_parameter_on_a_smartcast_receiver_is_reported() {
 // Only the variant that the arm narrows to is asked for: `Box[int]` has no arm
 // that calls `label` here, and must not be reported.
 fn test_a_smartcast_receiver_asks_only_for_the_variant_of_its_arm() {
-	res := check_program('smartcast_variant', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\ntype Sum = Box[User] | Box[int] | string\n\nfn f(s Sum) string {\n\treturn match s {\n\t\tBox[User] { s.label() }\n\t\tBox[int] { 'int' }\n\t\tstring { s }\n\t}\n}\n\nfn g(s Sum) string {\n\tif s is Box[User] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n\tprintln(g(Sum('a')))\n}\n")
+	res := check_program('smartcast_variant', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\ntype Sum = Box[User] | Box[int] | string\n\nfn f(s Sum) string {\n\treturn match s {\n\t\tBox[User] { s.label() }\n\t\tBox[int] { 'int' }\n\t\tstring { s }\n\t}\n}\n\nfn g(s Sum) string {\n\tif s is Box[User] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn h(s Sum) string {\n\tif s !is Box[User] {\n\t\treturn ''\n\t}\n\treturn s.label()\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n\tprintln(g(Sum('a')))\n\tprintln(h(Sum('a')))\n}\n")
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
 }

@@ -10818,7 +10818,13 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 		// A tree that was not lowered still has `s` here, where a build has the
 		// variant: only the checker knows what `is` or a `match` arm narrowed it to.
 		// It records that for `s` itself, not for `(s)`.
-		narrowed := t.tc.smartcast_type_name(t.unwrap_parens(id))
+		// The enclosing blocks do not tell every narrowing (an `!is` guard that
+		// returns, a captured value): the checker recorded those at the call.
+		operand := t.unwrap_parens(id)
+		mut narrowed := t.tc.smartcast_type_name(operand)
+		if narrowed == 0 {
+			narrowed = t.tc.smartcast_call_operand_type_name(operand)
+		}
 		if generic_inference_arg_type_usable(narrowed)
 			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(narrowed)) {
 			return t.generic_inference_argument_type(narrowed, t.node_module_or(int(id),
