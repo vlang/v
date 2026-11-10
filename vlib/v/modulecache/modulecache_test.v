@@ -1652,3 +1652,12 @@ fn test_cached_directive_text_keeps_include_ordering_directives() {
 		assert cached_directive_text(expanded, '/v', source_file) == '#${directive} "/v/vlib/macos/objc_bridge.h"'
 	}
 }
+
+fn test_source_fact_names_keep_spaces_and_separators() {
+	names := ['REVIEW VALUE', 'A|B', 'PLAIN']
+	assert decode_source_fact_names(encode_source_fact_names(names))? == names
+	assert decode_source_fact_names('')? == []string{}
+	if _ := decode_source_fact_names('zz') {
+		assert false, 'a field that is not hexadecimal was read'
+	}
+}

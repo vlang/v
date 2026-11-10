@@ -216,10 +216,18 @@ fn memoized_file_hash(path string, kind string, compute fn (string) string) stri
 	return hash
 }
 
+// memoized_file_fact returns what `compute` says of the file at `path`, remembered
+// with the file hashes by its metadata (see FileHashMemo), so that an unchanged
+// file is not read again. `kind` starts with `fact-` and names the fact; `compute`
+// returns one line that starts with `f`, or '' when it cannot tell.
+pub fn memoized_file_fact(path string, kind string, compute fn (string) string) string {
+	return memoized_file_hash(path, kind, compute)
+}
+
 // file_hash_is_valid reports whether `hash` has the form of a value of `kind`.
 // It keeps out a line that another build was still writing.
 fn file_hash_is_valid(kind string, hash string) bool {
-	if kind == 'facts' {
+	if kind == source_file_facts_kind || kind.starts_with('fact-') {
 		// Source facts are one line of their own encoding (source_file_facts).
 		return hash.len > 0 && hash.len < 4096 && hash[0] == `f` && !hash.contains_any('\t\n\r')
 	}

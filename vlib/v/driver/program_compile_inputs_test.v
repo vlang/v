@@ -9,6 +9,13 @@ fn test_compiled_sources_are_the_operands_that_a_compiler_knows_as_sources() {
 		'-lm', '-x', 'objective-c', 'main.m', '-x', 'none', '-MF', 'deps.d', '-include', '/inc/force.h',
 		'/lib/libfoo.a']) == ['src.c', 'main.m']
 	assert v3_compiled_sources(['-o', 'out', '/cache/main.o', '/cache/os.o', '-lm']) == []
+	// A language given with `-x` makes a header, or any other operand, a unit of its own.
+	assert v3_compiled_sources(['-o', 'out', 'src.c', '-x', 'c', '/p/native.h', '-x', 'none',
+		'/lib/libfoo.a']) == ['src.c', '/p/native.h']
+	assert v3_compiled_sources(['-xc', 'native.inc', '-xnone', 'src.c']) == [
+		'native.inc',
+		'src.c',
+	]
 }
 
 fn test_dependency_file_names_what_a_compiler_read() {

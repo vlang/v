@@ -673,12 +673,16 @@ struct SourceFileFacts {
 // source_file_facts returns the facts of the file at `path`, remembered with its
 // content hashes (memoized_file_hash) so that an unchanged file is not read again.
 fn source_file_facts(path string) ?SourceFileFacts {
-	encoded := memoized_file_hash(path, 'facts', source_file_facts_uncached)
+	encoded := memoized_file_hash(path, source_file_facts_kind, source_file_facts_uncached)
 	if encoded.len == 0 {
 		return none
 	}
 	return decode_source_file_facts(encoded)
 }
+
+// source_file_facts_kind names the facts in the memo of file hashes; it changes
+// with their encoding (encode_source_fact_names).
+const source_file_facts_kind = 'facts2'
 
 fn source_file_facts_uncached(path string) string {
 	source := os.read_file(path) or { return '' }
@@ -691,8 +695,38 @@ fn source_file_facts_uncached(path string) string {
 	] {
 		flags << if used { u8(`1`) } else { u8(`0`) }
 	}
-	// Names never contain spaces or `|`; the encoding keeps the memo one line.
-	return 'f${flags.bytestr()}|${compile_time_env_names(source).join(' ')}|${compile_time_pkgconfig_names(source).join(' ')}'
+	return 'f${flags.bytestr()}|${encode_source_fact_names(compile_time_env_names(source))}|${encode_source_fact_names(compile_time_pkgconfig_names(source))}'
+}
+
+// encode_source_fact_names writes each of `names` in hexadecimal, separated by
+// spaces: a name of `$env` can hold a space or a `|` (`$env('A B')`), and the facts
+// of a file stay one line of the memo.
+fn encode_source_fact_names(names []string) string {
+	return names.map(it.bytes().hex()).join(' ')
+}
+
+fn hex_digit_value(c u8) ?u8 {
+	return match c {
+		`0`...`9` { c - `0` }
+		`a`...`f` { c - `a` + 10 }
+		else { none }
+	}
+}
+
+// decode_source_fact_names reads the names of encode_source_fact_names.
+fn decode_source_fact_names(encoded string) ?[]string {
+	mut names := []string{}
+	for field in encoded.fields() {
+		if field.len % 2 != 0 {
+			return none
+		}
+		mut bytes := []u8{cap: field.len / 2}
+		for i := 0; i < field.len; i += 2 {
+			bytes << (hex_digit_value(field[i])? << 4) | hex_digit_value(field[i + 1])?
+		}
+		names << bytes.bytestr()
+	}
+	return names
 }
 
 fn decode_source_file_facts(encoded string) ?SourceFileFacts {
@@ -706,8 +740,8 @@ fn decode_source_file_facts(encoded string) ?SourceFileFacts {
 		uses_version_pseudo: flags[1] == `1`
 		uses_vmod_hash:      flags[2] == `1`
 		uses_vmod_root:      flags[3] == `1`
-		env_names:           parts[1].fields()
-		pkgconfig_names:     parts[2].fields()
+		env_names:           decode_source_fact_names(parts[1])?
+		pkgconfig_names:     decode_source_fact_names(parts[2])?
 	}
 }
 

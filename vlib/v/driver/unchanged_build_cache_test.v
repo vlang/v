@@ -251,7 +251,7 @@ fn compiled_unit_headers(root string, args []string, unit string) UnchangedBuild
 	result := cmdexec.run_in('cc', command, build_dir)
 	assert result.exit_code == 0, result.output
 	manager := modulecache.Manager{}
-	return v3_receipt_unit_headers(&manager, 'cc', args, build_dir, 'src.c', before)
+	return v3_receipt_unit_headers(&manager, 'cc', command, build_dir, 'src.c', before, @VEXEROOT)
 }
 
 // told_headers is a V3ReceiptHeaders of a command that compiled the program unit.
@@ -277,8 +277,8 @@ fn test_receipt_takes_the_headers_that_the_compiler_wrote_down() {
 	// The compiler did not tell: the receipt is not recorded.
 	os.rm(os.join_path(f.root, 'build', v3_program_dependency_file))!
 	manager := modulecache.Manager{}
-	assert v3_receipt_unit_headers(&manager, 'cc', ['-I', include], os.join_path(f.root, 'build'),
-		'src.c', time.utc().unix()).unknown != ''
+	assert v3_receipt_unit_headers(&manager, 'cc', ['-I', include, 'src.c'], os.join_path(f.root,
+		'build'), 'src.c', time.utc().unix(), @VEXEROOT).unknown != ''
 }
 
 fn test_receipt_is_not_recorded_for_a_unit_that_asks_for_the_time() {
@@ -286,6 +286,48 @@ fn test_receipt_is_not_recorded_for_a_unit_that_asks_for_the_time() {
 	defer { os.rmdir_all(f.root) or {} }
 	headers := compiled_unit_headers(f.root, [], 'const char *built = __DATE__;\n')
 	assert headers.unknown.contains('time')
+}
+
+fn test_receipt_is_not_recorded_for_a_header_of_the_program_that_asks_for_the_time() {
+	f := receipt_fixture('header_time')!
+	defer { os.rmdir_all(f.root) or {} }
+	include := os.join_path(f.root, 'include')
+	aged_write(os.join_path(include, 'clock.h'), 'static int clock_value(void) { return __TIME__[7]; }\n')!
+	aged_write(os.join_path(include, 'pasted.h'), '#define JOIN(a, b) a##b\nstatic const char *built = JOIN(__TI, ME__);\n')!
+	aged_write(os.join_path(include, 'plain.h'), 'static int plain_value(void) { return 1; }\n')!
+	assert compiled_unit_headers(f.root, ['-I', include], '#include <clock.h>\n').unknown.contains('time')
+	// The name of the macro can be pasted together of parts.
+	assert compiled_unit_headers(f.root, ['-I', include], '#include <pasted.h>\n').unknown.contains('time')
+	assert compiled_unit_headers(f.root, ['-I', include], '#include <plain.h>\n').unknown == ''
+}
+
+fn test_receipt_is_not_recorded_when_gcc_or_clang_compile_more_than_one_unit() {
+	manager := modulecache.Manager{}
+	// `-x c` makes a header a unit of its own, and the dependency file is of the last unit.
+	args := ['-x', 'c', '/p/native.h', '-x', 'none', 'src.c']
+	assert v3_receipt_unit_headers(&manager, 'cc', args, os.vtmp_dir(), 'src.c', time.utc().unix(),
+		@VEXEROOT).unknown.contains('more than one source')
+}
+
+fn test_receipt_is_not_recorded_for_a_file_that_changed_while_the_build_read_it() {
+	f := receipt_fixture('changed_link')!
+	defer { os.rmdir_all(f.root) or {} }
+	archive := os.join_path(f.root, 'libnative.a')
+	aged_write(archive, '!<arch>\n')!
+	stamp := v3_unchanged_build_prepare(native_receipt_inputs(f, []))
+	assert v3_unchanged_build_with_native_inputs(stamp, UnchangedBuildNativeInputs{
+		files:      [archive]
+		identities: {
+			archive: modulecache.file_metadata_signature(archive)
+		}
+	}).ok
+	// A link that came to point at another file before the receipt was recorded.
+	assert !v3_unchanged_build_with_native_inputs(stamp, UnchangedBuildNativeInputs{
+		files:      [archive]
+		identities: {
+			archive: 'metadata from before the link'
+		}
+	}).ok
 }
 
 fn test_receipt_is_not_published_with_options_that_hide_inputs() {

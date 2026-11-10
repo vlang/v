@@ -20,9 +20,12 @@ const v3_program_dependency_file = 'v3_program_unit.d'
 
 // v3_compiled_sources returns the files that the compiler driver of the command
 // `args` compiles: the arguments that are no options, no values of options, and
-// that it knows as sources by their names.
+// that it knows as sources by their names. After `-x <language>` and until
+// `-x none`, the driver compiles every such argument in that language, a header
+// or an object too.
 fn v3_compiled_sources(args []string) []string {
 	mut sources := []string{}
+	mut language := 'none'
 	mut i := 0
 	for i < args.len {
 		arg := args[i].trim_space()
@@ -30,12 +33,24 @@ fn v3_compiled_sources(args []string) []string {
 		if arg.len == 0 {
 			continue
 		}
+		if arg == '-x' {
+			if i < args.len {
+				language = args[i].trim_space()
+				i++
+			}
+			continue
+		}
+		if arg.starts_with('-x') && arg.len > 2 {
+			language = arg[2..]
+			continue
+		}
 		if arg[0] == `-` {
 			i += v3_compiler_option_values(arg)
 			continue
 		}
 		ext := os.file_ext(arg)
-		if ext in v3_compiled_source_suffixes && ext !in ['.h', '.hh', '.hpp', '.H'] {
+		if language != 'none'
+			|| (ext in v3_compiled_source_suffixes && ext !in ['.h', '.hh', '.hpp', '.H']) {
 			sources << arg
 		}
 	}
