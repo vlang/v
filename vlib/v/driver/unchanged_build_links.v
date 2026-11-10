@@ -2,14 +2,12 @@ module driver
 
 import os
 import v.cmdexec
-import v.modulecache
 
-// UnchangedBuildLinkInputs are the files outside the program that a build reads
-// besides its sources, for the receipt of an unchanged build (see
-// v3_unchanged_build_prepare): the `files`, the `dirs` whose entries decide what is
-// found, and the `missing` paths where a file would be read if it appeared. `ok` is
-// false when one of them cannot be told, for the `reason`: then the build records
-// no receipt.
+// UnchangedBuildLinkInputs are files that V itself reads for a build besides its
+// sources, for the receipt of an unchanged build (see v3_unchanged_build_prepare):
+// the `files`, the `dirs` whose entries decide what is found, and the `missing`
+// paths where a file would be read if it appeared. `ok` is false when one of them
+// cannot be told, for the `reason`: then the build records no receipt.
 struct UnchangedBuildLinkInputs {
 mut:
 	files   []string
@@ -17,78 +15,6 @@ mut:
 	missing []string
 	ok      bool = true
 	reason  string
-}
-
-// V3ReceiptNativeUnit is a C translation unit of a build whose included files
-// a receipt lists, each as Zig's whole cache manifest takes in the depfile of
-// every C object (Compilation.updateCObject).
-struct V3ReceiptNativeUnit {
-	path     string
-	compiler string
-	args     []string
-}
-
-// v3_external_native_sources returns the C sources that the flags of a build hand
-// to the compiler, or that it compiles to an object that the flags name, and the
-// paths that have to stay absent for those objects to come from the same sources.
-fn v3_external_native_sources(flags []string) UnchangedBuildLinkInputs {
-	mut result := UnchangedBuildLinkInputs{}
-	for index in c_link_input_indices(flags) {
-		clean := flags[index].trim_space()
-		if c_flag_is_c_source_file(clean) && os.is_file(clean) {
-			result.files << clean
-		} else if c_flag_is_object_file(clean) && !os.exists(clean) {
-			if source := c_source_from_object_file(clean) {
-				result.files << source
-				result.missing << c_object_absent_inputs(clean, source)
-			}
-		}
-	}
-	return result
-}
-
-// v3_unchanged_build_link_inputs finds what the link of a build reads with the
-// parser of the link command of the program executable cache, which keeps every
-// form of a library in every directory of the search as a file or as an absent path
-// (Go's Builder.linkActionID hashes what it hands to the linker): which of them
-// `-static` or `-Bstatic` selects does not matter for a receipt. A macOS
-// library that has no file, such as one served from the dyld shared cache, is keyed
-// by the version of the system instead.
-fn v3_unchanged_build_link_inputs(flags []string, compiler string, tcc_lib_dir string, target_os string, record_dir string) UnchangedBuildLinkInputs {
-	mut args := flags.clone()
-	sdk := if target_os == 'macos' { cmdexec.macos_sdk_root() } else { '' }
-	if target_os == 'macos' {
-		args << ['-F', os.join_path(sdk, 'System', 'Library', 'Frameworks'), '-F', '/Library/Frameworks']
-	}
-	manager := modulecache.Manager{
-		dir:     record_dir
-		enabled: record_dir.len > 0
-	}
-	build_dir := os.getwd()
-	inputs := v3_program_link_inputs(args, tcc_lib_dir, v3_default_link_library_dirs(&manager, compiler,
-		v3_link_search_args(args), sdk, build_dir), build_dir)
-	if inputs.reason().len > 0 {
-		return UnchangedBuildLinkInputs{
-			ok:     false
-			reason: inputs.reason()
-		}
-	}
-	// The linker opens each library by the path that it looks up: a symbolic link
-	// there may be pointed at another file, which the resolved path cannot tell.
-	mut result := UnchangedBuildLinkInputs{
-		files:   inputs.files.map(v3_receipt_lookup_path(it))
-		missing: inputs.missing
-	}
-	if inputs.unresolved.len > 0 {
-		system_version := '/System/Library/CoreServices/SystemVersion.plist'
-		if target_os == 'macos' && os.is_file(system_version) {
-			result.files << system_version
-		} else {
-			result.ok = false
-			result.reason = 'no directory of the search holds ${inputs.unresolved.join(', ')}'
-		}
-	}
-	return result
 }
 
 // v3_project_manifest_inputs returns what decides which V sources a build takes

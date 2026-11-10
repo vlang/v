@@ -601,10 +601,7 @@ struct CObjectDependencies {
 	files []string
 	// The paths where a file that is not there would have been read instead of
 	// one of `files` (v3_missing_include_candidates).
-	missing []string
-	// The directories, other than the compiler's own, whose entries decide what a
-	// `__has_include` finds (v3_header_search_dirs).
-	dirs          []string
+	missing       []string
 	used_fallback bool
 }
 
@@ -2220,7 +2217,6 @@ fn c_object_tracked_dependencies(compiler string, compile_args []string, source_
 	return CObjectDependencies{
 		files:   dependencies.files
 		missing: missing
-		dirs:    v3_header_search_dirs(search, given, read, unit)
 	}
 }
 
@@ -2234,46 +2230,14 @@ fn c_object_tracked_dependencies(compiler string, compile_args []string, source_
 // of the source decide which files it includes, so an edit of the program's code
 // reuses the list.
 fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args []string, source_file string, mut stats CObjectCacheStats) CObjectDependencies {
-	return cached_c_object_dependencies_of(cache_dir, compiler, compile_args, source_file,
-		V3HeaderDirScan{}, mut stats)
-}
-
-// v3_header_search_dir_limit is the most directories that a dependency scan for
-// a receipt watches for a header that `__has_include` may find. A build whose
-// headers can be searched for in more records no receipt.
-const v3_header_search_dir_limit = 1024
-
-// V3HeaderDirScan asks cached_c_object_dependencies_of for the directories, and
-// those below them, where a `__has_include` of the scanned files may find a file
-// (v3_header_search_tree), each kept in the manifest with its metadata. What is
-// below one of `skip` is left out: the directory of a probe that stands in for
-// a generated unit, which the build writes into a fresh directory.
-struct V3HeaderDirScan {
-	enabled bool
-	skip    []string
-}
-
-// cached_c_object_dependencies_of is cached_c_object_dependencies that also
-// returns the directories that `dirs` asks for. A manifest is valid only while
-// each of those directories keeps its metadata: a file added to one may be what a
-// `__has_include` finds, and V does not open the headers to tell which names
-// they ask about.
-fn cached_c_object_dependencies_of(cache_dir string, compiler string, compile_args []string, source_file string, dirs V3HeaderDirScan, mut stats CObjectCacheStats) CObjectDependencies {
 	source := os.read_file(source_file) or { '' }
 	if cache_dir.len == 0 || source.len == 0 {
-		if dirs.enabled {
-			return CObjectDependencies{
-				files:         [source_file]
-				used_fallback: true
-			}
-		}
 		return c_object_dependencies(compiler, compile_args, source_file)
 	}
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-dependency-manifest-v4', compiler_path, compiler_version,
-		os.real_path(os.dir(source_file)), compile_args.join('\x00'), c_preprocessor_lines(source),
-		if dirs.enabled { 'dirs\x00' + dirs.skip.join('\x00') } else { '' }] {
+	for identity in ['v3-c-dependency-manifest-v5', compiler_path, compiler_version,
+		os.real_path(os.dir(source_file)), compile_args.join('\x00'), c_preprocessor_lines(source)] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -2287,45 +2251,19 @@ fn cached_c_object_dependencies_of(cache_dir string, compiler string, compile_ar
 		return CObjectDependencies{
 			files:   all
 			missing: manifest.missing
-			dirs:    manifest.dirs
 		}
 	}
 	stats.dependency_scans++
-	mut dependencies := c_object_tracked_dependencies(compiler, compile_args, source_file,
+	dependencies := c_object_tracked_dependencies(compiler, compile_args, source_file,
 		'', cache_dir)
 	if dependencies.used_fallback {
 		return dependencies
-	}
-	searched := if dirs.enabled {
-		v3_header_search_tree(dependencies.dirs, dirs.skip, v3_header_search_dir_limit) or {
-			unchanged_build_trace('cannot watch the directories where the headers of ${source_file} may find a file: there are more than ${v3_header_search_dir_limit}, or one cannot be listed')
-			return CObjectDependencies{
-				files:         dependencies.files
-				used_fallback: true
-			}
-		}
-	} else {
-		[]string{}
-	}
-	dependencies = CObjectDependencies{
-		files:   dependencies.files
-		missing: dependencies.missing
-		dirs:    searched
 	}
 	source_real := os.real_path(source_file)
 	mut out := strings.new_builder(128 + dependencies.files.len * 96)
 	out.writeln('format=v3-c-dependency-manifest-v3')
 	for path in dependencies.missing {
 		out.writeln('missing=${path}')
-	}
-	for dir in dependencies.dirs {
-		// A directory that changed while the compiler ran may not be the one it read.
-		signature := modulecache.file_metadata_signature(dir)
-		if signature.len == 0 || dir.contains_any('\t\n')
-			|| modulecache.file_changed_during_build(dir) {
-			return dependencies
-		}
-		out.writeln('dir=${dir}\t${signature}')
 	}
 	for dependency in dependencies.files {
 		if os.real_path(dependency) == source_real {
@@ -2423,7 +2361,6 @@ fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats
 	}
 	mut files := []string{cap: lines.len - 1}
 	mut missing := []string{}
-	mut dirs := []string{}
 	for line in lines[1..] {
 		if line.starts_with('missing=') {
 			path := line.all_after('missing=')
@@ -2431,15 +2368,6 @@ fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats
 				return none
 			}
 			missing << path
-			continue
-		}
-		if line.starts_with('dir=') {
-			entry := line.all_after('dir=')
-			tab := entry.last_index('\t') or { return none }
-			if tab == 0 || modulecache.file_metadata_signature(entry[..tab]) != entry[tab + 1..] {
-				return none
-			}
-			dirs << entry[..tab]
 			continue
 		}
 		if !line.starts_with('dependency=') {
@@ -2459,7 +2387,6 @@ fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats
 	return CObjectDependencies{
 		files:   files
 		missing: missing
-		dirs:    dirs
 	}
 }
 
@@ -5345,7 +5272,7 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
 }
 
-const v3_unchanged_build_cache_version = 'v3-unchanged-build-3'
+const v3_unchanged_build_cache_version = 'v3-unchanged-build-4'
 
 // v3_unchanged_build_cache_opted_in reports whether a build may restore the
 // executable of an earlier build of the same program before parsing it. A
@@ -5422,15 +5349,9 @@ struct UnchangedBuildReceipt {
 	files   []string
 	dirs    []string
 	missing []string
-	// header_dirs are those of `dirs` where a header may be searched for
-	// (v3_header_search_dirs): every entry of one of them counts.
-	header_dirs []string
 	// output_dir is the directory of the executable. Writing the executable
-	// changes its metadata, so its V entries are compared instead, or all its
-	// entries but the executable when it is one of header_dirs
-	// (v3_unchanged_build_entries_signature).
-	output_dir  string
-	output_name string
+	// changes its metadata, so its V entries are compared instead.
+	output_dir string
 }
 
 fn unchanged_build_trace(message string) {
@@ -5517,13 +5438,20 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string, 
 					sources << parts[1]
 				}
 			}
-			'dir', 'listing', 'entries' {
+			'native' {
+				// A file of the C compiler or the linker is known by its metadata:
+				// V does not open a header.
+				if parts.len != 3 || parts[2] == ''
+					|| modulecache.file_metadata_signature(parts[1]) != parts[2] {
+					unchanged_build_trace('miss: native input changed: ${parts[1]}')
+					return false
+				}
+			}
+			'dir', 'listing' {
 				signature := if parts.len != 3 {
 					''
 				} else if parts[0] == 'dir' {
 					modulecache.file_metadata_signature(parts[1])
-				} else if parts[0] == 'entries' {
-					v3_unchanged_build_entries_signature(parts[1], os.file_name(destination))
 				} else {
 					v3_large_cold_cache_directory_signature(parts[1])
 				}
@@ -5550,25 +5478,6 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string, 
 	}
 	mark_c_dependency_manifest_used(stamp_path)
 	return v3_unchanged_build_copy(executable, destination)
-}
-
-// v3_unchanged_build_probe_file returns a file in the cache that holds the native
-// directives `probe`. It is named by them: a build that ends before its receipt is
-// prepared leaves nothing new behind, and the receipts of a program share one file.
-fn v3_unchanged_build_probe_file(cache_dir string, probe string) ?string {
-	path := os.join_path(cache_dir, 'native_probe_${sha256.hexhash(probe)[..24]}.c')
-	if os.is_file(path) {
-		mark_c_dependency_manifest_used(path)
-		return path
-	}
-	os.mkdir_all(cache_dir, mode: 0o700) or { return none }
-	temporary := '${path}.${os.getpid()}.${tempname.unique_token()}.tmp'
-	os.write_file(temporary, probe) or { return none }
-	os.mv(temporary, path) or {
-		os.rm(temporary) or {}
-		return none
-	}
-	return path
 }
 
 // trim_unchanged_build_cache removes, at most once a day, the receipts that no
@@ -5627,27 +5536,6 @@ fn v3_unchanged_build_copy(source string, destination string) bool {
 	return true
 }
 
-// v3_unchanged_build_entries_signature signs the names of the entries of the
-// output directory `dir` of a build whose headers may be searched for there: all
-// of them but the executable `output_name`, the copies of it that a build or a
-// restore writes beside it, its debug symbols, and the directories of builds
-// beside the output, which come and go.
-fn v3_unchanged_build_entries_signature(dir string, output_name string) string {
-	entries := os.ls(dir) or { return '' }
-	mut relevant := []string{cap: entries.len}
-	for entry in entries {
-		if entry == output_name || entry.contains('.v3cc.') || entry == '${output_name}.dSYM'
-			|| (entry.starts_with('${output_name}.')
-				&& (entry.ends_with('.tmp') || entry.contains('.tmp.'))) {
-			continue
-		}
-		kind := if os.is_dir(os.join_path_single(dir, entry)) { 'd' } else { 'f' }
-		relevant << '${kind}:${entry}'
-	}
-	relevant.sort()
-	return sha256.hexhash(relevant.join('\n'))
-}
-
 // UnchangedBuildStamp is the prepared body of a receipt (v3_unchanged_build_stamp),
 // written beside the executable once the build has produced it.
 struct UnchangedBuildStamp {
@@ -5692,15 +5580,13 @@ fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, bui
 		// may differ from the output directory by a link on the way.
 		kind := if os.real_path(path) != os.real_path(receipt.output_dir) {
 			'dir'
-		} else if path in receipt.header_dirs {
-			'entries'
 		} else {
 			'listing'
 		}
-		signature := match kind {
-			'dir' { modulecache.file_metadata_signature(path) }
-			'entries' { v3_unchanged_build_entries_signature(path, receipt.output_name) }
-			else { v3_large_cold_cache_directory_signature(path) }
+		signature := if kind == 'dir' {
+			modulecache.file_metadata_signature(path)
+		} else {
+			v3_large_cold_cache_directory_signature(path)
 		}
 		if signature == '' || (kind == 'dir' && modulecache.file_changed_during_build(path)) {
 			unchanged_build_trace('cannot record: directory ${path} has no stable signature')
@@ -5750,53 +5636,36 @@ fn v3_publish_unchanged_build(cache_dir string, key string, executable string, s
 
 // UnchangedBuildInputs are what the receipt of a build takes from its AST, read
 // right after parsing; v3_unchanged_build_prepare signs them on another thread
-// while the build goes on.
+// while the build goes on. The native inputs are not among them: what the C
+// compiler and the linker read is taken from them once they ran
+// (v3_unchanged_build_native_inputs).
 struct UnchangedBuildInputs {
 	sources []string
 	dirs    []string
 	// The directories that sources were found in through a symbolic link, by
 	// the path that leads to them (v3_source_lookup_dir).
-	lookup_dirs     []string
-	output_dir      string
-	resources       []string
-	flags           []string
-	link_flags      []string
-	probe           string
-	language        string
-	compiler        string
-	tcc_include_dir string
-	tcc_lib_dir     string
-	cache_dir       string
-	build_time      string
-	target_os       string
-	packages        []string
+	lookup_dirs []string
+	output_dir  string
+	resources   []string
+	flags       []string
+	link_flags  []string
+	cache_dir   string
+	build_time  string
+	packages    []string
 	// A source outside these roots was found by walking up from its importer,
 	// where a nearer directory of the same name would take its place.
 	project_roots []string
 	// Where an import can be found, for the modules of the build (v3_module_shadow_inputs).
 	module_roots []string
 	project_dirs []string
-	// unit_mode_flags are the options that the C command of the program gives
-	// every source before its inputs (V3CCompilerFlagPlan.before_inputs, without
-	// the options of the link): its C standard, target, defines and optimization.
-	// The generated unit, which the probe stands in for, and each C source that the
-	// flags hand to that command are scanned with them. object_mode is how a source
-	// that the build compiles to an object of its own is compiled.
-	unit_mode_flags []string
-	object_mode     V3NativeObjectMode
-	// The name of the executable in output_dir.
-	output_name string
 }
 
-// v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
-// Besides the parsed sources and embedded resources, the receipt covers the
-// files that the program's native directives read (the C compiler's dependency
-// manifest of those directives, as Zig's whole cache manifest records the -MD
-// output of a compilation) and the objects and libraries its flags name by path.
-fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_files []string, lookup_dirs []string, c_flags []string, link_flags []string, compiler string, cache_dir string, executable string) UnchangedBuildInputs {
+// v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST:
+// the parsed sources, the embedded resources and the flags of the program's
+// native directives.
+fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_files []string, lookup_dirs []string, c_flags []string, link_flags []string, cache_dir string, executable string) UnchangedBuildInputs {
 	mut flags := c_flags.clone()
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
-	tinycc := pref.ccompiler_is_tinycc(compiler)
 	// The program's own files come first: an edited one ends a check early.
 	vroot := os.real_path(prefs.vroot) + os.path_separator
 	mut sources := source_files.filter(!it.starts_with(vroot))
@@ -5812,35 +5681,19 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 	dirs.sort()
 	module_roots, project_dirs, project_roots := v3_unchanged_build_roots(prefs)
 	return UnchangedBuildInputs{
-		sources:         sources
-		dirs:            dirs
-		lookup_dirs:     lookup_dirs
-		output_dir:      os.real_path(os.dir(executable))
-		output_name:     os.file_name(executable)
-		resources:       embedded_resource_paths(a)
-		flags:           flags
-		link_flags:      link_flags.clone()
-		probe:           cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)
-		language:        cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot,
-			flags, prefs.c99, prefs.ccompiler, prefs.target), flags)
-		compiler:        compiler
-		tcc_include_dir: if tinycc {
-			v3_tcc_resource_flags(prefs.vroot).include_arg.all_after('-I')
-		} else {
-			''
-		}
-		tcc_lib_dir:     if tinycc {
-			v3_tcc_resource_flags(prefs.vroot).library_arg.all_after('-L')
-		} else {
-			''
-		}
-		cache_dir:       cache_dir
-		build_time:      v3_unchanged_build_build_time(prefs)
-		target_os:       prefs.target.os.str()
-		packages:        v3_unchanged_build_pkgconfig_packages(a)
-		project_roots:   project_roots
-		module_roots:    module_roots
-		project_dirs:    project_dirs
+		sources:       sources
+		dirs:          dirs
+		lookup_dirs:   lookup_dirs
+		output_dir:    os.real_path(os.dir(executable))
+		resources:     embedded_resource_paths(a)
+		flags:         flags
+		link_flags:    link_flags.clone()
+		cache_dir:     cache_dir
+		build_time:    v3_unchanged_build_build_time(prefs)
+		packages:      v3_unchanged_build_pkgconfig_packages(a)
+		project_roots: project_roots
+		module_roots:  module_roots
+		project_dirs:  project_dirs
 	}
 }
 
@@ -5877,9 +5730,12 @@ fn v3_unchanged_build_pkgconfig_packages(a &flat.FlatAst) []string {
 	return packages
 }
 
-// v3_unchanged_build_prepare finds the native files of a receipt and signs all
-// its inputs. It reads no AST, so it runs beside the build. Where the set of
-// inputs cannot be told, it records no receipt and the next build runs in full.
+// v3_unchanged_build_prepare signs the inputs of a receipt that V itself reads:
+// the sources, their directories and manifests, the embedded resources and the
+// pkg-config files. It reads no AST, so it runs beside the build, and it runs no
+// C compiler: what the C compiler and the linker read is added once they ran
+// (v3_unchanged_build_native_inputs). Where the set of inputs cannot be told, it
+// records no receipt and the next build runs in full.
 fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	all_flags := [...inputs.flags, ...inputs.link_flags]
 	if all_flags.any(v3_native_flag_is_opaque(it)) {
@@ -5892,6 +5748,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 			return UnchangedBuildStamp{}
 		}
 	}
+	trim_unchanged_build_cache(inputs.cache_dir)
 	mut file_set := map[string]bool{}
 	mut missing_set := map[string]bool{}
 	// Every input is recorded by the path that the build reads it by
@@ -5899,135 +5756,13 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	for path in inputs.resources {
 		file_set[v3_receipt_lookup_path(path)] = true
 	}
-	// TinyCC cannot preprocess Objective-C and needs its host SDK flags to
-	// find system headers. The system compiler lists the same user and SDK
-	// headers; TinyCC's own headers are recorded here.
-	manifest_compiler := if inputs.tcc_include_dir.len > 0 { 'cc' } else { inputs.compiler }
-	if inputs.tcc_include_dir.len > 0 {
-		for header in os.walk_ext(inputs.tcc_include_dir, '.h') {
-			file_set[v3_receipt_lookup_path(header)] = true
-		}
-	}
-	mut stats := CObjectCacheStats{}
-	trim_unchanged_build_cache(inputs.cache_dir)
-	mut probe_path := ''
-	mut units := []V3ReceiptNativeUnit{}
-	if inputs.probe.trim_space().len > 0 {
-		probe_path = v3_unchanged_build_probe_file(inputs.cache_dir, inputs.probe) or {
-			return UnchangedBuildStamp{}
-		}
-		units << V3ReceiptNativeUnit{
-			path:     probe_path
-			compiler: manifest_compiler
-			args:     v3_receipt_unit_args(inputs, ['-x', inputs.language, '-w'])
-		}
-	}
-	external := v3_external_native_sources(all_flags)
-	for path in external.missing {
-		missing_set[path] = true
-	}
-	for source in external.files {
-		// prepare_c_flags_for_link compiles a source of an object that the flags
-		// name, and an Objective-C++ source, to an object of its own; the C command of
-		// the program compiles the other sources that the flags name.
-		if source.ends_with('.mm') || !all_flags.any(it.trim_space() == source) {
-			mut mode := inputs.object_mode
-			if inputs.tcc_include_dir.len > 0 || mode.c_compiler.len == 0 {
-				mode = V3NativeObjectMode{
-					...mode
-					c_compiler: manifest_compiler
-				}
-			}
-			compiler, args := c_source_object_command(source, '', &mode)
-			units << V3ReceiptNativeUnit{
-				path:     source
-				compiler: if pref.ccompiler_is_tinycc(compiler) {
-					manifest_compiler
-				} else {
-					compiler
-				}
-				args:     args
-			}
-			continue
-		}
-		language := c_source_language(source, '')
-		mut extra := ['-w']
-		if language.len > 0 {
-			extra << ['-x', language]
-		}
-		units << V3ReceiptNativeUnit{
-			path:     source
-			compiler: c_source_object_compiler(language, manifest_compiler, false, inputs.target_os)
-			args:     v3_receipt_unit_args(inputs, extra)
-		}
-	}
-	if inputs.tcc_include_dir.len > 0 {
-		// TinyCC defines its own macro, which headers can choose other files by.
-		for unit in units.clone() {
-			if 'c' in unit.args {
-				units << V3ReceiptNativeUnit{
-					...unit
-					args: [...unit.args, '-D__TINYC__=1', '-D__has_extension(x)=0']
-				}
-			}
-		}
-	}
-	// The probe stands in for the generated unit, which the build writes into a
-	// directory of its own; the debug symbols of the output are written beside it.
-	mut header_skip := [os.real_path(inputs.cache_dir), os.join_path_single(inputs.output_dir,
-		'${inputs.output_name}.dSYM')]
-	// The other caches of V are written during the build too, in V3CACHE when it
-	// is set, which may be below a directory of the search.
-	v3cache := os.getenv('V3CACHE')
-	if v3cache != '' {
-		header_skip << os.real_path(os.abs_path(v3cache))
-	}
-	header_dirs := V3HeaderDirScan{
-		enabled: true
-		skip:    header_skip
-	}
-	mut header_dir_set := map[string]bool{}
-	for unit in units {
-		deps := cached_c_object_dependencies_of(inputs.cache_dir, unit.compiler, unit.args,
-			unit.path, header_dirs, mut stats)
-		if deps.used_fallback {
-			unchanged_build_trace('cannot record: the native dependencies of ${unit.path} are unavailable')
-			return UnchangedBuildStamp{}
-		}
-		for path in deps.files {
-			if path != probe_path {
-				file_set[v3_receipt_lookup_path(path)] = true
-			}
-		}
-		for path in deps.missing {
-			missing_set[path] = true
-		}
-		for dir in deps.dirs {
-			header_dir_set[dir] = true
-		}
-	}
-	for flag in all_flags {
-		clean := flag.trim_space()
-		if clean.len > 0 && !clean.starts_with('-') && os.is_file(clean) {
-			file_set[v3_receipt_lookup_path(clean)] = true
-		}
-	}
 	mut dir_list := inputs.dirs.clone()
-	mut header_dir_list := header_dir_set.keys()
-	header_dir_list.sort()
-	for dir in header_dir_list {
-		if dir !in dir_list {
-			dir_list << dir
-		}
-	}
 	for dir in inputs.lookup_dirs {
 		if dir !in dir_list {
 			dir_list << dir
 		}
 	}
-	for found in [v3_unchanged_build_link_inputs(all_flags, manifest_compiler, inputs.tcc_lib_dir,
-		inputs.target_os, inputs.cache_dir), v3_pkgconfig_files(inputs.packages),
-		v3_project_manifest_inputs(inputs.dirs),
+	for found in [v3_pkgconfig_files(inputs.packages), v3_project_manifest_inputs(inputs.dirs),
 		v3_module_shadow_inputs(inputs.dirs, inputs.module_roots, inputs.project_dirs)] {
 		if !found.ok {
 			unchanged_build_trace('cannot record: ${found.reason}')
@@ -6050,24 +5785,189 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	mut missing := missing_set.keys()
 	missing.sort()
 	return v3_unchanged_build_stamp(UnchangedBuildReceipt{
-		sources:     inputs.sources
-		files:       files
-		dirs:        dir_list
-		header_dirs: header_dir_list
-		missing:     missing
-		output_dir:  inputs.output_dir
-		output_name: inputs.output_name
+		sources:    inputs.sources
+		files:      files
+		dirs:       dir_list
+		missing:    missing
+		output_dir: inputs.output_dir
 	}, inputs.cache_dir, inputs.build_time)
 }
 
-// v3_receipt_unit_args returns the arguments with which a receipt scans a unit
-// that the C command of the program compiles: the options that it gives every
-// source, those of the program's flags and `extra`, as that command does.
-fn v3_receipt_unit_args(inputs &UnchangedBuildInputs, extra []string) []string {
-	mut args := inputs.unit_mode_flags.clone()
-	args << c_object_compile_flags(inputs.flags)
-	args << extra
-	return args
+// UnchangedBuildNativeInputs are what the C compiler and the linker of a build
+// read, as they told it: the headers of the program unit from the dependency
+// file that the compiler wrote while it compiled (`-MD`), the files of the link,
+// and the dependencies of the C objects that the object cache recorded for them.
+// V opens none of them.
+struct UnchangedBuildNativeInputs {
+	files   []string
+	missing []string
+	// Why what the build read cannot be told, or '' when it can.
+	unknown string
+}
+
+// V3ReceiptHeaders are the headers that the command that built an executable read
+// for the program unit (v3_receipt_unit_headers). `told` is false when that command
+// compiled no unit, and `link_reason` is why what the command read cannot be told,
+// taken before the program executable cache adds its own reasons about headers.
+struct V3ReceiptHeaders {
+	UnchangedBuildNativeInputs
+	told        bool
+	link_reason string
+}
+
+// v3_receipt_unit_headers returns the headers that a C compiler read for the unit
+// `unit` of the command `args` that it ran in `cc_dir`: the dependency file that the
+// command wrote (v3_program_dependency_file) names them, and V opens none of them.
+// It adds the paths where a file would be read instead of one of them
+// (v3_missing_include_candidates), which it only looks up. `before` is a time, in
+// seconds, from before the compiler started.
+fn v3_receipt_unit_headers(manager &modulecache.Manager, compiler string, args []string, cc_dir string, unit string, before i64) UnchangedBuildNativeInputs {
+	text := os.read_file(os.join_path_single(cc_dir, v3_program_dependency_file)) or {
+		return UnchangedBuildNativeInputs{
+			unknown: 'the C compiler did not tell which headers it read'
+		}
+	}
+	unit_path := if os.is_abs_path(unit) { unit } else { os.join_path_single(cc_dir, unit) }
+	if v3_c_mentions_compile_time(os.read_file(unit_path) or { '' }) {
+		return UnchangedBuildNativeInputs{
+			unknown: 'the C of the program asks for the time of its compilation'
+		}
+	}
+	mut read := []string{}
+	for name in v3_parse_dependency_file(text) {
+		path := if os.is_abs_path(name) { name } else { os.norm_path(os.join_path(cc_dir, name)) }
+		// What is in the directory of the build is made by the build.
+		if !v3_path_is_below(path, cc_dir) && path !in read {
+			read << path
+		}
+	}
+	search := if pref.ccompiler_is_tinycc(compiler) {
+		v3_tcc_include_search(manager, compiler, v3_tcc_compile_input_args(args, unit), cc_dir)
+	} else {
+		v3_include_search(manager, compiler, args, cc_dir) or {
+			return UnchangedBuildNativeInputs{
+				unknown: 'the C compiler did not tell where it looks for headers'
+			}
+		}
+	}
+	missing := v3_missing_include_candidates(search, v3_given_include_dirs(args, cc_dir),
+		read, [unit_path], before) or {
+		return UnchangedBuildNativeInputs{
+			unknown: 'a file appeared where the C compiler looks for a header while it ran'
+		}
+	}
+	return UnchangedBuildNativeInputs{
+		files:   read
+		missing: missing
+	}
+}
+
+// v3_unchanged_build_native_inputs returns what the C compiler and the linker of a
+// build read. `link` is what the command that built the executable read, and
+// `headers` what it read for the program unit. A command that only links objects
+// reads no header: the objects that the object cache built come with the
+// dependencies it recorded (`objects`), and the cached objects of the program are
+// built from V's own C, whose headers are those of V and of the system, versioned
+// with the compiler and the C compiler that the key of the receipt names. That
+// holds only while the program brings no native input of its own (`user_native`).
+// What is below one of `made_dirs` is made by the build: its directory and the
+// caches of V, whose objects come from the inputs that the receipt covers.
+fn v3_unchanged_build_native_inputs(link &V3ProgramLinkInputs, headers &V3ReceiptHeaders, user_native bool, objects &CObjectCacheStats, made_dirs []string) UnchangedBuildNativeInputs {
+	if !link.taken {
+		return UnchangedBuildNativeInputs{
+			unknown: 'the command that built the executable did not tell what it read'
+		}
+	}
+	reason := if headers.told { headers.link_reason } else { link.reason() }
+	if reason.len > 0 {
+		return UnchangedBuildNativeInputs{
+			unknown: reason
+		}
+	}
+	if headers.told && headers.unknown.len > 0 {
+		return headers.UnchangedBuildNativeInputs
+	}
+	if !headers.told && user_native {
+		return UnchangedBuildNativeInputs{
+			unknown: 'no compiler told which headers the native inputs of the program read'
+		}
+	}
+	if objects.dependency_scan_fallbacks > 0 || objects.temporary_objects.len > 0 {
+		return UnchangedBuildNativeInputs{
+			unknown: 'a C object was built without the dependencies of its source'
+		}
+	}
+	mut skipped := []string{}
+	for dir in made_dirs {
+		if dir.len > 0 {
+			skipped << dir
+			skipped << os.real_path(dir)
+		}
+	}
+	mut file_set := map[string]bool{}
+	for path in [...link.files, ...headers.files, ...objects.file_signatures.keys()] {
+		if !skipped.any(v3_path_is_below(path, it)) {
+			file_set[path] = true
+		}
+	}
+	if link.unresolved.len > 0 {
+		// A macOS library that has no file, such as one served from the dyld shared
+		// cache, comes with the version of the system.
+		system_version := '/System/Library/CoreServices/SystemVersion.plist'
+		if os.user_os() != 'macos' || !os.is_file(system_version) {
+			return UnchangedBuildNativeInputs{
+				unknown: 'no directory of the search holds ${link.unresolved.join(', ')}'
+			}
+		}
+		file_set[system_version] = true
+	}
+	mut missing_set := map[string]bool{}
+	for path in [...link.missing, ...headers.missing, ...objects.missing_candidates.keys()] {
+		missing_set[path] = true
+	}
+	mut files := file_set.keys()
+	files.sort()
+	mut missing := missing_set.keys()
+	missing.sort()
+	return UnchangedBuildNativeInputs{
+		files:   files
+		missing: missing
+	}
+}
+
+// v3_unchanged_build_with_native_inputs adds the native inputs `native` to the
+// prepared receipt `stamp`, each file by its metadata. It fails when one cannot
+// be told, changed during the build, or a path that has to stay absent is there.
+fn v3_unchanged_build_with_native_inputs(stamp UnchangedBuildStamp, native UnchangedBuildNativeInputs) UnchangedBuildStamp {
+	if !stamp.ok {
+		return stamp
+	}
+	if native.unknown.len > 0 {
+		unchanged_build_trace('cannot record: ${native.unknown}')
+		return UnchangedBuildStamp{}
+	}
+	mut body := strings.new_builder(stamp.body.len + (native.files.len + native.missing.len) * 96)
+	body.write_string(stamp.body)
+	for path in native.files {
+		signature := modulecache.file_metadata_signature(path)
+		if signature == '' || path.contains_any('\t\r\n')
+			|| modulecache.file_changed_during_build(path) {
+			unchanged_build_trace('cannot record: ${path} has no stable signature')
+			return UnchangedBuildStamp{}
+		}
+		body.writeln('native\t${path}\t${signature}')
+	}
+	for path in native.missing {
+		if path.contains_any('\t\r\n') || os.exists(path) {
+			unchanged_build_trace('cannot record: ${path} appeared during the build')
+			return UnchangedBuildStamp{}
+		}
+		body.writeln('missing\t${path}')
+	}
+	return UnchangedBuildStamp{
+		body: body.str()
+		ok:   true
+	}
 }
 
 // v3_program_executable_link_signature covers what decides the executable of a
@@ -13847,15 +13747,15 @@ pub fn run(args []string) {
 	// compiler, even when those flags came from the original program's source.
 	mut native_c_flags := user_c_flags.clone()
 	for group in refresh_project_flags { native_c_flags << group.flags }
-	// The receipt of this build is signed beside the rest of the build, once the
-	// arguments of its C compiler are known; only recording the executable waits
-	// for it at the end.
+	// What V itself reads for the receipt of this build is signed beside the rest
+	// of the build; recording the executable waits for it at the end and adds what
+	// the C compiler and the linker read.
 	mut unchanged_build_preparation := []thread UnchangedBuildStamp{}
-	mut unchanged_build_inputs := UnchangedBuildInputs{}
 	if unchanged_build_cache_enabled {
-		unchanged_build_inputs = v3_unchanged_build_inputs(a, prefs, unchanged_build_source_files,
-			unchanged_build_lookup_dirs, native_c_flags, link_ld_flags, c_compiler,
-			unchanged_build_cache_dir, bin_file)
+		unchanged_build_inputs := v3_unchanged_build_inputs(a, prefs, unchanged_build_source_files,
+			unchanged_build_lookup_dirs, native_c_flags, link_ld_flags, unchanged_build_cache_dir,
+			bin_file)
+		unchanged_build_preparation << spawn v3_unchanged_build_prepare(unchanged_build_inputs)
 	}
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
 		v3_native_inputs(a, prefs, user_files, native_c_flags)
@@ -16539,8 +16439,6 @@ pub fn run(args []string) {
 			// Environment flags also reach the native helper compilations below.
 			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir, effective_c_compiler == 'msvc')
 		}
-		// How prepare_c_flags_for_link compiles a native source to an object.
-		mut receipt_object_mode := V3NativeObjectMode{}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
@@ -16555,20 +16453,6 @@ pub fn run(args []string) {
 				primary_object_compiler_flags = v3_tcc_object_compile_flags(prefs.vroot, c_compiler,
 					bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(),
 					object_tcc_sdk_root)
-			}
-			// The objects of the program can come from the module cache, which compiles
-			// them with the flags of their modules: all of them are in those of the receipt.
-			receipt_object_mode = V3NativeObjectMode{
-				object_flags:                c_object_flag_plan(unchanged_build_inputs.flags,
-					environment_c_flags, primary_object_compiler_flags, object_optimization_flags,
-					c_compiler)
-				c99:                         prefs.c99
-				no_std:                      no_std
-				pic_flag:                    pic_flag
-				target_args:                 target_args
-				target:                      prefs.target
-				c_compiler:                  c_compiler
-				use_platform_non_c_compiler: use_implicit_tcc_semantics
 			}
 			if dump_c_flags.len > 0 && dump_c_flags != '-' {
 				// vab reads the dump even when building the module objects fails (Android
@@ -16734,24 +16618,6 @@ pub fn run(args []string) {
 			is_freestanding:     'freestanding' in prefs.user_defines
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(c_flag_options)
-		if unchanged_build_cache_enabled {
-			// The receipt scans the native units with the options of this command.
-			// It asks the system compiler about the units that TinyCC compiles, so
-			// it takes the options that the command has without TinyCC's own.
-			receipt_flag_plan := if effective_tcc {
-				v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-					...c_flag_options
-					is_tcc: false
-				})
-			} else {
-				c_flag_plan
-			}
-			unchanged_build_preparation << spawn v3_unchanged_build_prepare(UnchangedBuildInputs{
-				...unchanged_build_inputs
-				unit_mode_flags: c_object_compile_flags(receipt_flag_plan.before_inputs)
-				object_mode:     receipt_object_mode
-			})
-		}
 		large_c_flag_options := V3CCompilerFlagOptions{
 			...c_flag_options
 			large_c_unit:   true
@@ -17355,6 +17221,9 @@ pub fn run(args []string) {
 		// a file that changes while the linker works is not what the record of the
 		// executable would say it is.
 		mut program_link_inputs := V3ProgramLinkInputs{}
+		// The headers that the command that built the executable read for the
+		// program unit, for the receipt (v3_unchanged_build_native_inputs).
+		mut receipt_headers := V3ReceiptHeaders{}
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && (!link_uses_non_c_language || tcc_dylib)
 			&& v3_tcc_builds_c_debug(is_c_debug, host_os, target.os) && (implicit_tcc != '' || tcc_dylib) {
 			tried_tcc = true
@@ -17423,10 +17292,27 @@ pub fn run(args []string) {
 				''
 			}}'
 			tcc_cached_executable := v3_cached_tcc_executable_path(&cache_state.manager, program_source_identity, c_object_cache_stats.link_plan_signature, tcc_path, tcc_resources.install_dir, tcc_args)
-			if os.is_file(tcc_cached_executable) {
+			// The receipt takes what this command reads from it: TinyCC writes down the
+			// headers that it reads, which are kept beside the cached executable, with
+			// the time from before it compiled them as their modification time.
+			if unchanged_build_cache_enabled && !is_o && !is_shared {
+				program_link_inputs = v3_program_link_inputs(tcc_args, tcc_resources.install_dir,
+					v3_default_link_library_dirs(&cache_state.manager, tcc_path, tcc_args.filter(it.trim_space().starts_with('-B')),
+						tcc_sdk_root, cc_dir), cc_dir)
+			}
+			tells_headers := program_link_inputs.taken && program_link_inputs.inputs_can_be_told()
+			tcc_cached_headers := '${tcc_cached_executable}.d'
+			unit_headers := os.join_path_single(cc_dir, v3_program_dependency_file)
+			mut before_tcc := time.utc().unix() - 1
+			// An executable kept without its headers is built again for the receipt.
+			if os.is_file(tcc_cached_executable) && (!tells_headers || os.is_file(tcc_cached_headers)) {
 				os.cp(tcc_cached_executable, cc_out) or {}
 				tcc_cache_hit = os.is_file(cc_out)
 				used_tcc = tcc_cache_hit
+				if tcc_cache_hit && tells_headers {
+					before_tcc = os.file_last_mod_unix(tcc_cached_headers)
+					os.cp(tcc_cached_headers, unit_headers) or {}
+				}
 			}
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
@@ -17438,6 +17324,9 @@ pub fn run(args []string) {
 			if !tcc_cache_hit {
 				result = if is_o {
 					cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+				} else if tells_headers {
+					run_v3_tcc_executable_link(tcc_path, [...tcc_args, '-MD', '-MF',
+						v3_program_dependency_file], cc_dir, cc_out)
 				} else {
 					run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
 				}
@@ -17445,6 +17334,20 @@ pub fn run(args []string) {
 				if result.exit_code == 0 {
 					used_tcc = true
 					publish_v3_cached_executable(cc_out, tcc_cached_executable)
+					if tells_headers && os.is_file(unit_headers) {
+						publish_v3_cached_executable(unit_headers, tcc_cached_headers)
+						os.utime(tcc_cached_headers, before_tcc, before_tcc) or {
+							os.rm(tcc_cached_headers) or {}
+						}
+					}
+				}
+			}
+			if used_tcc && tells_headers {
+				receipt_headers = V3ReceiptHeaders{
+					UnchangedBuildNativeInputs: v3_receipt_unit_headers(&cache_state.manager,
+						tcc_path, tcc_args, cc_dir, os.base(tcc_main_file), before_tcc)
+					told:                       true
+					link_reason:                program_link_inputs.reason()
 				}
 			}
 		}
@@ -17506,7 +17409,7 @@ pub fn run(args []string) {
 			// tcc build regenerating with the platform C compiler depends on a
 			// specific missing symbol in the bundled tcc's import list, which a
 			// toolchain update can close and silently drop that coverage.
-			if program_executable_enabled && !is_shared && !is_o {
+			if (program_executable_enabled || unchanged_build_cache_enabled) && !is_shared && !is_o {
 				program_link_inputs = v3_program_link_inputs(tcc_args, tcc_resources.install_dir,
 					v3_default_link_library_dirs(&cache_state.manager, tcc_path, tcc_args.filter(it.trim_space().starts_with('-B')),
 						tcc_sdk_root, cc_dir), cc_dir)
@@ -17536,6 +17439,12 @@ pub fn run(args []string) {
 					unit := os.read_file(os.join_path_single(cc_dir, tcc_source)) or { '' }
 					search := v3_tcc_include_search(&cache_state.manager, tcc_path, v3_tcc_compile_input_args(tcc_args,
 						tcc_source), cc_dir)
+					receipt_headers = V3ReceiptHeaders{
+						UnchangedBuildNativeInputs: v3_receipt_unit_headers(&cache_state.manager,
+							tcc_path, tcc_args, cc_dir, tcc_source, before_tcc)
+						told:                       true
+						link_reason:                program_link_inputs.reason()
+					}
 					program_link_inputs.add_compiled_headers(&cache_state.manager, cc_dir,
 						unit, search, before_tcc)
 				}
@@ -17658,7 +17567,7 @@ pub fn run(args []string) {
 				// write a file of its own leaves no executable to keep.
 				// Whole seconds, and one to spare for a file system that rounds them.
 				before_cc := time.utc().unix() - 1
-				if program_executable_enabled {
+				if program_executable_enabled || unchanged_build_cache_enabled {
 					program_link_inputs = v3_program_link_inputs(cc_args, '', v3_default_link_library_dirs(&cache_state.manager,
 						c_compiler, v3_link_search_args(cc_args), if prefs.normalized_target_os() == 'macos' {
 							macos_sdk_root_cache.get()
@@ -17719,6 +17628,12 @@ pub fn run(args []string) {
 				// A command that links what earlier commands compiled reads no header.
 				if result.exit_code == 0 && cc_sources.len > 0
 					&& program_link_inputs.compiler_tells_its_headers(cc_sources) {
+					receipt_headers = V3ReceiptHeaders{
+						UnchangedBuildNativeInputs: v3_receipt_unit_headers(&cache_state.manager,
+							c_compiler, cc_args, cc_dir, cc_sources[0], before_cc)
+						told:                       true
+						link_reason:                program_link_inputs.reason()
+					}
 					if search := v3_include_search(&cache_state.manager, c_compiler, cc_args, cc_dir) {
 						program_link_inputs.add_compiled_headers(&cache_state.manager, cc_dir,
 							os.read_file(cc_src) or { '' }, search, before_cc)
@@ -17887,7 +17802,12 @@ Please install the corresponding development package/libraries and make sure the
 			// say about the program runs again. Go replays the output of a cached
 			// action instead (work/buildid.go, showStdout).
 			stamp := if unchanged_build_preparation.len == 1 && !v3_build_printed_diagnostics() {
-				unchanged_build_preparation[0].wait()
+				v3_unchanged_build_with_native_inputs(unchanged_build_preparation[0].wait(),
+					v3_unchanged_build_native_inputs(&program_link_inputs, &receipt_headers,
+						!cache_state.manager.enabled || native_inputs.user_supplied.len > 0,
+						&c_object_cache_stats, [cc_dir, cache_state.manager.dir,
+							os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'),
+							unchanged_build_cache_dir]))
 			} else {
 				UnchangedBuildStamp{}
 			}

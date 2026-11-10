@@ -3,6 +3,8 @@ module driver
 import os
 import crypto.sha256
 import time
+import v.cmdexec
+import v.modulecache
 import v.pref
 
 fn age_unchanged_build_source(path string) ! {
@@ -215,73 +217,87 @@ fn aged_write(path string, content string) ! {
 }
 
 // native_receipt_inputs is a receipt of a build of the fixture with `flags`.
-fn native_receipt_inputs(f ReceiptFixture, flags []string, probe string) UnchangedBuildInputs {
+fn native_receipt_inputs(f ReceiptFixture, flags []string) UnchangedBuildInputs {
 	return UnchangedBuildInputs{
 		sources:       [f.source]
 		dirs:          [f.source_dir]
 		output_dir:    f.root
 		flags:         flags
-		probe:         probe
-		language:      'c'
-		compiler:      'cc'
 		cache_dir:     f.cache_dir
-		target_os:     'linux'
 		project_roots: [f.root]
 	}
 }
 
-// publish_native_receipt records a receipt prepared from `inputs` under `key`.
-fn publish_native_receipt(f ReceiptFixture, key string, inputs UnchangedBuildInputs) {
+// publish_native_receipt records a receipt prepared from `inputs` under `key`,
+// with the native inputs `native` that the C compiler and the linker told.
+fn publish_native_receipt(f ReceiptFixture, key string, inputs UnchangedBuildInputs, native UnchangedBuildNativeInputs) {
 	age_unchanged_build_source(f.source_dir) or { panic(err) }
-	stamp := v3_unchanged_build_prepare(inputs)
+	stamp := v3_unchanged_build_with_native_inputs(v3_unchanged_build_prepare(inputs), native)
 	assert stamp.ok
 	assert v3_publish_unchanged_build(f.cache_dir, key, f.executable, stamp)
 	assert v3_restore_unchanged_build(f.cache_dir, key, f.destination, '')
 }
 
-fn test_receipt_covers_the_headers_of_external_c_sources() {
-	f := receipt_fixture('external_c')!
-	defer { os.rmdir_all(f.root) or {} }
-	source := os.join_path(f.source_dir, 'native_unit.c')
-	header := os.join_path(f.source_dir, 'unit_only.h')
-	aged_write(header, '#define NATIVE_VALUE 1\n')!
-	aged_write(source, '#include "unit_only.h"\nint native_value(void) { return NATIVE_VALUE; }\n')!
-	publish_native_receipt(f, 'external', native_receipt_inputs(f, [source], ''))
-	aged_write(header, '#define NATIVE_VALUE 2\n')!
-	assert !v3_restore_unchanged_build(f.cache_dir, 'external', f.destination, '')
+// compiled_unit_headers compiles the C `unit` with `args` as a build does, in a
+// directory of its own below `root`, with the dependency file that the build asks
+// for, and returns what v3_receipt_unit_headers takes from it.
+fn compiled_unit_headers(root string, args []string, unit string) UnchangedBuildNativeInputs {
+	build_dir := os.join_path(root, 'build')
+	os.mkdir_all(build_dir) or { panic(err) }
+	os.write_file(os.join_path(build_dir, 'src.c'), unit) or { panic(err) }
+	before := time.utc().unix() - 1
+	mut command := args.clone()
+	command << ['-w', '-c', '-o', 'src.o', 'src.c', '-MD', '-MF', v3_program_dependency_file]
+	result := cmdexec.run_in('cc', command, build_dir)
+	assert result.exit_code == 0, result.output
+	manager := modulecache.Manager{}
+	return v3_receipt_unit_headers(&manager, 'cc', args, build_dir, 'src.c', before)
 }
 
-fn test_receipt_covers_the_source_of_an_object_it_compiles() {
-	f := receipt_fixture('adjacent_c')!
-	defer { os.rmdir_all(f.root) or {} }
-	object := os.join_path(f.source_dir, 'built.o')
-	source := os.join_path(f.source_dir, 'built.c')
-	header := os.join_path(f.source_dir, 'built.h')
-	aged_write(header, '#define NATIVE_VALUE 1\n')!
-	aged_write(source, '#include "built.h"\nint native_value(void) { return NATIVE_VALUE; }\n')!
-	publish_native_receipt(f, 'object', native_receipt_inputs(f, [object], ''))
-	aged_write(header, '#define NATIVE_VALUE 2\n')!
-	assert !v3_restore_unchanged_build(f.cache_dir, 'object', f.destination, '')
+// told_headers is a V3ReceiptHeaders of a command that compiled the program unit.
+fn told_headers(headers UnchangedBuildNativeInputs) V3ReceiptHeaders {
+	return V3ReceiptHeaders{
+		UnchangedBuildNativeInputs: headers
+		told:                       true
+	}
 }
 
-fn test_receipt_is_not_published_without_the_dependencies_of_a_c_source() {
-	f := receipt_fixture('broken_c')!
+fn test_receipt_takes_the_headers_that_the_compiler_wrote_down() {
+	f := receipt_fixture('told_headers')!
 	defer { os.rmdir_all(f.root) or {} }
-	source := os.join_path(f.source_dir, 'broken.c')
-	aged_write(source, '#include "does_not_exist.h"\n')!
-	assert !v3_unchanged_build_prepare(native_receipt_inputs(f, [source], '')).ok
+	include := os.join_path(f.root, 'include')
+	aged_write(os.join_path(include, 'choice.h'), '#define CHOICE 1\n')!
+	headers := compiled_unit_headers(f.root, ['-I', include], '#include <choice.h>\nint value(void) { return CHOICE; }\n')
+	assert headers.unknown == ''
+	assert os.join_path(include, 'choice.h') in headers.files
+	// The unit is made by the build, beside its output.
+	assert !headers.files.any(it.ends_with('src.c'))
+	// A `choice.h` beside the unit would be included instead.
+	assert os.join_path(f.root, 'build', 'choice.h') in headers.missing
+	// The compiler did not tell: the receipt is not recorded.
+	os.rm(os.join_path(f.root, 'build', v3_program_dependency_file))!
+	manager := modulecache.Manager{}
+	assert v3_receipt_unit_headers(&manager, 'cc', ['-I', include], os.join_path(f.root, 'build'),
+		'src.c', time.utc().unix()).unknown != ''
+}
+
+fn test_receipt_is_not_recorded_for_a_unit_that_asks_for_the_time() {
+	f := receipt_fixture('unit_time')!
+	defer { os.rmdir_all(f.root) or {} }
+	headers := compiled_unit_headers(f.root, [], 'const char *built = __DATE__;\n')
+	assert headers.unknown.contains('time')
 }
 
 fn test_receipt_is_not_published_with_options_that_hide_inputs() {
 	f := receipt_fixture('opaque')!
 	defer { os.rmdir_all(f.root) or {} }
-	assert !v3_unchanged_build_prepare(native_receipt_inputs(f, ['@response_file'], '')).ok
+	assert !v3_unchanged_build_prepare(native_receipt_inputs(f, ['@response_file'])).ok
 }
 
 fn test_receipt_is_not_published_for_a_module_found_above_the_project() {
 	f := receipt_fixture('above_project')!
 	defer { os.rmdir_all(f.root) or {} }
-	mut inputs := native_receipt_inputs(f, [], '')
+	mut inputs := native_receipt_inputs(f, [])
 	inputs = UnchangedBuildInputs{
 		...inputs
 		project_roots: [os.join_path(f.root, 'elsewhere')]
@@ -297,35 +313,11 @@ fn test_receipt_sees_a_header_added_earlier_in_the_search() {
 	os.mkdir_all(earlier)!
 	aged_write(os.join_path(later, 'choice.h'), 'static int choice(void) { return 1; }\n')!
 	age_unchanged_build_source(earlier)!
-	// A directory where a header may be searched for is an input too.
-	age_unchanged_build_source(later)!
-	publish_native_receipt(f, 'search', native_receipt_inputs(f, ['-I', earlier, '-I', later],
-		'#include <choice.h>\n'))
+	headers := compiled_unit_headers(f.root, ['-I', earlier, '-I', later], '#include <choice.h>\n')
+	assert os.join_path(earlier, 'choice.h') in headers.missing
+	publish_native_receipt(f, 'search', native_receipt_inputs(f, []), headers)
 	aged_write(os.join_path(earlier, 'choice.h'), 'static int choice(void) { return 2; }\n')!
 	assert !v3_restore_unchanged_build(f.cache_dir, 'search', f.destination, '')
-}
-
-fn test_receipt_leaves_out_the_v3cache_below_a_directory_of_the_search() {
-	f := receipt_fixture('v3cache_below_search')!
-	previous := os.getenv_opt('V3CACHE')
-	defer {
-		if value := previous {
-			os.setenv('V3CACHE', value, true)
-		} else {
-			os.unsetenv('V3CACHE')
-		}
-		os.rmdir_all(f.root) or {}
-	}
-	include := os.join_path(f.root, 'include')
-	aged_write(os.join_path(include, 'choice.h'), 'static int choice(void) { return 1; }\n')!
-	// The other caches of the build are written while the receipt is prepared.
-	v3cache := os.join_path(include, 'v3cache')
-	os.mkdir_all(os.join_path(v3cache, 'objects'))!
-	os.write_file(os.join_path(v3cache, 'objects', 'fresh.o'), 'object')!
-	age_unchanged_build_source(include)!
-	os.setenv('V3CACHE', v3cache, true)
-	publish_native_receipt(f, 'v3cache_below', native_receipt_inputs(f, ['-I', include],
-		'#include <choice.h>\n'))
 }
 
 fn test_dependency_manifest_is_scanned_again_when_a_header_shadows_one_of_it() {
@@ -449,38 +441,91 @@ fn test_missing_include_candidates_do_not_trust_a_file_newer_than_the_scan() {
 	}
 }
 
-fn test_receipt_covers_every_form_of_a_library_however_it_is_linked() {
+fn test_receipt_takes_every_form_of_a_library_from_the_link() {
 	root := os.join_path(os.vtmp_dir(), 'v3_receipt_libs_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
 	lib_dir := os.join_path(root, 'lib')
 	earlier := os.join_path(root, 'earlier')
-	framework_dir := os.join_path(root, 'frameworks', 'Native.framework')
 	os.mkdir_all(earlier)!
-	os.mkdir_all(framework_dir)!
 	aged_write(os.join_path(lib_dir, 'libnative.a'), '!<arch>\n')!
 	aged_write(os.join_path(lib_dir, 'libnative.so'), '\x7fELF\x02\x01\x01\x00\x00')!
-	aged_write(os.join_path(framework_dir, 'Native'), '\xcf\xfa\xed\xfe\x00\x00')!
-	found := v3_unchanged_build_link_inputs(['-L', earlier, '-L', lib_dir, '-Wl,-Bstatic', '-lnative',
-		'-Wl,-Bdynamic', '-F${os.join_path(root, 'frameworks')}', '-framework', 'Native'],
-		'cc', '', 'linux', os.join_path(root, 'cache'))
-	assert found.ok, found.reason
+	link := v3_program_link_inputs(['-o', 'out', 'src.c', '-L', earlier, '-L', lib_dir, '-Wl,-Bstatic',
+		'-lnative', '-Wl,-Bdynamic'], '', []string{}, root)
+	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{}, false, &CObjectCacheStats{},
+		[]string{})
+	assert found.unknown == ''
 	// Each is recorded by the path that the linker looks up, not by where it leads.
 	assert os.join_path(lib_dir, 'libnative.a') in found.files
 	assert os.join_path(lib_dir, 'libnative.so') in found.files
-	assert os.join_path(framework_dir, 'Native') in found.files
 	// A library added earlier in the search would be the one linked.
 	assert os.join_path(earlier, 'libnative.a') in found.missing
 	assert os.join_path(earlier, 'libnative.so') in found.missing
-	// A library that no directory holds cannot be verified on Linux.
-	assert !v3_unchanged_build_link_inputs(['-L', lib_dir, '-lmissing_receipt_lib'], 'cc', '',
-		'linux', os.join_path(root, 'cache')).ok
+	unresolved := v3_program_link_inputs(['-o', 'out', 'src.c', '-L', lib_dir, '-lmissing_receipt_lib'],
+		'', []string{}, root)
+	missing := v3_unchanged_build_native_inputs(&unresolved, &V3ReceiptHeaders{}, false,
+		&CObjectCacheStats{}, []string{})
 	$if macos {
 		// On macOS it may live in the dyld shared cache: the system version stands for it.
-		missing := v3_unchanged_build_link_inputs(['-lmissing_receipt_lib'], 'cc', '', 'macos',
-			os.join_path(root, 'cache'))
-		assert missing.ok
+		assert missing.unknown == ''
 		assert '/System/Library/CoreServices/SystemVersion.plist' in missing.files
+	} $else {
+		// A library that no directory holds cannot be verified elsewhere.
+		assert missing.unknown != ''
 	}
+}
+
+fn test_receipt_native_inputs_are_not_recorded_when_a_part_was_not_told() {
+	untaken := V3ProgramLinkInputs{}
+	assert v3_unchanged_build_native_inputs(&untaken, &V3ReceiptHeaders{}, false, &CObjectCacheStats{},
+		[]string{}).unknown != ''
+	link := V3ProgramLinkInputs{
+		taken: true
+	}
+	// The command compiled the unit, and could not tell its headers.
+	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{
+		UnchangedBuildNativeInputs: UnchangedBuildNativeInputs{
+			unknown: 'no headers'
+		}
+		told:                       true
+	}, false, &CObjectCacheStats{}, []string{}).unknown == 'no headers'
+	// It compiled no unit, and the program has native inputs of its own.
+	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{}, true, &CObjectCacheStats{},
+		[]string{}).unknown != ''
+	// An object was built without the dependencies of its source.
+	fallback := CObjectCacheStats{
+		dependency_scan_fallbacks: 1
+	}
+	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{}, false, &fallback,
+		[]string{}).unknown != ''
+	// The reason of the link is taken from before the headers were added.
+	blocked := V3ProgramLinkInputs{
+		taken:   true
+		unknown: 'native headers require C compiler processing'
+	}
+	assert v3_unchanged_build_native_inputs(&blocked, &V3ReceiptHeaders{
+		told: true
+	}, false, &CObjectCacheStats{}, []string{}).unknown == ''
+}
+
+fn test_receipt_native_inputs_take_the_objects_and_leave_out_what_the_build_made() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_objects_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	made := os.join_path(root, 'cache')
+	header := os.join_path(root, 'native.h')
+	object := os.join_path(made, 'native.o')
+	link := V3ProgramLinkInputs{
+		taken: true
+		files: [object, os.join_path(root, 'libx.a')]
+	}
+	mut objects := CObjectCacheStats{}
+	objects.file_signatures[header] = 'signature'
+	objects.file_signatures[os.join_path(made, 'stamp')] = 'signature'
+	// A source that would be taken first for an object (c_object_absent_inputs).
+	objects.missing_candidates[os.join_path(root, 'native.c')] = true
+	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{}, false, &objects,
+		[made])
+	assert found.files == [os.join_path(root, 'libx.a'), header]
+	assert found.missing == [os.join_path(root, 'native.c')]
 }
 
 // publish_receipt records `receipt` under `key` and checks that it restores.
@@ -499,15 +544,14 @@ fn test_receipt_sees_a_library_link_that_comes_to_point_elsewhere() {
 	aged_write(os.join_path(lib_dir, 'two.a'), '!<arch>\ntwo\n')!
 	link := os.join_path(lib_dir, 'libreceipt.a')
 	os.symlink('one.a', link)!
-	found := v3_unchanged_build_link_inputs(['-L', lib_dir, '-Wl,-Bstatic', '-lreceipt', '-Wl,-Bdynamic'], 'cc', '', 'linux', f.cache_dir)
-	assert found.ok, found.reason
+	inputs := v3_program_link_inputs(['-o', 'out', 'src.c', '-L', lib_dir, '-Wl,-Bstatic', '-lreceipt',
+		'-Wl,-Bdynamic'], '', []string{}, f.root)
+	found := v3_unchanged_build_native_inputs(&inputs, &V3ReceiptHeaders{}, false, &CObjectCacheStats{},
+		[]string{})
+	assert found.unknown == ''
 	// The linker opens the archive by the path that it looks up.
 	assert link in found.files
-	publish_receipt(f, 'library_link', UnchangedBuildReceipt{
-		...f.receipt()
-		files:   found.files
-		missing: found.missing
-	})
+	publish_native_receipt(f, 'library_link', native_receipt_inputs(f, []), found)
 	// Both archives stay; only the link that the linker finds changes.
 	os.rm(link)!
 	os.symlink('two.a', link)!
@@ -531,13 +575,13 @@ fn test_receipt_sees_a_module_directory_link_that_comes_to_point_elsewhere() {
 	assert v3_source_lookup_dir(found_as, real) == link
 	assert v3_source_lookup_dir(f.source, f.source) == ''
 	publish_native_receipt(f, 'module_link', UnchangedBuildInputs{
-		...native_receipt_inputs(f, [], '')
+		...native_receipt_inputs(f, [])
 		sources:       [f.source, real]
 		dirs:          [f.source_dir, os.dir(real)]
 		lookup_dirs:   [link]
 		// The sources of a build are its resolved paths.
 		project_roots: [f.root, os.real_path(f.root)]
-	})
+	}, UnchangedBuildNativeInputs{})
 	os.rm(link)!
 	os.symlink(second, link)!
 	assert !v3_restore_unchanged_build(f.cache_dir, 'module_link', f.destination, '')
@@ -552,20 +596,21 @@ fn test_receipt_sees_a_header_link_that_comes_to_point_elsewhere() {
 	os.mkdir_all(include)!
 	link := os.join_path(include, 'choice.h')
 	os.symlink(os.join_path(f.root, 'versions', 'one.h'), link)!
-	// The directories where headers are searched are inputs of the receipt too.
 	age_unchanged_build_source(include)!
-	publish_native_receipt(f, 'header_link', native_receipt_inputs(f, ['-I', include],
-		'#include <choice.h>\n'))
+	headers := compiled_unit_headers(f.root, ['-I', include], '#include <choice.h>\n')
+	// The header is recorded by the path that the compiler looked up.
+	assert link in headers.files
+	publish_native_receipt(f, 'header_link', native_receipt_inputs(f, []), headers)
 	os.rm(link)!
 	os.symlink(os.join_path(f.root, 'versions', 'two.h'), link)!
 	assert !v3_restore_unchanged_build(f.cache_dir, 'header_link', f.destination, '')
 }
 
 fn test_receipt_is_not_published_with_an_unknown_linker_option() {
-	root := os.join_path(os.vtmp_dir(), 'v3_receipt_unknown_link_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	assert !v3_unchanged_build_link_inputs(['-Wl,--reads-a-file-we-do-not-know'], 'cc', '', 'linux',
-		root).ok
+	link := v3_program_link_inputs(['-o', 'out', 'src.c', '-Wl,--reads-a-file-we-do-not-know'],
+		'', []string{}, os.vtmp_dir())
+	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{}, false, &CObjectCacheStats{},
+		[]string{}).unknown != ''
 }
 
 fn test_receipt_covers_the_manifest_that_selects_the_sources() {
@@ -575,7 +620,7 @@ fn test_receipt_covers_the_manifest_that_selects_the_sources() {
 	os.mkdir_all(os.join_path(f.source_dir, 'one'))!
 	age_unchanged_build_source(os.join_path(f.source_dir, 'one'))!
 	aged_write(manifest, "Module{ name: 'p' subdirs: ['one'] }\n")!
-	publish_native_receipt(f, 'manifest', native_receipt_inputs(f, [], ''))
+	publish_native_receipt(f, 'manifest', native_receipt_inputs(f, []), UnchangedBuildNativeInputs{})
 	aged_write(manifest, "Module{ name: 'p' subdirs: ['two'] }\n")!
 	assert !v3_restore_unchanged_build(f.cache_dir, 'manifest', f.destination, '')
 }
@@ -649,42 +694,9 @@ fn test_receipt_is_not_published_for_a_module_above_a_project_inside_the_v_check
 	assert !v3_path_is_below_one_of(os.join_path(above, 'foo.v'), project_roots)
 }
 
-fn test_receipt_covers_the_headers_that_only_tinycc_includes() {
-	f := receipt_fixture('tinycc_view')!
-	defer { os.rmdir_all(f.root) or {} }
-	side := os.join_path(f.source_dir, 'tcc_side.h')
-	wrapper := os.join_path(f.source_dir, 'wrapper.h')
-	aged_write(side, '#define VALUE 1\n')!
-	aged_write(wrapper, '#ifdef __TINYC__\n#include "tcc_side.h"\n#endif\n')!
-	tcc_headers := os.join_path(f.root, 'tcc_headers')
-	os.mkdir_all(tcc_headers)!
-	publish_native_receipt(f, 'tinycc', UnchangedBuildInputs{
-		...native_receipt_inputs(f, [], '#include "${wrapper}"\n')
-		tcc_include_dir: tcc_headers
-	})
-	aged_write(side, '#define VALUE 2\n')!
-	assert !v3_restore_unchanged_build(f.cache_dir, 'tinycc', f.destination, '')
-}
-
 fn test_dependency_key_sees_an_include_that_a_comment_hid() {
 	commented := 'int a;\n/*\n#include "b.h"\n*/\n'
 	assert c_preprocessor_lines(commented) != c_preprocessor_lines('int a;\n#include "b.h"\n')
-}
-
-fn test_receipt_sees_a_source_that_would_be_taken_first_for_an_object() {
-	f := receipt_fixture('object_source_order')!
-	defer { os.rmdir_all(f.root) or {} }
-	object := os.join_path(f.source_dir, 'built.o')
-	aged_write(os.join_path(f.source_dir, 'built.cpp'), 'int native_value(void) { return 1; }\n')!
-	found := v3_external_native_sources([object])
-	assert found.files == [os.join_path(f.source_dir, 'built.cpp')]
-	assert object in found.missing
-	assert os.join_path(f.source_dir, 'built.c') in found.missing
-	assert os.join_path(f.source_dir, 'built.cc') in found.missing
-	assert os.join_path(f.source_dir, 'built.m') !in found.missing
-	publish_native_receipt(f, 'order', native_receipt_inputs(f, [object], ''))
-	aged_write(os.join_path(f.source_dir, 'built.c'), 'int native_value(void) { return 2; }\n')!
-	assert !v3_restore_unchanged_build(f.cache_dir, 'order', f.destination, '')
 }
 
 fn test_c_link_plan_is_invalid_when_a_file_appears_at_an_absent_path() {
@@ -718,16 +730,6 @@ fn test_module_shadow_inputs_cover_nearer_copies_of_a_module() {
 	assert os.join_path(project, 'abc', 'inner') in found.missing
 	assert os.join_path(other, 'abc') in found.missing
 	assert !found.missing.any(it.starts_with(global))
-}
-
-fn test_probe_of_a_receipt_is_named_by_its_directives() {
-	root := os.join_path(os.vtmp_dir(), 'v3_receipt_probe_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	first := v3_unchanged_build_probe_file(root, '#include <stdio.h>\n')?
-	assert v3_unchanged_build_probe_file(root, '#include <stdio.h>\n')? == first
-	assert v3_unchanged_build_probe_file(root, '#include <math.h>\n')? != first
-	assert os.read_file(first)! == '#include <stdio.h>\n'
-	assert os.ls(root)!.filter(it.ends_with('.tmp')).len == 0
 }
 
 fn test_unused_receipts_are_trimmed() {
@@ -777,25 +779,6 @@ fn test_pkgconfig_files_follow_requirements() {
 	assert !v3_pkgconfig_files(['receipt_missing_package']).ok
 }
 
-fn test_receipt_scans_the_source_of_an_object_as_the_build_compiles_it() {
-	f := receipt_fixture('object_standard')!
-	defer { os.rmdir_all(f.root) or {} }
-	object := os.join_path(f.source_dir, 'built.o')
-	source := os.join_path(f.source_dir, 'built.c')
-	c11 := os.join_path(f.source_dir, 'c11_value.h')
-	aged_write(c11, '#define NATIVE_VALUE 1\n')!
-	aged_write(os.join_path(f.source_dir, 'other_value.h'), '#define NATIVE_VALUE 9\n')!
-	aged_write(source, '#if __STDC_VERSION__ == 201112L\n#include "c11_value.h"\n#else\n#include "other_value.h"\n#endif\nint native_value(void) { return NATIVE_VALUE; }\n')!
-	// compile_cached_c_source_object compiles it as C11 (c_source_object_command).
-	_, args := c_source_object_command(source, '', &V3NativeObjectMode{
-		c_compiler: 'cc'
-	})
-	assert '-std=gnu11' in args
-	publish_native_receipt(f, 'object_standard', native_receipt_inputs(f, [object], ''))
-	aged_write(c11, '#define NATIVE_VALUE 2\n')!
-	assert !v3_restore_unchanged_build(f.cache_dir, 'object_standard', f.destination, '')
-}
-
 fn test_tracked_dependencies_search_the_directory_of_the_unit_first() {
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_unit_quote_dir_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
@@ -810,8 +793,6 @@ fn test_tracked_dependencies_search_the_directory_of_the_unit_first() {
 	assert deps.files.any(it.ends_with('later/choice.h'))
 	// A `choice.h` beside the unit would be included instead.
 	assert os.join_path(native, 'choice.h') in deps.missing
-	assert native in deps.dirs
-	assert later in deps.dirs
 }
 
 fn test_missing_include_candidates_start_in_the_directory_of_the_unit() {
@@ -832,66 +813,8 @@ fn test_missing_include_candidates_start_in_the_directory_of_the_unit() {
 	assert os.join_path(native, 'choice.h') !in without_unit
 }
 
-fn test_header_search_dirs_leave_out_the_compiler_and_its_sdk() {
-	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_header_search_dirs_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	sdk := os.join_path(root, 'sdk')
-	system := os.join_path(sdk, 'usr', 'include')
-	given := os.join_path(root, 'given')
-	absent := os.join_path(root, 'absent')
-	own := os.join_path(root, 'own')
-	os.mkdir_all(system)!
-	os.mkdir_all(given)!
-	os.mkdir_all(own)!
-	search := V3IncludeSearch{
-		dirs: [given, system]
-	}
-	read := [os.join_path(system, 'stdio.h'), os.join_path(sdk, 'SDKSettings.json'),
-		os.join_path(own, 'own.h')]
-	dirs := v3_header_search_dirs(search, [given, absent], read, [os.join_path(root, 'unit.c')])
-	mut expected := [root, given, own]
-	expected.sort()
-	assert dirs == expected
-}
-
-fn test_header_search_tree_covers_every_directory_below() {
-	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_header_search_tree_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	include := os.join_path(root, 'include')
-	os.mkdir_all(os.join_path(include, 'a', 'b'))!
-	os.mkdir_all(os.join_path(include, '.app.v3cc.1'))!
-	os.mkdir_all(os.join_path(include, 'skipped', 'below'))!
-	tree := v3_header_search_tree([include], [os.join_path(include, 'skipped')], 10)?
-	assert tree == [include, os.join_path(include, 'a'), os.join_path(include, 'a', 'b')]
-	if _ := v3_header_search_tree([include], [], 2) {
-		assert false, 'a tree larger than the limit was accepted'
-	}
-}
-
-fn test_receipt_sees_a_file_added_to_an_output_directory_where_headers_are_searched() {
-	f := receipt_fixture('output_header_dir')!
-	defer { os.rmdir_all(f.root) or {} }
-	os.mkdir_all(f.cache_dir)!
-	age_unchanged_build_source(f.root)!
-	receipt := UnchangedBuildReceipt{
-		...f.receipt()
-		dirs:        [f.source_dir, f.root]
-		header_dirs: [f.root]
-		output_dir:  f.root
-		output_name: os.file_name(f.destination)
-	}
-	stamp := v3_unchanged_build_stamp(receipt, f.cache_dir, '')
-	assert stamp.ok
-	assert v3_publish_unchanged_build(f.cache_dir, 'output', f.executable, stamp)
-	// Restoring writes the executable into the directory: that is no new header.
-	assert v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
-	assert v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
-	os.write_file(os.join_path(f.root, 'optional.h'), '#define OPTIONAL 1\n')!
-	assert !v3_restore_unchanged_build(f.cache_dir, 'output', f.destination, '')
-}
-
-fn test_receipt_knows_an_output_directory_searched_through_a_link() {
-	f := receipt_fixture('output_header_link')!
+fn test_receipt_knows_an_output_directory_of_sources_through_a_link() {
+	f := receipt_fixture('output_source_link')!
 	link := f.root + '_link'
 	defer {
 		os.rm(link) or {}
@@ -902,15 +825,13 @@ fn test_receipt_knows_an_output_directory_searched_through_a_link() {
 	age_unchanged_build_source(f.root)!
 	receipt := UnchangedBuildReceipt{
 		...f.receipt()
-		dirs:        [f.source_dir, link]
-		header_dirs: [link]
-		output_dir:  os.real_path(f.root)
-		output_name: os.file_name(f.destination)
+		dirs:       [f.source_dir, link]
+		output_dir: os.real_path(f.root)
 	}
 	stamp := v3_unchanged_build_stamp(receipt, f.cache_dir, '')
 	assert stamp.ok
 	assert v3_publish_unchanged_build(f.cache_dir, 'output_link', f.executable, stamp)
-	// The executable written into the directory is no new header there either.
+	// The executable written into the directory is no new source there.
 	assert v3_restore_unchanged_build(f.cache_dir, 'output_link', f.destination, '')
 	assert v3_restore_unchanged_build(f.cache_dir, 'output_link', f.destination, '')
 }
@@ -985,15 +906,15 @@ fn receipt_project_rebuilds(root string, project string, change fn () !) ! {
 	assert !changed_output.contains('unchanged build cache hit'), changed_output
 }
 
-fn test_receipt_scans_a_c_source_with_the_c_standard_of_the_build() {
-	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_c_standard_${os.getpid()}')
+fn test_receipt_sees_a_header_of_an_object_that_the_build_compiles() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_c_object_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
 	project := os.join_path(root, 'project')
 	os.mkdir_all(project)!
-	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'standard' }\n")!
-	os.write_file(os.join_path(project, 'main.v'), '#flag @VMODROOT/native.c\nfn C.native_value() int\n\nfn main() {\n\tprintln(C.native_value())\n}\n')!
-	// The build compiles the source as C11; the C compiler has another standard
-	// of its own.
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'object' }\n")!
+	os.write_file(os.join_path(project, 'main.v'), '#flag @VMODROOT/native.o\nfn C.native_value() int\n\nfn main() {\n\tprintln(C.native_value())\n}\n')!
+	// The object cache compiles the source as C11; the C compiler has another
+	// standard of its own.
 	os.write_file(os.join_path(project, 'native.c'), '#if __STDC_VERSION__ == 201112L\n#include "c11_value.h"\n#else\n#include "other_value.h"\n#endif\nint native_value(void) { return NATIVE_VALUE; }\n')!
 	os.write_file(os.join_path(project, 'c11_value.h'), '#define NATIVE_VALUE 1\n')!
 	os.write_file(os.join_path(project, 'other_value.h'), '#define NATIVE_VALUE 9\n')!
@@ -1002,30 +923,17 @@ fn test_receipt_scans_a_c_source_with_the_c_standard_of_the_build() {
 	})!
 }
 
-fn test_receipt_sees_a_header_that_has_include_finds() {
-	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_has_include_${os.getpid()}')
+fn test_receipt_sees_a_changed_header_of_the_program() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_program_header_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
 	project := os.join_path(root, 'project')
 	include := os.join_path(project, 'include')
 	os.mkdir_all(include)!
-	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'optional' }\n")!
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'header' }\n")!
 	os.write_file(os.join_path(project, 'main.v'), '#flag -I @VMODROOT/include\n#include <receipt.h>\nfn C.receipt_value() int\n\nfn main() {\n\tprintln(C.receipt_value())\n}\n')!
-	os.write_file(os.join_path(include, 'receipt.h'), '#if __has_include("optional_value.h")\n#include "optional_value.h"\n#else\n#define RECEIPT_VALUE 1\n#endif\nstatic int receipt_value(void) { return RECEIPT_VALUE; }\n')!
+	os.write_file(os.join_path(include, 'receipt.h'), '#include "receipt_value.h"\nstatic int receipt_value(void) { return RECEIPT_VALUE; }\n')!
+	os.write_file(os.join_path(include, 'receipt_value.h'), '#define RECEIPT_VALUE 1\n')!
 	receipt_project_rebuilds(root, project, fn [include] () ! {
-		os.write_file(os.join_path(include, 'optional_value.h'), '#define RECEIPT_VALUE 2\n')!
-	})!
-}
-
-fn test_receipt_sees_a_header_that_has_include_finds_below_a_directory() {
-	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_has_include_below_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	project := os.join_path(root, 'project')
-	include := os.join_path(project, 'include')
-	os.mkdir_all(os.join_path(include, 'extra'))!
-	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'optional' }\n")!
-	os.write_file(os.join_path(project, 'main.v'), '#flag -I @VMODROOT/include\n#include <receipt.h>\nfn C.receipt_value() int\n\nfn main() {\n\tprintln(C.receipt_value())\n}\n')!
-	os.write_file(os.join_path(include, 'receipt.h'), '#if __has_include(<extra/optional_value.h>)\n#include <extra/optional_value.h>\n#else\n#define RECEIPT_VALUE 1\n#endif\nstatic int receipt_value(void) { return RECEIPT_VALUE; }\n')!
-	receipt_project_rebuilds(root, project, fn [include] () ! {
-		os.write_file(os.join_path(include, 'extra', 'optional_value.h'), '#define RECEIPT_VALUE 2\n')!
+		os.write_file(os.join_path(include, 'receipt_value.h'), '#define RECEIPT_VALUE 2\n')!
 	})!
 }

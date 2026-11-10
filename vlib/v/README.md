@@ -733,18 +733,19 @@ Before parsing, a build with an explicit output looks for the receipt of an earl
 with the same compiler, C compiler identity, command line, output and environment. The
 receipt lists the program's V sources, checked as a whole by their source signature (content
 digests, `$env` reads, `v.mod` hashes, pkg-config probes and the build-time pseudo variables
-when the program uses them), the files its native directives read (the C compiler's dependency
-manifest of those directives, taken with the C standard, target and other options of the
-compilation that reads them), the paths where a header would be found first, starting beside
-the translation unit, the bundled TinyCC headers when TinyCC compiles, embedded resources, the
-objects and libraries its flags name by path, and the listings of the source directories. V does
-not open headers to see what `__has_include` asks about, so the receipt also covers every
-directory outside the C compiler's own where a header may be searched for, with those below it;
-a build with more than 1024 of them records no receipt. When every file still has the recorded
-content, the build restores the recorded
-executable and does nothing else. It works with or without the module cache; a `-nocache`
-written by the user and `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` turn it off, and
-`V3_CACHE_TRACE=1` says why a receipt was not used or recorded.
+when the program uses them), embedded resources, the listings of the source directories, and
+what the C compiler and the linker read, as they told it: V never opens or preprocesses a C
+header for the receipt. The headers come from the dependency file that the C compiler writes
+while it compiles the program (`-MD`), each with the paths where a header would be found first,
+starting beside the translation unit; the files of the link come from the link command and the
+linker's own report; and the dependencies of C objects come from the object cache. Each of those
+native files is checked by its metadata. A header that a `__has_include` would find once it
+appears is not seen, as in Zig and Odin. A build that cannot tell what its compiler read (one
+command that compiles several C sources, `-parallel-cc`, or a cached object of the program when
+the program brings native inputs of its own) records no receipt. When every input is unchanged,
+the build restores the recorded executable and does nothing else. It works with or without the
+module cache; a `-nocache` written by the user and `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` turn it
+off, and `V3_CACHE_TRACE=1` says why a receipt was not used or recorded.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
 A build that reads every module from its interface gets all the functions of those modules as
