@@ -5801,6 +5801,10 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 struct UnchangedBuildNativeInputs {
 	files   []string
 	missing []string
+	// The metadata of some of `files` from before the command that read them ran
+	// (V3ProgramLinkInputs.identities). One that differs once the build is done may
+	// not be what the command read.
+	identities map[string]string
 	// Why what the build read cannot be told, or '' when it can.
 	unknown string
 }
@@ -5815,24 +5819,43 @@ struct V3ReceiptHeaders {
 	link_reason string
 }
 
+// v3_is_system_header_path reports whether `path` is in a place where the system
+// and its SDKs keep their headers. TinyCC is given those places with `-I`, so they
+// are not all among the directories that the compiler searches on its own.
+fn v3_is_system_header_path(path string) bool {
+	clean := os.norm_path(path)
+	return clean.starts_with('/usr/include/') || clean.starts_with('/usr/lib/')
+		|| clean.starts_with('/Library/Developer/') || clean.starts_with('/Applications/Xcode')
+		|| clean.contains('.sdk/usr/include/') || clean.contains('.sdk/System/Library/Frameworks/')
+}
+
 // v3_receipt_unit_headers returns the headers that a C compiler read for the unit
 // `unit` of the command `args` that it ran in `cc_dir`: the dependency file that the
 // command wrote (v3_program_dependency_file) names them, and V opens none of them.
 // It adds the paths where a file would be read instead of one of them
 // (v3_missing_include_candidates), which it only looks up. `before` is a time, in
 // seconds, from before the compiler started.
-fn v3_receipt_unit_headers(manager &modulecache.Manager, compiler string, args []string, cc_dir string, unit string, before i64) UnchangedBuildNativeInputs {
+//
+// A header can ask for the time of the compilation (`__TIME__`), which changes the
+// executable without any change of a file. The headers of the program, those
+// outside the C compiler's own directories and outside `vroot`, are looked at for
+// that (v3_headers_ask_for_time); the headers of the system and of V are not.
+fn v3_receipt_unit_headers(manager &modulecache.Manager, compiler string, args []string, cc_dir string, unit string, before i64, vroot string) UnchangedBuildNativeInputs {
+	// GCC and Clang write down the headers of one unit only: those of the last one
+	// when the command compiles more (v3_compiled_sources). TinyCC compiles all of
+	// them in one pass and writes down what each read.
+	sources := v3_compiled_sources(args)
+	if sources.len == 0 || (sources.len > 1 && !pref.ccompiler_is_tinycc(compiler)) {
+		return UnchangedBuildNativeInputs{
+			unknown: 'the command compiles more than one source: ${sources.join(' ')}'
+		}
+	}
 	text := os.read_file(os.join_path_single(cc_dir, v3_program_dependency_file)) or {
 		return UnchangedBuildNativeInputs{
 			unknown: 'the C compiler did not tell which headers it read'
 		}
 	}
 	unit_path := if os.is_abs_path(unit) { unit } else { os.join_path_single(cc_dir, unit) }
-	if v3_c_mentions_compile_time(os.read_file(unit_path) or { '' }) {
-		return UnchangedBuildNativeInputs{
-			unknown: 'the C of the program asks for the time of its compilation'
-		}
-	}
 	mut read := []string{}
 	for name in v3_parse_dependency_file(text) {
 		path := if os.is_abs_path(name) { name } else { os.norm_path(os.join_path(cc_dir, name)) }
@@ -5850,8 +5873,18 @@ fn v3_receipt_unit_headers(manager &modulecache.Manager, compiler string, args [
 			}
 		}
 	}
-	missing := v3_missing_include_candidates(search, v3_given_include_dirs(args, cc_dir),
-		read, [unit_path], before) or {
+	given := v3_given_include_dirs(args, cc_dir)
+	own_roots := [...search.dirs, ...search.frameworks].map(os.norm_path(it)).filter(it !in given)
+	vroot_real := os.real_path(vroot)
+	program_headers := read.filter(!own_roots.any(v3_path_is_below(os.norm_path(it), it))
+		&& !(vroot.len > 0 && v3_path_is_below(os.real_path(it), vroot_real))
+		&& !v3_is_system_header_path(it))
+	if v3_headers_ask_for_time(os.read_file(unit_path) or { '' }, program_headers) {
+		return UnchangedBuildNativeInputs{
+			unknown: 'the C of the program or one of its headers can ask for the time of its compilation'
+		}
+	}
+	missing := v3_missing_include_candidates(search, given, read, [unit_path], before) or {
 		return UnchangedBuildNativeInputs{
 			unknown: 'a file appeared where the C compiler looks for a header while it ran'
 		}
@@ -5910,6 +5943,14 @@ fn v3_unchanged_build_native_inputs(link &V3ProgramLinkInputs, headers &V3Receip
 			file_set[path] = true
 		}
 	}
+	mut identities := map[string]string{}
+	if link.identities.len == link.files.len {
+		for i, path in link.files {
+			if path in file_set {
+				identities[path] = link.identities[i]
+			}
+		}
+	}
 	if link.unresolved.len > 0 {
 		// A macOS library that has no file, such as one served from the dyld shared
 		// cache, comes with the version of the system.
@@ -5930,8 +5971,9 @@ fn v3_unchanged_build_native_inputs(link &V3ProgramLinkInputs, headers &V3Receip
 	mut missing := missing_set.keys()
 	missing.sort()
 	return UnchangedBuildNativeInputs{
-		files:   files
-		missing: missing
+		files:      files
+		missing:    missing
+		identities: identities
 	}
 }
 
@@ -5954,6 +5996,14 @@ fn v3_unchanged_build_with_native_inputs(stamp UnchangedBuildStamp, native Uncha
 			|| modulecache.file_changed_during_build(path) {
 			unchanged_build_trace('cannot record: ${path} has no stable signature')
 			return UnchangedBuildStamp{}
+		}
+		// A link that comes to point at another file that is older than the build
+		// changes the metadata from what it was before the command read it.
+		if before := native.identities[path] {
+			if before != signature {
+				unchanged_build_trace('cannot record: ${path} changed while the build read it')
+				return UnchangedBuildStamp{}
+			}
 		}
 		body.writeln('native\t${path}\t${signature}')
 	}
@@ -17529,7 +17579,7 @@ pub fn run(args []string) {
 			if used_tcc && tells_headers {
 				receipt_headers = V3ReceiptHeaders{
 					UnchangedBuildNativeInputs: v3_receipt_unit_headers(&cache_state.manager,
-						tcc_path, tcc_args, cc_dir, os.base(tcc_main_file), before_tcc)
+						tcc_path, tcc_args, cc_dir, os.base(tcc_main_file), before_tcc, prefs.vroot)
 					told:                       true
 					link_reason:                program_link_inputs.reason()
 				}
@@ -17625,7 +17675,7 @@ pub fn run(args []string) {
 						tcc_source), cc_dir)
 					receipt_headers = V3ReceiptHeaders{
 						UnchangedBuildNativeInputs: v3_receipt_unit_headers(&cache_state.manager,
-							tcc_path, tcc_args, cc_dir, tcc_source, before_tcc)
+							tcc_path, tcc_args, cc_dir, tcc_source, before_tcc, prefs.vroot)
 						told:                       true
 						link_reason:                program_link_inputs.reason()
 					}
@@ -17814,7 +17864,7 @@ pub fn run(args []string) {
 					&& program_link_inputs.compiler_tells_its_headers(cc_sources) {
 					receipt_headers = V3ReceiptHeaders{
 						UnchangedBuildNativeInputs: v3_receipt_unit_headers(&cache_state.manager,
-							c_compiler, cc_args, cc_dir, cc_sources[0], before_cc)
+							c_compiler, cc_args, cc_dir, cc_sources[0], before_cc, prefs.vroot)
 						told:                       true
 						link_reason:                program_link_inputs.reason()
 					}

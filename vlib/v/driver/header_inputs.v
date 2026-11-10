@@ -142,6 +142,38 @@ fn (mut inputs V3HeaderInputs) add_time_of(text string) {
 	inputs.time_parts.sort()
 }
 
+// v3_header_time_fact is what a header holds of the time of the compilation, for
+// modulecache.memoized_file_fact: `f1` when it spells one of v3_time_macro_names,
+// `f0` otherwise, then a space and its v3_c_time_name_parts separated by commas.
+fn v3_header_time_fact(path string) string {
+	text := os.read_file(path) or { return '' }
+	mentions := if v3_c_mentions_compile_time(text) { '1' } else { '0' }
+	return 'f${mentions} ${v3_c_time_name_parts(text).join(',')}'
+}
+
+// v3_headers_ask_for_time reports whether the C of `unit`, with the headers
+// `headers`, can ask for the time of its compilation: one of them spells a macro
+// for it, or their identifiers can paste one together. Each header is read once
+// while it keeps its metadata.
+fn v3_headers_ask_for_time(unit string, headers []string) bool {
+	if v3_c_mentions_compile_time(unit) {
+		return true
+	}
+	mut parts := v3_c_time_name_parts(unit)
+	for header in headers {
+		fact := modulecache.memoized_file_fact(header, 'fact-time-1', v3_header_time_fact)
+		if fact.len < 2 || fact[1] == `1` {
+			return true
+		}
+		for part in fact.all_after(' ').split(',') {
+			if part.len > 0 && part !in parts {
+				parts << part
+			}
+		}
+	}
+	return v3_time_names_can_be_built(parts)
+}
+
 // v3_quoted_include_names returns the names that `source` includes in quotation
 // marks: the compiler looks for those in the directory of the file that names them
 // before it looks anywhere else. Only a line that starts with `#` is looked at.
