@@ -13,10 +13,26 @@ struct WorkerWriterApp {
 mut:
 	retained []&WorkerWriterContext
 	routes   map[string]Route
+	active   int
+	begins   int
+	ends     int
+}
+
+fn (mut app WorkerWriterApp) before_handle_request(_req http.Request) {
+	if app.active != 0 { panic('worker started overlapping dispatch') }
+	app.active++
+	app.begins++
+}
+
+fn (mut app WorkerWriterApp) after_handle_request(_req http.Request) {
+	if app.active != 1 { panic('worker ended an inactive dispatch') }
+	app.active--
+	app.ends++
 }
 
 @['/:path...'; get]
 fn (mut app WorkerWriterApp) index(mut ctx WorkerWriterContext, raw_path string) Result {
+	if app.active != 1 { panic('handler ran outside request activity hooks') }
 	path := raw_path.trim_left('/')
 	app.retained << &ctx
 	ctx.form['saved'] = path
@@ -207,6 +223,9 @@ fn test_worker_writer_contract_in_production_builds() {
 		if !out.bytestr().ends_with('reply:' + path) || ctl.should_close != (i % 2 == 1) {
 			panic('worker writer returned the wrong response')
 		}
+	}
+	if app.active != 0 || app.begins != 16 || app.ends != 16 {
+		panic('worker writer did not balance request activity hooks')
 	}
 	gc_collect()
 	for i, ctx in app.retained {

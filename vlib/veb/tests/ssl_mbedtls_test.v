@@ -17,10 +17,12 @@ pub struct App {
 	activity chan string = chan string{cap: 16}
 }
 
+// before_handle_request records entry into TLS dispatch.
 pub fn (mut app App) before_handle_request(req http.Request) {
 	app.activity <- 'before:' + req.url
 }
 
+// after_handle_request records completion of TLS dispatch.
 pub fn (mut app App) after_handle_request(req http.Request) {
 	app.activity <- 'after:' + req.url
 }
