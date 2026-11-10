@@ -216,14 +216,16 @@ fn (vd &VDoc) repo_root_for_links(input_dir string) string {
 	return root
 }
 
-fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw strings.Builder) {
+// write_content writes the sections of `cn` and of its members. `parent_platforms` are the ones
+// of the type of `cn` when it is a static function, like `File.open`.
+fn (vd &VDoc) write_content(cn &doc.DocNode, parent_platforms []doc.Platform, mut links RepoFileLinks, mut hw strings.Builder) {
 	cfg := vd.cfg
 	file_path_name := links.path_of(cn.file_path)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
 		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
-			[]))
+			parent_platforms))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
@@ -262,7 +264,13 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
-		vd.write_content(&cn, mut links, mut contents)
+		// A static function is only shown with the platform selector where its type is.
+		type_platforms := if cn.kind == .method && cn.name.contains('.') {
+			doc.all_platforms(d.contents[cn.name.all_before_last('.')] or { doc.DocNode{} })
+		} else {
+			[]doc.Platform{}
+		}
+		vd.write_content(&cn, type_platforms, mut links, mut contents)
 		write_toc(cn, mut symbols_toc) // write head
 	}
 	if cfg.html_only_contents {

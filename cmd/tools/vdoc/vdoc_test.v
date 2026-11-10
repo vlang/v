@@ -710,7 +710,7 @@ fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_plat
 	defer { os.rmdir_all(dir) or {} }
 	// The type is only declared on Windows, and its method in a file of all the platforms.
 	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\n// win_value is a value.\npub const win_value = 1\n\n// Handle is a handle.\npub struct Handle {}\n')!
-	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\n// close closes it.\npub fn (h Handle) close() {}\n')!
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\n// close closes it.\npub fn (h Handle) close() {}\n\n// Handle.new returns a handle.\npub fn Handle.new() Handle {\n\treturn Handle{}\n}\n')!
 	html_dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_members_html_${os.getpid()}')
 	defer { os.rmdir_all(html_dir) or {} }
 	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-os', 'cross', '-o',
@@ -718,6 +718,7 @@ fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_plat
 	assert res.exit_code == 0
 	page := os.read_file(os.join_path(html_dir, 'a.html'))!
 	assert page.contains('<section id="Handle.close" class="doc-node" data-platforms="windows">')
+	assert page.contains('<section id="Handle.new" class="doc-node" data-platforms="windows">')
 	// The section of all the constants has no constant to show on the other platforms.
 	assert page.contains('<section id="Constants" class="doc-node const" data-platforms="windows">')
 	assert within_platforms([], [.windows]) == [doc.Platform.windows]
