@@ -1381,6 +1381,9 @@ pub mut:
 	transform_borrow_params                 map[int][]bool
 	transform_call_provenance_borrow_params map[int][]bool
 	transform_borrow_node_count             int
+	// transform_borrow_handover_unused says that no monomorphization stage follows
+	// the transform stage, so the summaries above have no reader.
+	transform_borrow_handover_unused bool
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.

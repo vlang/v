@@ -5296,7 +5296,7 @@ fn (mut t Transformer) hand_over_interface_boxed_types() {
 // before lowering in the checker, outside the stage arena, for the
 // monomorphization stage to start from (see prepare_fixed_array_borrow_params).
 fn (mut t Transformer) hand_over_fixed_array_borrow_params() {
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.tc.transform_borrow_handover_unused {
 		return
 	}
 	state := transform_stage_scope_suspend(t.stage_scope)
