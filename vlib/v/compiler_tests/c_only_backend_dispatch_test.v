@@ -7,7 +7,29 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println(42) }\n')!
-	cache := os.join_path(root, 'tools')
+	mut cache := os.join_path(root, 'tools')
+	$if windows {
+		// Elevated Windows runners can create child folders owned by Administrators.
+		// The tool cache rightly rejects those. Create an isolated, user-owned root
+		// with the same ACL preparation that the Windows CI jobs use.
+		configured := os.getenv('VTOOLS_CACHE_DIR')
+		cache_parent := if configured != '' { os.dir(configured) } else { root }
+		env_file := os.join_path(root, 'private-cache-env.txt')
+		os.write_file(env_file, '')!
+		setup := cmdexec.run_in_merged_with_env('pwsh', ['-NoProfile', '-NonInteractive',
+			'-File', os.join_path(@VMODROOT, '.github', 'workflows', 'setup_windows_tool_cache.ps1'),
+			'-CacheParent', cache_parent], root, {
+			'GITHUB_ENV': env_file
+		})
+		assert setup.exit_code == 0, setup.output
+		paths := (os.read_file(env_file)!).split_into_lines().filter(it.starts_with('VTOOLS_CACHE_DIR='))
+		assert paths.len == 1, setup.output
+		cache = paths[0].all_after('VTOOLS_CACHE_DIR=')
+		assert os.is_dir(cache), setup.output
+		defer {
+			os.rmdir_all(cache) or {}
+		}
+	}
 	mut environment := {
 		'VFLAGS':                 ''
 		'VTOOLS_CACHE_DIR':       cache
@@ -24,7 +46,12 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 	c_output := os.join_path(root, 'default.c')
 	c_build := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-o', c_output, source], root, environment)
 	assert c_build.exit_code == 0, c_build.output
-	assert !os.exists(cache), c_build.output
+	$if windows {
+		// The setup created only the empty temporary work folder.
+		assert os.ls(cache)! == ['tmp'], c_build.output
+	} $else {
+		assert !os.exists(cache), c_build.output
+	}
 	// Forwarding VFLAGS and CLI flags must select the last backend exactly once.
 	environment['VFLAGS'] = '-b wasm'
 	fastc_output := os.join_path(root, 'fastc.c')
