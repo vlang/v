@@ -195,6 +195,11 @@ pub mut:
 // that core exports listed in string_exports are lifted with the given
 // canonical-ABI string params/results and canonical (memory) (realloc)
 // options, and exported under their WIT name.
+// Known limitations: the scratch/sret scheme above is not reentrant
+// (nested host -> guest -> host -> guest calls clobber outer slots);
+// lifted string results assume static-lifetime guest data; composite types
+// (lists, records, variants, options/results, tuples, maps) are not lifted
+// yet and fall back to plain wrapping.
 pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringExport) []u8 {
 	// If we can lift at least one function, produce a richer component.
 	exports, types, _defined, _, func_typeidx := parse_core_module(core)

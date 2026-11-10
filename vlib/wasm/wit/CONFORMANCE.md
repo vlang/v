@@ -41,11 +41,25 @@ Function-signature shapes the component wrapper lifts today:
 | single string param, `(i32, i32) -> r` core sig | ✅ |
 | multiple string params (each expands to `(i32, i32)`) | ✅ |
 | string returns, `(ptr, len)` pair via hidden sret slot | ✅ |
-| lists / records / variants / resources | ❌ (no canonical layout yet) |
-| options / results / tuples / maps | ❌ (no canonical layout yet) |
+| enums (as s32 over core i32) / flags (as u32 over core i32) | ✅ |
+| lists / records / variants / resources | ❌ (layout helpers exist, no wrapper yet) |
+| options / results / tuples / maps | ❌ (layout helpers exist, no wrapper yet) |
 
 ## Notes
 
+- **composite layout**: `vlib/wasm/cabi_layout.v` implements canonical-ABI
+  size/align/offset rules (primitives, strings/lists as `(ptr, len)`,
+  records/tuples, variants, options, results, enums, flags) and
+  `vlib/wit/cabi.v` maps WIT types onto them (named-type resolution through
+  the doc, `(-1, -1)` for resources/handles/unknowns). The core wrapper
+  (`SSAGen.emit_cabi_wrapper`) does not marshal these shapes yet, so the
+  component wrapper still refuses them; enums/flags are the exception and
+  lift as integers (see below).
+
+- **enum/flags lift**: WIT enums lift as component `s32` over core `i32`,
+  flags (32 or fewer) as component `u32` over core `i32`
+  (`wit_func_lift_with_doc`); the V guest already passes both as `i32`, so
+  no guest remarshal is needed. Flags with more than 32 bits are refused.
 - **use codegen**: single-file codegen emits all interfaces into one namespace,
   so used names resolve locally; the `// use ...` comment records the source.
 - **own/borrow codegen**: handle types map to `voidptr`; `own`/`borrow` of a

@@ -48,6 +48,14 @@ mut:
 	// cabi_scratch is the linear-memory address of the 16-byte slot used by
 	// canonical-ABI string wrappers to materialize V strings. Reserved from
 	// module data before the stack area; -1 when cabi mode is off.
+	// Known limitation: scratch slots are NOT reentrant. A nested
+	// host -> guest -> host -> guest call reuses the same slots and clobbers
+	// the outer call's materialized strings. Reentrancy needs a per-call
+	// stack-allocated frame or a host-side copy; not implemented yet.
+	// Known limitation: string results assume static-lifetime data. The
+	// wrapper reads (ptr, len) back from the hidden sret slot after the
+	// inner call returns; a host that retains the pointer past the next
+	// call into the guest may observe overwritten bytes.
 	cabi_scratch int = -1
 }
 
@@ -308,9 +316,14 @@ fn (g &SSAGen) cabi_wrappable(fid int) bool {
 // a string result uses the backend's hidden sret slot convention
 // (caller-provided struct pointer, void core return). Wrappers need no
 // locals and leave the value stack balanced.
-// Limitation: scratch slots are not reentrant; nested wrapper calls
-// (host -> guest -> host -> guest) would clobber them. Lists, records,
-// variants, and other composite types are out of scope.
+// Known limitations (see also the cabi_scratch field docs):
+//   - scratch slots are not reentrant; nested host -> guest -> host -> guest
+//     calls would clobber the outer call's materialized strings;
+//   - string results assume static-lifetime data (the (ptr, len) pair is only
+//     valid until the next guest call that reuses the sret/scratch area);
+//   - lists, records, variants, options/results, tuples, and maps have no
+//     canonical layout here yet; see vlib/wasm/cabi_layout.v for the
+//     guest-side layout helpers that the next wrapper step must use.
 fn (mut g SSAGen) emit_cabi_wrapper(inner_idx int, fid int) int {
 	f := g.m.funcs[fid]
 	mut wparams := []u8{}

@@ -201,7 +201,9 @@ fn wit_type_to_v(t WitType, defined map[string]bool) string {
 			if n == 'pollable' { return 'int' }
 			// Async surface types (future<T>, stream<T>) and other externals
 			// map to voidptr: only the surface (types, imports, exports) is
-			// generated; runtime support is out of scope.
+			// generated; runtime support is out of scope. Known limitation:
+			// async has surface types only, no runtime (no task/waitable
+			// state, no pollable dispatch); see CONFORMANCE.md lift rows.
 			if n !in defined { return 'voidptr' }
 			return to_v_type_name(n)
 		}
