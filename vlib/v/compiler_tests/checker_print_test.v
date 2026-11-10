@@ -115,7 +115,7 @@ pub fn println(s string) {}
 fn test_eprint_bool_compile_uses_stringification() {
 	v3_bin := build_checker_print_v3_bin('eprint_bool')
 	src := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool.v')
-	bin := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool')
+	bin := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool_output')
 	os.write_file(src, '
 fn main() {
 	eprint(true)
