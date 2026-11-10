@@ -12,6 +12,9 @@ on:
       - '!**/vup_works.yml'
       - '!cmd/tools/vup.v'
       - 'cmd/tools/vrepl.v'
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - 'vlib/v/gen/fastc/**'
+      - 'vlib/v/fastcdriver/**'
 
 concurrency:
   group: vup-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

@@ -9,6 +9,9 @@ on:
       - 'cmd/tools/builders/**.v'
       - '**/time_ci.yml'
       - '!**.md'
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - '!vlib/v/gen/fastc/**'
+      - '!vlib/v/fastcdriver/**'
 
 concurrency:
   group: time-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

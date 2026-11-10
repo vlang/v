@@ -10,6 +10,9 @@ on:
       - '!**/v_apps_and_modules_compile_ci.yml'
       - 'examples/**'
       - 'cmd/tools/vrepl.v'
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - 'vlib/v/gen/fastc/**'
+      - 'vlib/v/fastcdriver/**'
   schedule:
     - cron: '37 2 * * *'
 

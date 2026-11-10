@@ -45,6 +45,9 @@ on:
       - '**/sanitized_ci.yml'
       - '.github/workflows/build_msan_libpq.sh'
       - '.github/workflows/build_msan_sqlite.sh'
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - '!vlib/v/gen/fastc/**'
+      - '!vlib/v/fastcdriver/**'
 
 concurrency:
   group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
