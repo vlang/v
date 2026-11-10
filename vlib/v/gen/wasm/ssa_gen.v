@@ -84,14 +84,39 @@ pub fn (mut g SSAGen) gen() ! {
 	functions := g.reachable_functions()!
 	g.collect_data(functions, g.reachable_values(functions))
 	if g.wasm_cabi {
-		// Reserve the canonical-ABI string scratch slot before the stack area
-		// so wrapper materializations never overlap stack frames.
-		aligned := (data_base + g.data.len + 3) & ~3
-		for g.data.len < aligned - data_base {
-			g.data << u8(0)
+		// Reserve one 16-byte scratch slot per simultaneously-live string
+		// param before the stack area so wrapper materializations never
+		// overlap stack frames.
+		mut max_strs := 0
+		for fid in functions {
+			f := g.m.funcs[fid]
+			if g.configured && f.name !in g.exports {
+				continue
+			}
+			if !g.cabi_wrappable(fid) {
+				continue
+			}
+			mut n := 0
+			for pid in f.params {
+				if g.cabi_string_param(g.m.values[pid].typ) {
+					n++
+				}
+			}
+			if g.cabi_string_param(f.typ) {
+				n++
+			}
+			if n > max_strs {
+				max_strs = n
+			}
 		}
-		g.cabi_scratch = data_base + g.data.len
-		g.data << []u8{len: 16}
+		if max_strs > 0 {
+			aligned := (data_base + g.data.len + 3) & ~3
+			for g.data.len < aligned - data_base {
+				g.data << u8(0)
+			}
+			g.cabi_scratch = data_base + g.data.len
+			g.data << []u8{len: 16 * max_strs}
+		}
 	}
 	mut init := Code{}
 	g.stack_bottom = (data_base + g.data.len + 15) & ~15
@@ -202,8 +227,7 @@ pub fn (mut g SSAGen) gen() ! {
 	for w in cabi_wrapped {
 		f := g.m.funcs[w.fid]
 		inner := g.fn_index[f.name]
-		str_typ := g.m.values[f.params[0]].typ
-		idx := g.emit_cabi_string_wrapper(inner, str_typ, g.wtype(f.typ))
+		idx := g.emit_cabi_wrapper(inner, w.fid)
 		g.mod.add_export(w.export_name, export_func, idx)
 	}
 	mut entry := Code{}
@@ -249,53 +273,132 @@ fn (g &SSAGen) cabi_string_param(typ ssa.TypeID) bool {
 }
 
 // cabi_wrappable reports whether an exported function gets a canonical-ABI
-// string wrapper: exactly one string-typed param and an i32 or void result.
+// string wrapper: at least one string-typed param and a void, i32, or string
+// result. Non-string params are forwarded unchanged, so any value type is
+// allowed for them.
 fn (g &SSAGen) cabi_wrappable(fid int) bool {
 	f := g.m.funcs[fid]
-	if f.params.len != 1 {
+	mut strs := 0
+	for pid in f.params {
+		pt := g.m.values[pid].typ
+		if g.cabi_string_param(pt) {
+			strs++
+			continue
+		}
+		if g.wtype(pt) == .void {
+			return false
+		}
+	}
+	ret_is_string := g.cabi_string_param(f.typ)
+	if strs == 0 && !ret_is_string {
 		return false
 	}
-	if !g.cabi_string_param(g.m.values[f.params[0]].typ) {
-		return false
+	if ret_is_string {
+		return true
 	}
-	return g.wtype(f.typ) in [.i32, .void]
+	rt := g.wtype(f.typ)
+	return rt == .void || rt == .i32
 }
 
-// emit_cabi_string_wrapper emits a canonical-ABI wrapper for an exported
-// function taking a single V string: the wrapper has signature
-// (i32 ptr, i32 len) -> ret, materializes string{str: ptr, len: len,
-// is_lit: false} in the module scratch slot, and tail-calls the inner
-// function. The scratch slot is reserved once per module (see gen), so the
-// wrapper needs no locals and leaves the value stack balanced.
-// Limitation: the single scratch slot is not reentrant; nested wrapper calls
-// (host -> guest -> host -> guest) would clobber it. String returns, lists,
-// records, and variants are out of scope for this slice.
-fn (mut g SSAGen) emit_cabi_string_wrapper(inner_idx int, str_typ ssa.TypeID, ret WType) int {
-	off0 := g.m.struct_field_offset(str_typ, 0)
-	off1 := g.m.struct_field_offset(str_typ, 1)
-	off2 := g.m.struct_field_offset(str_typ, 2)
-	has_lit := g.m.type_store.types[str_typ].fields.len > 2
-	mut c := Code{}
-	c.i32_const(i64(g.cabi_scratch))
-	c.local_get(0)
-	c.i32_store(off0)
-	c.i32_const(i64(g.cabi_scratch))
-	c.local_get(1)
-	c.i32_store(off1)
-	if has_lit {
-		c.i32_const(i64(g.cabi_scratch))
-		c.i32_const(0)
-		c.i32_store8(off2)
+// emit_cabi_wrapper emits a canonical-ABI wrapper for an exported function
+// with string params: each V string param becomes (i32 ptr, i32 len), other
+// params are forwarded unchanged, and a V string result becomes an
+// (i32 ptr, i32 len) pair. String params are materialized as
+// string{str, len, is_lit: false} structs in the module scratch slots;
+// a string result uses the backend's hidden sret slot convention
+// (caller-provided struct pointer, void core return). Wrappers need no
+// locals and leave the value stack balanced.
+// Limitation: scratch slots are not reentrant; nested wrapper calls
+// (host -> guest -> host -> guest) would clobber them. Lists, records,
+// variants, and other composite types are out of scope.
+fn (mut g SSAGen) emit_cabi_wrapper(inner_idx int, fid int) int {
+	f := g.m.funcs[fid]
+	mut wparams := []u8{}
+	for pid in f.params {
+		pt := g.m.values[pid].typ
+		if g.cabi_string_param(pt) {
+			wparams << valtype_i32
+			wparams << valtype_i32
+		} else {
+			wparams << wt_valtype(g.wtype(pt))
+		}
 	}
-	c.i32_const(i64(g.cabi_scratch))
-	c.call(inner_idx)
-	c.end()
+	str_ret := g.cabi_string_param(f.typ)
 	mut results := []u8{}
-	if ret != .void {
-		results << wt_valtype(ret)
+	if str_ret {
+		results << valtype_i32
+		results << valtype_i32
+	} else if g.wtype(f.typ) != .void {
+		results << wt_valtype(g.wtype(f.typ))
 	}
-	ti := g.mod.add_type([valtype_i32, valtype_i32], results)
-	return g.mod.add_func(ti, [], c.bytes)
+	// sret slot for a string result: the inner function fills a V string
+	// struct there (SSAGen passes aggregates by hidden caller slot).
+	mut nstr := 0
+	for pid in f.params {
+		if g.cabi_string_param(g.m.values[pid].typ) {
+			nstr++
+		}
+	}
+	sret_slot := g.cabi_scratch + 16 * nstr
+	mut locals := []u8{}
+	mut c := Code{}
+	// materialize each string param into its scratch slot
+	mut si := 0
+	mut wi := 0
+	for pid in f.params {
+		pt := g.m.values[pid].typ
+		if g.cabi_string_param(pt) {
+			slot := g.cabi_scratch + 16 * si
+			off0 := g.m.struct_field_offset(pt, 0)
+			off1 := g.m.struct_field_offset(pt, 1)
+			has_lit := g.m.type_store.types[pt].fields.len > 2
+			off2 := g.m.struct_field_offset(pt, 2)
+			c.i32_const(i64(slot))
+			c.local_get(wi)
+			c.i32_store(off0)
+			c.i32_const(i64(slot))
+			c.local_get(wi + 1)
+			c.i32_store(off1)
+			if has_lit {
+				c.i32_const(i64(slot))
+				c.i32_const(0)
+				c.i32_store8(off2)
+			}
+			si++
+			wi += 2
+		} else {
+			wi += 1
+		}
+	}
+	// call the inner function with args in the original order
+	si = 0
+	wi = 0
+	for pid in f.params {
+		pt := g.m.values[pid].typ
+		if g.cabi_string_param(pt) {
+			c.i32_const(i64(g.cabi_scratch + 16 * si))
+			si++
+			wi += 2
+		} else {
+			c.local_get(wi)
+			wi += 1
+		}
+	}
+	if str_ret {
+		// string results use the hidden sret slot: pass it, then read back
+		// the (ptr, len) the inner function stored there
+		c.i32_const(i64(sret_slot))
+	}
+	c.call(inner_idx)
+	if str_ret {
+		c.i32_const(i64(sret_slot))
+		c.i32_load(g.m.struct_field_offset(f.typ, 0))
+		c.i32_const(i64(sret_slot))
+		c.i32_load(g.m.struct_field_offset(f.typ, 1))
+	}
+	c.end()
+	ti := g.mod.add_type(wparams, results)
+	return g.mod.add_func(ti, locals, c.bytes)
 }
 
 // write writes the generated module to path.
