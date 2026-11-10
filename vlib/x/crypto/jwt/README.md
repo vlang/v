@@ -2,7 +2,8 @@
 
 `x.crypto.jwt` provides JSON Web Token (JWT) signing, verification, and decoding
 using the compact signed-token format from RFC 7519 and RFC 7515 (JWS), with
-algorithms from RFC 7518 (JWA) and RFC 8037 (EdDSA).
+algorithms from RFC 7518 (JWA) and RFC 8037 (EdDSA), and JSON Web Key Sets from
+RFC 7517.
 
 ## Supported Algorithms
 
@@ -10,20 +11,25 @@ algorithms from RFC 7518 (JWA) and RFC 8037 (EdDSA).
 - `HS384`: HMAC using SHA-384 (symmetric)
 - `HS512`: HMAC using SHA-512 (symmetric)
 - `EdDSA`: Ed25519 signature algorithm (asymmetric)
+- `RS256`, `RS384`, `RS512`: RSASSA-PKCS1-v1_5 with SHA-256/384/512 (asymmetric)
+- `PS256`, `PS384`, `PS512`: RSASSA-PSS with SHA-256/384/512, and a salt as long
+  as the digest (asymmetric)
 
 In accordance with security best practices, `none` and arbitrary unapproved
 algorithms are rejected by default.
 
 Every verification call requires `VerifyOptions.algorithm`. Choose this algorithm
 from trusted application configuration for the verification key. Do not derive it
-from the token header. For Ed25519 public keys, always select `.eddsa`; selecting an
-HMAC algorithm would allow anyone who knows the public key to forge tokens.
+from the token header. For Ed25519 and RSA public keys, always select their
+asymmetric algorithm; selecting an HMAC algorithm would allow anyone who knows the
+public key to forge tokens.
 
 Registered timestamp claims (`exp`, `nbf`, `iat`) use signed 64-bit integer Unix
 seconds. Verification rejects malformed JSON and claims that cannot be decoded as
 `StandardClaims`, even when `validate_exp` or `validate_nbf` is disabled. Timestamp
 strings, fractional timestamps, null registered claims, and duplicate top-level members
-are rejected. Audience claims support a single string; audience arrays are not supported.
+are rejected. The audience claim can be a string or an array of strings, both read
+into `jwt.Audience`; an expected audience must be one of them.
 Headers require an explicit `alg`. Unsupported `crit` and `b64` extensions, padded or
 noncanonical Base64url segments, and negative leeway are rejected. Leeway must be a
 nonnegative number of seconds.
@@ -42,7 +48,7 @@ fn main() {
 	claims := jwt.StandardClaims{
 		sub: 'user-12345'
 		iss: 'auth.example.com'
-		aud: 'api.example.com'
+		aud: jwt.Audience.new('api.example.com')
 		exp: time.now().unix() + 3600
 	}
 
@@ -124,6 +130,69 @@ fn main() {
 	println('Verified subject: ${tok.claims.sub or { '' }}')
 }
 ```
+
+### RSA Signatures (RS256 / PS256)
+
+Sign with a key parsed once by `crypto.rsa`, with `sign_with_rsa_key`; verify
+with a public key in DER, SubjectPublicKeyInfo or PKCS #1. `sign` also accepts a
+DER private key, PKCS #8 or PKCS #1, but parses and checks it at each call.
+
+```v
+import crypto.rsa
+import x.crypto.jwt
+
+fn main() {
+	private_key := rsa.generate_key(2048)!
+
+	claims := jwt.StandardClaims{
+		sub: 'rsa-user'
+	}
+	token := jwt.sign_with_rsa_key(claims, private_key, jwt.SignOptions{
+		algorithm: .ps256
+		kid:       'key-2026'
+	})!
+
+	public_der := private_key.public_key().to_der()
+	tok := jwt.verify[jwt.StandardClaims](token, public_der, jwt.VerifyOptions{
+		algorithm: .ps256
+	})!
+	println('Verified subject: ${tok.claims.sub or { '' }}')
+}
+```
+
+### JSON Web Key Sets (Keycloak and other OpenID providers)
+
+`verify_with_jwks` picks the key named by the `kid` of the token in a JSON Web
+Key Set, such as the one an OpenID provider publishes at its `jwks_uri`. The
+algorithm still comes from your configuration, and the key must match it: its
+type, and its `alg` and `use` when present. Exactly one key of the set must fit.
+
+`StandardClaims.aud` is an `Audience`, which holds one or several recipients, as
+in many Keycloak access tokens: test it with `contains`.
+
+```v ignore
+import net.http
+import x.crypto.jwt
+
+fn main() {
+	certs := http.fetch(
+		url:      'https://sso.example.com/realms/demo/protocol/openid-connect/certs'
+		validate: true
+	)!
+	jwks := jwt.Jwks.parse(certs.body)!
+	token := '...'
+	tok := jwt.verify_with_jwks[jwt.StandardClaims](token, jwks, jwt.VerifyOptions{
+		algorithm:         .rs256
+		expected_issuer:   'https://sso.example.com/realms/demo'
+		expected_audience: 'my-client'
+	})!
+	println('Verified subject: ${tok.claims.sub or { '' }}')
+}
+```
+
+`Jwk.from_rsa_public_key` builds the JWK of an RSA key, to publish your own key
+set, for instance for `private_key_jwt` client authentication;
+`examples/oidc_private_key_jwt.v` shows that flow against an OpenID provider.
 
 ### Inspecting Header or Claims Without Verifying
 
