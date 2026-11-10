@@ -15,7 +15,9 @@
 #ifdef __cplusplus
 extern "C"
 #endif
-int v_os_process_pipe_cloexec(int fds[2]) {
+// Standalone V3 object builds may embed this helper in multiple objects.
+// Weak ELF linkage keeps those objects linkable while retaining the pipe2 ABI.
+__attribute__((weak)) int v_os_process_pipe_cloexec(int fds[2]) {
 	return pipe2(fds, O_CLOEXEC);
 }
 #endif
