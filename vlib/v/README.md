@@ -734,7 +734,8 @@ with the same compiler, C compiler identity, command line, output and environmen
 receipt lists the program's V sources, checked as a whole by their source signature (content
 digests, `$env` reads, `v.mod` hashes, pkg-config probes and the build-time pseudo variables
 when the program uses them), the files its native directives read (the C compiler's dependency
-manifest of those directives), the paths where a header would be found first, starting beside
+manifest of those directives, taken with the C standard, target and other options of the
+compilation that reads them), the paths where a header would be found first, starting beside
 the translation unit, the bundled TinyCC headers when TinyCC compiles, embedded resources, the
 objects and libraries its flags name by path, and the listings of the source directories. When
 every file still has the recorded content, the build restores the recorded

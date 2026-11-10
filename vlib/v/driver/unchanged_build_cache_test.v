@@ -626,6 +626,25 @@ fn test_pkgconfig_files_follow_requirements() {
 	assert !v3_pkgconfig_files(['receipt_missing_package']).ok
 }
 
+fn test_receipt_scans_the_source_of_an_object_as_the_build_compiles_it() {
+	f := receipt_fixture('object_standard')!
+	defer { os.rmdir_all(f.root) or {} }
+	object := os.join_path(f.source_dir, 'built.o')
+	source := os.join_path(f.source_dir, 'built.c')
+	c11 := os.join_path(f.source_dir, 'c11_value.h')
+	aged_write(c11, '#define NATIVE_VALUE 1\n')!
+	aged_write(os.join_path(f.source_dir, 'other_value.h'), '#define NATIVE_VALUE 9\n')!
+	aged_write(source, '#if __STDC_VERSION__ == 201112L\n#include "c11_value.h"\n#else\n#include "other_value.h"\n#endif\nint native_value(void) { return NATIVE_VALUE; }\n')!
+	// compile_cached_c_source_object compiles it as C11 (c_source_object_command).
+	_, args := c_source_object_command(source, '', &V3NativeObjectMode{
+		c_compiler: 'cc'
+	})
+	assert '-std=gnu11' in args
+	publish_native_receipt(f, 'object_standard', native_receipt_inputs(f, [object], ''))
+	aged_write(c11, '#define NATIVE_VALUE 2\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'object_standard', f.destination, '')
+}
+
 fn test_tracked_dependencies_search_the_directory_of_the_unit_first() {
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_unit_quote_dir_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
@@ -658,4 +677,91 @@ fn test_missing_include_candidates_start_in_the_directory_of_the_unit() {
 	assert os.join_path(native, 'choice.h') in missing
 	without_unit := v3_missing_include_candidates(search, [later], read, [], time.utc().unix())?
 	assert os.join_path(native, 'choice.h') !in without_unit
+}
+
+// The tests below build programs and take long: a test after them would find
+// the files that it ages newer than the start of its process.
+
+// age_tree gives every file and directory below `root`, and `root` itself, a time
+// from before the build: a receipt vouches only for what did not change during it.
+fn age_tree(root string) ! {
+	mut dirs := [root]
+	for dirs.len > 0 {
+		dir := dirs.pop()
+		for entry in os.ls(dir)! {
+			path := os.join_path(dir, entry)
+			if os.is_dir(path) {
+				dirs << path
+			} else {
+				age_unchanged_build_source(path)!
+			}
+		}
+		age_unchanged_build_source(dir)!
+	}
+}
+
+// receipt_project_build builds the V project `project` into `executable` with the
+// receipt cache in `cache`, and returns the output of the compiler and the line
+// that the executable prints.
+fn receipt_project_build(project string, executable string, cache string) (string, string) {
+	mut environment := os.environ()
+	environment.delete('VFLAGS')
+	environment.delete('V3_DISABLE_UNCHANGED_BUILD_CACHE')
+	environment['V3CACHE'] = cache
+	environment['V3_CACHE_TRACE'] = '1'
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	mut compiler := os.new_process(@VEXE)
+	compiler.set_environment(environment)
+	compiler.set_args(['-cc', 'clang', '-gc', 'none', '-o', executable, project])
+	compiler.set_redirect_stdio_merged()
+	compiler.run()
+	output := compiler.stdout_slurp()
+	compiler.wait()
+	code := compiler.code
+	compiler.close()
+	assert code == 0, output
+	result := os.exec([executable])
+	assert result.exit_code == 0, result.output
+	return output, result.output.trim_space()
+}
+
+// receipt_project_rebuilds builds `project`, which prints `1`, checks that a
+// rebuild of it is restored from its receipt, calls `change`, and checks that the
+// build after it prints `2`, as a build without the receipt does.
+fn receipt_project_rebuilds(root string, project string, change fn () !) ! {
+	if os.find_abs_path_of_executable('clang') or { '' } == '' {
+		return
+	}
+	age_tree(project)!
+	executable := os.join_path(root, 'out', 'app')
+	os.mkdir_all(os.dir(executable))!
+	age_unchanged_build_source(os.dir(executable))!
+	cache := os.join_path(root, 'cache')
+	first_output, first := receipt_project_build(project, executable, cache)
+	assert first == '1'
+	assert first_output.contains('unchanged build cache recorded'), first_output
+	again_output, again := receipt_project_build(project, executable, cache)
+	assert again == '1'
+	assert again_output.contains('unchanged build cache hit'), again_output
+	change()!
+	changed_output, changed := receipt_project_build(project, executable, cache)
+	assert changed == '2', changed_output
+	assert !changed_output.contains('unchanged build cache hit'), changed_output
+}
+
+fn test_receipt_scans_a_c_source_with_the_c_standard_of_the_build() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_receipt_c_standard_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'standard' }\n")!
+	os.write_file(os.join_path(project, 'main.v'), '#flag @VMODROOT/native.c\nfn C.native_value() int\n\nfn main() {\n\tprintln(C.native_value())\n}\n')!
+	// The build compiles the source as C11; the C compiler has another standard
+	// of its own.
+	os.write_file(os.join_path(project, 'native.c'), '#if __STDC_VERSION__ == 201112L\n#include "c11_value.h"\n#else\n#include "other_value.h"\n#endif\nint native_value(void) { return NATIVE_VALUE; }\n')!
+	os.write_file(os.join_path(project, 'c11_value.h'), '#define NATIVE_VALUE 1\n')!
+	os.write_file(os.join_path(project, 'other_value.h'), '#define NATIVE_VALUE 9\n')!
+	receipt_project_rebuilds(root, project, fn [project] () ! {
+		os.write_file(os.join_path(project, 'c11_value.h'), '#define NATIVE_VALUE 2\n')!
+	})!
 }

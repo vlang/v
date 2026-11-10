@@ -646,6 +646,19 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 	}
 }
 
+// c_object_flag_plan returns the options with which prepare_c_flags_for_link
+// compiles a native source of the C flags `flags` to an object of its own.
+fn c_object_flag_plan(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c_compiler string) CObjectFlagPlan {
+	mut common_compile_flags := optimization_flags.clone()
+	common_compile_flags << c_object_compile_support_flags(flags)
+	return CObjectFlagPlan{
+		environment_flags:      environment_c_flags
+		primary_compiler:       c_compiler
+		primary_compiler_flags: primary_compiler_flags
+		common_flags:           common_compile_flags
+	}
+}
+
 fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
@@ -668,14 +681,8 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		}
 		return c_source_language_flags(passthrough)
 	}
-	mut common_compile_flags := optimization_flags.clone()
-	common_compile_flags << c_object_compile_support_flags(flags)
-	object_flag_plan := CObjectFlagPlan{
-		environment_flags:      environment_c_flags
-		primary_compiler:       c_compiler
-		primary_compiler_flags: primary_compiler_flags
-		common_flags:           common_compile_flags
-	}
+	object_flag_plan := c_object_flag_plan(flags, environment_c_flags, primary_compiler_flags,
+		optimization_flags, c_compiler)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	ensure_native_object_cache_dir(cache_dir)!
 	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
@@ -1783,17 +1790,34 @@ fn ensure_native_object_cache_dir(path string) ! {
 	}
 }
 
-fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	ensure_native_object_cache_dir(cache_dir)!
+// V3NativeObjectMode is how a build compiles a native source to an object of its
+// own (c_source_object_command): what prepare_c_flags_for_link hands to
+// compile_cached_c_source_object besides the source.
+struct V3NativeObjectMode {
+	object_flags                CObjectFlagPlan
+	c99                         bool
+	no_std                      bool
+	pic_flag                    string
+	target_args                 []string
+	target                      pref.Target
+	c_compiler                  string
+	use_platform_non_c_compiler bool
+}
+
+// c_source_object_command returns the C compiler and its arguments, without the
+// output and the source, that compile `source_file` to an object of its own.
+// The receipt of an unchanged build scans the source with the same arguments.
+fn c_source_object_command(source_file string, source_language string, mode &V3NativeObjectMode) (string, []string) {
+	target := mode.target
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
-		cxx_standard_flag(c99, no_std)
+		cxx_standard_flag(mode.c99, mode.no_std)
 	} else {
-		c_standard_flag(c99, no_std)
+		c_standard_flag(mode.c99, mode.no_std)
 	}
-	mut compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
+	mut compiler := c_source_object_compiler(language, mode.c_compiler, mode.use_platform_non_c_compiler,
+		target.os)
 	mut platform_gc := false
 	if target.os == 'linux' && pref.ccompiler_is_tinycc(compiler)
 		&& (source_file == 'thirdparty/libgc/gc.c'
@@ -1810,9 +1834,9 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if std_flag.len > 0 {
 		args << std_flag
 	}
-	args << target_args
-	if pic_flag.len > 0 {
-		args << pic_flag
+	args << mode.target_args
+	if mode.pic_flag.len > 0 {
+		args << mode.pic_flag
 	}
 	wrapv_flag := c_wrapv_flag(target.os)
 	if wrapv_flag.len > 0 {
@@ -1820,7 +1844,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	}
 	args << '-w'
 	// A C helper does not inherit a standard intended for the C++ main unit.
-	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
+	args << mode.object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
 	if platform_gc && target.arch == 'arm64' {
 		// TinyCC's linker does not provide GCC's outlined atomic helpers.
@@ -1833,6 +1857,22 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if language.len > 0 {
 		args << ['-x', language]
 	}
+	return compiler, args
+}
+
+fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	ensure_native_object_cache_dir(cache_dir)!
+	compiler, mut args := c_source_object_command(source_file, source_language, &V3NativeObjectMode{
+		object_flags:                *object_flags
+		c99:                         c99
+		no_std:                      no_std
+		pic_flag:                    pic_flag
+		target_args:                 target_args
+		target:                      target
+		c_compiler:                  c_compiler
+		use_platform_non_c_compiler: use_platform_non_c_compiler
+	})
 	if c_compiler_is_msvc(compiler) {
 		// `cl` cannot list a source's dependencies like `-M` does, so the object cannot
 		// be validated against its headers later. Build it for this compilation only.
@@ -5624,6 +5664,14 @@ struct UnchangedBuildInputs {
 	// Where an import can be found, for the modules of the build (v3_module_shadow_inputs).
 	module_roots []string
 	project_dirs []string
+	// unit_mode_flags are the options that the C command of the program gives
+	// every source before its inputs (V3CCompilerFlagPlan.before_inputs, without
+	// the options of the link): its C standard, target, defines and optimization.
+	// The generated unit, which the probe stands in for, and each C source that the
+	// flags hand to that command are scanned with them. object_mode is how a source
+	// that the build compiles to an object of its own is compiled.
+	unit_mode_flags []string
+	object_mode     V3NativeObjectMode
 }
 
 // v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
@@ -5745,7 +5793,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		units << V3ReceiptNativeUnit{
 			path:     probe_path
 			compiler: manifest_compiler
-			args:     ['-x', inputs.language, '-w']
+			args:     v3_receipt_unit_args(inputs, ['-x', inputs.language, '-w'])
 		}
 	}
 	external := v3_external_native_sources(all_flags)
@@ -5753,6 +5801,29 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		missing_set[path] = true
 	}
 	for source in external.files {
+		// prepare_c_flags_for_link compiles a source of an object that the flags
+		// name, and an Objective-C++ source, to an object of its own; the C command of
+		// the program compiles the other sources that the flags name.
+		if source.ends_with('.mm') || !all_flags.any(it.trim_space() == source) {
+			mut mode := inputs.object_mode
+			if inputs.tcc_include_dir.len > 0 || mode.c_compiler.len == 0 {
+				mode = V3NativeObjectMode{
+					...mode
+					c_compiler: manifest_compiler
+				}
+			}
+			compiler, args := c_source_object_command(source, '', &mode)
+			units << V3ReceiptNativeUnit{
+				path:     source
+				compiler: if pref.ccompiler_is_tinycc(compiler) {
+					manifest_compiler
+				} else {
+					compiler
+				}
+				args:     args
+			}
+			continue
+		}
 		language := c_source_language(source, '')
 		mut extra := ['-w']
 		if language.len > 0 {
@@ -5761,7 +5832,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		units << V3ReceiptNativeUnit{
 			path:     source
 			compiler: c_source_object_compiler(language, manifest_compiler, false, inputs.target_os)
-			args:     extra
+			args:     v3_receipt_unit_args(inputs, extra)
 		}
 	}
 	if inputs.tcc_include_dir.len > 0 {
@@ -5775,12 +5846,9 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 			}
 		}
 	}
-	compile_flags := c_object_compile_flags(inputs.flags)
 	for unit in units {
-		mut args := compile_flags.clone()
-		args << unit.args
-		deps := cached_c_object_dependencies(inputs.cache_dir, unit.compiler, args, unit.path, mut
-			stats)
+		deps := cached_c_object_dependencies(inputs.cache_dir, unit.compiler, unit.args,
+			unit.path, mut stats)
 		if deps.used_fallback {
 			unchanged_build_trace('cannot record: the native dependencies of ${unit.path} are unavailable')
 			return UnchangedBuildStamp{}
@@ -5832,6 +5900,16 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		missing:    missing
 		output_dir: inputs.output_dir
 	}, inputs.cache_dir, inputs.build_time)
+}
+
+// v3_receipt_unit_args returns the arguments with which a receipt scans a unit
+// that the C command of the program compiles: the options that it gives every
+// source, those of the program's flags and `extra`, as that command does.
+fn v3_receipt_unit_args(inputs &UnchangedBuildInputs, extra []string) []string {
+	mut args := inputs.unit_mode_flags.clone()
+	args << c_object_compile_flags(inputs.flags)
+	args << extra
+	return args
 }
 
 // v3_program_executable_link_signature covers what decides the executable of a
@@ -13601,13 +13679,14 @@ pub fn run(args []string) {
 	// compiler, even when those flags came from the original program's source.
 	mut native_c_flags := user_c_flags.clone()
 	for group in refresh_project_flags { native_c_flags << group.flags }
-	// The receipt of this build is signed beside the rest of the build; only
-	// recording the executable waits for it at the end.
+	// The receipt of this build is signed beside the rest of the build, once the
+	// arguments of its C compiler are known; only recording the executable waits
+	// for it at the end.
 	mut unchanged_build_preparation := []thread UnchangedBuildStamp{}
+	mut unchanged_build_inputs := UnchangedBuildInputs{}
 	if unchanged_build_cache_enabled {
-		unchanged_build_inputs := v3_unchanged_build_inputs(a, prefs, unchanged_build_source_files,
+		unchanged_build_inputs = v3_unchanged_build_inputs(a, prefs, unchanged_build_source_files,
 			native_c_flags, link_ld_flags, c_compiler, unchanged_build_cache_dir, bin_file)
-		unchanged_build_preparation << spawn v3_unchanged_build_prepare(unchanged_build_inputs)
 	}
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
 		v3_native_inputs(a, prefs, user_files, native_c_flags)
@@ -16291,6 +16370,8 @@ pub fn run(args []string) {
 			// Environment flags also reach the native helper compilations below.
 			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir, effective_c_compiler == 'msvc')
 		}
+		// How prepare_c_flags_for_link compiles a native source to an object.
+		mut receipt_object_mode := V3NativeObjectMode{}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
@@ -16305,6 +16386,20 @@ pub fn run(args []string) {
 				primary_object_compiler_flags = v3_tcc_object_compile_flags(prefs.vroot, c_compiler,
 					bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(),
 					object_tcc_sdk_root)
+			}
+			// The objects of the program can come from the module cache, which compiles
+			// them with the flags of their modules: all of them are in those of the receipt.
+			receipt_object_mode = V3NativeObjectMode{
+				object_flags:                c_object_flag_plan(unchanged_build_inputs.flags,
+					environment_c_flags, primary_object_compiler_flags, object_optimization_flags,
+					c_compiler)
+				c99:                         prefs.c99
+				no_std:                      no_std
+				pic_flag:                    pic_flag
+				target_args:                 target_args
+				target:                      prefs.target
+				c_compiler:                  c_compiler
+				use_platform_non_c_compiler: use_implicit_tcc_semantics
 			}
 			if dump_c_flags.len > 0 && dump_c_flags != '-' {
 				// vab reads the dump even when building the module objects fails (Android
@@ -16470,6 +16565,24 @@ pub fn run(args []string) {
 			is_freestanding:     'freestanding' in prefs.user_defines
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(c_flag_options)
+		if unchanged_build_cache_enabled {
+			// The receipt scans the native units with the options of this command.
+			// It asks the system compiler about the units that TinyCC compiles, so
+			// it takes the options that the command has without TinyCC's own.
+			receipt_flag_plan := if effective_tcc {
+				v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+					...c_flag_options
+					is_tcc: false
+				})
+			} else {
+				c_flag_plan
+			}
+			unchanged_build_preparation << spawn v3_unchanged_build_prepare(UnchangedBuildInputs{
+				...unchanged_build_inputs
+				unit_mode_flags: c_object_compile_flags(receipt_flag_plan.before_inputs)
+				object_mode:     receipt_object_mode
+			})
+		}
 		large_c_flag_options := V3CCompilerFlagOptions{
 			...c_flag_options
 			large_c_unit:   true
