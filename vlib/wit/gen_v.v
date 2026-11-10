@@ -222,9 +222,20 @@ fn wit_type_to_v(t WitType, defined map[string]bool) string {
 			return '!${okstr}'
 		}
 		.tuple {
+			// V has no anonymous tuple types usable as fields; homogeneous
+			// tuples map to arrays, heterogeneous ones to voidptr.
 			mut ts := []string{}
 			for it in t.items { ts << wit_type_to_v(it, defined) }
-			return '(${ts.join(', ')})'
+			if ts.len == 0 { return 'voidptr' }
+			mut same := true
+			for x in ts[1..] {
+				if x != ts[0] {
+					same = false
+					break
+				}
+			}
+			if same { return '[]${ts[0]}' }
+			return 'voidptr'
 		}
 	}
 }

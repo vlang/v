@@ -55,3 +55,29 @@ fn test_preview2_filesystem() {
 		'(mut self Descriptor) read_via_stream',
 	])
 }
+
+fn test_preview2_sockets() {
+	preview2_case('sockets-network', 'vlib/wasm/wit/testdata/wasi/sock_network.wit', [
+		'pub struct Network',
+		'pub type Ipv4_address',
+	])
+	preview2_case('sockets-instance-network', 'vlib/wasm/wit/testdata/wasi/sock_instance-network.wit', [
+		'pub fn instance_network',
+	])
+	preview2_case('sockets-ip-name-lookup', 'vlib/wasm/wit/testdata/wasi/sock_ip-name-lookup.wit', [
+		'pub fn resolve_addresses',
+	])
+	preview2_case('sockets-tcp', 'vlib/wasm/wit/testdata/wasi/sock_tcp.wit', [
+		'pub struct Tcp_socket',
+		'(mut self Tcp_socket) start_bind',
+	])
+	preview2_case('sockets-tcp-create', 'vlib/wasm/wit/testdata/wasi/sock_tcp-create-socket.wit', [
+		'pub fn create_tcp_socket',
+	])
+	preview2_case('sockets-udp', 'vlib/wasm/wit/testdata/wasi/sock_udp.wit', [
+		'pub struct Udp_socket',
+	])
+	preview2_case('sockets-udp-create', 'vlib/wasm/wit/testdata/wasi/sock_udp-create-socket.wit', [
+		'pub fn create_udp_socket',
+	])
+}

@@ -306,6 +306,10 @@ fn (mut p Parser) parse_resource() !WitResource {
 	p.expect_ident_val('resource')!
 	name := p.expect_ident()!
 	mut r := WitResource{ name: name }
+	if p.peek().kind == .punct && p.peek().val == ';' {
+		p.advance()
+		return r
+	}
 	p.expect_punct('{')!
 	for !(p.peek().kind == .punct && p.peek().val == '}') {
 		mattrs := p.collect_attributes()

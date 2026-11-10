@@ -363,6 +363,60 @@ fn test_data_count_two_segments() {
 	assert q.raw(2) == [u8(7), 7]
 }
 
+fn test_name_section_roundtrip() {
+	mut m := wasm.Module{}
+	m.enable_debug('testmod')
+	mut func := m.new_function('named_fn', [.i32_t], [.i32_t])
+	{
+		func.local_get(0)
+	}
+	m.commit(func, true)
+	b := m.compile()
+	// find the custom name section and decode it
+	mut r := SecReader{ data: b, pos: 8 }
+	mut found_mod := false
+	mut found_fn := false
+	for r.pos + 2 <= b.len {
+		sid := b[r.pos]
+		r.pos++
+		size := r.uleb()
+		end := r.pos + size
+		if sid == 0 {
+			nlen := r.uleb()
+			nm := r.raw(nlen).bytestr()
+			if nm == 'name' {
+				// walk subsections
+				for r.pos < end {
+					sub := b[r.pos]
+					r.pos++
+					ssize := r.uleb()
+					send := r.pos + ssize
+					if sub == 0 {
+						// module name
+						mlen := r.uleb()
+						assert r.raw(mlen).bytestr() == 'testmod'
+						found_mod = true
+					} else if sub == 1 {
+						// function names
+						fcount := r.uleb()
+						for _ in 0 .. fcount {
+							_ = r.uleb()
+							flen := r.uleb()
+							if r.raw(flen).bytestr() == 'named_fn' {
+								found_fn = true
+							}
+						}
+					}
+					r.pos = send
+				}
+			}
+		}
+		r.pos = end
+	}
+	assert found_mod, 'name section must carry the module name'
+	assert found_fn, 'name section must carry the function name'
+}
+
 fn test_real_module_structural() {
 	core := os.read_file('vlib/v/gen/wasm/testdata/echo_len.shim.wasm') or { panic(err) }
 	b := core.bytes()
