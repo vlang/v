@@ -301,8 +301,21 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		tc.import_line_prescans = new_import_line_prescans(a)
 		if tc.import_line_prescans.len > 1 {
 			queue := chan int{cap: tc.import_line_prescans.len}
-			for i in 0 .. tc.import_line_prescans.len {
-				queue <- i
+			// The longest texts first, so that none of them starts last and
+			// then decides when the batch ends.
+			for tier in 0 .. 3 {
+				for i, scan in tc.import_line_prescans {
+					scan_tier := if scan.source.len >= 512 * 1024 {
+						0
+					} else if scan.source.len >= 96 * 1024 {
+						1
+					} else {
+						2
+					}
+					if scan_tier == tier {
+						queue <- i
+					}
+				}
 			}
 			queue.close()
 			import_scan_args = ImportLineScanArgs{

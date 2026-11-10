@@ -9452,7 +9452,27 @@ fn (mut scan ImportLineScan) run() {
 	}
 	scan.read = true
 	scan.lines = module_import_lines(scan.source)
-	scan.has_cosnt = scan.source.contains('cosnt')
+	scan.has_cosnt = source_has_cosnt(scan.source)
+}
+
+// source_has_cosnt is `source.contains('cosnt')`. It looks for the pair `sn`,
+// which source code rarely has, and then at the letters around it: a search
+// from the first letter stops at every `c` of the text.
+@[direct_array_access]
+fn source_has_cosnt(source string) bool {
+	mut from := 2
+	for from < source.len {
+		at := source.index_after_('sn', from)
+		if at < 0 {
+			break
+		}
+		if at + 2 < source.len && source[at - 2] == `c` && source[at - 1] == `o`
+			&& source[at + 2] == `t` {
+			return true
+		}
+		from = at + 1
+	}
+	return false
 }
 
 struct ImportLineScanArgs {
