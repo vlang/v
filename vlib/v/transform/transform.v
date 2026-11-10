@@ -1079,6 +1079,27 @@ mut:
 	modules      [1024]string
 	has_generics [1024]bool
 	states       [1024]i8
+	// Declared return types by resolved call name and callee form, for the file,
+	// module and signature tables recorded below; see
+	// resolved_call_declared_return_slot.
+	ret_tc          voidptr
+	ret_revision    u64
+	ret_module      string
+	ret_file        string
+	ret_tc_rets     int = -1
+	ret_tc_modules  int
+	ret_tc_generics int
+	ret_tc_texts    int
+	ret_tc_v_names  int
+	ret_fn_count    int
+	ret_by_module   int
+	ret_type_tables int
+	ret_memo_names  bool
+	ret_generation  u32
+	ret_names       [1024]string
+	ret_results     [1024]u32
+	ret_forms       [1024]u8
+	ret_states      [1024]i8
 }
 
 // CallQualifiedNameCache remembers, per (module, short callee name), whether
