@@ -5698,15 +5698,48 @@ fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name_id u32, field_name stri
 // per-selector embedded-field resolution doesn't rescan (and re-c_name) every field of
 // the receiver struct on every field access — a major cgen cost after #27538.
 fn (mut g FlatGen) precompute_embedded_fields() {
+	if g.finish_embedded_fields_lane() {
+		return
+	}
 	for registry_type_name_id, fields in g.tc.structs {
-		mut emb := []types.StructField{}
+		g.embedded_fields_by_type[registry_type_name_id] = g.embedded_fields_of(fields)
+	}
+}
+
+fn (g &FlatGen) embedded_fields_of(fields []types.StructField) []types.StructField {
+	mut emb := []types.StructField{}
+	for field in fields {
+		if g.embedded_field_type_name(field) != 0 {
+			emb << field
+		}
+	}
+	return emb
+}
+
+// embedded_fields_without_context is precompute_embedded_fields for the structs
+// whose answer does not depend on the checker's current file and module, which
+// a helper thread does not have. A callback field may be an embedded callback
+// alias that embedded_field_type_name resolves in that context: structs with
+// one get an empty list here and are returned for the caller to redo.
+fn (g &FlatGen) embedded_fields_without_context() (map[u32][]types.StructField, []u32) {
+	mut by_type := map[u32][]types.StructField{}
+	mut deferred := []u32{}
+	for registry_type_name_id, fields in g.tc.structs {
+		mut needs_context := false
 		for field in fields {
-			if g.embedded_field_type_name(field) != 0 {
-				emb << field
+			if types.unwrap_pointer(field.typ) is types.FnType {
+				needs_context = true
+				break
 			}
 		}
-		g.embedded_fields_by_type[registry_type_name_id] = emb
+		if needs_context {
+			deferred << registry_type_name_id
+			by_type[registry_type_name_id] = []types.StructField{}
+		} else {
+			by_type[registry_type_name_id] = g.embedded_fields_of(fields)
+		}
 	}
+	return by_type, deferred
 }
 
 // struct_embedded_fields returns the embedded fields of a type (mirrors

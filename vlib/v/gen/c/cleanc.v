@@ -1128,6 +1128,7 @@ mut:
 	qualified_enum_method_cache     &ContextStringLookupCache     = unsafe { nil }
 	import_type_cache               &ImportTypeCache              = unsafe { nil }
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
+	embedded_fields_lane            voidptr                     // helper thread building embedded_fields_by_type, see start_embedded_fields_lane
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
@@ -4124,7 +4125,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
 	g.import_type_cache = &ImportTypeCache{}
-	g.embedded_fields_by_type.clear()
+	// The previous table can be storage of a helper arena that is gone by now.
+	g.embedded_fields_by_type = map[u32][]types.StructField{}
 	g.param_types_by_short.clear()
 	g.generic_method_candidates.clear()
 	g.spawn_wrapper_names.clear()
@@ -5497,6 +5499,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	g.unused_param_seen = &UnusedParamSeen{}
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	type_index_args, type_index_threads := g.start_type_indexes(no_parallel)
+	g.start_embedded_fields_lane(no_parallel)
 	if no_parallel && g.incremental_fn_names.len == 0 {
 		// Serial body generation needs the same immutable lookup tables as the
 		// worker path. Building the field index once here keeps scoped batches

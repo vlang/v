@@ -33,6 +33,12 @@ fn (mut g FlatGen) start_type_indexes(_ bool) (&TypeIndexArgs, []int) {
 
 fn (mut g FlatGen) finish_type_indexes(_ &TypeIndexArgs, _ []int) {}
 
+fn (mut g FlatGen) start_embedded_fields_lane(_ bool) {}
+
+fn (mut g FlatGen) finish_embedded_fields_lane() bool {
+	return false
+}
+
 fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	for group in 0 .. fn_signature_registration_groups {
 		for registration in registrations {

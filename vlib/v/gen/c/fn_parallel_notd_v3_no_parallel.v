@@ -836,6 +836,62 @@ fn (mut g FlatGen) finish_type_indexes(args &TypeIndexArgs, threads []thread voi
 	}
 }
 
+// EmbeddedFieldsLane builds FlatGen.embedded_fields_by_type on a helper thread
+// while collect_gen_info runs. `scope` holds the table until cgen output is done.
+struct EmbeddedFieldsLane {
+	g &FlatGen // read-only
+mut:
+	threads  []thread voidptr
+	scope    voidptr
+	fields   map[u32][]types.StructField
+	deferred []u32
+}
+
+fn embedded_fields_lane_thread(arg voidptr) voidptr {
+	mut lane := unsafe { &EmbeddedFieldsLane(arg) }
+	lane.scope = cgen_worker_scope_begin(true)
+	lane.fields, lane.deferred = lane.g.embedded_fields_without_context()
+	cgen_worker_scope_leave(lane.scope)
+	return unsafe { nil }
+}
+
+// start_embedded_fields_lane starts precompute_embedded_fields beside
+// collect_gen_info: the table only depends on the checker's struct table, apart
+// from the few structs that finish_embedded_fields_lane redoes on the master.
+fn (mut g FlatGen) start_embedded_fields_lane(no_parallel bool) {
+	g.embedded_fields_lane = unsafe { nil }
+	if no_parallel || !g.scope_parallel_workers || g.incremental_fn_names.len > 0 {
+		return
+	}
+	mut lane := &EmbeddedFieldsLane{
+		g: g
+	}
+	lane.threads << spawn embedded_fields_lane_thread(voidptr(lane))
+	g.embedded_fields_lane = voidptr(lane)
+}
+
+// finish_embedded_fields_lane installs the table of a started lane and reports
+// whether there was one. It runs where precompute_embedded_fields would, so the
+// structs left to the master are resolved in the same checker context.
+fn (mut g FlatGen) finish_embedded_fields_lane() bool {
+	if isnil(g.embedded_fields_lane) {
+		return false
+	}
+	mut lane := unsafe { &EmbeddedFieldsLane(g.embedded_fields_lane) }
+	g.embedded_fields_lane = unsafe { nil }
+	lane.threads.wait()
+	if lane.scope != unsafe { nil } {
+		g.parallel_worker_scopes << lane.scope
+	}
+	g.embedded_fields_by_type = lane.fields.move()
+	for name_id in lane.deferred {
+		g.embedded_fields_by_type[name_id] = g.embedded_fields_of(g.tc.structs[name_id] or {
+			[]types.StructField{}
+		})
+	}
+	return true
+}
+
 // ParamTypeIndexArgs carries the short-name parameter type index
 // (precompute_param_type_index) built beside the pre-dispatch helpers.
 struct ParamTypeIndexArgs {
