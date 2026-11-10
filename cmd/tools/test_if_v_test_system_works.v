@@ -161,7 +161,10 @@ fn main() {
 	spawn fn () {
 		// Ubuntu/musl compiles the cold vtest tool with musl-gcc rather than TCC.
 		// Keep its slow first compilation from triggering the generic 10-minute guard.
-		watchdog := if os.getenv('V_CI_UBUNTU_MUSL') == '1' { 30 * time.minute } else { 10 * time.minute }
+		mut watchdog := 10 * time.minute
+		if os.getenv('V_CI_UBUNTU_MUSL') == '1' {
+			watchdog = 30 * time.minute
+		}
 		time.sleep(watchdog)
 		eprintln('>>> exiting due to an expired watchdog timer <<<')
 		exit(1)
