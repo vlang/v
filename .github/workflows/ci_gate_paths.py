@@ -101,7 +101,7 @@ def validate(entries):
         caller = CALLERS[entry["shard"]].read_text(encoding="utf-8")
         if f"uses: ./.github/workflows/{name}" not in caller:
             raise ValueError(f"{name} missing from its master CI caller")
-        if f"    {Path(name).stem}: " not in caller:
+        if not re.search(rf"(?m)^  {re.escape(Path(name).stem)}:$", caller):
             raise ValueError(f"{name} missing a caller job")
     for path in ROOT.glob("*.yml"):
         if path.name in known or path in CALLERS.values():

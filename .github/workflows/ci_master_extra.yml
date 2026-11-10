@@ -1,0 +1,295 @@
+name: CI master extra
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-master-extra-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    uses: ./.github/workflows/bootstrapping_ci.yml
+    permissions:
+      contents: read
+      actions: read
+
+  windows-bootstrap-contracts:
+    uses: ./.github/workflows/makev_ci.yml
+    permissions:
+      contents: read
+
+  formatting:
+    needs: [bootstrap, windows-bootstrap-contracts]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc gcc
+    outputs:
+      periodic_ci: ${{ steps.paths.outputs.periodic_ci }}
+      process_regressions_ci: ${{ steps.paths.outputs.process_regressions_ci }}
+      puzzle_vibes_ci: ${{ steps.paths.outputs.puzzle_vibes_ci }}
+      release_ci: ${{ steps.paths.outputs.release_ci }}
+      riscv64_linux_ci: ${{ steps.paths.outputs.riscv64_linux_ci }}
+      s390x_linux_ci: ${{ steps.paths.outputs.s390x_linux_ci }}
+      sanitized_ci: ${{ steps.paths.outputs.sanitized_ci }}
+      sdl_ci: ${{ steps.paths.outputs.sdl_ci }}
+      symlink_ci: ${{ steps.paths.outputs.symlink_ci }}
+      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}
+      termux_ci: ${{ steps.paths.outputs.termux_ci }}
+      test_selection_ci: ${{ steps.paths.outputs.test_selection_ci }}
+      time_ci: ${{ steps.paths.outputs.time_ci }}
+      toml_ci: ${{ steps.paths.outputs.toml_ci }}
+      tools_ci: ${{ steps.paths.outputs.tools_ci }}
+      v_apps_and_modules_compile_ci: ${{ steps.paths.outputs.v_apps_and_modules_compile_ci }}
+      vab_ci: ${{ steps.paths.outputs.vab_ci }}
+      vinix_ci: ${{ steps.paths.outputs.vinix_ci }}
+      vpm_ci: ${{ steps.paths.outputs.vpm_ci }}
+      vsl_and_vtl_compile_ci: ${{ steps.paths.outputs.vsl_and_vtl_compile_ci }}
+      vup_works: ${{ steps.paths.outputs.vup_works }}
+      wasm_backend_ci: ${{ steps.paths.outputs.wasm_backend_ci }}
+      websockets_ci: ${{ steps.paths.outputs.websockets_ci }}
+      windows_ci_gcc: ${{ steps.paths.outputs.windows_ci_gcc }}
+      windows_ci_msvc: ${{ steps.paths.outputs.windows_ci_msvc }}
+      windows_ci_tcc: ${{ steps.paths.outputs.windows_ci_tcc }}
+      workflow_lint: ${{ steps.paths.outputs.workflow_lint }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Build V for formatting
+        run: make -j4 && ./v symlink
+      - name: Check code formatting
+        run: |
+          ./v -silent test-cleancode
+          ./v -silent test-fmt
+      - name: Select suites using the original push path filters
+        id: paths
+        env:
+          CI_BEFORE: ${{ github.event.before }}
+          CI_AFTER: ${{ github.sha }}
+        run: python3 .github/workflows/ci_gate_paths.py extra
+
+  periodic_ci:
+    needs: formatting
+    if: needs.formatting.outputs.periodic_ci == 'true'
+    uses: ./.github/workflows/periodic_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  process_regressions_ci:
+    needs: formatting
+    if: needs.formatting.outputs.process_regressions_ci == 'true'
+    uses: ./.github/workflows/process_regressions_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  puzzle_vibes_ci:
+    needs: formatting
+    if: needs.formatting.outputs.puzzle_vibes_ci == 'true'
+    uses: ./.github/workflows/puzzle_vibes_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  release_ci:
+    needs: formatting
+    if: needs.formatting.outputs.release_ci == 'true'
+    uses: ./.github/workflows/release_ci.yml
+    permissions:
+      contents: write
+    secrets: inherit
+
+  riscv64_linux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.riscv64_linux_ci == 'true'
+    uses: ./.github/workflows/riscv64_linux_ci.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  s390x_linux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.s390x_linux_ci == 'true'
+    uses: ./.github/workflows/s390x_linux_ci.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  sanitized_ci:
+    needs: formatting
+    if: needs.formatting.outputs.sanitized_ci == 'true'
+    uses: ./.github/workflows/sanitized_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  sdl_ci:
+    needs: formatting
+    if: needs.formatting.outputs.sdl_ci == 'true'
+    uses: ./.github/workflows/sdl_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  symlink_ci:
+    needs: formatting
+    if: needs.formatting.outputs.symlink_ci == 'true'
+    uses: ./.github/workflows/symlink_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  tccbin_automation_contract:
+    needs: formatting
+    if: needs.formatting.outputs.tccbin_automation_contract == 'true'
+    uses: ./.github/workflows/tccbin_automation_contract.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  termux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.termux_ci == 'true'
+    uses: ./.github/workflows/termux_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  test_selection_ci:
+    needs: formatting
+    if: needs.formatting.outputs.test_selection_ci == 'true'
+    uses: ./.github/workflows/test_selection_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  time_ci:
+    needs: formatting
+    if: needs.formatting.outputs.time_ci == 'true'
+    uses: ./.github/workflows/time_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  toml_ci:
+    needs: formatting
+    if: needs.formatting.outputs.toml_ci == 'true'
+    uses: ./.github/workflows/toml_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  tools_ci:
+    needs: formatting
+    if: needs.formatting.outputs.tools_ci == 'true'
+    uses: ./.github/workflows/tools_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  v_apps_and_modules_compile_ci:
+    needs: formatting
+    if: needs.formatting.outputs.v_apps_and_modules_compile_ci == 'true'
+    uses: ./.github/workflows/v_apps_and_modules_compile_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vab_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vab_ci == 'true'
+    uses: ./.github/workflows/vab_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vinix_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vinix_ci == 'true'
+    uses: ./.github/workflows/vinix_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vpm_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vpm_ci == 'true'
+    uses: ./.github/workflows/vpm_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vsl_and_vtl_compile_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vsl_and_vtl_compile_ci == 'true'
+    uses: ./.github/workflows/vsl_and_vtl_compile_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vup_works:
+    needs: formatting
+    if: needs.formatting.outputs.vup_works == 'true'
+    uses: ./.github/workflows/vup_works.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  wasm_backend_ci:
+    needs: formatting
+    if: needs.formatting.outputs.wasm_backend_ci == 'true'
+    uses: ./.github/workflows/wasm_backend_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  websockets_ci:
+    needs: formatting
+    if: needs.formatting.outputs.websockets_ci == 'true'
+    uses: ./.github/workflows/websockets_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  windows_ci_gcc:
+    needs: formatting
+    if: needs.formatting.outputs.windows_ci_gcc == 'true'
+    uses: ./.github/workflows/windows_ci_gcc.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  windows_ci_msvc:
+    needs: formatting
+    if: needs.formatting.outputs.windows_ci_msvc == 'true'
+    uses: ./.github/workflows/windows_ci_msvc.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  windows_ci_tcc:
+    needs: formatting
+    if: needs.formatting.outputs.windows_ci_tcc == 'true'
+    uses: ./.github/workflows/windows_ci_tcc.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  workflow_lint:
+    needs: formatting
+    if: needs.formatting.outputs.workflow_lint == 'true'
+    uses: ./.github/workflows/workflow_lint.yml
+    permissions:
+      contents: read
+    secrets: inherit
+

@@ -7,6 +7,32 @@ compilers. Runner selection should therefore be intentional: use stable runner
 images where reproducibility matters, and use newer runner images where the goal is
 early compatibility feedback.
 
+
+## Master push gate
+
+Master push CI is dispatched from `ci_master_core.yml` and
+`ci_master_extra.yml` (two callers to stay below GitHub's 50 reusable
+workflow limit per caller). Each caller first runs the existing full
+`bootstrapping_ci.yml` (Linux and macOS) and `makev_ci.yml` (Linux and
+Windows bootstrap-contract checks), then builds V and runs both
+`test-cleancode` and `test-fmt`. **No other master-push CI suite starts
+unless all these prerequisites pass.** A failed or cancelled preflight skips
+the dependent suites; this does not rely on races or cross-workflow cancellation.
+
+The rest of the push workflows are invoked through `workflow_call`.
+`ci_gate_filters/*.json` preserves each workflow's former ordered
+`paths`/`paths-ignore` filters. `ci_gate_paths.py` applies those filters to
+the original push's before/after SHA (falling back to running all suites if
+the diff is unavailable). Both callers use the original push context and
+commit, rather than `workflow_run`'s default-branch context.
+
+When adding a master-push suite, add it to one caller and the path-filter
+manifest, and keep the 50-reusable-workflow limit. The gate script refuses
+to select suites if a direct-push workflow has not been incorporated.
+Manual, scheduled and pull-request invocations retain their existing triggers.
+Deployments triggered by a master push are likewise gated, but scheduled and
+manual publishing are not affected.
+
 ## CI lanes
 
 CI runs only for commits on `master`. Pull requests, merge queues, tags, and pushes

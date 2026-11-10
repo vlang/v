@@ -1,0 +1,293 @@
+name: CI master core
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-master-core-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    uses: ./.github/workflows/bootstrapping_ci.yml
+    permissions:
+      contents: read
+      actions: read
+
+  windows-bootstrap-contracts:
+    uses: ./.github/workflows/makev_ci.yml
+    permissions:
+      contents: read
+
+  formatting:
+    needs: [bootstrap, windows-bootstrap-contracts]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc gcc
+    outputs:
+      benchmark_footprint_json_decode: ${{ steps.paths.outputs.benchmark_footprint_json_decode }}
+      benchmark_footprint_json_encode: ${{ steps.paths.outputs.benchmark_footprint_json_encode }}
+      build_on_ubuntu_25_ci: ${{ steps.paths.outputs.build_on_ubuntu_25_ci }}
+      c2v_ci: ${{ steps.paths.outputs.c2v_ci }}
+      canvas_ci: ${{ steps.paths.outputs.canvas_ci }}
+      compiler_ci: ${{ steps.paths.outputs.compiler_ci }}
+      cross_ci: ${{ steps.paths.outputs.cross_ci }}
+      db_ci: ${{ steps.paths.outputs.db_ci }}
+      docker_ci: ${{ steps.paths.outputs.docker_ci }}
+      docs_ci: ${{ steps.paths.outputs.docs_ci }}
+      docs_site_ci: ${{ steps.paths.outputs.docs_site_ci }}
+      fastc_ci: ${{ steps.paths.outputs.fastc_ci }}
+      freebsd_ci: ${{ steps.paths.outputs.freebsd_ci }}
+      gen_vc_ci: ${{ steps.paths.outputs.gen_vc_ci }}
+      gg_regressions_ci: ${{ steps.paths.outputs.gg_regressions_ci }}
+      h2spec: ${{ steps.paths.outputs.h2spec }}
+      linux_ci: ${{ steps.paths.outputs.linux_ci }}
+      macos_ci: ${{ steps.paths.outputs.macos_ci }}
+      macos_gitly_ci: ${{ steps.paths.outputs.macos_gitly_ci }}
+      module_docs_ci: ${{ steps.paths.outputs.module_docs_ci }}
+      module_docs_lint: ${{ steps.paths.outputs.module_docs_lint }}
+      more_extensive_but_slower_tests_ci: ${{ steps.paths.outputs.more_extensive_but_slower_tests_ci }}
+      multiwindow_musl_exclusion_smoke: ${{ steps.paths.outputs.multiwindow_musl_exclusion_smoke }}
+      notices_ci: ${{ steps.paths.outputs.notices_ci }}
+      openbsd_ci: ${{ steps.paths.outputs.openbsd_ci }}
+      other_ci: ${{ steps.paths.outputs.other_ci }}
+      paths_ci: ${{ steps.paths.outputs.paths_ci }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Build V for formatting
+        run: make -j4 && ./v symlink
+      - name: Check code formatting
+        run: |
+          ./v -silent test-cleancode
+          ./v -silent test-fmt
+      - name: Select suites using the original push path filters
+        id: paths
+        env:
+          CI_BEFORE: ${{ github.event.before }}
+          CI_AFTER: ${{ github.sha }}
+        run: python3 .github/workflows/ci_gate_paths.py core
+
+  benchmark_footprint_json_decode:
+    needs: formatting
+    if: needs.formatting.outputs.benchmark_footprint_json_decode == 'true'
+    uses: ./.github/workflows/benchmark_footprint_json_decode.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  benchmark_footprint_json_encode:
+    needs: formatting
+    if: needs.formatting.outputs.benchmark_footprint_json_encode == 'true'
+    uses: ./.github/workflows/benchmark_footprint_json_encode.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  build_on_ubuntu_25_ci:
+    needs: formatting
+    if: needs.formatting.outputs.build_on_ubuntu_25_ci == 'true'
+    uses: ./.github/workflows/build_on_ubuntu_25_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  c2v_ci:
+    needs: formatting
+    if: needs.formatting.outputs.c2v_ci == 'true'
+    uses: ./.github/workflows/c2v_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  canvas_ci:
+    needs: formatting
+    if: needs.formatting.outputs.canvas_ci == 'true'
+    uses: ./.github/workflows/canvas_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  compiler_ci:
+    needs: formatting
+    if: needs.formatting.outputs.compiler_ci == 'true'
+    uses: ./.github/workflows/compiler_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  cross_ci:
+    needs: formatting
+    if: needs.formatting.outputs.cross_ci == 'true'
+    uses: ./.github/workflows/cross_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  db_ci:
+    needs: formatting
+    if: needs.formatting.outputs.db_ci == 'true'
+    uses: ./.github/workflows/db_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  docker_ci:
+    needs: formatting
+    if: needs.formatting.outputs.docker_ci == 'true'
+    uses: ./.github/workflows/docker_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  docs_ci:
+    needs: formatting
+    if: needs.formatting.outputs.docs_ci == 'true'
+    uses: ./.github/workflows/docs_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  docs_site_ci:
+    needs: formatting
+    if: needs.formatting.outputs.docs_site_ci == 'true'
+    uses: ./.github/workflows/docs_site_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  fastc_ci:
+    needs: formatting
+    if: needs.formatting.outputs.fastc_ci == 'true'
+    uses: ./.github/workflows/fastc_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  freebsd_ci:
+    needs: formatting
+    if: needs.formatting.outputs.freebsd_ci == 'true'
+    uses: ./.github/workflows/freebsd_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  gen_vc_ci:
+    needs: formatting
+    if: needs.formatting.outputs.gen_vc_ci == 'true'
+    uses: ./.github/workflows/gen_vc_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  gg_regressions_ci:
+    needs: formatting
+    if: needs.formatting.outputs.gg_regressions_ci == 'true'
+    uses: ./.github/workflows/gg_regressions_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  h2spec:
+    needs: formatting
+    if: needs.formatting.outputs.h2spec == 'true'
+    uses: ./.github/workflows/h2spec.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  linux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.linux_ci == 'true'
+    uses: ./.github/workflows/linux_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  macos_ci:
+    needs: formatting
+    if: needs.formatting.outputs.macos_ci == 'true'
+    uses: ./.github/workflows/macos_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  macos_gitly_ci:
+    needs: formatting
+    if: needs.formatting.outputs.macos_gitly_ci == 'true'
+    uses: ./.github/workflows/macos_gitly_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  module_docs_ci:
+    needs: formatting
+    if: needs.formatting.outputs.module_docs_ci == 'true'
+    uses: ./.github/workflows/module_docs_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  module_docs_lint:
+    needs: formatting
+    if: needs.formatting.outputs.module_docs_lint == 'true'
+    uses: ./.github/workflows/module_docs_lint.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  more_extensive_but_slower_tests_ci:
+    needs: formatting
+    if: needs.formatting.outputs.more_extensive_but_slower_tests_ci == 'true'
+    uses: ./.github/workflows/more_extensive_but_slower_tests_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  multiwindow_musl_exclusion_smoke:
+    needs: formatting
+    if: needs.formatting.outputs.multiwindow_musl_exclusion_smoke == 'true'
+    uses: ./.github/workflows/multiwindow_musl_exclusion_smoke.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  notices_ci:
+    needs: formatting
+    if: needs.formatting.outputs.notices_ci == 'true'
+    uses: ./.github/workflows/notices_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  openbsd_ci:
+    needs: formatting
+    if: needs.formatting.outputs.openbsd_ci == 'true'
+    uses: ./.github/workflows/openbsd_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  other_ci:
+    needs: formatting
+    if: needs.formatting.outputs.other_ci == 'true'
+    uses: ./.github/workflows/other_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  paths_ci:
+    needs: formatting
+    if: needs.formatting.outputs.paths_ci == 'true'
+    uses: ./.github/workflows/paths_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
