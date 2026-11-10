@@ -917,6 +917,21 @@ fn (g &FlatGen) interface_boxing_candidate_nodes() []i32 {
 
 const min_parallel_interface_boxing_scan = 8192
 
+// new_interface_impl_scan_worker forks the worker for interface_impl_scan_thread.
+// That scan runs beside the master's declaration pre-seeding, which writes the
+// master's C-name cache, so the worker keeps its names in a private cache instead
+// of reading the master's through `base`.
+fn (g &FlatGen) new_interface_impl_scan_worker() &FlatGen {
+	mut worker := g.new_parallel_worker(4)
+	worker.c_name_cache = &CNameCache{}
+	worker.interface_boxed_types = map[u64]bool{}
+	worker.interface_boxed_types_done = false
+	worker.iface_impls = map[u32][]u32{}
+	worker.iface_type_ids = map[u64]int{}
+	worker.ierror_method_emit_names = map[string]bool{}
+	return worker
+}
+
 // interface_impl_scan_thread builds the structural-interface dispatch tables
 // while the master pre-seeds independent declaration metadata.
 fn interface_impl_scan_thread(arg voidptr) voidptr {

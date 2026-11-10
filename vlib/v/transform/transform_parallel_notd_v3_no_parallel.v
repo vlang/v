@@ -3097,6 +3097,13 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	}
 	// No body can mutate the source until every base copy has completed.
 	t.a.worker_pool.run(copy_tasks)
+	// The caller transforms chunk 0 while helpers run, and its used set can
+	// rehash under them. Helpers that do not copy that set read this snapshot.
+	mut helper_used_fns := map[string]bool{}
+	if t.retain_worker_results {
+		helper_used_fns = t.used_fns.clone()
+		t.used_fns_helper_snapshot = unsafe { &helper_used_fns }
+	}
 	for ci, wast in worker_asts {
 		wtc := t.tc.fork_for_parallel_transform(wast)
 		mut ww := t.fork_worker(wast, wtc)
@@ -3123,6 +3130,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		}
 	}
 	any_started := t.a.worker_pool.run(tasks)
+	t.used_fns_helper_snapshot = unsafe { nil }
 	mut absorbed := []RegionAbsorbArgs{}
 	if t.building_v && t.scope_parallel_workers && t.retain_worker_results
 		&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
@@ -3381,12 +3389,10 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.shared_base_children = base_children
 	t.node_context_read_only = true
 	// The caller transforms the first chunk while helpers run. Give every helper
-	// an immutable used-function root instead of making it read the caller's map
+	// an immutable used-function snapshot instead of making it read the caller's map
 	// while the caller records newly discovered helpers in that map.
-	previous_used_fns_root := t.used_fns_root
 	shared_used_fns := t.used_fns.clone()
-	t.used_fns_root = unsafe { &shared_used_fns }
-	t.reset_used_fn_name_cache()
+	t.used_fns_helper_snapshot = unsafe { &shared_used_fns }
 	t.timing_profile('  [ttime]     ss split+part  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	mut args := []SharedChunkArgs{len: chunk_count}
 	args[0] = SharedChunkArgs{
@@ -3586,8 +3592,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.defer_oor_writes = false
 	t.shared_base_nodes = -1
 	t.shared_base_children = -1
-	t.used_fns_root = previous_used_fns_root
-	t.reset_used_fn_name_cache()
+	t.used_fns_helper_snapshot = unsafe { nil }
 	t.flush_deferred_base_writes()
 	if t.ignored_comptime_for_log.len > 0 {
 		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {

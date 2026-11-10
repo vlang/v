@@ -424,7 +424,10 @@ mut:
 	used_fns                        map[string]bool
 	used_fns_parent                 &map[string]bool = unsafe { nil }
 	used_fns_root                   &map[string]bool = unsafe { nil }
-	comptime_reflected_params       map[string][]ParamMeta
+	// used_fns_helper_snapshot is the immutable used set that workers forked from
+	// this transformer read while it keeps recording names of its own.
+	used_fns_helper_snapshot  &map[string]bool = unsafe { nil }
+	comptime_reflected_params map[string][]ParamMeta
 	// sum_eq_types records sum and recursive struct deep-equality helpers,
 	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -5683,10 +5686,10 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	}
 	mut w := t.fork_program_view(ast, wtc, used, copy_generic_state)
 	if !copy_used_fns {
-		if t.node_context_read_only && isnil(t.used_fns_parent) && !isnil(t.used_fns_root) {
-			// A shared-base master is still recording helper names while its workers
-			// run. Read the immutable snapshot it installed instead of racing its map.
-			w.used_fns_parent = t.used_fns_root
+		if !isnil(t.used_fns_helper_snapshot) {
+			// The master is still recording names while its workers run. Read the
+			// immutable snapshot it installed instead of racing its map.
+			w.used_fns_parent = t.used_fns_helper_snapshot
 			w.used_fns_root = unsafe { nil }
 		} else {
 			w.used_fns_parent = unsafe { &t.used_fns }

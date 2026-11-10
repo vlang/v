@@ -4227,12 +4227,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			// Freeze it before the worker shares its storage.
 			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
-				iface_worker = g.new_parallel_worker(4)
-				iface_worker.interface_boxed_types = map[u64]bool{}
-				iface_worker.interface_boxed_types_done = false
-				iface_worker.iface_impls = map[u32][]u32{}
-				iface_worker.iface_type_ids = map[u64]int{}
-				iface_worker.ierror_method_emit_names = map[string]bool{}
+				iface_worker = g.new_interface_impl_scan_worker()
 				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
 			}
 		} else {
