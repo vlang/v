@@ -26,6 +26,10 @@ name: macOS CI (gitly_ci)
 on:
   push:
     branches: [master]
+    paths-ignore:
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - 'vlib/v/gen/fastc/**'
+      - 'vlib/v/fastcdriver/**'
   workflow_dispatch:
 
 permissions:

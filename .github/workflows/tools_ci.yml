@@ -11,6 +11,9 @@ on:
       - 'thirdparty/**'
       - '!**.md'
       - '**/tools_ci.yml'
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - '!vlib/v/gen/fastc/**'
+      - '!vlib/v/fastcdriver/**'
 
 concurrency:
   group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

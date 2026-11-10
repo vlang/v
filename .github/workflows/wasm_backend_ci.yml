@@ -24,6 +24,9 @@ on:
       - 'vlib/v/gen/wasm/tests_decompile/**.v'
       - 'vlib/v/gen/wasm/tests_decompile/**.vv'
       - '**/wasm_backend_ci.yml'
+      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
+      - '!vlib/v/gen/fastc/**'
+      - '!vlib/v/fastcdriver/**'
 
 concurrency:
   group: wasm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

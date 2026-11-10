@@ -97,8 +97,8 @@ struct Options {
 	list_units bool
 }
 
-// UnitMode selects which sections run. CI runs the unit tests of section 1 in several jobs,
-// and the other sections in one more.
+// UnitMode selects which sections run. CI runs the unit tests of section 1 as concurrent
+// shards in one job, and the other sections in another.
 enum UnitMode {
 	all
 	units_only
