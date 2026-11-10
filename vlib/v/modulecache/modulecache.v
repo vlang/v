@@ -1527,35 +1527,112 @@ pub fn (m &Manager) reusable_object(cache_name string, source_files []string, co
 }
 
 fn (m &Manager) object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string, trace bool) ?Entry {
-	entry := m.object_entry(cache_name, source_files, compile_signature)
-	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
-		if trace {
-			cache_trace_module_miss(cache_name, 'no object for these C compilation flags and this generated C')
-		}
-		return none
-	}
-	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
-		if trace {
-			cache_trace_module_miss(cache_name, 'object source or dependency changed')
+	primary := m.object_entry(cache_name, source_files, compile_signature)
+	primary_miss := m.object_variant_miss(primary, source_hash, compile_signature,
+		dependency_inputs)
+	if primary_miss == '' {
+		return primary
+	}
+	// Programs whose dependency inputs conflict with the primary object keep
+	// variants beside it (see object_publish_entry). The latest are checked first.
+	keys := m.object_variant_keys(cache_name, source_files, compile_signature)
+	for i := keys.len - 1; i >= 0; i-- {
+		candidate := m.object_variant_entry_for_key(cache_name, source_files, compile_signature,
+			keys[i])
+		if m.object_variant_miss(candidate, source_hash, compile_signature, dependency_inputs) == '' {
+			return candidate
 		}
-		return none
+	}
+	if trace {
+		cache_trace_module_miss(cache_name, primary_miss)
+	}
+	return none
+}
+
+const object_variant_missing = 'no object for these C compilation flags and this generated C'
+const max_object_variants = 16
+
+// object_variant_miss is the reason why `entry` cannot serve a build with these
+// sources, C compilation flags, and dependency inputs, or '' when it can.
+fn (m &Manager) object_variant_miss(entry Entry, source_hash string, compile_signature string, dependency_inputs map[string]string) string {
+	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
+		return object_variant_missing
+	}
+	stamp := os.read_file(entry.object_stamp) or { return object_variant_missing }
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+		return 'object source or dependency changed'
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
 	if !stamp.split_into_lines().any(it == expected) {
-		if trace {
-			cache_trace_module_miss(cache_name, 'object stamp names other C compilation flags')
-		}
-		return none
+		return 'object stamp names other C compilation flags'
 	}
 	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
-		if trace {
-			cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
-		}
-		return none
+		return 'object was built against other dependency interfaces${object_stamp_dependency_mismatch(stamp, dependency_inputs)}'
 	}
-	return entry
+	return ''
+}
+
+// object_variant_entry returns the C artifacts of a module for one effective
+// compile-flag set and one set of dependency inputs. The dependency inputs of one
+// generated C differ between programs (e.g. by the native headers that the whole
+// program includes), so each set keeps its own object instead of replacing the
+// object of another program.
+pub fn (m &Manager) object_variant_entry(module_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) Entry {
+	return m.object_variant_entry_for_key(module_name, source_files, compile_signature,
+		dependency_inputs_key(dependency_inputs))
+}
+
+fn (m &Manager) object_variant_entry_for_key(module_name string, source_files []string, compile_signature string, key string) Entry {
+	entry := m.object_entry(module_name, source_files, compile_signature)
+	base := entry.object.all_before_last('.o')
+	return Entry{
+		header:       entry.header
+		object:       '${base}_${key}.o'
+		header_stamp: entry.header_stamp
+		object_stamp: '${base}_${key}.o.stamp'
+		c_source:     '${base}_${key}.c'
+	}
+}
+
+fn (m &Manager) object_variants_path(module_name string, source_files []string, compile_signature string) string {
+	return m.object_entry(module_name, source_files, compile_signature).object.all_before_last('.o') +
+		'.variants'
+}
+
+// object_variant_keys returns the dependency keys of the variants that builds
+// recorded for one generated C, oldest first.
+fn (m &Manager) object_variant_keys(module_name string, source_files []string, compile_signature string) []string {
+	content := os.read_file(m.object_variants_path(module_name, source_files, compile_signature)) or {
+		return []string{}
+	}
+	return content.split_into_lines().filter(it.len > 0 && !it.contains_any(' \t/\\'))
+}
+
+// record_object_variant adds `key` to the recorded variants of one generated C,
+// keeping the most recent ones. Concurrent writers can drop each other's key: the
+// variant then remains reachable by its exact dependency inputs only.
+fn (m &Manager) record_object_variant(module_name string, source_files []string, compile_signature string, key string) ! {
+	mut keys := m.object_variant_keys(module_name, source_files, compile_signature).filter(it != key)
+	keys << key
+	if keys.len > max_object_variants {
+		keys = keys[keys.len - max_object_variants..].clone()
+	}
+	write_atomic(m.object_variants_path(module_name, source_files, compile_signature),
+		keys.join('\n') + '\n')!
+}
+
+fn dependency_inputs_key(dependency_inputs map[string]string) string {
+	mut paths := dependency_inputs.keys()
+	paths.sort()
+	mut text := strings.new_builder(paths.len * 96)
+	for path in paths {
+		text.write_string(path)
+		text.write_u8(0)
+		text.write_string(dependency_inputs[path])
+		text.write_u8(`\n`)
+	}
+	return hash_text(text.str())
 }
 
 // valid_cgen reports whether a whole-program C plan matches its program sources,
@@ -2105,15 +2182,79 @@ fn program_executable_of_stamp(stamp string, slot string) string {
 	return '${slot}_${hash_text(stamp[..identity_end + 1])}.exe'
 }
 
+// object_publish_entry returns where a build that compiles the object of a module
+// for this generated C publishes it. That is the primary object of object_entry,
+// unless another program still uses that object: its stamp records other inputs
+// than this build's, (other native headers that the whole program includes, other
+// imported modules), and every input that both record has the same signature, and
+// is still current. This build then keeps its object beside it, in the variant of
+// object_variant_entry, so that neither program replaces the object of the other.
+// An input that the two record with different signatures has changed since the
+// primary object was built: this build replaces that object.
+pub fn (m &Manager) object_publish_entry(module_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) Entry {
+	primary := m.object_entry(module_name, source_files, compile_signature)
+	if !os.is_file(primary.object) {
+		return primary
+	}
+	stamp := os.read_file(primary.object_stamp) or { return primary }
+	mut recorded := map[string]string{}
+	for line in stamp.split_into_lines() {
+		if line.starts_with('dependency=') {
+			dependency := parse_object_stamp_dependency(line) or { return primary }
+			recorded[dependency.path] = dependency.signature
+		}
+	}
+	mut serves := true
+	for path, signature in dependency_inputs {
+		if recorded_signature := recorded[path] {
+			if recorded_signature != signature {
+				return primary
+			}
+		} else {
+			serves = false
+		}
+	}
+	if serves {
+		return primary
+	}
+	mut dependency_metadata := map[string]string{}
+	if !object_stamp_valid_with_metadata_cache(stamp, entry_stamp(m.salt, m.source_signature(source_files)), mut
+		dependency_metadata)
+	{
+		return primary
+	}
+	return m.object_variant_entry(module_name, source_files, compile_signature, dependency_inputs)
+}
+
 // write_stamp refreshes a cache stamp after the object and header are durable.
+// The object is the one of object_publish_entry for the same arguments.
 // dependency_inputs maps every transitive imported `.vh` and non-V input path
 // to the content signature that the object was compiled against.
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
+	m.write_object_stamp(m.object_publish_entry(module_name, source_files, compile_signature,
+		dependency_inputs), module_name, source_files, dependency_inputs, compile_signature)!
+}
+
+// write_object_stamp is write_stamp for the object that a build published in
+// `object`, an entry of object_publish_entry.
+pub fn (m &Manager) write_object_stamp(object Entry, module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
-	object_entry := m.object_entry(module_name, source_files, compile_signature)
 	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
-	write_atomic(object_entry.object_stamp, stamp)!
+	write_atomic(object.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
+	if object.object != m.object_entry(module_name, source_files, compile_signature).object {
+		m.record_object_variant(module_name, source_files, compile_signature, object.object.all_before_last('.o').all_after_last('_'))!
+	}
+}
+
+// write_reused_stamp records, for a build that links an object which another
+// build published, the dependency inputs of its module. The stamp of that object
+// keeps the inputs it was built against: rewriting it with a smaller set would
+// keep the object from the programs it was built for.
+pub fn (m &Manager) write_reused_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
+	entry := m.entry(module_name, source_files)
+	write_atomic(entry.object_stamp, object_entry_stamp(m.salt, m.source_signature(source_files),
+		dependency_inputs, compile_signature))!
 }
 
 fn write_atomic(path string, content string) ! {
@@ -2271,6 +2412,29 @@ fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
 		signature: path_and_signature[signature_tab + 1..]
 		metadata:  value[metadata_tab + 1..]
 	}
+}
+
+// object_stamp_dependency_mismatch names, for a cache trace, the first expected
+// dependency that the stamp lacks or records with another signature.
+fn object_stamp_dependency_mismatch(stamp string, expected map[string]string) string {
+	mut actual := map[string]string{}
+	for line in stamp.split_into_lines() {
+		if line.starts_with('dependency=') {
+			dependency := parse_object_stamp_dependency(line) or { return ': malformed stamp' }
+			actual[dependency.path] = dependency.signature
+		}
+	}
+	mut paths := expected.keys()
+	paths.sort()
+	for path in paths {
+		if path !in actual {
+			return ': stamp lacks ${path}'
+		}
+		if actual[path] != expected[path] {
+			return ': ${path} has another signature'
+		}
+	}
+	return ''
 }
 
 fn object_stamp_dependencies_match(stamp string, expected map[string]string) bool {
