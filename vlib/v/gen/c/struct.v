@@ -7621,22 +7621,23 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		name := flat.source_type_name(registry_name_id)
 		if !name.starts_with('C.') {
 			for field in fields {
-				g.collect_c_struct_type_refs(field.typ, mut seen)
+				g.collect_c_struct_type_refs(&field.typ, mut seen)
 			}
 		}
 	}
 	for _, typ in g.global_types {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	for _, typ in g.tc.c_globals {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	for _, typ in g.tc.fn_ret_types {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	for _, params in g.tc.fn_param_types {
-		for typ in params {
-			g.collect_c_struct_type_refs(typ, mut seen)
+		for i in 0 .. params.len {
+			// The walk only reads the stored type.
+			g.collect_c_struct_type_refs(unsafe { &params[i] }, mut seen)
 		}
 	}
 	for registry_name_id in g.tc.sum_types.keys() {
@@ -7646,7 +7647,7 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
-			g.collect_c_struct_type_refs(field.typ, mut seen)
+			g.collect_c_struct_type_refs(&field.typ, mut seen)
 		}
 	}
 	if g.expr_c_struct_refs_ready {
@@ -7658,7 +7659,7 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		g.collect_expr_c_struct_type_refs(mut seen)
 	}
 	for _, typ in g.tc.sparse_expr_type_values {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	return seen
 }
@@ -7696,11 +7697,11 @@ fn (g &FlatGen) collect_expr_c_struct_type_refs_in(start int, end int, mut seen 
 			continue
 		}
 		walked[slot] = typ_ref
-		g.collect_c_struct_type_refs(*typ, mut seen)
+		g.collect_c_struct_type_refs(typ, mut seen)
 	}
 }
 
-fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen map[u32]bool) {
+fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ &types.Type, mut seen map[u32]bool) {
 	match typ {
 		types.OptionType, types.ResultType, types.ArrayFixed, types.FnType {
 			g.collect_c_struct_type_refs(typ, mut seen)
@@ -7716,15 +7717,17 @@ fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen ma
 			g.collect_c_struct_auxiliary_type_refs(typ.value_type, mut seen)
 		}
 		types.MultiReturn {
-			for item in typ.types {
-				g.collect_c_struct_auxiliary_type_refs(item, mut seen)
+			for i in 0 .. typ.types.len {
+				g.collect_c_struct_auxiliary_type_refs(unsafe { &typ.types[i] }, mut seen)
 			}
 		}
 		else {}
 	}
 }
 
-fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool) {
+// The type is taken by reference: the walk visits every declared and checked
+// type of the program, and passing a type by value copies it.
+fn (g &FlatGen) collect_c_struct_type_refs(typ &types.Type, mut seen map[u32]bool) {
 	// Builtin leaves never name a C struct and reference nothing else.
 	match typ {
 		types.Void, types.Unknown, types.Nil, types.None, types.String, types.Char, types.Rune,
@@ -7746,7 +7749,7 @@ fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool
 	match typ {
 		types.Struct {
 			for field in g.tc.structs[typ.source_type_id()] or { []types.StructField{} } {
-				g.collect_c_struct_type_refs(field.typ, mut seen)
+				g.collect_c_struct_type_refs(&field.typ, mut seen)
 			}
 		}
 		types.Pointer, types.OptionType, types.ResultType, types.Alias {
@@ -7766,8 +7769,8 @@ fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool
 			}
 		}
 		types.MultiReturn {
-			for item in typ.types {
-				g.collect_c_struct_type_refs(item, mut seen)
+			for i in 0 .. typ.types.len {
+				g.collect_c_struct_type_refs(unsafe { &typ.types[i] }, mut seen)
 			}
 		}
 		else {}
