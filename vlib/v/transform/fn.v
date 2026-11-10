@@ -19934,6 +19934,59 @@ fn (mut t Transformer) lower_string_count_call(node flat.Node, fn_node flat.Node
 	return t.make_ident(result_name)
 }
 
+// lower_normalized_string_literal_compare lowers `s.trim_space() == 'lit'` and
+// `s.to_lower_ascii() == 'lit'` (either operand order, `==` or `!=`) to builtin helpers that
+// compare in place instead of allocating the normalized string. The other operand must be a
+// literal, so evaluating the receiver after it cannot change the result.
+fn (mut t Transformer) lower_normalized_string_literal_compare(node flat.Node) ?flat.NodeId {
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_kind := t.a.nodes[int(lhs_id)].kind
+	rhs_kind := t.a.nodes[int(rhs_id)].kind
+	call_id, lit_id := if lhs_kind == .call && rhs_kind == .string_literal {
+		lhs_id, rhs_id
+	} else if lhs_kind == .string_literal && rhs_kind == .call {
+		rhs_id, lhs_id
+	} else {
+		return none
+	}
+	call := t.a.nodes[int(call_id)]
+	if call.children_count != 1 || isnil(t.tc) || t.tc.autofree_enabled()
+		|| t.node_type(lit_id) != flat.source_type_string {
+		return none
+	}
+	selector := t.a.child_node(&call, 0)
+	if selector.kind != .selector || selector.children_count != 1 {
+		return none
+	}
+	helper := match selector.value {
+		'trim_space' { 'string.trim_space_eq' }
+		'to_lower_ascii' { 'string.to_lower_ascii_eq' }
+		else { return none }
+	}
+	str_id := t.a.child(selector, 0)
+	method := 'string.${selector.value}'
+	if t.node_type(str_id) != flat.source_type_string
+		|| t.resolve_receiver_method_name(str_id, selector.value) != method
+		|| !t.call_resolved_to_method(call_id, method) {
+		return none
+	}
+	// A fresh receiver would need an ownership drop; keep the ordinary path for it.
+	if !t.expr_can_take_address(str_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	t.mark_fn_used(helper)
+	cmp := t.make_call_typed(helper, [t.transform_expr(str_id), t.transform_expr(lit_id)],
+		flat.source_type_bool)
+	if node.op == .eq {
+		return cmp
+	}
+	negated := t.make_prefix(.not, cmp)
+	t.set_node_typ(int(negated), flat.source_type_bool)
+	return negated
+}
+
 // expr_uses_ident supports expr uses ident handling for Transformer.
 fn (t &Transformer) expr_uses_ident(id flat.NodeId, name string) bool {
 	if int(id) < 0 {

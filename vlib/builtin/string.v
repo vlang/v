@@ -1846,6 +1846,25 @@ pub fn (s string) to_lower_ascii() string {
 	}
 }
 
+// to_lower_ascii_eq reports whether `s.to_lower_ascii() == a` without allocating the lowered
+// string. Only `s` is lowered. The compiler lowers that comparison to this call.
+@[direct_array_access]
+fn (s string) to_lower_ascii_eq(a string) bool {
+	if s.len != a.len {
+		return false
+	}
+	for i in 0 .. s.len {
+		mut c := s[i]
+		if c >= `A` && c <= `Z` {
+			c += 32
+		}
+		if c != a[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // to_lower returns the string in all lowercase characters.
 // Example: assert 'Hello V'.to_lower() == 'hello v'
 @[direct_array_access]
@@ -2049,6 +2068,25 @@ pub fn (s string) find_between(start string, end string) string {
 @[inline]
 pub fn (s string) trim_space() string {
 	return s.trim(' \n\t\v\f\r')
+}
+
+// trim_space_eq reports whether `s.trim_space() == a` without allocating the trimmed string.
+// The compiler lowers that comparison to this call.
+@[direct_array_access]
+fn (s string) trim_space_eq(a string) bool {
+	mut start := 0
+	mut end := s.len
+	// `\t`, `\n`, `\v`, `\f` and `\r` are the consecutive bytes 9 to 13.
+	for start < end && (s[start] == ` ` || (s[start] >= `\t` && s[start] <= `\r`)) {
+		start++
+	}
+	for end > start && (s[end - 1] == ` ` || (s[end - 1] >= `\t` && s[end - 1] <= `\r`)) {
+		end--
+	}
+	if end - start != a.len {
+		return false
+	}
+	return a.len == 0 || unsafe { vmemcmp(s.str + start, a.str, a.len) } == 0
 }
 
 // trim_space_left strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start of the string.
