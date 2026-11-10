@@ -20,7 +20,9 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 		env_file := os.join_path(root, 'private-cache-env.txt')
 		os.write_file(env_file, '')!
 		cache_script := os.join_path(@VMODROOT, '.github', 'workflows', 'setup_windows_tool_cache.ps1')
-		cache_args := ['-NoProfile', '-NonInteractive', '-File', cache_script, '-CacheParent', cache_parent]
+		mut cache_args := ['-NoProfile', '-NonInteractive', '-File', cache_script]
+		cache_args << '-CacheParent'
+		cache_args << cache_parent
 		setup_env := {
 			'GITHUB_ENV': env_file
 		}
