@@ -1,14 +1,12 @@
 module fastc
 
+import os
 import strings
 import v.pref
 
-// FastcZygote is a copy of the compiler process that holds one TinyCC state for
-// the translation units of a program. It parses the declarations that the units
-// share once, and then continues as one process per unit (see
-// libtcc_zygote_darwin.c). The compiler starts it before it generates C, while
-// its own address space is still small.
-pub struct FastcZygote {
+// FastcZygoteProcess is a copy of the compiler process that holds one TinyCC
+// state, with the compiler's ends of its pipes (see libtcc_zygote_darwin.c).
+struct FastcZygoteProcess {
 mut:
 	pid            int
 	control_fd     int
@@ -18,6 +16,30 @@ mut:
 	active         bool
 }
 
+// FastcZygoteHead is the text a zygote parsed before the build knew its own:
+// the TinyCC options and the head that the previous build of the program kept.
+struct FastcZygoteHead {
+	options string
+	text    string
+	fed     bool
+}
+
+// FastcZygote compiles the translation units of a program from one parse of
+// the declarations that they share. A zygote process parses that head and then
+// continues as one process per unit. The compiler forks its zygotes before it
+// generates C, while its own address space is still small: `fresh` waits for
+// the head of this build, and `guess` parses the head that the previous build
+// kept in `head_path`, while this build is generated. When both heads are the
+// same text, the units start from `guess` without waiting for a parse.
+pub struct FastcZygote {
+mut:
+	fresh      FastcZygoteProcess
+	guess      FastcZygoteProcess
+	guess_feed thread FastcZygoteHead
+	head_path  string
+	active     bool
+}
+
 // FastcZygotePlan groups what the units of a zygote add to the shared head: the
 // program's single definitions and the bodies of its source files. Both are
 // lists of items, the definitions first, and a unit holds consecutive items.
@@ -25,6 +47,8 @@ pub struct FastcZygotePlan {
 pub:
 	paths []string
 mut:
+	// Unit g is compiled to `<object_prefix>g.o`.
+	object_prefix string
 	// unit_items[g] is the first item of unit g; the last entry is the item count.
 	unit_items []int
 	// solo_pieces[i] is the first piece of definition item i; the last entry is
@@ -42,23 +66,43 @@ const fastc_zygote_solo_item_bytes = 16 * 1024
 const fastc_zygote_unit_bytes = 256 * 1024
 
 // fastc_zygote_marker ends the declarations that the units of a zygote share.
-const fastc_zygote_marker = '\n#warning __v_fastc_zygote_units\n\n'
+// The unit count and the object prefix follow it on its line.
+const fastc_zygote_marker = '#warning __v_fastc_zygote_units'
+
+// fastc_zygote_head_bytes is the least head that is kept for the next build: a
+// small program parses its head faster than a second zygote is worth.
+const fastc_zygote_head_bytes = 1024 * 1024
+
+// fastc_zygote_head_format starts the file that keeps a head for the next build.
+const fastc_zygote_head_format = 'fastc-zygote-head-v1\n'
 
 // fastc_zygote_unit_limit is the largest number of units a zygote compiles at
 // once. A unit costs a zygote one more process, not one more parse of the head.
 pub fn fastc_zygote_unit_limit(prefs &pref.Preferences) int {
 	mut units := fastc_parallel_worker_limit(prefs)
-	if units > 16 {
-		units = 16
+	if units > 12 {
+		units = 12
 	}
 	return units
 }
 
-// fastc_start_zygote forks the zygote of a build. A compiler without an
-// in-process TinyCC returns an inactive one, as does a failed fork.
-pub fn fastc_start_zygote(max_units int) FastcZygote {
+// fastc_zygote_head_path names the file in which the builds of `input` by this
+// compiler keep their head for the next build.
+pub fn fastc_zygote_head_path(input string) string {
+	identity := '${os.real_path(input)}\x00${os.executable()}'
+	key := fastc_unit_cache_hash(identity, u64(0x3c6ef372fe94f82b))
+	return os.join_path_single(os.vtmp_dir(), 'fastc_zygote_${key.hex()}.head')
+}
+
+// fastc_start_zygote forks the zygotes of a build, which keeps its head in
+// `head_path` when that is not empty. A compiler without an in-process TinyCC
+// returns an inactive zygote, as does a failed fork or `V3_FASTC_NO_ZYGOTE`.
+pub fn fastc_start_zygote(max_units int, head_path string) FastcZygote {
 	$if macos && !tinyc && !fastc_selfhost ?&& !v3_backend ? {
-		return fastc_start_libtcc_zygote(max_units)
+		if os.getenv('V3_FASTC_NO_ZYGOTE') != '' {
+			return FastcZygote{}
+		}
+		return fastc_start_libtcc_zygote(max_units, head_path)
 	} $else {
 		return FastcZygote{}
 	}
@@ -176,16 +220,75 @@ pub fn fastc_zygote_plan(prefix string, pieces []string, units FastcUnitLayout, 
 	if unit_items.len == 0 {
 		return FastcZygotePlan{}
 	}
+	// The marker line names the objects, so the prefix has to be one plain line.
+	object_prefix := '${prefix}.unit'
+	if object_prefix.len > 900 || object_prefix.contains_any('\r\n\\') || object_prefix.ends_with(' ') {
+		return FastcZygotePlan{}
+	}
 	mut paths := []string{cap: groups}
 	for g in 0 .. groups {
-		paths << '${prefix}.unit${g}.c'
+		paths << '${object_prefix}${g}.c'
 	}
 	return FastcZygotePlan{
-		paths:       paths
-		unit_items:  unit_items
-		solo_pieces: solo_pieces
-		definitions: definitions
+		paths:         paths
+		object_prefix: object_prefix
+		unit_items:    unit_items
+		solo_pieces:   solo_pieces
+		definitions:   definitions
 	}
+}
+
+// fastc_zygote_extern_slots maps every piece of the head to its entry in
+// extern_texts, or to -1: every unit sees a definition that only one unit may
+// hold as its `extern` declaration.
+fn fastc_zygote_extern_slots(units &FastcUnitLayout) []int {
+	mut slots := []int{len: units.head_end, init: -1}
+	for e, index in units.extern_indexes {
+		if index >= 0 && index < slots.len {
+			slots[index] = e
+		}
+	}
+	return slots
+}
+
+// fastc_zygote_head_matches reports whether `text` is the head of the generation.
+fn fastc_zygote_head_matches(text string, pieces []string, units &FastcUnitLayout) bool {
+	slots := fastc_zygote_extern_slots(units)
+	mut offset := 0
+	for k in 0 .. units.head_end {
+		piece := if slots[k] >= 0 { units.extern_texts[slots[k]] } else { pieces[k] }
+		if piece.len > text.len - offset {
+			return false
+		}
+		if piece.len > 0 && unsafe { vmemcmp(text.str + offset, piece.str, piece.len) } != 0 {
+			return false
+		}
+		offset += piece.len
+	}
+	return offset == text.len
+}
+
+// fastc_parse_zygote_head reads the options and the head text of a kept head.
+fn fastc_parse_zygote_head(content string) ?FastcZygoteHead {
+	if !content.starts_with(fastc_zygote_head_format) {
+		return none
+	}
+	rest := content[fastc_zygote_head_format.len..]
+	length_end := rest.index('\n') or { return none }
+	options_len := rest[..length_end].int()
+	if options_len < 0 || rest[..length_end] != options_len.str()
+		|| options_len > rest.len - length_end - 1 {
+		return none
+	}
+	return FastcZygoteHead{
+		options: rest[length_end + 1..length_end + 1 + options_len]
+		text:    rest[length_end + 1 + options_len..]
+	}
+}
+
+// fastc_zygote_head_prefix precedes the head text in the file that keeps it.
+fn fastc_zygote_head_prefix(options string) string {
+	return '${fastc_zygote_head_format}${options.len}\n${options}'
 }
 
 // fastc_compile_zygote_c_units compiles the planned units to `objects` with the

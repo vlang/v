@@ -11722,7 +11722,8 @@ pub fn run(args []string) {
 					&& prestart_workers.len == 0 {
 					// The process that will compile the C is forked before the
 					// generation makes this one large.
-					prestarted_fastc_units.zygote = fastc.fastc_start_zygote(fastc.fastc_zygote_unit_limit(prefs))
+					prestarted_fastc_units.zygote = fastc.fastc_start_zygote(fastc.fastc_zygote_unit_limit(prefs),
+						fastc.fastc_zygote_head_path(input_file))
 				}
 			}
 			defer {

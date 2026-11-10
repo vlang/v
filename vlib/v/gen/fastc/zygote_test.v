@@ -107,6 +107,46 @@ fn test_zygote_plan_spreads_large_definition_groups() {
 	assert whole.unit_items[1] == 1
 }
 
+fn test_zygote_head_of_the_previous_build_is_matched_by_text() {
+	pieces, units := zygote_test_layout()
+	slots := fastc_zygote_extern_slots(&units)
+	mut head := ''
+	for k in 0 .. units.head_end {
+		head += if slots[k] >= 0 { units.extern_texts[slots[k]] } else { pieces[k] }
+	}
+	// Every unit sees the declarations, never the definitions, of the split pieces.
+	assert head.contains('extern int counter;')
+	assert head.contains('extern const u8 __vf_embed_kept[];')
+	assert !head.contains('int counter = 3;')
+	assert fastc_zygote_head_matches(head, pieces, &units)
+	assert !fastc_zygote_head_matches(head + ' ', pieces, &units)
+	assert !fastc_zygote_head_matches(head[..head.len - 1], pieces, &units)
+	assert !fastc_zygote_head_matches(head.replace('second', 'third!'), pieces, &units)
+	assert !fastc_zygote_head_matches('', pieces, &units)
+	// The kept file holds the options before the text; neither needs escaping.
+	options := '-std=gnu11 "-I/a b"\n-DX'
+	kept := fastc_parse_zygote_head(fastc_zygote_head_prefix(options) + head) or { panic('no head') }
+	assert kept.options == options
+	assert kept.text == head
+	assert !kept.fed
+	assert fastc_parse_zygote_head(head) == none
+	assert fastc_parse_zygote_head(fastc_zygote_head_format + '99\nshort') == none
+	assert fastc_parse_zygote_head(fastc_zygote_head_format + '-1\nshort') == none
+	assert fastc_parse_zygote_head(fastc_zygote_head_format + '2x\nshort') == none
+	empty := fastc_parse_zygote_head(fastc_zygote_head_prefix('')) or { panic('no head') }
+	assert empty.options == '' && empty.text == ''
+}
+
+fn test_zygote_plan_names_its_objects_on_one_line() {
+	pieces, units := zygote_test_layout()
+	plan := fastc_zygote_plan('build dir/src', pieces, units, 8)
+	assert plan.object_prefix == 'build dir/src.unit'
+	assert plan.paths == ['build dir/src.unit0.c', 'build dir/src.unit1.c']
+	assert fastc_zygote_plan('build\ndir/src', pieces, units, 8).paths.len == 0
+	assert fastc_zygote_plan('build\\dir/src', pieces, units, 8).paths.len == 0
+	assert fastc_zygote_plan('x'.repeat(1000), pieces, units, 8).paths.len == 0
+}
+
 fn test_zygote_rejects_options_that_hide_its_marker() {
 	inactive := FastcZygote{}
 	assert !fastc_zygote_accepts(&inactive, ['-std=gnu11'])
@@ -116,5 +156,5 @@ fn test_zygote_rejects_options_that_hide_its_marker() {
 	assert fastc_zygote_accepts(&active, ['-std=gnu11', '-Werror=implicit-function-declaration'])
 	assert !fastc_zygote_accepts(&active, ['-std=gnu11', '-w'])
 	assert !fastc_zygote_accepts(&active, ['-Werror'])
-	assert fastc_zygote_marker.contains('#warning ')
+	assert fastc_zygote_marker.starts_with('#warning ')
 }

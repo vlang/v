@@ -2,19 +2,26 @@
 // single parse of their shared head.
 //
 // The compiler forks the zygote while it is still small. The zygote waits for a
-// job on its control pipe: TinyCC options, the object path of every unit, and
-// then the C text that all units share. That text ends in a `#warning` line
-// carrying v_fastc_zygote_marker. TinyCC reports the warning through its error
-// callback in the middle of the translation unit, with every declaration of the
-// head parsed, and the callback forks one process per remaining unit there. Each
-// process then replaces its standard input with its own unit's pipe, so TinyCC
-// goes on reading only that unit's definitions and writes that unit's object.
+// job on its control pipe: the TinyCC options, and then the C text that all
+// units share. That text ends in a `#warning` line that carries
+// v_fastc_zygote_marker, the number of units and the prefix of their object
+// paths. TinyCC reports the warning through its error callback in the middle of
+// the translation unit, with every declaration of the head parsed, and the
+// callback forks one process per remaining unit there. Each process then
+// replaces its standard input with its own unit's pipe, so TinyCC goes on
+// reading only that unit's definitions and writes that unit's object.
+//
+// The head may arrive long before its marker: a zygote can parse the head of
+// the previous build while the compiler generates the next one, and is given
+// the marker only when both heads turn out to be the same text.
 //
 // No V code runs in these processes: only this file, TinyCC and the C library.
 #include <libtcc.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -33,7 +40,8 @@ typedef struct {
 	int child_count;
 	int body_fds[V_FASTC_ZYGOTE_MAX_UNITS];
 	pid_t children[V_FASTC_ZYGOTE_MAX_UNITS];
-	char *objects[V_FASTC_ZYGOTE_MAX_UNITS];
+	// Unit N is written to "<object_prefix>N.o".
+	char object_prefix[1024];
 } v_fastc_zygote_state;
 
 static v_fastc_zygote_state v_fastc_zygote;
@@ -80,12 +88,40 @@ static void v_fastc_zygote_report(const char *message) {
 	v_fastc_zygote_write_all(STDERR_FILENO, "\n", 1);
 }
 
+// v_fastc_zygote_units reads "<count> <object prefix>" after the marker.
+static int v_fastc_zygote_units(const char *text) {
+	while (*text == ' ') {
+		text++;
+	}
+	int count = 0;
+	while (*text >= '0' && *text <= '9' && count <= V_FASTC_ZYGOTE_MAX_UNITS) {
+		count = count * 10 + (*text - '0');
+		text++;
+	}
+	if (count < 1 || count > V_FASTC_ZYGOTE_MAX_UNITS || *text != ' ') {
+		return 0;
+	}
+	text++;
+	size_t len = strlen(text);
+	while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\r' || text[len - 1] == '\n')) {
+		len--;
+	}
+	if (len == 0 || len >= sizeof(v_fastc_zygote.object_prefix)) {
+		return 0;
+	}
+	memcpy(v_fastc_zygote.object_prefix, text, len);
+	v_fastc_zygote.object_prefix[len] = 0;
+	return count;
+}
+
 // v_fastc_zygote_diagnostic receives every TinyCC warning and error. The marker
 // warning is the point at which the units part.
 static void v_fastc_zygote_diagnostic(void *opaque, const char *message) {
 	(void)opaque;
-	if (!v_fastc_zygote.forked && strstr(message, v_fastc_zygote_marker) != NULL) {
+	const char *marker = v_fastc_zygote.forked ? NULL : strstr(message, v_fastc_zygote_marker);
+	if (marker != NULL) {
 		v_fastc_zygote.forked = 1;
+		v_fastc_zygote.unit_count = v_fastc_zygote_units(marker + sizeof(v_fastc_zygote_marker) - 1);
 		for (int unit = 1; unit < v_fastc_zygote.unit_count; unit++) {
 			pid_t pid = fork();
 			if (pid < 0) {
@@ -102,7 +138,9 @@ static void v_fastc_zygote_diagnostic(void *opaque, const char *message) {
 		// The rest of this translation unit is this process's own unit. The other
 		// units' pipes are closed so that a unit that fails leaves its writer
 		// with a closed pipe instead of a full one.
-		dup2(v_fastc_zygote.body_fds[v_fastc_zygote.unit_index], STDIN_FILENO);
+		if (v_fastc_zygote.unit_count > 0) {
+			dup2(v_fastc_zygote.body_fds[v_fastc_zygote.unit_index], STDIN_FILENO);
+		}
 		for (int unit = 0; unit < V_FASTC_ZYGOTE_MAX_UNITS; unit++) {
 			if (v_fastc_zygote.body_fds[unit] >= 0) {
 				close(v_fastc_zygote.body_fds[unit]);
@@ -141,38 +179,19 @@ static void v_fastc_zygote_environment(TCCState *state) {
 }
 
 static void v_fastc_zygote_run(int control_fd, int diagnostics_fd, int done_fd) {
-	uint32_t header[2];
+	uint32_t magic = 0;
 	// A build that needs no zygote closes the control pipe without a job.
-	if (!v_fastc_zygote_read_all(control_fd, header, sizeof(header))
-		|| header[0] != V_FASTC_ZYGOTE_MAGIC) {
+	if (!v_fastc_zygote_read_all(control_fd, &magic, sizeof(magic))
+		|| magic != V_FASTC_ZYGOTE_MAGIC) {
 		_exit(0);
 	}
 	dup2(diagnostics_fd, STDOUT_FILENO);
 	dup2(diagnostics_fd, STDERR_FILENO);
 	close(diagnostics_fd);
-	int unit_count = (int)header[1];
-	if (unit_count < 1 || unit_count > V_FASTC_ZYGOTE_MAX_UNITS) {
-		v_fastc_zygote_report("FastC unit zygote: invalid unit count");
-		_exit(1);
-	}
 	char *options = v_fastc_zygote_read_text(control_fd);
 	if (options == NULL) {
 		v_fastc_zygote_report("FastC unit zygote: incomplete job");
 		_exit(1);
-	}
-	for (int unit = 0; unit < unit_count; unit++) {
-		v_fastc_zygote.objects[unit] = v_fastc_zygote_read_text(control_fd);
-		if (v_fastc_zygote.objects[unit] == NULL) {
-			v_fastc_zygote_report("FastC unit zygote: incomplete job");
-			_exit(1);
-		}
-	}
-	v_fastc_zygote.unit_count = unit_count;
-	for (int unit = unit_count; unit < V_FASTC_ZYGOTE_MAX_UNITS; unit++) {
-		if (v_fastc_zygote.body_fds[unit] >= 0) {
-			close(v_fastc_zygote.body_fds[unit]);
-			v_fastc_zygote.body_fds[unit] = -1;
-		}
 	}
 	// The shared head follows the job on the control pipe.
 	dup2(control_fd, STDIN_FILENO);
@@ -191,7 +210,7 @@ static void v_fastc_zygote_run(int control_fd, int diagnostics_fd, int done_fd) 
 	if (!failed) {
 		failed = tcc_add_file(state, "-") != 0;
 	}
-	if (!failed && !v_fastc_zygote.forked) {
+	if (!failed && (!v_fastc_zygote.forked || v_fastc_zygote.unit_count == 0)) {
 		v_fastc_zygote_report("FastC unit zygote: the shared declarations did not reach the units");
 		failed = 1;
 	}
@@ -200,7 +219,9 @@ static void v_fastc_zygote_run(int control_fd, int diagnostics_fd, int done_fd) 
 		failed = 1;
 	}
 	if (!failed) {
-		failed = tcc_output_file(state, v_fastc_zygote.objects[v_fastc_zygote.unit_index]) != 0;
+		char object[sizeof(v_fastc_zygote.object_prefix) + 16];
+		snprintf(object, sizeof(object), "%s%d.o", v_fastc_zygote.object_prefix, v_fastc_zygote.unit_index);
+		failed = tcc_output_file(state, object) != 0;
 	}
 	if (!failed) {
 		unsigned char unit = (unsigned char)v_fastc_zygote.unit_index;
@@ -248,15 +269,36 @@ int v_fastc_zygote_start(int max_units, int *control_fd, int *diagnostics_fd, in
 		return -1;
 	}
 	if (pid == 0) {
-		close(pipes[0][1]);
-		close(pipes[1][0]);
-		close(pipes[2][0]);
+		// The compiler's signal handlers are V code, which does not run here.
+		for (int sig = 1; sig < NSIG; sig++) {
+			if (sig != SIGKILL && sig != SIGSTOP) {
+				signal(sig, SIG_DFL);
+			}
+		}
+		sigset_t no_signals;
+		sigemptyset(&no_signals);
+		sigprocmask(SIG_SETMASK, &no_signals, NULL);
 		for (int unit = 0; unit < V_FASTC_ZYGOTE_MAX_UNITS; unit++) {
 			v_fastc_zygote.body_fds[unit] = -1;
 		}
 		for (int unit = 0; unit < max_units; unit++) {
-			close(pipes[unit + 3][1]);
 			v_fastc_zygote.body_fds[unit] = pipes[unit + 3][0];
+		}
+		// The copy keeps the standard streams and its own ends of these pipes. An
+		// open copy of anything else, such as another zygote's pipes, would keep
+		// that pipe's reader from seeing its end.
+		int limit = getdtablesize();
+		if (limit > 4096) {
+			limit = 4096;
+		}
+		for (int fd = 3; fd < limit; fd++) {
+			int keep = fd == pipes[0][0] || fd == pipes[1][1] || fd == pipes[2][1];
+			for (int unit = 0; !keep && unit < max_units; unit++) {
+				keep = fd == pipes[unit + 3][0];
+			}
+			if (!keep) {
+				close(fd);
+			}
 		}
 		v_fastc_zygote_run(pipes[0][0], pipes[1][1], pipes[2][1]);
 		_exit(1);
@@ -275,6 +317,14 @@ int v_fastc_zygote_start(int max_units, int *control_fd, int *diagnostics_fd, in
 		body_fds[unit] = pipes[unit + 3][1];
 	}
 	return (int)pid;
+}
+
+// v_fastc_zygote_kill ends a zygote that was not given its marker, and reaps it.
+void v_fastc_zygote_kill(int pid) {
+	int status = 0;
+	kill((pid_t)pid, SIGKILL);
+	while (waitpid((pid_t)pid, &status, 0) < 0 && errno == EINTR) {
+	}
 }
 
 // v_fastc_zygote_wait reaps the zygote and returns its exit code.
