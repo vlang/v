@@ -529,6 +529,8 @@ fn test_receipt_sees_a_header_link_that_comes_to_point_elsewhere() {
 	os.mkdir_all(include)!
 	link := os.join_path(include, 'choice.h')
 	os.symlink(os.join_path(f.root, 'versions', 'one.h'), link)!
+	// The directories where headers are searched are inputs of the receipt too.
+	age_unchanged_build_source(include)!
 	publish_native_receipt(f, 'header_link', native_receipt_inputs(f, ['-I', include],
 		'#include <choice.h>\n'))
 	os.rm(link)!
