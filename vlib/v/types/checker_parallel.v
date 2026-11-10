@@ -66,8 +66,12 @@ struct InterfaceImplSliceArgs {
 	// The master's method-receiver index (see memo_index_method_receivers) and
 	// sorted base candidates, shared read-only by every job's memo.
 	shared_memo voidptr
-	// The sorted candidates of the builtin `IError` (ierror_impl_candidates).
-	ierror_candidates voidptr // &[]u32
+	// This job's slice of the shared memo's sorted base candidates and of the
+	// sorted candidates of the builtin `IError` (ierror_impl_candidates). The
+	// master cuts them before the pool starts: slicing an array marks its buffer,
+	// which the jobs must not do to a buffer they share.
+	base_candidates   []u32
+	ierror_candidates []u32
 mut:
 	scope voidptr
 }
@@ -111,17 +115,11 @@ fn interface_impl_slice_thread(arg voidptr) voidptr {
 			}
 		}
 	} else {
-		base := shared_memo.base_candidates
-		base_start := base.len * a.slice / a.n_slices
-		base_end := base.len * (a.slice + 1) / a.n_slices
-		ierror_candidates := unsafe { *(&[]u32(a.ierror_candidates)) }
-		ierror_start := ierror_candidates.len * a.slice / a.n_slices
-		ierror_end := ierror_candidates.len * (a.slice + 1) / a.n_slices
 		for i, iface_name in iface_names {
 			impls := if is_builtin_ierror_name(iface_name) {
-				tc.ierror_impls_among(ierror_candidates[ierror_start..ierror_end])
+				tc.ierror_impls_among(a.ierror_candidates)
 			} else {
-				tc.interface_impls_among(iface_name, base[base_start..base_end])
+				tc.interface_impls_among(iface_name, a.base_candidates)
 			}
 			unsafe {
 				results[i * a.n_slices + a.slice] = impls
@@ -166,7 +164,11 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	mut results := [][]u32{len: iface_names.len * (n_slices + 1)}
 	mut args := []InterfaceImplSliceArgs{cap: n_slices + 1}
 	mut tasks := []workers.Task{cap: n_slices + 1}
+	base_candidates := shared_memo.base_candidates
 	for job in 0 .. n_slices + 1 {
+		// The job after the last slice takes no slice of the shared candidates.
+		slice := if job < n_slices { job } else { 0 }
+		slice_end := if job < n_slices { job + 1 } else { 0 }
 		args << InterfaceImplSliceArgs{
 			checker:           voidptr(checkers[job])
 			iface_names:       unsafe { voidptr(&iface_names) }
@@ -177,7 +179,8 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 			// into the shared cache below; only forks may use scratch arenas.
 			scoped:            job > 0
 			shared_memo:       voidptr(shared_memo)
-			ierror_candidates: unsafe { voidptr(&ierror_candidates) }
+			base_candidates:   base_candidates[base_candidates.len * slice / n_slices..base_candidates.len * slice_end / n_slices]
+			ierror_candidates: ierror_candidates[ierror_candidates.len * slice / n_slices..ierror_candidates.len * slice_end / n_slices]
 		}
 		tasks << workers.Task{
 			run:        interface_impl_slice_thread
