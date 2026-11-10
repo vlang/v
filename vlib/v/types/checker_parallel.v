@@ -53,26 +53,33 @@ struct CheckWorkItem {
 	rank     i64
 }
 
-struct InterfaceImplChunkArgs {
+struct InterfaceImplSliceArgs {
 	checker     voidptr
-	iface_names voidptr
-	results     voidptr
-	queue       chan int
-	scoped      bool
-	// The master's method-receiver index (see memo_index_method_receivers),
-	// shared read-only by every job's memo.
+	iface_names voidptr // &[]u32
+	// The implementers a slice found for an interface, by
+	// `interface * n_slices + slice`; the job after the last slice fills, by
+	// interface, those among the candidates that depend on the interface.
+	results  voidptr // &[][]u32
+	slice    int
+	n_slices int
+	scoped   bool
+	// The master's method-receiver index (see memo_index_method_receivers) and
+	// sorted base candidates, shared read-only by every job's memo.
 	shared_memo voidptr
+	// The sorted candidates of the builtin `IError` (ierror_impl_candidates).
+	ierror_candidates voidptr // &[]u32
 mut:
 	scope voidptr
 }
 
-struct InterfaceImplResults {
-mut:
-	items []&InterfaceImplIndex
-}
-
-fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
-	mut a := unsafe { &InterfaceImplChunkArgs(arg) }
+// interface_impl_slice_thread tests one slice of the candidate types against
+// every interface. A type is looked up by the same receivers whatever the
+// interface (memo_receiver_method_lookup), and working that out is most of a
+// test: a job that owns a range of types does it once per type, where a job
+// that owned a set of interfaces did it again for every type of the program.
+// Equal slices also leave no single long task, as the `IError` scan was.
+fn interface_impl_slice_thread(arg voidptr) voidptr {
+	mut a := unsafe { &InterfaceImplSliceArgs(arg) }
 	if a.scoped {
 		// A forked checker only writes its private caches, so the whole index
 		// scratch can live in a disposable arena; the master publishes copies of
@@ -80,27 +87,45 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 		a.scope = check_worker_scope_begin(true)
 	}
 	tc := unsafe { &TypeChecker(a.checker) }
-	// Declarations and context stay fixed while this worker drains the queue.
-	// Match the serial preparation path: reuse receiver and candidate queries
-	// across interfaces, with one private memo per checker.
+	// Declarations and context stay fixed while this job runs. Match the serial
+	// preparation path: reuse receiver and candidate queries across interfaces,
+	// with one private memo per checker.
 	shared_memo := unsafe { &InterfaceImplMemo(a.shared_memo) }
 	opened := tc.begin_interface_impl_queries_sharing(shared_memo)
 	defer { tc.end_interface_impl_queries(opened) }
-	iface_names := unsafe { &[]u32(a.iface_names) }
-	mut results := unsafe { &InterfaceImplResults(a.results) }
-	// Implementer scans differ widely in cost (IError checks every type), so
-	// each job pulls the next interface instead of taking a fixed slice.
-	for {
-		i := <-a.queue or { break }
-		iface_name := unsafe { iface_names[i] }
-		impls := if is_builtin_ierror_name(iface_name) {
-			tc.ierror_impl_names()
-		} else {
-			tc.interface_impl_names_uncached(iface_name)
+	iface_names := unsafe { *(&[]u32(a.iface_names)) }
+	mut results := unsafe { &[][]u32(a.results) }
+	if a.slice == a.n_slices {
+		for i, iface_name in iface_names {
+			if is_builtin_ierror_name(iface_name) {
+				continue
+			}
+			extra_set := tc.memo_interface_impl_extra_candidates(iface_name)
+			if extra_set.len == 0 {
+				continue
+			}
+			mut extras := extra_set.keys()
+			extras.sort_with_compare(compare_interface_impl_spelling_ids)
+			unsafe {
+				results[iface_names.len * a.n_slices + i] = tc.interface_impls_among(iface_name, extras)
+			}
 		}
-		results.items[i] = &InterfaceImplIndex{
-			names: flat.TypeTextList{ ids: impls }
-			ids:   stable_interface_type_ids(impls)
+	} else {
+		base := shared_memo.base_candidates
+		base_start := base.len * a.slice / a.n_slices
+		base_end := base.len * (a.slice + 1) / a.n_slices
+		ierror_candidates := unsafe { *(&[]u32(a.ierror_candidates)) }
+		ierror_start := ierror_candidates.len * a.slice / a.n_slices
+		ierror_end := ierror_candidates.len * (a.slice + 1) / a.n_slices
+		for i, iface_name in iface_names {
+			impls := if is_builtin_ierror_name(iface_name) {
+				tc.ierror_impls_among(ierror_candidates[ierror_start..ierror_end])
+			} else {
+				tc.interface_impls_among(iface_name, base[base_start..base_end])
+			}
+			unsafe {
+				results[i * a.n_slices + a.slice] = impls
+			}
 		}
 	}
 	if a.scoped {
@@ -114,46 +139,48 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	if iface_names.len < 8 || isnil(pool) {
 		return false
 	}
-	n_jobs := int_min(pool.size() + 1, iface_names.len)
-	if n_jobs <= 1 {
+	// One job per slice and one for the candidates that depend on the
+	// interface: as many jobs as the pool and the caller run side by side.
+	n_slices := pool.size()
+	if n_slices < 1 {
 		return false
 	}
 	tc.install_type_cache_overlay()
-	mut checkers := []&TypeChecker{cap: n_jobs}
+	// The last checker tests the candidates that depend on the interface.
+	mut checkers := []&TypeChecker{cap: n_slices + 1}
 	checkers << tc
-	for _ in 1 .. n_jobs {
+	for _ in 0 .. n_slices {
 		checkers << tc.fork_for_parallel_transform(tc.a)
 	}
-	mut results := &InterfaceImplResults{
-		items: []&InterfaceImplIndex{cap: iface_names.len}
-	}
-	for _ in iface_names {
-		results.items << &InterfaceImplIndex(unsafe { nil })
-	}
-	queue := chan int{cap: iface_names.len}
-	for i in 0 .. iface_names.len {
-		queue <- i
-	}
-	queue.close()
 	// The method-receiver index reads only the declared signatures, which every
-	// fork shares: index them once here instead of once per job.
+	// fork shares: index them once here instead of once per job. The same goes
+	// for the sorted candidates that every interface tests.
 	mut shared_memo := &InterfaceImplMemo{}
 	tc.memo_index_method_receivers(mut shared_memo)
-	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
-	mut tasks := []workers.Task{cap: n_jobs}
-	for job in 0 .. n_jobs {
-		args << InterfaceImplChunkArgs{
-			checker:     voidptr(checkers[job])
-			iface_names: unsafe { voidptr(&iface_names) }
-			results:     voidptr(results)
-			queue:       queue
+	// A caller's own memo stays as it is: the candidates go to the shared one.
+	caller_memo := tc.interface_impl_memo
+	tc.interface_impl_memo = shared_memo
+	tc.memo_interface_impl_base_candidates()
+	tc.interface_impl_memo = caller_memo
+	ierror_candidates := tc.ierror_impl_candidates()
+	mut results := [][]u32{len: iface_names.len * (n_slices + 1)}
+	mut args := []InterfaceImplSliceArgs{cap: n_slices + 1}
+	mut tasks := []workers.Task{cap: n_slices + 1}
+	for job in 0 .. n_slices + 1 {
+		args << InterfaceImplSliceArgs{
+			checker:           voidptr(checkers[job])
+			iface_names:       unsafe { voidptr(&iface_names) }
+			results:           unsafe { voidptr(&results) }
+			slice:             job
+			n_slices:          n_slices
 			// Job 0 runs on the master checker, whose overlay is folded back
 			// into the shared cache below; only forks may use scratch arenas.
-			scoped:      job > 0
-			shared_memo: voidptr(shared_memo)
+			scoped:            job > 0
+			shared_memo:       voidptr(shared_memo)
+			ierror_candidates: unsafe { voidptr(&ierror_candidates) }
 		}
 		tasks << workers.Task{
-			run:        interface_impl_index_chunk_thread
+			run:        interface_impl_slice_thread
 			arg:        unsafe { voidptr(&args[job]) }
 			force_sync: job == 0
 		}
@@ -161,15 +188,17 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	pool.run(tasks)
 	tc.restore_type_cache_base()
 	for i, iface_name in iface_names {
-		if !isnil(results.items[i]) {
-			// Worker indexes are backed by disposable worker arenas. Publish a
-			// parent-owned copy before those arenas are released.
-			worker_index := results.items[i]
-			names := worker_index.names.ids.clone()
-			tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
-				names: flat.TypeTextList{ ids: names }
-				ids:   stable_interface_type_ids(names)
-			}
+		// The slices are consecutive ranges of the sorted candidates, so their
+		// implementers follow each other in spelling order. Worker lists are
+		// backed by disposable worker arenas: this is the parent-owned copy.
+		mut names := []u32{}
+		for slice in 0 .. n_slices {
+			names << results[i * n_slices + slice]
+		}
+		names = merge_interface_impls(names, results[iface_names.len * n_slices + i])
+		tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+			names: flat.TypeTextList{ ids: names }
+			ids:   stable_interface_type_ids(names)
 		}
 	}
 	for arg in args {
