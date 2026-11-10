@@ -42,6 +42,43 @@ fn v3_pinned_web_native_interfaces(vroot string) bool {
 	return sha256.hexhash(parts.join('\n')) == 'a28e5f94cc8104ea9ff30a79e0901da3daed25aa3f1d58530d1db81669c0f11f'
 }
 
+// These compiler-shipped headers declare inline helpers over system types only:
+// `pthread_helper.h` (pthread wrappers whose out-of-line copies `v.workers` links
+// from the separate `pthread_helper.o` #flag object) and `cmdexec_poll.h` (a
+// `poll` wrapper). No cached unit owns native state through them. Like the
+// mbedTLS contract above, this one is explicit: V never opens a header to infer it.
+// The digests pin their audited content for TinyCC, which cannot diagnose
+// date/time macros (see v3_pinned_web_native_interfaces). Editing a header keeps
+// the fallback with TinyCC until its ownership and determinism are reviewed and
+// its digest is updated.
+const v3_compiler_native_interfaces = {
+	'vlib/v/pthread_helper.h':       '40edf0c4e95d9d47973cc9a98c6cb68495585f872d8213375befac56de27352e'
+	'vlib/v/cmdexec/cmdexec_poll.h': '84e10482377fb00a9b9e7705dea55d3797a07d2f7df459be2886b7933ab31e90'
+}
+
+fn v3_compiler_native_interface_path(vroot string, relative string) string {
+	return os.real_path(os.join_path(os.real_path(vroot), ...relative.split('/')))
+}
+
+fn v3_compiler_native_interface(path string, vroot string) bool {
+	for relative, _ in v3_compiler_native_interfaces {
+		if path == v3_compiler_native_interface_path(vroot, relative) { return true }
+	}
+	return false
+}
+
+// v3_pinned_compiler_native_interfaces reports whether every header of
+// v3_compiler_native_interfaces still has its audited content.
+fn v3_pinned_compiler_native_interfaces(vroot string) bool {
+	for relative, expected in v3_compiler_native_interfaces {
+		digest := v3_file_sha256_hex(v3_compiler_native_interface_path(vroot, relative)) or {
+			return false
+		}
+		if digest != expected { return false }
+	}
+	return true
+}
+
 fn v3_native_interface_configuration_override(value string) bool {
 	return value.contains('MBEDTLS_CONFIG_FILE') || value.contains('MBEDTLS_USER_CONFIG_FILE')
 		|| value.contains('MBEDTLS_PSA_CRYPTO_CONFIG')
@@ -82,14 +119,26 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	mut result := v3_native_input_closure(native_inputs)
 	if result.unassignable == '' { return result }
 	tinycc := pref.ccompiler_is_tinycc(compiler)
-	if tinycc && !v3_pinned_web_native_interfaces(prefs.vroot) { return result }
+	mut uses_web_interfaces := false
+	mut uses_compiler_interfaces := false
 	for paths in native_inputs.module_inputs.values() {
 		for path in paths {
-			if native_inputs.macro_paths[path]
-				|| (native_inputs.native_paths[path] && !v3_web_native_interface(path, prefs.vroot)) {
+			if native_inputs.macro_paths[path] { return result }
+			if !native_inputs.native_paths[path] { continue }
+			if v3_web_native_interface(path, prefs.vroot) {
+				uses_web_interfaces = true
+			} else if v3_compiler_native_interface(path, prefs.vroot) {
+				uses_compiler_interfaces = true
+			} else {
 				return result
 			}
 		}
+	}
+	if tinycc && uses_web_interfaces && !v3_pinned_web_native_interfaces(prefs.vroot) {
+		return result
+	}
+	if tinycc && uses_compiler_interfaces && !v3_pinned_compiler_native_interfaces(prefs.vroot) {
+		return result
 	}
 	for node in a.nodes {
 		if node.kind == .directive && node.value in ['define', 'undef']
