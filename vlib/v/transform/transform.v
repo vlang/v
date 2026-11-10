@@ -7351,7 +7351,7 @@ fn (t &Transformer) should_transform_fn_in_module(node flat.Node, module_name st
 	if module_name == 'builtin' && node.value_text() == 'exit' {
 		return true
 	}
-	if node.value_text().contains('[') {
+	if node.value_text().contains_u8(`[`) {
 		base_value := generic_fn_decl_base_value(node.value_text())
 		if base_value != node.value_text() && t.used_fn_contains_in_module(base_value, module_name) {
 			return true
@@ -7360,8 +7360,23 @@ fn (t &Transformer) should_transform_fn_in_module(node flat.Node, module_name st
 	return t.used_fn_contains_in_module(node.value_text(), module_name)
 }
 
+@[direct_array_access]
 fn transform_is_generated_fn_after_markused(name string) bool {
-	return name.starts_with('__anon_fn_') || name.contains('.__anon_fn_')
+	// `__anon_fn_` at the start, or after a dot. This runs once per declaration
+	// before the parallel phase, so look for the dot instead of a substring.
+	if name.len < 10 {
+		return false
+	}
+	if name[0] == `_` && name.starts_with('__anon_fn_') {
+		return true
+	}
+	for i in 0 .. name.len - 10 {
+		if name[i] == `.` && name[i + 1] == `_` && name[i + 2] == `_`
+			&& unsafe { name[i + 1..] }.starts_with('__anon_fn_') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) late_name_may_expand_interface(name string) bool {
@@ -7474,17 +7489,19 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 	// `names` can contain very large generic-instantiation spellings. Only copy
 	// a name into the late-work maps when the index proves that it can match a
 	// body; unmatched names still remain marked used for later compiler stages.
+	// mark_fn_used_name above left the lowered spelling of every name in the
+	// checker's name cache; do not derive it a second time.
 	for ni in names_start .. names_end {
 		name := names[ni]
-		if name.len == 0
-			|| (candidate_index[name].len == 0 && candidate_index[c_name(name)].len == 0) {
+		if name.len == 0 || (candidate_index[name].len == 0
+			&& candidate_index[t.late_lowered_name(name)].len == 0) {
 			continue
 		}
 		add_late_used_fn_name(name, mut late, mut pending, mut queued)
 	}
 	for name in interface_seed_names {
-		if name.len == 0
-			|| (candidate_index[name].len == 0 && candidate_index[c_name(name)].len == 0) {
+		if name.len == 0 || (candidate_index[name].len == 0
+			&& candidate_index[t.late_lowered_name(name)].len == 0) {
 			continue
 		}
 		add_late_used_fn_name(name, mut late, mut pending, mut queued)
@@ -7506,6 +7523,12 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 		}
 	}
 	t.used_fns_log_active = was_log_active
+}
+
+// late_lowered_name is c_name(name), read from the checker's name cache.
+@[inline]
+fn (t &Transformer) late_lowered_name(name string) string {
+	return if isnil(t.tc) { c_name(name) } else { t.tc.cached_c_name(name) }
 }
 
 // late_candidate_match_keys returns every used-set spelling under which the
