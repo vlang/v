@@ -5,6 +5,7 @@ module main
 import os
 import arrays
 import document as doc
+import encoding.utf8
 import x.markdown
 import term
 
@@ -37,6 +38,14 @@ It also assists with composing and testing baz.'
 It also assists with composing and testing baz.'
 	res2 := trim_doc_node_description(mod, readme).trim_space()
 	assert res2 == res
+	// A description is cut after 80 characters, not in the middle of a multi-byte character.
+	long := 'This module implements a FNV-1a hash. (see https://en.wikipedia.org/wiki/Fowler–Noll–Vo)'
+	cut := trim_doc_node_description(mod, long)
+	assert cut.runes().len == 80
+	assert cut.ends_with('Fowler–')
+	assert utf8.validate_str(cut)
+	// It is in a JS string, so its quotes and backslashes are escaped.
+	assert trim_doc_node_description(mod, 'sep is "/" or "\\" on Windows') == 'sep is \\"/\\" or \\"\\\\\\" on Windows'
 }
 
 fn test_ignore_rules() {

@@ -99,7 +99,7 @@ fn is_module_readme(dn doc.DocNode) bool {
 // trim_doc_node_description returns the nodes trimmed description.
 // An example use are the descriptions of the search results in the sidebar.
 fn trim_doc_node_description(mod_name string, desc string) string {
-	mut dn_desc := desc.replace_each(['\r\n', '\n', '"', '\\"'])
+	mut dn_desc := desc.replace('\r\n', '\n')
 	// Get the first "descriptive" line.
 	if dn_desc.starts_with('#') {
 		// Handle module READMEs.
@@ -119,12 +119,13 @@ fn trim_doc_node_description(mod_name string, desc string) string {
 	} else {
 		dn_desc = dn_desc.all_before('\n')
 	}
-	// 80 is enough to fill one line.
-	if dn_desc.len > 80 {
-		dn_desc = dn_desc[..80]
+	// 80 characters are enough to fill one line. A multi-byte character, like `§`, is not cut.
+	runes := dn_desc.runes()
+	if runes.len > 80 {
+		dn_desc = runes[..80].string()
 	}
-	// If `\` is the last character, it ends with `\"` which leads to a JS error.
-	return dn_desc.trim_string_right('\\')
+	// The description is in a JS string.
+	return dn_desc.replace_each(['\\', '\\\\', '"', '\\"'])
 }
 
 fn set_output_type_from_str(format string) OutputType {
