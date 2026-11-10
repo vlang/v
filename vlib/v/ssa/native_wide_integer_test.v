@@ -15,6 +15,9 @@ fn probe(signed i64, unsigned u64) {
     arithmetic := value >> 65
     logical := value >>> 65
     combined := (value + i128(1)) ^ i128(other)
+    quotient := other / u128(3)
+    remainder := other % u128(3)
+    narrowed := u64(other)
     pointer := &value
     equal := value == i128(other)
     less := value < i128(-1)
@@ -68,6 +71,66 @@ fn main() {}
 	assert pointer_comparisons == 1
 }
 
+fn test_wide_integer_comparisons_lower_to_limb_instructions() {
+	source := 'module main
+fn compare_u_eq(a u128, b u128) bool { return a == b }
+fn compare_u_ne(a u128, b u128) bool { return a != b }
+fn compare_u_lt(a u128, b u128) bool { return a < b }
+fn compare_u_le(a u128, b u128) bool { return a <= b }
+fn compare_u_gt(a u128, b u128) bool { return a > b }
+fn compare_u_ge(a u128, b u128) bool { return a >= b }
+fn compare_i_eq(a i128, b i128) bool { return a == b }
+fn compare_i_ne(a i128, b i128) bool { return a != b }
+fn compare_i_lt(a i128, b i128) bool { return a < b }
+fn compare_i_le(a i128, b i128) bool { return a <= b }
+fn compare_i_gt(a i128, b i128) bool { return a > b }
+fn compare_i_ge(a i128, b i128) bool { return a >= b }
+fn main() {}
+'
+	path := os.join_path(os.vtmp_dir(), 'ssa_wide_comparisons_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, source) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, tc)
+	m := build_with_used(a, map[string]bool{}, tc)
+	mut eq_count := 0
+	mut unsigned_low_comparisons := 0
+	mut signed_high_comparisons := 0
+	mut selects := 0
+	for function in m.funcs {
+		if !function.name.starts_with('compare_') { continue }
+		for block in function.blocks {
+			for id in m.blocks[block].instrs {
+				instruction := m.instrs[m.values[id].index]
+				if instruction.op == .eq { eq_count++ }
+				if instruction.op in [.ult, .ule, .ugt, .uge] {
+					unsigned_low_comparisons++
+				}
+				if instruction.op in [.lt, .le, .gt, .ge] {
+					signed_high_comparisons++
+				}
+				if instruction.op == .select { selects++ }
+				if instruction.op in [.eq, .ne, .lt, .le, .gt, .ge, .ult, .ule, .ugt, .uge] {
+					for operand in instruction.operands {
+						typ := m.type_store.types[m.values[operand].typ]
+						assert typ.kind != .struct_t, '${instruction.op} consumed an aggregate'
+					}
+				}
+			}
+		}
+	}
+	assert eq_count >= 10
+	assert unsigned_low_comparisons >= 12
+	assert signed_high_comparisons >= 4
+	assert selects == 0
+}
+
 fn test_unsupported_wide_integer_operations_fail_before_scalar_lowering() {
 	// Build one small source-pipeline driver, then isolate each expected panic in
 	// its own process. Every fixture must pass parsing and type checking first.
@@ -99,11 +162,9 @@ fn main() {
 	built := cmdexec.run(@VEXE, ['-gc', 'none', '-o', driver, driver_source])
 	assert built.exit_code == 0, built.output
 	cases := [
-		'fn probe(x i128) i128 { return -x }',
-		'fn probe(x u128) u128 { return ~x }',
 		'fn probe(x u128, y u128) u128 { return x * y }',
-		'fn probe(x u128, y u128) u128 { return x / y }',
-		'fn probe(x u128, y u128) u128 { return x % y }',
+		'fn probe(x i128, y i128) i128 { return x / y }',
+		'fn probe(x i128, y i128) i128 { return x % y }',
 		'fn probe(x u128, shift int) u128 { return x << shift }',
 		'fn probe(x i128, shift int) i128 { return x >> shift }',
 		'fn probe(x i128, shift int) i128 { return x >>> shift }',
@@ -116,7 +177,6 @@ fn main() {
 		'fn probe() { mut x := u128(1)\nx-- }',
 		'fn probe(x f64) i128 { return i128(x) }',
 		'fn probe(x i128) f64 { return f64(x) }',
-		'fn probe(x u128) u64 { return u64(x) }',
 		'fn probe(x u128) voidptr { return voidptr(x) }',
 		'fn probe(x voidptr) u128 { return u128(x) }',
 		'fn probe() { for n in u128(1)..u128(3) {} }',
@@ -137,6 +197,6 @@ fn main() {
 		os.write_file(path, 'module main\n${source}\nfn main() {}\n') or { panic(err) }
 		result := os.exec([driver, path])
 		assert result.exit_code != 0, source
-		assert result.output.contains('ssa: unsupported 128-bit integer'), '${source}\n${result.output}'
+		assert result.output.contains('ssa: unsupported 128-bit'), '${source}\n${result.output}'
 	}
 }
