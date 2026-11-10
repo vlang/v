@@ -28,6 +28,19 @@ pub fn first_byte(s string) u8 {
 	return s[0]
 }
 
+@[export: 'shout']
+pub fn shout(s string, loud u8) int {
+	if loud == 1 {
+		return s.len + 100
+	}
+	return s.len
+}
+
+@[export: 'hello']
+pub fn hello() string {
+	return 'hi'
+}
+
 fn main() {}
 "
 
@@ -517,13 +530,15 @@ fn test_cabi_runtime_node() {
 	}
 	wasm_path := os.join_path(dir, 'guest.wasm')
 	os.write_file_array(wasm_path, b) or { panic(err) }
-	mjs := 'import assert from \'node:assert/strict\';
-import { readFileSync } from \'node:fs\';
+	mjs := "import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 const bytes = readFileSync(process.argv[2]);
 const { instance } = await WebAssembly.instantiate(bytes, {});
 const mem = () => new Uint8Array(instance.exports.memory.buffer);
 const echo_len = instance.exports.echo_len;
 const first_byte = instance.exports.first_byte;
+const shout = instance.exports.shout;
+const hello = instance.exports.hello;
 function put(off, arr) { mem().set(arr, off); }
 // hello -> 5
 put(4096, [104, 101, 108, 108, 111]);
@@ -537,12 +552,23 @@ assert.equal(echo_len(8192, 6), 6);
 assert.equal(first_byte(8192, 6), 104);
 // length pins to what the host passes, not the NUL scan
 assert.equal(echo_len(8192, 2), 2);
-console.log(\'cabi-runtime-ok echo_len=5,0,6 first_byte=104 pin=2\');
-'
+assert.equal(shout(4096, 5, 1), 105);
+assert.equal(shout(4096, 5, 0), 5);
+console.log('cabi-shout-ok shout=105,5');
+const hr = hello();
+assert.equal(hr.length, 2);
+const hp = hr[0];
+const hl = hr[1];
+assert.equal(hl, 2);
+const got = Array.from(mem().slice(hp, hp + hl));
+assert.deepEqual(got, [104, 105]);
+console.log('cabi-runtime-ok echo_len=5,0,6 first_byte=104 hello=hi pin=2');
+"
 	runner := os.join_path(dir, 'check.mjs')
 	os.write_file(runner, mjs) or { panic(err) }
 	result := os.exec([node, runner, wasm_path])
 	assert result.exit_code == 0, result.output
+	assert result.output.contains('cabi-shout-ok'), result.output
 	assert result.output.contains('cabi-runtime-ok'), result.output
 }
 

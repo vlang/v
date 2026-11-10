@@ -173,14 +173,29 @@ fn write_section(mut out []u8, id u8, payload []u8) {
 // ---- public API ----
 
 pub fn wrap_core_module(core []u8) []u8 {
-	return wrap_core_module_strings(core, map[string]string{})
+	return wrap_core_module_strings(core, map[string]CabiStringExport{})
+}
+
+// CabiStringExport describes a core export with WIT-known string params
+// and/or a string result. comp_params/comp_labels describe the component
+// function type, comp_results its (zero or one) results; core_params and
+// core_results give the expected core wasm signature the export must have
+// to be lifted (strings expand to two i32s).
+pub struct CabiStringExport {
+pub mut:
+	wit_name     string
+	comp_params  []u8
+	comp_labels  []string
+	comp_results []u8
+	core_params  []u8
+	core_results []u8
 }
 
 // wrap_core_module_strings wraps a core module like wrap_core_module, except
-// that core exports listed in string_renames (core name -> component export
-// name) must have signature (i32, i32) -> r and are lifted as single-string-param
-// component functions with canonical (memory) (realloc) options.
-pub fn wrap_core_module_strings(core []u8, string_renames map[string]string) []u8 {
+// that core exports listed in string_exports are lifted with the given
+// canonical-ABI string params/results and canonical (memory) (realloc)
+// options, and exported under their WIT name.
+pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringExport) []u8 {
 	// If we can lift at least one function, produce a richer component.
 	exports, types, _defined, _, func_typeidx := parse_core_module(core)
 	// Detect memory and realloc exports for canonical opts.
@@ -194,17 +209,17 @@ pub fn wrap_core_module_strings(core []u8, string_renames map[string]string) []u
 	}
 	// Determine liftable exports.
 	mut liftable := []CoreExport{}
-	mut str_wit := map[string]string{}
+	mut str_specs := map[string]CabiStringExport{}
 	for e in exports {
 		if e.kind != 0 { continue }
-		// Canonical-ABI string export: (i32 ptr, i32 len) lifted as one string.
-		if wit_name := string_renames[e.name] {
+		// Canonical-ABI string export: core signature must match the expansion.
+		if spec := string_exports[e.name] {
 			ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
 			if ti >= 0 && ti < types.len {
 				ft := types[ti]
-				if ft.params == [u8(0x7f), u8(0x7f)] && ft.results.len <= 1 {
+				if ft.params == spec.core_params && ft.results == spec.core_results {
 					liftable << e
-					str_wit[e.name] = wit_name
+					str_specs[e.name] = spec
 					continue
 				}
 			}
@@ -256,22 +271,32 @@ pub fn wrap_core_module_strings(core []u8, string_renames map[string]string) []u
 		ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
 		ft := types[ti]
 		type_payload << u8(0x40) // functype
-		if e.name in str_wit {
-			// single canonical string param, labelled 's'
-			type_payload << leb128.encode_u32(1)
-			type_payload << leb128.encode_u32(1)
-			type_payload << 's'.bytes()
-			type_payload << u8(0x73) // string
-		} else {
-			// params
-			type_payload << leb128.encode_u32(u32(ft.params.len))
-			for idxp, p in ft.params {
-				// label
-				label := 'p${idxp}'
+		if spec := str_specs[e.name] {
+			// WIT-known signature with canonical string params/results
+			type_payload << leb128.encode_u32(u32(spec.comp_params.len))
+			for idxp, p in spec.comp_params {
+				label := spec.comp_labels[idxp]
 				type_payload << leb128.encode_u32(u32(label.len))
 				type_payload << label.bytes()
-				type_payload << u8(core_to_component_valtype(p))
+				type_payload << p
 			}
+			if spec.comp_results.len == 0 {
+				type_payload << u8(0x01)
+				type_payload << u8(0x00)
+			} else {
+				type_payload << u8(0x00)
+				type_payload << spec.comp_results[0]
+			}
+			continue
+		}
+		// params
+		type_payload << leb128.encode_u32(u32(ft.params.len))
+		for idxp, p in ft.params {
+			// label
+			label := 'p${idxp}'
+			type_payload << leb128.encode_u32(u32(label.len))
+			type_payload << label.bytes()
+			type_payload << u8(core_to_component_valtype(p))
 		}
 		// results
 		if ft.results.len == 0 {
@@ -331,7 +356,10 @@ pub fn wrap_core_module_strings(core []u8, string_renames map[string]string) []u
 	mut export_payload := []u8{}
 	export_payload << leb128.encode_u32(u32(liftable.len))
 	for i, e in liftable {
-		ename := str_wit[e.name] or { e.name }
+		mut ename := e.name
+		if spec := str_specs[e.name] {
+			ename = spec.wit_name
+		}
 		export_payload << u8(0x00) // nameattributes plain
 		export_payload << leb128.encode_u32(u32(ename.len))
 		export_payload << ename.bytes()

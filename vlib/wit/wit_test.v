@@ -145,6 +145,17 @@ fn test_wrap_component_lifts_string_export() {
 		echo.local_get(1)
 	}
 	m.commit(echo, true)
+	mut shout := m.new_function('shout', [.i32_t, .i32_t, .i32_t], [.i32_t])
+	{
+		shout.local_get(2)
+	}
+	m.commit(shout, true)
+	mut hello := m.new_function('hello', [], [.i32_t, .i32_t])
+	{
+		hello.i32_const(0)
+		hello.i32_const(2)
+	}
+	m.commit(hello, true)
 	mut realloc := m.new_function('cabi_realloc', [.i32_t, .i32_t, .i32_t, .i32_t], [
 		.i32_t,
 	])
@@ -157,7 +168,7 @@ fn test_wrap_component_lifts_string_export() {
 	doc := parse('package example:echo@0.1.0;
 
 world echo {
-	export echo-len: func(s: string) -> u32;
+	export echo-len: func(s: string) -> u32;\n\texport shout: func(s: string, loud: u8) -> u32;\n\texport hello: func() -> string;
 }
 ') or { panic(err) }
 	comp := wrap_component(core, doc, '')
@@ -166,6 +177,7 @@ world echo {
 	mut pos := 8
 	mut export_names := []string{}
 	mut has_string_param := false
+	mut has_string_result := false
 	mut lift_has_mem_opt := false
 	mut lift_has_realloc_opt := false
 	for pos < comp.len {
@@ -235,7 +247,11 @@ world echo {
 				if comp[p] == 0x01 {
 					p += 2
 				} else {
-					p += 2
+					p += 1
+					if comp[p] == 0x73 {
+						has_string_result = true
+					}
+					p += 1
 				}
 			}
 		}
@@ -370,6 +386,9 @@ world echo {
 	}
 	assert 'echo-len' in export_names, 'component must export echo-len, got ${export_names}'
 	assert has_string_param, 'component type must declare a string param'
+	assert has_string_result, 'component type must declare a string result'
+	assert 'shout' in export_names
+	assert 'hello' in export_names
 	assert lift_has_mem_opt, 'canon lift must carry (memory)'
 	assert lift_has_realloc_opt, 'canon lift must carry (realloc)'
 }
