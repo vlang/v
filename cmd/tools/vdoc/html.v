@@ -130,9 +130,9 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
 		prefix:      if dn.parent_name != '' {
-			'${dn.kind} (${dn.parent_name})'
+			'${kind_label(dn)} (${dn.parent_name})'
 		} else {
-			'${dn.kind} '
+			'${kind_label(dn)} '
 		}
 		description: dn_description
 		badge:       mod
@@ -581,7 +581,7 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
-			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
+			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${kind_label(dn)} ${sym_name}${hash_link}</${head_tag}>')
 		}
 		if link != '' {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
@@ -653,6 +653,23 @@ fn without_symbol_ids(head_html string, contents []doc.DocNode) string {
 		}
 	}
 	return result
+}
+
+// kind_label returns the kind of the symbol `dn` as it is declared, like `struct` or `fn`, and
+// `union` for a union, which is documented as a struct.
+fn kind_label(dn doc.DocNode) string {
+	if dn.kind == .struct {
+		for line in dn.content.split_into_lines() {
+			if line.starts_with('@[') {
+				continue
+			}
+			if line.starts_with('union ') || line.starts_with('pub union ') {
+				return 'union'
+			}
+			break
+		}
+	}
+	return dn.kind.str()
 }
 
 // declaration_html returns the signature of `dn`, after the platforms that it is available on,
@@ -883,7 +900,7 @@ fn grouped_toc_html(head doc.DocNode, contents []doc.DocNode) string {
 		members << t.children.map(toc_link_html('${t.name}.${it.name}', toc_call_label(it.content,
 			it.name), it))
 		// A type without a declaration, like a private type with public methods, has no section.
-		label := '${t.kind} ${t.name}'
+		label := '${kind_label(t)} ${t.name}'
 		link := if t.content == '' {
 			html.escape(label)
 		} else if deprecation := deprecation_of(t) {
@@ -1081,11 +1098,11 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 		toc.write_string('<li class="open"><a href="#readme_${toc_slug}">README</a>')
 	} else if dn.name != 'Constants' {
-		toc.write_string('<li class="open"><a href="#${toc_slug}">${dn.kind} ${dn.name}</a>')
+		toc.write_string('<li class="open"><a href="#${toc_slug}">${kind_label(dn)} ${dn.name}</a>')
 		toc.writeln('        <ul>')
 		for child in dn.children {
 			cname := dn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">${child.kind} ${child.name}</a></li>')
+			toc.writeln('<li><a href="#${slug(cname)}">${kind_label(child)} ${child.name}</a></li>')
 		}
 		toc.writeln('</ul>')
 	} else {

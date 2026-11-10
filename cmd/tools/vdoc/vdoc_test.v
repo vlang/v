@@ -751,6 +751,13 @@ fn test_the_table_of_contents_shows_how_a_function_is_called() {
 	assert toc_call_label('pub struct Point {}', 'Point') == 'Point'
 }
 
+fn test_a_union_is_labelled_as_such() {
+	assert kind_label(doc.DocNode{ kind: .struct, content: 'pub union Value {\n\ti int\n}' }) == 'union'
+	assert kind_label(doc.DocNode{ kind: .struct, content: '@[typedef]\nunion C.XEvent {\n}' }) == 'union'
+	assert kind_label(doc.DocNode{ kind: .struct, content: 'pub struct Point {\n}' }) == 'struct'
+	assert kind_label(doc.DocNode{ kind: .function, content: 'pub fn f()' }) == 'fn'
+}
+
 fn test_markdown_renderer_supports_github_flavored_markdown() {
 	mut renderer := new_doc_markdown_renderer('')
 	// Bare URLs are links, without a `)` that closes no `(` of the URL.
