@@ -157,7 +157,13 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 			return literal
 		}
 	}
-	inferred := g.infer_expression_type(argument_tokens) or { return u32(0) }
+	mut inferred := g.infer_expression_type(argument_tokens) or { u32(0) }
+	if inferred == 0 {
+		inferred = g.branching_argument_type(argument_tokens)
+		if inferred == 0 {
+			return u32(0)
+		}
+	}
 	mut actual := fastc_normalize_inferred_type(inferred)
 	if fastc_trim_pointer_type(actual) == fastc_type_option {
 		// Every Option shares one C type; a generic `?T` parameter needs the payload,
@@ -205,6 +211,92 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 		}
 	}
 	return actual
+}
+
+// branching_argument_type infers a generic argument written as `value or { ... }`,
+// `match subject { ... }` or `if cond { ... } else { ... }`. The streaming renderer
+// learns their type only after the call has been named, so without this the call
+// would reach the erased placeholder, which exits when it runs. Like V, an if/match
+// value takes the type of its first branch that yields one.
+fn (g &Parser) branching_argument_type(tokens []FastcExpressionToken) u32 {
+	if tokens.len < 3 {
+		return u32(0)
+	}
+	mut depth := 0
+	for i, item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				depth++
+			}
+			.rpar, .rsbr, .rcbr {
+				depth--
+			}
+			.key_or {
+				if depth == 0 && i > 0 && i + 1 < tokens.len && tokens[i + 1].tok == .lcbr {
+					close := fastc_matching_delimiter(tokens, i + 1, .lcbr, .rcbr) or { return u32(0) }
+					if close != tokens.len - 1 {
+						return u32(0)
+					}
+					return g.option_value_type_for_expression(tokens[..i])
+				}
+			}
+			else {}
+		}
+	}
+	blocks := match tokens[0].tok {
+		.key_if {
+			fastc_top_level_blocks(tokens, 0, tokens.len) or { return u32(0) }
+		}
+		.key_match {
+			// The first brace opens the arms; each arm's value is a block inside it.
+			mut body := 0
+			for body < tokens.len && tokens[body].tok != .lcbr {
+				body++
+			}
+			if body == tokens.len
+				|| (fastc_matching_delimiter(tokens, body, .lcbr, .rcbr) or { -1 }) != tokens.len - 1 {
+				return u32(0)
+			}
+			fastc_top_level_blocks(tokens, body + 1, tokens.len - 1) or { return u32(0) }
+		}
+		else {
+			return u32(0)
+		}
+	}
+	for open in blocks {
+		close := fastc_matching_delimiter(tokens, open, .lcbr, .rcbr) or { continue }
+		value := tokens[open + 1..close]
+		// A branch that leaves the expression (or holds statements) yields no value
+		// to infer from; another branch supplies the type.
+		if value.len == 0 || value[0].tok in [.key_return, .key_break, .key_continue, .key_go]
+			|| value.any(it.tok in [.decl_assign, .assign, .semicolon, .key_return]) {
+			continue
+		}
+		inferred := g.infer_expression_type(value) or { continue }
+		if inferred != 0 && inferred != flat.source_type_void {
+			return inferred
+		}
+	}
+	return u32(0)
+}
+
+// fastc_top_level_blocks lists the opening brace of each block directly inside
+// tokens[start..end], skipping parenthesized and bracketed groups.
+fn fastc_top_level_blocks(tokens []FastcExpressionToken, start int, end int) ?[]int {
+	mut blocks := []int{}
+	mut i := start
+	for i < end {
+		match tokens[i].tok {
+			.lpar { i = fastc_matching_delimiter(tokens, i, .lpar, .rpar)? + 1 }
+			.lsbr { i = fastc_matching_delimiter(tokens, i, .lsbr, .rsbr)? + 1 }
+			.lcbr {
+				blocks << i
+				i = fastc_matching_delimiter(tokens, i, .lcbr, .rcbr)? + 1
+			}
+			else { i++ }
+		}
+	}
+	return blocks
 }
 
 // A generic call is queued before the expression parser consumes transparent

@@ -68,7 +68,12 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			capture_values << if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_map_prefix) {
 				'builtin__map_clone(&(${capture_value}))'
 			} else if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_array_prefix) {
-				'builtin__array_clone_to_depth(&(${capture_value}), 1)'
+				clone_depth := g.capture_array_clone_depth(capture_type)
+				if clone_depth > 0 {
+					'builtin__array_clone_to_depth(&(${capture_value}), ${clone_depth})'
+				} else {
+					'builtin__array_clone(&(${capture_value}))'
+				}
 			} else {
 				capture_value
 			}
@@ -345,6 +350,26 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 	}
 	g.deferred_block_starts << g.deferred_lines.len
 	g.deferred_lines << '\t'.repeat(g.indent) + line
+}
+
+// capture_array_clone_depth is the number of nested array levels below a
+// captured array, as V's own array clone uses. The runtime recognizes nested
+// elements only by their size, so a positive depth for `[]T` would reinterpret
+// any struct the size of a string or an array as one, and copy the memory its
+// first pointer field addresses instead of the element itself.
+fn (g &Parser) capture_array_clone_depth(typ_id u32) int {
+	mut depth := 0
+	mut element := g.array_element_type(typ_id) or { return 0 }
+	for {
+		resolved := g.underlying_alias_type(element)
+		query := flat.source_type_query(resolved)
+		if !query.has(.c_array_prefix) || query.has(.c_pointer_suffix) {
+			break
+		}
+		depth++
+		element = g.array_element_type(resolved) or { break }
+	}
+	return depth
 }
 
 fn (g &Parser) capture_type_source(typ_id u32) ?string {
