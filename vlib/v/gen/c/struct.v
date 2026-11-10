@@ -5662,6 +5662,11 @@ fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?t
 }
 
 fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name_id u32, field_name string) ?string {
+	// Every answer below comes from the checker's table of C ABI callback
+	// fields, which most programs leave empty.
+	if g.tc.struct_field_c_abi_fns.len == 0 {
+		return none
+	}
 	type_name := flat.source_type_name(type_name_id)
 	if info := g.find_struct_decl(type_name_id) {
 		if typ := g.tc.struct_field_c_abi_fn_ptr_type(info.full_name, field_name) {
@@ -8356,7 +8361,16 @@ fn (mut g FlatGen) preseed_type_alias_fn_ptr_types() {
 fn (mut g FlatGen) preseed_fn_signature_fn_ptr_types() {
 	// Nearly every signature type registers nothing. Test that on the stored
 	// value: passing a type to preseed_fn_ptr_type copies it.
+	// The aliases of a signature follow one another and share its parameter
+	// list and return type: the same storage again registers nothing new.
+	mut last_params := unsafe { nil }
+	mut last_params_len := 0
 	for _, params in g.fn_decl_param_types {
+		if params.len == last_params_len && voidptr(params.data) == last_params {
+			continue
+		}
+		last_params = voidptr(params.data)
+		last_params_len = params.len
 		for i in 0 .. params.len {
 			// The parameter lists are not modified while they are scanned.
 			if preseed_fn_ptr_type_is_noop(unsafe { &params[i] }) {
@@ -8365,7 +8379,12 @@ fn (mut g FlatGen) preseed_fn_signature_fn_ptr_types() {
 			g.preseed_fn_ptr_type(params[i])
 		}
 	}
+	mut last_ret := unsafe { nil }
 	for _, typ in g.fn_decl_ret_types {
+		if voidptr(typ) == last_ret {
+			continue
+		}
+		last_ret = voidptr(typ)
 		if preseed_fn_ptr_type_is_noop(typ) {
 			continue
 		}
