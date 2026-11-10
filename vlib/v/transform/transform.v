@@ -752,6 +752,9 @@ mut:
 	worker_scope          voidptr
 	// Helper merge tables are disposable; published AST text uses their parent arena.
 	merge_scratch_scope voidptr
+	// merge_scratch_shared marks a helper whose merge_scratch_scope belongs to the
+	// thread that ran it, and holds the bookkeeping of that thread's other helpers.
+	merge_scratch_shared bool
 	// Arenas of the prepare-time index helpers; the driver frees them with the
 	// preparation arena after canonicalizing the node texts they back. Only the
 	// self-host prepared path collects them, so the helper threads scope their
@@ -5700,6 +5703,20 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 // which a worker without one reads through its parent, chosen independently of
 // the copy of the generic specialization state.
 fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool, copy_generic_state bool) &Transformer {
+	return t.fork_worker_with_caches(ast, wtc, copy_used_fns, copy_generic_state, true)
+}
+
+// fork_worker_accumulator is fork_scoped_batch_worker for a helper that only runs
+// scoped batches: it forks them, absorbs their results and is merged by its
+// parent. Its lookup caches are several hundred KB of fixed tables, which the
+// thread that runs the helper installs with install_fresh_worker_caches and
+// releases with drop_worker_caches, so that a parent can prepare many such
+// helpers without holding one cache set for each of them until the merge.
+fn (t &Transformer) fork_worker_accumulator(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
+	return t.fork_worker_with_caches(ast, wtc, false, false, false)
+}
+
+fn (t &Transformer) fork_worker_with_caches(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool, copy_generic_state bool, with_caches bool) &Transformer {
 	used := if copy_used_fns {
 		t.used_fns
 	} else {
@@ -5721,50 +5738,10 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 			}
 		}
 	}
-	w.alias_cache = &AliasCache{}
-	w.sum_cache = &AliasCache{}
-	w.module_type_cache = &ModuleTypeCache{}
-	w.enum_selector_cache = &EnumSelectorCache{}
-	w.struct_guess_cache = &AliasCache{}
-	w.var_type_cache = &VarTypeIndexCache{}
-	w.qname_scratch = &QualifiedNameScratch{}
-	w.generic_unresolved_cache = &GenericUnresolvedCache{}
-	w.generic_spec_decode_cache = &TypeLookupCache{
-		entries: map[u32]u32{}
-		misses:  map[u32]bool{}
-	}
-	w.receiver_method_cache = &ReceiverMethodCache{}
-	w.promote_text_cache = &PromoteTextCache{}
-	w.used_fn_name_cache = &UsedFnNameCache{}
-	w.struct_field_type_cache = &FieldTypeCache{}
-	w.variant_short_name_cache = &AliasCache{}
-	w.selector_type_cache = &SelectorTypeCache{}
-	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
-	w.fn_return_name_cache = new_fn_return_name_cache()
-	w.variant_match_cache = &VariantMatchCache{}
-	w.alias_target_cache = &AliasTargetCache{}
 	w.noreturn_names = t.noreturn_names
-	w.resolved_call_decl_cache = &ResolvedCallDeclCache{}
-	w.call_qualified_name_cache = &CallQualifiedNameCache{}
-	w.interface_type_cache = &ContextLookupCache{
-		entries: map[u32]u32{}
-		misses:  map[u32]bool{}
+	if with_caches {
+		w.install_fresh_worker_caches()
 	}
-	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
-	w.enum_expected_cache = &EnumExpectedCache{}
-	w.type_alias_name_cache = &ContextBoolLookupCache{
-		entries: map[u32]i8{}
-	}
-	w.raw_return_alias_cache = &ContextBoolLookupCache{}
-	w.append_elem_interface_cache = &ElemInterfaceCache{}
-	w.alias_receiver_method_cache = &LookupCache{
-		entries: map[u64]string{}
-		misses:  map[u64]bool{}
-	}
-	w.interface_box_param_cache = &SourceTypeBoolCache{}
-	w.call_variadic_cache = &BoolLookupCache{}
-	w.str_alias_cache = &StrAliasCache{}
-	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -5863,6 +5840,90 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.set_expected_expr_type(u32(0))
 	t.copy_generic_decl_indexes(mut w)
 	return &w
+}
+
+// install_fresh_worker_caches gives a forked worker private, empty lookup caches.
+fn (mut w Transformer) install_fresh_worker_caches() {
+	w.alias_cache = &AliasCache{}
+	w.sum_cache = &AliasCache{}
+	w.module_type_cache = &ModuleTypeCache{}
+	w.enum_selector_cache = &EnumSelectorCache{}
+	w.struct_guess_cache = &AliasCache{}
+	w.var_type_cache = &VarTypeIndexCache{}
+	w.qname_scratch = &QualifiedNameScratch{}
+	w.generic_unresolved_cache = &GenericUnresolvedCache{}
+	w.generic_spec_decode_cache = &TypeLookupCache{
+		entries: map[u32]u32{}
+		misses:  map[u32]bool{}
+	}
+	w.receiver_method_cache = &ReceiverMethodCache{}
+	w.promote_text_cache = &PromoteTextCache{}
+	w.used_fn_name_cache = &UsedFnNameCache{}
+	w.struct_field_type_cache = &FieldTypeCache{}
+	w.variant_short_name_cache = &AliasCache{}
+	w.selector_type_cache = &SelectorTypeCache{}
+	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
+	w.fn_return_name_cache = new_fn_return_name_cache()
+	w.variant_match_cache = &VariantMatchCache{}
+	w.alias_target_cache = &AliasTargetCache{}
+	w.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	w.call_qualified_name_cache = &CallQualifiedNameCache{}
+	w.interface_type_cache = &ContextLookupCache{
+		entries: map[u32]u32{}
+		misses:  map[u32]bool{}
+	}
+	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
+	w.enum_expected_cache = &EnumExpectedCache{}
+	w.type_alias_name_cache = &ContextBoolLookupCache{
+		entries: map[u32]i8{}
+	}
+	w.raw_return_alias_cache = &ContextBoolLookupCache{}
+	w.append_elem_interface_cache = &ElemInterfaceCache{}
+	w.alias_receiver_method_cache = &LookupCache{
+		entries: map[u64]string{}
+		misses:  map[u64]bool{}
+	}
+	w.interface_box_param_cache = &SourceTypeBoolCache{}
+	w.call_variadic_cache = &BoolLookupCache{}
+	w.str_alias_cache = &StrAliasCache{}
+	w.file_import_cache = &util.KeyRecentCache{}
+}
+
+// drop_worker_caches forgets the caches install_fresh_worker_caches made, before
+// the arena that holds them is released or reused.
+fn (mut w Transformer) drop_worker_caches() {
+	w.alias_cache = unsafe { nil }
+	w.sum_cache = unsafe { nil }
+	w.module_type_cache = unsafe { nil }
+	w.enum_selector_cache = unsafe { nil }
+	w.struct_guess_cache = unsafe { nil }
+	w.var_type_cache = unsafe { nil }
+	w.qname_scratch = unsafe { nil }
+	w.generic_unresolved_cache = unsafe { nil }
+	w.generic_spec_decode_cache = unsafe { nil }
+	w.receiver_method_cache = unsafe { nil }
+	w.promote_text_cache = unsafe { nil }
+	w.used_fn_name_cache = unsafe { nil }
+	w.struct_field_type_cache = unsafe { nil }
+	w.variant_short_name_cache = unsafe { nil }
+	w.selector_type_cache = unsafe { nil }
+	w.resolved_call_return_cache = unsafe { nil }
+	w.fn_return_name_cache = unsafe { nil }
+	w.variant_match_cache = unsafe { nil }
+	w.alias_target_cache = unsafe { nil }
+	w.resolved_call_decl_cache = unsafe { nil }
+	w.call_qualified_name_cache = unsafe { nil }
+	w.interface_type_cache = unsafe { nil }
+	w.alias_equivalent_names_cache = unsafe { nil }
+	w.enum_expected_cache = unsafe { nil }
+	w.type_alias_name_cache = unsafe { nil }
+	w.raw_return_alias_cache = unsafe { nil }
+	w.append_elem_interface_cache = unsafe { nil }
+	w.alias_receiver_method_cache = unsafe { nil }
+	w.interface_box_param_cache = unsafe { nil }
+	w.call_variadic_cache = unsafe { nil }
+	w.str_alias_cache = unsafe { nil }
+	w.file_import_cache = unsafe { nil }
 }
 
 // fork_scan_worker builds a read-only worker for the parallel late-name scan.
@@ -6920,7 +6981,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 		}
 	}
-	if w.merge_scratch_scope != unsafe { nil } {
+	if w.merge_scratch_scope != unsafe { nil } && !w.merge_scratch_shared {
 		// Every worker table and rewrite log has been consumed. Node payloads
 		// were published outside this arena while the helper was running.
 		transform_worker_scope_free(w.merge_scratch_scope)

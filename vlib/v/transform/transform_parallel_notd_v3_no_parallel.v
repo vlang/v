@@ -50,6 +50,21 @@ const shared_helper_min_batch_cost = 2048
 // batches into the master state, which made it the last chunk to finish. Give it
 // a smaller share of the work than every helper.
 const shared_master_chunk_share_percent = 85
+// A compiler build cuts every chunk into pieces that the threads pull from one
+// queue, largest first: equal chunks do not finish together on cores of unequal
+// speed or on a loaded host, and the threads that were done then idled until the
+// last chunk ended. The shares shrink so that the final pieces are short; a piece
+// keeps at least about one scratch batch of work.
+const shared_piece_cost_percents = [30, 22, 16, 12, 8, 6, 4, 2]
+const shared_piece_min_cost = 4096
+// An append region is a share of the pool by cost, and what a few functions
+// append varies far more around the average than what a whole chunk appends. A
+// piece's region therefore counts this much cost on top of its own.
+const shared_piece_region_floor_cost = 12_000
+// The estimated cost of one scratch batch of a piece (see shared_helper_batch_count).
+const shared_piece_batch_cost = 4200
+// The lookup caches of the helper a thread is running stay mapped for its next one.
+const shared_piece_cache_keep_bytes = 2 * 1024 * 1024
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
 // Every non-empty batch uses the memory-bounded scoped path; see
@@ -461,7 +476,12 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v), false)
+		batches := if a.batches > 0 {
+			a.batches
+		} else {
+			shared_helper_batch_count(*items, w.building_v)
+		}
+		w.transform_scoped_helper_batches(*items, batches, false)
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -524,12 +544,155 @@ fn worker_call_canon_thread(arg voidptr) voidptr {
 
 // SharedChunkArgs is the payload handed to each shared-base worker thread.
 struct SharedChunkArgs {
-	worker    voidptr // &Transformer
 	items_ptr voidptr // &[]FnWorkItem
 	is_master bool
+	// batches overrides shared_helper_batch_count when positive.
+	batches int
 mut:
+	worker     voidptr // &Transformer
 	cost       i64
 	elapsed_us i64
+}
+
+// SharedPullArgs is the payload of one thread of a shared-base run whose pieces
+// are pulled from a queue.
+struct SharedPullArgs {
+	master       voidptr // &Transformer
+	pieces       voidptr // &[]SharedChunkArgs
+	queue        chan int
+	order        []int // the helper pieces in queue order
+	node_starts  []int
+	child_starts []int
+	is_caller    bool
+mut:
+	fork_scope  voidptr
+	merge_scope voidptr
+}
+
+// shared_pull_thread runs queued pieces until none is left. The caller's thread
+// first forks every helper, queueing each one as soon as it exists so that the
+// pool starts while the rest are prepared, and transforms piece 0 on the master.
+fn shared_pull_thread(arg voidptr) voidptr {
+	mut a := unsafe { &SharedPullArgs(arg) }
+	mut pieces := unsafe { &[]SharedChunkArgs(a.pieces) }
+	if a.is_caller {
+		mut t := unsafe { &Transformer(a.master) }
+		a.fork_scope = t.fork_shared_pieces(mut pieces, a)
+		shared_chunk_thread(unsafe { voidptr(&pieces[0]) })
+	}
+	mut cache_scope := unsafe { nil }
+	for {
+		idx := <-a.queue or { break }
+		mut w := unsafe { &Transformer(pieces[idx].worker) }
+		// One arena holds the merge bookkeeping of every helper this thread runs:
+		// an arena per helper kept a mostly empty block for each of them until the
+		// merge. It stays current between the helpers, which only append to it.
+		if a.merge_scope == unsafe { nil } {
+			a.merge_scope = transform_worker_scope_begin(true)
+		}
+		if a.merge_scope != unsafe { nil } && w.skip_generics && !isnil(w.tc.fork_overlay) {
+			w.merge_scratch_scope = a.merge_scope
+			w.merge_scratch_shared = true
+		}
+		if cache_scope == unsafe { nil }
+			|| !transform_worker_scope_reenter(cache_scope, shared_piece_cache_keep_bytes) {
+			transform_worker_scope_free(cache_scope)
+			cache_scope = transform_worker_scope_begin(true)
+		}
+		w.install_fresh_worker_caches()
+		transform_worker_scope_leave(cache_scope)
+		shared_chunk_thread(unsafe { voidptr(&pieces[idx]) })
+		w.drop_worker_caches()
+	}
+	transform_worker_scope_free(cache_scope)
+	transform_worker_scope_leave(a.merge_scope)
+	return unsafe { nil }
+}
+
+// fork_shared_pieces forks the helper of every queued piece on its append region
+// and queues the piece. The helpers live in the returned arena until the merge.
+fn (mut t Transformer) fork_shared_pieces(mut pieces []SharedChunkArgs, a &SharedPullArgs) voidptr {
+	scope := transform_worker_scope_begin(t.scope_parallel_workers)
+	for idx in a.order {
+		view := shared_region_view(t.a, a.node_starts[idx], a.node_starts[idx + 1], a.child_starts[idx],
+			a.child_starts[idx + 1])
+		wtc := t.tc.fork_for_parallel_transform(view)
+		mut ww := t.fork_worker_accumulator(view, wtc)
+		ww.defer_oor_writes = false
+		pieces[idx].worker = voidptr(ww)
+		a.queue <- idx
+	}
+	a.queue.close()
+	transform_worker_scope_leave(scope)
+	return scope
+}
+
+// split_chunks_into_pieces cuts every chunk into consecutive pieces whose costs
+// follow `percents`, keeping the chunk order and the item order, so that the
+// pieces lower the same functions in the same order as the chunks would.
+fn split_chunks_into_pieces(chunks [][]FnWorkItem, percents []int, min_cost i64) [][]FnWorkItem {
+	mut pieces := [][]FnWorkItem{cap: chunks.len * percents.len}
+	for chunk in chunks {
+		mut total := i64(0)
+		for it in chunk {
+			total += i64(it.cost) + 1
+		}
+		mut start := 0
+		mut consumed := i64(0)
+		mut share := 0
+		for pi, percent in percents {
+			if start >= chunk.len {
+				break
+			}
+			share += percent
+			target := total * i64(share) / 100
+			mut end := start
+			mut piece_cost := i64(0)
+			for end < chunk.len && (consumed < target || piece_cost < min_cost
+				|| pi == percents.len - 1) {
+				item_cost := i64(chunk[end].cost) + 1
+				consumed += item_cost
+				piece_cost += item_cost
+				end++
+			}
+			// A remainder too small for a piece of its own joins this one.
+			if total - consumed < min_cost {
+				end = chunk.len
+			}
+			if end > start {
+				pieces << chunk[start..end]
+			}
+			start = end
+		}
+	}
+	return pieces
+}
+
+// shared_piece_queue_order lists the helper pieces, every piece but the first, by
+// descending cost. Equal pieces keep their order.
+fn shared_piece_queue_order(costs []i64) []int {
+	mut order := []int{cap: costs.len}
+	for ci in 1 .. costs.len {
+		mut pos := order.len
+		order << ci
+		for pos > 0 && costs[order[pos - 1]] < costs[ci] {
+			order[pos] = order[pos - 1]
+			pos--
+		}
+		order[pos] = ci
+	}
+	return order
+}
+
+// shared_piece_batch_count is shared_helper_batch_count for one piece of a chunk:
+// the same batch size, for however much of the chunk the piece holds.
+fn shared_piece_batch_count(items []FnWorkItem) int {
+	mut total := i64(0)
+	for item in items {
+		total += i64(item.cost) + 1
+	}
+	by_cost := int((total + shared_piece_batch_cost / 2) / shared_piece_batch_cost)
+	return int_max(1, int_min(shared_helper_transform_batches, by_cost))
 }
 
 // ScopedTextScanArgs is the payload for one scoped-text flag-scan worker.
@@ -2740,7 +2903,7 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	t.retain_current_worker_scope_all()
 	// Only helper accumulators use this arena. The master continues using the
 	// stage arena because its semantic results survive through code generation.
-	if t.building_v && t.skip_generics && !isnil(t.tc.fork_overlay) {
+	if t.building_v && t.skip_generics && !isnil(t.tc.fork_overlay) && !t.merge_scratch_shared {
 		t.merge_scratch_scope = transform_worker_scope_begin(true)
 	}
 	// NOTE (2026-08): a worker-persistent per-file normalize-result base shared
@@ -2838,7 +3001,9 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	// The checker outlives the stage arena that holds its list of static methods.
 	t.tc.forget_transform_static_method_names()
 	// AST payloads outlive the helper. Merge bookkeeping is released after join.
-	transform_worker_scope_leave(t.merge_scratch_scope)
+	if !t.merge_scratch_shared {
+		transform_worker_scope_leave(t.merge_scratch_scope)
+	}
 	t.worker_scope = unsafe { nil }
 }
 
@@ -3349,7 +3514,18 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if chunk_target > bounded_items.len {
 		chunk_target = bounded_items.len
 	}
-	mut chunks := split_work_items_by_file_runs(bounded_items, chunk_target, shared_master_chunk_share_percent)
+	job_chunks := split_work_items_by_file_runs(bounded_items, chunk_target, shared_master_chunk_share_percent)
+	// Helpers that only run scoped batches can be forked cheaply and in any
+	// number, so their chunks are cut into pieces for a queue. The pieces keep the
+	// order of the chunks: node numbering and merge order stay those of one chunk
+	// per job.
+	pull_pieces := t.building_v && t.scope_parallel_workers && job_chunks.len > 1
+		&& os.getenv('V3_NO_TRANSFORM_PIECES') == ''
+	mut chunks := if pull_pieces {
+		split_chunks_into_pieces(job_chunks, shared_piece_cost_percents, shared_piece_min_cost)
+	} else {
+		job_chunks
+	}
 	chunk_count := chunks.len
 	thread_count := chunk_count - 1
 	// Pool.run queues asynchronous work before running synchronous tasks. Give
@@ -3377,11 +3553,13 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	mut child_starts := []int{len: chunk_count + 1}
 	node_starts[0] = base_nodes
 	child_starts[0] = base_children
+	region_floor := if pull_pieces { i64(shared_piece_region_floor_cost) } else { i64(0) }
+	region_total := total + region_floor * i64(chunk_count)
 	mut acc := i64(0)
 	for ci in 0 .. chunk_count {
-		acc += costs[ci]
-		node_starts[ci + 1] = base_nodes + int(i64(node_pool) * acc / total)
-		child_starts[ci + 1] = base_children + int(i64(child_pool) * acc / total)
+		acc += costs[ci] + region_floor
+		node_starts[ci + 1] = base_nodes + int(i64(node_pool) * acc / region_total)
+		child_starts[ci + 1] = base_children + int(i64(child_pool) * acc / region_total)
 	}
 	t.base_write_intercept = true
 	t.defer_oor_writes = true
@@ -3399,9 +3577,18 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		worker:    voidptr(t)
 		items_ptr: unsafe { voidptr(&chunks[0]) }
 		is_master: true
+		batches:   if pull_pieces { shared_piece_batch_count(chunks[0]) } else { 0 }
 	}
 	mut sfsw := time.new_stopwatch()
 	for ci in 0 .. thread_count {
+		if pull_pieces {
+			// fork_shared_pieces forks this helper once the pool is running.
+			args[ci + 1] = SharedChunkArgs{
+				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
+				batches:   shared_piece_batch_count(chunks[ci + 1])
+			}
+			continue
+		}
 		view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2], child_starts[ci + 1], child_starts[ci + 2])
 		view_ms := f64(sfsw.elapsed().microseconds()) / 1000.0
 		wtc := t.tc.fork_for_parallel_transform(view)
@@ -3435,13 +3622,42 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.temp_counter = 0
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	mut tasks := []workers.Task{cap: chunk_count}
-	for ci in 0 .. chunk_count {
-		helper_idx := ci - 1
-		tasks << workers.Task{
-			run:        shared_chunk_thread
-			arg:        unsafe { voidptr(&args[ci]) }
-			force_sync: ci < sync_chunk_count || fail == 'transform:all'
-				|| fail == 'transform:${helper_idx}'
+	mut pull_args := []SharedPullArgs{}
+	if pull_pieces {
+		order := shared_piece_queue_order(costs)
+		queue := chan int{cap: thread_count}
+		pull_count := if n_jobs < chunk_count { n_jobs } else { chunk_count }
+		pull_args = []SharedPullArgs{cap: pull_count}
+		for pi in 0 .. pull_count {
+			pull_args << SharedPullArgs{
+				master:       voidptr(t)
+				pieces:       unsafe { voidptr(&args) }
+				queue:        queue
+				order:        order
+				node_starts:  node_starts
+				child_starts: child_starts
+				is_caller:    pi == 0
+			}
+		}
+		// The caller's task comes first: when every task runs on the caller, it has
+		// to fork and queue the helpers before another task waits for the queue.
+		for pi in 0 .. pull_count {
+			helper_idx := pi - 1
+			tasks << workers.Task{
+				run:        shared_pull_thread
+				arg:        unsafe { voidptr(&pull_args[pi]) }
+				force_sync: pi == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
+			}
+		}
+	} else {
+		for ci in 0 .. chunk_count {
+			helper_idx := ci - 1
+			tasks << workers.Task{
+				run:        shared_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci < sync_chunk_count || fail == 'transform:all'
+					|| fail == 'transform:${helper_idx}'
+			}
 		}
 	}
 	transform_worker_scope_leave(setup_scope)
@@ -3606,6 +3822,12 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		}
 	}
 	t.tc.unfreeze_type_cache_after_forks()
+	if pull_args.len > 0 {
+		transform_worker_scope_free(pull_args[0].fork_scope)
+		for pull_arg in pull_args {
+			transform_worker_scope_free(pull_arg.merge_scope)
+		}
+	}
 	transform_worker_scope_free(setup_scope)
 	t.timing_profile('  [ttime]   shared tail      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	return any_started
