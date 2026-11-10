@@ -2241,7 +2241,7 @@ fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
 			is_tcc:     compiler == 'tinyc'
 			is_o:       true
 		})
-		assert plan.before_inputs.count('-D_GNU_SOURCE') == 1
+		assert plan.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
 	}
 	for target_os in ['windows', 'macos', 'freebsd', 'openbsd'] {
 		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ target_os: target_os })
@@ -2256,7 +2256,7 @@ fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
 		target_os:           'linux'
 		environment_c_flags: ['-D_GNU_SOURCE']
 	})
-	assert provided.before_inputs.count('-D_GNU_SOURCE') == 1
+	assert provided.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
 }
 
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {
