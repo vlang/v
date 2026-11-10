@@ -3174,7 +3174,8 @@ blocks ran. Runtime errors that panic, like an array index out of range, can be
 recovered as well. Signals, like a segmentation fault, cannot.
 
 Any call to `recover()` that `main` can reach counts, even one in a branch that
-is never taken. In a program without one, a panic runs no deferred blocks: the
+is never taken. With `-no-skip-unused`, such a call in a function that nothing calls
+counts too. In a program without one, a panic runs no deferred blocks: the
 program prints the message and exits.
 
 ### Goto

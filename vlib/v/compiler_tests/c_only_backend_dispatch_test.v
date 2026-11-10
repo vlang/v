@@ -33,7 +33,8 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 		assert paths.len == 1, setup.output
 		cache = paths[0].all_after('VTOOLS_CACHE_DIR=')
 		assert os.is_dir(cache), setup.output
-		defer {
+		// The cache must survive until the assertions after this Windows-only scope.
+		defer(fn) {
 			os.rmdir_all(cache) or {}
 		}
 	}

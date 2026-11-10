@@ -9366,7 +9366,16 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 	// Reading and scanning one file does not depend on the others. The pool's
 	// threads keep what they allocate, so the texts outlive the batch.
 	pool := checker_worker_pool(a)
-	if !isnil(pool) && pool.size() > 0 && scans.len > 1 {
+	// The index preparation batch may have scanned exactly these files already.
+	prescanned := tc.import_line_prescans.len > 0
+		&& import_line_scans_match(scans, tc.import_line_prescans)
+	if prescanned {
+		scans = tc.import_line_prescans
+	}
+	tc.import_line_prescans = []ImportLineScan{}
+	if prescanned {
+		// Nothing left to scan.
+	} else if !isnil(pool) && pool.size() > 0 && scans.len > 1 {
 		queue := chan int{cap: scans.len}
 		for i in 0 .. scans.len {
 			queue <- i
@@ -9402,7 +9411,7 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 		tc.source_texts_by_file[scan.name] = scan.source
 		tc.source_texts_by_id[scan.file_id] = scan.source
 		if scan.file_id >= 0 && scan.file_id < tc.malformed_const_source_states.len {
-			tc.malformed_const_source_states[scan.file_id] = if scan.source.contains('cosnt') {
+			tc.malformed_const_source_states[scan.file_id] = if scan.has_cosnt {
 				u8(2)
 			} else {
 				u8(1)
@@ -9435,14 +9444,73 @@ mut:
 	read   bool
 	source string
 	lines  []int
+	// The text holds the misspelled keyword `cosnt` somewhere (see
+	// malformed_const_source_states).
+	has_cosnt bool
+	// run was called.
+	scanned bool
+}
+
+// new_import_line_prescans lists every source file of `a` for a scan that
+// runs before index_module_import_lines_of_new_files asks for it.
+fn new_import_line_prescans(a &flat.FlatAst) []ImportLineScan {
+	mut scans := []ImportLineScan{cap: a.source_files.len}
+	for file_id, file in a.source_files {
+		has_source := file_id in a.source_texts
+		scans << ImportLineScan{
+			file_id:    file_id
+			name:       file.name
+			has_source: has_source
+			source:     if has_source { a.source_texts[file_id] } else { '' }
+		}
+	}
+	return scans
+}
+
+// import_line_scans_match reports whether `prescans` holds the finished scans
+// of exactly the files of `scans`, in their order.
+fn import_line_scans_match(scans []ImportLineScan, prescans []ImportLineScan) bool {
+	if scans.len != prescans.len {
+		return false
+	}
+	for i, scan in scans {
+		prescan := prescans[i]
+		if !prescan.scanned || prescan.file_id != scan.file_id || prescan.has_source != scan.has_source
+			|| prescan.name != scan.name {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut scan ImportLineScan) run() {
+	scan.scanned = true
 	if !scan.has_source {
 		scan.source = os.read_file(scan.name) or { return }
 	}
 	scan.read = true
 	scan.lines = module_import_lines(scan.source)
+	scan.has_cosnt = source_has_cosnt(scan.source)
+}
+
+// source_has_cosnt is `source.contains('cosnt')`. It looks for the pair `sn`,
+// which source code rarely has, and then at the letters around it: a search
+// from the first letter stops at every `c` of the text.
+@[direct_array_access]
+fn source_has_cosnt(source string) bool {
+	mut from := 2
+	for from < source.len {
+		at := source.index_after_('sn', from)
+		if at < 0 {
+			break
+		}
+		if at + 2 < source.len && source[at - 2] == `c` && source[at - 1] == `o`
+			&& source[at + 2] == `t` {
+			return true
+		}
+		from = at + 1
+	}
+	return false
 }
 
 struct ImportLineScanArgs {

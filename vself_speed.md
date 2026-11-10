@@ -4,6 +4,82 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Parse and check wall time, 2026-11-10
+
+Follow-up to the section below for the `parse .v`, `resolve imports` and `check` stages of the
+self-host command, against master `d59b2d37eb`. No limits were given; the work stopped early
+(see "What is left in parse and check"), so these stages are faster but not finished:
+
+| Stage wall time, median ms | Before | After | Pairs faster |
+| --- | ---: | ---: | ---: |
+| parse .v, quiet host (load 6), 10 pairs | 60.9 | 45.2 | 10/10 |
+| resolve imports, quiet host | 16.6 | 18.5 | 0/10 |
+| check, quiet host | 171.6 | 148.6 | 10/10 |
+| parse .v, 45 busy processes beside it, 30 pairs | 83.9 | 64.7 | 30/30 |
+| resolve imports, 45 busy processes | 23.6 | 26.5 | 4/30 |
+| check, 45 busy processes | 442.3 | 353.2 | 26/30 |
+
+| Median metric, quiet host, 10 pairs | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 42,352,145,195 | 42,137,838,080.5 |
+| Parsed physical source lines | 499,071 | 499,071 |
+| Retired instructions/parsed line | 84,861.96 | 84,432.55 |
+| Peak memory footprint, MiB | 1,042 | 1,018 |
+| Elapsed time, s | 0.94 | 0.91 |
+
+Instructions barely move (-0.51%, 4/10 pairs worse): the gain is in the critical path, the sum
+over time of instructions divided by runnable threads (8 alternating pairs, quiet host):
+
+| Stage | Instructions, G | Critical path, G | Low-parallel, G |
+| --- | ---: | ---: | ---: |
+| parse before | 3.85 | 0.778 | 0.65 |
+| parse after | 3.85 | 0.525 | 0.31 |
+| resolve imports before | 0.24 | 0.241 | 0.24 |
+| resolve imports after | 0.27 | 0.258 | 0.26 |
+| check before | 12.31 | 2.091 | 1.78 |
+| check after | 12.10 | 1.700 | 1.65 |
+
+Before this work 80 to 90% of both stages' critical path was low-parallel. What changed:
+
+- Parse. A file is parsed by one thread, and the compiler's import graph arrives in waves, so
+  each wave waited for its largest file (`driver.v` alone for 16 ms, then `transform.v`,
+  `cleanc.v` and the checker files for 14 ms). A file of at least half a chunk's byte target is
+  now a chunk of its own and starts first. For a compiler build the driver also predicts the
+  next wave from the import lines of the current one and parses it in the same pool phases;
+  the resolver stays the authority and the parse ahead is dropped unless the wave it reaches is
+  exactly the predicted one. That prediction is the 2 ms added to `resolve imports`.
+- Check, called-function closure. The set of functions reachable from the selected files was a
+  breadth-first walk of 13 rounds, each a small pool phase and a serial merge of string-keyed
+  sets. The pool now scans every candidate body once and the walk follows declaration indexes.
+- Check, collect. The index, import-line and misspelling scans share two balanced pool batches
+  instead of five small ones; the pass-2 signature lanes classify and warm what the collecting
+  thread did per function; deprecated symbols and interface implementers are found beside or
+  inside existing lanes.
+
+Generated C is identical for the self-host build at 18, 4, 2 and 1 jobs (five runs at 18), for
+114 example programs and for `cmd/v`, `vdoc`, `vfmt`, `vpm`, `vtest`, `vrepl` and `tetris` built
+as ordinary programs; `compiler_errors_test.v` (1881 cases) and the parser tests pass as before.
+ThreadSanitizer found one race introduced here (pool jobs slicing a shared array, which marks
+its buffer) and it is fixed: the instrumented compiler reports nothing for the self-host build,
+`cmd/v`, `cmd/tools/vdoc`, `examples/2048` and `examples/news_fetcher.v`, three runs each.
+
+### What is left in parse and check
+
+Check is still two thirds low-parallel. By wall time on the collecting thread, quiet host:
+
+- Pass 2 of collect registers every declaration serially: 14 ms, 116 M instructions.
+- Tails of the short pool phases (signature lanes, ancillary tables, body pool, clones): 13 ms.
+- `check_semantics_opt` before the pool: 4 to 6 ms in `new_check_decl_indexes`, a loop over
+  the 60k top-level nodes that reads one cold cache line each, and 2 to 3 ms in
+  `prepare_check_name_filters`. The checker has 84 loops over the top-level index; a compact
+  per-entry kind table would let most of them skip the node memory.
+- Before the body pool: constant values and struct field defaults, 5 ms. After it: the merge
+  (symbol interning, type promotion) 4 ms, `warn_unhandled_result_calls` 5 ms, unused imports
+  2 ms.
+- The body pool itself is balanced; cutting it into finer chunks with larger batches was
+  measured and changed neither instructions nor the critical path.
+- `resolve imports` lists each module directory twice now (prediction, then resolver).
+
 ## Transform and C generation wall time, 2026-11-10
 
 The request was stage wall time: `transform` at most 250 ms and `cgen` at most 220 ms for the
