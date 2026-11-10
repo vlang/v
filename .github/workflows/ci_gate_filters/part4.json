@@ -1,7 +1,7 @@
 [
   {
     "workflow": "toml_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**",
@@ -11,11 +11,12 @@
       "!vlib/v/gen/fastc/**",
       "!vlib/v/fastcdriver/**"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "tools_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "cmd/**",
@@ -31,7 +32,7 @@
   },
   {
     "workflow": "v_apps_and_modules_compile_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -46,7 +47,7 @@
   },
   {
     "workflow": "vab_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**",
@@ -61,7 +62,7 @@
   },
   {
     "workflow": "vinix_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -71,11 +72,12 @@
       "vlib/v/gen/fastc/**",
       "vlib/v/fastcdriver/**"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "vpm_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "**/vpm_ci.yml",
@@ -85,7 +87,7 @@
   },
   {
     "workflow": "vsl_and_vtl_compile_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -100,7 +102,7 @@
   },
   {
     "workflow": "vup_works.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -117,7 +119,7 @@
   },
   {
     "workflow": "wasm_backend_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "cmd/tools/builders/**.v",
@@ -142,11 +144,12 @@
       "!vlib/v/gen/fastc/**",
       "!vlib/v/fastcdriver/**"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "websockets_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -161,7 +164,7 @@
   },
   {
     "workflow": "windows_ci_gcc.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -177,7 +180,7 @@
   },
   {
     "workflow": "windows_ci_msvc.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -193,7 +196,7 @@
   },
   {
     "workflow": "windows_ci_tcc.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -213,11 +216,12 @@
   },
   {
     "workflow": "workflow_lint.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "**.yml"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   }
 ]

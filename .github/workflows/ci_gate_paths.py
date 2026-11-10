@@ -16,7 +16,7 @@ import sys
 
 ROOT = Path(".github/workflows")
 MANIFEST_DIR = ROOT / "ci_gate_filters"
-CALLERS = {"core": ROOT / "ci_master_core.yml", "extra": ROOT / "ci_master_extra.yml"}
+CALLER = ROOT / "ci_master.yml"
 
 
 def glob_pattern(pattern):
@@ -85,33 +85,44 @@ def load_entries():
 
 
 def validate(entries):
-    """Catch newly added direct-push workflows and unlisted callers."""
+    """Catch direct-push bypasses, missing inlined tests and call-limit overflows."""
     if not entries:
         raise ValueError("CI gate manifests are empty")
     known = {entry["workflow"] for entry in entries}
+    caller = CALLER.read_text(encoding="utf-8")
     for entry in entries:
         name = entry["workflow"]
-        if entry["shard"] not in CALLERS:
+        if entry["shard"] != "master":
             raise ValueError(f"unknown shard: {name}")
         if entry["mode"] not in ("all", "paths", "paths-ignore"):
             raise ValueError(f"unknown filter mode: {name}")
-        source = (ROOT / name).read_text(encoding="utf-8")
-        if not re.search(r"(?m)^  workflow_call:\s*$", source):
-            raise ValueError(f"{name} must expose workflow_call")
-        caller = CALLERS[entry["shard"]].read_text(encoding="utf-8")
-        if f"uses: ./.github/workflows/{name}" not in caller:
-            raise ValueError(f"{name} missing from its master CI caller")
-        if not re.search(rf"(?m)^  {re.escape(Path(name).stem)}:$", caller):
-            raise ValueError(f"{name} missing a caller job")
+        source_path = ROOT / name
+        key = Path(name).stem
+        if entry.get("inline"):
+            if source_path.exists():
+                raise ValueError(f"inlined workflow must not remain active: {name}")
+            if not re.search(rf"(?m)^  inline_{re.escape(key)}:$", caller):
+                raise ValueError(f"{name} has no inlined gated job")
+        else:
+            if not source_path.exists():
+                raise ValueError(f"missing reusable workflow: {name}")
+            source = source_path.read_text(encoding="utf-8")
+            if not re.search(r"(?m)^  workflow_call:\s*$", source):
+                raise ValueError(f"{name} must expose workflow_call")
+            if f"uses: ./.github/workflows/{name}" not in caller:
+                raise ValueError(f"{name} missing from master CI caller")
+            if not re.search(rf"(?m)^  {re.escape(key)}:$", caller):
+                raise ValueError(f"{name} missing a caller job")
+        if f"needs.formatting.outputs.{key} == 'true'" not in caller:
+            raise ValueError(f"{name} can bypass formatting")
     for path in ROOT.glob("*.yml"):
-        if path.name in known or path in CALLERS.values():
+        if path.name in known or path == CALLER:
             continue
         if re.search(r"(?m)^  push:\s*$", path.read_text(encoding="utf-8")):
             raise ValueError(f"ungated master-push workflow: {path.name}")
-    for shard in CALLERS:
-        if sum(entry["shard"] == shard for entry in entries) > 48:
-            raise ValueError(f"too many reusable workflows in {shard}")
-    # Protect ordered re-inclusion and exclude rules from regressions.
+    # GitHub counts both bootstrap workflows and all called suites.
+    if sum(not entry.get("inline") for entry in entries) + 2 > 50:
+        raise ValueError("too many unique reusable workflows (>50)")
     assert path_is_selected("cmd/tools/builders/build.v", "paths-ignore",
                             ["cmd/tools/**", "!cmd/tools/builders/**.v"])
     assert not path_is_selected("cmd/tools/oldv.v", "paths-ignore",
@@ -147,7 +158,7 @@ def changed_paths(before, after):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("shard", choices=("core", "extra", "validate"))
+    parser.add_argument("shard", choices=("master", "validate"))
     args = parser.parse_args()
     entries = load_entries()
     validate(entries)
@@ -155,7 +166,7 @@ def main():
         print(f"Validated {len(entries)} gated push suites")
         return
     changed = changed_paths(os.environ.get("CI_BEFORE"), os.environ.get("CI_AFTER"))
-    selected = [e for e in entries if e["shard"] == args.shard]
+    selected = entries
     output_path = os.environ.get("GITHUB_OUTPUT")
     lines = []
     for entry in selected:

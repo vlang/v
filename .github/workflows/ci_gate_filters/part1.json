@@ -1,17 +1,18 @@
 [
   {
     "workflow": "benchmark_footprint_json_decode.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/json2/**",
       ".github/workflows/benchmark_footprint_json_decode.yml"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "benchmark_footprint_json_encode.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/json2/**",
@@ -19,11 +20,12 @@
       "!vlib/json2/tests/**",
       ".github/workflows/benchmark_footprint_json_encode.yml"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "build_on_ubuntu_25_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -38,7 +40,7 @@
   },
   {
     "workflow": "c2v_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -56,7 +58,7 @@
   },
   {
     "workflow": "canvas_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/gg/canvas/**",
@@ -69,7 +71,7 @@
   },
   {
     "workflow": "compiler_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/v/**"
@@ -78,7 +80,7 @@
   },
   {
     "workflow": "cross_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -93,7 +95,7 @@
   },
   {
     "workflow": "db_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -108,7 +110,7 @@
   },
   {
     "workflow": "docker_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -123,7 +125,7 @@
   },
   {
     "workflow": "docs_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.yml",
@@ -134,7 +136,7 @@
   },
   {
     "workflow": "docs_site_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "doc/docs.md",
@@ -145,7 +147,7 @@
   },
   {
     "workflow": "fastc_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/v/gen/fastc/**",
@@ -156,7 +158,7 @@
   },
   {
     "workflow": "freebsd_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",

@@ -10,28 +10,26 @@ early compatibility feedback.
 
 ## Master push gate
 
-Master push CI is dispatched from `ci_master_core.yml` and
-`ci_master_extra.yml` (two callers to stay below GitHub's 50 reusable
-workflow limit per caller). Each caller first runs the existing full
-`bootstrapping_ci.yml` (Linux and macOS) and `makev_ci.yml` (Linux and
-Windows bootstrap-contract checks), then builds V and runs both
-`test-cleancode` and `test-fmt`. **No other master-push CI suite starts
-unless all these prerequisites pass.** A failed or cancelled preflight skips
-the dependent suites; this does not rely on races or cross-workflow cancellation.
+All master-push CI is orchestrated by `ci_master.yml`. Its shared gate
+first runs the complete Linux/macOS `bootstrapping_ci.yml` and Linux/Windows
+`makev_ci.yml` bootstrap contract matrices, then builds V and executes
+`test-cleancode` and `test-fmt` in order. All other push CI jobs depend
+on successful formatting; failure or cancellation of either bootstrap
+workflow prevents any downstream tests or deployments from starting.
 
-The rest of the push workflows are invoked through `workflow_call`.
-`ci_gate_filters/*.json` preserves each workflow's former ordered
-`paths`/`paths-ignore` filters. `ci_gate_paths.py` applies those filters to
-the original push's before/after SHA (falling back to running all suites if
-the diff is unavailable). Both callers use the original push context and
-commit, rather than `workflow_run`'s default-branch context.
+Existing suites are called as reusable workflows via `workflow_call`, with
+eight small, formerly standalone checks inlined in the caller to respect
+GitHub Actions' 50-unique-reusable-workflow limit. Original ordered path
+filters live in `ci_gate_filters/*.json` and are applied by
+`ci_gate_paths.py` to the exact before/after SHAs from the push. An
+unavailable diff conservatively runs all suites instead of skipping them.
+The gate validator rejects newly added direct-push workflows that would
+bypass this dependency.
 
-When adding a master-push suite, add it to one caller and the path-filter
-manifest, and keep the 50-reusable-workflow limit. The gate script refuses
-to select suites if a direct-push workflow has not been incorporated.
-Manual, scheduled and pull-request invocations retain their existing triggers.
-Deployments triggered by a master push are likewise gated, but scheduled and
-manual publishing are not affected.
+When adding or changing a master-push suite, update the caller and path
+manifest together. Scheduled, manually dispatched and pull-request workflows
+retain their independent existing triggers; their non-push invocations are
+not part of this master-push gate.
 
 ## CI lanes
 

@@ -1,7 +1,7 @@
 [
   {
     "workflow": "gen_vc_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.vv",
@@ -19,7 +19,7 @@
   },
   {
     "workflow": "gg_regressions_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**",
@@ -35,7 +35,7 @@
   },
   {
     "workflow": "h2spec.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/net/http/h2_*.v",
@@ -45,11 +45,12 @@
       "vlib/net/mbedtls/**",
       ".github/workflows/h2spec.yml"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "linux_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -64,7 +65,7 @@
   },
   {
     "workflow": "macos_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -79,7 +80,7 @@
   },
   {
     "workflow": "macos_gitly_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "vlib/v/gen/fastc/**",
@@ -89,7 +90,7 @@
   },
   {
     "workflow": "module_docs_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**.v",
@@ -105,16 +106,17 @@
   },
   {
     "workflow": "module_docs_lint.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "**/cmd/tools/vdoc/theme/**"
     ],
-    "permissions": "contents: read"
+    "permissions": "contents: read",
+    "inline": true
   },
   {
     "workflow": "more_extensive_but_slower_tests_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -129,7 +131,7 @@
   },
   {
     "workflow": "multiwindow_musl_exclusion_smoke.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       ".github/workflows/multiwindow_musl_exclusion_smoke.yml",
@@ -145,7 +147,7 @@
   },
   {
     "workflow": "notices_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**",
@@ -160,7 +162,7 @@
   },
   {
     "workflow": "openbsd_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "**",
@@ -178,7 +180,7 @@
   },
   {
     "workflow": "other_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",

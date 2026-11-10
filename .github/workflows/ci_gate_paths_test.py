@@ -12,6 +12,7 @@ class GatePathsTests(unittest.TestCase):
     def test_manifest_and_callers_are_complete(self):
         gate.validate(list(self.entries.values()))
         self.assertEqual(len(self.entries), 54)
+        self.assertEqual(sum(bool(e.get("inline")) for e in self.entries.values()), 8)
 
     def test_fastc_only_push_skips_platform_workflows(self):
         paths = ["vlib/v/gen/fastc/codegen.v"]

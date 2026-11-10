@@ -1,7 +1,7 @@
 [
   {
     "workflow": "paths_ci.yml",
-    "shard": "core",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -16,7 +16,7 @@
   },
   {
     "workflow": "periodic_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "**/periodic_ci.yml"
@@ -25,7 +25,7 @@
   },
   {
     "workflow": "process_regressions_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/v/cmdexec/**",
@@ -38,7 +38,7 @@
   },
   {
     "workflow": "puzzle_vibes_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/v/checker/**.v",
@@ -54,7 +54,7 @@
   },
   {
     "workflow": "release_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       ".github/workflows/release_ci.yml",
@@ -64,7 +64,7 @@
   },
   {
     "workflow": "riscv64_linux_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -79,7 +79,7 @@
   },
   {
     "workflow": "s390x_linux_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -94,7 +94,7 @@
   },
   {
     "workflow": "sanitized_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "!**",
@@ -132,7 +132,7 @@
   },
   {
     "workflow": "sdl_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**",
@@ -148,7 +148,7 @@
   },
   {
     "workflow": "symlink_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "cmd/tools/vsymlink/**.v",
@@ -158,14 +158,14 @@
   },
   {
     "workflow": "tccbin_automation_contract.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "all",
     "patterns": [],
     "permissions": "contents: read"
   },
   {
     "workflow": "termux_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -180,7 +180,7 @@
   },
   {
     "workflow": "test_selection_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "cmd/tools/vtest*.v",
@@ -195,7 +195,7 @@
   },
   {
     "workflow": "time_ci.yml",
-    "shard": "extra",
+    "shard": "master",
     "mode": "paths",
     "patterns": [
       "vlib/**",
