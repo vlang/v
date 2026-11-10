@@ -90,9 +90,10 @@ V_OS_EXECUTE_SCOPE int v_os_exec_capture_start(char *const argv[], int *child_pi
 // on the include path. The 128-byte buffer is comfortably larger than the
 // real posix_spawn_file_actions_t on glibc (~80 bytes) and musl (~40 bytes);
 // posix_spawn_file_actions_init() initializes the buffer, so its true layout
-// is not needed here. We pass NULL for posix_spawnattr_t, so it is not
-// declared. Calling these via void* is ABI-compatible: pointer parameters
-// are passed identically regardless of pointee type.
+// is not needed here. These helpers pass NULL for posix_spawnattr_t; only the
+// macOS stdin helper below declares Apple's pointer form. Calling these via
+// void* is ABI-compatible: pointer parameters are passed identically regardless
+// of pointee type.
 typedef struct { unsigned char _opaque[128]; } v_posix_spawn_file_actions_t;
 #ifdef __cplusplus
 extern "C" {
@@ -200,10 +201,30 @@ V_OS_EXECUTE_SCOPE void v_os_fd_write_all(int fd, const char *data, size_t len) 
 }
 
 #if defined(__APPLE__)
+// Apple's posix_spawnattr_t is a pointer. <spawn.h> stays out for the reason
+// given above the posix_spawn declarations.
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern int posix_spawnattr_init(void *);
+extern int posix_spawnattr_setflags(void *, short);
+extern int posix_spawnattr_destroy(void *);
+#ifdef __cplusplus
+}
+#endif
+// V_OS_POSIX_SPAWN_CLOEXEC_DEFAULT is POSIX_SPAWN_CLOEXEC_DEFAULT from Apple's
+// <sys/spawn.h>: the child keeps only the descriptors set up by file actions.
+#define V_OS_POSIX_SPAWN_CLOEXEC_DEFAULT 0x4000
+
 // v_os_exec_capture_input_start is the argv-based capture helper with an
 // additional pipe connected to the child's stdin. F_SETNOSIGPIPE makes a
 // writer observe EPIPE instead of terminating the parent when a child exits
 // after reporting an early input error.
+// The child waits for its input, possibly for as long as the parent needs to
+// finish other work, so it must not keep another thread's pipe open: os.Process
+// creates its pipes without FD_CLOEXEC. FastC prestarts TinyCC this way while
+// another thread captures `clang --version`; a TinyCC that inherited that pipe
+// kept the version reader from seeing EOF, and the build waited forever.
 V_OS_EXECUTE_SCOPE int v_os_exec_capture_input_start(char *const argv[], int *child_pid, int *read_fd, int *write_fd) {
 	if (argv == NULL || argv[0] == NULL) {
 		return -1;
@@ -246,7 +267,20 @@ V_OS_EXECUTE_SCOPE int v_os_exec_capture_input_start(char *const argv[], int *ch
 		close(input_pipe[1]);
 		return -1;
 	}
-	err = posix_spawnp(child_pid, argv[0], &actions, NULL, argv, environ);
+	void *attributes = NULL;
+	if (posix_spawnattr_init(&attributes) != 0) {
+		posix_spawn_file_actions_destroy(&actions);
+		close(output_pipe[0]);
+		close(output_pipe[1]);
+		close(input_pipe[0]);
+		close(input_pipe[1]);
+		return -1;
+	}
+	err = posix_spawnattr_setflags(&attributes, V_OS_POSIX_SPAWN_CLOEXEC_DEFAULT);
+	if (err == 0) {
+		err = posix_spawnp(child_pid, argv[0], &actions, &attributes, argv, environ);
+	}
+	posix_spawnattr_destroy(&attributes);
 	posix_spawn_file_actions_destroy(&actions);
 	if (err != 0) {
 		close(output_pipe[0]);
