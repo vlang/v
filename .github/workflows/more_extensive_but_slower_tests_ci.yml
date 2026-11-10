@@ -1,21 +1,10 @@
 name: More extensive but slower tests
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/more_extensive_but_slower_tests_ci.yml'
-      - 'examples/**'
-      - 'cmd/tools/**'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: slower_tests-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: slower_tests-more_extensive_but_slower_tests_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

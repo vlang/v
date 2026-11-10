@@ -2,24 +2,10 @@ name: CI OpenBSD
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - '**'
-      - '!**.md'
-      - '!**.yml'
-      - '!cmd/tools/**'
-      - '.github/workflows/openbsd_ci.yml'
-      - 'ci/openbsd_ci.vsh'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vwatch_stdin_test.v'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - '!vlib/v/gen/fastc/**'
-      - '!vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: openbsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: openbsd-openbsd_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 ### See https://github.com/cross-platform-actions/action

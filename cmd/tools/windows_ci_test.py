@@ -27,6 +27,53 @@ def workflow_sources():
             for cc in COMPILERS}
 
 
+def workflow_block(source, name, indent):
+    pattern = (r'^' + ' ' * indent + re.escape(name) + r':\n(.*?)'
+               r'(?=^ {0,' + str(indent) + r'}\S|\Z)')
+    blocks = re.findall(pattern, source, re.M | re.S)
+    if len(blocks) != 1:
+        raise ValueError(f'expected one workflow block: {name}')
+    return blocks[0]
+
+
+def validate_master_bootstrap_contract(workflow, master):
+    # Every master push now covers all W3/W4/W5 inputs through the shared gate.
+    push = workflow_block(workflow_block(master, 'on', 0), 'push', 2)
+    if push.strip() != 'branches: [master]':
+        raise ValueError('master push must be unfiltered')
+    triggers = workflow_block(workflow, 'on', 0)
+    if not re.search(r'^  workflow_call:\s*$', triggers, re.M):
+        raise ValueError('Windows bootstrap must expose workflow_call')
+    if re.search(r'^  (push|pull_request|merge_group):', triggers, re.M):
+        raise ValueError('Windows bootstrap must use the master caller')
+    jobs = workflow_block(master, 'jobs', 0)
+    for name, filename in (('bootstrap', 'bootstrapping_ci.yml'),
+                           ('windows-bootstrap-contracts', 'makev_ci.yml')):
+        caller = workflow_block(jobs, name, 2)
+        if not re.search(r'^    uses: \./\.github/workflows/' + re.escape(filename) + r'$',
+                         caller, re.M):
+            raise ValueError(f'{name} must call {filename}')
+        if re.search(r'^    (if|needs|continue-on-error):', caller, re.M):
+            raise ValueError(f'{name} must run unconditionally')
+    formatting = workflow_block(jobs, 'formatting', 2)
+    needs = re.findall(r'^    needs: \[([^\]]+)\]$', formatting, re.M)
+    if len(needs) != 1 or {name.strip() for name in needs[0].split(',')} != {
+            'bootstrap', 'windows-bootstrap-contracts'}:
+        raise ValueError('formatting must depend on both bootstrap workflows')
+    if re.search(r'^    if:', formatting, re.M):
+        raise ValueError('formatting must retain the default success condition')
+    contracts = workflow_block(workflow_block(workflow, 'jobs', 0), 'bootstrap-contracts', 2)
+    if not re.search(r"^    if: github.ref == 'refs/heads/master'$", contracts, re.M):
+        raise ValueError('bootstrap contracts must run on master')
+    if '        os: [ubuntu-latest, windows-latest]\n' not in contracts:
+        raise ValueError('bootstrap contracts must cover Linux and Windows')
+    if re.search(r'^ +continue-on-error:', contracts, re.M):
+        raise ValueError('bootstrap contract failures must fail the gate')
+    for script in ('makev_test.py', 'windows_ci_test.py', 'windows_w4_ci_test.py'):
+        if f'        run: python cmd/tools/{script}\n' not in contracts:
+            raise ValueError(f'bootstrap contracts must run {script}')
+
+
 def build_scripts(workflows):
     # These workflows use literal run blocks at the same indentation. Fail if
     # that layout changes instead of silently losing build-step coverage.
@@ -236,6 +283,54 @@ class WorkflowConfigurationTests(unittest.TestCase):
                 validate_file_hash(path, expected)
 
 
+class MasterBootstrapContractTests(unittest.TestCase):
+    def setUp(self):
+        self.workflow = (WORKFLOWS / 'makev_ci.yml').read_text(encoding='utf-8')
+        self.master = (WORKFLOWS / 'ci_master.yml').read_text(encoding='utf-8')
+
+    def test_all_master_pushes_run_bootstrap_contracts(self):
+        validate_master_bootstrap_contract(self.workflow, self.master)
+
+    def test_master_push_cannot_filter_inputs(self):
+        for rule in ("    paths: ['makev.bat']\n", "    paths-ignore: ['vlib/**']\n",
+                     '    branches-ignore: [master]\n'):
+            changed = self.master.replace('    branches: [master]\n',
+                                          '    branches: [master]\n' + rule, 1)
+            with self.subTest(rule=rule), self.assertRaisesRegex(ValueError, 'unfiltered'):
+                validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_bootstrap_caller_cannot_be_skipped_or_replaced(self):
+        for changed in (
+            self.master.replace('  windows-bootstrap-contracts:\n',
+                                '  windows-bootstrap-contracts:\n    if: false\n', 1),
+            self.master.replace('uses: ./.github/workflows/makev_ci.yml',
+                                'uses: ./.github/workflows/windows_ci_gcc.yml', 1),
+        ):
+            with self.subTest(master=changed), self.assertRaises(ValueError):
+                validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_formatting_requires_successful_bootstrap(self):
+        for changed in (
+            self.master.replace('needs: [bootstrap, windows-bootstrap-contracts]',
+                                'needs: [bootstrap]', 1),
+            self.master.replace('  formatting:\n', '  formatting:\n    if: always()\n', 1),
+        ):
+            with self.subTest(master=changed), self.assertRaisesRegex(ValueError, 'formatting'):
+                validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_reusable_bootstrap_retains_both_platforms_and_commands(self):
+        mutations = [self.workflow.replace('  workflow_call:\n', '', 1),
+                     self.workflow.replace('os: [ubuntu-latest, windows-latest]',
+                                           'os: [ubuntu-latest]', 1),
+                     self.workflow.replace('    runs-on:',
+                                           '    continue-on-error: true\n    runs-on:', 1)]
+        mutations += [self.workflow.replace(f'run: python cmd/tools/{script}', 'run: echo skipped', 1)
+                      for script in ('makev_test.py', 'windows_ci_test.py', 'windows_w4_ci_test.py')]
+        for changed in mutations:
+            with self.subTest(workflow=changed), self.assertRaises(ValueError):
+                validate_master_bootstrap_contract(changed, self.master)
+
+
 class W3SourceTests(unittest.TestCase):
     def test_pinned_sources_and_cases_exist(self):
         surface, cases = validate_w3_metadata(
@@ -265,8 +360,8 @@ class W5SourceTests(unittest.TestCase):
             supplied = dict(re.findall(r"-(Expected\w+) '([0-9a-f]{64})'", call[1]))
             self.assertEqual(supplied, pins, cc)
         workflow = (WORKFLOWS / 'makev_ci.yml').read_text(encoding='utf-8')
-        for path in list(files) + [(WORKFLOWS / W5_RUNNER).relative_to(ROOT).as_posix()]:
-            self.assertIn(f"      - '{path}'\n", workflow, path)
+        master = (WORKFLOWS / 'ci_master.yml').read_text(encoding='utf-8')
+        validate_master_bootstrap_contract(workflow, master)
 
     def test_changed_source_pin_requires_a_new_composite(self):
         changed = re.sub(r"(Path = '[^']+'; Known = ')[0-9a-f]{64}",

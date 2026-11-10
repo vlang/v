@@ -1,14 +1,8 @@
 name: Canvas Linux CI
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'vlib/gg/canvas/**'
-      - 'vlib/sokol/**'
-      - 'thirdparty/sokol/**'
-      - 'examples/assets/fonts/**'
-      - '.github/workflows/canvas_ci.yml'
+  workflow_call:
+
   pull_request:
     paths:
       - 'vlib/gg/canvas/**'
@@ -18,7 +12,7 @@ on:
       - '.github/workflows/canvas_ci.yml'
 
 concurrency:
-  group: canvas-linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: canvas-linux-canvas_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

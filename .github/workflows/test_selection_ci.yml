@@ -1,20 +1,12 @@
 name: Test selection regressions
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'cmd/tools/vtest*.v'
-      - 'cmd/tools/testing/**'
-      - 'cmd/v/**'
-      - 'vlib/v/build_constraint/**'
-      - 'vlib/v/pref/**'
-      - 'vlib/v/util/vflags/**'
-      - '.github/workflows/test_selection_ci.yml'
+  workflow_call:
+
   workflow_dispatch:
 
 concurrency:
-  group: test-selection-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: test-selection-test_selection_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

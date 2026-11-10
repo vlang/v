@@ -1,9 +1,7 @@
 name: TCC bundle automation contract
 
 on:
-  push:
-    branches:
-      - master
+  workflow_call:
 
 permissions:
   contents: read

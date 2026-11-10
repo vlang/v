@@ -53,13 +53,30 @@ fn workflow_index_after(source string, needle string, offset int) int {
 
 fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
+	caller := workflow_source('ci_master.yml')
+	filters := workflow_source(os.join_path('ci_gate_filters', 'part3.json'))
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
-	assert source.contains('on:\n  push:\n    branches:\n      - master\n')
+	assert source.contains('on:\n  workflow_call:\n')
+	assert !source.contains('  push:')
 	assert !source.contains('  pull_request:')
 	assert !source.contains('  merge_group:')
 	assert !source.contains('paths:')
 	assert !source.contains('paths-ignore:')
+	assert caller.contains('on:\n  push:\n    branches: [master]\n')
+	assert !caller.contains('  pull_request:')
+	assert !caller.contains('  merge_group:')
+	assert !caller.contains('paths:')
+	assert !caller.contains('paths-ignore:')
+	assert caller.contains('  formatting:\n    needs: [bootstrap, windows-bootstrap-contracts]\n')
+	assert caller.contains(r'      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}')
+	assert caller.contains('        id: paths\n')
+	assert caller.contains('        run: python3 .github/workflows/ci_gate_paths.py master\n')
+	assert caller.contains('  tccbin_automation_contract:\n    needs: formatting\n' +
+		"    if: needs.formatting.outputs.tccbin_automation_contract == 'true'\n" +
+		'    uses: ./.github/workflows/tccbin_automation_contract.yml\n')
+	assert filters.contains('    "workflow": "tccbin_automation_contract.yml",\n' +
+		'    "shard": "master",\n    "mode": "all",\n    "patterns": [],\n')
 	assert source.contains('name: tccbin-automation-contract')
 	assert source.contains('name: tccbin-automation-dry-run')
 	assert source.count('if: always()') == 2

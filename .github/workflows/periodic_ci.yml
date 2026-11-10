@@ -4,14 +4,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
-  push:
-    branches:
-      - master
-    paths:
-      - '**/periodic_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: periodic-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: periodic-periodic_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

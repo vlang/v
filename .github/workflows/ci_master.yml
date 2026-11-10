@@ -1,0 +1,751 @@
+name: CI master
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-master-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    uses: ./.github/workflows/bootstrapping_ci.yml
+    permissions:
+      contents: read
+      actions: read
+
+  windows-bootstrap-contracts:
+    uses: ./.github/workflows/makev_ci.yml
+    permissions:
+      contents: read
+
+  formatting:
+    needs: [bootstrap, windows-bootstrap-contracts]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc gcc
+    outputs:
+      benchmark_footprint_json_decode: ${{ steps.paths.outputs.benchmark_footprint_json_decode }}
+      benchmark_footprint_json_encode: ${{ steps.paths.outputs.benchmark_footprint_json_encode }}
+      build_on_ubuntu_25_ci: ${{ steps.paths.outputs.build_on_ubuntu_25_ci }}
+      c2v_ci: ${{ steps.paths.outputs.c2v_ci }}
+      canvas_ci: ${{ steps.paths.outputs.canvas_ci }}
+      compiler_ci: ${{ steps.paths.outputs.compiler_ci }}
+      cross_ci: ${{ steps.paths.outputs.cross_ci }}
+      db_ci: ${{ steps.paths.outputs.db_ci }}
+      docker_ci: ${{ steps.paths.outputs.docker_ci }}
+      docs_ci: ${{ steps.paths.outputs.docs_ci }}
+      docs_site_ci: ${{ steps.paths.outputs.docs_site_ci }}
+      fastc_ci: ${{ steps.paths.outputs.fastc_ci }}
+      freebsd_ci: ${{ steps.paths.outputs.freebsd_ci }}
+      gen_vc_ci: ${{ steps.paths.outputs.gen_vc_ci }}
+      gg_regressions_ci: ${{ steps.paths.outputs.gg_regressions_ci }}
+      h2spec: ${{ steps.paths.outputs.h2spec }}
+      linux_ci: ${{ steps.paths.outputs.linux_ci }}
+      macos_ci: ${{ steps.paths.outputs.macos_ci }}
+      macos_gitly_ci: ${{ steps.paths.outputs.macos_gitly_ci }}
+      module_docs_ci: ${{ steps.paths.outputs.module_docs_ci }}
+      module_docs_lint: ${{ steps.paths.outputs.module_docs_lint }}
+      more_extensive_but_slower_tests_ci: ${{ steps.paths.outputs.more_extensive_but_slower_tests_ci }}
+      multiwindow_musl_exclusion_smoke: ${{ steps.paths.outputs.multiwindow_musl_exclusion_smoke }}
+      notices_ci: ${{ steps.paths.outputs.notices_ci }}
+      openbsd_ci: ${{ steps.paths.outputs.openbsd_ci }}
+      other_ci: ${{ steps.paths.outputs.other_ci }}
+      paths_ci: ${{ steps.paths.outputs.paths_ci }}
+      periodic_ci: ${{ steps.paths.outputs.periodic_ci }}
+      process_regressions_ci: ${{ steps.paths.outputs.process_regressions_ci }}
+      puzzle_vibes_ci: ${{ steps.paths.outputs.puzzle_vibes_ci }}
+      release_ci: ${{ steps.paths.outputs.release_ci }}
+      riscv64_linux_ci: ${{ steps.paths.outputs.riscv64_linux_ci }}
+      s390x_linux_ci: ${{ steps.paths.outputs.s390x_linux_ci }}
+      sanitized_ci: ${{ steps.paths.outputs.sanitized_ci }}
+      sdl_ci: ${{ steps.paths.outputs.sdl_ci }}
+      symlink_ci: ${{ steps.paths.outputs.symlink_ci }}
+      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}
+      termux_ci: ${{ steps.paths.outputs.termux_ci }}
+      test_selection_ci: ${{ steps.paths.outputs.test_selection_ci }}
+      time_ci: ${{ steps.paths.outputs.time_ci }}
+      toml_ci: ${{ steps.paths.outputs.toml_ci }}
+      tools_ci: ${{ steps.paths.outputs.tools_ci }}
+      v_apps_and_modules_compile_ci: ${{ steps.paths.outputs.v_apps_and_modules_compile_ci }}
+      vab_ci: ${{ steps.paths.outputs.vab_ci }}
+      vinix_ci: ${{ steps.paths.outputs.vinix_ci }}
+      vpm_ci: ${{ steps.paths.outputs.vpm_ci }}
+      vsl_and_vtl_compile_ci: ${{ steps.paths.outputs.vsl_and_vtl_compile_ci }}
+      vup_works: ${{ steps.paths.outputs.vup_works }}
+      wasm_backend_ci: ${{ steps.paths.outputs.wasm_backend_ci }}
+      websockets_ci: ${{ steps.paths.outputs.websockets_ci }}
+      windows_ci_gcc: ${{ steps.paths.outputs.windows_ci_gcc }}
+      windows_ci_msvc: ${{ steps.paths.outputs.windows_ci_msvc }}
+      windows_ci_tcc: ${{ steps.paths.outputs.windows_ci_tcc }}
+      workflow_lint: ${{ steps.paths.outputs.workflow_lint }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Build V for formatting
+        run: make -j4 && ./v symlink
+      - name: Check code formatting
+        run: |
+          ./v -silent test-cleancode
+          ./v -silent test-fmt
+      - name: Test master-push path filter logic
+        run: python3 .github/workflows/ci_gate_paths_test.py
+      - name: Select suites using the original push path filters
+        id: paths
+        env:
+          CI_BEFORE: ${{ github.event.before }}
+          CI_AFTER: ${{ github.sha }}
+        run: python3 .github/workflows/ci_gate_paths.py master
+
+  inline_benchmark_footprint_json_decode:
+    needs: formatting
+    if: needs.formatting.outputs.benchmark_footprint_json_decode == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build V
+        run: make -j4 && ./v symlink
+
+      - name: Run V benchmark and save output
+        run: (echo '```txt'; v -prod -w crun vlib/json2/tests/bench.v; echo '```') > vlib/json2/tests/bench_out.md
+
+      - name: Upload result file
+        uses: actions/upload-artifact@v7
+        with:
+          name: json-decode-benchmark-output
+          path: vlib/json2/tests/bench_out.md
+
+  inline_benchmark_footprint_json_encode:
+    needs: formatting
+    if: needs.formatting.outputs.benchmark_footprint_json_encode == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build V
+        run: make -j4 && ./v symlink
+
+      - name: Run V benchmark and save output
+        run: (echo '```sh'; v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v; echo '```') > vlib/v/tests/bench/bench_json_vs_json2_out.md
+
+      - name: Upload result file
+        uses: actions/upload-artifact@v7
+        with:
+          name: json-encode-benchmark-output
+          path: vlib/v/tests/bench/bench_json_vs_json2_out.md
+
+  build_on_ubuntu_25_ci:
+    needs: formatting
+    if: needs.formatting.outputs.build_on_ubuntu_25_ci == 'true'
+    uses: ./.github/workflows/build_on_ubuntu_25_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  c2v_ci:
+    needs: formatting
+    if: needs.formatting.outputs.c2v_ci == 'true'
+    uses: ./.github/workflows/c2v_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  canvas_ci:
+    needs: formatting
+    if: needs.formatting.outputs.canvas_ci == 'true'
+    uses: ./.github/workflows/canvas_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  compiler_ci:
+    needs: formatting
+    if: needs.formatting.outputs.compiler_ci == 'true'
+    uses: ./.github/workflows/compiler_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  cross_ci:
+    needs: formatting
+    if: needs.formatting.outputs.cross_ci == 'true'
+    uses: ./.github/workflows/cross_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  db_ci:
+    needs: formatting
+    if: needs.formatting.outputs.db_ci == 'true'
+    uses: ./.github/workflows/db_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  docker_ci:
+    needs: formatting
+    if: needs.formatting.outputs.docker_ci == 'true'
+    uses: ./.github/workflows/docker_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  docs_ci:
+    needs: formatting
+    if: needs.formatting.outputs.docs_ci == 'true'
+    uses: ./.github/workflows/docs_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  docs_site_ci:
+    needs: formatting
+    if: needs.formatting.outputs.docs_site_ci == 'true'
+    uses: ./.github/workflows/docs_site_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  fastc_ci:
+    needs: formatting
+    if: needs.formatting.outputs.fastc_ci == 'true'
+    uses: ./.github/workflows/fastc_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  freebsd_ci:
+    needs: formatting
+    if: needs.formatting.outputs.freebsd_ci == 'true'
+    uses: ./.github/workflows/freebsd_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  gen_vc_ci:
+    needs: formatting
+    if: needs.formatting.outputs.gen_vc_ci == 'true'
+    uses: ./.github/workflows/gen_vc_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  gg_regressions_ci:
+    needs: formatting
+    if: needs.formatting.outputs.gg_regressions_ci == 'true'
+    uses: ./.github/workflows/gg_regressions_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_h2spec:
+    needs: formatting
+    if: needs.formatting.outputs.h2spec == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      H2SPEC_VERSION: v2.6.0
+      H2SPEC_SHA256: 157ee0de702e01ad40e752dbf074b366027e550c8e7504f9450da2809e279318
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the V compiler
+        run: |
+          make
+          ./v -o vnew cmd/v
+
+      - name: Fetch pinned h2spec release
+        run: |
+          url="https://github.com/summerwind/h2spec/releases/download/${H2SPEC_VERSION}/h2spec_linux_amd64.tar.gz"
+          curl -fsSL "$url" -o h2spec.tar.gz
+          echo "${H2SPEC_SHA256}  h2spec.tar.gz" | sha256sum -c -
+          tar -xzf h2spec.tar.gz
+          sudo install -m 0755 h2spec /usr/local/bin/h2spec
+          h2spec --version
+
+      - name: Run h2spec conformance gate
+        env:
+          # VEXE: ./vnew
+          VFLAGS_CC: -cc gcc # mbedtls needs a real C compiler, not tcc
+        run: bash vlib/net/http/h2spec/run_h2spec.sh
+
+      - name: Upload h2spec report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: h2spec-report
+          path: |
+            vlib/net/http/h2spec/h2spec_report.xml
+            vlib/net/http/h2spec/h2spec_failed_now.txt
+
+  linux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.linux_ci == 'true'
+    uses: ./.github/workflows/linux_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  macos_ci:
+    needs: formatting
+    if: needs.formatting.outputs.macos_ci == 'true'
+    uses: ./.github/workflows/macos_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  macos_gitly_ci:
+    needs: formatting
+    if: needs.formatting.outputs.macos_gitly_ci == 'true'
+    uses: ./.github/workflows/macos_gitly_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  module_docs_ci:
+    needs: formatting
+    if: needs.formatting.outputs.module_docs_ci == 'true'
+    uses: ./.github/workflows/module_docs_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_module_docs_lint:
+    needs: formatting
+    if: needs.formatting.outputs.module_docs_lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check Formatting
+        uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0 # v4.6
+        with:
+          prettier_options: --check cmd/tools/vdoc/theme
+
+  more_extensive_but_slower_tests_ci:
+    needs: formatting
+    if: needs.formatting.outputs.more_extensive_but_slower_tests_ci == 'true'
+    uses: ./.github/workflows/more_extensive_but_slower_tests_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  multiwindow_musl_exclusion_smoke:
+    needs: formatting
+    if: needs.formatting.outputs.multiwindow_musl_exclusion_smoke == 'true'
+    uses: ./.github/workflows/multiwindow_musl_exclusion_smoke.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  notices_ci:
+    needs: formatting
+    if: needs.formatting.outputs.notices_ci == 'true'
+    uses: ./.github/workflows/notices_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  openbsd_ci:
+    needs: formatting
+    if: needs.formatting.outputs.openbsd_ci == 'true'
+    uses: ./.github/workflows/openbsd_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  other_ci:
+    needs: formatting
+    if: needs.formatting.outputs.other_ci == 'true'
+    uses: ./.github/workflows/other_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  paths_ci:
+    needs: formatting
+    if: needs.formatting.outputs.paths_ci == 'true'
+    uses: ./.github/workflows/paths_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  periodic_ci:
+    needs: formatting
+    if: needs.formatting.outputs.periodic_ci == 'true'
+    uses: ./.github/workflows/periodic_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  process_regressions_ci:
+    needs: formatting
+    if: needs.formatting.outputs.process_regressions_ci == 'true'
+    uses: ./.github/workflows/process_regressions_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  puzzle_vibes_ci:
+    needs: formatting
+    if: needs.formatting.outputs.puzzle_vibes_ci == 'true'
+    uses: ./.github/workflows/puzzle_vibes_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  release_ci:
+    needs: formatting
+    if: needs.formatting.outputs.release_ci == 'true'
+    uses: ./.github/workflows/release_ci.yml
+    permissions:
+      contents: write
+    secrets: inherit
+
+  riscv64_linux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.riscv64_linux_ci == 'true'
+    uses: ./.github/workflows/riscv64_linux_ci.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  s390x_linux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.s390x_linux_ci == 'true'
+    uses: ./.github/workflows/s390x_linux_ci.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  sanitized_ci:
+    needs: formatting
+    if: needs.formatting.outputs.sanitized_ci == 'true'
+    uses: ./.github/workflows/sanitized_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  sdl_ci:
+    needs: formatting
+    if: needs.formatting.outputs.sdl_ci == 'true'
+    uses: ./.github/workflows/sdl_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  symlink_ci:
+    needs: formatting
+    if: needs.formatting.outputs.symlink_ci == 'true'
+    uses: ./.github/workflows/symlink_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  tccbin_automation_contract:
+    needs: formatting
+    if: needs.formatting.outputs.tccbin_automation_contract == 'true'
+    uses: ./.github/workflows/tccbin_automation_contract.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  termux_ci:
+    needs: formatting
+    if: needs.formatting.outputs.termux_ci == 'true'
+    uses: ./.github/workflows/termux_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  test_selection_ci:
+    needs: formatting
+    if: needs.formatting.outputs.test_selection_ci == 'true'
+    uses: ./.github/workflows/test_selection_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  time_ci:
+    needs: formatting
+    if: needs.formatting.outputs.time_ci == 'true'
+    uses: ./.github/workflows/time_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_toml_ci:
+    needs: formatting
+    if: needs.formatting.outputs.toml_ci == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Cache V toolchain
+        id: cache-v
+        uses: actions/cache@v6
+        with:
+          path: |
+            v
+            thirdparty/tcc
+          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/v/**', '!cmd/v/**/*_test*.v', 'cmd/tools/select_linux_tcc.sh', 'cmd/tools/git_argv.sh', 'cmd/tools/detect_tcc.v', 'vlib/**', '!vlib/toml/**', '!vlib/**/*_test*.v', '!vlib/**/tests/**', '!vlib/**/testdata/**', '!vlib/v/slow_tests/**', 'thirdparty/**', 'GNUmakefile', 'Makefile', '.github/actions/setup-v/**', '.github/workflows/toml_ci.yml') }}
+      - uses: ./.github/actions/setup-v
+        if: steps.cache-v.outputs.cache-hit != 'true'
+        with:
+          symlink: false
+      - name: Register problem matchers
+        if: steps.cache-v.outputs.cache-hit == 'true'
+        run: ./v run .github/problem-matchers/register_all.vsh
+      - name: Symlink V
+        run: ./v symlink
+      - name: Install dependencies
+        run: |
+          v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
+          sudo chmod 755 jq-linux64
+          sudo mv jq-linux64 /usr/bin/jq
+
+      - name: Show JQ Version
+        run: jq --version
+
+      - name: Download more TOML testsuits
+        run: .github/workflows/download_full_toml_test_suites.sh
+
+      - name: Run TOML tests
+        run: VTEST_TOML_DO_YAML_CONVERSION=1 VTEST_TOML_DO_LARGE_FILES=1 ./v test vlib/toml
+
+  tools_ci:
+    needs: formatting
+    if: needs.formatting.outputs.tools_ci == 'true'
+    uses: ./.github/workflows/tools_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  v_apps_and_modules_compile_ci:
+    needs: formatting
+    if: needs.formatting.outputs.v_apps_and_modules_compile_ci == 'true'
+    uses: ./.github/workflows/v_apps_and_modules_compile_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vab_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vab_ci == 'true'
+    uses: ./.github/workflows/vab_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_vinix_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vinix_ci == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4 && ./v symlink
+
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          v retry -- sudo apt update
+          v retry -- sudo apt install build-essential libarchive-dev -y
+
+      - name: Clone current Vinix
+        run: v retry -- git clone --depth=1 --branch master https://github.com/vlang/vinix.git
+
+      - name: Download Vinix kernel dependencies
+        run: cd vinix/kernel && v retry -- ./get-deps
+
+      - name: Attempt to build the Vinix kernel (debug)
+        run: |
+          set -e
+          cd vinix/kernel
+          make PROD=false \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+      - name: Attempt to build the Vinix kernel (prod)
+        run: |
+          set -e
+          cd vinix/kernel
+          make PROD=true \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+      - name: Attempt to build the util-vinix (debug)
+        run: |
+          set -e
+          cd vinix/util-vinix
+          make PROD=false \
+            VFLAGS="-os vinix -gc none" \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+      - name: Attempt to build the util-vinix (prod)
+        run: |
+          set -e
+          cd vinix/util-vinix
+          make PROD=true \
+            VFLAGS="-os vinix -gc none" \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+  vpm_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vpm_ci == 'true'
+    uses: ./.github/workflows/vpm_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vsl_and_vtl_compile_ci:
+    needs: formatting
+    if: needs.formatting.outputs.vsl_and_vtl_compile_ci == 'true'
+    uses: ./.github/workflows/vsl_and_vtl_compile_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  vup_works:
+    needs: formatting
+    if: needs.formatting.outputs.vup_works == 'true'
+    uses: ./.github/workflows/vup_works.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_wasm_backend_ci:
+    needs: formatting
+    if: needs.formatting.outputs.wasm_backend_ci == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+      fail-fast: false
+    timeout-minutes: 20
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+      VTEST_ONLY: wasm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare private tool cache
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+
+      - name: Build V
+        if: runner.os != 'Windows'
+        run: make -j4
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./makev.bat
+
+      - name: Install WABT to get wasm-decompile
+        if: runner.os != 'Windows'
+        run: ./v retry -- sudo apt install wabt
+
+      - name: Setup Wasmer
+        uses: wasmerio/setup-wasmer@24b15c95293d23f89c68bd40dac76338f773e924 # v3.1
+        with:
+          version: v4.4.0
+
+      - name: Prebuild the WASM backend
+        run: ./v cmd/tools/builders/wasm_builder.v
+
+      - name: Test the WASM backend
+        run: ./v test vlib/v/gen/wasm/
+
+      - name: Build examples
+        run: ./v build-examples
+
+  websockets_ci:
+    needs: formatting
+    if: needs.formatting.outputs.websockets_ci == 'true'
+    uses: ./.github/workflows/websockets_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  windows_ci_gcc:
+    needs: formatting
+    if: needs.formatting.outputs.windows_ci_gcc == 'true'
+    uses: ./.github/workflows/windows_ci_gcc.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  windows_ci_msvc:
+    needs: formatting
+    if: needs.formatting.outputs.windows_ci_msvc == 'true'
+    uses: ./.github/workflows/windows_ci_msvc.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  windows_ci_tcc:
+    needs: formatting
+    if: needs.formatting.outputs.windows_ci_tcc == 'true'
+    uses: ./.github/workflows/windows_ci_tcc.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_workflow_lint:
+    needs: formatting
+    if: needs.formatting.outputs.workflow_lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify formatting
+        uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0 # v4.6
+        with:
+          prettier_options: --check **.yml
+

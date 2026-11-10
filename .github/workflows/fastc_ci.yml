@@ -5,16 +5,10 @@ name: FastC CI
 # runs the FastC unit tests on Linux, and the jobs below cover macOS arm64 and Windows.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
-      - '**/fastc_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: fastc-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: fastc-fastc_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

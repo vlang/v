@@ -13,44 +13,10 @@ name: Sanitized CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - '!**'
-      - '!**.md'
-      - '!**.yml'
-      - 'vlib/builtin/**.v'
-      - 'vlib/strconv/**.v'
-      - 'vlib/strings/**.v'
-      - 'vlib/math/**.v'
-      - 'vlib/math/big/**.v'
-      - 'vlib/arrays/**.v'
-      - 'vlib/crypto/ecdsa/**.v'
-      - 'vlib/datatypes/**.v'
-      - 'vlib/os/**.v'
-      - 'vlib/sync/**.v'
-      - 'vlib/v/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/json2/**.v'
-      - '**/sanitized_ci.yml'
-      - '.github/workflows/build_msan_libpq.sh'
-      - '.github/workflows/build_msan_sqlite.sh'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - '!vlib/v/gen/fastc/**'
-      - '!vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: sanitized-sanitized_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:

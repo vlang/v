@@ -1,0 +1,178 @@
+[
+  {
+    "workflow": "benchmark_footprint_json_decode.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/json2/**",
+      ".github/workflows/benchmark_footprint_json_decode.yml",
+      ".github/workflows/ci_master.yml"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "benchmark_footprint_json_encode.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/json2/**",
+      "!vlib/json2/strict/**",
+      "!vlib/json2/tests/**",
+      ".github/workflows/benchmark_footprint_json_encode.yml",
+      ".github/workflows/ci_master.yml"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "build_on_ubuntu_25_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/build_on_ubuntu_25_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "c2v_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/c2v_ci.yml",
+      "doc/**",
+      "examples/**",
+      "tutorials/**",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "canvas_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/gg/canvas/**",
+      "vlib/sokol/**",
+      "thirdparty/sokol/**",
+      "examples/assets/fonts/**",
+      ".github/workflows/canvas_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "compiler_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/v/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "cross_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/cross_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "db_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/db_ci.yml",
+      "examples/**",
+      "doc/**",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "docker_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/docker_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/test_if_v_test_system_works.v",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "docs_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.yml",
+      "!**/docs_ci.yml",
+      "cmd/tools/vrepl.v"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "docs_site_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "doc/docs.md",
+      "**/docs_site_ci.yml",
+      ".github/docs_site_generator.patch"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "fastc_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**",
+      "**/fastc_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "freebsd_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "cmd/tools/**",
+      "!**/freebsd_ci.yml",
+      "!ci/freebsd_ci.vsh",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  }
+]
