@@ -14209,6 +14209,8 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 			}
 			if method !in memo.required_methods {
 				memo.required_methods[method] = memo.required_methods.len
+				bit := required_method_bit(method)
+				memo.required_method_bits[bit >> 6] |= u64(1) << (bit & 63)
 			}
 		}
 	}
@@ -14224,13 +14226,31 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 	memo.method_keys_ready = true
 }
 
+// required_method_bit spreads method names over the bits of
+// InterfaceImplMemo.required_method_bits by their length and outer bytes.
+@[direct_array_access; inline]
+fn required_method_bit(name string) int {
+	if name.len == 0 {
+		return 0
+	}
+	return (name.len * 131 + int(name[0]) * 31 + int(name[name.len - 1])) & 4095
+}
+
+@[direct_array_access]
 fn (mut memo InterfaceImplMemo) index_method_receiver_key(key string) {
 	last_dot := key.last_index_u8(`.`)
 	if last_dot < 0 {
 		return
 	}
 	tail := unsafe { key.substr_unsafe(last_dot + 1, key.len) }
-	method_idx := memo.required_methods[tail] or { -1 }
+	// Most keys declare a method that no interface requires: the bit test
+	// settles them without hashing the name.
+	tail_bit := required_method_bit(tail)
+	method_idx := if memo.required_method_bits[tail_bit >> 6] & (u64(1) << (tail_bit & 63)) != 0 {
+		memo.required_methods[tail] or { -1 }
+	} else {
+		-1
+	}
 	// `X.@m` is probed for the method `m`.
 	escaped_idx := if tail.len > 1 && tail[0] == `@` {
 		memo.required_methods[unsafe { tail.substr_unsafe(1, tail.len) }] or { -1 }
@@ -15531,6 +15551,9 @@ mut:
 	metadata_names    map[u32]u32
 	method_keys_ready bool
 	required_methods  map[string]int
+	// One bit per required method, by required_method_bit of its name: a key
+	// whose last component has no bit set names no required method.
+	required_method_bits [64]u64
 	receiver_parts    map[string]int
 	method_receivers  map[u64]bool
 	receiver_lookups  map[u32]ReceiverMethodLookup
