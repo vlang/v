@@ -79,8 +79,8 @@ fn only_parallel_local_methods(parallel_source string, name string, module_sourc
 
 fn test_parallel_local_method_parity_keeps_externally_called_methods() {
 	parallel := 'struct SpeculatedBatch {\n}\nfn (mut spec SpeculatedBatch) release() {\n}\n'
-	shared := ['fn (mut b BatchSources) release(start int, end int) {}']
-	assert only_parallel_local_methods(parallel, 'release', shared)
+	shared_sources := ['fn (mut b BatchSources) release(start int, end int) {}']
+	assert only_parallel_local_methods(parallel, 'release', shared_sources)
 	assert !only_parallel_local_methods(parallel, 'release', ['fn use(spec SpeculatedBatch) {}'])
 	assert !only_parallel_local_methods('fn (mut p Parser) release() {}', 'release', [])
 	assert !only_parallel_local_methods('fn release() {}', 'release', [])
