@@ -2,6 +2,11 @@ module os
 
 fn C.setpgid(pid i32, pgid i32) i32
 
+// Portable `-os cross` snapshots are built as one C file without native objects.
+// A macro uses libc's pipe2 prototype and preserves atomic close-on-exec.
+#define v_os_process_pipe_cloexec_cross(fds) pipe2((fds), O_CLOEXEC)
+fn C.v_os_process_pipe_cloexec_cross(fds &i32) i32
+
 @[c_extern]
 fn C.v_os_process_pipe_cloexec(fds &i32) i32
 
@@ -150,7 +155,11 @@ fn unix_process_pipe(fds &i32) i32 {
 	$if linux {
 		$if !freestanding && !syscalls {
 			$if !vlibc ? {
-				return C.v_os_process_pipe_cloexec(fds)
+				$if cross ? {
+					return C.v_os_process_pipe_cloexec_cross(fds)
+				} $else {
+					return C.v_os_process_pipe_cloexec(fds)
+				}
 			}
 		}
 	}
