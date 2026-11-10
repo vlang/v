@@ -8148,6 +8148,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 		&& g.gen_temporary_bytes_chain(node, resolved_target_name) {
 		return
 	}
+	if !callee_is_fn_value && g.gen_builder_interpolation_call(node, target_name, resolved_target_name) {
+		return
+	}
 	// An unqualified panic() in a module that declares its own panic (such as
 	// a log.panic() Logger) resolves to that function, not to the builtin.
 	calls_module_panic := fn_name == 'panic' && ((resolved_target_name.contains('.')
