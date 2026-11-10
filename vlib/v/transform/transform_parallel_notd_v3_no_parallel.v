@@ -62,12 +62,24 @@ const shared_piece_share_num = 2
 const shared_piece_share_den = 5
 const shared_piece_min_cost = 8192
 const shared_first_piece_job_fraction = 8
+// No piece is larger than this fraction of one job's even share of all the work.
+// The caller merges helpers in piece order, so the oldest unfinished piece holds
+// back every finished one after it: on a slow core a larger piece kept most of
+// the merge waiting until the pool had nothing left to run beside it.
+const shared_piece_max_job_fraction = 6
+// When every piece has finished, the caller still merges this many helpers
+// itself; a longer backlog goes to the join, which moves regions on the pool.
+const shared_piece_inline_backlog = 6
 // An append region is a share of the pool by cost, and what a few functions
 // append varies far more around the average than what a whole chunk appends. A
 // piece's region therefore counts this much cost on top of its own.
 const shared_piece_region_floor_cost = 12_000
 // The estimated cost of one scratch batch of a piece (see shared_helper_batch_count).
 const shared_piece_batch_cost = 4200
+// The caller moves helper regions into place while the pool is running, at the
+// peak of the stage. It releases the storage they were moved out of whenever this
+// much of it has gathered, instead of holding all of it until the join.
+const shared_piece_discard_bytes = 8 * 1024 * 1024
 // The lookup caches of the helper a thread is running stay mapped for its next one.
 const shared_piece_cache_keep_bytes = 2 * 1024 * 1024
 const scoped_monomorph_batch_specs = 512
@@ -280,43 +292,6 @@ fn (mut t Transformer) compact_worker_regions_parallel(worker_ptrs []voidptr, no
 	// Everything past the final lengths is now dead region storage; merge_worker
 	// only publishes annotations for base nodes and tables from here on. Release
 	// those pages before the merge allocates, rather than after the stage.
-	unsafe { t.a.discard_unused_capacity() }
-	return moves
-}
-
-// compact_worker_regions_serial is compact_worker_regions_parallel on the calling
-// thread, for a layout the waves cannot move: in merge order every region moves
-// left onto storage that the regions before it have already left.
-fn (mut t Transformer) compact_worker_regions_serial(worker_ptrs []voidptr, node_starts []int, child_starts []int) []RegionCompaction {
-	mut moves := []RegionCompaction{cap: worker_ptrs.len}
-	mut running_nodes := t.a.nodes.len
-	mut running_children := t.a.children.len
-	for ci, ptr in worker_ptrs {
-		w := unsafe { &Transformer(ptr) }
-		node_len := w.a.nodes.len - node_starts[ci]
-		child_len := w.a.children.len - child_starts[ci]
-		moves << RegionCompaction{
-			node_src:      node_starts[ci]
-			node_dst:      running_nodes
-			node_len:      node_len
-			child_src:     child_starts[ci]
-			child_dst:     running_children
-			child_len:     child_len
-			nodes_base:    t.a.nodes.data
-			children_base: t.a.children.data
-			node_size:     uint(t.a.nodes.element_size)
-			child_size:    uint(t.a.children.element_size)
-		}
-		running_nodes += node_len
-		running_children += child_len
-	}
-	unsafe {
-		t.a.nodes.grow_len(running_nodes - t.a.nodes.len)
-		t.a.children.grow_len(running_children - t.a.children.len)
-	}
-	for i in 0 .. moves.len {
-		region_compact_thread(unsafe { voidptr(&moves[i]) })
-	}
 	unsafe { t.a.discard_unused_capacity() }
 	return moves
 }
@@ -612,9 +587,14 @@ struct SharedPullArgs {
 mut:
 	// merges_early lets the caller merge finished helpers before the join.
 	merges_early bool
-	fork_scope   voidptr
-	merge_scope  voidptr
-	cache_scope  voidptr
+	// What the caller merged before the join: how many helpers, in piece order,
+	// and the nodes and children it moved into place for them.
+	merged_count    int
+	merged_nodes    int
+	merged_children int
+	fork_scope      voidptr
+	merge_scope     voidptr
+	cache_scope     voidptr
 }
 
 // shared_pull_thread runs queued pieces until none is left. The caller's thread
@@ -670,10 +650,10 @@ fn run_pulled_shared_piece(mut pieces []SharedChunkArgs, mut a SharedPullArgs, i
 // out in that order, so the caller can publish a helper's results as soon as it
 // and every helper before it has finished, while the pool lowers later pieces:
 // merging them all after the join was the longest serial stretch of the stage.
-// The caller runs a queued piece itself whenever no helper is ready. Only the
-// tables are published here. The helper's appended nodes stay in its region
-// until the join, when every region is relocated and moved on the pool; the
-// offsets they will move by follow from the lengths of the regions before.
+// The caller runs a queued piece itself whenever no helper is ready. A helper's
+// appended region is relocated and moved into its final slot here as well: the
+// slot starts where the regions before it end, which are all in place by then,
+// and lies below every region a running helper still appends to.
 fn (mut t Transformer) merge_and_pull_shared_pieces(mut pieces []SharedChunkArgs, mut a SharedPullArgs) {
 	chunks := unsafe { &[][]FnWorkItem(a.chunks) }
 	last := pieces.len - 1
@@ -682,11 +662,20 @@ fn (mut t Transformer) merge_and_pull_shared_pieces(mut pieces []SharedChunkArgs
 	mut running_nodes := t.a.nodes.len
 	mut running_children := t.a.children.len
 	mut queue_open := true
+	mut finished_count := 0
+	node_size := u64(t.a.nodes.element_size)
+	mut discarded_to := 0
 	for next <= last {
 		// Only this thread receives from `done`, so a counted entry is there.
 		for a.merges_early && a.done.len > 0 {
 			idx := <-a.done or { break }
 			finished[idx] = true
+			finished_count++
+		}
+		if a.merges_early && finished_count == last
+			&& last - next >= shared_piece_inline_backlog {
+			// The pool is idle now, and the join moves what is left on all of it.
+			break
 		}
 		if a.merges_early && finished[next] {
 			ww := unsafe { &Transformer(pieces[next].worker) }
@@ -699,6 +688,20 @@ fn (mut t Transformer) merge_and_pull_shared_pieces(mut pieces []SharedChunkArgs
 				a.merges_early = false
 				continue
 			}
+			node_start := a.node_starts[next]
+			child_start := a.child_starts[next]
+			node_shift := i32(running_nodes - node_start)
+			child_shift := i32(running_children - child_start)
+			// The move is leftward inside one array and runs front to back, so it
+			// reads ahead of what it writes.
+			mut moved := unsafe { &Transformer(pieces[next].worker) }
+			moved.absorb_region_into(node_start, ww.a.nodes.len, child_start, ww.a.children.len,
+				node_shift, child_shift, unsafe {
+					voidptr(&u8(t.a.nodes.data) + u64(running_nodes) * u64(t.a.nodes.element_size))
+				}, unsafe {
+					voidptr(&u8(t.a.children.data) +
+						u64(running_children) * u64(t.a.children.element_size))
+				})
 			// The bookkeeping arena of the pieces this thread ran is current; the
 			// master's tables belong in the stage arena.
 			merge_state := transform_stage_scope_suspend(a.merge_scope)
@@ -706,17 +709,31 @@ fn (mut t Transformer) merge_and_pull_shared_pieces(mut pieces []SharedChunkArgs
 			t.merge_regions_absorbed = true
 			t.merge_regions_relocated = true
 			t.merge_before_join = true
-			t.merge_absorbed_node_shift = i32(running_nodes - a.node_starts[next])
-			t.merge_absorbed_child_shift = i32(running_children - a.child_starts[next])
-			t.merge_worker(ww, (*chunks)[next], a.node_starts[next], a.child_starts[next],
-				false)
+			t.merge_absorbed_node_shift = node_shift
+			t.merge_absorbed_child_shift = child_shift
+			t.merge_worker(ww, (*chunks)[next], node_start, child_start, false)
 			t.merge_regions_absorbed = false
 			t.merge_regions_relocated = false
 			t.merge_before_join = false
 			transform_stage_scope_resume(a.merge_scope, merge_state)
 			pieces[next].merged = true
-			running_nodes += ww.a.nodes.len - a.node_starts[next]
-			running_children += ww.a.children.len - a.child_starts[next]
+			running_nodes += ww.a.nodes.len - node_start
+			running_children += ww.a.children.len - child_start
+			a.merged_count = next
+			a.merged_nodes = running_nodes - t.a.nodes.len
+			a.merged_children = running_children - t.a.children.len
+			// Everything between the moved nodes and the end of this region is dead:
+			// the regions up to here have all been moved out of it.
+			if discarded_to < running_nodes {
+				discarded_to = running_nodes
+			}
+			if u64(ww.a.nodes.len - discarded_to) * node_size >= shared_piece_discard_bytes {
+				unsafe {
+					prealloc_discard_pages(&u8(t.a.nodes.data) + u64(discarded_to) * node_size,
+						uint(u64(ww.a.nodes.len - discarded_to) * node_size))
+				}
+				discarded_to = ww.a.nodes.len
+			}
 			next++
 			continue
 		}
@@ -727,6 +744,7 @@ fn (mut t Transformer) merge_and_pull_shared_pieces(mut pieces []SharedChunkArgs
 			}
 			run_pulled_shared_piece(mut pieces, mut a, idx)
 			finished[idx] = true
+			finished_count++
 			continue
 		}
 		if !a.merges_early {
@@ -735,6 +753,7 @@ fn (mut t Transformer) merge_and_pull_shared_pieces(mut pieces []SharedChunkArgs
 		// Every piece left is running on a pool thread: wait for one to finish.
 		idx := <-a.done or { break }
 		finished[idx] = true
+		finished_count++
 	}
 }
 
@@ -781,6 +800,9 @@ fn split_chunks_into_pieces(chunks [][]FnWorkItem, n_jobs int) [][]FnWorkItem {
 			total / (jobs * shared_first_piece_job_fraction)
 		} else {
 			remaining * shared_piece_share_num / (jobs * shared_piece_share_den)
+		}
+		if target > total / (jobs * shared_piece_max_job_fraction) {
+			target = total / (jobs * shared_piece_max_job_fraction)
 		}
 		if target < shared_piece_min_cost {
 			target = shared_piece_min_cost
@@ -3836,19 +3858,24 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	// lengths, so the serial compaction below degrades to plain memmoves.
 	// Only valid when compaction will not re-clone nodes (clone_worker_nodes
 	// in merge_worker re-reads children_start values).
-	if thread_count > 0 && (t.retain_worker_results || t.stage_scope != unsafe { nil })
-		&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
-		t.relocate_worker_regions(args[1..].map(it.worker), node_starts[1..chunk_count], child_starts[1..chunk_count])
-	}
 	// The helpers the caller merged while the pool was running (see
-	// merge_and_pull_shared_pieces) only have their regions left to move.
-	mut unmerged_workers := []voidptr{cap: thread_count}
-	for ci in 0 .. thread_count {
-		if !args[ci + 1].merged {
-			unmerged_workers << args[ci + 1].worker
+	// merge_and_pull_shared_pieces) are in place already; the join only has the
+	// helpers after them left.
+	mut merged_count := 0
+	if pull_args.len > 0 && pull_args[0].merged_count > 0 {
+		merged_count = pull_args[0].merged_count
+		unsafe {
+			t.a.nodes.grow_len(pull_args[0].merged_nodes)
+			t.a.children.grow_len(pull_args[0].merged_children)
 		}
 	}
-	merged_early := unmerged_workers.len < thread_count
+	unmerged_workers := args[1 + merged_count..].map(it.worker)
+	unmerged_node_starts := node_starts[1 + merged_count..chunk_count]
+	unmerged_child_starts := child_starts[1 + merged_count..chunk_count]
+	if unmerged_workers.len > 0 && (t.retain_worker_results || t.stage_scope != unsafe { nil })
+		&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
+		t.relocate_worker_regions(unmerged_workers, unmerged_node_starts, unmerged_child_starts)
+	}
 	if unmerged_workers.len > 0 {
 		t.lookup_worker_call_names(unmerged_workers)
 	}
@@ -3877,35 +3904,33 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	mut mwsw := time.new_stopwatch()
 	// Relocated regions are plain moves: do them all up front on the pool, so
 	// the serial loop below only publishes each worker's annotations.
-	mut compactions := if t.merge_regions_relocated && thread_count > 0
+	compactions := if t.merge_regions_relocated && unmerged_workers.len > 0
 		&& os.getenv('V3_NO_PARALLEL_COMPACT').len == 0 {
-		t.compact_worker_regions_parallel(args[1..].map(it.worker), node_starts[1..chunk_count],
-			child_starts[1..chunk_count])
+		t.compact_worker_regions_parallel(unmerged_workers, unmerged_node_starts, unmerged_child_starts)
 	} else {
 		[]RegionCompaction{}
 	}
-	if merged_early && compactions.len == 0 {
-		// The helpers merged before the join were published as moved regions;
-		// merge_worker's own copy would only bring over the rest.
-		compactions = t.compact_worker_regions_serial(args[1..].map(it.worker), node_starts[1..chunk_count],
-			child_starts[1..chunk_count])
+	if merged_count > 0 && unmerged_workers.len == 0 {
+		// No region was left for the compaction, which releases the storage the
+		// regions were moved out of.
+		unsafe { t.a.discard_unused_capacity() }
 	}
 	t.timing_profile('  [ttime]     mg compact     ${f64(mwsw.elapsed().microseconds()) / 1000.0:7.2f} ms (regions: ${compactions.len})')
-	for ci in 0 .. thread_count {
+	$if v3_ttime ? {
+		for ci in 0 .. thread_count {
+			ww := unsafe { &Transformer(args[ci + 1].worker) }
+			t.timing_profile('  [ttime]     mg region ${ci}: nodes [${node_starts[ci + 1]}, ${ww.a.nodes.len}) cap ${node_starts[ci + 2]} children [${child_starts[ci + 1]}, ${ww.a.children.len}) cap ${child_starts[ci + 2]} merged ${args[ci + 1].merged}')
+		}
+	}
+	for ci in merged_count .. thread_count {
 		ww := unsafe { &Transformer(args[ci + 1].worker) }
-		$if v3_ttime ? {
-			t.timing_profile('  [ttime]     mg region ${ci}: nodes [${node_starts[ci + 1]}, ${ww.a.nodes.len}) cap ${node_starts[ci + 2]} children [${child_starts[ci + 1]}, ${ww.a.children.len}) cap ${child_starts[ci + 2]} dst n ${t.a.nodes.len} c ${t.a.children.len}')
-		}
-		if args[ci + 1].merged {
-			continue
-		}
 		mwsw.restart()
 		t.merge_worker_used_fns(ww)
 		merge_used_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 		deferred_start := t.deferred_base_writes.len
 		mut merged_node_start := t.a.nodes.len
 		if compactions.len > 0 {
-			move := compactions[ci]
+			move := compactions[ci - merged_count]
 			t.merge_regions_absorbed = true
 			t.merge_absorbed_node_shift = i32(move.node_dst - move.node_src)
 			t.merge_absorbed_child_shift = i32(move.child_dst - move.child_src)
@@ -3917,7 +3942,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		// so clearing every new id would only hash absent keys.
 		t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], false)
 		merged_node_end := if compactions.len > 0 {
-			compactions[ci].node_dst + compactions[ci].node_len
+			compactions[ci - merged_count].node_dst + compactions[ci - merged_count].node_len
 		} else {
 			t.a.nodes.len
 		}
