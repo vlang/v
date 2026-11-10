@@ -17805,6 +17805,10 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	// types; walking the full arena to rediscover a parent for each such lookup
 	// makes self-host transformation quadratic.
 	parsed := idx < tc.direct_parent_ids.len
+	if !parsed && tc.smartcasts.len == 0 {
+		// No dynamic smartcast can match, so the expression key is not needed.
+		return none
+	}
 	// Neither the expression key nor the dynamic smartcast lookup below changes
 	// the cache, so one read of the cached state serves both of its checks.
 	state := if parsed && !isnil(cache) { cache.lexical_smartcast_state(idx) } else { u32(0) }
