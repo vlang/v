@@ -1,18 +1,12 @@
 name: Compiler process regressions
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'vlib/v/cmdexec/**'
-      - 'vlib/v/util/vflags/**'
-      - 'cmd/v/**'
-      - 'vlib/v/driver/**'
-      - '.github/workflows/process_regressions_ci.yml'
+  workflow_call:
+
   workflow_dispatch:
 
 concurrency:
-  group: process-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: process-regressions-process_regressions_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
