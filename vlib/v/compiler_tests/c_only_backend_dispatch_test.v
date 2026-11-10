@@ -22,7 +22,8 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 			'GITHUB_ENV': env_file
 		})
 		assert setup.exit_code == 0, setup.output
-		paths := (os.read_file(env_file)!).split_into_lines().filter(it.starts_with('VTOOLS_CACHE_DIR='))
+		assignments := os.read_file(env_file)!
+		paths := assignments.split_into_lines().filter(it.starts_with('VTOOLS_CACHE_DIR='))
 		assert paths.len == 1, setup.output
 		cache = paths[0].all_after('VTOOLS_CACHE_DIR=')
 		assert os.is_dir(cache), setup.output
