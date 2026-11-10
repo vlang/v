@@ -24,7 +24,11 @@ const min_flat_cgen_parallel_items = 128
 // 16 batches keep most of that warmth while still bounding the scratch.
 const scoped_cgen_worker_batches = 16
 const min_scoped_cgen_batch_cost = 16_384
-const flat_cgen_chunks_per_job = 32
+// Each dynamic chunk starts a worker batch with cold caches as well. Sixteen
+// chunks per job still let fast cores take over the work of slow or descheduled
+// ones; thirty-two retired 2% more instructions in the stage for the same
+// balance, eight keep 14 MB more scratch alive at the peak.
+const flat_cgen_chunks_per_job = 16
 
 // parallel_codegen_available keeps preparation and dispatch in the same mode
 // when the compilation's pool has no workers. Standalone generators retain
