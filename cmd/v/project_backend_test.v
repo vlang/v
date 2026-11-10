@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.driver
 import v.pref
 
 fn project_backend_fixture(name string, manifest string) string {
@@ -45,16 +46,35 @@ fn test_project_backend_is_the_default_for_the_project() {
 	root := project_backend_fixture('fastc', "Module {\n\tname: 'app'\n\tbackend: 'fastc'\n}\n")
 	main_file := os.join_path(root, 'main.v')
 	test_dir := os.join_path(root, 'sub')
-	assert with_project_backend([root]) == ['-b', 'fastc', root]
-	assert with_project_backend(['-g', 'run', main_file, 'x']) == ['-b', 'fastc', '-g', 'run',
-		main_file, 'x']
-	assert with_project_backend(['test', test_dir]) == ['-b', 'fastc', 'test', test_dir]
-	assert with_project_backend([os.join_path(test_dir, 'a_test.v')])[..2] == ['-b', 'fastc']
+	assert with_project_backend([root]) == [driver.project_backend_flag, '-b', 'fastc', root]
+	assert with_project_backend(['-g', 'run', main_file, 'x']) == [
+		driver.project_backend_flag,
+		'-b',
+		'fastc',
+		'-g',
+		'run',
+		main_file,
+		'x',
+	]
+	assert with_project_backend(['test', test_dir]) == [driver.project_backend_flag, '-b', 'fastc',
+		'test', test_dir]
+	assert with_project_backend([os.join_path(test_dir, 'a_test.v')])[..3] == [
+		driver.project_backend_flag,
+		'-b',
+		'fastc',
+	]
 	// The command line wins over v.mod.
 	assert with_project_backend(['-b', 'c', root]) == ['-b', 'c', root]
 	// Arguments of the program that `run` starts are not compiler options.
-	assert with_project_backend(['run', main_file, '-b', 'c']) == ['-b', 'fastc', 'run', main_file,
-		'-b', 'c']
+	assert with_project_backend(['run', main_file, '-b', 'c']) == [
+		driver.project_backend_flag,
+		'-b',
+		'fastc',
+		'run',
+		main_file,
+		'-b',
+		'c',
+	]
 	// Inline source and stdin have no project.
 	assert with_project_backend(['-e', 'println(1)']) == ['-e', 'println(1)']
 	assert with_project_backend(['run', '-']) == ['run', '-']
@@ -71,7 +91,8 @@ fn test_generated_sources_belong_to_no_project() {
 	// Only the compiler's own names are exempt.
 	other := os.join_path(root, 'v3_inline_1_abc.vsh')
 	os.write_file(other, 'println(1)\n')!
-	assert with_project_backend(['run', other]) == ['-b', 'fastc', 'run', other]
+	assert with_project_backend(['run', other]) == [driver.project_backend_flag, '-b', 'fastc',
+		'run', other]
 }
 
 fn test_test_targets_are_run_with_their_own_project_backends() {
@@ -154,6 +175,18 @@ fn test_inline_source_and_stdin_belong_to_no_project() {
 	project := run_launcher_in(root, ['run', '.'], '')
 	assert project.exit_code == 1, project.output
 	assert project.output.contains('unknown backend `pascal`'), project.output
+}
+
+fn test_project_backend_does_not_keep_the_generated_c() {
+	// Only a `-b` on the command line asks for `<output>.c` next to the executable.
+	root := project_backend_fixture('retained_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
+	output := os.join_path(root, 'app_output')
+	project := run_launcher_in(root, ['-o', output, '.'], '')
+	assert project.exit_code == 0, project.output
+	assert !os.exists(output + '.c')
+	explicit := run_launcher_in(root, ['-b', 'c', '-o', output, '.'], '')
+	assert explicit.exit_code == 0, explicit.output
+	assert os.is_file(output + '.c')
 }
 
 fn test_test_command_hands_the_project_backend_to_the_test_runner() {

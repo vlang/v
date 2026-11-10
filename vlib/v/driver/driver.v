@@ -180,6 +180,11 @@ const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_tcc_dylib_flag = '-v3-internal-tcc-dylib'
 const v3_internal_tcc_no_retry_flag = '-v3-internal-tcc-no-retry'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
+
+// project_backend_flag precedes the `-b` that the launcher adds for the `backend` of a
+// project's v.mod. Such a backend is the project's default: unlike a `-b` on the command
+// line, it does not ask for the generated C to be kept next to the output.
+pub const project_backend_flag = '-v3-internal-project-backend'
 // The temporary sources of `-e` code and of standard input start with these names. They are
 // written to the working directory so that its modules resolve, but belong to no project.
 const v3_inline_source_prefix = '.v3_inline_'
@@ -9986,6 +9991,7 @@ pub fn run(args []string) {
 	mut explicit_output := false
 	mut backend := 'c'
 	mut backend_explicit := false
+	mut backend_from_project := false
 	mut target_os := os.user_os()
 	mut cross_output := false
 	mut target_os_explicit := false
@@ -10168,9 +10174,12 @@ pub fn run(args []string) {
 				no_cache = true
 			}
 			i += 2
+		} else if args[i] == project_backend_flag {
+			backend_from_project = true
+			i++
 		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
 			backend = normalize_backend_name(args[i + 1])
-			backend_explicit = true
+			backend_explicit = !backend_from_project
 			i += 2
 		} else if args[i] == '-cross' {
 			// A modifier, not a target: it combines with `-os`/`-cc`, as in
