@@ -44,6 +44,7 @@ jobs:
             gcc --version
             ls -la
             make
+            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
             file ./v
             ls -la ./v
             # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,

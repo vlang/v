@@ -50,10 +50,13 @@ jobs:
             exit 1
           fi
 
-      - name: Build and test the V trigger helper
-        run: |
-          make -j2
-          ./v -silent test cmd/tools/gitly_trigger/
+      - name: Prepare the optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          make-args: -j2
+          symlink: false
+      - name: Test the V trigger helper
+        run: ./v -silent test cmd/tools/gitly_trigger/
 
       - name: Run gitly_ci and stream logs live
         run: |

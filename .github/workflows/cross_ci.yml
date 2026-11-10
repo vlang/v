@@ -32,7 +32,7 @@ jobs:
           restore-keys: |
             brew-cross-macos-
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |
@@ -80,7 +80,7 @@ jobs:
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |
@@ -126,11 +126,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build
-        run: |
-          echo %VFLAGS%
-          echo $VFLAGS
-          .\makev.bat -msvc
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: TODO v_win.c can be compiled and run with -os windows
         run: |
           .\v.exe -os windows -cc msvc -showcc -o v2.exe cmd\v

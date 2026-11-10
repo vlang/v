@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Update packages, before running apt install
         run: .github/workflows/disable_azure_mirror.sh && v retry -- sudo apt update -y -qq
       - name: Install dependencies (some modules wrap C libs)

@@ -21,15 +21,12 @@ jobs:
         include:
           - os: ubuntu-22.04
             cc: gcc
-            build: make
             v: ./v
           - os: macos-15
             cc: clang
-            build: make
             v: ./v
           - os: windows-2025
             cc: gcc
-            build: .\makev.bat -gcc
             v: ./v.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -42,6 +39,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: ${{ matrix.build }}
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Check explicit and recursive test selection
         run: ${{ matrix.v }} -new-compiler -gc none cmd/tools/vtest_selection_test.v

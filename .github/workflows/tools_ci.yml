@@ -26,7 +26,9 @@ jobs:
           persist-credentials: false
       - name: Build V for the shell regression tests
         id: build
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check BSD tool job failure propagation
         run: ./v -new-compiler cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
@@ -60,7 +62,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Code in cmd/ is formatted
         if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v fmt -verify cmd/
@@ -99,7 +103,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Test tools with undefined behavior sanitizer
         if: matrix.variant.sanitizer == 'undefined'
         run: ./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd
@@ -133,7 +139,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Check build-tools
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
@@ -173,7 +181,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Install OpenSSL for MSVC
         if: ${{ matrix.cc == 'msvc' }}
         run: |
@@ -234,7 +244,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -cg -o v cmd/v && ./v symlink
+        run: |
+          set -eu
+          make
+          VFLAGS= ./v self -prod -cc musl-gcc -gc none -cg -parallel-cc
+          ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works
@@ -317,7 +331,8 @@ jobs:
           printf "VFLAGS = %s\n" "$VFLAGS"
           # Non-final commands in an && list are exempt from set -e.
           gmake
-          ./v -showcc -o v cmd/v
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
           sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
@@ -400,7 +415,8 @@ jobs:
           ulimit -d 6291456
           # Non-final commands in an && list are exempt from set -e.
           gmake
-          ./v -showcc -o v cmd/v
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
           sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"

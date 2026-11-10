@@ -153,19 +153,19 @@ jobs:
           prefix="$RUNNER_TEMP/v-msan-sqlite"
           bash .github/workflows/build_msan_sqlite.sh "$prefix"
           echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
-      - name: Recompile V with -cstrict
+      - name: Recompile optimized V with -cstrict
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.sanitizer }}" = "memory" ]; then
-            ./v -cc clang -cg -cstrict -o v cmd/v
+            ./v -prod -cc clang -cg -cstrict -o v cmd/v
           else
-            ./v -cg -cstrict -o v cmd/v
+            ./v -prod -cg -cstrict -o v cmd/v
           fi
       - name: Self tests (-fsanitize=undefined)
         if: ${{ matrix.sanitizer == 'undefined' }}
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
-          ./v -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v -prod -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         if: ${{ matrix.sanitizer == 'undefined' }}
@@ -186,10 +186,10 @@ jobs:
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.name }}" = "address-clang" ]; then
-            ./v -cflags -fsanitize=address -o v cmd/v
+            ./v -prod -cflags -fsanitize=address -o v cmd/v
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           else
-            ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
+            ./v -prod -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           fi
       - name: Build examples (V compiled with -fsanitize=address)
@@ -201,7 +201,7 @@ jobs:
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang-compiler' }}
         run: |
-          GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
+          GITHUB_JOB=sanitize-memory-clang ./v -prod -cflags -fsanitize=memory -o v cmd/v
           GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang-compiler' }}
@@ -231,7 +231,9 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
-          .\v.exe self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -prod -cc msvc self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: V doctor
         run: .\v.exe doctor
       - name: Ensure code is well formatted

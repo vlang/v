@@ -20,7 +20,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Set 8.8.8.8 as dns server
         run: |
@@ -76,7 +76,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Set 8.8.8.8 as dns server
         run: |

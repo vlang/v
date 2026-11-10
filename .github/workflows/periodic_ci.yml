@@ -44,10 +44,16 @@ jobs:
         run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build
         if: runner.os != 'Windows'
-        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
+          doctor: true
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./makev.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
+          doctor: true
       - name: Install OpenSSL (Windows)
         if: runner.os == 'Windows'
         run: |

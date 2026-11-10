@@ -37,7 +37,7 @@ jobs:
           printf 'VTMP=%s\n' "$graphics_vtmp" >> "$GITHUB_ENV"
 
       - name: Build local v
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Clear module cache
         run: |

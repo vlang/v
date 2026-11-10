@@ -26,7 +26,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Generate and check v.c and v_win.c
         run: |
           ./v -o gen_vc cmd/tools/gen_vc
@@ -44,7 +46,9 @@ jobs:
           persist-credentials: false
           ref: master
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Regenerate v.c and v_win.c
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"
