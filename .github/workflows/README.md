@@ -38,9 +38,12 @@ Ordinary test jobs use `.github/actions/setup-v` to install a compiler built wit
 sanitizer flags and debug/release test variants still control the programs under test.
 
 The bootstrap workflow produces and checks compilers for Linux x64, macOS ARM64,
-macOS x64 and Windows x64. Linux is built on Ubuntu 22.04 so the binary also runs on
-the newer glibc runners. All producers must pass before downstream master jobs start.
-A failed gate skips the dependent jobs before they consume runner time.
+macOS x64, Windows x64, Termux ARM64 and Termux x64. Linux is built on Ubuntu 22.04 so
+the binary also runs on the newer glibc runners. Termux uses Clang inside the official
+`termux/termux-docker` images on matching native ARM64 and x64 runners. Each Termux
+producer runs a sample program and rebuilds the compiler before uploading its binary.
+All producers must pass before downstream master jobs start. A failed gate skips the
+dependent jobs before they consume runner time.
 
 Each producer uploads a seven-day artifact named `vprod-<platform>-<full-commit-sha>`.
 It contains `<full-commit-sha>-<platform>` and its `.sha256` checksum. The setup action
@@ -54,10 +57,10 @@ executable. This supports nested `working-directory` checkouts and compilation f
 project directories. A standalone compiler outside a checkout retains its build-time source
 root as a fallback.
 
-After all four producers succeed, a separate job removes older compiler artifacts from
+After all six producers succeed, a separate job removes older compiler artifacts from
 completed `CI master` push runs. It preserves artifacts belonging to the current run,
 newer runs and runs still in progress, and only deletes names matching the owning run's
-exact commit and one of the four producer platforms. Other test artifacts are unaffected.
+exact commit and one of the six producer platforms. Other test artifacts are unaffected.
 An older commit's rerun cannot remove newer binaries. Cleanup uses the automatic
 `GITHUB_TOKEN` with `actions: write` only in that job; test jobs keep their existing
 permissions. Cleanup failure does not block tests, and seven-day expiry bounds retention
@@ -69,7 +72,15 @@ build. Shell-only jobs can call `prepare_v.sh`; set `V_CI_SOURCE_BUILD=1` to ign
 prebuilt compiler and optionally `V_CI_CC` to choose the optimizing C compiler.
 `prepare_v.ps1` provides the corresponding Windows build/install step.
 
-Alpine/musl, Android, BSD and other CPU architectures build natively. Bootstrap, update,
+Termux artifacts use the platform names `termux-arm64` and `termux-x64`. Install their binary
+as `v` in a checkout of the matching commit after verifying its `.sha256` checksum, and restore
+its executable permission with `chmod +x v`. The normal Termux dependencies (`clang`,
+`libexecinfo`, `libgc` and `libgc-static`) are still required. These binaries target Android's
+Bionic libc and are separate from the glibc Linux compiler. The setup helper detects Termux
+before considering Linux artifacts and only reuses them for a verified 64-bit userland.
+The dedicated Termux test workflow still builds from source.
+
+Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. Bootstrap, update,
 prebuilt-release and compiler-under-test checks retain their specific build recipes;
 ordinary tests use the optimized driver. Instrumented compiler builds retain their sanitizer
 flags and add `-prod`. Compiler self-build checks use separate executables or restore the

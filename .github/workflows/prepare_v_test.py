@@ -34,7 +34,11 @@ if tool == "git":
 elif tool == "uname":
     print(os.environ["MOCK_ARCH" if args == ["-m"] else "MOCK_OS"])
 elif tool == "getconf":
-    print(os.environ["MOCK_LIBC"])
+    if args == ["LONG_BIT"]:
+        print(os.environ["MOCK_LONG_BIT"])
+    else:
+        assert args == ["GNU_LIBC_VERSION"], args
+        print(os.environ["MOCK_LIBC"])
 elif tool == "sw_vers":
     print(os.environ.get("MOCK_MACOS", "15.0"))
 elif tool == "curl":
@@ -103,7 +107,7 @@ class PrepareVTests(unittest.TestCase):
         temporary_files.mkdir()
         self.env = dict(os.environ)
         for key in list(self.env):
-            if key.startswith(("V_CI_", "MOCK_")) or key in ISOLATED:
+            if key.startswith(("V_CI_", "MOCK_")) or key in (*ISOLATED, "TERMUX_VERSION", "PREFIX"):
                 self.env.pop(key)
         self.env.update({
             "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
@@ -114,6 +118,7 @@ class PrepareVTests(unittest.TestCase):
             "MOCK_OS": "Linux",
             "MOCK_ARCH": "x86_64",
             "MOCK_LIBC": "glibc 2.35",
+            "MOCK_LONG_BIT": "64",
             "MOCK_BOOTSTRAP": str(self.bootstrap),
             "MOCK_PRODUCTION": str(self.production),
             "VFLAGS": "-cc tcc -d test_configuration",
@@ -203,6 +208,39 @@ class PrepareVTests(unittest.TestCase):
         ])
         self.assertEqual(self.events("curl"), [])
 
+    def test_verified_termux_artifacts_reuse_compiler_for_each_architecture(self):
+        for arch, platform in [("aarch64", "termux-arm64"), ("x86_64", "termux-x64")]:
+            with self.subTest(arch=arch):
+                self.log.write_text("")
+                result = self.run_prepare(
+                    TERMUX_VERSION="0.118.3", MOCK_ARCH=arch, MOCK_LIBC="bionic",
+                    V_CI_PREBUILT=str(self.asset(f"{SHA}-{platform}")),
+                )
+                self.assert_success(result)
+                self.assertEqual([event["args"] for event in self.events("make")], [
+                    ["-j4", "latest_vc", "latest_tcc", "latest_legacy"],
+                    ["-j4", "cache-basic-modules"],
+                ])
+                self.assertFalse(any("self" in event["args"] for event in self.events("compiler")))
+
+    def test_termux_artifacts_require_matching_platform_and_checksum(self):
+        for arch, version, platform, digest in [
+            ("x86_64", "0.118.3", "linux-x64", None),
+            ("aarch64", "0.118.3", "termux-x64", None),
+            ("x86_64", "0.118.3", "termux-arm64", None),
+            ("x86_64", "", "termux-x64", None),
+            ("aarch64", "0.118.3", "termux-arm64", "0" * 64),
+        ]:
+            with self.subTest(arch=arch, version=version, platform=platform, digest=digest):
+                self.log.write_text("")
+                result = self.run_prepare(
+                    TERMUX_VERSION=version, MOCK_ARCH=arch,
+                    V_CI_PREBUILT=str(self.asset(f"{SHA}-{platform}", digest)),
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.repo / "v").read_bytes(), self.original)
+                self.assertEqual(self.events("make") + self.events("compiler") + self.events("curl"), [])
+
     def test_wrong_checksum_commit_or_platform_cannot_replace_compiler(self):
         cases = [
             (None, "0" * 64),
@@ -280,6 +318,7 @@ class PrepareVTests(unittest.TestCase):
             ("Linux", "x86_64", "glibc 2.35", "", "linux-x64"),
             ("Linux", "x86_64", "glibc 2.31", "", ""),
             ("Linux", "x86_64", "musl", "", ""),
+            ("Linux", "x86_64", "bionic", "", ""),
             ("Linux", "aarch64", "glibc 2.35", "", ""),
             ("Darwin", "arm64", "", "15.0", "macos-arm64"),
             ("Darwin", "x86_64", "", "15.0", "macos-x64"),
@@ -291,6 +330,42 @@ class PrepareVTests(unittest.TestCase):
                                           MOCK_ARCH=arch, MOCK_LIBC=libc, MOCK_MACOS=macos)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), expected)
+
+    def test_termux_platform_selection_precedes_glibc_detection(self):
+        for marker in [{"TERMUX_VERSION": "0.118.3"},
+                       {"PREFIX": "/data/data/com.termux/files/usr"}]:
+            for arch, expected in [("aarch64", "termux-arm64"),
+                                   ("x86_64", "termux-x64"), ("armv7l", "")]:
+                with self.subTest(marker=marker, arch=arch):
+                    self.log.write_text("")
+                    result = self.run_prepare("--platform", MOCK_ARCH=arch, **marker)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
+                    self.assertNotIn(["GNU_LIBC_VERSION"],
+                                     [event["args"] for event in self.events("getconf")])
+
+    def test_termux_32bit_or_unknown_userland_does_not_reuse_64bit_artifacts(self):
+        for arch, platform in [("aarch64", "termux-arm64"), ("x86_64", "termux-x64")]:
+            for word_size in ("32", "", "unknown"):
+                with self.subTest(arch=arch, word_size=word_size):
+                    self.log.write_text("")
+                    env = {"TERMUX_VERSION": "0.118.3", "MOCK_ARCH": arch,
+                           "MOCK_LONG_BIT": word_size}
+                    result = self.run_prepare("--platform", **env)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), "")
+                    result = self.run_prepare(
+                        V_CI_PREBUILT=str(self.asset(f"{SHA}-{platform}")), **env,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual((self.repo / "v").read_bytes(), self.original)
+                    self.assertEqual(self.events("make") + self.events("compiler"), [])
+
+    def test_termux_prefix_requires_literal_package_name(self):
+        result = self.run_prepare("--platform", MOCK_LIBC="bionic",
+                                  PREFIX="/data/data/comXtermux/files/usr")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "")
 
 
 if __name__ == "__main__":
