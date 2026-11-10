@@ -1,15 +1,10 @@
 name: json decoder benchmark CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/json2/**' # Trigger on changes in this folder
-      - '.github/workflows/benchmark_footprint_json_decode.yml'
+  workflow_call:
 
 concurrency:
-  group: json-decoder-benchmark-${{ github.workflow }}-${{ github.ref }}
+  group: json-decoder-benchmark-benchmark_footprint_json_decode-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

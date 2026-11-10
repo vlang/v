@@ -1,24 +1,10 @@
 name: C2V apps
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/c2v_ci.yml'
-      - 'doc/**'
-      - 'examples/**'
-      - 'tutorials/**'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: c2v-c2v_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

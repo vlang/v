@@ -2,21 +2,7 @@ name: Bootstrapping CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.yml'
-      - '**.md'
-      - '**.vv'
-      - '**.out'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/vup.v'
-      - '!**/bootstrapping_ci.yml'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
   group: bootstrapping-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -32,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-15]
-      fail-fast: false
+      fail-fast: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:

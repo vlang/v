@@ -16,18 +16,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '37 4 * * *'
-  push:
-    branches:
-      - master
-    paths:
-      - 'doc/docs.md'
-      - '**/docs_site_ci.yml'
-      - '.github/docs_site_generator.patch'
+  workflow_call:
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: docs_site-${{ github.workflow }}-${{ github.ref }}
+  group: docs_site-docs_site_ci-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 permissions:
