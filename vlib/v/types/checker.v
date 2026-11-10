@@ -7058,6 +7058,14 @@ pub mut:
 	scope_key_module  string
 	scope_key_context u32
 	scope_key_valid   bool
+	// Identifiers that static_assoc_type_candidates found no type for, with the
+	// context and table sizes that answer was computed against.
+	no_static_type_module      string
+	no_static_type_file        string
+	no_static_type_mode        bool
+	no_static_type_fingerprint int = -1
+	no_static_type_generics    int
+	no_static_type_ids         [64]u32
 }
 
 // qualify_table_fingerprint tracks growth of every declared-type table

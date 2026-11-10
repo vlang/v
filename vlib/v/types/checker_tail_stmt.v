@@ -10823,9 +10823,33 @@ fn (tc &TypeChecker) fn_key_is_static_associated(key string) bool {
 	return tc.static_associated_fn_keys[key]
 }
 
+@[direct_array_access]
 fn (tc &TypeChecker) static_assoc_type_candidates(type_ident_id u32) []u32 {
 	if type_ident_id == 0 {
 		return []u32{}
+	}
+	// Most identifiers that reach this point are values the post-check phases can
+	// no longer see as bindings, and name no type at all. The answer depends only on
+	// the identifier, the file's imports, the module and the type tables, so an
+	// empty one is remembered until one of those changes.
+	slot := int(type_ident_id & 63)
+	if !isnil(tc.qualify_name_cache) {
+		mut cache := tc.qualify_name_cache
+		fingerprint := tc.qualify_table_fingerprint()
+		if !same_string(cache.no_static_type_module, tc.cur_module)
+			|| !same_string(cache.no_static_type_file, tc.cur_file)
+			|| cache.no_static_type_mode != tc.resolution_type_mode
+			|| cache.no_static_type_fingerprint != fingerprint
+			|| cache.no_static_type_generics != tc.struct_generic_params.len {
+			cache.no_static_type_module = tc.cur_module
+			cache.no_static_type_file = tc.cur_file
+			cache.no_static_type_mode = tc.resolution_type_mode
+			cache.no_static_type_fingerprint = fingerprint
+			cache.no_static_type_generics = tc.struct_generic_params.len
+			cache.no_static_type_ids = [64]u32{}
+		} else if cache.no_static_type_ids[slot] == type_ident_id {
+			return []u32{}
+		}
 	}
 	// Import aliases are keyed by symbol strings.
 	type_ident := flat.source_type_name(type_ident_id)
@@ -10843,6 +10867,10 @@ fn (tc &TypeChecker) static_assoc_type_candidates(type_ident_id u32) []u32 {
 		if tc.static_assoc_type_known(candidate_id) && candidate_id !in result {
 			result << candidate_id
 		}
+	}
+	if result.len == 0 && !isnil(tc.qualify_name_cache) {
+		mut cache := tc.qualify_name_cache
+		cache.no_static_type_ids[slot] = type_ident_id
 	}
 	return result
 }
