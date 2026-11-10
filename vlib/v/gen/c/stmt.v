@@ -6607,10 +6607,18 @@ fn cgen_type_contains_unknown(typ types.Type) bool {
 fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
 	memo := g.usable_expr_type_memo
 	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0
-		|| memo.module != g.tc.cur_module || memo.file != g.tc.cur_file {
+		|| !cgen_same_string(memo.module, g.tc.cur_module)
+		|| !cgen_same_string(memo.file, g.tc.cur_file) {
 		return unsafe { nil }
 	}
 	return memo
+}
+
+// cgen_same_string is `a == b` without comparing the bytes of one string object
+// with themselves; the body memo's module and file usually are the checker's.
+@[inline]
+fn cgen_same_string(a string, b string) bool {
+	return a.len == b.len && (unsafe { a.str == b.str } || a == b)
 }
 
 // declared_call_return_type_uncached also returns the canonical interned reference of
