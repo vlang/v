@@ -17,6 +17,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    secrets:
+      V2_RELEASE_TOKEN: ${{ secrets.V2_RELEASE_TOKEN }}
 
   windows-bootstrap-contracts:
     uses: ./.github/workflows/makev_ci.yml
@@ -90,13 +92,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Build V for formatting
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Check code formatting
         run: |
           ./v -silent test-cleancode
           ./v -silent test-fmt
       - name: Test master-push path filter logic
         run: python3 .github/workflows/ci_gate_paths_test.py
+      - name: Test optimized compiler setup
+        run: python3 .github/workflows/prepare_v_test.py
       - name: Select suites using the original push path filters
         id: paths
         env:
@@ -117,7 +121,7 @@ jobs:
           persist-credentials: false
 
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Run V benchmark and save output
         run: (echo '```txt'; v -prod -w crun vlib/json2/tests/bench.v; echo '```') > vlib/json2/tests/bench_out.md
@@ -141,7 +145,7 @@ jobs:
           persist-credentials: false
 
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Run V benchmark and save output
         run: (echo '```sh'; v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v; echo '```') > vlib/v/tests/bench/bench_json_vs_json2_out.md
@@ -270,9 +274,9 @@ jobs:
           persist-credentials: false
 
       - name: Build the V compiler
-        run: |
-          make
-          ./v -o vnew cmd/v
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
 
       - name: Fetch pinned h2spec release
         run: |
@@ -512,23 +516,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Cache V toolchain
-        id: cache-v
-        uses: actions/cache@v6
-        with:
-          path: |
-            v
-            thirdparty/tcc
-          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/v/**', '!cmd/v/**/*_test*.v', 'cmd/tools/select_linux_tcc.sh', 'cmd/tools/git_argv.sh', 'cmd/tools/detect_tcc.v', 'vlib/**', '!vlib/toml/**', '!vlib/**/*_test*.v', '!vlib/**/tests/**', '!vlib/**/testdata/**', '!vlib/v/slow_tests/**', 'thirdparty/**', 'GNUmakefile', 'Makefile', '.github/actions/setup-v/**', '.github/workflows/toml_ci.yml') }}
       - uses: ./.github/actions/setup-v
-        if: steps.cache-v.outputs.cache-hit != 'true'
-        with:
-          symlink: false
-      - name: Register problem matchers
-        if: steps.cache-v.outputs.cache-hit == 'true'
-        run: ./v run .github/problem-matchers/register_all.vsh
-      - name: Symlink V
-        run: ./v symlink
       - name: Install dependencies
         run: |
           v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
@@ -578,7 +566,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |
@@ -680,10 +668,14 @@ jobs:
 
       - name: Build V
         if: runner.os != 'Windows'
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./makev.bat
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
 
       - name: Install WABT to get wasm-decompile
         if: runner.os != 'Windows'

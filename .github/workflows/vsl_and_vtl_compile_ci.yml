@@ -58,7 +58,7 @@ jobs:
             brew-${{ matrix.os }}-
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
@@ -138,7 +138,7 @@ jobs:
             brew-${{ matrix.os }}-
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then

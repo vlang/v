@@ -44,7 +44,7 @@ jobs:
       - name: Add dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
-        run: CC=gcc make
+        run: CC=gcc make && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Run only essential tests
@@ -70,7 +70,7 @@ jobs:
       - name: Add dependencies
         run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
-        run: make
+        run: make && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: Check if vpm compiles with tcc
         run: ./v -show-c-output -showcc -no-retry-compilation -cc tcc cmd/tools/vpm
       - name: Run only builtin and math tests
@@ -99,7 +99,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
+        run: echo "$VFLAGS" && make -j4 && ./v -prod -cg -o v cmd/v
       - name: Verify `v test` works
         env:
           VTOOLS_CACHE_VERBOSE: '1'

@@ -38,7 +38,10 @@ jobs:
       - name: Add Alpine build dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
-        run: CC=gcc make
+        run: |
+          set -eu
+          CC=gcc make
+          VFLAGS= ./v self -prod -cc gcc -parallel-cc
       - name: Verify candidate-owned tests are skipped under musl
         run: |
           set -eu

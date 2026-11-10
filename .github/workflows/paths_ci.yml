@@ -38,6 +38,7 @@ jobs:
           cd '你好 my $path, @с интервали'
           ls -la
           make
+          V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
       - name: v doctor
         run: |
           # shellcheck disable=SC2016
@@ -72,6 +73,7 @@ jobs:
           cd '你好 my $path, @с интервали'
           ls -la
           make
+          V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
           ## prebuild cmd/tools/builders/js_builder, to minimise the
           ## chances of a sporadic "Killed" when running the tests later
           ./v -b js run examples/hello_world.v
@@ -116,6 +118,9 @@ jobs:
           cd 'path with some $punctuation, and some spaces'
           dir
           .\makev.bat -tcc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -prod -cc gcc self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: v doctor
         run: |
           cd 'path with some $punctuation, and some spaces'

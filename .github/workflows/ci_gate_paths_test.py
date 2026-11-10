@@ -65,6 +65,11 @@ class GatePathsTests(unittest.TestCase):
     def test_failure_to_compute_diff_runs_all(self):
         self.assertTrue(all(gate.should_run(None, e) for e in self.entries.values()))
 
+    def test_shared_compiler_changes_run_all_consumers(self):
+        for path in sorted(gate.SHARED_COMPILER_FILES | {".github/actions/setup-v/action.yml"}):
+            with self.subTest(path=path):
+                self.assertTrue(all(gate.should_run([path], e) for e in self.entries.values()))
+
     def test_ordered_negative_patterns(self):
         self.assertFalse(gate.path_is_selected(
             "vlib/json2/strict/tokenizer.v", "paths",

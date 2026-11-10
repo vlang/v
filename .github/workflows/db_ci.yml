@@ -34,7 +34,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install mysql client headers
         run: |
           .github/workflows/disable_azure_mirror.sh
@@ -67,7 +67,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install postgres client headers
         run: |
           .github/workflows/disable_azure_mirror.sh
@@ -94,7 +94,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install ODBC dependencies
         run: |
           .github/workflows/disable_azure_mirror.sh

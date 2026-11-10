@@ -11,6 +11,10 @@ const unit_test_batch_size = 16
 // (cmd/v/shared_test_compiler.v).
 const unit_shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
 const unit_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+// CI optimizes the harness-owned compiler drivers without changing the flags of
+// the programs they compile or the self-hosting compilers under test.
+// V3_TEST_PROD_COMPILER_CC can override the optimizing C compiler (Clang by default).
+const prod_compiler_env = 'V3_TEST_PROD_COMPILER'
 const requested_vlib_tests = [
 	'vlib/builtin/string_test.v',
 	'vlib/math/math_test.v',
@@ -74,20 +78,22 @@ const separately_run_test_prefixes = [
 ]
 
 struct Config {
-	vexe         string
-	script_dir   string
-	repo_root    string
-	vlib_dir     string
-	tests_dir    string
-	v3_src       string
-	c99          bool
-	c99_flag     string
-	host_backend string
-	host_os      string
-	temp_prefix  string
-	units        UnitMode
-	shard        UnitShard
-	list_units   bool
+	vexe             string
+	script_dir       string
+	repo_root        string
+	vlib_dir         string
+	tests_dir        string
+	v3_src           string
+	c99              bool
+	c99_flag         string
+	host_backend     string
+	host_os          string
+	temp_prefix      string
+	units            UnitMode
+	shard            UnitShard
+	list_units       bool
+	prod_compiler    bool
+	prod_compiler_cc string = 'clang'
 }
 
 struct Options {
@@ -135,6 +141,7 @@ enum ExampleRunMode {
 fn main() {
 	self_check_gui_smoke_timeout_status()
 	self_check_unit_shards()
+	self_check_compiler_commands()
 	// Parse the arguments first: an invalid one exits, and exit skips the deferred cleanup.
 	cfg := parse_config()
 	isolated_vtmp := setup_isolated_vtmp()
@@ -268,6 +275,24 @@ fn run_v3_unit_tests(cfg Config) {
 	unit_cache := temp_path(cfg, 'unit_cache')
 	shared_v3 := temp_path(cfg, 'unit_shared_v3')
 	reuse_log := shared_v3 + '.reused'
+	mut prepared_v3 := ''
+	if cfg.prod_compiler && (old_shared_v3 != none || old_v3_src != none) {
+		provided_compiler := old_shared_v3 or { '' }
+		provided_source := old_v3_src or { '' }
+		if provided_compiler == '' || provided_source == '' {
+			fail('${unit_shared_v3_env} and ${unit_v3_src_env} must both name the prepared compiler and its source')
+		}
+		if os.real_path(provided_source) != os.real_path(cfg.v3_src) {
+			fail('prepared V3 compiler source does not match ${cfg.v3_src}: ${provided_source}')
+		}
+		if !os.is_file(provided_compiler) || !os.is_executable(provided_compiler) {
+			fail('prepared V3 compiler is not executable: ${provided_compiler}')
+		}
+		prepared_v3 = os.real_path(provided_compiler)
+		if prepared_v3 == os.real_path(shared_v3) {
+			fail('prepared V3 compiler must be outside the shard-private output: ${shared_v3}')
+		}
+	}
 	cleanup_files([shared_v3, reuse_log])
 	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
 	// Many V3 tests build compilers that share V3CACHE. Keep the outer test runner
@@ -280,11 +305,20 @@ fn run_v3_unit_tests(cfg Config) {
 	os.setenv('V3CACHE', unit_cache, true)
 	// Hundreds of tests build V3 from cfg.v3_src with only `-gc none` and `-path`, many of
 	// them once per test function. Build that compiler once, in the environment the tests
-	// inherit, and let the `v` launcher serve their builds with a copy of it.
+	// inherit, and let the `v` launcher serve their builds with a copy of it. CI can
+	// optimize this driver itself; explicit compiler-build options still bypass reuse.
 	os.unsetenv(unit_shared_v3_env)
 	os.unsetenv(unit_v3_src_env)
-	println('  Building shared V3 test compiler...')
-	run('${host_v_cmd(cfg)} -o ${q(shared_v3)} ${q(cfg.v3_src)}')
+	if prepared_v3 != '' {
+		// One optimized build before CI fans out avoids concurrent native optimization
+		// in every shard. A private copy keeps compiler identities and reuse logs apart.
+		println('  Copying prepared optimized V3 test compiler...')
+		os.cp(prepared_v3, shared_v3) or { fail('failed to copy prepared V3 compiler: ${err}') }
+		os.chmod(shared_v3, 0o755) or { fail('failed to make shared V3 compiler executable: ${err}') }
+	} else {
+		println('  Building shared V3 test compiler...')
+		run('${host_v_cmd(cfg)} -o ${q(shared_v3)} ${q(cfg.v3_src)}')
+	}
 	os.setenv(unit_shared_v3_env, shared_v3, true)
 	os.setenv(unit_v3_src_env, cfg.v3_src, true)
 	test_files := unit_test_files(cfg)
@@ -479,20 +513,22 @@ fn parse_config() Config {
 		fail('FAIL: V compiler not found: ${vexe}')
 	}
 	return Config{
-		vexe:         vexe
-		script_dir:   script_dir
-		repo_root:    repo_root
-		vlib_dir:     os.join_path(repo_root, 'vlib')
-		tests_dir:    tests_dir
-		v3_src:       os.join_path(script_dir, 'v.v')
-		c99:          options.c99
-		c99_flag:     if options.c99 { '-c99' } else { '' }
-		host_backend: native_backend_arch()
-		host_os:      os.user_os()
-		temp_prefix:  '${temp_prefix}_${os.getpid()}'
-		units:        options.units
-		shard:        options.shard
-		list_units:   options.list_units
+		vexe:             vexe
+		script_dir:       script_dir
+		repo_root:        repo_root
+		vlib_dir:         os.join_path(repo_root, 'vlib')
+		tests_dir:        tests_dir
+		v3_src:           os.join_path(script_dir, 'v.v')
+		c99:              options.c99
+		c99_flag:         if options.c99 { '-c99' } else { '' }
+		host_backend:     native_backend_arch()
+		host_os:          os.user_os()
+		temp_prefix:      '${temp_prefix}_${os.getpid()}'
+		units:            options.units
+		shard:            options.shard
+		list_units:       options.list_units
+		prod_compiler:    os.getenv(prod_compiler_env) == '1'
+		prod_compiler_cc: os.getenv_opt('V3_TEST_PROD_COMPILER_CC') or { 'clang' }
 	}
 }
 
@@ -588,7 +624,36 @@ fn host_v_cmd(cfg Config) string {
 	// The canonical compiler must be able to build itself. Keep the compatibility
 	// compiler confined to the unit-test harness for source constructs that those
 	// tests intentionally exercise outside the new frontend.
-	return '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)}'
+	host_command := '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)}'
+	if cfg.prod_compiler {
+		// This command is used only for harness-owned compilers. In particular,
+		// never put -prod in VFLAGS: that would also optimize the test programs.
+		return '${host_command} -prod -cc ${q(cfg.prod_compiler_cc)} -parallel-cc'
+	}
+	return host_command
+}
+
+fn self_check_compiler_commands() {
+	plain := Config{
+		vexe:     'v compiler'
+		vlib_dir: 'v library'
+	}
+	optimized := Config{
+		...plain
+		prod_compiler: true
+	}
+	plain_args := os.split_args(host_v_cmd(plain)) or { panic(err) }
+	optimized_args := os.split_args(host_v_cmd(optimized)) or { panic(err) }
+	assert plain_args == ['v compiler', '-gc', 'none', '-path', 'v library']
+	assert optimized_args == ['v compiler', '-gc', 'none', '-path', 'v library', '-prod', '-cc',
+		'clang', '-parallel-cc']
+	custom_cc := Config{
+		...optimized
+		prod_compiler_cc: 'C compiler'
+	}
+	custom_args := os.split_args(host_v_cmd(custom_cc)) or { panic(err) }
+	assert custom_args == ['v compiler', '-gc', 'none', '-path', 'v library', '-prod', '-cc',
+		'C compiler', '-parallel-cc']
 }
 
 fn native_backend_arch() string {

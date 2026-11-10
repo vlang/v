@@ -48,6 +48,7 @@ jobs:
             git config --global --add safe.directory "$PWD/vc"
             git config --global --add safe.directory "$PWD/thirdparty/tcc"
             make
+            VFLAGS= ./v self -prod -cc gcc -parallel-cc
             ./v symlink
             v run examples/hello_world.v
             v run examples/primes.v

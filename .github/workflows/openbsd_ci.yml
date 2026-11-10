@@ -53,6 +53,7 @@ jobs:
           # Give compiler arenas 6 GiB within this 8 GiB VM.
           ulimit -d 6291456
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
@@ -101,6 +102,7 @@ jobs:
           # Give compiler arenas 6 GiB within this 8 GiB VM.
           ulimit -d 6291456
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3

@@ -28,7 +28,7 @@ jobs:
       - name: Project the persisted issue ledger and validate aggregation without issue access
         run: |
           make
-          ./v -o ./vnew cmd/v
+          VFLAGS= sh cmd/tools/build_vprod.sh ./v ./vnew clang
           ./vnew run thirdparty/tccbin_automation/bin/cmd issue-dry-run thirdparty/tccbin_automation/tests/fixtures/issue-ledger.dark.json
           ./vnew -silent test thirdparty/tccbin_automation/tests/reporter_hygiene_test.v
       - name: Confirm that Phase A cannot write issues

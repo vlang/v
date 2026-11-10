@@ -53,6 +53,7 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
@@ -100,6 +101,7 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
@@ -147,6 +149,7 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3

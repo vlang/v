@@ -29,8 +29,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V using the original CI command
-        run: make -j4 && ./v -cg -o v cmd/v
+      - name: Build the optimized V compiler used by CI
+        run: make -j4 && ./v -prod -cg -o v cmd/v
       - name: Record toolchain for the cold smoke control
         run: |
           git config --global --add safe.directory /__w/v/v

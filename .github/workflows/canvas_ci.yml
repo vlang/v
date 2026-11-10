@@ -47,7 +47,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfreetype-dev libegl-dev libgl-dev libgl1-mesa-dri libx11-dev libxi-dev libxcursor-dev glslang-tools
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Run canvas tests without a display server
         run: |
           canvas_vtmp="$(mktemp -d "${RUNNER_TEMP}/v-canvas.XXXXXX")"

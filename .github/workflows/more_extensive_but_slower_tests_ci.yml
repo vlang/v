@@ -29,10 +29,10 @@ jobs:
 
       - name: Build V
         if: runner.os != 'Windows'
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./makev.bat && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Run additional crypto tests
         run: |

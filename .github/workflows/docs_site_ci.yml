@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install dependencies (the docs generator uses the markdown module)
         run: ./v retry -- ./v install markdown
 
