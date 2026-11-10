@@ -419,6 +419,11 @@ mut:
 	// Which types refer to the lane's arena and need a copy: bit 0 is the
 	// return type, bit i + 1 parameter i (see pass2_fn_prep_promote_mask).
 	promote_mask u64
+	// For a struct declaration, when fields_ready: bit i is set if child i is
+	// a field whose type has no C ABI function-pointer encoding and needs no
+	// type parsed to tell (see c_abi_fn_ptr_type_trivially_none).
+	fields_ready      bool
+	field_no_c_abi_fn u64
 }
 
 // compute_pass2_fn_prep performs the context-dependent but table-write-free
@@ -515,8 +520,145 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 				prep.names_ready = true
 				preps[pi] = prep
 			}
+			.struct_decl {
+				preps[pi].field_no_c_abi_fn = tc.warm_pass2_struct_decl(node)
+				preps[pi].fields_ready = true
+			}
+			.const_decl, .c_fn_decl, .interface_decl, .global_decl {
+				tc.warm_pass2_decl(node)
+			}
 			else {}
 		}
+	}
+}
+
+// warm_pass2_struct_decl parses the field types of a struct declaration on a
+// lane's fork, as pass 2 will on the collecting thread. The types themselves
+// are dropped: pass 2 keeps parsing them into the master's own cache, in
+// declaration order. What stays are the process-wide spelling and syntax
+// tables this fills, which pass 2 then finds warm, and the returned mask of
+// fields that c_abi_fn_ptr_type_trivially_none holds for.
+fn (mut tc TypeChecker) warm_pass2_struct_decl(node flat.Node) u64 {
+	mut no_c_abi_fn := u64(0)
+	generic := node.generic_params().len > 0
+	old_generic_params := tc.fn_context.generic_params
+	tc.fn_context.generic_params = generic_param_ids(node.generic_params())
+	for i in 0 .. node.children_count {
+		f := tc.a.child_node(&node, i)
+		if f.kind != .field_decl {
+			continue
+		}
+		field_typ_id := if f.typ != 0 { f.typ } else { f.source_value_id() }
+		if generic {
+			tc.parse_scope_param_type(field_typ_id)
+		} else {
+			tc.parse_type(field_typ_id)
+		}
+		if i < 64 {
+			mut seen := map[u32]bool{}
+			if tc.c_abi_fn_ptr_type_trivially_none(trimmed_source_type_id(field_typ_id), mut
+				seen)
+			{
+				no_c_abi_fn |= u64(1) << i
+			}
+		}
+	}
+	tc.fn_context.generic_params = old_generic_params
+	tc.qualify_decl_name_id(node.source_value_id())
+	return no_c_abi_fn
+}
+
+// c_abi_fn_ptr_type_trivially_none reports whether
+// c_abi_fn_ptr_type_for_type_text_inner(typ_id) is none on a path that parses
+// no type: neither `typ_id` nor an alias target it reaches is a function type
+// or an alias with a recorded C ABI encoding. It reads the alias tables of
+// pass 1 only, which pass 2 does not change.
+fn (tc &TypeChecker) c_abi_fn_ptr_type_trivially_none(typ_id u32, mut seen map[u32]bool) bool {
+	if typ_id == 0 || seen[typ_id] {
+		return true
+	}
+	seen[typ_id] = true
+	shape := flat.source_type_shape(trimmed_source_type_id(typ_id))
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		return false
+	}
+	for name_id in [tc.qualify_type_name(typ_id), typ_id] {
+		if name_id == 0 {
+			continue
+		}
+		if name_id in tc.type_alias_c_abi_fns {
+			return false
+		}
+		if target_source_id := tc.type_aliases.type_id(name_id) {
+			if !tc.c_abi_fn_ptr_type_trivially_none(target_source_id, mut seen) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// warm_pass2_decl resolves the names and types of a constant, C function,
+// interface or global declaration on a lane's fork and drops the results, for
+// the process-wide spelling and syntax tables alone (see warm_pass2_struct_decl).
+fn (mut tc TypeChecker) warm_pass2_decl(node flat.Node) {
+	match node.kind {
+		.const_decl {
+			for i in 0 .. node.children_count {
+				f := tc.a.child_node(&node, i)
+				if f.kind != .const_field {
+					continue
+				}
+				tc.qualify_name(f.value)
+				if f.children_count == 0 && f.typ != 0 {
+					tc.parse_type(f.typ)
+				}
+			}
+		}
+		.c_fn_decl {
+			tc.parse_type(node.typ)
+			for i in 0 .. node.children_count {
+				child := tc.a.child_node(&node, i)
+				if child.kind == .param {
+					tc.parse_type(child.typ)
+				}
+			}
+		}
+		.interface_decl {
+			tc.qualify_decl_name_id(node.source_value_id())
+			if node.generic_params().len > 0 {
+				return
+			}
+			for i in 0 .. node.children_count {
+				f := tc.a.child_node(&node, i)
+				if f.kind != .interface_field || f.typ == 0 {
+					continue
+				}
+				tc.parse_type(f.typ)
+				if f.op != .dot {
+					continue
+				}
+				for j in 0 .. f.children_count {
+					child := tc.a.child_node(f, j)
+					if child.kind == .param {
+						tc.parse_type(child.typ)
+					}
+				}
+			}
+		}
+		.global_decl {
+			for i in 0 .. node.children_count {
+				f := tc.a.child_node(&node, i)
+				if f.value.len == 0 {
+					continue
+				}
+				tc.parse_type(f.typ)
+				if !f.value.starts_with('C.') {
+					tc.qualify_name(f.value)
+				}
+			}
+		}
+		else {}
 	}
 }
 

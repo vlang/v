@@ -5337,6 +5337,12 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				mut fields := []StructField{}
 				old_generic_params := tc.fn_context.generic_params
 				tc.fn_context.generic_params = generic_param_ids(node.generic_params())
+				// A lane already ruled the C ABI encoding out for these fields.
+				no_c_abi_fn := if pi < pass2_preps.len && pass2_preps[pi].fields_ready {
+					pass2_preps[pi].field_no_c_abi_fn
+				} else {
+					u64(0)
+				}
 				mut field_c_abi_fns := map[string]string{}
 				mut shared_field_names := []string{}
 				mut shared_element_field_names := []string{}
@@ -5370,8 +5376,10 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						|| shadows_builtin_error {
 						typ = tc.resolve_known_field_type(field_typ_id, typ)
 					}
-					if c_abi_fn := tc.c_abi_fn_ptr_type_for_type_text(field_typ_id) {
-						field_c_abi_fns[f.value] = c_abi_fn
+					if i >= 64 || no_c_abi_fn & (u64(1) << i) == 0 {
+						if c_abi_fn := tc.c_abi_fn_ptr_type_for_type_text(field_typ_id) {
+							field_c_abi_fns[f.value] = c_abi_fn
+						}
 					}
 					if param_source_type_is_shared(field_typ_id) {
 						shared_field_names << f.value
