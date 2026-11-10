@@ -148,7 +148,14 @@ jobs:
         if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
         run: |
           .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          # Vet and fmt separately so memory retained by the vet session is
+          # released before formatting thousands of source files.
+          $env:VTEST_CLEANCODE_STAGE = 'vet'
           v -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:VTEST_CLEANCODE_STAGE = 'fmt'
+          v -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
         if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
