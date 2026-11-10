@@ -298,27 +298,44 @@ fn v3_given_include_dirs(args []string, build_dir string) []string {
 	return dirs
 }
 
-// v3_missing_include_candidates returns the paths that have to stay absent for a
-// compiler to read the headers `read` again: those of each directory that it
-// searches before the one where it found a header, and of the directories of the
-// program's own headers, which it searches first for a name in quotation marks. A
-// path below a directory that is not there is that directory. Zig's Cache.Manifest
-// and Odin's try_cached_build check only the files that they recorded, so a new
-// file earlier in a search goes unseen there. It returns none when one of the paths
-// holds a file newer than `before`, in seconds, from before the compiler started:
-// that file may or may not be what it read. V does not open the headers, so it
-// cannot tell what a header asks `__has_include` about.
-fn v3_missing_include_candidates(search V3IncludeSearch, given []string, read []string, before i64) ?[]string {
-	roots := search.dirs.map(os.norm_path(it))
-	frameworks := search.frameworks.map(os.norm_path(it))
-	headers := read.map(os.norm_path(it))
-	own_roots := roots.filter(it !in given)
+// v3_include_quote_dirs returns the directories that a compiler searches first for
+// a name in quotation marks: that of each translation unit of `units`, and that of
+// each header of `read` that is not one of the compiler's own, in the directories
+// of its search that the arguments do not give (`given`). A header of the compiler
+// names its own neighbours, which change with the compiler.
+fn v3_include_quote_dirs(search V3IncludeSearch, given []string, read []string, units []string) []string {
+	own_roots := search.dirs.map(os.norm_path(it)).filter(it !in given)
 	mut quote_dirs := map[string]bool{}
-	for header in headers {
+	for unit in units {
+		quote_dirs[os.dir(os.norm_path(unit))] = true
+	}
+	for path in read {
+		header := os.norm_path(path)
 		if !own_roots.any(v3_path_is_below(header, it)) {
 			quote_dirs[os.dir(header)] = true
 		}
 	}
+	mut dirs := quote_dirs.keys()
+	dirs.sort()
+	return dirs
+}
+
+// v3_missing_include_candidates returns the paths that have to stay absent for a
+// compiler to read the headers `read` again: those of each directory that it
+// searches before the one where it found a header, and of the v3_include_quote_dirs
+// of the translation units `units` and of the program's own headers, which it
+// searches first for a name in quotation marks. A path below a directory that is
+// not there is that directory. Zig's Cache.Manifest and Odin's try_cached_build
+// check only the files that they recorded, so a new file earlier in a search goes
+// unseen there. It returns none when one of the paths holds a file newer than
+// `before`, in seconds, from before the compiler started: that file may or may not
+// be what it read. V does not open the headers, so it cannot tell what a header
+// asks `__has_include` about.
+fn v3_missing_include_candidates(search V3IncludeSearch, given []string, read []string, units []string, before i64) ?[]string {
+	roots := search.dirs.map(os.norm_path(it))
+	frameworks := search.frameworks.map(os.norm_path(it))
+	headers := read.map(os.norm_path(it))
+	quote_dirs := v3_include_quote_dirs(search, given, read, units)
 	mut missing := map[string]bool{}
 	for dir in search.absent {
 		missing[os.norm_path(dir)] = true
@@ -338,7 +355,7 @@ fn v3_missing_include_candidates(search V3IncludeSearch, given []string, read []
 		}
 		root := roots[found]
 		name := v3_include_name_below(header[root.len + 1..], root in frameworks) or { continue }
-		mut earlier := quote_dirs.keys()
+		mut earlier := quote_dirs.clone()
 		earlier << roots[..found]
 		for dir in earlier {
 			below := v3_include_path_below(name, dir in frameworks) or { continue }

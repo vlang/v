@@ -392,7 +392,7 @@ fn test_missing_include_candidates_follow_the_order_of_the_search() {
 	}
 	read := [os.join_path(second, 'sub', 'found.h'), os.join_path(system, 'plain.h'),
 		os.join_path(frameworks, 'Kit.framework', 'Headers', 'kit.h'), os.join_path(project, 'own.h')]
-	missing := v3_missing_include_candidates(search, [first, second], read, time.utc().unix())?
+	missing := v3_missing_include_candidates(search, [first, second], read, [], time.utc().unix())?
 	assert never in missing
 	// `sub` is not in `first`: that one path stands for all that would be below it.
 	assert os.join_path(first, 'sub') in missing
@@ -418,7 +418,7 @@ fn test_missing_include_candidates_do_not_trust_a_file_newer_than_the_scan() {
 	}
 	before := time.utc().unix() - 5
 	if _ := v3_missing_include_candidates(search, [first, second], [os.join_path(second, 'found.h')],
-		before)
+		[], before)
 	{
 		assert false, 'a header that appeared during the scan was accepted'
 	}
@@ -624,4 +624,38 @@ fn test_pkgconfig_files_follow_requirements() {
 	assert os.real_path(os.join_path(root, 'receiptbase.pc')) in found.files
 	assert os.real_path(root) in found.dirs
 	assert !v3_pkgconfig_files(['receipt_missing_package']).ok
+}
+
+fn test_tracked_dependencies_search_the_directory_of_the_unit_first() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_unit_quote_dir_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	native := os.join_path(root, 'native')
+	later := os.join_path(root, 'later')
+	aged_write(os.join_path(later, 'choice.h'), '#define CHOICE 1\n')!
+	source := os.join_path(native, 'native.c')
+	aged_write(source, '#include "choice.h"\nint native_value(void) { return CHOICE; }\n')!
+	deps := c_object_tracked_dependencies('cc', ['-I', later, '-x', 'c', '-w'], source,
+		'', os.join_path(root, 'cache'))
+	assert !deps.used_fallback
+	assert deps.files.any(it.ends_with('later/choice.h'))
+	// A `choice.h` beside the unit would be included instead.
+	assert os.join_path(native, 'choice.h') in deps.missing
+}
+
+fn test_missing_include_candidates_start_in_the_directory_of_the_unit() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_unit_candidates_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	later := os.join_path(root, 'later')
+	native := os.join_path(root, 'native')
+	aged_write(os.join_path(later, 'choice.h'), '')!
+	os.mkdir_all(native)!
+	search := V3IncludeSearch{
+		dirs: [later]
+	}
+	read := [os.join_path(later, 'choice.h')]
+	unit := os.join_path(native, 'native.c')
+	missing := v3_missing_include_candidates(search, [later], read, [unit], time.utc().unix())?
+	assert os.join_path(native, 'choice.h') in missing
+	without_unit := v3_missing_include_candidates(search, [later], read, [], time.utc().unix())?
+	assert os.join_path(native, 'choice.h') !in without_unit
 }

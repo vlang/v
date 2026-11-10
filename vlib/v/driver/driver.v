@@ -1938,7 +1938,7 @@ fn publish_native_c_object(temporary string, destination string) !bool {
 fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, compile_args []string, target pref.Target, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-object-manifest-v1', os.real_path(obj_path), compiler_path,
+	for identity in ['v3-c-object-manifest-v2', os.real_path(obj_path), compiler_path,
 		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format, compile_args.join('\x00')] {
 		hash = c_hash_bytes(hash, identity.bytes())
@@ -2164,8 +2164,16 @@ fn c_object_tracked_dependencies(compiler string, compile_args []string, source_
 	} else {
 		v3_include_search(&manager, compiler, compile_args, build_dir) or { return fallback }
 	}
-	missing := v3_missing_include_candidates(search, v3_given_include_dirs(compile_args,
-		build_dir), read, before) or { return fallback }
+	given := v3_given_include_dirs(compile_args, build_dir)
+	// The unit's own directory is searched first for what it includes in quotes.
+	unit := [if os.is_abs_path(source_file) {
+		source_file
+	} else {
+		os.join_path(build_dir, source_file)
+	}]
+	missing := v3_missing_include_candidates(search, given, read, unit, before) or {
+		return fallback
+	}
 	return CObjectDependencies{
 		files:   dependencies.files
 		missing: missing
@@ -2188,7 +2196,7 @@ fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args 
 	}
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-dependency-manifest-v3', compiler_path, compiler_version,
+	for identity in ['v3-c-dependency-manifest-v4', compiler_path, compiler_version,
 		os.real_path(os.dir(source_file)), compile_args.join('\x00'), c_preprocessor_lines(source)] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
