@@ -568,6 +568,25 @@ fn parallel_type_decls_thread(arg voidptr) voidptr {
 	tail_scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 	mut tail := w.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
 	if !w.cache_split {
+		// The master's literal table is complete up to here: the declarations
+		// above added their literals, and later ones (from the function bodies)
+		// are appended after the join. Emit the definitions of this prefix and
+		// the embedded file blobs, which only depend on the AST, on this task
+		// instead of serially after the function bodies.
+		n_literals := w.str_lits.len
+		tail.sb = strings.new_builder(n_literals * 48 + 4096)
+		for i in 0 .. n_literals {
+			tail.write_string_literal_def(i, tail.str_lits[i])
+		}
+		w.parallel_string_literal_defs = cgen_publish_builder_text(mut tail.sb, tail_scope)
+		w.parallel_string_literal_count = n_literals
+		tail.sb = strings.new_builder(4096)
+		tail.gen_embed_file_blobs()
+		w.parallel_embed_blobs = cgen_publish_builder_text(mut tail.sb, tail_scope)
+		w.parallel_embed_blobs_ready = true
+		tail.sb = strings.new_builder(4096)
+		w.timing_profile('  [ttime]       td literals  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		tdpsw.restart()
 		tail.interface_method_stubs()
 		w.parallel_interface_stubs = cgen_publish_builder_text(mut tail.sb, tail_scope)
 		tail.sb = strings.new_builder(4096)

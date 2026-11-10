@@ -827,6 +827,10 @@ mut:
 	parallel_init_defs             string
 	parallel_const_code            string
 	parallel_support_ready         bool
+	parallel_string_literal_defs   string
+	parallel_string_literal_count  int
+	parallel_embed_blobs           string
+	parallel_embed_blobs_ready     bool
 	test_files                     map[string]bool
 	show_test_stats                bool
 	show_test_summary              bool
@@ -3984,6 +3988,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.parallel_init_defs = ''
 	g.parallel_const_code = ''
 	g.parallel_support_ready = false
+	g.parallel_string_literal_defs = ''
+	g.parallel_string_literal_count = 0
+	g.parallel_embed_blobs = ''
+	g.parallel_embed_blobs_ready = false
 	g.coverage_files.clear()
 	g.coverage_counter_count = 0
 	g.profile_counters = []ProfileCounterMeta{}
@@ -4617,7 +4625,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
-	g.gen_embed_file_blobs()
+	if g.parallel_embed_blobs_ready {
+		g.sb.write_string(g.parallel_embed_blobs)
+		unsafe { g.parallel_embed_blobs.free() }
+		g.parallel_embed_blobs = ''
+	} else {
+		g.gen_embed_file_blobs()
+	}
 	if !g.cache_split {
 		g.gen_top_level_asm()
 		if g.parallel_interface_stubs.len > 0 {
