@@ -71,6 +71,9 @@ const body_promoted_miss_slots = 1024
 const body_struct_decl_query_slots = 256
 const body_alias_type_name_slots = 1024
 const body_call_name_slots = 1024
+const body_ident_annotation_slots = 1024
+const body_variadic_query_slots = 512
+const body_param_types_query_slots = 1024
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -572,11 +575,14 @@ struct BodyStructDeclQuery {
 
 // BodyFieldTypeQuery memoizes one owner/field type query of the current body.
 struct BodyFieldTypeQuery {
+mut:
 	type_id    u32
 	generation u32
 	found      bool
 	field      string
 	value      types.Type
+	// The interned reference of `value`, filled by the first query that wants one.
+	canonical &types.Type = unsafe { nil }
 }
 
 // BodyCalleeReturnQuery memoizes the declared return type of a plain callee
@@ -599,6 +605,22 @@ mut:
 	has_direct bool
 	node_rule  u8
 	value      string
+}
+
+// BodyParamTypesQuery memoizes param_types_for for one name and fallback.
+struct BodyParamTypesQuery {
+	name       string
+	fallback   string
+	generation u32
+	value      []types.Type
+}
+
+// BodyVariadicQuery memoizes fn_decl_is_variadic for one name and fallback.
+struct BodyVariadicQuery {
+	name       string
+	fallback   string
+	generation u32
+	value      bool
 }
 
 @[heap]
@@ -650,6 +672,13 @@ mut:
 	name_generation    u32
 	name_context_valid bool
 	call_names         []BodyCallNameQuery
+	// usable_ident_annotation_type results by annotation spelling: the parsed
+	// reference, or nil for an annotation an identifier cannot use.
+	ident_ann_ids    []u32
+	ident_ann_gens   []u32
+	ident_ann_values []&types.Type
+	variadic_queries []BodyVariadicQuery
+	param_queries    []BodyParamTypesQuery
 }
 
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
@@ -687,6 +716,11 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			exact_import_values: unsafe { []types.Type{len: body_exact_import_slots} }
 			callee_returns:      []BodyCalleeReturnQuery{len: body_callee_return_slots}
 			call_names:          []BodyCallNameQuery{len: body_call_name_slots}
+			ident_ann_ids:       []u32{len: body_ident_annotation_slots}
+			ident_ann_gens:      []u32{len: body_ident_annotation_slots}
+			ident_ann_values:    unsafe { []&types.Type{len: body_ident_annotation_slots} }
+			variadic_queries:    []BodyVariadicQuery{len: body_variadic_query_slots}
+			param_queries:       []BodyParamTypesQuery{len: body_param_types_query_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -742,6 +776,15 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			}
 			for i in 0 .. memo.call_names.len {
 				memo.call_names[i] = BodyCallNameQuery{}
+			}
+			for i in 0 .. memo.ident_ann_gens.len {
+				memo.ident_ann_gens[i] = 0
+			}
+			for i in 0 .. memo.variadic_queries.len {
+				memo.variadic_queries[i] = BodyVariadicQuery{}
+			}
+			for i in 0 .. memo.param_queries.len {
+				memo.param_queries[i] = BodyParamTypesQuery{}
 			}
 			memo.name_generation = 1
 		}

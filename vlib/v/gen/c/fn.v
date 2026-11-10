@@ -10862,6 +10862,7 @@ fn const_call_name_suffix(name string) string {
 	return name.substr_unsafe(start, name.len)
 }
 
+@[direct_array_access]
 fn (mut idx ConstShortIndex) mark_call_name(name string) {
 	suffix := const_call_name_suffix(name)
 	slot := global_name_filter_slot(suffix)
@@ -12394,7 +12395,32 @@ fn (g &FlatGen) selective_import_call_key_in_file(name string, file string) ?str
 // fn_decl_is_variadic resolves the variadic flag for a call target using the
 // same key candidates as param_types_for, so import-alias and C-name call
 // sites (e.g. `http.new_header` for module `net.http`) resolve consistently.
+// fn_decl_is_variadic is fn_decl_is_variadic_uncached memoized per name and
+// fallback. The answer depends on those, the current module and file, and the
+// declaration tables that are fixed while bodies are generated.
+@[direct_array_access]
 fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.variadic_queries.len == 0 {
+		return g.fn_decl_is_variadic_uncached(name, fallback)
+	}
+	slot := (c_name_recent_slot(name) ^ (fallback.len * 131)) & (body_variadic_query_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	entry := unsafe { &memo.variadic_queries[slot] }
+	if entry.generation == memo.name_generation && entry.name == name && entry.fallback == fallback {
+		return entry.value
+	}
+	value := g.fn_decl_is_variadic_uncached(name, fallback)
+	memo.variadic_queries[slot] = BodyVariadicQuery{
+		name:       name
+		fallback:   fallback
+		generation: memo.name_generation
+		value:      value
+	}
+	return value
+}
+
+fn (g &FlatGen) fn_decl_is_variadic_uncached(name string, fallback string) bool {
 	if name.contains('__') {
 		dotted_name := name.replace('__', '.')
 		if v := g.fn_decl_variadic_entry(dotted_name) {
@@ -12572,7 +12598,32 @@ fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
 	return none
 }
 
+// param_types_for answers from the body memo before the module-keyed cache:
+// a body asks for the same few callees again and again, and the memo probe
+// needs neither the joined key nor its hash.
+@[direct_array_access]
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.param_queries.len == 0 {
+		return g.param_types_for_module_cached(name, fallback)
+	}
+	slot := (c_name_recent_slot(name) ^ (fallback.len * 131)) & (body_param_types_query_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	entry := unsafe { &memo.param_queries[slot] }
+	if entry.generation == memo.name_generation && entry.name == name && entry.fallback == fallback {
+		return entry.value
+	}
+	result := g.param_types_for_module_cached(name, fallback)
+	memo.param_queries[slot] = BodyParamTypesQuery{
+		name:       name
+		fallback:   fallback
+		generation: memo.name_generation
+		value:      result
+	}
+	return result
+}
+
+fn (mut g FlatGen) param_types_for_module_cached(name string, fallback string) []types.Type {
 	// The cache key is `module\x01name[\x01fallback]`. Join it on the stack: the
 	// lookup does not keep it and an insert clones it.
 	has_fallback := name != fallback

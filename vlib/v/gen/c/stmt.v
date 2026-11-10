@@ -7353,10 +7353,8 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 			// longer follows the lexical scope of this identifier. A `shared T`
 			// annotation parses as `T`, without the pointer the local is stored as,
 			// so `&local` would be taken once more.
-			if node.typ != 0 && !flat.source_type_shape(flat.source_type_syntax(node.typ).trimmed()).has(.shared_type) {
-				annotated := g.parse_node_type_reference(node)
-				if !decl_annotation_is_unusable(annotated, node.typ)
-					&& !g.type_contains_generic_placeholder(annotated) {
+			if node.typ != 0 {
+				if annotated := g.usable_ident_annotation_type(node.typ) {
 					return annotated
 				}
 			}
@@ -7392,32 +7390,32 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 			base_type := types.unwrap_pointer(base_type0)
 			collection_base_type := unalias_type(base_type)
 			if collection_base_type is types.Array || collection_base_type is types.ArrayFixed {
-				if typ := g.usable_struct_field_type(flat.source_type_id('array'), node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(flat.source_type_id('array'), node.value) {
+					return typ
 				}
 			}
 			if collection_base_type is types.Map {
-				if typ := g.usable_struct_field_type(flat.source_type_id('map'), node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(flat.source_type_id('map'), node.value) {
+					return typ
 				}
 			}
 			// usable_struct_field_type consults checker_struct_field_type first, so a
 			// miss there is a miss of the checker's field table as well.
 			if base_type is types.Struct {
-				if typ := g.usable_struct_field_type(base_type.source_type_id(), node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(base_type.source_type_id(), node.value) {
+					return typ
 				}
 			}
 			if base_type is types.Alias {
 				if base_type.base_type is types.Struct {
-					if typ := g.usable_struct_field_type(base_type.base_type.source_type_id(), node.value) {
-						return g.tc.intern_type_reference(typ)
+					if typ := g.usable_struct_field_type_reference(base_type.base_type.source_type_id(), node.value) {
+						return typ
 					}
 				}
 			}
 			if base_type is types.String {
-				if typ := g.usable_struct_field_type(flat.source_type_string, node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(flat.source_type_string, node.value) {
+					return typ
 				}
 			}
 			if typ := g.sum_shared_field_type(base_type0, node.value) {
@@ -9265,6 +9263,94 @@ fn (g &FlatGen) alias_base_matches_type(alias_type types.Alias, typ &types.Type)
 		return true
 	}
 	return g.tc.c_type(base) == g.tc.c_type(clean)
+}
+
+// usable_ident_annotation_type returns the parsed annotation `type_id` of an
+// identifier when it can stand for the identifier's type: not a `shared`
+// spelling (which parses without the pointer its local is stored as), usable as
+// a declaration type and free of generic placeholders. The answer depends on the
+// spelling and the body's module and file, so it is kept with the other
+// name-keyed body memo entries; a `typeof` spelling depends on local bindings
+// and is never kept.
+@[direct_array_access]
+fn (g &FlatGen) usable_ident_annotation_type(type_id u32) ?&types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.ident_ann_gens.len == 0 || g.placeholder_check_forced
+		|| flat.source_type_shape(type_id).has(.typeof_expr) {
+		return g.usable_ident_annotation_type_uncached(type_id)
+	}
+	slot := int(type_id & u32(body_ident_annotation_slots - 1))
+	if memo.ident_ann_gens[slot] == memo.name_generation && memo.ident_ann_ids[slot] == type_id {
+		value := memo.ident_ann_values[slot]
+		if isnil(value) {
+			return none
+		}
+		return value
+	}
+	annotated := g.usable_ident_annotation_type_uncached(type_id) or {
+		memo.ident_ann_ids[slot] = type_id
+		memo.ident_ann_gens[slot] = memo.name_generation
+		memo.ident_ann_values[slot] = unsafe { nil }
+		return none
+	}
+	memo.ident_ann_ids[slot] = type_id
+	memo.ident_ann_gens[slot] = memo.name_generation
+	memo.ident_ann_values[slot] = annotated
+	return annotated
+}
+
+fn (g &FlatGen) usable_ident_annotation_type_uncached(type_id u32) ?&types.Type {
+	if flat.source_type_shape(flat.source_type_syntax(type_id).trimmed()).has(.shared_type) {
+		return none
+	}
+	annotated := g.parse_annotation_type_reference(type_id)
+	if !decl_annotation_is_unusable(annotated, type_id)
+		&& !g.type_contains_generic_placeholder(annotated) {
+		return annotated
+	}
+	return none
+}
+
+// usable_struct_field_type_reference is usable_struct_field_type with its result
+// interned; the body memo keeps the reference beside the type.
+@[direct_array_access]
+fn (g &FlatGen) usable_struct_field_type_reference(type_name_id u32, field_name string) ?&types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.field_queries.len == 0 {
+		typ := g.usable_struct_field_type_uncached(type_name_id, field_name) or { return none }
+		return g.tc.intern_type_reference(typ)
+	}
+	slot := body_owner_member_slot(type_name_id, field_name, body_field_type_query_slots)
+	// The masked slot is in bounds; borrow the entry without copying its type.
+	mut entry := unsafe { &memo.field_queries[slot] }
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id
+		&& entry.field == field_name {
+		if !entry.found {
+			return none
+		}
+		if isnil(entry.canonical) {
+			entry.canonical = g.tc.intern_type_reference(entry.value)
+		}
+		return entry.canonical
+	}
+	if typ := g.usable_struct_field_type_uncached(type_name_id, field_name) {
+		canonical := g.tc.intern_type_reference(typ)
+		memo.field_queries[slot] = BodyFieldTypeQuery{
+			type_id:    type_name_id
+			generation: memo.name_generation
+			found:      true
+			field:      field_name
+			value:      typ
+			canonical:  canonical
+		}
+		return canonical
+	}
+	memo.field_queries[slot] = BodyFieldTypeQuery{
+		type_id:    type_name_id
+		generation: memo.name_generation
+		field:      field_name
+	}
+	return none
 }
 
 @[direct_array_access]
