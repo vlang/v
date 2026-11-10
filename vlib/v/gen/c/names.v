@@ -783,9 +783,7 @@ fn c_escape_bytes_into(mut out strings.Builder, s string, ascii_only bool) {
 		if b >= 32 && b != 127 && b != `\\` && b != `"` && (!ascii_only || b < 128) {
 			continue
 		}
-		if i > run_start {
-			unsafe { out.write_ptr(s.str + run_start, i - run_start) }
-		}
+		out.write_string(s[run_start..i])
 		run_start = i + 1
 		match b {
 			`\\` {
@@ -816,9 +814,7 @@ fn c_escape_bytes_into(mut out strings.Builder, s string, ascii_only bool) {
 			}
 		}
 	}
-	if s.len > run_start {
-		unsafe { out.write_ptr(s.str + run_start, s.len - run_start) }
-	}
+	out.write_string(s[run_start..])
 }
 
 // c_literal_escape_into splits escaped literal bodies between complete escapes.

@@ -3644,12 +3644,12 @@ fn fastc_replace(text string, needle string, replacement string) string {
 	mut out := strings.new_builder(text.len + replacement.len + 1)
 	mut start := 0
 	for index >= 0 {
-		unsafe { out.write_ptr(text.str + start, index - start) }
+		out.write_string(text[start..index])
 		out.write_string(replacement)
 		start = index + needle.len
 		index = fastc_index_of(text, needle, start)
 	}
-	unsafe { out.write_ptr(text.str + start, text.len - start) }
+	out.write_string(text[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3728,7 +3728,7 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 			after++
 		}
 		if !before_is_name_or_member && after < source.len && source[after] == `(` {
-			unsafe { out.write_ptr(source.str + start, index - start) }
+			out.write_string(source[start..index])
 			out.write_string(replacement)
 			start = end
 			replaced = true
@@ -3738,7 +3738,7 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 	if !replaced {
 		return source
 	}
-	unsafe { out.write_ptr(source.str + start, source.len - start) }
+	out.write_string(source[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3766,7 +3766,7 @@ fn fastc_replace_call_needle(source string, needle string, replacement string) s
 			`_`,
 			`.`,
 		])
-		unsafe { out.write_ptr(source.str + start, index - start) }
+		out.write_string(source[start..index])
 		if before_blocks {
 			out.write_string(needle)
 		} else {
@@ -3775,7 +3775,7 @@ fn fastc_replace_call_needle(source string, needle string, replacement string) s
 		start = index + needle.len
 		index = fastc_index_of(source, needle, start)
 	}
-	unsafe { out.write_ptr(source.str + start, source.len - start) }
+	out.write_string(source[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3824,14 +3824,14 @@ fn fastc_replace_c_name(source string, identifier string, replacement string, me
 		if before_is_name || before_is_member || after_is_name {
 			continue
 		}
-		unsafe { out.write_ptr(source.str + start, index - start) }
+		out.write_string(source[start..index])
 		out.write_string(replacement)
 		start = end
 	}
 	if start == 0 {
 		return source
 	}
-	unsafe { out.write_ptr(source.str + start, source.len - start) }
+	out.write_string(source[start..])
 	return fastc_take_string(mut out)
 }
 
