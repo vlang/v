@@ -81,9 +81,12 @@ pub const max_compilation_retries = get_max_compilation_retries()
 
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 // Each worker compiles a separate test program, so bound automatic parallelism
-// by a conservative memory budget. VJOBS remains an explicit override.
-const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
-const max_automatic_test_jobs = 4
+// by a memory budget per worker, and by the CPU count. Test builds of the
+// compiler's own modules peak at 0.4-1.5 GiB of RSS, a median of 0.6 GiB, and
+// the test programs at under 0.7 GiB (`/usr/bin/time -l` on macOS arm64, for
+// `vlib/v/{types,transform,gen/c,modulecache,driver}`), so 2 GiB leaves room for
+// the occasional larger build. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(2) * 1024 * 1024 * 1024
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
@@ -100,9 +103,6 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	}
 	if jobs > memory_jobs {
 		jobs = memory_jobs
-	}
-	if jobs > max_automatic_test_jobs {
-		jobs = max_automatic_test_jobs
 	}
 	return jobs
 }

@@ -41,10 +41,11 @@ fn test_add_automatic_execution_retry() {
 }
 
 fn test_automatic_test_jobs_respects_memory_and_cpu_limits() {
-	assert automatic_test_jobs(18, u64(128) * 1024 * 1024 * 1024, 0) == 4
-	assert automatic_test_jobs(18, u64(32) * 1024 * 1024 * 1024, 0) == 4
-	assert automatic_test_jobs(18, u64(16) * 1024 * 1024 * 1024, 0) == 2
-	assert automatic_test_jobs(18, u64(8) * 1024 * 1024 * 1024, 0) == 1
+	assert automatic_test_jobs(18, u64(128) * 1024 * 1024 * 1024, 0) == 18
+	assert automatic_test_jobs(18, u64(32) * 1024 * 1024 * 1024, 0) == 16
+	assert automatic_test_jobs(10, u64(16) * 1024 * 1024 * 1024, 0) == 8
+	assert automatic_test_jobs(18, u64(8) * 1024 * 1024 * 1024, 0) == 4
+	assert automatic_test_jobs(18, u64(3) * 1024 * 1024 * 1024, 0) == 1
 	assert automatic_test_jobs(2, u64(128) * 1024 * 1024 * 1024, 0) == 2
 	assert automatic_test_jobs(0, 0, 0) == 1
 }
@@ -56,7 +57,7 @@ fn test_automatic_test_jobs_preserves_vjobs_override() {
 fn test_noncompiling_test_sessions_use_cpu_jobs() {
 	assert test_session_jobs(false, 18, u64(8) * 1024 * 1024 * 1024, 0) == 18
 	assert test_session_jobs(false, 7, u64(8) * 1024 * 1024 * 1024, 7) == 7
-	assert test_session_jobs(true, 18, u64(8) * 1024 * 1024 * 1024, 0) == 1
+	assert test_session_jobs(true, 18, u64(8) * 1024 * 1024 * 1024, 0) == 4
 }
 
 fn test_decode_mountinfo_path() {
