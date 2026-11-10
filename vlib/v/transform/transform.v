@@ -25232,6 +25232,9 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 		t.record_selected_compile_error_call(node)
 		return t.make_empty()
 	}
+	if result := t.lower_immediate_string_slice_write(id, node) {
+		return result
+	}
 	// Materialize value `match`/`if` method receivers and arguments before builtin/method
 	// dispatch, so builtin lowerings (e.g. `(match ...).clone()` -> make_array_clone_call, or
 	// `values.index(match ...)` -> lower_array_index_expr, which lower the receiver/needle with
