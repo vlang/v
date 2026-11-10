@@ -23,7 +23,8 @@ distinct constant values. Constants that follow each other and are available on 
 platforms are documented together, unless they have another value on other platforms.
 
 In the html output, a selector next to the name of the module shows only the symbols and the
-declarations of one platform. The selected platform is kept for the other modules.
+declarations of one platform. The selected platform is kept for the other modules, and applied
+while their pages load. Changing the platform keeps the section that is being read in place.
 
 Examples, with `-check-examples` or `-unsafe-run-examples`, are only checked for the symbols
 that are available on the platform that `v doc` runs on. When declarations have different

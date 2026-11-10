@@ -109,7 +109,7 @@ function setupPlatformSelector() {
 		show(saved);
 	}
 	select.addEventListener('change', () => {
-		show(select.value);
+		keepReadingPosition(() => show(select.value));
 		try {
 			localStorage.setItem('vdoc-platform', select.value);
 		} catch (e) {}
@@ -126,6 +126,36 @@ function setupPlatformSelector() {
 	};
 	showLinkTarget();
 	window.addEventListener('hashchange', showLinkTarget);
+}
+
+// keepReadingPosition runs `change`, which shows or hides sections, and then scrolls so that the
+// section at the top of the view stays where it was. When that section is hidden, the next one
+// that is shown takes its place.
+function keepReadingPosition(change) {
+	const mainContent = document.querySelector('#main-content');
+	const scroller =
+		mainContent.scrollHeight > mainContent.clientHeight ? mainContent : document.scrollingElement;
+	const viewTop = scroller === mainContent ? mainContent.getBoundingClientRect().top : 0;
+	// The innermost sections, like the constants of a group, are the ones that are read.
+	const sections = Array.from(document.querySelectorAll('.doc-content section')).filter(
+		(section) => !section.querySelector('section'),
+	);
+	const shown = (section) => !section.closest('[hidden]');
+	const i = sections.findIndex(
+		(section) => shown(section) && section.getBoundingClientRect().bottom > viewTop,
+	);
+	if (i < 0) {
+		change();
+		return;
+	}
+	const top = sections[i].getBoundingClientRect().top;
+	change();
+	const anchor = sections.slice(i).find(shown);
+	if (anchor) {
+		// The section that takes the place of a hidden one is shown from its start.
+		const target = anchor === sections[i] ? top : Math.max(top, viewTop);
+		scroller.scrollTop += anchor.getBoundingClientRect().top - target;
+	}
 }
 
 // decodedHash returns the id that the fragment `hash` of a link, like `#Vec4.%`, leads to. A `%`
