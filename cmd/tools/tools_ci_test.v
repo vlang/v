@@ -119,7 +119,7 @@ fn tools_ci_expected_commands(job string, compiler string, suite string, shard i
 	if job == 'tools-openbsd' {
 		commands << 'ulimit -d 6291456'
 	}
-	commands << ['gmake', 'v -showcc -o v cmd/v', 'v symlink', 'v doctor']
+	commands << ['gmake', 'v self -prod -cc clang -parallel-cc -showcc', 'v symlink', 'v doctor']
 	if suite == 'default' && shard == 0 {
 		commands << ['v fmt -verify cmd/', 'v -silent -N -W -check build-tools']
 	}

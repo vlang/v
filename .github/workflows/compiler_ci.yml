@@ -11,6 +11,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Optimize the separate V3 drivers built and shared by test_all.vsh as well
+  # as the outer ./v; this does not add -prod to the programs under test.
+  V3_TEST_PROD_COMPILER: '1'
+
 jobs:
   compiler:
     if: github.ref == 'refs/heads/master'
@@ -22,7 +27,9 @@ jobs:
           persist-credentials: false
       - name: Build V
         id: build
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check native compiler flag routing
         run: ./v -new-compiler vlib/v/driver/c_link_input_flags_test.v
       - name: Check cached header declaration semantics
@@ -49,7 +56,7 @@ jobs:
       - name: Test compiler
         run: ./v run vlib/v/test_all.vsh --skip-units
 
-  # Section 1 of test_all.vsh, the V3 unit tests, takes about nine hours of serial work. One job
+  # Section 1 of test_all.vsh runs with the shared optimized compiler. One job
   # runs it as one `--shard i/n` process per CPU of the runner (every n-th file of the sorted
   # list). Each process gets its own VTMP, TMPDIR and V3CACHE, so the shards share no build state.
   # It runs only for pushes to master, not for pull requests.
@@ -63,7 +70,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Install Objective-C compiler
         run: |
           .github/workflows/disable_azure_mirror.sh
@@ -75,6 +84,13 @@ jobs:
           shards="$(nproc)"
           logs="$RUNNER_TEMP/v3-unit-tests"
           mkdir -p "$logs"
+          # Optimize the nested test driver once before fan-out. Each shard
+          # copies it into its private directory instead of running concurrent
+          # production compiler builds with multiplied peak memory.
+          ./v -gc none -path "$PWD/vlib" -prod -cc clang -parallel-cc \
+            -o "$logs/shared-v3" vlib/v/v.v || exit $?
+          export V3_TEST_UNIT_SHARED_V3="$logs/shared-v3"
+          export V3_TEST_UNIT_V3_SRC="$PWD/vlib/v/v.v"
           pids=()
           for i in $(seq 1 "$shards"); do
             mkdir -p "$logs/vtmp-$i"

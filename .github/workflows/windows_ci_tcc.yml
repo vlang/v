@@ -130,6 +130,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
@@ -208,7 +212,17 @@ jobs:
       - name: v -g self
         id: v_g_self
         if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
-        run: v -g self
+        run: |
+          # Exercise the debug self-build, then restore the optimized test driver.
+          Copy-Item .\v.exe .\v_optimized_ci.exe
+          try {
+            v -g self
+            if ($LASTEXITCODE -ne 0) { throw "Debug self-build failed (exit $LASTEXITCODE)" }
+            .\v.exe version
+            if ($LASTEXITCODE -ne 0) { throw "Debug compiler failed (exit $LASTEXITCODE)" }
+          } finally {
+            Move-Item .\v_optimized_ci.exe .\v.exe -Force
+          }
       - name: v doctor
         id: v_doctor
         if: ${{ success() && !cancelled() && steps.v_g_self.outcome == 'success' }}
@@ -307,6 +321,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Checkout pinned Windows TCC bundle
         id: checkout_pinned_windows_tcc_bundle
         if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}

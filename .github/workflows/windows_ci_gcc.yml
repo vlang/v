@@ -60,7 +60,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Check ECDSA with the optimized compiler
+        run: .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -402,6 +407,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}

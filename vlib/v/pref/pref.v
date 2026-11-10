@@ -358,8 +358,15 @@ fn target_build_time() time.Time {
 	return time.unix_nanosecond(source_date_epoch.i64(), 0)
 }
 
-// detect_vroot resolves detect vroot information for pref.
+// detect_vroot prefers the installed checkout and keeps the baked root for standalone compilers.
 fn detect_vroot() string {
+	executable := os.executable()
+	if executable.len > 0 {
+		vroot := detect_vroot_from(os.real_path(executable))
+		if vroot.len > 0 {
+			return vroot
+		}
+	}
 	baked_root := @VMODROOT
 	if baked_root.len > 0 {
 		return baked_root

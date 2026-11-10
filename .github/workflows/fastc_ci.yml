@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Build V
         id: build
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: FastC ARM64 condition regressions
         run: ./v -d arm64 -silent test vlib/v/gen/fastc/if_condition_arm64_test.v
       - name: Build and run hello world with -b fastc
@@ -61,10 +61,10 @@ jobs:
           persist-credentials: false
       - name: Prepare private tool cache
         run: .\.github\workflows\setup_windows_tool_cache.ps1
-      - name: Build with makev.bat -tcc
-        run: |
-          .\makev.bat -tcc
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Build and run hello world with -b fastc
         run: |
           .\v.exe -b fastc -o hello_fastc.exe examples\hello_world.v

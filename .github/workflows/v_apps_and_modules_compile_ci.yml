@@ -48,7 +48,7 @@ jobs:
 
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |
@@ -292,7 +292,7 @@ jobs:
             brew-${{ matrix.os }}-
 
       - name: Build V
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |
@@ -324,7 +324,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Build vpm
         run: |
           v retry -- v install markdown
@@ -351,10 +351,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V
-        run: |
-          .\makev.bat -gcc
-          .\v.exe symlink
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
       - name: Install sqlite (gitly is built with -d sqlite)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Install gitly module dependencies

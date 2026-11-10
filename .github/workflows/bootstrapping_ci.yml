@@ -17,21 +17,38 @@ jobs:
     if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-15]
+        include:
+          # Build against the oldest glibc used by the native Linux test jobs.
+          - os: ubuntu-22.04
+            platform: linux-x64
+            vflags: -no-parallel
+          - os: macos-15
+            platform: macos-arm64
+            vflags: -no-parallel
+          - os: macos-15-intel
+            platform: macos-x64
+            vflags: -no-parallel
+          - os: windows-2022
+            platform: windows-x64
+            vflags: ''
       fail-fast: true
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
-      VFLAGS: -no-parallel
+      VFLAGS: ${{ matrix.vflags }}
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: ${{ matrix.platform == 'windows-x64' && 1 || 0 }}
       - name: Build V
+        if: runner.os != 'Windows'
+        shell: bash
         run: make -j4
       - name: Test bootstrapping (v.c can be compiled and run with -os cross)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           ls -la v vc/v.c
           ./v -os cross -o vc/v.c cmd/v
@@ -59,9 +76,12 @@ jobs:
           ls -la v_from_vc v_from_vc_produced_native_v
           ls -la v_from_vc2 v_from_vc_produced_native_v2
       - name: Ensure V master is available
-        if: github.ref_name != 'master'
+        if: runner.os != 'Windows' && github.ref_name != 'master'
+        shell: bash
         run: git branch master remotes/origin/master
       - name: Test `v up`
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           tested_sha=$(git rev-parse 'HEAD^{commit}')
           if [ "$tested_sha" != "$GITHUB_SHA" ]; then
@@ -214,3 +234,63 @@ jobs:
             exit 1
           fi
           ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+      - name: Build and check the optimized test compiler
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
+          ./v run examples/hello_world.v
+          ./v -o vprod-selfcheck cmd/v
+          ./vprod-selfcheck run examples/hello_world.v
+      - name: Stage the compiler for this commit and platform
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VPROD_PLATFORM: ${{ matrix.platform }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          test "$sha" = "$GITHUB_SHA"
+          asset="$sha-$VPROD_PLATFORM"
+          mkdir -p vprod-artifacts
+          cp v "vprod-artifacts/$asset"
+          cd vprod-artifacts
+          shasum -a 256 "$asset" > "$asset.sha256"
+      - name: Build the Windows bootstrap compiler
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: makev.bat
+      - name: Build and check the optimized Windows test compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          V_CI_SOURCE_BUILD: '1'
+        run: |
+          & ./.github/workflows/prepare_v.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./v.exe run examples/hello_world.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./v.exe -o vprod-selfcheck.exe cmd/v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./vprod-selfcheck.exe run examples/hello_world.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage the Windows compiler for this commit and platform
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sha -ne $env:GITHUB_SHA) {
+            throw 'The compiler checkout does not match GITHUB_SHA'
+          }
+          $asset = "$sha-windows-x64"
+          New-Item -ItemType Directory -Path vprod-artifacts -Force | Out-Null
+          Copy-Item v.exe "vprod-artifacts/$asset"
+          $digest = (Get-FileHash "vprod-artifacts/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content "vprod-artifacts/$asset.sha256" "$digest  $asset`n" -NoNewline -Encoding utf8
+      - name: Share the optimized compiler with downstream jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: vprod-${{ matrix.platform }}-${{ github.sha }}
+          path: vprod-artifacts/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true

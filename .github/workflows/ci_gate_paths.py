@@ -17,6 +17,12 @@ import sys
 ROOT = Path(".github/workflows")
 MANIFEST_DIR = ROOT / "ci_gate_filters"
 CALLER = ROOT / "ci_master.yml"
+SHARED_COMPILER_FILES = {
+    ".github/workflows/bootstrapping_ci.yml",
+    ".github/workflows/prepare_v.sh",
+    ".github/workflows/prepare_v.ps1",
+    "cmd/tools/build_vprod.sh",
+}
 
 
 def glob_pattern(pattern):
@@ -69,7 +75,10 @@ def path_is_selected(path, mode, patterns):
 
 
 def should_run(changed, entry):
-    return changed is None or entry["mode"] == "all" or any(
+    return changed is None or any(
+        path in SHARED_COMPILER_FILES or path.startswith(".github/actions/setup-v/")
+        for path in changed
+    ) or entry["mode"] == "all" or any(
         path_is_selected(path, entry["mode"], entry["patterns"]) for path in changed
     )
 

@@ -39,7 +39,7 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Check Linux CI runner contracts
         id: runner_contracts
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -96,7 +96,7 @@ jobs:
       - name: Self tests
         id: self_tests
         if: ${{ success() && !cancelled() && steps.test_inline_assembly.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_tcc
+        run: v run ci/linux_ci.vsh self_tests_vprod_tcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
@@ -194,7 +194,7 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -324,7 +324,7 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}

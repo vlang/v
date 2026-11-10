@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |

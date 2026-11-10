@@ -29,7 +29,13 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe -cflags /WX self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype

@@ -64,6 +64,7 @@ jobs:
             fi
             # -gc none is only for bootstrap, before the collector is available.
             export VFLAGS="-no-retry-compilation -cc cc"
+            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
             # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
             # then make ordinary test compilation fail instead of silently retrying V1.
             export V_MACOS_V3_NO_FALLBACK=1

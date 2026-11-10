@@ -46,6 +46,7 @@ jobs:
             bash .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
             git log -n4
             VFLAGS="-cc cc" make
+            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
             ./v symlink
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             v run examples/hello_world.v
