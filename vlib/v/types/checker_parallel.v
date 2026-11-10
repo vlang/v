@@ -403,6 +403,9 @@ mut:
 	// The lists are a private copy in the collecting thread's arena, which
 	// pass 2 can keep as they are.
 	owned_lists bool
+	// Which types refer to the lane's arena and need a copy: bit 0 is the
+	// return type, bit i + 1 parameter i (see pass2_fn_prep_promote_mask).
+	promote_mask u64
 }
 
 // compute_pass2_fn_prep performs the context-dependent but table-write-free
@@ -731,8 +734,37 @@ fn mark_pass2_fn_prep_scope(mut preps []Pass2FnPrep, start int, end int, scope v
 	for pi in start .. end {
 		if preps[pi].prepared {
 			preps[pi].scope = scope
+			preps[pi].promote_mask = pass2_fn_prep_promote_mask(unsafe { &preps[pi] }, scope)
 		}
 	}
+}
+
+// pass2_promote_unclassified marks a preparation with more types than a mask
+// holds: pass 2 then classifies them itself.
+const pass2_promote_unclassified = u64(1) << 63
+
+// pass2_fn_prep_promote_mask finds, on the lane, which signature types of
+// `prep` refer to the lane's arena `scope`. The walk of each type graph is
+// most of the cost of promoting a preparation, and reads only what the lane
+// itself allocated or the frozen tables it parsed from.
+fn pass2_fn_prep_promote_mask(prep &Pass2FnPrep, scope voidptr) u64 {
+	if prep.ptypes.len >= 63 {
+		return pass2_promote_unclassified
+	}
+	mut mask := u64(0)
+	// A local copy, like the argument of Pass2TypePromotion.promote: the slot
+	// in the lane's own list would always count as lane storage.
+	ret_type := prep.ret_type
+	if type_refers_to_scope(scope, ret_type) {
+		mask |= 1
+	}
+	for i in 0 .. prep.ptypes.len {
+		ptype := prep.ptypes[i]
+		if type_refers_to_scope(scope, ptype) {
+			mask |= u64(1) << (i + 1)
+		}
+	}
+	return mask
 }
 
 // Pass2TypePromotion copies lane-dependent type graphs into the enclosing arena.
@@ -758,6 +790,25 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	if !type_refers_to_scope(scope, typ) {
 		return typ
 	}
+	return p.promote_scoped(typ)
+}
+
+// promote_classified is promote for the type at `bit` of a preparation whose
+// lane recorded in `mask` which types refer to its arena.
+@[inline]
+fn (mut p Pass2TypePromotion) promote_classified(scope voidptr, typ Type, mask u64, bit int) Type {
+	if mask & pass2_promote_unclassified != 0 {
+		return p.promote(scope, typ)
+	}
+	if mask & (u64(1) << bit) == 0 {
+		return typ
+	}
+	return p.promote_scoped(typ)
+}
+
+// promote_scoped returns a copy of `typ`, which refers to a lane's arena, in
+// the current arena, sharing one copy between equal types.
+fn (mut p Pass2TypePromotion) promote_scoped(typ Type) Type {
 	hash := semantic_type_hash(typ)
 	slot := int(hash & u64(p.set.len - 1))
 	if p.set[slot] && p.hashes[slot] == hash && semantic_types_equal(&p.values[slot], typ) {
@@ -918,10 +969,11 @@ fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pa
 	}
 	mut prep := lane_prep
 	prep.scope = unsafe { nil }
-	prep.ret_type = types.promote(scope, lane_prep.ret_type)
+	mask := lane_prep.promote_mask
+	prep.ret_type = types.promote_classified(scope, lane_prep.ret_type, mask, 0)
 	mut ptypes := []Type{cap: lane_prep.ptypes.len}
-	for typ in lane_prep.ptypes {
-		ptypes << types.promote(scope, typ)
+	for i, typ in lane_prep.ptypes {
+		ptypes << types.promote_classified(scope, typ, mask, i + 1)
 	}
 	prep.ptypes = ptypes
 	prep.param_type_ids = lane_prep.param_type_ids.clone()
