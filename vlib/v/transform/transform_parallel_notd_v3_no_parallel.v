@@ -75,7 +75,12 @@ const shared_piece_inline_backlog = 6
 // piece's region therefore counts this much cost on top of its own.
 const shared_piece_region_floor_cost = 12_000
 // The estimated cost of one scratch batch of a piece (see shared_helper_batch_count).
-const shared_piece_batch_cost = 4200
+// Every batch forks a checker and a transformer with cold caches and publishes
+// its results on its own, and a piece is already at most a sixth of one job's
+// share, so its scratch is bounded without cutting it further: with 4200 here a
+// compiler build ran about 1150 batches and retired 8% more instructions in the
+// stage at the same peak memory. Only a piece of a much larger program is split.
+const shared_piece_batch_cost = 40_000
 // The caller moves helper regions into place while the pool is running, at the
 // peak of the stage. It releases the storage they were moved out of whenever this
 // much of it has gathered, instead of holding all of it until the join.
