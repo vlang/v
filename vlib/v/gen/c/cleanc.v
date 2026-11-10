@@ -490,6 +490,16 @@ mut:
 	callback []string
 }
 
+// CStructRefsHandoff delivers referenced_c_struct_ids to an interface scan that
+// was started before the master collected them. The master fills the fields
+// and then sends on `ch`.
+struct CStructRefsHandoff {
+	ch chan bool
+mut:
+	ids   map[u32]bool
+	ready bool
+}
+
 // PreseedTypeSeen deduplicates type walks during C generation. It is part of
 // FlatGen even in serial-only builds because declaration preseeding is shared.
 struct PreseedTypeSeen {
@@ -754,6 +764,7 @@ mut:
 	ast_string_literals_parsed     int // how many leading ast_string_literals come from parsed nodes
 	referenced_c_struct_ids        map[u32]bool
 	referenced_c_struct_ids_ready  bool
+	c_struct_refs_handoff          &CStructRefsHandoff = unsafe { nil } // set on a parallel interface scan worker
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -4199,7 +4210,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_c_typedef_shadow_names()
 	g.precompute_local_name_exceptions()
 	// Interface workers must share the same referenced C layouts as declaration emission.
-	if g.tc.structs.keys().any(flat.source_type_query(it).has(.c_prefix)) {
+	// A parallel interface scan starts first and takes the set when the master has it.
+	mut defer_c_struct_refs := false
+	$if !v3_no_parallel ? {
+		defer_c_struct_refs = g.scope_parallel_workers && !effective_no_parallel
+			&& g.incremental_fn_names.len == 0
+	}
+	has_c_structs := g.tc.structs.keys().any(flat.source_type_query(it).has(.c_prefix))
+	if has_c_structs && !defer_c_struct_refs {
 		g.ensure_referenced_c_struct_ids()
 	}
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -4235,8 +4253,25 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			// Freeze it before the worker shares its storage.
 			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
+				// The scan's checker reads the master's type cache as its base while
+				// the master resolves the referenced C structs below.
+				g.tc.freeze_type_cache_for_forks()
+				mut c_struct_refs := &CStructRefsHandoff{
+					ch: chan bool{cap: 1}
+				}
 				iface_worker = g.new_interface_impl_scan_worker()
+				iface_worker.c_struct_refs_handoff = c_struct_refs
 				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+				// Most of the scan is the IError implementer list, which does not
+				// need the referenced C structs: collect them meanwhile.
+				if has_c_structs {
+					g.ensure_referenced_c_struct_ids()
+				}
+				c_struct_refs.ids = g.referenced_c_struct_ids
+				c_struct_refs.ready = g.referenced_c_struct_ids_ready
+				c_struct_refs.ch <- true
+				g.timing_profile('  [ttime]   cg c struct refs ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+				cgsw.restart()
 			}
 		} else {
 			g.collect_interface_impls()
@@ -4263,6 +4298,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if parallel_iface_scan {
 			$if !v3_no_parallel ? {
 				_ = iface_threads[0].wait()
+				g.tc.discard_type_cache_overlay_after_forks()
 				g.publish_interface_impl_scan(mut iface_worker)
 				g.precompute_required_interface_dispatch_methods()
 				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
