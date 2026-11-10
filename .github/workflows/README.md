@@ -46,20 +46,23 @@ Each producer uploads a seven-day artifact named `vprod-<platform>-<full-commit-
 It contains `<full-commit-sha>-<platform>` and its `.sha256` checksum. The setup action
 uses these artifacts within the same master workflow run and verifies their checksum,
 checkout commit and platform before installing them as `v` or `v.exe`. Rerunning a
-producer replaces its workflow artifact; already published release binaries remain immutable.
+producer replaces its workflow artifact. The binaries are available from the `vlang/v`
+Actions run page, outside GitHub Releases, and require no additional token or secret.
 
-To also publish these binaries, configure the optional `V2_RELEASE_TOKEN` Actions secret in
-`vlang/v` with contents-write access to `medvednikov/v2`. The normal `GITHUB_TOKEN` is scoped
-to the source repository and cannot publish to the other repository. After every producer
-passes, a trusted master push creates the prerelease `vprod-<full-commit-sha>` in
-`medvednikov/v2`, with the same commit-and-platform asset names. The release is never marked
-latest. Without this secret, CI still shares the workflow artifacts and skips publication.
+After all four producers succeed, a separate job removes older compiler artifacts from
+completed `CI master` push runs. It preserves artifacts belonging to the current run,
+newer runs and runs still in progress, and only deletes names matching the owning run's
+exact commit and one of the four producer platforms. Other test artifacts are unaffected.
+An older commit's rerun cannot remove newer binaries. Cleanup uses the automatic
+`GITHUB_TOKEN` with `actions: write` only in that job; test jobs keep their existing
+permissions. Cleanup failure does not block tests, and seven-day expiry bounds retention
+when no later successful bootstrap performs cleanup.
 
-Standalone jobs try the exact commit's published release and build an optimized compiler
-locally if it is unavailable. The setup action also supports `use-prebuilt: false` for jobs
-that require a native build. Shell-only jobs can call `prepare_v.sh`; set
-`V_CI_SOURCE_BUILD=1` to prohibit downloads and optionally `V_CI_CC` to choose the optimizing
-C compiler. `prepare_v.ps1` provides the corresponding Windows build/install step.
+Standalone jobs and reruns whose artifacts were removed build an optimized compiler
+locally. The setup action also supports `use-prebuilt: false` for jobs that require a native
+build. Shell-only jobs can call `prepare_v.sh`; set `V_CI_SOURCE_BUILD=1` to ignore a supplied
+prebuilt compiler and optionally `V_CI_CC` to choose the optimizing C compiler.
+`prepare_v.ps1` provides the corresponding Windows build/install step.
 
 Alpine/musl, Android, BSD and other CPU architectures build natively. Bootstrap, update,
 prebuilt-release and compiler-under-test checks retain their specific build recipes;
@@ -75,7 +78,8 @@ can select another optimizing C compiler with `V3_TEST_PROD_COMPILER_CC`.
 
 Changes to shared compiler setup or the bootstrap workflow select all master suites, even
 when a suite's normal path filter would skip them. Local setup regression checks are
-`python3 .github/workflows/prepare_v_test.py` and `python3 cmd/tools/windows_ci_test.py`.
+`python3 .github/workflows/prepare_v_test.py` and `python3 cmd/tools/windows_ci_test.py`;
+artifact cleanup checks are `python3 .github/workflows/cleanup_vprod_test.py`.
 
 ## CI lanes
 

@@ -3,10 +3,6 @@ name: Bootstrapping CI
 on:
   workflow_dispatch:
   workflow_call:
-    secrets:
-      V2_RELEASE_TOKEN:
-        description: Token with contents write access to medvednikov/v2
-        required: false
 
 concurrency:
   group: bootstrapping-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -298,36 +294,3 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           overwrite: true
-
-  publish-vprod:
-    needs: bootstrap-v
-    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Check whether release publication is configured
-        id: publishing
-        env:
-          V2_RELEASE_TOKEN: ${{ secrets.V2_RELEASE_TOKEN }}
-        run: |
-          if [ -n "$V2_RELEASE_TOKEN" ]; then
-            echo 'enabled=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'enabled=false' >> "$GITHUB_OUTPUT"
-            echo 'V2_RELEASE_TOKEN is not configured; downstream jobs will use the workflow artifacts.'
-          fi
-      - name: Download the checked compilers
-        if: steps.publishing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          pattern: vprod-*-${{ github.sha }}
-          path: vprod-artifacts
-          merge-multiple: true
-      - name: Publish commit-addressed binaries to medvednikov/v2
-        if: steps.publishing.outputs.enabled == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.V2_RELEASE_TOKEN }}
-        run: bash .github/workflows/publish_vprod.sh "$GITHUB_SHA" vprod-artifacts

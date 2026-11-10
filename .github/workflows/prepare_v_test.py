@@ -38,13 +38,7 @@ elif tool == "getconf":
 elif tool == "sw_vers":
     print(os.environ.get("MOCK_MACOS", "15.0"))
 elif tool == "curl":
-    source = os.environ.get("MOCK_RELEASE")
-    if not source:
-        sys.exit(22)
-    url = next(arg for arg in args if arg.startswith("https://"))
-    if url.endswith(".sha256"):
-        source += ".sha256"
-    shutil.copyfile(source, args[args.index("-o") + 1])
+    sys.exit("Compiler setup must not download a binary")
 elif tool == "make":
     if "-C" in args:
         project = Path(args[args.index("-C") + 1])
@@ -104,6 +98,7 @@ class PrepareVTests(unittest.TestCase):
         (self.repo / "v").chmod(0o755)
         self.original = (self.repo / "v").read_bytes()
         self.log = self.base / "commands.jsonl"
+        self.log.touch()
         temporary_files = self.base / "runner temp"
         temporary_files.mkdir()
         self.env = dict(os.environ)
@@ -144,7 +139,7 @@ class PrepareVTests(unittest.TestCase):
         return [event for event in events if tool is None or event["tool"] == tool]
 
     def asset(self, name=None, digest=None):
-        folder = self.base / "downloaded artifacts"
+        folder = self.base / "workflow artifacts"
         folder.mkdir(exist_ok=True)
         path = folder / (name or f"{SHA}-linux-x64")
         shutil.copyfile(self.production, path)
@@ -185,13 +180,6 @@ class PrepareVTests(unittest.TestCase):
         self.assert_optimized_source_build()
         self.assertEqual(self.events("curl"), [])
 
-    def test_source_only_fetch_returns_no_binary_and_does_not_build(self):
-        result = self.run_prepare("--fetch", V_CI_SOURCE_BUILD="1", V_CI_PREBUILT=str(self.asset()))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "")
-        self.assertEqual(self.events("curl") + self.events("make") + self.events("compiler"), [])
-        self.assertEqual((self.repo / "v").read_bytes(), self.original)
-
     def test_verified_artifact_reuses_compiler_and_provisions_dependencies(self):
         result = self.run_prepare(V_CI_PREBUILT=str(self.asset()))
         self.assert_success(result)
@@ -204,6 +192,16 @@ class PrepareVTests(unittest.TestCase):
         self.assertFalse(any("self" in args for args in compiler_args))
         self.assertIn(["-new-compiler", "-gc", "none", "run", "cmd/tools/detect_tcc.v"], compiler_args)
         self.assertIn(["-new-compiler", "-gc", "none", "run", ".github/problem-matchers/register_all.vsh"], compiler_args)
+
+    def test_artifact_reuse_does_not_bootstrap_a_missing_compiler(self):
+        (self.repo / "v").unlink()
+        result = self.run_prepare(V_CI_PREBUILT=str(self.asset()))
+        self.assert_success(result)
+        self.assertEqual([event["args"] for event in self.events("make")], [
+            ["-j4", "latest_vc", "latest_tcc", "latest_legacy"],
+            ["-j4", "cache-basic-modules"],
+        ])
+        self.assertEqual(self.events("curl"), [])
 
     def test_wrong_checksum_commit_or_platform_cannot_replace_compiler(self):
         cases = [
@@ -221,6 +219,18 @@ class PrepareVTests(unittest.TestCase):
                 self.assertEqual((self.repo / "v").read_bytes(), self.original)
                 self.assertEqual(self.events("make") + self.events("compiler") + self.events("curl"), [])
 
+    def test_missing_artifact_or_checksum_cannot_replace_compiler(self):
+        for missing_checksum in (False, True):
+            with self.subTest(missing_checksum=missing_checksum):
+                self.log.write_text("")
+                asset = self.asset()
+                missing = Path(str(asset) + ".sha256") if missing_checksum else asset
+                missing.unlink()
+                result = self.run_prepare(V_CI_PREBUILT=str(asset))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.repo / "v").read_bytes(), self.original)
+                self.assertEqual(self.events("make") + self.events("compiler") + self.events("curl"), [])
+
     def test_failed_production_build_preserves_bootstrap_compiler(self):
         result = self.run_prepare(V_CI_SOURCE_BUILD="1", MOCK_FAIL_BUILD="1")
         self.assertNotEqual(result.returncode, 0)
@@ -233,20 +243,18 @@ class PrepareVTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.repo / "v").read_bytes(), self.original)
 
-    def test_missing_release_falls_back_to_optimized_source_build(self):
+    def test_default_build_optimizes_source_without_fetching_a_binary(self):
         result = self.run_prepare()
         self.assert_success(result)
         self.assert_optimized_source_build()
-        self.assertEqual(len(self.events("curl")), 1)
-        expected = f"https://github.com/medvednikov/v2/releases/download/vprod-{SHA}/{SHA}-linux-x64"
-        self.assertIn(expected, self.events("curl")[0]["args"])
+        self.assertEqual(self.events("curl"), [])
 
-    def test_available_release_reuses_the_verified_binary(self):
-        result = self.run_prepare(MOCK_RELEASE=str(self.asset()))
-        self.assert_success(result)
-        self.assertEqual(len(self.events("curl")), 2)
-        self.assertFalse(any("self" in event["args"] for event in self.events("compiler")))
-        self.assertFalse(any("-C" in event["args"] for event in self.events("make")))
+    def test_invalid_source_build_option_fails_before_modifying_checkout(self):
+        result = self.run_prepare(V_CI_SOURCE_BUILD="true")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("V_CI_SOURCE_BUILD must be 0 or 1", result.stderr)
+        self.assertEqual((self.repo / "v").read_bytes(), self.original)
+        self.assertEqual(self.events(), [])
 
     def test_empty_checkout_bootstraps_before_optimized_build(self):
         (self.repo / "v").unlink()
@@ -255,11 +263,17 @@ class PrepareVTests(unittest.TestCase):
         self.assert_optimized_source_build()
         self.assertEqual(self.events("make")[0]["args"], ["-j2"])
 
-    def test_incompatible_libc_never_downloads_a_linux_binary(self):
+    def test_incompatible_libc_builds_native_optimized_compiler(self):
         result = self.run_prepare(MOCK_LIBC="glibc 2.31")
         self.assert_success(result)
         self.assert_optimized_source_build()
         self.assertEqual(self.events("curl"), [])
+
+    def test_incompatible_libc_rejects_explicit_linux_artifact(self):
+        result = self.run_prepare(MOCK_LIBC="glibc 2.31", V_CI_PREBUILT=str(self.asset()))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.repo / "v").read_bytes(), self.original)
+        self.assertEqual(self.events("make") + self.events("compiler") + self.events("curl"), [])
 
     def test_platform_selection_rejects_incompatible_hosts(self):
         for operating_system, arch, libc, macos, expected in [

@@ -17,8 +17,25 @@ jobs:
     permissions:
       contents: read
       actions: read
-    secrets:
-      V2_RELEASE_TOKEN: ${{ secrets.V2_RELEASE_TOKEN }}
+
+  cleanup-vprod:
+    needs: bootstrap
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Cleanup must not hold up the test gate if the artifact API is unavailable.
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Remove superseded compiler artifacts from completed runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/workflows/cleanup_vprod.py
 
   windows-bootstrap-contracts:
     uses: ./.github/workflows/makev_ci.yml
@@ -101,6 +118,8 @@ jobs:
         run: python3 .github/workflows/ci_gate_paths_test.py
       - name: Test optimized compiler setup
         run: python3 .github/workflows/prepare_v_test.py
+      - name: Test compiler artifact cleanup
+        run: python3 .github/workflows/cleanup_vprod_test.py
       - name: Select suites using the original push path filters
         id: paths
         env:

@@ -69,32 +69,41 @@ runs:
     # All jobs in CI master depend on the bootstrap workflow. Reusable
     # workflows share this run's artifacts without a cross-repository token.
     - name: Download the bootstrapped compiler
+      id: artifact
       if: inputs.use-prebuilt == 'true' && steps.compiler.outputs.platform != '' && github.workflow == 'CI master' && steps.compiler.outputs.sha == github.sha
-      # A downstream-only rerun can outlive artifact retention. The next step
-      # can still use the published compiler or build an optimized one locally.
+      # A downstream-only rerun can outlive artifact cleanup or retention.
+      # Missing artifacts fall back to an optimized local build.
       continue-on-error: true
       uses: actions/download-artifact@v8
       with:
         name: vprod-${{ steps.compiler.outputs.platform }}-${{ steps.compiler.outputs.sha }}
         path: ${{ steps.compiler.outputs.directory }}
 
-    - name: Select artifact or published compiler
+    - name: Select the downloaded compiler
       id: binary
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        V_CI_SOURCE_BUILD: ${{ inputs.use-prebuilt == 'true' && '0' || '1' }}
+        USE_PREBUILT: ${{ inputs.use-prebuilt }}
+        DOWNLOAD_OUTCOME: ${{ steps.artifact.outcome }}
         ARTIFACT_DIRECTORY: ${{ steps.compiler.outputs.directory }}
         COMPILER_SHA: ${{ steps.compiler.outputs.sha }}
         COMPILER_PLATFORM: ${{ steps.compiler.outputs.platform }}
       run: |
         set -euo pipefail
-        export V_CI_PREBUILT=
+        prebuilt=
         candidate="$ARTIFACT_DIRECTORY/$COMPILER_SHA-$COMPILER_PLATFORM"
-        if [ -f "$candidate" ]; then
-          export V_CI_PREBUILT="$candidate"
+        if [ "$DOWNLOAD_OUTCOME" = failure ] && [ -n "$(find "$ARTIFACT_DIRECTORY" -mindepth 1 -print -quit)" ]; then
+          echo 'Compiler artifact download failed after writing files; refusing partial or unverified data' >&2
+          exit 1
         fi
-        prebuilt=$(sh "$GITHUB_ACTION_PATH/../../workflows/prepare_v.sh" --fetch)
+        if [ "$DOWNLOAD_OUTCOME" = success ] && { [ ! -f "$candidate" ] || [ ! -f "$candidate.sha256" ]; }; then
+          echo 'Downloaded compiler artifact is missing its binary or checksum' >&2
+          exit 1
+        fi
+        if [ "$USE_PREBUILT" = true ] && [ -f "$candidate" ]; then
+          prebuilt="$candidate"
+        fi
         if [ "$RUNNER_OS" = Windows ] && [ -n "$prebuilt" ]; then
           prebuilt=$(cygpath -w "$prebuilt")
         fi

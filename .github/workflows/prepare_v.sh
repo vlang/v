@@ -28,12 +28,6 @@ if [ "${1:-}" = --platform ]; then
   platform
   exit 0
 fi
-fetch_only=0
-if [ "${1:-}" = --fetch ]; then
-  fetch_only=1
-  shift
-fi
-
 case "${V_CI_SOURCE_BUILD:-0}" in
   0|1) ;;
   *) echo 'V_CI_SOURCE_BUILD must be 0 or 1' >&2; exit 1 ;;
@@ -42,33 +36,11 @@ esac
 sha=$(git rev-parse 'HEAD^{commit}')
 host_platform=$(platform)
 prebuilt=${V_CI_PREBUILT:-}
-download_dir=
-trap '[ -z "$download_dir" ] || rm -rf "$download_dir"' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
+# Only reuse the verified artifact supplied by this workflow run. Standalone
+# jobs and other commits build an optimized compiler from their own checkout.
 if [ "${V_CI_SOURCE_BUILD:-0}" = 1 ]; then
   prebuilt=
-elif [ -z "$prebuilt" ] && [ -n "$host_platform" ] && command -v curl >/dev/null 2>&1; then
-  download_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/v-ci-prod.XXXXXX")
-  asset="$sha-$host_platform"
-  url="https://github.com/medvednikov/v2/releases/download/vprod-$sha/$asset"
-  # Standalone dispatches and new PR commits may not have a published binary.
-  # A miss always falls back to an optimized source build.
-  if curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 "$url" -o "$download_dir/$asset" &&
-     curl -fsSL --retry 2 --connect-timeout 10 --max-time 30 "$url.sha256" -o "$download_dir/$asset.sha256"; then
-    prebuilt="$download_dir/$asset"
-  fi
-fi
-
-if [ "$fetch_only" = 1 ]; then
-  # The composite action consumes this file in its next step. RUNNER_TEMP
-  # owns its lifetime; a failed download is still cleaned up by the trap.
-  if [ -n "$prebuilt" ]; then
-    download_dir=
-  fi
-  printf '%s\n' "$prebuilt"
-  exit 0
 fi
 
 if [ "$#" -eq 0 ]; then
