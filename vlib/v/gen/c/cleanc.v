@@ -5483,10 +5483,10 @@ mut:
 	return_type        &types.Type = types.empty_type
 	decl_is_variadic   bool
 	first_param_is_mut bool
-	// registration is precomputed by the parallel prep when signature
-	// registration is deferred (has_registration).
+	// has_registration: the parallel prep also built the alias registration,
+	// for deferred signature registration. It is kept in the list of the prep
+	// task (CollectGenFnPrepJob.registrations), not copied per declaration.
 	has_registration bool
-	registration     FnSignatureRegistration
 }
 
 // CollectGenFnPrepJob holds what one parallel prep task resolved: the used
@@ -5496,6 +5496,8 @@ mut:
 	end       int
 	positions []i32
 	preps     []CollectGenFnPrep
+	// One registration per entry of `preps` when the task built them.
+	registrations []FnSignatureRegistration
 }
 
 // CollectGenFnPreps is the result of collect_gen_info_fn_preps; `jobs` cover
@@ -5530,6 +5532,13 @@ struct FnSignatureRegistration {
 @[inline]
 fn cgen_moved_string(s string) string {
 	return s
+}
+
+// moved_fn_signature_registrations returns `registrations`; pushing a call
+// result does not deep-copy the list.
+@[inline]
+fn moved_fn_signature_registrations(registrations []FnSignatureRegistration) []FnSignatureRegistration {
+	return registrations
 }
 
 // moved_fn_signature_registration returns `registration`; pushing a call
@@ -5719,7 +5728,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut preferred_shared_fn_file_ranks := map[string]int{}
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
-	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
+	// Deferred signature registrations that were not prepared in parallel.
+	mut fn_signature_registrations := []FnSignatureRegistration{}
 	top_level_nodes := g.top_level_nodes()
 	if g.output_cross_c {
 		g.index_cross_directive_guards()
@@ -5849,9 +5859,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					if shared_params.any(it) {
 						g.has_shared_params = true
 					}
-					// The prepared registration lives as long as fn_preps; apply
-					// copies what it keeps, so do not deep-copy it here first.
-					fn_signature_registrations << moved_fn_signature_registration(prep.registration)
+					// The registration stays in its prep task's list, which is
+					// applied as a whole below: the lists are in declaration order.
 				} else {
 					fn_signature_registrations << g.prepare_fn_signature_registration(node.value, qualify_name_in_module(cur_module, node.value), ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
 				}
@@ -6078,8 +6087,15 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		cisub_sw.restart()
 	}
 	if defer_fn_signature_registrations {
-		g.reserve_fn_signature_registrations(fn_signature_registrations)
-		g.apply_fn_signature_registrations(fn_signature_registrations, fn_node_regs)
+		// Either every used declaration was prepared in parallel, with its
+		// registration, or none was.
+		mut registration_lists := [][]FnSignatureRegistration{cap: fn_preps.jobs.len + 1}
+		for job in fn_preps.jobs {
+			registration_lists << moved_fn_signature_registrations(job.registrations)
+		}
+		registration_lists << moved_fn_signature_registrations(fn_signature_registrations)
+		g.reserve_fn_signature_registrations(registration_lists)
+		g.apply_fn_signature_registrations(registration_lists, fn_node_regs)
 	} else {
 		for which in 0 .. 3 {
 			g.register_fn_decl_nodes(fn_node_regs, which)
@@ -12988,22 +13004,27 @@ fn (g &FlatGen) fn_signature_registration_in_module(module_name string, name str
 
 // Size deferred signature maps from the aliases and flags they will receive.
 // Most compilations have few variadics and no shared parameters.
-fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatureRegistration) {
+@[direct_array_access]
+fn (mut g FlatGen) reserve_fn_signature_registrations(registration_lists [][]FnSignatureRegistration) {
 	mut names := u32(0)
 	mut variadics := u32(0)
 	mut shared_names := u32(0)
 	mut mutable := u32(0)
-	for registration in registrations {
-		aliases := u32(registration.alias_count)
-		names += aliases + 1
-		if registration.is_variadic {
-			variadics += aliases + 1
-		}
-		if registration.shared_params.len > 0 {
-			shared_names += aliases
-		}
-		if registration.is_mut {
-			mutable += aliases
+	for registrations in registration_lists {
+		for i in 0 .. registrations.len {
+			// Read the entry in place: it is some 200 bytes.
+			registration := unsafe { &registrations[i] }
+			aliases := u32(registration.alias_count)
+			names += aliases + 1
+			if registration.is_variadic {
+				variadics += aliases + 1
+			}
+			if registration.shared_params.len > 0 {
+				shared_names += aliases
+			}
+			if registration.is_mut {
+				mutable += aliases
+			}
 		}
 	}
 	g.fn_decl_param_types.reserve(u32(g.fn_decl_param_types.len) + names)
@@ -13017,7 +13038,19 @@ fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatur
 // apply_fn_signature_registration_group fills.
 const fn_signature_registration_groups = 5
 
-fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatureRegistration, group int) {
+// apply_fn_signature_registration_groups applies one group of every
+// registration, list by list, in declaration order.
+@[direct_array_access]
+fn (mut g FlatGen) apply_fn_signature_registration_groups(registration_lists [][]FnSignatureRegistration, group int) {
+	for registrations in registration_lists {
+		for i in 0 .. registrations.len {
+			// Read the entry in place: it is some 200 bytes.
+			g.apply_fn_signature_registration_group(unsafe { &registrations[i] }, group)
+		}
+	}
+}
+
+fn (mut g FlatGen) apply_fn_signature_registration_group(registration &FnSignatureRegistration, group int) {
 	match group {
 		0 {
 			g.fn_decl_param_types[registration.module_key] = registration.ptypes

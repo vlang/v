@@ -39,11 +39,9 @@ fn (mut g FlatGen) finish_embedded_fields_lane() bool {
 	return false
 }
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
+fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	for group in 0 .. fn_signature_registration_groups {
-		for registration in registrations {
-			g.apply_fn_signature_registration_group(registration, group)
-		}
+		g.apply_fn_signature_registration_groups(registration_lists, group)
 	}
 	for which in 0 .. 3 {
 		g.register_fn_decl_nodes(node_regs, which)

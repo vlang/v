@@ -81,6 +81,8 @@ mut:
 	// The used function declarations of [start, end), in order.
 	positions []i32
 	preps     []CollectGenFnPrep
+	// Their alias registrations, when `registrations` is set.
+	signature_regs []FnSignatureRegistration
 }
 
 struct CollectGenInfoScanArgs {
@@ -144,10 +146,8 @@ fn fn_signature_registration_thread(arg voidptr) voidptr {
 		g.register_fn_decl_nodes(*node_regs, a.group - fn_signature_registration_groups)
 		return unsafe { nil }
 	}
-	registrations := unsafe { &[]FnSignatureRegistration(a.registrations_ptr) }
-	for registration in registrations {
-		g.apply_fn_signature_registration_group(registration, a.group)
-	}
+	registration_lists := unsafe { &[][]FnSignatureRegistration(a.registrations_ptr) }
+	g.apply_fn_signature_registration_groups(*registration_lists, a.group)
 	return unsafe { nil }
 }
 
@@ -179,6 +179,9 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 	}
 	a.positions = []i32{cap: n_fns}
 	a.preps = []CollectGenFnPrep{cap: n_fns}
+	if a.registrations {
+		a.signature_regs = []FnSignatureRegistration{cap: n_fns}
+	}
 	mut cur_file := a.file
 	mut cur_module := a.module_name
 	for pos in a.start .. a.end {
@@ -194,7 +197,7 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 			mut prep := view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
 			if a.registrations {
 				full_name := qualify_name_in_module(cur_module, node.value)
-				prep.registration = view.fn_signature_registration_in_module(cur_module, node.value,
+				a.signature_regs << view.fn_signature_registration_in_module(cur_module, node.value,
 					full_name, prep.ptypes, prep.shared_params, prep.decl_is_variadic, prep.first_param_is_mut,
 					prep.return_type)
 				prep.has_registration = true
@@ -1273,13 +1276,15 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	return counts
 }
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
-	if registrations.len < 128 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4
+fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSignatureRegistration, node_regs []FnDeclNodeReg) {
+	mut n_registrations := 0
+	for registrations in registration_lists {
+		n_registrations += registrations.len
+	}
+	if n_registrations < 128 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4
 		|| os.getenv('V3_NO_PAR_CGEN_SIG_REG') != '' {
 		for group in 0 .. fn_signature_registration_groups {
-			for registration in registrations {
-				g.apply_fn_signature_registration_group(registration, group)
-			}
+			g.apply_fn_signature_registration_groups(registration_lists, group)
 		}
 		for which in 0 .. 3 {
 			g.register_fn_decl_nodes(node_regs, which)
@@ -1293,7 +1298,7 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureR
 	for group in 0 .. n_tasks {
 		args << FnSignatureRegistrationArgs{
 			g:                 voidptr(g)
-			registrations_ptr: unsafe { voidptr(&registrations) }
+			registrations_ptr: unsafe { voidptr(&registration_lists) }
 			node_regs_ptr:     unsafe { voidptr(&node_regs) }
 			group:             group
 		}
@@ -1451,9 +1456,10 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, w
 	}
 	for i in 0 .. args.len {
 		preps.jobs << CollectGenFnPrepJob{
-			end:       args[i].end
-			positions: moved_fn_prep_positions(args[i].positions)
-			preps:     moved_fn_preps(args[i].preps)
+			end:           args[i].end
+			positions:     moved_fn_prep_positions(args[i].positions)
+			preps:         moved_fn_preps(args[i].preps)
+			registrations: moved_fn_signature_registrations(args[i].signature_regs)
 		}
 	}
 	return preps
