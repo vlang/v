@@ -286,7 +286,7 @@ fn native_c_visit_directive_module(mod string, by_module map[string][]NativeCDir
 // Arm64CSideOptions holds what the C side of an arm64 program needs from the
 // driver.
 struct Arm64CSideOptions {
-	no_cache bool
+	no_cache           bool
 	a                  &flat.FlatAst     = unsafe { nil }
 	prefs              &pref.Preferences = unsafe { nil }
 	user_c_flags       []string
@@ -307,7 +307,7 @@ mut:
 	compile_args []string // without the input and output
 	target       pref.Target
 	no_cache     bool
-	wrappers     string   // C wrappers for macros and static functions (arm64.Gen.c_function_wrappers)
+	wrappers     string // C wrappers for macros and static functions (arm64.Gen.c_function_wrappers)
 }
 
 // arm64_c_compiler returns the compiler of the C side: TinyCC cannot produce
@@ -422,7 +422,9 @@ struct Arm64CInputs {
 mut:
 	files   []string
 	missing []string
-	unknown string
+	// The metadata of files of the link from before the link (add_link).
+	identities map[string]string
+	unknown    string
 }
 
 // arm64_c_build_inputs records the C units of the main thread; a thread keeps
@@ -486,6 +488,9 @@ fn (mut inputs Arm64CInputs) fail(reason string) {
 fn (mut inputs Arm64CInputs) merge(other &Arm64CInputs) {
 	inputs.files << other.files
 	inputs.missing << other.missing
+	for path, identity in other.identities {
+		inputs.identities[path] = identity
+	}
 	if other.unknown.len > 0 {
 		inputs.fail(other.unknown)
 	}
@@ -494,12 +499,25 @@ fn (mut inputs Arm64CInputs) merge(other &Arm64CInputs) {
 // native returns the inputs of the C side for the receipt of the build
 // (v3_unchanged_build_with_native_inputs), which signs them once the build is done:
 // a file written since the build began may not be what a compile read, and
-// declines the receipt (Zig's isProblematicTimestamp).
-fn (inputs &Arm64CInputs) native() UnchangedBuildNativeInputs {
+// declines the receipt (Zig's isProblematicTimestamp). A header of the program,
+// outside the places of the system and outside `vroot`, that can ask for the time
+// of the compilation declines it as well (v3_headers_ask_for_time).
+fn (inputs &Arm64CInputs) native(vroot string) UnchangedBuildNativeInputs {
+	files := arm64_sorted_distinct(inputs.files)
+	vroot_real := os.real_path(vroot)
+	program_headers := files.filter(os.file_ext(it) !in ['.a', '.o', '.dylib', '.so', '.tbd']
+		&& !v3_is_system_header_path(it)
+		&& !(vroot.len > 0 && v3_path_is_below(os.real_path(it), vroot_real)))
+	if inputs.unknown.len == 0 && v3_headers_ask_for_time('', program_headers) {
+		return UnchangedBuildNativeInputs{
+			unknown: 'a header of the program can ask for the time of its compilation'
+		}
+	}
 	return UnchangedBuildNativeInputs{
-		files:   arm64_sorted_distinct(inputs.files)
-		missing: arm64_sorted_distinct(inputs.missing)
-		unknown: inputs.unknown
+		files:      files
+		missing:    arm64_sorted_distinct(inputs.missing)
+		identities: inputs.identities.clone()
+		unknown:    inputs.unknown
 	}
 }
 
@@ -523,6 +541,9 @@ fn (mut inputs Arm64CInputs) add_link(args []string, compiler string, target_os 
 	}
 	inputs.files << found.files
 	inputs.missing << found.missing
+	for path, identity in found.identities {
+		inputs.identities[path] = identity
+	}
 }
 
 fn arm64_sorted_distinct(paths []string) []string {
@@ -655,8 +676,7 @@ fn arm64_language_check_args(args []string, mode []string) []string {
 // arm64_c_side_is_objective_c decides whether the C side must be compiled as
 // Objective-C and remembers the answer while its object stays valid.
 fn arm64_c_side_is_objective_c(compiler string, args []string, text string, target pref.Target, no_cache bool) bool {
-	marker := os.join_path(arm64_cache_dir(), 'arm64_language_${arm64_text_hash(compiler, args.join(' '),
-		text)}')
+	marker := os.join_path(arm64_cache_dir(), 'arm64_language_${arm64_text_hash(compiler, args.join(' '), text)}')
 	objc_mode := ['-x', 'objective-c']
 	c_mode := ['-std=gnu11']
 	if !no_cache {
@@ -669,7 +689,8 @@ fn arm64_c_side_is_objective_c(compiler string, args []string, text string, targ
 			if _ := arm64_cached_object(compiler, mode_args, text, target) {
 				return language == 'objc'
 			}
-		} else {}
+		} else {
+		}
 	}
 	objective_c := !arm64_c_unit_compiles(compiler, args, text, c_mode, target, no_cache)
 		&& arm64_c_unit_compiles(compiler, args, text, objc_mode, target, no_cache)
@@ -829,8 +850,10 @@ fn arm64_external_link(side Arm64CSide, opts Arm64ExternalLink) ! {
 	}
 	link_args << ['-o', opts.output]
 	mut c_inputs := arm64_build_c_inputs()
-	c_inputs.add_link(link_args, side.compiler, opts.target.os.str(), [os.dir(opts.object),
-		arm64_cache_dir()])
+	c_inputs.add_link(link_args, side.compiler, opts.target.os.str(), [
+		os.dir(opts.object),
+		arm64_cache_dir(),
+	])
 	if opts.show_cc {
 		println('${side.compiler} ${link_args.join(' ')}')
 	}
@@ -970,8 +993,7 @@ fn arm64_probe_compile_flags(compiler string) []string {
 fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, side Arm64CSide) ?string {
 	mut args := side.compile_args.clone()
 	args << arm64_probe_compile_flags(side.compiler)
-	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler,
-		args.join(' '), prefix, lines(keep))}')
+	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler, args.join(' '), prefix, lines(keep))}')
 	if !side.no_cache {
 		if saved := os.read_file(keep_file) {
 			if saved.len == keep.len {
@@ -984,7 +1006,8 @@ fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, sid
 					return object
 				}
 			}
-		} else {}
+		} else {
+		}
 	}
 	for {
 		object := arm64_compile_unit(side.compiler, args, prefix + lines(keep), side.target,

@@ -16150,7 +16150,7 @@ pub fn run(args []string) {
 			b.step('link')
 			if unchanged_build_cache_enabled {
 				v3_record_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key, bin_file, mut
-					unchanged_build_preparation, arm64_build_c_inputs().native())
+					unchanged_build_preparation, arm64_build_c_inputs().native(prefs.vroot))
 				b.step('unchanged build receipt')
 			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
