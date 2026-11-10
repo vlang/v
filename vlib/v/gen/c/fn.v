@@ -992,10 +992,11 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 fn (mut g FlatGen) gen_top_level_asm() {
 	mut program_files := map[string]bool{}
 	for file_idx in g.top_level_nodes() {
-		file_node := g.a.nodes[file_idx]
-		if file_node.kind != .file {
+		// Nearly every top-level node is no file: test the kind before copying it.
+		if g.a.nodes[file_idx].kind != .file {
 			continue
 		}
+		file_node := g.a.nodes[file_idx]
 		if g.cache_split {
 			if !g.has_top_level_asm(flat.NodeId(file_idx)) {
 				continue
@@ -1036,6 +1037,11 @@ fn (g &FlatGen) has_top_level_asm(id flat.NodeId) bool {
 
 fn (mut g FlatGen) gen_top_level_asm_node(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	// Nearly every child of a file is a declaration: test the kind before
+	// copying the node.
+	if g.a.nodes[int(id)].kind !in [.asm_stmt, .block, .comptime_if] {
 		return
 	}
 	node := g.a.nodes[int(id)]
