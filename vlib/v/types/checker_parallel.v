@@ -201,7 +201,7 @@ mut:
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function short names, 5 = file declarations, 6 = recursive str names, 7 = static keys, 8 = signature table reserves
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
@@ -209,6 +209,7 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(a.tc) }
 	match a.kind {
 		0 {
+			tc.init_direct_parent_range(a.start, a.end)
 			a.parent_chunk = tc.fill_direct_parent_edges_range(a.a, a.start, a.end)
 		}
 		1 {
@@ -232,8 +233,11 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 		1 { tc.build_type_declaration_index(a.a) }
 		2 { tc.build_declaration_param_mutability_index(a.a) }
 		3 { tc.collect_declaration_visibility() }
-		4 { tc.build_fn_name_indexes(a.a) }
-		else { tc.build_file_declaration_indexes(a.a) }
+		4 { tc.build_fn_name_index_parts(a.a, fn_name_index_short) }
+		5 { tc.build_file_declaration_indexes(a.a) }
+		6 { tc.build_fn_name_index_parts(a.a, fn_name_index_recursive_str) }
+		7 { tc.build_fn_name_index_parts(a.a, fn_name_index_static) }
+		else { tc.reserve_collect_signature_maps() }
 	}
 	return unsafe { nil }
 }
@@ -249,7 +253,8 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
-	tc.init_direct_parent_index(a)
+	// Each parent lane initializes its own node range of the index arrays.
+	tc.init_direct_parent_index_arrays(a, false)
 	parent_jobs := int_min(16, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
@@ -274,15 +279,44 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: 0, start: start, end: end }
 		start = end
 	}
+	// The collecting thread takes the last parent range: the cache groups are
+	// bound by page faults and would keep it busy after every lane is done.
+	sync_task := args.len - 1
 	for kind in [u8(1), 2, 3] {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: kind, n: a.nodes.len }
 	}
-	mut tasks := []workers.Task{cap: args.len}
+	mut tasks := []workers.Task{cap: args.len + pool.size() + 1}
 	for i in 0 .. args.len {
 		tasks << workers.Task{
 			run:        collect_index_prep_thread
 			arg:        unsafe { voidptr(&args[i]) }
-			force_sync: i == args.len - 1
+			force_sync: i == sync_task
+		}
+	}
+	// Scanning the source texts for import lines reads nothing of the checker,
+	// so it shares this batch instead of a later one with idle lanes; pass 1
+	// picks the results up (index_module_import_lines_of_new_files).
+	mut import_scan_args := ImportLineScanArgs{}
+	if !tc.valid_diagnostic_fast {
+		tc.import_line_prescans = new_import_line_prescans(a)
+		if tc.import_line_prescans.len > 1 {
+			queue := chan int{cap: tc.import_line_prescans.len}
+			for i in 0 .. tc.import_line_prescans.len {
+				queue <- i
+			}
+			queue.close()
+			import_scan_args = ImportLineScanArgs{
+				scans: unsafe { voidptr(&tc.import_line_prescans) }
+				queue: queue
+			}
+			for _ in 0 .. int_min(pool.size(), tc.import_line_prescans.len) {
+				tasks << workers.Task{
+					run: import_line_scan_thread
+					arg: unsafe { voidptr(&import_scan_args) }
+				}
+			}
+		} else {
+			tc.import_line_prescans = []ImportLineScan{}
 		}
 	}
 	pool.run(tasks)
@@ -304,13 +338,12 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
 fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
-	pool := checker_worker_pool(a)
-	if !tc.building_v_fast || !tc.scope_parallel_check_workers
-		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(pool)
-		|| pool.size() < 2 || tc.top_level_idx.len < 2048 {
+	if !tc.collect_declaration_indexes_in_parallel(a) {
 		return false
 	}
-	// Each index task owns its maps; the caller builds one of them itself.
+	pool := checker_worker_pool(a)
+	// Each index task owns its maps. The caller's task, the last one, reserves
+	// the tables of the collection passes meanwhile, which no index task uses.
 	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
 	for kind in 0 .. collect_declaration_index_tasks {
 		args << CollectDeclarationIndexArgs{
@@ -331,9 +364,18 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 	return true
 }
 
-// collect_declaration_index_tasks is the number of independent declaration
-// index builders collect_declaration_index_thread dispatches on.
-const collect_declaration_index_tasks = 6
+// collect_declaration_indexes_in_parallel reports whether collection builds
+// the declaration indexes on pool lanes (prepare_collect_declaration_indexes_parallel).
+fn (tc &TypeChecker) collect_declaration_indexes_in_parallel(a &flat.FlatAst) bool {
+	pool := checker_worker_pool(a)
+	return tc.building_v_fast && tc.scope_parallel_check_workers
+		&& os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') == '' && !isnil(pool) && pool.size() >= 2
+		&& tc.top_level_idx.len >= 2048
+}
+
+// collect_declaration_index_tasks is the number of independent tasks
+// collect_declaration_index_thread dispatches on.
+const collect_declaration_index_tasks = 9
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the

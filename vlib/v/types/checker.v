@@ -1522,6 +1522,8 @@ pub mut:
 	import_line_indexed_files         map[int]bool
 	source_texts_by_file              map[string]string
 	source_texts_by_id                map[int]string
+	// Scans the index preparation ran ahead of index_module_import_lines_of_new_files.
+	import_line_prescans []ImportLineScan
 	// Zero means unindexed; one rules out the exceptional `cosnt` diagnostic.
 	malformed_const_source_states []u8
 	ct_update_pos                 map[int]token.Pos
@@ -2667,11 +2669,35 @@ fn new_zeroed_name_cache(n int) []&CachedName {
 }
 
 fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
+	tc.init_direct_parent_index_arrays(a, true)
+}
+
+// init_direct_parent_index_arrays resets the parent index. Without `fill` the
+// three node-indexed arrays are only allocated: every lane of the parallel
+// edge walk then initializes its own node range (init_direct_parent_range), so
+// the pages are first touched side by side instead of on the collecting thread.
+fn (mut tc TypeChecker) init_direct_parent_index_arrays(a &flat.FlatAst, fill bool) {
 	tc.invalidate_lexical_parent_memo()
-	tc.direct_parent_ids = flat.empty_node_ids(a.nodes.len)
 	tc.rewritten_parent_ids = []flat.NodeId{}
-	tc.value_used_nodes = []bool{len: a.nodes.len}
-	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
+	if fill {
+		tc.direct_parent_ids = flat.empty_node_ids(a.nodes.len)
+		tc.value_used_nodes = []bool{len: a.nodes.len}
+		tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
+	} else {
+		n := a.nodes.len
+		mut parent_ids := []flat.NodeId{cap: n}
+		mut value_used := []bool{cap: n}
+		mut costs := []i32{cap: if tc.building_v_fast { n } else { 0 }}
+		unsafe {
+			// The lanes' ranges cover every node.
+			parent_ids.grow_len(n)
+			value_used.grow_len(n)
+			costs.grow_len(costs.cap)
+		}
+		tc.direct_parent_ids = parent_ids
+		tc.value_used_nodes = value_used
+		tc.fn_check_costs = costs
+	}
 	tc.declaration_attributes = map[int][]string{}
 	tc.declaration_attribute_kinds = map[int]u32{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
@@ -2711,6 +2737,32 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 	tc.preflight_index_nodes_len = a.nodes.len
 }
 
+// init_direct_parent_range gives the nodes [start, end) of the arrays that
+// init_direct_parent_index_arrays left unfilled their initial values.
+fn (mut tc TypeChecker) init_direct_parent_range(start int, end int) {
+	if end <= start {
+		return
+	}
+	unsafe {
+		vmemset(&u8(tc.direct_parent_ids.data) + start * int(sizeof(flat.NodeId)), 0xff,
+			(end - start) * int(sizeof(flat.NodeId)))
+		vmemset(&u8(tc.value_used_nodes.data) + start, 0, end - start)
+		if tc.fn_check_costs.len > 0 {
+			vmemset(&u8(tc.fn_check_costs.data) + start * int(sizeof(i32)), 0, (end - start) * int(sizeof(i32)))
+		}
+	}
+}
+
+// decl_assign_binds_strings_builder reports whether `node`, a decl_assign,
+// binds a name to a `strings.new_builder(...)` call. It reads only the AST.
+fn (tc &TypeChecker) decl_assign_binds_strings_builder(a &flat.FlatAst, node &flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	lhs := a.child_node(node, 0)
+	return lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(node, 1))
+}
+
 // Ranges start immediately after a declaration, where the running cost resets.
 @[direct_array_access]
 fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start int, end int) DirectParentChunk {
@@ -2719,7 +2771,10 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 	profile_fn_costs := tc.fn_check_costs.len > 0
 	for parent_idx in start .. end {
 		node := a.node(flat.NodeId(parent_idx))
-		if node.kind in [.decl_assign, .directive] {
+		// Only the few declarations that bind a builder have metadata to replay;
+		// deciding it here keeps the replay from revisiting every declaration.
+		if node.kind == .directive
+			|| (node.kind == .decl_assign && tc.decl_assign_binds_strings_builder(a, node)) {
 			chunk.metadata_node_ids << parent_idx
 		}
 		if node.kind in [.postfix, .for_in_stmt, .comptime_for, .break_stmt, .continue_stmt,
@@ -2862,9 +2917,8 @@ fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
 }
 
 fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, parent_idx int, node &flat.Node) {
-	if node.kind == .decl_assign && node.children_count >= 2 {
-		lhs := a.child_node(node, 0)
-		if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(node, 1)) {
+	if node.kind == .decl_assign {
+		if tc.decl_assign_binds_strings_builder(a, node) {
 			tc.strings_builder_candidates << parent_idx
 		}
 	} else if node.kind == .directive {
@@ -3110,19 +3164,40 @@ fn (mut tc TypeChecker) index_declaration_param_mutability(a &flat.FlatAst, entr
 // build_fn_name_indexes records the short names, per-file bare names and
 // static/associated keys of V and interop function declarations.
 fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
-	tc.static_associated_fn_keys = map[string]bool{}
-	tc.fn_decl_short_name_ids = map[string]int{}
-	tc.recursive_str_fn_decl_ids = map[string]int{}
-	tc.recursive_str_fn_decl_index_complete = true
-	tc.file_bare_fn_names = map[string]bool{}
+	tc.build_fn_name_index_parts(a, fn_name_index_all)
+}
+
+// The tables of index_fn_names_parts, by the part that owns them: each part
+// writes only its own, so collection builds the parts on separate lanes.
+const fn_name_index_short = 1 // fn_decl_short_name_ids, file_bare_fn_names
+
+const fn_name_index_recursive_str = 2 // recursive_str_fn_decl_ids and its flags
+
+const fn_name_index_static = 4 // static_associated_fn_keys
+
+const fn_name_index_all = fn_name_index_short | fn_name_index_recursive_str | fn_name_index_static
+
+// build_fn_name_index_parts resets and fills the tables of `parts`.
+fn (mut tc TypeChecker) build_fn_name_index_parts(a &flat.FlatAst, parts int) {
 	// Every function declaration adds a key to each table (three to the
 	// recursive-str index); sized once, they are not rehashed at each doubling.
 	fn_decls := count_fn_decls(a, tc.top_level_idx)
-	tc.fn_decl_short_name_ids.reserve(u32(fn_decls))
-	tc.recursive_str_fn_decl_ids.reserve(u32(fn_decls * 3))
-	tc.file_bare_fn_names.reserve(u32(fn_decls))
-	tc.static_associated_fn_keys.reserve(u32(fn_decls))
-	tc.index_fn_names(a, tc.top_level_idx, '')
+	if parts & fn_name_index_static != 0 {
+		tc.static_associated_fn_keys = map[string]bool{}
+		tc.static_associated_fn_keys.reserve(u32(fn_decls))
+	}
+	if parts & fn_name_index_short != 0 {
+		tc.fn_decl_short_name_ids = map[string]int{}
+		tc.file_bare_fn_names = map[string]bool{}
+		tc.fn_decl_short_name_ids.reserve(u32(fn_decls))
+		tc.file_bare_fn_names.reserve(u32(fn_decls))
+	}
+	if parts & fn_name_index_recursive_str != 0 {
+		tc.recursive_str_fn_decl_ids = map[string]int{}
+		tc.recursive_str_fn_decl_index_complete = true
+		tc.recursive_str_fn_decl_ids.reserve(u32(fn_decls * 3))
+	}
+	tc.index_fn_names_parts(a, tc.top_level_idx, '', parts)
 }
 
 // count_fn_decls counts the fn_decl nodes among the top-level `entries`.
@@ -3137,6 +3212,12 @@ fn count_fn_decls(a &flat.FlatAst, entries []i32) int {
 }
 
 fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_module string) {
+	tc.index_fn_names_parts(a, entries, start_module, fn_name_index_all)
+}
+
+// index_fn_names_parts adds the function declarations of `entries` to the
+// tables of `parts` (fn_name_index_*).
+fn (mut tc TypeChecker) index_fn_names_parts(a &flat.FlatAst, entries []i32, start_module string, parts int) {
 	mut module_name := start_module
 	mut recursive_str_module := start_module
 	mut recursive_str_file := ''
@@ -3158,13 +3239,20 @@ fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_mod
 			continue
 		}
 		if node.kind == .fn_decl {
-			short_name := short_name_view(node.value)
-			if short_name !in tc.fn_decl_short_name_ids {
-				tc.fn_decl_short_name_ids[short_name] = index
+			if parts & fn_name_index_short != 0 {
+				short_name := short_name_view(node.value)
+				if short_name !in tc.fn_decl_short_name_ids {
+					tc.fn_decl_short_name_ids[short_name] = index
+				}
+				tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 			}
-			tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
-			tc.index_recursive_str_fn_name(node, index, recursive_str_file, recursive_str_module,
-				recursive_str_module_known)
+			if parts & fn_name_index_recursive_str != 0 {
+				tc.index_recursive_str_fn_name(node, index, recursive_str_file, recursive_str_module,
+					recursive_str_module_known)
+			}
+		}
+		if parts & fn_name_index_static == 0 {
+			continue
 		}
 		decl_name := if node.kind == .c_fn_decl && !node.value.starts_with('C.') {
 			'C.${node.value}'
@@ -3184,7 +3272,9 @@ fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_mod
 			}
 		}
 	}
-	tc.recursive_str_fn_decl_index_size = tc.top_level_idx.len
+	if parts & fn_name_index_recursive_str != 0 {
+		tc.recursive_str_fn_decl_index_size = tc.top_level_idx.len
+	}
 }
 
 fn (mut tc TypeChecker) index_recursive_str_fn_name(node flat.Node, index int, file string, module_name string, module_known bool) {
@@ -4388,7 +4478,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		tc.collect_top_level_idx_fast(a, inactive_comptime_nodes)
 		tc.order_top_level_idx_by_files()
 		tc.top_level_idx_nodes_len = a.nodes.len
-		tc.reserve_collect_maps()
+		if tc.collect_declaration_indexes_in_parallel(a) {
+			// The collecting thread reserves the rest beside the index lanes.
+			tc.reserve_declaration_visibility()
+		} else {
+			tc.reserve_collect_maps()
+		}
 		tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (fast)')
 		tc.collect_after_index(a)
 		return
@@ -4447,7 +4542,11 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	tc.order_top_level_idx_by_files()
 	tc.top_level_idx_nodes_len = a.nodes.len
-	tc.reserve_collect_maps()
+	if tc.collect_declaration_indexes_in_parallel(a) {
+		tc.reserve_declaration_visibility()
+	} else {
+		tc.reserve_collect_maps()
+	}
 	tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	tc.collect_after_index(a)
 }
@@ -4488,6 +4587,24 @@ fn (mut tc TypeChecker) order_top_level_idx_by_files() {
 }
 
 fn (mut tc TypeChecker) reserve_collect_maps() {
+	tc.reserve_declaration_visibility()
+	tc.reserve_collect_signature_maps()
+}
+
+// reserve_declaration_visibility sizes the table that pass 1, or the
+// declaration index lane that stands in for it, fills first.
+fn (mut tc TypeChecker) reserve_declaration_visibility() {
+	decl_estimate := u32(tc.top_level_idx.len)
+	if decl_estimate > 512 && os.getenv('V3_NO_WIDE_COLLECT_RESERVES') == '' {
+		// Pass 1 records one visibility entry per declaration.
+		tc.declaration_visibility.reserve(u32(tc.declaration_visibility.len) + decl_estimate * 2)
+	}
+}
+
+// reserve_collect_signature_maps sizes the tables of passes 1 and 2. None of
+// them is read or written by a declaration index lane, so the collecting
+// thread may run this beside those lanes.
+fn (mut tc TypeChecker) reserve_collect_signature_maps() {
 	// The collection passes below fill the signature/type tables from empty;
 	// with ~10k declarations each hot map otherwise pays a dozen doubling
 	// rehashes. Reserve once from the now-known top-level count (short-name and
@@ -4507,11 +4624,10 @@ fn (mut tc TypeChecker) reserve_collect_maps() {
 		tc.fn_type_files.reserve(u32(tc.fn_type_files.len) + decl_estimate)
 		tc.fn_type_modules.reserve(u32(tc.fn_type_modules.len) + decl_estimate)
 		if os.getenv('V3_NO_WIDE_COLLECT_RESERVES') == '' {
-			// Pass 1 records one visibility entry per declaration, while pass 2
-			// derives several method-suffix and visible-mutation keys per function.
-			// These maps are populated from separate pool lanes, so reserving here
-			// avoids their otherwise serial rehash ladders without sharing writes.
-			tc.declaration_visibility.reserve(u32(tc.declaration_visibility.len) + decl_estimate * 2)
+			// Pass 2 derives several method-suffix and visible-mutation keys per
+			// function. These maps are populated from separate pool lanes, so
+			// reserving here avoids their otherwise serial rehash ladders without
+			// sharing writes.
 			tc.receiver_method_suffix_index.reserve(u32(tc.receiver_method_suffix_index.len) + decl_estimate * 3)
 			if !isnil(tc.visible_mutation_cache) {
 				mut mutation_cache := tc.visible_mutation_cache
@@ -4802,6 +4918,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	if !tc.valid_diagnostic_fast {
 		tc.index_multiple_module_import_lines(a)
 	}
+	// Scans prepared for a line index that was not built must not outlive this AST.
+	tc.import_line_prescans = []ImportLineScan{}
 	// Pass 1: collect type-level names (aliases, enums, sum types)
 	tc.collect_pass1(a, tc.top_level_idx, parallel_declaration_indexes)
 	tc.check_alias_declaration_cycles()
