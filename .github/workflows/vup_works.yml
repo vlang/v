@@ -1,23 +1,10 @@
 name: Upgrading from a previous release with v up works
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '**.vv'
-      - '**.out'
-      - '!**/vup_works.yml'
-      - '!cmd/tools/vup.v'
-      - 'cmd/tools/vrepl.v'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: vup-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vup-vup_works-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

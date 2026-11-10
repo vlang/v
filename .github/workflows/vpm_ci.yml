@@ -1,15 +1,10 @@
 name: VPM CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - '**/vpm_ci.yml'
-      - '**/cmd/tools/vpm/**'
+  workflow_call:
 
 concurrency:
-  group: vpm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vpm-vpm_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

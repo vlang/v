@@ -1,20 +1,10 @@
 name: Build Vinix
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/vinix_ci.yml'
-      - 'cmd/tools/vrepl.v'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - 'vlib/v/gen/fastc/**'
-      - 'vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: vinix-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vinix-vinix_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:

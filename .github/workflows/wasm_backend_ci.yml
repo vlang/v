@@ -1,35 +1,10 @@
 name: wasm backend CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**.v'
-      - 'vlib/v/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/v/gen/wasm/**.v'
-      - 'vlib/v/gen/wasm/tests/**.v'
-      - 'vlib/v/gen/wasm/tests/**.vv'
-      - 'vlib/v/gen/wasm/tests_decompile/**.v'
-      - 'vlib/v/gen/wasm/tests_decompile/**.vv'
-      - '**/wasm_backend_ci.yml'
-      # FastC is an opt-in backend; compiler_ci.yml and fastc_ci.yml test it.
-      - '!vlib/v/gen/fastc/**'
-      - '!vlib/v/fastcdriver/**'
+  workflow_call:
 
 concurrency:
-  group: wasm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: wasm-wasm_backend_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
