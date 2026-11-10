@@ -4,7 +4,9 @@ import os
 import rand
 import test_utils { cmd_ok_args, cmd_fail_args }
 
-const range_test_path = os.join_path(os.vtmp_dir(), 'vpm_version_range_${rand.ulid()}')
+// Keep nested Git clones away from the runner's per-test VTMP on Windows:
+// a deep clone path makes Git fail with `fatal: '$GIT_DIR' too big`.
+const range_test_path = os.join_path(os.temp_dir(), 'vr_${rand.ulid()}')
 const range_original_dir = os.getwd()
 const range_vexe = @VEXE
 const range_vpm_exe = os.join_path(range_test_path, if os.user_os() == 'windows' {
