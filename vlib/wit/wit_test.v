@@ -1,6 +1,7 @@
 module wit
 
 import os
+import wasm
 
 fn test_parse_basic() {
 	src := '
@@ -134,4 +135,241 @@ interface i {
 	assert f.params.len == 2
 	assert f.results.len == 1
 	assert f.results[0].str() == 'result<s32, string>'
+}
+
+fn test_wrap_component_lifts_string_export() {
+	// core module with (i32, i32) -> i32 echo_len, cabi_realloc and memory
+	mut m := wasm.Module{}
+	mut echo := m.new_function('echo_len', [.i32_t, .i32_t], [.i32_t])
+	{
+		echo.local_get(1)
+	}
+	m.commit(echo, true)
+	mut realloc := m.new_function('cabi_realloc', [.i32_t, .i32_t, .i32_t, .i32_t], [
+		.i32_t,
+	])
+	{
+		realloc.i32_const(0)
+	}
+	m.commit(realloc, true)
+	m.assign_memory('memory', true, 1, none)
+	core := m.compile()
+	doc := parse('package example:echo@0.1.0;
+
+world echo {
+	export echo-len: func(s: string) -> u32;
+}
+') or { panic(err) }
+	comp := wrap_component(core, doc, '')
+	assert wasm.is_component(comp)
+	// walk component sections
+	mut pos := 8
+	mut export_names := []string{}
+	mut has_string_param := false
+	mut lift_has_mem_opt := false
+	mut lift_has_realloc_opt := false
+	for pos < comp.len {
+		sid := comp[pos]
+		pos++
+		mut size := 0
+		mut shift := 0
+		for {
+			b := comp[pos]
+			pos++
+			size |= (int(b) & 0x7f) << shift
+			shift += 7
+			if b & 0x80 == 0 {
+				break
+			}
+		}
+		end := pos + size
+		if sid == 7 {
+			// type section: look for a functype with one 0x73 (string) param
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x40
+				p++
+				mut pc := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					pc |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				mut ptypes := []u8{}
+				for _ in 0 .. pc {
+					mut ln := 0
+					sh = 0
+					for {
+						b := comp[p]
+						p++
+						ln |= (int(b) & 0x7f) << sh
+						sh += 7
+						if b & 0x80 == 0 {
+							break
+						}
+					}
+					p += ln
+					ptypes << comp[p]
+					p++
+				}
+				if ptypes == [u8(0x73)] {
+					has_string_param = true
+				}
+				// skip results
+				if comp[p] == 0x01 {
+					p += 2
+				} else {
+					p += 2
+				}
+			}
+		}
+		if sid == 8 {
+			// canon section: any lift carrying both memory and realloc opts
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x00
+				p++
+				assert comp[p] == 0x00
+				p++
+				// func idx
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				// opts
+				mut ocnt := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					ocnt |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				mut has_mem := false
+				mut has_re := false
+				for _ in 0 .. ocnt {
+					code := comp[p]
+					p++
+					if code == 0x03 {
+						has_mem = true
+						for {
+							b := comp[p]
+							p++
+							if b & 0x80 == 0 {
+								break
+							}
+						}
+					} else if code == 0x04 {
+						has_re = true
+						for {
+							b := comp[p]
+							p++
+							if b & 0x80 == 0 {
+								break
+							}
+						}
+					} else {
+						for {
+							b := comp[p]
+							p++
+							if b & 0x80 == 0 {
+								break
+							}
+						}
+					}
+				}
+				// type idx
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				if has_mem && has_re {
+					lift_has_mem_opt = true
+					lift_has_realloc_opt = true
+				}
+			}
+		}
+		if sid == 11 {
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x00
+				p++
+				mut ln := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					ln |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				name := comp[p..p + ln].bytestr()
+				p += ln
+				export_names << name
+				// sort + idx
+				p++
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+			}
+		}
+		pos = end
+	}
+	assert 'echo-len' in export_names, 'component must export echo-len, got ${export_names}'
+	assert has_string_param, 'component type must declare a string param'
+	assert lift_has_mem_opt, 'canon lift must carry (memory)'
+	assert lift_has_realloc_opt, 'canon lift must carry (realloc)'
 }

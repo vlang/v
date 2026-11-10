@@ -66,11 +66,11 @@ enum FrameTag {
 @[heap]
 pub struct Gen {
 mut:
-	a        &flat.FlatAst      = unsafe { nil }
-	tc       &types.TypeChecker = unsafe { nil }
-	used_fns map[string]bool
+	a         &flat.FlatAst      = unsafe { nil }
+	tc        &types.TypeChecker = unsafe { nil }
+	used_fns  map[string]bool
 	wasm_cabi bool
-	mod      &Module = unsafe { nil }
+	mod       &Module = unsafe { nil }
 	// per-function state
 	cur           Code
 	local_types   []u8
