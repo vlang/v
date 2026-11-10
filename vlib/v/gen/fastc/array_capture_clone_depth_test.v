@@ -20,30 +20,36 @@ mut:
 	active     bool
 	generation u64
 }
-// Three words: the size of a string.
+// Same layout size as a string: a pointer followed by two ints.
 struct StringSized {
 	target     &Target
-	generation u64
-	owner      voidptr
+	generation int
+	marker     int
 }
-// Six words: the size of an array.
+// Same layout size as an array: a pointer followed by five ints.
 struct ArraySized {
 	target &Target
-	a      u64
-	b      u64
-	c      u64
-	d      u64
-	e      u64
+	a      int
+	b      int
+	c      int
+	d      int
+	e      int
 }
 fn main() {
+    // Ensure these elements trigger both size-based paths in the old clone_to_depth(1).
+    assert sizeof(StringSized) == sizeof(string)
+    assert sizeof(ArraySized) == sizeof(array)
     mut target := &Target{active: true, generation: 48}
-    items := [StringSized{target: target, generation: 48}]
-    wide := [ArraySized{target: target, a: 48, b: 1}]
-    check := fn [items, wide] () bool {
-        return voidptr(items[0].target) == voidptr(wide[0].target)
-            && items[0].target.active && items[0].generation == 48 && wide[0].a == 48
+    // An old string-clone interpretation uses generation as a byte count: 8 is in bounds.
+    items := [StringSized{target: target, generation: 8, marker: 99}]
+    wide := [ArraySized{target: target}]
+    check := fn [items, wide, target] () bool {
+        return voidptr(items[0].target) == voidptr(target)
+            && voidptr(wide[0].target) == voidptr(target)
+            && items[0].target.active && items[0].generation == 8 && items[0].marker == 99
     }
     assert voidptr(items[0].target) == voidptr(target)
+    assert voidptr(wide[0].target) == voidptr(target)
     target.active = false
     stop := fn [items] () {
         mut t := items[0].target
