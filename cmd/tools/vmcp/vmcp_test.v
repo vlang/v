@@ -2002,7 +2002,7 @@ fn test_a_project_install_creates_the_file_for_every_client_that_has_one() {
 		assert has_entry(read_config(path), h.key, server_id), '${h.name}: ' + read_config(path)
 		seen++
 	}
-	assert seen == 5, 'expected five clients with a project file, got ${seen}'
+	assert seen == 6, 'expected six clients with a project file, got ${seen}'
 }
 
 fn test_opencode_uses_the_root_project_file_unless_another_already_exists() {
