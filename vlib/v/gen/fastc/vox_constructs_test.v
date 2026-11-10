@@ -435,3 +435,124 @@ fn main() {
 }
 ')
 }
+
+// Match values as Vox's layout and CSS code spell them: a nested match whose subject holds
+// an `unsafe` block, and arms that yield the values of an optional multi-return whose
+// first component is an interface.
+fn test_fastc_vox_constructs_match_values() {
+	fastc_vox_construct_program('match_values', r'module main
+
+enum Mode {
+	loose
+	normal
+}
+
+enum Language {
+	japanese
+	other
+}
+
+enum Break {
+	loose_japanese
+	loose
+	normal
+}
+
+struct Tagged {
+	tag string
+}
+
+fn language(node &Tagged) Language {
+	return if node.tag == "ja" { Language.japanese } else { Language.other }
+}
+
+fn line_break(mode Mode, node Tagged) Break {
+	return match mode {
+		.loose {
+			match language(unsafe { &Tagged(&node) }) {
+				.japanese { Break.loose_japanese }
+				.other { Break.loose }
+			}
+		}
+		.normal {
+			Break.normal
+		}
+	}
+}
+
+interface Value {
+	text() string
+}
+
+struct Keyword {
+	name string
+}
+
+fn (k Keyword) text() string {
+	return "keyword ${k.name}"
+}
+
+struct Length {
+	px int
+}
+
+fn (l Length) text() string {
+	return "${l.px}px"
+}
+
+struct Leaf {
+	px int
+}
+
+struct Sum {
+	terms int
+}
+
+type Node = Leaf | Sum
+
+enum Kind {
+	keyword
+	length
+	prepared
+}
+
+fn node(value Value) ?Node {
+	if value is Length {
+		return Leaf{value.px}
+	}
+	return none
+}
+
+fn prepared(value Value) ?(Value, Node) {
+	leaf := node(value) or { return none }
+	return value, leaf
+}
+
+fn operand(value Value, kind Kind) ?(Value, Node) {
+	return match kind {
+		.keyword { value, Node(Sum{1}) }
+		.length { Value(Keyword{"any"}), node(value)? }
+		.prepared { prepared(value)? }
+	}
+}
+
+fn describe(value Value, kind Kind) string {
+	first, second := operand(value, kind) or { return "none" }
+	return match second {
+		Leaf { "${first.text()} leaf ${second.px}" }
+		Sum { "${first.text()} sum ${second.terms}" }
+	}
+}
+
+fn main() {
+	assert line_break(.loose, Tagged{"ja"}) == .loose_japanese
+	assert line_break(.loose, Tagged{"en"}) == .loose
+	assert line_break(.normal, Tagged{"ja"}) == .normal
+	assert describe(Length{3}, .keyword) == "3px sum 1"
+	assert describe(Length{4}, .length) == "keyword any leaf 4"
+	assert describe(Length{5}, .prepared) == "5px leaf 5"
+	assert describe(Keyword{"x"}, .length) == "none"
+	println("ok")
+}
+')
+}

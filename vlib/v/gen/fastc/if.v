@@ -1694,8 +1694,26 @@ fn (g &Parser) match_starts_final_block_expression() bool {
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
 	mut tok := lookahead.scan()
-	// Skip the match subject up to the opening `{` of the match body.
-	for tok !in [.lcbr, .eof] {
+	// Skip the match subject up to the opening `{` of the match body. A `{` inside
+	// the subject's parentheses or brackets, or after `unsafe`, opens a block of the
+	// subject itself (`match f(unsafe { &T(x) }) {`).
+	mut depth := 0
+	mut after_unsafe := false
+	for tok != .eof {
+		if tok == .lcbr {
+			if depth == 0 && !after_unsafe {
+				break
+			}
+			tok = fastc_skip_balanced_tokens(mut lookahead, tok, .lcbr, .rcbr) or { return false }
+			after_unsafe = false
+			continue
+		}
+		if tok in [.lpar, .lsbr] {
+			depth++
+		} else if tok in [.rpar, .rsbr] {
+			depth--
+		}
+		after_unsafe = tok == .key_unsafe
 		tok = lookahead.scan()
 	}
 	if tok != .lcbr {
