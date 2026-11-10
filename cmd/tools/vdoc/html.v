@@ -222,7 +222,7 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw str
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples, ''))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
@@ -230,7 +230,7 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw str
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
 		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
 		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
-			cfg.include_examples, ''))
+			cfg.include_examples))
 		hw.write_string('\n')
 	}
 }
@@ -250,8 +250,12 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
-		platform_selector_html(d)))
+	// The platform selector stays at the top of the page, so it is before the module.
+	platform_selector := platform_selector_html(d)
+	if platform_selector != '' {
+		contents.writeln('<div class="platform-bar">${platform_selector}</div>')
+	}
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -555,9 +559,7 @@ fn render_doc_markdown(source string, mut renderer markdown.HTMLRenderer) string
 		.replace('</li>\n</ol>', '</li></ol>')
 }
 
-// doc_node_html returns the html of the symbol `dn`. `title_extra` is added to its title, like the
-// platform selector of the module.
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, title_extra string) string {
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := new_doc_markdown_renderer(md_link_base)
@@ -587,7 +589,6 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		} else {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
 		}
-		dnw.write_string(title_extra)
 		if link != '' {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
 		}

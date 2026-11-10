@@ -410,6 +410,11 @@ hr {
 	flex-direction: column;
 	padding: 1rem;
 	overflow: hidden;
+	/* Clips like `hidden`, without making the content a scroll container, which would keep the
+	platform selector from staying at the top while the page scrolls. Unlike `hidden`, it does
+	not let the content be narrower than its widest line, so `min-width` does. */
+	overflow: clip;
+	min-width: 0;
 }
 .doc-content img {
 	width: auto;
@@ -494,10 +499,21 @@ html:not([data-platform]) .doc-content > .doc-node .platforms + .signature {
 html[data-platform] .doc-content > .doc-node .platforms {
 	display: none;
 }
-/* The platform selector of a module documented with `-os cross`. */
-.doc-content > .doc-node > .title > .platform-select {
-	margin-left: auto;
+/* The platform selector of a module documented with `-os cross`, at the top right of the page
+while it scrolls. It takes no space, so that it is next to the name of the module at first. */
+.doc-content > .platform-bar {
+	position: sticky;
+	top: 0.6rem;
+	z-index: 10;
+	height: 0;
+	display: flex;
+	justify-content: flex-end;
+	align-items: flex-start;
+}
+.doc-content > .platform-bar > .platform-select {
+	margin-top: 0.3rem;
 	padding: 0.2rem 0.4rem;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 	font-family: Jost, sans-serif;
 	font-size: 0.9rem;
 	color: var(--text-color);
