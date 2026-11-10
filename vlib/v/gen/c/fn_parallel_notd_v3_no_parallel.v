@@ -1138,7 +1138,13 @@ fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns Di
 		}
 	}
 	g.a.worker_pool.run(tasks)
-	mut candidates := []FlatFnGenCandidate{}
+	// One allocation for the joined list: growing it while appending copied
+	// the candidates several times over.
+	mut n_candidates := 0
+	for i in 0 .. args.len {
+		n_candidates += args[i].candidates.len
+	}
+	mut candidates := []FlatFnGenCandidate{cap: n_candidates}
 	for arg in args {
 		candidates << arg.candidates
 		if arg.scope != unsafe { nil } {

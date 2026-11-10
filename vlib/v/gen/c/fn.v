@@ -102,6 +102,25 @@ struct FlatFnGenCandidate {
 	item           FlatFnGenItem
 }
 
+// The moved_flat_fn_gen_* helpers return their argument: pushing a call result
+// does not deep-copy its strings. Selection passes every function through three
+// lists; the names stay owned by the AST and by the selection's arenas, which
+// outlive the lists.
+@[inline]
+fn moved_flat_fn_gen_candidate(candidate FlatFnGenCandidate) FlatFnGenCandidate {
+	return candidate
+}
+
+@[inline]
+fn moved_flat_fn_gen_item(item FlatFnGenItem) FlatFnGenItem {
+	return item
+}
+
+@[inline]
+fn moved_flat_fn_gen_sort_key(key FlatFnGenItemSortKey) FlatFnGenItemSortKey {
+	return key
+}
+
 struct PreferredFlatFnCandidate {
 mut:
 	node_id                     int = -1
@@ -266,7 +285,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		} else {
 			flat_fn_gen_item_cost(g.a, item.node_id)
 		}
-		items << FlatFnGenItem{
+		items << moved_flat_fn_gen_item(FlatFnGenItem{
 			node_id:                   item.node_id
 			file:                      item.file
 			module:                    item.module
@@ -276,17 +295,17 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			is_program:                item.is_program
 			direct_array_access:       item.direct_array_access
 			ignore_overflow:           item.ignore_overflow
-		}
+		})
 	}
 	// Sort compact (name, index) keys instead of moving whole items through every
 	// merge pass, then permute the items once, in place. The sort is stable, so
 	// equal names keep their selection order exactly as when sorting the items.
 	mut keys := []FlatFnGenItemSortKey{cap: items.len}
 	for i, item in items {
-		keys << FlatFnGenItemSortKey{
+		keys << moved_flat_fn_gen_sort_key(FlatFnGenItemSortKey{
 			c_name: item.c_name
 			idx:    i
-		}
+		})
 	}
 	keys = g.sorted_fn_gen_item_keys(keys)
 	unsorted := items.clone()
@@ -356,7 +375,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 			continue
 		}
 		preferred_name := g.fn_c_name_in_module_known(item_module, node.value, qfn)
-		candidates << FlatFnGenCandidate{
+		candidates << moved_flat_fn_gen_candidate(FlatFnGenCandidate{
 			preferred_name: preferred_name
 			item:           FlatFnGenItem{
 				node_id:                   flat.NodeId(i)
@@ -370,7 +389,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 				ignore_overflow:           ignore_overflow_fns.contains(i, node)
 					|| item_module == 'builtin.overflow'
 			}
-		}
+		})
 	}
 	return candidates
 }
