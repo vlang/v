@@ -14,6 +14,9 @@ mut:
 	done_fd        int
 	unit_fds       []int
 	active         bool
+	// Once started, the reader owns and closes diagnostics_fd.
+	diagnostics_reader  thread string
+	diagnostics_started bool
 }
 
 // FastcZygoteHead is the text a zygote parsed before the build knew its own:

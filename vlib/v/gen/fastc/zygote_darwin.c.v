@@ -37,13 +37,13 @@ fn fastc_start_zygote_process(max_units int) FastcZygoteProcess {
 
 fn fastc_close_zygote_process(mut process FastcZygoteProcess) {
 	C.close(process.control_fd)
-	C.close(process.diagnostics_fd)
 	C.close(process.done_fd)
 	for fd in process.unit_fds {
 		if fd >= 0 {
 			C.close(fd)
 		}
 	}
+	fastc_finish_zygote_diagnostics(mut process)
 	process.active = false
 }
 
@@ -71,6 +71,9 @@ fn fastc_start_libtcc_zygote(max_units int, head_path string) FastcZygote {
 	if head_path != '' && os.is_file(head_path) {
 		zygote.guess = fastc_start_zygote_process(max_units)
 		if zygote.guess.active {
+			// Both zygotes have forked before a reader thread starts. Drain the
+			// speculative head's warnings before waiting for its feeder later.
+			fastc_start_zygote_diagnostics(mut zygote.guess)
 			zygote.guess_feed = spawn fastc_feed_zygote_guess(zygote.guess.control_fd, head_path)
 		}
 	}
@@ -224,6 +227,25 @@ fn fastc_read_zygote_diagnostics(fd int) string {
 	return output
 }
 
+fn fastc_start_zygote_diagnostics(mut process FastcZygoteProcess) {
+	fd := process.diagnostics_fd
+	process.diagnostics_fd = -1
+	process.diagnostics_reader = spawn fastc_read_zygote_diagnostics(fd)
+	process.diagnostics_started = true
+}
+
+fn fastc_finish_zygote_diagnostics(mut process FastcZygoteProcess) string {
+	if process.diagnostics_started {
+		process.diagnostics_started = false
+		return process.diagnostics_reader.wait()
+	}
+	if process.diagnostics_fd >= 0 {
+		C.close(process.diagnostics_fd)
+		process.diagnostics_fd = -1
+	}
+	return ''
+}
+
 fn fastc_compile_libtcc_zygote_c_units(mut zygote FastcZygote, base_args []string, objects []string, pieces []string, units FastcUnitLayout, plan FastcZygotePlan, mut prepared_link FastcPreparedLink, preload_link bool) ! {
 	unit_count := objects.len
 	if !zygote.active || !zygote.fresh.active || unit_count < 2
@@ -266,6 +288,7 @@ fn fastc_compile_libtcc_zygote_c_units(mut zygote FastcZygote, base_args []strin
 		head_written = fastc_write_zygote_marker(process.control_fd, marker)
 	} else {
 		zygote.fresh.active = false
+		fastc_start_zygote_diagnostics(mut process)
 		// The zygote parses the head while the unit writers fill their pipes.
 		head_writers << spawn fastc_write_zygote_head(process.control_fd, options, pieces, &units, marker, zygote.head_path)
 	}
@@ -276,9 +299,6 @@ fn fastc_compile_libtcc_zygote_c_units(mut zygote FastcZygote, base_args []strin
 	for g in unit_count .. process.unit_fds.len {
 		C.close(process.unit_fds[g])
 	}
-	// The diagnostics can exceed a pipe buffer, so they are drained while the
-	// finished units are collected.
-	diagnostics_reader := spawn fastc_read_zygote_diagnostics(process.diagnostics_fd)
 	if bench_phases {
 		head := if guessed { 'guessed' } else { 'parsed' }
 		eprintln('fastc-phase tcc.units_started ${sw.elapsed().microseconds()}us zygote=${unit_count} head=${head}')
@@ -324,7 +344,7 @@ fn fastc_compile_libtcc_zygote_c_units(mut zygote FastcZygote, base_args []strin
 		}
 	}
 	code := C.v_fastc_zygote_wait(process.pid)
-	diagnostics := diagnostics_reader.wait()
+	diagnostics := fastc_finish_zygote_diagnostics(mut process)
 	for guess_ender in guess_enders {
 		guess_ender.wait()
 	}
