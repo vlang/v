@@ -101,6 +101,8 @@ mut:
 	// shared_bits marks the metadata nodes collect_local_shared_type_names visits.
 	shared_bits_ptr voidptr
 	type_text_cache &TypeMetadataTextCache = unsafe { nil }
+	// c_struct_refs: see FlatGen.expr_c_struct_refs.
+	c_struct_refs map[u32]bool
 }
 
 struct FnSignatureRegistrationArgs {
@@ -258,6 +260,7 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 			else {}
 		}
 	}
+	g.collect_expr_c_struct_type_refs_in(a.start, a.end, mut a.c_struct_refs)
 	return unsafe { nil }
 }
 
@@ -1101,6 +1104,12 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		}
 	}
 	g.a.worker_pool.run(tasks)
+	for i in 0 .. args.len {
+		for id, _ in args[i].c_struct_refs {
+			g.expr_c_struct_refs[id] = true
+		}
+	}
+	g.expr_c_struct_refs_ready = true
 	mut counts := CollectGenInfoScanCounts{}
 	mut top_level_count := 0
 	mut string_count := 0

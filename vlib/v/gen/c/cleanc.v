@@ -1228,6 +1228,10 @@ mut:
 	// has to visit (see shared_scan_node_relevant), set by the parallel info scan.
 	shared_scan_bits       []u64
 	shared_scan_bits_ready bool
+	// expr_c_struct_refs is what collect_expr_c_struct_type_refs finds, collected
+	// by the parallel sizing scan of collect_gen_info for referenced_c_structs.
+	expr_c_struct_refs       map[u32]bool
+	expr_c_struct_refs_ready bool
 }
 
 struct TypeMetadataTextCache {
@@ -3896,6 +3900,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.sizeof_offsetof_nodes_ready = false
 	g.shared_scan_bits = []u64{}
 	g.shared_scan_bits_ready = false
+	g.expr_c_struct_refs = map[u32]bool{}
+	g.expr_c_struct_refs_ready = false
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_parsed = 0

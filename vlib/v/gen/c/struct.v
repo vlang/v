@@ -7611,7 +7611,14 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 			g.collect_c_struct_type_refs(field.typ, mut seen)
 		}
 	}
-	g.collect_expr_c_struct_type_refs(mut seen)
+	if g.expr_c_struct_refs_ready {
+		// The set is closed under the walk below, so it can simply be added.
+		for id, _ in g.expr_c_struct_refs {
+			seen[id] = true
+		}
+	} else {
+		g.collect_expr_c_struct_type_refs(mut seen)
+	}
 	for _, typ in g.tc.sparse_expr_type_values {
 		g.collect_c_struct_type_refs(typ, mut seen)
 	}
@@ -7621,16 +7628,26 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 // collect_expr_c_struct_type_refs walks every checked expression type. These are
 // mostly shared canonical references; walking the same type again adds nothing,
 // so a reference that was just walked is skipped.
-@[direct_array_access]
 fn (g &FlatGen) collect_expr_c_struct_type_refs(mut seen map[u32]bool) {
-	count := if g.tc.expr_type_set.len < g.tc.expr_type_values.len {
+	g.collect_expr_c_struct_type_refs_in(0, g.tc.expr_type_values.len, mut seen)
+}
+
+// collect_expr_c_struct_type_refs_in is collect_expr_c_struct_type_refs for the
+// nodes in [start, end). The result of a walk does not depend on what `seen`
+// already holds, so the sets of disjoint ranges add up to the set of all nodes.
+@[direct_array_access]
+fn (g &FlatGen) collect_expr_c_struct_type_refs_in(start int, end int, mut seen map[u32]bool) {
+	mut count := if g.tc.expr_type_set.len < g.tc.expr_type_values.len {
 		g.tc.expr_type_set.len
 	} else {
 		g.tc.expr_type_values.len
 	}
+	if end < count {
+		count = end
+	}
 	// The slots only hold the addresses of walked types; nothing reads them as values.
 	mut walked := unsafe { [4096]voidptr{} }
-	for i in 0 .. count {
+	for i in start .. count {
 		if !g.tc.expr_type_set[i] {
 			continue
 		}
