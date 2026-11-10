@@ -35,10 +35,10 @@ module math
 // sqrt returns the correctly rounded square root of a.
 //
 // special cases are:
-// sqrt(+inf) = +inf
-// sqrt(±0) = ±0
-// sqrt(x < 0) = nan
-// sqrt(nan) = nan
+// - `sqrt(+inf) = +inf`
+// - `sqrt(±0) = ±0`
+// - `sqrt(x < 0) = nan`
+// - `sqrt(nan) = nan`
 @[inline]
 pub fn sqrt(a f64) f64 {
 	if a == 0.0 || is_nan(a) || is_inf(a, 1) {

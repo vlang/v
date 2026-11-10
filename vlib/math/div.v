@@ -8,11 +8,11 @@ import math.bits
 // sign agrees with that of x.
 //
 // special cases are:
-// mod(±inf, y) = nan
-// mod(nan, y) = nan
-// mod(x, 0) = nan
-// mod(x, ±inf) = x
-// mod(x, nan) = nan
+// - `mod(±inf, y) = nan`
+// - `mod(nan, y) = nan`
+// - `mod(x, 0) = nan`
+// - `mod(x, ±inf) = x`
+// - `mod(x, nan) = nan`
 pub fn mod(x f64, y f64) f64 {
 	return fmod(x, y)
 }

@@ -37,13 +37,13 @@ fn stirling(x f64) (f64, f64) {
 
 // gamma returns the gamma function of x.
 //
-// special ifs are:
-// gamma(+inf) = +inf
-// gamma(+0) = +inf
-// gamma(-0) = -inf
-// gamma(x) = nan for integer x < 0
-// gamma(-inf) = nan
-// gamma(nan) = nan
+// special cases are:
+// - `gamma(+inf) = +inf`
+// - `gamma(+0) = +inf`
+// - `gamma(-0) = -inf`
+// - `gamma(x) = nan for integer x < 0`
+// - `gamma(-inf) = nan`
+// - `gamma(nan) = nan`
 pub fn gamma(a f64) f64 {
 	mut x := a
 	if is_neg_int(x) || is_inf(x, -1) || is_nan(x) {
@@ -130,12 +130,12 @@ fn gamma_too_small(x f64, z f64) f64 {
 
 // log_gamma returns the natural logarithm of the absolute value of Gamma(x).
 //
-// special ifs are:
-// log_gamma(+inf) = +inf
-// log_gamma(0) = +inf
-// log_gamma(-integer) = +inf
-// log_gamma(-inf) = +inf
-// log_gamma(nan) = nan
+// special cases are:
+// - `log_gamma(+inf) = +inf`
+// - `log_gamma(0) = +inf`
+// - `log_gamma(-integer) = +inf`
+// - `log_gamma(-inf) = +inf`
+// - `log_gamma(nan) = nan`
 pub fn log_gamma(x f64) f64 {
 	y, _ := log_gamma_sign(x)
 	return y
