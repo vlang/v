@@ -4073,6 +4073,12 @@ fn v3_shared_exports_data_names(a &flat.FlatAst) []string {
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
+	// Standalone V3 object builds may omit module #flags. Linux libc hides pipe2
+	// without GNU feature macros, even when <unistd.h> is included.
+	if options.target_os == 'linux' && !options.is_freestanding
+		&& '-D_GNU_SOURCE' !in before_inputs {
+		before_inputs << '-D_GNU_SOURCE'
+	}
 	if options.link_c_standard.len > 0 {
 		before_inputs << options.link_c_standard
 	}
