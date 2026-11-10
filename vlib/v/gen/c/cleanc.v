@@ -70,6 +70,7 @@ const body_sum_name_query_slots = 256
 const body_promoted_miss_slots = 1024
 const body_struct_decl_query_slots = 256
 const body_alias_type_name_slots = 1024
+const body_call_name_slots = 1024
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -588,6 +589,18 @@ struct BodyCalleeReturnQuery {
 	canonical  &types.Type = unsafe { nil }
 }
 
+// BodyCallNameQuery memoizes direct_call_name for one callee name, and whether a
+// call node of that name takes direct_call_name_for_call_node's declared,
+// non-generic rule (`node_rule`: 0 unknown, 1 yes, 2 no).
+struct BodyCallNameQuery {
+mut:
+	name       string
+	generation u32
+	has_direct bool
+	node_rule  u8
+	value      string
+}
+
 @[heap]
 struct ConstHelperDependencies {
 mut:
@@ -636,6 +649,7 @@ mut:
 	// for consecutive bodies of one module and file (see reset_body_name_memo).
 	name_generation    u32
 	name_context_valid bool
+	call_names         []BodyCallNameQuery
 }
 
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
@@ -672,6 +686,7 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			// zeroed sum type values are never observed.
 			exact_import_values: unsafe { []types.Type{len: body_exact_import_slots} }
 			callee_returns:      []BodyCalleeReturnQuery{len: body_callee_return_slots}
+			call_names:          []BodyCallNameQuery{len: body_call_name_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -724,6 +739,9 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			}
 			for i in 0 .. memo.alias_type_names.len {
 				memo.alias_type_names[i] = BodyAliasTypeNameQuery{}
+			}
+			for i in 0 .. memo.call_names.len {
+				memo.call_names[i] = BodyCallNameQuery{}
 			}
 			memo.name_generation = 1
 		}

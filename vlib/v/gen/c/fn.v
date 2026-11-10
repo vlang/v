@@ -1850,7 +1850,92 @@ fn (g &FlatGen) selected_specialized_method_c_name(name string) ?string {
 }
 
 // direct_call_name supports direct call name handling for FlatGen.
+// direct_call_name is direct_call_name_uncached memoized per callee name. The C
+// name depends on the name, the current module and file, and tables that are
+// fixed while bodies are generated. `C.` names stay uncached: they can register a
+// libc compatibility helper. So do the entry point names, whose answer can scan
+// for a free symbol.
+@[direct_array_access]
 fn (mut g FlatGen) direct_call_name(name string) string {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.call_names.len == 0 || !call_name_is_memoizable(name) {
+		return g.direct_call_name_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_call_name_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	mut entry := unsafe { &memo.call_names[slot] }
+	if entry.generation == memo.name_generation && entry.has_direct && entry.name == name {
+		return entry.value
+	}
+	result := g.direct_call_name_uncached(name)
+	// The uncached lookup can replace this slot with another name's entry.
+	if entry.generation == memo.name_generation && entry.name == name {
+		entry.has_direct = true
+		entry.value = result
+	} else {
+		memo.call_names[slot] = BodyCallNameQuery{
+			name:       name
+			generation: memo.name_generation
+			has_direct: true
+			value:      result
+		}
+	}
+	return result
+}
+
+@[direct_array_access; inline]
+fn call_name_is_memoizable(name string) bool {
+	if name.len < 2 || (name[0] == `C` && name[1] == `.`) {
+		return false
+	}
+	return !(name.len == 4 && name == 'main') && !(name.len == 9 && name == 'main.main')
+}
+
+// call_node_name_takes_declared_rule reports whether direct_call_name_for_call_node
+// answers `name` with direct_call_name(name) through its rule for a declared,
+// non-generic function: no bracketed exact specialization, no specialized generic
+// of that name, and a registered signature. The answer depends on the name, the
+// current module and tables that are fixed while bodies are generated.
+@[direct_array_access]
+fn (mut g FlatGen) call_node_name_takes_declared_rule(name string) bool {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.call_names.len == 0 {
+		return g.call_node_name_takes_declared_rule_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_call_name_slots - 1)
+	mut entry := unsafe { &memo.call_names[slot] }
+	if entry.generation == memo.name_generation && entry.node_rule != 0 && entry.name == name {
+		return entry.node_rule == 1
+	}
+	takes := g.call_node_name_takes_declared_rule_uncached(name)
+	rule := if takes { u8(1) } else { u8(2) }
+	// The uncached lookup can replace this slot with another name's entry.
+	if entry.generation == memo.name_generation && entry.name == name {
+		entry.node_rule = rule
+	} else {
+		memo.call_names[slot] = BodyCallNameQuery{
+			name:       name
+			generation: memo.name_generation
+			node_rule:  rule
+		}
+	}
+	return takes
+}
+
+fn (mut g FlatGen) call_node_name_takes_declared_rule_uncached(name string) bool {
+	if name.contains('[') && name.contains(']') && (name in g.tc.fn_ret_types
+		|| name in g.tc.fn_param_types
+		|| g.cname(name) in g.tc.specialized_generic_fns) {
+		return false
+	}
+	if _ := g.exact_specialized_generic_call_name(name) {
+		return false
+	}
+	return (name in g.tc.fn_ret_types || name in g.tc.fn_param_types)
+		&& name !in g.tc.fn_generic_params
+}
+
+fn (mut g FlatGen) direct_call_name_uncached(name string) string {
 	if selected := g.selected_specialized_method_c_name(name) {
 		return selected
 	}
@@ -2081,6 +2166,11 @@ fn (mut g FlatGen) direct_call_name_for_call_node(id flat.NodeId, node &flat.Nod
 		if shadow_name := g.main_runtime_shadow_call_c_name(node, fn_node) {
 			return shadow_name
 		}
+	}
+	// Most callees are declared, non-generic functions: the rules below reach
+	// direct_call_name(name) for them, and that outcome is remembered per name.
+	if g.call_node_name_takes_declared_rule(name) {
+		return g.direct_call_name(name)
 	}
 	// A bracketed callee is the exact specialization selected by monomorphization.
 	// Its runtime arguments may expose only the alias target (`string` for a
