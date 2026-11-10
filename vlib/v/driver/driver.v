@@ -57,7 +57,6 @@ $if !skip_ssa ? {
 
 $if !skip_wasm ? {
 	import v.gen.wasm as wasmgen
-	import wasm
 	import wit
 }
 // vfmt on
@@ -14853,7 +14852,7 @@ pub fn run(args []string) {
 					eprintln('error reading wit file ${prefs.wit_file}')
 					exit(1)
 				}
-				_ := wit.parse(wit_src) or {
+				doc := wit.parse(wit_src) or {
 					eprintln('error parsing wit file ${prefs.wit_file}: ${err}')
 					exit(1)
 				}
@@ -14863,8 +14862,9 @@ pub fn run(args []string) {
 				}
 				// Component output path
 				comp_out := output_file.all_before_last('.wasm') + '.component.wasm'
-				// Write wrapped component (minimal: wrap core module)
-				wrapped := wasm.wrap_core_module(core.bytes())
+				// Wrap with WIT-aware canonical lifting (string params lift via
+				// memory + realloc); falls back to plain wrapping.
+				wrapped := wit.wrap_component(core.bytes(), doc, '')
 				os.write_file_array(comp_out, wrapped) or {
 					eprintln('error writing ${comp_out}')
 					exit(1)
