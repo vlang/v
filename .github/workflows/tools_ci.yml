@@ -108,7 +108,9 @@ jobs:
         run: ./v -silent -gc none -cc clang -cflags -fsanitize=memory test-self -msan-compiler cmd
       - name: Test tools with thread sanitizer
         if: matrix.variant.sanitizer == 'thread'
-        run: ./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd
+        # TSan needs allocator-visible lifetimes; Boehm also stalls waiting for
+        # stop-the-world signal acknowledgements in the multithreaded tool tests.
+        run: ./v -silent -gc none -cc gcc -cflags -fsanitize=thread test-self cmd
       - name: Test tools with address sanitizer
         if: matrix.variant.sanitizer == 'address'
         run: ./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools
