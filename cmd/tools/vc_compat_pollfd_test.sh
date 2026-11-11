@@ -32,6 +32,27 @@ grep -F '#if defined(_WIN32)' "$work/filtered.c" >/dev/null
 "$root/cmd/tools/vc_compat.sh" "$work/old_vc.c" "${CC:-cc}" -std=c99 -Werror -o "$work/test_streamed"
 "$work/test_streamed"
 
+# The released vc snapshot uses select() without including sys/select.h.
+# Reject implicit declarations under strict C99 both before and after filtering.
+cat > "$work/select_vc.c" <<'EOF'
+#include <poll.h>
+int os__select_probe(int fd) {
+    fd_set read_set;
+    struct timeval ts = {0, 0};
+    FD_ZERO(&read_set);
+    FD_SET(fd, &read_set);
+    int res = select(fd + 1, &read_set, 0, 0, &ts);
+    return res;
+}
+EOF
+if "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -fsyntax-only "$work/select_vc.c" >"$work/select_baseline.log" 2>&1; then
+    echo 'Baseline unexpectedly declares select without sys/select.h' >&2
+    exit 1
+fi
+awk -f "$root/cmd/tools/vc_compat.awk" "$work/select_vc.c" > "$work/select_filtered.c"
+grep -Fx '#include <sys/select.h>' "$work/select_filtered.c" >/dev/null
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -fsyntax-only "$work/select_filtered.c"
+
 cat > "$work/bsd_types.c" <<'EOF'
 struct timespec { long tv_sec; long tv_nsec; };
 struct itimerspec {
