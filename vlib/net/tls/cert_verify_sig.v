@@ -8,7 +8,7 @@ pub fn verify_cert_signature_ecdsa(child_der []u8, parent_point []u8) ! {
 	tag, cert_val, _ := der_tlv(child_der) or { return err }
 	if tag != 0x30 { return error('tls: expected cert SEQUENCE') }
 	// tbs
-	ttag, tbs_val, tbs_consumed := der_tlv(cert_val) or { return err }
+	ttag, _, tbs_consumed := der_tlv(cert_val) or { return err }
 	if ttag != 0x30 { return error('tls: expected tbs SEQUENCE') }
 	tbs_bytes := child_der[4..4 + tbs_consumed - 4] // approximate; better slice from content
 	_ = tbs_bytes

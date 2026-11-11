@@ -117,10 +117,13 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		cipher_suite:       .tls_aes_128_gcm_sha256
 		compression_method: 0
 		extensions:         [
-			Extension{ typ: ext_supported_versions, data: [
-				u8(supported_version_tls_1_3 >> 8),
-				u8(supported_version_tls_1_3),
-			] },
+			Extension{
+				typ:  ext_supported_versions
+				data: [
+					u8(supported_version_tls_1_3 >> 8),
+					u8(supported_version_tls_1_3),
+				]
+			},
 			Extension{ typ: ext_key_share, data: srv_pub_bytes },
 		]
 	}
@@ -193,9 +196,9 @@ fn key_share_server_entry(pubkey []u8) []u8 {
 
 fn key_share_server_entry_for(pubkey []u8) []u8 {
 	mut entry := []u8{}
-	// server key_share is a single KeyShareEntry (no length prefix) for the hybrid? 
+	// server key_share is a single KeyShareEntry (no length prefix) for the hybrid?
 	// Actually server's key_share extension contains a single KeyShareEntry.
-	entry << pubkey // placeholder: caller must prepend group+len? 
+	entry << pubkey // placeholder: caller must prepend group+len?
 	_ = pubkey
 	return entry
 }

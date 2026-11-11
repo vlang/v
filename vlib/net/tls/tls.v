@@ -1,3 +1,8 @@
+// net.tls is an opt-in, pure-V TLS 1.3 (RFC 8446) implementation for TCP.
+// Build with -d pure_tls to enable; otherwise net.ssl is used.
+// Pure-V, TLS 1.3 only, ECDSA P-256 + RSA verify, Unix trust-store paths only,
+// ML-KEM-768/512/1024 supported. No 0-RTT, no session resumption, no TLS 1.2,
+// no DTLS, no client-cert auth in v1.
 module tls
 
 import net

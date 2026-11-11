@@ -7,9 +7,9 @@ with `-d pure_tls`.
 
 ## Status
 
-Experimental. Client and server handshake, record layer, and (eventually) hybrid
-post-quantum key exchange are being added incrementally. TLS 1.2, DTLS, and
-session resumption are out of scope for v1.
+Pure-V, opt-in via `-d pure_tls`. TLS 1.3 only. ECDSA P-256 and RSA verify.
+Unix trust-store paths only. ML-KEM-768/512/1024 supported. No 0-RTT, no
+session resumption, no TLS 1.2, no DTLS.
 
 ## Build
 
@@ -29,4 +29,10 @@ session resumption are out of scope for v1.
   until a pure-V SLH-DSA module exists.
 - OpenSSL and mbedTLS remain the correctness oracles for differential tests;
   they are never runtime dependencies of this module.
-module tls
+
+## Scope and Limitations (accepted non-goals for v1)
+
+- RSA *key generation* / RSA cert generation — ECDSA P-256 only (no crypto.rsa module).
+- Windows system roots — Unix CA-bundle paths only; Windows trust store requires C interop.
+- OpenSSL cross-check in CI — no openssl binary; DER validated structurally via parse_der.
+- Session resumption, 0-RTT, SLH-DSA, DTLS, TLS 1.2, client-cert auth — out of scope.

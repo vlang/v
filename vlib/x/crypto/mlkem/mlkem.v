@@ -166,12 +166,12 @@ fn modpow(a int, e int, m int) int {
 }
 
 pub fn ntt(mut f Poly) {
-	mut k := 1
+	mut k_ := 1
 	mut length := 128
 	for length >= 2 {
 		for start := 0; start < 256; start += 2 * length {
-			z := zetas[k]
-			k++
+			z := zetas[k_]
+			k_++
 			for j := start; j < start + length; j++ {
 				u := f[j]
 				t := (f[j + length] * z) % q
@@ -184,12 +184,12 @@ pub fn ntt(mut f Poly) {
 }
 
 pub fn inv_ntt(mut f Poly) {
-	mut k := 127
+	mut k_ := 127
 	mut length := 2
 	for length <= 128 {
 		for start := 0; start < 256; start += 2 * length {
-			z := zetas[k]
-			k--
+			z := zetas[k_]
+			k_--
 			for j := start; j < start + length; j++ {
 				u := f[j]
 				v := f[j + length]
@@ -392,7 +392,7 @@ fn sample_ntt(rho []u8, i int, j int) Poly {
 
 fn kpke_keygen_params(p MlKemParams, d []u8) !([]u8, []u8) {
 	kk := p.k
-	eta1 := p.eta1
+	eta1_ := p.eta1
 	g := sha3_512(d)
 	rho := g[..32].clone()
 	sigma := g[32..].clone()
@@ -409,8 +409,8 @@ fn kpke_keygen_params(p MlKemParams, d []u8) !([]u8, []u8) {
 		inbuf << sigma
 		inbuf << u8(nctr)
 		nctr++
-		b := shake256_xof(inbuf, 64 * eta1)
-		if eta1 == 2 {
+		b := shake256_xof(inbuf, 64 * eta1_)
+		if eta1_ == 2 {
 			s[i] = sample_cbd2(b)
 		} else {
 			s[i] = sample_cbd3(b)
@@ -422,8 +422,8 @@ fn kpke_keygen_params(p MlKemParams, d []u8) !([]u8, []u8) {
 		inbuf << sigma
 		inbuf << u8(nctr)
 		nctr++
-		b := shake256_xof(inbuf, 64 * eta1)
-		if eta1 == 2 {
+		b := shake256_xof(inbuf, 64 * eta1_)
+		if eta1_ == 2 {
 			e[i] = sample_cbd2(b)
 		} else {
 			e[i] = sample_cbd3(b)
@@ -463,10 +463,10 @@ fn kpke_keygen_params(p MlKemParams, d []u8) !([]u8, []u8) {
 
 fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 	kk := p.k
-	eta1 := p.eta1
-	eta2 := 2
-	du := p.du
-	dv := p.dv
+	eta1_ := p.eta1
+	eta2_ := 2
+	du_ := p.du
+	dv_ := p.dv
 	mut t_hat := PolyVec{}
 	mut off := 0
 	for i in 0 .. kk {
@@ -487,8 +487,8 @@ fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 		inbuf << r
 		inbuf << u8(nctr)
 		nctr++
-		b := shake256_xof(inbuf, 64 * eta1)
-		if eta1 == 2 {
+		b := shake256_xof(inbuf, 64 * eta1_)
+		if eta1_ == 2 {
 			rr[i] = sample_cbd2(b)
 		} else {
 			rr[i] = sample_cbd3(b)
@@ -500,8 +500,8 @@ fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 		inbuf << r
 		inbuf << u8(nctr)
 		nctr++
-		b := shake256_xof(inbuf, 64 * eta1)
-		if eta1 == 2 {
+		b := shake256_xof(inbuf, 64 * eta1_)
+		if eta1_ == 2 {
 			e1[i] = sample_cbd2(b)
 		} else {
 			e1[i] = sample_cbd3(b)
@@ -510,7 +510,7 @@ fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 	mut inbuf2 := []u8{}
 	inbuf2 << r
 	inbuf2 << u8(nctr)
-	b2 := shake256_xof(inbuf2, 64 * eta2)
+	b2 := shake256_xof(inbuf2, 64 * eta2_)
 	e2 := sample_cbd2(b2)
 
 	mut r_hat := PolyVec{}
@@ -546,16 +546,16 @@ fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 
 	mut ct := []u8{}
 	for i in 0 .. kk {
-		ct << poly_compress(u[i], du)
+		ct << poly_compress(u[i], du_)
 	}
-	ct << poly_compress(v, dv)
+	ct << poly_compress(v, dv_)
 	return ct
 }
 
 fn kpke_decrypt_params(p MlKemParams, dk []u8, ct []u8) ![]u8 {
 	kk := p.k
-	du := p.du
-	dv := p.dv
+	du_ := p.du
+	dv_ := p.dv
 	mut s_hat := PolyVec{}
 	mut off := 0
 	for i in 0 .. kk {
@@ -565,12 +565,12 @@ fn kpke_decrypt_params(p MlKemParams, dk []u8, ct []u8) ![]u8 {
 	mut u := PolyVec{}
 	mut uoff := 0
 	for i in 0 .. kk {
-		ul := n * du / 8
-		u[i] = poly_decompress(ct[uoff..uoff + ul], du)
+		ul := n * du_ / 8
+		u[i] = poly_decompress(ct[uoff..uoff + ul], du_)
 		uoff += ul
 	}
-	vl := n * dv / 8
-	v := poly_decompress(ct[uoff..uoff + vl], dv)
+	vl := n * dv_ / 8
+	v := poly_decompress(ct[uoff..uoff + vl], dv_)
 
 	mut u_hat := PolyVec{}
 	for i in 0 .. kk {
