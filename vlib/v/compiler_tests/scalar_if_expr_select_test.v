@@ -86,3 +86,80 @@ fn test_scalar_select_keeps_v_types_and_operators() {
 	}
 	assert clamped == [1, 0, 3, 0]
 }
+
+fn check_scalar_select_mutable_iterator(flag bool) {
+	mut values := [42, 84]
+	for mut value in values {
+		from_then := if flag { value } else { 0 }
+		from_else := if flag { 0 } else { value }
+		if flag {
+			assert from_then == value
+			assert from_else == 0
+		} else {
+			assert from_then == 0
+			assert from_else == value
+		}
+	}
+}
+
+// Mutable iterator bindings use pointer storage, but a select reads their values.
+fn test_scalar_select_reads_mutable_iterator_values() {
+	check_scalar_select_mutable_iterator(true)
+	check_scalar_select_mutable_iterator(false)
+}
+
+struct SelectOrderCell {
+mut:
+	value int
+}
+
+fn select_order_bump(mut cell SelectOrderCell) int {
+	cell.value = 9
+	return 1
+}
+
+fn check_scalar_select_operand_order(flag bool) {
+	mut cell := SelectOrderCell{
+		value: 1
+	}
+	expected := if flag { 2 } else { 1 }
+	before_call := (if flag { cell.value } else { 0 }) + select_order_bump(mut cell)
+	assert before_call == expected
+
+	cell.value = 1
+	before_if := (if flag { cell.value } else { 0 }) + (if flag {
+		select_order_bump(mut cell)
+	} else {
+		1
+	})
+	assert before_if == expected
+
+	cell.value = 1
+	before_match := (if flag { cell.value } else { 0 }) + (match flag {
+		true { select_order_bump(mut cell) }
+		false { 1 }
+	})
+	assert before_match == expected
+
+	cell.value = 1
+	before_shift := (if flag { cell.value } else { 0 }) << (if flag {
+		select_order_bump(mut cell)
+	} else {
+		1
+	})
+	assert before_shift == (if flag { 2 } else { 0 })
+}
+
+// A later operand can lower to statements that change a value read by the select.
+fn test_scalar_select_precedes_later_operand_statements() {
+	check_scalar_select_operand_order(true)
+	check_scalar_select_operand_order(false)
+}
+
+fn test_scalar_select_condition_precedes_later_call() {
+	mut cell := SelectOrderCell{
+		value: 1
+	}
+	selected := (if cell.value == 1 { 1 } else { 0 }) + select_order_bump(mut cell)
+	assert selected == 2
+}

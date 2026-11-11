@@ -957,8 +957,8 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 // scalar_select_type returns the result type of an if-expression value that is
 // a plain select between two scalars: a scalar result, and a condition and one
 // expression per branch built only from literals, names, field and array reads,
-// casts and operators. Such operands add no statements, so the if-expression can
-// stay in place and the C backend emits it as a conditional expression, cast to
+// casts and operators. When transforming those operands adds no statements, the
+// if-expression can stay in place and the C backend emits a conditional cast to
 // the V result type so that C's arithmetic conversions cannot widen it. Lowering
 // it to a temporary assigned in an if statement computes the same value, but C
 // compilers then do not vectorize loops that contain the select.
@@ -1025,6 +1025,11 @@ fn (mut t Transformer) lower_scalar_select(node flat.Node, select_type u32) flat
 	}
 	t.pending_stmts = outer_pending
 	if branch_stmts[0].len == 0 && branch_stmts[1].len == 0 {
+		// Conditional branches have no typed assignment to load pointer-backed
+		// scalar bindings, such as mutable array iterators. Make that load explicit.
+		for i, value in values {
+			values[i] = t.coerce_transformed_expr_to_type(value, value, select_type)
+		}
 		choice := t.make_if(cond, t.make_block([t.make_expr_stmt(values[0])]),
 			t.make_block([t.make_expr_stmt(values[1])]))
 		t.set_node_typ(int(choice), select_type)
@@ -1060,7 +1065,7 @@ fn (t &Transformer) is_scalar_select_type(type_id u32) bool {
 // is_plain_select_expr reports whether an expression is a number or bool
 // literal, a name, a field read, an array element read, a cast, or a unary
 // or binary operator over such expressions, each with a scalar or pointer
-// value; none of these lowers to statements.
+// value. lower_scalar_select handles operands that still lower to statements.
 fn (t &Transformer) is_plain_select_expr(id flat.NodeId, depth int) bool {
 	if int(id) < 0 || depth > 16 {
 		return false
