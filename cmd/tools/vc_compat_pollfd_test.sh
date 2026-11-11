@@ -44,3 +44,24 @@ awk -f "$root/cmd/tools/vc_compat.awk" "$work/bsd_types.c" > "$work/bsd_filtered
 grep -F '#if !defined(__FreeBSD__)' "$work/bsd_filtered.c" >/dev/null
 grep -F '#if !defined(__OpenBSD__)' "$work/bsd_filtered.c" >/dev/null
 test "$(grep -c '^#endif$' "$work/bsd_filtered.c")" -eq 3
+
+# The new libc-owned poll helper must preserve the observable readiness
+# transition on a pipe. Test the actual header used by os/fd.c.v.
+cat > "$work/poll_runtime.c" <<'EOF'
+#include "vlib/os/fd_poll.h"
+#include <unistd.h>
+int main(void) {
+    int p[2];
+    if (pipe(p) != 0) return 1;
+    if (v_os_fd_poll_revents(p[0], POLLIN) != 0) return 2;
+    if (write(p[1], "x", 1) != 1) return 3;
+    if ((v_os_fd_poll_revents(p[0], POLLIN) & POLLIN) == 0) return 4;
+    char c = 0;
+    if (read(p[0], &c, 1) != 1 || c != 'x') return 5;
+    if (v_os_fd_poll_revents(p[0], POLLIN) != 0) return 6;
+    if (close(p[0]) != 0 || close(p[1]) != 0) return 7;
+    return 0;
+}
+EOF
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -I"$root" -o "$work/poll_runtime" "$work/poll_runtime.c"
+"$work/poll_runtime"
