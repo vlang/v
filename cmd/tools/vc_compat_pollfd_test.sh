@@ -28,6 +28,10 @@ grep -F '#if defined(_WIN32)' "$work/filtered.c" >/dev/null
 "${CC:-cc}" -std=c99 -Werror -o "$work/test" "$work/filtered.c"
 "$work/test"
 
+# Exercise the real FIFO/awk/compiler pipeline, not just direct awk output.
+"$root/cmd/tools/vc_compat.sh" "$work/old_vc.c" "${CC:-cc}" -std=c99 -Werror -o "$work/test_streamed"
+"$work/test_streamed"
+
 cat > "$work/bsd_types.c" <<'EOF'
 struct timespec { long tv_sec; long tv_nsec; };
 struct itimerspec {
