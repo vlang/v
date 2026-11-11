@@ -10808,10 +10808,13 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
-so they always
-build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the compiler's
+host architecture. On AMD64, both are equivalent to `v -b amd64 file.v` (`-b x64`); on ARM64,
+both are equivalent to `v -b arm64 file.v`. The aliases follow the host architecture, not `-arch`.
+Explicit backend selection remains available, with the same platform requirements: use
+`v -b arm64 file.v` on macOS ARM64 or `v -b amd64 file.v` on Linux AMD64.
+The native backends do not link a garbage collector yet, so they always build as if `-gc none`
+was passed. For x64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.

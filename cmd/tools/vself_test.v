@@ -1,4 +1,5 @@
 import os
+import v.pref
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -502,6 +503,93 @@ fn test_arm64_self_build_preserves_native_options_and_full_cli() {
 		'-o', '/tmp/vself_arm64_failed_test'])
 	assert failure.exit_code != 0, failure.output
 	assert !failure.output.contains('bootstrap fallback'), failure.output
+}
+
+fn test_native_self_build_aliases_follow_host_backend() {
+	$if windows {
+		return
+	}
+	if pref.host_arch() !in ['amd64', 'arm64'] {
+		return
+	}
+	noop := os.find_abs_path_of_executable('echo') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_native_options_${os.getpid()}')
+	defer { os.rm(tool) or {} }
+	build := os.exec([vexe, '-nocache', '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	output := os.join_path(os.vtmp_dir(), 'vself_native_output_${os.getpid()}')
+	for backend_args in [
+		['-native'],
+		['-b', 'native'],
+		['-backend', 'native'],
+		['-b=native'],
+		['-backend=native'],
+	] {
+		for prefix in [[]string{}, ['-b', 'c']] {
+			result := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', ...prefix,
+				...backend_args, '-o', output])
+			assert result.exit_code == 0, result.output
+			assert !result.output.contains('-prealloc'), result.output
+			assert !result.output.contains('-d skip_'), result.output
+			assert result.output.contains('-no-memory-limit') == (pref.host_arch() == 'arm64'), result.output
+			assert_vself_preserves_full_cli(result.output)
+		}
+		inherited := os.exec(['env', '-u', 'CC', 'VFLAGS=${backend_args.join(' ')}', 'VEXE=${noop}',
+			tool, 'self', '-o', output])
+		assert inherited.exit_code == 0, inherited.output
+		assert !inherited.output.contains('-prealloc'), inherited.output
+		assert !inherited.output.contains('-d skip_'), inherited.output
+		assert inherited.output.contains('-no-memory-limit') == (pref.host_arch() == 'arm64'), inherited.output
+		for c_backend in [['-b', 'c'], ['-backend=c']] {
+			overridden := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self',
+				...backend_args, ...c_backend, '-o', output])
+			assert overridden.exit_code == 0, overridden.output
+			assert overridden.output.contains('-d skip_x64'), overridden.output
+			assert overridden.output.contains('-d skip_arm64'), overridden.output
+			assert_vself_preserves_full_cli(overridden.output)
+		}
+	}
+	for value in ['-native', '-b=native', '-backend=native'] {
+		literal := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-cflags',
+			value, '-o', output])
+		assert literal.exit_code == 0, literal.output
+		assert literal.output.contains('-d skip_x64'), literal.output
+		assert literal.output.contains('-d skip_arm64'), literal.output
+	}
+}
+
+fn test_native_self_aliases_overridden_by_fastc_repeat() {
+	$if windows {
+		return
+	}
+	failing_compiler := os.find_abs_path_of_executable('false') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_fastc_native_override_${os.getpid()}')
+	defer { os.rm(tool) or {} }
+	build := os.exec([vexe, '-nocache', '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	for backend_args in [
+		['-b', 'amd64'],
+		['-native'],
+		['-b', 'native'],
+		['-backend', 'native'],
+		['-b=native'],
+		['-backend=native'],
+	] {
+		// Reaching the mock compiler proves that repeat validation accepted the
+		// selected FastC backend, without replacing any compiler executable.
+		result := os.exec(['env', 'VFLAGS=', 'VEXE=${failing_compiler}', tool, 'self', ...backend_args,
+			'-b', 'fastc', 'x2'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot compile to'), result.output
+		assert !result.output.contains('cannot preserve these options'), result.output
+	}
+	for value in ['-native', '-b=native', '-backend=native'] {
+		result := os.exec(['env', 'VFLAGS=', 'VEXE=${failing_compiler}', tool, 'self', '-cflags',
+			value, '-b', 'fastc', 'x2'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot preserve these options'), result.output
+		assert result.output.contains('-cflags ${value}'), result.output
+	}
 }
 
 fn assert_no_preprocessor_includes(code string) {

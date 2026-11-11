@@ -86,10 +86,15 @@ NB: the build flags are shared with the run command too:
     * `x64`               - V outputs a native AMD64 executable directly on Linux.
                             Use `v -b x64 file.v` (EXPERIMENTAL). Add `-prod`
                             to optimize generated runtime code.
+                            `amd64` is an alias for `x64`.
+    * `native`            - Selects `amd64` (`x64`) or `arm64` for the compiler's host
+                            architecture, with the same platform requirements.
     * `wasm`              - V outputs a WebAssembly module directly
 	                        (see -os wasi|browser) (EXPERIMENTAL).
 
-    `-b native` has been replaced by `-b arm64` and `-b x64`.
+  -native
+    Equivalent to `-b native`: selects the native backend for the compiler's host architecture.
+    Explicit `-arch` does not change which backend this alias selects.
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.

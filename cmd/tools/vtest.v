@@ -33,11 +33,10 @@ fn main() {
 		eprintln('Use `v test-all` instead.')
 		exit(1)
 	}
-	backend_pos := args_before.index('-b')
-	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] }
 	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
 	mut all_requested_args := requested_args.clone()
 	all_requested_args << args_before
+	backend := test_backend(all_requested_args)
 	ctx.target_arch = test_target_arch(all_requested_args)
 	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
 		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
@@ -99,6 +98,35 @@ fn main() {
 	ts.session_stop('all V _test.v files')
 	if ts.has_failures() {
 		exit(1)
+	}
+}
+
+// test_backend selects the last requested backend while keeping option operands opaque.
+fn test_backend(args []string) string {
+	mut backend := 'c'
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-b', '-backend'] && i + 1 < args.len {
+			i++
+			backend = args[i]
+		} else if arg == '-native' {
+			backend = 'native'
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend = arg.all_after('=')
+		} else if arg in ['-prof', '-profile'] {
+			if i + 1 < args.len && !args[i + 1].starts_with('-') {
+				i++
+			}
+		} else if arg == '-cf' || pref.option_may_consume_value(arg) {
+			i++
+		}
+		i++
+	}
+	return match backend {
+		'native' { pref.native_backend() }
+		'amd64', 'x86_64', 'x86-64' { 'x64' }
+		else { backend }
 	}
 }
 
@@ -232,7 +260,7 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 		// and `foo_test.wasm.v` is a WASM backend test. Reading it as an architecture
 		// skipped it on every native host instead of running it under `-b wasm`.
 		if pref.suffix_is_backend_name(backend_arg) {
-			return if backend == backend_arg {
+			return if pref.is_test_file_for_backend(path, backend) {
 				ctx.should_test_when_it_contains_matching_fns(path, backend)
 			} else {
 				ShouldTestStatus.skip

@@ -41,6 +41,12 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		if arg in ['-b', '-backend'] && has_value {
 			backend = normalize_backend_name(args[i + 1])
 			i += 2
+		} else if arg == '-native' {
+			backend = pref.native_backend()
+			i++
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend = normalize_backend_name(arg.all_after('='))
+			i++
 		} else if arg == '-os' && has_value {
 			target_os = args[i + 1]
 			i += 2
