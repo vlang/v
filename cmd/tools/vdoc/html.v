@@ -251,12 +251,16 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	}
 	contents.writeln(without_symbol_ids(vd.doc_node_html(d.head, '', head_md_link_base, true,
 		cfg.include_examples), dcs_contents))
-	if is_module_readme(d.head) {
+	// The navigation lists the symbols of the module only on a page of one module, without `-m`.
+	with_symbols_toc := !cfg.is_multi && vd.docs.len <= 1
+	if with_symbols_toc && is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
 		vd.write_content(&cn, mut links, mut contents)
-		write_toc(cn, mut symbols_toc) // write head
+		if with_symbols_toc {
+			write_toc(cn, mut symbols_toc) // write head
+		}
 	}
 	if cfg.html_only_contents {
 		// no need for theming, styling etc, useful for testing and for external documentation generators

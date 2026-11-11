@@ -681,7 +681,7 @@ hr {
 	color: var(--attribute-deprecated-text-color);
 	background-color: var(--attribute-deprecated-background-color);
 }
-/* A type without a section of its own is not a heading of the table of contents. */
+/* The types are entries of their group, not headings of the table of contents. */
 .doc-toc .toc-group details > summary {
 	font-weight: 400;
 }
