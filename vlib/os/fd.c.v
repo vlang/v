@@ -154,9 +154,11 @@ fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
 $if !windows && !freestanding && !syscalls {
 	#include <poll.h>
+	// `fd` is a C `int`; V's `int` is 64-bit on 64-bit targets, and the
+	// headerless preamble lays this struct out from these fields.
 	struct C.pollfd {
 	mut:
-		fd      int
+		fd      i32
 		events  i16
 		revents i16
 	}
@@ -170,7 +172,7 @@ $if !windows && !freestanding && !syscalls {
 $if !windows && !freestanding && !syscalls {
 	fn fd_is_pending_poll(fd int) bool {
 		mut poll_fd := C.pollfd{
-			fd:     fd
+			fd:     i32(fd)
 			events: i16(C.POLLIN)
 		}
 		if C.poll(&poll_fd, 1, 0) <= 0 || (poll_fd.revents & i16(C.POLLNVAL)) != 0 {
