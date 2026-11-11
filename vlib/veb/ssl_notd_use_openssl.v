@@ -51,6 +51,7 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 			max_read
 		}
 		max_request_body_size:     params.max_request_body_size
+		read_header_timeout:       params.timeout_in_seconds * time.second
 	}
 	$if A is BeforeAcceptApp {
 		global_app.before_accept_loop()
@@ -70,7 +71,7 @@ fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestP
 		ssl_conn.shutdown() or {}
 	}
 	mut reader := io.new_buffered_reader(
-		reader: ssl_conn
+		reader: &ssl_conn
 		cap:    params.max_request_buffer_size
 	)
 	defer {
@@ -79,7 +80,8 @@ fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestP
 		}
 	}
 	for {
-		req := read_request_from_buffered_reader(mut reader, params.max_request_body_size) or {
+		req := read_request_from_buffered_reader_with_timeout(mut reader, params.max_request_body_size,
+			mut ssl_conn, params.read_header_timeout) or {
 			if err !is io.Eof {
 				write_ssl_response(mut ssl_conn, request_read_error_response(err)) or {}
 			}
