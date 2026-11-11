@@ -8423,7 +8423,7 @@ project that locks other revisions of the same packages switches them back. Use
    `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
    given with `-e` or on standard input belongs to no project, and each target
    of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
-   `fastc`, `arm64`, `x64`, and `wasm`.
+   `fastc`, `arm64`, `amd64`, and `wasm`; `x64` remains an alias for `amd64`.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
@@ -10808,12 +10808,37 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
-so they always
-build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
-allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+`-b native` has been replaced by `-b arm64` and `-b amd64`. Use `v -b arm64 file.v` on macOS
+ARM64 or `v -b amd64 file.v` on Linux AMD64. The native backends do not link a garbage collector
+yet, so they always
+build as if `-gc none` was passed. For AMD64, `-prod` enables SSA optimization and scalar register
+allocation. Very large AMD64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+AMD64 emits Linux ELF executables and links against glibc and the system libraries directly,
+without invoking a C compiler or an external linker. To enable the backend and rebuild V
+using it:
+
+```sh
+v -compile-backend amd64 self
+v -b amd64 -d amd64_only -o v_amd64 self
+./v_amd64 self x2
+./v_amd64 run examples/hello_world.v
+```
+
+The first command builds the backend into the current compiler. The second creates a separate
+AMD64-only compiler without replacing it. Each subsequent native `self` build, including
+compilation of its helper, uses AMD64 code generation and ELF linking.
+The AMD64-built compiler uses the serial frontend while native channel selection is incomplete.
+`self x2` replaces V twice, so the second build is performed by the first native compiler.
+The `amd64_only` profile excludes the other code generators, defaults to the AMD64 backend,
+and preserves itself through `self` rebuilds. Requests for another backend produce an error;
+they do not automatically build a full compiler or retry through the compatibility compiler.
+To restore the general compiler profile, use `./v_amd64 -compile-backend c self` or
+`./v_amd64 -all-backends self` without `-d amd64_only`. These rebuilds still use AMD64 code
+generation, but their replacement defaults to C. Ordinary native compiler builds without
+`-d amd64_only` continue to retain C support.
+The `x64`, `x86_64`, and `x86-64` backend names remain accepted aliases for `amd64`.
+
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
 `#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
@@ -10821,7 +10846,7 @@ ARM64 resolves a fixed set of platform C constants. Other C constants produce an
 use the C backend when a header defines a constant the native backend does not support.
 The supported set includes the memory-order and pthread compatibility constants used by
 V's synchronization runtime.
-The x64 backend is experimental. Calls without a native implementation fail compilation
+The AMD64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
 currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.

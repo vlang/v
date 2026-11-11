@@ -6,7 +6,7 @@ import v.pref
 import v.vmod
 
 // project_backends are the `backend` values that a project's v.mod can select.
-const project_backends = ['c', 'fastc', 'arm64', 'x64', 'wasm']
+const project_backends = ['c', 'fastc', 'arm64', 'amd64', 'wasm']
 
 // with_project_backend selects the backend named by the `backend` field of the input's v.mod,
 // such as `backend: 'fastc'`, when the command line does not select one with `-b`. The driver
@@ -169,9 +169,13 @@ fn project_backend(input string) string {
 	if manifest.backend == '' {
 		return ''
 	}
-	if manifest.backend !in project_backends {
+	backend := match manifest.backend {
+		'x64', 'x86_64', 'x86-64' { 'amd64' }
+		else { manifest.backend }
+	}
+	if backend !in project_backends {
 		eprintln('${vmod_path}: unknown backend `${manifest.backend}`; expected ${project_backends.join(', ')}')
 		exit(1)
 	}
-	return manifest.backend
+	return backend
 }

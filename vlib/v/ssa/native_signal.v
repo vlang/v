@@ -106,7 +106,8 @@ fn (mut b Builder) generate_native_signal_install(func_id int, fallback_addr Val
 	b.block_instr1(.jmp, free_stack, b.void_type, ValueID(install))
 	handler := b.m.add_value(.func_ref, ptr_i8, '__ssa_signal_handler', handler_id)
 	install_ref := b.m.add_value(.func_ref, b.void_type, '__ssa_install_signal', install_one_id)
-	for signal_number in [11, 10] {
+	bus_signal := if b.m.target.is_linux() { 7 } else { 10 }
+	for signal_number in [11, bus_signal] {
 		signal := b.m.get_or_add_const(b.i32_type, signal_number.str())
 		b.block_instr3(.call, install, b.void_type, install_ref, signal, handler)
 	}

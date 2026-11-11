@@ -23,7 +23,7 @@ fn C.readlink(pathname &char, buf &char, bufsiz uint) i32
 
 fn C.getline(voidptr, voidptr, voidptr) i32
 
-fn C.sigaction(i32, voidptr, i32) i32
+fn C.sigaction(i32, voidptr, voidptr) i32
 
 fn C.wait4(pid i32, status &int, options i32, rusage &C.rusage) i32
 

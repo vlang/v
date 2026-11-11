@@ -11786,7 +11786,7 @@ fn (p &Parser) supports_c_inline_asm_lowering() bool {
 // an inline assembly block for its own target architecture. A block for another
 // architecture is declined, which keeps a `$if` guard for it effective.
 fn (p &Parser) supports_native_inline_asm_lowering() bool {
-	return (p.prefs.backend == 'x64' && p.prefs.target.arch == 'amd64')
+	return (p.prefs.backend in ['amd64', 'x64'] && p.prefs.target.arch == 'amd64')
 		|| (p.prefs.backend == 'arm64' && p.prefs.target.arch == 'arm64')
 }
 

@@ -33,9 +33,24 @@ fn main() {
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
 	mut effective_args := effective_self_build_args(args)
+	$if amd64_only ? {
+		// Keep the native backend explicit across replacement generations, including
+		// a replacement that deliberately restores the general compiler profile.
+		args << ['-b', self_build_backend(effective_args)]
+		if !self_build_restores_c_backend(effective_args) {
+			args << ['-d', 'amd64_only']
+		}
+		effective_args = effective_self_build_args(args)
+	}
 	self_backend := self_build_backend(effective_args)
+	$if amd64_only ? {
+		if self_backend != 'amd64' {
+			eprintln('the AMD64-only compiler does not support backend `${self_backend}`; use `-compile-backend c self` to restore C support')
+			exit(1)
+		}
+	}
 	fastc_self_build := self_backend == 'fastc'
-	arm64_self_build := self_backend == 'arm64'
+	native_self_build := self_backend in ['arm64', 'amd64']
 	c_self_build := self_backend == 'c'
 	if c_self_build && '-prod' in effective_args && self_build_trains_fastc(effective_args) {
 		// A lazy backend is built without optimization. Production compilers must
@@ -81,8 +96,8 @@ fn main() {
 		args << self_build_backend_skips(effective_args)
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && ('-prod' in effective_args || arm64_self_build)
-		&& (!arm64_self_build
+	if !fastc_self_build && ('-prod' in effective_args || native_self_build)
+		&& (!native_self_build
 			|| ('-memory-limit' !in effective_args && '--memory-limit' !in effective_args))
 		&& '-no-memory-limit' !in effective_args
 		&& '--no-memory-limit' !in effective_args {
@@ -146,7 +161,7 @@ fn main() {
 				eprintln('PGO self-build failed; falling back to a regular self-build.')
 			}
 		}
-		if fastc_self_build || arm64_self_build {
+		if fastc_self_build || native_self_build {
 			// Native self-build failures must retain the backend diagnostic. Retrying
 			// through the portable C bootstrap cannot validate native self-hosting.
 			run_cmd(cmd) or {
@@ -192,6 +207,9 @@ fn self_build_output(args []string) string {
 
 fn self_build_backend(args []string) string {
 	mut backend := 'c'
+	$if amd64_only ? {
+		backend = 'amd64'
+	}
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -200,13 +218,52 @@ fn self_build_backend(args []string) string {
 			i += 2
 			continue
 		}
+		if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend = arg.all_after('=')
+			i++
+			continue
+		}
 		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
 			i += 2
 		} else {
 			i++
 		}
 	}
-	return backend
+	return match backend {
+		'x64', 'x86_64', 'x86-64' { 'amd64' }
+		'aarch64' { 'arm64' }
+		else { backend }
+	}
+}
+
+// An AMD64-only compiler can still emit a general compiler through its native
+// backend. The opt-out changes the replacement's capabilities, not its codegen.
+fn self_build_restores_c_backend(args []string) bool {
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-all-backends', '--all-backends'] {
+			return true
+		}
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
+			if args[i + 1].split(',').any(it.trim_space() == 'c') {
+				return true
+			}
+			i += 2
+			continue
+		}
+		if arg.starts_with('-compile-backend=') || arg.starts_with('--compile-backend=') {
+			if arg.all_after('=').split(',').any(it.trim_space() == 'c') {
+				return true
+			}
+		}
+		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			i += 2
+		} else {
+			i++
+		}
+	}
+	return false
 }
 
 fn self_build_backend_skips(args []string) []string {
@@ -233,12 +290,12 @@ fn self_build_backend_skips(args []string) []string {
 	for backend, aliases in {
 		'fastc': ['fastc']
 		'arm64': ['arm64', 'aarch64']
-		'x64':   ['x64', 'amd64', 'x86_64', 'x86-64']
+		'amd64': ['amd64', 'x64', 'x86_64', 'x86-64']
 		'wasm':  ['wasm', 'wasm32']
 		'eval':  ['eval']
 	} {
 		if aliases.any(it in included) {
-			if backend in ['arm64', 'x64', 'wasm'] {
+			if backend in ['arm64', 'amd64', 'wasm'] {
 				needs_ssa = true
 			}
 			continue

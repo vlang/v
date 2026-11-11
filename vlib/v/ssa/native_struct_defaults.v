@@ -35,9 +35,18 @@ fn (mut b Builder) declared_field_default_value(struct_name_id u32, field_name s
 	typ, _ := b.struct_literal_type(struct_name_id)
 	initializer := b.struct_field_defaults['${typ}.${field_name}'] or { return none }
 	old_module := b.cur_module
+	b.cur_module = initializer.module_name
+	defer {
+		b.cur_module = old_module
+	}
+	field_type_name := b.field_type_name(struct_name_id, field_name)
+	// Scalar defaults cannot read the caller's bindings. Avoid copying the whole
+	// module-global table for each literal field in a large compiler build.
+	if b.default_expression_needs_no_bindings(initializer.expr) {
+		return b.build_declared_field_default(initializer.expr, field_type_name)
+	}
 	old_vars := b.vars
 	old_types := b.var_type_names
-	b.cur_module = initializer.module_name
 	// Defaults belong to the declaration's scope, regardless of the caller's locals.
 	b.vars = b.global_vars.clone()
 	b.var_type_names = b.global_type_names.clone()
@@ -52,16 +61,40 @@ fn (mut b Builder) declared_field_default_value(struct_name_id u32, field_name s
 		}
 	}
 	defer {
-		b.cur_module = old_module
+		// These maps own their cloned keys and never escape the initializer.
+		// Reclaim their backing storage before restoring the caller's bindings.
+		unsafe { b.vars.free() }
+		b.var_type_names.free()
 		b.vars = old_vars
 		b.var_type_names = old_types
 	}
-	field_type_name_source_id := b.field_type_name(struct_name_id, field_name)
+	return b.build_declared_field_default(initializer.expr, field_type_name)
+}
 
-	field_type := b.resolve_type(field_type_name_source_id)
-	mut value := b.build_field_value(initializer.expr, field_type_name_source_id)
+fn (b &Builder) default_expression_needs_no_bindings(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= b.a.nodes.len {
+		return false
+	}
+	node := b.a.nodes[int(id)]
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .string_literal, .char_literal,
+		.nil_literal, .none_expr] {
+		return true
+	}
+	// `unsafe { nil }` is a one-expression block. Recursing through only these
+	// wrappers still rejects declarations, assignments, calls, and control flow.
+	if node.kind in [.prefix, .paren, .cast_expr, .block, .expr_stmt] && node.children_count == 1 {
+		return b.default_expression_needs_no_bindings(b.a.child(&node, 0))
+	}
+	// An empty initializer resolves only its type; nested field defaults set up
+	// their own declaration scope when they need bindings.
+	return node.kind == .struct_init && node.children_count == 0
+}
+
+fn (mut b Builder) build_declared_field_default(expr flat.NodeId, field_type_name u32) ValueID {
+	field_type := b.resolve_type(field_type_name)
+	mut value := b.build_field_value(expr, field_type_name)
 	if b.is_option_type(field_type) && b.value_type(value) != field_type {
-		is_some := b.a.nodes[int(initializer.expr)].kind != .none_expr
+		is_some := b.a.nodes[int(expr)].kind != .none_expr
 		if is_some {
 			value = b.coerce_store_value(value, b.option_value_type(field_type))
 		}

@@ -1,6 +1,43 @@
 module ssa
 
+import v.flat
 import v.types
+
+const ssa_c_pthread_source_type = flat.source_type_id('C.pthread_t')
+
+// A C typedef can be declared as an opaque V struct without having an aggregate
+// ABI. Lower pthread handles consistently in fields, values, and C signatures.
+fn (mut b Builder) native_c_scalar_type(name_id u32) ?TypeID {
+	if b.m.target.ptr_size != 8 {
+		return none
+	}
+	if name_id != ssa_c_pthread_source_type {
+		name := flat.source_type_name(name_id)
+		if (name != 'pthread_t' && !name.ends_with('.pthread_t'))
+			|| name.contains_any(' &?![]()') {
+			return none
+		}
+		if !name.ends_with('.C.pthread_t') {
+			// Stripped C names retain their declaration identity. Do not mistake
+			// an unrelated V struct with the same short name for a pthread handle.
+			mut declared_name := name_id
+			if !flat.source_type_shape(name_id).has(.dotted) && b.cur_module.len > 0
+				&& b.cur_module !in ['main', 'builtin'] {
+				qualified := qualify_type_name(name_id, b.cur_module)
+				if qualified in b.struct_types {
+					declared_name = qualified
+				}
+			}
+			layout := b.struct_types[declared_name] or { return none }
+			declaration := b.ssa_type_names[layout] or { return none }
+			if declaration != 'C.pthread_t' && !declaration.ends_with('.C.pthread_t') {
+				return none
+			}
+		}
+	}
+	// glibc uses unsigned long; Darwin uses a pointer to an opaque pthread.
+	return if b.m.target.is_linux() { b.u64_type } else { b.m.type_store.get_ptr(b.i8_type) }
+}
 
 // ssa_c_type_from_checker_type preserves C integer widths inside callback signatures.
 fn (mut b Builder) ssa_c_type_from_checker_type(typ types.Type) TypeID {

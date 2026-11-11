@@ -409,15 +409,37 @@ production compiler. Other C toolchains and failed PGO attempts use a regular pr
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
-Use `v -b arm64 file.v` on macOS ARM64 or `v -b x64 file.v` on Linux AMD64 to compile
-with a native backend. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+Use `v -b arm64 file.v` on macOS ARM64 or `v -b amd64 file.v` on Linux AMD64 to compile
+with a native backend. Use `v -b arm64 self` or `v -b amd64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native
-build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
+build. Use `-o v_arm64` or `-o v_amd64` to keep the current compiler and write a separate
 executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
-and `version`. The native compiler includes the C backend and leaves out FastC by default.
-For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
-Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+and `version`. The native compiler includes the C backend and leaves out FastC by default;
+add `-d amd64_only` to build an AMD64-only compiler.
+The AMD64-built compiler uses the serial frontend while native channel selection is incomplete.
+AMD64 writes Linux ELF executables directly, dynamically linked against glibc and the system
+libraries.
+Native self-builds, including their `self` helper, do not need a C compiler or external linker
+once AMD64 support has been compiled into V:
+
+```sh
+v -compile-backend amd64 self
+v -b amd64 -d amd64_only -o v_amd64 self
+./v_amd64 self x2
+./v_amd64 run examples/hello_world.v
+```
+
+The AMD64-only compiler defaults to AMD64 and preserves its backend and profile through
+`self`, including a cold helper build. It excludes the other code generators and reports
+unsupported backend requests directly. To restore C support in a replacement while still
+building it through AMD64, use `./v_amd64 -compile-backend c self` without `-d amd64_only`.
+The replacement then uses the general compiler's default C backend. `-all-backends self`
+also leaves the AMD64-only profile. These profile rules do not change regular compiler builds.
+
+`x64`, `x86_64`, and `x86-64` remain aliases for `amd64`.
+For AMD64, add `-prod` to enable SSA optimization and register allocation.
+Very large AMD64 modules may skip the global SSA pass to bound compiler memory. The ARM64
 backend retains its existing optimization behavior.
 
 ```bash

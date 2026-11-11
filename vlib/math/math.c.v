@@ -4,7 +4,7 @@
 module math
 
 $if windows {
-	$if tinyc {
+	$if tinyc && !native {
 		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
 	}
 } $else {

@@ -4,7 +4,21 @@ import v.flat
 
 fn (mut b Builder) register_at_exit_runtime() {
 	params := [b.resolve_type(flat.source_type_id('FnExitCb'))]
-	b.register_extern('atexit', b.i32_type, params)
+	if b.m.target.is_linux() && !b.use_native_c_sources {
+		// glibc supplies atexit through libc_nonshared.a. Direct ELF output
+		// registers executable callbacks with its exported __cxa_atexit ABI.
+		ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+		b.register_extern('__cxa_atexit', b.i32_type, [params[0], ptr_i8, ptr_i8])
+		atexit_id := b.register_synthetic_c_function('atexit', b.i32_type, params)
+		entry := b.m.add_block(atexit_id, 'libc_atexit_entry')
+		callback := b.func_add_argument(atexit_id, params[0], 'callback')
+		nil_ptr := b.m.get_or_add_const(ptr_i8, '0')
+		callee := b.m.add_value(.func_ref, b.i32_type, '__cxa_atexit', b.fn_ids['__cxa_atexit'])
+		status := b.block_instr4(.call, entry, b.i32_type, callee, callback, nil_ptr, nil_ptr)
+		b.block_instr1(.ret, entry, b.void_type, status)
+	} else {
+		b.register_extern('atexit', b.i32_type, params)
+	}
 	result_type := b.option_type_id(flat.source_type_void, true)
 	func_id := b.register_synthetic_function('at_exit', result_type, params)
 	b.generate_at_exit_body(func_id, result_type, params[0])

@@ -1733,9 +1733,9 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 
 fn test_x64_backend_aliases_are_normalized() {
 	for alias in ['amd64', 'x86_64', 'x86-64'] {
-		assert normalize_backend_name(alias) == 'x64'
+		assert normalize_backend_name(alias) == 'amd64'
 	}
-	assert normalize_backend_name('x64') == 'x64'
+	assert normalize_backend_name('x64') == 'amd64'
 }
 
 fn test_v3_fastc_default_linker_flags() {

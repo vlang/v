@@ -99,11 +99,8 @@ fn main() {
 	built := cmdexec.run(@VEXE, ['-gc', 'none', '-o', driver, driver_source])
 	assert built.exit_code == 0, built.output
 	cases := [
-		'fn probe(x i128) i128 { return -x }',
 		'fn probe(x u128) u128 { return ~x }',
 		'fn probe(x u128, y u128) u128 { return x * y }',
-		'fn probe(x u128, y u128) u128 { return x / y }',
-		'fn probe(x u128, y u128) u128 { return x % y }',
 		'fn probe(x u128, shift int) u128 { return x << shift }',
 		'fn probe(x i128, shift int) i128 { return x >> shift }',
 		'fn probe(x i128, shift int) i128 { return x >>> shift }',
@@ -116,7 +113,6 @@ fn main() {
 		'fn probe() { mut x := u128(1)\nx-- }',
 		'fn probe(x f64) i128 { return i128(x) }',
 		'fn probe(x i128) f64 { return f64(x) }',
-		'fn probe(x u128) u64 { return u64(x) }',
 		'fn probe(x u128) voidptr { return voidptr(x) }',
 		'fn probe(x voidptr) u128 { return u128(x) }',
 		'fn probe() { for n in u128(1)..u128(3) {} }',

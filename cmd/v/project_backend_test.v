@@ -131,7 +131,7 @@ fn test_unknown_project_backend_is_reported_with_its_manifest() {
 	res := os.exec([@VEXE, root])
 	assert res.exit_code == 1
 	assert res.output.contains(os.join_path(os.real_path(root), 'v.mod'))
-	assert res.output.contains('unknown backend `pascal`; expected c, fastc, arm64, x64, wasm')
+	assert res.output.contains('unknown backend `pascal`; expected c, fastc, arm64, amd64, wasm')
 	// An explicit backend does not read the manifest's choice.
 	assert with_project_backend(['-b', 'c', root]) == ['-b', 'c', root]
 }

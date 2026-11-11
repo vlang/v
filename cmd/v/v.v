@@ -238,8 +238,10 @@ fn main() {
 	if v3_exact_output_fixture_args(args) && '-nocache' !in args {
 		args.prepend('-nocache')
 	}
-	if full_compiler_is_required(compiler_args_before_program(args)) {
-		launch_full_compiler(args)
+	$if !amd64_only ? {
+		if full_compiler_is_required(compiler_args_before_program(args)) {
+			launch_full_compiler(args)
+		}
 	}
 	if ownership_compiler_is_required(compiler_args_before_program(args))
 		&& !ownership_checker_is_compiled() {
@@ -424,10 +426,14 @@ fn launch_ownership_compiler(args []string) {
 @[noreturn]
 fn launch_optional_compiler(vexe string, vroot string, name string, description string, build_args []string, args []string) {
 	compiler_source := os.join_path(vroot, 'cmd', 'v')
-	if tool_cache_is_disabled() {
-		run_uncached_optional_compiler(vexe, compiler_source, name, description, build_args, args)
+	mut helper_build_args := build_args.clone()
+	$if amd64_only ? {
+		helper_build_args << ['-b', 'amd64', '-d', 'amd64_only']
 	}
-	entry := tool_cache_entry(vexe, vroot, name, compiler_source, build_args) or {
+	if tool_cache_is_disabled() {
+		run_uncached_optional_compiler(vexe, compiler_source, name, description, helper_build_args, args)
+	}
+	entry := tool_cache_entry(vexe, vroot, name, compiler_source, helper_build_args) or {
 		eprintln('cannot find a writable cache for the ${description} compiler')
 		eprintln(err.msg())
 		exit(1)
@@ -488,6 +494,9 @@ fn run_uncached_optional_compiler(vexe string, compiler_source string, name stri
 
 // fallback_is_disabled reports whether retrying with the compatibility compiler was turned off.
 fn fallback_is_disabled() bool {
+	$if amd64_only ? {
+		return true
+	}
 	return os.getenv(v3_no_fallback_env) == '1' || os.getenv(v3_retry_env) == '1'
 }
 
@@ -589,6 +598,11 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 	if command in test_session_commands {
 		export_vtest_build_environment(vroot, prefix_args)
+	}
+	if command == 'self' {
+		// Resolve options after `self` too, including an override of the prefix.
+		// Native AMD64 self-builds compile their helper without a C toolchain.
+		prefix_args << ['-b', selected_backend(tool_args, false)]
 	}
 	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
 }
@@ -722,18 +736,32 @@ fn install_external_tool_modules(tool_name string, tool_source string, compile_a
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	amd64_self := tool_name == 'vself'
+		&& selected_backend(compile_args, false) in ['amd64', 'x64', 'x86_64', 'x86-64']
+	mut amd64_helper := amd64_self
+	$if amd64_only ? {
+		amd64_helper = true
+	}
 	if tool_name in ['vfmt', 'vself', 'vtest'] {
 		// Backend/target options describe formatting rules, the replacement
-		// compiler, or test programs. Build the helper for the host C backend.
+		// compiler, or test programs. Build the helper for the host target.
 		_, native_args := split_tool_backend_args(compile_args)
 		compile_args = external_tool_args_without_target(native_args)
+		if amd64_self {
+			compile_args << ['-b', 'amd64']
+		}
 	}
 	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		compile_args = external_tool_args_without_gc(compile_args)
-		if '-g' !in compile_args {
+		if !amd64_helper && '-g' !in compile_args {
 			compile_args << '-g'
 		}
 		compile_args << ['-gc', 'none']
+	}
+	$if amd64_only ? {
+		// The helper remains native even when `self -compile-backend c` asks
+		// its runtime to produce a replacement with the general compiler profile.
+		compile_args << ['-b', 'amd64', '-d', 'amd64_only']
 	}
 	if pref.tcc_with_prod_requested(compile_args) {
 		compile_args = external_tool_args_without_prod(compile_args)
@@ -964,6 +992,16 @@ fn retry_with_v1_at_exit() {
 
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
+	$if amd64_only ? {
+		eprintln('the AMD64-only compiler does not support the compatibility C compiler (${reason})')
+		exit(1)
+	} $else {
+		launch_v1_general(args, reason, report_state)
+	}
+}
+
+@[noreturn]
+fn launch_v1_general(args []string, reason string, report_state RetryState) {
 	legacy_module_fixture := v3_fixture_expects_legacy_compiler_modules(args)
 	vls_mode := '-vls-mode' in args
 	transparent_fixture_fallback := vls_mode
@@ -1232,6 +1270,9 @@ fn v1_fallback_selected_backend(args []string) string {
 
 fn selected_backend(args []string, include_compile_backends bool) string {
 	mut backend := 'c'
+	$if amd64_only ? {
+		backend = 'amd64'
+	}
 	mut backend_value_follows := false
 	mut option_value_follows := false
 	for i, arg in args {

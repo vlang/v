@@ -91,8 +91,24 @@ const single_runtime_helpers = ['array.delete_last', 'string__plus', 'new_map', 
 // keeps, and those that a program keeps for a construct found anywhere in it.
 // The channel and `shared` helpers of `sync` are not among them.
 pub fn seeded_fn_names() []string {
-	mut names := library_seeds.clone()
-	names << parallel_callback_seeds
+	return seeded_fn_names_for_defines([]string{})
+}
+
+// seeded_fn_names_for_defines applies the input compiler profile to implicit
+// roots. The running compiler's own build profile does not decide these roots.
+pub fn seeded_fn_names_for_defines(user_defines []string) []string {
+	amd64_only := 'amd64_only' in user_defines
+	mut names := []string{}
+	for seed in library_seeds {
+		if !amd64_only || !markused_c_backend_seed(seed) {
+			names << seed
+		}
+	}
+	for seed in parallel_callback_seeds {
+		if !amd64_only || !markused_c_backend_seed(seed) {
+			names << seed
+		}
+	}
 	names << core_runtime_seeds
 	names << lowered_runtime_seeds
 	names << float_runtime_seeds
@@ -105,6 +121,11 @@ pub fn seeded_fn_names() []string {
 	names << string_method_runtime_helpers
 	names << single_runtime_helpers
 	return names
+}
+
+fn markused_c_backend_seed(name string) bool {
+	return name in ['gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign', 'c.gen_assign',
+		'c.FlatGen.gen_fn_items_scoped_batches']
 }
 
 // mark_used updates mark used state for markused.
@@ -837,6 +858,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 		enqueue_test_file_roots(a, test_files, mut used, mut queue)
 		for seed in library_seeds {
+			if tc.amd64_only && markused_c_backend_seed(seed) {
+				continue
+			}
 			queue << seed
 			used[seed] = true
 		}
@@ -844,6 +868,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// are only selected after markused (by prealloc/worker lowering). Keep their
 		// concrete callees available for self-hosted compiler builds.
 		for seed in parallel_callback_seeds {
+			if tc.amd64_only && markused_c_backend_seed(seed) {
+				continue
+			}
 			queue << seed
 			used[seed] = true
 		}
@@ -924,8 +951,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for name in cache_roots {
 		enqueue(name, mut used, mut queue)
 	}
-	for name in c_interface_roots {
-		enqueue(name, mut used, mut queue)
+	// These implicit roots belong to the C emitter, including methods that
+	// recursively reach gen_expr. Direct calls remain ordinary reachability edges.
+	if !tc.amd64_only {
+		for name in c_interface_roots {
+			enqueue(name, mut used, mut queue)
+		}
 	}
 	if markused_has_node_kind(a, .debugger_stmt) {
 		enqueue('debug.Debugger.interact', mut used, mut queue)
@@ -1427,6 +1458,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				if markused_generated_c_helper_name(callee) {
 					module_calls.names[callee] = true
 					for alias in markused_generated_c_helper_aliases(callee) {
+						// Preserve an actual call, but do not retain C emitter methods
+						// solely as compatibility aliases in an AMD64-only compiler.
+						if tc.amd64_only && alias != callee
+							&& markused_c_emitter_helper_alias(alias) {
+							continue
+						}
 						enqueue(alias, mut used, mut queue)
 					}
 					continue
@@ -2045,6 +2082,11 @@ fn markused_generated_c_helper_name(name string) bool {
 		'c.FlatGen.sum_type_index', 'c.FlatGen.sum_type_index_resolved',
 		'v.gen.c.FlatGen.sum_type_index', 'v.gen.c.FlatGen.sum_type_index_resolved',
 		'c__FlatGen__sum_type_index', 'c__FlatGen__sum_type_index_resolved']
+}
+
+fn markused_c_emitter_helper_alias(name string) bool {
+	return name.starts_with('FlatGen.') || name.starts_with('c.FlatGen.')
+		|| name.starts_with('v.gen.c.FlatGen.') || name.starts_with('c__FlatGen__')
 }
 
 fn markused_generated_c_helper_aliases(name string) []string {

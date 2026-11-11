@@ -1,6 +1,6 @@
 module ssa
 
-// native_platform_constant returns the native runtime constants for the host
+// native_platform_constant returns the native runtime constants for the target
 // ABI used by direct code generation.
 fn native_platform_constant(name string, target TargetData) ?i64 {
 	if target.is_linux() {
@@ -30,6 +30,13 @@ fn native_linux_constant(name string) ?i64 {
 		'O_NOFOLLOW' { return i64(131072) }
 		'O_CLOEXEC' { return i64(524288) }
 		'O_SYNC', 'O_FSYNC' { return i64(1052672) }
+		'AT_FDCWD' { return i64(-100) }
+		'AT_REMOVEDIR' { return i64(512) }
+		'LOCK_SH', 'WNOHANG' { return i64(1) }
+		'LOCK_EX' { return i64(2) }
+		'LOCK_NB', 'MADV_DONTNEED' { return i64(4) }
+		'LOCK_UN' { return i64(8) }
+		'SIGPIPE' { return i64(13) }
 		'MAP_ANON', 'MAP_ANONYMOUS' { return i64(32) }
 		'RTLD_LOCAL' { return i64(0) }
 		'RTLD_GLOBAL' { return i64(256) }

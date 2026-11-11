@@ -47,7 +47,8 @@ pub mut:
 	shstr_table []u8
 }
 
-struct ElfSymbol {
+// ElfSymbol describes a symbol in an ELF64 object.
+pub struct ElfSymbol {
 pub mut:
 	name     string
 	name_idx int
@@ -57,7 +58,9 @@ pub mut:
 	size     u64
 }
 
-struct ElfRela {
+// ElfRela describes an ELF64 relocation with an explicit addend.
+pub struct ElfRela {
+pub:
 	offset u64
 	info   u64
 	addend i64

@@ -34,7 +34,7 @@ const optional_backends = [
 	},
 	OptionalBackend{
 		name:   'x64'
-		dir:    'gen/x64'
+		dir:    'gen/amd64'
 		symbol: 'x64__Gen__gen('
 	},
 	OptionalBackend{

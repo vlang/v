@@ -34,7 +34,7 @@ $if windows {
 }
 
 $if linux {
-	$if tinyc {
+	$if tinyc && !native {
 		$if amd64 {
 			// Use shared libraries here. Newer TCC runtimes provide these symbols too,
 			// and linking GCC's static archive then causes duplicate definitions.

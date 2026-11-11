@@ -6,7 +6,7 @@ fn (mut b Builder) register_native_telemetry_helpers() {
 	b.register_extern('getrusage', b.i32_type, [b.i32_type, ptr_i8])
 	id := b.register_synthetic_c_function('v3_bench_peak_rss_kb', b.i64_type, [])
 	entry := b.m.add_block(id, 'peak_rss_entry')
-	// Darwin rusage contains two timevals followed by fourteen 64-bit longs.
+	// Linux and Darwin rusage contain two timevals followed by fourteen 64-bit longs.
 	usage_type := b.m.type_store.get_array(b.u64_type, 18)
 	usage := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(usage_type))
 	buffer := b.block_instr1(.bitcast, entry, ptr_i8, usage)
@@ -20,8 +20,13 @@ fn (mut b Builder) register_native_telemetry_helpers() {
 	offset := b.m.get_or_add_const(b.i64_type, '32')
 	maxrss_ptr := b.block_instr2(.add, read, b.m.type_store.get_ptr(b.i64_type), buffer, offset)
 	maxrss := b.block_instr1(.load, read, b.i64_type, maxrss_ptr)
-	bytes_per_kb := b.m.get_or_add_const(b.i64_type, '1024')
-	result := b.block_instr2(.sdiv, read, b.i64_type, maxrss, bytes_per_kb)
+	result := if b.m.target.is_linux() {
+		// Linux reports ru_maxrss in KiB; Darwin reports bytes.
+		maxrss
+	} else {
+		bytes_per_kb := b.m.get_or_add_const(b.i64_type, '1024')
+		b.block_instr2(.sdiv, read, b.i64_type, maxrss, bytes_per_kb)
+	}
 	b.block_instr1(.ret, read, b.void_type, result)
 	failure := b.m.get_or_add_const(b.i64_type, '-1')
 	b.block_instr1(.ret, failed, b.void_type, failure)

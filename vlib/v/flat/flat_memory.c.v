@@ -1,5 +1,18 @@
 module flat
 
+// release_tree_storage releases the node and child buffers after a backend has
+// lowered the complete tree to its own representation. No tree reader may remain.
+// Text storage and payloads stay alive because lowered names can borrow them.
+@[unsafe]
+pub fn (mut a FlatAst) release_tree_storage() {
+	unsafe {
+		a.nodes.free()
+		a.children.free()
+	}
+	a.nodes = []Node{}
+	a.children = []NodeId{}
+}
+
 // discard_unused_capacity releases resident pages beyond the live AST after
 // parallel workers have joined and their append regions have been compacted.
 // The virtual reservation stays writable, so later appends retain their capacity.

@@ -533,6 +533,13 @@ pub fn Module.new() &Module {
 		field_offset_cache: map[u64]int{}
 		field_size_cache:   map[u64]int{}
 	}
+	// IR references use stable IDs, not slices or pointers into these vectors.
+	// Release replaced buffers when they grow instead of retaining every copy
+	// through a large native self build, including under the prealloc allocator.
+	unsafe {
+		m.values.flags.set(.noslices)
+		m.instrs.flags.set(.noslices)
+	}
 	m.values << Value{
 		kind: .unknown
 		id:   0

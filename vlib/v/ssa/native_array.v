@@ -43,13 +43,54 @@ fn (mut b Builder) register_native_array_growth() {
 	copy_size := b.block_instr2(.mul, entry, b.i64_type, len, stride)
 	has_items := b.block_instr2(.gt, entry, b.i1_type, copy_size, zero)
 	copy_block := b.m.add_block(func_id, 'array_grow_copy')
+	release_check := b.m.add_block(func_id, 'array_grow_release_check')
+	release_owned := b.m.add_block(func_id, 'array_grow_release_owned')
+	release_managed := b.m.add_block(func_id, 'array_grow_release_managed')
+	free_managed := b.m.add_block(func_id, 'array_grow_free_managed')
+	free_unmanaged := b.m.add_block(func_id, 'array_grow_free_unmanaged')
 	finish := b.m.add_block(func_id, 'array_grow_finish')
-	b.block_instr3(.br, entry, b.void_type, has_items, ValueID(copy_block), ValueID(finish))
+	b.block_instr3(.br, entry, b.void_type, has_items, ValueID(copy_block), ValueID(release_check))
 	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
 	b.block_instr4(.call, copy_block, ptr_i8, memcpy_ref, data, old_data, copy_size)
-	b.block_instr1(.jmp, copy_block, b.void_type, ValueID(finish))
-	// Existing slices may still reference the old storage. Growth takes a fresh
-	// managed allocation, as array.ensure_cap does without the noslices promise.
+	b.block_instr1(.jmp, copy_block, b.void_type, ValueID(release_check))
+	// Match array.ensure_cap: only a noslices owner can release its old buffer.
+	// The retained fixed-array bit and managed header preserve borrowed views
+	// even if the owner carries the noslices hint.
+	ownership_bits := b.block_instr2(.and_, release_check, b.u32_type, flags,
+		b.m.get_or_add_const(b.u32_type, '2147483713')) // noslices | is_slice | retained fixed
+	can_release := b.block_instr2(.eq, release_check, b.i1_type, ownership_bits,
+		b.m.get_or_add_const(b.u32_type, '1'))
+	nil_ptr := b.m.get_or_add_const(ptr_i8, '0')
+	has_old_data := b.block_instr2(.ne, release_check, b.i1_type, old_data, nil_ptr)
+	release_buffer := b.block_instr2(.and_, release_check, b.i1_type, can_release, has_old_data)
+	b.block_instr3(.br, release_check, b.void_type, release_buffer, ValueID(release_owned),
+		ValueID(finish))
+	managed_bit := b.block_instr2(.and_, release_owned, b.u32_type, flags,
+		b.m.get_or_add_const(b.u32_type, '16'))
+	is_managed := b.block_instr2(.ne, release_owned, b.i1_type, managed_bit,
+		b.m.get_or_add_const(b.u32_type, '0'))
+	b.block_instr3(.br, release_owned, b.void_type, is_managed, ValueID(release_managed),
+		ValueID(free_unmanaged))
+	old_offset_value := b.block_load_native_int(release_managed, offset_ptr)
+	old_offset := b.block_instr1(.zext, release_managed, b.i64_type, old_offset_value)
+	old_base := b.block_instr2(.sub, release_managed, ptr_i8, old_data, old_offset)
+	old_header := b.block_instr2(.sub, release_managed, ptr_i8, old_base,
+		b.m.get_or_add_const(b.i64_type, '16'))
+	slice_flag_ptr := b.block_instr2(.get_element_ptr, release_managed, ptr_i8, old_header,
+		b.m.get_or_add_const(b.i64_type, b.m.target.ptr_size.str()))
+	slice_flag := b.block_instr1(.load, release_managed, b.i8_type, slice_flag_ptr)
+	has_slices := b.block_instr2(.ne, release_managed, b.i1_type, slice_flag,
+		b.m.get_or_add_const(b.i8_type, '0'))
+	b.block_instr3(.br, release_managed, b.void_type, has_slices, ValueID(finish),
+		ValueID(free_managed))
+	free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+	old_allocation_ptr := b.block_instr1(.bitcast, free_managed,
+		b.m.type_store.get_ptr(ptr_i8), old_header)
+	old_allocation := b.block_instr1(.load, free_managed, ptr_i8, old_allocation_ptr)
+	b.block_instr2(.call, free_managed, b.void_type, free_ref, old_allocation)
+	b.block_instr1(.jmp, free_managed, b.void_type, ValueID(finish))
+	b.block_instr2(.call, free_unmanaged, b.void_type, free_ref, old_data)
+	b.block_instr1(.jmp, free_unmanaged, b.void_type, ValueID(finish))
 	b.block_instr2(.store, finish, b.void_type, data, data_ptr)
 	b.block_instr2(.store, finish, b.void_type, zero, offset_ptr)
 	b.block_instr2(.store, finish, b.void_type, cap, cap_ptr)

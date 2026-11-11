@@ -1460,6 +1460,7 @@ pub mut:
 	no_main                       bool
 	nofloat                       bool
 	is_js_backend                 bool
+	amd64_only                    bool // the input selects the AMD64-only compiler profile
 	warn_about_allocs             bool
 	warns_are_errors              bool
 	explicit_warns_are_errors     bool
@@ -1903,6 +1904,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		valid_diagnostic_fast:                 tc.valid_diagnostic_fast
 		valid_resolution_fast:                 tc.valid_resolution_fast
 		is_js_backend:                         tc.is_js_backend
+		amd64_only:                            tc.amd64_only
 		cross_target_prefs:                    tc.cross_target_prefs
 		enable_globals:                        tc.enable_globals
 		disable_explicit_mutability:           tc.disable_explicit_mutability
