@@ -11,9 +11,7 @@
 #else
 #include <poll.h>
 #endif
-#if defined(__APPLE__)
 #include <sys/select.h>
-#endif
 
 static inline short v_os_fd_poll_revents(int fd, short events) {
 	struct pollfd descriptor = {fd, events, 0};
