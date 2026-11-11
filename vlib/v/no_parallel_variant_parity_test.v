@@ -68,8 +68,11 @@ fn only_parallel_local_methods(parallel_source string, name string, module_sourc
 			return false
 		}
 		for source in module_sources {
-			if source.contains(receiver) {
-				return false
+			for source_line in source.split_into_lines() {
+				// A reference in a comment is not visible to the serial build.
+				if source_line.all_before('//').contains(receiver) {
+					return false
+				}
 			}
 		}
 		found = true
@@ -81,6 +84,7 @@ fn test_parallel_local_method_parity_keeps_externally_called_methods() {
 	parallel := 'struct SpeculatedBatch {\n}\nfn (mut spec SpeculatedBatch) release() {\n}\n'
 	shared_sources := ['fn (mut b BatchSources) release(start int, end int) {}']
 	assert only_parallel_local_methods(parallel, 'release', shared_sources)
+	assert only_parallel_local_methods(parallel, 'release', ['speculated_batch voidptr // &SpeculatedBatch'])
 	assert !only_parallel_local_methods(parallel, 'release', ['fn use(spec SpeculatedBatch) {}'])
 	assert !only_parallel_local_methods('fn (mut p Parser) release() {}', 'release', [])
 	assert !only_parallel_local_methods('fn release() {}', 'release', [])
