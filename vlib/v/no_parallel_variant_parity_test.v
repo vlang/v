@@ -40,8 +40,6 @@ fn test_no_parallel_variants_define_every_externally_called_function() {
 	assert checked >= 5
 }
 
-// declared_fns maps the name of every top-level function and method declared in
-// `source` to whether it is public, with receivers and generic parameters stripped.
 // only_parallel_local_methods reports that every declaration of name in the
 // parallel variant is a private method on a type absent from serial module
 // sources. Calls to a different receiver's same-named method are unrelated.
@@ -90,6 +88,8 @@ fn test_parallel_local_method_parity_keeps_externally_called_methods() {
 	assert !only_parallel_local_methods('fn release() {}', 'release', [])
 }
 
+// declared_fns maps the name of every top-level function and method declared in
+// `source` to whether it is public, with receivers and generic parameters stripped.
 fn declared_fns(source string) map[string]bool {
 	mut fns := map[string]bool{}
 	for line in source.split_into_lines() {
