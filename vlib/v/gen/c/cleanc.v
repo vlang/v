@@ -14190,9 +14190,15 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
 		return
 	}
-	if g.race && semantic_expected is types.String && semantic_actual is types.String
-		&& g.gen_race_string_read(id) {
-		return
+	if g.race {
+		if semantic_expected is types.String && semantic_actual is types.String
+			&& g.gen_race_string_read(id) {
+			return
+		}
+		if semantic_expected is types.Array && semantic_actual is types.Array
+			&& g.gen_race_array_read(id) {
+			return
+		}
 	}
 	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
 		return
@@ -19030,10 +19036,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.write('(*(${c_elem}*)array_get(')
 						}
 						base_node := g.a.nodes[int(base_id)]
-						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
-							g.write('*')
+						if !g.race || is_ptr || !g.gen_race_array_read(base_id) {
+							if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
+								g.write('*')
+							}
+							g.gen_expr(base_id)
 						}
-						g.gen_expr(base_id)
 						if accessor.len == 0 {
 							g.write(', ')
 							g.gen_expr(g.a.child(node, 1))
