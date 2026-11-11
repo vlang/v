@@ -93,6 +93,50 @@ legacy_uint && !native_uint {
 	sub(/if.*/, "}", prctl_end)
 }
 
+# The f5b8e41 vc snapshot includes POSIX C bindings from os/fd.c.v.
+# Earlier snapshots did not; until vc regenerates with the libc-owned binding,
+# its struct pollfd would redefine the type already supplied by <poll.h>.
+# Retain the declaration only on Windows, which has no POSIX poll header.
+/^struct pollfd[ \t]*\{[ \t]*$/ {
+	print "#if defined(_WIN32)"
+	vc_pollfd_guard = 1
+}
+
+vc_pollfd_guard && /^};[ \t]*$/ {
+	print
+	print "#endif"
+	vc_pollfd_guard = 0
+	next
+}
+
+# The same snapshot also redeclares types from BSD system headers.
+# Keep the headerless declarations on other targets.
+/^struct timespec[ \t]*\{.*\};[ \t]*$/ {
+	print "#if !defined(__FreeBSD__)"
+	print
+	print "#endif"
+	next
+}
+
+/^struct itimerspec[ \t]*\{[ \t]*$/ {
+	print "#if !defined(__FreeBSD__)"
+	vc_itimerspec_guard = 1
+}
+
+vc_itimerspec_guard && /^};[ \t]*$/ {
+	print
+	print "#endif"
+	vc_itimerspec_guard = 0
+	next
+}
+
+/^typedef union \{ unsigned char _opaque\[128\]; long long _align; \} sigset_t;[ \t]*$/ {
+	print "#if !defined(__OpenBSD__)"
+	print
+	print "#endif"
+	next
+}
+
 {
 	print
 	if (prctl_end != "" && $0 == prctl_end) {

@@ -153,32 +153,17 @@ fn C.FD_SET(fd i32, fdset &C.fd_set)
 fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
 $if !windows && !freestanding && !syscalls {
-	#include <poll.h>
-	// `fd` is a C `int`; V's `int` is 64-bit on 64-bit targets, and the
-	// headerless preamble lays this struct out from these fields.
-	struct C.pollfd {
-	mut:
-		fd      i32
-		events  i16
-		revents i16
-	}
-	$if macos || ios || freebsd || openbsd || dragonfly || android || termux {
-		fn C.poll(fds &C.pollfd, nfds u32, timeout i32) i32
-	} $else {
-		fn C.poll(fds &C.pollfd, nfds uint, timeout i32) i32
-	}
+	#include "@VMODROOT/vlib/os/fd_poll.h"
+	fn C.v_os_fd_poll_revents(fd int, events i16) i16
 }
 
 $if !windows && !freestanding && !syscalls {
 	fn fd_is_pending_poll(fd int) bool {
-		mut poll_fd := C.pollfd{
-			fd:     i32(fd)
-			events: i16(C.POLLIN)
-		}
-		if C.poll(&poll_fd, 1, 0) <= 0 || (poll_fd.revents & i16(C.POLLNVAL)) != 0 {
+		revents := C.v_os_fd_poll_revents(fd, i16(C.POLLIN))
+		if (revents & i16(C.POLLNVAL)) != 0 {
 			return false
 		}
-		return (poll_fd.revents & i16(C.POLLIN | C.POLLHUP | C.POLLERR)) != 0
+		return (revents & i16(C.POLLIN | C.POLLHUP | C.POLLERR)) != 0
 	}
 }
 
