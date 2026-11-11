@@ -981,11 +981,38 @@ fn (mut g FlatGen) optional_typedefs() {
 	// every wrapper used by forward_decls() is already defined.
 	g.collect_selected_declaration_signature_types()
 	g.optional_pointer_struct_forward_decls()
+	// An unused generic callback can mention !Payload[T] even though Payload[T]
+	// was never materialized. Its function pointer only needs the opaque Result
+	// declaration; defining a Result with an incomplete by-value payload would
+	// generate invalid C. Keep definitions for materialized payloads unchanged.
+	mut declared_structs := map[string]bool{}
+	for name in g.c_struct_decl_names() {
+		declared_structs[g.struct_cname(name)] = true
+	}
+	mut generic_struct_prefixes := []string{}
+	for id, params in g.tc.struct_generic_params {
+		if params.len > 0 {
+			generic_struct_prefixes << '${g.struct_cname(flat.source_type_name(id))}_'
+		}
+	}
 	mut wrote := false
 	mut names := g.needed_optional_types.keys()
 	names.sort()
 	for opt_name in names {
 		val_type := flat.source_type_name(g.needed_optional_types.value_id(opt_name))
+		mut unused_generic_payload := false
+		if !val_type.ends_with('*') && !declared_structs[val_type]
+			&& !g.cached_support_has_c_type(val_type) && !g.is_known_sum_c_type(val_type) {
+			for prefix in generic_struct_prefixes {
+				if val_type.starts_with(prefix) {
+					unused_generic_payload = true
+					break
+				}
+			}
+		}
+		if unused_generic_payload {
+			continue
+		}
 		if g.emit_optional_typedef(opt_name, val_type) {
 			wrote = true
 		}
