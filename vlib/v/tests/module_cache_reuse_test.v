@@ -1434,3 +1434,74 @@ fn main() {
 		}
 	}
 }
+
+// A cached module object can call the str helper of an enum of another module. When
+// that module is rebuilt from source, while the caller is read from its header, the
+// program must still emit the helper (orm's object stringifies builtin's AttributeKind).
+fn test_rebuilt_module_keeps_enum_str_helpers_for_cached_objects() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_enum_str')
+	cache := os.join_path(root, 'cache')
+	mut saved := pin_module_cache(cache)
+	saved << save_env('VMODULES')
+	os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'modules', 'attrs')) or { panic(err) }
+	os.write_file(os.join_path(root, 'modules', 'attrs', 'attrs.v'), 'module attrs
+
+pub struct Field {
+pub:
+	attrs []VAttribute
+}
+
+pub fn describe(f Field) string {
+	return "\${f}"
+}
+
+pub fn count(f Field) int {
+	return f.attrs.len
+}
+') or {
+		panic(err)
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'import attrs
+
+fn main() {
+	println(attrs.count(attrs.Field{}))
+}
+') or {
+		panic(err)
+	}
+	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+	assert compiled_a_module(cold), cold
+	assert run_built(root, 'first') == '0'
+	// Rebuild builtin from source; `attrs` stays a cached header and object.
+	mut removed := 0
+	for stamp in os.walk_ext(cache, '.stamp') {
+		name := os.file_name(stamp)
+		if name.starts_with('builtin_') && name.ends_with('.o.stamp') {
+			os.rm(stamp) or { panic(err) }
+			removed++
+		}
+	}
+	assert removed > 0
+	os.write_file(main_file, 'import attrs
+
+fn main() {
+	println(attrs.count(attrs.Field{}) + 1)
+}
+') or {
+		panic(err)
+	}
+	warm := build(root, ['-cc', 'cc'], main_file, 'second')
+	assert run_built(root, 'second') == '1'
+}
