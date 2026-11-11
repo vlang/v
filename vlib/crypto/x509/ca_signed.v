@@ -3,7 +3,6 @@ module x509
 import crypto.ecdsa
 import crypto.rand
 import crypto.sha256
-import time
 
 fn extract_subject_der(cert_der []u8) ![]u8 {
 	cert_tlv, _ := split_tlv(cert_der, 0) or { return err }

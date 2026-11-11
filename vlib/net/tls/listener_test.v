@@ -1,7 +1,5 @@
 module tls
 
-import net
-
 fn serve_once(mut l Listener) {
 	mut conn := l.accept() or { return }
 	defer { conn.close() or {} }
