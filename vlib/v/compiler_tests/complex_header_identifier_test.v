@@ -1,6 +1,12 @@
 module main
 
-#include <complex.h>
+$if tinyc {
+	// TinyCC cannot use complex types, and its Windows bundle omits complex.h.
+	// Keep the header's macro collision active without requiring those types.
+	#define complex _Complex
+} $else {
+	#include <complex.h>
+}
 
 struct ComplexNamedField {
 	complex   int
