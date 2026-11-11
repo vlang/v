@@ -15,7 +15,7 @@ pub const operator_method_c_prefix = '${internal_symbol_c_prefix}op_'
 // `token.Token.is_overloadable`), and the index operators.
 const overloadable_operators = ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '>', '<=', '>=',
 	'|', '^', '[]', '[]=']
-const max_c_collision_name_len = 8
+const max_c_collision_name_len = 12
 
 // Additional C++ keywords use the internal partition so source names such as
 // `operator` and `v_operator` remain distinct. Native C names bypass this map.
@@ -145,69 +145,71 @@ const reserved_words = {
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
 // calls are unaffected (the `C.` prefix is stripped before this check).
 const libc_collisions = {
-	'abort':    true
-	'abs':      true
-	'access':   true
-	'alloca':   true
-	'acos':     true
-	'atexit':   true
-	'basename': true
-	'ceil':     true
-	'ceilf':    true
-	'close':    true
-	'clock':    true
-	'connect':  true
-	'cos':      true
-	'drem':     true
-	'dup2':     true
-	'execlp':   true
-	'execvp':   true
-	'fabs':     true
-	'fcntl':    true
-	'floor':    true
-	'floorf':   true
-	'fmod':     true
-	'fork':     true
-	'getenv':   true
-	'index':    true
-	'j0':       true
-	'j1':       true
-	'jn':       true
-	'ldexp':    true
-	'listen':   true
-	'log':      true
-	'memcmp':   true
-	'memcpy':   true
-	'memmove':  true
-	'memset':   true
-	'mktemp':   true
-	'open':     true
-	'pipe':     true
-	'pow':      true
-	'printf':   true
-	'raise':    true
-	'read':     true
-	'realpath': true
-	'rint':     true
-	'round':    true
-	'scalb':    true
-	'select':   true
-	'send':     true
-	'setenv':   true
-	'signal':   true
-	'snprintf': true
-	'sqrt':     true
-	'strcmp':   true
-	'strlen':   true
-	'strncmp':  true
-	'strncpy':  true
-	'strrchr':  true
-	'strstr':   true
-	'truncate': true
-	'wait':     true
-	'y0':       true
-	'y1':       true
-	'yn':       true
+	'abort':        true
+	'abs':          true
+	'access':       true
+	'alloca':       true
+	'acos':         true
+	'atexit':       true
+	'basename':     true
+	// C23 <math.h>; glibc declares it when C23/GNU extensions are enabled.
+	'canonicalize': true
+	'ceil':         true
+	'ceilf':        true
+	'close':        true
+	'clock':        true
+	'connect':      true
+	'cos':          true
+	'drem':         true
+	'dup2':         true
+	'execlp':       true
+	'execvp':       true
+	'fabs':         true
+	'fcntl':        true
+	'floor':        true
+	'floorf':       true
+	'fmod':         true
+	'fork':         true
+	'getenv':       true
+	'index':        true
+	'j0':           true
+	'j1':           true
+	'jn':           true
+	'ldexp':        true
+	'listen':       true
+	'log':          true
+	'memcmp':       true
+	'memcpy':       true
+	'memmove':      true
+	'memset':       true
+	'mktemp':       true
+	'open':         true
+	'pipe':         true
+	'pow':          true
+	'printf':       true
+	'raise':        true
+	'read':         true
+	'realpath':     true
+	'rint':         true
+	'round':        true
+	'scalb':        true
+	'select':       true
+	'send':         true
+	'setenv':       true
+	'signal':       true
+	'snprintf':     true
+	'sqrt':         true
+	'strcmp':       true
+	'strlen':       true
+	'strncmp':      true
+	'strncpy':      true
+	'strrchr':      true
+	'strstr':       true
+	'truncate':     true
+	'wait':         true
+	'y0':           true
+	'y1':           true
+	'yn':           true
 }
 
 // c_name returns the C identifier used for a V symbol or type name.
