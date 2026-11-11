@@ -1926,7 +1926,7 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	condition := g.parse_comptime_or()!
 	g.expect(.lcbr)!
 	if condition {
-		value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+		value := g.read_block_expression_value()!
 		value_type := g.last_expression_type
 		option_value_type := if value_type in [fastc_type_option, fastc_type_result] {
 			if g.last_expression.len > 0 {
@@ -1964,7 +1964,7 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 		return g.read_comptime_if_expression()!
 	}
 	g.expect(.lcbr)!
-	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+	value := g.read_block_expression_value()!
 	value_type := g.last_expression_type
 	option_value_type := if value_type in [fastc_type_option, fastc_type_result] {
 		if g.last_expression.len > 0 {

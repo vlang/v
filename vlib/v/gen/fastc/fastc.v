@@ -1027,7 +1027,10 @@ fn fastc_bool_types_equal(left []bool, right []bool) bool {
 struct FastcLocal {
 	is_mut       bool
 	is_reference bool
-	typ          u32
+	// A value local of an `@[heap]` struct uses pointer storage, but expressions
+	// and closure captures still have the struct's value type.
+	is_heap_value bool
+	typ           u32
 	// A smart-cast that narrows a local to a concrete variant may store the narrowed value
 	// in a uniquely named C temporary rather than shadowing the local's own C name, so a
 	// later `defer` body (rendered at function scope) still binds the original name. When set,
