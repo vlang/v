@@ -1004,7 +1004,7 @@ fn (mut g FlatGen) optional_typedefs() {
 		if !val_type.ends_with('*') && !declared_structs[val_type]
 			&& !g.cached_support_has_c_type(val_type) && !g.is_known_sum_c_type(val_type) {
 			for prefix in generic_struct_prefixes {
-				if val_type.starts_with(prefix) {
+				if val_type.starts_with(prefix) || val_type.contains('__${prefix}') {
 					unused_generic_payload = true
 					break
 				}
