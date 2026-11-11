@@ -4,6 +4,11 @@ name: Musl smoke diagnostics
   pull_request:
     paths:
       - '.github/workflows/musl-smoke-diagnostics.yml'
+      - '.github/workflows/musl_compile_smoke.sh'
+      - '.github/workflows/master_ci_regressions.yml'
+      - '.github/workflows/tools_ci.yml'
+      - 'cmd/tools/check_autobahn_results/*.v'
+      - 'cmd/tools/testing/*.v'
       - 'cmd/tools/test_if_v_test_system_works.v'
       - 'cmd/tools/test_if_v_test_system_works_test.v'
 
@@ -50,3 +55,37 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Verify progress remains visible when a nested command stalls
         run: ./v cmd/tools/test_if_v_test_system_works_test.v
+
+  compile-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, strict]
+    container:
+      image: thevlang/vlang@sha256:6bdb6206d0523c91b4ffeccd7eacecad41c2c9621a3f02da87ace639fd6e5255
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none
+      volumes:
+        - ${{ github.workspace }}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build with the tools CI compiler flags
+        run: |
+          make -j4
+          VFLAGS= ./v self -prod -cc musl-gcc -gc none -cg -parallel-cc
+      - name: Record the musl toolchain and worker configuration
+        run: |
+          musl-gcc --version
+          nproc
+          ulimit -s
+          printf 'VJOBS=%s\n' "${VJOBS-unset}"
+          test "${VJOBS+x}" != x
+      - name: Exercise the test compilations that stalled on master
+        run: bash .github/workflows/musl_compile_smoke.sh "${{ matrix.suite }}"

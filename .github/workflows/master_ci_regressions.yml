@@ -8,6 +8,8 @@ on:
       - '.github/workflows/linux_ci.yml'
       - '.github/workflows/tools_ci.yml'
       - '.github/workflows/riscv64_linux_ci.yml'
+      - '.github/workflows/sanitized_ci.yml'
+      - '.github/workflows/v_apps_and_modules_compile_ci.yml'
       - '.github/workflows/disable_azure_mirror*'
       - '.github/workflows/ci_timeout_contract_test.py'
       - '.github/workflows/prepare_v*'
