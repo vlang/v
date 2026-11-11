@@ -933,13 +933,15 @@ const toc_deprecated_badge = '<span class="toc-badge">deprecated</span>'
 // declarations, which is empty when it has none, or `none` when `dn` is not deprecated.
 fn deprecation_of(dn doc.DocNode) ?string {
 	for tag in dn.tags {
-		attribute := tag.trim_string_left('@[').trim_string_right(']')
-		// `@[deprecated_after: 'date']` only comes with `@[deprecated]`.
-		if attribute.all_before(':').trim_space() == 'deprecated' {
-			return if attribute.contains(':') {
-				attribute.all_after(':').trim_space().trim('\'"')
-			} else {
-				''
+		// One attribute group can have several attributes, like `@[inline; deprecated]`.
+		for attribute in split_attributes(tag.trim_string_left('@[').trim_string_right(']')) {
+			// `@[deprecated_after: 'date']` only comes with `@[deprecated]`.
+			if attribute.all_before(':').trim_space() == 'deprecated' {
+				return if attribute.contains(':') {
+					attribute.all_after(':').trim_space().trim('\'"')
+				} else {
+					''
+				}
 			}
 		}
 	}
@@ -949,6 +951,28 @@ fn deprecation_of(dn doc.DocNode) ?string {
 		}
 	}
 	return none
+}
+
+// split_attributes splits the attributes of an attribute group, like `inline; deprecated: 'use x'`,
+// at the semicolons that are not in a string, like the one of `deprecated: 'use x; or y'`.
+fn split_attributes(group string) []string {
+	mut result := []string{}
+	mut quote := u8(0)
+	mut start := 0
+	for i, c in group {
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+		} else if c in [`'`, `"`] {
+			quote = c
+		} else if c == `;` {
+			result << group[start..i]
+			start = i + 1
+		}
+	}
+	result << group[start..]
+	return result
 }
 
 // toc_title returns the tooltip of an entry of the table of contents, with the message of its

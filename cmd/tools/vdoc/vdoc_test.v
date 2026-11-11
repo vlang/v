@@ -735,6 +735,19 @@ fn test_the_table_of_contents_marks_the_deprecated_symbols() {
 	assert toc.contains('<a class="deprecated" href="#Old" title="struct Old"><span class="toc-label">struct Old</span><span class="toc-badge">deprecated</span></a>')
 }
 
+fn test_a_deprecation_is_found_among_the_attributes_of_a_group() {
+	message := fn (tags []string) string {
+		return deprecation_of(doc.DocNode{ tags: tags }) or { 'not deprecated' }
+	}
+	assert message(['@[deprecated; inline]']) == ''
+	assert message(["@[inline; deprecated: 'use c']"]) == 'use c'
+	assert message(["@[deprecated: 'use c'; deprecated_after: '2025-01-01']"]) == 'use c'
+	// A semicolon in the message does not end it.
+	assert message(["@[deprecated: 'use a; or b']"]) == 'use a; or b'
+	assert message(['@[inline; deprecated_after]']) == 'not deprecated'
+	assert message(['@[inline]']) == 'not deprecated'
+}
+
 fn test_the_table_of_contents_shows_how_a_function_is_called() {
 	assert toc_call_label('pub fn abs_path(path string) string', 'abs_path') == 'abs_path(path)'
 	// A receiver is shown as it is declared, so that it shows if it is mutable or a reference.
