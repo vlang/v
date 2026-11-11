@@ -1,0 +1,49 @@
+name: Verify AMD64 ELF PR
+on:
+  push:
+    branches: [ci/verify-amd64-elf-pr32193]
+permissions:
+  contents: read
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out V PR snapshot
+        uses: actions/checkout@v4
+      - name: Check out V's C bootstrap
+        uses: actions/checkout@v4
+        with:
+          repository: vlang/vc
+          path: vc
+      - name: Compile bootstrap with cc
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cc -w -O0 -o v vc/v.c -lm -lpthread -ldl
+          ./v version
+      - name: Build compiler with native AMD64 backend
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./v -gc none -d skip_fastc -cc gcc -compile-backend amd64 -o v_amd64 cmd/v
+          ./v_amd64 version
+      - name: Compile and run native ELF hello world
+        shell: bash
+        run: |
+          set -euxo pipefail
+          printf "fn main() { println('Hello, world!') }\n" > "$RUNNER_TEMP/hello.v"
+          ./v_amd64 -gc none -b amd64 -o "$RUNNER_TEMP/hello" "$RUNNER_TEMP/hello.v"
+          file "$RUNNER_TEMP/hello"
+          readelf -h "$RUNNER_TEMP/hello"
+          test "$("$RUNNER_TEMP/hello")" = "Hello, world!"
+          ./v_amd64 -gc none -b amd64 -o "$RUNNER_TEMP/hello.o" "$RUNNER_TEMP/hello.v"
+          readelf -h "$RUNNER_TEMP/hello.o"
+          readelf -h "$RUNNER_TEMP/hello.o" | grep -q 'REL (Relocatable file)'
+          ./v_amd64 -gc none -b x64 -o "$RUNNER_TEMP/hello_alias" "$RUNNER_TEMP/hello.v"
+          test "$("$RUNNER_TEMP/hello_alias")" = "Hello, world!"
+      - name: Run native backend regression tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./v_amd64 -gc none -silent test vlib/v/gen/amd64/native_run_test.v
