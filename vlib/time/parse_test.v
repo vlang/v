@@ -131,6 +131,18 @@ fn test_parse_iso8601_invalid() {
 	}
 }
 
+fn test_parse_iso8601_rejects_zero_month_and_day() {
+	for s in ['2020-01-0', '2020-01-00', '2020-00-01', '2020-0-0', '0000-00-00', '2020-01-00T10:00:00Z',
+		'2020-00-01T10:00:00Z'] {
+		if t := time.parse_iso8601(s) {
+			assert false, '${s} should be rejected, got ${t}'
+		}
+	}
+	t := time.parse_iso8601('2020-01-01')!
+	assert t.month == 1
+	assert t.day == 1
+}
+
 fn test_parse_iso8601_date_only() {
 	format := '2020-06-05'
 	t := time.parse_iso8601(format) or {
