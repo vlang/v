@@ -390,7 +390,7 @@ fn test_architecture_suffixes_are_still_c_backend_tests() {
 fn test_native_backend_tests_answer_to_both_spellings() {
 	assert is_test_file_for_backend('foo_test.native.v', 'native')
 	assert is_test_file_for_backend('foo_test.native.v', 'arm64')
-	assert is_test_file_for_backend('foo_test.native.v', 'x64')
+	assert is_test_file_for_backend('foo_test.native.v', 'amd64')
 	assert !is_test_file_for_backend('foo_test.native.v', 'c')
 	assert !is_test_file_for_backend('foo_test.native.v', 'fastc')
 	assert !is_test_file_for_backend('foo_test.native.v', 'js')
@@ -398,7 +398,7 @@ fn test_native_backend_tests_answer_to_both_spellings() {
 	for arch in ['amd64', 'arm64'] {
 		target := target_from('linux', arch) or { panic(err) }
 		assert is_test_file_for_platform('foo_test.native.v', 'arm64', target), 'native test on ${arch}'
-		assert is_test_file_for_platform('foo_test.native.v', 'x64', target), 'native test on ${arch}'
+		assert is_test_file_for_platform('foo_test.native.v', 'amd64', target), 'native test on ${arch}'
 		assert !is_test_file_for_platform('foo_test.native.v', 'c', target), 'native test on ${arch}'
 	}
 	// The other spelling still names the architecture, so it stays a C-backend test and never

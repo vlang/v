@@ -1135,7 +1135,7 @@ fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_bound
 }
 
 fn test_test_launcher_builds_host_helper_and_preserves_test_target() {
-	for backend in ['arm64', 'x64', 'wasm', 'js'] {
+	for backend in ['arm64', 'amd64', 'wasm', 'js'] {
 		for flag in ['-b', '-backend'] {
 			for prefix in [[flag, backend, '-os', 'linux', '-arch', 'arm64'],
 				['${flag}=${backend}', '-os=linux', '-arch=arm64']] {

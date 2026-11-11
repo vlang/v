@@ -83,13 +83,14 @@ NB: the build flags are shared with the run command too:
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
     * `arm64`             - V outputs a native ARM64 executable directly on macOS.
                             Use `v -b arm64 -gc none file.v` (EXPERIMENTAL).
-    * `x64`               - V outputs a native AMD64 executable directly on Linux.
-                            Use `v -b x64 file.v` (EXPERIMENTAL). Add `-prod`
-                            to optimize generated runtime code.
+    * `amd64`             - V outputs a native AMD64 executable directly on Linux.
+                            Use `v -b amd64 file.v` (EXPERIMENTAL). Add `-prod`
+                            to optimize generated runtime code. `x64`, `x86_64`,
+                            and `x86-64` remain aliases for this backend.
     * `wasm`              - V outputs a WebAssembly module directly
 	                        (see -os wasi|browser) (EXPERIMENTAL).
 
-    `-b native` has been replaced by `-b arm64` and `-b x64`.
+    `-b native` has been replaced by `-b arm64` and `-b amd64`.
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.

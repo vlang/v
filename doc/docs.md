@@ -8423,7 +8423,8 @@ project that locks other revisions of the same packages switches them back. Use
    `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
    given with `-e` or on standard input belongs to no project, and each target
    of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
-   `fastc`, `arm64`, `x64`, and `wasm`.
+   `fastc`, `arm64`, `amd64`, and `wasm`. The aliases `x64`, `x86_64`, and `x86-64`
+   select `amd64`.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
@@ -10808,12 +10809,11 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
-so they always
-build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
-allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
-bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+`-b native` has been replaced by `-b arm64` and `-b amd64`. Use `v -b arm64 file.v` on macOS
+ARM64 or `v -b amd64 file.v` on Linux AMD64. The native backends do not link a garbage collector
+yet, so they always build as if `-gc none` was passed. For AMD64, `-prod` enables SSA optimization,
+scalar register allocation, and optimized C helpers. Very large AMD64 modules may skip the global
+SSA pass to bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
 `#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
@@ -10821,10 +10821,20 @@ ARM64 resolves a fixed set of platform C constants. Other C constants produce an
 use the C backend when a header defines a constant the native backend does not support.
 The supported set includes the memory-order and pthread compatibility constants used by
 V's synchronization runtime.
-The x64 backend is experimental. Calls without a native implementation fail compilation
+The AMD64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
 currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+
+The AMD64 backend emits ELF object code and uses the host C toolchain to link a Linux
+executable. `-b x64`, `-b x86_64`, and `-b x86-64` remain aliases for `-b amd64`.
+To compile and run hello world on Linux AMD64:
+
+```sh
+v -b amd64 -o hello_world examples/hello_world.v
+./hello_world
+```
+
 Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
 or void returns. Taking the address of a variadic C function, one with floating-point arguments
 or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain

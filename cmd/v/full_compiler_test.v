@@ -22,8 +22,8 @@ fn test_full_compiler_dispatch_respects_argument_boundaries() {
 			assert full_compiler_is_required(compiler_args_before_program(args)), args.str()
 		}
 	}
-	$if skip_x64 ? {
-		for name in ['x64', 'amd64', 'x86_64', 'x86-64'] {
+	$if skip_amd64 ?|| skip_x64 ? {
+		for name in ['amd64', 'x64', 'x86_64', 'x86-64'] {
 			assert full_compiler_is_required(['-b', name, 'main.v']), name
 		}
 	}
