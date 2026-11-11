@@ -234,6 +234,8 @@ Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings,
 Multiline values can continue with leading binary operators or a following `else` branch.
 Expression blocks run their scoped defers before yielding their saved value; branch-local
 cleanup stays inside its branch. `defer(fn)` remains active until the function exits.
+Selected `$if` expression branches can begin with local declarations or assignments before
+their final value, including declarations with an `or { return ... }` fallback.
 A leading `mut` in a parallel declaration makes every target mutable, matching the C backend.
 References to sum conversions such as `&Sum(variant)` retain both the sum tag and its payload
 after the creating function returns, including within narrowed match branches.
