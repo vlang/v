@@ -9,6 +9,7 @@ on:
       - '.github/workflows/tools_ci.yml'
       - '.github/workflows/riscv64_linux_ci.yml'
       - '.github/workflows/sanitized_ci.yml'
+      - '.github/workflows/windows_ci_gcc.yml'
       - '.github/workflows/v_apps_and_modules_compile_ci.yml'
       - '.github/workflows/disable_azure_mirror*'
       - '.github/workflows/ci_timeout_contract_test.py'
@@ -42,6 +43,13 @@ jobs:
           persist-credentials: false
       - name: Check apt source setup
         run: bash .github/workflows/disable_azure_mirror_test.sh
+      - name: Check hosted apt dependencies
+        timeout-minutes: 10
+        run: |
+          bash .github/workflows/disable_azure_mirror.sh
+          sudo apt-get -qq update
+          sudo apt-get -qq --no-install-recommends install sassc
+          sassc --version
       - name: Check CI task coverage and deadlines
         run: python3 .github/workflows/ci_timeout_contract_test.py
       - name: Build V

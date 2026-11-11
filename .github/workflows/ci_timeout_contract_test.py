@@ -48,6 +48,16 @@ def routed_command(text, command, condition):
     require(field(step, "if", 8) == condition, f"wrong suite routing: {command}")
 
 
+def script_step(text, command):
+    steps = re.split(r"^      - ", text, flags=re.MULTILINE)[1:]
+    matches = [
+        step for step in steps
+        if re.search(rf"^          {re.escape(command)}$", step, re.MULTILINE)
+    ]
+    require(len(matches) == 1, f"expected exactly one script step for: {command}")
+    return matches[0]
+
+
 def check_linux(workflow):
     for compiler, prod_task in [("gcc", "prod_gcc"), ("clang", "vprod_clang")]:
         name = f"{compiler}-linux-self-tests"
@@ -135,6 +145,106 @@ def check_riscv(workflow):
     require(positions == sorted(positions), "RISC-V native bootstrap and test order changed")
 
 
+def check_openbsd(workflow):
+    lane = job(workflow, "tools-openbsd")
+    require(field(lane, "timeout-minutes", 4) == "35", "OpenBSD needs time after VM bootstrap")
+    cases = list(itertools.product(axis(lane, "cc"), axis(lane, "suite"), axis(lane, "shard")))
+    excluded = re.findall(
+        r"^          - cc: (\w+)\n            suite: (\w+)$", lane, re.MULTILINE
+    )
+    require(len(re.findall(r"^          - ", lane, re.MULTILINE)) == 1, "unexpected OpenBSD exclusions")
+    require(excluded == [("tcc", "strict")], "only unsupported TCC strict cases may be excluded")
+    require("include:" not in lane, "unexpected OpenBSD matrix additions")
+    cases = [case for case in cases if case[:2] not in excluded]
+    expected = [
+        (compiler, suite, str(shard))
+        for compiler, suite in [("tcc", "default"), ("clang", "default"), ("clang", "strict")]
+        for shard in range(3)
+    ]
+    require(sorted(cases) == sorted(expected), "OpenBSD loses or duplicates suite coverage")
+    require(field(lane, "fail-fast", 6) == "false", "OpenBSD must run every shard")
+    require(field(lane, "V_CI_SUITE", 6) == "${{ matrix.suite }}", "OpenBSD suite selection")
+    require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard }}", "OpenBSD shard index")
+    require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "'3'", "OpenBSD shard count")
+    forwarded = field(lane, "environment_variables", 10).split()
+    require(
+        {"V_CI_SUITE", "VTEST_SELF_SHARD_INDEX", "VTEST_SELF_SHARD_COUNT"} <= set(forwarded),
+        "OpenBSD VM must receive its complete suite/shard selection",
+    )
+
+
+def check_windows_gcc(workflow):
+    lane = job(workflow, "gcc-windows-self-tests")
+    require(axis(lane, "shard") == ["0", "1", "2", "3"], "Windows GCC must schedule all four shards")
+    require("exclude:" not in lane and "include:" not in lane, "unexpected Windows GCC matrix overrides")
+    require(field(lane, "fail-fast", 6) == "false", "Windows GCC must run every shard")
+    require(field(lane, "timeout-minutes", 4) == "150", "Windows GCC deadline changed")
+    require(field(lane, "VFLAGS", 6) == "-cc gcc", "Windows GCC compiler changed")
+    require(field(lane, "VJOBS", 6) == "'4'", "Windows GCC worker count changed")
+    require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard }}", "Windows GCC shard index")
+    require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "'4'", "Windows GCC shard count")
+    require("VTEST_ONLY" not in lane, "Windows GCC must retain the full self-test selection")
+    cache = r".\.github\workflows\setup_windows_tool_cache.ps1"
+    bootstrap = r".\makev.bat -gcc"
+    symlink = r".\v.exe symlink"
+    optimized = "uses: ./.github/actions/setup-v"
+    freetype = "v retry -- v setup-freetype"
+    sqlite = r".\.github\workflows\windows-install-sqlite.bat"
+    tests = "v -silent test-self vlib"
+    command_step(lane, cache)
+    command_step(lane, tests)
+    for command in [bootstrap, symlink, freetype, sqlite]:
+        script_step(lane, command)
+    require(optimized in lane, "Windows GCC needs the optimized compiler")
+    order = [lane.index(command) for command in [cache, bootstrap, symlink, optimized, freetype, sqlite, tests]]
+    require(order == sorted(order), "Windows GCC setup must complete before self tests")
+    serial = job(workflow, "gcc-windows")
+    require("steps.self_tests" not in serial, "Windows GCC still depends on the moved self-test step")
+    javascript = command_step(serial, "v -o hi.js examples/js_hello_world.v && node hi.js")
+    require(
+        "steps.test_pure_v_math_module.outcome == 'success'" in field(javascript, "if", 8),
+        "Windows GCC remaining checks must still run after pure math",
+    )
+
+
+def check_ubsan_gcc(workflow):
+    lane = job(workflow, "sanitize-linux")
+    matrix = lane.split("    name:", 1)[0]
+    entries = [entry.partition("\n") for entry in re.split(r"^          - name: ", matrix, flags=re.MULTILINE)[1:]]
+    names = [name for name, _, _ in entries]
+    expected = ["undefined-gcc"] * 4 + [
+        "undefined-clang", "address-clang", "address-gcc", "memory-clang",
+        "memory-clang-compiler", "address-clang-without-gc",
+    ]
+    require(sorted(names) == sorted(expected), "sanitizer matrix loses or duplicates coverage")
+    rows = [row for name, _, row in entries if name == "undefined-gcc"]
+    require(sorted(field(row, "shard", 12) for row in rows) == ["0", "1", "2", "3"], "UBSan GCC shards")
+    for row in rows:
+        for key, value in {
+            "cc": "gcc", "sanitizer": "undefined", "gc": "default", "timeout": "150",
+            "vflags": "-cc gcc -cflags -fno-omit-frame-pointer",
+            "ubsan_options": "print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions",
+        }.items():
+            require(field(row, key, 12) == value, f"UBSan GCC {key} must match on all shards")
+    require(field(lane, "VJOBS", 6) == "1", "UBSan sharding must retain single-worker execution")
+    require(field(lane, "SANITIZER_GITHUB_JOB", 6) == "sanitize-${{ matrix.name }}", "sanitizer identity changed")
+    require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard || 0 }}", "sanitizer shard index")
+    require(
+        field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "${{ matrix.name == 'undefined-gcc' && '4' || '1' }}",
+        "only UBSan GCC should be sharded",
+    )
+    build = "./v -prod -cflags -fsanitize=undefined -o v2 cmd/v"
+    tests = "./v2 -cflags -fsanitize=undefined -silent test-self vlib"
+    step = script_step(lane, build)
+    require(step == script_step(lane, tests) and step.index(build) < step.index(tests), "UBSan tests need their instrumented compiler")
+    require(field(step, "if", 8) == "${{ matrix.sanitizer == 'undefined' }}", "UBSan self-test routing")
+    examples = command_step(lane, 'GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples')
+    require(
+        field(examples, "if", 8) == "${{ matrix.sanitizer == 'undefined' && (matrix.name != 'undefined-gcc' || matrix.shard == 0) }}",
+        "retain UBSan examples once for each compiler",
+    )
+
+
 def check_msvc(workflow):
     lane = job(workflow, "sanitize-address-msvc")
     require(sorted(axis(lane, "stage")) == ["fmt", "vet"], "MSVC must retain both cleancode stages")
@@ -150,6 +260,9 @@ def check_msvc(workflow):
 if __name__ == "__main__":
     check_linux((ROOT / ".github/workflows/linux_ci.yml").read_text())
     check_macos((ROOT / ".github/workflows/tools_ci.yml").read_text())
+    check_openbsd((ROOT / ".github/workflows/tools_ci.yml").read_text())
+    check_windows_gcc((ROOT / ".github/workflows/windows_ci_gcc.yml").read_text())
+    check_ubsan_gcc((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
     check_riscv((ROOT / ".github/workflows/riscv64_linux_ci.yml").read_text())
     check_msvc((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
     print("CI suite routing, complete shard coverage, and bootstrap prerequisites passed")

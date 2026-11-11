@@ -371,8 +371,9 @@ jobs:
 
   tools-openbsd:
     runs-on: ubuntu-latest
-    # VM bootstrap takes up to ten minutes before any tool tests can start.
-    timeout-minutes: 25
+    # VM/bootstrap and initial checks take about 8.5 minutes. The 57-file Clang
+    # shard was still progressing at 25 minutes; leave time for its final tests.
+    timeout-minutes: 35
     strategy:
       matrix:
         suite: [default, strict]

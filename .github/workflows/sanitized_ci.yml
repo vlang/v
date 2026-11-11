@@ -50,6 +50,33 @@ jobs:
             vflags: -cc clang -cflags -fno-omit-frame-pointer
             ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
           - name: undefined-gcc
+            # The serial suite was still progressing after 135 minutes. Shard
+            # across runners while retaining the sanitizer's single-worker mode.
+            shard: 0
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            shard: 1
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            shard: 2
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            shard: 3
             cc: gcc
             sanitizer: undefined
             gc: default
@@ -96,7 +123,7 @@ jobs:
             timeout: 300
             vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
             lsan_options: detect_leaks=0
-    name: sanitize-${{ matrix.name }}
+    name: sanitize-${{ matrix.name }}${{ matrix.name == 'undefined-gcc' && format(' (shard {0})', matrix.shard) || '' }}
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
@@ -105,6 +132,8 @@ jobs:
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard || 0 }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.name == 'undefined-gcc' && '4' || '1' }}
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
       ASAN_OPTIONS: ${{ matrix.asan_options }}
       LSAN_OPTIONS: ${{ matrix.lsan_options }}
@@ -168,7 +197,7 @@ jobs:
           ./v -prod -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
-        if: ${{ matrix.sanitizer == 'undefined' }}
+        if: ${{ matrix.sanitizer == 'undefined' && (matrix.name != 'undefined-gcc' || matrix.shard == 0) }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples
       - name: Self tests (-fsanitize=address)
         if: ${{ matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang' }}
