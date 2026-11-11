@@ -152,7 +152,7 @@ fn toolcache_test_dir(name string) string {
 	$if windows {
 		// The MSVC probe is not longPathAware. Leave room for a complete cache
 		// key, staging directory, executable name, and application manifest.
-		directory = os.join_path(os.temp_dir(), 'vtc_${os.getpid()}_${name}')
+		directory = os.join_path(os.vtmp_dir(), 'vtc_${os.getpid()}_${name}')
 	}
 	os.rmdir_all(directory) or {}
 	os.mkdir_all(directory) or { panic(err) }
