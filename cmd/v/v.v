@@ -1230,7 +1230,9 @@ fn v1_fallback_selected_backend(args []string) string {
 
 fn selected_backend(args []string, include_compile_backends bool) string {
 	mut backend := 'c'
+	mut target_arch := pref.host_arch()
 	mut backend_value_follows := false
+	mut arch_value_follows := false
 	mut option_value_follows := false
 	for i, arg in args {
 		if backend_value_follows {
@@ -1238,8 +1240,17 @@ fn selected_backend(args []string, include_compile_backends bool) string {
 			backend_value_follows = false
 			continue
 		}
+		if arch_value_follows {
+			target_arch = arg
+			arch_value_follows = false
+			continue
+		}
 		if option_value_follows {
 			option_value_follows = false
+			continue
+		}
+		if arg == '-arch' {
+			arch_value_follows = true
 			continue
 		}
 		if arg == '-native' {
@@ -1270,7 +1281,7 @@ fn selected_backend(args []string, include_compile_backends bool) string {
 	}
 	return match backend {
 		'js_browser', 'js_node' { 'js' }
-		'native' { pref.native_backend() }
+		'native' { pref.native_backend_for_arch(target_arch) }
 		else { backend }
 	}
 }

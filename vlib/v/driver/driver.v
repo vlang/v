@@ -4565,14 +4565,13 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|native|arm64|amd64|x64|wasm|eval> backend\n' + '  -native                      native backend for the host architecture\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|native|arm64|amd64|x64|wasm|eval> backend\n' + '  -native                      native backend for the target architecture\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn normalize_backend_name(name string) string {
 	return match name {
 		'js_browser', 'js_node' { 'js' }
 		'amd64', 'x86_64', 'x86-64' { 'x64' }
-		'native' { pref.native_backend() }
 		else { name }
 	}
 }
@@ -10210,7 +10209,7 @@ pub fn run(args []string) {
 			backend_from_project = true
 			i++
 		} else if args[i] == '-native' {
-			backend = pref.native_backend()
+			backend = 'native'
 			backend_explicit = !backend_from_project
 			i++
 		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
@@ -10759,9 +10758,13 @@ pub fn run(args []string) {
 		}
 	}
 	if backend == 'native' {
-		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-		eprintln('native backend is not supported on ${pref.host_arch()}')
-		exit(1)
+		// Resolve after parsing so the last -arch applies in either flag order.
+		backend = pref.native_backend_for_arch(target_arch)
+		if backend == 'native' {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			eprintln('native backend is not supported on ${target_arch}')
+			exit(1)
+		}
 	}
 	if compiler_errors.json_output() {
 		// The details of a diagnostic are text, whatever `-color` asked for.

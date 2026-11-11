@@ -192,11 +192,17 @@ fn self_build_output(args []string) string {
 
 fn self_build_backend(args []string) string {
 	mut backend := 'c'
+	mut target_arch := pref.host_arch()
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
 		if arg in ['-b', '-backend'] && i + 1 < args.len {
 			backend = args[i + 1]
+			i += 2
+			continue
+		}
+		if arg == '-arch' && i + 1 < args.len {
+			target_arch = args[i + 1]
 			i += 2
 			continue
 		}
@@ -211,7 +217,7 @@ fn self_build_backend(args []string) string {
 			i++
 		}
 	}
-	return if backend == 'native' { pref.native_backend() } else { backend }
+	return if backend == 'native' { pref.native_backend_for_arch(target_arch) } else { backend }
 }
 
 fn self_build_backend_skips(args []string) []string {

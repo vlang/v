@@ -1738,14 +1738,8 @@ fn test_x64_backend_aliases_are_normalized() {
 	assert normalize_backend_name('x64') == 'x64'
 }
 
-fn test_native_backend_alias_uses_the_host_architecture() {
-	$if amd64 {
-		assert normalize_backend_name('native') == 'x64'
-	} $else $if arm64 {
-		assert normalize_backend_name('native') == 'arm64'
-	} $else {
-		assert normalize_backend_name('native') == 'native'
-	}
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
 }
 
 fn test_v3_fastc_default_linker_flags() {
