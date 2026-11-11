@@ -2807,8 +2807,13 @@ pub fn (s string) bytes() []u8 {
 	if s.len == 0 {
 		return []
 	}
-	mut buf := []u8{len: s.len}
-	unsafe { vmemcpy(buf.data, s.str, s.len) }
+	// Every byte is copied over below, so allocate without zeroing (`len: 0, cap: n` takes
+	// the uninitialized path), then expose the copied bytes.
+	mut buf := []u8{cap: s.len}
+	unsafe {
+		vmemcpy(buf.data, s.str, s.len)
+		buf.len = s.len
+	}
 	return buf
 }
 
