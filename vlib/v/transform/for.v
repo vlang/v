@@ -1087,7 +1087,18 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	if escaping_value {
 		new_body << t.make_guard_value_decls(key.value, t.make_ident(loop_name), range_type_source_id)
 	}
+	// Decide on the source body: lowering may hide its writes behind helper calls.
+	in_range_target := if escaping_value || key.value == '_' {
+		''
+	} else {
+		t.range_for_in_len_target(low_id, high_id, loop_name, body_ids) or { '' }
+	}
 	new_body << t.transform_scope_stmts(body_ids)
+	if in_range_target.len > 0 {
+		for stmt_id in new_body {
+			t.mark_in_range_indexes(stmt_id, in_range_target, loop_name)
+		}
+	}
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix
 }

@@ -398,6 +398,9 @@ pub const node_flag_freed_assignment = u8(8)
 // node_flag_borrowed_map_key marks a generated read-only map iteration whose
 // key cannot escape. The bit is shared with the assignment-only flag above.
 pub const node_flag_borrowed_map_key = u8(8)
+// node_flag_in_range_index marks an `.index` read the transform proved in range
+// (see Node.is_in_range_index()). The bit is shared with the flags above.
+pub const node_flag_in_range_index = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -590,6 +593,13 @@ pub fn (n &Node) is_freed_assignment() bool {
 @[inline]
 pub fn (n &Node) has_literal_interpolation_text() bool {
 	return (n.flags & node_flag_literal_interpolation_text) != 0
+}
+
+// is_in_range_index reports whether this array or string index read needs no
+// bounds check: its loop proves the index is in range for the indexed value.
+@[inline]
+pub fn (n &Node) is_in_range_index() bool {
+	return n.kind == .index && (n.flags & node_flag_in_range_index) != 0
 }
 
 // is_mut_builtin_pointer_param reports whether this parameter was declared as

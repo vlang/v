@@ -19012,7 +19012,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.array_index_type_for_expected_arg(arr_type.elem_type, node)
 						}
 						c_elem := g.value_c_type(index_type)
-						if g.direct_array_access || g.unsafe_depth > 0 {
+						if g.direct_array_access || g.unsafe_depth > 0
+							|| (node.is_in_range_index() && !g.force_bounds_checking) {
 							g.write('(*((${c_elem}*)((')
 							g.gen_expr(base_id)
 							g.write(if is_ptr { ')->data' } else { ').data' })
@@ -19066,7 +19067,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.gen_expr(g.a.child(node, 1))
 							g.write('))')
 						} else if unalias_type(base_type) is types.String {
-							if !g.direct_array_access && g.unsafe_depth == 0 {
+							if !g.direct_array_access && g.unsafe_depth == 0
+								&& !(node.is_in_range_index() && !g.force_bounds_checking) {
 								index_id := g.a.child(node, 1)
 								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
 								helper := match index_type.source_type_id() {

@@ -251,12 +251,23 @@ fn (mut t Transformer) detach_comptime_array_locals() {
 
 fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count != 2 {
-		return t.transform_decl_assign_stmt(id, node)
+		result := t.transform_decl_assign_stmt(id, node)
+		for i in 0 .. t.multi_assign_lhs_count(node) {
+			lhs := t.a.node(t.multi_assign_lhs_id(node, i))
+			if lhs.kind == .ident {
+				t.set_var_immutable(lhs.value, false)
+			}
+		}
+		return result
 	}
 	lhs := *t.a.child_node(&node, 0)
 	value := t.comptime_scalar_expr(t.a.child(&node, 1), 0)
 	result := t.transform_decl_assign_stmt(id, node)
 	if lhs.kind == .ident {
+		// Only a plain source `name := value` is immutable; `static`, `shared`,
+		// `atomic` and `volatile` declarations keep their marker in `node.value`.
+		t.set_var_immutable(lhs.value, node.pos.is_valid() && !lhs.is_mut && !node.is_mut
+			&& node.value.len == 0)
 		if lhs.value in t.comptime_scalar_locals {
 			t.detach_comptime_scalar_locals()
 			t.comptime_scalar_locals.delete(lhs.value)
