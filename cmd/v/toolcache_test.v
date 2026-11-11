@@ -148,7 +148,12 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 }
 
 fn toolcache_test_dir(name string) string {
-	directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
+	mut directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
+	$if windows {
+		// The MSVC probe is not longPathAware. Leave room for a complete cache
+		// key, staging directory, executable name, and application manifest.
+		directory = os.join_path(os.temp_dir(), 'vtc_${os.getpid()}_${name}')
+	}
 	os.rmdir_all(directory) or {}
 	os.mkdir_all(directory) or { panic(err) }
 	// Make the test folder private (0700). The cache refuses folders that the group can
