@@ -1,0 +1,15 @@
+interface ISomething {
+mut:
+	// docs for method 1
+	method1()
+	// docs for method 2
+	method2()
+}
+
+interface IOther {
+	a int
+	// comment before the specifier
+mut:
+	// docs for b
+	b int
+}
