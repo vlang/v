@@ -16,7 +16,7 @@ fn full_compiler_is_required(args []string) bool {
 			}
 		}
 		'x64', 'amd64', 'x86_64', 'x86-64' {
-			$if skip_x64 ? {
+			$if skip_amd64 ? {
 				return true
 			}
 		}

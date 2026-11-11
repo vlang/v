@@ -6,7 +6,7 @@ import v.pref
 import v.vmod
 
 // project_backends are the `backend` values that a project's v.mod can select.
-const project_backends = ['c', 'fastc', 'arm64', 'x64', 'wasm']
+const project_backends = ['c', 'fastc', 'arm64', 'amd64', 'x64', 'wasm']
 
 // with_project_backend selects the backend named by the `backend` field of the input's v.mod,
 // such as `backend: 'fastc'`, when the command line does not select one with `-b`. The driver

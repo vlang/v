@@ -45,8 +45,8 @@ $if !skip_arm64 ? {
 	import v.gen.arm64
 }
 
-$if !skip_x64 ? {
-	import v.gen.x64
+$if !skip_amd64 ? {
+	import v.gen.amd64
 }
 
 $if !skip_ssa ? {
@@ -2655,20 +2655,20 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 	return normalized.ends_with('/vlib/v/v.v')
 }
 
-// x64_prod_ssa_optimizer_max_values bounds the global optimizer's peak memory.
+// amd64_prod_ssa_optimizer_max_values bounds the global optimizer's peak memory.
 // Larger modules retain production register allocation and optimized C inputs.
-const x64_prod_ssa_optimizer_max_values = 1_000_000
+const amd64_prod_ssa_optimizer_max_values = 1_000_000
 
-struct X64NativeSupport {
+struct AMD64NativeSupport {
 	source string
 	object string
 	flags  []string
 }
 
-// x64_native_support_object exposes functions from C headers inserted by V
+// amd64_native_support_object exposes functions from C headers inserted by V
 // modules. The C backend includes those headers in its translation unit; the
 // native backend needs a small object with the same helper definitions.
-fn x64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_flags []string, optimization_flags []string, c_compiler string) !X64NativeSupport {
+fn amd64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_flags []string, optimization_flags []string, c_compiler string) !AMD64NativeSupport {
 	// Inlined headers can expose atomic and pointer-width helpers without
 	// carrying the standard fixed-width integer declarations they depend on.
 	mut source_text := '#include <stdint.h>\n'
@@ -2696,11 +2696,11 @@ fn x64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_fl
 				source_text += '#undef ${arg}\n'
 			}
 			'include', 'preinclude', 'postinclude' {
-				include_arg := x64_include_argument(arg)
+				include_arg := amd64_include_argument(arg)
 				if include_arg.starts_with('<') {
 					source_text += '#include ${include_arg}\n'
 				} else {
-					path := x64_resolve_insert_path(include_arg, cur_file, prefs.vroot)
+					path := amd64_resolve_insert_path(include_arg, cur_file, prefs.vroot)
 					if path.len > 0 && os.is_file(path) {
 						source_text += '#include "${path}"\n'
 						has_insert = true
@@ -2710,7 +2710,7 @@ fn x64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_fl
 				}
 			}
 			'insert' {
-				path := x64_resolve_insert_path(x64_include_argument(arg), cur_file, prefs.vroot)
+				path := amd64_resolve_insert_path(amd64_include_argument(arg), cur_file, prefs.vroot)
 				if path.len == 0 || !os.is_file(path) {
 					continue
 				}
@@ -2726,16 +2726,16 @@ fn x64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_fl
 		}
 	}
 	if !has_insert || source_text.len == 0 {
-		return X64NativeSupport{}
+		return AMD64NativeSupport{}
 	}
 	token := '${os.getpid()}_${tempname.unique_token()}'
-	support_source := os.join_path(os.vtmp_dir(), 'v3_x64_native_${token}.c')
-	support_object := os.join_path(os.vtmp_dir(), 'v3_x64_native_${token}.o')
+	support_source := os.join_path(os.vtmp_dir(), 'v3_amd64_native_${token}.c')
+	support_object := os.join_path(os.vtmp_dir(), 'v3_amd64_native_${token}.o')
 	os.write_file(support_source, source_text)!
 	directive_flags := cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	mut flags := user_c_flags.clone()
 	flags << directive_flags
-	compile_flags := x64_native_compile_flags(flags)
+	compile_flags := amd64_native_compile_flags(flags)
 	compiler := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
 	mut args := ['-w', '-std=gnu11', '-fwrapv']
 	args << optimization_flags
@@ -2748,16 +2748,16 @@ fn x64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_fl
 	if result.exit_code != 0 {
 		os.rm(support_source) or {}
 		os.rm(support_object) or {}
-		return error('x64 native C support failed:\n${result.output}')
+		return error('amd64 native C support failed:\n${result.output}')
 	}
-	return X64NativeSupport{
+	return AMD64NativeSupport{
 		source: support_source
 		object: support_object
 		flags:  directive_flags
 	}
 }
 
-fn x64_include_argument(arg string) string {
+fn amd64_include_argument(arg string) string {
 	trimmed := arg.trim_space()
 	if open := trimmed.last_index('<') {
 		if close := trimmed.last_index('>') {
@@ -2776,7 +2776,7 @@ fn x64_include_argument(arg string) string {
 	return trimmed
 }
 
-fn x64_resolve_insert_path(arg string, source_file string, vroot string) string {
+fn amd64_resolve_insert_path(arg string, source_file string, vroot string) string {
 	mut path := arg.trim_space()
 	if path.len < 2 {
 		return ''
@@ -2808,7 +2808,7 @@ fn x64_resolve_insert_path(arg string, source_file string, vroot string) string 
 	return os.real_path(path)
 }
 
-fn x64_native_compile_flags(flags []string) []string {
+fn amd64_native_compile_flags(flags []string) []string {
 	mut result := []string{}
 	mut skip_next := false
 	for flag in flags {
@@ -2834,7 +2834,7 @@ fn x64_native_compile_flags(flags []string) []string {
 	return result
 }
 
-fn x64_native_link_flags(flags []string) []string {
+fn amd64_native_link_flags(flags []string) []string {
 	mut result := []string{}
 	for flag in flags {
 		ext := os.file_ext(flag).to_lower_ascii()
@@ -4565,13 +4565,13 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|x64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|amd64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn normalize_backend_name(name string) string {
 	return match name {
 		'js_browser', 'js_node' { 'js' }
-		'amd64', 'x86_64', 'x86-64' { 'x64' }
+		'x64', 'x86_64', 'x86-64' { 'amd64' }
 		else { name }
 	}
 }
@@ -7382,7 +7382,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 }
 
 fn v3_effective_c_compiler_for_codegen(backend string, c_compiler string, use_implicit_tcc_semantics bool, target pref.Target) string {
-	if backend in ['arm64', 'x64'] || use_implicit_tcc_semantics {
+	if backend in ['arm64', 'amd64'] || use_implicit_tcc_semantics {
 		return 'tinyc'
 	}
 	return effective_c_compiler_name(c_compiler, target)
@@ -7535,13 +7535,13 @@ struct V3WindowsProdToolchain {
 
 // v3_windows_prod_msvc_ready reports whether `cl` can build V's C for amd64. `cl` on PATH
 // is not enough. A Developer Command Prompt also sets INCLUDE and LIB, and without them
-// `cl` cannot find `assert.h`. Its target has to be x64: an x86 prompt puts an x86 `cl`
+// `cl` cannot find `assert.h`. Its target has to be amd64: an x86 prompt puts an x86 `cl`
 // on PATH, which lacks the intrinsics V's MSVC code uses (`_umul128` in math.bits). And
 // `cl` cannot produce the object file of `-o x.o`, which V builds with gcc or clang. An
 // unset VSCMD_ARG_TGT_ARCH is trusted, since older scripts do not set it.
 fn v3_windows_prod_msvc_ready(tc V3WindowsProdToolchain) bool {
 	return tc.cl != '' && tc.include != '' && tc.lib != '' && !tc.is_o
-		&& (tc.target_arch == '' || tc.target_arch.to_lower_ascii() == 'x64')
+		&& (tc.target_arch == '' || tc.target_arch.to_lower_ascii() == 'amd64')
 }
 
 // v3_windows_prod_clang_ready reports whether the probed `clang` builds amd64 code for
@@ -8488,7 +8488,7 @@ fn v3_source_is_pure_v(path string) bool {
 		return true
 	}
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
-	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
+	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'amd64', 'x86', 'aarch64', 'arm64',
 		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32', 'riscv32',
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'ppc64le', 'sparc64',
 		'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser', 'js_freestanding', 'wasm32',
@@ -11012,9 +11012,9 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'x64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'amd64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, amd64, wasm, or eval')
 		exit(1)
 	}
 	if hot_fn != '' && backend != 'arm64' {
@@ -11027,7 +11027,7 @@ pub fn run(args []string) {
 	}
 	for requested in compile_backends {
 		for name in requested.split(',') {
-			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'x64', 'amd64', 'x86_64',
+			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'amd64', 'x64', 'x86_64',
 				'x86-64', 'wasm', 'wasm32', 'eval'] {
 				eprintln('unknown compile backend `${name.trim_space()}`')
 				exit(1)
@@ -11096,18 +11096,18 @@ pub fn run(args []string) {
 		// module cache, including the native-code bridge used by macOS TCC.
 		no_cache = true
 	}
-	if backend == 'x64' && (target.os != 'linux' || target.arch != 'amd64') {
-		eprintln('the x64 backend currently supports only linux/amd64')
+	if backend == 'amd64' && (target.os != 'linux' || target.arch != 'amd64') {
+		eprintln('the amd64 backend currently supports only linux/amd64')
 		exit(1)
 	}
-	if backend == 'x64' {
+	if backend == 'amd64' {
 		$if !linux || !amd64 {
-			eprintln('the x64 backend currently requires a linux/amd64 host')
+			eprintln('the amd64 backend currently requires a linux/amd64 host')
 			exit(1)
 		}
 	}
-	if backend == 'x64' && is_shared {
-		eprintln('the x64 backend does not support `-shared` yet')
+	if backend == 'amd64' && is_shared {
+		eprintln('the amd64 backend does not support `-shared` yet')
 		exit(1)
 	}
 	if race {
@@ -11272,7 +11272,7 @@ pub fn run(args []string) {
 	// another backend is requested. Explicit skip defines remove optional backends.
 	mut include_fastc := all_backends
 	mut include_arm64 := all_backends
-	mut include_x64 := all_backends
+	mut include_amd64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -11284,8 +11284,8 @@ pub fn run(args []string) {
 				'arm64', 'aarch64' {
 					include_arm64 = true
 				}
-				'x64', 'amd64', 'x86_64', 'x86-64' {
-					include_x64 = true
+				'amd64', 'x64', 'x86_64', 'x86-64' {
+					include_amd64 = true
 				}
 				'wasm', 'wasm32' {
 					include_wasm = true
@@ -11306,8 +11306,8 @@ pub fn run(args []string) {
 		'arm64' {
 			include_arm64 = true
 		}
-		'x64' {
-			include_x64 = true
+		'amd64' {
+			include_amd64 = true
 		}
 		'wasm' {
 			include_wasm = true
@@ -11324,8 +11324,8 @@ pub fn run(args []string) {
 	if !include_arm64 {
 		user_defines << 'skip_arm64'
 	}
-	if !include_x64 {
-		user_defines << 'skip_x64'
+	if !include_amd64 {
+		user_defines << 'skip_amd64'
 	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
@@ -11333,7 +11333,7 @@ pub fn run(args []string) {
 	// SSA is shared by the native and WebAssembly backends. Derive its define
 	// from the final skips, so an explicit `-d skip_wasm` also drops the
 	// driver's gated `v.ssa` import.
-	if 'skip_arm64' in user_defines && 'skip_x64' in user_defines
+	if 'skip_arm64' in user_defines && 'skip_amd64' in user_defines
 		&& 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
@@ -13281,7 +13281,7 @@ pub fn run(args []string) {
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
-			&& backend !in ['arm64', 'x64'] && test_files.len == 0 && !is_checker_fixture
+			&& backend !in ['arm64', 'amd64'] && test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
 			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
@@ -13819,7 +13819,7 @@ pub fn run(args []string) {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation('')
 			}
-		} else if test_files.len > 0 && backend in ['arm64', 'x64'] {
+		} else if test_files.len > 0 && backend in ['arm64', 'amd64'] {
 			used_fns, uses_generics = markused.mark_used_for_native_tests_with_generic_usage(a, markused_tc, test_files)
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc, test_files)
@@ -14805,12 +14805,12 @@ pub fn run(args []string) {
 		}
 	}
 	mut newly_cached_module_count := 0
-	if backend == 'x64' {
+	if backend == 'amd64' {
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
 			exit(1)
 		}
-		$if !skip_x64 ? {
+		$if !skip_amd64 ? {
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
 				// The optimizer rebuilds use lists once before consuming them.
 				// Incremental tracking is quadratic for large generic functions.
@@ -14830,16 +14830,16 @@ pub fn run(args []string) {
 			b.metric('SSA instructions before optimize', m.instrs.len, 'instructions')
 			b.metric('SSA blocks before optimize', m.blocks.len, 'blocks')
 
-			run_ssa_optimizer := is_prod && m.values.len <= x64_prod_ssa_optimizer_max_values
+			run_ssa_optimizer := is_prod && m.values.len <= amd64_prod_ssa_optimizer_max_values
 			if run_ssa_optimizer {
 				optimize.optimize(mut m)
 				b.step('optimize')
 			} else if is_prod && verbose {
-				eprintln('x64: skipping global SSA optimizer for ${m.values.len} values to bound compiler memory')
+				eprintln('amd64: skipping global SSA optimizer for ${m.values.len} values to bound compiler memory')
 			}
 			m.release_codegen_analysis_metadata()
 
-			mut g := x64.Gen.new_with_options(m, x64.GenOptions{
+			mut g := amd64.Gen.new_with_options(m, amd64.GenOptions{
 				optimize_runtime: is_prod
 			})
 			g.validate_c_extern_calls() or {
@@ -14847,15 +14847,26 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			g.gen()
-			b.step('x64 gen')
+			b.step('amd64 gen')
 
-			obj_file := os.join_path(os.vtmp_dir(), 'v3_x64_${os.getpid()}_${tempname.unique_token()}.o')
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_amd64_${os.getpid()}_${tempname.unique_token()}.o')
 			g.write_file(obj_file)
-			b.step('x64 object')
-			x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
+			b.step('amd64 object')
+			// The .o output selects a standalone ELF relocatable, like ARM64
+			// Linux. Do not try to link an object as an executable.
+			if is_o {
+				os.mv(obj_file, bin_file) or {
+					os.rm(obj_file) or {}
+					eprintln('amd64 ELF object output failed: ${err}')
+					exit(1)
+				}
+				b.print_report()
+				return
+			}
+			amd64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, false, parallel_cc, false)
-			native_support := x64_native_support_object(a, prefs, user_c_flags,
-				x64_object_optimization_flags, c_compiler) or {
+			native_support := amd64_native_support_object(a, prefs, user_c_flags,
+				amd64_object_optimization_flags, c_compiler) or {
 				os.rm(obj_file) or {}
 				eprintln(err.msg())
 				exit(1)
@@ -14867,7 +14878,7 @@ pub fn run(args []string) {
 			}
 			is_native_freestanding := 'freestanding' in prefs.user_defines
 			linker := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
-			mut native_link_flags := x64_native_link_flags(native_support.flags)
+			mut native_link_flags := amd64_native_link_flags(native_support.flags)
 			if native_link_flags.len > 0 {
 				target_args := c_compiler_target_args(prefs.target, linker, c_compiler_explicit,
 					'') or {
@@ -14876,7 +14887,7 @@ pub fn run(args []string) {
 				}
 				mut native_object_stats := CObjectCacheStats{}
 				native_link_flags = prepare_c_flags_for_link(native_link_flags,
-					environment_c_flags, []string{}, x64_object_optimization_flags, c99, no_std,
+					environment_c_flags, []string{}, amd64_object_optimization_flags, c99, no_std,
 					'', target_args, prefs.target, linker, false, os.vtmp_dir(),
 					mut native_object_stats) or {
 					eprintln(err.msg())
@@ -14899,7 +14910,7 @@ pub fn run(args []string) {
 				if link_result.output.len > 0 {
 					eprintln(link_result.output)
 				}
-				eprintln('x64 link failed with `${linker}`')
+				eprintln('amd64 link failed with `${linker}`')
 				exit(1)
 			}
 			b.step('link')
@@ -14918,8 +14929,8 @@ pub fn run(args []string) {
 				b.step('test')
 			}
 		} $else {
-			eprintln('x64 support is not compiled into this executable')
-			eprintln('Rebuild with `v -compile-backend x64 self` on Linux AMD64.')
+			eprintln('amd64 support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend amd64 self` on Linux AMD64.')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
@@ -21910,8 +21921,8 @@ fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
 	if 'skip_arm64' in prefs.user_defines {
 		skipped['v.gen.arm64'] = true
 	}
-	if 'skip_x64' in prefs.user_defines {
-		skipped['v.gen.x64'] = true
+	if 'skip_amd64' in prefs.user_defines {
+		skipped['v.gen.amd64'] = true
 	}
 	if 'skip_wasm' in prefs.user_defines {
 		skipped['v.gen.wasm'] = true

@@ -660,7 +660,7 @@ fn native_backend_arch() string {
 	machine := os.uname().machine.to_lower()
 	match machine {
 		'x86_64', 'amd64' {
-			return 'x64'
+			return 'amd64'
 		}
 		'aarch64', 'arm64' {
 			return 'arm64'
