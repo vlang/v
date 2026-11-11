@@ -79,26 +79,66 @@ fn test_native_backend_aliases_use_the_last_selected_backend() {
 	}
 }
 
-fn test_native_backend_aliases_use_host_architecture_with_an_explicit_target() {
-	if pref.host_arch() !in ['amd64', 'arm64'] {
-		return
-	}
+fn test_native_backend_aliases_use_the_requested_architecture_in_either_order() {
 	root := os.join_path(os.vtmp_dir(), 'native_backend_target_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() {}\n')!
 	target_arch := if pref.host_arch() == 'amd64' { 'arm64' } else { 'amd64' }
-	options := ['-silent', '-arch', target_arch, '-check', source]
-	mut explicit_args := ['-b', pref.host_arch()]
-	explicit_args << options
-	explicit := run_native_backend_cli(explicit_args, root, '')
+	explicit := run_native_backend_cli(['-silent', '-b', target_arch, '-os', 'linux', '-arch',
+		target_arch, '-check', source], root, '')
+	for alias in native_backend_aliases {
+		mut arch_first := ['-silent', '-os', 'linux', '-arch', target_arch]
+		arch_first << alias
+		mut arch_last := ['-silent', '-os', 'linux']
+		arch_last << alias
+		arch_last << ['-arch', target_arch]
+		for flags in [arch_first, arch_last] {
+			mut args := flags.clone()
+			args << ['-check', source]
+			result := run_native_backend_cli(args, root, '')
+			assert result.exit_code == explicit.exit_code, '${args}: ${result.output}'
+			assert result.output == explicit.output, '${args}: ${result.output}'
+		}
+	}
+}
+
+fn test_native_backend_cross_compiles_arm64_objects_and_overrides_vflags_architecture() {
+	$if !linux || !amd64 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'native_backend_arm64_object_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { println("hello") }\n')!
+	for index, vflags in ['', '-native -arch amd64'] {
+		output := os.join_path(root, 'main_${index}.o')
+		args := if vflags == '' {
+			['-silent', '-b', 'native', '-arch', 'arm64', '-o', output, source]
+		} else {
+			['-silent', '-arch', 'aarch64', '-o', output, source]
+		}
+		result := run_native_backend_cli(args, root, vflags)
+		assert result.exit_code == 0, '${args}: ${result.output}'
+		object := os.read_bytes(output)!
+		assert object.len >= 64
+		assert object[..4] == [u8(0x7f), `E`, `L`, `F`]
+		assert object[4] == 2 // ELFCLASS64
+		assert object[5] == 1 // ELFDATA2LSB
+		assert object[16..18] == [u8(1), 0] // ET_REL
+		assert object[18..20] == [u8(183), 0] // EM_AARCH64
+	}
+}
+
+fn test_native_backend_aliases_reject_unsupported_requested_architectures() {
 	for alias in native_backend_aliases {
 		mut args := alias.clone()
-		args << options
-		result := run_native_backend_cli(args, root, '')
-		assert result.exit_code == explicit.exit_code, result.output
-		assert result.output == explicit.output, result.output
+		args << ['-arch', 'riscv64', '-check', os.join_path(@VMODROOT, 'examples', 'hello_world.v')]
+		result := run_native_backend_cli(args, '', '')
+		assert result.exit_code == 1, result.output
+		assert result.output.contains('native backend is not supported on riscv64'), result.output
 	}
 }
 

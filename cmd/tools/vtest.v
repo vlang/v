@@ -124,7 +124,7 @@ fn test_backend(args []string) string {
 		i++
 	}
 	return match backend {
-		'native' { pref.native_backend() }
+		'native' { pref.native_backend_for_arch(test_target_arch(args)) }
 		'amd64', 'x86_64', 'x86-64' { 'x64' }
 		else { backend }
 	}

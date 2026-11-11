@@ -180,9 +180,14 @@ pub fn host_arch() string {
 }
 
 // native_backend returns the native backend for the compiler's host architecture.
-// Unsupported hosts retain `native` so the driver can diagnose the selected backend.
 pub fn native_backend() string {
-	return match host_arch() {
+	return native_backend_for_arch(host_arch())
+}
+
+// native_backend_for_arch returns the native backend for the requested architecture.
+// Unsupported architectures retain `native` so the driver can diagnose the target.
+pub fn native_backend_for_arch(arch string) string {
+	return match normalized_arch(arch.trim_space().to_lower()) {
 		'amd64' { 'x64' }
 		'arm64' { 'arm64' }
 		else { 'native' }

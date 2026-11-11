@@ -42,7 +42,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 			backend = normalize_backend_name(args[i + 1])
 			i += 2
 		} else if arg == '-native' {
-			backend = pref.native_backend()
+			backend = 'native'
 			i++
 		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
 			backend = normalize_backend_name(arg.all_after('='))
@@ -97,6 +97,9 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		} else {
 			i++
 		}
+	}
+	if backend == 'native' {
+		backend = pref.native_backend_for_arch(target_arch)
 	}
 	if race && !c_compiler_explicit {
 		c_compiler = v3_race_default_c_compiler(c_compiler)

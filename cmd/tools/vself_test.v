@@ -540,6 +540,30 @@ fn test_native_self_build_aliases_follow_host_backend() {
 		assert !inherited.output.contains('-prealloc'), inherited.output
 		assert !inherited.output.contains('-d skip_'), inherited.output
 		assert inherited.output.contains('-no-memory-limit') == (pref.host_arch() == 'arm64'), inherited.output
+		for arch in ['amd64', 'arm64'] {
+			other_arch := if arch == 'amd64' { 'arm64' } else { 'amd64' }
+			for options in [
+				['-arch', arch, ...backend_args],
+				[...backend_args, '-arch', arch],
+				['-arch', other_arch, ...backend_args, '-arch', arch],
+			] {
+				// ARM64 self-builds need a different memory policy even when the
+				// compiler that launches the build runs on AMD64, and vice versa.
+				target_result := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self',
+					...options, '-o', output])
+				assert target_result.exit_code == 0, target_result.output
+				assert target_result.output.contains('-no-memory-limit') == (arch == 'arm64'), '${options}: ${target_result.output}'
+				assert !target_result.output.contains('-prealloc'), target_result.output
+				assert !target_result.output.contains('-d skip_'), target_result.output
+				assert_vself_preserves_full_cli(target_result.output)
+			}
+			inherited_target := os.exec(['env', '-u', 'CC',
+				'VFLAGS=${backend_args.join(' ')} -arch ${other_arch}', 'VEXE=${noop}', tool, 'self',
+				'-arch', arch, '-o', output])
+			assert inherited_target.exit_code == 0, inherited_target.output
+			assert inherited_target.output.contains('-no-memory-limit') == (arch == 'arm64'), inherited_target.output
+			assert_vself_preserves_full_cli(inherited_target.output)
+		}
 		for c_backend in [['-b', 'c'], ['-backend=c']] {
 			overridden := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self',
 				...backend_args, ...c_backend, '-o', output])

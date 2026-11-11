@@ -27,12 +27,54 @@ fn test_native_backend_aliases_select_the_host_backend() {
 				full_compiler_is_required(['-b', expected])
 		}
 	}
-	// The host alias does not switch when a cross-compilation architecture is requested.
-	for arch in ['amd64', 'arm64'] {
-		assert selected_backend(['-arch', arch, '-native', 'main.v'], false) == expected
-	}
 	assert selected_backend(['-native', '-b', 'c', 'main.v'], false) == 'c'
 	assert selected_backend(['-b', 'c', '-native', 'main.v'], false) == expected
+}
+
+fn test_native_backend_aliases_select_the_requested_architecture() {
+	for arch, expected in {
+		'amd64':   'x64'
+		'arm64':   'arm64'
+		'riscv64': 'native'
+	} {
+		for flags in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
+			['-backend=native']] {
+			mut arch_first := ['-arch', arch]
+			arch_first << flags
+			mut arch_last := flags.clone()
+			arch_last << ['-arch', arch]
+			for args in [arch_first, arch_last] {
+				assert selected_backend(args, false) == expected, args.str()
+				if expected != 'native' {
+					assert full_compiler_is_required(args) == full_compiler_is_required([
+						'-b',
+						expected,
+					])
+				} else {
+					assert !full_compiler_is_required(args)
+				}
+			}
+		}
+	}
+	assert selected_backend(['-native', '-arch', 'amd64', '-arch', 'arm64'], false) == 'arm64'
+	assert selected_backend(['-arch', 'arm64', '-native', '-arch', 'amd64'], false) == 'x64'
+	assert selected_backend(['-arch', 'arm64', '-native', '-b', 'c'], false) == 'c'
+	assert selected_backend(['-arch', 'arm64', '-b', 'x64'], false) == 'x64'
+	assert selected_backend(['-arch', 'amd64', '-b', 'arm64'], false) == 'arm64'
+}
+
+fn test_native_backend_architecture_preserves_argument_boundaries() {
+	expected := pref.native_backend()
+	for option in ['-cflags', '-ldflags', '-o', '-d', '-compile-backend'] {
+		assert selected_backend(['-native', option, '-arch', 'main.v'], false) == expected
+	}
+	for prefix in [['run', 'main.v'], ['crun', 'main.v'], ['script.vsh'], ['-e', 'println(1)'],
+		['-e=println(1)']] {
+		mut args := ['-native']
+		args << prefix
+		args << ['-arch', 'arm64']
+		assert selected_backend(compiler_args_before_program(args), false) == expected
+	}
 }
 
 fn test_native_backend_aliases_preserve_argument_boundaries() {

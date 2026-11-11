@@ -2,6 +2,19 @@ module pref
 
 import os
 
+fn test_native_backend_selection_uses_normalized_target_architecture() {
+	for arch in ['amd64', 'x64', 'x86_64', ' AMD64 '] {
+		assert native_backend_for_arch(arch) == 'x64', arch
+	}
+	for arch in ['arm64', 'aarch64', ' ARM64 '] {
+		assert native_backend_for_arch(arch) == 'arm64', arch
+	}
+	for arch in ['x86', 'arm32', 'riscv64', 'unknown'] {
+		assert native_backend_for_arch(arch) == 'native', arch
+	}
+	assert native_backend() == native_backend_for_arch(host_arch())
+}
+
 fn test_target_from_normalizes_and_derives_platform_properties() {
 	target := target_from('darwin', 'x86_64') or { panic(err) }
 	assert target.os == 'macos'
