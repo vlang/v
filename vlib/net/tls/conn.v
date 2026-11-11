@@ -5,6 +5,7 @@ import net
 import time
 import crypto.sha256
 import crypto.x509
+import crypto.subtle
 
 // Conn is a pure-V TLS 1.3 connection over TCP.
 pub struct Conn {
@@ -202,7 +203,7 @@ pub fn (mut c Conn) socket_read_into_ptr(buf &u8, bufsize int) !int {
 // handshake performs the TLS 1.3 client handshake.
 pub fn (mut c Conn) handshake() ! {
 	if c.is_server {
-		mut shs := new_server_handshake(c.cfg.pq_mode) or { return err }
+		mut shs := new_server_handshake_with_config(c.cfg.pq_mode, c.cfg) or { return err }
 
 		ct, body := c.read_record() or { return err }
 		if ct != .handshake {
@@ -232,6 +233,9 @@ pub fn (mut c Conn) handshake() ! {
 
 		c.server_app = derive_traffic_keys(shs.app_keys.server_secret) or { return err }
 		c.client_app = derive_traffic_keys(shs.app_keys.client_secret) or { return err }
+		// Each traffic secret has an independent record sequence number.
+		c.read_seq = 0
+		c.write_seq = 0
 		c.handshake_done = true
 		return
 	}
@@ -263,9 +267,7 @@ pub fn (mut c Conn) handshake() ! {
 					match pk {
 						x509.EcdsaP256PublicKey {
 							ecdsa_pk := ecdsa.PublicKey.from_uncompressed_bytes(pk.point, ecdsa.CurveOptions{}) or { return err }
-							mut chs2 := c.client_hs or { return error('tls: no client hs') }
-							chs2.server_cert_pubkey = ecdsa_pk
-							c.client_hs = chs2
+							chs.server_cert_pubkey = ecdsa_pk
 						}
 						x509.RsaPublicKey {
 							return error('tls: rsa cert not supported in v1')
@@ -307,10 +309,9 @@ pub fn (mut c Conn) handshake() ! {
 			}
 			.certificate_verify {
 				if c.cfg.verify {
-					mut chs2 := c.client_hs or { return error('tls: no client hs') }
-					pk := chs2.server_cert_pubkey or { return error('tls: no server pubkey') }
+					pk := chs.server_cert_pubkey or { return error('tls: no server pubkey') }
 					sig := parse_cert_verify_sig(parsed.body) or { return err }
-					transcript_hash := sha256.sum256(chs2.transcript)
+					transcript_hash := sha256.sum256(chs.transcript)
 					mut content := []u8{}
 					content << 'TLS 1.3, server CertificateVerify'.bytes()
 					for _ in 0 .. 64 {
@@ -324,6 +325,12 @@ pub fn (mut c Conn) handshake() ! {
 				}
 			}
 			.finished {
+				fin := parse_finished(parsed.body, sha256.size) or { return err }
+				expected := finished_verify_data(chs.handshake_keys.server_secret,
+					sha256.sum256(chs.transcript)) or { return err }
+				if subtle.constant_time_compare(fin.verify_data, expected) != 1 {
+					return error('tls: server Finished mismatch')
+				}
 				chs.transcript << ibody
 				server_finished = true
 			}
@@ -346,6 +353,9 @@ pub fn (mut c Conn) handshake() ! {
 	cf_verified := finished_verify_data(chs.handshake_keys.client_secret, sha256.sum256(chs.transcript)) or { return err }
 	fin_body := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: cf_verified })) or { return err }
 	c.write_cipher_record(.handshake, fin_body)!
+	// Application traffic keys start a new record-number epoch.
+	c.read_seq = 0
+	c.write_seq = 0
 	c.handshake_done = true
 }
 

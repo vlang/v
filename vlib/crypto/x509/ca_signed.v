@@ -45,7 +45,6 @@ pub fn generate_ca_signed(leaf_opts CertGenOptions, leaf_key ecdsa.PrivateKey, c
 
 	mut sig_alg_content := []u8{}
 	for b in encode_oid('1.2.840.10045.4.3.2') { sig_alg_content << b }
-	for b in der_null() { sig_alg_content << b }
 	sig_alg_id := der_seq(sig_alg_content)
 
 	mut spki_alg_c := []u8{}

@@ -56,8 +56,12 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 	pubkey := h.echd_priv.public_key()!
 	pk_bytes := pubkey.bytes()!
 
-	mut groups := [named_group_x25519]
-	if h.has_mlkem {
+	mut groups := if h.pq_mode == .hybrid_require {
+		[named_group_x25519_mlkem768]
+	} else {
+		[named_group_x25519]
+	}
+	if h.has_mlkem && h.pq_mode != .hybrid_require {
 		groups << named_group_x25519_mlkem768
 	}
 	sg_data := supported_groups_data_for(groups)
@@ -67,7 +71,14 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 		mut hybrid_key := []u8{}
 		hybrid_key << pk_bytes
 		hybrid_key << h.mlkem_ek.data
-		ks_data = key_share_client_data_for(named_group_x25519_mlkem768, hybrid_key)
+		if h.pq_mode == .hybrid_prefer {
+			mut entries := []u8{}
+			entries << key_share_entry(named_group_x25519, pk_bytes)
+			entries << key_share_entry(named_group_x25519_mlkem768, hybrid_key)
+			ks_data = key_share_client_entries_data(entries)
+		} else {
+			ks_data = key_share_client_data_for(named_group_x25519_mlkem768, hybrid_key)
+		}
 	} else {
 		ks_data = key_share_client_data(pk_bytes)
 	}
@@ -141,6 +152,12 @@ pub fn (mut h ClientHandshake) process_server_hello(sh_msg []u8) ! {
 		shared << x_shared
 		shared << mlkem_ss
 	} else {
+		if h.pq_mode == .hybrid_require {
+			return error('tls: hybrid key exchange required')
+		}
+		if server_group != named_group_x25519 {
+			return error('tls: unsupported key_share group ${server_group}')
+		}
 		shared = h.echd_priv.x25519(server_pub) or { return err }
 	}
 
@@ -206,16 +223,24 @@ fn key_share_client_data(pubkey []u8) []u8 {
 }
 
 fn key_share_client_data_for(group u16, pubkey []u8) []u8 {
+	return key_share_client_entries_data(key_share_entry(group, pubkey))
+}
+
+fn key_share_entry(group u16, pubkey []u8) []u8 {
 	mut entry := []u8{}
 	entry << u8(group >> 8)
 	entry << u8(group)
 	entry << u8(pubkey.len >> 8)
 	entry << u8(pubkey.len)
 	entry << pubkey
+	return entry
+}
+
+fn key_share_client_entries_data(entries []u8) []u8 {
 	mut data := []u8{}
-	data << u8(entry.len >> 8)
-	data << u8(entry.len)
-	data << entry
+	data << u8(entries.len >> 8)
+	data << u8(entries.len)
+	data << entries
 	return data
 }
 

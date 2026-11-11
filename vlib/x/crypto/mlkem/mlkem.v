@@ -2,6 +2,7 @@ module mlkem
 
 import crypto.rand
 import crypto.sha3
+import crypto.subtle
 
 // ---------- parameters ----------
 
@@ -391,9 +392,14 @@ fn sample_ntt(rho []u8, i int, j int) Poly {
 // ---------- K-PKE (parameterized) ----------
 
 fn kpke_keygen_params(p MlKemParams, d []u8) !([]u8, []u8) {
+	if d.len != 32 {
+		return error('mlkem: key generation seed must be 32 bytes')
+	}
 	kk := p.k
 	eta1_ := p.eta1
-	g := sha3_512(d)
+	mut g_input := d.clone()
+	g_input << u8(kk)
+	g := sha3_512(g_input)
 	rho := g[..32].clone()
 	sigma := g[32..].clone()
 	mut a := PolyMat{}
@@ -462,6 +468,9 @@ fn kpke_keygen_params(p MlKemParams, d []u8) !([]u8, []u8) {
 }
 
 fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
+	if ek.len != p.ek_size || m.len != 32 || r.len != 32 {
+		return error('mlkem: invalid encapsulation input length')
+	}
 	kk := p.k
 	eta1_ := p.eta1
 	eta2_ := 2
@@ -471,6 +480,11 @@ fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 	mut off := 0
 	for i in 0 .. kk {
 		t_hat[i] = bytes_to_poly(ek[off..off + 3 * n / 2])
+		for coeff in t_hat[i] {
+			if coeff >= q {
+				return error('mlkem: invalid encapsulation key coefficient')
+			}
+		}
 		off += 3 * n / 2
 	}
 	rho := ek[off..off + 32]
@@ -553,6 +567,9 @@ fn kpke_encrypt_params(p MlKemParams, ek []u8, m []u8, r []u8) ![]u8 {
 }
 
 fn kpke_decrypt_params(p MlKemParams, dk []u8, ct []u8) ![]u8 {
+	if dk.len != p.k * 3 * n / 2 || ct.len != p.ct_size {
+		return error('mlkem: invalid decapsulation input length')
+	}
 	kk := p.k
 	du_ := p.du
 	dv_ := p.dv
@@ -613,6 +630,9 @@ pub fn generate_keypair(variant MlKemVariant) !(PublicKey, SecretKey) {
 
 pub fn encapsulate(pk PublicKey) !(Ciphertext, SharedSecret) {
 	p := params_of(pk.variant)
+	if pk.data.len != p.ek_size {
+		return error('mlkem: invalid encapsulation key length')
+	}
 	m := rand.bytes(32)!
 	h := sha3_256(pk.data)
 	mut input := []u8{}
@@ -622,15 +642,14 @@ pub fn encapsulate(pk PublicKey) !(Ciphertext, SharedSecret) {
 	k_bar := g[..32].clone()
 	r := g[32..].clone()
 	ct := kpke_encrypt_params(p, pk.data, m, r)!
-	mut ss_input := []u8{}
-	ss_input << k_bar
-	ss_input << sha3_256(ct)
-	ss := sha3_256(ss_input)
-	return Ciphertext{ data: ct }, ss
+	return Ciphertext{ data: ct }, k_bar
 }
 
 pub fn decapsulate(ct Ciphertext, sk SecretKey) !SharedSecret {
 	p := params_of(sk.variant)
+	if sk.data.len != p.dk_size || ct.data.len != p.ct_size {
+		return error('mlkem: invalid decapsulation input length')
+	}
 	kk := p.k
 	dk_pke := sk.data[..kk * 3 * n / 2].clone()
 	ek := sk.data[kk * 3 * n / 2..kk * 3 * n / 2 + p.ek_size].clone()
@@ -644,26 +663,13 @@ pub fn decapsulate(ct Ciphertext, sk SecretKey) !SharedSecret {
 	k_bar_prime := g[..32].clone()
 	r_prime := g[32..].clone()
 	ct_prime := kpke_encrypt_params(p, ek, m_prime, r_prime)!
-	mut fail := false
-	if ct.data.len != ct_prime.len {
-		fail = true
-	} else {
-		for i in 0 .. ct.data.len {
-			if ct.data[i] != ct_prime[i] {
-				fail = true
-			}
-		}
-	}
-	if fail {
-		mut ss_input := []u8{}
-		ss_input << z
-		ss_input << sha3_256(ct.data)
-		return sha3_256(ss_input)
-	}
-	mut ss_input := []u8{}
-	ss_input << k_bar_prime
-	ss_input << sha3_256(ct.data)
-	return sha3_256(ss_input)
+	mut fallback_input := []u8{}
+	fallback_input << z
+	fallback_input << ct.data
+	mut ss := shake256_xof(fallback_input, ss_size)
+	valid := subtle.constant_time_compare(ct.data, ct_prime)
+	subtle.constant_time_copy(valid, mut ss, k_bar_prime)
+	return ss
 }
 
 // ---------- Legacy 768 API (thin wrappers) ----------

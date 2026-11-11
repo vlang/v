@@ -49,8 +49,6 @@ fn der_set(content []u8) []u8 { return der_tlv(0x31, content) }
 
 fn der_int(val []u8) []u8 { return der_tlv(0x02, val) }
 
-fn der_null() []u8 { return [u8(0x05), 0x00] }
-
 fn encode_oid(oid string) []u8 {
 	parts := oid.split('.')
 	if parts.len < 2 { return []u8{} }
@@ -141,7 +139,6 @@ pub fn generate_self_signed(opts CertGenOptions, key ecdsa.PrivateKey) !(Certifi
 
 	mut sig_alg_content := []u8{}
 	for b in encode_oid('1.2.840.10045.4.3.2') { sig_alg_content << b }
-	for b in der_null() { sig_alg_content << b }
 	sig_alg_id := der_seq(sig_alg_content)
 
 	mut spki_alg_content := []u8{}

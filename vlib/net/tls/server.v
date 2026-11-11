@@ -3,9 +3,14 @@ module tls
 import crypto.ecdsa
 import crypto.rand
 import crypto.sha256
+import crypto.pem
+import crypto.x509
+import crypto.subtle
 import x.crypto.curve25519
 import x.crypto.mlkem
 import crypto
+import os
+import time
 
 // ServerHandshake holds state for a TLS 1.3 server handshake.
 pub struct ServerHandshake {
@@ -15,6 +20,7 @@ pub mut:
 	echd_priv      &curve25519.PrivateKey
 	ecdsa_priv     ecdsa.PrivateKey
 	ecdsa_pub      ecdsa.PublicKey
+	cert_chain     [][]u8
 	client_random  []u8
 	server_random  []u8
 	has_mlkem      bool
@@ -28,17 +34,126 @@ pub fn new_server_handshake(pq_mode PostQuantumMode) !ServerHandshake {
 	priv := curve25519.PrivateKey.new()!
 	pb, pv := ecdsa.generate_key()!
 	sr := crypto.rand.bytes(32)!
+	now := time.now()
+	_, cert_der := x509.generate_self_signed(x509.CertGenOptions{
+		common_name: 'localhost'
+		dns_names:   ['localhost']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(365)
+	}, pv)!
 	mut h := ServerHandshake{
 		pq_mode:       pq_mode
 		echd_priv:     priv
 		ecdsa_priv:    pv
 		ecdsa_pub:     pb
+		cert_chain:    [cert_der]
 		server_random: sr
 	}
 	if pq_mode != .off {
 		h.has_mlkem = true
 	}
 	return h
+}
+
+fn config_pem_bytes(inline []u8, value string, in_memory bool, label string) ![]u8 {
+	if inline.len > 0 {
+		return inline.clone()
+	}
+	if value.len == 0 {
+		return error('tls: missing server ${label}')
+	}
+	if in_memory || value.contains('-----BEGIN ') {
+		return value.bytes()
+	}
+	contents := os.read_file(value) or { return error('tls: cannot read server ${label}') }
+	return contents.bytes()
+}
+
+fn private_scalar_from_sec1(data []u8) ![]u8 {
+	tag, content, consumed := der_tlv(data)!
+	if tag != 0x30 || consumed != data.len {
+		return error('tls: invalid EC private key')
+	}
+	mut off := 0
+	vtag, _, vn := der_tlv(content[off..])!
+	if vtag != 0x02 { return error('tls: invalid EC private key version') }
+	off += vn
+	ktag, scalar, _ := der_tlv(content[off..])!
+	if ktag != 0x04 || scalar.len != 32 {
+		return error('tls: only P-256 EC private keys are supported')
+	}
+	return scalar
+}
+
+fn private_scalar_from_der(data []u8) ![]u8 {
+	tag, content, consumed := der_tlv(data)!
+	if tag != 0x30 || consumed != data.len {
+		return error('tls: invalid private key DER')
+	}
+	mut off := 0
+	vtag, _, vn := der_tlv(content[off..])!
+	if vtag != 0x02 { return error('tls: invalid private key version') }
+	off += vn
+	next_tag, _, _ := der_tlv(content[off..])!
+	if next_tag == 0x30 {
+		// PKCS#8 PrivateKeyInfo: version, AlgorithmIdentifier, privateKey.
+		_, _, alg_len := der_tlv(content[off..])!
+		off += alg_len
+		ktag, key_der, _ := der_tlv(content[off..])!
+		if ktag != 0x04 { return error('tls: invalid PKCS#8 private key') }
+		return private_scalar_from_sec1(key_der)
+	}
+	return private_scalar_from_sec1(data)
+}
+
+fn load_server_certificate_chain(cfg Config) ![][]u8 {
+	data := config_pem_bytes(cfg.cert_pem, cfg.cert, cfg.in_memory, 'certificate')!
+	mut rest := data.bytestr()
+	mut certs := [][]u8{}
+	for rest.len > 0 {
+		block, next := pem.decode(rest) or { break }
+		if block.block_type == 'CERTIFICATE' {
+			_ := x509.parse_der(block.data) or { return error('tls: invalid server certificate') }
+			certs << block.data.clone()
+		}
+		if next.len == rest.len { break }
+		rest = next
+	}
+	if certs.len == 0 { return error('tls: no PEM certificate found') }
+	return certs
+}
+
+fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !ServerHandshake {
+	if cfg.cert.len == 0 && cfg.cert_pem.len == 0 && cfg.key.len == 0 && cfg.key_pem.len == 0 {
+		return new_server_handshake(pq_mode)
+	}
+	if (cfg.cert.len == 0 && cfg.cert_pem.len == 0) || (cfg.key.len == 0 && cfg.key_pem.len == 0) {
+		return error('tls: server certificate and private key must both be configured')
+	}
+	chain := load_server_certificate_chain(cfg)!
+	key_data := config_pem_bytes(cfg.key_pem, cfg.key, cfg.in_memory, 'private key')!
+	key_block, _ := pem.decode(key_data.bytestr()) or { return error('tls: invalid server private key PEM') }
+	if key_block.block_type !in ['EC PRIVATE KEY', 'PRIVATE KEY'] {
+		return error('tls: only P-256 ECDSA server keys are supported')
+	}
+	seed := private_scalar_from_der(key_block.data)!
+	private_key := ecdsa.new_key_from_seed(seed, ecdsa.CurveOptions{})!
+	public_key := private_key.public_key()!
+	leaf := x509.parse_der(chain[0])!
+	leaf_public := leaf.public_key() or { return error('tls: unsupported server certificate public key') }
+	match leaf_public {
+		x509.EcdsaP256PublicKey {
+			if subtle.constant_time_compare(public_key.bytes()!, leaf_public.point) != 1 {
+				return error('tls: server certificate and private key do not match')
+			}
+		}
+		else { return error('tls: only P-256 ECDSA server certificates are supported') }
+	}
+	mut server := new_server_handshake(pq_mode)!
+	server.ecdsa_priv = private_key
+	server.ecdsa_pub = public_key
+	server.cert_chain = chain
+	return server
 }
 
 // process_client_hello ingests a ClientHello, computes shared secret, returns server flight.
@@ -52,22 +167,37 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	s.transcript = ch_msg.clone()
 
 	// find client key_share
-	mut client_pub := []u8{}
-	mut client_group := named_group_x25519
+	mut classical_pub := []u8{}
+	mut hybrid_pub := []u8{}
 	for e in ch.extensions {
 		if e.typ == ext_key_share {
-			if e.data.len < 7 {
+			if e.data.len < 2 {
 				return error('tls: bad key_share')
 			}
-			// e.data = outer_len(2) + KeyShareEntry: group(2)+len(2)+key
-			g := (u16(e.data[2]) << 8) | u16(e.data[3])
-			client_group = g
-			kl := (int(e.data[4]) << 8) | int(e.data[5])
-			if 6 + kl > e.data.len {
-				return error('tls: truncated key_share')
+			entries_len := (int(e.data[0]) << 8) | int(e.data[1])
+			if entries_len != e.data.len - 2 {
+				return error('tls: invalid key_share vector length')
 			}
-			client_pub = e.data[6..6 + kl].clone()
+			mut off := 2
+			for off < e.data.len {
+				if off + 4 > e.data.len { return error('tls: truncated key_share entry') }
+				g := (u16(e.data[off]) << 8) | u16(e.data[off + 1])
+				kl := (int(e.data[off + 2]) << 8) | int(e.data[off + 3])
+				off += 4
+				if off + kl > e.data.len { return error('tls: truncated key_share') }
+				if g == named_group_x25519 { classical_pub = e.data[off..off + kl].clone() }
+				if g == named_group_x25519_mlkem768 { hybrid_pub = e.data[off..off + kl].clone() }
+				off += kl
+			}
 		}
+	}
+	mut client_pub := classical_pub
+	mut client_group := named_group_x25519
+	if s.has_mlkem && hybrid_pub.len > 0 {
+		client_pub = hybrid_pub
+		client_group = named_group_x25519_mlkem768
+	} else if s.pq_mode == .hybrid_require {
+		return error('tls: hybrid key exchange required')
 	}
 	if client_pub.len == 0 {
 		return error('tls: missing client key_share')
@@ -100,6 +230,12 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		srv_pub_bytes << u8(hybrid_key.len)
 		srv_pub_bytes << hybrid_key
 	} else {
+		if s.pq_mode == .hybrid_require {
+			return error('tls: hybrid key exchange required')
+		}
+		if client_group != named_group_x25519 {
+			return error('tls: unsupported key_share group ${client_group}')
+		}
 		shared = s.echd_priv.x25519(client_pub) or { return err }
 		mut entry := []u8{}
 		entry << u8(named_group_x25519 >> 8)
@@ -140,7 +276,27 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	ee_msg := encode_handshake_message(.encrypted_extensions, ee_body)!
 	s.transcript << ee_msg
 
-	cert_body := []u8{len: 3}
+	mut cert_list := []u8{}
+	for cert_der in s.cert_chain {
+		if cert_der.len == 0 || cert_der.len > 0xffffff {
+			return error('tls: server certificate size out of range')
+		}
+		cert_list << u8(cert_der.len >> 16)
+		cert_list << u8(cert_der.len >> 8)
+		cert_list << u8(cert_der.len)
+		cert_list << cert_der
+		cert_list << u8(0)
+		cert_list << u8(0)
+	}
+	if cert_list.len > 0xffffff {
+		return error('tls: server certificate chain too large')
+	}
+	mut cert_body := []u8{}
+	cert_body << u8(0) // certificate_request_context
+	cert_body << u8(cert_list.len >> 16)
+	cert_body << u8(cert_list.len >> 8)
+	cert_body << u8(cert_list.len)
+	cert_body << cert_list
 	cert_msg := encode_handshake_message(.certificate, cert_body)!
 	s.transcript << cert_msg
 
@@ -182,7 +338,7 @@ pub fn (mut s ServerHandshake) verify_client_finished(fin_msg []u8) ! {
 	th := sha256.sum256(s.transcript)
 	expected := finished_verify_data(s.handshake_keys.client_secret, th) or { return err }
 	fin := parse_finished(parsed.body, 32) or { return err }
-	if fin.verify_data != expected {
+	if subtle.constant_time_compare(fin.verify_data, expected) != 1 {
 		return error('tls: client Finished mismatch')
 	}
 	as_ := derive_application_secrets(s.handshake_keys.handshake_secret, th) or { return err }
