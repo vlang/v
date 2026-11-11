@@ -154,12 +154,12 @@ fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
 $if !windows && !freestanding && !syscalls {
 	#include "@VMODROOT/vlib/os/fd_poll.h"
-	fn C.v_os_fd_poll_revents(fd int, events i16) i16
+	fn C.v_os_fd_poll_revents(fd i32, events i16) i16
 }
 
 $if !windows && !freestanding && !syscalls {
 	fn fd_is_pending_poll(fd int) bool {
-		revents := C.v_os_fd_poll_revents(fd, i16(C.POLLIN))
+		revents := C.v_os_fd_poll_revents(i32(fd), i16(C.POLLIN))
 		if (revents & i16(C.POLLNVAL)) != 0 {
 			return false
 		}
