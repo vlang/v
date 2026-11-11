@@ -1,0 +1,103 @@
+name: Windows CI regressions
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci_regressions.yml'
+      - '.github/actions/setup-v/**'
+      - '.github/workflows/prepare_v.ps1'
+      - '.github/workflows/prepare_v.sh'
+      - '.github/workflows/setup_windows_tool_cache.ps1'
+      - 'makev.bat'
+      - 'cmd/v/**'
+      - 'vlib/v/driver/**'
+      - 'vlib/v/gen/c/**'
+      - 'vlib/v/transform/**'
+      - 'vlib/v/compiler_tests/checker_assignment_review_test.v'
+      - 'vlib/v/tests/generics/generic_callback_field_payload_test.v'
+      - 'vlib/net/**'
+      - 'vlib/sync/**'
+      - 'thirdparty/mbedtls/**'
+  workflow_dispatch:
+
+concurrency:
+  group: windows-ci-regressions-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-regressions:
+    # Match the native toolchains used by the full Windows TCC and MSVC lanes.
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VJOBS: '2'
+      VTEST_FAIL_FAST: '1'
+      V_MACOS_V3_NO_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v7
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        timeout-minutes: 2
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Initialize MSVC tools
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        timeout-minutes: 3
+        with:
+          arch: x64
+      - name: Build the optimized V compiler
+        id: build
+        uses: ./.github/actions/setup-v
+        timeout-minutes: 15
+        with:
+          use-prebuilt: 'false'
+          symlink: 'false'
+      - name: Check generic callback payloads with TCC
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          VFLAGS: -cc tcc -no-retry-compilation
+        run: |
+          .\v.exe -stats vlib/v/tests/generics/generic_callback_field_payload_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check generic callback payloads with MSVC
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          VFLAGS: -cc msvc -no-retry-compilation
+        run: |
+          .\v.exe -stats vlib/v/tests/generics/generic_callback_field_payload_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check nested checker compiler lifetimes with TCC
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 10
+        env:
+          VFLAGS: -cc tcc -no-retry-compilation
+        run: |
+          .\v.exe -stats vlib/v/compiler_tests/checker_assignment_review_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check tool cache manifest staging with MSVC
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 8
+        env:
+          VFLAGS: -cc msvc -no-retry-compilation
+        run: |
+          .\v.exe -stats cmd/v/toolcache_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check HTTP/2 transport with TCC
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 5
+        env:
+          VFLAGS: -cc tcc -no-retry-compilation
+        # -stats reports completed functions. Trace entries flush to stderr so
+        # a timeout also identifies the function that has not returned.
+        run: |
+          .\v.exe -stats -trace-calls -trace-fns 'test_*' vlib/net/http/transport_h2_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
