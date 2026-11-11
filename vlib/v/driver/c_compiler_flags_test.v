@@ -2248,7 +2248,7 @@ fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
 		assert '-D_GNU_SOURCE' !in plan.before_inputs
 	}
 	freestanding := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		target_os:     'linux'
+		target_os:       'linux'
 		is_freestanding: true
 	})
 	assert '-D_GNU_SOURCE' !in freestanding.before_inputs
