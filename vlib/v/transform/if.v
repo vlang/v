@@ -1005,21 +1005,45 @@ fn (t &Transformer) scalar_select_type(node flat.Node, result_type_id u32) ?u32 
 // lower_scalar_select transforms the condition and branch values of a select
 // found by scalar_select_type as expressions, as build_if_value_chain does, and
 // keeps them in an if-expression cast to the result type; the C backend emits
-// `(T)(cond ? a : b)`.
+// `(T)(cond ? a : b)`. Some accepted operands still lower to statements (for
+// example a struct pointer equality that compares the values through a
+// temporary). Those statements must only run with their branch, so when either
+// branch value produces any, the select is assigned to a temporary in an if
+// statement whose branches hold their own statements, as the general lowering does.
 fn (mut t Transformer) lower_scalar_select(node flat.Node, select_type u32) flat.NodeId {
 	cond := t.transform_and_chain_smartcasts(t.a.child(&node, 0))
-	mut blocks := []flat.NodeId{cap: 2}
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut values := []flat.NodeId{cap: 2}
+	mut branch_stmts := [][]flat.NodeId{cap: 2}
 	for i in 1 .. 3 {
 		branch := t.a.child_node(&node, i)
 		stmt := t.a.child_node(branch, 0)
-		value := t.transform_if_branch_value(t.a.child(stmt, 0), select_type)
-		blocks << t.make_block([t.make_expr_stmt(value)])
+		values << t.transform_if_branch_value(t.a.child(stmt, 0), select_type)
+		branch_stmts << t.pending_stmts.clone()
+		t.pending_stmts.clear()
 	}
-	choice := t.make_if(cond, blocks[0], blocks[1])
-	t.set_node_typ(int(choice), select_type)
-	cast := t.make_cast(select_type, choice, select_type)
-	t.set_node_typ(int(cast), select_type)
-	return cast
+	t.pending_stmts = outer_pending
+	if branch_stmts[0].len == 0 && branch_stmts[1].len == 0 {
+		choice := t.make_if(cond, t.make_block([t.make_expr_stmt(values[0])]),
+			t.make_block([t.make_expr_stmt(values[1])]))
+		t.set_node_typ(int(choice), select_type)
+		cast := t.make_cast(select_type, choice, select_type)
+		t.set_node_typ(int(cast), select_type)
+		return cast
+	}
+	tmp_name := t.new_temp('if_val')
+	t.pending_stmts << t.make_staging_value_decl(tmp_name, select_type)
+	mut blocks := []flat.NodeId{cap: 2}
+	for i, value in values {
+		mut stmts := branch_stmts[i].clone()
+		stmts << t.make_assign(t.make_ident(tmp_name), value)
+		blocks << t.make_block(stmts)
+	}
+	t.pending_stmts << t.make_if(cond, blocks[0], blocks[1])
+	tmp := t.make_ident(tmp_name)
+	t.set_node_typ(int(tmp), select_type)
+	return tmp
 }
 
 // is_scalar_select_type reports whether a value of the type is a C arithmetic
