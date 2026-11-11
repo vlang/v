@@ -22,10 +22,14 @@ fn (mut g Parser) parse_block_body() !bool {
 			terminates = false
 		}
 		g.statement_reachable = outer_statement_reachable && !terminates
-		if g.selfhost && g.or_value_capture && ((g.tok == .key_if && g.if_starts_final_block_expression()) || (g.tok == .key_match && g.match_starts_final_block_expression())) {
+		if g.selfhost && g.or_value_capture && g.local_scope_depth == g.or_value_scope_depth
+			&& ((g.tok == .key_if && g.if_starts_final_block_expression())
+				|| (g.tok == .key_match && g.match_starts_final_block_expression())) {
 			// The block's final value is an `if`/`match` EXPRESSION (`or { if c { a } else { b } }`);
 			// read it as a value (a ternary/stmt-expr) so a guard variable inside it stays in the
 			// branch scope, instead of parsing it as statements whose value leaks out of scope.
+			// Only the `or` block's own final statement is its value: an `if` ending a nested
+			// block (a `for` body inside the `or`) is an ordinary statement of that block.
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 			g.capture_or_value(value)
 			g.skip_semicolons()
