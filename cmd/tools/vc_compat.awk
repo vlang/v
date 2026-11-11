@@ -5,6 +5,9 @@ BEGIN {
 	while ((getline line < ARGV[1]) > 0) {
 		snapshot_line++
 		if (line ~ /^#define CUSTOM_DEFINE_cross([ \t]|$)/) portable_snapshot = 1
+		# The published vc snapshot calls select() but has no sys/select.h prototype.
+		if (line ~ /select\(fd \+ 1, &read_set,/) snapshot_uses_select = 1
+		if (line ~ /^[ \t]*#[ \t]*include[ \t]+<sys\/select\.h>[ \t]*$/) snapshot_has_select_header = 1
 		if (line ~ /^bool machosign__fastc_hash_code_pages\([^;]*\) \{$/) portable_macho_hash = 1
 		if (line ~ /^__v_result machosign__fastc_sign_macho_adhoc_buffered\(string path\) \{$/) portable_macho_signer = 1
 		if (line ~ /^[ \t]*[A-Za-z_][A-Za-z0-9_* \t]*[ \t*]fastc_hash_code_pages_native\(/) native_macho_hash = 1
@@ -76,6 +79,20 @@ legacy_uint && !native_uint {
 		gsub(/\\/, "/", root)
 		$0 = substr($0, 1, index($0, "\"")) root "/" substr(path, RSTART + 1) "\""
 	}
+}
+
+# The current vc snapshot uses select() but includes only poll.h, not its
+# defining header. Insert the native declaration on Unix, leaving unrelated
+# snapshots and the Winsock path unchanged.
+/^[ \t]*#[ \t]*include[ \t]+<poll\.h>[ \t]*$/ {
+	print
+	if (snapshot_uses_select && !snapshot_has_select_header && !select_header_inserted) {
+		print "#if !defined(_WIN32)"
+		print "#include <sys/select.h>"
+		print "#endif"
+		select_header_inserted = 1
+	}
+	next
 }
 
 # Bootstrap compatibility for vc snapshots predating the diagserver prctl guards.
