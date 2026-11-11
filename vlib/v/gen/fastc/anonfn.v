@@ -42,6 +42,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 				return g.unsupported('closure capture `${capture_name}` without a local value')
 			}
 			mut capture_type := fastc_normalize_inferred_type(local.typ)
+			if local.is_heap_value {
+				// Heap promotion changes storage, not the value copied into a closure.
+				capture_type = flat.source_type_syntax(capture_type).c_pointer_base()
+			}
 			if local.fn_return_type != 0 || local.fn_signature_key != '' {
 				if signature := g.callable_signature_for_expression([FastcExpressionToken{ tok: .name, lit: capture_name }]) {
 					capture_type = flat.source_type_id(fastc_callable_type_name(FastcFunctionTypeInfo{ parameter_types: signature.parameter_types, return_type: signature.return_type, option_value_type: signature.option_type }))
@@ -64,7 +68,12 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			capture_names << capture_name
 			capture_types << capture_type
 			capture_params << '${if is_mut_capture && !capture_is_function { 'mut ' } else { '' }}${capture_name} ${capture_source_type}'
-			capture_value := g.local_c_name(capture_name)
+			capture_storage := g.local_c_name(capture_name)
+			capture_value := if local.is_heap_value {
+				'(*(${capture_storage}))'
+			} else {
+				capture_storage
+			}
 			capture_values << if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_map_prefix) {
 				'builtin__map_clone(&(${capture_value}))'
 			} else if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_array_prefix) {

@@ -474,6 +474,9 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 
 fn (mut g Parser) read_block_expression_value() !string {
 	g.skip_semicolons()
+	if g.wrapper_starts_final_block_expression() {
+		return g.read_final_block_wrapper_value()!
+	}
 	if g.tok == .dollar && g.dollar_keyword_is('if') {
 		// `$if … { value } $else { value }` as the block's value: select the taken
 		// branch's value rather than executing it as a statement.
@@ -523,6 +526,9 @@ fn (mut g Parser) read_block_expression_value() !string {
 	}
 	mut terminates := false
 	for g.or_block_has_statements() {
+		if g.wrapper_starts_final_block_expression() {
+			break
+		}
 		if g.tok == .key_if && g.if_starts_final_block_expression() {
 			break
 		}
@@ -545,6 +551,8 @@ fn (mut g Parser) read_block_expression_value() !string {
 		g.next()
 		g.read_expression_with_prefix(prefix, [token.Token.comma, token.Token.semicolon,
 			token.Token.rcbr])!
+	} else if g.wrapper_starts_final_block_expression() {
+		g.read_final_block_wrapper_value()!
 	} else {
 		g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 	}
