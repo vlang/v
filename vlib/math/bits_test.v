@@ -80,7 +80,8 @@ fn test_is_finite_agrees_with_nan_and_inf() {
 		f := f64_from_bits(bits_value)
 		assert is_finite(f) == (!is_nan(f) && !is_inf(f, 0)), '${bits_value:016x}'
 	}
-	for bits_value in [u32(0), 0x80000000, 1, 0x7f7fffff, 0x7f800000, 0xff800000, 0x7fc00000, 0x7f800001] {
+	for bits_value in [u32(0), 0x80000000, 1, 0x7f7fffff, 0x7f800000, 0xff800000, 0x7fc00000,
+		0x7f800001] {
 		f := f32_from_bits(bits_value)
 		assert is_finite(f) == (!is_nan(f) && !is_inf(f, 0)), '${bits_value:08x}'
 	}
