@@ -6845,7 +6845,9 @@ fn (t &Transformer) is_enum_stringify_type(typ_id u32) bool {
 		clean_typ = flat.source_type_syntax(clean_typ).raw_base()
 	}
 	if clean_typ in t.enum_types {
-		return true
+		// Imported enums are also indexed by their short name, which a struct
+		// declared in the current module shadows.
+		return !t.bare_struct_name_is_local_to_current_module(clean_typ)
 	}
 	mut qtyp := clean_typ
 	if !flat.source_type_shape(qtyp).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -7312,7 +7314,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				&& t.cur_module != 'builtin' {
 				qenum = flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ)
 			}
-			if qenum in t.enum_types {
+			// A bare name was already checked above, where a local struct shadows an
+			// imported enum that the transformer also indexes by its short name.
+			if qenum != clean_typ && qenum in t.enum_types {
 				if method := t.enum_str_method_name(qenum) {
 					return t.make_call_typed(method, [expr], flat.source_type_string)
 				}
@@ -8889,7 +8893,8 @@ fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32) bool {
 	if !t.alias_str_needs_name_wrapper(resolved_source_id) {
 		return false
 	}
-	if resolved_source_id in t.enum_types {
+	if resolved_source_id in t.enum_types
+		&& !t.bare_struct_name_is_local_to_current_module(resolved_source_id) {
 		return false
 	}
 	if !flat.source_type_shape(resolved_source_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
