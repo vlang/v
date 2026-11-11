@@ -312,9 +312,13 @@ fn choose(flag bool) int {
 // test_if_expr_value_lowers_to_temp_and_branch_assigns validates this v3 regression case.
 fn test_if_expr_value_lowers_to_temp_and_branch_assigns() {
 	a := parse_transform_source('
+fn one() int {
+	return 1
+}
+
 fn main() {
 	x := if true {
-		1
+		one()
 	} else {
 		2
 	}
@@ -342,8 +346,12 @@ fn use(x int) int {
 	return x
 }
 
+fn one() int {
+	return 1
+}
+
 fn main() {
-	x := use(if true { 1 } else { 2 })
+	x := use(if true { one() } else { 2 })
 }
 ')
 	rhs := decl_rhs(a, 'main', 'x')
@@ -357,10 +365,14 @@ fn main() {
 // test_nested_if_expr_branch_lowers_to_outer_temp_assignment validates this v3 regression case.
 fn test_nested_if_expr_branch_lowers_to_outer_temp_assignment() {
 	a := parse_transform_source('
+fn one() int {
+	return 1
+}
+
 fn main() {
 	x := if true {
 		if false {
-			1
+			one()
 		} else {
 			2
 		}
@@ -382,6 +394,83 @@ fn main() {
 	}
 	assert if_count == 2
 	assert assign_count == 4
+}
+
+// test_scalar_if_expr_value_stays_conditional checks that a select between two
+// plain scalar values stays an if-expression, cast to the result type, which
+// the C backend emits as `(T)(cond ? a : b)`; a temporary assigned in an if
+// statement would keep C compilers from vectorizing loops over it.
+fn test_scalar_if_expr_value_stays_conditional() {
+	a := parse_transform_source('
+struct Pixel {
+	r u8
+	g u8
+}
+
+fn pick(mask []u32, a []f32, i int, p Pixel, limit f32) f32 {
+	x := if mask[i] != 0 && p.r > p.g { a[i] * 2 } else { limit }
+	return x
+}
+')
+	rhs := decl_rhs(a, 'pick', 'x')
+	assert rhs.kind == .cast_expr
+	assert rhs.children_count == 1
+	assert a.child_node(&rhs, 0).kind == .if_expr
+	pick_fn := find_fn(a, 'pick')
+	mut assign_count := 0
+	for i in 0 .. pick_fn.children_count {
+		assign_count += count_kind(a, a.child(&pick_fn, i), .assign)
+	}
+	assert assign_count == 0
+}
+
+// test_scalar_if_expr_select_nests_in_lowered_value checks that a plain inner
+// select stays conditional when its outer if-expression still lowers.
+fn test_scalar_if_expr_select_nests_in_lowered_value() {
+	a := parse_transform_source('
+fn one() int {
+	return 1
+}
+
+fn main() {
+	x := if true {
+		if false {
+			1
+		} else {
+			2
+		}
+	} else {
+		one()
+	}
+}
+')
+	rhs := decl_rhs(a, 'main', 'x')
+	assert rhs.kind == .ident
+	assert rhs.value.starts_with('__if_val_')
+	main_fn := find_fn(a, 'main')
+	mut cast_count := 0
+	mut assign_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		cast_count += count_kind(a, child_id, .cast_expr)
+		assign_count += count_kind(a, child_id, .assign)
+	}
+	assert cast_count == 1
+	assert assign_count == 2
+}
+
+// test_non_scalar_if_expr_value_still_lowers checks that selects between
+// values that are not scalars, such as strings, keep the temporary.
+fn test_non_scalar_if_expr_value_still_lowers() {
+	a := parse_transform_source("
+fn label(ok bool) string {
+	s := if ok { 'yes' } else { 'no' }
+	return s
+}
+")
+	rhs := decl_rhs(a, 'label', 's')
+	assert rhs.kind == .ident
+	assert rhs.value.starts_with('__if_val_')
 }
 
 // test_multi_return_decl_lowers_to_temp_field_decls validates this v3 regression case.
