@@ -123,6 +123,15 @@ fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	assert !feature_choice.contains('E_STRUCT_DECL'), feature_c
 }
 
+// Windows console executables use the wide CRT entry point instead of main.
+fn comptime_decl_main_signature() string {
+	$if windows {
+		return 'int wmain('
+	} $else {
+		return 'int main('
+	}
+}
+
 fn test_declaration_only_top_level_comptime_block_synthesizes_executable_main() {
 	v3_bin := comptime_decl_build_v3()
 	c_code := comptime_decl_gen_c_source(v3_bin, 'decl_only_no_main', 'module main
@@ -136,7 +145,7 @@ $if some_feature ? {
 }
 ',
 		'-d some_feature')
-	assert c_code.contains('int main('), c_code
+	assert c_code.contains(comptime_decl_main_signature()), c_code
 }
 
 fn test_top_level_comptime_block_with_statement_still_synthesizes_main() {
@@ -152,7 +161,7 @@ $if some_feature ? {
 }
 ",
 		'-d some_feature')
-	assert c_code.contains('int main('), c_code
+	assert c_code.contains(comptime_decl_main_signature()), c_code
 	assert c_code.contains('active'), c_code
 }
 
