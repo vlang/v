@@ -111,7 +111,8 @@ fn run_project_tests(runs [][]string) int {
 
 // backend_option_given reports whether the compiler options in `args` select a backend.
 fn backend_option_given(args []string) bool {
-	if compiler_option_requested(args, '-b') || compiler_option_requested(args, '-backend') {
+	if compiler_option_requested(args, '-b') || compiler_option_requested(args, '-backend')
+		|| compiler_option_requested(args, '-native') {
 		return true
 	}
 	for arg in args {

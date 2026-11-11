@@ -200,13 +200,18 @@ fn self_build_backend(args []string) string {
 			i += 2
 			continue
 		}
+		if arg == '-native' {
+			backend = 'native'
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend = arg.all_after('=')
+		}
 		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
 			i += 2
 		} else {
 			i++
 		}
 	}
-	return backend
+	return if backend == 'native' { pref.native_backend() } else { backend }
 }
 
 fn self_build_backend_skips(args []string) []string {
@@ -258,6 +263,10 @@ fn normalize_fastc_backend_args(args []string) []string {
 		arg := args[i]
 		if arg in ['-b', '-backend'] && i + 1 < args.len {
 			i += 2
+			continue
+		}
+		if arg == '-native' || arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			i++
 			continue
 		}
 		normalized << arg

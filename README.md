@@ -409,8 +409,11 @@ production compiler. Other C toolchains and failed PGO attempts use a regular pr
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
-Use `v -b arm64 file.v` on macOS ARM64 or `v -b x64 file.v` on Linux AMD64 to compile
-with a native backend. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the compiler's
+host architecture: `-b amd64` (an alias for `-b x64`) on AMD64, or `-b arm64` on ARM64.
+The same platform requirements apply as when selecting `v -b arm64 file.v` on macOS ARM64
+or `v -b amd64 file.v` on Linux AMD64 explicitly.
+Use `v -b arm64 self` or `v -b x64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native
 build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
