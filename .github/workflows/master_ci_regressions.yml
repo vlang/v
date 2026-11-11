@@ -5,7 +5,9 @@ on:
     paths:
       - 'vlib/v/compiler_tests/**'
       - '.github/workflows/master_ci_regressions.yml'
+      - '.github/workflows/build_on_ubuntu_25_ci.yml'
       - '.github/workflows/linux_ci.yml'
+      - '.github/workflows/other_ci.yml'
       - '.github/workflows/tools_ci.yml'
       - '.github/workflows/riscv64_linux_ci.yml'
       - '.github/workflows/sanitized_ci.yml'
@@ -43,13 +45,6 @@ jobs:
           persist-credentials: false
       - name: Check apt source setup
         run: bash .github/workflows/disable_azure_mirror_test.sh
-      - name: Check hosted apt dependencies
-        timeout-minutes: 10
-        run: |
-          bash .github/workflows/disable_azure_mirror.sh
-          sudo apt-get -qq update
-          sudo apt-get -qq --no-install-recommends install sassc
-          sassc --version
       - name: Check CI task coverage and deadlines
         run: python3 .github/workflows/ci_timeout_contract_test.py
       - name: Build V
@@ -58,6 +53,13 @@ jobs:
           symlink: 'false'
       - name: Check Linux task checkpoint and resume behavior
         run: sh ci/linux_ci_resume_test.sh
+      - name: Check hosted apt dependencies
+        timeout-minutes: 10
+        run: |
+          bash .github/workflows/disable_azure_mirror.sh
+          sudo apt-get -qq update
+          sudo apt-get -qq --no-install-recommends install sassc
+          sassc --version
 
   windows:
     name: Windows regressions (${{ matrix.cc }})
