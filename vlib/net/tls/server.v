@@ -194,7 +194,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	mut client_pub := classical_pub
 	mut client_group := named_group_x25519
 	if s.has_mlkem && hybrid_pub.len > 0 {
-		client_pub = hybrid_pub
+		client_pub = hybrid_pub.clone()
 		client_group = named_group_x25519_mlkem768
 	} else if s.pq_mode == .hybrid_require {
 		return error('tls: hybrid key exchange required')
