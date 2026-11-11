@@ -3457,6 +3457,23 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	if is_volatile {
 		declaration_type = 'volatile ${declaration_type}'
 	}
+	// `@[heap]` promises that a struct's addresses outlive the frame that made it,
+	// so a callee may store `&local` or a `mut local` argument. As in the C
+	// backend, every local of such a struct lives on the heap: the C variable
+	// holds the pointer and the V local is a reference to it.
+	if g.selfhost && !is_static && !is_volatile && g.heap_structs.len > 0 && local_type_id != 0
+		&& !fastc_is_pointer_type(local_type_id) && local_type in g.heap_structs {
+		storage_type := fastc_output_c_type(local_type)
+		pointer_type := flat.source_type_composition_two(.concat, local_type_id, flat.source_type_id('*'))
+		g.write_line('${storage_type} *${c_name};')
+		g.write_line('${c_name} = (${storage_type} *)${fastc_heap_copy_expression(storage_type, expression)};')
+		g.set_scoped_local(name, FastcLocal{
+			is_mut:       is_mut
+			is_reference: true
+			typ:          pointer_type
+		})
+		return
+	}
 	if is_static {
 		// V function statics may have runtime initializers. Keep C static storage and guard
 		// the assignment so later calls (including at-exit callbacks) see the retained value.
