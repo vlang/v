@@ -551,17 +551,11 @@ fn parse_iso8601_date(s string) !(int, int, int) {
 	if year > 9999 {
 		return error_invalid_time(13, 'year must be smaller than 10000')
 	}
-	if month < 1 {
-		return error_invalid_time(14, 'invalid month ${month}')
+	if month < 1 || month > 12 {
+		return error_invalid_time(14, 'month must be between 1 and 12')
 	}
-	if month > 12 {
-		return error_invalid_time(14, 'month must be smaller than 12')
-	}
-	if day < 1 {
-		return error_invalid_time(15, 'invalid day ${day}')
-	}
-	if day > 31 {
-		return error_invalid_time(15, 'day must be smaller than 31')
+	if day < 1 || day > 31 {
+		return error_invalid_time(15, 'day must be between 1 and 31')
 	}
 	return year, month, day
 }

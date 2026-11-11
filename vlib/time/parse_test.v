@@ -138,6 +138,16 @@ fn test_parse_iso8601_rejects_zero_month_and_day() {
 			assert false, '${s} should be rejected, got ${t}'
 		}
 	}
+	if _ := time.parse_iso8601('2020-00-01') {
+		assert false
+	} else {
+		assert err.msg().contains('month must be between 1 and 12')
+	}
+	if _ := time.parse_iso8601('2020-01-00') {
+		assert false
+	} else {
+		assert err.msg().contains('day must be between 1 and 31')
+	}
 	t := time.parse_iso8601('2020-01-01')!
 	assert t.month == 1
 	assert t.day == 1
