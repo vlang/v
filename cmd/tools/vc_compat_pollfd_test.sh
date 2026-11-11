@@ -59,7 +59,10 @@ int main(void) {
     char c = 0;
     if (read(p[0], &c, 1) != 1 || c != 'x') return 5;
     if (v_os_fd_poll_revents(p[0], POLLIN) != 0) return 6;
-    if (close(p[0]) != 0 || close(p[1]) != 0) return 7;
+    if (close(p[0]) != 0) return 7;
+    // The C helper must expose native POLLNVAL for a closed descriptor.
+    if ((v_os_fd_poll_revents(p[0], POLLIN) & POLLNVAL) == 0) return 8;
+    if (close(p[1]) != 0) return 9;
     return 0;
 }
 EOF
