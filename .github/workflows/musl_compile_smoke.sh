@@ -20,7 +20,8 @@ for iteration in 1 2 3; do
   timeout --signal=TERM --kill-after=10s 120s "${VEXE:-./v}" -silent "${flags[@]}" test \
     cmd/tools/check_autobahn_results/main_test.v \
     cmd/tools/testing/cache_session_test.v \
-    cmd/tools/testing/folder_creation_test.v &
+    cmd/tools/testing/folder_creation_test.v \
+    vlib/arrays/uniq_test.v &
   test_pid=$!
   (
     trap - EXIT

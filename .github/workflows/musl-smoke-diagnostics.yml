@@ -11,6 +11,13 @@ name: Musl smoke diagnostics
       - 'cmd/tools/testing/*.v'
       - 'cmd/tools/test_if_v_test_system_works.v'
       - 'cmd/tools/test_if_v_test_system_works_test.v'
+      - 'vlib/v/driver/driver.v'
+      - 'vlib/v/driver/instance_check*.v'
+      - 'vlib/v/compiler_tests/check_generic_instances_test.v'
+
+concurrency:
+  group: musl-smoke-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -83,9 +90,15 @@ jobs:
       - name: Record the musl toolchain and worker configuration
         run: |
           musl-gcc --version
+          dpkg-query -W musl musl-dev musl-tools || echo 'musl package metadata unavailable'
           nproc
           ulimit -s
           printf 'VJOBS=%s\n' "${VJOBS-unset}"
           test "${VJOBS+x}" != x
       - name: Exercise the test compilations that stalled on master
         run: bash .github/workflows/musl_compile_smoke.sh "${{ matrix.suite }}"
+      - name: Preserve generic diagnostics in the fresh compiler process
+        timeout-minutes: 5
+        env:
+          VTEST_ONLY_FN: test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork,test_an_instance_of_a_library_generic_that_the_program_asks_for_is_checked,test_instances_of_a_library_generic_with_the_expected_types_stay_valid
+        run: ./v vlib/v/compiler_tests/check_generic_instances_test.v
