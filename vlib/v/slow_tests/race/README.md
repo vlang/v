@@ -46,9 +46,10 @@ two accesses happen at the very same time. V threads run in parallel, so:
 C compiler ThreadSanitizer instrumentation can miss reads and writes of whole struct values in
 call arguments and results, which V uses for strings, arrays and maps. Race builds explicitly
 record reads of addressable string and dynamic-array headers before they are passed by value.
-This includes string concatenation, comparison, and slicing, and dynamic-array arguments such
-as `copy(mut dst, src)`. The annotation evaluates the source address once and does not change
-mutable argument passing or take addresses of C rvalue expressions.
+This includes string concatenation, comparison, and slicing, dynamic-array arguments such
+as `copy(mut dst, src)`, and dynamic-array indexing and slicing (including gated slices).
+The annotation evaluates the source address once and does not change mutable argument passing
+or take addresses of C rvalue expressions.
 
 Other aggregate copies still rely on the C compiler's instrumentation. `v -race` uses clang
 when it is installed; remaining misses listed in `gcc_known_misses` count as known gcc

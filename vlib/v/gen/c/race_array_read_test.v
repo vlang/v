@@ -31,6 +31,17 @@ fn read_indexed(values [][]int, mut calls Counter) int {
 type Values = []int
 fn read_alias(values Values) int { return first(values) }
 fn read_reference(values &[]int) int { return first(*values) }
+fn read_slice(cell &Cell) []int { return cell.values[1..2] }
+fn read_gated_slice(cell &Cell) []int { return cell.values#[1..20] }
+fn read_slice_from_start(cell &Cell) []int { return cell.values[..1] }
+fn read_slice_to_end(cell &Cell) []int { return cell.values[1..] }
+fn read_slice_all(cell &Cell) []int { return cell.values[..] }
+fn read_slice_alias(values Values) []int { return values[0..1] }
+fn read_slice_reference(values &[]int) []int { return (*values)[0..1] }
+fn read_slice_pointer(values &[]int) []int { return values[0..1] }
+fn read_slice_indexed(values [][]int, mut calls Counter) []int {
+	return values[next_index(mut calls)][1..2]
+}
 type OverloadedLists = [][]int
 type OverloadedFixedLists = [1][]int
 fn (values OverloadedLists) [] (index int) []int { return [42] }
@@ -45,6 +56,9 @@ fn returned_values() []int { return [6] }
 fn read_temporary() int { return first(returned_values()) }
 fn returned_cell() Cell { return Cell{values: [7]} }
 fn read_temporary_selector() int { return first(returned_cell().values) }
+fn read_slice_temporary() []int { return returned_values()[0..1] }
+fn read_slice_temporary_selector() []int { return returned_cell().values[0..1] }
+fn read_slice_fixed(values [2]int) []int { return values[1..2] }
 fn change_values(mut values []int) { values[0] = 9 }
 fn forward_mut(mut cell Cell) { change_values(mut cell.values) }
 fn pointer_len(values &[]int) int { return values.len }
@@ -63,6 +77,17 @@ fn main() {
 	assert calls.value == 1
 	assert read_alias(Values([5])) == 5
 	assert read_reference(&cell.values) == 2
+	assert read_slice(&cell) == [3]
+	assert read_gated_slice(&cell) == [3]
+	assert read_slice_from_start(&cell) == [2]
+	assert read_slice_to_end(&cell) == [3]
+	assert read_slice_all(&cell) == [2, 3]
+	assert read_slice_alias(Values([5])) == [5]
+	assert read_slice_reference(&cell.values) == [2]
+	assert read_slice_pointer(&cell.values) == [2]
+	mut slice_calls := Counter{}
+	assert read_slice_indexed([[4, 5]], mut slice_calls) == [5]
+	assert slice_calls.value == 1
 	mut overloaded_calls := Counter{}
 	assert read_overloaded(OverloadedLists([[0]]), mut overloaded_calls) == 42
 	assert overloaded_calls.value == 1
@@ -71,6 +96,9 @@ fn main() {
 	assert fixed_calls.value == 1
 	assert read_temporary() == 6
 	assert read_temporary_selector() == 7
+	assert read_slice_temporary() == [6]
+	assert read_slice_temporary_selector() == [7]
+	assert read_slice_fixed([8, 9]!) == [9]
 	mut changed := Cell{values: [1]}
 	forward_mut(mut changed)
 	assert changed.values == [9]
@@ -95,12 +123,23 @@ fn main() {
 				assert body.contains('&(cell->values)'), body
 			}
 		}
-		for name in ['read_indexed', 'read_overloaded', 'read_fixed_overloaded'] {
+		for name in ['read_slice', 'read_gated_slice', 'read_slice_from_start', 'read_slice_to_end',
+			'read_slice_all', 'read_slice_alias', 'read_slice_reference', 'read_slice_indexed'] {
+			body := race_array_function_body(output, name)
+			helper := if name == 'read_gated_slice' { 'array__slice_ni' } else { 'array_slice' }
+			// The sliced header must be annotated, not just the outer array in an index.
+			assert body.contains('${helper}(({ const Array* ') == race, '${name}: ${body}'
+			if race && name in ['read_slice', 'read_gated_slice', 'read_slice_from_start',
+				'read_slice_to_end', 'read_slice_all'] {
+				assert body.contains('&(cell->values)'), body
+			}
+		}
+		for name in ['read_indexed', 'read_overloaded', 'read_fixed_overloaded', 'read_slice_indexed'] {
 			body := race_array_function_body(output, name)
 			assert body.count('next_index(') == 1, body
 		}
 		for name in ['read_temporary', 'read_temporary_selector', 'forward_mut', 'forward_pointer',
-			'forward_fixed'] {
+			'forward_fixed', 'read_slice_temporary', 'read_slice_temporary_selector', 'read_slice_fixed'] {
 			body := race_array_function_body(output, name)
 			assert !body.contains('__tsan_read_range((void*)'), '${name}: ${body}'
 		}
