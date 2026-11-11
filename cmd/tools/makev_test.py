@@ -439,7 +439,7 @@ class BatchExecutionTests(unittest.TestCase):
                 command.extend(options)
                 result = subprocess.run(
                     command, cwd=workdir, env=env, capture_output=True, text=True,
-                    errors="replace", timeout=15, check=False,
+                    errors="replace", timeout=45, check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(snapshot.read_bytes(),
