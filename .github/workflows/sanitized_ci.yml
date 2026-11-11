@@ -211,13 +211,21 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Vet alone consumed the old job's remaining 19 minutes after bootstrap.
+        # Keep both cleancode sessions, with independent workers and deadlines.
+        stage: [vet, fmt]
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
-      VJOBS: 1
+      VJOBS: 4
+      VTEST_CLEANCODE_STAGE: ${{ matrix.stage }}
+      VTEST_SHOW_START: '1'
       VNATIVE_SKIP_LIBC_VV: 1
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
@@ -236,7 +244,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: V doctor
         run: .\v.exe doctor
-      - name: Ensure code is well formatted
+      - name: Check code (${{ matrix.stage }})
         run: .\v.exe -silent test-cleancode
         # - name: Install dependencies
         #   run: |
