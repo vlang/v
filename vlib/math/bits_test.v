@@ -67,3 +67,23 @@ fn test_normalize_zero_is_outside_the_documented_domain() {
 	assert y == 0.0
 	assert exp == -52
 }
+
+// is_finite tests the exponent bits; it must agree with the NaN and infinity
+// predicates for every class of value, including signed zeros, subnormals and
+// NaN payloads, whether the input is f64 or a widened f32.
+fn test_is_finite_agrees_with_nan_and_inf() {
+	bit_patterns := [u64(0), 0x8000000000000000, 1, 0x800fffffffffffff, 0x0010000000000000,
+		0x3ff0000000000000, 0xbff0000000000000, 0x7fefffffffffffff, 0xffefffffffffffff,
+		0x7ff0000000000000, 0xfff0000000000000, 0x7ff0000000000001, 0xfff0000000000001,
+		0x7ff8000000000000, 0xfff8000000000000, 0x7fffffffffffffff, 0xffffffffffffffff]
+	for bits_value in bit_patterns {
+		f := f64_from_bits(bits_value)
+		assert is_finite(f) == (!is_nan(f) && !is_inf(f, 0)), '${bits_value:016x}'
+	}
+	for bits_value in [u32(0), 0x80000000, 1, 0x7f7fffff, 0x7f800000, 0xff800000, 0x7fc00000, 0x7f800001] {
+		f := f32_from_bits(bits_value)
+		assert is_finite(f) == (!is_nan(f) && !is_inf(f, 0)), '${bits_value:08x}'
+	}
+	assert is_finite(max_f64) && is_finite(-max_f64) && is_finite(smallest_non_zero_f64)
+	assert !is_finite(inf(1)) && !is_finite(inf(-1)) && !is_finite(nan())
+}

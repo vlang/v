@@ -27,6 +27,7 @@ pub fn nan() f64 {
 }
 
 // is_nan reports whether f is an IEEE 754 ``not-a-number'' value.
+@[inline]
 pub fn is_nan(f f64) bool {
 	$if fast_math {
 		if f64_bits(f) == uvnan {
@@ -44,6 +45,7 @@ pub fn is_nan(f f64) bool {
 // If sign > 0, is_inf reports whether f is positive infinity.
 // If sign < 0, is_inf reports whether f is negative infinity.
 // If sign == 0, is_inf reports whether f is either infinity.
+@[inline]
 pub fn is_inf(f f64, sign int) bool {
 	// Test for infinity by comparing against maximum float.
 	// To avoid the floating-point hardware, could use:
@@ -52,9 +54,12 @@ pub fn is_inf(f f64, sign int) bool {
 	return (sign >= 0 && f > max_f64) || (sign <= 0 && f < -max_f64)
 }
 
-// is_finite returns true if f is finite
+// is_finite returns true if f is finite, i.e. neither infinite nor NaN.
+@[inline]
 pub fn is_finite(f f64) bool {
-	return !is_nan(f) && !is_inf(f, 0)
+	// Infinities and NaNs are exactly the values whose exponent bits are all
+	// set. One mask test, without branches, lets loops over it vectorize.
+	return (f64_bits(f) & uvinf) != uvinf
 }
 
 // normalize returns a normal number y and exponent exp
