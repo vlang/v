@@ -9,6 +9,7 @@ read timeout directly in `recv`, avoiding a readiness poll before each read.
 `set_read_timeout` updates this socket timeout; `no_timeout` and `infinite_timeout`
 disable it. Deadline-only reads and nonblocking reads continue to use readiness
 polling, as do sockets that do not support the receive-timeout option.
+POSIX network waits backed by select reject descriptors at or above `FD_SETSIZE`.
 
 A deadline set with `set_read_deadline`, `set_write_deadline` or `set_accept_deadline` takes
 precedence over the matching timeout for as long as it is set: a UDP read with a 400 ms deadline

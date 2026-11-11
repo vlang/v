@@ -43,6 +43,11 @@ fn dial_connection(config Config) !&net.TcpConn {
 				conn.close() or {}
 				return ConnectionError{ message: 'connect timeout' }
 			}
+			if !select_fd_is_supported(socket.handle) {
+				conn.close() or {}
+				last_error = 'socket handle ${socket.handle} cannot be used with select'
+				continue
+			}
 			mut set := C.fd_set{}
 			C.FD_ZERO(&set)
 			C.FD_SET(socket.handle, &set)
@@ -66,4 +71,8 @@ fn dial_connection(config Config) !&net.TcpConn {
 		return conn
 	}
 	return ConnectionError{ message: last_error }
+}
+
+fn select_fd_is_supported(fd int) bool {
+	return $if windows { true } $else { fd >= 0 && fd < C.FD_SETSIZE }
 }

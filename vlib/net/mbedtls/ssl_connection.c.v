@@ -1101,6 +1101,14 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
+	$if !windows {
+		if handle < 0 {
+			return error_with_code('net.mbedtls: invalid socket handle for select', C.EINVAL)
+		}
+		if handle >= C.FD_SETSIZE {
+			return error_with_code('net.mbedtls: socket handle exceeds FD_SETSIZE', C.EINVAL)
+		}
+	}
 	set := C.fd_set{}
 
 	is_infinite := timeout <= 0 || timeout == net.infinite_timeout

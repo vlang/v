@@ -152,10 +152,38 @@ fn C.FD_ZERO(fdset &C.fd_set)
 fn C.FD_SET(fd i32, fdset &C.fd_set)
 fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
+$if !windows && !freestanding && !syscalls {
+	#include <poll.h>
+	struct C.pollfd {
+	mut:
+		fd      int
+		events  i16
+		revents i16
+	}
+	$if macos || ios || freebsd || openbsd || dragonfly || android || termux {
+		fn C.poll(fds &C.pollfd, nfds u32, timeout i32) i32
+	} $else {
+		fn C.poll(fds &C.pollfd, nfds uint, timeout i32) i32
+	}
+}
+
+$if !windows && !freestanding && !syscalls {
+	fn fd_is_pending_poll(fd int) bool {
+		mut poll_fd := C.pollfd{
+			fd:     fd
+			events: i16(C.POLLIN)
+		}
+		if C.poll(&poll_fd, 1, 0) <= 0 || (poll_fd.revents & i16(C.POLLNVAL)) != 0 {
+			return false
+		}
+		return (poll_fd.revents & i16(C.POLLIN | C.POLLHUP | C.POLLERR)) != 0
+	}
+}
+
 // fd_is_pending returns true, when there is pending data, waiting to be read from file descriptor `fd`.
 // If the file descriptor is closed, or if reading from it, will block (there is no data), fd_is_pending returns false.
 pub fn fd_is_pending(fd int) bool {
-	if fd == -1 {
+	if fd < 0 {
 		return false
 	}
 	mut bytes_avail := int(0)
@@ -180,6 +208,9 @@ pub fn fd_is_pending(fd int) bool {
 		} $else {
 			if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
 				return bytes_avail > 0
+			}
+			if fd >= C.FD_SETSIZE {
+				return fd_is_pending_poll(fd)
 			}
 		}
 		read_set := C.fd_set{}
