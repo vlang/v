@@ -4,7 +4,12 @@ import os
 import v.vmod
 
 fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
-	if project_dependencies(manifest).any(is_version_range(requirement_version(it))) {
+	deps := if manifest.workspaces.len > 0 {
+		workspace_dependencies(dir)
+	} else {
+		project_dependencies(manifest)
+	}
+	if deps.any(is_version_range(requirement_version(it))) {
 		return true
 	}
 	lf := read_lockfile(dir) or { return false }
@@ -78,6 +83,10 @@ fn update_versioned_project(query []string) bool {
 		vpm_error(err.msg())
 		exit(1)
 	}
+	if manifest.workspaces.len > 0 && settings.is_latest {
+		vpm_error('`v update --latest` is not yet supported for workspace roots.')
+		exit(1)
+	}
 	if !project_has_ranges(manifest, dir) && settings.precise == '' && settings.package == ''
 		&& !settings.is_latest {
 		return false
@@ -98,7 +107,11 @@ fn update_versioned_project(query []string) bool {
 		vpm_error('`--precise VERSION` requires one package (`-p PACKAGE` or a positional name).')
 		exit(1)
 	}
-	original_dependencies := project_dependencies(manifest)
+	original_dependencies := if manifest.workspaces.len > 0 {
+		workspace_dependencies(dir)
+	} else {
+		project_dependencies(manifest)
+	}
 	changes := project_update_changes(original_dependencies, targets, settings.precise)
 	mut selector := new_install_server_selector()
 	mut scope := LockScope{}

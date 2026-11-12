@@ -151,7 +151,12 @@ fn project_constraints() map[string][]string {
 	mut constraints := map[string][]string{}
 	if os.exists('./v.mod') {
 		manifest := vmod.from_file('./v.mod') or { return constraints }
-		for dep in project_dependencies(manifest) {
+		deps := if manifest.workspaces.len > 0 {
+			workspace_dependencies(os.getwd())
+		} else {
+			project_dependencies(manifest)
+		}
+		for dep in deps {
 			name := if dep.starts_with('git@') && dep.count('@') == 1 {
 				dep.trim_space()
 			} else {

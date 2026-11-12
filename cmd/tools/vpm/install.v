@@ -35,7 +35,11 @@ fn vpm_install(query []string) {
 				vpm_error('failed to read `./v.mod`', details: err.msg())
 				exit(1)
 			}
-			project_dependencies(manifest)
+			if manifest.workspaces.len > 0 {
+				workspace_dependencies(os.getwd())
+			} else {
+				project_dependencies(manifest)
+			}
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'

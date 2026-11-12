@@ -73,7 +73,12 @@ fn build_dep_graph() !DepGraph {
 	}
 	roots := module_roots()
 	mut queue := []string{}
-	graph.root_deps = graph.node_ids(project_dependencies(root), roots, mut queue, '')
+	root_deps := if root.workspaces.len > 0 {
+		workspace_dependencies(project.vmod_folder)
+	} else {
+		project_dependencies(root)
+	}
+	graph.root_deps = graph.node_ids(root_deps, roots, mut queue, '')
 	for i := 0; i < queue.len; i++ {
 		id := queue[i]
 		// A checkout without a v.mod is still a module (vpm accepts registered
