@@ -8143,6 +8143,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	callee_fn_value_params := g.fn_value_call_param_types(g.a.child(node, 0))
 	callee_is_fn_value := callee_fn_value_params != none
+	if node.children_count == 2 && target_name.len in [12, 13] && !callee_is_fn_value
+		&& target_name in ['string.bytes', 'string__bytes']
+		&& g.gen_temporary_bytes_chain(node, resolved_target_name) {
+		return
+	}
 	// An unqualified panic() in a module that declares its own panic (such as
 	// a log.panic() Logger) resolves to that function, not to the builtin.
 	calls_module_panic := fn_name == 'panic' && ((resolved_target_name.contains('.')
