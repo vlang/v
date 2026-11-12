@@ -4,6 +4,7 @@
 #if defined(SOKOL_APP_INCLUDED)
 SOKOL_APP_API_DECL void v_sapp_get_environment(sapp_environment* out_env);
 SOKOL_APP_API_DECL void v_sapp_get_swapchain(sapp_swapchain* out_swapchain);
+SOKOL_APP_API_DECL void* v_sapp_win32_get_hwnd(void);
 #endif
 int v_sapp_read_rgba_pixels(int x, int y, int width, int height, unsigned char* pixels);
 

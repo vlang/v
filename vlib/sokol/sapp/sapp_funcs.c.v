@@ -141,7 +141,7 @@ fn C.sapp_ios_get_window() voidptr
 fn C.sapp_d3d11_get_swap_chain() voidptr
 
 // Win32: get the HWND window handle
-fn C.sapp_win32_get_hwnd() voidptr
+fn C.v_sapp_win32_get_hwnd() voidptr
 
 // GL: get major version
 fn C.sapp_gl_get_major_version() i32
