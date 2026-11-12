@@ -62,9 +62,13 @@ fn vpm_why(query []string) {
 // build_dep_graph walks out from the current project through the modules that are
 // installed, reading each one's v.mod for the next step.
 fn build_dep_graph() !DepGraph {
-	project := vmod.get_cache().get_by_folder(os.getwd())
+	mut project := vmod.get_cache().get_by_folder(os.getwd())
 	if project.vmod_file == '' {
 		return error('no v.mod found at or above `${os.getwd()}`')
+	}
+	ws_root := nearest_workspace_root(os.getwd())
+	if ws_root != '' && ws_root != os.dir(project.vmod_file) {
+		project = vmod.get_cache().get_by_folder(ws_root)
 	}
 	root := vmod.from_file(project.vmod_file)!
 	mut graph := DepGraph{

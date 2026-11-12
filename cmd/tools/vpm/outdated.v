@@ -149,10 +149,22 @@ fn outdated_constraint(request string) !string {
 // means "any version" and does not replace another requirement on the same module.
 fn project_constraints() map[string][]string {
 	mut constraints := map[string][]string{}
-	if os.exists('./v.mod') {
-		manifest := vmod.from_file('./v.mod') or { return constraints }
+	root_dir := if os.exists('./v.mod') {
+		manifest := vmod.from_file('./v.mod') or { vmod.Manifest{} }
+		if manifest.workspaces.len > 0 {
+			os.getwd()
+		} else {
+			ws := nearest_workspace_root(os.getwd())
+			if ws != '' { ws } else { os.getwd() }
+		}
+	} else {
+		ws := nearest_workspace_root(os.getwd())
+		if ws != '' { ws } else { '' }
+	}
+	if root_dir != '' && os.exists(os.join_path(root_dir, 'v.mod')) {
+		manifest := vmod.from_file(os.join_path(root_dir, 'v.mod')) or { return constraints }
 		deps := if manifest.workspaces.len > 0 {
-			workspace_dependencies_for_manifest(os.getwd(), manifest)
+			workspace_dependencies_for_manifest(root_dir, manifest)
 		} else {
 			project_dependencies(manifest)
 		}

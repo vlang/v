@@ -27,16 +27,22 @@ fn vpm_install(query []string) {
 
 	mut selector := new_install_server_selector()
 	dep_strings := if query.len == 0 {
-		if os.exists('./v.mod') {
+		if os.exists('./v.mod') || nearest_workspace_root(os.getwd()) != '' {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
-			manifest := vmod.from_file('./v.mod') or {
-				vpm_error('failed to read `./v.mod`', details: err.msg())
+			root_dir := if os.exists('./v.mod') && vmod.from_file('./v.mod') or { vmod.Manifest{} }.workspaces.len > 0 {
+				os.getwd()
+			} else {
+				ws_root := nearest_workspace_root(os.getwd())
+				if ws_root != '' { ws_root } else { os.getwd() }
+			}
+			manifest := vmod.from_file(os.join_path(root_dir, 'v.mod')) or {
+				vpm_error('failed to read `v.mod`', details: err.msg())
 				exit(1)
 			}
 			if manifest.workspaces.len > 0 {
-				workspace_dependencies_for_manifest(os.getwd(), manifest)
+				workspace_dependencies_for_manifest(root_dir, manifest)
 			} else {
 				project_dependencies(manifest)
 			}
