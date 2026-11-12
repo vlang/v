@@ -187,7 +187,7 @@ fn test_v1_fallback_consumes_profile_output_after_a_command() {
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
 	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
-	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
+	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check', '-check-syntax']) == [
 		'-silent',
 		'-N',
 		'-W',
