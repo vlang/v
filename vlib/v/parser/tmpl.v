@@ -1214,6 +1214,9 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		}
 		return p.add_val_id(5, '')
 	}
+	if path !in p.a.veb_template_paths {
+		p.a.veb_template_paths << path
+	}
 	p.has_veb_template = true
 	return p.add_node(flat.Node{
 		kind:  .veb_template
