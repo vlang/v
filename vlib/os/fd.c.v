@@ -192,27 +192,25 @@ pub fn fd_is_pending(fd int) bool {
 					return bytes_avail > 0
 				}
 			}
+			read_set := C.fd_set{}
+			C.FD_ZERO(&read_set)
+			C.FD_SET(fd, &read_set)
+			mut ts := C.timeval{
+				tv_sec:  0
+				tv_usec: 0
+			}
+			res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
+			if res > 0 && C.FD_ISSET(fd, &read_set) != 0 {
+				return true
+			}
+			return false
 		} $else {
 			if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
 				return bytes_avail > 0
 			}
-			if fd >= C.FD_SETSIZE {
-				return fd_is_pending_poll(fd)
-			}
+			// poll avoids FD_SETSIZE and needs no sys/select.h include in
+			// headerless cross-generated C on Darwin.
+			return fd_is_pending_poll(fd)
 		}
-		read_set := C.fd_set{}
-		C.FD_ZERO(&read_set)
-		C.FD_SET(fd, &read_set)
-		mut ts := C.timeval{
-			tv_sec:  0
-			tv_usec: 0
-		}
-		res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
-		if res > 0 {
-			if C.FD_ISSET(fd, &read_set) != 0 {
-				return true
-			}
-		}
-		return false
 	}
 }
