@@ -470,7 +470,8 @@ jobs:
     secrets: inherit
 
   release_ci:
-    needs: [formatting, gen_vc_ci, bootstrap-macos, bootstrap-windows, windows-bootstrap-contracts]
+    # Release builds compile from source on each runner; keep Linux releases unblocked.
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.release_ci == 'true'
     uses: ./.github/workflows/release_ci.yml
     permissions:
