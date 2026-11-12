@@ -150,6 +150,12 @@ NUL, is malformed: its stream is reset and the handler is not called. A request 
 than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
 answered with `431 Request Header Fields Too Large`.
 
+HTTP/1 request lines and headers are limited to 64 KiB in total; oversized heads receive
+`431 Request Header Fields Too Large` and the connection is closed. `Server.read_header_timeout`
+sets the total time allowed to receive that head (30 seconds by default); set it to `0` to
+disable the deadline. `Server.read_timeout` continues to control individual reads and request
+bodies.
+
 HTTP/1.1 `Content-Length` bodies are limited to 8 MiB by default before the server allocates
 their storage. Set `Server.max_http1_request_body_size` to another positive byte count to
 change the limit, or to `0` for no limit. A request above the limit receives `413 Request

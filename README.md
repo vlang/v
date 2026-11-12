@@ -263,6 +263,14 @@ make
 Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
 For faster development builds, keep the Termux `tcc` package installed; V will use it by default
 when no compatible bundled `thirdparty/tcc` binary is available on the host.
+To check that a program compiles with TCC without retrying with Clang, run
+`./v -cc tcc -no-retry-compilation run examples/hello_world.v`.
+V supplies the Android/Termux atomic fence and dynamic-loading link dependencies. Older TCC
+packages may still need updates for Bionic headers and compiler builtins; their errors remain
+visible with `-no-retry-compilation`.
+
+On Android devices that forbid hard links in app storage, V publishes native C cache objects
+with an atomic no-replace rename. This preserves completed objects during concurrent builds.
 
 ### C compiler
 
@@ -409,8 +417,13 @@ production compiler. Other C toolchains and failed PGO attempts use a regular pr
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
-Use `v -b arm64 file.v` on macOS ARM64 or `v -b amd64 file.v` on Linux AMD64 to compile
-with a native backend. Use `v -b arm64 self` or `v -b amd64 self` to rebuild
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
+architecture: `-b amd64` (`-b x64` remains an alias) for AMD64, or `-b arm64` for ARM64.
+Without `-arch`, the target defaults to the compiler's host architecture. Pass `-arch arm64`
+or `-arch amd64` to select a different target. The same backend platform requirements apply:
+macOS ARM64 and Linux AMD64 support executables; Linux ARM64 supports object output only,
+such as `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux.
+Use `v -b arm64 self` or `v -b amd64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native
 build. Use `-o v_arm64` or `-o v_amd64` to keep the current compiler and write a separate

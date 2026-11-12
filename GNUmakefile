@@ -203,6 +203,11 @@ endif
 ifdef ANDROID
 ifneq ($(or $(TERMUX_VERSION),$(findstring com.termux,$(PREFIX))),)
 BOOTSTRAP_VC_CC_CFLAGS += -D__TERMUX__
+# The merged vc snapshot defaults to headerless libc on 64-bit targets, but
+# its unconditional system includes bring in Bionic typedefs on Termux.
+# Their time_t, pthread_t, sigset_t, etc. conflict with the headerless ABI.
+# Select the snapshot's native-header variant only for the initial v1 build.
+BOOTSTRAP_VC_CC_CFLAGS += -D__V_HEADERLESS_LIBC=0
 endif
 endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))

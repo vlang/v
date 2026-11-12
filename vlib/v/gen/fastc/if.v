@@ -119,9 +119,9 @@ fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool
 	mut tok := first_tok
 	mut depth := 0
 	for tok != .eof {
-		if tok == .lcbr {
+		if tok in [.lcbr, .lpar, .lsbr] {
 			depth++
-		} else if tok == .rcbr {
+		} else if tok in [.rcbr, .rpar, .rsbr] {
 			if depth == 0 {
 				return false
 			}
@@ -1137,6 +1137,76 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	g.indent--
 	g.write_line('}')
 	return then_terminates && else_terminates
+}
+
+// wrapper_starts_final_block_expression recognizes a final `unsafe` block or
+// compile-time if chain. Their selected body's value belongs to the enclosing
+// expression, while statements nested inside that body keep their own scopes.
+fn (g &Parser) wrapper_starts_final_block_expression() bool {
+	if g.tok != .key_unsafe && !(g.tok == .dollar && g.dollar_keyword_is('if')) {
+		return false
+	}
+	mut probe := scanner.new_scanner(g.prefs, .skip_interpolation)
+	probe.init(g.s.current_file(), g.s.src)
+	probe.offset = g.s.offset
+	mut tok := probe.scan()
+	if g.tok == .dollar {
+		if tok != .key_if {
+			return false
+		}
+		tok = probe.scan()
+	} else if tok != .lcbr {
+		return false
+	}
+	for {
+		for tok != .lcbr && tok != .eof {
+			if tok in [.lpar, .lsbr] {
+				tok = fastc_skip_balanced_tokens(mut probe, tok, tok, if tok == .lpar {
+					.rpar
+				} else {
+					.rsbr
+				}) or { return false }
+			} else {
+				tok = probe.scan()
+			}
+		}
+		if tok != .lcbr {
+			return false
+		}
+		tok = fastc_skip_balanced_tokens(mut probe, tok, .lcbr, .rcbr) or { return false }
+		for tok == .semicolon {
+			tok = probe.scan()
+		}
+		if g.tok == .key_unsafe || tok != .dollar {
+			return tok == .rcbr
+		}
+		if probe.scan() != .key_else {
+			return false
+		}
+		tok = probe.scan()
+		if tok == .dollar {
+			if probe.scan() != .key_if {
+				return false
+			}
+			tok = probe.scan()
+		} else if tok != .lcbr {
+			return false
+		}
+	}
+	return false
+}
+
+// read_final_block_wrapper_value keeps a terminating unsafe block's zero type;
+// re-inferring its opaque C atom would mistake its unreachable `0` for a value.
+fn (mut g Parser) read_final_block_wrapper_value() !string {
+	if g.tok == .key_unsafe {
+		atom := g.read_unsafe_block_expression_atom()!
+		g.last_expression_type = atom.typ
+		g.last_option_value_type = atom.option_value_type
+		g.last_expression = [atom]
+		return atom.lit
+	}
+	return g.read_comptime_if_expression()!
 }
 
 fn (g &Parser) if_starts_final_block_expression() bool {

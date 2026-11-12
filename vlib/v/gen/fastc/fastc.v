@@ -1027,7 +1027,10 @@ fn fastc_bool_types_equal(left []bool, right []bool) bool {
 struct FastcLocal {
 	is_mut       bool
 	is_reference bool
-	typ          u32
+	// A value local of an `@[heap]` struct uses pointer storage, but expressions
+	// and closure captures still have the struct's value type.
+	is_heap_value bool
+	typ           u32
 	// A smart-cast that narrows a local to a concrete variant may store the narrowed value
 	// in a uniquely named C temporary rather than shadowing the local's own C name, so a
 	// later `defer` body (rendered at function scope) still binds the original name. When set,
@@ -1442,6 +1445,7 @@ struct FastcDeclarationAttribute {
 	alignment      string
 	is_cinit       bool
 	is_packed      bool
+	is_heap        bool
 }
 
 struct FastcEnumInfo {
@@ -1488,6 +1492,8 @@ struct FastcTypeDeclarations {
 	// from rendering `spawn` or `.wait()`: a self-host build skips the bodies of
 	// functions nothing calls, while every struct declaration is still emitted.
 	thread_types map[string]bool
+	// C names of structs declared `@[heap]`; their locals are heap-allocated.
+	heap_structs map[string]bool
 }
 
 struct FastcLoopBlockResult {
@@ -1581,7 +1587,11 @@ struct Parser {
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
 	// variant of a recursive sum type as one element (see sumtype_has_variant).
-	sum_type_variants   map[u64]bool
+	sum_type_variants map[u64]bool
+	// C names of structs declared `@[heap]`. Like the C backend, fastc allocates
+	// every local of such a struct on the heap, since `@[heap]` promises that
+	// stored addresses (`&local`, `mut local` arguments) outlive the frame.
+	heap_structs        map[string]bool
 	struct_fields       map[string]flat.TypeTextBindings
 	struct_field_info   map[string][]FastcStructField
 	struct_field_lookup map[string]map[string]&FastcStructField
@@ -1917,6 +1927,7 @@ struct FastcFileGenContext {
 	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
 	sum_type_variants         map[u64]bool
+	heap_structs              map[string]bool
 	struct_fields             map[string]flat.TypeTextBindings
 	struct_field_info         map[string][]FastcStructField
 	struct_field_lookup       map[string]map[string]&FastcStructField
@@ -2051,6 +2062,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fn_alias_return_types:         ctx.fn_alias_return_types
 		sum_types:                     ctx.sum_types
 		sum_type_variants:             ctx.sum_type_variants
+		heap_structs:                  ctx.heap_structs
 		struct_fields:                 ctx.struct_fields
 		struct_field_info:             ctx.struct_field_info
 		struct_field_lookup:           ctx.struct_field_lookup
@@ -2538,6 +2550,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fn_alias_return_types:     type_output.fn_alias_return_types
 		sum_types:                 type_output.sum_types
 		sum_type_variants:         type_output.sum_type_variants
+		heap_structs:              type_output.heap_structs
 		struct_fields:             struct_fields
 		struct_field_info:         struct_field_info
 		struct_field_lookup:       struct_field_lookup

@@ -6763,7 +6763,7 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/builtin/core_windows.h'
 		}
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
-		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
+		'os/fd.c.v' { return include_arg in ['<winsock2.h>', '<poll.h>'] }
 		'os/mmap_nix.c.v' {
 			return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android',
 				'termux', 'freebsd', 'openbsd', 'dragonfly']
@@ -14190,9 +14190,15 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
 		return
 	}
-	if g.race && semantic_expected is types.String && semantic_actual is types.String
-		&& g.gen_race_string_read(id) {
-		return
+	if g.race {
+		if semantic_expected is types.String && semantic_actual is types.String
+			&& g.gen_race_string_read(id) {
+			return
+		}
+		if semantic_expected is types.Array && semantic_actual is types.Array
+			&& g.gen_race_array_read(id) {
+			return
+		}
 	}
 	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
 		return
@@ -19030,10 +19036,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.write('(*(${c_elem}*)array_get(')
 						}
 						base_node := g.a.nodes[int(base_id)]
-						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
-							g.write('*')
+						if !g.race || is_ptr || !g.gen_race_array_read(base_id) {
+							if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
+								g.write('*')
+							}
+							g.gen_expr(base_id)
 						}
-						g.gen_expr(base_id)
 						if accessor.len == 0 {
 							g.write(', ')
 							g.gen_expr(g.a.child(node, 1))
@@ -21853,6 +21861,16 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.headerless_fd_set_struct()
+	g.writeln('#endif')
+	// `os.fd_is_pending` polls descriptors above FD_SETSIZE. These values are
+	// shared by Linux, Android, macOS, the BSDs and Solaris.
+	g.writeln('#if !defined(_WIN32) && !defined(POLLIN)')
+	g.writeln('#define POLLIN 0x001')
+	g.writeln('#define POLLPRI 0x002')
+	g.writeln('#define POLLOUT 0x004')
+	g.writeln('#define POLLERR 0x008')
+	g.writeln('#define POLLHUP 0x010')
+	g.writeln('#define POLLNVAL 0x020')
 	g.writeln('#endif')
 	g.headerless_windows_console_structs()
 	g.headerless_winsize_struct()

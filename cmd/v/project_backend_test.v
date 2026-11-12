@@ -37,8 +37,10 @@ fn test_backend_option_given_reads_every_spelling() {
 	assert backend_option_given(['-b', 'c', 'main.v'])
 	assert backend_option_given(['-backend', 'fastc', 'main.v'])
 	assert backend_option_given(['-b=c', 'main.v'])
+	assert backend_option_given(['-native', 'main.v'])
 	assert !backend_option_given(['-compile-backend', 'fastc', 'main.v'])
 	assert !backend_option_given(['-o', '-b', 'main.v'])
+	assert !backend_option_given(['-o', '-native', 'main.v'])
 	assert !backend_option_given(['main.v'])
 }
 
@@ -65,6 +67,8 @@ fn test_project_backend_is_the_default_for_the_project() {
 	]
 	// The command line wins over v.mod.
 	assert with_project_backend(['-b', 'c', root]) == ['-b', 'c', root]
+	native_args := ['-native', root]
+	assert with_project_backend(native_args) == native_args
 	// Arguments of the program that `run` starts are not compiler options.
 	assert with_project_backend(['run', main_file, '-b', 'c']) == [
 		driver.project_backend_flag,

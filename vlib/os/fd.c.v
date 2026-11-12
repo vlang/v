@@ -152,10 +152,25 @@ fn C.FD_ZERO(fdset &C.fd_set)
 fn C.FD_SET(fd i32, fdset &C.fd_set)
 fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
+$if !windows && !freestanding && !syscalls {
+	#include "@VMODROOT/vlib/os/fd_poll.h"
+	fn C.v_os_fd_poll_revents(fd i32, events i16) i16
+}
+
+$if !windows && !freestanding && !syscalls {
+	fn fd_is_pending_poll(fd int) bool {
+		revents := C.v_os_fd_poll_revents(i32(fd), i16(C.POLLIN))
+		if (revents & i16(C.POLLNVAL)) != 0 {
+			return false
+		}
+		return (revents & i16(C.POLLIN | C.POLLHUP | C.POLLERR)) != 0
+	}
+}
+
 // fd_is_pending returns true, when there is pending data, waiting to be read from file descriptor `fd`.
 // If the file descriptor is closed, or if reading from it, will block (there is no data), fd_is_pending returns false.
 pub fn fd_is_pending(fd int) bool {
-	if fd == -1 {
+	if fd < 0 {
 		return false
 	}
 	mut bytes_avail := int(0)
@@ -177,24 +192,25 @@ pub fn fd_is_pending(fd int) bool {
 					return bytes_avail > 0
 				}
 			}
+			read_set := C.fd_set{}
+			C.FD_ZERO(&read_set)
+			C.FD_SET(fd, &read_set)
+			mut ts := C.timeval{
+				tv_sec:  0
+				tv_usec: 0
+			}
+			res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
+			if res > 0 && C.FD_ISSET(fd, &read_set) != 0 {
+				return true
+			}
+			return false
 		} $else {
 			if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
 				return bytes_avail > 0
 			}
+			// poll avoids FD_SETSIZE and needs no sys/select.h include in
+			// headerless cross-generated C on Darwin.
+			return fd_is_pending_poll(fd)
 		}
-		read_set := C.fd_set{}
-		C.FD_ZERO(&read_set)
-		C.FD_SET(fd, &read_set)
-		mut ts := C.timeval{
-			tv_sec:  0
-			tv_usec: 0
-		}
-		res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
-		if res > 0 {
-			if C.FD_ISSET(fd, &read_set) != 0 {
-				return true
-			}
-		}
-		return false
 	}
 }

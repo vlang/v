@@ -43,6 +43,10 @@ fn main() {
 			args << ['-cc', 'clang']
 		}
 		if production {
+			$if windows {
+				// VFLAGS may select TCC, which does not support production builds.
+				args << ['-cc', 'gcc']
+			}
 			args << '-prod'
 		}
 		args << ['run', input]
@@ -95,6 +99,10 @@ pub fn unused() {
 			args << ['-cc', 'clang']
 		}
 		if production {
+			$if windows {
+				// VFLAGS may select TCC, which does not support production builds.
+				args << ['-cc', 'gcc']
+			}
 			args << '-prod'
 		}
 		args << ['run', input]

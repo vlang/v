@@ -16,6 +16,8 @@ fn test_collision_lookup_length_boundary() {
 	assert c_name('volatilex') == 'volatilex'
 	assert c_name('snprintf') == 'v_snprintf'
 	assert c_name('snprintfx') == 'snprintfx'
+	assert c_name('canonicalize') == 'v_canonicalize'
+	assert c_name('canonicalizex') == 'canonicalizex'
 	assert c_name('_str_12345') == 'v__str_12345'
 	assert c_name('_str_1234x') == '_str_1234x'
 }

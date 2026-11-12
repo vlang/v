@@ -294,3 +294,73 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           overwrite: true
+
+  bootstrap-termux:
+    if: github.ref == 'refs/heads/master'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: termux-x64
+            image: x86_64
+            docker-platform: linux/amd64
+          - os: ubuntu-24.04-arm
+            platform: termux-arm64
+            image: aarch64
+            docker-platform: linux/arm64
+      fail-fast: true
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and check the optimized Termux compiler
+        shell: bash
+        env:
+          VPROD_PLATFORM: ${{ matrix.platform }}
+          TERMUX_IMAGE: ${{ matrix.image }}
+          DOCKER_PLATFORM: ${{ matrix.docker-platform }}
+        run: |
+          set -euo pipefail
+          artifacts="$RUNNER_TEMP/termux-vprod"
+          mkdir -p "$artifacts"
+          # Termux runs as a non-root user and copies the read-only checkout.
+          chmod 777 "$artifacts"
+          # Its entrypoint clears the environment, so pass the expected identity as arguments.
+          docker run --rm --platform="$DOCKER_PLATFORM" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,destination=/src,readonly" \
+            --mount "type=bind,source=$artifacts,destination=/artifacts" \
+            "termux/termux-docker:$TERMUX_IMAGE" bash -c '
+              set -euo pipefail
+              expected_sha=$1
+              expected_platform=$2
+              export TERMUX_VERSION=0.118.3
+              cp -r /src "$HOME/vproject"
+              cd "$HOME/vproject"
+              termux_mirror="${PREFIX:?}/etc/termux/mirrors/europe/packages.termux.dev"
+              test -f "$termux_mirror"
+              ln -sfn "$termux_mirror" "$PREFIX/etc/termux/chosen_mirrors"
+              bash .github/workflows/retry.sh pkg --check-mirror update -y
+              bash .github/workflows/retry.sh pkg install -y \
+                clang getconf libexecinfo libgc libgc-static make git
+              test "$(git rev-parse HEAD)" = "$expected_sha"
+              test "$(sh .github/workflows/prepare_v.sh --platform)" = "$expected_platform"
+              VFLAGS="-cc clang" make -j4 CC=clang
+              V_CI_SOURCE_BUILD=1 V_CI_CC=clang sh .github/workflows/prepare_v.sh
+              ./v -cc clang run examples/hello_world.v
+              ./v -cc clang -o vprod-selfcheck cmd/v
+              ./vprod-selfcheck -cc clang run examples/hello_world.v
+              asset="$expected_sha-$expected_platform"
+              cp v "/artifacts/$asset"
+              cd /artifacts
+              sha256sum "$asset" > "$asset.sha256"
+            ' -- "$GITHUB_SHA" "$VPROD_PLATFORM"
+      - name: Share the optimized Termux compiler
+        uses: actions/upload-artifact@v7
+        with:
+          name: vprod-${{ matrix.platform }}-${{ github.sha }}
+          path: ${{ runner.temp }}/termux-vprod/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true

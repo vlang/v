@@ -973,6 +973,35 @@ fn optional_payload_is_bare_struct(t &types.Type) bool {
 	return clean is types.Struct && !flat.source_type_shape(clean.source_type_id()).has(.dotted)
 }
 
+// is_generic_struct_instance_c_type reports whether `c_type` names an instance of
+// the generic struct whose C name prefix is `prefix`, either directly or behind a
+// module qualifier. Composite types such as `multi_return_http__Response_bool`,
+// `Array_...` or `Map_...` only mention a same-named struct, and are not instances.
+fn is_generic_struct_instance_c_type(c_type string, prefix string) bool {
+	if c_type.starts_with(prefix) {
+		return true
+	}
+	idx := c_type.index('__${prefix}') or { return false }
+	if idx == 0 {
+		return false
+	}
+	qualifier := c_type[..idx]
+	for composite in ['multi_return_', 'chan_', 'thread_'] {
+		if qualifier.starts_with(composite) {
+			return false
+		}
+	}
+	if !qualifier[0].is_letter() {
+		return false
+	}
+	for ch in qualifier {
+		if !(ch.is_digit() || ch == `_` || (ch >= `a` && ch <= `z`)) {
+			return false
+		}
+	}
+	return true
+}
+
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
@@ -1004,7 +1033,7 @@ fn (mut g FlatGen) optional_typedefs() {
 		if !val_type.ends_with('*') && !declared_structs[val_type]
 			&& !g.cached_support_has_c_type(val_type) && !g.is_known_sum_c_type(val_type) {
 			for prefix in generic_struct_prefixes {
-				if val_type.starts_with(prefix) || val_type.contains('__${prefix}') {
+				if is_generic_struct_instance_c_type(val_type, prefix) {
 					unused_generic_payload = true
 					break
 				}

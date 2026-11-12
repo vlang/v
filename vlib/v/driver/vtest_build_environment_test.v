@@ -190,3 +190,15 @@ fn test_native_backend_and_freestanding_skip_gc_defines() {
 		}
 	})
 }
+
+fn test_native_backend_aliases_use_the_host_test_environment() {
+	with_clean_build_environment(fn () {
+		expected := vtest_build_environment(@VEXEROOT, ['-b', pref.host_arch()])
+		for args in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
+			['-backend=native']] {
+			environment := vtest_build_environment(@VEXEROOT, args)
+			assert environment.facts == expected.facts, args.str()
+			assert environment.defines == expected.defines, args.str()
+		}
+	})
+}

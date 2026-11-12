@@ -20,6 +20,8 @@ COMPILERS = ('gcc', 'msvc', 'tcc')
 RUNNER = 'run_multiwindow_win32_w3_green.ps1'
 EXIT_CHECK = 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
 W5_RUNNER = 'run_multiwindow_win32_w5_a1.ps1'
+# The main and multiwindow jobs build V; gcc also builds it for its self-test shards.
+BUILD_STEPS = {'gcc': 3, 'msvc': 2, 'tcc': 2}
 
 
 def workflow_sources():
@@ -85,8 +87,9 @@ def build_scripts(workflows):
             script = '\n'.join(line[10:] for line in match[1].splitlines()) + '\n'
             if re.search(r'^\.\\makev\.bat -' + cc + r'$', script, re.M):
                 scripts.append(script)
-        if len(scripts) != 2:
-            raise ValueError(f'{cc}: expected both Windows build steps, got {len(scripts)}')
+        if len(scripts) != BUILD_STEPS[cc]:
+            raise ValueError(
+                f'{cc}: expected {BUILD_STEPS[cc]} Windows build steps, got {len(scripts)}')
         result.extend((cc, script) for script in scripts)
     return result
 
@@ -265,7 +268,7 @@ class WorkflowConfigurationTests(unittest.TestCase):
     def test_missing_build_step_is_rejected(self):
         changed = dict(self.workflows)
         changed['gcc'] = changed['gcc'].replace('.\\makev.bat -gcc', 'missing', 1)
-        with self.assertRaisesRegex(ValueError, 'expected both Windows build steps'):
+        with self.assertRaisesRegex(ValueError, 'expected 3 Windows build steps, got 2'):
             build_scripts(changed)
 
     def test_file_hashes_are_byte_exact(self):

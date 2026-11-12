@@ -1738,6 +1738,10 @@ fn test_amd64_backend_aliases_are_normalized() {
 	assert normalize_backend_name('amd64') == 'amd64'
 }
 
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
+}
+
 fn test_v3_fastc_default_linker_flags() {
 	assert v3_fastc_default_linker_flags('windows', true) == []
 	assert v3_fastc_default_linker_flags('linux', false) == ['-lm']

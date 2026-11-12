@@ -31,7 +31,15 @@ pub const default_https_server_port = 9043
 // default_max_http1_request_body_size is the default HTTP/1.1 request body limit.
 pub const default_max_http1_request_body_size = 8 * 1024 * 1024
 
+// default_max_http1_request_head_size is the maximum size of an HTTP/1 request line and headers.
+pub const default_max_http1_request_head_size = 64 * 1024
+
+// default_http1_request_head_timeout is the total time allowed to read an HTTP/1 request head.
+pub const default_http1_request_head_timeout = 30 * time.second
+
 const http1_request_body_too_large_response = 'HTTP/1.1 413 Request Entity Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+
+const http1_request_head_too_large_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
 
 const http1_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
 
@@ -40,9 +48,11 @@ mut:
 	state           ServerStatus = .closed
 	listener_opened bool
 pub mut:
-	addr                    string        = ':${default_server_port}'
-	handler                 Handler       = DebugHandler{}
-	read_timeout            time.Duration = 30 * time.second
+	addr         string        = ':${default_server_port}'
+	handler      Handler       = DebugHandler{}
+	read_timeout time.Duration = 30 * time.second
+	// read_header_timeout bounds the total time to receive an HTTP/1 request line and headers; 0 disables the deadline.
+	read_header_timeout     time.Duration = default_http1_request_head_timeout
 	write_timeout           time.Duration = 30 * time.second
 	accept_timeout          time.Duration = 30 * time.second
 	tls_handshake_timeout   time.Duration = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
@@ -84,6 +94,10 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('invalid max_http1_request_body_size `${s.max_http1_request_body_size}`, it should be 0 (unlimited) or a positive number of bytes')
 		return
 	}
+	if s.read_header_timeout < 0 && s.read_header_timeout != net.infinite_timeout {
+		eprintln('invalid read_header_timeout `${s.read_header_timeout}`, it should be 0 (no limit) or a positive duration')
+		return
+	}
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
@@ -116,7 +130,7 @@ pub fn (mut s Server) listen_and_serve() {
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
 		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, s.enable_http2,
-			s.max_http1_request_body_size)
+			s.max_http1_request_body_size, s.read_header_timeout)
 	}
 
 	if s.show_startup_message {
@@ -209,11 +223,12 @@ struct HandlerWorker {
 	max_keep_alive_requests     int
 	enable_http2                bool
 	max_http1_request_body_size int
+	read_header_timeout         time.Duration
 pub mut:
 	handler Handler
 }
 
-fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int, enable_http2 bool, max_http1_request_body_size int) thread {
+fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int, enable_http2 bool, max_http1_request_body_size int, read_header_timeout time.Duration) thread {
 	mut w := &HandlerWorker{
 		id:                          wid
 		ch:                          ch
@@ -221,6 +236,7 @@ fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_a
 		max_keep_alive_requests:     max_keep_alive_requests
 		enable_http2:                enable_http2
 		max_http1_request_body_size: max_http1_request_body_size
+		read_header_timeout:         read_header_timeout
 	}
 	return spawn w.process_requests()
 }
@@ -242,7 +258,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		conn.close() or { eprintln('close() failed: ${err}') }
 	}
 
-	mut reader := io.new_buffered_reader(reader: conn)
+	mut reader := io.new_buffered_reader(reader: &conn)
 	defer {
 		unsafe {
 			reader.free()
@@ -254,13 +270,25 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 	// always used when the address cannot be read back from the socket.
 	remote_addr := if paddr := conn.peer_addr() { paddr.str() } else { '0.0.0.0' }
 
-	if w.enable_http2 && try_serve_h2c(mut reader, mut conn, mut w.handler, remote_addr) {
-		return
+	mut deadline := request_head_deadline(w.read_header_timeout)
+	if w.enable_http2 {
+		conn.set_read_deadline(deadline)
+		if try_serve_h2c(mut reader, mut conn, mut w.handler, remote_addr) {
+			return
+		}
 	}
 
 	mut request_count := 0
 	for {
-		mut req := parse_request_with_body_limit(mut reader, w.max_http1_request_body_size) or {
+		if request_count > 0 {
+			deadline = request_head_deadline(w.read_header_timeout)
+		}
+		mut req := parse_request_with_body_limit_and_deadline(mut reader, w.max_http1_request_body_size,
+			mut conn, deadline) or {
+			if err is RequestHeaderLimitError {
+				conn.write_string(http1_request_head_too_large_response) or {}
+				return
+			}
 			if err is RequestBodyLimitError {
 				conn.write_string(http1_request_body_too_large_response) or {}
 				return

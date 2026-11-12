@@ -481,7 +481,8 @@ $if freestanding && native && linux {
 		return bf_split_int(rc)
 	}
 
-	const bf_o_directory = u64(0o200000)
+	// O_DIRECTORY is 0o200000 on amd64, but 0o40000 on arm64 (0o200000 is O_DIRECT there).
+	const bf_o_directory = $if arm64 { u64(0o40000) } $else { u64(0o200000) }
 
 	pub fn bf_openat_dir(path &u8) (int, int) {
 		return bf_openat(path, u64(0) | bf_o_directory, u64(0))

@@ -10809,11 +10809,19 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b amd64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b amd64 file.v` on Linux AMD64. The native backends do not link a garbage collector
-yet, so they always build as if `-gc none` was passed. For AMD64, `-prod` enables SSA optimization,
-scalar register allocation, and optimized C helpers. Very large AMD64 modules may skip the global
-SSA pass to bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
+architecture. Without `-arch`, the target defaults to the compiler's host architecture.
+Pass `-arch amd64` to select `-b amd64` (`-b x64`), or `-arch arm64` to select `-b arm64`.
+The architecture option can appear before or after the native backend option.
+Explicit backend selection remains available, with the same platform requirements: macOS
+ARM64 and Linux AMD64 support executables. Linux ARM64 currently supports object output only;
+for example, `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux emits an ARM64
+ELF object, including from an AMD64 host. It does not link a Linux ARM64 executable.
+
+The native backends do not link a garbage collector yet, so they always build as if `-gc none`
+was passed. For AMD64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large AMD64 modules may skip the global SSA pass to
+bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
 `#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.

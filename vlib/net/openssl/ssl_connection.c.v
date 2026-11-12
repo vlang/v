@@ -11,10 +11,11 @@ pub struct SSLConn {
 pub:
 	config SSLConnectConfig
 pub mut:
-	sslctx   &C.SSL_CTX = unsafe { nil }
-	ssl      &C.SSL     = unsafe { nil }
-	handle   int
-	duration time.Duration
+	sslctx        &C.SSL_CTX = unsafe { nil }
+	ssl           &C.SSL     = unsafe { nil }
+	handle        int
+	duration      time.Duration
+	read_deadline time.Time
 
 	owns_socket bool
 	// last_write_sent reports the most recent write_ptr's progress for retry
@@ -78,6 +79,17 @@ fn ssl_remaining_timeout(deadline time.Time) time.Duration {
 		return time.nanosecond
 	}
 	return remaining
+}
+
+fn ssl_read_deadline(timeout time.Duration, read_deadline time.Time) time.Time {
+	mut deadline := ssl_timeout_deadline(timeout)
+	if read_deadline.is_zero() || read_deadline == time.unix(0) {
+		return deadline
+	}
+	if deadline.unix() == 0 || read_deadline < deadline {
+		deadline = read_deadline
+	}
+	return deadline
 }
 
 // close closes the ssl connection and does cleanup
@@ -427,6 +439,11 @@ pub fn (mut s SSLConn) set_read_timeout(timeout time.Duration) {
 	s.duration = timeout
 }
 
+// set_read_deadline sets an absolute deadline for subsequent reads.
+pub fn (mut s SSLConn) set_read_deadline(deadline time.Time) {
+	s.read_deadline = deadline
+}
+
 // addr retrieves the local ip address and port number for this connection
 pub fn (s &SSLConn) addr() !net.Addr {
 	return net.addr_from_socket_handle(s.handle)
@@ -447,7 +464,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := ssl_timeout_deadline(s.duration)
+	deadline := ssl_read_deadline(s.duration, s.read_deadline)
 	// No readiness poll before SSL_read(): OpenSSL may hold decrypted but not
 	// yet returned application data, which a socket-level select() cannot see.
 	// The socket is non-blocking (see connect()), so a read with nothing
@@ -578,6 +595,14 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
+	}
+	$if !windows {
+		if handle < 0 {
+			return error_with_code('net.openssl: invalid socket handle for select', C.EINVAL)
+		}
+		if handle >= C.FD_SETSIZE {
+			return error_with_code('net.openssl: socket handle exceeds FD_SETSIZE', C.EINVAL)
+		}
 	}
 	set := C.fd_set{}
 

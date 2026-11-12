@@ -51,6 +51,7 @@ jobs:
         uses: ./.github/actions/setup-v
 
       - name: Install dependencies
+        id: dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
@@ -125,7 +126,7 @@ jobs:
           v should-compile-all ~/.vmodules/pdf/examples
 
       - name: Build vlang/libsodium
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           echo "Install the libsodium wrapper"
           v retry -- v install libsodium
@@ -141,7 +142,7 @@ jobs:
           cd /tmp/coreutils; make
 
       - name: Build vlang/gitly
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           echo "Install markdown"
           v retry -- v install markdown
@@ -160,7 +161,7 @@ jobs:
           # # /tmp/gitly/gitly -ci_run
 
       - name: Build V UI examples
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           v retry -- v install ui
           v -no-parallel ~/.vmodules/ui/examples/rectangles.v
@@ -168,7 +169,7 @@ jobs:
           # v run ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/v-analyzer
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
           v retry -- git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
@@ -188,7 +189,7 @@ jobs:
           VFLAGS=-w v build.vsh release
 
       - name: Format vlang/v-analyzer
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           cd /tmp/v-analyzer
           fmt_files=($(git ls-files '*.v' '*.vsh' ':!:metadata/stubs/*.v' ':!:src/metadata/stubs/*.v'))
@@ -298,9 +299,6 @@ jobs:
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
-            # The Ubuntu HTTP apt mirror stalled during graphics package downloads.
-            # Use the official HTTPS mirror and bound each apt network request.
-            sudo sed -i 's@http://archive.ubuntu.com/@https://archive.ubuntu.com/@g' /etc/apt/apt-mirrors.txt
             v retry -- sudo apt-get -o Acquire::Languages=none -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
             v retry -- sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -qq install -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
             v retry -- sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -qq install -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev

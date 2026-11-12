@@ -27,7 +27,7 @@ const http_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nConte
 // request_head_error_response returns the raw response for a request head that
 // `http.parse_request_head_str` rejected.
 fn request_head_error_response(err IError) []u8 {
-	if err is http.HeaderLimitError {
+	if err is http.HeaderLimitError || err is http.RequestHeaderLimitError {
 		return http_431_response
 	}
 	return http_500_response
