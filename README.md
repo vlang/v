@@ -263,6 +263,11 @@ make
 Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
 For faster development builds, keep the Termux `tcc` package installed; V will use it by default
 when no compatible bundled `thirdparty/tcc` binary is available on the host.
+To check that a program compiles with TCC without retrying with Clang, run
+`./v -cc tcc -no-retry-compilation run examples/hello_world.v`.
+V supplies the Android/Termux atomic fence and dynamic-loading link dependencies. Older TCC
+packages may still need updates for Bionic headers and compiler builtins; their errors remain
+visible with `-no-retry-compilation`.
 
 ### C compiler
 
