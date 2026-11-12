@@ -254,6 +254,10 @@ Workflows for FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`, and similar lanes of
 depend on hosted runner behavior plus containers, VMs, or emulation layers. Treat their
 runner image as part of the tested environment.
 
+FreeBSD CI example builds use one worker (`VJOBS=1`) to leave memory for the CI script's
+compiler processes in the 8 GiB VM. The complete example selection is retained;
+the other FreeBSD test tasks keep their normal worker counts.
+
 Portable compiler snapshots keep signal masks in aligned opaque storage, so the
 OpenBSD bootstrap does not need the native SDK's `sigset_t` typedef.
 
