@@ -10,7 +10,6 @@ fn test_select_rejects_negative_handle_before_fd_set() {
 }
 
 $if !windows {
-
 	fn test_select_rejects_fd_setsize_before_fd_set() {
 		select(C.FD_SETSIZE, .read, 0) or {
 			assert err.code() == C.EINVAL
