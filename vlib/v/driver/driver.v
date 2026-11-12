@@ -318,7 +318,9 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 				link_atomic_s = true
 			}
 		}
-		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly' {
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux' {
+			// Android targets use the same ELF atomic helpers as Linux. TinyCC
+			// needs their fence implementation even for a simple V program.
 			link_atomic_s = true
 		}
 		else {}
@@ -327,7 +329,7 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	if !link_atomic_s {
 		return ''
 	}
-	if target_os == 'linux' && prefs.target.arch == 'amd64' {
+	if target_os in ['linux', 'android', 'termux'] && prefs.target.arch == 'amd64' {
 		// Keep V's fence distinct from the atomic helpers supplied by libtcc1.a.
 		return os.join_path(prefs.vroot, 'vlib', 'sync', 'stdatomic', 'atomic_fence_amd64.S')
 	}
@@ -1883,13 +1885,15 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 
 // publish_native_c_object publishes once: GCC's LTO linker reopens the path,
 // so replacing even a complete object can change its internal symbol IDs mid-link.
+// Linux/Android can deny hard links even in writable app storage. The native
+// helper then uses an atomic no-replace rename, preserving the first publisher.
 // On Windows, an antivirus or another process can briefly hold the completed
 // temporary object without file sharing. Retry only that sharing violation;
 // never replace a published object or hide a different filesystem error.
 fn publish_native_c_object(temporary string, destination string) !bool {
 	defer { os.rm(temporary) or {} }
 	for attempt in 0 .. 20 {
-		os.link(temporary, destination) or {
+		link_native_c_object(temporary, destination) or {
 			if os.is_file(destination) {
 				return false
 			}

@@ -14,6 +14,12 @@ BEGIN {
 		if (line ~ /^[ \t]*#[ \t]*include[ \t]+<sys\/select\.h>[ \t]*$/) snapshot_has_select_header = 1
 		if (line ~ /^bool machosign__fastc_hash_code_pages\([^;]*\) \{$/) portable_macho_hash = 1
 		if (line ~ /^__v_result machosign__fastc_sign_macho_adhoc_buffered\(string path\) \{$/) portable_macho_signer = 1
+		if (line ~ /^__v_result_bool driver__publish_native_c_object\(string temporary, string destination\) \{$/) cache_publish_start = snapshot_line
+		if (cache_publish_start && line ~ /^[ \t]*__v_result [A-Za-z_][A-Za-z0-9_]* = os__link\(temporary, destination\);$/) {
+			cache_publish_functions[cache_publish_start] = 1
+			cache_publish_calls[snapshot_line] = 1
+		}
+		if (line ~ /^\}$/) cache_publish_start = 0
 		if (line ~ /^[ \t]*[A-Za-z_][A-Za-z0-9_* \t]*[ \t*]fastc_hash_code_pages_native\(/) native_macho_hash = 1
 		if (line ~ /^[ \t]*[A-Za-z_][A-Za-z0-9_* \t]*[ \t*]fastc_sign_macho_adhoc_mapped\(/) native_macho_signer = 1
 		if (previous_line ~ /^[ \t]*\{$/ && before_previous_line ~ /^[ \t]*#if \(defined\(__APPLE__\) && !defined\(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__\)\)$/) {
@@ -35,6 +41,28 @@ BEGIN {
 	close(ARGV[1])
 	repair_macho_hash = portable_snapshot && portable_macho_hash && portable_macho_signer && !native_macho_hash
 	repair_macho_signer = portable_snapshot && portable_macho_hash && portable_macho_signer && !native_macho_signer
+}
+
+# Fresh Termux builds run the downloaded compiler before the fixed driver exists.
+# Bridge only its old native-object cache publication call, preserving os.link
+# everywhere else and leaving regenerated snapshots unchanged.
+ENVIRON["V_BOOTSTRAP_VROOT"] != "" && FNR in cache_publish_functions {
+	root = ENVIRON["V_BOOTSTRAP_VROOT"]
+	gsub(/\\/, "/", root)
+	print "#if defined(__linux__)"
+	print "#include \"" root "/vlib/v/driver/native_object_cache.h\""
+	print "#endif"
+	print "static __v_result v_bootstrap_cache_link(string temporary, string destination) {"
+	print "#if defined(__linux__)"
+	print "    if (v_native_object_cache_publish((const char*)temporary.str, (const char*)destination.str) == 0)"
+	print "        return (__v_result){.ok = true};"
+	print "#endif"
+	print "    return os__link(temporary, destination);"
+	print "}"
+}
+
+ENVIRON["V_BOOTSTRAP_VROOT"] != "" && FNR in cache_publish_calls {
+	sub(/os__link\(temporary, destination\)/, "v_bootstrap_cache_link(temporary, destination)")
 }
 
 # Linux-generated snapshots briefly retained calls to omitted Darwin helpers.
