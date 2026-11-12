@@ -200,7 +200,7 @@ def check_windows_gcc(workflow):
     require(order == sorted(order), "Windows GCC setup must complete before self tests")
     serial = job(workflow, "gcc-windows")
     require("steps.self_tests" not in serial, "Windows GCC still depends on the moved self-test step")
-    javascript = command_step(serial, "v -o hi.js examples/js_hello_world.v && node hi.js")
+    javascript = command_step(serial, "v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js")
     require(
         "steps.test_pure_v_math_module.outcome == 'success'" in field(javascript, "if", 8),
         "Windows GCC remaining checks must still run after pure math",
