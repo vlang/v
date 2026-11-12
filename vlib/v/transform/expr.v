@@ -55,6 +55,9 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	if !is_string {
 		return none
 	}
+	if result := t.lower_immediate_string_slice_comparison(_id, node) {
+		return result
+	}
 
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
