@@ -29,7 +29,8 @@ $if windows {
 
 		// Winsock fd_set holds SOCKET values, not POSIX integer bit positions.
 		// A listening socket with no pending connection must not be ready.
-		assert !(select(listener.sock.handle, .read, 0)!)
+		initially_ready := select(listener.sock.handle, .read, 0)!
+		assert !initially_ready
 
 		address := listener.sock.address()!
 		mut client := dial_tcp(address.str())!
@@ -37,6 +38,7 @@ $if windows {
 			client.close() or {}
 		}
 		// A completed loopback connection must make the listener readable.
-		assert select(listener.sock.handle, .read, 0)!
+		connected_ready := select(listener.sock.handle, .read, 0)!
+		assert connected_ready
 	}
 }
