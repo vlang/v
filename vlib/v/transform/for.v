@@ -1125,9 +1125,9 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) u32 {
 
 // lower_split_for_in lowers `for part in s.split('lit') {` and `for i, part in ...` to a
 // scan with `string.split_next`, which yields the same owned parts as `split` without
-// building the `[]string` first, and stops allocating at `break`. The receiver is copied
-// once before the loop, so reassigning it in the body does not change the parts, as with
-// the eager `split`.
+// building the `[]string` first, and stops allocating parts at `break`. The receiver's bytes
+// are cloned once before the loop, so reassigning it or modifying its aliased backing storage
+// in the body does not change the parts, as with the eager `split`.
 fn (mut t Transformer) lower_split_for_in(node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId) ?[]flat.NodeId {
 	if node.op == .amp || int(container_id) < 0 || isnil(t.tc) || t.tc.autofree_enabled()
 		|| t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
@@ -1177,7 +1177,9 @@ fn (mut t Transformer) lower_split_for_in(node flat.Node, key_id flat.NodeId, va
 	t.drain_pending(mut prefix)
 	t.set_var_type(src_name, flat.source_type_string)
 	t.set_var_type(pos_name, flat.source_type_int)
-	prefix << t.make_decl_assign_typed(src_name, src_expr, flat.source_type_string)
+	t.mark_fn_used('string.clone')
+	snapshot := t.make_call_typed('string.clone', [src_expr], flat.source_type_string)
+	prefix << t.make_decl_assign_typed(src_name, snapshot, flat.source_type_string)
 	prefix << t.make_decl_assign_typed(pos_name, t.make_int_literal(0), flat.source_type_int)
 	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, flat.source_type_int)
 	idx_name := if has_index && (key.value == '_' || escaping_index) {

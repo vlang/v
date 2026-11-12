@@ -161,6 +161,39 @@ fn test_snapshot_and_single_evaluation() {
 	assert c.n == 1
 }
 
+fn test_snapshot_of_aliased_bytes() {
+	mut data := 'a,b,c\x00'.bytes()
+	// Borrow the NUL-terminated buffer so writes through data also change s.
+	s := unsafe { tos(data.data, data.len - 1) }
+	mut out := []string{}
+	for part in s.split(',') {
+		data[2] = `z`
+		out << part
+	}
+	assert out == ['a', 'b', 'c']
+	assert s == 'a,z,c'
+}
+
+fn test_indexed_snapshot_of_aliased_bytes_and_delimiters() {
+	mut data := 'a::b::c\x00'.bytes()
+	// Borrow the NUL-terminated buffer, including the delimiters being overwritten.
+	s := unsafe { tos(data.data, data.len - 1) }
+	mut out := []string{}
+	mut indexes := []int{}
+	for i, part in s.split('::') {
+		data[3] = `z`
+		data[4] = `x`
+		if i == 0 {
+			continue
+		}
+		out << part
+		indexes << i
+	}
+	assert out == ['b', 'c']
+	assert indexes == [1, 2]
+	assert s == 'a::zx:c'
+}
+
 fn test_fallbacks() {
 	// Empty delimiter splits by runes.
 	mut runes := []string{}

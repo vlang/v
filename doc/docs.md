@@ -1009,6 +1009,11 @@ assert '-0b1111_0000_1010'.int() == -3850
 For more advanced `string` processing and conversions, refer to the
 [vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
+A loop such as `for part in s.split(',') { ... }` evaluates the source once and uses a snapshot
+of its bytes taken before the loop body runs. Reassigning the source or changing aliased backing
+storage in the body does not affect later parts. Each part is an independent, NUL-terminated copy,
+even when the compiler generates the parts on demand instead of building an array first.
+
 #### String interpolation
 
 Array interpolation resolves each element in its declaring module, including when another
