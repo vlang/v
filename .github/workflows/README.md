@@ -254,6 +254,9 @@ Workflows for FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`, and similar lanes of
 depend on hosted runner behavior plus containers, VMs, or emulation layers. Treat their
 runner image as part of the tested environment.
 
+Portable compiler snapshots keep signal masks in aligned opaque storage, so the
+OpenBSD bootstrap does not need the native SDK's `sigset_t` typedef.
+
 When changing these workflows, prefer small PRs and keep `workflow_dispatch` available
 with the `master` job condition so maintainers can rerun the lane directly.
 
