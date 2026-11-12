@@ -1,0 +1,91 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH= cd -P "$(dirname "$0")/../.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+
+cat > "$work/old_vc.c" <<'EOF'
+#include <poll.h>
+struct pollfd {
+    int fd;
+    short events;
+    short revents;
+};
+int main(void) {
+    struct pollfd p = {-1, POLLIN, 0};
+    return p.fd == -1 ? 0 : 1;
+}
+EOF
+
+# The unfiltered snapshot must fail on a system whose poll.h owns pollfd.
+if "${CC:-cc}" -std=c99 -fsyntax-only "$work/old_vc.c" >"$work/baseline.log" 2>&1; then
+    echo 'The baseline no longer reproduces a pollfd redefinition' >&2
+    exit 1
+fi
+awk -f "$root/cmd/tools/vc_compat.awk" "$work/old_vc.c" > "$work/filtered.c"
+grep -F '#if defined(_WIN32)' "$work/filtered.c" >/dev/null
+"${CC:-cc}" -std=c99 -Werror -o "$work/test" "$work/filtered.c"
+"$work/test"
+
+# Exercise the real FIFO/awk/compiler pipeline, not just direct awk output.
+"$root/cmd/tools/vc_compat.sh" "$work/old_vc.c" "${CC:-cc}" -std=c99 -Werror -o "$work/test_streamed"
+"$work/test_streamed"
+
+# The released vc snapshot uses select() without including sys/select.h.
+# Reject implicit declarations under strict C99 both before and after filtering.
+cat > "$work/select_vc.c" <<'EOF'
+#include <poll.h>
+int os__select_probe(int fd) {
+    fd_set read_set;
+    struct timeval ts = {0, 0};
+    FD_ZERO(&read_set);
+    FD_SET(fd, &read_set);
+    int res = select(fd + 1, &read_set, 0, 0, &ts);
+    return res;
+}
+EOF
+if "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -fsyntax-only "$work/select_vc.c" >"$work/select_baseline.log" 2>&1; then
+    echo 'Baseline unexpectedly declares select without sys/select.h' >&2
+    exit 1
+fi
+awk -f "$root/cmd/tools/vc_compat.awk" "$work/select_vc.c" > "$work/select_filtered.c"
+grep -Fx '#include <sys/select.h>' "$work/select_filtered.c" >/dev/null
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -fsyntax-only "$work/select_filtered.c"
+
+cat > "$work/bsd_types.c" <<'EOF'
+struct timespec { long tv_sec; long tv_nsec; };
+struct itimerspec {
+    struct timespec it_interval;
+    struct timespec it_value;
+};
+typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;
+EOF
+awk -f "$root/cmd/tools/vc_compat.awk" "$work/bsd_types.c" > "$work/bsd_filtered.c"
+grep -F '#if !defined(__FreeBSD__)' "$work/bsd_filtered.c" >/dev/null
+grep -F '#if !defined(__OpenBSD__)' "$work/bsd_filtered.c" >/dev/null
+test "$(grep -c '^#endif$' "$work/bsd_filtered.c")" -eq 3
+
+# The new libc-owned poll helper must preserve the observable readiness
+# transition on a pipe. Test the actual header used by os/fd.c.v.
+cat > "$work/poll_runtime.c" <<'EOF'
+#include "vlib/os/fd_poll.h"
+#include <unistd.h>
+int main(void) {
+    int p[2];
+    if (pipe(p) != 0) return 1;
+    if (v_os_fd_poll_revents(p[0], POLLIN) != 0) return 2;
+    if (write(p[1], "x", 1) != 1) return 3;
+    if ((v_os_fd_poll_revents(p[0], POLLIN) & POLLIN) == 0) return 4;
+    char c = 0;
+    if (read(p[0], &c, 1) != 1 || c != 'x') return 5;
+    if (v_os_fd_poll_revents(p[0], POLLIN) != 0) return 6;
+    if (close(p[0]) != 0) return 7;
+    // The C helper must expose native POLLNVAL for a closed descriptor.
+    if ((v_os_fd_poll_revents(p[0], POLLIN) & POLLNVAL) == 0) return 8;
+    if (close(p[1]) != 0) return 9;
+    return 0;
+}
+EOF
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -I"$root" -o "$work/poll_runtime" "$work/poll_runtime.c"
+"$work/poll_runtime"

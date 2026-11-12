@@ -5,6 +5,9 @@ BEGIN {
 	while ((getline line < ARGV[1]) > 0) {
 		snapshot_line++
 		if (line ~ /^#define CUSTOM_DEFINE_cross([ \t]|$)/) portable_snapshot = 1
+		# The published vc snapshot calls select() but has no sys/select.h prototype.
+		if (line ~ /select\(fd \+ 1, &read_set,/) snapshot_uses_select = 1
+		if (line ~ /^[ \t]*#[ \t]*include[ \t]+<sys\/select\.h>[ \t]*$/) snapshot_has_select_header = 1
 		if (line ~ /^bool machosign__fastc_hash_code_pages\([^;]*\) \{$/) portable_macho_hash = 1
 		if (line ~ /^__v_result machosign__fastc_sign_macho_adhoc_buffered\(string path\) \{$/) portable_macho_signer = 1
 		if (line ~ /^[ \t]*[A-Za-z_][A-Za-z0-9_* \t]*[ \t*]fastc_hash_code_pages_native\(/) native_macho_hash = 1
@@ -78,6 +81,20 @@ legacy_uint && !native_uint {
 	}
 }
 
+# The current vc snapshot uses select() but includes only poll.h, not its
+# defining header. Insert the native declaration on Unix, leaving unrelated
+# snapshots and the Winsock path unchanged.
+/^[ \t]*#[ \t]*include[ \t]+<poll\.h>[ \t]*$/ {
+	print
+	if (snapshot_uses_select && !snapshot_has_select_header && !select_header_inserted) {
+		print "#if !defined(_WIN32)"
+		print "#include <sys/select.h>"
+		print "#endif"
+		select_header_inserted = 1
+	}
+	next
+}
+
 # Bootstrap compatibility for vc snapshots predating the diagserver prctl guards.
 /^[ \t]*#include[ \t]+<sys\/prctl.h>[ \t]*$/ {
 	print "#if defined(__linux__) && !defined(__ANDROID__)"
@@ -91,6 +108,50 @@ legacy_uint && !native_uint {
 	# Generated C closes this block at the same indentation as its opening if.
 	prctl_end = $0
 	sub(/if.*/, "}", prctl_end)
+}
+
+# The f5b8e41 vc snapshot includes POSIX C bindings from os/fd.c.v.
+# Earlier snapshots did not; until vc regenerates with the libc-owned binding,
+# its struct pollfd would redefine the type already supplied by <poll.h>.
+# Retain the declaration only on Windows, which has no POSIX poll header.
+/^struct pollfd[ \t]*\{[ \t]*$/ {
+	print "#if defined(_WIN32)"
+	vc_pollfd_guard = 1
+}
+
+vc_pollfd_guard && /^};[ \t]*$/ {
+	print
+	print "#endif"
+	vc_pollfd_guard = 0
+	next
+}
+
+# The same snapshot also redeclares types from BSD system headers.
+# Keep the headerless declarations on other targets.
+/^struct timespec[ \t]*\{.*\};[ \t]*$/ {
+	print "#if !defined(__FreeBSD__)"
+	print
+	print "#endif"
+	next
+}
+
+/^struct itimerspec[ \t]*\{[ \t]*$/ {
+	print "#if !defined(__FreeBSD__)"
+	vc_itimerspec_guard = 1
+}
+
+vc_itimerspec_guard && /^};[ \t]*$/ {
+	print
+	print "#endif"
+	vc_itimerspec_guard = 0
+	next
+}
+
+/^typedef union \{ unsigned char _opaque\[128\]; long long _align; \} sigset_t;[ \t]*$/ {
+	print "#if !defined(__OpenBSD__)"
+	print
+	print "#endif"
+	next
 }
 
 {
