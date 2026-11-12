@@ -3,7 +3,7 @@
 
 GitHub's workflow_call trigger cannot have a paths filter. The manifests store
 the original, ordered on.push paths/paths-ignore patterns. The caller runs this
-script against the push's exact before/after commits after bootstrap and fmt.
+script against the push's exact before/after commits after Linux bootstrap and fmt.
 No external Python packages are required.
 """
 import argparse
