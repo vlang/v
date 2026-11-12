@@ -106,6 +106,10 @@ fn test_auto_index_lists_the_folder_when_no_index_file_is_configured() {
 }
 
 fn test_directory_listing_escapes_untrusted_names() {
+	$if windows {
+		// Windows forbids angle brackets and double quotes in file names.
+		return
+	}
 	folder := fixture_folder()
 	defer {
 		os.rmdir_all(folder) or {}
@@ -140,6 +144,27 @@ fn test_directory_listing_escapes_untrusted_names() {
 	assert dir_listing.body.contains('<title>Index of local folder &lt;svg onload=alert(1)&gt;</title>')
 	assert dir_listing.body.contains('href="${unsafe_dir_url}"')
 	assert dir_listing.body.contains('&lt;svg onload=alert(1)&gt;</a>')
+}
+
+fn test_directory_listing_escapes_portable_untrusted_names() {
+	folder := fixture_folder()
+	defer { os.rmdir_all(folder) or {} }
+	name := "a&b' +.txt"
+	dir_name := "folder&'"
+	os.write_file(os.join_path(folder, name), 'portable payload')!
+	os.mkdir_all(os.join_path(folder, dir_name))!
+	os.rm(os.join_path(folder, 'index.html'))!
+	mut h := handler(folder, 'index.html', true)
+	root := fetch(mut h, '/')
+	assert root.status_code == 200
+	assert root.body.contains('a&amp;b&#39; +.txt')
+	assert !root.body.contains(name)
+	assert root.body.contains('href="/a&amp;b%27%20%2B.txt"')
+	assert fetch(mut h, url_path_escape('/${name}')).body == 'portable payload'
+	listing := fetch(mut h, url_path_escape('/${dir_name}'))
+	assert listing.status_code == 200
+	assert listing.body.contains('folder&amp;&#39;')
+	assert !listing.body.contains(dir_name)
 }
 
 fn test_a_directory_without_an_index_file_is_listed() {
