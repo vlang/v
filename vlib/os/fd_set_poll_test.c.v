@@ -1,6 +1,19 @@
 module os
 
 $if !windows && !freestanding && !syscalls {
+	fn test_fd_is_pending_low_pipe_readiness() ! {
+		mut p := pipe()!
+		defer {
+			p.close()
+		}
+		assert !fd_is_pending(p.read_fd)
+		fd_write(p.write_fd, 'ready')
+		assert fd_is_pending(p.read_fd)
+		_, n := fd_read(p.read_fd, 5)
+		assert n == 5
+		assert !fd_is_pending(p.read_fd)
+	}
+
 	fn test_fd_is_pending_uses_poll_for_high_descriptors() ! {
 		mut p := pipe()!
 		mut duplicates := []int{}

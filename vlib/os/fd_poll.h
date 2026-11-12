@@ -40,7 +40,6 @@ static inline short v_os_fd_poll_revents(int fd, short events) {
 #else
 #include <poll.h>
 #endif
-#include <sys/select.h>
 
 static inline short v_os_fd_poll_revents(int fd, short events) {
 	struct pollfd descriptor = {fd, events, 0};
