@@ -2354,6 +2354,11 @@ x := if n > 2 {
 dump(x)
 ```
 
+An `if` expression combining a byte value with character literals that fit in a byte retains
+the byte type. For example, ``name.bytes().map(if it == `-` { `_` } else { it })`` produces
+`[]u8`, so the result supports `.bytestr()`. Wider literals and explicit rune values retain
+the rune type.
+
 When comparing an enum value with an `if` or `match` expression using `==` or `!=`,
 the enum operand supplies the type for shorthand values such as `.red` in the branches.
 This works with the enum operand on either side of the comparison.

@@ -3795,7 +3795,40 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 	if tc.translated_numeric_expr_compatible(id, current, next) {
 		return tc.translated_common_numeric_type(current, next)
 	}
+	if ((is_byte_type(current) && next is Rune) || (current is Rune && is_byte_type(next)))
+		&& tc.if_rune_tails_fit_byte(id) {
+		return if is_byte_type(current) { current } else { next }
+	}
 	return tc.choose_if_tail_type(current, next)
+}
+
+// if_rune_tails_fit_byte only gives byte context to character literals that fit.
+// Explicit rune values and Unicode literals retain their rune result type.
+fn (tc &TypeChecker) if_rune_tails_fit_byte(id flat.NodeId) bool {
+	mut current := id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind != .if_expr || node.children_count < 3 {
+			return false
+		}
+		for i in 1 .. 3 {
+			branch := tc.a.child(node, i)
+			if i == 2 && tc.a.node(branch).kind == .if_expr {
+				current = branch
+				break
+			}
+			tail := tc.branch_tail_expr_id(branch)
+			if !tc.valid_node_id(tail) { return false }
+			if !is_byte_type(tc.resolve_type(tail)) {
+				literal := tc.a.node(tail)
+				if literal.kind != .char_literal { return false }
+				value := match_char_literal_value(literal.value) or { return false }
+				if value < 0 || value > 255 { return false }
+			}
+			if i == 2 { return true }
+		}
+	}
+	return false
 }
 
 // translated_integer_literal_type returns the C type of an integer literal in a translated file:
