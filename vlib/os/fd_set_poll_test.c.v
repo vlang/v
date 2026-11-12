@@ -13,7 +13,6 @@ $if !freestanding && !syscalls {
 		assert n == 5
 		assert !fd_is_pending(p.read_fd)
 	}
-
 }
 
 $if !windows && !freestanding && !syscalls {
