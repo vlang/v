@@ -21024,6 +21024,12 @@ fn (mut g FlatGen) system_libc_headers() {
 }
 
 fn (mut g FlatGen) gnu_objc_compatible_stdatomic_header() {
+	if g.ccompiler == 'cplusplus' {
+		// Atomic operations use the __atomic helpers below. C++11/20 headers do
+		// not provide C11 atomic typedefs; keep channel pointer storage ABI-sized.
+		g.writeln('typedef uintptr_t atomic_uintptr_t;')
+		return
+	}
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#define _Atomic volatile')
 	g.writeln('#endif')

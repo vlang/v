@@ -9,6 +9,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* V3 can inline this header into its headerless C output. Keep the one POSIX
  * declaration used only by the helper available after includes are flattened. */
 extern int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stack_size);
@@ -43,5 +47,9 @@ V_PTHREAD_SCOPE int v3_pthread_create(pthread_t *thread, size_t stack_size,
 V_PTHREAD_SCOPE int v3_pthread_is_current(pthread_t thread) {
 	return pthread_equal(pthread_self(), thread);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
