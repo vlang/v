@@ -20738,6 +20738,13 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	tc.push_array_dsl_scope(node, 'array.map')
 	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 	arg := tc.a.node(arg_id)
+	// A mapper can have been queried before its implicit element binding was
+	// available. Do not reuse that provisional type inside the bound DSL scope.
+	if previous := tc.cached_expr_type(arg_id) {
+		if previous is Void || type_contains_unknown(previous) {
+			tc.invalidate_subtree_expr_types(arg_id)
+		}
+	}
 	if arg.kind == .lambda_expr && arg.children_count > 0 {
 		arr := tc.call_receiver_array_type(node) or {
 			tc.pop_scope()

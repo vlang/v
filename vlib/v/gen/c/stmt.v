@@ -3620,6 +3620,9 @@ fn (g &FlatGen) assert_operand_is_pure(id flat.NodeId) bool {
 		.array_literal {
 			g.assert_operand_children_are_pure(node)
 		}
+		.range {
+			g.assert_operand_children_are_pure(node)
+		}
 		.struct_init {
 			g.assert_struct_init_is_pure(id, node)
 		}

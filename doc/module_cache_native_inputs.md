@@ -4,6 +4,10 @@ V leaves C headers to the C toolchain. It does not parse header declarations, ex
 includes, or project native interfaces for TCC. C bindings declare their types and functions in V.
 The header-parsing bridge introduced by commit `4563cf06ba` has been removed.
 
+The standalone libc preamble supplies private poll descriptors for the shipped `os` and
+`v.cmdexec` helpers. Their system poll headers remain with SDK-backed builds; standalone
+output keeps application poll bindings independent of those helpers.
+
 Outside the native owner path described below, user native inputs and bundled native files
 without an explicit ownership contract bypass module and program caches. Forced headers and macro
 files use the same conservative fallback. The

@@ -171,6 +171,16 @@ static inline short v_cmdexec_poll_revents(int fd, short events) {
 #endif
 '
 
+// headerless_fd_poll_helper keeps the shipped descriptor polling facade independent
+// of system headers when the standalone preamble supplies the libc ABI.
+fn (mut g FlatGen) headerless_fd_poll_helper() {
+	if g.target.os == 'windows' || !g.core_header_directives.any(it.directive.module == 'os') {
+		return
+	}
+	g.write(headerless_cmdexec_poll.replace('v_cmdexec_', 'v_os_fd_'))
+	g.collect_preserved_c_fns(['v_os_fd_poll_revents'])
+}
+
 // portable_run_signal_helpers keeps compiler snapshots independent of the native object.
 fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 	mut source := $embed_file('@VEXEROOT/vlib/v/driver/run_signals_nix.c').to_string()

@@ -163,9 +163,9 @@ fn (mut b Builder) write_string_borrowed(s string) {
 	if builder_borrowed_ranges_overlap(source, u64(s.len), header, u64(sizeof(Builder)))
 		|| (b.data != unsafe { nil }
 			&& builder_borrowed_ranges_overlap(source, u64(s.len), buffer, buffer_size)) {
-		copy := s.clone()
-		b.write_string(copy)
-		unsafe { copy.free() }
+		owned := s.clone()
+		b.write_string(owned)
+		unsafe { owned.free() }
 		return
 	}
 	b.write_string(s)
