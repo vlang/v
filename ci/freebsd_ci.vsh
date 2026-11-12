@@ -125,7 +125,9 @@ fn run_essential_tests() {
 fn build_examples() {
 	if common.is_github_job {
 		println('::group::Build examples')
-		exec_args(['v', '-W', 'build-examples'])
+		// FreeBSD CI runs in an 8 GiB VM; two concurrent compiler workers were OOM-killed.
+		// Build every example, but avoid simultaneous peak compiler allocations.
+		exec_args(['env', 'VJOBS=1', 'v', '-W', 'build-examples'])
 		println('::endgroup::')
 	} else {
 		println('### Build examples')
