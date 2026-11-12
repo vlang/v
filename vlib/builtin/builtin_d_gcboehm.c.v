@@ -1,5 +1,11 @@
 module builtin
 
+$if windows && !msvc {
+	// On Windows GCC/TCC, Boehm's WRAP_MARK_SOME path calls signal() while the
+	// world is stopped, which can deadlock with the C heap (#31518).
+	#flag -DNO_WRAP_MARK_SOME=1
+}
+
 $if musl ? {
 	// musl has no getcontext implementation. Use the collector's register-saving
 	// fallback when compiling the bundled source with musl-gcc.
