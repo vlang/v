@@ -7363,15 +7363,11 @@ fn (mut t Transformer) lower_string_bytes_any_all_call(node flat.Node, bytes_cal
 	if !t.is_pure_byte_predicate(predicate_body, elem_name) {
 		return none
 	}
-	// Evaluate the receiver once; a slice such as `s[1..]` is not stable for reuse.
+	// Evaluate the receiver once, before the lambda byte binding can shadow its name.
 	str_expr := t.transform_expr(str_id)
-	base := if t.a.nodes[int(str_expr)].kind == .ident {
-		str_expr
-	} else {
-		src_name := t.new_temp('${method}_src')
-		t.pending_stmts << t.make_decl_assign_typed(src_name, str_expr, flat.source_type_string)
-		t.make_ident(src_name)
-	}
+	src_name := t.new_temp('${method}_src')
+	t.pending_stmts << t.make_decl_assign_typed(src_name, str_expr, flat.source_type_string)
+	base := t.make_ident(src_name)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	result_name := t.new_temp(method)

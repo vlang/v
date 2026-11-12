@@ -40,6 +40,14 @@ fn has_control(s string) bool {
 	return s.bytes().any(it < 32 || it == 127)
 }
 
+fn all_digits_shadowing_receiver(s string) bool {
+	return s.bytes().all(|s| s.is_digit())
+}
+
+fn any_digit_shadowing_receiver(s string) bool {
+	return s.bytes().any(|s| s.is_digit())
+}
+
 fn all_digits_ref(s &string) bool {
 	return s.bytes().all(it.is_digit())
 }
@@ -71,6 +79,17 @@ fn test_positions() {
 	assert !all_digits(long[..100] + 'x' + long[..100])
 	assert has_control(long + '\x7f')
 	assert !has_control(long)
+}
+
+fn test_lambda_parameter_shadows_receiver() {
+	assert all_digits_shadowing_receiver('')
+	assert all_digits_shadowing_receiver('012345')
+	assert !all_digits_shadowing_receiver('x12')
+	assert !all_digits_shadowing_receiver('12x')
+	assert !any_digit_shadowing_receiver('')
+	assert !any_digit_shadowing_receiver('xyz')
+	assert any_digit_shadowing_receiver('0xy')
+	assert any_digit_shadowing_receiver('xy0')
 }
 
 fn test_every_byte_value() {
