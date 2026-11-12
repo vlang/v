@@ -22,6 +22,9 @@ and ellipse radii scale with `Context.scale`, including rotated ellipses. A conf
 starts at its first endpoint and clips its final dash at the second endpoint. On macOS,
 `native_rendering` draws both axis-aligned and diagonal lines on the native Cocoa surface.
 
+`Context.scissor_rectf()` rounds positive clip edges outward to framebuffer pixels, including
+subpixel clips. Clips with zero or negative width or height remain empty.
+
 ## Image buffers and cache IDs
 
 Image loaders produce four-channel RGBA pixels. When initializing an `Image` directly with

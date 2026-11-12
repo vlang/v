@@ -18,6 +18,9 @@ struct PixelScissorRect {
 }
 
 fn pixel_scissor_rect(x f64, y f64, w f64, h f64, scale f64) PixelScissorRect {
+	if w <= 0 || h <= 0 {
+		return PixelScissorRect{}
+	}
 	s := if scale > 0 { scale } else { 1.0 }
 	x0 := int(math.floor(x * s))
 	y0 := int(math.floor(y * s))
