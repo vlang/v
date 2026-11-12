@@ -24,7 +24,7 @@ class GatePathsTests(unittest.TestCase):
     @staticmethod
     def caller_jobs():
         caller = gate.CALLER.read_text(encoding="utf-8").split("\njobs:\n", 1)[1]
-        return dict(re.findall(r"^  ([\\w-]+):\\n(.*?)(?=^  \\S|\\Z)", caller, re.M | re.S))
+        return dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  \S|\Z)", caller, re.M | re.S))
 
     @staticmethod
     def dependencies(job):
@@ -52,7 +52,7 @@ class GatePathsTests(unittest.TestCase):
                     self.assertIn("gen_vc_ci", needs)
                     if name != "cleanup-vprod":
                         self.assertIn("formatting", needs)
-                self.assertNotRegex(body, r"(?m)^    if:.*\\b(always|failure|cancelled)\\s*\\(")
+                self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
 
     def test_linux_preflight_does_not_wait_for_other_platforms(self):
         jobs = self.caller_jobs()
@@ -95,11 +95,11 @@ class GatePathsTests(unittest.TestCase):
         platforms = {}
         for group in ("linux", "macos", "windows"):
             match = re.search(
-                rf"inputs\\.platform == '{group}' && '(\\[[^'\\n]+\\])'", source
+                rf"inputs\.platform == '{group}' && '(\[[^'\n]+\])'", source
             )
             self.assertIsNotNone(match, group)
             platforms[group] = json.loads(match[1])
-        all_match = re.search(r"(?m)^\\s*'(\\[\\{\"os\":[^'\\n]+\\])'$", source)
+        all_match = re.search(r"(?m)^\s*'(\[\{\"os\":[^'\n]+\])'$", source)
         self.assertIsNotNone(all_match)
         combined = json.loads(all_match[1])
         self.assertCountEqual(
