@@ -1,5 +1,8 @@
 module os
 
+#flag linux -D_GNU_SOURCE
+#include <stdlib.h>
+
 fn C.clearenv() i32
 
 fn test_clearenv_after_libc_clears_the_environment() {
