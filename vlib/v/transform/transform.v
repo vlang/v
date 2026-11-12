@@ -746,6 +746,8 @@ mut:
 	// reconstruct the same type from the lowered text tree.
 	preserve_inplace_expr_types bool
 	inplace_child_log           []InplaceChildRewrite
+	// Shared type-match bodies cannot use one variant's recorded callee for substitution.
+	array_dsl_multitype_depth int
 	// inplace_rewrite_holds suspends the in-place child rewrites while the
 	// source subtree being transformed is still needed afterwards: a multi-type
 	// match arm transforms its body once per variant, and an array append reads
@@ -33025,7 +33027,9 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 	// body can keep the source nodes it did not change, so none of them may be
 	// rewritten in place.
 	t.inplace_rewrite_holds++
+	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.if_value_branch_block(raw_body, target_name, target_type_id)
+	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
@@ -33099,7 +33103,9 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	// body can keep the source nodes it did not change, so none of them may be
 	// rewritten in place.
 	t.inplace_rewrite_holds++
+	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.make_block(t.transform_scope_stmts(body_ids))
+	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
