@@ -144,11 +144,10 @@ source-file metadata while reusing eligible cached objects.
 Retries that reparse cached module sources preserve caller values for `V3_CACHE_FORCE_SOURCE`
 at compile time and when running the program.
 
-The experimental unchanged-build receipt cache is disabled by default. Set
-`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to opt in; `-nocache` and
-`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` disable it. Its early executable restore does
-not yet track all compile-time environment, module-search, or native linker inputs.
-Keep it disabled when those inputs can change between builds.
+A build with an explicit output restores the executable of an earlier build when its
+receipt shows that no input changed: the V sources, and the headers and libraries that the
+C compiler and the linker said they read. `-nocache` and
+`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` disable it.
 Parallel monomorphization also remains opt-in through `V3_PARALLEL_MONOMORPHIZE=1`
 while nested generic-interface dispatch is being validated.
 

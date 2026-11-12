@@ -13,10 +13,10 @@ fn test_call_resolution_snapshot_keeps_absent_and_present_empty_names() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.cur_module = 'main'
 		tc.fn_ret_types['ordinary'] = types.Type(types.void_)
-		tc.resolved_call_names = []&types.CachedName{len: a.nodes.len, init: unsafe { nil }}
+		tc.resolved_calls = []types.SymbolId{len: a.nodes.len}
 		tc.resolved_call_set = []bool{len: a.nodes.len}
 		if present {
-			tc.resolved_call_names[int(call)] = types.cached_name('')
+			tc.resolved_calls[int(call)] = flat.source_type_id('')
 			tc.resolved_call_set[int(call)] = true
 		}
 		mut g := FlatGen.new()
@@ -43,7 +43,7 @@ fn test_nested_call_resolution_snapshots_keep_each_selector_target() {
 		outer := a.add_node(flat.Node{ kind: .call, children_start: 3, children_count: 2 })
 		mut tc := types.TypeChecker.new(&a)
 		tc.cur_module = 'main'
-		tc.cur_scope.insert('receiver', types.Type(types.int_))
+		tc.cur_scope.insert_id(flat.source_type_id('receiver'), 'receiver', types.Type(types.int_))
 		tc.fn_param_types['impl.inner'] = []types.Type{}
 		tc.fn_param_types['impl.outer'] = [types.Type(types.int_)]
 		tc.fn_ret_types['impl.inner'] = types.Type(types.int_)
@@ -51,13 +51,13 @@ fn test_nested_call_resolution_snapshots_keep_each_selector_target() {
 		tc.register_synth_type(inner, types.Type(types.int_))
 		if sparse {
 			tc.parallel_check_sparse = true
-			tc.sparse_resolved_call_names[int(inner)] = 'impl.inner'
-			tc.sparse_resolved_call_names[int(outer)] = 'impl.outer'
+			tc.sparse_resolved_calls[int(inner)] = flat.source_type_id('impl.inner')
+			tc.sparse_resolved_calls[int(outer)] = flat.source_type_id('impl.outer')
 		} else {
-			tc.resolved_call_names = []&types.CachedName{len: a.nodes.len, init: unsafe { nil }}
+			tc.resolved_calls = []types.SymbolId{len: a.nodes.len}
 			tc.resolved_call_set = []bool{len: a.nodes.len}
-			tc.resolved_call_names[int(inner)] = types.cached_name('impl.inner')
-			tc.resolved_call_names[int(outer)] = types.cached_name('impl.outer')
+			tc.resolved_calls[int(inner)] = flat.source_type_id('impl.inner')
+			tc.resolved_calls[int(outer)] = flat.source_type_id('impl.outer')
 			tc.resolved_call_set[int(inner)] = true
 			tc.resolved_call_set[int(outer)] = true
 		}
@@ -83,9 +83,9 @@ fn test_script_local_call_keeps_checker_resolution_unchanged() {
 	tc.cur_file = 'commands.vsh'
 	tc.fn_type_files['ordinary'] = 'commands.vsh'
 	tc.fn_ret_types['ordinary'] = types.Type(types.void_)
-	tc.resolved_call_names = []&types.CachedName{len: a.nodes.len, init: unsafe { nil }}
+	tc.resolved_calls = []types.SymbolId{len: a.nodes.len}
 	tc.resolved_call_set = []bool{len: a.nodes.len}
-	tc.resolved_call_names[int(call)] = types.cached_name('other.ordinary')
+	tc.resolved_calls[int(call)] = flat.source_type_id('other.ordinary')
 	tc.resolved_call_set[int(call)] = true
 	mut g := FlatGen.new()
 	g.a = &a

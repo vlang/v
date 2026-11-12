@@ -25,17 +25,17 @@ fn test_nested_query_views_preserve_parallel_node_cache_ownership() {
 		// A helper may read its worker's item, but another item's dense slots
 		// can be changing concurrently or point into a disposable worker arena.
 		assert !isnil(view.cached_expr_type_ref(inside))
-		assert view.cached_resolved_call(inside)? == 'main.inside'
+		assert view.resolved_call_name(inside)? == 'main.inside'
 		assert isnil(view.cached_expr_type_ref(outside))
-		assert view.cached_resolved_call(outside) == none
+		assert view.resolved_call_name(outside) == none
 		view.remember_expr_type(outside, replacement)
 		view.remember_resolved_call(outside, 'main.replacement')
 		assert view.cached_expr_type_ref(outside).name() == '[]string'
-		assert view.cached_resolved_call(outside)? == 'main.replacement'
+		assert view.resolved_call_name(outside)? == 'main.replacement'
 		assert master.cached_expr_type_ref(outside).name() == '[]int'
-		assert master.cached_resolved_call(outside)? == 'main.original'
+		assert master.resolved_call_name(outside)? == 'main.original'
 		assert isnil(worker.cached_expr_type_ref(outside))
-		assert worker.cached_resolved_call(outside) == none
+		assert worker.resolved_call_name(outside) == none
 	}
 	worker.free_parallel_check_worker_cache()
 }

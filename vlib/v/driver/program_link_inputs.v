@@ -21,6 +21,8 @@ mut:
 	// The paths where a file that is not there would be read instead of, or along
 	// with, one of the files.
 	missing []string
+	// The libraries of `-l` that no directory of the search holds.
+	unresolved []string
 	// Why the inputs of the command cannot all be told, or '' when they can.
 	unknown string
 	// An option of the linker that is not known, or '': what it makes the linker
@@ -786,6 +788,7 @@ fn v3_program_link_inputs(args []string, linker_dir string, default_library_dirs
 	mut missing := map[string]bool{}
 	mut expanded := map[string]bool{}
 	mut resolved_libraries := map[string]bool{}
+	mut library_files := map[string][]string{}
 	if linker_dir.len > 0 {
 		for name in os.ls(linker_dir) or { []string{} } {
 			if name.ends_with('.a') || name.ends_with('.o') {
@@ -836,7 +839,9 @@ fn v3_program_link_inputs(args []string, linker_dir string, default_library_dirs
 					continue
 				}
 				for name in v3_link_library_names(library) {
-					command.files << os.join_path_single(dir, name)
+					path := os.join_path_single(dir, name)
+					command.files << path
+					library_files[library] << path
 				}
 			}
 		}
@@ -872,6 +877,11 @@ fn v3_program_link_inputs(args []string, linker_dir string, default_library_dirs
 	}
 	inputs.files.sort()
 	inputs.missing.sort()
+	for library in command.libraries {
+		if !library_files[library].any(files[it]) && library !in inputs.unresolved {
+			inputs.unresolved << library
+		}
+	}
 	for name in v3_output_environment_names {
 		if os.getenv(name).len > 0 && inputs.unknown.len == 0 {
 			inputs.unknown = 'the variable `${name}` makes the compiler write a file besides the executable'

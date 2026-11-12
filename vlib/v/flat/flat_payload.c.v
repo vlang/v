@@ -11,6 +11,10 @@ module flat
 // consumer of v3.flat could not link them.
 fn C.atomic_compare_exchange_strong_u32(voidptr, voidptr, u32) bool
 
+fn C.atomic_compare_exchange_strong_u64(voidptr, voidptr, u64) bool
+
+fn C.atomic_fetch_add_u32(voidptr, u32) u32
+
 fn C.atomic_store_u32(voidptr, u32)
 
 fn C.atomic_load_u32(voidptr) u32

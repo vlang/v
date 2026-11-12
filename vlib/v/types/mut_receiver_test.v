@@ -24,7 +24,7 @@ fn test_pointer_valued_receiver_can_mutate_pointee_without_mutable_binding() {
 
 	mut tc := TypeChecker.new(&a)
 	tc.cur_scope = new_scope(tc.file_scope)
-	owner := tc.cur_scope.insert_with_owner('p', Type(Pointer{
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', Type(Pointer{
 		base_type: &Type(int_)
 	}))
 	assert tc.mut_receiver_expr_is_mutable_lvalue(p_id)
@@ -42,7 +42,7 @@ fn test_global_and_local_pointer_receivers_can_mutate_their_pointees() {
 	g_id := a.add_val(.ident, 'g')
 	mut tc := TypeChecker.new(&a)
 	mut global_scope := tc.file_scope
-	global_scope.insert('g', Type(Pointer{
+	global_scope.insert_id(flat.source_type_id('g'), 'g', Type(Pointer{
 		base_type: &Type(int_)
 	}))
 	// Match the extra private file scope installed by a parallel checker.
@@ -50,7 +50,7 @@ fn test_global_and_local_pointer_receivers_can_mutate_their_pointees() {
 	tc.cur_scope = new_scope(tc.file_scope)
 	assert tc.mut_receiver_expr_is_mutable_lvalue(g_id)
 
-	tc.cur_scope.insert('g', Type(Pointer{
+	tc.cur_scope.insert_id(flat.source_type_id('g'), 'g', Type(Pointer{
 		base_type: &Type(int_)
 	}))
 	assert tc.mut_receiver_expr_is_mutable_lvalue(g_id)
@@ -66,7 +66,7 @@ fn test_const_mut_receiver_is_immutable() {
 	tc.cur_scope = new_scope(tc.file_scope)
 	assert !tc.mut_receiver_expr_is_mutable_lvalue(value_id)
 
-	tc.cur_scope.insert('value', Type(Struct{
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', Type(Struct{
 		name_id: flat.source_type_id('S')
 	}))
 	assert !tc.mut_receiver_expr_is_mutable_lvalue(value_id)
@@ -113,7 +113,7 @@ fn test_mut_param_value_wrappers_preserve_tail_and_binding_identity() {
 	raw := Type(Pointer{ base_type: base })
 	mut tc := TypeChecker.new(&a)
 	tc.cur_scope = new_scope(tc.file_scope)
-	owner := tc.cur_scope.insert_with_owner('receiver', raw)
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('receiver'), 'receiver', raw)
 	tc.fn_context.node_id = int(receiver_id)
 	tc.fn_context.mut_param_base_types['receiver'] = base
 	tc.fn_context.mut_param_owners['receiver'] = owner
@@ -125,6 +125,6 @@ fn test_mut_param_value_wrappers_preserve_tail_and_binding_identity() {
 	assert tc.mut_param_expr_base(flat.empty_node, raw) == none
 	assert tc.mut_param_expr_base(flat.NodeId(a.nodes.len), raw) == none
 	tc.cur_scope = new_scope(tc.cur_scope)
-	tc.cur_scope.insert('receiver', raw)
+	tc.cur_scope.insert_id(flat.source_type_id('receiver'), 'receiver', raw)
 	assert tc.mut_param_expr_base(wrapped_id, raw) == none
 }

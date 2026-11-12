@@ -521,8 +521,8 @@ pub fn source_signature(source_files []string) string {
 // source_files_use_build_time_pseudo reports whether selected sources depend on build time.
 pub fn source_files_use_build_time_pseudo(source_files []string) bool {
 	for file in source_files {
-		source := os.read_file(file) or { continue }
-		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
+		facts := source_file_facts(file) or { continue }
+		if facts.uses_build_pseudo {
 			return true
 		}
 	}
@@ -556,24 +556,21 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		content := os.read_bytes(file) or { return SourceSignatureDetails{} }
-		digest := sha256.sum(content)
-		source_digests << digest[..].hex()
-		hash = hash_bytes(hash, content)
+		// The digest and the compile-time facts of a file are remembered by its
+		// metadata (see FileHashMemo), so only the files that changed are read.
+		digest := file_sha256(path) or { return SourceSignatureDetails{} }
+		facts := source_file_facts(path) or { return SourceSignatureDetails{} }
+		source_digests << digest
+		hash = hash_bytes(hash, digest.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
-		source := content.bytestr()
-		if source_uses_pseudo(source, [
-			'@BUILD_TIMESTAMP',
-			'@BUILD_DATE',
-			'@BUILD_TIME',
-		]) {
+		if facts.uses_build_pseudo {
 			uses_build_pseudo = true
 		}
-		if source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']) {
+		if facts.uses_version_pseudo {
 			uses_version_pseudo = true
 		}
-		uses_vmod_hash := source_uses_pseudo(source, ['@VMODHASH'])
-		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
+		uses_vmod_hash := facts.uses_vmod_hash
+		if uses_vmod_hash || facts.uses_vmod_root {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
 				file_change_signature(vmod_file)
@@ -605,10 +602,10 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 				hash = hash_bytes(hash, [u8(0xff)])
 			}
 		}
-		for name in compile_time_env_names(source) {
+		for name in facts.env_names {
 			env_names[name] = true
 		}
-		for name in compile_time_pkgconfig_names(source) {
+		for name in facts.pkgconfig_names {
 			pkgconfig_names[name] = true
 		}
 	}
@@ -658,6 +655,93 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 		validation:     validation
 		source_digests: source_digests
 		cacheable:      cacheable
+	}
+}
+
+// SourceFileFacts are what a source file's text decides about the compile-time
+// inputs of a build besides the file itself: the pseudo variables it reads, the
+// environment variables its `$env` calls name and the packages it probes.
+struct SourceFileFacts {
+	uses_build_pseudo   bool
+	uses_version_pseudo bool
+	uses_vmod_hash      bool
+	uses_vmod_root      bool
+	env_names           []string
+	pkgconfig_names     []string
+}
+
+// source_file_facts returns the facts of the file at `path`, remembered with its
+// content hashes (memoized_file_hash) so that an unchanged file is not read again.
+fn source_file_facts(path string) ?SourceFileFacts {
+	encoded := memoized_file_hash(path, source_file_facts_kind, source_file_facts_uncached)
+	if encoded.len == 0 {
+		return none
+	}
+	return decode_source_file_facts(encoded)
+}
+
+// source_file_facts_kind names the facts in the memo of file hashes; it changes
+// with their encoding (encode_source_fact_names).
+const source_file_facts_kind = 'facts2'
+
+fn source_file_facts_uncached(path string) string {
+	source := os.read_file(path) or { return '' }
+	mut flags := []u8{cap: 4}
+	for used in [
+		source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']),
+		source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']),
+		source_uses_pseudo(source, ['@VMODHASH']),
+		source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']),
+	] {
+		flags << if used { u8(`1`) } else { u8(`0`) }
+	}
+	return 'f${flags.bytestr()}|${encode_source_fact_names(compile_time_env_names(source))}|${encode_source_fact_names(compile_time_pkgconfig_names(source))}'
+}
+
+// encode_source_fact_names writes each of `names` in hexadecimal, separated by
+// spaces: a name of `$env` can hold a space or a `|` (`$env('A B')`), and the facts
+// of a file stay one line of the memo.
+fn encode_source_fact_names(names []string) string {
+	return names.map(it.bytes().hex()).join(' ')
+}
+
+fn hex_digit_value(c u8) ?u8 {
+	return match c {
+		`0`...`9` { c - `0` }
+		`a`...`f` { c - `a` + 10 }
+		else { none }
+	}
+}
+
+// decode_source_fact_names reads the names of encode_source_fact_names.
+fn decode_source_fact_names(encoded string) ?[]string {
+	mut names := []string{}
+	for field in encoded.fields() {
+		if field.len % 2 != 0 {
+			return none
+		}
+		mut bytes := []u8{cap: field.len / 2}
+		for i := 0; i < field.len; i += 2 {
+			bytes << (hex_digit_value(field[i])? << 4) | hex_digit_value(field[i + 1])?
+		}
+		names << bytes.bytestr()
+	}
+	return names
+}
+
+fn decode_source_file_facts(encoded string) ?SourceFileFacts {
+	parts := encoded.split('|')
+	if parts.len != 3 || parts[0].len != 5 || parts[0][0] != `f` {
+		return none
+	}
+	flags := parts[0][1..]
+	return SourceFileFacts{
+		uses_build_pseudo:   flags[0] == `1`
+		uses_version_pseudo: flags[1] == `1`
+		uses_vmod_hash:      flags[2] == `1`
+		uses_vmod_root:      flags[3] == `1`
+		env_names:           decode_source_fact_names(parts[1])?
+		pkgconfig_names:     decode_source_fact_names(parts[2])?
 	}
 }
 
@@ -802,7 +886,7 @@ fn signature_directive_mentions_pseudo(source string, start int, names []string)
 		pos++
 	}
 	directive := source[name_start..pos]
-	scan_quoted := directive in ['include', 'insert', 'flag']
+	scan_quoted := directive in ['include', 'insert', 'preinclude', 'postinclude', 'flag']
 	for pos < source.len && source[pos] != `\n` {
 		if pos + 1 < source.len && source[pos] == `/` && source[pos + 1] == `/` {
 			for pos < source.len && source[pos] != `\n` {
@@ -878,6 +962,27 @@ fn (m &Manager) source_signature(source_files []string) string {
 	return m.source_signature_details(source_files).signature
 }
 
+// sources_changed_during_build reports whether a source file may be newer than
+// what this build compiled. Stamps are written after compiling and sign the
+// sources as they are then, so publishing one would vouch for the edited file
+// with an artifact of its earlier version. Go fixes a build's view of a file once
+// (cache.FileHash) and Zig writes the digests taken in Manifest.hit; V's stamps
+// hash again, so they are not written at all.
+fn (m &Manager) sources_changed_during_build(source_files []string) bool {
+	if !build_is_marked() {
+		return false
+	}
+	for path in m.real_source_paths(source_files) {
+		if file_changed_during_build(path) {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache not published: ${path} changed during the build')
+			}
+			return true
+		}
+	}
+	return false
+}
+
 fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
 	details := m.source_signature_details(source_files)
 	if !details.cacheable {
@@ -893,6 +998,15 @@ fn (m &Manager) source_signature_details(source_files []string) SourceSignatureD
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
+// cached_source_signature_with_build_values is cached_source_signature for a
+// build whose build-time pseudo variables (@BUILD_DATE, @BUILD_TIME,
+// @BUILD_TIMESTAMP) are `build_values`: the signature covers them when a source
+// reads one of them.
+pub fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_values string) string {
+	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files,
+		build_values, '').signature
+}
+
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
 	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files, '', '').signature
 }
@@ -1496,6 +1610,10 @@ pub fn (m &Manager) write_entry(module_name string, source_files []string, heade
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
+	if m.sources_changed_during_build(source_files) {
+		os.rm(entry.header_stamp) or {}
+		return entry
+	}
 	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files), header))!
 	return entry
 }
@@ -1507,6 +1625,10 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
+	if m.sources_changed_during_build(source_files) {
+		os.rm(entry.header_stamp) or {}
+		return entry
+	}
 	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files), header))!
 	return entry
 }
@@ -1709,6 +1831,9 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	os.rm(entry.prepared_stamp) or {}
 	write_atomic(entry.source, source)!
 	write_atomic(entry.metadata, metadata)!
+	if m.sources_changed_during_build(source_files) {
+		return entry
+	}
 	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
 	write_atomic(entry.stamp, stamp)!
 	return entry
@@ -2033,6 +2158,9 @@ pub fn (m &Manager) write_program_executable(source_files []string, generation_s
 	if link_files.len != link_identities.len {
 		return error('the link inputs have no identities')
 	}
+	if m.sources_changed_during_build(source_files) {
+		return error('a source file changed during the build')
+	}
 	slot := m.program_executable_slot(source_files)
 	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
 		link_signature) or { return error('the program sources cannot be cached') }
@@ -2111,6 +2239,11 @@ fn program_executable_of_stamp(stamp string, slot string) string {
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
+	if m.sources_changed_during_build(source_files) {
+		os.rm(object_entry.object_stamp) or {}
+		os.rm(entry.object_stamp) or {}
+		return
+	}
 	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
@@ -2177,7 +2310,7 @@ fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[str
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
+		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature_from_before_build(path)}')
 	}
 	return out.str()
 }
@@ -2304,6 +2437,11 @@ pub fn header_signature(header string) string {
 
 // file_signature returns a stable content signature for a cache input file.
 pub fn file_signature(path string) string {
+	return memoized_file_hash(path, 'fnv', file_signature_uncached)
+}
+
+// file_signature_uncached is file_signature that reads the file in any case.
+pub fn file_signature_uncached(path string) string {
 	mut file := os.open(path) or { return '' }
 	defer { file.close() }
 	mut hash := u64(1469598103934665603)
@@ -7013,8 +7151,8 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 }
 
 fn cached_directive_text(node flat.Node, vroot string, source_file string) string {
-	if node.value !in ['include', 'insert', 'flag', 'pkgconfig', 'define', 'undef', 'ifdef', 'ifndef',
-		'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
+	if node.value !in ['include', 'insert', 'preinclude', 'postinclude', 'flag', 'pkgconfig', 'define',
+		'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
 		return ''
 	}
 	value := cached_directive_value(node.value, node.typ_text(), vroot, source_file)
@@ -7026,7 +7164,7 @@ fn cached_directive_value(directive string, value string, vroot string, source_f
 		return cached_resolve_flag_value(value, vroot, source_file)
 	}
 	result := cached_expand_pseudo_paths(value, vroot, source_file)
-	if directive in ['include', 'insert'] {
+	if directive in ['include', 'insert', 'preinclude', 'postinclude'] {
 		return cached_resolve_relative_include_path(result, source_file)
 	}
 	return result
@@ -7544,7 +7682,7 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 
 fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name string) u32 {
 	for candidate in [name, '${module_name}.${name}', '${module_name.all_after_last('.')}.${name}'] {
-		if typ := tc.file_scope.lookup(candidate) {
+		if typ := tc.file_scope.lookup_id(flat.source_type_id(candidate)) {
 			source_id := typ.source_type_id()
 			if source_id in [flat.source_type_nil, flat.source_type_none, flat.source_type_unknown] {
 				return flat.source_type_voidptr

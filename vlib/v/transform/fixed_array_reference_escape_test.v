@@ -156,7 +156,7 @@ fn test_fixed_array_reference_generic_call_uses_conservative_escape_scan() {
 	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
 	tc.fn_param_types['forward'] = [types.Type(types.Pointer{ base_type: types.Type(types.Unknown{ reason: 'generic placeholder `T`', placeholder: flat.source_type_id('T'), generic: true }) })]
 	tc.fn_ret_types['forward'] = types.Type(types.Array{ elem_type: types.Type(types.int_) })
-	tc.cur_scope.insert('holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
+	tc.cur_scope.insert_id(flat.source_type_id('holder'), 'holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('holder', flat.source_type_id('Holder'))
 	arg := t.make_ident('holder')
@@ -362,7 +362,7 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[3]int'))
-	tc.cur_scope.insert('fixed', fixed)
+	tc.cur_scope.insert_id(flat.source_type_id('fixed'), 'fixed', fixed)
 	tc.type_aliases.set_id(flat.source_type_id('FixedPtr'), flat.source_type_id('&[3]int'))
 	tc.type_aliases.set_id(flat.source_type_id('FixedPtrAlias'), flat.source_type_id('FixedPtr'))
 	for parenthesized in [false, true] {
@@ -441,7 +441,7 @@ fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
 	tc.fn_param_types['Holder.keep'] = [types.Type(types.Pointer{ base_type: types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }) })]
 	tc.fn_ret_types['Holder.keep'] = types.Type(types.Array{ elem_type: types.Type(types.int_) })
-	tc.cur_scope.insert('holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
+	tc.cur_scope.insert_id(flat.source_type_id('holder'), 'holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('holder', flat.source_type_id('Holder'))
 	call := t.make_method_call(t.make_ident('holder'), 'keep', []flat.NodeId{})
@@ -467,7 +467,7 @@ fn test_fixed_array_reference_variadic_arguments_promote_each_tail_source() {
 	mut locals := map[string]bool{}
 	for name in ['first', 'middle', 'last'] {
 		t.set_var_type(name, flat.source_type_id('[2]int'))
-		tc.cur_scope.insert(name, fixed)
+		tc.cur_scope.insert_id(flat.source_type_id(name), name, fixed)
 		arg := t.make_ident(name)
 		tc.register_synth_type(arg, fixed)
 		args << arg
@@ -626,7 +626,7 @@ fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sour
 	result_ref := types.Type(types.ResultType{ base_type: ref_alias })
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[2]int'))
-	tc.cur_scope.insert('fixed', fixed)
+	tc.cur_scope.insert_id(flat.source_type_id('fixed'), 'fixed', fixed)
 	value := t.make_ident('fixed')
 	tc.register_synth_type(value, fixed)
 	for param in [option_ref, result_ref,
@@ -667,7 +667,7 @@ fn test_fixed_array_range_reference_headers_are_allocated_before_wrapping() {
 	array := types.Type(types.Array{ elem_type: types.Type(types.int_) })
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[3]int'))
-	tc.cur_scope.insert('fixed', fixed)
+	tc.cur_scope.insert_id(flat.source_type_id('fixed'), 'fixed', fixed)
 	for wrapper in ['?&[]int', '!&[]int'] {
 		for explicit in [false, true] {
 			value := t.make_ident('fixed')

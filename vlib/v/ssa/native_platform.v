@@ -2,6 +2,16 @@ module ssa
 
 // native_platform_constant returns the native runtime constants for the host
 // ABI used by direct code generation.
+// has_native_platform_constant reports whether the builder knows the value of
+// `C.name` for `target` without asking the C compiler.
+pub fn has_native_platform_constant(name string, target TargetData) bool {
+	if name in ['environ', 'errno', 'FLT_EPSILON', 'DBL_EPSILON'] {
+		return true
+	}
+	native_platform_constant(name, target) or { return false }
+	return true
+}
+
 fn native_platform_constant(name string, target TargetData) ?i64 {
 	if target.is_linux() {
 		return native_linux_constant(name)

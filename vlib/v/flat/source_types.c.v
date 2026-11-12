@@ -362,9 +362,28 @@ struct SourceTypeIndex {
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
 
-// Index headers and slots contain only C allocations. Root their generation
-// chain directly, independently of the GC-managed entry table and worker arenas.
-__global g_source_type_index &SourceTypeIndex
+// The hash index is split into shards by the top bits of a spelling's hash,
+// each with its own writer lock, so threads that intern different spellings do
+// not wait for each other (the shards of Zig's InternPool, src/InternPool.zig,
+// and the striped locks of Odin's string interner, src/string_interner.cpp).
+// IDs still come from one dense table: a writer reserves the next one with an
+// atomic increment. Index headers and slots contain only C allocations; each
+// shard roots its own generation chain, independently of the GC-managed entry
+// table and worker arenas.
+const source_type_shard_bits = 6
+const source_type_shard_count = 1 << source_type_shard_bits
+
+// SourceTypeShard fills a cache line, so that the locks of neighbouring shards
+// do not share one.
+struct SourceTypeShard {
+mut:
+	lock  u32
+	count u32
+	index &SourceTypeIndex = unsafe { nil }
+	pad   [12]u32
+}
+
+__global g_source_type_shards [source_type_shard_count]SourceTypeShard
 
 // A whole program uses a few hundred thousand spellings; a small direct-mapped
 // cache keeps evicting entries that are about to be asked for again.
@@ -436,20 +455,42 @@ fn source_type_table_publish(table &SourceTypeTable) {
 }
 
 @[inline]
-fn source_type_index_load() &SourceTypeIndex {
+fn source_type_shard_of(hashed u32) int {
+	return int(hashed >> (32 - source_type_shard_bits))
+}
+
+@[inline]
+fn source_type_index_load(shard int) &SourceTypeIndex {
 	$if x32 {
-		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u32(voidptr(&g_source_type_index)))) }
+		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u32(voidptr(&g_source_type_shards[shard].index)))) }
 	} $else {
-		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u64(voidptr(&g_source_type_index)))) }
+		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u64(voidptr(&g_source_type_shards[shard].index)))) }
 	}
 }
 
-fn source_type_index_publish(index &SourceTypeIndex) {
+fn source_type_index_publish(shard int, index &SourceTypeIndex) {
 	$if x32 {
-		C.atomic_store_u32(voidptr(&g_source_type_index), u32(voidptr(index)))
+		C.atomic_store_u32(voidptr(&g_source_type_shards[shard].index), u32(voidptr(index)))
 	} $else {
-		C.atomic_store_u64(voidptr(&g_source_type_index), u64(voidptr(index)))
+		C.atomic_store_u64(voidptr(&g_source_type_shards[shard].index), u64(voidptr(index)))
 	}
+}
+
+fn source_type_shard_lock(shard int) {
+	for {
+		mut expected := u32(0)
+		if C.atomic_compare_exchange_strong_u32(&g_source_type_shards[shard].lock, &expected, 1) {
+			return
+		}
+		for C.atomic_load_u32(&g_source_type_shards[shard].lock) != 0 {
+			C.cpu_relax()
+		}
+	}
+}
+
+@[inline]
+fn source_type_shard_unlock(shard int) {
+	C.atomic_store_u32(&g_source_type_shards[shard].lock, 0)
 }
 
 @[inline]
@@ -460,23 +501,37 @@ fn source_type_entry(table &SourceTypeTable, id u32) &SourceTypeEntry {
 	return unsafe { &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1)) }
 }
 
-fn (mut table SourceTypeTable) grow() {
-	previous := source_type_index_load()
-	capacity := if isnil(previous) { u32(2048) } else { previous.capacity * 2 }
+// A compiler build interns about a hundred thousand spellings, spread over the
+// shards. Starting each shard's index at its share keeps rehashing, which runs
+// under the shard's lock, out of a build; untouched slots cost no physical memory.
+const source_type_initial_index_capacity = u32(1) << 12
+
+// source_type_grow_index doubles the index of a shard; its caller holds the
+// shard's lock. The slots of the previous index are rehashed, which visits only
+// that shard's IDs.
+fn source_type_grow_index(table &SourceTypeTable, shard int) &SourceTypeIndex {
+	previous := source_type_index_load(shard)
+	capacity := if isnil(previous) { source_type_initial_index_capacity } else { previous.capacity * 2 }
 	// The hash index holds integers only; its storage belongs to the process,
 	// independently of the calling worker's disposable allocation arena.
 	slots := unsafe { &u32(C.calloc(capacity, sizeof(u32))) }
 	if isnil(slots) {
 		panic('could not allocate the source type index')
 	}
-	for id in u32(1) .. table.count + 1 {
-		entry := source_type_entry(table, id)
-		mut slot := entry.hash & (capacity - 1)
-		unsafe {
-			for slots[slot] != 0 {
-				slot = (slot + 1) & (capacity - 1)
+	if !isnil(previous) {
+		for old_slot in u32(0) .. previous.capacity {
+			id := unsafe { previous.slots[old_slot] }
+			if id == 0 {
+				continue
 			}
-			slots[slot] = id
+			entry := source_type_entry(table, id)
+			mut slot := entry.hash & (capacity - 1)
+			unsafe {
+				for slots[slot] != 0 {
+					slot = (slot + 1) & (capacity - 1)
+				}
+				slots[slot] = id
+			}
 		}
 	}
 	// A reader can still be probing any previous index. Keep old generations for
@@ -488,7 +543,8 @@ fn (mut table SourceTypeTable) grow() {
 		panic('could not allocate the source type index')
 	}
 	unsafe { *index = SourceTypeIndex{ slots: slots, capacity: capacity, previous: previous } }
-	source_type_index_publish(index)
+	source_type_index_publish(shard, index)
+	return index
 }
 
 fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string, hashed u32) u32 {
@@ -526,8 +582,9 @@ pub fn source_type_existing_id(text string) ?u32 {
 	if isnil(table) {
 		return none
 	}
-	id := source_type_find(table, source_type_index_load(), text, u32(hash.sum64_string(text,
-		0)))
+	hashed := u32(hash.sum64_string(text, 0))
+	id := source_type_find(table, source_type_index_load(source_type_shard_of(hashed)), text,
+		hashed)
 	if id == 0 {
 		return none
 	}
@@ -602,33 +659,30 @@ fn source_type_id_uncached(text string) u32 {
 	}
 	// The fingerprint filters candidates; complete spelling equality resolves collisions.
 	hashed := u32(hash.sum64_string(text, 0))
+	shard := source_type_shard_of(hashed)
 	mut table := source_type_table_load()
 	if !isnil(table) {
-		id := source_type_find(table, source_type_index_load(), text, hashed)
+		id := source_type_find(table, source_type_index_load(shard), text, hashed)
 		if id != 0 {
 			return id
 		}
+	} else {
+		table = source_type_table_create()
 	}
-	// Spelling classification is independent of the shared table. Keep it out
-	// of the insertion critical section so other writers can publish meanwhile.
+	// Classifying the spelling and copying its bytes need no lock, so the
+	// shard's lock guards only the probe and the publication. A writer that
+	// loses a race for the same spelling leaves its copy unused.
 	shape, query := source_type_spelling_flags(text)
-	source_type_lock()
-	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
-	table = source_type_table_load()
-	if isnil(table) {
-		// Scanned, uncollectable storage keeps strings reachable with GC, and
-		// raw storage in prealloc builds survives all disposable worker arenas.
-		table = unsafe { &SourceTypeTable(node_payload_alloc_zeroed(sizeof(SourceTypeTable))) }
-		if isnil(table) {
-			panic('could not allocate the source type table')
-		}
-		source_type_flags_table_create()
-		source_type_table_publish(table)
+	bytes := node_payload_alloc_zeroed(uint(text.len) + 1)
+	if isnil(bytes) {
+		panic('could not allocate a source type spelling')
 	}
-	mut index := source_type_index_load()
-	if isnil(index) || (table.count + 1) * 4 >= index.capacity * 3 {
-		table.grow()
-		index = source_type_index_load()
+	unsafe { vmemcpy(bytes, text.str, text.len) }
+	source_type_shard_lock(shard)
+	defer { source_type_shard_unlock(shard) }
+	mut index := source_type_index_load(shard)
+	if isnil(index) || (g_source_type_shards[shard].count + 1) * 4 >= index.capacity * 3 {
+		index = source_type_grow_index(table, shard)
 	}
 	// Another writer may have inserted the spelling, or grown the index, while
 	// this caller waited for the lock. Probe the current generation again.
@@ -644,27 +698,13 @@ fn source_type_id_uncached(text string) u32 {
 		}
 		slot = (slot + 1) & (index.capacity - 1)
 	}
-	idx := table.count
-	chunk_idx := idx >> source_type_chunk_bits
-	if chunk_idx >= source_type_chunk_count {
-		panic('too many source type spellings')
-	}
-	mut chunk := payload_ptr_get(voidptr(table), uint(chunk_idx))
-	if isnil(chunk) {
-		chunk = node_payload_alloc_zeroed(source_type_chunk_size * sizeof(SourceTypeEntry))
-		if isnil(chunk) {
-			panic('could not allocate a source type chunk')
-		}
-		payload_ptr_set(voidptr(table), uint(chunk_idx), chunk)
-	}
-	bytes := node_payload_alloc_zeroed(uint(text.len) + 1)
-	if isnil(bytes) {
-		panic('could not allocate a source type spelling')
-	}
-	id := idx + 1
+	// The table's count is the number of reserved IDs; every published ID is
+	// below it. Writers of other shards reserve theirs concurrently.
+	id := C.atomic_fetch_add_u32(&table.count, 1) + 1
+	idx := id - 1
+	chunk := source_type_chunk_for(table, idx >> source_type_chunk_bits)
 	// The reserved entry is private until the release store publishes its ID.
 	unsafe {
-		vmemcpy(bytes, text.str, text.len)
 		entry := &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1))
 		*entry = SourceTypeEntry{
 			bytes: &u8(bytes)
@@ -674,14 +714,71 @@ fn source_type_id_uncached(text string) u32 {
 			id:    id
 			query: query
 		}
-		// The flags word is complete before the release stores publish the ID.
+		// The flags word is complete before the release store publishes the ID.
 		if !isnil(g_source_type_flags) && id <= source_type_flags_capacity() {
 			g_source_type_flags[id] = source_type_flags_word(shape, query)
 		}
 	}
-	C.atomic_store_u32(&table.count, id)
+	g_source_type_shards[shard].count++
 	unsafe { C.atomic_store_u32(&index.slots[slot], id) }
 	return id
+}
+
+// source_type_table_create publishes the table of spellings once; the global
+// writer lock orders the first writers.
+fn source_type_table_create() &SourceTypeTable {
+	source_type_lock()
+	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
+	mut table := source_type_table_load()
+	if isnil(table) {
+		// Scanned, uncollectable storage keeps strings reachable with GC, and
+		// raw storage in prealloc builds survives all disposable worker arenas.
+		table = unsafe { &SourceTypeTable(node_payload_alloc_zeroed(sizeof(SourceTypeTable))) }
+		if isnil(table) {
+			panic('could not allocate the source type table')
+		}
+		source_type_flags_table_create()
+		source_type_table_publish(table)
+	}
+	return table
+}
+
+// source_type_chunk_for returns the entry chunk of a reserved index, adding
+// it when the index is the first of its chunk to be reserved. Writers of
+// different shards can race for a new chunk; the first published one wins.
+fn source_type_chunk_for(table &SourceTypeTable, chunk_idx u32) voidptr {
+	if chunk_idx >= source_type_chunk_count {
+		panic('too many source type spellings')
+	}
+	slot := unsafe { &voidptr(&table.chunks[chunk_idx]) }
+	$if x32 {
+		existing := voidptr(C.atomic_load_u32(voidptr(slot)))
+		if !isnil(existing) {
+			return existing
+		}
+	} $else {
+		existing := voidptr(C.atomic_load_u64(voidptr(slot)))
+		if !isnil(existing) {
+			return existing
+		}
+	}
+	chunk := node_payload_alloc_zeroed(source_type_chunk_size * sizeof(SourceTypeEntry))
+	if isnil(chunk) {
+		panic('could not allocate a source type chunk')
+	}
+	$if x32 {
+		mut expected := u32(0)
+		if C.atomic_compare_exchange_strong_u32(voidptr(slot), &expected, u32(chunk)) {
+			return chunk
+		}
+		return voidptr(expected)
+	} $else {
+		mut expected := u64(0)
+		if C.atomic_compare_exchange_strong_u64(voidptr(slot), &expected, u64(chunk)) {
+			return chunk
+		}
+		return voidptr(expected)
+	}
 }
 
 // source_type_read_entry caches immutable process-owned entries by their published ID.
@@ -800,3 +897,4 @@ fn source_type_flags_miss(id u32) u64 {
 	entry := source_type_read_entry(id)
 	return source_type_flags_word(entry.shape, entry.query)
 }
+

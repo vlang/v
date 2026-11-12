@@ -171,7 +171,7 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	}
 	text := helper.promote_scoped_result_text('main.resolved'.clone())
 	assert !transform_scope_owns(scope, text.str)
-	helper.tc.fork_overlay.resolved_call_names[10] = text
+	helper.tc.fork_overlay.resolved_calls[10] = flat.source_type_id(text)
 	helper.generic_call_spec_cache[12] = GenericCallSpec{
 		decl_key: 'main.generic'.clone()
 		args:     flat.TypeTextList.from_names(['[]int'.clone()])
@@ -186,7 +186,7 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	assert master.used_fns_log == ['main.generated']
 	assert master.sum_eq_types['main.Sum'].file == 'main.v'
 	assert master.sum_eq_types['main.Node'].struct_name_text() == 'main.Node'
-	assert tc.sparse_resolved_call_names[10] == 'main.resolved'
+	assert flat.source_type_name(tc.sparse_resolved_calls[10]) == 'main.resolved'
 	assert master.generic_call_spec_cache[12].decl_key == 'main.generic'
 	assert master.generic_call_spec_cache[12].args_text() == ['[]int']
 }

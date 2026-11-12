@@ -95,7 +95,7 @@ fn test_expected_scalar_expressions_preserve_fallback_and_unrelated_known_type()
 	negative := expected_scalar_node(mut a, .prefix, .minus, [paren])
 	mut tc := types.TypeChecker.new(&a)
 	int_type := types.Type(types.int_)
-	tc.cur_scope.insert('value', int_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', int_type)
 	for id in [left, right, value, sum, paren, negative] {
 		tc.register_synth_type(id, int_type)
 	}
@@ -153,7 +153,7 @@ fn test_expected_scalar_call_keeps_declared_pointer_return_and_mut_parameter_rea
 	assert expected_scalar_output(mut g, call, int_type, int_type, true) == '*read_pointer()'
 	g.cur_param_types['value'] = types.new_type_reference(pointer_type)
 	g.cur_mut_params['value'] = true
-	g.cur_mut_param_owners['value'] = tc.cur_scope.insert_with_owner('value', pointer_type)
+	g.cur_mut_param_owners['value'] = tc.cur_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', pointer_type)
 	assert expected_scalar_output(mut g, param, int_type, int_type, true) == '*value'
 }
 

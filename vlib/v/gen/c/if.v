@@ -210,7 +210,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			payload := g.sum_pointer_payload_expr(variant_type, '${var_name}.${field_name}')
 			g.writeln('${variant_ct} ${tmp} = ${payload};')
 			g.writeln('${variant_ct} ${var_name} = ${tmp};')
-			g.tc.cur_scope.insert(expr_node.value, variant_type)
+			g.tc.cur_scope.insert_id(expr_node.name_id(), expr_node.value, variant_type)
 		}
 	}
 }
@@ -274,7 +274,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			g.push_scope()
 			g.indent++
 			g.writeln('${c_val_type} ${var_name} = *(${c_val_type}*)${tmp};')
-			g.tc.cur_scope.insert(lhs.value, base_type.value_type)
+			g.tc.cur_scope.insert_id(lhs.name_id(), lhs.value, base_type.value_type)
 		} else {
 			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
 			val_ct, val_type := g.optional_value_info(rhs_type, opt_ct)
@@ -363,13 +363,13 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
 				g.writeln('${c_elem} ${lhs_name}${dims};')
 				g.writeln('memmove(${lhs_name}, ${tmp}.value.arg${i}, sizeof(${lhs_name}));')
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, field_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, field_type)
 				g.track_local_pointer_storage_decl(lhs, owner, field_type, '')
 				continue
 			}
 			field_ct := g.value_c_type(field_type)
 			g.writeln('${field_ct} ${lhs_name} = ${tmp}.value.arg${i};')
-			owner := g.tc.cur_scope.insert_with_owner(lhs.value, field_type)
+			owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, field_type)
 			g.track_local_pointer_storage_decl(lhs, owner, field_type, field_ct)
 		}
 		return
@@ -386,12 +386,12 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 		c_elem, dims := g.fixed_array_decl_parts(fixed)
 		g.writeln('${c_elem} ${lhs_name}${dims};')
 		g.writeln('memmove(${lhs_name}, ${tmp}.value, sizeof(${lhs_name}));')
-		owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
+		owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, val_type)
 		g.track_local_pointer_storage_decl(lhs, owner, val_type, '')
 		return
 	}
 	g.writeln('${val_ct} ${lhs_name} = ${tmp}.value;')
-	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
+	owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, val_type)
 	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
 }
 
@@ -735,12 +735,12 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	if node.typ != 0 {
 		typ := g.parse_node_type(&node)
 		if !decl_annotation_is_unusable(typ, node.typ) {
-			g.tc.cur_scope.insert(lhs.value, typ)
+			g.tc.cur_scope.insert_id(lhs.name_id(), lhs.value, typ)
 			return
 		}
 	}
 	rhs_id := g.a.child(&node, 1)
-	g.tc.cur_scope.insert(lhs.value, g.tc.resolve_type(rhs_id))
+	g.tc.cur_scope.insert_id(lhs.name_id(), lhs.value, g.tc.resolve_type(rhs_id))
 }
 
 // if_expr_block_tail_type supports if expr block tail type handling for FlatGen.

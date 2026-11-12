@@ -62,7 +62,7 @@ fn test_promoted_method_result_is_resolved_before_body_checking() {
 		'b': 'GenericApp'
 		'c': 'DirectApp'
 	} {
-		tc.cur_scope.insert(name, *tc.parse_type(flat.source_type_id(typ)))
+		tc.cur_scope.insert_id(flat.source_type_id(name), name, *tc.parse_type(flat.source_type_id(typ)))
 	}
 	mut fields := 0
 	for idx, node in a.nodes {

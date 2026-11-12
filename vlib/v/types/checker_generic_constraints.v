@@ -986,7 +986,7 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		// The names an array method gives its argument stand for its elements
 		// again here: a method of the same kind inside gave them others.
 		for name in item.dsl_names {
-			tc.cur_scope.insert(name, item.dsl_elem)
+			tc.cur_scope.insert_id(flat.source_type_id(name), name, item.dsl_elem)
 		}
 		// The names that the arguments of an array method called here get, and
 		// the types of the parameters of the lambdas among the arguments.
@@ -1020,7 +1020,7 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 				for i in 0 .. node.children_count {
 					param := tc.a.child_node(node, i)
 					if param.kind == .param && param.value.len > 0 {
-						tc.cur_scope.insert(param.value, tc.constraint_walk_named_type(param.typ))
+						tc.cur_scope.insert_id(param.name_id(), param.value, tc.constraint_walk_named_type(param.typ))
 					}
 				}
 			}
@@ -1859,7 +1859,7 @@ fn (mut tc TypeChecker) bind_constraint_walk_local(id flat.NodeId, typ Type) {
 	}
 	local := tc.a.node(id)
 	if local.kind == .ident && local.value.len > 0 && local.value != '_' {
-		tc.cur_scope.insert(local.value, typ)
+		tc.cur_scope.insert_id(local.name_id(), local.value, typ)
 	}
 }
 
@@ -2001,7 +2001,7 @@ fn (tc &TypeChecker) comptime_tested_params(cond string, fn_node flat.Node, name
 		if !in_walk {
 			continue
 		}
-		typ := tc.cur_scope.lookup(name) or { continue }
+		typ := tc.cur_scope.lookup_id(flat.source_type_id(name)) or { continue }
 		if typ is Unknown {
 			if typ.placeholder == 0 {
 				continue

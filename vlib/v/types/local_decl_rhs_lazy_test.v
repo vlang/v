@@ -35,7 +35,7 @@ fn test_local_decl_rhs_lazy_index_keeps_range_and_lookup_semantics() {
 	fn_id := lazy_rhs_node(mut a, .fn_decl, [first, second, closure, use])
 	for range_mode in [false, true] {
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.fn_context.node_id = int(fn_id)
 		if range_mode {
 			tc.check_range_lo = 0

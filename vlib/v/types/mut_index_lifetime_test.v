@@ -23,7 +23,7 @@ fn test_mutable_index_resolves_after_binding_unwrap() {
 		mut tc := TypeChecker.new(&a)
 		tc.cur_scope = new_scope(tc.file_scope)
 		raw := Type(Pointer{ base_type: new_type_reference(case.base) })
-		owner := tc.cur_scope.insert_with_owner('value', raw)
+		owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', raw)
 		tc.fn_context.node_id = int(value)
 		tc.fn_context.mut_param_base_types['value'] = case.base
 		tc.fn_context.mut_param_owners['value'] = owner

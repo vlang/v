@@ -116,7 +116,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
 	'_pthread_mutex_trylock', '_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self',
 	'_pthread_create', '_pthread_join', '_pthread_detach', '_pthread_attr_init', '_pthread_attr_setstacksize',
-	'_pthread_attr_destroy', '_pthread_key_create', '_pthread_key_delete', '_pthread_getspecific',
+	'_pthread_attr_destroy', '_pthread_attr_set_qos_class_np', '_pthread_key_create', '_pthread_key_delete', '_pthread_getspecific',
 	'_pthread_setspecific', '_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared',
 	'_pthread_rwlockattr_destroy', '_pthread_rwlock_init', '_pthread_rwlock_rdlock',
 	'_pthread_rwlock_wrlock', '_pthread_rwlock_tryrdlock',
@@ -1252,6 +1252,11 @@ fn (mut l Linker) write_text_with_relocations() {
 					exit(1)
 				}
 				rel := i64(sym_addr) - i64(pc)
+				if rel < -(i64(1) << 27) || rel >= (i64(1) << 27) {
+					// Larger programs never reach here: the driver links them externally.
+					eprintln('LINKER: `${sym_name}` is out of `bl` range')
+					exit(1)
+				}
 				imm26 := (rel >> 2) & 0x3FFFFFF
 				instr := read_u32_le(text, r.addr)
 				new_instr := (instr & 0xFC000000) | u32(imm26)

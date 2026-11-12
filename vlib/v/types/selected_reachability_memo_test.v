@@ -175,15 +175,15 @@ fn test_selected_reachability_resolve_epochs_follow_scope_and_binding_changes() 
 	id := a.add_val(.ident, 'value')
 	mut tc := TypeChecker.new(&a)
 	tc.push_scope()
-	tc.cur_scope.insert('value', builtin_int_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', builtin_int_type)
 	tc.arm_body_resolve_memo(int(id), int(id))
 	assert tc.resolve_type(id) == builtin_int_type
-	tc.cur_scope.insert('value', builtin_string_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', builtin_string_type)
 	tc.selected_file_resolve_context_changed()
 	assert tc.resolve_type(id) == builtin_string_type
 	tc.push_scope()
 	tc.selected_file_resolve_context_changed()
-	tc.cur_scope.insert('value', builtin_bool_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', builtin_bool_type)
 	tc.selected_file_resolve_context_changed()
 	assert tc.resolve_type(id) == builtin_bool_type
 	tc.pop_scope()
@@ -196,13 +196,13 @@ fn test_selected_reachability_resolve_epoch_wrap_drops_old_types_and_calls() {
 	id := a.add_val(.ident, 'value')
 	mut tc := TypeChecker.new(&a)
 	tc.push_scope()
-	tc.cur_scope.insert('value', builtin_int_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', builtin_int_type)
 	tc.arm_body_resolve_memo(int(id), int(id))
 	assert tc.resolve_type(id) == builtin_int_type
 	memo := tc.body_resolve_memo
 	tc.body_resolve_memo.call_generations[0] = memo.call_generation
 	old_call_generation := memo.call_generation
-	tc.cur_scope.insert('value', builtin_string_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', builtin_string_type)
 	for _ in 0 .. 255 { tc.selected_file_resolve_context_changed() }
 	assert memo.type_generation == 1
 	assert memo.filled[0] == 0

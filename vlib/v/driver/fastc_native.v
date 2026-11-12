@@ -617,7 +617,7 @@ $if !skip_fastc ? {
 		path := os.join_path(dir, 'consumer_v2_' + v3_fastc_hash_pieces(head, u64(1469598103934665603)).hex() + '.c')
 		// The directives key is a function of the consumer text, which its path names.
 		// It is kept beside the text, so a reused head is neither joined nor scanned.
-		// Rename the file when v3_fastc_preprocessor_lines changes.
+		// Rename the file when c_preprocessor_lines changes.
 		directives_path := path + '.directives-v1'
 		mut directives_key := ''
 		if os.is_file(path) {
@@ -630,7 +630,7 @@ $if !skip_fastc ? {
 				os.write_file(staged, text)!
 				publish_native_c_object(staged, path)!
 			}
-			directives_key = c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(text).bytes()).hex()
+			directives_key = c_hash_bytes(u64(1469598103934665603), c_preprocessor_lines(text).bytes()).hex()
 			staged_key := directives_path + '.tmp.' + tempname.unique_token()
 			os.write_file(staged_key, directives_key) or {}
 			os.mv(staged_key, directives_path) or { os.rm(staged_key) or {} }
@@ -640,6 +640,7 @@ $if !skip_fastc ? {
 		// Declarations cannot change which headers the C compiler opens. Reuse the
 		// compiler's previous answer for the same directives, compiler and flags while
 		// every listed header keeps its content.
+		mut stats := CObjectCacheStats{}
 		manifest := c_object_manifest_path(dir, os.join_path(dir, 'consumer_directives_' + directives_key + '.c'), '/usr/bin/clang', args, target, mut validation.stats)
 		canonical_path := os.real_path(path)
 		if cached := v3_fastc_read_program_dependencies(manifest) {
@@ -649,7 +650,7 @@ $if !skip_fastc ? {
 				return dependencies
 			}
 		}
-		dependencies := v3_tcc_dylib_program_dependencies('/usr/bin/clang', args, path, '-std=gnu11')!
+		dependencies := v3_tcc_dylib_program_dependencies('/usr/bin/clang', args, path, '-std=gnu11', dir, mut stats)!
 		// The TinyCC framework include directory contains symlinks to SDK Headers.
 		// Canonical manifest paths retain their owning .framework for link selection.
 		canonical := dependencies.map(os.real_path(it))
@@ -715,39 +716,6 @@ $if !skip_fastc ? {
 			signatures << entry[signature_tab + 1..]
 		}
 		return V3FastcNativeManifest{ dependencies: dependencies, signatures: signatures, reported: reported }
-	}
-
-	// v3_fastc_preprocessor_lines keeps the lines of generated C that can change what
-	// the preprocessor opens: directives (also after a comment, or spelled `%:`), comment
-	// delimiters, and continued lines. The other lines are ordinary declarations.
-	fn v3_fastc_preprocessor_lines(text string) string {
-		mut out := strings.new_builder(text.len / 8)
-		mut start := 0
-		mut continued := false
-		for start < text.len {
-			mut end := start
-			mut keep := continued
-			for end < text.len && text[end] != `\n` {
-				c := text[end]
-				if c == `#` || (c == `%` && end + 1 < text.len && text[end + 1] == `:`)
-					|| (c == `/` && end + 1 < text.len && text[end + 1] == `*`)
-					|| (c == `*` && end + 1 < text.len && text[end + 1] == `/`) {
-					keep = true
-				}
-				end++
-			}
-			mut last := end - 1
-			if last >= start && text[last] == `\r` {
-				last--
-			}
-			continued = last >= start && text[last] == `\\`
-			if keep || continued {
-				out.write_string(text[start..end])
-				out.write_u8(`\n`)
-			}
-			start = end + 1
-		}
-		return out.str()
 	}
 
 	fn v3_fastc_native_program_pieces(generation &fastc.GenerationResult, bridge &V3FastcNativeBridge) []string {

@@ -2326,7 +2326,7 @@ fn (g &FlatGen) test_user_main_fn_value_c_name(id flat.NodeId, node flat.Node) ?
 	if g.test_files.len == 0 || node.kind != .ident || node.value != 'main' {
 		return none
 	}
-	looked_up := g.tc.cur_scope.lookup(node.value) or { cgen_void_type }
+	looked_up := g.tc.cur_scope.lookup_id(node.name_id()) or { cgen_void_type }
 	if looked_up !is types.Void {
 		return none
 	}
@@ -2531,7 +2531,7 @@ fn (g &FlatGen) selector_base_is_value(name string) bool {
 		return false
 	}
 	if g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
-		if typ := g.tc.cur_scope.lookup(name) {
+		if typ := g.tc.cur_scope.lookup_id(flat.source_type_id(name)) {
 			if typ !is types.Void {
 				return true
 			}
@@ -4029,7 +4029,7 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 	if int(arg_id) >= 0 {
 		arg_node := g.a.nodes[int(arg_id)]
 		if arg_node.kind == .ident {
-			looked_up := g.tc.cur_scope.lookup(arg_node.value) or { cgen_void_type }
+			looked_up := g.tc.cur_scope.lookup_id(arg_node.name_id()) or { cgen_void_type }
 			if looked_up is types.Void {
 				call_name := g.call_key(arg_id, arg_node.value)
 				fn_key := if call_name in g.tc.fn_ret_types {
@@ -4234,7 +4234,7 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 	}
 	mut is_ptr := false
 	if base.kind == .ident {
-		if typ := g.tc.cur_scope.lookup(base.value) {
+		if typ := g.tc.cur_scope.lookup_id(base.name_id()) {
 			is_ptr = typ is types.Pointer
 		}
 	} else if base.kind == .selector {
@@ -4626,7 +4626,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	mut arg_expr := 'NULL'
 	if fn_node.kind == .ident {
 		call_key := g.call_key(call_id, fn_node.value)
-		looked_up := g.tc.cur_scope.lookup(fn_node.value) or { cgen_void_type }
+		looked_up := g.tc.cur_scope.lookup_id(fn_node.name_id()) or { cgen_void_type }
 		if fn_type := fn_type_from(looked_up) {
 			if fn_type.params.len == int(call_node.children_count) - 1 {
 				mut packed_args := []SpawnPackedArg{}
@@ -5809,7 +5809,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				g.cur_param_type_values << parameter
 				g.cur_param_types[p.value] = parameter
 				g.cur_param_name_bits |= current_param_name_bit(p.value)
-				owner := g.tc.cur_scope.insert_with_owner(p.value, param_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(p.name_id(), p.value, param_type)
 				if indirect_value_parameter(param_type) {
 					g.declare_local_implicit_deref(owner, true)
 				}
@@ -6995,7 +6995,7 @@ fn (mut g FlatGen) gen_function_defer_prelude() {
 		g.write('${ct} ${g.local_decl_cname(name)} = ')
 		g.gen_default_value_for_type(typ)
 		g.writeln(';')
-		g.tc.cur_scope.insert(name, typ)
+		g.tc.cur_scope.insert_id(flat.source_type_id(name), name, typ)
 	}
 }
 
@@ -7371,7 +7371,7 @@ fn (g &FlatGen) ident_names_local(name string) bool {
 	if g.current_param_type(name) != none {
 		return true
 	}
-	if owner := g.tc.cur_scope.lookup_owner(name) {
+	if owner := g.tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) {
 		return !owner.belongs_to_scope(g.tc.file_scope)
 	}
 	return false
@@ -8796,7 +8796,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					inner := g.a.child_node(base, 0)
 					base_is_declared_value := g.tc.selector_value_type(base) != none
 					inner_is_local := if inner.kind == .ident {
-						(g.tc.cur_scope.lookup(inner.value) or { cgen_void_type }) !is types.Void
+						(g.tc.cur_scope.lookup_id(inner.name_id()) or { cgen_void_type }) !is types.Void
 					} else {
 						false
 					}
@@ -9190,7 +9190,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						return
 					}
 					call_key := g.call_key(id, fn_ident.value)
-					looked_up := g.tc.cur_scope.lookup(fn_ident.value) or {
+					looked_up := g.tc.cur_scope.lookup_id(fn_ident.name_id()) or {
 						cgen_void_type
 					}
 					if !is_local_fn_value && fn_type_from(g.global_type_for_ident(fn_ident.value) or {
@@ -10152,7 +10152,7 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 				return typ
 			}
 		}
-		if typ := g.tc.cur_scope.lookup(base.value) {
+		if typ := g.tc.cur_scope.lookup_id(base.name_id()) {
 			return typ
 		}
 		if typ := g.global_type_for_ident(base.value) {
@@ -10555,7 +10555,7 @@ fn (g &FlatGen) receiver_ident_storage_is_pointer(base_id flat.NodeId) bool {
 	if g.local_storage_is_pointer(node.value) {
 		return true
 	}
-	if typ := g.tc.cur_scope.lookup(node.value) {
+	if typ := g.tc.cur_scope.lookup_id(node.name_id()) {
 		return typ is types.Pointer
 	}
 	return false
@@ -10580,7 +10580,7 @@ fn (g &FlatGen) interface_receiver_needs_address(base_id flat.NodeId, base_type 
 	if int(base_id) >= 0 && int(base_id) < g.a.nodes.len {
 		node := g.a.nodes[int(base_id)]
 		if node.kind == .ident {
-			if typ := g.tc.cur_scope.lookup(node.value) {
+			if typ := g.tc.cur_scope.lookup_id(node.name_id()) {
 				if typ is types.Pointer {
 					clean := types.unwrap_pointer(typ)
 					if clean is types.Interface {
@@ -12136,7 +12136,7 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 	if owner.belongs_to_scope(g.tc.cur_scope) {
 		return true
 	}
-	return g.tc.cur_scope.nearest_binding_owned_by(name, owner)
+	return g.tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner)
 }
 
 fn (g &FlatGen) current_param_is_mut_pointer(name string) bool {
@@ -12157,7 +12157,7 @@ fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
 	if owner.belongs_to_scope(g.tc.cur_scope) {
 		return false
 	}
-	return !g.tc.cur_scope.nearest_binding_owned_by(name, owner)
+	return !g.tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner)
 }
 
 // gen_enum_str_call emits an explicit `enum_val.str()` (with no user-defined `str`)
@@ -13299,7 +13299,7 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 		}
 		base := g.a.child_node(&node, 0)
 		if base.kind == .ident {
-			looked_up := g.tc.cur_scope.lookup(base.value) or { cgen_void_type }
+			looked_up := g.tc.cur_scope.lookup_id(base.name_id()) or { cgen_void_type }
 			if looked_up !is types.Void {
 				return none
 			}
@@ -13316,7 +13316,7 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
-	looked_up := g.tc.cur_scope.lookup(node.value) or { cgen_void_type }
+	looked_up := g.tc.cur_scope.lookup_id(node.name_id()) or { cgen_void_type }
 	if looked_up !is types.Void {
 		return none
 	}
@@ -13343,7 +13343,7 @@ fn (mut g FlatGen) ident_fn_value_c_name(id flat.NodeId, node flat.Node, owner t
 	looked_up := if typ := owner.bound_type() {
 		typ
 	} else {
-		g.tc.cur_scope.lookup(node.value) or { cgen_void_type }
+		g.tc.cur_scope.lookup_id(node.name_id()) or { cgen_void_type }
 	}
 	if looked_up !is types.Void {
 		return none
@@ -14968,7 +14968,7 @@ fn (g &FlatGen) local_fn_value_callee(callee_id flat.NodeId) bool {
 		}
 		return false
 	}
-	if local := g.tc.cur_scope.lookup_before(node.value, g.tc.file_scope) {
+	if local := g.tc.cur_scope.lookup_before_id(node.name_id(), g.tc.file_scope) {
 		if _ := fn_type_from(local) {
 			return true
 		}
@@ -14993,7 +14993,7 @@ fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
 			if ft := fn_type_from(typ) {
 				return fn_type_effective_params(ft)
 			}
-		} else if local := g.tc.cur_scope.lookup_before(node.value, g.tc.file_scope) {
+		} else if local := g.tc.cur_scope.lookup_before_id(node.name_id(), g.tc.file_scope) {
 			if local !is types.Void {
 				if ft := fn_type_from(local) {
 					return fn_type_effective_params(ft)
@@ -15294,7 +15294,7 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 	// first argument. That syntactic marker remains authoritative when a global
 	// constant happens to share the module alias; the argument is discarded below.
 	if arg_start != 2 {
-		if typ := g.tc.cur_scope.lookup(base) {
+		if typ := g.tc.cur_scope.lookup_id(flat.source_type_id(base)) {
 			if typ !is types.Void {
 				return none
 			}
@@ -17220,7 +17220,7 @@ fn (g &FlatGen) arg_is_const_ident(arg_node flat.Node) bool {
 		return false
 	}
 	const_name := g.const_ref_name(arg_node.value)
-	if owner := g.tc.cur_scope.lookup_owner(arg_node.value) {
+	if owner := g.tc.cur_scope.lookup_owner_id(arg_node.name_id()) {
 		key := owner.storage_key()
 		if !owner.belongs_to_scope(g.tc.file_scope) && key.len > 0
 			&& (g.local_c_type_by_owner.contains(key) || g.local_raw_type_by_owner.contains(key)
@@ -19391,7 +19391,7 @@ fn (mut g FlatGen) insert_cur_implicit_veb_ctx_param(node flat.Node) {
 	g.cur_param_type_values = type_values
 	g.cur_param_types['ctx'] = ctx_type
 	g.cur_param_name_bits |= current_param_name_bit('ctx')
-	g.tc.cur_scope.insert('ctx', ctx_type)
+	g.tc.cur_scope.insert_id(flat.source_type_id('ctx'), 'ctx', ctx_type)
 }
 
 fn (mut g FlatGen) fn_param_types_with_implicit_veb_ctx(node flat.Node, params []types.Type) []types.Type {

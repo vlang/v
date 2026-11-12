@@ -28,7 +28,7 @@ fn test_mut_param_expr_base_empty_populated_and_cleared() {
 	raw := Type(Pointer{ base_type: base })
 	mut tc := TypeChecker.new(&a)
 	tc.cur_scope = new_scope(tc.file_scope)
-	owner := tc.cur_scope.insert_with_owner('receiver', raw)
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('receiver'), 'receiver', raw)
 	tc.fn_context.node_id = int(receiver)
 	for id in [receiver, address, wrapped, other, flat.empty_node, flat.NodeId(a.nodes.len)] {
 		assert tc.mut_param_expr_base(id, raw) == none
@@ -41,7 +41,7 @@ fn test_mut_param_expr_base_empty_populated_and_cleared() {
 	assert address_base == raw
 	assert tc.mut_param_expr_base(other, raw) == none
 	tc.cur_scope = new_scope(tc.cur_scope)
-	tc.cur_scope.insert('receiver', raw)
+	tc.cur_scope.insert_id(flat.source_type_id('receiver'), 'receiver', raw)
 	assert tc.mut_param_expr_base(receiver, raw) == none
 	assert tc.mut_param_expr_base(address, raw) == none
 	tc.fn_context.mut_param_base_types.clear()

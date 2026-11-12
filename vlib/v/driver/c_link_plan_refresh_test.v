@@ -21,7 +21,7 @@ fn test_valid_c_link_plan_refreshes_stale_dependency_metadata() {
 	mut signatures := CObjectCacheStats{}
 	signature := c_object_file_signature(dependency, false, mut signatures)
 	plan_path := os.join_path(root, 'link.manifest')
-	os.write_file(plan_path, 'format=v3-c-link-plan-v5\nrequests=1\ndirect_objects=0\ndependency_files=1\nflag=${object}\nobject=${object}\ndependency=${dependency}\tstale:metadata\t${signature}\ncomplete=1\n')!
+	os.write_file(plan_path, 'format=v3-c-link-plan-v6\nrequests=1\ndirect_objects=0\ndependency_files=1\nflag=${object}\nobject=${object}\ndependency=${dependency}\tstale:metadata\t${signature}\ncomplete=1\n')!
 	mut first := CObjectCacheStats{}
 	plan := valid_c_link_plan(plan_path, mut first) or { panic('the stale plan does not validate') }
 	assert plan.requests == 1

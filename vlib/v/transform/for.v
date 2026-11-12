@@ -222,7 +222,7 @@ fn (mut t Transformer) unsigned_inclusive_for_post_body(cond_id flat.NodeId, pos
 fn (t &Transformer) for_loop_var_unsigned_type(name string) u32 {
 	mut typ := t.var_type(name)
 	if typ == 0 && !isnil(t.tc) {
-		if current := t.tc.cur_scope.lookup(name) {
+		if current := t.tc.cur_scope.lookup_id(flat.source_type_id(name)) {
 			typ = current.source_type_id()
 		}
 	}

@@ -35,7 +35,8 @@ fn test_native_bridge_keeps_fallback_for_mixed_native_language_contexts() ! {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{})
+	mut cache_stats := CObjectCacheStats{}
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{}, '', mut cache_stats)
 	assert closure.unassignable == 'mixed Objective-C and Objective-C++ bridge contexts'
 }
 
@@ -74,7 +75,8 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 			header: true
 		}
 	}
-	closure := v3_tcc_dylib_native_closure(a, prefs, [], compiler, &native_inputs)
+	mut cache_stats := CObjectCacheStats{}
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], compiler, &native_inputs, '', mut cache_stats)
 	assert closure.unassignable == ''
 	assert 'bridge_value' in closure.functions
 	assert 'bridge_header' in closure.functions
@@ -85,7 +87,7 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 	assert os.real_path(native) in closure.inputs['__v3_c_flags__']
 	assert os.real_path(header) in closure.inputs['__v3_c_flags__']
 	os.rm(header)!
-	missing := v3_tcc_dylib_native_closure(a, prefs, [], compiler, &native_inputs)
+	missing := v3_tcc_dylib_native_closure(a, prefs, [], compiler, &native_inputs, '', mut cache_stats)
 	assert missing.unassignable != ''
 }
 
@@ -133,7 +135,8 @@ fn test_native_bridge_program_frameworks_follow_nested_compiler_dependencies() !
 	os.write_file(os.join_path(root, 'outer.h'), '#include <CoreFoundation/CoreFoundation.h>\n')!
 	source := os.join_path(root, 'main.c')
 	os.write_file(source, '#include "outer.h"\n')!
-	deps := v3_tcc_dylib_program_dependencies(cc, [], source, '-std=gnu11')!
+	mut cache_stats := CObjectCacheStats{}
+	deps := v3_tcc_dylib_program_dependencies(cc, [], source, '-std=gnu11', '', mut cache_stats)!
 	cf := deps.filter(it.contains('/CoreFoundation.framework/'))
 	assert cf.len > 0
 	sdk := cf[0].all_before('/System/Library/Frameworks/')
@@ -165,8 +168,40 @@ fn test_native_bridge_keeps_symlinked_vlib_bindings_in_the_consumer() ! {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_files([standard, external])
-	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{})
+	mut cache_stats := CObjectCacheStats{}
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{}, '', mut cache_stats)
 	assert closure.unassignable == '', closure.unassignable
 	assert 'FD_ZERO' !in closure.functions
 	assert 'external_answer' in closure.functions
+}
+
+fn test_cached_dependency_scan_is_reused_until_a_dependency_changes() ! {
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'cached dependency scan ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	cache_dir := os.join_path(root, 'cache')
+	header := os.join_path(root, 'outer.h')
+	os.write_file(header, 'int outer;\n')!
+	text := '#include "${header}"\n'
+	// A generated source gets a new name in every build.
+	first := os.join_path(root, 'first.c')
+	os.write_file(first, text)!
+	mut stats := CObjectCacheStats{}
+	scanned := cached_c_object_dependencies(cache_dir, cc, ['-x', 'c'], first, mut stats)
+	assert !scanned.used_fallback
+	assert stats.dependency_scans == 1
+	second := os.join_path(root, 'second.c')
+	os.write_file(second, text)!
+	reused := cached_c_object_dependencies(cache_dir, cc, ['-x', 'c'], second, mut stats)
+	assert stats.dependency_scans == 1
+	assert stats.dependency_manifest_hits == 1
+	assert reused.files.len == scanned.files.len
+	assert second in reused.files
+	assert reused.files.any(os.real_path(it) == os.real_path(header))
+	// A changed header makes the next build scan again.
+	os.write_file(header, 'int outer;\nint inner;\n')!
+	mut fresh := CObjectCacheStats{}
+	cached_c_object_dependencies(cache_dir, cc, ['-x', 'c'], second, mut fresh)
+	assert fresh.dependency_scans == 1
 }

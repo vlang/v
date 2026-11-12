@@ -32,12 +32,12 @@ fn snapshot_restore_assertion(mut a flat.FlatAst, name string, pattern string) f
 fn snapshot_restore_seed(mut tc TypeChecker) string {
 	tc.cur_scope = new_scope(tc.file_scope)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
-	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
-	tc.cur_scope.insert('other', Type(SumType{ name_id: flat.source_type_id('Value') }))
-	tc.cur_scope.insert('branch_value', Type(SumType{ name_id: flat.source_type_id('Value') }))
-	tc.cur_scope.insert('kept', builtin_string_type)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert_id(flat.source_type_id('other'), 'other', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert_id(flat.source_type_id('branch_value'), 'branch_value', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert_id(flat.source_type_id('kept'), 'kept', builtin_string_type)
 	tc.smartcasts['kept'] = builtin_string_type
-	owner := tc.cur_scope.insert_with_owner('outer', builtin_int_type)
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('outer'), 'outer', builtin_int_type)
 	tc.fn_context.mut_local_owners['outer'] = owner
 	tc.fn_context.return_type = builtin_void_type
 	return owner.storage_key()
@@ -100,7 +100,7 @@ fn test_nested_if_match_and_sequence_snapshots_keep_outer_state() {
 		return_id := a.add(.return_stmt)
 		sequence := snapshot_restore_children(mut a, .block, [sequence_assert, return_id])
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		outer_key := snapshot_restore_seed(mut tc)
 		tc.valid_resolution_fast = fast
 		tc.mark_statement_context(match_id)
@@ -137,18 +137,18 @@ fn test_if_guard_snapshot_keeps_mutable_owner_identity_outside_siblings() {
 		mut_body := a.add(.block)
 		if_id := snapshot_restore_children(mut a, .if_expr, [mut_guard, mut_body, else_if])
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		outer_key := snapshot_restore_seed(mut tc)
-		tc.cur_scope.insert('optional', Type(OptionType{ base_type: builtin_int_type }))
+		tc.cur_scope.insert_id(flat.source_type_id('optional'), 'optional', Type(OptionType{ base_type: builtin_int_type }))
 		tc.valid_resolution_fast = fast
 		tc.mark_statement_context(if_id)
 		for _ in 0 .. 8 {
 			tc.check_if_expr(if_id, *a.node(if_id))
 			snapshot_restore_assert_state(&tc, outer_key)
-			assert !tc.cur_scope.contains('binding')
+			assert !tc.cur_scope.contains_id(flat.source_type_id('binding'))
 			assert 'binding' !in tc.fn_context.mut_local_owners
 			// Assigning through the restored owner table cannot affect its next snapshot.
-			tc.fn_context.mut_local_owners['temporary'] = tc.cur_scope.insert_with_owner('temporary',
+			tc.fn_context.mut_local_owners['temporary'] = tc.cur_scope.insert_with_owner_id(flat.source_type_id('temporary'), 'temporary',
 				builtin_int_type)
 			tc.fn_context.mut_local_owners.delete('temporary')
 		}
@@ -168,9 +168,9 @@ fn test_if_guard_restores_empty_reused_owner_maps() {
 		otherwise := a.add(.block)
 		if_id := snapshot_restore_children(mut a, .if_expr, [guard, body, otherwise])
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.cur_scope = new_scope(tc.file_scope)
-		owner := tc.cur_scope.insert_with_owner('optional', Type(OptionType{ base_type: builtin_int_type }))
+		owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('optional'), 'optional', Type(OptionType{ base_type: builtin_int_type }))
 		for i in 0 .. 256 {
 			tc.fn_context.mut_local_owners['previous_${i}'] = owner
 			tc.fn_context.unsafe_reference_alias_owners['previous_${i}'] = true
@@ -183,7 +183,7 @@ fn test_if_guard_restores_empty_reused_owner_maps() {
 			tc.check_if_expr(if_id, *a.node(if_id))
 			assert tc.fn_context.mut_local_owners.len == 0
 			assert tc.fn_context.unsafe_reference_alias_owners.len == 0
-			assert !tc.cur_scope.contains('binding')
+			assert !tc.cur_scope.contains_id(flat.source_type_id('binding'))
 		}
 		assert tc.errors.len == 0, tc.errors.str()
 	}
@@ -203,7 +203,7 @@ fn test_contextual_match_snapshot_survives_compatible_and_rejected_tails() {
 	match_id := snapshot_restore_children(mut a, .match_stmt, [subject, branches[0], branches[1]])
 	snapshot_restore_children(mut a, .return_stmt, [match_id])
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	outer_key := snapshot_restore_seed(mut tc)
 	for _ in 0 .. 8 {
 		assert tc.branches_compatible_with(match_id, builtin_int_type)

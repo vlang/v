@@ -20,13 +20,13 @@ fn test_aliased_local_callback_return_type_precedes_named_function() {
 	for typ in [callback, alias, Type(Pointer{ base_type: callback }),
 		Type(Pointer{ base_type: alias }),
 		Type(Alias{ name_id: flat.source_type_id('callbacks.Nested'), base_type: alias })] {
-		tc.cur_scope.insert('h', typ)
+		tc.cur_scope.insert_id(flat.source_type_id('h'), 'h', typ)
 		assert tc.resolve_type(call) == builtin_int_type
 	}
 	for typ in [builtin_int_type, Type(Pointer{ base_type: builtin_int_type }),
 		Type(OptionType{ base_type: callback }),
 		Type(Alias{ name_id: flat.source_type_id('callbacks.Number'), base_type: builtin_int_type })] {
-		tc.cur_scope.insert('h', typ)
+		tc.cur_scope.insert_id(flat.source_type_id('h'), 'h', typ)
 		assert tc.resolve_type(call) == builtin_string_type
 	}
 }
@@ -68,7 +68,7 @@ fn test_integer_widening_retries_provisional_operands() {
 	tc.register_synth_type(outer, builtin_u64_type)
 	assert tc.resolve_type(outer).name() == 'u64'
 	// Inference may supply a binding before that identifier is checked/published.
-	tc.file_scope.insert('late', builtin_u128_type)
+	tc.file_scope.insert_id(flat.source_type_id('late'), 'late', builtin_u128_type)
 	assert tc.resolve_type(outer).name() == 'u128'
 }
 

@@ -24,7 +24,7 @@ fn test_expected_actual_local_storage_overrides_checked_and_known_types() {
 	tc.cur_scope = &types.Scope{ parent: tc.file_scope }
 	int_type := types.Type(types.int_)
 	pointer := types.Type(types.Pointer{ base_type: int_type })
-	tc.cur_scope.insert('value', pointer)
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', pointer)
 	tc.register_synth_type(id, types.Type(types.string_))
 	mut g := FlatGen.new()
 	g.a = &a
@@ -97,7 +97,7 @@ fn test_expected_actual_source_mut_pointer_deref_overrides_known_types_through_w
 	g.cur_param_types['slot'] = types.new_type_reference(pointer)
 	g.cur_mut_params['slot'] = true
 	g.cur_mut_pointer_params['slot'] = true
-	g.cur_mut_param_owners['slot'] = tc.cur_scope.insert_with_owner('slot', pointer)
+	g.cur_mut_param_owners['slot'] = tc.cur_scope.insert_with_owner_id(flat.source_type_id('slot'), 'slot', pointer)
 	for id in [deref, paren, block] {
 		for known in [false, true] {
 			assert g.expected_expr_actual_type(id, a.node(id), known, types.Type(types.string_)) == int_type
