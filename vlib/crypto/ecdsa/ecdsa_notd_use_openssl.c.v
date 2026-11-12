@@ -289,6 +289,8 @@ module ecdsa
 
 #include <mbedtls/ecp.h>
 
+#include <mbedtls/pk.h>
+
 #include <mbedtls/bignum.h>
 
 #include <mbedtls/ctr_drbg.h>
@@ -436,6 +438,29 @@ fn C.mbedtls_mpi_cmp_mpi(x &C.mbedtls_mpi, y &C.mbedtls_mpi) int
 // mbedtls_ecdh_context one, since this module never needs to hold ECDH
 // state across calls the way a TLS handshake would.
 fn C.mbedtls_ecdh_compute_shared(grp &C.mbedtls_ecp_group, z &C.mbedtls_mpi, q &C.mbedtls_ecp_point, d &C.mbedtls_mpi, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
+
+// The pk module parses PEM and DER keys for util_notd_use_openssl.v's loaders
+// (pk.c, pkparse.c, pem.c are already linked above).
+@[typedef]
+struct C.mbedtls_pk_context {}
+
+fn C.mbedtls_pk_init(ctx &C.mbedtls_pk_context)
+
+fn C.mbedtls_pk_free(ctx &C.mbedtls_pk_context)
+
+fn C.mbedtls_pk_parse_key(ctx &C.mbedtls_pk_context, key &u8, keylen uint, pwd &u8, pwdlen uint, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
+
+fn C.mbedtls_pk_parse_public_key(ctx &C.mbedtls_pk_context, key &u8, keylen uint) int
+
+fn C.mbedtls_pk_get_type(ctx &C.mbedtls_pk_context) int
+
+fn C.mbedtls_pk_ec(pk C.mbedtls_pk_context) &C.mbedtls_ecdsa_context
+
+fn C.mbedtls_ecp_keypair_get_group_id(key &C.mbedtls_ecdsa_context) int
+
+fn C.mbedtls_ecp_write_key_ext(key &C.mbedtls_ecdsa_context, olen &uint, buf &u8, buflen uint) int
+
+fn C.mbedtls_ecp_write_public_key(key &C.mbedtls_ecdsa_context, format int, olen &uint, buf &u8, buflen uint) int
 
 fn C.mbedtls_ctr_drbg_init(ctx &C.mbedtls_ctr_drbg_context)
 
