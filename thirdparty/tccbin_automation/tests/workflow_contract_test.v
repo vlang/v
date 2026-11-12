@@ -68,7 +68,11 @@ fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	assert !caller.contains('  merge_group:')
 	assert !caller.contains('paths:')
 	assert !caller.contains('paths-ignore:')
-	assert caller.contains('  formatting:\n    needs: [bootstrap, windows-bootstrap-contracts]\n')
+	assert caller.contains('  formatting:\n    needs: bootstrap-linux\n')
+	for lane in ['windows_ci_gcc', 'windows_ci_msvc', 'windows_ci_tcc'] {
+		assert caller.contains('  ${lane}:\n' +
+			'    needs: [formatting, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]\n')
+	}
 	assert caller.contains(r'      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}')
 	assert caller.contains('        id: paths\n')
 	assert caller.contains('        run: python3 .github/workflows/ci_gate_paths.py master\n')
