@@ -233,6 +233,9 @@ pub fn (mut r StringReader) read(mut buf []u8) !int {
 // and is also omitted from the returned string.
 @[direct_array_access]
 pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string {
+	if config.max_len < 0 {
+		return error('io.StringReader.read_line: max_len must be zero (unlimited) or a positive number of bytes')
+	}
 	if r.end_of_stream && r.needs_fill() {
 		return io.Eof{}
 	}
@@ -244,6 +247,9 @@ pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string 
 				// we are at the end of the stream
 				if r.offset == start {
 					return io.Eof{}
+				}
+				if config.max_len > 0 && r.offset - start > config.max_len {
+					return io.ReadLineLimitError{}
 				}
 				return r.get_string_part(start, r.offset - start)!
 			}
@@ -259,11 +265,22 @@ pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string 
 				if i > start && config.delim == `\n` && r.builder[i - 1] == `\r` {
 					x--
 				}
+				if config.max_len > 0 && x - start > config.max_len {
+					return io.ReadLineLimitError{}
+				}
 				r.offset = i + 1
 				return r.get_string_part(start, x - start)!
 			}
 		}
 		r.offset = i
+		if config.max_len > 0 && r.offset - start > config.max_len {
+			trailing_cr := config.delim == `\n` && config.max_len < max_int
+				&& r.offset - start == config.max_len + 1
+				&& r.builder[r.offset - 1] == `\r`
+			if !trailing_cr {
+				return io.ReadLineLimitError{}
+			}
+		}
 	}
 
 	return io.Eof{}

@@ -13,7 +13,7 @@ fn testsuite_end() {
 fn exec_native(args []string) os.Result {
 	if !os.exists(native_test_compiler) {
 		result := os.exec(args)
-		if !result.output.contains('AMD64 support is not compiled into this executable') {
+		if !result.output.contains('amd64 support is not compiled into this executable') {
 			return result
 		}
 		bootstrap := os.exec([@VEXE, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend', 'amd64',
@@ -58,7 +58,8 @@ fn main() {
     C.alarm(0)
 }
 ')!
-		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', output, path])
+		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', output,
+			path])
 		assert compiled.exit_code == 0, compiled.output
 		result := os.exec([output])
 		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'

@@ -45,7 +45,8 @@ $if !skip_arm64 ? {
 	import v.gen.arm64
 }
 
-$if !skip_amd64 ? {
+// Older bootstrap compilers and build scripts still use skip_x64.
+$if !skip_amd64 ? && !skip_x64 ? {
 	import v.gen.amd64
 }
 
@@ -318,7 +319,9 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 				link_atomic_s = true
 			}
 		}
-		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly' {
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux' {
+			// Android targets use the same ELF atomic helpers as Linux. TinyCC
+			// needs their fence implementation even for a simple V program.
 			link_atomic_s = true
 		}
 		else {}
@@ -327,7 +330,7 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	if !link_atomic_s {
 		return ''
 	}
-	if target_os == 'linux' && prefs.target.arch == 'amd64' {
+	if target_os in ['linux', 'android', 'termux'] && prefs.target.arch == 'amd64' {
 		// Keep V's fence distinct from the atomic helpers supplied by libtcc1.a.
 		return os.join_path(prefs.vroot, 'vlib', 'sync', 'stdatomic', 'atomic_fence_amd64.S')
 	}
@@ -1883,13 +1886,15 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 
 // publish_native_c_object publishes once: GCC's LTO linker reopens the path,
 // so replacing even a complete object can change its internal symbol IDs mid-link.
+// Linux/Android can deny hard links even in writable app storage. The native
+// helper then uses an atomic no-replace rename, preserving the first publisher.
 // On Windows, an antivirus or another process can briefly hold the completed
 // temporary object without file sharing. Retry only that sharing violation;
 // never replace a published object or hide a different filesystem error.
 fn publish_native_c_object(temporary string, destination string) !bool {
 	defer { os.rm(temporary) or {} }
 	for attempt in 0 .. 20 {
-		os.link(temporary, destination) or {
+		link_native_c_object(temporary, destination) or {
 			if os.is_file(destination) {
 				return false
 			}
@@ -2659,7 +2664,7 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 // Larger modules retain production register allocation and optimized C inputs.
 const amd64_prod_ssa_optimizer_max_values = 1_000_000
 
-struct AMD64NativeSupport {
+struct Amd64NativeSupport {
 	source string
 	object string
 	flags  []string
@@ -2668,7 +2673,7 @@ struct AMD64NativeSupport {
 // amd64_native_support_object exposes functions from C headers inserted by V
 // modules. The C backend includes those headers in its translation unit; the
 // native backend needs a small object with the same helper definitions.
-fn amd64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_flags []string, optimization_flags []string, c_compiler string) !AMD64NativeSupport {
+fn amd64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_flags []string, optimization_flags []string, c_compiler string) !Amd64NativeSupport {
 	// Inlined headers can expose atomic and pointer-width helpers without
 	// carrying the standard fixed-width integer declarations they depend on.
 	mut source_text := '#include <stdint.h>\n'
@@ -2726,7 +2731,7 @@ fn amd64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_
 		}
 	}
 	if !has_insert || source_text.len == 0 {
-		return AMD64NativeSupport{}
+		return Amd64NativeSupport{}
 	}
 	token := '${os.getpid()}_${tempname.unique_token()}'
 	support_source := os.join_path(os.vtmp_dir(), 'v3_amd64_native_${token}.c')
@@ -2750,7 +2755,7 @@ fn amd64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_
 		os.rm(support_object) or {}
 		return error('amd64 native C support failed:\n${result.output}')
 	}
-	return AMD64NativeSupport{
+	return Amd64NativeSupport{
 		source: support_source
 		object: support_object
 		flags:  directive_flags
@@ -4565,7 +4570,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|amd64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|native|arm64|amd64|x64|wasm|eval> backend\n' + '  -native                      native backend for the target architecture\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn normalize_backend_name(name string) string {
@@ -7535,13 +7540,13 @@ struct V3WindowsProdToolchain {
 
 // v3_windows_prod_msvc_ready reports whether `cl` can build V's C for amd64. `cl` on PATH
 // is not enough. A Developer Command Prompt also sets INCLUDE and LIB, and without them
-// `cl` cannot find `assert.h`. Its target has to be amd64: an x86 prompt puts an x86 `cl`
+// `cl` cannot find `assert.h`. Its target has to be x64: an x86 prompt puts an x86 `cl`
 // on PATH, which lacks the intrinsics V's MSVC code uses (`_umul128` in math.bits). And
 // `cl` cannot produce the object file of `-o x.o`, which V builds with gcc or clang. An
 // unset VSCMD_ARG_TGT_ARCH is trusted, since older scripts do not set it.
 fn v3_windows_prod_msvc_ready(tc V3WindowsProdToolchain) bool {
 	return tc.cl != '' && tc.include != '' && tc.lib != '' && !tc.is_o
-		&& (tc.target_arch == '' || tc.target_arch.to_lower_ascii() == 'amd64')
+		&& (tc.target_arch == '' || tc.target_arch.to_lower_ascii() == 'x64')
 }
 
 // v3_windows_prod_clang_ready reports whether the probed `clang` builds amd64 code for
@@ -8488,7 +8493,7 @@ fn v3_source_is_pure_v(path string) bool {
 		return true
 	}
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
-	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'amd64', 'x86', 'aarch64', 'arm64',
+	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
 		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32', 'riscv32',
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'ppc64le', 'sparc64',
 		'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser', 'js_freestanding', 'wasm32',
@@ -10208,10 +10213,18 @@ pub fn run(args []string) {
 		} else if args[i] == project_backend_flag {
 			backend_from_project = true
 			i++
+		} else if args[i] == '-native' {
+			backend = 'native'
+			backend_explicit = !backend_from_project
+			i++
 		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
 			backend = normalize_backend_name(args[i + 1])
 			backend_explicit = !backend_from_project
 			i += 2
+		} else if args[i].starts_with('-b=') || args[i].starts_with('-backend=') {
+			backend = normalize_backend_name(args[i].all_after('='))
+			backend_explicit = !backend_from_project
+			i++
 		} else if args[i] == '-cross' {
 			// A modifier, not a target: it combines with `-os`/`-cc`, as in
 			// `v -cross -os windows -cc msvc`. See `v help build-c`.
@@ -10750,9 +10763,13 @@ pub fn run(args []string) {
 		}
 	}
 	if backend == 'native' {
-		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-		eprintln(pref.native_backend_replacement_message)
-		exit(1)
+		// Resolve after parsing so the last -arch applies in either flag order.
+		backend = pref.native_backend_for_arch(target_arch)
+		if backend == 'native' {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			eprintln('native backend is not supported on ${target_arch}')
+			exit(1)
+		}
 	}
 	if compiler_errors.json_output() {
 		// The details of a diagnostic are text, whatever `-color` asked for.
@@ -10832,7 +10849,7 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend == 'arm64' && target_os == 'linux' && explicit_output
+	native_linux_object := backend in ['arm64', 'amd64'] && target_os == 'linux' && explicit_output
 		&& output_file.ends_with('.o')
 	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -11333,7 +11350,8 @@ pub fn run(args []string) {
 	// SSA is shared by the native and WebAssembly backends. Derive its define
 	// from the final skips, so an explicit `-d skip_wasm` also drops the
 	// driver's gated `v.ssa` import.
-	if 'skip_arm64' in user_defines && 'skip_amd64' in user_defines
+	if 'skip_arm64' in user_defines
+		&& ('skip_amd64' in user_defines || 'skip_x64' in user_defines)
 		&& 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
@@ -13637,7 +13655,7 @@ pub fn run(args []string) {
 		}
 		if !check_only && !is_checker_fixture && !prefs.building_v && pre_tc.errors.len == 0
 			&& os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0'
-			&& (pre_tc.diagnosed_files_declare_generics() || (program_instance_check_forks()
+			&& (pre_tc.diagnosed_files_declare_generics() || (program_instance_check_includes_library_instances()
 				&& pre_tc.diagnosed_files_call_library_generics())) {
 			// A build checks each instance of the program's generics as a check
 			// does, and as V1 did: an instance that lacks a field, a method or an
@@ -14810,7 +14828,7 @@ pub fn run(args []string) {
 			eprintln(msg)
 			exit(1)
 		}
-		$if !skip_amd64 ? {
+		$if !skip_amd64 ?&& !skip_x64 ? {
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
 				// The optimizer rebuilds use lists once before consuming them.
 				// Incremental tracking is quadratic for large generic functions.
@@ -14825,6 +14843,13 @@ pub fn run(args []string) {
 					arch: 'amd64'
 				}
 			})
+			if m.errors.len > 0 {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				for message in m.errors {
+					eprintln(message)
+				}
+				exit(1)
+			}
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
 			b.metric('SSA instructions before optimize', m.instrs.len, 'instructions')
@@ -21921,7 +21946,7 @@ fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
 	if 'skip_arm64' in prefs.user_defines {
 		skipped['v.gen.arm64'] = true
 	}
-	if 'skip_amd64' in prefs.user_defines {
+	if 'skip_amd64' in prefs.user_defines || 'skip_x64' in prefs.user_defines {
 		skipped['v.gen.amd64'] = true
 	}
 	if 'skip_wasm' in prefs.user_defines {

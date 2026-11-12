@@ -759,4 +759,3 @@ jobs:
         uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0 # v4.6
         with:
           prettier_options: --check **.yml
-

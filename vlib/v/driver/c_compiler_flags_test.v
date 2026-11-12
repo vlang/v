@@ -1266,7 +1266,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
-	assert v3_effective_c_compiler_for_codegen('x64', 'cc', false, pref.host_target()) == 'tinyc'
+	assert v3_effective_c_compiler_for_codegen('amd64', 'cc', false, pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
@@ -1731,11 +1731,15 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
-fn test_x64_backend_aliases_are_normalized() {
-	for alias in ['amd64', 'x86_64', 'x86-64'] {
-		assert normalize_backend_name(alias) == 'x64'
+fn test_amd64_backend_aliases_are_normalized() {
+	for alias in ['x64', 'x86_64', 'x86-64'] {
+		assert normalize_backend_name(alias) == 'amd64'
 	}
-	assert normalize_backend_name('x64') == 'x64'
+	assert normalize_backend_name('amd64') == 'amd64'
+}
+
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
 }
 
 fn test_v3_fastc_default_linker_flags() {

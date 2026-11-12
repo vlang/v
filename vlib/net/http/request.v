@@ -40,6 +40,15 @@ pub fn (_ RequestBodyLimitError) msg() string {
 	return 'request body exceeds the configured limit'
 }
 
+// RequestHeaderLimitError is returned when an HTTP/1 request head exceeds its byte limit.
+pub struct RequestHeaderLimitError {
+	Error
+}
+
+pub fn (_ RequestHeaderLimitError) msg() string {
+	return 'request head exceeds the configured limit'
+}
+
 struct RequestFramingError {
 	Error
 }
@@ -1058,6 +1067,23 @@ pub fn parse_request_with_body_limit(mut reader io.BufferedReader, max_body_size
 		return error('max_body_size must be 0 (unlimited) or a positive number of bytes')
 	}
 	mut request := parse_request_head(mut reader)!
+	return parse_request_body_with_limit(mut reader, mut request, max_body_size)
+}
+
+fn parse_request_with_body_limit_and_timeout(mut reader io.BufferedReader, max_body_size int, mut conn RequestReadDeadlineSetter, read_header_timeout time.Duration) !Request {
+	return parse_request_with_body_limit_and_deadline(mut reader, max_body_size, mut conn,
+		request_head_deadline(read_header_timeout))
+}
+
+fn parse_request_with_body_limit_and_deadline(mut reader io.BufferedReader, max_body_size int, mut conn RequestReadDeadlineSetter, deadline time.Time) !Request {
+	if max_body_size < 0 {
+		return error('max_body_size must be 0 (unlimited) or a positive number of bytes')
+	}
+	mut request := parse_request_head_with_deadline(mut reader, mut conn, deadline)!
+	return parse_request_body_with_limit(mut reader, mut request, max_body_size)
+}
+
+fn parse_request_body_with_limit(mut reader io.BufferedReader, mut request Request, max_body_size int) !Request {
 	if request.header.contains(.transfer_encoding) {
 		return RequestFramingError{}
 	}
@@ -1086,6 +1112,36 @@ pub fn parse_request_with_body_limit(mut reader io.BufferedReader, max_body_size
 	return request
 }
 
+// RequestReadDeadlineSetter is implemented by stream connections that can
+// enforce an absolute read deadline.
+pub interface RequestReadDeadlineSetter {
+mut:
+	set_read_deadline(time.Time)
+}
+
+// parse_request_head_with_timeout parses an HTTP/1 request head with a total
+// deadline. A nonpositive timeout disables the deadline.
+pub fn parse_request_head_with_timeout(mut reader io.BufferedReader, mut conn RequestReadDeadlineSetter, read_header_timeout time.Duration) !Request {
+	return parse_request_head_with_deadline(mut reader, mut conn, request_head_deadline(read_header_timeout))
+}
+
+fn request_head_deadline(read_header_timeout time.Duration) time.Time {
+	if read_header_timeout > 0 && read_header_timeout != net.infinite_timeout {
+		return time.now().add(read_header_timeout)
+	}
+	return time.Time{}
+}
+
+fn parse_request_head_with_deadline(mut reader io.BufferedReader, mut conn RequestReadDeadlineSetter, deadline time.Time) !Request {
+	conn.set_read_deadline(deadline)
+	request := parse_request_head(mut reader) or {
+		conn.set_read_deadline(time.Time{})
+		return err
+	}
+	conn.set_read_deadline(time.Time{})
+	return request
+}
+
 // parse_request_content_length rejects signs, invalid characters, and integer overflow.
 fn parse_request_content_length(value string) !int {
 	trimmed := value.trim(' \t')
@@ -1108,13 +1164,41 @@ fn parse_request_content_length(value string) !int {
 
 // parse_request_head parses *only* the header of a raw HTTP request into a Request object
 pub fn parse_request_head(mut reader io.BufferedReader) !Request {
+	return parse_request_head_with_limit(mut reader, default_max_http1_request_head_size)
+}
+
+fn read_request_head_line_with_limit(mut reader io.BufferedReader, head_bytes int, max_head_size int) !string {
+	remaining := max_head_size - head_bytes
+	if remaining < 2 {
+		return RequestHeaderLimitError{}
+	}
+	max_line_len := if remaining > 2 { remaining - 2 } else { 1 }
+	line := reader.read_line(max_len: max_line_len) or {
+		if err is io.ReadLineLimitError {
+			return RequestHeaderLimitError{}
+		}
+		return err
+	}
+	if line.len + 2 > remaining {
+		return RequestHeaderLimitError{}
+	}
+	return line
+}
+
+fn parse_request_head_with_limit(mut reader io.BufferedReader, max_head_size int) !Request {
+	if max_head_size <= 0 {
+		return error('max_head_size must be a positive number of bytes')
+	}
+	mut head_bytes := 0
 	// request line
-	mut line := reader.read_line()!
+	mut line := read_request_head_line_with_limit(mut reader, head_bytes, max_head_size)!
+	head_bytes += line.len + 2
 	method, target, version := parse_request_line(line)!
 
 	// headers
 	mut header := new_header()
-	line = reader.read_line()!
+	line = read_request_head_line_with_limit(mut reader, head_bytes, max_head_size)!
+	head_bytes += line.len + 2
 	for line != '' {
 		// key, value := parse_header(line)!
 		mut pos := parse_header_fast(line)!
@@ -1127,7 +1211,8 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		// Preserve present empty fields; signature verification distinguishes
 		// an empty field value from a missing field.
 		header.add_custom(key, value)!
-		line = reader.read_line()!
+		line = read_request_head_line_with_limit(mut reader, head_bytes, max_head_size)!
+		head_bytes += line.len + 2
 	}
 	// header.coerce(canonicalize: true)
 
@@ -1152,6 +1237,10 @@ pub fn parse_request_head_str(s string) !Request {
 	if pos0 == -1 {
 		return error('malformed request: no request line found')
 	}
+	mut head_bytes := pos0 + 1
+	if head_bytes > default_max_http1_request_head_size {
+		return RequestHeaderLimitError{}
+	}
 	line0 := s[..pos0].trim_space()
 	method, target, version := parse_request_line_fast(line0)!
 
@@ -1162,6 +1251,10 @@ pub fn parse_request_head_str(s string) !Request {
 		mut line_end := s.index_after_('\n', line_start)
 		if line_end == -1 {
 			line_end = s.len
+		}
+		head_bytes += line_end + 1 - line_start
+		if head_bytes > default_max_http1_request_head_size {
+			return RequestHeaderLimitError{}
 		}
 		mut line := s[line_start..line_end]
 		if line.len > 0 && line[line.len - 1] == `\r` {

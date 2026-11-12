@@ -12,7 +12,7 @@ import v.pref
 // error with source position, never a silently dropped statement.
 pub const native_asm_arches = ['amd64', 'arm64']
 
-pub const native_asm_backends = ['amd64', 'arm64', 'native']
+pub const native_asm_backends = ['amd64', 'x64', 'arm64', 'native']
 
 // parse_native_inline_asm lowers the preserved raw source of an `asm` block
 // into an InlineAsmSpec. The grammar mirrors the C backend's parser in

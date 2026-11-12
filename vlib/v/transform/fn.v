@@ -6845,7 +6845,9 @@ fn (t &Transformer) is_enum_stringify_type(typ_id u32) bool {
 		clean_typ = flat.source_type_syntax(clean_typ).raw_base()
 	}
 	if clean_typ in t.enum_types {
-		return true
+		// Imported enums are also indexed by their short name, which a struct
+		// declared in the current module shadows.
+		return !t.bare_struct_name_is_local_to_current_module(clean_typ)
 	}
 	mut qtyp := clean_typ
 	if !flat.source_type_shape(qtyp).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -7312,7 +7314,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				&& t.cur_module != 'builtin' {
 				qenum = flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ)
 			}
-			if qenum in t.enum_types {
+			// A bare name was already checked above, where a local struct shadows an
+			// imported enum that the transformer also indexes by its short name.
+			if qenum != clean_typ && qenum in t.enum_types {
 				if method := t.enum_str_method_name(qenum) {
 					return t.make_call_typed(method, [expr], flat.source_type_string)
 				}
@@ -8596,7 +8600,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 		if raw_field_type == flat.source_type_string || raw_field_type == transform_identity_builtin_string {
 			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str), t.make_string_literal("'"))
 		}
-		if t.struct_str_field_needs_indent(raw_field_type) {
+		if t.struct_str_field_needs_indent(raw_field_type, info.module) {
 			t.mark_fn_used_name('string.replace')
 			t.mark_fn_used_name('string__replace')
 			field_str = t.make_call_typed('string.replace', [field_str, t.make_string_literal('\n'),
@@ -8866,7 +8870,7 @@ fn (mut t Transformer) lower_charptr_struct_field_str(expr flat.NodeId) flat.Nod
 // text must be re-indented one level deeper, matching V's indent_count handling. Values that
 // are always single-line (primitives, plain strings, enums, custom str() output) keep their
 // text untouched — V does not re-indent multi-line string content or custom str() results.
-fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32) bool {
+fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32, decl_module string) bool {
 	mut clean_id := t.trimmed_type_id(field_type_id)
 	for flat.source_type_shape(clean_id).has(.pointer) || flat.source_type_shape(clean_id).has(.option_type) || flat.source_type_shape(clean_id).has(.result_type) {
 		clean_id = t.trimmed_type_id(flat.source_type_syntax(clean_id).raw_base())
@@ -8886,15 +8890,24 @@ fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32) bool {
 		return false
 	}
 	resolved_source_id := t.alias_str_resolved_base_type(clean_id)
-	if !t.alias_str_needs_name_wrapper(resolved_source_id) {
+	// `field_type_id` is spelled in the struct's declaring module. Imported enums are
+	// also indexed by their short name, so resolve a bare spelling there first.
+	is_bare := !flat.source_type_shape(resolved_source_id).has(.dotted)
+	if is_bare && decl_module.len > 0 && decl_module !in ['main', 'builtin']
+		&& flat.source_type_composition_two(.qualified, flat.source_type_id(decl_module), resolved_source_id) in t.enum_types {
 		return false
 	}
-	if resolved_source_id in t.enum_types {
-		return false
-	}
-	if !flat.source_type_shape(resolved_source_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' && flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_source_id) in t.enum_types {
-		return false
+	if !(is_bare && t.bare_struct_name_is_local_to_module(resolved_source_id, decl_module)) {
+		if !t.alias_str_needs_name_wrapper(resolved_source_id) {
+			return false
+		}
+		if resolved_source_id in t.enum_types {
+			return false
+		}
+		if is_bare && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_source_id) in t.enum_types {
+			return false
+		}
 	}
 	if aggregate_source_id := t.stringify_aggregate_type_name(resolved_source_id) {
 		aggregate := flat.source_type_name(aggregate_source_id)

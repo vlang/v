@@ -6,11 +6,6 @@ import time
 import v.cmdexec
 import v.vmod
 
-// native_backend_replacement_message explains how to replace the removed native backend option.
-pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` and `-b amd64`.\n' +
-	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
-	'On Linux AMD64, first run `v -compile-backend amd64 self`, then `v -b x64 file.v`.'
-
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
@@ -181,6 +176,21 @@ pub fn host_arch() string {
 		return 'x86'
 	} $else {
 		return 'unknown'
+	}
+}
+
+// native_backend returns the native backend for the compiler's host architecture.
+pub fn native_backend() string {
+	return native_backend_for_arch(host_arch())
+}
+
+// native_backend_for_arch returns the native backend for the requested architecture.
+// Unsupported architectures retain `native` so the driver can diagnose the target.
+pub fn native_backend_for_arch(arch string) string {
+	return match normalized_arch(arch.trim_space().to_lower()) {
+		'amd64' { 'amd64' }
+		'arm64' { 'arm64' }
+		else { 'native' }
 	}
 }
 
@@ -1071,7 +1081,7 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 		if backend_suffix == 'native' {
 			// `.native.v` is the backend-specific file suffix shared by the
 			// architecture code generators.
-			return backend in ['native', 'arm64', 'amd64']
+			return backend in ['native', 'arm64', 'amd64', 'x64']
 		}
 		return backend_suffix == backend
 	}
@@ -1330,6 +1340,8 @@ pub fn tcc_with_prod_requested_in(args []string, cwd string) bool {
 		arg := args[i]
 		if arg == '-prod' {
 			prod = true
+		} else if arg == '-native' {
+			backend = 'native'
 		} else if arg in ['-cc', '-b', '-backend'] && i + 1 < args.len {
 			i++
 			if arg == '-cc' { ccompiler = args[i] } else { backend = args[i] }
@@ -1629,17 +1641,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend in ['arm64', 'amd64']
+			return p.backend in ['arm64', 'amd64', 'x64']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend in ['arm64', 'amd64']
+			return p.backend in ['arm64', 'amd64', 'x64']
 				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
-			return p.backend in ['arm64', 'amd64'] || name in p.user_defines
+			return p.backend in ['arm64', 'amd64', 'x64'] || name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -1767,7 +1779,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		// SSA currently lowers `int` to i32, including array and string headers.
 		// Its builtin limits must use that width even on a 64-bit target.
-		if p.backend in ['arm64', 'amd64'] {
+		if p.backend in ['arm64', 'amd64', 'x64'] {
 			return false
 		}
 		// The C backend lowers `int` to the target pointer width.

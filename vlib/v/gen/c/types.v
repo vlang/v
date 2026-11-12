@@ -973,6 +973,35 @@ fn optional_payload_is_bare_struct(t &types.Type) bool {
 	return clean is types.Struct && !flat.source_type_shape(clean.source_type_id()).has(.dotted)
 }
 
+// is_generic_struct_instance_c_type reports whether `c_type` names an instance of
+// the generic struct whose C name prefix is `prefix`, either directly or behind a
+// module qualifier. Composite types such as `multi_return_http__Response_bool`,
+// `Array_...` or `Map_...` only mention a same-named struct, and are not instances.
+fn is_generic_struct_instance_c_type(c_type string, prefix string) bool {
+	if c_type.starts_with(prefix) {
+		return true
+	}
+	idx := c_type.index('__${prefix}') or { return false }
+	if idx == 0 {
+		return false
+	}
+	qualifier := c_type[..idx]
+	for composite in ['multi_return_', 'chan_', 'thread_'] {
+		if qualifier.starts_with(composite) {
+			return false
+		}
+	}
+	if !qualifier[0].is_letter() {
+		return false
+	}
+	for ch in qualifier {
+		if !(ch.is_digit() || ch == `_` || (ch >= `a` && ch <= `z`)) {
+			return false
+		}
+	}
+	return true
+}
+
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
@@ -981,11 +1010,38 @@ fn (mut g FlatGen) optional_typedefs() {
 	// every wrapper used by forward_decls() is already defined.
 	g.collect_selected_declaration_signature_types()
 	g.optional_pointer_struct_forward_decls()
+	// An unused generic callback can mention !Payload[T] even though Payload[T]
+	// was never materialized. Its function pointer only needs the opaque Result
+	// declaration; defining a Result with an incomplete by-value payload would
+	// generate invalid C. Keep definitions for materialized payloads unchanged.
+	mut declared_structs := map[string]bool{}
+	for name in g.c_struct_decl_names() {
+		declared_structs[g.struct_cname(name)] = true
+	}
+	mut generic_struct_prefixes := []string{}
+	for id, params in g.tc.struct_generic_params {
+		if params.len > 0 {
+			generic_struct_prefixes << '${g.struct_cname(flat.source_type_name(id))}_'
+		}
+	}
 	mut wrote := false
 	mut names := g.needed_optional_types.keys()
 	names.sort()
 	for opt_name in names {
 		val_type := flat.source_type_name(g.needed_optional_types.value_id(opt_name))
+		mut unused_generic_payload := false
+		if !val_type.ends_with('*') && !declared_structs[val_type]
+			&& !g.cached_support_has_c_type(val_type) && !g.is_known_sum_c_type(val_type) {
+			for prefix in generic_struct_prefixes {
+				if is_generic_struct_instance_c_type(val_type, prefix) {
+					unused_generic_payload = true
+					break
+				}
+			}
+		}
+		if unused_generic_payload {
+			continue
+		}
 		if g.emit_optional_typedef(opt_name, val_type) {
 			wrote = true
 		}

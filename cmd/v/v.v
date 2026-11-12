@@ -154,10 +154,6 @@ fn main() {
 		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
 		exit(1)
 	}
-	if native_backend_rejected(command, option_args) {
-		eprintln(pref.native_backend_replacement_message)
-		exit(1)
-	}
 	// TinyCC is not a -prod compiler. Refuse the pair before any compiler starts, including the
 	// compatibility compiler that `-old-compiler` selects.
 	if command !in external_commands
@@ -811,6 +807,8 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 			backend_value_follows = true
 		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
 			backend_args << arg
+		} else if arg == '-native' {
+			backend_args << ['-b', 'native']
 		} else {
 			other_args << arg
 			value_follows = if arg in ['-prof', '-profile'] {
@@ -1232,7 +1230,9 @@ fn v1_fallback_selected_backend(args []string) string {
 
 fn selected_backend(args []string, include_compile_backends bool) string {
 	mut backend := 'c'
+	mut target_arch := pref.host_arch()
 	mut backend_value_follows := false
+	mut arch_value_follows := false
 	mut option_value_follows := false
 	for i, arg in args {
 		if backend_value_follows {
@@ -1240,8 +1240,21 @@ fn selected_backend(args []string, include_compile_backends bool) string {
 			backend_value_follows = false
 			continue
 		}
+		if arch_value_follows {
+			target_arch = arg
+			arch_value_follows = false
+			continue
+		}
 		if option_value_follows {
 			option_value_follows = false
+			continue
+		}
+		if arg == '-arch' {
+			arch_value_follows = true
+			continue
+		}
+		if arg == '-native' {
+			backend = 'native'
 			continue
 		}
 		if arg in ['-b', '-backend']
@@ -1266,7 +1279,11 @@ fn selected_backend(args []string, include_compile_backends bool) string {
 			option_value_follows = true
 		}
 	}
-	return if backend in ['js_browser', 'js_node'] { 'js' } else { backend }
+	return match backend {
+		'js_browser', 'js_node' { 'js' }
+		'native' { pref.native_backend_for_arch(target_arch) }
+		else { backend }
+	}
 }
 
 // v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
@@ -1641,15 +1658,4 @@ fn v1_fallback_make_hint() string {
 		return 'On Windows, install GNU make in MSYS2 (`make` or `mingw32-make`) and put its tools, including `sh`, on PATH.'
 	}
 	return 'Install make.'
-}
-
-// native_backend_rejected reports whether the removed `-b native` backend has to
-// be refused for `command`. `vfmt` is the one tool that still accepts the alias,
-// because it maps `native` onto the C formatter, so the launcher must let it
-// through instead of rejecting the flag before the tool ever sees it.
-fn native_backend_rejected(command string, option_args []string) bool {
-	if command == 'fmt' {
-		return false
-	}
-	return selected_backend(compiler_args_before_program(option_args), false) == 'native'
 }

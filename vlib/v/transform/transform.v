@@ -1603,6 +1603,8 @@ struct VarTypeBinding {
 	is_implicit_err bool
 mut:
 	is_ref_param bool
+	// is_immutable marks a source binding declared without `mut` (see set_var_immutable).
+	is_immutable bool
 	// mut_optional_storage is the value type (`?&T`) of a `mut a ?T` parameter whose body
 	// reads it as `?T` (`typ`), see mut_optional_view_param.
 	mut_optional_storage u32
@@ -4044,6 +4046,20 @@ fn (mut t Transformer) mark_var_as_ref_param(name string) {
 		t.clear_node_type_memo()
 		t.var_types[i].is_ref_param = true
 	}
+}
+
+// set_var_immutable records whether the current binding of `name` was declared
+// without `mut`. Rebinding the name starts a new binding with the flag cleared.
+fn (mut t Transformer) set_var_immutable(name string, value bool) {
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_types[i].is_immutable = value
+	}
+}
+
+fn (t &Transformer) var_is_immutable(name string) bool {
+	i := t.var_type_index(name)
+	return i >= 0 && t.var_types[i].is_immutable
 }
 
 fn (t &Transformer) var_is_ref_param(name string) bool {
@@ -13593,6 +13609,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if typ != 0 {
 			t.set_var_type_with_raw(child.value_text(), typ, raw_source_typ)
+			if !child.is_mut && child.op != .amp && !child_type_shape.has(.mutable_type)
+				&& !child_type_shape.has(.shared_type) {
+				t.set_var_immutable(child.value_text(), true)
+			}
 			if mut_optional_storage != 0 {
 				t.set_var_mut_optional_storage(child.value_text(), mut_optional_storage)
 			}
@@ -24513,10 +24533,31 @@ fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
 			typ = t.resolve_expr_type(id)
 		}
 		if typ != 0 && typ != flat.source_type_void {
-			return t.transform_expr_for_type(id, typ)
+			return t.materialize_scalar_select_operand(t.transform_expr_for_type(id, typ))
 		}
 	}
 	return t.transform_expr(id)
+}
+
+// materialize_scalar_select_operand snapshots a lowered scalar conditional when
+// it is used as an operand. Later operands can queue statements that mutate its
+// inputs, so the select must be evaluated before those statements. Its temporary
+// is still initialized with a conditional expression, preserving that code shape.
+fn (mut t Transformer) materialize_scalar_select_operand(id flat.NodeId) flat.NodeId {
+	value_id := t.unwrap_parens(id)
+	if int(value_id) < 0 {
+		return id
+	}
+	value := t.a.nodes[int(value_id)]
+	if value.kind != .cast_expr || value.children_count != 1 || value.pos.is_valid()
+		|| !t.is_scalar_select_type(value.typ) {
+		return id
+	}
+	choice := t.a.child_node(&value, 0)
+	if choice.kind != .if_expr || choice.typ != value.typ || choice.pos.is_valid() {
+		return id
+	}
+	return t.snapshot_transformed_expr_for_reuse(id, value.typ, 'scalar_select')
 }
 
 // materialize_value_branch_operand is transform_value_operand for a caller that rebuilds its
@@ -24537,7 +24578,7 @@ fn (mut t Transformer) materialize_value_branch_operand(id flat.NodeId) flat.Nod
 fn (mut t Transformer) materialize_value_branch_operand_for_type(id flat.NodeId, target_type_id u32) flat.NodeId {
 	pending_mark := t.pending_stmts.len
 	value := if target_type_id != 0 {
-		t.transform_expr_for_type(t.unwrap_parens(id), target_type_id)
+		t.materialize_scalar_select_operand(t.transform_expr_for_type(t.unwrap_parens(id), target_type_id))
 	} else {
 		t.transform_value_operand(id)
 	}

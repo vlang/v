@@ -927,6 +927,11 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 		// generic f64 calls like math.min), so use the branch type itself.
 		actual_result_type = branch_type_source_id
 	}
+	if !borrowed_result {
+		if select_type := t.scalar_select_type(node, actual_result_type) {
+			return t.lower_scalar_select(node, select_type)
+		}
+	}
 	tmp_name := t.new_temp('if_val')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
@@ -947,6 +952,195 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 		return t.coerce_transformed_expr_to_type(tmp, id, result_type_id)
 	}
 	return tmp
+}
+
+// scalar_select_type returns the result type of an if-expression value that is
+// a plain select between two scalars: a scalar result, and a condition and one
+// expression per branch built only from literals, names, field and array reads,
+// casts and operators. When transforming those operands adds no statements, the
+// if-expression can stay in place and the C backend emits a conditional cast to
+// the V result type so that C's arithmetic conversions cannot widen it. Lowering
+// it to a temporary assigned in an if statement computes the same value, but C
+// compilers then do not vectorize loops that contain the select.
+fn (t &Transformer) scalar_select_type(node flat.Node, result_type_id u32) ?u32 {
+	if node.kind != .if_expr || node.children_count != 3 {
+		return none
+	}
+	mut select_type := t.normalize_type_alias(result_type_id)
+	if select_type == transform_identity_int_literal {
+		select_type = flat.source_type_int
+	} else if select_type == transform_identity_float_literal {
+		select_type = flat.source_type_f64
+	}
+	if !t.is_scalar_select_type(select_type) || !t.is_scalar_select_type(t.if_expr_branch_result_type(node)) {
+		return none
+	}
+	if !t.is_plain_select_expr(t.a.child(&node, 0), 0) {
+		return none
+	}
+	for i in 1 .. 3 {
+		branch_id := t.a.child(&node, i)
+		if int(branch_id) < 0 {
+			return none
+		}
+		branch := t.a.nodes[int(branch_id)]
+		if branch.kind != .block || branch.children_count != 1 {
+			return none
+		}
+		stmt_id := t.a.child(&branch, 0)
+		if int(stmt_id) < 0 {
+			return none
+		}
+		stmt := t.a.nodes[int(stmt_id)]
+		if stmt.kind != .expr_stmt || stmt.children_count != 1 {
+			return none
+		}
+		if !t.is_plain_select_expr(t.a.child(&stmt, 0), 0) {
+			return none
+		}
+	}
+	return select_type
+}
+
+// lower_scalar_select transforms the condition and branch values of a select
+// found by scalar_select_type as expressions, as build_if_value_chain does, and
+// keeps them in an if-expression cast to the result type; the C backend emits
+// `(T)(cond ? a : b)`. Some accepted operands still lower to statements (for
+// example a struct pointer equality that compares the values through a
+// temporary). Those statements must only run with their branch, so when either
+// branch value produces any, the select is assigned to a temporary in an if
+// statement whose branches hold their own statements, as the general lowering does.
+fn (mut t Transformer) lower_scalar_select(node flat.Node, select_type u32) flat.NodeId {
+	cond := t.transform_and_chain_smartcasts(t.a.child(&node, 0))
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut values := []flat.NodeId{cap: 2}
+	mut branch_stmts := [][]flat.NodeId{cap: 2}
+	for i in 1 .. 3 {
+		branch := t.a.child_node(&node, i)
+		stmt := t.a.child_node(branch, 0)
+		values << t.transform_if_branch_value(t.a.child(stmt, 0), select_type)
+		branch_stmts << t.pending_stmts.clone()
+		t.pending_stmts.clear()
+	}
+	t.pending_stmts = outer_pending
+	if branch_stmts[0].len == 0 && branch_stmts[1].len == 0 {
+		// Conditional branches have no typed assignment to load pointer-backed
+		// scalar bindings, such as mutable array iterators. Make that load explicit.
+		for i, value in values {
+			values[i] = t.coerce_transformed_expr_to_type(value, value, select_type)
+		}
+		choice := t.make_if(cond, t.make_block([t.make_expr_stmt(values[0])]),
+			t.make_block([t.make_expr_stmt(values[1])]))
+		t.set_node_typ(int(choice), select_type)
+		cast := t.make_cast(select_type, choice, select_type)
+		t.set_node_typ(int(cast), select_type)
+		return cast
+	}
+	tmp_name := t.new_temp('if_val')
+	t.pending_stmts << t.make_staging_value_decl(tmp_name, select_type)
+	mut blocks := []flat.NodeId{cap: 2}
+	for i, value in values {
+		mut stmts := branch_stmts[i].clone()
+		stmts << t.make_assign(t.make_ident(tmp_name), value)
+		blocks << t.make_block(stmts)
+	}
+	t.pending_stmts << t.make_if(cond, blocks[0], blocks[1])
+	tmp := t.make_ident(tmp_name)
+	t.set_node_typ(int(tmp), select_type)
+	return tmp
+}
+
+// is_scalar_select_type reports whether a value of the type is a C arithmetic
+// scalar: a bool, number, rune or literal number.
+fn (t &Transformer) is_scalar_select_type(type_id u32) bool {
+	return t.normalize_type_alias(type_id) in [flat.source_type_bool, flat.source_type_int,
+		flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
+		flat.source_type_isize, flat.source_type_uint, flat.source_type_u8, flat.source_type_u16,
+		flat.source_type_u32, flat.source_type_u64, flat.source_type_usize, flat.source_type_f32,
+		flat.source_type_f64, flat.source_type_rune, transform_identity_int_literal,
+		transform_identity_float_literal]
+}
+
+// is_plain_select_expr reports whether an expression is a number or bool
+// literal, a name, a field read, an array element read, a cast, or a unary
+// or binary operator over such expressions, each with a scalar or pointer
+// value. lower_scalar_select handles operands that still lower to statements.
+fn (t &Transformer) is_plain_select_expr(id flat.NodeId, depth int) bool {
+	if int(id) < 0 || depth > 16 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal {
+			return true
+		}
+		.ident {}
+		.paren, .cast_expr {
+			if node.children_count != 1 || !t.is_plain_select_expr(t.a.child(&node, 0), depth + 1) {
+				return false
+			}
+		}
+		.prefix {
+			if node.op !in [.minus, .not, .bit_not] || node.children_count != 1
+				|| !t.is_plain_select_expr(t.a.child(&node, 0), depth + 1) {
+				return false
+			}
+		}
+		.infix {
+			if node.op !in [.plus, .minus, .mul, .div, .mod, .eq, .ne, .lt, .gt, .le, .ge, .amp,
+				.pipe, .xor, .left_shift, .right_shift, .right_shift_unsigned, .logical_and,
+				.logical_or]
+				|| node.children_count != 2 || !t.is_plain_select_expr(t.a.child(&node, 0), depth + 1)
+				|| !t.is_plain_select_expr(t.a.child(&node, 1), depth + 1) {
+				return false
+			}
+		}
+		.selector {
+			if node.children_count != 1 || !t.is_plain_select_operand(t.a.child(&node, 0), depth + 1) {
+				return false
+			}
+		}
+		.index {
+			base_id := t.a.child(&node, 0)
+			if node.children_count != 2 || !t.node_type_is_array(base_id)
+				|| !t.is_plain_select_operand(base_id, depth + 1)
+				|| !t.is_plain_select_expr(t.a.child(&node, 1), depth + 1) {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+	value_type := t.normalize_type_alias(t.node_type(id))
+	return t.is_scalar_select_type(value_type) || flat.source_type_shape(value_type).has(.pointer)
+		|| value_type in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr]
+}
+
+// is_plain_select_operand reports whether the base of a field or element read
+// is a name, or a field or element read of a name, of any type.
+fn (t &Transformer) is_plain_select_operand(id flat.NodeId, depth int) bool {
+	if int(id) < 0 || depth > 16 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return match node.kind {
+		.ident {
+			true
+		}
+		.paren, .selector {
+			node.children_count == 1 && t.is_plain_select_operand(t.a.child(&node, 0), depth + 1)
+		}
+		.index {
+			node.children_count == 2 && t.node_type_is_array(t.a.child(&node, 0))
+				&& t.is_plain_select_operand(t.a.child(&node, 0), depth + 1)
+				&& t.is_plain_select_expr(t.a.child(&node, 1), depth + 1)
+		}
+		else {
+			false
+		}
+	}
 }
 
 // if_expr_branch_overrides_sum_target supports if_expr_branch_overrides_sum_target handling.

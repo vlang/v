@@ -180,7 +180,7 @@ fn test_native_asm_secondary_outputs_and_div_lower() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, native_asm_program)!
 	exe := os.join_path(root, 'main')
-	build := os.exec([vexe, '-nocache', '-b', 'x64', '-o', exe, source])
+	build := os.exec([vexe, '-nocache', '-b', 'amd64', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
@@ -222,7 +222,7 @@ fn test_freestanding_posix_memalign_is_aligned_and_freeable() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, posix_memalign_program)!
 	exe := os.join_path(root, 'main')
-	build := os.exec([vexe, '-nocache', '-freestanding', '-b', 'x64', '-o', exe, source])
+	build := os.exec([vexe, '-nocache', '-freestanding', '-b', 'amd64', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
@@ -230,7 +230,7 @@ fn test_freestanding_posix_memalign_is_aligned_and_freeable() {
 }
 
 // test_native_asm_wide_immediates checks that arithmetic immediates outside -128..127
-// keep their value on the x64 backend, and that ones without a 32-bit encoding are
+// keep their value on the amd64 backend, and that ones without a 32-bit encoding are
 // rejected instead of being truncated.
 fn test_native_asm_wide_immediates() {
 	$if !amd64 || !linux {
@@ -244,14 +244,14 @@ fn test_native_asm_wide_immediates() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, native_asm_imm_program)!
 	exe := os.join_path(root, 'main')
-	build := os.exec([vexe, '-nocache', '-b', 'x64', '-o', exe, source])
+	build := os.exec([vexe, '-nocache', '-b', 'amd64', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output == '2147418498\n', run.output
 	wide_source := os.join_path(root, 'wide.v')
 	os.write_file(wide_source, native_asm_imm_too_wide_program)!
-	wide := os.exec([vexe, '-nocache', '-b', 'x64', '-o', os.join_path(root, 'wide'), wide_source])
+	wide := os.exec([vexe, '-nocache', '-b', 'amd64', '-o', os.join_path(root, 'wide'), wide_source])
 	assert wide.exit_code != 0, wide.output
 	assert wide.output.contains('does not fit a sign-extended 32-bit immediate'), wide.output
 }
@@ -307,7 +307,7 @@ fn test_wait4_fills_rusage() {
 
 // test_fork_execve_wait4_through_bf checks os.fork, os.execve and os.wait4, which go
 // through the runtime's bf_fork/bf_execve/bf_wait4, hosted, under -syscalls and in a
-// freestanding x64 build, including the errno a failed execve reports.
+// freestanding amd64 build, including the errno a failed execve reports.
 fn test_fork_execve_wait4_through_bf() {
 	$if !linux || !amd64 {
 		return
@@ -319,7 +319,7 @@ fn test_fork_execve_wait4_through_bf() {
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, fork_execve_program)!
-	for i, mode in [[]string{}, ['-syscalls'], ['-freestanding', '-b', 'x64']] {
+	for i, mode in [[]string{}, ['-syscalls'], ['-freestanding', '-b', 'amd64']] {
 		exe := os.join_path(root, 'main_${i}')
 		mut args := [vexe, '-nocache']
 		args << mode
@@ -332,7 +332,7 @@ fn test_fork_execve_wait4_through_bf() {
 	}
 }
 
-// test_native_freestanding_file_close_closes checks that the native x64 runtime's
+// test_native_freestanding_file_close_closes checks that the native amd64 runtime's
 // close syscall number is close: with fork's number in its place, every file the
 // program closes spawns a copy that prints again.
 fn test_native_freestanding_file_close_closes() {
@@ -347,7 +347,7 @@ fn test_native_freestanding_file_close_closes() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, native_file_close_program)!
 	exe := os.join_path(root, 'main')
-	build := os.exec([vexe, '-nocache', '-freestanding', '-b', 'x64', '-o', exe, source])
+	build := os.exec([vexe, '-nocache', '-freestanding', '-b', 'amd64', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([exe, os.join_path(root, 'data.txt')])
 	assert run.exit_code == 0, run.output

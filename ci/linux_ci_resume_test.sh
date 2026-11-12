@@ -24,18 +24,34 @@ fail() {
     exit 1
 }
 
-# Guard against accidentally omitting or reordering any workflow script task.
+# Guard against omitted/duplicated tasks and changes to the remaining serial
+# task order. GCC/Clang self tests moved to independent matrix jobs, each of
+# which repeats its compiler lane's dependency setup.
 sed -n '/^const ci_tasks = \[/,/^\]/p' "$repo/ci/linux_ci.vsh" |
     sed -n "s/^[[:space:]]*'\([^']*\)',$/\1/p" > "$work/tasks"
-sed -n 's/^[[:space:]]*run: v run ci\/linux_ci.vsh \([^ ]*\)$/\1/p' \
-    "$repo/.github/workflows/linux_ci.yml" > "$work/workflow-tasks"
+awk '
+    /^  [^ ]/ { job = $1; sub(/:$/, "", job) }
+    /^[[:space:]]*run: v run ci\/linux_ci.vsh [^ ]*$/ { print job, $NF }
+' "$repo/.github/workflows/linux_ci.yml" > "$work/workflow-job-tasks"
+awk '{ print $2 }' "$work/workflow-job-tasks" > "$work/workflow-tasks"
 [ -s "$work/tasks" ] || fail 'could not read the CI task list'
-cmp "$work/tasks" "$work/workflow-tasks" || fail 'CI task plan differs from the workflow'
+cp "$work/tasks" "$work/expected-workflow-tasks"
+printf '%s\n' install_dependencies_for_examples_and_tools_gcc \
+    install_dependencies_for_examples_and_tools_clang >> "$work/expected-workflow-tasks"
+LC_ALL=C sort "$work/expected-workflow-tasks" > "$work/expected-sorted"
+LC_ALL=C sort "$work/workflow-tasks" > "$work/workflow-sorted"
+cmp "$work/expected-sorted" "$work/workflow-sorted" || fail 'CI task coverage or duplicate count differs from the workflow'
+awk '!/^self_tests_(gcc|prod_gcc|cstrict_gcc|clang|vprod_clang|cstrict_clang)$/' \
+    "$work/tasks" > "$work/serial-tasks"
+awk '$1 == "tcc-linux" || $1 == "gcc-linux" || $1 == "clang-linux" { print $2 }' \
+    "$work/workflow-job-tasks" > "$work/workflow-serial-tasks"
+cmp "$work/serial-tasks" "$work/workflow-serial-tasks" || fail 'serial CI task order differs from the workflow'
 
 # Direct workflow tasks inherit their compiler from the job, while aggregate CI
 # selects it in ci_vflags. Keep both paths on the same compiler for every lane.
-for compiler in tcc gcc clang; do
-    flags=$(awk -v job="$compiler-linux:" '
+for lane in tcc-linux gcc-linux clang-linux gcc-linux-self-tests clang-linux-self-tests; do
+    compiler=${lane%%-*}
+    flags=$(awk -v job="$lane:" '
         /^  [^ ]/ { selected = $1 == job }
         selected && /^      VFLAGS:/ {
             sub(/^      VFLAGS:[[:space:]]*/, "")
@@ -45,7 +61,7 @@ for compiler in tcc gcc clang; do
     ' "$repo/.github/workflows/linux_ci.yml")
     expected="-cc $compiler"
     [ "$compiler" != tcc ] || expected="$expected -no-retry-compilation"
-    [ "$flags" = "$expected" ] || fail "$compiler workflow compiler flags differ from aggregate CI"
+    [ "$flags" = "$expected" ] || fail "$lane workflow compiler flags differ from aggregate CI"
 done
 
 runner="$work/runner"

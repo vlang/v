@@ -125,8 +125,8 @@ fn main() {
 ')!
 	compiler := os.getenv_opt('VEXE') or { @VEXE }
 	mut compiled := os.exec([compiler, '-gc', 'none', '-b', 'amd64', '-o', output, path])
-	if compiled.output.contains('AMD64 support is not compiled into this executable') {
-		// C-only bootstrap compilers omit AMD64 dispatch; build the backend for this regression.
+	if compiled.output.contains('X64 support is not compiled into this executable') {
+		// C-only bootstrap compilers omit X64 dispatch; build the backend for this regression.
 		bootstrap := os.exec([compiler, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend',
 			'amd64', '-o', test_compiler, os.join_path(@VEXEROOT, 'vlib', 'v', 'v.v')])
 		assert bootstrap.exit_code == 0, bootstrap.output

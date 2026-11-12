@@ -457,12 +457,12 @@ fn test_inline_assembly() {
 	exec_args(['v', 'test', 'vlib/v/slow_tests/assembly'])
 }
 
-// Keep this list in the same order as the active tasks in
-// .github/workflows/linux_ci.yml. The aggregate runner changes compiler flags at
-// the same boundaries as the three workflow jobs.
-// Order is deliberate on both sides: the cheapest check that can prove a checkout
-// broken runs first, and `build_v_with_prealloc`, which is five compiler builds,
-// runs last so a red run reports the cheap signal before paying for it.
+// Keep the same tasks as .github/workflows/linux_ci.yml. GCC/Clang self tests run
+// in separate matrix jobs there; the aggregate runner keeps them serial and
+// changes compiler flags at the same boundaries as the three compiler lanes.
+// Retain task order within each compiler lane for local resume checkpoints.
+// `build_v_with_prealloc` stays last in the TCC lane: it is five compiler builds,
+// so the cheaper checks should report a broken checkout before paying for it.
 const ci_tasks = [
 	'all_code_is_formatted_tcc',
 	'install_dependencies_for_examples_and_tools_tcc',

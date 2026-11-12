@@ -21,7 +21,7 @@ fn testsuite_end() {
 fn exec_native(args []string) os.Result {
 	if !os.exists(native_test_compiler) {
 		result := os.exec(args)
-		if !result.output.contains('AMD64 support is not compiled into this executable') {
+		if !result.output.contains('amd64 support is not compiled into this executable') {
 			return result
 		}
 		bootstrap := os.exec([@VEXE, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend', 'amd64',
@@ -133,7 +133,8 @@ fn main() {
 }
 
 ')!
-		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', output, path])
+		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', output,
+			path])
 		assert compiled.exit_code == 0, compiled.output
 		result := os.exec([output])
 		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
@@ -188,7 +189,7 @@ fn test_native_float_formatting_matches_c_rounding_and_shortest_decimal_expansio
 		source += '}\n'
 		os.write_file(path, source)!
 		for backend, output in {
-			'c':   c_output
+			'c':     c_output
 			'amd64': native_output
 		} {
 			compiled := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc',
@@ -243,8 +244,8 @@ fn main() {
 ')!
 		for production in [false, true] {
 			mut args := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler',
-				'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-nocache', '-b', 'amd64', '-o',
-				output, path]
+				'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-nocache', '-b', 'amd64',
+				'-o', output, path]
 			if production { args.insert(5, '-prod') }
 			compiled := exec_native(args)
 			assert compiled.exit_code == 0, compiled.output
@@ -282,7 +283,8 @@ fn main() {
     for i, x in values32 { assert bits.f32_bits(x) == expected32[i] }
 }
 ')!
-		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', output, path])
+		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', output,
+			path])
 		assert compiled.exit_code == 0, compiled.output
 		result := os.exec([output])
 		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'

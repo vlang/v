@@ -285,7 +285,7 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	if func.is_c_extern {
 		return
 	}
-	dump_filter := os.getenv('V_AMD64_DUMP_SSA')
+	dump_filter := os.getenv('V_X64_DUMP_SSA')
 	if dump_filter.len > 0 && func.name.contains(dump_filter) {
 		g.dump_function(func)
 	}

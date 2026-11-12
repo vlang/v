@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Check apt mirror setup and prerequisite failures
+        run: bash .github/workflows/disable_azure_mirror_test.sh
       - name: Build V for the shell regression tests
         id: build
         uses: ./.github/actions/setup-v
@@ -127,6 +129,8 @@ jobs:
     strategy:
       matrix:
         cc: [clang]
+        suite: [default, strict]
+        shard: [0, 1]
       fail-fast: false
     env:
       # Stop a failing test session at its first failure instead of
@@ -134,6 +138,8 @@ jobs:
       # add no signal.
       VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '2'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -143,10 +149,13 @@ jobs:
         with:
           doctor: true
       - name: Check build-tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-windows:
@@ -362,8 +371,9 @@ jobs:
 
   tools-openbsd:
     runs-on: ubuntu-latest
-    # VM bootstrap takes up to ten minutes before any tool tests can start.
-    timeout-minutes: 25
+    # VM/bootstrap and initial checks take about 8.5 minutes. The 57-file Clang
+    # shard was still progressing at 25 minutes; leave time for its final tests.
+    timeout-minutes: 35
     strategy:
       matrix:
         suite: [default, strict]
