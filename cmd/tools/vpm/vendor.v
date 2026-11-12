@@ -20,7 +20,7 @@ fn vendor_project() ! {
 	if project.vmod_file == '' { return error('no v.mod found at or above `${os.getwd()}`') }
 	root := vmod.from_file(project.vmod_file)!
 	deps := if root.workspaces.len > 0 {
-		workspace_dependencies(project.vmod_folder)
+		workspace_dependencies_for_manifest(project.vmod_folder, root)
 	} else {
 		project_dependencies(root)
 	}

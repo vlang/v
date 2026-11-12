@@ -36,7 +36,7 @@ fn vpm_install(query []string) {
 				exit(1)
 			}
 			if manifest.workspaces.len > 0 {
-				workspace_dependencies(os.getwd())
+				workspace_dependencies_for_manifest(os.getwd(), manifest)
 			} else {
 				project_dependencies(manifest)
 			}

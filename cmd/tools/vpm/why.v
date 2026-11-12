@@ -74,7 +74,7 @@ fn build_dep_graph() !DepGraph {
 	roots := module_roots()
 	mut queue := []string{}
 	root_deps := if root.workspaces.len > 0 {
-		workspace_dependencies(project.vmod_folder)
+		workspace_dependencies_for_manifest(project.vmod_folder, root)
 	} else {
 		project_dependencies(root)
 	}

@@ -5,7 +5,7 @@ import v.vmod
 
 fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
 	deps := if manifest.workspaces.len > 0 {
-		workspace_dependencies(dir)
+		workspace_dependencies_for_manifest(dir, manifest)
 	} else {
 		project_dependencies(manifest)
 	}
@@ -108,7 +108,7 @@ fn update_versioned_project(query []string) bool {
 		exit(1)
 	}
 	original_dependencies := if manifest.workspaces.len > 0 {
-		workspace_dependencies(dir)
+		workspace_dependencies_for_manifest(dir, manifest)
 	} else {
 		project_dependencies(manifest)
 	}

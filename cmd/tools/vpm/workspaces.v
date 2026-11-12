@@ -8,6 +8,7 @@ import v.vmod
 // `v.mod` file. Patterns without a wildcard are treated as literal paths.
 pub fn workspace_member_dirs(root string, manifest vmod.Manifest) []string {
 	mut dirs := []string{}
+	mut seen := map[string]bool{}
 	for raw_pattern in manifest.workspaces {
 		pattern := raw_pattern.trim_space()
 		if pattern == '' {
@@ -28,9 +29,11 @@ pub fn workspace_member_dirs(root string, manifest vmod.Manifest) []string {
 				continue
 			}
 			normalized := os.norm_path(candidate)
-			if normalized !in dirs {
-				dirs << normalized
+			if normalized in seen {
+				continue
 			}
+			seen[normalized] = true
+			dirs << normalized
 		}
 	}
 	dirs.sort()
@@ -75,13 +78,29 @@ pub fn workspace_root(dir string) string {
 // and every workspace member, de-duplicated while preserving order.
 pub fn workspace_dependencies(root string) []string {
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { return []string{} }
-	mut deps := project_dependencies(manifest).clone()
+	return workspace_dependencies_for_manifest(root, manifest)
+}
+
+// workspace_dependencies_for_manifest is the manifest-aware variant: callers that
+// already hold the root manifest avoid reading `v.mod` a second time.
+pub fn workspace_dependencies_for_manifest(root string, manifest vmod.Manifest) []string {
+	mut deps := []string{}
+	mut seen := map[string]bool{}
+	for dep in project_dependencies(manifest) {
+		if dep in seen {
+			continue
+		}
+		seen[dep] = true
+		deps << dep
+	}
 	for member_dir in workspace_member_dirs(root, manifest) {
 		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or { continue }
 		for dep in project_dependencies(member_manifest) {
-			if dep !in deps {
-				deps << dep
+			if dep in seen {
+				continue
 			}
+			seen[dep] = true
+			deps << dep
 		}
 	}
 	return deps

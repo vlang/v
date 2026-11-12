@@ -152,7 +152,7 @@ fn project_constraints() map[string][]string {
 	if os.exists('./v.mod') {
 		manifest := vmod.from_file('./v.mod') or { return constraints }
 		deps := if manifest.workspaces.len > 0 {
-			workspace_dependencies(os.getwd())
+			workspace_dependencies_for_manifest(os.getwd(), manifest)
 		} else {
 			project_dependencies(manifest)
 		}
