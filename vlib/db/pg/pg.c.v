@@ -241,6 +241,8 @@ fn C.PQgetvalue(const_res &C.PGresult, i32, i32) &char
 
 fn C.PQresultStatus(const_res &C.PGresult) i32
 
+fn C.PQresultErrorField(const_res &C.PGresult, fieldcode i32) &char
+
 fn C.PQntuples(const_res &C.PGresult) i32
 
 fn C.PQnfields(const_res &C.PGresult) i32
@@ -731,15 +733,81 @@ fn (mut c Conn) mark_bad_if_disconnected() {
 	}
 }
 
+// PgError is the error db.pg returns when the server refuses a statement. Its
+// `msg()` is the text db.pg has always returned; the fields carry what libpq
+// reports apart (`PQresultErrorField`), so that a caller can branch on the
+// SQLSTATE or the violated constraint without parsing the message:
+// ```v ignore
+// db.exec_param_many(query, params) or {
+// 	if err is pg.PgError && err.sqlstate == '23505' {
+// 		// unique_violation on err.constraint
+// 	}
+// }
+// ```
+// A field libpq does not report for the error is an empty string.
+pub struct PgError {
+	Error
+pub:
+	label      string // the db.pg operation that failed, e.g. `exec_param_many`
+	text       string // libpq's whole error message, as `PQerrorMessage` gives it
+	severity   string // `ERROR`, `FATAL` or `PANIC`, not localized
+	sqlstate   string // the five-character SQLSTATE, e.g. `23505`
+	primary    string // the primary message, one line
+	detail     string // the detail message; it can contain row values
+	hint       string // the hint
+	schema     string // the schema of the table or constraint the error names
+	table      string // the table the error names
+	column     string // the column the error names
+	data_type  string // the data type the error names
+	constraint string // the constraint the error names
+}
+
+// msg returns the message db.pg has always returned for a failed statement.
+pub fn (e PgError) msg() string {
+	return 'pg ${e.label} error:\n${e.text}'
+}
+
+// error_field returns a copy of one field of the error in `res`, or '' when it has none.
+fn error_field(res voidptr, code u8) string {
+	if res == unsafe { nil } {
+		return ''
+	}
+	field := C.PQresultErrorField(res, i32(code))
+	if field == unsafe { nil } {
+		return ''
+	}
+	return unsafe { cstring_to_vstring(field) }
+}
+
+// result_error builds the error of a failed statement, and clears `res`.
+// It must be called before `res` is cleared: the fields live in it.
+fn (mut c Conn) result_error(res voidptr, elabel string, e string) PgError {
+	err := PgError{
+		label:      elabel
+		text:       e.clone()
+		severity:   error_field(res, `V`)
+		sqlstate:   error_field(res, `C`)
+		primary:    error_field(res, `M`)
+		detail:     error_field(res, `D`)
+		hint:       error_field(res, `H`)
+		schema:     error_field(res, `s`)
+		table:      error_field(res, `t`)
+		column:     error_field(res, `c`)
+		data_type:  error_field(res, `d`)
+		constraint: error_field(res, `n`)
+	}
+	C.PQclear(res)
+	c.mark_bad_if_disconnected()
+	$if trace_pg_error ? {
+		eprintln('pg error: ${err.text}')
+	}
+	return err
+}
+
 fn (mut c Conn) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
-		C.PQclear(res)
-		c.mark_bad_if_disconnected()
-		$if trace_pg_error ? {
-			eprintln('pg error: ${e}')
-		}
-		return error('pg ${elabel} error:\n${e}')
+		return c.result_error(res, elabel, e)
 	}
 	return res_to_rows(res)
 }
@@ -747,12 +815,7 @@ fn (mut c Conn) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 fn (mut c Conn) handle_error_or_rows_no_null(res voidptr, elabel string) ![]RowNoNull {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
-		C.PQclear(res)
-		c.mark_bad_if_disconnected()
-		$if trace_pg_error ? {
-			eprintln('pg error: ${e}')
-		}
-		return error('pg ${elabel} error:\n${e}')
+		return c.result_error(res, elabel, e)
 	}
 	return res_to_rows_no_null(res)
 }
@@ -761,12 +824,7 @@ fn (mut c Conn) handle_error_or_rows_no_null(res voidptr, elabel string) ![]RowN
 fn (mut c Conn) handle_error_or_result(res voidptr, elabel string) !Result {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
-		C.PQclear(res)
-		c.mark_bad_if_disconnected()
-		$if trace_pg_error ? {
-			eprintln('pg error: ${e}')
-		}
-		return error('pg ${elabel} error:\n${e}')
+		return c.result_error(res, elabel, e)
 	}
 	return res_to_result(res)
 }
@@ -774,12 +832,7 @@ fn (mut c Conn) handle_error_or_result(res voidptr, elabel string) !Result {
 fn (mut c Conn) handle_error(res voidptr, elabel string) ! {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
-		C.PQclear(res)
-		c.mark_bad_if_disconnected()
-		$if trace_pg_error ? {
-			eprintln('pg error: ${e}')
-		}
-		return error('pg ${elabel} error:\n${e}')
+		return c.result_error(res, elabel, e)
 	}
 }
 
