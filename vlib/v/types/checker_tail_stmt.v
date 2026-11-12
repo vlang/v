@@ -7730,6 +7730,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	mut base_type := tc.smartcast_type(base_id) or {
 		tc.lexical_match_smartcast_type(base_id) or { tc.resolve_type(base_id) }
 	}
+	if type_contains_unknown(base_type) && base.kind == .call {
+		// A generic call used directly as a selector base can keep an open
+		// return type in the expression cache. Resolve its signature from the
+		// call arguments before looking up the selected field.
+		resolved_base_type := tc.resolve_generic_call_arg_type(base_id)
+		if !type_contains_unknown(resolved_base_type) {
+			base_type = resolved_base_type
+		}
+	}
 	if base.kind == .ident {
 		if mut_base := tc.mut_param_base_for_current_ident(base.value, base_type) {
 			base_type = mut_base
