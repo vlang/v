@@ -435,6 +435,10 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		|| t.is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
 		mut collection := container_id
+		if source := t.bytes_iteration_source(id, node, container_id, body_ids) {
+			return t.lower_indexed_for_in(id, node, key_id, val_id, source,
+				flat.source_type_string, has_index, body_ids)
+		}
 		literal := t.a.nodes[int(container_id)]
 		if node.op != .amp && flat.source_type_shape(effective_iter).has(.array_type)
 			&& t.array_literal_can_emit_direct(literal) {
