@@ -294,6 +294,9 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 			}
 			resp, reusable := conn.exchange(req, raw) or {
 				conn.close_conn()
+				if err is ResponseDecompressionLimitError || err is ResponseContentEncodingLayerLimitError {
+					return err
+				}
 				// Past the TLS handshake the request bytes may have been
 				// (partially) written; a non-idempotent method must not be
 				// replayed by the outer retry loop, mirroring
@@ -320,6 +323,9 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
+			if err is ResponseDecompressionLimitError || err is ResponseContentEncodingLayerLimitError {
+				return err
+			}
 			// Past the TLS handshake the request bytes may have been (partially)
 			// written; a non-idempotent method must not be replayed by the outer
 			// retry loop, mirroring tls_fresh_round_trip's own error handling.
@@ -489,6 +495,9 @@ fn (mut t Transport) h2_use_h1_pool_or_dial(req &Request, key string, raw string
 	h1conn.refresh_timeouts(req)
 	resp, reusable := h1conn.exchange(req, raw) or {
 		h1conn.close_conn()
+		if err is ResponseDecompressionLimitError || err is ResponseContentEncodingLayerLimitError {
+			return err
+		}
 		// Mirrors round_trip's own stale-pooled-connection handling: a
 		// reused connection that fails is drained by falling through to a
 		// fresh dial, except a non-idempotent method must not be replayed.
@@ -538,5 +547,9 @@ fn do_h2(req &Request, mut conn H2MuxConn, method Method, host string, port int,
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h2resp.body.len))!
 	}
-	return h2_response_to_http(h2resp, raw_body: req.raw_response_body)
+	return h2_response_to_http(h2resp,
+		raw_body:                     req.raw_response_body
+		max_total_decompressed_bytes: req.max_total_decompressed_bytes
+		stop_copying_limit:           req.stop_copying_limit
+	)
 }

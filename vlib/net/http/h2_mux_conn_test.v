@@ -267,17 +267,19 @@ fn (mut p MuxTestPeer) respond_headers(stream_id u32, end_stream bool) ! {
 @[heap]
 struct MuxResults {
 mut:
-	mu       &sync.Mutex = sync.new_mutex()
-	bodies   map[string]string
-	statuses map[string]int
-	errs     map[string]string
-	codes    map[string]int
+	mu        &sync.Mutex = sync.new_mutex()
+	bodies    map[string]string
+	statuses  map[string]int
+	truncated map[string]bool
+	errs      map[string]string
+	codes     map[string]int
 }
 
 fn (mut r MuxResults) set_ok(path string, resp H2ClientResponse) {
 	r.mu.lock()
 	r.bodies[path] = resp.body.bytestr()
 	r.statuses[path] = resp.status
+	r.truncated[path] = resp.body_truncated
 	r.mu.unlock()
 }
 
@@ -1122,6 +1124,7 @@ fn test_mux_cancel_one_stream_other_lives() {
 	// The cancelled stream returns its truncated body without an error.
 	assert out.errs['/cancelme'] or { '' } == ''
 	assert out.bodies['/cancelme'] == 'aaaaaaaaaa'
+	assert out.truncated['/cancelme']
 	// The other stream is unaffected — the connection was not poisoned. (This
 	// exercises the deregister-before-RST ordering in cancel_stream: the late
 	// DATA for the cancelled stream is absorbed by the unknown-stream backstop,

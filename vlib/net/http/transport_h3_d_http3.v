@@ -370,5 +370,9 @@ fn do_h3(req &Request, mut conn H3MuxConn, method Method, host string, port int,
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h3resp.body.len))!
 	}
-	return h3_response_to_http(h3resp, raw_body: req.raw_response_body)
+	return h3_response_to_http(h3resp,
+		raw_body:                     req.raw_response_body
+		max_total_decompressed_bytes: req.max_total_decompressed_bytes
+		stop_copying_limit:           req.stop_copying_limit
+	)
 }
