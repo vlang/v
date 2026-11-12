@@ -63,6 +63,10 @@ its implementation is not copied into V module objects. With Clang or GCC on Uni
 `net.http`, `net.websocket`, or `veb` therefore retains the ordinary module cache. Windows SChannel still
 uses the conservative fallback for its bundled implementation and opaque context layout.
 
+Cached V function bodies can call generated enum stringifiers that their declaration headers
+do not name. Builds using those headers retain the stringifiers for enums loaded from either
+headers or source, so refreshing a dependency does not leave cached callers with missing symbols.
+
 The shipped mbedTLS public include tree and V's two mbedTLS helper headers have an explicit
 interface-only contract: ABI types and inline helpers may appear in every cached unit, while
 library state belongs to the separate `#flag` objects. A fresh C compiler dependency manifest
