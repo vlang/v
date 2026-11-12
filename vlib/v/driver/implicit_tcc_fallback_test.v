@@ -256,6 +256,25 @@ fn test_tcc_macos_framework_flags_are_replaced_by_link_files() {
 	assert v3_tcc_macos_framework_flags(flags, 'linux', sdk) == flags
 }
 
+fn test_macos_bridge_precedes_explicit_runtime_headers() ! {
+	dir := os.join_path(os.vtmp_dir(), 'v_macos_bridge_order_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'objc_class.c.v')
+	output := os.join_path(dir, 'objc_class.c')
+	os.write_file(source, "import macos\n#include <objc/runtime.h>\nfn C.class_getName(voidptr) &char\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(C.class_getName(macos.get_class('NSString'))) })\n}\n")!
+	build := cmdexec.run(@VEXE, ['-nocache', '-os', 'macos', '-cc', 'tcc', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	generated := os.read_file(output)!.replace('\\', '/')
+	bridge := generated.index('vlib/macos/objc_bridge.h"') or {
+		return error('missing Objective-C bridge include')
+	}
+	runtime := generated.index('#include <objc/runtime.h>') or {
+		return error('missing explicit runtime include')
+	}
+	assert bridge < runtime
+}
+
 // The macos module's Objective-C bridge must not stop the bundled tcc from
 // building programs that include the SDK runtime headers themselves.
 fn test_implicit_tcc_builds_programs_using_the_macos_module() {
@@ -300,4 +319,10 @@ fn test_implicit_tcc_builds_programs_using_the_macos_module() {
 	run := cmdexec.run(exe, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'NSString'
+}
+
+fn test_tcc_failure_recognizes_the_bundled_executable_name() {
+	assert v3_is_tcc_compilation_failure('/tools/tcc.exe', 'file.c:2: error: expression expected before @')
+	assert v3_is_tcc_compilation_failure('/tools/tinyc.exe', 'file.c:2: error: unsupported syntax')
+	assert !v3_is_tcc_compilation_failure('/tools/clang', 'file.c:2: error: unsupported syntax')
 }

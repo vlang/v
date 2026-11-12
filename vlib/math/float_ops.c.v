@@ -1,5 +1,11 @@
 module math
 
+$if windows && tinyc {
+	// TinyCC's MSVCRT/OpenLibm bundle does not export fma. Use the Universal
+	// CRT operation so multiplication and addition still share one rounding.
+	#flag windows @VEXEROOT/vlib/math/fma_windows_tcc.def
+}
+
 fn C.remainder(x f64, y f64) f64
 fn C.fma(x f64, y f64, z f64) f64
 

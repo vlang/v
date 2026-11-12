@@ -64,3 +64,52 @@ fn test_inline_asm_rv64() {
 	}
 	assert l == 7
 }
+
+fn test_inline_asm_rv64_float_registers_and_memory_offsets() {
+	values := [2.5, 4.5]!
+	// The assembly reads this stack array before the function returns.
+	ptr := unsafe { &values[0] }
+	mut sum := 0.0
+	asm riscv64 {
+		fld f0, [ptr]
+		fld f1, [ptr + 8]
+		fadd.d sum, f0, f1
+		; =f (sum)
+		; r (ptr)
+		; f0
+		  f1
+		  memory
+	}
+	assert sum == 7.0
+}
+
+fn riscv64_asm_goto_sign(value int) int {
+	asm goto rv64 {
+		beq value, zero, zero_value
+		bgtz value, positive_value
+		; ; r (value)
+		; ; zero_value positive_value
+	}
+	return -1
+	zero_value:
+	return 0
+	positive_value:
+	return 1
+}
+
+fn riscv64_asm_goto_jump() int {
+	asm goto riscv64 {
+		j done
+		; ; ; ; done
+	}
+	return 0
+	done:
+	return 1
+}
+
+fn test_inline_asm_rv64_goto_branches_and_fallthrough() {
+	assert riscv64_asm_goto_sign(-7) == -1
+	assert riscv64_asm_goto_sign(0) == 0
+	assert riscv64_asm_goto_sign(7) == 1
+	assert riscv64_asm_goto_jump() == 1
+}

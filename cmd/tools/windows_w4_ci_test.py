@@ -11,6 +11,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
+from windows_ci_test import validate_master_bootstrap_contract
+
 
 ROOT = Path(__file__).resolve().parents[2]
 W4 = '.github/workflows/run_multiwindow_win32_w4.ps1'
@@ -177,17 +179,10 @@ class W4Tests(unittest.TestCase):
             with self.subTest(compiler=cc):
                 validate_caller(self.script, workflow, cc)
 
-    def test_configuration_fast_workflow_covers_all_inputs(self) -> None:
+    def test_configuration_master_gate_covers_all_inputs(self) -> None:
         workflow = (ROOT / WORKFLOW).read_text(encoding='utf-8')
-        surface = parse_surface(self.text)
-        paths = surface.paths + surface.production_paths + [W4, W3, 'cmd/tools/windows_w4_ci_test.py']
-        for event in ('push', 'pull_request'):
-            body = one(r'^  ' + event + r':\n(.*?)(?=^  \w|\Z)', workflow)
-            for path in paths:
-                self.assertIn(f"      - '{path}'\n", body, (event, path))
-        self.assertIn('run: python cmd/tools/windows_w4_ci_test.py', workflow)
-        self.assertIn('run: python cmd/tools/windows_ci_test.py', workflow)
-        self.assertIn('run: python cmd/tools/makev_test.py', workflow)
+        master = (ROOT / '.github/workflows/ci_master.yml').read_text(encoding='utf-8')
+        validate_master_bootstrap_contract(workflow, master)
 
     def test_checked_in_source_bytes_and_case_discovery(self) -> None:
         # Deliberately fail for an incomplete checkout: CI must not silently skip integrity checks.

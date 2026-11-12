@@ -11,23 +11,34 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	if raw_markdown := merge_raw_markdown_comments(comments) {
 		return raw_markdown
 	}
-	mut doc_comments := []string{}
+	return merge_comment_lines(last_comment_block(comments))
+}
+
+// last_comment_block returns the single line comments of the last group of `comments`
+// that are on consecutive lines.
+fn last_comment_block(comments []DocComment) []DocComment {
+	mut block := []DocComment{}
 	for i := comments.len - 1; i >= 0; i-- {
 		if comments[i].is_multi {
 			continue
 		}
-		doc_comments << comments[i].text
+		block << comments[i]
 		if cmt_above := comments[i - 1] {
 			if cmt_above.pos.line_nr + 1 < comments[i].pos.line_nr {
 				break
 			}
 		}
 	}
+	return block.reverse()
+}
+
+// merge_comment_lines merges the lines of a group of documentation comments into markdown.
+fn merge_comment_lines(comments []DocComment) string {
 	mut comment := ''
 	mut next_on_newline := true
 	mut is_codeblock := false
 	mut trimmed_indent := ''
-	for cmt in doc_comments.reverse() {
+	for cmt in comments.map(it.text) {
 		line_loop: for line in cmt.split_into_lines() {
 			l_normalized := line.trim_left('\x01')
 			l := l_normalized.trim_space()
@@ -68,6 +79,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			line_before_spaces := l.before(' ')
 			if is_list || (l.starts_with('|') && l.ends_with('|'))
 				|| (l.starts_with('#') && line_before_spaces.count('#') == line_before_spaces.len) {
+				if comment != '' && !last_ends_with_lb {
+					comment += '\n'
+				}
 				comment += l + '\n'
 				next_on_newline = true
 				continue

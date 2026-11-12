@@ -360,7 +360,7 @@ fn fold_rune(r rune) string {
 		return 'k'
 	}
 	// l
-	if (c >= 0x139 && c <= 0x142) {
+	if c >= 0x139 && c <= 0x142 {
 		return 'l'
 	}
 	// n
@@ -374,7 +374,7 @@ fn fold_rune(r rune) string {
 		return 'o'
 	}
 	// r
-	if (c >= 0x154 && c <= 0x159) {
+	if c >= 0x154 && c <= 0x159 {
 		return 'r'
 	}
 	// s (incl. Romanian ș)
@@ -399,7 +399,7 @@ fn fold_rune(r rune) string {
 		return 'y'
 	}
 	// z
-	if (c >= 0x179 && c <= 0x17E) {
+	if c >= 0x179 && c <= 0x17E {
 		return 'z'
 	}
 	return r.str()

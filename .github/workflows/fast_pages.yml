@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/master'
     runs-on: [self-hosted, macOS, gitly-ci]
     timeout-minutes: 60
     environment:

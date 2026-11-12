@@ -2,19 +2,10 @@ name: Symlink CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'cmd/tools/vsymlink/**.v'
-      - '.github/workflows/symlink_ci.yml'
-  pull_request:
-    paths:
-      - 'cmd/tools/vsymlink/**.v'
-      - '.github/workflows/symlink_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: symlink-${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
+  group: symlink-symlink_ci-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -22,6 +13,7 @@ permissions:
 
 jobs:
   symlink-unix:
+    if: github.ref == 'refs/heads/master'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -33,7 +25,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Symlink
         run: |
           ./v symlink
@@ -66,6 +60,7 @@ jobs:
           v run hi.v
 
   symlink-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
     timeout-minutes: 60
     strategy:
@@ -77,7 +72,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: ./makev.bat
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Symlink
         run: ./v symlink ${{ matrix.flags }}
       - name: Check if V is usable

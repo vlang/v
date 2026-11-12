@@ -421,13 +421,13 @@ fn casts_cases(checked bool) []OpCase {
 	}
 	if int_type_bits('uint') == 64 {
 		if checked {
-			cases << panic_case('attempt to cast with overflow(uint(int(-1)))', 'int_usize',
+			cases << panic_case('attempt to cast with overflow(uint(int(-1)))', 'int_uint',
 				'-1')
 			cases << panic_case('attempt to cast with overflow(u32(uint(4294967296)))',
-				'usize_u32', '4294967296')
+				'uint_u32', '4294967296')
 		} else {
-			cases << ok_case('18446744073709551615', 'int_usize', '-1')
-			cases << ok_case('0', 'usize_u32', '4294967296')
+			cases << ok_case('18446744073709551615', 'int_uint', '-1')
+			cases << ok_case('0', 'uint_u32', '4294967296')
 		}
 	}
 	if checked {

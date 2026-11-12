@@ -28,8 +28,8 @@ struct TestDurationAlias {
 }
 
 struct EntityToTest {
-	id   int    @[notnull; sql_type: 'INTEGER']
-	smth string @[notnull; sql_type: 'TEXT']
+	id   int    @[sql_type: 'INTEGER']
+	smth string @[sql_type: 'TEXT']
 }
 
 struct TutorialBlogArticle {

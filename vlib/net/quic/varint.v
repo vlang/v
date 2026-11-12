@@ -7,10 +7,12 @@ module quic
 // continuation bit in every byte; QUIC's varint instead packs a 2-bit
 // length class into the top bits of the FIRST byte:
 //
-//   0b00xxxxxx                                            -> 1 byte,  6-bit value
-//   0b01xxxxxx xxxxxxxx                                   -> 2 bytes, 14-bit value
-//   0b10xxxxxx xxxxxxxx xxxxxxxx xxxxxxxx                  -> 4 bytes, 30-bit value
-//   0b11xxxxxx (+ 7 more bytes)                            -> 8 bytes, 62-bit value
+// ```
+// 0b00xxxxxx                             -> 1 byte,  6-bit value
+// 0b01xxxxxx xxxxxxxx                    -> 2 bytes, 14-bit value
+// 0b10xxxxxx xxxxxxxx xxxxxxxx xxxxxxxx  -> 4 bytes, 30-bit value
+// 0b11xxxxxx (+ 7 more bytes)            -> 8 bytes, 62-bit value
+// ```
 //
 // The maximum representable value is 2^62 - 1.
 pub const max_varint = u64(0x3FFF_FFFF_FFFF_FFFF) // 2^62 - 1

@@ -1,11 +1,13 @@
 module arm64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if macos && arm64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_int_limits_match_storage_and_capacity_guards_after_transform() {
 	$if macos && arm64 {
@@ -15,8 +17,8 @@ const min_i32 = i32(-2147483648)
 const max_i32 = i32(2147483647)
 const min_i64 = i64(-9223372036854775807 - 1)
 const max_i64 = i64(9223372036854775807)
-const min_int = $if new_int ?&& x64 { int(min_i64) } $else { int(min_i32) }
-const max_int = $if new_int ?&& x64 { int(max_i64) } $else { int(max_i32) }
+const min_int = int(min_i64)
+const max_int = int(max_i64)
 fn required_capacity(initial int, required int) int {
     mut cap := if initial > 0 { i64(initial) } else { i64(2) }
     for required > cap { cap *= 2 }
@@ -24,11 +26,11 @@ fn required_capacity(initial int, required int) int {
     return int(cap)
 }
 fn main() {
-    if max_int != 2147483647 || min_int != -2147483648 { C.exit(2) }
-    if sizeof(int) != 4 || sizeof(i64) != 8 || sizeof(voidptr) != 8 { C.exit(3) }
+    if max_int != max_i64 || min_int != min_i64 { C.exit(2) }
+    if sizeof(int) != 8 || sizeof(i64) != 8 || sizeof(voidptr) != 8 { C.exit(3) }
     if required_capacity(8192, 8800) != 16384 { C.exit(4) }
     if required_capacity(0, 16384) != 16384 { C.exit(5) }
-    if i64(max_i64) <= i64(max_int) || i64(min_i64) >= i64(min_int) { C.exit(6) }
+    if i64(max_i64) <= i64(max_i32) || i64(min_i64) >= i64(min_i32) { C.exit(6) }
 }
 '
 		path := os.join_path(os.vtmp_dir(), 'arm64_integer_limits_${os.getpid()}.v')

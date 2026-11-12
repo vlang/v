@@ -10,6 +10,8 @@ fn has_non_runtime_include(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		trimmed := line.trim_space()
 		if trimmed.starts_with('#include') {
+			// Bundled runtime headers remain C toolchain inputs.
+			if trimmed.ends_with('/vlib/builtin/track_heap_checks.h"') { continue }
 			return true
 		}
 	}
@@ -25,7 +27,9 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
 	compile := os.exec([v3_bin, '-prod', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('cc -std=gnu11 -O3')
+	plain_std := compile.output.contains('cc -std=gnu11 -O3')
+	feature_std := compile.output.contains('cc -D_GNU_SOURCE -std=gnu11 -O3')
+	assert plain_std || feature_std, compile.output
 	assert !compile.output.contains('tcc.exe')
 
 	run := os.exec([out_bin])
@@ -42,8 +46,10 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
 	compile := os.exec([v3_bin, '-prod', '-c99', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('cc -std=c99 -O3')
-	assert !compile.output.contains('cc -std=gnu11')
+	plain_c99 := compile.output.contains('cc -std=c99 -O3')
+	feature_c99 := compile.output.contains('cc -D_GNU_SOURCE -std=c99 -O3')
+	assert plain_c99 || feature_c99, compile.output
+	assert !compile.output.contains(' -std=gnu11 '), compile.output
 	assert !compile.output.contains('tcc.exe')
 
 	run := os.exec([out_bin])

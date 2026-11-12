@@ -41,6 +41,10 @@ byte-identical to the published one, `differs` names the file that is not.
 The checkout path is embedded in the snapshot. GitHub's runners build at `/home/runner/work/v/v`,
 so the service uses the same `--v-dir` to produce the same bytes.
 
+During bootstrapping, the POSIX and Windows compatibility helpers relocate V-owned include
+directives to the current checkout. They preserve the downloaded snapshot and leave header
+processing to the C compiler.
+
 ## Endpoints
 
 | Path | Answer |

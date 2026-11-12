@@ -58,7 +58,8 @@ const lowered_runtime_seeds = ['new_array_from_c_array_aligned', 'new_array_from
 	'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit']
 
 // float_runtime_seeds format the floats of a program that can have them.
-const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
+const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
+	'strconv.f64_to_decimal', 'strconv.f64_to_decimal_exact_int']
 
 const ownership_runtime_seeds = ['array.free', 'array__free', 'map.free', 'map__free', 'free']
 
@@ -322,6 +323,7 @@ mut:
 // function of the AST, `tc.top_level_idx`, and the checker's file, module and
 // function-file tables only.
 fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool) MarkusedDeclScan {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := MarkusedDeclScan{
 		fn_decls:                   map[string]FnDeclInfo{}
 		fn_decl_lists:              map[string][]FnDeclInfo{}
@@ -380,7 +382,7 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -740,7 +742,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			iface_id := iface_name_source_id
 			for method in tc.interface_abstract_method_names(iface_id) {
 				key := tc.interface_method_signature_key(iface_id, method) or { continue }
-				if (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
+				if cache_modules[iface_name.all_before_last('.')]
+					|| (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
 					enqueue('${iface_name}.${method}', mut used, mut queue)
 				}
 			}
@@ -915,7 +918,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	// Cached module objects can call generated enum stringifiers from bodies that
 	// are intentionally absent from their public headers. Keep those program-level
-	// helpers even when no visible caller remains in the warm-cache AST.
+	// helpers even when no visible caller remains in the warm-cache AST. Their enums
+	// can belong to dependencies reloaded from source, not just cached headers.
 	for type_name in cached_header_enum_str_roots {
 		enqueue_enum_str_method(type_name, '', tc, mut used, mut queue)
 	}
@@ -2562,6 +2566,7 @@ pub fn (mut prepared PreparedMarkusedDecls) release() {
 }
 
 fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) &PreparedMarkusedDecls {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := &PreparedMarkusedDecls{
 		fn_decls:             map[string]FnDeclInfo{}
 		fn_decl_lists:        map[string][]FnDeclInfo{}
@@ -2614,7 +2619,7 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -4476,7 +4481,7 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 		types.Map {
 			// The generated map formatter has runtime branches for every scalar
 			// kind, so even an integer map needs its float conversion callee.
-			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_map_str_helpers(tc, mut used, mut queue)
 			enqueue_stringified_type_dependencies(typ.key_type, cur_module, tc, skipped_fields,
 				mut used, mut queue, mut seen)
 			enqueue_stringified_type_dependencies(typ.value_type, cur_module, tc, skipped_fields,
@@ -4569,9 +4574,12 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
-			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'f64.str', 'f64__str',
-				'rune.str', 'rune__str'] {
+			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'rune.str', 'rune__str'] {
 				enqueue(helper, mut used, mut queue)
+			}
+			if !tc.nofloat {
+				enqueue('f64.str', mut used, mut queue)
+				enqueue('f64__str', mut used, mut queue)
 			}
 			enqueue_implicit_interface_str_helpers_inner(typ.key_type, tc, mut used, mut queue, mut seen)
 			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut seen)
@@ -4663,7 +4671,7 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
-			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_map_str_helpers(tc, mut used, mut queue)
 			enqueue_implicit_str_type_helpers(typ.key_type, tc, mut used, mut queue, mut seen)
 			enqueue_implicit_str_type_helpers(typ.value_type, tc, mut used, mut queue, mut seen)
 		}
@@ -4671,10 +4679,13 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 	}
 }
 
-fn enqueue_implicit_map_str_helpers(mut used map[string]bool, mut queue []string) {
+fn enqueue_implicit_map_str_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	enqueue('string__plus', mut used, mut queue)
-	for primitive in ['i64', 'u64', 'f64', 'rune'] {
+	for primitive in ['i64', 'u64', 'rune'] {
 		enqueue_stringified_primitive_helpers(flat.source_type_id(primitive), mut used, mut queue)
+	}
+	if !tc.nofloat {
+		enqueue_stringified_primitive_helpers(flat.source_type_f64, mut used, mut queue)
 	}
 }
 

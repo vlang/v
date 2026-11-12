@@ -2487,7 +2487,11 @@ fn test_sqlite_non_integer_primary_keys_are_not_null() {
 	columns := db.exec("PRAGMA table_info('custom_keys');")!
 	assert columns.len == 1
 	assert columns[0].vals[3] == '1'
-	db.exec('INSERT INTO custom_keys (code) VALUES (NULL);')!
+	if _ := db.exec('INSERT INTO custom_keys (code) VALUES (NULL);') {
+		assert false, 'a NULL text primary key should be rejected'
+	} else {
+		assert err.code() == int(sqlite.Result.constraint)
+	}
 	rows := db.exec('SELECT count(*) FROM custom_keys;')!
 	assert rows[0].vals[0] == '0'
 }

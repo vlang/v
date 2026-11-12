@@ -37,6 +37,8 @@ fn test_input_is_cmd_v_accepts_relative_entry_file() {
 
 fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('macos', 'arm64', false)
+	assert !v3_tcc_backtrace_enabled('windows', 'amd64', false)
+	assert v3_tcc_backtrace_enabled('windows', 'x86', false)
 	assert v3_tcc_backtrace_enabled('macos', 'amd64', false)
 	assert v3_tcc_backtrace_enabled('linux', 'arm64', false)
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
@@ -1264,7 +1266,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
-	assert v3_effective_c_compiler_for_codegen('x64', 'cc', false, pref.host_target()) == 'tinyc'
+	assert v3_effective_c_compiler_for_codegen('amd64', 'cc', false, pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
@@ -1349,7 +1351,7 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	cpp_object := os.join_path(root, 'native.o')
 	v_source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main')
-	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
+	os.write_file(cpp_source, '#include <cstddef>\n#include <string>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t) + std::string("native").size(); }\n')!
 	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() uint\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
@@ -1358,11 +1360,26 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+	no_retry := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
 		'-no-retry-compilation', '-o', output, v_source], root)
+	assert !no_retry.output.contains('failed to build C object'), no_retry.output
+	if no_retry.exit_code != 0 {
+		// TinyCC may not find the platform C++ runtime or its GCC support libraries
+		// without the platform compiler's search paths.
+		runtime := $if macos { 'c++' } $else { 'stdc++' }
+		missing_runtime := [runtime, 'libgcc.so', 'gcc_s'].any(no_retry.output.contains("tcc: error: library '${it}' not found"))
+		assert no_retry.output.contains('C compilation error: implicit tcc could not be used for this build')
+			|| (no_retry.output.contains('C compilation error (from ')
+				&& missing_runtime), no_retry.output
+		assert !no_retry.output.contains('regenerating it with'), no_retry.output
+	}
+	// The normal implicit-TinyCC policy must still compile and run the native helper.
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-o', output,
+		v_source], root)
 	assert !build.output.contains('failed to build C object'), build.output
-	assert build.exit_code == 0
-		|| build.output.contains('implicit tcc could not be used for this build'), build.output
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run_in(output, [], root)
+	assert run.exit_code == 0, run.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {
@@ -1419,6 +1436,37 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
+fn test_v3_tcc_flag_plan_honors_no_backtrace() {
+	for no_backtrace in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:       true
+			target_os:    'linux'
+			target_arch:  'amd64'
+			vroot:        os.join_path(os.temp_dir(), 'v3_no_backtrace_flag_plan')
+			no_backtrace: no_backtrace
+		})
+		assert ('-bt25' in plan.before_inputs) == !no_backtrace
+	}
+}
+
+fn test_v3_windows_amd64_tcc_flag_plan_preserves_exception_handlers() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc:      true
+		target_os:   'windows'
+		target_arch: 'amd64'
+		vroot:       os.join_path(os.temp_dir(), 'v3_windows_tcc_flag_plan')
+	})
+	assert '-bt25' !in plan.before_inputs
+	mut defines := ['custom']
+	add_v3_tcc_compat_defines(mut defines, 'windows', 'amd64', false, true)
+	assert defines == ['custom', 'no_backtrace', 'windows_tcc_unhandled_filter']
+	add_v3_tcc_compat_defines(mut defines, 'windows', 'amd64', false, true)
+	assert defines == ['custom', 'no_backtrace', 'windows_tcc_unhandled_filter']
+	mut shared_defines := []string{}
+	add_v3_tcc_compat_defines(mut shared_defines, 'windows', 'amd64', true, true)
+	assert shared_defines == ['no_backtrace']
+}
+
 fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 	for is_tcc in [false, true] {
 		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
@@ -1437,6 +1485,9 @@ fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
 		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
 		assert ('-ltcc1' in plan.after_inputs) == is_tcc
+		assert ('-ffunction-sections' in plan.before_inputs) == !is_tcc
+		assert ('-fdata-sections' in plan.before_inputs) == !is_tcc
+		assert ('-Wl,--gc-sections' in plan.after_inputs) == !is_tcc
 	}
 }
 
@@ -1545,6 +1596,16 @@ fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 		assert '-I/usr/local/include' in plan.before_inputs
 		assert '-L/usr/local/lib' in plan.before_inputs
 	}
+	native_linux_arm64 := host_os == 'linux' && pref.host_arch() == 'arm64'
+	assert ('-D__u128=__uint128_t' in plan.before_inputs) == native_linux_arm64
+}
+
+fn test_v3_tcc_linux_uapi_flags_define_u128_only_for_linux_arm64() {
+	assert v3_tcc_linux_uapi_flags('linux', 'arm64') == ['-D__u128=__uint128_t']
+	assert v3_tcc_linux_uapi_flags('linux', 'amd64') == []
+	assert v3_tcc_linux_uapi_flags('linux', 'arm32') == []
+	assert v3_tcc_linux_uapi_flags('macos', 'arm64') == []
+	assert v3_tcc_linux_uapi_flags('freebsd', 'arm64') == []
 }
 
 fn test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build() {
@@ -1670,11 +1731,15 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
-fn test_x64_backend_aliases_are_normalized() {
-	for alias in ['amd64', 'x86_64', 'x86-64'] {
-		assert normalize_backend_name(alias) == 'x64'
+fn test_amd64_backend_aliases_are_normalized() {
+	for alias in ['x64', 'x86_64', 'x86-64'] {
+		assert normalize_backend_name(alias) == 'amd64'
 	}
-	assert normalize_backend_name('x64') == 'x64'
+	assert normalize_backend_name('amd64') == 'amd64'
+}
+
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
 }
 
 fn test_v3_fastc_default_linker_flags() {
@@ -2170,6 +2235,32 @@ fn test_v3_native_macos_selects_bundled_tcc_by_default() {
 		assert explicit.implicit_tcc == '', arch
 		assert !explicit.use_implicit_tcc_semantics, arch
 	}
+}
+
+fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:  'linux'
+			c_compiler: compiler
+			is_tcc:     compiler == 'tinyc'
+			is_o:       true
+		})
+		assert plan.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
+	}
+	for target_os in ['windows', 'macos', 'freebsd', 'openbsd'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ target_os: target_os })
+		assert '-D_GNU_SOURCE' !in plan.before_inputs
+	}
+	freestanding := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:       'linux'
+		is_freestanding: true
+	})
+	assert '-D_GNU_SOURCE' !in freestanding.before_inputs
+	provided := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:           'linux'
+		environment_c_flags: ['-D_GNU_SOURCE']
+	})
+	assert provided.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
 }
 
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {

@@ -36,9 +36,9 @@ pub fn sinh(x_ f64) f64 {
 // cosh returns the hyperbolic cosine of x in radians
 //
 // special cases are:
-// cosh(±0) = 1
-// cosh(±inf) = +inf
-// cosh(nan) = nan
+// - `cosh(±0) = 1`
+// - `cosh(±inf) = +inf`
+// - `cosh(nan) = nan`
 pub fn cosh(x f64) f64 {
 	abs_x := abs(x)
 	if abs_x > 21 {

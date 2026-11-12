@@ -131,6 +131,11 @@ fn main() {
 	assert (large_option or { Large{} }).a == 101
 	assert (large_result(301) or { Large{} }).c == 303
 	assert C.allocation_count() == before_large + 3
+	mut large_mutation := large(401)
+	before_mutation := C.allocation_count()
+	if large_mutation != none { large_mutation.b = 409 }
+	assert (large_mutation or { Large{} }).b == 409
+	assert C.allocation_count() == before_mutation
 	mut values := map[int]u64{}
 	values[7] = 0xf123456789abcdef
 	before_lookup := C.allocation_count()
@@ -198,9 +203,19 @@ __attribute__((constructor)) static void native_entry(void) {
 	if (block == NULL || allocator_depth != 0 || allocations != 1) abort();
 }
 ') or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-Dmalloc=test_allocator', '-o', program,
-		c_path])
-	assert build.exit_code == 0, build.output
-	run := cmdexec.run(program, [])
-	assert run.exit_code == 0, run.output
+	mut compilers := ['cc']
+	if clang := os.find_abs_path_of_executable('clang') {
+		if cc := os.find_abs_path_of_executable('cc') {
+			if os.real_path(clang) != os.real_path(cc) {
+				compilers << clang
+			}
+		}
+	}
+	for compiler in compilers {
+		build := cmdexec.run(compiler, ['-std=gnu11', '-O2', '-Werror=attributes',
+			'-Dmalloc=test_allocator', '-o', program, c_path])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
 }

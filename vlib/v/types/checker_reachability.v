@@ -1,6 +1,5 @@
 module types
 
-import v.flat
 import v.workers
 
 const min_parallel_selected_fn_bodies = 64

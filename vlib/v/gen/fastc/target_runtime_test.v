@@ -124,6 +124,9 @@ fn test_fastc_target_boxing_uses_only_core_headers_and_real_allocator() {
 	root := os.join_path(os.vtmp_dir(), 'fastc_target_boxing_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'stdbool.h'), '#define bool _Bool\n#define true 1\n#define false 0\n') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(root, 'stddef.h'), 'typedef __SIZE_TYPE__ size_t;\n#define NULL ((void*)0)\n') or {
 		panic(err)
 	}
@@ -149,9 +152,11 @@ typedef __UINTPTR_TYPE__ uintptr_t;
 int main(void) {
 	int input = 42;
 	int *boxed = v_fastc_interface_box(&input, sizeof(input));
+	int *owned = v_fastc_heap_copy(&input, sizeof(input));
 	input = 0;
-	int result = boxed && *boxed == 42 ? 0 : 1;
+	int result = boxed && *boxed == 42 && owned && *owned == 42 ? 0 : 1;
 	free(boxed);
+	free(owned);
 	return result;
 }
 '
@@ -159,6 +164,35 @@ int main(void) {
 	program := os.join_path(root, 'program')
 	os.write_file(source_file, source) or { panic(err) }
 	build := cmdexec.run('cc', ['-std=gnu11', '-nostdinc', '-I${root}', '-o', program, source_file])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_fastc_hosted_owned_values_can_be_freed_independently() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_hosted_heap_copy_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	source_file := os.join_path(root, 'main.c')
+	program := os.join_path(root, 'program')
+	os.write_file(source_file, c_selfhost_preamble + r'
+int main(void) {
+	int input = 42;
+	int *boxed = v_fastc_interface_box(&input, sizeof(input));
+	int *first = v_fastc_heap_copy(&input, sizeof(input));
+	int *second = v_fastc_heap_copy(&input, sizeof(input));
+	if (!boxed || !first || !second) return 1;
+	input = 0;
+	free(first);
+	int result = *boxed == 42 && *second == 42 ? 0 : 1;
+	free(second);
+	return result;
+}
+') or { panic(err) }
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, source_file])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

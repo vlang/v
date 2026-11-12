@@ -11,6 +11,10 @@
 #include "../win32_service_native.h"
 #include "win32_monitor_enumeration_test_seam.h"
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
 typedef HRESULT(WINAPI *VMultiwindowTestDwmGetWindowAttribute)(HWND, DWORD, PVOID, DWORD);
 typedef UINT(WINAPI *VMultiwindowTestGetDpiForWindow)(HWND);
 typedef HANDLE (WINAPI *VMultiwindowTestGetWindowDpiAwarenessContext)(HWND);
@@ -1183,42 +1187,6 @@ v_multiwindow_win32_service_test_clipboard_timeout_ns(void *backend) {
 	return INT64_C(2000000000);
 }
 
-static int x__multiwindow__win32_service_test_clipboard_pending_count(
-	void *backend);
-static int64_t
-x__multiwindow__win32_service_test_clipboard_pending_deadline_ns(
-	void *backend, int index);
-static int
-x__multiwindow__win32_service_test_clipboard_pending_write_matches(
-	void *backend, int index, uint64_t request_app,
-	uint64_t request_serial, uint64_t window_app, int window_slot,
-	uint32_t window_generation, uint16_t *text, size_t units);
-
-static inline int
-v_multiwindow_win32_service_test_clipboard_pending_count(void *backend) {
-	return x__multiwindow__win32_service_test_clipboard_pending_count(
-		backend);
-}
-
-static inline int64_t
-v_multiwindow_win32_service_test_clipboard_pending_deadline_ns(
-		void *backend, int index) {
-	return
-		x__multiwindow__win32_service_test_clipboard_pending_deadline_ns(
-			backend, index);
-}
-
-static inline int
-v_multiwindow_win32_service_test_clipboard_pending_write_matches(
-		void *backend, int index, uint64_t request_app,
-		uint64_t request_serial, uint64_t window_app, int window_slot,
-		uint32_t window_generation, uint16_t *text, size_t units) {
-	return
-		x__multiwindow__win32_service_test_clipboard_pending_write_matches(
-			backend, index, request_app, request_serial, window_app,
-			window_slot, window_generation, text, units);
-}
-
 #else
 
 static inline void v_multiwindow_win32_service_test_clipboard_configure(
@@ -1352,37 +1320,6 @@ static inline int64_t
 v_multiwindow_win32_service_test_clipboard_timeout_ns(void *backend) {
 	(void)backend;
 	return INT64_C(-1);
-}
-
-static inline int
-v_multiwindow_win32_service_test_clipboard_pending_count(void *backend) {
-	(void)backend;
-	return V_MULTIWINDOW_WIN32_CLIPBOARD_TEST_ROUTE_UNAVAILABLE;
-}
-
-static inline int64_t
-v_multiwindow_win32_service_test_clipboard_pending_deadline_ns(
-		void *backend, int index) {
-	(void)backend;
-	(void)index;
-	return INT64_C(-1);
-}
-
-static inline int
-v_multiwindow_win32_service_test_clipboard_pending_write_matches(
-		void *backend, int index, uint64_t request_app,
-		uint64_t request_serial, uint64_t window_app, int window_slot,
-		uint32_t window_generation, uint16_t *text, size_t units) {
-	(void)backend;
-	(void)index;
-	(void)request_app;
-	(void)request_serial;
-	(void)window_app;
-	(void)window_slot;
-	(void)window_generation;
-	(void)text;
-	(void)units;
-	return V_MULTIWINDOW_WIN32_CLIPBOARD_TEST_ROUTE_UNAVAILABLE;
 }
 
 #endif

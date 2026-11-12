@@ -2,48 +2,10 @@ name: riscv64 CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # Linux, including this riscv64 runner.
-      - '**.md'
-      - '**.yml'
-      - '!**/riscv64_linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths:
-      - 'cmd/v/**'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/arrays/**'
-      - 'vlib/builtin/**'
-      - 'vlib/encoding/binary/**'
-      - 'vlib/os/**'
-      - 'vlib/time/**'
-      - 'vlib/runtime/**'
-      - 'vlib/term/**'
-      - 'vlib/net/**'
-      - 'vlib/crypto/rand/**'
-      - 'vlib/picoev/**'
-      - 'vlib/rand/**'
-      - 'vlib/strconv/**'
-      - 'vlib/strings/**'
-      - 'vlib/sync/**'
-      - 'vlib/v/**'
-      - 'thirdparty/**'
-      - 'vc/**'
-      - 'v.mod'
-      - 'GNUmakefile'
-      - 'Makefile'
-      - '.github/problem-matchers/**'
-      - '!**.md'
-      - '!**.yml'
-      - '.github/workflows/riscv64_linux_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: riscv64-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: riscv64-riscv64_linux_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -52,10 +14,12 @@ permissions:
 
 jobs:
   riscv64_linux:
+    if: github.ref == 'refs/heads/master'
     # The host should always be Linux
     runs-on: ubuntu-24.04
-    # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
-    timeout-minutes: 120
+    # The native bootstrap takes about 100 minutes under QEMU; leave time for
+    # the builtin/os/binary, assembly and closure tests that follow it.
+    timeout-minutes: 180
     name: Build on ubuntu-24.04 riscv64
     steps:
       - uses: actions/checkout@v7
@@ -76,6 +40,10 @@ jobs:
             apt-get update -q -y
             apt-get install -q -y make gcc git file coreutils binutils
           run: |
+            set -euo pipefail
+            # The checkout belongs to the host runner, not the container's root user.
+            # Scope Git's ownership exception to this mounted repository only.
+            git config --global --add safe.directory "$(pwd -P)"
             uname -a
             make --version
             gcc --version
@@ -85,6 +53,22 @@ jobs:
             make
             file ./v
             ls -la ./v
+            # The explicit system-compiler fallback has no prebuilt GC archive.
+            # Build the matching bundled collector once so nested compiler calls
+            # and tests that explicitly enable Boehm can use the normal default.
+            if [ ! -f thirdparty/tcc/lib/libgc.a ]; then
+              grep -Fxq 'mode=system' thirdparty/tcc/.git/vlang-compatible-tcc/metadata
+              mkdir -p thirdparty/tcc/lib
+              cc -O2 -fPIC -pthread -Ithirdparty/libgc/include \
+                -DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 \
+                -DALL_INTERIOR_POINTERS=1 -DUSE_MMAP=1 -DUSE_MUNMAP=1 -DHANDLE_FORK=1 \
+                -c thirdparty/libgc/gc.c -o thirdparty/tcc/lib/gc.o
+              ar rcs thirdparty/tcc/lib/libgc.a thirdparty/tcc/lib/gc.o
+              rm thirdparty/tcc/lib/gc.o
+            fi
+            # -gc none is only for bootstrap, before the collector is available.
+            export VFLAGS="-no-retry-compilation -cc cc"
+            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
             # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
             # then make ordinary test compilation fail instead of silently retrying V1.
             export V_MACOS_V3_NO_FALLBACK=1

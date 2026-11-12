@@ -8,6 +8,27 @@ import v.pref
 import v.transform
 import v.types
 
+fn test_source_interface_dispatch_stays_available_to_cached_callers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	used := {
+		'main': true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.used_fns = &used
+	g.set_cache_split(true)
+	g.set_cache_const_modules(['net', 'proxy'], ['net'])
+	// The cached proxy body may call any net interface method even when net
+	// itself is rebuilt from source and that call is absent from markused.
+	assert g.should_emit_interface_dispatch(flat.source_type_id('net.Dialer'), 'dial')
+	assert g.should_emit_interface_dispatch(flat.source_type_id('net.Connection'), 'close')
+	assert !g.should_emit_interface_dispatch(flat.source_type_id('LocalReader'), 'read')
+	g.set_cache_split(false)
+	assert !g.should_emit_interface_dispatch(flat.source_type_id('net.Dialer'), 'dial')
+}
+
 fn test_collect_interface_impls_includes_boxed_maps() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

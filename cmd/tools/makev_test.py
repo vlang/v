@@ -151,7 +151,11 @@ class BootstrapConfigurationTests(unittest.TestCase):
                                if line.lstrip().startswith('"!clang_cl_exe!" '))
                 self.assertIn('/std:c11', command)
                 self.assertIn('/link /STACK:33554432', command)
+                self.assertIn('/DV_INT128_PORTABLE=1', command)
                 self.assertNotIn('-municode', command)
+                gnu_command = next(line.strip() for line in routine(label).splitlines()
+                                   if line.lstrip().startswith('"!clang_exe!" '))
+                self.assertNotIn('V_INT128_PORTABLE', gnu_command)
         self.assertIn('set updated_vflags=!clang_vflags!', routine('clang_strap'))
 
     def test_directly_linked_stage_does_not_require_gc(self):
@@ -364,6 +368,13 @@ class BatchExecutionTests(unittest.TestCase):
                 bootstrap_object=bootstrap_object, stage_object=stage_object,
             ), tempfile.TemporaryDirectory(prefix="makev TCC link inputs ") as directory:
                 workdir = Path(directory)
+                tools_dir = workdir / "cmd" / "tools"
+                tools_dir.mkdir(parents=True)
+                shutil.copy2(ROOT / "cmd" / "tools" / "vc_compat_uint.ps1", tools_dir)
+                snapshot = workdir / "vc" / "v_win.c"
+                if "--local" in options:
+                    snapshot.parent.mkdir()
+                    snapshot.write_text("/* bootstrap fixture */\n", encoding="utf-8")
                 tcc_dir = workdir / "thirdparty" / "tcc"
                 openlibm = tcc_dir / "lib" / "openlibm.o"
                 openlibm.parent.mkdir(parents=True)
@@ -409,6 +420,8 @@ class BatchExecutionTests(unittest.TestCase):
                     '>>"download.txt" echo update existing checkout',
                     "exit /b 0",
                     ":cloning_vc",
+                    'mkdir "%vc_dir%"',
+                    '>"%V_C_FILE%" echo /* bootstrap fixture */',
                     "exit /b 0",
                     ":generate_stage_c",
                     "exit /b 0",
@@ -426,9 +439,11 @@ class BatchExecutionTests(unittest.TestCase):
                 command.extend(options)
                 result = subprocess.run(
                     command, cwd=workdir, env=env, capture_output=True, text=True,
-                    errors="replace", timeout=15, check=False,
+                    errors="replace", timeout=45, check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(snapshot.read_bytes(),
+                                 snapshot.with_name("v_win_compat.c").read_bytes())
                 self.assertEqual((workdir / "download.txt").exists(), "--local" not in options)
                 for stage, present in (("bootstrap", bootstrap_object), ("stage", stage_object)):
                     links = (workdir / (stage + ".args")).read_text(encoding="utf-8").splitlines()

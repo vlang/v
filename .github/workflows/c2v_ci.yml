@@ -1,31 +1,10 @@
 name: C2V apps
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/c2v_ci.yml'
-      - 'doc/**'
-      - 'examples/**'
-      - 'tutorials/**'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/c2v_ci.yml'
-      - 'doc/**'
-      - 'examples/**'
-      - 'tutorials/**'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: c2v-c2v_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -41,7 +20,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Set 8.8.8.8 as dns server
         run: |
@@ -67,6 +46,14 @@ jobs:
       - name: Build original Chocolate Doom
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          # Remove this patch once Doom links the Boehm runtime supplied by V.
+          doom_checkout=~/code/doom
+          doom_patch="$GITHUB_WORKSPACE/.github/doom_boehm_link.patch"
+          if git -C "$doom_checkout" apply --check "$doom_patch"; then
+            git -C "$doom_checkout" apply "$doom_patch"
+          else
+            git -C "$doom_checkout" apply --reverse --check "$doom_patch"
+          fi
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
@@ -89,7 +76,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Set 8.8.8.8 as dns server
         run: |
@@ -118,8 +105,13 @@ jobs:
           v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
         run: |
-          # Fetch the free shareware DOOM1.WAD from NetBSD's pkgsrc distfile mirror
-          v retry -- v download https://cdn.NetBSD.org/pub/pkgsrc/distfiles/doom1-1.9/shareware_doom_iwad.zip
+          # Fetch the free shareware DOOM1.WAD, falling back when the CDN is unavailable.
+          curl --fail --location --retry 2 --connect-timeout 30 --max-time 120 \
+            --output shareware_doom_iwad.zip \
+            https://cdn.NetBSD.org/pub/pkgsrc/distfiles/doom1-1.9/shareware_doom_iwad.zip || \
+          curl --fail --location --retry 2 --connect-timeout 30 --max-time 120 \
+            --output shareware_doom_iwad.zip \
+            https://ftp.netbsd.org/pub/pkgsrc/distfiles/doom1-1.9/shareware_doom_iwad.zip
           echo '9fe5a32a24efa622ff7017303d3c8fdc7b4e6c4ec548e50bea402bfa9a1f320ce3f316f4a7f62e64786af876776d51b20fc7688f497896aa176f97b85ada30f9  shareware_doom_iwad.zip' | sha512sum --check
           unzip -p shareware_doom_iwad.zip DOOM1.WAD > ~/doom1.wad
           rm shareware_doom_iwad.zip
@@ -131,6 +123,14 @@ jobs:
       - name: Build original Chocolate Doom
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          # Remove this patch once Doom links the Boehm runtime supplied by V.
+          doom_checkout=~/code/doom
+          doom_patch="$GITHUB_WORKSPACE/.github/doom_boehm_link.patch"
+          if git -C "$doom_checkout" apply --check "$doom_patch"; then
+            git -C "$doom_checkout" apply "$doom_patch"
+          else
+            git -C "$doom_checkout" apply --reverse --check "$doom_patch"
+          fi
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom

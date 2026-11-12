@@ -1,9 +1,49 @@
 #ifndef V_NET_MBEDTLS_HELPERS_H
 #define V_NET_MBEDTLS_HELPERS_H
 
+#if defined(__linux__)
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#endif
+
+/* Sockets supplied by net.TcpConn bypass mbedTLS's net_prepare(), which ignores
+ * SIGPIPE globally. Suppress it on each Linux send instead, retaining the
+ * library's error mapping and the application's signal disposition. */
+static inline int v_mbedtls_net_send(void *ctx, const unsigned char *buf, size_t len)
+{
+#if defined(__linux__)
+	int fd = ((mbedtls_net_context *)ctx)->fd;
+	if (fd < 0) {
+		return MBEDTLS_ERR_NET_INVALID_CONTEXT;
+	}
+	int ret = (int)send(fd, buf, len, MSG_NOSIGNAL);
+	if (ret >= 0) {
+		return ret;
+	}
+	int err = errno;
+	if (err == EPIPE || err == ECONNRESET) {
+		return MBEDTLS_ERR_NET_CONN_RESET;
+	}
+	if (err == EINTR) {
+		return MBEDTLS_ERR_SSL_WANT_WRITE;
+	}
+	if (err == EAGAIN || err == EWOULDBLOCK) {
+		int flags = fcntl(fd, F_GETFL);
+		errno = err;
+		if ((flags & O_NONBLOCK) == O_NONBLOCK) {
+			return MBEDTLS_ERR_SSL_WANT_WRITE;
+		}
+	}
+	return MBEDTLS_ERR_NET_SEND_FAILED;
+#else
+	return mbedtls_net_send(ctx, buf, len);
+#endif
+}
+
 static inline void v_mbedtls_ssl_set_bio_nonblocking(mbedtls_ssl_context *ssl, mbedtls_net_context *net)
 {
-	mbedtls_ssl_set_bio(ssl, net, mbedtls_net_send, mbedtls_net_recv, NULL);
+	mbedtls_ssl_set_bio(ssl, net, v_mbedtls_net_send, mbedtls_net_recv, NULL);
 }
 
 /* v_mbedtls_x509_crt_get_pk returns a pointer to crt's embedded public-key

@@ -5,11 +5,8 @@ import strings
 import v.modulecache
 import v.tempname
 
-// What a C compiler reads besides the unit that it compiles decides what it makes
-// of the unit: the preprocessed headers that TinyCC is given (tcc_prelude.v) and
-// the executable that is kept of a program (program_compile_inputs.v) both stand
-// for a compilation, and are good for as long as that would read the same. This
-// file works out what a compilation depends on from the files that it read.
+// Native dependencies are compiler-reported paths and opaque file identities.
+// V never reads header contents or preprocessed declarations.
 
 // V3IncludeSearch is where a C compiler looks for an included file: `dirs` in the
 // order of the search, `frameworks` those of them that hold frameworks, where
@@ -26,9 +23,9 @@ mut:
 // command: the `files` that the compiler read, each with the metadata in
 // `identities` that it had when it was read, and the `missing` paths where a file
 // that is not there would be read instead of, or in addition to, one of them.
-// `mentions_time` says that the unit or a header spells `__DATE__`, `__TIME__` or
+// `mentions_time` says that the generated unit spells `__DATE__`, `__TIME__` or
 // `__TIMESTAMP__`, so that the compilation may give another result at another
-// time, and `time_parts` holds the parts of those names that the unit or a header
+// time, and `time_parts` holds the parts of those names that the unit or command
 // has as words of their own: `##` can put a name together of them. `unknown` says
 // why the inputs cannot all be told, or is '' when they can.
 struct V3HeaderInputs {
@@ -279,140 +276,28 @@ fn v3_include_path_below(name string, framework bool) ?string {
 // compiler started, may or may not be what the compiler read: the inputs are not
 // known then. One that was there all along is one that the compiler passed over,
 // as `#include_next` does.
-fn v3_header_inputs(read []string, unit string, search V3IncludeSearch, before i64) V3HeaderInputs {
-	mut inputs := v3_inputs_of_headers(read, v3_has_include_names(unit), search, before,
-		map[string]string{})
+fn v3_header_inputs(read []string, unit string, before i64) V3HeaderInputs {
+	mut inputs := v3_inputs_of_headers(read, v3_has_include_names(unit), before)
 	inputs.add_time_of(unit)
 	return inputs
 }
 
-// v3_inputs_of_headers is v3_header_inputs for the files alone: `unit_asks` are the
-// names that the unit asks `__has_include` about, and what the unit says of the
-// time is left out. `texts` holds the files that the caller has read already.
-fn v3_inputs_of_headers(read []string, unit_asks []string, search V3IncludeSearch, before i64, texts map[string]string) V3HeaderInputs {
-	mut inputs := V3HeaderInputs{}
-	// The compiler and its own answer can spell one directory in two ways, and a
-	// directory below one of the search can be a link to another place: a file is
-	// matched as the compiler names it, and as the file system does.
-	real_dirs := search.dirs.map(os.real_path(it))
-	framework_dirs := search.dirs.map(it in search.frameworks)
-	mut real_dir_of := map[string]string{}
-	mut files := map[string]bool{}
-	for path in read {
-		files[path] = true
+// v3_inputs_of_headers records compiler-reported paths as opaque files. A
+// manifest does not describe missing include candidates or time macros, so it
+// cannot certify executable reuse when headers were read.
+fn v3_inputs_of_headers(read []string, unit_asks []string, before i64) V3HeaderInputs {
+	mut inputs := V3HeaderInputs{
+		files: read.clone()
 	}
-	mut missing := map[string]bool{}
-	mut asked := unit_asks.clone()
-	for path in read {
-		text := texts[path] or { os.read_file(path) or { '' } }
-		inputs.add_time_of(text)
-		own_dir := os.dir(path)
-		mut beside := []string{}
-		if text.contains('__has_include') {
-			for name in v3_has_include_names(text) {
-				if name !in asked {
-					asked << name
-				}
-				beside << name
-			}
-		}
-		if text.contains('"') {
-			beside << v3_quoted_include_names(text)
-		}
-		for name in beside {
-			if os.is_abs_path(name) {
-				continue
-			}
-			absent := v3_first_missing_path(own_dir, name)
-			candidate := os.norm_path(os.join_path(own_dir, name))
-			if absent.len > 0 {
-				missing[absent] = true
-			} else if os.is_file(candidate) {
-				// It is read, or an inactive part of the file names it.
-				files[candidate] = true
-			}
-		}
-		real_dir := real_dir_of[own_dir] or {
-			resolved := os.real_path(own_dir)
-			real_dir_of[own_dir] = resolved
-			resolved
-		}
-		real := os.join_path_single(real_dir, os.file_name(path))
-		mut seen := map[string]bool{}
-		for position, dir in search.dirs {
-			mut below := []string{}
-			if path.starts_with(dir + '/') {
-				below << path[dir.len + 1..]
-			}
-			if real.starts_with(real_dirs[position] + '/') {
-				below << real[real_dirs[position].len + 1..]
-			}
-			for relative_to_dir in below {
-				name := v3_include_name_below(relative_to_dir, framework_dirs[position]) or {
-					continue
-				}
-				for earlier in 0 .. position {
-					if real_dirs[earlier] == real_dirs[position] {
-						continue
-					}
-					relative := v3_include_path_below(name, framework_dirs[earlier]) or {
-						continue
-					}
-					candidate := os.join_path(search.dirs[earlier], relative)
-					if seen[candidate] {
-						continue
-					}
-					seen[candidate] = true
-					absent := v3_first_missing_path(search.dirs[earlier], relative)
-					if absent.len > 0 {
-						missing[absent] = true
-					} else if !v3_path_is_older_than(search.dirs[earlier], relative, before) {
-						inputs.unknown = '`${candidate}` appeared while the compiler ran'
-					}
-				}
-			}
-		}
+	if read.len > 0 || unit_asks.len > 0 {
+		inputs.unknown = 'native headers require C compiler processing'
 	}
-	for name in asked {
-		for position, dir in search.dirs {
-			relative := v3_include_path_below(name, framework_dirs[position]) or { continue }
-			absent := v3_first_missing_path(dir, relative)
-			if absent.len > 0 {
-				missing[absent] = true
-			} else {
-				files[os.join_path(dir, relative)] = true
-			}
-		}
-	}
-	for dir in search.absent {
-		if !os.exists(dir) {
-			missing[dir] = true
-		} else {
-			inputs.unknown = '`${dir}` appeared while the compiler ran'
-		}
-	}
-	inputs.files = files.keys()
-	inputs.files.sort()
-	inputs.missing = missing.keys()
-	inputs.missing.sort()
 	for path in inputs.files {
-		identity := v3_file_identity_from_before(path, before) or {
-			if inputs.unknown.len == 0 {
-				inputs.unknown = '`${path}` cannot be told apart from a changed file'
-			}
-			''
-		}
-		inputs.identities << identity
-	}
-	for path in inputs.missing {
-		if path.contains_any('\n') && inputs.unknown.len == 0 {
-			inputs.unknown = '`${path}` cannot be recorded'
-		}
+		inputs.identities << v3_file_identity_from_before(path, before) or { '' }
 	}
 	return inputs
 }
 
-// v3_header_inputs_text writes `inputs` down, a file or a missing path a line.
 fn v3_header_inputs_text(inputs &V3HeaderInputs) string {
 	mut out := strings.new_builder(64 + inputs.files.len * 128 + inputs.missing.len * 96)
 	if inputs.mentions_time {
@@ -466,7 +351,7 @@ fn v3_kept_header_inputs(manager &modulecache.Manager, read []string, unit strin
 	mut sorted := read.clone()
 	sorted.sort()
 	asked := v3_has_include_names(unit)
-	key := c_hash_bytes(u64(1469598103934665603), ['v3-header-inputs-2', sorted.join('\n'),
+	key := c_hash_bytes(u64(1469598103934665603), ['v3-header-inputs-3', sorted.join('\n'),
 		search.dirs.join('\n'), search.frameworks.join('\n'), search.absent.join('\n'),
 		asked.join('\n')].join('\x00').bytes()).hex()
 	record := os.join_path_single(manager.dir, 'header_inputs_${key}_${sorted.len}')
@@ -477,7 +362,7 @@ fn v3_kept_header_inputs(manager &modulecache.Manager, read []string, unit strin
 			return inputs
 		}
 	}
-	mut inputs := v3_inputs_of_headers(sorted, asked, search, before, map[string]string{})
+	mut inputs := v3_inputs_of_headers(sorted, asked, before)
 	// What a unit says of the time is no fact of its headers: the record is of
 	// the headers alone.
 	if inputs.unknown.len == 0 && manager.ensure_dir() {

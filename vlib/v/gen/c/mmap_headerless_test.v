@@ -196,7 +196,7 @@ fn main() {
 			assert code.contains('#include <sys/mman.h>')
 			assert !code.contains('i32 msync('), 'SDK owns the msync prototype'
 		} else {
-			assert !code.contains('#include'), 'native mmap must preserve the standalone preamble'
+			assert code.split_into_lines().all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"'), 'native mmap must preserve the standalone preamble'
 			os.write_file(c_file, code + '\n_Static_assert(__builtin_types_compatible_p(__typeof__(&msync), int (*)(void*, size_t, int)), "native msync ABI");\n')!
 			abi := cmdexec.run('clang', ['-fsyntax-only', '-Werror=implicit-function-declaration',
 				c_file])

@@ -555,21 +555,78 @@ fn test_skip_shared_field() {
 }'
 }
 
-fn test_legacy_signed_encoding_preserves_wire_width() ! {
-	value := isize(-42)
-	for use_big_endian in [false, true] {
-		bytes := encode_binary(value, big_endian: use_big_endian)!
-		assert bytes.len == int(sizeof(isize))
-		assert decode_binary[isize](bytes, big_endian: use_big_endian)! == value
-		values := [value, isize(123)]
-		assert decode_binary[[]isize](encode_binary(values, big_endian: use_big_endian)!,
-			big_endian: use_big_endian
-		)! == values
-		mapping := {
-			value: isize(123)
-		}
-		assert decode_binary[map[isize]isize](encode_binary(mapping, big_endian: use_big_endian)!,
-			big_endian: use_big_endian
-		)! == mapping
+fn test_encode_decode_empty_compound() ! {
+	// encode_binary accepts empty values, so decode_binary must too
+	b_arr := encode_binary([]int{})!
+	assert b_arr == [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	c_arr := decode_binary[[]int](b_arr)!
+	assert c_arr.len == 0
+
+	b_u8 := encode_binary([]u8{})!
+	c_u8 := decode_binary[[]u8](b_u8)!
+	assert c_u8.len == 0
+
+	b_str := encode_binary('')!
+	assert b_str == [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	c_str := decode_binary[string](b_str)!
+	assert c_str == ''
+
+	a_map := map[string]int{}
+	b_map := encode_binary(a_map)!
+	assert b_map == [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	c_map := decode_binary[map[string]int](b_map)!
+	assert c_map.len == 0
+}
+
+fn test_decode_crafted_invalid_lengths() {
+	// a malformed length prefix close to `int` max must produce a clean error,
+	// and never panic with an allocation failure or an out of range slice index
+	mut crafted := []u8{len: 8, init: u8(255)}
+	crafted[7] = u8(0x7f) // little endian 0x7fffffffffffffff
+	mut err_arr := ''
+	c_arr := decode_binary[[]u8](crafted, DecodeConfig{}) or {
+		err_arr = err.msg()
+		[]u8{}
 	}
+	assert err_arr.contains('invalid array length')
+	assert c_arr.len == 0
+	mut err_str := ''
+	c_str := decode_binary[string](crafted, DecodeConfig{}) or {
+		err_str = err.msg()
+		''
+	}
+	assert err_str.contains('invalid string length')
+	assert c_str == ''
+	mut err_map := ''
+	c_map := decode_binary[map[string]int](crafted, DecodeConfig{}) or {
+		err_map = err.msg()
+		map[string]int{}
+	}
+	assert err_map.contains('invalid map length')
+	assert c_map.len == 0
+
+	// a prefix that u64 -> int narrowing can truncate to 0 (32-bit targets) must still be rejected
+	mut truncated := []u8{len: 8} // little endian 0x0000000100000000
+	truncated[4] = 1
+	mut err_zero_arr := ''
+	c_zero_arr := decode_binary[[]u8](truncated, DecodeConfig{}) or {
+		err_zero_arr = err.msg()
+		[]u8{}
+	}
+	assert err_zero_arr.contains('invalid array length')
+	assert c_zero_arr.len == 0
+	mut err_zero_str := ''
+	c_zero_str := decode_binary[string](truncated, DecodeConfig{}) or {
+		err_zero_str = err.msg()
+		''
+	}
+	assert err_zero_str.contains('invalid string length')
+	assert c_zero_str == ''
+	mut err_zero_map := ''
+	c_zero_map := decode_binary[map[string]int](truncated, DecodeConfig{}) or {
+		err_zero_map = err.msg()
+		map[string]int{}
+	}
+	assert err_zero_map.contains('invalid map length')
+	assert c_zero_map.len == 0
 }

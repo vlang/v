@@ -21,7 +21,14 @@ fn test_rm_deletes_a_read_only_file() {
 	os.write_file(target, 'read only payload')!
 	// git marks its loose objects read-only, so this is the mode that matters.
 	os.chmod(target, 0o444)!
-	assert !os.is_writable(target)
+	$if windows {
+		assert !os.is_writable(target)
+	} $else {
+		// Root can still write despite mode 0444. Check the file's permissions
+		// independently of the current process's effective access rights.
+		info := os.stat(target)!
+		assert info.mode & 0o777 == 0o444
+	}
 	os.rm(target) or {
 		assert false, 'os.rm should delete a read-only file, but got: ${err}'
 	}

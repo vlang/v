@@ -115,12 +115,13 @@ fn msvc_version_less(a string, b string) bool {
 }
 
 // msvc_newest_version_dir returns the highest version-named subdirectory of dir for which
-// usable accepts the name, or ''.
-fn msvc_newest_version_dir(dir string, usable fn (string) bool) string {
+// usable accepts the root, version name and architecture, or ''. Passing the search inputs
+// explicitly keeps compiler self-builds with -no-closures available.
+fn msvc_newest_version_dir(dir string, root string, arch string, usable fn (string, string, string) bool) string {
 	mut best := ''
 	names := os.ls(dir) or { []string{} }
 	for name in names {
-		if !msvc_is_version_name(name) || !usable(name) {
+		if !msvc_is_version_name(name) || !usable(root, name, arch) {
 			continue
 		}
 		if best == '' || msvc_version_less(best, name) {
@@ -134,6 +135,10 @@ fn msvc_newest_version_dir(dir string, usable fn (string) bool) string {
 // libraries for building for arch.
 fn msvc_tools_dir_usable(tools_dir string, arch string) bool {
 	return os.is_dir(os.join_path(tools_dir, 'include')) && os.is_dir(os.join_path(tools_dir, 'lib', arch))
+}
+
+fn msvc_tools_version_usable(root string, version string, arch string) bool {
+	return msvc_tools_dir_usable(os.join_path(root, version), arch)
 }
 
 // msvc_tools_dir_of_install returns the MSVC toolset of a Visual Studio installation that can
@@ -151,9 +156,7 @@ fn msvc_tools_dir_of_install(install_dir string, arch string) string {
 			return default_dir
 		}
 	}
-	newest := msvc_newest_version_dir(msvc_root, fn [msvc_root, arch] (name string) bool {
-		return msvc_tools_dir_usable(os.join_path(msvc_root, name), arch)
-	})
+	newest := msvc_newest_version_dir(msvc_root, msvc_root, arch, msvc_tools_version_usable)
 	return if newest == '' { '' } else { os.join_path(msvc_root, newest) }
 }
 
@@ -215,6 +218,15 @@ fn msvc_find_cl_dir(tools_dir string, host string, target string) string {
 	return ''
 }
 
+fn msvc_sdk_version_usable(root string, version string, arch string) bool {
+	include_dir := os.join_path(root, 'Include', version)
+	lib_dir := os.join_path(root, 'Lib', version)
+	return os.is_dir(os.join_path(include_dir, 'ucrt')) && os.is_dir(os.join_path(include_dir, 'um'))
+		&& os.is_dir(os.join_path(include_dir, 'shared'))
+		&& os.is_dir(os.join_path(lib_dir, 'ucrt', arch))
+		&& os.is_dir(os.join_path(lib_dir, 'um', arch))
+}
+
 // msvc_find_windows_sdk returns the newest Windows SDK under the first of the roots that has
 // the C runtime and Windows headers, and the libraries for arch.
 fn msvc_find_windows_sdk(roots []string, arch string) ?MsvcWindowsSdk {
@@ -222,14 +234,7 @@ fn msvc_find_windows_sdk(roots []string, arch string) ?MsvcWindowsSdk {
 		if root == '' {
 			continue
 		}
-		version := msvc_newest_version_dir(os.join_path(root, 'Lib'), fn [root, arch] (name string) bool {
-			include_dir := os.join_path(root, 'Include', name)
-			lib_dir := os.join_path(root, 'Lib', name)
-			return os.is_dir(os.join_path(include_dir, 'ucrt')) && os.is_dir(os.join_path(include_dir, 'um'))
-				&& os.is_dir(os.join_path(include_dir, 'shared'))
-				&& os.is_dir(os.join_path(lib_dir, 'ucrt', arch))
-				&& os.is_dir(os.join_path(lib_dir, 'um', arch))
-		})
+		version := msvc_newest_version_dir(os.join_path(root, 'Lib'), root, arch, msvc_sdk_version_usable)
 		if version != '' {
 			return MsvcWindowsSdk{
 				root:    root

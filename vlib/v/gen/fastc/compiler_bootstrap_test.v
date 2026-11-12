@@ -78,8 +78,14 @@ fn main() { println(twice(21)) }
 		child := os.join_path(root, 'v_fastc_${generation}')
 		// Compile the full CLI directly: `self -b fastc` selects the reduced
 		// vlib/v/v.v driver and cannot prove the C backend survives this build.
-		build := fastc_bootstrap_run(compiler, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
-			child, os.join_path(vroot, 'cmd', 'v')], vroot)
+		// The first generation covers `v -b fastc cmd/v` with the default GC
+		// and cache settings; only the output path changes to isolate the test.
+		mut build_args := ['-b', 'fastc']
+		if generation > 1 {
+			build_args << '-nocache'
+		}
+		build_args << ['-o', child, os.join_path(vroot, 'cmd', 'v')]
+		build := fastc_bootstrap_run(compiler, build_args, vroot)
 		assert build.exit_code == 0, 'generation ${generation}: ${build.output}'
 		assert os.is_executable(child), 'generation ${generation}: missing compiler ${child}'
 		compiler = child

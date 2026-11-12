@@ -1,0 +1,156 @@
+import os
+import strings
+
+fn slice_equal(s string, start int, end int) bool { return s[start..end] == 'foo' }
+fn slice_reversed(s string, start int, end int) bool { return 'foo' == (s[start..end]) }
+fn slice_unequal(s string, start int, end int) bool { return s[start..end] != 'foo' }
+fn slice_open(s string) bool { return s[..3] == 'foo' && s[3..] == 'bar' }
+fn slice_empty(s string, pos int) bool { return s[pos..pos] == '' }
+fn slice_unicode(s string) bool { return s[1..4] == 'é\x00' }
+
+fn emit_range(mut b strings.Builder, s string, start int, end int) {
+	b.write_string(s[start..end])
+}
+
+fn emit_open(mut b strings.Builder, s string) { b.write_string((s[1..])) }
+fn saved_slice(s string) string { return s[1..4] }
+fn stored_slice(s string, mut out []string) { out << s[1..4] }
+fn compare_variable(s string, other string) bool { return s[1..4] == other }
+
+struct Keeper {
+mut:
+	value string
+}
+
+fn (mut k Keeper) write_string(s string) { k.value = s }
+fn retained_slice(mut k Keeper, s string) { k.write_string(s[1..4]) }
+fn deferred_slice(mut b strings.Builder, s string) { defer { b.write_string(s[1..4]) } }
+
+type OtherBuilder = strings.Builder
+
+fn (mut b OtherBuilder) write_string(s string) { unsafe { s.str[0] = `!` } }
+fn custom_builder(mut b OtherBuilder, s string) { b.write_string(s[1..4]) }
+
+struct Trace {
+mut:
+	log string
+	text string = 'abcdef'
+	b strings.Builder
+}
+
+fn (mut t Trace) source() string { t.log += 's'; return t.text }
+fn (mut t Trace) lower() int { t.log += 'l'; return 1 }
+fn (mut t Trace) upper() int { t.log += 'h'; return 4 }
+fn (mut t Trace) receiver() &strings.Builder { t.log += 'r'; return &t.b }
+fn (mut t Trace) replace() int { t.log += 'x'; t.text = 'XXXXXX'; return 1 }
+
+fn ordered_equal(mut t Trace) bool {
+	return t.source()[t.lower()..t.upper()] == 'bcd'
+}
+
+fn ordered_write(mut t Trace) {
+	t.receiver().write_string(t.source()[t.lower()..t.upper()])
+}
+
+fn guarded_equal(mut t Trace, run bool) bool {
+	return run && t.source()[t.lower()..t.upper()] == 'bcd'
+}
+
+fn guarded_or(mut t Trace, skip bool) bool {
+	return skip || t.source()[t.lower()..t.upper()] == 'bcd'
+}
+
+fn snapshot_header(mut t Trace) bool {
+	return t.text[t.replace()..4] == 'bcd'
+}
+
+fn checked_end(ok bool) !int {
+	if !ok { return error('end') }
+	return 4
+}
+
+fn propagated_bound(s string, ok bool) !bool { return s[1..checked_end(ok)!] == 'bcd' }
+
+fn main() {
+	if os.args.len > 1 && os.args[1] != 'ownership' {
+		start := os.args[2].int()
+		end := os.args[3].int()
+		if os.args[1] == 'equal' {
+			println(slice_equal('foo', start, end))
+		} else if os.args[1] == 'empty' {
+			println(slice_empty('foo', start))
+		} else {
+			mut b := strings.new_builder(8)
+			emit_range(mut b, 'foo', start, end)
+		}
+		println('after-invalid-range')
+		return
+	}
+	if !slice_equal('xfooz', 1, 4) || !slice_reversed('xfooz', 1, 4)
+		|| slice_unequal('xfooz', 1, 4) || slice_equal('food', 0, 4) {
+		panic('comparison')
+	}
+	if !slice_open('foobar') || !slice_empty('foo', 3) || !slice_empty('', 0)
+		|| !slice_unicode('aé\x00z') { panic('range forms') }
+	if !slice_equal('foo', 0, 2147483647) { panic('open-end sentinel') }
+	mut b := strings.new_builder(1)
+	emit_range(mut b, 'xfooz', 1, 4)
+	emit_open(mut b, 'xbar')
+	if b.str() != 'foobar' { panic('builder') }
+	mut t := Trace{b: strings.new_builder(1)}
+	if !ordered_equal(mut t) || t.log != 'slh' { panic('comparison order: ' + t.log) }
+	t.log = ''
+	ordered_write(mut t)
+	if t.log != 'rslh' || t.b.str() != 'bcd' { panic('write order: ' + t.log) }
+	t.log = ''
+	if guarded_equal(mut t, false) || !guarded_or(mut t, true) || t.log != '' {
+		panic('short circuit')
+	}
+	// Ownership/autofree keeps the pre-existing slice lowering. Its ordering of
+	// a header mutation in a bound is outside this allocation-elision path.
+	if os.args.len == 1 && (!snapshot_header(mut t) || t.log != 'x') { panic('header snapshot') }
+	if !(propagated_bound('abcdef', true) or { panic(err) }) { panic('bound propagation') }
+	if _ := propagated_bound('abcdef', false) { panic('missing bound error') }
+	mut data := 'abcdef'.bytes()
+	view := unsafe { tos(data.data, data.len) }
+	saved := saved_slice(view)
+	mut stored := []string{}
+	stored_slice(view, mut stored)
+	mut keeper := Keeper{}
+	retained_slice(mut keeper, view)
+	data[1] = `X`
+	if saved != 'bcd' || stored[0] != 'bcd' || keeper.value != 'bcd' { panic('retained snapshot') }
+	mut custom := OtherBuilder(strings.new_builder(1))
+	custom_builder(mut custom, view)
+	if data[1] != `X` { panic('custom consumer mutation') }
+	if !compare_variable('abcdef', 'bcd') { panic('variable comparison') }
+	deferred_slice(mut b, 'abcdef')
+	if b.str() != 'bcd' { panic('deferred') }
+	for capacity in [8, 64] {
+		mut aliased := strings.new_builder(capacity)
+		aliased.write_string('abcdefgh')
+		borrowed := unsafe { tos(aliased.data, aliased.len) }
+		emit_range(mut aliased, borrowed, 1, 4)
+		if aliased.str() != 'abcdefghbcd' { panic('buffer overlap') }
+	}
+	mut unused := strings.new_builder(32)
+	unused.write_string('abcdefgh')
+	unsafe { unused.len = 3 }
+	unused_view := unsafe { tos(&u8(unused.data) + 1, 5) }
+	emit_range(mut unused, unused_view, 0, 5)
+	if unused.str() != 'abcbcdef' { panic('unused capacity overlap') }
+	mut backing := 'abcdef'.bytes()
+	mut sliced := strings.Builder(backing[1..5])
+	unsafe { sliced.len = 2 }
+	backing_view := unsafe { tos(backing.data, backing.len) }
+	emit_range(mut sliced, backing_view, 0, 3)
+	if backing.bytestr() != 'abcdef' || sliced.str() != 'bcabc' { panic('slice overlap') }
+	mut header_builder := strings.new_builder(1)
+	header_builder.write_string('a')
+	header_view := unsafe { tos(&u8(&header_builder.cap), int(sizeof(header_builder.cap))) }
+	header_copy := header_view.clone()
+	emit_range(mut header_builder, header_view, 0, header_view.len)
+	header_result := header_builder.str()
+	if header_result[1..] != header_copy { panic('receiver header overlap') }
+	println('ok')
+}

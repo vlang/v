@@ -3,6 +3,8 @@ module file
 import os
 import time
 import strings
+import encoding.html
+import net.urllib
 
 const myexe = os.executable()
 const myexe_prefix = os.file_name(myexe.all_before_last('.'))
@@ -22,13 +24,23 @@ fn get_folder_index_html(requested_file_path string, uri_path string, filter_mye
 	return sb.str()
 }
 
+fn url_path_escape(path string) string {
+	segments := path.split('/')
+	mut escaped_segments := []string{cap: segments.len}
+	for segment in segments {
+		// The static handler decodes paths with query semantics, where `+` means a space.
+		escaped_segments << urllib.path_escape(segment).replace('+', '%2B')
+	}
+	return escaped_segments.join('/')
+}
+
 fn write_page_header(mut sb strings.Builder, uri_path string) {
 	// html boilerplate for the header
 	sb.writeln('<!DOCTYPE html>')
 	sb.writeln('<html lang="en">')
 	sb.writeln('<head>')
 	sb.writeln('<meta charset="utf-8">')
-	sb.writeln('<title>Index of local folder ${uri_path}</title>')
+	sb.writeln('<title>Index of local folder ${html.escape(uri_path)}</title>')
 	sb.writeln('<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon" />')
 	sb.writeln('</head>')
 	sb.writeln('<body>')
@@ -46,7 +58,8 @@ fn write_page_crumbs(mut sb strings.Builder, uri_path string) {
 	for cridx, crumb in crumbs {
 		cr_so_far := crumbs#[0..cridx + 1].join('/')
 		// eprintln('> cr_so_far: ${cr_so_far:20} | crumb: ${crumb:20}')
-		crlinks << '<a href="/${cr_so_far}">${crumb}</a>'
+		href := html.escape(url_path_escape('/${cr_so_far}'))
+		crlinks << '<a href="${href}">${html.escape(crumb)}</a>'
 	}
 	crlinks_text := crlinks.join('&nbsp;/&nbsp;')
 	sb.writeln('<h2>Index of <a href="/">/</a>&nbsp;${crlinks_text}&nbsp;:</h2>')
@@ -70,7 +83,8 @@ fn write_page_table(mut sb strings.Builder, uri_path string, requested_file_path
 		sb.writeln('<tr>')
 		sb.writeln('<td></td>')
 		sb.writeln('<td></td>')
-		sb.writeln('<td><a href="/${uri_path}/..">..</td>')
+		href := html.escape(url_path_escape('/${uri_path}/..'))
+		sb.writeln('<td><a href="${href}">..</td>')
 		sb.writeln('</tr>')
 	}
 	mut entities := []Entity{cap: files.len}
@@ -94,23 +108,25 @@ fn write_page_table(mut sb strings.Builder, uri_path string, requested_file_path
 		return 1
 	})
 	for entity in entities {
+		href := html.escape(url_path_escape(entity.url))
+		name := html.escape(entity.fname)
 		if entity.typ == .directory {
 			sb.writeln('<tr>')
 			sb.writeln('<td></td>')
 			sb.writeln('<td>${entity.mod_time.format_ss()}</td>')
-			sb.writeln('<td><a href="${entity.url}">${entity.fname}/</a></td>')
+			sb.writeln('<td><a href="${href}">${name}/</a></td>')
 			sb.writeln('</tr>')
 		} else if entity.typ == .symbolic_link {
 			sb.writeln('<tr>')
 			sb.writeln('<td>${entity.size}</td>')
 			sb.writeln('<td>${entity.mod_time.format_ss()}</td>')
-			sb.writeln('<td><a href="${entity.url}">${entity.fname}@</a></td>')
+			sb.writeln('<td><a href="${href}">${name}@</a></td>')
 			sb.writeln('</tr>')
 		} else {
 			sb.writeln('<tr>')
 			sb.writeln('<td>${entity.size}</td>')
 			sb.writeln('<td>${entity.mod_time.format_ss()}</td>')
-			sb.writeln('<td><a href="${entity.url}">${entity.fname}</a></td>')
+			sb.writeln('<td><a href="${href}">${name}</a></td>')
 			sb.writeln('</tr>')
 		}
 	}

@@ -1182,12 +1182,18 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 }
 
 fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) bool {
+	return t.bare_struct_name_is_local_to_module(name_id, t.cur_module)
+}
+
+// bare_struct_name_is_local_to_module reports whether the bare spelling `name_id`
+// names a struct declared in `module_name`.
+fn (t &Transformer) bare_struct_name_is_local_to_module(name_id u32, module_name string) bool {
 	if name_id == 0 || flat.source_type_shape(name_id).has(.dotted) {
 		return false
 	}
-	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+	if module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		qname := flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), name_id)
+			flat.source_type_id(module_name), name_id)
 		return qname in t.structs || (!isnil(t.tc) && qname in t.tc.structs)
 	}
 	name := name_id
@@ -1197,8 +1203,8 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) boo
 	if isnil(t.tc) || name_id !in t.tc.structs {
 		return false
 	}
-	module_name := t.tc.struct_modules[name_id] or { '' }
-	return module_name.len == 0 || module_name in ['main', 'builtin']
+	struct_module := t.tc.struct_modules[name_id] or { '' }
+	return struct_module.len == 0 || struct_module in ['main', 'builtin']
 }
 
 // bare_sum_type_name_is_local_to_current_module is the sum type counterpart of
@@ -1519,7 +1525,16 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 
 	mut prelude := []flat.NodeId{}
 	transformed_base := t.transform_expr(base_id)
-	transformed_base_type_shape := flat.source_type_shape(t.node_type(transformed_base))
+	transformed_base_type := t.node_type(transformed_base)
+	if !isnil(t.tc) && transformed_base_type != 0 {
+		concrete_base := t.tc.parse_type(t.normalize_type_alias(transformed_base_type))
+		if types.unwrap_all_pointers(concrete_base) is types.Struct {
+			// A smartcast can turn an interface or sum source into a concrete pointer.
+			// Copy that value instead of keeping the original wrapper's declared type.
+			base_type = transformed_base_type
+		}
+	}
+	transformed_base_type_shape := flat.source_type_shape(transformed_base_type)
 	base_is_loaded_pointer_value := base_node.kind == .ident
 		&& t.pointer_value_rvalues[base_node.value]
 	base := if flat.source_type_shape(base_type).has(.pointer) && transformed_base_type_shape.has(.pointer)
@@ -1529,8 +1544,19 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		transformed_base
 	}
 	t.drain_pending(mut prelude)
-	init_base := t.assoc_mapped_base_init(base, base_type, assoc_type, mut prelude) or { base }
-	prelude << t.make_decl_assign_typed(tmp_name, init_base, assoc_type)
+	if init_base := t.assoc_mapped_base_init(base, base_type, assoc_type, mut prelude) {
+		// Every target field is copied or supplied explicitly. Do not evaluate
+		// defaults that the following assignments would overwrite.
+		prelude << t.make_staging_value_decl(tmp_name, assoc_type)
+		init := t.a.nodes[int(init_base)]
+		for i in 0 .. init.children_count {
+			field := t.a.child_node(&init, i)
+			prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field.typ),
+				t.a.child(field, 0))
+		}
+	} else {
+		prelude << t.make_decl_assign_typed(tmp_name, base, assoc_type)
+	}
 
 	for i in 1 .. node.children_count {
 		field_id := t.a.child(&node, i)
@@ -1613,9 +1639,6 @@ fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type_id u32
 		}
 		value := t.make_selector(t.make_ident(source_name), source_field.name, source_field_type_source_id)
 		field_ids << t.make_named_field_init(field.name, value, target_type_source_id)
-	}
-	if field_ids.len == 0 {
-		return none
 	}
 	start := t.a.children.len
 	for field_id in field_ids {

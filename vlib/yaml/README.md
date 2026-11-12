@@ -3,6 +3,10 @@
 `yaml` provides a pure-V YAML reader and writer for common configuration files.
 It supports nested mappings, sequences, flow-style collections, block scalars,
 tree access through `yaml.Any`, and generic struct encode/decode.
+Parsing returns an error above 64 nested collections; with aliases, it also
+rejects more than 1,000,000 expanded values or JSON/YAML output exceeding the
+source size by 16 MiB.
+`encode` may emit JSON deeper than this limit, but the parser rejects that output.
 
 The generic `encode`/`decode` path delegates to the main `json` module so it
 matches existing JSON field behavior, including `@[json: 'name']`.

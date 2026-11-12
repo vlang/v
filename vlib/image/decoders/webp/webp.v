@@ -6084,9 +6084,9 @@ fn (mut d WebpDecoder) decode_vp8_residuals(mut br BooleanDecoder, block &MbBloc
 	}
 	mut tnz := above_nz[mb_x] & 0x0f
 	mut lnz := left_nz & 0x0f
-	for y in 0 .. 4 {
+	for _ in 0 .. 4 {
 		mut l := lnz & 1
-		for x in 0 .. 4 {
+		for _ in 0 .. 4 {
 			ctx := l + (tnz & 1)
 			mut blk := d.arena.alloc_scratch(16)!
 			nzr := d.get_coeffs(mut br, ac_proba, ctx, dq.y1, first, mut blk)
@@ -6116,9 +6116,9 @@ fn (mut d WebpDecoder) decode_vp8_residuals(mut br BooleanDecoder, block &MbBloc
 		ch := ci * 2
 		tnz = above_nz[mb_x] >> (4 + ch)
 		lnz = left_nz >> (4 + ch)
-		for y in 0 .. 2 {
+		for _ in 0 .. 2 {
 			mut l := lnz & 1
-			for x in 0 .. 2 {
+			for _ in 0 .. 2 {
 				ctx := l + (tnz & 1)
 				mut blk := d.arena.alloc_scratch(16)!
 				nzr := d.get_coeffs(mut br, bands_ptr[2], ctx, dq.uv, 0, mut blk)

@@ -38,9 +38,13 @@ pub fn (c &Client) upload_file(key string, local_path string, opts PutOptions) !
 // generated on-the-fly (network sources, decompressors, anything you don't
 // want to materialise on disk):
 //
-//   mut up := c.start_multipart('key', s3.PutOptions{ content_type: 'application/octet-stream' })!
-//   for chunk in chunks { up.upload(chunk)! }
-//   up.complete()!
+// ```v ignore
+// mut up := c.start_multipart('key', s3.PutOptions{ content_type: 'application/octet-stream' })!
+// for chunk in chunks {
+// 	up.upload(chunk)!
+// }
+// up.complete()!
+// ```
 //
 // On error, `complete()` / `upload()` return without aborting. The caller
 // must invoke `abort()` themselves so that `defer { up.abort() or {} }`

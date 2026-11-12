@@ -20,6 +20,8 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	assert !g.core_native_header_is_redeclared('/project/time/time_windows.c.v', '"/vroot/vlib/time/ticks_windows_api.h"')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/time/timerfd.c.v', '<sys/timerfd.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/os/mmap_nix.c.v', '<sys/mman.h>')
+	assert g.core_native_header_is_redeclared('/vroot/vlib/os/fd.c.v', '<poll.h>')
+	assert !g.core_native_header_is_redeclared('/project/os/fd.c.v', '<poll.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/driver/replace_file_windows.c.v', '<windows.h>')
 	assert !g.core_native_header_is_redeclared('/project/v/driver/replace_file_windows.c.v', '<windows.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/workers/thread_nix.c.v', '<sys/prctl.h>')

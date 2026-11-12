@@ -2,25 +2,10 @@ name: Other CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/other_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/other_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: other-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: other-other_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -28,6 +13,7 @@ permissions:
 
 jobs:
   performance-compare-with-master:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     steps:
@@ -40,7 +26,7 @@ jobs:
       - name: Name the local git branch
         run: git checkout -b the_v_pr_branch
       - name: Build local v
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: V version
         run: ./v version
       - name: Build the repeat tool
@@ -49,6 +35,7 @@ jobs:
         run: VREPEAT_SILENT=1 ./v run .github/workflows/compare_pr_to_master.v
 
   prevent-gpl-licenses:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -73,25 +60,8 @@ jobs:
           cd ..
           diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
 
-  code-formatting:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      VFLAGS: -cc gcc
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Environment info
-        run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
-      - name: Build local v
-        run: make -j4 && ./v symlink
-      - name: v test-cleancode
-        run: ./v -silent test-cleancode
-      - name: v test-fmt
-        run: ./v -silent test-fmt
-
   performance-regressions:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -103,11 +73,11 @@ jobs:
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Clone & Build previous vmaster/v
         run: |
           ./v retry -- git clone --depth=1 https://github.com/vlang/v vmaster/
-          (cd vmaster; make -j4)
+          (cd vmaster && sh ../.github/workflows/prepare_v.sh)
       - name: V versions
         run: ./v version && ./vmaster/v version
       - name: Build the repeat tool
@@ -118,6 +88,7 @@ jobs:
         run: ./v repeat --max_time 12000 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -129,7 +100,7 @@ jobs:
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |
@@ -162,6 +133,7 @@ jobs:
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -169,11 +141,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Build local v
-        run: |
-          make -j4 && ./v symlink
-          ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
+        uses: ./.github/actions/setup-v
+      - name: Build the parser test tool
+        run: ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Install zzuf
-        run: ./v retry -- sudo apt install -qq zzuf
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update -y -qq
+          ./v retry -- sudo apt install -qq zzuf
       - name: Run test-parser
         run: |
           ./v test-parser --show_source --linear examples/hello_world.v

@@ -176,7 +176,12 @@ static inline void v_simd_abs_f32(const float *a, float *out, int n) {
 	default: break;
 	}
 #endif
-	for (int i = 0; i < n; i++) out[i] = fabsf(a[i]);
+	for (int i = 0; i < n; i++) {
+		uint32_t bits;
+		memcpy(&bits, a + i, sizeof bits);
+		bits = bits & 0x7fffffffu;
+		memcpy(out + i, &bits, sizeof bits);
+	}
 }
 
 static inline void v_simd_min_f32(const float *a, const float *b, float *out, int n) {
@@ -339,7 +344,12 @@ static inline void v_simd_abs_f64(const double *a, double *out, int n) {
 	default: break;
 	}
 #endif
-	for (int i = 0; i < n; i++) out[i] = fabs(a[i]);
+	for (int i = 0; i < n; i++) {
+		uint64_t bits;
+		memcpy(&bits, a + i, sizeof bits);
+		bits = bits & 0x7fffffffffffffffull;
+		memcpy(out + i, &bits, sizeof bits);
+	}
 }
 
 static inline void v_simd_min_f64(const double *a, const double *b, double *out, int n) {

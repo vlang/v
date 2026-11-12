@@ -70,9 +70,16 @@ fn (mut g Parser) parse_for() !bool {
 			start := if value_name != '' && g.tok == .lcbr {
 				g.read_inferred_map_literal()!
 			} else {
-				g.read_expression([token.Token.dotdot, token.Token.lcbr])!
+				g.read_expression([token.Token.dotdot, token.Token.lcbr, token.Token.semicolon])!
 			}
 			start_expression_type := g.last_expression_type
+			if g.tok == .semicolon {
+				// The body may open on the next line after a multi-line collection.
+				mut look := g.s
+				if look.scan() == .lcbr {
+					g.next()
+				}
+			}
 			start_expression := g.last_expression
 			if g.tok == .dotdot {
 				if item_is_mut || value_name != '' {
@@ -97,7 +104,7 @@ fn (mut g Parser) parse_for() !bool {
 				c_name := if name == '_' {
 					g.temporary_name('range_index')
 				} else {
-					fastc_c_identifier(name)
+					fastc_c_value_identifier(name)
 				}
 				// V evaluates both range bounds exactly once, from left to right.
 				start_type := g.declaration_c_type(start_expression_type, start)
@@ -158,16 +165,17 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('for (int ${index_name} = 0; ${index_name} < ${keys_name}.len; ${index_name}++) {')
 				g.indent++
 				if name != '_' {
-					g.write_line('${g.collection_storage_type(key_type)} ${fastc_c_identifier(name)} = ((${g.collection_storage_type(key_type)} *)${keys_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(key_type)} ${fastc_c_value_identifier(name)} = ((${g.collection_storage_type(key_type)} *)${keys_name}.data)[${index_name}];')
 					g.locals[name] = FastcLocal{
 						typ: key_type
 					}
 				}
 				if value_name != '' && value_name != '_' {
-					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_value_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
-						is_mut: value_is_mut
-						typ:    map_value_type
+						is_mut:            value_is_mut
+						typ:               map_value_type
+						option_value_type: fastc_typed_option_payload(map_value_type) or { u32(0) }
 					}
 				}
 				_ = g.parse_loop_block_body()!
@@ -209,7 +217,7 @@ fn (mut g Parser) parse_for() !bool {
 			} else if name == '_' {
 				g.temporary_name('index')
 			} else {
-				fastc_c_identifier(name)
+				fastc_c_value_identifier(name)
 			}
 			access := if flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) {
 				'->'
@@ -255,7 +263,7 @@ fn (mut g Parser) parse_for() !bool {
 			g.indent++
 			actual_value_name := if value_name == '' { name } else { value_name }
 			if actual_value_name != '_' {
-				c_value_name := fastc_c_identifier(actual_value_name)
+				c_value_name := fastc_c_value_identifier(actual_value_name)
 				// `for i, mut x in arr` makes the value variable a mutable reference to the
 				// element exactly like `for mut x in arr`; the `mut` is just carried on the
 				// second binding (`value_is_mut`) instead of the first.
@@ -298,6 +306,15 @@ fn (mut g Parser) parse_for() !bool {
 					typ: flat.source_type_int
 				}
 			}
+			if signature := g.callable_signature_for_expression(start_expression) {
+				if signature.callable_index_depth == 1 {
+					callback_name := if value_name == '' { name } else { value_name }
+					local := g.locals[callback_name] or { FastcLocal{} }
+					key := g.callback_signature_key()
+					g.mono_functions[key] = FastcFunctionSignature{ ...signature, callable_index_depth: 0 }
+					g.locals[callback_name] = FastcLocal{ ...local, fn_return_type: signature.return_type, fn_option_value_type: signature.option_type, fn_signature_key: key }
+				}
+			}
 			_ = g.parse_loop_block_body()!
 			g.indent--
 			g.locals.delete(name)
@@ -323,11 +340,13 @@ fn (mut g Parser) parse_for() !bool {
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
 			initial_type := fastc_normalize_inferred_type(g.last_expression_type)
+			initial_option_type := g.option_value_type_for_expression(g.last_expression)
 			g.expect(.semicolon)!
 			if is_declaration {
 				g.locals[name] = FastcLocal{
-					is_mut: true
-					typ:    initial_type
+					is_mut:            true
+					typ:               initial_type
+					option_value_type: initial_option_type
 				}
 			}
 			condition := g.read_expression([token.Token.semicolon])!
@@ -335,9 +354,9 @@ fn (mut g Parser) parse_for() !bool {
 			update := g.read_statement_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
 			initializer := if is_declaration {
-				'${g.declaration_c_type(initial_type, initial)} ${fastc_c_identifier(name)} = (${initial})'
+				'${g.declaration_c_type(initial_type, initial)} ${fastc_c_value_identifier(name)} = (${initial})'
 			} else {
-				'${fastc_c_identifier(name)} = (${initial})'
+				'${fastc_c_value_identifier(name)} = (${initial})'
 			}
 			g.write_line('for (${initializer}; ${condition}; ${update}) {')
 			g.indent++
@@ -350,7 +369,7 @@ fn (mut g Parser) parse_for() !bool {
 			return false
 		}
 		g.validate_expression_name(name, .unknown)!
-		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
+		condition := g.read_loop_condition(name)!
 		condition_tokens := g.last_expression.clone()
 		g.expect(.lcbr)!
 		if g.write_condition_loop(condition, condition_tokens)! {
@@ -363,7 +382,7 @@ fn (mut g Parser) parse_for() !bool {
 		g.write_line('}')
 		return false
 	}
-	condition := g.read_expression([token.Token.lcbr])!
+	condition := g.read_loop_condition('')!
 	condition_tokens := g.last_expression.clone()
 	g.expect(.lcbr)!
 	if g.write_condition_loop(condition, condition_tokens)! {
@@ -388,7 +407,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 		return false
 	}
 	plans, rewritten_condition := g.detect_member_smartcasts(condition_tokens, condition)
-	if plans.len == 0 {
+	if plans.len == 0 && !condition.contains('break;') && !condition.contains('continue;') {
 		return false
 	}
 	loop_condition := if rewritten_condition != '' { rewritten_condition } else { condition }
@@ -442,6 +461,9 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 }
 
 fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool {
+	if fastc_tokens_are_plain_call(tokens) && g.expression_tokens_are_statement(tokens) {
+		return true
+	}
 	for i, item in tokens {
 		if item.tok != .name {
 			continue
@@ -497,7 +519,7 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 	iterator_name := g.temporary_name('iterator')
 	option_name := g.temporary_name('iterator_next')
 	index_name := if value_name != '' && name != '_' {
-		fastc_c_identifier(name)
+		fastc_c_value_identifier(name)
 	} else {
 		g.temporary_name('index')
 	}
@@ -521,7 +543,7 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 		} else {
 			'*((${flat.source_type_name(iterator.element_type)} *)${option_name}.data)'
 		}
-		g.write_line('${flat.source_type_name(iterator.element_type)} ${fastc_c_identifier(value)} = ${payload};')
+		g.write_line('${flat.source_type_name(iterator.element_type)} ${fastc_c_value_identifier(value)} = ${payload};')
 		g.locals[value] = FastcLocal{
 			typ: iterator.element_type
 		}
@@ -538,4 +560,18 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 		g.locals.delete(value_name)
 	}
 	g.write_line('}')
+}
+
+// read_loop_condition makes control flow in an option fallback target this loop.
+fn (mut g Parser) read_loop_condition(prefix string) !string {
+	label := if g.parsing_loop_labels.len > 0 { g.parsing_loop_labels.last() } else { '' }
+	g.loop_labels << label
+	g.loop_defer_block_starts << g.deferred_block_starts.len
+	g.loop_has_breaks << false
+	defer {
+		g.loop_has_breaks.delete_last()
+		g.loop_defer_block_starts.delete_last()
+		g.loop_labels.delete_last()
+	}
+	return g.read_expression_with_prefix(prefix, [token.Token.lcbr])!
 }

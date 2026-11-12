@@ -13,7 +13,7 @@ fn (mut c ChunkReader) read(mut buf []u8) !int {
 	}
 	chunk := c.chunks[0]
 	c.chunks.delete(0)
-	return copy(mut buf, chunk)
+	return copy_bytes(mut buf, chunk)
 }
 
 fn collect_lines(mut it LineIterator) []string {

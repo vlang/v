@@ -5,8 +5,9 @@ module main
 
 import os
 import flag
-import v.parser
 import v.pref
+import v.scanner
+import v.token
 import v.util
 import v.vmod
 
@@ -105,31 +106,112 @@ fn v_files_in(dir string) ![]string {
 
 // imports_in_file returns declared import paths, including both comptime branches.
 fn imports_in_file(path string) ![]string {
-	mut prefs := pref.new_preferences()
-	// Preserve source declarations without lowering scripts or selecting a target.
-	prefs.is_fmt = true
-	prefs.preserve_comptime_conditionals = true
-	prefs.supports_inline_asm = true
-	prefs.enable_globals = true
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(path)
-	for diagnostic in p.diagnostics {
-		if diagnostic.message.starts_with('error reading source:') {
-			return error(diagnostic.message)
-		}
-	}
+	source := os.read_file(path) or { return error('error reading source: ${err.msg()}') }
+	prefs := pref.new_preferences()
+	mut s := scanner.new_scanner(prefs, .normal)
+	s.init(token.File.unindexed(path, source.len), source)
 	mut result := []string{}
-	for node in a.nodes {
-		if node.kind == .import_decl {
-			result << node.value
-		}
-	}
+	scan_import_scope(mut s, mut result)
 	return result
 }
 
+// scan_import_token consumes a complete interpolated string as one token. Normal
+// scanning handles quoted braces and nested strings inside its expressions, whose
+// tokens must not participate in balancing declaration scopes or finding imports.
+fn scan_import_token(mut s scanner.Scanner) token.Token {
+	mut tok := s.scan()
+	for tok != .eof && (s.in_str_inter || s.in_str_incomplete || s.str_parent_quotes.len > 0) {
+		tok = s.scan()
+	}
+	return tok
+}
+
+// scan_import_scope reads declarations without constructing an AST. Full parsing
+// reserves multi-megabyte node arrays for large dependency files, which can exhaust
+// Boehm's large-allocation retries on macOS when free blocks are blacklisted.
+// Ordinary bodies and signatures are opaque; only comptime declaration branches
+// introduce further import scopes. The compiler scanner handles comments, strings,
+// directives, tabs and keyword module names in the same way as a normal parse.
+fn scan_import_scope(mut s scanner.Scanner, mut imports []string) {
+	mut tok := scan_import_token(mut s)
+	mut comptime_block := false
+	mut comptime_else := false
+	for tok != .eof {
+		if tok !in [.semicolon, .dollar, .key_else] {
+			comptime_else = false
+		}
+		match tok {
+			.key_import {
+				tok = scan_import_token(mut s)
+				if tok != .name && !tok.is_keyword() {
+					continue
+				}
+				mut name := s.lit
+				tok = scan_import_token(mut s)
+				for tok == .dot {
+					tok = scan_import_token(mut s)
+					if tok != .name && !tok.is_keyword() {
+						break
+					}
+					name += '.' + s.lit
+					tok = scan_import_token(mut s)
+				}
+				imports << name
+				continue
+			}
+			.dollar {
+				tok = scan_import_token(mut s)
+				// The pending condition can itself contain $int or $pkgconfig(...).
+				comptime_block = comptime_block || tok == .key_if
+				continue
+			}
+			.key_else {
+				comptime_block = comptime_else
+			}
+			.lcbr {
+				if comptime_block {
+					scan_import_scope(mut s, mut imports)
+				} else {
+					skip_import_group(mut s, .lcbr, .rcbr)
+				}
+				comptime_else = comptime_block
+				comptime_block = false
+			}
+			.lpar {
+				skip_import_group(mut s, .lpar, .rpar)
+			}
+			.lsbr, .attribute {
+				skip_import_group(mut s, .lsbr, .rsbr)
+			}
+			.rcbr {
+				return
+			}
+			else {}
+		}
+		tok = scan_import_token(mut s)
+	}
+}
+
+fn skip_import_group(mut s scanner.Scanner, open token.Token, close token.Token) {
+	mut depth := 1
+	for depth > 0 {
+		tok := scan_import_token(mut s)
+		if tok == .eof {
+			return
+		}
+		if tok == open || (open == .lsbr && tok == .attribute) {
+			depth++
+		} else if tok == close {
+			depth--
+		}
+	}
+}
+
 // build_graph walks the import graph outward from the project root, following
-// each module to the modules it actually imports.
-fn build_graph(project string) !&Graph {
+// each module to the modules it actually imports. A root or direct dependency
+// already gives `why` its shortest chain, so direct_target stops that search
+// before parsing dependencies. Other queries keep the complete graph traversal.
+fn build_graph(project string, direct_target string) !&Graph {
 	p := new_preferences(project)
 	mut g := &Graph{
 		roots:    map[string]string{}
@@ -138,6 +220,9 @@ fn build_graph(project string) !&Graph {
 	}
 	root_name := module_name_of(project)
 	g.record(root_name, project, os.join_path_single(project, 'v.mod'))
+	if direct_target != '' && direct_target == root_name {
+		return g
+	}
 	mut queue := [root_name]
 	mut seen := map[string]bool{}
 	for queue.len > 0 {
@@ -164,6 +249,9 @@ fn build_graph(project string) !&Graph {
 				target_name := module_path
 				g.record(target_name, target, file)
 				g.link(name, target_name)
+				if direct_target != '' && name == root_name && target_name == direct_target {
+					return g
+				}
 				if target_name !in seen {
 					queue << target_name
 				}
@@ -220,7 +308,7 @@ fn print_help(fp &flag.FlagParser) {
 // imports is reported differently from one that is not installed at all, because
 // those two answers point at different problems.
 fn why(module_name string, project string) ! {
-	g := build_graph(project)!
+	g := build_graph(project, module_name)!
 	root := module_name_of(project)
 	if module_name in g.roots {
 		for name in chain_to(g, root, module_name) {
@@ -241,7 +329,7 @@ fn why(module_name string, project string) ! {
 // modules it imports indented beneath it. It is the picture `v mod why` answers one
 // question about.
 fn graph(project string) ! {
-	g := build_graph(project)!
+	g := build_graph(project, '')!
 	root := module_name_of(project)
 	println(root)
 	mut seen := map[string]bool{

@@ -129,7 +129,7 @@ fn (g &Parser) nil_starts_pointer_comparison(previous token.Token) bool {
 		tokens << FastcExpressionToken{ tok: kind, lit: look.lit }
 	}
 	typ := g.infer_expression_type(tokens) or { return false }
-	return g.nil_type_is_allowed(typ)
+	return g.nil_comparison_type_is_allowed(typ)
 }
 
 // nil_target_is_voidptr reports whether the value starting at the current `nil` is assigned to
@@ -166,7 +166,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 			}
 		}
 		typ := g.infer_expression_type(tokens[start..tokens.len - 1]) or { return false }
-		return g.nil_type_is_allowed(typ)
+		return g.nil_comparison_type_is_allowed(typ)
 	}
 	open := fastc_innermost_open_index(tokens)
 	if open >= 0 && tokens[open].tok == .lsbr
@@ -257,6 +257,12 @@ fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, st
 	return index < fields.len && g.nil_field_is_allowed(fields[index])
 }
 
+fn (g &Parser) nil_comparison_type_is_allowed(typ u32) bool {
+	if g.in_generic_placeholder { return false }
+	underlying := g.underlying_alias_type(typ)
+	return underlying == flat.source_type_voidptr || fastc_is_pointer_type(underlying)
+}
+
 fn (g &Parser) nil_type_is_allowed(typ u32) bool {
 	if g.in_generic_placeholder || g.fn_alias_return_types.contains(flat.source_type_name(typ)) || g.is_function_value_type(typ) {
 		return false
@@ -309,7 +315,7 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 		index = signature.parameter_types.ids.len - 1
 		return g.nil_type_is_allowed(g.array_element_type(signature.parameter_types.ids[index]) or { return false })
 	}
-	return index < signature.parameter_types.ids.len && g.nil_type_is_allowed(signature.parameter_types.ids[index])
+	return index < signature.parameter_types.ids.len && (g.nil_type_is_allowed(signature.parameter_types.ids[index]) || g.is_function_value_type(signature.parameter_types.ids[index]))
 }
 
 // nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or
@@ -328,6 +334,9 @@ fn (g &Parser) nil_ends_value(allow_boolean bool) bool {
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
+	if g.lit == 'isize' || g.lit == 'usize' {
+		g.validate_expression_name(g.lit, previous)!
+	}
 	if g.selfhost {
 		return g.resolved_expression_name(g.lit, previous)
 	}
@@ -363,7 +372,7 @@ fn (g &Parser) local_c_name(name string) string {
 			return local.c_name
 		}
 	}
-	return fastc_c_identifier(name)
+	return fastc_c_value_identifier(name)
 }
 
 fn (g &Parser) resolved_expression_name(name string, previous token.Token) string {
@@ -380,7 +389,7 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 	if previous != .dot && name !in g.locals {
 		return g.resolved_nonlocal_expression_name_cached(name)
 	}
-	return fastc_c_identifier(name)
+	return if previous == .dot { fastc_c_identifier(name) } else { fastc_c_value_identifier(name) }
 }
 
 fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
@@ -471,6 +480,23 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 }
 
 fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
+	if previous != .dot && (name == 'isize' || name == 'usize') {
+		mut lookahead := g.s
+		next := lookahead.scan()
+		if next == .dot && name in g.imports {
+			return
+		}
+		is_type := previous in [.key_is, .not_is, .key_as]
+			|| (previous == .rsbr && next == .lcbr)
+		if is_type || (next !in [.colon, .decl_assign] && name !in g.locals && name !in g.imports
+			&& fastc_selective_import_key(name) !in g.imports
+			&& g.unqualified_function_key(name) !in g.functions
+			&& fastc_constant_key(g.module_name, name) !in g.constants
+			&& fastc_constant_key('builtin', name) !in g.constants
+			&& g.unqualified_global_key(name) == none) {
+			return g.unsupported(fastc_removed_integer_type(name))
+		}
+	}
 	// Self-host sources have already passed the bootstrap compiler. Their unresolved
 	// names are deliberately left for C to diagnose, so none of the lookup work below
 	// can change the result.
@@ -588,7 +614,16 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 		owner_key = flat.source_type_name(type_key)
 	}
 	function_key := '${owner_key}.${tokens[name_index].lit}'
-	return if function_key in g.functions { function_key } else { none }
+	if function_key in g.functions { return function_key }
+	mut owner_type := flat.source_type_id(fastc_c_declared_type_name(owner_key))
+	mut seen := map[u32]bool{}
+	for owner_type !in seen {
+		seen[owner_type] = true
+		owner_type = g.alias_base_types.type_id(flat.source_type_name(owner_type)) or { break }
+		inherited := '${flat.source_type_name(g.semantic_type_key(owner_type))}.${tokens[name_index].lit}'
+		if inherited in g.functions { return inherited }
+	}
+	return none
 }
 
 fn (g &Parser) local_is_pointer(name string) bool {
@@ -1163,6 +1198,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 
 // struct_direct_member_type caches only finalized file-generation descriptors.
 // Source and synthetic field names outlive this file worker's heap memo.
+@[inline]
 fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string) u32 {
 	if isnil(g.type_descriptor_memo) || receiver_type_id == 0 {
 		return g.struct_direct_member_type_uncached(receiver_type_id, field_name)
@@ -1172,11 +1208,32 @@ fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string
 		&& memo.direct_member_field == field_name {
 		return memo.direct_member_type
 	}
-	resolved := g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	resolved := g.struct_direct_member_type_miss(receiver_type_id, field_name)
 	memo.direct_member_receiver = receiver_type_id
 	memo.direct_member_field = field_name
 	memo.direct_member_type = resolved
 	memo.direct_member_known = true
+	return resolved
+}
+
+@[direct_array_access]
+fn (g &Parser) struct_direct_member_type_miss(receiver_type_id u32, field_name string) u32 {
+	mut slot_key := receiver_type_id
+	if field_name.len > 0 {
+		slot_key ^= u32(field_name[0]) * 17 + u32(field_name[field_name.len - 1])
+	}
+	slot := int(slot_key & 63)
+	mut memo := g.type_descriptor_memo
+	entry := memo.direct_members[slot]
+	if entry.receiver == receiver_type_id && entry.field == field_name {
+		return entry.typ
+	}
+	resolved := g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	memo.direct_members[slot] = FastcDirectMemberMemoEntry{
+		receiver: receiver_type_id
+		field:    field_name
+		typ:      resolved
+	}
 	return resolved
 }
 
@@ -1250,7 +1307,9 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
 		stored := &FastcStructField{ ...field }
-		w.field_memo[receiver_type][field_name] = stored
+		if mut memo := w.field_memo[receiver_type] {
+			memo[field_name] = stored
+		}
 		w.last_field_receiver = receiver_type
 		w.last_field_name = field_name
 		w.last_field = stored
@@ -1258,7 +1317,9 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 		return stored
 	}
 	miss := unsafe { &FastcStructField(nil) }
-	w.field_memo[receiver_type][field_name] = miss
+	if mut memo := w.field_memo[receiver_type] {
+		memo[field_name] = miss
+	}
 	w.last_field_receiver = receiver_type
 	w.last_field_name = field_name
 	w.last_field = miss

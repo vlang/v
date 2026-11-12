@@ -145,9 +145,37 @@ pub fn (b &Builder) byte_at(n int) u8 {
 }
 
 // write_string appends the string `s` to the buffer.
-@[expand_simple_interpolation; inline]
+@[inline]
 pub fn (mut b Builder) write_string(s string) {
 	unsafe { b.write_ptr(s.str, s.len) }
+}
+
+// write_string_borrowed is an immediate compiler-only consumer of a checked view.
+// Neither the buffer nor the receiver header may overlap the borrowed bytes:
+// growth can free the buffer, and updating the header can change the source.
+@[inline; manualfree]
+fn (mut b Builder) write_string_borrowed(s string) {
+	if s.len == 0 { return }
+	source := unsafe { u64(s.str) }
+	header := unsafe { u64(voidptr(&b)) }
+	buffer := unsafe { u64(b.data) } - u64(b.offset)
+	buffer_size := u64(b.offset) + u64(b.cap)
+	if builder_borrowed_ranges_overlap(source, u64(s.len), header, u64(sizeof(Builder)))
+		|| (b.data != unsafe { nil }
+			&& builder_borrowed_ranges_overlap(source, u64(s.len), buffer, buffer_size)) {
+		copy := s.clone()
+		b.write_string(copy)
+		unsafe { copy.free() }
+		return
+	}
+	b.write_string(s)
+}
+
+@[inline]
+fn builder_borrowed_ranges_overlap(a u64, a_len u64, b u64, b_len u64) bool {
+	if a_len == 0 || b_len == 0 { return false }
+	// Subtract addresses instead of adding lengths, avoiding end-address overflow.
+	return if a <= b { b - a < a_len } else { a - b < b_len }
 }
 
 // write_string2 appends the strings `s1` and `s2` to the buffer.

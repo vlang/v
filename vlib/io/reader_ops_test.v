@@ -17,9 +17,9 @@ fn (mut c ChunkReader) read(mut buf []u8) !int {
 	c.chunks.delete(0)
 	if buf.len < chunk.len {
 		c.chunks.insert(0, chunk[buf.len..])
-		return copy(mut buf, chunk[..buf.len])
+		return copy_bytes(mut buf, chunk[..buf.len])
 	}
-	return copy(mut buf, chunk)
+	return copy_bytes(mut buf, chunk)
 }
 
 fn drain(mut r Reader) []u8 {

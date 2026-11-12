@@ -756,7 +756,13 @@ fn gen_c_from_source_with_flags(v3_bin string, name string, flags string, src st
 }
 
 fn c_fn_body(c_source string, signature string) string {
-	start := c_source.index(signature) or { return '' }
+	// These fixtures target the host. Windows uses the wide console entry point.
+	host_signature := if os.user_os() == 'windows' && signature.starts_with('int main(') {
+		signature.replace('int main(', 'int wmain(').replace('char** argv', 'wchar_t** argv')
+	} else {
+		signature
+	}
+	start := c_source.index(host_signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
 	body_start := start + open_rel
 	mut depth := 0
@@ -12727,7 +12733,7 @@ fn main() {
 	}
 	builtin_body := c_fn_body(c_source, 'i64* make_builtin_memdup(void) {')
 	assert builtin_body.contains('i64 local = 44;'), builtin_body
-	assert builtin_body.contains('memdup((void*)(&local), sizeof(i64))'), builtin_body
+	assert builtin_body.contains('memdup((void*)(&local), (i64)(sizeof(i64)))'), builtin_body
 }
 
 fn test_parallel_monomorph_workers_use_disjoint_lifted_literal_names() {
@@ -13703,7 +13709,7 @@ fn main() {
 	assert out == 'ok'
 }
 
-fn test_implicit_clone_uses_zero_argument_variadic_clone_method() {
+fn test_append_uses_explicit_zero_argument_variadic_clone_method() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'zero_argument_variadic_clone_method', 'struct Item {
 	name string
@@ -13722,9 +13728,11 @@ fn main() {
 	mut items := []Item{}
 	items << item
 	println(items[0].name)
+	items << item.clone()
+	println(items[1].name)
 }
 ')
-	assert out == 'custom:ok'
+	assert out == 'ok\ncustom:ok'
 }
 
 fn test_generic_inference_prefers_local_over_same_named_function() {

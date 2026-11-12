@@ -7,6 +7,117 @@ fn test_json_escape_low_chars() {
 	assert json.decode[string](r'"\u0000"')! == '\u0000'
 }
 
+fn test_decode_escaped_string_round_trip() {
+	escaped_strings := ['test', 'test\\sd', 'test\nsd', '\ntest', 'test\\"', 'test\\', 'test\u1234ps',
+		'test\u1234', '\u1234\\\t"', '', '\uff0f', 'test \uff0f test', '😀', 'text 😀 text']
+
+	json_string := json.encode[[]string](escaped_strings)
+	decoded_strings := json.decode[[]string](json_string)!
+
+	assert escaped_strings == decoded_strings
+}
+
+fn test_surrogate() {
+	assert json.decode[string](r'"\ud83d\ude00"')! == '😀'
+	assert json.decode[string](r'"\ud83d\ude00 text"')! == '😀 text'
+}
+
+fn test_invalid_surrogate() {
+	if _ := json.decode[string](r'"\ud83d"') {
+		assert false
+	} else {
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got no valid escape sequence.'
+		}
+	}
+
+	if _ := json.decode[string](r'"\ud83d\n\n\n\n"') {
+		assert false
+	} else {
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got no valid escape sequence.'
+		}
+	}
+
+	if _ := json.decode[string](r'"\ud83d\ud83d"') {
+		assert false
+	} else {
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got D83D.'
+		}
+	}
+
+	if _ := json.decode[string](r'"\ude00\ud83d"') {
+		assert false
+	} else {
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Got trail surrogate: DE00 before head surrogate.'
+		}
+	}
+}
+
+struct Inner {
+mut:
+	ok string
+}
+
+struct Outer {
+mut:
+	strings map[string]string
+	inner   Inner
+}
+
+struct Base {
+mut:
+	id int
+}
+
+struct WithEmbed {
+	Base
+mut:
+	name string
+}
+
+fn test_escaped_struct_and_map_keys() {
+	o := json.decode[Outer](r'{"str\u0069ngs":{"o\u006b":"OK"},"\u0069nner":{"ok":"yes"}}')!
+	assert o.strings['ok'] == 'OK'
+	assert o.inner.ok == 'yes'
+}
+
+fn test_escaped_key_with_embed() {
+	w := json.decode[WithEmbed](r'{"\u0069d": 7, "nam\u0065": "x"}')!
+	assert w.id == 7
+	assert w.name == 'x'
+}
+
+fn test_escaped_map_keys() {
+	m := json.decode[map[string]string](r'{"\u006bey": "value", "a\"b\n": "c"}')!
+	assert m['key'] == 'value'
+	assert m['a"b\n'] == 'c'
+	assert m.len == 2
+}
+
+fn test_unescaped_keys_still_match() {
+	o := json.decode[Outer]('{"strings":{"ok":"OK"},"inner":{"ok":"yes"}}')!
+	assert o.strings['ok'] == 'OK'
+	assert o.inner.ok == 'yes'
+}
+
+fn test_escaped_key_roundtrip() {
+	original := {
+		'a"b\n': 1
+	}
+	assert json.decode[map[string]int](json.encode(original))! == original
+}
+
 fn test_json_string() {
 	assert json.decode[string](r'"te\u2714st"')! == 'te✔st'
 	assert json.decode[string](r'"te✔st"')! == 'te✔st'

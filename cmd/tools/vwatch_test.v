@@ -33,12 +33,18 @@ fn test_watch_keeps_backend_flag_intact() {
 	process.set_args(['watch', '-backend', 'js_browser', '-output', output_path, source_path])
 	process.run()
 
-	wait_error := wait_for_output(output_path, mut process)
+	mut wait_error := wait_for_output(output_path, mut process)
+	// The watched compiler can create the output file before vwatch prints its command.
+	// Wait for the log before stopping it, so the forwarded flag is observable.
+	mut log := []string{}
+	if wait_error == '' && !wait_for_log(' -backend js_browser ', mut process, mut log) {
+		wait_error = 'v watch did not report the forwarded backend before exiting or timing out'
+	}
 	if process.is_alive() {
 		process.signal_pgkill()
 	}
 	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
+	output := log.join('') + process.stdout_slurp() + process.stderr_slurp()
 	process.close()
 
 	assert wait_error == '', '${wait_error}\n${output}'

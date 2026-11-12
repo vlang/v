@@ -3,14 +3,19 @@ module veb
 import json2
 import net.http
 
+type OpenApiHandlerCallback = fn (mut OpenApiDocument, string, http.Method) !
+
 // RouteInfo describes a dispatched route, including its mounted controller path.
 pub struct RouteInfo {
+	openapi_metadata_name string
+	openapi_metadata      OpenApiHandlerCallback = unsafe { nil }
 pub:
 	name               string
 	controller         string
 	path               string
 	methods            []http.Method
 	host               string
+	description        string
 	parameter_names    []string
 	parameter_types    []string
 	parameter_schemas  []map[string]json2.Any
@@ -56,6 +61,26 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			parameter_schemas[method.name] = schemas
 		}
 	}
+	mut metadata_callbacks := map[string]OpenApiHandlerCallback{}
+	mut metadata_names := map[string]string{}
+	$for method in A.methods {
+		$for attr in method.attributes {
+			$if attr is OpenApi {
+				metadata_names[method.name] = attr.handler
+			}
+		}
+		$if method.args.len == 1 {
+			$for param in method.params {
+				$if param.typ is &OpenApiHandler {
+					metadata_callbacks[method.name] = fn [method, app] [A](mut doc OpenApiDocument, path string, verb http.Method) ! {
+						mut handler := OpenApiHandler{ doc: &doc, path: path, method: verb }
+						app.$method(mut handler)!
+					}
+				}
+			}
+		}
+	}
+
 	for name, route in routes {
 		mut kinds := []string{}
 		mut required := []bool{}
@@ -65,16 +90,20 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			// Preserve the dispatcher's missing-value policy independently of schema widths.
 			required << kind in [.integer, .boolean]
 		}
+		metadata_name := metadata_names[name]
 		info := RouteInfo{
-			name:               name
-			controller:         typeof(app).name.trim_left('&')
-			path:               openapi_join_path('', route.path)
-			methods:            route.methods
-			host:               route.host
-			parameter_names:    route.parameter_names
-			parameter_types:    kinds
-			parameter_schemas:  schemas
-			parameter_required: required
+			name:                  name
+			controller:            typeof(app).name.trim_left('&')
+			path:                  openapi_join_path('', route.path)
+			methods:               route.methods
+			host:                  route.host
+			description:           route_description(route.attrs)
+			parameter_names:       route.parameter_names
+			parameter_types:       kinds
+			parameter_schemas:     schemas
+			parameter_required:    required
+			openapi_metadata_name: metadata_name
+			openapi_metadata:      metadata_callbacks[metadata_name] or { OpenApiHandlerCallback(unsafe { nil }) }
 		}
 		result << info
 		if name == 'index' && route.path == '/index' {
@@ -97,6 +126,22 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 	}
 	result.sort(a.path < b.path)
 	return result
+}
+
+fn route_description(attrs []string) string {
+	for attr in attrs {
+		if attr.starts_with('description:') {
+			value := attr.all_after(':').trim_space()
+			// Reflection decodes ordinary strings; raw strings retain their prefix.
+			quote_index := if value.len > 2 && value[0] == `r` { 1 } else { 0 }
+			if value.len > quote_index + 1 && value[quote_index] == value[value.len - 1]
+				&& value[quote_index] in [`'`, `"`] {
+				return value[quote_index + 1..value.len - 1]
+			}
+			return value
+		}
+	}
+	return ''
 }
 
 fn (route &RouteInfo) parameter_schema(index int) OpenApiSchema {

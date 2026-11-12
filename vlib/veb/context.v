@@ -39,6 +39,8 @@ mut:
 	content_type string
 	// done is set to true when a response can be sent over `conn`
 	done bool
+	// Set only on the writer snapshot; shared GC bodies must not be freed manually.
+	shared_response_body bool
 	// If the `Connection: close` header is present the connection should always be closed
 	client_wants_to_close bool
 	// Configuration for static file compression (set by serve_if_static)
@@ -49,8 +51,10 @@ mut:
 	static_compression_mime_types []string
 	// controls whether veb should automatically send the response or whether the handler
 	// takes over response writing.
-	takeover_mode         ContextTakeoverMode
-	return_file           string
+	takeover_mode ContextTakeoverMode
+	return_file   string
+	// Keep the clone alive until handoff, so address reuse cannot fake ownership.
+	owned_response_body   &u8                = unsafe { nil }
 	custom_mime_types_ref &map[string]string = unsafe { nil }
 	// raw client file descriptor, used by the fasthttp backend to create a TcpConn
 	// on demand when takeover_conn() is called
@@ -123,16 +127,69 @@ fn clone_response_writer_header(header http.Header) http.Header {
 	return cloned
 }
 
-fn (mut ctx Context) preserve_for_response_writer(user_context Context) {
-	unsafe {
-		*ctx = user_context
+fn (mut ctx Context) preserve_for_response_writer(mut user_context Context) {
+	if !response_body_can_share_gc_buffer() {
+		ctx.copy_for_response_writer(user_context)
+		return
 	}
+	// The retained owner keeps this exact GC buffer alive during the handler.
+	// A direct body replacement therefore cannot match a recycled allocation.
+	share_body := user_context.owned_response_body != unsafe { nil }
+		&& user_context.owned_response_body == user_context.res.body.str
+	unsafe { *ctx = user_context }
+	if share_body {
+		ctx.shared_response_body = true
+	} else {
+		ctx.res.body = user_context.res.body.clone()
+		ctx.shared_response_body = false
+	}
+	// Only the response string and application aliases keep the body after handoff.
+	ctx.owned_response_body = unsafe { nil }
+	user_context.owned_response_body = unsafe { nil }
+	ctx.res.header = clone_response_writer_header(user_context.res.header)
+	ctx.res.status_msg = user_context.res.status_msg.clone()
+	ctx.res.http_version = user_context.res.http_version.clone()
+	ctx.req.header = clone_response_writer_header(user_context.req.header)
+	ctx.return_file = user_context.return_file.clone()
+}
+
+// Preserve the original copying contract outside ordinary Boehm GC builds.
+fn (mut ctx Context) copy_for_response_writer(user_context Context) {
+	unsafe { *ctx = user_context }
 	ctx.res.body = user_context.res.body.clone()
 	ctx.res.header = clone_response_writer_header(user_context.res.header)
 	ctx.res.status_msg = user_context.res.status_msg.clone()
 	ctx.res.http_version = user_context.res.http_version.clone()
 	ctx.req.header = clone_response_writer_header(user_context.req.header)
 	ctx.return_file = user_context.return_file.clone()
+	ctx.owned_response_body = unsafe { nil }
+	ctx.shared_response_body = false
+}
+
+fn response_body_can_share_gc_buffer() bool {
+	$if gcboehm ? {
+		$if prealloc {
+			return false
+		}
+		$if autofree ? {
+			return false
+		}
+		$if ownership ? {
+			return false
+		}
+		return true
+	} $else {
+		return false
+	}
+}
+
+fn (mut ctx Context) release_response_body() {
+	ctx.owned_response_body = unsafe { nil }
+	if ctx.res.body.len > 0 && !ctx.shared_response_body {
+		unsafe { ctx.res.body.free() }
+	}
+	ctx.res.body = ''
+	ctx.shared_response_body = false
 }
 
 // returns the request header data from the key
@@ -165,10 +222,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
-	if ctx.res.body.len > 0 {
-		unsafe { ctx.res.body.free() }
-		ctx.res.body = ''
-	}
+	ctx.release_response_body()
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
 			ctx.res.body = response.replace('</html>',
@@ -179,6 +233,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	} $else {
 		ctx.res.body = response.clone()
 	}
+	if response_body_can_share_gc_buffer() { ctx.owned_response_body = ctx.res.body.str }
 	// Prefer explicit overrides from Context state or a pre-set response header.
 	mut custom_mimetype := ctx.content_type
 	if custom_mimetype.len == 0 {
@@ -204,8 +259,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	}
 	if ctx.takeover_mode != .none && ctx.conn != unsafe { nil } {
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
-		unsafe { ctx.res.body.free() }
-		ctx.res.body = ''
+		ctx.release_response_body()
 	}
 	// result is send in `veb.v`, `handle_route`
 	return Result{}

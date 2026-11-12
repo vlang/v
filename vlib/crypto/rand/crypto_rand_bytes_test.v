@@ -59,7 +59,7 @@ fn test_android_read_uses_raw_getrandom_without_api28_libc() {
 	assert !code.contains('crypto.rand.read is not implemented on this platform'), 'Android crypto.rand.read selected the unsupported backend'
 	read_body := android_random_read_definition(code)
 	assert read_body.contains('v_crypto_getrandom('), 'Android random reads do not call the getrandom helper: ${read_body}'
-	helper := android_random_inserted_helper(code)
+	helper := android_random_getrandom_helper(code)
 	cc := os.find_abs_path_of_executable('cc') or {
 		eprintln('skipping Android getrandom helper execution: no host C compiler (cc)')
 		return
@@ -114,10 +114,15 @@ fn android_random_read_definition(code string) string {
 	panic('Android C has no complete random read definition')
 }
 
-// Compile the helper actually inserted into Android output, including its guards.
-fn android_random_inserted_helper(code string) string {
+// Compile the helper actually used by Android output, including its guards.
+fn android_random_getrandom_helper(code string) string {
+	// Keep the C preprocessor responsible for a helper emitted as an include.
+	include := '#include "${os.join_path(@VEXEROOT, 'vlib', 'crypto', 'rand', 'internal', 'getrandom_linux.h').replace('\\', '/')}"'
+	if include in code.split_into_lines() {
+		return include
+	}
 	marker := '#ifndef V_CRYPTO_RAND_GETRANDOM_LINUX_H'
-	start := code.index(marker) or { panic('Android C has no inserted getrandom helper') }
+	start := code.index(marker) or { panic('Android C has no getrandom helper') }
 	mut depth := 0
 	mut lines := []string{}
 	for line in code[start..].split_into_lines() {

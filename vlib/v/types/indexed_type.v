@@ -22,7 +22,7 @@ fn (tc &TypeChecker) indexed_type_cache() &IndexedTypeCache {
 	return cache.indexed_types
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (tc &TypeChecker) invalidate_checked_type_id(idx int) {
 	if idx < 0 || isnil(tc.type_cache) || isnil(tc.type_cache.indexed_types) {
 		return

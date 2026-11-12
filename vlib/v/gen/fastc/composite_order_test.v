@@ -155,3 +155,40 @@ fn main() {
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_fastc_composite_dependencies_preserve_packed_blocks_and_intervening_text() {
+	head := '/* head */\n'
+	first := 'struct A { B value; };\n\n'
+	between := '/* between */\n'
+	second := '#pragma pack(push, 1)\nstruct B { C value; };\n#pragma pack(pop)\n'
+	third := 'struct C { int value; };\n'
+	tail := '/* tail */\n'
+	mut first_fields := flat.TypeTextBindings{}
+	first_fields.set('value', 'Alias_B')
+	mut second_fields := flat.TypeTextBindings{}
+	second_fields.set('value', 'C')
+	mut third_fields := flat.TypeTextBindings{}
+	third_fields.set('value', 'int')
+	mut aliases := flat.TypeTextBindings{}
+	aliases.set('Alias_B', 'B')
+	fields := {
+		'A': first_fields
+		'B': second_fields
+		'C': third_fields
+	}
+	names := {
+		'A': true
+		'B': true
+		'C': true
+	}
+	source := head + first + between + second + third + tail
+	ordered := fastc_order_c_composite_definitions(source, fields, names, aliases)
+	assert ordered == head + third + second + first + between + tail
+	assert fastc_order_c_composite_definitions(ordered, fields, names, aliases) == ordered
+}
+
+fn test_fastc_composite_order_keeps_nested_definitions_and_noncomposite_text() {
+	source := 'typedef int Number;\nstruct A { struct B { Number n; } value; };\n'
+	assert fastc_order_c_composite_definitions(source, map[string]flat.TypeTextBindings{},
+		map[string]bool{}, flat.TypeTextBindings{}) == source
+}

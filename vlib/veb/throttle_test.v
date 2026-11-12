@@ -7,6 +7,7 @@
 // except where a timeout is the behaviour under test.
 module veb
 
+import compress.gzip
 import net.http
 import time
 
@@ -21,6 +22,11 @@ struct ThrottleContext {
 @['/work']
 fn (app &ThrottleApp) work(mut ctx ThrottleContext) Result {
 	return ctx.text('done')
+}
+
+@['/compressed']
+fn (app &ThrottleApp) compressed(mut ctx ThrottleContext) Result {
+	return ctx.text('compressible content '.repeat(100))
 }
 
 // release_after releases `slot` after `after_ms`, from its own thread, so a
@@ -282,9 +288,14 @@ fn test_a_compressed_response_frees_its_slot() {
 	app.use(encode_gzip[ThrottleContext]())
 	app.use(th.acquire())
 	for _ in 0 .. 3 {
-		ctx := throttle_get(mut app, '/work')
+		ctx := throttle_render(mut app, .get, '/compressed', http.new_header(
+			key:   .accept_encoding
+			value: 'gzip'
+		))
 		assert ctx.res.status_code == int(http.Status.ok)
 		assert (ctx.res.header.get(.content_encoding) or { '' }) == 'gzip'
+		body := gzip.decompress(ctx.res.body.bytes()) or { panic(err) }
+		assert body.bytestr() == 'compressible content '.repeat(100)
 		assert th.store.slots.len == 0
 	}
 }

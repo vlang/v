@@ -1,11 +1,19 @@
 name: 'Setup V'
-description: 'Build the V compiler and optionally symlink or inspect it'
+description: 'Reuse or build an optimized V compiler without changing test flags'
 
 inputs:
+  working-directory:
+    description: 'Directory containing the V checkout'
+    required: false
+    default: '.'
   make-args:
     description: 'Arguments passed to make when building V'
     required: false
     default: '-j4'
+  use-prebuilt:
+    description: 'Reuse an optimized compiler for this exact commit and platform'
+    required: false
+    default: 'true'
   symlink:
     description: 'Run ./v symlink after building V'
     required: false
@@ -22,10 +30,12 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Build V
+    - name: Select compiler for this checkout
+      id: compiler
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
-        MAKE_ARGS: ${{ inputs.make-args }}
+        USE_PREBUILT: ${{ inputs.use-prebuilt }}
         RUN_DOCTOR: ${{ inputs.doctor }}
         RUN_SYMLINK: ${{ inputs.symlink }}
         RUN_VERSION: ${{ inputs.version }}
@@ -44,13 +54,81 @@ runs:
         validate_bool_input symlink "$RUN_SYMLINK"
         validate_bool_input doctor "$RUN_DOCTOR"
         validate_bool_input version "$RUN_VERSION"
+        validate_bool_input use-prebuilt "$USE_PREBUILT"
 
+        platform=$(sh "$GITHUB_ACTION_PATH/../../workflows/prepare_v.sh" --platform)
+        sha=$(git rev-parse 'HEAD^{commit}')
+        directory=$(mktemp -d "$RUNNER_TEMP/vprod-artifact.XXXXXX")
+        if [ "$RUNNER_OS" = Windows ]; then
+          directory=$(cygpath -w "$directory")
+        fi
+        echo "platform=$platform" >> "$GITHUB_OUTPUT"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        echo "directory=$directory" >> "$GITHUB_OUTPUT"
+
+    # Platform producers run independently in CI master. Reusable workflows
+    # share this run's available artifacts without a cross-repository token;
+    # missing artifacts fall back to a local optimized compiler build.
+    - name: Download the bootstrapped compiler
+      id: artifact
+      if: inputs.use-prebuilt == 'true' && steps.compiler.outputs.platform != '' && github.workflow == 'CI master' && steps.compiler.outputs.sha == github.sha
+      # A downstream-only rerun can outlive artifact cleanup or retention.
+      # Missing artifacts fall back to an optimized local build.
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: vprod-${{ steps.compiler.outputs.platform }}-${{ steps.compiler.outputs.sha }}
+        path: ${{ steps.compiler.outputs.directory }}
+
+    - name: Select the downloaded compiler
+      id: binary
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        USE_PREBUILT: ${{ inputs.use-prebuilt }}
+        DOWNLOAD_OUTCOME: ${{ steps.artifact.outcome }}
+        ARTIFACT_DIRECTORY: ${{ steps.compiler.outputs.directory }}
+        COMPILER_SHA: ${{ steps.compiler.outputs.sha }}
+        COMPILER_PLATFORM: ${{ steps.compiler.outputs.platform }}
+      run: |
+        set -euo pipefail
+        prebuilt=
+        candidate="$ARTIFACT_DIRECTORY/$COMPILER_SHA-$COMPILER_PLATFORM"
+        if [ "$DOWNLOAD_OUTCOME" = failure ] && [ -n "$(find "$ARTIFACT_DIRECTORY" -mindepth 1 -print -quit)" ]; then
+          echo 'Compiler artifact download failed after writing files; refusing partial or unverified data' >&2
+          exit 1
+        fi
+        if [ "$DOWNLOAD_OUTCOME" = success ] && { [ ! -f "$candidate" ] || [ ! -f "$candidate.sha256" ]; }; then
+          echo 'Downloaded compiler artifact is missing its binary or checksum' >&2
+          exit 1
+        fi
+        if [ "$USE_PREBUILT" = true ] && [ -f "$candidate" ]; then
+          prebuilt="$candidate"
+        fi
+        if [ "$RUNNER_OS" = Windows ] && [ -n "$prebuilt" ]; then
+          prebuilt=$(cygpath -w "$prebuilt")
+        fi
+        echo "path=$prebuilt" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare optimized V (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MAKE_ARGS: ${{ inputs.make-args }}
+        V_CI_PREBUILT: ${{ steps.binary.outputs.path }}
+        V_CI_SOURCE_BUILD: ${{ steps.binary.outputs.path == '' && '1' || '0' }}
+        RUN_DOCTOR: ${{ inputs.doctor }}
+        RUN_SYMLINK: ${{ inputs.symlink }}
+        RUN_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        make_args=()
         if [ -n "$MAKE_ARGS" ]; then
           read -r -a make_args <<< "$MAKE_ARGS"
-          make "${make_args[@]}"
-        else
-          make
         fi
+        sh "$GITHUB_ACTION_PATH/../../workflows/prepare_v.sh" "${make_args[@]}"
 
         if [ "$RUN_SYMLINK" = true ]; then
           ./v symlink
@@ -61,3 +139,45 @@ runs:
         if [ "$RUN_VERSION" = true ]; then
           ./v version
         fi
+
+    - name: Prepare optimized V (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        V_CI_PREBUILT: ${{ steps.binary.outputs.path }}
+        RUN_DOCTOR: ${{ inputs.doctor }}
+        RUN_SYMLINK: ${{ inputs.symlink }}
+        RUN_VERSION: ${{ inputs.version }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:V_CI_PREBUILT) {
+          # Preserve dependency setup even when the compiler itself is reused.
+          .\makev.bat latest_tcc
+          if ($LASTEXITCODE -ne 0) { throw "TCC setup failed (exit $LASTEXITCODE)" }
+          if (-not (Test-Path 'vc\v_win.c')) {
+            git clone --depth 1 https://github.com/vlang/vc vc
+            if ($LASTEXITCODE -ne 0) { throw "VC checkout failed (exit $LASTEXITCODE)" }
+          }
+        } elseif (-not (Test-Path '.\v.exe')) {
+          .\makev.bat
+          if ($LASTEXITCODE -ne 0) { throw "V bootstrap failed (exit $LASTEXITCODE)" }
+        }
+        & "$env:GITHUB_ACTION_PATH/../../workflows/prepare_v.ps1" -Prebuilt $env:V_CI_PREBUILT
+        if ($LASTEXITCODE -ne 0) { throw "Optimized compiler setup failed (exit $LASTEXITCODE)" }
+        .\v.exe -new-compiler -gc none run cmd/tools/detect_tcc.v
+        if ($LASTEXITCODE -ne 0) { throw "TCC detection failed (exit $LASTEXITCODE)" }
+        .\v.exe -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+        if ($LASTEXITCODE -ne 0) { throw "Problem matcher setup failed (exit $LASTEXITCODE)" }
+        if ($env:RUN_SYMLINK -eq 'true') {
+          .\v.exe symlink
+          if ($LASTEXITCODE -ne 0) { throw "V symlink failed (exit $LASTEXITCODE)" }
+        }
+        if ($env:RUN_DOCTOR -eq 'true') {
+          .\v.exe doctor
+          if ($LASTEXITCODE -ne 0) { throw "V doctor failed (exit $LASTEXITCODE)" }
+        }
+        if ($env:RUN_VERSION -eq 'true') {
+          .\v.exe version
+          if ($LASTEXITCODE -ne 0) { throw "V version failed (exit $LASTEXITCODE)" }
+        }

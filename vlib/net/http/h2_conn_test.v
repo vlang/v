@@ -501,6 +501,7 @@ fn test_h2_stop_copying_limit_caps_body_but_keeps_callback() {
 	})!
 	// Body is capped at 6 bytes (4 from first chunk + 2 from second).
 	assert resp.body.bytestr() == 'AAAABB'
+	assert resp.body_truncated
 	// All three chunks still produced callbacks.
 	assert cap.chunks.len == 3
 	assert cap.chunks[0].bytestr() == 'AAAA'
@@ -529,6 +530,7 @@ fn test_h2_stop_receiving_limit_breaks_early() {
 	// Loop breaks after the second DATA frame (8 bytes >= limit 6); body
 	// contains both chunks delivered so far.
 	assert resp.body.bytestr() == 'XXXXYYYY'
+	assert resp.body_truncated
 	assert cap.chunks.len == 2
 	assert cap.chunks[1].bytestr() == 'YYYY'
 

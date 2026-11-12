@@ -76,11 +76,14 @@ fn decode_struct[T](doc Any, mut typ T) {
 				} $else $if field.typ is bool {
 					typ.$(field.name) = value.bool()
 				} $else $if field.typ is int {
-					typ.$(field.name) = value.int()
+					n, ok := to_wide_int[int](value)
+					if ok { typ.$(field.name) = n }
 				} $else $if field.typ is i64 {
-					typ.$(field.name) = value.i64()
+					n, ok := to_wide_int[i64](value)
+					if ok { typ.$(field.name) = n }
 				} $else $if field.typ is u64 {
-					typ.$(field.name) = value.u64()
+					n, ok := to_wide_int[u64](value)
+					if ok { typ.$(field.name) = n }
 				} $else $if field.typ is u8 {
 					n, ok := to_narrow_int[u8](value)
 					if ok {
@@ -149,11 +152,14 @@ fn decode_option[T](mut val ?T, value Any) {
 	} $else $if T is bool {
 		val = value.bool()
 	} $else $if T is int {
-		val = value.int()
+		n, ok := to_wide_int[int](value)
+		if ok { val = n }
 	} $else $if T is i64 {
-		val = value.i64()
+		n, ok := to_wide_int[i64](value)
+		if ok { val = n }
 	} $else $if T is u64 {
-		val = value.u64()
+		n, ok := to_wide_int[u64](value)
+		if ok { val = n }
 	} $else $if T is u8 {
 		n, ok := to_narrow_int[u8](value)
 		if ok {
@@ -240,10 +246,9 @@ fn to_narrow_int[T](value Any) (T, bool) {
 }
 
 // any_to_checked_i64 returns the integer held by `value`. Unlike `Any.i64()`, it
-// does not turn unsupported values into 0: floats, booleans, `inf` and `-inf`
-// (stored as `u64`), `nan`, tables, arrays and dates are rejected. Decimal strings
-// are parsed, because older versions of `encode` wrote narrow integers as quoted
-// strings (`port = "8080"`).
+// does not turn unsupported values into 0: floats, booleans, tables, arrays and
+// dates are rejected. Decimal strings are parsed, because older versions of
+// `encode` wrote narrow integers as quoted strings (`port = "8080"`).
 fn any_to_checked_i64(value Any) ?i64 {
 	match value {
 		i64 {
@@ -252,16 +257,60 @@ fn any_to_checked_i64(value Any) ?i64 {
 		int {
 			return i64(value)
 		}
+		u64 {
+			if value > u64(9223372036854775807) { return none }
+			return i64(value)
+		}
 		string {
-			if value == '' {
+			if value == '' || value.contains_u8(`_`) {
 				return none
 			}
-			return strconv.parse_int(value, 10, 64) or { return none }
+			return strconv.common_parse_int(value, 10, 64, true, true) or { return none }
 		}
 		else {
 			return none
 		}
 	}
+}
+
+// to_wide_int applies the narrow-integer range policy to platform and 64-bit
+// integers. Decimal strings remain compatible with older encoded values.
+fn to_wide_int[T](value Any) (T, bool) {
+	$if T is u64 {
+		match value {
+			u64 { return T(value), true }
+			int, i64 {
+				if value >= 0 { return T(value), true }
+			}
+			string {
+				if value.contains_u8(`_`) { return T(0), false }
+				if value.starts_with('-') {
+					n := any_to_checked_i64(value) or { return T(0), false }
+					return T(0), n == 0
+				}
+				text := if value.starts_with('+') { value[1..] } else { value }
+				n := strconv.common_parse_uint(text, 10, 64, true, true) or { return T(0), false }
+				return T(n), true
+			}
+			else {}
+		}
+		return T(0), false
+	} $else {
+		n := any_to_checked_i64(value) or { return T(0), false }
+		if sizeof(T) == 4 && (n < -2147483648 || n > 2147483647) {
+			return T(0), false
+		}
+		return T(n), true
+	}
+}
+
+fn decode_wide_int_array[T](values []Any) []T {
+	mut result := []T{cap: values.len}
+	for value in values {
+		n, ok := to_wide_int[T](value)
+		if ok { result << n }
+	}
+	return result
 }
 
 // decode_narrow_int_array decodes `values` into a `[]T` of narrow integers,
@@ -317,12 +366,8 @@ fn decode_array[T](current []T, values []Any) []T {
 		return values.map(it.string())
 	} $else $if T is bool {
 		return values.map(it.bool())
-	} $else $if T is int {
-		return values.map(it.int())
-	} $else $if T is i64 {
-		return values.map(it.i64())
-	} $else $if T is u64 {
-		return values.map(it.u64())
+	} $else $if T is int || T is i64 || T is u64 {
+		return decode_wide_int_array[T](values)
 	} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
 		return decode_narrow_int_array[T](values)
 	} $else $if T is f32 {
@@ -384,12 +429,9 @@ fn decode_map[K, T](current map[K]T, values map[string]Any) map[K]T {
 			decoded[key] = value.string()
 		} $else $if T is bool {
 			decoded[key] = value.bool()
-		} $else $if T is int {
-			decoded[key] = value.int()
-		} $else $if T is i64 {
-			decoded[key] = value.i64()
-		} $else $if T is u64 {
-			decoded[key] = value.u64()
+		} $else $if T is int || T is i64 || T is u64 {
+			n, ok := to_wide_int[T](value)
+			if ok { decoded[key] = n }
 		} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
 			n, ok := to_narrow_int[T](value)
 			if ok { decoded[key] = n }
@@ -842,24 +884,20 @@ pub fn ast_to_any(value ast.Value) Any {
 		}
 		ast.Number {
 			val_text := value.text
-			if val_text == 'inf' || val_text == '+inf' || val_text == '-inf' {
-				// NOTE values taken from strconv
-				if !val_text.starts_with('-') {
-					// strconv.double_plus_infinity
-					return Any(u64(0x7FF0000000000000))
-				} else {
-					// strconv.double_minus_infinity
-					return Any(u64(0xFFF0000000000000))
-				}
-			}
-			if val_text == 'nan' || val_text == '+nan' || val_text == '-nan' {
-				return Any('nan')
+			if val_text in ['inf', '+inf', '-inf', 'nan', '+nan', '-nan'] {
+				return Any(value.f64())
 			}
 			if !val_text.starts_with('0x')
 				&& (val_text.contains('.') || val_text.contains_any('eE')) {
 				return Any(value.f64())
 			}
-			return Any(value.i64())
+			if val_text.starts_with('-') {
+				return Any(strconv.common_parse_int(val_text, 0, 64, true, true) or { return null })
+			}
+			unsigned := if val_text.starts_with('+') { val_text[1..] } else { val_text }
+			n := strconv.parse_uint(unsigned, 0, 64) or { return null }
+			if n > u64(9223372036854775807) { return Any(n) }
+			return Any(i64(n))
 		}
 		ast.Bool {
 			str := value.text

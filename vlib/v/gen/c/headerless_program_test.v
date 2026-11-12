@@ -3,6 +3,14 @@ module c
 import os
 import v.cmdexec
 
+// run_headerless_v keeps CI's inherited VFLAGS out of the literal-output probe.
+fn run_headerless_v(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VEXE':   @VEXE
+		'VFLAGS': ''
+	})
+}
+
 fn test_brotli_binding_retains_its_native_headers() {
 	$if !macos {
 		return
@@ -54,20 +62,20 @@ fn test_posix_hello_world_c_has_no_includes() {
 	c_file := os.join_path(root, 'hello_world.c')
 	os.write_file(source, "println('Hello, World!')\n")!
 	for gc in ['none', 'boehm', 'boehm_leak'] {
-		generated := cmdexec.run(@VEXE, ['-nocache', '-gc', gc, '-o', c_file, source])
+		generated := run_headerless_v(['-nocache', '-gc', gc, '-o', c_file, source])
 		assert generated.exit_code == 0, generated.output
 		code := os.read_file(c_file)!
 		assert !code.contains('#include'), gc
 		assert code.len < 256, '${gc}: ${code.len} bytes'
 		assert code.contains('int puts(const char*'), gc
 		assert !code.contains('malloc') && !code.contains('GC_') && !code.contains('gc_'), gc
-		run := cmdexec.run(@VEXE, ['-nocache', '-no-retry-compilation', '-gc', gc, 'run', source])
+		run := run_headerless_v(['-nocache', '-no-retry-compilation', '-gc', gc, 'run', source])
 		assert run.exit_code == 0, run.output
 		assert run.output == 'Hello, World!\n', run.output
 	}
 	for target in ['linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku',
 		'qnx', 'serenity', 'termux', 'wasm32_emscripten', 'windows'] {
-		generated := cmdexec.run(@VEXE, ['-nocache', '-os', target, '-o', c_file, source])
+		generated := run_headerless_v(['-nocache', '-os', target, '-o', c_file, source])
 		assert generated.exit_code == 0, generated.output
 		assert !os.read_file(c_file)!.contains('#include'), target
 	}
@@ -220,7 +228,7 @@ fn main() {
 	assert run.output == 'OK\n', run.output
 }
 
-fn test_self_c_has_no_include_directives() {
+fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	$if !(macos || linux || windows || freebsd || openbsd || dragonfly || android || termux || ios) || freestanding {
 		return
 	}
@@ -251,7 +259,8 @@ fn test_self_c_has_no_include_directives() {
 		}
 		for line in headerless.split_into_lines() {
 			// Compiler string literals still contain text used to generate other C files.
-			assert !line.trim_space().starts_with('#include'), line
+			assert !line.trim_space().starts_with('#include')
+				|| line.trim_space() == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"', line
 		}
 	}
 }
@@ -314,7 +323,7 @@ fn test_headerless_standard_modules_and_native_helpers() {
 	c_file := os.join_path(root, 'main.c')
 	generated := cmdexec.run(@VEXE, ['-nocache', '-o', c_file, source])
 	assert generated.exit_code == 0, generated.output
-	assert !os.read_file(c_file)!.contains('#include')
+	assert os.read_file(c_file)!.split_into_lines().all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"')
 	for cc in ['tcc', 'clang'] {
 		run := cmdexec.run(@VEXE, ['-nocache', '-cc', cc, '-thread-stack-size', '65536',
 			'-no-retry-compilation', 'run', source])

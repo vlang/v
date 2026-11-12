@@ -14,7 +14,10 @@ fn test_connect_failure_error_is_well_formed() {
 	// Port 59999 is deliberately not running a PostgreSQL server, so
 	// `connect_slot` takes the `status != .ok` path that produced the
 	// garbled message. This test does not require a live database.
-	conn := pg.connect_direct_with_conninfo('host=localhost port=59999 user=nobody dbname=nodb') or {
+	// An explicit nonexistent password file keeps libpq from consulting HOME
+	// through libc, whose output may not be tracked by MemorySanitizer.
+	conninfo := 'host=localhost port=59999 user=nobody dbname=nodb passfile=/nonexistent/vlang-pg-error-test.pgpass'
+	conn := pg.connect_direct_with_conninfo(conninfo) or {
 		err_str := err.str()
 		// The message must contain readable text and no embedded NUL bytes.
 		assert err_str.contains('Connection to a PG database failed'), 'missing prefix: ${err_str}'

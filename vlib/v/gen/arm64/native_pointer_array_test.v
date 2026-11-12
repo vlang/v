@@ -1,11 +1,13 @@
 module arm64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if macos && arm64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_c_opaque_pointer_locals_and_explicit_pointer_addresses() {
 	$if macos && arm64 {

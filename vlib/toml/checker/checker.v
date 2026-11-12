@@ -250,6 +250,19 @@ fn (c &Checker) check_number(num ast.Number) ! {
 				' numbers like "${lit}" can not start with `${ascii}` in ...${c.excerpt(num.pos)}...')
 		}
 	}
+	if hex_bin_oct || (!is_float && !has_exponent_notation
+		&& lit !in ['inf', '+inf', '-inf', 'nan', '+nan', '-nan']) {
+		if lit.starts_with('-') {
+			strconv.common_parse_int(lit, 0, 64, true, true) or {
+				return error('TOML integer `${lit}` cannot be represented losslessly')
+			}
+		} else {
+			unsigned := if lit.starts_with('+') { lit[1..] } else { lit }
+			strconv.parse_uint(unsigned, 0, 64) or {
+				return error('TOML integer `${lit}` cannot be represented losslessly')
+			}
+		}
+	}
 }
 
 // is_valid_binary_literal returns true if `num` is valid TOML binary literal.

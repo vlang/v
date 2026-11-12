@@ -1317,48 +1317,50 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	parent_key := qb.selected_primary_value(row) or { Primitive(Null{}) }
 	mut conn := qb.conn
 	$for field in T.fields {
-		field_type_name := typeof(field).name
-		if relation_should_load(qb.relation_load_mode, qb.include_paths, field.name) {
-			child_paths := include_child_paths(qb.include_paths, field.name)
-			$if field.unaliased_typ is $array {
-				fkey := orm_field_fkey(field.attrs)
-				if fkey.len > 0 && parent_key != Primitive(Null{}) {
-					instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
-						qb.relation_load_mode, child_paths, instance.$(field.name))!
-				}
-			} $else $if field.typ is $option {
-				if orm_type_name_is_optional_array(field_type_name) {
+		// Scalar fields must not specialize unreachable relationship queries and metadata lookups.
+		$if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
+		} $else $if field.is_array || field.is_struct {
+			field_type_name := typeof(field).name
+			if relation_should_load(qb.relation_load_mode, qb.include_paths, field.name) {
+				child_paths := include_child_paths(qb.include_paths, field.name)
+				$if field.unaliased_typ is $array {
 					fkey := orm_field_fkey(field.attrs)
 					if fkey.len > 0 && parent_key != Primitive(Null{}) {
-						instance.$(field.name) = query_relation_optional_array_like(mut conn,
-							parent_key, fkey, qb.relation_load_mode, child_paths,
-							instance.$(field.name))!
+						instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
+							qb.relation_load_mode, child_paths, instance.$(field.name))!
 					}
-				} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
-					mm := qb.meta.filter(it.name == field.name)
-					if mm.len != 0 {
-						index := qb.config.fields.index(sql_field_name(mm[0]))
-						if index >= 0 && index < row.len
-							&& orm_relation_lookup_key_has_value(row[index]) {
-							related := query_relation_one_optional_like(mut conn, row[index],
-								qb.relation_load_mode, child_paths, instance.$(field.name))!
-							if related.len > 0 {
-								instance.$(field.name) = related[0]
+				} $else $if field.typ is $option {
+					if orm_type_name_is_optional_array(field_type_name) {
+						fkey := orm_field_fkey(field.attrs)
+						if fkey.len > 0 && parent_key != Primitive(Null{}) {
+							instance.$(field.name) = query_relation_optional_array_like(mut conn,
+								parent_key, fkey, qb.relation_load_mode, child_paths,
+								instance.$(field.name))!
+						}
+					} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+						mm := qb.meta.filter(it.name == field.name)
+						if mm.len != 0 {
+							index := qb.config.fields.index(sql_field_name(mm[0]))
+							if index >= 0 && index < row.len
+								&& orm_relation_lookup_key_has_value(row[index]) {
+								related := query_relation_one_optional_like(mut conn, row[index],
+									qb.relation_load_mode, child_paths, instance.$(field.name))!
+								if related.len > 0 {
+									instance.$(field.name) = related[0]
+								}
 							}
 						}
 					}
-				}
-			} $else $if field.unaliased_typ is time.Time {
-			} $else $if field.unaliased_typ is ?time.Time {
-			} $else $if field.unaliased_typ is $struct {
-				if !orm_type_name_is_time(field_type_name) {
-					mm := qb.meta.filter(it.name == field.name)
-					if mm.len != 0 {
-						index := qb.config.fields.index(sql_field_name(mm[0]))
-						if index >= 0 && index < row.len
-							&& orm_relation_lookup_key_has_value(row[index]) {
-							instance.$(field.name) = query_relation_one_like(mut conn, row[index],
-								qb.relation_load_mode, child_paths, instance.$(field.name))!
+				} $else $if field.unaliased_typ is $struct {
+					if !orm_type_name_is_time(field_type_name) {
+						mm := qb.meta.filter(it.name == field.name)
+						if mm.len != 0 {
+							index := qb.config.fields.index(sql_field_name(mm[0]))
+							if index >= 0 && index < row.len
+								&& orm_relation_lookup_key_has_value(row[index]) {
+								instance.$(field.name) = query_relation_one_like(mut conn, row[index],
+									qb.relation_load_mode, child_paths, instance.$(field.name))!
+							}
 						}
 					}
 				}

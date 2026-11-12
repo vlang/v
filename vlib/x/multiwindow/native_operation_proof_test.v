@@ -515,9 +515,9 @@ fn test_native_primitive_darwin_generated_c_has_no_linux_egl_boundary() {
 	defer {
 		os.rm(output) or {}
 	}
-	command := '${os.quoted_path(@VEXE)} -os macos -b c -d x_multiwindow_render -o ${os.quoted_path(output)} ${os.quoted_path(fixture)}'
-	result := os.exec([@VEXE, '-os', 'macos', '-b', 'c', '-d', 'x_multiwindow_render', '-o', output,
-		'${fixture}'])
+	command := '${os.quoted_path(@VEXE)} -os macos -cc clang -b c -d x_multiwindow_render -o ${os.quoted_path(output)} ${os.quoted_path(fixture)}'
+	result := os.exec([@VEXE, '-os', 'macos', '-cc', 'clang', '-b', 'c', '-d', 'x_multiwindow_render',
+		'-o', output, '${fixture}'])
 	assert result.exit_code == 0, 'Darwin native primitive generated-C gate failed\ncommand: ${command}\noutput:\n${result.output}'
 	generated := os.read_file(output) or { panic(err) }
 	// Sokol's platform-neutral header contains dormant EGL declarations even in a
@@ -2188,7 +2188,9 @@ fn native_lifetime_registry_snapshot(authority &NativeOperationAuthority) Native
 	}
 }
 
-fn native_proof_assert_snapshots_equal(expected NativeAuthorityProofSnapshot, actual NativeAuthorityProofSnapshot) {
+// Borrow the independent snapshots instead of copying two large trace buffers through the C ABI.
+// TinyCC on ARM64 miscompiles the stack address of the second large value argument.
+fn native_proof_assert_snapshots_equal(expected &NativeAuthorityProofSnapshot, actual &NativeAuthorityProofSnapshot) {
 	assert actual.app_identity == expected.app_identity
 	assert actual.app_lifetime_token == expected.app_lifetime_token
 	assert actual.renderer_attempt_token == expected.renderer_attempt_token

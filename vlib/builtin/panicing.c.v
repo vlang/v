@@ -45,7 +45,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
-		} $else $if tinyc && !glibc {
+		} $else $if tinyc && (!glibc || arm64) {
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			} $else {
@@ -121,7 +121,7 @@ pub fn panic(s string) {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
-		} $else $if tinyc && !glibc {
+		} $else $if tinyc && (!glibc || arm64) {
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			} $else {

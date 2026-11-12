@@ -1,6 +1,7 @@
 module driver
 
 import os
+import time
 import v.modulecache
 
 // A plan whose dependency metadata is stale (another compiler build wrote it)
@@ -35,6 +36,8 @@ fn test_valid_c_link_plan_refreshes_stale_dependency_metadata() {
 		assert second.dependency_file_reads == 0
 	}
 	// Changed contents still invalidate the plan.
+	// Step past the filesystem timestamp granularity before a same-size rewrite.
+	time.sleep(100 * time.millisecond)
 	os.write_file(dependency, '#define X 2\n')!
 	mut third := CObjectCacheStats{}
 	if _ := valid_c_link_plan(plan_path, mut third) {

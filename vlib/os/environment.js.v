@@ -32,9 +32,9 @@ pub fn getenv_opt(key string) ?string {
 	return res
 }
 
-// unsetenv clears an environment variable with `name`.
+// unsetenv removes an environment variable with `name`.
 pub fn unsetenv(name string) int {
-	#$ENV[name] = ""
+	#delete $ENV[name];
 
 	return 1
 }

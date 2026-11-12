@@ -1,4 +1,5 @@
 Remove V cache folders (VCACHE, VTMP, V3CACHE, and compiled tool caches).
+Stop and return a nonzero status if a cache folder cannot be removed or recreated.
 
 Usage:
   v wipe-cache [options]

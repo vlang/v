@@ -18,3 +18,33 @@ fn test_native_linux_constants_do_not_inherit_different_darwin_values() {
 	assert native_darwin_constant('PATH_MAX')? == 1024
 	assert native_darwin_constant('O_FSYNC')? == 128
 }
+
+fn test_native_fcntl_and_signal_constants_are_resolved() {
+	for name, value in {
+		'F_SETFD':    i64(2)
+		'FD_CLOEXEC': i64(1)
+		'SIGKILL':    i64(9)
+		'SIGTERM':    i64(15)
+		'NULL':       i64(0)
+	} {
+		assert native_linux_constant(name)? == value, name
+		assert native_darwin_constant(name)? == value, name
+	}
+}
+
+fn test_native_sync_constants_match_the_compiler_runtime() {
+	for name, value in {
+		'memory_order_relaxed': i64(0)
+		'memory_order_acquire': i64(2)
+		'memory_order_release': i64(3)
+		'memory_order_acq_rel': i64(4)
+		'memory_order_seq_cst': i64(5)
+	} {
+		assert native_linux_constant(name)? == value, name
+		assert native_darwin_constant(name)? == value, name
+	}
+	assert native_darwin_constant('PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP')? == 0
+	assert native_linux_constant('PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP')? == 2
+	assert native_darwin_constant('UNRECOGNIZED_SYNC_CONSTANT') == none
+	assert native_linux_constant('UNRECOGNIZED_SYNC_CONSTANT') == none
+}

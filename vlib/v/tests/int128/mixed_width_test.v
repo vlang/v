@@ -36,6 +36,12 @@ fn test_wide_values_survive_the_sizes_and_runes() {
 	assert rune(x) == rune(1432778632)
 }
 
+fn test_signed_wide_values_narrow_to_platform_int() {
+	value := -(i128(1) << 100) - 7
+	assert int(value) == -7
+	assert int(i128(-1)) == -1
+}
+
 fn test_an_unsigned_operand_widens_as_unsigned() {
 	// Every narrow operand used to widen through i64, so the largest u64 arrived
 	// as -1 wherever it met an i128: the sum below came out as -1 and the
