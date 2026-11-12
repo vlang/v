@@ -1243,6 +1243,34 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	return res
 }
 
+// split_next returns the next part of `s.split(delim)` for a nonempty `delim`, starting at
+// `*pos`, and moves `*pos` past the delimiter that ends it, or past the end of `s` after the
+// last part. The compiler lowers `for part in s.split('lit') {` to calls of it, which yields
+// the same parts as `split` without building the array first.
+@[direct_array_access]
+fn (s string) split_next(delim string, pos &int) string {
+	start := *pos
+	mut end := -1
+	if delim.len == 1 {
+		i := string_index_byte(unsafe { s.str + start }, s.len - start, delim.str[0])
+		if i >= 0 {
+			end = start + i
+		}
+	} else {
+		end = s.index_after_(delim, start)
+	}
+	if end < 0 {
+		unsafe {
+			*pos = s.len + 1
+		}
+		return s.substr(start, s.len)
+	}
+	unsafe {
+		*pos = end + delim.len
+	}
+	return s.substr(start, end)
+}
+
 // rsplit_nth splits the string based on the passed `delim` substring in reverse order.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if

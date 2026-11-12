@@ -383,6 +383,11 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 				1), body_ids)
 		}
 	}
+	if header_count == 3 {
+		if lowered := t.lower_split_for_in(node, key_id, val_id, container_id) {
+			return lowered
+		}
+	}
 	detected_iter_type_source_id := t.detect_for_in_type(node)
 	detected_iter_type_source_id_2 := detected_iter_type_source_id
 	mut iter_type := t.comptime_normalize_type_alias_chain(detected_iter_type_source_id)
@@ -1120,6 +1125,99 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) u32 {
 		return typ_source_id_2
 	}
 	return flat.source_type_int
+}
+
+// lower_split_for_in lowers `for part in s.split('lit') {` and `for i, part in ...` to a
+// scan with `string.split_next`, which yields the same owned parts as `split` without
+// building the `[]string` first, and stops allocating parts at `break`. The receiver's bytes
+// are cloned once before the loop, so reassigning it or modifying its aliased backing storage
+// in the body does not change the parts, as with the eager `split`.
+fn (mut t Transformer) lower_split_for_in(node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId) ?[]flat.NodeId {
+	if node.op == .amp || int(container_id) < 0 || isnil(t.tc) || t.tc.autofree_enabled()
+		|| t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	call := t.a.nodes[int(container_id)]
+	if call.kind != .call || call.children_count != 2 {
+		return none
+	}
+	selector := t.a.child_node(&call, 0)
+	if selector.kind != .selector || selector.value != 'split' || selector.children_count != 1 {
+		return none
+	}
+	delim_id := t.a.child(&call, 1)
+	delim := t.a.nodes[int(delim_id)]
+	if delim.kind != .string_literal || t.node_type(delim_id) != flat.source_type_string {
+		return none
+	}
+	str_id := t.a.child(selector, 0)
+	if t.node_type(str_id) != flat.source_type_string
+		|| t.resolve_receiver_method_name(str_id, 'split') != 'string.split'
+		|| !t.call_resolved_to_method(container_id, 'string.split') {
+		return none
+	}
+	key := t.a.nodes[int(key_id)]
+	if key.kind != .ident || key.value.len == 0 {
+		return none
+	}
+	has_index := int(val_id) >= 0
+	mut elem_name := key.value
+	if has_index {
+		val := t.a.nodes[int(val_id)]
+		if val.kind != .ident || val.value.len == 0 {
+			return none
+		}
+		elem_name = val.value
+	}
+	delim_expr := t.transform_expr(delim_id)
+	// An empty delimiter splits by runes; keep `split` for it.
+	if t.a.nodes[int(delim_expr)].kind != .string_literal || t.a.nodes[int(delim_expr)].value.len == 0 {
+		return none
+	}
+	src_name := t.new_temp('split_src')
+	pos_name := t.new_temp('split_pos')
+	src_expr := t.transform_expr(str_id)
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
+	t.set_var_type(src_name, flat.source_type_string)
+	t.set_var_type(pos_name, flat.source_type_int)
+	t.mark_fn_used('string.clone')
+	snapshot := t.make_call_typed('string.clone', [src_expr], flat.source_type_string)
+	prefix << t.make_decl_assign_typed(src_name, snapshot, flat.source_type_string)
+	prefix << t.make_decl_assign_typed(pos_name, t.make_int_literal(0), flat.source_type_int)
+	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, flat.source_type_int)
+	idx_name := if has_index && (key.value == '_' || escaping_index) {
+		t.new_temp('for_idx')
+	} else {
+		key.value
+	}
+	init := if has_index {
+		t.clear_heaped_local_binding(idx_name)
+		t.set_var_type(idx_name, flat.source_type_int)
+		t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
+	} else {
+		t.make_empty()
+	}
+	cond := t.make_infix(.le, t.make_ident(pos_name), t.make_selector(t.make_ident(src_name),
+		'len', flat.source_type_int))
+	t.mark_fn_used('string.split_next')
+	pos_ref := t.make_prefix(.amp, t.make_ident(pos_name))
+	t.set_node_typ(int(pos_ref), flat.source_type_composition_one(.pointer, flat.source_type_int))
+	part := t.make_call_typed('string.split_next', [t.make_ident(src_name), delim_expr, pos_ref],
+		flat.source_type_string)
+	mut loop_body := []flat.NodeId{}
+	if escaping_index {
+		loop_body << t.make_guard_value_decls(key.value, t.make_ident(idx_name), flat.source_type_int)
+	}
+	loop_body << t.make_guard_value_decls(elem_name, part, flat.source_type_string)
+	loop_body << t.transform_scope_stmts(t.a.children_of(&node)[3..].clone())
+	post := if has_index {
+		t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	} else {
+		t.make_empty()
+	}
+	prefix << t.make_for_stmt(init, cond, post, loop_body, node)
+	return prefix
 }
 
 fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type_id u32, info IteratorForInInfo, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
