@@ -269,6 +269,9 @@ V supplies the Android/Termux atomic fence and dynamic-loading link dependencies
 packages may still need updates for Bionic headers and compiler builtins; their errors remain
 visible with `-no-retry-compilation`.
 
+On Android devices that forbid hard links in app storage, V publishes native C cache objects
+with an atomic no-replace rename. This preserves completed objects during concurrent builds.
+
 ### C compiler
 
 The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if
