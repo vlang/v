@@ -2404,8 +2404,9 @@ fn main() {
 		assert cc_result.exit_code != 0
 		plain_command := cmdexec.display(false_exe, ['-std=gnu11'])
 		feature_command := cmdexec.display(false_exe, ['-D_GNU_SOURCE', '-std=gnu11'])
-		assert cc_result.output.contains(plain_command) || cc_result.output.contains(feature_command),
-			cc_result.output
+		printed_expected_command := cc_result.output.contains(plain_command) ||
+			cc_result.output.contains(feature_command)
+		assert printed_expected_command, cc_result.output
 		assert cc_result.output.contains('-O3'), cc_result.output
 		assert cc_result.output.contains('-flto'), cc_result.output
 		assert !cc_result.output.contains('-O2'), cc_result.output
