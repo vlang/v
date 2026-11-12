@@ -72,6 +72,9 @@ fn test_accepted_connections_have_independent_native_read_timeouts() ! {
 	mut second_error := 0
 	second_conn.read(mut data) or { second_error = err.code() }
 	assert second_error == C.MBEDTLS_ERR_SSL_TIMEOUT
+	// Deadline-bound reads must not leave the native configuration shortened.
+	assert C.v_mbedtls_test_active_read_timeout(&first_conn.ssl) == 120
+	assert C.v_mbedtls_test_active_read_timeout(&second_conn.ssl) == 240
 
 	first_conn.shutdown()!
 	assert C.v_mbedtls_test_config_read_timeout(&first_conn.conf) == 0
