@@ -72,7 +72,7 @@ fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	assert caller.contains(r'      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}')
 	assert caller.contains('        id: paths\n')
 	assert caller.contains('        run: python3 .github/workflows/ci_gate_paths.py master\n')
-	assert caller.contains('  tccbin_automation_contract:\n    needs: formatting\n' +
+	assert caller.contains('  tccbin_automation_contract:\n    needs: [formatting, gen_vc_ci]\n' +
 		"    if: needs.formatting.outputs.tccbin_automation_contract == 'true'\n" +
 		'    uses: ./.github/workflows/tccbin_automation_contract.yml\n')
 	assert filters.contains('    "workflow": "tccbin_automation_contract.yml",\n' +
