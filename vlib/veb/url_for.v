@@ -18,7 +18,7 @@ pub fn url_for[A](handler string, params ...string) ?string {
 	$for method in A.methods {
 		$if method.return_type is Result {
 			if method.name == handler {
-				_, path, _ := parse_attrs(method.name, method.attrs) or { return none }
+				_, path, _ := parse_attrs(method.name, route_attrs_strings(method.attributes)) or { return none }
 				return fill_route_params(path, params)
 			}
 		}
