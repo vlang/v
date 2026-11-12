@@ -71,9 +71,37 @@ struct itimerspec {
 typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;
 EOF
 awk -f "$root/cmd/tools/vc_compat.awk" "$work/bsd_types.c" > "$work/bsd_filtered.c"
-grep -F '#if !defined(__FreeBSD__)' "$work/bsd_filtered.c" >/dev/null
+grep -F '#if !defined(__FreeBSD__) || __V_HEADERLESS_LIBC' "$work/bsd_filtered.c" >/dev/null
 grep -F '#if !defined(__OpenBSD__)' "$work/bsd_filtered.c" >/dev/null
 test "$(grep -c '^#endif$' "$work/bsd_filtered.c")" -eq 3
+
+# FreeBSD needs the snapshot's time types in headerless mode, and the native
+# definitions in header mode. Model the latter without loading foreign headers
+# so both branches can also be checked on other hosts.
+cat > "$work/bsd_time.c" <<'EOF'
+#if !__V_HEADERLESS_LIBC
+typedef struct timespec { long tv_sec; long tv_nsec; } native_timespec;
+typedef struct itimerspec { struct timespec it_interval; struct timespec it_value; } native_itimerspec;
+#endif
+#if __V_HEADERLESS_LIBC
+struct timespec { long tv_sec; long tv_nsec; };
+struct itimerspec {
+    struct timespec it_interval;
+    struct timespec it_value;
+};
+#endif
+int main(void) {
+    struct timespec req = {0, 1000000};
+    struct itimerspec timer = {req, req};
+    return timer.it_value.tv_nsec == 1000000 ? 0 : 1;
+}
+EOF
+for headerless in 0 1; do
+    sh "$root/cmd/tools/vc_compat.sh" "$work/bsd_time.c" "${CC:-cc}" \
+        -U__FreeBSD__ -D__FreeBSD__ -D__V_HEADERLESS_LIBC="$headerless" -std=c99 -Werror \
+        -o "$work/bsd_time_$headerless"
+    "$work/bsd_time_$headerless"
+done
 
 # The new libc-owned poll helper must preserve the observable readiness
 # transition on a pipe. Test the actual header used by os/fd.c.v.

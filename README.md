@@ -110,6 +110,8 @@ On Unix-like systems, `make` and the `v self` bootstrap fallback stream compatib
 for older `vc/v.c` snapshots to the C compiler. These match the peak RSS helper's return type
 to `i64`, guard Linux-only `prctl` code, and teach pre-`uint` compilers the new integer
 spelling and allocator signatures. The snapshot stays unchanged on disk.
+On FreeBSD, the filter preserves the snapshot's time types in headerless mode and uses
+the system definitions when building with native headers.
 The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, builds use PowerShell to prepare a temporary snapshot with the same integer
