@@ -1624,6 +1624,11 @@ println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
 
+For `s.bytes().any(...)` and `s.bytes().all(...)`, the compiler can scan the string directly
+without allocating a temporary byte array when the predicate only compares bytes with literals
+or uses builtin byte classifiers such as `is_digit()`. Explicit lambda parameters may shadow
+the string receiver: `s.bytes().all(|s| s.is_digit())` checks whether every byte is a digit.
+
 There are further built-in methods for arrays:
 
 * `a.repeat(n)` concatenates the array elements `n` times

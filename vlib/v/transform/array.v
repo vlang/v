@@ -7248,6 +7248,11 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	}
 	elem_type := flat.source_type_syntax(base_type_id).raw_base()
 	base_id := t.a.child(&fn_node, 0)
+	if elem_type == flat.source_type_u8 && node.children_count == 2 {
+		if fused := t.lower_string_bytes_any_all_call(node, base_id, method) {
+			return fused
+		}
+	}
 	source_is_owned_temporary := !t.expr_can_take_address(base_id) && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type_id))
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type_id, '${method}_source')
@@ -7313,6 +7318,145 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 		t.pending_stmts << stmt
 	}
 	return t.make_ident(result_name)
+}
+
+// lower_string_bytes_any_all_call scans the bytes of `s` in place for
+// `s.bytes().any(pred)` and `s.bytes().all(pred)`, without the temporary `[]u8`.
+// Only predicates that cannot run user code, trap, or mutate anything qualify,
+// so the snapshot taken by `bytes()` is unobservable and the scan may stop early.
+fn (mut t Transformer) lower_string_bytes_any_all_call(node flat.Node, bytes_call_id flat.NodeId, method string) ?flat.NodeId {
+	bytes_call := t.a.nodes[int(bytes_call_id)]
+	if bytes_call.kind != .call || bytes_call.children_count != 1 || isnil(t.tc)
+		|| t.tc.autofree_enabled() {
+		return none
+	}
+	selector := t.a.child_node(&bytes_call, 0)
+	if selector.kind != .selector || selector.value != 'bytes' || selector.children_count != 1 {
+		return none
+	}
+	str_id := t.a.child(selector, 0)
+	if t.node_type(str_id) != flat.source_type_string
+		|| t.resolve_receiver_method_name(str_id, 'bytes') != 'string.bytes'
+		|| !t.call_resolved_to_method(bytes_call_id, 'string.bytes') {
+		return none
+	}
+	// A fresh string would need an ownership drop; keep the ordinary path for it.
+	if !t.expr_can_take_address(str_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	predicate_id := t.a.child(&node, 1)
+	predicate_node := t.a.nodes[int(predicate_id)]
+	mut elem_name := 'it'
+	mut predicate_body := predicate_id
+	if predicate_node.kind == .lambda_expr {
+		if predicate_node.children_count != 2 {
+			return none
+		}
+		param := t.a.child_node(&predicate_node, 0)
+		if param.kind != .ident || param.value.len == 0 {
+			return none
+		}
+		elem_name = param.value
+		predicate_body = t.a.child(&predicate_node, 1)
+	}
+	if !t.is_pure_byte_predicate(predicate_body, elem_name) {
+		return none
+	}
+	// Evaluate the receiver once, before the lambda byte binding can shadow its name.
+	str_expr := t.transform_expr(str_id)
+	src_name := t.new_temp('${method}_src')
+	t.pending_stmts << t.make_decl_assign_typed(src_name, str_expr, flat.source_type_string)
+	base := t.make_ident(src_name)
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
+	result_name := t.new_temp(method)
+	idx_name := t.new_temp('${method}_idx')
+	is_all := method == 'all'
+	prefix << t.make_decl_assign_typed(result_name, t.make_bool_literal(is_all), flat.source_type_bool)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', flat.source_type_int))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	// `base` is immutable during the scan and `idx < base.len`, so no bounds check is needed.
+	elem_expr := t.make_index(t.make_selector(base, 'str', flat.source_type_id('&u8')),
+		t.make_ident(idx_name), flat.source_type_u8)
+	bound_name, predicate, _, predicate_pending := t.transform_array_predicate(predicate_id,
+		t.new_temp('${method}_it'), flat.source_type_u8, flat.source_type_u8, '${method}_callback')
+	mut loop_body := []flat.NodeId{}
+	loop_body << t.make_decl_assign_typed(bound_name, elem_expr, flat.source_type_u8)
+	loop_body << predicate_pending
+	decided := if is_all { t.make_prefix(.not, t.make_paren(predicate)) } else { predicate }
+	loop_body << t.make_if(decided, t.make_block([
+		t.make_assign(t.make_ident(result_name), t.make_bool_literal(!is_all)),
+		t.a.add(.break_stmt),
+	]), t.make_empty())
+	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{})
+	t.pending_stmts << prefix
+	return t.make_ident(result_name)
+}
+
+// Builtin u8 methods that only compare their receiver.
+const pure_byte_predicate_methods = ['is_digit', 'is_hex_digit', 'is_oct_digit', 'is_bin_digit',
+	'is_letter', 'is_alnum', 'is_space', 'is_capital']
+
+// is_pure_byte_predicate reports whether `id` only compares the byte `elem_name`
+// with literals: no calls except builtin u8 classifiers, no traps, no writes.
+fn (t &Transformer) is_pure_byte_predicate(id flat.NodeId, elem_name string) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.int_literal, .char_literal, .bool_literal {
+			return true
+		}
+		.ident {
+			return node.value == elem_name
+		}
+		.paren {
+			return node.children_count == 1 && t.is_pure_byte_predicate(t.a.child(&node, 0), elem_name)
+		}
+		.prefix {
+			return node.op in [.not, .bit_not] && node.children_count == 1
+				&& t.is_pure_byte_predicate(t.a.child(&node, 0), elem_name)
+		}
+		.infix {
+			return node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or, .amp, .pipe,
+				.xor] && node.children_count == 2
+				&& t.is_pure_byte_predicate(t.a.child(&node, 0), elem_name)
+				&& t.is_pure_byte_predicate(t.a.child(&node, 1), elem_name)
+		}
+		.in_expr {
+			if node.children_count != 2 || !t.is_pure_byte_predicate(t.a.child(&node, 0), elem_name) {
+				return false
+			}
+			list := t.a.child_node(&node, 1)
+			if list.kind != .array_literal {
+				return false
+			}
+			for i in 0 .. list.children_count {
+				if t.a.child_node(list, i).kind !in [.int_literal, .char_literal] {
+					return false
+				}
+			}
+			return true
+		}
+		.call {
+			if node.children_count != 1 {
+				return false
+			}
+			callee := t.a.child_node(&node, 0)
+			if callee.kind != .selector || callee.children_count != 1
+				|| callee.value !in pure_byte_predicate_methods {
+				return false
+			}
+			receiver := t.a.child_node(callee, 0)
+			return receiver.kind == .ident && receiver.value == elem_name
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // lower_array_sort_call builds lower array sort call data for transform.
