@@ -24691,6 +24691,11 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	if node.op in [.logical_and, .logical_or] {
 		return t.transform_and_chain_smartcasts(id)
 	}
+	if node.op in [.eq, .ne] {
+		if fused := t.lower_normalized_string_literal_compare(node) {
+			return fused
+		}
+	}
 	if node.op == .left_shift {
 		lhs_id := t.a.children[node.children_start]
 		rhs_id := t.a.children[node.children_start + 1]
