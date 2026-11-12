@@ -654,9 +654,9 @@ fn find_external_tool_source(base string) ?string {
 // file (`v fmt -verify`, `v vet`) are unusable without this.
 fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string) {
 	compile_args := external_tool_compile_args(tool_name, prefix_args)
+	build_args := external_tool_build_args(tool_name, prefix_args)
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
-		build_args := external_tool_build_args(tool_name, prefix_args)
 		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
 			reason := tool_cache_stale_reason(entry)
 			if reason == '' {
@@ -689,11 +689,49 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 		}
 	}
 	install_external_tool_modules(tool_name, tool_source, compile_args)
-	mut driver_args := []string{}
-	driver_args << compile_args
-	driver_args << ['run', tool_source]
-	driver_args << tool_args
-	driver.run(driver_args)
+	exit(run_uncached_external_tool(os.executable(), tool_name, tool_source, build_args, tool_args))
+}
+
+// run_uncached_external_tool keeps directory inputs from publishing a shared executable
+// beside their sources. Wait for both children so Windows has released their image locks
+// before removing the private build, including when compilation or the tool fails.
+fn run_uncached_external_tool(vexe string, tool_name string, tool_source string, compiler_build_args []string, tool_args []string) int {
+	stage_dir := create_tool_cache_stage_dir(os.vtmp_dir()) or {
+		eprintln('cannot build `${tool_name}`: ${err.msg()}')
+		return 1
+	}
+	defer { os.rmdir_all(stage_dir) or {} }
+	binary := os.join_path(stage_dir, '${tool_name}${tool_exe_suffix()}')
+	mut build_args := compiler_build_args.clone()
+	build_args << ['-o', binary, tool_source]
+	mut environment := os.environ()
+	// The prefix already includes VFLAGS. Keep the original environment for the tool,
+	// but do not prepend the flags twice or retry its build with another compiler.
+	environment['VFLAGS'] = ''
+	environment[v3_no_fallback_env] = '1'
+	mut build := os.new_process(vexe)
+	build.set_args(build_args)
+	build.set_environment(environment)
+	build.wait()
+	build_code := build.code
+	build.close()
+	if build_code != 0 {
+		return build_code
+	}
+	if !os.is_file(binary) {
+		eprintln('compiler exited successfully but did not produce `${binary}`')
+		return 1
+	}
+	$if windows {
+		// `v up` must defer wiping VTMP until its executable has been closed too.
+		return run_windows_cached_tool(binary, tool_args)
+	}
+	mut tool := os.new_process(binary)
+	tool.set_args(tool_args)
+	tool.wait()
+	code := tool.code
+	tool.close()
+	return code
 }
 
 // install_external_tool_modules installs the modules from outside vlib that a tool imports,
@@ -845,10 +883,11 @@ fn external_tool_args_without_gc(args []string) []string {
 
 // external_tool_build_args keeps compiler options that affect a tool binary while dropping
 // modes that deliberately do not produce one. Those modes still apply to the requested tool
-// command, but passing `-check` to the private cache build makes the compiler exit successfully
+// command, but passing `-check` to the private tool build makes the compiler exit successfully
 // without creating the executable that the launcher must run.
 fn external_tool_build_args(tool_name string, prefix_args []string) []string {
-	return external_tool_compile_args(tool_name, prefix_args).filter(it !in ['-check', '-c'])
+	return external_tool_compile_args(tool_name, prefix_args).filter(it !in ['-check', '-check-syntax',
+		'-c'])
 }
 
 fn print_help(args []string, command_index int) {
