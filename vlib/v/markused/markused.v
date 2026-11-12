@@ -381,7 +381,11 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		// A module that is rebuilt for the object cache publishes its enums, just as a
+		// cached header does: objects of other modules, read from headers, can call
+		// their str helpers (orm's object stringifies builtin's `AttributeKind`).
+		if node.kind == .enum_decl
+			&& (decl_file.ends_with('.vh') || (cache_mode && cache_modules[decl_module])) {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
