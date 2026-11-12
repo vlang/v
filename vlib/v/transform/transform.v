@@ -1603,6 +1603,8 @@ struct VarTypeBinding {
 	is_implicit_err bool
 mut:
 	is_ref_param bool
+	// is_immutable marks a source binding declared without `mut` (see set_var_immutable).
+	is_immutable bool
 	// mut_optional_storage is the value type (`?&T`) of a `mut a ?T` parameter whose body
 	// reads it as `?T` (`typ`), see mut_optional_view_param.
 	mut_optional_storage u32
@@ -4044,6 +4046,20 @@ fn (mut t Transformer) mark_var_as_ref_param(name string) {
 		t.clear_node_type_memo()
 		t.var_types[i].is_ref_param = true
 	}
+}
+
+// set_var_immutable records whether the current binding of `name` was declared
+// without `mut`. Rebinding the name starts a new binding with the flag cleared.
+fn (mut t Transformer) set_var_immutable(name string, value bool) {
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_types[i].is_immutable = value
+	}
+}
+
+fn (t &Transformer) var_is_immutable(name string) bool {
+	i := t.var_type_index(name)
+	return i >= 0 && t.var_types[i].is_immutable
 }
 
 fn (t &Transformer) var_is_ref_param(name string) bool {
@@ -13593,6 +13609,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if typ != 0 {
 			t.set_var_type_with_raw(child.value_text(), typ, raw_source_typ)
+			if !child.is_mut && child.op != .amp && !child_type_shape.has(.mutable_type)
+				&& !child_type_shape.has(.shared_type) {
+				t.set_var_immutable(child.value_text(), true)
+			}
 			if mut_optional_storage != 0 {
 				t.set_var_mut_optional_storage(child.value_text(), mut_optional_storage)
 			}
