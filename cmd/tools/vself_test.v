@@ -327,7 +327,7 @@ fn test_self_build_defaults_to_c_backend() {
 			'/tmp/vself_fastc_default_test'])
 	assert default_result.exit_code == 0, default_result.output
 	assert !default_result.output.contains('-compile-backend'), default_result.output
-	for backend in ['fastc', 'arm64', 'x64', 'wasm', 'eval', 'ssa'] {
+	for backend in ['fastc', 'arm64', 'amd64', 'wasm', 'eval', 'ssa'] {
 		assert default_result.output.contains('-d skip_${backend}'), default_result.output
 	}
 	assert_vself_preserves_full_cli(default_result.output)
@@ -337,7 +337,7 @@ fn test_self_build_defaults_to_c_backend() {
 	assert prod_result.exit_code == 0, prod_result.output
 	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
 	assert !prod_result.output.contains('-d skip_fastc'), prod_result.output
-	for backend in ['arm64', 'x64', 'wasm', 'eval', 'ssa'] {
+	for backend in ['arm64', 'amd64', 'wasm', 'eval', 'ssa'] {
 		assert prod_result.output.contains('-d skip_${backend}'), prod_result.output
 	}
 	assert_vself_preserves_full_cli(prod_result.output)
@@ -568,7 +568,7 @@ fn test_native_self_build_aliases_follow_host_backend() {
 			overridden := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self',
 				...backend_args, ...c_backend, '-o', output])
 			assert overridden.exit_code == 0, overridden.output
-			assert overridden.output.contains('-d skip_x64'), overridden.output
+			assert overridden.output.contains('-d skip_amd64'), overridden.output
 			assert overridden.output.contains('-d skip_arm64'), overridden.output
 			assert_vself_preserves_full_cli(overridden.output)
 		}
@@ -577,7 +577,7 @@ fn test_native_self_build_aliases_follow_host_backend() {
 		literal := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-cflags',
 			value, '-o', output])
 		assert literal.exit_code == 0, literal.output
-		assert literal.output.contains('-d skip_x64'), literal.output
+		assert literal.output.contains('-d skip_amd64'), literal.output
 		assert literal.output.contains('-d skip_arm64'), literal.output
 	}
 }

@@ -418,19 +418,19 @@ Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
 Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
-architecture: `-b amd64` (an alias for `-b x64`) for AMD64, or `-b arm64` for ARM64.
+architecture: `-b amd64` (`-b x64` remains an alias) for AMD64, or `-b arm64` for ARM64.
 Without `-arch`, the target defaults to the compiler's host architecture. Pass `-arch arm64`
 or `-arch amd64` to select a different target. The same backend platform requirements apply:
 macOS ARM64 and Linux AMD64 support executables; Linux ARM64 supports object output only,
 such as `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux.
-Use `v -b arm64 self` or `v -b x64 self` to rebuild
+Use `v -b arm64 self` or `v -b amd64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native
-build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
+build. Use `-o v_arm64` or `-o v_amd64` to keep the current compiler and write a separate
 executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
 and `version`. The native compiler includes the C backend and leaves out FastC by default.
-For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
-Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+For amd64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
+Very large amd64 modules may skip the global SSA pass to bound compiler memory. The ARM64
 backend retains its existing optimization behavior.
 
 ```bash
