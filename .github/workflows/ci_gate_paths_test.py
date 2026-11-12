@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Focused regression checks for CI push path selectors and gated callers."""
+import re
 import unittest
 import ci_gate_paths as gate
 
@@ -13,6 +14,31 @@ class GatePathsTests(unittest.TestCase):
         gate.validate(list(self.entries.values()))
         self.assertEqual(len(self.entries), 54)
         self.assertEqual(sum(bool(e.get("inline")) for e in self.entries.values()), 8)
+
+    def test_vc_generation_runs_on_every_master_push(self):
+        for paths in ([], ["README.md"], [".github/workflows/linux_ci.yml"]):
+            with self.subTest(paths=paths):
+                self.assertTrue(gate.should_run(paths, self.entries["gen_vc_ci.yml"]))
+
+    def test_vc_generation_gates_every_downstream_job(self):
+        caller = gate.CALLER.read_text(encoding="utf-8").split("\njobs:\n", 1)[1]
+        jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  \S|\Z)", caller, re.M | re.S))
+        preflight = {"bootstrap", "windows-bootstrap-contracts", "formatting"}
+        self.assertIn("gen_vc_ci", jobs)
+        for name, body in jobs.items():
+            if name in preflight:
+                continue
+            with self.subTest(job=name):
+                match = re.search(r"^    needs: (.+)$", body, re.M)
+                self.assertIsNotNone(match)
+                needs = {job.strip() for job in match[1].strip("[]").split(",")}
+                if name == "gen_vc_ci":
+                    self.assertEqual(needs, {"formatting"})
+                else:
+                    self.assertIn("gen_vc_ci", needs)
+                    if name != "cleanup-vprod":
+                        self.assertIn("formatting", needs)
+                self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
 
     def test_fastc_only_push_skips_platform_workflows(self):
         paths = ["vlib/v/gen/fastc/codegen.v"]

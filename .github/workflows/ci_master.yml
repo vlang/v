@@ -19,7 +19,7 @@ jobs:
       actions: read
 
   cleanup-vprod:
-    needs: bootstrap
+    needs: gen_vc_ci
     if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -127,8 +127,17 @@ jobs:
           CI_AFTER: ${{ github.sha }}
         run: python3 .github/workflows/ci_gate_paths.py master
 
-  inline_benchmark_footprint_json_decode:
+  # Regenerate the bootstrap C sources before starting any other suites.
+  gen_vc_ci:
     needs: formatting
+    if: needs.formatting.outputs.gen_vc_ci == 'true'
+    uses: ./.github/workflows/gen_vc_ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  inline_benchmark_footprint_json_decode:
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.benchmark_footprint_json_decode == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -152,7 +161,7 @@ jobs:
           path: vlib/json2/tests/bench_out.md
 
   inline_benchmark_footprint_json_encode:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.benchmark_footprint_json_encode == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -176,7 +185,7 @@ jobs:
           path: vlib/v/tests/bench/bench_json_vs_json2_out.md
 
   build_on_ubuntu_25_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.build_on_ubuntu_25_ci == 'true'
     uses: ./.github/workflows/build_on_ubuntu_25_ci.yml
     permissions:
@@ -184,7 +193,7 @@ jobs:
     secrets: inherit
 
   c2v_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.c2v_ci == 'true'
     uses: ./.github/workflows/c2v_ci.yml
     permissions:
@@ -192,7 +201,7 @@ jobs:
     secrets: inherit
 
   canvas_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.canvas_ci == 'true'
     uses: ./.github/workflows/canvas_ci.yml
     permissions:
@@ -200,7 +209,7 @@ jobs:
     secrets: inherit
 
   compiler_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.compiler_ci == 'true'
     uses: ./.github/workflows/compiler_ci.yml
     permissions:
@@ -208,7 +217,7 @@ jobs:
     secrets: inherit
 
   cross_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.cross_ci == 'true'
     uses: ./.github/workflows/cross_ci.yml
     permissions:
@@ -216,7 +225,7 @@ jobs:
     secrets: inherit
 
   db_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.db_ci == 'true'
     uses: ./.github/workflows/db_ci.yml
     permissions:
@@ -224,7 +233,7 @@ jobs:
     secrets: inherit
 
   docker_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.docker_ci == 'true'
     uses: ./.github/workflows/docker_ci.yml
     permissions:
@@ -232,7 +241,7 @@ jobs:
     secrets: inherit
 
   docs_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.docs_ci == 'true'
     uses: ./.github/workflows/docs_ci.yml
     permissions:
@@ -240,7 +249,7 @@ jobs:
     secrets: inherit
 
   docs_site_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.docs_site_ci == 'true'
     uses: ./.github/workflows/docs_site_ci.yml
     permissions:
@@ -248,7 +257,7 @@ jobs:
     secrets: inherit
 
   fastc_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.fastc_ci == 'true'
     uses: ./.github/workflows/fastc_ci.yml
     permissions:
@@ -256,23 +265,15 @@ jobs:
     secrets: inherit
 
   freebsd_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.freebsd_ci == 'true'
     uses: ./.github/workflows/freebsd_ci.yml
     permissions:
       contents: read
     secrets: inherit
 
-  gen_vc_ci:
-    needs: formatting
-    if: needs.formatting.outputs.gen_vc_ci == 'true'
-    uses: ./.github/workflows/gen_vc_ci.yml
-    permissions:
-      contents: read
-    secrets: inherit
-
   gg_regressions_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.gg_regressions_ci == 'true'
     uses: ./.github/workflows/gg_regressions_ci.yml
     permissions:
@@ -280,7 +281,7 @@ jobs:
     secrets: inherit
 
   inline_h2spec:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.h2spec == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -322,7 +323,7 @@ jobs:
             vlib/net/http/h2spec/h2spec_failed_now.txt
 
   linux_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.linux_ci == 'true'
     uses: ./.github/workflows/linux_ci.yml
     permissions:
@@ -330,7 +331,7 @@ jobs:
     secrets: inherit
 
   macos_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.macos_ci == 'true'
     uses: ./.github/workflows/macos_ci.yml
     permissions:
@@ -338,7 +339,7 @@ jobs:
     secrets: inherit
 
   macos_gitly_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.macos_gitly_ci == 'true'
     uses: ./.github/workflows/macos_gitly_ci.yml
     permissions:
@@ -346,7 +347,7 @@ jobs:
     secrets: inherit
 
   module_docs_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.module_docs_ci == 'true'
     uses: ./.github/workflows/module_docs_ci.yml
     permissions:
@@ -354,7 +355,7 @@ jobs:
     secrets: inherit
 
   inline_module_docs_lint:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.module_docs_lint == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -368,7 +369,7 @@ jobs:
           prettier_options: --check cmd/tools/vdoc/theme
 
   more_extensive_but_slower_tests_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.more_extensive_but_slower_tests_ci == 'true'
     uses: ./.github/workflows/more_extensive_but_slower_tests_ci.yml
     permissions:
@@ -376,7 +377,7 @@ jobs:
     secrets: inherit
 
   multiwindow_musl_exclusion_smoke:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.multiwindow_musl_exclusion_smoke == 'true'
     uses: ./.github/workflows/multiwindow_musl_exclusion_smoke.yml
     permissions:
@@ -384,7 +385,7 @@ jobs:
     secrets: inherit
 
   notices_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.notices_ci == 'true'
     uses: ./.github/workflows/notices_ci.yml
     permissions:
@@ -392,7 +393,7 @@ jobs:
     secrets: inherit
 
   openbsd_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.openbsd_ci == 'true'
     uses: ./.github/workflows/openbsd_ci.yml
     permissions:
@@ -400,7 +401,7 @@ jobs:
     secrets: inherit
 
   other_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.other_ci == 'true'
     uses: ./.github/workflows/other_ci.yml
     permissions:
@@ -408,7 +409,7 @@ jobs:
     secrets: inherit
 
   paths_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.paths_ci == 'true'
     uses: ./.github/workflows/paths_ci.yml
     permissions:
@@ -416,7 +417,7 @@ jobs:
     secrets: inherit
 
   periodic_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.periodic_ci == 'true'
     uses: ./.github/workflows/periodic_ci.yml
     permissions:
@@ -424,7 +425,7 @@ jobs:
     secrets: inherit
 
   process_regressions_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.process_regressions_ci == 'true'
     uses: ./.github/workflows/process_regressions_ci.yml
     permissions:
@@ -432,7 +433,7 @@ jobs:
     secrets: inherit
 
   puzzle_vibes_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.puzzle_vibes_ci == 'true'
     uses: ./.github/workflows/puzzle_vibes_ci.yml
     permissions:
@@ -440,7 +441,7 @@ jobs:
     secrets: inherit
 
   release_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.release_ci == 'true'
     uses: ./.github/workflows/release_ci.yml
     permissions:
@@ -448,7 +449,7 @@ jobs:
     secrets: inherit
 
   riscv64_linux_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.riscv64_linux_ci == 'true'
     uses: ./.github/workflows/riscv64_linux_ci.yml
     permissions:
@@ -457,7 +458,7 @@ jobs:
     secrets: inherit
 
   s390x_linux_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.s390x_linux_ci == 'true'
     uses: ./.github/workflows/s390x_linux_ci.yml
     permissions:
@@ -466,7 +467,7 @@ jobs:
     secrets: inherit
 
   sanitized_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.sanitized_ci == 'true'
     uses: ./.github/workflows/sanitized_ci.yml
     permissions:
@@ -474,7 +475,7 @@ jobs:
     secrets: inherit
 
   sdl_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.sdl_ci == 'true'
     uses: ./.github/workflows/sdl_ci.yml
     permissions:
@@ -482,7 +483,7 @@ jobs:
     secrets: inherit
 
   symlink_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.symlink_ci == 'true'
     uses: ./.github/workflows/symlink_ci.yml
     permissions:
@@ -490,7 +491,7 @@ jobs:
     secrets: inherit
 
   tccbin_automation_contract:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.tccbin_automation_contract == 'true'
     uses: ./.github/workflows/tccbin_automation_contract.yml
     permissions:
@@ -498,7 +499,7 @@ jobs:
     secrets: inherit
 
   termux_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.termux_ci == 'true'
     uses: ./.github/workflows/termux_ci.yml
     permissions:
@@ -506,7 +507,7 @@ jobs:
     secrets: inherit
 
   test_selection_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.test_selection_ci == 'true'
     uses: ./.github/workflows/test_selection_ci.yml
     permissions:
@@ -514,7 +515,7 @@ jobs:
     secrets: inherit
 
   time_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.time_ci == 'true'
     uses: ./.github/workflows/time_ci.yml
     permissions:
@@ -522,7 +523,7 @@ jobs:
     secrets: inherit
 
   inline_toml_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.toml_ci == 'true'
     runs-on: ubuntu-latest
     env:
@@ -552,7 +553,7 @@ jobs:
         run: VTEST_TOML_DO_YAML_CONVERSION=1 VTEST_TOML_DO_LARGE_FILES=1 ./v test vlib/toml
 
   tools_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.tools_ci == 'true'
     uses: ./.github/workflows/tools_ci.yml
     permissions:
@@ -560,7 +561,7 @@ jobs:
     secrets: inherit
 
   v_apps_and_modules_compile_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.v_apps_and_modules_compile_ci == 'true'
     uses: ./.github/workflows/v_apps_and_modules_compile_ci.yml
     permissions:
@@ -568,7 +569,7 @@ jobs:
     secrets: inherit
 
   vab_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.vab_ci == 'true'
     uses: ./.github/workflows/vab_ci.yml
     permissions:
@@ -576,7 +577,7 @@ jobs:
     secrets: inherit
 
   inline_vinix_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.vinix_ci == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -638,7 +639,7 @@ jobs:
           make clean
 
   vpm_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.vpm_ci == 'true'
     uses: ./.github/workflows/vpm_ci.yml
     permissions:
@@ -646,7 +647,7 @@ jobs:
     secrets: inherit
 
   vsl_and_vtl_compile_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.vsl_and_vtl_compile_ci == 'true'
     uses: ./.github/workflows/vsl_and_vtl_compile_ci.yml
     permissions:
@@ -654,7 +655,7 @@ jobs:
     secrets: inherit
 
   vup_works:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.vup_works == 'true'
     uses: ./.github/workflows/vup_works.yml
     permissions:
@@ -662,7 +663,7 @@ jobs:
     secrets: inherit
 
   inline_wasm_backend_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.wasm_backend_ci == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -715,7 +716,7 @@ jobs:
         run: ./v build-examples
 
   websockets_ci:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.websockets_ci == 'true'
     uses: ./.github/workflows/websockets_ci.yml
     permissions:
@@ -723,7 +724,7 @@ jobs:
     secrets: inherit
 
   windows_ci_gcc:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.windows_ci_gcc == 'true'
     uses: ./.github/workflows/windows_ci_gcc.yml
     permissions:
@@ -731,7 +732,7 @@ jobs:
     secrets: inherit
 
   windows_ci_msvc:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.windows_ci_msvc == 'true'
     uses: ./.github/workflows/windows_ci_msvc.yml
     permissions:
@@ -739,7 +740,7 @@ jobs:
     secrets: inherit
 
   windows_ci_tcc:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.windows_ci_tcc == 'true'
     uses: ./.github/workflows/windows_ci_tcc.yml
     permissions:
@@ -747,7 +748,7 @@ jobs:
     secrets: inherit
 
   inline_workflow_lint:
-    needs: formatting
+    needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.workflow_lint == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60

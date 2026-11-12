@@ -2,19 +2,8 @@
   {
     "workflow": "gen_vc_ci.yml",
     "shard": "master",
-    "mode": "paths-ignore",
-    "patterns": [
-      "**.vv",
-      "**.out",
-      "**.md",
-      "**.yml",
-      "!**/gen_vc_ci.yml",
-      "cmd/tools/**",
-      "!cmd/tools/builders/**.v",
-      "!cmd/tools/gen_vc/**",
-      "thirdparty/tccbin_automation/bootstrap/vc.lock",
-      "thirdparty/tccbin_automation/tests/workflow_contract_test.v"
-    ],
+    "mode": "all",
+    "patterns": [],
     "permissions": "contents: read"
   },
   {

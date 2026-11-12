@@ -13,14 +13,16 @@ early compatibility feedback.
 All master-push CI is orchestrated by `ci_master.yml`. Its shared gate
 first runs `bootstrapping_ci.yml` and the Linux/Windows `makev_ci.yml`
 bootstrap contract matrices, then uses the optimized compiler to execute
-`test-cleancode` and `test-fmt` in order. All other push CI jobs depend
-on successful formatting; failure or cancellation of either bootstrap
-workflow prevents any downstream tests or deployments from starting.
+`test-cleancode` and `test-fmt` in order. Next, `gen_vc_ci.yml` generates
+and checks `v.c` and `v_win.c` on every master push, including documentation-only
+changes and empty diffs. All remaining push CI jobs, including compiler artifact
+cleanup, wait for successful VC generation. Failure or cancellation of bootstrap,
+formatting, or VC generation prevents downstream tests and deployments from starting.
 
 Existing suites are called as reusable workflows via `workflow_call`, with
 eight small, formerly standalone checks inlined in the caller to respect
 GitHub Actions' 50-unique-reusable-workflow limit. Original ordered path
-filters live in `ci_gate_filters/*.json` and are applied by
+filters live in `ci_gate_filters/*.json` (with VC generation set to `all`) and are applied by
 `ci_gate_paths.py` to the exact before/after SHAs from the push. An
 unavailable diff conservatively runs all suites instead of skipping them.
 The gate validator rejects newly added direct-push workflows that would
@@ -57,14 +59,14 @@ executable. This supports nested `working-directory` checkouts and compilation f
 project directories. A standalone compiler outside a checkout retains its build-time source
 root as a fallback.
 
-After all six producers succeed, a separate job removes older compiler artifacts from
+After bootstrap, formatting, and VC generation succeed, a separate job removes older artifacts from
 completed `CI master` push runs. It preserves artifacts belonging to the current run,
 newer runs and runs still in progress, and only deletes names matching the owning run's
 exact commit and one of the six producer platforms. Other test artifacts are unaffected.
 An older commit's rerun cannot remove newer binaries. Cleanup uses the automatic
 `GITHUB_TOKEN` with `actions: write` only in that job; test jobs keep their existing
 permissions. Cleanup failure does not block tests, and seven-day expiry bounds retention
-when no later successful bootstrap performs cleanup.
+when no later successful master gate performs cleanup.
 
 Standalone jobs and reruns whose artifacts were removed build an optimized compiler
 locally. The setup action also supports `use-prebuilt: false` for jobs that require a native
