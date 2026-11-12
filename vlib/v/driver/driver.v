@@ -11342,7 +11342,9 @@ pub fn run(args []string) {
 		user_defines << 'skip_arm64'
 	}
 	if !include_amd64 {
-		user_defines << 'skip_amd64'
+		// Published bootstrap compilers also build source from before the rename.
+		// Keep its dispatch and SSA imports in sync with the current backend skips.
+		user_defines << ['skip_amd64', 'skip_x64']
 	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'

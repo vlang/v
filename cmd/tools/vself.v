@@ -255,6 +255,10 @@ fn self_build_backend_skips(args []string) []string {
 			continue
 		}
 		skips << ['-d', 'skip_${backend}']
+		if backend == 'amd64' {
+			// A newer bootstrap compiler can still be rebuilding pre-rename source.
+			skips << ['-d', 'skip_x64']
+		}
 	}
 	if !needs_ssa {
 		skips << ['-d', 'skip_ssa']
