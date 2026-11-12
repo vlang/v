@@ -3195,10 +3195,13 @@ fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool) 
 		}
 		if !in_native_directives { continue }
 		if argument := v3_include_directive_argument(line) {
-			// This compiler-owned guard has no declarations or storage. Its
-			// contract is fixed; its body is never opened or inspected here.
+			// These compiler-owned interfaces have no mutable static storage.
+			// Their contracts are explicit; their bodies are never inspected here.
 			guard := '"' + c_include_path(os.join_path(vroot, 'vlib', 'builtin', 'track_heap_checks.h')) + '"'
-			if !argument.starts_with('<') && argument != guard { safe = false }
+			poll_interface := '"' + c_include_path(os.join_path(vroot, 'vlib', 'os', 'fd_poll.h')) + '"'
+			if !argument.starts_with('<') && argument != guard && argument != poll_interface {
+				safe = false
+			}
 		}
 		native_directives.writeln(line)
 	}

@@ -18,12 +18,14 @@ fn v3_web_native_interface(path string, vroot string) bool {
 	return path in [
 		os.real_path(os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_helpers.h')),
 		os.real_path(os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h')),
+		os.real_path(os.join_path(root, 'vlib', 'os', 'fd_poll.h')),
 	]
 }
 
 // A TinyCC build cannot reliably diagnose date/time macros. Its interface
 // contract is limited to this audited bundled snapshot, hashed as opaque bytes.
-// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (100 files).
+// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (100 files),
+// plus the stateless fd_poll.h interface at 645f534631f9a4b2eb69071116e79c039ebcec11.
 // Changing the snapshot requires reviewing its ownership and determinism again.
 fn v3_pinned_web_native_interfaces(vroot string) bool {
 	root := os.real_path(vroot)
@@ -31,7 +33,8 @@ fn v3_pinned_web_native_interfaces(vroot string) bool {
 		hidden: true
 	)
 	paths << [os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_helpers.h'),
-		os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h')]
+		os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h'),
+		os.join_path(root, 'vlib', 'os', 'fd_poll.h')]
 	paths.sort()
 	mut parts := []string{cap: paths.len}
 	for path in paths {
@@ -39,7 +42,7 @@ fn v3_pinned_web_native_interfaces(vroot string) bool {
 		name := path[root.len + 1..].replace('\\', '/')
 		parts << name + '\x00' + digest
 	}
-	return sha256.hexhash(parts.join('\n')) == 'a28e5f94cc8104ea9ff30a79e0901da3daed25aa3f1d58530d1db81669c0f11f'
+	return sha256.hexhash(parts.join('\n')) == 'bf499874c03e2352ed7dc89bed20fd5f356e695b286349d1021745fe256fe8f7'
 }
 
 fn v3_native_interface_configuration_override(value string) bool {

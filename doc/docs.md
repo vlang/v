@@ -86,6 +86,10 @@ modules. Ignored local names remain stable when cached headers replace source fi
 reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
 changes still invalidate the affected objects.
 
+The stateless native helper used by `os` for file-descriptor polling supports module caching
+and parallel C compilation. Its dependencies are tracked through C compiler manifests;
+V does not inspect C headers to infer their ownership.
+
 Relative cache paths are resolved against the directory where `v up` was invoked.
 When `VCACHE` is unset, this includes the `.cache` directory under the first
 `VMODULES` entry, or `~/.vmodules/.cache` by default. Cleanup stops and returns a
