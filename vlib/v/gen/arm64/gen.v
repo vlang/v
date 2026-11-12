@@ -2058,6 +2058,11 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 }
 
 fn (g &Gen) c_variadic_start(instr ssa.Instruction) ?int {
+	// Darwin places unnamed arguments on the stack; Linux uses the usual
+	// AAPCS64 integer and floating-point argument registers first.
+	if g.m.target.is_linux() {
+		return none
+	}
 	if instr.operands.len == 0 {
 		return none
 	}

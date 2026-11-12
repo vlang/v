@@ -131,6 +131,7 @@ fn test_aggregate_bitcast_copies_every_word() {
 
 fn test_large_c_variadic_aggregate_passes_its_address() {
 	mut m := ssa.Module.new()
+	m.target = ssa.TargetData{ os: 'macos', arch: 'arm64' }
 	i64_type := m.type_store.get_int(64)
 	large_type := m.type_store.get_tuple([i64_type, i64_type, i64_type])
 	external_id := m.new_function('consume', ssa.TypeID(0))
@@ -311,6 +312,7 @@ fn test_c_f32_homogeneous_float_aggregate_return_uses_simd_registers() {
 
 fn test_literal_c_variadic_string_stores_both_words() {
 	mut m := ssa.Module.new()
+	m.target = ssa.TargetData{ os: 'macos', arch: 'arm64' }
 	i64_type := m.type_store.get_int(64)
 	i32_type := m.type_store.get_int(32)
 	ptr_type := m.type_store.get_ptr(m.type_store.get_int(8))
@@ -399,4 +401,35 @@ fn test_native_output_writer_preserves_binary_bytes() {
 	bytes := [u8(0xCF), 0xFA, 0xED, 0xFE, 0, 10, 13, 26, 255]
 	assert write_file_array_raw(path, bytes)
 	assert os.read_bytes(path)! == bytes
+}
+
+fn test_c_variadic_argument_registers_follow_target_abi() {
+	for target_os in ['macos', 'linux'] {
+		mut m := ssa.Module.new()
+		m.target = ssa.TargetData{ os: target_os, arch: 'arm64' }
+		i64_type := m.type_store.get_int(64)
+		f64_type := m.type_store.get_float(64)
+		external_id := m.new_function('printf', ssa.TypeID(0))
+		m.funcs[external_id].is_c_extern = true
+		m.funcs[external_id].is_variadic = true
+		m.funcs[external_id].variadic_start = 1
+		callee := m.add_value(.func_ref, ssa.TypeID(0), 'printf', external_id)
+		caller := m.new_function('caller', ssa.TypeID(0))
+		block := m.add_block(caller, 'entry')
+		format := m.add_value(.constant, i64_type, '0', 0)
+		integer := m.add_value(.constant, i64_type, '42', 0)
+		float := m.add_value(.constant, f64_type, '3.5', 0)
+		call := m.add_instr(.call, block, ssa.TypeID(0), [callee, format, integer, float])
+		mut g := Gen.new(m)
+		instruction := m.instrs[m.values[call].index]
+		assert g.call_stack_arg_size(instruction) == if target_os == 'linux' { 0 } else { 16 }
+		g.reset_value_slots(&m.funcs[caller])
+		g.gen_call(int(call), instruction)
+		g.materialize_text()
+		mut words := []u32{}
+		for i := 0; i < g.macho.text_data.len; i += 4 {
+			words << read_u32_le(g.macho.text_data, i)
+		}
+		assert (asm_fmov_d_x(0, Reg(9)) in words) == (target_os == 'linux')
+	}
 }

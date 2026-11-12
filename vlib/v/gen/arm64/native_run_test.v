@@ -86,31 +86,68 @@ fn test_native_hot_fn_rejects_function_needing_fixups() {
 	}
 }
 
-fn test_native_linux_output_is_an_object_and_executable_requests_fail() {
-	$if macos && arm64 {
-		path := os.join_path(os.vtmp_dir(), 'arm64_linux_object_${os.getpid()}.v')
-		object := path.all_before_last('.') + '.o'
-		executable := path.all_before_last('.')
-		defer {
-			os.rm(path) or {}
-			os.rm(object) or {}
-			os.rm(executable) or {}
-		}
-		os.write_file(path, 'fn main() {}\n')!
-		command := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-nocache',
-			'-b', 'arm64', '-os', 'linux']
-		mut object_args := command.clone()
-		object_args << ['-o', object, path]
-		built := exec_native(object_args)
-		assert built.exit_code == 0, built.output
-		bytes := os.read_bytes(object)!
-		assert bytes[..4] == [u8(0x7f), `E`, `L`, `F`]
-		mut executable_args := command.clone()
-		executable_args << ['-o', executable, path]
-		rejected := exec_native(executable_args)
-		assert rejected.exit_code != 0, rejected.output
-		assert rejected.output.contains('supports object output only'), rejected.output
-		assert !os.exists(executable)
+fn test_native_linux_object_and_executable_output() {
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_link_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'hello_world.v')
+	object := os.join_path(root, 'hello_world.o')
+	executable := os.join_path(root, 'hello_world')
+	os.write_file(path, 'fn main() { println("hello world") }\n')!
+	command := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-nocache',
+		'-b', 'native', '-arch', 'arm64', '-os', 'linux']
+	mut object_args := command.clone()
+	object_args << ['-o', object, path]
+	built := exec_native(object_args)
+	assert built.exit_code == 0, built.output
+	bytes := os.read_bytes(object)!
+	assert bytes[..4] == [u8(0x7f), `E`, `L`, `F`]
+	assert bytes[16] == 1 // ET_REL
+	assert bytes[18] == 183 // EM_AARCH64
+	// Object emission must work even when a target linker is unavailable.
+	mut can_link := false
+	$if linux && arm64 {
+		can_link = true
+	}
+	for cc in ['aarch64-linux-gnu-gcc', 'aarch64-linux-musl-gcc'] {
+		if _ := os.find_abs_path_of_executable(cc) { can_link = true }
+	}
+	if !can_link { return }
+	mut executable_args := command.clone()
+	// Exercise the default output name as in `v -b native -arch arm64 hello_world.v`.
+	executable_args << path
+	linked := exec_native(executable_args)
+	assert linked.exit_code == 0, linked.output
+	elf := os.read_bytes(executable)!
+	assert elf[..4] == [u8(0x7f), `E`, `L`, `F`]
+	assert elf[16] == 2 // ET_EXEC
+	assert elf[18] == 183 // EM_AARCH64
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'hello world'
+	}
+}
+
+fn test_native_linux_run_variadic_calls_arguments_and_exit_status() {
+	$if linux && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_linux_run_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		path := os.join_path(root, 'program.v')
+		os.write_file(path, r'fn C.printf(format &u8, ...) int
+fn main() {
+	args := arguments()
+	if args.len != 2 || args[1] != "carried" { exit(23) }
+	C.printf(c"%d %.1f %d %d %d %d %d %d %d\n", 42, 3.5, 2, 3, 4, 5, 6, 7, 8)
+	exit(17)
+}
+')!
+		result := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-b', 'native',
+			'-arch', 'arm64', 'run', path, 'carried'])
+		assert result.exit_code == 17, result.output
+		assert result.output.contains('42 3.5 2 3 4 5 6 7 8'), result.output
+		assert !os.exists(path.all_before_last('.'))
 	}
 }
 

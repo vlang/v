@@ -2838,6 +2838,41 @@ fn x64_native_compile_flags(flags []string) []string {
 	return result
 }
 
+// Native objects need a Linux/AArch64 C driver for the startup files and libc.
+// Prefer the host toolchain on Linux ARM64 and a target-prefixed GCC elsewhere.
+fn arm64_linux_linker(c_compiler string, compiler_explicit bool) !string {
+	if compiler_explicit && c_compiler !in ['', 'tinyc', 'tcc'] {
+		return c_compiler
+	}
+	host := pref.host_target()
+	if host.os == 'linux' && host.arch == 'arm64' {
+		return if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
+	}
+	for candidate in ['aarch64-linux-gnu-gcc', 'aarch64-linux-musl-gcc'] {
+		if path := os.find_abs_path_of_executable(candidate) {
+			return path
+		}
+	}
+	return error('linking Linux ARM64 executables requires an AArch64 Linux toolchain; install aarch64-linux-gnu-gcc or select one with -cc (use -o file.o for object output)')
+}
+
+fn link_arm64_linux_object(object string, output string, c_compiler string, compiler_explicit bool, c_flags []string, ld_flags []string, show_cc bool) ! {
+	defer { os.rm(object) or {} }
+	linker := arm64_linux_linker(c_compiler, compiler_explicit)!
+	// Generated address relocations currently require a non-PIE executable.
+	mut args := ['-no-pie', object, '-o', output]
+	args << x64_native_link_flags(c_flags)
+	args << ['-lm', '-ldl', '-lpthread']
+	args << ld_flags
+	if show_cc {
+		println('${linker} ${args.join(' ')}')
+	}
+	result := cmdexec.run(linker, args)
+	if result.exit_code != 0 {
+		return error('${result.output}\nARM64 Linux link failed with `${linker}`')
+	}
+}
+
 fn x64_native_link_flags(flags []string) []string {
 	mut result := []string{}
 	for flag in flags {
@@ -14984,7 +15019,7 @@ pub fn run(args []string) {
 			m.release_codegen_analysis_metadata()
 
 			mut g := arm64.Gen.new(m)
-			g.prune_unused = 'freestanding' in prefs.user_defines
+			g.prune_unused = 'freestanding' in prefs.user_defines || (target.os == 'linux' && !is_o)
 			g.freestanding = 'freestanding' in prefs.user_defines
 			g.gen()
 			b.step('arm64 gen')
@@ -15003,13 +15038,22 @@ pub fn run(args []string) {
 			}
 
 			if target.os == 'linux' {
-				if !is_o {
-					eprintln('the experimental Linux ARM64 backend supports object output only; use -o file.o')
-					exit(1)
+				obj_file := if is_o {
+					bin_file
+				} else {
+					os.join_path(os.vtmp_dir(), 'v3_arm64_${os.getpid()}_${tempname.unique_token()}.o')
 				}
-				g.write_elf(bin_file) or {
+				g.write_elf(obj_file) or {
 					eprintln(err.msg())
 					exit(1)
+				}
+				if !is_o {
+					link_arm64_linux_object(obj_file, bin_file, c_compiler, c_compiler_explicit,
+						user_c_flags, link_ld_flags, show_cc) or {
+						clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+						eprintln(err.msg())
+						exit(1)
+					}
 				}
 			} else {
 				g.write_and_link(bin_file)
