@@ -64,7 +64,7 @@ class GatePathsTests(unittest.TestCase):
                 self.assertIsNone(self.dependencies(body))
         self.assertEqual(self.dependencies(jobs["formatting"]), {"bootstrap-linux"})
         self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"formatting"})
-        for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci"):
+        for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci", "release_ci"):
             with self.subTest(job=job):
                 self.assertEqual(
                     self.dependencies(jobs[job]), {"formatting", "gen_vc_ci"}
@@ -80,10 +80,6 @@ class GatePathsTests(unittest.TestCase):
                 <= self.dependencies(jobs[name])
             )
         self.assertIn("bootstrap-termux", self.dependencies(jobs["termux_ci"]))
-        self.assertTrue(
-            {"bootstrap-macos", "bootstrap-windows", "windows-bootstrap-contracts"}
-            <= self.dependencies(jobs["release_ci"])
-        )
         self.assertEqual(
             self.dependencies(jobs["cleanup-vprod"]),
             {"gen_vc_ci", "bootstrap-macos", "bootstrap-windows",
