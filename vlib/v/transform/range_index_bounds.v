@@ -127,6 +127,15 @@ fn (t &Transformer) range_index_body_keeps_bounds(id flat.NodeId, name string, l
 				return false
 			}
 		}
+		.lambda_expr {
+			// Lambda parameters are identifiers, not `.param` nodes. Array
+			// map/filter lowering keeps their names but removes the lambda scope.
+			for i := 0; i + 1 < int(node.children_count); i++ {
+				if t.range_index_is_name(t.a.child(&node, i), name, loop_name) {
+					return false
+				}
+			}
+		}
 		else {}
 	}
 	for i in 0 .. node.children_count {

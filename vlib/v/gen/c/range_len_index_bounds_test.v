@@ -165,3 +165,94 @@ fn test_force_bounds_checking_keeps_range_len_loop_checks() {
 	assert range_len_index_body(generated, 'param_sum').contains('array_get')
 	assert range_len_index_body(generated, 'string_count').contains('string__at')
 }
+
+fn test_range_len_loop_lambda_shadowing_keeps_bounds_checks() {
+	root := os.join_path(os.vtmp_dir(), 'range_len_lambda_shadowing_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'program' + if os.user_os() == 'windows' { '.exe' } else { '' })
+	os.write_file(path, "import os
+
+fn array_map_index(a []int) {
+	for i in 0 .. a.len {
+		println([a.len].map(|i| a[i]))
+	}
+}
+
+fn array_filter_index(a []int) {
+	for i in 0 .. a.len {
+		println([a.len].filter(|i| a[i] > 0))
+	}
+}
+
+fn array_map_base(a []int) {
+	for i in 0 .. a.len {
+		println([[]int{}].map(|a| a[i]))
+	}
+}
+
+fn array_filter_base(a []int) {
+	for i in 0 .. a.len {
+		println([[]int{}].filter(|a| a[i] > 0))
+	}
+}
+
+fn string_map_index(s string) {
+	for i in 0 .. s.len {
+		println([s.len].map(|i| s[i]))
+	}
+}
+
+fn string_filter_index(s string) {
+	for i in 0 .. s.len {
+		println([s.len].filter(|i| s[i] > 0))
+	}
+}
+
+fn string_map_base(s string) {
+	for i in 0 .. s.len {
+		println([''].map(|s| s[i]))
+	}
+}
+
+fn string_filter_base(s string) {
+	for i in 0 .. s.len {
+		println([''].filter(|s| s[i] > 0))
+	}
+}
+
+fn main() {
+	match os.args[1] {
+		'array_map_index' { array_map_index([41]) }
+		'array_filter_index' { array_filter_index([41]) }
+		'array_map_base' { array_map_base([41]) }
+		'array_filter_base' { array_filter_base([41]) }
+		'string_map_index' { string_map_index('x') }
+		'string_filter_index' { string_filter_index('x') }
+		'string_map_base' { string_map_base('x') }
+		'string_filter_base' { string_filter_base('x') }
+		else { panic('unknown case') }
+	}
+	println('missing bounds check')
+}
+")!
+	compiled := os.exec([@VEXE, '-gc', 'none', '-no-retry-compilation', '-o', output, path])
+	assert compiled.exit_code == 0, compiled.output
+	for kind in ['array', 'string'] {
+		panic_text := if kind == 'array' {
+			'array.get: index out of range'
+		} else {
+			'string index out of range'
+		}
+		for method in ['map', 'filter'] {
+			for binding in ['index', 'base'] {
+				name := '${kind}_${method}_${binding}'
+				result := os.exec([output, name])
+				assert result.exit_code != 0, '${name}: ${result.output}'
+				assert result.output.contains(panic_text), '${name}: ${result.output}'
+				assert !result.output.contains('missing bounds check'), '${name}: ${result.output}'
+			}
+		}
+	}
+}
