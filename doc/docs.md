@@ -1619,6 +1619,15 @@ println(upper_fn) // ['HELLO', 'WORLD']
 `it` is a builtin variable which refers to the element currently being
 processed in filter/map methods.
 
+An `if` expression whose first branch returns a byte keeps that type when another branch
+returns a character literal. This lets byte mappings chain `.bytestr()`:
+
+```v
+name := 'r-draw.c'
+sanitized := name.bytes().map(if it.is_alnum() { it } else { `_` }).bytestr()
+assert sanitized == 'r_draw_c'
+```
+
 User-defined struct methods named `map` keep their declared return type, including when chained.
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.

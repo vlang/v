@@ -3958,6 +3958,11 @@ fn (tc &TypeChecker) choose_if_tail_type(current Type, next Type) Type {
 	if current !is Primitive {
 		return current
 	}
+	// Character literals resolve to Rune, but must not replace the first
+	// branch's integer type (e.g. `if cond { byte_value } else { `_` }`).
+	if next is Rune && current.is_integer() {
+		return current
+	}
 	if next !is Primitive {
 		return next
 	}
