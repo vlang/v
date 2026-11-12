@@ -29,6 +29,7 @@ Options:
   A C-only compiler automatically delegates this build to the full compiler.
   On Linux AMD64, `-b amd64` builds the full CLI with the native AMD64 backend.
   A C-only compiler automatically delegates this build to the full compiler.
+  `-b x64` remains a compatible alias for `-b amd64`.
   Native builds retain the C backend and leave out FastC by default.
   `xN` repeats replacement builds, using the newly built compiler for the next build.
   Add `-o v_arm64` or `-o v_amd64` to keep the current compiler and write a separate executable.

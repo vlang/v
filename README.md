@@ -423,6 +423,7 @@ Without `-arch`, the target defaults to the compiler's host architecture. Pass `
 or `-arch amd64` to select a different target. The same backend platform requirements apply:
 macOS ARM64 and Linux AMD64 support executables; Linux ARM64 supports object output only,
 such as `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux.
+On Linux AMD64, `v -b amd64 -o hello_world.o hello_world.v` also emits an ELF object.
 Use `v -b arm64 self` or `v -b amd64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native

@@ -88,6 +88,7 @@ NB: the build flags are shared with the run command too:
                             Use `v -b amd64 file.v` (EXPERIMENTAL). Add `-prod`
                             to optimize generated runtime code.
                             `x64`, `x86_64`, and `x86-64` remain aliases for this backend.
+                            Use `-o file.o` to emit an ELF relocatable object.
     * `native`            - Selects `amd64` (`x64`) or `arm64` for the target architecture,
                             using `-arch` when supplied, or the compiler's host otherwise.
                             The same backend platform requirements apply.

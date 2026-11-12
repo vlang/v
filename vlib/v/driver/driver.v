@@ -10849,7 +10849,7 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend == 'arm64' && target_os == 'linux' && explicit_output
+	native_linux_object := backend in ['arm64', 'amd64'] && target_os == 'linux' && explicit_output
 		&& output_file.ends_with('.o')
 	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -14877,6 +14877,17 @@ pub fn run(args []string) {
 			obj_file := os.join_path(os.vtmp_dir(), 'v3_amd64_${os.getpid()}_${tempname.unique_token()}.o')
 			g.write_file(obj_file)
 			b.step('amd64 object')
+			// The .o output selects a standalone ELF relocatable, like ARM64
+			// Linux. Do not try to link an object as an executable.
+			if is_o {
+				os.mv(obj_file, bin_file) or {
+					os.rm(obj_file) or {}
+					eprintln('amd64 ELF object output failed: ${err}')
+					exit(1)
+				}
+				b.print_report()
+				return
+			}
 			amd64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, false, parallel_cc, false)
 			native_support := amd64_native_support_object(a, prefs, user_c_flags,

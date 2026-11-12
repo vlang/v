@@ -10817,6 +10817,7 @@ Explicit backend selection remains available, with the same platform requirement
 ARM64 and Linux AMD64 support executables. Linux ARM64 currently supports object output only;
 for example, `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux emits an ARM64
 ELF object, including from an AMD64 host. It does not link a Linux ARM64 executable.
+For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.
 
 The native backends do not link a garbage collector yet, so they always build as if `-gc none`
 was passed. For AMD64, `-prod` enables SSA optimization, scalar register

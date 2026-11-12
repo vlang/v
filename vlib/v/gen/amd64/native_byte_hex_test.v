@@ -8,12 +8,12 @@ fn testsuite_end() {
 	os.rm(native_test_compiler) or {}
 }
 
-// exec_native runs a compiler command. `cmd/v` leaves the X64 backend out by default, so
+// exec_native runs a compiler command. `cmd/v` leaves the AMD64 backend out by default, so
 // when @VEXE reports that, the command runs with a compiler built here that includes it.
 fn exec_native(args []string) os.Result {
 	if !os.exists(native_test_compiler) {
 		result := os.exec(args)
-		if !result.output.contains('X64 support is not compiled into this executable') {
+		if !result.output.contains('amd64 support is not compiled into this executable') {
 			return result
 		}
 		bootstrap := os.exec([@VEXE, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend', 'amd64',

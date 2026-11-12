@@ -59,7 +59,7 @@ fn main() {
 	assert os.exists(child), child_build.output
 	mut parent_build := os.exec([compiler, '-gc', 'none', '-nocache', '-b', 'amd64', '-o', parent,
 		parent_source])
-	if parent_build.output.contains('X64 support is not compiled into this executable') {
+	if parent_build.output.contains('amd64 support is not compiled into this executable') {
 		bootstrap := os.exec([compiler, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend',
 			'amd64', '-o', test_compiler, os.join_path(@VEXEROOT, 'vlib', 'v', 'v.v')])
 		assert bootstrap.exit_code == 0, bootstrap.output
