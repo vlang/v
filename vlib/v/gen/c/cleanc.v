@@ -14155,7 +14155,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	if semantic_expected is types.MultiReturn && node.kind == .if_expr {
-		g.gen_if_expr_stmt(node)
+		g.gen_if_expr_stmt(id, node)
 		return
 	}
 	if semantic_expected is types.MultiReturn && node.kind == .block {
@@ -19269,7 +19269,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			g.gen_struct_init(id)
 		}
 		.if_expr {
-			g.gen_if_expr(node)
+			g.gen_if_expr(id, node)
 		}
 		.array_literal {
 			if arr := array_like_type(g.usable_expr_type(id)) {
