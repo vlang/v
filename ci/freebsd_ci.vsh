@@ -125,7 +125,9 @@ fn run_essential_tests() {
 fn build_examples() {
 	if common.is_github_job {
 		println('::group::Build examples')
-		exec_args(['v', '-W', 'build-examples'])
+		// Leave memory for the CI script's compiler processes in the 8 GiB FreeBSD VM.
+		// Two concurrent example builds can exhaust swap and kill the task runner.
+		exec_args(['env', 'VJOBS=1', 'v', '-W', 'build-examples'])
 		println('::endgroup::')
 	} else {
 		println('### Build examples')
