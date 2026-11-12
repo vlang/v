@@ -6935,6 +6935,32 @@ fn (t &Transformer) selector_expr_node(id flat.NodeId) ?flat.Node {
 	return none
 }
 
+// array_dsl_name_is_method reports resolved calls whose arguments can use outer it.
+fn (t &Transformer) array_dsl_name_is_method(id flat.NodeId) bool {
+	if isnil(t.tc) || t.array_dsl_multitype_depth > 0 {
+		return false
+	}
+	resolved := t.tc.resolved_call_name(id) or { return false }
+	if _, _ := flat.decode_static_type_method_name(resolved) {
+		return true
+	}
+	if owner := t.tc.fn_type_modules[resolved] {
+		if resolved.all_before_last('.') == owner { return true }
+	}
+	params := t.tc.fn_param_types[resolved] or { return false }
+	if params.len == 0 {
+		return false
+	}
+	mut receiver := params[0]
+	for {
+		match receiver {
+			types.Alias, types.Pointer { receiver = *receiver.base_type }
+			else { return receiver !is types.Array && receiver !is types.ArrayFixed }
+		}
+	}
+	return false
+}
+
 // substitute_ident supports substitute ident handling for Transformer.
 fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement string) flat.NodeId {
 	if int(id) < 0 || name == '' || replacement == '' || name == replacement {
@@ -6954,10 +6980,14 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 			return id
 		}
 	}
+	if node.kind == .fn_literal && !t.fn_literal_captures_name(id, name) {
+		return id
+	}
 	if node.kind == .call && node.children_count > 1 {
 		fn_id := t.a.child(&node, 0)
 		fn_node := t.a.nodes[int(fn_id)]
-		if fn_node.kind == .selector && fn_node.value in ['any', 'all', 'count', 'filter', 'map'] {
+		if fn_node.kind == .selector && fn_node.value in ['any', 'all', 'count', 'filter', 'map']
+			&& !t.array_dsl_name_is_method(id) {
 			mut new_children := []flat.NodeId{cap: int(node.children_count)}
 			new_children << t.substitute_ident(fn_id, name, replacement)
 			for i in 1 .. node.children_count {
@@ -6986,7 +7016,17 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 	fresh_start := t.a.nodes.len
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		new_children << t.substitute_ident(t.a.child(&node, i), name, replacement)
+		child_id := t.a.child(&node, i)
+		child := t.a.node(child_id)
+		if name == 'it' && node.kind == .array_init && child.kind == .field_init && child.value == 'init' {
+			new_children << child_id
+			continue
+		}
+		multitype := node.kind == .match_stmt && i > 0 && t.count_conds(child) > 1
+			&& t.match_branch_all_type_patterns(t.a.child(&node, 0), child)
+		t.array_dsl_multitype_depth += int(multitype)
+		new_children << t.substitute_ident(child_id, name, replacement)
+		t.array_dsl_multitype_depth -= int(multitype)
 	}
 	start := t.a.children.len
 	for child in new_children {
