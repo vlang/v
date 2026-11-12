@@ -66,8 +66,9 @@ runs:
         echo "sha=$sha" >> "$GITHUB_OUTPUT"
         echo "directory=$directory" >> "$GITHUB_OUTPUT"
 
-    # All jobs in CI master depend on the bootstrap workflow. Reusable
-    # workflows share this run's artifacts without a cross-repository token.
+    # Platform producers run independently in CI master. Reusable workflows
+    # share this run's available artifacts without a cross-repository token;
+    # missing artifacts fall back to a local optimized compiler build.
     - name: Download the bootstrapped compiler
       id: artifact
       if: inputs.use-prebuilt == 'true' && steps.compiler.outputs.platform != '' && github.workflow == 'CI master' && steps.compiler.outputs.sha == github.sha

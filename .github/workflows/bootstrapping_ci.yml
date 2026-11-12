@@ -2,10 +2,21 @@ name: Bootstrapping CI
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform group to bootstrap (all for a standalone run)
+        type: choice
+        options: [all, linux, macos, windows, termux]
+        default: all
   workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: all
 
 concurrency:
-  group: bootstrapping-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  # Multiple callers in CI master must not cancel one another.
+  group: bootstrapping-${{ github.workflow }}-${{ inputs.platform || 'all' }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -14,23 +25,18 @@ permissions:
 
 jobs:
   bootstrap-v:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && inputs.platform != 'termux'
     strategy:
+      # Select runners before scheduling the matrix; a step-level condition
+      # would still reserve macOS/Windows runners for Linux-only bootstrap.
       matrix:
-        include:
-          # Build against the oldest glibc used by the native Linux test jobs.
-          - os: ubuntu-22.04
-            platform: linux-x64
-            vflags: -no-parallel
-          - os: macos-15
-            platform: macos-arm64
-            vflags: -no-parallel
-          - os: macos-15-intel
-            platform: macos-x64
-            vflags: -no-parallel
-          - os: windows-2022
-            platform: windows-x64
-            vflags: ''
+        include: >-
+          ${{ fromJSON(
+            inputs.platform == 'linux' && '[{"os":"ubuntu-22.04","platform":"linux-x64","vflags":"-no-parallel"}]' ||
+            inputs.platform == 'macos' && '[{"os":"macos-15","platform":"macos-arm64","vflags":"-no-parallel"},{"os":"macos-15-intel","platform":"macos-x64","vflags":"-no-parallel"}]' ||
+            inputs.platform == 'windows' && '[{"os":"windows-2022","platform":"windows-x64","vflags":""}]' ||
+            '[{"os":"ubuntu-22.04","platform":"linux-x64","vflags":"-no-parallel"},{"os":"macos-15","platform":"macos-arm64","vflags":"-no-parallel"},{"os":"macos-15-intel","platform":"macos-x64","vflags":"-no-parallel"},{"os":"windows-2022","platform":"windows-x64","vflags":""}]'
+          ) }}
       fail-fast: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -296,7 +302,7 @@ jobs:
           overwrite: true
 
   bootstrap-termux:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && (inputs.platform == 'all' || inputs.platform == 'termux')
     strategy:
       matrix:
         include:

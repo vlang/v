@@ -12,14 +12,43 @@ permissions:
   contents: read
 
 jobs:
-  bootstrap:
+  # The reusable workflow is called separately so a slow macOS bootstrap
+  # cannot hold Linux formatting, VC generation, and Linux CI in the queue.
+  bootstrap-linux:
     uses: ./.github/workflows/bootstrapping_ci.yml
+    with:
+      platform: linux
+    permissions:
+      contents: read
+      actions: read
+
+  bootstrap-macos:
+    uses: ./.github/workflows/bootstrapping_ci.yml
+    with:
+      platform: macos
+    permissions:
+      contents: read
+      actions: read
+
+  bootstrap-windows:
+    uses: ./.github/workflows/bootstrapping_ci.yml
+    with:
+      platform: windows
+    permissions:
+      contents: read
+      actions: read
+
+  bootstrap-termux:
+    uses: ./.github/workflows/bootstrapping_ci.yml
+    with:
+      platform: termux
     permissions:
       contents: read
       actions: read
 
   cleanup-vprod:
-    needs: gen_vc_ci
+    # Never prune old artifacts before every new platform compiler exists.
+    needs: [gen_vc_ci, bootstrap-macos, bootstrap-windows, bootstrap-termux, windows-bootstrap-contracts]
     if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -43,7 +72,7 @@ jobs:
       contents: read
 
   formatting:
-    needs: [bootstrap, windows-bootstrap-contracts]
+    needs: bootstrap-linux
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -331,7 +360,7 @@ jobs:
     secrets: inherit
 
   macos_ci:
-    needs: [formatting, gen_vc_ci]
+    needs: [formatting, gen_vc_ci, bootstrap-macos]
     if: needs.formatting.outputs.macos_ci == 'true'
     uses: ./.github/workflows/macos_ci.yml
     permissions:
@@ -339,7 +368,7 @@ jobs:
     secrets: inherit
 
   macos_gitly_ci:
-    needs: [formatting, gen_vc_ci]
+    needs: [formatting, gen_vc_ci, bootstrap-macos]
     if: needs.formatting.outputs.macos_gitly_ci == 'true'
     uses: ./.github/workflows/macos_gitly_ci.yml
     permissions:
@@ -441,6 +470,7 @@ jobs:
     secrets: inherit
 
   release_ci:
+    # Release builds compile from source on each runner; keep Linux releases unblocked.
     needs: [formatting, gen_vc_ci]
     if: needs.formatting.outputs.release_ci == 'true'
     uses: ./.github/workflows/release_ci.yml
@@ -499,7 +529,7 @@ jobs:
     secrets: inherit
 
   termux_ci:
-    needs: [formatting, gen_vc_ci]
+    needs: [formatting, gen_vc_ci, bootstrap-termux]
     if: needs.formatting.outputs.termux_ci == 'true'
     uses: ./.github/workflows/termux_ci.yml
     permissions:
@@ -724,7 +754,7 @@ jobs:
     secrets: inherit
 
   windows_ci_gcc:
-    needs: [formatting, gen_vc_ci]
+    needs: [formatting, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
     if: needs.formatting.outputs.windows_ci_gcc == 'true'
     uses: ./.github/workflows/windows_ci_gcc.yml
     permissions:
@@ -732,7 +762,7 @@ jobs:
     secrets: inherit
 
   windows_ci_msvc:
-    needs: [formatting, gen_vc_ci]
+    needs: [formatting, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
     if: needs.formatting.outputs.windows_ci_msvc == 'true'
     uses: ./.github/workflows/windows_ci_msvc.yml
     permissions:
@@ -740,7 +770,7 @@ jobs:
     secrets: inherit
 
   windows_ci_tcc:
-    needs: [formatting, gen_vc_ci]
+    needs: [formatting, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
     if: needs.formatting.outputs.windows_ci_tcc == 'true'
     uses: ./.github/workflows/windows_ci_tcc.yml
     permissions:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Focused regression checks for CI push path selectors and gated callers."""
+import json
 import re
 import unittest
 import ci_gate_paths as gate
@@ -20,18 +21,31 @@ class GatePathsTests(unittest.TestCase):
             with self.subTest(paths=paths):
                 self.assertTrue(gate.should_run(paths, self.entries["gen_vc_ci.yml"]))
 
-    def test_vc_generation_gates_every_downstream_job(self):
+    @staticmethod
+    def caller_jobs():
         caller = gate.CALLER.read_text(encoding="utf-8").split("\njobs:\n", 1)[1]
-        jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  \S|\Z)", caller, re.M | re.S))
-        preflight = {"bootstrap", "windows-bootstrap-contracts", "formatting"}
+        return dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  \S|\Z)", caller, re.M | re.S))
+
+    @staticmethod
+    def dependencies(job):
+        match = re.search(r"^    needs: (.+)$", job, re.M)
+        if match is None:
+            return None
+        return {name.strip() for name in match[1].strip("[]").split(",")}
+
+    def test_vc_generation_gates_every_downstream_job(self):
+        jobs = self.caller_jobs()
+        preflight = {
+            "bootstrap-linux", "bootstrap-macos", "bootstrap-windows",
+            "bootstrap-termux", "windows-bootstrap-contracts", "formatting",
+        }
         self.assertIn("gen_vc_ci", jobs)
         for name, body in jobs.items():
             if name in preflight:
                 continue
             with self.subTest(job=name):
-                match = re.search(r"^    needs: (.+)$", body, re.M)
-                self.assertIsNotNone(match)
-                needs = {job.strip() for job in match[1].strip("[]").split(",")}
+                needs = self.dependencies(body)
+                self.assertIsNotNone(needs)
                 if name == "gen_vc_ci":
                     self.assertEqual(needs, {"formatting"})
                 else:
@@ -39,6 +53,62 @@ class GatePathsTests(unittest.TestCase):
                     if name != "cleanup-vprod":
                         self.assertIn("formatting", needs)
                 self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
+
+    def test_linux_preflight_does_not_wait_for_other_platforms(self):
+        jobs = self.caller_jobs()
+        for platform in ("linux", "macos", "windows", "termux"):
+            with self.subTest(platform=platform):
+                body = jobs[f"bootstrap-{platform}"]
+                self.assertIn("uses: ./.github/workflows/bootstrapping_ci.yml", body)
+                self.assertIn(f"platform: {platform}", body)
+                self.assertIsNone(self.dependencies(body))
+        self.assertEqual(self.dependencies(jobs["formatting"]), {"bootstrap-linux"})
+        self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"formatting"})
+        for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci", "release_ci"):
+            with self.subTest(job=job):
+                self.assertEqual(
+                    self.dependencies(jobs[job]), {"formatting", "gen_vc_ci"}
+                )
+
+    def test_other_platforms_retain_bootstrap_gates(self):
+        jobs = self.caller_jobs()
+        for name in ("macos_ci", "macos_gitly_ci"):
+            self.assertIn("bootstrap-macos", self.dependencies(jobs[name]))
+        for name in ("windows_ci_gcc", "windows_ci_msvc", "windows_ci_tcc"):
+            self.assertTrue(
+                {"bootstrap-windows", "windows-bootstrap-contracts"}
+                <= self.dependencies(jobs[name])
+            )
+        self.assertIn("bootstrap-termux", self.dependencies(jobs["termux_ci"]))
+        self.assertEqual(
+            self.dependencies(jobs["cleanup-vprod"]),
+            {"gen_vc_ci", "bootstrap-macos", "bootstrap-windows",
+             "bootstrap-termux", "windows-bootstrap-contracts"},
+        )
+
+    def test_bootstrap_platform_matrix_matches_all_producers(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        platforms = {}
+        for group in ("linux", "macos", "windows"):
+            match = re.search(
+                rf"inputs\.platform == '{group}' && '(\[[^'\n]+\])'", source
+            )
+            self.assertIsNotNone(match, group)
+            platforms[group] = json.loads(match[1])
+        all_match = re.search(r"(?m)^\s*'(\[\{\"os\":[^'\n]+\])'$", source)
+        self.assertIsNotNone(all_match)
+        combined = json.loads(all_match[1])
+        self.assertCountEqual(
+            combined, [runner for group in platforms.values() for runner in group]
+        )
+        self.assertEqual([r["platform"] for r in platforms["linux"]], ["linux-x64"])
+        self.assertEqual(
+            {r["platform"] for r in platforms["macos"]}, {"macos-arm64", "macos-x64"}
+        )
+        self.assertEqual([r["platform"] for r in platforms["windows"]], ["windows-x64"])
+        self.assertIn("inputs.platform != 'termux'", source)
+        self.assertIn("inputs.platform == 'all' || inputs.platform == 'termux'", source)
+        self.assertIn("inputs.platform || 'all'", source)
 
     def test_fastc_only_push_skips_platform_workflows(self):
         paths = ["vlib/v/gen/fastc/codegen.v"]
