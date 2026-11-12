@@ -20,5 +20,6 @@ fn main() {
 `Manifest.backend` stores the `backend` field, such as `backend: 'fastc'`. The `v`
 command uses it as the default `-b` value for builds of the project.
 
-Catalog and workspace fields represent metadata; dependency strings retain their
-literal meaning in the package manager.
+Catalog remains metadata. `workspaces` is also honored by vpm: a root manifest that
+declares it makes vpm treat the root and matching member directories as one
+project. Dependency strings retain their literal meaning in the package manager.
