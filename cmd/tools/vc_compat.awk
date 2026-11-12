@@ -5,6 +5,10 @@ BEGIN {
 	while ((getline line < ARGV[1]) > 0) {
 		snapshot_line++
 		if (line ~ /^#define CUSTOM_DEFINE_cross([ \t]|$)/) portable_snapshot = 1
+		# Only a top-level poll include escapes the snapshot's libc guard.
+		if (line ~ /^[ \t]*#[ \t]*if/) pp_depth++
+		else if (line ~ /^[ \t]*#[ \t]*endif/) pp_depth--
+		else if (pp_depth == 0 && line ~ /^#include <poll.h>[ \t]*$/) bare_poll_line = snapshot_line
 		# The published vc snapshot calls select() but has no sys/select.h prototype.
 		if (line ~ /select\(fd \+ 1, &read_set,/) snapshot_uses_select = 1
 		if (line ~ /^[ \t]*#[ \t]*include[ \t]+<sys\/select\.h>[ \t]*$/) snapshot_has_select_header = 1
@@ -85,14 +89,36 @@ legacy_uint && !native_uint {
 # defining header. Insert the native declaration on Unix, leaving unrelated
 # snapshots and the Winsock path unchanged.
 /^[ \t]*#[ \t]*include[ \t]+<poll\.h>[ \t]*$/ {
+	if (FNR == bare_poll_line) print "#if !__V_HEADERLESS_LIBC"
 	print
 	if (snapshot_uses_select && !snapshot_has_select_header && !select_header_inserted) {
-		print "#if !defined(_WIN32)"
+		print "#if !defined(_WIN32) && !__V_HEADERLESS_LIBC"
 		print "#include <sys/select.h>"
 		print "#endif"
 		select_header_inserted = 1
 	}
+	if (FNR == bare_poll_line) print "#endif"
 	next
+}
+
+# A bare poll include made os header-owned, suppressing its C prototypes.
+# Restore only the affected snapshot's missing declarations and constants after
+# its preamble types are available, without importing another libc header.
+bare_poll_line && /^bool os__fd_is_pending\(__v_int fd\) \{$/ {
+	print "#if __V_HEADERLESS_LIBC && !defined(_WIN32)"
+	print "int select(int, fd_set*, fd_set*, fd_set*, struct timeval*);"
+	print "#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__ANDROID__)"
+	print "int poll(struct pollfd*, unsigned int, int);"
+	print "#else"
+	print "int poll(struct pollfd*, size_t, int);"
+	print "#endif"
+	print "#ifndef POLLIN"
+	print "#define POLLIN 0x001"
+	print "#define POLLERR 0x008"
+	print "#define POLLHUP 0x010"
+	print "#define POLLNVAL 0x020"
+	print "#endif"
+	print "#endif"
 }
 
 # Bootstrap compatibility for vc snapshots predating the diagserver prctl guards.
@@ -113,10 +139,15 @@ legacy_uint && !native_uint {
 # The f5b8e41 vc snapshot includes POSIX C bindings from os/fd.c.v.
 # Earlier snapshots did not; until vc regenerates with the libc-owned binding,
 # its struct pollfd would redefine the type already supplied by <poll.h>.
-# Retain the declaration only on Windows, which has no POSIX poll header.
+# Headerless snapshots still need their own type, with the native int-sized fd.
 /^struct pollfd[ \t]*\{[ \t]*$/ {
-	print "#if defined(_WIN32)"
+	print "#if defined(_WIN32) || __V_HEADERLESS_LIBC"
 	vc_pollfd_guard = 1
+}
+
+vc_pollfd_guard && /^\t__v_int fd;$/ {
+	print "\ti32 fd;"
+	next
 }
 
 vc_pollfd_guard && /^};[ \t]*$/ {
