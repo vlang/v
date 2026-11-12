@@ -19,3 +19,24 @@ $if !windows {
 		assert false, 'select accepted a descriptor outside fd_set'
 	}
 }
+
+$if windows {
+	fn test_windows_select_checks_listener_readiness() ! {
+		mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+		defer {
+			listener.close() or {}
+		}
+
+		// Winsock fd_set holds SOCKET values, not POSIX integer bit positions.
+		// A listening socket with no pending connection must not be ready.
+		assert !(select(listener.sock.handle, .read, 0)!)
+
+		address := listener.sock.address()!
+		mut client := dial_tcp(address.str())!
+		defer {
+			client.close() or {}
+		}
+		// A completed loopback connection must make the listener readable.
+		assert select(listener.sock.handle, .read, 0)!
+	}
+}
