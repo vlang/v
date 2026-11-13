@@ -52,6 +52,11 @@ fn test_outdated() {
 	// "Outdate" previously installed. Leave out `libsodium`.
 	for m in ['pcre', os.join_path('spytheman', 'vtray'), os.join_path('nedpals', 'args')] {
 		cmd_ok_args(@LOCATION, ['git', '-C', '${m}', 'fetch', '--all'])
+		// VPM installs a shallow clone, whose HEAD~ is not available until we fetch its parent.
+		shallow := cmd_ok_args(@LOCATION, ['git', '-C', m, 'rev-parse', '--is-shallow-repository'])
+		if shallow.output.trim_space() == 'true' {
+			cmd_ok_args(@LOCATION, ['git', '-C', m, 'fetch', '--deepen=1'])
+		}
 		cmd_ok_args(@LOCATION, ['git', '-C', '${m}', 'reset', '--hard', 'HEAD~'])
 		assert is_outdated(m)
 	}
