@@ -42,6 +42,32 @@ fn test_msvc_native_objects_fit_a_nested_build_directory() ! {
 			assert stats.temporary_objects[0] != object
 		}
 	}
+	// C-only exports have no private build directory and start with fresh stats.
+	// Their saved linker inputs must survive a later export in the same directory.
+	mut exports := []string{}
+	defer {
+		for object in exports {
+			os.rm(object) or {}
+		}
+	}
+	mut first_object := []u8{}
+	for index in 0 .. 2 {
+		source := os.join_path(root, 'export.c')
+		os.write_file(source, 'int exported_value(void) { return ${index}; }\n')!
+		mut export_stats := CObjectCacheStats{}
+		object := compile_cached_c_source_object(source + '.o', source, 'c', &flags, false,
+			false, '', [], pref.target_from('windows', 'amd64')!, compiler, false, '', mut
+			export_stats)!
+		assert object !in exports, 'a later C-only export overwrote ${object}'
+		exports << object
+		assert export_stats.temporary_objects == [object]
+		if index == 0 {
+			first_object = os.read_bytes(object)!
+			assert first_object.len > 0
+		} else {
+			assert os.read_bytes(exports[0])! == first_object
+		}
+	}
 }
 
 fn native_cache_publish_worker(root string, index int, gate chan bool) bool {
