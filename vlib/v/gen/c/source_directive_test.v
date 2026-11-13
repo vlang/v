@@ -316,8 +316,7 @@ fn test_pollfd_sdk_struct_ownership_keeps_headerless_user_layouts() {
 	for target_os in ['linux', 'macos', 'freebsd', 'openbsd'] {
 		for system_libc in [false, true] {
 			g := posix_declaration_filter_gen(target_os, system_libc)
-			assert g.skip_builtin_struct('C.pollfd') == system_libc,
-				'${target_os}: system_libc=${system_libc}'
+			assert g.skip_builtin_struct('C.pollfd') == system_libc, '${target_os}: system_libc=${system_libc}'
 		}
 	}
 	// The Windows SDK does not declare the POSIX pollfd tag.
