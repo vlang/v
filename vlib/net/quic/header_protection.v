@@ -1,7 +1,5 @@
 module quic
 
-import crypto.aes
-
 // RFC 9001 §5.4 — QUIC header protection. Applies to Initial, Handshake,
 // 0-RTT, and 1-RTT packets (never to Retry or Version Negotiation, which have
 // no packet-number field to protect at all). v1 pins TLS_AES_128_GCM_SHA256
@@ -38,10 +36,7 @@ fn header_protection_mask(hp_key []u8, sample []u8) ![]u8 {
 	if sample.len != header_protection_sample_size {
 		return error('quic: header protection sample must be ${header_protection_sample_size} bytes, got ${sample.len}')
 	}
-	block := aes.new_cipher(hp_key)!
-	mut mask := []u8{len: header_protection_sample_size}
-	block.encrypt(mut mask, sample)
-	return mask
+	return aes128_encrypt_block(hp_key, sample)
 }
 
 // protected_bits_mask returns which low bits of the first byte header

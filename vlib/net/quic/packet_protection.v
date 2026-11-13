@@ -1,9 +1,8 @@
 module quic
 
-import crypto.aes
-
 // RFC 9001 §5 — QUIC packet protection. v1 pins TLS_AES_128_GCM_SHA256 (see
-// tls13_client_hello.v), so packet protection here always uses AES-128-GCM.
+// tls13_client_hello.v), so packet protection here always uses AES-128-GCM,
+// through the mbedTLS-backed helpers in packet_crypto.c.v.
 
 // aead_key_length and aead_iv_length are AES-128-GCM's fixed key/nonce sizes
 // (RFC 9001 §5.1) — the only AEAD v1 supports. AES-128-GCM's header
@@ -90,9 +89,8 @@ fn packet_protection_nonce(iv []u8, packet_number u64) ![]u8 {
 // not just a prefix of it. `packet_number` must already be the full,
 // reconstructed value (see packet_protection_nonce).
 pub fn encrypt_packet_payload(keys QuicPacketProtectionKeys, packet_number u64, header []u8, payload []u8) ![]u8 {
-	aead := aes.new_aes_gcm(keys.key)!
 	nonce := packet_protection_nonce(keys.iv, packet_number)!
-	return aead.encrypt(payload, nonce, header)
+	return aes128_gcm_seal(keys.key, nonce, header, payload)
 }
 
 // decrypt_packet_payload AEAD-decrypts and authenticates one packet's
@@ -104,9 +102,8 @@ pub fn encrypt_packet_payload(keys QuicPacketProtectionKeys, packet_number u64, 
 // failure as an error; enforcing "drop, don't close" is the caller's
 // (Phase 4+ packet-receive loop's) responsibility.
 pub fn decrypt_packet_payload(keys QuicPacketProtectionKeys, packet_number u64, header []u8, ciphertext []u8) ![]u8 {
-	aead := aes.new_aes_gcm(keys.key)!
 	nonce := packet_protection_nonce(keys.iv, packet_number)!
-	return aead.decrypt(ciphertext, nonce, header)
+	return aes128_gcm_open(keys.key, nonce, header, ciphertext)
 }
 
 // protect_packet assembles one fully protected QUIC packet from its
