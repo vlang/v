@@ -134,14 +134,21 @@ static inline int v_sync_thread_create_detached(void* start, void* arg) {
 }
 '
 
-// headerless_cmdexec_poll_helper replaces only the shipped poll header when the
+// headerless_cmdexec_poll_helper replaces the shipped poll headers when the
 // standalone ABI owns libc declarations; SDK-backed units keep the native helper.
 fn (mut g FlatGen) headerless_cmdexec_poll_helper() {
-	if g.target.os == 'windows' || !g.core_header_directives.any(it.directive.module == 'cmdexec') {
+	os_poll := g.core_header_directives.any(it.directive.module == 'os'
+		&& normalized_c_include_arg_path(it.directive.text.all_after('#include').trim_space()) == g.compiler_vroot.replace('\\', '/').trim_right('/') + '/vlib/os/fd_poll.h')
+	if g.target.os == 'windows'
+		|| (!os_poll && !g.core_header_directives.any(it.directive.module == 'cmdexec')) {
 		return
 	}
 	g.write(headerless_cmdexec_poll)
 	g.collect_preserved_c_fns(['v_cmdexec_poll_revents'])
+	if os_poll {
+		g.writeln('static inline short v_os_fd_poll_revents(int fd, short events) { return v_cmdexec_poll_revents(fd, events); }')
+		g.collect_preserved_c_fns(['v_os_fd_poll_revents'])
+	}
 }
 
 const headerless_cmdexec_poll = r'

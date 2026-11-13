@@ -6763,7 +6763,12 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/builtin/core_windows.h'
 		}
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
-		'os/fd.c.v' { return include_arg in ['<winsock2.h>', '<poll.h>'] }
+		'os/fd.c.v' {
+			return include_arg in ['<winsock2.h>', '<poll.h>']
+				|| (g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
+					'dragonfly', 'ios']
+					&& normalized_c_include_arg_path(include_arg) == root + '/vlib/os/fd_poll.h')
+		}
 		'os/mmap_nix.c.v' {
 			return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android',
 				'termux', 'freebsd', 'openbsd', 'dragonfly']
