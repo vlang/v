@@ -2,19 +2,10 @@ name: CI FreeBSD
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - 'cmd/tools/**'
-      - '!**/freebsd_ci.yml'
-      - '!ci/freebsd_ci.vsh'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: freebsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: freebsd-freebsd_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 ### See https://github.com/cross-platform-actions/action
@@ -27,21 +18,7 @@ jobs:
   tcc-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: bootstrap
-            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
-          - suite: modules
-            tasks: check_math check_compress test_inline_assembly
-          - suite: essential
-            tasks: run_essential_tests
-          - suite: examples
-            tasks: build_examples
-    env:
-      V_CI_TASKS: ${{ matrix.tasks }}
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,7 +34,6 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
-          environment_variables: V_CI_TASKS
 
       - name: Tests on FreeBSD with tcc
         id: tests-freebsd-tcc
@@ -77,36 +53,20 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc tcc -no-retry-compilation'
           echo "::endgroup::"
-          status=0
-          for task in $V_CI_TASKS; do
-            ./v run ci/freebsd_ci.vsh "$task" || status=$?
-          done
-          exit "$status"
+          # `all` runs every task, even after a failure, and lists the failed ones.
+          ./v run ci/freebsd_ci.vsh all
 
   clang-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: bootstrap
-            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
-          - suite: modules
-            tasks: check_math check_compress test_inline_assembly
-          - suite: essential
-            tasks: run_essential_tests
-          - suite: examples
-            tasks: build_examples
-    env:
-      V_CI_TASKS: ${{ matrix.tasks }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
@@ -122,7 +82,6 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
-          environment_variables: V_CI_TASKS
 
       - name: Tests on FreeBSD with clang
         id: tests-freebsd-clang
@@ -142,36 +101,20 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc clang'
           echo "::endgroup::"
-          status=0
-          for task in $V_CI_TASKS; do
-            ./v run ci/freebsd_ci.vsh "$task" || status=$?
-          done
-          exit "$status"
+          # `all` runs every task, even after a failure, and lists the failed ones.
+          ./v run ci/freebsd_ci.vsh all
 
   gcc-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: bootstrap
-            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
-          - suite: modules
-            tasks: check_math check_compress test_inline_assembly
-          - suite: essential
-            tasks: run_essential_tests
-          - suite: examples
-            tasks: build_examples
-    env:
-      V_CI_TASKS: ${{ matrix.tasks }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -187,7 +130,6 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
-          environment_variables: V_CI_TASKS
 
       - name: Tests on FreeBSD with gcc
         id: tests-freebsd-gcc
@@ -207,14 +149,12 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc gcc'
           echo "::endgroup::"
-          status=0
-          for task in $V_CI_TASKS; do
-            ./v run ci/freebsd_ci.vsh "$task" || status=$?
-          done
-          exit "$status"
+          # `all` runs every task, even after a failure, and lists the failed ones.
+          ./v run ci/freebsd_ci.vsh all

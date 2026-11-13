@@ -1027,7 +1027,10 @@ fn fastc_bool_types_equal(left []bool, right []bool) bool {
 struct FastcLocal {
 	is_mut       bool
 	is_reference bool
-	typ          u32
+	// A value local of an `@[heap]` struct uses pointer storage, but expressions
+	// and closure captures still have the struct's value type.
+	is_heap_value bool
+	typ           u32
 	// A smart-cast that narrows a local to a concrete variant may store the narrowed value
 	// in a uniquely named C temporary rather than shadowing the local's own C name, so a
 	// later `defer` body (rendered at function scope) still binds the original name. When set,
@@ -1306,6 +1309,10 @@ pub mut:
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
+	// solo_starts index the pieces between head_end and solo_end at which a
+	// group of complete definitions begins. Every unit declares them, so a
+	// build that shares one parse of the head may spread them over its units.
+	solo_starts []int
 }
 
 // c_source joins the generated C pieces into one string.
@@ -1438,6 +1445,7 @@ struct FastcDeclarationAttribute {
 	alignment      string
 	is_cinit       bool
 	is_packed      bool
+	is_heap        bool
 }
 
 struct FastcEnumInfo {
@@ -1480,6 +1488,12 @@ struct FastcTypeDeclarations {
 	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
 	// (see Parser.sum_type_variants).
 	sum_type_variants map[u64]bool
+	// Thread handle types embedded in struct fields. Their typedefs cannot come only
+	// from rendering `spawn` or `.wait()`: a self-host build skips the bodies of
+	// functions nothing calls, while every struct declaration is still emitted.
+	thread_types map[string]bool
+	// C names of structs declared `@[heap]`; their locals are heap-allocated.
+	heap_structs map[string]bool
 }
 
 struct FastcLoopBlockResult {
@@ -1573,7 +1587,11 @@ struct Parser {
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
 	// variant of a recursive sum type as one element (see sumtype_has_variant).
-	sum_type_variants   map[u64]bool
+	sum_type_variants map[u64]bool
+	// C names of structs declared `@[heap]`. Like the C backend, fastc allocates
+	// every local of such a struct on the heap, since `@[heap]` promises that
+	// stored addresses (`&local`, `mut local` arguments) outlive the frame.
+	heap_structs        map[string]bool
 	struct_fields       map[string]flat.TypeTextBindings
 	struct_field_info   map[string][]FastcStructField
 	struct_field_lookup map[string]map[string]&FastcStructField
@@ -1909,6 +1927,7 @@ struct FastcFileGenContext {
 	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
 	sum_type_variants         map[u64]bool
+	heap_structs              map[string]bool
 	struct_fields             map[string]flat.TypeTextBindings
 	struct_field_info         map[string][]FastcStructField
 	struct_field_lookup       map[string]map[string]&FastcStructField
@@ -2043,6 +2062,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fn_alias_return_types:         ctx.fn_alias_return_types
 		sum_types:                     ctx.sum_types
 		sum_type_variants:             ctx.sum_type_variants
+		heap_structs:                  ctx.heap_structs
 		struct_fields:                 ctx.struct_fields
 		struct_field_info:             ctx.struct_field_info
 		struct_field_lookup:           ctx.struct_field_lookup
@@ -2530,6 +2550,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fn_alias_return_types:     type_output.fn_alias_return_types
 		sum_types:                 type_output.sum_types
 		sum_type_variants:         type_output.sum_type_variants
+		heap_structs:              type_output.heap_structs
 		struct_fields:             struct_fields
 		struct_field_info:         struct_field_info
 		struct_field_lookup:       struct_field_lookup
@@ -2616,6 +2637,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			spawn_helpers[name] = text
 		}
 		c_flags << output.c_flags
+	}
+	for thread_type, _ in type_output.thread_types {
+		if thread_type !in spawn_typedefs {
+			spawn_typedefs[thread_type] = fastc_thread_typedef(thread_type)
+		}
 	}
 	for name, text in global_output.function_typedefs {
 		spawn_typedefs[name] = text
@@ -3086,16 +3112,27 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_definition_prototypes(interface_dispatches)
 	pieces << shared_conditional_includes
 	head_end := pieces.len
+	mut solo_starts := []int{cap: 64}
+	solo_starts << pieces.len
 	pieces << fastc_piece(runtime_definitions)
+	// Every kept helper range holds complete functions.
+	helpers_start := pieces.len
 	fastc_collect_c_piece_ranges(mut pieces, type_output.enum_helper_texts, kept_helper_ranges)
+	for k in helpers_start .. pieces.len {
+		solo_starts << k
+	}
 	if spawn_helpers.len > 0 {
 		for spawn_helper_name in spawn_helper_names {
+			solo_starts << pieces.len
 			pieces << spawn_helpers[spawn_helper_name]
 			pieces << '\n'
 			pieces << '\n'
 		}
 	}
+	solo_starts << pieces.len
 	pieces << fastc_piece(interface_dispatches)
+	// The initializer, the cleanup hook and the entry are one function each.
+	solo_starts << pieces.len
 	if startup_initializers.len > 0 {
 		pieces << 'void v_fastc_init_globals(void) {'
 		pieces << '\n'
@@ -3104,6 +3141,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 		pieces << '\n'
 	}
+	solo_starts << pieces.len
 	if module_cleanup_calls.len > 0 {
 		pieces << 'void v_fastc_cleanup_modules(void) {'
 		pieces << '\n'
@@ -3172,6 +3210,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	units.extern_indexes = extern_indexes
 	units.extern_texts = extern_texts
 	units.define_texts = define_texts
+	units.solo_starts = solo_starts
 	if prune_unreachable {
 		units.prototype_start = prototype_start
 		units.prototype_end = prototype_end
@@ -3791,6 +3830,54 @@ fn fastc_extern_declarations(text string, as_extern bool) string {
 	return out.str()
 }
 
+// fastc_c_conditional_directive reports whether the line is `#if`, `#ifdef`,
+// `#ifndef`, `#elif`, `#else` or `#endif`.
+fn fastc_c_conditional_directive(line string) bool {
+	if line.len < 3 || line[0] != `#` {
+		return false
+	}
+	directive := line[1..].trim_left(' \t')
+	return directive.starts_with('if') || directive.starts_with('el')
+		|| directive.starts_with('endif')
+}
+
+// fastc_external_definitions returns only the definitions that
+// fastc_extern_declarations makes external. A translation unit that already
+// holds the `extern` declarations of `text` defines them with this. The
+// conditional directives around them stay, so the same alternative is defined.
+fn fastc_external_definitions(text string) string {
+	if !fastc_contains(text, 'static ') {
+		return ''
+	}
+	mut out := strings.new_builder(text.len)
+	lines := text.split_into_lines()
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
+		if fastc_c_conditional_directive(line) {
+			out.writeln(line)
+			i++
+			continue
+		}
+		if line.starts_with('static ') && line.contains(') {') {
+			out.writeln(fastc_external_function_header(line, false))
+			mut depth := line.count('{') - line.count('}')
+			i++
+			for i < lines.len && depth > 0 {
+				out.writeln(lines[i])
+				depth += lines[i].count('{') - lines[i].count('}')
+				i++
+			}
+			continue
+		}
+		if line.starts_with('static ') && !fastc_contains(line, '(') && line.ends_with(';') {
+			out.writeln(line['static '.len..])
+		}
+		i++
+	}
+	return out.str()
+}
+
 // fastc_parallel_worker_limit is the number of worker threads or compiler
 // processes a parallel phase may run at once: the CPU count, overridden by
 // VJOBS, and 1 when parallelism is disabled.
@@ -4079,6 +4166,9 @@ mut:
 	read_fds  []int
 	write_fds []int
 	active    bool
+pub mut:
+	// zygote compiles the units of a build that does not use the processes above.
+	zygote FastcZygote
 }
 
 // FastcFeedingCUnits holds the workers that copy rendered translation units

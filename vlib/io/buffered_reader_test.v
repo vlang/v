@@ -267,6 +267,25 @@ fn test_read_line_handles_eof_with_unread_data() {
 	br.read_line() or { assert err is Eof }
 }
 
+fn test_read_line_respects_max_len() {
+	mut within := new_one_byte_buffered_reader('1234\r\n'.bytes(), 8)
+	assert within.read_line(max_len: 4)! == '1234'
+
+	mut over := new_one_byte_buffered_reader('12345\n'.bytes(), 8)
+	if _ := over.read_line(max_len: 4) {
+		assert false, 'read_line accepted a line above max_len'
+	} else {
+		assert err is ReadLineLimitError
+	}
+
+	mut eof := new_one_byte_buffered_reader('12345'.bytes(), 8)
+	if _ := eof.read_line(max_len: 4) {
+		assert false, 'read_line accepted an unterminated line above max_len'
+	} else {
+		assert err is ReadLineLimitError
+	}
+}
+
 // https://github.com/vlang/v/pull/27928#issuecomment-5079703057
 struct EofAfterDataReader {
 	data []u8

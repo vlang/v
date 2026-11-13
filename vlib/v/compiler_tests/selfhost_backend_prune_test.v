@@ -33,9 +33,9 @@ const optional_backends = [
 		symbol: 'arm64__Gen__gen('
 	},
 	OptionalBackend{
-		name:   'x64'
-		dir:    'gen/x64'
-		symbol: 'x64__Gen__gen('
+		name:   'amd64'
+		dir:    'gen/amd64'
+		symbol: 'amd64__Gen__gen('
 	},
 	OptionalBackend{
 		name:   'ssa'

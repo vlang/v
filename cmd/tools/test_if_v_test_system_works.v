@@ -159,8 +159,13 @@ fn main() {
 	os.unsetenv('VTEST_RESUME_OWNER')
 	unbuffer_stdout()
 	spawn fn () {
-		// V3's cold module cache and clang builds can make this matrix take several minutes.
-		time.sleep(10 * time.minute)
+		// Ubuntu/musl compiles the cold vtest tool with musl-gcc rather than TCC.
+		// Keep its slow first compilation from triggering the generic 10-minute guard.
+		mut watchdog := 10 * time.minute
+		if os.getenv('V_CI_UBUNTU_MUSL') == '1' {
+			watchdog = 30 * time.minute
+		}
+		time.sleep(watchdog)
 		eprintln('>>> exiting due to an expired watchdog timer <<<')
 		exit(1)
 	}()

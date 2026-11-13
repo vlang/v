@@ -14,9 +14,9 @@ const tanh_q = [
 // tanh returns the hyperbolic tangent of x.
 //
 // special cases are:
-// tanh(±0) = ±0
-// tanh(±inf) = ±1
-// tanh(nan) = nan
+// - `tanh(±0) = ±0`
+// - `tanh(±inf) = ±1`
+// - `tanh(nan) = nan`
 pub fn tanh(x f64) f64 {
 	maxlog := 8.8029691931113054295988e+01 // log(2**127)
 	mut z := abs(x)

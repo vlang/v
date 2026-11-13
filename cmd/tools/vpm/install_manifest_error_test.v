@@ -1,4 +1,5 @@
 import os
+import test_utils
 
 fn test_install_reports_a_broken_project_v_mod_instead_of_panicking() {
 	dir := os.join_path(os.vtmp_dir(), 'vpm_install_manifest_error_${os.getpid()}')
@@ -12,6 +13,7 @@ fn test_install_reports_a_broken_project_v_mod_instead_of_panicking() {
 		os.chdir(origin) or {}
 	}
 	os.write_file('v.mod', "Module { name: 'x' dependencies: [broken }")!
+	test_utils.set_test_env(os.join_path(dir, 'modules'))
 
 	res := os.exec([@VEXE, 'install'])
 	assert res.exit_code != 0, res.output

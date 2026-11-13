@@ -6845,7 +6845,9 @@ fn (t &Transformer) is_enum_stringify_type(typ_id u32) bool {
 		clean_typ = flat.source_type_syntax(clean_typ).raw_base()
 	}
 	if clean_typ in t.enum_types {
-		return true
+		// Imported enums are also indexed by their short name, which a struct
+		// declared in the current module shadows.
+		return !t.bare_struct_name_is_local_to_current_module(clean_typ)
 	}
 	mut qtyp := clean_typ
 	if !flat.source_type_shape(qtyp).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -7312,7 +7314,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				&& t.cur_module != 'builtin' {
 				qenum = flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ)
 			}
-			if qenum in t.enum_types {
+			// A bare name was already checked above, where a local struct shadows an
+			// imported enum that the transformer also indexes by its short name.
+			if qenum != clean_typ && qenum in t.enum_types {
 				if method := t.enum_str_method_name(qenum) {
 					return t.make_call_typed(method, [expr], flat.source_type_string)
 				}
@@ -8596,7 +8600,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 		if raw_field_type == flat.source_type_string || raw_field_type == transform_identity_builtin_string {
 			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str), t.make_string_literal("'"))
 		}
-		if t.struct_str_field_needs_indent(raw_field_type) {
+		if t.struct_str_field_needs_indent(raw_field_type, info.module) {
 			t.mark_fn_used_name('string.replace')
 			t.mark_fn_used_name('string__replace')
 			field_str = t.make_call_typed('string.replace', [field_str, t.make_string_literal('\n'),
@@ -8866,7 +8870,7 @@ fn (mut t Transformer) lower_charptr_struct_field_str(expr flat.NodeId) flat.Nod
 // text must be re-indented one level deeper, matching V's indent_count handling. Values that
 // are always single-line (primitives, plain strings, enums, custom str() output) keep their
 // text untouched — V does not re-indent multi-line string content or custom str() results.
-fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32) bool {
+fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32, decl_module string) bool {
 	mut clean_id := t.trimmed_type_id(field_type_id)
 	for flat.source_type_shape(clean_id).has(.pointer) || flat.source_type_shape(clean_id).has(.option_type) || flat.source_type_shape(clean_id).has(.result_type) {
 		clean_id = t.trimmed_type_id(flat.source_type_syntax(clean_id).raw_base())
@@ -8886,15 +8890,24 @@ fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32) bool {
 		return false
 	}
 	resolved_source_id := t.alias_str_resolved_base_type(clean_id)
-	if !t.alias_str_needs_name_wrapper(resolved_source_id) {
+	// `field_type_id` is spelled in the struct's declaring module. Imported enums are
+	// also indexed by their short name, so resolve a bare spelling there first.
+	is_bare := !flat.source_type_shape(resolved_source_id).has(.dotted)
+	if is_bare && decl_module.len > 0 && decl_module !in ['main', 'builtin']
+		&& flat.source_type_composition_two(.qualified, flat.source_type_id(decl_module), resolved_source_id) in t.enum_types {
 		return false
 	}
-	if resolved_source_id in t.enum_types {
-		return false
-	}
-	if !flat.source_type_shape(resolved_source_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' && flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_source_id) in t.enum_types {
-		return false
+	if !(is_bare && t.bare_struct_name_is_local_to_module(resolved_source_id, decl_module)) {
+		if !t.alias_str_needs_name_wrapper(resolved_source_id) {
+			return false
+		}
+		if resolved_source_id in t.enum_types {
+			return false
+		}
+		if is_bare && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_source_id) in t.enum_types {
+			return false
+		}
 	}
 	if aggregate_source_id := t.stringify_aggregate_type_name(resolved_source_id) {
 		aggregate := flat.source_type_name(aggregate_source_id)
@@ -13001,6 +13014,30 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		'join' {
 			if node.children_count < 2 {
 				return none
+			}
+			if t.validating_generic_spec {
+				// The generic body was checked before `T` was known, so the receiver
+				// may be an alias declaring its own `join`, or an array of non-strings.
+				method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
+					clean_base_type)
+				if method_name.len > 0 && method_name != array_builtin_method
+					&& method_name != 'Array_string__join'
+					&& !t.receiver_method_name_is_open_generic(method_name) {
+					args := t.transform_receiver_method_args(node, base_id, method_name)
+					ret_type_source_id_join := t.receiver_method_return_type(method_name, node.typ)
+
+					t.mark_fn_used(method_name)
+					return t.make_call_typed(method_name, args, ret_type_source_id_join)
+				}
+				if t.normalize_type_alias(elem_type_id) != flat.source_type_string {
+					base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+						base_node.value
+					} else {
+						flat.source_type_name(clean_base_type)
+					}
+					t.record_monomorph_error('unknown function `${base_name}.join`')
+					return t.make_empty()
+				}
 			}
 			receiver := t.transform_expr(base_id)
 			arg := t.transform_expr(t.a.children[node.children_start + 1])
@@ -19934,6 +19971,59 @@ fn (mut t Transformer) lower_string_count_call(node flat.Node, fn_node flat.Node
 	return t.make_ident(result_name)
 }
 
+// lower_normalized_string_literal_compare lowers `s.trim_space() == 'lit'` and
+// `s.to_lower_ascii() == 'lit'` (either operand order, `==` or `!=`) to builtin helpers that
+// compare in place instead of allocating the normalized string. The other operand must be a
+// literal, so evaluating the receiver after it cannot change the result.
+fn (mut t Transformer) lower_normalized_string_literal_compare(node flat.Node) ?flat.NodeId {
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_kind := t.a.nodes[int(lhs_id)].kind
+	rhs_kind := t.a.nodes[int(rhs_id)].kind
+	call_id, lit_id := if lhs_kind == .call && rhs_kind == .string_literal {
+		lhs_id, rhs_id
+	} else if lhs_kind == .string_literal && rhs_kind == .call {
+		rhs_id, lhs_id
+	} else {
+		return none
+	}
+	call := t.a.nodes[int(call_id)]
+	if call.children_count != 1 || isnil(t.tc) || t.tc.autofree_enabled()
+		|| t.node_type(lit_id) != flat.source_type_string {
+		return none
+	}
+	selector := t.a.child_node(&call, 0)
+	if selector.kind != .selector || selector.children_count != 1 {
+		return none
+	}
+	helper := match selector.value {
+		'trim_space' { 'string.trim_space_eq' }
+		'to_lower_ascii' { 'string.to_lower_ascii_eq' }
+		else { return none }
+	}
+	str_id := t.a.child(selector, 0)
+	method := 'string.${selector.value}'
+	if t.node_type(str_id) != flat.source_type_string
+		|| t.resolve_receiver_method_name(str_id, selector.value) != method
+		|| !t.call_resolved_to_method(call_id, method) {
+		return none
+	}
+	// A fresh receiver would need an ownership drop; keep the ordinary path for it.
+	if !t.expr_can_take_address(str_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	t.mark_fn_used(helper)
+	cmp := t.make_call_typed(helper, [t.transform_expr(str_id), t.transform_expr(lit_id)],
+		flat.source_type_bool)
+	if node.op == .eq {
+		return cmp
+	}
+	negated := t.make_prefix(.not, cmp)
+	t.set_node_typ(int(negated), flat.source_type_bool)
+	return negated
+}
+
 // expr_uses_ident supports expr uses ident handling for Transformer.
 fn (t &Transformer) expr_uses_ident(id flat.NodeId, name string) bool {
 	if int(id) < 0 {
@@ -20300,6 +20390,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, nod
 	return result_source_id
 }
 
+@[direct_array_access]
 fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.NodeId, node flat.Node) ?u32 {
 	if isnil(t.tc) {
 		return none
@@ -20308,6 +20399,134 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if is_builtin_collection_resolved_call(name) {
 		return none
 	}
+	keyed := t.resolved_call_declared_return_slot(name, node)
+	if keyed < 0 {
+		if result := t.resolved_call_declared_return_type(name, node) {
+			return result
+		}
+		return t.resolved_call_checked_return_type(id, node)
+	}
+	slot := keyed & 1023
+	form := u8(keyed >> 16)
+	mut cache := t.resolved_call_decl_cache
+	if cache.ret_states[slot] != 0 && cache.ret_forms[slot] == form
+		&& same_transform_text(cache.ret_names[slot], name) {
+		if cache.ret_states[slot] > 0 {
+			return cache.ret_results[slot]
+		}
+		return t.resolved_call_checked_return_type(id, node)
+	}
+	generation := cache.ret_generation
+	if result := t.resolved_call_declared_return_type(name, node) {
+		// Resolution can register a signature or a type; an answer computed across
+		// such a change is not published.
+		if cache.ret_generation == generation && t.resolved_call_return_tables_unchanged(cache) {
+			cache.ret_names[slot] = name
+			cache.ret_forms[slot] = form
+			cache.ret_results[slot] = result
+			cache.ret_states[slot] = 1
+		}
+		return result
+	}
+	if cache.ret_generation == generation && t.resolved_call_return_tables_unchanged(cache) {
+		cache.ret_names[slot] = name
+		cache.ret_forms[slot] = form
+		cache.ret_states[slot] = -1
+	}
+	return t.resolved_call_checked_return_type(id, node)
+}
+
+// resolved_call_return_tables_unchanged reports whether the file, module and
+// signature and type tables still are the ones the cached declared return types
+// were computed against.
+@[inline]
+fn (t &Transformer) resolved_call_return_tables_unchanged(cache &ResolvedCallDeclCache) bool {
+	return cache.ret_tc == voidptr(t.tc) && cache.ret_revision == t.tc.fn_ret_types_revision
+		&& cache.ret_tc_rets == t.tc.fn_ret_types.len
+		&& cache.ret_tc_modules == t.tc.fn_type_modules.len
+		&& cache.ret_tc_generics == t.tc.fn_generic_params.len
+		&& cache.ret_tc_texts == t.tc.fn_ret_type_texts.ids.len
+		&& cache.ret_tc_v_names == t.tc.v_fn_semantic_names.len
+		&& cache.ret_fn_count == t.fn_ret_types.ids.len
+		&& cache.ret_by_module == t.fn_ret_types_by_module.ids.len
+		&& cache.ret_type_tables == t.tc.structs.len + t.tc.type_aliases.ids.len +
+			t.tc.sum_types.ids.len + t.tc.interface_names.len + t.tc.enum_names.len
+		&& cache.ret_memo_names == t.memo_semantic_type_names
+		&& same_transform_text(cache.ret_module, t.cur_module)
+		&& same_transform_text(cache.ret_file, t.cur_file)
+}
+
+// resolved_call_declared_return_slot returns the cache slot (with the callee
+// form in bits 16 and up) of a call whose declared return type depends only on
+// its resolved name, or -1. That holds for a call without type arguments whose
+// callee is not a local binding: resolved_call_declared_return_type then reads the
+// node only to tell whether the callee is an identifier spelled like the resolved
+// name (form 1), like its last component (form 2), or no identifier (form 0).
+// Everything else it reads is the current file and module and the signature and
+// type tables, which the cache records and compares on every use.
+@[direct_array_access]
+fn (t &Transformer) resolved_call_declared_return_slot(name string, node flat.Node) int {
+	if isnil(t.resolved_call_decl_cache) || name.len == 0 || node.value.len != 0
+		|| node.children_count == 0 || node.call_type_args().len != 0 || name.starts_with('C.') {
+		return -1
+	}
+	fn_node := t.a.child_node(&node, 0)
+	mut form := 0
+	if fn_node.kind == .ident {
+		if t.var_type(fn_node.value) != 0 {
+			return -1
+		}
+		if fn_node.value == name {
+			form = 1
+		} else if fn_node.value == short_name_view(name) {
+			form = 2
+		} else {
+			return -1
+		}
+	} else if fn_node.kind == .index {
+		return -1
+	}
+	mut cache := t.resolved_call_decl_cache
+	if !t.resolved_call_return_tables_unchanged(cache) {
+		cache.ret_tc = voidptr(t.tc)
+		cache.ret_revision = t.tc.fn_ret_types_revision
+		cache.ret_tc_rets = t.tc.fn_ret_types.len
+		cache.ret_tc_modules = t.tc.fn_type_modules.len
+		cache.ret_tc_generics = t.tc.fn_generic_params.len
+		cache.ret_tc_texts = t.tc.fn_ret_type_texts.ids.len
+		cache.ret_tc_v_names = t.tc.v_fn_semantic_names.len
+		cache.ret_fn_count = t.fn_ret_types.ids.len
+		cache.ret_by_module = t.fn_ret_types_by_module.ids.len
+		cache.ret_type_tables = t.tc.structs.len + t.tc.type_aliases.ids.len +
+			t.tc.sum_types.ids.len + t.tc.interface_names.len + t.tc.enum_names.len
+		cache.ret_memo_names = t.memo_semantic_type_names
+		cache.ret_module = t.cur_module
+		cache.ret_file = t.cur_file
+		cache.ret_states = [1024]i8{}
+		cache.ret_generation++
+	}
+	return ((resolved_name_cache_slot(name, 1023) + form * 341) & 1023) | (form << 16)
+}
+
+// resolved_call_checked_return_type is the return type the checker recorded for
+// the call expression itself, used when its declaration names no usable one.
+fn (t &Transformer) resolved_call_checked_return_type(id flat.NodeId, node flat.Node) ?u32 {
+	if typ := t.tc.expr_type(id) {
+		if typ !is types.Unknown && typ !is types.Void {
+			candidate_source_id_7 := t.call_return_type_name(t.semantic_type_name(typ), node)
+			candidate_source_id_14 := candidate_source_id_7
+
+			if decl_type_is_usable(candidate_source_id_14) {
+				return candidate_source_id_7
+			}
+		}
+	}
+	return none
+}
+
+// resolved_call_declared_return_type derives the return type of a resolved call
+// from the declaration of `name`, as the caller's module spells it.
+fn (t &Transformer) resolved_call_declared_return_type(name string, node flat.Node) ?u32 {
 	if name.starts_with('C.') {
 		if module_name := t.tc.visible_c_fn_module(name) {
 			if ret := t.tc.c_fn_module_ret_types['${module_name}\x01${name}'] {
@@ -20396,16 +20615,6 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 
 			if decl_type_is_usable(candidate_source_id_13) || candidate_source_id_6 == flat.source_type_void {
 				return candidate_source_id_6
-			}
-		}
-	}
-	if typ := t.tc.expr_type(id) {
-		if typ !is types.Unknown && typ !is types.Void {
-			candidate_source_id_7 := t.call_return_type_name(t.semantic_type_name(typ), node)
-			candidate_source_id_14 := candidate_source_id_7
-
-			if decl_type_is_usable(candidate_source_id_14) {
-				return candidate_source_id_7
 			}
 		}
 	}

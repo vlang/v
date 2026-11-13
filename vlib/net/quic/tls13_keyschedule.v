@@ -19,8 +19,10 @@ pub fn empty_transcript_hash() []u8 {
 // derive_secret implements RFC 8446 §7.1's Derive-Secret(Secret, Label,
 // Messages):
 //
-//	Derive-Secret(Secret, Label, Messages) =
-//	    HKDF-Expand-Label(Secret, Label, Transcript-Hash(Messages), Hash.length)
+// ```
+// Derive-Secret(Secret, Label, Messages) =
+//     HKDF-Expand-Label(Secret, Label, Transcript-Hash(Messages), Hash.length)
+// ```
 //
 // The caller supplies the already-computed Transcript-Hash(Messages)
 // directly. Accumulating raw handshake message bytes into a running hash —
@@ -111,11 +113,13 @@ pub fn derive_application_secrets(handshake_secret []u8, transcript_hash_ch_sfin
 // itself twice over (once standalone in an earlier transcript, once as a
 // prefix of a later one):
 //
-//	Transcript-Hash(ClientHello1, HelloRetryRequest, ... Mn) =
-//	   Hash(message_hash ||        /* Handshake type */
-//	        00 00 Hash.length ||   /* Handshake message length (bytes) */
-//	        Hash(ClientHello1)  ||
-//	        HelloRetryRequest || ... || Mn)
+// ```
+// Transcript-Hash(ClientHello1, HelloRetryRequest, ... Mn) =
+//    Hash(message_hash ||        /* Handshake type */
+//         00 00 Hash.length ||   /* Handshake message length (bytes) */
+//         Hash(ClientHello1)  ||
+//         HelloRetryRequest || ... || Mn)
+// ```
 //
 // This function returns that synthetic record's bytes (NOT yet hashed).
 // The caller — Phase 2c's transcript accumulator, once a HelloRetryRequest

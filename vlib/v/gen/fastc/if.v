@@ -119,9 +119,9 @@ fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool
 	mut tok := first_tok
 	mut depth := 0
 	for tok != .eof {
-		if tok == .lcbr {
+		if tok in [.lcbr, .lpar, .lsbr] {
 			depth++
-		} else if tok == .rcbr {
+		} else if tok in [.rcbr, .rpar, .rsbr] {
 			if depth == 0 {
 				return false
 			}
@@ -1139,6 +1139,76 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	return then_terminates && else_terminates
 }
 
+// wrapper_starts_final_block_expression recognizes a final `unsafe` block or
+// compile-time if chain. Their selected body's value belongs to the enclosing
+// expression, while statements nested inside that body keep their own scopes.
+fn (g &Parser) wrapper_starts_final_block_expression() bool {
+	if g.tok != .key_unsafe && !(g.tok == .dollar && g.dollar_keyword_is('if')) {
+		return false
+	}
+	mut probe := scanner.new_scanner(g.prefs, .skip_interpolation)
+	probe.init(g.s.current_file(), g.s.src)
+	probe.offset = g.s.offset
+	mut tok := probe.scan()
+	if g.tok == .dollar {
+		if tok != .key_if {
+			return false
+		}
+		tok = probe.scan()
+	} else if tok != .lcbr {
+		return false
+	}
+	for {
+		for tok != .lcbr && tok != .eof {
+			if tok in [.lpar, .lsbr] {
+				tok = fastc_skip_balanced_tokens(mut probe, tok, tok, if tok == .lpar {
+					.rpar
+				} else {
+					.rsbr
+				}) or { return false }
+			} else {
+				tok = probe.scan()
+			}
+		}
+		if tok != .lcbr {
+			return false
+		}
+		tok = fastc_skip_balanced_tokens(mut probe, tok, .lcbr, .rcbr) or { return false }
+		for tok == .semicolon {
+			tok = probe.scan()
+		}
+		if g.tok == .key_unsafe || tok != .dollar {
+			return tok == .rcbr
+		}
+		if probe.scan() != .key_else {
+			return false
+		}
+		tok = probe.scan()
+		if tok == .dollar {
+			if probe.scan() != .key_if {
+				return false
+			}
+			tok = probe.scan()
+		} else if tok != .lcbr {
+			return false
+		}
+	}
+	return false
+}
+
+// read_final_block_wrapper_value keeps a terminating unsafe block's zero type;
+// re-inferring its opaque C atom would mistake its unreachable `0` for a value.
+fn (mut g Parser) read_final_block_wrapper_value() !string {
+	if g.tok == .key_unsafe {
+		atom := g.read_unsafe_block_expression_atom()!
+		g.last_expression_type = atom.typ
+		g.last_option_value_type = atom.option_value_type
+		g.last_expression = [atom]
+		return atom.lit
+	}
+	return g.read_comptime_if_expression()!
+}
+
 fn (g &Parser) if_starts_final_block_expression() bool {
 	// Interpolation braces belong to the string, not the condition's branch block.
 	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)
@@ -1694,8 +1764,26 @@ fn (g &Parser) match_starts_final_block_expression() bool {
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
 	mut tok := lookahead.scan()
-	// Skip the match subject up to the opening `{` of the match body.
-	for tok !in [.lcbr, .eof] {
+	// Skip the match subject up to the opening `{` of the match body. A `{` inside
+	// the subject's parentheses or brackets, or after `unsafe`, opens a block of the
+	// subject itself (`match f(unsafe { &T(x) }) {`).
+	mut depth := 0
+	mut after_unsafe := false
+	for tok != .eof {
+		if tok == .lcbr {
+			if depth == 0 && !after_unsafe {
+				break
+			}
+			tok = fastc_skip_balanced_tokens(mut lookahead, tok, .lcbr, .rcbr) or { return false }
+			after_unsafe = false
+			continue
+		}
+		if tok in [.lpar, .lsbr] {
+			depth++
+		} else if tok in [.rpar, .rsbr] {
+			depth--
+		}
+		after_unsafe = tok == .key_unsafe
 		tok = lookahead.scan()
 	}
 	if tok != .lcbr {
@@ -1774,7 +1862,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 		}
 	}
 	g.expected_expression_type = branch_expected_type_source_id
-	then_expr := if g.tok == .key_return {
+	mut then_expr := if g.tok == .key_return {
 		g.read_return_expression_branch()!
 	} else {
 		g.read_block_expression_value()!
@@ -1818,11 +1906,20 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	} else {
 		flat.source_type_int
 	}
+	result_c_type := fastc_output_c_type(flat.source_type_name(result_type))
+	// A returning branch can carry an enclosing `or` block's unreachable payload.
+	// Discard that value and use this conditional's result type for the assignment.
+	if then_type_source_id == u32(0) {
+		then_expr = '({ (void)(${then_expr}); (${result_c_type}){0}; })'
+	}
+	if else_type_source_id == u32(0) {
+		else_expr = '({ (void)(${else_expr}); (${result_c_type}){0}; })'
+	}
 	g.last_expression_type = result_type
 	g.expected_expression_type = outer_expected_type_source_id
 	g.last_expression = []FastcExpressionToken{}
 	result_var := g.temporary_name('if_result')
-	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${fastc_output_c_type(flat.source_type_name(result_type))} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
+	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${result_c_type} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
 }
 
 // fastc_plan_is_bare_local reports whether a member-smart-cast plan narrows a bare local
@@ -2376,6 +2473,16 @@ fn (g &Parser) option_branch_expression(wrapper_source_id u32, value_type_source
 
 fn (mut g Parser) read_return_expression_branch() !string {
 	g.expect(.key_return)!
+	// A final conditional in an `or` block can return from both arms. Its
+	// unreachable value still has to match the fallback's C payload type.
+	unreachable_value := if g.or_value_capture && g.or_value_expected_type !in [
+		u32(0),
+		flat.source_type_void,
+	] {
+		'(${fastc_output_c_type(flat.source_type_name(g.or_value_expected_type))}){0}'
+	} else {
+		'0'
+	}
 	if fastc_trim_pointer_type(g.return_type) == fastc_type_multi_return {
 		mut values := []string{}
 		for {
@@ -2390,7 +2497,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		g.consume_statement_end()
 		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
-		return '({ return ${fastc_multi_return_literal(values)}; 0; })'
+		return '({ return ${fastc_multi_return_literal(values)}; ${unreachable_value}; })'
 	}
 	previous_expected := g.expected_expression_type
 	g.expected_expression_type = if g.return_type in [fastc_type_option, fastc_type_result] {
@@ -2420,7 +2527,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		return_value = g.option_success_expression(g.return_type, value_base, value)
 	}
 	g.last_expression_type = u32(0)
-	return '({ return ${return_value}; 0; })'
+	return '({ return ${return_value}; ${unreachable_value}; })'
 }
 
 fn (g &Parser) expected_enum_shorthand_expression() ?string {

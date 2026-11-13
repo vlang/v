@@ -5,16 +5,10 @@ name: Docs CI
 ### early warning, if they break it.
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.yml'
-      - '!**/docs_ci.yml'
-      - 'cmd/tools/vrepl.v'
+  workflow_call:
 
 concurrency:
-  group: docs-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: docs-docs_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -32,7 +26,9 @@ jobs:
         with:
           profile: docs
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)
         run: ./v retry -- sudo apt install --quiet -y libx11-dev libpq-dev libssl-dev sqlite3 libsqlite3-dev
       - name: Check markdown line length & code examples
@@ -50,7 +46,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
 
       - name: Checkout commit before this push
         uses: actions/checkout@v7
@@ -74,7 +72,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check doc comment dots for some key modules
         run: |
           ./v run cmd/tools/find_doc_comments_with_no_dots.v \
@@ -92,6 +92,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check examples in the doc comments for all vlib modules
         run: VJOBS=1 ./v doc -check-examples -f none vlib/

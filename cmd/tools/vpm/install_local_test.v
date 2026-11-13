@@ -767,7 +767,11 @@ fn test_a_reused_path_does_not_inherit_a_local_install() {
 	assert is_recorded_local_install(installed)
 
 	// The install is gone, and the project writes its own module at that path.
-	os.rmdir_all(installed) or { panic(err) }
+	// Git maintenance can remove a lock file between rmdir_all's listing and unlink.
+	// That ENOENT is harmless only if the entire old checkout was removed.
+	os.rmdir_all(installed) or {
+		assert os.is_not_exist(err) && !os.exists(installed), err.msg()
+	}
 	os.mkdir_all(installed) or { panic(err) }
 	os.write_file(os.join_path(installed, 'reused_pkg.v'), 'module reused_pkg\n') or { panic(err) }
 	assert !is_recorded_local_install(installed)

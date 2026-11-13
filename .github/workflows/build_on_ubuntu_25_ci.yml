@@ -2,18 +2,10 @@ name: CI Ubuntu 25 GCC 14.2
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/build_on_ubuntu_25_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: ubuntu-25-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: ubuntu-25-build_on_ubuntu_25_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -48,7 +40,7 @@ jobs:
             ls -la
             # The minimal image has no CA bundle until ca-certificates is installed.
             # Use the runner trust store to bootstrap HTTPS package downloads.
-            sed -i "s|http://|https://|g" /etc/apt/sources.list.d/ubuntu.sources
+            bash .github/workflows/disable_azure_mirror.sh
             apt_options=(-o Acquire::https::CaInfo=/tmp/runner-ca-certificates.crt -o Acquire::Retries=3 -o Acquire::https::Timeout=30)
             apt-get "${apt_options[@]}" update --error-on=any
             apt-get "${apt_options[@]}" install -y --no-install-recommends ca-certificates git build-essential
@@ -56,6 +48,7 @@ jobs:
             git config --global --add safe.directory "$PWD/vc"
             git config --global --add safe.directory "$PWD/thirdparty/tcc"
             make
+            VFLAGS= ./v self -prod -cc gcc -parallel-cc
             ./v symlink
             v run examples/hello_world.v
             v run examples/primes.v

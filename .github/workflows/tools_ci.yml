@@ -1,19 +1,10 @@
 name: Tools CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'cmd/**'
-      - '!cmd/tools/vpm/**'
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - '!**.md'
-      - '**/tools_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: tools-tools_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -33,9 +24,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Check apt mirror setup and prerequisite failures
+        run: bash .github/workflows/disable_azure_mirror_test.sh
       - name: Build V for the shell regression tests
         id: build
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check BSD tool job failure propagation
         run: ./v -new-compiler cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
@@ -69,7 +64,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Code in cmd/ is formatted
         if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v fmt -verify cmd/
@@ -108,7 +105,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Test tools with undefined behavior sanitizer
         if: matrix.variant.sanitizer == 'undefined'
         run: ./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd
@@ -117,7 +116,9 @@ jobs:
         run: ./v -silent -gc none -cc clang -cflags -fsanitize=memory test-self -msan-compiler cmd
       - name: Test tools with thread sanitizer
         if: matrix.variant.sanitizer == 'thread'
-        run: ./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd
+        # TSan needs allocator-visible lifetimes; Boehm also stalls waiting for
+        # stop-the-world signal acknowledgements in the multithreaded tool tests.
+        run: ./v -silent -gc none -cc gcc -cflags -fsanitize=thread test-self cmd
       - name: Test tools with address sanitizer
         if: matrix.variant.sanitizer == 'address'
         run: ./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools
@@ -128,6 +129,8 @@ jobs:
     strategy:
       matrix:
         cc: [clang]
+        suite: [default, strict]
+        shard: [0, 1]
       fail-fast: false
     env:
       # Stop a failing test session at its first failure instead of
@@ -135,17 +138,24 @@ jobs:
       # add no signal.
       VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '2'
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Check build-tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-windows:
@@ -180,7 +190,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Install OpenSSL for MSVC
         if: ${{ matrix.cc == 'msvc' }}
         run: |
@@ -241,7 +253,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -cg -o v cmd/v && ./v symlink
+        run: |
+          set -eu
+          make
+          VFLAGS= ./v self -prod -cc musl-gcc -gc none -cg -parallel-cc
+          ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works
@@ -324,7 +340,8 @@ jobs:
           printf "VFLAGS = %s\n" "$VFLAGS"
           # Non-final commands in an && list are exempt from set -e.
           gmake
-          ./v -showcc -o v cmd/v
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
           sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
@@ -354,8 +371,9 @@ jobs:
 
   tools-openbsd:
     runs-on: ubuntu-latest
-    # VM bootstrap takes up to ten minutes before any tool tests can start.
-    timeout-minutes: 25
+    # VM/bootstrap and initial checks take about 8.5 minutes. The 57-file Clang
+    # shard was still progressing at 25 minutes; leave time for its final tests.
+    timeout-minutes: 35
     strategy:
       matrix:
         suite: [default, strict]
@@ -407,7 +425,8 @@ jobs:
           ulimit -d 6291456
           # Non-final commands in an && list are exempt from set -e.
           gmake
-          ./v -showcc -o v cmd/v
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
           sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"

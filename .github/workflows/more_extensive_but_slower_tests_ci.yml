@@ -1,18 +1,10 @@
 name: More extensive but slower tests
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/more_extensive_but_slower_tests_ci.yml'
-      - 'examples/**'
-      - 'cmd/tools/**'
+  workflow_call:
 
 concurrency:
-  group: slower_tests-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: slower_tests-more_extensive_but_slower_tests_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -37,10 +29,10 @@ jobs:
 
       - name: Build V
         if: runner.os != 'Windows'
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./makev.bat && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Run additional crypto tests
         run: |

@@ -256,3 +256,78 @@ int main() {
 		assert run.exit_code == 0, run.output
 	}
 }
+
+fn test_cpp_atomic_storage_and_pthread_c_linkage() {
+	cpp := cpp_test_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'cpp_pthread_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.cpp')
+	header := os.join_path(@VEXEROOT, 'vlib', 'v', 'pthread_helper.h').replace('\\', '/')
+	mut g := cpp_test_gen()
+	g.gnu_objc_compatible_stdatomic_header()
+	os.write_file(source, '#include <stdint.h>
+${g.sb.str()}
+#include "${header}"
+extern "C" {
+pthread_t v3_pthread_zero(void);
+int v3_pthread_create(pthread_t*, size_t, void* (*)(void*), void*);
+int v3_pthread_is_current(pthread_t);
+}
+struct ChannelStorage { atomic_uintptr_t adr; };
+static_assert(sizeof(atomic_uintptr_t) == sizeof(uintptr_t), "pointer storage ABI");
+int main() {
+ ChannelStorage channel = {};
+ __atomic_store_n(&channel.adr, uintptr_t(42), __ATOMIC_SEQ_CST);
+ if (__atomic_load_n(&channel.adr, __ATOMIC_SEQ_CST) != 42) return 1;
+ return v3_pthread_is_current(pthread_self()) ? 0 : 1;
+}
+')!
+	for standard in cpp_test_standards() {
+		binary := os.join_path(root, 'program')
+		built := cmdexec.run(cpp, ['-std=${standard}', source, '-pthread', '-o', binary])
+		assert built.exit_code == 0, built.output
+		ran := cmdexec.run(binary, [])
+		assert ran.exit_code == 0, ran.output
+	}
+}
+
+fn test_cpp_headerless_native_cache_libc_linkage() {
+	$if windows {
+		return
+	}
+	cpp := cpp_test_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'cpp_native_cache_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut g := cpp_test_gen()
+	g.compiler_vroot = @VEXEROOT
+	g.core_header_directives << DeferredCoreHeader{
+		source_file: os.join_path(@VEXEROOT, 'vlib/v/driver/native_object_cache.c.v')
+		directive:   CDirective{ module: 'driver', text: '#include "' + @VEXEROOT + '/vlib/v/driver/native_object_cache.h"' }
+	}
+	g.headerless_native_object_cache_helper()
+	source := os.join_path(root, 'main.cpp')
+	os.write_file(source, '#include <errno.h>
+${g.sb.str()}
+// Match the later gettid compatibility declaration in a compiler translation unit.
+#ifdef __linux__
+extern "C" { long syscall(long, ...); }
+#endif
+int main(int argc, char** argv) {
+ if (argc != 3) return 1;
+ if (v_native_object_cache_publish(argv[1], argv[2]) != ENOENT) return 2;
+#ifdef __linux__
+ if (v_native_object_cache_rename_noreplace(argv[1], argv[2]) != ENOENT) return 3;
+#endif
+ return 0;
+}
+')!
+	for standard in cpp_test_standards() {
+		binary := os.join_path(root, 'program')
+		built := cmdexec.run(cpp, ['-std=${standard}', source, '-o', binary])
+		assert built.exit_code == 0, built.output
+		ran := cmdexec.run(binary, [os.join_path(root, 'missing'), os.join_path(root, 'destination')])
+		assert ran.exit_code == 0, ran.output
+	}
+}

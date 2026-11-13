@@ -352,9 +352,21 @@ fn (g &Parser) fixed_array_uses_raw_storage(tokens []FastcExpressionToken) bool 
 			} else if tokens[i].tok == .lsbr {
 				depth--
 				if depth == 0 {
+					if i <= 0 {
+						return false
+					}
+					// An element of a dynamic array or of a map (`s.rows[i]` in `rows [][4]u32`)
+					// is a FixedArray value, which keeps its elements in `.data`.
+					base_type := g.infer_expression_type(tokens[..i]) or { u32(0) }
+					if base_type != u32(0) {
+						base_query := flat.source_type_query(fastc_trim_pointer_type(g.map_type_through_alias(base_type)))
+						if base_query.has(.c_array_prefix) || base_query.has(.c_map_prefix) {
+							return false
+						}
+					}
 					// A fixed array nested inside a raw struct field remains raw C array
 					// storage after indexing (`s[0]` in `u32 s[4][256]`).
-					return i > 0 && g.fixed_array_uses_raw_storage(tokens[..i])
+					return g.fixed_array_uses_raw_storage(tokens[..i])
 				}
 			}
 		}
@@ -1386,7 +1398,12 @@ fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?u32 {
 		return none
 	}
 	if fixed_length != '' {
-		return fastc_fixed_array_type_id(fixed_length, element_type)
+		// `[N][]T{}`: the dynamic dimensions after the fixed one are its element type.
+		mut fixed_element_type := element_type
+		for _ in 1 .. dimensions {
+			fixed_element_type = fastc_array_c_type_id(fixed_element_type)
+		}
+		return fastc_fixed_array_type_id(fixed_length, fixed_element_type)
 	}
 	mut result := element_type
 	for _ in 0 .. dimensions {
@@ -1437,6 +1454,24 @@ fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?u32 {
 	return none
 }
 
+// fixed_array_type_from_expression_tokens reads `[N]T`, the payload of an option cast
+// such as `?[4]f32(none)`. Elsewhere `[N]T` starts an array initializer, not a type.
+fn (g &Parser) fixed_array_type_from_expression_tokens(tokens []FastcExpressionToken) ?u32 {
+	if tokens.len < 4 || tokens[0].tok != .lsbr || tokens[1].tok !in [.name, .number]
+		|| tokens[2].tok != .rsbr {
+		return none
+	}
+	element_type := g.type_from_expression_tokens(tokens[3..]) or { return none }
+	length := if tokens[1].tok == .name {
+		g.constants[fastc_constant_key(g.module_name, tokens[1].lit)] or {
+			fastc_c_constant_name(g.module_name, tokens[1].lit)
+		}
+	} else {
+		fastc_c_selfhost_number(tokens[1].lit)
+	}
+	return fastc_fixed_array_type_id(length, element_type)
+}
+
 fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) ?string {
 	if tokens.len == 0 {
 		return none
@@ -1452,11 +1487,18 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 	}
 	remaining := tokens[start..]
 	if remaining[0].tok == .question && remaining.len > 1 {
-		payload := g.type_from_expression_tokens(remaining[1..]) or { return none }
+		payload := g.type_from_expression_tokens(remaining[1..]) or {
+			g.fixed_array_type_from_expression_tokens(remaining[1..]) or { return none }
+		}
 		return fastc_typed_option_type(payload) + '*'.repeat(pointers)
 	}
 	if remaining.len >= 3 && remaining[0].tok == .lsbr && remaining[1].tok == .rsbr {
-		element_type := g.type_from_expression_tokens_bytes(remaining[2..]) or { return none }
+		element_type := g.type_from_expression_tokens_bytes(remaining[2..]) or {
+			// `[][N]T`: a dynamic array of fixed arrays.
+			flat.source_type_name(g.fixed_array_type_from_expression_tokens(remaining[2..]) or {
+				return none
+			})
+		}
 		return fastc_array_c_type(element_type) + '*'.repeat(pointers)
 	}
 	if remaining.len >= 5 && remaining[0].tok == .name && remaining[0].lit == 'map' && remaining[1].tok == .lsbr {

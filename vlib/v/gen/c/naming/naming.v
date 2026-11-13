@@ -15,7 +15,7 @@ pub const operator_method_c_prefix = '${internal_symbol_c_prefix}op_'
 // `token.Token.is_overloadable`), and the index operators.
 const overloadable_operators = ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '>', '<=', '>=',
 	'|', '^', '[]', '[]=']
-const max_c_collision_name_len = 8
+const max_c_collision_name_len = 12
 
 // Additional C++ keywords use the internal partition so source names such as
 // `operator` and `v_operator` remain distinct. Native C names bypass this map.
@@ -145,68 +145,71 @@ const reserved_words = {
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
 // calls are unaffected (the `C.` prefix is stripped before this check).
 const libc_collisions = {
-	'abort':    true
-	'abs':      true
-	'access':   true
-	'alloca':   true
-	'acos':     true
-	'atexit':   true
-	'ceil':     true
-	'ceilf':    true
-	'close':    true
-	'clock':    true
-	'connect':  true
-	'cos':      true
-	'drem':     true
-	'dup2':     true
-	'execlp':   true
-	'execvp':   true
-	'fabs':     true
-	'fcntl':    true
-	'floor':    true
-	'floorf':   true
-	'fmod':     true
-	'fork':     true
-	'getenv':   true
-	'index':    true
-	'j0':       true
-	'j1':       true
-	'jn':       true
-	'ldexp':    true
-	'listen':   true
-	'log':      true
-	'memcmp':   true
-	'memcpy':   true
-	'memmove':  true
-	'memset':   true
-	'mktemp':   true
-	'open':     true
-	'pipe':     true
-	'pow':      true
-	'printf':   true
-	'raise':    true
-	'read':     true
-	'realpath': true
-	'rint':     true
-	'round':    true
-	'scalb':    true
-	'select':   true
-	'send':     true
-	'setenv':   true
-	'signal':   true
-	'snprintf': true
-	'sqrt':     true
-	'strcmp':   true
-	'strlen':   true
-	'strncmp':  true
-	'strncpy':  true
-	'strrchr':  true
-	'strstr':   true
-	'truncate': true
-	'wait':     true
-	'y0':       true
-	'y1':       true
-	'yn':       true
+	'abort':        true
+	'abs':          true
+	'access':       true
+	'alloca':       true
+	'acos':         true
+	'atexit':       true
+	'basename':     true
+	// C23 <math.h>; glibc declares it when C23/GNU extensions are enabled.
+	'canonicalize': true
+	'ceil':         true
+	'ceilf':        true
+	'close':        true
+	'clock':        true
+	'connect':      true
+	'cos':          true
+	'drem':         true
+	'dup2':         true
+	'execlp':       true
+	'execvp':       true
+	'fabs':         true
+	'fcntl':        true
+	'floor':        true
+	'floorf':       true
+	'fmod':         true
+	'fork':         true
+	'getenv':       true
+	'index':        true
+	'j0':           true
+	'j1':           true
+	'jn':           true
+	'ldexp':        true
+	'listen':       true
+	'log':          true
+	'memcmp':       true
+	'memcpy':       true
+	'memmove':      true
+	'memset':       true
+	'mktemp':       true
+	'open':         true
+	'pipe':         true
+	'pow':          true
+	'printf':       true
+	'raise':        true
+	'read':         true
+	'realpath':     true
+	'rint':         true
+	'round':        true
+	'scalb':        true
+	'select':       true
+	'send':         true
+	'setenv':       true
+	'signal':       true
+	'snprintf':     true
+	'sqrt':         true
+	'strcmp':       true
+	'strlen':       true
+	'strncmp':      true
+	'strncpy':      true
+	'strrchr':      true
+	'strstr':       true
+	'truncate':     true
+	'wait':         true
+	'y0':           true
+	'y1':           true
+	'yn':           true
 }
 
 // c_name returns the C identifier used for a V symbol or type name.
@@ -243,7 +246,7 @@ pub fn c_name(name string) string {
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
-	if n in ['mktemp', 'truncate', 'alloca'] {
+	if n in ['mktemp', 'truncate', 'alloca', 'basename'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n
@@ -272,6 +275,14 @@ pub fn c_name(name string) string {
 pub fn c_name_needs_internal_namespace(name string) bool {
 	return name.contains(static_type_method_name_marker)
 		|| name.starts_with(internal_symbol_c_prefix) || is_operator_method_name(name)
+}
+
+// word_name_needs_internal_namespace is c_name_needs_internal_namespace for a name
+// of letters, digits, `_` and `.` only: such a name contains no static method
+// marker and does not end in an operator, which leaves the internal prefix.
+@[inline]
+pub fn word_name_needs_internal_namespace(name string) bool {
+	return name.starts_with(internal_symbol_c_prefix)
 }
 
 // is_operator_method_name reports whether name is the V name of an operator
@@ -540,6 +551,51 @@ pub fn global_rename(cname string) string {
 // is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
 pub fn is_reserved_word(name string) bool {
 	return name in reserved_words || name in cpp_reserved_words
+}
+
+// PlainNameFilter holds one bit per reserved word, C++ reserved word and libc
+// collision, indexed by a hash of the name.
+@[heap]
+struct PlainNameFilter {
+mut:
+	bits [64]u64
+}
+
+const plain_name_filter = new_plain_name_filter()
+
+@[direct_array_access; inline]
+fn plain_name_filter_bit(name string) u32 {
+	mut hash := u32(2166136261)
+	for i in 0 .. name.len {
+		hash = (hash ^ u32(name[i])) * 16777619
+	}
+	return (hash ^ (hash >> 15)) & 4095
+}
+
+fn new_plain_name_filter() &PlainNameFilter {
+	mut filter := &PlainNameFilter{}
+	for name, _ in reserved_words {
+		bit := plain_name_filter_bit(name)
+		filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+	}
+	for name, _ in cpp_reserved_words {
+		bit := plain_name_filter_bit(name)
+		filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+	}
+	for name, _ in libc_collisions {
+		bit := plain_name_filter_bit(name)
+		filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+	}
+	return filter
+}
+
+// plain_name_may_be_reserved is false only for a name that is neither a reserved
+// word nor a libc collision; a clear filter bit proves that with one scan of the
+// name instead of three table probes.
+@[direct_array_access; inline]
+pub fn plain_name_may_be_reserved(name string) bool {
+	bit := plain_name_filter_bit(name)
+	return plain_name_filter.bits[bit >> 6] & (u64(1) << (bit & 63)) != 0
 }
 
 // is_libc_collision reports whether name needs a prefix to avoid a libc symbol.

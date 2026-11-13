@@ -11,6 +11,51 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Some Mesa DRI drivers retain process-lifetime allocations. When EGL closes
+ * the driver after eglTerminate(), LeakSanitizer loses the driver symbols and
+ * reports those allocations with frames from "<unknown module>". Keep only
+ * those DRI libraries mapped in ASan builds so their static roots remain
+ * visible; still destroy every EGL context, surface, and display normally.
+ * See https://bugzilla.mozilla.org/show_bug.cgi?id=1702394.
+ */
+#if defined(__SANITIZE_ADDRESS__)
+#define V_CANVAS_EGL_ASAN 1
+#elif defined(__clang__)
+#if __has_feature(address_sanitizer)
+#define V_CANVAS_EGL_ASAN 1
+#endif
+#endif
+
+#if defined(V_CANVAS_EGL_ASAN) && defined(__GLIBC__)
+#include <dlfcn.h>
+#include <link.h>
+
+static int v_canvas_egl_keep_driver_loaded(struct dl_phdr_info* info, size_t size, void* data) {
+    (void)size;
+    (void)data;
+    const char* path = info->dlpi_name;
+    if (!path || !*path) {
+        return 0;
+    }
+    const char* name = strrchr(path, '/');
+    name = name ? name + 1 : path;
+    // Mesa loads swrast_dri.so on older systems and libgallium-*.so on newer ones.
+    if (!strstr(name, "_dri.so") && !strstr(name, "libgallium")) {
+        return 0;
+    }
+    void* handle = dlopen(path, RTLD_LAZY | RTLD_NOLOAD | RTLD_NODELETE);
+    if (handle) {
+        dlclose(handle);
+    }
+    return 0;
+}
+
+static void v_canvas_egl_keep_drivers_loaded(void) {
+    dl_iterate_phdr(v_canvas_egl_keep_driver_loaded, NULL);
+}
+#endif
+
 typedef struct {
     EGLDisplay display;
     EGLContext context;
@@ -160,6 +205,9 @@ static void* v_canvas_egl_create(char** message) {
     if (!eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context)) {
         goto fail;
     }
+#if defined(V_CANVAS_EGL_ASAN) && defined(__GLIBC__)
+    v_canvas_egl_keep_drivers_loaded();
+#endif
     return ctx;
 
 fail:

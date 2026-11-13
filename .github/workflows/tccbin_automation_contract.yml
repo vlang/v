@@ -1,9 +1,7 @@
 name: TCC bundle automation contract
 
 on:
-  push:
-    branches:
-      - master
+  workflow_call:
 
 permissions:
   contents: read
@@ -57,7 +55,7 @@ jobs:
       - name: Build the local compiler
         run: |
           make local=1
-          ./v -o ./vnew cmd/v
+          VFLAGS= sh cmd/tools/build_vprod.sh ./v ./vnew clang
       - name: Validate schemas, fixtures, and pure control-plane models
         run: |
           ./vnew -silent test thirdparty/tccbin_automation/tests/
@@ -87,7 +85,7 @@ jobs:
       - name: Build the local compiler
         run: |
           make
-          ./v -o ./vnew cmd/v
+          VFLAGS= sh cmd/tools/build_vprod.sh ./v ./vnew clang
       - name: Exercise the no-write execution path
         run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run
 

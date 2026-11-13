@@ -59,13 +59,13 @@ pub enum ResponseTakeoverMode {
 
 // Step is what an append-style handler (see ServerConfig.append_handler) returns
 // to the reactor, mirroring vanilla's handler contract:
-//   .done    — the response is complete in `out`; the reactor sends it and keeps
-//              the connection alive (unless ResponseControl.should_close is set).
-//   .close   — the reactor sends whatever is in `out`, then closes the connection.
-//   .suspend — reserved for async handlers that park on an external fd. There is
-//              no watch reactor yet, so a .suspend currently drops the connection
-//              (like vanilla's reactorless backends); it is defined now so the
-//              contract is stable when async support lands.
+// - `.done` — the response is complete in `out`; the reactor sends it and keeps
+//   the connection alive (unless ResponseControl.should_close is set).
+// - `.close` — the reactor sends whatever is in `out`, then closes the connection.
+// - `.suspend` — reserved for async handlers that park on an external fd. There is
+//   no watch reactor yet, so a .suspend currently drops the connection
+//   (like vanilla's reactorless backends); it is defined now so the
+//   contract is stable when async support lands.
 pub enum Step {
 	done
 	close

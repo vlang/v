@@ -2,19 +2,10 @@ name: sdl CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vshader.v'
-      - '**/sdl_ci.yml'
-      - '!**.md'
+  workflow_call:
 
 concurrency:
-  group: sdl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: sdl-sdl_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -37,7 +28,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
         run: |

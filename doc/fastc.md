@@ -43,6 +43,7 @@ FastC uses all available CPU cores for generation by default. Native bridge prog
 six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
 concurrent TinyCC units for these programs, without reducing the C generation worker count.
 `VJOBS` overrides these defaults; `-no-parallel` selects one worker.
+Uncached macOS builds stream generated units directly to TinyCC as rendering finishes.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -54,7 +55,8 @@ with its source byte offset; FastC does not silently switch to the C backend.
 
 A project can make FastC its default with `backend: 'fastc'` in its `v.mod`. Builds, runs, and
 tests of files under that `v.mod` then use FastC without `-b fastc`; an explicit `-b c` selects
-the C backend again.
+the C backend again. Such a default build does not keep the generated C; `-b fastc` on the
+command line keeps it as `<output>.c`, and `-keepc` keeps it in the temporary folder.
 
 Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
@@ -94,6 +96,13 @@ and source positions.
 
 Ordinary programs support the following constructs:
 
+- Typed pointer comparisons with `nil` in either operand order, including values returned
+  from C calls. Assigning `nil` to a typed pointer still requires `unsafe`.
+- Method calls on pointer fields promoted through embedded structs, including calls inside
+  arithmetic and compound assignments.
+- Parallel declarations of option fields retain their payload types for guards and fallbacks.
+- Struct-valued result fallbacks support conditionals that return from both branches.
+  Nested multi-return guards keep their own result type when a branch returns.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for
@@ -103,6 +112,7 @@ Ordinary programs support the following constructs:
 - Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
   and `.len`.
   Lookup of an absent key returns the value type's zero value.
+  Call-backed map reads evaluate the receiver before the key and retain stored option values.
 - Array and map element reads in local initializers and function arguments.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 

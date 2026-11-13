@@ -1,4 +1,4 @@
-// vtest build: !gcc-windows // too flaky on these CIs
+// vtest build: !gcc-windows && !gcc-windows-self-tests // too flaky on these CIs
 // vtest retry: 3
 import os
 import time

@@ -161,8 +161,9 @@ $if (freestanding || syscalls) && !i386 {
 
 	// bf_read keeps the read going through EINTR (signal handlers, futex wakeups),
 	// which bare zstd expects.
-	// O_DIRECTORY per kernel: linux 0x100000 (0o200000).
-	const bf_o_directory = u64(0o200000)
+	// O_DIRECTORY is 0o200000 on amd64, but 0o40000 on arm64, where 0o200000
+	// is O_DIRECT (rejected with EINVAL by tmpfs).
+	const bf_o_directory = $if arm64 { u64(0o40000) } $else { u64(0o200000) }
 
 	// bf_openat_dir opens `path` as a directory (O_DIRECTORY) for bf_readdir.
 	pub fn bf_openat_dir(path &u8) (int, int) {

@@ -619,7 +619,8 @@ fn test_server_max_keep_alive_requests() {
 	defer { log.warn('${@FN} finished') }
 	mut server := &http.Server{
 		accept_timeout:          atimeout
-		handler:                 KeepAliveHandler{}
+		read_header_timeout:     200 * time.millisecond
+		handler:                 DelayedRequestHeadDeadlineHandler{}
 		addr:                    '127.0.0.1:18200'
 		show_startup_message:    false
 		max_keep_alive_requests: 3 // Limit to 3 requests per connection
@@ -667,10 +668,25 @@ fn test_server_max_keep_alive_requests() {
 	server.stop()
 	t.wait()
 
-	if mut server.handler is KeepAliveHandler {
+	if mut server.handler is DelayedRequestHeadDeadlineHandler {
 		assert server.handler.request_count == 3
 	} else {
-		assert false, 'expected KeepAliveHandler, got ${typeof(server.handler).name}'
+		assert false, 'expected DelayedRequestHeadDeadlineHandler, got ${typeof(server.handler).name}'
+	}
+}
+
+struct DelayedRequestHeadDeadlineHandler {
+mut:
+	request_count int
+}
+
+fn (mut handler DelayedRequestHeadDeadlineHandler) handle(req http.Request) http.Response {
+	handler.request_count++
+	if handler.request_count == 1 {
+		time.sleep(250 * time.millisecond)
+	}
+	return http.Response{
+		body: 'request #${handler.request_count}: ${req.url}'
 	}
 }
 
@@ -725,6 +741,60 @@ fn test_server_rejects_oversized_http1_body_before_handler() {
 	assert malformed_response.starts_with('HTTP/1.1 400 Bad Request\r\n')
 	assert malformed_response.to_lower().contains('connection: close\r\n')
 	malformed_conn.close() or {}
+
+	server.stop()
+	t.wait()
+}
+
+struct RequestHeadLimitHandler {}
+
+fn (mut _ RequestHeadLimitHandler) handle(_ http.Request) http.Response {
+	return http.Response{
+		status_code: 200
+		body:        'ok'
+	}
+}
+
+fn send_slow_request_head(addr string) {
+	mut conn := net.dial_tcp(addr) or { return }
+	defer { conn.close() or {} }
+	conn.write_string('GET / HTTP/1.1\r\nX-Slow: ') or { return }
+	for _ in 0 .. 40 {
+		time.sleep(50 * time.millisecond)
+		conn.write_string('a') or { break }
+	}
+}
+
+fn test_server_bounds_http1_request_head_size_and_duration() {
+	mut server := &http.Server{
+		accept_timeout:       atimeout
+		read_timeout:         5 * time.second
+		read_header_timeout:  300 * time.millisecond
+		worker_num:           1
+		handler:              RequestHeadLimitHandler{}
+		addr:                 '127.0.0.1:18205'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running()!
+
+	mut oversized_conn := net.dial_tcp('127.0.0.1:18205')!
+	oversized_conn.set_read_timeout(2 * time.second)
+	oversized_conn.write_string('GET /' + 'a'.repeat(http.default_max_http1_request_head_size) + ' HTTP/1.1\r\n\r\n')!
+	oversized_response := read_http_response(mut oversized_conn)!
+	assert oversized_response.starts_with('HTTP/1.1 431 Request Header Fields Too Large\r\n')
+	oversized_conn.close() or {}
+
+	drip := spawn send_slow_request_head('127.0.0.1:18205')
+	time.sleep(500 * time.millisecond)
+	mut legitimate_conn := net.dial_tcp('127.0.0.1:18205')!
+	legitimate_conn.set_read_timeout(1 * time.second)
+	legitimate_conn.write_string('GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
+	legitimate_response := read_http_response(mut legitimate_conn)!
+	assert legitimate_response.starts_with('HTTP/1.1 200 OK\r\n')
+	assert legitimate_response.ends_with('ok')
+	legitimate_conn.close() or {}
+	drip.wait()
 
 	server.stop()
 	t.wait()

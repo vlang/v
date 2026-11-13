@@ -42,7 +42,9 @@ mkfifo "$stream_dir/source"
 V_BOOTSTRAP_VROOT=$(CDPATH= cd -P "$script_dir/../.." && pwd) \
 LC_ALL=C awk -f "$script_dir/vc_compat.awk" "$snapshot" > "$stream_dir/source" &
 filter_pid=$!
-if "$@" < "$stream_dir/source"; then
+# Open the reader in its own process. The filter's SIGCHLD must not interrupt
+# the parent shell while it is waiting for the FIFO writer on OpenBSD.
+if ( "$@" < "$stream_dir/source" ); then
 	compiler_status=0
 else
 	compiler_status=$?

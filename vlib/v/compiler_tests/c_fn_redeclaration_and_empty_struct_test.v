@@ -55,8 +55,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 
 	assert !result.output.contains('C compilation failed'), result.output
 
-	// `fcntl` is not provided by the Windows CRT. Keep its cast check on Unix,
-	// and use the portable C `abs` function to check the same cast on Windows.
+	// `fcntl` is not provided by the Windows CRT. Check its cast on Unix,
+	// and the portable C `abs` call on Windows without requiring a redundant cast.
 	portable_c_call := if os.user_os() == 'windows' {
 		'fn C.abs(value int) int\n\nfn main() {\n\targ := 0\n\t_ = C.abs(arg)\n}\n'
 	} else {
@@ -82,11 +82,16 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.exec([v3_bin, '-no-memory-limit', compatible_root, '-b', 'c', '-o', '${compatible_out}'])
 	assert compatible_result.exit_code == 0, compatible_result.output
 	compatible_c := os.read_file(compatible_out + '.c')!
-	// Match the entire Windows call: the generated C also defines math__abs.
-	expected_c_call := if os.user_os() == 'windows' { 'abs((int)(arg))' } else { 'fcntl(-1' }
-	compatible_calls := compatible_c.split_into_lines().filter(it.contains(expected_c_call))
-	assert compatible_calls.len == 1, compatible_calls.str()
-	assert compatible_calls[0].contains('(int)(arg)'), compatible_calls[0]
+	if os.user_os() == 'windows' {
+		// C.abs(int) may emit abs(arg) without a cast; ignore math__abs helpers.
+		abs_calls := compatible_c.split_into_lines().filter(it.contains('abs(')
+			&& it.contains('arg') && !it.contains('math__abs'))
+		assert abs_calls.len == 1, abs_calls.str()
+	} else {
+		fcntl_calls := compatible_c.split_into_lines().filter(it.contains('fcntl(-1'))
+		assert fcntl_calls.len == 1, fcntl_calls.str()
+		assert fcntl_calls[0].contains('(int)(arg)'), fcntl_calls[0]
+	}
 
 	empty_root := write_c_fn_redecl_v3_project('empty_struct_default', {
 		'main.v': 'struct Empty {}\n\n__global global_empty Empty\n\nfn make_empty() Empty {\n\treturn Empty{}\n}\n\nfn main() {\n\t_ := make_empty()\n\t_ = global_empty\n}\n'

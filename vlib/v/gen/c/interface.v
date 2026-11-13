@@ -465,6 +465,22 @@ fn (mut g FlatGen) collect_interface_impls() {
 	iface_names.sort_with_compare(compare_interface_source_type_ids)
 	// The implementer queries of this loop share one checker context.
 	memo_opened := g.tc.begin_interface_impl_queries()
+	if !isnil(g.c_struct_refs_handoff) {
+		// The IError implementer list is most of this scan and does not depend
+		// on the referenced C structs, which the loop below filters with:
+		// memoize it while the master still collects those.
+		for iface_id in iface_names {
+			if g.is_ierror_type_name(iface_id) {
+				_ = g.tc.ierror_impl_names()
+				break
+			}
+		}
+		mut handoff := g.c_struct_refs_handoff
+		_ = <-handoff.ch
+		g.referenced_c_struct_ids = handoff.ids
+		g.referenced_c_struct_ids_ready = handoff.ready
+		g.c_struct_refs_handoff = unsafe { nil }
+	}
 	for iface_id in iface_names {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
@@ -1620,6 +1636,11 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name_id u32, method string)
 		return false
 	}
 	if g.cache_split {
+		// Cached callers can refer to methods of a module rebuilt from source.
+		// Keep its dispatchers even when those callers' bodies are unavailable.
+		if g.cache_const_modules[iface_name.all_before_last('.')] {
+			return true
+		}
 		decl_key := g.interface_method_signature_key(iface_name_id, method) or { '' }
 		if source_file := g.tc.fn_type_files[decl_key] {
 			// A cached object can call an interface dispatch from a function body that

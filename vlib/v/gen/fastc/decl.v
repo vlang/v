@@ -384,12 +384,16 @@ fn fastc_token_continues_top_level_value(tok token.Token) bool {
 // locations while omitting the tokens between declarations.
 fn fastc_append_filtered_source_span(source string, previous_end int, start int, end int, mut out strings.Builder, mut source_origins []FastcSourceOrigin) {
 	mut last_newline := -1
-	for i in previous_end .. start {
-		if source[i] == `\n` {
-			out.write_u8(`\n`)
-			last_newline = i
-		}
+	mut newlines := 0
+	mut offset := previous_end
+	for offset < start {
+		next := fastc_next_source_byte(source, offset, start, `\n`)
+		if next == start { break }
+		newlines++
+		last_newline = next
+		offset = next + 1
 	}
+	out.write_repeated_rune(`\n`, newlines)
 	column_start := if last_newline >= 0 { last_newline + 1 } else { previous_end }
 	out.write_repeated_rune(` `, start - column_start)
 	source_origins << FastcSourceOrigin{
@@ -1316,6 +1320,7 @@ fn fastc_merge_declaration_attributes(left FastcDeclarationAttribute, right Fast
 		is_enabled:     left.is_enabled && right.is_enabled
 		is_cinit:       left.is_cinit || right.is_cinit
 		is_packed:      left.is_packed || right.is_packed
+		is_heap:        left.is_heap || right.is_heap
 		export_name:    if right.export_name != '' { right.export_name } else { left.export_name }
 		linker_section: if right.linker_section != '' {
 			right.linker_section
@@ -2097,11 +2102,14 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	initializer_order := fastc_runtime_constant_order(values, runtime_constants, true) or {
 		fastc_runtime_constant_order(values, runtime_constants, false)!
 	}
-	mut module_initializers := map[string]string{}
+	mut module_initializer_lines := map[string][]string{}
 	for index in initializer_order {
 		value := values[index]
-		previous := module_initializers[value.module_name] or { '' }
-		module_initializers[value.module_name] = previous + '\t${value.c_name} = ${value.value};\n'
+		module_initializer_lines[value.module_name] << '\t${value.c_name} = ${value.value};\n'
+	}
+	mut module_initializers := map[string]string{}
+	for module_name, lines in module_initializer_lines {
+		module_initializers[module_name] = lines.join('')
 	}
 	if macros.len > 0 {
 		macros.writeln('')
@@ -2461,6 +2469,8 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	mut fn_alias_return_types := flat.TypeTextBindings{}
 	mut sum_types := map[string]bool{}
 	mut sum_type_variants := map[u64]bool{}
+	mut heap_structs := map[string]bool{}
+	mut thread_types := map[string]bool{}
 	mut keys := declared_kinds.keys()
 	keys.sort_with_compare(fn (a &u32, b &u32) int {
 		return compare_strings(flat.source_type_name(*a), flat.source_type_name(*b))
@@ -2503,7 +2513,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 			source_origins: type_source.origins
 			header:         source_file.header
 		}
-		fastc_emit_source_type_declarations(type_source_file, prefs, declared_types, declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut enum_infos, mut bodies)!
+		fastc_emit_source_type_declarations(type_source_file, prefs, declared_types, declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut thread_types, mut heap_structs, mut enum_infos, mut bodies)!
 	}
 	timer.mark('type_declarations.emit')
 	if '__v_result' in struct_fields {
@@ -2576,6 +2586,8 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 		enum_attrs:            enum_attrs
 		sum_types:             sum_types
 		sum_type_variants:     sum_type_variants
+		thread_types:          thread_types
+		heap_structs:          heap_structs
 	}
 }
 
@@ -2921,7 +2933,7 @@ fn fastc_c_type_attributes_end(source string, start int) ?int {
 	return none
 }
 
-fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_kinds map[u32]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types flat.TypeTextBindings, mut fn_alias_return_types flat.TypeTextBindings, mut sum_types map[string]bool, mut sum_type_variants map[u64]bool, mut enum_infos []FastcEnumInfo, mut out strings.Builder) ! {
+fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_kinds map[u32]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types flat.TypeTextBindings, mut fn_alias_return_types flat.TypeTextBindings, mut sum_types map[string]bool, mut sum_type_variants map[u64]bool, mut thread_types map[string]bool, mut heap_structs map[string]bool, mut enum_infos []FastcEnumInfo, mut out strings.Builder) ! {
 	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
@@ -2952,7 +2964,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 						source_origins: source_file.source_origins
 						header:         source_file.header
 					}
-					fastc_emit_source_type_declarations(selected_source, prefs, declared_types, declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut enum_infos, mut out)!
+					fastc_emit_source_type_declarations(selected_source, prefs, declared_types, declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut thread_types, mut heap_structs, mut enum_infos, mut out)!
 				}
 				tok = selected.tok
 				next_enum_is_flag = false
@@ -2993,7 +3005,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 			continue
 		}
 		if depth == 0 && tok in [.key_struct, .key_union] {
-			tok = fastc_emit_struct_declaration(mut scan, tok == .key_union, struct_attributes, source_file, declared_types, prefs.building_v, prefs.target_libc_headers, mut struct_fields, mut struct_field_info, mut composite_types, mut out)!
+			tok = fastc_emit_struct_declaration(mut scan, tok == .key_union, struct_attributes, source_file, declared_types, prefs.building_v, prefs.target_libc_headers, mut struct_fields, mut struct_field_info, mut composite_types, mut thread_types, mut heap_structs, mut out)!
 			struct_attributes = FastcDeclarationAttribute{ is_enabled: true }
 			next_type_attrs = []string{}
 			next_type_is_enabled = true
@@ -3119,6 +3131,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 	mut alignment := ''
 	mut is_cinit := false
 	mut is_packed := false
+	mut is_heap := false
 	mut is_enabled := true
 	mut at_item_start := true
 	for depth > 0 {
@@ -3148,6 +3161,9 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		}
 		if depth == 1 && at_item_start && tok == .name && scan.lit in ['packed', '_packed'] {
 			is_packed = true
+		}
+		if depth == 1 && at_item_start && tok == .name && scan.lit == 'heap' {
+			is_heap = true
 		}
 		if depth == 1 && at_item_start && tok == .name && scan.lit == '_pack' {
 			// `@[_pack: N]`: only 1 has an attribute spelling that keeps its place when the
@@ -3215,10 +3231,11 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		alignment:      alignment
 		is_cinit:       is_cinit
 		is_packed:      is_packed
+		is_heap:        is_heap
 	}
 }
 
-fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attributes FastcDeclarationAttribute, source_file FastcSourceFile, declared_types map[u32]bool, allow_short_placeholders bool, target_libc_headers bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) !token.Token {
+fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attributes FastcDeclarationAttribute, source_file FastcSourceFile, declared_types map[u32]bool, allow_short_placeholders bool, target_libc_headers bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut thread_types map[string]bool, mut heap_structs map[string]bool, mut out strings.Builder) !token.Token {
 	mut tok := scan.scan()
 	if tok != .name {
 		return error('fastc parser does not support struct declaration in ${source_file.path}')
@@ -3246,6 +3263,11 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		if fastc_source_type_key_exists(declared_types, '#Cstruct#${name}') {
 			c_name = 'struct ${name}'
 		}
+	}
+	if attributes.is_heap && !is_c_struct && !is_union {
+		// Locals of a `@[heap]` struct are always heap-allocated (see
+		// parse_declaration_after_name), as the C backend's transformer does.
+		heap_structs[c_name] = true
 	}
 	mut fields_by_name := flat.TypeTextBindings{}
 	if fields := struct_fields[c_name] {
@@ -3449,6 +3471,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 
 		tok = next_token
 		fastc_register_composite_type(field_type, mut composite_types)
+		if flat.source_type_query(field_type).has(.c_thread_prefix) {
+			thread_types[flat.source_type_name(fastc_trim_pointer_type(field_type))] = true
+		}
 		if field_option_value != 0 {
 			fastc_register_composite_type(field_option_value, mut composite_types)
 		}

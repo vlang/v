@@ -290,3 +290,269 @@ fn main() {
 }
 ')
 }
+
+// Collections as Vox's JPEG XL decoder spells them: an interface cast of an indexed
+// operand, fixed arrays of dynamic arrays and the reverse, an option cast of a fixed array,
+// an option cast that starts the line after a call, and a slice of a `mut` array parameter.
+fn test_fastc_vox_constructs_collection_casts_and_initializers() {
+	fastc_vox_construct_program('collections', r'module main
+
+interface Shape {
+	area() int
+}
+
+struct Square {
+	side int
+}
+
+fn (s Square) area() int {
+	return s.side * s.side
+}
+
+struct Info {
+	spot ?[4]f32
+	rows [3][]i32
+}
+
+struct Predictor {
+mut:
+	errors [][4]u32
+}
+
+struct Size {
+	width  int
+	height int
+}
+
+struct Frame {
+	side int
+}
+
+fn (f Frame) size() Size {
+	return Size{f.side, f.side * 2}
+}
+
+struct Cache {
+	cells int
+}
+
+struct Holder {
+	cache ?Cache
+}
+
+struct Channel {
+	buffer int
+}
+
+fn shapes(squares []Square) []Shape {
+	mut values := []Shape{cap: squares.len}
+	for index in 0 .. squares.len {
+		values << Shape(squares[index])
+	}
+	return values
+}
+
+fn info(kind int) Info {
+	mut rows := [3][]i32{}
+	for c in 0 .. 3 {
+		mut row := []i32{len: c + 1}
+		row[0] = i32(c * 5)
+		rows[c] = row
+	}
+	mut spot := ?[4]f32(none)
+	if kind == 2 {
+		mut values := [4]f32{}
+		for i in 0 .. 4 {
+			values[i] = f32(i) * 0.5
+		}
+		spot = values
+	}
+	return Info{
+		spot: spot
+		rows: rows
+	}
+}
+
+fn make_cache(width int, height int) !Cache {
+	if width < 0 {
+		return error("negative")
+	}
+	return Cache{width * height}
+}
+
+fn holder(frame Frame, curves ?int) !Holder {
+	cache := if extra := curves {
+		size := frame.size()
+		// The comment keeps the option cast on a line of its own.
+		?Cache(make_cache(size.width + extra, size.height)!)
+	} else {
+		?Cache(none)
+	}
+	return Holder{
+		cache: cache
+	}
+}
+
+fn buffers(mut channels []Channel, begin int, count int) []int {
+	outputs := channels[begin..begin + count].map(it.buffer)
+	channels << Channel{99}
+	return outputs
+}
+
+fn main() {
+	values := shapes([Square{2}, Square{3}])
+	assert values.len == 2
+	assert values[1].area() == 9
+	with_spot := info(2)
+	if spot := with_spot.spot {
+		assert spot[3] == 1.5
+	} else {
+		assert false
+	}
+	assert with_spot.rows[2].len == 3
+	assert with_spot.rows[1][0] == 5
+	assert info(0).spot == none
+	mut predictor := Predictor{
+		errors: [][4]u32{len: 4}
+	}
+	predictor.errors[2][1] = 7
+	mut local := [][4]u32{len: 2}
+	local[1][3] = 9
+	assert predictor.errors.len == 4
+	assert predictor.errors[2][1] + predictor.errors[0][0] + local[1][3] == 16
+	filled := holder(Frame{3}, ?int(1)) or { panic(err) }
+	if cache := filled.cache {
+		assert cache.cells == 24
+	} else {
+		assert false
+	}
+	empty := holder(Frame{3}, ?int(none)) or { panic(err) }
+	assert empty.cache == none
+	mut channels := [Channel{1}, Channel{3}, Channel{5}, Channel{7}]
+	assert buffers(mut channels, 1, 2) == [3, 5]
+	assert channels.len == 5
+	println("ok")
+}
+')
+}
+
+// Match values as Vox's layout and CSS code spell them: a nested match whose subject holds
+// an `unsafe` block, and arms that yield the values of an optional multi-return whose
+// first component is an interface.
+fn test_fastc_vox_constructs_match_values() {
+	fastc_vox_construct_program('match_values', r'module main
+
+enum Mode {
+	loose
+	normal
+}
+
+enum Language {
+	japanese
+	other
+}
+
+enum Break {
+	loose_japanese
+	loose
+	normal
+}
+
+struct Tagged {
+	tag string
+}
+
+fn language(node &Tagged) Language {
+	return if node.tag == "ja" { Language.japanese } else { Language.other }
+}
+
+fn line_break(mode Mode, node Tagged) Break {
+	return match mode {
+		.loose {
+			match language(unsafe { &Tagged(&node) }) {
+				.japanese { Break.loose_japanese }
+				.other { Break.loose }
+			}
+		}
+		.normal {
+			Break.normal
+		}
+	}
+}
+
+interface Value {
+	text() string
+}
+
+struct Keyword {
+	name string
+}
+
+fn (k Keyword) text() string {
+	return "keyword ${k.name}"
+}
+
+struct Length {
+	px int
+}
+
+fn (l Length) text() string {
+	return "${l.px}px"
+}
+
+struct Leaf {
+	px int
+}
+
+struct Sum {
+	terms int
+}
+
+type Node = Leaf | Sum
+
+enum Kind {
+	keyword
+	length
+	prepared
+}
+
+fn node(value Value) ?Node {
+	if value is Length {
+		return Leaf{value.px}
+	}
+	return none
+}
+
+fn prepared(value Value) ?(Value, Node) {
+	leaf := node(value) or { return none }
+	return value, leaf
+}
+
+fn operand(value Value, kind Kind) ?(Value, Node) {
+	return match kind {
+		.keyword { value, Node(Sum{1}) }
+		.length { Value(Keyword{"any"}), node(value)? }
+		.prepared { prepared(value)? }
+	}
+}
+
+fn describe(value Value, kind Kind) string {
+	first, second := operand(value, kind) or { return "none" }
+	return match second {
+		Leaf { "${first.text()} leaf ${second.px}" }
+		Sum { "${first.text()} sum ${second.terms}" }
+	}
+}
+
+fn main() {
+	assert line_break(.loose, Tagged{"ja"}) == .loose_japanese
+	assert line_break(.loose, Tagged{"en"}) == .loose
+	assert line_break(.normal, Tagged{"ja"}) == .normal
+	assert describe(Length{3}, .keyword) == "3px sum 1"
+	assert describe(Length{4}, .length) == "keyword any leaf 4"
+	assert describe(Length{5}, .prepared) == "5px leaf 5"
+	assert describe(Keyword{"x"}, .length) == "none"
+	println("ok")
+}
+')
+}

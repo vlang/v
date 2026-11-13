@@ -32,6 +32,22 @@ fn collect_chunk(chunk []u8, userdata voidptr) int {
 	return chunk.len
 }
 
+fn test_max_safe_inflate_output_len_for_supported_int_widths() {
+	chunk_size := i64(inflate_callback_chunk_size)
+	int32_limit := max_safe_inflate_output_len_for(i64(max_i32), chunk_size)
+	assert int32_limit == i64(max_i32) - chunk_size
+	assert (int32_limit + 1) % chunk_size == 0
+	assert int32_limit + 1 < i64(max_i32)
+
+	int64_limit := max_safe_inflate_output_len_for(max_i64, chunk_size)
+	assert int64_limit == max_i64 / 2
+	assert int64_limit + 1 == i64(1) << 62
+	assert (int64_limit + 1) % chunk_size == 0
+
+	assert max_safe_inflate_output_len() == int(max_safe_inflate_output_len_for(i64(max_int),
+		chunk_size))
+}
+
 // decompress_chunked decodes `data` with decompress_with_callback() and joins the chunks.
 fn decompress_chunked(data []u8) ![]u8 {
 	mut out := []u8{}

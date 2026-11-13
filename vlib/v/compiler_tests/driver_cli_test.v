@@ -2402,7 +2402,9 @@ fn main() {
 		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, '-o',
 			os.join_path(root, 'false_cc'), false_cc_source])
 		assert cc_result.exit_code != 0
-		assert cc_result.output.contains(cmdexec.display(false_exe, ['-std=gnu11'])), cc_result.output
+		plain_command := cmdexec.display(false_exe, ['-std=gnu11'])
+		feature_command := cmdexec.display(false_exe, ['-D_GNU_SOURCE', '-std=gnu11'])
+		assert cc_result.output.contains(plain_command) || cc_result.output.contains(feature_command), cc_result.output
 		assert cc_result.output.contains('-O3'), cc_result.output
 		assert cc_result.output.contains('-flto'), cc_result.output
 		assert !cc_result.output.contains('-O2'), cc_result.output

@@ -98,6 +98,7 @@ fn main() {
 		for name in ['read_concat', 'read_compare', 'read_slice', 'read_indexed', 'read_alias'] {
 			body := race_string_function_body(output, name)
 			assert body.contains('__tsan_read_range((void*)') == race, '${name}: ${body}'
+			assert body.contains('const string* ') == race, '${name}: ${body}'
 			if race && name in ['read_concat', 'read_compare', 'read_slice'] {
 				assert body.replace('\t', '').contains('&(cell->value)'), body
 			}
@@ -108,7 +109,12 @@ fn main() {
 		assert indexed_map.count('next_key(') == 1, indexed_map
 		for name in ['read_overloaded', 'read_fixed_overloaded'] {
 			body := race_string_function_body(output, name)
-			assert !body.contains('__tsan_read_range((void*)'), '${name}: ${body}'
+			// The dynamic-array receiver is read by value; the returned string is
+			// a temporary, so only the receiver may have a header-read annotation.
+			expected_reads := if race && name == 'read_overloaded' { 1 } else { 0 }
+			assert body.count('__tsan_read_range((void*)') == expected_reads, '${name}: ${body}'
+			assert body.contains('const Array* ') == (expected_reads == 1), '${name}: ${body}'
+			assert !body.contains('const string* '), '${name}: ${body}'
 			assert body.count('next_index(') == 1, body
 		}
 		for name in ['read_temporary', 'read_temporary_selector', 'forward_mut'] {

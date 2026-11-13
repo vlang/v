@@ -52,11 +52,11 @@ pub fn cursor_back(n int) {
 
 // erase_display erases display characters based on the given parameter, `t`.
 // `t` can be of the following values in string:
-// `0`: current cursor position to end of the terminal window.
-// `1`: current cursor position to beginning of the terminal
-// window.
-// `2`: clears the entire terminal window.
-// `3`: clears the entire terminal window and also deletes the scrollback buffer.
+// - `0`: current cursor position to end of the terminal window.
+// - `1`: current cursor position to beginning of the terminal
+//   window.
+// - `2`: clears the entire terminal window.
+// - `3`: clears the entire terminal window and also deletes the scrollback buffer.
 pub fn erase_display(t string) {
 	print('\x1b[' + t + 'J')
 	flush_stdout()
@@ -85,9 +85,10 @@ pub fn erase_del_clear() {
 
 // erase_line erases the current line based on the given parameter, `t`.
 // `t` can be of the following values in string:
-// `0`: current cursor position to the end of the line.
-// `1`: current cursor position to the beginning of the line.
-// `2`: clears the entire line.
+// - `0`: current cursor position to the end of the line.
+// - `1`: current cursor position to the beginning of the line.
+// - `2`: clears the entire line.
+//
 // Note: Cursor position does not change.
 pub fn erase_line(t string) {
 	print('\x1b[' + t + 'K')

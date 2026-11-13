@@ -32,7 +32,9 @@ fn shallow_git(path string, args []string) string {
 fn shallow_repo(case string) !string {
 	path := os.join_path(shallow_root, case, 'remote')
 	os.mkdir_all(path)!
-	shallow_git(path, ['init', '-b', 'main'])
+	shallow_git(path, ['init', '-q'])
+	shallow_git(path, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert shallow_git(path, ['symbolic-ref', '--short', 'HEAD']) == 'main'
 	os.write_file(os.join_path(path, 'v.mod'), "Module { name: 'update_pkg' version: '1.0.0' }\n")!
 	shallow_commit(path, 'initial')!
 	app := os.join_path(shallow_root, case, 'app')

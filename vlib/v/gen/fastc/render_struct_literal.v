@@ -464,9 +464,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				continue
 			}
 			c_field_name := fastc_c_identifier(field.name)
+			// Nested C compound literals are not portable static aggregate initializers.
+			static_type_prefix := '(${flat.source_type_name(field.typ)})'
 			rendered_field := if g.c_global_static_initializer
 				&& fastc_fixed_array_element_type(field.typ) != none {
 				'.${c_field_name}=${fastc_static_fixed_array_initializer(field_default)}'
+			} else if g.c_global_static_initializer
+				&& field_default.starts_with('${static_type_prefix}{') && field_default.ends_with('}') {
+				'.${c_field_name}=${field_default[static_type_prefix.len..]}'
 			} else {
 				'.${c_field_name}=(${field_default})'
 			}

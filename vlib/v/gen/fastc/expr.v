@@ -1228,7 +1228,9 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	} else {
 		''
 	}
-	if g.or_block_has_statements() {
+	// Void-result handlers execute statements even when a single wrapper or call
+	// would otherwise look like a fallback expression.
+	if option_value_type == flat.source_type_void || g.or_block_has_statements() {
 		previous_capture := g.capturing_defer
 		previous_lines := g.captured_defer_lines.clone()
 		previous_err := g.locals['err'] or { FastcLocal{} }
@@ -1249,7 +1251,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		previous_or_captured := g.or_value_captured
 		previous_or_expected_source_id := g.or_value_expected_type
 
-		g.or_value_capture = true
+		g.or_value_capture = option_value_type != flat.source_type_void
 		g.or_value_scope_depth = g.local_scope_depth + 1
 		g.or_value_captured = ''
 		g.or_value_expected_type = option_value_type
@@ -3644,12 +3646,12 @@ fn fastc_replace(text string, needle string, replacement string) string {
 	mut out := strings.new_builder(text.len + replacement.len + 1)
 	mut start := 0
 	for index >= 0 {
-		unsafe { out.write_ptr(text.str + start, index - start) }
+		out.write_string(text[start..index])
 		out.write_string(replacement)
 		start = index + needle.len
 		index = fastc_index_of(text, needle, start)
 	}
-	unsafe { out.write_ptr(text.str + start, text.len - start) }
+	out.write_string(text[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3728,7 +3730,7 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 			after++
 		}
 		if !before_is_name_or_member && after < source.len && source[after] == `(` {
-			unsafe { out.write_ptr(source.str + start, index - start) }
+			out.write_string(source[start..index])
 			out.write_string(replacement)
 			start = end
 			replaced = true
@@ -3738,7 +3740,7 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 	if !replaced {
 		return source
 	}
-	unsafe { out.write_ptr(source.str + start, source.len - start) }
+	out.write_string(source[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3766,7 +3768,7 @@ fn fastc_replace_call_needle(source string, needle string, replacement string) s
 			`_`,
 			`.`,
 		])
-		unsafe { out.write_ptr(source.str + start, index - start) }
+		out.write_string(source[start..index])
 		if before_blocks {
 			out.write_string(needle)
 		} else {
@@ -3775,7 +3777,7 @@ fn fastc_replace_call_needle(source string, needle string, replacement string) s
 		start = index + needle.len
 		index = fastc_index_of(source, needle, start)
 	}
-	unsafe { out.write_ptr(source.str + start, source.len - start) }
+	out.write_string(source[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3824,14 +3826,14 @@ fn fastc_replace_c_name(source string, identifier string, replacement string, me
 		if before_is_name || before_is_member || after_is_name {
 			continue
 		}
-		unsafe { out.write_ptr(source.str + start, index - start) }
+		out.write_string(source[start..index])
 		out.write_string(replacement)
 		start = end
 	}
 	if start == 0 {
 		return source
 	}
-	unsafe { out.write_ptr(source.str + start, source.len - start) }
+	out.write_string(source[start..])
 	return fastc_take_string(mut out)
 }
 
@@ -3985,7 +3987,11 @@ fn (g &Parser) semicolon_continues_expression() bool {
 		`*`,
 	] {
 		mut probe := g.s
-		return fastc_token_continues_expression(probe.scan())
+		next_token := probe.scan()
+		if next_token == .question && fastc_leading_question_starts_option_cast(g.s.src, probe.pos) {
+			return false
+		}
+		return fastc_token_continues_expression(next_token)
 	}
 	if g.s.src[offset] == `!` {
 		mut probe := g.s
@@ -4012,7 +4018,21 @@ fn (g &Parser) semicolon_continues_expression() bool {
 		// `&&` continues a logical expression; a lone `&` is unary address-of (new statement).
 		return offset + 1 < g.s.src.len && g.s.src[offset + 1] == `&`
 	}
+	if next == `?` && fastc_leading_question_starts_option_cast(g.s.src, offset) {
+		return false
+	}
 	return next in [`.`, `/`, `%`, `|`, `^`, `<`, `>`, `=`, `?`, `)`]
+}
+
+// fastc_leading_question_starts_option_cast reports whether the `?` that opens a line
+// spells an option type (`?Type(value)`), which starts a new statement instead of
+// propagating the expression on the line above.
+fn fastc_leading_question_starts_option_cast(src string, question_offset int) bool {
+	if question_offset < 0 || question_offset + 1 >= src.len || src[question_offset] != `?` {
+		return false
+	}
+	next := src[question_offset + 1]
+	return next.is_letter() || next in [`_`, `[`, `&`]
 }
 
 fn (g &Parser) semicolon_continues_value_expression(tokens []FastcExpressionToken) bool {
@@ -6083,6 +6103,33 @@ fn (g &Parser) plain_local_direct_member_field(tokens []FastcExpressionToken) ?&
 	return field
 }
 
+// render_heap_local_expression keeps grouping from exposing a heap local's C
+// storage pointer. Use its canonical name because streamed expressions may
+// already dereference the local, while raw token renderings do not.
+fn (g &Parser) render_heap_local_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len == 0 || tokens[0].tok !in [.name, .lpar, .amp] {
+		return none
+	}
+	mut operand := fastc_strip_paren_tokens(tokens)
+	mut addressed := false
+	if operand.len > 1 && operand[0].tok == .amp && !operand[0].is_mut_argument {
+		addressed = true
+		operand = fastc_strip_paren_tokens(operand[1..])
+	}
+	if operand.len != 1 || operand[0].tok != .name || operand[0].has_source() {
+		return none
+	}
+	local := g.locals[operand[0].lit] or { return none }
+	if !local.is_heap_value {
+		return none
+	}
+	source := g.local_c_name(operand[0].lit)
+	return FastcRenderedExpression{
+		source: if addressed { source } else { '*(${source})' }
+		typ:    if addressed { local.typ } else { fastc_trim_pointer_type(local.typ) }
+	}
+}
+
 fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
 	if g.plain_primitive_comparison_expression(tokens) { return none }
 	if flags.has_comparison && flags.has_dot && g.plain_primitive_member_comparison_expression(tokens) {
@@ -6096,6 +6143,9 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 		return none
 	}
 	if g.is_plain_local_direct_member(tokens) { return none }
+	if heap_local := g.render_heap_local_expression(tokens) {
+		return heap_local
+	}
 	if g.selfhost && (flags.has_not || flags.has_question) && tokens.len > 3
 		&& tokens[0].tok == .lpar && tokens.last().tok == .rpar {
 		inner := fastc_strip_paren_tokens(tokens)

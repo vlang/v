@@ -1123,10 +1123,8 @@ fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
 		return false
 	}
 	layout_type := flat.source_type_name(fastc_trim_pointer_type(g.underlying_alias_type(c_type)))
-	if layout_type !in g.struct_field_info {
-		return false
-	}
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return false }
+	for field in fields {
 		if field.default_value != '' || field.typ == fastc_type_option {
 			return true
 		}
@@ -5083,13 +5081,16 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			}
 		}
 	}
-	if g.selfhost && tokens.len == 2 && tokens[0].tok == .amp && !tokens[0].is_mut_argument && tokens[1].tok == .name {
-		if local := g.locals[tokens[1].lit] {
-			if local.is_reference {
-				if expected_type_source_id != 0 && !fastc_is_pointer_type(expected_type_source_id) {
-					return g.render_call_argument_expression(tokens[1..], expected_type_source_id)
+	if g.selfhost && tokens.len > 1 && tokens[0].tok == .amp && !tokens[0].is_mut_argument {
+		operand := fastc_strip_paren_tokens(tokens[1..])
+		if operand.len == 1 && operand[0].tok == .name && !operand[0].has_source() {
+			if local := g.locals[operand[0].lit] {
+				if local.is_reference && (tokens.len == 2 || local.is_heap_value) {
+					if expected_type_source_id != 0 && !fastc_is_pointer_type(expected_type_source_id) {
+						return g.render_call_argument_expression(operand, expected_type_source_id)
+					}
+					return g.resolved_expression_name(operand[0].lit, .unknown)
 				}
-				return g.resolved_expression_name(tokens[1].lit, .unknown)
 			}
 		}
 	}
@@ -5518,12 +5519,8 @@ fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?st
 		return none
 	}
 	method_key, _ := g.resolve_method(receiver_type, tokens.last().lit)
-	signature := if method_key in g.functions {
-		g.functions[method_key]
-	} else if method_key in g.mono_functions {
-		g.mono_functions[method_key]
-	} else {
-		return none
+	signature := g.functions[method_key] or {
+		g.mono_functions[method_key] or { return none }
 	}
 	if signature.parameter_types.ids.len == 0 {
 		return none
@@ -5690,6 +5687,11 @@ fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 	if unwrapped in [fastc_type_option, fastc_type_result]
 		|| fastc_typed_option_payload(unwrapped) != none {
 		return g.sumtype_has_variant(expected_type, unwrapped)
+	}
+	if unwrapped == fastc_type_multi_return {
+		// The values of `return match x { a { one, two } }` are a tuple, whatever its
+		// first component's type is.
+		return false
 	}
 	resolved_actual := g.underlying_alias_type(actual_type)
 	if g.declared_kinds[g.semantic_type_key(resolved_actual)] == .struct_ {
@@ -7112,6 +7114,13 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 	} else {
 		source = g.resolved_expression_name(tokens[0].lit, .unknown)
 		current_type = g.infer_expression_type(tokens[..1]) or { return none }
+		if local := g.locals[tokens[0].lit] {
+			if local.is_heap_value {
+				// Keep the C expression paired with its inferred V value type,
+				// including callers that render the bare local through this path.
+				source = '(*(${source}))'
+			}
+		}
 	}
 	mut member_path := if i == 1 {
 		tokens[0].lit
@@ -7146,7 +7155,11 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					'&(${source})'
 				}
 				storage := g.collection_storage_type(value_type)
-				missing := g.map_lookup_missing_value_expression(value_type)
+				missing := if fastc_typed_option_payload(value_type) != none {
+					'(${storage}){.state=2}'
+				} else {
+					g.map_lookup_missing_value_expression(value_type)
+				}
 				map_value := if fastc_is_pointer_type(current_type) {
 					'*(${source})'
 				} else {

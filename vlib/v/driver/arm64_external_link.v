@@ -211,7 +211,7 @@ fn native_c_support_source(a &flat.FlatAst, vroot string, target pref.Target, co
 				if include_arg.starts_with('<') {
 					line = '#include ${include_arg}'
 				} else {
-					path := x64_resolve_insert_path(include_arg, cur_file, vroot)
+					path := amd64_resolve_insert_path(include_arg, cur_file, vroot)
 					if path.len > 0 && os.is_file(path) {
 						if node.value == 'insert' {
 							dir := os.dir(path)
@@ -339,7 +339,7 @@ fn arm64_c_side(opts Arm64CSideOptions) !Arm64CSide {
 	for dir in support.include_dirs {
 		args << '-I${dir}'
 	}
-	args << x64_native_compile_flags(flags)
+	args << amd64_native_compile_flags(flags)
 	// The C side is Objective-C when the C backend's unit would be: for
 	// `-fobjc-arc` and friends in the program's flags (sokol's Metal backend), or
 	// for Objective-C inputs (vlib/macos/objc_bridge.h, AppKit embedders).
@@ -591,7 +591,7 @@ struct Arm64PreparedLink {
 // beside the rest of the build, as Go's action graph runs a package's C compiles
 // beside its Go compile (cmd/go/internal/work/exec.go, Builder.Do).
 fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64PreparedLink {
-	mut link_flags := x64_native_link_flags(side.flags)
+	mut link_flags := amd64_native_link_flags(side.flags)
 	if link_flags.len == 0 {
 		return Arm64PreparedLink{}
 	}
@@ -620,7 +620,7 @@ fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkI
 	args << ['-w', '-fwrapv', '-fno-common']
 	args << inputs.optimization_flags
 	args << inputs.environment_cflags
-	args << x64_native_compile_flags(side.flags)
+	args << amd64_native_compile_flags(side.flags)
 	mut stats := CObjectCacheStats{}
 	mut i := 0
 	for i < flags.len {

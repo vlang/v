@@ -167,7 +167,18 @@ mut:
 	prepass_lines PrepassLineFile
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
-	batch_sources                     &BatchSources = unsafe { nil }
+	batch_sources &BatchSources = unsafe { nil }
+	// The files that the caller expects in the batch after the next one, and the
+	// parse of such files that the batch before this one did ahead of time (see
+	// speculate_next_batch).
+	next_batch_paths []string
+	speculated_batch voidptr // &SpeculatedBatch
+	// Set for a worker that parses files of the batch after the current one.
+	parses_ahead bool
+	// Texts that the caller read for the next parallel parse batch, which owns
+	// them from then on (see preload_batch_source), and the index of each by path.
+	batch_preloads                    []string
+	batch_preload_index               map[string]int
 	local_binding_undos               []LocalBindingUndo
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -260,10 +271,13 @@ pub fn (mut p Parser) reserve_selfhost_ast() {
 	// reserve_parallel_transform_ast's targets (9/4 of the nodes, 8/3 of the
 	// children) with room for the compiler to grow: once the self-host AST
 	// outgrows them, transform copies the whole ~115 MB node slab. These fit
-	// 2.09M parsed nodes and 2.06M parsed children; the compiler had 1.78M of
-	// each in 2026-10. Untouched capacity costs no physical memory.
-	selfhost_node_capacity := 4_718_592
-	selfhost_child_capacity := 5_505_024
+	// 2.79M parsed nodes and 2.75M parsed children; the compiler had 1.89M of
+	// each in 2026-11. The parallel transform cuts its work into many small
+	// pieces, whose append regions need more slack than whole chunks do, so the
+	// slabs are also a third larger than those targets alone would make them.
+	// Untouched capacity costs no physical memory.
+	selfhost_node_capacity := 6_291_456
+	selfhost_child_capacity := 7_340_032
 	if p.a.nodes.cap < selfhost_node_capacity {
 		old_nodes := p.a.nodes
 		p.a.nodes = []flat.Node{cap: selfhost_node_capacity}
@@ -11772,7 +11786,7 @@ fn (p &Parser) supports_c_inline_asm_lowering() bool {
 // an inline assembly block for its own target architecture. A block for another
 // architecture is declined, which keeps a `$if` guard for it effective.
 fn (p &Parser) supports_native_inline_asm_lowering() bool {
-	return (p.prefs.backend == 'x64' && p.prefs.target.arch == 'amd64')
+	return (p.prefs.backend in ['amd64', 'x64'] && p.prefs.target.arch == 'amd64')
 		|| (p.prefs.backend == 'arm64' && p.prefs.target.arch == 'arm64')
 }
 

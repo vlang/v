@@ -2,23 +2,10 @@ name: CI Windows TCC
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**.bat'
-      - '!**/windows_ci_tcc.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/oldv.v'
-      - '!cmd/tools/oldv_test.v'
-      - '!cmd/tools/vdoc/**.v'
-      - '!cmd/tools/vvet/**.v'
+  workflow_call:
 
 concurrency:
-  group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: windows-windows_ci_tcc-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -143,12 +130,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
         run: |
           .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          # Vet and fmt separately so memory retained by the vet session is
+          # released before formatting thousands of source files.
+          $env:VTEST_CLEANCODE_STAGE = 'vet'
           v -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:VTEST_CLEANCODE_STAGE = 'fmt'
+          v -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
         if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
@@ -214,7 +212,17 @@ jobs:
       - name: v -g self
         id: v_g_self
         if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
-        run: v -g self
+        run: |
+          # Exercise the debug self-build, then restore the optimized test driver.
+          Copy-Item .\v.exe .\v_optimized_ci.exe
+          try {
+            v -g self
+            if ($LASTEXITCODE -ne 0) { throw "Debug self-build failed (exit $LASTEXITCODE)" }
+            .\v.exe version
+            if ($LASTEXITCODE -ne 0) { throw "Debug compiler failed (exit $LASTEXITCODE)" }
+          } finally {
+            Move-Item .\v_optimized_ci.exe .\v.exe -Force
+          }
       - name: v doctor
         id: v_doctor
         if: ${{ success() && !cancelled() && steps.v_g_self.outcome == 'success' }}
@@ -264,7 +272,8 @@ jobs:
       - name: Test v->js
         id: test_v_js
         if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v -o hi.js examples/js_hello_world.v && node hi.js
+        # The loop and interpolation need the compatibility compiler's full JS backend.
+        run: v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         id: test_v_binaries
         if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
@@ -313,6 +322,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Checkout pinned Windows TCC bundle
         id: checkout_pinned_windows_tcc_bundle
         if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}

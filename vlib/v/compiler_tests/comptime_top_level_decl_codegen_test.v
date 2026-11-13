@@ -5,6 +5,7 @@ const comptime_decl_tests_dir = os.dir(@FILE)
 const comptime_decl_v3_dir = os.dir(comptime_decl_tests_dir)
 const comptime_decl_vlib_dir = os.dir(comptime_decl_v3_dir)
 const comptime_decl_v3_src = os.join_path(comptime_decl_v3_dir, 'v.v')
+const comptime_decl_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
 fn comptime_decl_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_test')
@@ -136,7 +137,7 @@ $if some_feature ? {
 }
 ',
 		'-d some_feature')
-	assert c_code.contains('int main('), c_code
+	assert c_code.contains(comptime_decl_entry_point), c_code
 }
 
 fn test_top_level_comptime_block_with_statement_still_synthesizes_main() {
@@ -152,7 +153,7 @@ $if some_feature ? {
 }
 ",
 		'-d some_feature')
-	assert c_code.contains('int main('), c_code
+	assert c_code.contains(comptime_decl_entry_point), c_code
 	assert c_code.contains('active'), c_code
 }
 

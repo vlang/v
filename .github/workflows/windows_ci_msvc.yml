@@ -1,19 +1,10 @@
 name: CI Windows MSVC
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**.bat'
-      - '!**/windows_ci_msvc.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: windows-windows_ci_msvc-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -114,6 +105,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -336,7 +331,8 @@ jobs:
       - name: Test v->js
         id: test_v_js
         if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v -o hi.js examples/js_hello_world.v && node hi.js
+        # The loop and interpolation need the compatibility compiler's full JS backend.
+        run: v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         id: test_v_binaries
         if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
@@ -404,6 +400,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}

@@ -86,7 +86,7 @@ fn (mut s Server) listen_and_serve_tls() {
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
 		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests,
-			handshake_timeout, idle_conns, s.max_http1_request_body_size)
+			handshake_timeout, idle_conns, s.max_http1_request_body_size, s.read_header_timeout)
 	}
 
 	if s.show_startup_message {
@@ -151,13 +151,14 @@ struct TlsHandlerWorker {
 	max_keep_alive_requests     int
 	handshake_timeout           time.Duration
 	max_http1_request_body_size int
+	read_header_timeout         time.Duration
 mut:
 	idle_conns &TlsIdleConnTracker = unsafe { nil }
 pub mut:
 	handler Handler
 }
 
-fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, handshake_timeout time.Duration, idle_conns &TlsIdleConnTracker, max_http1_request_body_size int) thread {
+fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, handshake_timeout time.Duration, idle_conns &TlsIdleConnTracker, max_http1_request_body_size int, read_header_timeout time.Duration) thread {
 	mut w := &TlsHandlerWorker{
 		id:                          wid
 		ch:                          ch
@@ -165,6 +166,7 @@ fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, ma
 		max_keep_alive_requests:     max_keep_alive_requests
 		handshake_timeout:           handshake_timeout
 		max_http1_request_body_size: max_http1_request_body_size
+		read_header_timeout:         read_header_timeout
 		idle_conns:                  idle_conns
 	}
 	return spawn w.process_requests()
@@ -235,7 +237,7 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 		}
 		return
 	}
-	mut reader := io.new_buffered_reader(reader: conn)
+	mut reader := io.new_buffered_reader(reader: &conn)
 	defer {
 		unsafe {
 			reader.free()
@@ -247,7 +249,12 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 		if !w.idle_conns.mark_idle(conn.handle) {
 			return
 		}
-		mut req := parse_request_with_body_limit(mut reader, w.max_http1_request_body_size) or {
+		mut req := parse_request_with_body_limit_and_timeout(mut reader, w.max_http1_request_body_size,
+			mut conn, w.read_header_timeout) or {
+			if err is RequestHeaderLimitError {
+				conn.write_string(http1_request_head_too_large_response) or {}
+				return
+			}
 			if err is RequestBodyLimitError {
 				conn.write_string(http1_request_body_too_large_response) or {}
 				return

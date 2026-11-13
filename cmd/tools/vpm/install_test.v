@@ -151,7 +151,9 @@ fn test_get_installed_version() {
 	// Force the initial branch name; CI ships with git's traditional `master`
 	// default, but newer git installs (and many dev machines) default to
 	// `main`, which makes the `git branch -D master` step below fail.
-	mut res := cmd_ok_args(@LOCATION, ['git', 'init', '-b', 'master', test_project_path])
+	mut res := cmd_ok_args(@LOCATION, ['git', 'init', '-q', test_project_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', test_project_path, 'symbolic-ref', 'HEAD', 'refs/heads/master'])
+	assert cmd_ok_args(@LOCATION, ['git', '-C', test_project_path, 'symbolic-ref', '--short', 'HEAD']).output.trim_space() == 'master'
 	os.chdir(test_project_path)!
 	if os.exec(['git', 'config', 'user.name']).exit_code == 1 {
 		os.exec_or_exit(['git', 'config', 'user.email', 'ci@vlang.io'])

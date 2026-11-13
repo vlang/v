@@ -60,8 +60,9 @@ The `v test` runner is built for the host using the C backend. Backend and targe
 as `-b arm64` apply to the test programs it compiles. Architecture-suffixed test discovery
 uses the requested `-arch`, including when it differs from the runner's host architecture.
 
-By default, `v test` uses at most four parallel workers and budgets one worker per 8 GiB
-of memory. On Linux it uses the lower of physical memory and the active cgroup memory limit.
+By default, `v test` uses one parallel worker per CPU and budgets one worker per 2 GiB of
+memory, whichever is lower. On Linux it uses the lower of physical memory and the active
+cgroup memory limit, and the lower of the CPU count and the cgroup CPU quota.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
