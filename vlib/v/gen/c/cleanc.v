@@ -24371,6 +24371,8 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// Zero-pad a formatted float after its sign; `inf`/`nan` are space-padded, as in C.
 	g.writeln("static inline string v3_f64_zpad(string s, int width) { int sign = s.len > 0 && (s.str[0] == '-' || s.str[0] == '+'); if (s.len <= sign || s.str[sign] < '0' || s.str[sign] > '9') return v3_string_pad(s, width, 0); return v3_string_zpad(s, width); }")
 	g.writeln("static inline string v3_string_rpad_zero(string s, int width) { if (s.len >= width) return s; u8* out = malloc_noscan((ptrdiff_t)width + 1); memcpy(out, s.str, (size_t)s.len); memset(out + s.len, '0', (size_t)(width - s.len)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	g.interpolation_buffer_helpers()
+	g.builder_interpolation_helpers()
 	// The 128-bit printers only exist when the program uses those types, so the map
 	// printer reaches for the preamble's decimal helpers instead, and only when one
 	// of those types shows up in an expression.
@@ -28259,10 +28261,10 @@ fn (g &FlatGen) string_plus_call_is_nested(_id flat.NodeId, node flat.Node) bool
 	if g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs) {
 		return true
 	}
-	if _ := g.fixed_float_buffer_precision(g.a.child(&node, 1)) {
+	if _ := g.interpolation_buffer_size(g.a.child(&node, 1), 0) {
 		return true
 	}
-	if _ := g.fixed_float_buffer_precision(g.a.child(&node, 2)) {
+	if _ := g.interpolation_buffer_size(g.a.child(&node, 2), 0) {
 		return true
 	}
 	return false

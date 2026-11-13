@@ -1,0 +1,149 @@
+import math
+import strings
+
+struct Record {
+	n int
+}
+
+fn (r Record) str() string {
+	return 'record(${r.n})'
+}
+
+struct Sink {
+mut:
+	text string
+}
+
+fn (mut s Sink) write_string(text string) {
+	s.text = text
+}
+
+struct Holder {
+mut:
+	b strings.Builder
+}
+
+fn append_line(mut b strings.Builder, name string, n int) {
+	b.write_string('${name}:${n}')
+}
+
+fn owned_line(n int) string {
+	return 'value=${n}'
+}
+
+fn mutate(mut b strings.Builder) int {
+	b.write_string('!')
+	return b.len
+}
+
+fn fail() !int {
+	return error('stop')
+}
+
+fn failing_append(mut b strings.Builder) ! {
+	b.write_string('prefix ${17} ${fail()!}')
+}
+
+fn receiver(mut calls []int, mut b strings.Builder) &strings.Builder {
+	calls[0]++
+	return &b
+}
+
+fn main() {
+	mut b := strings.new_builder(0)
+	append_line(mut b, 'name', 42)
+	assert b.str() == 'name:42'
+	b.write_string('${12}')
+	assert b.str() == '12'
+	b.write_string('n=${12}')
+	assert b.str() == 'n=12'
+	for n in [-123, 0, 12] {
+		// Standalone interpolation keeps an owning formatter: an independent oracle
+		// for the buffered conversions in a multi-part interpolation.
+		a := '${n:08d}'
+		c := '${n:+d}'
+		d := '${n:06X}'
+		e := '${n:-8d}'
+		f := '${n:8d}'
+		g := '${n:b}'
+		b.write_string('${n:08d}|${n:+d}|${n:06X}|${n:-8d}|${n:8d}|${n:b}')
+		assert b.str() == [a, c, d, e, f, g].join('|')
+	}
+	lo := i64(-9223372036854775807) - 1
+	hi := u64(18446744073709551615)
+	b.write_string('${lo}|${hi}|${lo:x}|${hi:X}')
+	assert b.str() == '-9223372036854775808|18446744073709551615|-8000000000000000|FFFFFFFFFFFFFFFF'
+	b.write_string('${i8(-128)} ${i16(-32768)} ${i32(-2147483647) - 1} ${u8(255)} ${u16(65535)} ${u32(4294967295)}')
+	assert b.str() == '-128 -32768 -2147483648 255 65535 4294967295'
+	for x in [0.0, -0.0, 6.25, -6.25, 1e-100, 1e100, 1.7976931348623157e308,
+		math.inf(1), math.inf(-1), math.nan()] {
+		a := '${x:.3f}'
+		c := '${x:.3e}'
+		d := '${x:.3G}'
+		e := '${x:.3}'
+		f := '${x:+012.3f}'
+		g := '${x:-12.3f}'
+		b.write_string('${x:.3f}|${x:.3e}|${x:.3G}|${x:.3}|${x:+012.3f}|${x:-12.3f}')
+		assert b.str() == [a, c, d, e, f, g].join('|')
+	}
+	// Numeric buffers live until every part has been copied; returned strings own bytes.
+	mut saved := []string{}
+	for n in 0 .. 100 { saved << owned_line(n) }
+	for n, text in saved { assert text == 'value=' + n.str() }
+	b.write_string('${b.len}:${b.len}')
+	assert b.str() == '0:0'
+	b.write_string('${mutate(mut b)}:${b.len}')
+	assert b.str() == '!1:1'
+	failing_append(mut b) or { assert err.msg() == 'stop' }
+	assert b.len == 0
+	mut calls := [0]
+	receiver(mut calls, mut b).write_string('${calls[0]}:${calls[0]}')
+	assert calls == [1]
+	assert b.str() == '1:1'
+	// Retaining consumers and user str() methods must keep owning strings.
+	mut sink := Sink{}
+	sink.write_string('${Record{7}}:${42}')
+	assert sink.text == 'record(7):42'
+	mut h := Holder{b: strings.new_builder(0)}
+	h.b.write_string('${12}:${34}')
+	assert h.b.str() == '12:34'
+	mut builders := [strings.new_builder(0)]
+	builders[0].write_string('${12}:${34}')
+	assert builders[0].str() == '12:34'
+	mut mapped := {'key': strings.new_builder(0)}
+	mapped['key'].write_string('${12}:${34}')
+	assert mapped['key'].str() == '12:34'
+	// Borrowed bytes can be invalidated by growth or overwritten in unused capacity.
+	for capacity in [3, 64] {
+		mut aliased := strings.new_builder(capacity)
+		aliased.write_string('abc')
+		view := unsafe { tos(aliased.data, 3) }
+		aliased.write_string('${view}:${view}')
+		assert aliased.str() == 'abcabc:abc'
+	}
+	mut spare := strings.new_builder(64)
+	spare.write_string('secret')
+	view := unsafe { tos(spare.data, 6) }
+	spare.clear()
+	spare.write_string('overwritten:${view}')
+	assert spare.str() == 'overwritten:secret'
+	raw := 'prefixsuffix'.bytes()
+	prefix := unsafe { tos(raw.data, 6) }
+	mut sliced := strings.Builder(raw[6..])
+	sliced.write_string('${prefix}:${prefix}')
+	assert sliced.str() == 'suffixprefix:prefix'
+	mut header := strings.new_builder(8)
+	header_view := unsafe { tos(&u8(&header.len), int(sizeof(int))) }
+	snapshot := header_view.clone()
+	header.write_string('prefix${header_view}')
+	assert header.str() == 'prefix' + snapshot
+	// The stack budget is shared across parts; wider formats retain owning buffers.
+	n := 7
+	b.write_string('${n:04096d}${n:04096d}${n:04096d}${n:04096d}${n:04096d}')
+	wide := b.str()
+	assert wide.len == 5 * 4096
+	for i in 0 .. 5 { assert wide[i * 4096..(i + 1) * 4096] == '0'.repeat(4095) + '7' }
+	b.write_string('x${n:05000d}')
+	assert b.str() == 'x' + '0'.repeat(4999) + '7'
+	println('ok')
+}
