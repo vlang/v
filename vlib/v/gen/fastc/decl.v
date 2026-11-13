@@ -3315,13 +3315,20 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 	mut embedded_id := 0
 	mut fields_are_public := is_c_struct
 	mut fields_are_mutable := false
+	// Flags of attributes written before a field name; they apply to the next field.
+	mut leading_is_required := false
+	mut leading_is_skip := false
 	for tok != .rcbr && tok != .eof {
 		if tok in [.semicolon, .comma] {
 			tok = scan.scan()
 			continue
 		}
 		if tok == .attribute {
-			tok = fastc_skip_attribute(mut scan)!
+			mut leading_attribute_required := false
+			mut leading_attribute_skip := false
+			tok, leading_attribute_required, leading_attribute_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+			leading_is_required = leading_is_required || leading_attribute_required
+			leading_is_skip = leading_is_skip || leading_attribute_skip
 			continue
 		}
 		// `pub string` names a field `pub`; only `pub:` / `pub mut:` start a section.
@@ -3388,6 +3395,14 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			tok = scan.scan()
 		}
 		if tok in [.semicolon, .rcbr, .assign] {
+			// Embedded fields record no skip/required flags. Without a default V rejects a leading
+			// @[skip] or @[required] on one, so fastc refuses it; with a default V accepts and ignores
+			// it, so fastc does too. Either way the pending flags end here.
+			if (leading_is_required || leading_is_skip) && tok != .assign {
+				return error('fastc parser does not support @[skip] or @[required] on embedded field `${field_names[0]}` in ${source_file.path}')
+			}
+			leading_is_required = false
+			leading_is_skip = false
 			embedded_key := if qualified_embed_key != 0 {
 				qualified_embed_key
 			} else {
@@ -3480,8 +3495,11 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		// Attributes may come before or after the default: `T @[a] = v` and `T = v @[a]`.
 		mut attribute_is_required := false
 		mut attribute_is_skip := false
-		mut is_required := false
-		mut is_skip := false
+		// Flags of leading attributes apply to this field; the pending copies are consumed here.
+		mut is_required := leading_is_required
+		mut is_skip := leading_is_skip
+		leading_is_required = false
+		leading_is_skip = false
 		tok, attribute_is_required, attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
 		is_required = is_required || attribute_is_required
 		is_skip = is_skip || attribute_is_skip
