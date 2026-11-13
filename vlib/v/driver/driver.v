@@ -1811,7 +1811,14 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if c_compiler_is_msvc(compiler) {
 		// `cl` cannot list a source's dependencies like `-M` does, so the object cannot
 		// be validated against its headers later. Build it for this compilation only.
-		msvc_obj := os.join_path(uncached_dir, '${os.file_name(obj_path).all_before_last('.')}_${tempname.unique_token()}.obj')
+		// Private build directories need short names to stay below MAX_PATH.
+		// C-only exports have no such directory, so their objects need unique names.
+		object_name := if uncached_dir.len > 0 {
+			'native_${stats.temporary_objects.len:x}.obj'
+		} else {
+			'native_${tempname.unique_token()}.obj'
+		}
+		msvc_obj := os.join_path(uncached_dir, object_name)
 		args << ['-o', msvc_obj, '-c', source_file]
 		res := cmdexec.run(compiler, msvc_cl_object_args(args, target.os))
 		if res.exit_code != 0 {
