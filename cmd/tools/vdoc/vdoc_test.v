@@ -1172,6 +1172,43 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
 }
 
+fn test_the_platform_selector_hides_the_comments_and_the_examples_of_other_declarations() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_variant_docs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	// `sep` has another comment and example on each platform, and `home` only another example.
+	os.write_file(os.join_path(dir, 'a_nix.c.v'), "module a\n\n// sep is '/' on Unix.\n// Example: assert sep() == '/'\npub fn sep() string {\n\treturn '/'\n}\n\n// home returns the home folder.\n// Example: assert home() == '/home'\npub fn home() string {\n\treturn '/home'\n}\n")!
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), "module a\n\n// sep is a backslash on Windows.\n// Example: assert sep(0) == 'win'\npub fn sep(i int) string {\n\treturn 'win'\n}\n\n// home returns the home folder.\n// Example: assert home(0) == 'C:'\npub fn home(i int) string {\n\treturn 'C:'\n}\n")!
+	res := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-', '-html-only-contents',
+		dir])!
+	assert res.exit_code == 0, res.output
+	for name, values in {
+		'sep':  ["'/'", "'win'"]
+		'home': ["'/home'", "'C:'"]
+	} {
+		section := res.output.all_after('<section id="${name}"').all_before('\t\t<section ')
+		// The comment and the example of each declaration are in its element, which the platform
+		// selector hides with it, and nothing of a declaration is outside of these elements.
+		chunks := section.split('<div class="declaration"')
+		assert chunks.len == 3, section
+		assert !chunks[0].contains('<p>') && !chunks[0].contains('Example'), section
+		assert section.trim_space().ends_with('</div>\n</section>'), section
+		unix := chunks.filter(it.starts_with(' data-platforms="linux '))
+		windows := chunks.filter(it.starts_with(' data-platforms="windows"'))
+		assert unix.len == 1 && windows.len == 1, section
+		assert unix[0].contains('Example') && unix[0].contains(values[0])
+			&& !unix[0].contains(values[1]), section
+		assert windows[0].contains('Example') && windows[0].contains(values[1])
+			&& !windows[0].contains(values[0]), section
+		if name == 'sep' {
+			assert unix[0].contains("sep is '/' on Unix.") && !unix[0].contains('backslash')
+			assert windows[0].contains('sep is a backslash on Windows.')
+				&& !windows[0].contains('on Unix')
+		}
+	}
+}
+
 fn test_readme_plaintext_preserves_unformatted_terminal_output() {
 	assert readme_plaintext('# Title\n\nA [link](https://vlang.io), **bold**, and `code`.\n\n```v\nfn main() {}\n```') == 'Title\nA link, bold, and code.\nfn main() {}'
 }

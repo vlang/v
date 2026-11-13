@@ -623,7 +623,11 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		attributes := tags.map('<div class="attribute">${html.escape(it)}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
-	comments_apart := !head && dn.content.len > 0 && has_variant_comments(dn)
+	// When the declarations of a symbol have their own comments or examples, each of them is
+	// shown with its declaration, so that the platform selector shows only the ones of the
+	// selected platform.
+	comments_apart := !head && dn.content.len > 0
+		&& (has_variant_comments(dn) || dn.variants.any(it.comments.len > 0 && it.examples() != dn.examples()))
 	if !head && dn.content.len > 0 {
 		// Each declaration of a symbol with variants is in its own element, which the platform
 		// selector of the page shows only for its platforms.
@@ -631,20 +635,22 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 			dnw.write_string('<div class="declaration"${platforms_attr(dn.platforms)}>\n')
 		}
 		dnw.write_string(declaration_html(dn, attributes_in_signatures))
-		if dn.variants.len > 0 {
-			dnw.write_string('</div>\n')
-		}
-		// The comment is shown once, after all the declarations, unless they have their own.
 		if comments_apart {
 			dnw.writeln(md_content)
+			dnw.write_string(examples_html(dn.examples(), include_examples))
+		}
+		if dn.variants.len > 0 {
+			dnw.write_string('</div>\n')
 		}
 		for variant in dn.variants {
 			dnw.write_string('<div class="declaration"${platforms_attr(variant.platforms)}>\n')
 			dnw.write_string(declaration_html(variant, true))
-			if has_own_comments(variant, dn) {
+			// Otherwise, the comment of the symbol is shown once, after all the declarations.
+			if comments_apart && variant.comments.len > 0 {
 				mut variant_renderer := new_doc_markdown_renderer(md_link_base)
 				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
 				dnw.writeln(render_doc_markdown(variant_comments, mut variant_renderer))
+				dnw.write_string(examples_html(variant.examples(), include_examples))
 			}
 			dnw.write_string('</div>\n')
 		}
@@ -652,21 +658,27 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	if !comments_apart {
 		dnw.writeln('${md_content}\n')
-	}
-	// Write examples if any found
-	examples := dn.examples()
-	if include_examples && examples.len > 0 {
-		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
-		dnw.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
-		for example in examples {
-			hl_example := html_highlight(example)
-			dnw.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
-		}
-		dnw.writeln('</section>')
+		dnw.write_string(examples_html(dn.examples(), include_examples))
 	}
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// examples_html returns the html of the examples of a doc comment, if they are included.
+fn examples_html(examples []string, include_examples bool) string {
+	if !include_examples || examples.len == 0 {
+		return ''
+	}
+	mut sb := strings.new_builder(200)
+	example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
+	sb.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
+	for example in examples {
+		hl_example := html_highlight(example)
+		sb.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
+	}
+	sb.writeln('</section>')
+	return sb.str()
 }
 
 // within_platforms returns the platforms of `platforms` that are also in `limit`, where no
