@@ -75,12 +75,8 @@ fn update_versioned_project(query []string) bool {
 		}
 		return false
 	}
-	mut manifest := vmod.from_file(os.join_path(dir, 'v.mod')) or {
+	manifest := vmod.from_file(os.join_path(dir, 'v.mod')) or {
 		vpm_error(err.msg())
-		exit(1)
-	}
-	if manifest.workspaces.len > 0 && settings.is_latest {
-		vpm_error('`v update --latest` is not yet supported for workspace roots.')
 		exit(1)
 	}
 	if !project_has_ranges(manifest, dir) && settings.precise == '' && settings.package == ''
@@ -109,14 +105,32 @@ fn update_versioned_project(query []string) bool {
 	mut scope := LockScope{}
 	scope.begin()
 	scope.complete = true
+	// Per-manifest working copies keep, for every aggregated requirement, the
+	// manifest and local index it came from. `--latest` widens and rewrites each
+	// manifest separately, so member constraints land in the member `v.mod`.
+	mut manifests := workspace_manifests(dir, manifest)
+	mut orig_lists := manifests.map(project_dependencies(it.manifest))
+	mut dep_lists := [][]string{cap: orig_lists.len}
+	for lst in orig_lists {
+		dep_lists << lst.clone()
+	}
+	// Manifest indexes whose constraints `--latest` actually widened; only those
+	// files are rewritten, so unaffected members stay byte-identical.
+	mut dirty := map[int]bool{}
 	mut dependencies := original_dependencies.clone()
 	if settings.is_latest {
-		for i, dep in dependencies {
-			ident := lockfile_module_key(dep)
-			if targets.len == 0 || ident in changes {
-				constraint := requirement_version(dep)
-				if constraint == '' || is_version_range(constraint) || tag_satisfies_range(constraint, '*') {
-					dependencies[i] = ident + '@*'
+		for li in 0 .. dep_lists.len {
+			for di in 0 .. dep_lists[li].len {
+				dep_lists[li][di] = widen_for_latest(dep_lists[li][di], targets, changes)
+			}
+		}
+		dependencies = []string{}
+		mut seen := map[string]bool{}
+		for lst in dep_lists {
+			for dep in lst {
+				if dep !in seen {
+					seen[dep] = true
+					dependencies << dep
 				}
 			}
 		}
@@ -136,21 +150,27 @@ fn update_versioned_project(query []string) bool {
 	}
 	mut selected := modules.clone()
 	if settings.is_latest {
-		for i, dep in dependencies {
-			if dep == original_dependencies[i] {
-				continue
-			}
-			for mut m in selected {
-				if dep in m.requested_aliases {
-					version := version_tag(m.version) or {
-						vpm_error('cannot widen `${dep}` without a semantic-version release.')
-						exit(1)
-					}
-					widened := lockfile_module_key(dep) + '@^' + version.str()
-					set_project_dependency(mut manifest, i, widened)
-					if m.requested == dep {
-						m.requested = widened
-						m.version_range = requirement_version(m.requested)
+		for li in 0 .. dep_lists.len {
+			for di in 0 .. dep_lists[li].len {
+				dep := dep_lists[li][di]
+				if dep == orig_lists[li][di] {
+					continue
+				}
+				for mut m in selected {
+					if dep in m.requested_aliases {
+						version := version_tag(m.version) or {
+							vpm_error('cannot widen `${dep}` without a semantic-version release.')
+							exit(1)
+						}
+						widened := lockfile_module_key(dep) + '@^' + version.str()
+						mut mm := manifests[li].manifest
+						set_project_dependency(mut mm, di, widened)
+						manifests[li].manifest = mm
+						dirty[li] = true
+						if m.requested == dep {
+							m.requested = widened
+							m.version_range = requirement_version(m.requested)
+						}
 					}
 				}
 			}
@@ -175,9 +195,16 @@ fn update_versioned_project(query []string) bool {
 	scope.resolved_keys = selected.map(lockfile_module_key(it.requested))
 	install_modules(selected, selector.selected_url, mut scope)
 	if settings.is_latest {
-		os.write_file(os.join_path(dir, 'v.mod'), vmod.encode(manifest)) or {
-			vpm_error('failed to write widened constraints: ${err.msg()}')
-			exit(1)
+		// Only manifests whose constraints actually widened are rewritten, so an
+		// unaffected member keeps its `v.mod` byte-identical.
+		for li, wm in manifests {
+			if !dirty[li] {
+				continue
+			}
+			os.write_file(os.join_path(wm.dir, 'v.mod'), vmod.encode(wm.manifest)) or {
+				vpm_error('failed to write widened constraints: ${err.msg()}')
+				exit(1)
+			}
 		}
 	}
 	scope.finish()

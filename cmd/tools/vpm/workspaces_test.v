@@ -30,7 +30,7 @@ fn test_workspace_member_dirs_basic() {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	dirs := workspace_member_dirs(root, manifest)
+	dirs := vmod.workspace_member_dirs(root, manifest)
 	assert dirs.len == 3, 'expected 3 members, got ${dirs}'
 	assert dirs == dirs.sorted(), 'member dirs should be sorted'
 	assert os.real_path(os.join_path(root, 'packages', 'a')) in dirs
@@ -47,7 +47,7 @@ fn test_workspace_member_dirs_no_workspaces() {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	dirs := workspace_member_dirs(root, manifest)
+	dirs := vmod.workspace_member_dirs(root, manifest)
 	assert dirs.len == 0
 }
 
@@ -68,7 +68,7 @@ fn test_workspace_member_dirs_ignores_empty_and_missing() {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	dirs := workspace_member_dirs(root, manifest)
+	dirs := vmod.workspace_member_dirs(root, manifest)
 	assert dirs.len == 1, 'expected only packages/a, got ${dirs}'
 	assert dirs[0] == os.real_path(os.join_path(root, 'packages', 'a'))
 }
@@ -88,7 +88,7 @@ fn test_workspace_member_dirs_dedupes_and_excludes_root() {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	dirs := workspace_member_dirs(root, manifest)
+	dirs := vmod.workspace_member_dirs(root, manifest)
 	assert dirs.len == 1, 'duplicate patterns and `.` must collapse to one member, got ${dirs}'
 	assert dirs[0] == os.real_path(os.join_path(root, 'packages', 'a'))
 }
@@ -99,7 +99,7 @@ fn test_nearest_workspace_root() {
 		os.rmdir_all(root) or {}
 	}
 	member := os.join_path(root, 'packages', 'a')
-	assert nearest_workspace_root(member) == os.real_path(root)
+	assert vmod.nearest_workspace_root(member) == os.real_path(root)
 }
 
 fn test_nearest_workspace_root_from_nested_subdir() {
@@ -109,7 +109,7 @@ fn test_nearest_workspace_root_from_nested_subdir() {
 	}
 	nested := os.join_path(root, 'packages', 'a', 'src', 'nested')
 	os.mkdir_all(nested) or { panic(err) }
-	assert nearest_workspace_root(nested) == os.real_path(root)
+	assert vmod.nearest_workspace_root(nested) == os.real_path(root)
 }
 
 fn test_nearest_workspace_root_none_outside() {
@@ -119,7 +119,7 @@ fn test_nearest_workspace_root_none_outside() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	assert nearest_workspace_root(root) == ''
+	assert vmod.nearest_workspace_root(root) == ''
 }
 
 fn test_workspace_root_variants() {
@@ -213,4 +213,45 @@ fn test_project_deps_for_manifest_plain_and_workspace() {
 	assert 'foo' in deps
 	assert 'bar' in deps
 	assert 'baz' in deps
+}
+
+fn test_workspace_manifests_includes_root_and_members_in_order() {
+	root := make_workspace_fixture()
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
+	members := workspace_manifests(root, manifest)
+	assert members.len == 4
+	assert members[0].dir == root
+	assert members[0].manifest.name == 'root'
+	assert members.map(it.manifest.name) == ['root', 'a', 'b', 'tools']
+}
+
+fn test_workspace_manifests_plain_project_has_only_root() {
+	root := os.join_path(os.temp_dir(), 'vpm_workspace_single_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'plain' }") or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
+	members := workspace_manifests(root, manifest)
+	assert members.len == 1
+	assert members[0].dir == root
+	assert members[0].manifest.name == 'plain'
+}
+
+fn test_widen_for_latest() {
+	assert widen_for_latest('foo', [], map[string]string{}) == 'foo@*'
+	assert widen_for_latest('foo@^1.0.0', [], map[string]string{}) == 'foo@*'
+	assert widen_for_latest('foo', ['foo'], {
+		'foo': ''
+	}) == 'foo@*'
+	assert widen_for_latest('baz', ['foo'], {
+		'foo': ''
+	}) == 'baz'
+	// Exact branch pins are not ranges and do not satisfy `*`: they stay pinned.
+	assert widen_for_latest('foo@main', [], map[string]string{}) == 'foo@main'
 }

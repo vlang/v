@@ -1,9 +1,12 @@
 module main
 
+import os
 import semver
+import v.vmod
 
 // Override selects a root dependency ref or range, optionally only where
-// requiring asks for that dependency. Dependency manifests supply no overrides.
+// requiring asks for that dependency. Workspace member manifests may supply
+// overrides too; they merge after the root's, so the root wins on duplicates.
 pub struct Override {
 pub:
 	name       string
@@ -52,6 +55,35 @@ fn parse_override(entry string) !Override {
 		return error('invalid dependency override `${entry}`')
 	}
 	return Override{ name: name, version: version, requiring: requiring, constraint: constraint }
+}
+
+// workspace_overrides merges dependency overrides from the root manifest and
+// every workspace member manifest. The root is parsed first and wins on
+// duplicate selectors (a member entry with the same requiring, constraint and
+// name is skipped). A malformed member override is an error, the same as a
+// malformed root one; unreadable member manifests are skipped.
+pub fn workspace_overrides(root string, root_manifest vmod.Manifest) ![]Override {
+	mut merged := parse_overrides(root_manifest.unknown['dependency_overrides'] or { []string{} })!
+	if root_manifest.workspaces.len == 0 {
+		return merged
+	}
+	mut seen := map[string]bool{}
+	for o in merged {
+		seen[o.requiring + '@' + o.constraint + '>' + o.name] = true
+	}
+	for member_dir in vmod.workspace_member_dirs(root, root_manifest) {
+		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or { continue }
+		for raw in member_manifest.unknown['dependency_overrides'] or { []string{} } {
+			o := parse_override(raw)!
+			key := o.requiring + '@' + o.constraint + '>' + o.name
+			if key in seen {
+				continue
+			}
+			seen[key] = true
+			merged << o
+		}
+	}
+	return merged
 }
 
 // overridden_request applies global root overrides before a source is selected.

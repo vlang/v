@@ -20,7 +20,11 @@ fn main() {
 `Manifest.backend` stores the `backend` field, such as `backend: 'fastc'`. The `v`
 command uses it as the default `-b` value for builds of the project.
 
-Catalog remains metadata. `workspaces` is also honored by vpm: a root manifest that
-declares it makes vpm treat the root and matching member directories as one
-project, aggregating their dependencies with the lockfile at the workspace root.
-Dependency strings retain their literal meaning in the package manager.
+Catalog remains metadata. `workspaces` is also honored by vpm and by the compiler:
+a root manifest that declares it makes vpm treat the root and matching member
+directories as one project, aggregating their dependencies with the lockfile at
+the workspace root. The compiler resolves imports against workspace members by
+manifest name, so siblings build against each other without being installed.
+`vmod.workspace_member_dirs` and `vmod.nearest_workspace_root` are the shared
+helpers both sides use. Dependency strings retain their literal meaning in the
+package manager.

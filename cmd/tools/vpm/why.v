@@ -70,7 +70,7 @@ fn build_dep_graph() !DepGraph {
 	root := vmod.from_file(project.vmod_file)!
 	mut graph := DepGraph{
 		root_name: root.name
-		overrides: parse_overrides(root.unknown['dependency_overrides'] or { []string{} })!
+		overrides: workspace_overrides(project.vmod_folder, root)!
 	}
 	roots := module_roots()
 	mut queue := []string{}

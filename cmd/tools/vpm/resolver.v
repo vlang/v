@@ -57,7 +57,7 @@ fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, m
 	if root_file != '' {
 		manifest := vmod.from_file(root_file)!
 		root_name = manifest.name
-		overrides = parse_overrides(manifest.unknown['dependency_overrides'] or { []string{} })!
+		overrides = workspace_overrides(os.dir(root_file), manifest)!
 	}
 
 	mut r := Resolver{

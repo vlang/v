@@ -1,5 +1,7 @@
 module main
 
+import os
+import rand
 import v.vmod
 
 fn test_parse_overrides_accepts_names_refs_and_ranges() {
@@ -60,6 +62,62 @@ fn test_scoped_override_selects_only_the_requiring_edge_and_beats_global() {
 	assert overridden_request('c@v2.0.0', ['c'], overrides) == 'c@v3.0.0'
 	assert overridden_request_for_module('c@v2.0.0', ['c'], 'other', parse_overrides(['parent>c: v1.0.0'])!) == 'c@v2.0.0'
 	assert parse_overrides(['parent>c: v1.0.0', 'other>c: v2.0.0'])!.len == 2
+}
+
+fn workspace_overrides_fixture() string {
+	root := os.join_path(os.temp_dir(), 'vpm_overrides_ws_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'members', 'svc')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'),
+		"Module { name: 'root' workspaces: ['members/*'] dependency_overrides: ['vsl: 1.0.0'] }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'members', 'svc', 'v.mod'),
+		"Module { name: 'svc' dependency_overrides: ['markdown: 2.0.0', 'vsl: 9.9.9'] }") or {
+		panic(err)
+	}
+	return root
+}
+
+fn test_workspace_overrides_merges_members_with_root_winning() {
+	root := workspace_overrides_fixture()
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
+	overrides := workspace_overrides(root, manifest)!
+	assert overrides.len == 2
+	assert overrides[0].name == 'vsl'
+	assert overrides[0].version == '1.0.0'
+	assert overrides[1].name == 'markdown'
+	assert overrides[1].version == '2.0.0'
+	assert overridden_request('vsl@^1', ['vsl'], overrides) == 'vsl@1.0.0'
+	assert overridden_request('markdown@^2', ['markdown'], overrides) == 'markdown@2.0.0'
+}
+
+fn test_workspace_overrides_plain_project_uses_root_only() {
+	manifest := vmod.decode("Module { name: 'plain' dependency_overrides: ['vsl: 1.0.0'] }")!
+	overrides := workspace_overrides('/tmp/plain', manifest)!
+	assert overrides.len == 1
+	assert overrides[0].name == 'vsl'
+}
+
+fn test_workspace_overrides_rejects_malformed_member_override() {
+	root := os.join_path(os.temp_dir(), 'vpm_overrides_bad_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'members', 'svc')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'root' workspaces: ['members/*'] }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'members', 'svc', 'v.mod'),
+		"Module { name: 'svc' dependency_overrides: ['malformed'] }") or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
+	mut rejected := false
+	workspace_overrides(root, manifest) or { rejected = true }
+	assert rejected
 }
 
 fn test_scoped_overrides_reject_malformed_and_duplicate_selectors() {
