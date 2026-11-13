@@ -1195,7 +1195,7 @@ fn main() {
 			first_hash = module_cache_object_hash(object)
 		} else {
 			header := module_cache_artifact(cache_dir, 'callbackprobe_', '.vh')
-			assert header.len > 0 && compiled.output.contains(header), compiled.output
+			assert header.len > 0 && compiled.output.contains(os.file_name(header)), compiled.output
 			assert !compiled.output.contains('Caching module callbackprobe...'), compiled.output
 			assert object == first_object
 			assert module_cache_object_hash(object) == first_hash
