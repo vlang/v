@@ -80,6 +80,15 @@ fn (mut t Transformer) lower_immediate_string_slice_comparison(id flat.NodeId, n
 	// A literal has no effects and cannot invalidate the view before string.eq
 	// consumes it. Arbitrary comparison operands keep the snapshot allocation.
 	view := t.lower_immediate_string_slice(range)
+	// This lowering bypasses transform_expr(range_id), so keep the borrowed value
+	// available to the assert reporter without evaluating the slice again.
+	if t.assert_watch.active {
+		for i, watched in t.assert_watch.ids {
+			if watched == int(range_id) {
+				t.assert_watch.results[i] = int(view)
+			}
+		}
+	}
 	literal := t.transform_expr(if lhs_literal { lhs } else { rhs })
 	equal := t.make_call_typed('string__eq', [view, literal], flat.source_type_bool)
 	return if node.op == .ne { t.make_prefix(.not, equal) } else { equal }
