@@ -15650,9 +15650,12 @@ fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
 	key_size := key_size_value.name.int()
 	if b.m.target.ptr_size == 8 && args[0] > 0 && b.m.values[args[0]].name == 'new_map'
 		&& key_size == b.m.type_size(b.str_type) {
-		// As wide as a string, but not one: `[3]u64`.
+		// As wide as a string, but not one: `[3]u64`. Only a named equality
+		// other than the string one says so; a program without the builtin
+		// map callbacks (bare fixtures) passes none, and its string-sized keys
+		// stay strings, as emit_map_state_alloc assumes.
 		equal := b.m.values[args[4]]
-		if !(equal.kind == .func_ref && equal.name == 'map_eq_string') {
+		if equal.kind == .func_ref && equal.name != 'map_eq_string' {
 			if bytes_id := b.runtime_fn_ids['v3_new_map_bytes'] {
 				args[0] = b.m.add_value(.func_ref, b.map_type, 'v3_new_map_bytes', bytes_id)
 			}
