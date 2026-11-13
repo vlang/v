@@ -114,7 +114,7 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
-        run: apt install libsqlite3-dev
+        run: apt-get update && apt-get install -y libsqlite3-dev pkgconf
       - name: Build musl-native SQLite for V database tests
         run: |
           set -eu
