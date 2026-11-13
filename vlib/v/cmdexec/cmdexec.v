@@ -248,11 +248,25 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 // run_in_mode_with_env is run_in_mode for a child that gets the variables of `env`
 // on top of the environment of this process.
 fn run_in_mode_with_env(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string) os.Result {
+	result, _ := run_in_mode_with_env_timed(program, args, work_folder, merge_output, timeout_ms,
+		env, true)
+	return result
+}
+
+// run_merged_timed is run_in_merged, bounded like run_with_timeout, that also reports whether
+// the deadline was hit. A caller that names the failure itself (`v test`) passes
+// `announce: false`, to keep this module from printing its own line about the kill.
+pub fn run_merged_timed(program string, args []string, timeout_ms i64, announce bool) (os.Result, bool) {
+	return run_in_mode_with_env_timed(program, args, '', true, timeout_ms, map[string]string{},
+		announce)
+}
+
+fn run_in_mode_with_env_timed(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string, announce bool) (os.Result, bool) {
 	executable := resolve_program(program) or {
 		return os.Result{
 			exit_code: 1
 			output:    'os: failed to find executable `${program}`\n'
-		}
+		}, false
 	}
 	mut process := os.new_process(executable)
 	process.set_args(args)
@@ -341,7 +355,9 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 	}
 	process.wait()
 	if timed_out {
-		eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
+		if announce {
+			eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
+		}
 		// Never wait for EOF after the deadline: a descendant that escaped
 		// the group kill may still own a writer. Collect what is already
 		// buffered instead.
@@ -377,7 +393,7 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 	return os.Result{
 		exit_code: exit_code
 		output:    output_text
-	}
+	}, timed_out
 }
 
 // run_in_merged executes a command with an exact argument vector and captures
