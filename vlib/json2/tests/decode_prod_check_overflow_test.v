@@ -7,3 +7,10 @@ fn test_strings_longer_than_a_word_decode_under_check_overflow() {
 	assert decoded['name'] == 'abcdefghijklmnop'
 	assert decoded['escaped'] == 'abcdefgh"ijklmnop'
 }
+
+fn test_encoding_a_long_string_scans_it_word_by_word() {
+	assert json2.encode('abcdefghijklmnop"q\\r') == '"abcdefghijklmnop\\"q\\\\r"'
+	assert json2.encode({
+		'name': 'abcdefghijklmnopqrstuvwxyz'
+	}) == '{"name":"abcdefghijklmnopqrstuvwxyz"}'
+}

@@ -19,6 +19,7 @@ const max_array_buffer_length = u64(0x7fffffff) - 31
 
 // salsa20_8 applies the salsa20/8 core transformation to a block
 // of 64 u8 bytes.  The block is modified in place.
+@[ignore_overflow]
 fn salsa20_8(mut block []u8) {
 	// Keep the temporary state on the stack.
 	mut block_words := [16]u32{}
