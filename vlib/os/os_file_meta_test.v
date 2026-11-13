@@ -122,17 +122,19 @@ fn test_cp_all_preserves_child_error_when_destination_is_nonempty() {
 	}
 	src := os.join_path(root, 'src')
 	dst := os.join_path(root, 'dst')
-	os.mkdir_all(src) or { panic(err) }
-	os.mkdir_all(dst) or { panic(err) }
-	os.write_file(os.join_path(dst, 'sentinel.txt'), 'retained') or { panic(err) }
-	// A dangling source entry fails during the recursive copy. The populated
-	// destination makes a subsequent rmdir fail with ENOTEMPTY on POSIX.
-	os.symlink(os.join_path(src, 'missing.txt'), os.join_path(src, 'dangling')) or {
+	src_child := os.join_path(src, 'child')
+	dst_child := os.join_path(dst, 'child')
+	os.mkdir_all(src_child) or { panic(err) }
+	os.mkdir_all(dst_child) or { panic(err) }
+	os.write_file(os.join_path(dst_child, 'sentinel.txt'), 'retained') or { panic(err) }
+	// A dangling source entry fails while copying child. The populated
+	// destination child makes the outer cleanup rmdir fail with ENOTEMPTY.
+	os.symlink(os.join_path(src_child, 'missing.txt'), os.join_path(src_child, 'dangling')) or {
 		panic(err)
 	}
 	os.cp_all(src, dst, true) or {
 		assert err.msg() == "Source path doesn't exist", err.msg()
-		assert os.read_file(os.join_path(dst, 'sentinel.txt'))! == 'retained'
+		assert os.read_file(os.join_path(dst_child, 'sentinel.txt'))! == 'retained'
 		return
 	}
 	assert false, 'a copy of a dangling symlink should fail'
