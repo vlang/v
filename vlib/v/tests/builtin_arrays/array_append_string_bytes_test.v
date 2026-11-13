@@ -102,6 +102,31 @@ fn test_unsafe_self_alias_is_copied_first() {
 	}
 }
 
+fn test_unsafe_removed_prefix_alias_is_copied_first() {
+	for use_pop_left in [false, true] {
+		for removed in [4, 8] {
+			mut buf := 'old\x00data'.bytes()
+			// No slices are created; growth must free the old allocation.
+			unsafe { buf.flags.set(.noslices) }
+			// Keep a NUL-terminated view into the prefix that will be removed.
+			view := unsafe { tos(&u8(buf.data), 3) }
+			if use_pop_left {
+				for _ in 0 .. removed {
+					buf.pop_left()
+				}
+			} else {
+				buf.drop(removed)
+			}
+			assert buf.offset == removed
+			assert buf.len == 8 - removed
+			assert buf.cap == buf.len
+			buf << view.bytes()
+			assert buf.bytestr() == if removed == 4 { 'dataold' } else { 'old' }, 'pop_left=${use_pop_left} removed=${removed}'
+			assert buf.offset == 0
+		}
+	}
+}
+
 fn test_unsafe_header_alias_is_copied_first() {
 	for start_cap in [1, 64] {
 		mut buf := []u8{len: 1, cap: start_cap}

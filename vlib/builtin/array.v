@@ -1360,8 +1360,10 @@ fn (mut a array) push_string_bytes(s string) {
 	data := uint(a.data)
 	header := uint(&a)
 	if (src < header + uint(sizeof(array)) && src_end > header)
-		|| (a.data != unsafe { nil } && src < data + uint(a.cap) && src_end > data) {
-		// An unsafe string view may overlap the backing storage or the array header.
+		|| (a.data != unsafe { nil } && src < data + uint(a.cap)
+			&& src_end > data - uint(a.offset)) {
+		// Include the prefix kept before data after drop or pop_left in the storage range.
+		// An unsafe string view may overlap that storage or the array header.
 		// Growing or unsharing can mutate either: snapshot the bytes before appending.
 		tmp := s.bytes()
 		a.push_many(tmp.data, tmp.len)
