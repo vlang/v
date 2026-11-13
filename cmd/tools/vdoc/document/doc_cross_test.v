@@ -195,6 +195,28 @@ fn test_a_doc_comment_on_one_platform_documents_the_symbol() {
 	assert d.contents['run']!.merge_comments().trim_space() == 'run runs.'
 }
 
+fn test_cross_documents_apart_the_declarations_with_other_comments() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_cross_other_comments_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a_nix.c.v'), 'module a\n\n// run runs.\npub fn run() {}\n\n// stop stops.\npub fn stop() {}\n\n// wait waits.\n// Example: assert true\npub fn wait() {}\n')!
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\n// run does nothing on Windows.\npub fn run() {}\n\n// stop stops.\npub fn stop() {}\n\n// wait waits.\n// Example: assert false\npub fn wait() {}\n')!
+	d := generate(dir, true, true, .cross)!
+	// The same declaration with another comment, or other examples, is not documented with the
+	// comment of another platform.
+	for name in ['run', 'wait'] {
+		node := d.contents[name]!
+		assert node.platforms.len > 0 && node.variants.len == 1, name
+		assert node.variants[0].content == node.content, name
+		assert node.variants[0].platforms != node.platforms, name
+	}
+	assert d.contents['run']!.merge_comments().trim_space() != d.contents['run']!.variants[0].merge_comments().trim_space()
+	// The same comment documents all the platforms once.
+	assert d.contents['stop']!.platforms == []
+	assert d.contents['stop']!.variants.len == 0
+}
+
 fn test_available_on_host() {
 	host := host_platform()
 	assert available_on_host(DocNode{})
@@ -288,7 +310,8 @@ fn test_cross_selects_host_examples_when_identical_declarations_are_merged() {
 	os.write_file(host_file, 'module demo\n\n// shared is the host form.\n// Example: assert true\npub fn shared() {}\n\npub fn undocumented() {}\n')!
 	d := generate(dir, true, true, .cross)!
 	node := d.contents['shared']!
-	assert node.variants.len == 0
+	// With other comments, the declarations are documented apart, each with its examples.
+	assert node.variants.len == 1
 	assert !json2.encode(node).contains('host_example_source')
 	declarations := declarations_on_host(node)
 	assert declarations.len == 1

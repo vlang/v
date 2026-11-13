@@ -339,7 +339,7 @@ fn (mut d Doc) add_node(mut node DocNode) {
 
 // merge_declaration returns `main`, a documented symbol, with another declaration of it,
 // `node`, added. With `-os cross`, a symbol can be declared for several platforms, and is
-// documented once for each different declaration, as `variants` of the first one.
+// documented once for each different declaration, or doc comment, as `variants` of the first one.
 fn merge_declaration(main DocNode, node DocNode) DocNode {
 	mut merged := main
 	// Without platforms, like for a single platform, the first declaration is documented.
@@ -349,7 +349,7 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		return merged
 	}
 	shape := declaration_shape(node.content)
-	if declaration_shape(main.content) == shape {
+	if declaration_shape(main.content) == shape && same_doc(main, node) {
 		merged.platforms = merge_platforms(main.platforms, node.platforms)
 		merged.host_example_source = merged_host_example_source(main, node)
 		// The doc comment can be written on only one of the platforms.
@@ -359,7 +359,7 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		return merged
 	}
 	for i, variant in main.variants {
-		if declaration_shape(variant.content) == shape {
+		if declaration_shape(variant.content) == shape && same_doc(variant, node) {
 			merged.variants[i].platforms = merge_platforms(variant.platforms, node.platforms)
 			merged.variants[i].host_example_source = merged_host_example_source(variant, node)
 			if variant.comments.len == 0 {
@@ -373,6 +373,15 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		children: []
 	}
 	return merged
+}
+
+// same_doc reports whether the declarations `a` and `b` of a symbol have the same doc comment
+// and examples, or one of them has none, so that they can be documented together. Otherwise, a
+// platform would show the comment of another one.
+fn same_doc(a DocNode, b DocNode) bool {
+	return a.comments.len == 0 || b.comments.len == 0
+		|| (a.merge_comments_without_examples() == b.merge_comments_without_examples()
+			&& a.examples() == b.examples())
 }
 
 fn host_example_source(node DocNode) ?HostExampleSource {
