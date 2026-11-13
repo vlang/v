@@ -6,7 +6,9 @@ import v.vmod
 import test_utils { cmd_ok_args }
 
 const v = @VEXE
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
+// Keep recursive dependency Git clones out of the nested VTMP session path on Windows.
+// Deep resolver/submodule paths otherwise make Git fail with `$GIT_DIR` too big.
+const test_path = os.join_path(os.temp_dir(), 'vd_${rand.ulid()}')
 
 fn testsuite_begin() {
 	dump(test_path)
