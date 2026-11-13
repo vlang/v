@@ -257,6 +257,13 @@ fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketPro
 	}
 }
 
+// conn_test_next_app_pn is a 1-RTT packet number the fake server has not used yet. The
+// client discards a repeated packet number as a duplicate (RFC 9000 §12.3).
+fn conn_test_next_app_pn(c &QuicConn) u64 {
+	largest := c.pn_spaces.application_data.largest_received or { return 0 }
+	return largest + 1
+}
+
 // conn_test_decrypt_one_rtt decrypts and frame-parses a 1-RTT datagram
 // USING A SINGLE, KNOWN generation of keys passed by the caller -- suitable
 // for tests inspecting what the CLIENT itself just sent. c.app_write_keys
@@ -514,7 +521,7 @@ fn test_stream_write_read_round_trip_over_fake_transport() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	reply_frame := encode_stream_frame(stream_id, 0, 'hello from server'.bytes(), true, true)!
-	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys, false)!
+	reply_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), reply_frame, server_app_keys, false)!
 	result2 := c.poll(reply_datagram.bytes, now)!
 	assert result2.events.len == 0, result2.events.str()
 
@@ -560,7 +567,7 @@ fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	max_streams_frame := encode_max_streams_frame(.bidirectional, 5)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, max_streams_frame, server_app_keys, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), max_streams_frame, server_app_keys, false)!
 	result2 := c.poll(incoming.bytes, now)!
 	assert result2.events.len == 0
 
@@ -682,7 +689,7 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 // of acknowledgments, which could prevent the connection from ever
 // becoming idle." process_one_rtt_packet/process_initial_or_handshake add
 // EVERY successfully-processed packet's number to the space's
-// `_received_pns` map regardless of whether any of its frames were
+// `_received` set regardless of whether any of its frames were
 // ack-eliciting, and drain_outgoing unconditionally sends an ACK-only
 // packet (itself non-ack-eliciting) whenever that map is non-empty -- so a
 // peer's own ACK-only packet (ACK is explicitly non-ack-eliciting, RFC
@@ -701,7 +708,7 @@ fn test_non_ack_eliciting_packet_does_not_elicit_an_ack() {
 		smallest: 0
 		largest:  0
 	}], 0, none)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, ack_only_payload, server_app_keys, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), ack_only_payload, server_app_keys, false)!
 	result := c.poll(incoming.bytes, now)!
 	assert result.outgoing.len == 0
 }
@@ -804,7 +811,7 @@ fn test_client_follows_server_initiated_key_update() {
 
 	mut ping_payload := [u8(frame_type_ping)]
 	ping_payload << [u8(0), 0, 0, 0]
-	incoming := build_fake_one_rtt_packet(c.scid, 0, ping_payload, server_gen1_keys, true)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), ping_payload, server_gen1_keys, true)!
 	result := c.poll(incoming.bytes, now)!
 	assert result.events.len == 0
 
@@ -842,7 +849,7 @@ fn test_peer_connection_close_enters_draining() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	cc_frame := encode_connection_close_frame(false, 7, 0, 'server done')!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, cc_frame, server_app_keys, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), cc_frame, server_app_keys, false)!
 	result := c.poll(incoming.bytes, now)!
 	assert c.state() == .draining
 	assert result.events.any(it.kind == .connection_closed)
@@ -910,7 +917,7 @@ fn test_closing_deadline_not_extended_by_peer_close_while_already_closing() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	cc_frame := encode_connection_close_frame(false, 7, 0, 'server done too')!
-	incoming := build_fake_one_rtt_packet(c.scid, 1, cc_frame, server_app_keys, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), cc_frame, server_app_keys, false)!
 	c.poll(incoming.bytes, now1)!
 	assert c.state() == .draining
 
@@ -973,7 +980,7 @@ fn test_idle_timeout_mechanism_fires_after_configured_window() {
 // White-box (same-module), calling process_one_rtt_packet directly rather
 // than through poll(): this module's own drain_outgoing unconditionally
 // ACKs every received 1-RTT packet in the SAME poll() call
-// (`app_received_pns.len > 0` gates an outgoing ACK with no ack-eliciting
+// (a non-empty `app_received` gates an outgoing ACK with no ack-eliciting
 // check), and building that ACK packet calls note_packet_sent -- so a
 // poll()-driven test can never isolate "receive alone resets the timer"
 // from "the auto-generated ACK response resets it," the same masking shape
@@ -989,7 +996,7 @@ fn test_process_one_rtt_packet_resets_idle_timer_on_receive() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	stream_frame := encode_stream_frame(1, 0, 'keepalive'.bytes(), false, false)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), stream_frame, server_app_keys, false)!
 
 	now += 4000
 	mut result := PollResult{}
@@ -1040,7 +1047,7 @@ fn test_handshake_done_rejected_when_role_is_server() {
 // successfully decrypted and its frames dispatched after the RFC-required
 // discard point. RFC 9001 §4.9: "once an endpoint has discarded its
 // Initial/Handshake keys, it MUST discard all packets it receives in that
-// space." Observable via c.initial_received_pns staying empty: discard
+// space." Observable via c.initial_received staying empty: discard
 // resets it to a fresh map, and only a successfully-processed packet in
 // that space would repopulate it.
 fn test_discarded_initial_keys_reject_further_packets() {
@@ -1052,7 +1059,7 @@ fn test_discarded_initial_keys_reject_further_packets() {
 
 	// A bare PING frame (RFC 9000 §19.2, legal in the Initial space, always
 	// a harmless no-op) so the ONLY thing that can explain a difference in
-	// c.initial_received_pns is whether the discard check runs -- a CRYPTO
+	// c.initial_received is whether the discard check runs -- a CRYPTO
 	// frame with arbitrary content would ALSO get rejected by the TLS layer
 	// post-handshake for an unrelated reason (unexpected message), giving a
 	// false pass/fail signal.
@@ -1065,7 +1072,7 @@ fn test_discarded_initial_keys_reject_further_packets() {
 	stale_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 5, ping_payload, c.initial_keys_server)!
 	result := c.poll(stale_datagram.bytes, now)!
 	assert result.events.len == 0
-	assert c.initial_received_pns.len == 0
+	assert c.initial_received.is_empty()
 }
 
 // test_discarded_handshake_keys_reject_further_packets is the Handshake-space
@@ -1091,7 +1098,7 @@ fn test_discarded_handshake_keys_reject_further_packets() {
 	stale_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 5, ping_payload, hs_keys_server)!
 	result := c.poll(stale_datagram.bytes, now)!
 	assert result.events.len == 0
-	assert c.handshake_received_pns.len == 0
+	assert c.handshake_received.is_empty()
 }
 
 // test_wrong_destination_cid_rejected_on_long_header is a regression test for
@@ -1226,11 +1233,7 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 	result2 := c.poll(forged_datagram.bytes, u64(20))!
 	assert result2.events.len == 0
 	assert c.peer_scid == real_server_scid
-	// initial_received_pns itself is drained (reset to empty) by
-	// drain_outgoing's own ACK-building logic on every poll() call, so it
-	// can't distinguish "nothing new arrived" from "something arrived and
-	// got ACKed" across two separate poll() calls -- pn_spaces.initial's
-	// own largest_received is the stable, persistent signal: it stays at 0
+	// pn_spaces.initial's largest_received is the direct signal: it stays at 0
 	// (the first legit packet) if the forged pn=1 packet was correctly
 	// rejected, or advances to 1 if it was wrongly processed.
 	largest_received := c.pn_spaces.initial.largest_received or { u64(999) }
@@ -1294,7 +1297,7 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	stream_frame := encode_stream_frame(9, 0, 'from server on stream 9'.bytes(), true, true)!
-	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys, false)!
+	incoming := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), stream_frame, server_app_keys, false)!
 	result1 := c.poll(incoming.bytes, now)!
 	// Stream 9 was named directly by this frame, so it fires
 	// peer_stream_opened (Phase 12a) -- but its auto-created siblings 1/5
@@ -1382,7 +1385,7 @@ fn test_peer_stream_opened_never_fires_for_a_locally_opened_stream() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 	reply_frame := encode_stream_frame(stream_id, 0, 'hello from server'.bytes(), true, true)!
-	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys, false)!
+	reply_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), reply_frame, server_app_keys, false)!
 	replied := c.poll(reply_datagram.bytes, now)!
 	assert replied.events.len == 0, replied.events.str()
 	_ = server_initial_scid
@@ -1411,7 +1414,7 @@ fn test_peer_stream_opened_survives_reordering_past_an_auto_created_filler() {
 	// silently auto-creates fillers for 1 and 5 with no frame ever having
 	// named them directly.
 	high_frame := encode_stream_frame(9, 0, 'high'.bytes(), true, true)!
-	high_datagram := build_fake_one_rtt_packet(c.scid, 0, high_frame, server_app_keys, false)!
+	high_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), high_frame, server_app_keys, false)!
 	high_result := c.poll(high_datagram.bytes, now)!
 	assert high_result.events.len == 1, high_result.events.str()
 	assert high_result.events[0].stream_id? == u64(9)
@@ -1421,7 +1424,7 @@ fn test_peer_stream_opened_survives_reordering_past_an_auto_created_filler() {
 	// -- must still be announced, exactly once, not silently skipped
 	// because it already technically existed in c.streams.
 	low_frame := encode_stream_frame(1, 0, 'low'.bytes(), true, true)!
-	low_datagram := build_fake_one_rtt_packet(c.scid, 0, low_frame, server_app_keys, false)!
+	low_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), low_frame, server_app_keys, false)!
 	low_result := c.poll(low_datagram.bytes, now)!
 	assert low_result.events.len == 1, low_result.events.str()
 	assert low_result.events[0].kind == .peer_stream_opened
@@ -1443,7 +1446,7 @@ fn test_peer_stream_opened_fires_from_a_bare_reset_stream_frame() {
 	server_app_keys := read_keys.current_keys
 
 	reset_frame := encode_reset_stream_frame(1, 42, 0)!
-	reset_datagram := build_fake_one_rtt_packet(c.scid, 0, reset_frame, server_app_keys, false)!
+	reset_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), reset_frame, server_app_keys, false)!
 	result := c.poll(reset_datagram.bytes, now)!
 	assert result.events.len == 1, result.events.str()
 	assert result.events[0].kind == .peer_stream_opened
@@ -1470,14 +1473,14 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 	// Stream 1: open (a non-FIN STREAM frame -- data arrived, no terminal
 	// condition yet) -> fin_received via a later FIN-carrying STREAM frame.
 	mid_frame := encode_stream_frame(1, 0, 'partial'.bytes(), false, true)!
-	mid_datagram := build_fake_one_rtt_packet(c.scid, 0, mid_frame, server_app_keys, false)!
+	mid_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), mid_frame, server_app_keys, false)!
 	c.poll(mid_datagram.bytes, now)!
 	open_status := c.stream_recv_status(1) or { panic('expected a status for a known stream') }
 	assert open_status.state == .open
 	assert open_status.reset_error == none
 
 	fin_frame := encode_stream_frame(1, u64('partial'.len), 'complete'.bytes(), true, true)!
-	fin_datagram := build_fake_one_rtt_packet(c.scid, 0, fin_frame, server_app_keys, false)!
+	fin_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), fin_frame, server_app_keys, false)!
 	c.poll(fin_datagram.bytes, now)!
 	fin_status := c.stream_recv_status(1) or { panic('expected a status for a known stream') }
 	assert fin_status.state == .fin_received
@@ -1486,7 +1489,7 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 	// Stream 5: open -> reset_received via a bare RESET_STREAM, no prior
 	// STREAM frame at all.
 	reset_frame := encode_reset_stream_frame(5, 99, 0)!
-	reset_datagram := build_fake_one_rtt_packet(c.scid, 0, reset_frame, server_app_keys, false)!
+	reset_datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), reset_frame, server_app_keys, false)!
 	c.poll(reset_datagram.bytes, now)!
 	reset_status := c.stream_recv_status(5) or { panic('expected a status for a known stream') }
 	assert reset_status.state == .reset_received
@@ -1495,4 +1498,242 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 	// A locally-opened UNI stream has no receive side on this endpoint.
 	uni_id := c.open_stream(false)!
 	assert c.stream_recv_status(uni_id) == none
+}
+
+// ack_test_ping is a PING padded with PADDING so the packet carries the
+// 4 bytes the header-protection sample assumes (RFC 9001 §5.4.2).
+const ack_test_ping = [u8(frame_type_ping), 0, 0, 0, 0]
+
+fn ack_test_in_flight_bytes(st LossDetectionSpaceState) u64 {
+	mut total := u64(0)
+	for _, info in st.sent_packets {
+		if info.in_flight {
+			total += info.sent_bytes
+		}
+	}
+	return total
+}
+
+// ack_test_sent_ack returns the ACK frame in a 1-RTT datagram the client sent.
+fn ack_test_sent_ack(c &QuicConn, datagram QuicDatagram) !AckFrame {
+	keys := c.app_write_keys or { return error('no 1-RTT write keys') }
+	for frame in conn_test_decrypt_one_rtt(datagram.bytes, c.dcid.len, keys)! {
+		if frame is AckFrame {
+			return frame
+		}
+	}
+	return error('no ACK frame in the datagram')
+}
+
+// ack_test_largest_sent_pn is the packet number of the last 1-RTT packet the
+// client sent.
+fn ack_test_largest_sent_pn(c &QuicConn) u64 {
+	mut largest := u64(0)
+	for pn, _ in c.loss_detection.application_data.sent_packets {
+		if pn > largest {
+			largest = pn
+		}
+	}
+	return largest
+}
+
+// RFC 9002 §6.4: "The sender MUST discard all recovery state associated with
+// those packets and MUST remove them from the count of bytes in flight."
+// Appendix A.11 also resets pto_count.
+fn test_discarding_initial_keys_removes_their_bytes_in_flight() {
+	mut c, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	assert c.congestion_control.bytes_in_flight > 0, 'the ClientHello is in flight'
+	c.loss_detection.pto_count = 2
+	c.discard_initial_keys()
+	assert c.congestion_control.bytes_in_flight == 0
+	assert c.loss_detection.initial.sent_packets.len == 0
+	assert c.loss_detection.pto_count == 0
+}
+
+// After the handshake both long-header spaces are discarded, so only 1-RTT
+// packets may still count toward bytes in flight. The fake server never
+// acknowledges the client's Initial or Handshake packets, which is exactly
+// the case RFC 9002 §6.4 covers.
+fn test_established_connection_counts_only_one_rtt_packets_in_flight() {
+	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	assert c.initial_keys_discarded && c.handshake_keys_discarded
+	assert c.loss_detection.handshake.sent_packets.len == 0
+	assert c.congestion_control.bytes_in_flight == ack_test_in_flight_bytes(c.loss_detection.application_data)
+}
+
+// RFC 9002 §6.3: "Clients that receive a Retry packet reset congestion
+// control and loss recovery state, including resetting any pending timers."
+// The first ClientHello must stop counting toward bytes in flight; only the
+// resent one may.
+fn test_retry_resets_congestion_and_loss_recovery_state() {
+	mut c, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	c.loss_detection.pto_count = 1
+	mut retry := [u8(0xf0), 0, 0, 0, 1, u8(c.scid.len)]
+	retry << c.scid
+	retry << [u8(4), 0x51, 0x52, 0x53, 0x54]
+	retry << [u8(0x70), 0x71, 0x72, 0x73]
+	retry << compute_retry_integrity_tag(c.original_dcid, retry)!
+	result := c.poll(retry, u64(10))!
+	assert c.retry_accepted
+	assert result.outgoing.len == 1, 'the ClientHello is resent'
+	assert c.loss_detection.initial.sent_packets.len == 1
+	assert c.congestion_control.bytes_in_flight == ack_test_in_flight_bytes(c.loss_detection.initial)
+	assert c.loss_detection.pto_count == 0
+	// RFC 9000 §17.2.5.3: "A client MUST NOT reset the packet number for any
+	// packet number space after processing a Retry packet."
+	assert 1 in c.loss_detection.initial.sent_packets, 'the resent ClientHello reused packet number 0'
+}
+
+// RFC 9000 §13.2.3-13.2.4: an ACK range keeps appearing in ACK frames until
+// the peer acknowledges a packet that carried it; then packets at or below
+// that ACK's Largest Acknowledged stop being acknowledged.
+fn test_ack_ranges_are_kept_until_the_ack_carrying_them_is_acknowledged() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	keys := read_keys.current_keys
+	// Stream packets first, so the client's own packet numbers run ahead of
+	// the server's and a carrier's packet number differs from the Largest
+	// Acknowledged it carried.
+	stream_id := c.open_stream(true)!
+	for _ in 0 .. 3 {
+		c.write_stream(stream_id, 'x'.bytes(), false)!
+		c.poll(none, now)!
+	}
+	// The fixture's HANDSHAKE_DONE was packet 0, so these are 1 and 2.
+	assert conn_test_next_app_pn(c) == 1
+	r1 := c.poll(build_fake_one_rtt_packet(c.scid, 1, ack_test_ping, keys, false)!.bytes,
+		now)!
+	assert r1.outgoing.len == 1
+	first_carrier := ack_test_largest_sent_pn(c)
+	r2 := c.poll(build_fake_one_rtt_packet(c.scid, 2, ack_test_ping, keys, false)!.bytes,
+		now)!
+	assert r2.outgoing.len == 1
+	second_carrier := ack_test_largest_sent_pn(c)
+	assert first_carrier != 1 && second_carrier != 2, 'carrier packet numbers must differ from what they acknowledge'
+	second := ack_test_sent_ack(c, r2.outgoing[0])!
+	assert second.ranges == [AckRange{
+		smallest: 0
+		largest:  2
+	}], 'packets 0 and 1 must still be acknowledged: no ACK carrying them was acknowledged'
+
+	// One peer ACK acknowledges both carriers, of ACK [0, 1] and ACK [0, 2];
+	// the larger Largest Acknowledged, 2, is what may be forgotten.
+	mut payload := encode_ack_frame([AckRange{
+		smallest: first_carrier
+		largest:  second_carrier
+	}], 0, none)!
+	payload << ack_test_ping
+	r3 := c.poll(build_fake_one_rtt_packet(c.scid, 3, payload, keys, false)!.bytes, now)!
+	assert r3.outgoing.len == 1
+	third := ack_test_sent_ack(c, r3.outgoing[0])!
+	assert third.ranges == [AckRange{
+		smallest: 3
+		largest:  3
+	}], 'packets up to 2 were acknowledged in an acknowledged ACK'
+
+	// Packet 1 is now below the floor, so a late copy is a duplicate.
+	late := c.poll(build_fake_one_rtt_packet(c.scid, 1, ack_test_ping, keys, false)!.bytes,
+		now)!
+	assert late.outgoing.len == 0, 'a packet at or below the floor was processed'
+}
+
+// RFC 9000 §12.3: "A receiver MUST discard a newly unprotected packet unless
+// it is certain that it has not processed another packet with the same
+// packet number from the same packet number space." A replayed 1-RTT packet
+// must not be processed again; here that shows as no second ACK.
+fn test_duplicate_one_rtt_packet_is_discarded() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	datagram := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), ack_test_ping,
+		read_keys.current_keys, false)!
+	first := c.poll(datagram.bytes, now)!
+	assert first.outgoing.len == 1
+	reset_at := c.idle_timeout.last_reset
+	replay := c.poll(datagram.bytes, now + 1_000_000)!
+	assert replay.outgoing.len == 0, 'a duplicate packet was processed again'
+	assert !c.app_ack_eliciting_pending
+	// RFC 9000 §10.1 restarts the idle timer only for a packet processed
+	// successfully; a discarded duplicate must not keep the connection alive.
+	assert c.idle_timeout.last_reset == reset_at, 'a duplicate restarted the idle timer'
+}
+
+// The long-header sibling of test_duplicate_one_rtt_packet_is_discarded: a
+// replayed Initial packet is discarded too (RFC 9000 §12.3).
+fn test_duplicate_initial_packet_is_discarded() {
+	mut c, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	datagram := build_fake_long_header_packet(.initial, c.scid, [u8(0xaa), 0xbb, 0xcc, 0xdd],
+		0, ack_test_ping, c.initial_keys_server)!
+	first := c.poll(datagram.bytes, u64(10))!
+	assert first.outgoing.len == 1, 'the PING is acknowledged'
+	replay := c.poll(datagram.bytes, u64(20))!
+	assert replay.outgoing.len == 0, 'a duplicate Initial packet was processed again'
+	assert c.idle_timeout.last_reset? == 10, 'a duplicate restarted the idle timer'
+}
+
+// The Handshake-space sibling of test_duplicate_initial_packet_is_discarded:
+// a ServerHello installs real Handshake keys, then a replayed Handshake
+// packet must not be processed twice (RFC 9000 §12.3).
+fn test_duplicate_handshake_packet_is_discarded() {
+	mut c, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	server_scid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+	server_pub, server_priv := ecdsa.generate_key(nid: .prime256v1)!
+	defer {
+		server_pub.free()
+		unsafe { server_priv.free() }
+	}
+	server_hello := conn_test_build_fake_server_hello([]u8{len: 32, init: 0x22},
+		server_pub.uncompressed_bytes()!)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_scid, 0, encode_crypto_frame(0,
+		server_hello)!, c.initial_keys_server)!
+	c.poll(sh_datagram.bytes, u64(10))!
+	hs_keys := c.handshake_keys_server or { panic('the ServerHello installs Handshake keys') }
+
+	datagram := build_fake_long_header_packet(.handshake, c.scid, server_scid, 0, ack_test_ping,
+		hs_keys)!
+	first := c.poll(datagram.bytes, u64(20))!
+	assert first.outgoing.len == 1, 'the PING is acknowledged'
+	replay := c.poll(datagram.bytes, u64(30))!
+	assert replay.outgoing.len == 0, 'a duplicate Handshake packet was processed again'
+	assert c.idle_timeout.last_reset? == 20, 'a duplicate restarted the idle timer'
 }
