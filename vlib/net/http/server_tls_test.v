@@ -138,15 +138,37 @@ fn test_server_tls_round_trip() {
 	assert resp.body == 'tls hello /hello'
 }
 
-fn send_slow_tls_request_head(port int) {
-	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{}) or { return }
-	defer { client.shutdown() or {} }
-	client.dial('127.0.0.1', port) or { return }
-	client.write_string('GET /slow HTTP/1.1\r\nX-Slow: ') or { return }
-	for _ in 0 .. 40 {
-		time.sleep(50 * time.millisecond)
-		client.write_string('a') or { break }
+fn send_slow_tls_request_head(port int, ready chan bool, stop chan bool) {
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{}) or {
+		ready <- false
+		return
 	}
+	defer { client.shutdown() or {} }
+	client.dial('127.0.0.1', port) or {
+		ready <- false
+		return
+	}
+	client.write_string('GET /slow HTTP/1.1\r\nX-Slow: ') or {
+		ready <- false
+		return
+	}
+	ready <- true
+	for {
+		select {
+			_ := <-stop {
+				return
+			}
+			50 * time.millisecond {
+			}
+		}
+		client.write_string('a') or { return }
+	}
+}
+
+fn request_tls_response_on_channel(port int, result chan string) {
+	response := tls_server_request_response(port,
+		'GET /alive HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n') or { err.msg() }
+	result <- response
 }
 
 fn test_server_tls_request_head_deadline_releases_worker() ! {
@@ -174,15 +196,35 @@ fn test_server_tls_request_head_deadline_releases_worker() ! {
 		t.wait()
 	}
 
-	drip := spawn send_slow_tls_request_head(port)
-	time.sleep(500 * time.millisecond)
-	started := time.new_stopwatch()
-	response := tls_server_request_response(port,
-		'GET /alive HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
-	assert response.starts_with('HTTP/1.1 200 OK\r\n')
-	assert response.contains('tls hello /alive')
-	assert started.elapsed() < 1500 * time.millisecond, 'legitimate TLS request waited ${started.elapsed()}'
-	drip.wait()
+	ready := chan bool{cap: 1}
+	stop := chan bool{cap: 1}
+	drip := spawn send_slow_tls_request_head(port, ready, stop)
+	if !<-ready {
+		drip.wait()
+		assert false, 'slow TLS client failed to send its partial request head'
+		return
+	}
+
+	// Keep sending partial headers until the server closes the slow connection.
+	// Without the total header deadline, the sole worker stays occupied even
+	// when each byte arrives inside read_timeout. Allow the legitimate request
+	// its own RSA handshake budget instead of timing two handshakes at 1.5 s.
+	result := chan string{cap: 1}
+	request := spawn request_tls_response_on_channel(port, result)
+	defer {
+		stop <- true
+		drip.wait()
+		request.wait()
+	}
+	select {
+		response := <-result {
+			assert response.starts_with('HTTP/1.1 200 OK\r\n'), response
+			assert response.contains('tls hello /alive')
+		}
+		2 * tls_handshake_budget {
+			assert false, 'partial TLS request head kept the sole worker occupied'
+		}
+	}
 }
 
 fn test_server_tls_rejects_oversized_and_malformed_http1_framing() {
