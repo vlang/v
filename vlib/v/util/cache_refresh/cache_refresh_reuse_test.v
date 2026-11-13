@@ -223,7 +223,9 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		refresh(@VEXE, requests)!
 		os.unsetenv('V3_CACHE_TRACE')
 		warm_calls := os.read_file(log)!
-		assert warm_calls == cold_calls, 'warm refresh must reuse its validated module objects\ncold compiler calls:\n${cold_calls}\nafter warm refresh:\n${warm_calls}'
+		diagnostic := 'warm refresh must reuse its validated module objects\n' +
+			'cold compiler calls:\n${cold_calls}\n' + 'after warm refresh:\n${warm_calls}'
+		assert warm_calls == cold_calls, diagnostic
 	}
 }
 
