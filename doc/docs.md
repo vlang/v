@@ -5862,6 +5862,10 @@ another module, including arguments inside arrays, pointers, and maps.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
 
+The type of a field accessed directly on a generic function's result is determined by the
+concrete type arguments, including when they are inferred. For example, if `wrap(3)`
+returns a `Box[int]` with a `value` field of type `int`, `wrap(3).value << 1` yields `6`.
+
 Returning a generic struct as a generic interface retains its concrete methods, including when
 an interface type argument is itself a generic interface.
 

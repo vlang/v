@@ -1,0 +1,11 @@
+struct ShiftOperand[T] {
+	value T
+}
+
+fn shift_operand[T](value T) ShiftOperand[T] {
+	return ShiftOperand[T]{value: value}
+}
+
+fn main() {
+	println(shift_operand('abc').value << 1)
+}

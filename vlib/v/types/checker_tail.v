@@ -5505,6 +5505,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
+			if !semantic_types_equal(info0.return_type, info.return_type) {
+				tc.invalidate_body_resolved_type_chain(id)
+			}
 		}
 		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
