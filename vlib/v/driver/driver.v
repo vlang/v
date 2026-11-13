@@ -8080,6 +8080,7 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/builtin/segfault_handler_nix.c',
 	'vlib/builtin/segfault_handler_nix.h',
 	'vlib/v/driver/run_signals_nix.c',
+	'vlib/v/driver/native_object_cache_impl.c',
 	'vlib/builtin/core_windows.c',
 	'vlib/builtin/core_windows.h',
 	'vlib/time/ticks_windows.c',

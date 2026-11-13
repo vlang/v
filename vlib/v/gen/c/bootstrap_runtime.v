@@ -9,9 +9,9 @@ fn (mut g FlatGen) headerless_native_object_cache_helper() {
 	}
 	g.writeln('#define V_NATIVE_OBJECT_CACHE_HEADERLESS 1')
 	g.writeln('#ifndef _WIN32')
-	g.writeln('int link(char*, char*);')
+	g.writeln(g.cpp_c_linkage('int link(char*, char*);'))
 	g.writeln('#if defined(__linux__)')
-	g.writeln('long syscall(long, ...);')
+	g.writeln(g.cpp_c_linkage('long syscall(long, ...);'))
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.write($embed_file('@VEXEROOT/vlib/v/driver/native_object_cache_impl.c').to_string())
