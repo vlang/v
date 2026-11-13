@@ -185,6 +185,22 @@ fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, 
 	fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 }
 
+fn fastc_scan_generic_fns_of_files(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int) [][]FastcGenericFn {
+	mut results := [][]FastcGenericFn{cap: indexes.len}
+	for index in indexes {
+		results << fastc_scan_generic_fns(sources[index].source, sources[index].path, prefs, index)
+	}
+	return results
+}
+
+fn fastc_scan_generic_calls_of_files(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int, by_name map[string]FastcGenericFn) []FastcGenericCallScan {
+	mut results := []FastcGenericCallScan{cap: indexes.len}
+	for index in indexes {
+		results << fastc_scan_generic_calls_of_file(sources, prefs, index, by_name)
+	}
+	return results
+}
+
 // fastc_parse_constant_files_parallel returns no results: without threads the
 // constants phase parses every file serially.
 fn fastc_parse_constant_files_parallel(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed flat.TypeTextBindings) []FastcConstantFileResult {

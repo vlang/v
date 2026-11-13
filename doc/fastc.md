@@ -3,11 +3,47 @@
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
-Default builds and explicit `-cc tcc` builds compile generated V code and link with TinyCC.
-FastC reports TinyCC failures without retrying with another compiler.
-On macOS, Objective-C interop uses a separate cached native library built by the platform compiler;
-generated V bodies remain on TinyCC, including when `-no-retry-compilation` is set.
+Ordinary default builds and explicit `-cc tcc` builds compile generated V code and link with
+TinyCC. FastC reports TinyCC compilation failures directly.
+TinyCC compiles the program as parallel units. Conditional blocks that hold only preprocessor
+directives, including `#define`, are shared by every unit, unless a block defines a macro and
+includes a header, which can select the header's definitions. Such blocks and other conditional
+blocks outside functions keep the program in one unit. Generic instances form units of about 1 MiB.
+In a split build, embedded files totalling at least 1 MiB form a separate object that names no
+header. It is reused while its text, TinyCC and flags are unchanged; `-nocache` rebuilds it.
+On macOS, Objective-C interop uses a cached native library built by the platform compiler.
+Generated V code and the executable link remain on TinyCC, including with
+`-no-retry-compilation`. Native bindings come from explicit V declarations; V never infers
+declarations from native headers. Dependency manifests produced by the native compiler
+validate the library cache, including transitive headers and native link inputs. A changed or
+unverifiable native input requires rebuilding the native library.
+`-ldflags` and `LDFLAGS` apply to the executable link, including with the native library.
+TinyCC reports executable linker options it does not support.
+On arm64 macOS, a native function whose arguments do not all fit in registers is called
+through an adapter in the native library, because TinyCC does not lay out stack arguments as
+Apple's ABI packs them.
+A TinyCC executable on macOS records the running macOS as its SDK version, as the platform
+linker does, with a UUID and without repeated rpaths. TinyCC records macOS 10.6, for which
+AppKit keeps its 10.6 control layout and image formats. On arm64, signing also corrects
+TinyCC's addresses of stack offsets of 4 KiB and more, which it computed from the zero register
+instead of the stack pointer.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
+`#preinclude` headers are ordinary headers. A header named with `@DIR` belongs to the native
+library like any other include of its directory.
+The C compiler's list of headers opened by the TinyCC program is reused while the program's
+preprocessor lines, compiler and flags are unchanged and every listed header keeps its content.
+Native bridge libraries can also be reused after an unused V macro changes, such as a build
+timestamp. Clang must produce identical preprocessed code and report the same header paths;
+all recorded native dependencies still require matching contents before reuse.
+Dependency paths and contents must stay unchanged while Clang preprocesses the native owner.
+Constants using `@BUILD_DATE`, `@BUILD_TIME`, or `@BUILD_TIMESTAMP` are initialized in the
+startup unit. Their shared declarations stay stable across builds, allowing direct native cache
+reuse while retaining the current build metadata and dependency validation.
+FastC uses all available CPU cores for generation by default. Native bridge programs use up to
+six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
+concurrent TinyCC units for these programs, without reducing the C generation worker count.
+`VJOBS` overrides these defaults; `-no-parallel` selects one worker.
+Uncached macOS builds stream generated units directly to TinyCC as rendering finishes.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -17,9 +53,24 @@ as with the C backend.
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+A project can make FastC its default with `backend: 'fastc'` in its `v.mod`. Builds, runs, and
+tests of files under that `v.mod` then use FastC without `-b fastc`; an explicit `-b c` selects
+the C backend again. Such a default build does not keep the generated C; `-b fastc` on the
+command line keeps it as `<output>.c`, and `-keepc` keeps it in the temporary folder.
+
 Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
 Use `v -compile-backend fastc self` to include FastC in the main executable instead.
+Production self-builds (`v -o vprod -prod self`) include and PGO-train FastC automatically
+when using Clang, so FastC requests retain the production compiler's speed. Other production
+C toolchains include FastC without PGO. Pass `-d skip_fastc` to omit it explicitly.
+
+Use `int` and `uint` for platform-width integers. FastC rejects declarations and casts using
+the deprecated `isize` and `usize` types. Compile-time compatibility patterns for those types,
+including composite patterns such as `[]usize`, never match. Uses inside inactive compile-time
+branches are ignored. FastC does not run the regular parser to produce deprecation warnings.
+Reflected sum variants retain canonical integer spellings in type tests and zero values.
+Option locals named `isize` or `usize` also work in `if` expressions that narrow their payloads.
 
 On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
 without CRT conversion to `\r\n`, as the default C backend does.
@@ -45,6 +96,13 @@ and source positions.
 
 Ordinary programs support the following constructs:
 
+- Typed pointer comparisons with `nil` in either operand order, including values returned
+  from C calls. Assigning `nil` to a typed pointer still requires `unsafe`.
+- Method calls on pointer fields promoted through embedded structs, including calls inside
+  arithmetic and compound assignments.
+- Parallel declarations of option fields retain their payload types for guards and fallbacks.
+- Struct-valued result fallbacks support conditionals that return from both branches.
+  Nested multi-return guards keep their own result type when a branch returns.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for
@@ -54,6 +112,7 @@ Ordinary programs support the following constructs:
 - Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
   and `.len`.
   Lookup of an absent key returns the value type's zero value.
+  Call-backed map reads evaluate the receiver before the key and retain stored option values.
 - Array and map element reads in local initializers and function arguments.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 
@@ -94,15 +153,21 @@ Empty map initializers use their expected key and value storage, including map a
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
+Native function parameters can also name imported V types, such as `gg.Color`.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
+Callback aliases and loop callbacks do not affect option values captured by later closures.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
+Enum value iteration provides each value's `attrs`, and `$for attr in Enum.attributes` provides
+the `name`, `arg` and `has_arg` of the enum's own attributes.
 Member and operator continuations can follow comments on a new line.
 `$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
 Optional collection elements preserve their payload types. Array guards and `or` fallbacks
-handle both missing indices and stored `none` elements. Struct equality compares optional,
+handle both missing indices and stored `none` elements. Explicit unwrapping remains valid after
+terminal `none` guards. Struct equality compares optional,
 map, array, sum-type, and interface fields by value. Function values retain their signatures
 through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
 Project imports honor explicit `-path` search roots, including replacements for vlib modules.
+Imported modules may keep all their sources in `v.mod` subdirectories, including under `base_url`.
 Embedded files can be stored or passed as `embed_file.EmbedFileData` values and read with
 `.data()`, `.to_string()`, or `.to_bytes()`. Their payloads are emitted once per file and remain
 available after the original files are removed; binary bytes and empty files are preserved.
@@ -110,7 +175,8 @@ If a call reaches a generic placeholder without a concrete instance, it reports 
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
-and closure captures. Mutable value captures retain their state across calls. Float formats support
+and closure captures, including fixed arrays captured by value. Mutable value captures retain
+their state across calls. Float formats support
 precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
 `-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
@@ -133,6 +199,9 @@ Channel type declarations accept ordinary V whitespace.
 Negated sum-type guards retain pointer identity and read mutable scalar variants as values
 in arithmetic, including numeric aliases.
 Fixed arrays and their aliases support checked indexing, including pointer elements.
+Fixed-array equality preserves temporary storage under TinyCC; `map`, `filter`, `all`, `any`,
+and `count` support fixed arrays, including struct fields and returned values.
+Optional and Result returns copy raw fixed-array fields into their value wrappers.
 Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
 Dynamic pointer arrays use pointer identity for `.index()` and `.last_index()` searches.
 Explicit integer and pointer casts preserve pointer values, including through pointer aliases.
@@ -163,6 +232,13 @@ By-value parameters whose addresses escape to spawned workers retain shared stor
 function returns. Later writes and workers from the same invocation use that storage.
 Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings, are supported.
 Multiline values can continue with leading binary operators or a following `else` branch.
+Expression blocks run their scoped defers before yielding their saved value; branch-local
+cleanup stays inside its branch. `defer(fn)` remains active until the function exits.
+A leading `mut` in a parallel declaration makes every target mutable, matching the C backend.
+References to sum conversions such as `&Sum(variant)` retain both the sum tag and its payload
+after the creating function returns, including within narrowed match branches.
+A newline after a pointer assignment can start an address expression, including the final value
+of an `if` branch; numeric bitwise-AND continuations remain supported.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
 Grouped Option/Result propagation preserves payload types and early returns, including in call
@@ -171,8 +247,19 @@ Optional sum-type lookups preserve `none` fallbacks and successful payloads.
 Typed pointers to `IError` implementations can be successful `voidptr` Result payloads.
 Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
+Struct updates accept a fallible constructor with an `or` fallback as their spread value.
+Dependency-free global defaults are available before runtime constants in their module.
+Generic methods taking `map[K]V` can infer both type arguments from a map value.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
 in translated code.
+Typed map literals with entries, `map[K]V{key: value}`, build their map in any expression,
+including generic call arguments. A new line starting with `.name:` begins the next entry of an
+enum-keyed map literal. As with the C backend, constants and globals continue on the next line
+after a leading binary operator other than `*` and `&`. `Enum.from_string` accepts a module
+qualifier. A loop inside a `defer` block may use `break` and `continue`. A `__global` initialized
+with a function literal can be called. A member tested with `if x.f !is T || ... { return }`
+stays narrowed to `T` for the rest of the block, and `==` between members narrowed to a struct
+variant compares their values. Assigning an `IError` to a `?IError` stores it as the value.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
@@ -193,6 +280,11 @@ Native C helpers are compiled before the static archives they call, including th
 for both serial builds and parallel builds using macOS's in-process linker.
 Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
 arena independent. The required pthread library is linked even without `spawn`.
+A program directory or test file compiles on the full runtime and keeps the program's `-gc`
+setting, as with the C backend; `-prealloc` remains opt-in. With the Boehm collector, boxed
+option, result and interface values, and spawned threads' arguments, come from the collector.
+A constant initialized by a call follows the constants of its module that the called
+functions read, also when they are declared in a later file.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
 Their temporaries avoid collisions with local and parameter names.

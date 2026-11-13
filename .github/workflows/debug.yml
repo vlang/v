@@ -29,7 +29,13 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe -cflags /WX self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -45,7 +51,8 @@ jobs:
       - name: Self tests
         run: ./v -silent test-self
       - name: Test v->js
-        run: ./v -o hi.js examples/js_hello_world.v && node hi.js
+        # The loop and interpolation need the compatibility compiler's full JS backend.
+        run: ./v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: ./v build-vbinaries
       - name: Build examples

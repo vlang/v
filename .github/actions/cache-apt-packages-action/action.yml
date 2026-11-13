@@ -19,6 +19,9 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Configure apt mirrors and download retries
+      shell: bash
+      run: bash .github/workflows/disable_azure_mirror.sh
     - name: Select apt package profile
       id: package-profile
       shell: bash
@@ -31,7 +34,7 @@ runs:
             packages='expect binutils clang valgrind'
             ;;
           docs)
-            packages='sqlite3 libpq-dev libssl-dev libsqlite3-dev libx11-dev libxi-dev libxcursor-dev libegl-dev libgl-dev libxrandr-dev'
+            packages='sqlite3 libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libx11-dev libxi-dev libxcursor-dev libegl-dev libgl-dev libxrandr-dev'
             ;;
           db)
             packages='postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev'

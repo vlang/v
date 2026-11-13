@@ -27,7 +27,17 @@ pub:
 @[params]
 pub struct BufferedReadLineConfig {
 pub:
-	delim u8 = `\n` // line delimiter; default `\n` mode strips both `\n` and `\r\n`
+	delim   u8 = `\n` // line delimiter; default `\n` mode strips both `\n` and `\r\n`
+	max_len int // maximum returned line length in bytes; 0 means unlimited
+}
+
+// ReadLineLimitError is returned when read_line exceeds its configured max_len.
+pub struct ReadLineLimitError {
+	Error
+}
+
+fn (err ReadLineLimitError) msg() string {
+	return 'io.BufferedReader.read_line: line exceeds the configured maximum length'
 }
 
 // new_buffered_reader creates a new BufferedReader.
@@ -46,7 +56,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
-	read := copy(mut buf, r.buf[r.offset..r.len])
+	read := copy_bytes(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return NotExpected{
 			cause: 'invalid copy of buffer'
@@ -203,6 +213,9 @@ pub fn (r BufferedReader) end_of_stream() bool {
 // With the default delimiter `\n`, both `\n` and `\r\n` line endings are
 // accepted, and neither terminator byte is included in the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
+	if config.max_len < 0 {
+		return error('io.BufferedReader.read_line: max_len must be zero (unlimited) or a positive number of bytes')
+	}
 	r.can_unread_byte = false
 	if r.end_of_stream && r.offset == r.len {
 		return Eof{}
@@ -216,6 +229,9 @@ pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 				if line.len == 0 {
 					// we had nothing so return nothing
 					return Eof{}
+				}
+				if config.max_len > 0 && line.len > config.max_len {
+					return ReadLineLimitError{}
 				}
 				return line.bytestr()
 			}
@@ -235,9 +251,25 @@ pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 						line.delete_last()
 					}
 				}
+				if config.max_len > 0 && line.len + end - r.offset > config.max_len {
+					return ReadLineLimitError{}
+				}
 				line << r.buf[r.offset..end]
 				r.offset = i + 1
 				return line.bytestr()
+			}
+		}
+		if config.max_len > 0 {
+			partial_len := line.len + i - r.offset
+			trailing_cr := config.delim == `\n` && config.max_len < max_int
+				&& partial_len == config.max_len + 1
+				&& (if i > r.offset {
+					r.buf[i - 1] == `\r`
+				} else {
+					line.len > 0 && line[line.len - 1] == `\r`
+				})
+			if partial_len > config.max_len && !trailing_cr {
+				return ReadLineLimitError{}
 			}
 		}
 		line << r.buf[r.offset..i]

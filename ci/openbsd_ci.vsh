@@ -81,7 +81,7 @@ fn check_math() {
 	exec_args(['v', '-silent', 'test', 'vlib/math'])
 	println('Test the math module, using only the pure V versions,')
 	println('                          without the .c.v overrides.')
-	exec_args(['v', '-silent', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math'])
+	exec_args(['v', '-silent', '-d', 'pure_v_math', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}

@@ -4,6 +4,37 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_native_input_deduplication_preserves_link_order_and_option_operands() {
+	inputs := ['helper.c', 'helper.o', 'helper.obj', 'helper.m', 'helper.mm']
+	assert fastc_deduplicate_native_files([...inputs, ...inputs]) == inputs
+	flags := ['-I', 'helper.c', 'helper.c', '-L', 'helper.o', 'helper.o', '-force_load', 'helper.o',
+		'-l', 'helper.c', 'helper.c', 'first.a', 'second.a', 'first.a', '-lcycle', '-lcycle', '-include',
+		'helper.c', 'native.lib', 'native.lib']
+	assert fastc_deduplicate_native_files(flags) == ['-I', 'helper.c', 'helper.c', '-L', 'helper.o',
+		'helper.o', '-force_load', 'helper.o', '-l', 'helper.c', 'first.a', 'second.a', 'first.a',
+		'-lcycle', '-lcycle', '-include', 'helper.c', 'native.lib', 'native.lib']
+}
+
+fn test_fastc_native_inputs_shared_by_imports_are_emitted_once() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_shared_native_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'shared_native' }")!
+	helper := os.join_path(root, 'shared.c')
+	os.write_file(helper, 'int shared_value(void) { return 42; }\n')!
+	native_helper := os.real_path(helper)
+	for name in ['first', 'second'] {
+		os.mkdir_all(os.join_path(root, name))!
+		os.write_file(os.join_path(root, name, name + '.v'), 'module ${name}\n#flag @VMODROOT/shared.o\nfn C.shared_value() int\npub fn value() int { return C.shared_value() }\n')!
+	}
+	main := os.join_path(root, 'main.v')
+	os.write_file(main, 'import first\nimport second\nfn main() { assert first.value() + second.value() == 84 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	generation := generate_files_with_source_paths([main], prefs)!
+	assert generation.c_flags.filter(it == native_helper).len == 1, generation.c_flags.str()
+}
+
 fn test_fastc_native_flags_select_existing_paths() {
 	root := os.join_path(os.vtmp_dir(), 'fastc native flags ${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
@@ -417,4 +448,39 @@ fn test_fastc_glibc_gettid_declares_syscall_with_strict_feature_flags() {
 	check := cmdexec.run('cc', ['-std=c11', '-D_POSIX_C_SOURCE=200809L',
 		'-Werror=implicit-function-declaration', '-fsyntax-only', path])
 	assert check.exit_code == 0, check.output
+}
+
+fn test_fastc_os_execute_capture_flags_match_target_and_freestanding_mode() ! {
+	os_dir := os.join_path(@VEXEROOT, 'vlib', 'os')
+	object := os.join_path(os_dir, 'execute_capture_nix.o')
+	helper := if os.is_file(object) {
+		object
+	} else {
+		os.join_path(os_dir, 'execute_capture_nix.c')
+	}
+	for target_os in ['windows', 'linux', 'macos'] {
+		for freestanding in [false, true] {
+			mut prefs := pref.new_preferences()
+			prefs.vroot = @VEXEROOT
+			prefs.building_v = true
+			prefs.target = pref.target_from(target_os, 'amd64')!
+			if freestanding {
+				prefs.user_defines << 'freestanding'
+			}
+			files := pref.get_v_files_from_dir_for_target(os_dir, prefs.user_defines, prefs.target)
+				.filter(os.file_name(it).starts_with('execute_capture_'))
+			mut sources := []FastcSourceFile{}
+			for path in files {
+				source := os.read_file(path)!
+				sources << FastcSourceFile{
+					path:   path
+					source: source
+					header: fastc_scan_source_header(source, path, prefs)!
+				}
+			}
+			_, _, flags := generate_source_files(sources, map[string]string{}, prefs)!
+			expected := if target_os != 'windows' && !freestanding { [helper] } else { []string{} }
+			assert flags == expected, '${target_os}, freestanding=${freestanding}: ${flags}'
+		}
+	}
 }

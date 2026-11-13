@@ -1,7 +1,6 @@
 module websocket
 
 import net
-import net.ssl
 import log
 import time
 import rand
@@ -19,6 +18,7 @@ pub struct Server {
 mut:
 	logger                  &log.Logger      = default_logger
 	ls                      &net.TcpListener = unsafe { nil } // listener used to get incoming connection to socket
+	max_message_bytes       int              = default_max_message_bytes
 	accept_client_callbacks []AcceptClientFn // accept client callback functions
 	attached_callbacks      []AttachedEventHandler
 	message_callbacks       []MessageEventHandler // new message callback functions
@@ -45,15 +45,18 @@ pub mut:
 pub struct ServerOpt {
 pub:
 	logger &log.Logger = default_logger
+	// Maximum incoming message size in bytes, including all fragments.
+	max_message_bytes int = default_max_message_bytes
 }
 
 // new_server instance a new websocket server on provided port and route
 pub fn new_server(family net.AddrFamily, port int, route string, opt ServerOpt) &Server {
 	return &Server{
-		ls:     unsafe { nil }
-		family: family
-		port:   port
-		logger: opt.logger
+		ls:                unsafe { nil }
+		family:            family
+		port:              port
+		logger:            opt.logger
+		max_message_bytes: opt.max_message_bytes
 	}
 }
 
@@ -144,15 +147,16 @@ pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&Serve
 	mut logger := &log.Log{}
 	logger.set_level(.debug)
 	mut c := &Client{
-		is_server:    true
-		conn:         conn
-		is_ssl:       false
-		logger:       logger
-		client_state: ClientState{
+		is_server:         true
+		conn:              conn
+		is_ssl:            false
+		logger:            logger
+		max_message_bytes: s.max_message_bytes
+		client_state:      ClientState{
 			state: .open
 		}
-		last_pong_ut: time.now().unix()
-		id:           rand.uuid_v4()
+		last_pong_ut:      time.now().unix()
+		id:                rand.uuid_v4()
 	}
 	mut server_client := &ServerClient{
 		resource_name: 'GET'
@@ -228,15 +232,15 @@ fn delete_client_cb(mut c Client, _code int, _reason string, mut sc ServerClient
 fn (mut s Server) accept_new_client() !&Client {
 	mut new_conn := s.ls.accept()!
 	c := &Client{
-		is_server:    true
-		conn:         new_conn
-		ssl_conn:     ssl.new_ssl_conn()!
-		logger:       s.logger
-		client_state: ClientState{
+		is_server:         true
+		conn:              new_conn
+		logger:            s.logger
+		max_message_bytes: s.max_message_bytes
+		client_state:      ClientState{
 			state: .open
 		}
-		last_pong_ut: time.now().unix()
-		id:           rand.uuid_v4()
+		last_pong_ut:      time.now().unix()
+		id:                rand.uuid_v4()
 	}
 	return c
 }

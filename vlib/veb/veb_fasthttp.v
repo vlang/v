@@ -20,6 +20,28 @@ struct RequestParams {
 	defer_after_timer bool
 }
 
+// This private snapshot is never passed to application handlers. Each reactor
+// worker owns one slot; the handler Context remains a separate GC allocation.
+struct ResponseWriterState {
+mut:
+	context Context
+	busy    bool
+}
+
+fn response_writer_state_enabled[A]() bool {
+	if !response_body_can_share_gc_buffer() { return false }
+	// ControllerHandler is public and can retain the base Context it receives.
+	$if A is ControllerInterface {
+		return false
+	}
+	return true
+}
+
+fn make_response_writer_state[A]() voidptr {
+	if !response_writer_state_enabled[A]() { return unsafe { nil } }
+	return &ResponseWriterState{}
+}
+
 const http_500_response = 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const http_400_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const http_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
@@ -27,7 +49,7 @@ const http_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nConte
 // request_head_error_response returns the raw response for a request head that
 // `http.parse_request_head_str` rejected.
 fn request_head_error_response(err IError) []u8 {
-	if err is http.HeaderLimitError {
+	if err is http.HeaderLimitError || err is http.RequestHeaderLimitError {
 		return http_431_response
 	}
 	return http_500_response
@@ -125,6 +147,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		host:                    params.host
 		port:                    params.port
 		append_handler:          parallel_append_handler[A, X]
+		make_state:              make_response_writer_state[A]
 		max_request_buffer_size: params.max_request_buffer_size
 		max_request_body_size:   params.max_request_body_size
 		timeout_in_seconds:      params.timeout_in_seconds
@@ -202,7 +225,20 @@ fn prompt_to_kill_processes_listening_on_port(port int) {
 // the connection's reused write buffer `out` — no intermediate response buffer —
 // and signals takeover / close / file streaming through `ctl`.
 fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_state voidptr, mut ctl fasthttp.ResponseControl) fasthttp.Step {
-	_ = worker_state // veb keeps shared state in user_data, not per-worker state
+	mut writer_storage := unsafe { &Context(nil) }
+	mut writer_state := unsafe { &ResponseWriterState(worker_state) }
+	if response_writer_state_enabled[A]() && writer_state != unsafe { nil } && !writer_state.busy {
+		writer_state.busy = true
+		writer_storage = &writer_state.context
+	}
+	defer {
+		if writer_storage != unsafe { nil } {
+			// Drop every request reference, including on errors and takeover returns.
+			// The slot is fully initialized again before use by the next request.
+			unsafe { vmemset(writer_storage, 0, int(sizeof(Context))) }
+			writer_state.busy = false
+		}
+	}
 	// Per-request bump arena (only compiled in under -prealloc); mirrors the arena
 	// the legacy fasthttp reactor used to open for the veb handler.
 	arena := va_scope_begin()
@@ -237,15 +273,14 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 		}
 	}
 	// Create and populate the `veb.Context` and route the request.
-	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
-		RequestParams{ ...params, defer_after_timer: true })
+	mut completed_context := handle_request_and_route_with_writer[A, X](mut global_app, req2, client_fd,
+		RequestParams{ ...params, defer_after_timer: true }, writer_storage)
 
 	match completed_context.takeover_mode {
 		.manual {
 			ctl.takeover_mode = .manual
 			if completed_context.deferred {
-				// Spawn only after the worker has finished reading the context and
-				// left the arena: even a zero-delay timer may immediately free it.
+				// Deferred responses own a heap snapshot, never the reusable worker slot.
 				va_scope_leave(arena)
 				spawn after_timer(mut completed_context, arena)
 				return .done
@@ -282,15 +317,29 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 	// strings.Builder is a `[]u8`, so the reused write buffer can be the builder
 	// target directly — write_to appends into `out` with no intermediate buffer.
 	completed_context.res.write_to(mut out)
-	unsafe { completed_context.res.body.free() }
-	completed_context.res.body = ''
-	unsafe { free(completed_context) }
+	completed_context.release_response_body()
+	if voidptr(completed_context) != voidptr(writer_storage) {
+		unsafe { free(completed_context) }
+	}
 	va_scope_free_after(arena)
 	return .done
 }
 
 // runs middleware, and finds the correct route for a request.
 fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, params RequestParams) &Context {
+	return handle_request_and_route_with_writer[A, X](mut app, req, _client_fd, params, unsafe { nil })
+}
+
+fn handle_request_and_route_with_writer[A, X](mut app A, req http.Request, _client_fd int, params RequestParams, writer_storage &Context) &Context {
+	$if A is RequestActivityApp {
+		app.before_handle_request(req)
+	}
+	defer {
+		$if A is RequestActivityApp {
+			app.after_handle_request(req)
+		}
+	}
+
 	// Create and populate the `veb.Context` from the request.
 	mut url := urllib.parse_request_uri(req.url) or {
 		// This should be rare if http.parse_request succeeded.
@@ -317,15 +366,33 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	$if trace_prealloc ? {
 		unsafe { prealloc_scope_checkpoint(c'veb parsed host') }
 	}
-	mut ctx := &Context{
-		req:                   req
-		page_gen_start:        page_gen_start
-		client_fd:             _client_fd
-		client_wants_to_close: request_has_connection_close(req)
-		query:                 query
-		form:                  form
-		files:                 files
+	mut ctx := unsafe { &Context(writer_storage) }
+	if ctx == unsafe { nil } {
+		// Keep the original constructor/ownership contract on every fallback path.
+		ctx = &Context{
+			req:                   req
+			page_gen_start:        page_gen_start
+			client_fd:             _client_fd
+			client_wants_to_close: request_has_connection_close(req)
+			query:                 query
+			form:                  form
+			files:                 files
+		}
+	} else {
+		// Reusable storage gets every default before any application handler runs.
+		unsafe {
+			*ctx = Context{
+				req:                   req
+				page_gen_start:        page_gen_start
+				client_fd:             _client_fd
+				client_wants_to_close: request_has_connection_close(req)
+				query:                 query
+				form:                  form
+				files:                 files
+			}
+		}
 	}
+
 	mut user_context := X{
 		Context: ctx
 	}
@@ -341,7 +408,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 			url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			ctx.preserve_for_response_writer(user_context.Context)
+			ctx.preserve_for_response_writer(mut user_context.Context)
 			return ctx
 		}
 	}
@@ -364,7 +431,13 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		unsafe { prealloc_scope_checkpoint(c'veb route returned') }
 	}
 	// Preserve the handled context on the heap before the stack-local user context goes away.
-	ctx.preserve_for_response_writer(user_context.Context)
+	ctx.preserve_for_response_writer(mut user_context.Context)
+	if ctx.deferred && writer_storage != unsafe { nil } {
+		// The timer outlives this dispatch and subsequent worker-slot reuse.
+		mut deferred_context := &Context{}
+		unsafe { *deferred_context = *ctx }
+		ctx = deferred_context
+	}
 	if !params.defer_after_timer {
 		ctx.spawn_after_timer_if_armed()
 	}

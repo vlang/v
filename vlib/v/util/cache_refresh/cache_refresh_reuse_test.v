@@ -189,10 +189,12 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	for is_test in [false, true] {
 		// Overlapping import sets share compiler flags but can select different
 		// interface implementations. Every variant must survive a complete pass.
+		// Keep the crypto imports free of opaque native headers so they can be cached.
+		// math.big and crypto.ed25519 import crypto.rand.internal, which cannot.
 		requests := [Request{
 			args:    ['-cc', compiler]
-			module:  'math.big'
-			imports: ['crypto.ed25519', 'math.big']
+			module:  'crypto.sha3'
+			imports: ['crypto.sha512', 'crypto.sha3']
 			is_test: is_test
 		}, Request{
 			args:    ['-cc', compiler]
@@ -214,7 +216,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		cold_calls := os.read_file(log)!
 		assert cold_calls.len > 0
 		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
-		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'math.big' && it.is_test == is_test)
+		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'crypto.sha3' && it.is_test == is_test)
 		refresh(@VEXE, requests)!
 		assert os.read_file(log)! == cold_calls, 'warm refresh must reuse its validated module objects'
 	}
@@ -304,7 +306,7 @@ fn test_synthetic_refresh_replays_each_import_sequence_once() ! {
 	assert after.count('fn test_cache_refresh() {}') == 1, after
 }
 
-fn test_refresh_preserves_ordered_module_include_paths() ! {
+fn test_opaque_headers_preserve_ordered_include_paths_without_refresh() ! {
 	$if windows {
 		return
 	}
@@ -362,11 +364,9 @@ fn test_refresh_preserves_ordered_module_include_paths() ! {
 		assert run.exit_code == 0 && run.output.trim_space() == if i == 0 { '42' } else { '84' }, run.output
 	}
 	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(name + '.'))
-	assert requests.len == 4, requests.str()
-	assert requests.any(it.imports.index('${name}.z_first') < it.imports.index('${name}.a_second'))
-	assert requests.any(it.imports.index('${name}.a_second') < it.imports.index('${name}.z_first'))
+	// Header ownership is opaque, so these builds publish no refresh inventory.
+	assert requests.len == 0, requests.str()
 	os.write_file(headers[0], 'static inline int vup_order_value(void) { return 31; }\n')!
-	refresh(@VEXE, requests)!
 	for i, entry in entries {
 		warm := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-show-timings', '-o',
 			os.join_path(root, 'program'), entry])

@@ -1,10 +1,13 @@
 module arm64
 
 import os
-import v.parser
-import v.pref
-import v.ssa
-import v.types
+
+$if macos && arm64 {
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.types
+}
 
 fn test_native_process_exec_preserves_split_and_quoted_argv() ! {
 	$if !macos || !arm64 {

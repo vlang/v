@@ -475,7 +475,8 @@ fn main() {
 		}
 	}
 	t.wait()
-	println("\${mode} done")
+	// Consume the reads so optimizing C compilers must keep the racy accesses.
+	println("\${mode} done \${s}")
 }
 '
 
@@ -786,11 +787,17 @@ fn test_race_channel_values_are_the_caller_memory() {
 	if !thread_sanitizer_runs() {
 		return
 	}
-	for mode in ['pop', 'try_pop', 'push', 'select'] {
-		exe := build_race_program('channel_value_${mode}', channel_value_source, '-d', 'mode=${mode}')
-		res := os.exec(['env', 'VRACE=exitcode=7', exe])
-		assert res.exit_code == 7, '${mode}: ${res.output}'
-		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}: ${res.output}'
+	for optimized in [false, true] {
+		for mode in ['pop', 'try_pop', 'push', 'select'] {
+			mut flags := ['-d', 'mode=${mode}']
+			if optimized { flags << '-prod' }
+			exe := build_race_program('channel_value_${mode}_${optimized}', channel_value_source,
+				...flags)
+			res := os.exec(['env', 'VRACE=exitcode=7', exe])
+			assert res.exit_code == 7, '${mode}, optimized=${optimized}: ${res.output}'
+			assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}, optimized=${optimized}: ${res.output}'
+			assert res.output.contains('${mode} done '), res.output
+		}
 	}
 	exe := build_race_program('channel_value_handoff', channel_value_source, '-d', 'mode=handoff')
 	res := os.exec([exe])

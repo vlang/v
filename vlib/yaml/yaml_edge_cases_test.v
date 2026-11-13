@@ -2,6 +2,7 @@ module yaml
 
 import os
 import json2
+import strings
 
 // Edge-case coverage for parse_text + scalar parsing + serialization.
 // Complements yaml_test.v which covers the happy path. Each fn targets one
@@ -198,6 +199,325 @@ fn test_parse_deeply_nested_structure() ! {
 		node = node.value('level${i}')
 	}
 	assert node.value('leaf').int() == 42
+}
+
+fn nested_flow_array(depth int) string {
+	return '['.repeat(depth) + ']'.repeat(depth)
+}
+
+fn nested_flow_object(depth int) string {
+	return '{a:'.repeat(depth) + 'null' + '}'.repeat(depth)
+}
+
+fn nested_flow_mixed(depth int) string {
+	mut src := ''
+	for i in 0 .. depth {
+		src += if i % 2 == 0 { '[' } else { '{a:' }
+	}
+	src += 'null'
+	for i := depth - 1; i >= 0; i-- {
+		src += if i % 2 == 0 { ']' } else { '}' }
+	}
+	return src
+}
+
+fn nested_block_mapping(depth int) string {
+	mut src := ''
+	mut indent := ''
+	for i in 0 .. depth {
+		if i == depth - 1 {
+			src += '${indent}level${i}: value\n'
+		} else {
+			src += '${indent}level${i}:\n'
+			indent += '  '
+		}
+	}
+	return src
+}
+
+fn nested_block_sequence(depth int) string {
+	mut src := ''
+	for i in 0 .. depth {
+		indent := '  '.repeat(i)
+		if i == depth - 1 {
+			src += '${indent}- value\n'
+		} else {
+			src += '${indent}-\n'
+		}
+	}
+	return src
+}
+
+fn nested_block_sequence_with_inline_map(depth int) string {
+	mut src := ''
+	for i in 0 .. depth {
+		indent := '  '.repeat(i)
+		if i == depth - 1 {
+			src += '${indent}- key: value\n'
+		} else {
+			src += '${indent}-\n'
+		}
+	}
+	return src
+}
+
+fn nested_block_mapping_with_flow(block_depth int, flow_depth int) string {
+	mut src := ''
+	mut indent := ''
+	for i in 0 .. block_depth {
+		if i == block_depth - 1 {
+			src += '${indent}level${i}: ${nested_flow_array(flow_depth)}\n'
+		} else {
+			src += '${indent}level${i}:\n'
+			indent += '  '
+		}
+	}
+	return src
+}
+
+fn nested_block_sequence_with_flow(block_depth int, flow_depth int) string {
+	mut src := ''
+	for i in 0 .. block_depth {
+		indent := '  '.repeat(i)
+		if i == block_depth - 1 {
+			src += '${indent}- ${nested_flow_array(flow_depth)}\n'
+		} else {
+			src += '${indent}-\n'
+		}
+	}
+	return src
+}
+
+fn nested_alias_chain(wrappers int) string {
+	mut src := 'base: &a0 [0]\n'
+	for i in 1 .. wrappers + 1 {
+		src += 'node${i}: &a${i}\n  - *a${i - 1}\n'
+	}
+	return src
+}
+
+fn doubling_alias_expansion(levels int) string {
+	mut src := 'base: &a0 [x]\n'
+	for i in 1 .. levels + 1 {
+		src += 'node${i}: &a${i}\n  - *a${i - 1}\n  - *a${i - 1}\n'
+	}
+	return src
+}
+
+fn large_string_alias_expansion() string {
+	mut src := 'base: &base "${'x'.repeat(900_000)}"\n'
+	for i in 0 .. 20 {
+		src += 'copy${i}: *base\n'
+	}
+	return src
+}
+
+fn assert_nesting_error(src string, name string) {
+	if _ := parse_text(src) {
+		assert false, 'over-limit ${name} nesting should return a parse error'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+}
+
+fn test_parse_maximum_nesting_depth() ! {
+	parse_text(nested_flow_array(max_nesting_depth)) or {
+		panic('flow arrays at the maximum nesting depth should parse: ${err.msg()}')
+	}
+	parse_text(nested_flow_object(max_nesting_depth)) or {
+		panic('flow objects at the maximum nesting depth should parse: ${err.msg()}')
+	}
+	parse_text(nested_block_mapping(max_nesting_depth)) or {
+		panic('block mappings at the maximum nesting depth should parse: ${err.msg()}')
+	}
+	parse_text(nested_block_sequence(max_nesting_depth)) or {
+		panic('block sequences at the maximum nesting depth should parse: ${err.msg()}')
+	}
+	parse_text(nested_block_sequence_with_inline_map(max_nesting_depth - 1)) or {
+		panic('inline mappings at the maximum nesting depth should parse: ${err.msg()}')
+	}
+}
+
+fn test_parse_nesting_over_limit_returns_error() {
+	assert_nesting_error(nested_flow_array(max_nesting_depth + 1), 'flow array')
+	assert_nesting_error(nested_flow_object(max_nesting_depth + 1), 'flow object')
+	assert_nesting_error(nested_flow_mixed(max_nesting_depth + 1), 'mixed flow')
+	assert_nesting_error(nested_block_mapping(max_nesting_depth + 1), 'block mapping')
+	assert_nesting_error(nested_block_sequence(max_nesting_depth + 1), 'block sequence')
+	assert_nesting_error(nested_block_sequence_with_inline_map(max_nesting_depth), 'inline map')
+}
+
+fn test_parse_mixed_block_and_flow_nesting_uses_one_depth_budget() ! {
+	block_depth := max_nesting_depth / 2
+	flow_depth := max_nesting_depth - block_depth
+	parse_text(nested_block_mapping_with_flow(block_depth, flow_depth)) or {
+		panic('mixed block mapping and flow nesting at the limit should parse: ${err.msg()}')
+	}
+	assert_nesting_error(nested_block_mapping_with_flow(block_depth, flow_depth + 1), 'mixed block map and flow')
+	parse_text(nested_block_sequence_with_flow(block_depth, flow_depth)) or {
+		panic('mixed block sequence and flow nesting at the limit should parse: ${err.msg()}')
+	}
+	assert_nesting_error(nested_block_sequence_with_flow(block_depth, flow_depth + 1), 'mixed block sequence and flow')
+}
+
+fn test_parse_sibling_collections_do_not_accumulate_depth() ! {
+	mut src := ''
+	for key in ['left', 'right'] {
+		src += '${key}:\n'
+		mut indent := '  '
+		branch_levels := max_nesting_depth - 1
+		for i in 0 .. branch_levels {
+			if i == branch_levels - 1 {
+				src += '${indent}level${i}: value\n'
+			} else {
+				src += '${indent}level${i}:\n'
+				indent += '  '
+			}
+		}
+	}
+	parse_text(src) or {
+		panic('sibling block collections at the limit should parse: ${err.msg()}')
+	}
+	flow := nested_flow_array(max_nesting_depth - 1)
+	parse_text('left: ${flow}\nright: ${flow}\n') or {
+		panic('sibling flow collections at the limit should parse: ${err.msg()}')
+	}
+}
+
+fn test_parse_entry_points_return_nesting_error() ! {
+	src := nested_flow_array(max_nesting_depth + 1)
+	assert_nesting_error(src, 'parse_text')
+	if _ := decode[int](src) {
+		assert false, 'decode should propagate the nesting error'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+	path := os.join_path(os.vtmp_dir(), 'yaml_nested_${os.getpid()}.yml')
+	defer {
+		os.rm(path) or {}
+	}
+	os.write_file(path, src)!
+	if _ := parse_file(path) {
+		assert false, 'parse_file should propagate the nesting error'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+	if _ := decode_file[int](path) {
+		assert false, 'decode_file should propagate the nesting error'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+}
+
+fn test_alias_expansion_depth_is_bounded() ! {
+	// The root map, 62 alias-wrapping arrays, and base array total 64 collections.
+	doc := parse_text(nested_alias_chain(max_nesting_depth - 2))!
+	assert doc.to_json().len > 0
+	assert doc.to_yaml().len > 0
+
+	// One more wrapper builds a 65-deep semantic tree from shallow sibling YAML.
+	src := nested_alias_chain(max_nesting_depth - 1)
+	if _ := parse_text(src) {
+		assert false, 'over-limit alias expansion should fail before returning a document'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+	if _ := decode[map[string]int](src) {
+		assert false, 'decode should propagate over-limit alias expansion'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+}
+
+fn test_alias_expansion_size_is_bounded() {
+	src := doubling_alias_expansion(20)
+	assert src.len < 1000
+	if _ := parse_text(src) {
+		assert false, 'exponential alias expansion should fail before returning a document'
+	} else {
+		assert err.msg().contains('alias expansion exceeds')
+	}
+}
+
+fn test_alias_expansion_output_size_is_bounded() {
+	src := large_string_alias_expansion()
+	assert src.len < 1_000_000
+	if _ := parse_text(src) {
+		assert false, 'alias-expanded output above the byte budget should fail before returning a document'
+	} else {
+		assert err.msg().contains('alias expansion exceeds the maximum output size')
+	}
+}
+
+fn test_alias_expansion_node_count_is_bounded() {
+	item_count := int(max_alias_expanded_nodes / 2)
+	mut builder := strings.new_builder(item_count * 6 + 32)
+	builder.write_string('base: &base\n')
+	for _ in 0 .. item_count {
+		builder.write_string('  - x\n')
+	}
+	builder.write_string('copy: *base\n')
+	src := builder.str()
+	if _ := parse_text(src) {
+		assert false, 'alias-expanded node count above the limit should fail before returning a document'
+	} else {
+		assert err.msg().contains('alias expansion exceeds the maximum node count')
+	}
+}
+
+fn test_alias_output_sizes_handle_escaped_strings_unicode_and_numbers() ! {
+	src := 'base: &base
+  "k\\\"": "q\\\" \\\\ \\n \\t \\u0001 café 😀"
+  number: 12345
+  items:
+    - first
+    -
+      - second
+      - []
+copy: *base
+empty_array: &empty_array []
+empty_map: &empty_map {}
+array_copy: *empty_array
+map_copy: *empty_map
+'
+	doc := parse_text(src)!
+	json := doc.to_json()
+	assert json.len == json2.encode(json2.decode[json2.Any](json)!).len
+	yaml_text := doc.to_yaml()
+	mut budget := AliasExpansionBudget{
+		max_nodes:       max_alias_expanded_nodes
+		max_output_size: u64(src.len) + max_alias_expanded_output_extra
+	}
+	validate_alias_expansion(doc.root, 0, 0, mut budget)!
+	assert budget.json_size == u64(json.len)
+	assert budget.yaml_size == u64(yaml_text.len)
+	roundtrip := parse_text(yaml_text)!
+	assert roundtrip.to_json().len == json.len
+}
+
+fn test_encode_deep_values_preserves_json_output() ! {
+	mut value := Any(0)
+	for _ in 0 .. max_nesting_depth + 1 {
+		value = Any([value])
+	}
+	encoded := encode(value)
+	assert encoded != ''
+	parsed := json2.decode[json2.Any](encoded)!
+	assert parsed is []json2.Any
+	if _ := parse_text(encoded) {
+		assert false, 'the parser should retain its nesting limit for encoded output'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+	path := os.join_path(os.vtmp_dir(), 'yaml_deep_encode_${os.getpid()}.yml')
+	defer {
+		os.rm(path) or {}
+	}
+	encode_file(path, value)!
+	from_file := os.read_file(path)!
+	assert from_file == encoded
+	parsed_from_file := json2.decode[json2.Any](from_file)!
+	assert parsed_from_file is []json2.Any
 }
 
 fn test_to_yaml_roundtrip_preserves_structure() ! {

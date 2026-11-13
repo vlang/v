@@ -702,7 +702,7 @@ fn (mut context WindowContext) with_sgl_pass(swapchain bool, action gfx.PassActi
 	}
 	context.validate_managed_frame()!
 	mut app := context.app
-	app.managed_render_context(target_key)!
+	render_context := app.managed_render_context(target_key)!
 	target_lease := if swapchain {
 		app.render_runtime.target_lease(context.info.window, context.lease_epoch)!
 	} else {
@@ -727,17 +727,17 @@ fn (mut context WindowContext) with_sgl_pass(swapchain bool, action gfx.PassActi
 		callback_error = error(err_multiwindow_render_backend_unavailable)
 	}
 	mut flush_state := &MultiWindowSglFlushState{}
-	flush_sgl := fn [app, mut flush_state] () ! {
+	flush_sgl := fn [app, render_context, mut flush_state] () ! {
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-
+		render_context.draw()
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-		sgl_error := false
+		sgl_error := render_context.error()
 		flush_state.flushed = true
-		if sgl_error {
+		if sgl_error != .no_error {
 			return error(err_multiwindow_render_resource_failed)
 		}
 	}

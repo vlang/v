@@ -193,7 +193,12 @@ fn test_pool_no_idle_limit_shrink_and_lifetime() {
 	pool.set_max_open(1)
 	assert pool.stats().open_connections == 1
 	assert state.closed == 1
-	pool.set_max_lifetime(time.nanosecond)
+	// Expire the remaining slot without depending on the platform clock's resolution.
+	pool.idle[0] = PoolSlot{
+		driver:     pool.idle[0].driver
+		created_at: time.now().add(-time.minute)
+	}
+	pool.set_max_lifetime(time.second)
 	mut third := pool.acquire()!
 	assert third.exec_one('id')!.val(0) == '3'
 	pool.set_max_lifetime(0)

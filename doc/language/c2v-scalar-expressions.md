@@ -23,6 +23,13 @@ V files keep their usual conversions.
 Mixed numeric arithmetic and conditional branches use C's usual arithmetic
 conversions when determining the expression type.
 
+Assertions in translated files accept the same scalar and pointer conditions as `if` and `for`.
+Zero values and null pointers fail the assertion; nonzero values and nonnull pointers pass it.
+This includes boolean conditional expressions whose branches are promoted to C's `int` type.
+Ordinary V files still require boolean assertion conditions, including in mixed translated projects.
+Optional values and aggregate values such as strings, arrays, maps, and structs remain invalid
+assertion conditions in translated files.
+
 Negative integer sentinels can be converted to unsigned destinations and compared
 using C's integer conversion rules. Function addresses supplied through `voidptr`
 can be assigned to callback variables. Callbacks can be compared with integer

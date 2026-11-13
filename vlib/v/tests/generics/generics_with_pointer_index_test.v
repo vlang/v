@@ -11,8 +11,9 @@ mut:
 	pos int
 }
 
+// with_cap allocates a zeroed backing buffer for cap values of T.
 pub fn with_cap[T](cap int) Vec[T] {
-	new_data := unsafe { malloc(cap * int(sizeof(T))) }
+	new_data := unsafe { &T(malloc(cap * int(sizeof(T)))) }
 	unsafe { vmemset(new_data, 0, cap * int(sizeof(T))) }
 
 	return Vec[T]{

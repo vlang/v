@@ -31,8 +31,7 @@ fn main() { holder := Holder{values: [&Item{}]}
 	defer { os.rm(path) or {} }
 	for i, source in sources {
 		os.write_file(path, source)!
-		command := '${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}'
-		result := os.execute(command)
+		result := os.exec([@VEXE, '-new-compiler', '-check', path])
 		assert result.exit_code != 0, source
 		assert result.output.contains(expected[i]), result.output
 	}
@@ -52,8 +51,7 @@ type Value = int | Pair
 fn pack(x int) Value { return Pair{x, x + 1} }
 fn main() { println(pack(3)) }'
 	os.write_file(path, source)!
-	command := '${os.quoted_path(@VEXE)} -new-compiler -o ${os.quoted_path(output)} ${os.quoted_path(path)}'
-	result := os.execute(command)
+	result := os.exec([@VEXE, '-new-compiler', '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	body := sumtype_test_function_body(generated, 'pack')
@@ -87,8 +85,7 @@ fn main() {
 	os.write_file(os.join_path(dir, 'model', 'model.v'), model)!
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, program)!
-	command := '${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}'
-	result := os.execute(command)
+	result := os.exec([@VEXE, '-new-compiler', 'run', path])
 	assert result.exit_code == 0, result.output
 }
 

@@ -24,3 +24,22 @@ literal colon follows it.
 
 A URL with a single trailing `?` retains its empty query marker. Additional question marks
 inside a nonempty query remain part of `raw_query`, including a question mark at its end.
+
+## Joining hosts and ports
+
+`urllib.join_host_port(host, port)` constructs a `host:port` address. IPv6 literals and
+scoped IPv6 literals are bracketed; existing brackets are preserved. The separator remains
+when the port is empty, so an empty host and port produce `:`. Host spelling and zone
+identifiers are unchanged.
+
+```v
+import net.urllib
+
+assert urllib.join_host_port('example.com', '443') == 'example.com:443'
+assert urllib.join_host_port('::1', '8080') == '[::1]:8080'
+assert urllib.join_host_port('fe80::1%eth0', '') == '[fe80::1%eth0]:'
+assert urllib.join_host_port('', '80') == ':80'
+```
+
+The helper only joins strings: it does not validate the host or resolve a service name such
+as `https`. `split_host_port` can split the result when the port is numeric or empty.

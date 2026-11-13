@@ -137,15 +137,27 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 	panic_on_negative_len(len)
 	panic_on_negative_cap(cap)
 	cap_ := if cap < len { len } else { cap }
+	total_size := u64(cap_) * u64(elm_size)
+	copy_size := u64(len) * u64(elm_size)
+	// The first `len` elements are copied over below; only the spare capacity is zeroed.
 	arr := array{
 		element_size: elm_size
-		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
+		data:         if total_size > 0 {
+			alloc_array_data_noscan_uninit(total_size)
+		} else {
+			alloc_array_data_noscan(total_size)
+		}
 		len:          len
 		cap:          cap_
 		flags:        .managed | .noscan_data
 	}
 	// TODO: Write all memory functions (like memcpy) in V
-	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
+	unsafe {
+		vmemcpy(arr.data, c_array, copy_size)
+		if total_size > copy_size {
+			vmemset(&u8(arr.data) + copy_size, 0, total_size - copy_size)
+		}
+	}
 	return arr
 }
 

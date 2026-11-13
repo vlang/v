@@ -898,6 +898,24 @@ fn (mut app App) ensure_render_initialized() ! {
 		app.release_render_owner()
 		return error(err_multiwindow_render_backend_unavailable)
 	}
+	if message := app.render_runtime.take_internal_fault(.renderer_sgl_setup) {
+		app.latch_renderer_terminal_failure()
+		mut setup_errors := [message]
+		mut device_available := true
+		app.core.prepare_renderer_shutdown_for_gg() or {
+			setup_errors << err.msg()
+			device_available = false
+		}
+		device_available = device_available && app.core.renderer_device_available_for_gg()
+		if device_available {
+			app.core.shutdown_renderer() or { setup_errors << err.msg() }
+		} else {
+			gg_poison_gfx_render_owner(.multiwindow_app, app.owner_token())
+			app.core.abandon_renderer_for_gg() or { setup_errors << err.msg() }
+		}
+		app.release_render_owner()
+		return error('${err_multiwindow_render_cleanup_failed}: ${setup_errors.join('; ')}')
+	}
 	app.sgl_initialized = true
 	app.gfx_started = true
 }
@@ -919,6 +937,9 @@ fn (mut app App) ensure_render_context(key string, target WindowRenderTargetInfo
 		created := render.new_context(render.Desc{
 			max_vertices: 1 << 17
 			max_commands: 1 << 15
+			color_format: target.color_format
+			depth_format: target.depth_format
+			sample_count: target.sample_count
 		})
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)
@@ -1012,6 +1033,25 @@ fn (mut app App) discard_render_context_key(key string) {
 	if key !in app.render_contexts {
 		return
 	}
+	context := app.render_contexts[key] or { return }
+	mut device_available := app.gfx_started && app.core.renderer_device_available_for_gg()
+	if device_available {
+		for {
+			materialization := app.render_runtime.take_sgl_materialization_for_target(key) or {
+				break
+			}
+			if !app.core.renderer_device_available_for_gg() {
+				device_available = false
+				break
+			}
+			destroy_render_pipeline_pips(materialization.pipeline)
+		}
+	}
+	if device_available && app.core.renderer_device_available_for_gg() {
+		context.destroy()
+	} else {
+		app.render_runtime.abandon_sgl_materializations_for_target(key)
+	}
 	app.render_contexts.delete(key)
 	app.render_context_targets.delete(key)
 }
@@ -1042,10 +1082,12 @@ fn (mut app App) shutdown_renderer() ! {
 		}
 		if device_available {
 			// The backend anchor is current for the complete global shutdown.
-			// sgl_shutdown owns all managed SGL contexts and precedes gfx shutdown.
+			// Release remaining managed render contexts before gfx shutdown.
 			if app.sgl_initialized {
 				app.record_multiwindow_lifecycle_milestone(.sgl_shutdown_enter)
-
+				for key in app.render_contexts.keys() {
+					app.discard_render_context_key(key)
+				}
 				app.sgl_initialized = false
 				app.record_multiwindow_lifecycle_milestone(.sgl_shutdown_complete)
 			}

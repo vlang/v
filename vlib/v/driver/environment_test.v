@@ -812,7 +812,7 @@ fn test_scoped_generic_constraint_ids_survive_all_payload_promotion_paths() {
 			0 { promote_scoped_node(mut a.nodes[0], scope) }
 			1 { canonicalize_scoped_node(mut a, 0, scope) }
 			else {
-				mut cache_ptrs := [4096]voidptr{}
+				mut cache_ptrs := [4096]voidptr{init: unsafe { nil }}
 				mut cache_values := [4096]string{}
 				canonicalize_scoped_node_cached(mut a, 0, scope, mut cache_ptrs, mut cache_values)
 			}

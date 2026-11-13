@@ -2,15 +2,16 @@ module main
 
 import os
 
-// basic example which shows how to use the Command function
+// Stream merged stdout and stderr from commands with literal arguments.
 
-fn exec(path string) string {
+fn exec(args []string) string {
 	mut out := ''
 	mut line := ''
-	mut cmd := os.Command{
-		path: path
+	mut cmd := os.start_new_command_args(args) or { panic(err) }
+	defer {
+		cmd.close() or { panic(err) }
+		assert cmd.exit_code == 0
 	}
-	cmd.start() or { panic(err) }
 
 	for {
 		line = cmd.read_line()
@@ -24,11 +25,11 @@ fn exec(path string) string {
 }
 
 fn main() {
-	mut out := ''
-	exec("bash -c 'find /tmp/'")
-	out = exec('echo to stdout')
-	out = exec('echo to stderr 1>&2')
-	println("'${out}'")
-	// THIS DOES NOT WORK, is error, it goes to stderror of the command I run
-	assert out == 'to stderr'
+	exec(['find', os.temp_dir()])
+	stdout := exec(['echo', 'to stdout'])
+	assert stdout == 'to stdout'
+	// Shell syntax is passed explicitly to a shell; CommandArgs merges both output streams.
+	stderr := exec(['sh', '-c', 'echo to stderr >&2'])
+	println("'${stderr}'")
+	assert stderr == 'to stderr'
 }

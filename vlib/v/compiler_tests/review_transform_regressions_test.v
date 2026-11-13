@@ -756,7 +756,13 @@ fn gen_c_from_source_with_flags(v3_bin string, name string, flags string, src st
 }
 
 fn c_fn_body(c_source string, signature string) string {
-	start := c_source.index(signature) or { return '' }
+	// These fixtures target the host. Windows uses the wide console entry point.
+	host_signature := if os.user_os() == 'windows' && signature.starts_with('int main(') {
+		signature.replace('int main(', 'int wmain(').replace('char** argv', 'wchar_t** argv')
+	} else {
+		signature
+	}
+	start := c_source.index(host_signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
 	body_start := start + open_rel
 	mut depth := 0

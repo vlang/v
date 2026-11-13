@@ -100,6 +100,25 @@ fn test_read_line() {
 	assert reader.read_line()! == 'second line'
 }
 
+fn test_read_line_respects_max_len() {
+	mut within := StringReader.new(source: '1234\r\n')
+	assert within.read_line(max_len: 4)! == '1234'
+
+	mut over := StringReader.new(source: '12345\n')
+	if _ := over.read_line(max_len: 4) {
+		assert false, 'read_line accepted a line above max_len'
+	} else {
+		assert err is io.ReadLineLimitError
+	}
+
+	mut eof := StringReader.new(source: '12345')
+	if _ := eof.read_line(max_len: 4) {
+		assert false, 'read_line accepted an unterminated line above max_len'
+	} else {
+		assert err is io.ReadLineLimitError
+	}
+}
+
 fn test_from_string() {
 	mut reader := StringReader.new(source: 'test')
 	assert reader.read_all(false)! == 'test'

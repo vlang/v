@@ -45,6 +45,7 @@ Accepted extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`,
 | `I`                      | Toggle info text              |
 | `P`                      | Pause / play animation        |
 | `H`                      | Toggle help                   |
+| `W`                      | Toggle scan warnings          |
 | `1` / `2` / `3`          | Sort by name / date / as loaded |
 | Mouse wheel              | Next / previous image         |
 | Left mouse button (hold) | Pan                           |
@@ -53,6 +54,22 @@ Accepted extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`,
 
 Animation players and their encoded input are released when switching images,
 including builds with `-gc none`.
+
+## Scan robustness and `--check`
+
+The scan is fault-tolerant: an unreadable sub-folder, a corrupt zip archive,
+or a single bad archive entry never aborts the scan of the rest of the
+tree. Every skipped entry is recorded as a scan warning; the overlay shows
+the count and `W` toggles the full list.
+
+To audit a tree from the console (no window), run:
+
+```sh
+viewer --check img1.jpg folder1 folder2.zip
+```
+
+It prints every drawable item found and every scan warning, then exits.
+On Windows the report goes to the terminal the viewer was started from.
 
 ## Limitations
 

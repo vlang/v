@@ -192,7 +192,6 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
-@[minify]
 pub struct Doc {
 pub mut:
 	base_path           string
@@ -231,7 +230,6 @@ mut:
 	child_indices map[string][]int
 }
 
-@[minify]
 pub struct DocNode {
 pub mut:
 	name        string
@@ -657,7 +655,14 @@ fn (mut d Doc) parse_file(path string) ! {
 		if anchor_line < first_declaration_line {
 			first_declaration_line = anchor_line
 		}
-		mut doc_node := d.node_from_flat(a, source, id, path) or { continue }
+		mut doc_node := d.node_from_flat(a, source, id, path) or {
+			// The comments of a symbol that is not documented, like a private one, or one that
+			// a symbol filter leaves out, are about it, not about the module.
+			if d.with_comments {
+				comments_before(a, source, end_lines, anchor_line, mut assigned_comments)
+			}
+			continue
+		}
 		if d.with_comments {
 			doc_node.comments = comments_before(a, source, end_lines, anchor_line, mut assigned_comments)
 		}

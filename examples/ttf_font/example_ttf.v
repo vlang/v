@@ -1,6 +1,5 @@
 import gg
 import sokol.sapp
-import sokol.sgl
 import sokol.gfx
 import x.ttf
 import x.ttf.render_sokol
@@ -36,21 +35,21 @@ fn my_init(mut app App_data) {
 fn draw_frame(mut app App_data) {
 	cframe_txt := 'Current Frame: ${app.frame_c}'
 	app.gg.begin()
-	sgl.defaults()
-	sgl.matrix_mode_projection()
-	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
-	sgl.c4b(0, 0, 0, 255) // black
+	app.gg.r.defaults()
+	app.gg.r.matrix_mode_projection()
+	app.gg.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	app.gg.r.c4b(0, 0, 0, 255) // black
 	// draw a line as background
-	sgl.begin_line_strip()
-	sgl.v2f(10, 10)
-	sgl.v2f(100, 100)
-	sgl.end()
+	app.gg.r.begin_line_strip()
+	app.gg.r.v2f(10, 10)
+	app.gg.r.v2f(100, 100)
+	app.gg.r.end()
 	// draw text only if the app is already initialized
 	if app.init_flag == true {
-		sgl.begin_line_strip()
-		sgl.v2f(410, 400)
-		sgl.v2f(510, 400)
-		sgl.end()
+		app.gg.r.begin_line_strip()
+		app.gg.r.v2f(410, 400)
+		app.gg.r.v2f(510, 400)
+		app.gg.r.end()
 		// update the text
 		mut txt1 := unsafe { &app.ttf_render[0] }
 		if app.frame_c % 2 == 0 {

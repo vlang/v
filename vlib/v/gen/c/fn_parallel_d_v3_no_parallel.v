@@ -33,11 +33,15 @@ fn (mut g FlatGen) start_type_indexes(_ bool) (&TypeIndexArgs, []int) {
 
 fn (mut g FlatGen) finish_type_indexes(_ &TypeIndexArgs, _ []int) {}
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
+fn (mut g FlatGen) start_embedded_fields_lane(_ bool) {}
+
+fn (mut g FlatGen) finish_embedded_fields_lane() bool {
+	return false
+}
+
+fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	for group in 0 .. fn_signature_registration_groups {
-		for registration in registrations {
-			g.apply_fn_signature_registration_group(registration, group)
-		}
+		g.apply_fn_signature_registration_groups(registration_lists, group)
 	}
 	for which in 0 .. 3 {
 		g.register_fn_decl_nodes(node_regs, which)
@@ -58,8 +62,8 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(_ bool) bool 
 	return false
 }
 
-fn (mut g FlatGen) collect_gen_info_fn_preps(_ []i32, _ bool, _ bool) []CollectGenFnPrep {
-	return []CollectGenFnPrep{}
+fn (mut g FlatGen) collect_gen_info_fn_preps(_ []i32, _ bool, _ bool) CollectGenFnPreps {
+	return CollectGenFnPreps{}
 }
 
 fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {

@@ -102,7 +102,7 @@ pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&
 		return error('net.openssl new_ssl_server_conn, could not create SSL instance')
 	}
 
-	if C.SSL_set_fd(voidptr(ssl), tcp_conn.sock.handle) != 1 {
+	if C.v_net_openssl_SSL_set_fd(voidptr(ssl), tcp_conn.sock.handle) != 1 {
 		C.SSL_free(voidptr(ssl))
 		C.SSL_CTX_free(sslctx)
 		return error('net.openssl new_ssl_server_conn, could not assign ssl to socket')

@@ -26,13 +26,16 @@ fn option_payload_tag[P](_ ?P) string {
 fn (mut decoder Decoder) decode_selected_sumtype[T](mut value T) ! {
 	type_idx := value.type_idx()
 	$for variant in T.variants {
-		if mut value is variant && type_idx == variant.typ {
-			$if variant.typ !is $option && variant.typ is time.Time {
-				decoder.decode_sumtype_time(mut value)!
-			} $else {
-				decoder.decode_value(mut value)!
+		// Keep the narrowing in its own condition for generic variant inference.
+		if mut value is variant {
+			if type_idx == variant.typ {
+				$if variant.typ !is $option && variant.typ is time.Time {
+					decoder.decode_sumtype_time(mut value)!
+				} $else {
+					decoder.decode_value(mut value)!
+				}
+				return
 			}
-			return
 		}
 	}
 	decoder.decode_error('could not decode resolved sumtype (should not happen)')!

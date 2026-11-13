@@ -1,5 +1,15 @@
 import os
 
+// The Windows tools shard runs other tools concurrently. An executable that
+// another process still has open cannot be replaced there; let each `v vet`
+// invocation compile in its private temporary directory rather than updating
+// the shared `cmd/tools/vvet/vvet.exe`.
+fn testsuite_begin() {
+	$if windows {
+		os.setenv('VTOOLS_NO_CACHE', '1', true)
+	}
+}
+
 // Regression for #28692: diagnostics from earlier files must survive parsing
 // later files, including result-returning functions with escaped newlines.
 fn test_vet_multifile_diagnostics() {

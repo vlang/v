@@ -1218,7 +1218,7 @@ pub fn (tc &TypeChecker) incremental_record(unhandled_start int) string {
 			skipped_at++
 			// Its lines, as they were.
 			stored := state.earlier.entries[f.earlier]
-			unsafe { b.write_ptr(state.earlier.text.str + stored.start, stored.end - stored.start) }
+			b.write_string(state.earlier.text[stored.start..stored.end])
 			continue
 		}
 		mut entry := IncrementalEntry{

@@ -175,8 +175,7 @@ fn main() {
  _ := holds_packed_only()
 }"
 	os.write_file(path, source)!
-	command := '${os.quoted_path(@VEXE)} -new-compiler -o ${os.quoted_path(output)} ${os.quoted_path(path)}'
-	result := os.execute(command)
+	result := os.exec([@VEXE, '-new-compiler', '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	for payload in ['main__Node', 'main__Box_string', 'main__SharedCounter', 'chan', 'Words',

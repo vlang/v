@@ -1102,7 +1102,7 @@ fn (p &Parser) inline_table_end_error() IError {
 }
 
 // array_of_tables parses next tokens into an array of `ast.Value`s.
-@[autofree_bug; manualfree]
+@[manualfree]
 pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsing array of tables "${p.tok.kind}" "${p.tok.lit}"')
@@ -1168,7 +1168,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 }
 
 // array_of_tables_contents parses next tokens into an array of `ast.Value`s.
-@[autofree_bug; manualfree]
+@[manualfree]
 pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
@@ -1184,7 +1184,7 @@ pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
-@[autofree_bug; manualfree]
+@[manualfree]
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsing nested array of tables "${p.tok.kind}" "${p.tok.lit}"')
@@ -1228,7 +1228,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 // double_array_of_tables_contents parses one nested table body into a one-element value array.
 // The following array-of-tables header remains available to the caller.
-@[autofree_bug; manualfree]
+@[manualfree]
 pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]ast.Value {
 	table := p.array_table_contents(target_key)!
 	mut values := []ast.Value{}
@@ -1236,7 +1236,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 	return values
 }
 
-@[autofree_bug; manualfree]
+@[manualfree]
 fn (mut p Parser) array_table_contents(target_key DottedKey) !map[string]ast.Value {
 	previous_key := p.root_map_key
 	p.root_map_key = target_key

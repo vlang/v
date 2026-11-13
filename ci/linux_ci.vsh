@@ -60,24 +60,22 @@ fn build_v_with_prealloc() {
 
 // TCC job tasks
 fn install_dependencies_for_examples_and_tools_tcc() {
-	if common.is_github_job {
+	if common.is_github_job && os.exists('/etc/apt/apt-mirrors.txt') {
 		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libssl-dev', 'sqlite3',
-		'libsqlite3-dev', 'valgrind'])
+		'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev', 'libegl-dev',
 		'libx11-xcb-dev'])
 	// Wayland development libraries for sokol Wayland support
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
-		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev'])
-	// The following is needed for examples/wkhtmltopdf.v
+		'libxkbcommon-dev', 'libwayland-egl1', 'libxkbcommon-x11-dev'])
+	// The following is needed for examples/c_interop_wkhtmltopdf.v.
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'xfonts-75dpi',
 		'xfonts-base', 'expect'])
-	exec_args(['v', 'retry', '--', 'wget', '--quiet',
-		'https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb'])
-	exec_args(['v', 'retry', '--', 'sudo', 'dpkg', '-i', 'wkhtmltox_0.12.6.1-2.jammy_amd64.deb'])
+	exec_args(['v', 'retry', '--', 'sh', 'ci/install_wkhtmltox.sh'])
 }
 
 fn test_v_to_c_tcc() {
@@ -106,6 +104,14 @@ fn test_pure_v_math_module_tcc() {
 fn self_tests_tcc() {
 	exec_args(['v', '-keepc', '-cc', 'tcc', '-g', 'self'])
 	self_tests()
+}
+
+fn self_tests_vprod_tcc() {
+	// Keep the optimized test compiler while still checking a TCC debug self-build.
+	exec_args(['v', '-keepc', '-cc', 'tcc', '-g', '-o', 'v_tcc_debug', 'self'])
+	exec_args(['./v_tcc_debug', 'run', 'examples/hello_world.v'])
+	// Emit a separate result line for every file instead of hiding successes.
+	exec_args(['v', '-W', 'test-self', 'vlib'])
 }
 
 fn build_examples_tcc() {
@@ -186,7 +192,7 @@ fn test_leak_detector_tcc() {
 fn test_leak_detector_not_active_tcc() {
 	exec_args(['v', '-o', 'testcase_leak', 'vlib/v/tests/testcase_leak.vv'])
 	exec_args(['sh', '-c', './testcase_leak 2>leaks.txt'])
-	exec_args(['[', '\$(stat -c %s leaks.txt)', '=', '0', ']'])
+	assert os.file_size('leaks.txt') == 0, os.read_file('leaks.txt') or { err.msg() }
 }
 
 // GCC job tasks
@@ -195,18 +201,17 @@ fn all_code_is_formatted_gcc() {
 }
 
 fn install_dependencies_for_examples_and_tools_gcc() {
-	if common.is_github_job {
+	if common.is_github_job && os.exists('/etc/apt/apt-mirrors.txt') {
 		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
-		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
-		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev', 'wayland-protocols',
-		'libegl-dev'])
+		'libxkbcommon-dev', 'libwayland-egl1', 'libxkbcommon-x11-dev', 'wayland-protocols', 'libegl-dev'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libx11-dev',
 		'libx11-xcb-dev', 'libgl1-mesa-dri', 'xauth', 'xvfb'])
 }
@@ -346,18 +351,17 @@ fn all_code_is_formatted_clang() {
 }
 
 fn install_dependencies_for_examples_and_tools_clang() {
-	if common.is_github_job {
+	if common.is_github_job && os.exists('/etc/apt/apt-mirrors.txt') {
 		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
-		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
-		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev', 'wayland-protocols',
-		'libegl-dev'])
+		'libxkbcommon-dev', 'libwayland-egl1', 'libxkbcommon-x11-dev', 'wayland-protocols', 'libegl-dev'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'clang', 'libx11-xcb-dev'])
 }
 
@@ -453,12 +457,12 @@ fn test_inline_assembly() {
 	exec_args(['v', 'test', 'vlib/v/slow_tests/assembly'])
 }
 
-// Keep this list in the same order as the active tasks in
-// .github/workflows/linux_ci.yml. The aggregate runner changes compiler flags at
-// the same boundaries as the three workflow jobs.
-// Order is deliberate on both sides: the cheapest check that can prove a checkout
-// broken runs first, and `build_v_with_prealloc`, which is five compiler builds,
-// runs last so a red run reports the cheap signal before paying for it.
+// Keep the same tasks as .github/workflows/linux_ci.yml. GCC/Clang self tests run
+// in separate matrix jobs there; the aggregate runner keeps them serial and
+// changes compiler flags at the same boundaries as the three compiler lanes.
+// Retain task order within each compiler lane for local resume checkpoints.
+// `build_v_with_prealloc` stays last in the TCC lane: it is five compiler builds,
+// so the cheaper checks should report a broken checkout before paying for it.
 const ci_tasks = [
 	'all_code_is_formatted_tcc',
 	'install_dependencies_for_examples_and_tools_tcc',
@@ -468,7 +472,7 @@ const ci_tasks = [
 	'verify_v_test_works_tcc',
 	'test_pure_v_math_module_tcc',
 	'test_inline_assembly',
-	'self_tests_tcc',
+	'self_tests_vprod_tcc',
 	'build_examples_tcc',
 	'run_submodule_example_tcc',
 	'build_tools_tcc',
@@ -569,7 +573,7 @@ fn ci_vflags(task_index int) string {
 		return '-cc tcc -no-retry-compilation'
 	}
 	if task_index < ci_tasks.index('all_code_is_formatted_clang') {
-		return ''
+		return '-cc gcc'
 	}
 	return '-cc clang'
 }
@@ -640,6 +644,7 @@ const all_tasks = {
 	'verify_v_test_works_tcc':                           Task{verify_v_test_works_tcc, 'Verify `v test` works (tcc)'}
 	'test_pure_v_math_module_tcc':                       Task{test_pure_v_math_module_tcc, 'Test pure V math module (tcc)'}
 	'self_tests_tcc':                                    Task{self_tests_tcc, 'Self tests (tcc)'}
+	'self_tests_vprod_tcc':                              Task{self_tests_vprod_tcc, 'Self tests using the optimized compiler (tcc)'}
 	'build_examples_tcc':                                Task{build_examples_tcc, 'Build examples (tcc)'}
 	'run_submodule_example_tcc':                         Task{run_submodule_example_tcc, 'Run submodule example (tcc)'}
 	'build_tools_tcc':                                   Task{build_tools_tcc, 'Build V tools (tcc)'}

@@ -53,13 +53,34 @@ fn workflow_index_after(source string, needle string, offset int) int {
 
 fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
+	caller := workflow_source('ci_master.yml')
+	filters := workflow_source(os.join_path('ci_gate_filters', 'part3.json'))
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
-	assert source.contains('on:\n  push:\n    branches:\n      - master\n')
+	assert source.contains('on:\n  workflow_call:\n')
+	assert !source.contains('  push:')
 	assert !source.contains('  pull_request:')
 	assert !source.contains('  merge_group:')
 	assert !source.contains('paths:')
 	assert !source.contains('paths-ignore:')
+	assert caller.contains('on:\n  push:\n    branches: [master]\n')
+	assert !caller.contains('  pull_request:')
+	assert !caller.contains('  merge_group:')
+	assert !caller.contains('paths:')
+	assert !caller.contains('paths-ignore:')
+	assert caller.contains('  formatting:\n    needs: bootstrap-linux\n')
+	for lane in ['windows_ci_gcc', 'windows_ci_msvc', 'windows_ci_tcc'] {
+		assert caller.contains('  ${lane}:\n' +
+			'    needs: [formatting, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]\n')
+	}
+	assert caller.contains(r'      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}')
+	assert caller.contains('        id: paths\n')
+	assert caller.contains('        run: python3 .github/workflows/ci_gate_paths.py master\n')
+	assert caller.contains('  tccbin_automation_contract:\n    needs: [formatting, gen_vc_ci]\n' +
+		"    if: needs.formatting.outputs.tccbin_automation_contract == 'true'\n" +
+		'    uses: ./.github/workflows/tccbin_automation_contract.yml\n')
+	assert filters.contains('    "workflow": "tccbin_automation_contract.yml",\n' +
+		'    "shard": "master",\n    "mode": "all",\n    "patterns": [],\n')
 	assert source.contains('name: tccbin-automation-contract')
 	assert source.contains('name: tccbin-automation-dry-run')
 	assert source.count('if: always()') == 2
@@ -233,7 +254,7 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	checkout_pin := '3d3c42e5aac5ba805825da76410c181273ba90b1'
 	upload_pin := '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
 	vc_lock := '0781dbf8ed16a8e9ebce3771a645b814456c0103'
-	cpa_pin := 'e0b9770014ba65d5e0815f15b74031c3a635f641'
+	cpa_pin := '82668f1fbd89d9c99487604f822cbf6716f124d3' // v1.7.0
 	mut action_calls := 0
 	for raw_line in source.split_into_lines() {
 		mut line := raw_line.trim_space()

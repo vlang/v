@@ -196,18 +196,18 @@ fn (err CpuMemoryCostError) msg() string {
 //
 // The input parameters are:
 //
-//     password - a slice of bytes which is the password being used to
-//         derive the key.  Don't leak this value to anybody.
-//     salt - a slice of bytes used to make it harder to crack the key.
-//     n - CPU/Memory cost parameter, must be larger than 0, a power of 2,
-//         and less than 2^(128 * r / 8).
-//     r - block size parameter.
-//     p - parallelization parameter, a positive integer less than or
-//         equal to ((2^32-1) * hLen) / MFLen where hLen is 32 and
-//         MFlen is 128 * r.
-//     dk_len - intended output length in octets of the derived key;
-//         a positive integer less than or equal to (2^32 - 1) * hLen
-//         where hLen is 32.
+// - `password` - a slice of bytes which is the password being used to
+//   derive the key. Don't leak this value to anybody.
+// - `salt` - a slice of bytes used to make it harder to crack the key.
+// - `n` - CPU/Memory cost parameter, must be larger than 0, a power of 2,
+//   and less than 2^(128 * r / 8).
+// - `r` - block size parameter.
+// - `p` - parallelization parameter, a positive integer less than or
+//   equal to ((2^32-1) * hLen) / MFLen where hLen is 32 and
+//   MFlen is 128 * r.
+// - `dk_len` - intended output length in octets of the derived key;
+//   a positive integer less than or equal to (2^32 - 1) * hLen
+//   where hLen is 32.
 //
 // The output and working buffers must also fit V array lengths (signed 32-bit int),
 // including PBKDF2 SHA-256 block rounding. Zero r, p or dk_len returns an error.

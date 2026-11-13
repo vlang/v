@@ -197,7 +197,7 @@ fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, i32) i32
 fn C.mbedtls_net_bind(&C.mbedtls_net_context, &char, &char, i32) i32
 fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, uint, &uint) i32
 fn C.mbedtls_net_recv(voidptr, &u8, uint) i32
-fn C.mbedtls_net_send(voidptr, &u8, uint) i32
+fn C.v_mbedtls_net_send(ctx voidptr, const_buf &u8, len uint) i32
 fn C.mbedtls_net_recv_timeout(voidptr, &u8, uint, u32) i32
 fn C.mbedtls_net_free(&C.mbedtls_net_context)
 

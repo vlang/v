@@ -65,7 +65,8 @@ fn test_show_timings_reports_stages_without_verbose_output() {
 	assert_compiler_timings(c_only, ['parse .v', 'check', 'cgen'])
 	assert os.is_file(c_output)
 	c_source := os.read_file(c_output)!
-	assert c_source.contains('int main('), c_source
+	entry_point := $if windows { 'int wmain(' } $else { 'int main(' }
+	assert c_source.contains(entry_point), c_source
 
 	for flags in [['-show-timings', '-silent'], ['-silent', '-show-timings']] {
 		mut args := flags.clone()
@@ -77,7 +78,7 @@ fn test_show_timings_reports_stages_without_verbose_output() {
 
 	stdout_c := run_show_timings_compiler(['-show-timings', '-o', '-', source])
 	assert stdout_c.exit_code == 0, stdout_c.output
-	assert stdout_c.output.contains('int main('), stdout_c.output
+	assert stdout_c.output.contains(entry_point), stdout_c.output
 	assert !stdout_c.output.contains('=== V compiler benchmark ==='), stdout_c.output
 	assert !stdout_c.output.contains('[ttime]'), stdout_c.output
 	plain_stdout_c := run_show_timings_compiler(['-o', '-', source])

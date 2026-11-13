@@ -21,12 +21,12 @@ module ecdsa
 #flag openbsd -L/usr/local/lib/eopenssl35 -Wl,-rpath,/usr/local/lib/eopenssl35
 
 // Installed through choco:
-#flag windows -IC:/Program Files/OpenSSL-Win64/include
-#flag windows -LC:/Program Files/OpenSSL-Win64/lib/VC/x64/MD
+#flag windows -I"C:/Program Files/OpenSSL-Win64/include"
+#flag windows -L"C:/Program Files/OpenSSL-Win64/lib/VC/x64/MD"
 
 // Installed on the CI:
-#flag windows -IC:/Program Files/OpenSSL/include
-#flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
+#flag windows -I"C:/Program Files/OpenSSL/include"
+#flag windows -L"C:/Program Files/OpenSSL/lib/VC/x64/MD"
 
 $if msvc {
 	// OpenSSL's MSVC import library is conventionally named libcrypto.lib.

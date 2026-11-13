@@ -22,6 +22,20 @@ and ellipse radii scale with `Context.scale`, including rotated ellipses. A conf
 starts at its first endpoint and clips its final dash at the second endpoint. On macOS,
 `native_rendering` draws both axis-aligned and diagonal lines on the native Cocoa surface.
 
+`Context.scissor_rectf()` rounds positive clip edges outward to framebuffer pixels, including
+subpixel clips. Clips with zero or negative width or height remain empty.
+
+For GPU filled rectangles, an integer-positioned dimension of one logical pixel is aligned
+to framebuffer pixels at fractional DPI scales. Its thickness is the display scale rounded
+to the nearest whole pixel, with a minimum of one pixel, independent of its starting position.
+For example, at 150% scaling both one-unit-wide rectangles at `x: 47` and `x: 50` are two
+framebuffer pixels wide. This also applies to `draw_rect_filled_no_context()`.
+Snapped dimensions stay within the scaled rectangle's enclosing pixel bounds, preserving their
+full thickness at the framebuffer's right and bottom edges.
+Reversing a rectangle's width or height preserves its pixel coverage. Logical scissor bounds
+enclose the scaled rectangle and use the same alignment for one-unit dimensions, so a matching
+`scissor_rect()` preserves the full rectangle. Nonpositive scissor dimensions produce an empty clip.
+
 ## Image buffers and cache IDs
 
 Image loaders produce four-channel RGBA pixels. When initializing an `Image` directly with
@@ -158,6 +172,10 @@ After a window generation is sealed, state/capability queries and new service,
 readback, and native-borrow admissions fail as stale. Already admitted work
 follows the terminal or cancellation flow, and queued terminals remain
 deliverable.
+
+Within a render frame, `WindowContext.with_swapchain_sgl()` and `with_offscreen_sgl()`
+submit the drawing commands from a successful callback to the selected target before
+returning. Renderer errors propagate through the managed pass cleanup.
 
 `examples/gg/multiwindow_render_runtime.v` is an unattended CI probe, not an
 interactive launch target. Backend lanes compile it with `-d gg_multiwindow`

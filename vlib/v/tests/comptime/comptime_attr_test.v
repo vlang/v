@@ -1,26 +1,27 @@
-@[bar; foo]
+// Whole-string metadata preserves arbitrary legacy names without a schema.
+@['bar'; 'foo']
 fn abc() {
 }
 
-@[foo]
+@['foo']
 struct Foo {
 }
 
-@[bar]
+@['bar']
 fn Foo.bar() {
 }
 
-@[baz]
+@['baz']
 enum EnumFoo {
 	a
 	b
 }
 
-@[iface]
+@['iface']
 interface IFoo {
 }
 
-@[custom]
+@['custom']
 type CustomType = EnumFoo | Foo
 
 fn test_main() {

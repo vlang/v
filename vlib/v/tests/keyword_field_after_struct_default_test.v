@@ -44,7 +44,8 @@ fn test_keyword_field_after_struct_default() {
 	assert s.or == 6
 	assert KeywordAfterDefault{}.x == 2
 	u := KeywordUnionAfterDefault{}
-	assert u.x == 2
+	// The default initializes x, the union's active member.
+	assert unsafe { u.x } == 2
 	t := TrailingOpDefault{}
 	assert t.x == 3
 	assert t.in == 0

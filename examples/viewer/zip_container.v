@@ -26,6 +26,12 @@ import os
 import time
 import compress.szip
 
+// max_image_bytes caps the uncompressed size the viewer will allocate for a
+// single archive entry. A lazy open trusts the central directory, and a
+// corrupt archive can declare gigabytes over a tiny payload, so the bound is
+// checked before any allocation happens.
+const max_image_bytes = u64(512 * 1024 * 1024)
+
 // is_ascii reports whether every byte of s is < 128.
 fn is_ascii(s string) bool {
 	for b in s.bytes() {
@@ -52,54 +58,116 @@ fn ascii_temp_dir() string {
 // ensure_ascii_zip returns a path that miniz can open. If `path` is already
 // ASCII it is returned unchanged; otherwise the bytes are copied (via the
 // Unicode-safe `os.read_bytes`) to an ASCII temp file and that path returned.
-fn ensure_ascii_zip(path string) !string {
+// `uid` makes the temp name unique per scan job: two workers copying the
+// same non-ASCII archive within the same nanosecond must not collide.
+fn ensure_ascii_zip(path string, uid int) !string {
 	if is_ascii(path) {
 		return path
 	}
 	data := os.read_bytes(path) or {
 		return error('cannot read zip `${path}`: ${err}')
 	}
-	tmp := os.join_path(ascii_temp_dir(), 'vviewer_${os.getpid()}_${time.now().unix_nano()}.zip')
+	tmp := os.join_path(ascii_temp_dir(), 'vviewer_${os.getpid()}_${time.now().unix_nano()}_${uid}.zip')
 	os.write_bytes(tmp, data) or {
 		return error('cannot write temp zip `${tmp}`: ${err}')
 	}
 	return tmp
 }
 
-// scan_zip enumerates the image entries of a zip archive and adds them to the
-// item list as extractable (need_extract) drawables. The stored `path` is an
-// ASCII-safe path so later extraction can reopen the archive on Windows.
-fn (mut il Item_list) scan_zip(orig_path string, in_index int) ! {
+// zip_format_hint inspects the first bytes of a file that failed to open as
+// a zip archive and names a known foreign format, so the scan warning says
+// what the file actually is (empty, RAR, 7-Zip) instead of only why the
+// zip parse failed.
+fn zip_format_hint(path string) string {
+	size := os.file_size(path)
+	if size == 0 {
+		return ' [empty file]'
+	}
+	if size < 8 {
+		return ''
+	}
+	mut f := os.open(path) or {
+		return ''
+	}
+	defer {
+		f.close()
+	}
+	head := f.read_raw_at[[8]u8](0) or {
+		return ''
+	}
+	if head[0] == 0x52 && head[1] == 0x61 && head[2] == 0x72 && head[3] == 0x21 {
+		return ' [actually a RAR archive]'
+	}
+	if head[0] == 0x37 && head[1] == 0x7a && head[2] == 0xbc && head[3] == 0xaf {
+		return ' [actually a 7-Zip archive]'
+	}
+	return ''
+}
+
+// scan_zip_items enumerates the image entries of a zip archive into a pure
+// Job_result: it touches no shared viewer state because it runs on a worker
+// thread. The stored `path` is an ASCII-safe path so later extraction can
+// reopen the archive on Windows. A single bad entry is recorded as a warning
+// and skipped; it never aborts the scan of the remaining entries.
+fn scan_zip_items(mut p &Scan_pool, orig_path string, uid int) !Job_result {
 	println('Scanning ZIP [${orig_path}]')
-	path := ensure_ascii_zip(orig_path)!
-	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
+	path := ensure_ascii_zip(orig_path, uid)!
+	// Lazy open: only the central directory is parsed, no entry is decoded.
+	mut zp := szip.open_lazy(path) or {
+		return error('${err}${zip_format_hint(orig_path)}')
+	}
 	n_entries := zp.total()!
+	// Progress accounting: the archive's entries become known now (the
+	// total grows) and are reported one by one as they are enumerated, so
+	// even a huge archive animates the bar instead of jumping at the end.
+	p.add_progress(0, n_entries)
+	mut res := Job_result{
+		is_zip:   true
+		key:      orig_path.clone()
+		zip_path: path
+		n_total:  n_entries
+	}
 	for index in 0 .. n_entries {
-		zp.open_entry_by_index(index)!
-		is_dir := zp.is_dir()!
-		name := zp.name()
-		size := zp.size()
-		if !is_dir {
-			ext := get_extension(name)
-			if is_image(ext) {
-				il.n_item += 1
-				il.lst << Item{
-					need_extract:         true
-					path:                 path
-					name:                 name.clone()
-					container_index:      in_index
-					container_item_index: index
-					i_type:               ext
-					n_item:               il.n_item
-					drawable:             true
-					size:                 size
-				}
-			}
+		scan_zip_entry(mut zp, index, path, mut res) or {
+			p.add_scan_warning('zip entry ${index} in `${orig_path}`: ${err}')
 		}
-		// Keep the entry open until we are done reading it later.
-		zp.close_entry()
+		p.add_progress(1, 0)
 	}
 	zp.close()
+	return res
+}
+
+// scan_zip_entry reads one archive entry and appends it to the job result
+// when it is a viewable image. Errors are returned so the caller can skip
+// the single bad entry (encrypted, truncated header, ...) and keep scanning.
+fn scan_zip_entry(mut zp &szip.Zip, index int, path string, mut res Job_result) ! {
+	zp.open_entry_by_index(index)!
+	is_dir := zp.is_dir()!
+	name := zp.name()
+	size := zp.size()
+	// The entry is re-opened by index when its bytes are actually needed.
+	zp.close_entry()
+	if is_dir {
+		return
+	}
+	ext := get_extension(name)
+	if is_image(ext) {
+		if size > max_image_bytes {
+			// The central directory claims more than any viewable image can
+			// need: treat the entry as corrupt instead of listing an item
+			// whose load would try a huge allocation.
+			return error('implausible uncompressed size ${size}')
+		}
+		res.items << Item{
+			need_extract:         true
+			path:                 path
+			name:                 name.clone()
+			container_item_index: index
+			i_type:               ext
+			drawable:             true
+			size:                 size
+		}
+	}
 }
 
 // load_current_bytes returns the raw bytes of the currently selected item,
@@ -119,19 +187,27 @@ fn (mut app App) load_current_bytes() ![]u8 {
 
 	// Reopen the zip only when the selected item belongs to a different archive
 	// than the one currently open. `item.path` is already ASCII-safe (set by
-	// scan_zip), so miniz can open it on Windows.
+	// scan_zip), so miniz can open it on Windows. The lazy open decodes only
+	// the entry that is actually read, not the whole archive.
 	if app.zip_index != item.container_index {
 		if app.zip_index >= 0 {
 			app.zip.close()
 		}
-		app.zip = szip.open(item.path, szip.CompressionLevel.no_compression,
-			szip.OpenMode.read_only)!
+		app.zip = szip.open_lazy(item.path)!
 		app.zip_index = item.container_index
 	}
 
+	// The destination buffer is NOT sized from the untrusted central-directory
+	// `item.size`: a corrupt archive can declare a plausible size there while
+	// its local header disagrees, and allocating from it before validation is
+	// what let a crafted archive exhaust the address space. read_entry_bytes()
+	// validates the entry against its local header, decompresses and verifies
+	// the checksum first, and only then allocates the real decoded length.
 	app.zip.open_entry_by_index(item.container_item_index)!
-	mut buf := []u8{len: int(item.size)}
-	app.zip.read_entry_buf(buf.data, buf.len)!
+	buf := app.zip.read_entry_bytes() or {
+		app.zip.close_entry()
+		return error('zip entry `${item.name}`: ${err}')
+	}
 	app.zip.close_entry()
 	return buf
 }

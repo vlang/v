@@ -25,7 +25,6 @@ pub enum ErrorType {
 	trailing_space
 }
 
-@[minify]
 pub struct VetError {
 pub mut:
 	kind ErrorKind @[required]

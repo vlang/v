@@ -14,23 +14,105 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
-fn test_native_backend_is_refused_except_for_vfmt() {
-	// `vfmt` maps the removed `native` alias onto the C formatter, and
-	// cmd/tools/vfmt_test.v requires the CLI form to work.
-	assert !native_backend_rejected('fmt', ['-b', 'native'])
-	assert !native_backend_rejected('fmt', ['-backend', 'native'])
-	assert !native_backend_rejected('fmt', ['-b', 'c'])
+fn test_native_backend_aliases_select_the_host_backend() {
+	expected := $if amd64 { 'amd64' } $else $if arm64 { 'arm64' } $else { 'native' }
+	assert pref.native_backend() == expected
+	for flags in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
+		['-backend=native']] {
+		for suffix in [['main.v'], ['run', 'main.v'], ['test', '.'], ['self']] {
+			mut args := flags.clone()
+			args << suffix
+			assert selected_backend(compiler_args_before_program(args), false) == expected
+			assert full_compiler_is_required(compiler_args_before_program(args)) ==
+				full_compiler_is_required(['-b', expected])
+		}
+	}
+	assert selected_backend(['-native', '-b', 'c', 'main.v'], false) == 'c'
+	assert selected_backend(['-b', 'c', '-native', 'main.v'], false) == expected
+}
 
-	// Every other command keeps the migration guidance.
-	assert native_backend_rejected('run', ['-b', 'native', 'main.v'])
-	assert native_backend_rejected('build', ['-backend', 'native', 'main.v'])
-	assert native_backend_rejected('test', ['-b', 'native', '.'])
-	assert native_backend_rejected('', ['-b', 'native', 'main.v'])
+fn test_native_backend_aliases_select_the_requested_architecture() {
+	for arch, expected in {
+		'amd64':   'amd64'
+		'arm64':   'arm64'
+		'riscv64': 'native'
+	} {
+		for flags in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
+			['-backend=native']] {
+			mut arch_first := ['-arch', arch]
+			arch_first << flags
+			mut arch_last := flags.clone()
+			arch_last << ['-arch', arch]
+			for args in [arch_first, arch_last] {
+				assert selected_backend(args, false) == expected, args.str()
+				if expected != 'native' {
+					assert full_compiler_is_required(args) == full_compiler_is_required([
+						'-b',
+						expected,
+					])
+				} else {
+					assert !full_compiler_is_required(args)
+				}
+			}
+		}
+	}
+	assert selected_backend(['-native', '-arch', 'amd64', '-arch', 'arm64'], false) == 'arm64'
+	assert selected_backend(['-arch', 'arm64', '-native', '-arch', 'amd64'], false) == 'amd64'
+	assert selected_backend(['-arch', 'arm64', '-native', '-b', 'c'], false) == 'c'
+	assert selected_backend(['-arch', 'arm64', '-b', 'x64'], false) == 'x64'
+	assert selected_backend(['-arch', 'amd64', '-b', 'arm64'], false) == 'arm64'
+}
 
-	// Unrelated backends are untouched.
-	assert !native_backend_rejected('run', ['-b', 'c', 'main.v'])
-	assert !native_backend_rejected('run', ['-b', 'fastc', 'main.v'])
-	assert !native_backend_rejected('run', ['-b', 'x64', 'main.v'])
+fn test_native_backend_architecture_preserves_argument_boundaries() {
+	expected := pref.native_backend()
+	for option in ['-cflags', '-ldflags', '-o', '-d', '-compile-backend'] {
+		assert selected_backend(['-native', option, '-arch', 'main.v'], false) == expected
+	}
+	for prefix in [['run', 'main.v'], ['crun', 'main.v'], ['script.vsh'], ['-e', 'println(1)'],
+		['-e=println(1)']] {
+		mut args := ['-native']
+		args << prefix
+		args << ['-arch', 'arm64']
+		assert selected_backend(compiler_args_before_program(args), false) == expected
+	}
+}
+
+fn test_native_backend_aliases_preserve_argument_boundaries() {
+	for literal in ['-native', '-b=native', '-backend=native', 'native'] {
+		for option in ['-cflags', '-ldflags', '-o', '-d', '-compile-backend'] {
+			args := [option, literal, 'main.v']
+			assert selected_backend(args, false) == 'c'
+		}
+		for prefix in [['run', 'main.v'], ['crun', 'main.v'], ['script.vsh'], ['-e', 'println(1)'],
+			['-e=println(1)']] {
+			mut args := prefix.clone()
+			args << literal
+			assert selected_backend(compiler_args_before_program(args), false) == 'c'
+		}
+	}
+}
+
+fn test_native_backend_aliases_preserve_formatter_preferences() {
+	for flags in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
+		['-backend=native']] {
+		mut args := flags.clone()
+		args << ['fmt', 'main.v']
+		index, _ := find_command(args)
+		prefix := args[..index].clone()
+		assert external_tool_compile_args('vfmt', prefix) == []string{}
+		expected := if flags == ['-native'] { ['-b', 'native', 'fmt', 'main.v'] } else { args }
+		assert external_tool_runtime_args('fmt', prefix, args[index..]) == expected
+	}
+}
+
+fn test_native_backend_aliases_reach_self_and_test_without_targeting_the_helper() {
+	for command in ['self', 'test'] {
+		args := ['-native', command]
+		index, _ := find_command(args)
+		prefix := args[..index]
+		assert selected_backend(external_tool_compile_args('v${command}', prefix), false) == 'c'
+		assert external_tool_runtime_args(command, prefix, args[index..]) == args
+	}
 }
 
 fn test_v1_fallback_drops_private_restart_options() {
@@ -105,7 +187,7 @@ fn test_v1_fallback_consumes_profile_output_after_a_command() {
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
 	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
-	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
+	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check', '-check-syntax']) == [
 		'-silent',
 		'-N',
 		'-W',
@@ -208,7 +290,7 @@ fn test_formatter_backend_options_are_runtime_preferences() {
 			'fmt',
 			'source.v',
 		]
-		assert external_tool_compile_args('vtest', prefix) == prefix
+		assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-gc', 'none']
 		joined_prefix := ['-cc', 'clang', '${flag}=js', '-gc', 'none']
 		assert external_tool_compile_args('vfmt', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
 		assert external_tool_runtime_args('fmt', joined_prefix, ['fmt', 'source.v']) == [
@@ -216,7 +298,7 @@ fn test_formatter_backend_options_are_runtime_preferences() {
 			'fmt',
 			'source.v',
 		]
-		assert external_tool_compile_args('vtest', joined_prefix) == joined_prefix
+		assert external_tool_compile_args('vtest', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
 	}
 }
 
@@ -647,6 +729,9 @@ fn test_transparent_fallback_installation_preserves_diagnostics() {
 				os.join_path(release, 'vlib', 'json2')] {
 				os.mkdir_all(directory)!
 			}
+			// OpenBSD's /bin/sh has no printf builtin; expose it to this isolated PATH.
+			printf := os.find_abs_path_of_executable('printf')!
+			os.symlink(printf, os.join_path(bin, 'printf'))!
 			os.write_file(os.join_path(root, 'GNUmakefile'), '')!
 			dispatcher := os.join_path(root, 'v')
 			os.cp(@VEXE, dispatcher)!
@@ -770,6 +855,11 @@ fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
 	// The name has no `tcc`, so only the resolved compiler gives it away.
 	alias_path := os.join_path(dir, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	// Shared TinyCC builds need their adjacent DLL even to print the version.
+	libtcc := os.join_path(os.dir(bundled), 'libtcc.dll')
+	if os.is_file(libtcc) {
+		os.cp(libtcc, os.join_path(dir, 'libtcc.dll')) or { panic(err) }
+	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
 	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.
@@ -1124,4 +1214,31 @@ fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_bound
 	]
 	assert remove_obsolete_skip_unused_flag(['-skip-unused', '-skip-unused', 'run', 'main.v',
 		'-skip-unused']) == ['run', 'main.v', '-skip-unused']
+}
+
+fn test_test_launcher_builds_host_helper_and_preserves_test_target() {
+	for backend in ['arm64', 'amd64', 'wasm', 'js'] {
+		for flag in ['-b', '-backend'] {
+			for prefix in [[flag, backend, '-os', 'linux', '-arch', 'arm64'],
+				['${flag}=${backend}', '-os=linux', '-arch=arm64']] {
+				assert external_tool_compile_args('vtest', prefix) == []string{}
+				mut expected := prefix.clone()
+				expected << ['test', 'one_test.v']
+				assert external_tool_runtime_args('test', prefix, ['test', 'one_test.v']) == expected
+			}
+		}
+	}
+}
+
+fn test_host_tool_filters_preserve_other_option_operands() {
+	for value in ['-arch', '-os', '-cross', '-arch=amd64', '-os=linux', '-b', '-backend=wasm'] {
+		for option in ['-cflags', '-ldflags', '-d', '-o', '-cf'] {
+			prefix := [option, value]
+			assert external_tool_compile_args('vtest', prefix) == prefix
+			assert external_tool_build_args('vtest', prefix) == prefix
+		}
+	}
+	prefix := ['-cc', 'clang', '-cflags', '-arch', '-cflags', 'arm64', '-arch', 'amd64']
+	assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-cflags', '-arch',
+		'-cflags', 'arm64']
 }

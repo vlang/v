@@ -2,7 +2,7 @@ module dl
 
 #include <dlfcn.h>
 
-$if linux || termux {
+$if linux || android || termux {
 	#flag -ldl
 }
 

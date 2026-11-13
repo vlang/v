@@ -11,6 +11,8 @@ mut:
 }
 
 // intern returns the numeric identity of text, caching its process-owned spelling.
+// The slot is masked to the fixed cache size, so its accesses need no bounds check.
+@[direct_array_access]
 pub fn (mut table TypeTextTable) intern(text string) u32 {
 	if text.len == 0 {
 		return 0

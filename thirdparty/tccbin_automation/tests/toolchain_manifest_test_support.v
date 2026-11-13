@@ -613,9 +613,7 @@ fn t2a_prepare_toolchain_authority(base string, target_id string) SyntheticToolc
 	profile_path := os.join_path(root, profile_relative_path)
 	os.mkdir_all(os.dir(profile_path)) or { panic(err) }
 	os.write_file(profile_path, profile_source) or { panic(err) }
-	mut registry_source := os.read_file(os.join_path(automation_root(), 'targets.json')) or {
-		panic(err)
-	}
+	mut registry_source := dormant_registry_source(automation_root())
 	target_marker := '"id": "${target_id}"'
 	target_offset := registry_source.index(target_marker) or { panic('target missing') }
 	prefix := registry_source[..target_offset]

@@ -116,3 +116,16 @@ pub fn classify(x f64) FloatClass {
 	}
 	return .normal
 }
+
+// dim returns the maximum of x-y and 0, with NaN propagation (Go's math.Dim).
+// Equal infinities return NaN. Non-positive differences return positive zero.
+pub fn dim(x f64, y f64) f64 {
+	if is_nan(x) || is_nan(y) {
+		return nan()
+	}
+	v := x - y
+	if v <= 0 {
+		return 0
+	}
+	return v
+}

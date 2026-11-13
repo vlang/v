@@ -7,6 +7,9 @@ On FreeBSD, mutexes store native `pthread_mutex_t` and `pthread_rwlock_t` values
 On macOS and default pthread platforms, zero-value `RwMutex` try locks initialize the native lock
 and wait for concurrent first-use initialization to finish before acquiring it.
 
+`WaitGroup.go` keeps callbacks and captured data visible to Boehm while Windows worker threads
+are waiting to start.
+
 Channels can carry function values, including aliases such as `type Task = fn ()`.
 Function channels support explicit capacities and default initialization in structs
 and globals. Arrays of channels can use an explicit `init` expression to initialize
@@ -51,6 +54,14 @@ builtin maps; pointer keys use pointer identity even when their pointed-to data 
 `range` snapshots each shard before calling the callback, so callbacks can mutate the map.
 It visits each snapshot entry until the callback returns `false`; concurrent additions and
 removals may or may not be reflected. Locks protect map operations, not objects stored as values.
+
+`sync.new_map[K, V]()` creates a simpler map guarded by a single mutex. `sync.Map[K, V]{}`
+is also ready to use. Share the same instance by reference between workers; do not copy it.
+`load(key)` returns `(value, found)`, with the value type's default when the key is absent
+(`nil` for pointer values). A stored `nil` is still present and returns `found == true`.
+`store`, `delete`, `has`, `len`, and `clear` each run under the mutex. `keys()` and `values()`
+return snapshots in unspecified order. Separate snapshot calls can observe different changes;
+the returned values are shallow copies, so shared referenced data needs its own synchronization.
 
 ## Phaser and StampedLock
 

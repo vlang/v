@@ -1,15 +1,10 @@
 name: VPM CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - '**/vpm_ci.yml'
-      - '**/cmd/tools/vpm/**'
+  workflow_call:
 
 concurrency:
-  group: vpm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vpm-vpm_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -31,11 +26,11 @@ jobs:
       - name: Show git version
         run: git version
       - name: Build V
-        if: runner.os != 'Windows'
-        run: cd vlang && make -j4 && ./v doctor
-      - name: Build V (Windows)
-        if: runner.os == 'Windows'
-        run: cd vlang && ./makev.bat && ./v doctor
+        uses: ./vlang/.github/actions/setup-v
+        with:
+          working-directory: vlang
+          symlink: false
+          doctor: true
       - name: Cache V
         uses: actions/cache/save@v6
         with:

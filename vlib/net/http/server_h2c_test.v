@@ -175,6 +175,86 @@ fn test_server_h2c_does_not_break_http1() {
 	assert text.contains('h2c: GET /plain')
 }
 
+fn send_slow_h2c_prefix(addr string) {
+	mut conn := net.dial_tcp(addr) or { return }
+	defer { conn.close() or {} }
+	for _ in 0 .. 12 {
+		conn.write_string('G') or { break }
+		time.sleep(150 * time.millisecond)
+	}
+}
+
+fn send_slow_h2c_preface(addr string) {
+	mut conn := net.dial_tcp(addr) or { return }
+	defer { conn.close() or {} }
+	conn.write_string('PRI ') or { return }
+	rest := '* HTTP/2.0\r\n\r\nSM\r\n\r\n'
+	for i in 0 .. 8 {
+		time.sleep(150 * time.millisecond)
+		conn.write_string(rest[i..i + 1]) or { break }
+	}
+}
+
+fn test_server_h2c_sniff_uses_request_head_deadline() {
+	mut server := &Server{
+		accept_timeout:       h2c_atimeout
+		read_timeout:         5 * time.second
+		read_header_timeout:  300 * time.millisecond
+		worker_num:           1
+		handler:              H2cEchoHandler{}
+		addr:                 '127.0.0.1:18206'
+		enable_http2:         true
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running()!
+	defer {
+		server.stop()
+		t.wait()
+	}
+
+	drip := spawn send_slow_h2c_prefix('127.0.0.1:18206')
+	time.sleep(400 * time.millisecond)
+	mut legitimate := net.dial_tcp('127.0.0.1:18206')!
+	defer { legitimate.close() or {} }
+	legitimate.set_read_timeout(1 * time.second)
+	legitimate.write_string('GET /deadline HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
+	mut response := []u8{}
+	mut buffer := []u8{len: 1024}
+	for {
+		n := legitimate.read(mut buffer) or { break }
+		if n <= 0 {
+			break
+		}
+		response << buffer[..n]
+		if response.bytestr().contains('\r\n') {
+			break
+		}
+	}
+	assert response.bytestr().starts_with('HTTP/1.1 200 OK\r\n')
+	drip.wait()
+
+	slow_preface := spawn send_slow_h2c_preface('127.0.0.1:18206')
+	time.sleep(400 * time.millisecond)
+	mut after_preface := net.dial_tcp('127.0.0.1:18206')!
+	defer { after_preface.close() or {} }
+	after_preface.set_read_timeout(1 * time.second)
+	after_preface.write_string('GET /after-preface HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
+	mut after_response := []u8{}
+	for {
+		n := after_preface.read(mut buffer) or { break }
+		if n <= 0 {
+			break
+		}
+		after_response << buffer[..n]
+		if after_response.bytestr().contains('\r\n') {
+			break
+		}
+	}
+	assert after_response.bytestr().starts_with('HTTP/1.1 200 OK\r\n')
+	slow_preface.wait()
+}
+
 struct H2cRemoteAddrHandler {}
 
 fn (mut h H2cRemoteAddrHandler) handle(req Request) Response {

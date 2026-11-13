@@ -301,7 +301,7 @@ fn (mut g Parser) read_match_expression() !string {
 			} else {
 				smartcast_c_type
 			}
-			value = '({ ${declaration_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
+			value = '({ ${declaration_type} ${fastc_c_value_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
 		}
 		if g.selfhost && value_type != u32(0) && outer_expected_type_source_id != u32(0) && g.should_box_variant(outer_expected_type, value_type) {
 			// A branch value whose type is a variant of the match's (boxed) expected
@@ -474,6 +474,9 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 
 fn (mut g Parser) read_block_expression_value() !string {
 	g.skip_semicolons()
+	if g.wrapper_starts_final_block_expression() {
+		return g.read_final_block_wrapper_value()!
+	}
 	if g.tok == .dollar && g.dollar_keyword_is('if') {
 		// `$if … { value } $else { value }` as the block's value: select the taken
 		// branch's value rather than executing it as a statement.
@@ -505,29 +508,42 @@ fn (mut g Parser) read_block_expression_value() !string {
 	}
 	previous_capture := g.capturing_defer
 	previous_lines := g.captured_defer_lines.clone()
+	local_scope_start := g.local_scope_changes.len
+	deferred_line_start := g.deferred_lines.len
+	deferred_block_start := g.deferred_block_starts.len
+	g.local_scope_depth++
 	g.capturing_defer = true
 	g.captured_defer_lines = []string{}
 	// Restore through a defer so a `parse_statement` error that a speculative caller
 	// swallows cannot leave `capturing_defer` set for the rest of the function.
 	defer {
+		g.deferred_lines.trim(deferred_line_start)
+		g.deferred_block_starts.trim(deferred_block_start)
+		g.restore_local_scope(local_scope_start)
+		g.local_scope_depth--
 		g.capturing_defer = previous_capture
 		g.captured_defer_lines = previous_lines.clone()
 	}
+	mut terminates := false
 	for g.or_block_has_statements() {
+		if g.wrapper_starts_final_block_expression() {
+			break
+		}
 		if g.tok == .key_if && g.if_starts_final_block_expression() {
 			break
 		}
 		if g.tok == .key_match && g.match_starts_final_block_expression() {
 			break
 		}
-		_ = g.parse_statement()!
+		statement_terminates := g.parse_statement()!
+		terminates = terminates || statement_terminates
 		g.skip_semicolons()
 	}
-	statements := g.captured_defer_lines.clone()
 	if g.tok == .rcbr {
+		if !terminates { g.write_deferred_blocks_from(deferred_block_start) }
 		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
-		return '({ ${statements.join(' ')} 0; })'
+		return '({ ${g.captured_defer_lines.join(' ')} 0; })'
 	}
 	g.skip_semicolons()
 	mut value := if g.tok == .name {
@@ -535,6 +551,8 @@ fn (mut g Parser) read_block_expression_value() !string {
 		g.next()
 		g.read_expression_with_prefix(prefix, [token.Token.comma, token.Token.semicolon,
 			token.Token.rcbr])!
+	} else if g.wrapper_starts_final_block_expression() {
+		g.read_final_block_wrapper_value()!
 	} else {
 		g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 	}
@@ -564,7 +582,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 		g.last_expression_type = flat.source_type_id('MultiReturn')
 		g.last_expression = []FastcExpressionToken{}
 		g.last_multi_return_types = flat.TypeTextList{ ids: value_types.clone() }
-		return '({ ${statements.join(' ')} ${fastc_multi_return_literal(packed_values)}; })'
+		return g.block_expression_source(fastc_multi_return_literal(packed_values), deferred_block_start)
 	}
 	if g.tok == .name {
 		prefix := g.lit
@@ -576,5 +594,29 @@ fn (mut g Parser) read_block_expression_value() !string {
 			value + final_value
 		}
 	}
-	return '({ ${statements.join(' ')} ${value}; })'
+	return g.block_expression_source(value, deferred_block_start)
+}
+
+fn (mut g Parser) block_expression_source(value string, first_defer_block int) string {
+	if g.deferred_block_starts.len == first_defer_block {
+		return '({ ${g.captured_defer_lines.join(' ')} ${value}; })'
+	}
+	// Evaluate the branch value before its cleanup, while both its locals and
+	// deferred statements are still inside the same C statement expression.
+	if g.last_expression_type in [u32(0), flat.source_type_void] {
+		g.write_line('(void)(${value});')
+		g.write_deferred_blocks_from(first_defer_block)
+		return '({ ${g.captured_defer_lines.join(' ')} 0; })'
+	}
+	temporary := g.temporary_name('block_value')
+	declaration_type := g.declaration_c_type(g.last_expression_type, value)
+	if g.selfhost && flat.source_type_query(g.underlying_alias_type(g.last_expression_type)).has(.c_fixed_array_prefix)
+		&& !fastc_is_pointer_type(g.last_expression_type) && g.fixed_array_uses_raw_storage(g.last_expression) {
+		g.write_line('${declaration_type} ${temporary};')
+		g.write_line('memcpy(${temporary}.data, ${value}, sizeof(${temporary}.data));')
+	} else {
+		g.write_line('${declaration_type} ${temporary} = (${value});')
+	}
+	g.write_deferred_blocks_from(first_defer_block)
+	return '({ ${g.captured_defer_lines.join(' ')} ${temporary}; })'
 }

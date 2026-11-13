@@ -403,26 +403,35 @@ fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth
 	untrusted_bundle := os.join_path(cert_dir, 'client.crt')
 	assert os.exists(server_cert) && os.exists(server_key) && os.exists(ca_bundle)
 
+	scratch := os.join_path(os.vtmp_dir(), 'smtp_tls_validation_${rand.uuid_v4()}')
+	os.mkdir_all(scratch)!
+	defer {
+		os.rmdir_all(scratch) or {}
+	}
+	executable := os.join_path(scratch, 'smtp_tls_test_server') + $if windows { '.exe' } $else { '' }
+	// Compile once before timing server readiness; MSVC builds can take longer
+	// than the listening deadline even when the server starts immediately.
+	build := os.exec([@VEXE, '-o', executable, helper])
+	assert build.exit_code == 0, build.output
+
 	for starttls in [false, true] {
-		assert smtp_tls_test_case(helper, starttls, 'localhost', ca_bundle, server_cert,
+		assert smtp_tls_test_case(executable, starttls, 'localhost', ca_bundle, server_cert,
 			server_key)! == 'CONNECTED:AUTH'
-		assert smtp_tls_test_case(helper, starttls, '127.0.0.1', ca_bundle, server_cert,
+		assert smtp_tls_test_case(executable, starttls, '127.0.0.1', ca_bundle, server_cert,
 			server_key)! == 'REJECTED:NO_AUTH'
-		assert smtp_tls_test_case(helper, starttls, 'localhost', untrusted_bundle, server_cert,
+		assert smtp_tls_test_case(executable, starttls, 'localhost', untrusted_bundle, server_cert,
 			server_key)! == 'REJECTED:NO_AUTH'
 	}
 }
 
-fn smtp_tls_test_case(helper string, starttls bool, hostname string, verify string, cert string,
+fn smtp_tls_test_case(executable string, starttls bool, hostname string, verify string, cert string,
 	key string) !string {
 	prefix := os.join_path(os.temp_dir(), 'v_smtp_tls_${rand.uuid_v4()}')
 	ready_path := '${prefix}.ready'
 	result_path := '${prefix}.result'
-	mut server := os.new_process(@VEXE)
+	mut server := os.new_process(executable)
 	server.set_work_folder(@VMODROOT)
 	server.set_args([
-		'run',
-		helper,
 		if starttls { 'starttls' } else { 'implicit' },
 		hostname,
 		cert,

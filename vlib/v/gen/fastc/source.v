@@ -7,6 +7,7 @@ import v.pref
 import v.scanner
 import v.token
 import v.util
+import v.vmod
 
 fn fastc_vmod_root_for_file(source_file string) string {
 	mut dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
@@ -66,7 +67,8 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		collect_global_names(source.source, source.path, source.header, prefs,
 			source.header.body_spans, mut globals, mut public_globals, mut global_paths,
 			mut declarations, mut declaration_origins)!
-		declarations.free()
+		// Only the collected names survive this scan; the declaration text is discarded.
+		unsafe { declarations.free() }
 	}
 	mut result := []FastcSourceFile{cap: sources.len}
 	for source in sources {
@@ -156,7 +158,8 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 	// A quoted C include is relative to the V file that declared it. FastC hoists
 	// directives into one generated C file, so preserve that original include base
 	// by making the path absolute before hoisting.
-	if result.starts_with('include "') || result.starts_with('insert "') {
+	if result.starts_with('include "') || result.starts_with('insert "')
+		|| result.starts_with('preinclude "') {
 		quote_start := result.index_u8(`"`)
 		quote_end := result.last_index_u8(`"`)
 		if quote_start >= 0 && quote_end > quote_start {
@@ -673,7 +676,7 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 	}
 	mut hash := u64(14695981039346656037)
 	// The resolver version separates memo layouts and implicit dependencies.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-5')
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-6')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -992,7 +995,7 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		}
 	}
 	if task.kind == 1 {
-		if task.stamps.len == 1 {
+		if task.stamps.len == 1 && !os.is_file(os.join_path_single(task.dir, 'v.mod')) {
 			// The memoized listing stands while the directory's own stamp is
 			// unchanged (adding, removing or renaming an entry updates it) and
 			// old enough to trust.
@@ -1253,6 +1256,11 @@ fn fastc_write_memo_entry_line(mut out strings.Builder, path string, real_path_c
 // stamp and the listing it had, so a later run reuses the listing while the
 // directory is unchanged.
 fn fastc_write_memo_dir_line(mut out strings.Builder, dir string, module_dir_files map[string][]string) {
+	// A manifest can select sources in other directories, whose additions do
+	// not change the root directory's stamp. Resolve those listings afresh.
+	if os.is_file(os.join_path_single(dir, 'v.mod')) {
+		return
+	}
 	out.write_string('D\t' + dir)
 	if files := module_dir_files[dir] {
 		stamp := fastc_file_stamp(dir) or { FastcFileStamp{} }
@@ -1314,12 +1322,44 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 		}
 	} else {
 		module_dir = prefs.get_module_path(imported_module, source_path)
+		if project_dir := fastc_project_module_shadowing_vlib(module_dir, imported_module, source_path, prefs) {
+			module_dir = project_dir
+		}
 	}
 	if prefs.building_v && !canonical && !prefs.target_libc_headers {
 		module_dir = os.real_path(module_dir)
 	}
 	module_path_cache[module_cache_key] = module_dir
 	return module_dir
+}
+
+// fastc_project_module_shadowing_vlib returns the project module that shadows the vlib
+// module `module_dir` for an import from a source of the project: a project module named
+// like a vlib module (Vox's `clipboard`) is preferred to vlib, as by the C backend's
+// resolver, from every project directory. Explicit `-path` search roots keep their order,
+// and imports from sources outside the project keep their own resolution.
+fn fastc_project_module_shadowing_vlib(module_dir string, imported_module string, source_path string, prefs &pref.Preferences) ?string {
+	root := prefs.module_resolution_root
+	if root == '' || prefs.module_search_paths.len > 0
+		|| !module_dir.starts_with(os.join_path_single(prefs.vroot, 'vlib') + os.path_separator) {
+		return none
+	}
+	top_name := imported_module.all_before('.')
+	if !os.is_dir(os.join_path_single(root, top_name))
+		|| !os.real_path(source_path).starts_with(root + os.path_separator) {
+		return none
+	}
+	if alias_path := pref.resolve_module_alias_path(root, imported_module) {
+		return alias_path
+	}
+	path := os.join_path_single(root, imported_module.replace('.', os.path_separator))
+	entries := os.ls(path) or { return none }
+	for entry in entries {
+		if entry.ends_with('.v') {
+			return path
+		}
+	}
+	return none
 }
 
 fn fastc_target_module_from_root(root string, module_name string) string {
@@ -1385,9 +1425,19 @@ fn fastc_module_source_files(module_dir string, prefs &pref.Preferences, mut mod
 // fastc_list_module_sources lists the backend-relevant .v files of `dir`.
 fn fastc_list_module_sources(dir string, prefs &pref.Preferences) []string {
 	mut module_files := []string{}
-	for module_file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
-		if fastc_source_file_matches_backend(module_file) {
-			module_files << module_file
+	mut source_dirs := [dir]
+	if manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) {
+		source_root := manifest.source_root(dir)
+		source_dirs = [source_root]
+		for subdir in manifest.unknown['subdirs'] or { []string{} } {
+			source_dirs << os.join_path_single(source_root, subdir)
+		}
+	}
+	for source_dir in source_dirs {
+		for module_file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_dir, prefs.user_defines, prefs.target)) {
+			if fastc_source_file_matches_backend(module_file) && module_file !in module_files {
+				module_files << module_file
+			}
 		}
 	}
 	return module_files
@@ -1573,7 +1623,7 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 	return calls
 }
 
-fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, module_init_calls []string, function_c_names map[string]string) !string {
+fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, early_initializers map[string]string, module_init_calls []string, function_c_names map[string]string) !string {
 	mut seen_modules := map[string]bool{}
 	mut out := strings.new_builder(1024)
 	for source_file in ordered_sources {
@@ -1584,6 +1634,7 @@ fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, consta
 		seen_modules[module_name] = true
 		constant_initializer := constant_initializers[module_name] or { '' }
 		global_initializer := global_initializers[module_name] or { '' }
+		out.write_string(early_initializers[module_name] or { '' })
 		out.write_string(constant_initializer)
 		out.write_string(global_initializer)
 		function_key := fastc_function_key(module_name, 'init')
@@ -1998,7 +2049,7 @@ fn fastc_source_contains_word(source string, word string) bool {
 	if word.len == 0 { return false }
 	mut start := 0
 	for {
-		index := source.index_after_(word, start)
+		index := fastc_source_text_index(source, word, start)
 		if index < 0 { return false }
 		if fastc_source_word_at(source, index, word) { return true }
 		start = index + word.len
@@ -2011,10 +2062,15 @@ fn fastc_source_contains_word(source string, word string) bool {
 @[direct_array_access]
 fn fastc_source_last_word_index(source string, word string) int {
 	if word.len == 0 { return -1 }
-	for i := source.len - word.len; i >= 0; i-- {
-		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	mut last := -1
+	mut start := 0
+	for {
+		index := fastc_source_text_index(source, word, start)
+		if index < 0 { break }
+		if fastc_source_word_at(source, index, word) { last = index }
+		start = index + word.len
 	}
-	return -1
+	return last
 }
 
 @[direct_array_access]

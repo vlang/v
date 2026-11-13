@@ -39,9 +39,13 @@ fn test_inline_asm_quoted_numbered_operands_drop_v_quotes() {
 
 fn test_inline_asm_character_tokens_use_assembly_quotes() {
 	aliases := map[string]bool{}
-	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov 'A', %rax"
-	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov ',', %rax"
+	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov \$'A', %rax"
+	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov \$',', %rax"
+	assert lower_c_inline_asm_template('mov eax, `A`', 'i386', aliases, false) == "mov \$'A', %eax"
+	assert lower_c_inline_asm_template('.byte `A`', 'amd64', aliases, false) == ".byte 'A'"
 	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
+	assert lower_c_inline_asm_template('mov x0, `A`', 'aarch64', aliases, false) == "mov x0, 'A'"
+	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases, false) == "mov rax, 'A'"
 }
 
 fn test_inline_asm_aarch64_alias_uses_arm64_operand_lowering() {
@@ -54,6 +58,37 @@ fn test_inline_asm_aarch64_alias_uses_arm64_operand_lowering() {
 		aliases, true) == 'ldp %[data], %[raw_metadata], [%[address]]'
 	assert lower_c_inline_asm_template('add data, data, 1', 'aarch64', aliases, true) ==
 		'add %[data], %[data], #1'
+}
+
+fn test_inline_asm_riscv64_preserves_operand_order_and_registers() {
+	aliases := {
+		'value': true
+		'input': true
+	}
+	for arch in ['rv64', 'riscv64'] {
+		assert lower_c_inline_asm_template('addi value, input, 5', arch, aliases, true) ==
+			'addi %[value], %[input], 5'
+		assert lower_c_inline_asm_template('fadd.d f0, f1, f31', arch, aliases, true) ==
+			'fadd.d f0, f1, f31'
+		assert lower_c_inline_asm_template("add '%0', '%1', '%2'", arch, aliases, true) ==
+			'add %0, %1, %2'
+		assert lower_c_inline_asm_template("beq zero, zero, '1f'", arch, aliases, true) ==
+			'beq zero, zero, 1f'
+	}
+}
+
+fn test_inline_asm_riscv64_lowers_memory_operands() {
+	aliases := {
+		'address': true
+	}
+	for arch in ['rv64', 'riscv64'] {
+		assert lower_c_inline_asm_template('sd t0, [address]', arch, aliases, true) ==
+			'sd t0, (%[address])'
+		assert lower_c_inline_asm_template('ld t0, [address + 8]', arch, aliases, true) ==
+			'ld t0, 8(%[address])'
+		assert lower_c_inline_asm_template('ld t0, [address + -8]', arch, aliases, true) ==
+			'ld t0, -8(%[address])'
+	}
 }
 
 fn test_inline_asm_x86_addresses_preserve_unscaled_indexes() {
@@ -957,7 +992,7 @@ fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
 		g.tc = &tc
 		g.set_ccompiler('tcc')
 		g.register_struct_decl_info_at(int(decl), node.value, node.value,
-			'main', 'aligned.v', node)
+			'main', 'aligned.v', 'aligned.v', node)
 		for name in ['alloca', 'v_alloca', '__v3_internal_symbol_libc_alloca'] {
 			local := stmt_test_node(mut a, .ident, name, [])
 			value := stmt_test_node(mut a, .int_literal, '7', [])

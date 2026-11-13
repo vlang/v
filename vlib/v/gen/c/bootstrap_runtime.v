@@ -1,5 +1,24 @@
 module c
 
+// headerless_native_object_cache_helper supplies the shipped publication helper
+// without importing SDK headers into a standalone compiler translation unit.
+fn (mut g FlatGen) headerless_native_object_cache_helper() {
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	if !g.core_header_directives.any(normalized_c_include_arg_path(it.directive.text.all_after('#include').trim_space()) == root + '/vlib/v/driver/native_object_cache.h') {
+		return
+	}
+	g.writeln('#define V_NATIVE_OBJECT_CACHE_HEADERLESS 1')
+	g.writeln('#ifndef _WIN32')
+	g.writeln(g.cpp_c_linkage('int link(char*, char*);'))
+	g.writeln('#if defined(__linux__)')
+	g.writeln(g.cpp_c_linkage('long syscall(long, ...);'))
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.write($embed_file('@VEXEROOT/vlib/v/driver/native_object_cache_impl.c').to_string())
+	g.collect_preserved_c_fns(['v_native_object_cache_publish', 'v_native_object_cache_rename_noreplace',
+		'link', 'syscall'])
+}
+
 // portable_windows_runtime_helpers embeds SDK-backed helpers without checkout-local objects.
 fn (mut g FlatGen) portable_windows_runtime_helpers() {
 	g.writeln('#ifdef _WIN32')
@@ -134,14 +153,21 @@ static inline int v_sync_thread_create_detached(void* start, void* arg) {
 }
 '
 
-// headerless_cmdexec_poll_helper replaces only the shipped poll header when the
+// headerless_cmdexec_poll_helper replaces the shipped poll headers when the
 // standalone ABI owns libc declarations; SDK-backed units keep the native helper.
 fn (mut g FlatGen) headerless_cmdexec_poll_helper() {
-	if g.target.os == 'windows' || !g.core_header_directives.any(it.directive.module == 'cmdexec') {
+	os_poll := g.core_header_directives.any(it.directive.module == 'os'
+		&& normalized_c_include_arg_path(it.directive.text.all_after('#include').trim_space()) == g.compiler_vroot.replace('\\', '/').trim_right('/') + '/vlib/os/fd_poll.h')
+	if g.target.os == 'windows'
+		|| (!os_poll && !g.core_header_directives.any(it.directive.module == 'cmdexec')) {
 		return
 	}
 	g.write(headerless_cmdexec_poll)
 	g.collect_preserved_c_fns(['v_cmdexec_poll_revents'])
+	if os_poll {
+		g.writeln('static inline short v_os_fd_poll_revents(int fd, short events) { return v_cmdexec_poll_revents(fd, events); }')
+		g.collect_preserved_c_fns(['v_os_fd_poll_revents'])
+	}
 }
 
 const headerless_cmdexec_poll = r'
@@ -186,6 +212,7 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 			}
 		}
 		source = lines.join('\n').replace('sig_atomic_t', 'i32')
+			.replace('sigset_t', 'v3_run_signal_set')
 	}
 	g.write(source.replace('int v3_run_signals_begin(', 'static int v3_run_signals_begin(')
 		.replace('int v3_run_signals_set_pid(', 'static int v3_run_signals_set_pid(')
@@ -200,6 +227,8 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 // Use libc aliases with opaque arguments so V's partial C bindings do not own the ABI.
 const headerless_run_signal_declarations = r'
 #define V3_RUN_SIGNALS_HEADERLESS 1
+/* libc owns the signal-set layout; reserve aligned storage without an SDK typedef. */
+typedef union { unsigned char bytes[128]; long double alignment; } v3_run_signal_set;
 #ifndef SIG_SETMASK
 #if defined(__linux__) || defined(__ANDROID__) || defined(__QNX__) || defined(__QNXNTO__)
 #define SIG_SETMASK 2

@@ -6,10 +6,14 @@ import v.pref
 import v.scanner
 import v.token
 
-// fastc_target_runtime_preferences selects bodyless libc bindings supplied by
-// the target headers and FastC's native declaration emitter.
+// fastc_target_runtime_preferences selects FastC's canonical integer declarations
+// and the libc bindings supplied by target headers when requested.
 fn fastc_target_runtime_preferences(prefs &pref.Preferences) pref.Preferences {
 	mut scoped := *prefs
+	if 'fastc_backend' !in scoped.user_defines {
+		scoped.user_defines = scoped.user_defines.clone()
+		scoped.user_defines << 'fastc_backend'
+	}
 	if scoped.target_libc_headers {
 		scoped.user_defines = scoped.user_defines.clone()
 		for define in ['v3_c_extern_declarations', 'no_segfault_handler'] {
@@ -47,6 +51,7 @@ struct FastcNativeSourceFacts {
 mut:
 	has_header   bool
 	links_native bool
+	needs_bridge bool
 	// local_headers lists the resolved paths of selected `#include "path"` headers.
 	local_headers []string
 }
@@ -75,6 +80,7 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 						branch := fastc_target_collect_native_facts(selected.source, path, prefs, mut references, mut declarations)
 						facts.has_header = facts.has_header || branch.has_header
 						facts.links_native = facts.links_native || branch.links_native
+						facts.needs_bridge = facts.needs_bridge || branch.needs_bridge
 						facts.local_headers << branch.local_headers
 					}
 					scan = selected_scan
@@ -95,6 +101,7 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 						if directive[0] == 'include' {
 							if header := fastc_native_quoted_include_path(scan.lit, path, prefs) {
 								facts.local_headers << header
+								facts.needs_bridge = facts.needs_bridge || header.ends_with('.m') || header.ends_with('.mm')
 							}
 						}
 					} else if directive[1..].any(!it.starts_with('-')
@@ -102,6 +109,9 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 							|| it.ends_with('.m') || it.ends_with('.mm') || it.ends_with('.o')
 							|| it.ends_with('.obj'))) {
 						facts.links_native = true
+					}
+					if directive[0] == 'flag' && directive.any(it == '-framework' || it.starts_with('-fobjc-')) {
+						facts.needs_bridge = true
 					}
 				}
 			}
@@ -132,10 +142,12 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 
 struct FastcNativeSourceContext {
 mut:
+	needs_bridge                 bool
 	references                   map[string]bool
 	files_with_headers           map[string]bool
 	files_linking_native_sources map[string]bool
 	declaration_paths            map[string][]string
+	references_by_file           map[string][]string
 	// local_headers maps a V source path to its selected quoted-include headers.
 	local_headers map[string][]string
 }
@@ -145,7 +157,11 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 	for i in start .. end {
 		source := sources[i]
 		mut declarations := map[string]bool{}
-		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut context.references, mut declarations)
+		mut references := map[string]bool{}
+		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut references, mut declarations)
+		context.references_by_file[source.path] = references.keys()
+		for name, _ in references { context.references[name] = true }
+		context.needs_bridge = context.needs_bridge || facts.needs_bridge
 		if facts.has_header {
 			context.files_with_headers[source.path] = true
 		}
@@ -167,6 +183,10 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 // Merge contiguous source chunks in order so duplicate declarations retain
 // every origin in the same order as the serial scanner.
 fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk FastcNativeSourceContext) {
+	context.needs_bridge = context.needs_bridge || chunk.needs_bridge
+	for path, references in chunk.references_by_file {
+		context.references_by_file[path] = references
+	}
 	for name, _ in chunk.references {
 		context.references[name] = true
 	}
@@ -203,83 +223,16 @@ fn fastc_native_quoted_include_path(directive string, source_path string, prefs 
 	if header.contains('@VMODROOT') {
 		header = header.replace('@VMODROOT', fastc_vmod_root_for_file(source_path))
 	}
+	if header.contains('@DIR') {
+		// Match the emitted directive (fastc_resolve_c_pseudo_paths).
+		header = header.replace('@DIR', os.real_path(os.dir(os.real_path(source_path))))
+	}
 	if !os.is_abs_path(header) {
 		header = os.join_path(os.dir(source_path), header)
 	}
 	return header
 }
 
-// fastc_c_header_skip_trivia skips C whitespace and comments without interpreting declarations.
-fn fastc_c_header_skip_trivia(text string, start int) int {
-	mut i := start
-	for i < text.len {
-		if text[i].is_space() {
-			i++
-		} else if i + 1 < text.len && text[i] == `/` && text[i + 1] == `/` {
-			i += 2
-			for i < text.len && text[i] != `\n` {
-				i++
-			}
-		} else if i + 1 < text.len && text[i] == `/` && text[i + 1] == `*` {
-			i += 2
-			for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
-				i++
-			}
-			i = if i + 1 < text.len { i + 2 } else { text.len }
-		} else {
-			break
-		}
-	}
-	return i
-}
-
-// fastc_c_header_declares_function reports whether a header names a function outside
-// comments and quoted literals, allowing whitespace and comments before the argument list.
-fn fastc_c_header_declares_function(text string, name string) bool {
-	if name.len == 0 {
-		return false
-	}
-	mut i := 0
-	for i < text.len {
-		i = fastc_c_header_skip_trivia(text, i)
-		if i >= text.len {
-			break
-		}
-		if text[i] in [`'`, `"`] {
-			quote := text[i]
-			i++
-			for i < text.len {
-				if text[i] == `\\` {
-					i += 2
-				} else if text[i] == quote {
-					i++
-					break
-				} else {
-					i++
-				}
-			}
-			continue
-		}
-		if text[i].is_alnum() || text[i] == `_` {
-			start := i
-			for i < text.len && (text[i].is_alnum() || text[i] == `_`) {
-				i++
-			}
-			if text[start..i] == name {
-				next := fastc_c_header_skip_trivia(text, i)
-				if next < text.len && text[next] == `(` {
-					return true
-				}
-			}
-		} else {
-			i++
-		}
-	}
-	return false
-}
-
-// fastc_target_libc_declares leaves the standard headers' exact qualifiers
-// and integer widths intact rather than redeclaring their approximate V view.
 fn fastc_target_libc_declares(name string) bool {
 	return name in ['malloc', 'calloc', 'realloc', 'free', 'exit', 'abort', 'atoi', 'atol', 'atoll',
 		'atof', 'qsort', 'bsearch', 'getenv', 'setenv', 'unsetenv', 'rand', 'srand', 'memcpy',

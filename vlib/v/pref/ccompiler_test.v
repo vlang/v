@@ -48,6 +48,11 @@ fn test_tcc_prod_detection_does_not_match_unrelated_names_or_backends() {
 	assert !tcc_with_prod_requested(['-prod', '-cc', 'distcc'])
 	assert !tcc_with_prod_requested(['-prod', '-cc', 'notcc'])
 	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'arm64'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-native'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'native'])
+	assert tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-native', '-b', 'c'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'c', '-native'])
+	assert tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-cflags', '-native'])
 	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'fastc'])
 	assert tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'arm64', '-b', 'c'])
 	assert !tcc_with_prod_requested(['-cc', '-prod'])
@@ -107,6 +112,11 @@ fn test_tcc_with_prod_requested_finds_tinycc_under_another_name() {
 	}
 	alias_path := os.join_path(root, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	// Shared TinyCC builds need their adjacent DLL even to print the version.
+	libtcc := os.join_path(os.dir(bundled), 'libtcc.dll')
+	if os.is_file(libtcc) {
+		os.cp(libtcc, os.join_path(root, 'libtcc.dll')) or { panic(err) }
+	}
 	assert tcc_with_prod_requested(['-prod', '-cc', alias_path])
 	assert !tcc_with_prod_requested(['-cc', alias_path])
 }

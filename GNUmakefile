@@ -148,11 +148,19 @@ GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 TCCBUILDSCRIPT = $(VROOT)/thirdparty/build_scripts/thirdparty-$(TCCOS)-$(TCCARCH)_tcc.sh
 
-.PHONY: all v1 clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
+.PHONY: all v1 cache-basic-modules clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
 endif
+
+# The compiler can be optimized with Clang while its users compile ordinary
+# programs and tests with another C compiler, such as TCC in Linux CI.
+CACHE_VFLAGS ?= $(VFLAGS)
+# Optional optimized sidecar compiler; leave the bootstrap executable available
+# for the self-hosting checks, and warm caches with the compiler used by tests.
+VPROD ?=
+CACHE_VEXE = $(if $(strip $(VPROD)),$(VPROD),$(VEXE))
 
 # Keep bootstrap C compiler/linker flags aligned with the initial `v1` build.
 BOOTSTRAP_CC_CFLAGS := $(strip $(CFLAGS))
@@ -195,6 +203,11 @@ endif
 ifdef ANDROID
 ifneq ($(or $(TERMUX_VERSION),$(findstring com.termux,$(PREFIX))),)
 BOOTSTRAP_VC_CC_CFLAGS += -D__TERMUX__
+# The merged vc snapshot defaults to headerless libc on 64-bit targets, but
+# its unconditional system includes bring in Bionic typedefs on Termux.
+# Their time_t, pthread_t, sigset_t, etc. conflict with the headerless ABI.
+# Select the snapshot's native-header variant only for the initial v1 build.
+BOOTSTRAP_VC_CC_CFLAGS += -D__V_HEADERLESS_LIBC=0
 endif
 endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
@@ -281,12 +294,22 @@ endif
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
 	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+ifneq ($(strip $(VPROD)),)
+	# A failed self-build may bootstrap through make; that fallback must not
+	# inherit this optional production build and recursively start another one.
+	@VPROD= MAKEFLAGS= MFLAGS= VFLAGS= sh "$(VROOT)/cmd/tools/build_vprod.sh" "$(VEXE)$(EXE_EXT)" "$(VPROD)$(EXE_EXT)" "$(CC)"
+	@"$(VPROD)$(EXE_EXT)" -version
+endif
+	@$(MAKE) --no-print-directory cache-basic-modules
+
+cache-basic-modules:
 	@set -e; \
 	cache_gcflags=; \
 	if [ ! -f "$(TMPTCC)/lib/libgc.a" ] && [ ! -f "$(TMPTCC)/lib/libgc.dylib" ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
-	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
+	VFLAGS= $(CACHE_VEXE)$(EXE_EXT) $$cache_gcflags $(CACHE_VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/cache_basic_modules.v; \
+	VFLAGS= $(CACHE_VEXE)$(EXE_EXT) $$cache_gcflags $(CACHE_VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
 ifdef LEGACY
@@ -369,7 +392,27 @@ ifdef WIN32
 		cd "$(TMPTCC)" && $(GIT) checkout -- lib/advapi32.def > /dev/null 2> /dev/null || true; \
 	fi
 endif
-	cd $(TMPTCC) && $(GITCLEANPULL)
+# A pull fetches every platform branch, so skip it while the upstream that the pull would
+# follow has not moved. `clean` keeps changed tracked files; leave those to the pull to report,
+# as well as a missing or local upstream.
+	@set -e; cd $(TMPTCC); $(GIT) clean -xf; \
+	tcc_branch="$$($(GIT) symbolic-ref --quiet --short HEAD || true)"; \
+	tcc_upstream_remote=; \
+	tcc_upstream_ref=; \
+	if [ -n "$$tcc_branch" ]; then \
+		tcc_upstream_remote="$$($(GIT) config --get "branch.$$tcc_branch.remote" || true)"; \
+		tcc_upstream_ref="$$($(GIT) config --get "branch.$$tcc_branch.merge" || true)"; \
+	fi; \
+	tcc_remote_sha=; \
+	if [ -n "$$tcc_upstream_remote" ] && [ "$$tcc_upstream_remote" != . ] && [ -n "$$tcc_upstream_ref" ] \
+		&& [ -z "$$($(GIT) status --porcelain --untracked-files=no)" ]; then \
+		tcc_remote_sha="$$($(GIT) ls-remote "$$tcc_upstream_remote" "$$tcc_upstream_ref" 2> /dev/null | cut -f1)"; \
+	fi; \
+	if [ -n "$$tcc_remote_sha" ] && [ "$$tcc_remote_sha" = "$$($(GIT) rev-parse HEAD)" ]; then \
+		echo "TCC $$tcc_branch is already up to date."; \
+	else \
+		$(GIT) pull --rebase --quiet; \
+	fi
 ifdef WIN32
 	@if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
 		for sym in RegEnumKeyExW RegEnumValueW RegQueryInfoKeyW; do \

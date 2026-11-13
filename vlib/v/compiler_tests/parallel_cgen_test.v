@@ -5,6 +5,7 @@ const parallel_tests_dir = os.dir(@FILE)
 const parallel_v3_dir = os.dir(parallel_tests_dir)
 const parallel_vlib_dir = os.dir(parallel_v3_dir)
 const parallel_v3_src = os.join_path(parallel_v3_dir, 'v.v')
+const parallel_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
 fn setup_parallel_v3_cache() {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_cache_${os.getpid()}')
@@ -120,7 +121,7 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
-	assert c_code.all_after('int main').contains('_vinit();')
+	assert c_code.all_after(parallel_entry_point).contains('_vinit();')
 }
 
 fn test_parallel_cgen_remaps_worker_string_ids() {
@@ -243,7 +244,7 @@ fn test_parallel_cgen_worker_keeps_test_user_main_renamed() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'user-main'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(parallel_entry_point) == 1, c_code
 	assert c_code.contains('main__user_main'), c_code
 	assert c_code.contains('main__user_main();'), c_code
 }
@@ -426,7 +427,7 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '51047'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
-	assert c_code.all_after('int main').count('map__get_check') == 1, c_code
+	assert c_code.all_after(parallel_entry_point).count('map__get_check') == 1, c_code
 }
 
 fn test_prealloc_keeps_parallel_transform_enabled() {

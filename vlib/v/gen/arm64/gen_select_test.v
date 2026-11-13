@@ -1,6 +1,9 @@
 module arm64
 
-import os
+$if macos && arm64 {
+	import os
+}
+
 import v.ssa
 
 fn select_scalar_failures(mut m ssa.Module, block ssa.BlockID, first ssa.ValueID, second ssa.ValueID) ssa.ValueID {

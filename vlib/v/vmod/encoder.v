@@ -66,6 +66,10 @@ pub fn encode(manifest Manifest) string {
 		b.write_string('\tauthor: ')
 		b.writeln(quote(manifest.author))
 	}
+	if manifest.backend != '' {
+		b.write_string('\tbackend: ')
+		b.writeln(quote(manifest.backend))
+	}
 	b.write_string('\tdependencies: ')
 	encode_array(mut b, manifest.dependencies)
 	if manifest.catalog.len > 0 {

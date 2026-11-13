@@ -34,9 +34,17 @@ pub fn line_to_timestamp_and_commit(line string) (u64, string) {
 	return parts[0].u64(), parts[1]
 }
 
+// normalized_workpath_for_commit returns the resolved worktree path for a sanitized commit name.
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
-	return os.real_path(workdir + os.path_separator + nc)
+	// Resolve the existing parent first; realpath can fail for a missing child.
+	return os.real_path(os.real_path(workdir) + os.path_separator + nc)
+}
+
+// tcc_make_command prefers GNU make, so GNUmakefile's fresh_tcc target is available on BSD too.
+pub fn tcc_make_command() string {
+	// Native BSD make reads the portable Makefile, which has no fresh_tcc target.
+	return os.find_abs_path_of_executable('gmake') or { 'make' }
 }
 
 fn get_current_folder_commit_hash() string {
@@ -221,7 +229,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	// Recompilation is needed. Just to be sure, clean up everything first.
 	scripting.run_args(['git', 'clean', '-xf'])
 	if vgit_context.make_fresh_tcc {
-		scripting.run_args(['make', 'fresh_tcc'])
+		scripting.run_args([tcc_make_command(), 'fresh_tcc'])
 	}
 
 	// compiling the C sources with a C compiler:

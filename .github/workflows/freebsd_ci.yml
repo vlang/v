@@ -2,19 +2,10 @@ name: CI FreeBSD
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - 'cmd/tools/**'
-      - '!**/freebsd_ci.yml'
-      - '!ci/freebsd_ci.vsh'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: freebsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: freebsd-freebsd_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 ### See https://github.com/cross-platform-actions/action
@@ -27,7 +18,7 @@ jobs:
   tcc-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,7 +39,8 @@ jobs:
         id: tests-freebsd-tcc
         shell: cpa.sh {0}
         run: |
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          set -eu
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
           # Install packages needed by Sokol to build examples
@@ -61,18 +53,20 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc tcc -no-retry-compilation'
           echo "::endgroup::"
+          # `all` runs every task, even after a failure, and lists the failed ones.
           ./v run ci/freebsd_ci.vsh all
 
   clang-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
@@ -93,7 +87,8 @@ jobs:
         id: tests-freebsd-clang
         shell: cpa.sh {0}
         run: |
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          set -eu
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
           # Install packages needed by Sokol to build examples
@@ -106,18 +101,20 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc clang'
           echo "::endgroup::"
+          # `all` runs every task, even after a failure, and lists the failed ones.
           ./v run ci/freebsd_ci.vsh all
 
   gcc-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -138,7 +135,8 @@ jobs:
         id: tests-freebsd-gcc
         shell: cpa.sh {0}
         run: |
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
+          set -eu
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv gcc
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
           # Install packages needed by Sokol to build examples
@@ -151,10 +149,12 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
           export VTEST_SHOW_LONGEST_BY_COMPTIME=3
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc gcc'
           echo "::endgroup::"
+          # `all` runs every task, even after a failure, and lists the failed ones.
           ./v run ci/freebsd_ci.vsh all

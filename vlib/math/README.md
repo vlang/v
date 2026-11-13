@@ -3,6 +3,10 @@
 `math` provides commonly used mathematical functions for
 trigonometry, logarithms, etc.
 
+`math.bits.div_64(hi, lo, y)` divides an unsigned 128-bit dividend by `y`, returning a
+64-bit quotient and remainder. It panics on division by zero or quotient overflow.
+On Windows amd64, both MSVC and Clang support this operation in portable C snapshots.
+
 `factorial(n)` returns `n!` for nonnegative integers and uses `gamma(n + 1)` for other
 values. When the result overflows `f64`, it returns positive infinity, including for
 `n >= 171` and positive infinity. For nonnegative inputs, use `is_inf(result, 1)`
@@ -14,6 +18,10 @@ For floating point values, `math.abs` maps both signs of zero to positive zero.
 `math.expm1` preserves its input's zero sign, so `math.expm1(-0.0)` returns negative zero.
 `math.min` and `math.max` return NaN when either floating point argument is NaN.
 For equal non-NaN values, including opposite signs of zero, both return their second argument.
+
+`dim(x, y)` computes the positive difference: `x - y` when positive, and positive zero
+otherwise. It returns NaN if either input is NaN or if both inputs are infinities with
+the same sign. A positive difference that overflows `f64` returns positive infinity.
 
 `modf` preserves the input sign on both its integer and fractional results, including zero.
 `log_gamma` returns the logarithm of the absolute value of Gamma; either positive or negative
@@ -34,6 +42,8 @@ values up to `math.max_f64`. Infinite angles produce NaN.
 `lgamma` aliases `log_gamma`. `remainder(x, y)` uses the IEEE nearest-integer,
 ties-to-even remainder and preserves the dividend's sign on zero. On the C backend,
 `fma(x, y, z)` computes one rounded multiply-add, including intermediate product overflow.
+Windows TinyCC imports `fma` from the Universal CRT (`ucrtbase.dll`), included in Windows 10
+and later. Older Windows systems require the Universal CRT update or redistributable.
 The C backend uses its math library for both operations. Other backends and pure V builds
 that exclude `math/*.c.v` use portable remainder and a two-round multiply-add fallback.
 `floor_mod(x, y)` instead follows the divisor's sign, including zero.

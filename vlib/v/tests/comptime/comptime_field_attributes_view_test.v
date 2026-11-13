@@ -1,3 +1,23 @@
+@[attribute]
+struct Tag {
+	value int
+}
+
+@[attribute]
+struct On {
+	value bool
+}
+
+@[attribute]
+struct Key {
+	value string
+}
+
+@[attribute]
+struct A {
+	value string
+}
+
 // The typed `.attributes` view of struct fields and enum values (custom
 // attributes, rfcs#35) reads exactly like `.attributes` on a declaration,
 // both through a nested `$for` and through a runtime `for`.
@@ -18,13 +38,13 @@ enum FavColor {
 }
 
 // The same attribute spellings on a declaration, a field and an enum value.
-@['a: b'; 'x\x41y'; json: r'a\nb'; 'legacy'; tag: 7; on: true; key: 'p\x41q']
+@['a: b'; 'x\x41y'; json: r'a\nb'; 'legacy'; Tag: 7; On: true; Key: 'p\x41q']
 struct FavSpellings {
-	f int @['a: b'; 'x\x41y'; json: r'a\nb'; 'legacy'; tag: 7; on: true; key: 'p\x41q']
+	f int @['a: b'; 'x\x41y'; json: r'a\nb'; 'legacy'; Tag: 7; On: true; Key: 'p\x41q']
 }
 
 enum FavSpellingsEnum {
-	v  @['a: b'; 'x\x41y'; json: r'a\nb'; 'legacy'; tag: 7; on: true; key: 'p\x41q']
+	v  @['a: b'; 'x\x41y'; json: r'a\nb'; 'legacy'; Tag: 7; On: true; Key: 'p\x41q']
 }
 
 const fav_spellings = [
@@ -32,9 +52,9 @@ const fav_spellings = [
 	'xAy|false||string',
 	'json|true|a\\nb|string',
 	'legacy|false||string',
-	'tag|true|7|number',
-	'on|true|true|bool',
-	'key|true|pAq|string',
+	'Tag|true|7|number',
+	'On|true|true|bool',
+	'Key|true|pAq|string',
 ]
 
 const fav_struct_attrs = [
@@ -167,19 +187,19 @@ fn test_spellings_match_declaration() {
 }
 
 // Identical legacy spellings still retain whole-string versus keyed identity.
-@["a: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
+@["A: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
 struct FavWholeStrings {
-	whole int @["a: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
-	keyed int @[a: 'b']
+	whole int @["A: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
+	keyed int @[A: 'b']
 }
 
 enum FavWholeStringEnum {
-	whole  @["a: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
-	keyed  @[a: 'b']
+	whole  @["A: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
+	keyed  @[A: 'b']
 }
 
 fn test_whole_strings_with_quoted_tails_keep_identity() {
-	expected := ["a: 'b'|false||string", "'quoted'|false||string", "r'text'|false||string",
+	expected := ["A: 'b'|false||string", "'quoted'|false||string", "r'text'|false||string",
 		"raw: 'a\\nb'|false||string"]
 	mut decl := []string{}
 	$for a in FavWholeStrings.attributes {
@@ -201,8 +221,8 @@ fn test_whole_strings_with_quoted_tails_keep_identity() {
 			runtime << fav_text(a)
 		}
 	}
-	assert legacy == [["a: 'b'", "'quoted'", "r'text'", 'r"raw: \'a\\nb\'"'], ["a: 'b'"]]
-	assert nested == [...expected, 'a|true|b|string']
+	assert legacy == [["A: 'b'", "'quoted'", "r'text'", 'r"raw: \'a\\nb\'"'], ["A: 'b'"]]
+	assert nested == [...expected, 'A|true|b|string']
 	assert runtime == nested
 	mut enum_nested := []string{}
 	mut enum_runtime := []string{}

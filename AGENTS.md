@@ -53,6 +53,7 @@ Then read Top Rules and Agent Rules before making changes.
   subcommand/file, e.g. `./v -g run file.v`
   (not `./v run file.v -g`); flags after the subcommand are passed
   to that subcommand.
+* Never make the V compiler parse or expand C headers; see C/JS Interop Hygiene.
 * Rebuild `./v` after compiler or core module changes
   (see Build & Rebuild).
 * Run the smallest relevant tests; see Testing for triggers and
@@ -306,6 +307,12 @@ See Build & Rebuild for rebuild triggers and flags.
 * Imports follow the folder hierarchy (e.g. `import abc.def`).
 
 ## C/JS Interop Hygiene
+* The V compiler must never parse, scan, recursively expand, or infer declarations
+  from C headers, including bundled headers. Leave preprocessing and include-cycle
+  handling to the C toolchain. Track native dependencies through compiler-produced
+  manifests or treat files as opaque cache inputs; bypass reuse when the manifest
+  cannot establish safety. Do not reintroduce header inspection for caches, native
+  bridges, backend selection, or portable C output.
 * Avoid using `C.` or `JS.` symbols in plain `.v` files.
   * Use `.c.v` / `.js.v` files.
   * Enable `-Wimpure-v` to catch accidental impurity.

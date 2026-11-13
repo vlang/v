@@ -22,6 +22,7 @@ module main
 // and zip archives are scanned by `file_scan.v` / `zip_container.v`.
 
 import os
+import time
 import gg
 import sokol.gfx
 import sokol.sapp
@@ -43,6 +44,7 @@ const help_text_rows = [
 	'I - Toggle the info text',
 	'P - Pause/play animation',
 	'H - Toggle this help',
+	'W - Toggle scan warnings',
 	'',
 	'1 - Sort hierarchy by file name',
 	'2 - Sort hierarchy by file date',
@@ -125,6 +127,24 @@ mut:
 	zip       &szip.Zip = unsafe { nil }
 	zip_index int       = -1
 
+	// paths given on the command line; the scan starts in app_init (once the
+	// window exists) so the progress bar is visible while they are scanned.
+	scan_pending []string
+
+	// true on the very first launch (no placement file yet): only then the
+	// 1/3 x 1/2 centered default is applied in app_init. On later launches the
+	// rectangle saved by placement_save() is restored instead (see below).
+	place_first bool
+
+	// Rectangle read back from the placement file on a later launch and applied
+	// in app_init (Windows). place_restore is false when there is no usable
+	// saved placement, so the default startup size is kept.
+	place_restore bool
+	place_x       int
+	place_y       int
+	place_w       int
+	place_h       int
+
 	// view transform (window pixel space, y-down)
 	win_w f32
 	win_h f32
@@ -143,6 +163,7 @@ mut:
 	last_zy        f32
 	show_info_flag bool
 	show_help_flag bool
+	show_warn_flag bool
 
 	status string
 }
@@ -300,9 +321,32 @@ fn (mut app App) tick_animation(ms f64) {
 	}
 }
 
-// app_update is the gg update callback: it drives GIF animation timing
-// with the per-frame delta time (seconds) reported by sokol.
+// scan_frame_budget_ms caps how long the incremental scan may run inside a
+// single update, so the window keeps redrawing (and the progress bar keeps
+// advancing) while a huge tree is walked.
+const scan_frame_budget_ms = 8
+
+// app_update is the gg update callback: it drives the incremental scan
+// (within a small per-frame time budget) and the GIF animation timing with
+// the per-frame delta time (seconds) reported by sokol.
 fn app_update(dt f32, mut app App) {
+	if app.item_list.scanning {
+		t0 := time.clock()
+		mut more := true
+		for more {
+			more = app.item_list.scan_step()
+			if !more || time.clock() - t0 >= scan_frame_budget_ms {
+				break
+			}
+		}
+		if !more {
+			app.item_list.scan_finish()
+			if app.item_list.n_item == 0 && app.item_list.last_error == '' {
+				app.item_list.last_error = 'no supported images found'
+			}
+			app.load_current_image()
+		}
+	}
 	app.tick_animation(f64(dt) * 1000.0)
 }
 
@@ -420,6 +464,52 @@ fn draw_help(app &App) {
 	}
 }
 
+// draw_scan_progress paints the centered scan progress bar: a horizontal
+// bar that fills as entries are processed, with the current/total entry
+// count and the completion percentage below it.
+// Note: gg's drawing API works in DPI-logical units (it multiplies the
+// coordinates by ctx.scale internally), while win_w/win_h are physical
+// framebuffer pixels, so they must be divided by the DPI scale first.
+fn draw_scan_progress(app &App) {
+	sc := gg.dpi_scale()
+	lw := app.win_w / sc
+	lh := app.win_h / sc
+	mut bw := lw * 0.5
+	if bw < 300 {
+		bw = 300
+	}
+	if bw > 800 {
+		bw = 800
+	}
+	if bw > lw - 20 {
+		bw = lw - 20
+	}
+	if bw < 40 {
+		bw = 40
+	}
+	bh := f32(26)
+	x := (lw - bw) / 2
+	y := (lh - bh) / 2
+	total := app.item_list.scan_total
+	done := app.item_list.scan_done
+	pct := if total > 0 { f32(done) * 100.0 / f32(total) } else { 0.0 }
+	// Frame: light border rectangle, dark inset track, green fill.
+	app.gg.draw_rect_filled(x - 2, y - 2, bw + 4, bh + 4, gg.light_gray)
+	app.gg.draw_rect_filled(x, y, bw, bh, gg.dark_gray)
+	fill := bw * pct / 100.0
+	if fill > 0 {
+		app.gg.draw_rect_filled(x, y, fill, bh, gg.green)
+	}
+	mut cfg := gg.TextCfg{
+		color: gg.white
+		align: .center
+		size:  18
+	}
+	line := 'Scanning... ${done}/${total}  (${pct:.0}%)'
+	app.gg.draw_text(int(lw / 2), int(y + bh + 10), line, cfg)
+	unsafe { line.free() }
+}
+
 // draw_overlay paints the info line (and any status/error message).
 //
 // Memory note: this runs EVERY frame. The interpolated strings below are
@@ -463,7 +553,7 @@ fn draw_overlay(app &App) {
 			// Single interpolation: `a + b` of two interpolated parts
 			// would leak the left temporary.
 			line = '${it.name}   ${app.item_list.item_index + 1}/${app.item_list.n_item}   ${app.img_w}x${app.img_h}   ${anim_part}zoom ${app.zoom:.2}   [${src}]'
-		} else {
+		} else if !app.item_list.scanning {
 			line = 'No image. Pass a file/folder/zip path, or drop files.  [esc] quit'
 		}
 		app.gg.draw_text(10, y, line, cfg)
@@ -480,8 +570,33 @@ fn draw_overlay(app &App) {
 		unsafe { scan_line.free() }
 		y += 22
 	}
+	// Scan warnings: one line with the count; `W` toggles the full list
+	// (capped at 20 visible rows). Same per-frame free rule as above.
+	if app.item_list.scan_warnings.len > 0 {
+		warn_line := 'scan warnings: ${app.item_list.scan_warnings.len}  [W]'
+		app.gg.draw_text(10, y, warn_line, cfg)
+		unsafe { warn_line.free() }
+		y += 22
+		if app.show_warn_flag {
+			for wi, w in app.item_list.scan_warnings {
+				if wi >= 20 {
+					more_line := '  ... ${app.item_list.scan_warnings.len - 20} more'
+					app.gg.draw_text(10, y, more_line, cfg)
+					unsafe { more_line.free() }
+					break
+				}
+				row := '  ${w}'
+				app.gg.draw_text(10, y, row, cfg)
+				unsafe { row.free() }
+				y += 22
+			}
+		}
+	}
 	if app.status != '' {
 		app.gg.draw_text(10, y, app.status, cfg)
+	}
+	if app.item_list.scanning {
+		draw_scan_progress(app)
 	}
 	if app.show_help_flag {
 		draw_help(app)
@@ -505,6 +620,281 @@ fn frame(mut app App) {
 	app.gg.end()
 }
 
+// Win32 queries used to size and place the startup window on the monitor
+// the app opens on. Declared here because this V checkout has no win32 vlib.
+// The structs are plain V structs with the exact C layouts, passed through
+// `voidptr` (implicit conversion in C): re-declaring the C tag types would
+// collide with the windows.h definitions.
+$if windows {
+	struct WinPoint {
+		x i32
+		y i32
+	}
+
+	struct WinRect {
+		left   i32
+		top    i32
+		right  i32
+		bottom i32
+	}
+
+	struct WinMonitorInfo {
+		cb         u32
+		rc_monitor WinRect
+		rc_work    WinRect
+		flags      u32
+	}
+
+	fn C.GetCursorPos(voidptr) bool
+	fn C.MonitorFromRect(voidptr, u32) voidptr
+	fn C.MonitorFromWindow(voidptr, u32) voidptr
+	fn C.GetMonitorInfoW(voidptr, voidptr) bool
+	fn C.GetSystemMetrics(int) int
+
+	// gg already declares C.RECT and C.GetWindowRect with these exact
+	// signatures; repeating them identically keeps V's cross-module
+	// deduplication happy.
+	@[typedef]
+	struct C.RECT {
+		left   i32
+		top    i32
+		right  i32
+		bottom i32
+	}
+
+	fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
+	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
+}
+
+// X11: sokol_app.h already includes X11/Xlib.h in the generated C and gg
+// links libX11, so these declarations need no extra setup (same pattern as
+// the Win32 declarations above; XOpenDisplay repeats gg's declaration
+// exactly, which V's cross-module deduplication requires).
+$if linux {
+	fn C.XOpenDisplay(voidptr) voidptr
+	fn C.XCloseDisplay(voidptr) int
+	fn C.XGetDefault(voidptr, charptr, charptr) charptr
+}
+
+// monitor_rect returns the pixel rect (x, y, w, h) of the monitor the app
+// should open on: the monitor under the mouse cursor, falling back to the
+// primary display. Returns zeros where the query is unavailable.
+fn monitor_rect() (int, int, int, int) {
+	$if windows {
+		mut pt := WinPoint{}
+		if C.GetCursorPos(voidptr(&pt)) {
+			// A zero-size rect at the cursor makes MonitorFromRect behave
+			// exactly like MonitorFromPoint.
+			rc := WinRect{
+				left:   pt.x
+				top:    pt.y
+				right:  pt.x
+				bottom: pt.y
+			}
+			// MONITOR_DEFAULTTONEAREST == 2
+			hmon := C.MonitorFromRect(voidptr(&rc), 2)
+			mut mi := WinMonitorInfo{ cb: u32(unsafe { sizeof(WinMonitorInfo) }) }
+			if hmon != unsafe { nil } && C.GetMonitorInfoW(hmon, voidptr(&mi)) {
+				return mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.top, mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.bottom - mi.rc_monitor.top
+			}
+		}
+		// SM_CXSCREEN == 0, SM_CYSCREEN == 1 (primary display fallback)
+		return 0, 0, C.GetSystemMetrics(0), C.GetSystemMetrics(1)
+	} $else {
+		// macOS/Linux: gg exposes the primary screen size on every platform
+		// (XRandR on X11, NSScreen on macOS); the window manager places and
+		// centers the window itself.
+		ss := gg.screen_size()
+		return 0, 0, ss.width, ss.height
+	}
+}
+
+// startup_window_size returns the initial window size: one third of the
+// monitor width and one half of its height. Falls back to the historical
+// 1024x768 where the monitor query is unavailable.
+//
+// On X11 the monitor query is in physical pixels while sokol_app scales the
+// requested window size by Xft.dpi / 96, so the fraction has to be converted
+// back to logical units first (see x11_window_scale).
+fn startup_window_size() (int, int) {
+	_, _, mw, mh := monitor_rect()
+	if mw <= 0 || mh <= 0 {
+		return 1024, 768
+	}
+	mut w := mw / 3
+	mut h := mh / 2
+	$if linux {
+		mut scale := x11_window_scale()
+		if scale < 0.01 {
+			scale = 1.0
+		}
+		w = int(f64(mw) / 3.0 / scale)
+		h = int(f64(mh) / 2.0 / scale)
+	}
+	return w, h
+}
+
+// x11_window_scale returns the factor sokol_app multiplies the requested
+// window size by on X11: it reads the `Xft.dpi` X resource and divides it by
+// 96, while gg.screen_size() reports the physical XRandR resolution. On a
+// 3840x2160 desktop at 200% scaling (Xft.dpi 192) the unconverted size would
+// therefore come out twice as large as intended. Returns 1.0 when no display
+// or no `Xft.dpi` resource is available, matching sokol's own fallback.
+$if linux {
+	fn x11_window_scale() f64 {
+		display := C.XOpenDisplay(0)
+		if display == unsafe { nil } {
+			return 1.0
+		}
+		mut scale := 1.0
+		res := C.XGetDefault(display, c'Xft', c'dpi')
+		if unsafe { res != nil } {
+			dpi := unsafe { res.vstring() }.int()
+			if dpi > 0 {
+				scale = f64(dpi) / 96.0
+			}
+		}
+		C.XCloseDisplay(display)
+		return scale
+	}
+}
+
+// window_settings_path returns the file that remembers the window placement
+// (written on exit, read at startup). Empty on platforms without placement
+// persistence.
+fn window_settings_path() string {
+	$if windows {
+		// os.getenv returns a plain string in this V version: empty means unset.
+		appdata := os.getenv('APPDATA')
+		dir_base := if appdata != '' { appdata } else { os.home_dir() }
+		dir := os.join_path(dir_base, 'vviewer')
+		return os.join_path(dir, 'window.txt')
+	} $else {
+		return ''
+	}
+}
+
+// placement_save stores the current window rect ("left top width height")
+// so the next launch reopens where the user left it. Skipped in fullscreen:
+// the fullscreen rect is not a placement worth restoring.
+fn placement_save() {
+	$if windows {
+		if sapp.is_fullscreen() {
+			return
+		}
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut rc := C.RECT{}
+		if C.GetWindowRect(hwnd, &rc) == 0 {
+			return
+		}
+		settings := window_settings_path()
+		os.mkdir_all(os.dir(settings)) or { return }
+		txt := '${rc.left} ${rc.top} ${rc.right - rc.left} ${rc.bottom - rc.top}'
+		os.write_file(settings, txt) or {}
+	}
+}
+
+// window_is_first_launch reports whether the viewer never completed a run
+// on this account (no placement file). Only then the 1/3 x 1/2 centered
+// default is applied: on every later launch Windows itself restores the
+// previous window placement, and touching it would fight that memory.
+fn window_is_first_launch() bool {
+	return !os.exists(window_settings_path())
+}
+
+// apply_first_launch_placement sizes the window to 1/3 x 1/2 of the monitor
+// it was created on and centers it there. Runs in app_init on the first
+// launch only. No-op off Windows (the gg default size is kept).
+fn apply_first_launch_placement() {
+	$if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut mi := WinMonitorInfo{ cb: u32(unsafe { sizeof(WinMonitorInfo) }) }
+		// MONITOR_DEFAULTTONEAREST == 2
+		if !C.GetMonitorInfoW(C.MonitorFromWindow(hwnd, 2), voidptr(&mi)) {
+			return
+		}
+		mw := mi.rc_monitor.right - mi.rc_monitor.left
+		mh := mi.rc_monitor.bottom - mi.rc_monitor.top
+		if mw <= 0 || mh <= 0 {
+			return
+		}
+		ww := mw / 3
+		wh := mh / 2
+		wx := mi.rc_monitor.left + (mw - ww) / 2
+		wy := mi.rc_monitor.top + (mh - wh) / 2
+		// SWP_NOZORDER == 0x0004
+		C.SetWindowPos(hwnd, unsafe { nil }, wx, wy, ww, wh, 0x0004)
+	}
+}
+
+// Placement is a window rectangle (physical pixels) read back from the file
+// written by placement_save().
+$if windows {
+	struct Placement {
+	mut:
+		x int
+		y int
+		w int
+		h int
+	}
+
+	// saved_placement reads the saved rectangle ("left top width height"). It
+	// fails when the file is missing or malformed, the size is not positive, or
+	// the rectangle no longer intersects the desktop (for example a monitor was
+	// disconnected since the last run), so the caller falls back to the default
+	// startup placement.
+	fn saved_placement() !Placement {
+		txt := os.read_file(window_settings_path()) or {
+			return error('no saved placement')
+		}
+		mut f := []string{}
+		for part in txt.split(' ') {
+			if part != '' {
+				f << part
+			}
+		}
+		if f.len != 4 {
+			return error('malformed saved placement')
+		}
+		p := Placement{
+			x: f[0].int()
+			y: f[1].int()
+			w: f[2].int()
+			h: f[3].int()
+		}
+		if p.w <= 0 || p.h <= 0 {
+			return error('non-positive saved size')
+		}
+		// SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN,
+		// SM_CYVIRTUALSCREEN: reject a rectangle entirely off the desktop.
+		vx := C.GetSystemMetrics(76)
+		vy := C.GetSystemMetrics(77)
+		vw := C.GetSystemMetrics(78)
+		vh := C.GetSystemMetrics(79)
+		if p.x + p.w <= vx || p.y + p.h <= vy || p.x >= vx + vw || p.y >= vy + vh {
+			return error('saved placement is off-screen')
+		}
+		return p
+	}
+
+	// apply_saved_placement moves/resizes the window to the saved rectangle.
+	// Runs in app_init on every launch after the first.
+	fn apply_saved_placement(x int, y int, w int, h int) {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		// SWP_NOZORDER == 0x0004
+		C.SetWindowPos(hwnd, unsafe { nil }, x, y, w, h, 0x0004)
+	}
+}
+
 // app_init runs once after sokol is set up.
 fn app_init(mut app App) {
 	mut sd := gfx.SamplerDesc{
@@ -514,7 +904,21 @@ fn app_init(mut app App) {
 		wrap_v:     .clamp_to_edge
 	}
 	app.sampler = gfx.make_sampler(&sd)
-	app.load_current_image()
+	$if windows {
+		if app.place_first {
+			apply_first_launch_placement()
+		} else if app.place_restore {
+			apply_saved_placement(app.place_x, app.place_y, app.place_w, app.place_h)
+		}
+	}
+	if app.scan_pending.len > 0 {
+		// Command-line paths are scanned incrementally now that the window
+		// (and its progress bar) exists.
+		app.item_list.scan_begin(app.scan_pending)
+	}
+	if !app.item_list.scanning {
+		app.load_current_image()
+	}
 }
 
 // next / prev / rotate_view drive navigation and reload the texture.
@@ -571,6 +975,7 @@ fn (mut app App) set_sort(mode Sort_mode) {
 // my_event handles keyboard / mouse / drag-and-drop input.
 fn my_event(mut ev gg.Event, mut app App) {
 	if ev.typ == .quit_requested {
+		placement_save()
 		exit(0)
 	}
 
@@ -651,6 +1056,7 @@ fn my_event(mut ev gg.Event, mut app App) {
 	// keyboard commands (same bindings as the example viewer)
 	if ev.typ == .key_down {
 		if ev.key_code == .escape || ev.key_code == .q {
+			placement_save()
 			exit(0)
 		}
 		if ev.key_code == .i {
@@ -663,6 +1069,9 @@ fn my_event(mut ev gg.Event, mut app App) {
 		}
 		if ev.key_code == .h {
 			app.show_help_flag = !app.show_help_flag
+		}
+		if ev.key_code == .w {
+			app.show_warn_flag = !app.show_warn_flag
 		}
 		if app.item_list.loaded {
 			if ev.key_code == ._1 {
@@ -698,7 +1107,10 @@ fn my_event(mut ev gg.Event, mut app App) {
 		}
 	}
 
-	// drag & drop: rebuild the list from the dropped paths
+	// drag & drop: restart the scan with the dropped paths (dropping while a
+	// scan is running cancels the previous one: its workers are stopped and
+	// joined before the new scan starts). The list is then filled
+	// incrementally by app_update, with the progress bar visible.
 	if ev.typ == .files_dropped {
 		if app.zip_index >= 0 {
 			app.zip.close()
@@ -710,22 +1122,89 @@ fn my_event(mut ev gg.Event, mut app App) {
 		for i in 0 .. n {
 			paths << sapp.get_dropped_file_path(i)
 		}
-		app.item_list = Item_list{}
-		app.item_list.get_items_list(paths)
-		if app.item_list.n_item == 0 && app.item_list.last_error == '' {
-			app.item_list.last_error = 'no supported images found in drop'
+		app.item_list.scan_abort()
+		app.item_list.scan_begin(paths)
+	}
+}
+
+// run_scan_check implements `viewer --check <paths...>`: a headless scan
+// that prints the drawable items found and every scan warning, then exits
+// without opening a window. Used to verify a folder/zip tree (and to see
+// exactly what was skipped) from a console.
+fn run_scan_check(paths []string) {
+	if paths.len == 0 {
+		println('usage: viewer --check <file|folder|zip> ...')
+		return
+	}
+	mut il := Item_list{}
+	t0 := time.clock()
+	il.get_items_list(paths)
+	elapsed := time.clock() - t0
+	println('--- scan report ---')
+	println('drawable images: ${il.n_item}  (scan ${elapsed} ms)')
+	for it in il.lst {
+		if it.drawable {
+			// Every branch interpolates so `src` is always an owned string
+			// that can be freed under the no-GC build.
+			src := if it.need_extract {
+				'zip: ${it.path} :: ${it.name}'
+			} else if it.path != '' {
+				'${it.path}${il.path_sep}${it.name}'
+			} else {
+				'${it.name}'
+			}
+			println('  ${src}')
+			unsafe { src.free() }
 		}
-		app.load_current_image()
+	}
+	for w in il.scan_warnings {
+		println('warning: ${w}')
+	}
+	if il.last_error != '' {
+		println('error: ${il.last_error}')
 	}
 }
 
 fn main() {
+	// Headless scan check mode: no window, no sokol context.
+	check_idx := os.args.index('--check')
+	if check_idx >= 0 {
+		run_scan_check(os.args[check_idx + 1..])
+		return
+	}
 	mut app := &App{ player: NullPlayer{} }
-	app.item_list.get_items_list(os.args[1..])
+	// Command-line paths are scanned after the window opens (see app_init)
+	// so the scan progress bar is visible for them too.
+	app.scan_pending = os.args[1..]
+	// First launch: 1/3 x 1/2 of the monitor, centered (applied in app_init).
+	// Later launches: Windows restores the previous placement by itself, so
+	// the window must not be touched.
+	app.place_first = window_is_first_launch()
+	mut win_w := 0
+	mut win_h := 0
+	$if windows {
+		win_w, win_h = startup_window_size()
+		// On a later launch, restore the rectangle saved on exit. Creating the
+		// window at the saved size avoids a visible resize; the position is
+		// applied in app_init (sokol cannot place the window itself).
+		if !app.place_first {
+			if sp := saved_placement() {
+				app.place_restore = true
+				app.place_x = sp.x
+				app.place_y = sp.y
+				app.place_w = sp.w
+				app.place_h = sp.h
+				win_w = sp.w
+				win_h = sp.h
+			}
+		}
+	} $else {
+		win_w, win_h = startup_window_size()
+	}
 
 	app.gg = gg.new_context(
-		width:             1024
-		height:            768
+		width:             win_w
+		height:            win_h
 		create_window:     true
 		window_title:      'V Image Viewer'
 		user_data:         app

@@ -1,6 +1,6 @@
 module builtin
 
-// map_hash_bytes reads a key of up to 16 bytes through four words that overlap,
+// map_hash_bytes reads a key of up to 16 bytes through two words that overlap,
 // and the end of a longer key through two: every byte still has to reach the hash.
 fn test_map_hash_bytes_depends_on_every_byte() {
 	for len in 1 .. 130 {
@@ -21,9 +21,9 @@ fn test_map_hash_bytes_depends_on_every_byte() {
 // `_wymix` and the four 64-bit ones that replace it give the same words.
 fn test_map_hash_bytes_is_the_same_with_every_c_compiler() {
 	keys := ['', 'a', 'abc', 'abcdefgh', 'main.Point', 'sixteen bytes key',
-		'a key that is longer than forty-eight bytes, to take the three products side by side']
-	hashes := [u64(0x8ea3afbe99066b15), 0x1fc84f1de36a9945, 0xd2363222da46d433, 0x138853f748152981,
-		0xd2269a0833d751ee, 0x66f8e599c83350ad, 0xbede46ac99786947]
+		'a key that is longer than forty-eight bytes, to take several products in a row']
+	hashes := [u64(0xca813bf4c7abf0a9), 0x93690ffb00d57123, 0x275bb4aba64ffaef, 0x593aa355303fb576,
+		0xa696bc7ff51acd41, 0xb38d6991bbe06a20, 0xa3e927116e2d370]
 	for i, key in keys {
 		assert unsafe { map_hash_bytes(key.str, key.len) } == hashes[i], key
 	}

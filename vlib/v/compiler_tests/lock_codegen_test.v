@@ -184,9 +184,11 @@ fn assert_lock_if_tail_value_set_before_unlock(c_code string) {
 	assert start >= 0, c_code
 	fragment := c_code[start + 1..].all_before('\n}\n')
 	lock_idx := fragment.index('sync__RwMutex__lock((sync__RwMutex*)') or { -1 }
-	cond_idx := fragment.index('if (cond) {') or { -1 }
-	then_idx := fragment.index(' = 1;') or { -1 }
-	else_idx := fragment.index(' = 2;') or { -1 }
+	// Simple branches can become a C conditional expression. In either form,
+	// the condition and both values must remain inside the locked region.
+	cond_idx := fragment.index('if (cond) {') or { fragment.index('(cond ?') or { -1 } }
+	then_idx := fragment.index(' = 1;') or { fragment.index('? 1 :') or { -1 } }
+	else_idx := fragment.index(' = 2;') or { fragment.index(': 2)') or { -1 } }
 	unlock_idx := fragment.index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
 	assert lock_idx >= 0, fragment
 	assert lock_idx < cond_idx, fragment

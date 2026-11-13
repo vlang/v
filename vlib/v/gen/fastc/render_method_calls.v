@@ -24,22 +24,27 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	}
 	function_key := g.function_key_for_call(tokens, name_index)
 
-	signature := if function_key in g.functions {
-		g.functions[function_key]
-	} else if name_index == 0 && tokens[0].lit in g.locals
-		&& g.locals[tokens[0].lit].fn_signature_key in g.mono_functions {
-		g.mono_functions[g.locals[tokens[0].lit].fn_signature_key]
-	} else if name_index == 0 && tokens[0].lit in g.locals {
-		g.callable_signature_for_expression(tokens[..1]) or { return none }
-	} else {
-		g.mono_functions[function_key] or { return none }
+	signature := g.functions[function_key] or {
+		if name_index == 0 {
+			if local := g.locals[tokens[0].lit] {
+				if mono := g.mono_functions[local.fn_signature_key] {
+					mono
+				} else {
+					g.callable_signature_for_expression(tokens[..1]) or { return none }
+				}
+			} else {
+				g.mono_functions[function_key] or { return none }
+			}
+		} else {
+			g.mono_functions[function_key] or { return none }
+		}
 	}
 	call_name := if signature.is_global && !(name_index == 0 && tokens[0].lit in g.locals) {
 		g.globals[function_key]
 	} else if function_key.starts_with('C.') {
 		g.c_function_name_for_key(function_key)
 	} else if name_index == 0 && tokens[0].lit in g.locals {
-		local := g.locals[tokens[0].lit]
+		local := g.locals[tokens[0].lit] or { return none }
 		local_name := g.local_c_name(tokens[0].lit)
 		if local.typ == flat.source_type_voidptr && local.fn_return_type != 0 {
 			parameters := fastc_c_prototype_parameters(signature.parameter_types.ids)
@@ -380,7 +385,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 						origin_key, _ := g.resolve_method(local.smartcast_origin_type, tokens[i].lit)
 						if origin_key in g.functions || origin_key in g.mono_functions {
 							receiver_type = local.smartcast_origin_type
-							unnarrowed_receiver = fastc_c_identifier(receiver_tokens[0].lit)
+							unnarrowed_receiver = fastc_c_value_identifier(receiver_tokens[0].lit)
 						}
 					}
 				}
@@ -622,14 +627,19 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				continue
 			}
-			if tokens[i].lit == 'str' && g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
+			enum_key := if tokens[i].lit == 'str' {
+				g.underlying_enum_type_key(g.semantic_type_key(receiver_type)) or { u32(0) }
+			} else {
+				u32(0)
+			}
+			if enum_key != 0 {
 				// `enum_val.str()`: reuse the generated `v_fastc_enum_str_<T>` helper.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				if call_end != i + 2 {
 					continue
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-				enum_c := flat.source_type_name(fastc_trim_pointer_type(fastc_normalize_inferred_type(receiver_type)))
+				enum_c := fastc_c_declared_type_name(flat.source_type_name(enum_key))
 				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
@@ -745,6 +755,35 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				continue
 			}
+			if tokens[i].lit == 'type_idx' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
+				// `x.type_idx()` on a sum type / interface is its runtime tag.
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+					'->'
+				} else {
+					'.'
+				}
+				call_source := '((i64)((${receiver.source})${access}_typ))'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ:    flat.source_type_int
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
+					changed = true
+				}
+				continue
+			}
 			if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
 				// `x.type_name()` on a sum type / interface: switch on the runtime tag.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
@@ -835,10 +874,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			continue
 		}
-		signature := if method_key in g.functions {
-			g.functions[method_key]
-		} else {
-			g.mono_functions[method_key]
+		signature := g.functions[method_key] or {
+			g.mono_functions[method_key] or { continue }
 		}
 		if signature.parameter_types.ids.len == 0 {
 			continue
@@ -871,7 +908,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			g.render_method_receiver_expression(receiver_tokens) or { continue }
 		}
 		mut receiver_source := receiver.source
-		mut separator := if receiver_tokens.len == 1 && flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+		mut separator := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			'->'
 		} else {
 			'.'

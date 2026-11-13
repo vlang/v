@@ -100,3 +100,185 @@ fn test_reader_scanner_reports_errors() {
 	}
 	assert false
 }
+
+const replacement = 'efbfbd'
+
+struct StringCase {
+	json string
+	hex  string
+}
+
+const string_cases = [
+	StringCase{
+		json: r'"\ud83d\ude00"'
+		hex:  'f09f9880'
+	},
+	StringCase{
+		json: r'"\uD83D\uDE00"'
+		hex:  'f09f9880'
+	},
+	StringCase{
+		json: r'"\ud800\udc00"'
+		hex:  'f0908080'
+	},
+	StringCase{
+		json: r'"\udbff\udfff"'
+		hex:  'f48fbfbf'
+	},
+	StringCase{
+		json: r'"abc\ud83d\ude00"'
+		hex:  '616263f09f9880'
+	},
+	StringCase{
+		json: r'"\ud83d\ude00abc"'
+		hex:  'f09f9880616263'
+	},
+	StringCase{
+		json: r'"\ud83d\ude00\ud83d\ude01"'
+		hex:  'f09f9880f09f9881'
+	},
+	StringCase{
+		json: r'"\ud83d"'
+		hex:  replacement
+	},
+	StringCase{
+		json: r'"\ude00"'
+		hex:  replacement
+	},
+	StringCase{
+		json: r'"a\ud83db"'
+		hex:  '61' + replacement + '62'
+	},
+	StringCase{
+		json: r'"\ude00\ud83d"'
+		hex:  replacement + replacement
+	},
+	StringCase{
+		json: r'"\ud83d\ud83d\ude00"'
+		hex:  replacement + 'f09f9880'
+	},
+	StringCase{
+		json: r'"\ud83d\ude00\ude00"'
+		hex:  'f09f9880' + replacement
+	},
+	StringCase{
+		json: r'"\ud83dx\ude00"'
+		hex:  replacement + '78' + replacement
+	},
+	StringCase{
+		json: r'"\ud83d\n\ude00"'
+		hex:  replacement + '0a' + replacement
+	},
+	StringCase{
+		json: r'"\ud83d\u0041"'
+		hex:  replacement + '41'
+	},
+	StringCase{
+		json: r'"\u0041\u00e9\u20ac\ud7ff\ue000\uffff"'
+		hex:  '41c3a9e282aced9fbfee8080efbfbf'
+	},
+	StringCase{
+		json: '"plain é € 😀"'
+		hex:  'plain é € 😀'.bytes().hex()
+	},
+]
+
+fn test_scanner_joins_surrogate_pair_escapes() {
+	for c in string_cases {
+		mut scanner := json.new_scanner(c.json)
+		token := scanner.next()!
+		assert token.kind == .str, c.json
+		assert token.lit.hex() == c.hex, c.json
+		assert scanner.next()!.is_eof(), c.json
+
+		mut from_bytes := json.new_scanner_from_bytes(c.json.bytes())
+		assert from_bytes.next()!.lit.hex() == c.hex, c.json
+	}
+}
+
+fn test_reader_scanner_joins_surrogate_pair_escapes() {
+	for chunk_size in [1, 5, 4096] {
+		for c in string_cases {
+			mut reader := ChunkedReader{
+				data:       c.json.bytes()
+				chunk_size: chunk_size
+			}
+			mut scanner := json.new_reader_scanner(reader: reader, buffer_size: chunk_size)
+			token := scanner.next()!
+			assert token.kind == .str, '${c.json} in chunks of ${chunk_size}'
+			assert token.lit.hex() == c.hex, '${c.json} in chunks of ${chunk_size}'
+			assert scanner.next()!.is_eof(), '${c.json} in chunks of ${chunk_size}'
+			scanner.free()
+		}
+	}
+}
+
+const array_json = r'["\ud83d\ude00", 7, "\ud83d", true]'
+const array_tokens = ['lsbr:', 'str:f09f9880', 'comma:', 'int:37', 'comma:', 'str:efbfbd', 'comma:',
+	'bool:74727565', 'rsbr:', 'eof:']
+
+fn test_scanner_goes_on_after_a_surrogate_pair() {
+	mut scanner := json.new_scanner(array_json)
+	mut got := []string{}
+	for {
+		token := scanner.next()!
+		got << '${token.kind}:${token.lit.hex()}'
+		if token.is_eof() {
+			break
+		}
+	}
+	assert got == array_tokens
+}
+
+fn test_reader_scanner_goes_on_after_a_surrogate_pair() {
+	mut reader := ChunkedReader{
+		data:       array_json.bytes()
+		chunk_size: 3
+	}
+	mut scanner := json.new_reader_scanner(reader: reader, buffer_size: 3)
+	defer {
+		scanner.free()
+	}
+	mut got := []string{}
+	for {
+		token := scanner.next()!
+		got << '${token.kind}:${token.lit.hex()}'
+		if token.is_eof() {
+			break
+		}
+	}
+	assert got == array_tokens
+}
+
+const error_cases = {
+	r'"\ud83d\ude0"':  'unicode escape must have 4 hex digits'
+	r'"\ud83d\ude0x"': 'is not a hex digit'
+	r'"\ud83d\uDE00':  'missing double quotes in string closing'
+}
+
+fn test_scanner_still_reports_malformed_escapes() {
+	for text, message in error_cases {
+		mut scanner := json.new_scanner(text)
+		if token := scanner.next() {
+			assert false, '${text} gave the token ${token.lit.hex()}'
+		} else {
+			assert err.msg().contains(message), text
+		}
+	}
+}
+
+fn test_reader_scanner_still_reports_malformed_escapes() {
+	for text, message in error_cases {
+		mut reader := ChunkedReader{
+			data:       text.bytes()
+			chunk_size: 1
+		}
+		mut scanner := json.new_reader_scanner(reader: reader, buffer_size: 1)
+		if token := scanner.next() {
+			assert false, '${text} gave the token ${token.lit.hex()}'
+		} else {
+			assert err.msg().contains(message), text
+		}
+		scanner.free()
+	}
+}

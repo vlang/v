@@ -56,7 +56,7 @@ fn test_cached_string_literal_table_preserves_explicit_initializers() {
 	g.cache_stable_symbols = true
 	g.intern_string('literal')
 	g.string_literals()
-	assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
+	assert g.sb.str() == 'static const string _str_0 = {(u8*)"literal", 7, 1};\n\n'
 }
 
 // regular_string_literal_table returns a noncached literal table holding `entries`.
@@ -103,7 +103,7 @@ fn test_long_string_literal_table_entries_split_without_changing_bytes() {
 			}
 			joined := output.replace('"\n"', '')
 			if stable {
-				assert joined == 'static const string _str_0 = {"${c_escape(value)}", ${value.len}, 1};\n\n'
+				assert joined == 'static const string _str_0 = {(u8*)"${c_escape(value)}", ${value.len}, 1};\n\n'
 			} else {
 				assert joined == regular_string_literal_table('_SL(_str_0, "${c_escape(value)}", ${value.len});\n')
 			}
@@ -173,8 +173,12 @@ fn main() {
 		args << source
 		compiled := cmdexec.run(@VEXE, args)
 		assert compiled.exit_code == 0, '${mode}: ${compiled.output}'
-		// Native headers can require monolithic C even with -parallel-cc. Both
-		// compilation paths must preserve the C member names and runtime result.
+		if '-parallel-cc' in mode {
+			// Opaque header ownership requires the single-unit fallback.
+			assert compiled.output.contains('src.c'), compiled.output
+			assert !compiled.output.contains('unit_0.c'), compiled.output
+			assert !compiled.output.contains('unit_1.c'), compiled.output
+		}
 		run := cmdexec.run(binary, [])
 		assert run.exit_code == 0, run.output
 		assert run.output == 'member 8, 11\n', run.output

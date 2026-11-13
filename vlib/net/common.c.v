@@ -106,6 +106,14 @@ pub fn close(handle int) ! {
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn select(handle int, test Select, timeout time.Duration) !bool {
+	$if !windows {
+		if handle < 0 {
+			return error_with_code('net: invalid socket handle for select', C.EINVAL)
+		}
+		if handle >= C.FD_SETSIZE {
+			return error_with_code('net: socket handle exceeds FD_SETSIZE', C.EINVAL)
+		}
+	}
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)

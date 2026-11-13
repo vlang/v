@@ -74,6 +74,8 @@ it reports the limit and exits with status 1, without running cleanup against ac
 
 Local owned values declared after a `match` keep their lexical cleanup scope, including
 inside loops with `continue` statements.
+In a C-style `for` loop, body defers and owned locals are cleaned before the update clause.
+An update that exits through `break`, `return`, or error propagation cleans only values still live.
 Map insertion and replacement cleanup preserves the lexical scopes of neighboring locals,
 including assignments through map-indexed fields and owned keys.
 

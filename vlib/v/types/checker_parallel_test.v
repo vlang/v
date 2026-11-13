@@ -175,7 +175,7 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	initial_count := tc.type_count()
 	mut cache := CheckTypePromotionCache{}
 	mut originals := []Type{}
-	for i in 0 .. 600 {
+	for i in 0 .. 5000 {
 		typ := Type(Struct{ name_id: flat.source_type_id('Item${i}') })
 		originals << typ
 		assert tc.cached_check_type_promotion(typ, mut cache, false, false) == none
@@ -188,7 +188,7 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	for i, typ in originals {
 		assert tc.cached_check_type_promotion(typ, mut cache, false, true)?.name() == 'Item${i}'
 	}
-	assert tc.type_count() == initial_count + 600
+	assert tc.type_count() == initial_count + 5000
 }
 
 fn test_type_promotion_cache_verifies_borrowed_metadata_after_reuse() {
@@ -497,7 +497,7 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	for part in 0 .. 3 {
 		chunk := split.fill_direct_parent_edges_range(a, a.nodes.len * part / 3, a.nodes.len * (part + 1) / 3)
 		for idx in chunk.metadata_node_ids {
-			split.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+			split.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
 		}
 	}
 	assert split.declaration_attributes == serial.declaration_attributes

@@ -54,21 +54,27 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+It asks the TCC repository which revision the bundle's branch is at; when that has
+not changed, the TCC checkout is not fetched or rewritten, and `v up` reports that
+TCC is already up to date.
 On Linux, an older compatible TCC bundle stays in place while its upstream revision
 is unchanged and it still passes the host compatibility check. Repeated updates
-preserve its file metadata so cached modules can reuse their objects.
+preserve its file metadata. When no commit of an unchanged branch suits the host,
+V keeps using the system compiler without checking the branch again; run
+`make fresh_tcc` to check it again, for example after upgrading the system.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
-After updating, `v up` refreshes previously cached vlib modules with the compiler
-and flags used to cache them, including normal and `-prod` builds. Unchanged
-modules are reused. Each module being cached is printed to standard output as
-`Caching module <name>...`. A failed cache refresh makes `v up` fail.
-The final configuration count includes checks that reused every cached object.
-Different build flags, program or test modes, and import sequences can require
-separate checks. Pass `v up -v` to see each checked configuration.
-Cached module headers preserve struct field attribute groups, so valid deprecation
-attributes do not introduce warnings during refresh.
+After a successful update that changes the V checkout or TCC, or rebuilds the compiler,
+`v up` runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches.
+When nothing changes, the caches are preserved. If the TCC revision cannot be determined,
+the caches are cleared conservatively.
+Subsequent builds recreate the caches they need. Previously recorded build
+configurations and test selectors are not replayed. A failed cache cleanup
+makes `v up` fail.
+On Windows, the cached updater exits before its launcher wipes the caches,
+so the running executable does not block cleanup. Cleanup failures are returned
+by the launcher.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
@@ -80,39 +86,16 @@ modules. Ignored local names remain stable when cached headers replace source fi
 reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
 changes still invalidate the affected objects.
 
-Ordinary builds report cache progress on standard error. Refreshes retain absolute
-module search paths, resolved C compiler commands, and build modes. They omit
-linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
-and `VTMP` paths are resolved against the directory where `v up` was invoked.
-Refreshes retain each build's working directory for relative C compilation inputs
-and its effective `-run-only` test selectors and assertion display mode.
-Object flags include source `#flag` directives. Records with vanished project
-directories or required compile inputs are skipped. Builds without relative inputs
-or project interface scopes share refresh records across projects.
-Project directives are merged with flags from the updated modules, so changes to
-vlib `#flag` directives take effect during refresh. Cached TCC production builds
-apply the production optimization flags to both module objects and the program.
-Refreshes use the original entry when needed to preserve project interface
-implementers, stopping before linking or running the program. Refreshes
-retain absolute `-file-list` operands for live entries, re-expanding directories
-to include their current sources. Records whose listed files or directories vanished
-are skipped. Historical records sharing the same live command, working directory,
-entry and assertion display mode refresh once. Synthetic refreshes
-also replay source C driver options such as sanitizers at link time. Records for
-unavailable C compilers are skipped.
-Unreadable, truncated, and unsupported inventory files are skipped. Live entries
-retain their project source identity; after the project input changes, obsolete
-configurations are skipped until a successful build records the current inputs.
-Older live records without source identities require rebuilding the project once.
-Isolated test caches use the primary V compiler executable, including when
-`v up` runs through the fallback compiler or as a separate tool, or a build uses
-the delegated ownership compiler. Ownership dispatch preserves the primary path
-through `V3_PRIMARY_VEXE`, independently of the helper's `VEXE`.
+The stateless native helper used by `os` for file-descriptor polling supports module caching
+and parallel C compilation. Its dependencies are tracked through C compiler manifests;
+V does not inspect C headers to infer their ownership.
 
-For caches created before V recorded their build settings, `v up` identifies the
-cached vlib modules and refreshes them in both modes for the available C compilers,
-for programs and tests. Successful migrations mark the old headers so subsequent
-updates use the new inventory without repeating the fallback matrix.
+Relative cache paths are resolved against the directory where `v up` was invoked.
+When `VCACHE` is unset, this includes the `.cache` directory under the first
+`VMODULES` entry, or `~/.vmodules/.cache` by default. Cleanup stops and returns a
+nonzero status if a cache folder cannot be removed or recreated.
+The separate [module cache refresh utility](../vlib/v/util/cache_refresh/README.md)
+documents its inventory and replay APIs.
 
 `v up` reports the agent skills that the new revision left behind, since a new
 revision may ship updated copies of them. It writes nothing: the skills belong to
@@ -578,6 +561,23 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
+A call returning multiple values can supply consecutive parameters of a non-variadic
+function or method. It can appear before or after ordinary arguments, as long as the
+expanded values match the receiving parameters. The returning function is evaluated once.
+
+```v
+fn pair() (int, int) {
+	return 2, 3
+}
+
+fn digits(a int, b int, c int) int {
+	return a * 100 + b * 10 + c
+}
+
+assert digits(pair(), 4) == 234
+assert digits(1, pair()) == 123
+```
+
 ## Symbol visibility
 
 ```v
@@ -755,6 +755,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
 > Integer literal casts to `int` are checked against the target platform's width.
+> Native ARM64 builds use the same platform width for `int`, `min_int`, and `max_int`.
 > `uint` has the same width and is unsigned.
 
 `isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
@@ -763,6 +764,10 @@ the full unsigned range. Existing spellings still compile with deprecation warni
 Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
+
+The native ARM64 backend compares `i128` and `u128` using both 64-bit limbs.
+Signed ordering uses the high limb's sign; equality compares every bit.
+Ordering follows the signedness of the leftmost 128-bit operand, as in the C backend.
 
 `i128` and `u128` hold 128 bits. The usual operators work on them: arithmetic,
 bitwise, shifts, comparisons, and casts to and from the other numeric types.
@@ -787,12 +792,18 @@ overflow wraps.
 
 The compiler does not require a 128-bit C type. Every operation becomes a call
 to a small helper, and the helper has two implementations: the C compiler's own
-`__int128` where it exists (gcc, clang), and one built from 64-bit limbs
-everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
-struct. Both answer identically, down to the rounding of a cast to `f64`: the
-whole 128-bit magnitude is rounded once, rather than each limb on its own. Pass
+`__int128` where the C toolchain supports it, and one built from 64-bit limbs
+elsewhere, where a 128-bit value is a struct. The MSVC ABI uses this struct
+representation with both MSVC and `clang-cl`; its runtime does not supply Clang's
+native 128-bit division helpers. GCC and Clang for other ABIs keep using the
+native type where available. Both implementations answer identically, down to
+the rounding of a cast to `f64`: the whole 128-bit magnitude is rounded once,
+rather than each limb on its own. Pass
 `-d v3_no_native_int128` to force the portable implementation on a compiler that
 has the native type.
+
+C functions exchanging these values with V must use declarations matching the
+selected representation, including the struct representation with `clang-cl`.
 
 Managed arrays of wide integers and structs containing them retain 16-byte
 element alignment on both 32-bit and 64-bit targets, including after growth or cloning.
@@ -997,6 +1008,11 @@ assert '-0b1111_0000_1010'.int() == -3850
 
 For more advanced `string` processing and conversions, refer to the
 [vlib/strconv](https://modules.vlang.io/strconv.html) module.
+
+A loop such as `for part in s.split(',') { ... }` evaluates the source once and uses a snapshot
+of its bytes taken before the loop body runs. Reassigning the source or changing aliased backing
+storage in the body does not affect later parts. Each part is an independent, NUL-terminated copy,
+even when the compiler generates the parts on demand instead of building an array first.
 
 #### String interpolation
 
@@ -1613,6 +1629,11 @@ println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
 
+For `s.bytes().any(...)` and `s.bytes().all(...)`, the compiler can scan the string directly
+without allocating a temporary byte array when the predicate only compares bytes with literals
+or uses builtin byte classifiers such as `is_digit()`. Explicit lambda parameters may shadow
+the string receiver: `s.bytes().all(|s| s.is_digit())` checks whether every byte is a digit.
+
 There are further built-in methods for arrays:
 
 * `a.repeat(n)` concatenates the array elements `n` times
@@ -1900,6 +1921,10 @@ the called function only reads or writes scalar fields and array elements, or pa
 reference, or the address of an element (`&buf[i]`), straight on to a function that does the
 same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
 these moves.
+This also applies to reference receivers and implicitly referenced arguments when the callee
+calls a Result-returning function. Handling that Result with `!` or `or` does not itself
+require heap storage for a borrowed local. Pointers carried inside an aggregate still retain
+their original storage when the callee saves or returns them.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
@@ -2329,6 +2354,11 @@ x := if n > 2 {
 dump(x)
 ```
 
+An `if` expression combining a byte value with character literals that fit in a byte retains
+the byte type. For example, ``name.bytes().map(if it == `-` { `_` } else { it })`` produces
+`[]u8`, so the result supports `.bytestr()`. Wider literals and explicit rune values retain
+the rune type.
+
 When comparing an enum value with an `if` or `match` expression using `==` or `!=`,
 the enum operand supplies the type for shorthand values such as `.red` in the branches.
 This works with the enum operand on either side of the comparison.
@@ -2605,6 +2635,12 @@ typ := match c {
 println(typ)
 // 'lowercase'
 ```
+
+A `match` value assigned to a sum type may return its variants directly, including in map
+values, appended array elements, and struct fields. Different variant arms are wrapped individually;
+numeric arms retain their usual numeric promotion.
+Arms that exit through `return` or a non-returning call do not affect that promotion.
+Temporary match storage does not construct an unused sum variant or evaluate its field defaults.
 
 A match statement also can match the variant types of a `sumtype`. Note that
 in that case, the match is exhaustive, since all variant types are mentioned
@@ -3122,11 +3158,12 @@ For these more rare cases, you can use: `defer(fn) {}` instead of just `defer {}
 
 #### Recovering from panics
 
-A panic runs the pending `defer` blocks of every function on the stack, newest
-first. Calling `recover()` directly in one of these blocks stops the panic, and
-returns its message. The function that deferred the block then runs its other
-deferred blocks, and returns normally, with the zero value of its result type.
-This works like `recover` in Go.
+In a program that calls `recover()`, a panic runs the pending `defer` blocks of
+every function on the stack, newest first. Calling `recover()` directly in one
+of these blocks stops the panic, and returns its message. The function that
+deferred the block then runs its other deferred blocks, and returns normally,
+with the zero value of its result type. `recover()` itself works like `recover`
+in Go.
 
 ```v
 fn parse_age(s string) int {
@@ -3151,10 +3188,15 @@ fn main() {
 `recover()` returns `none` when there is no panic, and when it is not called
 directly in a deferred block that runs because of the panic (for example, in a
 function that such a block calls). A block can also run cleanup code without
-calling `recover()`: the panic then goes on to the callers, and if nothing
-recovers it, the program prints the message and exits once all deferred blocks
-ran. Runtime errors that panic, like an array index out of range, can be
+calling `recover()` itself: the panic then goes on to the callers, and if
+nothing recovers it, the program prints the message and exits once all deferred
+blocks ran. Runtime errors that panic, like an array index out of range, can be
 recovered as well. Signals, like a segmentation fault, cannot.
+
+Any call to `recover()` that `main` can reach counts, even one in a branch that
+is never taken. With `-no-skip-unused`, such a call in a function that nothing calls
+counts too. In a program without one, a panic runs no deferred blocks: the
+program prints the message and exits.
 
 ### Goto
 
@@ -3366,6 +3408,46 @@ mut user := User{
 user = register(user)
 println(user)
 ```
+
+A struct update can also spread a different struct type when the source supplies compatible
+fields for every target field that is not explicitly initialized. An embedded struct can be
+supplied by explicitly initializing all of its members through their promoted field names:
+
+```v
+struct Position {
+	x int
+	y int
+}
+
+struct ButtonConfig {
+	width int
+}
+
+struct Button {
+	Position
+	width int
+}
+
+config := ButtonConfig{
+	width: 80
+}
+button := Button{
+	...config
+	x: 10
+	y: 20
+}
+assert button.width == 80
+assert button.Position.x == 10
+assert button.Position.y == 20
+```
+
+Here `config` supplies `width`, while `x` and `y` fully initialize `Position`. If either member
+is omitted, the source must instead supply a compatible `Position` field. Declared defaults do
+not count as explicit initializers for this requirement. The same rule applies to nested embeds.
+
+Only the embedded field that a promoted name refers to counts as supplied. A direct field
+shadows an embedded field of the same name, and a name owned by an earlier embedding cannot also
+initialize a later embedding. Use an explicit embedded-struct initializer for shadowed members.
 
 ### Trailing struct literal arguments
 
@@ -3712,6 +3794,28 @@ initializing the selected member. This also applies to interfaces inside nested 
 An inactive interface member with no valid type tag formats as `unknown interface value`.
 Accessing an inactive member still requires `unsafe` and does not create a valid interface value.
 
+Anonymous unions can be declared as fields and initialized with `union { ... }`,
+using the field's declared union type. Initialize at most one member, just as with named unions:
+
+```v
+struct Packet {
+	data union {
+		number u64
+		text   string
+	}
+}
+
+packet := Packet{
+	data: union { text: 'hello' }
+}
+assert unsafe { packet.data.text } == 'hello'
+```
+
+Anonymous union values format as `union { ... }`, without an internal generated type name.
+
+An anonymous literal cannot yet initialize a C anonymous aggregate declared in a header.
+Anonymous C structs have the same limitation.
+
 ### Why use unions?
 
 One reason, as stated above, is to use less memory for storing things.  Since the size of a union
@@ -3992,6 +4096,9 @@ V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
 
+Each anonymous function has its own local scope. Locals, including `for` iteration variables,
+may reuse names of enclosing variables that are not captured.
+
 ```v oksyntax
 my_int := 1
 my_closure := fn [my_int] () {
@@ -4187,6 +4294,8 @@ To dereference a reference, use the `*` operator, just like in C.
 A constant can be qualified with its module name inside that module, including in module tests.
 
 A fixed array constant can be initialized by a function call; the call runs during initialization.
+Fixed array constants can contain dynamic arrays, including other constants and array literals.
+Their elements are initialized at startup after any constants they depend on.
 Sum type constants with aggregate variants are initialized at startup, including when compiling
 with GCC.
 Their resolved sum type remains the same when an import alias shares its module prefix.
@@ -5745,6 +5854,8 @@ Fixed array fields initialize each element with its specialized generic defaults
 
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
+Their struct literals also infer omitted type arguments from their field values, just as
+module-qualified literals do.
 
 Type arguments retain the module where they are declared when used in a generic struct from
 another module, including arguments inside arrays, pointers, and maps.
@@ -5835,6 +5946,9 @@ call, including references stored as map values.
 
 Generic variadic calls in a reflected field loop infer each scalar or array argument as one
 element. Spreading an array with `...` instead infers the variadic element type from its contents.
+For `fn accept[T](items ...T)`, both `accept(1, 2)` and `accept(...[1, 2])` infer `T` as `int`.
+A separate type parameter absent from the parameters, return type, and constraints still needs
+an explicit type argument.
 
 Another example:
 
@@ -6413,6 +6527,7 @@ The `try_push/pop()` methods will return immediately with one of the results
 the reason why not.
 These methods also work in generic functions with a `chan T`. Their arguments must match the
 channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
+Arguments keep their active smartcasts, including when their address escapes.
 A sum-type channel requires storage of the full sum type when popping. A shared destination
 is writable inside its `lock` block. Pointer values can be pushed into a `chan voidptr`.
 Methods declared on a channel alias take precedence over these builtins.
@@ -6490,6 +6605,8 @@ fn main() {
 ```
 
 A `shared` parameter already passes a reference to the synchronized storage.
+It keeps referring to the caller's storage when used as a mutable channel destination inside a
+`lock` block, including in generic functions.
 Declare it as `shared m map[K]V` and pass `shared m`. Explicit address arguments such
 as `shared &m` are unsupported; remove `&` from both the parameter type and the argument.
 
@@ -7001,6 +7118,12 @@ fn (data &MyType) free() {
 Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
+When a custom `free()` method directly calls builtin `free(receiver)`, explicitly calling it
+on a named value of its receiver type passes a shallow heap copy. Existing pointers, borrowed
+mutable receivers, and receivers already stored on the heap keep their original storage.
+Methods that only free fields receive the original value, so their field updates remain visible.
+This shallow copy does not duplicate any allocations referenced by the value's fields.
+
 Autofree can be enabled with an `-autofree` flag.
 
 For developers willing to have more low-level control, autofree can be disabled with
@@ -7121,9 +7244,11 @@ storage; it does not require moving the containing local or by-value parameter t
 An address into an inline fixed array can require moving its owner instead.
 Casting a local address to an integer preserves the lifetime of the addressed storage.
 Calling through an interface field likewise borrows the interface's object, without retaining
-the address of the interface header. Unwrapping a Result into a narrow scalar can leave its
-arguments on the stack when the callee is proven to only read their values. Unknown callees
-and callees that store or forward an argument retain its address sources conservatively,
+the address of the interface header. Unwrapping a Result into a narrow scalar can leave named
+receiver values and identifier arguments on the stack when the callee is proven to borrow only
+their storage. Embedded pointers still retain the storage they reference. Dereferenced operands
+and mutable reference-iteration bindings remain conservative. Unknown callees and callees that
+store or forward an argument retain its address sources conservatively,
 including calls evaluated inside another call's arguments. Integer results as wide as a pointer
 and floating point or multiple results can carry encoded pointers and retain those arguments
 conservatively.
@@ -8310,6 +8435,16 @@ project that locks other revisions of the same packages switches them back. Use
    An unrelated enclosing Git checkout does not override this root. Without a
    manifest, a discovered Git root is used instead.
 
+   `backend: 'fastc'` makes the project build with the [FastC backend](fastc.md)
+   by default. It applies to every build, run, and test whose input file or
+   folder belongs to that `v.mod`, the same as passing `-b fastc`, except that
+   only a `-b` on the command line keeps the generated C as `<output>.c`. An explicit
+   `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
+   given with `-e` or on standard input belongs to no project, and each target
+   of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
+   `fastc`, `arm64`, `amd64`, and `wasm`. The aliases `x64`, `x86_64`, and `x86-64`
+   select `amd64`.
+
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
    ```v
@@ -8406,6 +8541,10 @@ fn main() {
 	assert BitField.zero() == BitField.from('')!
 }
 ```
+
+Flag mutators require a mutable receiver in safe code. An `unsafe` block can mutate an
+addressable flag value through an immutable reference or binding. Named constants and
+expressions without addressable storage remain invalid receivers.
 
 ```v
 // @[_allow_multiple_values] allows an enum to have multiple duplicate values.
@@ -8949,6 +9088,19 @@ fn main() {
 // has int type
 // has string type
 ```
+
+Within a variant loop, `if value is variant` narrows expressions to the current payload type.
+Conjunctions and nested guards retain all active refinements. A mutable guard keeps the original
+sum storage available for reassignment. Each iteration infers its own local collection types;
+conditions using enclosing reflection metadata are checked after that metadata is substituted.
+Numeric comparisons with `variant.typ` use the same type index as `value.type_idx()`.
+Optional and result variants expose their wrapped type's metadata index, preserving pointer depth.
+Conditions using local metadata values are checked after unrolling, when their values are available.
+Matches retain their arm refinements while loop metadata is checked.
+Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
+Exiting option guards also unwrap payloads for later statements in the same block.
+Each guard applies to the option layer visible before it.
+Type checks in loop conditions, assertions, and exiting guards preserve the optional payload type.
 
 #### <h4 id="comptime-methods">.methods</h4>
 
@@ -10676,16 +10828,41 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
-so they always
-build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
-allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
+architecture. Without `-arch`, the target defaults to the compiler's host architecture.
+Pass `-arch amd64` to select `-b amd64` (`-b x64`), or `-arch arm64` to select `-b arm64`.
+The architecture option can appear before or after the native backend option.
+Explicit backend selection remains available, with the same platform requirements: macOS
+ARM64 and Linux AMD64 support executables. Linux ARM64 currently supports object output only;
+for example, `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux emits an ARM64
+ELF object, including from an AMD64 host. It does not link a Linux ARM64 executable.
+For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.
+
+The native backends do not link a garbage collector yet, so they always build as if `-gc none`
+was passed. For AMD64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large AMD64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
-The x64 backend is experimental. Calls without a native implementation fail compilation
+ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
+ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
+`#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
+ARM64 resolves a fixed set of platform C constants. Other C constants produce an error;
+use the C backend when a header defines a constant the native backend does not support.
+The supported set includes the memory-order and pthread compatibility constants used by
+V's synchronization runtime.
+The AMD64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
 currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+
+The AMD64 backend emits ELF object code and uses the host C toolchain to link a Linux
+executable. `-b x64`, `-b x86_64`, and `-b x86-64` remain aliases for `-b amd64`.
+To compile and run hello world on Linux AMD64:
+
+```sh
+v -b amd64 -o hello_world examples/hello_world.v
+./hello_world
+```
+
 Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
 or void returns. Taking the address of a variadic C function, one with floating-point arguments
 or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain
@@ -10695,16 +10872,16 @@ arguments, and 64-bit integer, pointer, or void returns. Unsupported callback co
 including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
 
 Native 128-bit integers currently support integer widening, copying, bitwise `&`, `|`, `^`,
-addition, subtraction, and shifts with constant counts from 0 through 127. Signed scalar
-widening sign-extends for both `i128` and `u128`; unsigned scalar widening zero-extends.
+addition, subtraction, comparisons, and shifts with constant counts from 0 through 127.
+Signed scalar widening sign-extends for both `i128` and `u128`; unsigned scalar widening
+zero-extends.
 Signed `i128 >>` preserves the sign; `u128 >>` and `>>>` fill with zeroes.
-Comparisons, multiplication, division, remainder, unary negation and complement, variable shifts,
+Multiplication, division, remainder, unary negation and complement, variable shifts,
 compound assignments, increment/decrement, narrowing casts, and conversions to or from
-floating-point values are unsupported and produce a diagnostic. Matching, range iteration,
-and range membership with 128-bit values are also unsupported. Array and string indices and
-slice bounds must use scalar integers. Integer literals must fit in a single 64-bit limb;
-construct larger values with shifts and bitwise operations. Array `.index()` searches on
-128-bit elements are unsupported.
+floating-point values are unsupported and produce a diagnostic. Range iteration with 128-bit
+values is also unsupported. Array and string indices and slice bounds must use scalar integers.
+Integer literals must fit in a single 64-bit limb; construct larger values with shifts and
+bitwise operations.
 Use the C backend for the full set of 128-bit operations.
 
 Currently there is no debugging support for binaries created by the native backends.
@@ -10809,6 +10986,45 @@ reuses its executable while none of its inputs change.
 If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
 V does not infer the language from header contents.
 
+**Passing C structs by value**
+
+A V `struct Foo` and a C `struct Foo` are distinct types, even when their fields match.
+For a C function that takes or returns a struct by value, redeclare the native type with
+`struct C.Foo`. If the header defines a typedef, also use `@[typedef]`.
+A public type alias can expose it under a V module name:
+
+```v oksyntax
+module native
+
+#include "native.h"
+
+@[typedef]
+pub struct C.CallbackInfo {
+pub:
+	callback fn (voidptr) = unsafe { nil }
+	userdata voidptr
+}
+
+pub type CallbackInfo = C.CallbackInfo
+
+fn C.request(info C.CallbackInfo)
+
+// request passes the native callback-info value to C.
+pub fn request(info CallbackInfo) {
+	C.request(info)
+}
+```
+
+Callers can then use `native.CallbackInfo{callback: on_ready, userdata: data}`.
+The alias preserves the native type's identity; casting a separately declared V struct
+to its own V type does not convert it to the native C type.
+Use the exact C field names in the redeclaration and initializer, including camel case.
+Apply the same rule to nested structs, structs passed to callbacks, and returned structs.
+For example, a WebGPU binding needs native declarations for `WGPURequestAdapterCallbackInfo`,
+`WGPUStringView`, and `WGPUFuture`, rather than separate V structs with those names.
+Keep the field types consistent with the header too: C `size_t` corresponds to V `uint`,
+while C `int` corresponds to V `i32`.
+
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a
 library, but its .h header declares dozens of them, you will only need to declare that single
@@ -10843,6 +11059,8 @@ V identifiers named `alloca` are escaped so they cannot shadow this intrinsic.
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
+Externally owned globals, including fixed arrays, retain the initial values supplied by native code.
+V does not allocate their storage or apply V default initializers to them.
 When the type already comes from the V context, direct references like
 `buffer = C.buffer` and `[4]u8(C.buffer)` can be used as well.
 
@@ -11188,6 +11406,8 @@ Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
 C-backed struct aliases can also initialize constants, including when compiling with MSVC.
+A public V alias of a C struct can be initialized from another module without making the
+underlying C declaration public. Private alias names retain their usual visibility restrictions.
 
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
@@ -11210,6 +11430,8 @@ V has these types for easier interoperability with C:
 - `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+The cast uses the stored pointer value even when the `voidptr` local's address escapes
+and its storage moves to the heap. Taking `&user_void_ptr` still addresses that pointer slot.
 
 Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
 handles that alias `voidptr`.
@@ -11217,6 +11439,10 @@ Reference results of generic calls also pass the pointer value to `voidptr` para
 For example, `isnil(identity[&User](unsafe { nil }))` tests the returned pointer for null.
 A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
 including generic functions and functions from imported modules.
+Passing a `voidptr` as a `mut T` argument also forwards its pointer to the original storage.
+It does not copy or dereference the pointee before calling the function, so the callee can
+check a null raw pointer before accessing it. A `mut voidptr` parameter instead receives
+the caller's pointer slot and can replace its stored pointer value.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
@@ -11339,6 +11565,7 @@ pointer type checks; calls to C functions also accept these character pointers.
 
 In translated files, fixed arrays decay to pointers to their elements, including when compared
 with pointers. Nested array literals retain their full array type in these comparisons.
+Their generated C uses nested brace initializers, supported by GCC, Clang, and TinyCC.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
@@ -11534,6 +11761,11 @@ must be on the same source line. It may precede `add`, `adc`, `and`, `btc`, `btr
 `The lock prefix cannot be used on this instruction`. A same-line `lock:` remains valid as a
 label; a newline inside a comment also separates the prefix, instruction, or label colon.
 
+The C backend lowers `rv64` and `riscv64` blocks when building for `-arch riscv64`.
+Structured RISC-V assembly keeps destination-first operand order and lowers `[base]` and
+`[base + displacement]` to GNU memory operands. Floating-point registers such as `f1` retain
+their register names; quote a forward numeric label as `'1f'` to distinguish it from a register.
+
 The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
 double-quoted template string through unchanged and still checks the output, input, and clobber
 lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
@@ -11564,6 +11796,22 @@ assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a l
 function unless it is an unquoted numeric label, uses `%=`, or is exported with `.globl`,
 `.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
 not a numeric local label.
+
+The 32-bit PowerPC C target (`-arch ppc`) supports `asm ppc raw`, including named
+operands, clobbers and assembly at module scope. Use GNU PowerPC assembler syntax
+inside the templates; the C compiler must support the target. Structured PowerPC
+assembly without `raw` is not supported. With the C backend, empty blocks and empty
+templates with only a `memory` clobber are allowed without `raw`, even when building
+for another target. Other backends reject these PowerPC blocks during parsing.
+For example:
+
+```v ignore
+mut ticks := u32(0)
+asm volatile ppc raw {
+    "mftb %[ticks]"
+    ; [ticks] "=r" (ticks)
+}
+```
 
 In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
 width of the register or named operand it acts on, and reports an error for a mismatch, as the

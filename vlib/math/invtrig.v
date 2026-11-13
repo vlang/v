@@ -83,8 +83,8 @@ fn satan(x f64) f64 {
 // atan returns the arctangent, in radians, of x.
 //
 // special cases are:
-// atan(±0) = ±0
-// atan(±inf) = ±pi/2.0
+// - `atan(±0) = ±0`
+// - `atan(±inf) = ±pi/2.0`
 pub fn atan(x f64) f64 {
 	if x == 0 {
 		return x
@@ -100,23 +100,23 @@ pub fn atan(x f64) f64 {
 // of the return value.
 //
 // special cases are (in order):
-// atan2(y, nan) = nan
-// atan2(nan, x) = nan
-// atan2(+0, x>=0) = +0
-// atan2(-0, x>=0) = -0
-// atan2(+0, x<=-0) = +pi
-// atan2(-0, x<=-0) = -pi
-// atan2(y>0, 0) = +pi/2.0
-// atan2(y<0, 0) = -pi/2.0
-// atan2(+inf, +inf) = +pi/4
-// atan2(-inf, +inf) = -pi/4
-// atan2(+inf, -inf) = 3pi/4
-// atan2(-inf, -inf) = -3pi/4
-// atan2(y, +inf) = 0
-// atan2(y>0, -inf) = +pi
-// atan2(y<0, -inf) = -pi
-// atan2(+inf, x) = +pi/2.0
-// atan2(-inf, x) = -pi/2.0
+// - `atan2(y, nan) = nan`
+// - `atan2(nan, x) = nan`
+// - `atan2(+0, x>=0) = +0`
+// - `atan2(-0, x>=0) = -0`
+// - `atan2(+0, x<=-0) = +pi`
+// - `atan2(-0, x<=-0) = -pi`
+// - `atan2(y>0, 0) = +pi/2.0`
+// - `atan2(y<0, 0) = -pi/2.0`
+// - `atan2(+inf, +inf) = +pi/4`
+// - `atan2(-inf, +inf) = -pi/4`
+// - `atan2(+inf, -inf) = 3pi/4`
+// - `atan2(-inf, -inf) = -3pi/4`
+// - `atan2(y, +inf) = 0`
+// - `atan2(y>0, -inf) = +pi`
+// - `atan2(y<0, -inf) = -pi`
+// - `atan2(+inf, x) = +pi/2.0`
+// - `atan2(-inf, x) = -pi/2.0`
 pub fn atan2(y f64, x f64) f64 {
 	// special cases
 	if is_nan(y) || is_nan(x) {
@@ -167,8 +167,8 @@ Floating-point arcsine and arccosine.
 // asin returns the arcsine, in radians, of x.
 //
 // special cases are:
-// asin(±0) = ±0
-// asin(x) = nan if x < -1 or x > 1
+// - `asin(±0) = ±0`
+// - `asin(x) = nan if x < -1 or x > 1`
 pub fn asin(x_ f64) f64 {
 	mut x := x_
 	if x == 0.0 {
