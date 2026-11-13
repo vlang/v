@@ -1,0 +1,21 @@
+vlib/v/checker/tests/shift_literal_too_large.vv:4:15: error: shift count for type `int literal` too large (maximum: 63 bits)
+    2 |     println(1 << 62)
+    3 |     println(1 << 63)
+    4 |     println(1 << 64)
+      |                  ~~
+    5 |     println(1 << 100)
+    6 |     println(0xff >> 64)
+vlib/v/checker/tests/shift_literal_too_large.vv:5:15: error: shift count for type `int literal` too large (maximum: 63 bits)
+    3 |     println(1 << 63)
+    4 |     println(1 << 64)
+    5 |     println(1 << 100)
+      |                  ~~~
+    6 |     println(0xff >> 64)
+    7 |     x := u64(1) << 63
+vlib/v/checker/tests/shift_literal_too_large.vv:6:18: error: shift count for type `int literal` too large (maximum: 63 bits)
+    4 |     println(1 << 64)
+    5 |     println(1 << 100)
+    6 |     println(0xff >> 64)
+      |                     ~~
+    7 |     x := u64(1) << 63
+    8 |     println(x)
