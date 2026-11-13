@@ -128,7 +128,7 @@ fn test_sumtype_synthetic_tag_reads_the_header_through_references() {
 				binding_type = b.m.type_store.get_ptr(binding_type)
 			}
 			slot := b.emit0(.alloca, b.m.type_store.get_ptr(binding_type))
-			b.vars['value'] = slot
+			b.vars.set('value', slot)
 			base := b.a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_id(spelling) })
 			children := b.a.children.len
 			b.a.children << base
@@ -158,8 +158,8 @@ fn test_sumtype_reference_guards_project_fields_and_expire_on_reassignment() {
 		}
 		slot := b.emit0(.alloca, b.m.type_store.get_ptr(binding_type))
 		replacement := b.emit0(.alloca, b.m.type_store.get_ptr(binding_type))
-		b.vars['value'] = slot
-		b.vars['replacement'] = replacement
+		b.vars.set('value', slot)
+		b.vars.set('replacement', replacement)
 		base := b.a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_id(spelling) })
 		rhs := b.a.add_node(flat.Node{ kind: .ident, value: 'replacement', typ: flat.source_type_id(spelling) })
 		for variant_depth, variant in ['Pair', '&Pair', '&&Pair'] {
@@ -203,9 +203,9 @@ fn test_dereferenced_sum_guards_keep_the_original_binding_and_expire_on_stores()
 		slot := b.emit0(.alloca, b.m.type_store.get_ptr(binding_type))
 		other := b.emit0(.alloca, b.m.type_store.get_ptr(choice))
 		replacement := b.emit0(.alloca, b.m.type_store.get_ptr(choice))
-		b.vars['value'] = slot
-		b.vars['other'] = other
-		b.vars['replacement'] = replacement
+		b.vars.set('value', slot)
+		b.vars.set('other', other)
+		b.vars.set('replacement', replacement)
 		spelling := if depth == 1 { '&Choice' } else { '&&Choice' }
 		base := b.a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_id(spelling) })
 		other_node := b.a.add_node(flat.Node{ kind: .ident, value: 'other', typ: flat.source_type_id('Choice') })

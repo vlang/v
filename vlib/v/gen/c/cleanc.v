@@ -75,6 +75,18 @@ const body_ident_annotation_slots = 1024
 const body_variadic_query_slots = 512
 const body_param_types_query_slots = 1024
 
+// posix_preamble_headers are the system headers the generated C of a POSIX
+// target always includes; `C.FIONREAD` and friends come from them.
+pub const posix_preamble_headers = ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h',
+	'pthread.h', 'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h',
+	'sys/mman.h', 'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h',
+	'sys/types.h', 'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h',
+	'utime.h']
+
+// apple_preamble_headers are the Apple headers the generated C always includes.
+pub const apple_preamble_headers = ['mach/mach.h', 'mach/mach_vm.h', 'CommonCrypto/CommonDigest.h',
+	'mach/mach_time.h', 'mach-o/dyld.h']
+
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
 fn c_short_name_view(name string) string {
@@ -20986,10 +20998,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <dbghelp.h>')
 	g.writeln('#endif')
 	g.writeln('#else')
-	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
-		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
-		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
-		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+	for header in posix_preamble_headers {
 		g.writeln('#include <${header}>')
 	}
 	// Solaris ships no sys/ptrace.h. Only user code declaring fn C.ptrace needs
@@ -21004,11 +21013,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#ifdef __APPLE__')
-	g.writeln('#include <mach/mach.h>')
-	g.writeln('#include <mach/mach_vm.h>')
-	g.writeln('#include <CommonCrypto/CommonDigest.h>')
-	g.writeln('#include <mach/mach_time.h>')
-	g.writeln('#include <mach-o/dyld.h>')
+	for header in apple_preamble_headers {
+		g.writeln('#include <${header}>')
+	}
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/epoll.h>')
@@ -29304,4 +29311,18 @@ fn (g &FlatGen) expected_enum_text() string {
 @[inline]
 fn (kind &CheckedIntKind) name_text() string {
 	return flat.source_type_name(kind.name)
+}
+
+// native_include_arg resolves an `#include`/`#insert` argument for `target` the
+// way this generator does (OS prefixes, `$d()`, `$env()`, `@VEXEROOT`, ...),
+// for native backends that compile the program's C side separately. It returns
+// '' when the directive does not apply to the target.
+pub fn native_include_arg(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) string {
+	return c_include_arg_for_target_with_values(raw, vroot, source_file, target, compile_values)
+}
+
+// native_directive_arg returns the argument of a `#define`/`#undef` directive
+// for `target`, or none when its OS prefix excludes the target.
+pub fn native_directive_arg(raw string, target pref.Target) ?string {
+	return c_directive_arg_for_target(raw.trim_space(), target)
 }

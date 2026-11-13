@@ -2681,62 +2681,12 @@ struct Amd64NativeSupport {
 // modules. The C backend includes those headers in its translation unit; the
 // native backend needs a small object with the same helper definitions.
 fn amd64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_flags []string, optimization_flags []string, c_compiler string) !Amd64NativeSupport {
-	// Inlined headers can expose atomic and pointer-width helpers without
-	// carrying the standard fixed-width integer declarations they depend on.
-	mut source_text := '#include <stdint.h>\n'
-	mut include_dirs := []string{}
-	mut include_seen := map[string]bool{}
-	mut cur_file := ''
-	mut has_insert := false
-	for node in a.nodes {
-		if node.kind == .file {
-			cur_file = node.value
-			continue
-		}
-		if node.kind != .directive {
-			continue
-		}
-		arg := flat.source_type_name(node.typ).trim_space()
-		if arg.len == 0 {
-			continue
-		}
-		match node.value {
-			'define' {
-				source_text += '#define ${arg}\n'
-			}
-			'undef' {
-				source_text += '#undef ${arg}\n'
-			}
-			'include', 'preinclude', 'postinclude' {
-				include_arg := amd64_include_argument(arg)
-				if include_arg.starts_with('<') {
-					source_text += '#include ${include_arg}\n'
-				} else {
-					path := amd64_resolve_insert_path(include_arg, cur_file, prefs.vroot)
-					if path.len > 0 && os.is_file(path) {
-						source_text += '#include "${path}"\n'
-						has_insert = true
-					} else if include_arg.len > 0 {
-						source_text += '#include ${include_arg}\n'
-					}
-				}
-			}
-			'insert' {
-				path := amd64_resolve_insert_path(amd64_include_argument(arg), cur_file, prefs.vroot)
-				if path.len == 0 || !os.is_file(path) {
-					continue
-				}
-				dir := os.dir(path)
-				if dir.len > 0 && dir !in include_seen {
-					include_seen[dir] = true
-					include_dirs << dir
-				}
-				source_text += '#include "${path}"\n'
-				has_insert = true
-			}
-			else {}
-		}
-	}
+	// native_c_support_source starts with `#include <stdint.h>`: inlined headers
+	// can use the fixed-width integer types without declaring them.
+	support := native_c_support_source(a, prefs.vroot, prefs.target, prefs.compile_values)
+	source_text := support.text
+	include_dirs := support.include_dirs
+	has_insert := support.has_insert
 	if !has_insert || source_text.len == 0 {
 		return Amd64NativeSupport{}
 	}
@@ -10860,9 +10810,11 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend in ['arm64', 'amd64'] && target_os == 'linux' && explicit_output
+	// The native backends write `.o` files: arm64 for Linux and macOS, amd64 for Linux.
+	native_object := ((backend == 'arm64' && target_os in ['linux', 'macos'])
+		|| (backend == 'amd64' && target_os == 'linux')) && explicit_output
 		&& output_file.ends_with('.o')
-	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
+	if is_o && !native_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
 		eprintln('option `-is_o` requires the C backend and an explicit `.c` or `.o` output file')
 		exit(1)
@@ -12364,6 +12316,7 @@ pub fn run(args []string) {
 		}
 	}
 	mut a := p.a
+	a.guard_exhaustive_match = backend == 'arm64'
 	if !current_no_parallel {
 		// Later parallel stages can run inside disposable arenas. Ensure the shared
 		// pool itself is owned by the compilation arena before any such stage starts.
@@ -13398,8 +13351,10 @@ pub fn run(args []string) {
 		// A plain build of a program checks the bodies of the standard library that
 		// the program can reach, not the others (see types.skip_unreachable_library_bodies).
 		// What else needs every body checked keeps them all: a check without a build,
-		// a test, the compiler itself, a module cache that compiles whole modules.
-		skip_library_bodies := backend == 'c' && !check_only && !is_checker_fixture && !building_v
+		// a test, a module cache that compiles whole modules, and the compiler itself,
+		// which reaches most of its library: checking it round by round costs more
+		// than the bodies it would leave out.
+		skip_library_bodies := backend in ['c', 'arm64'] && !check_only && !is_checker_fixture && !building_v
 			&& test_files.len == 0 && !no_skip_unused && !is_vsh_input && !is_repl && !is_prof
 			&& !is_trace_calls && coverage_dir.len == 0 && !trivial_literal_output
 			&& !incremental_cache_hit && !generic_cache_hit && !cache_state.manager.enabled
@@ -14127,9 +14082,9 @@ pub fn run(args []string) {
 			mut scoped_owned_base_nodes := []int{}
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
 			// Without retained worker regions, this self-host path keeps the whole
-			// transform arena alive for cgen (see retain_transform_scope below).
+			// transform arena alive for code generation (see retain_transform_scope below).
 			retain_scope_without_regions := building_v && current_parallel_transform
-				&& backend == 'c' && !cache_state.manager.enabled
+				&& backend in ['c', 'arm64'] && !cache_state.manager.enabled
 				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
 					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
 			if prepare_transform_overlap {
@@ -14174,10 +14129,10 @@ pub fn run(args []string) {
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
-			// Ordinary C builds have no semantic consumer after Cgen. Keep a bounded
-			// transform arena instead of cloning its metadata into the parent arena.
+			// Ordinary builds have no semantic consumer after code generation. Keep a
+			// bounded transform arena instead of cloning its metadata into the parent arena.
 			// Transform can uncover generic calls, so check its final used names too.
-			retain_ordinary_scope := !building_v && backend == 'c'
+			retain_ordinary_scope := !building_v && backend in ['c', 'arm64']
 				&& !cache_state.manager.enabled && !uses_generics && skip_transform_generics
 				&& !is_test_command && test_files.len == 0 && !is_checker_fixture
 				&& !is_repl && !is_vsh_input && !translated_mode && !is_shared
@@ -14972,10 +14927,87 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	} else if backend == 'arm64' {
-		if msg := unsupported_arm64_c_source_error(a) {
-			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			eprintln(msg)
-			exit(1)
+		arm64_directive_flags := if target.os == 'macos' {
+			cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+		} else {
+			[]string{}
+		}
+		arm64_link_mode, arm64_link_reason := if target.os == 'macos' && !is_o {
+			arm64_link_mode(a, arm64_directive_flags, prefs.user_defines)
+		} else {
+			Arm64LinkMode.internal, ''
+		}
+		if arm64_link_mode == .internal && !is_o {
+			if msg := unsupported_arm64_c_source_error(a) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				eprintln(msg)
+				exit(1)
+			}
+		}
+		if verbose && arm64_link_mode == .external {
+			eprintln('arm64: linking with the system linker for ${arm64_link_reason}')
+		}
+		mut arm64_c_side_info := Arm64CSide{}
+		mut arm64_c_probes := Arm64CProbes{}
+		arm64_link_inputs := Arm64LinkInputs{
+			environment_cflags: environment_c_flags
+			optimization_flags: v3_prod_c_object_optimization_flags(is_prod, no_prod_options, false,
+				parallel_cc, false)
+			target:             prefs.target
+			c99:                c99
+			no_std:             no_std
+		}
+		mut arm64_link_preparation := []thread Arm64PreparedLink{}
+		// Like cgo, read the C constants that the builder does not know from the
+		// C compiler even when the built-in linker links the program: system
+		// headers alone (`C.FIONREAD`, `C.KERN_SUCCESS`) need no system linker.
+		mut arm64_unknown_c_constants := []string{}
+		$if !skip_arm64 ? {
+			if target.os == 'macos' && !is_o && arm64_link_mode == .internal {
+				arm64_unknown_c_constants = arm64_c_constant_names(a).filter(!ssa.has_native_platform_constant(it,
+					ssa.TargetData{
+						os:   prefs.target.os
+						arch: 'arm64'
+					}))
+			}
+		}
+		if arm64_link_mode == .external || arm64_unknown_c_constants.len > 0 {
+			arm64_c_side_info = arm64_c_side(Arm64CSideOptions{
+				no_cache:           no_cache
+				a:                  a
+				prefs:              prefs
+				user_c_flags:       user_c_flags
+				environment_cflags: environment_c_flags
+				optimization_flags: v3_prod_c_object_optimization_flags(is_prod,
+					no_prod_options, false, parallel_cc, false)
+				c_compiler:         c_compiler
+				compiler_explicit:  c_compiler_explicit
+			}) or {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				eprintln(err.msg())
+				exit(1)
+			}
+			if arm64_link_mode == .external {
+				arm64_link_preparation << spawn arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
+			}
+			arm64_c_probes = arm64_probe_c_side(Arm64CProbeRequest{
+				functions: if arm64_link_mode == .external {
+					arm64_c_function_decl_names(a)
+				} else {
+					[]string{}
+				}
+				constants: if arm64_link_mode == .external {
+					arm64_c_constant_names(a)
+				} else {
+					arm64_unknown_c_constants
+				}
+				structs:   if arm64_link_mode == .external {
+					arm64_c_structs(a)
+				} else {
+					[]Arm64CStruct{}
+				}
+			}, arm64_c_side_info)
+			b.step('arm64 C probes')
 		}
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14983,14 +15015,35 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		$if !skip_arm64 ? {
+			mut arm64_ssa_c_constants := map[string]ssa.NativeCConstant{}
+			for name, constant in arm64_c_probes.constants {
+				arm64_ssa_c_constants[name] = ssa.NativeCConstant{
+					value:    constant.value
+					is_float: constant.is_float
+				}
+			}
+			mut arm64_ssa_c_struct_layouts := map[string]ssa.NativeCStructLayout{}
+			for name, layout in arm64_c_probes.structs {
+				arm64_ssa_c_struct_layouts[name] = ssa.NativeCStructLayout{
+					size:    layout.size
+					align:   layout.align
+					offsets: layout.offsets
+					c_type:  layout.c_type
+				}
+			}
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
-				track_uses:        is_prod
-				thread_stack_size: prefs.thread_stack_size
-				test_files:        test_files
-				test_run_only:     run_only
-				hot_fn:            prefs.hot_fn
-				target:            ssa.TargetData{
+				track_uses:           false // optimize() rebuilds them
+				thread_stack_size:    prefs.thread_stack_size
+				test_files:           test_files
+				test_run_only:        run_only
+				hot_fn:               prefs.hot_fn
+				// The system linker brings the C side of the program, so the
+				// V-shipped C helpers are linked instead of SSA replacements.
+				use_native_c_sources: arm64_link_mode == .external
+				c_constants:          arm64_ssa_c_constants
+				c_struct_layouts:     arm64_ssa_c_struct_layouts
+				target:               ssa.TargetData{
 					os:   prefs.target.os
 					arch: 'arm64'
 				}
@@ -15019,7 +15072,17 @@ pub fn run(args []string) {
 			mut g := arm64.Gen.new(m)
 			g.prune_unused = 'freestanding' in prefs.user_defines
 			g.freestanding = 'freestanding' in prefs.user_defines
-			g.gen()
+			g.gc_runtime = 'gcboehm' in prefs.user_defines && arm64_link_mode == .external
+			if arm64_link_mode == .external {
+				probed := arm64_c_function_kinds(g.c_extern_call_names(), arm64_c_probes, arm64_c_side_info)
+				mut kinds := map[string]arm64.CFunctionKind{}
+				for name, kind in probed {
+					kinds[name] = if kind == .macro { arm64.CFunctionKind.macro } else { .internal }
+				}
+				arm64_c_side_info.wrappers = g.c_function_wrappers(kinds)
+				b.step('arm64 C functions')
+			}
+			g.gen_parallel(a.worker_pool)
 			b.step('arm64 gen')
 
 			// Hot code reloading: write raw machine code for a single function
@@ -15044,6 +15107,61 @@ pub fn run(args []string) {
 					eprintln(err.msg())
 					exit(1)
 				}
+			} else if is_o {
+				g.write_object(bin_file) or {
+					eprintln(err.msg())
+					exit(1)
+				}
+			} else if arm64_link_mode == .external || g.text_exceeds_branch_range() {
+				if arm64_link_mode != .external {
+					// The built-in linker has no thunks for `bl` beyond 128 MiB; the
+					// system linker inserts them (Zig: src/link/MachO/Thunk.zig).
+					arm64_c_side_info = arm64_c_side(Arm64CSideOptions{
+						no_cache:           no_cache
+						a:                  a
+						prefs:              prefs
+						user_c_flags:       user_c_flags
+						environment_cflags: environment_c_flags
+						optimization_flags: v3_prod_c_object_optimization_flags(is_prod,
+							no_prod_options, false, parallel_cc, false)
+						c_compiler:         c_compiler
+						compiler_explicit:  c_compiler_explicit
+					}) or {
+						eprintln(err.msg())
+						exit(1)
+					}
+				}
+				obj_file := os.join_path(os.vtmp_dir(), 'v3_arm64_${os.getpid()}_${tempname.unique_token()}.o')
+				g.write_object(obj_file) or {
+					eprintln(err.msg())
+					exit(1)
+				}
+				b.step('arm64 object')
+				prepared_link := if arm64_link_preparation.len == 1 {
+					arm64_link_preparation[0].wait()
+				} else {
+					arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
+				}
+				if prepared_link.error.len > 0 {
+					os.rm(obj_file) or {}
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+					eprintln(prepared_link.error)
+					exit(1)
+				}
+				arm64_external_link(arm64_c_side_info, Arm64ExternalLink{
+					object:        obj_file
+					output:        bin_file
+					link_ld_flags: link_ld_flags
+					link_flags:    prepared_link.flags
+					target:        prefs.target
+					show_cc:       show_cc
+				}) or {
+					os.rm(obj_file) or {}
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+					eprintln(err.msg())
+					exit(1)
+				}
+				os.rm(obj_file) or {}
 			} else {
 				g.write_and_link(bin_file)
 			}
@@ -21062,7 +21180,8 @@ fn compare_print_notices(a &types.TypeError, b &types.TypeError) int {
 	return int(a.node) - int(b.node)
 }
 
-// unsupported_arm64_c_source_error rejects native source includes the ARM64 linker cannot link.
+// unsupported_arm64_c_source_error rejects native source includes that the
+// built-in ARM64 linker cannot link (see arm64_link_mode).
 fn unsupported_arm64_c_source_error(a &flat.FlatAst) ?string {
 	for node in a.nodes {
 		if node.kind != .directive || node.value !in ['include', 'insert', 'preinclude', 'postinclude'] {
@@ -21075,12 +21194,18 @@ fn unsupported_arm64_c_source_error(a &flat.FlatAst) ?string {
 			continue
 		}
 		location := backend_node_location(a, node)
-		return '${location}error: the V arm64 backend does not support including native source `${path}`; use the C backend'
+		return '${location}error: the built-in arm64 linker cannot link native source `${path}`; drop `-d arm64_internal_link` to link with the system linker, or use the C backend'
 	}
 	return none
 }
 
 fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
+	// Outside wasm the reachable walk below only rejects `**`, `**=` and `$res()`.
+	// Most programs contain neither, so one read of the node array answers without
+	// walking every reachable body and collecting the constants they mention.
+	if backend != 'wasm' && !ast_has_backend_rejected_operator(a) {
+		return none
+	}
 	mut cur_module := ''
 	mut cur_file := ''
 	mut visited := []bool{len: a.nodes.len}
@@ -21497,6 +21622,19 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		}
 	}
 	return none
+}
+
+// ast_has_backend_rejected_operator reports whether any node, reachable or not, is one
+// of the operators that unsupported_backend_node_error rejects on every backend.
+@[direct_array_access]
+fn ast_has_backend_rejected_operator(a &flat.FlatAst) bool {
+	for idx in 0 .. a.nodes.len {
+		node := unsafe { &a.nodes[idx] }
+		if node.op == .power || node.op == .power_assign || node.kind == .defer_result {
+			return true
+		}
+	}
+	return false
 }
 
 // shadow_dependency_roots_for returns the installed-module directories, resolved

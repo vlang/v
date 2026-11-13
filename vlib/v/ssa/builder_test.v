@@ -882,7 +882,7 @@ fn main() { job := spawn stop(); job.wait() }
 	assert 'pthread_create' in native_thread_function_calls(m, main_function)
 	for block_id in main_function.blocks {
 		block := m.blocks[block_id]
-		if block.name.starts_with('thread_failed_') {
+		if block.name.starts_with('thread_failed') {
 			continue
 		}
 		for value_id in block.instrs {

@@ -40,6 +40,9 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 	mut df_blocks := []int{}
 	mut visited_stamp := []int{len: n_blocks}
 	mut has_phi_stamp := []int{len: n_blocks}
+	// Block ids are unique across functions, so these are never reset.
+	mut last_frontier_target := []int{len: n_blocks, init: -1}
+	mut visited := []bool{len: n_blocks}
 	mut stamp := 0
 
 	for fi in 0 .. m.funcs.len {
@@ -98,7 +101,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 			}
 		}
 
-		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks)
+		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks, mut last_frontier_target)
 
 		// Insert phis at iterated dominance frontiers of each promotable alloca.
 		for slot in 0 .. promotable.len {
@@ -143,7 +146,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 
 		// Rename: walk the dominator tree, threading reaching definitions.
 		if func.blocks.len > 0 {
-			rename_blocks(mut m, func.blocks[0], mut ctx, dom, cfg)
+			rename_blocks(mut m, func.blocks[0], mut ctx, dom, cfg, mut visited)
 		}
 		for d in df_blocks {
 			df[d] = []
@@ -208,9 +211,8 @@ fn is_promotable(m &ssa.Module, alloc_id int) bool {
 }
 
 // compute_dominance_frontier_flat supports compute dominance frontier flat handling for optimize.
-fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int) {
+fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int, mut last_frontier_target []int) {
 	func := m.funcs[func_idx]
-	mut last_frontier_target := []int{len: m.blocks.len, init: -1}
 	for blk_id in func.blocks {
 		if blk_id < 0 || blk_id >= m.blocks.len {
 			continue
@@ -282,12 +284,11 @@ mut:
 }
 
 // rename_blocks supports rename blocks handling for optimize.
-fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo, cfg &CfgData) {
+fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo, cfg &CfgData, mut visited []bool) {
 	mut work := []RenameFrame{}
 	work << RenameFrame{
 		blk_id: root_blk
 	}
-	mut visited := []bool{len: m.blocks.len}
 
 	for work.len > 0 {
 		fi := work.len - 1

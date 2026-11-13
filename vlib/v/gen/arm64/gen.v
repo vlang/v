@@ -5,17 +5,42 @@ import v.ssa
 // Gen stores state for ARM64 code generation.
 pub struct Gen {
 mut:
-	m                    &ssa.Module  = unsafe { nil }
-	macho                &MachOObject = unsafe { nil }
-	text_words           []u32
-	stack_offsets        []i32
-	alloca_offsets       []i32
-	alloca_sizes         []i32
-	alloca_alignments    []i32
-	slot_value_indices   []int
-	slot_value_base      int
-	slot_value_count     int
-	stack_size           int
+	m                   &ssa.Module  = unsafe { nil }
+	macho               &MachOObject = unsafe { nil }
+	text_words          []u32
+	stack_offsets       []i32
+	alloca_offsets      []i32
+	alloca_sizes        []i32
+	alloca_alignments   []i32
+	slot_value_indices  []int
+	slot_value_base     int
+	slot_value_count    int
+	stack_size          int
+	saved_callee_pairs  int
+	saved_float_pairs   int
+	current_instr_start int
+	value_homes         []u8
+	value_home_ids      []int
+	// Register allocation tables, reused across functions (see regalloc.v).
+	ra_interval          []int
+	ra_value_block       []int
+	ra_block_index       []int
+	ra_block_first       []int
+	ra_block_last        []int
+	ra_pred_start        []int
+	ra_preds             []int
+	ra_live_stamp        []int
+	ra_def_stamp         []int
+	ra_stamp             int
+	ra_list              []LiveInterval
+	ra_live              []LiveInterval
+	ra_integers          []LiveInterval
+	ra_floats            []LiveInterval
+	ra_crossing          []int
+	ra_use_heads         []int
+	ra_def_heads         []int
+	ra_links             []RaLink
+	ra_worklist          []int
 	transient_stack_size int
 	block_offsets        []i32
 	block_offset_indices []int
@@ -23,9 +48,15 @@ mut:
 	block_offset_count   int
 	pending_jmps         []PendingJmp
 	fn_offsets           map[string]int
-	string_cache         map[string]int
+	string_cache         map[string]int // string content -> its symbol
+	chunk_strings        []string       // contents, in the order of their symbols
+	global_index         map[string]int
+	global_index_ready   bool
 	cur_func_ret_type    ssa.TypeID
 	cur_func_sret_offset int
+	// export_entries holds the C names whose C-convention entry
+	// gen_export_entries emitted (see export_abi.v).
+	export_entries map[string]bool
 	// prune_unused emits only the functions reachable from main (freestanding
 	// objects, whose runtime registers helpers the program may never call).
 pub mut:
@@ -33,6 +64,9 @@ pub mut:
 	// freestanding links the program's own runtime definitions of libc-named
 	// symbols (see Linker.freestanding).
 	freestanding bool
+	// gc_runtime sends libc allocation and thread calls to the Boehm helpers
+	// (see arm64_gc_runtime_symbols); set when the collector is linked in.
+	gc_runtime bool
 }
 
 // PendingJmp represents pending jmp data used by arm64.
@@ -50,22 +84,12 @@ struct Arm64HfaLayout {
 	elements []Arm64HfaElement
 }
 
-struct Arm64GenRange {
-	start int
-	end   int
-	cap   int
-}
-
 // new creates a Gen value for arm64.
 pub fn Gen.new(m &ssa.Module) &Gen {
-	return new_gen_with_text_capacity(m, m.instrs.len * 28)
-}
-
-fn new_gen_with_text_capacity(m &ssa.Module, text_capacity int) &Gen {
 	return &Gen{
 		m:                    m
 		macho:                MachOObject.new()
-		text_words:           []u32{cap: text_capacity}
+		text_words:           []u32{}
 		stack_offsets:        []i32{}
 		alloca_offsets:       []i32{}
 		alloca_sizes:         []i32{}
@@ -81,6 +105,7 @@ fn new_gen_with_text_capacity(m &ssa.Module, text_capacity int) &Gen {
 
 // gen supports gen handling for Gen.
 pub fn (mut g Gen) gen() {
+	g.text_words = []u32{cap: g.m.instrs.len * arm64_words_per_instruction}
 	g.gen_pre_pass()
 	reachable := if g.prune_unused { g.reachable_functions() } else { []bool{} }
 	for fi in 0 .. g.m.funcs.len {
@@ -89,116 +114,9 @@ pub fn (mut g Gen) gen() {
 		}
 		g.gen_func(fi)
 	}
+	g.export_entries = g.gen_export_entries()
 	g.materialize_text()
 	g.gen_post_pass()
-}
-
-// gen_parallel emits independent contiguous function ranges concurrently and
-// merges their text, symbols, strings, and relocations in source order.
-pub fn (mut g Gen) gen_parallel() {
-	$if clang {
-		g.gen_parallel_c_host()
-	} $else {
-
-		// Direct ARM64 descendants keep the sequential path: their lightweight
-		// thread result ABI does not yet support returning generator pointers.
-		g.gen()
-	}
-}
-
-fn (mut g Gen) gen_parallel_c_host() {
-	if g.m.funcs.len < 64 {
-		g.gen()
-		return
-	}
-	g.gen_pre_pass()
-	// Freeze all lazily-computed layout data before workers share the SSA module.
-	g.m.freeze_type_layouts()
-	ranges := arm64_function_ranges(g.m, 12)
-	mut workers := []thread &Gen{cap: ranges.len}
-	for r in ranges {
-		workers << spawn arm64_gen_range(g.m, r)
-	}
-	for chunk_index, worker in workers {
-		chunk := worker.wait()
-		g.merge_gen_chunk(chunk, chunk_index)
-	}
-	g.materialize_text()
-	g.gen_post_pass()
-}
-
-fn arm64_function_ranges(m &ssa.Module, wanted int) []Arm64GenRange {
-	mut weights := []int{len: m.funcs.len, init: 1}
-	mut total := 0
-	for fi, function in m.funcs {
-		mut weight := 1
-		for block in function.blocks {
-			weight += m.blocks[block].instrs.len
-		}
-		weights[fi] = weight
-		total += weight
-	}
-	worker_count := arm64_min_int(wanted, m.funcs.len)
-	mut ranges := []Arm64GenRange{cap: worker_count}
-	mut start := 0
-	mut accumulated := 0
-	mut range_weight := 0
-	for fi, weight in weights {
-		accumulated += weight
-		range_weight += weight
-		remaining_workers := worker_count - ranges.len
-		remaining_functions := m.funcs.len - fi - 1
-		target := total * (ranges.len + 1) / worker_count
-		if ranges.len + 1 < worker_count && remaining_functions >= remaining_workers - 1
-			&& accumulated >= target {
-			ranges << Arm64GenRange{
-				start: start
-				end:   fi + 1
-				cap:   range_weight * 28 + 1024
-			}
-			start = fi + 1
-			range_weight = 0
-		}
-	}
-	if start < m.funcs.len {
-		ranges << Arm64GenRange{
-			start: start
-			end:   m.funcs.len
-			cap:   range_weight * 28 + 1024
-		}
-	}
-	return ranges
-}
-
-fn arm64_gen_range(m &ssa.Module, r Arm64GenRange) &Gen {
-	mut g := new_gen_with_text_capacity(m, r.cap)
-	for fi in r.start .. r.end {
-		g.gen_func(fi)
-	}
-	return g
-}
-
-fn (mut g Gen) merge_gen_chunk(chunk &Gen, chunk_index int) {
-	text_base := g.text_offset()
-	string_base := g.macho.str_data.len
-	mut symbol_map := []int{len: chunk.macho.symbols.len}
-	for index, symbol in chunk.macho.symbols {
-		name := if symbol.sect == 2 { '${symbol.name}_${chunk_index}' } else { symbol.name }
-		symbol_map[index] = if symbol.sect == 0 {
-			g.macho.add_undefined(name)
-		} else if symbol.sect == 1 {
-			g.macho.add_symbol(name, symbol.value + u64(text_base), false, 1)
-		} else if symbol.sect == 2 {
-			g.macho.add_symbol(name, symbol.value + u64(string_base), false, 2)
-		} else {
-			g.macho.add_symbol(name, symbol.value, true, symbol.sect)
-		}
-	}
-	for relocation in chunk.macho.relocs {
-		g.macho.add_reloc(relocation.addr + text_base, symbol_map[relocation.sym_idx], relocation.type_, relocation.pcrel)
-	}
-	g.text_words << chunk.text_words
-	g.macho.str_data << chunk.macho.str_data
 }
 
 fn (g &Gen) text_offset() int {
@@ -218,6 +136,77 @@ pub fn (mut g Gen) write_and_link(output string) {
 	mut l := Linker.new(g.macho)
 	l.freestanding = g.freestanding
 	l.link(output, '_main')
+}
+
+// c_symbol_name returns the linker symbol for a call to `name`: the
+// `@[c: 'symbol']` binding of a C extern, the collector's version of a libc
+// allocation or thread function (see Gen.gc_runtime), or the name itself.
+fn (g &Gen) c_symbol_name(name string, is_c_extern bool) string {
+	if is_c_extern {
+		if symbols := arm64_native_tls_symbols[name] {
+			return if g.gc_runtime { symbols[1] } else { symbols[0] }
+		}
+		if symbol := g.m.c_extern_symbols[name] {
+			return symbol
+		}
+		if g.gc_runtime {
+			if symbol := arm64_gc_runtime_symbols[name] {
+				return symbol
+			}
+		}
+	}
+	return name
+}
+
+// arm64_gc_runtime_symbols sends the generated runtime's libc allocation and
+// thread calls to the Boehm helpers in vlib/builtin/gc_boehm_helpers.c, the
+// way `#include <gc.h>` redirects them in C: blocks must come from the
+// collector's heap, and threads must be registered with it.
+const arm64_gc_runtime_symbols = {
+	'malloc':          'v_native_gc_malloc'
+	'calloc':          'v_native_gc_calloc'
+	'realloc':         'v_native_gc_realloc'
+	'free':            'v_native_gc_free'
+	'aligned_alloc':   'v_native_gc_aligned_alloc'
+	'posix_memalign':  'v_native_gc_posix_memalign'
+	'pthread_create':  'v_gc_pthread_create'
+	'pthread_join':    'v_gc_pthread_join'
+	'pthread_detach':  'v_gc_pthread_detach'
+	'pthread_cancel':  'v_gc_pthread_cancel'
+	'pthread_exit':    'v_gc_pthread_exit'
+	'pthread_sigmask': 'v_gc_pthread_sigmask'
+	'dlopen':          'v_gc_dlopen'
+}
+
+// arm64_native_tls_symbols binds the allocator of the per-thread global slots
+// (ssa/native_thread_local.v) to [libc, collector] symbols. With the collector,
+// a slot is reachable only through its pthread key, which Boehm does not scan,
+// so it must be an uncollectable block that the collector still scans.
+const arm64_native_tls_symbols = {
+	'v_native_tls_calloc': ['calloc', 'v_native_gc_tls_calloc']
+	'v_native_tls_free':   ['free', 'v_native_gc_tls_free']
+}
+
+// text_exceeds_branch_range reports whether the code is too large for the `bl`
+// relocations the built-in linker can resolve, which reach 128 MiB.
+pub fn (g &Gen) text_exceeds_branch_range() bool {
+	return g.text_offset() >= (1 << 27)
+}
+
+// write_object writes the generated code as a relocatable Mach-O object for
+// the system linker (external linking).
+pub fn (mut g Gen) write_object(output string) ! {
+	mut exported := {
+		'_main': true
+	}
+	for fn_name, cname in g.m.export_aliases {
+		exported['_' + cname] = true
+		exported['_' + fn_name] = cname == fn_name
+	}
+	g.macho.write_object(output, MachOObjectOptions{
+		freestanding: g.freestanding
+		exported:     exported
+	})!
 }
 
 // reset_value_slots updates reset value slots state for arm64.
@@ -259,10 +248,14 @@ fn (mut g Gen) reset_value_slots(func &ssa.Function) {
 	g.slot_value_count = max_id - min_id + 1
 	if g.stack_offsets.len < g.slot_value_count {
 		new_len := arm64_max_int(g.slot_value_count, arm64_max_int(64, g.stack_offsets.len * 2))
-		g.stack_offsets = []i32{len: new_len}
-		g.alloca_offsets = []i32{len: new_len}
-		g.alloca_sizes = []i32{len: new_len}
-		g.alloca_alignments = []i32{len: new_len}
+		free_zeroed_table(g.stack_offsets.data, g.stack_offsets.len * 4)
+		free_zeroed_table(g.alloca_offsets.data, g.alloca_offsets.len * 4)
+		free_zeroed_table(g.alloca_sizes.data, g.alloca_sizes.len * 4)
+		free_zeroed_table(g.alloca_alignments.data, g.alloca_alignments.len * 4)
+		g.stack_offsets = zeroed_i32_table(new_len)
+		g.alloca_offsets = zeroed_i32_table(new_len)
+		g.alloca_sizes = zeroed_i32_table(new_len)
+		g.alloca_alignments = zeroed_i32_table(new_len)
 	}
 }
 
@@ -286,7 +279,8 @@ fn (mut g Gen) reset_block_offsets(func &ssa.Function) {
 	g.block_offset_count = max_id - min_id + 1
 	if g.block_offsets.len < g.block_offset_count {
 		new_len := arm64_max_int(g.block_offset_count, arm64_max_int(16, g.block_offsets.len * 2))
-		g.block_offsets = []i32{len: new_len}
+		free_zeroed_table(g.block_offsets.data, g.block_offsets.len * 4)
+		g.block_offsets = zeroed_i32_table(new_len)
 	}
 }
 
@@ -421,14 +415,29 @@ fn (g &Gen) reachable_functions() []bool {
 	return reach
 }
 
+// align_global_offset rounds a data offset up for the global's own alignment,
+// at least eight bytes. A `u128` global needs sixteen when C reads it.
+fn (g &Gen) align_global_offset(offset u64, global_index int) u64 {
+	alignment := u64(if g.m.type_align(g.m.globals[global_index].typ) > 8 { 16 } else { 8 })
+	return (offset + alignment - 1) & ~(alignment - 1)
+}
+
+const wyhash_secret_bytes = u64(32)
+
 // gen_pre_pass emits pre pass output for arm64.
 fn (mut g Gen) gen_pre_pass() {
-	mut data_offset := u64(0)
+	// `__wyp` comes first, so everything after it is zeros the object can keep
+	// out of the file (see write_object).
+	g.global_index_ready = true
+	mut data_offset := wyhash_secret_bytes
 	for gi in 0 .. g.m.globals.len {
+		if g.m.globals[gi].name !in g.global_index {
+			g.global_index[g.m.globals[gi].name] = gi
+		}
 		if g.m.globals[gi].linkage == .external {
 			continue
 		}
-		data_offset = (data_offset + 7) & ~u64(7)
+		data_offset = g.align_global_offset(data_offset, gi)
 		g.macho.add_symbol('_' + g.m.globals[gi].name, data_offset, true, 3)
 		size := g.m.type_size(g.m.globals[gi].typ)
 		data_offset += u64(if size > 0 { size } else { 8 })
@@ -437,21 +446,9 @@ fn (mut g Gen) gen_pre_pass() {
 
 // gen_post_pass emits post pass output for arm64.
 fn (mut g Gen) gen_post_pass() {
-	// `C._wyp` is a generated C constant that map hashing reads by name. Its
-	// bytes follow the globals' data, so the globals' offsets stay valid.
-	mut globals_end := u64(0)
-	for gi in 0 .. g.m.globals.len {
-		if g.m.globals[gi].linkage == .external {
-			continue
-		}
-		globals_end = (globals_end + 7) & ~u64(7)
-		size := g.m.type_size(g.m.globals[gi].typ)
-		globals_end += u64(if size > 0 { size } else { 8 })
-	}
-	for g.macho.data_data.len < int(globals_end) {
-		g.macho.data_data << 0
-	}
-	g.macho.add_symbol('__wyp', u64(g.macho.data_data.len), true, 3)
+	// `C._wyp` is a generated C constant that map hashing reads by name. It sits
+	// at the start of the data, before the globals.
+	g.macho.add_symbol('__wyp', 0, true, 3)
 	secrets := [u64(0x2d358dccaa6c78a5), u64(0x8bb84b93962eacc9), u64(0x4b33a62ed433d4a3),
 		u64(0x4d5a2da51de1aa47)]
 	for secret in secrets {
@@ -461,22 +458,42 @@ fn (mut g Gen) gen_post_pass() {
 		}
 		g.macho.data_data << bytes
 	}
+	mut globals_end := wyhash_secret_bytes
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
 			continue
 		}
-		for g.macho.data_data.len % 8 != 0 {
-			g.macho.data_data << 0
-		}
+		globals_end = g.align_global_offset(globals_end, gi)
 		size := g.m.type_size(g.m.globals[gi].typ)
-		actual := if size > 0 { size } else { 8 }
-		for _ in 0 .. actual {
-			g.macho.data_data << 0
+		globals_end += u64(if size > 0 { size } else { 8 })
+	}
+	for g.macho.data_data.len < int(globals_end) {
+		g.macho.data_data << 0
+	}
+
+	// `@[export: 'name']` functions are also reachable under their C name, which
+	// C code linked with the program calls (stb_image's allocator callbacks).
+	// The ones C must call through a C-convention entry already have it.
+	for fn_name, cname in g.m.export_aliases {
+		if cname == fn_name || cname in g.export_entries
+			|| ('_' + cname in force_external_syms && !g.freestanding) {
+			continue
+		}
+		if idx := g.macho.sym_by_name['_' + fn_name] {
+			sym := g.macho.symbols[idx]
+			if sym.sect == 1 {
+				g.macho.add_symbol('_' + cname, sym.value, true, 1)
+				// Either name may end up carrying the `__compact_unwind`
+				// entry of the shared address, so both describe its saves.
+				if pairs := g.macho.unwind_saved_pairs['_' + fn_name] {
+					g.macho.unwind_saved_pairs['_' + cname] = pairs
+				}
+			}
 		}
 	}
 
 	cstring_base := u64(g.text_offset())
-	data_base := (cstring_base + u64(g.macho.str_data.len) + 7) & ~u64(7)
+	data_base := (cstring_base + u64(g.macho.str_data.len) + 15) & ~u64(15)
 	for i in 0 .. g.macho.symbols.len {
 		if g.macho.symbols[i].sect == 2 {
 			g.macho.symbols[i].value += cstring_base
@@ -509,9 +526,10 @@ fn (mut g Gen) gen_func(func_idx int) {
 	// Frame layout (all at negative offsets from fp):
 	// fp + 0: saved fp
 	// fp + 8: saved lr
-	// fp - 8: first local slot
-	// fp - 16: second local slot ...
-	mut slot_offset := 0
+	// fp - 8, fp - 16, ...: the callee-saved pairs this function uses
+	// below them: local slots
+	g.saved_callee_pairs = g.regalloc_function(&func)
+	mut slot_offset := (g.saved_callee_pairs + g.saved_float_pairs) * 16
 	g.cur_func_ret_type = func.typ
 	g.cur_func_sret_offset = 0
 	if g.is_large_struct_type(func.typ) {
@@ -570,7 +588,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 				g.set_alloca_slot(val_id, -slot_offset, alloc_size, alignment)
 				slot_offset += 8
 			} else if instr.op != .store && instr.op != .ret && instr.op != .br && instr.op != .jmp
-				&& instr.op != .unreachable {
+				&& instr.op != .unreachable && g.value_home_reg(val_id) == 0 {
 				slot_offset = g.reserve_value_stack_slot(val_id, slot_offset)
 			}
 		}
@@ -586,8 +604,10 @@ fn (mut g Gen) gen_func(func_idx int) {
 	// Prologue: stp fp, lr, [sp, -16]! ; mov fp, sp ; sub sp, sp, #frame
 	g.emit32(asm_stp_fp_lr_pre())
 	g.emit32(asm_mov_fp_sp())
-	if g.stack_size > 0 {
-		g.emit_sub_sp(g.stack_size)
+	g.emit_frame_allocation(g.stack_size)
+	g.emit_save_callee_pairs(g.saved_callee_pairs)
+	if g.saved_callee_pairs + g.saved_float_pairs > 0 {
+		g.macho.unwind_saved_pairs[sym_name] = g.saved_callee_pairs | (g.saved_float_pairs << 4)
 	}
 	if g.cur_func_sret_offset != 0 {
 		g.emit_store_fp(8, g.cur_func_sret_offset)
@@ -778,9 +798,47 @@ fn (mut g Gen) emit_zero_aggregate(ptr_reg int, typ_id ssa.TypeID, max_size int)
 	if max_size > 0 && max_size < size {
 		size = max_size
 	}
-	n_words := (size + 7) / 8
-	for wi in 0 .. n_words {
+	for wi in 0 .. size / 8 {
 		g.emit_store_reg_offset(xzr, Reg(ptr_reg), wi * 8)
+	}
+	if size % 8 != 0 {
+		g.emit_store_partial(xzr, Reg(ptr_reg), size / 8 * 8, size % 8)
+	}
+}
+
+// emit_store_partial writes the low `count` bytes (1 to 7) of `src` to
+// `base + offset`. Aggregates whose size is not a multiple of 8 end with such a
+// tail; a full-word store there would overwrite the bytes that follow them.
+// `src` is clobbered.
+fn (mut g Gen) emit_store_partial(src Reg, base Reg, offset int, count int) {
+	addr := if int(src) != 11 && int(base) != 11 {
+		Reg(11)
+	} else if int(src) != 12 && int(base) != 12 {
+		Reg(12)
+	} else {
+		Reg(13)
+	}
+	g.emit_mov_imm(int(addr), i64(offset))
+	g.emit32(asm_add_reg(addr, base, addr))
+	mut left := count
+	if left >= 4 {
+		g.emit32(asm_str_w(src, addr))
+		left -= 4
+		if left > 0 {
+			g.emit32(asm_lsr_imm(src, src, 32))
+			g.emit32(asm_add_imm(addr, addr, 4))
+		}
+	}
+	if left >= 2 {
+		g.emit32(asm_str_h(src, addr))
+		left -= 2
+		if left > 0 {
+			g.emit32(asm_lsr_imm(src, src, 16))
+			g.emit32(asm_add_imm(addr, addr, 2))
+		}
+	}
+	if left == 1 {
+		g.emit32(asm_str_b(src, addr))
 	}
 }
 
@@ -833,7 +891,12 @@ fn (g &Gen) stack_slot_size(ptr_id int) ?int {
 				if slot_size == 0 {
 					base_id := int(instr.operands[0])
 					base_type := g.ptr_elem_type(base_id)
-					if base_type > 0 && base_type < g.m.type_store.types.len {
+					// A pointer of the base's own type steps over whole elements
+					// (`&arr[i]` in an `alloca T, n`); only a narrower pointer
+					// projects a field. Taking `&arr[0]` for its first field made
+					// stores to it copy one word.
+					if base_type > 0 && base_type < g.m.type_store.types.len
+						&& g.ptr_elem_type(cur) != base_type {
 						base := g.m.type_store.types[base_type]
 						if base.kind == .struct_t {
 							off_id := instr.operands[1]
@@ -926,6 +989,7 @@ fn (g &Gen) stack_alloca_remaining(ptr_id int) ?int {
 
 // gen_instr emits instr output for arm64.
 fn (mut g Gen) gen_instr(val_id int) {
+	g.current_instr_start = g.text_words.len
 	if val_id <= 0 || val_id >= g.m.values.len {
 		return
 	}
@@ -939,6 +1003,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.alloca {
 			g.emit_alloca_address(8, val_id)
 			g.store_val(8, val_id)
+		}
+		.atomic_load, .atomic_store, .atomic_xchg, .atomic_add, .atomic_sub, .cmpxchg, .fence {
+			g.gen_atomic(val_id, instr)
 		}
 		.store {
 			if instr.operands.len < 2 {
@@ -969,10 +1036,16 @@ fn (mut g Gen) gen_instr(val_id int) {
 				if src_size > 8 && g.is_value_aggregate_type(src_val.typ) {
 					if src_off := g.stack_slot(src_id) {
 						copy_size := g.aggregate_store_size(ptr_id, src_val.typ)
-						n_words := (copy_size + 7) / 8
-						for wi in 0 .. n_words {
+						for wi in 0 .. copy_size / 8 {
 							g.emit_load_fp(8, src_off + wi * 8)
 							g.emit_store_reg_offset(Reg(8), Reg(ptr_reg), wi * 8)
+						}
+						if copy_size % 8 != 0 {
+							// The stack slot is a whole number of words, so the
+							// last word can be read in full.
+							g.emit_load_fp(8, src_off + copy_size / 8 * 8)
+							g.emit_store_partial(Reg(8), Reg(ptr_reg), copy_size / 8 * 8,
+								copy_size % 8)
 						}
 					} else {
 						src_reg := g.load_val(src_id, 8)
@@ -1339,11 +1412,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.emit_store_reg_offset(Reg(8), Reg(9), wi * 8)
 					}
 				}
-				if g.stack_size > 0 {
-					g.emit_add_sp(g.stack_size)
-				}
-				g.emit32(asm_ldp_fp_lr_post())
-				g.emit32(asm_ret())
+				g.emit_function_return()
 				return
 			}
 			// Float returns go in d0 (s0 for f32). Load the return value as a
@@ -1356,11 +1425,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				if g.is_f32_type(g.cur_func_ret_type) {
 					g.emit32(asm_fcvt_s_d(0, 0))
 				}
-				if g.stack_size > 0 {
-					g.emit_add_sp(g.stack_size)
-				}
-				g.emit32(asm_ldp_fp_lr_post())
-				g.emit32(asm_ret())
+				g.emit_function_return()
 				return
 			}
 			if instr.operands.len > 0 && instr.operands[0] > 0 {
@@ -1397,11 +1462,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit_mov_imm(0, 0)
 			}
 			// Epilogue
-			if g.stack_size > 0 {
-				g.emit_add_sp(g.stack_size)
-			}
-			g.emit32(asm_ldp_fp_lr_post())
-			g.emit32(asm_ret())
+			g.emit_function_return()
 		}
 		.br {
 			if instr.operands.len < 3 {
@@ -1863,14 +1924,16 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	if is_indirect {
 		target_reg := g.load_val(fn_ref_id, 16)
 		g.emit32(asm_blr(Reg(target_reg)))
-	} else if !is_c_extern && fn_name in g.fn_offsets {
-		target := g.fn_offsets[fn_name]
-		offset := (target - g.text_offset()) / 4
-		g.emit32(asm_bl(i32(offset)))
 	} else {
-		sym_idx := g.macho.add_undefined('_' + fn_name)
-		g.macho.add_reloc(g.text_offset(), sym_idx, arm64_reloc_branch26, true)
-		g.emit32(asm_bl(0))
+		target := if is_c_extern { -1 } else { g.fn_offsets[fn_name] or { -1 } }
+		if target >= 0 {
+			offset := (target - g.text_offset()) / 4
+			g.emit32(asm_bl(i32(offset)))
+		} else {
+			sym_idx := g.macho.add_undefined('_' + g.c_symbol_name(fn_name, is_c_extern))
+			g.macho.add_reloc(g.text_offset(), sym_idx, arm64_reloc_branch26, true)
+			g.emit32(asm_bl(0))
+		}
 	}
 
 	if out_stack_size > 0 {
@@ -1994,7 +2057,10 @@ fn (mut g Gen) load_float_bits_to_reg(val_id int, reg int) {
 			return
 		}
 	}
-	g.load_val(val_id, reg)
+	home := g.load_val(val_id, reg)
+	if home != reg {
+		g.emit32(asm_mov_reg(Reg(reg), Reg(home)))
+	}
 }
 
 // call_stack_arg_size updates call stack arg size state for Gen.
@@ -2147,6 +2213,14 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 		g.emit_mov_imm(reg, 0)
 		return reg
 	}
+	home := g.value_home_reg(val_id)
+	if home != 0 {
+		if is_float_home(home) {
+			g.emit32(asm_fmov_x_d(Reg(reg), float_home_reg(home)))
+			return reg
+		}
+		return home
+	}
 	val := g.m.values[val_id]
 	match val.kind {
 		.constant {
@@ -2171,7 +2245,7 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 		.func_ref {
 			name := if val.index >= 0 && val.index < g.m.funcs.len
 				&& g.m.funcs[val.index].is_c_extern {
-				val.name.trim_string_left('C.')
+				g.c_symbol_name(val.name.trim_string_left('C.'), true)
 			} else {
 				val.name
 			}
@@ -2218,6 +2292,17 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 
 // store_val supports store val handling for Gen.
 fn (mut g Gen) store_val(reg int, val_id int) {
+	home := g.value_home_reg(val_id)
+	if home != 0 {
+		if is_float_home(home) {
+			g.emit32(asm_fmov_d_x(float_home_reg(home), Reg(reg)))
+			return
+		}
+		if reg != home && !g.retarget_last_instruction(reg, home) {
+			g.emit32(asm_mov_reg(Reg(home), Reg(reg)))
+		}
+		return
+	}
 	if off := g.stack_slot(val_id) {
 		g.emit_store_fp(reg, off)
 	}
@@ -2225,24 +2310,29 @@ fn (mut g Gen) store_val(reg int, val_id int) {
 
 // ==================== String materialization ====================
 
+// string_symbol returns the symbol of a string literal, adding the literal the
+// first time it is seen.
+fn (mut g Gen) string_symbol(content string) int {
+	if cached := g.string_cache[content] {
+		return cached
+	}
+	offset := g.macho.str_data.len
+	if content.len > 0 {
+		unsafe { g.macho.str_data.push_many(content.str, content.len) }
+	}
+	g.macho.str_data << 0
+	symbol := g.macho.add_symbol('L_str_${offset}', u64(offset), false, 2)
+	g.string_cache[content] = symbol
+	g.chunk_strings << content
+	return symbol
+}
+
 // materialize_string supports materialize string handling for Gen.
 fn (mut g Gen) materialize_string(val_id int, reg int) {
 	val := g.m.values[val_id]
 	str_content := val.name
 	str_len := str_content.len
-
-	mut str_offset := 0
-	if cached := g.string_cache[str_content] {
-		str_offset = cached
-	} else {
-		str_offset = g.macho.str_data.len
-		g.string_cache[str_content] = str_offset
-		g.macho.str_data << str_content.bytes()
-		g.macho.str_data << 0
-	}
-
-	str_sym_name := 'L_str_${str_offset}'
-	str_sym_idx := g.macho.add_symbol(str_sym_name, u64(str_offset), false, 2)
+	str_sym_idx := g.string_symbol(str_content)
 
 	// ADRP + ADD to load address
 	g.macho.add_reloc(g.text_offset(), str_sym_idx, arm64_reloc_page21, true)
@@ -2284,16 +2374,15 @@ fn (mut g Gen) emit_global_addr(reg int, name string) {
 }
 
 fn (g &Gen) is_external_global(name string) bool {
-	for global in g.m.globals {
-		if global.name == name {
-			return global.linkage == .external
-		}
-	}
-	return false
+	index := g.find_global_idx_by_name(name)
+	return index >= 0 && g.m.globals[index].linkage == .external
 }
 
 // find_global_idx_by_name resolves find global idx by name information for arm64.
 fn (g &Gen) find_global_idx_by_name(name string) int {
+	if g.global_index_ready {
+		return g.global_index[name] or { -1 }
+	}
 	for i, global in g.m.globals {
 		if global.name == name {
 			return i
@@ -2786,6 +2875,13 @@ fn (g &Gen) is_f32_type(typ_id ssa.TypeID) bool {
 // compiler. A slot these forms do not cover falls back to an integer load plus
 // an `fmov`, so the caller keeps one correct path for every frame size.
 fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
+	home := g.value_home_reg(val_id)
+	if is_float_home(home) {
+		if float_home_reg(home) != dreg {
+			g.emit32(asm_fmov_d_d(dreg, float_home_reg(home)))
+		}
+		return true
+	}
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
 	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
@@ -2807,6 +2903,13 @@ fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
 // load_s_from_slot is load_d_from_slot at f32 width: the value's four bytes go
 // into the `s` register the instruction names, with no widening.
 fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
+	home := g.value_home_reg(val_id)
+	if is_float_home(home) {
+		if float_home_reg(home) != sreg {
+			g.emit32(asm_fmov_d_d(sreg, float_home_reg(home)))
+		}
+		return true
+	}
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
 	if off < 0 && sp_offset >= 0 && sp_offset < 16384 && sp_offset % 8 == 0 {
@@ -2830,6 +2933,13 @@ fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
 // and leaves the rest to that path, so the slot is written exactly as before,
 // only without the `fmov` that copies the bits through x8 first.
 fn (mut g Gen) store_d_to_slot(dreg int, val_id int) bool {
+	home := g.value_home_reg(val_id)
+	if is_float_home(home) {
+		if float_home_reg(home) != dreg {
+			g.emit32(asm_fmov_d_d(float_home_reg(home), dreg))
+		}
+		return true
+	}
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
 	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
@@ -2981,6 +3091,9 @@ fn (mut g Gen) gen_float_binop(fop ssa.OpCode, lhs_id int, rhs_id int, val_id in
 		return
 	}
 
+	if fop != .frem && g.gen_float_binop_in_registers(fop, lhs_id, rhs_id, val_id) {
+		return
+	}
 	lhs_reg, rhs_reg := float_operand_regs(lhs_id, rhs_id)
 	g.load_float_operand(lhs_id, lhs_reg) // d0
 	if rhs_reg != lhs_reg {
@@ -3019,6 +3132,30 @@ fn (mut g Gen) emit_sub_sp(size int) {
 		g.emit_mov_imm(11, i64(size))
 		g.emit32(asm_sub_sp_reg(Reg(11)))
 	}
+}
+
+// emit_frame_allocation reserves a function's frame. Without a register
+// allocator frames can pass the guard page of a thread's stack, so a frame
+// larger than a page touches every page on the way down: a stack overflow must
+// fault, not write past the guard. x9 and x10 are scratch here (AAPCS64). Go
+// checks the stack limit in its prologues (stacksplit in cmd/internal/obj/arm64/
+// obj7.go) because its stacks grow; with fixed stacks, this probe loop is the
+// one in Zig's lib/compiler_rt/stack_probe.zig.
+fn (mut g Gen) emit_frame_allocation(size int) {
+	page := if g.m.target.os == 'linux' { 4096 } else { 16384 }
+	if size < page {
+		g.emit_sub_sp(size)
+		return
+	}
+	g.emit_mov_imm(9, i64(size))
+	g.emit_mov_imm(10, i64(page))
+	g.emit32(asm_subs_reg(Reg(31), Reg(9), Reg(10))) // cmp x9, x10
+	g.emit32(asm_b_cond(cond_lo, 5)) // b.lo done
+	g.emit32(asm_sub_sp_reg(Reg(10)))
+	g.emit32(0xF90003FF) // str xzr, [sp]
+	g.emit32(asm_sub_reg(Reg(9), Reg(9), Reg(10)))
+	g.emit32(asm_b(-5)) // back to the cmp
+	g.emit32(asm_sub_sp_reg(Reg(9)))
 }
 
 // emit_add_sp emits emit add sp output for arm64.

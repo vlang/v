@@ -329,16 +329,8 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 		return
 	}
 
-	mut max_id := m.values.len
-	for i in 0 .. np {
-		if p_dest[i] >= max_id {
-			max_id = p_dest[i] + 1
-		}
-		if p_src[i] >= max_id {
-			max_id = p_src[i] + 1
-		}
-	}
-	mut src_ref_count := []int{len: max_id + np + 4}
+	// Sparse: a block copies a few values out of the module's many.
+	mut src_ref_count := map[int]int{}
 	mut source_users := map[int][]int{}
 
 	for i in 0 .. np {
@@ -412,9 +404,6 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 		}
 		temp := add_temp_value(mut m, blk_id, cycle_src, typ)
 		pending_instrs << temp
-		for temp >= src_ref_count.len {
-			src_ref_count << 0
-		}
 		src_ref_count[temp] = 0
 		mut temp_users := []int{}
 		if users := source_users[cycle_src] {
