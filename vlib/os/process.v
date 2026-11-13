@@ -31,6 +31,7 @@ pub mut:
 	stdin_path       string   // when non-empty, use this file as the child process's standard input
 	has_stdin_path   bool     // true after set_stdin_path is called
 	use_pgroup       bool     // when true, the process will create a new process group, enabling .signal_pgkill()
+	pgroup_fallback  bool     // Windows: use_pgroup was set but the child could not be put in a job object; .signal_pgkill() then reaches only the child itself and what shares its console group
 	stdio_fd         [3]int   // the stdio file descriptors for the child process, used only by the nix implementation
 	wdata            voidptr  // the WProcess; used only by the windows implementation
 	create_no_window bool     // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
