@@ -1,4 +1,4 @@
-@[abc]
+@['abc']
 struct Another {
 	a []int
 	b u8

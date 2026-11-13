@@ -58,7 +58,8 @@ const lowered_runtime_seeds = ['new_array_from_c_array_aligned', 'new_array_from
 	'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit']
 
 // float_runtime_seeds format the floats of a program that can have them.
-const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
+const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
+	'strconv.f64_to_decimal', 'strconv.f64_to_decimal_exact_int']
 
 const ownership_runtime_seeds = ['array.free', 'array__free', 'map.free', 'map__free', 'free']
 
@@ -108,7 +109,7 @@ pub fn seeded_fn_names() []string {
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 	return used
 }
 
@@ -120,39 +121,39 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 }
 
 // mark_used_with_generic_usage_cached is mark_used_with_generic_usage that keeps
 // its declaration indexes in `decl_cache`, so a later pass over the same
 // declarations (after semantic checks of more library bodies) reuses them.
 pub fn mark_used_with_generic_usage_cached(a &flat.FlatAst, tc &types.TypeChecker, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, decl_cache)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, decl_cache, false)
 }
 
 // mark_used_with_generic_usage_full_runtime_cached is the decl_cache variant of
 // mark_used_with_generic_usage_full_runtime.
 pub fn mark_used_with_generic_usage_full_runtime_cached(a &flat.FlatAst, tc &types.TypeChecker, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, decl_cache)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, decl_cache, false)
 }
 
 // mark_used_with_generic_usage_full_runtime disables the literal-output shortcut so
 // compatibility fixtures retain helpers referenced by the complete builtin runtime.
 pub fn mark_used_with_generic_usage_full_runtime(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 }
 
 // mark_used_without_generic_detection is the self-host variant for inputs whose caller
 // already guarantees that monomorphization is unnecessary.
 pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 	return used
 }
 
 // mark_used_without_generic_detection_prepared consumes declaration indexes
 // built concurrently with checking for the no-generic self-host path.
 pub fn mark_used_without_generic_detection_prepared(a &flat.FlatAst, tc &types.TypeChecker, mut prepared PreparedMarkusedDecls) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, prepared, unsafe { nil }, false, unsafe { nil })
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, prepared, unsafe { nil }, false, unsafe { nil }, false)
 	return used
 }
 
@@ -163,7 +164,17 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
+}
+
+// mark_used_for_native_tests_with_generic_usage roots test hooks and discovers
+// runtime helpers only in reachable bodies, avoiding unused unsupported native code.
+pub fn mark_used_for_native_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) (map[string]bool, bool) {
+	mut file_map := map[string]bool{}
+	for file in test_files {
+		file_map[file] = true
+	}
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, true)
 }
 
 // mark_all_used_with_generic_usage roots every concrete function while preserving
@@ -173,7 +184,7 @@ pub fn mark_all_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, 
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 }
 
 // mark_used_for_cache roots every concrete function in modules being built for the object cache.
@@ -189,7 +200,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 }
 
 // mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
@@ -199,7 +210,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 	for file in test_files {
 		file_map[file] = true
 	}
-	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 	return used
 }
 
@@ -209,7 +220,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 pub fn mark_used_checking_library_bodies(a &flat.FlatAst, mut tc types.TypeChecker, parallel bool) (map[string]bool, bool) {
 	tc.library_body_convergence_complete = false
 	return mark_used_with_test_files(a, &tc, map[string]bool{}, map[string]bool{}, false, true,
-		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil })
+		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil }, false)
 }
 
 // reachable_const_exprs returns const initializer expressions referenced by the supplied
@@ -312,6 +323,7 @@ mut:
 // function of the AST, `tc.top_level_idx`, and the checker's file, module and
 // function-file tables only.
 fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool) MarkusedDeclScan {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := MarkusedDeclScan{
 		fn_decls:                   map[string]FnDeclInfo{}
 		fn_decl_lists:              map[string][]FnDeclInfo{}
@@ -370,7 +382,7 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -595,7 +607,7 @@ fn markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, c
 }
 
 @[direct_array_access]
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool, decl_cache &MarkusedDeclCache, reachable_test_helpers bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
 		&& test_files.len == 0 && !all_functions
@@ -605,11 +617,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// just as the known non-generic self-host path does. A mark-all build also emits
 	// library bodies, whose generic calls still need specialization.
 	detect_reachable_generics := detect_generics && !trivial_literal_output
-	// Full-runtime fixtures, tests, module caches, and self-host builds retain the
-	// conservative whole-program scan. Ordinary builds discover expression helpers
-	// while following their reachable function bodies.
+	// Full-runtime fixtures, C tests, module caches, and self-host builds retain
+	// the conservative whole-program scan. Ordinary and native test builds discover
+	// expression helpers while following their reachable function bodies.
 	reachable_runtime_helpers := detect_reachable_generics && allow_trivial_literal_output
-		&& !cache_mode && cache_modules.len == 0 && test_files.len == 0 && !all_functions
+		&& !cache_mode && cache_modules.len == 0
+		&& (test_files.len == 0 || reachable_test_helpers) && !all_functions
 	use_prepared := !isnil(prepared) && prepared.ready && !detect_reachable_generics && !cache_mode
 		&& !all_functions
 	// Runtime-helper detection reads completed semantic types. Start it here,
@@ -729,7 +742,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			iface_id := iface_name_source_id
 			for method in tc.interface_abstract_method_names(iface_id) {
 				key := tc.interface_method_signature_key(iface_id, method) or { continue }
-				if (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
+				if cache_modules[iface_name.all_before_last('.')]
+					|| (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
 					enqueue('${iface_name}.${method}', mut used, mut queue)
 				}
 			}
@@ -904,7 +918,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	// Cached module objects can call generated enum stringifiers from bodies that
 	// are intentionally absent from their public headers. Keep those program-level
-	// helpers even when no visible caller remains in the warm-cache AST.
+	// helpers even when no visible caller remains in the warm-cache AST. Their enums
+	// can belong to dependencies reloaded from source, not just cached headers.
 	for type_name in cached_header_enum_str_roots {
 		enqueue_enum_str_method(type_name, '', tc, mut used, mut queue)
 	}
@@ -1442,6 +1457,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: resolved hit: "${callee}"')
 						}
 					}
+				} else if reachable_runtime_helpers
+					&& enqueue_generated_enum_str_call(callee, fn_info.module, tc, mut used, mut queue) {
+					found_direct = true
 				} else if markused_is_interface_dispatch_call(callee, fn_info.module, tc) {
 					found_direct = true
 					enqueue(callee, mut used, mut queue)
@@ -2548,6 +2566,7 @@ pub fn (mut prepared PreparedMarkusedDecls) release() {
 }
 
 fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) &PreparedMarkusedDecls {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := &PreparedMarkusedDecls{
 		fn_decls:             map[string]FnDeclInfo{}
 		fn_decl_lists:        map[string][]FnDeclInfo{}
@@ -2600,7 +2619,7 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -4462,7 +4481,7 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 		types.Map {
 			// The generated map formatter has runtime branches for every scalar
 			// kind, so even an integer map needs its float conversion callee.
-			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_map_str_helpers(tc, mut used, mut queue)
 			enqueue_stringified_type_dependencies(typ.key_type, cur_module, tc, skipped_fields,
 				mut used, mut queue, mut seen)
 			enqueue_stringified_type_dependencies(typ.value_type, cur_module, tc, skipped_fields,
@@ -4555,9 +4574,12 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
-			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'f64.str', 'f64__str',
-				'rune.str', 'rune__str'] {
+			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'rune.str', 'rune__str'] {
 				enqueue(helper, mut used, mut queue)
+			}
+			if !tc.nofloat {
+				enqueue('f64.str', mut used, mut queue)
+				enqueue('f64__str', mut used, mut queue)
 			}
 			enqueue_implicit_interface_str_helpers_inner(typ.key_type, tc, mut used, mut queue, mut seen)
 			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut seen)
@@ -4649,7 +4671,7 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
-			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_map_str_helpers(tc, mut used, mut queue)
 			enqueue_implicit_str_type_helpers(typ.key_type, tc, mut used, mut queue, mut seen)
 			enqueue_implicit_str_type_helpers(typ.value_type, tc, mut used, mut queue, mut seen)
 		}
@@ -4657,10 +4679,13 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 	}
 }
 
-fn enqueue_implicit_map_str_helpers(mut used map[string]bool, mut queue []string) {
+fn enqueue_implicit_map_str_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	enqueue('string__plus', mut used, mut queue)
-	for primitive in ['i64', 'u64', 'f64', 'rune'] {
+	for primitive in ['i64', 'u64', 'rune'] {
 		enqueue_stringified_primitive_helpers(flat.source_type_id(primitive), mut used, mut queue)
+	}
+	if !tc.nofloat {
+		enqueue_stringified_primitive_helpers(flat.source_type_f64, mut used, mut queue)
 	}
 }
 
@@ -4717,6 +4742,22 @@ fn enqueue_stringified_primitive_helpers(type_name_id u32, mut used map[string]b
 		enqueue('strconv__f64_to_str_l', mut used, mut queue)
 	} else {
 	}
+}
+
+// Generated enum str calls have no source declaration. Resolve them before the
+// same-name fallback can retain every unrelated str method.
+fn enqueue_generated_enum_str_call(callee string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) bool {
+	if !callee.ends_with('.str') {
+		return false
+	}
+	receiver := flat.source_type_id(callee[..callee.len - 4])
+	for candidate in stringification_type_candidates(receiver, cur_module) {
+		if candidate in tc.enum_names {
+			enqueue_enum_str_method(candidate, cur_module, tc, mut used, mut queue)
+			return true
+		}
+	}
+	return false
 }
 
 // enqueue_enum_str_method supports enqueue enum str method handling for markused.

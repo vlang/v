@@ -2,8 +2,9 @@ module main
 
 import os
 
-// The V3 unit-test runner, `vlib/v/test_all.vsh`, builds V3 from `vlib/v/v.v` once and names
-// that compiler and its source in these variables. Hundreds of its tests build the same compiler
+// The V3 unit-test runner, `vlib/v/test_all.vsh`, prepares a shared build of `vlib/v/v.v`
+// and names that compiler and its source in these variables. CI may supply one optimized build
+// before sharding; each runner gets its own copy. Hundreds of tests build the same compiler
 // again through `@VEXE`, which is this launcher, so the launcher is the only process that sees
 // those requests: a wrapper named by VEXE cannot, because main() points VEXE back at this
 // executable before the test compiler reads it.
@@ -11,10 +12,11 @@ const shared_test_compiler_env = 'V3_TEST_UNIT_SHARED_V3'
 const shared_test_compiler_source_env = 'V3_TEST_UNIT_V3_SRC'
 
 // reuse_shared_test_compiler serves a build of the unit-test runner's shared V3 compiler with a
-// copy of it, when `args` asks for exactly the build that produced it. It reports whether it
-// served the request; when it did not, the caller builds as usual. A copy, unlike a hard link,
-// gives the output its own file identity, as a fresh build would: the module cache keys on it,
-// and a test that rebuilds its compiler expects a different one.
+// copy of the runner-selected driver for a plain compiler build. The runner may optimize that
+// driver with -prod; requests with explicit compiler-build options still build their own.
+// It reports whether it served the request; when it did not, the caller builds as usual.
+// A copy, unlike a hard link, gives the output its own file identity. The module cache keys
+// on it, and a test that rebuilds its compiler expects a different one.
 fn reuse_shared_test_compiler(args []string) bool {
 	shared_compiler := os.getenv(shared_test_compiler_env)
 	source := os.getenv(shared_test_compiler_source_env)
@@ -39,9 +41,9 @@ fn reuse_shared_test_compiler(args []string) bool {
 }
 
 // shared_test_compiler_output returns the `-o` path of `args` when they build `source` with the
-// options of the shared compiler and nothing else: `-gc none`, and `-path` entries that resolve
-// modules from the vlib of `source`. Every other option can change the compiler that is built,
-// and its request must build its own.
+// plain driver options and nothing else: `-gc none`, and `-path` entries that resolve modules
+// from the vlib of `source`. The runner may optimize its shared driver. Every explicit option
+// outside this plain-build contract, including -prod, -cc and -selfhost, must build its own.
 fn shared_test_compiler_output(args []string, source string) ?string {
 	source_path := os.real_path(source)
 	vlib := os.dir(os.dir(source_path))

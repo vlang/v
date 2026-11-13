@@ -26,6 +26,13 @@ mut:
 	string_cache         map[string]int
 	cur_func_ret_type    ssa.TypeID
 	cur_func_sret_offset int
+	// prune_unused emits only the functions reachable from main (freestanding
+	// objects, whose runtime registers helpers the program may never call).
+pub mut:
+	prune_unused bool
+	// freestanding links the program's own runtime definitions of libc-named
+	// symbols (see Linker.freestanding).
+	freestanding bool
 }
 
 // PendingJmp represents pending jmp data used by arm64.
@@ -75,7 +82,11 @@ fn new_gen_with_text_capacity(m &ssa.Module, text_capacity int) &Gen {
 // gen supports gen handling for Gen.
 pub fn (mut g Gen) gen() {
 	g.gen_pre_pass()
+	reachable := if g.prune_unused { g.reachable_functions() } else { []bool{} }
 	for fi in 0 .. g.m.funcs.len {
+		if reachable.len > 0 && !reachable[fi] {
+			continue
+		}
 		g.gen_func(fi)
 	}
 	g.materialize_text()
@@ -205,6 +216,7 @@ fn (mut g Gen) materialize_text() {
 // write_and_link writes and link output for arm64.
 pub fn (mut g Gen) write_and_link(output string) {
 	mut l := Linker.new(g.macho)
+	l.freestanding = g.freestanding
 	l.link(output, '_main')
 }
 
@@ -376,6 +388,39 @@ fn arm64_max_int(a int, b int) int {
 	return if a > b { a } else { b }
 }
 
+// reachable_functions marks the functions reachable from main through function
+// references in the instructions of each reachable body.
+fn (g &Gen) reachable_functions() []bool {
+	mut reach := []bool{len: g.m.funcs.len}
+	mut work := []int{}
+	for i, f in g.m.funcs {
+		if f.name == 'main' {
+			reach[i] = true
+			work << i
+		}
+	}
+	for work.len > 0 {
+		fi := work.pop()
+		for bid in g.m.funcs[fi].blocks {
+			for vid in g.m.blocks[bid].instrs {
+				instr := g.m.instrs[g.m.values[vid].index]
+				for op in instr.operands {
+					if op <= 0 || op >= g.m.values.len {
+						continue
+					}
+					v := g.m.values[op]
+					if v.kind == .func_ref && v.index >= 0 && v.index < g.m.funcs.len
+						&& !reach[v.index] {
+						reach[v.index] = true
+						work << v.index
+					}
+				}
+			}
+		}
+	}
+	return reach
+}
+
 // gen_pre_pass emits pre pass output for arm64.
 fn (mut g Gen) gen_pre_pass() {
 	mut data_offset := u64(0)
@@ -392,6 +437,30 @@ fn (mut g Gen) gen_pre_pass() {
 
 // gen_post_pass emits post pass output for arm64.
 fn (mut g Gen) gen_post_pass() {
+	// `C._wyp` is a generated C constant that map hashing reads by name. Its
+	// bytes follow the globals' data, so the globals' offsets stay valid.
+	mut globals_end := u64(0)
+	for gi in 0 .. g.m.globals.len {
+		if g.m.globals[gi].linkage == .external {
+			continue
+		}
+		globals_end = (globals_end + 7) & ~u64(7)
+		size := g.m.type_size(g.m.globals[gi].typ)
+		globals_end += u64(if size > 0 { size } else { 8 })
+	}
+	for g.macho.data_data.len < int(globals_end) {
+		g.macho.data_data << 0
+	}
+	g.macho.add_symbol('__wyp', u64(g.macho.data_data.len), true, 3)
+	secrets := [u64(0x2d358dccaa6c78a5), u64(0x8bb84b93962eacc9), u64(0x4b33a62ed433d4a3),
+		u64(0x4d5a2da51de1aa47)]
+	for secret in secrets {
+		mut bytes := []u8{len: 8}
+		for i in 0 .. 8 {
+			bytes[i] = u8(secret >> (i * 8))
+		}
+		g.macho.data_data << bytes
+	}
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
 			continue
@@ -426,7 +495,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 	if func.blocks.len == 0 {
 		fn_start := g.text_offset()
 		sym_name := '_' + func.name
-		g.macho.add_symbol(sym_name, u64(fn_start), false, 1)
+		g.macho.add_symbol(sym_name, u64(fn_start), true, 1)
 		g.emit32(asm_ret())
 		g.fn_offsets[func.name] = fn_start
 		return
@@ -511,7 +580,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 
 	fn_start := g.text_offset()
 	sym_name := '_' + func.name
-	g.macho.add_symbol(sym_name, u64(fn_start), false, 1)
+	g.macho.add_symbol(sym_name, u64(fn_start), true, 1)
 	g.fn_offsets[func.name] = fn_start
 
 	// Prologue: stp fp, lr, [sp, -16]! ; mov fp, sp ; sub sp, sp, #frame
@@ -525,6 +594,10 @@ fn (mut g Gen) gen_func(func_idx int) {
 	}
 
 	if func.name == 'main' {
+		// argc is a C int: AAPCS64 leaves x0's upper half unspecified, and the
+		// g_main_argc global is 8 bytes here, so argv indexing would read
+		// whatever the caller left above w0. Widen it first.
+		g.emit32(asm_sxtw(Reg(0), Reg(0)))
 		g.store_entry_arg_to_global(0, 'g_main_argc')
 		g.store_entry_arg_to_global(1, 'g_main_argv')
 	}
@@ -1043,6 +1116,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				else {}
 			}
+			if instr.op in [.add, .sub, .mul, .shl] {
+				// The ops run on the full x register; a narrower integer has to
+				// wrap at its own width before a shift, compare or index reads
+				// the bits above it (bits.trailing_zeros_32's de Bruijn index
+				// ran past its table and crashed dlmalloc on macOS arm64).
+				g.emit_wrap_to_width(8, val.typ)
+			}
 
 			g.store_val(8, val_id)
 		}
@@ -1114,6 +1194,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.neg {
 			src_reg := g.load_val(instr.operands[0], 8)
 			g.emit32(asm_sub_reg(Reg(8), xzr, Reg(src_reg)))
+			g.emit_wrap_to_width(8, val.typ)
 			g.store_val(8, val_id)
 		}
 		.zext {
@@ -1217,6 +1298,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 				src_reg := g.load_val(src_id, 8)
 				if src_reg != 8 {
 					g.emit32(asm_mov_reg(Reg(8), Reg(src_reg)))
+				}
+				if g.narrow_int_width(src_typ) > 0
+					&& g.is_signed_int_type(src_typ) != g.is_signed_int_type(val.typ) {
+					// A same-width integer cast such as i32 -> u32 (the operand of
+					// `>>>`) keeps the low bits, but the register has to re-extend
+					// from them per the result's signedness.
+					g.emit_wrap_to_width(8, val.typ)
 				}
 				g.store_val(8, val_id)
 			}
@@ -1362,6 +1450,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.struct_init {}
+		.inline_asm {
+			g.gen_inline_asm(val_id)
+		}
 		else {}
 	}
 }
@@ -1533,7 +1624,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 	fn_ref_id := instr.operands[0]
 	is_indirect := instr.op == .call_indirect
-	is_c_extern := !is_indirect && fn_ref_id >= 0 && fn_ref_id < g.m.values.len
+	mut is_c_extern := !is_indirect && fn_ref_id >= 0 && fn_ref_id < g.m.values.len
 		&& g.m.values[fn_ref_id].kind == .func_ref && g.m.values[fn_ref_id].index >= 0
 		&& g.m.values[fn_ref_id].index < g.m.funcs.len
 		&& g.m.funcs[g.m.values[fn_ref_id].index].is_c_extern
@@ -1547,6 +1638,11 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	mut fn_name := ''
 	if !is_indirect {
 		fn_name = fn_ref.name
+		// A libc-shaped name the freestanding runtime defines calls that body.
+		if mapped := g.m.export_c_names[fn_name] {
+			fn_name = mapped
+			is_c_extern = false
+		}
 	}
 	mut c_return_hfa := Arm64HfaLayout{}
 	if is_c_extern {
@@ -1813,6 +1909,17 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		// Float results are returned in d0: move the bit pattern into x0.
 		if g.is_float_type(instr.typ) || g.call_returns_float(fn_ref) {
 			g.emit32(asm_fmov_x_d(Reg(0), 0))
+		} else if g.is_bool_type(instr.typ) {
+			// A C callee declared `bool` returns a C `bool` or an `int` (glibc's
+			// isdigit gives 2048), and AAPCS64 leaves the upper half of x0
+			// unspecified. C converts the int to bool, so test w0 for nonzero.
+			g.emit32(asm_cmp_imm_w(Reg(0), 0))
+			g.emit32(asm_cset_ne(Reg(0)))
+		} else {
+			// AAPCS64 leaves the bits above a narrow integer result
+			// unspecified; a C callee's `int` (kern_return_t, u32 ports, CF
+			// Boolean) must not compare as nonzero through them.
+			g.emit_wrap_to_width(0, instr.typ)
 		}
 		g.store_val(0, val_id)
 	}
@@ -2062,7 +2169,13 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 			return reg
 		}
 		.func_ref {
-			g.emit_global_addr(reg, val.name)
+			name := if val.index >= 0 && val.index < g.m.funcs.len
+				&& g.m.funcs[val.index].is_c_extern {
+				val.name.trim_string_left('C.')
+			} else {
+				val.name
+			}
+			g.emit_global_addr(reg, name)
 			return reg
 		}
 		.instruction {
@@ -2187,6 +2300,47 @@ fn (g &Gen) find_global_idx_by_name(name string) int {
 		}
 	}
 	return -1
+}
+
+// emit_wrap_to_width wraps `reg` to the width of the 8, 16 or 32-bit integer
+// type `typ` in place, sign- or zero-extending as the type's signedness says
+// (the `.trunc` lowering's encoding). Wider and non-integer types pass as is.
+fn (mut g Gen) emit_wrap_to_width(reg int, typ ssa.TypeID) {
+	width := g.narrow_int_width(typ)
+	if width == 0 {
+		return
+	}
+	if g.is_signed_int_type(typ) {
+		match width {
+			8 { g.emit32(asm_sxtb(Reg(reg), Reg(reg))) }
+			16 { g.emit32(asm_sxth(Reg(reg), Reg(reg))) }
+			else { g.emit32(asm_sxtw(Reg(reg), Reg(reg))) }
+		}
+	} else {
+		g.emit32(asm_ubfx_lower(Reg(reg), Reg(reg), u32(width)))
+	}
+}
+
+// narrow_int_width returns the width of an 8, 16 or 32-bit integer type, and 0
+// for every other type.
+fn (g &Gen) narrow_int_width(typ ssa.TypeID) int {
+	if typ <= 0 || typ >= g.m.type_store.types.len {
+		return 0
+	}
+	t := g.m.type_store.types[typ]
+	if t.kind != .int_t || t.width !in [8, 16, 32] {
+		return 0
+	}
+	return t.width
+}
+
+// is_bool_type reports whether `typ` is the 1-bit integer that holds a V bool.
+fn (g &Gen) is_bool_type(typ ssa.TypeID) bool {
+	if typ <= 0 || typ >= g.m.type_store.types.len {
+		return false
+	}
+	t := g.m.type_store.types[typ]
+	return t.kind == .int_t && t.width == 1
 }
 
 // store_entry_arg_to_global converts store entry arg to global data for arm64.

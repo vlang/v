@@ -92,7 +92,7 @@ fn test_environment() {
 		}
 	}
 	os.setenv('VEXE', @VEXE, true)
-	os.setenv('VFLAGS', '-new-compiler -cc clang -d vtest_self_environment_define', true)
+	os.setenv('VFLAGS', '-new-compiler -cc ${@CCOMPILER} -d vtest_self_environment_define', true)
 	result := cmdexec.run_with_timeout(tool, ['test-self', os.base(root)], 120_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('1 passed, 1 total'), result.output

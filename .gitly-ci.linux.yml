@@ -1,0 +1,42 @@
+# Each step runs in the allowlisted Linux image, in a disposable workspace.
+# Build the exact pushed source, then exercise its compiler and test runner.
+variables:
+  VJOBS: "1"
+  VTEST_FAIL_FAST: "1"
+  VTEST_MAX_COMPILATION_RETRIES: "1"
+  VTEST_SHOW_START: "1"
+  VTEST_REPORT_RUNNING_PERIOD_MS: "30000"
+  V_MACOS_V3_NO_FALLBACK: "1"
+  VFLAGS: "-cc tcc -no-retry-compilation"
+  # The 2 GiB play runner cannot afford a nested Clang build of the full web stack.
+  # TinyCC exercises the Brotli module-cache checks without skipping them.
+  V_BROTLI_MODULE_CACHE_TEST_CC: tcc
+  XDG_CACHE_HOME: /workspace/.gitly-ci-cache/xdg
+  V3CACHE: /workspace/.gitly-ci-cache/modules
+  VTOOLS_CACHE_DIR: /workspace/.gitly-ci-cache/tools
+  V_CI_VEXE: /workspace/vprod
+  GITHUB_ACTIONS: "true"
+  GITHUB_JOB: tcc-linux
+  RUNNER_OS: Linux
+
+jobs:
+  linux-tcc:
+    timeout: 5h
+    network: true
+    steps:
+      - name: Build V from the pushed source
+        run: |
+          env -u GITHUB_JOB VFLAGS= make -j1 VPROD=./vprod CACHE_VFLAGS="$VFLAGS"
+          ./vprod -skip-running -o ci/linux_ci ci/linux_ci.vsh
+      - name: V doctor
+        run: ./ci/linux_ci v_doctor_tcc
+      - name: V self compilation
+        run: ./ci/linux_ci v_self_compilation_tcc
+      - name: Verify the V test runner
+        run: python3 ci/gitly_test_oom.py ./ci/linux_ci verify_v_test_works_tcc
+      - name: Test pure V math
+        run: python3 ci/gitly_test_oom.py ./ci/linux_ci test_pure_v_math_module_tcc
+      - name: Test inline assembly
+        run: python3 ci/gitly_test_oom.py ./ci/linux_ci test_inline_assembly
+      - name: V self tests
+        run: python3 ci/gitly_test_oom.py ./ci/linux_ci self_tests_vprod_tcc

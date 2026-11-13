@@ -39,6 +39,8 @@ fn test_factorial_gamma_extension() {
 	assert factorial(-0.5) == gamma(0.5)
 	assert is_inf(factorial(-1), 1)
 	assert is_nan(factorial(-2))
+	assert is_nan(factorial(-1e300))
+	assert is_nan(factorial(-max_f64))
 	assert is_nan(factorial(inf(-1)))
 	assert is_nan(factorial(nan()))
 }

@@ -86,6 +86,7 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('memset', 'void *@(void *, int, size_t);', ''),
 		fastc_c_abi_fn('memcmp', 'int @(const void *, const void *, size_t);', ''),
 		fastc_c_abi_fn('memchr', 'void *@(const void *, int, size_t);', ''),
+		fastc_c_abi_fn('memmem', 'void *@(const void *, size_t, const void *, size_t);', ''),
 		fastc_c_abi_fn('strlen', 'size_t @(const char *);', ''),
 		fastc_c_abi_fn('strcmp', 'int @(const char *, const char *);', ''),
 		fastc_c_abi_fn('strerror', 'char *@(int);', ''),

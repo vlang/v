@@ -5,6 +5,7 @@ module http
 
 import io
 import net
+import time
 
 // h2c_preface_prefix is the leading bytes of the HTTP/2 client connection
 // preface (h2_client_preface, h2_conn.v). RFC 9113 §3.4 chose "PRI" as the
@@ -45,6 +46,14 @@ fn try_serve_h2c(mut reader io.BufferedReader, mut conn net.TcpConn, mut handler
 	peeked := reader.peek(h2c_preface_prefix.len) or { return false }
 	if peeked.bytestr() != h2c_preface_prefix {
 		return false
+	}
+	preface := reader.peek(h2_client_preface.len) or {
+		conn.set_read_deadline(time.Time{})
+		return true
+	}
+	conn.set_read_deadline(time.Time{})
+	if preface.len != h2_client_preface.len || preface.bytestr() != h2_client_preface {
+		return true
 	}
 	mut transport := H2Transport(H2cTransport{
 		reader: reader

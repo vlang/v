@@ -46,6 +46,7 @@ struct FastcGenericMethodSource {
 	first_param_is_type_param  bool
 	type_param_parameter_index int
 	source                     string
+	params_source              string
 }
 
 // fastc_collect_generic_method_source_chunk indexes the generic methods and free
@@ -106,6 +107,7 @@ fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pre
 			first_param_is_type_param:  generic.first_param_is_type_param
 			type_param_parameter_index: generic.type_param_parameter_index
 			source:                     source_file.source[generic.fn_start..generic.def_end]
+			params_source:              generic.params_source
 		}
 	}
 }
@@ -155,8 +157,29 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 			return literal
 		}
 	}
-	inferred := g.infer_expression_type(argument_tokens) or { return u32(0) }
-	actual := fastc_normalize_inferred_type(inferred)
+	mut inferred := g.infer_expression_type(argument_tokens) or { u32(0) }
+	if inferred == 0 {
+		inferred = g.branching_argument_type(argument_tokens)
+		if inferred == 0 {
+			return u32(0)
+		}
+	}
+	mut actual := fastc_normalize_inferred_type(inferred)
+	if fastc_trim_pointer_type(actual) == fastc_type_option {
+		// Every Option shares one C type; a generic `?T` parameter needs the payload,
+		// also through `&option`.
+		depth := flat.source_type_syntax(actual).c_pointer_depth()
+		value_tokens := if depth > 0 && argument_tokens.len > 1 && argument_tokens[0].tok == .amp {
+			argument_tokens[1..]
+		} else {
+			argument_tokens
+		}
+		payload := g.option_value_type_for_expression(value_tokens)
+		if payload != u32(0) {
+			actual = fastc_with_pointer_depth(flat.source_type_id(fastc_typed_option_type(payload)),
+				depth)
+		}
+	}
 	if is_mut_generic_value && tokens[0].tok == .key_mut {
 		value_tokens := fastc_strip_paren_tokens(argument_tokens)
 		if value_tokens.len > 0 && value_tokens[0].tok in [.amp, .and] {
@@ -166,8 +189,12 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 			if local := g.locals[value_tokens[0].lit] {
 				// A typed pointer can already refer to the mutable payload (`mut
 				// entry` with entry &u64), just like a forwarded mut parameter.
-				if local.is_reference || flat.source_type_query(actual).has(.c_pointer_suffix) {
+				if flat.source_type_query(actual).has(.c_pointer_suffix) {
 					return actual
+				}
+				if local.is_reference {
+					// A narrowed scalar variant reads through the pointer it holds.
+					return flat.source_type_composition_two(.concat, actual, flat.source_type_id('*'))
 				}
 			}
 		}
@@ -184,6 +211,92 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 		}
 	}
 	return actual
+}
+
+// branching_argument_type infers a generic argument written as `value or { ... }`,
+// `match subject { ... }` or `if cond { ... } else { ... }`. The streaming renderer
+// learns their type only after the call has been named, so without this the call
+// would reach the erased placeholder, which exits when it runs. Like V, an if/match
+// value takes the type of its first branch that yields one.
+fn (g &Parser) branching_argument_type(tokens []FastcExpressionToken) u32 {
+	if tokens.len < 3 {
+		return u32(0)
+	}
+	mut depth := 0
+	for i, item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				depth++
+			}
+			.rpar, .rsbr, .rcbr {
+				depth--
+			}
+			.key_or {
+				if depth == 0 && i > 0 && i + 1 < tokens.len && tokens[i + 1].tok == .lcbr {
+					close := fastc_matching_delimiter(tokens, i + 1, .lcbr, .rcbr) or { return u32(0) }
+					if close != tokens.len - 1 {
+						return u32(0)
+					}
+					return g.option_value_type_for_expression(tokens[..i])
+				}
+			}
+			else {}
+		}
+	}
+	blocks := match tokens[0].tok {
+		.key_if {
+			fastc_top_level_blocks(tokens, 0, tokens.len) or { return u32(0) }
+		}
+		.key_match {
+			// The first brace opens the arms; each arm's value is a block inside it.
+			mut body := 0
+			for body < tokens.len && tokens[body].tok != .lcbr {
+				body++
+			}
+			if body == tokens.len
+				|| (fastc_matching_delimiter(tokens, body, .lcbr, .rcbr) or { -1 }) != tokens.len - 1 {
+				return u32(0)
+			}
+			fastc_top_level_blocks(tokens, body + 1, tokens.len - 1) or { return u32(0) }
+		}
+		else {
+			return u32(0)
+		}
+	}
+	for open in blocks {
+		close := fastc_matching_delimiter(tokens, open, .lcbr, .rcbr) or { continue }
+		value := tokens[open + 1..close]
+		// A branch that leaves the expression (or holds statements) yields no value
+		// to infer from; another branch supplies the type.
+		if value.len == 0 || value[0].tok in [.key_return, .key_break, .key_continue, .key_go]
+			|| value.any(it.tok in [.decl_assign, .assign, .semicolon, .key_return]) {
+			continue
+		}
+		inferred := g.infer_expression_type(value) or { continue }
+		if inferred != 0 && inferred != flat.source_type_void {
+			return inferred
+		}
+	}
+	return u32(0)
+}
+
+// fastc_top_level_blocks lists the opening brace of each block directly inside
+// tokens[start..end], skipping parenthesized and bracketed groups.
+fn fastc_top_level_blocks(tokens []FastcExpressionToken, start int, end int) ?[]int {
+	mut blocks := []int{}
+	mut i := start
+	for i < end {
+		match tokens[i].tok {
+			.lpar { i = fastc_matching_delimiter(tokens, i, .lpar, .rpar)? + 1 }
+			.lsbr { i = fastc_matching_delimiter(tokens, i, .lsbr, .rsbr)? + 1 }
+			.lcbr {
+				blocks << i
+				i = fastc_matching_delimiter(tokens, i, .lcbr, .rcbr)? + 1
+			}
+			else { i++ }
+		}
+	}
+	return blocks
 }
 
 // A generic call is queued before the expression parser consumes transparent
@@ -248,9 +361,10 @@ fn (mut g Parser) queue_mono_method(receiver_type u32, method string, concrete u
 		mut return_types := base.return_types.ids.clone()
 		mut option_type := base.option_type
 		if g.generic_type_source_uses_parameter(return_source_id, source.type_param) {
-			return_type = fastc_specialized_generic_result_type(return_type, concrete)
-			return_types = fastc_specialized_generic_result_types(return_types, concrete)
-			option_type = fastc_specialized_generic_result_type(option_type, concrete)
+			result_concrete := fastc_generic_result_concrete(source, concrete)
+			return_type = fastc_specialized_generic_result_type(return_type, result_concrete)
+			return_types = fastc_specialized_generic_result_types(return_types, result_concrete)
+			option_type = fastc_specialized_generic_result_type(option_type, result_concrete)
 		}
 		if return_source_id == 0 {
 			return_type = flat.source_type_void
@@ -360,7 +474,9 @@ fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?str
 	signature_index := parameter_index + 1
 	parameter_is_mut := signature_index < base.parameter_mutability.len && base.parameter_mutability[signature_index]
 	argument_type := g.mono_argument_type_at(mut look, parameter_index, parameter_is_mut)
-	concrete := if parameter_index >= 0 && signature_index < base.parameter_types.ids.len {
+	concrete := if source.type_param.contains(',') {
+		g.infer_mono_map_arguments(source, argument_type)
+	} else if parameter_index >= 0 && signature_index < base.parameter_types.ids.len {
 		fastc_infer_generic_type_from_parameter(base.parameter_types.ids[signature_index], argument_type)
 	} else {
 		u32(0)
@@ -405,7 +521,7 @@ fn (mut g Parser) queue_implicit_mono_function(tokens []FastcExpressionToken) ?s
 	}
 	function_key := g.function_key_for_call(tokens, tokens.len - 1)
 	source := g.generic_method_sources[function_key] or { return none }
-	if source.receiver_type != 0 || source.type_param.contains(',') || source.type_param_parameter_index < 0 {
+	if source.receiver_type != 0 || source.type_param_parameter_index < 0 {
 		return none
 	}
 	mut look := g.s
@@ -419,7 +535,11 @@ fn (mut g Parser) queue_implicit_mono_function(tokens []FastcExpressionToken) ?s
 	}
 	parameter_is_mut := parameter_index < base.parameter_mutability.len && base.parameter_mutability[parameter_index]
 	argument_type := g.mono_argument_type_at(mut look, parameter_index, parameter_is_mut)
-	concrete := fastc_infer_generic_type_from_parameter(base.parameter_types.ids[parameter_index], argument_type)
+	concrete := if source.type_param.contains(',') {
+		g.infer_mono_map_arguments(source, argument_type)
+	} else {
+		fastc_infer_generic_type_from_parameter(base.parameter_types.ids[parameter_index], argument_type)
+	}
 	if concrete == 0 {
 		return none
 	}
@@ -438,9 +558,10 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 		mut return_types := base.return_types.ids.clone()
 		mut option_type := base.option_type
 		if g.generic_type_source_uses_parameter(return_source_id, source.type_param) {
-			return_type = fastc_specialized_generic_result_type(return_type, concrete)
-			return_types = fastc_specialized_generic_result_types(return_types, concrete)
-			option_type = fastc_specialized_generic_result_type(option_type, concrete)
+			result_concrete := fastc_generic_result_concrete(source, concrete)
+			return_type = fastc_specialized_generic_result_type(return_type, result_concrete)
+			return_types = fastc_specialized_generic_result_types(return_types, result_concrete)
+			option_type = fastc_specialized_generic_result_type(option_type, result_concrete)
 		}
 		g.type_memo.clear()
 		g.mono_functions[mono_key] = FastcFunctionSignature{
@@ -544,6 +665,74 @@ fn fastc_infer_generic_type_from_parameter(erased_id u32, actual_id u32) u32 {
 	return flat.source_type_composition(.concat, parts)
 }
 
+// Preserve the two distinct type parameters in map[K]V instead of trying to
+// infer them from Map_voidptr_voidptr, which has erased their identities.
+fn (g &Parser) infer_mono_map_arguments(source FastcGenericMethodSource, actual u32) u32 {
+	params := source.type_param.split(',')
+	if params.len != 2 { return u32(0) }
+	// A result naming K or V must be one of them (`get_map_element_type[U, V](m map[U]V) V`);
+	// `decode_map[K, V](mut val map[K]V) !` keeps its plain Result.
+	if source.return_type_source != 0
+		&& fastc_generic_type_source_uses_parameter(flat.source_type_name(source.return_type_source), source.type_param, g.prefs)
+		&& fastc_generic_result_parameter_index(source) < 0 {
+		return u32(0)
+	}
+	key, value := fastc_map_key_value_types(g.underlying_alias_type(fastc_trim_pointer_type(actual))) or { return u32(0) }
+	mut scan := scanner.new_scanner(g.prefs, .normal)
+	scan.init(token.File.unindexed(source.path, source.params_source.len), source.params_source)
+	mut tokens := []FastcExpressionToken{}
+	for {
+		tok := scan.scan()
+		if tok == .eof { break }
+		if tok == .semicolon { continue }
+		tokens << FastcExpressionToken{ tok: tok, lit: scan.lit }
+	}
+	arguments := fastc_call_arguments(tokens, 0, tokens.len - 1) or { return u32(0) }
+	if source.type_param_parameter_index < 0 || source.type_param_parameter_index >= arguments.len {
+		return u32(0)
+	}
+	argument := arguments[source.type_param_parameter_index]
+	if argument.len !in [6, 7] { return u32(0) }
+	pattern := argument[argument.len - 5..]
+	if pattern[0].lit != 'map' || pattern[1].tok != .lsbr || pattern[3].tok != .rsbr {
+		return u32(0)
+	}
+	if pattern[2].lit == params[0] && pattern[4].lit == params[1] {
+		return flat.source_type_id(flat.source_type_name(key) + ',' + flat.source_type_name(value))
+	}
+	if pattern[2].lit == params[1] && pattern[4].lit == params[0] {
+		return flat.source_type_id(flat.source_type_name(value) + ',' + flat.source_type_name(key))
+	}
+	return u32(0)
+}
+
+// fastc_generic_result_parameter_index returns which of several type parameters a result
+// spelled as just one of them (`V`, `?V`, `!V`) names, or -1.
+fn fastc_generic_result_parameter_index(source FastcGenericMethodSource) int {
+	params := source.type_param.split(',')
+	if params.len < 2 || source.return_type_source == 0 {
+		return -1
+	}
+	text := flat.source_type_name(source.return_type_source).trim_space().trim_left('?!').trim_space()
+	for i, param in params {
+		if param.trim_space() == text {
+			return i
+		}
+	}
+	return -1
+}
+
+// fastc_generic_result_concrete returns the concrete type a generic result is specialized
+// with: the argument of a single type parameter, or the part a multi-parameter result names.
+fn fastc_generic_result_concrete(source FastcGenericMethodSource, concrete u32) u32 {
+	index := fastc_generic_result_parameter_index(source)
+	if index < 0 {
+		return concrete
+	}
+	parts := flat.source_type_syntax(concrete).plain_comma_parts()
+	return if index < parts.len { parts[index] } else { concrete }
+}
+
 // fastc_specialized_generic_result_type replaces an erased generic placeholder at any
 // depth in FastC's composite C spelling. For example, `Array_voidptr` becomes
 // `Array_int`, while a direct `voidptr*` preserves its pointer depth as `int*`.
@@ -643,6 +832,10 @@ fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, sr
 			continue
 		}
 		first_name := scan.lit
+		if first_name == 'map' {
+			tok = scan.scan()
+			continue
+		}
 		mut type_key := fastc_resolve_declared_type_key(src.module_name, first_name, src.imports, g.declared_types) or { u32(0) }
 		tok = scan.scan()
 		if tok == .dot {
@@ -682,6 +875,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, sr
 struct FastcGenericFn {
 	name                       string
 	type_param                 string
+	params_source              string
 	source_index               int
 	fn_start                   int // offset of `fn` (or a leading `pub`/`static`)
 	def_end                    int // offset just past the body `}`
@@ -771,7 +965,7 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 
 fn fastc_monomorphize_sources(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	after_functions := fastc_monomorphize_functions(sources, prefs)!
-	return fastc_monomorphize_structs(after_functions, prefs)
+	return fastc_monomorphize_structs(after_functions, prefs)!
 }
 
 // fastc_monomorphize_functions repeatedly applies one monomorphization pass until
@@ -796,14 +990,15 @@ fn fastc_monomorphize_functions(sources []FastcSourceFile, prefs &pref.Preferenc
 // fastc_monomorphize_functions_once rewrites `sources` for one round, returning the
 // new sources and whether any generic was monomorphized (so the caller can iterate).
 fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Preferences) !([]FastcSourceFile, bool) {
-	mut generics := []FastcGenericFn{}
+	mut entry_indexes := []int{}
 	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
+		if fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
+			entry_indexes << i
 		}
-		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
-			generics << generic
-		}
+	}
+	mut generics := []FastcGenericFn{}
+	for file_generics in fastc_scan_generic_fns_of_files(sources, prefs, entry_indexes) {
+		generics << file_generics
 	}
 	if generics.len == 0 {
 		return sources, false
@@ -840,11 +1035,19 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 	mut pairs := []FastcConcretePair{}
 	mut seen_pair := map[string]bool{}
 	mut has_concrete := map[string]bool{}
-	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
+	// Files are scanned apart and merged in source order, as one in-order scan would
+	// record them.
+	for scan in fastc_scan_generic_calls_of_files(sources, prefs, entry_indexes, by_name) {
+		if scan.error_message != '' {
+			return error(scan.error_message)
 		}
-		fastc_scan_generic_calls(source_file.source, source_file.path, prefs, i, by_name, mut calls, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
+		calls << scan.calls
+		for name, _ in scan.unresolvable {
+			unresolvable[name] = true
+		}
+		for pair in scan.pairs {
+			fastc_record_concrete(pair.name, pair.concrete, mut pairs, mut seen_pair, mut has_concrete)
+		}
 	}
 	// A generic is monomorphized only when every call resolves.
 	mut active := map[string]bool{}
@@ -1041,9 +1244,14 @@ fn fastc_type_param_substitutions(type_param string, concrete string) map[string
 		if index < concretes.len {
 			concrete_type := concretes[index]
 			// On-demand inference uses C type names. Reparse pointer arguments
-			// with V's prefix spelling instead of inserting a C `T*` token pair.
+			// with V's prefix spelling and canonical platform integer names.
 			syntax := flat.source_type_syntax(concrete_type)
-			mut v_type := syntax.c_pointer_raw_base()
+			base_type := syntax.c_pointer_raw_base()
+			mut v_type := match base_type {
+				flat.source_type_usize { flat.source_type_uint }
+				flat.source_type_isize { flat.source_type_int }
+				else { base_type }
+			}
 			for _ in 0 .. syntax.c_pointer_depth() {
 				v_type = flat.source_type_composition_one(.pointer, v_type)
 			}
@@ -1086,7 +1294,27 @@ fn fastc_render_mapped_generic_instance(source_file FastcSourceFile, generic Fas
 	substitutions := fastc_type_param_substitutions(generic.type_param, concrete)
 	mut tok := s.scan()
 	mut renamed := false
+	mut previous := token.Token.unknown
 	for tok != .eof {
+		if tok == .name && previous != .dot && !(s.pos >= bracket_low && s.pos < bracket_high)
+			&& s.lit in substitutions {
+			// `T.name` is the concrete type's V name, as with the C backend.
+			mut look := s
+			if look.scan() == .dot && look.scan() == .name && look.lit == 'name'
+				&& look.scan() != .lpar {
+				concrete_type := fastc_type_param_concrete(generic.type_param, concrete, s.lit)
+				edits << FastcSourceEdit{
+					start:       s.pos
+					end:         s.offset + '.name'.len
+					replacement: fastc_string_literal(fastc_c_type_display_name(flat.source_type_id(concrete_type)))
+				}
+				s.scan()
+				s.scan()
+				previous = .name
+				tok = s.scan()
+				continue
+			}
+		}
 		if !renamed && tok in [.name, .key_shared] && s.lit == generic.name {
 			edits << FastcSourceEdit{
 				start:       s.pos
@@ -1098,13 +1326,22 @@ fn fastc_render_mapped_generic_instance(source_file FastcSourceFile, generic Fas
 			// Substitute each type parameter everywhere except inside `[...]`, which
 			// is removed by the edit above (overlapping edits would corrupt it).
 			if replacement := substitutions[s.lit] {
+				mut look := s
+				option_cast := look.scan() == .lpar
+					&& fastc_typed_option_payload(flat.source_type_id(replacement)) != none
 				edits << FastcSourceEdit{
 					start:       s.pos
 					end:         s.offset
-					replacement: replacement
+					// `F(none)` with an option `F` is the option cast `?Payload(none)`.
+					replacement: if option_cast {
+						fastc_c_type_display_name(flat.source_type_id(replacement))
+					} else {
+						replacement
+					}
 				}
 			}
 		}
+		previous = tok
 		tok = s.scan()
 	}
 	return fastc_apply_mapped_source_edits(FastcSourceFile{
@@ -1112,6 +1349,39 @@ fn fastc_render_mapped_generic_instance(source_file FastcSourceFile, generic Fas
 		source:        definition
 		source_offset: source_file.source_offset + base
 	}, edits)
+}
+
+// fastc_type_param_concrete returns the C spelling of the concrete argument of `name`.
+fn fastc_type_param_concrete(type_param string, concrete string, name string) string {
+	type_params := flat.source_type_syntax(flat.source_type_id(type_param)).plain_comma_parts()
+	concretes := flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts()
+	for index, param in type_params {
+		if flat.source_type_name(param) == name && index < concretes.len {
+			return flat.source_type_name(concretes[index])
+		}
+	}
+	return name
+}
+
+// fastc_c_type_display_name spells a FastC C type the way V names it (`json2__Any` is
+// `json2.Any`, `Array_int` is `[]int`, `Point*` is `&Point`).
+fn fastc_c_type_display_name(typ_id u32) string {
+	syntax := flat.source_type_syntax(typ_id)
+	if syntax.c_pointer_depth() > 0 {
+		return '&' + fastc_c_type_display_name(syntax.c_pointer_base())
+	}
+	if payload := fastc_typed_option_payload(typ_id) {
+		return '?' + fastc_c_type_display_name(payload)
+	}
+	if element := fastc_array_element_type(typ_id) {
+		if !flat.source_type_query(typ_id).has(.c_fixed_array_prefix) {
+			return '[]' + fastc_c_type_display_name(element)
+		}
+	}
+	if key, value := fastc_map_key_value_types(typ_id) {
+		return 'map[${fastc_c_type_display_name(key)}]${fastc_c_type_display_name(value)}'
+	}
+	return flat.source_type_name(typ_id).replace('__', '.')
 }
 
 // fastc_scan_generic_fns finds free functions with a single type parameter whose
@@ -1238,6 +1508,7 @@ fn fastc_scan_generic_fns(source string, path string, prefs &pref.Preferences, s
 		result << FastcGenericFn{
 			name:                        name
 			type_param:                  type_param
+			params_source:               source[params_open..params_close]
 			source_index:                source_index
 			fn_start:                    fn_start
 			def_end:                     def_end
@@ -1480,6 +1751,12 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				concrete, bracket_next := fastc_read_bracket_names(mut s)
 				tok = bracket_next
 				if tok == .rsbr {
+					if fastc_source_type_arguments_use_removed_integer(concrete) {
+						previous = .rsbr
+						previous_lit = ''
+						tok = s.scan()
+						continue
+					}
 					after := s.offset
 					if concrete in type_param_names {
 						unresolvable[name] = true
@@ -1809,6 +2086,40 @@ fn fastc_record_var(name string, typ u32, mut var_types map[string]u32, mut var_
 	}
 }
 
+// FastcGenericCallScan is what fastc_scan_generic_calls records for one file.
+struct FastcGenericCallScan {
+mut:
+	calls         []FastcGenericCall
+	unresolvable  map[string]bool
+	pairs         []FastcConcretePair
+	seen_pair     map[string]bool
+	has_concrete  map[string]bool
+	error_message string
+}
+
+// fastc_scan_generic_calls_of_file scans one file's generic calls on their own.
+fn fastc_scan_generic_calls_of_file(sources []FastcSourceFile, prefs &pref.Preferences, index int, by_name map[string]FastcGenericFn) FastcGenericCallScan {
+	source_file := sources[index]
+	mut calls := []FastcGenericCall{}
+	mut unresolvable := map[string]bool{}
+	mut pairs := []FastcConcretePair{}
+	mut seen_pair := map[string]bool{}
+	mut has_concrete := map[string]bool{}
+	fastc_scan_generic_calls(source_file.source, source_file.path, prefs, index, by_name, mut calls, mut
+		unresolvable, mut pairs, mut seen_pair, mut has_concrete) or {
+		return FastcGenericCallScan{
+			error_message: err.msg()
+		}
+	}
+	return FastcGenericCallScan{
+		calls:        calls
+		unresolvable: unresolvable
+		pairs:        pairs
+		seen_pair:    seen_pair
+		has_concrete: has_concrete
+	}
+}
+
 fn fastc_record_concrete(name string, concrete u32, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
 	pair_key := '${name}#${concrete}'
 	if pair_key !in seen_pair {
@@ -1825,7 +2136,7 @@ fn fastc_record_concrete(name string, concrete u32, mut pairs []FastcConcretePai
 // as functions: it emits a concrete copy per instantiation `S[Concrete]` and
 // rewrites every reference. A struct is left untouched unless every reference is
 // a concrete instantiation and its body has no nested generic type references.
-fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
+fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	mut structs := []FastcGenericFn{}
 	for i, source_file in sources {
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
@@ -1878,7 +2189,7 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
 			continue
 		}
-		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)
+		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
 	}
 	for name in method_problematic.keys() {
 		unresolvable[name] = true
@@ -2079,6 +2390,22 @@ fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
 	return false
 }
 
+// fastc_source_type_arguments_use_removed_integer keeps legacy arguments out of
+// source-level specialization. The parser rejects active uses after selecting
+// compile-time branches, before their spellings can become internal C types.
+fn fastc_source_type_arguments_use_removed_integer(concrete string) bool {
+	// Ordinary arguments need no type-registry lookup or comma-part materialization.
+	if !concrete.contains('size') {
+		return false
+	}
+	for part in flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts() {
+		if part == flat.source_type_isize || part == flat.source_type_usize {
+			return true
+		}
+	}
+	return false
+}
+
 // fastc_all_concrete_type_args reports whether every comma-joined argument of a
 // (possibly multi-parameter) instantiation is a concrete type.
 fn fastc_all_concrete_type_args(concrete string) bool {
@@ -2109,7 +2436,7 @@ fn fastc_is_concrete_type_arg_id(name_id u32) bool {
 // known generic struct, or marks the struct unresolvable when a reference is not
 // a plain concrete instantiation (a type-parameter argument, a complex type
 // argument, or a bare reference).
-fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
+fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) ! {
 	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
@@ -2147,6 +2474,11 @@ fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.P
 		if tok != .rsbr {
 			unresolvable[name] = true
 			previous = tok
+			continue
+		}
+		if fastc_source_type_arguments_use_removed_integer(concrete) {
+			previous = .rsbr
+			tok = s.scan()
 			continue
 		}
 		after := s.offset

@@ -36,7 +36,9 @@ fn joint_git(path string, args []string) string {
 fn joint_repo(case string, name string) !string {
 	path := os.join_path(joint_root, case, name + '_repo')
 	os.mkdir_all(path)!
-	joint_git(path, ['init', '-b', 'main'])
+	joint_git(path, ['init', '-q'])
+	joint_git(path, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert joint_git(path, ['symbolic-ref', '--short', 'HEAD']) == 'main'
 	return path.replace(os.path_separator, '/')
 }
 

@@ -172,7 +172,7 @@ pub fn (mut l SSLListener) accept_without_handshake() !&SSLConn {
 		return error('net.openssl SSLListener.accept, could not create SSL instance')
 	}
 
-	if C.SSL_set_fd(voidptr(ssl), tcp_conn.sock.handle) != 1 {
+	if C.v_net_openssl_SSL_set_fd(voidptr(ssl), tcp_conn.sock.handle) != 1 {
 		C.SSL_free(voidptr(ssl))
 		tcp_conn.close() or {}
 		return error('net.openssl SSLListener.accept, could not assign ssl to socket')

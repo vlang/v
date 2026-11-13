@@ -154,12 +154,14 @@ mut:
 	live_bytes  u64
 	alloc_bytes u64
 	// Thread info
-	registered bool
-	stack_base uint // fixed stack boundary for this thread
-	stack_lo   uint // lowest stack address (for root scanning)
-	stack_hi   uint // highest stack address
-	thread_id  u64
-	stop_epoch u32 // atomic: the gc_stop_epoch of the last collection that this thread stopped for
+	registered   bool
+	stack_base   uint    // fixed stack boundary for this thread
+	stack_lo     uint    // lowest stack address (for root scanning)
+	stack_hi     uint    // highest stack address
+	stack_marker uint    // physical or ASan fake address of the saved registers
+	fake_stack   voidptr // ASan's handle for this live thread, nil in ordinary builds
+	thread_id    u64
+	stop_epoch   u32 // atomic: the gc_stop_epoch of the last collection that this thread stopped for
 }
 
 // VGC_Central is a central free list for one span class.
@@ -396,6 +398,8 @@ fn vgc_reset_cache(idx int) {
 	cache.stack_base = 0
 	cache.stack_lo = 0
 	cache.stack_hi = 0
+	cache.stack_marker = 0
+	cache.fake_stack = unsafe { nil }
 	cache.thread_id = 0
 	cache.stop_epoch = 0
 }
@@ -451,14 +455,20 @@ fn vgc_refresh_stack_range_for_sp(cache_idx int, sp uint) {
 		return
 	}
 	stack_base := unsafe { vgc_heap.caches[cache_idx].stack_base }
-	if stack_base <= sp {
+	fake_stack := C.vgc_current_fake_stack()
+	physical_sp := C.vgc_real_stack_address(fake_stack, sp)
+	unsafe {
+		vgc_heap.caches[cache_idx].stack_marker = sp
+		vgc_heap.caches[cache_idx].fake_stack = fake_stack
+	}
+	if stack_base <= physical_sp {
 		unsafe {
 			vgc_heap.caches[cache_idx].stack_lo = stack_base
-			vgc_heap.caches[cache_idx].stack_hi = sp
+			vgc_heap.caches[cache_idx].stack_hi = physical_sp
 		}
 	} else {
 		unsafe {
-			vgc_heap.caches[cache_idx].stack_lo = sp
+			vgc_heap.caches[cache_idx].stack_lo = physical_sp
 			vgc_heap.caches[cache_idx].stack_hi = stack_base
 		}
 	}

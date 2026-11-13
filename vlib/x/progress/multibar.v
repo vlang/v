@@ -62,6 +62,10 @@ mut:
 	live  bool // true: draw a live block; false: only emit final lines
 	drawn int  // rows the live block currently occupies
 	last  string
+	// flush_needed asks the render thread for an extra frame right away, so a
+	// finished bar's final line does not land behind the caller's next print.
+	// guarded by mu, cleared by the render thread
+	flush_needed bool
 }
 
 // MultiBar.new creates an empty group.
@@ -166,6 +170,17 @@ fn (mut g MultiBar) join() {
 	g.t.wait()
 }
 
+// flush asks the render thread to paint immediately instead of waiting out the
+// current tick. call it when the main thread is about to print after a
+// finish(), or the finished line lands behind that print
+pub fn (mut g MultiBar) flush() {
+	g.mu.lock()
+	if g.started && !g.joined {
+		g.flush_needed = true
+	}
+	g.mu.unlock()
+}
+
 fn (mut g MultiBar) run() {
 	for {
 		out, finished := g.frame()
@@ -175,7 +190,19 @@ fn (mut g MultiBar) run() {
 		if finished {
 			break
 		}
-		time.sleep(g.opts.delay)
+		// the tick is sliced so a flush is honored within a few milliseconds
+		mut snored := 0
+		for snored < 4 {
+			g.mu.lock()
+			want := g.flush_needed
+			g.flush_needed = false
+			g.mu.unlock()
+			if want {
+				break
+			}
+			time.sleep(g.opts.delay / 4)
+			snored++
+		}
 	}
 	if g.live && g.opts.hide_cursor {
 		show_cursor_on(g.opts.output_fd)

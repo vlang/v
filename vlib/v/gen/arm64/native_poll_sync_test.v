@@ -62,19 +62,20 @@ fn test_native_semaphore_timeout_returns_and_monitor_thread_terminates() {
 import sync
 fn C.exit(int)
 fn C.alarm(u32) u32
-fn C.usleep(u32) int
 fn C.malloc(uint) voidptr
 fn C.memcpy(voidptr, voidptr, uint) voidptr
 fn memdup(source voidptr, size int) voidptr {
     result := C.malloc(uint(size))
     return C.memcpy(result, source, uint(size))
 }
-fn monitor(sem &sync.Semaphore) int {
+fn monitor(sem &sync.Semaphore, ready &sync.Semaphore) int {
     mut wake := unsafe { &sync.Semaphore(voidptr(sem)) }
+    mut started := unsafe { &sync.Semaphore(voidptr(ready)) }
     mut ticks := 0
     for {
         if wake.timed_wait(10000000) { return ticks }
         ticks++
+        if ticks == 1 { started.post() }
     }
     return ticks
 }
@@ -88,10 +89,13 @@ fn main() {
     if elapsed < 1000000 || elapsed > 1000000000 { C.exit(2) }
     sem.post()
     if !sem.timed_wait(1000000) { C.exit(3) }
-    worker := spawn monitor(&sem)
-    C.usleep(25000)
+    mut ready := sync.Semaphore{}
+    ready.init(0)
+    worker := spawn monitor(&sem, &ready)
+    if !ready.timed_wait(1000000000) { C.exit(4) }
     sem.post()
-    if worker.wait() < 1 { C.exit(4) }
+    if worker.wait() < 1 { C.exit(5) }
+    ready.destroy()
     sem.destroy()
     C.alarm(0)
 }

@@ -190,7 +190,7 @@ start_vm() {
 		-m "$memory_mb" \
 		-drive "if=pflash,format=raw,readonly=on,file=${firmware}" \
 		-drive "if=pflash,format=raw,file=${vars_file}" \
-		-drive "if=virtio,file=${disk_file},format=qcow2" \
+		-drive "if=virtio,file=${disk_file},format=qcow2,discard=unmap,detect-zeroes=unmap" \
 		-drive "if=virtio,file=${seed_file},format=raw,readonly=on" \
 		-device virtio-net-pci,netdev=net0 \
 		-netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \

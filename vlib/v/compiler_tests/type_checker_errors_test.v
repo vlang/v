@@ -573,7 +573,7 @@ fn main() {
 	mut values := [1, 2]
 	invoke(mut values)
 }
-', 'cannot use `string` as argument 1 to `value.trim`; expected `int`')
+', 'cannot use `string` as `int` in argument 1 to `[]int.trim`')
 	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
 	value.trim(1)
 	value.pop()
@@ -680,7 +680,7 @@ fn read[T](value T) int {
 fn main() {
 	_ := read(HasValue{})
 }
-', 'cannot use `string` as argument 1 to `value.value`; expected `int`')
+', 'cannot use `string` as `int` in argument 1 to `HasValue.value`')
 	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -850,7 +850,7 @@ fn main() {
 		cb: fn (n int) {}
 	})
 }
-', 'cannot use `string` as argument 1 to `value.cb`; expected `int`')
+', 'cannot use `string` as `int` in argument 1 to `HasCallback.cb`')
 	run_bad(v3_bin, 'bad_generic_function_field_argument_count', 'struct HasCallback {
 	cb fn (int)
 }
@@ -2246,7 +2246,7 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	// Having a lowering is not the same as being legal: the element copy boxes
 	// any struct into an interface, so an element that does not implement the
 	// target has to be rejected here rather than at `.id = src.id` in the C.
-	run_bad(v3_bin, 'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', 'cannot return `[]NoId` as `[]HasId`')
+	run_bad(v3_bin, 'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]NoId', '[]HasId'))
 	boxed := run_good(v3_bin, 'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n')
 	assert boxed == '7'
 	spoken := run_good(v3_bin, 'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n")

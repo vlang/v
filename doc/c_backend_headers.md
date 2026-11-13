@@ -23,6 +23,8 @@ available even when the same V file includes an unrelated system header.
 With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
 This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
 such as ARM newlib.
+V still supplies its internal `qsort_callback_func` alias for the native C callback type,
+including in freestanding builds that use target libc headers.
 Explicit headers for other C libraries remain included. Core SDK headers are also
 restored when another binding requests headers, so native declarations stay authoritative
 regardless of source collection order.
@@ -43,6 +45,10 @@ An explicit Mach SDK header remains authoritative when supplied by the applicati
 On FreeBSD and OpenBSD, builds with system headers include `<sys/sysctl.h>` for
 `os.executable()` and retain its native `sysctl` declaration. Headerless builds supply
 the sysctl constants and prototype directly.
+
+On Linux, Android, Termux, FreeBSD and OpenBSD, builds with system headers use the native
+`sem_*` declarations from `<semaphore.h>`, including when compiling cached modules.
+Headerless builds retain V's semaphore prototypes.
 
 Win32 API names in headerless C declarations receive `WINAPI` and their wide export
 names only for Windows targets. On other targets, names such as `Sleep` and `CreateFile`
@@ -76,6 +82,8 @@ On macOS, existing or external object inputs still select the platform C compile
 Wrappers that expand Boehm allocation macros include the collector header explicitly.
 Warm incremental builds share the cached declaration prefix's string storage and retain
 new program literals and cleanup hooks after source edits.
+Top-level assembly definitions stay with their declaring module or program, outside the shared
+declaration prefix used by cached and parallel C builds.
 Warm builds using `os` also retain system-header ownership, so platform stat macros do not
 conflict with compatibility declarations. Windows standalone and custom-libc builds keep
 their required native layouts.

@@ -1,9 +1,8 @@
 # Module cache refresh
 
 This compiler utility records how cached modules from a checkout's vlib were built,
-so `v up` can refresh them after replacing the compiler or updating their sources.
-`v up` selects only TinyCC configurations from this inventory, including its recorded
-normal/production and program/test modes. Other compilers refresh their caches on the next build.
+and can refresh them after replacing the compiler or updating their sources.
+`v up` clears caches with `v wipe-cache` instead of collecting or replaying this inventory.
 Only changed generated code or compilation inputs require another C compilation;
 unchanged module objects are reused without cache creation messages.
 
@@ -47,11 +46,11 @@ unchanged module objects are reused without cache creation messages.
   A final summary counts the distinct builds checked, including reused configurations,
   only when a child produced output. The optional `RefreshOptions{verbose: true}` argument
   announces every checked build's record index and total and prints the summary for silent builds.
-  `v up -v` enables this verbose progress. Indices can jump as equivalent builds and
+  Indices can jump as equivalent builds and
   unavailable inputs are skipped.
   Removed modules and records with vanished working directories, required compile inputs,
   listed files or directories, or unavailable C compilers are skipped.
-  A compilation failure is returned to `v up`, including TinyCC module object failures.
+  A compilation failure is returned to the caller, including TinyCC module object failures.
   Refresh does not hide an object failure by retrying a whole program without caching.
   Child output is streamed while refresh runs. A disk-full error stops the remaining builds
   immediately and asks for free space before another update.

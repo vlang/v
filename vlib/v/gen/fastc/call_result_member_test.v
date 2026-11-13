@@ -4,6 +4,36 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_map_field_of_pointer_call_result_is_evaluated_once() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_pointer_call_map_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+__global calls int
+struct Values { items map[u64]u8 }
+fn values(keys []u64) &Values {
+    calls++
+    return &Values{items: {keys[0]: u8(7)}}
+}
+fn key() u64 { return 41 }
+fn main() {
+    assert values([key()]).items[key()] == 7
+    assert calls == 1
+    assert values([key()]).items[99] == 0
+    assert calls == 2
+    println("pointer call map fields work")
+}
+')!
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, backend)
+		build := cmdexec.run(@VEXE, ['-b', backend, '-enable-globals', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'pointer call map fields work', run.output
+	}
+}
+
 fn test_fastc_call_result_fields_lower_array_literal_arguments() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

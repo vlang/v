@@ -225,6 +225,10 @@ fn (mut g Parser) parse_c_directive() ! {
 	if c_directive.starts_with('insert ') {
 		c_directive = 'include ' + c_directive['insert '.len..]
 	}
+	// Ordinary headers already precede the generated V declarations.
+	if c_directive.starts_with('preinclude ') {
+		c_directive = 'include ' + c_directive['preinclude '.len..]
+	}
 	if c_directive.starts_with('include ') {
 		remainder := c_directive['include '.len..]
 		qualifier := remainder.all_before(' ')
@@ -240,7 +244,7 @@ fn (mut g Parser) parse_c_directive() ! {
 	}
 	if c_directive.starts_with('include ')
 		&& c_directive.contains('/thirdparty/stdatomic/nix/atomic.h')
-		&& g.prefs.target.arch == 'arm64' {
+		&& g.prefs.target.arch == 'arm64' && g.prefs.ccompiler in ['tinyc', 'tcc'] {
 		// TinyCC emits C99 extern-inline ARM64 support functions in each split
 		// unit. Weak definitions let the linker share those identical helpers.
 		// glibc can define __attribute__ as an empty macro for TinyCC.
@@ -395,9 +399,43 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 
 // fastc_flag_is_native_input reports whether a flag is a native source or link input.
 pub fn fastc_flag_is_native_input(flag string) bool {
-	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.o')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m') || flag.ends_with('.mm') || flag.ends_with('.o')
 		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
 		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
+}
+
+// fastc_deduplicate_native_files keeps shared helper definitions out of the link twice.
+fn fastc_deduplicate_native_files(flags []string) []string {
+	if flags.len < 2 {
+		return flags
+	}
+	mut result := []string{cap: flags.len}
+	mut seen := map[string]bool{}
+	mut operand := false
+	for flag in flags {
+		if operand {
+			result << flag
+			operand = false
+			continue
+		}
+		if flag in ['-I', '-L', '-F', '-D', '-U', '-x', '-include', '-imacros', '-isystem', '-iquote',
+			'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
+			'-target', '-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o',
+			'-MF', '-MT', '-MQ', '-l', '-weak_library', '-rpath'] {
+			result << flag
+			operand = true
+			continue
+		}
+		if !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m')
+			|| flag.ends_with('.mm') || flag.ends_with('.o') || flag.ends_with('.obj')) {
+			if flag in seen {
+				continue
+			}
+			seen[flag] = true
+		}
+		result << flag
+	}
+	return result
 }
 
 // fastc_flag_is_skippable reports whether a `#flag` payload only affects native
@@ -416,7 +454,12 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part == '-pthread' {
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part in [
+			'-pthread',
+			'-fobjc-arc',
+			'-fno-objc-arc',
+			'-fblocks',
+		] {
 			i++
 			continue
 		}
@@ -569,7 +612,16 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 	mut brace_depth := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
+	mut previous := token.Token.unknown
 	for g.tok != .eof {
+		if !body_declaration && !type_declaration && brace_depth == 0 && paren_depth == 0
+			&& bracket_depth == 0 && previous in [.name, .number, .string, .char, .rpar, .rsbr,
+			.rcbr, .not, .question, .key_true, .key_false, .key_none]
+			&& g.tok in [.key_fn, .key_pub, .key_const, .key_global, .key_struct, .key_union,
+				.key_enum, .key_interface, .key_type] {
+			return
+		}
+		previous = g.tok
 		if g.tok == .lcbr {
 			brace_depth++
 		} else if g.tok == .rcbr {
@@ -596,6 +648,11 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 			if type_declaration && g.tok == .pipe {
 				continue
 			}
+			// A constant or global value can continue on the next line with a leading
+			// binary operator (`|| other`); no top-level item starts with one.
+			if !body_declaration && !type_declaration && fastc_token_continues_top_level_value(g.tok) {
+				continue
+			}
 			return
 		}
 		g.next()
@@ -613,6 +670,11 @@ fn (mut g Parser) temporary_name(_ string) string {
 	return name
 }
 
+// callback_signature_key separates callback metadata from emitted C temporary names.
+fn (mut g Parser) callback_signature_key() string {
+	return g.current_function + ':' + g.temporary_name('callback_signature')
+}
+
 fn (g &Parser) temporary_namespace(kind string) string {
 	mut index := 0
 	for {
@@ -620,7 +682,7 @@ fn (g &Parser) temporary_namespace(kind string) string {
 		prefix := namespace + '_'
 		mut collision := false
 		for local_name in g.locals.keys() {
-			if fastc_c_identifier(local_name).starts_with(prefix) {
+			if fastc_c_value_identifier(local_name).starts_with(prefix) {
 				collision = true
 				break
 			}
@@ -746,6 +808,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.last_function_c_name = ''
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	if g.option_origins.len > 0 { g.option_origins = map[string]FastcOptionOrigin{} }
 	g.temp_id = 0
 	g.direct_array_access = g.pending_direct_array_access
 	g.pending_direct_array_access = false
@@ -822,7 +885,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_value_identifier(receiver_name)}'
 		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut:       receiver_is_mut
@@ -946,7 +1009,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.selfhost && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
+	if (g.prefs.selfhost || g.prefs.target_libc_headers || 'nofloat' in g.prefs.user_defines) && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
 		// another type (name-grouped reachability). The mainline compiler drops it via
@@ -1440,6 +1503,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 fn (mut g Parser) parse_script() ! {
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	if g.option_origins.len > 0 { g.option_origins = map[string]FastcOptionOrigin{} }
 	g.has_main = true
 	main_name := fastc_c_main_name(g.prefs)
 	g.protos.writeln('int ${main_name}(void);')
@@ -1508,6 +1572,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		fn_return_type := g.pending_fn_return_type
 		fn_option_value_type := g.pending_fn_option_value_type
 		fn_parameters := g.pending_fn_parameters
+		fn_type := g.pending_fn_type
 		parameter_index := parameter_offset + params.len
 		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
 		is_reference := is_mut && (!flat.source_type_query(type_name).has(.c_pointer_suffix) || is_generic_value)
@@ -1522,7 +1587,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 				blank_index++
 				'_fastc_unused_${blank_index}'
 			} else {
-				fastc_c_identifier(parameter_name)
+				fastc_c_value_identifier(parameter_name)
 			}
 			if is_fn_pointer {
 				// Declare a real function pointer with the type's prototype, so `f(x)`
@@ -1531,7 +1596,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:               is_mut
-					typ:                  type_name
+					typ:                  if fn_type != 0 { fn_type } else { type_name }
 					fn_return_type:       fn_return_type
 					fn_option_value_type: fn_option_value_type
 				}
@@ -1568,6 +1633,7 @@ fn (mut g Parser) parse_type() !u32 {
 	g.pending_fn_return_type = u32(0)
 	g.pending_fn_option_value_type = u32(0)
 	g.pending_fn_parameters = ''
+	g.pending_fn_type = 0
 	if g.tok == .question {
 		// Peek the wrapped value type of an option type `?T` before the main scan
 		// erases it to `Option`, so a caller can record it on the declared local.
@@ -1591,6 +1657,8 @@ fn (mut g Parser) parse_type() !u32 {
 	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == fastc_type_char_pointer) {
 		return g.unsupported('type `${first_lit}`')
 	}
+	fastc_register_composite_type(type_name, mut g.composite_types)
+	fastc_register_composite_type(g.pending_option_value_type, mut g.composite_types)
 	return type_name
 }
 
@@ -1645,6 +1713,8 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 		g.selfhost)
 	{
 		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types.ids.clone())
+		g.pending_fn_type = flat.source_type_id(fastc_callable_type_name(signature))
+		fastc_register_composite_type(g.pending_fn_type, mut g.composite_types)
 	}
 }
 
@@ -1741,9 +1811,86 @@ fn fastc_primitive_c_type_id(raw_type u32) ?u32 {
 	return none
 }
 
+// fastc_scalar_zero_literal_type returns the C type of `name{}` for a number, bool,
+// rune or pointer type, whose zero value is a plain `0`.
+fn fastc_scalar_zero_literal_type(name string) ?string {
+	if name in ['string', 'array', 'map', 'chan', 'Option', '__v_result'] {
+		return none
+	}
+	mapped := fastc_primitive_c_type(name) or { return none }
+	if mapped in ['string', 'array', 'map', 'chan', 'Option', '__v_result'] {
+		return none
+	}
+	return fastc_output_c_type(mapped)
+}
+
+// fastc_primitive_c_type accepts V primitive spellings, excluding removed aliases.
+// The emitter still uses its private C storage identities internally.
+// It is asked about most identifiers of every expression, so it compares the
+// spelling directly: interning each probed name contended on the shared type table.
 fn fastc_primitive_c_type(raw_type string) ?string {
-	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
-	return flat.source_type_name(mapped)
+	match raw_type.len {
+		2 {
+			if raw_type == 'i8' { return 'i8' }
+			if raw_type == 'u8' { return 'u8' }
+		}
+		3 {
+			match raw_type[0] {
+				`f` {
+					if raw_type == 'f32' { return 'f32' }
+					if raw_type == 'f64' { return 'f64' }
+				}
+				`i` {
+					if raw_type == 'i16' { return 'i16' }
+					if raw_type == 'i32' { return 'i32' }
+					if raw_type == 'i64' { return 'i64' }
+					if raw_type == 'int' { return 'int' }
+				}
+				`u` {
+					if raw_type == 'u16' { return 'u16' }
+					if raw_type == 'u32' { return 'u32' }
+					if raw_type == 'u64' { return 'u64' }
+				}
+				`m` {
+					if raw_type == 'map' { return 'map' }
+				}
+				`a` {
+					if raw_type == 'any' { return 'voidptr' }
+				}
+				else {}
+			}
+		}
+		4 {
+			if raw_type == 'bool' { return 'bool' }
+			if raw_type == 'char' { return 'char' }
+			if raw_type == 'rune' { return 'rune' }
+			if raw_type == 'chan' { return 'chan' }
+			if raw_type == 'uint' { return 'usize' }
+		}
+		5 {
+			if raw_type == 'array' { return 'array' }
+		}
+		6 {
+			if raw_type == 'string' { return 'string' }
+			if raw_type == 'Option' { return 'Option' }
+		}
+		7 {
+			if raw_type == 'voidptr' { return 'voidptr' }
+			if raw_type == 'byteptr' { return 'byteptr' }
+			if raw_type == 'charptr' { return 'charptr' }
+		}
+		10 {
+			if raw_type == '__v_result' { return '__v_result' }
+		}
+		11 {
+			if raw_type == 'int_literal' { return 'i64' }
+		}
+		13 {
+			if raw_type == 'float_literal' { return 'f64' }
+		}
+		else {}
+	}
+	return none
 }
 
 fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.Token) bool {
@@ -1797,4 +1944,9 @@ fn fastc_all_true(values []bool) bool {
 		}
 	}
 	return true
+}
+
+fn fastc_removed_integer_type(name string) string {
+	replacement := if name == 'isize' { 'int' } else { 'uint' }
+	return 'type `${name}`; use `${replacement}` instead'
 }

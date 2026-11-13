@@ -18,6 +18,7 @@ pub mut:
 	cert                   string // client certificate, for mutual TLS
 	cert_key               string // client private key, for mutual TLS
 	in_memory_verification bool   // `verify`/`cert`/`cert_key` are PEM strings, not paths
+	validate               bool = true // abort when the server certificate is invalid; false skips that check
 }
 
 // unary sends one framed request to path ('/pkg.Service/Method') and returns
@@ -96,6 +97,7 @@ fn (mut c Client) do_call(path string, body []u8, opts ...CallOption) !(int, htt
 		cert:                   c.cert
 		cert_key:               c.cert_key
 		in_memory_verification: c.in_memory_verification
+		validate:               c.validate
 	}
 	if cfg.timeout > 0 {
 		// enforce the deadline client-side too, not just as a server hint

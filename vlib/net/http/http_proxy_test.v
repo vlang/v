@@ -24,6 +24,30 @@ const proxy_https_test_cert_path = @VEXEROOT +
 const proxy_https_test_key_path = @VEXEROOT +
 	'/vlib/net/websocket/tests/autobahn/fuzzing_server_wss/config/server.key'
 
+fn test_request_ssl_connect_config_copies_the_request_tls_fields() {
+	checking := Request{
+		validate:               true
+		verify:                 'ca.pem'
+		cert:                   'cert.pem'
+		cert_key:               'key.pem'
+		in_memory_verification: true
+	}
+	got := request_ssl_connect_config(checking)
+	assert got.validate
+	assert got.verify == 'ca.pem'
+	assert got.cert == 'cert.pem'
+	assert got.cert_key == 'key.pem'
+	assert got.in_memory_verification
+	skipped := request_ssl_connect_config(Request{
+		validate: false
+	})
+	assert !skipped.validate
+	assert skipped.verify == ''
+	assert skipped.cert == ''
+	assert skipped.cert_key == ''
+	assert !skipped.in_memory_verification
+}
+
 fn test_proxy_fields() ? {
 	sample_proxy := new_http_proxy(sample_proxy_url)!
 	sample_auth_proxy := new_http_proxy(sample_auth_proxy_url)!
@@ -199,6 +223,88 @@ fn copy_https_proxy_test_tunnel_data(mut src net.TcpConn, mut dst net.TcpConn) P
 	}
 	dst.write(buf[..bytes_read]) or { return .closed }
 	return .data
+}
+
+// start_https_proxy_untrusted_target serves the autobahn cert for two attempts.
+// A client that aborts the handshake makes accept fail; that attempt is skipped.
+fn start_https_proxy_untrusted_target() !(int, chan bool) {
+	ready := chan int{cap: 1}
+	done := chan bool{cap: 1}
+	spawn fn [ready, done] () {
+		mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or { panic(err) }
+		port := int((port_listener.addr() or { panic(err) }).port() or { panic(err) })
+		port_listener.close() or {}
+		mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+			cert:     proxy_https_test_cert_path
+			cert_key: proxy_https_test_key_path
+			validate: false
+		}) or { panic(err) }
+		ready <- port
+		defer {
+			listener.shutdown() or {}
+			done <- true
+		}
+		for _ in 0 .. 2 {
+			mut conn := listener.accept() or { continue }
+			handle_https_proxy_test_target_connection(mut conn)
+		}
+	}()
+	return <-ready, done
+}
+
+// drain_https_proxy_test_accepts unblocks start_https_proxy_test_server, which
+// accepts a fixed number of connections. A refused dial means the listener is done.
+fn drain_https_proxy_test_accepts(proxy_port int) {
+	for _ in 0 .. proxy_https_request_count {
+		mut extra := net.dial_tcp('127.0.0.1:${proxy_port}') or { return }
+		extra.close() or {}
+	}
+}
+
+fn test_https_proxy_default_validate_rejects_untrusted_certificate() ! {
+	$if tinyc {
+		// TinyCC hangs in the bundled mbedtls handshake path on linux CI.
+		return
+	}
+	target_port, target_done := start_https_proxy_untrusted_target()!
+	proxy_port, proxy_done := start_https_proxy_test_server(target_port)!
+	proxy := new_http_proxy('http://127.0.0.1:${proxy_port}')!
+	url := 'https://127.0.0.1:${target_port}/'
+	mut rejected := true
+	if _ := fetch(
+		method:      .get
+		url:         url
+		proxy:       proxy
+		max_retries: 1
+	) {
+		rejected = false
+	}
+	accepted := fetch(
+		method:      .get
+		url:         url
+		proxy:       proxy
+		validate:    false
+		max_retries: 1
+	) or {
+		finish_https_proxy_certificate_test(proxy_port, target_port, proxy_done, target_done)
+		return err
+	}
+	finish_https_proxy_certificate_test(proxy_port, target_port, proxy_done, target_done)
+	assert rejected, 'default validate must reject the untrusted certificate'
+	assert accepted.status_code == 200
+	assert accepted.body == 'ok'
+}
+
+fn finish_https_proxy_certificate_test(proxy_port int, target_port int, proxy_done chan bool, target_done chan bool) {
+	drain_https_proxy_test_accepts(proxy_port)
+	// A rejected dial may not reach the target. Plain connects unblock a leftover
+	// accept. This is not a CA check: the autobahn cert has no IP SAN.
+	for _ in 0 .. 2 {
+		mut extra := net.dial_tcp('127.0.0.1:${target_port}') or { break }
+		extra.close() or {}
+	}
+	_ = <-target_done
+	_ = <-proxy_done
 }
 
 fn test_https_proxy_requests_do_not_leak_sockets() ! {

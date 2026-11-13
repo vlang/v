@@ -94,6 +94,23 @@ fn issue26995_new_payload_from_typeof[T](x ?T) &T {
 	return $new(typeof(x).payload_type)
 }
 
+fn new_generic_value[T]() &T {
+	return $new(T)
+}
+
+fn test_new_sum_type_keeps_pointer_to_allocated_value() {
+	direct := $new(ExampleSum)
+	generic := new_generic_value[ExampleSum]()
+	pointee := issue26995_make_pointer[&ExampleSum]()
+	local := issue26995_make_pointer_via_local[&ExampleSum]()
+	payload := issue26995_new_payload_from_typeof[ExampleSum](none)
+	assert *direct == ExampleSum(0)
+	assert *generic == ExampleSum(0)
+	assert *pointee == ExampleSum(0)
+	assert *local == ExampleSum(0)
+	assert *payload == ExampleSum(0)
+}
+
 fn test_payload_type_accessor() {
 	opt := maybe_private_payload()
 	assert typeof(opt).payload_type == typeof[PrivatePayload]().idx

@@ -41,6 +41,9 @@ mut:
 	// The const names of the batch and before it, once the first pass found them.
 	const_names     map[string]bool
 	has_const_names bool
+	// The same for the files that the batch parses ahead of the next one: the
+	// names before the batch and theirs (see Parser.speculate_next_batch).
+	ahead_const_names map[string]bool
 }
 
 fn new_batch_sources(paths []string) &BatchSources {
@@ -66,6 +69,18 @@ fn (mut b BatchSources) read(idx int, path string) {
 fn (mut b BatchSources) preload(idx int, source string) {
 	b.sources[idx] = borrowed_source(source)
 	b.borrowed[idx] = true
+}
+
+// adopt takes over source text that the caller read with read_batch_source for
+// the file at `idx`: the batch releases it like the sources it reads itself.
+fn (mut b BatchSources) adopt(idx int, source string) {
+	b.sources[idx] = borrowed_source(source)
+}
+
+// has_source reports whether the batch holds the source of the file at `idx`.
+@[inline]
+fn (b &BatchSources) has_source(idx int) bool {
+	return b.sources[idx].len > 0
 }
 
 // source_at returns the source read for the file at `idx`, or none when the
@@ -94,6 +109,47 @@ fn (mut b BatchSources) release(start int, end int) {
 			b.sources[i] = ''
 		}
 	}
+}
+
+// preload_batch_source hands the next parse batch the text of `path`, which the
+// caller read with read_batch_source. The batch owns the text: a parallel batch
+// releases it with the sources it reads itself, and any other parse drops it
+// and reads the file.
+pub fn (mut p Parser) preload_batch_source(path string, source string) {
+	if source.len == 0 {
+		return
+	}
+	if path in p.batch_preload_index {
+		unsafe { C.free(source.str) }
+		return
+	}
+	p.batch_preload_index[path] = p.batch_preloads.len
+	// The text itself, not a copy of it: the batch frees this buffer.
+	p.batch_preloads << borrowed_source(source)
+}
+
+// take_batch_preload returns the text preloaded for `path`, which the caller
+// owns from then on, or '' without one.
+fn (mut p Parser) take_batch_preload(path string) string {
+	idx := p.batch_preload_index[path] or { return '' }
+	source := borrowed_source(p.batch_preloads[idx])
+	p.batch_preloads[idx] = ''
+	return source
+}
+
+// drop_batch_preloads frees the texts that no parallel batch took.
+fn (mut p Parser) drop_batch_preloads() {
+	if p.batch_preloads.len == 0 {
+		return
+	}
+	for i in 0 .. p.batch_preloads.len {
+		if p.batch_preloads[i].len > 0 {
+			unsafe { C.free(p.batch_preloads[i].str) }
+			p.batch_preloads[i] = ''
+		}
+	}
+	p.batch_preloads = []string{}
+	p.batch_preload_index = map[string]int{}
 }
 
 // read_batch_source reads the regular file at `path` with plain system calls

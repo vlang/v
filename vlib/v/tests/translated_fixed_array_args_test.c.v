@@ -144,6 +144,15 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	assert first_pointer_value(pointers) == 42
 }
 
+fn test_translated_deep_fixed_array_literal_pointer_comparisons() {
+	rows := [[[1, 2]!, [3, 4]!]!, [[5, 6]!, [7, 8]!]!]!
+	pointer := unsafe { &rows[0] }
+	assert pointer == rows
+	assert rows == pointer
+	assert pointer != [[[1, 2]!, [3, 4]!]!, [[5, 6]!, [7, 8]!]!]!
+	assert [[[1, 2]!, [3, 4]!]!, [[5, 6]!, [7, 8]!]!]! != pointer
+}
+
 type ByteRows = [2][2]char
 
 type ByteRowsAlias = ByteRows

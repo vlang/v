@@ -55,8 +55,8 @@ fn test_map_clone_captured_by_closure_accepts_entry_writes() {
 	})
 	merged := map_clone_closure_merge(own, parent)
 	assert merged.len == 2
-	assert merged['a'].id == 1
-	assert merged['b'].value.n == 5
+	assert (merged['a'] or { panic('missing a') }).id == 1
+	assert (merged['b'] or { panic('missing b') }).value.n == 5
 	assert own.len == 1
 	assert 'a' !in own
 }

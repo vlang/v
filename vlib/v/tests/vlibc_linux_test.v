@@ -3,7 +3,9 @@ import os
 
 const vexe = @VEXE
 
-const vlibc_program = "struct State {
+const vlibc_program = "import os
+
+struct State {
 mut:
 	mutex VlibcMutex
 	cond VlibcCond
@@ -19,6 +21,7 @@ mut:
 }
 
 fn worker(arg u64) {
+	assert !os.is_main_thread()
 	mut work := unsafe { &Work(arg) }
 	if work.delay > 0 { vlibc_sleep_ns(work.delay) }
 	for _ in 0 .. 10000 {
@@ -35,6 +38,7 @@ fn check(e VlibcErrno) {
 }
 
 fn main() {
+	assert os.is_main_thread()
 	mut words := [u32(0x11223344), u32(0), u32(0xaabbccdd), u32(0)]!
 	vlibc_store_u32(&words[1], 7)
 	assert words[0] == 0x11223344 && words[2] == 0xaabbccdd

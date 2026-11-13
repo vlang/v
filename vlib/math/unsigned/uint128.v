@@ -32,9 +32,9 @@ pub fn (u Uint128) equals_64(v u64) bool {
 
 // cmp compares u and v and returns:
 //
-// -1 if u <  v
-//  0 if u == v
-// +1 if u >  v
+// - `-1` if u < v
+// - `0` if u == v
+// - `+1` if u > v
 //
 pub fn (u Uint128) cmp(v Uint128) int {
 	if u == v {
@@ -48,9 +48,9 @@ pub fn (u Uint128) cmp(v Uint128) int {
 
 // cmp_64 compares u and v and returns:
 //
-//   -1 if u <  v
-//    0 if u == v
-//   +1 if u >  v
+// - `-1` if u < v
+// - `0` if u == v
+// - `+1` if u > v
 //
 pub fn (u Uint128) cmp_64(v u64) int {
 	if u.hi == 0 && u.lo == v {

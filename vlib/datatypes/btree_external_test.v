@@ -1,7 +1,9 @@
 import os
 
 fn test_btree_iterator_from_importing_cached_module() {
-	root := os.join_path(os.vtmp_dir(), 'btree_iterator_import_${os.getpid()}')
+	// Module-cache staging repeats the generated filename. Avoid the test
+	// session's extra directory level so Windows paths remain below MAX_PATH.
+	root := os.join_path(os.temp_dir(), 'btree_iterator_import_${os.getpid()}')
 	os.mkdir(root)!
 	previous_cache := os.getenv('V3CACHE')
 	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)

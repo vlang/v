@@ -759,3 +759,38 @@ fn asm_ldur_s(vd int, xn Reg, simm9 i32) u32 {
 fn asm_udf() u32 {
 	return 0x00000000
 }
+
+// adds rd, rn, rm (flags set)
+fn asm_adds_reg(rd Reg, rn Reg, rm Reg) u32 {
+	return 0xAB000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// subs rd, rn, rm (flags set)
+fn asm_subs_reg(rd Reg, rn Reg, rm Reg) u32 {
+	return 0xEB000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// adc rd, rn, rm (add with carry)
+fn asm_adc(rd Reg, rn Reg, rm Reg) u32 {
+	return 0x9A000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// sbc rd, rn, rm (subtract with carry)
+fn asm_sbc(rd Reg, rn Reg, rm Reg) u32 {
+	return 0xDA000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// umulh rd, rn, rm (high 64 bits of the unsigned 128-bit product)
+fn asm_umulh(rd Reg, rn Reg, rm Reg) u32 {
+	return 0x9BC07C00 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// svc #imm (supervisor call; the kernel answers in x0)
+fn asm_svc(imm u32) u32 {
+	return 0xD4000001 | ((imm & 0xFFFF) << 5)
+}
+
+// nop
+fn asm_nop() u32 {
+	return 0xD503201F
+}

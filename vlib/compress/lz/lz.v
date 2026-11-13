@@ -31,27 +31,27 @@ pub fn format_from_string(name string) !Format {
 // compress compresses data with the selected LZ format.
 pub fn compress(data []u8, format Format) ![]u8 {
 	return match format {
-		.lz77 { compress_lz77(data) }
-		.lz78 { compress_lz78(data) }
-		.lzw { compress_lzw(data) }
-		.lz4 { compress_lz4(data) }
-		.lzss { compress_lzss(data) }
-		.lzma { compress_lzma(data) }
-		.lzma2 { compress_lzma2(data) }
-		.lzjb { compress_lzjb(data) }
+		.lz77 { compress_lz77(data)! }
+		.lz78 { compress_lz78(data)! }
+		.lzw { compress_lzw(data)! }
+		.lz4 { compress_lz4(data)! }
+		.lzss { compress_lzss(data)! }
+		.lzma { compress_lzma(data)! }
+		.lzma2 { compress_lzma2(data)! }
+		.lzjb { compress_lzjb(data)! }
 	}
 }
 
 // decompress decompresses data with the selected LZ format.
 pub fn decompress(data []u8, format Format) ![]u8 {
 	return match format {
-		.lz77 { decompress_lz77(data) }
-		.lz78 { decompress_lz78(data) }
-		.lzw { decompress_lzw(data) }
-		.lz4 { decompress_lz4(data) }
-		.lzss { decompress_lzss(data) }
-		.lzma { decompress_lzma(data) }
-		.lzma2 { decompress_lzma2(data) }
-		.lzjb { decompress_lzjb(data) }
+		.lz77 { decompress_lz77(data)! }
+		.lz78 { decompress_lz78(data)! }
+		.lzw { decompress_lzw(data)! }
+		.lz4 { decompress_lz4(data)! }
+		.lzss { decompress_lzss(data)! }
+		.lzma { decompress_lzma(data)! }
+		.lzma2 { decompress_lzma2(data)! }
+		.lzjb { decompress_lzjb(data)! }
 	}
 }

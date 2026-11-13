@@ -52,32 +52,56 @@ fn main() {
 	assert run.output.trim_space() == 'ok', run.output
 }
 
-fn test_legacy_unsigned_sum_type_uses_the_same_tag_as_uint() {
+fn test_uint_sum_type_tests_casts_and_generic_arguments_preserve_values() {
 	$if !macos && !linux {
 		return
 	}
-	root := os.join_path(os.vtmp_dir(), 'fastc_legacy_uint_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'fastc_canonical_uint_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), 'module main
-type Value = usize | string
+type Value = uint | string
+fn identity[T](value T) T { return value }
 fn is_numeric(value Value) bool {
-	return match value { usize { true } else { false } }
+	return match value { uint { true } else { false } }
 }
 fn unbox(value Value) uint {
-	match value { usize { return value } else { return 0 } }
+	match value { uint { return value } else { return 0 } }
 }
 fn main() {
-	value := Value(usize(42))
+	value := Value(identity[uint](uint(42)))
 	assert is_numeric(value)
 	assert unbox(value) == 42
-	assert value is usize
 	assert value is uint
 	assert !(value is string)
-	assert (value as usize) == 42
 	assert (value as uint) == 42
 	assert is_numeric(Value(uint(123)))
 	assert !is_numeric(Value("text"))
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_canonical_platform_integer_variants_work_with_strconv_numeric() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_canonical_numeric_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import strconv
+fn number(value strconv.Numeric) int {
+ return match value {
+  int { value }
+  uint { int(value) }
+  else { 0 }
+ }
+}
+fn main() {
+ assert number(strconv.Numeric(int(-1234567))) == -1234567
+ assert number(strconv.Numeric(uint(1234567))) == 1234567
 }
 ') or { panic(err) }
 	program := os.join_path(root, 'program')

@@ -130,7 +130,7 @@ fn fastc_c_global_name(key string) string {
 	if key == 'byte' {
 		return 'main__byte'
 	}
-	return fastc_c_identifier(key.replace('.', '__'))
+	return fastc_c_value_identifier(key.replace('.', '__'))
 }
 
 fn fastc_c_function_name(module_name string, name string) string {
@@ -194,7 +194,9 @@ fn (g &Parser) c_function_name_or(key string, conventional string) string {
 	if cached := g.c_function_name_memo[key] {
 		return cached
 	}
-	c_name := if key == 'main' && !g.prefs.is_test {
+	c_name := if key in g.globals && key in g.functions && g.functions[key].is_global {
+		g.globals[key]
+	} else if key == 'main' && !g.prefs.is_test {
 		fastc_c_main_name(g.prefs)
 	} else if compact_name := g.function_c_names[key] {
 		compact_name
@@ -231,7 +233,8 @@ fn fastc_signature_c_name(key string, signature FastcFunctionSignature) string {
 	}
 	name := key.all_after_last('.')
 	prefix := key.all_before_last('.')
-	return if prefix == '' || prefix == signature.module_name {
+	// An undotted key is a main-module function: `all_before_last` returns it whole.
+	return if !key.contains('.') || prefix == '' || prefix == signature.module_name {
 		fastc_c_function_name(signature.module_name, name)
 	} else {
 		fastc_method_c_name(signature.module_name, fastc_c_declared_type_name(prefix), name)

@@ -32,16 +32,16 @@ int v_gc_pthread_create(void* thread, void* attr, void* start, void* arg) {
 	return pthread_create((pthread_t*)thread, (const pthread_attr_t*)attr,
 		(void* (*)(void*))start, arg);
 }
-int v_gc_pthread_join(void* thread, void* retval) {
-	return pthread_join((pthread_t)thread, (void**)retval);
+int v_gc_pthread_join(pthread_t thread, void* retval) {
+	return pthread_join(thread, (void**)retval);
 }
-int v_gc_pthread_detach(void* thread) { return pthread_detach((pthread_t)thread); }
+int v_gc_pthread_detach(pthread_t thread) { return pthread_detach(thread); }
 int v_gc_pthread_sigmask(int how, const void* set, void* oldset) {
 	return pthread_sigmask(how, (const sigset_t*)set, (sigset_t*)oldset);
 }
 // Android does not implement POSIX thread cancellation.
 #if !defined(__ANDROID__)
-int v_gc_pthread_cancel(void* thread) { return pthread_cancel((pthread_t)thread); }
+int v_gc_pthread_cancel(pthread_t thread) { return pthread_cancel(thread); }
 #endif
 void v_gc_pthread_exit(void* result) { pthread_exit(result); }
 void* v_gc_dlopen(const char* path, int mode) { return dlopen(path, mode); }

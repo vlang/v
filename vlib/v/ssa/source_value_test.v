@@ -130,7 +130,7 @@ fn test_native_type_layout_uses_interned_source_operands() {
 		i8_type:      i8_type
 		i64_type:     i64_type
 		struct_types: {
-			'Record': record_type
+			flat.source_type_id('Record'): record_type
 		}
 	}
 	size := a.add_node(flat.Node{ kind: .sizeof_expr, source_value: flat.source_type_id('Record') })

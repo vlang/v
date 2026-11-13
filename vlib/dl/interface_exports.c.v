@@ -91,8 +91,9 @@ fn interface_export_find(iface &char, method &char, typ u32) voidptr {
 	for table != unsafe { nil } {
 		mut entry := table.entries
 		for entry.iface != unsafe { nil } {
-			if entry.typ == typ && C.strcmp(entry.iface, iface) == 0
-				&& C.strcmp(entry.method, method) == 0 {
+			// Export tables and lookup names contain compiler-generated C strings.
+			if entry.typ == typ && unsafe { C.strcmp(entry.iface, iface) } == 0
+				&& unsafe { C.strcmp(entry.method, method) } == 0 {
 				return entry.fn_ptr
 			}
 			entry = unsafe { entry + 1 }

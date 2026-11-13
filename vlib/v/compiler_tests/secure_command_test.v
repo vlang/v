@@ -228,7 +228,10 @@ fn main() { println(int_str(C.cached_value())) }
 	assert fourth.output.contains('reason=compiler, target, argv, and dependency contents matched'), fourth.output
 	assert fourth.output.contains('matched via manifest'), fourth.output
 
-	assert fourth.output.contains('dependencies=2'), fourth.output
+	helper_hits := fourth.output.split_into_lines().filter(it.contains('C object cache hit: key=helper_o_'))
+	assert helper_hits.len == 1, fourth.output
+	// The source and header are required; Clang can also list SDKSettings.json.
+	assert helper_hits[0].all_after('dependencies=').int() >= 2, fourth.output
 	assert fourth.output.contains('C object content-key hits'), fourth.output
 	assert cmdexec.run(fourth_out, []string{}).output.trim_space() == '9'
 }

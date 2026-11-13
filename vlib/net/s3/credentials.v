@@ -30,17 +30,15 @@ pub:
 // non-empty value wins.
 //
 // Lookup order per field:
-//   key id     : S3_ACCESS_KEY_ID, AWS_ACCESS_KEY_ID,
-//                CELLAR_ADDON_KEY_ID, SCW_ACCESS_KEY,
-//                B2_APPLICATION_KEY_ID, R2_ACCESS_KEY_ID, SPACES_KEY
-//   secret     : S3_SECRET_ACCESS_KEY, AWS_SECRET_ACCESS_KEY,
-//                CELLAR_ADDON_KEY_SECRET, SCW_SECRET_KEY,
-//                B2_APPLICATION_KEY, R2_SECRET_ACCESS_KEY, SPACES_SECRET
-//   session    : S3_SESSION_TOKEN, AWS_SESSION_TOKEN
-//   region     : S3_REGION, AWS_REGION, AWS_DEFAULT_REGION, SCW_DEFAULT_REGION
-//   bucket     : S3_BUCKET
-//   endpoint   : S3_ENDPOINT, AWS_ENDPOINT, AWS_ENDPOINT_URL,
-//                CELLAR_ADDON_HOST, B2_ENDPOINT, R2_ENDPOINT, SPACES_ENDPOINT
+// - key id: `S3_ACCESS_KEY_ID`, `AWS_ACCESS_KEY_ID`, `CELLAR_ADDON_KEY_ID`, `SCW_ACCESS_KEY`,
+//   `B2_APPLICATION_KEY_ID`, `R2_ACCESS_KEY_ID`, `SPACES_KEY`
+// - secret: `S3_SECRET_ACCESS_KEY`, `AWS_SECRET_ACCESS_KEY`, `CELLAR_ADDON_KEY_SECRET`,
+//   `SCW_SECRET_KEY`, `B2_APPLICATION_KEY`, `R2_SECRET_ACCESS_KEY`, `SPACES_SECRET`
+// - session: `S3_SESSION_TOKEN`, `AWS_SESSION_TOKEN`
+// - region: `S3_REGION`, `AWS_REGION`, `AWS_DEFAULT_REGION`, `SCW_DEFAULT_REGION`
+// - bucket: `S3_BUCKET`
+// - endpoint: `S3_ENDPOINT`, `AWS_ENDPOINT`, `AWS_ENDPOINT_URL`, `CELLAR_ADDON_HOST`,
+//   `B2_ENDPOINT`, `R2_ENDPOINT`, `SPACES_ENDPOINT`
 pub fn Credentials.from_env() Credentials {
 	endpoint := env_first('S3_ENDPOINT', 'AWS_ENDPOINT', 'AWS_ENDPOINT_URL', 'CELLAR_ADDON_HOST',
 		'B2_ENDPOINT', 'R2_ENDPOINT', 'SPACES_ENDPOINT')
@@ -153,11 +151,11 @@ pub fn (c Credentials) extra_path() string {
 }
 
 // scheme returns 'http' or 'https' based on the endpoint's explicit scheme
-// when present, falling back to `insecure_http`. So all three of these work:
-//   endpoint: 'https://s3.example.com'   → https
-//   endpoint: 's3.example.com'           → https (default)
-//   endpoint: 'http://localhost:9000'    → http  (auto-detected)
-//   endpoint: 'localhost:9000', insecure_http: true → http
+// when present, falling back to `insecure_http`. So all of these work:
+// - `endpoint: 'https://s3.example.com'` → https
+// - `endpoint: 's3.example.com'` → https (default)
+// - `endpoint: 'http://localhost:9000'` → http (auto-detected)
+// - `endpoint: 'localhost:9000', insecure_http: true` → http
 pub fn (c Credentials) scheme() string {
 	if c.endpoint.starts_with('http://') {
 		return 'http'

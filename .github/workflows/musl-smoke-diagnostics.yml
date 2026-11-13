@@ -1,0 +1,104 @@
+name: Musl smoke diagnostics
+
+'on':
+  pull_request:
+    paths:
+      - '.github/workflows/musl-smoke-diagnostics.yml'
+      - '.github/workflows/musl_compile_smoke.sh'
+      - '.github/workflows/master_ci_regressions.yml'
+      - '.github/workflows/tools_ci.yml'
+      - 'cmd/tools/check_autobahn_results/*.v'
+      - 'cmd/tools/testing/*.v'
+      - 'cmd/tools/test_if_v_test_system_works.v'
+      - 'cmd/tools/test_if_v_test_system_works_test.v'
+      - 'vlib/v/driver/driver.v'
+      - 'vlib/v/driver/instance_check*.v'
+      - 'vlib/v/compiler_tests/check_generic_instances_test.v'
+
+concurrency:
+  group: musl-smoke-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cold-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VTEST_FAIL_FAST: '1'
+    container:
+      image: thevlang/vlang@sha256:6bdb6206d0523c91b4ffeccd7eacecad41c2c9621a3f02da87ace639fd6e5255
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+      volumes:
+        - ${{ github.workspace }}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the optimized V compiler used by CI
+        run: make -j4 && ./v -prod -cg -o v cmd/v
+      - name: Record toolchain for the cold smoke control
+        run: |
+          git config --global --add safe.directory /__w/v/v
+          cc --version
+          musl-gcc --version
+          nproc
+          ulimit -s
+          printf 'VJOBS=%s\n' "${VJOBS-unset}"
+          test "${VJOBS+x}" != x
+      - name: Verify `v test` works
+        env:
+          VTOOLS_CACHE_VERBOSE: '1'
+          VTEST_SHOW_CMD: '1'
+          VTEST_SHOW_START: '1'
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Verify progress remains visible when a nested command stalls
+        run: ./v cmd/tools/test_if_v_test_system_works_test.v
+
+  compile-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, strict]
+    container:
+      image: thevlang/vlang@sha256:6bdb6206d0523c91b4ffeccd7eacecad41c2c9621a3f02da87ace639fd6e5255
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none
+      volumes:
+        - ${{ github.workspace }}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build with the tools CI compiler flags
+        run: |
+          make -j4
+          VFLAGS= ./v self -prod -cc musl-gcc -gc none -cg -parallel-cc
+      - name: Record the musl toolchain and worker configuration
+        run: |
+          musl-gcc --version
+          dpkg-query -W musl musl-dev musl-tools || echo 'musl package metadata unavailable'
+          nproc
+          ulimit -s
+          printf 'VJOBS=%s\n' "${VJOBS-unset}"
+          test "${VJOBS+x}" != x
+      - name: Exercise the test compilations that stalled on master
+        run: bash .github/workflows/musl_compile_smoke.sh "${{ matrix.suite }}"
+      - name: Preserve generic diagnostics in the fresh compiler process
+        timeout-minutes: 5
+        env:
+          VTEST_ONLY_FN: test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork,test_an_instance_of_a_library_generic_that_the_program_asks_for_is_checked,test_instances_of_a_library_generic_with_the_expected_types_stay_valid
+        run: ./v vlib/v/compiler_tests/check_generic_instances_test.v

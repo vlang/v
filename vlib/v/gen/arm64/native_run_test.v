@@ -1,7 +1,10 @@
 module arm64
 
 import os
-import time
+
+$if macos && arm64 {
+	import time
+}
 
 const native_test_compiler = os.join_path(os.vtmp_dir(), 'arm64_run_compiler_${os.getpid()}')
 

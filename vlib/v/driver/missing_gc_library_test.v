@@ -8,6 +8,25 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	$if windows {
 		return
 	}
+	// Each subprocess selects its own compiler and GC mode. Inherited C flags
+	// can disable the literal-output path that does not need the collector.
+	keys := ['VFLAGS', 'VOSARGS']
+	mut old_values := map[string]string{}
+	for key in keys {
+		if value := os.getenv_opt(key) {
+			old_values[key] = value
+		}
+		os.unsetenv(key)
+	}
+	defer {
+		for key in keys {
+			if value := old_values[key] {
+				os.setenv(key, value, true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
+	}
 	root := os.join_path(os.vtmp_dir(), 'v missing gc ${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', 'lib'))!
 	defer {

@@ -254,11 +254,11 @@ static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
 fn test_cached_runtime_literal_rewrite_preserves_const_storage_and_sharing() {
 	old_symbol := cached_c_string_symbol('cold')
 	new_symbol := cached_c_string_symbol('done')
-	source := 'static const string ${old_symbol} = {"cold", 4, 1};\n${c_body_begin}\nvoid main(void) { use(${old_symbol}); use(${old_symbol}); }\n'
+	source := 'static const string ${old_symbol} = {(u8*)"cold", 4, 1};\n${c_body_begin}\nvoid main(void) { use(${old_symbol}); use(${old_symbol}); }\n'
 	rewritten := rewrite_cached_runtime_strings(source, ['cold', 'cold'], ['done', 'done']) or {
 		panic('expected both occurrences of the shared literal to be rewritten')
 	}
-	definition := 'static const string ${new_symbol} = {"done", 4, 1};'
+	definition := 'static const string ${new_symbol} = {(u8*)"done", 4, 1};'
 	assert rewritten.count(definition) == 1
 	assert !rewritten.contains('"cold"')
 	assert !rewritten.contains(old_symbol)
@@ -1004,6 +1004,28 @@ fn header_of_source(root string, name string, source string) string {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	tc := vtypes.TypeChecker.new(a)
 	return module_header(a, &tc, name, '', map[string]string{})
+}
+
+fn test_cached_struct_c_string_default_remains_a_c_string() ! {
+	root := os.join_path(os.vtmp_dir(), 'cached_c_string_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'selector', "module selector\npub struct Options {\npub:\n selector &char = c'#canvas'\n}\n")
+	assert header.contains('c"#canvas"'), header
+	path := os.join_path(root, 'selector.vh')
+	os.write_file(path, header)!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.any(it.kind == .char_literal && it.value == 'c:#canvas')
+}
+
+fn test_cached_c_string_spelling_keeps_escapes_and_quotes() {
+	assert c_string_expr_text(r'\0') == r'c"\0"'
+	assert c_string_expr_text(r'\\') == r'c"\\"'
+	assert c_string_expr_text("it's") == 'c"it\'s"'
+	assert c_string_expr_text(r"it\'s") == 'c"it\'s"'
+	assert c_string_expr_text('say "hi"') == r'c"say \"hi\""'
 }
 
 fn test_cached_struct_field_attributes_round_trip_without_warnings() ! {

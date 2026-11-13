@@ -9,7 +9,8 @@ fn C.clonefile(&char, &char, int) int
 
 @[inline]
 fn fastc_unit_cache_hash(text string, seed u64) u64 {
-	return C.wyhash(text.str, u64(text.len), seed, &u64(voidptr(C._wyp)))
+	// wyhash reads its static seed table through the C pointer.
+	return C.wyhash(text.str, u64(text.len), seed, unsafe { &u64(voidptr(C._wyp)) })
 }
 
 fn fastc_copy_cached_link(source string, destination string) ! {

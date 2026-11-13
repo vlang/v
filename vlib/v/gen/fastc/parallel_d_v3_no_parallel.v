@@ -3,6 +3,24 @@ module fastc
 import v.flat
 import v.pref
 
+struct FastcPendingEmbeddedPayloads {
+	result FastcEmbeddedPayloadResult
+}
+
+fn fastc_start_embedded_payloads(sources []FastcSourceFile, prefs &pref.Preferences) FastcPendingEmbeddedPayloads {
+	if !prefs.building_v || prefs.selfhost {
+		return FastcPendingEmbeddedPayloads{}
+	}
+	return FastcPendingEmbeddedPayloads{ result: fastc_collect_source_embedded_payloads(sources, prefs) }
+}
+
+fn fastc_wait_embedded_payloads(mut pending FastcPendingEmbeddedPayloads) !map[string]string {
+	if pending.result.error_message != '' {
+		return error(pending.result.error_message)
+	}
+	return pending.result.payloads
+}
+
 struct FastcPendingReferences {
 	references map[string]bool
 }
@@ -165,6 +183,22 @@ fn fastc_collect_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.
 fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []u32, mut embed_embeddeds []u32) ! {
 	partial := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, 0, sources.len)
 	fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+}
+
+fn fastc_scan_generic_fns_of_files(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int) [][]FastcGenericFn {
+	mut results := [][]FastcGenericFn{cap: indexes.len}
+	for index in indexes {
+		results << fastc_scan_generic_fns(sources[index].source, sources[index].path, prefs, index)
+	}
+	return results
+}
+
+fn fastc_scan_generic_calls_of_files(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int, by_name map[string]FastcGenericFn) []FastcGenericCallScan {
+	mut results := []FastcGenericCallScan{cap: indexes.len}
+	for index in indexes {
+		results << fastc_scan_generic_calls_of_file(sources, prefs, index, by_name)
+	}
+	return results
 }
 
 // fastc_parse_constant_files_parallel returns no results: without threads the

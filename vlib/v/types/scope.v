@@ -37,7 +37,7 @@ pub struct ScopeBindingOwner {
 	storage_key string
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn scope_name_bit(name string) u64 {
 	if name.len == 0 {
 		return u64(1)
@@ -46,7 +46,7 @@ fn scope_name_bit(name string) u64 {
 	return u64(1) << ((u32(name[0]) * 33 + u32(name[name.len - 1]) * 7 + u32(name.len)) & 63)
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn scope_fast_slot(name string) int {
 	// Identical identifiers often come from different source allocations.
 	if name.len == 0 {
@@ -184,6 +184,7 @@ pub fn (s &Scope) contains(name string) bool {
 }
 
 // lookup returns the nearest visible type binding for `name`.
+@[direct_array_access]
 pub fn (s &Scope) lookup(name string) ?Type {
 	if name.len == 0 {
 		return none
@@ -216,6 +217,7 @@ pub fn (s &Scope) lookup(name string) ?Type {
 
 // lookup_before returns the nearest binding for `name` in the scopes from this one
 // up to, but not including, `stop` (the whole chain when `stop` is nil).
+@[direct_array_access]
 pub fn (s &Scope) lookup_before(name string, stop &Scope) ?Type {
 	if name.len == 0 {
 		return none
@@ -259,6 +261,7 @@ pub fn (s &Scope) binds_own(name string) bool {
 }
 
 // lookup_owner returns the nearest scope that owns a visible binding for `name`.
+@[direct_array_access]
 pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	if name.len == 0 {
 		return none

@@ -134,6 +134,12 @@ const skip_with_fsanitize_memory = [
 	'cmd/tools/vpm/install_version_input_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'cmd/tools/vpm/install_version_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'cmd/tools/vpm/update_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	// These integration tests enter uninstrumented EGL/Mesa drivers, whose internal
+	// allocations MSan cannot track (libEGL fails in scandir64 during initialization).
+	// Keep CPU canvas tests instrumented; canvas CI, ASan and UBSan still run these.
+	'vlib/gg/canvas/gpu_context_linux_test.c.v',
+	'vlib/gg/canvas/gpu_surface_linux_test.v',
+	'vlib/gg/canvas/gpu_surface_test.v',
 	'vlib/net/tcp_simple_client_server_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
@@ -334,7 +340,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
 	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
-	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
 	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
 	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',

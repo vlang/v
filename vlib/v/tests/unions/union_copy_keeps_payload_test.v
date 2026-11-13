@@ -1,6 +1,6 @@
 // A union is copied bit for bit: a copy cannot clone its `string` member, because
 // another member may hold the live value (as in `vsql.Value`). A `clone()` method that
-// the union declares itself still makes the copies.
+// the union declares itself is used when explicitly called.
 union Payload {
 mut:
 	f f64
@@ -83,13 +83,15 @@ mut:
 	c   Counted
 }
 
-fn test_a_clone_method_of_the_union_makes_the_copies() {
+fn test_union_append_and_explicit_clone_keep_their_payloads() {
 	c := Counted{
 		n: 7
 	}
 	mut values := []Counted{}
 	values << c
-	assert unsafe { values[0].n } == 1007
+	assert unsafe { values[0].n } == 7
+	values << c.clone()
+	assert unsafe { values[1].n } == 1007
 	holder := CountedHolder{
 		tag: 1
 		c:   Counted{
@@ -99,5 +101,11 @@ fn test_a_clone_method_of_the_union_makes_the_copies() {
 	mut holders := []CountedHolder{}
 	holders << holder
 	assert holders[0].tag == 1
-	assert unsafe { holders[0].c.n } == 1005
+	assert unsafe { holders[0].c.n } == 5
+	holders << CountedHolder{
+		...holder
+		c: holder.c.clone()
+	}
+	assert holders[1].tag == 1
+	assert unsafe { holders[1].c.n } == 1005
 }

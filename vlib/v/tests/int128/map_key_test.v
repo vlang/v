@@ -73,3 +73,22 @@ fn test_a_wide_map_value_is_not_a_key_question() {
 	assert m[u64(1)] == u128(1) << 100
 	assert m[key] == u128(5)
 }
+
+fn test_wide_maps_support_equality_assertions_and_stringification() {
+	unsigned_key := u128(1) << 100
+	signed_key := i128(-1) << 100
+	unsigned := {
+		unsigned_key: i128(-7)
+	}
+	signed := {
+		signed_key: unsigned_key
+	}
+	// Equality assertion diagnostics also stringify the keys and values. Their
+	// generated C must work when i128 and u128 use the portable struct type.
+	assert unsigned == unsigned.clone()
+	assert signed == signed.clone()
+	assert unsigned.keys() == [unsigned_key]
+	assert signed.keys() == [signed_key]
+	assert unsigned.str() == '{1267650600228229401496703205376: -7}'
+	assert signed.str() == '{-1267650600228229401496703205376: 1267650600228229401496703205376}'
+}

@@ -44,6 +44,24 @@ fn test_wide_str_owns_its_text_and_terminates_it() {
 	}
 }
 
+fn test_hex_owns_its_text_and_terminates_it() {
+	assert u128(0).hex() == '0'
+	assert u128(0).hex_full() == '00000000000000000000000000000000'
+	assert u128(15).hex() == 'f'
+	assert u128(15).hex_full() == '0000000000000000000000000000000f'
+	maximum := ~u128(0)
+	assert maximum.hex() == 'ffffffffffffffffffffffffffffffff'
+	assert maximum.hex_full() == 'ffffffffffffffffffffffffffffffff'
+	assert i128(-1).hex() == 'ffffffffffffffffffffffffffffffff'
+	text := (u128(1) << 64).hex()
+	assert u128(1).hex() == '1'
+	assert text == '10000000000000000'
+	for value in [text, u128(0).hex_full(), maximum.hex()] {
+		// The returned allocation must also be a terminated C string.
+		unsafe { assert value.str[value.len] == 0 }
+	}
+}
+
 fn test_interpolation_uses_the_same_text() {
 	v := u128(1) << 100
 	assert '${v}' == '1267650600228229401496703205376'

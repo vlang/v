@@ -3,6 +3,7 @@ module main
 import json2
 import net.http
 import os
+import test_utils
 
 fn test_registry_archive_base_resolves_configuration_url_references() {
 	assert resolve_registry_archive_base('https://registry.invalid/prefix', '/')! == 'https://registry.invalid'
@@ -187,23 +188,14 @@ fn (mut h TokenEchoHandler) handle(req http.Request) http.Response {
 struct RunningTokenEcho {
 mut:
 	base   string
-	server &http.Server
+	server test_utils.MockHttpServer
 }
 
 fn start_token_echo() !RunningTokenEcho {
-	// The server is held by reference for the reason `start_registry` holds it:
-	// `listen_and_serve` takes it by `mut`, and spawning a method on a by-value
-	// receiver does not compile.
-	mut srv := &http.Server{
-		addr:                 ':0'
-		handler:              TokenEchoHandler{}
-		show_startup_message: false
-	}
-	spawn srv.listen_and_serve()
-	srv.wait_till_running()!
+	server := test_utils.start_mock_http_server(TokenEchoHandler{})!
 	return RunningTokenEcho{
-		base:   'http://127.0.0.1:${srv.listener.addr()!.port()!}'
-		server: srv
+		base:   server.base_url
+		server: server
 	}
 }
 

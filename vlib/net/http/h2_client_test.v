@@ -172,3 +172,29 @@ fn test_h2_proxy_preserves_content_encoded_body() {
 	assert h2_response_to_http(upstream)!.body == 'encoded upstream body'
 	assert h2_response_to_http(upstream, raw_body: true)!.body.bytes() == compressed
 }
+
+fn test_h2_response_to_http_preserves_truncated_encoded_prefix() {
+	compressed := gzip.compress('decoded body'.repeat(100).bytes())!
+	partial := compressed[..compressed.len - 4]
+	upstream := H2ClientResponse{
+		status:         200
+		headers:        [H2HeaderField{'content-encoding', 'gzip'}]
+		body:           partial
+		body_truncated: true
+	}
+	assert h2_response_to_http(upstream)!.body.bytes() == partial
+}
+
+fn test_h2_response_to_http_enforces_decoded_byte_limit() {
+	compressed := gzip.compress('decoded body'.repeat(100).bytes())!
+	upstream := H2ClientResponse{
+		status:  200
+		headers: [H2HeaderField{'content-encoding', 'gzip'}]
+		body:    compressed
+	}
+	h2_response_to_http(upstream, max_total_decompressed_bytes: 32) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		return
+	}
+	assert false, 'expected HTTP/2 decoded-byte limit to be enforced'
+}

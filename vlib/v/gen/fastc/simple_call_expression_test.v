@@ -109,7 +109,7 @@ fn test_fastc_simple_calls_match_the_complete_streaming_reader() {
 		'value() {', 'value()\n', 'builtin_only(count);', 'integer(00017);', 'integer(0xffff);',
 		'scalar(count,text,flag,fraction);', 'scalar(1,"text",true,1.25);',
 		'scalar(1 /* comment */, text, false, 3.5);', 'noreturn(flag);', 'value() /* comment */;',
-		'value()\n*ptr = 2;', 'value()\n/* comment */ .field;'] {
+		'value()\n*ptr = 2;'] {
 		for mutation in [true, false] {
 			for newline_values in [true, false] {
 				mut fast := fastc_simple_call_test_parser(source, true, false)
@@ -132,9 +132,10 @@ fn test_fastc_simple_call_rejections_restore_the_reader_checkpoint() {
 		'integer(chan);', 'integer(count + 1);', 'integer((count));', 'integer(.enum_value);',
 		'integer(value());', 'integer(-1);', 'integer(nil);', 'integer(1)!;', 'integer(1)?;',
 		'integer(1).field;', 'integer(1)[0];', 'integer(1) + 2;', 'value()\n + 2;', 'value()\n .field;',
-		'value()\n && flag;', 'integer(\ncount);', 'integer(count\n);', 'integer(/*\n*/count);',
-		r'scalar(1,"${count}",true,1.0);', r'scalar(1,"a\n",true,1.0);', r'scalar(1,"a\u0000",true,1.0);',
-		'integer(12wrong);', 'print(count);', 'println(count);', 'typeof(count);', 'C.integer(1);'] {
+		'value()\n && flag;', 'value()\n/* comment */ .field;', 'integer(\ncount);', 'integer(count\n);',
+		'integer(/*\n*/count);', r'scalar(1,"${count}",true,1.0);', r'scalar(1,"a\n",true,1.0);',
+		r'scalar(1,"a\u0000",true,1.0);', 'integer(12wrong);', 'print(count);', 'println(count);',
+		'typeof(count);', 'C.integer(1);'] {
 		mut g := fastc_simple_call_test_parser(source, true, false)
 		before := fastc_simple_call_test_parser(source, true, false)
 		assert !g.try_read_simple_call_expression(stops, false, true).found, source

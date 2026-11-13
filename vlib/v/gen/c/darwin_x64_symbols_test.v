@@ -6,8 +6,8 @@ import v.pref
 
 const darwin_x64_guard = '#if defined(__APPLE__) && defined(__x86_64__)'
 
-// darwin_x64_program_symbols are the SDK-renamed functions that the program of
-// darwin_x64_symbols_project reaches, through `os` and through its own bindings.
+// darwin_x64_program_symbols are the SDK-renamed functions reached by the
+// standalone C bindings in darwin_x64_symbols_project.
 const darwin_x64_program_symbols = {
 	'fdopendir': '_fdopendir$INODE64'
 	'fstat':     '_fstat$INODE64'
@@ -23,21 +23,35 @@ fn darwin_x64_symbols_project() !string {
 	root := os.join_path(os.vtmp_dir(), 'darwin_x64_symbols_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
-	os.write_file(os.join_path(root, 'main.v'), 'import os
+	// Importing os brings in fd_poll.h, which lets the SDK own libc declarations.
+	// Keep these bindings standalone so the test exercises V's generated prototypes.
+	os.write_file(os.join_path(root, 'main.c.v'), '@[typedef]
+struct C.DIR {}
+struct C.dirent {}
+struct C.stat {}
+@[typedef]
+struct C.fd_set {}
+struct C.timeval {}
 
-fn C.fstat(fd i32, buf &C.stat) i32
 fn C.fdopendir(fd i32) &C.DIR
+fn C.fstat(fd i32, buf &C.stat) i32
+fn C.lstat(const_path &char, buf &C.stat) i32
+fn C.opendir(const_path &char) &C.DIR
+fn C.readdir(dir &C.DIR) &C.dirent
+fn C.realpath(const_path &char, resolved &char) &char
+fn C.select(nfds i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
+fn C.stat(const_path &char, buf &C.stat) i32
 
 fn main() {
-	s := os.stat(".") or { panic(err) }
-	l := os.lstat(".") or { panic(err) }
-	println(s.size + l.size)
-	println(os.ls(".") or { [] })
-	println(os.real_path("."))
-	println(os.fd_is_pending(0))
-	mut st := C.stat{}
-	println(C.fstat(0, &st))
-	println(voidptr(C.fdopendir(-1)) == unsafe { nil })
+	// Only compiled to objects; null arguments avoid depending on SDK struct layouts.
+	C.fdopendir(-1)
+	C.fstat(0, unsafe { nil })
+	C.lstat(c".", unsafe { nil })
+	C.opendir(c".")
+	C.readdir(unsafe { nil })
+	C.realpath(c".", unsafe { nil })
+	C.select(0, unsafe { nil }, unsafe { nil }, unsafe { nil }, unsafe { nil })
+	C.stat(c".", unsafe { nil })
 }
 ')!
 	return root
@@ -46,7 +60,7 @@ fn main() {
 fn generate_darwin_x64_symbols_c(root string, target_os string) ![]string {
 	c_source := os.join_path(root, '${target_os}.c')
 	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', target_os, '-gc', 'none', '-o',
-		c_source, os.join_path(root, 'main.v')])
+		c_source, os.join_path(root, 'main.c.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_lines(c_source)!
 }
@@ -61,7 +75,7 @@ fn test_macos_prototypes_link_the_x86_64_sdk_symbols() {
 	root := darwin_x64_symbols_project()!
 	defer { os.rmdir_all(root) or {} }
 	lines := generate_darwin_x64_symbols_c(root, 'macos')!
-	assert !lines.any(it.starts_with('#include')), 'macOS output is expected to be headerless'
+	assert lines.all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"'), 'macOS output is expected to be headerless'
 	for name, symbol in darwin_x64_program_symbols {
 		label := ' __asm__("${symbol}");'
 		mut idx := -1

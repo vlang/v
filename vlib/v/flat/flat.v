@@ -258,6 +258,9 @@ __global g_node_payload_lock u32
 __global g_canonical_comptime_payload NodePayload
 // Empty borrowed type lists share a typed descriptor without rebuilding it per lookup.
 __global g_empty_source_type_ids []u32 = []u32{}
+// Accessors of nodes without a payload share this empty list instead of
+// constructing one per call; readers never write through a zero-capacity view.
+__global g_empty_payload_texts []string = []string{}
 
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
@@ -395,6 +398,9 @@ pub const node_flag_freed_assignment = u8(8)
 // node_flag_borrowed_map_key marks a generated read-only map iteration whose
 // key cannot escape. The bit is shared with the assignment-only flag above.
 pub const node_flag_borrowed_map_key = u8(8)
+// node_flag_in_range_index marks an `.index` read the transform proved in range
+// (see Node.is_in_range_index()). The bit is shared with the flags above.
+pub const node_flag_in_range_index = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -589,6 +595,13 @@ pub fn (n &Node) has_literal_interpolation_text() bool {
 	return (n.flags & node_flag_literal_interpolation_text) != 0
 }
 
+// is_in_range_index reports whether this array or string index read needs no
+// bounds check: its loop proves the index is in range for the indexed value.
+@[inline]
+pub fn (n &Node) is_in_range_index() bool {
+	return n.kind == .index && (n.flags & node_flag_in_range_index) != 0
+}
+
 // is_mut_builtin_pointer_param reports whether this parameter was declared as
 // `mut p voidptr`, `mut p byteptr`, or `mut p charptr` in source.
 @[inline]
@@ -639,7 +652,7 @@ pub fn (n &Node) type_text_id() u32 {
 @[inline]
 pub fn (n &Node) generic_params() []string {
 	if n.payload == 0 {
-		return []string{}
+		return g_empty_payload_texts
 	}
 	return node_payload_at(n.payload).generic_params
 }
@@ -649,7 +662,7 @@ pub fn (n &Node) generic_params() []string {
 @[inline]
 pub fn (n &Node) generic_constraints() []string {
 	if n.payload == 0 {
-		return []string{}
+		return g_empty_payload_texts
 	}
 	return node_payload_at(n.payload).generic_constraints.names()
 }
@@ -694,7 +707,7 @@ pub fn (mut n Node) set_enum_backing_type_id(type_id u32) {
 // The immutable payload list is borrowed for read-only use.
 @[inline]
 pub fn (n &Node) debugger_value_type_ids() []u32 {
-	if n.payload == 0 || n.kind != .debugger_stmt { return []u32{} }
+	if n.payload == 0 || n.kind != .debugger_stmt { return g_empty_source_type_ids }
 	return node_payload_at(n.payload).debugger_value_types.ids
 }
 
@@ -1374,6 +1387,9 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 	}
 }
 
+// The callers index live nodes (a parsed range, or recorded merge misses), so
+// the slot needs no bounds check; the param loop is indexed for the same reason.
+@[direct_array_access]
 fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut type_cache_ptrs [4096]voidptr, mut type_cache_vals [4096]string, mut type_cache_ids [4096]u16) {
 	// Interning grows the text tables, never the node array, so this slot stays valid.
 	mut node := &a.nodes[idx]
@@ -1388,8 +1404,8 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		// Always rebuild the payload: the params array itself may live in a
 		// stage arena even when every param string is already canonical.
 		mut canonical_params := []string{cap: params.len}
-		for item in params {
-			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
+		for index in 0 .. params.len {
+			canonical_params << a.intern_text_ptr_cached(params[index], mut cache_ptrs, mut cache_vals)
 		}
 		node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 	}
@@ -1678,10 +1694,12 @@ pub fn (mut a FlatAst) add_child(id NodeId) {
 }
 
 // child supports child handling for FlatAst.
+// Array lengths are never negative, so one unsigned comparison rejects both a
+// negative index and one at or past the end.
 @[direct_array_access; inline]
 pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 	child_index := node.children_start + index
-	if index < 0 || index >= node.children_count || child_index < 0 || child_index >= a.children.len {
+	if u64(index) >= u64(node.children_count) || u64(child_index) >= u64(a.children.len) {
 		return empty_node
 	}
 	// Bounds are checked above; avoid a second array bounds check on this hot path.
@@ -1692,7 +1710,7 @@ pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 @[direct_array_access; inline]
 pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 	id := a.child(node, index)
-	if int(id) < 0 || int(id) >= a.nodes.len {
+	if u64(int(id)) >= u64(a.nodes.len) {
 		return &empty_node_value
 	}
 	// Bounds are checked above; avoid a second array bounds check on this hot path.
@@ -1702,7 +1720,7 @@ pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 // node supports node handling for FlatAst.
 @[direct_array_access; inline]
 pub fn (a &FlatAst) node(id NodeId) &Node {
-	if int(id) < 0 || int(id) >= a.nodes.len {
+	if u64(int(id)) >= u64(a.nodes.len) {
 		return &empty_node_value
 	}
 	// Bounds are checked above; avoid a second array bounds check on this hot path.

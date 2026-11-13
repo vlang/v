@@ -1157,6 +1157,8 @@
         - SG_VERTEXFORMAT_UINT10_N2
         - SG_VERTEXFORMAT_HALF2
         - SG_VERTEXFORMAT_HALF4
+        - SG_VERTEXFORMAT_INT, INT2, INT3, INT4 (V patch, GLES3/GL3.0+ only)
+        - SG_VERTEXFORMAT_UINT, UINT2, UINT3, UINT4 (V patch, GLES3/GL3.0+ only)
 
 
     MEMORY ALLOCATION OVERRIDE
@@ -2179,6 +2181,18 @@ typedef enum sg_vertex_format {
     SG_VERTEXFORMAT_UINT10_N2,
     SG_VERTEXFORMAT_HALF2,
     SG_VERTEXFORMAT_HALF4,
+    /* V_SOKOL_INT_VERTEX_FORMATS_BEGIN */
+    // V patch: 32-bit integer attributes, read by the shader as int/uint
+    // vectors without conversion (GL uses glVertexAttribIPointer).
+    SG_VERTEXFORMAT_INT,
+    SG_VERTEXFORMAT_INT2,
+    SG_VERTEXFORMAT_INT3,
+    SG_VERTEXFORMAT_INT4,
+    SG_VERTEXFORMAT_UINT,
+    SG_VERTEXFORMAT_UINT2,
+    SG_VERTEXFORMAT_UINT3,
+    SG_VERTEXFORMAT_UINT4,
+    /* V_SOKOL_INT_VERTEX_FORMATS_END */
     _SG_VERTEXFORMAT_NUM,
     _SG_VERTEXFORMAT_FORCE_U32 = 0x7FFFFFFF
 } sg_vertex_format;
@@ -3810,7 +3824,7 @@ typedef struct sg_frame_stats {
     _SG_LOGITEM_XMACRO(VALIDATE_ABND_FS_UNEXPECTED_STORAGEBUFFER_BINDING, "sg_apply_bindings: unexpected storage buffer binding on fragment stage") \
     _SG_LOGITEM_XMACRO(VALIDATE_AUB_NO_PIPELINE, "sg_apply_uniforms: must be called after sg_apply_pipeline()") \
     _SG_LOGITEM_XMACRO(VALIDATE_AUB_NO_UB_AT_SLOT, "sg_apply_uniforms: no uniform block declaration at this shader stage UB slot") \
-    _SG_LOGITEM_XMACRO(VALIDATE_AUB_SIZE, "sg_apply_uniforms: data size doesn't match declared uniform block size") \
+    _SG_LOGITEM_XMACRO(VALIDATE_AUB_SIZE, "sg_apply_uniforms: data size doesn't match declared uniform block size (Metal/WebGPU: exceeds it)") \
     _SG_LOGITEM_XMACRO(VALIDATE_UPDATEBUF_USAGE, "sg_update_buffer: cannot update immutable buffer") \
     _SG_LOGITEM_XMACRO(VALIDATE_UPDATEBUF_SIZE, "sg_update_buffer: update size is bigger than buffer size") \
     _SG_LOGITEM_XMACRO(VALIDATE_UPDATEBUF_ONCE, "sg_update_buffer: only one update allowed per buffer and frame") \
@@ -3972,6 +3986,34 @@ SOKOL_GFX_API_DECL bool v_sokol_mtl_set_end_pass_hook(
     void* user_data);
 #endif
 /* V_SOKOL_MTL_END_PASS_DECL_END */
+
+/* V_SOKOL_IMAGE_TRANSFER_DECL_BEGIN */
+/*
+    V patch: synchronous image transfers for offscreen rendering whose pixels
+    are consumed by the CPU, e.g. to reproduce another renderer's output.
+
+    All functions must be called outside of a render pass. They submit the
+    work recorded so far in the current frame and wait for the GPU to finish
+    it, so later passes in the same frame observe the transferred pixels.
+    Only single-sampled 2D images whose pixel format has a fixed byte size are
+    supported; 'pitch' is the CPU row stride in bytes. They return false for
+    unsupported images or backends (D3D11 and WebGPU currently).
+
+    sg_v_flush():        submit and wait for all recorded GPU work
+    sg_v_read_image():   copy a rectangle of a 2D image into CPU memory
+    sg_v_write_image():  replace a rectangle of a 2D image, including render targets
+
+    sg_v_mtl_set_shader_compile_options() selects the MSL language version
+    (e.g. 2, 3 for MSL 2.3) and fast-math mode used by shaders created
+    afterwards from source code. Passing major == 0 restores the Metal
+    defaults. Fast-math changes floating-point results, so a shader that must
+    match another renderer bit-for-bit needs that renderer's options.
+*/
+SOKOL_GFX_API_DECL bool sg_v_flush(void);
+SOKOL_GFX_API_DECL bool sg_v_read_image(sg_image img, int x, int y, int width, int height, void* pixels, int pitch);
+SOKOL_GFX_API_DECL bool sg_v_write_image(sg_image img, int x, int y, int width, int height, const void* pixels, int pitch);
+SOKOL_GFX_API_DECL void sg_v_mtl_set_shader_compile_options(int language_major, int language_minor, bool fast_math);
+/* V_SOKOL_IMAGE_TRANSFER_DECL_END */
 
 /*
     sg_allocator
@@ -4778,6 +4820,7 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
         #define GL_CURRENT_PROGRAM 0x8B8D
         #define GL_MAX_VERTEX_UNIFORM_COMPONENTS  0x8B4A
         #define GL_UNPACK_ALIGNMENT 0x0CF5
+        #define GL_PACK_ALIGNMENT 0x0D05
         #define GL_FRAMEBUFFER_SRGB 0x8DB9
         #define GL_TEXTURE_COMPARE_MODE 0x884C
         #define GL_TEXTURE_COMPARE_FUNC 0x884D
@@ -5375,6 +5418,7 @@ typedef struct {
     uint8_t stride;
     uint8_t size;
     uint8_t normalized;
+    uint8_t integer;        // V patch: bound with glVertexAttribIPointer
     int offset;
     GLenum type;
 } _sg_gl_attr_t;
@@ -6130,6 +6174,14 @@ _SOKOL_PRIVATE int _sg_vertexformat_bytesize(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return 4;
         case SG_VERTEXFORMAT_HALF2:     return 4;
         case SG_VERTEXFORMAT_HALF4:     return 8;
+        case SG_VERTEXFORMAT_INT:       return 4;
+        case SG_VERTEXFORMAT_INT2:      return 8;
+        case SG_VERTEXFORMAT_INT3:      return 12;
+        case SG_VERTEXFORMAT_INT4:      return 16;
+        case SG_VERTEXFORMAT_UINT:      return 4;
+        case SG_VERTEXFORMAT_UINT2:     return 8;
+        case SG_VERTEXFORMAT_UINT3:     return 12;
+        case SG_VERTEXFORMAT_UINT4:     return 16;
         case SG_VERTEXFORMAT_INVALID:   return 0;
         default:
             SOKOL_UNREACHABLE;
@@ -6874,6 +6926,8 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glRenderbufferStorageMultisample,  void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)) \
     _SG_XMACRO(glDrawBuffers,                     void, (GLsizei n, const GLenum * bufs)) \
     _SG_XMACRO(glVertexAttribDivisor,             void, (GLuint index, GLuint divisor)) \
+    _SG_XMACRO(glVertexAttribIPointer,            void, (GLuint index, GLint size, GLenum type, GLsizei stride, const void * pointer)) \
+    _SG_XMACRO(glFinish,                          void, (void)) \
     _SG_XMACRO(glBufferSubData,                   void, (GLenum target, GLintptr offset, GLsizeiptr size, const void * data)) \
     _SG_XMACRO(glGenBuffers,                      void, (GLsizei n, GLuint * buffers)) \
     _SG_XMACRO(glCheckFramebufferStatus,          GLenum, (GLenum target)) \
@@ -7040,7 +7094,31 @@ _SOKOL_PRIVATE GLint _sg_gl_vertexformat_size(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return 4;
         case SG_VERTEXFORMAT_HALF2:     return 2;
         case SG_VERTEXFORMAT_HALF4:     return 4;
+        case SG_VERTEXFORMAT_INT:       return 1;
+        case SG_VERTEXFORMAT_INT2:      return 2;
+        case SG_VERTEXFORMAT_INT3:      return 3;
+        case SG_VERTEXFORMAT_INT4:      return 4;
+        case SG_VERTEXFORMAT_UINT:      return 1;
+        case SG_VERTEXFORMAT_UINT2:     return 2;
+        case SG_VERTEXFORMAT_UINT3:     return 3;
+        case SG_VERTEXFORMAT_UINT4:     return 4;
         default: SOKOL_UNREACHABLE; return 0;
+    }
+}
+
+_SOKOL_PRIVATE GLboolean _sg_gl_vertexformat_is_integer(sg_vertex_format fmt) {
+    switch (fmt) {
+        case SG_VERTEXFORMAT_INT:
+        case SG_VERTEXFORMAT_INT2:
+        case SG_VERTEXFORMAT_INT3:
+        case SG_VERTEXFORMAT_INT4:
+        case SG_VERTEXFORMAT_UINT:
+        case SG_VERTEXFORMAT_UINT2:
+        case SG_VERTEXFORMAT_UINT3:
+        case SG_VERTEXFORMAT_UINT4:
+            return GL_TRUE;
+        default:
+            return GL_FALSE;
     }
 }
 
@@ -7070,6 +7148,16 @@ _SOKOL_PRIVATE GLenum _sg_gl_vertexformat_type(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_HALF2:
         case SG_VERTEXFORMAT_HALF4:
             return GL_HALF_FLOAT;
+        case SG_VERTEXFORMAT_INT:
+        case SG_VERTEXFORMAT_INT2:
+        case SG_VERTEXFORMAT_INT3:
+        case SG_VERTEXFORMAT_INT4:
+            return GL_INT;
+        case SG_VERTEXFORMAT_UINT:
+        case SG_VERTEXFORMAT_UINT2:
+        case SG_VERTEXFORMAT_UINT3:
+        case SG_VERTEXFORMAT_UINT4:
+            return GL_UNSIGNED_INT;
         default:
             SOKOL_UNREACHABLE; return 0;
     }
@@ -8672,6 +8760,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_gl_create_pipeline(_sg_pipeline_t* pip, _sg
             gl_attr->size = (uint8_t) _sg_gl_vertexformat_size(a_state->format);
             gl_attr->type = _sg_gl_vertexformat_type(a_state->format);
             gl_attr->normalized = _sg_gl_vertexformat_normalized(a_state->format);
+            gl_attr->integer = _sg_gl_vertexformat_is_integer(a_state->format);
             pip->cmn.vertex_buffer_layout_active[a_state->buffer_index] = true;
         } else {
             _SG_ERROR(GL_VERTEX_ATTRIBUTE_NOT_FOUND_IN_SHADER);
@@ -9367,12 +9456,17 @@ _SOKOL_PRIVATE bool _sg_gl_apply_bindings(_sg_bindings_t* bnd) {
                 (attr->size != cache_attr->gl_attr.size) ||
                 (attr->type != cache_attr->gl_attr.type) ||
                 (attr->normalized != cache_attr->gl_attr.normalized) ||
+                (attr->integer != cache_attr->gl_attr.integer) ||
                 (attr->stride != cache_attr->gl_attr.stride) ||
                 (vb_offset != cache_attr->gl_attr.offset) ||
                 (cache_attr->gl_attr.divisor != attr->divisor))
             {
                 _sg_gl_cache_bind_buffer(GL_ARRAY_BUFFER, gl_vb);
-                glVertexAttribPointer(attr_index, attr->size, attr->type, attr->normalized, attr->stride, (const GLvoid*)(GLintptr)vb_offset);
+                if (attr->integer) {
+                    glVertexAttribIPointer(attr_index, attr->size, attr->type, attr->stride, (const GLvoid*)(GLintptr)vb_offset);
+                } else {
+                    glVertexAttribPointer(attr_index, attr->size, attr->type, attr->normalized, attr->stride, (const GLvoid*)(GLintptr)vb_offset);
+                }
                 _sg_stats_add(gl.num_vertex_attrib_pointer, 1);
                 glVertexAttribDivisor(attr_index, (GLuint)attr->divisor);
                 _sg_stats_add(gl.num_vertex_attrib_divisor, 1);
@@ -10220,6 +10314,14 @@ _SOKOL_PRIVATE DXGI_FORMAT _sg_d3d11_vertex_format(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return DXGI_FORMAT_R10G10B10A2_UNORM;
         case SG_VERTEXFORMAT_HALF2:     return DXGI_FORMAT_R16G16_FLOAT;
         case SG_VERTEXFORMAT_HALF4:     return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case SG_VERTEXFORMAT_INT:       return DXGI_FORMAT_R32_SINT;
+        case SG_VERTEXFORMAT_INT2:      return DXGI_FORMAT_R32G32_SINT;
+        case SG_VERTEXFORMAT_INT3:      return DXGI_FORMAT_R32G32B32_SINT;
+        case SG_VERTEXFORMAT_INT4:      return DXGI_FORMAT_R32G32B32A32_SINT;
+        case SG_VERTEXFORMAT_UINT:      return DXGI_FORMAT_R32_UINT;
+        case SG_VERTEXFORMAT_UINT2:     return DXGI_FORMAT_R32G32_UINT;
+        case SG_VERTEXFORMAT_UINT3:     return DXGI_FORMAT_R32G32B32_UINT;
+        case SG_VERTEXFORMAT_UINT4:     return DXGI_FORMAT_R32G32B32A32_UINT;
         default: SOKOL_UNREACHABLE; return (DXGI_FORMAT) 0;
     }
 }
@@ -11691,6 +11793,14 @@ _SOKOL_PRIVATE MTLVertexFormat _sg_mtl_vertex_format(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return MTLVertexFormatUInt1010102Normalized;
         case SG_VERTEXFORMAT_HALF2:     return MTLVertexFormatHalf2;
         case SG_VERTEXFORMAT_HALF4:     return MTLVertexFormatHalf4;
+        case SG_VERTEXFORMAT_INT:       return MTLVertexFormatInt;
+        case SG_VERTEXFORMAT_INT2:      return MTLVertexFormatInt2;
+        case SG_VERTEXFORMAT_INT3:      return MTLVertexFormatInt3;
+        case SG_VERTEXFORMAT_INT4:      return MTLVertexFormatInt4;
+        case SG_VERTEXFORMAT_UINT:      return MTLVertexFormatUInt;
+        case SG_VERTEXFORMAT_UINT2:     return MTLVertexFormatUInt2;
+        case SG_VERTEXFORMAT_UINT3:     return MTLVertexFormatUInt3;
+        case SG_VERTEXFORMAT_UINT4:     return MTLVertexFormatUInt4;
         default: SOKOL_UNREACHABLE; return (MTLVertexFormat)0;
     }
 }
@@ -12599,13 +12709,37 @@ _SOKOL_PRIVATE void _sg_mtl_discard_sampler(_sg_sampler_t* smp) {
     _sg_mtl_release_resource(_sg.frame_index, smp->mtl.sampler_state);
 }
 
+/* V_SOKOL_MTL_COMPILE_OPTIONS_BEGIN */
+static struct {
+    int language_major;
+    int language_minor;
+    bool fast_math;
+} _sg_v_mtl_compile_options;
+
+_SOKOL_PRIVATE MTLCompileOptions* _sg_v_mtl_new_compile_options(void) {
+    if (0 == _sg_v_mtl_compile_options.language_major) {
+        return nil;
+    }
+    MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
+    options.languageVersion = (MTLLanguageVersion)((_sg_v_mtl_compile_options.language_major << 16)
+        | _sg_v_mtl_compile_options.language_minor);
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    options.fastMathEnabled = _sg_v_mtl_compile_options.fast_math;
+    #pragma clang diagnostic pop
+    return options;
+}
+/* V_SOKOL_MTL_COMPILE_OPTIONS_END */
+
 _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_compile_library(const char* src) {
     NSError* err = NULL;
+    MTLCompileOptions* v_options = _sg_v_mtl_new_compile_options();
     id<MTLLibrary> lib = [_sg.mtl.device
         newLibraryWithSource:[NSString stringWithUTF8String:src]
-        options:nil
+        options:v_options
         error:&err
     ];
+    _SG_OBJC_RELEASE(v_options);
     if (err) {
         _SG_ERROR(METAL_SHADER_COMPILATION_FAILED);
         _SG_LOGMSG(METAL_SHADER_COMPILATION_OUTPUT, [err.localizedDescription UTF8String]);
@@ -12653,6 +12787,25 @@ _SOKOL_PRIVATE sg_resource_state _sg_mtl_create_shader(_sg_shader_t* shd, const 
         }
         vs_func = [vs_lib newFunctionWithName:[NSString stringWithUTF8String:vs_entry]];
         fs_func = [fs_lib newFunctionWithName:[NSString stringWithUTF8String:fs_entry]];
+    } else if (desc->vs.source && !desc->fs.source && !desc->fs.bytecode.ptr) {
+        // V patch: a vertex-only shader for pipelines that only write depth and
+        // stencil (the render pipeline has no fragment function).
+        vs_lib = _sg_mtl_compile_library(desc->vs.source);
+        if (nil == vs_lib) {
+            goto failed;
+        }
+        vs_func = [vs_lib newFunctionWithName:[NSString stringWithUTF8String:vs_entry]];
+        if (nil == vs_func) {
+            _SG_ERROR(METAL_VERTEX_SHADER_ENTRY_NOT_FOUND);
+            goto failed;
+        }
+        shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_lib  = _sg_mtl_add_resource(vs_lib);
+        _SG_OBJC_RELEASE(vs_lib);
+        shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_func = _sg_mtl_add_resource(vs_func);
+        _SG_OBJC_RELEASE(vs_func);
+        shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_lib  = _sg_mtl_add_resource(nil);
+        shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func = _sg_mtl_add_resource(nil);
+        return SG_RESOURCESTATE_VALID;
     } else {
         goto failed;
     }
@@ -12754,8 +12907,10 @@ _SOKOL_PRIVATE sg_resource_state _sg_mtl_create_pipeline(_sg_pipeline_t* pip, _s
     rp_desc.vertexDescriptor = vtx_desc;
     SOKOL_ASSERT(shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_func != _SG_MTL_INVALID_SLOT_INDEX);
     rp_desc.vertexFunction = _sg_mtl_id(shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_func);
-    SOKOL_ASSERT(shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func != _SG_MTL_INVALID_SLOT_INDEX);
-    rp_desc.fragmentFunction = _sg_mtl_id(shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func);
+    // V patch: vertex-only shaders have no fragment function.
+    if (shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func != _SG_MTL_INVALID_SLOT_INDEX) {
+        rp_desc.fragmentFunction = _sg_mtl_id(shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func);
+    }
     rp_desc.rasterSampleCount = (NSUInteger)desc->sample_count;
     rp_desc.alphaToCoverageEnabled = desc->alpha_to_coverage_enabled;
     rp_desc.alphaToOneEnabled = NO;
@@ -13129,10 +13284,12 @@ _SOKOL_PRIVATE void _sg_mtl_end_pass(void) {
 
 _SOKOL_PRIVATE void _sg_mtl_commit(void) {
     SOKOL_ASSERT(nil == _sg.mtl.cmd_encoder);
-    SOKOL_ASSERT(nil != _sg.mtl.cmd_buffer);
 
-    // commit the frame's command buffer
-    [_sg.mtl.cmd_buffer commit];
+    // commit the frame's command buffer (V patch: sg_v_flush() may already
+    // have submitted it, and no pass may have started a new one since)
+    if (nil != _sg.mtl.cmd_buffer) {
+        [_sg.mtl.cmd_buffer commit];
+    }
 
     // garbage-collect resources pending for release
     _sg_mtl_garbage_collect(_sg.frame_index);
@@ -13319,7 +13476,7 @@ _SOKOL_PRIVATE void _sg_mtl_apply_uniforms(sg_shader_stage stage_index, int ub_i
     SOKOL_ASSERT(_sg.mtl.state_cache.cur_pipeline->slot.id == _sg.mtl.state_cache.cur_pipeline_id.id);
     SOKOL_ASSERT(_sg.mtl.state_cache.cur_pipeline->shader->slot.id == _sg.mtl.state_cache.cur_pipeline->cmn.shader_id.id);
     SOKOL_ASSERT(ub_index < _sg.mtl.state_cache.cur_pipeline->shader->cmn.stage[stage_index].num_uniform_blocks);
-    SOKOL_ASSERT(data->size == _sg.mtl.state_cache.cur_pipeline->shader->cmn.stage[stage_index].uniform_blocks[ub_index].size);
+    SOKOL_ASSERT(data->size <= _sg.mtl.state_cache.cur_pipeline->shader->cmn.stage[stage_index].uniform_blocks[ub_index].size);
 
     // copy to global uniform buffer, record offset into cmd encoder, and advance offset
     uint8_t* dst = &_sg.mtl.cur_ub_base_ptr[_sg.mtl.cur_ub_offset];
@@ -13582,6 +13739,14 @@ _SOKOL_PRIVATE WGPUVertexFormat _sg_wgpu_vertexformat(sg_vertex_format f) {
         case SG_VERTEXFORMAT_USHORT4N:      return WGPUVertexFormat_Unorm16x4;
         case SG_VERTEXFORMAT_HALF2:         return WGPUVertexFormat_Float16x2;
         case SG_VERTEXFORMAT_HALF4:         return WGPUVertexFormat_Float16x4;
+        case SG_VERTEXFORMAT_INT:           return WGPUVertexFormat_Sint32;
+        case SG_VERTEXFORMAT_INT2:          return WGPUVertexFormat_Sint32x2;
+        case SG_VERTEXFORMAT_INT3:          return WGPUVertexFormat_Sint32x3;
+        case SG_VERTEXFORMAT_INT4:          return WGPUVertexFormat_Sint32x4;
+        case SG_VERTEXFORMAT_UINT:          return WGPUVertexFormat_Uint32;
+        case SG_VERTEXFORMAT_UINT2:         return WGPUVertexFormat_Uint32x2;
+        case SG_VERTEXFORMAT_UINT3:         return WGPUVertexFormat_Uint32x3;
+        case SG_VERTEXFORMAT_UINT4:         return WGPUVertexFormat_Uint32x4;
         // FIXME! UINT10_N2 (see https://github.com/gpuweb/gpuweb/issues/4275)
         case SG_VERTEXFORMAT_UINT10_N2:     return WGPUVertexFormat_Undefined;
         default:
@@ -16375,7 +16540,12 @@ _SOKOL_PRIVATE bool _sg_validate_shader_desc(const sg_shader_desc* desc) {
         #elif defined(SOKOL_METAL) || defined(SOKOL_D3D11)
             // on Metal or D3D11, must provide shader source code or byte code
             _SG_VALIDATE((0 != desc->vs.source)||(0 != desc->vs.bytecode.ptr), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
-            _SG_VALIDATE((0 != desc->fs.source)||(0 != desc->fs.bytecode.ptr), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
+            #if defined(SOKOL_METAL)
+                // V patch: Metal allows vertex-only shaders (depth/stencil-only pipelines).
+                _SG_VALIDATE((0 != desc->fs.source)||(0 != desc->fs.bytecode.ptr)||(0 != desc->vs.source), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
+            #else
+                _SG_VALIDATE((0 != desc->fs.source)||(0 != desc->fs.bytecode.ptr), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
+            #endif
         #else
             // Dummy Backend, don't require source or bytecode
         #endif
@@ -17058,7 +17228,14 @@ _SOKOL_PRIVATE bool _sg_validate_apply_uniforms(sg_shader_stage stage_index, int
         _SG_VALIDATE(ub_index < stage->num_uniform_blocks, VALIDATE_AUB_NO_UB_AT_SLOT);
 
         // check that the provided data size matches the uniform block size
+        /* V patch: Metal and WebGPU bind uniform data as a buffer range, so a
+           block may be updated with fewer bytes than declared, e.g. with
+           the used prefix of a variable-length array. */
+        #if defined(SOKOL_METAL) || defined(SOKOL_WGPU)
+        _SG_VALIDATE((data->size > 0) && (data->size <= stage->uniform_blocks[ub_index].size), VALIDATE_AUB_SIZE);
+        #else
         _SG_VALIDATE(data->size == stage->uniform_blocks[ub_index].size, VALIDATE_AUB_SIZE);
+        #endif
 
         return _sg_validate_end();
     #endif
@@ -19256,6 +19433,194 @@ SOKOL_API_IMPL sg_mtl_buffer_info sg_mtl_query_buffer_info(sg_buffer buf_id) {
     #endif
     return res;
 }
+
+/* V_SOKOL_IMAGE_TRANSFER_IMPL_BEGIN */
+_SOKOL_PRIVATE _sg_image_t* _sg_v_transfer_image(sg_image img_id, int x, int y, int width, int height, int pitch) {
+    _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
+    if ((0 == img) || (img->slot.state != SG_RESOURCESTATE_VALID)) {
+        return 0;
+    }
+    if ((img->cmn.type != SG_IMAGETYPE_2D) || (img->cmn.sample_count > 1)) {
+        return 0;
+    }
+    const int bpp = _sg_pixelformat_bytesize(img->cmn.pixel_format);
+    if ((bpp <= 0) || (x < 0) || (y < 0) || (width <= 0) || (height <= 0)
+        || (x > img->cmn.width - width) || (y > img->cmn.height - height) || (pitch < width * bpp)) {
+        return 0;
+    }
+    return img;
+}
+
+#if defined(SOKOL_METAL)
+_SOKOL_PRIVATE bool _sg_v_mtl_flush(void) {
+    if (nil != _sg.mtl.cmd_encoder) {
+        return false;
+    }
+    if (nil != _sg.mtl.cmd_buffer) {
+        // The frame's command buffer was enqueued when it was created, so a
+        // separate transfer command buffer could not run before it. Submit
+        // it now; begin_pass() creates the next one. All of this frame's
+        // uniform data has been consumed after the wait, so its space can be
+        // reused even if the application never calls sg_commit().
+        id<MTLCommandBuffer> cmd_buffer = _sg.mtl.cmd_buffer;
+        _sg.mtl.cmd_buffer = nil;
+        [cmd_buffer commit];
+        [cmd_buffer waitUntilCompleted];
+        _sg.mtl.cur_ub_offset = 0;
+        if (cmd_buffer.status != MTLCommandBufferStatusCompleted) {
+            return false;
+        }
+    }
+    return true;
+}
+
+_SOKOL_PRIVATE bool _sg_v_mtl_transfer(_sg_image_t* img, int x, int y, int width, int height, void* pixels, int pitch, bool write) {
+    if (!_sg_v_mtl_flush()) {
+        return false;
+    }
+    bool ok = false;
+    @autoreleasepool {
+        id<MTLTexture> tex = _sg_mtl_id(img->mtl.tex[img->cmn.active_slot]);
+        const NSUInteger row_bytes = (NSUInteger)(width * _sg_pixelformat_bytesize(img->cmn.pixel_format));
+        const NSUInteger total = row_bytes * (NSUInteger)height;
+        id<MTLBuffer> staging = [_sg.mtl.device newBufferWithLength:total options:MTLResourceStorageModeShared];
+        if (nil != staging) {
+            uint8_t* staged = (uint8_t*)[staging contents];
+            if (write) {
+                for (int row = 0; row < height; row++) {
+                    memcpy(staged + (size_t)row * row_bytes, (const uint8_t*)pixels + (size_t)row * (size_t)pitch, row_bytes);
+                }
+            }
+            id<MTLCommandBuffer> cmd_buffer = [_sg.mtl.cmd_queue commandBuffer];
+            id<MTLBlitCommandEncoder> blit = [cmd_buffer blitCommandEncoder];
+            const MTLOrigin origin = MTLOriginMake((NSUInteger)x, (NSUInteger)y, 0);
+            const MTLSize size = MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1);
+            if (write) {
+                [blit copyFromBuffer:staging sourceOffset:0 sourceBytesPerRow:row_bytes sourceBytesPerImage:total
+                    sourceSize:size toTexture:tex destinationSlice:0 destinationLevel:0 destinationOrigin:origin];
+            } else {
+                [blit copyFromTexture:tex sourceSlice:0 sourceLevel:0 sourceOrigin:origin sourceSize:size
+                    toBuffer:staging destinationOffset:0 destinationBytesPerRow:row_bytes destinationBytesPerImage:total];
+            }
+            [blit endEncoding];
+            [cmd_buffer commit];
+            [cmd_buffer waitUntilCompleted];
+            ok = cmd_buffer.status == MTLCommandBufferStatusCompleted;
+            if (ok && !write) {
+                for (int row = 0; row < height; row++) {
+                    memcpy((uint8_t*)pixels + (size_t)row * (size_t)pitch, staged + (size_t)row * row_bytes, row_bytes);
+                }
+            }
+            _SG_OBJC_RELEASE(staging);
+        }
+    }
+    return ok;
+}
+#endif
+
+#if defined(_SOKOL_ANY_GL)
+_SOKOL_PRIVATE bool _sg_v_gl_transfer(_sg_image_t* img, int x, int y, int width, int height, void* pixels, int pitch, bool write) {
+    const GLuint tex = img->gl.tex[img->cmn.active_slot];
+    if ((0 == tex) || (img->gl.target != GL_TEXTURE_2D)) {
+        return false;
+    }
+    const GLenum gl_format = _sg_gl_teximage_format(img->cmn.pixel_format);
+    const GLenum gl_type = _sg_gl_teximage_type(img->cmn.pixel_format);
+    const int bpp = _sg_pixelformat_bytesize(img->cmn.pixel_format);
+    const bool tight = (pitch == width * bpp);
+    if (write) {
+        _sg_gl_cache_store_texture_sampler_binding(0);
+        _sg_gl_cache_bind_texture_sampler(0, GL_TEXTURE_2D, tex, 0);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        for (int row = 0; row < height; row++) {
+            if (tight && (row > 0)) {
+                break;
+            }
+            glTexSubImage2D(GL_TEXTURE_2D, 0, x, y + row, width, tight ? height : 1, gl_format, gl_type,
+                (const uint8_t*)pixels + (size_t)row * (size_t)pitch);
+        }
+        _sg_gl_cache_restore_texture_sampler_binding(0);
+    } else {
+        GLint previous = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
+        GLuint fb = 0;
+        glGenFramebuffers(1, &fb);
+        glBindFramebuffer(GL_FRAMEBUFFER, fb);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+        if (complete) {
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            for (int row = 0; row < height; row++) {
+                glReadPixels(x, y + row, width, 1, gl_format, gl_type, (uint8_t*)pixels + (size_t)row * (size_t)pitch);
+            }
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previous);
+        glDeleteFramebuffers(1, &fb);
+        if (!complete) {
+            return false;
+        }
+    }
+    return glGetError() == GL_NO_ERROR;
+}
+#endif
+
+SOKOL_API_IMPL bool sg_v_flush(void) {
+    SOKOL_ASSERT(_sg.valid);
+    if (_sg.cur_pass.in_pass) {
+        return false;
+    }
+    #if defined(SOKOL_METAL)
+        return _sg_v_mtl_flush();
+    #elif defined(_SOKOL_ANY_GL)
+        glFinish();
+        return true;
+    #else
+        return false;
+    #endif
+}
+
+SOKOL_API_IMPL bool sg_v_read_image(sg_image img_id, int x, int y, int width, int height, void* pixels, int pitch) {
+    SOKOL_ASSERT(_sg.valid);
+    _sg_image_t* img = _sg_v_transfer_image(img_id, x, y, width, height, pitch);
+    if ((0 == img) || (0 == pixels) || _sg.cur_pass.in_pass) {
+        return false;
+    }
+    #if defined(SOKOL_METAL)
+        return _sg_v_mtl_transfer(img, x, y, width, height, pixels, pitch, false);
+    #elif defined(_SOKOL_ANY_GL)
+        return _sg_v_gl_transfer(img, x, y, width, height, pixels, pitch, false);
+    #else
+        return false;
+    #endif
+}
+
+SOKOL_API_IMPL bool sg_v_write_image(sg_image img_id, int x, int y, int width, int height, const void* pixels, int pitch) {
+    SOKOL_ASSERT(_sg.valid);
+    _sg_image_t* img = _sg_v_transfer_image(img_id, x, y, width, height, pitch);
+    if ((0 == img) || (0 == pixels) || _sg.cur_pass.in_pass) {
+        return false;
+    }
+    #if defined(SOKOL_METAL)
+        return _sg_v_mtl_transfer(img, x, y, width, height, (void*)pixels, pitch, true);
+    #elif defined(_SOKOL_ANY_GL)
+        return _sg_v_gl_transfer(img, x, y, width, height, (void*)pixels, pitch, true);
+    #else
+        return false;
+    #endif
+}
+
+SOKOL_API_IMPL void sg_v_mtl_set_shader_compile_options(int language_major, int language_minor, bool fast_math) {
+    #if defined(SOKOL_METAL)
+        _sg_v_mtl_compile_options.language_major = language_major;
+        _sg_v_mtl_compile_options.language_minor = language_minor;
+        _sg_v_mtl_compile_options.fast_math = fast_math;
+    #else
+        _SOKOL_UNUSED(language_major);
+        _SOKOL_UNUSED(language_minor);
+        _SOKOL_UNUSED(fast_math);
+    #endif
+}
+/* V_SOKOL_IMAGE_TRANSFER_IMPL_END */
 
 SOKOL_API_IMPL sg_mtl_image_info sg_mtl_query_image_info(sg_image img_id) {
     SOKOL_ASSERT(_sg.valid);

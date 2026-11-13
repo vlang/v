@@ -3,6 +3,43 @@ module c
 import v.flat
 import v.types
 
+fn test_cost_walks_preserve_c_function_prelude_requirements() {
+	mut a := flat.FlatAst.new()
+	direct := a.add_val(.ident, 'C.direct_call')
+	direct_call := readonly_scan_test_node(mut a, .call, '', [direct])
+	c_namespace := a.add_val(.ident, 'C')
+	selector := readonly_scan_test_node(mut a, .selector, 'selector_call', [c_namespace])
+	selector_call := readonly_scan_test_node(mut a, .call, '', [selector])
+	empty_base := a.add(.empty)
+	implicit := readonly_scan_test_node(mut a, .selector, 'implicit_call', [empty_base])
+	implicit_call := readonly_scan_test_node(mut a, .call, '', [implicit])
+	ordinary := a.add_val(.ident, 'ordinary_call')
+	ordinary_call := readonly_scan_test_node(mut a, .call, '', [ordinary])
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_param_types['C.implicit_call'] = []types.Type{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	mut refs := map[string]bool{}
+	mut stack := []flat.NodeId{}
+	for call in [direct_call, selector_call, implicit_call, ordinary_call] {
+		root := readonly_scan_test_node(mut a, .fn_decl, 'probe', [call])
+		scan := g.collect_fn_prelude_scan(a.nodes[int(root)])
+		_, needs_scan := exact_flat_fn_gen_item_cost(&a, root, false, mut refs, mut stack)
+		assert needs_scan == (scan.c_fn_calls.len > 0)
+		$if !v3_no_parallel ? {
+			mut candidates := []FlatCgenPrepCandidate{}
+			mut text_cache := PrepTypTextCache{}
+			mut type_seen := PreseedTypeSeen{}
+			mut resolved_calls := ResolvedCallTypeCache{}
+			_, fused_needs_scan := exact_flat_fn_gen_item_cost_and_prep(&g, root, 0,
+				mut refs, mut stack, mut candidates, mut text_cache, mut type_seen,
+				mut resolved_calls)
+			assert fused_needs_scan == (scan.c_fn_calls.len > 0)
+		}
+	}
+}
+
 fn readonly_scan_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children []flat.NodeId) flat.NodeId {
 	start := a.begin_children()
 	for child in children {

@@ -4,11 +4,7 @@ import os
 import strings
 import time
 import v.cmdexec
-
-// native_backend_replacement_message explains how to replace the removed native backend option.
-pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` and `-b x64`.\n' +
-	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
-	'On Linux AMD64, first run `v -compile-backend x64 self`, then `v -b x64 file.v`.'
+import v.vmod
 
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
@@ -46,13 +42,15 @@ pub enum Subsystem {
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose               bool
-	no_parallel           bool
-	output_file           string
-	target                Target = host_target()
-	user_defines          []string
-	compile_values        map[string]string
-	backend               string = 'c'
+	verbose        bool
+	no_parallel    bool
+	output_file    string
+	target         Target = host_target()
+	user_defines   []string
+	compile_values map[string]string
+	backend        string = 'c'
+	// fastc_native_bridge selects separate native ownership for executable output.
+	fastc_native_bridge   bool
 	ccompiler             string = 'gcc'
 	c99                   bool
 	force_bounds_checking bool
@@ -181,6 +179,21 @@ pub fn host_arch() string {
 	}
 }
 
+// native_backend returns the native backend for the compiler's host architecture.
+pub fn native_backend() string {
+	return native_backend_for_arch(host_arch())
+}
+
+// native_backend_for_arch returns the native backend for the requested architecture.
+// Unsupported architectures retain `native` so the driver can diagnose the target.
+pub fn native_backend_for_arch(arch string) string {
+	return match normalized_arch(arch.trim_space().to_lower()) {
+		'amd64' { 'amd64' }
+		'arm64' { 'arm64' }
+		else { 'native' }
+	}
+}
+
 // host_target returns the platform on which the compiler process is running.
 pub fn host_target() Target {
 	return target_from(os.user_os(), host_arch()) or {
@@ -199,6 +212,13 @@ pub fn default_thread_stack_size_for_bits(pointer_bits int) int {
 	return if pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
+// is_supported_arch reports whether `arch` is a canonical architecture name that a target
+// can be built for; spellings such as `x86_64` must be passed through normalized_arch first.
+pub fn is_supported_arch(arch string) bool {
+	return arch in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'sparc64', 'wasm32']
+}
+
 // target_from validates and canonicalizes an OS/architecture pair.
 pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
@@ -207,8 +227,7 @@ pub fn target_from(os_name string, arch_name string) !Target {
 		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
-	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
-		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+	if !is_supported_arch(target_arch) {
 		return error('unsupported target architecture `${arch_name}`')
 	}
 	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {
@@ -349,8 +368,15 @@ fn target_build_time() time.Time {
 	return time.unix_nanosecond(source_date_epoch.i64(), 0)
 }
 
-// detect_vroot resolves detect vroot information for pref.
+// detect_vroot prefers the installed checkout and keeps the baked root for standalone compilers.
 fn detect_vroot() string {
+	executable := os.executable()
+	if executable.len > 0 {
+		vroot := detect_vroot_from(os.real_path(executable))
+		if vroot.len > 0 {
+			return vroot
+		}
+	}
 	baked_root := @VMODROOT
 	if baked_root.len > 0 {
 		return baked_root
@@ -660,7 +686,9 @@ fn module_alias_target_from_source(source string) ?string {
 	return target
 }
 
-fn vmod_root_for_dir(start string) ?string {
+// vmod_root_for_dir returns the nearest directory at or above `start` that holds a `v.mod`.
+// A `.v.mod.stop` marker or a `.git`, `.hg` or `.svn` entry ends the walk.
+pub fn vmod_root_for_dir(start string) ?string {
 	mut dir := os.real_path(start)
 	for dir.len > 0 {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
@@ -689,10 +717,20 @@ fn dir_is_module(dir string) bool {
 	if dir.len == 0 || !os.is_dir(dir) {
 		return false
 	}
-	entries := os.ls(dir) or { return false }
-	for entry in entries {
-		if entry.ends_with('.v') {
-			return true
+	if dir_has_v_entry(dir) or { return false } {
+		return true
+	}
+	manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) or { return false }
+	source_root := manifest.source_root(dir)
+	mut source_dirs := [source_root]
+	for subdir in manifest.unknown['subdirs'] or { []string{} } {
+		source_dirs << os.join_path_single(source_root, subdir)
+	}
+	for source_dir in source_dirs {
+		for entry in os.ls(source_dir) or { continue } {
+			if entry.ends_with('.v') && os.is_file(os.join_path_single(source_dir, entry)) {
+				return true
+			}
 		}
 	}
 	return false
@@ -1043,7 +1081,7 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 		if backend_suffix == 'native' {
 			// `.native.v` is the backend-specific file suffix shared by the
 			// architecture code generators.
-			return backend in ['native', 'arm64', 'x64']
+			return backend in ['native', 'arm64', 'amd64', 'x64']
 		}
 		return backend_suffix == backend
 	}
@@ -1258,7 +1296,6 @@ pub fn directive_target_arch(prefix string) ?string {
 	return none
 }
 
-// normalized_target_os supports normalized target os handling for Preferences.
 // ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
 // driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC
 // cannot; a `cc` or `gcc` name is trusted only after its version output rules
@@ -1269,7 +1306,6 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 		|| real_name in ['cl', 'cl.exe'] {
 		return false
 	}
-	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
 		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()
@@ -1304,6 +1340,8 @@ pub fn tcc_with_prod_requested_in(args []string, cwd string) bool {
 		arg := args[i]
 		if arg == '-prod' {
 			prod = true
+		} else if arg == '-native' {
+			backend = 'native'
 		} else if arg in ['-cc', '-b', '-backend'] && i + 1 < args.len {
 			i++
 			if arg == '-cc' { ccompiler = args[i] } else { backend = args[i] }
@@ -1603,17 +1641,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend in ['arm64', 'x64']
+			return p.backend in ['arm64', 'amd64', 'x64']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend in ['arm64', 'x64']
+			return p.backend in ['arm64', 'amd64', 'x64']
 				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
-			return p.backend in ['arm64', 'x64'] || name in p.user_defines
+			return p.backend in ['arm64', 'amd64', 'x64'] || name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -1741,7 +1779,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		// SSA currently lowers `int` to i32, including array and string headers.
 		// Its builtin limits must use that width even on a 64-bit target.
-		if p.backend in ['arm64', 'x64'] {
+		if p.backend in ['arm64', 'amd64', 'x64'] {
 			return false
 		}
 		// The C backend lowers `int` to the target pointer width.

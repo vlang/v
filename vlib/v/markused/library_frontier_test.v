@@ -7,6 +7,38 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_cached_callers_keep_source_interface_implementations_and_their_helpers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_source_interface_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or { panic(err) } }
+	main_path := os.join_path(root, 'main.v')
+	library_path := os.join_path(root, 'dependency.v')
+	os.write_file(main_path, 'module main
+import dependency
+struct Value {}
+fn (_ Value) read() int { return helper() }
+fn helper() int { return 42 }
+fn main() {}
+') or { panic(err) }
+	os.write_file(library_path, 'module dependency
+pub interface Reader { read() int }
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([main_path, library_path])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	ordinary, _ := mark_used_with_generic_usage(a, &tc)
+	assert !ordinary['Value.read']
+	assert !ordinary['helper']
+	used := mark_used_for_cache(a, &tc, []string{}, {
+		'dependency': true
+	})
+	assert used['Value.read']
+	assert used['helper']
+}
+
 fn test_mark_all_preserves_library_generic_calls_for_literal_output() {
 	root := os.join_path(os.vtmp_dir(), 'v3_mark_all_literal_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
