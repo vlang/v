@@ -56,6 +56,12 @@ mut:
 	delta  i8
 }
 
+@[table: 'test_pool_last_id']
+struct TestPoolLastId {
+	id   int @[primary; sql: serial]
+	name string
+}
+
 // Regression test for https://github.com/vlang/v/issues/27986:
 // `u8`/`i8` fields are declared as SMALLINT by pg_type_from_v(), so they have to
 // be bound as int2 as well. Binding them as PostgreSQL's internal `"char"` type
@@ -118,6 +124,48 @@ fn test_pg_orm_u8_i8_are_bound_as_smallint() {
 
 	sql db {
 		drop table TestSmallIntTypes
+	}!
+}
+
+// Regression test for https://github.com/vlang/v/issues/32064:
+// the ORM reads `last_id()` more than once per insert, so the pooled `DB` must
+// not drop the stashed id on the first read.
+fn test_pg_orm_insert_returns_serial_id_through_pool() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
+	mut db := pg.connect(
+		host:     'localhost'
+		user:     'postgres'
+		password: '12345678'
+		dbname:   'postgres'
+	) or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	sql db {
+		drop table TestPoolLastId
+	} or {}
+	sql db {
+		create table TestPoolLastId
+	}!
+
+	row := TestPoolLastId{
+		name: 'a'
+	}
+	first_id := sql db {
+		insert row into TestPoolLastId
+	}!
+	second_id := sql db {
+		insert row into TestPoolLastId
+	}!
+	assert first_id == 1
+	assert second_id == 2
+
+	sql db {
+		drop table TestPoolLastId
 	}!
 }
 
