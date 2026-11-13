@@ -765,7 +765,7 @@ Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 
-The native ARM64 backend compares `i128` and `u128` using both 64-bit limbs.
+The native ARM64 and x64 backends compare `i128` and `u128` using both 64-bit limbs.
 Signed ordering uses the high limb's sign; equality compares every bit.
 Ordering follows the signedness of the leftmost 128-bit operand, as in the C backend.
 
@@ -10871,18 +10871,18 @@ C callbacks passed to or returned from C functions support 64-bit integer and po
 arguments, and 64-bit integer, pointer, or void returns. Unsupported callback conventions,
 including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
 
-Native 128-bit integers currently support integer widening, copying, bitwise `&`, `|`, `^`,
-addition, subtraction, comparisons, and shifts with constant counts from 0 through 127.
-Signed scalar widening sign-extends for both `i128` and `u128`; unsigned scalar widening
-zero-extends.
-Signed `i128 >>` preserves the sign; `u128 >>` and `>>>` fill with zeroes.
-Multiplication, division, remainder, unary negation and complement, variable shifts,
-compound assignments, increment/decrement, narrowing casts, and conversions to or from
-floating-point values are unsupported and produce a diagnostic. Range iteration with 128-bit
-values is also unsupported. Array and string indices and slice bounds must use scalar integers.
-Integer literals must fit in a single 64-bit limb; construct larger values with shifts and
-bitwise operations.
-Use the C backend for the full set of 128-bit operations.
+Native 128-bit integers support the operators of the C backend: `+`, `-`, `*`, `/`, `%`, the
+bitwise operators, unary `-` and `~`, comparisons, shifts by constant or variable counts,
+compound assignments, `++` and `--`, range iteration, and casts to and from the other integer,
+floating-point and pointer types. Literals may use all 128 bits.
+A value is stored as two 64-bit limbs. Multiplication, division, remainder, variable shifts and
+floating-point conversions call helper functions that are generated only when a program uses
+them. Division follows compiler-rt's `__udivmodti4`, with fast paths for operands that fit in
+64 bits and for divisors below 2^32.
+Results match the C backend: overflow wraps, division or modulo by zero panics, a shift count of
+128 or more, including a negative count, shifts every bit out, and a conversion to `f64` rounds
+the whole magnitude once. Converting a negative or NaN float to `u128` gives 0.
+Array and string indices and slice bounds must still use scalar integers.
 
 Currently there is no debugging support for binaries created by the native backends.
 
