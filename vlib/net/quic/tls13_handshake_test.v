@@ -26,12 +26,14 @@ fn handshake_test_pem_to_der(pem string) []u8 {
 // fake_server_sign_certificate_verify signs `signed_content` with the test
 // RSA private key using real RSA-PSS/SHA-256 -- simulating what a real TLS
 // 1.3 server does to produce CertificateVerify. Directly uses mbedTLS's C
-// API (not net.mbedtls's pub verify-only wrappers, which have no signing
-// counterpart -- production net.quic code never signs anything, since v1
-// is client-only with no client-cert auth) rather than mocking a signature;
-// mirrors net.mbedtls/x509_standalone_signature_test.v's own
-// sign_rsa_pss_for_test, duplicated rather than shared since it lives in a
-// different module's test file.
+// API rather than mocking a signature, since net.mbedtls's own verify-only
+// wrappers have no RSA-PSS signing counterpart (only ECDSA signing exists
+// today, via crypto.ecdsa -- see tls13_certificate.v's
+// encode_certificate_verify, added in Phase 13 for server support; RSA-PSS
+// signing remains unimplemented there for the exact reason this fake
+// server can't just call it). Mirrors net.mbedtls/
+// x509_standalone_signature_test.v's own sign_rsa_pss_for_test, duplicated
+// rather than shared since it lives in a different module's test file.
 fn fake_server_sign_certificate_verify(signed_content []u8) ![]u8 {
 	hash := sha256.sum256(signed_content)
 

@@ -107,7 +107,8 @@ pub:
 // Distinguishing the two, and validating a received stream-ID-flavored
 // GOAWAY, needs connection role context this layer doesn't have -- see
 // `goaway_id_is_valid_client_initiated_bidi_stream_id` for the one piece
-// of that validation that IS pure/role-independent.
+// of that validation that IS pure/role-independent; h3_control_stream.v
+// applies it only when the receiving endpoint is a client.
 pub struct GoawayFrame {
 pub:
 	id u64
@@ -125,11 +126,9 @@ pub fn goaway_id_is_valid_client_initiated_bidi_stream_id(id u64) bool {
 	return id % 4 == 0
 }
 
-// MaxPushIdFrame sets the maximum push ID a server may use (§7.2.7). A v1
-// client role only ever ENCODES this; decoding exists only so a client can
-// recognize (and, at Phase 12, reject per §7.2.7 "A client MUST treat the
-// receipt of a MAX_PUSH_ID frame as a connection error of type
-// H3_FRAME_UNEXPECTED") a server that incorrectly sends one.
+// MaxPushIdFrame sets the maximum push ID a server may use (§7.2.7). A
+// server accepts non-decreasing values from its client; a client rejects a
+// received MAX_PUSH_ID with H3_FRAME_UNEXPECTED.
 pub struct MaxPushIdFrame {
 pub:
 	push_id u64
@@ -418,8 +417,18 @@ pub fn (mut d H3FrameDecoder) push(data []u8) {
 // such error is a CONNECTION error: the caller's real obligation is to
 // close the whole HTTP/3 connection, not to keep feeding this decoder.
 pub fn (mut d H3FrameDecoder) next() !H3FrameDecodeResult {
+	return d.next_with_payload_limits(0, 0)
+}
+
+fn (mut d H3FrameDecoder) next_with_payload_limits(max_data_payload u64, max_headers_payload u64) !H3FrameDecodeResult {
 	frame_type, type_len := decode_varint(d.pending) or { return H3FrameDecodeResult{} }
 	length, length_len := decode_varint(d.pending[type_len..]) or { return H3FrameDecodeResult{} }
+	if max_data_payload > 0 && frame_type == h3_frame_data && length > max_data_payload {
+		return error_with_code('h3: DATA frame length ${length} exceeds the configured ${max_data_payload}-byte limit', int(H3ErrorCode.excessive_load))
+	}
+	if max_headers_payload > 0 && frame_type == h3_frame_headers && length > max_headers_payload {
+		return error_with_code('h3: HEADERS frame length ${length} exceeds the configured ${max_headers_payload}-byte limit', int(H3ErrorCode.excessive_load))
+	}
 	header_len := type_len + length_len
 	// `length` is attacker-controlled and can legally be up to 2^62-1
 	// (RFC 9000 §16's varint range) -- e.g. a genuinely huge DATA frame
@@ -448,11 +457,10 @@ pub fn (mut d H3FrameDecoder) next() !H3FrameDecodeResult {
 
 // pending_len returns how many not-yet-decoded bytes are currently
 // buffered -- useful for a caller wanting to bound how much unconsumed
-// data it will let a peer accumulate before a complete frame arrives
-// (mirrors crypto_stream.v's max_crypto_stream_buffered_bytes rationale;
-// no such cap is enforced BY this file itself -- see the "Known design
-// notes" row this phase's matrix section adds on why DATA frames in
-// particular must stay uncapped here).
+// data it will let a peer accumulate before a complete frame arrives.
+// H3Conn's bounded decode path can reject oversized DATA or HEADERS
+// declarations before their payloads are buffered; the public next() path
+// remains uncapped.
 pub fn (d &H3FrameDecoder) pending_len() int {
 	return d.pending.len
 }

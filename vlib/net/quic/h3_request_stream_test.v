@@ -44,6 +44,18 @@ fn test_h3_request_stream_note_final_response_headers_is_idempotent() {
 	assert s.phase() == .in_body
 }
 
+fn test_h3_request_stream_remembers_trailers_behind_blocked_headers() {
+	mut s := new_h3_request_stream_state()
+	s.note_trailers_behind_blocked_headers()!
+	s.note_final_response_headers()
+	assert s.phase() == .trailers_received
+	if _ := s.note_data_behind_blocked_headers() {
+		assert false, 'DATA after queued trailers must be rejected'
+	} else {
+		assert err.code() == int(H3ErrorCode.frame_unexpected)
+	}
+}
+
 // The full RFC 9110 §15.2 sequence: multiple 1xx blocks, then the final
 // response, then trailers.
 fn test_h3_request_stream_a_headers_block_after_the_final_response_is_trailers() {

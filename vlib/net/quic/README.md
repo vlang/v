@@ -28,7 +28,11 @@ the exact dependency `net.quic` needs is already proven to build and pass on
 Linux, macOS, and Windows. **Decision: P-256 ECDH is a hard dependency of
 `net.quic`.** No opt-out build flag, no reduced-interop fallback mode.
 
-## HTTP/3 connection lifetime
+## Connection lifetime
+
+Callers that manage a `QuicConn` returned by `dial` or `accept` directly must call
+`QuicConn.free` after it will no longer be polled. A `QuicListener` performs this cleanup when
+it retires a closed connection.
 
 Callers that construct an HTTP/3 connection directly with `new_h3_conn` must call `H3Conn.free`
 after the connection will no longer be polled. This releases the OpenSSL and mbedTLS resources
@@ -44,6 +48,21 @@ defer {
 The `net.http` HTTP/3 transport performs this cleanup itself; this requirement applies to direct
 `net.quic` users.
 
+## Listener address pinning
+
+`QuicListener` does not implement connection migration. After accepting a connection, it drops
+datagrams whose source address differs from the address recorded at acceptance. Callers must pass
+a stable, unambiguous address representation in `peer` on every `poll` call.
+
+## HTTP/3 inbound frame limits
+
+Direct `H3Conn` users can set `H3ConnParams.max_inbound_data_frame_payload` to reject an
+oversized request-stream DATA frame as soon as its declared length is available, before the
+payload is buffered. Zero keeps DATA unrestricted. Request-stream HEADERS field sections have a
+fixed 1 MiB encoded-payload limit. The `net.http` HTTP/3 server sets the DATA limit to its 8 MiB
+request-body limit and also enforces the cumulative limit across complete DATA frames, plus an
+8 MiB aggregate limit across unfinished requests on each connection.
+
 CertificateVerify signature verification (ECDSA and RSA-PSS) and certificate
 chain-of-trust validation (including RSA-PKCS1v1.5-signed certificates, still
 common among real-world CAs — `net.quic` advertises this via the
@@ -54,6 +73,10 @@ for either. (An earlier draft of this file added a separate
 `vlib/crypto/rsa_pss/` OpenSSL module for RSA-PSS specifically; it was removed
 as unused dead code once the mbedTLS path above was confirmed to cover the
 same need.)
+
+The server also honors a client's `signature_algorithms_cert` list when
+validating its configured certificate chain, and falls back to
+`signature_algorithms` only when the certificate-specific extension is absent.
 
 ## mbedTLS X.509-only usage (no `mbedtls_ssl_context`)
 
