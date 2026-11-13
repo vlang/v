@@ -291,3 +291,43 @@ int main() {
 		assert ran.exit_code == 0, ran.output
 	}
 }
+
+fn test_cpp_headerless_native_cache_libc_linkage() {
+	$if windows {
+		return
+	}
+	cpp := cpp_test_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'cpp_native_cache_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut g := cpp_test_gen()
+	g.compiler_vroot = @VEXEROOT
+	g.core_header_directives << DeferredCoreHeader{
+		source_file: os.join_path(@VEXEROOT, 'vlib/v/driver/native_object_cache.c.v')
+		directive:   CDirective{ module: 'driver', text: '#include "' + @VEXEROOT + '/vlib/v/driver/native_object_cache.h"' }
+	}
+	g.headerless_native_object_cache_helper()
+	source := os.join_path(root, 'main.cpp')
+	os.write_file(source, '#include <errno.h>
+${g.sb.str()}
+// Match the later gettid compatibility declaration in a compiler translation unit.
+#ifdef __linux__
+extern "C" { long syscall(long, ...); }
+#endif
+int main(int argc, char** argv) {
+ if (argc != 3) return 1;
+ if (v_native_object_cache_publish(argv[1], argv[2]) != ENOENT) return 2;
+#ifdef __linux__
+ if (v_native_object_cache_rename_noreplace(argv[1], argv[2]) != ENOENT) return 3;
+#endif
+ return 0;
+}
+')!
+	for standard in cpp_test_standards() {
+		binary := os.join_path(root, 'program')
+		built := cmdexec.run(cpp, ['-std=${standard}', source, '-o', binary])
+		assert built.exit_code == 0, built.output
+		ran := cmdexec.run(binary, [os.join_path(root, 'missing'), os.join_path(root, 'destination')])
+		assert ran.exit_code == 0, ran.output
+	}
+}
