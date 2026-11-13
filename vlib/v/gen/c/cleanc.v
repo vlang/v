@@ -21653,6 +21653,19 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#ifndef SEEK_END')
 	g.writeln('#define SEEK_END 2')
 	g.writeln('#endif')
+	// The Microsoft C runtimes (UCRT and msvcrt) use different values, see
+	// manual_stdlib_c_headers.h.
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('#ifndef _IOFBF')
+	g.writeln('#define _IOFBF 0x0000')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IOLBF')
+	g.writeln('#define _IOLBF 0x0040')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IONBF')
+	g.writeln('#define _IONBF 0x0004')
+	g.writeln('#endif')
+	g.writeln('#else')
 	g.writeln('#ifndef _IOFBF')
 	g.writeln('#define _IOFBF 0')
 	g.writeln('#endif')
@@ -21661,6 +21674,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('#ifndef _IONBF')
 	g.writeln('#define _IONBF 2')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	// This callback alias belongs to V, including when the target supplies libc headers.
 	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
