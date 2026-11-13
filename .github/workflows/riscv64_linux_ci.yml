@@ -2,20 +2,10 @@ name: riscv64 CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # Linux, including this riscv64 runner.
-      - '**.md'
-      - '**.yml'
-      - '!**/riscv64_linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: riscv64-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: riscv64-riscv64_linux_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -27,8 +17,9 @@ jobs:
     if: github.ref == 'refs/heads/master'
     # The host should always be Linux
     runs-on: ubuntu-24.04
-    # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
-    timeout-minutes: 120
+    # The native bootstrap takes about 100 minutes under QEMU; leave time for
+    # the builtin/os/binary, assembly and closure tests that follow it.
+    timeout-minutes: 180
     name: Build on ubuntu-24.04 riscv64
     steps:
       - uses: actions/checkout@v7
@@ -50,6 +41,9 @@ jobs:
             apt-get install -q -y make gcc git file coreutils binutils
           run: |
             set -euo pipefail
+            # The checkout belongs to the host runner, not the container's root user.
+            # Scope Git's ownership exception to this mounted repository only.
+            git config --global --add safe.directory "$(pwd -P)"
             uname -a
             make --version
             gcc --version
@@ -74,6 +68,7 @@ jobs:
             fi
             # -gc none is only for bootstrap, before the collector is available.
             export VFLAGS="-no-retry-compilation -cc cc"
+            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
             # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
             # then make ordinary test compilation fail instead of silently retrying V1.
             export V_MACOS_V3_NO_FALLBACK=1

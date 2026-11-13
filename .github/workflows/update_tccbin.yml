@@ -275,7 +275,7 @@ jobs:
       - name: Build the local compiler
         run: |
           make
-          ./v -o ./vnew cmd/v
+          VFLAGS= sh cmd/tools/build_vprod.sh ./v ./vnew clang
       - name: Validate the persisted-consumer receiver without any write capability
         env:
           RECEIVER_ID: ${{ needs.control.outputs.phase_a_receiver_id }}
@@ -877,6 +877,7 @@ jobs:
           git -C /tmp/v-bootstrap-workspace checkout --quiet "${{ github.sha }}"
 
           (cd /tmp/v-bootstrap-workspace && make -j4)
+          (cd /tmp/v-bootstrap-workspace && V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh local=1)
 
       - name: Prove a failing TCC cannot fall back to another compiler
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'

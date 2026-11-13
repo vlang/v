@@ -158,7 +158,8 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 	// A quoted C include is relative to the V file that declared it. FastC hoists
 	// directives into one generated C file, so preserve that original include base
 	// by making the path absolute before hoisting.
-	if result.starts_with('include "') || result.starts_with('insert "') {
+	if result.starts_with('include "') || result.starts_with('insert "')
+		|| result.starts_with('preinclude "') {
 		quote_start := result.index_u8(`"`)
 		quote_end := result.last_index_u8(`"`)
 		if quote_start >= 0 && quote_end > quote_start {
@@ -675,7 +676,7 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 	}
 	mut hash := u64(14695981039346656037)
 	// The resolver version separates memo layouts and implicit dependencies.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-5')
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-6')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -1321,12 +1322,44 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 		}
 	} else {
 		module_dir = prefs.get_module_path(imported_module, source_path)
+		if project_dir := fastc_project_module_shadowing_vlib(module_dir, imported_module, source_path, prefs) {
+			module_dir = project_dir
+		}
 	}
 	if prefs.building_v && !canonical && !prefs.target_libc_headers {
 		module_dir = os.real_path(module_dir)
 	}
 	module_path_cache[module_cache_key] = module_dir
 	return module_dir
+}
+
+// fastc_project_module_shadowing_vlib returns the project module that shadows the vlib
+// module `module_dir` for an import from a source of the project: a project module named
+// like a vlib module (Vox's `clipboard`) is preferred to vlib, as by the C backend's
+// resolver, from every project directory. Explicit `-path` search roots keep their order,
+// and imports from sources outside the project keep their own resolution.
+fn fastc_project_module_shadowing_vlib(module_dir string, imported_module string, source_path string, prefs &pref.Preferences) ?string {
+	root := prefs.module_resolution_root
+	if root == '' || prefs.module_search_paths.len > 0
+		|| !module_dir.starts_with(os.join_path_single(prefs.vroot, 'vlib') + os.path_separator) {
+		return none
+	}
+	top_name := imported_module.all_before('.')
+	if !os.is_dir(os.join_path_single(root, top_name))
+		|| !os.real_path(source_path).starts_with(root + os.path_separator) {
+		return none
+	}
+	if alias_path := pref.resolve_module_alias_path(root, imported_module) {
+		return alias_path
+	}
+	path := os.join_path_single(root, imported_module.replace('.', os.path_separator))
+	entries := os.ls(path) or { return none }
+	for entry in entries {
+		if entry.ends_with('.v') {
+			return path
+		}
+	}
+	return none
 }
 
 fn fastc_target_module_from_root(root string, module_name string) string {
@@ -2016,7 +2049,7 @@ fn fastc_source_contains_word(source string, word string) bool {
 	if word.len == 0 { return false }
 	mut start := 0
 	for {
-		index := source.index_after_(word, start)
+		index := fastc_source_text_index(source, word, start)
 		if index < 0 { return false }
 		if fastc_source_word_at(source, index, word) { return true }
 		start = index + word.len
@@ -2029,10 +2062,15 @@ fn fastc_source_contains_word(source string, word string) bool {
 @[direct_array_access]
 fn fastc_source_last_word_index(source string, word string) int {
 	if word.len == 0 { return -1 }
-	for i := source.len - word.len; i >= 0; i-- {
-		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	mut last := -1
+	mut start := 0
+	for {
+		index := fastc_source_text_index(source, word, start)
+		if index < 0 { break }
+		if fastc_source_word_at(source, index, word) { last = index }
+		start = index + word.len
 	}
-	return -1
+	return last
 }
 
 @[direct_array_access]

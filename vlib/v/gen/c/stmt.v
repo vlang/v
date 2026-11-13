@@ -760,6 +760,7 @@ fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan
 	g.collect_prelude_scan_node(id, node, mut scan, collect_defers)
 }
 
+@[direct_array_access]
 fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut scan FnPreludeScan, collect_defers bool) {
 	mut child_collect_defers := collect_defers
 	if collect_defers
@@ -793,10 +794,23 @@ fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut s
 	}
 	start := node.children_start
 	end := start + int(node.children_count)
-	if start >= 0 && end <= g.a.children.len {
+	// The walk never grows the AST, so its arrays can be read through local headers
+	// instead of being reloaded through `g.a` after every scan update.
+	children := g.a.children
+	if start >= 0 && end <= children.len {
+		nodes := g.a.nodes
 		for i in start .. end {
 			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			g.collect_prelude_scan_from(unsafe { g.a.children[i] }, mut scan, child_collect_defers)
+			child_id := int(children[i])
+			if child_id < 0 || child_id >= nodes.len {
+				continue
+			}
+			child := unsafe { &nodes[child_id] }
+			if child.children_count == 0
+				&& child.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
+				continue
+			}
+			g.collect_prelude_scan_node(flat.NodeId(child_id), child, mut scan, child_collect_defers)
 		}
 	}
 	if pushed_lock {
@@ -5375,17 +5389,27 @@ fn (g &FlatGen) debugger_smartcast_vars(node flat.Node) map[string]DebuggerSmart
 	return result
 }
 
+// Use the loaded runtime identity, which can retain the canonical module name
+// instead of its declared short name when imports need to remain distinct.
+fn (g &FlatGen) debugger_runtime_module_name() string {
+	if 'v.debug.g_debugger' in g.global_types {
+		return 'v.debug'
+	}
+	return 'debug'
+}
+
 fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	vars := g.debugger_scope_vars()
 	smartcast_vars := g.debugger_smartcast_vars(node)
 	scope_name := '__v3_debug_scope_${g.tmp_count}'
 	g.tmp_count++
-	info_type := g.cname('debug.DebugContextInfo')
-	var_type := g.cname('debug.DebugContextVar')
-	debugger_type := g.cname('debug.Debugger')
-	interact_fn := g.cname('debug.Debugger.interact')
-	debugger_global := g.cname('debug.g_debugger')
+	runtime_module := g.debugger_runtime_module_name()
+	info_type := g.cname('${runtime_module}.DebugContextInfo')
+	var_type := g.cname('${runtime_module}.DebugContextVar')
+	debugger_type := g.cname('${runtime_module}.Debugger')
+	interact_fn := g.fn_c_name_in_module(runtime_module, 'Debugger.interact')
+	debugger_global := g.global_c_name('${runtime_module}.g_debugger')
 	file_literal := debugger_string_literal(position.filename)
 	module_literal := debugger_string_literal(if g.tc.cur_module.len > 0 {
 		g.tc.cur_module
@@ -6391,7 +6415,7 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 			return node_type
 		}
 	}
-	if name := g.tc.resolved_call_name(call_id) {
+	if name := g.resolved_call_name(call_id) {
 		if name.starts_with('C.') {
 			if ret := g.module_c_fn_return_type(name) {
 				return ret
@@ -6582,8 +6606,19 @@ fn cgen_type_contains_unknown(typ types.Type) bool {
 @[inline]
 fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
 	memo := g.usable_expr_type_memo
-	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0
-		|| memo.module != g.tc.cur_module || memo.file != g.tc.cur_file {
+	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0 {
+		return unsafe { nil }
+	}
+	// The memo's module and file usually are the checker's own string objects:
+	// compare the bytes only when they are not.
+	cur_module := g.tc.cur_module
+	if memo.module.len != cur_module.len
+		|| (unsafe { memo.module.str != cur_module.str } && memo.module != cur_module) {
+		return unsafe { nil }
+	}
+	cur_file := g.tc.cur_file
+	if memo.file.len != cur_file.len
+		|| (unsafe { memo.file.str != cur_file.str } && memo.file != cur_file) {
 		return unsafe { nil }
 	}
 	return memo
@@ -6612,20 +6647,9 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.T
 				return *local_fn.return_type, unsafe { nil }
 			}
 		}
-		if ret := g.module_c_fn_return_type(fn_node.value) {
-			return ret, unsafe { nil }
-		}
-		if rt := g.fn_decl_return_type_reference_for_call_name(fn_node.value) {
-			return *rt, rt
-		}
-		if ret := g.tc.fn_ret_types[fn_node.value] {
-			return ret, unsafe { nil }
-		}
-		cfn := g.cname(fn_node.value)
-		if cfn != fn_node.value {
-			if ret := g.tc.fn_ret_types[cfn] {
-				return ret, unsafe { nil }
-			}
+		found, ret, canonical := g.ident_callee_declared_return_type(fn_node.value)
+		if found {
+			return ret, canonical
 		}
 	}
 	// Indirect call through an fn-pointer value (local var, param, or struct field
@@ -6641,6 +6665,52 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.T
 		return *callee_t.return_type, unsafe { nil }
 	}
 	return types.Type(types.void_), unsafe { nil }
+}
+
+// ident_callee_declared_return_type is the declaration part of
+// declared_call_return_type_uncached for a plain callee name: the module C
+// function table, the collected declarations and the checker signatures, in
+// that order. The answer depends only on the name and the body's module, so it
+// is memoized per body; a body calls the same few names many times.
+fn (g &FlatGen) ident_callee_declared_return_type(name string) (bool, types.Type, &types.Type) {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.callee_returns.len == 0 {
+		return g.ident_callee_declared_return_type_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_callee_return_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying its type.
+	entry := unsafe { &memo.callee_returns[slot] }
+	if entry.generation == memo.name_generation && entry.name == name {
+		return entry.found, entry.value, entry.canonical
+	}
+	found, ret, canonical := g.ident_callee_declared_return_type_uncached(name)
+	memo.callee_returns[slot] = BodyCalleeReturnQuery{
+		name:       name
+		generation: memo.name_generation
+		found:      found
+		value:      ret
+		canonical:  canonical
+	}
+	return found, ret, canonical
+}
+
+fn (g &FlatGen) ident_callee_declared_return_type_uncached(name string) (bool, types.Type, &types.Type) {
+	if ret := g.module_c_fn_return_type(name) {
+		return true, ret, unsafe { nil }
+	}
+	if rt := g.fn_decl_return_type_reference_for_call_name(name) {
+		return true, *rt, rt
+	}
+	if ret := g.tc.fn_ret_types[name] {
+		return true, ret, unsafe { nil }
+	}
+	cfn := g.cname(name)
+	if cfn != name {
+		if ret := g.tc.fn_ret_types[cfn] {
+			return true, ret, unsafe { nil }
+		}
+	}
+	return false, types.Type(types.void_), unsafe { nil }
 }
 
 fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
@@ -6914,7 +6984,7 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		if declared is types.OptionType || declared is types.ResultType {
 			return true
 		}
-		if fname := g.tc.resolved_call_name(id) {
+		if fname := g.resolved_call_name(id) {
 			ret_type := g.tc.fn_ret_types[fname] or { return false }
 			return ret_type is types.OptionType || ret_type is types.ResultType
 		}
@@ -7286,10 +7356,8 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 			// longer follows the lexical scope of this identifier. A `shared T`
 			// annotation parses as `T`, without the pointer the local is stored as,
 			// so `&local` would be taken once more.
-			if node.typ != 0 && !flat.source_type_shape(flat.source_type_syntax(node.typ).trimmed()).has(.shared_type) {
-				annotated := g.parse_node_type_reference(node)
-				if !decl_annotation_is_unusable(annotated, node.typ)
-					&& !g.type_contains_generic_placeholder(annotated) {
+			if node.typ != 0 {
+				if annotated := g.usable_ident_annotation_type(node.typ) {
 					return annotated
 				}
 			}
@@ -7325,32 +7393,32 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 			base_type := types.unwrap_pointer(base_type0)
 			collection_base_type := unalias_type(base_type)
 			if collection_base_type is types.Array || collection_base_type is types.ArrayFixed {
-				if typ := g.usable_struct_field_type(flat.source_type_id('array'), node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(flat.source_type_id('array'), node.value) {
+					return typ
 				}
 			}
 			if collection_base_type is types.Map {
-				if typ := g.usable_struct_field_type(flat.source_type_id('map'), node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(flat.source_type_id('map'), node.value) {
+					return typ
 				}
 			}
 			// usable_struct_field_type consults checker_struct_field_type first, so a
 			// miss there is a miss of the checker's field table as well.
 			if base_type is types.Struct {
-				if typ := g.usable_struct_field_type(base_type.source_type_id(), node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(base_type.source_type_id(), node.value) {
+					return typ
 				}
 			}
 			if base_type is types.Alias {
 				if base_type.base_type is types.Struct {
-					if typ := g.usable_struct_field_type(base_type.base_type.source_type_id(), node.value) {
-						return g.tc.intern_type_reference(typ)
+					if typ := g.usable_struct_field_type_reference(base_type.base_type.source_type_id(), node.value) {
+						return typ
 					}
 				}
 			}
 			if base_type is types.String {
-				if typ := g.usable_struct_field_type(flat.source_type_string, node.value) {
-					return g.tc.intern_type_reference(typ)
+				if typ := g.usable_struct_field_type_reference(flat.source_type_string, node.value) {
+					return typ
 				}
 			}
 			if typ := g.sum_shared_field_type(base_type0, node.value) {
@@ -7444,8 +7512,65 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 		if typ !is types.Unknown && typ !is types.Void {
 			return typ
 		}
+	} else {
+		// Without a checked type, resolve_type_reference reaches resolve_type_slow,
+		// whose answer for these kinds is fixed by the node alone; skip the body
+		// memo and the checker's dispatch for them.
+		if int(id) >= 0 && int(id) < g.a.nodes.len {
+			if fixed := g.fixed_unchecked_node_type(unsafe { &g.a.nodes[int(id)] }) {
+				return g.tc.intern_type_reference(fixed)
+			}
+		}
 	}
 	return g.body_resolve_type_reference(id)
+}
+
+// fixed_unchecked_node_type mirrors the checker's resolution of a node that has
+// no checked expression type when that resolution does not depend on operands,
+// scopes or memos: resolve_type_slow's literal table, the comparison/logical
+// operator rule of resolve_type_nonliteral, which precedes every operand read
+// (and is only bypassed by a diagnostic on the node, so it is skipped when any
+// diagnostics exist), and its rule for an unannotated `!x`, which only the
+// address-of and translated-file arithmetic rules precede.
+fn (g &FlatGen) fixed_unchecked_node_type(node &flat.Node) ?types.Type {
+	match node.kind {
+		.int_literal {
+			if g.tc.translated_files.len == 0 {
+				return types.Type(types.int_)
+			}
+		}
+		.float_literal {
+			return types.Type(types.f64_)
+		}
+		.bool_literal {
+			return types.Type(types.bool_)
+		}
+		.char_literal {
+			if !node.value.starts_with('c:') {
+				return types.Type(types.rune_)
+			}
+		}
+		.nil_literal {
+			return types.Type(types.voidptr_)
+		}
+		.sizeof_expr, .offsetof_expr {
+			return types.Type(types.u32_)
+		}
+		.infix {
+			if g.tc.errors.len == 0
+				&& node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return types.Type(types.bool_)
+			}
+		}
+		.prefix {
+			// An unannotated `!x` is a bool before its operand is read.
+			if node.op == .not && node.typ == 0 {
+				return types.Type(types.bool_)
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_node flat.Node) ?types.Type {
@@ -7491,12 +7616,12 @@ fn (g &FlatGen) receiver_method_query(receiver_id u32, method string) BodyMethod
 	slot := body_owner_member_slot(receiver_id, method, body_method_query_slots)
 	// The masked slot is in bounds; borrow the entry without copying it.
 	entry := unsafe { &memo.method_queries[slot] }
-	if entry.generation == memo.generation && entry.type_id == receiver_id
+	if entry.generation == memo.name_generation && entry.type_id == receiver_id
 		&& entry.method == method {
 		return *entry
 	}
 	mut query := g.receiver_method_query_uncached(receiver_id, method)
-	query.generation = memo.generation
+	query.generation = memo.name_generation
 	memo.method_queries[slot] = query
 	return query
 }
@@ -8401,7 +8526,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					decl_type
 				}
 			} else if rhs.kind == .if_expr {
-				g.if_expr_type(&rhs)
+				g.if_expr_type(rhs_id, &rhs)
 			} else {
 				*g.usable_expr_type(rhs_id)
 			}
@@ -9150,6 +9275,94 @@ fn (g &FlatGen) alias_base_matches_type(alias_type types.Alias, typ &types.Type)
 	return g.tc.c_type(base) == g.tc.c_type(clean)
 }
 
+// usable_ident_annotation_type returns the parsed annotation `type_id` of an
+// identifier when it can stand for the identifier's type: not a `shared`
+// spelling (which parses without the pointer its local is stored as), usable as
+// a declaration type and free of generic placeholders. The answer depends on the
+// spelling and the body's module and file, so it is kept with the other
+// name-keyed body memo entries; a `typeof` spelling depends on local bindings
+// and is never kept.
+@[direct_array_access]
+fn (g &FlatGen) usable_ident_annotation_type(type_id u32) ?&types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.ident_ann_gens.len == 0 || g.placeholder_check_forced
+		|| flat.source_type_shape(type_id).has(.typeof_expr) {
+		return g.usable_ident_annotation_type_uncached(type_id)
+	}
+	slot := int(type_id & u32(body_ident_annotation_slots - 1))
+	if memo.ident_ann_gens[slot] == memo.name_generation && memo.ident_ann_ids[slot] == type_id {
+		value := memo.ident_ann_values[slot]
+		if isnil(value) {
+			return none
+		}
+		return value
+	}
+	annotated := g.usable_ident_annotation_type_uncached(type_id) or {
+		memo.ident_ann_ids[slot] = type_id
+		memo.ident_ann_gens[slot] = memo.name_generation
+		memo.ident_ann_values[slot] = unsafe { nil }
+		return none
+	}
+	memo.ident_ann_ids[slot] = type_id
+	memo.ident_ann_gens[slot] = memo.name_generation
+	memo.ident_ann_values[slot] = annotated
+	return annotated
+}
+
+fn (g &FlatGen) usable_ident_annotation_type_uncached(type_id u32) ?&types.Type {
+	if flat.source_type_shape(flat.source_type_syntax(type_id).trimmed()).has(.shared_type) {
+		return none
+	}
+	annotated := g.parse_annotation_type_reference(type_id)
+	if !decl_annotation_is_unusable(annotated, type_id)
+		&& !g.type_contains_generic_placeholder(annotated) {
+		return annotated
+	}
+	return none
+}
+
+// usable_struct_field_type_reference is usable_struct_field_type with its result
+// interned; the body memo keeps the reference beside the type.
+@[direct_array_access]
+fn (g &FlatGen) usable_struct_field_type_reference(type_name_id u32, field_name string) ?&types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.field_queries.len == 0 {
+		typ := g.usable_struct_field_type_uncached(type_name_id, field_name) or { return none }
+		return g.tc.intern_type_reference(typ)
+	}
+	slot := body_owner_member_slot(type_name_id, field_name, body_field_type_query_slots)
+	// The masked slot is in bounds; borrow the entry without copying its type.
+	mut entry := unsafe { &memo.field_queries[slot] }
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id
+		&& entry.field == field_name {
+		if !entry.found {
+			return none
+		}
+		if isnil(entry.canonical) {
+			entry.canonical = g.tc.intern_type_reference(entry.value)
+		}
+		return entry.canonical
+	}
+	if typ := g.usable_struct_field_type_uncached(type_name_id, field_name) {
+		canonical := g.tc.intern_type_reference(typ)
+		memo.field_queries[slot] = BodyFieldTypeQuery{
+			type_id:    type_name_id
+			generation: memo.name_generation
+			found:      true
+			field:      field_name
+			value:      typ
+			canonical:  canonical
+		}
+		return canonical
+	}
+	memo.field_queries[slot] = BodyFieldTypeQuery{
+		type_id:    type_name_id
+		generation: memo.name_generation
+		field:      field_name
+	}
+	return none
+}
+
 @[direct_array_access]
 fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?types.Type {
 	mut memo := g.body_context_type_memo()
@@ -9159,7 +9372,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	slot := body_owner_member_slot(type_name_id, field_name, body_field_type_query_slots)
 	// The masked slot is in bounds; borrow the entry without copying its type.
 	entry := unsafe { &memo.field_queries[slot] }
-	if entry.generation == memo.generation && entry.type_id == type_name_id
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id
 		&& entry.field == field_name {
 		if entry.found {
 			return entry.value
@@ -9169,7 +9382,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	if typ := g.usable_struct_field_type_uncached(type_name_id, field_name) {
 		memo.field_queries[slot] = BodyFieldTypeQuery{
 			type_id:    type_name_id
-			generation: memo.generation
+			generation: memo.name_generation
 			found:      true
 			field:      field_name
 			value:      typ
@@ -9178,7 +9391,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	}
 	memo.field_queries[slot] = BodyFieldTypeQuery{
 		type_id:    type_name_id
-		generation: memo.generation
+		generation: memo.name_generation
 		field:      field_name
 	}
 	return none
@@ -10490,7 +10703,7 @@ fn (mut g FlatGen) precompute_local_name_exceptions() {
 
 // A missing bit proves that none of the immutable global tables can resolve
 // the name. Collisions only retain the complete lookup.
-@[inline]
+@[direct_array_access; inline]
 fn global_name_filter_slot(name string) int {
 	mut hash := u32(name.len) * 131
 	if name.len > 0 {
@@ -10554,7 +10767,8 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 
 fn (g &FlatGen) local_name_needs_global_suffix(name string) bool {
 	if g.local_global_suffix_names_ready {
-		return name in g.local_global_suffix_names
+		return cgen_name_may_be_in(g.local_global_suffix_len_bits, name)
+			&& name in g.local_global_suffix_names
 	}
 	mut cache := g.local_global_shadow_facts
 	if !isnil(cache) {
@@ -10588,7 +10802,34 @@ fn (mut g FlatGen) precompute_local_global_suffix_names() {
 			g.local_global_suffix_names[name] = true
 		}
 	}
+	g.local_global_suffix_len_bits = cgen_name_len_bits(g.local_global_suffix_names)
 	g.local_global_suffix_names_ready = true
+}
+
+// cgen_name_len_bits indexes a name set by first byte and length: bit
+// min(len, 63) of entry names[0] is set for every name in `names`. A name whose
+// bit is clear is not in the set, so hot lookups skip hashing most misses.
+@[direct_array_access]
+fn cgen_name_len_bits(names map[string]bool) []u64 {
+	mut bits := []u64{len: 256}
+	for name, _ in names {
+		if name.len > 0 {
+			bits[name[0]] |= u64(1) << cgen_name_len_bit(name.len)
+		}
+	}
+	return bits
+}
+
+@[inline]
+fn cgen_name_len_bit(len int) int {
+	return if len < 63 { len } else { 63 }
+}
+
+// cgen_name_may_be_in reports whether `bits` (see cgen_name_len_bits) admits `name`.
+@[direct_array_access; inline]
+fn cgen_name_may_be_in(bits []u64, name string) bool {
+	return bits.len != 256 || name.len == 0
+		|| bits[name[0]] & (u64(1) << cgen_name_len_bit(name.len)) != 0
 }
 
 // The runtime's own `array` struct is typed into C under that name, and a local
@@ -10607,10 +10848,13 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		// precompute_c_typedef_shadow_names), so only a shadow name itself can
 		// map to one.
 		if g.c_typedef_shadow_names_plain && cgen_is_word_identifier(name)
-			&& name !in g.c_typedef_shadow_names {
+			&& (!cgen_name_may_be_in(g.c_typedef_shadow_len_bits, name)
+				|| name !in g.c_typedef_shadow_names) {
 			return false
 		}
-		return g.cname(name) in g.c_typedef_shadow_names
+		cname := g.cname(name)
+		return cgen_name_may_be_in(g.c_typedef_shadow_len_bits, cname)
+			&& cname in g.c_typedef_shadow_names
 	}
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
@@ -10671,6 +10915,7 @@ fn (mut g FlatGen) precompute_c_typedef_shadow_names() {
 		}
 	}
 	g.c_typedef_shadow_names_plain = plain
+	g.c_typedef_shadow_len_bits = cgen_name_len_bits(g.c_typedef_shadow_names)
 	g.c_typedef_shadow_names_ready = true
 }
 
@@ -10919,7 +11164,7 @@ fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 // is_noreturn_call reports whether is noreturn call applies in c.
 fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	call_id := g.noreturn_call_id(id) or { return false }
-	if g.tc.resolved_call_name(call_id) != none {
+	if g.resolved_call_name(call_id) != none {
 		return g.tc.resolved_call_never_returns(call_id)
 	}
 	call := g.a.nodes[int(call_id)]
@@ -11320,7 +11565,7 @@ fn (g &FlatGen) expr_is_error_call(id flat.NodeId) bool {
 	if fn_node.value !in ['error', 'error_with_code'] {
 		return false
 	}
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		return resolved in ['error', 'error_with_code', 'builtin.error', 'builtin.error_with_code']
 	}
 	if fn_node.kind != .ident {

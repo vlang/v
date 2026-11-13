@@ -2,22 +2,7 @@ name: CI Linux
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # Linux, so changes to it must run this suite; the canary below stays strict.
-      - '**.md'
-      - '**.yml'
-      - '!**/linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-
-concurrency:
-  # Replace superseded master runs instead of queueing every commit separately.
-  group: linux-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 permissions:
   contents: read
@@ -54,12 +39,16 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
+      - name: Check Linux CI runner contracts
+        id: runner_contracts
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        run: sh ci/linux_ci_resume_test.sh
       # Cheapest high-signal check first: a `v vet`/`v fmt -verify` failure must not
       # cost the whole compile matrix below, and this ordering costs no extra runner.
       - name: All code is formatted
         id: format
-        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.runner_contracts.outcome == 'success' }}
         run: v run ci/linux_ci.vsh all_code_is_formatted_tcc
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
@@ -107,7 +96,7 @@ jobs:
       - name: Self tests
         id: self_tests
         if: ${{ success() && !cancelled() && steps.test_inline_assembly.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_tcc
+        run: v run ci/linux_ci.vsh self_tests_vprod_tcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
@@ -143,13 +132,15 @@ jobs:
         id: build_fast
         if: ${{ success() && !cancelled() && steps.test_v_tutorials.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_fast_tcc
-      - name: V self compilation with default caching
+      # Disabled until the runner sets -d enable_usecache_test in VFLAGS;
+      # the task currently exits immediately and must not report green coverage.
+      - name: V self compilation with default caching (disabled)
         id: v_self_compilation_usecache
-        if: ${{ success() && !cancelled() && steps.build_fast.outcome == 'success' }}
+        if: ${{ false }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_tcc
       - name: Test password input
         id: test_password_input
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_fast.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_password_input_tcc
       - name: Test readline
         id: test_readline
@@ -177,6 +168,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
+      VFLAGS: -cc gcc
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
       VTEST_FAIL_FAST: '1'
@@ -202,7 +194,7 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -242,36 +234,26 @@ jobs:
         id: v_self_compilation
         if: ${{ success() && !cancelled() && steps.run_sanitizers.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_gcc
-      - name: v self compilation with default caching
+      # Disabled until the runner sets -d enable_usecache_test in VFLAGS;
+      # the task currently exits immediately and must not report green coverage.
+      - name: v self compilation with default caching (disabled)
         id: v_self_compilation_usecache
-        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ false }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_gcc
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_gcc
       - name: Test pure V math module
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_gcc
-      - name: Self tests
-        id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_gcc
-      - name: Self tests (-prod)
-        id: self_tests_prod
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_prod_gcc
-      - name: Self tests (-cstrict)
-        id: self_tests_cstrict
-        if: ${{ success() && !cancelled() && steps.self_tests_prod.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ success() && !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
@@ -330,7 +312,7 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -367,36 +349,26 @@ jobs:
         id: v_self_compilation
         if: ${{ success() && !cancelled() && steps.run_sanitizers.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_clang
-      - name: v self compilation with default caching
+      # Disabled until the runner sets -d enable_usecache_test in VFLAGS;
+      # the task currently exits immediately and must not report green coverage.
+      - name: v self compilation with default caching (disabled)
         id: v_self_compilation_usecache
-        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ false }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_clang
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_clang
       - name: Test pure V math module
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_clang
-      - name: Self tests
-        id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_clang
-      - name: Self tests (vprod)
-        id: self_tests_vprod
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_vprod_clang
-      - name: Self tests (-cstrict)
-        id: self_tests_cstrict
-        if: ${{ success() && !cancelled() && steps.self_tests_vprod.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_cstrict_clang
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ success() && !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
@@ -406,8 +378,104 @@ jobs:
         if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_modules_clang
 
-  package2-linux:
+  # The first full self-test suite alone exceeded the old jobs' remaining 95
+  # minutes. Run each full suite in four disjoint shards, independently of the
+  # compiler/example checks. The existing essential strict suite needs one shard.
+  gcc-linux-self-tests:
     if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, prod, strict]
+        shard: [0, 1, 2, 3]
+        exclude:
+          - suite: strict
+            shard: 1
+          - suite: strict
+            shard: 2
+          - suite: strict
+            shard: 3
+    env:
+      VFLAGS: -cc gcc
+      VTEST_FAIL_FAST: '1'
+      VJOBS: '4'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.suite == 'strict' && '1' || '4' }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      V_MACOS_V3_NO_FALLBACK: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        uses: ./.github/actions/setup-v
+      - name: Install dependencies for self tests
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+      - name: Self tests
+        if: matrix.suite == 'default'
+        run: v run ci/linux_ci.vsh self_tests_gcc
+      - name: Self tests (-prod)
+        if: matrix.suite == 'prod'
+        run: v run ci/linux_ci.vsh self_tests_prod_gcc
+      - name: Self tests (-cstrict)
+        if: matrix.suite == 'strict'
+        run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
+
+  clang-linux-self-tests:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, prod, strict]
+        shard: [0, 1, 2, 3]
+        exclude:
+          - suite: strict
+            shard: 1
+          - suite: strict
+            shard: 2
+          - suite: strict
+            shard: 3
+    env:
+      VFLAGS: -cc clang
+      VTEST_FAIL_FAST: '1'
+      VJOBS: '4'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.suite == 'strict' && '1' || '4' }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      V_MACOS_V3_NO_FALLBACK: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        uses: ./.github/actions/setup-v
+      - name: Install dependencies for self tests
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_clang
+      # The strict task uses vprod, which the preceding prod task used to build.
+      - name: Build the optimized compiler for strict self tests
+        if: matrix.suite == 'strict'
+        run: v -cc clang -o vprod -prod cmd/v
+      - name: Self tests
+        if: matrix.suite == 'default'
+        run: v run ci/linux_ci.vsh self_tests_clang
+      - name: Self tests (vprod)
+        if: matrix.suite == 'prod'
+        run: v run ci/linux_ci.vsh self_tests_vprod_clang
+      - name: Self tests (-cstrict)
+        if: matrix.suite == 'strict'
+        run: v run ci/linux_ci.vsh self_tests_cstrict_clang
+
+  package2-linux:
     name: Linux ${{ matrix.compiler }}
     strategy:
       fail-fast: false
@@ -419,11 +487,12 @@ jobs:
             vflags: '-cc clang'
           - compiler: tcc
             vflags: '-cc tcc -no-retry-compilation'
+    # Temporarily disabled: with the condition on the job, no runner is started.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: ${{ matrix.vflags }}
     steps:
       - name: Multiwindow package 2 regressions (temporarily disabled)
-        if: ${{ false }}
         run: echo 'multiwindow package 2 CI is temporarily disabled on Linux'

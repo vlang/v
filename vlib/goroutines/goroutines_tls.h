@@ -6,6 +6,10 @@
 void *goroutines_get_current_m(void);
 void goroutines_set_current_m(void *mp);
 
+#if defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))
+int goroutines_convert_fiber_to_thread(void);
+#endif
+
 uint32_t goroutines_atomic_load_u32(volatile uint32_t *ptr);
 void goroutines_atomic_store_u32(volatile uint32_t *ptr, uint32_t val);
 uint32_t goroutines_atomic_fetch_add_u32(volatile uint32_t *ptr, uint32_t val);

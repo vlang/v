@@ -108,6 +108,15 @@ const cases = [
 	Case{'return_int_fn', 'println(g())', 'fn g() int {\n\treturn «fails()»\n}\n', .error_only},
 	// handled, or passed on
 	Case{'return_result_fn', 'println(g() or { 0 })', 'fn g() !int {\n\treturn «fails()»\n}\n', .nothing},
+	Case{'return_result_match', 'println(g(1) or { 0 })', 'fn g(n int) !int {\n\treturn match n {\n\t\t1 { «fails()» }\n\t\telse { error("other") }\n\t}\n}\n', .nothing},
+	Case{'return_result_match_void', 'g(1) or {}', 'fn g(n int) ! {\n\treturn match n {\n\t\t1 { «fails_void()» }\n\t\telse { error("other") }\n\t}\n}\n', .nothing},
+	Case{'return_result_if', 'println(g(true) or { 0 })', 'fn g(ok bool) !int {\n\treturn if ok { «fails()» } else { error("other") }\n}\n', .nothing},
+	Case{'return_result_nested_branch', 'println(g(1) or { 0 })', 'fn g(n int) !int {\n\treturn (match n {\n\t\t1 { if n > 0 { «fails()» } else { error("inner") } }\n\t\telse { error("other") }\n\t})\n}\n', .nothing},
+	Case{'non_tail_in_returned_match', 'println(g(1) or { 0 })', 'fn g(n int) !int {\n\treturn match n {\n\t\t1 { «fails()»\n\t\t\t1 }\n\t\telse { 0 }\n\t}\n}\n', .warning},
+	Case{'handled_if', 'x := if os.args.len > 0 { «fails()» } else { fails() } or { 0 }\n\tprintln(x)', '', .nothing},
+	Case{'handled_nested_branch', 'x := if os.args.len > 0 { match os.args.len { 1 { «fails()» } else { fails() } } } else { fails() } or { 0 }\n\tprintln(x)', '', .nothing},
+	Case{'propagated_if', 'println(g() or { 0 })', 'fn g() !int {\n\treturn (if os.args.len > 0 { «fails()» } else { fails() })!\n}\n', .nothing},
+	Case{'non_tail_in_handled_if', 'x := if os.args.len > 0 { «fails()»\n\t\tfails() } else { fails() } or { 0 }\n\tprintln(x)', '', .warning},
 	Case{'spawn', 't := spawn «fails()»\n\tprintln(t.wait() or { 0 })', '', .nothing},
 	Case{'or_block', 'x := «fails()» or { 0 }\n\tprintln(x)', '', .nothing},
 	Case{'or_stmt', '«fails()» or { println(err) }', '', .nothing},
@@ -260,4 +269,27 @@ fn test_the_warning_is_an_error_with_w() {
 	res := os.exec(['${v3}', '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
+}
+
+// Discarding a match result must not gain the returned-branch exemption.
+fn test_a_discarded_match_result_is_an_error_with_w() {
+	v3 := build_v3()
+	dir := write_program('discarded_match', prelude + '\nfn main() {\n\t_ = match 1 {\n\t\t1 { fails() }\n\t\telse { error("other") }\n\t}\n}\n')
+	defer { os.rmdir_all(dir) or {} }
+	res := os.exec([v3, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
+}
+
+fn test_handled_branch_results_compile_with_w() {
+	v3 := build_v3()
+	for c in cases {
+		if c.name !in ['handled_if', 'handled_nested_branch', 'propagated_if'] {
+			continue
+		}
+		dir := write_program('strict_${c.name}', program(c))
+		res := os.exec([v3, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+		os.rmdir_all(dir) or {}
+		assert res.exit_code == 0, '${c.name}: ${res.output}'
+	}
 }

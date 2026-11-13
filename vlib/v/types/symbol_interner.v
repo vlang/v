@@ -15,6 +15,16 @@ mut:
 	recent [128]SymbolId
 }
 
+// symbol_recent_slot selects the recent slot of a non-empty name from its
+// bytes: the same name arrives from many allocations (call keys are spelled
+// per call), which a slot keyed by the pointer missed every time.
+@[direct_array_access; inline]
+fn symbol_recent_slot(name string) int {
+	mut h := u32(name.len) * 0x9e3779b1 ^ u32(name[0]) * 0x85ebca6b
+	h ^= u32(name[name.len - 1]) * 0xc2b2ae35 ^ u32(name[name.len / 2]) * 0x27d4eb2f
+	return int((h ^ (h >> 15)) & 127)
+}
+
 fn new_symbol_interner() &SymbolInterner {
 	return &SymbolInterner{
 		lock: sync.new_mutex()
@@ -32,7 +42,7 @@ fn (mut i SymbolInterner) intern(name string) (SymbolId, string) {
 	}
 	// Cache identities only: input storage can be a disposable or reused buffer.
 	// Checking the canonical bytes makes pointer reuse and hash collisions safe.
-	slot := int((uint(name.str) >> 4 ^ uint(name.len)) & 127)
+	slot := symbol_recent_slot(name)
 	recent := i.recent[slot]
 	if recent != 0 {
 		canonical := i.names[int(recent) - 1]

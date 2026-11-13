@@ -32,12 +32,14 @@ mut:
 // records that error as the cause, retrievable via cause(ctx). Calling it with
 // none is identical to a plain cancel.
 //
-// Example:
-//   mut bg := context.background()
-//   mut ctx, cancel := context.with_cancel_cause(mut bg)
-//   defer { cancel(none) }
-//   cancel(my_err)
-//   assert context.cause(ctx).str() == my_err.str()
+// For example:
+// ```v ignore
+// mut bg := context.background()
+// mut ctx, cancel := context.with_cancel_cause(mut bg)
+// defer { cancel(none) }
+// cancel(my_err)
+// assert context.cause(ctx).str() == my_err.str()
+// ```
 pub fn with_cancel_cause(mut parent Context) (Context, CancelCauseFunc) {
 	id := rand.uuid_v4()
 	inner := new_cancel_context(parent)

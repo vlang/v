@@ -64,6 +64,12 @@ println(resp.status_code)
 println(resp.body)
 ```
 
+`http.get` checks the server certificate, and `http.fetch(..., validate: false)` skips that check.
+`get`, `post`, and the other helpers check the certificate.
+`fetch`, `prepare`, and `download_file_with_progress` accept `validate: false`.
+Leave `verify` empty to use the system trust store on HTTP/1.1 and HTTP/2.
+HTTP/3 ignores `validate: false` and has no system trust store, so set `verify`.
+
 `http.post`, `http.post_json`, `http.post_form`, `http.put`, `http.patch`,
 `http.head` and `http.delete` cover the common verbs. `http.fetch` takes a
 `FetchConfig` when you need headers, cookies, timeouts, redirect control,
@@ -82,14 +88,6 @@ resp := http.fetch(
 
 HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
 `http.fetch` or a `http.Request` to opt in to HTTP/2 when the server supports it.
-Set `use_tls13: true` to use the experimental `x.net.tls.Conn` TLS 1.3 transport
-for HTTPS instead of the platform TLS backend. It supports HTTP/1.1 and pooled
-keep-alive connections, but not HTTP/2, HTTP/3, proxies, or client certificates;
-combining `use_tls13` with those options returns an error. It is opt-in and does
-not change the default backend. TLS verification uses the TLS13 stack's system
-root bundle unless a custom `verify` bundle is supplied. Since TLS13 connection
-timeouts are fixed at dial time, read/write timeout settings are part of its
-connection-pool key, and the shorter positive timeout bounds both directions.
 
 Cookies given in `cookies` of `http.fetch`, or added with `Request.add_cookie`, are sent in
 one `Cookie` header as `name=value` pairs. A value goes through `sanitize_cookie_value`. A
@@ -103,6 +101,20 @@ HTTP/1.1 still applies `Content-Encoding` decompression, and caps the resulting 
 If the bounded compressed prefix cannot be decompressed, it retains the encoded prefix, as with
 ordinary response parsing. The client still reads the full response and invokes progress callbacks,
 so streaming downloads can keep a bounded preview without losing data in the callbacks.
+
+Decoded response bodies are limited to 16 MiB total across `Content-Encoding` layers by default.
+Set `FetchConfig.max_total_decompressed_bytes` to a larger positive value for larger bodies; a
+nonpositive value disables the cumulative limit. Each decoded stage still has a representational
+ceiling. Gzip and deflate stages are capped at `max_int - 32768` with 32-bit `int`, or `2^62 - 1`
+with `-d new_int -x64`; Brotli stages are capped at `max_int - 1` or `2^62`, respectively.
+Exceeding either ceiling returns `ResponseDecompressionLimitError`. This bounds decoded output, not
+total process memory; transport buffers and decoder history also use memory. Responses may contain
+at most eight content-encoding layers.
+A positive `stop_copying_limit` smaller than the remaining decoded-byte budget caps the stored
+decoded body and stops decoding once that preview is full. Any remaining compressed data and its
+checksum are not validated. If the preview limit is at or above the remaining decoded-byte budget,
+exceeding the hard budget returns `ResponseDecompressionLimitError`. A received encoded prefix
+known to be incomplete is kept as-is rather than decoded.
 
 With HTTP/2 negotiation disabled, returning an error from `on_progress` or `on_progress_body`
 stops an HTTP/1.1 request without retrying or replaying it, including on a reused connection.
@@ -151,6 +163,23 @@ An HTTP/2 request with a field name that is not a token, or a field value with C
 NUL, is malformed: its stream is reset and the handler is not called. A request with more
 than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
 answered with `431 Request Header Fields Too Large`.
+
+HTTP/1 request lines and headers are limited to 64 KiB in total; oversized heads receive
+`431 Request Header Fields Too Large` and the connection is closed. `Server.read_header_timeout`
+sets the total time allowed to receive that head (30 seconds by default); set it to `0` to
+disable the deadline. `Server.read_timeout` continues to control individual reads and request
+bodies.
+
+HTTP/1.1 `Content-Length` bodies are limited to 8 MiB by default before the server allocates
+their storage. Set `Server.max_http1_request_body_size` to another positive byte count to
+change the limit, or to `0` for no limit. A request above the limit receives `413 Request
+Entity Too Large` and the connection is closed. This setting applies to plain and TLS
+HTTP/1.1; HTTP/2 keeps its separate 8 MiB server limit. `parse_request` uses the same safe
+8 MiB default when called directly. Use `parse_request_with_body_limit` when a parser caller
+needs to set a different limit. Use an unlimited setting only when all clients are trusted.
+Negative limits are rejected. Invalid, overflowing, or conflicting `Content-Length` fields,
+and unsupported `Transfer-Encoding` fields, receive `400 Bad Request` and close the
+connection. Chunked request bodies are not supported by this parser.
 
 ## Identifying the client
 
@@ -369,6 +398,9 @@ connection safely. Healthy idle connections remain reusable.
 Pooled connections expire after `Transport.idle_timeout` without requiring another request.
 A background worker checks idle pools at least once per second and stops when the pools are empty.
 Active HTTP/2 and HTTP/3 streams are preserved. `close_idle_connections()` can flush pools sooner.
+
+After HTTP/2 GOAWAY, new requests use a fresh connection. The replaced connection stops accepting
+new streams, lets active streams finish, and stops its reader when idle.
 
 If a non-idempotent request fails after transmission starts, the client returns an error
 without replaying it: a missing response does not prove that the server ignored the request.

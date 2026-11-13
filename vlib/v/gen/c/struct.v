@@ -8,6 +8,7 @@ import v.types { unalias_type }
 import strings
 
 const struct_init_option_source_type = flat.source_type_id('__v_option')
+const struct_init_union_source_type = flat.source_type_id('union')
 const cgen_embed_file_data_source_type = flat.source_type_id('embed_file.EmbedFileData')
 
 struct PromotedStructInitField {
@@ -160,7 +161,8 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 }
 
 fn is_anonymous_struct_type_name(name_id u32) bool {
-	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.anon_struct_prefix)
+	query := flat.source_type_query(flat.source_type_syntax(name_id).unqualified())
+	return query.has(.anon_struct_prefix) || query.has(.anon_union_prefix)
 }
 
 fn struct_init_has_main_type_lock(type_name string) bool {
@@ -189,7 +191,7 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 		// that clone, so it must not replace the explicit spelling.
 		return node.source_value_id()
 	}
-	if node.source_value_id() == flat.source_type_id('struct') {
+	if node.source_value_id() == flat.source_type_id('struct') || node.source_value_id() == struct_init_union_source_type {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.source_type_id()) {
 			return expected.source_type_id()
@@ -411,6 +413,7 @@ fn (g &FlatGen) embed_payload_node_indexes() []i32 {
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	mut seen := map[string]bool{}
+	linkage_attr := g.object_file_variable_linkage()
 	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
@@ -429,7 +432,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
 			// the C object size limit is about initializers, which that object
 			// does not have.
-			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			g.writeln('${linkage_attr}extern const unsigned char _v_embed_blob_${sym}[];')
 			defined++
 			continue
 		}
@@ -444,7 +447,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 		// prefix per unit, and a `static` pointer would leave every unit but the
 		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
 		// defines it, next to the `_vinit` that fills it.
-		g.writeln('extern u8* _v_embed_joined_${sym};')
+		g.writeln('${linkage_attr}extern u8* _v_embed_joined_${sym};')
 		defined++
 	}
 	if defined > 0 {
@@ -572,8 +575,9 @@ fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
 // right before it so that the definition lands in the same translation unit.
 fn (mut g FlatGen) gen_embed_blob_joined() {
+	linkage_attr := g.object_file_variable_linkage()
 	for blob in g.chunked_embed_blobs() {
-		g.writeln('u8* _v_embed_joined_${blob.sym} = NULL;')
+		g.writeln('${linkage_attr}u8* _v_embed_joined_${blob.sym} = NULL;')
 	}
 }
 
@@ -2815,7 +2819,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 				g.write(g.sum_initializer_suffix(false))
 				return
 			}
-			g.gen_default_value_for_type(variant_type)
+			if variant_type is types.ArrayFixed {
+				g.write(g.empty_fixed_array_initializer_string(variant_type))
+			} else {
+				g.gen_default_value_for_type(variant_type)
+			}
 			g.write(g.sum_initializer_suffix(false))
 			return
 		}
@@ -4841,13 +4849,13 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 	}
 	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_alias_type_name_slots - 1))
 	entry := unsafe { &memo.alias_type_names[slot] }
-	if entry.generation == memo.generation && entry.type_id == type_name_id {
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id {
 		return entry.value
 	}
 	result := g.struct_init_import_alias_type_name_uncached(type_name_id)
 	memo.alias_type_names[slot] = BodyAliasTypeNameQuery{
 		type_id:    type_name_id
-		generation: memo.generation
+		generation: memo.name_generation
 		value:      result
 	}
 	return result
@@ -5077,7 +5085,7 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 	}
 	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_struct_decl_query_slots - 1))
 	entry := unsafe { &memo.struct_decls[slot] }
-	if entry.generation == memo.generation && entry.type_id == type_name_id {
+	if entry.generation == memo.name_generation && entry.type_id == type_name_id {
 		if entry.found {
 			return entry.info
 		}
@@ -5086,13 +5094,13 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 	info := g.find_struct_decl_uncached(type_name_id) or {
 		memo.struct_decls[slot] = BodyStructDeclQuery{
 			type_id:    type_name_id
-			generation: memo.generation
+			generation: memo.name_generation
 		}
 		return none
 	}
 	memo.struct_decls[slot] = BodyStructDeclQuery{
 		type_id:    type_name_id
-		generation: memo.generation
+		generation: memo.name_generation
 		found:      true
 		info:       info
 	}
@@ -5654,6 +5662,11 @@ fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?t
 }
 
 fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name_id u32, field_name string) ?string {
+	// Every answer below comes from the checker's table of C ABI callback
+	// fields, which most programs leave empty.
+	if g.tc.struct_field_c_abi_fns.len == 0 {
+		return none
+	}
 	type_name := flat.source_type_name(type_name_id)
 	if info := g.find_struct_decl(type_name_id) {
 		if typ := g.tc.struct_field_c_abi_fn_ptr_type(info.full_name, field_name) {
@@ -5690,15 +5703,48 @@ fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name_id u32, field_name stri
 // per-selector embedded-field resolution doesn't rescan (and re-c_name) every field of
 // the receiver struct on every field access — a major cgen cost after #27538.
 fn (mut g FlatGen) precompute_embedded_fields() {
+	if g.finish_embedded_fields_lane() {
+		return
+	}
 	for registry_type_name_id, fields in g.tc.structs {
-		mut emb := []types.StructField{}
+		g.embedded_fields_by_type[registry_type_name_id] = g.embedded_fields_of(fields)
+	}
+}
+
+fn (g &FlatGen) embedded_fields_of(fields []types.StructField) []types.StructField {
+	mut emb := []types.StructField{}
+	for field in fields {
+		if g.embedded_field_type_name(field) != 0 {
+			emb << field
+		}
+	}
+	return emb
+}
+
+// embedded_fields_without_context is precompute_embedded_fields for the structs
+// whose answer does not depend on the checker's current file and module, which
+// a helper thread does not have. A callback field may be an embedded callback
+// alias that embedded_field_type_name resolves in that context: structs with
+// one get an empty list here and are returned for the caller to redo.
+fn (g &FlatGen) embedded_fields_without_context() (map[u32][]types.StructField, []u32) {
+	mut by_type := map[u32][]types.StructField{}
+	mut deferred := []u32{}
+	for registry_type_name_id, fields in g.tc.structs {
+		mut needs_context := false
 		for field in fields {
-			if g.embedded_field_type_name(field) != 0 {
-				emb << field
+			if types.unwrap_pointer(field.typ) is types.FnType {
+				needs_context = true
+				break
 			}
 		}
-		g.embedded_fields_by_type[registry_type_name_id] = emb
+		if needs_context {
+			deferred << registry_type_name_id
+			by_type[registry_type_name_id] = []types.StructField{}
+		} else {
+			by_type[registry_type_name_id] = g.embedded_fields_of(fields)
+		}
 	}
+	return by_type, deferred
 }
 
 // struct_embedded_fields returns the embedded fields of a type (mirrors
@@ -6106,14 +6152,14 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	}
 	slot := int((hash >> 7) & u64(body_promoted_miss_slots - 1))
 	entry := unsafe { &memo.promoted_misses[slot] }
-	if entry.generation == memo.generation && entry.name_id == name_id
+	if entry.generation == memo.name_generation && entry.name_id == name_id
 		&& entry.field == field_name {
 		return none
 	}
 	path := g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name) or {
 		memo.promoted_misses[slot] = BodyPromotedMissQuery{
 			name_id:    name_id
-			generation: memo.generation
+			generation: memo.name_generation
 			field:      field_name
 		}
 		return none
@@ -7545,14 +7591,24 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		g.tc.cur_module = old_module
 	}
 	// These operators have integer result types, so their type operands do not
-	// appear in the checked expression-type tables below.
-	for idx in 0 .. g.a.nodes.len {
-		// The AST stays immutable while collecting references.
-		node := unsafe { &g.a.nodes[idx] }
-		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+	// appear in the checked expression-type tables below. collect_gen_info indexes
+	// them; standalone generators without that index scan every node.
+	if g.sizeof_offsetof_nodes_ready {
+		for idx in g.sizeof_offsetof_node_ids {
+			// The AST stays immutable while collecting references.
+			node := unsafe { &g.a.nodes[idx] }
 			g.tc.cur_file = g.node_source_file(node)
 			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
 			g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+		}
+	} else {
+		for idx in 0 .. g.a.nodes.len {
+			node := unsafe { &g.a.nodes[idx] }
+			if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+				g.tc.cur_file = g.node_source_file(node)
+				g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
+				g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+			}
 		}
 	}
 	// Alias preseeding can emit wrappers, array typedefs, and callback signatures
@@ -7565,22 +7621,23 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		name := flat.source_type_name(registry_name_id)
 		if !name.starts_with('C.') {
 			for field in fields {
-				g.collect_c_struct_type_refs(field.typ, mut seen)
+				g.collect_c_struct_type_refs(&field.typ, mut seen)
 			}
 		}
 	}
 	for _, typ in g.global_types {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	for _, typ in g.tc.c_globals {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	for _, typ in g.tc.fn_ret_types {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	for _, params in g.tc.fn_param_types {
-		for typ in params {
-			g.collect_c_struct_type_refs(typ, mut seen)
+		for i in 0 .. params.len {
+			// The walk only reads the stored type.
+			g.collect_c_struct_type_refs(unsafe { &params[i] }, mut seen)
 		}
 	}
 	for registry_name_id in g.tc.sum_types.keys() {
@@ -7590,12 +7647,19 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
-			g.collect_c_struct_type_refs(field.typ, mut seen)
+			g.collect_c_struct_type_refs(&field.typ, mut seen)
 		}
 	}
-	g.collect_expr_c_struct_type_refs(mut seen)
+	if g.expr_c_struct_refs_ready {
+		// The set is closed under the walk below, so it can simply be added.
+		for id, _ in g.expr_c_struct_refs {
+			seen[id] = true
+		}
+	} else {
+		g.collect_expr_c_struct_type_refs(mut seen)
+	}
 	for _, typ in g.tc.sparse_expr_type_values {
-		g.collect_c_struct_type_refs(typ, mut seen)
+		g.collect_c_struct_type_refs(&typ, mut seen)
 	}
 	return seen
 }
@@ -7603,16 +7667,26 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 // collect_expr_c_struct_type_refs walks every checked expression type. These are
 // mostly shared canonical references; walking the same type again adds nothing,
 // so a reference that was just walked is skipped.
-@[direct_array_access]
 fn (g &FlatGen) collect_expr_c_struct_type_refs(mut seen map[u32]bool) {
-	count := if g.tc.expr_type_set.len < g.tc.expr_type_values.len {
+	g.collect_expr_c_struct_type_refs_in(0, g.tc.expr_type_values.len, mut seen)
+}
+
+// collect_expr_c_struct_type_refs_in is collect_expr_c_struct_type_refs for the
+// nodes in [start, end). The result of a walk does not depend on what `seen`
+// already holds, so the sets of disjoint ranges add up to the set of all nodes.
+@[direct_array_access]
+fn (g &FlatGen) collect_expr_c_struct_type_refs_in(start int, end int, mut seen map[u32]bool) {
+	mut count := if g.tc.expr_type_set.len < g.tc.expr_type_values.len {
 		g.tc.expr_type_set.len
 	} else {
 		g.tc.expr_type_values.len
 	}
+	if end < count {
+		count = end
+	}
 	// The slots only hold the addresses of walked types; nothing reads them as values.
 	mut walked := unsafe { [4096]voidptr{} }
-	for i in 0 .. count {
+	for i in start .. count {
 		if !g.tc.expr_type_set[i] {
 			continue
 		}
@@ -7623,11 +7697,11 @@ fn (g &FlatGen) collect_expr_c_struct_type_refs(mut seen map[u32]bool) {
 			continue
 		}
 		walked[slot] = typ_ref
-		g.collect_c_struct_type_refs(*typ, mut seen)
+		g.collect_c_struct_type_refs(typ, mut seen)
 	}
 }
 
-fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen map[u32]bool) {
+fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ &types.Type, mut seen map[u32]bool) {
 	match typ {
 		types.OptionType, types.ResultType, types.ArrayFixed, types.FnType {
 			g.collect_c_struct_type_refs(typ, mut seen)
@@ -7643,15 +7717,17 @@ fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen ma
 			g.collect_c_struct_auxiliary_type_refs(typ.value_type, mut seen)
 		}
 		types.MultiReturn {
-			for item in typ.types {
-				g.collect_c_struct_auxiliary_type_refs(item, mut seen)
+			for i in 0 .. typ.types.len {
+				g.collect_c_struct_auxiliary_type_refs(unsafe { &typ.types[i] }, mut seen)
 			}
 		}
 		else {}
 	}
 }
 
-fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool) {
+// The type is taken by reference: the walk visits every declared and checked
+// type of the program, and passing a type by value copies it.
+fn (g &FlatGen) collect_c_struct_type_refs(typ &types.Type, mut seen map[u32]bool) {
 	// Builtin leaves never name a C struct and reference nothing else.
 	match typ {
 		types.Void, types.Unknown, types.Nil, types.None, types.String, types.Char, types.Rune,
@@ -7673,7 +7749,7 @@ fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool
 	match typ {
 		types.Struct {
 			for field in g.tc.structs[typ.source_type_id()] or { []types.StructField{} } {
-				g.collect_c_struct_type_refs(field.typ, mut seen)
+				g.collect_c_struct_type_refs(&field.typ, mut seen)
 			}
 		}
 		types.Pointer, types.OptionType, types.ResultType, types.Alias {
@@ -7693,8 +7769,8 @@ fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool
 			}
 		}
 		types.MultiReturn {
-			for item in typ.types {
-				g.collect_c_struct_type_refs(item, mut seen)
+			for i in 0 .. typ.types.len {
+				g.collect_c_struct_type_refs(unsafe { &typ.types[i] }, mut seen)
 			}
 		}
 		else {}
@@ -8286,12 +8362,35 @@ fn (mut g FlatGen) preseed_type_alias_fn_ptr_types() {
 }
 
 fn (mut g FlatGen) preseed_fn_signature_fn_ptr_types() {
+	// Nearly every signature type registers nothing. Test that on the stored
+	// value: passing a type to preseed_fn_ptr_type copies it.
+	// The aliases of a signature follow one another and share its parameter
+	// list and return type: the same storage again registers nothing new.
+	mut last_params := unsafe { nil }
+	mut last_params_len := 0
 	for _, params in g.fn_decl_param_types {
-		for typ in params {
-			g.preseed_fn_ptr_type(typ)
+		if params.len == last_params_len && voidptr(params.data) == last_params {
+			continue
+		}
+		last_params = voidptr(params.data)
+		last_params_len = params.len
+		for i in 0 .. params.len {
+			// The parameter lists are not modified while they are scanned.
+			if preseed_fn_ptr_type_is_noop(unsafe { &params[i] }) {
+				continue
+			}
+			g.preseed_fn_ptr_type(params[i])
 		}
 	}
+	mut last_ret := unsafe { nil }
 	for _, typ in g.fn_decl_ret_types {
+		if voidptr(typ) == last_ret {
+			continue
+		}
+		last_ret = voidptr(typ)
+		if preseed_fn_ptr_type_is_noop(typ) {
+			continue
+		}
 		g.preseed_fn_ptr_type(typ)
 	}
 }
@@ -8306,6 +8405,11 @@ fn (mut g FlatGen) preseed_sum_fn_ptr_types() {
 }
 
 fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
+	// Most declaration types hold no function, option or result type: check that
+	// before paying for the semantic hash of the dedup table.
+	if preseed_fn_ptr_type_is_noop(&typ) {
+		return
+	}
 	if !isnil(g.preseed_sig_type_seen) && !g.preseed_sig_type_seen.insert(typ) {
 		return
 	}
@@ -8353,6 +8457,39 @@ fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
 	if typ is types.MultiReturn {
 		for item in typ.types {
 			g.preseed_fn_ptr_type(item)
+		}
+	}
+}
+
+// preseed_fn_ptr_type_is_noop reports whether preseed_fn_ptr_type registers
+// nothing for `typ`: it descends exactly like that walk and finds no function,
+// option or result type.
+fn preseed_fn_ptr_type_is_noop(typ &types.Type) bool {
+	match typ {
+		types.FnType, types.OptionType, types.ResultType {
+			return false
+		}
+		types.Alias, types.Pointer {
+			return preseed_fn_ptr_type_is_noop(typ.base_type)
+		}
+		types.Array, types.ArrayFixed {
+			return preseed_fn_ptr_type_is_noop(typ.elem_type)
+		}
+		types.Map {
+			return preseed_fn_ptr_type_is_noop(typ.key_type)
+				&& preseed_fn_ptr_type_is_noop(typ.value_type)
+		}
+		types.MultiReturn {
+			for i in 0 .. typ.types.len {
+				// The walk only reads the type.
+				if !preseed_fn_ptr_type_is_noop(unsafe { &typ.types[i] }) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return true
 		}
 	}
 }

@@ -1,5 +1,5 @@
 // vtest vflags: -prod
-// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
+// vtest build: !windows && !tinyc // fasthttp.Server.run is not implemented on Windows; -prod rejects TinyCC
 import veb
 import net.http
 import os

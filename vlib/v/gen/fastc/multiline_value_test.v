@@ -34,6 +34,19 @@ fn guarded(found bool) int {
 	return if a, b := pair(found) { a + b }
 		else { -1 }
 }
+struct Base { value int }
+struct Parent { Base }
+fn address_after_assignment(enabled bool) &Base {
+	mut captured := ?&Parent(none)
+	return if enabled {
+		actual := &Parent{Base: Base{value: 42}}
+		captured = actual
+		&actual.Base
+	} else {
+		actual := &Parent{Base: Base{value: 21}}
+		&actual.Base
+	}
+}
 fn main() {
 	bytes := u64(10) * 2 + 100
 		+ u64(3 + 1) * (u64(7) * 2 + 2)
@@ -53,6 +66,8 @@ fn main() {
 	assert fallback(&default) == 42 && calls == 1
 	assert choose(true) == 42 && choose(false) == 21
 	assert guarded(true) == 42 && guarded(false) == -1
+	assert address_after_assignment(true).value == 42
+	assert address_after_assignment(false).value == 21
 }
 ') or { panic(err) }
 	mut prefs := pref.new_preferences()

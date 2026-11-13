@@ -48,6 +48,9 @@ fn pin_module_cache(dir string) []SavedEnv {
 	os.setenv('V3CACHE', dir, true)
 	os.setenv('V3_CACHE_TRACE', '1', true)
 	os.setenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', '1', true)
+	// TinyCC's backtrace tables contain the random C build directory. Keep these
+	// builds free of that debug metadata so byte comparisons measure the program.
+	os.setenv('VFLAGS', '-d no_backtrace', true)
 	return saved
 }
 

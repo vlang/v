@@ -43,7 +43,8 @@ fn main() {
 	}
 }
 ')
-	main_start := c_source.index('\nint main(') or { -1 }
+	entry_point := $if windows { '\nint wmain(' } $else { '\nint main(' }
+	main_start := c_source.index(entry_point) or { -1 }
 	assert main_start >= 0, c_source
 	main_tail := c_source[main_start..]
 	main_end := main_tail.index('\nvoid sync__') or { main_tail.len }

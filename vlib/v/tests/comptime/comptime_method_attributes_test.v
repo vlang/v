@@ -1,8 +1,23 @@
+@[attribute]
+struct ApiName {
+	value string
+}
+
+@[attribute]
+struct Secured {
+	value bool
+}
+
+@[attribute]
+struct Retries {
+	value int
+}
+
 struct MethodAttributeHolder {}
 
-@[api_name: 'handler']
-@[secured: true]
-@[retries: 3]
+@[ApiName: 'handler']
+@[Secured: true]
+@[Retries: 3]
 fn (m MethodAttributeHolder) endpoint() {}
 
 fn (m MethodAttributeHolder) no_attrs() {}
@@ -24,9 +39,9 @@ fn test_comptime_method_attributes_are_structured() {
 			saw_endpoint = true
 			assert method.attrs.len == 3
 			assert method.attributes.len == 3
-			assert find_method_attr(method.attributes, 'api_name', .string) == 'handler'
-			assert find_method_attr(method.attributes, 'secured', .bool) == 'true'
-			assert find_method_attr(method.attributes, 'retries', .number) == '3'
+			assert find_method_attr(method.attributes, 'ApiName', .string) == 'handler'
+			assert find_method_attr(method.attributes, 'Secured', .bool) == 'true'
+			assert find_method_attr(method.attributes, 'Retries', .number) == '3'
 		}
 		if method.name == 'no_attrs' {
 			saw_no_attrs = true

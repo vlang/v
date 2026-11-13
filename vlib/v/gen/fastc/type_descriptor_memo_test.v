@@ -4,6 +4,77 @@ import v.flat
 import v.pref
 import v.scanner
 
+fn test_final_direct_member_memo_keeps_distinct_fields_and_negative_results() {
+	typ := flat.source_type_id('MemberMemo')
+	mut fields := flat.TypeTextBindings{}
+	fields.set('first', 'int')
+	fields.set('last', 'string')
+	base := fastc_descriptor_memo_test_parser(flat.TypeTextBindings{}, flat.TypeTextBindings{}, true)
+	g := Parser{
+		...base
+		struct_fields: {
+			'MemberMemo': fields
+		}
+	}
+	for _ in 0 .. 3 {
+		for name in ['first', 'last', 'missing', 'another', 'first', ''] {
+			assert g.struct_direct_member_type(typ, name) == g.struct_direct_member_type_uncached(typ, name)
+		}
+	}
+	// Deliberately collide with first's slot; the complete field name must match.
+	assert g.struct_direct_member_type(typ, 'furthest') == 0
+	assert g.struct_direct_member_type(typ, 'first') == flat.source_type_int
+}
+
+fn test_final_equality_support_memo_keeps_cycle_assumptions_local_to_the_walk() {
+	bad_a := flat.source_type_id('BadEqualityA')
+	bad_b := flat.source_type_id('BadEqualityB')
+	good := flat.source_type_id('GoodEqualityCycle')
+	base := fastc_descriptor_memo_test_parser(flat.TypeTextBindings{}, flat.TypeTextBindings{}, true)
+	g := Parser{
+		...base
+		declared_kinds:    {
+			bad_a: FastcDeclaredTypeKind.struct_
+			bad_b: FastcDeclaredTypeKind.struct_
+			good:  FastcDeclaredTypeKind.struct_
+		}
+		struct_field_info: {
+			'BadEqualityA':      [FastcStructField{ name: 'cycle', typ: bad_b },
+				FastcStructField{ name: 'unsupported', typ: fastc_type_option }]
+			'BadEqualityB':      [FastcStructField{ name: 'cycle', typ: bad_a }]
+			'GoodEqualityCycle': [FastcStructField{ name: 'cycle', typ: good },
+				FastcStructField{ name: 'value', typ: flat.source_type_int }]
+		}
+	}
+	for _ in 0 .. 3 {
+		assert !g.struct_equality_is_supported(bad_a, []u32{})
+		// B's first recursive visit sees A on the stack; that provisional success
+		// must not escape as B's independent cached answer.
+		assert !g.struct_equality_is_supported(bad_b, []u32{})
+		assert g.struct_equality_is_supported(good, []u32{})
+		assert g.struct_equality_is_supported(bad_a, [bad_a])
+		assert !g.struct_equality_is_supported(bad_a, []u32{})
+	}
+}
+
+fn test_arbitrary_parser_equality_support_observes_descriptor_updates() {
+	typ := flat.source_type_id('ChangingEquality')
+	base := fastc_descriptor_memo_test_parser(flat.TypeTextBindings{}, flat.TypeTextBindings{}, false)
+	mut fields := {
+		'ChangingEquality': [FastcStructField{ name: 'value', typ: flat.source_type_int }]
+	}
+	g := Parser{
+		...base
+		declared_kinds:    {
+			typ: FastcDeclaredTypeKind.struct_
+		}
+		struct_field_info: fields
+	}
+	assert g.struct_equality_is_supported(typ, []u32{})
+	fields['ChangingEquality'] = [FastcStructField{ name: 'value', typ: fastc_type_option }]
+	assert !g.struct_equality_is_supported(typ, []u32{})
+}
+
 fn fastc_descriptor_memo_test_parser(names flat.TypeTextBindings, aliases flat.TypeTextBindings, finalized bool) Parser {
 	prefs := pref.new_preferences()
 	return Parser{

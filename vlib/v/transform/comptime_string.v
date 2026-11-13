@@ -251,12 +251,23 @@ fn (mut t Transformer) detach_comptime_array_locals() {
 
 fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count != 2 {
-		return t.transform_decl_assign_stmt(id, node)
+		result := t.transform_decl_assign_stmt(id, node)
+		for i in 0 .. t.multi_assign_lhs_count(node) {
+			lhs := t.a.node(t.multi_assign_lhs_id(node, i))
+			if lhs.kind == .ident {
+				t.set_var_immutable(lhs.value, false)
+			}
+		}
+		return result
 	}
 	lhs := *t.a.child_node(&node, 0)
 	value := t.comptime_scalar_expr(t.a.child(&node, 1), 0)
 	result := t.transform_decl_assign_stmt(id, node)
 	if lhs.kind == .ident {
+		// Only a plain source `name := value` is immutable; `static`, `shared`,
+		// `atomic` and `volatile` declarations keep their marker in `node.value`.
+		t.set_var_immutable(lhs.value, node.pos.is_valid() && !lhs.is_mut && !node.is_mut
+			&& node.value.len == 0)
 		if lhs.value in t.comptime_scalar_locals {
 			t.detach_comptime_scalar_locals()
 			t.comptime_scalar_locals.delete(lhs.value)
@@ -609,6 +620,18 @@ fn (t &Transformer) node_is_local_ident(id flat.NodeId, name string) bool {
 // subst_comptime_scalar_locals substitutes bare value names, leaving members, quotes and type tests alone.
 fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 	if cond.contains(' is ') || cond.contains(' !is ') {
+		clean := comptime_condition_strip_outer_parens(trimmed_transform_text(cond))
+		for op in ['||', '&&'] {
+			idx := comptime_condition_top_level_index(clean, op)
+			if idx >= 0 {
+				left := t.subst_comptime_scalar_locals(trimmed_transform_text(clean[..idx]))
+				right := t.subst_comptime_scalar_locals(trimmed_transform_text(clean[idx + op.len..]))
+				return '(${left}) ${op} (${right})'
+			}
+		}
+		if clean.starts_with('!') {
+			return '!(' + t.subst_comptime_scalar_locals(clean[1..]) + ')'
+		}
 		return cond
 	}
 	mut out := strings.new_builder(cond.len)

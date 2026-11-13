@@ -1,5 +1,12 @@
 module os
 
+// Keep the portable compiler snapshot independent of native CRT headers.
+$if !v3_headerless_bootstrap ? {
+	$if windows {
+		#include <stdlib.h>
+	}
+}
+
 fn C.SetEnvironmentVariableW(name &u16, value &u16) i32
 
 // clearenv removes all environment variables from the current process.

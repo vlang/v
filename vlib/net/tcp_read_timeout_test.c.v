@@ -76,6 +76,42 @@ fn test_tcp_read_deadline_wins_over_the_socket_timeout() ! {
 	assert false, 'a silent peer must time out'
 }
 
+fn tcp_send_slow_bytes(address string) {
+	mut client := dial_tcp(address) or { return }
+	defer { client.close() or {} }
+	for _ in 0 .. 12 {
+		time.sleep(50 * time.millisecond)
+		client.write_string('x') or { break }
+	}
+}
+
+fn test_tcp_read_deadline_expires_during_successful_reads() ! {
+	$if windows ? {
+		return
+	}
+	mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+	defer { listener.close() or {} }
+	connector := spawn tcp_send_slow_bytes(listener.addr()!.str())
+	mut server := listener.accept()!
+	defer { server.close() or {} }
+	server.set_read_deadline(time.now().add(200 * time.millisecond))
+	mut buffer := []u8{len: 1}
+	started := time.new_stopwatch()
+	mut got_byte := false
+	for {
+		if n := server.read(mut buffer) {
+			assert n == 1
+			got_byte = true
+		} else {
+			assert err.code() == err_timed_out.code()
+			assert got_byte, 'the peer should keep delivering bytes before the deadline'
+			assert started.elapsed() < time.second, 'returned after ${started.elapsed()}'
+			break
+		}
+	}
+	connector.wait()
+}
+
 fn test_tcp_accept_deadline_wins_over_the_infinite_accept_timeout() ! {
 	$if windows || is_coroutine ? {
 		return

@@ -38,8 +38,15 @@ fn main() {
 }
 ')!
 	for production in [false, true] {
-		mut args := [@VEXE, '-b', 'c', '-cc', 'clang', '-nocache']
+		mut args := [@VEXE, '-b', 'c', '-nocache']
+		$if !windows {
+			args << ['-cc', 'clang']
+		}
 		if production {
+			$if windows {
+				// VFLAGS may select TCC, which does not support production builds.
+				args << ['-cc', 'gcc']
+			}
 			args << '-prod'
 		}
 		args << ['run', input]
@@ -87,8 +94,15 @@ pub fn unused() {
 	input := os.join_path(root, 'main.v')
 	os.write_file(input, 'module main\nimport helper\nfn main() { assert helper.value == 1 }\n')!
 	for production in [false, true] {
-		mut args := [@VEXE, '-b', 'c', '-cc', 'clang', '-nocache']
+		mut args := [@VEXE, '-b', 'c', '-nocache']
+		$if !windows {
+			args << ['-cc', 'clang']
+		}
 		if production {
+			$if windows {
+				// VFLAGS may select TCC, which does not support production builds.
+				args << ['-cc', 'gcc']
+			}
 			args << '-prod'
 		}
 		args << ['run', input]

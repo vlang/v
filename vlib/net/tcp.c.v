@@ -183,6 +183,9 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	mut ecode := 0
+	if deadline_set(c.read_deadline) && time.now() >= c.read_deadline {
+		return error_with_code(err_timed_out.msg(), err_timed_out.code())
+	}
 	// A read with a deadline set still uses select, so the deadline bounds it (see wait_for_common);
 	// ordinary blocking reads let recv enforce the timeout.
 	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
@@ -190,7 +193,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		&& c.sock.handle == c.socket_read_timeout_handle
 		&& !deadline_set(c.read_deadline)
 	$if is_coroutine ? {
-		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout_for_deadline())
 		ecode = error_code()
 	} $else {
 		if c.is_blocking {
@@ -207,6 +210,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		return io.Eof{}
 	}
 	if res > 0 {
+		if deadline_set(c.read_deadline) && time.now() >= c.read_deadline {
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
+		}
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
@@ -223,7 +229,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
-			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout_for_deadline())
 		} $else {
 			if c.is_blocking {
 				C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
@@ -233,6 +239,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		if res == 0 {
 			return io.Eof{}
+		}
+		if res > 0 && deadline_set(c.read_deadline) && time.now() >= c.read_deadline {
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
 		}
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
@@ -249,6 +258,20 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		wrap_error(ecode)!
 	}
 	return error('none')
+}
+
+fn (c TcpConn) read_timeout_for_deadline() time.Duration {
+	if !deadline_set(c.read_deadline) {
+		return c.read_timeout
+	}
+	remaining := c.read_deadline - time.now()
+	if remaining <= 0 {
+		return time.nanosecond
+	}
+	if c.read_timeout <= 0 || c.read_timeout == infinite_timeout || remaining < c.read_timeout {
+		return remaining
+	}
+	return c.read_timeout
 }
 
 // read reads data from the tcp connection into the mutable buffer `buf`.

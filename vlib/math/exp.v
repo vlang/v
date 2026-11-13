@@ -32,8 +32,9 @@ const expm1_q5 = -2.01099218183624371326e-07
 // exp returns e**x, the base-e exponential of x.
 //
 // special cases are:
-// exp(+inf) = +inf
-// exp(nan) = nan
+// - `exp(+inf) = +inf`
+// - `exp(nan) = nan`
+//
 // Very large values overflow to 0 or +inf.
 // Very small values underflow to 1.
 pub fn exp(x f64) f64 {
@@ -116,27 +117,9 @@ pub fn ldexp(frac f64, exp int) f64 {
 // with the absolute value of frac in the interval [½, 1).
 //
 // special cases are:
-// frexp(±0) = ±0, 0
-// frexp(±inf) = ±inf, 0
-// frexp(nan) = nan, 0
-// pub fn frexp(f f64) (f64, int) {
-// mut y := f64_bits(x)
-// ee := int((y >> 52) & 0x7ff)
-// // special cases
-// if ee == 0 {
-//	if x != 0.0 {
-// 	x1p64 := f64_from_bits(0x43f0000000000000)
-// 	z,e_ := frexp(x * x1p64)
-// 	return z,e_ - 64
-// }
-// return x,0
-// } else if ee == 0x7ff {
-// return x,0
-// }
-// e_ := ee - 0x3fe
-// y &= 0x800fffffffffffff
-// y |= 0x3fe0000000000000
-// return f64_from_bits(y),e_
+// - `frexp(±0) = ±0, 0`
+// - `frexp(±inf) = ±inf, 0`
+// - `frexp(nan) = nan, 0`
 pub fn frexp(x f64) (f64, int) {
 	mut y := f64_bits(x)
 	ee := int((y >> 52) & 0x7ff)
@@ -158,10 +141,10 @@ pub fn frexp(x f64) (f64, int) {
 
 // expm1 calculates e**x - 1
 // special cases are:
-// expm1(+inf) = +inf
-// expm1(-inf) = -1
-// expm1(nan) = nan
-// expm1(+/-0) = +/-0
+// - `expm1(+inf) = +inf`
+// - `expm1(-inf) = -1`
+// - `expm1(nan) = nan`
+// - `expm1(+/-0) = +/-0`
 pub fn expm1(x f64) f64 {
 	if x == 0 || is_inf(x, 1) || is_nan(x) {
 		return x

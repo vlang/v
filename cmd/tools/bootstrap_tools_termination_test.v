@@ -13,7 +13,10 @@ fn test_self_hosted_bootstrap_tools_compile_and_terminate() {
 		build := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-gc',
 			'none', '-nocache', '-o', output, source], 120_000)
 		assert build.exit_code == 0, build.output
-		run := cmdexec.run_with_timeout(output, [], 30_000)
+		// Keep this termination check local: doctor's optional GitHub fetch may
+		// first compile the timeout tool. vdoctor_test.v covers fetch dispatch.
+		run_args := if name == 'vdoctor' { ['-skip-github'] } else { []string{} }
+		run := cmdexec.run_with_timeout(output, run_args, 30_000)
 		assert run.exit_code == 0, run.output
 		if name == 'vdoctor' {
 			assert run.output.contains('V executable'), run.output

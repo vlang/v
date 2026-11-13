@@ -30,6 +30,33 @@ pub type RequestProgressBodyFn = fn (request &Request, chunk []u8, body_read_so_
 
 pub type RequestFinishFn = fn (request &Request, final_size u64) !
 
+// RequestBodyLimitError is returned when a declared Content-Length exceeds the configured limit.
+pub struct RequestBodyLimitError {
+	Error
+}
+
+// msg returns why a declared request body exceeds the configured limit.
+pub fn (_ RequestBodyLimitError) msg() string {
+	return 'request body exceeds the configured limit'
+}
+
+// RequestHeaderLimitError is returned when an HTTP/1 request head exceeds its byte limit.
+pub struct RequestHeaderLimitError {
+	Error
+}
+
+pub fn (_ RequestHeaderLimitError) msg() string {
+	return 'request head exceeds the configured limit'
+}
+
+struct RequestFramingError {
+	Error
+}
+
+fn (_ RequestFramingError) msg() string {
+	return 'invalid or unsupported request body framing'
+}
+
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
@@ -71,12 +98,11 @@ pub mut:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 
-	validate                 bool // when true, certificate failures will stop further processing
+	validate                 bool = true // abort on an invalid certificate; false skips it, except HTTP/3 which always verifies
 	verify                   string
 	cert                     string
 	cert_key                 string
 	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
-	use_tls13                bool // use x.net.tls.Conn for HTTPS; HTTP/1.1 only, no client certificates
 	allow_redirect           bool = true // whether to allow redirect
 	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
 	enable_http2             bool // opt in to HTTP/2 for HTTPS: advertise ALPN `h2, http/1.1` and use HTTP/2 if selected. HTTP/1.1 is the default. Ignored for plain http://. Progress callbacks and receive limits work on HTTP/2; on_progress fires per DATA frame payload.
@@ -88,8 +114,9 @@ pub mut:
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
 	on_finish        RequestFinishFn       = unsafe { nil }
 
-	stop_copying_limit   i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
-	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	stop_copying_limit           i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
+	stop_receiving_limit         i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	max_total_decompressed_bytes i64 = default_max_total_decompressed_bytes // cumulative decoded-byte limit; per-stage array ceilings still apply
 }
 
 @[manualfree]
@@ -412,20 +439,6 @@ fn redirected_method(method Method, status Status) Method {
 fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data string, header Header) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
-	if scheme == 'https' && req.use_tls13 {
-		if req.enable_http2 {
-			return error('net.http TLS 1.3 adapter: HTTP/2 is not supported')
-		}
-		if req.enable_http3 {
-			return error('net.http TLS 1.3 adapter: HTTP/3 is not supported')
-		}
-		if req.proxy != unsafe { nil } {
-			return error('net.http TLS 1.3 adapter: proxies are not supported')
-		}
-		if req.cert != '' || req.cert_key != '' {
-			return error('net.http TLS 1.3 adapter: client certificates are not supported')
-		}
-	}
 	p := url.escaped_path().trim_left('/')
 	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 	mut nport := url.port().int()
@@ -455,18 +468,6 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 		return error('http.request.method_and_url_to_response: exhausted retries')
 	}
 	if scheme == 'https' && req.proxy == unsafe { nil } {
-		if req.use_tls13 {
-			for i in 0 .. req.max_retries {
-				res := req.tls13_do(nport, method, host_name, path, data, header) or {
-					if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
-						return err
-					}
-					continue
-				}
-				return res
-			}
-			return error('http.request.method_and_url_to_response: exhausted retries')
-		}
 		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
 			res := req.ssl_do(nport, method, host_name, path, data, header) or {
@@ -783,12 +784,13 @@ fn chunked_hex_value(ch u8) u8 {
 }
 
 struct ReceivedResponseInfo {
-	raw_body            bool
-	headers_end         int = -1
-	is_chunked_transfer bool
-	has_truncated_body  bool
-	body_is_dechunked   bool
-	stop_copying_limit  i64 = -1
+	raw_body                     bool
+	headers_end                  int = -1
+	is_chunked_transfer          bool
+	has_truncated_body           bool
+	body_is_dechunked            bool
+	stop_copying_limit           i64 = -1
+	max_total_decompressed_bytes i64 = default_max_total_decompressed_bytes
 	// reusable is true when the read loop terminated via precise response
 	// framing (Content-Length satisfied, chunked transfer complete, or a
 	// no-body status), meaning the connection holds no response leftovers and
@@ -800,11 +802,19 @@ struct ReceivedResponseInfo {
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
 	mut response := if info.body_is_dechunked {
 		parse_response_with_options(response_text[..info.headers_end],
-			raw_body:     info.raw_body
-			headers_only: true
+			raw_body:                     info.raw_body
+			headers_only:                 true
+			max_total_decompressed_bytes: info.max_total_decompressed_bytes
+			stop_copying_limit:           info.stop_copying_limit
+			input_truncated:              info.has_truncated_body
 		)!
 	} else {
-		parse_response_with_options(response_text, raw_body: info.raw_body)!
+		parse_response_with_options(response_text,
+			raw_body:                     info.raw_body
+			max_total_decompressed_bytes: info.max_total_decompressed_bytes
+			stop_copying_limit:           info.stop_copying_limit
+			input_truncated:              info.has_truncated_body
+		)!
 	}
 	if info.body_is_dechunked {
 		// Chunk framing is already removed, but Content-Encoding still applies.
@@ -812,7 +822,9 @@ fn parse_received_response(response_text string, info ReceivedResponseInfo) !Res
 		response.body = if info.raw_body {
 			body
 		} else {
-			decode_response_body(body, response.header.get(.content_encoding) or { '' })
+			decode_response_body(body, response.header.get(.content_encoding) or { '' },
+				info.max_total_decompressed_bytes, info.stop_copying_limit,
+				info.has_truncated_body)!
 		}
 	}
 	// A complete compressed body can expand beyond the copying limit.
@@ -1014,18 +1026,20 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			break
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
+			has_truncated_body = true
 			break
 		}
 		old_len = new_len
 	}
 	return ReceivedResponseInfo{
-		raw_body:            req.raw_response_body
-		headers_end:         headers_end
-		is_chunked_transfer: is_chunked_transfer
-		body_is_dechunked:   is_chunked_transfer && req.stop_copying_limit > 0
-		stop_copying_limit:  req.stop_copying_limit
-		has_truncated_body:  has_truncated_body
-		reusable:            framed_complete
+		raw_body:                     req.raw_response_body
+		headers_end:                  headers_end
+		is_chunked_transfer:          is_chunked_transfer
+		body_is_dechunked:            is_chunked_transfer && req.stop_copying_limit > 0
+		stop_copying_limit:           req.stop_copying_limit
+		max_total_decompressed_bytes: req.max_total_decompressed_bytes
+		has_truncated_body:           has_truncated_body
+		reusable:                     framed_complete
 	}
 }
 
@@ -1057,34 +1071,148 @@ pub fn (req &Request) referer() string {
 // parse_request parses a raw HTTP request into a Request object.
 // See also: `parse_request_head`, which parses only the headers.
 pub fn parse_request(mut reader io.BufferedReader) !Request {
-	mut request := parse_request_head(mut reader)!
+	return parse_request_with_body_limit(mut reader, default_max_http1_request_body_size)
+}
 
-	// body
-	mut body := []u8{}
-	if length := request.header.get(.content_length) {
-		n := length.int()
-		if n > 0 {
-			body = []u8{len: n}
-			mut count := 0
-			for count < body.len {
-				count += reader.read(mut body[count..]) or { break }
-			}
-		}
+// parse_request_with_body_limit parses a request with an explicit Content-Length body limit.
+// A limit of 0 allows any body size; a negative limit returns an error.
+pub fn parse_request_with_body_limit(mut reader io.BufferedReader, max_body_size int) !Request {
+	if max_body_size < 0 {
+		return error('max_body_size must be 0 (unlimited) or a positive number of bytes')
+	}
+	mut request := parse_request_head(mut reader)!
+	return parse_request_body_with_limit(mut reader, mut request, max_body_size)
+}
+
+fn parse_request_with_body_limit_and_timeout(mut reader io.BufferedReader, max_body_size int, mut conn RequestReadDeadlineSetter, read_header_timeout time.Duration) !Request {
+	return parse_request_with_body_limit_and_deadline(mut reader, max_body_size, mut conn,
+		request_head_deadline(read_header_timeout))
+}
+
+fn parse_request_with_body_limit_and_deadline(mut reader io.BufferedReader, max_body_size int, mut conn RequestReadDeadlineSetter, deadline time.Time) !Request {
+	if max_body_size < 0 {
+		return error('max_body_size must be 0 (unlimited) or a positive number of bytes')
+	}
+	mut request := parse_request_head_with_deadline(mut reader, mut conn, deadline)!
+	return parse_request_body_with_limit(mut reader, mut request, max_body_size)
+}
+
+fn parse_request_body_with_limit(mut reader io.BufferedReader, mut request Request, max_body_size int) !Request {
+	if request.header.contains(.transfer_encoding) {
+		return RequestFramingError{}
 	}
 
-	request.data = body.bytestr()
+	length_values := request.header.values(.content_length)
+	mut body_size := -1
+	for value in length_values {
+		length := parse_request_content_length(value)!
+		if body_size >= 0 && length != body_size {
+			return RequestFramingError{}
+		}
+		body_size = length
+	}
+
+	if body_size > 0 {
+		if max_body_size > 0 && body_size > max_body_size {
+			return RequestBodyLimitError{}
+		}
+		mut body := []u8{len: body_size}
+		mut count := 0
+		for count < body.len {
+			count += reader.read(mut body[count..]) or { break }
+		}
+		request.data = body.bytestr()
+	}
 	return request
+}
+
+// RequestReadDeadlineSetter is implemented by stream connections that can
+// enforce an absolute read deadline.
+pub interface RequestReadDeadlineSetter {
+mut:
+	set_read_deadline(time.Time)
+}
+
+// parse_request_head_with_timeout parses an HTTP/1 request head with a total
+// deadline. A nonpositive timeout disables the deadline.
+pub fn parse_request_head_with_timeout(mut reader io.BufferedReader, mut conn RequestReadDeadlineSetter, read_header_timeout time.Duration) !Request {
+	return parse_request_head_with_deadline(mut reader, mut conn, request_head_deadline(read_header_timeout))
+}
+
+fn request_head_deadline(read_header_timeout time.Duration) time.Time {
+	if read_header_timeout > 0 && read_header_timeout != net.infinite_timeout {
+		return time.now().add(read_header_timeout)
+	}
+	return time.Time{}
+}
+
+fn parse_request_head_with_deadline(mut reader io.BufferedReader, mut conn RequestReadDeadlineSetter, deadline time.Time) !Request {
+	conn.set_read_deadline(deadline)
+	request := parse_request_head(mut reader) or {
+		conn.set_read_deadline(time.Time{})
+		return err
+	}
+	conn.set_read_deadline(time.Time{})
+	return request
+}
+
+// parse_request_content_length rejects signs, invalid characters, and integer overflow.
+fn parse_request_content_length(value string) !int {
+	trimmed := value.trim(' \t')
+	if trimmed.len == 0 {
+		return RequestFramingError{}
+	}
+	mut length := 0
+	for ch in trimmed {
+		if ch < `0` || ch > `9` {
+			return RequestFramingError{}
+		}
+		digit := int(ch - `0`)
+		if length > (max_int - digit) / 10 {
+			return RequestFramingError{}
+		}
+		length = length * 10 + digit
+	}
+	return length
 }
 
 // parse_request_head parses *only* the header of a raw HTTP request into a Request object
 pub fn parse_request_head(mut reader io.BufferedReader) !Request {
+	return parse_request_head_with_limit(mut reader, default_max_http1_request_head_size)
+}
+
+fn read_request_head_line_with_limit(mut reader io.BufferedReader, head_bytes int, max_head_size int) !string {
+	remaining := max_head_size - head_bytes
+	if remaining < 2 {
+		return RequestHeaderLimitError{}
+	}
+	max_line_len := if remaining > 2 { remaining - 2 } else { 1 }
+	line := reader.read_line(max_len: max_line_len) or {
+		if err is io.ReadLineLimitError {
+			return RequestHeaderLimitError{}
+		}
+		return err
+	}
+	if line.len + 2 > remaining {
+		return RequestHeaderLimitError{}
+	}
+	return line
+}
+
+fn parse_request_head_with_limit(mut reader io.BufferedReader, max_head_size int) !Request {
+	if max_head_size <= 0 {
+		return error('max_head_size must be a positive number of bytes')
+	}
+	mut head_bytes := 0
 	// request line
-	mut line := reader.read_line()!
+	mut line := read_request_head_line_with_limit(mut reader, head_bytes, max_head_size)!
+	head_bytes += line.len + 2
 	method, target, version := parse_request_line(line)!
 
 	// headers
 	mut header := new_header()
-	line = reader.read_line()!
+	line = read_request_head_line_with_limit(mut reader, head_bytes, max_head_size)!
+	head_bytes += line.len + 2
 	for line != '' {
 		// key, value := parse_header(line)!
 		mut pos := parse_header_fast(line)!
@@ -1097,7 +1225,8 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		// Preserve present empty fields; signature verification distinguishes
 		// an empty field value from a missing field.
 		header.add_custom(key, value)!
-		line = reader.read_line()!
+		line = read_request_head_line_with_limit(mut reader, head_bytes, max_head_size)!
+		head_bytes += line.len + 2
 	}
 	// header.coerce(canonicalize: true)
 
@@ -1122,6 +1251,10 @@ pub fn parse_request_head_str(s string) !Request {
 	if pos0 == -1 {
 		return error('malformed request: no request line found')
 	}
+	mut head_bytes := pos0 + 1
+	if head_bytes > default_max_http1_request_head_size {
+		return RequestHeaderLimitError{}
+	}
 	line0 := s[..pos0].trim_space()
 	method, target, version := parse_request_line_fast(line0)!
 
@@ -1132,6 +1265,10 @@ pub fn parse_request_head_str(s string) !Request {
 		mut line_end := s.index_after_('\n', line_start)
 		if line_end == -1 {
 			line_end = s.len
+		}
+		head_bytes += line_end + 1 - line_start
+		if head_bytes > default_max_http1_request_head_size {
+			return RequestHeaderLimitError{}
 		}
 		mut line := s[line_start..line_end]
 		if line.len > 0 && line[line.len - 1] == `\r` {
@@ -1343,11 +1480,11 @@ mut:
 	end   int
 }
 
-// parse_multipart_form parses an http request body, given a boundary string
+// parse_multipart_form parses an http request body, given a boundary string.
 // For more details about multipart forms, see:
-//   https://datatracker.ietf.org/doc/html/rfc2183
-//   https://datatracker.ietf.org/doc/html/rfc2388
-//   https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+// - https://datatracker.ietf.org/doc/html/rfc2183
+// - https://datatracker.ietf.org/doc/html/rfc2388
+// - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
 pub fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	// dump(body)
 	// dump(boundary)
@@ -1473,5 +1610,7 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_timed_out_code,
 		transport_err_unsafe_retry,
 		progress_callback_error_code,
+		response_decompression_limit_error_code,
+		response_content_encoding_layer_limit_error_code,
 	]
 }

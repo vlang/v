@@ -9,7 +9,6 @@ import net.ssl
 import strings
 import sync
 import time
-import x.net.tls as tls13
 
 // This file implements connection reuse for the HTTP client: a Transport owns
 // a pool of keep-alive connections, keyed by origin and TLS configuration, and
@@ -92,16 +91,14 @@ fn (req &Request) h1_exchange_stream(mut conn H1StreamConn, raw string) !(Respon
 }
 
 // H1PooledConn is one keep-alive HTTP/1.1 connection in a Transport pool:
-// exactly one of tcp/ssl/tls13/vsc is set — a plain TCP connection, an
-// mbedTLS/OpenSSL TLS connection, a TLS 1.3 connection, or (native Windows
-// only) a pooled SChannel connection.
+// exactly one of tcp/ssl/vsc is set — a plain TCP connection, an mbedTLS/
+// OpenSSL TLS one, or (native Windows only) a pooled SChannel connection.
 @[heap]
 struct H1PooledConn {
 mut:
 	key        string
 	tcp        &net.TcpConn = unsafe { nil }
 	ssl        &ssl.SSLConn = unsafe { nil }
-	tls13      &tls13.Conn  = unsafe { nil }
 	vsc        ?H1StreamConn
 	idle_since time.Time
 }
@@ -111,10 +108,6 @@ fn (mut c H1PooledConn) close_conn() {
 	if c.ssl != unsafe { nil } {
 		c.ssl.shutdown() or {}
 		c.ssl = unsafe { nil }
-	}
-	if c.tls13 != unsafe { nil } {
-		c.tls13.close() or {}
-		c.tls13 = unsafe { nil }
 	}
 	if c.tcp != unsafe { nil } {
 		c.tcp.close() or {}
@@ -136,10 +129,6 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 		if req.read_timeout > 0 {
 			c.ssl.set_read_timeout(req.read_timeout)
 		}
-	} else if c.tls13 != unsafe { nil } {
-		// x.net.tls.Conn applies timeouts at dial time. TLS13 timeout values
-		// are part of the pool key, so a checked-out connection has matching
-		// timeouts and needs no mutation here.
 	} else if mut v := c.vsc {
 		// Unlike the ssl branch above (read-only, guarded on > 0 — 0 there
 		// means "leave whatever timeout this connection already has"), both
@@ -158,9 +147,6 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 fn (mut c H1PooledConn) exchange(req &Request, raw string) !(Response, bool) {
 	if c.ssl != unsafe { nil } {
 		return req.h1_exchange_ssl(mut c.ssl, raw)
-	}
-	if c.tls13 != unsafe { nil } {
-		return req.h1_exchange_tls13(mut c.tls13, raw)
 	}
 	if mut v := c.vsc {
 		return req.h1_exchange_stream(mut v, raw)
@@ -330,15 +316,13 @@ fn transport_pool_key(req &Request, scheme string, host string, port int) string
 	// them), so keep the plain-http pool unsplit.
 	h2 := scheme == 'https' && req.enable_http2
 	h3 := scheme == 'https' && req.enable_http3
-	tls13_enabled := scheme == 'https' && req.use_tls13
-	tls13_timeouts := if tls13_enabled { '${req.read_timeout}|${req.write_timeout}' } else { '' }
 	// Length-prefix the free-form string fields (host and the TLS paths/PEM
 	// blobs) so a value containing the '|' separator cannot collide with a
 	// different field split — e.g. cert='a|b',cert_key='c' vs cert='a',
 	// cert_key='b|c' — which would let a request reuse a connection dialed with
 	// the wrong CA or client certificate. Bools and the int port cannot contain
 	// '|', and scheme is a fixed literal, so they need no prefixing.
-	return '${scheme}|${pk_part(host)}|${port}|${h2}|${h3}|${tls13_enabled}|${tls13_timeouts}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
+	return '${scheme}|${pk_part(host)}|${port}|${h2}|${h3}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
 }
 
 // pk_part length-prefixes a string (`len:value`) so concatenated pool-key
@@ -738,9 +722,6 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		// fast-fail signal).
 		return t.h3_round_trip(req, key, method, host, port, path, data, header)
 	}
-	if scheme == 'https' && req.use_tls13 && req.enable_http2 {
-		return error('net.http TLS 1.3 adapter: HTTP/2 is not supported')
-	}
 	default_port := if scheme == 'https' { 443 } else { 80 }
 	raw := req.build_request_headers_opts(method, host, port, default_port, path, data, header,
 		false)!
@@ -771,15 +752,9 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		if conn == unsafe { nil } {
 			reused = false
 			if scheme == 'https' {
-				if req.use_tls13 {
-					conn = t.dial_h1_tls13(req, key, host, port)!
-				} else {
-					return t.tls_fresh_round_trip(req, key, raw, method, host, port, path,
-						data, header)
-				}
-			} else {
-				conn = t.dial_h1_tcp(req, key, host, port)!
+				return t.tls_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
 			}
+			conn = t.dial_h1_tcp(req, key, host, port)!
 		} else {
 			if conn.idle_tcp_closed() {
 				conn.close_conn()
@@ -789,7 +764,10 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
-			if err is ProgressCallbackError { return err }
+			if err is ProgressCallbackError || err is ResponseDecompressionLimitError
+				|| err is ResponseContentEncodingLayerLimitError {
+				return err
+			}
 			// The write helpers do partial writes and cannot report how many
 			// bytes reached the server, so a failed exchange may have delivered
 			// part of the request. Only idempotent methods are safe to replay;
@@ -829,9 +807,6 @@ fn (mut t Transport) dial_h1_tcp(req &Request, key string, host string, port int
 // connection is not pooled yet; an http/1.1 connection is pooled afterwards
 // like any other.
 fn (mut t Transport) tls_fresh_round_trip(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
-	if req.use_tls13 {
-		return t.tls_fresh_round_trip_tls13(req, key, raw, method, host, port, header)
-	}
 	$if windows && !no_vschannel ? {
 		return t.vschannel_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
 	}
@@ -861,7 +836,10 @@ fn (mut t Transport) tls_fresh_round_trip_ssl(req &Request, key string, raw stri
 	}
 	resp, reusable := conn.exchange(req, raw) or {
 		conn.close_conn()
-		if err is ProgressCallbackError { return err }
+		if err is ProgressCallbackError || err is ResponseDecompressionLimitError
+			|| err is ResponseContentEncodingLayerLimitError {
+			return err
+		}
 		// Past the TLS handshake the request bytes may have been (partially)
 		// written; a non-idempotent method must not be replayed by the outer
 		// retry loop. (A dial/handshake failure above propagates before this and
@@ -873,30 +851,4 @@ fn (mut t Transport) tls_fresh_round_trip_ssl(req &Request, key string, raw stri
 	}
 	t.maybe_checkin(mut conn, header, reusable, resp)
 	return resp
-}
-
-fn (mut t Transport) tls_fresh_round_trip_tls13(req &Request, key string, raw string, method Method, host string, port int, header Header) !Response {
-	mut conn := t.dial_h1_tls13(req, key, host, port)!
-	resp, reusable := conn.exchange(req, raw) or {
-		conn.close_conn()
-		if err is ProgressCallbackError {
-			return err
-		}
-		if !transport_is_idempotent(method) {
-			return error_with_code(err.msg(), transport_err_unsafe_retry)
-		}
-		return err
-	}
-	t.maybe_checkin(mut conn, header, reusable, resp)
-	return resp
-}
-
-// dial_h1_tls13 opens an x.net.tls.Conn and wraps it as a pooled HTTP/1
-// connection. Both the shared-pool and one-shot request paths use this dialer.
-fn (mut t Transport) dial_h1_tls13(req &Request, key string, host string, port int) !&H1PooledConn {
-	tls_conn := req.dial_tls13(port, host)!
-	return &H1PooledConn{
-		key:   key
-		tls13: tls_conn
-	}
 }

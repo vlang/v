@@ -1,0 +1,141 @@
+import strings
+
+fn fused_builder(mut b strings.Builder) []u8 {
+	return b.str().bytes()
+}
+
+fn fused_bytes(b []u8) []u8 {
+	return b.bytestr().bytes()
+}
+
+fn reference_builder(mut b strings.Builder) []u8 {
+	s := b.str()
+	return s.bytes()
+}
+
+fn reference_bytes(b []u8) []u8 {
+	s := b.bytestr()
+	return s.bytes()
+}
+
+fn from_mut(mut b []u8) []u8 {
+	return b.bytestr().bytes()
+}
+
+fn from_pointer(b &[]u8) []u8 {
+	return b.bytestr().bytes()
+}
+
+struct Holder {
+mut:
+	b      strings.Builder
+	visits int
+}
+
+fn (mut h Holder) builder() &strings.Builder {
+	h.visits++
+	return &h.b
+}
+
+fn (mut h Holder) bytes() []u8 {
+	h.visits++
+	return [u8(h.visits), 0, 255]
+}
+
+fn failing() ![]u8 {
+	return error('failed')
+}
+
+fn propagate() ![]u8 {
+	return failing()!.bytestr().bytes()
+}
+
+struct Custom {}
+
+fn (c Custom) bytestr() string { return 'custom bytestr' }
+
+fn (c Custom) str() string { return 'custom str' }
+
+type SpecialBytes = []u8
+
+fn (b SpecialBytes) bytestr() string { return 'alias bytestr' }
+
+fn main() {
+	for capacity in [0, 1, 3, 4, 64] {
+		for text in ['', 'a', 'a\x00b', 'Привет'] {
+			mut b := strings.new_builder(capacity)
+			mut reference := strings.new_builder(capacity)
+			b.write_string(text)
+			reference.write_string(text)
+			mut bytes := fused_builder(mut b)
+			expected := reference_builder(mut reference)
+			assert bytes == expected
+			assert bytes.len == expected.len && bytes.cap == expected.cap
+			assert bytes.flags == expected.flags
+			assert b.len == 0 && b.cap == reference.cap && b.flags == reference.flags
+			assert unsafe { (&u8(b.data))[text.len] } == 0
+			b.write_string('reused')
+			assert bytes == expected
+			if bytes.len > 0 { bytes[0] = 42 }
+			assert b.str() == 'reused'
+			unsafe { bytes.free() }
+		}
+	}
+	mut source := []u8{cap: 64}
+	source << [u8(0), 255, 128, 97]
+	for original in [source, source[1..3], []u8{}] {
+		mut result := fused_bytes(original)
+		expected := reference_bytes(original)
+		assert result == expected && result.cap == expected.cap && result.flags == expected.flags
+		if result.len > 0 {
+			result[0] = 42
+			assert original[0] == expected[0]
+		}
+		result << 99
+		assert original == expected
+		unsafe { result.free() }
+	}
+	assert from_mut(mut source) == source
+	assert from_pointer(&source) == source
+	mut h := Holder{ b: strings.new_builder(0) }
+	h.b.write_string('field')
+	assert h.b.str().bytes() == 'field'.bytes()
+	h.b.write_string('receiver')
+	assert h.builder().str().bytes() == 'receiver'.bytes()
+	assert h.visits == 1 && h.b.len == 0
+	assert h.bytes().bytestr().bytes() == [u8(2), 0, 255]
+	assert h.visits == 2
+	mut builders := [strings.new_builder(0)]
+	builders[0].write_string('indexed')
+	assert builders[0].str().bytes() == 'indexed'.bytes()
+	mut mapped := {
+		'key': strings.new_builder(0)
+	}
+	mapped['key'].write_string('mapped')
+	assert mapped['key'].str().bytes() == 'mapped'.bytes()
+	// Sliced builders must detach/reset exactly as the unfused str() call does.
+	mut raw := [u8(0), 97, 98, 99, 100]
+	mut sliced := strings.Builder(raw[1..4])
+	assert sliced.str().bytes() == [u8(97), 98, 99]
+	assert raw == [u8(0), 97, 98, 99, 100]
+	sliced.write_string('new')
+	assert raw == [u8(0), 97, 98, 99, 100]
+	mut shared := strings.Builder([u8(1), 2, 3])
+	// Keep a borrowed slice so clear() must preserve storage used by another view.
+	view := unsafe { shared[..2] }
+	assert shared.str().bytes() == [u8(1), 2, 3]
+	assert shared.len == 0 && view == [u8(1), 2]
+	shared.write_string('replacement')
+	assert view == [u8(1), 2]
+	// An intermediate retained in a variable keeps its separate lifetime.
+	retained := source.bytestr()
+	mut independent := retained.bytes()
+	independent[0] = 42
+	source[0] = 23
+	assert retained.bytes() == [u8(0), 255, 128, 97]
+	assert Custom{}.bytestr().bytes() == 'custom bytestr'.bytes()
+	assert Custom{}.str().bytes() == 'custom str'.bytes()
+	assert SpecialBytes([u8(1)]).bytestr().bytes() == 'alias bytestr'.bytes()
+	propagate() or { assert err.msg() == 'failed' }
+	println('ok')
+}

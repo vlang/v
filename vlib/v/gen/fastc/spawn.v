@@ -54,6 +54,11 @@ fn (g &Parser) fastc_thread_value_type(thread_type_id u32) ?u32 {
 	return fastc_thread_value_type_from_name(name_id)
 }
 
+// fastc_thread_typedef declares one thread handle type; all handles share a layout.
+fn fastc_thread_typedef(thread_type string) string {
+	return 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
+}
+
 fn fastc_thread_wait_name(thread_type string) string {
 	return '__vf_thread_wait_${thread_type.all_after(fastc_thread_type_prefix)}'
 }
@@ -405,7 +410,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 	g.type_memo.clear()
 	g.thread_value_types.set_id(thread_type, value_type_source_id)
 	if thread_type !in g.spawn_typedefs {
-		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
+		g.spawn_typedefs[thread_type] = fastc_thread_typedef(thread_type)
 		// Thread handles are routinely collected into arrays for joining.
 		g.composite_types['Array_${thread_type}'] = true
 	}
@@ -419,7 +424,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 		fprintf(stderr, "spawn: thread join failed (%d)\\n", join_code);
 		exit(1);
 	}
-	free(t.packed);
+	V_FASTC_SCANNED_FREE(t.packed);
 }'
 		} else {
 			result_type := fastc_output_c_type(value_type)
@@ -430,7 +435,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 		exit(1);
 	}
 	${result_type} result = *(${result_type} *)t.packed;
-	free(t.packed);
+	V_FASTC_SCANNED_FREE(t.packed);
 	return result;
 }'
 		}
@@ -490,7 +495,6 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	}
 	creation := if g.prefs.target_libc_headers {
 		'\tif (pthread_create(&t.handle, NULL, ${run_name}, args) != 0) {
-		free(args);
 		fprintf(stderr, "spawn: thread creation failed\\n");
 		exit(1);
 	}
@@ -498,19 +502,16 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	} else {
 		'\tpthread_attr_t attributes;
 	if (pthread_attr_init(&attributes) != 0) {
-		free(args);
 		fprintf(stderr, "spawn: thread attribute init failed\\n");
 		exit(1);
 	}
 	if (pthread_attr_setstacksize(&attributes, 8 * 1024 * 1024) != 0) {
 		pthread_attr_destroy(&attributes);
-		free(args);
 		fprintf(stderr, "spawn: thread stack size setup failed\\n");
 		exit(1);
 	}
 	if (pthread_create(&t.handle, &attributes, ${run_name}, args) != 0) {
 		pthread_attr_destroy(&attributes);
-		free(args);
 		fprintf(stderr, "spawn: thread creation failed\\n");
 		exit(1);
 	}
@@ -527,7 +528,7 @@ ${call}
 }
 
 static ${thread_type} ${start_name}(${parameters}) {
-	${args_struct} *args = (${args_struct} *)malloc(sizeof(${args_struct}));
+	${args_struct} *args = (${args_struct} *)V_FASTC_SCANNED_ALLOC(sizeof(${args_struct}));
 	if (args == NULL) {
 		fprintf(stderr, "spawn: out of memory\\n");
 		exit(1);

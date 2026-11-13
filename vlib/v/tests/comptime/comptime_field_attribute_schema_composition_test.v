@@ -14,19 +14,21 @@ struct RequiredSchema {
 	path string
 }
 
+// vfmt off
 struct SchemaCompositionFields[T] {
-	value T @[Route: 'field'; Route_count: 3; "Route_fake: 'legacy'"; 'EmptySchema'; 'RequiredSchema']
+	value T @[Route('field', count: 3); "Route_fake: 'legacy'"; 'EmptySchema'; 'RequiredSchema']
 }
 
 enum SchemaCompositionValues {
-	first  @[Route: 'enum'; Route_count: 5; 'EmptySchema']
+	first  @[Route('enum', count: 5); 'EmptySchema']
 	plain
 }
 
 struct QualifiedCompositionField {
-	value int @[attrscomposition.Route: 'qualified'; attrscomposition.Route_count: 8]
+	value int @[attrscomposition.Route('qualified', count: 8)]
 }
 
+// vfmt on
 fn composition_field_paths[T]() []string {
 	mut paths := []string{}
 	$for field in T.fields {
@@ -137,17 +139,19 @@ struct ReflectedSchemaCollision {
 	str     string
 }
 
+// vfmt off
 struct SchemaCollisionField {
-	value int @[ReflectedSchemaCollision: 'custom'; ReflectedSchemaCollision_arg: 'value'; ReflectedSchemaCollision_has_arg: false; ReflectedSchemaCollision_kind: 7; ReflectedSchemaCollision_str: 'field value']
+	value int @[ReflectedSchemaCollision('custom', arg: 'value', has_arg: false, kind: 7, str: 'field value')]
 }
 
 enum SchemaCollisionValue {
-	first  @[ReflectedSchemaCollision: 'custom'; ReflectedSchemaCollision_arg: 'value'; ReflectedSchemaCollision_has_arg: false; ReflectedSchemaCollision_kind: 7; ReflectedSchemaCollision_str: 'field value']
+	first  @[ReflectedSchemaCollision('custom', arg: 'value', has_arg: false, kind: 7, str: 'field value')]
 }
 
-@[ReflectedSchemaCollision: 'custom'; ReflectedSchemaCollision_arg: 'value'; ReflectedSchemaCollision_has_arg: false; ReflectedSchemaCollision_kind: 7; ReflectedSchemaCollision_str: 'field value']
+@[ReflectedSchemaCollision('custom', arg: 'value', has_arg: false, kind: 7, str: 'field value')]
 struct SchemaCollisionDeclaration {}
 
+// vfmt on
 fn test_reflected_schema_fields_override_metadata_without_replacing_method_callees() {
 	mut seen := 0
 	$for field in SchemaCollisionField.fields {
@@ -261,9 +265,11 @@ fn test_keyed_schema_materialization_and_imported_declaration_identity() {
 	assert got == ['/keyed', 'module-declaration:9']
 }
 
-@[ReflectedSchemaCollision: 'custom'; ReflectedSchemaCollision_arg: 'value'; ReflectedSchemaCollision_has_arg: false; ReflectedSchemaCollision_kind: 7; ReflectedSchemaCollision_str: 'field value'; 'legacy']
+// vfmt off
+@[ReflectedSchemaCollision('custom', arg: 'value', has_arg: false, kind: 7, str: 'field value'); 'legacy']
 struct SchemaCollisionMixedDeclaration {}
 
+// vfmt on
 fn test_declaration_schema_collision_narrowing_is_per_instance_and_branch() {
 	mut seen := []string{}
 	$for attr in SchemaCollisionMixedDeclaration.attributes {

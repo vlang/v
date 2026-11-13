@@ -278,6 +278,12 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 		buf: data
 	}
 	mut out := []u8{}
+	mut keep_out := false
+	defer {
+		if !keep_out {
+			unsafe { out.free() }
+		}
+	}
 	mut state := InflateStreamState{}
 	mut aborted := false
 	for {
@@ -328,6 +334,7 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 		}
 	}
 	consumed := r.pos - (r.nbits >> 3)
+	keep_out = true
 	return InflateStreamResult{
 		decoded:   out
 		consumed:  consumed

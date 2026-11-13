@@ -8,6 +8,7 @@ module main
 import net
 import net.http
 import net.mbedtls
+import io
 import time
 
 // A finite `accept_timeout` doubles as the server's TLS handshake budget. With
@@ -58,6 +59,38 @@ fn pick_port() !int {
 	return port
 }
 
+fn tls_server_request_response(port int, request string) !string {
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{})!
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port)!
+	client.set_read_timeout(5 * time.second)
+	client.write_string(request)!
+
+	mut response := []u8{}
+	mut buffer := []u8{len: 1024}
+	mut closed := false
+	for {
+		n := client.read(mut buffer) or {
+			if err is io.Eof {
+				closed = true
+				break
+			}
+			return err
+		}
+		if n == 0 {
+			closed = true
+			break
+		}
+		response << buffer[..n]
+	}
+	if !closed {
+		return error('TLS server kept an HTTP/1.1 error connection open')
+	}
+	return response.bytestr()
+}
+
 fn test_server_tls_round_trip() {
 	$if use_openssl ? {
 		// TLS termination for net.http.Server is not yet supported on the
@@ -99,6 +132,158 @@ fn test_server_tls_round_trip() {
 		validate: false
 	) or {
 		assert false, 'fetch failed: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	assert resp.body == 'tls hello /hello'
+}
+
+fn send_slow_tls_request_head(port int) {
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{}) or { return }
+	defer { client.shutdown() or {} }
+	client.dial('127.0.0.1', port) or { return }
+	client.write_string('GET /slow HTTP/1.1\r\nX-Slow: ') or { return }
+	for _ in 0 .. 40 {
+		time.sleep(50 * time.millisecond)
+		client.write_string('a') or { break }
+	}
+}
+
+fn test_server_tls_request_head_deadline_releases_worker() ! {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port()!
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         tls_handshake_budget
+		read_timeout:           5 * time.second
+		read_header_timeout:    300 * time.millisecond
+		worker_num:             1
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running()!
+	defer {
+		srv.close()
+		t.wait()
+	}
+
+	drip := spawn send_slow_tls_request_head(port)
+	time.sleep(500 * time.millisecond)
+	started := time.new_stopwatch()
+	response := tls_server_request_response(port,
+		'GET /alive HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
+	assert response.starts_with('HTTP/1.1 200 OK\r\n')
+	assert response.contains('tls hello /alive')
+	assert started.elapsed() < 1500 * time.millisecond, 'legitimate TLS request waited ${started.elapsed()}'
+	drip.wait()
+}
+
+fn test_server_tls_rejects_oversized_and_malformed_http1_framing() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                        '127.0.0.1:${port}'
+		cert:                        server_tls_cert
+		cert_key:                    server_tls_key
+		in_memory_verification:      true
+		accept_timeout:              tls_handshake_budget
+		read_timeout:                5 * time.second
+		max_http1_request_body_size: 4
+		handler:                     EchoHandler{}
+		show_startup_message:        false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+
+	oversized_response := tls_server_request_response(port,
+		'POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n')!
+	assert oversized_response.starts_with('HTTP/1.1 413 Request Entity Too Large\r\n')
+	assert oversized_response.to_lower().contains('content-length: 0\r\n')
+	assert oversized_response.to_lower().contains('connection: close\r\n')
+
+	malformed_response := tls_server_request_response(port,
+		'POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\n\r\n')!
+	assert malformed_response.starts_with('HTTP/1.1 400 Bad Request\r\n')
+	assert malformed_response.to_lower().contains('connection: close\r\n')
+
+	transfer_encoding_response := tls_server_request_response(port,
+		'POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n')!
+	assert transfer_encoding_response.starts_with('HTTP/1.1 400 Bad Request\r\n')
+	assert transfer_encoding_response.to_lower().contains('connection: close\r\n')
+
+	oversized_head := 'GET /' + 'a'.repeat(http.default_max_http1_request_head_size) + ' HTTP/1.1\r\n\r\n'
+	oversized_head_response := tls_server_request_response(port, oversized_head)!
+	assert oversized_head_response.starts_with('HTTP/1.1 431 Request Header Fields Too Large\r\n')
+}
+
+fn test_default_fetch_rejects_the_untrusted_server_certificate() {
+	assert http.FetchConfig{}.validate
+	assert http.Request{}.validate
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         tls_handshake_budget
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	time.sleep(50 * time.millisecond)
+
+	// One attempt: a rejected certificate is an error, not a reason to retry the handshake.
+	if resp := http.fetch(
+		url:         'https://127.0.0.1:${port}/hello'
+		max_retries: 1
+	) {
+		assert false, 'untrusted certificate was accepted: ${resp.status_code} ${resp.body}'
+		return
+	}
+	resp := http.fetch(
+		url:      'https://127.0.0.1:${port}/hello'
+		validate: false
+	) or {
+		assert false, 'fetch with the check skipped failed: ${err}'
 		return
 	}
 	assert resp.status_code == 200

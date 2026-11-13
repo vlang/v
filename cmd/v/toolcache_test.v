@@ -148,12 +148,44 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 }
 
 fn toolcache_test_dir(name string) string {
-	directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
+	mut directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
+	$if windows {
+		// The MSVC probe is not longPathAware. Leave room for a complete cache
+		// key, staging directory, executable name, and application manifest.
+		directory = os.join_path(os.vtmp_dir(), 'vtc_${os.getpid()}_${name}')
+	}
 	os.rmdir_all(directory) or {}
 	os.mkdir_all(directory) or { panic(err) }
 	// Make the test folder private (0700). The cache refuses folders that the group can
 	// write to, and a umask like 002 would create them that way.
 	os.chmod(directory, 0o700) or { panic(err) }
+	return directory
+}
+
+// private_toolcache_test_dir prepares a root that the real launcher can select. Windows
+// chmod does not change ACLs, and an elevated process can create an Administrators-owned
+// directory even when its token user is the account that will run the cached tool.
+fn private_toolcache_test_dir(name string) string {
+	directory := toolcache_test_dir(name)
+	$if windows {
+		system32 := os.join_path(os.getenv('SystemRoot'), 'System32')
+		identity := os.exec([os.join_path(system32, 'whoami.exe'), '/user', '/fo', 'csv', '/nh'])
+		assert identity.exit_code == 0, identity.output
+		sid := identity.output.trim_space().all_after_last(',').trim('"')
+		assert sid.starts_with('S-1-') && sid[4..].bytes().all(it.is_digit() || it == `-`), identity.output
+		icacls := os.join_path(system32, 'icacls.exe')
+		for arguments in [
+			['/setowner', '*${sid}'],
+			['/grant:r', '*${sid}:(OI)(CI)F'],
+			['/inheritancelevel:r'],
+		] {
+			mut command := [icacls, directory]
+			command << arguments
+			result := os.exec(command)
+			assert result.exit_code == 0, result.output
+		}
+	}
+	assert tool_cache_root_can_stage(directory), tool_cache_root_problem(directory)
 	return directory
 }
 
@@ -175,7 +207,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 		eprintln('> skipping, no V executable at `${vexe}`')
 		return
 	}
-	cache := toolcache_test_dir('reuse')
+	cache := private_toolcache_test_dir('reuse')
 	defer {
 		os.rmdir_all(cache) or {}
 	}
@@ -1264,7 +1296,7 @@ fn test_a_cached_tool_keeps_its_own_executable_name() {
 		eprintln('> skipping, no V executable at `${vexe}`')
 		return
 	}
-	cache := toolcache_test_dir('exe_name')
+	cache := private_toolcache_test_dir('exe_name')
 	defer {
 		os.rmdir_all(cache) or {}
 	}
@@ -1727,8 +1759,13 @@ fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
 
 	dumped := os.join_path(directory, 'sources.txt')
 	binary := os.join_path(directory, 'vdemo' + tool_exe_suffix())
-	build :=
-		os.exec([vexe, '-prod', '-dump-files', '${dumped}', '-o', binary, source])
+	mut build_args := [vexe, '-prod']
+	$if tinyc {
+		// Keep production embedding coverage when the test runner uses TinyCC.
+		cc := $if windows { 'gcc' } $else { 'cc' }
+		build_args << ['-cc', cc]
+	}
+	build := os.exec([...build_args, '-dump-files', dumped, '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
@@ -2007,10 +2044,12 @@ fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() 
 	assert formatted.contains('no usable tool cache folder was found:')
 	assert formatted.contains('is writable by group/others without the sticky bit')
 	assert formatted.contains('is owned by user id 65534, not by the current user or root')
-	assert formatted.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"')
 	$if windows {
+		assert formatted.contains('The tool cache folder has to belong to you, and no other account may be allowed to change it.')
+		assert formatted.contains('Fix its permissions, or set VTOOLS_CACHE_DIR to a folder that only you can change.')
 		return
 	}
+	assert formatted.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"')
 	directory := trusted_toolcache_test_dir('unavailable_diagnostics') or {
 		eprintln('> skipping, the system temporary folder is not private enough')
 		return
@@ -2240,10 +2279,11 @@ fn test_cached_updater_wipes_caches_only_after_a_successful_child_exits() ! {
 		os.setenv('V3CACHE', os.join_path(directory, 'v3cache'), true)
 		// In particular, VTMP cleanup must not run while its cached child is alive.
 		updater := os.join_path(os.vtmp_dir(), 'tools', 'cached-updater', 'vup.exe')
+		// Each mode uses the same probe; request mode removes it with the cache.
+		os.mkdir_all(os.dir(updater))!
+		os.cp(os.executable(), updater)!
+		os.chmod(updater, 0o755)!
 		for mode in ['help', 'failure', 'request'] {
-			os.mkdir_all(os.dir(updater))!
-			os.cp(os.executable(), updater)!
-			os.chmod(updater, 0o755)!
 			os.mkdir_all(cache)!
 			marker := os.join_path(cache, 'object.o')
 			os.write_file(marker, 'cached object')!

@@ -134,6 +134,12 @@ const skip_with_fsanitize_memory = [
 	'cmd/tools/vpm/install_version_input_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'cmd/tools/vpm/install_version_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'cmd/tools/vpm/update_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	// These integration tests enter uninstrumented EGL/Mesa drivers, whose internal
+	// allocations MSan cannot track (libEGL fails in scandir64 during initialization).
+	// Keep CPU canvas tests instrumented; canvas CI, ASan and UBSan still run these.
+	'vlib/gg/canvas/gpu_context_linux_test.c.v',
+	'vlib/gg/canvas/gpu_surface_linux_test.v',
+	'vlib/gg/canvas/gpu_surface_test.v',
 	'vlib/net/tcp_simple_client_server_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',

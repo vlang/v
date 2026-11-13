@@ -31,7 +31,7 @@ fn test_registry_transport_validates_https_without_a_token() {
 	assert registry_validates_tls(true, 'https://vpm.example.com/module')
 	assert registry_validates_tls(true, 'HTTPS://vpm.example.com/module')
 	assert !registry_validates_tls(true, 'http://vpm.example.com/module')
-	assert !registry_validates_tls(false, 'https://vpm.example.com/module')
+	assert registry_validates_tls(false, 'https://vpm.example.com/module')
 	assert !registry_validates_tls(true, '::::not a url::::')
 }
 

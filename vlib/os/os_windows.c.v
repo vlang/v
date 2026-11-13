@@ -37,8 +37,12 @@ const executable_suffixes = ['.com', '.exe', '.bat', '.cmd', '']
 
 // Windows CRT file type and permission bits, also exposed for parity with Unix.
 const s_ifmt = 0xF000 // type of file
+const s_ifsock = 0xC000 // socket
 const s_ifdir = 0x4000 // directory
 const s_ifreg = 0x8000 // regular file
+const s_ifblk = 0x6000 // block device
+const s_ifchr = 0x2000 // character device
+const s_ififo = 0x1000 // FIFO
 const s_iflnk = 0xa000 // link
 const s_isuid = 0o4000 // SUID
 const s_isgid = 0o2000 // SGID
@@ -621,6 +625,11 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 			output:    'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
+	defer {
+		// Setup failures still leave both pipe handles owned by this process.
+		close_valid_handle(&child_stdout_read)
+		close_valid_handle(&child_stdout_write)
+	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
 		error_num := int(C.GetLastError())
@@ -664,8 +673,7 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${display_cmd}'
 		}
 	}
-	C.CloseHandle(child_stdin)
-	C.CloseHandle(child_stdout_write)
+	close_valid_handle(&child_stdout_write)
 	buf := [4096]u8{}
 	mut read_data := strings.new_builder(1024)
 	for {
@@ -787,9 +795,10 @@ pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandl
 
 // uname returns information about the platform on which the program is running.
 // Currently `uname` on windows is not standardized, so it just mimics current practices from other popular software/language implementations:
-//   busybox-v1.35.0 * `busybox uname -a` => "Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows"
-//   rust/coreutils-v0.0.17 * `coreutils uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows (Windows 10)`
-//   Python3 => `uname_result(system='Windows', node='HOSTNAME', release='10', version='10.0.19044', machine='AMD64')`
+// - busybox-v1.35.0 * `busybox uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows`
+// - rust/coreutils-v0.0.17 * `coreutils uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows (Windows 10)`
+// - Python3 => `uname_result(system='Windows', node='HOSTNAME', release='10', version='10.0.19044', machine='AMD64')`
+//
 // See: [NT Version Info](https://en.wikipedia.org/wiki/Windows_NT) @@ <https://archive.is/GnnvF>
 // and: [NT Version Info (detailed)](https://en.wikipedia.org/wiki/Comparison_of_Microsoft_Windows_versions#NT_Kernel-based_2)
 pub fn uname() Uname {

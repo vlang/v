@@ -1,6 +1,11 @@
 module veb
 
 import io
+import net.http
+
+fn test_request_head_byte_limit_maps_to_431() {
+	assert request_read_error_response(http.RequestHeaderLimitError{}).status_code == 431
+}
 
 struct BodyFragmentReader {
 	bytes       []u8

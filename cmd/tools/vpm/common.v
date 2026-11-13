@@ -100,14 +100,9 @@ fn registry_http_get(url string) !http.Response {
 	return vpm_http_request(.get, url, '', true)
 }
 
-// registry_validates_tls reports whether a registry request should validate
-// TLS certificates. Registry records are security-relevant whether or not a
-// token is configured, so HTTPS requests validate them; HTTP and ordinary VPM
-// requests keep the transport's existing behaviour.
-fn registry_validates_tls(registry_request bool, url string) bool {
-	if !registry_request {
-		return false
-	}
+// registry_validates_tls reports whether `url` should check the server certificate.
+// Every HTTPS URL does. HTTP and unparseable URLs do not.
+fn registry_validates_tls(_registry_request bool, url string) bool {
 	parsed := urllib.parse(url) or { return false }
 	return parsed.scheme.to_lower() == 'https'
 }

@@ -504,7 +504,16 @@ fn (mut g FlatGen) string_literals_from(start int) {
 			g.write_string_literal_def(g.str_lit_ids[s], s)
 		}
 	} else {
-		for i := start; i < g.str_lits.len; i++ {
+		mut first := start
+		if start == 0 && g.parallel_string_literal_count > 0 {
+			// The declaration task already emitted the literals that were numbered
+			// before it finished; the table only grows after that.
+			g.sb.write_string(g.parallel_string_literal_defs)
+			unsafe { g.parallel_string_literal_defs.free() }
+			g.parallel_string_literal_defs = ''
+			first = g.parallel_string_literal_count
+		}
+		for i := first; i < g.str_lits.len; i++ {
 			g.write_string_literal_def(i, g.str_lits[i])
 		}
 	}
@@ -535,7 +544,7 @@ fn (mut g FlatGen) write_string_literal_def(id int, s string) {
 	}
 	g.write('static const string _str_')
 	g.sb.write_decimal(i64(id))
-	g.sb.write_string(' = {"')
+	g.sb.write_string(' = {(u8*)"')
 	c_literal_escape_into(mut g.sb, s)
 	g.sb.write_string('", ')
 	g.sb.write_decimal(i64(s.len))

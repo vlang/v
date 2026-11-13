@@ -13,39 +13,10 @@ name: Sanitized CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - '!**'
-      - '!**.md'
-      - '!**.yml'
-      - 'vlib/builtin/**.v'
-      - 'vlib/strconv/**.v'
-      - 'vlib/strings/**.v'
-      - 'vlib/math/**.v'
-      - 'vlib/math/big/**.v'
-      - 'vlib/arrays/**.v'
-      - 'vlib/crypto/ecdsa/**.v'
-      - 'vlib/datatypes/**.v'
-      - 'vlib/os/**.v'
-      - 'vlib/sync/**.v'
-      - 'vlib/v/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/json2/**.v'
-      - '**/sanitized_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: sanitized-sanitized_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -62,7 +33,10 @@ permissions:
 jobs:
   sanitize-linux:
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-22.04
+    # Ubuntu 22.04's Clang 14 lacks the stat64/lstat64 MSan interceptors used
+    # by SQLite's large-file pathname checks. Keep all MSan builds on the
+    # Ubuntu 24.04 Clang 18 toolchain, including the private database libraries.
+    runs-on: ${{ matrix.sanitizer == 'memory' && 'ubuntu-24.04' || 'ubuntu-22.04' }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -76,6 +50,33 @@ jobs:
             vflags: -cc clang -cflags -fno-omit-frame-pointer
             ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
           - name: undefined-gcc
+            # The serial suite was still progressing after 135 minutes. Shard
+            # across runners while retaining the sanitizer's single-worker mode.
+            shard: 0
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            shard: 1
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            shard: 2
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            shard: 3
             cc: gcc
             sanitizer: undefined
             gc: default
@@ -103,7 +104,12 @@ jobs:
             sanitizer: memory
             gc: none
             timeout: 300
-            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            # Some tests explicitly select Boehm. Build its source with MSan too;
+            # the prebuilt archive cannot update the sanitizer's shadow memory.
+            # AES-NI intrinsics let MSan track mbedTLS output writes on this x86_64 runner.
+            vflags: >-
+              -cc clang -gc none -d use_bundled_libgc -cflags -fno-omit-frame-pointer
+              -cflags -maes -cflags -mpclmul
           - name: memory-clang-compiler
             cc: clang
             sanitizer: memory
@@ -117,7 +123,7 @@ jobs:
             timeout: 300
             vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
             lsan_options: detect_leaks=0
-    name: sanitize-${{ matrix.name }}
+    name: sanitize-${{ matrix.name }}${{ matrix.name == 'undefined-gcc' && format(' (shard {0})', matrix.shard) || '' }}
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
@@ -126,6 +132,8 @@ jobs:
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard || 0 }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.name == 'undefined-gcc' && '4' || '1' }}
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
       ASAN_OPTIONS: ${{ matrix.asan_options }}
       LSAN_OPTIONS: ${{ matrix.lsan_options }}
@@ -138,6 +146,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        # The shared cache key does not include the Ubuntu version. MSan uses
+        # the explicit install below to avoid restoring 22.04 packages on 24.04.
+        if: ${{ matrix.sanitizer != 'memory' }}
         with:
           profile: sanitizers
       - uses: ./.github/actions/setup-v
@@ -157,22 +168,36 @@ jobs:
           ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
           ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
           ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
-      - name: Recompile V with -cstrict
+      - name: Build instrumented libpq for MemorySanitizer
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: |
+          ./v retry -- sudo apt install --quiet -y bison flex
+          prefix="$RUNNER_TEMP/v-msan-libpq"
+          bash .github/workflows/build_msan_libpq.sh "$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+      - name: Build instrumented SQLite for MemorySanitizer
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: |
+          prefix="$RUNNER_TEMP/v-msan-sqlite"
+          bash .github/workflows/build_msan_sqlite.sh "$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+      - name: Recompile optimized V with -cstrict
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.sanitizer }}" = "memory" ]; then
-            ./v -cc clang -cg -cstrict -o v cmd/v
+            ./v -prod -cc clang -cg -cstrict -o v cmd/v
           else
-            ./v -cg -cstrict -o v cmd/v
+            ./v -prod -cg -cstrict -o v cmd/v
           fi
       - name: Self tests (-fsanitize=undefined)
         if: ${{ matrix.sanitizer == 'undefined' }}
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
-          ./v -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v -prod -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
-        if: ${{ matrix.sanitizer == 'undefined' }}
+        if: ${{ matrix.sanitizer == 'undefined' && (matrix.name != 'undefined-gcc' || matrix.shard == 0) }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples
       - name: Self tests (-fsanitize=address)
         if: ${{ matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang' }}
@@ -190,10 +215,10 @@ jobs:
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.name }}" = "address-clang" ]; then
-            ./v -cflags -fsanitize=address -o v cmd/v
+            ./v -prod -cflags -fsanitize=address -o v cmd/v
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           else
-            ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
+            ./v -prod -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           fi
       - name: Build examples (V compiled with -fsanitize=address)
@@ -205,7 +230,7 @@ jobs:
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang-compiler' }}
         run: |
-          GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
+          GITHUB_JOB=sanitize-memory-clang ./v -prod -cflags -fsanitize=memory -o v cmd/v
           GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang-compiler' }}
@@ -215,13 +240,21 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Vet alone consumed the old job's remaining 19 minutes after bootstrap.
+        # Keep both cleancode sessions, with independent workers and deadlines.
+        stage: [vet, fmt]
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
-      VJOBS: 1
+      VJOBS: 4
+      VTEST_CLEANCODE_STAGE: ${{ matrix.stage }}
+      VTEST_SHOW_START: '1'
       VNATIVE_SKIP_LIBC_VV: 1
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
@@ -235,10 +268,12 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
-          .\v.exe self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -prod -cc msvc self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: V doctor
         run: .\v.exe doctor
-      - name: Ensure code is well formatted
+      - name: Check code (${{ matrix.stage }})
         run: .\v.exe -silent test-cleancode
         # - name: Install dependencies
         #   run: |

@@ -449,3 +449,38 @@ fn test_fastc_glibc_gettid_declares_syscall_with_strict_feature_flags() {
 		'-Werror=implicit-function-declaration', '-fsyntax-only', path])
 	assert check.exit_code == 0, check.output
 }
+
+fn test_fastc_os_execute_capture_flags_match_target_and_freestanding_mode() ! {
+	os_dir := os.join_path(@VEXEROOT, 'vlib', 'os')
+	object := os.join_path(os_dir, 'execute_capture_nix.o')
+	helper := if os.is_file(object) {
+		object
+	} else {
+		os.join_path(os_dir, 'execute_capture_nix.c')
+	}
+	for target_os in ['windows', 'linux', 'macos'] {
+		for freestanding in [false, true] {
+			mut prefs := pref.new_preferences()
+			prefs.vroot = @VEXEROOT
+			prefs.building_v = true
+			prefs.target = pref.target_from(target_os, 'amd64')!
+			if freestanding {
+				prefs.user_defines << 'freestanding'
+			}
+			files := pref.get_v_files_from_dir_for_target(os_dir, prefs.user_defines, prefs.target)
+				.filter(os.file_name(it).starts_with('execute_capture_'))
+			mut sources := []FastcSourceFile{}
+			for path in files {
+				source := os.read_file(path)!
+				sources << FastcSourceFile{
+					path:   path
+					source: source
+					header: fastc_scan_source_header(source, path, prefs)!
+				}
+			}
+			_, _, flags := generate_source_files(sources, map[string]string{}, prefs)!
+			expected := if target_os != 'windows' && !freestanding { [helper] } else { []string{} }
+			assert flags == expected, '${target_os}, freestanding=${freestanding}: ${flags}'
+		}
+	}
+}

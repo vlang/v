@@ -265,9 +265,29 @@ pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c C
 	// ctx.r.end()
 }
 
+@[inline]
+fn rect_filled_screen_axis(scale f32, start f32, size f32) (f32, f32) {
+	if math.abs(size) == 1 && start == math.floor(start) && scale != math.floor(scale) {
+		// A logical hairline can otherwise cover different numbers of pixels at
+		// fractional DPI scales. Round its thickness and keep it within the
+		// scaled rectangle's enclosing framebuffer pixels.
+		lower := if size < 0 { start + size } else { start }
+		thickness := f32(math.max(1, math.round(scale)))
+		enclosing_end := f32(math.ceil((lower + 1) * scale))
+		origin := math.min(f32(math.round(lower * scale)), enclosing_end - thickness)
+		if size < 0 {
+			return origin + thickness, origin
+		}
+		return origin, origin + thickness
+	}
+	return start * scale, (start + size) * scale
+}
+
 // draw_rect_filled draws a filled rectangle.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the fill.
+// At fractional DPI scales, integer-positioned one-unit dimensions are pixel-aligned
+// with a consistent thickness of at least one framebuffer pixel.
 // Note: it is much more efficient to draw lots of filled rectangles one after the other,
 // without empty rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
@@ -283,11 +303,13 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	x0, x1 := rect_filled_screen_axis(ctx.scale, x, w)
+	y0, y1 := rect_filled_screen_axis(ctx.scale, y, h)
 	ctx.r.begin_quads()
-	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
-	ctx.r.v2f((x + w) * ctx.scale, y * ctx.scale)
-	ctx.r.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	ctx.r.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	ctx.r.v2f(x0, y0)
+	ctx.r.v2f(x1, y0)
+	ctx.r.v2f(x1, y1)
+	ctx.r.v2f(x0, y1)
 	ctx.r.end()
 }
 
@@ -296,16 +318,19 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 // then draw many rectangles, then call manually `ctx.r.end()` *after* the loop.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the fill.
+// One-unit dimensions use the same pixel alignment as draw_rect_filled.
 // Note: it is much more efficient to draw lots of filled rectangles one after the other,
 // without empty rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_filled_no_context(x f32, y f32, w f32, h f32, c Color) {
 	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
 	// ctx.r.begin_quads()
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
-	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
-	ctx.r.v2f((x + w) * ctx.scale, y * ctx.scale)
-	ctx.r.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	ctx.r.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	x0, x1 := rect_filled_screen_axis(ctx.scale, x, w)
+	y0, y1 := rect_filled_screen_axis(ctx.scale, y, h)
+	ctx.r.v2f(x0, y0)
+	ctx.r.v2f(x1, y0)
+	ctx.r.v2f(x1, y1)
+	ctx.r.v2f(x0, y1)
 	// Note: the following line is deliberately commented, compare to draw_rect_filled/5;
 	// ctx.r.end()
 }

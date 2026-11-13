@@ -1228,6 +1228,18 @@ fn test_scalar_constant_lookup_respects_global_owners_and_import_namespaces() {
 	assert t.subst_comptime_scalar_locals('registry.value == 7') == 'registry.value == 7'
 }
 
+fn test_scalar_local_substitution_preserves_type_test_operands() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.comptime_scalar_locals['type_id'] = ComptimeStringScalar{flat.source_type_int, '8'}
+	t.comptime_scalar_locals['value'] = ComptimeStringScalar{flat.source_type_int, '42'}
+	assert t.subst_comptime_scalar_locals('value is int && type_id == 8') == '(value is int) && (8 == 8)'
+	assert t.subst_comptime_scalar_locals('type_id == 8 || value !is string') == '(8 == 8) || (value !is string)'
+	assert t.subst_comptime_scalar_locals('!(value is int && type_id == 8)') == '!((value is int) && (8 == 8))'
+	assert t.subst_comptime_scalar_locals('value is int') == 'value is int'
+}
+
 fn test_reflected_method_escape_analysis_restores_ast_buffers() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.module_decl, 'main')

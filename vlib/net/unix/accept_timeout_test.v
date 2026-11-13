@@ -2,6 +2,11 @@ import os
 import time
 import net.unix
 
+fn testsuite_begin() {
+	// Relative socket names stay within sun_path even when the CI scratch path is long.
+	os.chdir(os.vtmp_dir()) or { panic(err) }
+}
+
 // unblock_accept_later connects a client after a delay, so that a broken accept() that ignores
 // its timeout returns instead of hanging the whole test run.
 fn unblock_accept_later(path string) {
@@ -11,7 +16,7 @@ fn unblock_accept_later(path string) {
 }
 
 fn test_accept_honours_the_accept_timeout() ! {
-	path := os.join_path(os.vtmp_dir(), 'v_unix_accept_timeout_${os.getpid()}.sock')
+	path := 'v_unix_accept_timeout_${os.getpid()}.sock'
 	os.rm(path) or {}
 	mut l := unix.listen_stream(path)!
 	defer {
@@ -29,7 +34,7 @@ fn test_accept_honours_the_accept_timeout() ! {
 }
 
 fn test_accept_honours_the_accept_deadline() ! {
-	path := os.join_path(os.vtmp_dir(), 'v_unix_accept_deadline_${os.getpid()}.sock')
+	path := 'v_unix_accept_deadline_${os.getpid()}.sock'
 	os.rm(path) or {}
 	mut l := unix.listen_stream(path)!
 	defer {

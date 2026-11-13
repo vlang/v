@@ -186,6 +186,7 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 			}
 		}
 		source = lines.join('\n').replace('sig_atomic_t', 'i32')
+			.replace('sigset_t', 'v3_run_signal_set')
 	}
 	g.write(source.replace('int v3_run_signals_begin(', 'static int v3_run_signals_begin(')
 		.replace('int v3_run_signals_set_pid(', 'static int v3_run_signals_set_pid(')
@@ -200,6 +201,8 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 // Use libc aliases with opaque arguments so V's partial C bindings do not own the ABI.
 const headerless_run_signal_declarations = r'
 #define V3_RUN_SIGNALS_HEADERLESS 1
+/* libc owns the signal-set layout; reserve aligned storage without an SDK typedef. */
+typedef union { unsigned char bytes[128]; long double alignment; } v3_run_signal_set;
 #ifndef SIG_SETMASK
 #if defined(__linux__) || defined(__ANDROID__) || defined(__QNX__) || defined(__QNXNTO__)
 #define SIG_SETMASK 2

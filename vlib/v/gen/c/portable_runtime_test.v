@@ -6,6 +6,34 @@ import v.flat
 import v.pref
 import v.types
 
+fn test_headerless_signal_runtime_does_not_require_libc_signal_set_typedef() ! {
+	$if windows {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.portable_run_signal_helpers(true)
+	root := os.join_path(os.vtmp_dir(), 'headerless_signal_set_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'signals.c')
+	binary := os.join_path(root, 'signals')
+	// Supply the other native declarations, but make sigset_t unavailable as in
+	// the OpenBSD bootstrap. The generated runtime must own its opaque storage.
+	prefix := '#include <errno.h>\n#include <fcntl.h>\n#include <signal.h>\n#include <sys/types.h>\n#include <sys/wait.h>\n#include <unistd.h>\ntypedef int i32;\ntypedef sigset_t native_signal_set;\n#define sigset_t unavailable_signal_set_typedef\n'
+	body := '\n_Static_assert(sizeof(v3_run_signal_set) >= sizeof(native_signal_set), "signal set storage");\n_Static_assert(_Alignof(v3_run_signal_set) >= _Alignof(native_signal_set), "signal set alignment");\nint main(void) { return v3_run_signals_begin() || v3_run_signals_finish(); }\n'
+	os.write_file(source, prefix + g.sb.str() + body)!
+	compiled := cmdexec.run(cc, ['-std=gnu11', '-Werror=implicit-function-declaration', '-o', binary,
+		source])
+	assert compiled.exit_code == 0, compiled.output
+	ran := cmdexec.run_with_timeout(binary, []string{}, 5000)
+	assert ran.exit_code == 0, ran.output
+}
+
 fn test_allocation_runtime_prototypes_match_legacy_and_modern_sizes() {
 	for size in [types.Type(types.int_), types.Type(types.isize_)] {
 		mut ast := flat.FlatAst.new()

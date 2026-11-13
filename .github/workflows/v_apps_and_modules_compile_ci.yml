@@ -1,15 +1,8 @@
 name: V Apps and Modules
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/v_apps_and_modules_compile_ci.yml'
-      - 'examples/**'
-      - 'cmd/tools/vrepl.v'
+  workflow_call:
+
   schedule:
     - cron: '37 2 * * *'
 
@@ -17,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: v_apps-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: v_apps-v_apps_and_modules_compile_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +18,7 @@ jobs:
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-15]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
@@ -55,9 +48,10 @@ jobs:
 
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install dependencies
+        id: dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
@@ -96,9 +90,6 @@ jobs:
           echo "Run vsql/connection_test.v"
           v vsql/connection_test.v
 
-      - name: Test vlang/gui
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
-        run: .github/workflows/compile_vlang_gui_examples.sh
       - name: Test discord.v
         if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream uses deprecated json2.raw_decode
         run: .github/workflows/compile_discordv.sh
@@ -135,7 +126,7 @@ jobs:
           v should-compile-all ~/.vmodules/pdf/examples
 
       - name: Build vlang/libsodium
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           echo "Install the libsodium wrapper"
           v retry -- v install libsodium
@@ -151,7 +142,7 @@ jobs:
           cd /tmp/coreutils; make
 
       - name: Build vlang/gitly
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           echo "Install markdown"
           v retry -- v install markdown
@@ -170,7 +161,7 @@ jobs:
           # # /tmp/gitly/gitly -ci_run
 
       - name: Build V UI examples
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           v retry -- v install ui
           v -no-parallel ~/.vmodules/ui/examples/rectangles.v
@@ -178,10 +169,17 @@ jobs:
           # v run ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/v-analyzer
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
-          v retry -- git clone --depth=1 --branch=master --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          v retry -- git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          # Remove this patch once the default branch supports the current compiler.
+          analyzer_patch="$GITHUB_WORKSPACE/.github/v_analyzer_current_v.patch"
+          if git -C /tmp/v-analyzer apply --check "$analyzer_patch"; then
+            git -C /tmp/v-analyzer apply "$analyzer_patch"
+          else
+            git -C /tmp/v-analyzer apply --reverse --check "$analyzer_patch"
+          fi
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
@@ -191,7 +189,7 @@ jobs:
           VFLAGS=-w v build.vsh release
 
       - name: Format vlang/v-analyzer
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outcome == 'success' }}
         run: |
           cd /tmp/v-analyzer
           fmt_files=($(git ls-files '*.v' '*.vsh' ':!:metadata/stubs/*.v' ':!:src/metadata/stubs/*.v'))
@@ -205,7 +203,7 @@ jobs:
           fi
 
       - name: Build vlang/go2v
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-14' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && runner.os != 'macOS' }}
         run: |
           echo "Clone Go2V"
           v retry -- git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
@@ -256,11 +254,66 @@ jobs:
       #     echo "Run Vex Tests"
       #     v test ~/.vmodules/nedpals/vex
 
+  # GUI tests and examples each take tens of minutes with one compiler worker.
+  # Keep compilation serial while giving each phase a separate time budget.
+  v-gui:
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-15]
+        phase: [tests, examples]
+      fail-fast: false
+      max-parallel: 2
+    runs-on: ${{ matrix.os }}
+    env:
+      VTEST_FAIL_FAST: '1'
+      # Match the GUI script's compiler before make warms the module cache.
+      VFLAGS: ${{ startsWith(matrix.os, 'macos-') && '-cc clang' || '' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: graphics
+
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-v_gui-${{ hashFiles('.github/workflows/v_apps_and_modules_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-v_gui-
+            brew-${{ matrix.os }}-v_apps-
+            brew-${{ matrix.os }}-
+
+      - name: Build V
+        uses: ./.github/actions/setup-v
+
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == 'Linux' ]; then
+            .github/workflows/disable_azure_mirror.sh
+            v retry -- sudo apt-get -o Acquire::Languages=none -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+            v retry -- sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -qq install -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
+            v retry -- sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -qq install -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev
+          else
+            v retry brew install libsodium pango fribidi pkg-config
+          fi
+
+      - name: Test vlang/gui (${{ matrix.phase }})
+        run: .github/workflows/compile_vlang_gui_examples.sh "${{ matrix.phase }}"
+
   vpm-site-compile:
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
       matrix:
-        os: [ubuntu-24.04, macos-14]
+        os: [ubuntu-24.04, macos-15]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -269,7 +322,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Build vpm
         run: |
           v retry -- v install markdown
@@ -296,10 +349,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V
-        run: |
-          .\makev.bat -gcc
-          .\v.exe symlink
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
       - name: Install sqlite (gitly is built with -d sqlite)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Install gitly module dependencies
@@ -308,6 +359,17 @@ jobs:
           v retry -- v install pcre
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
+      - name: Apply gitly first-run compatibility fixes
+        shell: pwsh
+        run: |
+          # Remove this patch when the ci/windows-first-run branch includes the fixes.
+          git -C gitly apply --check ../.github/gitly_windows_first_run.patch
+          if ($LASTEXITCODE -eq 0) {
+            git -C gitly apply ../.github/gitly_windows_first_run.patch
+          } else {
+            git -C gitly apply --reverse --check ../.github/gitly_windows_first_run.patch
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile gitly CSS
         uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336 # v0.6.1
         with:

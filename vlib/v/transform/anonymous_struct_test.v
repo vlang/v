@@ -3,11 +3,13 @@ module transform
 import v.flat
 import v.token
 import v.types
+import v.workers
 
 fn test_anonymous_struct_placeholders_inside_fixed_arrays_are_unresolved() {
 	for skip_generics in [false, true] {
 		t := Transformer{ skip_generics: skip_generics }
-		for typ in ['[2]struct', '[2][3]struct', '[][2]struct', '?[2]struct', 'map[string][2]struct'] {
+		for typ in ['[2]struct', '[2][3]struct', '[][2]struct', '?[2]struct', 'map[string][2]struct',
+			'[2]union', '[]union', 'map[string]union', 'union'] {
 			assert t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
 		}
 		for typ in ['[2]int', '[2][3]string', '[][2]int', '?[2]int'] {
@@ -119,6 +121,28 @@ fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
 	assert synthesized_declarations == 1
 }
 
+fn test_inferred_anonymous_unions_keep_their_layout_kind() {
+	mut a := flat.FlatAst.new()
+	file := '/tmp/project/main.v'
+	a.source_files[1] = token.File.unindexed(file, 1)
+	struct_id, struct_value := add_inferred_anonymous_struct(mut a, 1)
+	union_id, union_value := add_inferred_anonymous_struct(mut a, 1)
+	a.nodes[int(union_id)].set_source_value_id(flat.source_type_id('union'))
+	a.add_node(flat.Node{
+		kind:  .file
+		value: file
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_modules[file] = 'main'
+	tc.register_synth_type(struct_value, types.Type(types.int_))
+	tc.register_synth_type(union_value, types.Type(types.int_))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.materialize_inferred_anonymous_structs()
+	assert a.nodes[int(struct_id)].typ != a.nodes[int(union_id)].typ
+	assert a.nodes[int(union_id)].typ in tc.unions
+	assert a.nodes[int(struct_id)].typ !in tc.unions
+}
+
 fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
 	mut a := flat.FlatAst.new()
 	main_file := '/tmp/project/main.v'
@@ -175,4 +199,31 @@ fn test_prepared_selfhost_transform_materializes_before_preparing() {
 	assert errors.len == 0
 	assert a.nodes[int(struct_id)].typ_text() == name
 	assert flat.source_type_id(name) in tc.structs
+}
+
+fn test_empty_inferred_anonymous_union_gets_a_concrete_type() {
+	mut pool := workers.new(2)
+	defer { pool.close() }
+	for parallel_scan in [false, true] {
+		mut a := flat.FlatAst.new()
+		file := '/tmp/project/main.v'
+		a.source_files[1] = token.File.unindexed(file, 1)
+		union_id, _ := add_inferred_anonymous_struct(mut a, 1)
+		a.nodes[int(union_id)].set_source_value_id(flat.source_type_id('union'))
+		a.nodes[int(union_id)].children_count = 0
+		if parallel_scan {
+			a.worker_pool = pool
+			// Cross the parallel scanner threshold without adding other candidates.
+			for _ in 0 .. 65536 {
+				a.add_node(flat.Node{ kind: .empty })
+			}
+		}
+		a.add_node(flat.Node{ kind: .file, value: file })
+		mut tc := types.TypeChecker.new(&a)
+		tc.file_modules[file] = 'main'
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		assert t.materialize_inferred_anonymous_structs()
+		assert a.nodes[int(union_id)].typ in tc.unions
+		assert tc.structs[a.nodes[int(union_id)].typ].len == 0
+	}
 }

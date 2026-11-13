@@ -2054,15 +2054,41 @@ fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.
 		g.write(')')
 		return
 	}
+	options := if kind == 'encode_pretty' {
+		['prettify', 'legacy_layout', 'escape_unicode', 'time_as_unix']
+	} else {
+		['escape_unicode', 'time_as_unix']
+	}
 	g.write('${g.json_qualifier}.encode(')
+	open_len := g.output_line_len()
+	args_start := g.out.len
 	g.expr_list(args, ', ')
+	inline := options.map('${it}: true').join(', ')
+	// Named arguments that do not fit go one per line, as call_args_expanded does for any
+	// call; otherwise formatting the migrated file again would change it. Like
+	// call_args_layout_source, a multi-line argument counts only with its last line.
+	written := g.out.after(args_start).all_after_last('\n').trim_left(' \t')
+	sep := if args.len > 0 { 2 } else { 0 }
+	if open_len + written.len + sep + inline.len + 1 > formatter_max_line_len {
+		mut width := 0
+		for option in options {
+			if option.len > width {
+				width = option.len
+			}
+		}
+		g.writeln(if args.len > 0 { ',' } else { '' })
+		g.indent++
+		for option in options {
+			g.writeln('${option}:${' '.repeat(width - option.len)} true')
+		}
+		g.indent--
+		g.write(')')
+		return
+	}
 	if args.len > 0 {
 		g.write(', ')
 	}
-	if kind == 'encode_pretty' {
-		g.write('prettify: true, legacy_layout: true, ')
-	}
-	g.write('escape_unicode: true, time_as_unix: true)')
+	g.write('${inline})')
 }
 
 // json_decode_type_arg_source returns the source of the type argument of

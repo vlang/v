@@ -66,3 +66,37 @@ fn test_parallel_codegen_inherits_entry_tracing() {
 	assert worker.trace_fns == ['main.*', 'println']
 	assert !worker.trace_calls
 }
+
+fn test_call_site_tracing_keeps_v_functions_next_to_builtin_c_declarations() {
+	for hook_module in ['debug', 'v.debug'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.cur_module = 'main'
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.trace_calls = true
+		void_type := tc.intern_type_reference(types.Type(types.void_))
+		g.fn_decl_ret_types[fn_decl_module_key(hook_module, 'before_call_hook')] = void_type
+		g.fn_decl_ret_types[fn_decl_module_key(hook_module, 'after_call_hook')] = void_type
+		assert g.trace_hook_module_name() == hook_module
+		// C.abs is declared by builtin, while this program has its own V abs.
+		g.fn_decl_ret_types[fn_decl_module_key('builtin', 'abs')] = tc.intern_type_reference(types.Type(types.int_))
+		g.fn_decl_ret_types[fn_decl_module_key('main', 'abs')] = tc.intern_type_reference(types.Type(types.string_))
+		g.non_generic_fn_names_by_module[fn_decl_module_key('main', 'abs')] = true
+		abs := flat.Node{ kind: .ident, value: 'abs' }
+		assert g.trace_call_name(&abs, 'abs', 'abs', 'abs') or { '' } == 'abs'
+		assert g.trace_call_name(&abs, 'abs', 'C.abs', 'C.abs') == none
+		// Actual V builtin functions still do not invoke the custom hooks.
+		g.fn_decl_ret_types[fn_decl_module_key('builtin', 'println')] = void_type
+		g.non_generic_fn_names_by_module[fn_decl_module_key('builtin', 'println')] = true
+		println_node := flat.Node{ kind: .ident, value: 'println' }
+		assert g.trace_call_name(&println_node, 'println', 'println', 'println') == none
+		g.fn_decl_ret_types[fn_decl_module_key('builtin', 'int.str')] = tc.intern_type_reference(types.Type(types.string_))
+		g.non_generic_fn_names_by_module[fn_decl_module_key('builtin', 'int.str')] = true
+		method := flat.Node{ kind: .ident, value: 'int.str' }
+		assert g.trace_call_name(&method, 'int.str', 'int.str', 'int.str') == none
+		tc.cur_module = hook_module
+		assert g.trace_call_name(&abs, 'abs', 'abs', 'abs') == none
+	}
+}

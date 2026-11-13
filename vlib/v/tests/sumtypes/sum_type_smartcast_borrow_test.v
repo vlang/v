@@ -68,20 +68,24 @@ fn test_smartcast_map_element_borrows_complete_sum_storage() {
 	mut values := {
 		'entry': BorrowSum(BorrowWide{ value: 9 })
 	}
-	if values['entry'] is BorrowWide {
-		assert borrowed_sum_value(values['entry']) == 209
-		replace_borrowed_sum(mut values['entry'])
+	// Borrow the checked entry; the map is not changed while this pointer is live.
+	mut entry := unsafe { &values['entry'] or { panic('missing entry') } }
+	if entry is BorrowWide {
+		assert borrowed_sum_value(entry) == 209
+		replace_borrowed_sum(mut entry)
 	}
-	assert borrowed_sum_value(values['entry']) == 199
+	assert borrowed_sum_value(values['entry'] or { panic('missing entry') }) == 199
 }
 
 fn test_smartcast_map_with_composite_key_borrows_complete_sum_storage() {
 	key := [1, 2]!
 	mut values := map[[2]int]BorrowSum{}
 	values[key] = BorrowWide{ value: 10 }
-	if values[key] is BorrowWide {
-		assert borrowed_sum_value(values[key]) == 210
-		replace_borrowed_sum(mut values[key])
+	// Borrow the checked entry; the map is not changed while this pointer is live.
+	mut entry := unsafe { &values[key] or { panic('missing entry') } }
+	if entry is BorrowWide {
+		assert borrowed_sum_value(entry) == 210
+		replace_borrowed_sum(mut entry)
 	}
-	assert borrowed_sum_value(values[key]) == 199
+	assert borrowed_sum_value(values[key] or { panic('missing entry') }) == 199
 }

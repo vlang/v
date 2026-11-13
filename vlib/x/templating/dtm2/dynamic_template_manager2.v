@@ -44,9 +44,7 @@ pub enum TemplateType {
 }
 
 // ExtensionConfig is the JSON representation accepted by
-// `ManagerParams.extension_config_file`.
-//
-// Example:
+// `ManagerParams.extension_config_file`, for example:
 //
 // ```json
 // {

@@ -48,6 +48,16 @@ done
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT HUP INT TERM
 
+## the fixtures below use a stand-in patch, so check the real one the macOS arm64 recipe needs here.
+## git apply skips paths outside the current directory of a work tree, so run it outside of one:
+mkdir "$test_root/numstat"
+(
+  cd "$test_root/numstat"
+  GIT_CEILING_DIRECTORIES="$test_root" \
+    git apply --numstat "$script_dir/patches/tccmacho-page-count-filesize.diff" 2>/dev/null
+) | awk -F '\t' '$3 == "tccmacho.c" { found = 1 } END { exit !found }' \
+  || fail 'the macOS arm64 recipe patch is missing or does not patch tccmacho.c'
+
 shim_dir="$test_root/shims"
 mkdir -p "$shim_dir"
 real_rsync="$(command -v rsync)"
@@ -101,6 +111,8 @@ if test "${FIXTURE_BUILD_FAIL:-0}" = 1; then
   exit 72
 fi
 if test "$install" != true; then
+  ## record the source the build saw, so that a patch applied too late or undone can be detected:
+  cp tccmacho.c .fixture-tccmacho-at-build
   exit 0
 fi
 prefix="$(cat .fixture-prefix)"
@@ -121,6 +133,7 @@ TCCEOF
 chmod 755 "$install_root/tcc"
 printf 'fixture-header\n' > "$install_root/include/stddef.h"
 printf 'fixture-library\n' > "$install_root/lib/libtcc.a"
+cp .fixture-tccmacho-at-build "$install_root/fixture-tccmacho.c"
 if test "${FIXTURE_RAW_CONTROLS:-0}" = 1; then
   mkdir -p "$install_root/.github" "$install_root/automation" \
     "$install_root/nested/.github" "$install_root/nested/automation"
@@ -172,6 +185,7 @@ printf '%s\n' "$prefix" > .fixture-prefix
 EOF
 chmod 755 "$tinycc_repo/configure"
 printf 'fixture source header\n' > "$tinycc_repo/include/fixture.h"
+printf 'unpatched\n' > "$tinycc_repo/tccmacho.c"
 git -C "$tinycc_repo" init -q
 git -C "$tinycc_repo" config user.name fixture
 git -C "$tinycc_repo" config user.email fixture@example.invalid
@@ -185,6 +199,16 @@ create_v_root() {
   local candidate="$root/thirdparty/tcc"
   mkdir -p "$root/vlib/v" "$candidate/.github/workflows" "$candidate/lib"
   printf 'fixture\n' > "$root/vlib/v/compiler_errors_test.v"
+  ## the macOS arm64 recipe applies this patch to the TinyCC checkout, so it has to fit the fixture:
+  mkdir -p "$root/thirdparty/build_scripts/patches"
+  cat > "$root/thirdparty/build_scripts/patches/tccmacho-page-count-filesize.diff" <<'EOF'
+diff --git a/tccmacho.c b/tccmacho.c
+--- a/tccmacho.c
++++ b/tccmacho.c
+@@ -1 +1 @@
+-unpatched
++patched
+EOF
   printf 'sentinel: true\n' > "$candidate/.github/workflows/sentinel.yml"
   chmod 640 "$candidate/.github/workflows/sentinel.yml"
   printf 'ignored-control\n' > "$candidate/ignored-control"
@@ -207,6 +231,18 @@ create_v_root() {
   git -C "$candidate" config user.email fixture@example.invalid
   git -C "$candidate" add .
   git -C "$candidate" commit -q -m base
+}
+
+assert_patch_state() {
+  local recipe_name=$1
+  local output_root=$2
+  if test "$recipe_name" = thirdparty-macos-arm64_tcc.sh; then
+    test "$(cat "$output_root/fixture-tccmacho.c")" = patched \
+      || fail "$recipe_name built TinyCC without its patch"
+  else
+    test "$(cat "$output_root/fixture-tccmacho.c")" = unpatched \
+      || fail "$recipe_name unexpectedly changed tccmacho.c; only macOS arm64 is expected to patch it"
+  fi
 }
 
 candidate_fingerprint() {
@@ -314,6 +350,7 @@ for recipe_name in "${recipe_names[@]}"; do
     || fail "$recipe_name staged the wrong TinyCC source hash"
   test -n "$(sha256sum "$stage_root/tcc.exe" | awk '{print $1}')" \
     || fail "$recipe_name did not produce a hashable tcc.exe"
+  assert_patch_state "$recipe_name" "$stage_root"
   test ! -e "$stage_root/build.sh" || fail "$recipe_name leaked its recipe into payload"
   test ! -e "$stage_root/control.patch" || fail "$recipe_name copied a patch control"
   test ! -e "$stage_root/control-transform.patch" \
@@ -472,6 +509,19 @@ for recipe_name in "${recipe_names[@]}"; do
   recipe_path="$script_dir/$recipe_name"
   case_name=${recipe_name%.sh}
 
+  if test "$recipe_name" = thirdparty-macos-arm64_tcc.sh; then
+    patch_failure_stage="$stage_parent/$case_name.patch-failure"
+    fixture_patch="$managed_root/thirdparty/build_scripts/patches/tccmacho-page-count-filesize.diff"
+    cp "$fixture_patch" "$test_root/fixture-patch.orig"
+    printf 'not a patch\n' > "$fixture_patch"
+    expect_recipe_failure "$test_root/$case_name.patch-failure.log" \
+      'tccmacho page_count patch failed to apply' \
+      run_recipe "$recipe_path" "$managed_root" 1 "$patch_failure_stage" "$tinycc_repo" \
+      thirdparty/tcc
+    cp "$test_root/fixture-patch.orig" "$fixture_patch"
+    assert_atomic_failure_cleanup "$recipe_name" "$patch_failure_stage"
+  fi
+
   configure_failure_stage="$stage_parent/$case_name.configure-failure"
   export FIXTURE_CONFIGURE_FAIL=1
   expect_recipe_failure "$test_root/$case_name.configure-failure.log" \
@@ -540,6 +590,7 @@ for recipe_name in "${recipe_names[@]}"; do
   test "$(sha256sum "$legacy_candidate/.gitignore" | awk '{print $1}')" = "$legacy_gitignore_sha"
   test "$(sha256sum "$legacy_candidate/.gitattributes" | awk '{print $1}')" = "$legacy_gitattributes_sha"
   test -x "$legacy_candidate/tcc.exe" || fail "$recipe_name legacy output is missing"
+  assert_patch_state "$recipe_name" "$legacy_candidate"
 done
 
 echo 'tccbin recipe deferred/legacy preservation contract: PASS'

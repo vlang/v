@@ -1,3 +1,9 @@
+@[attribute]
+struct Custom {
+	flag  bool
+	count int
+}
+
 // vfmt off
 @[deprecated('use NewPositional instead')]
 struct OldPositional {}
@@ -8,7 +14,7 @@ struct OldNamed {}
 @[deprecated('use NewMixed instead', after: '2999-01-02')]
 struct OldMixed {}
 
-@[custom(flag: true, count: 2)]
+@[Custom(flag: true, count: 2)]
 struct CustomNamed {}
 // vfmt on
 
@@ -53,14 +59,10 @@ fn test_attribute_call_syntax_generic_named_args() {
 	mut custom_flag := ''
 	mut custom_count := ''
 	$for attr in CustomNamed.attributes {
-		if attr.name == 'custom' {
+		$if attr is Custom {
 			has_custom = true
-		}
-		if attr.name == 'custom_flag' {
-			custom_flag = attr.arg
-		}
-		if attr.name == 'custom_count' {
-			custom_count = attr.arg
+			custom_flag = attr.flag.str()
+			custom_count = attr.count.str()
 		}
 	}
 	assert has_custom

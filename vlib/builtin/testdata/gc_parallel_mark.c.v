@@ -1,5 +1,6 @@
 import runtime
 
+@[c_extern]
 fn C.GC_get_parallel() int
 
 // `assert` is compiled out of `-prod` builds, so failures exit explicitly.
