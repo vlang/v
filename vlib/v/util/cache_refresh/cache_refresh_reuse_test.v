@@ -154,7 +154,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	saved := os.environ()
 	variables := ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
 		'V3_CACHE_REFRESH_ENTRY', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_FORCE_SOURCE',
-		'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+		'V3_CACHE_TRACE', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
 	defer {
 		for variable in variables {
 			if variable in saved {
@@ -217,8 +217,15 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		assert cold_calls.len > 0
 		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
 		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'crypto.sha3' && it.is_test == is_test)
+		// Trace cache misses only on the warm replay so CI identifies why an
+		// unchanged object was rebuilt. The trace changes no cache selection.
+		os.setenv('V3_CACHE_TRACE', '1', true)
 		refresh(@VEXE, requests)!
-		assert os.read_file(log)! == cold_calls, 'warm refresh must reuse its validated module objects'
+		os.unsetenv('V3_CACHE_TRACE')
+		warm_calls := os.read_file(log)!
+		diagnostic := 'warm refresh must reuse its validated module objects\n' +
+			'cold compiler calls:\n${cold_calls}\n' + 'after warm refresh:\n${warm_calls}'
+		assert warm_calls == cold_calls, diagnostic
 	}
 }
 
