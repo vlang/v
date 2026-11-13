@@ -42,7 +42,7 @@ fn v3_pinned_web_native_interfaces(vroot string) bool {
 		name := path[root.len + 1..].replace('\\', '/')
 		parts << name + '\x00' + digest
 	}
-	return sha256.hexhash(parts.join('\n')) == 'bf499874c03e2352ed7dc89bed20fd5f356e695b286349d1021745fe256fe8f7'
+	return sha256.hexhash(parts.join('\n')) == '098217945ff40c6779f5c5a4f6167e63107e04c17426c34c0ea2c0eb6d4efe84'
 }
 
 fn v3_native_interface_configuration_override(value string) bool {
