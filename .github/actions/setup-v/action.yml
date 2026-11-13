@@ -30,6 +30,17 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Prefer Git Bash on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $gitBin = Join-Path $env:ProgramFiles 'Git\bin'
+        if (-not (Test-Path -LiteralPath (Join-Path $gitBin 'bash.exe'))) {
+          throw "Git Bash was not found in $gitBin"
+        }
+        # WindowsApps can put the WSL bash shim ahead of Git Bash in PATH.
+        $gitBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
     - name: Select compiler for this checkout
       id: compiler
       shell: bash
