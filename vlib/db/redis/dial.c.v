@@ -74,5 +74,5 @@ fn dial_connection(config Config) !&net.TcpConn {
 }
 
 fn select_fd_is_supported(fd int) bool {
-	return $if windows { true } $else { fd >= 0 && fd < C.FD_SETSIZE }
+	return $if windows { fd >= 0 } $else { fd >= 0 && fd < C.FD_SETSIZE }
 }
