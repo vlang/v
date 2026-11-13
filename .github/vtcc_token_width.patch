@@ -1,0 +1,13 @@
+diff --git a/src/tcc.h.v b/src/tcc.h.v
+index 0798a8b..25cb2a8 100644
+--- a/src/tcc.h.v
++++ b/src/tcc.h.v
+@@ -494,7 +494,7 @@ pub struct Filespec {
+ 	name  [1]char
+ }
+ 
+-enum Tcc_token as u16 {
++enum Tcc_token as i32 {
+ 	tok_last = 256 - 1
+ 	tok_int
+ 	tok_void
