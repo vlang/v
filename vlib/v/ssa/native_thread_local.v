@@ -5,6 +5,18 @@ module ssa
 // binary has no thread-local section, so each global is a heap slot per thread,
 // found through a pthread key, as the C backend does for tcc
 // (emit_tinyc_pthread_pointer_slot).
+//
+// The slots come from `v_native_tls_calloc` and go back through
+// `v_native_tls_free`, the key's destructor, when the thread exits. The arm64
+// backend binds those names to libc's calloc/free, or, with the collector
+// linked in, to uncollectable, scanned Boehm blocks (vlib/builtin/gc_boehm_helpers.c):
+// Boehm cannot see thread-specific data, so a collectable slot reachable only
+// through its pthread key could be reclaimed while the thread still uses it.
+
+// native_tls_calloc and native_tls_free allocate and release the per-thread
+// slots; see gen/arm64 arm64_native_tls_symbols.
+const native_tls_calloc = 'v_native_tls_calloc'
+const native_tls_free = 'v_native_tls_free'
 
 const native_thread_local_globals = ['g_memory_block', 'g_arena_top', 'g_autostr_addr_state',
 	'g_panic_state']
@@ -35,6 +47,10 @@ fn (mut b Builder) lower_native_thread_locals() {
 		is_thread_local[value_id] = true
 		value_types[value_id] = value.typ
 		if value.index !in slot_functions {
+			if native_tls_calloc !in b.fn_ids {
+				b.register_extern(native_tls_calloc, ptr_i8, [b.i64_type, b.i64_type])
+				b.register_extern(native_tls_free, b.void_type, [ptr_i8])
+			}
 			key_slot := b.m.add_global('__ssa_tls_key_${global.name}', b.u64_type)
 			key_slots << key_slot
 			slot_functions[value.index] = b.generate_thread_local_slot(global.name, key_slot,
@@ -74,13 +90,14 @@ fn (mut b Builder) lower_native_thread_locals() {
 			}
 		}
 	}
+	release_id := b.generate_thread_local_release()
 	init_id := b.register_synthetic_function('__ssa_tls_init', b.void_type, []TypeID{})
 	init_entry := b.m.add_block(init_id, 'entry')
 	create := b.m.add_value(.func_ref, b.void_type, 'pthread_key_create', b.fn_ids['pthread_key_create'])
-	null := b.m.get_or_add_const(ptr_i8, '0')
+	release := b.m.add_value(.func_ref, ptr_i8, '__ssa_tls_release', release_id)
 	for key_slot in key_slots {
 		key_pointer := b.block_instr1(.bitcast, init_entry, ptr_i8, key_slot)
-		b.block_instr3(.call, init_entry, b.i32_type, create, key_pointer, null)
+		b.block_instr3(.call, init_entry, b.i32_type, create, key_pointer, release)
 	}
 	b.block_instr0(.ret, init_entry, b.void_type)
 	main_entry := b.m.funcs[main_id].blocks[0]
@@ -102,12 +119,25 @@ fn (mut b Builder) generate_thread_local_slot(name string, key_slot ValueID, siz
 	found := b.block_instr2(.ne, entry, b.i1_type, existing, b.m.get_or_add_const(ptr_i8, '0'))
 	b.block_instr3(.br, entry, b.void_type, found, ValueID(ready), ValueID(create))
 	b.block_instr1(.ret, ready, b.void_type, b.block_instr1(.bitcast, ready, slot_type, existing))
-	calloc_ref := b.m.add_value(.func_ref, ptr_i8, 'calloc', b.fn_ids['calloc'])
+	calloc_ref := b.m.add_value(.func_ref, ptr_i8, native_tls_calloc, b.fn_ids[native_tls_calloc])
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	bytes := b.m.get_or_add_const(b.i64_type, (if size > 0 { size } else { 8 }).str())
 	storage := b.block_instr3(.call, create, ptr_i8, calloc_ref, one, bytes)
 	set_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_setspecific', b.fn_ids['pthread_setspecific'])
 	b.block_instr3(.call, create, b.i32_type, set_ref, key, storage)
 	b.block_instr1(.ret, create, b.void_type, b.block_instr1(.bitcast, create, slot_type, storage))
+	return func_id
+}
+
+// generate_thread_local_release defines the pthread key destructor that frees a
+// thread's slot when the thread exits.
+fn (mut b Builder) generate_thread_local_release() int {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	func_id := b.register_synthetic_function('__ssa_tls_release', b.void_type, [ptr_i8])
+	entry := b.m.add_block(func_id, 'entry')
+	storage := b.func_add_argument(func_id, ptr_i8, 'storage')
+	free_ref := b.m.add_value(.func_ref, b.void_type, native_tls_free, b.fn_ids[native_tls_free])
+	b.block_instr2(.call, entry, b.void_type, free_ref, storage)
+	b.block_instr0(.ret, entry, b.void_type)
 	return func_id
 }

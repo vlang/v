@@ -54,6 +54,21 @@ void v_native_gc_free(void* ptr) {
 void* v_native_gc_aligned_alloc(size_t alignment, size_t size) {
 	return GC_memalign(alignment, size);
 }
+// The arm64 backend keeps its per-thread globals in slots found through pthread
+// keys. The collector does not scan thread-specific data, so the slots are
+// uncollectable (but scanned) blocks, freed by the key's destructor when the
+// thread exits; see gc_pthread_redirects.h.
+void* v_native_gc_tls_calloc(size_t count, size_t size) {
+	if (size != 0 && count > ((size_t)-1) / size) {
+		return 0;
+	}
+	return GC_MALLOC_UNCOLLECTABLE(count * size); // also cleared
+}
+void v_native_gc_tls_free(void* ptr) {
+	if (ptr != 0) {
+		GC_FREE(ptr);
+	}
+}
 int v_native_gc_posix_memalign(void** result, size_t alignment, size_t size) {
 	void* ptr = GC_memalign(alignment, size);
 	if (ptr == 0) {

@@ -218,16 +218,35 @@ fn (mut b Builder) build_channel_select(node flat.Node, is_expr bool) ?ValueID {
 	} else {
 		b.m.get_or_add_const(b.i64_type, max_i64.str())
 	}
-	channels_slot := b.new_channel_select_array(8, channels, ptr_i8)
-	directions_slot := b.new_channel_select_array(b.m.type_size(int_type), directions, int_type)
-	objects_slot := b.new_channel_select_array(8, objects, ptr_i8)
-	result := b.m.add_instr(.call, b.cur_block, int_type, [
-		select_fn,
-		channels_slot,
-		b.emit1(.load, b.array_type, directions_slot),
-		objects_slot,
-		timeout,
-	])
+	mut result := ValueID(0)
+	sleep_fn := b.channel_function_ref('time.sleep') or { ValueID(0) }
+	if cases.len == 0 && int(timeout_id) >= 0 && sleep_fn != 0 {
+		// Only a timeout: wait it out, as the C backend does. The select
+		// runtime would report "all channels closed" (-2) at once instead.
+		b.emit2(.call, b.void_type, sleep_fn, timeout)
+		result = b.m.get_or_add_const(int_type, '-1')
+	} else {
+		channels_slot := b.new_channel_select_array(8, channels, ptr_i8)
+		directions_slot := b.new_channel_select_array(b.m.type_size(int_type), directions, int_type)
+		objects_slot := b.new_channel_select_array(8, objects, ptr_i8)
+		result = b.m.add_instr(.call, b.cur_block, int_type, [
+			select_fn,
+			channels_slot,
+			b.emit1(.load, b.array_type, directions_slot),
+			objects_slot,
+			timeout,
+		])
+		// The arrays only carry the call's arguments; free them like the C
+		// backend, so a `select` in a loop does not leak without the collector.
+		free_fn := b.channel_function_ref('array__free') or {
+			b.channel_function_ref('array.free') or { ValueID(0) }
+		}
+		if free_fn != 0 {
+			for slot in [channels_slot, directions_slot, objects_slot] {
+				b.emit2(.call, b.void_type, free_fn, slot)
+			}
+		}
+	}
 	merge := b.m.add_block(b.cur_func, 'select_merge')
 	for i, select_case in cases {
 		body := b.m.add_block(b.cur_func, 'select_case')

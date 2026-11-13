@@ -14879,6 +14879,7 @@ pub fn run(args []string) {
 					size:    layout.size
 					align:   layout.align
 					offsets: layout.offsets
+					c_type:  layout.c_type
 				}
 			}
 			// SSA + ARM64 native backend

@@ -54,6 +54,9 @@ mut:
 	global_index_ready   bool
 	cur_func_ret_type    ssa.TypeID
 	cur_func_sret_offset int
+	// export_entries holds the C names whose C-convention entry
+	// gen_export_entries emitted (see export_abi.v).
+	export_entries map[string]bool
 	// prune_unused emits only the functions reachable from main (freestanding
 	// objects, whose runtime registers helpers the program may never call).
 pub mut:
@@ -111,6 +114,7 @@ pub fn (mut g Gen) gen() {
 		}
 		g.gen_func(fi)
 	}
+	g.export_entries = g.gen_export_entries()
 	g.materialize_text()
 	g.gen_post_pass()
 }
@@ -139,6 +143,9 @@ pub fn (mut g Gen) write_and_link(output string) {
 // allocation or thread function (see Gen.gc_runtime), or the name itself.
 fn (g &Gen) c_symbol_name(name string, is_c_extern bool) string {
 	if is_c_extern {
+		if symbols := arm64_native_tls_symbols[name] {
+			return if g.gc_runtime { symbols[1] } else { symbols[0] }
+		}
 		if symbol := g.m.c_extern_symbols[name] {
 			return symbol
 		}
@@ -169,6 +176,15 @@ const arm64_gc_runtime_symbols = {
 	'pthread_exit':    'v_gc_pthread_exit'
 	'pthread_sigmask': 'v_gc_pthread_sigmask'
 	'dlopen':          'v_gc_dlopen'
+}
+
+// arm64_native_tls_symbols binds the allocator of the per-thread global slots
+// (ssa/native_thread_local.v) to [libc, collector] symbols. With the collector,
+// a slot is reachable only through its pthread key, which Boehm does not scan,
+// so it must be an uncollectable block that the collector still scans.
+const arm64_native_tls_symbols = {
+	'v_native_tls_calloc': ['calloc', 'v_native_gc_tls_calloc']
+	'v_native_tls_free':   ['free', 'v_native_gc_tls_free']
 }
 
 // text_exceeds_branch_range reports whether the code is too large for the `bl`
@@ -457,14 +473,21 @@ fn (mut g Gen) gen_post_pass() {
 
 	// `@[export: 'name']` functions are also reachable under their C name, which
 	// C code linked with the program calls (stb_image's allocator callbacks).
+	// The ones C must call through a C-convention entry already have it.
 	for fn_name, cname in g.m.export_aliases {
-		if cname == fn_name || (cname in force_external_syms && !g.freestanding) {
+		if cname == fn_name || cname in g.export_entries
+			|| ('_' + cname in force_external_syms && !g.freestanding) {
 			continue
 		}
 		if idx := g.macho.sym_by_name['_' + fn_name] {
 			sym := g.macho.symbols[idx]
 			if sym.sect == 1 {
 				g.macho.add_symbol('_' + cname, sym.value, true, 1)
+				// Either name may end up carrying the `__compact_unwind`
+				// entry of the shared address, so both describe its saves.
+				if pairs := g.macho.unwind_saved_pairs['_' + fn_name] {
+					g.macho.unwind_saved_pairs['_' + cname] = pairs
+				}
 			}
 		}
 	}

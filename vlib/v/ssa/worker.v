@@ -144,6 +144,7 @@ fn (m &Module) new_worker_module() &Module {
 		c_typedef_structs:  unsafe { m.c_typedef_structs }
 		c_extern_symbols:   unsafe { m.c_extern_symbols }
 		export_aliases:     unsafe { m.export_aliases }
+		noinline_fns:       unsafe { m.noinline_fns }
 	}
 	for f in m.funcs {
 		w.funcs << f

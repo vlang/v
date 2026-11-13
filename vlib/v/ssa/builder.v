@@ -26,20 +26,19 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_pthread_mutex_destroy', '_pthread_self', '_pthread_create', '_pthread_join', '_pthread_detach',
 	'_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
 	'_pthread_attr_set_qos_class_np', '_pthread_key_create', '_pthread_getspecific',
-	'_pthread_setspecific',
-	'_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy',
-	'_pthread_rwlock_init', '_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock',
-	'_pthread_rwlock_tryrdlock', '_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock',
-	'_pthread_rwlock_destroy', '_pthread_condattr_init', '_pthread_condattr_setpshared',
-	'_pthread_condattr_destroy', '_pthread_cond_init', '_pthread_cond_signal', '_pthread_cond_wait',
-	'_pthread_cond_timedwait', '_pthread_cond_destroy', '_arc4random_buf', '_proc_pidpath', '_backtrace',
-	'_backtrace_symbols', '_backtrace_symbols_fd', '_dispatch_semaphore_create',
-	'_dispatch_semaphore_signal', '_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release',
-	'_setvbuf', '_setbuf', '_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate',
-	'_mkstemp', '_statvfs', '_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask',
-	'_select', '_kqueue', '_abs', '_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline',
-	'_fdopen', '_feof', '_ferror', '_setpgid', '_ptrace', '_wait', '_timegm', '_clock_gettime',
-	'_aligned_alloc', '_utime', '_getlogin', '_environ', '___error', '___stdinp',
+	'_pthread_setspecific', '_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared',
+	'_pthread_rwlockattr_destroy', '_pthread_rwlock_init', '_pthread_rwlock_rdlock',
+	'_pthread_rwlock_wrlock', '_pthread_rwlock_tryrdlock', '_pthread_rwlock_trywrlock',
+	'_pthread_rwlock_unlock', '_pthread_rwlock_destroy', '_pthread_condattr_init',
+	'_pthread_condattr_setpshared', '_pthread_condattr_destroy', '_pthread_cond_init',
+	'_pthread_cond_signal', '_pthread_cond_wait', '_pthread_cond_timedwait', '_pthread_cond_destroy',
+	'_arc4random_buf', '_proc_pidpath', '_backtrace', '_backtrace_symbols', '_backtrace_symbols_fd',
+	'_dispatch_semaphore_create', '_dispatch_semaphore_signal', '_dispatch_semaphore_wait',
+	'_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf', '_memchr', '_getlogin_r', '_getppid',
+	'_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs', '_chown', '_sigaction', '_sigemptyset',
+	'_sigaddset', '_sigprocmask', '_select', '_kqueue', '_abs', '_tcgetattr', '_tcsetattr', '_ioctl',
+	'_getchar', '_getline', '_fdopen', '_feof', '_ferror', '_setpgid', '_ptrace', '_wait', '_timegm',
+	'_clock_gettime', '_aligned_alloc', '_utime', '_getlogin', '_environ', '___error', '___stdinp',
 	'__dyld_get_image_name', '__dyld_get_image_header', '_cos', '_sin', '_tan', '_acos', '_asin',
 	'_atan', '_atan2', '_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh', '_exp', '_exp2',
 	'_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt', '_ceil', '_floor', '_round', '_trunc',
@@ -196,7 +195,7 @@ mut:
 	type_requests     map[int]LazyTypeRequest
 	merged_global_ids map[string]int
 	// Worker-built functions had their string literals expanded by the worker.
-	materialized_functions []bool
+	materialized_functions    []bool
 	generated_interface_stubs map[string]bool
 }
 
@@ -267,6 +266,9 @@ pub:
 	size    int
 	align   int
 	offsets map[string]int
+	// c_type spells the struct in C (`struct stat`, or a typedef name); the
+	// probe compiled it, so generated C may use it (gen/arm64 cshim.v).
+	c_type string
 }
 
 // NativeCConstant is the value of a C preprocessor or enum constant.
@@ -580,6 +582,9 @@ fn (mut b Builder) register_types() {
 				}
 				for name in field_names {
 					c_offsets << layout.offsets[name] or { -1 }
+				}
+				if layout.c_type.len > 0 {
+					b.m.c_struct_names[int(typ_id)] = layout.c_type
 				}
 			}
 			b.m.type_store.types[typ_id] = Type{
@@ -2826,6 +2831,10 @@ fn (mut b Builder) collect_export_fn_shadows() {
 			continue
 		}
 		for raw in attr.generic_params() {
+			if !is_c_decl && raw.trim_space() == 'noinline' {
+				b.m.noinline_fns[fn_name] = true
+				continue
+			}
 			if !raw.contains(':') {
 				continue
 			}
@@ -2929,13 +2938,13 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'Builder.write_rune', 'Builder.free', 'Builder.last_n', 'new_map', 'map__set', 'map__get',
 		'map__exists', 'map__get_check', 'map__get_key_check', 'map__get_or_set', 'map__delete',
 		'map__clear', 'map__clone', 'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values',
-		'v3_map_find', 'v3_map_set_sized', 'v3_new_map_bytes', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital',
-		'bytestr', '[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex',
-		'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
-		'string__all_before_last', 'all_before_last', 'string.all_after_last', 'string__all_after_last',
-		'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot',
-		'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'arguments',
-		'at_exit', 'tos2', 'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32',
+		'v3_map_find', 'v3_map_set_sized', 'v3_new_map_bytes', 'u8.is_digit', 'u8.is_letter',
+		'u8.is_alnum', 'u8.is_capital', 'bytestr', '[]u8.bytestr', '[]u8.hex', '[]rune.string',
+		'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string', 'array.repeat_to_depth',
+		'string.all_before_last', 'string__all_before_last', 'all_before_last', 'string.all_after_last',
+		'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l',
+		'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println', 'eprint',
+		'eprintln', 'arguments', 'at_exit', 'tos2', 'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32',
 		'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32',
 		'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast', 'normalize_path_in_builder',
 		'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread', '__v3_array_eq_raw',
@@ -6870,7 +6879,8 @@ fn (mut b Builder) generate_pthread_create_body(func_id int) {
 	stack_ok := b.block_instr2(.eq, configure, b.i1_type, stack_status, zero)
 	b.block_instr3(.br, configure, b.void_type, stack_ok, ValueID(create), ValueID(stack_failed))
 	create_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_create', b.fn_ids['pthread_create'])
-	create_status := b.m.add_instr(.call, create, b.i32_type, [create_ref, handle, attr, start, arg])
+	create_status := b.m.add_instr(.call, create, b.i32_type, [create_ref, handle, attr, start,
+		arg])
 	destroy_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_attr_destroy', b.fn_ids['pthread_attr_destroy'])
 	b.block_instr2(.call, create, b.i32_type, destroy_ref, attr)
 	b.block_instr1(.ret, create, b.void_type, create_status)

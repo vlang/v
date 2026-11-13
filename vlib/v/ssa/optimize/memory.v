@@ -50,26 +50,46 @@ fn memory_roots(m &ssa.Module, fi int, mut r MemoryRoots) {
 		r.read[val_id] = false
 	}
 	r.touched.clear()
-	for blk_id in m.funcs[fi].blocks {
-		for val_id in m.blocks[blk_id].instrs {
-			val := m.values[val_id]
-			if val.kind != .instruction {
-				continue
-			}
-			instr := m.instrs[val.index]
-			match instr.op {
-				.alloca {
-					r.root[int(val_id)] = int(val_id)
-					r.touched << int(val_id)
+	// The blocks of a function need not be stored in dominance order, so a
+	// derived pointer can come before its base: propagate to a fixed point.
+	// Each pass that changes something roots at least one more pointer, and
+	// a pointer's root never changes once set (SSA defines it once).
+	mut changed := true
+	for changed {
+		changed = false
+		for blk_id in m.funcs[fi].blocks {
+			for val_id in m.blocks[blk_id].instrs {
+				if r.root[int(val_id)] != 0 {
+					continue
 				}
-				.get_element_ptr, .bitcast {
-					base := r.root[int(instr.operands[0])]
-					if base != 0 {
-						r.root[int(val_id)] = base
+				val := m.values[val_id]
+				if val.kind != .instruction {
+					continue
+				}
+				instr := m.instrs[val.index]
+				match instr.op {
+					.alloca {
+						r.root[int(val_id)] = int(val_id)
 						r.touched << int(val_id)
+						changed = true
 					}
+					.get_element_ptr, .bitcast {
+						if instr.operands.len == 0 {
+							continue
+						}
+						operand := int(instr.operands[0])
+						if operand <= 0 || operand >= r.root.len {
+							continue
+						}
+						base := r.root[operand]
+						if base != 0 {
+							r.root[int(val_id)] = base
+							r.touched << int(val_id)
+							changed = true
+						}
+					}
+					else {}
 				}
-				else {}
 			}
 		}
 	}
@@ -159,7 +179,11 @@ fn optimize_memory(mut m ssa.Module) {
 					continue
 				}
 				address := int(m.instrs[val.index].operands[1])
-				base := if address > 0 && address < roots.root.len { roots.root[address] } else { 0 }
+				base := if address > 0 && address < roots.root.len {
+					roots.root[address]
+				} else {
+					0
+				}
 				if base != 0 && !roots.escaped[base] && !roots.read[base] && !dead_flag[val_id] {
 					dead_flag[val_id] = true
 					dead << val_id
@@ -188,8 +212,9 @@ fn optimize_memory(mut m ssa.Module) {
 }
 
 fn memory_operation_may_write(op ssa.OpCode) bool {
-	return op in [.call, .call_indirect, .call_sret, .atomic_load, .atomic_store, .atomic_xchg, .atomic_add,
-		.atomic_sub, .cmpxchg, .fence, .inline_asm, .heap_alloc]
+	// A started thread or coroutine may read what was stored before it starts.
+	return op in [.call, .call_indirect, .call_sret, .atomic_load, .atomic_store, .atomic_xchg,
+		.atomic_add, .atomic_sub, .cmpxchg, .fence, .inline_asm, .heap_alloc, .go_call, .spawn_call]
 }
 
 // memory_forget removes the entries `address` may overwrite.
@@ -227,7 +252,11 @@ fn memory_remember(mut entries []MemoryEntry, address int, value ssa.ValueID) {
 fn memory_forget_escaping(roots &MemoryRoots, mut entries []MemoryEntry) {
 	mut out := 0
 	for entry in entries {
-		base := if entry.address > 0 && entry.address < roots.root.len { roots.root[entry.address] } else { 0 }
+		base := if entry.address > 0 && entry.address < roots.root.len {
+			roots.root[entry.address]
+		} else {
+			0
+		}
 		if base != 0 && !roots.escaped[base] {
 			entries[out] = entry
 			out++
@@ -267,7 +296,11 @@ fn optimize_memory_block(mut m ssa.Module, blk_id int, roots &MemoryRoots, mut k
 					continue
 				}
 				if previous := memory_lookup(pending, address) {
-					if !dead_flag[int(previous)] {
+					// Only a store that covers every byte of the earlier one
+					// makes it dead: `store i8` keeps the rest of a `store i64`.
+					previous_value := m.instrs[m.values[previous].index].operands[0]
+					if m.type_size(m.values[stored].typ) >= m.type_size(m.values[previous_value].typ)
+						&& !dead_flag[int(previous)] {
 						dead_flag[int(previous)] = true
 						dead << previous
 					}

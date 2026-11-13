@@ -80,7 +80,8 @@ fn is_inline_scalar(m &ssa.Module, typ ssa.TypeID) bool {
 // copied into a caller.
 fn inline_function_cost(m &ssa.Module, fi int) int {
 	func := m.funcs[fi]
-	if func.name == 'main' || func.is_variadic || func.is_c_extern || func.blocks.len == 0 {
+	if func.name == 'main' || func.is_variadic || func.is_c_extern || func.blocks.len == 0
+		|| func.name in m.noinline_fns {
 		return -1
 	}
 	if func.typ != 0 && !is_inline_scalar(m, func.typ) && m.type_store.types[func.typ].kind != .void_t {

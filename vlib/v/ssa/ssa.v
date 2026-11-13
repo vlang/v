@@ -534,6 +534,9 @@ pub mut:
 	c_extern_symbols map[string]string
 	// `@[export: 'name']` functions: SSA function name -> exported C name.
 	export_aliases map[string]string
+	// `@[noinline]` functions, by SSA function name; the optimizer's inliner
+	// leaves their calls alone.
+	noinline_fns map[string]bool
 	// Function name -> index, so registering a symbol does not scan funcs.
 	func_index map[string]int
 mut:

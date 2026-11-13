@@ -82,6 +82,7 @@ pub fn (mut g Gen) gen_parallel(pool &workers.Pool) {
 	for chunk in batch.chunks {
 		g.merge_gen_chunk(chunk)
 	}
+	g.export_entries = g.gen_export_entries()
 	g.materialize_text()
 	g.gen_post_pass()
 }

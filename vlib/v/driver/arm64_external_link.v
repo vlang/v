@@ -286,7 +286,7 @@ fn native_c_visit_directive_module(mod string, by_module map[string][]NativeCDir
 // Arm64CSideOptions holds what the C side of an arm64 program needs from the
 // driver.
 struct Arm64CSideOptions {
-	no_cache bool
+	no_cache           bool
 	a                  &flat.FlatAst     = unsafe { nil }
 	prefs              &pref.Preferences = unsafe { nil }
 	user_c_flags       []string
@@ -307,7 +307,7 @@ mut:
 	compile_args []string // without the input and output
 	target       pref.Target
 	no_cache     bool
-	wrappers     string   // C wrappers for macros and static functions (arm64.Gen.c_function_wrappers)
+	wrappers     string // C wrappers for macros and static functions (arm64.Gen.c_function_wrappers)
 }
 
 // arm64_c_compiler returns the compiler of the C side: TinyCC cannot produce
@@ -548,8 +548,7 @@ fn arm64_language_check_args(args []string, mode []string) []string {
 // arm64_c_side_is_objective_c decides whether the C side must be compiled as
 // Objective-C and remembers the answer while its object stays valid.
 fn arm64_c_side_is_objective_c(compiler string, args []string, text string, target pref.Target, no_cache bool) bool {
-	marker := os.join_path(arm64_cache_dir(), 'arm64_language_${arm64_text_hash(compiler, args.join(' '),
-		text)}')
+	marker := os.join_path(arm64_cache_dir(), 'arm64_language_${arm64_text_hash(compiler, args.join(' '), text)}')
 	objc_mode := ['-x', 'objective-c']
 	c_mode := ['-std=gnu11']
 	if !no_cache {
@@ -562,7 +561,8 @@ fn arm64_c_side_is_objective_c(compiler string, args []string, text string, targ
 			if _ := arm64_cached_object(compiler, mode_args, text, target) {
 				return language == 'objc'
 			}
-		} else {}
+		} else {
+		}
 	}
 	objective_c := !arm64_c_unit_compiles(compiler, args, text, c_mode, target, no_cache)
 		&& arm64_c_unit_compiles(compiler, args, text, objc_mode, target, no_cache)
@@ -811,8 +811,7 @@ fn arm64_probe_compile_flags(compiler string) []string {
 fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, side Arm64CSide) ?string {
 	mut args := side.compile_args.clone()
 	args << arm64_probe_compile_flags(side.compiler)
-	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler,
-		args.join(' '), prefix, lines(keep))}')
+	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler, args.join(' '), prefix, lines(keep))}')
 	if !side.no_cache {
 		if saved := os.read_file(keep_file) {
 			if saved.len == keep.len {
@@ -825,7 +824,8 @@ fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, sid
 					return object
 				}
 			}
-		} else {}
+		} else {
+		}
 	}
 	for {
 		object := arm64_compile_unit(side.compiler, args, prefix + lines(keep), side.target,
@@ -905,6 +905,7 @@ struct Arm64CStructLayout {
 	size    int
 	align   int
 	offsets map[string]int
+	c_type  string // `struct FT_FaceRec`, or the typedef name
 }
 
 // arm64_c_structs lists the program's `struct C.X` declarations with fields.
@@ -1008,6 +1009,7 @@ fn arm64_read_c_struct_layouts(structs []Arm64CStruct, keep []bool, base int, sy
 			size:    int(size)
 			align:   int(align)
 			offsets: offsets
+			c_type:  st.c_type
 		}
 	}
 }
