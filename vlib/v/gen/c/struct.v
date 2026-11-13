@@ -6902,6 +6902,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 				return true
 			}
 		}
+		// Native poll headers already define pollfd when a C include selects the SDK.
+		// Keep application-owned layouts in truly headerless generated C.
+		if name == 'C.pollfd' && g.c_directives_use_system_libc()
+			&& g.target.os in ['linux', 'android', 'termux', 'macos', 'ios', 'freebsd', 'openbsd', 'dragonfly'] {
+			return true
+		}
 		if name == 'C.itimerspec' && g.target.os in ['linux', 'android', 'termux']
 			&& g.c_directives_use_system_libc() {
 			return true
