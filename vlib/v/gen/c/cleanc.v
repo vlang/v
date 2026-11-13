@@ -6780,6 +6780,9 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 		'v/driver/replace_file_windows.c.v' {
 			return include_arg == '<windows.h>'
 		}
+		'v/driver/native_object_cache.c.v' {
+			return normalized_c_include_arg_path(include_arg) == root + '/vlib/v/driver/native_object_cache.h'
+		}
 		'v/cmdexec/cmdexec_pipe.c.v' {
 			return include_arg == '<windows.h>'
 				|| (g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
@@ -7132,7 +7135,10 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 			}
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		if node.value == 'include' && g.core_native_header_is_redeclared(source_file, include_arg) {
+		native_cache_insert := node.value == 'insert'
+			&& normalized_c_include_arg_path(include_arg) == g.compiler_vroot.replace('\\', '/').trim_right('/') + '/vlib/v/driver/native_object_cache.h'
+		if (node.value == 'include' || native_cache_insert)
+			&& g.core_native_header_is_redeclared(source_file, include_arg) {
 			// Native objects still compile against their SDK; only the generated V
 			// translation unit uses the bodyless declarations and ABI preamble.
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg, g.compiler_vroot, source_file, include_dirs), before_import)
@@ -20721,6 +20727,7 @@ fn (mut g FlatGen) preamble() {
 	} else {
 		g.headerless_libc_preamble()
 		g.headerless_cmdexec_poll_helper()
+		g.headerless_native_object_cache_helper()
 		if g.headerless_compiler_bootstrap() {
 			g.portable_native_runtime_helpers()
 		}

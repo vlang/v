@@ -1,5 +1,24 @@
 module c
 
+// headerless_native_object_cache_helper supplies the shipped publication helper
+// without importing SDK headers into a standalone compiler translation unit.
+fn (mut g FlatGen) headerless_native_object_cache_helper() {
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	if !g.core_header_directives.any(normalized_c_include_arg_path(it.directive.text.all_after('#include').trim_space()) == root + '/vlib/v/driver/native_object_cache.h') {
+		return
+	}
+	g.writeln('#define V_NATIVE_OBJECT_CACHE_HEADERLESS 1')
+	g.writeln('#ifndef _WIN32')
+	g.writeln('int link(char*, char*);')
+	g.writeln('#if defined(__linux__)')
+	g.writeln('long syscall(long, ...);')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.write($embed_file('@VEXEROOT/vlib/v/driver/native_object_cache_impl.c').to_string())
+	g.collect_preserved_c_fns(['v_native_object_cache_publish', 'v_native_object_cache_rename_noreplace',
+		'link', 'syscall'])
+}
+
 // portable_windows_runtime_helpers embeds SDK-backed helpers without checkout-local objects.
 fn (mut g FlatGen) portable_windows_runtime_helpers() {
 	g.writeln('#ifdef _WIN32')
