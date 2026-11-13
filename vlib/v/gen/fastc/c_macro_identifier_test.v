@@ -34,7 +34,8 @@ fn test_fastc_local_errno_does_not_collide_with_c_library_macro() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.c.v'), c_errno_local_source) or { panic(err) }
 	program := os.join_path(root, 'program')
-	compiled := cmdexec.run(@VEXE, ['-b', 'fastc', '-gc', 'none', '-nocache', '-o', program, root])
+	compiled := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-gc', 'none', '-nocache', '-o',
+		program, root])
 	assert compiled.exit_code == 0, compiled.output
 	executed := cmdexec.run(program, [])
 	assert executed.exit_code == 0, executed.output
