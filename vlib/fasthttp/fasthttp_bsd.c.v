@@ -729,8 +729,8 @@ fn accept_clients(kq int, listen_fd int, worker_state voidptr, retired &RetiredC
 		// option; OpenBSD does not, and instead expects MSG_NOSIGNAL on
 		// each send(2) call (handled via the `send_flags` const above).
 		$if !openbsd {
-			nosigpipe_opt := 1
-			C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
+			nosigpipe_opt := i32(1)
+			C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(nosigpipe_opt))
 		}
 		mut c := &Conn{
 			fd:           client_fd
@@ -788,8 +788,8 @@ fn create_server_socket(server Server) !int {
 		return error('socket creation failed')
 	}
 
-	opt := 1
-	if C.setsockopt(socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int)) < 0 {
+	opt := i32(1)
+	if C.setsockopt(socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(opt)) < 0 {
 		C.perror(c'setsockopt SO_REUSEADDR failed')
 		C.close(socket_fd)
 		return error('setsockopt SO_REUSEADDR failed')
