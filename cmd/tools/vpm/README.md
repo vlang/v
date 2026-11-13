@@ -151,11 +151,29 @@ when compiling from that copy.
 Manifest `catalog: { package: 'range' }` and `workspaces: ['path/*']` metadata are
 available through `v.vmod.Manifest` and preserved by `vmod.encode`. Catalog keys may
 be quoted. Duplicate keys, malformed values and non-string workspaces are errors.
-These fields store metadata without expanding dependency aliases. When a root manifest
-declares `workspaces`, vpm treats the root and every matching member directory that
-contains a `v.mod` as one project: their dependencies are resolved, installed and
-locked together, with the lockfile written at the workspace root. `v update --latest`
-is not yet supported for workspace roots.
+These fields store metadata without expanding dependency aliases.
+
+When a root manifest declares `workspaces`, vpm treats the root and every matching
+member directory that contains a `v.mod` as one project:
+
+```text
+Module {
+	name: 'myapp'
+	workspaces: ['packages/*', 'tools']
+	dependencies: ['foo']
+}
+```
+
+Member globs expand relative to the workspace root (absolute patterns are used
+as-is). Only directories holding a `v.mod` become members. Empty patterns, `.`,
+and the root itself are skipped. Matches are de-duplicated and sorted, so
+aggregation order is deterministic. Running `v install`, `v update`, `v outdated`,
+`v why`, `v mod graph`, or `v vendor` from a member directory or any subdirectory
+anchors to the workspace root: dependencies of the root and all members resolve,
+install, and lock together, with `v.mod.lock` (and `vendor/`) written at the root.
+Only the root manifest supplies `dependency_overrides`. `v update --latest` is not
+yet supported for workspace roots, and member manifests are never rewritten.
+Compiler-side sibling resolution is out of scope for this MVP.
 Registry-qualified dependency keys remain distinct in lock data.
 
 The candidate search behind `resolve_with_pubgrub` is test-only: it delegates to the consistent

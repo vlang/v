@@ -22,4 +22,5 @@ command uses it as the default `-b` value for builds of the project.
 
 Catalog remains metadata. `workspaces` is also honored by vpm: a root manifest that
 declares it makes vpm treat the root and matching member directories as one
-project. Dependency strings retain their literal meaning in the package manager.
+project, aggregating their dependencies with the lockfile at the workspace root.
+Dependency strings retain their literal meaning in the package manager.

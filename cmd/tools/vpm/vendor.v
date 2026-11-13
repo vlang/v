@@ -16,18 +16,10 @@ fn vpm_vendor() {
 }
 
 fn vendor_project() ! {
-	mut project := vmod.get_cache().get_by_folder(os.getwd())
+	project := workspace_aware_project()
 	if project.vmod_file == '' { return error('no v.mod found at or above `${os.getwd()}`') }
-	ws_root := nearest_workspace_root(os.getwd())
-	if ws_root != '' && ws_root != os.dir(project.vmod_file) {
-		project = vmod.get_cache().get_by_folder(ws_root)
-	}
 	root := vmod.from_file(project.vmod_file)!
-	deps := if root.workspaces.len > 0 {
-		workspace_dependencies_for_manifest(project.vmod_folder, root)
-	} else {
-		project_dependencies(root)
-	}
+	deps := project_deps_for_manifest(project.vmod_folder, root)
 	if deps.len == 0 {
 		println('No dependencies to vendor.')
 		return

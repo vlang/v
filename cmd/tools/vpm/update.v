@@ -57,6 +57,8 @@ fn vpm_update(query []string) {
 }
 
 // detached_project_pin finds an exact project ref for the installed checkout.
+// Inside a workspace every member manifest is checked, with `file://` relatives
+// resolved against the manifest that declares them.
 fn detached_project_pin(name string, path string) string {
 	dir := project_lockfile_dir()
 	if dir == '' {
@@ -64,25 +66,35 @@ fn detached_project_pin(name string, path string) string {
 	}
 	origin := normalized_clone_source(checkout_origin_url(path))
 	if manifest := vmod.from_file(os.join_path(dir, 'v.mod')) {
-		mut dependencies := manifest.dependencies.clone()
-		dependencies << manifest.unknown['dev_dependencies']
-		for dependency in dependencies {
-			pin := requirement_version(dependency)
-			if pin == '' || is_version_range(pin) {
-				continue
+		mut bases := [dir]
+		mut dep_groups := [project_dependencies(manifest)]
+		if manifest.workspaces.len > 0 {
+			for member_dir in workspace_member_dirs(dir, manifest) {
+				member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or { continue }
+				bases << member_dir
+				dep_groups << project_dependencies(member_manifest)
 			}
-			key := lockfile_module_key(dependency)
-			mut source := key
-			if is_local_repository(key) {
-				local_path := os.expand_tilde_to_home(key.trim_string_left('file://'))
-				source = if os.is_abs_path(local_path) {
-					local_path
-				} else {
-					os.join_path(dir, local_path)
+		}
+		for gi, dependencies in dep_groups {
+			base := bases[gi]
+			for dependency in dependencies {
+				pin := requirement_version(dependency)
+				if pin == '' || is_version_range(pin) {
+					continue
 				}
-			}
-			if key == name || (origin != '' && normalized_clone_source(source) == origin) {
-				return pin
+				key := lockfile_module_key(dependency)
+				mut source := key
+				if is_local_repository(key) {
+					local_path := os.expand_tilde_to_home(key.trim_string_left('file://'))
+					source = if os.is_abs_path(local_path) {
+						local_path
+					} else {
+						os.join_path(base, local_path)
+					}
+				}
+				if key == name || (origin != '' && normalized_clone_source(source) == origin) {
+					return pin
+				}
 			}
 		}
 	}

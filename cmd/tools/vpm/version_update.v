@@ -4,11 +4,7 @@ import os
 import v.vmod
 
 fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
-	deps := if manifest.workspaces.len > 0 {
-		workspace_dependencies_for_manifest(dir, manifest)
-	} else {
-		project_dependencies(manifest)
-	}
+	deps := project_deps_for_manifest(dir, manifest)
 	if deps.any(is_version_range(requirement_version(it))) {
 		return true
 	}
@@ -107,11 +103,7 @@ fn update_versioned_project(query []string) bool {
 		vpm_error('`--precise VERSION` requires one package (`-p PACKAGE` or a positional name).')
 		exit(1)
 	}
-	original_dependencies := if manifest.workspaces.len > 0 {
-		workspace_dependencies_for_manifest(dir, manifest)
-	} else {
-		project_dependencies(manifest)
-	}
+	original_dependencies := project_deps_for_manifest(dir, manifest)
 	changes := project_update_changes(original_dependencies, targets, settings.precise)
 	mut selector := new_install_server_selector()
 	mut scope := LockScope{}
