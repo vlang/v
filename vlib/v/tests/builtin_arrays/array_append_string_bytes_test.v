@@ -102,6 +102,38 @@ fn test_unsafe_self_alias_is_copied_first() {
 	}
 }
 
+fn test_unsafe_header_alias_is_copied_first() {
+	for start_cap in [1, 64] {
+		mut buf := []u8{len: 1, cap: start_cap}
+		// View the capacity field without copying it; appending may change that field.
+		view := unsafe {
+			string{
+				str: &u8(&buf.cap)
+				len: int(sizeof(buf.cap))
+			}
+		}
+		expected := view.bytes()
+		buf << view.bytes()
+		assert buf[1..] == expected, 'cap=${start_cap}'
+	}
+}
+
+fn test_unsafe_slice_header_alias_is_copied_first() {
+	mut base := []u8{len: 128, init: u8(index)}
+	mut buf := unsafe { base[1..2] }
+	// View the header from its first field; unsharing can change its pointer and flags.
+	view := unsafe {
+		string{
+			str: &u8(&buf.data)
+			len: int(sizeof(buf))
+		}
+	}
+	expected := view.bytes()
+	buf << view.bytes()
+	assert buf[1..] == expected
+	assert base == []u8{len: 128, init: u8(index)}
+}
+
 fn test_slices_keep_independent_storage() {
 	mut base := 'abcdef'.bytes()
 	mut head := unsafe { base[..2] }

@@ -14,6 +14,9 @@ With bounds checking enabled, `first()` and `last()` on an empty dynamic array p
 `array.first: array is empty` and `array.last: array is empty`, respectively.
 This also applies when writing through the returned element, such as `cells.last().field = value`.
 
+Appending `s.bytes()` to a `[]u8` preserves the source bytes as they were before the append,
+including when an unsafe string view overlaps the destination's storage or array header.
+
 Default array `sort()` and `sorted()` keep equal elements in their original order.
 For floating point elements, NaNs follow all other values. Equal signed zeros and NaNs
 keep their original order; an explicit comparison controls its own ordering.

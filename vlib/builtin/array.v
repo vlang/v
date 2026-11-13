@@ -1356,10 +1356,13 @@ fn (mut a array) push_string_bytes(s string) {
 		return
 	}
 	src := uint(s.str)
+	src_end := src + uint(s.len)
 	data := uint(a.data)
-	if a.data != unsafe { nil } && src < data + uint(a.cap) && src + uint(s.len) > data {
-		// `s` views this array's own storage (only possible with unsafe code), which growing
-		// may move or free: copy it first, as `bytes()` did.
+	header := uint(&a)
+	if (src < header + uint(sizeof(array)) && src_end > header)
+		|| (a.data != unsafe { nil } && src < data + uint(a.cap) && src_end > data) {
+		// An unsafe string view may overlap the backing storage or the array header.
+		// Growing or unsharing can mutate either: snapshot the bytes before appending.
 		tmp := s.bytes()
 		a.push_many(tmp.data, tmp.len)
 		return
