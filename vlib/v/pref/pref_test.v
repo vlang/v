@@ -267,3 +267,63 @@ fn test_retired_modules_namespace_follows_filesystem_case_semantics() {
 	qualified := prefs.get_module_path('modules.case_peer_28575', importer)
 	assert qualified.to_lower_ascii() == os.real_path(neighbour).to_lower_ascii()
 }
+
+fn workspace_sibling_fixture() (string, string, string) {
+	root := os.join_path(os.temp_dir(), 'v3_pref_workspace_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	lib_dir := os.join_path(root, 'packages', 'ws-sibling-lib')
+	app_dir := os.join_path(root, 'packages', 'ws-sibling-app')
+	os.mkdir_all(os.join_path(lib_dir, 'sub')) or { panic(err) }
+	os.mkdir_all(app_dir) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'),
+		"Module { name: 'wsroot' workspaces: ['packages/*'] }\n") or { panic(err) }
+	os.write_file(os.join_path(lib_dir, 'v.mod'), "Module { name: 'ws_sibling_lib' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(lib_dir, 'ws_sibling_lib.v'), 'module ws_sibling_lib\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(lib_dir, 'sub', 'sub.v'), 'module sub\n') or { panic(err) }
+	os.write_file(os.join_path(app_dir, 'v.mod'), "Module { name: 'ws_sibling_app' }\n") or {
+		panic(err)
+	}
+	main_file := os.join_path(app_dir, 'main.v')
+	os.write_file(main_file, 'module main\n') or { panic(err) }
+	return root, lib_dir, main_file
+}
+
+fn test_workspace_sibling_module_path_matches_manifest_name() {
+	root, lib_dir, main_file := workspace_sibling_fixture()
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// The directory does not mirror the import name; only the manifest matches.
+	assert workspace_sibling_module_path('ws_sibling_lib', main_file) == os.real_path(lib_dir)
+	assert workspace_sibling_module_path('ws_sibling_lib.sub', main_file) == os.real_path(os.join_path_single(lib_dir,
+		'sub'))
+	assert workspace_sibling_module_path('ws_sibling_unknown', main_file) == ''
+	// Outside any workspace nothing resolves.
+	plain := os.join_path(os.temp_dir(), 'v3_pref_workspace_plain_${os.getpid()}')
+	os.mkdir_all(plain) or { panic(err) }
+	defer {
+		os.rmdir_all(plain) or {}
+	}
+	plain_file := os.join_path(plain, 'main.v')
+	os.write_file(plain_file, 'module main\n') or { panic(err) }
+	assert workspace_sibling_module_path('ws_sibling_lib', plain_file) == ''
+}
+
+fn test_get_module_path_finds_workspace_siblings_by_name() {
+	root, lib_dir, main_file := workspace_sibling_fixture()
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	prefs := new_preferences()
+	assert prefs.get_module_path('ws_sibling_lib', main_file) == os.real_path(lib_dir)
+	assert prefs.get_module_path('ws_sibling_lib.sub', main_file) == os.real_path(os.join_path_single(lib_dir,
+		'sub'))
+	// A root file imports members by name too.
+	root_file := os.join_path(root, 'main.v')
+	os.write_file(root_file, 'module main\n') or { panic(err) }
+	assert prefs.get_module_path('ws_sibling_lib', root_file) == os.real_path(lib_dir)
+}
