@@ -15,10 +15,10 @@ import crypto.subtle
 // ordinary packet before ever calling is_stateless_reset.
 //
 // v1 scope: connection IDs and their tokens are recorded for matching
-// purposes only -- full connection ID rotation/migration (NEW_CONNECTION_ID/
-// RETIRE_CONNECTION_ID driving an active set of usable CIDs) is not
-// implemented; this is deliberately just enough to recognize a reset for
-// whichever connection ID(s) this endpoint is currently using.
+// purposes only -- this is deliberately just enough to recognize a reset for
+// whichever connection ID this endpoint is currently sending to. QuicConn
+// records a new token when NEW_CONNECTION_ID retirement moves it to another
+// peer connection ID; connection migration itself is not implemented.
 
 // StatelessResetTracker records the stateless-reset tokens this endpoint
 // has learned (from the peer's transport parameters and/or
@@ -40,6 +40,13 @@ pub fn (mut t StatelessResetTracker) record_token(connection_id []u8, token []u8
 		return error('quic: stateless reset token must be exactly 16 bytes, got ${token.len}')
 	}
 	t.known_tokens[connection_id.hex()] = token.clone()
+}
+
+// forget_token drops the token recorded for `connection_id`, once that
+// connection ID is retired and no longer used (RFC 9000 §10.3.1 compares only
+// tokens of active connection IDs).
+pub fn (mut t StatelessResetTracker) forget_token(connection_id []u8) {
+	t.known_tokens.delete(connection_id.hex())
 }
 
 // is_stateless_reset reports whether `datagram`'s trailing 16 bytes match
