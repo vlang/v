@@ -7,6 +7,7 @@ module smtp
 */
 import net
 import net.ssl
+import net.sasl
 import encoding.base64
 import strings
 import time
@@ -39,6 +40,8 @@ pub:
 // certificates are validated by default and require `verify` to name a PEM CA
 // bundle; set `in_memory_verification` when it contains PEM data. Credentials
 // are refused without TLS unless `allow_insecure_auth` enables cleartext auth.
+// They are sent with SASL PLAIN (RFC 4616): with a `username`, `password` must
+// not be empty, and neither may contain a NUL byte or invalid UTF-8.
 // Setting `validate` to false disables certificate chain and hostname checks.
 pub struct Config {
 pub:
@@ -299,13 +302,8 @@ fn (mut c Client) send_auth() ! {
 	if !c.encrypted && !c.allow_insecure_auth {
 		return error('smtp: refusing to send credentials without TLS; set `allow_insecure_auth` to opt in')
 	}
-	mut sb := strings.new_builder(100)
-	sb.write_u8(0)
-	sb.write_string(c.username)
-	sb.write_u8(0)
-	sb.write_string(c.password)
-	a := sb.str()
-	auth := 'AUTH PLAIN ${base64.encode_str(a)}\r\n'
+	plain := sasl.encode_plain(authcid: c.username, password: c.password)!
+	auth := 'AUTH PLAIN ${base64.encode_str(plain)}\r\n'
 	c.send_str(auth)!
 	c.expect_reply(.auth_ok)!
 }

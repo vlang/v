@@ -393,6 +393,21 @@ fn test_send_auth_rejects_plaintext_credentials() {
 	assert false, 'send_auth must enforce the TLS requirement itself'
 }
 
+fn test_send_auth_rejects_a_nul_in_the_credentials_before_sending_them() {
+	mut client := Client{
+		Config:    Config{
+			username: 'user'
+			password: 'pass\x00word'
+		}
+		encrypted: true
+	}
+	client.send_auth() or {
+		assert err.msg().contains('NUL')
+		return
+	}
+	assert false, 'send_auth must refuse a NUL byte in the password'
+}
+
 fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth() ! {
 	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'testdata', 'smtp_tls_test_server.v')
 	assert os.exists(helper)

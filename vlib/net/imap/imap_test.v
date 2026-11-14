@@ -746,6 +746,27 @@ fn test_sasl_plain_can_be_selected_during_construction() {
 	]
 }
 
+fn test_sasl_plain_rejects_a_nul_in_the_credentials_before_sending_anything() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{cap: 64}
+	port, th := start(mut l, '* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN] ready', seen)!
+	new_client(
+		server:              '127.0.0.1'
+		port:                port
+		username:            'bob'
+		password:            'hunter\x002'
+		auth_method:         .plain
+		allow_insecure_auth: true
+	) or {
+		assert err.msg().contains('NUL')
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == []
+		return
+	}
+	assert false, 'a NUL byte in the password must be refused'
+}
+
 fn test_authentication_debug_lines_are_redacted() {
 	login := imap_debug_line('a0001 LOGIN "bob" "hunter2"', true)
 	assert login == 'a0001 LOGIN <credentials redacted>'
