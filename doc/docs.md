@@ -1861,6 +1861,10 @@ filtered := files.filter(it#[-4..].to_lower() == '.jpg').map(it.to_upper())
 // ['PIPPO.JPG', 'IMG_02.JPG', 'IMG_01.JPG']
 ```
 
+Each method in a chain receives the element type produced by the preceding
+method. For example, in `values.map(it.str()).filter(it != '')`, the filter
+receives strings even when `values` is a generic array.
+
 ### Fixed size arrays
 
 Mapping a fixed size array preserves its length and uses the mapping expression or function
