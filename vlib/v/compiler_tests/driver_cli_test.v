@@ -2487,11 +2487,11 @@ fn test_driver_cli_cross_refusal_matrix() {
 		'unsupported target OS `bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o', output, '-arch', 'bogus', source],
 		'unsupported target architecture `bogus`')
-	// A binary for a foreign OS refuses with a toolchain hint. The foreign OS
-	// is picked at runtime so this holds on every CI host: on a linux host
-	// `-os linux` would be native and succeed, so target the other family.
-	foreign_os := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
-	assert_driver_cli_failure(v3_bin, ['-o', output, '-os', foreign_os, source],
+	// A binary for a foreign OS refuses with a toolchain hint. `freebsd` is
+	// foreign on every CI host (windows/linux/macos): unlike `-os windows`,
+	// it never hits the MinGW rewrite, and unlike macos->linux it is never
+	// a supported cross, so it always reaches the refusal below.
+	assert_driver_cli_failure(v3_bin, ['-o', output, '-os', 'freebsd', source],
 		'is not supported by the default C compiler')
 	// Same OS, foreign arch refuses the same way: only the host pair links
 	// (macOS is exempt: Apple dual-arch `-arch` pairs are supported).
@@ -2503,10 +2503,12 @@ fn test_driver_cli_cross_refusal_matrix() {
 	}
 	// C output has no link step, so it never hits the toolchain refusal: both
 	// `-os cross` (portable snapshot) and a foreign `-os` emit C successfully.
-	for target in ['cross', foreign_os] {
+	// The content assert proves user code was emitted, not just an empty file.
+	for target in ['cross', 'freebsd'] {
 		c_output := os.join_path(root, 'hello_${target}.c')
 		c_compile := cmdexec.run(v3_bin, ['-o', c_output, '-os', target, source])
 		assert c_compile.exit_code == 0, c_compile.output
 		assert os.is_file(c_output)
+		assert os.read_file(c_output)!.contains('"ok"'), c_output
 	}
 }
