@@ -31,6 +31,11 @@
  * target platforms, so not an issue, but let's just be extra sure.
  */
 #include <limits.h>
+/* Some libcs (bionic under tcc) leave CHAR_BIT to the compiler's own limits.h,
+ * which tcc does not ship; tcc always predefines __CHAR_BIT__ instead. */
+#if !defined(CHAR_BIT) && defined(__CHAR_BIT__)
+#define CHAR_BIT __CHAR_BIT__
+#endif
 #if CHAR_BIT != 8
 #error "Mbed TLS requires a platform with 8-bit chars"
 #endif
