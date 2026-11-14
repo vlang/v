@@ -151,6 +151,35 @@ pub fn read_byte(mut r Reader) !u8 {
 
 // read_full fills buf completely from r, returning Eof when the stream ends
 // before buf is full. A successful zero-byte read returns a no-progress error.
+// read_at_least reads at least `min` bytes from `r` into `buf`, returning the
+// number of bytes read. It returns an error if fewer than `min` bytes were
+// available. Mirrors Go's io.ReadAtLeast.
+pub fn read_at_least(mut r Reader, mut buf []u8, min int) !int {
+	if min < 0 || min > buf.len {
+		return error('io: invalid min read size')
+	}
+	mut n := 0
+	for n < min {
+		remaining := buf.len - n
+		mut view := unsafe { buf[n..] }
+		read := r.read(mut view) or {
+			if n >= min {
+				return n
+			}
+			return err
+		}
+		validate_reader_count(read, remaining)!
+		if read == 0 {
+			if n >= min {
+				return n
+			}
+			return error('io: unexpected EOF')
+		}
+		n += read
+	}
+	return n
+}
+
 pub fn read_full(mut r Reader, mut buf []u8) ! {
 	mut n := 0
 	for n < buf.len {
