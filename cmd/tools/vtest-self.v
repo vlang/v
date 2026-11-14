@@ -144,6 +144,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
 	'vlib/net/http/http_proxy_test.v',
+	'vlib/net/http/http_proxy_origin_form_test.v', // -d use_openssl: uninstrumented libcrypto trips MSan in OPENSSL_init_ssl
 	'vlib/net/http/status_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
