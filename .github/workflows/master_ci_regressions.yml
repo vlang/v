@@ -34,9 +34,11 @@ jobs:
           for symbol in ['driver__run', 'c__gen_expr_lvalue', 'c__FlatGen__gen_fn_items_scoped_batches', 'markused__CallCollector__collect_bodies_scoped_batches', 'parser__Parser__precollect_parallel_comptime_consts', 'types__TypeChecker__check_scoped_batches']:
               print(symbol, ('void ' + symbol + '(') in c)
           PYCODE
-      - name: Run the review regression command
+      - name: Compare GC and serial reachability paths
         run: |
-          env -u VFLAGS -u VEXE ./v -new-compiler -no-retry-compilation -silent test vlib/v/markused/ vlib/v/driver/unused_compiler_import_test.v > review-probe/tests.log 2>&1
+          cp v review-probe/native-v
+          env -u VFLAGS -u VEXE ./v -new-compiler -no-retry-compilation -nocache -gc none -o review-probe/no-gc.c "$RUNNER_TEMP/main.v" > review-probe/no-gc.log 2>&1
+          env -u VFLAGS -u VEXE ./v -new-compiler -no-retry-compilation -nocache -no-parallel -o review-probe/serial.c "$RUNNER_TEMP/main.v" > review-probe/serial.log 2>&1
       - name: Upload diagnostic logs and C
         if: always()
         uses: actions/upload-artifact@v7

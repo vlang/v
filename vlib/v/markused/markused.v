@@ -1154,6 +1154,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		mu_sw.restart()
 	}
+	eprintln('REVIEW ROOTS: ${queue}')
 	mut qi := 0
 	mut pending_library_names := []string{cap: 32}
 	mut pending_library_ids := []int{cap: 32}
@@ -1281,6 +1282,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			continue
 		}
 		for fn_info in fn_infos {
+			if fn_info.module == 'driver' && a.node(fn_info.node_id).value == 'run' {
+				eprintln('REVIEW DRIVER RUN KEY: ${name}')
+			}
 			if trace_markused && qi <= 10 {
 				eprintln('BFS qi=${qi.str()} name="${name}" in_cg=true')
 			}
@@ -1534,6 +1538,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 				}
 			}
+		}
+		for review_added in queue[prev_len..] {
+			eprintln('REVIEW EDGE: ${name} -> ${review_added}')
 		}
 		new_added := queue.len - prev_len
 		if trace_markused && qi <= 10 {
