@@ -6077,7 +6077,11 @@ fn (g &FlatGen) exported_symbol_attribute() string {
 	if !g.is_shared {
 		return ''
 	}
-	if g.ccompiler == 'msvc' {
+	// A PE linker ignores the ELF visibility attribute, so a Windows DLL
+	// built with tcc, gcc or clang exports nothing without dllexport. MSVC
+	// was the only compiler getting it, which is why `-shared` on Windows
+	// silently produced a DLL with no exports everywhere else.
+	if g.ccompiler == 'msvc' || g.target.os == 'windows' {
 		return '__declspec(dllexport) '
 	}
 	return '__attribute__((visibility("default"))) '
