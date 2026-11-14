@@ -728,6 +728,15 @@ pub fn page_size() int {
 	return int(C.sysconf(C._SC_PAGESIZE))
 }
 
+// cpu_count returns the number of online logical processors visible to
+// the calling process, or 1 where the platform cannot report it.
+pub fn cpu_count() int {
+	$if freestanding || syscalls {
+		return 1
+	}
+	return int(C.sysconf(C._SC_NPROCESSORS_ONLN))
+}
+
 struct C.statvfs {
 	f_bsize  uint
 	f_frsize uint

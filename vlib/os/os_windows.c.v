@@ -929,6 +929,14 @@ pub fn page_size() int {
 	return int(sinfo.dwPageSize)
 }
 
+// cpu_count returns the number of logical processors visible to the
+// calling process.
+pub fn cpu_count() int {
+	sinfo := C.SYSTEM_INFO{}
+	C.GetSystemInfo(&sinfo)
+	return int(sinfo.dwNumberOfProcessors)
+}
+
 // disk_usage returns disk usage of `path`.
 pub fn disk_usage(path string) !DiskUsage {
 	mut free_bytes_available_to_caller := C.ULARGE_INTEGER{}
