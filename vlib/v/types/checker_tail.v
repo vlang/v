@@ -5509,6 +5509,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				tc.invalidate_body_resolved_type_chain(id)
 			}
 		}
+		tc.remember_smartcast_call_operands(node, info)
 		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
 			tc.check_valid_call_arg_types(id, node, info)

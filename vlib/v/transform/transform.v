@@ -236,6 +236,9 @@ mut:
 	// borrow_params_after_transform starts the summaries from the transform
 	// stage's (see prepare_fixed_array_borrow_params).
 	borrow_params_after_transform bool
+	// scans_parsed_tree marks a monomorphization of the tree as it was parsed, as
+	// a check does: its smartcasts are not lowered and live only in the checker.
+	scans_parsed_tree bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -2750,6 +2753,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.scope_parallel_workers = true
 	}
 	t.borrow_params_after_transform = after_transform
+	t.scans_parsed_tree = !after_transform
 	t.prepare()
 	if after_transform {
 		t.mark_used_fn_bodies_lowered()
