@@ -95,6 +95,7 @@ const auto_complete_commands = [
 	'create',
 	'doctor',
 	'download',
+	'enable-long-paths',
 	'env',
 	'fmt',
 	'gret',

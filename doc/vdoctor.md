@@ -8,6 +8,12 @@ language used by Windows for its error message.
 On Windows, exit codes 2 and 3 show `Error: ...` when the tool ran and reported a failure.
 Other launch failures, such as access denied, also remain visible as errors.
 
+On Windows, the `Win32 long paths` row reports the machine long-path policy:
+`enabled`, `disabled (run ... to enable)`, or `unknown` when it cannot be
+read. Past-`MAX_PATH` paths fail the CRT and plain Win32 calls while the
+policy is disabled; `v enable-long-paths` turns it on (needs an
+administrator terminal).
+
 ## The `vlib` that the compiler uses
 
 The compiler can use the `vlib` of the checkout containing the compiled sources or working
