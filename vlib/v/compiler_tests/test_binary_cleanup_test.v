@@ -93,21 +93,39 @@ fn test_implicit_test_binary_cleanup_with_run_stats_keepc_and_debug() {
 
 fn test_compile_only_test_outputs_are_preserved() {
 	root := binary_cleanup_root('explicit')!
+	old_show_asserts := os.getenv_opt('VTEST_SHOW_ASSERTS')
 	defer {
+		if value := old_show_asserts {
+			os.setenv('VTEST_SHOW_ASSERTS', value, true)
+		} else {
+			os.unsetenv('VTEST_SHOW_ASSERTS')
+		}
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'sample_test.v')
 	marker := os.join_path(root, 'binary_path')
 	binary := os.join_path(root, 'chosen output' + $if windows { '.exe' } $else { '' })
 	os.write_file(source, binary_cleanup_source('assert true'))!
-	build := binary_cleanup_compile(root, ['-skip-running', '-o', binary, source])
-	assert build.exit_code == 0, build.output
-	assert !os.exists(marker)
-	assert os.is_file(binary)
-	run := cmdexec.run_in(binary, [], root)
-	assert run.exit_code == 0, run.output
-	assert os.read_file(marker)!.trim_space() == os.real_path(binary)
-	os.rm(marker)!
+	for show_asserts in [false, true] {
+		if show_asserts {
+			os.setenv('VTEST_SHOW_ASSERTS', '1', true)
+		} else {
+			os.unsetenv('VTEST_SHOW_ASSERTS')
+		}
+		for flags in [[]string{}, ['-stats'], ['-stats', 'run'], ['-stats', 'crun']] {
+			mut args := ['-skip-running', '-o', binary]
+			args << flags
+			args << source
+			build := binary_cleanup_compile(root, args)
+			assert build.exit_code == 0, build.output
+			assert !os.exists(marker), 'compile-only test ran with ${flags}, show_asserts=${show_asserts}'
+			assert os.is_file(binary)
+			run := cmdexec.run_in(binary, [], root)
+			assert run.exit_code == 0, run.output
+			assert os.read_file(marker)!.trim_space() == os.real_path(binary)
+			os.rm(marker)!
+		}
+	}
 }
 
 fn test_directory_test_command_removes_implicit_binary() {

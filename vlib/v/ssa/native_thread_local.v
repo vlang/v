@@ -29,6 +29,10 @@ fn native_global_is_thread_local(name string) bool {
 // A function asks for the slot once, at its entry: it cannot change threads.
 fn (mut b Builder) lower_native_thread_locals() {
 	main_id := b.fn_ids['main'] or { return }
+	// Hot-function and signature-only builds leave main as a prototype.
+	if b.m.funcs[main_id].blocks.len == 0 {
+		return
+	}
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut slot_functions := map[int]int{}
 	mut value_types := map[int]TypeID{}

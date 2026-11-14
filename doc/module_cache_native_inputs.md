@@ -10,6 +10,9 @@ files use the same conservative fallback. The
 compiler no longer scans bundled mbedTLS or other headers to decide whether their contents can be
 replicated into cached objects. Embedded resources retain their ordinary dependency records.
 
+The `os` polling helper includes its header relative to `fd.c.v`, so copied standard libraries
+do not need a repository `v.mod` for that include.
+
 On macOS, cached development builds with Objective-C sources can compile the application unit
 with TCC and link a native development dylib. Clang compiles the native owner and external V
 modules. Application-directory modules remain in the TCC unit; other modules retain cached

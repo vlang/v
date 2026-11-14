@@ -1285,6 +1285,7 @@ f2 := 456e+2 // 45600
 
 Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
 and a cast to a smaller integer type keeps the low bits.
+String interpolation preserves that integer width before formatting a wrapped result.
 Two opt-in flags turn these into runtime panics:
 
 * `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
@@ -1308,6 +1309,8 @@ fn hash_step(h u32, b u8) u32 {
 ### Arrays
 
 Returning a new array through helper calls preserves each helper's parameter scope.
+Chained array methods also use the concrete result type of a generic mapper, as in
+`values.map(it.str()).join(', ')`.
 
 
 An array is a collection of data elements of the same type. An array literal is a
@@ -1996,6 +1999,8 @@ m.delete('two')
 Maps can have keys of type string, rune, integer, float, voidptr,
 enum, or fixed arrays of those supported key types.
 Struct keys are rejected, including when a generic key parameter is instantiated with a struct.
+The native ARM64 backend keeps fixed-array keys distinct from string keys even when their
+storage sizes are equal.
 
 The whole map can be initialized using this short syntax:
 
@@ -12031,6 +12036,7 @@ Single functions can be extracted as raw machine code with `-hot-fn`:
 v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
 ```
 
+Extraction omits program startup and thread-local initialization.
 Only self-contained `@[live]` functions are supported for now: functions
 needing address fixups (calls, string literals, globals) are rejected at
 extract time instead of emitting silently broken machine code.

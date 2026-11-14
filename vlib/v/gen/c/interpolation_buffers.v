@@ -110,7 +110,12 @@ fn (mut g FlatGen) gen_buffered_interpolation_part(id flat.NodeId, buffer string
 			unsigned := name in ['u8__str', 'u16__str', 'u32__str', 'u64__str', 'uint__str',
 				'usize__str', 'strconv__format_uint', 'v3_u64_zpad']
 			g.write(if unsigned { 'v3_u64_buf((u64)(' } else { 'v3_i64_buf((i64)(' })
+			// C promotes narrow arithmetic to int before the original str() call
+			// truncates it back to the receiver type. Keep that conversion here too.
+			narrow := name in ['i8__str', 'i16__str', 'i32__str', 'u8__str', 'u16__str', 'u32__str']
+			if narrow { g.write('(${name.all_before('__str')})(') }
 			g.gen_string_interp_child_expr(arg)
+			if narrow { g.write(')') }
 			base := if name in ['strconv__format_int', 'strconv__format_uint'] {
 				g.a.child_node(&node, 2).value.int()
 			} else {

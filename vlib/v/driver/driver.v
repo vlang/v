@@ -14914,7 +14914,7 @@ pub fn run(args []string) {
 					exit(run_result)
 				}
 				b.step('run')
-			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+			} else if !skip_running && test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
 				test_result := run_test_binary(bin_file)
 				if test_result != 0 {
 					exit(test_result)
@@ -15173,7 +15173,7 @@ pub fn run(args []string) {
 					exit(run_result)
 				}
 				b.step('run')
-			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+			} else if !skip_running && test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
 				test_result := run_test_binary(bin_file)
 				if test_result != 0 {
 					exit(test_result)
@@ -17028,7 +17028,7 @@ Please install the corresponding development package/libraries and make sure the
 				exit(run_result)
 			}
 			b.step('run')
-		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+		} else if !skip_running && test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
 			test_result := run_test_binary(bin_file)
 			if test_result != 0 {
 				exit(test_result)

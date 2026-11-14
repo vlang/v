@@ -391,3 +391,13 @@ const float_literal_zero_for_interpolation = 0.0
 fn test_const_float_literal_string_interpolation() {
 	assert '${float_literal_zero_for_interpolation}' == '0.0'
 }
+
+@[ignore_overflow]
+fn test_interpolation_preserves_narrow_integer_arithmetic() {
+	a := i8(-128)
+	b := i16(-32768)
+	c := u8(255)
+	assert '${-a} ${a + a}' == '-128 0'
+	assert '${-b} ${b + b}' == '-32768 0'
+	assert '${c + u8(1)}' == '0'
+}

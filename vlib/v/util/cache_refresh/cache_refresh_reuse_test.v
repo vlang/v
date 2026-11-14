@@ -229,6 +229,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		diagnostic := 'warm refresh must reuse its validated module objects\n' +
 			'cold compiler calls:\n${cold_calls}\n' + 'after warm refresh:\n${warm_calls}'
 		assert warm_calls == cold_calls, diagnostic
+		assert os.read_file(dependency_log)!.contains(' -E '), 'native interface validation was not run'
 	}
 }
 

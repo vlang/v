@@ -48,6 +48,7 @@ including failed assertions, panics, and nonzero exits. This also applies with `
 and `v run file_test.v`; `-keepc` still retains generated C. Explicit `-o` outputs are also removed
 after execution. To keep an executable for later execution or debugging, compile without running
 it using `v -skip-running -o test_binary file_test.v`.
+`-skip-running` takes precedence over `-stats` and `VTEST_SHOW_ASSERTS`.
 
 NB 2: You can also run many test files at once (in parallel, depending on
 how many cores you have), with:
