@@ -38,8 +38,8 @@ fn (e TestCEnvironment) restore() {
 }
 
 fn run_test_c(args []string) os.Result {
-	cc := $if windows { 'gcc' } $else { 'cc' }
-	mut options := ['-new-compiler', '-no-retry-compilation', '-cc', cc]
+	// Let V select an available compiler, including bundled TCC.
+	mut options := ['-new-compiler', '-no-retry-compilation']
 	options << args
 	return cmdexec.run_with_timeout(@VEXE, options, 120_000)
 }
