@@ -86,6 +86,7 @@ scope restrictions and identifies files that the installer will not create.
 | VS Code | `<config>/Code/User/mcp.json` | `.vscode/mcp.json` | `servers` |
 | Zed | `<zed>/settings.json` | not handled | `context_servers` |
 | Gemini CLI | `~/.gemini/settings.json` | `.gemini/settings.json` | `mcpServers` |
+| Antigravity | `~/.gemini/config/mcp_config.json` | `.agents/mcp_config.json` | `mcpServers` |
 
 `<config>` is the platform config directory: `%APPDATA%` on Windows,
 `~/Library/Application Support` on macOS, and `$XDG_CONFIG_HOME` (default

@@ -1461,6 +1461,16 @@ fn test_claude_style_clients_take_a_command_string_and_args() {
 	assert entry.contains('"args": ["mcp", "serve"]'), entry
 }
 
+fn test_antigravity_uses_its_own_mcp_config_files() {
+	h := find_harness('antigravity') or { panic('antigravity is missing') }
+	assert h.key == 'mcpServers'
+	assert h.user.replace('\\', '/').ends_with('.gemini/config/mcp_config.json'), h.user
+	assert h.path_for('/work', true).replace('\\', '/').ends_with('/work/.agents/mcp_config.json')
+	entry := h.entry('/usr/bin/v', ['mcp', 'serve'])
+	assert entry.contains('"command": "/usr/bin/v"'), entry
+	assert entry.contains('"args": ["mcp", "serve"]'), entry
+}
+
 fn test_a_windows_executable_keeps_its_backslashes() {
 	cursor := find_harness('cursor') or { panic('cursor is missing') }
 	entry := cursor.entry('C:\\Users\\me\\v.exe', ['mcp'])
@@ -1992,7 +2002,7 @@ fn test_a_project_install_creates_the_file_for_every_client_that_has_one() {
 		assert has_entry(read_config(path), h.key, server_id), '${h.name}: ' + read_config(path)
 		seen++
 	}
-	assert seen == 5, 'expected five clients with a project file, got ${seen}'
+	assert seen == 6, 'expected six clients with a project file, got ${seen}'
 }
 
 fn test_opencode_uses_the_root_project_file_unless_another_already_exists() {
