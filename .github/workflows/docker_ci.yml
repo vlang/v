@@ -142,6 +142,12 @@ jobs:
           CC=musl-gcc ./Configure linux-x86_64 no-shared no-tests no-secure-memory no-afalgeng --prefix=/usr/local --libdir=lib64 --openssldir=/usr/local/ssl
           make -j"$(nproc)"
           make install_sw
+          export PKG_CONFIG_PATH="/usr/local/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          test "$(pkg-config --variable=prefix openssl)" = /usr/local
+          printf '%s\n' '#include <openssl/ssl.h>' 'int main(void) { SSL_CTX *ctx = SSL_CTX_new(TLS_method()); if (!ctx || !OpenSSL_version_num()) return 1; SSL_CTX_free(ctx); return 0; }' > /tmp/musl-openssl-smoke.c
+          musl-gcc -static $(pkg-config --cflags openssl) /tmp/musl-openssl-smoke.c -o /tmp/musl-openssl-smoke $(pkg-config --libs --static openssl)
+          /tmp/musl-openssl-smoke
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Test V fixed tests

@@ -8,6 +8,7 @@ import v.pref
 import v.scanner
 import v.ssa
 import v.token
+import v.workers
 
 const fastc_arm64_fd_set_source_type = flat.source_type_id('C.fd_set')
 const fastc_arm64_timeval_source_type = flat.source_type_id('C.timeval')
@@ -328,7 +329,9 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	timer.mark('arm64.parse')
 	fast_arm64_hide_unused_prototypes(mut program.m)
 	mut gen := arm64.Gen.new(program.m)
-	gen.gen_parallel()
+	mut pool := workers.new(fastc_parallel_worker_limit(prefs) - 1)
+	defer { pool.close() }
+	gen.gen_parallel(pool)
 	timer.mark('arm64.codegen')
 	gen.write_and_link(output)
 	timer.mark('arm64.link')
