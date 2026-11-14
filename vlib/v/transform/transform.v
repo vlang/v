@@ -24697,6 +24697,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		}
 	}
 	if node.op == .left_shift {
+		if lowered := t.lower_append_string_bytes(node) {
+			return lowered
+		}
 		lhs_id := t.a.children[node.children_start]
 		rhs_id := t.a.children[node.children_start + 1]
 		mut rhs_target_type := u32(0)

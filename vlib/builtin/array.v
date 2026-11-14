@@ -1349,6 +1349,29 @@ pub fn (mut a array) push_many(val voidptr, size int) {
 	a.len = int(new_len)
 }
 
+// push_string_bytes appends the bytes of `s` to the `[]u8` array `a`, like `a << s.bytes()`
+// without the temporary array. The compiler lowers that append to this call.
+fn (mut a array) push_string_bytes(s string) {
+	if s.len == 0 {
+		return
+	}
+	src := uint(s.str)
+	src_end := src + uint(s.len)
+	data := uint(a.data)
+	header := uint(&a)
+	if (src < header + uint(sizeof(array)) && src_end > header)
+		|| (a.data != unsafe { nil } && src < data + uint(a.cap)
+			&& src_end > data - uint(a.offset)) {
+		// Include the prefix kept before data after drop or pop_left in the storage range.
+		// An unsafe string view may overlap that storage or the array header.
+		// Growing or unsharing can mutate either: snapshot the bytes before appending.
+		tmp := s.bytes()
+		a.push_many(tmp.data, tmp.len)
+		return
+	}
+	a.push_many(s.str, s.len)
+}
+
 // reverse_in_place reverses existing array data, modifying original array.
 pub fn (mut a array) reverse_in_place() {
 	if a.len < 2 || a.element_size == 0 {
