@@ -13029,7 +13029,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type_source_id_join)
 				}
-				if t.normalize_type_alias(elem_type_id) != flat.source_type_string {
+			}
+			receiver := t.transform_expr(base_id)
+			if t.validating_generic_spec {
+				receiver_type := t.node_type(receiver)
+				if t.normalize_type_alias(t.array_elem_type(receiver_type)) != flat.source_type_string {
 					base_name := if base_node.kind == .ident && base_node.value.len > 0 {
 						base_node.value
 					} else {
@@ -13039,7 +13043,6 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					return t.make_empty()
 				}
 			}
-			receiver := t.transform_expr(base_id)
 			arg := t.transform_expr(t.a.children[node.children_start + 1])
 			return t.make_call_typed('Array_string__join', [receiver, arg], flat.source_type_string)
 		}

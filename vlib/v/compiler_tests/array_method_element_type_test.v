@@ -50,3 +50,34 @@ fn test_generic_join_calls_the_method_of_an_array_alias() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ints,'
 }
+
+type JoinValue = f64 | int | string
+
+fn join_identity[T](a []T) string {
+	return a.map(it).join('')
+}
+
+fn join_identity_variadic[T](args ...T) string {
+	return args.map(it).join('')
+}
+
+fn join_strings[T](a []T) string {
+	return a.map(it.str()).join(',')
+}
+
+fn join_strings_variadic[T](args ...T) string {
+	return args.map(it.str()).join(',')
+}
+
+fn test_generic_map_join_uses_the_mapped_element_type() {
+	assert join_identity(['a', 'b']) == 'ab'
+	assert join_identity_variadic('a', 'b') == 'ab'
+	assert join_strings([1, 2]) == '1,2'
+	assert join_strings([1.5, 2.5]) == '1.5,2.5'
+	assert join_strings(['a', 'b']) == 'a,b'
+	assert join_strings([JoinValue(1), JoinValue(1.5), JoinValue('a')]) == "JoinValue(1),JoinValue(1.5),JoinValue('a')"
+	assert join_strings_variadic(1, 2) == '1,2'
+	assert join_strings_variadic(1.5, 2.5) == '1.5,2.5'
+	assert join_strings_variadic('a', 'b') == 'a,b'
+	assert join_strings_variadic[JoinValue](1, 1.5, 'a') == "JoinValue(1),JoinValue(1.5),JoinValue('a')"
+}
