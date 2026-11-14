@@ -31,6 +31,16 @@ mut:
 
 	// read buffer for partial records
 	read_buf []u8
+
+	// resumption state (client side): ticket received via NewSessionTicket.
+	resumption SessionState
+	has_ticket bool
+	// resumed reports whether this handshake authenticated with a PSK.
+	resumed bool
+	// resumption_master is derived at handshake completion (transcript
+	// including client Finished); each NewSessionTicket nonce derives a PSK.
+	resumption_master     []u8
+	has_resumption_master bool
 }
 
 // dial connects TCP to host:port and returns an unhandshaked TLS Conn.
@@ -221,6 +231,21 @@ pub fn (c Conn) negotiated_alpn() string {
 	return ''
 }
 
+// session_state returns the resumption ticket received on this connection
+// (client side only). Pass it as Config.resume_from on the next dial to
+// attempt PSK resumption.
+pub fn (c &Conn) session_state() ?SessionState {
+	if c.is_server || !c.has_ticket {
+		return none
+	}
+	return c.resumption
+}
+
+// resumed reports whether this connection resumed via a PSK.
+pub fn (c &Conn) resumed() bool {
+	return c.resumed
+}
+
 // socket_read_into_ptr reads decrypted data into a raw pointer (net.ssl compatibility).
 pub fn (mut c Conn) socket_read_into_ptr(buf &u8, bufsize int) !int {
 	mut tmp := []u8{len: bufsize}
@@ -283,8 +308,62 @@ pub fn (mut c Conn) handshake() ! {
 			c.write_cipher_record(.handshake, msgs[i])!
 		}
 
-		fct := c.read_handshake_body() or { return err }
-		shs.verify_client_finished(fct) or { return err }
+		// mTLS: collect Certificate [+ CertificateVerify] + Finished (peers may
+		// coalesce them into fewer records, so walk messages, not records).
+		if shs.verify_client && !shs.accepted_psk {
+			mut cmsgs := [][]u8{}
+			mut have_finished := false
+			mut iters := 0
+			for !have_finished {
+				iters++
+				if iters > 8 || cmsgs.len > 4 {
+					return error('tls: unexpected client flight')
+				}
+				cbody := c.read_handshake_body() or { return err }
+				mut o := 0
+				for o < cbody.len {
+					parsed, n := parse_handshake_message(cbody[o..]) or { return err }
+					cmsgs << cbody[o..o + n]
+					o += n
+					if parsed.typ == .finished {
+						if o != cbody.len {
+							return error('tls: trailing data after Finished')
+						}
+						have_finished = true
+					}
+					if cmsgs.len > 4 {
+						return error('tls: unexpected client flight')
+					}
+				}
+			}
+			if cmsgs.len < 2 || cmsgs.len > 3 {
+				return error('tls: unexpected client flight')
+			}
+			t0, _ := parse_handshake_message(cmsgs[0]) or { return err }
+			if t0.typ != .certificate {
+				return error('tls: expected client Certificate')
+			}
+			if cmsgs.len == 2 {
+				t1, _ := parse_handshake_message(cmsgs[1]) or { return err }
+				if t1.typ != .finished {
+					return error('tls: expected client Finished')
+				}
+				chain, _ := parse_client_cert_chain(t0.body) or { return err }
+				if chain.len == 0 {
+					return error('tls: client certificate required')
+				}
+				return error('tls: expected client CertificateVerify')
+			}
+			t1, _ := parse_handshake_message(cmsgs[1]) or { return err }
+			if t1.typ != .certificate_verify {
+				return error('tls: expected client CertificateVerify')
+			}
+			shs.verify_client_certificate(t0.body, t1.body) or { return err }
+			shs.verify_client_finished(cmsgs[2]) or { return err }
+		} else {
+			fct := c.read_handshake_body() or { return err }
+			shs.verify_client_finished(fct) or { return err }
+		}
 
 		c.server_app = derive_traffic_keys(shs.app_keys.server_secret, c.suite) or { return err }
 		c.client_app = derive_traffic_keys(shs.app_keys.client_secret, c.suite) or { return err }
@@ -292,11 +371,22 @@ pub fn (mut c Conn) handshake() ! {
 		c.read_seq = 0
 		c.write_seq = 0
 		c.handshake_done = true
+		c.resumed = shs.accepted_psk
+		// Issue one session ticket under the application keys (best effort:
+		// direct ServerHandshake users without a ticket key just skip it).
+		if shs.ticket_key.len == 32 {
+			nst := build_new_session_ticket(shs.app_keys.master_secret, transcript_hash_for_suite(shs.transcript,
+				c.suite), c.suite, shs.ticket_key) or { []u8{} }
+			if nst.len > 0 {
+				c.write_cipher_record(.handshake, nst) or { return err }
+			}
+		}
 		return
 	}
 	mut chs := new_client_handshake(c.cfg.server_name, c.cfg.alpn_protocols, c.cfg.pq_mode, effective_cipher_suites(c.cfg)) or {
 		return err
 	}
+	chs.resume_offer = c.cfg.resume_from
 
 	ch_msg := chs.build_client_hello() or { return err }
 	c.write_plain_record(.handshake, ch_msg)!
@@ -390,6 +480,12 @@ pub fn (mut c Conn) handshake() ! {
 					chs.transcript << msg_raw
 					server_finished = true
 				}
+				.certificate_request {
+					schemes, ctx := parse_certificate_request(parsed.body) or { return err }
+					chs.requested_cert = true
+					chs.req_schemes = schemes
+					chs.req_context = ctx
+				}
 				else {}
 			}
 			if parsed.typ != .finished {
@@ -411,24 +507,81 @@ pub fn (mut c Conn) handshake() ! {
 	c.client_app = derive_traffic_keys(as_.client_secret, c.suite) or { return err }
 	c.server_app = derive_traffic_keys(as_.server_secret, c.suite) or { return err }
 
+	// mTLS: answer a CertificateRequest before our Finished (still under the
+	// handshake traffic keys).
+	if chs.requested_cert {
+		auth_msgs := build_client_auth_messages(c.cfg, chs.req_context, chs.req_schemes,
+			c.suite, chs.transcript) or {
+			[encode_handshake_message(.certificate, encode_certificate_body(chs.req_context,
+				[][]u8{})!)!]
+		}
+		for m in auth_msgs {
+			chs.transcript << m
+			c.write_cipher_record(.handshake, m)!
+		}
+	}
+
 	cf_verified := finished_verify_data_for_suite(chs.handshake_keys.client_secret, transcript_hash_for_suite(chs.transcript,
 		c.suite), c.suite) or { return err }
 	fin_body := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: cf_verified })) or { return err }
+	chs.transcript << fin_body
 	c.write_cipher_record(.handshake, fin_body)!
 	// Application traffic keys start a new record-number epoch.
 	c.read_seq = 0
 	c.write_seq = 0
 	c.handshake_done = true
+	c.resumed = chs.accepted_psk
+	// Store the resumption master (transcript now includes client Finished)
+	// so post-handshake NewSessionTickets can derive PSKs in read().
+	full_th := transcript_hash_for_suite(chs.transcript, c.suite)
+	c.resumption_master = derive_resumption_master(as_.master_secret, full_th,
+		c.suite) or { []u8{} }
+	c.has_resumption_master = c.resumption_master.len > 0
+	c.client_hs = chs
+}
+
+// consume_post_handshake processes a decrypted post-handshake flight. Each
+// NewSessionTicket derives and stores a SessionState; other message types
+// are ignored so future extensions (e.g. KeyUpdate) do not break reads.
+fn (mut c Conn) consume_post_handshake(body []u8) ! {
+	mut off := 0
+	for off < body.len {
+		parsed, n := parse_handshake_message(body[off..])!
+		if parsed.typ == .new_session_ticket {
+			nst := parse_new_session_ticket(parsed.body)!
+			if !c.is_server && c.has_resumption_master {
+				psk := derive_psk(c.resumption_master, nst.nonce, c.suite) or { continue }
+				c.resumption = SessionState{
+					ticket:       nst.ticket.clone()
+					psk:          psk
+					suite:        c.suite
+					created_unix: time.now().unix()
+					lifetime:     nst.lifetime
+					age_add:      nst.age_add
+				}
+				c.has_ticket = true
+			}
+		}
+		off += n
+	}
+	if off != body.len {
+		return error('tls: trailing data after post-handshake flight')
+	}
 }
 
 // read decrypts one application-data record into buf. The handshake must be done.
-// read returns an error on alerts or unexpected handshake records.
+// read opportunistically consumes post-handshake NewSessionTickets (stored for
+// session_state()) so ticket-less peers never hang the handshake.
 pub fn (mut c Conn) read(mut buf []u8) !int {
 	if !c.handshake_done {
 		return error('tls: handshake not complete')
 	}
-	if c.read_buf.len == 0 {
+	for c.read_buf.len == 0 {
 		ct, body := c.read_record() or { return err }
+		if ct == .handshake {
+			c.consume_post_handshake(body) or { return err }
+			continue
+		}
 		if ct != .application_data {
 			if ct == .alert {
 				return error('tls: peer alert')

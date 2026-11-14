@@ -16,8 +16,10 @@ library also implements raw 512/1024 variants, which `net.tls` does not
 negotiate). AES-128-GCM, AES-256-GCM (SHA-384 schedule) and
 ChaCha20-Poly1305 record protection, negotiated by server preference. TLS 1.3
 CCM suites (0x1304/0x1305) are not negotiated: no CCM primitive exists in the
-stdlib and no major peer offers them. No 0-RTT, no session resumption, no TLS
-1.2, no DTLS.
+stdlib and no major peer offers them. Stateless session tickets with
+`psk_dhe_ke` resumption (single-identity PSK offers, no 0-RTT) and mTLS
+(`verify_client` + `client_cert`/`client_key`) are implemented; there is no
+TLS 1.2, no DTLS.
 
 ## Build
 
@@ -38,6 +40,27 @@ If neither is configured, the server creates a temporary self-signed
 `localhost` certificate; clients using chain verification will not
 trust it unless it is explicitly added to their trust store.
 
+## Session resumption
+
+The server sends one `NewSessionTicket` per connection: an AES-256-GCM box
+holding the resumption master secret, so servers stay stateless (the ticket
+key is generated per `Listener`). The client captures the ticket on its next
+`read()` and passes it as `Config.resume_from` on the next dial; a valid
+ticket resumes the session with `psk_dhe_ke` and no certificate flight
+(`Conn.resumed()` reports it, `Conn.session_state()` returns the ticket).
+Tickets with a bad box, wrong suite, stale age or bad binder fall back to a
+full handshake. No early data (0-RTT) is sent.
+
+## Mutual TLS
+
+Set `Config.verify_client` on the server and `Config.client_cert` /
+`Config.client_key` (PEM paths or bytes) on the client. The server sends a
+`CertificateRequest`; the client answers with its chain and
+`CertificateVerify` before its `Finished`. Client certificates verify
+against `ca_store`/system roots when `verify_chain` is set (no hostname
+check applies to client certificates). A client with no credential sends an
+empty `Certificate`, which the server rejects.
+
 ## Design notes
 
 - Pure V only: no `C.`/`JS.` symbols in `.v` files. Enforced by running tests
@@ -56,9 +79,10 @@ trust it unless it is explicitly added to their trust store.
 
 - RSA *key generation* — V can verify and sign with RSA but cannot generate
   RSA keys (no crypto.rsa module); test fixtures live in `testdata/`.
-- Session resumption / PSK (incl. NewSessionTicket, 0-RTT), client-cert auth
-  (mTLS), HelloRetryRequest, KeyUpdate — wire parsing exists for the message
-  types, but full negotiation is not implemented yet.
+- Session resumption accepts only single-identity `psk_dhe_ke` offers; no
+  0-RTT (early data is never sent), no HelloRetryRequest, no KeyUpdate —
+  wire parsing exists for the message types, but full negotiation is not
+  implemented yet.
 - TLS 1.2, DTLS, CCM suites (0x1304/0x1305) — out of scope: no stdlib CCM
   primitive and no major peer offers them.
 - SLH-DSA remains on the OpenSSL wrapper until a pure-V SLH-DSA module exists.

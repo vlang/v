@@ -2,6 +2,7 @@ module tls
 
 import crypto.rand
 import crypto.x509
+import time
 import x.crypto.curve25519
 import x.crypto.mlkem
 import crypto
@@ -31,6 +32,14 @@ pub mut:
 	server_cert_key    ?x509.PublicKey
 	// hybrid shared secret components
 	mlkem_ss []u8
+	// PSK resumption: ticket offered on this handshake (if any).
+	resume_offer ?SessionState
+	// accepted_psk is set when the server selected our PSK identity.
+	accepted_psk bool
+	// requested_cert is set when the server sent CertificateRequest (mTLS).
+	requested_cert bool
+	req_schemes    []u16
+	req_context    []u8
 }
 
 // new_client_handshake creates a client handshake for host with optional ALPN and PQ mode.
@@ -100,6 +109,21 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 	if h.alpn.len > 0 {
 		exts << Extension{ typ: ext_alpn, data: alpn_data(h.alpn)! }
 	}
+	// PSK offer goes last (RFC 8446 §4.2.11.2). Only offer when the ticket
+	// suite is in our offer list (binder hash must match the negotiated hash).
+	mut offered_psk := false
+	if st := h.resume_offer {
+		if st.suite in h.offered && st.ticket.len > 0 && st.psk.len > 0 {
+			exts << Extension{ typ: ext_psk_key_exchange_modes, data: encode_psk_modes() }
+			age_ms := u32((time.now().unix() - st.created_unix) * 1000) & 0xffffffff
+			obfuscated := age_ms + st.age_add
+			exts << Extension{
+				typ:  ext_pre_shared_key
+				data: encode_psk_offer(st.ticket, obfuscated, st.suite)
+			}
+			offered_psk = true
+		}
+	}
 	mut ch := ClientHello{
 		legacy_version:      tls_version_1_3
 		random:              h.client_random.clone()
@@ -109,8 +133,35 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 		extensions:          exts
 	}
 	body := encode_client_hello(ch)!
-	msg := encode_handshake_message(.client_hello, body)!
+	mut msg := encode_handshake_message(.client_hello, body)!
 	h.transcript = msg.clone()
+	if offered_psk {
+		st := h.resume_offer or { return error('tls: missing psk offer') }
+		// Binder key from the PSK early secret ("res binder").
+		es_psk := derive_early_secret_with_psk(st.psk, st.suite) or { return err }
+		bk := binder_key_for(es_psk, st.suite) or { return err }
+		trunc := truncated_ch_for_binder(ch) or { return err }
+		th := transcript_hash_for_suite(trunc, st.suite)
+		binder := compute_binder(bk, th, st.suite) or { return err }
+		// Patch the trailing pre_shared_key extension with the real binder.
+		mut psk_data := exts[exts.len - 1].data.clone()
+		psk_data = patch_psk_binder(psk_data, binder)!
+		exts[exts.len - 1] = Extension{
+			typ:  ext_pre_shared_key
+			data: psk_data
+		}
+		ch2 := ClientHello{
+			legacy_version:      tls_version_1_3
+			random:              h.client_random.clone()
+			session_id:          []u8{}
+			cipher_suites:       h.offered.clone()
+			compression_methods: [u8(0)]
+			extensions:          exts
+		}
+		body2 := encode_client_hello(ch2)!
+		msg = encode_handshake_message(.client_hello, body2)!
+		h.transcript = msg.clone()
+	}
 	return msg
 }
 
@@ -193,7 +244,26 @@ pub fn (mut h ClientHandshake) process_server_hello(sh_msg []u8) ! {
 		shared = h.echd_priv.x25519(server_pub) or { return err }
 	}
 
-	es := derive_early_secret_for_suite(h.suite) or { return err }
+	// Server PSK acceptance comes as a pre_shared_key extension carrying the
+	// selected identity (we only ever offer one).
+	for e in sh.extensions {
+		if e.typ == ext_pre_shared_key {
+			sel := parse_psk_selected(e.data) or { return err }
+			if sel != 0 {
+				return error('tls: bad psk selected identity')
+			}
+			h.accepted_psk = true
+		}
+	}
+
+	mut es := derive_early_secret_for_suite(h.suite) or { return err }
+	if h.accepted_psk {
+		st := h.resume_offer or { return error('tls: server accepted unoffered psk') }
+		if st.suite != h.suite {
+			return error('tls: psk suite mismatch')
+		}
+		es = derive_early_secret_with_psk(st.psk, h.suite) or { return err }
+	}
 	th := transcript_hash_for_suite(h.transcript, h.suite)
 	hs := derive_handshake_secrets_for_suite(es, shared, th, h.suite) or { return err }
 	h.handshake_keys = hs

@@ -7,13 +7,15 @@
 // x.crypto.mlkem library also implements raw 512/1024 variants, which net.tls
 // does not negotiate). CertificateVerify schemes:
 // ecdsa 0x0403, 0x0503, 0x0603, mldsa 0x0904/0x0905/0x0906, rsa_pss_rsae
-// 0x0804/0x0805/0x0806, rsa_pkcs1 0x0401/0x0501/0x0601. No 0-RTT, no session
-// resumption, no TLS 1.2, no DTLS, no client-cert auth in v1.
+// 0x0804/0x0805/0x0806, rsa_pkcs1 0x0401/0x0501/0x0601. Stateless session
+// tickets with psk_dhe_ke resumption (no 0-RTT), mTLS via CertificateRequest
+// when Config.verify_client is set. No TLS 1.2, no DTLS.
 // Cipher suites: AES-128-GCM-SHA256, AES-256-GCM-SHA384 (SHA-384 schedule)
 // and ChaCha20-Poly1305-SHA256, negotiated by server preference
 // (AES-128-GCM first).
 module tls
 
+import crypto.rand
 import net
 
 // Listener is a pure-V TLS 1.3 listener.
@@ -24,11 +26,20 @@ mut:
 }
 
 // listen binds a TLS listener. Default bind address is 127.0.0.1:0.
+// listen generates a ticket encryption key when cfg.ticket_key is empty so
+// every connection on the listener shares stateless session tickets.
 pub fn listen(cfg Config) !&Listener {
+	mut c := cfg
+	if c.ticket_key.len == 0 {
+		c.ticket_key = rand.bytes(32)!
+	}
+	if c.ticket_key.len != 32 {
+		return error('tls: invalid ticket key length')
+	}
 	mut tl := net.listen_tcp(.ip, '127.0.0.1:0')!
 	return &Listener{
 		tcp: tl
-		cfg: cfg
+		cfg: c
 	}
 }
 
@@ -155,8 +166,8 @@ pub enum PostQuantumMode {
 // differ: verify is a bool (not a CA path string), server_name is a Config
 // field (net.ssl passes the hostname to connect() instead), and the
 // verify_chain/ca_store/pq_mode/version fields have no net.ssl counterpart.
-// File paths or PEM bytes are accepted for cert/key; client certs (mTLS),
-// intermediates, RSA-PSS CA signatures, SHA-1/MD5 and non-0x0303 versions
+// File paths or PEM bytes are accepted for cert/key; intermediates,
+// RSA-PSS CA signatures, SHA-1/MD5 and non-0x0303 versions
 // are not supported in v1.
 @[params]
 pub struct Config {
@@ -193,6 +204,15 @@ pub mut:
 	cipher_suites []CipherSuite
 	// Optional trust store for chain verification. If empty, system roots are used.
 	ca_store CertStore
+	// Session-ticket encryption key (server side, 32 bytes). Generated at
+	// listen() when empty and shared by every connection on that listener.
+	ticket_key []u8
+	// Resumption ticket from a previous connection (client side). When set,
+	// the client offers it as a PSK with psk_dhe_ke.
+	resume_from ?SessionState
+	// Request a client certificate (server side, mTLS). The client cert is
+	// verified against ca_store/system roots when verify_chain is set.
+	verify_client bool
 }
 
 // Conn is defined in conn.v.

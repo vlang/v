@@ -2,8 +2,6 @@ module tls
 
 import crypto.ecdsa
 import crypto.rand
-import crypto.sha256
-import crypto.sha512
 import crypto.pem
 import crypto.x509
 import crypto.subtle
@@ -47,6 +45,20 @@ pub mut:
 	handshake_keys HandshakeSecrets
 	app_keys       ApplicationSecrets
 	transcript     []u8
+	// ticket encryption key for stateless session tickets.
+	ticket_key []u8
+	// PSK resumption state: set when the client offered a valid ticket.
+	accepted_psk     bool
+	early_secret_psk []u8
+	// verify_client requests a client certificate (mTLS). Client certs are
+	// verified against client_roots/system roots when verify_chain is set.
+	verify_client bool
+	verify_chain  bool
+	client_roots  CertStore
+	// auth_base_th is captured in verify_client_certificate before the
+	// client auth messages are appended: application secrets bind the
+	// transcript only through server Finished (RFC 8446 §7.1).
+	auth_base_th []u8
 }
 
 // new_server_handshake creates a server handshake with an ephemeral self-signed cert.
@@ -69,6 +81,8 @@ pub fn new_server_handshake(pq_mode PostQuantumMode) !ServerHandshake {
 		ecdsa_pub:     pb
 		cert_chain:    [cert_der]
 		server_random: sr
+		ticket_key:    crypto.rand.bytes(32)!
+		verify_chain:  true
 	}
 	if pq_mode != .off {
 		h.has_mlkem = true
@@ -158,7 +172,16 @@ fn load_server_certificate_chain(cfg Config) ![][]u8 {
 
 fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !ServerHandshake {
 	if cfg.cert.len == 0 && cfg.cert_pem.len == 0 && cfg.key.len == 0 && cfg.key_pem.len == 0 {
-		return new_server_handshake(pq_mode)
+		// Ephemeral self-signed default (tests): still share the listener's
+		// ticket key so resumption works across connections.
+		mut server := new_server_handshake(pq_mode)!
+		if cfg.ticket_key.len == 32 {
+			server.ticket_key = cfg.ticket_key.clone()
+		}
+		server.verify_client = cfg.verify_client
+		server.verify_chain = cfg.verify_chain
+		server.client_roots = cfg.ca_store
+		return server
 	}
 	if (cfg.cert.len == 0 && cfg.cert_pem.len == 0) || (cfg.key.len == 0 && cfg.key_pem.len == 0) {
 		return error('tls: server certificate and private key must both be configured')
@@ -170,85 +193,19 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	leaf_public := leaf.public_key() or { return error('tls: unsupported server certificate public key') }
 	mut server := new_server_handshake(pq_mode)!
 	server.suites = effective_cipher_suites(cfg)
-	match leaf_public {
-		x509.EcdsaP256PublicKey {
-			if key_block.block_type !in ['EC PRIVATE KEY', 'PRIVATE KEY'] {
-				return error('tls: ECDSA server key must be SEC1 or PKCS#8 PEM')
-			}
-			server.key_kind = .ecdsa_p256
-			server.ecdsa_priv = load_ecdsa_key(key_block.data, 32)!
-			server.ecdsa_pub = server.ecdsa_priv.public_key()!
-			if subtle.constant_time_compare(server.ecdsa_pub.bytes()!, leaf_public.point) != 1 {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
-		x509.EcdsaP384PublicKey {
-			if key_block.block_type !in ['EC PRIVATE KEY', 'PRIVATE KEY'] {
-				return error('tls: ECDSA server key must be SEC1 or PKCS#8 PEM')
-			}
-			server.key_kind = .ecdsa_p384
-			server.ecdsa_priv = load_ecdsa_key(key_block.data, 48)!
-			server.ecdsa_pub = server.ecdsa_priv.public_key()!
-			if subtle.constant_time_compare(server.ecdsa_pub.bytes()!, leaf_public.point) != 1 {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
-		x509.EcdsaP521PublicKey {
-			if key_block.block_type !in ['EC PRIVATE KEY', 'PRIVATE KEY'] {
-				return error('tls: ECDSA server key must be SEC1 or PKCS#8 PEM')
-			}
-			server.key_kind = .ecdsa_p521
-			server.ecdsa_priv = load_ecdsa_key(key_block.data, 66)!
-			server.ecdsa_pub = server.ecdsa_priv.public_key()!
-			if subtle.constant_time_compare(server.ecdsa_pub.bytes()!, leaf_public.point) != 1 {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
-		x509.RsaPublicKey {
-			if key_block.block_type !in ['RSA PRIVATE KEY', 'PRIVATE KEY'] {
-				return error('tls: RSA server key must be PKCS#1 or PKCS#8 PEM')
-			}
-			server.key_kind = .rsa
-			server.rsa_priv = parse_rsa_private_key(key_block.data)!
-			n, _ := parse_rsa_pubkey(leaf_public.der) or {
-				return error('tls: invalid server certificate key')
-			}
-			if n != server.rsa_priv.n {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
-		x509.MlDsa44PublicKey {
-			if key_block.block_type != 'PRIVATE KEY' {
-				return error('tls: ML-DSA server key must be PKCS#8 PEM')
-			}
-			server.key_kind = .mldsa_44
-			server.mldsa_priv = parse_mldsa_private_key(key_block.data, .ml_dsa_44)!
-			if subtle.constant_time_compare(server.mldsa_priv.public_key().bytes(), leaf_public.raw) != 1 {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
-		x509.MlDsa65PublicKey {
-			if key_block.block_type != 'PRIVATE KEY' {
-				return error('tls: ML-DSA server key must be PKCS#8 PEM')
-			}
-			server.key_kind = .mldsa_65
-			server.mldsa_priv = parse_mldsa_private_key(key_block.data, .ml_dsa_65)!
-			if subtle.constant_time_compare(server.mldsa_priv.public_key().bytes(), leaf_public.raw) != 1 {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
-		x509.MlDsa87PublicKey {
-			if key_block.block_type != 'PRIVATE KEY' {
-				return error('tls: ML-DSA server key must be PKCS#8 PEM')
-			}
-			server.key_kind = .mldsa_87
-			server.mldsa_priv = parse_mldsa_private_key(key_block.data, .ml_dsa_87)!
-			if subtle.constant_time_compare(server.mldsa_priv.public_key().bytes(), leaf_public.raw) != 1 {
-				return error('tls: server certificate and private key do not match')
-			}
-		}
+	keys := load_credential_keys(key_block, leaf_public)!
+	server.key_kind = keys.kind
+	server.rsa_priv = keys.rsa_priv
+	server.mldsa_priv = keys.mldsa_priv
+	if epriv := keys.ecdsa_priv {
+		server.ecdsa_priv = epriv
+		server.ecdsa_pub = epriv.public_key()!
 	}
 	server.cert_chain = chain
+	server.ticket_key = cfg.ticket_key.clone()
+	server.verify_client = cfg.verify_client
+	server.verify_chain = cfg.verify_chain
+	server.client_roots = cfg.ca_store
 	return server
 }
 
@@ -421,6 +378,31 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	if !offered_tls13 {
 		return error('tls: TLS 1.3 not offered')
 	}
+	// PSK evaluation (RFC 8446 §4.2.11): pre_shared_key must be the last
+	// extension, paired with psk_key_exchange_modes. A valid ticket moves
+	// the handshake to PSK authentication (no server certificate flight).
+	mut psk_data := []u8{}
+	mut psk_modes_ok := false
+	mut has_psk_ext := false
+	for i, e in ch.extensions {
+		if e.typ == ext_psk_key_exchange_modes {
+			psk_modes_ok = parse_psk_modes(e.data)
+		}
+		if e.typ == ext_pre_shared_key {
+			if i != ch.extensions.len - 1 {
+				return error('tls: pre_shared_key must be last')
+			}
+			has_psk_ext = true
+			psk_data = e.data.clone()
+		}
+	}
+	if has_psk_ext && psk_modes_ok && s.ticket_key.len == 32 {
+		ok, es_psk := s.try_accept_psk(ch, psk_data)
+		if ok {
+			s.accepted_psk = true
+			s.early_secret_psk = es_psk
+		}
+	}
 	// Select the CertificateVerify scheme: the client's signature_algorithms
 	// extension intersected with what the server key supports. ECDSA keys use
 	// their curve's scheme, ML-DSA keys use their variant's scheme, RSA
@@ -442,7 +424,9 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 			}
 		}
 	}
-	s.cv_scheme = select_cv_scheme(offered_sigs, s.key_kind) or { return err }
+	if !s.accepted_psk {
+		s.cv_scheme = select_cv_scheme(offered_sigs, s.key_kind) or { return err }
+	}
 	s.client_random = ch.random.clone()
 	s.transcript = ch_msg.clone()
 
@@ -526,28 +510,35 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		srv_pub_bytes = entry.clone()
 	}
 
+	mut sh_exts := [
+		Extension{
+			typ:  ext_supported_versions
+			data: [
+				u8(supported_version_tls_1_3 >> 8),
+				u8(supported_version_tls_1_3),
+			]
+		},
+		Extension{ typ: ext_key_share, data: srv_pub_bytes },
+	]
+	if s.accepted_psk {
+		sh_exts << Extension{ typ: ext_pre_shared_key, data: encode_psk_selected() }
+	}
 	sh := ServerHello{
 		legacy_version:     tls_version_1_3
 		random:             s.server_random.clone()
 		session_id:         ch.session_id.clone()
 		cipher_suite:       s.suite
 		compression_method: 0
-		extensions:         [
-			Extension{
-				typ:  ext_supported_versions
-				data: [
-					u8(supported_version_tls_1_3 >> 8),
-					u8(supported_version_tls_1_3),
-				]
-			},
-			Extension{ typ: ext_key_share, data: srv_pub_bytes },
-		]
+		extensions:         sh_exts
 	}
 	sh_body := encode_server_hello(sh)!
 	sh_msg := encode_handshake_message(.server_hello, sh_body)!
 	s.transcript << sh_msg
 
-	es := derive_early_secret_for_suite(s.suite) or { return err }
+	mut es := derive_early_secret_for_suite(s.suite) or { return err }
+	if s.accepted_psk {
+		es = s.early_secret_psk.clone()
+	}
 	th := transcript_hash_for_suite(s.transcript, s.suite)
 	hs := derive_handshake_secrets_for_suite(es, shared, th, s.suite) or { return err }
 	s.handshake_keys = hs
@@ -556,28 +547,36 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	ee_msg := encode_handshake_message(.encrypted_extensions, ee_body)!
 	s.transcript << ee_msg
 
-	mut cert_list := []u8{}
-	for cert_der in s.cert_chain {
-		if cert_der.len == 0 || cert_der.len > 0xffffff {
-			return error('tls: server certificate size out of range')
-		}
-		cert_list << u8(cert_der.len >> 16)
-		cert_list << u8(cert_der.len >> 8)
-		cert_list << u8(cert_der.len)
-		cert_list << cert_der
-		cert_list << u8(0)
-		cert_list << u8(0)
+	// mTLS: request a client certificate (never on a resumed handshake).
+	cr_msg := if s.verify_client && !s.accepted_psk {
+		cr_body := encode_certificate_request(signature_algorithms_data())!
+		m := encode_handshake_message(.certificate_request, cr_body)!
+		s.transcript << m
+		m
+	} else {
+		[]u8{}
 	}
-	if cert_list.len > 0xffffff {
-		return error('tls: server certificate chain too large')
+
+	mut out := []u8{}
+	out << sh_msg
+	out << ee_msg
+	if cr_msg.len > 0 {
+		out << cr_msg
 	}
-	mut cert_body := []u8{}
-	cert_body << u8(0) // certificate_request_context
-	cert_body << u8(cert_list.len >> 16)
-	cert_body << u8(cert_list.len >> 8)
-	cert_body << u8(cert_list.len)
-	cert_body << cert_list
-	cert_msg := encode_handshake_message(.certificate, cert_body)!
+	if s.accepted_psk {
+		// PSK authentication replaces the certificate flight.
+		fin_vd := finished_verify_data_for_suite(hs.server_secret, transcript_hash_for_suite(s.transcript,
+			s.suite), s.suite) or { return err }
+		fin_msg := encode_handshake_message(.finished, encode_finished(Finished{
+			verify_data: fin_vd
+		}))!
+		s.transcript << fin_msg
+		out << fin_msg
+		return out
+	}
+
+	cert_msg := encode_handshake_message(.certificate, encode_certificate_body([]u8{},
+		s.cert_chain)!)!
 	s.transcript << cert_msg
 
 	transcript_hash := transcript_hash_for_suite(s.transcript, s.suite)
@@ -597,59 +596,65 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	fin_msg := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: fin_vd }))!
 	s.transcript << fin_msg
 
-	mut out := []u8{}
+	out = []u8{}
 	out << sh_msg
 	out << ee_msg
+	if cr_msg.len > 0 {
+		out << cr_msg
+	}
 	out << cert_msg
 	out << cv_msg
 	out << fin_msg
 	return out
 }
 
+// try_accept_psk evaluates a single-identity PSK offer against the server
+// ticket key. It returns the PSK early secret on success; any failure
+// (bad ticket, wrong suite, stale age, bad binder) returns false so the
+// handshake falls back to certificates.
+fn (s &ServerHandshake) try_accept_psk(ch ClientHello, psk_data []u8) (bool, []u8) {
+	ids, binders := parse_psk_offer(psk_data) or { return false, []u8{} }
+	if ids.len != 1 || binders.len != 1 {
+		return false, []u8{}
+	}
+	id := ids[0]
+	master, tnonce, tsuite, created, tage := open_ticket(id.ticket, s.ticket_key) or {
+		return false, []u8{}
+	}
+	if tsuite != s.suite {
+		return false, []u8{}
+	}
+	now := time.now().unix()
+	if now < created - 10 || now - created > i64(ticket_lifetime) + 10 {
+		return false, []u8{}
+	}
+	psk := derive_psk(master, tnonce, tsuite) or { return false, []u8{} }
+	es_psk := derive_early_secret_with_psk(psk, tsuite) or { return false, []u8{} }
+	bk := binder_key_for(es_psk, tsuite) or { return false, []u8{} }
+	trunc := truncated_ch_for_binder(ch) or { return false, []u8{} }
+	th := transcript_hash_for_suite(trunc, tsuite)
+	if !verify_binder(bk, th, binders[0], tsuite) {
+		return false, []u8{}
+	}
+	expected_obf := u32((now - created) * 1000) + tage
+	d := expected_obf - id.obfuscated_age
+	if d > 10000 && d < u32(0xffffffff) - 10000 {
+		return false, []u8{}
+	}
+	return true, es_psk
+}
+
 // sign_certificate_verify signs CertificateVerify content with the server key.
 // sign_certificate_verify dispatches on the negotiated scheme selected in
-// process_client_hello: ECDSA signs directly, ML-DSA signs directly, RSA
-// uses PKCS#1 v1.5 or PSS.
+// process_client_hello (see sign_cv_with).
 fn (s &ServerHandshake) sign_certificate_verify(content []u8) ![]u8 {
-	match s.key_kind {
-		.ecdsa_p256, .ecdsa_p384, .ecdsa_p521 {
-			return s.ecdsa_priv.sign(content, ecdsa.SignerOpts{}) or { return err }
-		}
-		.mldsa_44, .mldsa_65, .mldsa_87 {
-			return s.mldsa_priv.sign(content, mldsa.SignerOpts{}) or { return err }
-		}
-		.rsa {
-			return match s.cv_scheme {
-				u16(0x0401) {
-					rsa_pkcs1_sign_digest(sha256.sum256(content), s.rsa_priv.d, s.rsa_priv.n, .sha256) or {
-						return err
-					}
-				}
-				u16(0x0501) {
-					rsa_pkcs1_sign_digest(sha512.sum384(content), s.rsa_priv.d, s.rsa_priv.n, .sha384) or {
-						return err
-					}
-				}
-				u16(0x0601) {
-					rsa_pkcs1_sign_digest(sha512.sum512(content), s.rsa_priv.d, s.rsa_priv.n, .sha512) or {
-						return err
-					}
-				}
-				u16(0x0804), u16(0x0805), u16(0x0806) {
-					rsa_pss_sign(s.cv_scheme, content, s.rsa_priv.d, s.rsa_priv.n) or {
-						return err
-					}
-				}
-				else {
-					return error('tls: no supported signature scheme')
-				}
-			}
-		}
-	}
+	return sign_cv_with(s.key_kind, s.cv_scheme, s.ecdsa_priv, s.rsa_priv, s.mldsa_priv,
+		content)
 }
 
 // verify_client_finished verifies the client Finished against the handshake transcript.
-// verify_client_finished derives the application secrets on success.
+// verify_client_finished derives the application secrets on success (bound
+// through server Finished; see auth_base_th).
 // verify_client_finished rejects trailing bytes after the Finished message.
 pub fn (mut s ServerHandshake) verify_client_finished(fin_msg []u8) ! {
 	parsed, n := parse_handshake_message(fin_msg) or { return err }
@@ -666,7 +671,10 @@ pub fn (mut s ServerHandshake) verify_client_finished(fin_msg []u8) ! {
 	if subtle.constant_time_compare(fin.verify_data, expected) != 1 {
 		return error('tls: client Finished mismatch')
 	}
-	as_ := derive_application_secrets_for_suite(s.handshake_keys.handshake_secret, th,
+	// Application secrets bind the transcript only through server Finished
+	// (RFC 8446 §7.1); with client auth the transcript has grown past that.
+	app_th := if s.auth_base_th.len > 0 { s.auth_base_th } else { th }
+	as_ := derive_application_secrets_for_suite(s.handshake_keys.handshake_secret, app_th,
 		s.suite) or { return err }
 	s.app_keys = as_
 	s.transcript << fin_msg
