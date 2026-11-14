@@ -683,6 +683,17 @@ fn test_v3_prod_c_optimization_flags_explicit_level() {
 	]
 }
 
+fn test_v3_c_flag_opt_level_reads_standalone_levels() {
+	// Only a standalone -O flag carries a level: prefixes, suffixes and
+	// -D values that merely mention one do not.
+	for level in ['0', '1', '2', '3', 's', 'z'] {
+		assert v3_c_flag_opt_level('-O' + level) == level
+	}
+	for not_a_level in ['', '-O', '-O4', '-Ofast', '-O2x', '-DNAME=-O2', '-o', '-g'] {
+		assert v3_c_flag_opt_level(not_a_level) == '', not_a_level
+	}
+}
+
 fn test_v3_prod_c_object_optimization_flags_keep_cached_objects_out_of_lto() {
 	assert v3_prod_c_object_optimization_flags(true, false, false, false, false, '') == [
 		'-O3',

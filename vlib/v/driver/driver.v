@@ -9010,6 +9010,19 @@ fn v3_parallel_c_unit_is_large(source_size u64, declaration_header_size u64, own
 	})
 }
 
+fn v3_c_flag_opt_level(flag string) string {
+	// An optimization level carried as its own C flag (`-O2`, `-Os`), or ''
+	// for anything else: `-O` alone, `-O4`, `-O2x` and `-DNAME=-O2` are not
+	// levels the explicit `-O` handling reconciles.
+	if flag.len == 3 && flag.starts_with('-O') {
+		level := flag[2..]
+		if level in ['0', '1', '2', '3', 's', 'z'] {
+			return level
+		}
+	}
+	return ''
+}
+
 fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, is_tcc bool, c_opt_level string) []string {
 	if c_opt_level != '' {
 		// An explicit -O level is honored verbatim: the user asked for it.
@@ -9456,7 +9469,7 @@ $if !skip_fastc ? {
 	}
 
 	// compile_v3_fastc_clang_source keeps FastC generation and uses Clang for native interop.
-	fn compile_v3_fastc_clang_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_flags []string, source_flags []string, user_flags []string, link_flags []string, sdk_root string, compiler string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+	fn compile_v3_fastc_clang_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_flags []string, source_flags []string, user_flags []string, link_flags []string, sdk_root string, compiler string, is_debug bool, uses_threads bool, c_opt_level string) V3FastCCompileResult {
 		build_dir := os.join_path_single(os.dir(os.abs_path(bin_file)), '.fastc-clang-${tempname.unique_token()}')
 		os.mkdir_all(build_dir) or { return V3FastCCompileResult{ command: compiler, output: err.msg() } }
 		defer { cleanup_c_build_dir(build_dir) }
@@ -9466,15 +9479,28 @@ $if !skip_fastc ? {
 		mut object_stats := CObjectCacheStats{}
 		native_target_args := if sdk_root != '' { ['-isysroot', sdk_root] } else { []string{} }
 		wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
-		mut optimization_flags := [if prefs.is_prod { '-O2' } else { '-O0' }]
+		// An explicit -O level travels verbatim here too; the default keeps
+		// the fastc link model (no LTO), which never used -flto to begin with.
+		mut optimization_flags := [if c_opt_level != '' {
+			'-O' + c_opt_level
+		} else if prefs.is_prod {
+			'-O2'
+		} else {
+			'-O0'
+		}]
 		if wrapv_flag != '' { optimization_flags << wrapv_flag }
 		flags = prepare_c_flags_for_link(flags, environment_flags, []string{},
 			optimization_flags, true, false, '', native_target_args,
 			prefs.target, compiler, true, build_dir, mut object_stats) or {
 			return V3FastCCompileResult{ command: compiler, output: err.msg() }
 		}
-		mut compile_flags := ['-std=gnu11', if prefs.is_prod { '-O2' } else { '-O0' },
-			'-Werror=implicit-function-declaration', '-Wno-incompatible-function-pointer-types',
+		mut compile_flags := ['-std=gnu11', if c_opt_level != '' {
+			'-O' + c_opt_level
+		} else if prefs.is_prod {
+			'-O2'
+		} else {
+			'-O0'
+		}, '-Werror=implicit-function-declaration', '-Wno-incompatible-function-pointer-types',
 			'-Wno-typedef-redefinition']
 		if wrapv_flag != '' { compile_flags << wrapv_flag }
 		if sdk_root != '' { compile_flags << ['-isysroot', sdk_root] }
@@ -10840,6 +10866,22 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
+	if c_opt_level != '' {
+		// A first-class -O level and an -O smuggled through -cflags or CFLAGS
+		// cannot both apply: refuse rather than letting the C compiler's
+		// "last wins" silently pick one, the same rule as two -O flags.
+		flag_sources := [user_c_flags, environment_c_flags]
+		flag_origins := ['-cflags', 'CFLAGS']
+		for i, flags in flag_sources {
+			for flag in flags {
+				smuggled := v3_c_flag_opt_level(flag)
+				if smuggled != '' && smuggled != c_opt_level {
+					eprintln('conflicting optimization levels: `-O${c_opt_level}` and `${flag}` (from ${flag_origins[i]})')
+					exit(1)
+				}
+			}
+		}
+	}
 	// The native backends write `.o` files: arm64 for Linux and macOS, amd64 for Linux.
 	native_object := ((backend == 'arm64' && target_os in ['linux', 'macos'])
 		|| (backend == 'amd64' && target_os == 'linux')) && explicit_output
@@ -11816,7 +11858,7 @@ pub fn run(args []string) {
 				}
 			}
 			fastc_result := if c_compiler_explicit && effective_c_compiler == 'clang' {
-				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
+				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads, c_opt_level)
 			} else {
 				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, parallel_cc, native_compiler_version, mut prestarted_fastc_units)
 			}

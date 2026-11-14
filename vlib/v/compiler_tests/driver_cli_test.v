@@ -2488,6 +2488,12 @@ fn test_driver_cli_opt_level_flags() {
 		'conflicting optimization levels')
 	assert_driver_cli_failure(v3_bin, ['-prod', '-Oz', '-O1', '-o', output, source],
 		'conflicting optimization levels')
+	// A level smuggled through -cflags conflicts the same way: two levels
+	// cannot both apply wherever they come from.
+	assert_driver_cli_failure(v3_bin, ['-O2', '-cflags', '-O3', '-o', output, source],
+		'conflicting optimization levels')
+	assert_driver_cli_failure(v3_bin, ['-cflags', '-O3', '-O2', '-o', output, source],
+		'conflicting optimization levels')
 	if false_exe := os.find_abs_path_of_executable('false') {
 		// Exercise the final C compiler command without needing runtime objects
 		// to be built by the deliberately failing compiler first.
@@ -2497,6 +2503,11 @@ fn test_driver_cli_opt_level_flags() {
 			args << source
 			result := cmdexec.run(v3_bin, args)
 			assert result.exit_code != 0
+			// The C command itself must be on display: bare flag substrings
+			// also match driver diagnostics, which prove nothing was compiled.
+			plain_command := cmdexec.display(false_exe, ['-std=gnu11'])
+			feature_command := cmdexec.display(false_exe, ['-D_GNU_SOURCE', '-std=gnu11'])
+			assert result.output.contains(plain_command) || result.output.contains(feature_command), result.output
 			for flag in want {
 				assert result.output.contains(flag), result.output
 			}
@@ -2520,5 +2531,40 @@ fn test_driver_cli_opt_level_flags() {
 		// -prod -no-prod-options drops the automatic flags but keeps the explicit level.
 		check_opt_level(v3_bin, false_exe, root, source, ['-prod', '-no-prod-options', '-Oz'],
 			['-Oz'], ['-O3', '-flto'])
+		// The same level through -cflags agrees with the explicit one: a real
+		// build succeeds. (showcc with a deliberately failing -cc cannot be
+		// used here: runtime objects under novel user flags miss the object
+		// cache and would be built with the failing compiler.)
+		mut same_output := os.join_path(root, 'opt_same')
+		$if windows {
+			same_output += '.exe'
+		}
+		same := cmdexec.run(v3_bin, ['-O2', '-cflags', '-O2', '-o', same_output, source])
+		assert same.exit_code == 0, same.output
+		assert os.is_file(same_output)
+		same_run := cmdexec.run(same_output, [])
+		assert same_run.exit_code == 0, same_run.output
+		assert same_run.output.trim_space() == 'ok'
+		// A CFLAGS-carried level composes the same way: differing refuses,
+		// agreeing reaches the C command.
+		mut cflags_conflict := os.environ()
+		cflags_conflict['CFLAGS'] = '-O3'
+		conflict := run_driver_with_environment(v3_bin, ['-O1', '-o', os.join_path(root,
+			'cflags_conflict'), source], cflags_conflict)
+		assert conflict.exit_code != 0, conflict.output
+		assert conflict.output.contains('conflicting optimization levels'), conflict.output
+		assert conflict.output.contains('(from CFLAGS)'), conflict.output
+		mut cflags_same := os.environ()
+		cflags_same['CFLAGS'] = '-O1'
+		mut agreed_output := os.join_path(root, 'cflags_same')
+		$if windows {
+			agreed_output += '.exe'
+		}
+		agreed := run_driver_with_environment(v3_bin, ['-O1', '-o', agreed_output, source],
+			cflags_same)
+		assert agreed.exit_code == 0, agreed.output
+		agreed_run := cmdexec.run(agreed_output, [])
+		assert agreed_run.exit_code == 0, agreed_run.output
+		assert agreed_run.output.trim_space() == 'ok'
 	}
 }
