@@ -69,46 +69,16 @@ const x25519_secret_p_minus_1 = [u8(0xec), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0x7f]
 
-// x25519_p is the Curve25519 field prime 2^255-19 in the little-endian wire
-// encoding (RFC 7748 §5): p-1 above with byte 0 corrected from 0xec to 0xed.
-const x25519_p = [u8(0xed), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	0xff, 0xff, 0x7f]
-
 // p256_p is the P-256 field prime in big-endian affine order (SEC2 2.4.1),
 // matching the byte order of uncompressed key_share coordinates.
 const p256_p = [u8(0xff), 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff]
 
-// is_canonical_x25519_u reports whether a peer u-coordinate encodes a field
-// element below p. RFC 7748 §5 recommends rejecting larger encodings: they
-// reduce mod p and would silently duplicate a smaller share, so the gate runs
-// before the backend decides whether to notice. Borrow arithmetic is required —
-// plain lexicographic byte comparison is wrong because a carry/borrow propagates
-// across byte boundaries — but the input is public, so the branchy loop is fine.
-// The caller's §4.2.8.2 size gate guarantees exactly 32 little-endian bytes.
-@[direct_array_access]
-fn is_canonical_x25519_u(u []u8) bool {
-	mut borrow := 0
-	for i in 0 .. 32 {
-		// Little-endian: the borrow flows from each byte into the next more
-		// significant one; an explicit flag avoids relying on negative-shift semantics.
-		diff := int(u[i]) - int(x25519_p[i]) - borrow
-		if diff < 0 {
-			borrow = 1
-		} else {
-			borrow = 0
-		}
-	}
-	// A final borrow means u - p underflowed, i.e. the encoding was below p.
-	return borrow == 1
-}
-
 // is_in_p256_field reports whether a 32-byte big-endian affine coordinate is
 // below the field prime (SEC1 3.2.3.1 requires field elements, not merely
-// bit-length-fitting ones). Same borrow reasoning as is_canonical_x25519_u;
-// here the loop runs most-significant to least so the borrow flows downward.
+// bit-length-fitting ones). The loop runs most-significant to least so the
+// borrow flows downward.
 // The caller checks the slice length.
 @[direct_array_access]
 fn is_in_p256_field(v []u8) bool {
@@ -154,11 +124,8 @@ fn (mut h HandshakeCore) compute_shared_secret(server_share KeyShareEntry) ![]u8
 			if h.priv_x25519 == unsafe { nil } {
 				return error('handshake: missing X25519 private key')
 			}
-			// RFC 7748 §5 public-key validation, done in-module so the refusal is
-			// deterministic instead of trusting the backend to notice u >= p.
-			if !is_canonical_x25519_u(server_share.key_exchange) {
-				return h.classify_failure(.illegal_parameter, 'handshake: X25519 key_share u-coordinate is not a canonical encoding (illegal_parameter)')
-			}
+			// RFC 7748 §5 decoding is performed by the X25519 primitive, including
+			// masking the top bit and reducing noncanonical u-coordinates modulo p.
 			// §4.2.8.2 & RFC 7748 §6.1: an all-zero peer u-coordinate would yield an
 			// all-zero secret; gate before the backend.
 			if subtle.constant_time_compare(server_share.key_exchange, []u8{len: 32, init: 0}) == 1 {

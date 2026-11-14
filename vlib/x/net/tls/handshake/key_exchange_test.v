@@ -46,25 +46,20 @@ fn test_rejects_all_zero_x25519_share() ! {
 	assert rejected, 'an all-zero X25519 share must be rejected'
 }
 
-// test_rejects_small_order_x25519_shares checks the RFC 7748 §6.1 results:
-// peer u = 1 and u = p drive any private key to a constant secret, so both must
-// be rejected even though the backend computes them without error. The shares
-// are built in the little-endian wire order X25519 itself uses.
+// test_rejects_small_order_x25519_shares checks that RFC 7748 decoding does
+// not bypass low-order protection: u = 1 and the noncanonical u = p both
+// produce low-order contributions and must be rejected.
 fn test_rejects_small_order_x25519_shares() ! {
 	mut u_one := []u8{len: 32} // u = 1 -> the shared secret is 1
 	u_one[0] = 1
 	mut u_p := []u8{len: 32, init: 0xff} // u = 2^255-19, which reduces to 0 mod p
 	u_p[0] = 0xed
 	u_p[31] = 0x7f
-	// u = 1 is a canonical encoding, so it reaches the exchange and lands on the
-	// pinned small-order result; u = p fails the RFC 7748 §5 canonical gate first
-	// — rejecting the non-canonical encoding outright, before the scalar
-	// multiplication, makes the refusal deterministic instead of backend-dependent.
-	// Both paths are the peer's fault and must pin the same alert.
+	// Both inputs reach the primitive; its low-order failure is classified as a
+	// peer key_share error.
 	peers := [u_one, u_p]
-	expected_msgs := ['small-order', 'not a canonical encoding']
 	mut rejections := 0
-	for i, share in peers {
+	for share in peers {
 		// A classified key_share rejection is terminal: classify_failure releases the
 		// ephemeral private key (RFC 8446 §7.5), so each peer share must be exercised
 		// against a fresh core rather than a torn-down one.
@@ -74,7 +69,7 @@ fn test_rejects_small_order_x25519_shares() ! {
 			group:        .x25519
 			key_exchange: share
 		}) or {
-			assert err.msg().contains(expected_msgs[i])
+			assert err.msg().contains('small-order')
 			assert h.fail_alert == .illegal_parameter
 			rejected = true
 		}
@@ -192,30 +187,28 @@ fn test_rejects_p256_identity_point() ! {
 	assert rejected, 'the P-256 identity point must be rejected'
 }
 
-// test_rejects_non_canonical_x25519_encodings pins the RFC 7748 §5 gate: encodings
-// at or above the field prime reduce mod p and would silently duplicate a smaller
-// share, so they must be refused in-module with a named error, not left to the
-// backend. u = p and u = p+1 both exceed the field.
-fn test_rejects_non_canonical_x25519_encodings() ! {
-	mut at_p := x25519_p.clone()
-	assert at_p.len == 32
-	mut over_p := x25519_p.clone()
-	over_p[0] = 0xee // p+1: the least significant little-endian byte increments without carry
-	peers := [at_p, over_p]
-	for share in peers {
-		// A classified rejection releases the ephemeral key, so each share needs a fresh core.
-		mut h := core_with_group(.x25519)!
-		mut rejected := false
-		h.compute_shared_secret(KeyShareEntry{
+// test_accepts_noncanonical_x25519_aliases checks RFC 7748 §5 decoding: the
+// top bit is ignored and u-coordinates at or above p are reduced modulo p.
+fn test_accepts_noncanonical_x25519_aliases() ! {
+	mut u_nine := []u8{len: 32}
+	u_nine[0] = 9
+	mut high_bit_alias := u_nine.clone()
+	high_bit_alias[31] |= 0x80
+	mut p_plus_nine := []u8{len: 32, init: 0xff}
+	p_plus_nine[0] = 0xf6
+	p_plus_nine[31] = 0x7f
+
+	mut h := core_with_group(.x25519)!
+	expected := h.compute_shared_secret(KeyShareEntry{
+		group:        .x25519
+		key_exchange: u_nine
+	})!
+	for alias in [high_bit_alias, p_plus_nine] {
+		secret := h.compute_shared_secret(KeyShareEntry{
 			group:        .x25519
-			key_exchange: share
-		}) or {
-			assert err.msg().contains('not a canonical encoding')
-			assert h.fail_alert == .illegal_parameter
-			assert h.priv_x25519 == unsafe { nil }
-			rejected = true
-		}
-		assert rejected, 'a non-canonical X25519 encoding must be rejected'
+			key_exchange: alias
+		})!
+		assert subtle.constant_time_compare(secret, expected) == 1
 	}
 }
 
