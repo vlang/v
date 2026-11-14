@@ -2,6 +2,7 @@ module driver
 
 import os
 import v.cmdexec
+import v.gen.c.naming
 
 fn test_unused_compiler_entry_and_worker_helpers_leave_generated_c() ! {
 	root := os.join_path(os.vtmp_dir(), 'unused_compiler_import_${os.getpid()}')
@@ -21,11 +22,10 @@ fn test_unused_compiler_entry_and_worker_helpers_leave_generated_c() ! {
 	generated := os.read_file(output)!
 	// The program uses a compiler constant, so it must not carry the dispatcher
 	// or backend worker bodies. Real compiler entry points call them normally.
-	for declaration in ['void driver__run(', 'void c__gen_expr_lvalue(',
-		'void c__FlatGen_gen_fn_items_scoped_batches(',
-		'void markused__CallCollector_collect_bodies_scoped_batches(',
-		'void parser__Parser_precollect_parallel_comptime_consts(',
-		'void types__TypeChecker_check_scoped_batches('] {
+	for name in ['driver.run', 'c.gen_expr_lvalue', 'c.FlatGen.gen_fn_items_scoped_batches',
+		'markused.CallCollector.collect_bodies_scoped_batches',
+		'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches'] {
+		declaration := 'void ${naming.c_name(name)}('
 		assert !generated.contains(declaration), declaration
 	}
 	built := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-no-retry-compilation', '-nocache',
