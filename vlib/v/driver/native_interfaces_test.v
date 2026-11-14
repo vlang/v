@@ -144,3 +144,61 @@ fn test_tinycc_interface_contract_pin_rejects_bundle_edits() ! {
 	os.rm(os.join_path(helper_dir, 'mbedtls_helpers.h'))!
 	assert !v3_pinned_web_native_interfaces(root)
 }
+
+fn test_compiler_native_interface_contract_covers_only_audited_headers() ! {
+	assert v3_pinned_compiler_native_interfaces(@VEXEROOT)
+	for relative, _ in v3_compiler_native_interfaces {
+		assert v3_compiler_native_interface(os.real_path(os.join_path(@VEXEROOT, ...relative.split('/'))),
+			@VEXEROOT), relative
+	}
+	assert !v3_compiler_native_interface(os.real_path(os.join_path(@VEXEROOT, 'vlib', 'v', 'gen',
+		'c', 'int128_helpers.h')), @VEXEROOT)
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'compiler_interfaces_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for relative, _ in v3_compiler_native_interfaces {
+		target := os.join_path(root, ...relative.split('/'))
+		os.mkdir_all(os.dir(target))!
+		os.cp(os.join_path(@VEXEROOT, ...relative.split('/')), target)!
+	}
+	assert v3_pinned_compiler_native_interfaces(root)
+	// A header from another tree is not part of the contract of this one.
+	assert !v3_compiler_native_interface(os.real_path(os.join_path(root, 'vlib', 'v', 'pthread_helper.h')),
+		@VEXEROOT)
+	poll := os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h')
+	os.write_file(poll, os.read_file(poll)! + '\n#define LATER __TIME__\n')!
+	assert !v3_pinned_compiler_native_interfaces(root)
+	os.rm(poll)!
+	assert !v3_pinned_compiler_native_interfaces(root)
+}
+
+fn test_compiler_native_interfaces_keep_the_module_cache() ! {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'compiler_interface_closure_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vlib', 'v', 'workers'))!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'vlib', 'v', 'pthread_helper.h')
+	os.cp(os.join_path(@VEXEROOT, 'vlib', 'v', 'pthread_helper.h'), header)!
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, os.join_path(root, 'vlib', 'v', 'workers', 'thread_nix.c.v'))
+	a.add_val(.module_decl, 'workers')
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"${header}"') })
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'workers': [os.real_path(header)]
+		}
+		native_paths:  {
+			os.real_path(header): true
+		}
+	}
+	prefs := pref.Preferences{ vroot: root, target: pref.host_target() }
+	if compiler := os.find_abs_path_of_executable('clang') {
+		closure := v3_native_interface_closure(&a, &prefs, [], compiler, &inputs)
+		assert closure.unassignable == ''
+		assert os.real_path(header) in closure.inputs['__v3_c_flags__']
+	}
+	// TinyCC cannot diagnose date/time macros: an edited header keeps the fallback
+	// before any native tool runs.
+	os.write_file(header, os.read_file(header)! + '\n#define LATER __DATE__\n')!
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	assert v3_native_interface_closure(&a, &prefs, [], tcc, &inputs).unassignable != ''
+}

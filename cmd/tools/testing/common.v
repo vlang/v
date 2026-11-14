@@ -401,6 +401,7 @@ pub mut:
 	benchmark     benchmark.Benchmark
 	rm_binaries   bool = true
 	build_tools   bool // builds only executables in cmd/tools; used by `v build-tools'
+	nocache       bool // VTEST_NOCACHE=1: compile every test from scratch, with `-nocache`
 	silent_mode   bool
 	show_stats    bool
 	show_asserts  bool
@@ -634,6 +635,18 @@ pub fn (mut ts TestSession) exec(args []string, mtc MessageThreadContext) os.Res
 	return os.exec(args)
 }
 
+// exec_env is exec for a command that gets the variables of `env` on top of the
+// environment of the runner. Its stdout and stderr are captured together.
+pub fn (mut ts TestSession) exec_env(args []string, env map[string]string, mtc MessageThreadContext) os.Result {
+	if env.len == 0 {
+		return ts.exec(args, mtc)
+	}
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: ${env} ${args.join(' ')}', mtc)
+	}
+	return cmdexec.run_in_merged_with_env(args[0], args[1..], '', env)
+}
+
 // system runs a legacy command string.
 @[deprecated: 'use TestSession.system_args with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
@@ -701,6 +714,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 		resume_dir:    test_resume_dir()
+		nocache:       os.getenv('VTEST_NOCACHE') == '1'
 	}
 	if keep_session {
 		ts.rm_binaries = false
@@ -935,6 +949,14 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if details.vflags != '' && !is_fmt {
 		cmd_options << os.split_args(details.vflags) or { panic(err) }
 	}
+	// Tests of the module cache, and tests that choose their own cache, build from
+	// scratch and run with a cache of their own: they must neither see the modules
+	// of the shared cache of the session nor publish theirs to it.
+	isolated_cache := produces_file_output && test_uses_own_module_cache(abs_path, details)
+	if produces_file_output && (ts.nocache || isolated_cache || test_builds_without_cache(abs_path))
+		&& '-nocache' !in cmd_options {
+		cmd_options << '-nocache'
+	}
 
 	mut reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
@@ -959,6 +981,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
 		os.quoted_path(generated_binary_fpath)
+	}
+	mut exec_env := map[string]string{}
+	if isolated_cache {
+		exec_env['V3CACHE'] = os.join_path(test_folder_path, 'v3cache')
 	}
 	mut should_be_built := true
 	if details.vbuild != '' {
@@ -1034,7 +1060,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut res := ts.exec(compile_argv, mtc)
+		mut res := ts.exec_env(compile_argv, exec_env, mtc)
 		mut status := res.exit_code
 		if res.output != '' {
 			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -1054,7 +1080,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				retry_res := ts.exec(compile_argv, mtc)
+				retry_res := ts.exec_env(compile_argv, exec_env, mtc)
 				status = retry_res.exit_code
 				if retry_res.output != '' {
 					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -1094,7 +1120,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = ts.exec(compile_argv, mtc)
+			compile_r = ts.exec_env(compile_argv, exec_env, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {
@@ -1126,7 +1152,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		mut failure_output := strings.new_builder(1024)
 		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := ts.exec(os.split_args(run_cmd) or { panic(err) }, mtc)
+		mut r := ts.exec_env(os.split_args(run_cmd) or { panic(err) }, exec_env, mtc)
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if ts.show_asserts && r.exit_code == 0 {
@@ -1148,7 +1174,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = ts.exec(os.split_args(run_cmd) or { panic(err) }, mtc)
+				r = ts.exec_env(os.split_args(run_cmd) or { panic(err) }, exec_env, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -1403,14 +1429,22 @@ pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
+// shared_test_module_cache_dir is the V3CACHE that test sessions share, when the
+// caller sets none.
+pub fn shared_test_module_cache_dir() string {
+	return os.join_path(os.vtmp_dir(), 'vtest_module_cache')
+}
+
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
-	// The V3 module cache defaults to VTMP. Keep it in the shared VTMP, so that each
+	// Test builds share a module cache of their own across sessions, so that each
 	// session does not rebuild every cached module, unless isolation was requested.
+	// It is not the default cache of `v` in VTMP: the builds of a session populate
+	// it concurrently, and must not change what the user's own builds find.
 	if os.getenv('V3CACHE') == '' && os.getenv('V3_TEST_ISOLATE_CACHE') != '1' {
-		os.setenv('V3CACHE', os.vtmp_dir(), true)
+		os.setenv('V3CACHE', shared_test_module_cache_dir(), true)
 	}
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
@@ -1431,6 +1465,7 @@ pub mut:
 	vbuild       string // could be `!(windows && tinyc)`
 	vbuild_line  int    // for more precise error reporting, if the `vbuild` expression is incorrect
 	vflags       string // custom compilation flags for the test (enables for example: `// vtest vflags: -w`, for tests that have known warnings, but should still pass with -W)
+	own_cache    bool   // the test passes its own `-nocache` or `V3CACHE` to the builds it runs
 }
 
 pub fn get_test_details(file string) TestDetails {
@@ -1456,8 +1491,37 @@ pub fn get_test_details(file string) TestDetails {
 		if line.starts_with('// vtest hide_retries') {
 			res.hide_retries = true
 		}
+		if !res.own_cache && (line.contains('-nocache') || line.contains('V3CACHE')) {
+			res.own_cache = true
+		}
 	}
 	return res
+}
+
+// uncached_test_module_dirs are the modules whose tests build faster without the
+// module cache. A test of `v.types` compiles that module from source with its test
+// files, and the module is most of what the build compiles: the C that the cache
+// splits into units grows with it, and the build compiles 6-11% more instructions
+// with the cache than without it (Apple M4, warm cache, every 4th test of the dir).
+const uncached_test_module_dirs = ['vlib/v/types']
+
+// test_builds_without_cache reports whether the test `file` (an absolute path) is
+// compiled with `-nocache` by default, see uncached_test_module_dirs.
+pub fn test_builds_without_cache(file string) bool {
+	dir := os.dir(file).replace('\\', '/')
+	return uncached_test_module_dirs.any(dir.ends_with('/' + it))
+}
+
+// test_uses_own_module_cache reports whether the test `file` (an absolute path) is
+// kept out of the module cache that the test builds of a session share: the tests of
+// `v.modulecache`, `*cache*_test.v`, `unchanged_build_*` and `program_executable_*`
+// files, and tests that pass their own `-nocache` or `V3CACHE`.
+pub fn test_uses_own_module_cache(file string, details TestDetails) bool {
+	path := file.replace('\\', '/')
+	name := os.file_name(path)
+	return details.own_cache || path.contains('/vlib/v/modulecache/')
+		|| name.all_before_last('_test').contains('cache')
+		|| name.starts_with('unchanged_build_') || name.starts_with('program_executable_')
 }
 
 pub fn find_started_process(pname string) !string {

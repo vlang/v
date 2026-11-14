@@ -81,3 +81,10 @@ safety check, and its output is discarded. TinyCC requires the audited bundled i
 snapshot, verified by an opaque SHA-256 inventory. Editing, adding, or removing a bundled
 interface header retains the fallback until its ownership and determinism are reviewed and the
 snapshot is updated. V does not infer contracts by inspecting header contents.
+
+Two compiler headers have the same interface-only contract: `vlib/v/pthread_helper.h`, whose
+inline pthread wrappers `v.workers` also links from the separate `pthread_helper.o` object, and
+`vlib/v/cmdexec/cmdexec_poll.h`, an inline `poll` wrapper. Without it, every program that imports
+`v.workers` or `v.cmdexec`, including the tests of the compiler's own modules, bypassed the module
+cache. The same dependency manifest and date/time checks apply. For TinyCC, each of the two headers
+is pinned by its SHA-256 digest; editing one retains the fallback until the digest is updated.
