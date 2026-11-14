@@ -2,7 +2,8 @@
 //
 // record_layer.v is the TLS record facade: the four per-direction protection states, the
 // post-handshake reassembly buffer, and the KeyUpdate mechanism built on them
-// (RFC 8446 §4.5/§4.6.3/§5.5). Conn keeps the transport, alert and lifecycle concerns;
+// (RFC 8446 §4.6.3/§5.5; §4.5 is EndOfEarlyData, not a KeyUpdate prohibition). Conn keeps
+// the transport, alert and lifecycle concerns;
 // the record policy that used to be spread across conn.v lives here, beside the state it
 // acts on. The core never sees any of this state — it hands over key material only.
 module tls
@@ -20,14 +21,17 @@ mut:
 	// Decrypted handshake bytes staged when a post-handshake message spans records;
 	// the incomplete tail waits for the next record (RFC 8446 §5.2).
 	post_hsk_buf []u8
-	// Set on processing a peer KeyUpdate, cleared by any delivered traffic: §4.5
-	// forbids two in a row, so a second aborts before its rekey is paid for.
-	peer_key_update bool
+	// Set when the peer sends KeyUpdate(update_requested) and we have answered with our
+	// own KeyUpdate(update_not_requested) but have not yet seen the peer acknowledge our
+	// response (a KeyUpdate(update_not_requested) from them). A second update_requested
+	// before that acknowledgment is a sender-side MUST-NOT violation (RFC 8446 §4.6.3)
+	// and a receiver-side DoS vector, so it is rejected with unexpected_message.
+	wait_ku_response bool
 }
 
 // new_record_layer builds the record state of a fresh connection: four uninitialized
 // protection states (each probed by IV length before use), an empty reassembly buffer and
-// a cleared §4.5 latch. Conn is @[noinit], so dial() and the test fixtures must assign this
+// a cleared latch. Conn is @[noinit], so dial() and the test fixtures must assign this
 // constructor's value rather than leave the nested fields to whatever the heap page holds.
 fn new_record_layer() RecordLayer {
 	return RecordLayer{
@@ -36,7 +40,7 @@ fn new_record_layer() RecordLayer {
 		s_app_protection: TLSProtection{ aead: unsafe { nil } }
 		c_app_protection: TLSProtection{ aead: unsafe { nil } }
 		post_hsk_buf:     []u8{}
-		peer_key_update:  false
+		wait_ku_response: false
 	}
 }
 
@@ -90,27 +94,34 @@ fn (mut r RecordLayer) complete_key_update(mut h handshake.HandshakeCore) ! {
 	r.swap_application_leg(mut h, false)!
 }
 
-// receive_key_update applies a peer KeyUpdate body (RFC 8446 §4.6.3): it enforces the
-// §4.5 one-in-a-row rule first — before the parse and before any derivation, so a
-// violation is terminal at zero cost rather than an HKDF-amplification loop — then
-// advances the read leg and reports whether the peer also asked for our own update.
-// Answering that request needs the socket, so it stays with the caller.
+// receive_key_update applies a peer KeyUpdate body (RFC 8446 §4.6.3): it advances the
+// read leg and reports whether the peer also asked for our own update. RFC 8446 has no
+// one-in-a-row prohibition — crossing update requests and responses advance both sides
+// by two generations (§4.6.3) — so there is no one-in-a-row latch; the only bounds are
+// the per-read post-handshake message cap in conn.v and the update_requested flood
+// guard below. Answering a request_update needs the socket, so it stays with the caller.
 fn (mut r RecordLayer) receive_key_update(mut h handshake.HandshakeCore, body []u8) !bool {
-	if r.peer_key_update {
-		return error('tls: consecutive KeyUpdate from peer (unexpected_message)')
-	}
-	r.peer_key_update = true
 	request_update := handshake.parse_key_update(body)!
+	// §4.6.3: the sender MUST NOT send another KeyUpdate until it receives one from its
+	// peer. A second update_requested before we have seen the peer acknowledge our
+	// response (a KeyUpdate(update_not_requested) from them) is a sender-side protocol
+	// violation and a receiver-side CPU-exhaustion DoS vector, so it is rejected with
+	// unexpected_message.
+	if request_update && r.wait_ku_response {
+		return error('tls: consecutive update_requested KeyUpdate before peer response (unexpected_message)')
+	}
+	// RFC 8446 §5.1: handshake messages MUST NOT span key changes. If a partial
+	// handshake message is staged in post_hsk_buf and a KeyUpdate now retires its
+	// generation, the remaining tail bytes would be decrypted under a different key
+	// than the head — reject before swapping.
+	if r.post_hsk_buf.len > 0 {
+		return error('tls: handshake message spans key change (unexpected_message)')
+	}
 	// §4.6.3: a recipient always advances its read keys on receiving a KeyUpdate. The
 	// read leg is the server direction: swap_application_leg(true).
 	r.swap_application_leg(mut h, true)!
+	r.wait_ku_response = request_update
 	return request_update
-}
-
-// clear_key_update_run breaks the §4.5 KeyUpdate run: delivered application traffic or an
-// accepted NewSessionTicket proves the peer's notice was not two in a row.
-fn (mut r RecordLayer) clear_key_update_run() {
-	r.peer_key_update = false
 }
 
 // swap_application_leg ratchets one direction's application secret in the core and installs

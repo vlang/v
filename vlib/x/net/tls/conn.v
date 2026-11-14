@@ -340,8 +340,10 @@ pub fn (mut c Conn) read(mut buf []u8) !int {
 				}
 				match dec.content_type {
 					.application_data {
-						// Application traffic of any length breaks a KeyUpdate run (§4.5).
-						c.rec.clear_key_update_run()
+						// Delivered application traffic does not gate KeyUpdates: RFC 8446
+						// §4.6.3 allows consecutive peer KeyUpdates, crossing requests and
+						// responses advance both sides by two generations. The run cap is
+						// max_post_handshake_messages_per_record, not a one-in-a-row latch.
 						if dec.plaintext.len == 0 {
 							// Zero-length records are legal (padding only), but a verified flood
 							// must not spin this loop forever (max_tolerated_records_per_read).
@@ -882,14 +884,15 @@ fn (mut c Conn) handle_post_handshake(data []u8) ! {
 				if c.session_tickets.len < max_stored_session_tickets {
 					c.session_tickets << ticket
 				}
-				// An accepted non-KeyUpdate message breaks the run (§4.5).
-				c.rec.clear_key_update_run()
 			}
 			.key_update {
-				// The record facade owns this mechanism: it enforces §4.5's one-in-a-row rule
-				// before the parse and before any rekey derivation, then advances the read leg
-				// (seq restarts at 0, §5.3). Only answering a request_update needs this side's
-				// socket, so the record layer hands that back rather than owning the transport.
+				// The record facade owns this mechanism: it advances the read leg on every
+				// peer KeyUpdate (§4.6.3), with seq restarting at 0 per generation (§5.3).
+				// RFC 8446 has no one-in-a-row prohibition — crossing requests and responses
+				// advance both sides by two generations — so the only bound is the per-read
+				// post-handshake message cap. Only answering a request_update needs this
+				// side's socket, so the record layer hands that back rather than owning the
+				// transport.
 				request_update := c.rec.receive_key_update(mut c.hs, body) or {
 					return c.abort_connection(key_update_failure_alert(err.msg()), err.msg())
 				}
@@ -1012,10 +1015,10 @@ fn (mut c Conn) send_key_update() ! {
 
 // key_update_failure_alert maps a receive_key_update error to the fatal alert it must
 // surface: each record-layer and core path tags its own error, so the RFC name in the
-// message decides — a §4.5 run violation is unexpected_message, a misframed body
-// decode_error, a bad request_update value illegal_parameter, and a derivation or
-// install fault falls back to internal_error (RFC 8446 §4.6.3/§6). Same approach as
-// decrypt_failure_alert.
+// message decides — a framed-but-unexpected KeyUpdate path is unexpected_message, a
+// misframed body is decode_error, a bad request_update value is illegal_parameter, and
+// a derivation or install fault falls back to internal_error (RFC 8446 §4.6.3/§6).
+// Same approach as decrypt_failure_alert.
 fn key_update_failure_alert(msg string) handshake.AlertDescription {
 	if msg.contains('unexpected_message') {
 		return .unexpected_message

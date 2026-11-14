@@ -546,14 +546,12 @@ fn (mut h HandshakeCore) handle_finished(full_msg []u8, body []u8) ![]HandshakeM
 	h.c_app_tsec = c_ap
 	h.s_app_tsec = s_ap
 
-	// RFC 8446 §4.6.1/§4.5.5.1 let the server coalesce NewSessionTicket (type 4)
-	// or KeyUpdate (type 24) behind its Finished; those stay buffered for the
-	// adapter's take_buffered_handshake_bytes. Any other leading byte is flight garbage.
+	// RFC 8446 §5.1: handshake messages MUST NOT span key changes. Server Finished is
+	// encrypted under handshake keys; NewSessionTicket and KeyUpdate use application
+	// keys and must appear in their own TLS records. Any trailing bytes after Finished
+	// mean they were coalesced into the same record — reject.
 	if h.reassembly.len > 0 {
-		leading := h.reassembly[0]
-		if leading != u8(4) && leading != u8(24) {
-			return h.classify_failure(.decode_error, 'handshake: unexpected trailing data after server Finished in handshake flight')
-		}
+		return h.classify_failure(.decode_error, 'handshake: trailing data after server Finished in handshake flight (decode_error)')
 	}
 
 	// The client's Certificate follows the complete server flight (§4.4.1), so it is

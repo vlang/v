@@ -109,33 +109,92 @@ fn expect_dial_failure(addr string, want string, res_ch chan string) ! {
 // ---- Full handshake over TCP ----
 // full_handshake_script is the record-layer twin of the fakeserver flight.
 fn full_handshake_script(mut c net.TcpConn) ! {
-	run_full_handshake(mut c, false, false, []u8{})!
+	run_full_handshake(mut c, false, []u8{})!
 }
 
 // chacha_handshake_script is the full flight under TLS_CHACHA20_POLY1305_SHA256 —
 // the software-preferred suite every AES-only test never reached, so it drives the
 // record layer's install/rekey §7.5 key-ownership path end to end.
 fn chacha_handshake_script(mut c net.TcpConn) ! {
-	run_flight(mut c, handshake.CipherSuite.tls_chacha20_poly1305_sha256, false, false, []u8{})!
+	run_flight(mut c, handshake.CipherSuite.tls_chacha20_poly1305_sha256, false, []u8{})!
 }
 
 // split_ticket_script is run_full_handshake with the NewSessionTicket fragmented.
 fn split_ticket_script(mut c net.TcpConn) ! {
-	run_full_handshake(mut c, true, false, []u8{})!
-}
-
-// coalesced_ticket_script is run_full_handshake with the NewSessionTicket riding
-// the same handshake-key record as the server Finished (§4.6.1).
-fn coalesced_ticket_script(mut c net.TcpConn) ! {
-	run_full_handshake(mut c, false, true, []u8{})!
+	run_full_handshake(mut c, true, []u8{})!
 }
 
 // key_update_pair_script is the standard flight plus two consecutive KeyUpdate
-// messages coalesced into one application-key record (§4.5 forbids the run).
+// messages as separate records under successive generations (§4.6.3 allows crossing
+// requests; §4.5 is EndOfEarlyData, not a KeyUpdate prohibition). The first KeyUpdate
+// retires generation 0, the second retires generation 1, and the tail record rides
+// generation 2 — the client must rekey its read leg twice to open it.
 fn key_update_pair_script(mut c net.TcpConn) ! {
-	mut ku_pair := [u8(24), 0, 0, 1, 0] // KeyUpdate(update_not_requested), 1-byte body
-	ku_pair << [u8(24), 0, 0, 1, 0] // second in a row: the violation
-	run_full_handshake(mut c, false, false, ku_pair)!
+	ch_rec := scripted_read_record(mut c)!
+	if ch_rec.content_type != .handshake {
+		return error('expected a handshake record first, got ${ch_rec.content_type}')
+	}
+	_ := scripted_read_record(mut c)! // client dummy CCS
+
+	mut srv := fakeserver.new_server() or {
+		return error('fakeserver: ${err.msg()}')
+	}
+	fl := srv.handle_client_hello(ch_rec.payload) or {
+		return error('fakeserver CH: ${err.msg()}')
+	}
+	c.write(new_record(.handshake, fl.server_hello).serialize()) or { return err }
+	c.write(change_cipher_spec().serialize()) or { return err }
+
+	skey, siv := srv.server_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	saead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, skey) or { return err }
+	mut senc := new_tls_protection(saead, siv)!
+	nst := srv.new_session_ticket() or { return error('fakeserver NST: ${err.msg()}') }
+	for m in fl.rest {
+		c.write(senc.encrypt_record(.handshake, m)!.serialize()) or { return err }
+	}
+
+	cfin_rec := scripted_read_record(mut c)!
+	ckey, civ := srv.client_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	caead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, ckey) or { return err }
+	mut cdec := new_tls_protection(caead, civ)!
+	dec := cdec.decrypt_record(cfin_rec)!
+	srv.handle_client_finished(dec.plaintext) or { return error('fakeserver Finished: ${err.msg()}') }
+
+	akey, aiv := srv.server_app_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	aaead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, akey) or { return err }
+	mut aenc := new_tls_protection(aaead, aiv)! // generation 0
+	c.write(aenc.encrypt_record(.handshake, nst)!.serialize()) or { return err }
+	c.write(aenc.encrypt_record(.application_data, 'hello from fakeserver'.bytes())!.serialize()) or {
+		return err
+	}
+
+	// First KeyUpdate retires generation 0, sent under generation 0 keys.
+	c.write(aenc.encrypt_record(.handshake, handshake.build_key_update(false))!.serialize()) or {
+		return err
+	}
+
+	// Derive generation 1 from generation 0.
+	hash := handshake.suite_hash_algo(.tls_aes_128_gcm_sha256)
+	g1_secret := handshake.hkdf_expand_label(hash, srv.server_app_secret()!, 'traffic upd', []u8{}, hash.hash_len())!
+	g1_key := handshake.hkdf_expand_label(hash, g1_secret, 'key', []u8{}, handshake.suite_key_len(.tls_aes_128_gcm_sha256))!
+	g1_iv := handshake.hkdf_expand_label(hash, g1_secret, 'iv', []u8{}, 12)!
+	mut g1_enc := new_tls_protection(handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, g1_key)!, g1_iv)! // generation 1
+
+	// Second KeyUpdate retires generation 1, sent under generation 1 keys.
+	c.write(g1_enc.encrypt_record(.handshake, handshake.build_key_update(false))!.serialize()) or {
+		return err
+	}
+
+	// Derive generation 2 from generation 1.
+	g2_secret := handshake.hkdf_expand_label(hash, g1_secret, 'traffic upd', []u8{}, hash.hash_len())!
+	g2_key := handshake.hkdf_expand_label(hash, g2_secret, 'key', []u8{}, handshake.suite_key_len(.tls_aes_128_gcm_sha256))!
+	g2_iv := handshake.hkdf_expand_label(hash, g2_secret, 'iv', []u8{}, 12)!
+	mut g2_enc := new_tls_protection(handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, g2_key)!, g2_iv)! // generation 2
+
+	// Tail application data under generation 2 — only decryptable after both rekeys.
+	c.write(g2_enc.encrypt_record(.application_data, 'two updates then data'.bytes())!.serialize()) or {
+		return err
+	}
 }
 
 // silent_peer_script accepts and immediately closes: the client must fail on its
@@ -147,18 +206,18 @@ fn silent_peer_script(mut c net.TcpConn) ! {
 // run_full_handshake drives the whole server flight under TLS_AES_128_GCM_SHA256,
 // the AEAD the majority of these tests assert; it delegates to run_flight, which
 // also lets a caller select TLS_CHACHA20_POLY1305_SHA256.
-fn run_full_handshake(mut c net.TcpConn, split_ticket bool, coalesce_ticket bool, extra_post_msg []u8) ! {
-	run_flight(mut c, handshake.CipherSuite.tls_aes_128_gcm_sha256, split_ticket, coalesce_ticket, extra_post_msg)!
+fn run_full_handshake(mut c net.TcpConn, split_ticket bool, extra_post_msg []u8) ! {
+	run_flight(mut c, handshake.CipherSuite.tls_aes_128_gcm_sha256, split_ticket, extra_post_msg)!
 }
 
 // run_flight drives the whole server flight under the given cipher suite; split_ticket
-// fragments the ticket across two app-key records, coalesce_ticket instead rides it
-// behind the server Finished in one handshake-key record (§4.6.1), and extra_post_msg
-// (when non-empty) is appended as one coalesced handshake record under the server
-// application keys, after the app data. The suite selects both the fakeserver's
-// ServerHello choice and the transport's AEAD, so a TLS_CHACHA20_POLY1305_SHA256 run
-// exercises the record layer's §7.5 key-ownership path end to end.
-fn run_flight(mut c net.TcpConn, suite handshake.CipherSuite, split_ticket bool, coalesce_ticket bool, extra_post_msg []u8) ! {
+// fragments the ticket across two app-key records (§5.2 permits a message to span
+// records), and extra_post_msg (when non-empty) is appended as one coalesced handshake
+// record under the server application keys, after the app data. The suite selects both
+// the fakeserver's ServerHello choice and the transport's AEAD, so a
+// TLS_CHACHA20_POLY1305_SHA256 run exercises the record layer's §7.5 key-ownership path
+// end to end.
+fn run_flight(mut c net.TcpConn, suite handshake.CipherSuite, split_ticket bool, extra_post_msg []u8) ! {
 	ch_rec := scripted_read_record(mut c)!
 	if ch_rec.content_type != .handshake {
 		return error('expected a handshake record first, got ${ch_rec.content_type}')
@@ -184,15 +243,15 @@ fn run_flight(mut c net.TcpConn, suite handshake.CipherSuite, split_ticket bool,
 	c.write(change_cipher_spec().serialize()) or { return err }
 
 	// The rest of the flight, one encrypted record per message, under the server handshake keys.
+	// Each message must occupy its own record: Finished rides handshake keys; NewSessionTicket
+	// and KeyUpdate ride application keys (RFC 8446 §5.1 — handshake messages MUST NOT span
+	// key changes).
 	skey, siv := srv.server_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
 	aead := handshake.new_aead_for_suite(suite, skey) or { return err }
 	mut senc := new_tls_protection(aead, siv)!
 	nst := srv.new_session_ticket() or { return error('fakeserver NST: ${err.msg()}') }
 	for i, m in fl.rest {
 		mut payload := m.clone() // loop elements are immutable; append needs an owned copy
-		if coalesce_ticket && i == fl.rest.len - 1 {
-			payload << nst // the ticket trails Finished in the same record
-		}
 		enc := senc.encrypt_record(.handshake, payload)!
 		c.write(enc.serialize()) or { return err }
 	}
@@ -212,15 +271,13 @@ fn run_flight(mut c net.TcpConn, suite handshake.CipherSuite, split_ticket bool,
 	akey, aiv := srv.server_app_keys() or { return error('fakeserver keys: ${err.msg()}') }
 	aaead := handshake.new_aead_for_suite(suite, akey) or { return err }
 	mut aenc := new_tls_protection(aaead, aiv)!
-	if !coalesce_ticket {
-		if split_ticket {
-			// Split the ticket across two records: RFC 8446 §5.2 permits a message to span records.
-			cut := 8
-			c.write(aenc.encrypt_record(.handshake, nst[..cut])!.serialize()) or { return err }
-			c.write(aenc.encrypt_record(.handshake, nst[cut..])!.serialize()) or { return err }
-		} else {
-			c.write(aenc.encrypt_record(.handshake, nst)!.serialize()) or { return err }
-		}
+	if split_ticket {
+		// Split the ticket across two records: RFC 8446 §5.2 permits a message to span records.
+		cut := 8
+		c.write(aenc.encrypt_record(.handshake, nst[..cut])!.serialize()) or { return err }
+		c.write(aenc.encrypt_record(.handshake, nst[cut..])!.serialize()) or { return err }
+	} else {
+		c.write(aenc.encrypt_record(.handshake, nst)!.serialize()) or { return err }
 	}
 	payload := 'hello from fakeserver'.bytes()
 	c.write(aenc.encrypt_record(.application_data, payload)!.serialize()) or { return err }
@@ -322,39 +379,11 @@ fn test_dial_reassembles_post_handshake_message_across_records() ! {
 	assert res == 'OK'
 }
 
-// test_dial_accepts_ticket_coalesced_after_finished proves the §4.6.1 route: a
-// NewSessionTicket riding the server-Finished record must reach the ticket
-// backlog during dial, not strand unread in the core's handshake buffer.
-fn test_dial_accepts_ticket_coalesced_after_finished() ! {
-	addr, res_ch := start_scripted_server(coalesced_ticket_script)
-	if addr.starts_with('ERR') {
-		return error(addr)
-	}
-	ts := fakeserver.test_trust_store()!
-	mut conn := dial(addr,
-		server_name: fakeserver.server_name
-		root_cas:    ts
-		timeout:     10 * time.second
-	)!
-
-	assert conn.session_tickets.len == 1 // handled inside do_handshake itself
-	assert conn.session_tickets[0].bytes() == [u8(0xaa), 0xbb, 0xcc, 0xdd]
-	assert conn.hs.reassembly_len()! == 0 // drained, not orphaned
-
-	mut buf := []u8{len: 64}
-	n := conn.read(mut buf)!
-	assert buf[..n] == 'hello from fakeserver'.bytes()
-
-	conn.close() or {}
-	res := <-res_ch
-	assert res == 'OK'
-}
-
-// test_dial_rejects_consecutive_key_update pins RFC 8446 §4.5 end to end: after
-// the app record, one application-key record packs two KeyUpdate messages. The
-// first must rekey cleanly; the second must abort at the run guard, before its
-// rekey derivation is paid for.
-fn test_dial_rejects_consecutive_key_update() ! {
+// test_dial_accepts_consecutive_key_update end to end: two peer KeyUpdates under
+// generations 0 and 1, followed by application data under generation 2. RFC 8446
+// §4.6.3 allows consecutive peer KeyUpdates; §4.5 is EndOfEarlyData, not a
+// KeyUpdate prohibition. Both rekeys must complete and the gen-2 record must open.
+fn test_dial_accepts_consecutive_key_update() ! {
 	addr, res_ch := start_scripted_server(key_update_pair_script)
 	if addr.starts_with('ERR') {
 		return error(addr)
@@ -367,18 +396,15 @@ fn test_dial_rejects_consecutive_key_update() ! {
 	)!
 
 	mut buf := []u8{len: 64}
-	n := conn.read(mut buf)! // the ticket and the app record precede the KU pair
+	mut n := conn.read(mut buf)! // NST + gen-0 app data
 	assert buf[..n] == 'hello from fakeserver'.bytes()
 
-	conn.read(mut buf) or {
-		assert err.msg().contains('consecutive KeyUpdate')
-		assert conn.closed
-		conn.close() or {}
-		res := <-res_ch
-		assert res == 'OK'
-		return
-	}
-	assert false, 'two KeyUpdate messages in a row must be terminal'
+	n = conn.read(mut buf)! // two KeyUpdates rekey read to gen 2, then gen-2 app data
+	assert buf[..n] == 'two updates then data'.bytes()
+
+	conn.close() or {}
+	res := <-res_ch
+	assert res == 'OK'
 }
 
 // key_update_rekey_script is the standard flight, then one peer-initiated
