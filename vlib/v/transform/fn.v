@@ -12710,11 +12710,30 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.lower_map_str(new_base, new_base_type)
 		}
 	}
-	clean_base_type := (if flat.source_type_shape(base_type).has(.pointer) {
+	mut clean_base_type := (if flat.source_type_shape(base_type).has(.pointer) {
 		flat.source_type_syntax(base_type).raw_base()
 	} else {
 		base_type
 	})
+	mut lowered_base := flat.empty_node
+	if node.children_count >= 2 && (t.validating_generic_spec || t.active_specialization_args.ids.len > 0)
+		&& fn_node.value in ['filter', 'map', 'any', 'all', 'count']
+		&& (flat.source_type_shape(clean_base_type).has(.array_type) || t.is_fixed_array_type(clean_base_type)) {
+		receiver := t.a.nodes[int(t.unwrap_parens(base_id))]
+		if receiver.kind == .call && receiver.children_count > 0 {
+			producer := t.a.child_node(&receiver, 0)
+			if producer.kind == .selector && producer.value in ['map', 'filter']
+				&& t.checker_selected_receiver_method_name(call_id, array_builtin_method) == none {
+				// A generic map obtains its concrete element type during lowering.
+				// A filter later in the chain must propagate that type as well.
+				lowered_base = t.transform_expr(base_id)
+				lowered_type := t.normalized_node_type(lowered_base)
+				if flat.source_type_shape(lowered_type).has(.array_type) || t.is_fixed_array_type(lowered_type) {
+					clean_base_type = lowered_type
+				}
+			}
+		}
+	}
 	if fn_node.value == 'str' && t.is_builder_receiver(base_id, base_type) {
 		return none
 	}
@@ -12771,13 +12790,15 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return exact_call
 		}
 		if fn_node.value == 'map' {
-			return t.lower_array_map_call(node, fn_node, clean_base_type)
+			return t.lower_array_map_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := flat.source_type_composition_one(.array, elem_type)
 		tmp_name := t.new_temp('fixed_arr')
 		array_value := if fn_node.value in ['reverse_in_place', 'sort', 'sort_with_compare'] {
 			t.fixed_array_value_to_array_no_alloc(base_id, clean_base_type, array_type)
+		} else if lowered_base != flat.empty_node {
+			t.fixed_array_data_to_array(lowered_base, clean_base_type, array_type)
 		} else {
 			t.fixed_array_value_to_array(base_id, clean_base_type, array_type)
 		}
@@ -12863,10 +12884,10 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	match fn_node.value {
 		'filter' {
-			return t.lower_array_filter_call(node, fn_node, clean_base_type)
+			return t.lower_array_filter_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		'map' {
-			return t.lower_array_map_call(node, fn_node, clean_base_type)
+			return t.lower_array_map_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		'sort' {
 			return t.lower_array_sort_call(node, fn_node, base_type)
@@ -12881,10 +12902,10 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.lower_array_sorted_with_compare_call(node, fn_node, clean_base_type)
 		}
 		'any', 'all' {
-			return t.lower_array_any_all_call(node, fn_node, clean_base_type, fn_node.value)
+			return t.lower_array_any_all_call(node, fn_node, clean_base_type, fn_node.value, lowered_base)
 		}
 		'count' {
-			return t.lower_array_count_call(node, fn_node, clean_base_type)
+			return t.lower_array_count_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		'str' {
 			receiver := if smartcast_container {
