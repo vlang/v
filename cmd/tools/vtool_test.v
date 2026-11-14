@@ -101,7 +101,7 @@ fn test_v_tool_reports_an_unknown_module() {
 fn test_v_tool_help_explains_the_rule() {
 	res := os.exec([@VEXE, 'tool', '--help'])
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('Usage: v tool [options] [NAME]'), res.output
+	assert res.output.contains('Usage: v tool [options] [--] [NAME] [ARG]...'), res.output
 	assert res.output.contains('main.v'), res.output
 }
 
@@ -182,4 +182,20 @@ fn test_v_tool_omits_unresolvable_dotted_installed_directory_names() {
 	assert 'dotted.tool' !in names, listed.output
 	assert 'app' in names, listed.output
 	assert 'gtool' in names, listed.output
+}
+
+fn test_v_tool_passes_args_to_tool() {
+	prepare_fixture()!
+	modname := 'argtool'
+	modroot := os.join_path_single(vmodules, modname)
+	write_file(os.join_path_single(modroot, 'v.mod'), "Module {\n\tname: '${modname}'\n}\n")!
+	write_file(os.join_path_single(modroot, 'main.v'), "module main\n\nfn main() {\n\tprintln('${modname}: \${arguments()[1..]}')\n}\n")!
+
+	out := os.exec([@VEXE, 'tool', modname, 'a', 'b', 'c'])
+	assert out.exit_code == 0, out.output
+	assert out.output.contains("${modname}: ['a', 'b', 'c']"), out.output
+
+	out_opts := os.exec([@VEXE, 'tool', '--', modname, '--help'])
+	assert out_opts.exit_code == 0, out_opts.output
+	assert out_opts.output.contains("${modname}: ['--help']"), out_opts.output
 }
