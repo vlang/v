@@ -70,9 +70,15 @@ def validate_master_bootstrap_contract(workflow, master):
         raise ValueError('preflight must retain the default success condition')
     for cc in COMPILERS:
         caller = workflow_block(jobs, f'windows_ci_{cc}', 2)
-        needs = re.findall(r'^    needs: \[([^\]]+)\]$', caller, re.M)
-        if len(needs) != 1 or {name.strip() for name in needs[0].split(',')} != {
-                'preflight', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts'}:
+        # Prettier wraps this YAML sequence onto a second line. Accept both
+        # presentations while requiring all four distinct dependency gates.
+        needs = re.findall(
+            r'^    needs:[ \t]*(?:\n[ \t]{6})?[ \t]*\[([^\]\n]+)\][ \t]*$',
+            caller, re.M)
+        required = {'preflight', 'gen_vc_ci', 'bootstrap-windows',
+                    'windows-bootstrap-contracts'}
+        names = [name.strip() for name in needs[0].split(',')] if len(needs) == 1 else []
+        if len(names) != len(required) or set(names) != required:
             raise ValueError(f'windows_ci_{cc} must retain its bootstrap and contract gates')
     contracts = workflow_block(workflow_block(workflow, 'jobs', 0), 'bootstrap-contracts', 2)
     if not re.search(r"^    if: github.ref == 'refs/heads/master'$", contracts, re.M):
@@ -362,6 +368,25 @@ class MasterBootstrapContractTests(unittest.TestCase):
                     self.assertNotEqual(changed, self.master)
                     with self.assertRaisesRegex(ValueError, name):
                         validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_windows_callers_accept_compact_or_wrapped_needs(self):
+        expected = '[preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]'
+        for cc in COMPILERS:
+            name = f'windows_ci_{cc}'
+            body = workflow_block(self.master, name, 2)
+            original = re.search(
+                r'^    needs:[ \t]*(?:\n[ \t]{6})?[ \t]*\[[^\]\n]+\]', body, re.M)
+            self.assertIsNotNone(original, name)
+            for prefix in ('    needs: ', '    needs:\n      '):
+                updated = body[:original.start()] + prefix + expected + body[original.end():]
+                master = self.master.replace(body, updated, 1)
+                with self.subTest(compiler=cc, prefix=prefix):
+                    validate_master_bootstrap_contract(self.workflow, master)
+                for gate in ('bootstrap-windows', 'windows-bootstrap-contracts'):
+                    broken = master.replace(updated, updated.replace(', ' + gate, '', 1), 1)
+                    with self.subTest(compiler=cc, prefix=prefix, gate=gate):
+                        with self.assertRaisesRegex(ValueError, name):
+                            validate_master_bootstrap_contract(self.workflow, broken)
 
     def test_reusable_bootstrap_retains_both_platforms_and_commands(self):
         mutations = [self.workflow.replace('  workflow_call:\n', '', 1),
