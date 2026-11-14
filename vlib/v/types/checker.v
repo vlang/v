@@ -12589,6 +12589,20 @@ pub fn (mut tc TypeChecker) register_synth_type(id flat.NodeId, typ Type) {
 	}
 }
 
+// A call's inferred return type can change the type of an enclosing expression.
+// For example, a shift of a generic field can resolve to void before inference.
+fn (tc &TypeChecker) invalidate_body_resolved_type_chain(id flat.NodeId) {
+	mut memo := tc.body_resolve_memo
+	if isnil(memo) || !memo.active {
+		return
+	}
+	mut current := id
+	for int(current) >= memo.lo && int(current) <= memo.hi {
+		memo.filled[int(current) - memo.lo] = 0
+		current = tc.direct_parent_id(current)
+	}
+}
+
 // remember_expr_type supports remember expr type handling for TypeChecker.
 @[direct_array_access]
 fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
