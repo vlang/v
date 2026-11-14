@@ -1,0 +1,13 @@
+diff --git a/icon.v b/icon.v
+index 699d8ba..abe19a2 100644
+--- a/icon.v
++++ b/icon.v
+@@ -19,7 +19,7 @@ fn app_icon() sapp.IconDesc {
+ 		height: img.height
+ 		pixels: sapp.Range{
+ 			ptr:  img.data
+-			size: usize(img.width * img.height * 4)
++			size: uint(img.width * img.height * 4)
+ 		}
+ 	}
+ 	return icon
