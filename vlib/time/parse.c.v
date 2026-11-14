@@ -520,25 +520,208 @@ pub fn parse_iso8601(s string) !Time {
 	return unix_nanosecond(t.unix, t.nanosecond)
 }
 
-// parse_rfc2822 returns the time from a date string in RFC 2822 datetime format.
+// parse_rfc2822 returns the time from a date string in the RFC 5322 format
+// (formerly RFC 2822), such as `Sun, 01 Nov 2026 12:00:00 +0100`, used by mail
+// headers. The day of the week is optional, but must match the date when present.
+// The seconds are optional, day and month names are case-insensitive, and the
+// year is 1900 or later; a two- or three-digit year is read as RFC 5322 section
+// 4.3 describes. Leap seconds (`:60`) are not supported. The zone is a numeric
+// offset (`+hhmm` or `-hhmm`) or one of the obsolete names: `UT`, `GMT`, the US
+// zones (`EST`, `EDT`, `CST`, `CDT`, `MST`, `MDT`, `PST`, `PDT`), and the military
+// letters, read as `-0000`. Trailing comments such as `(CET)` are ignored;
+// comments elsewhere are not supported. For compatibility, a missing zone is
+// read as UTC, and a day name without its comma is accepted.
+// As with `parse_rfc3339`, a non-zero offset is kept: the result has the calendar
+// fields as written, `zone()` reports the offset, and `unix()` is the absolute
+// instant. For example, `Sun, 01 Nov 2026 12:00:00 +0100` gives hour 12, and the
+// same `unix()` as `Sun, 01 Nov 2026 11:00:00 +0000`.
 pub fn parse_rfc2822(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	fields := s.split(' ')
-	if fields.len < 5 {
-		return error_invalid_time(1, 'datetime string must have 5 components, has: ${fields.len}')
+	mut weekday := ''
+	mut rest := s
+	if comma := s.index(',') {
+		name := s[..comma].trim_space()
+		if name.len > 0 && name.bytes().all(it.is_letter()) {
+			weekday = name
+			rest = s[comma + 1..]
+		}
 	}
-	pos := months_string.index(fields[2]) or {
+	rest = strip_rfc2822_comments(rest) or {
+		return error_invalid_time(11, 'unbalanced comment')
+	}
+	mut fields := rest.fields()
+	if weekday == '' && fields.len > 0 && fields[0].len > 0 && fields[0][0].is_letter() {
+		// A day name without its comma, as some producers write it.
+		weekday = fields[0]
+		fields = fields[1..].clone()
+	}
+	if fields.len < 4 {
+		return error_invalid_time(1, 'datetime string must have a day, a month, a year and a time')
+	}
+	if fields.len > 5 {
+		return error_invalid_time(11, 'unexpected text after the time zone')
+	}
+	day := rfc2822_number(fields[0], 1, 2) or {
+		return error_invalid_time(5, 'invalid day: ${fields[0]}')
+	}
+	if day < 1 {
+		// `new_checked` reads a day 0 as 1.
+		return error_invalid_time(5, 'invalid day: ${fields[0]}')
+	}
+	month := rfc2822_name_index(months_string, fields[1]) or {
 		return error_invalid_time(2, 'invalid month format')
 	}
-	mm := pos / 3 + 1
-	unsafe {
-		tmstr := malloc_noscan(s.len * 2)
-		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str, mm,
-			fields[1].str, fields[4].str)
-		return parse(tos(tmstr, count))
+	mut year := rfc2822_number(fields[2], 2, 9) or {
+		return error_invalid_time(3, 'invalid year: ${fields[2]}')
 	}
+	if fields[2].len == 2 {
+		year += if year < 50 { 2000 } else { 1900 }
+	} else if fields[2].len == 3 {
+		year += 1900
+	} else if year < 1900 {
+		return error_invalid_time(3, 'the year must be 1900 or later')
+	}
+	hms := fields[3].split(':')
+	if hms.len !in [2, 3] {
+		return error_invalid_time(9, 'time must be in the form of hh:mm or hh:mm:ss')
+	}
+	mut clock := [0, 0, 0]
+	for i, part in hms {
+		clock[i] = rfc2822_number(part, 2, 2) or {
+			return error_invalid_time(9, 'time must be in the form of hh:mm or hh:mm:ss')
+		}
+	}
+	validate_time_bounds(clock[0], clock[1], clock[2], 0) or {
+		return error_invalid_time(6, err.msg())
+	}
+	mut offset := 0
+	if fields.len > 4 {
+		offset = rfc2822_zone_offset(fields[4]) or {
+			return error_invalid_time(10, 'invalid time zone: ${fields[4]}')
+		}
+	}
+	wall := new_checked(Time{
+		year:     year
+		month:    month + 1
+		day:      day
+		hour:     clock[0]
+		minute:   clock[1]
+		second:   clock[2]
+		is_local: false
+	})!
+	if weekday != '' {
+		wday := rfc2822_name_index(days_string, weekday) or {
+			return error_invalid_time(12, 'invalid day of the week: ${weekday}')
+		}
+		if wday + 1 != wall.day_of_week() {
+			return error_invalid_time(12, 'the day of the week does not match the date')
+		}
+	}
+	if offset == 0 {
+		return wall
+	}
+	return fixed_offset_time(wall, offset)
+}
+
+// strip_rfc2822_comments removes the comments at the end of `s`, such as `(CET)`,
+// which may be nested and may contain parentheses escaped with a backslash. It
+// returns `none` when a `)` has no matching `(`.
+fn strip_rfc2822_comments(s string) ?string {
+	mut t := s.trim_space()
+	for t.ends_with(')') && !rfc2822_is_escaped(t, t.len - 1) {
+		mut depth := 0
+		mut i := t.len - 1
+		for ; i >= 0; i-- {
+			if t[i] !in [`(`, `)`] || rfc2822_is_escaped(t, i) {
+				continue
+			}
+			if t[i] == `)` {
+				depth++
+			} else {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+		}
+		if i < 0 {
+			return none
+		}
+		t = t[..i].trim_space()
+	}
+	return t
+}
+
+// rfc2822_is_escaped reports whether `s[i]` is escaped by a backslash: a quoted-pair
+// of RFC 5322 section 3.2.1, preceded by an odd number of backslashes.
+fn rfc2822_is_escaped(s string, i int) bool {
+	mut backslashes := 0
+	for j := i - 1; j >= 0 && s[j] == `\\`; j-- {
+		backslashes++
+	}
+	return backslashes % 2 == 1
+}
+
+// rfc2822_number parses `s` as a decimal number of `min_digits` to `max_digits` digits.
+fn rfc2822_number(s string, min_digits int, max_digits int) ?int {
+	if s.len < min_digits || s.len > max_digits {
+		return none
+	}
+	mut n := 0
+	for c in s {
+		if !c.is_digit() {
+			return none
+		}
+		n = n * 10 + int(c - `0`)
+	}
+	return n
+}
+
+// rfc2822_name_index returns the 0-based index of the three-letter name `name`
+// in `names` (such as `months_string`), ignoring case.
+fn rfc2822_name_index(names string, name string) ?int {
+	if name.len != 3 {
+		return none
+	}
+	for i := 0; i < names.len; i += 3 {
+		if names[i..i + 3].to_lower() == name.to_lower() {
+			return i / 3
+		}
+	}
+	return none
+}
+
+// rfc2822_zone_offset returns the offset in seconds east of UTC of an RFC 5322 zone.
+fn rfc2822_zone_offset(zone string) ?int {
+	if zone.len == 5 && zone[0] in [`+`, `-`] {
+		hours := rfc2822_number(zone[1..3], 2, 2)?
+		minutes := rfc2822_number(zone[3..], 2, 2)?
+		if minutes > 59 {
+			return none
+		}
+		offset := (hours * 60 + minutes) * seconds_per_minute
+		return if zone[0] == `-` { -offset } else { offset }
+	}
+	hours := match zone.to_upper() {
+		'UT', 'GMT' { 0 }
+		'EDT' { -4 }
+		'EST', 'CDT' { -5 }
+		'CST', 'MDT' { -6 }
+		'MST', 'PDT' { -7 }
+		'PST' { -8 }
+		else {
+			// RFC 5322 section 4.3: military zones are read as -0000, since
+			// their sign was defined backwards in RFC 822.
+			if zone.len == 1 && zone[0].is_letter() && zone.to_upper() != 'J' {
+				0
+			} else {
+				return none
+			}
+		}
+	}
+	return hours * seconds_per_hour
 }
 
 // ----- iso8601 -----
