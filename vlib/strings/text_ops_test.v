@@ -32,6 +32,21 @@ fn test_last_index_any() {
 	assert last_index_any('a.b.c', '.') == 3
 }
 
+fn test_last_index_any_all_byte_values() {
+	mut bytes := []u8{len: 256}
+	for i in 0 .. bytes.len {
+		bytes[i] = u8(i)
+	}
+	source := bytes.bytestr()
+	for count in [1, 2, 4, 5, 8, 16, 31, 64, 256] {
+		assert last_index_any(source, bytes[..count].bytestr()) == count - 1
+		assert last_index_any(source, bytes[256 - count..].bytestr()) == 255
+	}
+	assert last_index_any(bytes[..64].bytestr(), bytes[64..128].bytestr()) == -1
+	assert last_index_any('abcabc', 'zzzzy') == -1
+	assert last_index_any('abcabc', 'zzzcb') == 5
+}
+
 fn test_contains_rune() {
 	assert contains_rune('héllo', `é`)
 	assert !contains_rune('hello', `é`)
