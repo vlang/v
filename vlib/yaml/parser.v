@@ -343,6 +343,15 @@ fn (mut p Parser) parse_sequence(indent int) !Any {
 			break
 		}
 		rest := if content.len == 1 { '' } else { content[1..].trim_space() }
+		if rest == '-' || rest.starts_with('- ') {
+			// `- - a` is a compact nested sequence: it starts at the column of the
+			// inner `-`, which is where its next entries line up. Blank out the
+			// outer `-` and parse the line again from that column.
+			col := indent + content.len - rest.len
+			p.lines[p.idx] = ' '.repeat(col) + p.lines[p.idx][col..]
+			items << p.parse_sequence(col)!
+			continue
+		}
 		p.idx++
 		items << p.parse_sequence_item(rest, indent)!
 	}
