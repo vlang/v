@@ -42,6 +42,11 @@ retain the module's ordinary source/system-library behavior.
 `v install` verifies every selected file's SHA256 before replacing an installed
 module. `v update` refreshes assets with the source revision. Repeated installs
 verify and reuse intact local assets, and repair missing or corrupt files.
+Git updates restore the previous source revision if native asset preparation fails.
+Removing the manifest or the host's target removes the previous managed payload,
+including when restoring an older locked revision. Cached files are copied through
+fresh staging directories, without following symlinks in the checkout or copying
+unlisted cache entries.
 Downloads require HTTPS, with loopback HTTP permitted for local development.
 Paths must be relative and are confined to the module's `.vpm-binaries/` directory;
 VPM does not extract archives or execute package scripts. Use link flags such as

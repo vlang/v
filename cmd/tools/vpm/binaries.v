@@ -147,20 +147,47 @@ fn publish_binary_directory(stage string, destination string) ! {
 	if previous { os.rmdir_all(backup)! }
 }
 
+fn clear_binary_artifacts(root string) ! {
+	destination := os.join_path(root, binary_directory)
+	if os.is_link(destination) { return error('refusing symlinked binary directory') }
+	if os.exists(destination) { os.rmdir_all(destination)! }
+}
+
+// Copy only declared, verified files into a newly created directory. Neither
+// existing destination symlinks nor unlisted cache entries participate.
+fn copy_binary_artifacts(source string, root string, files []BinaryFile, receipt string) ! {
+	destination := os.join_path(root, binary_directory)
+	if os.is_link(destination) { return error('refusing symlinked binary directory') }
+	stage := destination + '-stage-' + rand.ulid()
+	os.mkdir(stage)!
+	defer { os.rmdir_all(stage) or {} }
+	for file in files {
+		if !binary_file_matches(source, file) { return error('cached binary inputs changed') }
+		path := os.join_path(stage, file.path)
+		os.mkdir_all(os.dir(path))!
+		os.cp(os.join_path(source, file.path), path)!
+	}
+	os.write_file(os.join_path(stage, 'installed.json'), receipt)!
+	if !binary_install_matches(stage, files, receipt) {
+		return error('staged binary inputs changed')
+	}
+	publish_binary_directory(stage, destination)!
+}
+
 fn prepare_binary_artifacts(root string, target string) ! {
 	manifest_path := os.join_path(root, binary_manifest_name)
-	if !os.exists(manifest_path) { return }
 	if os.is_link(manifest_path) { return error('refusing symlinked binary manifest') }
+	if !os.exists(manifest_path) { return clear_binary_artifacts(root) }
 	text := os.read_file(manifest_path)!
 	files := binary_files(text, target)!
-	if files.len == 0 { return } // Other hosts retain the module's source/system-library path.
+	if files.len == 0 { return clear_binary_artifacts(root) }
 	destination := os.join_path(root, binary_directory)
 	if os.is_link(destination) { return error('refusing symlinked binary directory') }
 	ignore_binary_directory(root)!
 	receipt := binary_receipt(text, target)
 	if binary_install_matches(destination, files, receipt) { return }
 	stage := destination + '-stage-' + rand.ulid()
-	os.mkdir_all(stage)!
+	os.mkdir(stage)!
 	defer { os.rmdir_all(stage) or {} }
 	for file in files {
 		response := http.fetch(
@@ -188,13 +215,14 @@ fn prepare_binary_artifacts(root string, target string) ! {
 
 fn (m Module) prepare_binaries() ! {
 	manifest := os.join_path(m.tmp_path, binary_manifest_name)
-	if !os.is_file(manifest) { return }
+	if os.is_link(manifest) { return error('refusing symlinked binary manifest') }
+	if !os.is_file(manifest) { return clear_binary_artifacts(m.tmp_path) }
 	text := os.read_file(manifest)!
 	target := binary_host_target()
 	files := binary_files(text, target)!
 	installed := os.join_path(m.install_path, binary_directory)
 	if files.len > 0 && binary_install_matches(installed, files, binary_receipt(text, target)) {
-		os.cp_all(installed, os.join_path(m.tmp_path, binary_directory), false)!
+		copy_binary_artifacts(installed, m.tmp_path, files, binary_receipt(text, target))!
 	}
 	prepare_binary_artifacts(m.tmp_path, target)!
 }
@@ -202,20 +230,20 @@ fn (m Module) prepare_binaries() ! {
 // Copy an already verified staged payload when installation reuses/restores an
 // existing checkout. Never redownload assets merely because source is current.
 fn (m Module) install_prepared_binaries() ! {
+	manifest := os.join_path(m.tmp_path, binary_manifest_name)
+	if os.is_link(manifest) { return error('refusing symlinked binary manifest') }
+	if !os.is_file(manifest) { return clear_binary_artifacts(m.install_path) }
 	source := os.join_path(m.tmp_path, binary_directory)
-	if !os.is_dir(source) { return }
-	text := os.read_file(os.join_path(m.tmp_path, binary_manifest_name))!
+	text := os.read_file(manifest)!
 	target := binary_host_target()
 	files := binary_files(text, target)!
+	if files.len == 0 { return clear_binary_artifacts(m.install_path) }
 	receipt := binary_receipt(text, target)
+	if !binary_install_matches(source, files, receipt) {
+		return error('staged binary inputs changed')
+	}
 	destination := os.join_path(m.install_path, binary_directory)
 	if binary_install_matches(destination, files, receipt) { return }
 	ignore_binary_directory(m.install_path)!
-	stage := destination + '-stage-' + rand.ulid()
-	defer { os.rmdir_all(stage) or {} }
-	os.cp_all(source, stage, false)!
-	if !binary_install_matches(stage, files, receipt) {
-		return error('staged binary inputs changed')
-	}
-	publish_binary_directory(stage, destination)!
+	copy_binary_artifacts(source, m.install_path, files, receipt)!
 }
