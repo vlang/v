@@ -13,8 +13,9 @@ until the checker, the formatter and the tests have all said so.
 
 - `references/FLAGS.md` - Read when a flag is ignored or has to be moved, or when
   choosing between `-prod`, `-g`, `-cflags` and `-ldflags`.
-- `references/V-MOD.md` - Read when a dependency will not resolve, or when
-  deciding between `v install`, `v link` and `v unlink`.
+- `references/V-MOD.md` - Read when a dependency will not resolve, when
+  deciding between `v install`, `v link` and `v unlink`, or when `v.mod.lock` is
+  involved.
 - `references/COMPILER-WORKFLOW.md` - Read only when the change is inside the V
   compiler's own tree, where the rules above are not enough.
 
@@ -45,8 +46,8 @@ v -stats test path/to/file_test.v
 v vet -W path/to/file.v        # suspicious constructs, failures as errors
 ```
 
-For **library** code rather than a `main` module, `-check` and `vet` need
-`-shared`, or they fail with *"project must include a `main` module"*:
+For **library** code rather than a `main` module, `-check` needs `-shared`, or it
+fails with *"project must include a `main` module or be a shared library"*:
 
 ```bash
 v -check -shared vlib/v/skills/
@@ -66,11 +67,12 @@ imply it compiles.
 | Format it | `v fmt -w file.v` |
 | Does it pass? | `v -stats test dir/` |
 | Only some tests | `VTEST_ONLY='pattern' v test file_test.v` |
-| Does the formatter agree with CI? | `v -silent test-fmt` |
+| Does the V repo pass its fmt and vet gate? | `v -silent test-cleancode` |
 | Anything suspicious? | `v vet -W file.v` |
 | What does this symbol resolve to? | `v where Symbol` |
 | Does this still work? | `v doctor` |
-| Add a dependency | `v install module.name` |
+| Add a dependency | declare it in `v.mod`, then `v install` |
+| Is the lockfile current? | `v install --locked` |
 
 ## Errors worth reading properly
 

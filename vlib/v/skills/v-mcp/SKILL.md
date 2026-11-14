@@ -7,8 +7,9 @@ license: MIT
 # The V MCP server
 
 `v mcp serve` speaks MCP over stdio, or over HTTP with `--http`. It is the V
-compiler exposed as tools: it calls the parser, the checker and the formatter **in
-process**, so it answers correctly about code that does not compile yet.
+compiler exposed as tools: it calls the parser and the formatter **in process**, so
+it answers correctly about code that does not compile yet. `v_check` runs the
+compiler itself, so its answer is the one a build would give.
 
 ```json
 {
@@ -68,13 +69,18 @@ misses the comment that mentions the name and the call in a file you never opene
 
 ## Editing is guarded by default
 
-Three tools write. None of them writes unless asked twice:
+Three tools write. Two of them only report a plan unless told to write:
 
 - `v_rename_symbol` defaults to `dry_run: true` and lists every position it would
   change.
 - `v_format` defaults to `write: false` and reports `before` and `after`.
-- `v_edit_replace` requires `expected_old`: you read the range and pass it back
-  verbatim, so it refuses to write over a change you did not see.
+
+The third writes at once:
+
+- `v_edit_replace` requires `expected_old` for a file that exists: you read the
+  range and pass it back verbatim, and it refuses to write when that range no
+  longer holds that text. It does not check the rest of the file, and an insert,
+  with an empty `expected_old`, checks nothing.
 
 Read the plan, then pass the flag that applies it. See `references/EDITING.md`.
 
@@ -91,7 +97,7 @@ cannot write by accident.
 
 ## When the tools cannot answer
 
-`v_run`, `v_test_run`, `v_doctor` and `v_eval` start the compiler. They are
+`v_check`, `v_run`, `v_test_run` and `v_doctor` start the compiler. They are
 slower than the in-process tools and unavailable when the compiler cannot be
 started. A tool that could not start the compiler says so explicitly — it reports
 `started: false` with an error rather than an exit code, so a sandbox that cannot

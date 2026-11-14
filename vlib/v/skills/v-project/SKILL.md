@@ -19,7 +19,8 @@ you are already in.
 - `v init` — puts the project in the current directory. Use this when the
   directory already exists.
 
-Both take the same three template flags, and both create a `v.mod`.
+Both take the same three template flags. Both create a `v.mod`, except that
+`v init` keeps one that already exists and reuses its name.
 
 ## Put template flags before the project name
 
@@ -40,11 +41,13 @@ project name, so the later flag is read as another argument.
 | Flag | Entry point | Module | Extra |
 | --- | --- | --- | --- |
 | `--bin` (default) | `main.v` | `main` | — |
-| `--lib` | `<name>.v` | `<name>` | `tests/<fn>_test.v` |
+| `--lib` | `<name>.v` (see below) | `<name>` | `tests/<fn>_test.v` |
 | `--web` | `main.v` | `main` | `assets/main.css`, `templates/index.html` |
 
 All three also create `v.mod`, `.editorconfig`, `.gitattributes` and
-`.gitignore`.
+`.gitignore`. A `-` in the name becomes `_` in the module name. With `v init --lib`
+in a directory whose name differs from the module name, the library goes into a
+`<name>/` subdirectory, because imports resolve directories.
 
 ## v.mod
 
@@ -61,7 +64,8 @@ Module {
 Creating one starts a prompt for the description, version and license. **The
 prompt only runs when stdin is a terminal.** With piped or redirected stdin,
 the defaults are used. A non-interactive
-`v new` requires the project name; `v init` derives it from the current directory.
+`v new` requires the project name; `v init` derives it from the current
+directory, or from the `v.mod` already there.
 For example:
 
 ```bash

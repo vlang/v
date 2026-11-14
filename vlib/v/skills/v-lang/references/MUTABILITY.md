@@ -1,130 +1,203 @@
 # Mutability in depth
 
-> The four forms are in the parent skill. This reference covers: what a `mut`
-> receiver actually mutates, array and map elements, and the closure case.
+> The rules are in the parent skill. This reference covers: what a `mut`
+> parameter and a `mut` receiver change, array and map arguments, and closures.
 
 ## Arguments
 
-Function parameters are immutable. `mut` is what makes one assignable, and it is
-declared at the parameter:
+Function parameters are immutable. `mut` makes one assignable, and it is written
+both at the parameter and at the call:
 
-```v ignore
-fn bump(mut n int) {
-    n = n + 1          // rejected without `mut`
+```v
+struct Box {
+mut:
+	n int
+}
+
+fn set(mut b Box) {
+	b.n = 9
+}
+
+fn main() {
+	mut b := Box{}
+	set(mut b)
+	assert b.n == 9 // the caller's struct changed
 }
 ```
 
-A `mut` parameter is a local copy either way. It does not make the caller's
-variable change.
+A `mut` parameter is passed by reference: the caller sees every change. The
+caller's variable must itself be declared `mut`.
+
+`mut` is only allowed for arrays, maps, structs, interfaces, pointers and their
+aliases. A number cannot be a `mut` parameter; return the new value instead:
+
+```v failcompile
+fn bump(mut n int) {
+	n = n + 1
+}
+
+fn main() {
+	mut x := 1
+	bump(mut x)
+}
+```
 
 ## Receivers
 
-This is where the silent difference is.
-
-| Declaration | Mutates |
+| Declaration | Receiver |
 | --- | --- |
-| `fn (t T)` | nothing; `t` is a read-only copy |
-| `fn (mut t T)` | the receiver **copy**; the caller sees nothing |
-| `fn (t &T)` | rejected: cannot assign through a shared pointer |
-| `fn (mut t &T)` | the **caller's** object |
+| `fn (t T)` | read-only |
+| `fn (t &T)` | read-only, passed as a pointer, so no copy |
+| `fn (mut t T)` | mutable; changes reach the caller's object |
+| `fn (mut t &T)` | rejected: use `(mut t T)` or `(t &T)` |
 
-```v ignore
-fn set_port(app App) {
-    app.port = 8080   // rejected: `app` is not mutable
+```v
+struct App {
+mut:
+	port int
 }
 
-fn set_port(mut app App) {
-    app.port = 8080   // accepted, and changes nothing the caller can see
+fn (mut a App) set_port(port int) {
+	a.port = port
 }
 
-fn set_port(mut app &App) {
-    app.port = 8080   // accepted, and the caller sees it
+fn (a &App) url() string {
+	return 'http://localhost:${a.port}'
+}
+
+fn main() {
+	mut app := App{}
+	app.set_port(8080)
+	assert app.url() == 'http://localhost:8080'
 }
 ```
 
-The middle case is the one that costs time: it compiles, it does what it says,
-and it has no effect outside.
+A `&T` receiver or parameter does not make anything writable:
+
+```v failcompile
+struct App {
+mut:
+	port int
+}
+
+fn (a &App) set_port(port int) {
+	a.port = port
+}
+
+fn main() {}
+```
 
 ## Struct fields
 
-Fields are immutable unless the struct declares a `mut:` section:
+Fields are immutable unless the struct declares them in a `mut:` section, and a
+field can only be assigned through a mutable variable, parameter or receiver:
 
 ```v ignore
 struct Server {
 pub:
-    name string
+	name string
 mut:
-    port    int
-    running bool
-}
-```
-
-The accessor pattern follows from this: a getter takes `&T`, a setter takes
-`mut &T`.
-
-```v ignore
-fn (s &Server) url() string {
-    return 'http://:${s.port}'
-}
-
-fn (mut s &Server) set_port(port int) {
-    s.port = port
+	port    int
+	running bool
 }
 ```
 
 ## Arrays and maps
 
-Element assignment through a shared reference is rejected, because it would
-mutate behind a caller's back:
+An immutable array or map parameter cannot be changed, element by element or
+otherwise:
 
-```v ignore
-items := [1, 2, 3]
+```v failcompile
 fn set_first(items []int) {
-    items[0] = 9      // rejected
+	items[0] = 9
 }
 
-fn set_first(mut items []int) {
-    items[0] = 9      // accepted; the slice header is copied, the data is shared
+fn main() {}
+```
+
+A `mut` one is the caller's array or map: element changes, appends and new keys
+all reach the caller.
+
+```v
+fn fill(mut items []int, mut seen map[string]int) {
+	items[0] = 9
+	items << 4
+	seen['b'] = 2
+}
+
+fn main() {
+	mut items := [1, 2, 3]
+	mut seen := {
+		'a': 1
+	}
+	fill(mut items, mut seen)
+	assert items == [9, 2, 3, 4]
+	assert seen.len == 2
 }
 ```
 
-A `mut []T` parameter still shares the backing array, so the caller's slice does
-see the change. A `mut` **map** parameter behaves the same way — the map is a
-reference type.
-
-This is why the idiomatic way to return a modified collection is to return it:
-
-```v ignore
-fn doubled(items []int) []int {
-    mut out := []int{cap: items.len}
-    for item in items {
-        out << item * 2
-    }
-    return out
-}
-```
+When the caller does not need its own collection changed, returning a new one is
+usually clearer than a `mut` parameter.
 
 ## Closures
 
-A closure capturing a variable by reference needs that variable to be mutable,
-and V says so:
+A closure only sees the variables it lists, and it gets a **copy** of each:
 
-```v ignore
-mut count := 0
-increment := fn () {
-    count++
+```v failcompile
+fn main() {
+	mut count := 0
+	increment := fn () {
+		count++
+	}
+	increment()
+}
+```
+
+The compiler asks for `fn [count] () {`. A `[mut count]` capture makes the copy
+writable, and the copy keeps its value from one call to the next, but the
+caller's `count` never changes:
+
+```v
+fn main() {
+	mut count := 0
+	next := fn [mut count] () int {
+		count++
+		return count
+	}
+	assert next() == 1
+	assert next() == 2
+	assert count == 0
+}
+```
+
+The same holds for a captured array: appends inside the closure go to its copy.
+To share state with the caller, capture a pointer and mutate what it points to:
+
+```v
+struct Counter {
+mut:
+	n int
+}
+
+fn main() {
+	mut c := &Counter{}
+	inc := fn [mut c] () {
+		c.n++
+	}
+	inc()
+	inc()
+	assert c.n == 2
 }
 ```
 
 ## The error you will actually see
 
 ```
-error: `x` is immutable, declare it as `mut` or use a `mut` receiver
+error: `x` is immutable, declare it with `mut` to make it mutable
 ```
 
-Read it literally and apply the table above. If the fix is `mut &T`, ask whether
-you meant to mutate the caller's object; if the fix is `mut T`, you probably did
-not.
+Read it literally: declare the variable `mut`, or make the parameter or receiver
+`mut` and pass it with `mut` at the call.
 
 ## Validation
 

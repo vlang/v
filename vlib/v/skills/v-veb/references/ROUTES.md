@@ -7,7 +7,7 @@
 
 ```v ignore
 @[get]                                  // GET /
-@['/users']                             // any method, /users
+@['/users']                             // GET /users: no method means GET
 @['/users/:id']                         // one segment
 @['/files/:path...']                    // the rest of the path
 @['/upload'; post]                      // a method and a path
@@ -41,7 +41,9 @@ app.Middleware.route_use('/admin/:path...', handler: check_auth)
 
 ## Method attributes
 
-The full set: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
+The usual ones: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`;
+`connect` and `trace` are accepted too. A route can list several, as in
+`@['/items/:id'; get; delete]`.
 
 A method plus a path, for the cases where the default path is wrong:
 
@@ -103,13 +105,14 @@ pub fn (mut app App) show(mut ctx Context, id string) veb.Result {
 }
 ```
 
-Note that the struct needs `pub` fields for `json` to see them. A field that must
-not be serialised is left out of the struct rather than filtered afterwards.
+`ctx.json` encodes every field, `pub` or not. Mark a field that must not be
+serialised with `@[skip]`, or `@[json: '-']`.
 
 ## Templates
 
-`$veb.html()` renders the `templates/` directory; the argument names one file.
-`$tmpl` renders a string, which is how a page is composed into a layout:
+`$veb.html()` renders the template named after the handler, found next to the
+source file or under `templates/`; an argument names the file instead. `$tmpl`
+renders a string, which is how a page is composed into a layout:
 
 ```v ignore
 @['/']
