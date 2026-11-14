@@ -97,3 +97,43 @@ fn char2nibble(b u8, index int) !u8 {
 		else { return error('invalid hex char ${b.ascii_str()} at index ${index}') }
 	}
 }
+
+// hexdump returns a hex dump of `data` in the canonical form used by Go's
+// encoding/hex.Dump. It is named hexdump (rather than dump) to avoid
+// colliding with V's builtin `dump` debug function.
+pub fn hexdump(data []u8) string {
+	mut sb := ''
+	mut i := 0
+	for i < data.len {
+		// offset
+		sb += '${i:08x}  '
+		// hex bytes
+		for j in 0 .. 16 {
+			if i + j < data.len {
+				sb += '${data[i + j]:02x} '
+				if j == 7 {
+					sb += ' '
+				}
+			} else {
+				sb += '   '
+				if j == 7 {
+					sb += ' '
+				}
+			}
+		}
+		sb += ' |'
+		for j in 0 .. 16 {
+			if i + j < data.len {
+				b := data[i + j]
+				if b >= 32 && b < 127 {
+					sb += b.ascii_str()
+				} else {
+					sb += '.'
+				}
+			}
+		}
+		sb += '|\n'
+		i += 16
+	}
+	return sb
+}
