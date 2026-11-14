@@ -1017,8 +1017,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	defer {
-		if produces_file_output && ts.rm_binaries {
-			os.rmdir_all(test_folder_path) or {}
+		if produces_file_output {
+			if ts.rm_binaries {
+				os.rmdir_all(test_folder_path) or {}
+			} else if ts.exec_mode == .compile_and_run {
+				os.rm(generated_binary_fpath) or {}
+				$if macos {
+					os.rmdir_all(generated_binary_fpath + '.dSYM') or {}
+				}
+			}
 		}
 	}
 	mut test_succeeded := true
