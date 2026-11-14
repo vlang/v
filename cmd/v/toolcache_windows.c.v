@@ -4,6 +4,8 @@
 module main
 
 import os
+import os.filelock
+import time
 
 #flag windows -l advapi32
 
@@ -329,4 +331,199 @@ fn move_file_replacing(source string, destination string) bool {
 		}
 	}
 	return C.v_toolcache_move_file_ex_w(w_source, w_destination, movefile_replace_existing) != 0
+}
+
+// ToolCacheWipeDir is a folder that `v wipe-cache` works in. No build moves a tool cache folder
+// aside on Windows (see `prepare_default_tool_cache_root`), so the folder is known by its path
+// there, and privacy is decided by its ACL, which the tool cache checks when it picks a folder.
+struct ToolCacheWipeDir {
+	path string
+}
+
+// open_tool_cache_wipe_dir takes the real folder at `path`. A link there is not followed. When
+// nothing is at `path`, the error has the code `tool_cache_wipe_gone`.
+fn open_tool_cache_wipe_dir(path string) !ToolCacheWipeDir {
+	if os.is_dir(path) && !os.is_link(path) {
+		return ToolCacheWipeDir{
+			path: path
+		}
+	}
+	// Whether it is gone is asked last: another wipe can remove the folder between two looks, and
+	// a folder that went after the look above is gone, not something else.
+	if !os.exists(path) && !os.is_link(path) {
+		return error_with_code('it is gone', tool_cache_wipe_gone)
+	}
+	return error('it is not a folder')
+}
+
+// close lets the folder go.
+fn (dir ToolCacheWipeDir) close() {}
+
+// owner_and_mode reports the folder as this user's own, and private.
+fn (dir ToolCacheWipeDir) owner_and_mode() (u32, u32) {
+	return u32(os.getuid()), u32(0o700)
+}
+
+// is_at reports whether `path` still names this folder, which it always does on Windows.
+fn (dir ToolCacheWipeDir) is_at(_ string) bool {
+	return true
+}
+
+// names lists the folder, sorted. A folder that was removed meanwhile, by another wipe for
+// example, has nothing in it.
+fn (dir ToolCacheWipeDir) names() ![]string {
+	mut names := os.ls(dir.path) or {
+		if !os.exists(dir.path) && !os.is_link(dir.path) {
+			return []string{}
+		}
+		return err
+	}
+	names.sort()
+	return names
+}
+
+// item describes `name` in the folder. A link is described itself, not what it points to.
+fn (dir ToolCacheWipeDir) item(name string) ToolCacheWipeItem {
+	path := os.join_path(dir.path, name)
+	kind := if os.is_link(path) {
+		ToolCacheWipeKind.link
+	} else if os.is_dir(path) {
+		ToolCacheWipeKind.folder
+	} else if os.is_file(path) {
+		ToolCacheWipeKind.file
+	} else if os.exists(path) {
+		ToolCacheWipeKind.other
+	} else {
+		ToolCacheWipeKind.gone
+	}
+	return ToolCacheWipeItem{
+		kind:  kind
+		owner: u32(os.getuid())
+		links: 1
+	}
+}
+
+// open_folder takes the real folder `name` in the folder. A link there is not followed.
+fn (dir ToolCacheWipeDir) open_folder(name string) !ToolCacheWipeDir {
+	return open_tool_cache_wipe_dir(os.join_path(dir.path, name))
+}
+
+// remove_file removes `name`, which is no folder. A link is removed itself, also one to a folder,
+// which `os.rm` does not go through. A name that is gone already counts as removed.
+fn (dir ToolCacheWipeDir) remove_file(name string) ! {
+	path := os.join_path(dir.path, name)
+	os.rm(path) or {
+		if os.exists(path) || os.is_link(path) {
+			return err
+		}
+	}
+}
+
+// remove_folder removes the folder `name` when it is empty. A name that is gone already counts as
+// removed.
+fn (dir ToolCacheWipeDir) remove_folder(name string) ! {
+	path := os.join_path(dir.path, name)
+	os.rmdir(path) or {
+		if os.exists(path) || os.is_link(path) {
+			return err
+		}
+	}
+}
+
+// rmdir_all_settling removes `path` like `os.rmdir_all`, and retries for a few seconds while the
+// removal keeps failing and `path` still exists: an executable that has just exited (such as a
+// cached `vup.exe` the wipe waited for) can stay locked for a moment after the wait returns, and a
+// single attempt then fails with access denied.
+fn rmdir_all_settling(path string) ! {
+	mut attempts := 0
+	for {
+		os.rmdir_all(path) or {
+			if attempts < 50 && os.exists(path) {
+				attempts++
+				time.sleep(100 * time.millisecond)
+				continue
+			}
+			return err
+		}
+		return
+	}
+}
+
+// remove_tree removes `name` and, when it is a folder, all that is in it, as `os.rmdir_all` does.
+// A link is removed itself.
+fn (dir ToolCacheWipeDir) remove_tree(name string) ! {
+	path := os.join_path(dir.path, name)
+	if os.is_link(path) || !os.is_dir(path) {
+		dir.remove_file(name) or { return error('${name}: ${err.msg()}') }
+		return
+	}
+	rmdir_all_settling(path) or {
+		if os.exists(path) || os.is_link(path) {
+			return error('${name}: ${err.msg()}')
+		}
+	}
+}
+
+// ToolCacheWipeLock is a build lock that a wipe tried to take.
+struct ToolCacheWipeLock {
+	state ToolCacheWipeLockState
+mut:
+	file_lock filelock.FileLock
+}
+
+// release lets a held lock go.
+fn (mut held ToolCacheWipeLock) release() {
+	if held.state == .held {
+		held.file_lock.release()
+	}
+}
+
+// try_lock takes the build lock `name` in the folder without waiting.
+fn (dir ToolCacheWipeDir) try_lock(name string) ToolCacheWipeLock {
+	path := os.join_path(dir.path, name)
+	if os.is_link(path) || os.is_dir(path) {
+		return ToolCacheWipeLock{
+			state: .unsafe_name
+		}
+	}
+	if !os.exists(path) {
+		return ToolCacheWipeLock{
+			state: .absent
+		}
+	}
+	mut file_lock := filelock.new_file(path, mode: .exclusive)
+	if file_lock.try_acquire() {
+		return ToolCacheWipeLock{
+			state:     .held
+			file_lock: file_lock
+		}
+	}
+	// `try_acquire` fails both when another process holds the lock and when the file cannot be
+	// opened; only the first one means a build is in flight. A file that another wipe removed
+	// meanwhile is no lock file any more.
+	mut probe_file := os.open_file(path, 'r+') or {
+		return ToolCacheWipeLock{
+			state: if os.exists(path) { ToolCacheWipeLockState.unopenable } else { .absent }
+		}
+	}
+	probe_file.close()
+	return ToolCacheWipeLock{
+		state: .busy
+	}
+}
+
+// create_lock_file makes the lock file `name` when nothing has that name, and reports whether it
+// did.
+fn (dir ToolCacheWipeDir) create_lock_file(name string, _ u32) bool {
+	path := os.join_path(dir.path, name)
+	if os.exists(path) || os.is_link(path) {
+		return false
+	}
+	ensure_tool_cache_lock_file(path) or { return false }
+	return true
+}
+
+// repair_lock_file makes the lock file `name` writable again, so that it can be locked.
+fn (dir ToolCacheWipeDir) repair_lock_file(name string) ! {
+	os.chmod(os.join_path(dir.path, name), 0o600)!
 }
