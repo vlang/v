@@ -2046,6 +2046,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	}
 	tc.check_match_sumtype_exhaustiveness(id, node, subject_type)
 	tc.check_match_flag_enum_exhaustiveness(id, node, subject_type)
+	tc.check_match_enum_exhaustiveness(id, node, subject_type)
 	tc.check_match_bool_exhaustiveness(id, node, subject_type)
 	if value_context {
 		tc.check_match_branch_tail_type_diagnostics(id, node)
@@ -2187,6 +2188,74 @@ fn (mut tc TypeChecker) check_match_flag_enum_exhaustiveness(id flat.NodeId, nod
 		}
 	}
 	tc.record_error_at(.condition_mismatch, 'match must be exhaustive (add `else {}` at the end)', id, tc.match_header_pos(node))
+}
+
+// check_match_enum_exhaustiveness reports a `match` over a plain (non-flag)
+// enum that lists neither every field nor an `else` branch. A condition that
+// names no single field (a range, a constant, a call) makes the covered set
+// unknowable, so such a match is not diagnosed here.
+fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
+	clean_subject := unalias_type(subject_type)
+	if clean_subject !is Enum || !tc.should_diagnose(id) {
+		return
+	}
+	enum_subject := clean_subject as Enum
+	enum_name := tc.resolve_enum_name(enum_subject.source_type_id()) or {
+		enum_subject.source_type_id()
+	}
+	if enum_subject.is_flag || enum_name in tc.flag_enums
+		|| enum_subject.source_type_id() in tc.flag_enums {
+		return
+	}
+	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if cases.len == 0 {
+		return
+	}
+	mut covered := map[string]bool{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			continue
+		}
+		if branch.value == 'else' {
+			return
+		}
+		n_conds := branch.value.int()
+		if n_conds <= 0 || n_conds > branch.children_count {
+			return
+		}
+		for j in 0 .. n_conds {
+			field := tc.match_enum_condition_field(tc.a.child_node(branch, j), enum_name) or {
+				return
+			}
+			covered[field] = true
+		}
+	}
+	// Under @[_allow_multiple_values] two fields may share a value, and naming
+	// one of them covers the other.
+	mut covered_values := map[i64]bool{}
+	for c in cases {
+		if c.name in covered && c.has_value && !c.value_from_c {
+			covered_values[c.value] = true
+		}
+	}
+	mut missing := []string{}
+	for c in cases {
+		if c.name in covered || (c.has_value && !c.value_from_c && c.value in covered_values) {
+			continue
+		}
+		missing << '`.${c.name}`'
+	}
+	if missing.len == 0 {
+		return
+	}
+	// At most ten fields are named, as the original checker did.
+	listed := if missing.len <= 10 {
+		missing.join(', ')
+	} else {
+		missing[..10].join(', ') + ', and ${missing.len - 10} others ...'
+	}
+	tc.record_error_at(.condition_mismatch, 'match must be exhaustive (add match branches for: ${listed} or `else {}` at the end)', id, tc.match_header_pos(node))
 }
 
 fn (mut tc TypeChecker) check_match_bool_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
