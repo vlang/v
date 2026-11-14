@@ -146,6 +146,10 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		// Exact project refs stay pinned, as do their lockfile entries.
 		request := detached_project_pin(name, install_path)
 		if request != '' {
+			prepare_binary_artifacts(install_path, binary_host_target()) or {
+				vpm_error(err.msg())
+				return &UpdateResult{}
+			}
 			println('Skipping module `${name}` pinned at `${request}`.')
 			return &UpdateResult{
 				success: true
@@ -153,11 +157,25 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		}
 		// A tagged or locked checkout has no branch to pull. FETCH_HEAD records
 		// the fetched default branch even when origin/HEAD is absent.
-		commands = [['fetch', '--depth', '1', 'origin', 'HEAD'], ['checkout', '--quiet', 'FETCH_HEAD']]
+		// Retain the existing shallow boundary so a restored published branch
+		// remains reachable from the fetched remote after a failed update.
+		commands = [['fetch', 'origin', 'HEAD'], ['checkout', '--quiet', 'FETCH_HEAD']]
 	}
 	// `head_revision` is git-only and returns '' elsewhere, so this compares
 	// revisions only where revisions mean something.
 	old_revision := head_revision(install_path)
+	mut update_committed := false
+	defer {
+		// A failed asset download must not leave new bindings paired with the
+		// previous revision's library. The Git work guard ran before updating.
+		if vcs == .git && !update_committed && old_revision != ''
+			&& head_revision(install_path) != old_revision {
+			os.exec_opt(['git', '-C', install_path, 'reset', '--hard', '--recurse-submodules',
+				old_revision]) or {
+				vpm_error('failed to restore `${name}` after its unsuccessful update: ${err.msg()}')
+			}
+		}
+	}
 	for update in commands {
 		vpm_log(@FILE_LINE, @FN, 'update command: ${update}')
 		os.exec_opt([vcs.str(), args.path, install_path, ...update]) or {
@@ -175,6 +193,11 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 			return &UpdateResult{}
 		}
 	}
+	prepare_binary_artifacts(install_path, binary_host_target()) or {
+		vpm_error('failed to update binaries for `${name}`: ${err.msg()}')
+		return &UpdateResult{}
+	}
+	update_committed = true
 	if old_revision != '' {
 		if head_revision(install_path) == old_revision {
 			println('Skipped module `${ident}`. Already up to date.')
