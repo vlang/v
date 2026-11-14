@@ -57,6 +57,19 @@ Incremental playback (used by `examples/viewer`): `gif.GifPlayer` and
 full-canvas RGBA buffer, plus `delay_ms()`, `loop_count()`, `reset()`,
 and `free()`.
 
+`webp.decode_metadata` returns the raw ICC profile, EXIF and XMP chunks of a
+WEBP file without decoding its pixels:
+
+```v
+import image.decoders.webp
+
+fn main() {
+	data := []u8{} // your WEBP bytes
+	meta := webp.decode_metadata(data) or { return }
+	println('ICC: ${meta.icc_profile.len} bytes, EXIF: ${meta.exif.len} bytes')
+}
+```
+
 Decode dimensions, scratch buffers, and WEBP output geometry are checked against
 the supported integer size before buffer allocation.
 TIFF requires complete, matching strip or tile offset and byte count arrays.
