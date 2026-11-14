@@ -63,6 +63,6 @@ fn test_orm_time_values_follow_the_sql_column_types() {
 		assert row.count == values[i].count
 	}
 	column_types := db.get_table_column_type_map('mysql_orm_time_binding')!
-	assert column_types['epoch'] == 'int'
+	assert column_types['epoch'] == 'datetime'
 	assert column_types['count'] == 'int'
 }
