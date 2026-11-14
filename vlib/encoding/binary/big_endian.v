@@ -35,7 +35,7 @@ pub fn big_endian_u16_at(b []u8, o int) u16 {
 	}
 }
 
-// big_endian_u16_end creates a u16 from two bytes in the array b at the specified offset in big endian order.
+// big_endian_u16_end creates a u16 from the last two bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u16_end(b []u8) u16 {
 	return big_endian_u16_at(b, b.len - 2)
@@ -259,7 +259,7 @@ pub fn big_endian_put_u64_at(mut b []u8, v u64, o int) {
 	}
 }
 
-// big_endian_put_u64_end writes a u64 to the last eight bytes in the array b at the specified offset in big endian order.
+// big_endian_put_u64_end writes a u64 to the last eight bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u64_end(mut b []u8, v u64) {
 	big_endian_put_u64_at(mut b, v, b.len - 8)
