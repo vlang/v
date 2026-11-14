@@ -1,4 +1,4 @@
-vlib/v/checker/tests/attribute_schema_generic_err.vv:3:2: error: attribute schema field `Route.path` must be a string, integer, bool, or enum, not `T`
+vlib/v/checker/tests/attribute_schema_generic_err.vv:3:2: error: attribute schema field `Route.path` must be a string, integer, bool, enum, or an array of those (float arrays like `[]f64` are unsupported), not `T`
     1 | @[attribute]
     2 | struct Route[T] {
     3 |     path T
