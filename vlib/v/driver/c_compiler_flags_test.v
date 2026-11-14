@@ -2404,3 +2404,74 @@ fn test_v3_production_object_links_with_independent_c_main() {
 	ran := cmdexec.run(exe, [])
 	assert ran.exit_code == 0, ran.output
 }
+
+fn test_v3_explicit_opt_level_reaches_plan_verbatim() {
+	// An explicit -O level is honored verbatim without -prod, and -flto stays
+	// a -prod feature: -O alone must never turn the link into an LTO link.
+	for level in ['0', '1', '2', '3', 's', 'z'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:   'linux'
+			target_arch: 'amd64'
+			c_compiler:  'cc'
+			c_opt_level: level
+		})
+		assert ('-O' + level) in plan.before_inputs, plan.before_inputs.str()
+		assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
+	}
+}
+
+fn test_v3_explicit_opt_level_overrides_prod_default() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:     true
+		target_os:   'linux'
+		target_arch: 'amd64'
+		c_compiler:  'cc'
+		c_opt_level: '1'
+	})
+	assert '-O1' in plan.before_inputs, plan.before_inputs.str()
+	assert '-O3' !in plan.before_inputs, plan.before_inputs.str()
+	assert '-O2' !in plan.before_inputs, plan.before_inputs.str()
+	assert '-flto' in plan.before_inputs, plan.before_inputs.str()
+}
+
+fn test_v3_explicit_opt_level_survives_no_prod_options() {
+	// -no-prod-options drops the automatic -O3/-flto, but an explicit level
+	// is user intent, not an automatic option, so it stays (without -flto).
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:         true
+		no_prod_options: true
+		target_os:       'linux'
+		target_arch:     'amd64'
+		c_compiler:      'cc'
+		c_opt_level:     's'
+	})
+	assert '-Os' in plan.before_inputs, plan.before_inputs.str()
+	assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
+}
+
+fn test_v3_explicit_opt_level_skips_flto_where_prod_does() {
+	// The -flto exclusions (shared objects, tcc) apply to explicit levels too:
+	// -O selects the level, it does not re-enable what -prod disables.
+	shared := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:     true
+		is_shared:   true
+		target_os:   'linux'
+		target_arch: 'amd64'
+		c_compiler:  'cc'
+		c_opt_level: '2'
+	})
+	assert '-O2' in shared.before_inputs, shared.before_inputs.str()
+	assert '-flto' !in shared.before_inputs, shared.before_inputs.str()
+}
+
+fn test_v3_no_opt_level_by_default_without_prod() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:   'linux'
+		target_arch: 'amd64'
+		c_compiler:  'cc'
+	})
+	for unwanted in ['-O0', '-O1', '-O2', '-O3', '-Os', '-Oz'] {
+		assert unwanted !in plan.before_inputs, plan.before_inputs.str()
+	}
+	assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
+}

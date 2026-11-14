@@ -2467,3 +2467,58 @@ pub fn value() int {
 	assert run.exit_code == 0
 	assert run.output.trim_space() == '42'
 }
+
+fn test_driver_cli_opt_level_flags() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_opt_level_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'hello.v')
+	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	output := os.join_path(root, 'hello')
+	// Two different levels cannot both apply, so the driver refuses with a
+	// naming diagnostic instead of silently following "last wins". This fails
+	// during argument parsing, before any compiler runs.
+	assert_driver_cli_failure(v3_bin, ['-O2', '-O3', '-o', output, source],
+		'conflicting optimization levels')
+	assert_driver_cli_failure(v3_bin, ['-Os', '-O0', '-o', output, source],
+		'conflicting optimization levels')
+	assert_driver_cli_failure(v3_bin, ['-prod', '-Oz', '-O1', '-o', output, source],
+		'conflicting optimization levels')
+	if false_exe := os.find_abs_path_of_executable('false') {
+		// Exercise the final C compiler command without needing runtime objects
+		// to be built by the deliberately failing compiler first.
+		check_opt_level := fn (v3_bin string, false_exe string, root string, source string, extra []string, want []string, unwanted []string) {
+			mut args := ['-showcc', '-cc', false_exe, '-o', os.join_path(root, 'opt_probe')]
+			args << extra
+			args << source
+			result := cmdexec.run(v3_bin, args)
+			assert result.exit_code != 0
+			for flag in want {
+				assert result.output.contains(flag), result.output
+			}
+			for flag in unwanted {
+				assert !result.output.contains(flag), result.output
+			}
+		}
+		// An explicit level travels verbatim and never enables LTO on its own.
+		check_opt_level(v3_bin, false_exe, root, source, ['-O2'], ['-O2'], ['-O3', '-flto'])
+		check_opt_level(v3_bin, false_exe, root, source, ['-Os'], ['-Os'], ['-O3', '-flto'])
+		// Repeating the same level is accepted: only differing levels conflict.
+		check_opt_level(v3_bin, false_exe, root, source, ['-O2', '-O2'], ['-O2'], [
+			'-O3',
+			'-flto',
+		])
+		// With -prod the explicit level replaces the default but keeps the rest.
+		check_opt_level(v3_bin, false_exe, root, source, ['-prod', '-O1'], ['-O1', '-flto'], [
+			'-O3',
+			'-O2',
+		])
+		// -prod -no-prod-options drops the automatic flags but keeps the explicit level.
+		check_opt_level(v3_bin, false_exe, root, source, ['-prod', '-no-prod-options', '-Oz'],
+			['-Oz'], ['-O3', '-flto'])
+	}
+}

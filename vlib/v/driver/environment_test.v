@@ -623,44 +623,78 @@ fn test_v3_test_sqlite_present_uses_bundled_windows_source() {
 }
 
 fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
-	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, false) == [
+	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, false, '') == [
 		'-O3',
 		'-flto',
 	]
-	assert v3_prod_c_optimization_flags(true, false, false, false, true, false, false) == [
+	assert v3_prod_c_optimization_flags(true, false, false, false, true, false, false, '') == [
 		'-O2',
 		'-flto',
 	]
-	assert v3_prod_c_optimization_flags(true, false, false, false, true, true, false) == [
+	assert v3_prod_c_optimization_flags(true, false, false, false, true, true, false, '') == [
 		'-O2',
 		'-flto',
 		'-mllvm',
 		'-inline-threshold=75',
 	]
-	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, true) == [
+	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, true, '') == [
 		'-O3',
 	]
-	assert v3_prod_c_optimization_flags(true, false, true, false, false, false, false) == [
+	assert v3_prod_c_optimization_flags(true, false, true, false, false, false, false, '') == [
 		'-O3',
 	]
-	assert v3_prod_c_optimization_flags(true, false, false, true, false, false, false) == [
+	assert v3_prod_c_optimization_flags(true, false, false, true, false, false, false, '') == [
 		'-O3',
 	]
-	assert v3_prod_c_optimization_flags(false, false, false, false, false, false, false) == []
-	assert v3_prod_c_optimization_flags(true, true, false, false, false, false, false) == []
+	assert v3_prod_c_optimization_flags(false, false, false, false, false, false, false, '') == []
+	assert v3_prod_c_optimization_flags(true, true, false, false, false, false, false, '') == []
 	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1)
 	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold)
 }
 
+fn test_v3_prod_c_optimization_flags_explicit_level() {
+	// An explicit -O level is honored verbatim, without -prod and without -flto.
+	for level in ['0', '1', '2', '3', 's', 'z'] {
+		assert v3_prod_c_optimization_flags(false, false, false, false, false, false, false, level) == [
+			'-O' + level,
+		]
+	}
+	// With -prod the explicit level replaces the default but keeps -flto.
+	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, false, '1') == [
+		'-O1',
+		'-flto',
+	]
+	// The large-TU carve-out applies only to the -prod default, never to an
+	// explicit level: the user asked for exactly this.
+	assert v3_prod_c_optimization_flags(true, false, false, false, true, true, false, '3') == [
+		'-O3',
+		'-flto',
+	]
+	// -no-prod-options drops the automatic flags but keeps the explicit level,
+	// and the -flto exclusions still apply to it.
+	assert v3_prod_c_optimization_flags(true, true, false, false, false, false, false, 's') == [
+		'-Os',
+	]
+	assert v3_prod_c_optimization_flags(true, false, true, false, false, false, false, '2') == [
+		'-O2',
+	]
+	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, true, '2') == [
+		'-O2',
+	]
+}
+
 fn test_v3_prod_c_object_optimization_flags_keep_cached_objects_out_of_lto() {
-	assert v3_prod_c_object_optimization_flags(true, false, false, false, false) == [
+	assert v3_prod_c_object_optimization_flags(true, false, false, false, false, '') == [
 		'-O3',
 	]
-	assert v3_prod_c_object_optimization_flags(true, false, false, true, false) == [
+	assert v3_prod_c_object_optimization_flags(true, false, false, true, false, '') == [
 		'-O3',
 	]
-	assert v3_prod_c_object_optimization_flags(false, false, false, false, false) == []
-	assert v3_prod_c_object_optimization_flags(true, true, false, false, false) == []
+	assert v3_prod_c_object_optimization_flags(false, false, false, false, false, '') == []
+	assert v3_prod_c_object_optimization_flags(true, true, false, false, false, '') == []
+	assert v3_prod_c_object_optimization_flags(false, false, false, false, false, '2') == [
+		'-O2',
+	]
 }
 
 fn test_effective_c_compiler_name_detects_path_valued_tcc() {

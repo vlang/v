@@ -179,6 +179,18 @@ NB: the build flags are shared with the run command too:
     with different optimisation options passed to the C compiler, like `-O2` instead of
     the default ones, which can be beneficial for working with older or newer buggy compilers.
 
+  -O0 | -O1 | -O2 | -O3 | -Os | -Oz
+    Pass an explicit C optimization level to the C compiler: `-O0` disables most
+    optimizations (fastest C compile, slowest program), `-O3` enables aggressive
+    optimizations, `-Os` optimizes for size, and `-Oz` optimizes for size even more
+    aggressively. Unlike -prod, an explicit -O level changes nothing else about the
+    build: no `$if prod {` branches, no -flto unless -prod is also given. With -prod,
+    an explicit level replaces the default (-O3, or -O2 for very large generated
+    units) while the rest of the production flags still apply. Passing two different
+    levels, as in `v -O2 -O3 program.v`, is an error.
+    Example:
+       `v -O2 program.v`
+
   -no-bounds-checking
     Programs compiled with this option, will do no runtime checking of array access operations.
     Note that the performance impact of the bounds checking is usually below 3%, so in most
