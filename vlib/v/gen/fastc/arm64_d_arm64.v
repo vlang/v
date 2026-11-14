@@ -6,9 +6,9 @@ import strings
 import v.gen.arm64
 import v.pref
 import v.scanner
-import v.workers
 import v.ssa
 import v.token
+import v.workers
 
 const fastc_arm64_fd_set_source_type = flat.source_type_id('C.fd_set')
 const fastc_arm64_timeval_source_type = flat.source_type_id('C.timeval')
