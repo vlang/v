@@ -96,7 +96,7 @@ fn main() {
 
 // A `return` inside `$if` leaves the following `return` in the same block.
 fn test_inlining_stops_at_the_first_return() {
-	check('dead_return', "fn truth(a int) bool {
+	check('dead_return', 'fn truth(a int) bool {
 	return a > 0
 }
 
@@ -113,7 +113,7 @@ fn wrapper(a int) bool {
 fn main() {
 	println(wrapper(3))
 }
-", 'true')
+', 'true')
 }
 
 fn test_common_subexpressions_across_branches() {
@@ -174,7 +174,7 @@ fn main() {
 }
 
 fn test_floats_after_optimization() {
-	check('floats', "fn scale(a f64, b f64) f64 {
+	check('floats', 'fn scale(a f64, b f64) f64 {
 	return a * b + a * b
 }
 
@@ -185,7 +185,7 @@ fn main() {
 	}
 	println(total)
 }
-", '6.0')
+', '6.0')
 }
 
 // A value-position `match` stops on a value no branch names.
@@ -198,7 +198,7 @@ fn test_value_match_without_a_matching_branch() {
 			os.rmdir_all(root) or {}
 		}
 		source := os.join_path(root, 'main.v')
-		os.write_file(source, "enum Color {
+		os.write_file(source, 'enum Color {
 	red
 	green
 }
@@ -211,7 +211,7 @@ fn main() {
 	}
 	println(x)
 }
-") or { panic(err) }
+') or { panic(err) }
 		output := os.join_path(root, 'main')
 		compiled := cmdexec.run(@VEXE, ['-w', '-b', 'arm64', '-o', output, source])
 		assert compiled.exit_code == 0, compiled.output

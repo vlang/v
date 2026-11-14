@@ -40,8 +40,13 @@ fn cse_key(val_typ ssa.TypeID, instr ssa.Instruction) u64 {
 fn cse_same(m &ssa.Module, a ssa.ValueID, b ssa.ValueID) bool {
 	left := m.instrs[m.values[a].index]
 	right := m.instrs[m.values[b].index]
-	if left.op != right.op || m.values[a].typ != m.values[b].typ
-		|| left.operands.len != right.operands.len {
+	if left.op != right.op {
+		return false
+	}
+	if m.values[a].typ != m.values[b].typ {
+		return false
+	}
+	if left.operands.len != right.operands.len {
 		return false
 	}
 	if cse_is_commutative(left.op) && left.operands.len == 2 {
