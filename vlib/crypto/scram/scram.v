@@ -52,12 +52,14 @@ import crypto.rand
 import crypto.sha1
 import crypto.sha256
 import crypto.sha512
+import crypto.subtle
 import encoding.base64
 import hash
 
 // default_min_iterations is the smallest PBKDF2 iteration count a client
 // accepts from a server unless `ClientConfig.min_iterations` says otherwise.
-// RFC 7677 §4 requires clients to reject anything below 4096, because a low
+// RFC 7677 §3 and §4 say that the count a server announces SHOULD be at
+// least 4096; refusing a lower one is this module's policy, because a low
 // count makes an offline attack on an intercepted exchange cheap.
 pub const default_min_iterations = 4096
 
@@ -72,19 +74,20 @@ pub const default_min_iterations = 4096
 pub const default_max_iterations = 1_048_576
 
 // default_iterations is the iteration count used by `new_credentials` when
-// the caller does not pick one. RFC 7677 §4 gives 4096 as the floor; this
+// the caller does not pick one. RFC 7677 §4 recommends at least 4096; this
 // module defaults an order of magnitude above it. Derivation typically takes
 // tens of milliseconds on contemporary desktop CPUs; benchmark the target
 // deployment when sizing authentication capacity.
 pub const default_iterations = 32768
 
 // default_salt_size is the number of random bytes `new_credentials` uses for
-// a salt, matching the 16 octets recommended by RFC 5802 §5.1.
+// a salt. RFC 5802 §9 asks for random salts without fixing a length; 16
+// bytes is a common choice.
 pub const default_salt_size = 16
 
 // nonce_size is the number of random bytes behind a generated nonce. The
-// base64 spelling that goes on the wire is longer, and comfortably above the
-// entropy RFC 5802 §5.1 asks for.
+// base64 spelling that goes on the wire is longer. RFC 5802 §5.1 asks for a
+// nonce that differs for each authentication, without fixing a length.
 const nonce_size = 24
 const max_wire_iterations = 999_999_999
 
@@ -221,19 +224,15 @@ pub fn (c Credentials) str() string {
 // to reproduce an existing record; prefer `new_credentials` for a fresh user,
 // as it picks a random salt for you.
 //
-// Prepare and validate the password before calling: SASLprep for `.sha1`,
-// PRECIS OpaqueString for `.sha256`, and the profile agreed with the peer for
-// `.sha512`. This function hashes the supplied bytes unchanged.
+// Prepare and validate the password before calling, with the profile the
+// application protocol or the peer specifies; RFC 5802 names SASLprep
+// (RFC 4013) for every SCRAM mechanism. This function hashes the supplied
+// bytes unchanged.
 pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, iterations int) !Credentials {
 	if salt.len == 0 {
 		return error('scram: the salt must not be empty')
 	}
-	if iterations < 1 {
-		return error('scram: the iteration count must be at least 1, got ${iterations}')
-	}
-	if iterations > max_wire_iterations {
-		return error('scram: the iteration count must not exceed ${max_wire_iterations}, got ${iterations}')
-	}
+	check_iterations(iterations)!
 	salted := mechanism.hi(password.bytes(), salt, iterations)
 	client_key := mechanism.hmac(salted, 'Client Key'.bytes())
 	return Credentials{
@@ -249,9 +248,10 @@ pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, itera
 // with a freshly generated random salt of `default_salt_size` bytes and
 // `default_iterations` iterations.
 //
-// Prepare and validate the password before calling: SASLprep for `.sha1`,
-// PRECIS OpaqueString for `.sha256`, and the profile agreed with the peer for
-// `.sha512`. This function hashes the supplied bytes unchanged.
+// Prepare and validate the password before calling, with the profile the
+// application protocol or the peer specifies; RFC 5802 names SASLprep
+// (RFC 4013) for every SCRAM mechanism. This function hashes the supplied
+// bytes unchanged.
 //
 // Example:
 // ```v
@@ -262,6 +262,101 @@ pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, itera
 pub fn new_credentials(mechanism Mechanism, password string) !Credentials {
 	salt := rand.bytes(default_salt_size)!
 	return derive_credentials(mechanism, password, salt, default_iterations)!
+}
+
+// verify reports whether `password` matches the credentials, for a server that
+// checks a clear-text password, as SASL PLAIN sends, against the SCRAM record
+// it stores. Prepare the password the same way as when the credentials were
+// created. It derives the keys again with the stored salt and iteration count,
+// and compares the stored key in constant time; it does not check that
+// `server_key` is consistent with it. A record that cannot be derived, such as
+// one with an empty salt, gives `false`.
+//
+// It runs a full PBKDF2 derivation, which is slow on purpose: keep it off an
+// event loop. Against `dummy_credentials` it costs the same derivation as a
+// real account with the same mechanism, salt length and iteration count, and
+// no password is expected to match; the application must still refuse an
+// unknown account whatever the result.
+//
+// Example:
+// ```v
+// credentials := scram.new_credentials(.sha256, 'pencil')!
+// assert credentials.verify('pencil')
+// assert !credentials.verify('crayon')
+// ```
+pub fn (c Credentials) verify(password string) bool {
+	derived := derive_credentials(c.mechanism, password, c.salt, c.iterations) or {
+		return false
+	}
+	return subtle.constant_time_compare(derived.stored_key, c.stored_key) == 1
+}
+
+// check_iterations rejects an iteration count the wire grammar cannot carry.
+fn check_iterations(iterations int) ! {
+	if iterations < 1 {
+		return error('scram: the iteration count must be at least 1, got ${iterations}')
+	}
+	if iterations > max_wire_iterations {
+		return error('scram: the iteration count must not exceed ${max_wire_iterations}, got ${iterations}')
+	}
+}
+
+// dummy_secret_min_size is the shortest secret `dummy_credentials` accepts.
+const dummy_secret_min_size = 32
+
+// dummy_credentials returns credentials for a user name that has no account,
+// for a `lookup` callback to return instead of an error, so that the exchange
+// goes on as it would for a real user. They are derived with the HMAC of
+// `mechanism` from `secret` and `username`: the same secret, mechanism and
+// user name always give the same salt, and different names get unrelated
+// salts, as real accounts do. The salt is `default_salt_size` bytes long, like
+// the one `new_credentials` writes, and the keys come from no password.
+//
+// `secret` must be random, at least 32 bytes long, kept across restarts and
+// private: a new secret gives every unknown name a new salt, and whoever holds
+// it can tell dummy credentials from real ones. `username` must be the
+// prepared form `lookup` receives, and `iterations` the count real accounts
+// use.
+//
+// This only hides the absence of the account from the client. The application
+// must remember, for this exchange, that the name is unknown, and refuse the
+// authentication after `Server.final` whatever its result. Accounts with
+// another salt length or iteration count, or a lookup that takes longer for
+// unknown names, can still tell them apart.
+//
+// Example:
+// ```v
+// secret := []u8{len: 32, init: u8(index)} // in practice, 32 random bytes kept across restarts
+// a := scram.dummy_credentials(.sha256, secret, 'nobody', 4096)!
+// b := scram.dummy_credentials(.sha256, secret, 'nobody', 4096)!
+// assert a.salt == b.salt
+// assert scram.dummy_credentials(.sha256, secret, 'noone', 4096)!.salt != a.salt
+// ```
+pub fn dummy_credentials(mechanism Mechanism, secret []u8, username string, iterations int) !Credentials {
+	if secret.len < dummy_secret_min_size {
+		return error('scram: the secret must be at least ${dummy_secret_min_size} bytes long, got ${secret.len}')
+	}
+	if username == '' {
+		return error('scram: the user name must not be empty')
+	}
+	check_iterations(iterations)!
+	return Credentials{
+		mechanism:  mechanism
+		salt:       mechanism.hmac(secret, dummy_input('salt', username))[..default_salt_size].clone()
+		iterations: iterations
+		stored_key: mechanism.hmac(secret, dummy_input('stored key', username))
+		server_key: mechanism.hmac(secret, dummy_input('server key', username))
+	}
+}
+
+// dummy_input is the HMAC input `label || 0x00 || username` of
+// `dummy_credentials`. The NUL keeps the label and the name apart.
+fn dummy_input(label string, username string) []u8 {
+	mut input := []u8{cap: label.len + 1 + username.len}
+	input << label.bytes()
+	input << u8(0)
+	input << username.bytes()
+	return input
 }
 
 // encode renders the credentials in this one-line storage format:

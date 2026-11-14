@@ -16,9 +16,9 @@ pub:
 	// and NUL but does not normalize the value. Commas and equals signs are
 	// escaped on the wire.
 	username string @[required]
-	// password is the secret. Prepare and validate it before passing it:
-	// SASLprep for `.sha1`, PRECIS OpaqueString for `.sha256`, and the profile
-	// agreed with the peer for `.sha512`. The module hashes its bytes unchanged.
+	// password is the secret. Prepare and validate it before passing it, with
+	// the profile the application protocol or the peer specifies; RFC 5802
+	// names SASLprep (RFC 4013). The module hashes its bytes unchanged.
 	// It is required so an exchange is never attempted with an empty password
 	// by accident.
 	password string @[required]

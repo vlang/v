@@ -65,6 +65,101 @@ fn test_derive_credentials_rejects_an_iteration_count_above_the_wire_limit() {
 	assert false, 'derived credentials with an iteration count outside the wire grammar'
 }
 
+// dummy_secret is a fixed secret for the `dummy_credentials` tests.
+const dummy_secret = []u8{len: 32, init: u8(index)}
+
+fn test_dummy_credentials_match_independent_vectors() {
+	// HMAC(secret, label || 0x00 || 'nobody'), computed with Python's hmac
+	// module, so that a change of labels, which changes every stable salt,
+	// cannot go unnoticed.
+	vectors := {
+		Mechanism.sha1: ['a32361470cb638e400f278a96aa786b9', 'afff10634d650455fb19e96f31d7a88dd4803b54',
+			'bb31e856046224b4163aaafaded0632a62a2dc7f']
+		.sha256:        ['398b8e4668149b86f7b295382a22a5da',
+			'aa357cb20a6ac10327435f6714b3aa5b3aa891d2d1ee7e1ab336a4a0997ecc2a',
+			'e19cbd917c81c69860bfc3fae0a0bf78389338afcd643832cb9a547e8b2c990f']
+		.sha512:        ['5e21e3caafb81fade3eb7331028891f0',
+			'7dbd0523a0d52d34b33adb2fb6525efae358f9d39616ade8c68a060d78776c4e8b437551a4dba0ea38357bb48a631a64452af866f668a5adcefbf40b354f3021',
+			'2c230ba72441790481467a522f5775801cf033c87615c55a31da5a23642d06fa940d4db75d68cf08d92520ce66183f67a80d00d2313610e114046f04c8d14924']
+	}
+	for mechanism, expected in vectors {
+		creds := dummy_credentials(mechanism, dummy_secret, 'nobody', 4096)!
+		assert creds.mechanism == mechanism
+		assert creds.iterations == 4096
+		assert creds.salt.len == default_salt_size
+		assert creds.stored_key.len == mechanism.size()
+		assert creds.server_key.len == mechanism.size()
+		assert hex.encode(creds.salt) == expected[0], mechanism.name()
+		assert hex.encode(creds.stored_key) == expected[1], mechanism.name()
+		assert hex.encode(creds.server_key) == expected[2], mechanism.name()
+	}
+}
+
+fn test_dummy_credentials_are_stable_per_name_and_unrelated_across_names() {
+	first := dummy_credentials(.sha256, dummy_secret, 'nobody', 4096)!
+	again := dummy_credentials(.sha256, dummy_secret, 'nobody', 4096)!
+	assert first.salt == again.salt
+	assert first.stored_key == again.stored_key
+	// The salt depends on the name, not on the iteration count.
+	assert dummy_credentials(.sha256, dummy_secret, 'nobody', 8192)!.salt == first.salt
+	assert dummy_credentials(.sha256, dummy_secret, 'somebody', 4096)!.salt != first.salt
+	assert dummy_credentials(.sha256, dummy_secret, 'Nobody', 4096)!.salt != first.salt
+	other_secret := []u8{len: 32, init: u8(index + 1)}
+	assert dummy_credentials(.sha256, other_secret, 'nobody', 4096)!.salt != first.salt
+}
+
+fn test_dummy_credentials_reject_unusable_parameters() {
+	dummy_credentials(.sha256, []u8{len: 31}, 'nobody', 4096) or {
+		assert err.msg() == 'scram: the secret must be at least 32 bytes long, got 31'
+		dummy_credentials(.sha256, dummy_secret, '', 4096) or {
+			assert err.msg() == 'scram: the user name must not be empty'
+			dummy_credentials(.sha256, dummy_secret, 'nobody', 0) or {
+				assert err.msg() == 'scram: the iteration count must be at least 1, got 0'
+				dummy_credentials(.sha256, dummy_secret, 'nobody', max_wire_iterations + 1) or {
+					assert err.msg().contains('must not exceed ${max_wire_iterations}')
+					return
+				}
+				assert false, 'accepted an iteration count outside the wire grammar'
+			}
+			assert false, 'accepted a zero iteration count'
+		}
+		assert false, 'accepted an empty user name'
+	}
+	assert false, 'accepted a short secret'
+}
+
+fn test_verify_accepts_the_password_and_nothing_else() {
+	for mechanism in [Mechanism.sha1, .sha256, .sha512] {
+		creds := derive_credentials(mechanism, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+		assert creds.verify('pencil'), mechanism.name()
+		assert !creds.verify('crayon'), mechanism.name()
+		assert !creds.verify(''), mechanism.name()
+		assert !creds.verify('pencil '), mechanism.name()
+	}
+}
+
+fn test_verify_refuses_records_it_cannot_derive_or_that_do_not_match() {
+	creds := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	assert !Credentials{
+		...creds
+		salt: []u8{}
+	}.verify('pencil')
+	assert !Credentials{
+		...creds
+		iterations: 0
+	}.verify('pencil')
+	// Keys derived with another hash, or cut short, never match.
+	assert !Credentials{
+		...creds
+		mechanism: .sha512
+	}.verify('pencil')
+	assert !Credentials{
+		...creds
+		stored_key: creds.stored_key[..16]
+	}.verify('pencil')
+	assert !dummy_credentials(.sha256, dummy_secret, 'nobody', 4096)!.verify('pencil')
+}
+
 fn test_generated_nonces_are_unique_and_printable() {
 	mut seen := map[string]bool{}
 	for _ in 0 .. 256 {

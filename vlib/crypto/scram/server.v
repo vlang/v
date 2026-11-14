@@ -42,10 +42,11 @@ pub:
 	//
 	// Returning an error aborts the exchange before a server challenge exists;
 	// report that through the enclosing SASL protocol, not as a SCRAM
-	// server-final-message. To avoid revealing which user names exist, RFC 5802
-	// §7 suggests returning credentials derived from a server-side secret for
-	// unknown users and continuing the exchange. That policy belongs to the
-	// application, which is why it lives in this callback.
+	// server-final-message. To avoid revealing which user names exist, return
+	// `dummy_credentials` for an unknown user instead, remember for this
+	// exchange that the name is unknown, and refuse the authentication after
+	// `final`. That policy belongs to the application, which is why it lives
+	// in this callback.
 	lookup fn (username string) !Credentials @[required]
 }
 
