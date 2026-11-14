@@ -374,6 +374,13 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/fixed_array_update_c_struct_alias_test.v',
 ]
 
+// On Linux, every file of gg.canvas includes EGL/OpenGL and FreeType headers. The musl
+// Docker image has neither for musl-gcc (`EGL/egl.h: No such file or directory`), so
+// none of the module's tests can compile there.
+const skip_dirs_on_ubuntu_musl = [
+	'vlib/gg/canvas',
+]
+
 fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
 	for arg in vargs {
@@ -553,6 +560,10 @@ fn main() {
 	}
 	if cfg.is_ubuntu_musl_ci {
 		tsession.skip_files << skip_on_ubuntu_musl
+		for dir in skip_dirs_on_ubuntu_musl {
+			dir_prefix := os.join_path(vroot, dir) + os.path_separator
+			tsession.skip_files << tsession.files.filter(it.starts_with(dir_prefix))
+		}
 		tsession.custom_defines << 'self_ubuntu_musl_ci'
 	}
 	// dump(tsession.skip_files)
