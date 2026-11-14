@@ -22,6 +22,19 @@ fn test_append_path_entry_handles_empty_and_trailing_delimiter() {
 	assert append_path_entry(r'C:\Tools;', entry, ';', true) == r'C:\Tools;D:\v\.bin'
 }
 
+fn test_shell_shim_content_forwards_to_v_exe() {
+	content := shell_shim_content(r'C:\Users\MR\v\v.exe')
+	assert content == '#!/bin/sh\nexec "C:/Users/MR/v/v.exe" "$@"\n'
+}
+
+fn test_shell_shim_content_uses_forward_slashes() {
+	// Git Bash, MSYS2 and Cygwin accept the `C:/...` drive form, while
+	// backslashes would be parsed as escapes by the shell.
+	content := shell_shim_content(r'D:\tools\v lang\v.exe')
+	assert content.contains('exec "D:/tools/v lang/v.exe"')
+	assert !content.contains('\\')
+}
+
 fn test_registry_path_larger_than_old_limit_is_preserved() {
 	key_path := 'Software\\VlangVsymlinkTest_${os.getpid()}'
 	mut reg_key := os.hkey_current_user
