@@ -18,7 +18,11 @@ checksum=12991c4e55c506dd7f9b765933e62fd2be2e06d421505d7950a132e4f1bb484d
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/v-msan-freetype.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 archive="freetype-$version.tar.xz"
-curl --fail --location --output "$build_dir/$archive" \
+# Retry transport failures such as curl's empty-reply error (52), as well as
+# HTTP failures. Bound each attempt and the overall retry window.
+curl --fail --location --retry 3 --retry-all-errors --retry-delay 1 \
+  --connect-timeout 15 --max-time 60 --retry-max-time 180 \
+  --output "$build_dir/$archive" \
   "https://download.savannah.gnu.org/releases/freetype/$archive"
 printf '%s  %s\n' "$checksum" "$build_dir/$archive" | sha256sum --check
 tar -xJf "$build_dir/$archive" -C "$build_dir"

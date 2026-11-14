@@ -48,7 +48,14 @@ jobs:
 
   cleanup-vprod:
     # Never prune old artifacts before every new platform compiler exists.
-    needs: [gen_vc_ci, bootstrap-macos, bootstrap-windows, bootstrap-termux, windows-bootstrap-contracts]
+    needs:
+      [
+        gen_vc_ci,
+        bootstrap-macos,
+        bootstrap-windows,
+        bootstrap-termux,
+        windows-bootstrap-contracts,
+      ]
     if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -141,6 +148,8 @@ jobs:
         run: python3 .github/workflows/prepare_v_test.py
       - name: Test compiler artifact cleanup
         run: python3 .github/workflows/cleanup_vprod_test.py
+      - name: Test FreeType download retries and checksums
+        run: python3 .github/workflows/build_msan_freetype_test.py
       - name: Select suites using the original push path filters
         id: paths
         env:
@@ -746,7 +755,8 @@ jobs:
     secrets: inherit
 
   windows_ci_gcc:
-    needs: [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
+    needs:
+      [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
     if: needs.preflight.outputs.windows_ci_gcc == 'true'
     uses: ./.github/workflows/windows_ci_gcc.yml
     permissions:
@@ -754,7 +764,8 @@ jobs:
     secrets: inherit
 
   windows_ci_msvc:
-    needs: [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
+    needs:
+      [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
     if: needs.preflight.outputs.windows_ci_msvc == 'true'
     uses: ./.github/workflows/windows_ci_msvc.yml
     permissions:
@@ -762,7 +773,8 @@ jobs:
     secrets: inherit
 
   windows_ci_tcc:
-    needs: [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
+    needs:
+      [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
     if: needs.preflight.outputs.windows_ci_tcc == 'true'
     uses: ./.github/workflows/windows_ci_tcc.yml
     permissions:
