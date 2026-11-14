@@ -30,11 +30,11 @@ fn main() {
 	program := os.join_path(root, 'program')
 	// VFLAGS from a parent GCC/UBSan shard must not select an unsupported FastC C compiler.
 	// This nested integration runs the generated program with FastC's supported default.
-	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program,
-		root], @VEXEROOT, {
-		'VFLAGS':  ''
-		'VOSARGS': ''
-	})
+	build_args := ['-b', 'fastc', '-nocache', '-o', program, root]
+	mut clean_env := map[string]string{}
+	clean_env['VFLAGS'] = ''
+	clean_env['VOSARGS'] = ''
+	build := cmdexec.run_in_merged_with_env(@VEXE, build_args, @VEXEROOT, clean_env)
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
