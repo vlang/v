@@ -248,6 +248,12 @@ jobs:
           ./v run examples/hello_world.v
           ./v -o vprod-selfcheck cmd/v
           ./vprod-selfcheck run examples/hello_world.v
+      - name: Check code formatting
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ./v -silent test-cleancode
+          ./v -silent test-fmt
       - name: Stage the compiler for this commit and platform
         if: runner.os != 'Windows'
         shell: bash
@@ -278,6 +284,14 @@ jobs:
           ./v.exe -o vprod-selfcheck.exe cmd/v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./vprod-selfcheck.exe run examples/hello_world.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check code formatting on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./v.exe -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./v.exe -silent test-fmt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stage the Windows compiler for this commit and platform
         if: runner.os == 'Windows'
@@ -357,6 +371,8 @@ jobs:
               ./v -cc clang run examples/hello_world.v
               ./v -cc clang -o vprod-selfcheck cmd/v
               ./vprod-selfcheck -cc clang run examples/hello_world.v
+              ./v -cc clang -silent test-cleancode
+              ./v -cc clang -silent test-fmt
               asset="$expected_sha-$expected_platform"
               cp v "/artifacts/$asset"
               cd /artifacts

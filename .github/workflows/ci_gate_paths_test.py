@@ -37,7 +37,7 @@ class GatePathsTests(unittest.TestCase):
         jobs = self.caller_jobs()
         preflight = {
             "bootstrap-linux", "bootstrap-macos", "bootstrap-windows",
-            "bootstrap-termux", "windows-bootstrap-contracts", "formatting",
+            "bootstrap-termux", "windows-bootstrap-contracts", "preflight",
         }
         self.assertIn("gen_vc_ci", jobs)
         for name, body in jobs.items():
@@ -47,11 +47,11 @@ class GatePathsTests(unittest.TestCase):
                 needs = self.dependencies(body)
                 self.assertIsNotNone(needs)
                 if name == "gen_vc_ci":
-                    self.assertEqual(needs, {"formatting"})
+                    self.assertEqual(needs, {"preflight"})
                 else:
                     self.assertIn("gen_vc_ci", needs)
                     if name != "cleanup-vprod":
-                        self.assertIn("formatting", needs)
+                        self.assertIn("preflight", needs)
                 self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
 
     def test_linux_preflight_does_not_wait_for_other_platforms(self):
@@ -62,12 +62,12 @@ class GatePathsTests(unittest.TestCase):
                 self.assertIn("uses: ./.github/workflows/bootstrapping_ci.yml", body)
                 self.assertIn(f"platform: {platform}", body)
                 self.assertIsNone(self.dependencies(body))
-        self.assertEqual(self.dependencies(jobs["formatting"]), {"bootstrap-linux"})
-        self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"formatting"})
+        self.assertEqual(self.dependencies(jobs["preflight"]), {"bootstrap-linux"})
+        self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"preflight"})
         for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci", "release_ci"):
             with self.subTest(job=job):
                 self.assertEqual(
-                    self.dependencies(jobs[job]), {"formatting", "gen_vc_ci"}
+                    self.dependencies(jobs[job]), {"preflight", "gen_vc_ci"}
                 )
 
     def test_other_platforms_retain_bootstrap_gates(self):

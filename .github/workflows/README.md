@@ -12,9 +12,11 @@ early compatibility feedback.
 
 All master-push CI is orchestrated by `ci_master.yml`. It starts Linux,
 macOS, Windows and Termux bootstrap groups in parallel, alongside the
-Linux/Windows `makev_ci.yml` bootstrap contracts. Once **Linux** bootstrap
-succeeds, formatting executes `test-cleancode` and `test-fmt` in order,
-then `gen_vc_ci.yml` generates and checks `v.c` and `v_win.c` on every
+Linux/Windows `makev_ci.yml` bootstrap contracts. Every bootstrap producer runs
+`test-cleancode` and `test-fmt` in order with its optimized compiler before
+uploading the artifact, including both Termux containers. Once **Linux** bootstrap
+succeeds, the `preflight` job checks CI helpers and selects suites, then
+`gen_vc_ci.yml` generates and checks `v.c` and `v_win.c` on every
 master push, including documentation-only changes and empty diffs. Linux
 suites can start after these checks without waiting for macOS or Windows
 bootstrap. macOS, Windows and Termux suites that only target those platforms
@@ -71,7 +73,7 @@ executable. This supports nested `working-directory` checkouts and compilation f
 project directories. A standalone compiler outside a checkout retains its build-time source
 root as a fallback.
 
-After all platform bootstraps, Windows bootstrap contracts, formatting,
+After all platform bootstraps, Windows bootstrap contracts, preflight checks,
 and VC generation succeed, a separate job removes older artifacts from
 completed `CI master` push runs. It preserves artifacts belonging to the current run,
 newer runs and runs still in progress, and only deletes names matching the owning run's

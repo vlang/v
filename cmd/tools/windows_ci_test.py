@@ -63,16 +63,16 @@ def validate_master_bootstrap_contract(workflow, master):
             inputs = workflow_block(caller, 'with', 4)
             if inputs.strip() != f'platform: {name.removeprefix("bootstrap-")}':
                 raise ValueError(f'{name} must select its bootstrap platform')
-    formatting = workflow_block(jobs, 'formatting', 2)
-    if re.findall(r'^    needs: (.+)$', formatting, re.M) != ['bootstrap-linux']:
-        raise ValueError('formatting must depend only on the Linux bootstrap')
-    if re.search(r'^    if:', formatting, re.M):
-        raise ValueError('formatting must retain the default success condition')
+    preflight = workflow_block(jobs, 'preflight', 2)
+    if re.findall(r'^    needs: (.+)$', preflight, re.M) != ['bootstrap-linux']:
+        raise ValueError('preflight must depend only on the Linux bootstrap')
+    if re.search(r'^    if:', preflight, re.M):
+        raise ValueError('preflight must retain the default success condition')
     for cc in COMPILERS:
         caller = workflow_block(jobs, f'windows_ci_{cc}', 2)
         needs = re.findall(r'^    needs: \[([^\]]+)\]$', caller, re.M)
         if len(needs) != 1 or {name.strip() for name in needs[0].split(',')} != {
-                'formatting', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts'}:
+                'preflight', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts'}:
             raise ValueError(f'windows_ci_{cc} must retain its bootstrap and contract gates')
     contracts = workflow_block(workflow_block(workflow, 'jobs', 0), 'bootstrap-contracts', 2)
     if not re.search(r"^    if: github.ref == 'refs/heads/master'$", contracts, re.M):
@@ -317,7 +317,7 @@ class MasterBootstrapContractTests(unittest.TestCase):
         for name in names + ['windows-bootstrap-contracts']:
             body = workflow_block(self.master, name, 2)
             mutations = [body + f'    {rule}\n' for rule in
-                         ('if: false', 'needs: formatting', 'continue-on-error: true')]
+                         ('if: false', 'needs: preflight', 'continue-on-error: true')]
             mutations.append(body.replace('uses: ./.github/workflows/',
                                           'uses: ./.github/workflows/missing_', 1))
             for mutation in mutations:
@@ -338,8 +338,8 @@ class MasterBootstrapContractTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         validate_master_bootstrap_contract(self.workflow, changed)
 
-    def test_formatting_requires_successful_bootstrap(self):
-        body = workflow_block(self.master, 'formatting', 2)
+    def test_preflight_requires_successful_bootstrap(self):
+        body = workflow_block(self.master, 'preflight', 2)
         mutations = [body.replace('    needs: bootstrap-linux\n', replacement, 1)
                      for replacement in ('', '    needs: bootstrap-windows\n',
                                          '    needs: [bootstrap-linux, bootstrap-macos]\n',
@@ -349,7 +349,7 @@ class MasterBootstrapContractTests(unittest.TestCase):
             changed = self.master.replace(body, mutation, 1)
             with self.subTest(mutation=mutation.split('    runs-on:', 1)[0]):
                 self.assertNotEqual(changed, self.master)
-                with self.assertRaisesRegex(ValueError, 'formatting'):
+                with self.assertRaisesRegex(ValueError, 'preflight'):
                     validate_master_bootstrap_contract(self.workflow, changed)
 
     def test_windows_callers_require_successful_bootstrap_and_contracts(self):
