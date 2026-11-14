@@ -7,6 +7,7 @@ on:
       - '.github/workflows/master_ci_regressions.yml'
       - '.github/workflows/build_on_ubuntu_25_ci.yml'
       - '.github/workflows/linux_ci.yml'
+      - '.github/workflows/macos_ci.yml'
       - '.github/workflows/other_ci.yml'
       - '.github/workflows/tools_ci.yml'
       - '.github/workflows/riscv64_linux_ci.yml'
@@ -47,6 +48,8 @@ jobs:
         run: bash .github/workflows/disable_azure_mirror_test.sh
       - name: Check CI task coverage and deadlines
         run: python3 .github/workflows/ci_timeout_contract_test.py
+      - name: Check optimized compiler artifact reuse
+        run: python3 .github/workflows/prepare_v_test.py
       - name: Build V
         uses: ./.github/actions/setup-v
         with:
