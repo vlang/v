@@ -50,12 +50,29 @@ pub fn equal_fold(a string, b string) bool {
 
 // last_index_any returns the byte index of the last occurrence in s of any
 // byte of chars, or -1 if there is none.
+@[direct_array_access]
 pub fn last_index_any(s string, chars string) int {
-	if chars == '' {
+	if chars.len == 0 || s.len == 0 {
 		return -1
 	}
+	if chars.len == 1 {
+		return s.last_index_u8(chars[0])
+	}
+	// Short inputs are cheaper to scan directly than to build a lookup table.
+	if s.len < chars.len / 4 {
+		for i := s.len - 1; i >= 0; i-- {
+			if chars.index_u8(s[i]) >= 0 {
+				return i
+			}
+		}
+		return -1
+	}
+	mut byte_set := [256]bool{}
+	for i in 0 .. chars.len {
+		byte_set[chars[i]] = true
+	}
 	for i := s.len - 1; i >= 0; i-- {
-		if chars.index_u8(s[i]) >= 0 {
+		if byte_set[s[i]] {
 			return i
 		}
 	}
