@@ -1,4 +1,10 @@
 // Boehm's macros and callback casts belong in a cached native object.
+// `-c99` builds this object with -std=c99, where glibc hides the POSIX declarations
+// used below (sigset_t, pthread_sigmask). Request glibc's default set, which GNU C
+// modes already get, before the first header.
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE 1
+#endif
 // macOS TinyCC defines __APPLE__ without __MACH__; select Boehm's Darwin configuration.
 #if defined(__APPLE__) && !defined(GC_DARWIN_THREADS)
 #define GC_DARWIN_THREADS 1
