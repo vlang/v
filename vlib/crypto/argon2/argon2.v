@@ -255,6 +255,7 @@ fn process_blocks(mut blocks []u64, time u32, memory u32, threads u32, mode int)
 	}
 }
 
+@[ignore_overflow]
 fn process_segment(mut blocks []u64, pass u32, slice u32, lane u32, time u32, memory u32, lanes u32, segments u32, threads u32, mode int) {
 	mut addresses := [block_length]u64{}
 	mut input := [block_length]u64{}
@@ -406,6 +407,7 @@ fn process_block_xor_in_place(mut blocks []u64, out_index u32, in1_index u32, in
 	}
 }
 
+@[ignore_overflow]
 fn blamka_generic(mut block [block_length]u64, a int, b int, c int, d int, e int, f int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int) {
 	mut v00 := block[a]
 	mut v01 := block[b]

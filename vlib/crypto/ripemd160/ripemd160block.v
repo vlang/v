@@ -38,7 +38,7 @@ const r_ = [
 	8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11,
 ]!
 // vfmt on
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 fn block(mut md Digest, p []u8) int {
 	mut n := 0
 	mut x := []u32{len: 16}

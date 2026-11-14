@@ -196,7 +196,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 }
 
 // next_string_escape returns the next byte needing JSON escaping, or val.len.
-@[direct_array_access; inline]
+@[direct_array_access; ignore_overflow; inline]
 fn next_string_escape(val string, start int, escape_unicode bool) int {
 	mut i := start
 	for i <= val.len - 8 {

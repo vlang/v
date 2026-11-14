@@ -40,6 +40,7 @@ pub fn new_hasher(seed Seed) Hasher {
 }
 
 // write adds `data` to the hash.
+@[ignore_overflow]
 pub fn (mut h Hasher) write(data []u8) {
 	for b in data {
 		h.state ^= u64(b) + 0x9e3779b97f4a7c15 + (h.state << 6) + (h.state >> 2)
@@ -64,6 +65,7 @@ pub fn (mut h Hasher) write_u64(v u64) {
 
 // sum64 returns the current 64-bit hash value without changing the state.
 // Hash values are not guaranteed to remain the same across library versions.
+@[ignore_overflow]
 pub fn (h Hasher) sum64() u64 {
 	mut x := h.state ^ h.seed.s1
 	x ^= x >> 33
