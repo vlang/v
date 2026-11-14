@@ -8,6 +8,7 @@
 	setupSearch();
 	setupCollapse();
 	setupCodeCopy();
+	setupPlatformSelector();
 })();
 
 function setupScrollSpy() {
@@ -16,8 +17,6 @@ function setupScrollSpy() {
 	if (!toc) {
 		return;
 	}
-	const sections = mainContent.querySelectorAll('section');
-	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
 	let lastActive = null;
 	let clickedScroll = false;
 	const handleScroll = debounce(() => {
@@ -28,9 +27,13 @@ function setupScrollSpy() {
 		if (lastActive) {
 			lastActive.classList.remove('active');
 		}
-		for (const [i, position] of sectionPositions.entries()) {
-			if (position >= mainContent.scrollTop) {
-				const link = toc.querySelector('a[href="#' + sections[i].id + '"]');
+		// The sections that the platform selector hides have no position.
+		const sections = Array.from(mainContent.querySelectorAll('section')).filter(
+			(section) => section.offsetParent !== null,
+		);
+		for (const section of sections) {
+			if (section.offsetTop >= mainContent.scrollTop) {
+				const link = toc.querySelector('a[href="#' + section.id + '"]');
 				if (link) {
 					// Set current menu link as active
 					link.classList.add('active');
@@ -62,6 +65,107 @@ function setupScrollSpy() {
 			clickedScroll = true;
 		}),
 	);
+}
+
+// setupPlatformSelector makes the platform selector of a page documented with `-os cross` show
+// only the symbols, and the declarations of them, that are available on the selected platform.
+function setupPlatformSelector() {
+	const select = document.querySelector('.platform-select');
+	if (!select) {
+		return;
+	}
+	const show = (platform) => {
+		// The style that hid the symbols of the other platforms while the page loaded.
+		document.getElementById('platform-early-style')?.remove();
+		if (platform === '') {
+			delete document.documentElement.dataset.platform;
+		} else {
+			document.documentElement.dataset.platform = platform;
+		}
+		document.querySelectorAll('[data-platforms]').forEach((el) => {
+			el.hidden = platform !== '' && !el.dataset.platforms.split(' ').includes(platform);
+		});
+		// The links of the table of contents, and of the symbols in the navigation of a page of
+		// one module, are checked from the last one, so that an entry is only hidden with its
+		// target when none of the entries inside it, like the methods of a type, are shown.
+		const links = document.querySelectorAll(
+			'.doc-toc a[href^="#"], header.doc-nav .content a[href^="#"]',
+		);
+		Array.from(links)
+			.reverse()
+			.forEach((a) => {
+				const target = document.getElementById(decodedHash(a.hash));
+				const li = a.closest('li');
+				li.hidden =
+					!!target && !!target.closest('[hidden]') && !li.querySelector('li:not([hidden])');
+			});
+	};
+	let saved = '';
+	try {
+		saved = localStorage.getItem('vdoc-platform') || '';
+	} catch (e) {}
+	if (saved !== '' && Array.from(select.options).some((option) => option.value === saved)) {
+		select.value = saved;
+		show(saved);
+	}
+	select.addEventListener('change', () => {
+		keepReadingPosition(() => show(select.value));
+		try {
+			localStorage.setItem('vdoc-platform', select.value);
+		} catch (e) {}
+	});
+	// A link to a symbol of another platform, like from the search, shows the symbols of all of
+	// them, instead of nothing. It does not change the platform that is kept for the other pages.
+	const showLinkTarget = () => {
+		const target = location.hash && document.getElementById(decodedHash(location.hash));
+		if (target && target.closest('[hidden]')) {
+			select.value = '';
+			show('');
+			target.scrollIntoView();
+		}
+	};
+	showLinkTarget();
+	window.addEventListener('hashchange', showLinkTarget);
+}
+
+// keepReadingPosition runs `change`, which shows or hides sections, and then scrolls so that the
+// section at the top of the view stays where it was. When that section is hidden, the next one
+// that is shown takes its place.
+function keepReadingPosition(change) {
+	const mainContent = document.querySelector('#main-content');
+	const scroller =
+		mainContent.scrollHeight > mainContent.clientHeight ? mainContent : document.scrollingElement;
+	const viewTop = scroller === mainContent ? mainContent.getBoundingClientRect().top : 0;
+	// The innermost sections, like the constants of a group, are the ones that are read.
+	const sections = Array.from(document.querySelectorAll('.doc-content section')).filter(
+		(section) => !section.querySelector('section'),
+	);
+	const shown = (section) => !section.closest('[hidden]');
+	const i = sections.findIndex(
+		(section) => shown(section) && section.getBoundingClientRect().bottom > viewTop,
+	);
+	if (i < 0) {
+		change();
+		return;
+	}
+	const top = sections[i].getBoundingClientRect().top;
+	change();
+	const anchor = sections.slice(i).find(shown);
+	if (anchor) {
+		// The section that takes the place of a hidden one is shown from its start.
+		const target = anchor === sections[i] ? top : Math.max(top, viewTop);
+		scroller.scrollTop += anchor.getBoundingClientRect().top - target;
+	}
+}
+
+// decodedHash returns the id that the fragment `hash` of a link, like `#Vec4.%`, leads to. A `%`
+// that does not encode a character, like in the name of an operator, is kept as it is.
+function decodedHash(hash) {
+	try {
+		return decodeURIComponent(hash.slice(1));
+	} catch (e) {
+		return hash.slice(1);
+	}
 }
 
 function setupMobileToggle() {

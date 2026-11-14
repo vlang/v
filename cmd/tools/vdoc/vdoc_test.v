@@ -683,6 +683,53 @@ fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
+fn test_the_platform_selector_is_only_for_symbols_of_some_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_selector_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\npub fn everywhere() {}\n')!
+	everywhere := doc.generate(dir, true, true, .cross)!
+	assert platform_selector_html(everywhere) == ''
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\npub fn on_windows() {}\n')!
+	cross := doc.generate(dir, true, true, .cross)!
+	selector := platform_selector_html(cross)
+	assert selector.starts_with('<select class="platform-select"')
+	assert selector.contains('<option value="">All platforms</option>')
+	assert selector.contains('<option value="windows">Windows</option>')
+	assert platforms_attr(cross.contents['on_windows']!.platforms) == ' data-platforms="windows"'
+	assert platforms_attr(cross.contents['everywhere']!.platforms) == ''
+	// Without `-os cross`, no symbol is limited to some platforms.
+	assert platform_selector_html(doc.generate(dir, true, true, .windows)!) == ''
+}
+
+fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_members_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	// The type is only declared on Windows, and its method in a file of all the platforms.
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\n// win_value is a value.\npub const win_value = 1\n\n// Handle is a handle.\npub struct Handle {}\n')!
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\n// close closes it.\npub fn (h Handle) close() {}\n\n// Handle.new returns a handle.\npub fn Handle.new() Handle {\n\treturn Handle{}\n}\n')!
+	html_dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_members_html_${os.getpid()}')
+	defer { os.rmdir_all(html_dir) or {} }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-os', 'cross', '-o',
+		html_dir, dir]) or { panic(err) }
+	assert res.exit_code == 0
+	page := os.read_file(os.join_path(html_dir, 'a.html'))!
+	assert page.contains('<section id="Handle.close" class="doc-node" data-platforms="windows">')
+	assert page.contains('<section id="Handle.new" class="doc-node" data-platforms="windows">')
+	// The platform of the other pages is applied before the symbols, while the page loads.
+	assert page.contains('<select class="platform-select"')
+	assert page.contains('<script>${platform_early_js}</script></div>')
+	// The section of all the constants has no constant to show on the other platforms.
+	assert page.contains('<section id="Constants" class="doc-node const" data-platforms="windows">')
+	assert within_platforms([], [.windows]) == [doc.Platform.windows]
+	assert within_platforms([.linux, .windows], [.windows, .macos]) == [doc.Platform.windows]
+	assert within_platforms([.linux], []) == [doc.Platform.linux]
+	assert within_platforms([.linux], [.windows]) == [doc.Platform.linux]
+}
+
 fn test_markdown_renderer_supports_github_flavored_markdown() {
 	mut renderer := new_doc_markdown_renderer('')
 	// Bare URLs are links, without a `)` that closes no `(` of the URL.
@@ -1123,6 +1170,43 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 		'-html-only-contents', dir])!
 	assert !html.output.contains('<div class="attributes">'), html.output
 	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
+}
+
+fn test_the_platform_selector_hides_the_comments_and_the_examples_of_other_declarations() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_variant_docs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	// `sep` has another comment and example on each platform, and `home` only another example.
+	os.write_file(os.join_path(dir, 'a_nix.c.v'), "module a\n\n// sep is '/' on Unix.\n// Example: assert sep() == '/'\npub fn sep() string {\n\treturn '/'\n}\n\n// home returns the home folder.\n// Example: assert home() == '/home'\npub fn home() string {\n\treturn '/home'\n}\n")!
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), "module a\n\n// sep is a backslash on Windows.\n// Example: assert sep(0) == 'win'\npub fn sep(i int) string {\n\treturn 'win'\n}\n\n// home returns the home folder.\n// Example: assert home(0) == 'C:'\npub fn home(i int) string {\n\treturn 'C:'\n}\n")!
+	res := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-', '-html-only-contents',
+		dir])!
+	assert res.exit_code == 0, res.output
+	for name, values in {
+		'sep':  ["'/'", "'win'"]
+		'home': ["'/home'", "'C:'"]
+	} {
+		section := res.output.all_after('<section id="${name}"').all_before('\t\t<section ')
+		// The comment and the example of each declaration are in its element, which the platform
+		// selector hides with it, and nothing of a declaration is outside of these elements.
+		chunks := section.split('<div class="declaration"')
+		assert chunks.len == 3, section
+		assert !chunks[0].contains('<p>') && !chunks[0].contains('Example'), section
+		assert section.trim_space().ends_with('</div>\n</section>'), section
+		unix := chunks.filter(it.starts_with(' data-platforms="linux '))
+		windows := chunks.filter(it.starts_with(' data-platforms="windows"'))
+		assert unix.len == 1 && windows.len == 1, section
+		assert unix[0].contains('Example') && unix[0].contains(values[0])
+			&& !unix[0].contains(values[1]), section
+		assert windows[0].contains('Example') && windows[0].contains(values[1])
+			&& !windows[0].contains(values[0]), section
+		if name == 'sep' {
+			assert unix[0].contains("sep is '/' on Unix.") && !unix[0].contains('backslash')
+			assert windows[0].contains('sep is a backslash on Windows.')
+				&& !windows[0].contains('on Unix')
+		}
+	}
 }
 
 fn test_readme_plaintext_preserves_unformatted_terminal_output() {

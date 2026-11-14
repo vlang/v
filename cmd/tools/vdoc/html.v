@@ -216,20 +216,24 @@ fn (vd &VDoc) repo_root_for_links(input_dir string) string {
 	return root
 }
 
-fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw strings.Builder) {
+// write_content writes the sections of `cn` and of its members. `parent_platforms` are the ones
+// of the type of `cn` when it is a static function, like `File.open`.
+fn (vd &VDoc) write_content(cn &doc.DocNode, parent_platforms []doc.Platform, mut links RepoFileLinks, mut hw strings.Builder) {
 	cfg := vd.cfg
 	file_path_name := links.path_of(cn.file_path)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
+			parent_platforms))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := links.path_of(child.file_path)
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
 		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
-		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false, cfg.include_examples))
+		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
+			cfg.include_examples, doc.all_platforms(cn)))
 		hw.write_string('\n')
 	}
 }
@@ -249,12 +253,24 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
+	// The platform selector stays at the top of the page, so it is before the module.
+	platform_selector := platform_selector_html(d)
+	if platform_selector != '' {
+		contents.writeln('<div class="platform-bar">${platform_selector}<script>${platform_early_js}</script></div>')
+	}
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
+		[]))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
-		vd.write_content(&cn, mut links, mut contents)
+		// A static function is only shown with the platform selector where its type is.
+		type_platforms := if cn.kind == .method && cn.name.contains('.') {
+			doc.all_platforms(d.contents[cn.name.all_before_last('.')] or { doc.DocNode{} })
+		} else {
+			[]doc.Platform{}
+		}
+		vd.write_content(&cn, type_platforms, mut links, mut contents)
 		write_toc(cn, mut symbols_toc) // write head
 	}
 	if cfg.html_only_contents {
@@ -553,7 +569,10 @@ fn render_doc_markdown(source string, mut renderer markdown.HTMLRenderer) string
 		.replace('</li>\n</ol>', '</li></ol>')
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
+// doc_node_html returns the section of `dn`. A member of a type, like a method, is only shown with
+// the platform selector where its type is available, given by `parent_platforms`, even when it
+// is declared in a file of all of them.
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, parent_platforms []doc.Platform) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := new_doc_markdown_renderer(md_link_base)
@@ -575,7 +594,12 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		node_id = 'readme_${node_id}'
 		hash_link = ' <a href="#${node_id}">#</a>'
 	}
-	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}">')
+	section_platforms := if head {
+		''
+	} else {
+		platforms_attr(within_platforms(doc.all_platforms(dn), parent_platforms))
+	}
+	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}"${section_platforms}>')
 	if dn.name != '' {
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
@@ -599,40 +623,105 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		attributes := tags.map('<div class="attribute">${html.escape(it)}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
-	comments_apart := !head && dn.content.len > 0 && has_variant_comments(dn)
+	// When the declarations of a symbol have their own comments or examples, each of them is
+	// shown with its declaration, so that the platform selector shows only the ones of the
+	// selected platform.
+	comments_apart := !head && dn.content.len > 0
+		&& (has_variant_comments(dn) || dn.variants.any(it.comments.len > 0 && it.examples() != dn.examples()))
 	if !head && dn.content.len > 0 {
+		// Each declaration of a symbol with variants is in its own element, which the platform
+		// selector of the page shows only for its platforms.
+		if dn.variants.len > 0 {
+			dnw.write_string('<div class="declaration"${platforms_attr(dn.platforms)}>\n')
+		}
 		dnw.write_string(declaration_html(dn, attributes_in_signatures))
-		// The comment is shown once, after all the declarations, unless they have their own.
 		if comments_apart {
 			dnw.writeln(md_content)
+			dnw.write_string(examples_html(dn.examples(), include_examples))
+		}
+		if dn.variants.len > 0 {
+			dnw.write_string('</div>\n')
 		}
 		for variant in dn.variants {
+			dnw.write_string('<div class="declaration"${platforms_attr(variant.platforms)}>\n')
 			dnw.write_string(declaration_html(variant, true))
-			if has_own_comments(variant, dn) {
+			// Otherwise, the comment of the symbol is shown once, after all the declarations.
+			if comments_apart && variant.comments.len > 0 {
 				mut variant_renderer := new_doc_markdown_renderer(md_link_base)
 				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
 				dnw.writeln(render_doc_markdown(variant_comments, mut variant_renderer))
+				dnw.write_string(examples_html(variant.examples(), include_examples))
 			}
+			dnw.write_string('</div>\n')
 		}
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	if !comments_apart {
 		dnw.writeln('${md_content}\n')
-	}
-	// Write examples if any found
-	examples := dn.examples()
-	if include_examples && examples.len > 0 {
-		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
-		dnw.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
-		for example in examples {
-			hl_example := html_highlight(example)
-			dnw.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
-		}
-		dnw.writeln('</section>')
+		dnw.write_string(examples_html(dn.examples(), include_examples))
 	}
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// examples_html returns the html of the examples of a doc comment, if they are included.
+fn examples_html(examples []string, include_examples bool) string {
+	if !include_examples || examples.len == 0 {
+		return ''
+	}
+	mut sb := strings.new_builder(200)
+	example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
+	sb.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
+	for example in examples {
+		hl_example := html_highlight(example)
+		sb.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
+	}
+	sb.writeln('</section>')
+	return sb.str()
+}
+
+// within_platforms returns the platforms of `platforms` that are also in `limit`, where no
+// platforms mean all of them. A symbol that would be left on none keeps its own platforms.
+fn within_platforms(platforms []doc.Platform, limit []doc.Platform) []doc.Platform {
+	if limit.len == 0 {
+		return platforms
+	}
+	if platforms.len == 0 {
+		return limit
+	}
+	common := platforms.filter(it in limit)
+	return if common.len == 0 { platforms } else { common }
+}
+
+// platforms_attr returns the `data-platforms` attribute of an element that is only about
+// `platforms`, or nothing when it is about all of them.
+fn platforms_attr(platforms []doc.Platform) string {
+	if platforms.len == 0 {
+		return ''
+	}
+	return ' data-platforms="${platforms.map(it.str()).join(' ')}"'
+}
+
+// platform_selector_html returns a selector that shows only the symbols of one platform, for the
+// documentation of `d` with `-os cross`, or nothing when no symbol of `d` is limited to some
+// platforms.
+fn platform_selector_html(d doc.Doc) string {
+	if !d.contents.values().any(has_platforms(it)) {
+		return ''
+	}
+	mut options := ['<option value="">All platforms</option>']
+	for platform in doc.cross_platforms {
+		options << '<option value="${platform}">${platform.display_name()}</option>'
+	}
+	return '<select class="platform-select" aria-label="Show the symbols of one platform">${options.join('')}</select>'
+}
+
+// has_platforms reports whether `dn`, one of its variants or one of its children is limited to
+// some platforms.
+fn has_platforms(dn doc.DocNode) bool {
+	return dn.platforms.len > 0 || dn.variants.any(it.platforms.len > 0)
+		|| dn.children.any(has_platforms(it))
 }
 
 // declaration_html returns the signature of `dn`, after the platforms that it is available on,
@@ -802,6 +891,11 @@ fn blockquote_payload_starts_new_block(payload string) bool {
 	line_before_spaces := payload.before(' ')
 	return line_before_spaces.count('#') == line_before_spaces.len
 }
+
+// platform_early_js applies the platform that was selected on another page, right after the
+// platform selector and before the symbols, so that the symbols of the other platforms are not
+// shown while the page loads. `doc.js` removes its style once it has hidden them.
+const platform_early_js = '(function(){try{var s=document.currentScript.previousElementSibling,p=localStorage.getItem(\'vdoc-platform\');if(!p||!Array.prototype.some.call(s.options,function(o){return o.value===p}))return;s.value=p;document.documentElement.dataset.platform=p;var st=document.createElement(\'style\');st.id=\'platform-early-style\';st.textContent=\'[data-platforms]:not([data-platforms~="\'+p+\'"]){display:none!important}\';document.head.appendChild(st)}catch(e){}})();'
 
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name == '' || dn.content.len == 0 { '' } else { slug(dn.name) }

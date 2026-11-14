@@ -410,6 +410,11 @@ hr {
 	flex-direction: column;
 	padding: 1rem;
 	overflow: hidden;
+	/* Clips like `hidden`, without making the content a scroll container, which would keep the
+	platform selector from staying at the top while the page scrolls. Unlike `hidden`, it does
+	not let the content be narrower than its widest line, so `min-width` does. */
+	overflow: clip;
+	min-width: 0;
 }
 .doc-content img {
 	width: auto;
@@ -476,7 +481,7 @@ hr {
 	background-color: var(--attribute-deprecated-background-color);
 	color: var(--attribute-deprecated-text-color);
 }
-.doc-content > .doc-node > .platforms {
+.doc-content > .doc-node .platforms {
 	margin: 0.6rem 0 0;
 	padding: 0.4rem 0.8rem;
 	border-left: 3px solid var(--platforms-border-color);
@@ -485,10 +490,43 @@ hr {
 	max-width: none;
 }
 /* The note about the platforms sits on top of the declarations that it is about. */
-.doc-content > .doc-node > .platforms + .signature {
+html:not([data-platform]) .doc-content > .doc-node .platforms + .signature {
 	margin-top: 0;
 	border-top-left-radius: 0;
 	border-top-right-radius: 0;
+}
+/* With a platform selected, the symbols that are shown are all available on it. */
+html[data-platform] .doc-content > .doc-node .platforms {
+	display: none;
+}
+/* The platform selector of a module documented with `-os cross`, at the top right of the page
+while it scrolls. It takes no space, so that it is next to the name of the module at first. */
+.doc-content > .platform-bar {
+	position: sticky;
+	top: 0.6rem;
+	z-index: 10;
+	height: 0;
+	display: flex;
+	justify-content: flex-end;
+	align-items: flex-start;
+}
+.doc-content > .platform-bar > .platform-select {
+	margin-top: 0.3rem;
+	padding: 0.2rem 0.4rem;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+	font-family: Jost, sans-serif;
+	font-size: 0.9rem;
+	color: var(--text-color);
+	background-color: var(--code-background-color);
+	border: 1px solid var(--code-signature-border-color);
+	border-radius: 4px;
+}
+.doc-content [hidden] {
+	display: none !important;
+}
+.doc-toc li[hidden],
+.doc-nav .content li[hidden] {
+	display: none;
 }
 .doc-content > .doc-node > .title > .link {
 	display: flex;

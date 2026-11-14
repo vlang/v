@@ -306,14 +306,13 @@ fn (mut d Doc) add_node(mut node DocNode) {
 		}
 		// A child that is declared for several platforms, like a method in `_nix.c.v` and
 		// `_windows.c.v`, is documented once, for all of them. A constant whose value differs,
-		// like `rtld_now = C.RTLD_NOW` on Unix and `rtld_now = 0` on Windows, is documented
-		// once for each value instead.
+		// like `rtld_now = C.RTLD_NOW` on Unix and `rtld_now = 0` on Windows, is documented with
+		// each of its values, like the variants of a function.
 		index_key := parent_name + '\n' + child_key(node)
 		children := d.contents[parent_name].children
 		for i in d.child_indices[index_key] {
 			child := children[i]
-			if child.kind == node.kind && (node.kind != .const_group
-				|| declaration_shape(child.content) == declaration_shape(node.content)) {
+			if child.kind == node.kind {
 				d.contents[parent_name].children[i] = merge_declaration(child, node)
 				return
 			}
@@ -340,7 +339,7 @@ fn (mut d Doc) add_node(mut node DocNode) {
 
 // merge_declaration returns `main`, a documented symbol, with another declaration of it,
 // `node`, added. With `-os cross`, a symbol can be declared for several platforms, and is
-// documented once for each different declaration, as `variants` of the first one.
+// documented once for each different declaration, or doc comment, as `variants` of the first one.
 fn merge_declaration(main DocNode, node DocNode) DocNode {
 	mut merged := main
 	// Without platforms, like for a single platform, the first declaration is documented.
@@ -350,7 +349,7 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		return merged
 	}
 	shape := declaration_shape(node.content)
-	if declaration_shape(main.content) == shape {
+	if declaration_shape(main.content) == shape && same_doc(main, node) {
 		merged.platforms = merge_platforms(main.platforms, node.platforms)
 		merged.host_example_source = merged_host_example_source(main, node)
 		// The doc comment can be written on only one of the platforms.
@@ -360,7 +359,7 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		return merged
 	}
 	for i, variant in main.variants {
-		if declaration_shape(variant.content) == shape {
+		if declaration_shape(variant.content) == shape && same_doc(variant, node) {
 			merged.variants[i].platforms = merge_platforms(variant.platforms, node.platforms)
 			merged.variants[i].host_example_source = merged_host_example_source(variant, node)
 			if variant.comments.len == 0 {
@@ -374,6 +373,15 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		children: []
 	}
 	return merged
+}
+
+// same_doc reports whether the declarations `a` and `b` of a symbol have the same doc comment
+// and examples, or one of them has none, so that they can be documented together. Otherwise, a
+// platform would show the comment of another one.
+fn same_doc(a DocNode, b DocNode) bool {
+	return a.comments.len == 0 || b.comments.len == 0
+		|| (a.merge_comments_without_examples() == b.merge_comments_without_examples()
+			&& a.examples() == b.examples())
 }
 
 fn host_example_source(node DocNode) ?HostExampleSource {
@@ -432,7 +440,15 @@ pub fn declarations_on_host(node DocNode) []DocNode {
 }
 
 // all_platforms returns the platforms that a symbol is available on, with all its variants.
-fn all_platforms(node DocNode) []Platform {
+// The group of all the constants of a module is available wherever one of them is.
+pub fn all_platforms(node DocNode) []Platform {
+	if node.kind == .const_group && node.children.len > 0 {
+		mut platforms := all_platforms(node.children[0])
+		for child in node.children[1..] {
+			platforms = merge_platforms(platforms, all_platforms(child))
+		}
+		return platforms
+	}
 	mut platforms := node.platforms.clone()
 	for variant in node.variants {
 		platforms = merge_platforms(platforms, variant.platforms)
@@ -1410,9 +1426,11 @@ fn (mut d Doc) group_platform_constants() {
 	consts := d.contents['Constants'] or { return }
 	mut grouped := []DocNode{cap: consts.children.len}
 	for child in consts.children {
-		if grouped.len > 0 && child.platforms.len > 0 && child.comments.len == 0 {
+		// A constant with a value for each platform is documented with all its values.
+		if grouped.len > 0 && child.platforms.len > 0 && child.comments.len == 0
+			&& child.variants.len == 0 {
 			last := grouped.last()
-			if last.platforms == child.platforms {
+			if last.platforms == child.platforms && last.variants.len == 0 {
 				grouped[grouped.len - 1].content += '\n' + child.content
 				continue
 			}
