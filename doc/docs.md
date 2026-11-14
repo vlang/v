@@ -12033,6 +12033,7 @@ Single functions can be extracted as raw machine code with `-hot-fn`:
 v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
 ```
 
+Extraction omits program startup and thread-local initialization.
 Only self-contained `@[live]` functions are supported for now: functions
 needing address fixups (calls, string literals, globals) are rejected at
 extract time instead of emitting silently broken machine code.
