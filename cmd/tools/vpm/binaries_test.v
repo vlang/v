@@ -239,6 +239,9 @@ fn test_vpm_install_fetches_binary_assets_and_keeps_locked_source_hash_stable() 
 	defer { if !server_closed { server.close() } }
 	os.write_file(os.join_path(module_path, 'v.mod'), "Module { name: 'binary_demo' version: '1.0.0' }")!
 	os.write_file(os.join_path(module_path, 'demo.v'), 'module binary_demo\npub fn value() int { return 42 }\n')!
+	// Git for Windows defaults to core.autocrlf=true, which would check the installed
+	// clone out with CRLF and change its source hash; keep the bytes as committed.
+	os.write_file(os.join_path(module_path, '.gitattributes'), '* -text\n')!
 	binary_test_git(module_path, ['init', '--quiet'])
 	source_without_assets := binary_test_commit(module_path, 'without assets')
 	hash_without_assets := dir_sha256(module_path)!
