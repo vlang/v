@@ -11,9 +11,9 @@ import v.ssa
 
 @[inline]
 fn cse_is_pure(op ssa.OpCode) bool {
-	return op in [.add, .sub, .mul, .and_, .or_, .xor, .shl, .ashr, .lshr, .fadd, .fsub, .fmul, .fdiv,
-		.lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge, .eq, .ne, .neg, .zext, .sext, .trunc, .bitcast,
-		.fptoui, .fptosi, .uitofp, .sitofp, .get_element_ptr]
+	return op in [.add, .sub, .mul, .and_, .or_, .xor, .shl, .ashr, .lshr, .fadd, .fsub, .fmul,
+		.fdiv, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge, .eq, .ne, .neg, .zext, .sext, .trunc,
+		.bitcast, .fptoui, .fptosi, .uitofp, .sitofp, .get_element_ptr]
 }
 
 @[inline]
@@ -26,8 +26,16 @@ fn cse_key(val_typ ssa.TypeID, instr ssa.Instruction) u64 {
 	hash = (hash ^ u64(int(instr.op))) * 1099511628211
 	hash = (hash ^ u64(int(val_typ))) * 1099511628211
 	if cse_is_commutative(instr.op) && instr.operands.len == 2 {
-		low := if instr.operands[0] < instr.operands[1] { instr.operands[0] } else { instr.operands[1] }
-		high := if instr.operands[0] < instr.operands[1] { instr.operands[1] } else { instr.operands[0] }
+		low := if instr.operands[0] < instr.operands[1] {
+			instr.operands[0]
+		} else {
+			instr.operands[1]
+		}
+		high := if instr.operands[0] < instr.operands[1] {
+			instr.operands[1]
+		} else {
+			instr.operands[0]
+		}
 		hash = (hash ^ u64(int(low))) * 1099511628211
 		return (hash ^ u64(int(high))) * 1099511628211
 	}

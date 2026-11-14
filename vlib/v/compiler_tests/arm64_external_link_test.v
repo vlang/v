@@ -291,13 +291,13 @@ int v_callback(void);
 static inline int ex_throw(void) { @throw [NSException exceptionWithName:@"x" reason:@"y" userInfo:nil]; }
 static inline int ex_call(void) { @try { return v_callback(); } @catch (NSException *e) { return 42; } }
 ')!
-		os.write_file(os.join_path(root, 'main.v'), "#flag -framework Foundation
-#include \"@VMODROOT/ex.h\"
+		os.write_file(os.join_path(root, 'main.v'), '#flag -framework Foundation
+#include "@VMODROOT/ex.h"
 
 fn C.ex_throw() int
 fn C.ex_call() int
 
-@[export: 'v_callback']
+@[export: \'v_callback\']
 fn v_callback() int {
 	return C.ex_throw() + 1
 }
@@ -305,7 +305,7 @@ fn v_callback() int {
 fn main() {
 	println(C.ex_call())
 }
-")!
+')!
 		output := os.join_path(root, 'main')
 		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, os.join_path(root, 'main.v')])
 		assert compiled.exit_code == 0, compiled.output
@@ -367,11 +367,11 @@ static inline long keep_x19(long n) {
 	return kept * 1000 + result;
 }
 ')!
-		os.write_file(os.join_path(root, 'main.v'), "#include \"@VMODROOT/keep.h\"
+		os.write_file(os.join_path(root, 'main.v'), '#include "@VMODROOT/keep.h"
 
 fn C.keep_x19(n i64) i64
 
-@[export: 'v_clobber']
+@[export: \'v_clobber\']
 fn v_clobber(n i64) i64 {
 	mut total := i64(0)
 	for i in 0 .. n {
@@ -383,7 +383,7 @@ fn v_clobber(n i64) i64 {
 fn main() {
 	println(C.keep_x19(10))
 }
-")!
+')!
 		output := os.join_path(root, 'main')
 		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, os.join_path(root, 'main.v')])
 		assert compiled.exit_code == 0, compiled.output

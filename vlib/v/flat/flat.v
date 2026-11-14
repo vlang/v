@@ -875,9 +875,9 @@ pub mut:
 	// guard_exhaustive_match makes the transformer stop on a value that no branch
 	// of an exhaustive value `match` names. Set for the native backend.
 	guard_exhaustive_match bool
-	nodes           []Node
-	children        []NodeId
-	user_code_start int
+	nodes                  []Node
+	children               []NodeId
+	user_code_start        int
 	// parsed_node_count is the number of nodes the parser produced, or 0 when
 	// it was not recorded. Later stages append synthesized nodes past it, in an
 	// order that can depend on how their work was split across threads.

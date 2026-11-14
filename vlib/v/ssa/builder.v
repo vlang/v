@@ -15603,7 +15603,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	if resolved_name in ['new_map', 'new_map_aligned'] && args.len >= 7 {
-		args = b.fix_native_map_callback_args(mut args)
+		args = b.fix_native_map_callback_args(node, mut args)
 	}
 	result := b.m.add_instr(.call, b.cur_block, ret_type, args)
 	if b.call_never_returns(id, resolved_name, is_c_call) {
@@ -15641,8 +15641,8 @@ fn (mut b Builder) fixed_array_storage(value ValueID) ValueID {
 }
 
 // fix_native_map_callback_args keeps the standard integer callbacks in sync
-// with the lowered key size, including platform-width `int` storage.
-fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
+// with the lowered key size and preserves fixed-array key classification.
+fn (mut b Builder) fix_native_map_callback_args(node flat.Node, mut args []ValueID) []ValueID {
 	key_size_value := b.m.values[args[1]]
 	if key_size_value.kind != .constant {
 		return args
@@ -15650,12 +15650,17 @@ fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
 	key_size := key_size_value.name.int()
 	if b.m.target.ptr_size == 8 && args[0] > 0 && b.m.values[args[0]].name == 'new_map'
 		&& key_size == b.m.type_size(b.str_type) {
-		// As wide as a string, but not one: `[3]u64`. Only a named equality
-		// other than the string one says so; a program without the builtin
-		// map callbacks (bare fixtures) passes none, and its string-sized keys
-		// stay strings, as emit_map_state_alloc assumes.
+		// Fixed-array callbacks are synthesized by C generation and can lower to
+		// null here. Read their name before SSA lowering loses the key's type.
 		equal := b.m.values[args[4]]
-		if equal.kind == .func_ref && equal.name != 'map_eq_string' {
+		equal_node := b.a.nodes[int(b.a.child(&node, 4))]
+		key_size_node := b.a.nodes[int(b.a.child(&node, 1))]
+		if key_size_node.kind == .sizeof_expr
+			&& b.native_map_key_uses_string_layout(key_size_node.source_value_id()) {
+			return args
+		}
+		if (equal.kind == .func_ref && equal.name != 'map_eq_string')
+			|| (equal_node.kind == .ident && equal_node.value_text().ends_with('_map_key_eq')) {
 			if bytes_id := b.runtime_fn_ids['v3_new_map_bytes'] {
 				args[0] = b.m.add_value(.func_ref, b.map_type, 'v3_new_map_bytes', bytes_id)
 			}
@@ -15684,6 +15689,21 @@ fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
 		}
 	}
 	return args
+}
+
+// native_map_key_uses_string_layout recognizes a string header wrapped in
+// single-element fixed arrays, whose keys still need string-content equality.
+fn (mut b Builder) native_map_key_uses_string_layout(type_name_id u32) bool {
+	if alias := b.type_alias_target(type_name_id) {
+		if alias != type_name_id {
+			return b.native_map_key_uses_string_layout(alias)
+		}
+	}
+	if b.is_fixed_array_type_name(type_name_id) {
+		return b.fixed_array_len_text(type_name_id) == '1'
+			&& b.native_map_key_uses_string_layout(b.fixed_array_elem_type_name(type_name_id))
+	}
+	return b.resolve_type(type_name_id) == b.str_type
 }
 
 // register_interface_method_stub gives a known abstract interface method a

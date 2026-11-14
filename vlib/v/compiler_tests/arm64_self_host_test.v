@@ -936,10 +936,20 @@ fn test_map_with_string_sized_keys() {
 	mut m := map[[3]u64]int{}
 	m[[u64(1234), 100, 0]!] = 7
 	m[[u64(5678), 100, 0]!] = 8
+	m[[u64(1234), 100, 1]!] = 9
 	println('\${m[[u64(1234), 100, 0]!]} \${m[[u64(5678), 100, 0]!]} \${m.len}')
+	println(m[[u64(1234), 100, 1]!])
+	mut texts := map[string]int{}
+	texts['hello'] = 10
+	println(texts['hello'])
+	first := ['hello'.clone()]!
+	second := ['hello'.clone()]!
+	mut string_keys := map[[1]string]int{}
+	string_keys[first] = 11
+	println(string_keys[second])
 }
 ")
-		assert output == '7 8 2', output
+		assert output == '7 8 3\n9\n10\n11', output
 	}
 }
 
