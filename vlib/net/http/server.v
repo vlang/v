@@ -311,6 +311,11 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 
 		mut resp := w.handler.handle(req)
 		normalize_server_response(mut resp, req)
+		if resp.stream != unsafe { nil } {
+			// The connection is the stream's until it returns; `handle_conn` closes it.
+			stream_response(mut conn, mut resp)
+			return
+		}
 
 		// Implemented by developers?
 		if !resp.header.contains(.content_length) {
@@ -356,6 +361,26 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 
 		if !keep_alive {
 			return
+		}
+	}
+}
+
+// stream_response writes the head of a streamed response, then hands its
+// connection to `resp.stream`.
+fn stream_response(mut conn net.TcpConn, mut resp Response) {
+	resp.header.delete(.content_length)
+	resp.header.set(.connection, 'close')
+	resp.body = ''
+	conn.write(resp.bytes()) or {
+		eprintln('error sending response: ${err}')
+		return
+	}
+	mut writer := StreamWriter{
+		conn: conn
+	}
+	resp.stream(mut writer) or {
+		$if debug {
+			eprintln('the stream ended with an error: ${err}')
 		}
 	}
 }
