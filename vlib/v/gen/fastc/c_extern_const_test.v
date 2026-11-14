@@ -113,8 +113,7 @@ fn main() { println(answer()) }
 	program := os.join_path(root, 'program')
 	// The outer GCC/UBSan runner's VFLAGS must not select an unsupported FastC parser compiler.
 	// Keep the nested FastC build and all of its runtime assertions active.
-	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program,
-		root], @VEXEROOT, {
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root], @VEXEROOT, {
 		'VFLAGS':  ''
 		'VOSARGS': ''
 	})
