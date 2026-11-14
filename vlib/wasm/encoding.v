@@ -522,6 +522,15 @@ pub fn (mut mod Module) compile() []u8 {
 
 		mod.end_section(tpatch)
 	}
+	// user custom sections, emitted after the name section
+	for cs in mod.customs {
+		tpatch := mod.start_section(.custom_section)
+		{
+			mod.name(cs.name)
+			mod.buf << cs.bytes
+		}
+		mod.end_section(tpatch)
+	}
 
 	return mod.buf
 }

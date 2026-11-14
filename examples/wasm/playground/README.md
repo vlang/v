@@ -7,7 +7,9 @@ the V compiler and V's direct WebAssembly backend. No compilation server is need
 
 Build V in the repository root (`make` if `./v` is missing, then `./v self`). Install and
 activate the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html), so
-`emcc` is on your `PATH`. From the repository root, run:
+`emcc` is on your `PATH`. (That SDK is only needed to compile the compiler itself into the
+browser playground; ordinary `-b wasm` output never requires it.) From the repository root,
+run:
 
 ```sh
 sh examples/wasm/playground/build.sh

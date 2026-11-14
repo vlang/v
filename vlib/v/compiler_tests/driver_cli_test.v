@@ -2236,6 +2236,36 @@ fn main() {
 	assert_driver_wasm_output(explicit_output)
 }
 
+fn test_emscripten_missing_emcc_suggests_native_wasm() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_emscripten_toolchain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'hello.v')
+	os.write_file(source, 'module main\n\nfn main() {\n\tprintln("hi")\n}\n') or {
+		panic(err)
+	}
+	if _ := os.find_abs_path_of_executable('emcc') {
+		println('skipping ${@FN}: emcc is on PATH, so the missing-toolchain guidance cannot trigger')
+	} else {
+		html_output := os.join_path(root, 'hello.html')
+		assert_driver_cli_failure(v3_bin, ['-os', 'wasm32_emscripten', '-cc', 'emcc', '-o',
+			html_output, source], 'was not found')
+		missing := cmdexec.run(v3_bin, ['-os', 'wasm32_emscripten', '-cc', 'emcc', '-o', html_output,
+			source])
+		assert missing.output.contains('Emscripten SDK'), missing.output
+		assert missing.output.contains('v -b wasm'), missing.output
+	}
+	// Emitting only C never invokes a C compiler, so it must work without emcc.
+	c_output := os.join_path(root, 'hello_emscripten.c')
+	c_only := cmdexec.run(v3_bin, ['-os', 'wasm32_emscripten', '-o', c_output, source])
+	assert c_only.exit_code == 0, c_only.output
+	assert os.is_file(c_output)
+}
+
 fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cli_${os.getpid()}')
 	os.rmdir_all(root) or {}

@@ -57,6 +57,7 @@ $if !skip_ssa ? {
 
 $if !skip_wasm ? {
 	import v.gen.wasm as wasmgen
+	import wit
 }
 // vfmt on
 
@@ -10009,6 +10010,8 @@ pub fn run(args []string) {
 	mut is_livemain := false
 	mut is_liveshared := false
 	mut hot_fn := ''
+	mut component_flag := false
+	mut wit_file_path := ''
 	mut subsystem := pref.Subsystem.auto
 	mut icon_path := ''
 	mut is_strict := false
@@ -10186,6 +10189,12 @@ pub fn run(args []string) {
 			backend = normalize_backend_name(args[i].all_after('='))
 			backend_explicit = !backend_from_project
 			i++
+		} else if args[i] == '-component' {
+			component_flag = true
+			i++
+		} else if args[i] == '-wit' && i + 1 < args.len {
+			wit_file_path = args[i + 1]
+			i += 2
 		} else if args[i] == '-cross' {
 			// A modifier, not a target: it combines with `-os`/`-cc`, as in
 			// `v -cross -os windows -cc msvc`. See `v help build-c`.
@@ -11230,6 +11239,21 @@ pub fn run(args []string) {
 		// The executable suffix does not belong to the requested generated C path.
 		bin_file = target_bin_file
 	}
+	if backend in ['c', 'fastc'] && target.os == 'wasm32_emscripten' && !c_only {
+		// The emscripten target links through emcc, so fail here with guidance
+		// instead of a generic missing-executable error later. Emitting only C
+		// (`-o file.c`) never reaches this point, so it stays toolchain-free.
+		cc_base := os.file_name(c_compiler).to_lower()
+		if c_compiler_explicit && cc_base in ['emcc', 'emcc.bat', 'em++', 'em++.bat'] {
+			if _ := os.find_abs_path_of_executable(c_compiler) {
+			} else {
+				eprintln('error: cannot build for target `wasm32_emscripten`: C compiler `${c_compiler}` was not found.')
+				eprintln('Install the Emscripten SDK (https://emscripten.org/docs/getting_started/downloads.html) and activate it so `emcc` is on PATH,')
+				eprintln('or build a native WebAssembly module instead, which needs no Emscripten: `v -b wasm -o out.wasm input.v`.')
+				exit(1)
+			}
+		}
+	}
 	validate_windows_icon_option(icon_path, target.os, backend, is_shared, is_o, c_only,
 		generate_c_project) or {
 		eprintln(err.msg())
@@ -11374,6 +11398,19 @@ pub fn run(args []string) {
 		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
 	}
 	prefs.target = target
+	prefs.component = component_flag
+	prefs.wit_file = wit_file_path
+	prefs.wasm_cabi = component_flag || 'wasm_cabi' in user_defines
+	if prefs.component {
+		if prefs.wit_file == '' {
+			eprintln('error: -component requires -wit <file.wit>')
+			exit(1)
+		}
+		if backend != 'wasm' {
+			eprintln('error: -component requires -b wasm')
+			exit(1)
+		}
+	}
 	prefs.output_cross_c = output_cross_c
 	prefs.thread_stack_size = if thread_stack_size_set {
 		thread_stack_size
@@ -14756,6 +14793,7 @@ pub fn run(args []string) {
 			}
 			m.release_codegen_analysis_metadata()
 			mut g := wasmgen.SSAGen.new(m)
+			g.set_wasm_cabi(prefs.wasm_cabi || prefs.component)
 			mut main_fn := config.main_fn
 			mut exports := config.exports.clone()
 			if main_fn.len == 0 {
@@ -14777,6 +14815,31 @@ pub fn run(args []string) {
 			g.write(output_file) or {
 				eprintln('error writing ${output_file}')
 				exit(1)
+			}
+			if prefs.component {
+				// Invoke WIT parser + component wrapper (native flow).
+				wit_src := os.read_file(prefs.wit_file) or {
+					eprintln('error reading wit file ${prefs.wit_file}')
+					exit(1)
+				}
+				doc := wit.parse(wit_src) or {
+					eprintln('error parsing wit file ${prefs.wit_file}: ${err}')
+					exit(1)
+				}
+				core := os.read_file(output_file) or {
+					eprintln('error reading ${output_file}')
+					exit(1)
+				}
+				// Component output path
+				comp_out := output_file.all_before_last('.wasm') + '.component.wasm'
+				// Wrap with WIT-aware canonical lifting (string params lift via
+				// memory + realloc); falls back to plain wrapping.
+				wrapped := wit.wrap_component(core.bytes(), doc, '')
+				os.write_file_array(comp_out, wrapped) or {
+					eprintln('error writing ${comp_out}')
+					exit(1)
+				}
+				eprintln('component: wrote ${comp_out}')
 			}
 			for warning in g.warnings_list() {
 				eprintln('wasm: ${warning}')

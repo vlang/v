@@ -26,6 +26,8 @@ pub enum WType {
 	i64
 	f32
 	f64
+	// cabi_string marks a V string param lowered to canonical-ABI (i32 ptr, i32 len).
+	cabi_string
 }
 
 struct FnInfo {
@@ -36,6 +38,9 @@ struct FnInfo {
 	params  []WType
 	ret     WType
 	index   int
+	// cabi_string_params holds the AST param names that are strings expanded
+	// to two i32 params (ptr, len) in cabi mode.
+	cabi_string_params []string
 }
 
 struct Frame {
@@ -61,10 +66,11 @@ enum FrameTag {
 @[heap]
 pub struct Gen {
 mut:
-	a        &flat.FlatAst      = unsafe { nil }
-	tc       &types.TypeChecker = unsafe { nil }
-	used_fns map[string]bool
-	mod      &Module = unsafe { nil }
+	a         &flat.FlatAst      = unsafe { nil }
+	tc        &types.TypeChecker = unsafe { nil }
+	used_fns  map[string]bool
+	wasm_cabi bool
+	mod       &Module = unsafe { nil }
 	// per-function state
 	cur           Code
 	local_types   []u8
@@ -437,8 +443,20 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				} else {
 					''
 				}
-				if fi := g.fn_info(node, flat.NodeId(i), mod_key, cur_file) {
-					key := qualified_fn_key(mod_key, node.value)
+				// Canonical-ABI string lowering applies to exported functions only;
+				// internal functions keep the single-pointer representation. This
+				// mirrors the export predicate below (main-module or explicit
+				// @[export]), using the same key forms as explicit_export_fn_name.
+				key := qualified_fn_key(mod_key, node.value)
+				mut is_export := mod_key == '' || mod_key == 'main'
+				if !is_export {
+					if key in g.a.export_fn_names
+						|| '${mod_key}.${node.value}' in g.a.export_fn_names
+						|| '${mod_key.all_after_last('.')}.${node.value}' in g.a.export_fn_names {
+						is_export = true
+					}
+				}
+				if fi := g.fn_info(node, flat.NodeId(i), mod_key, cur_file, is_export) {
 					if key !in candidates {
 						candidates[key] = fi
 						order << key
@@ -613,14 +631,22 @@ fn wasm_aggregate_param_ok(tc &types.TypeChecker, typ types.Type, depth int) boo
 	}
 }
 
-fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file string) ?FnInfo {
+fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file string, is_export bool) ?FnInfo {
 	mut params := []WType{}
+	mut cabi_string_params := []string{}
 	for i in 0 .. node.children_count {
 		p := g.a.child_node(&node, i)
 		if p.kind != .param || p.value.len == 0 {
 			continue
 		}
 		pt := g.tc.parse_type(p.typ)
+		if g.wasm_cabi && is_export && is_string_type(pt) {
+			// Canonical ABI: string param → (i32 ptr, i32 len).
+			params << WType.i32
+			params << WType.i32
+			cabi_string_params << p.value
+			continue
+		}
 		// Aggregate parameters travel as pointers; supported aggregate returns
 		// use the hidden sret slot handled below.
 		w := prim_wtype(pt) or {
@@ -654,12 +680,13 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 		params.prepend(WType.i32)
 	}
 	return FnInfo{
-		name:    node.value
-		node_id: id
-		module:  module_
-		file:    file
-		params:  params
-		ret:     ret
+		name:               node.value
+		node_id:            id
+		module:             module_
+		file:               file
+		params:             params
+		ret:                ret
+		cabi_string_params: cabi_string_params
 	}
 }
 
@@ -714,6 +741,20 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 	for i in 0 .. node.children_count {
 		p := g.a.child_node(&node, i)
 		if p.kind != .param || p.value.len == 0 {
+			continue
+		}
+		if p.value in f.cabi_string_params {
+			// Canonical-ABI string param: two i32 slots (ptr, len). The legacy
+			// Gen path does not materialize wrappers (see SSAGen); bind the
+			// name to the pointer slot so indexing stays in bounds.
+			pt := g.tc.parse_type(p.typ)
+			g.var_index[p.value] = pi
+			g.var_wtype[p.value] = WType.cabi_string
+			g.var_unsigned[p.value] = type_is_unsigned(pt)
+			g.var_widths[p.value] = narrow_width(pt)
+			wparams << wt_valtype(f.params[pi])
+			wparams << wt_valtype(f.params[pi + 1])
+			pi += 2
 			continue
 		}
 		w := f.params[pi]
@@ -2827,6 +2868,7 @@ fn (mut g Gen) warn(msg string) {
 fn wt_valtype(w WType) u8 {
 	return match w {
 		.i32, .void { valtype_i32 }
+		.cabi_string { valtype_i32 } // marker only; expanded to two params at emission
 		.i64 { valtype_i64 }
 		.f32 { valtype_f32 }
 		.f64 { valtype_f64 }
@@ -2886,6 +2928,25 @@ fn unalias(t types.Type) types.Type {
 		}
 	}
 	return cur
+}
+
+// is_string_type reports whether t is a V string (after alias resolution).
+fn is_string_type(t_ types.Type) bool {
+	t := unalias(t_)
+	if t is types.String {
+		return true
+	}
+	return false
+}
+
+// prim_wtype_cabi maps a V type for an exported function in cabi mode: strings
+// become the cabi_string marker (later expanded to (i32 ptr, i32 len)); every
+// other type lowers exactly as prim_wtype lowers it.
+fn prim_wtype_cabi(t types.Type) ?WType {
+	if is_string_type(t) {
+		return WType.cabi_string
+	}
+	return prim_wtype(t)
 }
 
 // prim_wtype maps a primitive/numeric/bool V type to a WASM value type, or none

@@ -71,3 +71,18 @@ optimized SSA:
 ./v test vlib/v/gen/wasm/ssa_gen_test.v
 V3_TEST_WASM=1 ./v vlib/v/compiler_tests/wasm_codegen_test.v
 ```
+
+## Emscripten output (needs the Emscripten SDK)
+
+The native backend above emits a standalone `.wasm` module and never invokes Emscripten.
+If you instead need Emscripten's JavaScript shell or HTML page, target `wasm32_emscripten`
+explicitly and compile the generated C with `emcc` from an activated
+[Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) on your `PATH`:
+
+```sh
+./v -os wasm32_emscripten -cc emcc -o hello.html examples/hello_world.v
+```
+
+Without `emcc` on `PATH`, that combination fails with a message pointing back here.
+Emitting only C (`-o hello.c`) never invokes a C compiler, so it works without Emscripten
+installed.
