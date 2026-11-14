@@ -54,6 +54,7 @@ fn workflow_index_after(source string, needle string, offset int) int {
 fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
 	caller := workflow_source('ci_master.yml')
+	bootstrap := workflow_source('bootstrapping_ci.yml')
 	filters := workflow_source(os.join_path('ci_gate_filters', 'part3.json'))
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
@@ -68,16 +69,24 @@ fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	assert !caller.contains('  merge_group:')
 	assert !caller.contains('paths:')
 	assert !caller.contains('paths-ignore:')
-	assert caller.contains('  formatting:\n    needs: bootstrap-linux\n')
+	assert caller.contains('  preflight:\n    needs: bootstrap-linux\n')
+	assert bootstrap.count('      - name: Check code formatting\n') == 1
+	assert bootstrap.count('      - name: Check code formatting on Windows\n') == 1
+	assert bootstrap.count('          ./v -silent test-cleancode\n') == 1
+	assert bootstrap.count('          ./v -silent test-fmt\n') == 1
+	assert bootstrap.count('          ./v.exe -silent test-cleancode\n') == 1
+	assert bootstrap.count('          ./v.exe -silent test-fmt\n') == 1
+	assert bootstrap.count('              ./v -cc clang -silent test-cleancode\n') == 1
+	assert bootstrap.count('              ./v -cc clang -silent test-fmt\n') == 1
 	for lane in ['windows_ci_gcc', 'windows_ci_msvc', 'windows_ci_tcc'] {
 		assert caller.contains('  ${lane}:\n' +
-			'    needs: [formatting, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]\n')
+			'    needs: [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]\n')
 	}
 	assert caller.contains(r'      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}')
 	assert caller.contains('        id: paths\n')
 	assert caller.contains('        run: python3 .github/workflows/ci_gate_paths.py master\n')
-	assert caller.contains('  tccbin_automation_contract:\n    needs: [formatting, gen_vc_ci]\n' +
-		"    if: needs.formatting.outputs.tccbin_automation_contract == 'true'\n" +
+	assert caller.contains('  tccbin_automation_contract:\n    needs: [preflight, gen_vc_ci]\n' +
+		"    if: needs.preflight.outputs.tccbin_automation_contract == 'true'\n" +
 		'    uses: ./.github/workflows/tccbin_automation_contract.yml\n')
 	assert filters.contains('    "workflow": "tccbin_automation_contract.yml",\n' +
 		'    "shard": "master",\n    "mode": "all",\n    "patterns": [],\n')
