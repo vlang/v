@@ -175,3 +175,39 @@ fn test_arm64_c_compiler_replaces_tinycc() {
 	assert arm64_c_compiler('tcc') == 'cc'
 	assert arm64_c_compiler('clang') == 'clang'
 }
+
+// Check that closure-free arm64 probes retain C lines and diagnostic line numbers.
+fn test_arm64_probe_line_source_preserves_all_probe_lines() {
+	request := Arm64CProbeRequest{
+		functions: ['first', 'second']
+		constants: ['THIRD']
+		structs:   [
+			Arm64CStruct{
+				v_name: 'C.fourth'
+				c_type: 'struct fourth'
+				fields: ['last']
+			},
+		]
+	}
+	keep := [true, false, true, true, false]
+	preamble := '#include <probe.h>\n'
+	source := Arm64ProbeLineSource{
+		request:      request
+		preamble:     preamble
+		with_layouts: true
+	}
+	expected := arm64_c_function_probe_lines(request.functions, keep, 0) + preamble +
+		arm64_c_constant_probe_lines(request.constants, keep, 2) +
+		arm64_c_struct_probe_lines(request.structs, keep, 3)
+	assert source.render(keep) == expected
+	assert source.render([false, true, true, true, true]) != expected
+
+	functions_only := Arm64ProbeLineSource{
+		request: Arm64CProbeRequest{
+			functions: ['first', 'second']
+		}
+	}
+	actual := functions_only.render([true, false])
+	assert actual == arm64_c_function_probe_lines(['first', 'second'], [true, false], 0)
+	assert !actual.contains('#include')
+}
