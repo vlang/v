@@ -9928,7 +9928,6 @@ fn append_hosted_vlibc_files(prefs &pref.Preferences, builtin_dir string, builti
 
 // run executes the V3 compiler driver with `args`.
 // run compiles the input selected by args using the requested backend and flags.
-@[markused]
 pub fn run(args []string) {
 	apply_v3_default_diagnostic_color()
 	compiler_errors.set_json_output(false)

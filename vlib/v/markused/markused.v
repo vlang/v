@@ -18,17 +18,14 @@ const markused_source_type_closure_runtime = flat.source_type_id('__v3_builtin_c
 const markused_source_type_veb_result = flat.source_type_id('veb.Result')
 
 // library_seeds are the functions that every program keeps, whatever it calls.
-const library_seeds = ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign',
-	'c.gen_assign']
+// Compiler helpers follow ordinary call edges; unconditional roots would retain
+// the code generator in tests that only use a small part of a compiler module.
+const library_seeds = ['time.Time.new', 'Time.new']
 
 // parallel_callback_seeds are the callbacks that the compiler hands to its workers.
-const parallel_callback_seeds = ['c.FlatGen.gen_fn_items_scoped_batches',
-	'markused.CallCollector.collect_bodies_scoped_batches',
-	'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches',
-	'driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe', 'v.pref.detect_vroot',
-	'v.pref.detect_vexe', 'types.compare_type_errors', 'types.compare_type_notices',
-	'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
-	'sync.Semaphore.destroy']
+const parallel_callback_seeds = ['driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe',
+	'v.pref.detect_vroot', 'v.pref.detect_vexe', 'types.compare_type_errors',
+	'types.compare_type_notices', 'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy']
 
 // core_runtime_seeds and lowered_runtime_seeds are the runtime functions that the
 // code generator calls for the constructs of the language. No call in a program
