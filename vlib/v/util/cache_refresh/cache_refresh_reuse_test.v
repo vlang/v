@@ -173,14 +173,14 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	log := os.join_path(root, 'calls')
 	dependency_log := os.join_path(root, 'dependency_calls')
 	compiler := os.join_path(root, 'cc')
-	// Module compilation is allowed. Compiling a program unit or linking the
-	// synthetic importer must fail, even if the ordinary compiler could do it.
-	// Record native helper dependency scans separately so warm refresh still
-	// forbids every new object while allowing dependency validation.
+	// Compiler identity probes and module compilation are allowed. Compiling a
+	// program unit or linking the synthetic importer must still fail.
+	// Record preprocessing and dependency scans separately so warm refresh still
+	// forbids every new object while allowing native interface validation.
 	os.write_file(compiler, '#!/bin/sh\n' +
-		'case "\$*" in --version) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
+		'case "\$*" in --version|-v) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
 		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
-		'for arg; do\n  if [ "\$arg" = -M ]; then printf "%s\\n" "\$*" >> ' +
+		'for arg; do\n  if [ "\$arg" = -M ] || [ "\$arg" = -E ]; then printf "%s\\n" "\$*" >> ' +
 		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
 		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
 		'for arg; do\n  if [ "\$arg" = -c ]; then exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
@@ -226,6 +226,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		diagnostic := 'warm refresh must reuse its validated module objects\n' +
 			'cold compiler calls:\n${cold_calls}\n' + 'after warm refresh:\n${warm_calls}'
 		assert warm_calls == cold_calls, diagnostic
+		assert os.read_file(dependency_log)!.contains(' -E '), 'native interface validation was not run'
 	}
 }
 
