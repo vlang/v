@@ -19,30 +19,26 @@ const vup_defer_cache_wipe_env = 'VUP_DEFER_CACHE_WIPE'
 const vup_deferred_wipe_exit_code = 80
 const toolcache_lock_holder_env = 'VTEST_TOOLCACHE_LOCK_HOLDER'
 const toolcache_lock_release_env = 'VTEST_TOOLCACHE_LOCK_RELEASE'
-const toolcache_claim_root_env = 'VTEST_TOOLCACHE_CLAIM_ROOT'
-const toolcache_claim_tool_env = 'VTEST_TOOLCACHE_CLAIM_TOOL'
+const toolcache_wipe_child_env = 'VTEST_TOOLCACHE_WIPE_CHILD'
 
 // Reuse the test executable for a bounded pruning probe. Reading a planted FIFO used to
 // block indefinitely while holding the tool's lock, so run that work in a child process.
 fn testsuite_begin() {
-	if root := os.getenv_opt(toolcache_claim_root_env) {
-		mut locks := ToolCacheWipeLocks{
-			root: root
-		}
-		created := locks.claim(os.getenv(toolcache_claim_tool_env), false)
-		if created != '' {
-			println('created')
-		} else if locks.busy.len > 0 {
-			println('busy')
-		} else if locks.held.len > 0 {
-			println('held')
-		} else {
-			println('unlockable')
-		}
-		exit(0)
-	}
 	if lock_path := os.getenv_opt(toolcache_lock_holder_env) {
 		hold_tool_cache_lock_until_released(lock_path, os.getenv(toolcache_lock_release_env))
+	}
+	if start_path := os.getenv_opt(toolcache_wipe_child_env) {
+		// One of several wipes that start at the same moment, each in a process of its own.
+		deadline := time.now().add(10 * time.second)
+		for time.now() < deadline && !os.exists(start_path) {
+			time.sleep(time.millisecond)
+		}
+		lines := wipe_caches(parse_wipe_cache_options([], []) or { panic(err) }) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		println(lines.join('\n'))
+		exit(0)
 	}
 	if mode := os.getenv_opt(toolcache_updater_probe_env) {
 		if mode == 'ordinary' {
@@ -2379,30 +2375,110 @@ fn start_tool_cache_lock_holder(lock_path string, release_path string) !&os.Proc
 	return error('the lock holder did not take ${lock_path}: ${output}')
 }
 
+// with_wipe_test_caches points every folder that `v wipe-cache` touches into `directory` while
+// `body` runs: the default tool cache folders (see `with_default_tool_cache_roots`), `VCACHE` and
+// `V3CACHE`. `body` gets V's own cache folder, `<directory>/xdg/v`.
+fn with_wipe_test_caches(directory string, body fn (string) !) ! {
+	mut previous := map[string]?string{}
+	for name in ['VCACHE', 'V3CACHE'] {
+		previous[name] = os.getenv_opt(name)
+	}
+	defer {
+		for name, value in previous {
+			if v := value {
+				os.setenv(name, v, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	os.setenv('VCACHE', os.join_path(directory, 'vcache'), true)
+	os.setenv('V3CACHE', os.join_path(directory, 'v3cache'), true)
+	with_default_tool_cache_roots(directory, body)!
+}
+
+// wipe_output runs `v wipe-cache` with `arguments` in this process, and returns what it prints.
+fn wipe_output(arguments ...string) !string {
+	return wipe_caches(parse_wipe_cache_options([], arguments)!)!.join('\n')
+}
+
+// tool_cache_test_entry makes a cache entry of `tool` for this user in the tool cache folder
+// `root`, with the tool's executable in it, and returns the entry's folder. `key` is one hex digit.
+fn tool_cache_test_entry(root string, tool string, key string) !string {
+	entry := os.join_path(root, '${tool}-${key.repeat(64)}.${os.getuid()}')
+	os.mkdir_all(entry)!
+	os.write_file(os.join_path(entry, tool + tool_exe_suffix()), 'bin')!
+	return entry
+}
+
+// tool_cache_test_root makes the tool cache folder `root`, private to this user whatever the umask
+// is, as the tool cache makes its own folders.
+fn tool_cache_test_root(root string) ! {
+	os.mkdir_all(root)!
+	os.chmod(root, 0o700)!
+}
+
+// tool_cache_test_lock returns the path of this user's build lock of `tool` in `root`.
+fn tool_cache_test_lock(root string, tool string) string {
+	return os.join_path(root, tool_cache_lock_name(tool, u32(os.getuid())))
+}
+
+// toolcache_test_tree lists everything below `folder`, without following links.
+fn toolcache_test_tree(folder string) []string {
+	mut found := []string{}
+	for name in os.ls(folder) or { []string{} } {
+		path := os.join_path(folder, name)
+		found << path
+		if os.is_dir(path) && !os.is_link(path) {
+			found << toolcache_test_tree(path)
+		}
+	}
+	found.sort()
+	return found
+}
+
+// toolcache_test_detail_paths returns the paths in the detail lines of a wipe's verbose output
+// that start with `prefix`, such as `  removing `.
+fn toolcache_test_detail_paths(output string, prefix string) []string {
+	mut paths := []string{}
+	for line in output.split_into_lines() {
+		if line.starts_with(prefix) {
+			paths << line[prefix.len..]
+		}
+	}
+	paths.sort()
+	return paths
+}
+
 fn test_wipe_cache_leaves_the_tools_being_built_alone() ! {
 	directory := toolcache_test_dir('wipe_cache_busy')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
 	release_path := os.join_path(directory, 'lock.release')
-	with_default_tool_cache_roots(directory, fn [release_path] (cache_v_dir string) ! {
+	with_wipe_test_caches(directory, fn [release_path] (cache_v_dir string) ! {
 		tools := os.join_path(cache_v_dir, 'tools')
-		busy_entry := os.join_path(tools, 'vtest-' + 'a'.repeat(64) + '.0')
-		stage := os.join_path(busy_entry, '${tool_cache_stage_prefix}0-1-2-0')
-		staged_binary := os.join_path(stage, 'vtest' + tool_exe_suffix())
-		idle_entry := os.join_path(tools, 'vfmt-' + 'b'.repeat(64) + '.0')
-		idle_binary := os.join_path(idle_entry, 'vfmt' + tool_exe_suffix())
-		// `v test-all` is a different tool whose name starts with the busy one.
-		prefixed_entry := os.join_path(tools, 'vtest-all-' + 'c'.repeat(64) + '.0')
-		busy_lock := os.join_path(tools, '.vtest${tool_cache_lock_file_suffix()}')
-		idle_lock := os.join_path(tools, '.vfmt${tool_cache_lock_file_suffix()}')
-		// A directory that merely looks like a lock file is an ordinary entry.
-		lock_shaped_dir := os.join_path(tools, '.vfoo${tool_cache_lock_file_suffix()}')
-		os.mkdir_all(stage)!
+		tool_cache_test_root(tools)!
+		busy_entry := tool_cache_test_entry(tools, 'vtest', 'a')!
+		staged_binary := os.join_path(busy_entry, '${tool_cache_stage_prefix}0-1-2-0', 'vtest' +
+			tool_exe_suffix())
+		os.mkdir_all(os.dir(staged_binary))!
 		os.write_file(staged_binary, 'half built')!
-		os.mkdir_all(idle_entry)!
-		os.write_file(idle_binary, 'bin')!
-		os.mkdir_all(prefixed_entry)!
+		idle_entry := tool_cache_test_entry(tools, 'vfmt', 'b')!
+		// `v test-all` is a different tool whose name starts with the busy one.
+		prefixed_entry := tool_cache_test_entry(tools, 'vtest-all', 'c')!
+		prefixed_lock := tool_cache_test_lock(tools, 'vtest-all')
+		// An entry from before entries carried a user id is guarded by this user's lock as well.
+		legacy_entry := os.join_path(tools, 'vtest-' + 'd'.repeat(64))
+		os.mkdir_all(legacy_entry)!
+		// The entry of another user is guarded by no lock of this user: in a folder that is this
+		// user's alone it goes like any other content, and no lock file is made for it.
+		foreign_entry := os.join_path(tools, 'vdoc-' + 'e'.repeat(64) + '.${os.getuid() + 1}')
+		os.mkdir_all(foreign_entry)!
+		busy_lock := tool_cache_test_lock(tools, 'vtest')
+		idle_lock := tool_cache_test_lock(tools, 'vfmt')
+		// A folder that is merely named like a lock file is ordinary content.
+		lock_shaped_dir := tool_cache_test_lock(tools, 'vfoo')
 		os.mkdir_all(lock_shaped_dir)!
 		os.write_file(busy_lock, '')!
 		os.write_file(idle_lock, '')!
@@ -2413,171 +2489,1309 @@ fn test_wipe_cache_leaves_the_tools_being_built_alone() ! {
 			holder.wait()
 			holder.close()
 		}
-		dry := wipe_caches(parse_wipe_cache_options([], ['--tools', '--dry-run', '--verbose'])!)!.join('
-')
+		dry := wipe_output('--tools', '--dry-run', '--verbose')!
 		assert dry.contains('Would wipe V tool cache folder ${tools}, except for the tools another process has locked right now: vtest.'), dry
 		assert dry.contains('  would keep ${busy_entry}'), dry
+		assert dry.contains('  would keep ${legacy_entry}'), dry
 		assert dry.contains('  would remove ${idle_entry}'), dry
-		assert os.is_file(idle_binary)
+		assert dry.contains('  would remove ${foreign_entry}'), dry
+		assert os.is_dir(idle_entry)
+		// A dry run makes no lock file.
+		assert !os.exists(prefixed_lock)
 
-		output := wipe_caches(parse_wipe_cache_options([], ['--tools', '--verbose'])!)!.join('
-')
+		output := wipe_output('--tools', '--verbose')!
 		assert output.contains('V tool cache folder ${tools} was wiped, except for the tools another process has locked right now: vtest.'), output
 		assert output.contains('  keeping ${busy_entry}'), output
 		assert output.contains('  keeping ${busy_lock}'), output
 		assert output.contains('  removing ${idle_entry}'), output
 		assert os.is_file(staged_binary)
+		assert os.is_dir(legacy_entry), output
 		assert !os.exists(idle_entry)
 		assert !os.exists(prefixed_entry)
+		assert !os.exists(foreign_entry), output
+		assert !os.exists(tool_cache_test_lock(tools, 'vdoc')), output
 		assert !os.exists(lock_shaped_dir)
-		// Lock files are persistent mutexes and stay, whether held or not.
+		// Lock files are persistent mutexes and stay, whether held or not. A tool that had none got
+		// one before its entry went.
 		assert os.is_file(busy_lock)
 		assert os.is_file(idle_lock)
+		assert os.is_file(prefixed_lock)
 
-		// Once the build is over, nothing holds the lock and the entry goes too; the lock
-		// files keep the root in place.
+		// Once the build is over, nothing holds the lock and the entry goes too; the lock files
+		// keep the folder in place.
 		os.write_file(release_path, '')!
 		holder.wait()
-		released_output := wipe_caches(parse_wipe_cache_options([], ['--tools'])!)!.join('
-')
+		released_output := wipe_output('--tools')!
 		assert released_output.contains('V tool cache folder ${tools} was wiped.'), released_output
 		assert !os.exists(busy_entry)
+		assert !os.exists(legacy_entry)
 		assert os.is_file(busy_lock)
-		assert os.is_file(idle_lock)
 		assert os.is_dir(tools)
+	})!
+}
+
+// A tool cache folder that `VTOOLS_CACHE_DIR` puts inside `VTMP` is wiped as a tool cache folder by
+// the wipe of `VTMP` too, with the default options and with `--vtmp` alone.
+fn test_wipe_cache_keeps_a_live_build_in_a_configured_folder_inside_vtmp() ! {
+	directory := toolcache_test_dir('wipe_cache_vtmp_root')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	release_path := os.join_path(directory, 'lock.release')
+	with_wipe_test_caches(directory, fn [directory, release_path] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		custom := os.join_path(vtmp, 'custom-tools')
+		os.setenv(tool_cache_dir_env, custom, true)
+		tool_cache_test_root(custom)!
+		busy_entry := tool_cache_test_entry(custom, 'vtest', 'a')!
+		staged_binary := os.join_path(busy_entry, '${tool_cache_stage_prefix}0-1-2-0', 'vtest')
+		os.mkdir_all(os.dir(staged_binary))!
+		os.write_file(staged_binary, 'half built')!
+		busy_lock := tool_cache_test_lock(custom, 'vtest')
+		os.write_file(busy_lock, '')!
+		mut holder := start_tool_cache_lock_holder(busy_lock, release_path)!
+		defer {
+			os.write_file(release_path, '') or {}
+			holder.wait()
+			holder.close()
+		}
+		for arguments in [[]string{}, ['--vtmp']] {
+			idle_entry := tool_cache_test_entry(custom, 'vfmt', 'b')!
+			temporary := os.join_path(vtmp, 'a.tmp.c')
+			session := os.join_path(vtmp, 'tsession_1')
+			os.write_file(temporary, 'c')!
+			os.mkdir_all(os.join_path(session, 'deeper'))!
+			os.write_file(os.join_path(session, 'deeper', 'file'), 'x')!
+			output := wipe_output(...arguments)!
+			assert os.is_file(staged_binary), output
+			assert os.is_file(busy_lock), output
+			assert !os.exists(idle_entry), output
+			assert !os.exists(temporary), output
+			assert !os.exists(session), output
+			assert output.contains('V tool cache folder ${custom} was wiped, except for the tools another process has locked right now: vtest.'), output
+			assert output.contains('V tmp.c and tests folder ${vtmp} was wiped, except the tool cache folders in it: ${custom}.'), output
+		}
+	})!
+}
+
+// The tool cache folders a wipe knows are known by their paths, as deep as they lie, and whether
+// they exist yet or not.
+fn test_known_tool_cache_folders_are_found_below_a_folder_by_path() ! {
+	directory := toolcache_test_dir('wipe_cache_roots_below')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		deep := os.join_path(vtmp, 'a', 'b', 'tools')
+		os.setenv(tool_cache_dir_env, deep, true)
+		run := new_tool_cache_wipe_run()
+		below := run.roots_below(vtmp)
+		assert os.join_path('a', 'b', 'tools') in below
+		assert 'tools' in below
+		assert run.roots_below(os.join_path(vtmp, 'a')) == [os.join_path('b', 'tools')]
+		assert run.roots_below(deep) == ['']
+		assert run.roots_below(os.join_path(directory, 'unrelated')).len == 0
+
+		// The folders that lead to such a folder stay, and what lies beside them goes.
+		entry := tool_cache_test_entry(deep, 'vfmt', 'a')!
+		lock_path := tool_cache_test_lock(deep, 'vfmt')
+		os.write_file(lock_path, '')!
+		os.write_file(os.join_path(vtmp, 'a', 'beside'), 'x')!
+		os.mkdir_all(os.join_path(vtmp, 'a', 'b', 'beside', 'deeper'))!
+		dry := wipe_output('--vtmp', '--dry-run', '--verbose')!
+		assert dry.contains('Would wipe V tmp.c and tests folder ${vtmp}, except ${deep}.'), dry
+		assert dry.contains('  would remove ${os.join_path(vtmp, 'a', 'beside')}'), dry
+		output := wipe_output('--vtmp')!
+		assert output.contains('V tmp.c and tests folder ${vtmp} was wiped, except the tool cache folders in it: ${deep}.'), output
+		assert !os.exists(entry)
+		assert os.is_file(lock_path)
+		assert !os.exists(os.join_path(vtmp, 'a', 'beside'))
+		assert !os.exists(os.join_path(vtmp, 'a', 'b', 'beside'))
+	})!
+}
+
+// On a filesystem that ignores case, a tool cache folder is known by the spelling that a listing
+// of its parent gives, whatever spelling `VTOOLS_CACHE_DIR` uses.
+fn test_a_known_tool_cache_folder_is_spelled_as_its_parent_lists_it() ! {
+	directory := toolcache_test_dir('wipe_cache_spelling')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	os.mkdir(os.join_path(directory, 'CaseProbe'))!
+	if !os.exists(os.join_path(directory, 'caseprobe')) {
+		// This filesystem tells the two spellings apart, so a name that is not listed is not there.
+		assert tool_cache_spelled_as_listed(directory, 'caseprobe') == 'caseprobe'
+		return
+	}
+	with_wipe_test_caches(directory, fn [directory] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		listed := os.join_path(vtmp, 'Deep', 'Custom-Tools')
+		tool_cache_test_root(listed)!
+		// A folder that a listing gives first is not mistaken for it.
+		os.mkdir_all(os.join_path(vtmp, 'Deep', 'Another'))!
+		assert tool_cache_spelled_as_listed(vtmp, os.join_path('deep', 'custom-tools')) == os.join_path('Deep',
+			'Custom-Tools')
+		// A part that is not there yet keeps the spelling it was given.
+		assert tool_cache_spelled_as_listed(vtmp, os.join_path('deep', 'missing')) == os.join_path('Deep',
+			'missing')
+		os.setenv(tool_cache_dir_env, os.join_path(vtmp, 'deep', 'custom-tools'), true)
+		entry := tool_cache_test_entry(listed, 'vfmt', 'a')!
+		lock_path := tool_cache_test_lock(listed, 'vfmt')
+		os.write_file(lock_path, '')!
+		output := wipe_output('--vtmp')!
+		// It was wiped as the tool cache folder it is, so its lock file is still there.
+		assert !os.exists(entry), output
+		assert os.is_file(lock_path), output
+	})!
+}
+
+// A tool cache folder that only the `VTOOLS_CACHE_DIR` of another process names is not known to
+// the wipe: it goes with the folder it lies in, as it always has.
+fn test_a_tool_cache_folder_the_wipe_does_not_know_is_ordinary_content() ! {
+	directory := toolcache_test_dir('wipe_cache_unknown_root')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		unknown := os.join_path(vtmp, 'tools-of-another-process')
+		tool_cache_test_root(unknown)!
+		tool_cache_test_entry(unknown, 'vfmt', 'a')!
+		os.write_file(tool_cache_test_lock(unknown, 'vfmt'), '')!
+		// So is a folder named like one that V moved aside, beside no folder the wipe knows.
+		stranger := os.join_path(vtmp, 'elsewhere.untrusted-kept')
+		tool_cache_test_root(stranger)!
+		os.write_file(tool_cache_test_lock(stranger, 'vfmt'), '')!
+		output := wipe_output('--vtmp')!
+		assert output.contains('V tmp.c and tests folder ${vtmp} was wiped.'), output
+		assert !os.exists(unknown)
+		assert !os.exists(stranger), output
+		assert !output.contains(stranger), output
+	})!
+}
+
+// A tool cache folder inside another one is wiped as a tool cache folder, and once.
+fn test_a_known_tool_cache_folder_inside_another_is_wiped_as_one() ! {
+	directory := toolcache_test_dir('wipe_cache_nested_roots')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	release_path := os.join_path(directory, 'lock.release')
+	with_wipe_test_caches(directory, fn [release_path] (cache_v_dir string) ! {
+		outer := os.join_path(cache_v_dir, 'tools')
+		inner := os.join_path(outer, 'nested', 'tools')
+		os.setenv(tool_cache_dir_env, inner, true)
+		tool_cache_test_root(inner)!
+		busy_entry := tool_cache_test_entry(inner, 'vtest', 'a')!
+		busy_lock := tool_cache_test_lock(inner, 'vtest')
+		os.write_file(busy_lock, '')!
+		inner_idle := tool_cache_test_entry(inner, 'vfmt', 'b')!
+		outer_idle := tool_cache_test_entry(outer, 'vdoc', 'c')!
+		beside := os.join_path(outer, 'nested', 'beside')
+		os.write_file(beside, 'x')!
+		mut holder := start_tool_cache_lock_holder(busy_lock, release_path)!
+		defer {
+			os.write_file(release_path, '') or {}
+			holder.wait()
+			holder.close()
+		}
+		output := wipe_output('--tools')!
+		assert os.is_dir(busy_entry), output
+		assert os.is_file(busy_lock), output
+		assert !os.exists(inner_idle), output
+		assert !os.exists(outer_idle), output
+		assert !os.exists(beside), output
+		inner_line := 'V tool cache folder ${inner} was wiped, except for the tools another process has locked right now: vtest.'
+		assert output.contains(inner_line), output
+		assert output.count(inner_line) == 1, output
+	})!
+}
+
+// A build that moves the folder aside while the wipe runs, and builds in a new folder at the same
+// path, leaves the wipe in the folder it opened: nothing in the new folder is touched.
+fn test_a_wipe_stays_in_the_folder_it_opened() ! {
+	$if windows {
+		// No build moves a tool cache folder aside on Windows.
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_moved_meanwhile')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+		entry_name := os.file_name(entry)
+		lock_name := tool_cache_lock_name('vfmt', u32(os.getuid()))
+		opts := parse_wipe_cache_options([], ['--tools'])!
+		mut run := new_tool_cache_wipe_run()
+		dir := open_tool_cache_wipe_dir(tools)!
+		defer {
+			dir.close()
+		}
+		// Now a build moves the folder aside, and builds the same tool in a new one at its path.
+		aside := tools + '.untrusted-1700000000-42'
+		os.rename(tools, aside)!
+		os.mkdir(tools, mode: 0o700)!
+		new_entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+		assert new_entry == entry
+		mut lines := []string{}
+		run.wipe_open_tool_cache_directory(dir, tools, opts, mut lines)!
+		output := lines.join('\n')
+		// The entry of the folder that was opened is gone, under a lock taken in that folder.
+		assert !os.exists(os.join_path(aside, entry_name)), output
+		assert os.is_file(os.join_path(aside, lock_name)), output
+		// The new folder has all it had, and got no lock file from the wipe.
+		assert os.is_file(os.join_path(new_entry, 'vfmt' + tool_exe_suffix())), output
+		assert os.ls(tools)! == [entry_name], output
+		assert output.contains('V tool cache folder ${tools} was moved aside by a build during the wipe.'), output
+		assert output.contains('the new folder at ${tools} was not touched.'), output
+	})!
+}
+
+fn test_lock_names_are_taken_apart_exactly() {
+	plain := tool_cache_lock_name_parts('.vfmt.1000.toolcache.lock') or {
+		panic('a lock name was not recognised')
+	}
+	assert plain.tool == 'vfmt'
+	assert plain.uid == 1000
+	dotted := tool_cache_lock_name_parts('.v.fmt.0.toolcache.lock') or {
+		panic('a lock name with a dot in the tool was not recognised')
+	}
+	assert dotted.tool == 'v.fmt'
+	assert dotted.uid == 0
+	shortest := tool_cache_lock_name_parts('.a.7.toolcache.lock') or {
+		panic('the shortest lock name was not recognised')
+	}
+	assert shortest.tool == 'a'
+	assert shortest.uid == 7
+	largest := tool_cache_lock_name_parts('.vfmt.4294967295.toolcache.lock') or {
+		panic('the largest user id was not recognised')
+	}
+	assert largest.uid == 4294967295
+	assert tool_cache_lock_name('vfmt', 1000) == '.vfmt.1000.toolcache.lock'
+	// Names that only resemble a lock name: no tool, no user id, a user id no build writes.
+	for name in ['.toolcache.lock', '..toolcache.lock', '.vfmt.toolcache.lock', '..7.toolcache.lock',
+		'.vfmt..toolcache.lock', '.vfmt.x7.toolcache.lock', '.vfmt.7x.toolcache.lock',
+		'.vfmt.-7.toolcache.lock', '.vfmt.007.toolcache.lock', '.vfmt.4294967296.toolcache.lock',
+		'.vfmt.99999999999.toolcache.lock', 'vfmt.7.toolcache.lock', '.vfmt.7.toolcache.lock.bak',
+		'.vfmt.7.toolcache.locks', '.vfmt.7.toolcache', '', 
+		// A sign that no number follows, a second sign, a plus sign.
+		'.vfmt.-.toolcache.lock', '.vfmt.--7.toolcache.lock', '.vfmt.+7.toolcache.lock',
+		// An empty tool before a user id, in a name long enough to hold both.
+		'..1000.toolcache.lock', 
+		// Another ending of the same length, after a tool and a user id.
+		'.vfmt.7' + 'x'.repeat(tool_cache_lock_ending.len)] {
+		if _ := tool_cache_lock_name_parts(name) {
+			assert false, '`${name}` is no lock name'
+		}
+	}
+}
+
+fn test_entry_names_are_taken_apart_exactly() {
+	hex := 'a'.repeat(64)
+	entry := tool_cache_entry_name_parts('vfmt-${hex}.1000') or { panic('an entry name was not recognised') }
+	assert entry.tool == 'vfmt'
+	assert entry.has_uid
+	assert entry.uid == 1000
+	// A tool name can hold dashes; the content address decides where it ends.
+	dashed := tool_cache_entry_name_parts('vtest-all-${hex}.0') or {
+		panic('an entry name with a dash in the tool was not recognised')
+	}
+	assert dashed.tool == 'vtest-all'
+	assert dashed.has_uid
+	assert dashed.uid == 0
+	// A legacy entry, a sidecar file, and a user id no build writes carry no user id.
+	for name in ['vfmt-${hex}', 'vfmt-${hex}.inputs', 'vfmt-${hex}.007', 'vfmt-${hex}.-7',
+		'vfmt-${hex}.4294967296', 'vfmt-${hex}.'] {
+		plain := tool_cache_entry_name_parts(name) or { panic('`${name}` was not recognised') }
+		assert plain.tool == 'vfmt', name
+		assert !plain.has_uid, name
+	}
+	for name in ['vfmt', 'vfmt-', 'vfmt-${hex[..63]}', '-${hex}', 'vfmt-${hex}x', 'vfmt_${hex}',
+		'vfmt-' + 'g'.repeat(64), ''] {
+		if _ := tool_cache_entry_name_parts(name) {
+			assert false, '`${name}` is no entry name'
+		}
+	}
+}
+
+// The wipe spells a lock file and an entry exactly as a build does, and reads both names back to
+// the tool and the user they belong to: for the user who runs the tests, and for every user id
+// below 2^31 (the tool cache works for no other, see `tool_cache_lock_name`).
+fn test_the_wipe_names_locks_and_entries_as_a_build_does() {
+	hex := 'a'.repeat(64)
+	own := ToolCacheEntry{
+		name: 'vfmt'
+		dir:  tool_cache_entry_dir_for_uid('root', 'vfmt', hex, os.getuid())
+	}
+	assert tool_cache_lock_name(own.name, u32(os.getuid())) == os.file_name(tool_cache_lock_path(own))
+	for uid in [0, 1000, 65534, int(max_i32)] {
+		entry := ToolCacheEntry{
+			name: 'vtest-all'
+			dir:  tool_cache_entry_dir_for_uid('root', 'vtest-all', hex, uid)
+		}
+		lock_name := os.file_name(tool_cache_lock_path_for_uid(entry, uid))
+		assert tool_cache_lock_name(entry.name, u32(uid)) == lock_name
+		lock_parts := tool_cache_lock_name_parts(lock_name) or {
+			panic('the lock name `${lock_name}` of a build was not recognised')
+		}
+		assert lock_parts.tool == entry.name, lock_name
+		assert lock_parts.uid == u32(uid), lock_name
+		entry_name := os.file_name(entry.dir)
+		entry_parts := tool_cache_entry_name_parts(entry_name) or {
+			panic('the entry name `${entry_name}` of a build was not recognised')
+		}
+		assert entry_parts.tool == entry.name, entry_name
+		assert entry_parts.has_uid, entry_name
+		assert entry_parts.uid == u32(uid), entry_name
+	}
+}
+
+// What a wipe removes outside Windows follows one rule, from who runs it, whose folder it is and
+// who can write to that folder.
+fn test_a_wipe_takes_what_is_its_own_to_take() {
+	me := u32(1000)
+	// In a folder that is this user's alone, everything goes, whoever owns it.
+	for owner in [me, u32(0), u32(65534)] {
+		assert tool_cache_wipe_takes_posix(me, me, 0o700, owner)
+		assert tool_cache_wipe_takes_posix(me, me, 0o755, owner)
+	}
+	// In a folder that another account can write to, only what this user owns goes, with the
+	// sticky bit or without it.
+	for mode in [u32(0o777), u32(0o1777), u32(0o775), u32(0o757), u32(0o1775), u32(0o720)] {
+		assert tool_cache_wipe_takes_posix(me, me, mode, me)
+		assert !tool_cache_wipe_takes_posix(me, me, mode, 0)
+		assert !tool_cache_wipe_takes_posix(me, me, mode, 65534)
+	}
+	// So it is in a folder that another account owns.
+	assert tool_cache_wipe_takes_posix(me, 0, 0o1777, me)
+	assert !tool_cache_wipe_takes_posix(me, 0, 0o755, 0)
+	assert !tool_cache_wipe_takes_posix(me, 2000, 0o700, 2000)
+	// The superuser takes everything, everywhere.
+	for owner in [u32(0), me, u32(65534)] {
+		assert tool_cache_wipe_takes_posix(0, me, 0o700, owner)
+		assert tool_cache_wipe_takes_posix(0, me, 0o1777, owner)
+		assert tool_cache_wipe_takes_posix(0, 0, 0o755, owner)
+	}
+}
+
+// A lock file that cannot be opened is set to mode 0600 only when it is a regular file that no
+// other account can swap for something else meanwhile.
+fn test_a_lock_file_is_repaired_only_where_nobody_else_can_swap_it() {
+	me := u32(1000)
+	file := ToolCacheWipeItem{
+		kind:  .file
+		owner: me
+		links: 1
+	}
+	assert tool_cache_lock_is_repairable(me, me, 0o700, file)
+	for kind in [ToolCacheWipeKind.gone, .folder, .link, .other] {
+		assert !tool_cache_lock_is_repairable(me, me, 0o700, ToolCacheWipeItem{
+			kind:  kind
+			owner: me
+			links: 1
+		}), kind.str()
+	}
+	$if !windows {
+		// The folder is this user's or root's, and others cannot write to it, or only with the
+		// sticky bit.
+		assert tool_cache_lock_is_repairable(me, me, 0o755, file)
+		assert tool_cache_lock_is_repairable(me, me, 0o1777, file)
+		assert tool_cache_lock_is_repairable(me, 0, 0o1777, file)
+		assert !tool_cache_lock_is_repairable(me, 2000, 0o700, file)
+		assert !tool_cache_lock_is_repairable(me, 2000, 0o1777, file)
+		for mode in [u32(0o777), u32(0o770), u32(0o702), u32(0o720)] {
+			assert !tool_cache_lock_is_repairable(me, me, mode, file), mode.str()
+			assert !tool_cache_lock_is_repairable(me, 0, mode, file), mode.str()
+		}
+		// The file is this user's and has one name.
+		assert !tool_cache_lock_is_repairable(me, me, 0o700, ToolCacheWipeItem{
+			kind:  .file
+			owner: 2000
+			links: 1
+		})
+		assert !tool_cache_lock_is_repairable(me, me, 0o700, ToolCacheWipeItem{
+			kind:  .file
+			owner: me
+			links: 2
+		})
+		// The superuser repairs the file of any user, in a folder that is root's.
+		assert tool_cache_lock_is_repairable(0, 0, 0o755, ToolCacheWipeItem{
+			kind:  .file
+			owner: 2000
+			links: 1
+		})
+		assert !tool_cache_lock_is_repairable(0, 2000, 0o700, ToolCacheWipeItem{
+			kind:  .file
+			owner: 2000
+			links: 1
+		})
+	}
+}
+
+fn test_wipe_cache_tells_lock_files_from_other_names() ! {
+	directory := toolcache_test_dir('wipe_cache_names')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		// The bare ending holds neither a tool nor a user id; it used to crash the wipe.
+		others := ['.toolcache.lock', '..toolcache.lock', '.vfmt.toolcache.lock',
+			'.vfmt.007.toolcache.lock', '.vfmt.x.toolcache.lock', 'plain']
+		for name in others {
+			os.write_file(os.join_path(tools, name), '')!
+		}
+		// The lock file of another user stays, like every lock file: unlinking one would let two
+		// builds lock two different files.
+		foreign_lock := os.join_path(tools, tool_cache_lock_name('vfmt', u32(os.getuid()) + 1))
+		os.write_file(foreign_lock, '')!
+		own_lock := tool_cache_test_lock(tools, 'vdoc')
+		os.write_file(own_lock, '')!
+		output := wipe_output('--tools', '--verbose')!
+		for name in others {
+			assert !os.exists(os.join_path(tools, name)), '${name}: ${output}'
+		}
+		assert os.is_file(foreign_lock), output
+		assert os.is_file(own_lock), output
+		assert output.contains('  keeping ${foreign_lock}'), output
+		assert output.contains('  keeping ${own_lock}'), output
+		assert output.contains('V tool cache folder ${tools} was wiped.'), output
 	})!
 }
 
 fn test_wipe_cache_repairs_a_lock_file_that_cannot_be_opened() ! {
 	$if !windows {
 		if os.geteuid() == 0 {
-			// root opens a 0400 file for writing anyway, so the lock is usable and stays
+			// The superuser opens a read-only file for writing anyway, so nothing needs a repair.
 			return
 		}
 	}
-	directory := toolcache_test_dir('wipe_cache_stale_lock')
+	directory := toolcache_test_dir('wipe_cache_repair')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
-	with_default_tool_cache_roots(directory, fn (cache_v_dir string) ! {
+	with_wipe_test_caches(directory, fn (cache_v_dir string) ! {
 		tools := os.join_path(cache_v_dir, 'tools')
-		entry := os.join_path(tools, 'vfmt-' + 'b'.repeat(64) + '.0')
-		stale_lock := os.join_path(tools, '.vfmt${tool_cache_lock_file_suffix()}')
-		os.mkdir_all(entry)!
-		os.write_file(os.join_path(entry, 'vfmt' + tool_exe_suffix()), 'bin')!
-		os.write_file(stale_lock, '')!
-		// Read-only on Windows, mode 0400 elsewhere: nobody can lock it, so nothing is building.
-		os.chmod(stale_lock, 0o400)!
-		defer {
-			os.chmod(stale_lock, 0o600) or {}
+		tool_cache_test_root(tools)!
+		lock_path := tool_cache_test_lock(tools, 'vfmt')
+		// A file that can only be read, one that can only be written, and one that cannot be opened
+		// at all: each is repaired another way.
+		modes := $if windows {
+			[0o400]
+		} $else {
+			[0o400, 0o200, 0o000]
 		}
-		dry := wipe_caches(parse_wipe_cache_options([], ['--tools', '--dry-run', '--verbose'])!)!.join('\n')
-		assert dry.contains('Would wipe V tool cache folder ${tools}.'), dry
-		assert dry.contains('  would keep ${stale_lock}'), dry
-		assert dry.contains('  would remove ${entry}'), dry
-		assert !dry.contains('locked right now'), dry
-		// The summary comes first in a dry run, as for the other cache folders.
-		assert dry.index('Would wipe V tool cache folder ${tools}.') or { -1 } < dry.index('  would remove ${entry}') or {
-			-1
-		}, dry
+		for mode in modes {
+			entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+			os.write_file(lock_path, '')!
+			os.chmod(lock_path, mode)!
+			defer {
+				os.chmod(lock_path, 0o600) or {}
+			}
+			as_it_was := os.stat(lock_path)!.mode
+			// A dry run tells what a real run does, and leaves the file as it is.
+			dry := wipe_output('--tools', '--dry-run', '--verbose')!
+			assert dry.contains('Would wipe V tool cache folder ${tools}.'), '${mode:o}: ${dry}'
+			assert dry.contains('  would remove ${entry}'), '${mode:o}: ${dry}'
+			assert os.stat(lock_path)!.mode == as_it_was, '${mode:o}'
+			assert os.is_dir(entry)
 
-		output := wipe_caches(parse_wipe_cache_options([], ['--tools'])!)!.join('\n')
-		assert output.contains('V tool cache folder ${tools} was wiped.'), output
-		assert !output.contains('locked right now'), output
-		assert !os.exists(entry)
-		// The lock file is repaired and kept, so a builder can lock it again, and the root stays.
-		assert os.is_file(stale_lock)
-		mut probe_file := os.open_file(stale_lock, 'r+') or { panic(err) }
-		probe_file.close()
-		assert os.is_dir(tools)
+			output := wipe_output('--tools')!
+			assert output.contains('V tool cache folder ${tools} was wiped.'), '${mode:o}: ${output}'
+			assert !os.exists(entry), '${mode:o}'
+			assert os.is_file(lock_path)
+			assert os.is_writable(lock_path), '${mode:o}'
+			// A build can lock it again.
+			mut build_lock := filelock.new_file(lock_path, mode: .exclusive)
+			assert build_lock.try_acquire(), '${mode:o}'
+			build_lock.release()
+		}
 	})!
 }
 
-// claim_in_child runs `ToolCacheWipeLocks.claim` for `tool` in a child process, so that the lock
-// it sees is taken by another process: POSIX record locks belong to one process, so a second lock
-// in this process would succeed. It returns what the child made of the claim.
-fn claim_in_child(root string, tool string) !string {
-	mut p := os.new_process(os.executable())
-	mut env := os.environ()
-	env[toolcache_claim_root_env] = root
-	env[toolcache_claim_tool_env] = tool
-	p.set_environment(env)
-	p.set_redirect_stdio()
-	p.run()
-	output := p.stdout_slurp()
-	p.wait()
-	p.close()
-	return output.trim_space()
-}
-
-fn test_claim_holds_the_lock_file_it_creates() ! {
-	directory := toolcache_test_dir('wipe_claim_holds')
+// A lock file that cannot be opened and has a second name is left as it is: a change of its mode
+// would reach a file outside the wipe. The entries of its tool stay.
+fn test_a_lock_file_with_a_second_name_is_left_as_it_is() ! {
+	$if windows {
+		return
+	}
+	if os.geteuid() == 0 {
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_no_repair')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
-	mut locks := ToolCacheWipeLocks{
-		root: directory
-	}
-	created := locks.claim('vfmt', false)
-	assert created != '', 'claim must create the missing lock file'
-	assert 'vfmt' in locks.held, 'the wipe must hold the lock it created'
-	assert claim_in_child(directory, 'vfmt')! == 'busy', 'a builder must not get the lock while the wipe holds it'
-	locks.release()
-	assert claim_in_child(directory, 'vfmt')! == 'held', 'the lock must be free once the wipe releases it'
+	with_wipe_test_caches(directory, fn [directory] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+		idle_entry := tool_cache_test_entry(tools, 'vdoc', 'b')!
+		lock_path := tool_cache_test_lock(tools, 'vfmt')
+		os.write_file(lock_path, '')!
+		os.chmod(lock_path, 0o400)!
+		defer {
+			os.chmod(lock_path, 0o600) or {}
+		}
+		os.link(lock_path, os.join_path(directory, 'second-name'))!
+		for arguments in [['--tools', '--dry-run'], ['--tools']] {
+			output := wipe_output(...arguments)!
+			assert output.contains('except for the tools whose lock file cannot be opened and was left as it is: vfmt.'), output
+			assert os.is_dir(entry), output
+			assert !os.is_writable(lock_path), output
+		}
+		assert !os.exists(idle_entry)
+	})!
 }
 
-fn test_concurrent_claims_leave_one_holder_for_a_tool() ! {
-	directory := toolcache_test_dir('wipe_claim_race')
+// What is in the way of a lock file is removed as it is, without going through a link, and the
+// tool then gets a real lock file before its entry goes.
+fn test_a_link_at_a_lock_path_is_removed_and_not_followed() ! {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_lock_link')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
-	mut first := ToolCacheWipeLocks{
-		root: directory
-	}
-	created := first.claim('vfmt', false)
-	assert created != '', 'the first claim must create the lock'
-	// Linking over the lock that now exists must fail, so a second wipe cannot make its own.
-	assert first.create_lock('vfmt', created) == '', 'a link must not replace an existing lock'
-	// A second wipe finds the lock held by the first one and must not take it too.
-	assert claim_in_child(directory, 'vfmt')! == 'busy', 'the second wipe must see the first holding the lock'
-	first.release()
+	with_wipe_test_caches(directory, fn [directory] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+		target := os.join_path(directory, 'elsewhere')
+		os.write_file(target, 'keep')!
+		os.chmod(target, 0o400)!
+		lock_path := tool_cache_test_lock(tools, 'vfmt')
+		os.symlink(target, lock_path)!
+		dry := wipe_output('--tools', '--dry-run', '--verbose')!
+		assert dry.contains('  would remove ${lock_path}'), dry
+		assert dry.contains('  would remove ${entry}'), dry
+		assert os.is_link(lock_path)
+		output := wipe_output('--tools', '--verbose')!
+		assert output.contains('  removing ${lock_path}'), output
+		assert !os.exists(entry), output
+		assert !os.is_link(lock_path), output
+		assert os.is_file(lock_path), output
+		assert os.read_file(target)! == 'keep'
+		assert !os.is_writable(target)
+	})!
 }
 
-fn test_a_tool_whose_lock_path_is_a_link_is_kept_not_removed() ! {
-	directory := toolcache_test_dir('wipe_claim_link')
+// A folder V moved aside is wiped like any tool cache folder while a build holds a lock in it, and
+// goes whole, lock files included, once none does.
+fn test_a_folder_v_moved_aside_goes_whole_once_no_build_holds_a_lock_in_it() ! {
+	directory := toolcache_test_dir('wipe_cache_moved_aside')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
-	target := os.join_path(directory, 'outside')
-	os.write_file(target, 'keep')!
-	lock_path := os.join_path(directory, '.vfmt${tool_cache_lock_file_suffix()}')
-	// Creating a link can need a privilege the host does not grant; skip then.
-	os.symlink(target, lock_path) or { return }
-	mut locks := ToolCacheWipeLocks{
-		root: directory
-	}
-	assert locks.claim('vfmt', false) == ''
-	assert 'vfmt' in locks.unlockable, 'a tool without a usable lock must be recorded as unlockable'
-	assert 'vfmt' !in locks.held
-	assert os.read_file(target)! == 'keep', 'the link target must not be touched'
-	assert wipe_except_text([], locks.unlockable).contains('could not be created: vfmt')
-	// A dry run creates nothing and marks nothing: it reports what a real run would do.
-	mut dry_locks := ToolCacheWipeLocks{
-		root: directory
-	}
-	assert dry_locks.claim('vfmt', true) == ''
-	assert 'vfmt' !in dry_locks.unlockable, 'a dry run must not record an unlockable tool'
+	release_path := os.join_path(directory, 'lock.release')
+	with_wipe_test_caches(directory, fn [release_path] (cache_v_dir string) ! {
+		aside := os.join_path(cache_v_dir, 'tools.untrusted-1700000000-42')
+		tool_cache_test_root(aside)!
+		assert is_moved_aside_tool_cache_root(aside)
+		busy_entry := tool_cache_test_entry(aside, 'vtest', 'a')!
+		idle_entry := tool_cache_test_entry(aside, 'vfmt', 'b')!
+		busy_lock := tool_cache_test_lock(aside, 'vtest')
+		idle_lock := tool_cache_test_lock(aside, 'vfmt')
+		os.write_file(busy_lock, '')!
+		os.write_file(idle_lock, '')!
+		planted := os.join_path(aside, 'planted')
+		os.write_file(planted, 'x')!
+		mut holder := start_tool_cache_lock_holder(busy_lock, release_path)!
+		defer {
+			os.write_file(release_path, '') or {}
+			holder.wait()
+			holder.close()
+		}
+		output := wipe_output('--tools')!
+		assert output.contains('Moved-aside V tool cache folder ${aside} was wiped, except for the tools another process has locked right now: vtest.'), output
+		assert os.is_dir(busy_entry), output
+		assert os.is_file(busy_lock), output
+		assert !os.exists(idle_entry), output
+		assert !os.exists(planted), output
+		// While something is kept, the lock files stay too.
+		assert os.is_file(idle_lock), output
+		// A folder with the name of that one inside a folder being wiped is found by that name
+		// whenever it appears, here after the wipe has looked for the folders it knows.
+		opts := parse_wipe_cache_options([], ['--vtmp'])!
+		mut run := new_tool_cache_wipe_run()
+		vtmp := os.vtmp_dir()
+		late := os.join_path(vtmp, 'tools.untrusted-1700000001-43')
+		tool_cache_test_root(late)!
+		late_entry := tool_cache_test_entry(late, 'vtest', 'c')!
+		late_idle := tool_cache_test_entry(late, 'vdoc', 'd')!
+		late_lock := tool_cache_test_lock(late, 'vtest')
+		os.write_file(late_lock, '')!
+		late_release := release_path + '.late'
+		mut late_holder := start_tool_cache_lock_holder(late_lock, late_release)!
+		mut late_lines := []string{}
+		run.wipe_folder_around_tool_roots(vtmp, 'V tmp.c and tests', true, opts, mut late_lines)!
+		late_output := late_lines.join('\n')
+		assert os.is_dir(late_entry), late_output
+		assert os.is_file(late_lock), late_output
+		assert !os.exists(late_idle), late_output
+		os.write_file(late_release, '')!
+		late_holder.wait()
+		late_holder.close()
+
+		os.write_file(release_path, '')!
+		holder.wait()
+		dry := wipe_output('--tools', '--dry-run', '--verbose')!
+		assert dry.contains('Would wipe Moved-aside V tool cache folder ${aside}.'), dry
+		assert dry.contains('  would remove ${busy_lock}'), dry
+		assert os.is_dir(busy_entry)
+		released := wipe_output('--tools')!
+		assert released.contains('Moved-aside V tool cache folder ${aside} was wiped.'), released
+		assert !os.exists(aside), released
+	})!
 }
 
-fn test_a_lock_that_cannot_be_repaired_names_the_file_and_the_cause() ! {
-	directory := toolcache_test_dir('wipe_repair_fail')
+fn test_moved_aside_names_have_one_shape() {
+	assert is_moved_aside_tool_cache_name('tools.untrusted-1700000000-42')
+	assert is_moved_aside_tool_cache_name('my.tools.untrusted-1-2')
+	for name in ['tools', 'tools.untrusted-', 'tools.untrusted-1', 'tools.untrusted-1-',
+		'tools.untrusted--2', 'tools.untrusted-1-2-3', 'tools.untrusted-a-2', 'tools.untrusted-1-b',
+		'.untrusted-1-2', 'tools.untrusted-1-2.bak', 'tools.untrusted-12345'] {
+		assert !is_moved_aside_tool_cache_name(name), name
+	}
+}
+
+// A dry run removes nothing, makes no lock file, and lists exactly what a real run then removes.
+fn test_a_dry_run_changes_nothing_and_tells_what_a_real_run_removes() ! {
+	directory := toolcache_test_dir('wipe_cache_dry_run')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
-	missing := os.join_path(directory, '.vfmt${tool_cache_lock_file_suffix()}')
-	if _ := repair_stale_lock(missing) {
-		assert false, 'repairing a lock file that does not exist must fail'
+	with_wipe_test_caches(directory, fn [directory] (cache_v_dir string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		tools := os.join_path(cache_v_dir, 'tools')
+		custom := os.join_path(vtmp, 'custom-tools')
+		aside := os.join_path(vtmp, 'tools.untrusted-1700000000-42')
+		os.setenv(tool_cache_dir_env, custom, true)
+		for root in [tools, custom, aside] {
+			tool_cache_test_root(root)!
+			tool_cache_test_entry(root, 'vfmt', 'a')!
+			tool_cache_test_entry(root, 'vdoc', 'b')!
+			os.write_file(tool_cache_test_lock(root, 'vfmt'), '')!
+			os.write_file(os.join_path(root, 'plain'), 'x')!
+		}
+		os.write_file(os.join_path(vtmp, 'a.tmp.c'), 'c')!
+		os.mkdir_all(os.join_path(vtmp, 'tsession_1', 'deeper'))!
+		os.mkdir_all(os.join_path(directory, 'vcache', 'sub'))!
+		os.write_file(os.join_path(directory, 'vcache', 'sub', 'obj.o'), 'o')!
+		before := toolcache_test_tree(directory)
+		dry := wipe_output('--dry-run', '--verbose')!
+		assert toolcache_test_tree(directory) == before, dry
+		// The summary of the folder around them names the tool cache folders that stay, and not
+		// the one that the real run removes whole.
+		assert dry.contains('Would wipe V tmp.c and tests folder ${vtmp}, except ${custom}.'), dry
+		output := wipe_output('--verbose')!
+		assert output.contains('V tmp.c and tests folder ${vtmp} was wiped, except the tool cache folders in it: ${custom}.'), output
+		would_remove := toolcache_test_detail_paths(dry, '  would remove ')
+		removed := toolcache_test_detail_paths(output, '  removing ')
+		assert would_remove == removed, '${dry}\n---\n${output}'
+		assert would_remove.len > 0
+		for path in removed {
+			assert !os.exists(path) && !os.is_link(path), path
+		}
+		// Whatever the real run says it keeps is there.
+		for path in toolcache_test_detail_paths(output, '  keeping ') {
+			assert os.exists(path), path
+		}
+		assert !os.exists(aside), output
+	})!
+}
+
+// Several wipes at once all succeed: whatever another wipe removed first counts as removed.
+fn test_wipes_that_run_at_the_same_time_all_succeed() ! {
+	$if !linux && !windows {
+		// What a system answers about a folder that another process removed a moment ago differs
+		// from one system to the next, and this was measured on Linux and on Windows only.
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_together')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	start_path := os.join_path(directory, 'start')
+	with_wipe_test_caches(directory, fn [directory, start_path] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		vtmp := os.join_path(directory, 'vtmp')
+		inner := os.join_path(vtmp, 'tools')
+		aside := os.join_path(vtmp, 'tools.untrusted-1700000000-42')
+		for round in 0 .. 3 {
+			os.rm(start_path) or {}
+			// Enough in every folder to keep each wipe at work while the others run.
+			for folder in [os.getenv('VCACHE'), vtmp, os.getenv('V3CACHE')] {
+				for i in 0 .. 12 {
+					sub := os.join_path(folder, 'sub_${i}', 'deeper')
+					os.mkdir_all(sub)!
+					for j in 0 .. 8 {
+						os.write_file(os.join_path(sub, 'file_${j}'), 'x')!
+					}
+				}
+			}
+			tool_cache_test_root(tools)!
+			for i in 0 .. 6 {
+				tool_cache_test_entry(tools, 'vtool${i}', 'a')!
+			}
+			// Tool cache folders inside VTMP as well, one of them moved aside: each wipe meets them
+			// by themselves and again in the folder around them, where another wipe can have
+			// removed them a moment before.
+			for root in [inner, aside] {
+				tool_cache_test_root(root)!
+				for i in 0 .. 6 {
+					tool_cache_test_entry(root, 'vtool${i}', 'b')!
+				}
+			}
+			mut children := []&os.Process{}
+			for _ in 0 .. 4 {
+				mut child := os.new_process(os.executable())
+				mut environment := os.environ()
+				environment[toolcache_wipe_child_env] = start_path
+				child.set_environment(environment)
+				child.set_redirect_stdio()
+				child.run()
+				children << child
+			}
+			os.write_file(start_path, '')!
+			for mut child in children {
+				output := child.stdout_slurp() + child.stderr_slurp()
+				child.wait()
+				code := child.code
+				child.close()
+				assert code == 0, 'round ${round}: ${output}'
+			}
+			// Every entry went under one wipe or another; the lock files they made stay.
+			for root in [tools, inner] {
+				left := os.ls(root)!
+				assert left.len == 6, left.str()
+				assert left.all(it.ends_with(tool_cache_lock_ending)), left.str()
+			}
+			// The folder V moved aside went whole when one wipe held all its locks; when several
+			// shared them, their lock files are what is left of it. Nothing else is left in VTMP.
+			for name in os.ls(vtmp)! {
+				assert name in [os.file_name(inner), os.file_name(aside)], name
+			}
+			if os.exists(aside) {
+				left := os.ls(aside)!
+				assert left.all(it.ends_with(tool_cache_lock_ending)), left.str()
+			}
+			assert os.ls(os.getenv('VCACHE'))!.len == 0
+		}
+	})!
+}
+
+// A tool cache folder that is a link is removed as a link; what it points to is not touched.
+fn test_a_tool_cache_folder_that_is_a_link_is_removed_as_a_link() ! {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_root_link')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		real := os.join_path(directory, 'real')
+		os.mkdir_all(real)!
+		os.write_file(os.join_path(real, 'keep'), 'x')!
+		os.mkdir_all(cache_v_dir)!
+		os.symlink(real, tools)!
+		output := wipe_output('--tools')!
+		assert output.contains('V tool cache folder ${tools} was wiped.'), output
+		assert !os.is_link(tools)
+		assert os.is_file(os.join_path(real, 'keep'))
+	})!
+}
+
+// toolcache_test_junction makes `link` a junction to the folder `target`, the link to a folder
+// that Windows lets any user make, and reports whether it did. Other systems get none.
+fn toolcache_test_junction(link string, target string) bool {
+	$if windows {
+		return os.exec(['cmd', '/c', 'mklink', '/J', link, target]).exit_code == 0
+	} $else {
+		return false
+	}
+}
+
+// The folder a wipe holds open is listed, inspected and cleared through that hold alone.
+fn test_a_folder_is_listed_inspected_and_cleared_through_its_handle() ! {
+	directory := toolcache_test_dir('wipe_dir_handle')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	folder := os.join_path(directory, 'folder')
+	outside := os.join_path(directory, 'outside')
+	os.mkdir_all(os.join_path(folder, 'sub', 'deeper'))!
+	os.write_file(os.join_path(folder, 'file'), 'x')!
+	os.write_file(os.join_path(folder, 'sub', 'deeper', 'inner'), 'x')!
+	os.mkdir_all(outside)!
+	os.write_file(os.join_path(outside, 'keep'), 'x')!
+	$if !windows {
+		os.symlink(outside, os.join_path(folder, 'sub', 'folder-link'))!
+		os.symlink(os.join_path(outside, 'keep'), os.join_path(folder, 'file-link'))!
+	}
+	has_junction := toolcache_test_junction(os.join_path(folder, 'junction'), outside)
+	os.chmod(folder, 0o700)!
+	working_folder := os.getwd()
+	dir := open_tool_cache_wipe_dir(folder)!
+	defer {
+		dir.close()
+	}
+	// Each listing starts at the top again, and is sorted.
+	first := dir.names()!
+	assert dir.names()! == first
+	assert 'file' in first
+	assert 'sub' in first
+	mut sorted := first.clone()
+	sorted.sort()
+	assert first == sorted
+	assert dir.item('file').kind == .file
+	assert dir.item('sub').kind == .folder
+	assert dir.item('missing').kind == .gone
+	// A name that is gone is told apart from one that cannot be opened as a folder.
+	if other := dir.open_folder('missing') {
+		other.close()
+		assert false, 'a missing folder was opened'
 	} else {
-		assert err.msg().contains('cannot repair the lock file ${missing}'), err.msg()
+		assert err.code() == tool_cache_wipe_gone
 	}
+	if other := dir.open_folder('file') {
+		other.close()
+		assert false, 'a file was opened as a folder'
+	} else {
+		assert err.code() != tool_cache_wipe_gone
+	}
+	$if !windows {
+		assert dir.item('file-link').kind == .link
+		assert dir.item('file').owner == u32(os.getuid())
+		assert dir.item('file').links == 1
+		owner, mode := dir.owner_and_mode()
+		assert owner == u32(os.getuid())
+		assert mode == 0o700
+	}
+	// Looking at a name leaves the working folder where it was.
+	assert os.getwd() == working_folder
+	assert dir.is_at(folder)
+	// A tree goes with all that is in it; a link in it is removed, and never followed.
+	dir.remove_tree('sub')!
+	assert !os.exists(os.join_path(folder, 'sub'))
+	assert os.is_file(os.join_path(outside, 'keep'))
+	// What is gone already counts as removed.
+	dir.remove_tree('missing')!
+	dir.remove_file('file')!
+	dir.remove_file('file')!
+	dir.remove_folder('missing')!
+	assert !os.exists(os.join_path(folder, 'file'))
+	if has_junction {
+		// A link to a folder is a link, is not opened as a folder, and is removed itself.
+		assert dir.item('junction').kind == .link
+		if other := dir.open_folder('junction') {
+			other.close()
+			assert false, 'a junction was opened as a folder'
+		}
+		dir.remove_tree('junction')!
+		assert !os.exists(os.join_path(folder, 'junction'))
+		assert os.is_file(os.join_path(outside, 'keep'))
+	}
+	$if !windows {
+		dir.remove_tree('file-link')!
+		assert os.is_file(os.join_path(outside, 'keep'))
+		// A link is not opened as a folder.
+		link := os.join_path(directory, 'link-to-folder')
+		os.symlink(outside, link)!
+		if other := open_tool_cache_wipe_dir(link) {
+			other.close()
+			assert false, 'a link was opened as a folder'
+		}
+		// A folder that was renamed is still the folder that was opened.
+		os.rename(folder, folder + '-moved')!
+		assert !dir.is_at(folder)
+		assert dir.is_at(folder + '-moved')
+		assert dir.names()! == []string{}
+		// A folder that is removed while it is held open lists nothing, and holds nothing.
+		os.rmdir(folder + '-moved')!
+		assert dir.names()! == []string{}
+		assert dir.item('file').kind == .gone
+		assert !dir.is_at(folder + '-moved')
+	}
+}
+
+// A name is still described when the working folder cannot be opened to come back to: then the
+// name is opened instead, which tells a file, a folder and a missing name apart, and nothing
+// about a link.
+fn test_a_name_is_described_when_the_working_folder_cannot_be_opened() ! {
+	$if windows {
+		return
+	}
+	if os.geteuid() == 0 {
+		// The superuser opens a folder whatever its mode is.
+		return
+	}
+	directory := toolcache_test_dir('wipe_dir_item_fallback')
+	working_folder := os.getwd()
+	defer {
+		os.chdir(working_folder) or {}
+		toolcache_test_unlock_tree(directory)
+		os.rmdir_all(directory) or {}
+	}
+	folder := os.join_path(directory, 'folder')
+	closed := os.join_path(directory, 'closed')
+	os.mkdir_all(os.join_path(folder, 'sub'))!
+	os.write_file(os.join_path(folder, 'file'), 'x')!
+	os.symlink(os.join_path(folder, 'file'), os.join_path(folder, 'link'))!
+	os.mkdir_all(closed)!
+	dir := open_tool_cache_wipe_dir(folder)!
+	// A folder that may be entered and not read cannot be opened.
+	os.chdir(closed)!
+	os.chmod(closed, 0o300)!
+	file := dir.item('file')
+	sub := dir.item('sub')
+	missing := dir.item('missing')
+	link := dir.item('link')
+	os.chdir(working_folder)!
+	dir.close()
+	assert file.kind == .file
+	assert file.owner == u32(os.getuid())
+	assert sub.kind == .folder
+	assert missing.kind == .gone
+	assert link.kind == .other
+}
+
+// A build lock is taken through the open folder, with the very lock a build takes.
+fn test_a_build_lock_is_taken_through_the_open_folder() ! {
+	directory := toolcache_test_dir('wipe_dir_lock')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	release_path := os.join_path(directory, 'lock.release')
+	folder := os.join_path(directory, 'tools')
+	os.mkdir_all(folder)!
+	dir := open_tool_cache_wipe_dir(folder)!
+	defer {
+		dir.close()
+	}
+	name := tool_cache_lock_name('vfmt', u32(os.getuid()))
+	assert dir.try_lock(name).state == .absent
+	assert dir.create_lock_file(name, u32(os.getuid()))
+	// A name that is taken is not made again.
+	assert !dir.create_lock_file(name, u32(os.getuid()))
+	assert dir.item(name).kind == .file
+	mut held := dir.try_lock(name)
+	assert held.state == .held
+	held.release()
+	// What a build holds is busy, and free again once the build lets go.
+	mut holder := start_tool_cache_lock_holder(os.join_path(folder, name), release_path)!
+	mut busy := dir.try_lock(name)
+	assert busy.state == .busy
+	busy.release()
+	os.write_file(release_path, '')!
+	holder.wait()
+	holder.close()
+	mut free := dir.try_lock(name)
+	assert free.state == .held
+	free.release()
+	// A folder at the name is no lock file.
+	other := tool_cache_lock_name('vdoc', u32(os.getuid()))
+	os.mkdir(os.join_path(folder, other))!
+	assert dir.try_lock(other).state == .unsafe_name
+	$if !windows {
+		// Neither is a link there, which is not followed, even to a lock file.
+		linked := tool_cache_lock_name('vtest', u32(os.getuid()))
+		os.symlink(os.join_path(folder, name), os.join_path(folder, linked))!
+		assert dir.try_lock(linked).state == .unsafe_name
+		assert !dir.create_lock_file(linked, u32(os.getuid()))
+		assert os.is_link(os.join_path(folder, linked))
+		// Nor is a FIFO, which opening it does not wait on.
+		piped := tool_cache_lock_name('vpipe', u32(os.getuid()))
+		fifo := cmdexec.run('mkfifo', [os.join_path(folder, piped)])
+		assert fifo.exit_code == 0, fifo.output
+		assert dir.try_lock(piped).state == .unsafe_name
+		if os.geteuid() != 0 {
+			// A lock file that cannot be handed to the user it is made for is not left behind.
+			foreign := tool_cache_lock_name('vother', u32(os.getuid()) + 1)
+			assert !dir.create_lock_file(foreign, u32(os.getuid()) + 1)
+			assert dir.item(foreign).kind == .gone
+		}
+	}
+}
+
+// Whatever is gone already counts as removed, and a folder that cannot be emptied is named by the
+// first item that stayed, after everything else in it was attempted.
+fn test_a_cache_folder_is_removed_with_all_that_can_go() ! {
+	directory := toolcache_test_dir('wipe_cache_folder_removal')
+	defer {
+		toolcache_test_unlock_tree(directory)
+		os.rmdir_all(directory) or {}
+	}
+	remove_cache_folder(os.join_path(directory, 'missing'))!
+	folder := os.join_path(directory, 'folder')
+	os.mkdir_all(os.join_path(folder, 'sub', 'deeper'))!
+	os.write_file(os.join_path(folder, 'sub', 'deeper', 'file'), 'x')!
+	remove_cache_folder(folder)!
+	assert !os.exists(folder)
+	$if !windows {
+		if os.geteuid() == 0 {
+			// The superuser removes from a folder whatever its mode is.
+			return
+		}
+		os.mkdir_all(folder)!
+		stuck := toolcache_test_stuck_folder(folder)!
+		mut message := ''
+		remove_cache_folder(folder) or { message = err.msg() }
+		assert message.starts_with(os.join_path(stuck, 'file') + ': '), message
+		assert !os.exists(os.join_path(folder, 'z-after'))
+		assert os.is_file(os.join_path(stuck, 'file'))
+	}
+}
+
+// toolcache_test_stuck_folder puts the folder `a-stuck` into `parent`, with a file that this user
+// cannot remove from it, and the file `z-after`, which a wipe meets later. It returns the folder.
+fn toolcache_test_stuck_folder(parent string) !string {
+	stuck := os.join_path(parent, 'a-stuck')
+	os.mkdir_all(stuck)!
+	os.write_file(os.join_path(stuck, 'file'), 'x')!
+	os.write_file(os.join_path(parent, 'z-after'), 'x')!
+	os.chmod(stuck, 0o500)!
+	return stuck
+}
+
+// toolcache_test_unlock_tree gives this user full access again to `folder` and to every folder
+// below it, so that a test which took access away can be cleaned up.
+fn toolcache_test_unlock_tree(folder string) {
+	os.chmod(folder, 0o700) or {}
+	for name in os.ls(folder) or { []string{} } {
+		path := os.join_path(folder, name)
+		if os.is_dir(path) && !os.is_link(path) {
+			toolcache_test_unlock_tree(path)
+		}
+	}
+}
+
+// wipe_failure runs `v wipe-cache` with `arguments` in this process, and returns the message of the
+// error it ends with, or '' when it succeeds.
+fn wipe_failure(arguments ...string) string {
+	wipe_output(...arguments) or { return err.msg() }
+	return ''
+}
+
+// A wipe that cannot remove something attempts all the rest, and then fails with one message that
+// names the folder it was wiping and the first item that stayed.
+fn test_a_wipe_that_leaves_something_behind_fails_and_names_it() ! {
+	$if windows {
+		return
+	}
+	if os.geteuid() == 0 {
+		// The superuser removes from a folder whatever its mode is.
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_failures')
+	defer {
+		toolcache_test_unlock_tree(directory)
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		vcache := os.join_path(directory, 'vcache')
+		custom := os.join_path(vtmp, 'custom-tools')
+
+		// In a cache folder that holds no tool cache folder.
+		os.mkdir_all(vcache)!
+		mut stuck := toolcache_test_stuck_folder(vcache)!
+		mut message := wipe_failure('--vcache')
+		assert message.starts_with('v wipe-cache: could not remove V cache folder ${vcache}: ${os.join_path(stuck, 'file')}: '), message
+		assert !os.exists(os.join_path(vcache, 'z-after'))
+		toolcache_test_unlock_tree(vcache)
+
+		// Beside a tool cache folder, in the folder that holds it.
+		os.setenv(tool_cache_dir_env, custom, true)
+		tool_cache_test_root(custom)!
+		stuck = toolcache_test_stuck_folder(vtmp)!
+		message = wipe_failure('--vtmp')
+		assert message.starts_with('v wipe-cache: could not remove V tmp.c and tests folder ${vtmp}: ${os.join_path(stuck, 'file')}: '), message
+		assert message.count('v wipe-cache:') == 1, message
+		assert !os.exists(os.join_path(vtmp, 'z-after'))
+		toolcache_test_unlock_tree(vtmp)
+		os.rmdir_all(stuck)!
+
+		// In a tool cache folder inside that folder: the message is the tool cache folder's own.
+		stuck = toolcache_test_stuck_folder(custom)!
+		message = wipe_failure('--vtmp')
+		assert message.starts_with('v wipe-cache: could not remove V tool cache folder ${custom}: ${os.join_path(stuck, 'file')}: '), message
+		assert message.count('v wipe-cache:') == 1, message
+		assert !os.exists(os.join_path(custom, 'z-after'))
+		toolcache_test_unlock_tree(vtmp)
+		os.rmdir_all(stuck)!
+
+		// In a tool cache folder inside another one, which is wiped first.
+		inner := os.join_path(vtmp, 'tools')
+		os.setenv(tool_cache_dir_env, vtmp, true)
+		tool_cache_test_root(inner)!
+		stuck = toolcache_test_stuck_folder(inner)!
+		message = wipe_failure('--tools')
+		assert message.starts_with('v wipe-cache: could not remove V tool cache folder ${inner}: ${os.join_path(stuck, 'file')}: '), message
+		assert message.count('v wipe-cache:') == 1, message
+		assert !os.exists(os.join_path(inner, 'z-after'))
+		toolcache_test_unlock_tree(vtmp)
+
+		// A folder that cannot be listed says so when the wipe is asked to list what it removes,
+		// in a dry run as well.
+		os.chmod(vcache, 0o300)!
+		for arguments in [['--vcache', '--verbose'], ['--vcache', '--verbose', '--dry-run']] {
+			message = wipe_failure(...arguments)
+			assert message.starts_with('v wipe-cache: could not list V cache folder ${vcache}: '), message
+		}
+
+		// A link or a file at the path of a cache folder that cannot be removed fails the wipe too:
+		// only what is gone counts as removed.
+		closed := os.join_path(directory, 'closed')
+		os.mkdir_all(closed)!
+		os.symlink(os.join_path(directory, 'nowhere'), os.join_path(closed, 'link'))!
+		os.write_file(os.join_path(closed, 'file'), 'x')!
+		os.chmod(closed, 0o500)!
+		for name in ['link', 'file'] {
+			stays := os.join_path(closed, name)
+			os.setenv('VCACHE', stays, true)
+			message = wipe_failure('--vcache')
+			assert message.starts_with('v wipe-cache: could not remove V cache folder ${stays}: '), message
+		}
+	})!
+}
+
+// A folder beside a tool cache folder whose name only starts like the name of one V moved aside is
+// wiped like any tool cache folder: its lock files stay, and so the folder does. So is a folder
+// with such a name in which V builds tools.
+fn test_only_a_folder_v_moved_aside_loses_its_lock_files() ! {
+	directory := toolcache_test_dir('wipe_cache_almost_aside')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (cache_v_dir string) ! {
+		almost := os.join_path(cache_v_dir, 'tools.untrusted-kept')
+		in_use := os.join_path(directory, 'custom.untrusted-1700000000-42')
+		os.setenv(tool_cache_dir_env, in_use, true)
+		for root in [almost, in_use] {
+			tool_cache_test_root(root)!
+			assert !is_moved_aside_tool_cache_root(root), root
+			entry := tool_cache_test_entry(root, 'vfmt', 'a')!
+			lock_path := tool_cache_test_lock(root, 'vfmt')
+			os.write_file(lock_path, '')!
+			output := wipe_output('--tools')!
+			assert output.contains('Moved-aside V tool cache folder ${root} was wiped.'), output
+			assert !os.exists(entry), output
+			assert os.is_file(lock_path), output
+		}
+	})!
+}
+
+// The lock files of a folder V moved aside go only when nothing in the folder is kept, and only
+// those the wipe holds: a lock that a process holds, a lock file that cannot be opened and one of
+// another user keep the others, and the folder, in place.
+fn test_a_moved_aside_folder_keeps_its_lock_files_while_one_of_them_is_not_the_wipes() ! {
+	directory := toolcache_test_dir('wipe_cache_aside_locks')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	release_path := os.join_path(directory, 'lock.release')
+	with_wipe_test_caches(directory, fn [directory, release_path] (cache_v_dir string) ! {
+		me := u32(os.getuid())
+		// A lock that a process holds, with no entry beside it.
+		busy_aside := os.join_path(cache_v_dir, 'tools.untrusted-1700000000-42')
+		tool_cache_test_root(busy_aside)!
+		busy_lock := tool_cache_test_lock(busy_aside, 'vtest')
+		beside_busy := tool_cache_test_lock(busy_aside, 'vfmt')
+		os.write_file(busy_lock, '')!
+		os.write_file(beside_busy, '')!
+		// A lock file of another user, which this wipe does not take.
+		foreign_aside := os.join_path(cache_v_dir, 'tools.untrusted-1700000000-43')
+		tool_cache_test_root(foreign_aside)!
+		foreign_lock := os.join_path(foreign_aside, tool_cache_lock_name('vfmt', me + 1))
+		os.write_file(foreign_lock, '')!
+		// A lock file that cannot be opened and, having a second name, is not repaired.
+		stuck_aside := os.join_path(cache_v_dir, 'tools.untrusted-1700000000-44')
+		tool_cache_test_root(stuck_aside)!
+		stuck_lock := tool_cache_test_lock(stuck_aside, 'vtest')
+		beside_stuck := tool_cache_test_lock(stuck_aside, 'vfmt')
+		os.write_file(stuck_lock, '')!
+		os.write_file(beside_stuck, '')!
+		mut stuck_is_unopenable := false
+		$if !windows {
+			if os.geteuid() != 0 {
+				os.chmod(stuck_lock, 0o400)!
+				os.link(stuck_lock, os.join_path(directory, 'second-name'))!
+				stuck_is_unopenable = true
+			}
+		}
+		mut holder := start_tool_cache_lock_holder(busy_lock, release_path)!
+		defer {
+			os.write_file(release_path, '') or {}
+			holder.wait()
+			holder.close()
+		}
+		output := wipe_output('--tools', '--verbose')!
+		assert os.is_file(busy_lock), output
+		assert os.is_file(beside_busy), output
+		assert output.contains('  keeping ${beside_busy}'), output
+		if !tool_cache_wipe_is_superuser(me) {
+			assert os.is_file(foreign_lock), output
+			assert output.contains('  keeping ${foreign_lock}'), output
+		}
+		if stuck_is_unopenable {
+			assert os.is_file(stuck_lock), output
+			assert os.is_file(beside_stuck), output
+			assert output.contains('  keeping ${beside_stuck}'), output
+		} else {
+			// Both locks were the wipe's to take, so the folder went whole.
+			assert !os.exists(stuck_aside), output
+		}
+	})!
+}
+
+// What is no folder at the path of a tool cache folder, or of a folder that holds one, is removed
+// as it is, like any other cache folder that is none.
+fn test_what_is_no_folder_at_the_path_of_a_cache_folder_goes_as_it_is() ! {
+	directory := toolcache_test_dir('wipe_cache_no_folder')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		custom := os.join_path(vtmp, 'custom-tools')
+		os.setenv(tool_cache_dir_env, custom, true)
+		// A file at the path of a tool cache folder, met in the folder around it and by itself.
+		for arguments in [['--vtmp'], ['--tools']] {
+			os.write_file(custom, 'no folder')!
+			output := wipe_output(...arguments)!
+			assert !os.exists(custom), output
+		}
+		// A file at the path of a cache folder that would hold a tool cache folder: the cache folder
+		// is made anew. (`VTMP` cannot be tried this way: `os.vtmp_dir` panics on a file there.)
+		vcache := os.join_path(directory, 'vcache')
+		os.setenv(tool_cache_dir_env, os.join_path(vcache, 'custom-tools'), true)
+		os.write_file(vcache, 'no folder')!
+		assert 'custom-tools' in new_tool_cache_wipe_run().roots_below(vcache)
+		file_output := wipe_output('--vcache')!
+		assert os.is_dir(vcache), file_output
+		os.setenv(tool_cache_dir_env, custom, true)
+		$if !windows {
+			// A link there, to a folder that holds a tool cache folder: the link goes, a real folder
+			// takes its place, and what the link pointed to is not touched.
+			real := os.join_path(directory, 'real-vtmp')
+			tool_cache_test_root(os.join_path(real, 'custom-tools'))!
+			entry := tool_cache_test_entry(os.join_path(real, 'custom-tools'), 'vfmt', 'a')!
+			os.rmdir_all(vtmp)!
+			os.symlink(real, vtmp)!
+			assert 'custom-tools' in new_tool_cache_wipe_run().roots_below(vtmp)
+			link_output := wipe_output('--vtmp')!
+			assert !os.is_link(vtmp), link_output
+			assert os.is_dir(vtmp), link_output
+			assert os.is_dir(entry), link_output
+		}
+	})!
 }

@@ -72,15 +72,46 @@ configurations and test selectors are not replayed. A failed cache cleanup
 makes `v up` fail.
 On Windows, the cached updater exits before its launcher wipes the caches,
 so the running executable does not block cleanup. Cleanup failures are returned
-by the launcher. Entries of tools that another process has locked at that moment (a
-build in progress) are left in place and named in the output, so a build running
-alongside `v up` does not make the cleanup fail. Lock files that cannot be opened are
-repaired, so they can be locked again. Entries of a tool whose lock cannot be created,
-for example because the filesystem has no hard links or a directory is in the way, are kept.
+by the launcher.
+
+`v wipe-cache` wipes a tool cache folder entry by entry, so a build that runs alongside the
+wipe, or alongside `v up`, keeps what it works with and does not make the cleanup fail:
+
+* The entries of a tool that another process has locked at that moment (a build in progress)
+  stay, and the output names the tool. The wipe holds the build locks it takes until it is done
+  with the folder, so a build that starts meanwhile waits.
+* Lock files (`.<tool>.<user id>.toolcache.lock`) stay, whoever owns them, so a tool cache
+  folder stays after a wipe. A tool without a lock file gets one before its entries are removed.
+  A link or a folder with such a name is ordinary content.
+* A lock file that cannot be opened is set to mode 0600, so that it can be locked again. Outside
+  Windows this is done only where nobody else could swap the file for a link: its folder is yours
+  or root's, others cannot write to that folder or only with the sticky bit, and the file is yours
+  and has no other hard link. Otherwise the file is left as it is, and the entries of its tool are
+  kept. The entries of a tool are also kept when its lock file cannot be made, or when something
+  that is no regular file has the lock file's name and is not the wipe's to remove.
+* In a tool cache folder that is yours alone (you own it, and neither its group nor others can
+  write to it), everything else is removed, whoever owns it. In any other tool cache folder only
+  what you own is removed: what other accounts own there is guarded by their build locks, which
+  the wipe cannot take. Run as root, the wipe removes what any user owns, and takes each entry
+  under the build lock of the user who built it. On Windows, where the ACL of a folder decides
+  who can write to it, every tool cache folder counts as yours alone.
+* A folder V moved aside, `<folder>.untrusted-<seconds>-<pid>`, is wiped the same way. Nothing is
+  built in it any more, so once nothing in it is kept, the lock files the wipe holds are removed
+  too, and then the folder itself. A lock file of another user stays there, and the folder with
+  it. Any other `<folder>.untrusted-*` folder is wiped like a tool cache folder.
+* A tool cache folder that the wipe leaves empty is removed.
+
 A tool cache folder inside another folder being wiped (`<VTMP>/tools`, or `VTOOLS_CACHE_DIR`
-wherever it points) gets the same treatment whether or not `--tools` is given, so
-`v wipe-cache --vtmp` also keeps entries and lock files of running builds. Such a folder is found
-by the lock files in it, so the environment of the wipe need not name it.
+when it points into `VTMP`, `VCACHE` or `V3CACHE`) gets the same treatment whether or not
+`--tools` is given, so `v wipe-cache --vtmp` also keeps the entries and lock files of running
+builds. This covers the tool cache folders the wipe knows: the one that its own
+`VTOOLS_CACHE_DIR` names, the default ones, and the `.untrusted-*` folders next to them. A tool
+cache folder that only the `VTOOLS_CACHE_DIR` of another process names is removed with the
+folder it lies in.
+
+Outside Windows, a build moves a default tool cache folder aside when it does not trust it, and
+builds in a new folder at the same path. A wipe that has opened the folder by then stays in the
+folder it opened, does not touch the new one, and says so.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
