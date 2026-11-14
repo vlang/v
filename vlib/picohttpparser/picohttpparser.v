@@ -433,11 +433,7 @@ fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) int {
 		return 0
 	}
 
-	if token_len == 0 {
-		pret.ret = 0
-		return 0
-	}
-
+	// an empty value still consumes its line ending
 	pret.ret = unsafe { buf - buf_start }
 	return token_len
 }
