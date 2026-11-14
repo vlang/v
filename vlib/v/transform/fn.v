@@ -12656,12 +12656,15 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	base_type = t.normalize_type_alias(base_type)
 	base_type = transform_unshared_receiver_type(base_type)
-	if !flat.source_type_shape(base_type).has(.array_type) && !t.is_fixed_array_type(base_type) {
+	// A generic mapper can retain []unknown until its receiver is lowered.
+	if (!flat.source_type_shape(base_type).has(.array_type) && !t.is_fixed_array_type(base_type))
+		|| (base_node.kind == .call && t.generic_arg_is_unresolved_collection_type(base_type)) {
 		if base_node.kind in [.ident, .call, .selector, .as_expr] {
 			new_base := t.transform_expr(base_id)
 			new_base_type_source_id := t.node_type(new_base)
 			new_base_type_shape := flat.source_type_shape(new_base_type_source_id)
-			if new_base_type_shape.has(.array_type) || t.is_fixed_array_type(new_base_type_source_id) {
+			if (new_base_type_shape.has(.array_type) || t.is_fixed_array_type(new_base_type_source_id))
+				&& !t.generic_arg_is_unresolved_collection_type(new_base_type_source_id) {
 				selector := t.make_selector(new_base, fn_node.value, u32(0))
 				mut children := []flat.NodeId{cap: int(node.children_count)}
 				children << selector

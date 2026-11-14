@@ -1285,6 +1285,7 @@ f2 := 456e+2 // 45600
 
 Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
 and a cast to a smaller integer type keeps the low bits.
+String interpolation preserves that integer width before formatting a wrapped result.
 Two opt-in flags turn these into runtime panics:
 
 * `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
@@ -1308,6 +1309,8 @@ fn hash_step(h u32, b u8) u32 {
 ### Arrays
 
 Returning a new array through helper calls preserves each helper's parameter scope.
+Chained array methods also use the concrete result type of a generic mapper, as in
+`values.map(it.str()).join(', ')`.
 
 
 An array is a collection of data elements of the same type. An array literal is a
