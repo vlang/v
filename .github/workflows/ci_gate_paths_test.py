@@ -28,10 +28,20 @@ class GatePathsTests(unittest.TestCase):
 
     @staticmethod
     def dependencies(job):
-        match = re.search(r"^    needs: (.+)$", job, re.M)
+        match = re.search(r"^    needs:\s*(\[[^\]]*\]|[^\n]+)$", job, re.M)
         if match is None:
             return None
-        return {name.strip() for name in match[1].strip("[]").split(",")}
+        return {name.strip() for name in match[1].strip("[]").split(",") if name.strip()}
+
+    def test_dependencies_accept_prettier_wrapping(self):
+        expected = {"preflight", "gen_vc_ci"}
+        for value in (
+            " [preflight, gen_vc_ci]",
+            "\n      [preflight, gen_vc_ci]",
+            "\n      [\n        preflight,\n        gen_vc_ci,\n      ]",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(self.dependencies(f"    needs:{value}\n"), expected)
 
     def test_vc_generation_gates_every_downstream_job(self):
         jobs = self.caller_jobs()
