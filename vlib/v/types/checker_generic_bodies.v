@@ -78,7 +78,12 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 			for group in classes[name] {
 				group_texts << group.map(flat.source_type_name(it)).join('|')
 			}
-			eprintln('generic-body ${node.value} ${flat.source_type_name(name)}: options=${options.map(flat.source_type_name(it))} groups=${group_texts} conditions=${tc.comptime_conditions_on(node, name, texts.keys())}')
+			name_text := flat.source_type_name(name)
+			option_texts := options.map(flat.source_type_name(it))
+			condition_texts := tc.comptime_conditions_on(node, name, texts.keys())
+			eprintln('generic-body ${node.value} ${name_text}')
+			eprintln('  options: ${option_texts}; groups: ${group_texts}')
+			eprintln('  conditions: ${condition_texts}')
 		}
 	}
 	reported := tc.statements_with_errors(fn_idx)
