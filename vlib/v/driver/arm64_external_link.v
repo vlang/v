@@ -800,7 +800,26 @@ fn arm64_probe_compile_flags(compiler string) []string {
 	return flags
 }
 
-// arm64_run_probe compiles the probe lines written by `lines` for the entries
+// Arm64ProbeLineSource renders the probe without captured function closures.
+struct Arm64ProbeLineSource {
+	request      Arm64CProbeRequest
+	preamble     string
+	with_layouts bool
+}
+
+fn (source Arm64ProbeLineSource) render(keep []bool) string {
+	mut out := arm64_c_function_probe_lines(source.request.functions, keep, 0)
+	if source.with_layouts {
+		constants_base := source.request.functions.len
+		structs_base := constants_base + source.request.constants.len
+		out += source.preamble
+		out += arm64_c_constant_probe_lines(source.request.constants, keep, constants_base)
+		out += arm64_c_struct_probe_lines(source.request.structs, keep, structs_base)
+	}
+	return out
+}
+
+// arm64_run_probe compiles the probe lines rendered by `source` for the entries
 // still in `keep`, after `prefix` (the program's C side and any preamble), and
 // returns the object. Each line carries a `#line` in `probe_file`, so a line that
 // is an error (a name or field the headers do not have) is dropped and the probe
@@ -808,10 +827,10 @@ fn arm64_probe_compile_flags(compiler string) []string {
 // least one line; when none can be blamed, the C side itself does not compile
 // and the real compile reports it. A later build with the same lines reuses the
 // surviving set, and its object, while the headers are unchanged.
-fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, side Arm64CSide) ?string {
+fn arm64_run_probe(mut keep []bool, source Arm64ProbeLineSource, prefix string, side Arm64CSide) ?string {
 	mut args := side.compile_args.clone()
 	args << arm64_probe_compile_flags(side.compiler)
-	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler, args.join(' '), prefix, lines(keep))}')
+	keep_file := os.join_path(arm64_cache_dir(), 'arm64_probe_keep_${arm64_text_hash(side.compiler, args.join(' '), prefix, source.render(keep))}')
 	if !side.no_cache {
 		if saved := os.read_file(keep_file) {
 			if saved.len == keep.len {
@@ -819,7 +838,7 @@ fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, sid
 				for i in 0 .. saved.len {
 					candidate[i] = saved[i] == `1`
 				}
-				if object := arm64_cached_object(side.compiler, args, prefix + lines(candidate), side.target) {
+				if object := arm64_cached_object(side.compiler, args, prefix + source.render(candidate), side.target) {
 					keep = candidate.clone()
 					return object
 				}
@@ -828,7 +847,7 @@ fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, prefix string, sid
 		}
 	}
 	for {
-		object := arm64_compile_unit(side.compiler, args, prefix + lines(keep), side.target,
+		object := arm64_compile_unit(side.compiler, args, prefix + source.render(keep), side.target,
 			side.no_cache) or {
 			mut dropped := false
 			for line in err.msg().split_into_lines() {
@@ -1099,12 +1118,12 @@ fn arm64_probe_c_side(request Arm64CProbeRequest, side Arm64CSide) Arm64CProbes 
 		return result
 	}
 	mut keep := []bool{len: count, init: true}
-	preamble := arm64_probe_preamble()
-	object := arm64_run_probe(mut keep, fn [request, constants_base, structs_base, preamble] (keep []bool) string {
-		return arm64_c_function_probe_lines(request.functions, keep, 0) + preamble +
-			arm64_c_constant_probe_lines(request.constants, keep, constants_base) +
-			arm64_c_struct_probe_lines(request.structs, keep, structs_base)
-	}, side.support.text, side) or {
+	probe := Arm64ProbeLineSource{
+		request:      request
+		preamble:     arm64_probe_preamble()
+		with_layouts: true
+	}
+	object := arm64_run_probe(mut keep, probe, side.support.text, side) or {
 		return result
 	}
 	symbol_bytes := macho_object_symbol_bytes(object, '___v_c') or { return result }
@@ -1135,9 +1154,12 @@ fn arm64_c_function_kinds(names []string, probes Arm64CProbes, side Arm64CSide) 
 		return result
 	}
 	mut keep := []bool{len: unasked.len, init: true}
-	object := arm64_run_probe(mut keep, fn [unasked] (keep []bool) string {
-		return arm64_c_function_probe_lines(unasked, keep, 0)
-	}, side.support.text, side) or { return result }
+	probe := Arm64ProbeLineSource{
+		request: Arm64CProbeRequest{
+			functions: unasked
+		}
+	}
+	object := arm64_run_probe(mut keep, probe, side.support.text, side) or { return result }
 	symbols := macho_object_symbols(object) or { return result }
 	arm64_read_c_functions(unasked, keep, 0, symbols, mut result)
 	return result
