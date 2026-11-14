@@ -175,15 +175,15 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	compiler := os.join_path(root, 'cc')
 	// Module compilation is allowed. Compiling a program unit or linking the
 	// synthetic importer must fail, even if the ordinary compiler could do it.
-	// Record native helper dependency scans separately so warm refresh still
-	// forbids every new object while allowing dependency validation.
+	// Record dependency and preprocessor checks separately from object builds.
+	// Native interface validation also needs compiler version and -E probes.
 	os.write_file(compiler, '#!/bin/sh\n' +
-		'case "\$*" in --version) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
+		'case "\$*" in --version|-v) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
 		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
-		'for arg; do\n  if [ "\$arg" = -M ]; then printf "%s\\n" "\$*" >> ' +
-		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
-		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
-		'for arg; do\n  if [ "\$arg" = -c ]; then exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
+		'for arg; do\n  case "\$arg" in -M|-E) printf "%s\\n" "\$*" >> ' +
+		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@";; esac\ndone\n' +
+		'for arg; do\n  if [ "\$arg" = -c ]; then printf "%s\\n" "\$*" >> ' +
+		os.quoted_path(log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
 		'echo "unexpected program link" >&2\nexit 98\n')!
 	os.chmod(compiler, 0o755)!
 	for is_test in [false, true] {
@@ -216,7 +216,10 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		cold_calls := os.read_file(log)!
 		assert cold_calls.len > 0
 		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
-		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'crypto.sha3' && it.is_test == is_test)
+		inventory := collect(os.dir(@VEXE), @VEXE)!
+		for request in requests {
+			assert inventory.any(it.module == request.module && it.is_test == is_test), '${request.module} must have a reusable module object'
+		}
 		// Trace cache misses only on the warm replay so CI identifies why an
 		// unchanged object was rebuilt. The trace changes no cache selection.
 		os.setenv('V3_CACHE_TRACE', '1', true)
