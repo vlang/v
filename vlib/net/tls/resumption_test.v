@@ -130,6 +130,18 @@ fn test_psk_server_flight() { // Full ticket issued by this server, offered back
 		o2 += n
 	}
 	assert n2 == 5
+	// A ticket the server cannot open (wrong ticket key) also falls back.
+	mut server3 := new_server_handshake(.off) or { panic(err) }
+	flight3 := server3.process_client_hello(ch_msg) or { panic(err) }
+	assert !server3.accepted_psk
+	mut n3 := 0
+	mut o3 := 0
+	for o3 < flight3.len {
+		_, n := parse_handshake_message(flight3[o3..]) or { panic(err) }
+		n3++
+		o3 += n
+	}
+	assert n3 == 5
 }
 
 fn serve_resume_twice(mut l Listener) {

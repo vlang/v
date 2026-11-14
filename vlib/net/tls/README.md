@@ -59,7 +59,8 @@ Set `Config.verify_client` on the server and `Config.client_cert` /
 `CertificateVerify` before its `Finished`. Client certificates verify
 against `ca_store`/system roots when `verify_chain` is set (no hostname
 check applies to client certificates). A client with no credential sends an
-empty `Certificate`, which the server rejects.
+empty `Certificate`, which the server rejects. No `CertificateRequest` is
+sent on a resumed (PSK) handshake: the ticket authenticates the peer.
 
 ## Design notes
 

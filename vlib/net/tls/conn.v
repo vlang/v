@@ -238,7 +238,14 @@ pub fn (c &Conn) session_state() ?SessionState {
 	if c.is_server || !c.has_ticket {
 		return none
 	}
-	return c.resumption
+	return SessionState{
+		ticket:       c.resumption.ticket.clone()
+		psk:          c.resumption.psk.clone()
+		suite:        c.resumption.suite
+		created_unix: c.resumption.created_unix
+		lifetime:     c.resumption.lifetime
+		age_add:      c.resumption.age_add
+	}
 }
 
 // resumed reports whether this connection resumed via a PSK.
