@@ -118,8 +118,8 @@ with a hint rather than an empty object.
 
 ### `v_check`
 
-Type-check and return the diagnostics as records with file, line, column, kind and
-message. This is the authoritative answer to "does it compile"; it compiles
+Type-check and return the diagnostics as records with file, span, kind, message
+and details. This is the authoritative answer to "does it compile"; it compiles
 nothing and writes nothing.
 
 ```json
@@ -129,6 +129,11 @@ nothing and writes nothing.
 The response carries `started`. When it is `false` the compiler could not be
 launched and the response has an `error` instead of a result — a sandbox failure
 that would otherwise read as a failed check.
+
+`error_count` counts every diagnostic of kind `error`, including the ones with a
+`label`: a `builder error`, or each declaration of a redefinition, labelled
+`conflicting declaration`. Read `output` when it is present: it is compiler output
+that no diagnostic accounts for.
 
 ### `v_test_run`
 
