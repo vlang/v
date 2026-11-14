@@ -465,9 +465,9 @@ fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel
 	}
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
-	saved_trusted := tc.direct_parent_index_trusted
+	saved_trusted := tc.node_indexes_trusted
 	if !saved_trusted {
-		tc.reuse_direct_parent_index_for_unchanged_ast(tc.a)
+		tc.reuse_node_indexes_for_unchanged_ast(tc.a)
 	}
 	tc.resolution_type_mode = false
 	tc.install_type_cache_overlay()
@@ -496,7 +496,7 @@ fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel
 	}
 	tc.library_sorted_notice_count = tc.notices.len
 	tc.restore_type_cache_base()
-	tc.direct_parent_index_trusted = saved_trusted
+	tc.node_indexes_trusted = saved_trusted
 	tc.resolution_type_mode = true
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module

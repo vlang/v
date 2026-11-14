@@ -432,3 +432,78 @@ fn test_text_recent_identity_cache_survives_owned_table_replacement() {
 	assert actual_id == expected_id
 	assert actual.str == ast.text_values[int(expected_id) - 1].str
 }
+
+fn parents_test_paren(mut a FlatAst, child NodeId) NodeId {
+	start := a.begin_children()
+	a.add_child(child)
+	return a.add_node(Node{
+		kind:           .paren
+		children_start: start
+		children_count: 1
+	})
+}
+
+fn parents_test_worker(base &FlatAst) FlatAst {
+	mut worker := FlatAst.new()
+	worker.nodes << base.nodes
+	worker.children << base.children
+	unsafe {
+		mut owner := base
+		owner.fork_parents_to(mut worker, base.nodes.len)
+	}
+	return worker
+}
+
+fn test_rewriting_a_child_slot_before_the_first_parent_lookup_of_a_worker() {
+	mut base := FlatAst.new()
+	original := base.add_val(.ident, 'original')
+	replacement := base.add_val(.ident, 'replacement')
+	outer := parents_test_paren(mut base, original)
+	assert base.parent(original) == outer
+	mut worker := parents_test_worker(&base)
+	worker.set_child_slot(outer, worker.nodes[int(outer)].children_start, replacement)
+	assert worker.parent(original) == empty_node
+	assert worker.parent(replacement) == outer
+	// The tree that the worker was forked from keeps its own edges.
+	assert base.parent(original) == outer
+	assert base.parent(replacement) == empty_node
+}
+
+fn test_replacing_a_node_before_the_first_parent_lookup_of_a_worker() {
+	mut base := FlatAst.new()
+	original := base.add_val(.ident, 'original')
+	replacement := base.add_val(.ident, 'replacement')
+	outer := parents_test_paren(mut base, original)
+	assert base.parent(original) == outer
+	slot := base.children.len
+	base.add_child(replacement)
+	mut worker := parents_test_worker(&base)
+	worker.set_node(outer, Node{
+		kind:           .paren
+		children_start: slot
+		children_count: 1
+	})
+	assert worker.parent(original) == empty_node
+	assert worker.parent(replacement) == outer
+}
+
+fn test_forked_tree_starts_from_the_parents_of_its_base() {
+	mut base := FlatAst.new()
+	leaf := base.add_val(.ident, 'leaf')
+	outer := parents_test_paren(mut base, leaf)
+	assert base.parent(leaf) == outer
+	// A worker's tree: the base, a node of another worker, then its own nodes.
+	mut worker := FlatAst.new()
+	worker.nodes << base.nodes
+	worker.children << base.children
+	base.fork_parents_to(mut worker, base.nodes.len + 1)
+	worker.add_val(.ident, 'of another worker')
+	own := parents_test_paren(mut worker, leaf)
+	wrapped := parents_test_paren(mut worker, own)
+	assert worker.parent(leaf) == outer
+	assert worker.parent(own) == wrapped
+	assert worker.parent(NodeId(base.nodes.len)) == empty_node
+	// The base keeps its own index.
+	assert base.parent(leaf) == outer
+	assert base.parents.len == base.nodes.len
+}

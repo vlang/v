@@ -86,7 +86,7 @@ fn test_const_call_name_filter_preserves_function_constants_and_local_shadowing(
 	assert g.call_target_name(alias) == 'callback'
 	tc.fn_ret_types.delete('callback')
 	tc.cur_scope = types.new_scope(tc.file_scope)
-	tc.cur_scope.insert('callback', types.Type(types.FnType{}))
+	tc.cur_scope.insert_id(flat.source_type_id('callback'), 'callback', types.Type(types.FnType{}))
 	assert g.call_target_name(alias) == 'callback'
 	assert g.const_fn_call_target_name(a.node(alias)) == none
 }

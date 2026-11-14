@@ -280,7 +280,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	idx_binding_name := if has_index { g.a.child_node(&node, 0).value } else { '' }
 	elem_binding_name := var_node.value
 	var_name := g.c_loop_local_name(var_node.value)
-	var_owner := g.tc.cur_scope.insert_with_owner(var_node.value, types.Type(types.int_))
+	var_owner := g.tc.cur_scope.insert_with_owner_id(var_node.name_id(), var_node.value, types.Type(types.int_))
 	g.track_shadowed_global_local(var_node.value, var_owner)
 	g.declare_local_pointer_storage(var_owner, false)
 	body_start := header_count
@@ -418,7 +418,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
 				}
 				if has_index {
-					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name, map_type.key_type)
+					key_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(idx_binding_name), idx_binding_name, map_type.key_type)
 					g.track_shadowed_global_local(idx_binding_name, key_owner)
 					g.declare_local_pointer_storage(key_owner, map_type.key_type is types.Pointer
 						|| c_type_is_pointer_storage(c_key))
@@ -430,7 +430,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				} else {
 					*map_type.value_type
 				}
-				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
+				val_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(elem_binding_name), elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
 				g.declare_local_mutability(val_owner, node.op == .amp
 					&& !(container_storage_is_pointer && !container_is_mutable_value_storage
@@ -503,7 +503,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				} else {
 					*container_type.elem_type
 				}
-				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
+				elem_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(elem_binding_name), elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
 					&& (unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
@@ -519,7 +519,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
 				g.writeln('u8 ${elem_var} = ((u8*)${container_str}.str)[${idx_var}];')
-				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, types.Type(types.u8_))
+				elem_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(elem_binding_name), elem_binding_name, types.Type(types.u8_))
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_pointer_storage(elem_owner, false)
 			} else if container_type is types.ArrayFixed {
@@ -543,7 +543,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				} else {
 					*af.elem_type
 				}
-				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
+				elem_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(elem_binding_name), elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
 					&& (unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
@@ -557,12 +557,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < 0; ${idx_var}++) {')
 				g.indent++
 				g.writeln('int ${elem_var} = 0;')
-				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, types.Type(types.int_))
+				elem_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(elem_binding_name), elem_binding_name, types.Type(types.int_))
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_pointer_storage(elem_owner, false)
 			}
 			if has_index && container_type !is types.Map {
-				idx_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name, types.Type(types.int_))
+				idx_owner := g.tc.cur_scope.insert_with_owner_id(flat.source_type_id(idx_binding_name), idx_binding_name, types.Type(types.int_))
 				g.track_shadowed_global_local(idx_binding_name, idx_owner)
 				g.declare_local_pointer_storage(idx_owner, false)
 			}
@@ -693,7 +693,7 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	g.write('${ct} ${high_name} = ')
 	g.gen_expr(high_id)
 	g.writeln(';')
-	g.tc.cur_scope.insert(key.value, range_type)
+	g.tc.cur_scope.insert_id(key.name_id(), key.value, range_type)
 	g.writeln('for (${ct} ${key_name} = ${low_name}; ${key_name} < ${high_name}; ${key_name}++) {')
 	g.indent++
 	g.gen_labelled_continue_skip_drops_var(label)
@@ -875,7 +875,7 @@ fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 			g.write(' = ')
 			g.gen_expr(rhs_id)
 			if lhs.kind == .ident {
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, v_type)
 				g.track_local_pointer_storage_decl(lhs, owner, v_type, typ)
 			}
 		}

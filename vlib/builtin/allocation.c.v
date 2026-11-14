@@ -81,8 +81,8 @@ pub fn malloc(n int) &u8 {
 		return &u8(unsafe { nil })
 	}
 	mut res := &u8(unsafe { nil })
-	$if builtin_arena ? {
-		// A scoped arena of the current thread (see arena_d_builtin_arena.c.v)
+	$if !prealloc && !no_builtin_arena ? {
+		// A scoped arena of the current thread (see arena_notd_no_builtin_arena.c.v)
 		// serves first.
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
@@ -140,7 +140,7 @@ pub fn malloc_noscan(n int) &u8 {
 		_memory_panic(@FN, n)
 	}
 	mut res := &u8(unsafe { nil })
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
@@ -193,7 +193,7 @@ pub fn malloc_noscan(n int) &u8 {
 // unaligned offset. Keep normal allocator hooks and tracing on their existing path.
 @[inline; unsafe]
 fn malloc_string_buffer(n int) &u8 {
-	$if prealloc && !builtin_arena ?&& !trace_malloc ? {
+	$if prealloc && !trace_malloc ? {
 		if n < 0 {
 			_memory_panic('malloc_noscan', n)
 		}
@@ -252,7 +252,7 @@ pub fn malloc_uncollectable(n int) &u8 {
 	}
 
 	mut res := &u8(unsafe { nil })
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		// Arena chunks are uncollectable with the Boehm GC too.
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
@@ -306,7 +306,7 @@ pub fn v_realloc(b &u8, n int) &u8 {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
 	mut new_ptr := &u8(unsafe { nil })
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		// Arena memory never reaches the C allocator; see arena_realloc.
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			new_ptr = g_arena_realloc_hook(b, -1, n)
@@ -365,7 +365,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	$if prealloc {
 		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
 	}
-	$if builtin_arena ? {
+	$if !no_builtin_arena ? {
 		// Arena memory never reaches the C allocator; see arena_realloc.
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_realloc_hook(old_data, old_size, new_size)
@@ -437,7 +437,7 @@ pub fn vcalloc(n int) &u8 {
 	} else if n == 0 {
 		return &u8(unsafe { nil })
 	}
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_alloc_hook(n, 0)
 			if arena_ptr != 0 {
@@ -498,7 +498,7 @@ pub fn vcalloc_noscan(n int) &u8 {
 		if n < 0 {
 			_memory_panic(@FN, n)
 		}
-		$if builtin_arena ? {
+		$if !no_builtin_arena ? {
 			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && n > 0 {
 				arena_ptr := g_arena_alloc_hook(n, 0)
 				if arena_ptr != 0 {
@@ -568,7 +568,7 @@ pub fn free(ptr voidptr) {
 		//
 		// The exception is doing leak detection for manual memory management:
 		$if gcboehm_leak ? {
-			$if builtin_arena ? {
+			$if !no_builtin_arena ? {
 				// Arena memory is released in bulk by its arena.
 				if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
 					return
@@ -581,7 +581,7 @@ pub fn free(ptr voidptr) {
 		unsafe { __free(ptr) }
 		return
 	} $else {
-		$if builtin_arena ? {
+		$if !no_builtin_arena ? {
 			// Arena memory is released in bulk by its arena.
 			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
 				return
@@ -606,7 +606,7 @@ fn free_unaliased(ptr voidptr) {
 		return
 	}
 	$if gcboehm ? {
-		$if builtin_arena ? {
+		$if !no_builtin_arena ? {
 			// Scoped arena allocations are released in bulk, including unique buffers.
 			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
 				return
@@ -698,7 +698,7 @@ pub fn memdup_align(src voidptr, sz int, align int) voidptr {
 	if n < 0 {
 		_memory_panic(@FN, n)
 	}
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_alloc_hook(n, align)
 			if arena_ptr != 0 {

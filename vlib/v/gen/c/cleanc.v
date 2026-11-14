@@ -1751,9 +1751,9 @@ fn (g &FlatGen) local_storage_owner(name string) ?types.ScopeBindingOwner {
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
 	}
-	owner := g.tc.cur_scope.lookup_owner(name) or { return none }
+	owner := g.tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return none }
 	$if ownership ? {
-		if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
+		if !g.tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner) {
 			return none
 		}
 	}
@@ -2863,6 +2863,77 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 	return result
 }
 
+// user_c_flags_native_input returns the first native file or search directory that
+// the C flags of the build name outside the trees shipped with V.
+pub fn user_c_flags_native_input(flags []string, vroot string) ?string {
+	return c_flags_user_native_input(flags, c_shipped_native_roots(vroot))
+}
+
+// source_user_native_input is cache_native_inputs for the directives in `source`,
+// the text of `file`, a program file outside the trees shipped with V: it returns
+// the first native input that they supply to the build. It reads the directives
+// as text, before the program is parsed, so it also reports one in a `$if` branch
+// that the build does not take.
+pub fn source_user_native_input(file string, source string, vroot string, target pref.Target, user_c_flags []string, compile_values map[string]string) ?string {
+	shipped_roots := c_shipped_native_roots(vroot)
+	mut include_flags := user_c_flags.clone()
+	mut includes := []string{}
+	mut pos := 0
+	for pos < source.len {
+		mut start := pos
+		for start < source.len && source[start] in [` `, `\t`] {
+			start++
+		}
+		mut end := start
+		for end < source.len && source[end] != `\n` {
+			end++
+		}
+		pos = end + 1
+		if start >= end || source[start] != `#` {
+			continue
+		}
+		directive := source[start..end].trim_space()
+		name := directive[1..].all_before(' ').all_before('\t')
+		arg := directive[1 + name.len..].trim_space()
+		match name {
+			'pkgconfig' {
+				return '#pkgconfig ${arg}'
+			}
+			'flag' {
+				flags := c_flag_args_with_values(arg, vroot, file, target, compile_values)
+				if input := c_flags_user_native_input(flags, shipped_roots) {
+					return input
+				}
+				include_flags << flags
+			}
+			'include', 'insert', 'preinclude', 'postinclude' {
+				includes << arg
+			}
+			else {}
+		}
+	}
+	include_dirs := c_flag_include_dirs(include_flags)
+	for raw in includes {
+		include_arg := c_include_arg_for_target_with_values(raw, vroot, file, target, compile_values)
+		if include_arg.len == 0 || include_arg.starts_with('<')
+			|| c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+			continue
+		}
+		mut resolved := ''
+		for path in c_include_file_paths(include_arg, vroot, file, include_dirs) {
+			if os.is_file(path) {
+				resolved = os.real_path(path)
+				break
+			}
+		}
+		if resolved.len > 0 && c_path_is_within_roots(resolved, shipped_roots) {
+			continue
+		}
+		return if resolved.len > 0 { resolved } else { include_arg }
+	}
+	return none
+}
+
 // c_define_selects_native_implementation reports whether a `#define` selects the
 // implementation section of a single-header library, as `#define SOKOL_IMPL` or
 // `#define STB_IMAGE_IMPLEMENTATION` do. modulecache.declaration_header omits the
@@ -2889,7 +2960,7 @@ pub fn native_path_is_shipped(path string, vroot string) bool {
 	return c_path_is_within_roots(os.real_path(path), c_shipped_native_roots(vroot))
 }
 
-fn c_shipped_native_roots(vroot string) []string {
+pub fn c_shipped_native_roots(vroot string) []string {
 	if vroot.len == 0 {
 		return []string{}
 	}
@@ -2897,7 +2968,7 @@ fn c_shipped_native_roots(vroot string) []string {
 	return ['vlib', 'thirdparty', 'cmd'].map(os.join_path_single(real_vroot, it))
 }
 
-fn c_path_is_within_roots(path string, roots []string) bool {
+pub fn c_path_is_within_roots(path string, roots []string) bool {
 	for root in roots {
 		if path == root || (path.starts_with(root) && path.len > root.len
 			&& (path[root.len] == `/` || path[root.len] == `\\`)) {
@@ -5967,7 +6038,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				qname := qualify_name_in_module(cur_module, f.value)
 				mut ft := *g.tc.parse_type(f.typ)
 				if ft is types.Void && f.children_count > 0 {
-					if checked := g.tc.file_scope.lookup(qname) {
+					if checked := g.tc.file_scope.lookup_id(flat.source_type_id(qname)) {
 						if checked !is types.Void && checked !is types.Unknown {
 							ft = checked
 						} else {
@@ -5996,9 +6067,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 						g.global_inits[qname] = val_id
 					}
 				}
-				g.tc.file_scope.insert(f.value, ft)
+				g.tc.file_scope.insert_id(f.name_id(), f.value, ft)
 				if qname != f.value {
-					g.tc.file_scope.insert(qname, ft)
+					g.tc.file_scope.insert_id(flat.source_type_id(qname), qname, ft)
 				}
 			}
 			continue
@@ -6246,11 +6317,11 @@ fn new_sparse_call_name_index(tc &types.TypeChecker, n int) SparseCallNameIndex 
 		return SparseCallNameIndex{}
 	}
 	mut index := []u32{len: n - base}
-	mut values := []string{len: tc.sparse_resolved_call_names.len}
+	mut values := []string{len: tc.sparse_resolved_calls.len}
 	mut count := 0
-	for idx, name in tc.sparse_resolved_call_names {
+	for idx, sym in tc.sparse_resolved_calls {
 		if idx >= base && idx < n && count < values.len {
-			values[count] = name
+			values[count] = flat.source_type_name(sym)
 			count++
 			index[idx - base] = u32(count)
 		}
@@ -14808,7 +14879,7 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		// variant can also leak back as the apparent type of an already-materialized
 		// sum local (for example `[]Any` onto an `Any` parameter).
 		if g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
-			if scope_type := g.tc.cur_scope.lookup(node.value) {
+			if scope_type := g.tc.cur_scope.lookup_id(node.name_id()) {
 				if scope_type !is types.Void && scope_type !is types.Unknown {
 					return scope_type
 				}
@@ -15302,7 +15373,7 @@ fn (g &FlatGen) expected_expr_is_optional_struct() bool {
 fn (mut g FlatGen) type_name_c_type(type_name_id u32) string {
 	target_id := g.generic_default_type_id(type_name_id)
 	target_name := flat.source_type_name(target_id)
-	if _ := g.tc.cur_scope.lookup(target_name) {
+	if _ := g.tc.cur_scope.lookup_id(flat.source_type_id(target_name)) {
 		return g.cname(target_name)
 	}
 	if flat.source_type_query(target_id).has(.fn_ptr_prefix) {
@@ -15452,7 +15523,7 @@ fn (mut g FlatGen) sizeof_selector_base_type(base string) ?types.Type {
 	if typ := g.current_param_type(base) {
 		return *typ
 	}
-	return g.tc.cur_scope.lookup(base)
+	return g.tc.cur_scope.lookup_id(flat.source_type_id(base))
 }
 
 // sizeof_selector_field_type follows one field step, so a chain keeps choosing
@@ -15480,7 +15551,7 @@ fn (g &FlatGen) cur_scope_has_local_name(name string) bool {
 	mut scope := g.tc.cur_scope
 	for scope != unsafe { nil } && voidptr(scope) != voidptr(g.tc.file_scope) {
 		$if !ownership ? {
-			if scope.binds_own(name) {
+			if scope.binds_own_id(flat.source_type_id(name)) {
 				return true
 			}
 		} $else {
@@ -18794,7 +18865,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
 					g.write(g.fixed_array_len_value(fixed))
 				} else {
-					raw_type := g.tc.cur_scope.lookup(base.value) or { base_type }
+					raw_type := g.tc.cur_scope.lookup_id(base.name_id()) or { base_type }
 					g.gen_expr(base_id)
 					// The declared type can be an alias of a pointer (`type P = &T`).
 					if unalias_type(raw_type) is types.Pointer {
@@ -18900,7 +18971,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				mut is_ptr := false
 				mut local_type_known := base_is_source_mut_pointer_deref
 				if base.kind == .ident {
-					if typ := g.tc.cur_scope.lookup(base.value) {
+					if typ := g.tc.cur_scope.lookup_id(base.name_id()) {
 						local_type_known = true
 						is_ptr = typ is types.Pointer || unalias_type(typ) is types.Pointer
 					}
@@ -25446,7 +25517,7 @@ fn (g &FlatGen) global_is_thread_local(name string) bool {
 }
 
 // Each thread has its own stack of scoped arenas (see
-// vlib/builtin/arena_d_builtin_arena.c.v), so a spawned thread starts with the
+// vlib/builtin/arena_notd_no_builtin_arena.c.v), so a spawned thread starts with the
 // default allocator.
 fn (g &FlatGen) is_builtin_arena_top(name string) bool {
 	return name == 'g_arena_top' && (g.global_modules[name] or { '' }) == 'builtin'

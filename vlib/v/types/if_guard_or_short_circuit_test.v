@@ -33,7 +33,7 @@ fn build_guarded_logical_condition(op flat.Op) []LocalBinding {
 
 	mut tc := TypeChecker.new(&a)
 	tc.cur_scope = new_scope(tc.file_scope)
-	tc.cur_scope.insert_with_owner('opt', Type(OptionType{
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('opt'), 'opt', Type(OptionType{
 		base_type: &Type(int_)
 	}))
 	tc.valid_resolution_fast = true

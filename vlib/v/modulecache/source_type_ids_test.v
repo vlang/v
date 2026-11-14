@@ -6,10 +6,10 @@ import v.types
 fn test_cached_global_source_ids_preserve_lookup_order_and_header_syntax() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.file_scope.insert('value', types.Type(types.u8_))
-	tc.file_scope.insert('mod.value', types.Type(types.u16_))
-	tc.file_scope.insert('mod.inferred', tc.parse_resolution_type(flat.source_type_id('[3]u16')))
-	tc.file_scope.insert('mod.unset', types.Type(types.none_))
+	tc.file_scope.insert_id(flat.source_type_id('value'), 'value', types.Type(types.u8_))
+	tc.file_scope.insert_id(flat.source_type_id('mod.value'), 'mod.value', types.Type(types.u16_))
+	tc.file_scope.insert_id(flat.source_type_id('mod.inferred'), 'mod.inferred', tc.parse_resolution_type(flat.source_type_id('[3]u16')))
+	tc.file_scope.insert_id(flat.source_type_id('mod.unset'), 'mod.unset', types.Type(types.none_))
 	assert cached_global_source_type_id(&tc, 'mod', 'value') == flat.source_type_u8
 	assert cached_global_source_type_id(&tc, 'mod', 'missing') == 0
 	assert cached_global_source_type_id(&tc, 'mod', 'unset') == flat.source_type_voidptr

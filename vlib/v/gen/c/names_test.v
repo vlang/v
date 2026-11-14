@@ -1405,14 +1405,14 @@ fn test_ident_function_value_keeps_local_type_precedence_and_void_fallback() {
 	g.tc = &tc
 	mut scope := types.new_scope(unsafe { nil })
 	tc.cur_scope = scope
-	owner := scope.insert_with_owner('handler', types.Type(types.string_))
+	owner := scope.insert_with_owner_id(flat.source_type_id('handler'), 'handler', types.Type(types.string_))
 	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], owner) == none
 	// A missing owner must retain the exact legacy lookup, including locals.
 	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], types.ScopeBindingOwner{}) == none
-	void_owner := scope.insert_with_owner('handler', types.Type(types.Void{}))
+	void_owner := scope.insert_with_owner_id(flat.source_type_id('handler'), 'handler', types.Type(types.Void{}))
 	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], void_owner)? == 'handler'
 	scope.reset(unsafe { nil })
-	scope.insert('handler', types.Type(types.string_))
+	scope.insert_id(flat.source_type_id('handler'), 'handler', types.Type(types.string_))
 	// A stale owner must read the replacement rather than its former Void type.
 	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], void_owner) == none
 	scope.reset(unsafe { nil })
@@ -1552,8 +1552,8 @@ fn ordinary_local_ident_output(name string, mode string, fast bool) string {
 	tc.file_scope = file_scope
 	tc.cur_scope = scope
 	typ := if mode == 'void' { types.Type(types.Void{}) } else { types.Type(types.int_) }
-	owner := scope.insert_with_owner(name, typ)
-	other_owner := scope.insert_with_owner('other_local', types.Type(types.int_))
+	owner := scope.insert_with_owner_id(flat.source_type_id(name), name, typ)
+	other_owner := scope.insert_with_owner_id(flat.source_type_id('other_local'), 'other_local', types.Type(types.int_))
 	if mode == 'void' {
 		tc.fn_param_types[name] = []types.Type{}
 		tc.fn_ret_types[name] = types.Type(types.int_)
@@ -1597,9 +1597,9 @@ fn test_ordinary_local_ident_ignores_outer_binding_storage_and_unrelated_c_calls
 	id := a.add_val(.ident, 'value')
 	mut tc := types.TypeChecker.new(&a)
 	mut outer_scope := types.new_scope(unsafe { nil })
-	outer := outer_scope.insert_with_owner('value', types.Type(types.int_))
+	outer := outer_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 	mut inner_scope := types.new_scope(outer_scope)
-	inner := inner_scope.insert_with_owner('value', types.Type(types.int_))
+	inner := inner_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 	tc.cur_scope = inner_scope
 	mut g := FlatGen.new()
 	g.a = &a
@@ -1631,9 +1631,9 @@ fn test_local_name_exceptions_preserve_raw_and_emitted_names_and_rebuilds() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut scope := types.new_scope(unsafe { nil })
-	owner := scope.insert_with_owner('value', types.Type(types.int_))
-	abs_owner := scope.insert_with_owner('abs', types.Type(types.int_))
-	void_owner := scope.insert_with_owner('placeholder', types.Type(types.Void{}))
+	owner := scope.insert_with_owner_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
+	abs_owner := scope.insert_with_owner_id(flat.source_type_id('abs'), 'abs', types.Type(types.int_))
+	void_owner := scope.insert_with_owner_id(flat.source_type_id('placeholder'), 'placeholder', types.Type(types.Void{}))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -1668,14 +1668,14 @@ fn test_shared_wrapper_owner_lookup_preserves_local_and_global_bindings() {
 	assert !g.local_ident_is_shared_wrapper('')
 	assert !g.local_ident_is_shared_wrapper('missing')
 	g.push_scope()
-	local := tc.cur_scope.insert_with_owner('value', types.Type(types.int_))
+	local := tc.cur_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 	assert !g.local_ident_is_shared_wrapper('value')
 	g.declare_local_c_type(local, 'int')
 	assert !g.local_ident_is_shared_wrapper('value')
 	g.declare_local_c_type(local, '__shared__int*')
 	assert g.local_ident_is_shared_wrapper('value')
 	g.push_scope()
-	tc.cur_scope.insert('value', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 	assert !g.local_ident_is_shared_wrapper('value')
 	g.pop_scope()
 	assert g.local_ident_is_shared_wrapper('value')
@@ -1686,11 +1686,11 @@ fn test_shared_wrapper_owner_lookup_preserves_local_and_global_bindings() {
 	g.declare_local_shared_storage(local, false)
 	assert !g.local_ident_is_shared_wrapper('value')
 	g.pop_scope()
-	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('global_value'), 'global_value', types.Type(types.int_))
 	g.declare_global_raw_type('global_value', flat.source_type_id('shared int'))
 	assert g.local_ident_is_shared_wrapper('global_value')
 	g.push_scope()
-	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('global_value'), 'global_value', types.Type(types.int_))
 	assert !g.local_ident_is_shared_wrapper('global_value')
 }
 
@@ -1721,14 +1721,14 @@ fn test_shared_storage_absence_tracks_globals_and_shadowed_bindings() {
 	assert !g.global_shared_storage_present
 	assert !g.local_storage_is_shared('missing')
 	g.push_scope()
-	local := tc.cur_scope.insert_with_owner('value', types.Type(types.int_))
+	local := tc.cur_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 	assert !g.local_storage_is_shared('value')
 	g.declare_local_shared_storage(local, true)
 	assert g.local_storage_is_shared('value')
 	g.declare_local_shared_storage(local, false)
 	assert !g.local_storage_is_shared('value')
 	g.pop_scope()
-	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('global_value'), 'global_value', types.Type(types.int_))
 	g.declare_global_raw_type('global_value', flat.source_type_int)
 	assert !g.global_shared_storage_present
 	assert !g.local_storage_is_shared('global_value')
@@ -1736,7 +1736,7 @@ fn test_shared_storage_absence_tracks_globals_and_shadowed_bindings() {
 	assert g.global_shared_storage_present
 	assert g.local_storage_is_shared('global_value')
 	g.push_scope()
-	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('global_value'), 'global_value', types.Type(types.int_))
 	assert !g.local_storage_is_shared('global_value')
 	g.pop_scope()
 	assert g.local_storage_is_shared('global_value')

@@ -26,13 +26,12 @@ fn v3_tcc_dylib_add_embedded_inputs(mut closure V3NativeInputClosure, state &V3M
 	}
 }
 
-fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_flags []string, compiler string, native_inputs &cgen.CacheNativeInputs) V3NativeInputClosure {
+fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_flags []string, compiler string, native_inputs &cgen.CacheNativeInputs, cache_dir string, mut stats CObjectCacheStats) V3NativeInputClosure {
 	mut flags := user_flags.clone()
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	flags = v3_tcc_dylib_native_flags(flags)
 	for flag in flags {
-		clean := flag.trim_space()
-		if clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs') || clean.starts_with('--specs') || clean.starts_with('-include-pch') || clean.starts_with('-Wp,') {
+		if v3_native_flag_is_opaque(flag) {
 			return V3NativeInputClosure{ unassignable: 'opaque native compiler options' }
 		}
 	}
@@ -45,7 +44,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot, flags,
 		prefs.c99, prefs.ccompiler, prefs.target), flags)
 	args << ['-x', language]
-	deps := c_object_dependencies(compiler, args, path)
+	deps := cached_c_object_dependencies(cache_dir, compiler, args, path, mut stats)
 	if deps.used_fallback {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			mut probe_args := args.clone()
@@ -140,6 +139,15 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 }
 
+// v3_native_flag_is_opaque reports whether a C compiler option makes the compiler
+// read options or inputs that the command line does not show.
+fn v3_native_flag_is_opaque(flag string) bool {
+	clean := flag.trim_space()
+	return clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs')
+		|| clean.starts_with('--specs') || clean.starts_with('-include-pch')
+		|| clean.starts_with('-Wp,')
+}
+
 // Objective-C imports have the same header dependencies as C includes.
 fn v3_tcc_dylib_include_argument(line string) ?string {
 	if arg := v3_include_directive_argument(line) { return arg }
@@ -169,10 +177,10 @@ fn v3_tcc_dylib_native_flags(flags []string) []string {
 
 // Ask the C compiler which frameworks the consumer's nested includes use.
 // Only its dependency manifest is read, never preprocessed header contents.
-fn v3_tcc_dylib_program_dependencies(compiler string, flags []string, source_path string, c_standard string) ![]string {
+fn v3_tcc_dylib_program_dependencies(compiler string, flags []string, source_path string, c_standard string, cache_dir string, mut stats CObjectCacheStats) ![]string {
 	mut args := c_object_compile_flags(tcc_cached_main_flags(flags))
 	args << [c_standard, '-w', '-x', 'c', '-D__TINYC__=1', '-D__has_extension(x)=0']
-	deps := c_object_dependencies(compiler, args, source_path)
+	deps := cached_c_object_dependencies(cache_dir, compiler, args, source_path, mut stats)
 	if deps.used_fallback { return error('the TCC program dependency manifest is unavailable') }
 	return deps.files
 }

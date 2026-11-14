@@ -1524,7 +1524,7 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	tc.begin_sparse_transform_node_caches(0)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	mut batch_tc := tc.fork_for_parallel_transform(&a)
-	batch_tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
+	batch_tc.fork_overlay.resolved_calls[10] = flat.source_type_id('main.resolved_call')
 	batch_tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
 	batch_tc.ensure_private_transform_signatures()
 	batch_tc.fn_ret_types['main.generated'] = types.Type(types.bool_)
@@ -1536,7 +1536,7 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	assert 'main.generated' !in tc.fn_ret_types
 
 	master.absorb_scoped_batch(batch, unsafe { nil }, batch.a.nodes.len)
-	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
+	assert flat.source_type_name(tc.sparse_resolved_calls[10]) == 'main.resolved_call'
 	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
 	assert master.fn_ret_types.value_id('main.generated') == flat.source_type_bool
 	generated_ret := tc.fn_ret_types['main.generated'] or { types.Type(types.void_) }
@@ -1730,14 +1730,14 @@ fn test_merged_resolution_cache_initializes_gaps_and_preserves_entries() {
 	t.set_resolved_fn_value_entry(2, 'main.callback')
 	t.set_resolved_call_entry(4096, 'main.last')
 	t.set_resolved_fn_value_entry(8192, 'main.final_callback')
-	assert tc.resolved_call_names[1].value == 'main.first'
+	assert flat.source_type_name(tc.resolved_calls[1]) == 'main.first'
 	assert tc.resolved_call_set[1]
-	assert tc.resolved_call_names[4096].value == 'main.last'
+	assert flat.source_type_name(tc.resolved_calls[4096]) == 'main.last'
 	assert tc.resolved_call_set[4096]
 	assert tc.resolved_fn_value_name(2)? == 'main.callback'
 	assert tc.resolved_fn_value_name(8192)? == 'main.final_callback'
 	for i in 3 .. 4096 {
-		assert isnil(tc.resolved_call_names[i])
+		assert tc.resolved_calls[i] == 0
 		assert !tc.resolved_call_set[i]
 		assert tc.resolved_fn_value_name(i) == none
 	}

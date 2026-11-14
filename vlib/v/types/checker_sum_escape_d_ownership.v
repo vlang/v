@@ -461,7 +461,7 @@ fn (mut tc TypeChecker) ownership_prepare_sum_return_transfer(return_id flat.Nod
 	heap_sources := st.sum_local_heap_sources[st.cur_fn] or { []OwnershipDropEntry{} }
 	for source in sources {
 		if source in heap_sources {
-			if owner := tc.cur_scope.lookup_owner(source.name) {
+			if owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(source.name)) {
 				actual := owner.scope.types[owner.index]
 				pointer := Type(Pointer{ base_type: tc.intern_type_reference(actual) })
 				if tc.type_compatible(pointer, tc.fn_context.return_type) {
@@ -964,7 +964,7 @@ fn (mut tc TypeChecker) ownership_sum_aggregate_scope(storage string) int {
 		} else if source := tc.ownership_borrowed_alias_source(root, false) {
 			root = source.all_before('.').all_before('[')
 		} else {
-			if typ := tc.cur_scope.lookup(root) {
+			if typ := tc.cur_scope.lookup_id(flat.source_type_id(root)) {
 				if unalias_type(typ) is Pointer && root !in tc.ownership.owned_vars { return -1 }
 			}
 			return tc.ownership_sum_local_scope(root)
@@ -983,7 +983,7 @@ fn (mut tc TypeChecker) ownership_reject_sum_aggregate_store(target string, rhs 
 	}
 	target_scope := tc.ownership_sum_aggregate_scope(target)
 	target_root := target.all_before('.').all_before('[')
-	if target_scope < 0 && tc.cur_scope.lookup_owner(target_root) == none {
+	if target_scope < 0 && tc.cur_scope.lookup_owner_id(flat.source_type_id(target_root)) == none {
 		mut global_storage := false
 		for name, _ in tc.ownership.owned_globals.ids {
 			if ownership_storage_keys_overlap(name, target) {
@@ -1022,7 +1022,7 @@ fn (mut tc TypeChecker) ownership_reject_sum_aggregate_return(return_id flat.Nod
 			}
 		}
 		if transferred { continue }
-		owner := tc.cur_scope.lookup_owner(root) or { continue }
+		owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(root)) or { continue }
 		if tc.binding_owner_is_global(owner) { continue }
 		typ := unalias_type(owner.scope.types[owner.index])
 		if typ is Pointer && root !in tc.ownership.owned_vars { continue }
@@ -1050,7 +1050,7 @@ fn (mut tc TypeChecker) ownership_transfer_inner_sum_local(target string, rhs fl
 		}
 	}
 	if source.contains('.') || source.contains('[') { return false }
-	source_type := tc.cur_scope.lookup(source) or { return false }
+	source_type := tc.cur_scope.lookup_id(flat.source_type_id(source)) or { return false }
 	if unalias_type(source_type) is Pointer { return false }
 	source_scope := tc.ownership_sum_local_scope(source)
 	target_scope := tc.ownership_sum_local_scope(target)

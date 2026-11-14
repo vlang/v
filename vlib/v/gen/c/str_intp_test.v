@@ -246,7 +246,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	a.children << part
 	a.children << part
 	mut tc := types.TypeChecker.new(&a)
-	tc.cur_scope.insert(name, types.Type(types.string_))
+	tc.cur_scope.insert_id(flat.source_type_id(name), name, types.Type(types.string_))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

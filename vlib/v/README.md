@@ -502,10 +502,11 @@ created by lowering. V1 and V2 do not need a separate step because their checker
 updates the typed AST/table that later stages keep using directly; v3's flat AST
 keeps those per-node caches outside the nodes.
 
-Resolved call and function-value caches use `types.CachedName` pointers, allocating a string
-header only for occupied slots. The existing set bits guard reads. `types.cached_name()` creates
-an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
-when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
+The resolved-call cache holds one `types.SymbolId` per node, like `Info.Uses` in Go's
+types2: the id of the callee's name in the global spelling interner (`flat.source_type_id`).
+The existing set bits guard reads. Symbol ids are shared by every checker, fork and worker
+and their spellings are owned by the process, so worker results merge and arenas are
+released without translating or copying them. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
 Callback validation retains declared variadic modes when matching a lowered array parameter,
 including callbacks nested in parameters and return types.
@@ -728,12 +729,23 @@ full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, obje
 coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
-The experimental unchanged-build receipt is disabled by default. Set
-`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable its early executable restore for explicit binary
-outputs. Its key does not yet cover all compile-time environment, module-search, and linker
-inputs, so it can reuse stale output when those inputs change. `-nocache` and
-`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
-prevents publishing or restoring a receipt.
+Before parsing, a build with an explicit output looks for the receipt of an earlier build
+with the same compiler, C compiler identity, command line, output and environment. The
+receipt lists the program's V sources, checked as a whole by their source signature (content
+digests, `$env` reads, `v.mod` hashes, pkg-config probes and the build-time pseudo variables
+when the program uses them), embedded resources, the listings of the source directories, and
+what the C compiler and the linker read, as they told it: V never opens or preprocesses a C
+header for the receipt. The headers come from the dependency file that the C compiler writes
+while it compiles the program (`-MD`), each with the paths where a header would be found first,
+starting beside the translation unit; the files of the link come from the link command and the
+linker's own report; and the dependencies of C objects come from the object cache. Each of those
+native files is checked by its metadata. A header that a `__has_include` would find once it
+appears is not seen, as in Zig and Odin. A build that cannot tell what its compiler read (one
+command that compiles several C sources, `-parallel-cc`, or a cached object of the program when
+the program brings native inputs of its own) records no receipt. When every input is unchanged,
+the build restores the recorded executable and does nothing else. It works with or without the
+module cache; a `-nocache` written by the user and `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` turn it
+off, and `V3_CACHE_TRACE=1` says why a receipt was not used or recorded.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
 A build that reads every module from its interface gets all the functions of those modules as

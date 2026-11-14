@@ -52,6 +52,13 @@ typedef unsigned int u32;
 typedef int64_t i64;
 typedef struct { void* _object; } IError;
 static IError builtin__none__, builtin__error_sentinel;
+// The allocator entry points ask the scoped arenas of the thread first
+// (vlib/builtin/arena_notd_no_builtin_arena.c.v). This program creates none.
+static u32 g_arena_hooks_ready;
+static u8* (*g_arena_alloc_hook)();
+static u8* (*g_arena_realloc_hook)();
+static bool (*g_arena_owns_hook)();
+#define atomic_load_u32(pointer) (*(pointer))
 ${declarations}
 static void* live[16];
 static void* bases[16];

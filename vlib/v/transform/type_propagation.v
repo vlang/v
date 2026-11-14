@@ -1183,7 +1183,7 @@ fn (t &Transformer) checked_global_type_name(name string, mod string) ?u32 {
 		return none
 	}
 	qname := if mod.len > 0 && mod != 'main' && mod != 'builtin' { '${mod}.${name}' } else { name }
-	typ := t.tc.file_scope.lookup(qname) or { return none }
+	typ := t.tc.file_scope.lookup_id(flat.source_type_id(qname)) or { return none }
 	if typ is types.Unknown || typ is types.Void {
 		return none
 	}

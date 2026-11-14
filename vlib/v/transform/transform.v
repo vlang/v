@@ -239,10 +239,6 @@ mut:
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
-	// merge_call_canon holds, in fork_overlay.resolved_call_names iteration
-	// order, each name's canonical spelling looked up in parallel before the
-	// merge ('' when the name was not interned yet).
-	merge_call_canon []string
 	// merge_regions_absorbed marks worker regions as already relocated *into*
 	// their final master slots by that same parallel pass, so merge_worker skips
 	// the bulk copies entirely and shifts ids with the offsets recorded below.
@@ -2733,6 +2729,13 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 // body, or, in an incremental rebuild, left it to the cached build. Only the
 // functions that a specialization makes reachable are then lowered here. A
 // check monomorphizes the tree as it was parsed and passes false.
+// only_collects_diagnostics reports whether this pass exists for the diagnostics
+// of generic instances, as `-check` and the instance check of a build do, and its
+// tree is discarded. Lowering for C generation has no diagnostics to give.
+fn (t &Transformer) only_collects_diagnostics() bool {
+	return !isnil(t.tc) && (t.tc.check_concrete_generic_bodies || t.tc.monomorphize_for_diagnostics)
+}
+
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec, after_transform bool) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
@@ -2789,13 +2792,17 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.transform_late_used_fn_bodies(t.used_fns_log, late_log_start, late_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late: ${time.ticks() - debug_started} ms')
-		remaining_match_log_start := t.used_fns_log.len
-		t.lower_remaining_matches_in_used_fns()
-		t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
-		remaining_match_log_end := t.used_fns_log.len
-		t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
-		late_log_start = t.used_fns_log.len
-		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
+		// Lowering `match` prepares a body for C generation. A check stops at the
+		// diagnostics of its instances.
+		if !t.only_collects_diagnostics() {
+			remaining_match_log_start := t.used_fns_log.len
+			t.lower_remaining_matches_in_used_fns()
+			t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
+			remaining_match_log_end := t.used_fns_log.len
+			t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
+			late_log_start = t.used_fns_log.len
+			t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
+		}
 		// A late non-generic body can expose a generic-struct method call. That call
 		// grows reachability without immediately queuing a specialization; the next
 		// pass's generic-struct method scan materializes it from the new used name.
@@ -3486,7 +3493,7 @@ fn (mut t Transformer) rewrite_children_in_place(id flat.NodeId, children []flat
 	}
 	for i, child in children {
 		slot := int(node.children_start) + i
-		t.a.children[slot] = child
+		t.a.set_child_slot(id, slot, child)
 		t.record_inplace_child_rewrite(slot, child)
 	}
 	t.invalidate_node_type_memo(idx)
@@ -3508,7 +3515,7 @@ fn (mut t Transformer) rewrite_one_child_in_place(id flat.NodeId, child flat.Nod
 	if node.children_count != 1 {
 		return false
 	}
-	t.a.children[node.children_start] = child
+	t.a.set_child_slot(id, int(node.children_start), child)
 	t.record_inplace_child_rewrite(int(node.children_start), child)
 	t.invalidate_node_type_memo(idx)
 	if !t.preserve_inplace_expr_types && !isnil(t.tc) {
@@ -3529,8 +3536,8 @@ fn (mut t Transformer) rewrite_two_children_in_place(id flat.NodeId, first flat.
 	if node.children_count != 2 {
 		return false
 	}
-	t.a.children[node.children_start] = first
-	t.a.children[node.children_start + 1] = second
+	t.a.set_child_slot(id, int(node.children_start), first)
+	t.a.set_child_slot(id, int(node.children_start) + 1, second)
 	t.record_inplace_child_rewrite(int(node.children_start), first)
 	t.record_inplace_child_rewrite(int(node.children_start) + 1, second)
 	t.invalidate_node_type_memo(idx)
@@ -3626,7 +3633,7 @@ fn (mut t Transformer) set_node(idx int, node flat.Node) {
 		t.invalidate_node_type_memo(idx)
 		mut stored := node
 		stored.canonicalize_source_value()
-		t.a.nodes[idx] = stored
+		t.a.set_node(flat.NodeId(idx), stored)
 		t.mark_scoped_owned_base_node(idx)
 		if !isnil(t.tc) {
 			t.tc.invalidate_checked_expr_type(idx)
@@ -3691,10 +3698,10 @@ fn (mut t Transformer) apply_ignored_comptime_for_nodes() {
 fn (mut t Transformer) clear_ignored_comptime_for_node(idx int) {
 	old := t.a.nodes[idx]
 	t.invalidate_node_type_memo(idx)
-	t.a.nodes[idx] = flat.Node{
+	t.a.set_node(flat.NodeId(idx), flat.Node{
 		kind: .empty
 		pos:  old.pos
-	}
+	})
 	t.clear_typechecker_node_cache(idx)
 }
 
@@ -3751,7 +3758,7 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 				}
 				mut stored := w.node
 				stored.canonicalize_source_value()
-				t.a.nodes[w.idx] = stored
+				t.a.set_node(flat.NodeId(w.idx), stored)
 			}
 			4 {
 				t.a.nodes[w.idx].set_source_value_id(w.typ)
@@ -5681,7 +5688,7 @@ fn (t &Transformer) allocate_ast_base_clone(base_nodes int, base_children int) &
 }
 
 fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []flat.NodeId) &flat.FlatAst {
-	return &flat.FlatAst{
+	mut cloned := &flat.FlatAst{
 		nodes:                         nodes
 		children:                      children
 		user_code_start:               t.a.user_code_start
@@ -5701,6 +5708,11 @@ fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []fl
 		specialized_fn_modules:        t.a.specialized_fn_modules.clone()
 		specialized_fn_files:          t.a.specialized_fn_files.clone()
 	}
+	unsafe {
+		mut master := t.a
+		master.fork_parents_to(mut cloned, nodes.len)
+	}
+	return cloned
 }
 
 // fork_worker builds a worker Transformer that shares this transformer's
@@ -6680,6 +6692,12 @@ fn (mut t Transformer) absorb_region_into(node_start int, node_end int, child_st
 // distance the block moved. `items` lists the function indices this worker owned, so
 // their rewritten top-level nodes can be copied into place.
 fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int, clear_node_caches bool) {
+	// The merge renumbers the worker's nodes and rewrites edges of the base.
+	t.a.reset_parents()
+	unsafe {
+		mut worker_tree := w.a
+		worker_tree.free_parents()
+	}
 	// Absorbed regions were written straight into the master arrays, which are
 	// already grown to their final length, so the shifts come from the absorb
 	// pass instead of the current master length.
@@ -6858,20 +6876,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	// under the shifted node ids, so or/return lowering in the late pass and
 	// cgen see them exactly as after a serial transform.
 	if !isnil(w.tc.fork_overlay) {
-		mut call_pos := 0
-		for idx, name in w.tc.fork_overlay.resolved_call_names {
+		for idx, sym in w.tc.fork_overlay.resolved_calls {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			if call_pos < w.merge_call_canon.len && w.merge_call_canon[call_pos].len > 0 {
-				t.set_resolved_call_canonical(shifted, w.merge_call_canon[call_pos])
-			} else {
-				owned_name := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
-					name.clone()
-				} else {
-					name
-				}
-				t.set_resolved_call_entry(shifted, owned_name)
-			}
-			call_pos++
+			t.set_resolved_call_sym(shifted, sym)
 		}
 		for idx, name in w.tc.fork_overlay.resolved_fn_values {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
@@ -7021,30 +7028,29 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 }
 
 fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
-	t.set_resolved_call_canonical(idx, t.tc.canonical_symbol(name))
+	t.set_resolved_call_sym(idx, flat.source_type_id(name))
 }
 
-// set_resolved_call_canonical records a resolved call whose name is already the
-// checker's canonical spelling.
-fn (mut t Transformer) set_resolved_call_canonical(idx int, canonical string) {
-	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_call_names.len {
-		t.tc.sparse_resolved_call_names[idx] = canonical
+// set_resolved_call_sym records the symbol a call node resolves to.
+fn (mut t Transformer) set_resolved_call_sym(idx int, sym types.SymbolId) {
+	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_calls.len {
+		t.tc.sparse_resolved_calls[idx] = sym
 		return
 	}
-	if t.tc.resolved_call_names.len <= idx {
-		start := t.tc.resolved_call_names.len
+	if t.tc.resolved_calls.len <= idx {
+		start := t.tc.resolved_calls.len
 		set_start := t.tc.resolved_call_set.len
 		amount := idx + 1 - start
 		// Merging an appended worker region can leave a large gap. Initialize
 		// that range once instead of growing both caches one element at a time.
 		unsafe {
-			t.tc.resolved_call_names.grow_len(amount)
+			t.tc.resolved_calls.grow_len(amount)
 			t.tc.resolved_call_set.grow_len(amount)
-			vmemset(&t.tc.resolved_call_names[start], 0, int(amount) * int(sizeof(&types.CachedName)))
+			vmemset(&t.tc.resolved_calls[start], 0, int(amount) * int(sizeof(types.SymbolId)))
 			vmemset(&t.tc.resolved_call_set[set_start], 0, int(amount))
 		}
 	}
-	t.tc.resolved_call_names[idx] = types.cached_name(canonical)
+	t.tc.resolved_calls[idx] = sym
 	t.tc.resolved_call_set[idx] = true
 }
 
@@ -7056,7 +7062,7 @@ fn (mut t Transformer) set_generated_resolved_call(id flat.NodeId, name string) 
 		return
 	}
 	if !isnil(t.tc.fork_overlay) {
-		t.tc.fork_overlay.resolved_call_names[int(id)] = name
+		t.tc.fork_overlay.resolved_calls[int(id)] = flat.source_type_id(name)
 		return
 	}
 	t.set_resolved_call_entry(int(id), name)
@@ -7086,9 +7092,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 	if start < call_end {
 		unsafe {
 			vmemset(&t.tc.resolved_call_set[start], 0, call_end - start)
-		}
-		for k in start .. call_end {
-			t.tc.resolved_call_names[k] = unsafe { nil }
+			vmemset(&t.tc.resolved_calls[start], 0, (call_end - start) * int(sizeof(types.SymbolId)))
 		}
 	}
 	expr_end := if end < t.tc.expr_type_set.len { end } else { t.tc.expr_type_set.len }
@@ -7103,11 +7107,11 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			vmemset(&t.tc.statement_nodes[start], 0, stmt_end - start)
 		}
 	}
-	if t.tc.sparse_resolved_call_names.len > 0 || t.tc.sparse_resolved_fn_values.len > 0
+	if t.tc.sparse_resolved_calls.len > 0 || t.tc.sparse_resolved_fn_values.len > 0
 		|| t.tc.sparse_expr_type_values.len > 0 || t.tc.sparse_statement_nodes.len > 0 {
 		for k in start .. end {
-			if t.tc.sparse_resolved_call_names.len > 0 {
-				t.tc.sparse_resolved_call_names.delete(k)
+			if t.tc.sparse_resolved_calls.len > 0 {
+				t.tc.sparse_resolved_calls.delete(k)
 			}
 			t.tc.clear_resolved_fn_value(flat.NodeId(k))
 			if t.tc.sparse_expr_type_values.len > 0 {
@@ -7125,7 +7129,7 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 		return
 	}
 	if idx < t.tc.resolved_call_set.len {
-		t.tc.resolved_call_names[idx] = unsafe { nil }
+		t.tc.resolved_calls[idx] = 0
 		t.tc.resolved_call_set[idx] = false
 	}
 	if idx < t.tc.expr_type_set.len {
@@ -7138,8 +7142,8 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	// sparse mode; after the parallel-check merge they are empty on the master.
 	// Deleting from an empty map still hashes the key — and this runs once per
 	// merged node — so guard on emptiness.
-	if t.tc.sparse_resolved_call_names.len > 0 {
-		t.tc.sparse_resolved_call_names.delete(idx)
+	if t.tc.sparse_resolved_calls.len > 0 {
+		t.tc.sparse_resolved_calls.delete(idx)
 	}
 	t.tc.clear_resolved_fn_value(flat.NodeId(idx))
 	if t.tc.sparse_expr_type_values.len > 0 {
@@ -7823,34 +7827,34 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 			val := t.a.nodes[int(val_id)]
 			if block_val := t.const_block_value(val) {
 				new_val := t.transform_const_value(block_val)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .string_interp {
 				new_val := t.transform_const_string_interp(val_id, val)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .or_expr {
 				const_typ_source_id := t.const_field_type_name(cf)
 
 				new_val := t.transform_const_or_expr(val_id, val, const_typ_source_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .postfix && val.op == .not && val.children_count == 1
 				&& t.a.child_node(&val, 0).kind == .array_literal {
 				new_val := t.transform_const_expr_no_pending(val_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
 				.map_init, .fn_literal, .lambda_expr, .sizeof_expr, .selector, .index, .prefix,
 				.paren] {
 				new_val := t.transform_const_expr_no_pending(val_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .infix && val.children_count >= 2 {
 				new_val := t.transform_const_expr_no_pending(val_id)
 				// Overwrite the field's value slot in place (each const_field owns
 				// its own single-element child range, so this is safe).
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if t.expr_has_if_guard(val_id) {
 				// `if x := opt { x } else { y }` must unwrap `opt` into `x` in a
 				// statement; it has no plain C expression form.
 				new_val := t.transform_const_expr_no_pending(val_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			}
 		}
 	}
@@ -7982,18 +7986,18 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			val := t.a.nodes[int(val_id)]
 			if val.kind == .cast_expr && flat.source_type_shape(val.source_value_id()).has(.pointer) {
 				if preserved := t.transform_global_amp_interface_cast(val, val.source_value_id()) {
-					t.a.children[gf.children_start] = preserved
+					t.a.set_child_slot(gf_id, int(gf.children_start), preserved)
 					continue
 				}
 			}
 			if preserved := t.transform_global_amp_initializer(val_id, val) {
-				t.a.children[gf.children_start] = preserved
+				t.a.set_child_slot(gf_id, int(gf.children_start), preserved)
 				continue
 			}
 			if t.expr_has_if_guard(val_id) {
 				// Keep the guard's unwrap statements with the value (see
 				// transform_const_decl); the runtime init renders the block.
-				t.a.children[gf.children_start] = t.transform_const_expr_no_pending(val_id)
+				t.a.set_child_slot(gf_id, int(gf.children_start), t.transform_const_expr_no_pending(val_id))
 				continue
 			}
 			old_pending := t.pending_stmts.clone()
@@ -8003,7 +8007,7 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			t.pending_stmts.clear()
 			t.pending_stmts = old_pending
 			if !has_pending {
-				t.a.children[gf.children_start] = new_val
+				t.a.set_child_slot(gf_id, int(gf.children_start), new_val)
 			}
 		}
 	}
@@ -11601,7 +11605,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 				}
 				t.generic_call_spec_misses.delete(idx)
 				if !isnil(t.tc) && !isnil(t.tc.fork_overlay) {
-					t.tc.fork_overlay.resolved_call_names.delete(idx)
+					t.tc.fork_overlay.resolved_calls.delete(idx)
 					t.tc.fork_overlay.resolved_fn_values.delete(idx)
 				}
 			}
@@ -14650,7 +14654,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?u32 {
 			return none
 		}
 	}
-	typ := t.tc.const_types[key] or { t.tc.file_scope.lookup(key) or { return none } }
+	typ := t.tc.const_types[key] or { t.tc.file_scope.lookup_id(flat.source_type_id(key)) or { return none } }
 	if typ is types.Unknown || typ is types.Void {
 		return none
 	}

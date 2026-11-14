@@ -301,7 +301,9 @@ fn test_fastc_native_cache_hashes_every_dependency_before_reuse() ! {
 		}
 		manifest := os.join_path(root, 'native.manifest')
 		mut stats := CObjectCacheStats{}
-		write_c_object_manifest(manifest, library, dependencies, mut stats)!
+		write_c_object_manifest(manifest, library, &CObjectDependencies{
+			files: dependencies
+		}, mut stats)!
 		assert v3_fastc_native_cached_library(manifest, 8) == none
 		fastc_write_test_native_manifest(manifest, library, dependencies, mut stats)!
 		for jobs in [1, 8] {
@@ -380,13 +382,13 @@ fn test_fastc_program_dependencies_reuse_requires_the_same_symlink_target() ! {
 fn test_fastc_program_dependency_key_ignores_only_declarations() {
 	$if !skip_fastc ? {
 		declarations := 'typedef int A;\n#include <stdio.h>\nvoid a(void);\n'
-		assert v3_fastc_preprocessor_lines(declarations) == '#include <stdio.h>\n'
-		assert v3_fastc_preprocessor_lines(declarations.replace('void a', 'int b')) == v3_fastc_preprocessor_lines(declarations)
+		assert c_preprocessor_lines(declarations) == '#include <stdio.h>\n'
+		assert c_preprocessor_lines(declarations.replace('void a', 'int b')) == c_preprocessor_lines(declarations)
 		// Comments, digraphs and continued lines can change which headers are opened.
-		assert v3_fastc_preprocessor_lines('/* x\n#include <a.h>\n*/\n') == '/* x\n#include <a.h>\n*/\n'
-		assert v3_fastc_preprocessor_lines('%:include <a.h>\nint x;\n') == '%:include <a.h>\n'
-		assert v3_fastc_preprocessor_lines('// note \\\n#include <a.h>\n') == '// note \\\n#include <a.h>\n'
-		assert v3_fastc_preprocessor_lines('int a = 1 \\\r\n+ 2;\n') == 'int a = 1 \\\r\n+ 2;\n'
+		assert c_preprocessor_lines('/* x\n#include <a.h>\n*/\n') == '/* x\n#include <a.h>\n*/\n'
+		assert c_preprocessor_lines('%:include <a.h>\nint x;\n') == '%:include <a.h>\n'
+		assert c_preprocessor_lines('// note \\\n#include <a.h>\n') == '// note \\\n#include <a.h>\n'
+		assert c_preprocessor_lines('int a = 1 \\\r\n+ 2;\n') == 'int a = 1 \\\r\n+ 2;\n'
 	}
 }
 
