@@ -362,14 +362,13 @@ fn (mut p Pool) stash_last_id(id int) {
 }
 
 // take_last_id returns the last-inserted id stashed by this thread's most
-// recent `DB.insert`, or 0 if there is none. Consuming on read keeps the
-// map bounded as threads come and go, and prevents a future thread that
-// reuses this tid from observing a stale id before doing its own insert.
+// recent `DB.insert`, or 0 if there is none. The entry is not removed on read,
+// since the ORM calls `last_id()` more than once for a single insert; the next
+// `DB.insert` on the same thread overwrites it.
 fn (mut p Pool) take_last_id() int {
 	tid := sync.thread_id()
 	p.last_ids_mu.lock()
 	id := p.last_ids[tid] or { i64(0) }
-	p.last_ids.delete(tid)
 	p.last_ids_mu.unlock()
 	return int(id)
 }
