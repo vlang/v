@@ -196,6 +196,145 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 	assert errors.len == 0, errors.join('\n') + '\n' + log.join('')
 }
 
+// A veb project is watched through an implied filter of usual web file types, but a
+// template can be of any type. The compiler reports it as an input of the program.
+fn test_watch_rebuilds_veb_app_on_reported_inputs_of_any_type() {
+	$if windows {
+		return
+	}
+	app_dir := os.join_path(tsource_dir, 'vebtemplate')
+	marker_path := os.join_path(toutput_dir, 'vebtemplate_marker.txt')
+	page_path := os.join_path(app_dir, 'page.txt')
+	partial_path := os.join_path(app_dir, 'partial.txt')
+	os.mkdir_all(app_dir)!
+	os.write_file(os.join_path(app_dir, 'main.v'), "module main
+
+import os
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+fn page() string {
+	return \$tmpl('page.txt')
+}
+
+fn main() {
+	os.write_file(os.args[1], page().trim_space()) or { panic(err) }
+}
+")!
+	os.write_file(page_path, 'V1\n@include "partial.txt"\n')!
+	os.write_file(partial_path, 'P1\n')!
+
+	mut process := new_watch_process(['watch', 'run', app_dir, marker_path])
+	mut failure := wait_for_marker(marker_path, 'V1\nP1', 'the first build', mut process)
+	if failure == '' {
+		failure = edit_and_wait(page_path, 'V2\n@include "partial.txt"\n', marker_path, 'V2\nP1', mut
+			process)
+	}
+	if failure == '' {
+		failure = edit_and_wait(partial_path, 'P2\n', marker_path, 'V2\nP2', mut process)
+	}
+	output := stop_watch_process(mut process)
+	assert failure == '', '${failure}\n${output}'
+}
+
+// The built-in ignore list is meant for what compilers and editors leave behind. It
+// has no say over a file that the compiler read to build the program.
+fn test_watch_run_reloads_on_reported_input_without_extension() {
+	project_dir := os.join_path(tsource_dir, 'extensionless')
+	marker_path := os.join_path(toutput_dir, 'extensionless_marker.txt')
+	page_path := os.join_path(project_dir, 'page')
+	source_path := os.join_path(project_dir, 'main.v')
+	os.mkdir_all(project_dir)!
+	write_template_program(source_path, 'page')!
+	os.write_file(page_path, 'V1\n')!
+
+	mut process := new_watch_process(['watch', 'run', source_path, marker_path])
+	mut failure := wait_for_marker(marker_path, 'V1', 'the first run', mut process)
+	if failure == '' {
+		failure = edit_and_wait(page_path, 'V2\n', marker_path, 'V2', mut process)
+	}
+	output := stop_watch_process(mut process)
+	assert failure == '', '${failure}\n${output}'
+}
+
+// Unlike the implied filter of veb projects, `--only-watch` is what the user asked for.
+fn test_watch_keeps_explicit_only_watch_for_reported_inputs() {
+	project_dir := os.join_path(tsource_dir, 'only_watch')
+	marker_path := os.join_path(toutput_dir, 'only_watch_marker.txt')
+	page_path := os.join_path(project_dir, 'page.txt')
+	source_path := os.join_path(project_dir, 'main.v')
+	os.mkdir_all(project_dir)!
+	write_template_program(source_path, 'page.txt')!
+	os.write_file(page_path, 'V1\n')!
+
+	mut process := new_watch_process(['watch', '--only-watch=*.v', 'run', source_path, marker_path])
+	mut failure := wait_for_marker(marker_path, 'V1', 'the first run', mut process)
+	mut log := []string{}
+	if failure == '' {
+		time.sleep(1500 * time.millisecond)
+		os.write_file(page_path, 'V2\n')!
+		// A wrong reload is logged when it starts, which takes a few scan periods at most.
+		time.sleep(2 * time.second)
+		drain_process_output(mut process, mut log)
+		if log.join('').contains('reload cycle:     1') {
+			failure = '`--only-watch=*.v` did not exclude a reported `.txt` file'
+		}
+	}
+	if failure == '' {
+		// The filter did not stop the watcher: the next allowed change sees the new template.
+		failure = edit_and_wait(source_path, os.read_file(source_path)! + '// edited\n',
+			marker_path, 'V2', mut process)
+	}
+	output := log.join('') + stop_watch_process(mut process)
+	assert failure == '', '${failure}\n${output}'
+}
+
+fn write_template_program(source_path string, template string) ! {
+	os.write_file(source_path, "import os
+
+fn page() string {
+	return \$tmpl('${template}')
+}
+
+fn main() {
+	os.write_file(os.args[1], page().trim_space()) or { panic(err) }
+}
+")!
+}
+
+fn new_watch_process(args []string) &os.Process {
+	mut process := os.new_process(vexe)
+	process.set_work_folder(vroot)
+	process.set_redirect_stdio()
+	process.use_pgroup = true
+	process.set_args(args)
+	process.run()
+	return process
+}
+
+fn stop_watch_process(mut process os.Process) string {
+	if process.is_alive() {
+		process.signal_pgkill()
+	}
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	process.close()
+	return output
+}
+
+// edit_and_wait changes a watched file, and returns what went wrong if the program
+// does not write `expected` to its marker after that.
+fn edit_and_wait(path string, content string, marker_path string, expected string, mut process os.Process) string {
+	// os.file_last_mod_unix has a 1 second resolution, so the edit has to land in a later second.
+	time.sleep(1500 * time.millisecond)
+	os.write_file(path, content) or { return err.msg() }
+	return wait_for_marker(marker_path, expected, 'the edit of `${os.file_name(path)}`', mut
+		process)
+}
+
 fn write_veb_app(app_dir string, port int, version string, valid bool) ! {
 	broken := if valid { '' } else { '\n\tthis does not compile' }
 	os.write_file(os.join_path(app_dir, 'main.v'), "module main

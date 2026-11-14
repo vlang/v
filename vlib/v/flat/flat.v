@@ -139,7 +139,8 @@ pub enum NodeKind as u8 {
 	sql_expr
 	// A `$veb.html(...)` / `$tmpl(...)` comptime-template placeholder. It is produced
 	// by parse_comptime_expr and fully expanded (into builder statements) by
-	// parse_block_body at parse time, so it never reaches later phases.
+	// parse_block_body at parse time, so it never reaches later phases. A node of this
+	// kind outside the tree records a file that a template read (see is_veb_template_input).
 	veb_template
 	// A `$res()` / `$res(index)` expression. This must remain distinct from
 	// `.ident` so user-spellable names cannot be reinterpreted as defer results.
@@ -580,6 +581,27 @@ pub fn (n &Node) is_static_type_method() bool {
 @[inline]
 pub fn (n &Node) is_embed_payload() bool {
 	return (n.flags & node_flag_embed_payload) != 0
+}
+
+const veb_template_input_type = 'template_input'
+
+// veb_template_input_node records that a template read the file at `path`. A template
+// is expanded into statements at parse time, and they do not say which files they came
+// from. This node stays out of the tree, among the nodes of the file that owns the
+// template, where the caches look for the non-V inputs of each module.
+pub fn veb_template_input_node(path string) Node {
+	return Node{
+		kind:  .veb_template
+		value: path
+		typ:   source_type_id(veb_template_input_type)
+	}
+}
+
+// is_veb_template_input reports whether this node holds, in `value`, the path of a file
+// that a template read, rather than a template to expand.
+@[inline]
+pub fn (n &Node) is_veb_template_input() bool {
+	return n.kind == .veb_template && n.typ_text() == veb_template_input_type
 }
 
 // is_freed_assignment reports whether an assignment has the `@[freed]` attribute.

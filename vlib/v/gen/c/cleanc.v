@@ -2684,12 +2684,13 @@ pub fn native_include_input_files(a &flat.FlatAst, vroot string, target pref.Tar
 // user supplies. Headers under the V root's `vlib/`, `thirdparty/` and `cmd/` trees
 // are versioned with the compiler and system headers with the platform, so their
 // direct paths are only recorded, per owning module, next to `$embed_file`
-// resources. A user-supplied header is never opened: only the C compiler can
-// account for what it includes, so the first one found is reported instead.
+// resources and `$tmpl` files. A user-supplied header is never opened: only the
+// C compiler can account for what it includes, so the first one found is reported
+// instead.
 pub struct CacheNativeInputs {
 pub mut:
 	// module_inputs maps a module (`main` for program files) to the sorted paths of
-	// the V-shipped native files and embedded resources its directives name directly.
+	// the V-shipped native files, embedded resources and template files it names directly.
 	// Forced headers belong to __v3_c_flags__, which every cached object depends on.
 	module_inputs map[string][]string
 	// native_paths holds the paths in module_inputs that native directives name.
@@ -2767,6 +2768,11 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 			}
 			.struct_init {
 				if node.source_value_id() == flat.source_type_id('embed_file.EmbedFileData') {
+					relevant << node_idx
+				}
+			}
+			.veb_template {
+				if node.is_veb_template_input() {
 					relevant << node_idx
 				}
 			}
@@ -3717,6 +3723,9 @@ fn c_record_include_macro_value(name string, value string, mut include_macros ma
 }
 
 fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
+	if node.is_veb_template_input() && os.is_file(node.value) {
+		return os.real_path(node.value)
+	}
 	if node.kind != .struct_init || node.source_value_id() != flat.source_type_id('embed_file.EmbedFileData') {
 		return none
 	}
