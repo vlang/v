@@ -3,7 +3,7 @@ module tls
 import x.crypto.curve25519
 
 fn test_client_build_hello() {
-	mut h := new_client_handshake('example.com', ['h2'], .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', ['h2'], .off, []CipherSuite{}) or { panic(err) }
 	msg := h.build_client_hello() or { panic(err) }
 	assert msg.len > 4
 	parsed, n := parse_handshake_message(msg) or { panic(err) }
@@ -24,7 +24,7 @@ fn test_client_build_hello() {
 
 fn test_client_process_server_hello() {
 	// Build a client hello first
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	_ = h.build_client_hello() or { panic(err) }
 
 	// Craft a minimal ServerHello with X25519 key share using a fresh server key

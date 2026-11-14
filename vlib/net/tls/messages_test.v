@@ -98,7 +98,7 @@ fn test_key_schedule_derive() {
 	assert hs.server_secret.len == 32
 	as_ := derive_application_secrets(hs.handshake_secret, sha256.sum256([]u8{len: 20, init: 3})) or { panic(err) }
 	assert as_.master_secret.len == 32
-	tk := derive_traffic_keys(hs.client_secret) or { panic(err) }
+	tk := derive_traffic_keys(hs.client_secret, .tls_aes_128_gcm_sha256) or { panic(err) }
 	assert tk.key.len == 16
 	assert tk.iv.len == 12
 	vd := finished_verify_data(hs.server_secret, sha256.sum256([]u8{len: 5})) or { panic(err) }

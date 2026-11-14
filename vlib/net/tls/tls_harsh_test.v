@@ -227,19 +227,20 @@ fn test_tls_harsh_record_tamper() {
 	key := []u8{len: 16}
 	iv := []u8{len: 12}
 	plain := 'tamper me'.bytes()
-	rec_bytes := seal_record(key, iv, 0, .application_data, plain) or { panic(err) }
+	rec_bytes := seal_record(.tls_aes_128_gcm_sha256, key, iv, 0, .application_data,
+		plain) or { panic(err) }
 	rec, _ := decode_cipher_record(rec_bytes) or { panic(err) }
-	_, out := open_record(key, iv, 0, rec) or { panic(err) }
+	_, out := open_record(.tls_aes_128_gcm_sha256, key, iv, 0, rec) or { panic(err) }
 	assert out == plain
 	// flip a tag byte
 	mut bad_bytes := rec_bytes.clone()
 	bad_bytes[bad_bytes.len - 1] ^= 0x01
 	bad_rec, _ := decode_cipher_record(bad_bytes) or { panic(err) }
 	mut tampered_opened := true
-	open_record(key, iv, 0, bad_rec) or { tampered_opened = false }
+	open_record(.tls_aes_128_gcm_sha256, key, iv, 0, bad_rec) or { tampered_opened = false }
 	assert !tampered_opened
 	// wrong sequence number
 	mut wrong_seq_opened := true
-	open_record(key, iv, 1, rec) or { wrong_seq_opened = false }
+	open_record(.tls_aes_128_gcm_sha256, key, iv, 1, rec) or { wrong_seq_opened = false }
 	assert !wrong_seq_opened
 }

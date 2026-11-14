@@ -31,7 +31,7 @@ fn test_guard_handshake_required_write() {
 fn test_guard_seal_lengths() {
 	good_iv := []u8{len: 12}
 	pt := [u8(1), 2, 3]
-	seal_record([]u8{len: 15}, good_iv, 0, .application_data, pt) or {
+	seal_record(.tls_aes_128_gcm_sha256, []u8{len: 15}, good_iv, 0, .application_data, pt) or {
 		assert err.msg().contains('key length')
 		return
 	}
@@ -40,11 +40,11 @@ fn test_guard_seal_lengths() {
 
 fn test_guard_seal_iv_plaintext() {
 	key := []u8{len: 16}
-	seal_record(key, []u8{len: 11}, 0, .application_data, [u8(1)]) or {
+	seal_record(.tls_aes_128_gcm_sha256, key, []u8{len: 11}, 0, .application_data, [u8(1)]) or {
 		assert err.msg().contains('iv length')
 		return
 	}
-	seal_record(key, []u8{len: 12}, 0, .application_data, []u8{len: max_plaintext_len + 1}) or {
+	seal_record(.tls_aes_128_gcm_sha256, key, []u8{len: 12}, 0, .application_data, []u8{len: max_plaintext_len + 1}) or {
 		assert err.msg().contains('plaintext')
 		return
 	}
@@ -60,11 +60,11 @@ fn test_guard_open_lengths() {
 		legacy_version: tls_version_1_3
 		fragment:       []u8{len: 40}
 	}
-	open_record([]u8{len: 8}, iv, 0, rec) or {
+	open_record(.tls_aes_128_gcm_sha256, []u8{len: 8}, iv, 0, rec) or {
 		assert err.msg().contains('key length')
 		return
 	}
-	open_record(key, []u8{len: 8}, 0, rec) or {
+	open_record(.tls_aes_128_gcm_sha256, key, []u8{len: 8}, 0, rec) or {
 		assert err.msg().contains('iv length')
 		return
 	}
@@ -79,7 +79,7 @@ fn test_guard_open_outer_and_tag() {
 		legacy_version: tls_version_1_3
 		fragment:       []u8{len: 40}
 	}
-	open_record(key, iv, 0, bad_outer) or {
+	open_record(.tls_aes_128_gcm_sha256, key, iv, 0, bad_outer) or {
 		assert err.msg().contains('outer')
 		return
 	}
@@ -88,7 +88,7 @@ fn test_guard_open_outer_and_tag() {
 		legacy_version: tls_version_1_3
 		fragment:       []u8{len: 10}
 	}
-	open_record(key, iv, 0, short) or {
+	open_record(.tls_aes_128_gcm_sha256, key, iv, 0, short) or {
 		assert err.msg().contains('truncated')
 		return
 	}
@@ -100,7 +100,9 @@ fn test_guard_rfc_aad() {
 	key := []u8{len: 16, init: 1}
 	iv := []u8{len: 12, init: 2}
 	pt := 'hello'.bytes()
-	rec_bytes := seal_record(key, iv, 7, .application_data, pt) or { panic(err) }
+	rec_bytes := seal_record(.tls_aes_128_gcm_sha256, key, iv, 7, .application_data, pt) or {
+		panic(err)
+	}
 	rec, _ := decode_cipher_record(rec_bytes) or { panic(err) }
 	// rebuild the nonce exactly like open_record does
 	mut nonce := iv.clone()
@@ -270,7 +272,7 @@ fn test_guard_server_hello_suite() {
 	// 0x1301) must reject the ServerHello at negotiation time.
 	sh_body := new_sh_body(srv_pub_bytes, .tls_aes_256_gcm_sha384) or { panic(err) }
 	sh_msg := encode_handshake_message(.server_hello, sh_body) or { panic(err) }
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	_ = h.build_client_hello() or { panic(err) }
 	h.process_server_hello(sh_msg) or {
 		assert err.msg().contains('cipher suite')
@@ -311,11 +313,11 @@ fn test_guard_server_hello_unknown_suite_parse() {
 
 // test_guard_client_hello_suites locks unknown-suite skipping on parse.
 fn test_guard_client_hello_unknown_suites() {
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	ch_msg := h.build_client_hello() or { panic(err) }
 	parsed, _ := parse_handshake_message(ch_msg) or { panic(err) }
 	mut ch := parse_client_hello(parsed.body) or { panic(err) }
-	assert ch.cipher_suites == [.tls_aes_128_gcm_sha256]
+	assert ch.cipher_suites == [.tls_aes_128_gcm_sha256, .tls_chacha20_poly1305_sha256]
 	// A body offering only an unknown suite (0x0000) must yield no known suites.
 	mut unknown_body := []u8{}
 	unknown_body << u8(0x03)
@@ -336,7 +338,7 @@ fn test_guard_client_hello_unknown_suites() {
 
 // test_guard_client_hello_version locks the legacy_version check.
 fn test_guard_client_hello_version() {
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	ch_msg := h.build_client_hello() or { panic(err) }
 	parsed, _ := parse_handshake_message(ch_msg) or { panic(err) }
 	// Patch legacy_version to 0x0301 inside the body (first two bytes).
@@ -351,7 +353,7 @@ fn test_guard_client_hello_version() {
 }
 
 fn test_server_handshake_trailing_rejected() {
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	ch_msg := h.build_client_hello() or { panic(err) }
 	mut trailing := ch_msg.clone()
 	trailing << u8(0)
@@ -370,7 +372,7 @@ fn test_server_handshake_no_suite() {
 		legacy_version:      tls_version_1_3
 		random:              []u8{len: 32, init: 3}
 		session_id:          []u8{}
-		cipher_suites:       [.tls_chacha20_poly1305_sha256]
+		cipher_suites:       [.tls_aes_256_gcm_sha384]
 		compression_methods: [u8(0)]
 		extensions:          [
 			Extension{ typ: ext_key_share, data: key_share_client_data(pk_bytes) },
@@ -387,7 +389,7 @@ fn test_server_handshake_no_suite() {
 		assert err.msg().contains('cipher suite')
 		return
 	}
-	assert false, 'hello without 0x1301 must fail'
+	assert false, 'hello with only an unimplemented suite must fail'
 }
 
 fn test_server_handshake_no_tls13() {
@@ -439,7 +441,7 @@ fn test_server_handshake_bad_versions_vector() {
 
 // test_guard_client_sh_trailing locks consumed-length checks on ServerHello.
 fn test_guard_client_sh_trailing() {
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	_ = h.build_client_hello() or { panic(err) }
 	srv_priv := curve25519.PrivateKey.new() or { panic(err) }
 	srv_pub_bytes := srv_priv.public_key()!.bytes()!
@@ -470,7 +472,7 @@ fn test_guard_client_sh_trailing() {
 
 // test_guard_client_sh_no_tls13 locks the client-side version confirmation.
 fn test_guard_client_sh_no_tls13() {
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	_ = h.build_client_hello() or { panic(err) }
 	srv_priv := curve25519.PrivateKey.new() or { panic(err) }
 	srv_pub_bytes := srv_priv.public_key()!.bytes()!
@@ -495,7 +497,7 @@ fn test_guard_client_sh_no_tls13() {
 
 // test_guard_client_keyshare_trailing locks the exact-length key_share check.
 fn test_guard_client_keyshare_trailing() {
-	mut h := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	_ = h.build_client_hello() or { panic(err) }
 	srv_priv := curve25519.PrivateKey.new() or { panic(err) }
 	srv_pub_bytes := srv_priv.public_key()!.bytes()!
@@ -594,7 +596,7 @@ fn test_guard_alpn_long() {
 }
 
 fn test_guard_client_hello_long_host() {
-	mut h := new_client_handshake('x'.repeat(300), []string{}, .off) or { panic(err) }
+	mut h := new_client_handshake('x'.repeat(300), []string{}, .off, []CipherSuite{}) or { panic(err) }
 	h.build_client_hello() or {
 		assert err.msg().contains('server name')
 		return
@@ -670,7 +672,7 @@ fn test_guard_oid_helper() {
 // test_guard_rfc_cert_verify locks the RFC 8446 §4.4.3 content (64×0x20 ||
 // context || 0x00 || hash) by verifying the server flight independently.
 fn test_guard_rfc_cert_verify() {
-	mut client := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut client := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
 	ch_msg := client.build_client_hello() or { panic(err) }
 	mut server := new_server_handshake(.off) or { panic(err) }
 	flight := server.process_client_hello(ch_msg) or { panic(err) }

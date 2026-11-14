@@ -101,8 +101,10 @@ pub:
 }
 
 // derive_traffic_keys derives the AEAD key and IV from a traffic secret.
-pub fn derive_traffic_keys(traffic_secret []u8) !TrafficKeys {
-	key := hkdf_expand_label(traffic_secret, 'key', []u8{}, 16)!
+// The key length follows the negotiated suite (16 bytes for AES-128-GCM,
+// 32 bytes for AES-256-GCM and ChaCha20-Poly1305); the IV is always 12.
+pub fn derive_traffic_keys(traffic_secret []u8, suite CipherSuite) !TrafficKeys {
+	key := hkdf_expand_label(traffic_secret, 'key', []u8{}, cipher_suite_key_len(suite))!
 	iv := hkdf_expand_label(traffic_secret, 'iv', []u8{}, 12)!
 	return TrafficKeys{
 		key: key

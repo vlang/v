@@ -5,7 +5,9 @@ import x.crypto.curve25519
 
 fn test_handshake_integration() {
 	// Client
-	mut client := new_client_handshake('example.com', []string{}, .off) or { panic(err) }
+	mut client := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or {
+		panic(err)
+	}
 	ch_msg := client.build_client_hello() or { panic(err) }
 
 	// Server

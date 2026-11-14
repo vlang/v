@@ -30,6 +30,8 @@ pub struct ServerHandshake {
 pub mut:
 	host           string
 	pq_mode        PostQuantumMode
+	suites         []CipherSuite
+	suite          CipherSuite
 	echd_priv      &curve25519.PrivateKey
 	key_kind       ServerKeyKind
 	ecdsa_priv     ecdsa.PrivateKey
@@ -167,6 +169,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	leaf := x509.parse_der(chain[0])!
 	leaf_public := leaf.public_key() or { return error('tls: unsupported server certificate public key') }
 	mut server := new_server_handshake(pq_mode)!
+	server.suites = effective_cipher_suites(cfg)
 	match leaf_public {
 		x509.EcdsaP256PublicKey {
 			if key_block.block_type !in ['EC PRIVATE KEY', 'PRIVATE KEY'] {
@@ -366,9 +369,9 @@ pub fn select_cv_scheme(offered []u16, kind ServerKeyKind) !u16 {
 }
 
 // process_client_hello ingests a ClientHello, negotiates parameters, returns the server flight.
-// process_client_hello requires TLS 1.3 (supported_versions), an offered
-// AES-128-GCM suite, a mutual key share, and a signature scheme the server
-// key supports; only P-256 / hybrid key shares are accepted.
+// process_client_hello requires TLS 1.3 (supported_versions), a mutually
+// supported cipher suite, a mutual key share, and a signature scheme the
+// server key supports; only P-256 / hybrid key shares are accepted.
 pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	msg, consumed := parse_handshake_message(ch_msg) or { return err }
 	if consumed != ch_msg.len {
@@ -379,18 +382,22 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	}
 	ch := parse_client_hello(msg.body) or { return err }
 	// Only TLS 1.3 is supported: the client must offer it via supported_versions
-	// and include the AES-128-GCM suite we implement.
-	mut offered_tls13 := false
-	mut offered_suite := false
-	for cs in ch.cipher_suites {
-		if cs == .tls_aes_128_gcm_sha256 {
-			offered_suite = true
+	// and share at least one implemented cipher suite. The server picks by
+	// its own preference order (Config.cipher_suites, else the default);
+	// parsed-but-unimplemented suites never match.
+	server_prefs := if s.suites.len > 0 { s.suites.clone() } else { default_cipher_suites() }
+	mut found_suite := false
+	for want in server_prefs {
+		if want in ch.cipher_suites && want in default_cipher_suites() {
+			s.suite = want
+			found_suite = true
 			break
 		}
 	}
-	if !offered_suite {
+	if !found_suite {
 		return error('tls: no supported cipher suite')
 	}
+	mut offered_tls13 := false
 	for e in ch.extensions {
 		if e.typ == ext_supported_versions {
 			// Extension data is a length-prefixed vector of uint16 versions.
@@ -523,7 +530,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		legacy_version:     tls_version_1_3
 		random:             s.server_random.clone()
 		session_id:         []u8{}
-		cipher_suite:       .tls_aes_128_gcm_sha256
+		cipher_suite:       s.suite
 		compression_method: 0
 		extensions:         [
 			Extension{

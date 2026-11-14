@@ -13,6 +13,8 @@ pub mut:
 	host          string
 	alpn          []string
 	pq_mode       PostQuantumMode
+	offered       []CipherSuite
+	suite         CipherSuite
 	echd_priv     &curve25519.PrivateKey
 	client_random []u8
 	// ML-KEM state
@@ -34,13 +36,17 @@ pub mut:
 
 // new_client_handshake creates a client handshake for host with optional ALPN and PQ mode.
 // new_client_handshake generates an ephemeral X25519 key and, unless pq_mode is off, an ML-KEM keypair.
-pub fn new_client_handshake(host string, alpn []string, pq_mode PostQuantumMode) !ClientHandshake {
+// suites lists the cipher suites to offer; empty means the implemented default.
+pub fn new_client_handshake(host string, alpn []string, pq_mode PostQuantumMode, suites []CipherSuite) !ClientHandshake {
 	priv := curve25519.PrivateKey.new()!
 	rnd := crypto.rand.bytes(32)!
+	offered := if suites.len > 0 { suites.clone() } else { default_cipher_suites() }
 	mut h := ClientHandshake{
 		host:          host
 		alpn:          alpn
 		pq_mode:       pq_mode
+		offered:       offered
+		suite:         offered[0]
 		echd_priv:     priv
 		client_random: rnd
 	}
@@ -99,7 +105,7 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 		legacy_version:      tls_version_1_3
 		random:              h.client_random.clone()
 		session_id:          []u8{}
-		cipher_suites:       [.tls_aes_128_gcm_sha256]
+		cipher_suites:       h.offered.clone()
 		compression_methods: [u8(0)]
 		extensions:          exts
 	}
@@ -122,9 +128,10 @@ pub fn (mut h ClientHandshake) process_server_hello(sh_msg []u8) ! {
 	if sh.legacy_version != tls_version_1_3 {
 		return error('tls: invalid ServerHello version')
 	}
-	if sh.cipher_suite != .tls_aes_128_gcm_sha256 {
+	if sh.cipher_suite !in h.offered {
 		return error('tls: unsupported cipher suite')
 	}
+	h.suite = sh.cipher_suite
 	// RFC 8446 §4.1.3: the server must confirm TLS 1.3 via supported_versions.
 	mut confirmed_tls13 := false
 	for e in sh.extensions {
@@ -191,8 +198,8 @@ pub fn (mut h ClientHandshake) process_server_hello(sh_msg []u8) ! {
 	th := sha256.sum256(h.transcript)
 	hs := derive_handshake_secrets(es, shared, th) or { return err }
 	h.handshake_keys = hs
-	h.client_hs_traffic = derive_traffic_keys(hs.client_secret) or { return err }
-	h.server_hs_traffic = derive_traffic_keys(hs.server_secret) or { return err }
+	h.client_hs_traffic = derive_traffic_keys(hs.client_secret, h.suite) or { return err }
+	h.server_hs_traffic = derive_traffic_keys(hs.server_secret, h.suite) or { return err }
 }
 
 // client_handshake_traffic returns the derived client handshake traffic keys.

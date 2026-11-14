@@ -372,6 +372,50 @@ fn test_sig_loopback_p384() {
 	_ = server
 }
 
+// test_sig_loopback_chacha runs a full verified handshake negotiating
+// ChaCha20-Poly1305, and locks the negotiated suite on the client.
+fn test_sig_loopback_chacha() {
+	td := os.join_path(@VEXEROOT, 'vlib/net/tls/testdata')
+	server_cfg := Config{
+		cert:          os.join_path(td, 'p384_leaf_cert.pem')
+		key:           os.join_path(td, 'p384_leaf_key.pem')
+		cipher_suites: [.tls_chacha20_poly1305_sha256]
+	}
+	mut l := listen(server_cfg) or { panic('listen: ${err}') }
+	port := l.addr() or { panic(err) }.port() or { panic(err) }
+	server := spawn fn (mut l Listener) {
+		mut conn := l.accept() or { return }
+		defer { conn.close() or {} }
+		mut buf := []u8{len: 4}
+		n := conn.read(mut buf) or { return }
+		if n > 0 {
+			conn.write('pong'.bytes()) or {}
+		}
+	}(mut l)
+	ca_der := sigtest_pem_block(sigtest_read('p384_ca_cert.pem'), 'CERTIFICATE')
+	ca_cert := x509.parse_der(ca_der) or { panic(err) }
+	client_cfg := Config{
+		server_name:   'localhost'
+		verify:        true
+		verify_chain:  true
+		ca_store:      CertStore{
+			roots: [ca_cert]
+		}
+		cipher_suites: [.tls_chacha20_poly1305_sha256]
+	}
+	mut c := dial('127.0.0.1', port, client_cfg) or { panic('dial: ${err}') }
+	c.handshake() or { panic('client hs: ${err}') }
+	assert c.negotiated_cipher() == .tls_chacha20_poly1305_sha256
+	c.write('ping'.bytes()) or { panic(err) }
+	mut buf := []u8{len: 4}
+	n := c.read(mut buf) or { panic(err) }
+	assert n == 4
+	assert buf == 'pong'.bytes()
+	c.close() or {}
+	l.close() or {}
+	_ = server
+}
+
 // mldsa_case bundles one ML-DSA variant's TLS parameters.
 struct MldsaCase {
 	kind   mldsa.Kind

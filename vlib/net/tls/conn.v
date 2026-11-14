@@ -13,6 +13,8 @@ mut:
 	tcp       net.TcpConn
 	is_server bool
 	closed    bool
+	// Negotiated cipher suite (zero value selects AES-128-GCM).
+	suite CipherSuite
 
 	// handshake state
 	client_hs      ?ClientHandshake
@@ -152,7 +154,7 @@ fn (mut c Conn) read_record() !(ContentType, []u8) {
 			iv = c.server_hs_traffic.iv.clone()
 		}
 	}
-	inner_ct, plain := open_record(key, iv, c.read_seq, cr) or { return err }
+	inner_ct, plain := open_record(c.suite, key, iv, c.read_seq, cr) or { return err }
 	c.read_seq++
 	return inner_ct, plain
 }
@@ -188,7 +190,7 @@ fn (mut c Conn) write_cipher_record(ct ContentType, data []u8) ! {
 			iv = c.client_hs_traffic.iv.clone()
 		}
 	}
-	rec_bytes := seal_record(key, iv, c.write_seq, ct, data) or { return err }
+	rec_bytes := seal_record(c.suite, key, iv, c.write_seq, ct, data) or { return err }
 	c.write_all(rec_bytes)!
 	c.write_seq++
 }
@@ -248,8 +250,13 @@ pub fn (mut c Conn) handshake() ! {
 			msgs << flight[off..off + n]
 			off += n
 		}
-		c.server_hs_traffic = derive_traffic_keys(shs.handshake_keys.server_secret) or { return err }
-		c.client_hs_traffic = derive_traffic_keys(shs.handshake_keys.client_secret) or { return err }
+		c.server_hs_traffic = derive_traffic_keys(shs.handshake_keys.server_secret, shs.suite) or {
+			return err
+		}
+		c.client_hs_traffic = derive_traffic_keys(shs.handshake_keys.client_secret, shs.suite) or {
+			return err
+		}
+		c.suite = shs.suite
 
 		c.write_plain_record(.handshake, msgs[0])!
 		for i in 1 .. msgs.len {
@@ -262,15 +269,17 @@ pub fn (mut c Conn) handshake() ! {
 		}
 		shs.verify_client_finished(fbody) or { return err }
 
-		c.server_app = derive_traffic_keys(shs.app_keys.server_secret) or { return err }
-		c.client_app = derive_traffic_keys(shs.app_keys.client_secret) or { return err }
+		c.server_app = derive_traffic_keys(shs.app_keys.server_secret, c.suite) or { return err }
+		c.client_app = derive_traffic_keys(shs.app_keys.client_secret, c.suite) or { return err }
 		// Each traffic secret has an independent record sequence number.
 		c.read_seq = 0
 		c.write_seq = 0
 		c.handshake_done = true
 		return
 	}
-	mut chs := new_client_handshake(c.cfg.server_name, c.cfg.alpn_protocols, c.cfg.pq_mode) or { return err }
+	mut chs := new_client_handshake(c.cfg.server_name, c.cfg.alpn_protocols, c.cfg.pq_mode, effective_cipher_suites(c.cfg)) or {
+		return err
+	}
 
 	ch_msg := chs.build_client_hello() or { return err }
 	c.write_plain_record(.handshake, ch_msg)!
@@ -280,6 +289,7 @@ pub fn (mut c Conn) handshake() ! {
 		return error('tls: expected handshake, got ${ct}')
 	}
 	chs.process_server_hello(body) or { return err }
+	c.suite = chs.suite
 	c.client_hs_traffic = chs.client_hs_traffic
 	c.server_hs_traffic = chs.server_hs_traffic
 
@@ -376,8 +386,8 @@ pub fn (mut c Conn) handshake() ! {
 	c.client_hs = chs
 	c.client_hs_traffic = chs.client_hs_traffic
 	c.server_hs_traffic = chs.server_hs_traffic
-	c.client_app = derive_traffic_keys(as_.client_secret) or { return err }
-	c.server_app = derive_traffic_keys(as_.server_secret) or { return err }
+	c.client_app = derive_traffic_keys(as_.client_secret, c.suite) or { return err }
+	c.server_app = derive_traffic_keys(as_.server_secret, c.suite) or { return err }
 
 	cf_verified := finished_verify_data(chs.handshake_keys.client_secret, sha256.sum256(chs.transcript)) or { return err }
 	fin_body := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: cf_verified })) or { return err }

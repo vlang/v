@@ -13,7 +13,8 @@ Trust roots resolve on every OS: explicit `ca_store`/`ca_cert`, then
 `SSL_CERT_FILE`/`SSL_CERT_DIR`, then Unix bundle paths, then the embedded
 Mozilla bundle. X25519MLKEM768 hybrid key exchange (the `x.crypto.mlkem`
 library also implements raw 512/1024 variants, which `net.tls` does not
-negotiate). No 0-RTT, no session resumption, no TLS 1.2, no DTLS.
+negotiate). AES-128-GCM and ChaCha20-Poly1305 record protection, negotiated
+by server preference. No 0-RTT, no session resumption, no TLS 1.2, no DTLS.
 
 ## Build
 
