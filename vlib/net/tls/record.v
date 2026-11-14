@@ -67,7 +67,9 @@ pub fn decode_plain_record(data []u8) !(PlainRecord, int) {
 	}
 	ct := unsafe { ContentType(data[0]) }
 	ver := (u16(data[1]) << 8) | u16(data[2])
-	if ver != tls_version_1_3 {
+	// RFC 8446 §5.1: peers send the initial ClientHello record with 0x0301;
+	// accept 0x0301..0x0303 on plaintext records.
+	if ver != tls_version_1_3 && ver != 0x0301 && ver != 0x0302 {
 		return error('tls: invalid legacy version')
 	}
 	ln := (u16(data[3]) << 8) | u16(data[4])

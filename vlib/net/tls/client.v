@@ -1,7 +1,6 @@
 module tls
 
 import crypto.rand
-import crypto.sha256
 import crypto.x509
 import x.crypto.curve25519
 import x.crypto.mlkem
@@ -194,9 +193,9 @@ pub fn (mut h ClientHandshake) process_server_hello(sh_msg []u8) ! {
 		shared = h.echd_priv.x25519(server_pub) or { return err }
 	}
 
-	es := derive_early_secret() or { return err }
-	th := sha256.sum256(h.transcript)
-	hs := derive_handshake_secrets(es, shared, th) or { return err }
+	es := derive_early_secret_for_suite(h.suite) or { return err }
+	th := transcript_hash_for_suite(h.transcript, h.suite)
+	hs := derive_handshake_secrets_for_suite(es, shared, th, h.suite) or { return err }
 	h.handshake_keys = hs
 	h.client_hs_traffic = derive_traffic_keys(hs.client_secret, h.suite) or { return err }
 	h.server_hs_traffic = derive_traffic_keys(hs.server_secret, h.suite) or { return err }

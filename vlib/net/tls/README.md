@@ -13,8 +13,11 @@ Trust roots resolve on every OS: explicit `ca_store`/`ca_cert`, then
 `SSL_CERT_FILE`/`SSL_CERT_DIR`, then Unix bundle paths, then the embedded
 Mozilla bundle. X25519MLKEM768 hybrid key exchange (the `x.crypto.mlkem`
 library also implements raw 512/1024 variants, which `net.tls` does not
-negotiate). AES-128-GCM and ChaCha20-Poly1305 record protection, negotiated
-by server preference. No 0-RTT, no session resumption, no TLS 1.2, no DTLS.
+negotiate). AES-128-GCM, AES-256-GCM (SHA-384 schedule) and
+ChaCha20-Poly1305 record protection, negotiated by server preference. TLS 1.3
+CCM suites (0x1304/0x1305) are not negotiated: no CCM primitive exists in the
+stdlib and no major peer offers them. No 0-RTT, no session resumption, no TLS
+1.2, no DTLS.
 
 ## Build
 
@@ -53,13 +56,28 @@ trust it unless it is explicitly added to their trust store.
 
 - RSA *key generation* — V can verify and sign with RSA but cannot generate
   RSA keys (no crypto.rsa module); test fixtures live in `testdata/`.
-- OpenSSL cross-check in CI — no openssl binary; DER validated structurally via parse_der.
-- Session resumption, 0-RTT, SLH-DSA, DTLS, TLS 1.2, client-cert auth,
-  HelloRetryRequest, NewSessionTicket, KeyUpdate — out of scope.
+- Session resumption / PSK (incl. NewSessionTicket, 0-RTT), client-cert auth
+  (mTLS), HelloRetryRequest, KeyUpdate — wire parsing exists for the message
+  types, but full negotiation is not implemented yet.
+- TLS 1.2, DTLS, CCM suites (0x1304/0x1305) — out of scope: no stdlib CCM
+  primitive and no major peer offers them.
+- SLH-DSA remains on the OpenSSL wrapper until a pure-V SLH-DSA module exists.
 - Chain building — v1 verifies the leaf directly against a trusted root only;
   intermediates are ignored. RSA-PSS-signed CA certificates are rejected.
 - Signature hashes follow the algorithm OID exactly (no SHA-1/MD5 anywhere);
   ML-DSA signs the raw TBS/content bytes with no pre-hash.
+
+## Interop notes
+
+- `openssl s_client -tls1_3` negotiates all three suites against `net.tls`
+  listeners (verified 0x1301/0x1302/0x1303 with chain verification OK). Two
+  compat fixes were required: accept record legacy versions 0x0301..0x0303 on
+  plaintext records, echo the ClientHello session_id in the ServerHello, and
+  ignore middlebox-compat ChangeCipherSpec records during the handshake.
+- Baseline record throughput on this box (`-prod`, 200 x 16 KiB records):
+  AES-128-GCM seal ~1012 ms / open ~1472 ms, AES-256-GCM seal ~2011 ms /
+  open ~1302 ms, ChaCha20-Poly1305 seal/open ~19 ms each. ChaCha20-Poly1305
+  is the fastest on machines without AES hardware acceleration.
 
 ## Trust roots (`cacert.pem`)
 

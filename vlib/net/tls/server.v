@@ -529,7 +529,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	sh := ServerHello{
 		legacy_version:     tls_version_1_3
 		random:             s.server_random.clone()
-		session_id:         []u8{}
+		session_id:         ch.session_id.clone()
 		cipher_suite:       s.suite
 		compression_method: 0
 		extensions:         [
@@ -547,9 +547,9 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	sh_msg := encode_handshake_message(.server_hello, sh_body)!
 	s.transcript << sh_msg
 
-	es := derive_early_secret() or { return err }
-	th := sha256.sum256(s.transcript)
-	hs := derive_handshake_secrets(es, shared, th) or { return err }
+	es := derive_early_secret_for_suite(s.suite) or { return err }
+	th := transcript_hash_for_suite(s.transcript, s.suite)
+	hs := derive_handshake_secrets_for_suite(es, shared, th, s.suite) or { return err }
 	s.handshake_keys = hs
 
 	ee_body := []u8{len: 2}
@@ -580,7 +580,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	cert_msg := encode_handshake_message(.certificate, cert_body)!
 	s.transcript << cert_msg
 
-	transcript_hash := sha256.sum256(s.transcript)
+	transcript_hash := transcript_hash_for_suite(s.transcript, s.suite)
 	content := cv_content(true, transcript_hash)
 	sig := s.sign_certificate_verify(content) or { return err }
 	mut cv_body := []u8{}
@@ -592,7 +592,8 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	cv_msg := encode_handshake_message(.certificate_verify, cv_body)!
 	s.transcript << cv_msg
 
-	fin_vd := finished_verify_data(hs.server_secret, sha256.sum256(s.transcript)) or { return err }
+	fin_vd := finished_verify_data_for_suite(hs.server_secret, transcript_hash_for_suite(s.transcript,
+		s.suite), s.suite) or { return err }
 	fin_msg := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: fin_vd }))!
 	s.transcript << fin_msg
 
@@ -658,13 +659,15 @@ pub fn (mut s ServerHandshake) verify_client_finished(fin_msg []u8) ! {
 	if parsed.typ != .finished {
 		return error('tls: expected Finished')
 	}
-	th := sha256.sum256(s.transcript)
-	expected := finished_verify_data(s.handshake_keys.client_secret, th) or { return err }
-	fin := parse_finished(parsed.body, 32) or { return err }
+	th := transcript_hash_for_suite(s.transcript, s.suite)
+	expected := finished_verify_data_for_suite(s.handshake_keys.client_secret, th,
+		s.suite) or { return err }
+	fin := parse_finished(parsed.body, cipher_suite_hash_len(s.suite)) or { return err }
 	if subtle.constant_time_compare(fin.verify_data, expected) != 1 {
 		return error('tls: client Finished mismatch')
 	}
-	as_ := derive_application_secrets(s.handshake_keys.handshake_secret, th) or { return err }
+	as_ := derive_application_secrets_for_suite(s.handshake_keys.handshake_secret, th,
+		s.suite) or { return err }
 	s.app_keys = as_
 	s.transcript << fin_msg
 }

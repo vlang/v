@@ -9,9 +9,9 @@
 // ecdsa 0x0403, 0x0503, 0x0603, mldsa 0x0904/0x0905/0x0906, rsa_pss_rsae
 // 0x0804/0x0805/0x0806, rsa_pkcs1 0x0401/0x0501/0x0601. No 0-RTT, no session
 // resumption, no TLS 1.2, no DTLS, no client-cert auth in v1.
-// Cipher suites: AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 negotiated
-// by server preference (AES-128-GCM first); AES-256-GCM-SHA384 parses but is
-// not negotiated (needs SHA-384 transcript hashing).
+// Cipher suites: AES-128-GCM-SHA256, AES-256-GCM-SHA384 (SHA-384 schedule)
+// and ChaCha20-Poly1305-SHA256, negotiated by server preference
+// (AES-128-GCM first).
 module tls
 
 import net
@@ -186,10 +186,10 @@ pub mut:
 	verify_chain bool = true
 	// Cipher suites to offer (client) or accept (server), in preference order
 	// for selection. Empty means the implemented default
-	// (AES-128-GCM, then ChaCha20-Poly1305).
+	// (AES-128-GCM, ChaCha20-Poly1305, AES-256-GCM).
 	// Cipher suites to offer (client) or accept (server), in preference order
 	// for selection. Empty means the implemented default
-	// (AES-128-GCM, then ChaCha20-Poly1305).
+	// (AES-128-GCM, ChaCha20-Poly1305, AES-256-GCM).
 	cipher_suites []CipherSuite
 	// Optional trust store for chain verification. If empty, system roots are used.
 	ca_store CertStore

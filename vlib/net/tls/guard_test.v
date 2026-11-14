@@ -138,14 +138,22 @@ fn test_guard_plain_version_and_cap() {
 		version:      tls_version_1_3
 		fragment:     [u8(1)]
 	})
+	mut compat := good.clone()
+	compat[1] = 0x03
+	compat[2] = 0x01
+	decoded, _ := decode_plain_record(compat) or {
+		assert false, '0x0301 plaintext must be accepted: ${err}'
+		return
+	}
+	assert decoded.version == 0x0301
 	mut bad_ver := good.clone()
 	bad_ver[1] = 0x03
-	bad_ver[2] = 0x01
+	bad_ver[2] = 0x00
 	decode_plain_record(bad_ver) or {
 		assert err.msg().contains('version')
 		return
 	}
-	assert false, '0x0301 version must fail'
+	assert false, '0x0300 version must fail'
 }
 
 fn test_guard_plain_too_large() {
@@ -246,7 +254,7 @@ fn guard_key_share_server_data(pubkey []u8) []u8 {
 
 // test_guard_server_hello_suite locks the server-hello suite parse whitelist:
 // unknown suite values are rejected at parse time, while the client handshake
-// additionally requires the exact suite it offered (0x1301).
+// additionally requires a suite it offered.
 fn test_guard_server_hello_suite() {
 	srv_priv := curve25519.PrivateKey.new() or { panic(err) }
 	srv_pub := srv_priv.public_key() or { panic(err) }
@@ -268,11 +276,13 @@ fn test_guard_server_hello_suite() {
 		}
 		return encode_server_hello(sh)
 	}
-	// 0x1302 is a real suite so it parses, but the client (which offered only
-	// 0x1301) must reject the ServerHello at negotiation time.
+	// 0x1302 is a real suite so it parses, but a client that offered only
+	// 0x1301 must reject the ServerHello at negotiation time.
 	sh_body := new_sh_body(srv_pub_bytes, .tls_aes_256_gcm_sha384) or { panic(err) }
 	sh_msg := encode_handshake_message(.server_hello, sh_body) or { panic(err) }
-	mut h := new_client_handshake('example.com', []string{}, .off, []CipherSuite{}) or { panic(err) }
+	mut h := new_client_handshake('example.com', []string{}, .off, [.tls_aes_128_gcm_sha256]) or {
+		panic(err)
+	}
 	_ = h.build_client_hello() or { panic(err) }
 	h.process_server_hello(sh_msg) or {
 		assert err.msg().contains('cipher suite')
@@ -317,7 +327,8 @@ fn test_guard_client_hello_unknown_suites() {
 	ch_msg := h.build_client_hello() or { panic(err) }
 	parsed, _ := parse_handshake_message(ch_msg) or { panic(err) }
 	mut ch := parse_client_hello(parsed.body) or { panic(err) }
-	assert ch.cipher_suites == [.tls_aes_128_gcm_sha256, .tls_chacha20_poly1305_sha256]
+	assert ch.cipher_suites == [.tls_aes_128_gcm_sha256, .tls_chacha20_poly1305_sha256,
+		.tls_aes_256_gcm_sha384]
 	// A body offering only an unknown suite (0x0000) must yield no known suites.
 	mut unknown_body := []u8{}
 	unknown_body << u8(0x03)
@@ -372,7 +383,7 @@ fn test_server_handshake_no_suite() {
 		legacy_version:      tls_version_1_3
 		random:              []u8{len: 32, init: 3}
 		session_id:          []u8{}
-		cipher_suites:       [.tls_aes_256_gcm_sha384]
+		cipher_suites:       []CipherSuite{}
 		compression_methods: [u8(0)]
 		extensions:          [
 			Extension{ typ: ext_key_share, data: key_share_client_data(pk_bytes) },
@@ -389,7 +400,7 @@ fn test_server_handshake_no_suite() {
 		assert err.msg().contains('cipher suite')
 		return
 	}
-	assert false, 'hello with only an unimplemented suite must fail'
+	assert false, 'hello with no suites must fail'
 }
 
 fn test_server_handshake_no_tls13() {
