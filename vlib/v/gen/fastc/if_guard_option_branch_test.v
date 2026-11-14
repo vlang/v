@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // `x := if h := opt { h.call() } else { none }` keeps the payload type of the option
 // branch, which is resolved while the guard local is in scope.
 fn test_if_guard_expression_keeps_option_branch_payload() ! {

@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // Only an `or` block's own final `if`/`match` is its value. One that ends a block
 // nested inside the `or` block (a `for` or `if` body) is an ordinary statement of
 // that block; it was hoisted out of its scope (an undeclared C variable) or dropped.

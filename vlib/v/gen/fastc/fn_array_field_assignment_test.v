@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // `d.callbacks = []fn () {}` assigns an empty array of a function type; the `fn`
 // after `[]` is the element type, not a function literal.
 fn test_empty_function_array_assignment_to_field() ! {

@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_promoted_pointer_methods_in_compound_expressions_match_c() ! {
 	root := os.join_path(os.vtmp_dir(), 'fastc_promoted_pointer_method_${os.getpid()}')
 	os.mkdir_all(root)!
