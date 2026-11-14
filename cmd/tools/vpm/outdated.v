@@ -3,7 +3,6 @@ module main
 import os
 import semver
 import sync.pool
-import v.vmod
 
 pub struct OutdatedResult {
 	name string
@@ -147,20 +146,22 @@ fn outdated_constraint(request string) !string {
 // project_constraints reads the project's v.mod and returns, for each dependency
 // name, every requirement from dependencies and dev_dependencies. A bare name
 // means "any version" and does not replace another requirement on the same module.
+// Inside a workspace this aggregates the root and every member manifest.
 fn project_constraints() map[string][]string {
 	mut constraints := map[string][]string{}
-	if os.exists('./v.mod') {
-		manifest := vmod.from_file('./v.mod') or { return constraints }
-		for dep in project_dependencies(manifest) {
-			name := if dep.starts_with('git@') && dep.count('@') == 1 {
-				dep.trim_space()
-			} else {
-				dep.all_before_last('@').trim_space()
-			}
-			range_str := requirement_version(dep).trim_space()
-			if name != '' {
-				constraints[name] << range_str
-			}
+	root_dir, manifest := current_project()
+	if root_dir == '' {
+		return constraints
+	}
+	for dep in project_deps_for_manifest(root_dir, manifest) {
+		name := if dep.starts_with('git@') && dep.count('@') == 1 {
+			dep.trim_space()
+		} else {
+			dep.all_before_last('@').trim_space()
+		}
+		range_str := requirement_version(dep).trim_space()
+		if name != '' {
+			constraints[name] << range_str
 		}
 	}
 	return constraints

@@ -60,20 +60,22 @@ fn vpm_why(query []string) {
 }
 
 // build_dep_graph walks out from the current project through the modules that are
-// installed, reading each one's v.mod for the next step.
+// installed, reading each one's v.mod for the next step. Inside a workspace it
+// starts from the workspace root, so member requirements appear as project roots.
 fn build_dep_graph() !DepGraph {
-	project := vmod.get_cache().get_by_folder(os.getwd())
+	project := workspace_aware_project()
 	if project.vmod_file == '' {
 		return error('no v.mod found at or above `${os.getwd()}`')
 	}
 	root := vmod.from_file(project.vmod_file)!
 	mut graph := DepGraph{
 		root_name: root.name
-		overrides: parse_overrides(root.unknown['dependency_overrides'] or { []string{} })!
+		overrides: workspace_overrides(project.vmod_folder, root)!
 	}
 	roots := module_roots()
 	mut queue := []string{}
-	graph.root_deps = graph.node_ids(project_dependencies(root), roots, mut queue, '')
+	root_deps := project_deps_for_manifest(project.vmod_folder, root)
+	graph.root_deps = graph.node_ids(root_deps, roots, mut queue, '')
 	for i := 0; i < queue.len; i++ {
 		id := queue[i]
 		// A checkout without a v.mod is still a module (vpm accepts registered

@@ -1,7 +1,6 @@
 module main
 
 import os
-import v.vmod
 import v.help
 
 enum InstallResult {
@@ -27,21 +26,22 @@ fn vpm_install(query []string) {
 
 	mut selector := new_install_server_selector()
 	dep_strings := if query.len == 0 {
-		if os.exists('./v.mod') {
-			// Case: `v install` was run in a directory of another V-module to install its dependencies
-			// - without additional module arguments.
-			println('Detected v.mod file inside the project directory. Using it...')
-			manifest := vmod.from_file('./v.mod') or {
-				vpm_error('failed to read `./v.mod`', details: err.msg())
-				exit(1)
-			}
-			project_dependencies(manifest)
-		} else {
+		// Case: `v install` was run in a directory of another V-module to install its dependencies
+		// - without additional module arguments. Inside a workspace this resolves to the
+		// workspace root, so members share one install and one lockfile.
+		root_dir, manifest := current_project()
+		if root_dir == '' {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
 			)
 			exit(2)
 		}
+		if os.real_path(root_dir) == os.real_path(os.getwd()) {
+			println('Detected v.mod file inside the project directory. Using it...')
+		} else {
+			println('Detected workspace root at `${root_dir}`. Using it...')
+		}
+		project_deps_for_manifest(root_dir, manifest)
 	} else {
 		query
 	}

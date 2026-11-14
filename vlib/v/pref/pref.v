@@ -496,7 +496,14 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if vmodules_path := module_path_from_search_root(mod, mod_path, vmodules_dir()) {
 		return vmodules_path
 	}
-	// 5. walk up the parent directories of the importing file, like V1's
+	// 5. workspace siblings: members of the nearest workspace root above the
+	// importing file, matched by manifest name. vlib and installed modules keep
+	// precedence; the parent walk below still handles directory-layout matches.
+	sibling_path := workspace_sibling_module_path(mod, importing_file_path)
+	if sibling_path != '' {
+		return sibling_path
+	}
+	// 6. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
 	// The retired `modules/` namespace is passed by on the way: what it holds is
@@ -701,6 +708,49 @@ pub fn vmod_root_for_dir(start string) ?string {
 		dir = os.parent_dir(dir)
 	}
 	return none
+}
+
+// workspace_sibling_module_path resolves `mod` against the members of the
+// nearest workspace root above the importing file, matched by manifest name.
+// It returns '' when the importer sits outside a workspace, when no member
+// declares the name, or when the match holds no usable sources. Directory
+// layout matches are left to the other search steps; this covers members whose
+// directory does not mirror their import name, and root files importing
+// members by name.
+pub fn workspace_sibling_module_path(mod string, importing_file_path string) string {
+	if importing_file_path.len == 0 {
+		return ''
+	}
+	root := vmod.nearest_workspace_root(os.dir(os.real_path(importing_file_path)))
+	if root == '' {
+		return ''
+	}
+	manifest := vmod.from_file(os.join_path_single(root, 'v.mod')) or { return '' }
+	if manifest.workspaces.len == 0 {
+		return ''
+	}
+	for member_dir in vmod.workspace_member_dirs(root, manifest) {
+		member_manifest := vmod.from_file(os.join_path_single(member_dir, 'v.mod')) or {
+			continue
+		}
+		if member_manifest.name == '' {
+			continue
+		}
+		if member_manifest.name == mod {
+			if dir_is_module(member_dir) {
+				return member_dir
+			}
+			continue
+		}
+		if mod.starts_with(member_manifest.name + '.') {
+			remainder := mod[member_manifest.name.len + 1..].replace('.', os.path_separator)
+			candidate := os.join_path_single(member_dir, remainder)
+			if dir_is_module(candidate) {
+				return candidate
+			}
+		}
+	}
+	return ''
 }
 
 // vlib_module_path maps an import name to its directory below vlib.

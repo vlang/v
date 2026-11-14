@@ -187,8 +187,10 @@ fn project_lockfile_dir() string {
 		return ''
 	}
 	wd := os.real_path(os.getwd())
-	if os.exists(os.join_path(wd, 'v.mod')) {
-		return wd
+	// A directory inside a workspace anchors its lockfile to the workspace root.
+	root := workspace_root(wd)
+	if root != '' {
+		return root
 	}
 	return ''
 }

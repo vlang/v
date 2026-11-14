@@ -126,8 +126,10 @@ checks every regular and development requirement on a package, including exact v
 dependency modules are excluded. `v update --latest` widens a development requirement in
 `dev_dependencies`, keeping it separate from regular requirements in `v.mod`.
 
-Only the root manifest supplies `dependency_overrides`. Global `package: ref` selectors apply
-throughout the graph; `parent>package: ref` selectors apply on that parent's requiring edge.
+The root manifest and every workspace member manifest may supply
+`dependency_overrides`; the root is parsed first and wins on duplicate selectors.
+Global `package: ref` selectors apply throughout the graph; `parent>package: ref`
+selectors apply on that parent's requiring edge.
 A conditional `parent@range>package: version` selector applies when the override version
 satisfies `range`; it does not select by the parent's own version.
 A matching scoped selector takes precedence. Use `-` as the selected ref to remove an edge.
@@ -152,6 +154,30 @@ Manifest `catalog: { package: 'range' }` and `workspaces: ['path/*']` metadata a
 available through `v.vmod.Manifest` and preserved by `vmod.encode`. Catalog keys may
 be quoted. Duplicate keys, malformed values and non-string workspaces are errors.
 These fields store metadata without expanding dependency aliases.
+
+When a root manifest declares `workspaces`, vpm treats the root and every matching
+member directory that contains a `v.mod` as one project:
+
+```text
+Module {
+	name: 'myapp'
+	workspaces: ['packages/*', 'tools']
+	dependencies: ['foo']
+}
+```
+
+Member globs expand relative to the workspace root (absolute patterns are used
+as-is). Only directories holding a `v.mod` become members. Empty patterns, `.`,
+and the root itself are skipped. Matches are de-duplicated and sorted, so
+aggregation order is deterministic. Running `v install`, `v update`, `v outdated`,
+`v why`, `v mod graph`, or `v vendor` from a member directory or any subdirectory
+anchors to the workspace root: dependencies of the root and all members resolve,
+install, and lock together, with `v.mod.lock` (and `vendor/`) written at the root.
+Only manifests whose constraints actually widened are rewritten, so an unaffected
+member keeps its `v.mod` byte-identical. `v update --latest` widens each manifest
+separately: root and member constraints land in the `v.mod` that declares them.
+The compiler resolves workspace siblings by manifest name, so a member imports
+another member (or the root imports a member) without installing it first.
 Registry-qualified dependency keys remain distinct in lock data.
 
 The candidate search behind `resolve_with_pubgrub` is test-only: it delegates to the consistent
