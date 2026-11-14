@@ -2378,8 +2378,8 @@ fn cleanup_c_build_dir(dir string) {
 	}
 }
 
-fn run_test_binary(bin_file string, keep_binary bool) int {
-	return run_binary(bin_file, []string{}, !keep_binary)
+fn run_test_binary(bin_file string) int {
+	return run_binary(bin_file, []string{}, true)
 }
 
 fn ignore_run_signal(_ os.Signal) {
@@ -11236,8 +11236,8 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	binary_existed_before := os.exists(bin_file)
-	mut remove_binary_after_run := should_run && !explicit_output
-		&& (fastc_test_file || (!is_crun && !is_direct_vsh && !keep_c && !binary_existed_before))
+	mut remove_binary_after_run := should_run && (fastc_test_file
+		|| (!explicit_output && !is_crun && !is_direct_vsh && !keep_c && !binary_existed_before))
 
 	// Decide which backend modules to compile into the output. Standalone compilers
 	// default to C; optional backends and their SSA dependencies can be skipped. This
@@ -12421,7 +12421,7 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	test_files := test_input_files(user_files, backend, prefs.target)
-	if should_run && test_files.len > 0 && !explicit_output {
+	if should_run && test_files.len > 0 {
 		remove_binary_after_run = true
 	}
 	// A test binary keeps the harness counters (`__test_failures` and the
@@ -14914,8 +14914,8 @@ pub fn run(args []string) {
 					exit(run_result)
 				}
 				b.step('run')
-			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-				test_result := run_test_binary(bin_file, explicit_output)
+			} else if !skip_running && test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+				test_result := run_test_binary(bin_file)
 				if test_result != 0 {
 					exit(test_result)
 				}
@@ -15173,8 +15173,8 @@ pub fn run(args []string) {
 					exit(run_result)
 				}
 				b.step('run')
-			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-				test_result := run_test_binary(bin_file, explicit_output)
+			} else if !skip_running && test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+				test_result := run_test_binary(bin_file)
 				if test_result != 0 {
 					exit(test_result)
 				}
@@ -17028,8 +17028,8 @@ Please install the corresponding development package/libraries and make sure the
 				exit(run_result)
 			}
 			b.step('run')
-		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-			test_result := run_test_binary(bin_file, explicit_output)
+		} else if !skip_running && test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+			test_result := run_test_binary(bin_file)
 			if test_result != 0 {
 				exit(test_result)
 			}

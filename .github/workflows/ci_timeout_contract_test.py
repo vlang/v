@@ -115,6 +115,39 @@ def check_linux(workflow):
         )
 
 
+def check_macos_self_tests(workflow):
+    checks = job(workflow, "clang-macos")
+    shards = job(workflow, "clang-macos-self-tests")
+    images = ["macos-15", "macos-26"]
+    require(axis(checks, "os") == images, "macOS checks must cover both runner images")
+    require(axis(shards, "os") == images, "macOS shards must cover both runner images")
+    require(axis(shards, "shard") == ["1", "2", "3", "4"], "macOS needs four independent shard jobs")
+    require(field(checks, "VTEST_SELF_SHARD_INDEX", 6) == "'0'", "macOS checks must retain shard 0")
+    require(field(shards, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard }}", "macOS shard index")
+    require(field(shards, "timeout-minutes", 4) == "90", "macOS shard deadline changed")
+    for lane in [checks, shards]:
+        require("include:" not in lane and "exclude:" not in lane, "macOS must schedule every shard")
+        require(field(lane, "fail-fast", 6) == "false", "macOS must run every shard after a failure")
+        require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "'5'", "macOS shard counts must match")
+        require(field(lane, "VJOBS", 6) == "'3'", "macOS workers must fit the hosted runner")
+        require(field(lane, "VFLAGS", 6) == "-cc clang", "macOS test compiler flags changed")
+        require(field(lane, "V_MACOS_V3_NO_FALLBACK", 6) == "1", "macOS must use V3")
+        require(
+            re.search(r"^      VTEST_ONLY(?:_FN)?:", lane, re.MULTILINE) is None,
+            "macOS must retain the full self-test selection",
+        )
+        setup = "uses: ./.github/actions/setup-v"
+        require(lane.count(setup) == 1, "macOS needs the shared optimized compiler setup")
+        require(field(lane, "use-prebuilt", 10) == "'true'", "macOS must reuse exact-commit vprod")
+        dependencies = "v run ci/macos_ci.vsh install_iconv"
+        command_step(lane, dependencies)
+        tests = "v run ci/macos_ci.vsh self_tests"
+        step = command_step(lane, tests)
+        require("        if:" not in step, "macOS shard must run after successful setup")
+        require("VTEST_SELF_SHARD_INDEX" not in step, "macOS must run only its assigned shard")
+        require(lane.index(setup) < lane.index(dependencies) < lane.index(tests), "macOS setup order")
+
+
 def check_macos(workflow):
     lane = job(workflow, "tools-macos")
     cases = list(itertools.product(axis(lane, "cc"), axis(lane, "suite"), axis(lane, "shard")))
@@ -259,6 +292,7 @@ def check_msvc(workflow):
 
 if __name__ == "__main__":
     check_linux((ROOT / ".github/workflows/linux_ci.yml").read_text())
+    check_macos_self_tests((ROOT / ".github/workflows/macos_ci.yml").read_text())
     check_macos((ROOT / ".github/workflows/tools_ci.yml").read_text())
     check_openbsd((ROOT / ".github/workflows/tools_ci.yml").read_text())
     check_windows_gcc((ROOT / ".github/workflows/windows_ci_gcc.yml").read_text())

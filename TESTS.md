@@ -43,10 +43,12 @@ and will exit with a 0 exit code, if they all had 0 failing assertions.
 `v -stats file_test.v` - this will run the test_ functions, and show a
 report about how much time it took to run each of them too.
 
-Implicit test executables and their macOS debug symbols are removed after the test process exits,
+Test executables and their macOS debug symbols are removed after the test process exits,
 including failed assertions, panics, and nonzero exits. This also applies with `-stats`, `-keepc`,
-and `v run file_test.v`; `-keepc` still retains generated C. An explicit `-o` keeps the requested
-output for later execution or debugging.
+and `v run file_test.v`; `-keepc` still retains generated C. Explicit `-o` outputs are also removed
+after execution. To keep an executable for later execution or debugging, compile without running
+it using `v -skip-running -o test_binary file_test.v`.
+`-skip-running` takes precedence over `-stats` and `VTEST_SHOW_ASSERTS`.
 
 NB 2: You can also run many test files at once (in parallel, depending on
 how many cores you have), with:
@@ -55,6 +57,9 @@ recursively.
 
 `v -stats test folder` - same, but will also produce timing reports
 about how fast each test_ function in each _test.v file ran.
+
+Test binaries are removed after execution even with `VTEST_KEEP_SESSION=1`. That setting keeps
+the session folder and other artifacts for inspection.
 
 The `v test` runner is built for the host using the C backend. Backend and target options such
 as `-b arm64` apply to the test programs it compiles. Architecture-suffixed test discovery

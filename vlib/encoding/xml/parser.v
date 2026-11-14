@@ -10,6 +10,9 @@ const default_prolog_attributes = {
 }
 const default_string_builder_cap = 32
 
+// Leave stack headroom on V's 2 MiB 32-bit default spawned-thread stack.
+const xml_max_nesting_depth = 256
+
 const element_len = '<!ELEMENT'.len
 const entity_len = '<!ENTITY'.len
 
@@ -633,7 +636,13 @@ fn decode_owned_text(content string, entities map[string]string) !string {
 	return unescape_text(content, entities: entities)
 }
 
-fn parse_children(name string, attributes map[string]string, entities map[string]string, mut reader io.Reader) !XMLNode {
+fn parse_children(
+	name string,
+	attributes map[string]string,
+	entities map[string]string,
+	nesting_depth int,
+	mut reader io.Reader
+) !XMLNode {
 	mut inner_contents := strings.new_builder(0)
 
 	mut children := []XMLNodeContents{}
@@ -703,7 +712,10 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 					}
 					else {
 						// Start of child node
-						child := parse_node_with_entities(second_char, entities, mut reader) or {
+						child := parse_node_with_entities(second_char,
+							entities,
+							nesting_depth + 1,
+							mut reader) or {
 							if err.msg() == 'XML node cannot start with "</".' {
 								return error('XML node <${name}> not closed.')
 							} else {
@@ -729,10 +741,18 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 // opposed to the recommended static functions makes it easier to parse smaller nodes in extremely large
 // XML documents without running out of memory.
 pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
-	return parse_node_with_entities(first_char, default_entities, mut reader)
+	return parse_node_with_entities(first_char, default_entities, 1, mut reader)
 }
 
-fn parse_node_with_entities(first_char u8, entities map[string]string, mut reader io.Reader) !XMLNode {
+fn parse_node_with_entities(
+	first_char u8,
+	entities map[string]string,
+	nesting_depth int,
+	mut reader io.Reader
+) !XMLNode {
+	if nesting_depth > xml_max_nesting_depth {
+		return error('XML element nesting exceeds the maximum depth of ${xml_max_nesting_depth}.')
+	}
 	if first_char == `?` {
 		return error('XML processing instructions are not supported.')
 	}
@@ -773,7 +793,7 @@ fn parse_node_with_entities(first_char u8, entities map[string]string, mut reade
 	attribute_string := tag_contents[name.len..].trim_space()
 	attributes := parse_attributes_with_entities(attribute_string, entities)!
 
-	return parse_children(name, attributes, entities, mut reader) or {
+	return parse_children(name, attributes, entities, nesting_depth, mut reader) or {
 		return eof_error(err, 'XML node <${name}> not closed.')
 	}
 }
@@ -820,7 +840,7 @@ pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 			}
 		}
 	}
-	root := parse_node_with_entities(first_char, entities, mut reader)!
+	root := parse_node_with_entities(first_char, entities, 1, mut reader)!
 
 	return XMLDocument{
 		version:  prolog.version

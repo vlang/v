@@ -337,8 +337,8 @@ fn main() {
 ')!
 		for value in ['11', '11', '22'] {
 			os.write_file(header, '#define PROBE_VALUE ${value}\n')!
-			compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-d', 'arm64_external_link', '-o', output,
-				source])
+			build_args := ['-b', 'arm64', '-d', 'arm64_external_link', '-o', output, source]
+			compiled := cmdexec.run(@VEXE, build_args)
 			assert compiled.exit_code == 0, compiled.output
 			run := cmdexec.run(output, []string{})
 			assert run.exit_code == 0, run.output

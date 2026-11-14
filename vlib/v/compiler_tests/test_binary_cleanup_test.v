@@ -91,28 +91,41 @@ fn test_implicit_test_binary_cleanup_with_run_stats_keepc_and_debug() {
 	}
 }
 
-fn test_explicit_test_outputs_are_preserved() {
+fn test_compile_only_test_outputs_are_preserved() {
 	root := binary_cleanup_root('explicit')!
+	old_show_asserts := os.getenv_opt('VTEST_SHOW_ASSERTS')
 	defer {
+		if value := old_show_asserts {
+			os.setenv('VTEST_SHOW_ASSERTS', value, true)
+		} else {
+			os.unsetenv('VTEST_SHOW_ASSERTS')
+		}
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'sample_test.v')
 	marker := os.join_path(root, 'binary_path')
 	binary := os.join_path(root, 'chosen output' + $if windows { '.exe' } $else { '' })
 	os.write_file(source, binary_cleanup_source('assert true'))!
-	build := binary_cleanup_compile(root, ['-skip-running', '-o', binary, source])
-	assert build.exit_code == 0, build.output
-	assert !os.exists(marker)
-	assert os.is_file(binary)
-	run := cmdexec.run_in(binary, [], root)
-	assert run.exit_code == 0, run.output
-	assert os.read_file(marker)!.trim_space() == os.real_path(binary)
-	os.rm(marker)!
-	os.write_file(source, binary_cleanup_source('assert false'))!
-	run_with_output := binary_cleanup_compile(root, ['-stats', '-o', binary, source])
-	assert run_with_output.exit_code != 0, run_with_output.output
-	assert os.read_file(marker)!.trim_space() == os.real_path(binary)
-	assert os.is_file(binary)
+	for show_asserts in [false, true] {
+		if show_asserts {
+			os.setenv('VTEST_SHOW_ASSERTS', '1', true)
+		} else {
+			os.unsetenv('VTEST_SHOW_ASSERTS')
+		}
+		for flags in [[]string{}, ['-stats'], ['-stats', 'run'], ['-stats', 'crun']] {
+			mut args := ['-skip-running', '-o', binary]
+			args << flags
+			args << source
+			build := binary_cleanup_compile(root, args)
+			assert build.exit_code == 0, build.output
+			assert !os.exists(marker), 'compile-only test ran with ${flags}, show_asserts=${show_asserts}'
+			assert os.is_file(binary)
+			run := cmdexec.run_in(binary, [], root)
+			assert run.exit_code == 0, run.output
+			assert os.read_file(marker)!.trim_space() == os.real_path(binary)
+			os.rm(marker)!
+		}
+	}
 }
 
 fn test_directory_test_command_removes_implicit_binary() {
@@ -125,4 +138,59 @@ fn test_directory_test_command_removes_implicit_binary() {
 	assert result.exit_code == 0, result.output
 	binary := os.read_file(os.join_path(root, 'binary_path'))!.trim_space()
 	assert !os.exists(binary), 'directory test binary remains: ${binary}'
+}
+
+fn test_executed_explicit_test_outputs_are_removed() {
+	root := binary_cleanup_root('explicit run')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'sample_test.v')
+	marker := os.join_path(root, 'binary_path')
+	binary := os.join_path(root, 'chosen output' + $if windows { '.exe' } $else { '' })
+	for flags in [['-stats'], ['run'], ['-keepc', 'run'], ['crun']] {
+		for body in ['assert true', 'assert false'] {
+			os.write_file(source, binary_cleanup_source(body))!
+			mut args := ['-o', binary]
+			args << flags
+			args << source
+			result := binary_cleanup_compile(root, args)
+			assert (result.exit_code == 0) == (body == 'assert true'), result.output
+			assert os.read_file(marker)!.trim_space() == os.join_path(os.real_path(root),
+				os.file_name(binary))
+			assert !os.exists(binary), 'explicit test binary remains with ${flags}: ${binary}'
+			assert !os.exists(binary + '.dSYM')
+			os.rm(marker)!
+		}
+	}
+}
+
+fn test_kept_test_sessions_remove_binaries_after_success_and_failure() {
+	root := binary_cleanup_root('kept session')!
+	old_keep_session := os.getenv_opt('VTEST_KEEP_SESSION')
+	os.setenv('VTEST_KEEP_SESSION', '1', true)
+	defer {
+		if value := old_keep_session {
+			os.setenv('VTEST_KEEP_SESSION', value, true)
+		} else {
+			os.unsetenv('VTEST_KEEP_SESSION')
+		}
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'sample_test.v')
+	marker := os.join_path(root, 'binary_path')
+	for flags in [[]string{}, ['-stats', '-g']] {
+		for body in ['assert true', 'assert false', 'panic("cleanup panic")', 'exit(23)'] {
+			os.write_file(source, binary_cleanup_source(body))!
+			mut args := flags.clone()
+			args << ['test', source]
+			result := binary_cleanup_compile(root, args)
+			assert (result.exit_code == 0) == (body == 'assert true'), result.output
+			binary := os.read_file(marker)!.trim_space()
+			assert !os.exists(binary), 'kept session retains test binary: ${binary}'
+			assert !os.exists(binary + '.dSYM')
+			assert os.is_dir(os.dir(binary)), 'session artifacts should remain'
+			os.rm(marker)!
+		}
+	}
 }
