@@ -1,0 +1,40 @@
+struct Node {
+	x int
+}
+
+const const_zero = 0
+
+struct Holder {
+mut:
+	a &Node = C.NULL
+	b &Node = voidptr(const_zero)
+	c &Node = unsafe { nil }
+}
+
+fn take(n &Node) int {
+	return n.x
+}
+
+fn return_c_null() &Node {
+	return C.NULL
+}
+
+fn main() {
+	mut p := &Node{}
+	p = C.NULL
+	println(take(C.NULL))
+	println(take(voidptr(0)))
+	println(take(voidptr(const_zero)))
+	println(take(voidptr(1 - 1)))
+	_ = &Node(C.NULL)
+	_ = &Node(voidptr(0))
+	_ = &Node(voidptr(const_zero))
+	_ = &Node(voidptr(1 - 1))
+	_ = &int(C.NULL)
+	_ = &Node(1 - 1)
+	_ = &Node(0 * 5)
+	mut h := Holder{
+		a: C.NULL
+	}
+	println(p.x + h.a.x)
+}
