@@ -2949,15 +2949,19 @@ struct V3CCompilerFlagOptions {
 	pic_flag            string
 	is_prod             bool
 	no_prod_options     bool
-	is_shared           bool
-	parallel_cc         bool
-	large_c_unit        bool
-	limit_inlining      bool
-	is_tcc              bool
-	is_c_debug          bool
-	no_backtrace        bool
-	is_o                bool
-	is_liveshared       bool
+	// c_opt_level is the explicit -O level ('0', '1', '2', '3', 's' or 'z'),
+	// or '' when the user passed none. It selects only the C optimization
+	// level; unlike -prod it changes nothing else about the build.
+	c_opt_level    string
+	is_shared      bool
+	parallel_cc    bool
+	large_c_unit   bool
+	limit_inlining bool
+	is_tcc         bool
+	is_c_debug     bool
+	no_backtrace   bool
+	is_o           bool
+	is_liveshared  bool
 	// is_freestanding marks a `-freestanding` build: no libc, crt or default libraries.
 	is_freestanding bool
 }
@@ -4047,7 +4051,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.link_c_standard.len > 0 {
 		before_inputs << options.link_c_standard
 	}
-	optimization_flags := v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	optimization_flags := v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc, options.c_opt_level)
 	// Standalone objects must contain machine code for a later independent link.
 	// A freestanding `_start` calls `main` from a top-level asm block, which the
 	// LTO symbol table does not see, so gcc would drop `main` from the link.
@@ -9006,7 +9010,18 @@ fn v3_parallel_c_unit_is_large(source_size u64, declaration_header_size u64, own
 	})
 }
 
-fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, is_tcc bool) []string {
+fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, is_tcc bool, c_opt_level string) []string {
+	if c_opt_level != '' {
+		// An explicit -O level is honored verbatim: the user asked for it.
+		// The large-TU carve-out below applies only to the -prod default.
+		// -flto still follows the -prod rules, which is also how an explicit
+		// level composes with -prod (the level is replaced, the rest stays).
+		mut explicit := ['-O' + c_opt_level]
+		if is_prod && !no_prod_options && !is_shared && !parallel_cc && !is_tcc {
+			explicit << '-flto'
+		}
+		return explicit
+	}
 	if !is_prod || no_prod_options {
 		return []
 	}
@@ -9024,11 +9039,11 @@ fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bo
 	return flags
 }
 
-fn v3_prod_c_object_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, is_tcc bool) []string {
+fn v3_prod_c_object_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, is_tcc bool, c_opt_level string) []string {
 	// Native support sources are cached as independently compiled objects. Emitting
 	// LLVM bitcode here makes every program link optimize those unchanged sources
 	// again; keep the per-object -O3 work in the cache instead.
-	return v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, false, false, is_tcc).filter(it != '-flto')
+	return v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, false, false, is_tcc, c_opt_level).filter(it != '-flto')
 }
 
 fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flags string, pic_flag string) {
@@ -9177,13 +9192,13 @@ fn v3_module_cache_refresh_args(args []string, compiler string, module_search_pa
 			continue
 		}
 		if arg in ['-prod', '-no-prod-options', '-no-closures', '-g', '-cg', '-cdebug', '-shared',
-			'--shared', '-selfhost', '-c99', '--c99', '-target-libc-headers', '-translated',
-			'-enable-globals', '-check-overflow', '-check-casts', '-force-bounds-checking',
-			'-no-bounds-checking', '-nofloat', '-autofree', '-manualfree', '-prealloc', '-no-prealloc',
-			'--no-prealloc', '-no-preludes', '-silent', '-W', '-w', '-N', '-Wfatal-errors',
-			'-no-memory-limit', '--no-memory-limit', '-musl', '-glibc', '-ownership', '--ownership',
-			'-no-std', '--no-std', '-strict', '-cstrict', '-building-v', '-building_v',
-			macos_v3_compat_c99_flag] || (arg.starts_with('-d') && arg.len > 2) {
+			'--shared', '-selfhost', '-c99', '--c99', '-target-libc-headers', '-translated', '-O0',
+			'-O1', '-O2', '-O3', '-Os', '-Oz', '-enable-globals', '-check-overflow', '-check-casts',
+			'-force-bounds-checking', '-no-bounds-checking', '-nofloat', '-autofree', '-manualfree',
+			'-prealloc', '-no-prealloc', '--no-prealloc', '-no-preludes', '-silent', '-W', '-w',
+			'-N', '-Wfatal-errors', '-no-memory-limit', '--no-memory-limit', '-musl', '-glibc',
+			'-ownership', '--ownership', '-no-std', '--no-std', '-strict', '-cstrict', '-building-v',
+			'-building_v', macos_v3_compat_c99_flag] || (arg.starts_with('-d') && arg.len > 2) {
 			flags << arg
 			if arg in ['-g', '-cg', '-cdebug'] {
 				c_flags << '-g'
@@ -10005,6 +10020,10 @@ pub fn run(args []string) {
 	mut disable_explicit_mutability := false
 	mut is_prod := false
 	mut no_prod_options := false
+	// c_opt_level is the explicit -O level (-O0/-O1/-O2/-O3/-Os/-Oz), or ''.
+	// Unlike -prod it selects only the C optimization level, without the rest
+	// of production mode. An explicit level overrides the -prod default.
+	mut c_opt_level := ''
 	mut is_shared := false
 	mut is_livemain := false
 	mut is_liveshared := false
@@ -10204,6 +10223,17 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-no-prod-options' {
 			no_prod_options = true
+			i++
+		} else if args[i] in ['-O0', '-O1', '-O2', '-O3', '-Os', '-Oz'] {
+			// A second, different -O level refuses rather than silently
+			// following "last wins": two levels cannot both apply, and a
+			// build script that passes both is almost certainly mistaken.
+			level := args[i][2..]
+			if c_opt_level != '' && c_opt_level != level {
+				eprintln('conflicting optimization levels: `-O${c_opt_level}` and `${args[i]}`')
+				exit(1)
+			}
+			c_opt_level = level
 			i++
 		} else if args[i] == '-shared' || args[i] == '--shared' {
 			is_shared = true
@@ -14857,7 +14887,7 @@ pub fn run(args []string) {
 				return
 			}
 			amd64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
-				no_prod_options, false, parallel_cc, false)
+				no_prod_options, false, parallel_cc, false, c_opt_level)
 			native_support := amd64_native_support_object(a, prefs, user_c_flags,
 				amd64_object_optimization_flags, c_compiler) or {
 				os.rm(obj_file) or {}
@@ -14952,7 +14982,7 @@ pub fn run(args []string) {
 		arm64_link_inputs := Arm64LinkInputs{
 			environment_cflags: environment_c_flags
 			optimization_flags: v3_prod_c_object_optimization_flags(is_prod, no_prod_options, false,
-				parallel_cc, false)
+				parallel_cc, false, c_opt_level)
 			target:             prefs.target
 			c99:                c99
 			no_std:             no_std
@@ -14979,7 +15009,7 @@ pub fn run(args []string) {
 				user_c_flags:       user_c_flags
 				environment_cflags: environment_c_flags
 				optimization_flags: v3_prod_c_object_optimization_flags(is_prod,
-					no_prod_options, false, parallel_cc, false)
+					no_prod_options, false, parallel_cc, false, c_opt_level)
 				c_compiler:         c_compiler
 				compiler_explicit:  c_compiler_explicit
 			}) or {
@@ -15123,7 +15153,7 @@ pub fn run(args []string) {
 						user_c_flags:       user_c_flags
 						environment_cflags: environment_c_flags
 						optimization_flags: v3_prod_c_object_optimization_flags(is_prod,
-							no_prod_options, false, parallel_cc, false)
+							no_prod_options, false, parallel_cc, false, c_opt_level)
 						c_compiler:         c_compiler
 						compiler_explicit:  c_compiler_explicit
 					}) or {
@@ -15694,7 +15724,7 @@ pub fn run(args []string) {
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
-				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
+				no_prod_options, is_shared, parallel_cc, effective_tcc, c_opt_level), prefs.normalized_target_os(),
 				is_shared, is_liveshared)
 			mut primary_object_compiler_flags := []string{}
 			if effective_tcc {
@@ -15859,6 +15889,7 @@ pub fn run(args []string) {
 			pic_flag:            pic_flag
 			is_prod:             is_prod
 			no_prod_options:     no_prod_options
+			c_opt_level:         c_opt_level
 			is_shared:           is_shared
 			parallel_cc:         parallel_cc
 			large_c_unit:        large_prod_c_unit
@@ -16033,7 +16064,7 @@ pub fn run(args []string) {
 			// Cached module objects can be republished while GCC's LTO linker
 			// reopens their paths. Use the native object flags here too; the final
 			// program unit still receives the whole-program optimization flags.
-			opt_flag := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc).join(' ')
+			opt_flag := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc, c_opt_level).join(' ')
 			warning_flags := warn_args.join(' ')
 			// A plan of the program is kept for the implementers of the whole
 			// program; the object of a module, for those that its code can reach.
