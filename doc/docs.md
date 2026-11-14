@@ -10794,6 +10794,10 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
 
+Test builds (`v test` and `v file_test.v`) discard generated C after compilation,
+even with an explicit backend such as `-b c`. Use `-keepc` or `-o file.c` to retain it;
+`-cg` also retains its build directory for C source debugging.
+
 On macOS, debug builds keep their `.dSYM` bundle beside the final executable.
 
 For best debugging experience if you are writing a low-level wrapper for an existing

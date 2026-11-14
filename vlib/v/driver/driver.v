@@ -11131,6 +11131,10 @@ pub fn run(args []string) {
 	compiler_tree_input := input_is_compiler_tree(input_file)
 	fastc_test_file := backend == 'fastc' && (is_v3_test_file(input_file, backend, target)
 		|| is_v3_test_file(input_file, 'c', target))
+	// Selecting a backend must not retain a translation unit for every test.
+	// Explicit C output and -keepc are handled separately.
+	retain_backend_c := backend_explicit && !is_test_command
+		&& !is_v3_test_file(input_file, backend, target) && !fastc_test_file
 	// fastc_real_builtin_program marks an ordinary program that sets `building_v` only to
 	// reach FastC's full runtime. It keeps the program's own allocator and defines.
 	mut fastc_real_builtin_program := false
@@ -11840,7 +11844,7 @@ pub fn run(args []string) {
 			}
 			b.step('tcc')
 			b.metric('generated C size', fastc_generation.c_size(), 'bytes')
-			if backend_explicit {
+			if retain_backend_c {
 				fastc.write_c_pieces(output_file, fastc_generation.c_pieces) or {
 					eprintln('failed to retain generated fastc output ${output_file}: ${err.msg()}')
 					exit(1)
@@ -16049,7 +16053,7 @@ pub fn run(args []string) {
 						cache_full_tcc_source = ''
 					}
 				}
-				if backend_explicit && os.is_file(cgen_cache_entry.source) {
+				if retain_backend_c && os.is_file(cgen_cache_entry.source) {
 					retained_full_c_source = os.join_path_single(cc_dir, 'retained_full.c')
 					os.cp(cgen_cache_entry.source, retained_full_c_source) or {
 						eprintln('error preserving complete cached C source ${cgen_cache_entry.source}: ${err.msg()}')
@@ -16092,7 +16096,7 @@ pub fn run(args []string) {
 						cache_full_tcc_source = ''
 					}
 				}
-				if backend_explicit {
+				if retain_backend_c {
 					retained_full_c_source = os.join_path_single(cc_dir, 'retained_full.c')
 					os.write_file(retained_full_c_source, generated_source) or {
 						eprintln('error preserving complete generated C source ${retained_full_c_source}: ${err.msg()}')
@@ -16393,7 +16397,8 @@ pub fn run(args []string) {
 		b.metric('generated C size', i64(os.file_size(published_c_source)), 'bytes')
 		// Before the driver was split out of v.v, explicit `-b c` binary builds
 		// retained `<output>.c`. Codegen tooling relies on that stable path.
-		if backend_explicit && !c_only {
+		// Test builds keep C only when explicitly requested with -keepc or -o file.c.
+		if retain_backend_c && !c_only {
 			retained_c := output_file
 			staged_c := '${retained_c}.stage.${tempname.unique_token()}'
 			retained_c_source := if retained_full_c_source.len > 0 {
