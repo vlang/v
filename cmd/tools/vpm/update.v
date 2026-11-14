@@ -146,6 +146,10 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		// Exact project refs stay pinned, as do their lockfile entries.
 		request := detached_project_pin(name, install_path)
 		if request != '' {
+			prepare_binary_artifacts(install_path, binary_host_target()) or {
+				vpm_error(err.msg())
+				return &UpdateResult{}
+			}
 			println('Skipping module `${name}` pinned at `${request}`.')
 			return &UpdateResult{
 				success: true
@@ -174,6 +178,10 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 			)
 			return &UpdateResult{}
 		}
+	}
+	prepare_binary_artifacts(install_path, binary_host_target()) or {
+		vpm_error('failed to update binaries for `${name}`: ${err.msg()}')
+		return &UpdateResult{}
 	}
 	if old_revision != '' {
 		if head_revision(install_path) == old_revision {
