@@ -2467,3 +2467,46 @@ pub fn value() int {
 	assert run.exit_code == 0
 	assert run.output.trim_space() == '42'
 }
+
+fn test_driver_cli_cross_refusal_matrix() {
+	// P0 contract: every host x target combination has exactly one verdict:
+	// native binary, C-output only, or refusal with a toolchain hint. This pins
+	// the refusal side; the native side is covered by every other test here.
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_refusal_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'hello.v')
+	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	output := os.join_path(root, 'hello_probe')
+	// Unknown OS/arch never reach the backend: target validation fails first.
+	assert_driver_cli_failure(v3_bin, ['-o', output, '-os', 'bogus', source],
+		'unsupported target OS `bogus`')
+	assert_driver_cli_failure(v3_bin, ['-o', output, '-arch', 'bogus', source],
+		'unsupported target architecture `bogus`')
+	// A binary for a foreign OS refuses with a toolchain hint. The foreign OS
+	// is picked at runtime so this holds on every CI host: on a linux host
+	// `-os linux` would be native and succeed, so target the other family.
+	foreign_os := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
+	assert_driver_cli_failure(v3_bin, ['-o', output, '-os', foreign_os, source],
+		'is not supported by the default C compiler')
+	// Same OS, foreign arch refuses the same way: only the host pair links
+	// (macOS is exempt: Apple dual-arch `-arch` pairs are supported).
+	native_os := os.user_os()
+	foreign_arch := if pref.host_arch() == 'arm64' { 'amd64' } else { 'arm64' }
+	if native_os in ['windows', 'linux'] {
+		assert_driver_cli_failure(v3_bin, ['-o', output, '-os', native_os, '-arch', foreign_arch,
+			source], 'is not supported by the default C compiler')
+	}
+	// C output has no link step, so it never hits the toolchain refusal: both
+	// `-os cross` (portable snapshot) and a foreign `-os` emit C successfully.
+	for target in ['cross', foreign_os] {
+		c_output := os.join_path(root, 'hello_${target}.c')
+		c_compile := cmdexec.run(v3_bin, ['-o', c_output, '-os', target, source])
+		assert c_compile.exit_code == 0, c_compile.output
+		assert os.is_file(c_output)
+	}
+}
