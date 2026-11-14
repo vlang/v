@@ -13,10 +13,10 @@ fn test_bytestr_is_rejected_for_non_byte_arrays() {
 		os.rmdir_all(dir) or {}
 	}
 	source := os.join_path(dir, 'main.v')
-	os.write_file(source, "fn main() {
+	os.write_file(source, 'fn main() {
 	println([`a`, `b`].bytestr())
 }
-")!
+')!
 	result := cmdexec.run(@VEXE, ['-o', os.join_path(dir, 'main'), source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('bytestr'), result.output
@@ -29,13 +29,13 @@ fn test_bytestr_is_accepted_for_bytes_and_their_aliases() {
 		os.rmdir_all(dir) or {}
 	}
 	source := os.join_path(dir, 'main.v')
-	os.write_file(source, "type Octet = u8
+	os.write_file(source, 'type Octet = u8
 
 fn main() {
 	println([u8(65), 66].bytestr())
 	println([Octet(67)].bytestr())
 }
-")!
+')!
 	result := cmdexec.run(@VEXE, ['-o', os.join_path(dir, 'main'), source])
 	assert result.exit_code == 0, result.output
 	run := cmdexec.run(os.join_path(dir, 'main'), []string{})
