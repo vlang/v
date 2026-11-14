@@ -67,7 +67,8 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 // bits to store the next file descriptor in `Target.backend`.
 @[inline]
 fn backend_build(next_fd int, events u32) int {
-	return int((u32(next_fd) << 8) | (events & 0xff))
+	// `i32` keeps the sign of a `next_fd` of -1, the end of the list, now that `int` has 64 bits
+	return int(i32((u32(next_fd) << 8) | (events & 0xff)))
 }
 
 // get the lower 8 bits
