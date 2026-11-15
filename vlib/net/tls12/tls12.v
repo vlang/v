@@ -25,6 +25,22 @@ pub:
 	// cipher_suites overrides the default offer list (client) or the
 	// selectable set (server). Empty means all supported suites.
 	cipher_suites []u16
+	// resume carries a previous session for abbreviation (client): when
+	// resume.id is non-empty the client offers it as the session ID. The
+	// server looks it up in the in-memory session cache; on a hit the
+	// handshake is abbreviated (no Certificate flight), otherwise the
+	// server falls back to a full handshake with a fresh session ID.
+	resume Session
+}
+
+// Session is a resumable TLS 1.2 session (client holder + server cache
+// value): the session ID sent on the wire plus the master secret and the
+// negotiated suite needed to derive fresh keys on resumption.
+pub struct Session {
+pub:
+	id     []u8
+	master []u8
+	suite  u16
 }
 
 // Conn is a TLS 1.2 connection over a TCP socket.
@@ -35,6 +51,9 @@ mut:
 	cfg             Config
 	suite           u16
 	is_gcm          bool
+	is_ccm          bool
+	etm_negotiated  bool
+	ems_negotiated  bool
 	client_random   []u8
 	server_random   []u8
 	master          []u8
@@ -55,6 +74,11 @@ mut:
 	transcript      []u8
 	pending         []u8
 	closed          bool
+	session_id      []u8
+	resumed         bool
+	client_verify   []u8
+	server_verify   []u8
+	did_renegotiate bool
 }
 
 // dial_tcp connects to host:port and returns the raw TCP connection.
@@ -100,6 +124,32 @@ pub fn (c &Conn) cipher_suite_name() string {
 	return suite_name(c.suite)
 }
 
+// session returns the resumable session for this connection (ID, master,
+// suite). Empty before a completed handshake. The client feeds it back as
+// Config.resume on the next connection to attempt abbreviation.
+pub fn (c &Conn) session() Session {
+	return Session{
+		id:     c.session_id.clone()
+		master: c.master.clone()
+		suite:  c.suite
+	}
+}
+
+// did_resume reports whether the handshake was abbreviated (session-ID hit).
+pub fn (c &Conn) did_resume() bool {
+	return c.resumed
+}
+
+// uses_ems reports whether extended_master_secret was negotiated.
+pub fn (c &Conn) uses_ems() bool {
+	return c.ems_negotiated
+}
+
+// uses_etm reports whether encrypt-then-MAC was negotiated (CBC only).
+pub fn (c &Conn) uses_etm() bool {
+	return c.etm_negotiated
+}
+
 // send_fatal sends a fatal alert using the current write state (best effort).
 fn (mut c Conn) send_fatal(desc u8) {
 	payload := [u8(2), desc]
@@ -116,6 +166,12 @@ fn (c &Conn) seal_record(typ u8, payload []u8) ![]u8 {
 	if c.is_gcm {
 		return gcm_seal(c.write_gcm_key, c.write_gcm_salt, c.write_seq, typ, payload)
 	}
+	if c.is_ccm {
+		return ccm_seal(c.write_gcm_key, c.write_gcm_salt, c.write_seq, typ, payload)
+	}
+	if c.etm_negotiated {
+		return cbc_etm_seal(c.write_mac, c.write_enc, c.write_seq, typ, payload)
+	}
 	return cbc_seal(c.write_mac, c.write_enc, c.write_seq, typ, payload)
 }
 
@@ -123,6 +179,12 @@ fn (c &Conn) seal_record(typ u8, payload []u8) ![]u8 {
 fn (c &Conn) open_record(typ u8, payload []u8) ![]u8 {
 	if c.is_gcm {
 		return gcm_open(c.read_gcm_key, c.read_gcm_salt, c.read_seq, typ, payload)
+	}
+	if c.is_ccm {
+		return ccm_open(c.read_gcm_key, c.read_gcm_salt, c.read_seq, typ, payload)
+	}
+	if c.etm_negotiated {
+		return cbc_etm_open(c.read_mac, c.read_enc, c.read_seq, typ, payload)
 	}
 	return cbc_open(c.read_mac, c.read_enc, c.read_seq, typ, payload)
 }

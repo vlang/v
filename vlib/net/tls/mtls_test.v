@@ -21,6 +21,9 @@ fn test_certificate_request_codec() {
 	assert ctx.len == 0
 	assert schemes.len > 0
 	assert schemes[0] == u16(0x0403)
+	// The offer list carries Ed25519 (0x0807) alongside the classical,
+	// ML-DSA and SLH-DSA schemes.
+	assert u16(0x0807) in schemes
 	// trailing garbage is rejected
 	mut bad := body.clone()
 	bad << u8(0)

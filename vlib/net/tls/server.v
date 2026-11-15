@@ -18,6 +18,7 @@ pub enum ServerKeyKind {
 	ecdsa_p256
 	ecdsa_p384
 	ecdsa_p521
+	ed25519
 	rsa
 	mldsa_44
 	mldsa_65
@@ -28,6 +29,12 @@ pub enum ServerKeyKind {
 	slh_shake_192f
 	slh_shake_256s
 	slh_shake_256f
+	slh_sha2_128s
+	slh_sha2_128f
+	slh_sha2_192s
+	slh_sha2_192f
+	slh_sha2_256s
+	slh_sha2_256f
 }
 
 // ServerHandshake holds state for a TLS 1.3 server handshake.
@@ -55,8 +62,38 @@ pub mut:
 	transcript     []u8
 	// ticket encryption key for stateless session tickets.
 	ticket_key []u8
+	// Rotation: extra ticket keys. [0] seals; all are tried on open.
+	// Empty means single-key mode via ticket_key.
+	ticket_keys [][]u8
+	// SNI map + ALPN preference + external PSK + OCSP (from Config).
+	cert_map        map[string]CertEntry
+	alpn_protos     []string
+	negotiated_alpn string
+	psk_identity    []u8
+	psk_key         []u8
+	ocsp_response   []u8
+	// HRR state: set when the first flight needed a retry.
+	is_hrr         bool
+	hrr_group      u16
+	hrr_transcript []u8
+	// Ephemeral ECDHE (P-256/P-384) and FFDHE/ML-KEM state per flight.
+	ecdhe_nid      ecdsa.Nid
+	ecdhe_priv     []u8
+	ffdhe_priv     []u8
+	ffdhe_group    u16
+	mlkem_dk512    mlkem.DecapsulationKey
+	mlkem_dk768    mlkem.DecapsulationKey
+	mlkem_dk1024   mlkem.DecapsulationKey
+	mlkem_variant  mlkem.MlKemVariant
+	selected_group u16
+	// Ed25519 server credential (set when the leaf is Ed25519; x509
+	// support for the public half lives with the x509 agent).
+	ed25519_priv []u8
+	// status_request flag: client asked for OCSP.
+	want_ocsp bool
 	// PSK resumption state: set when the client offered a valid ticket.
 	accepted_psk     bool
+	accepted_psk_idx int
 	early_secret_psk []u8
 	// 0-RTT state (RFC 8446 §4.2.10, §7.5). offered_early_data mirrors the
 	// ClientHello early_data extension; accepted_early_data is set only when
@@ -194,10 +231,35 @@ fn load_server_certificate_chain(cfg Config) ![][]u8 {
 }
 
 fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !ServerHandshake {
-	if cfg.cert.len == 0 && cfg.cert_pem.len == 0 && cfg.key.len == 0 && cfg.key_pem.len == 0 {
+	if cfg.cert.len == 0 && cfg.cert_pem.len == 0 && cfg.key.len == 0 && cfg.key_pem.len == 0
+		&& cfg.cert_map.len == 0 {
 		// Ephemeral self-signed default (tests): still share the listener's
 		// ticket key so resumption works across connections.
 		mut server := new_server_handshake(pq_mode)!
+		if cfg.ticket_key.len == 32 {
+			server.ticket_key = cfg.ticket_key.clone()
+		}
+		server.ticket_keys = cfg.ticket_keys.clone()
+		server.max_early_data = cfg.max_early_data
+		server.verify_client = cfg.verify_client
+		server.verify_chain = cfg.verify_chain
+		server.client_roots = cfg.ca_store
+		server.cert_map = cfg.cert_map.clone()
+		server.alpn_protos = cfg.alpn_protocols.clone()
+		server.psk_identity = cfg.psk_identity.clone()
+		server.psk_key = cfg.psk_key.clone()
+		server.ocsp_response = load_ocsp_bytes(cfg)!
+		return server
+	}
+	if (cfg.cert.len == 0 && cfg.cert_pem.len == 0) || (cfg.key.len == 0 && cfg.key_pem.len == 0) {
+		// SNI-only deployments still need the map even when no default
+		// credential is configured; fail closed below if neither matches.
+		if cfg.cert_map.len == 0 {
+			return error('tls: server certificate and private key must both be configured')
+		}
+		mut server := new_server_handshake(pq_mode)!
+		server.suites = effective_cipher_suites(cfg)
+		server.ticket_keys = cfg.ticket_keys.clone()
 		if cfg.ticket_key.len == 32 {
 			server.ticket_key = cfg.ticket_key.clone()
 		}
@@ -205,10 +267,13 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 		server.verify_client = cfg.verify_client
 		server.verify_chain = cfg.verify_chain
 		server.client_roots = cfg.ca_store
+		server.cert_map = cfg.cert_map.clone()
+		server.alpn_protos = cfg.alpn_protocols.clone()
+		server.psk_identity = cfg.psk_identity.clone()
+		server.psk_key = cfg.psk_key.clone()
+		server.ocsp_response = load_ocsp_bytes(cfg)!
+		server.cert_chain = [][]u8{}
 		return server
-	}
-	if (cfg.cert.len == 0 && cfg.cert_pem.len == 0) || (cfg.key.len == 0 && cfg.key_pem.len == 0) {
-		return error('tls: server certificate and private key must both be configured')
 	}
 	chain := load_server_certificate_chain(cfg)!
 	key_data := config_pem_bytes(cfg.key_pem, cfg.key, cfg.in_memory, 'private key')!
@@ -222,6 +287,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	server.rsa_priv = keys.rsa_priv
 	server.mldsa_priv = keys.mldsa_priv
 	server.slh_dsa_priv = keys.slh_dsa_priv
+	server.ed25519_priv = keys.ed25519_priv.clone()
 	if epriv := keys.ecdsa_priv {
 		server.ecdsa_priv = epriv
 		server.ecdsa_pub = epriv.public_key()!
@@ -230,11 +296,54 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	if cfg.ticket_key.len == 32 {
 		server.ticket_key = cfg.ticket_key.clone()
 	}
+	server.ticket_keys = cfg.ticket_keys.clone()
 	server.max_early_data = cfg.max_early_data
 	server.verify_client = cfg.verify_client
 	server.verify_chain = cfg.verify_chain
 	server.client_roots = cfg.ca_store
+	server.cert_map = cfg.cert_map.clone()
+	server.alpn_protos = cfg.alpn_protocols.clone()
+	server.psk_identity = cfg.psk_identity.clone()
+	server.psk_key = cfg.psk_key.clone()
+	server.ocsp_response = load_ocsp_bytes(cfg)!
 	return server
+}
+
+// load_ocsp_bytes loads the stapled OCSP response (opaque, never verified).
+// Empty when unconfigured; accepts a file path or inline PEM/DER via
+// ocsp_response, or raw bytes via ocsp_response_pem.
+fn load_ocsp_bytes(cfg Config) ![]u8 {
+	if cfg.ocsp_response_pem.len > 0 {
+		return cfg.ocsp_response_pem.clone()
+	}
+	if cfg.ocsp_response.len == 0 {
+		return []u8{}
+	}
+	if cfg.in_memory || cfg.ocsp_response.contains('-----BEGIN ') {
+		return cfg.ocsp_response.bytes()
+	}
+	contents := os.read_file(cfg.ocsp_response) or { return error('tls: cannot read ocsp response') }
+	return contents.bytes()
+}
+
+// ticket_seal_key returns the key used to seal new tickets ([0] when
+// rotating, else ticket_key).
+fn (s &ServerHandshake) ticket_seal_key() []u8 {
+	if s.ticket_keys.len > 0 {
+		return s.ticket_keys[0].clone()
+	}
+	return s.ticket_key.clone()
+}
+
+// ticket_open_keys returns every key tried when opening a ticket.
+fn (s &ServerHandshake) ticket_open_keys() [][]u8 {
+	if s.ticket_keys.len > 0 {
+		return s.ticket_keys.clone()
+	}
+	if s.ticket_key.len == 32 {
+		return [s.ticket_key.clone()]
+	}
+	return [][]u8{}
 }
 
 // load_ecdsa_key loads a SEC1 or PKCS#8 EC private key with the expected size.
@@ -413,6 +522,36 @@ pub fn select_cv_scheme(offered []u16, kind ServerKeyKind) !u16 {
 				return u16(0x091c)
 			}
 		}
+		.slh_sha2_128s {
+			if u16(0x0911) in offered {
+				return u16(0x0911)
+			}
+		}
+		.slh_sha2_128f {
+			if u16(0x0912) in offered {
+				return u16(0x0912)
+			}
+		}
+		.slh_sha2_192s {
+			if u16(0x0913) in offered {
+				return u16(0x0913)
+			}
+		}
+		.slh_sha2_192f {
+			if u16(0x0914) in offered {
+				return u16(0x0914)
+			}
+		}
+		.slh_sha2_256s {
+			if u16(0x0915) in offered {
+				return u16(0x0915)
+			}
+		}
+		.slh_sha2_256f {
+			if u16(0x0916) in offered {
+				return u16(0x0916)
+			}
+		}
 		.rsa {
 			for want in [u16(0x0804), 0x0805, 0x0806, 0x0401, 0x0501, 0x0601] {
 				if want in offered {
@@ -420,14 +559,249 @@ pub fn select_cv_scheme(offered []u16, kind ServerKeyKind) !u16 {
 				}
 			}
 		}
+		.ed25519 {
+			// RFC 8446 §4.2.3, scheme 0x0807. Offered by OpenSSL 4.1.0
+			// clients (ClientHello capture) and by this stack;VERIFY
+			// side lives in cert_verify_sig.v (separate owner) — see note.
+			if u16(0x0807) in offered {
+				return u16(0x0807)
+			}
+		}
 	}
 	return error('tls: no supported signature scheme')
 }
 
+// select_sni_credential switches the handshake credential when the
+// ClientHello server_name matches cert_map. No match keeps the default
+// credential; an SNI-only server (no default chain) with no match aborts.
+fn (mut s ServerHandshake) select_sni_credential(ch ClientHello) ! {
+	mut hostname := ''
+	for e in ch.extensions {
+		if e.typ == ext_server_name {
+			name := parse_sni_hostname(e.data) or { continue }
+			if name.len > 0 {
+				hostname = name
+				break
+			}
+		}
+	}
+	if hostname.len == 0 || hostname !in s.cert_map {
+		if s.cert_chain.len == 0 && s.cert_map.len > 0 {
+			return error('tls: no certificate for server name')
+		}
+		return
+	}
+	entry := s.cert_map[hostname]
+	mut cert_data := entry.cert_pem.clone()
+	if cert_data.len == 0 {
+		if entry.cert.contains('-----BEGIN ') {
+			cert_data = entry.cert.bytes()
+		} else if entry.cert.len > 0 {
+			contents := os.read_file(entry.cert) or {
+				return error('tls: cannot read server certificate')
+			}
+			cert_data = contents.bytes()
+		}
+	}
+	mut key_data := entry.key_pem.clone()
+	if key_data.len == 0 {
+		if entry.key.contains('-----BEGIN ') {
+			key_data = entry.key.bytes()
+		} else if entry.key.len > 0 {
+			contents := os.read_file(entry.key) or {
+				return error('tls: cannot read server private key')
+			}
+			contents2 := contents
+			key_data = contents2.bytes()
+		}
+	}
+	if cert_data.len == 0 || key_data.len == 0 {
+		return error('tls: incomplete SNI credential')
+	}
+	mut rest := cert_data.bytestr()
+	mut chain := [][]u8{}
+	for rest.len > 0 {
+		block, next := pem.decode(rest) or { break }
+		if block.block_type == 'CERTIFICATE' {
+			_ := x509.parse_der(block.data) or { return error('tls: invalid server certificate') }
+			chain << block.data.clone()
+		}
+		if next.len == rest.len {
+			break
+		}
+		rest = next
+	}
+	if chain.len == 0 {
+		return error('tls: no PEM certificate found')
+	}
+	key_block, _ := pem.decode(key_data.bytestr()) or {
+		return error('tls: invalid server private key PEM')
+	}
+	leaf := x509.parse_der(chain[0])!
+	leaf_public := leaf.public_key() or { return error('tls: unsupported server certificate public key') }
+	keys := load_credential_keys(key_block, leaf_public)!
+	s.key_kind = keys.kind
+	s.rsa_priv = keys.rsa_priv
+	s.mldsa_priv = keys.mldsa_priv
+	s.slh_dsa_priv = keys.slh_dsa_priv
+	s.ed25519_priv = keys.ed25519_priv.clone()
+	if epriv := keys.ecdsa_priv {
+		s.ecdsa_priv = epriv
+		s.ecdsa_pub = epriv.public_key()!
+	}
+	s.cert_chain = chain
+}
+
+// server_group_prefs lists the server's key-share groups in preference
+// order. X25519 stays first so defaults negotiate exactly as before;
+// hybrid_require restricts to the hybrid group.
+fn (s &ServerHandshake) server_group_prefs() []u16 {
+	if s.pq_mode == .hybrid_require {
+		return [named_group_x25519_mlkem768]
+	}
+	return [
+		named_group_x25519,
+		named_group_secp256r1,
+		named_group_secp384r1,
+		named_group_ffdhe2048,
+		named_group_ffdhe3072,
+		named_group_x25519_mlkem768,
+		named_group_mlkem768,
+		named_group_mlkem1024,
+	]
+}
+
+// hrr_selected_group encodes a HelloRetryRequest selected_group value
+// (the key_share extension carrying just the group, RFC 8446 §4.1.2).
+fn hrr_selected_group(group u16) []u8 {
+	return [u8(group >> 8), u8(group)]
+}
+
+// mlkem_variant_for_group maps a pure ML-KEM group to its variant.
+fn mlkem_variant_for_group(group u16) !mlkem.MlKemVariant {
+	if group == named_group_mlkem512 {
+		return .ml_kem_512
+	}
+	if group == named_group_mlkem768 {
+		return .ml_kem_768
+	}
+	if group == named_group_mlkem1024 {
+		return .ml_kem_1024
+	}
+	return error('tls: not a pure ML-KEM group')
+}
+
+// do_server_share generates the server share for group and derives the
+// (EC)DHE shared secret. Returns (shared_secret, key_share_entry_bytes
+// for the ServerHello extension, without the outer extension header).
+fn (mut s ServerHandshake) do_server_share(group u16, client_pub []u8) !([]u8, []u8) {
+	if group == named_group_x25519 {
+		if client_pub.len != 32 {
+			return error('tls: bad X25519 key_share')
+		}
+		shared := s.echd_priv.x25519(client_pub)!
+		srv_pub := s.echd_priv.public_key()!
+		xb := srv_pub.bytes()!
+		mut entry := []u8{}
+		entry << u8(group >> 8)
+		entry << u8(group)
+		entry << u8(xb.len >> 8)
+		entry << u8(xb.len)
+		entry << xb
+		return shared, entry
+	}
+	if group == named_group_secp256r1 || group == named_group_secp384r1 {
+		nid := if group == named_group_secp256r1 {
+			ecdsa.Nid.prime256v1
+		} else {
+			ecdsa.Nid.secp384r1
+		}
+		want_len := if group == named_group_secp256r1 { 65 } else { 97 }
+		if client_pub.len != want_len {
+			return error('tls: bad ECDHE key_share length')
+		}
+		_, epriv := ecdsa.generate_key(ecdsa.CurveOptions{ nid: nid })!
+		epub := epriv.public_key()!
+		pub_bytes := epub.bytes()!
+		peer := ecdsa.PublicKey.from_uncompressed_bytes(client_pub, ecdsa.CurveOptions{
+			nid: nid
+		})!
+		shared := epriv.derive_shared_secret(peer)!
+		mut entry := []u8{}
+		entry << u8(group >> 8)
+		entry << u8(group)
+		entry << u8(pub_bytes.len >> 8)
+		entry << u8(pub_bytes.len)
+		entry << pub_bytes
+		return shared, entry
+	}
+	if group == named_group_ffdhe2048 || group == named_group_ffdhe3072 {
+		if client_pub.len == 0 {
+			return error('tls: bad FFDHE key_share')
+		}
+		priv, pub_bytes := ffdhe_generate(group)!
+		shared := ffdhe_compute(priv, client_pub, group)!
+		mut entry := []u8{}
+		entry << u8(group >> 8)
+		entry << u8(group)
+		entry << u8(pub_bytes.len >> 8)
+		entry << u8(pub_bytes.len)
+		entry << pub_bytes
+		return shared, entry
+	}
+	if group == named_group_x25519_mlkem768 {
+		if !s.has_mlkem {
+			return error('tls: hybrid key exchange unavailable')
+		}
+		if client_pub.len < 32 {
+			return error('tls: bad hybrid key_share')
+		}
+		srv_pub := s.echd_priv.public_key()!
+		xb := srv_pub.bytes()!
+		x_cpub := client_pub[..32].clone()
+		ek_bytes := client_pub[32..].clone()
+		x_shared := s.echd_priv.x25519(x_cpub)!
+		ct, ss := mlkem.encaps(mlkem.EncapsulationKey{ data: ek_bytes, variant: .ml_kem_768 })!
+		mut shared := []u8{}
+		shared << x_shared
+		shared << ss
+		mut hybrid_key := []u8{}
+		hybrid_key << xb
+		hybrid_key << ct.data
+		mut entry := []u8{}
+		entry << u8(group >> 8)
+		entry << u8(group)
+		entry << u8(hybrid_key.len >> 8)
+		entry << u8(hybrid_key.len)
+		entry << hybrid_key
+		return shared, entry
+	}
+	if group == named_group_mlkem512 || group == named_group_mlkem768
+		|| group == named_group_mlkem1024 {
+		variant := mlkem_variant_for_group(group)!
+		want := mlkem.params_of(variant).ek_size
+		if client_pub.len != want {
+			return error('tls: bad ML-KEM key_share length')
+		}
+		ct, ss := mlkem.encaps(mlkem.EncapsulationKey{ data: client_pub.clone(), variant: variant })!
+		mut entry := []u8{}
+		entry << u8(group >> 8)
+		entry << u8(group)
+		entry << u8(ct.data.len >> 8)
+		entry << u8(ct.data.len)
+		entry << ct.data
+		return ss, entry
+	}
+	return error('tls: unsupported key_share group ${group}')
+}
+
 // process_client_hello ingests a ClientHello, negotiates parameters, returns the server flight.
 // process_client_hello requires TLS 1.3 (supported_versions), a mutually
-// supported cipher suite, a mutual key share, and a signature scheme the
-// server key supports; only P-256 / hybrid key shares are accepted.
+// supported cipher suite, a mutual key share (X25519, P-256/P-384 ECDHE,
+// FFDHE 2048/3072, pure ML-KEM-768/1024 or hybrid), and a signature scheme
+// the server key supports. With no mutual share it returns a cookie-less
+// HelloRetryRequest for its most-preferred group (message_hash transcript);
+// the caller must feed the second ClientHello back into this function.
 pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	msg, consumed := parse_handshake_message(ch_msg) or { return err }
 	if consumed != ch_msg.len {
@@ -495,7 +869,8 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 			psk_data = e.data.clone()
 		}
 	}
-	if has_psk_ext && psk_modes_ok && s.ticket_key.len == 32 {
+	if has_psk_ext && psk_modes_ok
+		&& (s.ticket_key.len == 32 || s.ticket_keys.len > 0 || (s.psk_identity.len > 0 && s.psk_key.len > 0)) {
 		ok, es_psk := s.try_accept_psk(ch_msg, psk_data)
 		if ok {
 			s.accepted_psk = true
@@ -517,6 +892,21 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 			s.accepted_early_data = true
 		}
 	}
+	// SNI: select a mapped credential when the ClientHello names one.
+	// No match falls back to the default credential (fail closed, no
+	// downgrade); an SNI-only server with no match aborts.
+	s.select_sni_credential(ch) or { return err }
+	// ALPN: remember the client offer; the selection is encoded in EE.
+	mut alpn_offer := []u8{}
+	for e in ch.extensions {
+		if e.typ == ext_alpn {
+			alpn_offer = e.data.clone()
+			break
+		}
+	}
+	s.negotiated_alpn = select_alpn(s.alpn_protos, alpn_offer)
+	// OCSP: note the client's status_request for the CertificateStatus flight.
+	s.want_ocsp = offers_status_request(ch.extensions) && s.ocsp_response.len > 0
 	// Select the CertificateVerify scheme: the client's signature_algorithms
 	// extension intersected with what the server key supports. ECDSA keys use
 	// their curve's scheme, ML-DSA keys use their variant's scheme, RSA
@@ -541,12 +931,11 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	if !s.accepted_psk {
 		s.cv_scheme = select_cv_scheme(offered_sigs, s.key_kind) or { return err }
 	}
-	s.client_random = ch.random.clone()
-	s.transcript = ch_msg.clone()
-
-	// find client key_share
-	mut classical_pub := []u8{}
-	mut hybrid_pub := []u8{}
+	// Key shares: parse every entry, then select the server's most
+	// preferred mutual group. With no mutual share the server answers
+	// HelloRetryRequest (cookie-less, message_hash transcript) for its
+	// most-preferred group instead of failing.
+	mut share_by_group := map[u16][]u8{}
 	for e in ch.extensions {
 		if e.typ == ext_key_share {
 			if e.data.len < 2 {
@@ -558,71 +947,82 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 			}
 			mut off := 2
 			for off < e.data.len {
-				if off + 4 > e.data.len { return error('tls: truncated key_share entry') }
+				if off + 4 > e.data.len {
+					return error('tls: truncated key_share entry')
+				}
 				g := (u16(e.data[off]) << 8) | u16(e.data[off + 1])
 				kl := (int(e.data[off + 2]) << 8) | int(e.data[off + 3])
 				off += 4
-				if off + kl > e.data.len { return error('tls: truncated key_share') }
-				if g == named_group_x25519 { classical_pub = e.data[off..off + kl].clone() }
-				if g == named_group_x25519_mlkem768 { hybrid_pub = e.data[off..off + kl].clone() }
+				if off + kl > e.data.len {
+					return error('tls: truncated key_share')
+				}
+				if g !in share_by_group {
+					share_by_group[g] = e.data[off..off + kl].clone()
+				}
 				off += kl
 			}
 		}
 	}
-	mut client_pub := classical_pub
-	mut client_group := named_group_x25519
-	if s.has_mlkem && hybrid_pub.len > 0 {
-		client_pub = hybrid_pub.clone()
-		client_group = named_group_x25519_mlkem768
-	} else if s.pq_mode == .hybrid_require {
-		return error('tls: hybrid key exchange required')
-	}
-	if client_pub.len == 0 {
-		return error('tls: missing client key_share')
-	}
-
-	mut shared := []u8{}
-	mut srv_pub_bytes := []u8{}
-	srv_pub := s.echd_priv.public_key()!
-	x_pub_bytes := srv_pub.bytes()!
-
-	if client_group == named_group_x25519_mlkem768 && s.has_mlkem {
-		// hybrid
-		if client_pub.len < 32 {
-			return error('tls: bad hybrid key_share')
+	// Second flight after HRR: the transcript prefix is already stored
+	// and the client must offer the requested group.
+	if s.is_hrr {
+		if s.hrr_group !in share_by_group {
+			return error('tls: missing HRR key_share')
 		}
-		x_cpub := client_pub[..32].clone()
-		ek_bytes := client_pub[32..].clone()
-		x_shared := s.echd_priv.x25519(x_cpub) or { return err }
-		// encapsulate to client's ek
-		ct, ss := mlkem.encaps(mlkem.EncapsulationKey{ data: ek_bytes, variant: .ml_kem_768 }) or { return err }
-		shared << x_shared
-		shared << ss
-		// server key_share = X25519 pub || ML-KEM ciphertext
-		mut hybrid_key := []u8{}
-		hybrid_key << x_pub_bytes
-		hybrid_key << ct.data
-		srv_pub_bytes << u8(named_group_x25519_mlkem768 >> 8)
-		srv_pub_bytes << u8(named_group_x25519_mlkem768)
-		srv_pub_bytes << u8(hybrid_key.len >> 8)
-		srv_pub_bytes << u8(hybrid_key.len)
-		srv_pub_bytes << hybrid_key
+		s.transcript << ch_msg
 	} else {
-		if s.pq_mode == .hybrid_require {
-			return error('tls: hybrid key exchange required')
-		}
-		if client_group != named_group_x25519 {
-			return error('tls: unsupported key_share group ${client_group}')
-		}
-		shared = s.echd_priv.x25519(client_pub) or { return err }
-		mut entry := []u8{}
-		entry << u8(named_group_x25519 >> 8)
-		entry << u8(named_group_x25519)
-		entry << u8(x_pub_bytes.len >> 8)
-		entry << u8(x_pub_bytes.len)
-		entry << x_pub_bytes
-		srv_pub_bytes = entry.clone()
+		s.client_random = ch.random.clone()
+		s.transcript = ch_msg.clone()
 	}
+	prefs := s.server_group_prefs()
+	mut client_group := u16(0)
+	for g in prefs {
+		if g in share_by_group {
+			client_group = g
+			break
+		}
+	}
+	if client_group == u16(0) {
+		// No mutual share: HelloRetryRequest for the top preference.
+		want := prefs[0]
+		sh_exts_hrr := [
+			Extension{
+				typ:  ext_supported_versions
+				data: [
+					u8(supported_version_tls_1_3 >> 8),
+					u8(supported_version_tls_1_3),
+				]
+			},
+			Extension{ typ: ext_key_share, data: hrr_selected_group(want) },
+		]
+		hrr_sh := ServerHello{
+			legacy_version:     tls_version_1_3
+			random:             hrr_random()
+			session_id:         ch.session_id.clone()
+			cipher_suite:       s.suite
+			compression_method: 0
+			extensions:         sh_exts_hrr
+		}
+		hrr_body := encode_server_hello(hrr_sh)!
+		hrr_msg := encode_handshake_message(.server_hello, hrr_body)!
+		// Transcript becomes message_hash(CH1) || HRR (RFC 8446 §4.1.2).
+		ch_hash := transcript_hash_for_suite(ch_msg, s.suite)
+		prefix := encode_handshake_message(.message_hash, ch_hash)!
+		s.transcript = prefix.clone()
+		s.transcript << hrr_msg
+		s.is_hrr = true
+		s.hrr_group = want
+		s.hrr_transcript = s.transcript.clone()
+		return hrr_msg
+	}
+	if s.is_hrr && client_group != s.hrr_group {
+		return error('tls: wrong HRR key_share group')
+	}
+	s.selected_group = client_group
+	client_pub := share_by_group[client_group].clone()
+
+	shared, srv_share_entry := s.do_server_share(client_group, client_pub) or { return err }
+	srv_pub_bytes := srv_share_entry
 
 	mut sh_exts := [
 		Extension{
@@ -635,7 +1035,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		Extension{ typ: ext_key_share, data: srv_pub_bytes },
 	]
 	if s.accepted_psk {
-		sh_exts << Extension{ typ: ext_pre_shared_key, data: encode_psk_selected() }
+		sh_exts << Extension{ typ: ext_pre_shared_key, data: encode_psk_selected_idx(s.accepted_psk_idx) }
 	}
 	sh := ServerHello{
 		legacy_version:     tls_version_1_3
@@ -657,14 +1057,30 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	hs := derive_handshake_secrets_for_suite(es, shared, th, s.suite) or { return err }
 	s.handshake_keys = hs
 
-	ee_body := if s.accepted_early_data {
+	ee_body := if s.accepted_early_data || s.negotiated_alpn.len > 0 {
 		mut ee_exts := []u8{}
-		size_data := encode_early_data_size(s.max_early_data)
-		ee_exts << u8(ext_early_data >> 8)
-		ee_exts << u8(ext_early_data)
-		ee_exts << u8(size_data.len >> 8)
-		ee_exts << u8(size_data.len)
-		ee_exts << size_data
+		if s.accepted_early_data {
+			size_data := encode_early_data_size(s.max_early_data)
+			ee_exts << u8(ext_early_data >> 8)
+			ee_exts << u8(ext_early_data)
+			ee_exts << u8(size_data.len >> 8)
+			ee_exts << u8(size_data.len)
+			ee_exts << size_data
+		}
+		if s.negotiated_alpn.len > 0 {
+			alpn_ext := encode_alpn([s.negotiated_alpn]) or { return err }
+			// encode_alpn returns a full extension; strip its 4-byte header
+			// to embed the body in the EE extension list.
+			if alpn_ext.len < 4 {
+				return error('tls: bad ALPN encoding')
+			}
+			alpn_body := alpn_ext[4..].clone()
+			ee_exts << u8(ext_alpn >> 8)
+			ee_exts << u8(ext_alpn)
+			ee_exts << u8(alpn_body.len >> 8)
+			ee_exts << u8(alpn_body.len)
+			ee_exts << alpn_body
+		}
 		mut body := []u8{}
 		body << u8(ee_exts.len >> 8)
 		body << u8(ee_exts.len)
@@ -708,6 +1124,17 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		s.cert_chain)!)!
 	s.transcript << cert_msg
 
+	// OCSP staple (transport only, never verified here): a
+	// CertificateStatus message carrying the opaque response, sent only
+	// when the client offered status_request and one is configured. It
+	// sits between Certificate and CertificateVerify so the transcript
+	// (and CV signature) covers it.
+	mut cs_msg := []u8{}
+	if s.want_ocsp && s.ocsp_response.len > 0 {
+		cs_msg = encode_handshake_message(.certificate_status, s.ocsp_response.clone())!
+		s.transcript << cs_msg
+	}
+
 	transcript_hash := transcript_hash_for_suite(s.transcript, s.suite)
 	content := cv_content(true, transcript_hash)
 	sig := s.sign_certificate_verify(content) or { return err }
@@ -732,61 +1159,95 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		out << cr_msg
 	}
 	out << cert_msg
+	// OCSP staple (transport only): CertificateStatus between Certificate
+	// and CertificateVerify, covered by the transcript/CV signature.
+	if cs_msg.len > 0 {
+		out << cs_msg
+	}
 	out << cv_msg
 	out << fin_msg
 	return out
 }
 
-// try_accept_psk evaluates a single-identity PSK offer against the server
-// ticket key. It returns the PSK early secret on success; any failure
-// (bad ticket, wrong suite, stale age, bad binder) returns false so the
-// handshake falls back to certificates. ch_msg is the raw ClientHello wire
-// bytes: the binder covers the raw prefix, which must be hashed verbatim
-// (re-encoding would drop unknown suites/GREASE and break interop).
-fn (s &ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u8) {
+// try_accept_psk evaluates a PSK offer against the server ticket keys and
+// the configured external PSK. It returns the PSK early secret on success;
+// any failure returns false so the handshake falls back to certificates.
+// ch_msg is the raw ClientHello wire bytes: binders cover the raw prefix.
+// Supports one or two identities (ticket resumption and/or external PSK);
+// each identity is tried in order with its own binder.
+// try_accept_psk evaluates a PSK offer against the server ticket keys and
+// the configured external PSK. It returns the PSK early secret on success;
+// any failure returns false so the handshake falls back to certificates.
+// ch_msg is the raw ClientHello wire bytes: binders cover the raw prefix.
+// Supports one or two identities (ticket resumption and/or external PSK);
+// each identity is tried in order with its own binder.
+fn (mut s ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u8) {
 	ids, binders := parse_psk_offer(psk_data) or { return false, []u8{} }
-	if ids.len != 1 || binders.len != 1 {
+	if ids.len < 1 || ids.len > 2 || binders.len != ids.len {
 		return false, []u8{}
 	}
-	id := ids[0]
-	master, tnonce, tsuite, created, tage := open_ticket(id.ticket, s.ticket_key) or {
-		return false, []u8{}
+	// External PSK identity match (constant-time) is evaluated per
+	// identity alongside ticket open attempts.
+	for idx in 0 .. ids.len {
+		id := ids[idx]
+		// External PSK: identity bytes match and binder verifies under
+		// the configured key with the negotiated suite hash.
+		if s.psk_identity.len > 0 && s.psk_key.len > 0 {
+			if id.ticket.len == s.psk_identity.len
+				&& subtle.constant_time_compare(id.ticket, s.psk_identity) == 1 {
+				es_psk := derive_early_secret_with_psk(s.psk_key, s.suite) or { continue }
+				bk := binder_key_for(es_psk, s.suite) or { continue }
+				trunc := binder_prefix(ch_msg, psk_data) or { continue }
+				th := transcript_hash_for_suite(trunc, s.suite)
+				if verify_binder(bk, th, binders[idx], s.suite) {
+					s.accepted_psk_idx = idx
+					return true, es_psk
+				}
+				continue
+			}
+		}
+		// Ticket resumption: try every ticket key in order.
+		for tkey in s.ticket_open_keys() {
+			master, tnonce, tsuite, created, tage := open_ticket(id.ticket, tkey) or {
+				continue
+			}
+			if tsuite != s.suite {
+				continue
+			}
+			if is_ticket_used(tnonce) {
+				continue
+			}
+			now := time.now().unix()
+			if now < created - 10 || now - created > i64(ticket_lifetime) + 10 {
+				continue
+			}
+			psk := derive_psk(master, tnonce, tsuite) or { continue }
+			es_psk := derive_early_secret_with_psk(psk, tsuite) or { continue }
+			bk := binder_key_for(es_psk, tsuite) or { continue }
+			trunc := binder_prefix(ch_msg, psk_data) or { continue }
+			th := transcript_hash_for_suite(trunc, tsuite)
+			if !verify_binder(bk, th, binders[idx], tsuite) {
+				continue
+			}
+			expected_obf := u32((now - created) * 1000) + tage
+			d := expected_obf - id.obfuscated_age
+			if d > 10000 && d < u32(0xffffffff) - 10000 {
+				continue
+			}
+			mark_ticket_used(tnonce)
+			s.accepted_psk_idx = idx
+			return true, es_psk
+		}
 	}
-	if tsuite != s.suite {
-		return false, []u8{}
-	}
-	// Single-use tickets: a replayed ticket falls back to a full handshake
-	// instead of resuming (fail closed for the 0-RTT data bound to it).
-	if is_ticket_used(tnonce) {
-		return false, []u8{}
-	}
-	now := time.now().unix()
-	if now < created - 10 || now - created > i64(ticket_lifetime) + 10 {
-		return false, []u8{}
-	}
-	psk := derive_psk(master, tnonce, tsuite) or { return false, []u8{} }
-	es_psk := derive_early_secret_with_psk(psk, tsuite) or { return false, []u8{} }
-	bk := binder_key_for(es_psk, tsuite) or { return false, []u8{} }
-	trunc := binder_prefix(ch_msg, psk_data) or { return false, []u8{} }
-	th := transcript_hash_for_suite(trunc, tsuite)
-	if !verify_binder(bk, th, binders[0], tsuite) {
-		return false, []u8{}
-	}
-	expected_obf := u32((now - created) * 1000) + tage
-	d := expected_obf - id.obfuscated_age
-	if d > 10000 && d < u32(0xffffffff) - 10000 {
-		return false, []u8{}
-	}
-	mark_ticket_used(tnonce)
-	return true, es_psk
+	return false, []u8{}
 }
 
 // sign_certificate_verify signs CertificateVerify content with the server key.
 // sign_certificate_verify dispatches on the negotiated scheme selected in
 // process_client_hello (see sign_cv_with).
 fn (s &ServerHandshake) sign_certificate_verify(content []u8) ![]u8 {
-	return sign_cv_with(s.key_kind, s.cv_scheme, s.ecdsa_priv, s.rsa_priv, s.mldsa_priv,
-		s.slh_dsa_priv, content)
+	return sign_cv_with_ed(s.key_kind, s.cv_scheme, s.ecdsa_priv, s.rsa_priv, s.mldsa_priv,
+		s.slh_dsa_priv, s.ed25519_priv, content)
 }
 
 // verify_client_finished verifies the client Finished against the handshake transcript.

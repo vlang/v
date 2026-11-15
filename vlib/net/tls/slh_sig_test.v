@@ -118,10 +118,78 @@ fn slh_cases() []SlhCase {
 	]
 }
 
+// slh_sha2_cases mirrors slh_cases for the SHA2 instantiation (TLS schemes
+// 0x0911-0x0916, openssl-generated fixtures).
+fn slh_sha2_cases() []SlhCase {
+	return [
+		SlhCase{
+			params:  .sha2_128s
+			scheme:  u16(0x0911)
+			pk_len:  32
+			sig_len: 7856
+			ca:      'slhsha2_128s_ca_cert.pem'
+			leaf:    'slhsha2_128s_leaf_cert.pem'
+			key:     'slhsha2_128s_leaf_key.pem'
+		},
+		SlhCase{
+			params:  .sha2_128f
+			scheme:  u16(0x0912)
+			pk_len:  32
+			sig_len: 17088
+			ca:      'slhsha2_128f_ca_cert.pem'
+			leaf:    'slhsha2_128f_leaf_cert.pem'
+			key:     'slhsha2_128f_leaf_key.pem'
+		},
+		SlhCase{
+			params:  .sha2_192s
+			scheme:  u16(0x0913)
+			pk_len:  48
+			sig_len: 16224
+			ca:      'slhsha2_192s_ca_cert.pem'
+			leaf:    'slhsha2_192s_leaf_cert.pem'
+			key:     'slhsha2_192s_leaf_key.pem'
+		},
+		SlhCase{
+			params:  .sha2_192f
+			scheme:  u16(0x0914)
+			pk_len:  48
+			sig_len: 35664
+			ca:      'slhsha2_192f_ca_cert.pem'
+			leaf:    'slhsha2_192f_leaf_cert.pem'
+			key:     'slhsha2_192f_leaf_key.pem'
+		},
+		SlhCase{
+			params:  .sha2_256s
+			scheme:  u16(0x0915)
+			pk_len:  64
+			sig_len: 29792
+			ca:      'slhsha2_256s_ca_cert.pem'
+			leaf:    'slhsha2_256s_leaf_cert.pem'
+			key:     'slhsha2_256s_leaf_key.pem'
+		},
+		SlhCase{
+			params:  .sha2_256f
+			scheme:  u16(0x0916)
+			pk_len:  64
+			sig_len: 49856
+			ca:      'slhsha2_256f_ca_cert.pem'
+			leaf:    'slhsha2_256f_leaf_cert.pem'
+			key:     'slhsha2_256f_leaf_key.pem'
+		},
+	]
+}
+
+// slh_all_cases covers every wired SLH-DSA set (SHAKE + SHA2).
+fn slh_all_cases() []SlhCase {
+	mut out := slh_cases()
+	out << slh_sha2_cases()
+	return out
+}
+
 // test_slh_chain verifies the openssl-generated SLH-DSA leaves against
 // their CAs through verify_cert_signature (the openssl -> V direction).
 fn test_slh_chain() {
-	for cs in slh_cases() {
+	for cs in slh_all_cases() {
 		store := slh_store(cs.ca)
 		leaf_der, pk := slh_leaf(cs.leaf)
 		_ = pk
@@ -142,7 +210,7 @@ fn test_slh_chain() {
 // for every wired parameter set (a per-set stub that always accepts would
 // pass a single-set test).
 fn test_slh_chain_tampered() {
-	for cs in slh_cases() {
+	for cs in slh_all_cases() {
 		store := slh_store(cs.ca)
 		leaf_der, _ := slh_leaf(cs.leaf)
 		mut bad := leaf_der.clone()
@@ -164,7 +232,7 @@ fn test_slh_chain_tampered() {
 // test_slh_vgen_chains covers V-generated SLH-DSA CA/leaf pairs.
 fn test_slh_vgen_chains() {
 	now := time.now()
-	for cs in slh_cases() {
+	for cs in slh_all_cases() {
 		ca_priv, _ := slh_dsa.keygen(cs.params) or { panic('ca keygen') }
 		ca_cert, _ := x509.generate_self_signed_slh_dsa(x509.CertGenOptions{
 			common_name: 'Test SLH-DSA CA'
@@ -205,7 +273,11 @@ fn test_slh_vgen_chains() {
 	for pair in [['slhshake192s_leaf_cert.pem', 'slhshake192f_ca_cert.pem'],
 		['slhshake192f_leaf_cert.pem', 'slhshake192s_ca_cert.pem'],
 		['slhshake256s_leaf_cert.pem', 'slhshake256f_ca_cert.pem'],
-		['slhshake256f_leaf_cert.pem', 'slhshake256s_ca_cert.pem']] {
+		['slhshake256f_leaf_cert.pem', 'slhshake256s_ca_cert.pem'],
+		['slhsha2_192s_leaf_cert.pem', 'slhsha2_192f_ca_cert.pem'],
+		['slhsha2_192f_leaf_cert.pem', 'slhsha2_192s_ca_cert.pem'],
+		['slhsha2_256s_leaf_cert.pem', 'slhsha2_256f_ca_cert.pem'],
+		['slhsha2_256f_leaf_cert.pem', 'slhsha2_256s_ca_cert.pem']] {
 		store := slh_store(pair[1])
 		leaf_der, _ := slh_leaf(pair[0])
 		mut failed := false
@@ -238,36 +310,33 @@ fn test_slh_key_params_mismatch() {
 	assert false, 'wrong-params SLH-DSA generation must fail'
 }
 
-// test_slh_sha2_not_implemented locks the SHA2 stub: generation and chain
-// verification report not-implemented instead of emitting or accepting
-// unverifiable certificates.
-fn test_slh_sha2_not_implemented() {
+// test_slh_sha2_supported locks SHA2 instantiation end to end: real
+// keygen, self-signed issuance and chain verification all succeed now
+// that the pure-V primitive implements the SHA2 sets.
+fn test_slh_sha2_supported() {
 	now := time.now()
-	// A synthetic SHA2 key reaches the generation gate (the primitive
-	// itself refuses SHA2 keygen, so generation must fail closed too).
-	n := slh_dsa.get_params(.sha2_128s).n
-	stub := slh_dsa.PrivateKey{
-		params:  .sha2_128s
-		sk_seed: []u8{len: n}
-		sk_prf:  []u8{len: n}
-		pk_seed: []u8{len: n}
-		pk_root: []u8{len: n}
-	}
-	x509.generate_self_signed_slh_dsa(x509.CertGenOptions{
+	priv, _ := slh_dsa.keygen(.sha2_128s) or { panic('sha2 keygen: ${err}') }
+	ca, _ := x509.generate_self_signed_slh_dsa(x509.CertGenOptions{
 		common_name: 'SHA2 CA'
 		not_before:  now
 		not_after:   now.add_days(30)
-	}, stub, .sha2_128s) or {
-		assert err.msg().contains('not implemented')
-		// Chain verification fails closed as well.
-		leaf_der, _ := slh_leaf('slhshake128s_leaf_cert.pem')
-		verify_cert_signature_slh_dsa(leaf_der, stub.public_key().bytes(), .sha2_128s) or {
-			assert err.msg().contains('not implemented')
-			return
-		}
-		assert false, 'SHA2 chain verify must fail'
+	}, priv, .sha2_128s) or { panic('sha2 ca gen: ${err}') }
+	ca_pk := ca.public_key() or { panic('sha2 ca pubkey: ${err}') }
+	leaf_priv, _ := slh_dsa.keygen(.sha2_128s) or { panic('sha2 leaf keygen: ${err}') }
+	_, leaf_der := x509.generate_ca_signed_slh_dsa(x509.CertGenOptions{
+		common_name: 'sha2.example.com'
+		dns_names:   ['sha2.example.com']
+		not_before:  now
+		not_after:   now.add_days(30)
+	}, leaf_priv, .sha2_128s, &ca, priv, .sha2_128s) or { panic('sha2 leaf gen: ${err}') }
+	verify_cert_signature(leaf_der, ca_pk) or { panic('sha2 chain: ${err}') }
+	// A SHAKE leaf still must not verify under a SHA2 CA key.
+	shake_leaf_der, _ := slh_leaf('slhshake128s_leaf_cert.pem')
+	verify_cert_signature(shake_leaf_der, ca_pk) or {
+		assert err.msg().contains('mismatch')
+		return
 	}
-	assert false, 'SHA2 generation must fail'
+	assert false, 'shake leaf under sha2 CA must fail'
 }
 
 // test_slh_sigalg_params_present locks fail-closed sigAlg dispatch: an
@@ -300,7 +369,7 @@ fn test_slh_sigalg_params_present() {
 // SLH-DSA parameter set: raw API sign, CV framing, verify, tamper rejection.
 fn test_slh_cv_roundtrips() {
 	content := 'slh certificate verify'.bytes()
-	for cs in slh_cases() {
+	for cs in slh_all_cases() {
 		priv, _ := slh_dsa.keygen(cs.params) or { panic('keygen') }
 		raw := priv.public_key().bytes()
 		assert raw.len == cs.pk_len
@@ -318,7 +387,13 @@ fn test_slh_cv_roundtrips() {
 			.shake_192s { x509.PublicKey(x509.SlhDsaShake192sPublicKey{ raw: raw }) }
 			.shake_192f { x509.PublicKey(x509.SlhDsaShake192fPublicKey{ raw: raw }) }
 			.shake_256s { x509.PublicKey(x509.SlhDsaShake256sPublicKey{ raw: raw }) }
-			else { x509.PublicKey(x509.SlhDsaShake256fPublicKey{ raw: raw }) }
+			.shake_256f { x509.PublicKey(x509.SlhDsaShake256fPublicKey{ raw: raw }) }
+			.sha2_128s { x509.PublicKey(x509.SlhDsaSha2128sPublicKey{ raw: raw }) }
+			.sha2_128f { x509.PublicKey(x509.SlhDsaSha2128fPublicKey{ raw: raw }) }
+			.sha2_192s { x509.PublicKey(x509.SlhDsaSha2192sPublicKey{ raw: raw }) }
+			.sha2_192f { x509.PublicKey(x509.SlhDsaSha2192fPublicKey{ raw: raw }) }
+			.sha2_256s { x509.PublicKey(x509.SlhDsaSha2256sPublicKey{ raw: raw }) }
+			else { x509.PublicKey(x509.SlhDsaSha2256fPublicKey{ raw: raw }) }
 		}
 		verify_certificate_verify(body, pk, content) or {
 			panic('slh cv verify ${cs.scheme:04x}: ${err}')
@@ -361,7 +436,22 @@ fn test_slh_cv_mismatch() {
 		ebody << sig
 		verify_certificate_verify(ebody, pk128s, content) or {
 			assert err.msg().contains('mismatch') || err.msg().contains('scheme')
-			return
+			// SHA2 direction: a SHA2-128f key presented under a SHAKE scheme.
+			priv2, _ := slh_dsa.keygen(.sha2_128f) or { panic('keygen') }
+			raw2 := priv2.public_key().bytes()
+			sig2 := slh_dsa.sign_deterministic(content, [], priv2) or { panic('sign') }
+			mut sbody := []u8{}
+			sbody << u8(0x09)
+			sbody << u8(0x17)
+			sbody << u8(sig2.len >> 8)
+			sbody << u8(sig2.len)
+			sbody << sig2
+			pk2 := x509.PublicKey(x509.SlhDsaSha2128fPublicKey{ raw: raw2 })
+			verify_certificate_verify(sbody, pk2, content) or {
+				assert err.msg().contains('mismatch')
+				return
+			}
+			assert false, 'sha2 key with shake scheme must fail'
 		}
 		assert false, 'ecdsa scheme with slh key must fail'
 	}
@@ -376,6 +466,12 @@ fn test_slh_select_cv_scheme() {
 	assert select_cv_scheme([u16(0x091a)], .slh_shake_192f)! == u16(0x091a)
 	assert select_cv_scheme([u16(0x091b)], .slh_shake_256s)! == u16(0x091b)
 	assert select_cv_scheme([u16(0x091c)], .slh_shake_256f)! == u16(0x091c)
+	assert select_cv_scheme([u16(0x0911)], .slh_sha2_128s)! == u16(0x0911)
+	assert select_cv_scheme([u16(0x0912)], .slh_sha2_128f)! == u16(0x0912)
+	assert select_cv_scheme([u16(0x0913)], .slh_sha2_192s)! == u16(0x0913)
+	assert select_cv_scheme([u16(0x0914)], .slh_sha2_192f)! == u16(0x0914)
+	assert select_cv_scheme([u16(0x0915)], .slh_sha2_256s)! == u16(0x0915)
+	assert select_cv_scheme([u16(0x0916)], .slh_sha2_256f)! == u16(0x0916)
 	select_cv_scheme([u16(0x0918)], .slh_shake_128s) or {
 		assert err.msg().contains('scheme')
 		return
@@ -386,14 +482,20 @@ fn test_slh_select_cv_scheme() {
 // test_slh_server_key_loading locks SLH-DSA PKCS#8 credential loading.
 fn test_slh_server_key_loading() {
 	td := os.join_path(@VEXEROOT, 'vlib/net/tls/testdata')
-	for cs in slh_cases() {
+	for cs in slh_all_cases() {
 		kind := match cs.params {
 			.shake_128s { ServerKeyKind.slh_shake_128s }
 			.shake_128f { ServerKeyKind.slh_shake_128f }
 			.shake_192s { ServerKeyKind.slh_shake_192s }
 			.shake_192f { ServerKeyKind.slh_shake_192f }
 			.shake_256s { ServerKeyKind.slh_shake_256s }
-			else { ServerKeyKind.slh_shake_256f }
+			.shake_256f { ServerKeyKind.slh_shake_256f }
+			.sha2_128s { ServerKeyKind.slh_sha2_128s }
+			.sha2_128f { ServerKeyKind.slh_sha2_128f }
+			.sha2_192s { ServerKeyKind.slh_sha2_192s }
+			.sha2_192f { ServerKeyKind.slh_sha2_192f }
+			.sha2_256s { ServerKeyKind.slh_sha2_256s }
+			else { ServerKeyKind.slh_sha2_256f }
 		}
 		mut s := new_server_handshake_with_config(.off, Config{
 			cert: os.join_path(td, cs.leaf)
@@ -475,16 +577,12 @@ fn slh_pkcs8_pem(priv slh_dsa.PrivateKey, params slh_dsa.ParameterSet) string {
 }
 
 // test_slh_loopback runs a full verified handshake against an SLH-DSA
-// server (SHAKE-128s only: its Certificate flight (8KB) and
-// CertificateVerify (7,856-byte signature) both fit in a single 2^14-byte
-// TLS record. The larger parameter sets exceed the record cap on the
-// Certificate and/or CertificateVerify flight, which needs handshake
-// fragmentation (RFC 8446 §5.1) in the record layer first; their crypto
-// paths are covered without skips by test_slh_chain and
-// test_slh_cv_roundtrips above).
+// server for every set: record-layer fragmentation (RFC 8446 §5.1) carries
+// the multi-record Certificate/CertificateVerify flights of the larger
+// parameter sets.
 fn test_slh_loopback() {
 	td := os.join_path(@VEXEROOT, 'vlib/net/tls/testdata')
-	for cs in slh_cases().filter(it.params == .shake_128s) {
+	for cs in slh_all_cases() {
 		server_cfg := Config{
 			cert: os.join_path(td, cs.leaf)
 			key:  os.join_path(td, cs.key)

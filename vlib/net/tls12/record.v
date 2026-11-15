@@ -2,8 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-// TLS 1.2 record layer (RFC 5246 §6): framing plus AES-GCM (RFC 5288)
-// and AES-CBC with HMAC-SHA256 (RFC 5289-style) protection.
+// TLS 1.2 record layer (RFC 5246 §6): framing plus AES-GCM (RFC 5288),
+// AES-CCM-8 (RFC 6655) and AES-CBC with HMAC-SHA256 (RFC 5289-style)
+// with optional Encrypt-then-MAC (RFC 7366) for CBC suites.
 // Pure-V: crypto.aes, crypto.hmac, crypto.sha256. No C code.
 module tls12
 
@@ -119,6 +120,35 @@ fn gcm_open(key []u8, salt []u8, seq u64, typ u8, sealed []u8) ![]u8 {
 	return g.decrypt(sealed[8..], nonce, ad)
 }
 
+// ccm_seal encrypts as explicit_nonce(8) || CCM(ciphertext || tag8).
+fn ccm_seal(key []u8, salt []u8, seq u64, typ u8, plaintext []u8) ![]u8 {
+	mut nonce := []u8{cap: 12}
+	nonce << salt
+	for i := 7; i >= 0; i-- {
+		nonce << u8((seq >> u32(i * 8)) & 0xff)
+	}
+	ad := gcm_additional_data(seq, typ, plaintext.len)
+	ct := ccm_encrypt(key, nonce, ad, plaintext)!
+	explicit := nonce[4..].clone()
+	mut out := []u8{cap: 8 + ct.len}
+	out << explicit
+	out << ct
+	return out
+}
+
+// ccm_open decrypts a CCM sealed record payload; verifies the tag.
+fn ccm_open(key []u8, salt []u8, seq u64, typ u8, sealed []u8) ![]u8 {
+	if sealed.len < 8 + ccm_tag_len {
+		return error('tls12: short CCM record')
+	}
+	explicit := sealed[..8]
+	mut nonce := []u8{cap: 12}
+	nonce << salt
+	nonce << explicit
+	ad := gcm_additional_data(seq, typ, sealed.len - 8 - ccm_tag_len)
+	return ccm_decrypt(key, nonce, ad, sealed[8..])
+}
+
 // cbc_mac computes HMAC-SHA256 over seq || type || version || len || plaintext.
 fn cbc_mac(mac_key []u8, seq u64, typ u8, plaintext []u8) []u8 {
 	mut data := []u8{cap: 8 + 1 + 2 + 2 + plaintext.len}
@@ -223,4 +253,77 @@ fn cbc_crypt(block cipher.Block, iv []u8, data []u8, encrypt bool) ![]u8 {
 		}
 	}
 	return out
+}
+
+// etm_mac computes HMAC-SHA256 over seq || type || version || len || iv || ct
+// (RFC 7366 §3): the length covers IV + ciphertext, the MAC is appended in
+// the clear and verified before any decryption (tamper-order proof).
+fn etm_mac(mac_key []u8, seq u64, typ u8, iv []u8, ct []u8) []u8 {
+	mut data := []u8{cap: 8 + 1 + 2 + 2 + iv.len + ct.len}
+	for i := 7; i >= 0; i-- {
+		data << u8((seq >> u32(i * 8)) & 0xff)
+	}
+	data << typ
+	data << u8(version_tls12 >> 8)
+	data << u8(version_tls12 & 0xff)
+	ln := iv.len + ct.len
+	data << u8(u16(ln) >> 8)
+	data << u8(u16(ln) & 0xff)
+	data << iv
+	data << ct
+	return hmac.new(mac_key, data, sha256.sum256, sha256.block_size)
+}
+
+// cbc_etm_seal encrypts as explicit_iv(16) || CBC(padded) || MAC(32) where
+// the MAC covers IV || ciphertext (RFC 7366). Padding is inside the
+// ciphertext exactly like cbc_seal; only the MAC position/order changes.
+fn cbc_etm_seal(mac_key []u8, enc_key []u8, seq u64, typ u8, plaintext []u8) ![]u8 {
+	mut content := []u8{cap: plaintext.len + 16}
+	content << plaintext
+	pad_len := (16 - (content.len % 16) - 1) % 16
+	for _ in 0 .. pad_len + 1 {
+		content << u8(pad_len)
+	}
+	iv := rand.bytes(16)!
+	block := aes.new_cipher(enc_key)!
+	ct := cbc_crypt(block, iv, content, true)!
+	mac := etm_mac(mac_key, seq, typ, iv, ct)
+	mut sealed := []u8{cap: 16 + ct.len + 32}
+	sealed << iv
+	sealed << ct
+	sealed << mac
+	return sealed
+}
+
+// cbc_etm_open verifies the outer MAC first, then decrypts and checks
+// padding. Tampered ciphertext/padding fails at the MAC step without
+// touching the padding oracle surface.
+fn cbc_etm_open(mac_key []u8, enc_key []u8, seq u64, typ u8, sealed []u8) ![]u8 {
+	if sealed.len < 16 + 16 + 32 || (sealed.len - 32) % 16 != 0 {
+		return error('tls12: bad EtM record length')
+	}
+	iv := sealed[..16].clone()
+	ct := sealed[16..sealed.len - 32].clone()
+	recv_mac := sealed[sealed.len - 32..].clone()
+	want_mac := etm_mac(mac_key, seq, typ, iv, ct)
+	if subtle.constant_time_compare(recv_mac, want_mac) != 1 {
+		return error('tls12: EtM MAC check failed')
+	}
+	block := aes.new_cipher(enc_key)!
+	content := cbc_crypt(block, iv, ct, false)!
+	if content.len == 0 {
+		return error('tls12: bad EtM padding')
+	}
+	pad_len := int(content.last())
+	if content.len < pad_len + 1 {
+		return error('tls12: bad EtM padding')
+	}
+	mut bad := 0
+	for i in 0 .. pad_len + 1 {
+		bad |= int(content[content.len - 1 - i]) ^ pad_len
+	}
+	if bad != 0 {
+		return error('tls12: bad EtM padding')
+	}
+	return content[..content.len - pad_len - 1].clone()
 }

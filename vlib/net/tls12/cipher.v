@@ -11,27 +11,30 @@ pub const version_tls12 = u16(0x0303)
 
 // Cipher suite IDs implemented by this module. The two GCM suites are the
 // minimum required; the two CBC suites (HMAC-SHA256, RFC 5289-style SHA256
-// variants) exercise the CBC record path.
+// variants) exercise the CBC record path; the two CCM-8 suites (RFC 6655)
+// exercise the CCM record path.
 pub const suite_ecdhe_rsa_aes128_gcm_sha256 = u16(0xC02F)
 pub const suite_ecdhe_ecdsa_aes128_gcm_sha256 = u16(0xC02B)
 pub const suite_ecdhe_rsa_aes128_cbc_sha256 = u16(0xC027)
 pub const suite_ecdhe_ecdsa_aes128_cbc_sha256 = u16(0xC023)
+pub const suite_ecdhe_rsa_aes128_ccm8 = u16(0xC0A8)
+pub const suite_ecdhe_ecdsa_aes128_ccm8 = u16(0xC0AC)
 
-// default_suites is the client offer order: GCM first, then CBC.
+// default_suites is the client offer order: GCM first, then CCM-8, then CBC.
 pub const default_suites = [u16(suite_ecdhe_rsa_aes128_gcm_sha256),
-	suite_ecdhe_ecdsa_aes128_gcm_sha256, suite_ecdhe_rsa_aes128_cbc_sha256,
-	suite_ecdhe_ecdsa_aes128_cbc_sha256]
+	suite_ecdhe_ecdsa_aes128_gcm_sha256, suite_ecdhe_rsa_aes128_ccm8, suite_ecdhe_ecdsa_aes128_ccm8,
+	suite_ecdhe_rsa_aes128_cbc_sha256, suite_ecdhe_ecdsa_aes128_cbc_sha256]
 
 // suite_is_rsa reports whether the suite needs an RSA server key.
 pub fn suite_is_rsa(suite u16) bool {
 	return suite == suite_ecdhe_rsa_aes128_gcm_sha256
-		|| suite == suite_ecdhe_rsa_aes128_cbc_sha256
+		|| suite == suite_ecdhe_rsa_aes128_cbc_sha256 || suite == suite_ecdhe_rsa_aes128_ccm8
 }
 
 // suite_is_ecdsa reports whether the suite needs an ECDSA server key.
 pub fn suite_is_ecdsa(suite u16) bool {
 	return suite == suite_ecdhe_ecdsa_aes128_gcm_sha256
-		|| suite == suite_ecdhe_ecdsa_aes128_cbc_sha256
+		|| suite == suite_ecdhe_ecdsa_aes128_cbc_sha256 || suite == suite_ecdhe_ecdsa_aes128_ccm8
 }
 
 // suite_is_gcm reports whether the suite uses AES-GCM (true) or
@@ -41,12 +44,29 @@ pub fn suite_is_gcm(suite u16) bool {
 		|| suite == suite_ecdhe_ecdsa_aes128_gcm_sha256
 }
 
+// suite_is_ccm reports whether the suite uses AES-CCM-8 (RFC 6655).
+pub fn suite_is_ccm(suite u16) bool {
+	return suite == suite_ecdhe_rsa_aes128_ccm8 || suite == suite_ecdhe_ecdsa_aes128_ccm8
+}
+
+// suite_is_cbc reports whether the suite uses AES-CBC with HMAC-SHA256.
+pub fn suite_is_cbc(suite u16) bool {
+	return suite == suite_ecdhe_rsa_aes128_cbc_sha256
+		|| suite == suite_ecdhe_ecdsa_aes128_cbc_sha256
+}
+
+// suite_is_aead reports whether the suite uses an AEAD cipher (GCM or CCM-8).
+pub fn suite_is_aead(suite u16) bool {
+	return suite_is_gcm(suite) || suite_is_ccm(suite)
+}
+
 // suite_is_supported reports whether this module implements the suite.
 pub fn suite_is_supported(suite u16) bool {
 	return suite == suite_ecdhe_rsa_aes128_gcm_sha256
 		|| suite == suite_ecdhe_ecdsa_aes128_gcm_sha256
 		|| suite == suite_ecdhe_rsa_aes128_cbc_sha256
 		|| suite == suite_ecdhe_ecdsa_aes128_cbc_sha256
+		|| suite == suite_ecdhe_rsa_aes128_ccm8 || suite == suite_ecdhe_ecdsa_aes128_ccm8
 }
 
 // suite_name returns the IANA name of a suite (or 'UNKNOWN').
@@ -56,6 +76,8 @@ pub fn suite_name(suite u16) string {
 		suite_ecdhe_ecdsa_aes128_gcm_sha256 { 'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256' }
 		suite_ecdhe_rsa_aes128_cbc_sha256 { 'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256' }
 		suite_ecdhe_ecdsa_aes128_cbc_sha256 { 'TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256' }
+		suite_ecdhe_rsa_aes128_ccm8 { 'TLS_ECDHE_RSA_WITH_AES_128_CCM_8' }
+		suite_ecdhe_ecdsa_aes128_ccm8 { 'TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8' }
 		else {
 			'UNKNOWN'
 		}
@@ -63,10 +85,10 @@ pub fn suite_name(suite u16) string {
 }
 
 // key_lengths returns (mac_len, enc_key_len, fixed_iv_len) for the suite:
-// GCM suites need no MAC key and use a 4-byte per-direction salt;
+// AEAD suites need no MAC key and use a 4-byte per-direction salt;
 // CBC suites use HMAC-SHA256 (32-byte MAC keys) and 16-byte keys/IVs.
 pub fn suite_key_lengths(suite u16) (int, int, int) {
-	if suite_is_gcm(suite) {
+	if suite_is_aead(suite) {
 		return 0, 16, 4
 	}
 	return 32, 16, 16

@@ -11,15 +11,18 @@ Pure-V, opt-in via `-d pure_tls`. TLS 1.3 only. ECDSA P-256/P-384/P-521,
 ML-DSA-44/65/87 and RSA leaves with RSA/ECDSA/ML-DSA direct-root verify.
 Trust roots resolve on every OS: explicit `ca_store`/`ca_cert`, then
 `SSL_CERT_FILE`/`SSL_CERT_DIR`, then Unix bundle paths, then the embedded
-Mozilla bundle. X25519MLKEM768 hybrid key exchange (the `x.crypto.mlkem`
-library also implements raw 512/1024 variants, which `net.tls` does not
-negotiate). AES-128-GCM, AES-256-GCM (SHA-384 schedule) and
+Mozilla bundle. X25519, ECDHE P-256/P-384, FFDHE 2048/3072, pure
+ML-KEM-768/1024 and X25519MLKEM768 hybrid key exchange. AES-128-GCM,
+AES-256-GCM (SHA-384 schedule) and
 ChaCha20-Poly1305 record protection, negotiated by server preference. TLS 1.3
 CCM suites (0x1304/0x1305) are not negotiated: no CCM primitive exists in the
 stdlib and no major peer offers them. Stateless session tickets with
-`psk_dhe_ke` resumption (single-identity PSK offers, no 0-RTT) and mTLS
-(`verify_client` + `client_cert`/`client_key`) are implemented; there is no
-TLS 1.2, no DTLS.
+`psk_dhe_ke` resumption (ticket plus external-PSK offers) and mTLS
+(`verify_client` + `client_cert`/`client_key`) are implemented, plus
+KeyUpdate, HelloRetryRequest, ALPN selection, SNI certificates,
+post-handshake auth, exporters, SSLKEYLOGFILE, ticket rotation,
+Ed25519 (0x0807), record fragmentation and OCSP stapling (transport);
+there is no TLS 1.2, no DTLS.
 
 ## Build
 
@@ -82,10 +85,9 @@ sent on a resumed (PSK) handshake: the ticket authenticates the peer.
 
 - RSA *key generation* — V can verify and sign with RSA but cannot generate
   RSA keys (no crypto.rsa module); test fixtures live in `testdata/`.
-- Session resumption accepts only single-identity `psk_dhe_ke` offers; no
-  0-RTT (early data is never sent), no HelloRetryRequest, no KeyUpdate —
-  wire parsing exists for the message types, but full negotiation is not
-  implemented yet.
+- Session resumption accepts ticket plus external-PSK `psk_dhe_ke`
+  identities (see above); HelloRetryRequest and KeyUpdate are
+  implemented.
 - TLS 1.2, DTLS, CCM suites (0x1304/0x1305) — out of scope: no stdlib CCM
   primitive and no major peer offers them.
 - SLH-DSA remains on the OpenSSL wrapper until a pure-V SLH-DSA module exists.
@@ -117,3 +119,84 @@ macOS with zero C interop. To refresh it, download the current bundle over
 TLS, confirm all 118+ certificates parse (`test_certstore_embedded_bundle`
 pins the count — bump it deliberately), and re-run the `x509` and `tls`
 suites.
+
+## Timeouts and async I/O
+
+The blocking default is preserved: with all timeouts at zero, `dial()` and
+`Conn.read`/`Conn.write` block (the TCP connect itself is still bounded by
+the OS, about 5 seconds). `nonblock.v` adds opt-in timeouts without
+changing any existing API:
+
+- `TimeoutConfig` pairs a normal `Config` with millisecond timeouts:
+  `connect_timeout_ms` (dial wait; can only shorten the OS limit, never
+  extend it), `handshake_timeout_ms` (absolute socket deadlines around
+  `handshake()`), and `read_timeout_ms` / `write_timeout_ms`
+  (steady-state socket timeouts on the live `Conn` via `net.TcpConn`).
+- `dial_with_timeouts(host, port, cfg, timeouts)` dials, handshakes and
+  applies the steady-state timeouts, closing the half-open connection on
+  any failure. Timeout failures carry `net.err_timed_out_code`; use
+  `is_timeout(err)` to detect them. The legacy `Conn.set_read_timeout`
+  remains a no-op: use `apply_timeouts` / `set_conn_timeouts` and the
+  `conn_read_timeout` / `conn_write_timeout` getters instead.
+- `dial_async(host, port, tcfg)` runs the same dial in the background and
+  delivers exactly one `DialResult` on the returned buffered channel.
+  Close `tcfg.cancel` to cancel: the worker checks it between phases and
+  reports a cancelled result. Do not close the result channel itself.
+- A full async (non-blocking) I/O state machine is out of scope: there is
+  no event loop or readiness API, and a handshake already blocked in a
+  socket read still runs until `handshake_timeout_ms`.
+
+## Protocol features (RFC 8446)
+
+Beyond the v1 baseline this stack implements:
+
+- KeyUpdate: `Conn.rekey()` rotates the sending traffic secret and sends
+  `update_not_requested`. Receiving a KeyUpdate rotates the read secret
+  (sequence reset); `update_requested` is answered with our own update.
+  Unknown post-handshake types stay ignored.
+- HelloRetryRequest: full cookie-less flight on both sides with the
+  `message_hash` transcript. The server retries for its most-preferred
+  group when the client shared none of its groups.
+- ALPN: the server selects its first overlap from
+  `Config.alpn_protocols` into EncryptedExtensions;
+  `Conn.negotiated_alpn()` exposes it (empty when unnegotiated).
+- SNI: `Config.cert_map` maps hostnames to credentials (file or PEM,
+  like `cert`/`key`); the server selects on `server_name`, else the
+  default credential (fail closed, no downgrade).
+- External PSK: `Config.psk_identity`/`psk_key` (bytes, both sides) is
+  offered as an extra `psk_dhe_ke` identity; the server matches bytes
+  in constant time and verifies that identity's binder.
+- Post-handshake auth: `Conn.request_client_auth_post()` sends a
+  post-handshake CertificateRequest; the client answers automatically
+  on its next read and the server verifies via the mTLS path. Traffic
+  keys never change.
+- Exporters: `Conn.exporter(label, context, len)` derives from the
+  exporter master secret stored at handshake completion.
+- SSLKEYLOGFILE: when set, `CLIENT_RANDOM <client_random_hex>
+  <master_secret_hex>` lines are appended at handshake completion
+  (best-effort, never fails the handshake).
+- Ticket rotation: `Config.ticket_keys` seals with `[0]` and tries
+  every key on open; `save_ticket_keys`/`load_ticket_keys` persist the
+  raw 32-byte concat file (0600 where the OS allows). Empty
+  `ticket_keys` keeps the single-key behavior byte-identical.
+- Groups: X25519 plus ECDHE P-256/P-384 (via `crypto.ecdsa`), FFDHE
+  2048/3072 (RFC 7919 primes, `math.big` modpow), pure ML-KEM-768/1024
+  and hybrid X25519+ML-KEM-768 key shares with server preference
+  order. Pure group codepoints were measured from OpenSSL 4.1.0
+  (`openssl s_client -groups MLKEM512|MLKEM768|MLKEM1024 -msg`):
+  supported_groups 0x0200/0x0201/0x0202 with key-share lengths
+  800/1184/1568; hybrids 0x11ec (X25519), 0x11eb/0x11ed (P-256/P-384).
+- Ed25519: scheme 0x0807 is offered, selected and signed
+  (`crypto.ed25519`). Certificate-chain verification of Ed25519 CV
+  signatures lives in `cert_verify_sig.v` (separate owner).
+- Fragmentation: handshake flights over 2^14 are chunked into
+  multiple records on send and reassembled across record boundaries
+  on receive (needed for large SLH-DSA flights); small flights keep
+  the single-record fast path.
+- OCSP: `Config.ocsp_response` (file or PEM bytes, opaque) is
+  stapled as CertificateStatus when the client offers
+  `status_request`; `Conn.ocsp_response()` returns the raw bytes.
+  Transport only — nothing here verifies OCSP.
+- Defaults stay wire-identical: no new extensions are offered unless
+  configured (the client always offers `status_request` so servers
+  with a staple configured can answer; it is ignored otherwise).

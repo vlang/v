@@ -23,7 +23,7 @@ fn xmss_node(sk_seed []u8, i u32, z u32, pk_seed []u8, p Params, adrs Adrs) []u8
 	mut m := []u8{cap: 2 * p.n}
 	m << lnode
 	m << rnode
-	return h_hash(pk_seed, m_adrs, m, p.n)
+	return h_hash(pk_seed, m_adrs, m, p)
 }
 
 // xmss_sign generates an XMSS signature on an n-byte message
@@ -65,7 +65,7 @@ fn xmss_pk_from_sig(idx u32, sig_xmss []u8, msg []u8, pk_seed []u8, p Params, ad
 			m << auth[k * p.n..(k + 1) * p.n]
 			m << node0
 		}
-		node0 = h_hash(pk_seed, t_adrs, m, p.n)
+		node0 = h_hash(pk_seed, t_adrs, m, p)
 	}
 	return node0
 }

@@ -41,6 +41,7 @@ fn test_ca_signed_chain() {
 		SlhDsaShake192fPublicKey { panic('expected p256') }
 		SlhDsaShake256sPublicKey { panic('expected p256') }
 		SlhDsaShake256fPublicKey { panic('expected p256') }
+		Ed25519PublicKey { panic('expected p256') }
 		SlhDsaSha2128sPublicKey { panic('expected p256') }
 		SlhDsaSha2128fPublicKey { panic('expected p256') }
 		SlhDsaSha2192sPublicKey { panic('expected p256') }

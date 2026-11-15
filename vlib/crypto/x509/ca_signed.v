@@ -21,6 +21,7 @@ fn extract_subject_der(cert_der []u8) ![]u8 {
 }
 
 pub fn generate_ca_signed(leaf_opts CertGenOptions, leaf_key ecdsa.PrivateKey, ca_cert &Certificate, ca_key ecdsa.PrivateKey) !(Certificate, []u8) {
+	check_ip_names(leaf_opts.ip_names)!
 	issuer_der := extract_subject_der(ca_cert.raw) or { return err }
 	pub_bytes := ecdsa_pub_uncompressed(leaf_key) or { return err }
 	mut serial := rand.bytes(8) or { return err }
@@ -73,18 +74,30 @@ pub fn generate_ca_signed(leaf_opts CertGenOptions, leaf_key ecdsa.PrivateKey, c
 	for b in subject_der { tbs << b }
 	for b in spki { tbs << b }
 
-	if leaf_opts.dns_names.len > 0 {
-		mut san_content := []u8{}
-		for dn in leaf_opts.dns_names {
-			gn := der_tlv(0x82, dn.bytes())
-			for b in gn { san_content << b }
+	mut exts_inner := []u8{}
+	if leaf_opts.dns_names.len + leaf_opts.ip_names.len > 0 {
+		for b in san_ext(leaf_opts.dns_names, leaf_opts.ip_names) {
+			exts_inner << b
 		}
-		san_ext_value := der_seq(san_content)
-		mut ext_content := []u8{}
-		for b in encode_oid('2.5.29.17') { ext_content << b }
-		for b in der_octstr(san_ext_value) { ext_content << b }
-		ext := der_seq(ext_content)
-		exts := der_seq(ext)
+	}
+	ski := ski_for_raw(pub_bytes)
+	ca_ski := ca_ski_of(ca_cert)!
+	if leaf_opts.is_ca {
+		for b in bc_ext(leaf_opts.is_ca) {
+			exts_inner << b
+		}
+	}
+	for b in policy_exts(leaf_opts) {
+		exts_inner << b
+	}
+	for b in ski_ext(ski) {
+		exts_inner << b
+	}
+	for b in aki_ext(ca_ski) {
+		exts_inner << b
+	}
+	if exts_inner.len > 0 {
+		exts := der_seq(exts_inner)
 		ctx3 := der_ctx(3, exts)
 		for b in ctx3 { tbs << b }
 	}

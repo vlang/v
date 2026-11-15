@@ -7,6 +7,7 @@ import crypto.rand
 import crypto.sha256
 import crypto.sha512
 import crypto.subtle
+import os
 import time
 
 // Session tickets and PSK resumption (RFC 8446 §4.2.11, §4.6.1).
@@ -516,6 +517,72 @@ pub fn parse_psk_offer(data []u8) !([]PskIdentity, [][]u8) {
 	return ids, binders
 }
 
+// patch_psk_binders replaces all placeholder binders in encoded extension
+// data with the real binder values, in order.
+pub fn patch_psk_binders(ext_data []u8, binders [][]u8) ![]u8 {
+	ids, old := parse_psk_offer(ext_data)!
+	if ids.len != binders.len || old.len != binders.len {
+		return error('tls: psk binder count mismatch')
+	}
+	for i in 0 .. binders.len {
+		if binders[i].len != old[i].len {
+			return error('tls: psk binder length mismatch')
+		}
+	}
+	// Binders sit at the very end: [len(1)+binder] per identity.
+	mut out := ext_data.clone()
+	mut pos := out.len
+	for i := binders.len - 1; i >= 0; i-- {
+		pos -= binders[i].len + 1
+		if pos < 0 || out[pos] != u8(binders[i].len) {
+			return error('tls: corrupt psk offer')
+		}
+		for j in 0 .. binders[i].len {
+			out[pos + 1 + j] = binders[i][j]
+		}
+	}
+	return out
+}
+
+// encode_psk_offer_multi builds a pre_shared_key extension for several
+// identities, each with a placeholder binder sized for its suite hash.
+pub fn encode_psk_offer_multi(ids []PskIdentity, suites []CipherSuite) []u8 {
+	mut ident := []u8{}
+	mut total_id := 0
+	for id in ids {
+		total_id += 2 + id.ticket.len + 4
+	}
+	ident << u8(total_id >> 8)
+	ident << u8(total_id & 0xff)
+	for id in ids {
+		ident << u8(id.ticket.len >> 8)
+		ident << u8(id.ticket.len & 0xff)
+		ident << id.ticket
+		ident << u8(id.obfuscated_age >> 24)
+		ident << u8(id.obfuscated_age >> 16)
+		ident << u8(id.obfuscated_age >> 8)
+		ident << u8(id.obfuscated_age)
+	}
+	mut binders := []u8{}
+	mut total_b := 0
+	for s in suites {
+		total_b += 1 + cipher_suite_hash_len(s)
+	}
+	binders << u8(total_b >> 8)
+	binders << u8(total_b & 0xff)
+	for s in suites {
+		hl := cipher_suite_hash_len(s)
+		binders << u8(hl)
+		for _ in 0 .. hl {
+			binders << u8(0)
+		}
+	}
+	mut out := []u8{}
+	out << ident
+	out << binders
+	return out
+}
+
 // patch_psk_binder replaces the (single) placeholder binder in encoded extension
 // data with the real binder value.
 pub fn patch_psk_binder(ext_data []u8, binder []u8) ![]u8 {
@@ -598,5 +665,45 @@ pub fn parse_psk_selected(data []u8) !int {
 
 // encode_psk_selected builds the server pre_shared_key extension (selected identity 0).
 pub fn encode_psk_selected() []u8 {
-	return [u8(0), u8(0)]
+	return encode_psk_selected_idx(0)
+}
+
+// encode_psk_selected_idx builds the server pre_shared_key extension
+// carrying the selected identity index into the client's offer list.
+pub fn encode_psk_selected_idx(idx int) []u8 {
+	return [u8(idx >> 8), u8(idx & 0xff)]
+}
+
+// save_ticket_keys persists ticket encryption keys as a raw 32-byte concat
+// file (0600-style permissions where the OS allows). Best-effort chmod:
+// the write itself must succeed; a chmod failure never fails the save.
+pub fn save_ticket_keys(path string, keys [][]u8) ! {
+	if keys.len == 0 {
+		return error('tls: no ticket keys to save')
+	}
+	mut out := []u8{}
+	for k in keys {
+		if k.len != 32 {
+			return error('tls: invalid ticket key length')
+		}
+		out << k
+	}
+	os.write_bytes(path, out)!
+	$if unix {
+		os.chmod(path, 0o600) or {}
+	}
+}
+
+// load_ticket_keys reads a raw 32-byte concat ticket-key file written by
+// save_ticket_keys.
+pub fn load_ticket_keys(path string) ![][]u8 {
+	raw := os.read_bytes(path)!
+	if raw.len == 0 || raw.len % 32 != 0 {
+		return error('tls: bad ticket key file')
+	}
+	mut out := [][]u8{}
+	for off := 0; off < raw.len; off += 32 {
+		out << raw[off..off + 32].clone()
+	}
+	return out
 }

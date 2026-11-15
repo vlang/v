@@ -28,9 +28,11 @@ fn mldsa_spki(raw []u8, kind mldsa.Kind) []u8 {
 }
 
 // mldsa_tbs_common assembles the TBS body shared by self-signed and
-// CA-signed ML-DSA certificates. A CA:TRUE basicConstraints extension is
-// emitted when is_ca is set so openssl verify accepts V-generated CAs.
-fn mldsa_tbs_common(serial []u8, sig_alg_id []u8, issuer []u8, validity []u8, subject []u8, spki []u8, dns_names []string, is_ca bool) []u8 {
+// CA-signed ML-DSA/SLH-DSA certificates. basicConstraints (CA flag from
+// is_ca), subjectKeyIdentifier and authorityKeyIdentifier are always
+// emitted so openssl verify accepts V-generated CAs and CRL AKI
+// matching works; ski is the leaf key's SKI and aki the issuer's.
+fn mldsa_tbs_common(serial []u8, sig_alg_id []u8, issuer []u8, validity []u8, subject []u8, spki []u8, opts CertGenOptions, ski []u8, aki []u8, policy []u8) []u8 {
 	mut tbs := []u8{}
 	version := der_ctx(0, der_int([u8(0x02)]))
 	for b in version { tbs << b }
@@ -41,27 +43,18 @@ fn mldsa_tbs_common(serial []u8, sig_alg_id []u8, issuer []u8, validity []u8, su
 	for b in subject { tbs << b }
 	for b in spki { tbs << b }
 	mut exts_inner := []u8{}
-	if is_ca {
-		mut bc_content := []u8{}
-		for b in encode_oid('2.5.29.19') { bc_content << b }
-		for b in der_tlv(0x01, [u8(0xff)]) { bc_content << b }
-		for b in der_octstr(der_seq(der_tlv(0x01, [u8(0xff)]))) { bc_content << b }
-		bc_ext := der_seq(bc_content)
-		for b in bc_ext { exts_inner << b }
+	// basicConstraints is emitted for CAs only: an empty CA:FALSE
+	// SEQUENCE is rejected by OpenSSL's extension cache, so leaves
+	// omit it (matching the pre-PKI issuance shape).
+	if opts.is_ca {
+		for b in bc_ext(opts.is_ca) { exts_inner << b }
 	}
-	if dns_names.len > 0 {
-		mut san_content := []u8{}
-		for dn in dns_names {
-			gn := der_tlv(0x82, dn.bytes())
-			for b in gn { san_content << b }
-		}
-		san_ext_value := der_seq(san_content)
-		mut ext_content := []u8{}
-		for b in encode_oid('2.5.29.17') { ext_content << b }
-		for b in der_octstr(san_ext_value) { ext_content << b }
-		ext := der_seq(ext_content)
-		for b in ext { exts_inner << b }
+	if opts.dns_names.len + opts.ip_names.len > 0 {
+		for b in san_ext(opts.dns_names, opts.ip_names) { exts_inner << b }
 	}
+	for b in ski_ext(ski) { exts_inner << b }
+	for b in aki_ext(aki) { exts_inner << b }
+	for b in policy { exts_inner << b }
 	if exts_inner.len > 0 {
 		exts := der_seq(exts_inner)
 		ctx3 := der_ctx(3, exts)
@@ -75,6 +68,7 @@ fn mldsa_tbs_common(serial []u8, sig_alg_id []u8, issuer []u8, validity []u8, su
 // test fixtures); the outer sigAlg OID matches the key kind. The key must
 // agree with kind (checked by public-key length).
 pub fn generate_self_signed_mldsa(opts CertGenOptions, key mldsa.PrivateKey, kind mldsa.Kind) !(Certificate, []u8) {
+	check_ip_names(opts.ip_names)!
 	if key.public_key().bytes().len != kind.public_key_size() {
 		return error('x509: ML-DSA key/kind mismatch')
 	}
@@ -106,7 +100,9 @@ pub fn generate_self_signed_mldsa(opts CertGenOptions, key mldsa.PrivateKey, kin
 	sig_alg_id := der_seq(sig_alg_content)
 
 	spki := mldsa_spki(raw, kind)
-	tbs := mldsa_tbs_common(serial, sig_alg_id, name_der, validity, name_der, spki, opts.dns_names, opts.is_ca)
+	ski := ski_for_raw(raw)
+	tbs := mldsa_tbs_common(serial, sig_alg_id, name_der, validity, name_der, spki,
+		opts, ski, ski, policy_exts(opts))
 	tbs_der := der_seq(tbs)
 
 	sig := key.sign(tbs_der, mldsa.SignerOpts{ deterministic: true }) or { return err }
@@ -127,6 +123,7 @@ pub fn generate_self_signed_mldsa(opts CertGenOptions, key mldsa.PrivateKey, kin
 // cross-curve support); the sigAlg OID follows the CA key and the SPKI
 // follows the leaf key. Each key must agree with its kind.
 pub fn generate_ca_signed_mldsa(leaf_opts CertGenOptions, leaf_key mldsa.PrivateKey, leaf_kind mldsa.Kind, ca_cert &Certificate, ca_key mldsa.PrivateKey, ca_kind mldsa.Kind) !(Certificate, []u8) {
+	check_ip_names(leaf_opts.ip_names)!
 	if leaf_key.public_key().bytes().len != leaf_kind.public_key_size() {
 		return error('x509: ML-DSA leaf key/kind mismatch')
 	}
@@ -163,7 +160,10 @@ pub fn generate_ca_signed_mldsa(leaf_opts CertGenOptions, leaf_key mldsa.Private
 
 	spki := mldsa_spki(leaf_raw, leaf_kind)
 
-	tbs := mldsa_tbs_common(serial, sig_alg_id, issuer_der, validity, subject_der, spki, leaf_opts.dns_names, leaf_opts.is_ca)
+	ski := ski_for_raw(leaf_raw)
+	ca_ski := ca_ski_of(ca_cert)!
+	tbs := mldsa_tbs_common(serial, sig_alg_id, issuer_der, validity, subject_der, spki,
+		leaf_opts, ski, ca_ski, policy_exts(leaf_opts))
 	tbs_der := der_seq(tbs)
 
 	sig := ca_key.sign(tbs_der, mldsa.SignerOpts{ deterministic: true }) or { return err }

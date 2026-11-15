@@ -128,7 +128,8 @@ fn der_contains_oid(der []u8, want []u8) bool {
 }
 
 // extract_cert_der extracts the first certificate DER from a Certificate message body.
-// extract_cert_der only returns the leaf; intermediates are ignored in v1 (see README).
+// extract_cert_der only returns the leaf; use extract_chain_ders when the
+// server sends intermediates (the x509 chain builder verifies them).
 pub fn extract_cert_der(cert_msg_body []u8) ![]u8 {
 	if cert_msg_body.len < 4 {
 		return error('tls: truncated Certificate')
@@ -154,8 +155,8 @@ pub fn extract_cert_der(cert_msg_body []u8) ![]u8 {
 }
 
 // parse_cert_pubkey parses the leaf certificate public key from a Certificate body.
-// parse_cert_pubkey supports RSA, P-256/P-384/P-521 ECDSA, ML-DSA-44/65/87
-// and SLH-DSA (all 12 parameter sets parse; only SHAKE sets verify) keys.
+// parse_cert_pubkey supports RSA, P-256/P-384/P-521 ECDSA, Ed25519, ML-DSA-44/65/87
+// and SLH-DSA (all 12 parameter sets) keys.
 pub fn parse_cert_pubkey(cert_msg_body []u8) !x509.PublicKey {
 	if cert_msg_body.len < 4 {
 		return error('tls: truncated Certificate')
@@ -188,10 +189,11 @@ pub fn parse_cert_pubkey(cert_msg_body []u8) !x509.PublicKey {
 // parse_cert_verify_sig extracts the scheme and signature from a TLS 1.3
 // CertificateVerify body.
 // parse_cert_verify_sig accepts the schemes net.tls implements
-// (ecdsa 0x0403/0x0503/0x0603, mldsa 0x0904/0x0905/0x0906,
+// (ecdsa 0x0403/0x0503/0x0603, eddsa 0x0807, mldsa 0x0904/0x0905/0x0906,
+// slh-dsa-sha2 0x0911/0x0912/0x0913/0x0914/0x0915/0x0916,
 // slh-dsa-shake 0x0917/0x0918/0x0919/0x091a/0x091b/0x091c, rsa_pss_rsae
 // 0x0804/0x0805/0x0806, rsa_pkcs1 0x0401/0x0501/0x0601) and rejects everything
-// else, including eddsa, rsa_pss_pss variants and SLH-DSA-SHA2 schemes.
+// else, including rsa_pss_pss variants.
 pub fn parse_cert_verify_sig(cv_body []u8) !(u16, []u8) {
 	if cv_body.len < 4 {
 		return error('tls: truncated CertificateVerify')
@@ -199,7 +201,8 @@ pub fn parse_cert_verify_sig(cv_body []u8) !(u16, []u8) {
 	// algorithm (2) + sig length (2) + sig
 	scheme := (u16(cv_body[0]) << 8) | u16(cv_body[1])
 	match scheme {
-		u16(0x0403), u16(0x0503), u16(0x0603), u16(0x0904), u16(0x0905), u16(0x0906),
+		u16(0x0403), u16(0x0503), u16(0x0603), u16(0x0807), u16(0x0904), u16(0x0905), u16(0x0906),
+		u16(0x0911), u16(0x0912), u16(0x0913), u16(0x0914), u16(0x0915), u16(0x0916),
 		u16(0x0917), u16(0x0918), u16(0x0919), u16(0x091a), u16(0x091b), u16(0x091c),
 		u16(0x0804), u16(0x0805), u16(0x0806), u16(0x0401), u16(0x0501), u16(0x0601) {
 		}
@@ -212,6 +215,74 @@ pub fn parse_cert_verify_sig(cv_body []u8) !(u16, []u8) {
 		return error('tls: bad CertificateVerify signature length')
 	}
 	return scheme, cv_body[4..4 + sig_len].clone()
+}
+
+// extract_chain_ders extracts every certificate DER (leaf first) from a
+// Certificate message body, so servers sending leaf+intermediates verify
+// through x509.build_chain. The client and server Certificate flights
+// share entry framing, so this reuses the client-chain parser.
+pub fn extract_chain_ders(cert_msg_body []u8) ![][]u8 {
+	chain, _ := parse_client_cert_chain(cert_msg_body)!
+	if chain.len == 0 {
+		return error('tls: empty certificate list')
+	}
+	return chain
+}
+
+// verify_server_chain verifies a presented Certificate body against roots:
+// the direct-root fast path applies when the leaf is (or is issued by) a
+// root; otherwise intermediates from the same flight build the longest
+// valid path via x509.build_chain. Hostname, EKU (serverAuth), CRLs from
+// SSL_CRL_FILE/SSL_CRL_DIR and OCSP staples are enforced; it returns the
+// leaf public key for CertificateVerify. Prefer this over the
+// extract_cert_der + direct-root loop in new call-sites.
+pub fn verify_server_chain(cert_msg_body []u8, roots []x509.Certificate, hostname string) !x509.PublicKey {
+	return verify_server_chain_stapled(cert_msg_body, roots, hostname, []u8{})
+}
+
+// verify_server_chain_stapled is verify_server_chain with an optional
+// OCSP staple (status_request bytes from the transport; empty disables).
+pub fn verify_server_chain_stapled(cert_msg_body []u8, roots []x509.Certificate, hostname string, ocsp_resp []u8) !x509.PublicKey {
+	ders := extract_chain_ders(cert_msg_body)!
+	mut certs := []x509.Certificate{}
+	for d in ders {
+		certs << x509.parse_der(d) or { return error(error_bad_signature) }
+	}
+	chain := x509.build_chain(certs[0], if certs.len > 1 {
+		certs[1..]
+	} else {
+		[]x509.Certificate{}
+	}, roots)!
+	x509.verify_chain(chain, x509.VerifyOptions{
+		usage:     .server_auth
+		hostname:  hostname
+		crls:      x509.load_system_crls()
+		ocsp_resp: ocsp_resp
+	})!
+	return chain[0].public_key() or { return error(error_bad_signature) }
+}
+
+// verify_client_chain verifies a presented client Certificate body
+// against roots (clientAuth EKU, no hostname check, CRLs enforced),
+// returning the leaf public key for CertificateVerify.
+pub fn verify_client_chain(chain [][]u8, roots []x509.Certificate) !x509.PublicKey {
+	if chain.len == 0 {
+		return error('tls: client certificate required')
+	}
+	mut certs := []x509.Certificate{}
+	for d in chain {
+		certs << x509.parse_der(d) or { return error(error_bad_signature) }
+	}
+	built := x509.build_chain(certs[0], if certs.len > 1 {
+		certs[1..]
+	} else {
+		[]x509.Certificate{}
+	}, roots)!
+	x509.verify_chain(built, x509.VerifyOptions{
+		usage: .client_auth
+		crls:  x509.load_system_crls()
+	})!
+	return built[0].public_key() or { return error(error_bad_signature) }
 }
 
 // extract_ecdsa_pubkey extracts a P-256 public key from subjectPublicKeyInfo.

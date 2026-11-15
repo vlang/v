@@ -24,6 +24,7 @@ fn test_public_key_ecdsa() {
 		SlhDsaShake192fPublicKey { panic('expected rsa') }
 		SlhDsaShake256sPublicKey { panic('expected rsa') }
 		SlhDsaShake256fPublicKey { panic('expected rsa') }
+		Ed25519PublicKey { panic('expected rsa') }
 		SlhDsaSha2128sPublicKey { panic('expected rsa') }
 		SlhDsaSha2128fPublicKey { panic('expected rsa') }
 		SlhDsaSha2192sPublicKey { panic('expected rsa') }

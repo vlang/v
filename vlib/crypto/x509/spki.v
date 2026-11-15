@@ -99,6 +99,14 @@ pub:
 	raw []u8 // 64 bytes
 }
 
+// Ed25519PublicKey holds a 32-byte raw Ed25519 public key (RFC 8410:
+// the SPKI algorithm OID is id-Ed25519 with absent parameters and the
+// BIT STRING holds the raw key bytes).
+pub struct Ed25519PublicKey {
+pub:
+	raw []u8 // 32 bytes
+}
+
 pub type PublicKey = RsaPublicKey
 	| EcdsaP256PublicKey
 	| EcdsaP384PublicKey
@@ -118,6 +126,7 @@ pub type PublicKey = RsaPublicKey
 	| SlhDsaShake192fPublicKey
 	| SlhDsaShake256sPublicKey
 	| SlhDsaShake256fPublicKey
+	| Ed25519PublicKey
 
 // OID strings.
 const oid_rsa_encryption = '1.2.840.113549.1.1.1'
@@ -143,6 +152,9 @@ const oid_slh_dsa_shake_192s = '2.16.840.1.101.3.4.3.28'
 const oid_slh_dsa_shake_192f = '2.16.840.1.101.3.4.3.29'
 const oid_slh_dsa_shake_256s = '2.16.840.1.101.3.4.3.30'
 const oid_slh_dsa_shake_256f = '2.16.840.1.101.3.4.3.31'
+// id-Ed25519 (RFC 8410): doubles as the SPKI and the signature algorithm
+// OID, with absent parameters. The BIT STRING holds the 32-byte raw key.
+pub const oid_ed25519 = '1.3.101.112'
 
 pub fn (c &Certificate) public_key() !PublicKey {
 	if c.raw.len == 0 {
@@ -294,6 +306,19 @@ pub fn (c &Certificate) public_key() !PublicKey {
 			return error('x509: bad SLH-DSA-SHAKE-256f public key length')
 		}
 		return SlhDsaShake256fPublicKey{ raw: pub_bytes }
+	}
+	// Ed25519 keys use id-Ed25519 as the SPKI algorithm OID with absent
+	// parameters (RFC 8410); a present params field is rejected so it
+	// cannot change the key's meaning. The BIT STRING holds the raw
+	// 32-byte public key.
+	if oid == oid_ed25519 {
+		if oid_len != alg_id.len {
+			return error('x509: Ed25519 parameters must be absent')
+		}
+		if pub_bytes.len != 32 {
+			return error('x509: bad Ed25519 public key length')
+		}
+		return Ed25519PublicKey{ raw: pub_bytes }
 	}
 	if oid == oid_ec_public_key {
 		curve_oid, _ := der_oid(alg_id[oid_len..]) or {

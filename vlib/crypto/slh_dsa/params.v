@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Pure-V implementation of the SLH-DSA stateless hash-based signature
-// scheme (FIPS 205). Only the SHAKE parameter sets are implemented;
-// the SHA2 parameter sets are described but return an error.
+// scheme (FIPS 205). All 12 parameter sets are implemented: the SHAKE
+// sets (Section 11.1) and the SHA2 sets (Section 11.2).
 module slh_dsa
 
 // ParameterSet identifies one of the 12 approved FIPS 205 parameter sets.

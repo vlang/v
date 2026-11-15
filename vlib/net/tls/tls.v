@@ -117,6 +117,7 @@ pub enum HandshakeType {
 	certificate_request  = 13
 	certificate_verify   = 15
 	finished             = 20
+	certificate_status   = 22
 	key_update           = 24
 	message_hash         = 254
 }
@@ -162,6 +163,17 @@ pub enum PostQuantumMode {
 	off            // classical only
 	hybrid_prefer  // offer X25519MLKEM768, fall back to classical
 	hybrid_require // require X25519MLKEM768, fail otherwise
+}
+
+// CertEntry holds one SNI-selected server credential. cert/key accept a
+// file path or inline PEM (like Config.cert/key); cert_pem/key_pem carry
+// raw PEM bytes when the credential does not live on disk.
+pub struct CertEntry {
+pub mut:
+	cert     string
+	key      string
+	cert_pem []u8
+	key_pem  []u8
 }
 
 // Config holds the settings for a TLS 1.3 connection (client or server).
@@ -229,6 +241,26 @@ pub mut:
 	// Request a client certificate (server side, mTLS). The client cert is
 	// verified against ca_store/system roots when verify_chain is set.
 	verify_client bool
+	// SNI-selected credentials: hostname -> credential. When the
+	// ClientHello carries a server_name that matches a key, that
+	// credential is used; otherwise the default cert/key above applies
+	// (fail closed to the default, never a downgrade).
+	cert_map map[string]CertEntry
+	// External pre-shared key (both sides). When both are non-empty the
+	// client offers psk_identity as an extra PSK identity with
+	// psk_dhe_ke; the server matches the identity bytes in constant
+	// time and uses psk_key as the PSK.
+	psk_identity []u8
+	psk_key      []u8
+	// Session-ticket encryption keys (server side). [0] seals new
+	// tickets; all entries are tried when opening. Empty means use
+	// ticket_key (single-key behaviour, default-identical).
+	ticket_keys [][]u8
+	// OCSP response to staple (server side, opaque bytes). Accepts a
+	// file path or inline PEM/DER; _pem carries raw bytes. Sent only
+	// when the client offers status_request; transported, never verified.
+	ocsp_response     string
+	ocsp_response_pem []u8
 }
 
 // Conn is defined in conn.v.

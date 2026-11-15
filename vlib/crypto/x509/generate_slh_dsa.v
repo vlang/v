@@ -36,14 +36,11 @@ fn slh_dsa_spki(raw []u8, params slh_dsa.ParameterSet) []u8 {
 	return der_seq(content)
 }
 
-// slh_dsa_check_wired rejects parameter sets the pure-V primitive cannot
-// sign with (currently all SLH-DSA-SHA2 sets). Key generation for those
-// sets is stubbed, so certificates cannot be issued for them.
+// slh_dsa_check_wired validates the parameter set against the pure-V
+// primitive (all 12 SLH-DSA sets are instantiated; kept as a call-site
+// gate for future instantiations).
 fn slh_dsa_check_wired(params slh_dsa.ParameterSet) ! {
-	p := slh_dsa.get_params(params)
-	if !p.is_shake {
-		return error('x509: SLH-DSA ${p.name} not implemented (SHA2 instantiation)')
-	}
+	_ = slh_dsa.get_params(params)
 }
 
 // generate_self_signed_slh_dsa creates a self-signed SLH-DSA certificate.
@@ -51,6 +48,7 @@ fn slh_dsa_check_wired(params slh_dsa.ParameterSet) ! {
 // stable test fixtures); the outer sigAlg OID matches the parameter set.
 // The key must agree with params (checked by parameter-set equality).
 pub fn generate_self_signed_slh_dsa(opts CertGenOptions, key slh_dsa.PrivateKey, params slh_dsa.ParameterSet) !(Certificate, []u8) {
+	check_ip_names(opts.ip_names)!
 	if key.params != params {
 		return error('x509: SLH-DSA key/params mismatch')
 	}
@@ -84,8 +82,9 @@ pub fn generate_self_signed_slh_dsa(opts CertGenOptions, key slh_dsa.PrivateKey,
 
 	spki := slh_dsa_spki(raw, params)
 	// Same TBS shape as ML-DSA (see mldsa_tbs_common).
+	ski := ski_for_raw(raw)
 	tbs := mldsa_tbs_common(serial, sig_alg_id, name_der, validity, name_der, spki,
-		opts.dns_names, opts.is_ca)
+		opts, ski, ski, policy_exts(opts))
 	tbs_der := der_seq(tbs)
 
 	sig := slh_dsa.sign_deterministic(tbs_der, [], key) or { return err }
@@ -105,8 +104,9 @@ pub fn generate_self_signed_slh_dsa(opts CertGenOptions, key slh_dsa.PrivateKey,
 // The leaf and CA keys may be different parameter sets (mirroring the ML-DSA
 // cross-variant support); the sigAlg OID follows the CA parameter set and
 // the SPKI follows the leaf parameter set. Each key must agree with its
-// parameter set. Only SHAKE parameter sets are supported.
+// parameter set.
 pub fn generate_ca_signed_slh_dsa(leaf_opts CertGenOptions, leaf_key slh_dsa.PrivateKey, leaf_params slh_dsa.ParameterSet, ca_cert &Certificate, ca_key slh_dsa.PrivateKey, ca_params slh_dsa.ParameterSet) !(Certificate, []u8) {
+	check_ip_names(leaf_opts.ip_names)!
 	if leaf_key.params != leaf_params {
 		return error('x509: SLH-DSA leaf key/params mismatch')
 	}
@@ -146,8 +146,10 @@ pub fn generate_ca_signed_slh_dsa(leaf_opts CertGenOptions, leaf_key slh_dsa.Pri
 	spki := slh_dsa_spki(leaf_raw, leaf_params)
 
 	// Same TBS shape as ML-DSA (see mldsa_tbs_common).
+	ski := ski_for_raw(leaf_raw)
+	ca_ski := ca_ski_of(ca_cert)!
 	tbs := mldsa_tbs_common(serial, sig_alg_id, issuer_der, validity, subject_der,
-		spki, leaf_opts.dns_names, leaf_opts.is_ca)
+		spki, leaf_opts, ski, ca_ski, policy_exts(leaf_opts))
 	tbs_der := der_seq(tbs)
 
 	sig := slh_dsa.sign_deterministic(tbs_der, [], ca_key) or { return err }

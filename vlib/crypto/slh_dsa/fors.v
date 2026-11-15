@@ -10,7 +10,7 @@ fn fors_skgen(sk_seed []u8, pk_seed []u8, p Params, adrs Adrs, idx u32) []u8 {
 	sk_adrs.set_type_and_clear(.fors_prf)
 	sk_adrs.set_key_pair_address(adrs.get_key_pair_address())
 	sk_adrs.set_tree_index(idx)
-	return prf(pk_seed, sk_adrs, sk_seed, p.n)
+	return prf(pk_seed, sk_adrs, sk_seed, p)
 }
 
 // fors_node computes the root of a Merkle subtree of FORS public values
@@ -21,7 +21,7 @@ fn fors_node(sk_seed []u8, i u32, z u32, pk_seed []u8, p Params, adrs Adrs) []u8
 		mut l_adrs := adrs
 		l_adrs.set_tree_height(0)
 		l_adrs.set_tree_index(i)
-		return f_hash(pk_seed, l_adrs, sk, p.n)
+		return f_hash(pk_seed, l_adrs, sk, p)
 	}
 	mut m_adrs := adrs
 	lnode := fors_node(sk_seed, 2 * i, z - 1, pk_seed, p, m_adrs)
@@ -31,7 +31,7 @@ fn fors_node(sk_seed []u8, i u32, z u32, pk_seed []u8, p Params, adrs Adrs) []u8
 	mut m := []u8{cap: 2 * p.n}
 	m << lnode
 	m << rnode
-	return h_hash(pk_seed, m_adrs, m, p.n)
+	return h_hash(pk_seed, m_adrs, m, p)
 }
 
 // fors_sign generates a FORS signature on a message digest
@@ -64,7 +64,7 @@ fn fors_pk_from_sig(sig_fors []u8, md []u8, pk_seed []u8, p Params, adrs Adrs) [
 		v_adrs.set_tree_height(0)
 		two_a := u32(1) << u32(p.a)
 		v_adrs.set_tree_index(u32(i) * two_a + indices[i])
-		mut node0 := f_hash(pk_seed, v_adrs, sk, p.n)
+		mut node0 := f_hash(pk_seed, v_adrs, sk, p)
 		for j in 0 .. p.a {
 			v_adrs.set_tree_height(u32(j) + 1)
 			mut m := []u8{cap: 2 * p.n}
@@ -77,12 +77,12 @@ fn fors_pk_from_sig(sig_fors []u8, md []u8, pk_seed []u8, p Params, adrs Adrs) [
 				m << auth[j * p.n..(j + 1) * p.n]
 				m << node0
 			}
-			node0 = h_hash(pk_seed, v_adrs, m, p.n)
+			node0 = h_hash(pk_seed, v_adrs, m, p)
 		}
 		root << node0
 	}
 	mut forspk_adrs := adrs
 	forspk_adrs.set_type_and_clear(.fors_roots)
 	forspk_adrs.set_key_pair_address(adrs.get_key_pair_address())
-	return t_hash(pk_seed, forspk_adrs, root, p.n)
+	return t_hash(pk_seed, forspk_adrs, root, p)
 }

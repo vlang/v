@@ -9,7 +9,7 @@ fn chain(x []u8, i u32, s u32, pk_seed []u8, p Params, mut adrs Adrs) []u8 {
 	mut tmp := x.clone()
 	for j in i .. i + s {
 		adrs.set_hash_address(j)
-		tmp = f_hash(pk_seed, adrs, tmp, p.n)
+		tmp = f_hash(pk_seed, adrs, tmp, p)
 	}
 	return tmp
 }
@@ -35,14 +35,14 @@ fn wots_pkgen(sk_seed []u8, pk_seed []u8, p Params, adrs Adrs) []u8 {
 	mut tmp := []u8{cap: p.len() * p.n}
 	for i in 0 .. p.len() {
 		sk_adrs.set_chain_address(u32(i))
-		sk := prf(pk_seed, sk_adrs, sk_seed, p.n)
+		sk := prf(pk_seed, sk_adrs, sk_seed, p)
 		w_adrs.set_chain_address(u32(i))
 		tmp << chain(sk, 0, u32(p.w() - 1), pk_seed, p, mut w_adrs)
 	}
 	mut wotspk_adrs := adrs
 	wotspk_adrs.set_type_and_clear(.wots_pk)
 	wotspk_adrs.set_key_pair_address(adrs.get_key_pair_address())
-	return t_hash(pk_seed, wotspk_adrs, tmp, p.n)
+	return t_hash(pk_seed, wotspk_adrs, tmp, p)
 }
 
 // wots_sign generates a WOTS+ signature on an n-byte message
@@ -57,7 +57,7 @@ fn wots_sign(msg []u8, sk_seed []u8, pk_seed []u8, p Params, adrs Adrs) []u8 {
 	mut sig := []u8{cap: p.len() * p.n}
 	for i in 0 .. p.len() {
 		sk_adrs.set_chain_address(u32(i))
-		sk := prf(pk_seed, sk_adrs, sk_seed, p.n)
+		sk := prf(pk_seed, sk_adrs, sk_seed, p)
 		w_adrs.set_chain_address(u32(i))
 		sig << chain(sk, 0, full[i], pk_seed, p, mut w_adrs)
 	}
@@ -79,5 +79,5 @@ fn wots_pk_from_sig(sig []u8, msg []u8, pk_seed []u8, p Params, adrs Adrs) []u8 
 	mut wotspk_adrs := adrs
 	wotspk_adrs.set_type_and_clear(.wots_pk)
 	wotspk_adrs.set_key_pair_address(adrs.get_key_pair_address())
-	return t_hash(pk_seed, wotspk_adrs, tmp, p.n)
+	return t_hash(pk_seed, wotspk_adrs, tmp, p)
 }

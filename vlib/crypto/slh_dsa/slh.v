@@ -91,19 +91,10 @@ pub fn public_key_from_bytes(params ParameterSet, b []u8) !PublicKey {
 	}
 }
 
-// check_supported reports an error for parameter sets without a pure-V
-// instantiation (currently all SLH-DSA-SHA2 sets).
-fn check_supported(p Params) ! {
-	if !p.is_shake {
-		return error('slh_dsa: ${p.name} not implemented (SHA2 instantiation)')
-	}
-}
-
 // keygen_internal generates a key pair from the given seeds
 // (FIPS 205, Algorithm 18).
 pub fn keygen_internal(params ParameterSet, sk_seed []u8, sk_prf []u8, pk_seed []u8) !(PrivateKey, PublicKey) {
 	p := get_params(params)
-	check_supported(p)!
 	if sk_seed.len != p.n || sk_prf.len != p.n || pk_seed.len != p.n {
 		return error('slh_dsa: bad seed length for ${p.name}')
 	}
@@ -123,7 +114,6 @@ pub fn keygen_internal(params ParameterSet, sk_seed []u8, sk_prf []u8, pk_seed [
 // keygen generates a random SLH-DSA key pair (FIPS 205, Algorithm 21).
 pub fn keygen(params ParameterSet) !(PrivateKey, PublicKey) {
 	p := get_params(params)
-	check_supported(p)!
 	sk_seed := rand.bytes(p.n)!
 	sk_prf := rand.bytes(p.n)!
 	pk_seed := rand.bytes(p.n)!
@@ -136,7 +126,6 @@ pub fn keygen(params ParameterSet) !(PrivateKey, PublicKey) {
 // (FIPS 205, Algorithm 19).
 pub fn sign_internal(msg []u8, sk PrivateKey, addrnd ?[]u8) ![]u8 {
 	p := sk.p()
-	check_supported(p)!
 	mut opt_rand := []u8{}
 	if r := addrnd {
 		if r.len != p.n {
@@ -146,10 +135,10 @@ pub fn sign_internal(msg []u8, sk PrivateKey, addrnd ?[]u8) ![]u8 {
 	} else {
 		opt_rand = sk.pk_seed.clone()
 	}
-	r := prf_msg(sk.sk_prf, opt_rand, msg, p.n)
+	r := prf_msg(sk.sk_prf, opt_rand, msg, p)
 	mut sig := []u8{cap: p.sig_len()}
 	sig << r
-	digest := h_msg(r, sk.pk_seed, sk.pk_root, msg, p.m)
+	digest := h_msg(r, sk.pk_seed, sk.pk_root, msg, p)
 	md := digest[..p.md_len()].clone()
 	mut off := p.md_len()
 	tmp_idx_tree := digest[off..off + p.idx_tree_len()].clone()
@@ -172,9 +161,6 @@ pub fn sign_internal(msg []u8, sk PrivateKey, addrnd ?[]u8) ![]u8 {
 // (FIPS 205, Algorithm 20).
 pub fn verify_internal(msg []u8, sig []u8, pk PublicKey) bool {
 	p := pk.p()
-	if !p.is_shake {
-		return false
-	}
 	if sig.len != p.sig_len() {
 		return false
 	}
@@ -182,7 +168,7 @@ pub fn verify_internal(msg []u8, sig []u8, pk PublicKey) bool {
 	fors_len := p.k * (1 + p.a) * p.n
 	sig_fors := sig[p.n..p.n + fors_len]
 	sig_ht := sig[p.n + fors_len..]
-	digest := h_msg(r, pk.pk_seed, pk.pk_root, msg, p.m)
+	digest := h_msg(r, pk.pk_seed, pk.pk_root, msg, p)
 	md := digest[..p.md_len()].clone()
 	mut off := p.md_len()
 	tmp_idx_tree := digest[off..off + p.idx_tree_len()].clone()
@@ -216,7 +202,6 @@ fn pure_msg(msg []u8, ctx []u8) ![]u8 {
 // string (FIPS 205, Algorithm 22).
 pub fn sign(msg []u8, ctx []u8, sk PrivateKey) ![]u8 {
 	p := sk.p()
-	check_supported(p)!
 	mut m := pure_msg(msg, ctx)!
 	addrnd := rand.bytes(p.n)!
 	return sign_internal(m, sk, addrnd)
@@ -225,7 +210,6 @@ pub fn sign(msg []u8, ctx []u8, sk PrivateKey) ![]u8 {
 // sign_deterministic generates a deterministic pure SLH-DSA signature with
 // the given context string (FIPS 205, Algorithm 22 without addrnd).
 pub fn sign_deterministic(msg []u8, ctx []u8, sk PrivateKey) ![]u8 {
-	check_supported(sk.p())!
 	m := pure_msg(msg, ctx)!
 	return sign_internal(m, sk, none)
 }

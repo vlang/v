@@ -1,6 +1,7 @@
 module tls
 
 import crypto.ecdsa
+import crypto.ed25519
 import crypto.pem
 import crypto.sha256
 import crypto.sha512
@@ -33,6 +34,11 @@ pub mut:
 	rsa_priv     RsaPrivateKey
 	mldsa_priv   mldsa.PrivateKey
 	slh_dsa_priv slh_dsa.PrivateKey
+	// Ed25519 private key (64 bytes: seed || public). Present only when
+	// kind == .ed25519. Verification of Ed25519 chains needs x509 +
+	// cert_verify_sig support (separate agent owns those files); this
+	// module only loads and signs.
+	ed25519_priv []u8
 }
 
 // ClientCreds is the mTLS client credential: chain + private key.
@@ -58,14 +64,6 @@ fn load_slh_dsa_credential(key_block pem.Block, leaf_raw []u8, params slh_dsa.Pa
 	}
 }
 
-// slh_dsa_sha2_unimplemented reports the stub error for an SLH-DSA SHA2
-// parameter set, which the pure-V primitive does not instantiate.
-fn slh_dsa_sha2_unimplemented(params slh_dsa.ParameterSet) !CredentialKeys {
-	return error('tls: SLH-DSA ${slh_dsa.get_params(params).name} not implemented (SHA2 instantiation)')
-}
-
-// load_credential_keys loads a private key PEM block, requiring it to match
-// the leaf public key. Used for both server and client credentials.
 fn load_credential_keys(key_block pem.Block, leaf_public x509.PublicKey) !CredentialKeys {
 	match leaf_public {
 		x509.EcdsaP256PublicKey {
@@ -108,6 +106,19 @@ fn load_credential_keys(key_block pem.Block, leaf_public x509.PublicKey) !Creden
 			return CredentialKeys{
 				kind:       .ecdsa_p521
 				ecdsa_priv: priv
+			}
+		}
+		x509.Ed25519PublicKey {
+			if key_block.block_type != 'PRIVATE KEY' {
+				return error('tls: Ed25519 key must be PKCS#8 PEM')
+			}
+			priv := parse_ed25519_private_key(key_block.data)!
+			if subtle.constant_time_compare(priv.public_key(), leaf_public.raw) != 1 {
+				return error('tls: certificate and private key do not match')
+			}
+			return CredentialKeys{
+				kind:         .ed25519
+				ed25519_priv: priv
 			}
 		}
 		x509.RsaPublicKey {
@@ -184,32 +195,95 @@ fn load_credential_keys(key_block pem.Block, leaf_public x509.PublicKey) !Creden
 			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_256f, .slh_shake_256f)
 		}
 		x509.SlhDsaSha2128sPublicKey {
-			return slh_dsa_sha2_unimplemented(.sha2_128s)
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .sha2_128s, .slh_sha2_128s)
 		}
 		x509.SlhDsaSha2128fPublicKey {
-			return slh_dsa_sha2_unimplemented(.sha2_128f)
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .sha2_128f, .slh_sha2_128f)
 		}
 		x509.SlhDsaSha2192sPublicKey {
-			return slh_dsa_sha2_unimplemented(.sha2_192s)
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .sha2_192s, .slh_sha2_192s)
 		}
 		x509.SlhDsaSha2192fPublicKey {
-			return slh_dsa_sha2_unimplemented(.sha2_192f)
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .sha2_192f, .slh_sha2_192f)
 		}
 		x509.SlhDsaSha2256sPublicKey {
-			return slh_dsa_sha2_unimplemented(.sha2_256s)
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .sha2_256s, .slh_sha2_256s)
 		}
 		x509.SlhDsaSha2256fPublicKey {
-			return slh_dsa_sha2_unimplemented(.sha2_256f)
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .sha2_256f, .slh_sha2_256f)
 		}
 	}
 }
 
+// parse_ed25519_private_key loads an Ed25519 private key from PKCS#8 DER
+// (RFC 8410: AlgorithmIdentifier id-Ed25519, privateKey OCTET STRING
+// holding the 32-byte seed; a 64-byte seed||public form is also accepted).
+fn parse_ed25519_private_key(der []u8) !ed25519.PrivateKey {
+	tag, content, consumed := der_tlv(der)!
+	if tag != 0x30 || consumed != der.len {
+		return error('tls: expected SEQUENCE for Ed25519 private key')
+	}
+	mut off := 0
+	vtag, _, vn := der_tlv(content[off..])!
+	if vtag != 0x02 {
+		return error('tls: invalid PKCS#8 version')
+	}
+	off += vn
+	atag, alg_val, an := der_tlv(content[off..])!
+	if atag != 0x30 {
+		return error('tls: invalid PKCS#8 algorithm')
+	}
+	if !der_is_single_oid(alg_val, [u8(0x2b), 0x65, 0x70]) {
+		return error('tls: Ed25519 key algorithm mismatch')
+	}
+	off += an
+	ktag, inner, _ := der_tlv(content[off..])!
+	if ktag != 0x04 {
+		return error('tls: invalid PKCS#8 private key')
+	}
+	mut seed := inner.clone()
+	if seed.len != ed25519.seed_size && seed.len != ed25519.private_key_size {
+		// OpenSSL nests the 32-byte seed in a second OCTET STRING.
+		itag, ival, iconsumed := der_tlv(inner) or {
+			return error('tls: invalid Ed25519 private key length')
+		}
+		if itag != 0x04 || iconsumed != inner.len || ival.len != ed25519.seed_size {
+			return error('tls: invalid Ed25519 private key length')
+		}
+		seed = ival.clone()
+	}
+	if seed.len == ed25519.seed_size {
+		return ed25519.new_key_from_seed(seed)
+	}
+	if seed.len == ed25519.private_key_size {
+		return ed25519.PrivateKey(seed.clone())
+	}
+	return error('tls: invalid Ed25519 private key length')
+}
+
 // sign_cv_with signs CertificateVerify content with any loaded credential.
 // sign_cv_with dispatches on the negotiated scheme: ECDSA signs directly,
-// ML-DSA signs directly, SLH-DSA signs hedged pure (like ML-DSA's
-// randomized signing), RSA uses PKCS#1 v1.5 or PSS.
+// Ed25519 signs directly (no pre-hash), ML-DSA signs directly, SLH-DSA
+// signs hedged pure (like ML-DSA's randomized signing), RSA uses PKCS#1
+// v1.5 or PSS.
 pub fn sign_cv_with(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey, rsa_priv RsaPrivateKey, mldsa_priv mldsa.PrivateKey, slh_dsa_priv slh_dsa.PrivateKey, content []u8) ![]u8 {
+	return sign_cv_with_ed(kind, scheme, ecdsa_priv, rsa_priv, mldsa_priv, slh_dsa_priv,
+		[]u8{}, content)
+}
+
+// sign_cv_with_ed is sign_cv_with plus an Ed25519 private key slot.
+pub fn sign_cv_with_ed(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey, rsa_priv RsaPrivateKey, mldsa_priv mldsa.PrivateKey, slh_dsa_priv slh_dsa.PrivateKey, ed_priv []u8, content []u8) ![]u8 {
 	match kind {
+		.ed25519 {
+			if scheme != u16(0x0807) {
+				return error('tls: no supported signature scheme')
+			}
+			if ed_priv.len != ed25519.private_key_size {
+				return error('tls: missing Ed25519 private key')
+			}
+			priv := ed25519.PrivateKey(ed_priv.clone())
+			return priv.sign(content)
+		}
 		.ecdsa_p256, .ecdsa_p384, .ecdsa_p521 {
 			priv := ecdsa_priv or { return error('tls: missing EC private key') }
 			return priv.sign(content, ecdsa.SignerOpts{}) or { return err }
@@ -218,7 +292,8 @@ pub fn sign_cv_with(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey
 			return mldsa_priv.sign(content, mldsa.SignerOpts{}) or { return err }
 		}
 		.slh_shake_128s, .slh_shake_128f, .slh_shake_192s, .slh_shake_192f, .slh_shake_256s,
-		.slh_shake_256f {
+		.slh_shake_256f, .slh_sha2_128s, .slh_sha2_128f, .slh_sha2_192s, .slh_sha2_192f,
+		.slh_sha2_256s, .slh_sha2_256f {
 			return slh_dsa.sign(content, [], slh_dsa_priv) or { return err }
 		}
 		.rsa {
@@ -250,10 +325,21 @@ pub fn sign_cv_with(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey
 // §4.3.2) with an empty request context and a signature_algorithms
 // extension listing the schemes the server accepts.
 pub fn encode_certificate_request(schemes_data []u8) ![]u8 {
+	return encode_certificate_request_with_context([]u8{}, schemes_data)
+}
+
+// encode_certificate_request_with_context encodes a CertificateRequest
+// with an explicit request context (empty in the handshake, non-empty in
+// post-handshake auth where the client echoes it in its Certificate).
+pub fn encode_certificate_request_with_context(ctx []u8, schemes_data []u8) ![]u8 {
+	if ctx.len > 255 {
+		return error('tls: certificate request context too long')
+	}
 	mut exts := []u8{}
 	exts << encode_extension(ext_signature_algorithms, schemes_data)
 	mut out := []u8{}
-	out << u8(0) // empty request context
+	out << u8(ctx.len)
+	out << ctx
 	out << u8((exts.len >> 8) & 0xff)
 	out << u8(exts.len & 0xff)
 	out << exts
@@ -474,34 +560,15 @@ pub fn (mut s ServerHandshake) verify_client_certificate(cert_msg_body []u8, cv_
 	if ctx.len != 0 {
 		return error('tls: bad certificate request context')
 	}
-	cert_der := chain[0]
-	leaf := x509.parse_der(cert_der) or { return error(error_bad_signature) }
-	pk := leaf.public_key() or { return error(error_bad_signature) }
+	leaf0 := x509.parse_der(chain[0]) or { return error(error_bad_signature) }
+	mut pk := leaf0.public_key() or { return error(error_bad_signature) }
 	if s.verify_chain {
-		now := time.now()
-		if now.unix() < leaf.not_before.unix() {
-			return error(error_chain_untrusted)
-		}
-		if now.unix() > leaf.not_after.unix() {
-			return error(error_chain_expired)
-		}
-		store := if s.client_roots.roots.len > 0 {
-			s.client_roots
+		roots := if s.client_roots.roots.len > 0 {
+			s.client_roots.roots
 		} else {
-			load_system_roots() or { return error(error_chain_untrusted) }
+			[]x509.Certificate{}
 		}
-		mut trusted := store.contains(leaf)
-		if !trusted {
-			for r in store.roots {
-				rpk := r.public_key() or { continue }
-				verify_cert_signature(cert_der, rpk) or { continue }
-				trusted = true
-				break
-			}
-		}
-		if !trusted {
-			return error(error_chain_untrusted)
-		}
+		pk = verify_peer_chain(chain, roots, .client_auth, '', []u8{}) or { return err }
 	}
 	cert_msg := encode_handshake_message(.certificate, cert_msg_body)!
 	// Capture the application-secret transcript (through server Finished)

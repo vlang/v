@@ -1,9 +1,11 @@
 module tls
 
-import net
-import time
-import crypto.x509
+import crypto.rand
 import crypto.subtle
+import crypto.x509
+import net
+import os
+import time
 
 // Conn is a pure-V TLS 1.3 connection over TCP.
 pub struct Conn {
@@ -49,6 +51,29 @@ mut:
 	// regular handshake readers see an uninterrupted message stream.
 	stashed     []u8
 	has_stashed bool
+	// Negotiated ALPN protocol (empty when none).
+	negotiated_alpn_str string
+	// Stapled OCSP response (raw, transport only, never verified here).
+	ocsp_resp []u8
+	// Application traffic secrets (for KeyUpdate) and exporter/master
+	// secrets (for exporter() and SSLKEYLOGFILE).
+	client_app_secret []u8
+	server_app_secret []u8
+	exporter_master   []u8
+	master_secret     []u8
+	client_random     []u8
+	server_random     []u8
+	// Full-handshake transcript through the client Finished (base for
+	// post-handshake authentication).
+	hs_transcript []u8
+	// Post-handshake auth: server-side pending request context.
+	pha_pending_ctx []u8
+	has_pha_pending bool
+	// PHA client Certificate body awaiting its CertificateVerify.
+	pha_cert_body []u8
+	has_pha_cert  bool
+	// Handshake reassembly buffer for fragmented flights.
+	hs_inbuf []u8
 }
 
 // dial connects TCP to host:port and returns an unhandshaked TLS Conn.
@@ -234,9 +259,84 @@ pub fn (c Conn) read_timeout() time.Duration {
 	return 0
 }
 
-// negotiated_alpn returns the negotiated ALPN protocol (always empty in v1).
+// negotiated_alpn returns the negotiated ALPN protocol (empty when none).
 pub fn (c Conn) negotiated_alpn() string {
-	return ''
+	return c.negotiated_alpn_str
+}
+
+// ocsp_response returns the stapled OCSP response (raw bytes, transport
+// only). Empty when the server sent none. Never verified here.
+pub fn (c Conn) ocsp_response() []u8 {
+	return c.ocsp_resp.clone()
+}
+
+// exporter derives application traffic keying material (RFC 8446 §7.5)
+// from the exporter master secret: label + context hash + length.
+pub fn (c &Conn) exporter(label string, context []u8, length int) ![]u8 {
+	if !c.handshake_done {
+		return error('tls: handshake not complete')
+	}
+	if c.exporter_master.len == 0 {
+		return error('tls: no exporter secret')
+	}
+	return tls_exporter(c.exporter_master, label, context, length, c.suite)
+}
+
+// rekey initiates a KeyUpdate (RFC 8446 §4.6.3): a KeyUpdate
+// (update_not_requested) is sent under the current sending keys, then the
+// sending traffic secret is advanced and the sequence reset. The peer
+// rotates its receiving keys on receipt (answering only if requested).
+pub fn (mut c Conn) rekey() ! {
+	if !c.handshake_done {
+		return error('tls: handshake not complete')
+	}
+	ku := encode_handshake_message(.key_update, encode_key_update(false))!
+	c.write_cipher_record(.handshake, ku)!
+	if c.is_server {
+		c.server_app_secret = update_traffic_secret(c.server_app_secret, c.suite)!
+		c.server_app = derive_traffic_keys(c.server_app_secret, c.suite)!
+		c.write_seq = 0
+	} else {
+		c.client_app_secret = update_traffic_secret(c.client_app_secret, c.suite)!
+		c.client_app = derive_traffic_keys(c.client_app_secret, c.suite)!
+		c.write_seq = 0
+	}
+}
+
+// send_key_update_answer sends a KeyUpdate with update_not_requested and
+// rotates our sending keys. Used by the KeyUpdate responder path.
+fn (mut c Conn) send_key_update_answer() ! {
+	ku := encode_handshake_message(.key_update, encode_key_update(false))!
+	c.write_cipher_record(.handshake, ku)!
+	if c.is_server {
+		c.server_app_secret = update_traffic_secret(c.server_app_secret, c.suite)!
+		c.server_app = derive_traffic_keys(c.server_app_secret, c.suite)!
+		c.write_seq = 0
+	} else {
+		c.client_app_secret = update_traffic_secret(c.client_app_secret, c.suite)!
+		c.client_app = derive_traffic_keys(c.client_app_secret, c.suite)!
+		c.write_seq = 0
+	}
+}
+
+// request_client_auth_post sends a post-handshake CertificateRequest
+// (RFC 8446 §4.3.2). The client answers with Certificate(+Verify); the
+// server verifies with the existing mTLS path on the next read. No
+// traffic keys change.
+pub fn (mut c Conn) request_client_auth_post() ! {
+	if !c.handshake_done {
+		return error('tls: handshake not complete')
+	}
+	if !c.is_server {
+		return error('tls: only servers request post-handshake auth')
+	}
+	ctx := rand.bytes(32)!
+	cr_body := encode_certificate_request_with_context(ctx, signature_algorithms_data())!
+	cr_msg := encode_handshake_message(.certificate_request, cr_body)!
+	c.hs_transcript << cr_msg
+	c.pha_pending_ctx = ctx.clone()
+	c.has_pha_pending = true
+	c.write_cipher_record(.handshake, cr_msg)!
 }
 
 // session_state returns the resumption ticket received on this connection
@@ -416,6 +516,57 @@ fn (mut c Conn) drain_early_data(mut shs ServerHandshake) ![]u8 {
 	return error('tls: too many early records')
 }
 
+// write_cipher_fragmented encrypts and writes data chunked over 2^14-byte
+// records (RFC 8446 §5.1). Handshake flights carrying large (e.g. SLH-DSA)
+// certificates exceed one record; the peer reassembles the byte stream.
+// Small payloads use a single record (coalesced fast path).
+fn (mut c Conn) write_cipher_fragmented(ct ContentType, data []u8) ! {
+	if data.len <= max_plaintext_len {
+		c.write_cipher_record(ct, data)!
+		return
+	}
+	mut off := 0
+	for off < data.len {
+		mut n := data.len - off
+		if n > max_plaintext_len {
+			n = max_plaintext_len
+		}
+		c.write_cipher_record(ct, data[off..off + n])!
+		off += n
+	}
+}
+
+// is_hrr_flight reports whether a server flight is a HelloRetryRequest
+// (a single ServerHello carrying the magic random).
+fn is_hrr_flight(flight []u8) bool {
+	parsed, n := parse_handshake_message(flight) or { return false }
+	if n != flight.len || parsed.typ != .server_hello {
+		return false
+	}
+	return is_hello_retry_request(parsed.body)
+}
+
+// write_keylog appends a CLIENT_RANDOM line to $SSLKEYLOGFILE when set.
+// Format: CLIENT_RANDOM <client_random_hex> <master_secret_hex>.
+// Best-effort: never fails the handshake.
+fn (c &Conn) write_keylog() ! {
+	path := os.getenv('SSLKEYLOGFILE')
+	if path.len == 0 {
+		return
+	}
+	if c.client_random.len != 32 || c.master_secret.len == 0 {
+		return
+	}
+	mut line := 'CLIENT_RANDOM '
+	line += c.client_random.hex()
+	line += ' '
+	line += c.master_secret.hex()
+	line += '\n'
+	mut f := os.open_append(path) or { return }
+	f.write_string(line) or {}
+	f.close()
+}
+
 // handshake performs the TLS 1.3 handshake (client or server based on is_server).
 // handshake must be called after dial/accept and before read/write.
 pub fn (mut c Conn) handshake() ! {
@@ -423,7 +574,19 @@ pub fn (mut c Conn) handshake() ! {
 		mut shs := new_server_handshake_with_config(c.cfg.pq_mode, c.cfg) or { return err }
 
 		body := c.read_handshake_body() or { return err }
-		flight := shs.process_client_hello(body) or { return err }
+		mut flight := shs.process_client_hello(body) or { return err }
+		// HelloRetryRequest: answer cookie-less retries until the client
+		// offers the requested share (bounded: one retry per group).
+		mut hrr_rounds := 0
+		for is_hrr_flight(flight) {
+			hrr_rounds++
+			if hrr_rounds > 4 {
+				return error('tls: too many HelloRetryRequests')
+			}
+			c.write_plain_record(.handshake, flight)!
+			body2 := c.read_handshake_body() or { return err }
+			flight = shs.process_client_hello(body2) or { return err }
+		}
 
 		mut off := 0
 		mut msgs := [][]u8{}
@@ -443,7 +606,7 @@ pub fn (mut c Conn) handshake() ! {
 
 		c.write_plain_record(.handshake, msgs[0])!
 		for i in 1 .. msgs.len {
-			c.write_cipher_record(.handshake, msgs[i])!
+			c.write_cipher_fragmented(.handshake, msgs[i])!
 		}
 
 		// 0-RTT: drain the client's optimistic early flight (early records
@@ -453,25 +616,34 @@ pub fn (mut c Conn) handshake() ! {
 			c.early_buf = c.drain_early_data(mut shs)!
 		}
 
-		// mTLS: collect Certificate [+ CertificateVerify] + Finished (peers may
-		// coalesce them into fewer records, so walk messages, not records).
+		// mTLS: collect Certificate [+ CertificateVerify] + Finished.
+		// Records may fragment the flight (large client certificates),
+		// so handshake messages are reassembled across record boundaries.
 		if shs.verify_client && !shs.accepted_psk {
 			mut cmsgs := [][]u8{}
 			mut have_finished := false
 			mut iters := 0
+			mut carry := []u8{}
 			for !have_finished {
 				iters++
-				if iters > 8 || cmsgs.len > 4 {
+				if iters > 32 || cmsgs.len > 4 {
 					return error('tls: unexpected client flight')
 				}
 				cbody := c.read_handshake_body() or { return err }
+				carry << cbody
 				mut o := 0
-				for o < cbody.len {
-					parsed, n := parse_handshake_message(cbody[o..]) or { return err }
-					cmsgs << cbody[o..o + n]
+				for o < carry.len {
+					parsed, n := parse_handshake_message(carry[o..]) or {
+						// Truncated tail: wait for the next record.
+						if err.msg().contains('truncated') {
+							break
+						}
+						return err
+					}
+					cmsgs << carry[o..o + n].clone()
 					o += n
 					if parsed.typ == .finished {
-						if o != cbody.len {
+						if o != carry.len {
 							return error('tls: trailing data after Finished')
 						}
 						have_finished = true
@@ -479,6 +651,12 @@ pub fn (mut c Conn) handshake() ! {
 					if cmsgs.len > 4 {
 						return error('tls: unexpected client flight')
 					}
+				}
+				// Keep any trailing fragment for the next record.
+				if o < carry.len {
+					carry = carry[o..].clone()
+				} else {
+					carry = []u8{}
 				}
 			}
 			if cmsgs.len < 2 || cmsgs.len > 3 {
@@ -512,6 +690,17 @@ pub fn (mut c Conn) handshake() ! {
 
 		c.server_app = derive_traffic_keys(shs.app_keys.server_secret, c.suite) or { return err }
 		c.client_app = derive_traffic_keys(shs.app_keys.client_secret, c.suite) or { return err }
+		c.server_app_secret = shs.app_keys.server_secret.clone()
+		c.client_app_secret = shs.app_keys.client_secret.clone()
+		c.master_secret = shs.app_keys.master_secret.clone()
+		c.client_random = shs.client_random.clone()
+		c.server_random = shs.server_random.clone()
+		c.hs_transcript = shs.transcript.clone()
+		c.negotiated_alpn_str = shs.negotiated_alpn.clone()
+		full_th := transcript_hash_for_suite(shs.transcript, c.suite)
+		c.exporter_master = derive_exporter_master(shs.app_keys.master_secret, full_th,
+			c.suite) or { []u8{} }
+		c.write_keylog() or {}
 		// Each traffic secret has an independent record sequence number.
 		c.read_seq = 0
 		c.write_seq = 0
@@ -525,9 +714,11 @@ pub fn (mut c Conn) handshake() ! {
 		}
 		// Issue one session ticket under the application keys (best effort:
 		// direct ServerHandshake users without a ticket key just skip it).
-		if shs.ticket_key.len == 32 {
+		// Rotation: seal with the first key.
+		seal_key := shs.ticket_seal_key()
+		if seal_key.len == 32 {
 			nst := build_new_session_ticket(shs.app_keys.master_secret, transcript_hash_for_suite(shs.transcript,
-				c.suite), c.suite, shs.ticket_key, c.cfg.max_early_data) or { []u8{} }
+				c.suite), c.suite, seal_key, c.cfg.max_early_data) or { []u8{} }
 			if nst.len > 0 {
 				c.write_cipher_record(.handshake, nst) or { return err }
 			}
@@ -539,8 +730,10 @@ pub fn (mut c Conn) handshake() ! {
 	}
 	chs.resume_offer = c.cfg.resume_from
 	chs.max_early_data = c.cfg.max_early_data
+	chs.ext_psk_identity = c.cfg.psk_identity.clone()
+	chs.ext_psk_key = c.cfg.psk_key.clone()
 
-	ch_msg := chs.build_client_hello() or { return err }
+	mut ch_msg := chs.build_client_hello() or { return err }
 	c.write_plain_record(.handshake, ch_msg)!
 
 	// 0-RTT: seal the early payload with the early traffic keys and send it
@@ -573,17 +766,33 @@ pub fn (mut c Conn) handshake() ! {
 
 	body := c.read_handshake_body() or { return err }
 	chs.process_server_hello(body) or { return err }
+	// HelloRetryRequest: rebuild with the requested share and continue.
+	// The transcript already covers message_hash(CH1) || HRR.
+	mut hrr_rounds := 0
+	for chs.is_hrr {
+		hrr_rounds++
+		if hrr_rounds > 4 {
+			return error('tls: too many HelloRetryRequests')
+		}
+		ch_msg = chs.build_second_client_hello() or { return err }
+		c.write_plain_record(.handshake, ch_msg)!
+		body2 := c.read_handshake_body() or { return err }
+		chs.process_server_hello(body2) or { return err }
+	}
 	c.suite = chs.suite
 	c.client_hs_traffic = chs.client_hs_traffic
 	c.server_hs_traffic = chs.server_hs_traffic
 
 	mut server_finished := false
 	mut hs_records := 0
+	mut carry := []u8{}
 	for !server_finished {
 		hs_records++
 		// Bound the handshake flight: a legitimate flight is a handful of
 		// records, so a peer streaming endless handshake records is attacking.
-		if hs_records > 32 {
+		// Fragmented flights (large certificates) reuse records, so the
+		// bound is generous.
+		if hs_records > 64 {
 			return error('tls: too many handshake records')
 		}
 		ict, ibody := c.read_record() or { return err }
@@ -593,53 +802,48 @@ pub fn (mut c Conn) handshake() ! {
 		if ict != .handshake {
 			return error('tls: expected handshake, got ${ict}')
 		}
-		// One record may carry several handshake messages (e.g. EE+Cert+CV
-		// coalesced by the peer); walk them all so the transcript stays exact.
+		// Records may fragment the flight (large certificates) or
+		// coalesce several messages; reassemble the byte stream and walk
+		// every complete message so the transcript stays exact.
+		carry << ibody
 		mut ioff := 0
-		for ioff < ibody.len {
-			parsed, n := parse_handshake_message(ibody[ioff..]) or { return err }
-			msg_raw := ibody[ioff..ioff + n]
+		for ioff < carry.len {
+			parsed, n := parse_handshake_message(carry[ioff..]) or {
+				if err.msg().contains('truncated') {
+					break
+				}
+				return err
+			}
+			msg_raw := carry[ioff..ioff + n].clone()
 			match parsed.typ {
 				.encrypted_extensions {
 					if chs.offered_early_data && ee_accepts_early_data(parsed.body) {
 						chs.accepted_early_data = true
 					}
+					alpn_sel := ee_alpn_selection(parsed.body) or { '' }
+					if alpn_sel.len > 0 {
+						chs.negotiated_alpn = alpn_sel
+					}
+				}
+				.certificate_status {
+					// Stapled OCSP (transport only): stash the raw bytes.
+					chs.ocsp_response = parsed.body.clone()
 				}
 				.certificate {
 					if c.cfg.verify {
-						cert_der := extract_cert_der(parsed.body) or { return err }
-						cert := x509.parse_der(cert_der) or { return error(error_bad_signature) }
-						pk := cert.public_key() or { return error(error_bad_signature) }
-						chs.server_cert_key = pk
+						cert_ders := extract_chain_ders(parsed.body) or { return err }
+						leaf0 := x509.parse_der(cert_ders[0]) or { return error(error_bad_signature) }
+						mut pk := leaf0.public_key() or { return error(error_bad_signature) }
 						if c.cfg.verify_chain {
-							now := time.now()
-							if now.unix() < cert.not_before.unix() {
-								return error(error_chain_untrusted)
-							}
-							if now.unix() > cert.not_after.unix() {
-								return error(error_chain_expired)
-							}
-							cert.check_host(c.cfg.server_name) or {
-								return error(error_hostname_mismatch)
-							}
-							store := if c.cfg.ca_store.roots.len > 0 {
-								c.cfg.ca_store
+							roots := if c.cfg.ca_store.roots.len > 0 {
+								c.cfg.ca_store.roots
 							} else {
-								load_system_roots() or { return error(error_chain_untrusted) }
+								[]x509.Certificate{}
 							}
-							mut trusted := store.contains(cert)
-							if !trusted {
-								for r in store.roots {
-									rpk := r.public_key() or { continue }
-									verify_cert_signature(cert_der, rpk) or { continue }
-									trusted = true
-									break
-								}
-							}
-							if !trusted {
-								return error(error_chain_untrusted)
-							}
+							pk = verify_peer_chain(cert_ders, roots, .server_auth,
+								c.cfg.server_name, chs.ocsp_response) or { return err }
 						}
+						chs.server_cert_key = pk
 					}
 				}
 				.certificate_verify {
@@ -674,10 +878,18 @@ pub fn (mut c Conn) handshake() ! {
 			}
 			if parsed.typ != .finished {
 				chs.transcript << msg_raw
-			} else if ioff + n < ibody.len {
+			} else if ioff + n < carry.len {
 				return error('tls: trailing data after Finished')
 			}
 			ioff += n
+		}
+		// Keep any trailing fragment for the next record; the Finished
+		// must end a record exactly, so a non-empty tail with
+		// server_finished set is a protocol error (checked next loop).
+		if ioff < carry.len {
+			carry = carry[ioff..].clone()
+		} else {
+			carry = []u8{}
 		}
 	}
 
@@ -690,6 +902,14 @@ pub fn (mut c Conn) handshake() ! {
 	c.server_hs_traffic = chs.server_hs_traffic
 	c.client_app = derive_traffic_keys(as_.client_secret, c.suite) or { return err }
 	c.server_app = derive_traffic_keys(as_.server_secret, c.suite) or { return err }
+	c.client_app_secret = as_.client_secret.clone()
+	c.server_app_secret = as_.server_secret.clone()
+	c.master_secret = as_.master_secret.clone()
+	c.client_random = chs.client_random.clone()
+	c.server_random = chs.server_random.clone()
+	c.negotiated_alpn_str = chs.negotiated_alpn.clone()
+	c.ocsp_resp = chs.ocsp_response.clone()
+	c.hs_transcript = chs.transcript.clone()
 
 	// mTLS: answer a CertificateRequest before our Finished (still under the
 	// handshake traffic keys).
@@ -701,8 +921,10 @@ pub fn (mut c Conn) handshake() ! {
 		}
 		for m in auth_msgs {
 			chs.transcript << m
-			c.write_cipher_record(.handshake, m)!
+			c.hs_transcript << m
+			c.write_cipher_fragmented(.handshake, m)!
 		}
+		c.client_hs = chs
 	}
 
 	// 0-RTT: the server accepted early data, so close the early flight with
@@ -718,6 +940,7 @@ pub fn (mut c Conn) handshake() ! {
 		c.suite), c.suite) or { return err }
 	fin_body := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: cf_verified })) or { return err }
 	chs.transcript << fin_body
+	c.hs_transcript << fin_body
 	c.write_cipher_record(.handshake, fin_body)!
 	// Application traffic keys start a new record-number epoch.
 	c.read_seq = 0
@@ -730,31 +953,146 @@ pub fn (mut c Conn) handshake() ! {
 	c.resumption_master = derive_resumption_master(as_.master_secret, full_th,
 		c.suite) or { []u8{} }
 	c.has_resumption_master = c.resumption_master.len > 0
+	c.exporter_master = derive_exporter_master(as_.master_secret, full_th, c.suite) or {
+		[]u8{}
+	}
+	c.write_keylog() or {}
 	c.client_hs = chs
 }
 
 // consume_post_handshake processes a decrypted post-handshake flight. Each
-// NewSessionTicket derives and stores a SessionState; other message types
-// are ignored so future extensions (e.g. KeyUpdate) do not break reads.
+// NewSessionTicket derives and stores a SessionState; KeyUpdate rotates
+// the receiving traffic secret (answering with our own update when
+// requested); CertificateRequest triggers the client's auth flight;
+// Certificate/CertificateVerify answer a pending post-handshake request on
+// the server. Unknown message types are ignored so future extensions do
+// not break reads.
+// consume_post_handshake processes a decrypted post-handshake flight. Each
+// NewSessionTicket derives and stores a SessionState; KeyUpdate rotates
+// the receiving traffic secret (answering with our own update when
+// requested); CertificateRequest triggers the client's auth flight;
+// Certificate/CertificateVerify answer a pending post-handshake request on
+// the server. Unknown message types are ignored so future extensions do
+// not break reads.
 fn (mut c Conn) consume_post_handshake(body []u8) ! {
 	mut off := 0
 	for off < body.len {
 		parsed, n := parse_handshake_message(body[off..])!
-		if parsed.typ == .new_session_ticket {
-			nst := parse_new_session_ticket(parsed.body)!
-			if !c.is_server && c.has_resumption_master {
-				psk := derive_psk(c.resumption_master, nst.nonce, c.suite) or { continue }
-				c.resumption = SessionState{
-					ticket:         nst.ticket.clone()
-					psk:            psk
-					suite:          c.suite
-					created_unix:   time.now().unix()
-					lifetime:       nst.lifetime
-					age_add:        nst.age_add
-					max_early_data: nst.max_early_data
+		msg_raw := body[off..off + n].clone()
+		match parsed.typ {
+			.new_session_ticket {
+				nst := parse_new_session_ticket(parsed.body)!
+				if !c.is_server && c.has_resumption_master {
+					psk := derive_psk(c.resumption_master, nst.nonce, c.suite) or { continue }
+					c.resumption = SessionState{
+						ticket:         nst.ticket.clone()
+						psk:            psk
+						suite:          c.suite
+						created_unix:   time.now().unix()
+						lifetime:       nst.lifetime
+						age_add:        nst.age_add
+						max_early_data: nst.max_early_data
+					}
+					c.has_ticket = true
 				}
-				c.has_ticket = true
 			}
+			.key_update {
+				requested := parse_key_update(parsed.body)!
+				// Rotate the receiving secret and reset its sequence.
+				if c.is_server {
+					c.client_app_secret = update_traffic_secret(c.client_app_secret,
+						c.suite)!
+					c.client_app = derive_traffic_keys(c.client_app_secret, c.suite)!
+				} else {
+					c.server_app_secret = update_traffic_secret(c.server_app_secret,
+						c.suite)!
+					c.server_app = derive_traffic_keys(c.server_app_secret, c.suite)!
+				}
+				c.read_seq = 0
+				if requested {
+					c.send_key_update_answer()!
+				}
+			}
+			.certificate_status {
+				// Stapled OCSP (transport only): stash the raw bytes.
+				if !c.is_server {
+					c.ocsp_resp = parsed.body.clone()
+				}
+			}
+			.certificate_request {
+				// Post-handshake auth request (client side): answer with
+				// Certificate(+Verify) under the same handshake keys.
+				if !c.is_server {
+					schemes, ctx := parse_certificate_request(parsed.body) or { continue }
+					c.hs_transcript << msg_raw
+					auth_msgs := build_client_auth_messages(c.cfg, ctx, schemes,
+						c.suite, c.hs_transcript) or {
+						[encode_handshake_message(.certificate, encode_certificate_body(ctx,
+							[][]u8{})!)!]
+					}
+					for m in auth_msgs {
+						c.hs_transcript << m
+						c.write_cipher_record(.handshake, m)!
+					}
+				}
+			}
+			.certificate {
+				// Post-handshake client auth answer (server side).
+				if c.is_server && c.has_pha_pending {
+					chain, ctx := parse_client_cert_chain(parsed.body) or { continue }
+					if ctx != c.pha_pending_ctx {
+						return error('tls: bad post-handshake request context')
+					}
+					if chain.len == 0 {
+						return error('tls: client certificate required')
+					}
+					cert_der := chain[0]
+					leaf := x509.parse_der(cert_der) or { return error(error_bad_signature) }
+					if c.cfg.verify_chain {
+						now := time.now()
+						if now.unix() < leaf.not_before.unix() {
+							return error(error_chain_untrusted)
+						}
+						if now.unix() > leaf.not_after.unix() {
+							return error(error_chain_expired)
+						}
+					}
+					c.hs_transcript << msg_raw
+					c.pha_cert_body = parsed.body.clone()
+					c.has_pha_cert = true
+				}
+			}
+			.certificate_verify {
+				// Post-handshake client auth verify (server side).
+				if c.is_server && c.has_pha_pending && c.has_pha_cert {
+					cert_body := c.pha_cert_body.clone()
+					c.has_pha_cert = false
+					c.pha_cert_body = []u8{}
+					chain, _ := parse_client_cert_chain(cert_body) or { continue }
+					if chain.len == 0 {
+						return error('tls: client certificate required')
+					}
+					leaf0 := x509.parse_der(chain[0]) or { return error(error_bad_signature) }
+					mut pk := leaf0.public_key() or { return error(error_bad_signature) }
+					if c.cfg.verify_chain {
+						roots := if c.cfg.ca_store.roots.len > 0 {
+							c.cfg.ca_store.roots
+						} else {
+							[]x509.Certificate{}
+						}
+						pk = verify_peer_chain(chain, roots, .client_auth, '', []u8{}) or {
+							return err
+						}
+					}
+					th := transcript_hash_for_suite(c.hs_transcript, c.suite)
+					content := cv_content(false, th)
+					verify_certificate_verify(parsed.body, pk, content) or { return err }
+					c.hs_transcript << msg_raw
+					c.has_pha_pending = false
+					c.pha_pending_ctx = []u8{}
+				}
+			}
+			else {}
 		}
 		off += n
 	}
