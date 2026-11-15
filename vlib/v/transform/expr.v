@@ -682,6 +682,13 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	} else {
 		lhs_map_type
 	})
+	_, value_type_source_id_2 := t.map_type_parts(map_type)
+	if t.alias_eq_operator_handles_infix(lhs_id, rhs_id, node.op) {
+		ordered := value_type_source_id_2 != 0 && t.map_value_needs_element_eq(value_type_source_id_2)
+		if result := t.transform_infix_struct_ops_with_order(_id, node, ordered) {
+			return result
+		}
+	}
 	mut new_lhs := t.transform_expr_for_type(lhs_id, map_type)
 	mut new_rhs := t.transform_expr_for_type(rhs_id, map_type)
 	if t.transformed_map_equality_operand_needs_deref(new_lhs, lhs_type_source_id_3) {
@@ -690,8 +697,6 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	if t.transformed_map_equality_operand_needs_deref(new_rhs, rhs_type_source_id_2) {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
-	_, value_type_source_id_2 := t.map_type_parts(map_type)
-
 	eq_call := if value_type_source_id_2 != 0 && t.map_value_needs_element_eq(value_type_source_id_2) {
 		t.make_map_elementwise_eq_call(new_lhs, new_rhs, map_type, node)
 	} else {
@@ -847,6 +852,11 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 		}
 		return eq
 	}
+	if t.alias_eq_operator_handles_infix(lhs_id, rhs_id, node.op) {
+		if result := t.transform_infix_struct_ops_with_order(_id, node, true) {
+			return result
+		}
+	}
 	lhs := if lhs_iface_source_id == 0 && t.is_builtin_ierror_interface_name(iface) {
 		t.make_interface_literal_from_expr(lhs_id, iface, false) or {
 			t.transform_expr_for_type(lhs_id, iface)
@@ -979,6 +989,12 @@ fn (t &Transformer) interface_box_concrete_type(id flat.NodeId) ?u32 {
 
 // transform_infix_struct_ops transforms transform infix struct ops data for transform.
 fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	return t.transform_infix_struct_ops_with_order(_id, node, false)
+}
+
+// Preserve operand order when a sum, interface or elementwise map comparison
+// delegates to an alias operator. Existing operator paths keep their lowering.
+fn (mut t Transformer) transform_infix_struct_ops_with_order(_id flat.NodeId, node flat.Node, ordered bool) ?flat.NodeId {
 	if node.children_count < 2 {
 		return none
 	}
@@ -1063,7 +1079,11 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 				}
 				return t.zero_value_for_type(ret_type_source_id_3)
 			}
-			mut lhs := t.transform_expr(lhs_id)
+			mut lhs := if ordered {
+				t.stable_expr_for_reuse(lhs_id)
+			} else {
+				t.transform_expr(lhs_id)
+			}
 			loaded_heap_value := lhs_node.kind == .ident && lhs_node.value in t.heaped_amp_locals
 				&& !t.infix_operand_is_pointer(lhs)
 			if lhs_is_pointer && !loaded_heap_value {
@@ -1072,7 +1092,11 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 				lhs = t.make_prefix(.mul, lhs)
 				t.set_node_typ(int(lhs), lhs_type)
 			}
-			rhs := t.transform_expr(t.a.children[node.children_start + 1])
+			rhs := if ordered {
+				t.stable_expr_for_reuse(rhs_id)
+			} else {
+				t.transform_expr(t.a.children[node.children_start + 1])
+			}
 			mut call_lhs := lhs
 			mut call_rhs := rhs
 			if call_info.reverse {
@@ -1639,6 +1663,35 @@ fn (t &Transformer) is_type_alias_name_uncached(name_id u32) bool {
 	return false
 }
 
+// Keep generic alias instances and pointer-backed operands on the underlying
+// equality lowering. Check both type views used by struct operator dispatch,
+// following alias chains so an alias of a pointer cannot evade its exclusions.
+fn (t &Transformer) alias_eq_operator_handles_infix(lhs_id flat.NodeId, rhs_id flat.NodeId, op flat.Op) bool {
+	if alias_type := t.operator_alias_type_for_operand(lhs_id, op) {
+		if flat.source_type_syntax(alias_type).generic_app_valid() {
+			return false
+		}
+		for operand_id in [lhs_id, rhs_id]! {
+			if int(operand_id) < 0 || t.infix_operand_is_pointer(operand_id)
+				|| flat.source_type_shape(t.normalize_type_alias_chain(t.node_type(operand_id))).has(.pointer)
+				|| flat.source_type_shape(t.normalize_type_alias_chain(t.checker_node_type(operand_id))).has(.pointer) {
+				return false
+			}
+			operand := t.a.nodes[int(operand_id)]
+			if operand.kind == .ident && t.mut_param_values[operand.value] {
+				return false
+			}
+			if sc := t.find_smartcast_for_expr(operand_id) {
+				if flat.source_type_shape(t.normalize_type_alias_chain(t.smartcast_target_type(sc))).has(.pointer) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return false
+}
+
 fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) ?u32 {
 	if int(id) < 0 {
 		return none
@@ -2187,6 +2240,11 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 
 	if sum_type_source_id == 0 {
 		return none
+	}
+	if t.alias_eq_operator_handles_infix(lhs_id, rhs_id, node.op) {
+		if result := t.transform_infix_struct_ops_with_order(_id, node, true) {
+			return result
+		}
 	}
 	mut lhs := t.stable_expr_for_reuse(lhs_id)
 	mut rhs := t.stable_expr_for_reuse(rhs_id)
