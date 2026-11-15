@@ -5,6 +5,7 @@ Distinguished Encoding Rules (DER) encoding and decoding.
 
 `decode` and `decode_with_options` consume exactly one element and reject trailing bytes.
 `GeneralizedTime` currently accepts the `YYYYMMDDhhmmssZ` form, with `Z` terminating the value.
+Decoding limits nested `SEQUENCE` and `SET` values to 128 levels. Deeper input returns an error.
 
 `FieldOptions.install_default` requires `has_default` to be set. It returns success after
 installing a default value; replacing an existing default also requires `force` to be `true`.
