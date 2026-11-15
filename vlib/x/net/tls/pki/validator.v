@@ -149,79 +149,92 @@ pub fn (v &Validator) verify_certificate_chain(chain []Certificate, hostname str
 		}
 	}
 
-	// Validate signatures along the chain: C_i must be signed by C_{i+1}, whose
-	// issuer name must match the child's subject; every issuer must be a CA
-	// (RFC 5280 §4.2.1.9).
-	for i in 0 .. chain.len - 1 {
-		child := chain[i]
-		parent := chain[i + 1]
-		if child.issuer_dn != parent.subject_dn {
-			return error('pki: issuer/subject name mismatch at chain index ${i} -> ${i + 1}')
+	// Select and validate a path ending at an available trust anchor.
+	// Certificates above the chosen anchor are extraneous (RFC 8446 §4.4.2) and
+	// are not required to validate. The shortest validating path wins, so a
+	// peer-supplied cross-signed copy of the anchor cannot reject a chain whose
+	// valid path already terminates at a locally trusted root.
+	for anchor_idx in 0 .. chain.len {
+		if !cert_anchors_to_trusted_root(chain[anchor_idx], v.store.certs, now) {
+			continue
 		}
-		if !parent.is_ca {
-			return error('pki: certificate at chain index ${i + 1} is not a CA (basicConstraints cA=TRUE missing)')
+		for i in 0 .. anchor_idx {
+			child := chain[i]
+			parent := chain[i + 1]
+			if child.issuer_dn != parent.subject_dn {
+				return error('pki: issuer/subject name mismatch at chain index ${i} -> ${i + 1}')
+			}
+			if !parent.is_ca {
+				return error('pki: certificate at chain index ${i + 1} is not a CA (basicConstraints cA=TRUE missing)')
+			}
+			// EKU applies to CA certificates too: every certificate in the path
+			// must permit the requested server-authentication purpose (RFC 5280 §4.2.1.12).
+			if parent.has_eku && !parent.eku_server_auth {
+				return error('pki: CA at chain index ${i + 1} Extended Key Usage does not permit serverAuth')
+			}
+			// keyUsage bit 5 = keyCertSign: a CA asserting keyUsage must include it (RFC 5280 §4.2.1.3).
+			if parent.has_key_usage && !key_usage_bit(parent.key_usage, 5) {
+				return error('pki: CA at chain index ${i + 1} keyUsage does not permit keyCertSign')
+			}
+			// pathLenConstraint (RFC 5280 §4.2.1.9): the number of non-CA certs below
+			// this CA must not exceed the limit; a stored -1 means the INTEGER was absent.
+			if parent.max_path_len >= 0 && i > parent.max_path_len {
+				return error('pki: CA at chain index ${i + 1} violates pathLenConstraint (${i} intermediate certs below > limit ${parent.max_path_len})')
+			}
+			if now < parent.not_before_unix {
+				return error('pki: intermediate certificate not yet valid at chain index ${i + 1}')
+			}
+			if now > parent.not_after_unix {
+				return error('pki: intermediate certificate expired at chain index ${i + 1}')
+			}
+			verify_cert_signature(child, parent) or {
+				return error('pki: signature verification failed at chain index ${i}: ${err.msg()}')
+			}
 		}
-		// EKU applies to CA certificates too: every certificate in the path must
-		// permit the requested server-authentication purpose (RFC 5280 §4.2.1.12).
-		if parent.has_eku && !parent.eku_server_auth {
-			return error('pki: CA at chain index ${i + 1} Extended Key Usage does not permit serverAuth')
-		}
-		// keyUsage bit 5 = keyCertSign: a CA asserting keyUsage must include it (RFC 5280 §4.2.1.3).
-		if parent.has_key_usage && !key_usage_bit(parent.key_usage, 5) {
-			return error('pki: CA at chain index ${i + 1} keyUsage does not permit keyCertSign')
-		}
-		// pathLenConstraint (RFC 5280 §4.2.1.9): the number of non-CA certs below
-		// this CA must not exceed the limit; a stored -1 means the INTEGER was absent.
-		if parent.max_path_len >= 0 && i > parent.max_path_len {
-			return error('pki: CA at chain index ${i + 1} violates pathLenConstraint (${i} intermediate certs below > limit ${parent.max_path_len})')
-		}
-		if now < parent.not_before_unix {
-			return error('pki: intermediate certificate not yet valid at chain index ${i + 1}')
-		}
-		if now > parent.not_after_unix {
-			return error('pki: intermediate certificate expired at chain index ${i + 1}')
-		}
-		verify_cert_signature(child, parent) or {
-			return error('pki: signature verification failed at chain index ${i}: ${err.msg()}')
-		}
+		return // path to a trusted anchor validated
 	}
+	return error('pki: certificate chain cannot be verified up to a trusted root CA')
+}
 
-	// Anchor at any validated certificate in the peer chain. Servers may send
-	// cross-signed CA certificates after an intermediate; the trust path can
-	// terminate at that intermediate when its issuer is already trusted.
-	if !chain_has_trusted_anchor(chain, v.store.certs, now) {
-		return error('pki: certificate chain cannot be verified up to a trusted root CA')
+// cert_anchors_to_trusted_root reports whether `cert` is trusted directly or
+// verifies under a valid stored root (RFC 5280 §6.1.1). A raw-byte match on the
+// anchor is accepted without a signature; otherwise the issuer/subject names
+// must match and the certificate must verify under the root's public key.
+fn cert_anchors_to_trusted_root(cert Certificate, roots []Certificate, now i64) bool {
+	for root in roots {
+		if now < root.not_before_unix || now > root.not_after_unix {
+			continue
+		}
+		// A trust anchor must be a CA. Without this check a leaf that was
+		// misguidedly added to the store via add_der would anchor any chain
+		// it happens to have signed (RFC 5280 §6.1.1 anchors are CA certs).
+		if !root.is_ca {
+			continue
+		}
+		// If the anchor asserts keyUsage it must include keyCertSign (bit 5);
+		// mirrors the same rule applied to intermediates. Absent keyUsage is
+		// unconstrained, per RFC 5280 §4.2.1.3.
+		if root.has_key_usage && !key_usage_bit(root.key_usage, 5) {
+			continue
+		}
+		if cert.raw == root.raw {
+			return true
+		}
+		if cert.issuer_dn != root.subject_dn {
+			continue
+		}
+		// Failed under this root — another may share the subject.
+		verify_cert_signature(cert, root) or { continue }
+		return true
 	}
+	return false
 }
 
 // chain_has_trusted_anchor reports whether any certificate in the validated
 // peer chain is trusted directly or verifies under a valid stored root.
 fn chain_has_trusted_anchor(chain []Certificate, roots []Certificate, now i64) bool {
 	for cert in chain {
-		for root in roots {
-			if now < root.not_before_unix || now > root.not_after_unix {
-				continue
-			}
-			// A trust anchor must be a CA. Without this check a leaf that was
-			// misguidedly added to the store via add_der would anchor any chain
-			// it happens to have signed (RFC 5280 §6.1.1 anchors are CA certs).
-			if !root.is_ca {
-				continue
-			}
-			// If the anchor asserts keyUsage it must include keyCertSign (bit 5);
-			// mirrors the same rule applied to intermediates at chain index i+1.
-			// Absent keyUsage is unconstrained, per RFC 5280 §4.2.1.3.
-			if root.has_key_usage && !key_usage_bit(root.key_usage, 5) {
-				continue
-			}
-			if cert.raw == root.raw {
-				return true
-			}
-			if cert.issuer_dn != root.subject_dn {
-				continue
-			}
-			// Failed under this root — another may share the subject.
-			verify_cert_signature(cert, root) or { continue }
+		if cert_anchors_to_trusted_root(cert, roots, now) {
 			return true
 		}
 	}

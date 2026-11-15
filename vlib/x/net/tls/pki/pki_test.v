@@ -185,6 +185,7 @@ fn test_verify_certificate_chain_rejects_intermediate_client_auth_eku() ! {
 		not_after_unix:  now + 60
 	}
 	intermediate := Certificate{
+		raw:             [u8(0x01)] // anchors to the trust anchor below via raw equality
 		subject_dn:      [u8(1)]
 		is_ca:           true
 		has_eku:         true
@@ -193,7 +194,17 @@ fn test_verify_certificate_chain_rejects_intermediate_client_auth_eku() ! {
 		not_after_unix:  now + 60
 	}
 	assert !intermediate.eku_server_auth
-	validator := new_validator(new_trust_store())
+	// The intermediate anchors to a locally trusted root (raw equality), so the
+	// chain reaches path validation and must be refused on the intermediate's
+	// clientAuth-only EKU rather than on a missing anchor.
+	mut store := new_trust_store()
+	store.certs << Certificate{
+		raw:             [u8(0x01)]
+		is_ca:           true
+		not_before_unix: now - 60
+		not_after_unix:  now + 60
+	}
+	validator := new_validator(store)
 	validator.verify_certificate_chain([leaf, intermediate], 'example.com') or {
 		assert err.msg().contains('CA at chain index 1 Extended Key Usage does not permit serverAuth')
 		return
@@ -221,6 +232,77 @@ fn test_chain_trust_anchor_can_precede_cross_signed_tail() {
 	]
 	assert chain_has_trusted_anchor(chain, [root], 100)
 	assert !chain_has_trusted_anchor([chain[0], chain[2]], [root], 100)
+}
+
+// test_verify_certificate_chain_ignores_expired_cross_signed_tail exercises
+// verify_certificate_chain end to end: RFC 8446 §4.4.2 anticipates extraneous
+// certificates, so a valid path that already terminates at a locally trusted
+// root must be accepted even when the peer appends an expired cross-signed copy
+// of that root above it. Previously the expired tail was validated as an
+// intermediate and rejected the whole chain ("intermediate certificate expired
+// at chain index 1").
+fn test_verify_certificate_chain_ignores_expired_cross_signed_tail() {
+	now := time.now().unix()
+	root := Certificate{
+		public_key_algo: .ed25519
+		raw:             [u8(0x01)]
+		has_san:         true
+		sans:            ['example.com']
+		is_ca:           true
+		not_before_unix: now - 60
+		not_after_unix:  now + 60
+	}
+	expired_copy := Certificate{
+		raw:             [u8(0x02)]
+		is_ca:           true
+		not_before_unix: now - 60
+		not_after_unix:  now - 1 // expired
+	}
+	// The leaf is the trusted root itself (raw match anchors at chain index 0);
+	// the peer redundantly supplies an expired cross-signed copy above it.
+	chain := [root, expired_copy]
+	mut store := new_trust_store()
+	store.certs << root
+	validator := new_validator(store)
+	validator.verify_certificate_chain(chain, 'example.com')!
+}
+
+// test_verify_certificate_chain_rejects_expired_cert_on_path locks the guard
+// that only certificates above the anchor may be ignored: an expired
+// certificate that lies on the only path to a trusted anchor must still reject
+// the chain.
+fn test_verify_certificate_chain_rejects_expired_cert_on_path() ! {
+	now := time.now().unix()
+	root := Certificate{
+		raw:             [u8(0x01)]
+		is_ca:           true
+		subject_dn:      [u8(0x02)]
+		not_before_unix: now - 60
+		not_after_unix:  now + 60
+	}
+	expired_intermediate := Certificate{
+		raw:             [u8(0x01)] // anchors to root via raw equality
+		subject_dn:      [u8(1)]
+		is_ca:           true
+		not_before_unix: now - 60
+		not_after_unix:  now - 1 // expired, but lies on the path
+	}
+	leaf := Certificate{
+		public_key_algo: .ed25519
+		has_san:         true
+		sans:            ['example.com']
+		issuer_dn:       [u8(1)]
+		not_before_unix: now - 60
+		not_after_unix:  now + 60
+	}
+	mut store := new_trust_store()
+	store.certs << root
+	validator := new_validator(store)
+	validator.verify_certificate_chain([leaf, expired_intermediate], 'example.com') or {
+		assert err.msg().contains('intermediate certificate expired at chain index 1')
+		return
+	}
+	assert false
 }
 
 // rsa_leaf_of_bits builds a leaf Certificate carrying an RSA public key whose
