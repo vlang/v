@@ -140,8 +140,15 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		// Match the resource include paths used to compile native objects.
 		// Otherwise a system header may fail to find stddef.h during -M.
 		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		// Match the SDK chosen for the actual macOS TCC object build.
+		// Without it, -M can resolve a different system header tree.
+		sdk_root := if prefs.normalized_target_os() == 'macos' && os.user_os() == 'macos' {
+			macos_sdk_root()
+		} else {
+			''
+		}
 		args << v3_tcc_object_compile_flags(prefs.vroot, compiler, bundled_tcc,
-			os.is_file(bundled_tcc), prefs.normalized_target_os(), '')
+			os.is_file(bundled_tcc), prefs.normalized_target_os(), sdk_root)
 	}
 	// -M does not expand macros in ordinary code. Let the selected C
 	// preprocessor validate them too, discarding its output without inspecting it.
