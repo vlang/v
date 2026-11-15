@@ -452,6 +452,9 @@ pub fn parse_client_cert_chain(body []u8) !([][]u8, []u8) {
 	end := off + list_len
 	mut chain := [][]u8{}
 	for off < end {
+		if chain.len >= max_flight_certs {
+			return error('tls: too many certificates')
+		}
 		if off + 3 > end {
 			return error('tls: truncated cert entry')
 		}

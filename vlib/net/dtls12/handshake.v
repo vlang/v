@@ -61,6 +61,9 @@ pub const hstype_hello_request = u8(0)
 pub const hstype_client_hello = u8(1)
 pub const hstype_server_hello = u8(2)
 pub const hstype_hello_verify_request = u8(3)
+pub const hstype_server_key_exchange = u8(12)
+pub const hstype_server_hello_done = u8(14)
+pub const hstype_client_key_exchange = u8(16)
 pub const hstype_finished = u8(20)
 
 // put_u16 appends a big-endian u16.
@@ -317,15 +320,86 @@ pub fn verify_finished_msg(msg []u8, master []u8, label string, transcript []u8)
 	}
 }
 
-// derive_master derives the master secret from randoms (minimal profile:
-// premaster is client_random + server_random; no forward secrecy is claimed,
-// mirroring the minimal DTLS 1.3 profile that also derives from randoms).
-pub fn derive_master(client_random []u8, server_random []u8) ![]u8 {
+// derive_master derives the 48-byte master secret from the ECDHE premaster
+// (the 32-byte ECDH shared secret X-coordinate) via the standard TLS 1.2 PRF
+// (RFC 5246 §8.1). The premaster is never sent on the wire: a passive
+// observer that sees only client_random/server_random cannot derive it, and
+// fresh ephemeral shares per handshake give forward secrecy.
+pub fn derive_master(premaster []u8, client_random []u8, server_random []u8) ![]u8 {
+	if premaster.len != 32 {
+		return error('dtls12: premaster must be 32 bytes (P-256 ECDH secret)')
+	}
 	if client_random.len != 32 || server_random.len != 32 {
 		return error('dtls12: randoms must be 32 bytes')
 	}
-	mut premaster := []u8{cap: 64}
-	premaster << client_random
-	premaster << server_random
 	return master_secret(premaster, client_random, server_random)
+}
+
+// seal_for protects a fragment of any content type with the write keys of
+// the current epoch (DTLS 1.2 AAD binds epoch + sequence + type).
+fn (c &Conn) seal_for(epoch u16, seq u64, typ ContentType, plaintext []u8) ![]u8 {
+	t := u8(typ)
+	if c.is_server {
+		if c.is_gcm {
+			return gcm_seal(c.server_keys.key, c.server_keys.iv, epoch, seq, t, plaintext)
+		}
+		return cbc_seal(c.server_keys.mac, c.server_keys.key, epoch, seq, t, plaintext)
+	}
+	if c.is_gcm {
+		return gcm_seal(c.client_keys.key, c.client_keys.iv, epoch, seq, t, plaintext)
+	}
+	return cbc_seal(c.client_keys.mac, c.client_keys.key, epoch, seq, t, plaintext)
+}
+
+// open_for unprotects a fragment of any content type with the read keys.
+fn (c &Conn) open_for(epoch u16, seq u64, typ ContentType, sealed []u8) ![]u8 {
+	t := u8(typ)
+	if c.is_server {
+		if c.is_gcm {
+			return gcm_open(c.client_keys.key, c.client_keys.iv, epoch, seq, t, sealed)
+		}
+		return cbc_open(c.client_keys.mac, c.client_keys.key, epoch, seq, t, sealed)
+	}
+	if c.is_gcm {
+		return gcm_open(c.server_keys.key, c.server_keys.iv, epoch, seq, t, sealed)
+	}
+	return cbc_open(c.server_keys.mac, c.server_keys.key, epoch, seq, t, sealed)
+}
+
+// seal_hs protects a handshake fragment (e.g. Finished) under the epoch-1
+// handshake keys. The caller picks the epoch/sequence; Finished uses
+// epoch 1, sequence 0 (sequence space restarts per epoch, RFC 6347 §4.1).
+fn (c &Conn) seal_hs(epoch u16, seq u64, fragment []u8) ![]u8 {
+	return c.seal_for(epoch, seq, .handshake, fragment)
+}
+
+// open_hs unprotects a handshake fragment (e.g. Finished) with the read keys.
+fn (c &Conn) open_hs(epoch u16, seq u64, sealed []u8) ![]u8 {
+	return c.open_for(epoch, seq, .handshake, sealed)
+}
+
+// make_cookie mints a stateless HelloVerifyRequest cookie: the first 16
+// bytes of HMAC-SHA256 over (client address + client_random) under the
+// per-socket cookie key. No per-handshake state is stored; the cookie is
+// recomputed and compared on the second ClientHello.
+fn make_cookie(cookie_key []u8, peer_str string, client_random []u8) ![]u8 {
+	if cookie_key.len < 16 {
+		return error('dtls12: no cookie key')
+	}
+	if client_random.len != 32 {
+		return error('dtls12: client random must be 32 bytes')
+	}
+	mut data := peer_str.bytes()
+	data << client_random
+	mac := hmac.new(cookie_key, data, sha256.sum256, sha256.block_size)
+	return mac[..16].clone()
+}
+
+// check_cookie verifies a HelloVerifyRequest cookie in constant time.
+fn check_cookie(cookie []u8, cookie_key []u8, peer_str string, client_random []u8) bool {
+	want := make_cookie(cookie_key, peer_str, client_random) or { return false }
+	if cookie.len != want.len {
+		return false
+	}
+	return subtle.constant_time_compare(cookie, want) == 1
 }

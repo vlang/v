@@ -407,8 +407,23 @@ fn ca_ski_of(ca_cert &Certificate) ![]u8 {
 		SlhDsaShake256fPublicKey {
 			sha1.sum(pk.raw)
 		}
-		else {
-			return error('x509: SKI not implemented for this key type')
+		SlhDsaSha2128sPublicKey {
+			sha1.sum(pk.raw)
+		}
+		SlhDsaSha2128fPublicKey {
+			sha1.sum(pk.raw)
+		}
+		SlhDsaSha2192sPublicKey {
+			sha1.sum(pk.raw)
+		}
+		SlhDsaSha2192fPublicKey {
+			sha1.sum(pk.raw)
+		}
+		SlhDsaSha2256sPublicKey {
+			sha1.sum(pk.raw)
+		}
+		SlhDsaSha2256fPublicKey {
+			sha1.sum(pk.raw)
 		}
 	}
 }

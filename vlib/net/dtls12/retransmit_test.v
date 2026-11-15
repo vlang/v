@@ -163,11 +163,19 @@ fn test_dtls12_finished_roundtrip() {
 	suite := suite_ecdhe_rsa_aes128_gcm_sha256
 	cr := []u8{len: 32, init: 1}
 	sr := []u8{len: 32, init: 2}
+	// ECDHE premaster: both sides agree on the ECDH secret.
+	spriv, sx, sy := p256_keygen()!
+	cpriv, cx, cy := p256_keygen()!
+	pre_s := p256_ecdh(spriv, cx, cy)!
+	pre_c := p256_ecdh(cpriv, sx, sy)!
+	assert pre_s == pre_c
 	ch := build_client_hello_msg(cr, [u16(suite)], []u8{})!
 	sh := build_server_hello_msg(sr, suite)!
 	mut trans := ch.clone()
 	trans << sh
-	master := derive_master(cr, sr)!
+	master := derive_master(pre_s, cr, sr)!
+	master2 := derive_master(pre_c, cr, sr)!
+	assert master == master2
 	sfin := build_finished_msg(master, 'server finished', trans)!
 	verify_finished_msg(sfin, master, 'server finished', trans)!
 	verify_finished_msg(sfin, master, 'client finished', trans) or { return }

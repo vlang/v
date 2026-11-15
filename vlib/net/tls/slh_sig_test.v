@@ -724,3 +724,152 @@ fn test_slh_openssl_interop() {
 	assert text.output.contains('SLH-DSA-SHAKE-128s')
 	assert text.output.contains('leaf.example.com')
 }
+
+// test_slh_loopback_wrong_ca_all runs the wrong-CA loopback for every
+// wired set: a client trusting only the next set's CA must reject each
+// leaf. A per-set stub that always accepts cannot pass a single-set test.
+fn test_slh_loopback_wrong_ca_all() {
+	td := os.join_path(@VEXEROOT, 'vlib/net/tls/testdata')
+	cases := slh_all_cases()
+	for i, cs in cases {
+		wrong := cases[(i + 1) % cases.len]
+		server_cfg := Config{
+			cert: os.join_path(td, cs.leaf)
+			key:  os.join_path(td, cs.key)
+		}
+		mut l := listen(server_cfg) or { panic('listen: ${err}') }
+		port := l.addr() or { panic(err) }.port() or { panic(err) }
+		server := spawn fn (mut l Listener) {
+			mut conn := l.accept() or { return }
+			defer { conn.close() or {} }
+			mut buf := []u8{len: 4}
+			n := conn.read(mut buf) or { return }
+			if n > 0 {
+				conn.write('pong'.bytes()) or {}
+			}
+		}(mut l)
+		ca_der := slh_pem_block(slh_read(wrong.ca), 'CERTIFICATE')
+		ca_cert := x509.parse_der(ca_der) or { panic(err) }
+		client_cfg := Config{
+			server_name:  'localhost'
+			verify:       true
+			verify_chain: true
+			ca_store:     CertStore{
+				roots: [ca_cert]
+			}
+		}
+		mut c := dial('127.0.0.1', port, client_cfg) or { panic('dial: ${err}') }
+		c.handshake() or {
+			c.close() or {}
+			l.close() or {}
+			_ = server
+			continue
+		}
+		// The handshake wrongly succeeded: the echo must still not work
+		// against an untrusted leaf.
+		c.write('ping'.bytes()) or {}
+		mut buf := []u8{len: 4}
+		c.read(mut buf) or {
+			c.close() or {}
+			l.close() or {}
+			_ = server
+			continue
+		}
+		c.close() or {}
+		l.close() or {}
+		_ = server
+		assert false, 'client accepted an untrusted SLH-DSA leaf for ${cs.scheme:04x}'
+	}
+}
+
+// test_slh_sha2_vgen_openssl_verify checks a V-generated SHA2-128s
+// certificate under openssl verify (one fast set; skips without openssl).
+fn test_slh_sha2_vgen_openssl_verify() {
+	bin := slh_openssl_bin()
+	if bin == '' {
+		return
+	}
+	ca_priv, _ := slh_dsa.keygen(.sha2_128s) or { panic('ca keygen') }
+	now := time.now()
+	ca_cert, ca_der := x509.generate_self_signed_slh_dsa(x509.CertGenOptions{
+		common_name: 'Test SHA2-128s CA'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(3650)
+		is_ca:       true
+	}, ca_priv, .sha2_128s) or { panic('ca gen') }
+	leaf_priv, _ := slh_dsa.keygen(.sha2_128s) or { panic('leaf keygen') }
+	_, leaf_der := x509.generate_ca_signed_slh_dsa(x509.CertGenOptions{
+		common_name: 'leaf.example.com'
+		dns_names:   ['leaf.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, leaf_priv, .sha2_128s, &ca_cert, ca_priv, .sha2_128s) or { panic('leaf gen') }
+	dir := os.temp_dir()
+	ca_pem := dir + '/tls_slh_sha2_128s_ca.pem'
+	leaf_pem := dir + '/tls_slh_sha2_128s_leaf.pem'
+	ca_text := pem.Block{
+		block_type: 'CERTIFICATE'
+		data:       ca_der
+	}.encode(pem.EncodeConfig{}) or { panic('pem encode') }
+	leaf_text := pem.Block{
+		block_type: 'CERTIFICATE'
+		data:       leaf_der
+	}.encode(pem.EncodeConfig{}) or { panic('pem encode') }
+	os.write_file(ca_pem, ca_text) or { panic('write ca') }
+	os.write_file(leaf_pem, leaf_text) or { panic('write leaf') }
+	defer {
+		os.rm(ca_pem) or {}
+		os.rm(leaf_pem) or {}
+	}
+	res := os.exec([bin, 'verify', '-CAfile', ca_pem, leaf_pem])
+	assert res.exit_code == 0, 'openssl verify failed for V-generated SHA2-128s: ${res.output}'
+}
+
+// test_slh_slow_sets_fresh_sign_openssl_verify runs last: fresh keygen +
+// sign for the slow 128s/192s/256s sets, verified under openssl. Gated on
+// the openssl binary (~70s budget for the three fresh signatures).
+fn test_slh_slow_sets_fresh_sign_openssl_verify() {
+	bin := slh_openssl_bin()
+	if bin == '' {
+		return
+	}
+	for params in [slh_dsa.ParameterSet.shake_128s, .shake_192s, .shake_256s] {
+		tag := match params {
+			.shake_128s { 'shake128s' }
+			.shake_192s { 'shake192s' }
+			else { 'shake256s' }
+		}
+		ca_priv, _ := slh_dsa.keygen(params) or { panic('ca keygen ${tag}') }
+		now := time.now()
+		ca_cert, ca_der := x509.generate_self_signed_slh_dsa(x509.CertGenOptions{
+			common_name: 'Test SLH Slow CA ${tag}'
+			not_before:  now.add_days(-1)
+			not_after:   now.add_days(3650)
+			is_ca:       true
+		}, ca_priv, params) or { panic('ca gen ${tag}') }
+		leaf_priv, _ := slh_dsa.keygen(params) or { panic('leaf keygen ${tag}') }
+		_, leaf_der := x509.generate_ca_signed_slh_dsa(x509.CertGenOptions{
+			common_name: 'leaf.example.com'
+			dns_names:   ['leaf.example.com']
+			not_before:  now.add_days(-1)
+			not_after:   now.add_days(30)
+		}, leaf_priv, params, &ca_cert, ca_priv, params) or { panic('leaf gen ${tag}') }
+		dir := os.temp_dir()
+		ca_pem := dir + '/tls_slh_slow_${tag}_ca.pem'
+		leaf_pem := dir + '/tls_slh_slow_${tag}_leaf.pem'
+		ca_text := pem.Block{
+			block_type: 'CERTIFICATE'
+			data:       ca_der
+		}.encode(pem.EncodeConfig{}) or { panic('pem encode') }
+		leaf_text := pem.Block{
+			block_type: 'CERTIFICATE'
+			data:       leaf_der
+		}.encode(pem.EncodeConfig{}) or { panic('pem encode') }
+		os.write_file(ca_pem, ca_text) or { panic('write ca') }
+		os.write_file(leaf_pem, leaf_text) or { panic('write leaf') }
+		res := os.exec([bin, 'verify', '-CAfile', ca_pem, leaf_pem])
+		os.rm(ca_pem) or {}
+		os.rm(leaf_pem) or {}
+		assert res.exit_code == 0, 'openssl verify failed for fresh ${tag}: ${res.output}'
+	}
+}

@@ -306,11 +306,10 @@ fn test_fuzz_aead_seal_open_no_panic() {
 			assert err.msg().len > 0
 			continue
 		}
-		if opened_ct, opened_pt := open_record(.tls_aes_128_gcm_sha256, key, iv, 7, bad_rec) {
-			// a header-length flip can decode to a shorter record that must
-			// still carry the identical plaintext if it somehow opens
-			_ = opened_ct
-			assert opened_pt == pt
+		// Any ciphertext/tag mutation must fail authentication: fail
+		// closed, never compare tampered plaintext.
+		if _, _ := open_record(.tls_aes_128_gcm_sha256, key, iv, 7, bad_rec) {
+			assert false, 'tampered record must fail authentication'
 		} else {
 			assert err.msg().len > 0
 		}
@@ -527,5 +526,137 @@ fn test_fuzz_corpus_no_panic() {
 				}
 			}
 		}
+	}
+}
+
+// test_fuzz_crafted_invalid_inputs locks fail-closed behavior on
+// hand-picked invalid buffers for the early-data and PSK-mode codecs.
+fn test_fuzz_crafted_invalid_inputs() {
+	// ee_accepts_early_data negatives: empty, truncated, wrong extension
+	// type, wrong extension length, trailing garbage.
+	assert !ee_accepts_early_data([]u8{})
+	assert !ee_accepts_early_data([u8(0)])
+	assert !ee_accepts_early_data([u8(0), 4, 0, 42])
+	assert !ee_accepts_early_data([u8(0), 4, 0, 43, 0, 0])
+	assert !ee_accepts_early_data([u8(0), 4, 0, 42, 0, 1])
+	assert !ee_accepts_early_data([u8(0), 4, 0, 42, 0, 0, 0x99])
+	// parse_psk_modes negatives: empty, truncated, no dhe_ke, trailing.
+	assert !parse_psk_modes([]u8{})
+	assert !parse_psk_modes([u8(1)])
+	assert !parse_psk_modes([u8(1), 0])
+	assert !parse_psk_modes([u8(2), 0, 0])
+	assert !parse_psk_modes([u8(1), 1, 9])
+	assert parse_psk_modes(encode_psk_modes())
+	// parse_psk_selected negatives: wrong lengths.
+	if _ := parse_psk_selected([]u8{}) {
+		assert false, 'empty selected identity must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _ := parse_psk_selected([u8(0)]) {
+		assert false, '1-byte selected identity must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _ := parse_psk_selected([u8(0), 0, 0]) {
+		assert false, '3-byte selected identity must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	assert parse_psk_selected([u8(0), 1])! == 1
+	// verify_binder negatives: length mismatch and wrong key never verify.
+	assert !verify_binder([]u8{len: 32}, []u8{len: 32}, []u8{len: 16},
+		.tls_aes_128_gcm_sha256)
+	// ee rejects a body whose extension length overruns the buffer.
+	assert !ee_accepts_early_data([u8(0), 8, 0, 42, 0, 4, 1, 2])
+}
+
+// test_fuzz_rejection_rates asserts all-0xFF and empty blobs fail every
+// codec (rejection, never panic, never accept).
+fn test_fuzz_rejection_rates() {
+	ff := []u8{len: 64, init: 0xff}
+	if _ := parse_client_hello(ff) {
+		assert false, 'all-0xFF ClientHello must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _ := parse_server_hello(ff) {
+		assert false, 'all-0xFF ServerHello must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := parse_handshake_message(ff) {
+		assert false, 'all-0xFF handshake message must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := decode_plain_record(ff) {
+		assert false, 'all-0xFF record must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := decode_cipher_record(ff) {
+		assert false, 'all-0xFF cipher record must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := parse_psk_offer(ff) {
+		assert false, 'all-0xFF PSK offer must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	empty := []u8{}
+	if _ := parse_client_hello(empty) {
+		assert false, 'empty ClientHello must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _ := parse_server_hello(empty) {
+		assert false, 'empty ServerHello must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := parse_handshake_message(empty) {
+		assert false, 'empty handshake message must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := decode_plain_record(empty) {
+		assert false, 'empty record must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := decode_cipher_record(empty) {
+		assert false, 'empty cipher record must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	if _, _ := parse_psk_offer(empty) {
+		assert false, 'empty PSK offer must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+}
+
+// test_fuzz_oversize_length_prefix_no_hang proves absurd length prefixes
+// fail fast with small bounded inputs (no hang, no OOM).
+fn test_fuzz_oversize_length_prefix_no_hang() {
+	// 0xFFFFFF handshake length with a 1-byte body: truncated, not a 16MB
+	// allocation.
+	if _, _ := parse_handshake_message([u8(1), 0xff, 0xff, 0xff, 0xaa]) {
+		assert false, '0xFFFFFF handshake prefix must fail'
+	} else {
+		assert err.msg().len > 0
+	}
+	// Record headers naming >16K fragments are rejected before allocation.
+	if _, _ := decode_plain_record([u8(0x16), 0x03, 0x03, 0xff, 0xff]) {
+		assert false, 'oversize plaintext record must fail'
+	} else {
+		assert err.msg().contains('too large')
+	}
+	if _, _ := decode_cipher_record([u8(0x17), 0x03, 0x03, 0xff, 0xff]) {
+		assert false, 'oversize cipher record must fail'
+	} else {
+		assert err.msg().contains('too large')
 	}
 }

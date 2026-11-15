@@ -88,6 +88,24 @@ fn test_kat_hkdf_sha256_rfc5869() {
 	assert okm3.hex() == '8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8'
 }
 
+fn test_kat_hkdf_salt_flip_must_differ() {
+	// Salt sensitivity: flipping one salt bit must change both the
+	// extracted PRK and the expanded OKM.
+	ikm := hex.decode('0b'.repeat(22))!
+	salt := hex.decode('000102030405060708090a0b0c')!
+	mut salt2 := salt.clone()
+	salt2[0] ^= 0x01
+	prk1 := hkdf.extract(sha256.new, ikm, salt)!
+	prk2 := hkdf.extract(sha256.new, ikm, salt2)!
+	assert prk1 != prk2, 'HKDF extract must be salt-sensitive'
+	info := hex.decode('f0f1f2f3f4f5f6f7f8f9')!.bytestr()
+	okm1 := hkdf.key(sha256.new, ikm, salt, info, 42)!
+	okm2 := hkdf.key(sha256.new, ikm, salt2, info, 42)!
+	assert okm1 != okm2, 'HKDF expand must be salt-sensitive'
+	assert okm1.len == 42
+	assert okm2.len == 42
+}
+
 fn test_kat_aes128_gcm_nist() {
 	key := hex.decode('feffe9928665731c6d6a8f9467308308')!
 	iv := hex.decode('cafebabefacedbaddecaf888')!
@@ -115,6 +133,11 @@ fn test_kat_aes256_gcm_nist() {
 	assert out[..out.len - 16].hex() == '522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662'
 	assert out[out.len - 16..].hex() == '76fc6ece0f4e1768cddf8853bb2d551b'
 	assert g.decrypt(out, iv, ad)! == pt
+	mut bad256 := out.clone()
+	bad256[0] ^= 0xff
+	if _ := g.decrypt(bad256, iv, ad) {
+		assert false, 'tampered AES-256-GCM ciphertext must fail authentication'
+	}
 }
 
 fn test_kat_chacha20poly1305_rfc8439() {

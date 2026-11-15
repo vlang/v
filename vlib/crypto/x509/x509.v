@@ -266,7 +266,16 @@ pub fn (c &Certificate) organization() string {
 // only when the SAN extension is absent. Wildcards match one leftmost label.
 // It does not verify signatures, trust, validity periods, or IP address identities.
 pub fn (c &Certificate) check_host(name string) ! {
-	if !valid_dns_name(name, false) || is_ip_name(name) {
+	if is_ip_name(name) {
+		want := parse_ip_literal(name) or { return error('x509: invalid IP literal `${name}`') }
+		for ip in c.ip_addresses {
+			if ip == want {
+				return
+			}
+		}
+		return error('x509: `${name}` is not covered by IP SANs')
+	}
+	if !valid_dns_name(name, false) {
 		return error('x509: invalid DNS hostname `${name}`')
 	}
 	if c.has_san || c.dns_names.len > 0 {
@@ -307,6 +316,132 @@ fn is_ip_name(name string) bool {
 		}
 	}
 	return true
+}
+
+// is_ip_literal reports whether name is an IPv4 or IPv6 address literal
+// (TLS callers use it to skip the SNI extension, which must not carry
+// literal IPs — RFC 6066 §3).
+pub fn is_ip_literal(name string) bool {
+	return is_ip_name(name)
+}
+
+// parse_ip_literal parses an IPv4 dotted quad or IPv6 literal (with one
+// optional :: compression run and optional embedded IPv4 tail) into 4 or
+// 16 raw bytes. Zone IDs and other forms are rejected.
+fn parse_ip_literal(name string) ![]u8 {
+	if !name.contains(':') {
+		parts := name.split('.')
+		if parts.len != 4 {
+			return error('x509: invalid IPv4 literal')
+		}
+		mut out := []u8{len: 4}
+		for i, p in parts {
+			if p.len == 0 || p.len > 3 {
+				return error('x509: invalid IPv4 literal')
+			}
+			for c in p.bytes() {
+				if c < `0` || c > `9` {
+					return error('x509: invalid IPv4 literal')
+				}
+			}
+			v := p.int()
+			if v > 255 {
+				return error('x509: invalid IPv4 literal')
+			}
+			out[i] = u8(v)
+		}
+		return out
+	}
+	if name.contains('%') {
+		return error('x509: IPv6 zone IDs not supported')
+	}
+	halves := name.split('::')
+	if halves.len > 2 {
+		return error('x509: invalid IPv6 literal')
+	}
+	mut left := []string{}
+	mut right := []string{}
+	if halves[0].len > 0 {
+		left = halves[0].split(':')
+	}
+	if halves.len == 2 && halves[1].len > 0 {
+		right = halves[1].split(':')
+	}
+	has_compression := halves.len == 2
+	// An embedded IPv4 tail counts as two 16-bit groups.
+	mut groups := left.len + right.len
+	if groups > 0 {
+		last := if right.len > 0 { right.last() } else { left.last() }
+		if last.contains('.') {
+			groups++
+		}
+	}
+	need := 8 - groups
+	if (!has_compression && need != 0) || (has_compression && need <= 0) {
+		return error('x509: invalid IPv6 literal')
+	}
+	mut out := []u8{len: 16}
+	mut pos := 0
+	parse_group := fn (g string) !u16 {
+		if g.len == 0 || g.len > 4 {
+			return error('x509: invalid IPv6 group')
+		}
+		mut v := 0
+		for c in g.bytes() {
+			d := if c >= `0` && c <= `9` {
+				int(c - `0`)
+			} else if c >= `a` && c <= `f` {
+				int(c - `a`) + 10
+			} else if c >= `A` && c <= `F` {
+				int(c - `A`) + 10
+			} else {
+				return error('x509: invalid IPv6 group')
+			}
+			v = v * 16 + d
+		}
+		return u16(v)
+	}
+	for g in left {
+		if g.contains('.') {
+			tail := parse_ip_literal(g)!
+			if tail.len != 4 {
+				return error('x509: invalid embedded IPv4')
+			}
+			out[pos] = tail[0]
+			out[pos + 1] = tail[1]
+			out[pos + 2] = tail[2]
+			out[pos + 3] = tail[3]
+			pos += 4
+			continue
+		}
+		v := parse_group(g)!
+		out[pos] = u8(v >> 8)
+		out[pos + 1] = u8(v)
+		pos += 2
+	}
+	pos += need * 2
+	for g in right {
+		if g.contains('.') {
+			tail := parse_ip_literal(g)!
+			if tail.len != 4 {
+				return error('x509: invalid embedded IPv4')
+			}
+			out[pos] = tail[0]
+			out[pos + 1] = tail[1]
+			out[pos + 2] = tail[2]
+			out[pos + 3] = tail[3]
+			pos += 4
+			continue
+		}
+		v := parse_group(g)!
+		out[pos] = u8(v >> 8)
+		out[pos + 1] = u8(v)
+		pos += 2
+	}
+	if pos != 16 {
+		return error('x509: invalid IPv6 literal')
+	}
+	return out
 }
 
 fn valid_dns_name(name string, wildcard bool) bool {

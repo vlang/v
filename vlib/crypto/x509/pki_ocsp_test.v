@@ -131,7 +131,9 @@ fn test_pki_ocsp_vgen_wrong_serial() {
 	assert false, 'staple for another leaf must fail'
 }
 
-// test_pki_ocsp_vgen_stale rejects out-of-window staples.
+// test_pki_ocsp_vgen_stale rejects out-of-window staples: a producedAt
+// outside the freshness window, and a past nextUpdate, are independent
+// failures (each is asserted even when the other case passes).
 fn test_pki_ocsp_vgen_stale() {
 	now := time.now()
 	ca, signer, leaf, leaf_der := ocsp_test_ca()
@@ -142,22 +144,23 @@ fn test_pki_ocsp_vgen_stale() {
 		next_update:     now.add_days(5)
 		has_next_update: true
 	}, signer) or { panic('make_ocsp: ${err}') }
-	verify_ocsp_staple(old, leaf_der, ca.raw) or {
+	if _ := verify_ocsp_staple(old, leaf_der, ca.raw) {
+		assert false, 'old staple must fail freshness'
+	} else {
 		assert err.msg().contains('freshness')
-		// Fresh producedAt but a past nextUpdate: stale.
-		_, stale := make_ocsp_response(&leaf, &ca, OcspGenOptions{
-			produced_at:     now
-			this_update:     now.add_days(-2)
-			next_update:     now.add_days(-1)
-			has_next_update: true
-		}, signer) or { panic('make stale: ${err}') }
-		verify_ocsp_staple(stale, leaf_der, ca.raw) or {
-			assert err.msg().contains('stale')
-			return
-		}
-		assert false, 'stale staple must fail'
 	}
-	assert false, 'old staple must fail freshness'
+	// Fresh producedAt but a past nextUpdate: stale.
+	_, stale := make_ocsp_response(&leaf, &ca, OcspGenOptions{
+		produced_at:     now
+		this_update:     now.add_days(-2)
+		next_update:     now.add_days(-1)
+		has_next_update: true
+	}, signer) or { panic('make stale: ${err}') }
+	if _ := verify_ocsp_staple(stale, leaf_der, ca.raw) {
+		assert false, 'stale staple must fail'
+	} else {
+		assert err.msg().contains('stale')
+	}
 }
 
 // test_pki_ocsp_vgen_wrong_issuer rejects staples under another CA.
@@ -214,6 +217,76 @@ fn test_pki_ocsp_chain_staple() {
 		return
 	}
 	assert false, 'revoked staple in chain must fail'
+}
+
+// test_pki_ocsp_vgen_produced_future rejects a staple produced in the
+// future (outside the freshness window on the other side).
+fn test_pki_ocsp_vgen_produced_future() {
+	now := time.now()
+	ca, signer, leaf, leaf_der := ocsp_test_ca()
+	_, resp_der := make_ocsp_response(&leaf, &ca, OcspGenOptions{
+		produced_at:     now.add_days(2)
+		this_update:     now.add_days(2)
+		next_update:     now.add_days(9)
+		has_next_update: true
+	}, signer) or { panic('make_ocsp: ${err}') }
+	if _ := verify_ocsp_staple(resp_der, leaf_der, ca.raw) {
+		assert false, 'future-produced staple must fail'
+	} else {
+		assert err.msg().contains('freshness')
+	}
+}
+
+// test_pki_ocsp_vgen_responder_mismatch rejects a staple whose responder
+// is not the issuer the verifier trusts: a response signed by one CA
+// fails under another CA's bytes with a responder-identity error.
+fn test_pki_ocsp_vgen_responder_mismatch() {
+	now := time.now()
+	ca, signer, leaf, leaf_der := ocsp_test_ca()
+	_, other_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('keygen') }
+	other, _ := generate_self_signed(CertGenOptions{
+		common_name: 'PKI Responder Other'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(3650)
+		is_ca:       true
+	}, other_priv) or { panic('other ca gen') }
+	_, resp_der := make_ocsp_response(&leaf, &ca, OcspGenOptions{
+		produced_at:     now
+		this_update:     now
+		next_update:     now.add_days(7)
+		has_next_update: true
+	}, signer) or { panic('make_ocsp: ${err}') }
+	if _ := verify_ocsp_staple(resp_der, leaf_der, other.raw) {
+		assert false, 'staple under another responder must fail'
+	} else {
+		assert err.msg().contains('responder')
+	}
+}
+
+// test_pki_ocsp_chain_tamper_and_skip routes a tampered staple through
+// verify_chain (must fail) and proves a skipped staple still verifies.
+fn test_pki_ocsp_chain_tamper_and_skip() {
+	now := time.now()
+	ca, signer, leaf, _ := ocsp_test_ca()
+	chain := build_chain(leaf, [], [ca]) or { panic('build: ${err}') }
+	// No staple configured: the chain verifies on its own.
+	verify_chain(chain, VerifyOptions{}) or { panic('plain verify: ${err}') }
+	_, good := make_ocsp_response(&leaf, &ca, OcspGenOptions{
+		produced_at:     now
+		this_update:     now
+		next_update:     now.add_days(7)
+		has_next_update: true
+	}, signer) or { panic('make_ocsp: ${err}') }
+	mut bad := good.clone()
+	bad[bad.len - 1] ^= u8(0x01)
+	if _ := verify_chain(chain, VerifyOptions{
+		ocsp_resp: bad
+	}) {
+		assert false, 'tampered staple must fail verify_chain'
+	} else {
+		assert err.msg().contains('signature') || err.msg().contains('bad')
+			|| err.msg().contains('mismatch')
+	}
 }
 
 // ocsp_openssl_setup creates a CA + leaf + index + request in dir,

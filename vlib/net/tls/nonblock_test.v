@@ -210,3 +210,72 @@ fn test_nonblock_async_timeout_and_cancel() ! {
 	}
 	assert false, 'cancelled result must report an error'
 }
+
+// Steady-state write timeout: the socket-level write timeout is applied
+// to live Conns (see happy-path getters). NOTE: a bulk write against a
+// non-reading peer cannot be gated here: TcpConn.write_ptr uses a
+// blocking send() and set_write_timeout never applies SO_SNDTIMEO, so a
+// full window blocks indefinitely instead of timing out (measured: a
+// 16s-blocked write returned RST on peer close, never a timeout). Firing
+// a write timeout needs a source fix in vlib/net (apply the timeout to
+// the socket or poll before blocking sends).
+
+// Async cancellation against a FRESH listener, signalled by send: the
+// result is cancelled (not a socket error), proving the cancellation
+// plumbing does not depend on listener state. NOTE: the documented
+// close-to-cancel contract cannot be observed here: V's `select` with an
+// `else` branch skips closed channels (see sync/channel_select_3_test),
+// so is_cancelled only fires on a buffered send. Close-based cancellation
+// needs a source fix in nonblock.v; this test covers the worker path.
+fn test_nonblock_async_cancel_fresh_listener() ! {
+	mut ln := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := ln.addr()!.port()!
+	mut cancel := chan bool{cap: 1}
+	cancel <- true
+	tcfg := TimeoutConfig{
+		cfg:                  Config{
+			verify:      false
+			server_name: 'localhost'
+		}
+		connect_timeout_ms:   2000
+		handshake_timeout_ms: 2000
+		cancel:               cancel
+	}
+	mut ch := dial_async('127.0.0.1', port, tcfg)
+	r := <-ch
+	assert !r.ok
+	assert r.cancelled, 'signalled cancel must report cancelled'
+	assert !r.timed_out
+	r.result() or {
+		assert !is_timeout(err)
+		assert err.msg().contains('cancelled')
+		ln.close()!
+		return
+	}
+	ln.close()!
+	assert false, 'cancelled result must report an error'
+}
+
+// Connect timeout against TEST-NET-1 (RFC 5737, unroutable): the TCP
+// connect must fail within the bound (a timeout on blackhole routes, a
+// fast socket error where the address is unreachable).
+fn test_nonblock_connect_timeout_test_net_1() ! {
+	t := Timeouts{
+		connect_timeout_ms:   2000
+		handshake_timeout_ms: 2000
+	}
+	start := time.now()
+	dial_with_timeouts('192.0.2.1', 443, Config{
+		verify:      false
+		server_name: 'localhost'
+	}, t) or {
+		elapsed := time.since(start)
+		assert elapsed < 15 * time.second, 'connect must fail within the bound'
+		if is_timeout(err) {
+			return
+		}
+		assert err.msg().len > 0, 'unroutable connect must still report an error'
+		return
+	}
+	assert false, 'connect to TEST-NET-1 must fail'
+}

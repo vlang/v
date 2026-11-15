@@ -61,12 +61,15 @@ fn put_u24(mut out []u8, v int) {
 	out << u8(v & 0xff)
 }
 
-// get_u16 reads a big-endian u16.
+// get_u16 reads a big-endian u16. SAFETY: callers must bounds-check first
+// (all current call sites verify length before slicing); an unchecked call
+// panics on short input instead of failing closed.
 fn get_u16(b []u8) u16 {
 	return (u16(b[0]) << 8) | u16(b[1])
 }
 
-// get_u24 reads a big-endian u24.
+// get_u24 reads a big-endian u24. SAFETY: same bounds-check contract as
+// get_u16 above.
 fn get_u24(b []u8) int {
 	return (int(b[0]) << 16) | (int(b[1]) << 8) | int(b[2])
 }

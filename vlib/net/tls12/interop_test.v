@@ -809,3 +809,203 @@ fn test_openssl_ccm8_ecdsa() {
 	c.write('hello ccm8 openssl'.bytes()) or { panic('write vs CCM8 s_server: ${err}') }
 	c.close() or {}
 }
+
+// ---------- non-EMS fallback (server without extended_master_secret) ----------
+
+fn run_openssl_s_server_no_ems(bin string, port int, cert string, key string) {
+	os.exec([bin, 's_server', '-tls1_2', '-accept', port.str(), '-cert', cert, '-key', key, '-cipher',
+		'ECDHE-RSA-AES128-GCM-SHA256', '-naccept', '1', '-no_ems'])
+}
+
+// test_openssl_no_ems_fallback checks completion against a server that
+// does not negotiate EMS: the client follows the missing echo onto the
+// plain-master path and reports uses_ems() == false.
+fn test_openssl_no_ems_fallback() {
+	bin := openssl_bin()
+	if bin == '' {
+		println('skip openssl no-EMS test: no openssl binary')
+		return
+	}
+	help := os.exec([bin, 's_server', '-help'])
+	if !help.output.contains('no_ems') {
+		println('skip openssl no-EMS test: s_server lacks -no_ems')
+		return
+	}
+	port := 18513
+	cert := testdata_path('rsa_cert.pem')
+	key := testdata_path('rsa_key.pem')
+	spawn run_openssl_s_server_no_ems(bin, port, cert, key)
+	time.sleep(1500 * time.millisecond)
+	mut c := dial('127.0.0.1', port, Config{
+		server_name: 'localhost'
+		skip_verify: true
+	}) or {
+		println('skip openssl no-EMS test: dial failed')
+		return
+	}
+	c.handshake() or {
+		println('skip openssl no-EMS test: handshake failed: ${err}')
+		return
+	}
+	assert !c.uses_ems(), 'server without EMS must complete on the plain-master path'
+	assert c.master.len == 48
+	c.write('hello no-ems'.bytes()) or { panic('write vs no-EMS s_server: ${err}') }
+	c.close() or {}
+}
+
+// ---------- EtM MAC-byte flip with valid padding ----------
+
+fn test_etm_mac_byte_flip_valid_padding() {
+	mac_key := []u8{len: 32, init: 0x11}
+	enc_key := []u8{len: 16, init: 0x22}
+	pt := 'etm mac-byte flip proof'.bytes()
+	sealed := cbc_etm_seal(mac_key, enc_key, 9, rectype_application_data, pt)!
+	opened := cbc_etm_open(mac_key, enc_key, 9, rectype_application_data, sealed)!
+	assert opened == pt
+	assert sealed.len >= 16 + 16 + 32
+	// The MAC occupies the trailing 32 bytes in the clear; the padding
+	// length byte lives inside the ciphertext. Flipping MAC bytes leaves
+	// padding valid, so a MAC error proves MAC-before-decrypt ordering.
+	mut bad_first := sealed.clone()
+	bad_first[bad_first.len - 32] ^= 0x01
+	mut failed_first := false
+	mut msg_first := ''
+	cbc_etm_open(mac_key, enc_key, 9, rectype_application_data, bad_first) or {
+		failed_first = true
+		msg_first = err.msg()
+	}
+	assert failed_first, 'EtM must reject a flipped MAC byte'
+	assert msg_first.contains('MAC'), 'EtM MAC-byte flip must fail at MAC, got: ${msg_first}'
+	mut bad_last := sealed.clone()
+	bad_last[bad_last.len - 1] ^= 0x01
+	mut failed_last := false
+	mut msg_last := ''
+	cbc_etm_open(mac_key, enc_key, 9, rectype_application_data, bad_last) or {
+		failed_last = true
+		msg_last = err.msg()
+	}
+	assert failed_last, 'EtM must reject a flipped trailing MAC byte'
+	assert msg_last.contains('MAC'), 'EtM trailing MAC flip must fail at MAC, got: ${msg_last}'
+}
+
+// ---------- session-ID resumption: cleared cache / expired entry ----------
+
+fn test_resumption_cleared_cache_fallback() {
+	clear_session_cache()
+	port := 18514
+	cert := os.read_bytes(testdata_path('rsa_cert.der')) or { panic(err) }
+	key := os.read_bytes(testdata_path('rsa_key_pkcs8.der')) or { panic(err) }
+	ch := chan bool{cap: 2}
+	spawn run_resumption_server(port, cert, key, 2, ch)
+	time.sleep(700 * time.millisecond)
+	sess1, resumed1, _ := echo_once(port, loopback_client_cfg(), 'hello-one')
+	assert !resumed1, 'first handshake must be full'
+	assert sess1.id.len == 32
+	// The cache is wiped between connections: the offered session is
+	// unknown and the server falls back to a full handshake with a
+	// fresh session ID.
+	clear_session_cache()
+	cfg2 := Config{
+		server_name: 'localhost'
+		skip_verify: true
+		resume:      sess1
+	}
+	sess2, resumed2, _ := echo_once(port, cfg2, 'hello-two')
+	assert !resumed2, 'cleared cache must fall back to a full handshake'
+	assert sess2.id != sess1.id, 'fallback must issue a fresh session ID'
+	assert (<-ch) == false
+	assert (<-ch) == false
+	time.sleep(100 * time.millisecond)
+}
+
+fn test_resumption_expired_session_fallback() {
+	clear_session_cache()
+	port := 18515
+	cert := os.read_bytes(testdata_path('rsa_cert.der')) or { panic(err) }
+	key := os.read_bytes(testdata_path('rsa_key_pkcs8.der')) or { panic(err) }
+	ch := chan bool{cap: 2}
+	spawn run_resumption_server(port, cert, key, 2, ch)
+	time.sleep(700 * time.millisecond)
+	sess1, _, _ := echo_once(port, loopback_client_cfg(), 'hello-one')
+	// Age the cached entry past the resumability window.
+	k := sess1.id.hex()
+	e := session_cache[k] or { panic('no session cache entry') }
+	session_cache[k] = SessionEntry{
+		master:  e.master.clone()
+		suite:   e.suite
+		created: time.now().unix() - session_entry_max_age - 100
+	}
+	cfg2 := Config{
+		server_name: 'localhost'
+		skip_verify: true
+		resume:      sess1
+	}
+	sess2, resumed2, _ := echo_once(port, cfg2, 'hello-two')
+	assert !resumed2, 'expired session must fall back to a full handshake'
+	assert sess2.id != sess1.id, 'fallback must issue a fresh session ID'
+	assert (<-ch) == false
+	assert (<-ch) == false
+	time.sleep(100 * time.millisecond)
+}
+
+// ---------- renegotiation: master secrets differ, second rejected ----------
+
+fn test_renegotiation_master_secrets_differ() {
+	clear_session_cache()
+	port := 18516
+	cert := os.read_bytes(testdata_path('rsa_cert.der')) or { panic(err) }
+	key := os.read_bytes(testdata_path('rsa_key_pkcs8.der')) or { panic(err) }
+	done := chan bool{cap: 1}
+	spawn fn (port int, cert []u8, key []u8, done chan bool) {
+		mut ln := net.listen_tcp(.ip, '127.0.0.1:${port}', net.ListenOptions{}) or {
+			panic('listen: ${err}')
+		}
+		defer {
+			ln.close() or {}
+		}
+		mut tcp := ln.accept() or { panic('accept: ${err}') }
+		mut s := accept(tcp, Config{
+			cert_der: cert
+			key_der:  key
+		}) or { panic('wrap: ${err}') }
+		s.handshake() or { panic('server hs1: ${err}') }
+		mut buf := []u8{len: 256}
+		n := s.read(mut buf) or { panic('server read1: ${err}') }
+		s.write(buf[..n]) or { panic('server write1: ${err}') }
+		s.renegotiate() or { panic('server reneg: ${err}') }
+		mut buf2 := []u8{len: 256}
+		n2 := s.read(mut buf2) or { panic('server read2: ${err}') }
+		s.write(buf2[..n2]) or { panic('server write2: ${err}') }
+		s.close() or {}
+		done <- true
+	}(port, cert, key, done)
+	time.sleep(700 * time.millisecond)
+	mut c := dial('127.0.0.1', port, loopback_client_cfg()) or { panic('dial: ${err}') }
+	c.handshake() or { panic('client hs1: ${err}') }
+	master1 := c.master.clone()
+	assert master1.len == 48
+	c.write('before-reneg'.bytes()) or { panic('write1: ${err}') }
+	mut buf := []u8{len: 256}
+	mut got := []u8{}
+	for got.len < 'before-reneg'.len {
+		n := c.read(mut buf) or { panic('read1: ${err}') }
+		got << buf[..n]
+	}
+	assert got.bytestr() == 'before-reneg'
+	c.renegotiate() or { panic('client reneg: ${err}') }
+	master2 := c.master.clone()
+	assert master2.len == 48
+	assert master1 != master2, 're-handshake must derive fresh master secrets'
+	c.write('after-reneg'.bytes()) or { panic('write2: ${err}') }
+	mut got2 := []u8{}
+	for got2.len < 'after-reneg'.len {
+		n := c.read(mut buf) or { panic('read2: ${err}') }
+		got2 << buf[..n]
+	}
+	assert got2.bytestr() == 'after-reneg'
+	mut second_ok := true
+	c.renegotiate() or { second_ok = false }
+	assert !second_ok, 'client second renegotiation must be rejected'
+	c.close() or {}
+	assert (<-done) == true
+}

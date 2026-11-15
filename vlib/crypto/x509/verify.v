@@ -492,6 +492,11 @@ fn build_chain_at(leaf Certificate, intermediates []Certificate, roots []Certifi
 	if roots.len == 0 {
 		return error('x509: no trust anchors')
 	}
+	// Cap the DFS pool: intermediates come from the peer flight and an
+	// unbounded pool makes path search combinatorial.
+	if intermediates.len > 64 {
+		return error('x509: too many intermediates')
+	}
 	if !valid_at(leaf, now) {
 		return error('x509: leaf not valid at this time')
 	}

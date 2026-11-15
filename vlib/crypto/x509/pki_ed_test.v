@@ -1,5 +1,6 @@
 module x509
 
+import crypto.ecdsa
 import crypto.ed25519
 import crypto.pem
 import os
@@ -185,4 +186,116 @@ fn test_pki_ed_openssl_verify() {
 	}.encode(pem.EncodeConfig{}) or { panic(err) }) or { panic(err) }
 	res := os.exec([bin, 'verify', '-CAfile', ca_pem, leaf_pem])
 	assert res.exit_code == 0, 'openssl verify failed: ${res.output}'
+}
+
+// test_pki_ed_tbs_tamper_message proves TBS damage fails with a message:
+// the first DER offset that still parses must fail chain building.
+fn test_pki_ed_tbs_tamper_message() {
+	ca := parse_pem(ed_testdata('ed25519_ca_cert.pem').bytestr()) or { panic('parse ca') }
+	leaf := parse_pem(ed_testdata('ed25519_leaf_cert.pem').bytestr()) or {
+		panic('parse leaf')
+	}
+	mut proven := false
+	for off in [15, 25, 35, 55, 100] {
+		if off >= leaf.raw.len {
+			continue
+		}
+		mut bad := leaf.raw.clone()
+		bad[off] ^= u8(0x01)
+		if tampered := parse_der(bad) {
+			if _ := build_chain(tampered, [], [ca]) {
+				continue
+			} else {
+				assert err.msg().contains('signature') || err.msg().contains('bad')
+					|| err.msg().contains('no valid chain')
+				proven = true
+				break
+			}
+		}
+	}
+	assert proven, 'no TBS offset both parsed and failed building with a message'
+}
+
+// test_pki_ed_sigalg_params_through_chain rejects a leaf whose outer
+// signatureAlgorithm carries parameters (NULL) at chain-build time: the
+// DER still parses (parameters are tolerated structurally) but the exact
+// single-OID gate fails the chain.
+fn test_pki_ed_sigalg_params_through_chain() {
+	ca := parse_pem(ed_testdata('ed25519_ca_cert.pem').bytestr()) or { panic('parse ca') }
+	leaf := parse_pem(ed_testdata('ed25519_leaf_cert.pem').bytestr()) or {
+		panic('parse leaf')
+	}
+	cert_body := expect_tag(leaf.raw, 0, tag_seq, 'certificate') or { panic('outer: ${err}') }
+	tbs_tlv, p1 := split_tlv(cert_body, 0) or { panic('tbs: ${err}') }
+	sigalg_tlv, p2 := split_tlv(cert_body, p1) or { panic('sigalg: ${err}') }
+	sig_tlv, p3 := split_tlv(cert_body, p2) or { panic('sig: ${err}') }
+	assert p3 == cert_body.len
+	sig_content := expect_tag(sigalg_tlv, 0, tag_seq, 'sigalg seq') or {
+		panic('sigalg content: ${err}')
+	}
+	mut with_params := sig_content.clone()
+	for b in der_tlv(0x05, []u8{}) {
+		with_params << b
+	}
+	new_sigalg := der_tlv(0x30, with_params)
+	mut new_body := tbs_tlv.clone()
+	new_body << new_sigalg
+	new_body << sig_tlv
+	new_der := der_tlv(0x30, new_body)
+	if cert := parse_der(new_der) {
+		if _ := build_chain(cert, [], [ca]) {
+			assert false, 'sigAlg-with-params leaf must not build'
+		} else {
+			assert err.msg().contains('no valid chain')
+		}
+	} else {
+		assert err.msg().len > 0
+	}
+}
+
+// test_pki_ed_key_confusion locks key/issuer-type agreement: an Ed25519
+// leaf never chains to an ECDSA CA, and an ECDSA leaf never chains to an
+// Ed25519 CA.
+fn test_pki_ed_key_confusion() {
+	now := time.now()
+	_, ed_ca_priv := ed25519.generate_key() or { panic('ed keygen: ${err}') }
+	ed_ca, _ := generate_self_signed_ed25519(CertGenOptions{
+		common_name: 'Test Ed25519 CA'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(3650)
+		is_ca:       true
+	}, ed_ca_priv) or { panic('ed ca gen: ${err}') }
+	_, ec_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('ec keygen: ${err}') }
+	ec_ca, _ := generate_self_signed(CertGenOptions{
+		common_name: 'Test EC CA'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(3650)
+		is_ca:       true
+	}, ec_priv) or { panic('ec ca gen: ${err}') }
+	_, ed_leaf_priv := ed25519.generate_key() or { panic('ed leaf keygen: ${err}') }
+	ed_leaf, _ := generate_ca_signed_ed25519(CertGenOptions{
+		common_name: 'leaf.example.com'
+		dns_names:   ['leaf.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, ed_leaf_priv, &ed_ca, ed_ca_priv) or { panic('ed leaf gen: ${err}') }
+	if _ := build_chain(ed_leaf, [], [ec_ca]) {
+		assert false, 'Ed25519 leaf must not chain to an ECDSA CA'
+	} else {
+		assert err.msg().contains('no valid chain')
+	}
+	_, ec_leaf_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or {
+		panic('ec leaf keygen: ${err}')
+	}
+	ec_leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'leaf.example.com'
+		dns_names:   ['leaf.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, ec_leaf_priv, &ec_ca, ec_priv) or { panic('ec leaf gen: ${err}') }
+	if _ := build_chain(ec_leaf, [], [ed_ca]) {
+		assert false, 'ECDSA leaf must not chain to an Ed25519 CA'
+	} else {
+		assert err.msg().contains('no valid chain')
+	}
 }

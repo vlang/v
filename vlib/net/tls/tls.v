@@ -252,6 +252,13 @@ pub mut:
 	// time and uses psk_key as the PSK.
 	psk_identity []u8
 	psk_key      []u8
+	// Request an OCSP staple (client side, default false). When set the
+	// client offers the status_request extension; the stapled response
+	// bytes (if the server sends CertificateStatus) are exposed via
+	// Conn.ocsp_response and verified only when the caller checks them
+	// (see x509.verify_ocsp_staple). Unset by default so the ClientHello
+	// stays wire-identical to the pre-OCSP shape.
+	request_ocsp bool
 	// Session-ticket encryption keys (server side). [0] seals new
 	// tickets; all entries are tried when opening. Empty means use
 	// ticket_key (single-key behaviour, default-identical).

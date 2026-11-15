@@ -69,6 +69,9 @@ pub mut:
 	// EncryptedExtensions / CertificateStatus.
 	negotiated_alpn string
 	ocsp_response   []u8
+	// request_ocsp asks the server for an OCSP staple (Config.request_ocsp).
+	// Unset by default so the ClientHello omits status_request.
+	request_ocsp bool
 	// Server random from the ServerHello (for key logging).
 	server_random []u8
 	// Ephemeral key material per offered group (parallel to offer_groups;
@@ -214,9 +217,15 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 		Extension{ typ: ext_supported_groups, data: sg_data },
 		Extension{ typ: ext_signature_algorithms, data: signature_algorithms_data() },
 		Extension{ typ: ext_key_share, data: ks_data },
-		Extension{ typ: ext_server_name, data: sni_data(h.host)! },
-		Extension{ typ: ext_status_request, data: encode_status_request() },
 	]
+	// SNI carries DNS names only: literal IPs must not be sent (RFC 6066
+	// §3) and an empty name is omitted rather than failing the handshake.
+	if h.host.len > 0 && !x509.is_ip_literal(h.host) {
+		exts << Extension{ typ: ext_server_name, data: sni_data(h.host)! }
+	}
+	if h.request_ocsp {
+		exts << Extension{ typ: ext_status_request, data: encode_status_request() }
+	}
 	if h.alpn.len > 0 {
 		exts << Extension{ typ: ext_alpn, data: alpn_data(h.alpn)! }
 	}

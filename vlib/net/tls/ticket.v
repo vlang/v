@@ -690,7 +690,9 @@ pub fn save_ticket_keys(path string, keys [][]u8) ! {
 	}
 	os.write_bytes(path, out)!
 	$if unix {
-		os.chmod(path, 0o600) or {}
+		// Ticket keys decrypt resumption PSKs: a file anyone can read
+		// defeats them, so refuse to leave one behind on chmod failure.
+		os.chmod(path, 0o600) or { return error('tls: cannot secure ticket key file') }
 	}
 }
 
@@ -698,7 +700,9 @@ pub fn save_ticket_keys(path string, keys [][]u8) ! {
 // save_ticket_keys.
 pub fn load_ticket_keys(path string) ![][]u8 {
 	raw := os.read_bytes(path)!
-	if raw.len == 0 || raw.len % 32 != 0 {
+	// Bound the file: keys are 32 bytes each, so 1 MiB already allows
+	// 32k keys — anything larger is not a key file.
+	if raw.len == 0 || raw.len % 32 != 0 || raw.len > 1024 * 1024 {
 		return error('tls: bad ticket key file')
 	}
 	mut out := [][]u8{}

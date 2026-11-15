@@ -72,16 +72,23 @@ mut:
 	// PHA client Certificate body awaiting its CertificateVerify.
 	pha_cert_body []u8
 	has_pha_cert  bool
-	// Handshake reassembly buffer for fragmented flights.
-	hs_inbuf []u8
+	// ku_count bounds post-handshake KeyUpdates per connection (DoS cap;
+	// each update forces two HKDF schedules plus a reply when requested).
+	ku_count int
 }
 
 // dial connects TCP to host:port and returns an unhandshaked TLS Conn.
 // dial performs no TLS handshake; call handshake() before read/write.
 pub fn dial(host string, port int, cfg Config) !&Conn {
 	tcp := net.dial_tcp('${host}:${port}')!
+	mut ccfg := cfg
+	// An empty server_name means "verify against the dialed host": without
+	// this default any valid chain (for any name) would be accepted.
+	if ccfg.server_name == '' {
+		ccfg.server_name = host
+	}
 	mut c := &Conn{
-		cfg: cfg
+		cfg: ccfg
 		tcp: tcp
 	}
 	return c
@@ -92,6 +99,9 @@ pub fn dial(host string, port int, cfg Config) !&Conn {
 pub fn (mut c Conn) dial(host string, port int) ! {
 	tcp := net.dial_tcp('${host}:${port}')!
 	c.tcp = tcp
+	if c.cfg.server_name == '' {
+		c.cfg.server_name = host
+	}
 	c.handshake()!
 }
 
@@ -401,6 +411,21 @@ fn (mut c Conn) read_handshake_body() ![]u8 {
 	return error('tls: too many ChangeCipherSpec records')
 }
 
+// max_reassembled_flight caps handshake reassembly buffering (carry
+// buffers in the fragmented-flight readers) so a malicious peer cannot
+// grow connection memory without bound. Legitimate flights (even large
+// SLH-DSA chains) stay two orders of magnitude below this.
+const max_reassembled_flight = 1024 * 1024
+
+// max_flight_certs caps certificates parsed from one Certificate flight
+// (and intermediates fed to chain DFS) so a malicious flight cannot force
+// unbounded parsing or combinatorial path search.
+const max_flight_certs = 32
+
+// max_key_updates caps post-handshake KeyUpdates per connection. Rekeying
+// is cheap but unbounded updates force unbounded HKDF schedules.
+const max_key_updates = 1024
+
 // max_early_records caps the 0-RTT flight (early records plus EndOfEarlyData)
 // so a malicious peer cannot make the server buffer or skip without bound.
 const max_early_records = 32
@@ -563,6 +588,12 @@ fn (c &Conn) write_keylog() ! {
 	line += c.master_secret.hex()
 	line += '\n'
 	mut f := os.open_append(path) or { return }
+	$if unix {
+		// Secrets land here: restrict a newly created file even though
+		// a pre-existing one keeps its own mode (best effort, like the
+		// rest of key logging — never fail the handshake over it).
+		os.chmod(path, 0o600) or {}
+	}
 	f.write_string(line) or {}
 	f.close()
 }
@@ -631,6 +662,9 @@ pub fn (mut c Conn) handshake() ! {
 				}
 				cbody := c.read_handshake_body() or { return err }
 				carry << cbody
+				if carry.len > max_reassembled_flight {
+					return error('tls: handshake flight too large')
+				}
 				mut o := 0
 				for o < carry.len {
 					parsed, n := parse_handshake_message(carry[o..]) or {
@@ -732,6 +766,7 @@ pub fn (mut c Conn) handshake() ! {
 	chs.max_early_data = c.cfg.max_early_data
 	chs.ext_psk_identity = c.cfg.psk_identity.clone()
 	chs.ext_psk_key = c.cfg.psk_key.clone()
+	chs.request_ocsp = c.cfg.request_ocsp
 
 	mut ch_msg := chs.build_client_hello() or { return err }
 	c.write_plain_record(.handshake, ch_msg)!
@@ -806,6 +841,9 @@ pub fn (mut c Conn) handshake() ! {
 		// coalesce several messages; reassemble the byte stream and walk
 		// every complete message so the transcript stays exact.
 		carry << ibody
+		if carry.len > max_reassembled_flight {
+			return error('tls: handshake flight too large')
+		}
 		mut ioff := 0
 		for ioff < carry.len {
 			parsed, n := parse_handshake_message(carry[ioff..]) or {
@@ -983,7 +1021,12 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 			.new_session_ticket {
 				nst := parse_new_session_ticket(parsed.body)!
 				if !c.is_server && c.has_resumption_master {
-					psk := derive_psk(c.resumption_master, nst.nonce, c.suite) or { continue }
+					psk := derive_psk(c.resumption_master, nst.nonce, c.suite) or {
+						// Unusable ticket: skip it but keep walking the
+						// flight (off must advance or the loop spins).
+						off += n
+						continue
+					}
 					c.resumption = SessionState{
 						ticket:         nst.ticket.clone()
 						psk:            psk
@@ -998,6 +1041,10 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 			}
 			.key_update {
 				requested := parse_key_update(parsed.body)!
+				c.ku_count++
+				if c.ku_count > max_key_updates {
+					return error('tls: too many KeyUpdates')
+				}
 				// Rotate the receiving secret and reset its sequence.
 				if c.is_server {
 					c.client_app_secret = update_traffic_secret(c.client_app_secret,
@@ -1023,7 +1070,12 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 				// Post-handshake auth request (client side): answer with
 				// Certificate(+Verify) under the same handshake keys.
 				if !c.is_server {
-					schemes, ctx := parse_certificate_request(parsed.body) or { continue }
+					schemes, ctx := parse_certificate_request(parsed.body) or {
+						// Unparseable request: skip it but keep walking
+						// the flight (off must advance or the loop spins).
+						off += n
+						continue
+					}
 					c.hs_transcript << msg_raw
 					auth_msgs := build_client_auth_messages(c.cfg, ctx, schemes,
 						c.suite, c.hs_transcript) or {
@@ -1039,7 +1091,12 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 			.certificate {
 				// Post-handshake client auth answer (server side).
 				if c.is_server && c.has_pha_pending {
-					chain, ctx := parse_client_cert_chain(parsed.body) or { continue }
+					chain, ctx := parse_client_cert_chain(parsed.body) or {
+						// Unparseable flight: skip it but keep walking
+						// (off must advance or the loop spins).
+						off += n
+						continue
+					}
 					if ctx != c.pha_pending_ctx {
 						return error('tls: bad post-handshake request context')
 					}
@@ -1068,7 +1125,12 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 					cert_body := c.pha_cert_body.clone()
 					c.has_pha_cert = false
 					c.pha_cert_body = []u8{}
-					chain, _ := parse_client_cert_chain(cert_body) or { continue }
+					chain, _ := parse_client_cert_chain(cert_body) or {
+						// Unparseable stashed flight: skip it but keep
+						// walking (off must advance or the loop spins).
+						off += n
+						continue
+					}
 					if chain.len == 0 {
 						return error('tls: client certificate required')
 					}

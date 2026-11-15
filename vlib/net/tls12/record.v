@@ -204,19 +204,18 @@ fn cbc_open(mac_key []u8, enc_key []u8, seq u64, typ u8, sealed []u8) ![]u8 {
 	for i in 0 .. pad_len + 1 {
 		bad |= int(content[content.len - 1 - i]) ^ pad_len
 	}
-	// Split plaintext and MAC without branching on secret length.
-	mut mac_ok := 0
-	if bad == 0 {
-		pt_len := content.len - pad_len - 1 - 32
-		plaintext := content[..pt_len]
-		recv_mac := content[pt_len..pt_len + 32]
-		want_mac := cbc_mac(mac_key, seq, typ, plaintext)
-		mac_ok = subtle.constant_time_compare(recv_mac, want_mac)
-	}
+	// Always verify the MAC over the same split, even when padding is bad:
+	// skipping the MAC on bad padding creates a timing signal (Lucky13
+	// shape) distinguishing padding from MAC failures. The split is always
+	// in bounds here (checked above); a bad pad still fails below.
+	pt_len := content.len - pad_len - 1 - 32
+	plaintext := content[..pt_len]
+	recv_mac := content[pt_len..pt_len + 32]
+	want_mac := cbc_mac(mac_key, seq, typ, plaintext)
+	mac_ok := subtle.constant_time_compare(recv_mac, want_mac)
 	if bad != 0 || mac_ok != 1 {
 		return error('tls12: CBC MAC/padding check failed')
 	}
-	pt_len := content.len - pad_len - 1 - 32
 	return content[..pt_len].clone()
 }
 

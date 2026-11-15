@@ -676,8 +676,16 @@ pub fn verify_peer_chain(cert_ders [][]u8, roots []x509.Certificate, usage x509.
 			return error(error_hostname_mismatch)
 		}
 		if msg.contains('not valid') {
-			if time.now().unix() > leaf.not_after.unix() {
-				return error(error_chain_expired)
+			// Report expiry when any chain certificate is past its
+			// validity window, not just the leaf.
+			now := time.now().unix()
+			for c in chain {
+				if now < c.not_before.unix() {
+					return error(error_chain_untrusted)
+				}
+				if now > c.not_after.unix() {
+					return error(error_chain_expired)
+				}
 			}
 			return error(error_chain_untrusted)
 		}

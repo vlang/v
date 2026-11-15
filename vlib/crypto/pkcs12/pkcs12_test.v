@@ -115,7 +115,7 @@ fn test_tampered_ciphertext_fails() {
 	assert data.len > 1500
 	data[1200] ^= 0xff
 	decode(data, 'testpass') or {
-		assert err.msg().len > 0
+		assert err.msg().contains('MAC'), 'ciphertext tamper must fail MAC, got: ${err}'
 		return
 	}
 	panic('expected tamper failure')
@@ -125,7 +125,7 @@ fn test_tampered_mac_fails() {
 	mut data := read_fixture('openssl_modern.p12').clone()
 	data[data.len - 1] ^= 0x01
 	decode(data, 'testpass') or {
-		assert err.msg().contains('MAC') || err.msg().len > 0
+		assert err.msg().contains('MAC'), 'MAC tamper must fail MAC, got: ${err}'
 		return
 	}
 	panic('expected MAC-tamper failure')
@@ -278,5 +278,116 @@ fn test_v_generated_verifies_under_openssl() {
 		res := os.exec([bin, 'pkcs12', '-info', '-in', tmp, '-passin', 'pass:testpass', '-noout'])
 		os.rm(tmp) or {}
 		assert res.exit_code == 0, 'openssl verify failed for ${kind}: ${res.output}'
+	}
+}
+
+// test_kind_selection_proof shows the encoded outputs carry distinct PBE
+// OIDs per kind: 3DES output names the 3DES PBE OID and no PBES2 OID,
+// PBES2 output names the PBES2 OID and no legacy PBE OID.
+fn test_kind_selection_proof() {
+	key_der, cert_der := get_test_key_cert()!
+	cfg_3des := EncodeConfig{
+		key_pbe:       .pbe_sha1_3des
+		cert_pbe:      .pbe_sha1_3des
+		mac_hash:      'sha256'
+		iterations:    10
+		friendly_name: 'kind-3des'
+	}
+	p12_3des := encode(key_der, [cert_der], 'roundtrip', cfg_3des) or {
+		panic('encode 3des: ${err}')
+	}
+	cfg_pbes2 := EncodeConfig{
+		key_pbe:       .pbes2_aes256_sha256
+		cert_pbe:      .pbes2_aes256_sha256
+		mac_hash:      'sha256'
+		iterations:    10
+		friendly_name: 'kind-pbes2'
+	}
+	p12_pbes2 := encode(key_der, [cert_der], 'roundtrip', cfg_pbes2) or {
+		panic('encode pbes2: ${err}')
+	}
+	h3 := p12_3des.hex()
+	h2 := p12_pbes2.hex()
+	// 1.2.840.113549.1.12.1.3 (pbeWithSHAAnd3-KeyTripleDES-CBC) and
+	// 1.2.840.113549.1.5.13 (pbes2) as raw OID contents.
+	assert h3.contains('2a864886f70d010c0103'), '3des output must name the 3des PBE OID'
+	assert !h3.contains('2a864886f70d01050d'), '3des output must not name PBES2'
+	assert h2.contains('2a864886f70d01050d'), 'pbes2 output must name the PBES2 OID'
+	assert !h2.contains('2a864886f70d010c0103'), 'pbes2 output must not name 3des PBE'
+	assert p12_3des != p12_pbes2
+}
+
+// pkcs12_strip_mac drops a trailing MacData TLV so decode() skips MAC
+// verification (test-only: lets OID-surgery tests reach pbe_decrypt
+// without tripping the MAC first).
+fn pkcs12_strip_mac(pfx []u8) []u8 {
+	top := expect_tag(pfx, 0, 0x30, 'PFX') or { panic('outer: ${err}') }
+	ver_len := skip_tlv(top, 0) or { panic('version: ${err}') }
+	auth_tlv, _ := split_tlv(top, ver_len) or { panic('authSafe: ${err}') }
+	mut new_top := top[..ver_len].clone()
+	new_top << auth_tlv
+	return der_seq(new_top)
+}
+
+// test_unsupported_pbe_via_decode crafts PFX bytes carrying the RC4-128
+// PBE OID and routes them through decode(): the failure must name the
+// unsupported PBE (not a MAC or framing error).
+fn test_unsupported_pbe_via_decode() {
+	key_der, cert_der := get_test_key_cert()!
+	cfg := EncodeConfig{
+		key_pbe:       .pbe_sha1_3des
+		cert_pbe:      .pbe_sha1_3des
+		mac_hash:      'sha256'
+		iterations:    10
+		friendly_name: 'rc4-surgery'
+	}
+	p12 := encode(key_der, [cert_der], 'testpass', cfg) or { panic('encode: ${err}') }
+	// 3DES PBE OID ...010c0103 -> RC4-128 PBE OID ...010c0101 (same length).
+	mut patched := pkcs12_strip_mac(p12)
+	marker := [u8(0x2a), 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x0c, 0x01, 0x03]
+	mut count := 0
+	for i in 0 .. patched.len - marker.len {
+		mut same := true
+		for j in 0 .. marker.len {
+			if patched[i + j] != marker[j] {
+				same = false
+				break
+			}
+		}
+		if same {
+			patched[i + marker.len - 1] = u8(0x01)
+			count++
+		}
+	}
+	assert count >= 1, 'expected to patch at least one 3des AlgId to RC4'
+	decode(patched, 'testpass') or {
+		assert err.msg().contains('unsupported PBE'), 'RC4 OID via decode must fail PBE, got: ${err}'
+		return
+	}
+	assert false, 'RC4 PBE through decode must fail'
+}
+
+// test_per_kind_wrong_password_negatives decodes every PBE kind with the
+// wrong password: each must fail closed naming the MAC.
+fn test_per_kind_wrong_password_negatives() {
+	key_der, cert_der := get_test_key_cert()!
+	kinds := [PbeKind.pbe_sha1_3des, PbeKind.pbe_sha1_rc2_40, PbeKind.pbes2_aes128_sha256,
+		PbeKind.pbes2_aes256_sha256, PbeKind.pbes2_aes128_sha1, PbeKind.pbes2_aes256_sha1]
+	for kind in kinds {
+		cfg := EncodeConfig{
+			key_pbe:       kind
+			cert_pbe:      kind
+			mac_hash:      'sha256'
+			iterations:    10
+			friendly_name: 'v-wrongpw'
+		}
+		p12 := encode(key_der, [cert_der], 'rightpass', cfg) or {
+			panic('encode ${kind}: ${err}')
+		}
+		if _ := decode(p12, 'wrongpass') {
+			assert false, 'wrong password for ${kind} must fail'
+		} else {
+			assert err.msg().contains('MAC'), 'wrong password for ${kind} must fail MAC, got: ${err}'
+		}
 	}
 }

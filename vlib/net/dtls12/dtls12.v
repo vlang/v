@@ -5,11 +5,16 @@
 // dtls12 is a minimal DTLS 1.2 (RFC 6347) profile over UDP (epoch 0/1).
 // File-disjoint from net.tls and net.tls12: own Config/Conn, own record and
 // handshake codecs over the TLS 1.2 PRF with the GCM + CBC+HMAC suite subset.
+// The handshake does ECDHE (P-256): the server sends ServerKeyExchange with
+// an ephemeral share signed by its ECDSA key, the client answers with
+// ClientKeyExchange, and the premaster is the ECDH shared secret. Both
+// Finished messages are encrypted under epoch-1 handshake keys after a
+// ChangeCipherSpec flight (epoch bit set, sequence reset per epoch); epoch 0
+// carries only the plaintext handshake flights.
 // Cookie exchange (HelloVerifyRequest) is optional and disabled by default:
 // enable it with Config.enable_cookie to challenge the first ClientHello.
-// The cookie here is a random per-handshake value held in memory (not a
-// stateless HMAC); the deployment is single-process like the TLS 1.2
-// session-ID cache precedent.
+// The cookie is a stateless HMAC (keyed per socket at bind/listen time) over
+// client address + client_random; no per-handshake state is stored.
 module dtls12
 
 import crypto.rand
@@ -23,8 +28,21 @@ pub mut:
 	cipher_suites []u16
 	// enable_cookie challenges the first ClientHello with HelloVerifyRequest.
 	// Disabled by default for loopback; enable to mitigate spoofed-CH
-	// amplification. The cookie is random per handshake (in-memory).
-	enable_cookie     bool
+	// amplification. The cookie is a stateless HMAC (per-socket key) over
+	// client address + client_random; no per-handshake state is stored.
+	enable_cookie bool
+	// ecdsa_sign_priv is the optional 32-byte P-256 long-term signing key
+	// the server uses to sign ServerKeyExchange. When empty, the server
+	// generates a per-handshake signing key, which provides no
+	// authentication (anonymous ECDHE: passive confidentiality and forward
+	// secrecy only). Configure it together with ecdsa_sign_peer pinning on
+	// the client to authenticate the server.
+	ecdsa_sign_priv []u8
+	// ecdsa_sign_peer is the optional pinned 65-byte uncompressed P-256
+	// point the client uses to verify the ServerKeyExchange signature.
+	// When empty, the client skips verification (anonymous ECDHE: an active
+	// man-in-the-middle is NOT prevented).
+	ecdsa_sign_peer   []u8
 	read_timeout      time.Duration
 	write_timeout     time.Duration
 	handshake_timeout time.Duration
@@ -83,16 +101,18 @@ struct TrafficKeys {
 // Conn is a DTLS 1.2 connection over UDP.
 pub struct Conn {
 mut:
-	udp               net.UdpConn
-	peer              net.Addr
-	has_peer          bool
-	is_server         bool
-	cfg               Config
-	suite             u16
-	is_gcm            bool
-	client_random     []u8
-	server_random     []u8
-	master            []u8
+	udp           net.UdpConn
+	peer          net.Addr
+	has_peer      bool
+	is_server     bool
+	cfg           Config
+	suite         u16
+	is_gcm        bool
+	client_random []u8
+	server_random []u8
+	master        []u8
+	// cookie_key is the per-socket HMAC key for stateless cookies.
+	cookie_key        []u8
 	client_keys       TrafficKeys
 	server_keys       TrafficKeys
 	handshake_done    bool
@@ -108,9 +128,10 @@ mut:
 // Listener is a single-client DTLS listener (minimal: one accept per socket).
 pub struct Listener {
 mut:
-	udp   net.UdpConn
-	cfg   Config
-	moved bool
+	udp        net.UdpConn
+	cfg        Config
+	cookie_key []u8
+	moved      bool
 }
 
 // dial connects a DTLS 1.2 client to raddr (e.g. '127.0.0.1:4433').
@@ -141,6 +162,7 @@ pub fn bind(laddr string, cfg Config) !&Conn {
 		udp:               u
 		is_server:         true
 		cfg:               ncfg
+		cookie_key:        rand.bytes(32)!
 		tx_drop_remaining: ncfg.drop_tx_first_n
 		rx_drop_remaining: ncfg.drop_rx_first_n
 	}
@@ -153,8 +175,9 @@ pub fn listen(laddr string, cfg Config) !&Listener {
 	u.set_read_timeout(ncfg.read_timeout)
 	u.set_write_timeout(ncfg.write_timeout)
 	return &Listener{
-		udp: u
-		cfg: ncfg
+		udp:        u
+		cfg:        ncfg
+		cookie_key: rand.bytes(32)!
 	}
 }
 
@@ -188,6 +211,7 @@ pub fn (mut l Listener) accept() !&Conn {
 		udp:               l.udp
 		is_server:         true
 		cfg:               l.cfg
+		cookie_key:        l.cookie_key.clone()
 		tx_drop_remaining: l.cfg.drop_tx_first_n
 		rx_drop_remaining: l.cfg.drop_rx_first_n
 	}
@@ -298,37 +322,18 @@ fn derive_traffic(suite u16, master []u8, server_random []u8, client_random []u8
 
 // seal_app protects application data with the write keys.
 fn (c &Conn) seal_app(epoch u16, seq u64, plaintext []u8) ![]u8 {
-	typ := u8(ContentType.application_data)
-	if c.is_server {
-		if c.is_gcm {
-			return gcm_seal(c.server_keys.key, c.server_keys.iv, epoch, seq, typ,
-				plaintext)
-		}
-		return cbc_seal(c.server_keys.mac, c.server_keys.key, epoch, seq, typ, plaintext)
-	}
-	if c.is_gcm {
-		return gcm_seal(c.client_keys.key, c.client_keys.iv, epoch, seq, typ, plaintext)
-	}
-	return cbc_seal(c.client_keys.mac, c.client_keys.key, epoch, seq, typ, plaintext)
+	return c.seal_for(epoch, seq, .application_data, plaintext)
 }
 
 // open_app unprotects application data with the read keys.
 fn (c &Conn) open_app(epoch u16, seq u64, sealed []u8) ![]u8 {
-	typ := u8(ContentType.application_data)
-	if c.is_server {
-		if c.is_gcm {
-			return gcm_open(c.client_keys.key, c.client_keys.iv, epoch, seq, typ, sealed)
-		}
-		return cbc_open(c.client_keys.mac, c.client_keys.key, epoch, seq, typ, sealed)
-	}
-	if c.is_gcm {
-		return gcm_open(c.server_keys.key, c.server_keys.iv, epoch, seq, typ, sealed)
-	}
-	return cbc_open(c.server_keys.mac, c.server_keys.key, epoch, seq, typ, sealed)
+	return c.open_for(epoch, seq, .application_data, sealed)
 }
 
-// handshake_client runs the client side (CH [cookie] -> SH/SFin -> CFin,
-// with optional HelloVerifyRequest round-trip when the server enables it).
+// handshake_client runs the client side: CH [cookie] -> SH/SKE/SHD, then
+// CKE + ChangeCipherSpec + encrypted Finished (epoch 1), then peer
+// ChangeCipherSpec + encrypted Finished. Epoch 0 carries only the plaintext
+// handshake flights; Finished messages never appear in epoch-0 plaintext.
 fn (mut c Conn) handshake_client() ! {
 	cfg := c.cfg
 	suites := effective_suites(cfg.cipher_suites)
@@ -336,47 +341,47 @@ fn (mut c Conn) handshake_client() ! {
 	c.client_random = client_random.clone()
 	mut cookie := []u8{}
 	mut ch_msg := build_client_hello_msg(client_random, suites, cookie)!
-	mut transcript := ch_msg.clone()
 	mut ch_rec := Dtls12Record{
 		content_type:    .handshake
 		epoch:           dtls12_epoch_handshake
 		sequence_number: 0
 		fragment:        ch_msg
 	}
+	// Phase 1: collect the server flight SH(0)/SKE(1)/SHD(2) in epoch 0.
 	mut sh_msg := []u8{}
-	mut sfin_msg := []u8{}
+	mut ske_msg := []u8{}
+	mut shd_msg := []u8{}
 	mut server_random := []u8{}
 	mut suite := suites[0]
 	mut timer := new_retransmit_timer(cfg.initial_rto_ms, cfg.max_rto_ms)
 	mut attempts := 0
 	for attempts <= cfg.max_retries {
-		if sh_msg.len == 0 || sfin_msg.len == 0 {
+		if sh_msg.len == 0 || ske_msg.len == 0 || shd_msg.len == 0 {
 			c.send_record(ch_rec)!
 		}
 		rto := timer.next_timeout()
-		if sh_msg.len == 0 {
-			rec, addr := c.recv_record(rto) or {
-				if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
-					attempts++
-					continue
-				}
-				return err
-			}
-			if !c.same_peer(addr) {
+		rec, addr := c.recv_record(rto) or {
+			if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
+				attempts++
 				continue
 			}
-			if rec.epoch != dtls12_epoch_handshake
-				|| rec.content_type != ContentType.handshake {
-				continue
-			}
-			// Optional cookie exchange: server challenges with
-			// HelloVerifyRequest; client resends ClientHello with cookie.
-			if rec.sequence_number == 0 {
+			return err
+		}
+		if !c.same_peer(addr) {
+			continue
+		}
+		if rec.epoch != dtls12_epoch_handshake
+			|| rec.content_type != ContentType.handshake {
+			continue
+		}
+		if rec.sequence_number == 0 {
+			if sh_msg.len == 0 && ske_msg.len == 0 && shd_msg.len == 0 {
+				// Optional cookie exchange: server challenges with
+				// HelloVerifyRequest; client resends ClientHello with cookie.
 				cookie_candidate := parse_hello_verify_request(rec.fragment) or { []u8{} }
 				if cookie_candidate.len != 0 {
 					cookie = cookie_candidate.clone()
 					ch_msg = build_client_hello_msg(client_random, suites, cookie)!
-					transcript = ch_msg.clone()
 					ch_rec = Dtls12Record{
 						content_type:    .handshake
 						epoch:           dtls12_epoch_handshake
@@ -387,92 +392,159 @@ fn (mut c Conn) handshake_client() ! {
 					attempts++
 					continue
 				}
-			}
-			if rec.sequence_number != 0 {
-				continue
-			}
-			sr, sel := parse_server_hello_msg(rec.fragment) or { continue }
-			if sel !in suites {
-				return error('dtls12: server selected unsupported suite')
-			}
-			server_random = sr.clone()
-			suite = sel
-			sh_msg = rec.fragment.clone()
-			transcript = ch_msg.clone()
-			transcript << sh_msg
-			rec2, addr2 := c.recv_record(rto) or {
-				if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
-					attempts++
-					continue
+				sr, sel := parse_server_hello_msg(rec.fragment) or { continue }
+				if sel !in suites {
+					return error('dtls12: server selected unsupported suite')
 				}
-				return err
+				server_random = sr.clone()
+				suite = sel
+				sh_msg = rec.fragment.clone()
 			}
-			if !c.same_peer(addr2) {
+			continue
+		}
+		if rec.sequence_number == 1 {
+			if sh_msg.len == 0 {
 				continue
 			}
-			if rec2.epoch != dtls12_epoch_handshake
-				|| rec2.content_type != ContentType.handshake {
+			ske_typ, _ := parse_hs_msg(rec.fragment) or { continue }
+			if ske_typ != hstype_server_key_exchange {
 				continue
 			}
-			if rec2.sequence_number != 1 {
+			ske_msg = rec.fragment.clone()
+			continue
+		}
+		if rec.sequence_number == 2 {
+			if ske_msg.len == 0 {
 				continue
 			}
-			sfin_msg = rec2.fragment.clone()
-			transcript << sfin_msg
-			break
-		} else {
-			rec2, addr2 := c.recv_record(rto) or {
-				if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
-					attempts++
-					continue
-				}
-				return err
-			}
-			if !c.same_peer(addr2) {
+			shd_typ, _ := parse_hs_msg(rec.fragment) or { continue }
+			if shd_typ != hstype_server_hello_done {
 				continue
 			}
-			if rec2.epoch != dtls12_epoch_handshake
-				|| rec2.content_type != ContentType.handshake {
-				continue
-			}
-			if rec2.sequence_number != 1 {
-				continue
-			}
-			sfin_msg = rec2.fragment.clone()
-			transcript << sfin_msg
+			shd_msg = rec.fragment.clone()
 			break
 		}
 	}
-	if sh_msg.len == 0 || sfin_msg.len == 0 {
+	if sh_msg.len == 0 || ske_msg.len == 0 || shd_msg.len == 0 {
 		return error('dtls12: handshake timeout waiting for server flight')
 	}
-	master := derive_master(client_random, server_random)!
+	ske_typ, ske_body := parse_hs_msg(ske_msg)!
+	if ske_typ != hstype_server_key_exchange {
+		return error('dtls12: expected ServerKeyExchange')
+	}
+	parsed_ske := parse_server_key_exchange(ske_body)!
+	// Authenticate the ephemeral share when the server key is pinned;
+	// otherwise proceed anonymously (no MITM protection, documented).
+	if cfg.ecdsa_sign_peer.len != 0 {
+		verify_server_key_exchange(parsed_ske, client_random, server_random, cfg.ecdsa_sign_peer)!
+	}
+	cli_priv, cli_x, cli_y := p256_keygen()!
+	premaster := p256_ecdh(cli_priv, parsed_ske.eph_x, parsed_ske.eph_y)!
+	master := derive_master(premaster, client_random, server_random)!
 	c.master = master.clone()
 	c.suite = suite
 	c.is_gcm = suite_is_gcm(suite)
 	c.server_random = server_random.clone()
-	// Verify server Finished over CH+SH (transcript up to SFin exclusive of SFin?).
-	// Our transcript currently is CH+SH+SFin; verify over CH+SH+SFin prefix?
-	// For symmetry with the server, verify SFin over CH+SH.
-	mut ch_sh := ch_msg.clone()
-	ch_sh << sh_msg
-	verify_finished_msg(sfin_msg, master, 'server finished', ch_sh)!
 	client_app, server_app := derive_traffic(suite, master, server_random, client_random)!
 	c.client_keys = client_app
 	c.server_keys = server_app
-	mut transcript_up_to_sfin := ch_msg.clone()
-	transcript_up_to_sfin << sh_msg
-	transcript_up_to_sfin << sfin_msg
-	cfin_msg := build_finished_msg(master, 'client finished', transcript_up_to_sfin)!
-	cfin_rec := Dtls12Record{
+	mut transcript := ch_msg.clone()
+	transcript << sh_msg
+	transcript << ske_msg
+	transcript << shd_msg
+	cke_body := build_client_key_exchange(cli_x, cli_y)!
+	cke_msg := hs_msg(hstype_client_key_exchange, cke_body)
+	transcript << cke_msg
+	// Phase 2: CKE (epoch 0) + ChangeCipherSpec + Finished (epoch 1).
+	cke_rec := Dtls12Record{
 		content_type:    .handshake
 		epoch:           dtls12_epoch_handshake
 		sequence_number: 1
-		fragment:        cfin_msg
+		fragment:        cke_msg
 	}
-	c.transcript = transcript_up_to_sfin.clone()
-	c.transcript << cfin_msg
+	ccs_rec := Dtls12Record{
+		content_type:    .change_cipher_spec
+		epoch:           dtls12_epoch_handshake
+		sequence_number: 2
+		fragment:        [u8(1)]
+	}
+	cfin_plain := build_finished_msg(master, 'client finished', transcript)!
+	cfin_ct := c.seal_hs(dtls12_epoch_application, 0, cfin_plain)!
+	cfin_rec := Dtls12Record{
+		content_type:    .handshake
+		epoch:           dtls12_epoch_application
+		sequence_number: 0
+		fragment:        cfin_ct
+	}
+	c.send_record(cke_rec)!
+	c.send_record(ccs_rec)!
 	c.send_record(cfin_rec)!
+	// Phase 3: peer ChangeCipherSpec + encrypted Finished (epoch 1, seq 0).
+	// CCS is advisory (the epoch is explicit on every record); the Finished
+	// verify is what authenticates the handshake.
+	mut sfin_plain := []u8{}
+	mut timer2 := new_retransmit_timer(cfg.initial_rto_ms, cfg.max_rto_ms)
+	mut attempts2 := 0
+	for attempts2 <= cfg.max_retries {
+		if sfin_plain.len != 0 {
+			break
+		}
+		rto := timer2.next_timeout()
+		rec, addr := c.recv_record(rto) or {
+			if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
+				c.send_record(cke_rec) or {}
+				c.send_record(ccs_rec) or {}
+				c.send_record(cfin_rec) or {}
+				attempts2++
+				continue
+			}
+			return err
+		}
+		if !c.same_peer(addr) {
+			continue
+		}
+		if rec.content_type == ContentType.change_cipher_spec {
+			continue
+		}
+		if rec.content_type != ContentType.handshake {
+			continue
+		}
+		if rec.epoch == dtls12_epoch_handshake {
+			// Server flight replay: resend our flight.
+			if rec.sequence_number <= 2 {
+				c.send_record(cke_rec) or {}
+				c.send_record(ccs_rec) or {}
+				c.send_record(cfin_rec) or {}
+				continue
+			}
+			continue
+		}
+		if rec.epoch != dtls12_epoch_application || rec.sequence_number != 0 {
+			continue
+		}
+		pt := c.open_hs(rec.epoch, rec.sequence_number, rec.fragment) or { continue }
+		fin_typ, fin_body := parse_hs_msg(pt) or { continue }
+		if fin_typ != hstype_finished || fin_body.len != 12 {
+			continue
+		}
+		mut full := transcript.clone()
+		full << cfin_plain
+		verify_finished_msg(pt, master, 'server finished', full) or { continue }
+		transcript << cfin_plain
+		transcript << pt
+		sfin_plain = pt.clone()
+	}
+	if sfin_plain.len == 0 {
+		return error('dtls12: handshake timeout waiting for server Finished')
+	}
+	c.transcript = transcript.clone()
+	c.handshake_done = true
+	// Epoch-1 sequence space: Finished took 0 in each direction, so
+	// application data starts at 1.
+	c.app_write_seq = 1
+	c.app_replay.reset()
+	// Linger: answer server flight replays so a lost client flight still
+	// converges (server resends its flight, we resend ours).
 	mut linger := 0
 	linger_rto := time.Duration(i64(cfg.initial_rto_ms) * 1_000_000)
 	for linger < 3 {
@@ -486,35 +558,32 @@ fn (mut c Conn) handshake_client() ! {
 			}
 			break
 		}
-		if rec.epoch == dtls12_epoch_handshake
-			&& rec.content_type == ContentType.handshake {
-			if rec.sequence_number == 0 || rec.sequence_number == 1 {
-				c.send_record(cfin_rec) or {}
-				linger++
-				continue
-			}
+		if rec.content_type == ContentType.handshake
+			&& (rec.epoch == dtls12_epoch_handshake || rec.epoch == dtls12_epoch_application) {
+			c.send_record(cke_rec) or {}
+			c.send_record(ccs_rec) or {}
+			c.send_record(cfin_rec) or {}
+			linger++
+			continue
 		}
 		linger++
 	}
-	c.handshake_done = true
-	c.app_replay.reset()
 }
 
-// handshake_server runs the server side (CH [cookie] -> SH/SFin -> CFin).
+// handshake_server runs the server side: CH [cookie] -> SH/SKE/SHD, then
+// CKE + peer ChangeCipherSpec + encrypted Finished, then ChangeCipherSpec +
+// encrypted Finished. Epoch 0 carries only the plaintext flights.
 fn (mut c Conn) handshake_server() ! {
 	cfg := c.cfg
 	server_prefs := effective_suites(cfg.cipher_suites)
 	mut ch_msg := []u8{}
 	mut client_random := []u8{}
 	mut offered := []u16{}
-	mut cookie := []u8{}
 	mut ch_addr := net.Addr{}
 	mut got_ch := false
 	mut u := c.udp
 	u.set_read_timeout(cfg.handshake_timeout)
 	c.udp = u
-	// Optional cookie exchange state: challenge cookie for this handshake.
-	mut challenge_cookie := []u8{}
 	for !got_ch {
 		rec, addr := c.recv_record(cfg.handshake_timeout) or {
 			if is_timeout(err) {
@@ -536,29 +605,28 @@ fn (mut c Conn) handshake_server() ! {
 			continue
 		}
 		cr, suites, ck := parse_client_hello_msg(rec.fragment) or { continue }
-		if cfg.enable_cookie && ck.len == 0 {
-			// Challenge with a fresh random cookie (in-memory, per handshake).
-			challenge_cookie = rand.bytes(16)!
-			hvr := build_hello_verify_request(challenge_cookie)!
-			c.peer = addr
-			c.has_peer = true
-			hvr_rec := Dtls12Record{
-				content_type:    .handshake
-				epoch:           dtls12_epoch_handshake
-				sequence_number: 0
-				fragment:        hvr
+		if cfg.enable_cookie {
+			if ck.len == 0 {
+				// Challenge with a stateless HMAC cookie (no stored state).
+				cookie := make_cookie(c.cookie_key, addr.str(), cr)!
+				hvr := build_hello_verify_request(cookie)!
+				c.peer = addr
+				c.has_peer = true
+				hvr_rec := Dtls12Record{
+					content_type:    .handshake
+					epoch:           dtls12_epoch_handshake
+					sequence_number: 0
+					fragment:        hvr
+				}
+				c.send_record(hvr_rec)!
+				continue
 			}
-			c.send_record(hvr_rec)!
-			continue
-		}
-		if cfg.enable_cookie && ck.len != 0 {
-			if challenge_cookie.len == 0 || ck != challenge_cookie {
+			if !check_cookie(ck, c.cookie_key, addr.str(), cr) {
 				continue
 			}
 		}
 		client_random = cr.clone()
 		offered = suites.clone()
-		cookie = ck.clone()
 		ch_msg = rec.fragment.clone()
 		ch_addr = addr
 		got_ch = true
@@ -574,40 +642,60 @@ fn (mut c Conn) handshake_server() ! {
 	c.is_gcm = suite_is_gcm(suite)
 	server_random := rand.bytes(32)!
 	c.server_random = server_random.clone()
+	// Ephemeral ECDHE share for this handshake.
+	srv_priv, srv_x, srv_y := p256_keygen()!
+	// Long-term (or per-handshake, when unconfigured) SKE signing key.
+	mut sign_priv := cfg.ecdsa_sign_priv.clone()
+	if sign_priv.len != 32 {
+		sk, _, _ := p256_keygen()!
+		sign_priv = sk.clone()
+	}
 	sh_msg := build_server_hello_msg(server_random, suite)!
-	mut transcript_ch_sh := ch_msg.clone()
-	transcript_ch_sh << sh_msg
-	master := derive_master(client_random, server_random)!
-	c.master = master.clone()
-	// Server Finished covers CH+SH.
-	sfin_msg := build_finished_msg(master, 'server finished', transcript_ch_sh.clone())!
-	mut transcript_up_to_sfin := ch_msg.clone()
-	transcript_up_to_sfin << sh_msg
-	transcript_up_to_sfin << sfin_msg
-	_ = cookie
-	c.transcript = transcript_up_to_sfin.clone()
+	ske_body := build_server_key_exchange(client_random, server_random, srv_x, srv_y,
+		sign_priv)!
+	ske_msg := hs_msg(hstype_server_key_exchange, ske_body)
+	shd_msg := build_server_hello_done()
+	mut transcript := ch_msg.clone()
+	transcript << sh_msg
+	transcript << ske_msg
+	transcript << shd_msg
 	sh_rec := Dtls12Record{
 		content_type:    .handshake
 		epoch:           dtls12_epoch_handshake
 		sequence_number: 0
 		fragment:        sh_msg
 	}
-	sfin_rec := Dtls12Record{
+	ske_rec := Dtls12Record{
 		content_type:    .handshake
 		epoch:           dtls12_epoch_handshake
 		sequence_number: 1
-		fragment:        sfin_msg
+		fragment:        ske_msg
+	}
+	shd_rec := Dtls12Record{
+		content_type:    .handshake
+		epoch:           dtls12_epoch_handshake
+		sequence_number: 2
+		fragment:        shd_msg
 	}
 	c.send_record(sh_rec)!
-	c.send_record(sfin_rec)!
+	c.send_record(ske_rec)!
+	c.send_record(shd_rec)!
+	// Wait for ClientKeyExchange (epoch 0, seq 1); retransmit the flight
+	// while waiting, and on duplicate ClientHello.
+	mut cke_msg := []u8{}
+	mut cke_body := []u8{}
 	mut timer := new_retransmit_timer(cfg.initial_rto_ms, cfg.max_rto_ms)
 	mut attempts := 0
 	for attempts <= cfg.max_retries {
+		if cke_msg.len != 0 {
+			break
+		}
 		rto := timer.next_timeout()
 		rec, addr := c.recv_record(rto) or {
 			if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
 				c.send_record(sh_rec) or {}
-				c.send_record(sfin_rec) or {}
+				c.send_record(ske_rec) or {}
+				c.send_record(shd_rec) or {}
 				attempts++
 				continue
 			}
@@ -622,24 +710,112 @@ fn (mut c Conn) handshake_server() ! {
 		}
 		if rec.sequence_number == 0 {
 			c.send_record(sh_rec) or {}
-			c.send_record(sfin_rec) or {}
+			c.send_record(ske_rec) or {}
+			c.send_record(shd_rec) or {}
 			continue
 		}
 		if rec.sequence_number != 1 {
 			continue
 		}
-		verify_finished_msg(rec.fragment, master, 'client finished', transcript_up_to_sfin) or {
+		cke_typ, parsed := parse_hs_msg(rec.fragment) or { continue }
+		if cke_typ != hstype_client_key_exchange {
 			continue
 		}
-		c.transcript << rec.fragment
-		client_app, server_app := derive_traffic(suite, master, server_random, client_random)!
-		c.client_keys = client_app
-		c.server_keys = server_app
-		c.handshake_done = true
-		c.app_replay.reset()
-		return
+		cke_msg = rec.fragment.clone()
+		cke_body = parsed.clone()
+		transcript << cke_msg
 	}
-	return error('dtls12: handshake timeout waiting for client Finished')
+	if cke_msg.len == 0 {
+		return error('dtls12: handshake timeout waiting for ClientKeyExchange')
+	}
+	peer_x, peer_y := parse_client_key_exchange(cke_body)!
+	premaster := p256_ecdh(srv_priv, peer_x, peer_y)!
+	master := derive_master(premaster, client_random, server_random)!
+	c.master = master.clone()
+	client_app, server_app := derive_traffic(suite, master, server_random, client_random)!
+	c.client_keys = client_app
+	c.server_keys = server_app
+	// Wait for peer ChangeCipherSpec + encrypted Finished (epoch 1, seq 0);
+	// retransmit the first flight while waiting (CCS is advisory, the epoch
+	// is explicit on every record). A plaintext epoch-0 Finished is ignored.
+	mut cfin_plain := []u8{}
+	mut timer2 := new_retransmit_timer(cfg.initial_rto_ms, cfg.max_rto_ms)
+	mut attempts2 := 0
+	for attempts2 <= cfg.max_retries {
+		if cfin_plain.len != 0 {
+			break
+		}
+		rto := timer2.next_timeout()
+		rec, addr := c.recv_record(rto) or {
+			if is_timeout(err) || err.msg().contains('simulated') || err.msg().contains('dtls12:') {
+				c.send_record(sh_rec) or {}
+				c.send_record(ske_rec) or {}
+				c.send_record(shd_rec) or {}
+				attempts2++
+				continue
+			}
+			return err
+		}
+		if c.peer.str() != addr.str() {
+			continue
+		}
+		if rec.content_type == ContentType.change_cipher_spec {
+			continue
+		}
+		if rec.content_type != ContentType.handshake {
+			continue
+		}
+		if rec.epoch == dtls12_epoch_handshake {
+			if rec.sequence_number == 0 {
+				c.send_record(sh_rec) or {}
+				c.send_record(ske_rec) or {}
+				c.send_record(shd_rec) or {}
+				continue
+			}
+			if rec.sequence_number == 1 {
+				// Duplicate CKE: harmless, still waiting for CCS/Finished.
+				continue
+			}
+			continue
+		}
+		if rec.epoch != dtls12_epoch_application || rec.sequence_number != 0 {
+			continue
+		}
+		pt := c.open_hs(rec.epoch, rec.sequence_number, rec.fragment) or { continue }
+		fin_typ, fin_body := parse_hs_msg(pt) or { continue }
+		if fin_typ != hstype_finished || fin_body.len != 12 {
+			continue
+		}
+		verify_finished_msg(pt, master, 'client finished', transcript) or { continue }
+		cfin_plain = pt.clone()
+	}
+	if cfin_plain.len == 0 {
+		return error('dtls12: handshake timeout waiting for client Finished')
+	}
+	transcript << cfin_plain
+	sfin_plain := build_finished_msg(master, 'server finished', transcript)!
+	sfin_ct := c.seal_hs(dtls12_epoch_application, 0, sfin_plain)!
+	transcript << sfin_plain
+	c.transcript = transcript.clone()
+	ccs_rec := Dtls12Record{
+		content_type:    .change_cipher_spec
+		epoch:           dtls12_epoch_handshake
+		sequence_number: 3
+		fragment:        [u8(1)]
+	}
+	sfin_rec := Dtls12Record{
+		content_type:    .handshake
+		epoch:           dtls12_epoch_application
+		sequence_number: 0
+		fragment:        sfin_ct
+	}
+	c.send_record(ccs_rec)!
+	c.send_record(sfin_rec)!
+	c.handshake_done = true
+	// Epoch-1 sequence space: Finished took 0 in each direction, so
+	// application data starts at 1.
+	c.app_write_seq = 1
+	c.app_replay.reset()
 }
 
 // write encrypts data as one epoch-1 application record.

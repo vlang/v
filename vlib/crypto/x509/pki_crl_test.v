@@ -424,3 +424,171 @@ fn test_pki_crl_unknown_critical() {
 	}
 	assert false, 'unknown critical CRL extension must fail'
 }
+
+// test_pki_crl_tbs_tamper_message proves TBS damage fails with a message,
+// whether the DER still parses (signature mismatch) or not (parse error).
+fn test_pki_crl_tbs_tamper_message() {
+	now := time.now()
+	ca, signer := pki_crl_ca()
+	_, der := make_crl(&ca, CrlGenOptions{
+		this_update:     now.add_days(-1)
+		next_update:     now.add_days(7)
+		has_next_update: true
+	}, signer) or { panic('make_crl: ${err}') }
+	mut proven := false
+	for off in [15, 25, 35, 55] {
+		if off >= der.len {
+			continue
+		}
+		mut bad := der.clone()
+		bad[off] ^= u8(0x01)
+		if tampered := parse_crl_der(bad) {
+			if _ := verify_crl(&tampered, &ca) {
+				continue
+			} else {
+				assert err.msg().contains('signature') || err.msg().contains('bad')
+					|| err.msg().contains('mismatch')
+				proven = true
+				break
+			}
+		}
+	}
+	assert proven, 'no TBS offset both parsed and failed verify with a message'
+}
+
+// test_pki_crl_revoked_intermediate enforces revocation of an intermediate
+// CA through verify_chain.
+fn test_pki_crl_revoked_intermediate() {
+	now := time.now()
+	ca, signer := pki_crl_ca()
+	mid_priv := signer.ecdsa_priv or { panic('no key') }
+	_, mid_der_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('keygen: ${err}') }
+	mid, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'PKI CRL Mid'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(1825)
+		is_ca:       true
+	}, mid_der_priv, &ca, mid_priv) or { panic('mid gen: ${err}') }
+	_, leaf_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('keygen: ${err}') }
+	leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'leaf.example.com'
+		dns_names:   ['leaf.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, leaf_priv, &mid, mid_der_priv) or { panic('leaf gen: ${err}') }
+	crl, _ := make_crl(&ca, CrlGenOptions{
+		this_update:     now.add_days(-1)
+		next_update:     now.add_days(7)
+		has_next_update: true
+		revoked:         [
+			CrlEntry{
+				serial:     mid.serial
+				revoked_at: now
+			},
+		]
+	}, signer) or { panic('make_crl: ${err}') }
+	assert crl.is_revoked(mid.serial)
+	chain := build_chain(leaf, [mid], [ca]) or { panic('build: ${err}') }
+	verify_chain(chain, VerifyOptions{
+		hostname: 'leaf.example.com'
+		crls:     [crl]
+	}) or {
+		assert err.msg().contains('revoked')
+		return
+	}
+	assert false, 'revoked intermediate must fail'
+}
+
+// test_pki_crl_two_issuers wires one CRL per issuer into verify_chain: a
+// leaf revoked by its issuer's CRL fails even when the root CRL is clean,
+// and a clean pair verifies.
+fn test_pki_crl_two_issuers() {
+	now := time.now()
+	ca, signer := pki_crl_ca()
+	mid_priv := signer.ecdsa_priv or { panic('no key') }
+	_, mid_key := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('keygen: ${err}') }
+	mid, _ := generate_ca_signed(CertGenOptions{
+		common_name:   'PKI CRL Mid'
+		not_before:    now.add_days(-1)
+		not_after:     now.add_days(1825)
+		is_ca:         true
+		has_key_usage: true
+		key_usage:     ku_digital_signature | ku_key_cert_sign | ku_crl_sign
+	}, mid_key, &ca, mid_priv) or { panic('mid gen: ${err}') }
+	mid_signer := CertSigner{
+		kind:       .ecdsa
+		ecdsa_priv: mid_key
+	}
+	_, leaf_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('keygen: ${err}') }
+	leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'leaf.example.com'
+		dns_names:   ['leaf.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, leaf_priv, &mid, mid_key) or { panic('leaf gen: ${err}') }
+	root_crl, _ := make_crl(&ca, CrlGenOptions{
+		this_update:     now.add_days(-1)
+		next_update:     now.add_days(7)
+		has_next_update: true
+	}, signer) or { panic('root crl: ${err}') }
+	mid_crl, _ := make_crl(&mid, CrlGenOptions{
+		this_update:     now.add_days(-1)
+		next_update:     now.add_days(7)
+		has_next_update: true
+		revoked:         [
+			CrlEntry{
+				serial:     leaf.serial
+				revoked_at: now
+			},
+		]
+	}, mid_signer) or { panic('mid crl: ${err}') }
+	chain := build_chain(leaf, [mid], [ca]) or { panic('build: ${err}') }
+	// Clean pair verifies.
+	verify_chain(chain, VerifyOptions{
+		hostname: 'leaf.example.com'
+		crls:     [root_crl, mid_crl]
+	}) or {
+		// mid CRL revokes the leaf: must fail revoked.
+		assert err.msg().contains('revoked')
+		return
+	}
+	assert false, 'leaf revoked by its issuer CRL must fail'
+}
+
+// test_pki_crl_indefinite_no_next_update accepts a CRL without nextUpdate
+// (no expiry bound) and round-trips the absence through DER.
+fn test_pki_crl_indefinite_no_next_update() {
+	now := time.now()
+	ca, signer := pki_crl_ca()
+	crl, der := make_crl(&ca, CrlGenOptions{
+		this_update: now.add_days(-1)
+		// has_next_update false: indefinite, never expires.
+	}, signer) or { panic('make_crl: ${err}') }
+	assert !crl.has_next_update
+	verify_crl(&crl, &ca) or { panic('indefinite verify: ${err}') }
+	again := parse_crl_der(der) or { panic('reparse: ${err}') }
+	assert !again.has_next_update
+	verify_crl(&again, &ca) or { panic('indefinite reparse verify: ${err}') }
+}
+
+// test_pki_crl_wrong_signing_key rejects a CRL whose signature was made
+// with a key that is not the issuer's key.
+fn test_pki_crl_wrong_signing_key() {
+	now := time.now()
+	ca, _ := pki_crl_ca()
+	_, other_priv := ecdsa.generate_key(ecdsa.CurveOptions{}) or { panic('keygen: ${err}') }
+	crl, _ := make_crl(&ca, CrlGenOptions{
+		this_update:     now.add_days(-1)
+		next_update:     now.add_days(7)
+		has_next_update: true
+	}, CertSigner{
+		kind:       .ecdsa
+		ecdsa_priv: other_priv
+	}) or { panic('make_crl: ${err}') }
+	verify_crl(&crl, &ca) or {
+		assert err.msg().contains('signature') || err.msg().contains('bad')
+			|| err.msg().contains('mismatch')
+		return
+	}
+	assert false, 'CRL signed with the wrong key must fail'
+}
