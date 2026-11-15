@@ -353,6 +353,11 @@ fn test_runner_jobs(will_compile bool) int {
 	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
 }
 
+fn test_compiler_jobs(available_cpus int, test_jobs int, configured_jobs int) int {
+	// Concurrent tests share the CPU budget instead of each starting a full pool.
+	return int_max(1, int_min(configured_jobs, available_cpus / int_max(1, test_jobs)))
+}
+
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
 }
@@ -417,8 +422,9 @@ pub mut:
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
-	benchmark_mu &sync.Mutex = sync.new_mutex()
-	resume_dir   string
+	benchmark_mu  &sync.Mutex = sync.new_mutex()
+	resume_dir    string
+	compiler_jobs int
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -634,6 +640,21 @@ pub fn (mut ts TestSession) exec(args []string, mtc MessageThreadContext) os.Res
 	return os.exec(args)
 }
 
+fn (mut ts TestSession) exec_compiler(args []string, mtc MessageThreadContext) os.Result {
+	// Stats also launches the test program; preserve its environment.
+	if !ts.will_compile || ts.show_stats || ts.compiler_jobs < 1
+		|| ts.compiler_jobs == runtime.nr_jobs() || args.len == 0 {
+		return ts.exec(args, mtc)
+	}
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: VJOBS=${ts.compiler_jobs} ${args.join(' ')}',
+			mtc)
+	}
+	return cmdexec.run_in_merged_with_env(args[0], args[1..], '', {
+		'VJOBS': ts.compiler_jobs.str()
+	})
+}
+
 // system runs a legacy command string.
 @[deprecated: 'use TestSession.system_args with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
@@ -817,6 +838,8 @@ pub fn (mut ts TestSession) test() {
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
+	ts.compiler_jobs = test_compiler_jobs(test_runner_cpus(runtime.nr_cpus()), njobs,
+		runtime.nr_jobs())
 	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(
 		callback: worker_trunner
@@ -1094,7 +1117,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = ts.exec(compile_argv, mtc)
+			compile_r = ts.exec_compiler(compile_argv, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {

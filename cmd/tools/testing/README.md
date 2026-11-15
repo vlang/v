@@ -22,6 +22,14 @@ In strict V3 mode, `v test` and `v test-self` apply `VFLAGS` to test compilation
 it from the test program's environment. Nested compiler calls can select their own backend
 and C compiler without inheriting the outer test runner's options.
 
+Concurrent test compilations share the available CPUs, including Linux cgroup CPU quotas.
+Each compiler receives a process-local `VJOBS` limit: available CPUs divided by test workers,
+rounded down to at least one and capped by the original `VJOBS` setting. For example, three
+tests running together on a three-CPU runner each get one compiler worker. Fewer selected
+tests or a memory-limited worker count leave more CPUs available per compilation.
+Test programs keep the original environment and runtime parallelism. Formatting and vetting
+keep their existing settings. So do `-stats` sessions, where the compiler launches the test program.
+
 Resume records replace the previous record only after the new contents are complete.
 On Windows, saving retries temporary sharing errors for about half a second. A refused
 replacement preserves the previous record and reports a failed test.
