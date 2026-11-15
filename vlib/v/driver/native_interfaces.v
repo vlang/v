@@ -19,22 +19,22 @@ fn v3_web_native_interface(path string, vroot string) bool {
 		os.real_path(os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_helpers.h')),
 		os.real_path(os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h')),
 		os.real_path(os.join_path(root, 'vlib', 'os', 'fd_poll.h')),
+		os.real_path(os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h')),
 	]
 }
 
 // A TinyCC build cannot reliably diagnose date/time macros. Its interface
 // contract is limited to this audited bundled snapshot, hashed as opaque bytes.
-// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (100 files),
-// plus the stateless fd_poll.h interface at 645f534631f9a4b2eb69071116e79c039ebcec11.
-// Changing the snapshot requires reviewing its ownership and determinism again.
+// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (98 files).
+// The two stateless poll interfaces have independently reviewed content pins;
+// changing any of the 100 inputs requires an ownership and determinism review.
 fn v3_pinned_web_native_interfaces(vroot string) bool {
 	root := os.real_path(vroot)
 	mut paths := os.walk_ext(os.join_path(root, 'thirdparty', 'mbedtls', 'include'), '',
 		hidden: true
 	)
 	paths << [os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_helpers.h'),
-		os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h'),
-		os.join_path(root, 'vlib', 'os', 'fd_poll.h')]
+		os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h')]
 	paths.sort()
 	mut parts := []string{cap: paths.len}
 	for path in paths {
@@ -42,7 +42,17 @@ fn v3_pinned_web_native_interfaces(vroot string) bool {
 		name := path[root.len + 1..].replace('\\', '/')
 		parts << name + '\x00' + digest
 	}
-	return sha256.hexhash(parts.join('\n')) == '098217945ff40c6779f5c5a4f6167e63107e04c17426c34c0ea2c0eb6d4efe84'
+	if sha256.hexhash(parts.join('\n')) != 'a28e5f94cc8104ea9ff30a79e0901da3daed25aa3f1d58530d1db81669c0f11f' {
+		return false
+	}
+	poll := v3_file_sha256_hex(os.join_path(root, 'vlib', 'os', 'fd_poll.h')) or { return false }
+	if poll != 'e28d43dfd4e168608ab643d8e997599ff1d3f4096e1a72639b5f5e65baf307a5' {
+		return false
+	}
+	cmdexec_poll := v3_file_sha256_hex(os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h')) or {
+		return false
+	}
+	return cmdexec_poll == '84e10482377fb00a9b9e7705dea55d3797a07d2f7df459be2886b7933ab31e90'
 }
 
 fn v3_native_interface_configuration_override(value string) bool {
