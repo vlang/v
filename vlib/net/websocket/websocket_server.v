@@ -25,8 +25,9 @@ mut:
 	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
 	family net.AddrFamily = .ip
-	port   int  // port used as listen to incoming connections
-	is_ssl bool // true if secure connection (not supported yet on server)
+	host   string // address to listen on; '' means every address of the family
+	port   int    // port used as listen to incoming connections
+	is_ssl bool   // true if secure connection (not supported yet on server)
 pub mut:
 	server_state shared ServerState
 }
@@ -47,6 +48,10 @@ pub:
 	logger &log.Logger = default_logger
 	// Maximum incoming message size in bytes, including all fragments.
 	max_message_bytes int = default_max_message_bytes
+	// Address to listen on, without a port: for example '127.0.0.1' (or '::1' for an
+	// `.ip6` server) for the local machine only. It must be an address of the server's
+	// family. The default '' listens on every address of the family.
+	host string
 }
 
 // new_server instance a new websocket server on provided port and route
@@ -54,6 +59,7 @@ pub fn new_server(family net.AddrFamily, port int, route string, opt ServerOpt) 
 	return &Server{
 		ls:                unsafe { nil }
 		family:            family
+		host:              opt.host
 		port:              port
 		logger:            opt.logger
 		max_message_bytes: opt.max_message_bytes
@@ -74,17 +80,31 @@ pub fn (mut s Server) get_ping_interval() int {
 	}
 }
 
+// listen_address returns the address that `listen` binds, in the form `net.listen_tcp` takes:
+// ':port' for every address of the family, 'host:port' for one address, with an IPv6 literal
+// in brackets.
+fn (s &Server) listen_address() string {
+	if s.host == '' {
+		return ':${s.port}'
+	}
+	if s.host.contains(':') && !s.host.starts_with('[') {
+		return '[${s.host}]:${s.port}'
+	}
+	return '${s.host}:${s.port}'
+}
+
 // listen start listen and process to incoming connections from websocket clients
 pub fn (mut s Server) listen() ! {
-	s.logger.info('websocket server: start listen on port ${s.port}')
-	s.ls = net.listen_tcp(s.family, ':${s.port}')!
+	listening_on := if s.host == '' { 'port ${s.port}' } else { s.listen_address() }
+	s.logger.info('websocket server: start listen on ${listening_on}')
+	s.ls = net.listen_tcp(s.family, s.listen_address())!
 	s.set_state(.open)
 	spawn s.handle_ping()
 	for {
 		mut c := s.accept_new_client() or { continue }
 		spawn s.serve_client(mut c)
 	}
-	s.logger.info('websocket server: end listen on port ${s.port}')
+	s.logger.info('websocket server: end listen on ${listening_on}')
 }
 
 // Close closes server (not implemented yet)

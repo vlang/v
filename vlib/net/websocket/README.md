@@ -56,6 +56,10 @@ Set `ClientOpt.max_message_bytes` or `ServerOpt.max_message_bytes` to a positive
 limit for the application. A frame or fragmented message that exceeds it is
 closed with status 1009 before its payload is read.
 
+A `Server` listens on every address of its family unless `ServerOpt.host` names one:
+`websocket.new_server(.ip, 8080, '', host: '127.0.0.1')` accepts connections from the
+local machine only. The host must be an address of the server's family (`'::1'` for `.ip6`).
+
 ## Owning a client connection
 
 Plain `ws://` clients and accepted server connections do not create TLS contexts.
