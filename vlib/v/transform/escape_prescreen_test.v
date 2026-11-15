@@ -316,3 +316,14 @@ fn test_ordinary_escape_proof_keeps_closure_cleanup_fallback_metadata() {
 		assert t.local_closure_field_cleanups == expected_fields, mode
 	}
 }
+
+fn test_ordinary_escape_prescreen_recurses_through_option_and_result_aliases() {
+	ptr := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
+	aliased_ptr := types.Type(types.Alias{ name_id: flat.source_type_id('Ref'), base_type: ptr })
+	optional_alias := types.Type(types.OptionType{ base_type: aliased_ptr })
+	result_alias := types.Type(types.ResultType{ base_type: aliased_ptr })
+	optional_int := types.Type(types.OptionType{ base_type: types.Type(types.int_) })
+	assert ordinary_escape_param_may_borrow_local(optional_alias, 0)
+	assert ordinary_escape_param_may_borrow_local(result_alias, 0)
+	assert !ordinary_escape_param_may_borrow_local(optional_int, 0)
+}
