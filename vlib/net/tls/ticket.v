@@ -52,18 +52,28 @@ pub mut:
 // used_ticket_nonces tracks consumed ticket nonces so a replayed ticket is
 // rejected (single-use tickets, a coarse replay protection on top of the age
 // window checked in try_accept_psk). The map is process-wide and shared by
-// every listener; entries are never evicted (8 random bytes per ticket make
-// collisions negligible, and the map only grows by one entry per resumed
-// handshake).
+// every listener; it is bounded by max_replay_cache_entries (cleared when
+// full: replay protection then rests on the age window plus the binder until
+// it refills). Handshakes sharing a process must be serialized by the
+// embedder — the map has no lock because sync would drag C linkage into
+// every pure-V consumer; the in-repo Listener.accept path is serial.
 __global used_ticket_nonces = map[string]bool{}
+
+// max_replay_cache_entries bounds the replay cache for long-lived servers
+// (one entry per resumed handshake; 8 random bytes per nonce).
+const max_replay_cache_entries = 65536
 
 // is_ticket_used reports whether a ticket nonce was already consumed.
 fn is_ticket_used(nonce []u8) bool {
 	return nonce.hex() in used_ticket_nonces
 }
 
-// mark_ticket_used records a ticket nonce as consumed.
+// mark_ticket_used records a ticket nonce as consumed, clearing a full
+// cache first so long-lived servers stay bounded (see above).
 fn mark_ticket_used(nonce []u8) {
+	if used_ticket_nonces.len >= max_replay_cache_entries {
+		used_ticket_nonces = map[string]bool{}
+	}
 	used_ticket_nonces[nonce.hex()] = true
 }
 

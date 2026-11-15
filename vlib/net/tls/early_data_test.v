@@ -506,3 +506,25 @@ fn test_early_data_replay_single_use() {
 	l.close() or {}
 	_ = srv
 }
+
+fn test_ticket_replay_cache_bounded() {
+	clear_used_tickets()
+	defer {
+		clear_used_tickets()
+	}
+	// Fill past the cap with distinct nonces; the cache must stay bounded
+	// and remain functional for fresh nonces.
+	for i in 0 .. max_replay_cache_entries + 100 {
+		mut nonce := []u8{len: 8}
+		nonce[0] = u8(i & 0xff)
+		nonce[1] = u8((i >> 8) & 0xff)
+		nonce[2] = u8((i >> 16) & 0xff)
+		nonce[3] = u8((i >> 24) & 0xff)
+		mark_ticket_used(nonce)
+	}
+	assert used_ticket_nonces.len <= max_replay_cache_entries
+	fresh := [u8(0xde), 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04]
+	assert !is_ticket_used(fresh)
+	mark_ticket_used(fresh)
+	assert is_ticket_used(fresh)
+}
