@@ -3,6 +3,35 @@ module arm64
 import v.ssa
 import os
 
+fn test_pruning_keeps_exported_bodies_aliases_and_dependencies() {
+	mut m := ssa.Module.new()
+	m.target = ssa.TargetData{ os: 'linux', arch: 'arm64' }
+	i64_type := m.type_store.get_int(64)
+	main_id := m.new_function('main', i64_type)
+	callback := m.new_function('callback', i64_type)
+	helper := m.new_function('helper', i64_type)
+	same_name := m.new_function('same_name', i64_type)
+	unused := m.new_function('unused', i64_type)
+	m.export_aliases['callback'] = 'external_callback'
+	m.export_aliases['same_name'] = 'same_name'
+	answer := m.add_value(.constant, i64_type, '42', 0)
+	for id in [main_id, helper, same_name, unused] {
+		block := m.add_block(id, 'entry')
+		m.add_instr(.ret, block, i64_type, [answer])
+	}
+	block := m.add_block(callback, 'entry')
+	callee := m.add_value(.func_ref, i64_type, 'helper', helper)
+	result := m.add_instr(.call, block, i64_type, [callee])
+	m.add_instr(.ret, block, i64_type, [result])
+	mut g := Gen.new(m)
+	g.prune_unused = true
+	g.gen()
+	for name in ['main', 'callback', 'helper', 'same_name', 'external_callback'] {
+		assert '_' + name in g.macho.sym_by_name, name
+	}
+	assert '_unused' !in g.macho.sym_by_name
+}
+
 fn test_native_main_stack_matches_macos_c_backend() {
 	mut linker := Linker.new(MachOObject.new())
 	linker.write_main_cmd(4096)

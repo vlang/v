@@ -145,18 +145,20 @@ fn test_native_linux_object_and_executable_output() {
 	}
 }
 
-fn test_native_linux_links_source_library_directives() {
-	mut cc := ''
-	$if linux && arm64 {
-		cc = 'cc'
-	}
+fn linux_arm64_test_c_compiler() ?string {
 	for candidate in ['aarch64-linux-gnu-gcc', 'aarch64-linux-musl-gcc'] {
 		if path := os.find_abs_path_of_executable(candidate) {
-			cc = path
-			break
+			return path
 		}
 	}
-	if cc == '' { return }
+	$if linux && arm64 {
+		return 'cc'
+	}
+	return none
+}
+
+fn test_native_linux_links_source_library_directives() {
+	cc := linux_arm64_test_c_compiler() or { return }
 	root := os.join_path(os.vtmp_dir(), 'arm64_linux_flags_${os.getpid()} with spaces')
 	dependency := os.join_path(root, 'native_dep')
 	os.mkdir_all(dependency)!
@@ -187,6 +189,34 @@ pub fn value() int { return C.arm64_source_dependency() }
 	assert linked.exit_code == 0, linked.output
 	elf := os.read_bytes(executable)!
 	assert elf[..4] == [u8(0x7f), `E`, `L`, `F`]
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+	}
+}
+
+fn test_native_linux_keeps_exports_called_from_c_objects() {
+	cc := linux_arm64_test_c_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_export_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_source := os.join_path(root, 'callback.c')
+	c_object := os.join_path(root, 'callback.o')
+	os.write_file(c_source, 'extern int external_callback(void);\nint call_callback(void) { return external_callback(); }\n')!
+	compiled := os.exec([cc, '-c', c_source, '-o', c_object])
+	assert compiled.exit_code == 0, compiled.output
+	path := os.join_path(root, 'program.v')
+	executable := os.join_path(root, 'program')
+	os.write_file(path, r'#flag linux "@DIR/callback.o"
+fn C.call_callback() int
+fn helper() int { return 42 }
+@[export: "external_callback"]
+fn callback() int { return helper() }
+fn main() { exit(C.call_callback() - 42) }
+')!
+	linked := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-nocache', '-b', 'arm64', '-os', 'linux', '-cc', cc, '-o', executable, path])
+	assert linked.exit_code == 0, linked.output
 	$if linux && arm64 {
 		run := os.exec([executable])
 		assert run.exit_code == 0, run.output
