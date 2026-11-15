@@ -1048,6 +1048,9 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 			s.chunks.delete(0)
 			body_so_far += u64(chunk.len)
 			drained += u64(chunk.len)
+			if req.stop_copying_limit > 0 && i64(body_so_far) > req.stop_copying_limit {
+				resp.body_truncated = true
+			}
 			if req.stop_copying_limit < 0
 				|| i64(body_so_far) - i64(chunk.len) < req.stop_copying_limit {
 				if req.stop_copying_limit >= 0 && i64(body_so_far) > req.stop_copying_limit {
@@ -1096,6 +1099,7 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 		serr_code := s.err_code
 		retryable := s.retryable
 		if cancelled {
+			resp.body_truncated = true
 			s.mu.unlock()
 			// The connection-level window must still be credited for the bytes
 			// this round consumed, or the connection's receive window shrinks

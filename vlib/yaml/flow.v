@@ -3,12 +3,14 @@ module yaml
 struct FlowParser {
 	src string
 mut:
-	pos int
+	pos   int
+	depth int
 }
 
-fn parse_flow_value(src string) !Any {
+fn parse_flow_value(src string, depth int) !Any {
 	mut parser := FlowParser{
-		src: src
+		src:   src
+		depth: depth
 	}
 	value := parser.parse_value()!
 	parser.skip_space()
@@ -24,8 +26,20 @@ fn (mut p FlowParser) parse_value() !Any {
 		return error('yaml: unexpected end of flow value')
 	}
 	return match p.src[p.pos] {
-		`[` { p.parse_array() }
-		`{` { p.parse_object() }
+		`[` {
+			p.depth = increment_nesting_depth(p.depth)!
+			defer {
+				p.depth--
+			}
+			p.parse_array()
+		}
+		`{` {
+			p.depth = increment_nesting_depth(p.depth)!
+			defer {
+				p.depth--
+			}
+			p.parse_object()
+		}
 		`"`, `'` { Any(parse_quoted_flow_string(mut p)!) }
 		else { parse_scalar(p.parse_plain_token()) }
 	}

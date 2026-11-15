@@ -454,8 +454,9 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 }
 
 // gen_if_expr emits if expr output for c.
-fn (mut g FlatGen) gen_if_expr(node flat.Node) {
+fn (mut g FlatGen) gen_if_expr(id flat.NodeId, node flat.Node) {
 	mut current := node
+	mut current_id := id
 	mut closing_parens := 0
 	for {
 		then_block := g.a.child_node(&current, 1)
@@ -470,7 +471,7 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 			}
 		}
 		if needs_stmt_expr {
-			g.gen_if_expr_stmt(current)
+			g.gen_if_expr_stmt(current_id, current)
 			break
 		}
 		g.write('(')
@@ -500,6 +501,7 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 						&& int(value_id) !in g.assert_expr_overrides
 						&& int(value_id) !in g.callback_target_overrides {
 						current = g.a.nodes[int(value_id)]
+						current_id = value_id
 						continue
 					}
 					g.gen_expr(value_id)
@@ -784,7 +786,7 @@ fn (mut g FlatGen) if_expr_tail_value_type(id flat.NodeId) types.Type {
 }
 
 // if_expr_type supports if expr type handling for FlatGen.
-fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
+fn (mut g FlatGen) if_expr_type(id flat.NodeId, node &flat.Node) types.Type {
 	if node.children_count < 2 {
 		return types.Type(types.void_)
 	}
@@ -807,12 +809,19 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 			}
 		}
 	}
+	if types.unalias_type(ret_type) is types.Rune {
+		checked := g.tc.resolve_type(id)
+		if types.unalias_type(checked).source_type_id() == flat.source_type_u8 {
+			// Branch literals alone do not determine the enclosing expression type.
+			return checked
+		}
+	}
 	return ret_type
 }
 
 // gen_if_expr_stmt emits if expr stmt output for c.
-fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
-	inferred_type := g.if_expr_type(&node)
+fn (mut g FlatGen) gen_if_expr_stmt(id flat.NodeId, node flat.Node) {
+	inferred_type := g.if_expr_type(id, &node)
 	ret_type := if g.expected_expr_type is types.MultiReturn {
 		types.Type(g.expected_expr_type)
 	} else if node.typ != 0 {
@@ -825,7 +834,7 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	} else if g.expected_expr_type !is types.Void {
 		g.expected_expr_type
 	} else {
-		g.if_expr_type(&node)
+		g.if_expr_type(id, &node)
 	}
 	then_block := g.a.child_node(&node, 1)
 	fixed := array_fixed_type(ret_type)

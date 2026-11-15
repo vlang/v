@@ -4,6 +4,13 @@ import os
 import v.cmdexec
 import v.pref
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_build_metadata_keeps_shared_declarations_stable() ! {
 	root := os.join_path(os.vtmp_dir(), 'fastc_metadata_${os.getpid()}')
 	os.mkdir_all(root)!

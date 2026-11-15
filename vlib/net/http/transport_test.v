@@ -6,6 +6,7 @@ module http
 // `disable_connection_reuse` opt-out. Each test runs its own loopback server
 // with an accept counter: the accept count is the proof of (non-)reuse.
 import io
+import compress.gzip
 import net
 import net.mbedtls
 import sync
@@ -19,8 +20,10 @@ const tls_test_key_path = @VEXEROOT +
 @[heap]
 struct KaSrv {
 mut:
-	mu      &sync.Mutex = sync.new_mutex()
-	accepts int
+	mu                  &sync.Mutex = sync.new_mutex()
+	accepts             int
+	requests            int
+	compressed_requests int
 	// connection_close: respond with `Connection: close` and close afterwards.
 	connection_close bool
 	// close_after_each: close after each response WITHOUT advertising it — the
@@ -34,9 +37,11 @@ mut:
 	// drop_on_post: after reading a POST request head, close the connection
 	// without responding — a reused-connection failure after the bytes were
 	// written, for a non-idempotent method.
-	drop_on_post bool
-	posts        int // POST request heads actually read by the server
-	body         string = 'hello'
+	drop_on_post     bool
+	posts            int // POST request heads actually read by the server
+	body             string = 'hello'
+	content_encoding string
+	compressed_body  string
 }
 
 fn (mut s KaSrv) bump_accepts() {
@@ -59,6 +64,31 @@ fn (mut s KaSrv) post_count() int {
 		s.mu.unlock()
 	}
 	return s.posts
+}
+
+fn (mut s KaSrv) bump_requests(head string) {
+	s.mu.lock()
+	s.requests++
+	if head.starts_with('GET /compressed ') {
+		s.compressed_requests++
+	}
+	s.mu.unlock()
+}
+
+fn (mut s KaSrv) request_count() int {
+	s.mu.lock()
+	defer {
+		s.mu.unlock()
+	}
+	return s.requests
+}
+
+fn (mut s KaSrv) compressed_request_count() int {
+	s.mu.lock()
+	defer {
+		s.mu.unlock()
+	}
+	return s.compressed_requests
 }
 
 // ka_read_request_head reads from `conn` until a full request head (terminated
@@ -86,6 +116,7 @@ fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
 	conn.set_read_timeout(10 * time.second)
 	for {
 		head := ka_read_request_head(mut conn) or { return }
+		s.bump_requests(head)
 		if head.starts_with('POST ') {
 			s.mu.lock()
 			s.posts++
@@ -96,14 +127,23 @@ fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
 			// written, so this is not a stale-write.
 			return
 		}
-		mut resp := 'HTTP/1.1 200 OK\r\nContent-Length: ${s.body.len}\r\n'
+		mut response_body := s.body
+		mut response_encoding := s.content_encoding
+		if head.starts_with('GET /compressed ') && s.compressed_body != '' {
+			response_body = s.compressed_body
+			response_encoding = 'gzip'
+		}
+		mut resp := 'HTTP/1.1 200 OK\r\nContent-Length: ${response_body.len}\r\n'
+		if response_encoding != '' {
+			resp += 'Content-Encoding: ${response_encoding}\r\n'
+		}
 		if s.connection_close {
 			resp += 'Connection: close\r\n'
 		}
 		if s.split_connection_close {
 			resp += 'Connection: keep-alive\r\nConnection: close\r\n'
 		}
-		resp += '\r\n' + s.body
+		resp += '\r\n' + response_body
 		conn.write(resp.bytes()) or { return }
 		if s.connection_close || s.close_after_each {
 			return
@@ -182,6 +222,60 @@ fn test_h1_plain_reuse() {
 	// All three requests must have shared one connection.
 	assert srv.accept_count() == 1
 	stop_ka_srv(mut listener, th)
+}
+
+fn test_h1_decompression_limit_error_is_not_retried() {
+	mut srv := &KaSrv{
+		body:             gzip.compress('x'.repeat(128).bytes())!.bytestr()
+		content_encoding: 'gzip'
+		connection_close: true
+	}
+	port, mut listener, th := start_ka_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	http.fetch(
+		url:                          'http://127.0.0.1:${port}/compressed'
+		max_retries:                  3
+		max_total_decompressed_bytes: 64
+	) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		assert err.code() == response_decompression_limit_error_code
+		assert srv.request_count() == 1, 'decompression error was retried ${srv.request_count()} times'
+		stop_ka_srv(mut listener, th)
+		return
+	}
+	stop_ka_srv(mut listener, th)
+	assert false, 'expected a decompression limit error'
+}
+
+fn test_h1_pooled_decompression_limit_error_is_not_retried() {
+	mut srv := &KaSrv{
+		compressed_body: gzip.compress('x'.repeat(128).bytes())!.bytestr()
+	}
+	port, mut listener, th := start_ka_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	warmup := fetch(url: 'http://127.0.0.1:${port}/warmup') or {
+		assert false, 'warmup fetch: ${err}'
+		stop_ka_srv(mut listener, th)
+		return
+	}
+	assert warmup.body == 'hello'
+	fetch(
+		url:                          'http://127.0.0.1:${port}/compressed'
+		max_retries:                  3
+		max_total_decompressed_bytes: 64
+	) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		assert srv.compressed_request_count() == 1, 'decompression error was retried ${srv.compressed_request_count()} times on the pooled connection'
+		assert srv.accept_count() == 1, 'the warmed pooled connection was not reused'
+		stop_ka_srv(mut listener, th)
+		return
+	}
+	stop_ka_srv(mut listener, th)
+	assert false, 'expected a decompression limit error'
 }
 
 fn test_h1_no_reuse_on_connection_close_response() {

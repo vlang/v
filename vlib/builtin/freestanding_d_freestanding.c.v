@@ -1,7 +1,7 @@
 module builtin
 
 // freestanding.c.v provides builtin's own raw syscall runtime for freestanding
-// builds that run on a non-C backend (`-b x64` / `-b arm64`, the SSA pipeline).
+// builds that run on a non-C backend (`-b amd64` / `-b arm64`, the SSA pipeline).
 // The driver includes the per-platform bare builtin directory (and with it the
 // reference implementations of the malloc/realloc/memcpy surface and the
 // bare_* hooks in linux_bare) only when `backend == 'c'`, so on other backends

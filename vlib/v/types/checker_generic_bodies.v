@@ -1,5 +1,6 @@
 module types
 
+import os
 import v.flat
 
 // A check and a build check the body of a generic function whose type
@@ -66,6 +67,25 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 		}
 		return
 	}
+	// Opt-in diagnostics for constrained branches whose expected witness is absent.
+	// This changes neither the checked instances nor the errors returned to callers.
+	trace_name := os.getenv('V3_GENERIC_BODY_TRACE')
+	trace_body := trace_name != '' && (trace_name == '1' || node.value.contains(trace_name))
+	if trace_body {
+		classes := tc.type_param_branch_classes(node, texts, constraints)
+		for name, options in texts {
+			mut group_texts := []string{}
+			for group in classes[name] {
+				group_texts << group.map(flat.source_type_name(it)).join('|')
+			}
+			name_text := flat.source_type_name(name)
+			option_texts := options.map(flat.source_type_name(it))
+			condition_texts := tc.comptime_conditions_on(node, name, texts.keys())
+			eprintln('generic-body ${node.value} ${name_text}')
+			eprintln('  options: ${option_texts}; groups: ${group_texts}')
+			eprintln('  conditions: ${condition_texts}')
+		}
+	}
 	reported := tc.statements_with_errors(fn_idx)
 	mut independent := map[string]bool{}
 	for err in open.errors {
@@ -75,8 +95,29 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 	// in every check that found it there.
 	mut at_position := map[string]int{}
 	mut found := []GenericBodyError{}
-	for combination in tc.generic_body_combinations(node, texts, constraints) {
+	combinations := tc.generic_body_combinations(node, texts, constraints)
+	if trace_body {
+		eprintln('generic-body ${node.value}: ${combinations.len} selected combinations')
+	}
+	for combination in combinations {
 		instance := tc.check_generic_fn_body_as(node, fn_idx, closed_type_param_texts(combination))
+		if trace_body {
+			mut chosen := []string{}
+			mut all_float := true
+			for name in texts.keys() {
+				actual := flat.source_type_name(combination[name])
+				chosen << '${flat.source_type_name(name)}=${actual}'
+				if actual !in ['f32', 'f64'] {
+					all_float = false
+				}
+			}
+			if all_float {
+				eprintln('generic-body ${node.value}: ${chosen.join(', ')} errors=${instance.errors.len}')
+				for err in instance.errors {
+					eprintln('generic-body diagnostic: ${err.msg}')
+				}
+			}
+		}
 		for err in instance.errors {
 			statement := tc.enclosing_body_statement(err.node, fn_idx) or { continue }
 			if reported[int(statement)] {

@@ -12656,12 +12656,15 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	base_type = t.normalize_type_alias(base_type)
 	base_type = transform_unshared_receiver_type(base_type)
-	if !flat.source_type_shape(base_type).has(.array_type) && !t.is_fixed_array_type(base_type) {
+	// A generic mapper can retain []unknown until its receiver is lowered.
+	if (!flat.source_type_shape(base_type).has(.array_type) && !t.is_fixed_array_type(base_type))
+		|| (base_node.kind == .call && t.generic_arg_is_unresolved_collection_type(base_type)) {
 		if base_node.kind in [.ident, .call, .selector, .as_expr] {
 			new_base := t.transform_expr(base_id)
 			new_base_type_source_id := t.node_type(new_base)
 			new_base_type_shape := flat.source_type_shape(new_base_type_source_id)
-			if new_base_type_shape.has(.array_type) || t.is_fixed_array_type(new_base_type_source_id) {
+			if (new_base_type_shape.has(.array_type) || t.is_fixed_array_type(new_base_type_source_id))
+				&& !t.generic_arg_is_unresolved_collection_type(new_base_type_source_id) {
 				selector := t.make_selector(new_base, fn_node.value, u32(0))
 				mut children := []flat.NodeId{cap: int(node.children_count)}
 				children << selector
@@ -13015,7 +13018,34 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			if node.children_count < 2 {
 				return none
 			}
+			if t.validating_generic_spec {
+				// The generic body was checked before `T` was known, so the receiver
+				// may be an alias declaring its own `join`, or an array of non-strings.
+				method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
+					clean_base_type)
+				if method_name.len > 0 && method_name != array_builtin_method
+					&& method_name != 'Array_string__join'
+					&& !t.receiver_method_name_is_open_generic(method_name) {
+					args := t.transform_receiver_method_args(node, base_id, method_name)
+					ret_type_source_id_join := t.receiver_method_return_type(method_name, node.typ)
+
+					t.mark_fn_used(method_name)
+					return t.make_call_typed(method_name, args, ret_type_source_id_join)
+				}
+			}
 			receiver := t.transform_expr(base_id)
+			if t.validating_generic_spec {
+				receiver_type := t.node_type(receiver)
+				if t.normalize_type_alias(t.array_elem_type(receiver_type)) != flat.source_type_string {
+					base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+						base_node.value
+					} else {
+						flat.source_type_name(clean_base_type)
+					}
+					t.record_monomorph_error('unknown function `${base_name}.join`')
+					return t.make_empty()
+				}
+			}
 			arg := t.transform_expr(t.a.children[node.children_start + 1])
 			return t.make_call_typed('Array_string__join', [receiver, arg], flat.source_type_string)
 		}
@@ -19945,6 +19975,59 @@ fn (mut t Transformer) lower_string_count_call(node flat.Node, fn_node flat.Node
 		t.pending_stmts << stmt
 	}
 	return t.make_ident(result_name)
+}
+
+// lower_normalized_string_literal_compare lowers `s.trim_space() == 'lit'` and
+// `s.to_lower_ascii() == 'lit'` (either operand order, `==` or `!=`) to builtin helpers that
+// compare in place instead of allocating the normalized string. The other operand must be a
+// literal, so evaluating the receiver after it cannot change the result.
+fn (mut t Transformer) lower_normalized_string_literal_compare(node flat.Node) ?flat.NodeId {
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_kind := t.a.nodes[int(lhs_id)].kind
+	rhs_kind := t.a.nodes[int(rhs_id)].kind
+	call_id, lit_id := if lhs_kind == .call && rhs_kind == .string_literal {
+		lhs_id, rhs_id
+	} else if lhs_kind == .string_literal && rhs_kind == .call {
+		rhs_id, lhs_id
+	} else {
+		return none
+	}
+	call := t.a.nodes[int(call_id)]
+	if call.children_count != 1 || isnil(t.tc) || t.tc.autofree_enabled()
+		|| t.node_type(lit_id) != flat.source_type_string {
+		return none
+	}
+	selector := t.a.child_node(&call, 0)
+	if selector.kind != .selector || selector.children_count != 1 {
+		return none
+	}
+	helper := match selector.value {
+		'trim_space' { 'string.trim_space_eq' }
+		'to_lower_ascii' { 'string.to_lower_ascii_eq' }
+		else { return none }
+	}
+	str_id := t.a.child(selector, 0)
+	method := 'string.${selector.value}'
+	if t.node_type(str_id) != flat.source_type_string
+		|| t.resolve_receiver_method_name(str_id, selector.value) != method
+		|| !t.call_resolved_to_method(call_id, method) {
+		return none
+	}
+	// A fresh receiver would need an ownership drop; keep the ordinary path for it.
+	if !t.expr_can_take_address(str_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	t.mark_fn_used(helper)
+	cmp := t.make_call_typed(helper, [t.transform_expr(str_id), t.transform_expr(lit_id)],
+		flat.source_type_bool)
+	if node.op == .eq {
+		return cmp
+	}
+	negated := t.make_prefix(.not, cmp)
+	t.set_node_typ(int(negated), flat.source_type_bool)
+	return negated
 }
 
 // expr_uses_ident supports expr uses ident handling for Transformer.

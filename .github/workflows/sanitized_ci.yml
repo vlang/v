@@ -182,6 +182,12 @@ jobs:
           prefix="$RUNNER_TEMP/v-msan-sqlite"
           bash .github/workflows/build_msan_sqlite.sh "$prefix"
           echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+      - name: Build instrumented FreeType for MemorySanitizer
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: |
+          prefix="$RUNNER_TEMP/v-msan-freetype"
+          bash .github/workflows/build_msan_freetype.sh "$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
       - name: Recompile optimized V with -cstrict
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"

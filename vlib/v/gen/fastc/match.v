@@ -485,7 +485,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	if g.tok == .key_if && g.if_starts_final_block_expression() {
 		return g.read_if_expression()!
 	}
-	if !g.or_block_has_statements() {
+	if !g.block_expression_has_statements() {
 		first := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if g.tok != .comma {
 			return first
@@ -525,11 +525,11 @@ fn (mut g Parser) read_block_expression_value() !string {
 		g.captured_defer_lines = previous_lines.clone()
 	}
 	mut terminates := false
-	for g.or_block_has_statements() {
+	for g.block_expression_has_statements() {
 		if g.wrapper_starts_final_block_expression() {
 			break
 		}
-		if g.tok == .key_if && g.if_starts_final_block_expression() {
+		if g.tok in [.key_if, .dollar] && g.if_starts_final_block_expression() {
 			break
 		}
 		if g.tok == .key_match && g.match_starts_final_block_expression() {
@@ -594,7 +594,16 @@ fn (mut g Parser) read_block_expression_value() !string {
 			value + final_value
 		}
 	}
-	return g.block_expression_source(value, deferred_block_start)
+	source := g.block_expression_source(value, deferred_block_start)
+	if g.last_expression_type in [fastc_type_option, fastc_type_result] {
+		// Preserve the payload before the deferred scope restoration removes locals
+		// referenced by the final expression. Callers must use this saved metadata.
+		if g.last_expression.len > 0 {
+			g.last_option_value_type = g.option_value_type_for_expression(g.last_expression)
+		}
+		g.last_expression = []FastcExpressionToken{}
+	}
+	return source
 }
 
 fn (mut g Parser) block_expression_source(value string, first_defer_block int) string {

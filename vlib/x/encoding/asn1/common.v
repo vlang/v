@@ -3,12 +3,19 @@
 // that can be found in the LICENSE file.
 module asn1
 
+// max_nesting_depth keeps recursive SEQUENCE/SET parsing within fixed worker stacks.
+const max_nesting_depth = 128
+
 // common parsing routines
 //
 fn parse_element(tag Tag, content []u8) !Element {
+	return parse_element_with_depth(tag, content, 0)!
+}
+
+fn parse_element_with_depth(tag Tag, content []u8, nesting_depth int) !Element {
 	match tag.class {
 		.universal {
-			return parse_universal(tag, content)!
+			return parse_universal(tag, content, nesting_depth)!
 		}
 		.context_specific {
 			return parse_context_specific(tag, content)!
@@ -22,12 +29,12 @@ fn parse_element(tag Tag, content []u8) !Element {
 	}
 }
 
-fn parse_universal(tag Tag, content []u8) !Element {
+fn parse_universal(tag Tag, content []u8, nesting_depth int) !Element {
 	if tag.class != .universal {
 		return error('Non universal class')
 	}
 	if tag.constructed {
-		return parse_universal_constructed(tag, content)!
+		return parse_universal_constructed(tag, content, nesting_depth)!
 	}
 	return parse_universal_primitive(tag, content)!
 }
@@ -89,17 +96,17 @@ fn parse_universal_primitive(tag Tag, content []u8) !Element {
 	}
 }
 
-fn parse_universal_constructed(tag Tag, content []u8) !Element {
+fn parse_universal_constructed(tag Tag, content []u8, nesting_depth int) !Element {
 	if !tag.constructed {
 		return error('parse on non-constructed type')
 	}
 	match tag.tag_number() {
 		int(TagType.sequence) {
 			// todo: handle SequenceOf
-			return Sequence.from_bytes(content)!
+			return Sequence.from_bytes(content, nesting_depth + 1)!
 		}
 		int(TagType.set) {
-			return Set.from_bytes(content)!
+			return Set.from_bytes(content, nesting_depth + 1)!
 		}
 		else {
 			return RawElement.new(tag, content)!
@@ -116,12 +123,12 @@ fn parse_application(tag Tag, content []u8) !ApplicationElement {
 }
 
 // parse_context_specific_with_mode parses tag and content as ContextElement when mode is availables
-fn parse_context_specific_with_mode(tag Tag, content []u8, inner_tag Tag, mode TaggedMode) !ContextElement {
+fn parse_context_specific_with_mode(tag Tag, content []u8, inner_tag Tag, mode TaggedMode, nesting_depth int) !ContextElement {
 	if tag.tag_class() != .context_specific {
 		return error('parse on non-context-specific class')
 	}
 	if mode == .implicit {
-		inner := parse_element(inner_tag, content)!
+		inner := parse_element_with_depth(inner_tag, content, nesting_depth)!
 		ctx := ContextElement.from_element(inner, tag.number, mode)!
 		return ctx
 	}
@@ -132,7 +139,7 @@ fn parse_context_specific_with_mode(tag Tag, content []u8, inner_tag Tag, mode T
 	if !intag.equal(inner_tag) {
 		return error('Get unexpected inner tag')
 	}
-	inner_el := p.read_tlv()!
+	inner_el := p.read_tlv_with_depth(nesting_depth)!
 	// should finish
 	p.finish()!
 

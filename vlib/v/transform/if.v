@@ -1182,6 +1182,13 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 		}
 	}
 	branch_typ_source_id := t.if_expr_branch_result_type(node)
+	if branch_typ_source_id == flat.source_type_rune && !isnil(t.tc) {
+		checked := t.tc.resolve_type(id).source_type_id()
+		if t.normalize_type_alias(checked) == flat.source_type_u8 {
+			// Preserve byte inference when a rune literal is the first branch.
+			return checked
+		}
+	}
 	branch_typ_comparison_type_id_2 := branch_typ_source_id
 	if !isnil(t.tc) {
 		if file := t.a.source_files[node.pos.id] {

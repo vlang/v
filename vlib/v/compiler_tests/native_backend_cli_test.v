@@ -38,7 +38,7 @@ fn test_native_backend_aliases_match_the_host_backend() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println(@BACKEND) }\n')!
-	expected := if pref.host_arch() == 'amd64' { 'x64' } else { 'arm64' }
+	expected := if pref.host_arch() == 'amd64' { 'amd64' } else { 'arm64' }
 	explicit := run_native_backend_cli(['-silent', '-b', pref.host_arch(), 'run', source],
 		root, '')
 	assert explicit.exit_code == 0, explicit.output
@@ -62,7 +62,7 @@ fn test_native_backend_aliases_use_the_last_selected_backend() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println(@BACKEND) }\n')!
-	expected := if pref.host_arch() == 'amd64' { 'x64' } else { 'arm64' }
+	expected := if pref.host_arch() == 'amd64' { 'amd64' } else { 'arm64' }
 	for alias in native_backend_aliases {
 		mut native_first := ['-silent']
 		native_first << alias
@@ -151,7 +151,7 @@ fn test_native_backend_aliases_apply_to_vflags_and_test_programs() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println(@BACKEND) }\n')!
-	expected := if pref.host_arch() == 'amd64' { 'x64' } else { 'arm64' }
+	expected := if pref.host_arch() == 'amd64' { 'amd64' } else { 'arm64' }
 	test_source := os.join_path(root, 'backend_test.v')
 	os.write_file(test_source, "fn test_backend() { assert @BACKEND == '${expected}' }\n")!
 	for vflags in ['-native', '-b native'] {
@@ -188,7 +188,7 @@ fn test_native_backend_aliases_run_native_suffixed_tests() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'backend_test.native.v')
-	expected := if pref.host_arch() == 'amd64' { 'x64' } else { 'arm64' }
+	expected := if pref.host_arch() == 'amd64' { 'amd64' } else { 'arm64' }
 	os.write_file(source, "fn test_backend() {
 	assert @BACKEND == '${expected}'
 	println('NATIVE_SUFFIX_EXECUTED')

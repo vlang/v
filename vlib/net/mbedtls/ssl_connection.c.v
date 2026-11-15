@@ -955,6 +955,11 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	}
 
 	deadline := ssl_read_deadline(s.duration, s.read_deadline)
+	// The deadline uses the remaining time for a native read, so restore the
+	// configured timeout on every exit (success, EOF, error, or timeout).
+	defer {
+		C.mbedtls_ssl_conf_read_timeout(&s.conf, ssl_read_timeout_ms(s.duration))
+	}
 	// s.wait_for_read(deadline - time.now())!
 	for {
 		if deadline.unix() != 0 {
@@ -1101,10 +1106,10 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
+	if handle < 0 {
+		return error_with_code('net.mbedtls: invalid socket handle for select', C.EINVAL)
+	}
 	$if !windows {
-		if handle < 0 {
-			return error_with_code('net.mbedtls: invalid socket handle for select', C.EINVAL)
-		}
 		if handle >= C.FD_SETSIZE {
 			return error_with_code('net.mbedtls: socket handle exceeds FD_SETSIZE', C.EINVAL)
 		}

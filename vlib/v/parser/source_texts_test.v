@@ -188,6 +188,12 @@ fn test_parallel_parse_keeps_each_text_under_the_id_of_its_file() {
 	}
 	kept.sort()
 	assert kept == files
+	p.release_source_storage()
+	assert p.batch_source_buffers.len == 0
+	for file_id, text in p.a.source_texts {
+		file := p.a.source_files[file_id] or { panic('missing retained source ${file_id}') }
+		assert text == texts[file.name], file.name
+	}
 }
 
 // The parallel const prepasses scan the sources before the workers parse them.

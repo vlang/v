@@ -114,8 +114,9 @@ pub mut:
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
 	on_finish        RequestFinishFn       = unsafe { nil }
 
-	stop_copying_limit   i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
-	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	stop_copying_limit           i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
+	stop_receiving_limit         i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	max_total_decompressed_bytes i64 = default_max_total_decompressed_bytes // cumulative decoded-byte limit; per-stage array ceilings still apply
 }
 
 @[manualfree]
@@ -783,12 +784,13 @@ fn chunked_hex_value(ch u8) u8 {
 }
 
 struct ReceivedResponseInfo {
-	raw_body            bool
-	headers_end         int = -1
-	is_chunked_transfer bool
-	has_truncated_body  bool
-	body_is_dechunked   bool
-	stop_copying_limit  i64 = -1
+	raw_body                     bool
+	headers_end                  int = -1
+	is_chunked_transfer          bool
+	has_truncated_body           bool
+	body_is_dechunked            bool
+	stop_copying_limit           i64 = -1
+	max_total_decompressed_bytes i64 = default_max_total_decompressed_bytes
 	// reusable is true when the read loop terminated via precise response
 	// framing (Content-Length satisfied, chunked transfer complete, or a
 	// no-body status), meaning the connection holds no response leftovers and
@@ -800,11 +802,19 @@ struct ReceivedResponseInfo {
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
 	mut response := if info.body_is_dechunked {
 		parse_response_with_options(response_text[..info.headers_end],
-			raw_body:     info.raw_body
-			headers_only: true
+			raw_body:                     info.raw_body
+			headers_only:                 true
+			max_total_decompressed_bytes: info.max_total_decompressed_bytes
+			stop_copying_limit:           info.stop_copying_limit
+			input_truncated:              info.has_truncated_body
 		)!
 	} else {
-		parse_response_with_options(response_text, raw_body: info.raw_body)!
+		parse_response_with_options(response_text,
+			raw_body:                     info.raw_body
+			max_total_decompressed_bytes: info.max_total_decompressed_bytes
+			stop_copying_limit:           info.stop_copying_limit
+			input_truncated:              info.has_truncated_body
+		)!
 	}
 	if info.body_is_dechunked {
 		// Chunk framing is already removed, but Content-Encoding still applies.
@@ -812,7 +822,9 @@ fn parse_received_response(response_text string, info ReceivedResponseInfo) !Res
 		response.body = if info.raw_body {
 			body
 		} else {
-			decode_response_body(body, response.header.get(.content_encoding) or { '' })
+			decode_response_body(body, response.header.get(.content_encoding) or { '' },
+				info.max_total_decompressed_bytes, info.stop_copying_limit,
+				info.has_truncated_body)!
 		}
 	}
 	// A complete compressed body can expand beyond the copying limit.
@@ -1014,18 +1026,20 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			break
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
+			has_truncated_body = true
 			break
 		}
 		old_len = new_len
 	}
 	return ReceivedResponseInfo{
-		raw_body:            req.raw_response_body
-		headers_end:         headers_end
-		is_chunked_transfer: is_chunked_transfer
-		body_is_dechunked:   is_chunked_transfer && req.stop_copying_limit > 0
-		stop_copying_limit:  req.stop_copying_limit
-		has_truncated_body:  has_truncated_body
-		reusable:            framed_complete
+		raw_body:                     req.raw_response_body
+		headers_end:                  headers_end
+		is_chunked_transfer:          is_chunked_transfer
+		body_is_dechunked:            is_chunked_transfer && req.stop_copying_limit > 0
+		stop_copying_limit:           req.stop_copying_limit
+		max_total_decompressed_bytes: req.max_total_decompressed_bytes
+		has_truncated_body:           has_truncated_body
+		reusable:                     framed_complete
 	}
 }
 
@@ -1596,5 +1610,7 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_timed_out_code,
 		transport_err_unsafe_retry,
 		progress_callback_error_code,
+		response_decompression_limit_error_code,
+		response_content_encoding_layer_limit_error_code,
 	]
 }

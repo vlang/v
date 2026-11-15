@@ -186,16 +186,17 @@ vc_pollfd_guard && /^};[ \t]*$/ {
 }
 
 # The same snapshot also redeclares types from BSD system headers.
-# Keep the headerless declarations on other targets.
+# Keep the headerless declarations, including on FreeBSD where no system
+# header supplies these types in that mode.
 /^struct timespec[ \t]*\{.*\};[ \t]*$/ {
-	print "#if !defined(__FreeBSD__)"
+	print "#if !defined(__FreeBSD__) || __V_HEADERLESS_LIBC"
 	print
 	print "#endif"
 	next
 }
 
 /^struct itimerspec[ \t]*\{[ \t]*$/ {
-	print "#if !defined(__FreeBSD__)"
+	print "#if !defined(__FreeBSD__) || __V_HEADERLESS_LIBC"
 	vc_itimerspec_guard = 1
 }
 

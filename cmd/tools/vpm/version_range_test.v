@@ -125,7 +125,9 @@ fn range_add_tag(repo string, module_name string, tag string) !string {
 fn range_create_repo(name string) !string {
 	repo := os.join_path(range_test_path, name + '_repo')
 	os.mkdir_all(repo)!
-	range_git(repo, ['init', '-b', 'main'])
+	range_git(repo, ['init', '-q'])
+	range_git(repo, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert range_git(repo, ['symbolic-ref', '--short', 'HEAD']) == 'main'
 	for tag in ['v1.2.0', 'v1.9.0', 'v1.10.0', 'v1.11.0-beta.1', 'v2.0.0'] {
 		range_add_tag(repo, name, tag)!
 	}

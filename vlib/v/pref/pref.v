@@ -188,7 +188,7 @@ pub fn native_backend() string {
 // Unsupported architectures retain `native` so the driver can diagnose the target.
 pub fn native_backend_for_arch(arch string) string {
 	return match normalized_arch(arch.trim_space().to_lower()) {
-		'amd64' { 'x64' }
+		'amd64' { 'amd64' }
 		'arm64' { 'arm64' }
 		else { 'native' }
 	}
@@ -1081,7 +1081,7 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 		if backend_suffix == 'native' {
 			// `.native.v` is the backend-specific file suffix shared by the
 			// architecture code generators.
-			return backend in ['native', 'arm64', 'x64']
+			return backend in ['native', 'arm64', 'amd64', 'x64']
 		}
 		return backend_suffix == backend
 	}
@@ -1641,17 +1641,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend in ['arm64', 'x64']
+			return p.backend in ['arm64', 'amd64', 'x64']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend in ['arm64', 'x64']
+			return p.backend in ['arm64', 'amd64', 'x64']
 				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
-			return p.backend in ['arm64', 'x64'] || name in p.user_defines
+			return p.backend in ['arm64', 'amd64', 'x64'] || name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -1779,7 +1779,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		// SSA currently lowers `int` to i32, including array and string headers.
 		// Its builtin limits must use that width even on a 64-bit target.
-		if p.backend in ['arm64', 'x64'] {
+		if p.backend in ['arm64', 'amd64', 'x64'] {
 			return false
 		}
 		// The C backend lowers `int` to the target pointer width.

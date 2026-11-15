@@ -5505,6 +5505,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
+			if !semantic_types_equal(info0.return_type, info.return_type) {
+				tc.invalidate_body_resolved_type_chain(id)
+			}
 		}
 		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
@@ -10343,12 +10346,14 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					}
 				}
 				'join' {
-					return CallInfo{
-						name:         'array.join'
-						params:       tarr2(base_type, builtin_string_type)
-						return_type:  builtin_string_type
-						has_receiver: true
-						params_known: true
+					if array_method_takes_element('join', clean_array.elem_type) {
+						return CallInfo{
+							name:         'array.join'
+							params:       tarr2(base_type, builtin_string_type)
+							return_type:  builtin_string_type
+							has_receiver: true
+							params_known: true
+						}
 					}
 				}
 				'index', 'last_index' {
@@ -23080,6 +23085,21 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 	return false
 }
 
+// array_method_takes_element reports whether builtin `method` applies to an array
+// of `elem`. A method belongs to the receiver type it is declared on, with no
+// fallback to the array shape (Go types2 LookupFieldOrMethod, Zig fieldCallBind).
+// A generic element is checked when the function is instantiated.
+fn array_method_takes_element(method string, elem Type) bool {
+	if method !in ['bytestr', 'join'] {
+		return true
+	}
+	clean := unalias_type(elem)
+	if clean is Unknown || (clean is Struct && is_bare_generic_param(clean.name())) {
+		return true
+	}
+	return if method == 'bytestr' { is_byte_type(clean) } else { clean is String }
+}
+
 fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method string) bool {
 	if receiver is Array {
 		for mname in receiver_method_name_candidates(receiver, method, tc.cur_module) {
@@ -23087,12 +23107,17 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method strin
 				return true
 			}
 		}
+		// These two are declared for one element type, as `fn (a []string) join`.
+		if !array_method_takes_element(method, receiver.elem_type) {
+			return false
+		}
 		// Keep this in sync with the synthetic array receiver methods handled in
 		// resolve_call_info/resolve_type, including `[]thread T.wait()`.
 		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index', 'last_index',
 			'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert', 'prepend',
 			'filter', 'map', 'any', 'all', 'count', 'sort_with_compare', 'sorted_with_compare',
-			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'bytestr', 'wait']
+			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'wait']
+			|| (method == 'bytestr' && is_byte_type(receiver.elem_type))
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{

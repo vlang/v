@@ -66,6 +66,22 @@ fn test_native_hot_fn_extracts_self_contained_function() {
 	}
 }
 
+fn test_native_hot_fn_extracts_linux_function() {
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_hot_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'counter.v')
+	output := os.join_path(root, 'next_value.bin')
+	// Keep the hot function reachable in the source program; -hot-fn builds only its body.
+	os.write_file(path, 'fn next_value() int { return 42 }\nfn main() { assert next_value() == 42 }\n')!
+	extract := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-nocache', '-b', 'arm64', '-os', 'linux', '-hot-fn', 'next_value', '-o', output, path])
+	assert extract.exit_code == 0, extract.output
+	code := os.read_bytes(output)!
+	assert code.len > 0, 'extracted Linux function must not be empty'
+	assert code.len % 4 == 0, 'extracted function must contain complete ARM64 instructions'
+}
+
 fn test_native_hot_fn_rejects_function_needing_fixups() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64_hot_reject_${os.getpid()}.v')

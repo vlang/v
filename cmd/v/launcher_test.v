@@ -15,7 +15,7 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_native_backend_aliases_select_the_host_backend() {
-	expected := $if amd64 { 'x64' } $else $if arm64 { 'arm64' } $else { 'native' }
+	expected := $if amd64 { 'amd64' } $else $if arm64 { 'arm64' } $else { 'native' }
 	assert pref.native_backend() == expected
 	for flags in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
 		['-backend=native']] {
@@ -33,7 +33,7 @@ fn test_native_backend_aliases_select_the_host_backend() {
 
 fn test_native_backend_aliases_select_the_requested_architecture() {
 	for arch, expected in {
-		'amd64':   'x64'
+		'amd64':   'amd64'
 		'arm64':   'arm64'
 		'riscv64': 'native'
 	} {
@@ -57,7 +57,7 @@ fn test_native_backend_aliases_select_the_requested_architecture() {
 		}
 	}
 	assert selected_backend(['-native', '-arch', 'amd64', '-arch', 'arm64'], false) == 'arm64'
-	assert selected_backend(['-arch', 'arm64', '-native', '-arch', 'amd64'], false) == 'x64'
+	assert selected_backend(['-arch', 'arm64', '-native', '-arch', 'amd64'], false) == 'amd64'
 	assert selected_backend(['-arch', 'arm64', '-native', '-b', 'c'], false) == 'c'
 	assert selected_backend(['-arch', 'arm64', '-b', 'x64'], false) == 'x64'
 	assert selected_backend(['-arch', 'amd64', '-b', 'arm64'], false) == 'arm64'
@@ -187,7 +187,7 @@ fn test_v1_fallback_consumes_profile_output_after_a_command() {
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
 	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
-	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
+	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check', '-check-syntax']) == [
 		'-silent',
 		'-N',
 		'-W',
@@ -1217,7 +1217,7 @@ fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_bound
 }
 
 fn test_test_launcher_builds_host_helper_and_preserves_test_target() {
-	for backend in ['arm64', 'x64', 'wasm', 'js'] {
+	for backend in ['arm64', 'amd64', 'wasm', 'js'] {
 		for flag in ['-b', '-backend'] {
 			for prefix in [[flag, backend, '-os', 'linux', '-arch', 'arm64'],
 				['${flag}=${backend}', '-os=linux', '-arch=arm64']] {
