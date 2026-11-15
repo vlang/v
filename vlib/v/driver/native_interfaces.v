@@ -135,7 +135,14 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		'#pragma GCC poison __DATE__ __TIME__ __TIMESTAMP__\n' + probe
 	}
 	os.write_file(path, checked_probe) or { return result }
-	args := c_object_compile_flags(flags)
+	mut args := c_object_compile_flags(flags)
+	if tinycc {
+		// Match the resource include paths used to compile native objects.
+		// Otherwise a system header may fail to find stddef.h during -M.
+		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		args << v3_tcc_object_compile_flags(prefs.vroot, compiler, bundled_tcc,
+			os.is_file(bundled_tcc), prefs.normalized_target_os(), '')
+	}
 	// -M does not expand macros in ordinary code. Let the selected C
 	// preprocessor validate them too, discarding its output without inspecting it.
 	if !tinycc {
