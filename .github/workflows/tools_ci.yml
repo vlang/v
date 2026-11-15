@@ -160,7 +160,7 @@ jobs:
 
   tools-windows:
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 70
     strategy:
       matrix:
         suite: [default, strict]

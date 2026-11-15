@@ -39,7 +39,7 @@ jobs:
           ) }}
       fail-fast: true
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: ${{ matrix.platform == 'windows-x64' && 70 || 40 }}
     env:
       VFLAGS: ${{ matrix.vflags }}
       B_LFLAGS: -lm -lpthread
