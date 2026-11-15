@@ -155,3 +155,33 @@ fn test_tinycc_interface_contract_pin_rejects_bundle_edits() ! {
 	os.rm(os.join_path(helper_dir, 'mbedtls_helpers.h'))!
 	assert !v3_pinned_web_native_interfaces(root)
 }
+
+// A module cache manifest must reuse the compiler's native bundled TinyCC
+// resource headers, including stddef.h reachable through sys/mman.h.
+fn test_bundled_tinycc_native_manifest_uses_resource_headers() ! {
+	$if windows {
+		return
+	}
+	bundled := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(bundled) { return }
+	assert v3_pinned_web_native_interfaces(@VEXEROOT)
+	poll := os.real_path(os.join_path(@VEXEROOT, 'vlib', 'os', 'fd_poll.h'))
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, os.join_path(@VEXEROOT, 'vlib', 'os', 'fd.c.v'))
+	a.add_val(.module_decl, 'os')
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<sys/mman.h>') })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"${poll}"') })
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'os': [poll]
+		}
+		native_paths:  {
+			poll: true
+		}
+	}
+	prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+	closure := v3_native_interface_closure(&a, &prefs, [], bundled, &inputs)
+	assert closure.unassignable == '', closure.unassignable
+	assert poll in closure.inputs['__v3_c_flags__']
+	assert closure.inputs['__v3_c_flags__'].any(it.ends_with('/sys/mman.h'))
+}
