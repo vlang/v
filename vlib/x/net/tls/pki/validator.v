@@ -268,15 +268,14 @@ fn enforce_name_constraints(ca Certificate, child Certificate) ! {
 	if !child.has_san && child.subject_cn != '' {
 		dns_names = [child.subject_cn]
 	}
-	// RFC 5280 §4.2.1.10 treats permittedSubtrees as one namespace across forms,
-	// so gate on the union — a per-form check would let an IP-only set exempt dNS
-	// names and vice versa. Excluded subtrees stay per-form.
-	permitted_any := ca.permitted_dns.len > 0 || ca.permitted_ip.len > 0
+	// RFC 5280 §6.1.4(g)(1): each name type is left unconstrained when its own
+	// permittedSubtrees list is absent/empty — an IP-only permitted set does not
+	// constrain dNSNames and vice versa. Excluded subtrees stay per-form.
 	for name in dns_names {
 		if ca.excluded_dns.len > 0 && dns_in_any_subtree(name, ca.excluded_dns) {
 			return error('dNSName "${name}" is within an excluded subtree')
 		}
-		if permitted_any && !dns_in_any_subtree(name, ca.permitted_dns) {
+		if ca.permitted_dns.len > 0 && !dns_in_any_subtree(name, ca.permitted_dns) {
 			return error('dNSName "${name}" is outside the permitted subtrees')
 		}
 	}
@@ -284,7 +283,7 @@ fn enforce_name_constraints(ca Certificate, child Certificate) ! {
 		if ca.excluded_ip.len > 0 && ip_in_any_subtree(ip, ca.excluded_ip) {
 			return error('iPAddress ${ip} is within an excluded subtree')
 		}
-		if permitted_any && !ip_in_any_subtree(ip, ca.permitted_ip) {
+		if ca.permitted_ip.len > 0 && !ip_in_any_subtree(ip, ca.permitted_ip) {
 			return error('iPAddress ${ip} is outside the permitted subtrees')
 		}
 	}
