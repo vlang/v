@@ -47,6 +47,19 @@ fn test_last_index_any_all_byte_values() {
 	assert last_index_any('abcabc', 'zzzcb') == 5
 }
 
+fn test_last_index_any_short_input_fallback() {
+	// s.len < chars.len / 4: both hits and misses must use the direct scan.
+	assert last_index_any('za', 'abcdefghijklmnop') == 1
+	assert last_index_any('az', 'abcdefghijklmnop') == 0
+	assert last_index_any('yz', 'abcdefghijklmnop') == -1
+}
+
+fn test_last_index_any_last_byte_fast_path() {
+	assert last_index_any('xxxxxxxxz', 'yz') == 8
+	assert last_index_any('xxxxxxxxz', 'abcdeyz') == 8
+	assert last_index_any('xxxxxxxxz', 'abcde') == -1
+}
+
 fn test_contains_rune() {
 	assert contains_rune('héllo', `é`)
 	assert !contains_rune('hello', `é`)

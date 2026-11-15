@@ -67,6 +67,10 @@ pub fn last_index_any(s string, chars string) int {
 		}
 		return -1
 	}
+	// Avoid table setup when the last byte already matches.
+	if chars.index_u8(s[s.len - 1]) >= 0 {
+		return s.len - 1
+	}
 	mut byte_set := [256]bool{}
 	for i in 0 .. chars.len {
 		byte_set[chars[i]] = true
