@@ -1758,6 +1758,22 @@ fn ensure_native_object_cache_dir(path string) ! {
 	}
 }
 
+// Keep this file in place: removing a lock file could let another process lock a
+// different inode while a build still owns the original one. The OS releases the
+// lock if the compiler exits unexpectedly. An unusable lock keeps the ordinary
+// atomic publication path available.
+fn acquire_native_object_cache_lock(manifest_path string) (filelock.FileLock, bool) {
+	path := '${manifest_path}.lock'
+	mut file_lock := filelock.new_file(path, mode: .exclusive)
+	mut file := os.open_file(path, 'a') or { return file_lock, false }
+	file.close()
+	if file_lock.try_acquire() {
+		return file_lock, false
+	}
+	file_lock.acquire() or {}
+	return file_lock, true
+}
+
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	ensure_native_object_cache_dir(cache_dir)!
@@ -1832,6 +1848,13 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if cached_obj := valid_c_object_manifest(manifest_path, mut stats) {
 		return cached_obj
 	}
+	// Other test workers can need the same cold native dependency. Let one build
+	// it, then validate its manifest again before scanning or compiling anything.
+	mut build_lock, waited := acquire_native_object_cache_lock(manifest_path)
+	defer { build_lock.release() }
+	if cached_obj := valid_c_object_manifest_refreshed(manifest_path, waited, mut stats) {
+		return cached_obj
+	}
 	stats.dependency_scans++
 	dependencies := c_object_dependencies(compiler, args, source_file)
 	stats.dependency_files += dependencies.files.len
@@ -1848,7 +1871,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		stats.temporary_objects << uncached_obj
 		return uncached_obj
 	}
-	cache_key := c_object_cache_name(obj_path, compiler, args, dependencies.files, target, false, mut stats)
+	cache_key := c_object_cache_name(obj_path, compiler, args, dependencies.files, target, waited, mut stats)
 	cached_obj := os.join_path(cache_dir, cache_key)
 	if os.exists(cached_obj) {
 		stats.content_key_hits++
@@ -1929,6 +1952,11 @@ fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, co
 }
 
 fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?string {
+	return valid_c_object_manifest_refreshed(manifest_path, false, mut stats)
+}
+
+// A waiter cannot reuse dependency digests collected before the other build ran.
+fn valid_c_object_manifest_refreshed(manifest_path string, refresh bool, mut stats CObjectCacheStats) ?string {
 	content := os.read_file(manifest_path) or { return none }
 	lines := content.split_into_lines()
 	if lines.len < 3 || lines[0] != 'format=v3-c-object-manifest-v1'
@@ -1951,7 +1979,7 @@ fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?s
 		if path.len == 0 || expected_signature.len == 0 {
 			return none
 		}
-		actual_signature := c_object_file_signature(path, false, mut stats)
+		actual_signature := c_object_file_signature(path, refresh, mut stats)
 		if actual_signature.len == 0 || actual_signature != expected_signature {
 			return none
 		}
