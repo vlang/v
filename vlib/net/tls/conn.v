@@ -259,6 +259,16 @@ pub fn (mut c Conn) shutdown() ! {
 	c.close()!
 }
 
+// send_close_notify transmits a warning close_notify alert without
+// closing the socket. Call it before close() when the peer (e.g.
+// OpenSSL) treats a bare TCP FIN as truncation.
+pub fn (mut c Conn) send_close_notify() ! {
+	if c.closed || !c.handshake_done {
+		return
+	}
+	c.write_cipher_fragmented(.alert, alert_bytes(.warning, .close_notify))!
+}
+
 // set_read_timeout is a no-op placeholder for net.ssl compatibility.
 pub fn (mut c Conn) set_read_timeout(_ time.Duration) {
 	// no-op for now
@@ -873,11 +883,7 @@ pub fn (mut c Conn) handshake() ! {
 						leaf0 := x509.parse_der(cert_ders[0]) or { return error(error_bad_signature) }
 						mut pk := leaf0.public_key() or { return error(error_bad_signature) }
 						if c.cfg.verify_chain {
-							roots := if c.cfg.ca_store.roots.len > 0 {
-								c.cfg.ca_store.roots
-							} else {
-								[]x509.Certificate{}
-							}
+							roots := explicit_roots(c.cfg)
 							pk = verify_peer_chain(cert_ders, roots, .server_auth,
 								c.cfg.server_name, chs.ocsp_response) or { return err }
 						}
@@ -1137,11 +1143,7 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 					leaf0 := x509.parse_der(chain[0]) or { return error(error_bad_signature) }
 					mut pk := leaf0.public_key() or { return error(error_bad_signature) }
 					if c.cfg.verify_chain {
-						roots := if c.cfg.ca_store.roots.len > 0 {
-							c.cfg.ca_store.roots
-						} else {
-							[]x509.Certificate{}
-						}
+						roots := explicit_roots(c.cfg)
 						pk = verify_peer_chain(chain, roots, .client_auth, '', []u8{}) or {
 							return err
 						}

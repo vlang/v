@@ -57,6 +57,25 @@ fn load_bundle_file(path string) []x509.Certificate {
 	return parse_bundle_pem(txt)
 }
 
+// explicit_roots resolves Config trust settings to roots: ca_store wins,
+// then the ca_cert bundle file, then ca_cert_pem bytes. Empty when nothing
+// is configured (verify_peer_chain then falls back to system roots).
+fn explicit_roots(cfg Config) []x509.Certificate {
+	if cfg.ca_store.roots.len > 0 {
+		return cfg.ca_store.roots
+	}
+	if cfg.ca_cert.len > 0 {
+		roots := load_bundle_file(cfg.ca_cert)
+		if roots.len > 0 {
+			return roots
+		}
+	}
+	if cfg.ca_cert_pem.len > 0 {
+		return parse_bundle_pem(cfg.ca_cert_pem.bytestr())
+	}
+	return []x509.Certificate{}
+}
+
 // load_bundle_dir scans every file in dir for CERTIFICATE blocks, returning
 // the union (unreadable files and non-PEM content are skipped).
 fn load_bundle_dir(dir string) []x509.Certificate {

@@ -243,7 +243,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 		server.max_early_data = cfg.max_early_data
 		server.verify_client = cfg.verify_client
 		server.verify_chain = cfg.verify_chain
-		server.client_roots = cfg.ca_store
+		server.client_roots = CertStore{ roots: explicit_roots(cfg) }
 		server.cert_map = cfg.cert_map.clone()
 		server.alpn_protos = cfg.alpn_protocols.clone()
 		server.psk_identity = cfg.psk_identity.clone()
@@ -266,7 +266,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 		server.max_early_data = cfg.max_early_data
 		server.verify_client = cfg.verify_client
 		server.verify_chain = cfg.verify_chain
-		server.client_roots = cfg.ca_store
+		server.client_roots = CertStore{ roots: explicit_roots(cfg) }
 		server.cert_map = cfg.cert_map.clone()
 		server.alpn_protos = cfg.alpn_protocols.clone()
 		server.psk_identity = cfg.psk_identity.clone()
@@ -300,7 +300,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	server.max_early_data = cfg.max_early_data
 	server.verify_client = cfg.verify_client
 	server.verify_chain = cfg.verify_chain
-	server.client_roots = cfg.ca_store
+	server.client_roots = CertStore{ roots: explicit_roots(cfg) }
 	server.cert_map = cfg.cert_map.clone()
 	server.alpn_protos = cfg.alpn_protocols.clone()
 	server.psk_identity = cfg.psk_identity.clone()

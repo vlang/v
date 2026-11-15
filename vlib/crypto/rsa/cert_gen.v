@@ -26,19 +26,22 @@ fn cert_two(v int) string {
 	return v.str()
 }
 
-// der_utctime encodes t as a DER UTCTime (YYMMDDHHMMSSZ). UTCTime only
-// covers 1950-2049; out-of-range years are rejected.
+// der_utctime encodes t as a DER UTCTime (YYMMDDHHMMSSZ). X.509 times
+// are UTC (Zulu): normalize local wall fields first, exactly like
+// x509's der_utc, so the DER bytes match what the UTC-assuming parser
+// reconstructs. UTCTime only covers 1950-2049; out-of-range years fail.
 fn der_utctime(t time.Time) ![]u8 {
-	if t.year < 1950 || t.year > 2049 {
+	u := t.local_to_utc()
+	if u.year < 1950 || u.year > 2049 {
 		return error('rsa: UTCTime year out of range')
 	}
 	mut s := ''
-	s += cert_two(t.year % 100)
-	s += cert_two(t.month)
-	s += cert_two(t.day)
-	s += cert_two(t.hour)
-	s += cert_two(t.minute)
-	s += cert_two(t.second)
+	s += cert_two(u.year % 100)
+	s += cert_two(u.month)
+	s += cert_two(u.day)
+	s += cert_two(u.hour)
+	s += cert_two(u.minute)
+	s += cert_two(u.second)
 	s += 'Z'
 	return der_tlv(0x17, s.bytes())
 }

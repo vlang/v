@@ -262,3 +262,21 @@ fn test_rsa_self_signed_cert() {
 		assert false, 'non-SAN name must fail'
 	}
 }
+
+// test_rsa_self_signed_utc_normalized locks UTC-normalized validity: the
+// DER times must equal local_to_utc of the inputs. CI runs on UTC, where
+// both spellings agree, so this only discriminates on non-UTC hosts —
+// which is exactly the configuration that produced invalid certs before
+// der_utctime normalized.
+fn test_rsa_self_signed_utc_normalized() {
+	key := generate_key(bits: 1024) or { panic('keygen: ${err}') }
+	now := time.now()
+	opts := x509.CertGenOptions{
+		common_name: 'rsa.example.com'
+		not_before:  now
+		not_after:   now.add_days(365)
+	}
+	cert, _ := generate_self_signed(opts, key) or { panic('cert gen: ${err}') }
+	assert cert.not_before.unix() == now.local_to_utc().unix()
+	assert cert.not_after.unix() == now.add_days(365).local_to_utc().unix()
+}
