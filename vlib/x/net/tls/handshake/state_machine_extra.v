@@ -117,8 +117,15 @@ fn (mut h HandshakeCore) dispatch_handshake_message(full_msg []u8) ![]HandshakeM
 // each through dispatch_handshake_message. It stops when the buffer holds an incomplete
 // header or body, or when the core leaves a consuming phase (ServerHello moves out of
 // .wait_sh; Finished moves to .connected).
+//
+// RFC 8446 §5.1: handshake messages MUST NOT span key changes. ServerHello ends the
+// plaintext initial phase; once it transitions the core out of .wait_sh (to .wait_ee
+// for a normal SH; HRR returns to .wait_sh and keeps consuming), no further initial-phase
+// bytes may be consumed. Any reassembly bytes left after ServerHello are trailing
+// plaintext at the key transition and are rejected.
 fn (mut h HandshakeCore) consume_msgs() ![]HandshakeMessage {
 	mut out := []HandshakeMessage{}
+	mut initial_phase_closed_by_sh := false
 	for h.is_consuming_phase() {
 		msg := next_unframed_message(mut h.reassembly) or {
 			return h.fail_with(.decode_error, err)
@@ -126,8 +133,16 @@ fn (mut h HandshakeCore) consume_msgs() ![]HandshakeMessage {
 		if msg.len == 0 {
 			break // header or body still incomplete
 		}
+		was_wait_sh := h.state == .wait_sh
 		out_msgs := h.dispatch_handshake_message(msg) or { return err }
 		out << out_msgs
+		if was_wait_sh && h.state != .wait_sh {
+			initial_phase_closed_by_sh = true
+			break
+		}
+	}
+	if initial_phase_closed_by_sh && h.reassembly.len > 0 {
+		return h.classify_failure(.decode_error, 'handshake: trailing plaintext after ServerHello in initial phase (decode_error)')
 	}
 	return out
 }

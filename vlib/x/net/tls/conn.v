@@ -522,20 +522,19 @@ fn (mut c Conn) do_handshake() ! {
 				if c.hs.state() != .wait_sh {
 					return c.classify_failure(.unexpected_message, 'tls: unencrypted handshake record after ServerHello (unexpected_message)')
 				}
-				// Feed the plaintext record into the core's initial-phase reassembly.
-				// It parses one complete ServerHello (or, on a retry path, a HelloRetryRequest
-				// and synthesizes the outbound retry ClientHello). `msgs` holds those
-				// outbound messages — empty when this record only advanced state,
-				// non-empty when a retry ClientHello must be sent below.
+				// Feed the plaintext record into the core's initial-phase reassembly. RFC 8446 §5.1
+				// permits a handshake message to span records: a partial ServerHello parks in
+				// reassembly and the core stays in .wait_sh; the next record completes it. The core
+				// rejects any trailing plaintext after a complete ServerHello (consume_msgs), so the
+				// record boundary is enforced at the key transition, not at every record.
 				msgs := c.hs.receive_initial_bytes(rec.payload)!
-				// The record must have yielded exactly one complete message (§5.1).
-				backlog := c.hs.reassembly_len()!
-				if backlog != 0 {
-					return c.classify_failure(.unexpected_message, 'tls: misframed ServerHello record: ${backlog} leftover byte(s) (unexpected_message)')
+				if c.hs.state() == .wait_sh && msgs.len == 0 {
+					// Incomplete fragment: the ServerHello (or HRR) spans records. Wait for the
+					// next record to complete it; reassembly backlog is expected here.
+					continue
 				}
-				if msgs.len == 0 && c.hs.state() == .wait_sh {
-					return c.classify_failure(.unexpected_message, 'tls: incomplete ServerHello at record boundary (unexpected_message)')
-				}
+				// ServerHello or HelloRetryRequest complete: any trailing plaintext after it was
+				// already rejected by the core's consume_msgs trailing-plaintext check.
 				if c.hs.state() != .start && c.hs.state() != .wait_sh && c.hs.state() != .failed {
 					// Install once the core actually holds handshake secrets, keyed on
 					// the same readiness the QUIC engine derives from HandshakeState,

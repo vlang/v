@@ -587,7 +587,93 @@ fn test_dial_rejects_trailing_bytes_after_server_hello() ! {
 	if addr.starts_with('ERR') {
 		return error(addr)
 	}
-	expect_dial_failure(addr, 'misframed ServerHello', res_ch)!
+	expect_dial_failure(addr, 'trailing plaintext after ServerHello', res_ch)!
+}
+
+// sh_split_server_hello_script sends the ServerHello split at byte 20 across two
+// adjacent plaintext handshake records. RFC 8446 §5.1 permits a handshake message
+// to span records; the boundary is enforced only when the complete ServerHello has
+// been consumed (at the key change to EncryptedExtensions).
+fn sh_split_server_hello_script(mut c net.TcpConn) ! {
+	ch_rec := scripted_read_record(mut c)!
+	if ch_rec.content_type != .handshake {
+		return error('expected a handshake record first, got ${ch_rec.content_type}')
+	}
+	_ := scripted_read_record(mut c)! // client dummy CCS
+
+	mut srv := fakeserver.new_server() or { return error('fakeserver: ${err.msg()}') }
+	fl := srv.handle_client_hello(ch_rec.payload) or { return error('fakeserver CH: ${err.msg()}') }
+	if fl.is_hrr {
+		return error('unexpected HelloRetryRequest in the default configuration')
+	}
+
+	// Split the plaintext ServerHello at byte 20 into two records.
+	cut := 20
+	if fl.server_hello.len <= cut {
+		return error('ServerHello too small to split at byte 20 (${fl.server_hello.len})')
+	}
+	c.write(new_record(.handshake, fl.server_hello[..cut]).serialize()) or { return err }
+	c.write(new_record(.handshake, fl.server_hello[cut..]).serialize()) or { return err }
+	c.write(change_cipher_spec().serialize()) or { return err }
+
+	// The rest of the flight, one encrypted record per message, under the server handshake keys.
+	skey, siv := srv.server_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	aead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, skey) or { return err }
+	mut senc := new_tls_protection(aead, siv)!
+	nst := srv.new_session_ticket() or { return error('fakeserver NST: ${err.msg()}') }
+	for i, m in fl.rest {
+		mut payload := m.clone()
+		enc := senc.encrypt_record(.handshake, payload)!
+		c.write(enc.serialize()) or { return err }
+	}
+
+	// The client's Finished arrives encrypted under the client handshake keys.
+	cfin_rec := scripted_read_record(mut c)!
+	ckey, civ := srv.client_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	caead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, ckey) or { return err }
+	mut cdec := new_tls_protection(caead, civ)!
+	dec := cdec.decrypt_record(cfin_rec)!
+	if dec.content_type != .handshake {
+		return error('client Finished has inner type ${dec.content_type}, expected handshake')
+	}
+	srv.handle_client_finished(dec.plaintext) or { return error('fakeserver Finished: ${err.msg()}') }
+
+	// Post-handshake: NewSessionTicket and application data under the server application keys.
+	akey, aiv := srv.server_app_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	aaead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, akey) or { return err }
+	mut aenc := new_tls_protection(aaead, aiv)!
+	c.write(aenc.encrypt_record(.handshake, nst)!.serialize()) or { return err }
+	payload := 'hello from fakeserver'.bytes()
+	c.write(aenc.encrypt_record(.application_data, payload)!.serialize()) or { return err }
+}
+
+// test_dial_accepts_split_server_hello_across_records checks that a ServerHello
+// split at byte 20 across two adjacent plaintext handshake records completes the
+// handshake and delivers application data. RFC 8446 §5.1 permits a handshake
+// message to span records; only the completed ServerHello's boundary at the key
+// transition is enforced.
+fn test_dial_accepts_split_server_hello_across_records() ! {
+	addr, res_ch := start_scripted_server(sh_split_server_hello_script)
+	if addr.starts_with('ERR') {
+		return error(addr)
+	}
+	ts := fakeserver.test_trust_store()!
+	mut conn := dial(addr,
+		server_name: fakeserver.server_name
+		hsk_options: handshake.HandshakeOptions{
+			alpn: ['h2']
+		}
+		root_cas:    ts
+		timeout:     10 * time.second
+	)!
+
+	mut buf := []u8{len: 64}
+	n := conn.read(mut buf)!
+	assert buf[..n] == 'hello from fakeserver'.bytes()
+
+	conn.close() or {}
+	res := <-res_ch
+	assert res == 'OK'
 }
 
 // ---- Slow-loris and malformed-name negatives ----

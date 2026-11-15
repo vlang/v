@@ -6,6 +6,7 @@
 // record-key guards.
 module handshake
 
+import tls.fakeserver
 import tls.pki
 import tls.wire
 
@@ -419,6 +420,55 @@ fn test_feed_initial_after_server_hello_refused() ! {
 	assert false
 }
 
+// test_rejects_coalesced_server_hello_and_encrypted_extensions checks that a
+// ServerHello and EncryptedExtensions coalesced into one plaintext initial-phase
+// feed are rejected: EE is handshake-key-protected and must arrive through
+// receive_handshake_bytes, never through receive_initial_bytes (RFC 8446 §5.1).
+// ServerHello must end its plaintext record at the key transition; trailing
+// plaintext after it is a protocol violation.
+fn test_rejects_coalesced_server_hello_and_encrypted_extensions() ! {
+	mut h := new_tls_handshake('example.com', HandshakeOptions{ validator: fixture_validator() })!
+	mut srv := fakeserver.new_server()!
+
+	ch := h.create_client_hello()!
+	fl := srv.handle_client_hello(ch)!
+	assert !fl.is_hrr
+
+	// Coalesce plaintext ServerHello with handshake-key-protected EE into one feed.
+	mut coalesced := fl.server_hello.clone()
+	coalesced << fl.rest[0]
+
+	h.receive_initial_bytes(coalesced) or {
+		assert err.msg().contains('trailing plaintext after ServerHello')
+		assert h.state() == .failed
+		return
+	}
+	assert false, 'coalesced SH||EE in plaintext must be rejected'
+}
+
+// test_rejects_coalesced_server_hello_and_trailing_bytes checks that even a partial
+// handshake message left in reassembly after ServerHello is rejected as trailing
+// plaintext at the key transition (RFC 8446 §5.1).
+fn test_rejects_coalesced_server_hello_and_trailing_bytes() ! {
+	mut h := new_tls_handshake('example.com', HandshakeOptions{ validator: fixture_validator() })!
+	mut srv := fakeserver.new_server()!
+
+	ch := h.create_client_hello()!
+	fl := srv.handle_client_hello(ch)!
+	assert !fl.is_hrr
+
+	// ServerHello plus two stray bytes after it in the same plaintext feed.
+	mut coalesced := fl.server_hello.clone()
+	coalesced << [u8(0xAA), 0xBB]
+
+	h.receive_initial_bytes(coalesced) or {
+		assert err.msg().contains('trailing plaintext after ServerHello')
+		assert h.state() == .failed
+		return
+	}
+	assert false, 'trailing bytes after ServerHello in plaintext must be rejected'
+}
+
 // test_feed_marks_failed_and_refuses_after_protocol_error checks that a parse
 // failure is terminal: the state becomes .failed and later feeds are refused.
 fn test_feed_marks_failed_and_refuses_after_protocol_error() ! {
@@ -550,6 +600,36 @@ fn test_feed_handshake_level_after_connected_refused() ! {
 		return
 	}
 	assert false
+}
+
+// test_rejects_trailing_data_after_server_finished checks that bytes left in
+// reassembly after a complete server Finished are rejected (§5.1): Finished is
+// encrypted under handshake keys; any coalesced bytes mean a post-handshake
+// message was packed into the same record, which a single protection state cannot
+// carry. handle_finished fails closed on reassembly.backlog > 0.
+fn test_rejects_trailing_data_after_server_finished() ! {
+	ts := fakeserver.test_trust_store() or { return error('fakeserver trust store: ${err.msg()}') }
+	mut h := new_tls_handshake(fakeserver.server_name, HandshakeOptions{ validator: pki.new_validator(ts) })!
+	mut srv := fakeserver.new_server()!
+
+	ch := h.create_client_hello()!
+	fl := srv.handle_client_hello(ch)!
+	assert !fl.is_hrr
+
+	h.receive_initial_bytes(fl.server_hello)!
+
+	// Coalesce the full encrypted flight plus trailing bytes after Finished into
+	// one handshake-phase feed. handle_finished must reject the leftover bytes.
+	mut flight := fakeserver.flatten(fl.rest)
+	flight << [u8(0xAA), 0xBB] // trailing bytes after Finished
+
+	h.receive_handshake_bytes(flight) or {
+		assert err.msg().contains('trailing data after server Finished')
+		assert h.state() == .failed
+		assert h.failure_alert() == .decode_error
+		return
+	}
+	assert false, 'trailing data after server Finished must abort the handshake'
 }
 
 // test_traffic_keys_unavailable_before_derivation checks that the accessors
