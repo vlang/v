@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 import v.cmdexec
@@ -8,11 +8,23 @@ fn test_sum_storage_acquires_only_active_literal_and_shares_cleanup() {
 	dir := os.join_path(os.vtmp_dir(), 'sum_storage_cleanup_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	compiler := os.join_path(dir, 'v-ownership')
+	project := os.join_path(os.real_path(dir), 'compiler')
 	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build := os.exec([@VEXE, '-new-compiler', '-cc', cc, '-gc', 'none', '-d', 'ownership', '-path',
-		vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
+	// Release V's frontend before Clang compiles the driver.
+	generate := os.exec([@VEXE, '-new-compiler', '-cc', cc, '-gc', 'none', '-d', 'ownership', '-path',
+		vlib, '-generate-c-project', project, os.join_path(vlib, 'v', 'v.v')])
+	assert generate.exit_code == 0, generate.output
+	build := $if windows {
+		cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
+	} $else {
+		cmdexec.run_in_merged('sh', [os.join_path(project, 'build.sh')], project)
+	}
 	assert build.exit_code == 0, build.output
+	compiler := if os.is_file(os.join_path(project, 'v')) {
+		os.join_path(project, 'v')
+	} else {
+		os.join_path(project, 'v.exe')
+	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'type Choice = int | string | []int | []string | Box[[2]string]
 type Nested = Choice | bool
