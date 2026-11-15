@@ -1,7 +1,6 @@
 module x509
 
 import crypto.ed25519
-import crypto.rand
 
 // ed25519_spki builds a SubjectPublicKeyInfo for a raw Ed25519 public key
 // (RFC 8410): SEQUENCE { SEQUENCE { OID id-Ed25519 }, BIT STRING raw }
@@ -33,11 +32,7 @@ pub fn generate_self_signed_ed25519(opts CertGenOptions, key ed25519.PrivateKey)
 		return error('x509: bad Ed25519 private key length')
 	}
 	raw := key.public_key()
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut name_content := []u8{}
 	if opts.common_name.len > 0 {
@@ -91,11 +86,7 @@ pub fn generate_ca_signed_ed25519(leaf_opts CertGenOptions, leaf_key ed25519.Pri
 	}
 	issuer_der := extract_subject_der(ca_cert.raw) or { return err }
 	leaf_raw := leaf_key.public_key()
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut subj_content := []u8{}
 	if leaf_opts.common_name.len > 0 {

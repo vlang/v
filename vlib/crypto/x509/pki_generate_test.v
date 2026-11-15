@@ -131,3 +131,37 @@ fn test_pki_generate_leaf_has_no_basic_constraints() {
 	assert !leaf_back.is_ca
 	assert !leaf_back.has_basic_constraints
 }
+
+// test_pki_generate_serial_minimal_encoding locks the DER minimality of
+// serial numbers: the previous strip-then-mask logic emitted a redundant
+// leading zero whenever the first random byte was exactly 0x80, which the
+// parser rejects ("invalid serial integer") once every few hundred certs.
+fn test_pki_generate_serial_minimal_encoding() {
+	// Fixed vectors through the normalizer, including the old failure.
+	assert normalize_serial_bytes([u8(0x00), 0x00, 0x12]) == [u8(0x12)]
+	assert normalize_serial_bytes([u8(0x7f)]) == [u8(0x7f)]
+	assert normalize_serial_bytes([u8(0x80)]) == [u8(0x00), 0x80]
+	assert normalize_serial_bytes([u8(0x80), 0x34]) == [u8(0x00), 0x80, 0x34]
+	assert normalize_serial_bytes([u8(0x80), 0xff]) == [u8(0x00), 0x80, 0xff]
+	assert normalize_serial_bytes([u8(0x00)]) == [u8(0x00)]
+	// Property: every fresh serial is minimal and non-negative, so it
+	// always survives our own parser.
+	for _ in 0 .. 64 {
+		s := fresh_serial() or { panic('serial: ${err}') }
+		assert s.len >= 1
+		assert s[0] & 0x80 == 0
+		if s.len > 1 {
+			assert s[0] != 0 || s[1] & 0x80 != 0
+		}
+	}
+	// End to end: issuance round-trips through the parser.
+	nb, na := pki_gen_window()
+	priv := pki_gen_key()
+	_, der := generate_self_signed(CertGenOptions{
+		common_name: 'serial.example.com'
+		dns_names:   ['serial.example.com']
+		not_before:  nb
+		not_after:   na
+	}, priv) or { panic('gen: ${err}') }
+	_ = parse_der(der) or { panic('reparse: ${err}') }
+}

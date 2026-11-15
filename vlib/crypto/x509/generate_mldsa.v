@@ -1,6 +1,5 @@
 module x509
 
-import crypto.rand
 import x.crypto.mldsa
 
 // mldsa_sigalg_oid maps an ML-DSA kind to its signature-algorithm OID
@@ -73,11 +72,7 @@ pub fn generate_self_signed_mldsa(opts CertGenOptions, key mldsa.PrivateKey, kin
 		return error('x509: ML-DSA key/kind mismatch')
 	}
 	raw := key.public_key().bytes()
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut name_content := []u8{}
 	if opts.common_name.len > 0 {
@@ -132,11 +127,7 @@ pub fn generate_ca_signed_mldsa(leaf_opts CertGenOptions, leaf_key mldsa.Private
 	}
 	issuer_der := extract_subject_der(ca_cert.raw) or { return err }
 	leaf_raw := leaf_key.public_key().bytes()
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut subj_content := []u8{}
 	if leaf_opts.common_name.len > 0 {

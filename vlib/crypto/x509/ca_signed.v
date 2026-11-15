@@ -1,7 +1,6 @@
 module x509
 
 import crypto.ecdsa
-import crypto.rand
 
 fn extract_subject_der(cert_der []u8) ![]u8 {
 	cert_tlv, _ := split_tlv(cert_der, 0) or { return err }
@@ -24,11 +23,7 @@ pub fn generate_ca_signed(leaf_opts CertGenOptions, leaf_key ecdsa.PrivateKey, c
 	check_ip_names(leaf_opts.ip_names)!
 	issuer_der := extract_subject_der(ca_cert.raw) or { return err }
 	pub_bytes := ecdsa_pub_uncompressed(leaf_key) or { return err }
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut subj_content := []u8{}
 	if leaf_opts.common_name.len > 0 {

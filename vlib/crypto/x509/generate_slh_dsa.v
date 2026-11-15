@@ -1,6 +1,5 @@
 module x509
 
-import crypto.rand
 import crypto.slh_dsa
 
 // slh_dsa_sigalg_oid maps an SLH-DSA parameter set to its
@@ -54,11 +53,7 @@ pub fn generate_self_signed_slh_dsa(opts CertGenOptions, key slh_dsa.PrivateKey,
 	}
 	slh_dsa_check_wired(params)!
 	raw := key.public_key().bytes()
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut name_content := []u8{}
 	if opts.common_name.len > 0 {
@@ -117,11 +112,7 @@ pub fn generate_ca_signed_slh_dsa(leaf_opts CertGenOptions, leaf_key slh_dsa.Pri
 	slh_dsa_check_wired(ca_params)!
 	issuer_der := extract_subject_der(ca_cert.raw) or { return err }
 	leaf_raw := leaf_key.public_key().bytes()
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut subj_content := []u8{}
 	if leaf_opts.common_name.len > 0 {

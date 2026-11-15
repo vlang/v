@@ -67,11 +67,7 @@ fn cert_name_der(common_name string) []u8 {
 // the matching public key.
 pub fn generate_self_signed(opts x509.CertGenOptions, key PrivateKey) !(x509.Certificate, []u8) {
 	pk := key.public_key()
-	mut serial := rand.bytes(8)!
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] &= 0x7f
+	serial := x509.normalize_serial_bytes(rand.bytes(8)!)
 
 	name_der := cert_name_der(opts.common_name)
 

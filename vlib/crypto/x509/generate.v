@@ -200,6 +200,28 @@ fn bc_ext(is_ca bool) []u8 {
 	return der_seq(content)
 }
 
+// normalize_serial_bytes reduces raw random bytes to minimal DER INTEGER
+// content: redundant leading zeros are stripped, then a zero byte is
+// prepended when the top bit is set. Masking the top bit off instead would
+// leave a redundant leading zero whenever the first byte is exactly 0x80
+// (~1/256 draws); the parser correctly rejects that as non-minimal, so a
+// masked generator fails its own round-trip once every few hundred certs.
+pub fn normalize_serial_bytes(raw []u8) []u8 {
+	mut serial := raw.clone()
+	for serial.len > 1 && serial[0] == 0 {
+		serial = serial[1..].clone()
+	}
+	if serial.len > 0 && serial[0] & 0x80 != 0 {
+		serial.prepend(0)
+	}
+	return serial
+}
+
+// fresh_serial returns 8 random bytes as minimal DER INTEGER content.
+pub fn fresh_serial() ![]u8 {
+	return normalize_serial_bytes(rand.bytes(8) or { return err })
+}
+
 // check_ip_names rejects malformed raw IP SANs (must be 4 or 16 bytes).
 fn check_ip_names(ip_names [][]u8) ! {
 	for ip in ip_names {
@@ -443,11 +465,7 @@ fn ecdsa_sig_alg_for_key(pub_bytes []u8) !(string, string) {
 pub fn generate_self_signed(opts CertGenOptions, key ecdsa.PrivateKey) !(Certificate, []u8) {
 	check_ip_names(opts.ip_names)!
 	pub_bytes := ecdsa_pub_uncompressed(key) or { return err }
-	mut serial := rand.bytes(8) or { return err }
-	for serial.len > 1 && serial[0] == 0 {
-		serial = serial[1..].clone()
-	}
-	serial[0] = serial[0] & 0x7f
+	serial := fresh_serial() or { return err }
 
 	mut name_content := []u8{}
 	if opts.common_name.len > 0 {
