@@ -1880,7 +1880,12 @@ fn (tc &TypeChecker) constraint_comptime_branches(node flat.Node, cond string, c
 	mut branches := []ConstraintBranch{}
 	then_id := if node.children_count > 0 { tc.a.child(&node, 0) } else { flat.NodeId(-1) }
 	else_id := if node.children_count > 1 { tc.a.child(&node, 1) } else { flat.NodeId(-1) }
-	names := constraints.keys().filter(comptime_condition_names(cond, flat.source_type_name(it)))
+	mut names := []u32{}
+	for candidate in constraints.keys() {
+		if comptime_condition_names(cond, flat.source_type_name(candidate)) {
+			names << candidate
+		}
+	}
 	if names.len == 0 {
 		for id in [then_id, else_id] {
 			if int(id) >= 0 {
