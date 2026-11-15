@@ -225,8 +225,11 @@ pub fn parse_certificate_request(body []u8) !([]u16, []u8) {
 		}
 		if etyp == ext_signature_algorithms {
 			edata := body[off..off + elen]
+			if edata.len < 2 {
+				return error('tls: bad signature_algorithms')
+			}
 			slen := ((int(edata[0]) << 8) | int(edata[1])) + 2
-			if edata.len < 2 || slen != edata.len || slen % 2 != 0 {
+			if slen != edata.len || slen % 2 != 0 {
 				return error('tls: bad signature_algorithms')
 			}
 			mut so := 2
@@ -397,9 +400,14 @@ pub fn build_client_auth_messages(cfg Config, req_context []u8, req_schemes []u1
 // validity dates and verified against client_roots/system roots when
 // verify_chain is set (no hostname check applies to client certificates).
 pub fn (mut s ServerHandshake) verify_client_certificate(cert_msg_body []u8, cv_msg_body []u8) ! {
-	chain, _ := parse_client_cert_chain(cert_msg_body) or { return err }
+	chain, ctx := parse_client_cert_chain(cert_msg_body) or { return err }
 	if chain.len == 0 {
 		return error('tls: client certificate required')
+	}
+	// This server always sends an empty request context; anything else is a
+	// non-conformant echo.
+	if ctx.len != 0 {
+		return error('tls: bad certificate request context')
 	}
 	cert_der := chain[0]
 	leaf := x509.parse_der(cert_der) or { return error(error_bad_signature) }

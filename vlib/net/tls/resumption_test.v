@@ -1,5 +1,6 @@
 module tls
 
+import crypto.aes
 import crypto.rand
 import time
 
@@ -57,6 +58,7 @@ fn test_psk_binder_roundtrip() {
 	psk := derive_psk(opened, ononce, suite) or { panic(err) }
 	es := derive_early_secret_with_psk(psk, suite) or { panic(err) }
 	bk := binder_key_for(es, suite) or { panic(err) }
+	offer := encode_psk_offer(blob, u32(1000), suite)
 	ch := ClientHello{
 		legacy_version:      tls_version_1_3
 		random:              []u8{len: 32, init: 7}
@@ -65,10 +67,13 @@ fn test_psk_binder_roundtrip() {
 		compression_methods: [u8(0)]
 		extensions:          [
 			Extension{ typ: ext_psk_key_exchange_modes, data: encode_psk_modes() },
-			Extension{ typ: ext_pre_shared_key, data: encode_psk_offer(blob, u32(1000), suite) },
+			Extension{ typ: ext_pre_shared_key, data: offer },
 		]
 	}
-	trunc := truncated_ch_for_binder(ch) or { panic(err) }
+	ch_msg := encode_handshake_message(.client_hello, encode_client_hello(ch)!) or {
+		panic(err)
+	}
+	trunc := binder_prefix(ch_msg, offer) or { panic(err) }
 	th := transcript_hash_for_suite(trunc, suite)
 	binder := compute_binder(bk, th, suite) or { panic(err) }
 	assert verify_binder(bk, th, binder, suite)
@@ -144,25 +149,32 @@ fn test_psk_server_flight() { // Full ticket issued by this server, offered back
 	assert n3 == 5
 }
 
-fn serve_resume_twice(mut l Listener) {
+fn serve_resume_twice(mut l Listener, ch chan bool) {
 	for _ in 0 .. 2 {
-		mut conn := l.accept() or { return }
+		mut conn := l.accept() or {
+			ch <- false
+			continue
+		}
+		resumed := conn.resumed()
 		mut buf := []u8{len: 4}
 		n := conn.read(mut buf) or {
+			ch <- false
 			conn.close() or {}
-			return
+			continue
 		}
 		if n > 0 {
 			conn.write(buf[..n]) or {}
 		}
 		conn.close() or {}
+		ch <- resumed
 	}
 }
 
 fn test_resumption_loopback() {
 	mut l := listen(Config{ verify: false }) or { panic(err) }
 	port := l.addr() or { panic(err) }.port() or { panic(err) }
-	server := spawn serve_resume_twice(mut l)
+	ch := chan bool{cap: 2}
+	server := spawn serve_resume_twice(mut l, ch)
 	mut c1 := dial('127.0.0.1', port, Config{ verify: false, server_name: 'localhost' }) or {
 		panic(err)
 	}
@@ -173,6 +185,7 @@ fn test_resumption_loopback() {
 	n := c1.read(mut buf) or { panic(err) }
 	assert n == 4
 	assert buf == 'ping'.bytes()
+	assert <-ch == false
 	// The first read consumed the post-handshake ticket, so resumption
 	// state is available without ever hanging a ticket-less handshake.
 	st := c1.session_state() or { panic('no ticket received') }
@@ -191,9 +204,190 @@ fn test_resumption_loopback() {
 	n2 := c2.read(mut buf2) or { panic(err) }
 	assert n2 == 4
 	assert buf2 == 'pong'.bytes()
+	assert <-ch == true
 	c2.close() or {}
 	l.close() or {}
 	_ = server
+}
+
+fn test_psk_fallback_branches() {
+	suite := CipherSuite.tls_aes_128_gcm_sha256
+	mut server := new_server_handshake(.off) or { panic(err) }
+	master := rand.bytes(32) or { panic(err) }
+	tnonce := rand.bytes(8) or { panic(err) }
+	age_add := u32(0x0a0b0c0d)
+	blob := seal_ticket(master, suite, age_add, tnonce, server.ticket_key) or { panic(err) }
+	psk := derive_psk(master, tnonce, suite) or { panic(err) }
+	st := SessionState{
+		ticket:       blob.clone()
+		psk:          psk
+		suite:        suite
+		created_unix: time.now().unix()
+		lifetime:     ticket_lifetime
+		age_add:      age_add
+	}
+	new_offering_client := fn (s SessionState) ClientHello {
+		mut chs := new_client_handshake('localhost', []string{}, .off, []CipherSuite{}) or {
+			panic(err)
+		}
+		chs.resume_offer = s
+		ch_msg := chs.build_client_hello() or { panic(err) }
+		parsed, _ := parse_handshake_message(ch_msg) or { panic(err) }
+		return parse_client_hello(parsed.body) or { panic(err) }
+	}
+	_ = new_offering_client
+	// No CertificateRequest is sent on a resumed handshake even when the
+	// server wants client certs.
+	mut vserver := new_server_handshake(.off) or { panic(err) }
+	vserver.ticket_key = server.ticket_key.clone()
+	vserver.verify_client = true
+	mut chs := new_client_handshake('localhost', []string{}, .off, []CipherSuite{}) or {
+		panic(err)
+	}
+	chs.resume_offer = st
+	ch_msg := chs.build_client_hello() or { panic(err) }
+	flight := vserver.process_client_hello(ch_msg) or { panic(err) }
+	assert vserver.accepted_psk
+	mut types := []HandshakeType{}
+	mut off := 0
+	for off < flight.len {
+		parsed, n := parse_handshake_message(flight[off..]) or { panic(err) }
+		types << parsed.typ
+		off += n
+	}
+	assert types == [HandshakeType.server_hello, .encrypted_extensions, .finished]
+	// A skewed ticket age falls back to a full handshake.
+	mut chs_old := new_client_handshake('localhost', []string{}, .off, []CipherSuite{}) or {
+		panic(err)
+	}
+	mut st_old := st
+	st_old.created_unix = time.now().unix() - 100000
+	chs_old.resume_offer = st_old
+	old_age_msg := chs_old.build_client_hello() or { panic(err) }
+	mut server_old := new_server_handshake(.off) or { panic(err) }
+	server_old.ticket_key = server.ticket_key.clone()
+	_ = server_old.process_client_hello(old_age_msg) or { panic(err) }
+	assert !server_old.accepted_psk
+	// A multi-identity offer is rejected.
+	parsed_full, _ := parse_handshake_message(ch_msg) or { panic(err) }
+	ch0 := parse_client_hello(parsed_full.body) or { panic(err) }
+	mut ident := []u8{}
+	for _ in 0 .. 2 {
+		ident << u8(st.ticket.len >> 8)
+		ident << u8(st.ticket.len & 0xff)
+		ident << st.ticket
+		ident << u8(0)
+		ident << u8(0)
+		ident << u8(0)
+		ident << u8(0)
+	}
+	mut multi := []u8{}
+	multi << u8(ident.len >> 8)
+	multi << u8(ident.len & 0xff)
+	multi << ident
+	blen := 2 * (1 + cipher_suite_hash_len(suite))
+	multi << u8(blen >> 8)
+	multi << u8(blen & 0xff)
+	for _ in 0 .. 2 {
+		multi << u8(cipher_suite_hash_len(suite))
+		for _ in 0 .. cipher_suite_hash_len(suite) {
+			multi << u8(0)
+		}
+	}
+	ok, _ := server.try_accept_psk(ch_msg, multi)
+	assert !ok
+	// An expired ticket (sealed box with an old timestamp) is rejected.
+	mut plain := []u8{}
+	plain << u8(int(suite) >> 8)
+	plain << u8(int(suite))
+	created_old := time.now().unix() - 100000
+	for i in 0 .. 8 {
+		plain << u8((u64(created_old) >> (8 * (7 - i))) & 0xff)
+	}
+	plain << u8(age_add >> 24)
+	plain << u8(age_add >> 16)
+	plain << u8(age_add >> 8)
+	plain << u8(age_add)
+	plain << u8(tnonce.len)
+	plain << tnonce
+	plain << u8(master.len)
+	plain << master
+	gcm := aes.new_aes_gcm(server.ticket_key)!
+	tn := rand.bytes(12)!
+	ct := gcm.encrypt(plain, tn, []u8{})!
+	mut oldblob := []u8{}
+	oldblob << tn
+	oldblob << ct
+	mut exts := ch0.extensions.clone()
+	exts[exts.len - 1] = Extension{
+		typ:  ext_pre_shared_key
+		data: encode_psk_offer(oldblob, u32(100), suite)
+	}
+	ch_old := ClientHello{
+		legacy_version:      ch0.legacy_version
+		random:              ch0.random.clone()
+		session_id:          ch0.session_id.clone()
+		cipher_suites:       ch0.cipher_suites.clone()
+		compression_methods: ch0.compression_methods.clone()
+		extensions:          exts
+	}
+	old_msg := encode_handshake_message(.client_hello, encode_client_hello(ch_old)!)!
+	mut server_exp := new_server_handshake(.off) or { panic(err) }
+	server_exp.ticket_key = server.ticket_key.clone()
+	_ = server_exp.process_client_hello(old_msg) or { panic(err) }
+	assert !server_exp.accepted_psk
+	// Overlong ticket material is rejected at encode time.
+	mut failed := false
+	encode_new_session_ticket(0, 0, []u8{len: 300}, []u8{len: 1}) or {
+		failed = true
+		[]u8{}
+	}
+	assert failed
+	mut failed2 := false
+	seal_ticket([]u8{}, suite, 0, tnonce, server.ticket_key) or {
+		failed2 = true
+		[]u8{}
+	}
+	assert failed2
+}
+
+fn test_psk_offer_with_unknown_suite() {
+	// Peers (e.g. browsers) send GREASE/unknown cipher suites. The binder
+	// covers the raw wire prefix, so unknown suites must not break resumption.
+	suite := CipherSuite.tls_aes_128_gcm_sha256
+	mut server := new_server_handshake(.off) or { panic(err) }
+	master := rand.bytes(32) or { panic(err) }
+	tnonce := rand.bytes(8) or { panic(err) }
+	age_add := u32(0x0a0b0c0d)
+	blob := seal_ticket(master, suite, age_add, tnonce, server.ticket_key) or { panic(err) }
+	psk := derive_psk(master, tnonce, suite) or { panic(err) }
+	st := SessionState{
+		ticket:       blob.clone()
+		psk:          psk
+		suite:        suite
+		created_unix: time.now().unix()
+		lifetime:     ticket_lifetime
+		age_add:      age_add
+	}
+	mut offered := [CipherSuite.tls_aes_128_gcm_sha256]
+	offered << unsafe { CipherSuite(0x0a0a) }
+	mut chs := new_client_handshake('localhost', []string{}, .off, offered) or { panic(err) }
+	chs.resume_offer = st
+	ch_msg := chs.build_client_hello() or { panic(err) }
+	// Sanity: the unknown suite really is on the wire, and parsing drops it.
+	parsed, _ := parse_handshake_message(ch_msg) or { panic(err) }
+	pch := parse_client_hello(parsed.body) or { panic(err) }
+	assert pch.cipher_suites == [CipherSuite.tls_aes_128_gcm_sha256]
+	flight := server.process_client_hello(ch_msg) or { panic(err) }
+	assert server.accepted_psk
+	mut types := []HandshakeType{}
+	mut off := 0
+	for off < flight.len {
+		p, n := parse_handshake_message(flight[off..]) or { panic(err) }
+		types << p.typ
+		off += n
+	}
+	assert types == [HandshakeType.server_hello, .encrypted_extensions, .finished]
 }
 
 fn hex_to_bytes(s string) []u8 {
@@ -238,7 +432,12 @@ fn test_binder_openssl_vector() {
 	psk := derive_psk(res_master, tnonce, suite) or { panic(err) }
 	es := derive_early_secret_with_psk(psk, suite) or { panic(err) }
 	bk := binder_key_for(es, suite) or { panic(err) }
-	trunc := truncated_ch_for_binder(ch) or { panic(err) }
+	trunc := binder_prefix(raw, psk_data) or { panic(err) }
 	assert trunc.len == raw.len - 35
 	assert verify_binder(bk, transcript_hash_for_suite(trunc, suite), offered, suite)
+	// Negative controls: a flipped binder and a wrong-length binder fail.
+	mut bad := offered.clone()
+	bad[0] ^= u8(1)
+	assert !verify_binder(bk, transcript_hash_for_suite(trunc, suite), bad, suite)
+	assert !verify_binder(bk, transcript_hash_for_suite(trunc, suite), bad[..16], suite)
 }

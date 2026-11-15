@@ -202,7 +202,9 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 		server.ecdsa_pub = epriv.public_key()!
 	}
 	server.cert_chain = chain
-	server.ticket_key = cfg.ticket_key.clone()
+	if cfg.ticket_key.len == 32 {
+		server.ticket_key = cfg.ticket_key.clone()
+	}
 	server.verify_client = cfg.verify_client
 	server.verify_chain = cfg.verify_chain
 	server.client_roots = cfg.ca_store
@@ -397,7 +399,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		}
 	}
 	if has_psk_ext && psk_modes_ok && s.ticket_key.len == 32 {
-		ok, es_psk := s.try_accept_psk(ch, psk_data)
+		ok, es_psk := s.try_accept_psk(ch_msg, psk_data)
 		if ok {
 			s.accepted_psk = true
 			s.early_secret_psk = es_psk
@@ -410,11 +412,11 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	mut offered_sigs := []u16{}
 	for e in ch.extensions {
 		if e.typ == ext_signature_algorithms {
-			if e.data.len < 1 {
+			if e.data.len < 2 {
 				return error('tls: bad signature_algorithms')
 			}
 			slen := (int(e.data[0]) << 8) | int(e.data[1])
-			if e.data.len < 2 || slen + 2 != e.data.len || slen % 2 != 0 {
+			if slen + 2 != e.data.len || slen % 2 != 0 {
 				return error('tls: bad signature_algorithms')
 			}
 			mut so := 2
@@ -611,8 +613,10 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 // try_accept_psk evaluates a single-identity PSK offer against the server
 // ticket key. It returns the PSK early secret on success; any failure
 // (bad ticket, wrong suite, stale age, bad binder) returns false so the
-// handshake falls back to certificates.
-fn (s &ServerHandshake) try_accept_psk(ch ClientHello, psk_data []u8) (bool, []u8) {
+// handshake falls back to certificates. ch_msg is the raw ClientHello wire
+// bytes: the binder covers the raw prefix, which must be hashed verbatim
+// (re-encoding would drop unknown suites/GREASE and break interop).
+fn (s &ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u8) {
 	ids, binders := parse_psk_offer(psk_data) or { return false, []u8{} }
 	if ids.len != 1 || binders.len != 1 {
 		return false, []u8{}
@@ -631,7 +635,7 @@ fn (s &ServerHandshake) try_accept_psk(ch ClientHello, psk_data []u8) (bool, []u
 	psk := derive_psk(master, tnonce, tsuite) or { return false, []u8{} }
 	es_psk := derive_early_secret_with_psk(psk, tsuite) or { return false, []u8{} }
 	bk := binder_key_for(es_psk, tsuite) or { return false, []u8{} }
-	trunc := truncated_ch_for_binder(ch) or { return false, []u8{} }
+	trunc := binder_prefix(ch_msg, psk_data) or { return false, []u8{} }
 	th := transcript_hash_for_suite(trunc, tsuite)
 	if !verify_binder(bk, th, binders[0], tsuite) {
 		return false, []u8{}

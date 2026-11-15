@@ -140,7 +140,7 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 		// Binder key from the PSK early secret ("res binder").
 		es_psk := derive_early_secret_with_psk(st.psk, st.suite) or { return err }
 		bk := binder_key_for(es_psk, st.suite) or { return err }
-		trunc := truncated_ch_for_binder(ch) or { return err }
+		trunc := binder_prefix(msg, exts[exts.len - 1].data) or { return err }
 		th := transcript_hash_for_suite(trunc, st.suite)
 		binder := compute_binder(bk, th, st.suite) or { return err }
 		// Patch the trailing pre_shared_key extension with the real binder.

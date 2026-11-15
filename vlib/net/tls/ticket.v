@@ -353,19 +353,14 @@ pub fn patch_psk_binder(ext_data []u8, binder []u8) ![]u8 {
 	return out
 }
 
-// truncated_ch_for_binder rebuilds the exact wire prefix a PSK binder covers:
-// the full ClientHello handshake message with the binders list chopped off
-// the end, length fields untouched (RFC 8446 §4.2.11.2 as implemented by
-// OpenSSL and peers: the transcript hashes the raw prefix, not a zeroed
-// copy). The re-encoding must be byte-exact; the cut length comes from the
-// identities vector so multi-entry offers truncate correctly too.
-pub fn truncated_ch_for_binder(ch ClientHello) ![]u8 {
-	mut psk_data := []u8{}
-	for e in ch.extensions {
-		if e.typ == ext_pre_shared_key {
-			psk_data = e.data.clone()
-		}
-	}
+// binder_prefix returns the exact wire bytes a PSK binder covers: the full
+// ClientHello handshake message with the binders list chopped off the end,
+// length fields untouched (RFC 8446 §4.2.11.2 as implemented by OpenSSL and
+// peers). The cut length comes from the identities vector in the offered
+// pre_shared_key extension. The input must be the raw wire bytes: unknown
+// cipher suites and GREASE values elsewhere in the message must be preserved
+// bit-for-bit, which re-encoding a parsed message would not do.
+pub fn binder_prefix(full_msg []u8, psk_data []u8) ![]u8 {
 	if psk_data.len < 2 {
 		return error('tls: no psk offer to truncate')
 	}
@@ -373,12 +368,11 @@ pub fn truncated_ch_for_binder(ch ClientHello) ![]u8 {
 	if 2 + ids_len > psk_data.len {
 		return error('tls: truncated psk identities')
 	}
-	full := encode_handshake_message(.client_hello, encode_client_hello(ch)!)!
 	cut := psk_data.len - (2 + ids_len)
-	if cut <= 0 || cut >= full.len {
+	if cut <= 0 || cut >= full_msg.len {
 		return error('tls: bad psk binder truncation')
 	}
-	return full[..full.len - cut].clone()
+	return full_msg[..full_msg.len - cut].clone()
 }
 
 // build_new_session_ticket derives the resumption master secret and seals one
