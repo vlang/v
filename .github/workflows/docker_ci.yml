@@ -69,7 +69,7 @@ jobs:
             vlib/gg/draw_rect_filled_test.v
           do
             echo "Testing musl-native gg: $test_file"
-            ./v -cc gcc -gc none -d use_bundled_libgc -no-retry-compilation -silent "$test_file"
+            ./v -new-compiler -cc gcc -gc none -d use_bundled_libgc -no-retry-compilation -silent "$test_file"
           done
 
   docker-alpine-musl-tcc:
