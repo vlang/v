@@ -3,6 +3,7 @@ module tls
 import crypto.ecdsa
 import crypto.rand
 import crypto.pem
+import crypto.slh_dsa
 import crypto.x509
 import crypto.subtle
 import x.crypto.curve25519
@@ -21,6 +22,12 @@ pub enum ServerKeyKind {
 	mldsa_44
 	mldsa_65
 	mldsa_87
+	slh_shake_128s
+	slh_shake_128f
+	slh_shake_192s
+	slh_shake_192f
+	slh_shake_256s
+	slh_shake_256f
 }
 
 // ServerHandshake holds state for a TLS 1.3 server handshake.
@@ -36,6 +43,7 @@ pub mut:
 	ecdsa_pub      ecdsa.PublicKey
 	rsa_priv       RsaPrivateKey
 	mldsa_priv     mldsa.PrivateKey
+	slh_dsa_priv   slh_dsa.PrivateKey
 	cert_chain     [][]u8
 	cv_scheme      u16
 	client_random  []u8
@@ -50,6 +58,21 @@ pub mut:
 	// PSK resumption state: set when the client offered a valid ticket.
 	accepted_psk     bool
 	early_secret_psk []u8
+	// 0-RTT state (RFC 8446 §4.2.10, §7.5). offered_early_data mirrors the
+	// ClientHello early_data extension; accepted_early_data is set only when
+	// resumption was accepted and Config.max_early_data is non-zero, in
+	// which case EncryptedExtensions carries early_data with the limit and
+	// early_traffic decrypts the 0-RTT records before EndOfEarlyData.
+	max_early_data      u32
+	offered_early_data  bool
+	accepted_early_data bool
+	early_traffic       TrafficKeys
+	has_early_traffic   bool
+	// early_base_th captures the transcript hash through server Finished
+	// before the client's EndOfEarlyData extends the transcript (same role
+	// as auth_base_th for client auth): application secrets bind only the
+	// flight through server Finished (RFC 8446 §7.1).
+	early_base_th []u8
 	// verify_client requests a client certificate (mTLS). Client certs are
 	// verified against client_roots/system roots when verify_chain is set.
 	verify_client bool
@@ -178,6 +201,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 		if cfg.ticket_key.len == 32 {
 			server.ticket_key = cfg.ticket_key.clone()
 		}
+		server.max_early_data = cfg.max_early_data
 		server.verify_client = cfg.verify_client
 		server.verify_chain = cfg.verify_chain
 		server.client_roots = cfg.ca_store
@@ -197,6 +221,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	server.key_kind = keys.kind
 	server.rsa_priv = keys.rsa_priv
 	server.mldsa_priv = keys.mldsa_priv
+	server.slh_dsa_priv = keys.slh_dsa_priv
 	if epriv := keys.ecdsa_priv {
 		server.ecdsa_priv = epriv
 		server.ecdsa_pub = epriv.public_key()!
@@ -205,6 +230,7 @@ fn new_server_handshake_with_config(pq_mode PostQuantumMode, cfg Config) !Server
 	if cfg.ticket_key.len == 32 {
 		server.ticket_key = cfg.ticket_key.clone()
 	}
+	server.max_early_data = cfg.max_early_data
 	server.verify_client = cfg.verify_client
 	server.verify_chain = cfg.verify_chain
 	server.client_roots = cfg.ca_store
@@ -280,10 +306,51 @@ fn parse_mldsa_private_key(der []u8, want mldsa.Kind) !mldsa.PrivateKey {
 	return mldsa.PrivateKey.from_seed(seed, want)
 }
 
+// slh_dsa_alg_oid_matches reports whether an AlgorithmIdentifier value is
+// exactly the OID for the expected SLH-DSA parameter set with no parameters.
+fn slh_dsa_alg_oid_matches(alg_val []u8, want slh_dsa.ParameterSet) bool {
+	return der_is_single_oid(alg_val, slh_dsa_sigalg_content(want))
+}
+
+// parse_slh_dsa_private_key loads an SLH-DSA private key from PKCS#8 DER.
+// OpenSSL encodes the privateKey OCTET STRING as the raw 4n-byte private
+// key (SK.seed || SK.prf || PK.seed || PK.root); there is no seed-only
+// form, so only the full-length encoding is accepted.
+fn parse_slh_dsa_private_key(der []u8, want slh_dsa.ParameterSet) !slh_dsa.PrivateKey {
+	p := slh_dsa.get_params(want)
+	tag, content, consumed := der_tlv(der)!
+	if tag != 0x30 || consumed != der.len {
+		return error('tls: expected SEQUENCE for SLH-DSA private key')
+	}
+	mut off := 0
+	vtag, _, vn := der_tlv(content[off..])!
+	if vtag != 0x02 {
+		return error('tls: invalid PKCS#8 version')
+	}
+	off += vn
+	atag, alg_val, an := der_tlv(content[off..])!
+	if atag != 0x30 {
+		return error('tls: invalid PKCS#8 algorithm')
+	}
+	if !slh_dsa_alg_oid_matches(alg_val, want) {
+		return error('tls: SLH-DSA key algorithm mismatch')
+	}
+	off += an
+	ktag, inner, _ := der_tlv(content[off..])!
+	if ktag != 0x04 {
+		return error('tls: invalid PKCS#8 private key')
+	}
+	if inner.len != p.sk_len() {
+		return error('tls: invalid SLH-DSA private key length')
+	}
+	return slh_dsa.private_key_from_bytes(want, inner)
+}
+
 // select_cv_scheme picks the CertificateVerify scheme for a server key.
 // select_cv_scheme intersects the client's offer with the key type: ECDSA
 // keys use their curve's scheme, ML-DSA keys use their variant's scheme,
-// RSA prefers PSS over PKCS#1 v1.5.
+// SLH-DSA keys use their parameter set's scheme, RSA prefers PSS over
+// PKCS#1 v1.5.
 pub fn select_cv_scheme(offered []u16, kind ServerKeyKind) !u16 {
 	match kind {
 		.ecdsa_p256 {
@@ -314,6 +381,36 @@ pub fn select_cv_scheme(offered []u16, kind ServerKeyKind) !u16 {
 		.mldsa_87 {
 			if u16(0x0906) in offered {
 				return u16(0x0906)
+			}
+		}
+		.slh_shake_128s {
+			if u16(0x0917) in offered {
+				return u16(0x0917)
+			}
+		}
+		.slh_shake_128f {
+			if u16(0x0918) in offered {
+				return u16(0x0918)
+			}
+		}
+		.slh_shake_192s {
+			if u16(0x0919) in offered {
+				return u16(0x0919)
+			}
+		}
+		.slh_shake_192f {
+			if u16(0x091a) in offered {
+				return u16(0x091a)
+			}
+		}
+		.slh_shake_256s {
+			if u16(0x091b) in offered {
+				return u16(0x091b)
+			}
+		}
+		.slh_shake_256f {
+			if u16(0x091c) in offered {
+				return u16(0x091c)
 			}
 		}
 		.rsa {
@@ -403,6 +500,21 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		if ok {
 			s.accepted_psk = true
 			s.early_secret_psk = es_psk
+		}
+	}
+	// 0-RTT: note the early_data offer; acceptance is decided below once the
+	// PSK outcome is known (replay check included).
+	s.offered_early_data = ch_offers_early_data(ch)
+	if s.accepted_psk && s.offered_early_data {
+		// Derive the 0-RTT keys from the full ClientHello (with binders),
+		// the same transcript the client used.
+		ch_hash := transcript_hash_for_suite(ch_msg, s.suite)
+		early_secret := derive_client_early_traffic_secret(s.early_secret_psk, ch_hash,
+			s.suite) or { return err }
+		s.early_traffic = derive_traffic_keys(early_secret, s.suite) or { return err }
+		s.has_early_traffic = true
+		if s.max_early_data > 0 {
+			s.accepted_early_data = true
 		}
 	}
 	// Select the CertificateVerify scheme: the client's signature_algorithms
@@ -545,7 +657,22 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	hs := derive_handshake_secrets_for_suite(es, shared, th, s.suite) or { return err }
 	s.handshake_keys = hs
 
-	ee_body := []u8{len: 2}
+	ee_body := if s.accepted_early_data {
+		mut ee_exts := []u8{}
+		size_data := encode_early_data_size(s.max_early_data)
+		ee_exts << u8(ext_early_data >> 8)
+		ee_exts << u8(ext_early_data)
+		ee_exts << u8(size_data.len >> 8)
+		ee_exts << u8(size_data.len)
+		ee_exts << size_data
+		mut body := []u8{}
+		body << u8(ee_exts.len >> 8)
+		body << u8(ee_exts.len)
+		body << ee_exts
+		body
+	} else {
+		[]u8{len: 2}
+	}
 	ee_msg := encode_handshake_message(.encrypted_extensions, ee_body)!
 	s.transcript << ee_msg
 
@@ -628,6 +755,11 @@ fn (s &ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u8) 
 	if tsuite != s.suite {
 		return false, []u8{}
 	}
+	// Single-use tickets: a replayed ticket falls back to a full handshake
+	// instead of resuming (fail closed for the 0-RTT data bound to it).
+	if is_ticket_used(tnonce) {
+		return false, []u8{}
+	}
 	now := time.now().unix()
 	if now < created - 10 || now - created > i64(ticket_lifetime) + 10 {
 		return false, []u8{}
@@ -645,6 +777,7 @@ fn (s &ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u8) 
 	if d > 10000 && d < u32(0xffffffff) - 10000 {
 		return false, []u8{}
 	}
+	mark_ticket_used(tnonce)
 	return true, es_psk
 }
 
@@ -653,7 +786,7 @@ fn (s &ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u8) 
 // process_client_hello (see sign_cv_with).
 fn (s &ServerHandshake) sign_certificate_verify(content []u8) ![]u8 {
 	return sign_cv_with(s.key_kind, s.cv_scheme, s.ecdsa_priv, s.rsa_priv, s.mldsa_priv,
-		content)
+		s.slh_dsa_priv, content)
 }
 
 // verify_client_finished verifies the client Finished against the handshake transcript.
@@ -676,8 +809,15 @@ pub fn (mut s ServerHandshake) verify_client_finished(fin_msg []u8) ! {
 		return error('tls: client Finished mismatch')
 	}
 	// Application secrets bind the transcript only through server Finished
-	// (RFC 8446 §7.1); with client auth the transcript has grown past that.
-	app_th := if s.auth_base_th.len > 0 { s.auth_base_th } else { th }
+	// (RFC 8446 §7.1); with client auth the transcript has grown past that,
+	// and with accepted 0-RTT the client's EndOfEarlyData sits between.
+	app_th := if s.auth_base_th.len > 0 {
+		s.auth_base_th
+	} else if s.early_base_th.len > 0 {
+		s.early_base_th
+	} else {
+		th
+	}
 	as_ := derive_application_secrets_for_suite(s.handshake_keys.handshake_secret, app_th,
 		s.suite) or { return err }
 	s.app_keys = as_

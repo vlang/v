@@ -1,15 +1,18 @@
 // net.tls is an opt-in, pure-V TLS 1.3 (RFC 8446) implementation for TCP.
 // Build with -d pure_tls to enable; otherwise net.ssl is used.
-// Pure-V, TLS 1.3 only, ECDSA P-256/P-384/P-521, ML-DSA-44/65/87 and RSA
-// leaves, RSA/ECDSA/ML-DSA direct-root chain verification, trust roots that
+// Pure-V, TLS 1.3 only, ECDSA P-256/P-384/P-521, ML-DSA-44/65/87,
+// SLH-DSA-SHAKE-128s/128f/192s/192f/256s/256f and RSA
+// leaves, RSA/ECDSA/ML-DSA/SLH-DSA direct-root chain verification, trust roots that
 // resolve on every OS (explicit store, SSL_CERT_FILE/DIR, Unix paths,
 // embedded Mozilla bundle). X25519MLKEM768 hybrid key exchange (the
 // x.crypto.mlkem library also implements raw 512/1024 variants, which net.tls
 // does not negotiate). CertificateVerify schemes:
-// ecdsa 0x0403, 0x0503, 0x0603, mldsa 0x0904/0x0905/0x0906, rsa_pss_rsae
+// ecdsa 0x0403, 0x0503, 0x0603, mldsa 0x0904/0x0905/0x0906,
+// slh-dsa-shake 0x0917/0x0918/0x0919/0x091a/0x091b/0x091c, rsa_pss_rsae
 // 0x0804/0x0805/0x0806, rsa_pkcs1 0x0401/0x0501/0x0601. Stateless session
-// tickets with psk_dhe_ke resumption (no 0-RTT), mTLS via CertificateRequest
-// when Config.verify_client is set. No TLS 1.2, no DTLS.
+// tickets with psk_dhe_ke resumption plus single-use 0-RTT early data
+// (RFC 8446 §4.2.10) when Config.max_early_data is set, mTLS via
+// CertificateRequest when Config.verify_client is set. No TLS 1.2, no DTLS.
 // Cipher suites: AES-128-GCM-SHA256, AES-256-GCM-SHA384 (SHA-384 schedule)
 // and ChaCha20-Poly1305-SHA256, negotiated by server preference
 // (AES-128-GCM first).
@@ -210,6 +213,19 @@ pub mut:
 	// Resumption ticket from a previous connection (client side). When set,
 	// the client offers it as a PSK with psk_dhe_ke.
 	resume_from ?SessionState
+	// 0-RTT allowance in bytes (both sides, default 0 = disabled). The
+	// client offers early data only when resuming with a non-zero limit;
+	// the server accepts (EncryptedExtensions early_data carrying the
+	// limit) only for a resumed handshake when its own limit is non-zero.
+	// Servers should keep this modest: accepted early plaintext is buffered
+	// in memory before the handshake completes.
+	max_early_data u32
+	// Client-side 0-RTT payload, sealed with the early traffic keys and
+	// sent optimistically after the ClientHello when early data is offered.
+	// Must fit within max_early_data; ignored by servers. Tampered early
+	// records abort the handshake; a server that rejects early data
+	// discards them and continues with the regular handshake.
+	early_data []u8
 	// Request a client certificate (server side, mTLS). The client cert is
 	// verified against ca_store/system roots when verify_chain is set.
 	verify_client bool

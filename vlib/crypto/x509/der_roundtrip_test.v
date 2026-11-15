@@ -27,6 +27,18 @@ fn test_der_roundtrip_self_signed() {
 		MlDsa44PublicKey { panic('expected p256') }
 		MlDsa65PublicKey { panic('expected p256') }
 		MlDsa87PublicKey { panic('expected p256') }
+		SlhDsaShake128sPublicKey { panic('expected p256') }
+		SlhDsaShake128fPublicKey { panic('expected p256') }
+		SlhDsaShake192sPublicKey { panic('expected p256') }
+		SlhDsaShake192fPublicKey { panic('expected p256') }
+		SlhDsaShake256sPublicKey { panic('expected p256') }
+		SlhDsaShake256fPublicKey { panic('expected p256') }
+		SlhDsaSha2128sPublicKey { panic('expected p256') }
+		SlhDsaSha2128fPublicKey { panic('expected p256') }
+		SlhDsaSha2192sPublicKey { panic('expected p256') }
+		SlhDsaSha2192fPublicKey { panic('expected p256') }
+		SlhDsaSha2256sPublicKey { panic('expected p256') }
+		SlhDsaSha2256fPublicKey { panic('expected p256') }
 		RsaPublicKey { panic('expected ecdsa') }
 	}
 	msg := 'hello'.bytes()
@@ -42,6 +54,18 @@ fn test_der_roundtrip_self_signed() {
 		MlDsa44PublicKey { panic('expected p256') }
 		MlDsa65PublicKey { panic('expected p256') }
 		MlDsa87PublicKey { panic('expected p256') }
+		SlhDsaShake128sPublicKey { panic('expected p256') }
+		SlhDsaShake128fPublicKey { panic('expected p256') }
+		SlhDsaShake192sPublicKey { panic('expected p256') }
+		SlhDsaShake192fPublicKey { panic('expected p256') }
+		SlhDsaShake256sPublicKey { panic('expected p256') }
+		SlhDsaShake256fPublicKey { panic('expected p256') }
+		SlhDsaSha2128sPublicKey { panic('expected p256') }
+		SlhDsaSha2128fPublicKey { panic('expected p256') }
+		SlhDsaSha2192sPublicKey { panic('expected p256') }
+		SlhDsaSha2192fPublicKey { panic('expected p256') }
+		SlhDsaSha2256sPublicKey { panic('expected p256') }
+		SlhDsaSha2256fPublicKey { panic('expected p256') }
 		RsaPublicKey { panic('expected ecdsa') }
 	}
 	mut bad := der.clone()

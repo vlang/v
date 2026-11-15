@@ -35,6 +35,70 @@ pub:
 	raw []u8 // 2592 bytes
 }
 
+// SLH-DSA public keys hold the raw 2n-byte public key
+// (PK.seed || PK.root) in the BIT STRING with absent parameters
+// (same shape as ML-DSA). SHAKE sizes: 128s/f 32, 192s/f 48,
+// 256s/f 64 bytes; SHA2 sizes match their SHAKE counterparts.
+pub struct SlhDsaSha2128sPublicKey {
+pub:
+	raw []u8 // 32 bytes
+}
+
+pub struct SlhDsaSha2128fPublicKey {
+pub:
+	raw []u8 // 32 bytes
+}
+
+pub struct SlhDsaSha2192sPublicKey {
+pub:
+	raw []u8 // 48 bytes
+}
+
+pub struct SlhDsaSha2192fPublicKey {
+pub:
+	raw []u8 // 48 bytes
+}
+
+pub struct SlhDsaSha2256sPublicKey {
+pub:
+	raw []u8 // 64 bytes
+}
+
+pub struct SlhDsaSha2256fPublicKey {
+pub:
+	raw []u8 // 64 bytes
+}
+
+pub struct SlhDsaShake128sPublicKey {
+pub:
+	raw []u8 // 32 bytes
+}
+
+pub struct SlhDsaShake128fPublicKey {
+pub:
+	raw []u8 // 32 bytes
+}
+
+pub struct SlhDsaShake192sPublicKey {
+pub:
+	raw []u8 // 48 bytes
+}
+
+pub struct SlhDsaShake192fPublicKey {
+pub:
+	raw []u8 // 48 bytes
+}
+
+pub struct SlhDsaShake256sPublicKey {
+pub:
+	raw []u8 // 64 bytes
+}
+
+pub struct SlhDsaShake256fPublicKey {
+pub:
+	raw []u8 // 64 bytes
+}
+
 pub type PublicKey = RsaPublicKey
 	| EcdsaP256PublicKey
 	| EcdsaP384PublicKey
@@ -42,6 +106,18 @@ pub type PublicKey = RsaPublicKey
 	| MlDsa44PublicKey
 	| MlDsa65PublicKey
 	| MlDsa87PublicKey
+	| SlhDsaSha2128sPublicKey
+	| SlhDsaSha2128fPublicKey
+	| SlhDsaSha2192sPublicKey
+	| SlhDsaSha2192fPublicKey
+	| SlhDsaSha2256sPublicKey
+	| SlhDsaSha2256fPublicKey
+	| SlhDsaShake128sPublicKey
+	| SlhDsaShake128fPublicKey
+	| SlhDsaShake192sPublicKey
+	| SlhDsaShake192fPublicKey
+	| SlhDsaShake256sPublicKey
+	| SlhDsaShake256fPublicKey
 
 // OID strings.
 const oid_rsa_encryption = '1.2.840.113549.1.1.1'
@@ -52,6 +128,21 @@ const oid_secp521r1 = '1.3.132.0.35'
 const oid_mldsa_44 = '2.16.840.1.101.3.4.3.17'
 const oid_mldsa_65 = '2.16.840.1.101.3.4.3.18'
 const oid_mldsa_87 = '2.16.840.1.101.3.4.3.19'
+// SLH-DSA signature-scheme OIDs (which double as the SPKI algorithm OIDs,
+// like ML-DSA). Verified against `openssl list -signature-algorithms`
+// (OpenSSL 4.1.0): arcs 20-25 are the SHA2 sets, 26-31 the SHAKE sets.
+const oid_slh_dsa_sha2_128s = '2.16.840.1.101.3.4.3.20'
+const oid_slh_dsa_sha2_128f = '2.16.840.1.101.3.4.3.21'
+const oid_slh_dsa_sha2_192s = '2.16.840.1.101.3.4.3.22'
+const oid_slh_dsa_sha2_192f = '2.16.840.1.101.3.4.3.23'
+const oid_slh_dsa_sha2_256s = '2.16.840.1.101.3.4.3.24'
+const oid_slh_dsa_sha2_256f = '2.16.840.1.101.3.4.3.25'
+const oid_slh_dsa_shake_128s = '2.16.840.1.101.3.4.3.26'
+const oid_slh_dsa_shake_128f = '2.16.840.1.101.3.4.3.27'
+const oid_slh_dsa_shake_192s = '2.16.840.1.101.3.4.3.28'
+const oid_slh_dsa_shake_192f = '2.16.840.1.101.3.4.3.29'
+const oid_slh_dsa_shake_256s = '2.16.840.1.101.3.4.3.30'
+const oid_slh_dsa_shake_256f = '2.16.840.1.101.3.4.3.31'
 
 pub fn (c &Certificate) public_key() !PublicKey {
 	if c.raw.len == 0 {
@@ -117,6 +208,92 @@ pub fn (c &Certificate) public_key() !PublicKey {
 			return error('x509: bad ML-DSA-87 public key length')
 		}
 		return MlDsa87PublicKey{ raw: pub_bytes }
+	}
+	// SLH-DSA keys use the signature-scheme OID as the SPKI algorithm OID
+	// with absent parameters (same shape as ML-DSA); a present params field
+	// is rejected so it cannot change the key's meaning.
+	// The BIT STRING holds the raw 2n-byte public key.
+	if oid == oid_slh_dsa_sha2_128s || oid == oid_slh_dsa_sha2_128f
+		|| oid == oid_slh_dsa_sha2_192s || oid == oid_slh_dsa_sha2_192f
+		|| oid == oid_slh_dsa_sha2_256s || oid == oid_slh_dsa_sha2_256f
+		|| oid == oid_slh_dsa_shake_128s || oid == oid_slh_dsa_shake_128f
+		|| oid == oid_slh_dsa_shake_192s || oid == oid_slh_dsa_shake_192f
+		|| oid == oid_slh_dsa_shake_256s || oid == oid_slh_dsa_shake_256f {
+		if oid_len != alg_id.len {
+			return error('x509: SLH-DSA parameters must be absent')
+		}
+	}
+	if oid == oid_slh_dsa_sha2_128s {
+		if pub_bytes.len != 32 {
+			return error('x509: bad SLH-DSA-SHA2-128s public key length')
+		}
+		return SlhDsaSha2128sPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_sha2_128f {
+		if pub_bytes.len != 32 {
+			return error('x509: bad SLH-DSA-SHA2-128f public key length')
+		}
+		return SlhDsaSha2128fPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_sha2_192s {
+		if pub_bytes.len != 48 {
+			return error('x509: bad SLH-DSA-SHA2-192s public key length')
+		}
+		return SlhDsaSha2192sPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_sha2_192f {
+		if pub_bytes.len != 48 {
+			return error('x509: bad SLH-DSA-SHA2-192f public key length')
+		}
+		return SlhDsaSha2192fPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_sha2_256s {
+		if pub_bytes.len != 64 {
+			return error('x509: bad SLH-DSA-SHA2-256s public key length')
+		}
+		return SlhDsaSha2256sPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_sha2_256f {
+		if pub_bytes.len != 64 {
+			return error('x509: bad SLH-DSA-SHA2-256f public key length')
+		}
+		return SlhDsaSha2256fPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_shake_128s {
+		if pub_bytes.len != 32 {
+			return error('x509: bad SLH-DSA-SHAKE-128s public key length')
+		}
+		return SlhDsaShake128sPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_shake_128f {
+		if pub_bytes.len != 32 {
+			return error('x509: bad SLH-DSA-SHAKE-128f public key length')
+		}
+		return SlhDsaShake128fPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_shake_192s {
+		if pub_bytes.len != 48 {
+			return error('x509: bad SLH-DSA-SHAKE-192s public key length')
+		}
+		return SlhDsaShake192sPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_shake_192f {
+		if pub_bytes.len != 48 {
+			return error('x509: bad SLH-DSA-SHAKE-192f public key length')
+		}
+		return SlhDsaShake192fPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_shake_256s {
+		if pub_bytes.len != 64 {
+			return error('x509: bad SLH-DSA-SHAKE-256s public key length')
+		}
+		return SlhDsaShake256sPublicKey{ raw: pub_bytes }
+	}
+	if oid == oid_slh_dsa_shake_256f {
+		if pub_bytes.len != 64 {
+			return error('x509: bad SLH-DSA-SHAKE-256f public key length')
+		}
+		return SlhDsaShake256fPublicKey{ raw: pub_bytes }
 	}
 	if oid == oid_ec_public_key {
 		curve_oid, _ := der_oid(alg_id[oid_len..]) or {

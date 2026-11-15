@@ -1,3 +1,4 @@
+@[has_globals]
 module tls
 
 import crypto.aes
@@ -16,10 +17,15 @@ import time
 // stateless; the ticket key lives in Config.ticket_key (generated at listen()
 // when empty and reused for every connection on that listener).
 // The client keeps the ticket + derived PSK in SessionState and offers it on
-// the next connection via Config.resume_from. No early data (0-RTT) is sent:
-// tickets only authenticate the resumed handshake (psk_dhe_ke).
+// the next connection via Config.resume_from. When both sides configure
+// Config.max_early_data, the client may also send 0-RTT early data
+// (RFC 8446 §4.2.10, §7.5): the early_data extension in ClientHello, the
+// client_early_traffic_secret key schedule, and EndOfEarlyData framing below.
+// Tickets are single-use: the server tracks consumed ticket nonces in memory
+// so a replayed ticket falls back to a full handshake instead of resuming.
 
 pub const ext_pre_shared_key = u16(41)
+pub const ext_early_data = u16(42)
 pub const ext_psk_key_exchange_modes = u16(45)
 
 pub const psk_mode_dhe_ke = u8(1)
@@ -31,27 +37,64 @@ pub const ticket_lifetime = u32(86400)
 // SessionState is what a client keeps from one connection to resume the next.
 // ticket is the opaque server blob, psk the derived pre-shared key, suite the
 // negotiated suite that must be offered again for binder verification.
+// max_early_data echoes the server's NewSessionTicket limit for 0-RTT.
 pub struct SessionState {
 pub mut:
-	ticket       []u8
-	psk          []u8
-	suite        CipherSuite
-	created_unix i64
-	lifetime     u32
-	age_add      u32
+	ticket         []u8
+	psk            []u8
+	suite          CipherSuite
+	created_unix   i64
+	lifetime       u32
+	age_add        u32
+	max_early_data u32
+}
+
+// used_ticket_nonces tracks consumed ticket nonces so a replayed ticket is
+// rejected (single-use tickets, a coarse replay protection on top of the age
+// window checked in try_accept_psk). The map is process-wide and shared by
+// every listener; entries are never evicted (8 random bytes per ticket make
+// collisions negligible, and the map only grows by one entry per resumed
+// handshake).
+__global used_ticket_nonces = map[string]bool{}
+
+// is_ticket_used reports whether a ticket nonce was already consumed.
+fn is_ticket_used(nonce []u8) bool {
+	return nonce.hex() in used_ticket_nonces
+}
+
+// mark_ticket_used records a ticket nonce as consumed.
+fn mark_ticket_used(nonce []u8) {
+	used_ticket_nonces[nonce.hex()] = true
+}
+
+// clear_used_tickets drops the replay cache. Tests use it to isolate
+// single-use assertions from tickets consumed by earlier tests.
+pub fn clear_used_tickets() {
+	used_ticket_nonces = map[string]bool{}
 }
 
 // NewSessionTicket is the parsed ticket message body (RFC 8446 §4.6.1).
+// max_early_data is the server's 0-RTT limit from the ticket extensions
+// (early_data extension carrying max_early_data_size, RFC 8446 §4.2.10);
+// zero when the server sent no early-data allowance.
 pub struct NewSessionTicket {
 pub:
-	lifetime u32
-	age_add  u32
-	nonce    []u8
-	ticket   []u8
+	lifetime       u32
+	age_add        u32
+	nonce          []u8
+	ticket         []u8
+	max_early_data u32
 }
 
 // encode_new_session_ticket encodes a NewSessionTicket body.
 pub fn encode_new_session_ticket(lifetime u32, age_add u32, nonce []u8, ticket []u8) ![]u8 {
+	return encode_new_session_ticket_ex(lifetime, age_add, nonce, ticket, 0)
+}
+
+// encode_new_session_ticket_ex encodes a NewSessionTicket body, carrying a
+// max_early_data_size allowance (early_data extension) when max_early_data is
+// non-zero. A zero allowance encodes exactly like encode_new_session_ticket.
+pub fn encode_new_session_ticket_ex(lifetime u32, age_add u32, nonce []u8, ticket []u8, max_early_data u32) ![]u8 {
 	if nonce.len > 255 {
 		return error('tls: ticket nonce too long')
 	}
@@ -72,9 +115,23 @@ pub fn encode_new_session_ticket(lifetime u32, age_add u32, nonce []u8, ticket [
 	out << u8(ticket.len >> 8)
 	out << u8(ticket.len)
 	out << ticket
-	// empty extensions
+	if max_early_data == 0 {
+		// empty extensions
+		out << u8(0)
+		out << u8(0)
+		return out
+	}
+	// extensions: early_data(42) with a uint32 max_early_data_size.
 	out << u8(0)
+	out << u8(8)
+	out << u8(ext_early_data >> 8)
+	out << u8(ext_early_data)
 	out << u8(0)
+	out << u8(4)
+	out << u8(max_early_data >> 24)
+	out << u8(max_early_data >> 16)
+	out << u8(max_early_data >> 8)
+	out << u8(max_early_data)
 	return out
 }
 
@@ -103,12 +160,106 @@ pub fn parse_new_session_ticket(body []u8) !NewSessionTicket {
 	if off + ext_len != body.len {
 		return error('tls: trailing data after ticket extensions')
 	}
+	max_early_data := parse_nst_extensions(body[off..], ext_len) or { return err }
 	return NewSessionTicket{
-		lifetime: lifetime
-		age_add:  age_add
-		nonce:    nonce
-		ticket:   ticket
+		lifetime:       lifetime
+		age_add:        age_add
+		nonce:          nonce
+		ticket:         ticket
+		max_early_data: max_early_data
 	}
+}
+
+// parse_nst_extensions scans NewSessionTicket extensions for the early_data
+// allowance, returning 0 when absent. Unknown extensions are ignored so
+// future ticket metadata does not break parsing.
+fn parse_nst_extensions(exts []u8, ext_len int) !u32 {
+	if ext_len == 0 {
+		return u32(0)
+	}
+	mut max_early_data := u32(0)
+	mut off := 0
+	for off < ext_len {
+		if off + 4 > ext_len || off + 4 > exts.len {
+			return error('tls: truncated ticket extension')
+		}
+		etyp := (u16(exts[off]) << 8) | u16(exts[off + 1])
+		elen := (int(exts[off + 2]) << 8) | int(exts[off + 3])
+		off += 4
+		if off + elen > ext_len || off + elen > exts.len {
+			return error('tls: truncated ticket extension data')
+		}
+		if etyp == ext_early_data {
+			if elen != 4 {
+				return error('tls: bad max_early_data_size')
+			}
+			max_early_data = (u32(exts[off]) << 24) | (u32(exts[off + 1]) << 16) | (u32(exts[off + 2]) << 8) | u32(exts[off + 3])
+		}
+		off += elen
+	}
+	return max_early_data
+}
+
+// encode_early_data_offer returns the empty early_data extension data the
+// client sends in ClientHello when offering 0-RTT (RFC 8446 §4.2.10).
+pub fn encode_early_data_offer() []u8 {
+	return []u8{}
+}
+
+// encode_early_data_size returns an early_data extension body carrying a
+// uint32 max_early_data_size. The server sends this shape in
+// EncryptedExtensions to accept 0-RTT and advertise its limit.
+pub fn encode_early_data_size(max_early_data u32) []u8 {
+	return [u8(max_early_data >> 24), u8(max_early_data >> 16), u8(max_early_data >> 8),
+		u8(max_early_data)]
+}
+
+// ee_accepts_early_data reports whether an EncryptedExtensions body carries
+// the early_data extension (empty or with a max_early_data_size), i.e. the
+// server accepted 0-RTT.
+pub fn ee_accepts_early_data(body []u8) bool {
+	if body.len < 2 {
+		return false
+	}
+	ext_len := (int(body[0]) << 8) | int(body[1])
+	if 2 + ext_len != body.len {
+		return false
+	}
+	mut off := 2
+	for off < body.len {
+		if off + 4 > body.len {
+			return false
+		}
+		etyp := (u16(body[off]) << 8) | u16(body[off + 1])
+		elen := (int(body[off + 2]) << 8) | int(body[off + 3])
+		off += 4
+		if off + elen > body.len {
+			return false
+		}
+		if etyp == ext_early_data && (elen == 0 || elen == 4) {
+			return true
+		}
+		off += elen
+	}
+	return false
+}
+
+// ch_offers_early_data reports whether a parsed ClientHello carries the
+// early_data extension.
+pub fn ch_offers_early_data(ch ClientHello) bool {
+	for e in ch.extensions {
+		if e.typ == ext_early_data {
+			return true
+		}
+	}
+	return false
+}
+
+// derive_client_early_traffic_secret derives client_early_traffic_secret
+// (RFC 8446 §7.5): Derive-Secret(early_secret, "c e traffic", ClientHello).
+// ch_hash is the transcript hash of the full (binder-patched) ClientHello.
+pub fn derive_client_early_traffic_secret(early_secret []u8, ch_hash []u8, suite CipherSuite) ![]u8 {
+	return derive_secret_for_suite(early_secret, 'c e traffic', ch_hash, suite)
 }
 
 // seal_ticket encrypts a resumption master secret into an opaque ticket blob.
@@ -377,14 +528,15 @@ pub fn binder_prefix(full_msg []u8, psk_data []u8) ![]u8 {
 
 // build_new_session_ticket derives the resumption master secret and seals one
 // NewSessionTicket handshake message. The nonce and age_add are random per
-// ticket; lifetime is ticket_lifetime.
-pub fn build_new_session_ticket(master_secret []u8, transcript_hash []u8, suite CipherSuite, ticket_key []u8) ![]u8 {
+// ticket; lifetime is ticket_lifetime. max_early_data advertises the 0-RTT
+// allowance the server will accept on resumption (0 disables the extension).
+pub fn build_new_session_ticket(master_secret []u8, transcript_hash []u8, suite CipherSuite, ticket_key []u8, max_early_data u32) ![]u8 {
 	res_master := derive_resumption_master(master_secret, transcript_hash, suite)!
 	nonce := rand.bytes(8)!
 	age_bytes := rand.bytes(4)!
 	age_add := (u32(age_bytes[0]) << 24) | (u32(age_bytes[1]) << 16) | (u32(age_bytes[2]) << 8) | u32(age_bytes[3])
 	blob := seal_ticket(res_master, suite, age_add, nonce, ticket_key)!
-	body := encode_new_session_ticket(ticket_lifetime, age_add, nonce, blob)!
+	body := encode_new_session_ticket_ex(ticket_lifetime, age_add, nonce, blob, max_early_data)!
 	return encode_handshake_message(.new_session_ticket, body)
 }
 
@@ -394,12 +546,13 @@ pub fn client_psk_from_ticket(master_secret []u8, transcript_hash []u8, nst NewS
 	res_master := derive_resumption_master(master_secret, transcript_hash, suite)!
 	psk := derive_psk(res_master, nst.nonce, suite)!
 	return SessionState{
-		ticket:       nst.ticket.clone()
-		psk:          psk
-		suite:        suite
-		created_unix: now_unix
-		lifetime:     nst.lifetime
-		age_add:      nst.age_add
+		ticket:         nst.ticket.clone()
+		psk:            psk
+		suite:          suite
+		created_unix:   now_unix
+		lifetime:       nst.lifetime
+		age_add:        nst.age_add
+		max_early_data: nst.max_early_data
 	}
 }
 

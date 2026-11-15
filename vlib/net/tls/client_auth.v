@@ -4,6 +4,7 @@ import crypto.ecdsa
 import crypto.pem
 import crypto.sha256
 import crypto.sha512
+import crypto.slh_dsa
 import crypto.subtle
 import crypto.x509
 import time
@@ -27,10 +28,11 @@ import x.crypto.mldsa
 // reference fields initialised in every struct literal).
 pub struct CredentialKeys {
 pub mut:
-	kind       ServerKeyKind
-	ecdsa_priv ?ecdsa.PrivateKey
-	rsa_priv   RsaPrivateKey
-	mldsa_priv mldsa.PrivateKey
+	kind         ServerKeyKind
+	ecdsa_priv   ?ecdsa.PrivateKey
+	rsa_priv     RsaPrivateKey
+	mldsa_priv   mldsa.PrivateKey
+	slh_dsa_priv slh_dsa.PrivateKey
 }
 
 // ClientCreds is the mTLS client credential: chain + private key.
@@ -38,6 +40,28 @@ pub struct ClientCreds {
 pub mut:
 	chain [][]u8
 	keys  CredentialKeys
+}
+
+// load_slh_dsa_credential loads an SLH-DSA SHAKE private key from a PKCS#8
+// PEM block, requiring it to match the leaf public key.
+fn load_slh_dsa_credential(key_block pem.Block, leaf_raw []u8, params slh_dsa.ParameterSet, kind ServerKeyKind) !CredentialKeys {
+	if key_block.block_type != 'PRIVATE KEY' {
+		return error('tls: SLH-DSA key must be PKCS#8 PEM')
+	}
+	priv := parse_slh_dsa_private_key(key_block.data, params)!
+	if subtle.constant_time_compare(priv.public_key().bytes(), leaf_raw) != 1 {
+		return error('tls: certificate and private key do not match')
+	}
+	return CredentialKeys{
+		kind:         kind
+		slh_dsa_priv: priv
+	}
+}
+
+// slh_dsa_sha2_unimplemented reports the stub error for an SLH-DSA SHA2
+// parameter set, which the pure-V primitive does not instantiate.
+fn slh_dsa_sha2_unimplemented(params slh_dsa.ParameterSet) !CredentialKeys {
+	return error('tls: SLH-DSA ${slh_dsa.get_params(params).name} not implemented (SHA2 instantiation)')
 }
 
 // load_credential_keys loads a private key PEM block, requiring it to match
@@ -141,13 +165,50 @@ fn load_credential_keys(key_block pem.Block, leaf_public x509.PublicKey) !Creden
 				mldsa_priv: priv
 			}
 		}
+		x509.SlhDsaShake128sPublicKey {
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_128s, .slh_shake_128s)
+		}
+		x509.SlhDsaShake128fPublicKey {
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_128f, .slh_shake_128f)
+		}
+		x509.SlhDsaShake192sPublicKey {
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_192s, .slh_shake_192s)
+		}
+		x509.SlhDsaShake192fPublicKey {
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_192f, .slh_shake_192f)
+		}
+		x509.SlhDsaShake256sPublicKey {
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_256s, .slh_shake_256s)
+		}
+		x509.SlhDsaShake256fPublicKey {
+			return load_slh_dsa_credential(key_block, leaf_public.raw, .shake_256f, .slh_shake_256f)
+		}
+		x509.SlhDsaSha2128sPublicKey {
+			return slh_dsa_sha2_unimplemented(.sha2_128s)
+		}
+		x509.SlhDsaSha2128fPublicKey {
+			return slh_dsa_sha2_unimplemented(.sha2_128f)
+		}
+		x509.SlhDsaSha2192sPublicKey {
+			return slh_dsa_sha2_unimplemented(.sha2_192s)
+		}
+		x509.SlhDsaSha2192fPublicKey {
+			return slh_dsa_sha2_unimplemented(.sha2_192f)
+		}
+		x509.SlhDsaSha2256sPublicKey {
+			return slh_dsa_sha2_unimplemented(.sha2_256s)
+		}
+		x509.SlhDsaSha2256fPublicKey {
+			return slh_dsa_sha2_unimplemented(.sha2_256f)
+		}
 	}
 }
 
 // sign_cv_with signs CertificateVerify content with any loaded credential.
 // sign_cv_with dispatches on the negotiated scheme: ECDSA signs directly,
-// ML-DSA signs directly, RSA uses PKCS#1 v1.5 or PSS.
-pub fn sign_cv_with(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey, rsa_priv RsaPrivateKey, mldsa_priv mldsa.PrivateKey, content []u8) ![]u8 {
+// ML-DSA signs directly, SLH-DSA signs hedged pure (like ML-DSA's
+// randomized signing), RSA uses PKCS#1 v1.5 or PSS.
+pub fn sign_cv_with(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey, rsa_priv RsaPrivateKey, mldsa_priv mldsa.PrivateKey, slh_dsa_priv slh_dsa.PrivateKey, content []u8) ![]u8 {
 	match kind {
 		.ecdsa_p256, .ecdsa_p384, .ecdsa_p521 {
 			priv := ecdsa_priv or { return error('tls: missing EC private key') }
@@ -155,6 +216,10 @@ pub fn sign_cv_with(kind ServerKeyKind, scheme u16, ecdsa_priv ?ecdsa.PrivateKey
 		}
 		.mldsa_44, .mldsa_65, .mldsa_87 {
 			return mldsa_priv.sign(content, mldsa.SignerOpts{}) or { return err }
+		}
+		.slh_shake_128s, .slh_shake_128f, .slh_shake_192s, .slh_shake_192f, .slh_shake_256s,
+		.slh_shake_256f {
+			return slh_dsa.sign(content, [], slh_dsa_priv) or { return err }
 		}
 		.rsa {
 			return match scheme {
@@ -383,7 +448,7 @@ pub fn build_client_auth_messages(cfg Config, req_context []u8, req_schemes []u1
 	th := transcript_hash_for_suite(th_input, suite)
 	content := cv_content(false, th)
 	sig := sign_cv_with(creds.keys.kind, scheme, creds.keys.ecdsa_priv, creds.keys.rsa_priv,
-		creds.keys.mldsa_priv, content)!
+		creds.keys.mldsa_priv, creds.keys.slh_dsa_priv, content)!
 	mut cv_body := []u8{}
 	cv_body << u8(scheme >> 8)
 	cv_body << u8(scheme)

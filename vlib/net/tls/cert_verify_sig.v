@@ -3,6 +3,7 @@ module tls
 import crypto.ecdsa
 import crypto.sha256
 import crypto.sha512
+import crypto.slh_dsa
 import crypto.x509
 import math.big
 import x.crypto.mldsa
@@ -109,8 +110,9 @@ pub fn verify_cert_signature_ecdsa(child_der []u8, parent_point []u8) ! {
 
 // verify_cert_signature dispatches chain-signature verification by parent key
 // type: ECDSA (hash from the sigAlg OID), RSA PKCS#1 v1.5 (hash from the
-// sigAlg OID), or ML-DSA (pure signature over the TBS bytes, sigAlg OID must
-// match the key variant). RSA-PSS-signed CA certificates are rejected.
+// sigAlg OID), ML-DSA or SLH-DSA (pure signature over the TBS bytes, sigAlg
+// OID must match the key variant). RSA-PSS-signed CA certificates are
+// rejected.
 pub fn verify_cert_signature(child_der []u8, parent x509.PublicKey) ! {
 	match parent {
 		x509.EcdsaP256PublicKey {
@@ -133,6 +135,42 @@ pub fn verify_cert_signature(child_der []u8, parent x509.PublicKey) ! {
 		}
 		x509.MlDsa87PublicKey {
 			verify_cert_signature_mldsa(child_der, parent.raw, .ml_dsa_87) or { return err }
+		}
+		x509.SlhDsaShake128sPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .shake_128s) or { return err }
+		}
+		x509.SlhDsaShake128fPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .shake_128f) or { return err }
+		}
+		x509.SlhDsaShake192sPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .shake_192s) or { return err }
+		}
+		x509.SlhDsaShake192fPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .shake_192f) or { return err }
+		}
+		x509.SlhDsaShake256sPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .shake_256s) or { return err }
+		}
+		x509.SlhDsaShake256fPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .shake_256f) or { return err }
+		}
+		x509.SlhDsaSha2128sPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .sha2_128s) or { return err }
+		}
+		x509.SlhDsaSha2128fPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .sha2_128f) or { return err }
+		}
+		x509.SlhDsaSha2192sPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .sha2_192s) or { return err }
+		}
+		x509.SlhDsaSha2192fPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .sha2_192f) or { return err }
+		}
+		x509.SlhDsaSha2256sPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .sha2_256s) or { return err }
+		}
+		x509.SlhDsaSha2256fPublicKey {
+			verify_cert_signature_slh_dsa(child_der, parent.raw, .sha2_256f) or { return err }
 		}
 	}
 }
@@ -188,6 +226,103 @@ pub fn verify_cert_signature_mldsa(child_der []u8, parent_raw []u8, kind mldsa.K
 	}
 }
 
+// slh_dsa_sigalg_tail maps an SLH-DSA parameter set to the final arc of its
+// signature-algorithm OID 2.16.840.1.101.3.4.3.X: arcs 20-25 (0x14-0x19) are
+// the SHA2 sets, arcs 26-31 (0x1a-0x1f) the SHAKE sets. Verified against
+// `openssl list -signature-algorithms` (OpenSSL 4.1.0).
+fn slh_dsa_sigalg_tail(params slh_dsa.ParameterSet) u8 {
+	return match params {
+		.sha2_128s { u8(0x14) }
+		.sha2_128f { u8(0x15) }
+		.sha2_192s { u8(0x16) }
+		.sha2_192f { u8(0x17) }
+		.sha2_256s { u8(0x18) }
+		.sha2_256f { u8(0x19) }
+		.shake_128s { u8(0x1a) }
+		.shake_128f { u8(0x1b) }
+		.shake_192s { u8(0x1c) }
+		.shake_192f { u8(0x1d) }
+		.shake_256s { u8(0x1e) }
+		.shake_256f { u8(0x1f) }
+	}
+}
+
+// slh_dsa_sigalg_content returns the DER content bytes of the
+// signature-algorithm OID for an SLH-DSA parameter set.
+fn slh_dsa_sigalg_content(params slh_dsa.ParameterSet) []u8 {
+	return [u8(0x60), 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, slh_dsa_sigalg_tail(params)]
+}
+
+// slh_dsa_all_params lists every SLH-DSA parameter set in OID order.
+fn slh_dsa_all_params() []slh_dsa.ParameterSet {
+	return [
+		slh_dsa.ParameterSet.sha2_128s,
+		.sha2_128f,
+		.sha2_192s,
+		.sha2_192f,
+		.sha2_256s,
+		.sha2_256f,
+		.shake_128s,
+		.shake_128f,
+		.shake_192s,
+		.shake_192f,
+		.shake_256s,
+		.shake_256f,
+	]
+}
+
+// slh_dsa_params_from_sigalg maps a certificate sigAlg SEQUENCE value to its
+// SLH-DSA parameter set. The value must be exactly one OID (no parameters);
+// everything else is rejected.
+fn slh_dsa_params_from_sigalg(sigalg_val []u8) !slh_dsa.ParameterSet {
+	for params in slh_dsa_all_params() {
+		if der_is_single_oid(sigalg_val, slh_dsa_sigalg_content(params)) {
+			return params
+		}
+	}
+	return error('tls: unsupported SLH-DSA signature algorithm')
+}
+
+// verify_cert_signature_slh_dsa verifies a certificate signature against a
+// parent SLH-DSA key. SLH-DSA signs the raw TBS bytes (no pre-hash, pure
+// variant); the certificate sigAlg OID must match the parent key variant.
+// SHA2 parameter sets are stubbed: the pure-V primitive cannot verify them,
+// so verification fails closed here.
+pub fn verify_cert_signature_slh_dsa(child_der []u8, parent_raw []u8, params slh_dsa.ParameterSet) ! {
+	p := slh_dsa.get_params(params)
+	if !p.is_shake {
+		return error('tls: SLH-DSA ${p.name} not implemented (SHA2 instantiation)')
+	}
+	tag, cert_val, _ := der_tlv(child_der) or { return err }
+	if tag != 0x30 {
+		return error('tls: expected cert SEQUENCE')
+	}
+	ttag, _, tbs_consumed := der_tlv(cert_val) or { return err }
+	if ttag != 0x30 {
+		return error('tls: expected tbs SEQUENCE')
+	}
+	tbs_raw := cert_val[..tbs_consumed].clone()
+	_, sigalg_val, sigalg_consumed := der_tlv(cert_val[tbs_consumed..]) or { return err }
+	sig_params := slh_dsa_params_from_sigalg(sigalg_val) or { return err }
+	if sig_params != params {
+		return error('tls: SLH-DSA sigAlg/key mismatch')
+	}
+	sig_pos := tbs_consumed + sigalg_consumed
+	stag, sig_val, _ := der_tlv(cert_val[sig_pos..]) or { return err }
+	if stag != 0x03 {
+		return error('tls: expected BIT STRING signature')
+	}
+	if sig_val.len < 1 || sig_val[0] != 0 {
+		return error('tls: bad sig padding')
+	}
+	sig := sig_val[1..].clone()
+
+	pk := slh_dsa.public_key_from_bytes(params, parent_raw) or { return err }
+	if !slh_dsa.verify(tbs_raw, sig, [], pk) {
+		return error(error_bad_signature)
+	}
+}
+
 // cv_content builds the RFC 8446 §4.4.3 signing input: 64×0x20, the context
 // string for the sender role, a 0x00 separator, and the transcript hash.
 pub fn cv_content(is_server bool, transcript_hash []u8) []u8 {
@@ -209,7 +344,8 @@ pub fn cv_content(is_server bool, transcript_hash []u8) []u8 {
 // the peer leaf public key, dispatching on the negotiated scheme.
 // verify_certificate_verify enforces scheme/key-type agreement: ECDSA schemes
 // need the matching curve, RSA schemes need an RSA key, ML-DSA schemes need
-// the matching ML-DSA variant.
+// the matching ML-DSA variant, SLH-DSA schemes need the matching SLH-DSA
+// SHAKE parameter set.
 pub fn verify_certificate_verify(cv_body []u8, pk x509.PublicKey, content []u8) ! {
 	scheme, sig := parse_cert_verify_sig(cv_body) or { return err }
 	match scheme {
@@ -321,6 +457,66 @@ pub fn verify_certificate_verify(cv_body []u8, pk x509.PublicKey, content []u8) 
 			mpk := mldsa.PublicKey.from_bytes(raw, kind) or { return err }
 			ok := mpk.verify(content, sig, mldsa.SignerOpts{}) or { return err }
 			if !ok {
+				return error('tls: certificate verify failed')
+			}
+		}
+		// SLH-DSA SHAKE schemes 0x0917-0x091c, assigned in OID order
+		// (SHAKE-128s first). Measured from the ClientHello
+		// signature_algorithms extension emitted by
+		// `openssl s_client -sigalgs slhdsa_shake_128s/...` (OpenSSL 4.1.0);
+		// the ml_dsa-style control (mldsa44 -> 0x0904) matches this repo.
+		u16(0x0917), u16(0x0918), u16(0x0919), u16(0x091a), u16(0x091b), u16(0x091c) {
+			params := match scheme {
+				u16(0x0917) { slh_dsa.ParameterSet.shake_128s }
+				u16(0x0918) { slh_dsa.ParameterSet.shake_128f }
+				u16(0x0919) { slh_dsa.ParameterSet.shake_192s }
+				u16(0x091a) { slh_dsa.ParameterSet.shake_192f }
+				u16(0x091b) { slh_dsa.ParameterSet.shake_256s }
+				else { slh_dsa.ParameterSet.shake_256f }
+			}
+			raw := match pk {
+				x509.SlhDsaShake128sPublicKey {
+					if params != .shake_128s {
+						return error('tls: scheme/key mismatch in CertificateVerify')
+					}
+					pk.raw
+				}
+				x509.SlhDsaShake128fPublicKey {
+					if params != .shake_128f {
+						return error('tls: scheme/key mismatch in CertificateVerify')
+					}
+					pk.raw
+				}
+				x509.SlhDsaShake192sPublicKey {
+					if params != .shake_192s {
+						return error('tls: scheme/key mismatch in CertificateVerify')
+					}
+					pk.raw
+				}
+				x509.SlhDsaShake192fPublicKey {
+					if params != .shake_192f {
+						return error('tls: scheme/key mismatch in CertificateVerify')
+					}
+					pk.raw
+				}
+				x509.SlhDsaShake256sPublicKey {
+					if params != .shake_256s {
+						return error('tls: scheme/key mismatch in CertificateVerify')
+					}
+					pk.raw
+				}
+				x509.SlhDsaShake256fPublicKey {
+					if params != .shake_256f {
+						return error('tls: scheme/key mismatch in CertificateVerify')
+					}
+					pk.raw
+				}
+				else {
+					return error('tls: scheme/key mismatch in CertificateVerify')
+				}
+			}
+			spk := slh_dsa.public_key_from_bytes(params, raw) or { return err }
+			if !slh_dsa.verify(content, sig, [], spk) {
 				return error('tls: certificate verify failed')
 			}
 		}

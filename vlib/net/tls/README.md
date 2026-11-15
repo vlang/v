@@ -31,11 +31,13 @@ TLS 1.2, no DTLS.
 
 Configure both `Config.cert` and `Config.key` (PEM file paths), or provide
 `cert_pem` and `key_pem`. The server accepts P-256/P-384/P-521 ECDSA
-(SEC1 or PKCS#8 PEM), ML-DSA-44/65/87 (PKCS#8 PEM) and RSA (PKCS#1 or
+(SEC1 or PKCS#8 PEM), ML-DSA-44/65/87 (PKCS#8 PEM),
+SLH-DSA-SHAKE-128s/128f/192s/192f/256s/256f (PKCS#8 PEM) and RSA (PKCS#1 or
 PKCS#8 PEM) leaf certificates and keys, and selects the CertificateVerify
 scheme the client offers for the key type (ECDSA: the curve's scheme;
-ML-DSA: the variant's scheme 0x0904/0x0905/0x0906; RSA: PSS preferred over
-PKCS#1 v1.5).
+ML-DSA: the variant's scheme 0x0904/0x0905/0x0906; SLH-DSA: the parameter
+set's scheme 0x0917/0x0918/0x0919/0x091a/0x091b/0x091c; RSA: PSS preferred
+over PKCS#1 v1.5).
 If neither is configured, the server creates a temporary self-signed
 `localhost` certificate; clients using chain verification will not
 trust it unless it is explicitly added to their trust store.

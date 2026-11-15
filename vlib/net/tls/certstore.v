@@ -75,8 +75,12 @@ fn load_bundle_dir(dir string) []x509.Certificate {
 //     target would be surprising, so a file is required; missing/unparsable
 //     falls through).
 //  2. SSL_CERT_DIR: every file in the directory is scanned for certificates.
-//  3. Unix bundle paths (freshest on systems that maintain them).
-//  4. The embedded Mozilla bundle: identical roots on every OS, which is
+//  3. Windows Trusted Root stores (Windows only, via load_windows_roots):
+//     PowerShell PEM export of LocalMachine/CurrentUser Root, certutil
+//     scrape as fallback. Empty on failure so Unix paths and the embedded
+//     bundle below still apply.
+//  4. Unix bundle paths (freshest on systems that maintain them).
+//  5. The embedded Mozilla bundle: identical roots on every OS, which is
 //     what makes verification work on Windows and macOS.
 // An explicitly configured Config.ca_store/ca_cert still wins over all of
 // these (see conn.v); this is only the default when nothing is configured.
@@ -93,6 +97,12 @@ pub fn load_system_roots() !CertStore {
 		roots := load_bundle_dir(dir)
 		if roots.len > 0 {
 			return CertStore{ roots: roots }
+		}
+	}
+	$if windows {
+		windows_roots := load_windows_roots()
+		if windows_roots.len > 0 {
+			return CertStore{ roots: windows_roots }
 		}
 	}
 	paths := ['/etc/ssl/certs/ca-certificates.crt', '/etc/ssl/cert.pem', '/etc/ssl/certs/ca-bundle.crt']

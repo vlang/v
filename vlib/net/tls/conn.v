@@ -41,6 +41,14 @@ mut:
 	// including client Finished); each NewSessionTicket nonce derives a PSK.
 	resumption_master     []u8
 	has_resumption_master bool
+	// early_buf holds 0-RTT plaintext accepted by the server, delivered to
+	// the application before any post-handshake records.
+	early_buf []u8
+	// stashed holds one decrypted handshake flight pushed back by the
+	// early-data drain (the client's Finished, or its auth flight), so the
+	// regular handshake readers see an uninterrupted message stream.
+	stashed     []u8
+	has_stashed bool
 }
 
 // dial connects TCP to host:port and returns an unhandshaked TLS Conn.
@@ -239,12 +247,13 @@ pub fn (c &Conn) session_state() ?SessionState {
 		return none
 	}
 	return SessionState{
-		ticket:       c.resumption.ticket.clone()
-		psk:          c.resumption.psk.clone()
-		suite:        c.resumption.suite
-		created_unix: c.resumption.created_unix
-		lifetime:     c.resumption.lifetime
-		age_add:      c.resumption.age_add
+		ticket:         c.resumption.ticket.clone()
+		psk:            c.resumption.psk.clone()
+		suite:          c.resumption.suite
+		created_unix:   c.resumption.created_unix
+		lifetime:       c.resumption.lifetime
+		age_add:        c.resumption.age_add
+		max_early_data: c.resumption.max_early_data
 	}
 }
 
@@ -270,8 +279,15 @@ pub fn (mut c Conn) socket_read_into_ptr(buf &u8, bufsize int) !int {
 // read_handshake_body reads the next non-CCS handshake record body.
 // Middlebox-compat peers (e.g. OpenSSL) send dummy ChangeCipherSpec records
 // (RFC 8446 §5, appendix D.4); they carry no bytes that affect the transcript
-// and must be ignored.
+// and must be ignored. A flight stashed by the early-data drain is returned
+// first so the handshake sees one continuous message stream.
 fn (mut c Conn) read_handshake_body() ![]u8 {
+	if c.has_stashed {
+		c.has_stashed = false
+		out := c.stashed.clone()
+		c.stashed = []u8{}
+		return out
+	}
 	for i := 0; i < 8; i++ {
 		ct, body := c.read_record() or { return err }
 		if ct == .change_cipher_spec {
@@ -283,6 +299,121 @@ fn (mut c Conn) read_handshake_body() ![]u8 {
 		return body
 	}
 	return error('tls: too many ChangeCipherSpec records')
+}
+
+// max_early_records caps the 0-RTT flight (early records plus EndOfEarlyData)
+// so a malicious peer cannot make the server buffer or skip without bound.
+const max_early_records = 32
+
+// max_early_skip_bytes caps how many undecryptable bytes the server discards
+// while resynchronising on a rejected early-data flight.
+const max_early_skip_bytes = 65536
+
+// try_open_record trial-decrypts one record, reporting success instead of failing.
+fn try_open_record(suite CipherSuite, key []u8, iv []u8, seq u64, rec CipherRecord) (bool, ContentType, []u8) {
+	ct, pt := open_record(suite, key, iv, seq, rec) or { return false, .application_data, []u8{} }
+	return true, ct, pt
+}
+
+// drain_early_data consumes the client's optimistic 0-RTT flight after the
+// server flight was sent. On acceptance it decrypts early records with the
+// early traffic keys (failing closed on tamper: a record that verifies under
+// neither the early nor the handshake keys aborts the handshake) and returns
+// the accumulated plaintext; the client's EndOfEarlyData is appended to the
+// handshake transcript. On rejection the early records are discarded and the
+// first handshake-keys record is stashed for the regular readers, so the
+// handshake continues as if no early data had been sent. Either way the
+// record sequence accounting is left consistent for the Finished that
+// follows.
+fn (mut c Conn) drain_early_data(mut shs ServerHandshake) ![]u8 {
+	mut out := []u8{}
+	mut early_seq := u64(0)
+	mut skipped := 0
+	for _ in 0 .. max_early_records {
+		hdr := c.read_exact(5)!
+		if hdr[0] != u8(ContentType.application_data) {
+			return error('tls: expected early application_data record')
+		}
+		if (u16(hdr[1]) << 8) | u16(hdr[2]) != tls_version_1_3 {
+			return error('tls: invalid legacy version')
+		}
+		ln := (int(hdr[3]) << 8) | int(hdr[4])
+		if ln > max_ciphertext_len {
+			return error('tls: record too large')
+		}
+		frag := c.read_exact(ln)!
+		rec := CipherRecord{
+			content_type:   .application_data
+			legacy_version: tls_version_1_3
+			fragment:       frag
+		}
+		if shs.accepted_early_data {
+			ok, ict, plain := try_open_record(c.suite, shs.early_traffic.key, shs.early_traffic.iv,
+				early_seq, rec)
+			if ok {
+				if ict != .application_data {
+					return error('tls: unexpected early content')
+				}
+				out << plain
+				if out.len > int(shs.max_early_data) {
+					return error('tls: early data exceeds limit')
+				}
+				early_seq++
+				continue
+			}
+			// Not early data: must be EndOfEarlyData under the handshake keys.
+			hok, hct, hplain := try_open_record(c.suite, c.client_hs_traffic.key,
+				c.client_hs_traffic.iv, c.read_seq, rec)
+			if !hok || hct != .handshake {
+				return error('tls: bad early record')
+			}
+			parsed, n := parse_handshake_message(hplain) or { return err }
+			if parsed.typ != .end_of_early_data || parsed.body.len != 0 {
+				return error('tls: expected EndOfEarlyData')
+			}
+			// Application secrets bind the transcript through server
+			// Finished only; capture that hash before EOED extends it.
+			shs.early_base_th = transcript_hash_for_suite(shs.transcript, shs.suite)
+			shs.transcript << hplain[..n]
+			if n < hplain.len {
+				c.stashed = hplain[n..].clone()
+				c.has_stashed = true
+			}
+			c.read_seq++
+			return out
+		}
+		// Rejected: the first handshake-keys record ends the early flight.
+		hok, hct, hplain := try_open_record(c.suite, c.client_hs_traffic.key, c.client_hs_traffic.iv,
+			c.read_seq, rec)
+		if hok {
+			if hct != .handshake {
+				return error('tls: unexpected handshake content')
+			}
+			c.stashed = hplain.clone()
+			c.has_stashed = true
+			return out
+		}
+		if shs.has_early_traffic {
+			// PSK accepted but 0-RTT rejected: discard verifiably.
+			dok, dct, _ := try_open_record(c.suite, shs.early_traffic.key, shs.early_traffic.iv,
+				early_seq, rec)
+			if !dok || dct != .application_data {
+				return error('tls: bad early record')
+			}
+			skipped += frag.len
+			if skipped > max_early_skip_bytes {
+				return error('tls: early data exceeds limit')
+			}
+			early_seq++
+			continue
+		}
+		// PSK rejected too: no early keys exist, skip opaquely.
+		skipped += frag.len
+		if skipped > max_early_skip_bytes {
+			return error('tls: early data exceeds limit')
+		}
+	}
+	return error('tls: too many early records')
 }
 
 // handshake performs the TLS 1.3 handshake (client or server based on is_server).
@@ -313,6 +444,13 @@ pub fn (mut c Conn) handshake() ! {
 		c.write_plain_record(.handshake, msgs[0])!
 		for i in 1 .. msgs.len {
 			c.write_cipher_record(.handshake, msgs[i])!
+		}
+
+		// 0-RTT: drain the client's optimistic early flight (early records
+		// plus EndOfEarlyData, or just the resumed Finished when rejected),
+		// leaving the stream positioned for the handshake readers below.
+		if shs.offered_early_data {
+			c.early_buf = c.drain_early_data(mut shs)!
 		}
 
 		// mTLS: collect Certificate [+ CertificateVerify] + Finished (peers may
@@ -379,11 +517,17 @@ pub fn (mut c Conn) handshake() ! {
 		c.write_seq = 0
 		c.handshake_done = true
 		c.resumed = shs.accepted_psk
+		// Accepted 0-RTT plaintext is delivered before any post-handshake
+		// application data.
+		if c.early_buf.len > 0 {
+			c.read_buf = c.early_buf.clone()
+			c.early_buf = []u8{}
+		}
 		// Issue one session ticket under the application keys (best effort:
 		// direct ServerHandshake users without a ticket key just skip it).
 		if shs.ticket_key.len == 32 {
 			nst := build_new_session_ticket(shs.app_keys.master_secret, transcript_hash_for_suite(shs.transcript,
-				c.suite), c.suite, shs.ticket_key) or { []u8{} }
+				c.suite), c.suite, shs.ticket_key, c.cfg.max_early_data) or { []u8{} }
 			if nst.len > 0 {
 				c.write_cipher_record(.handshake, nst) or { return err }
 			}
@@ -394,9 +538,38 @@ pub fn (mut c Conn) handshake() ! {
 		return err
 	}
 	chs.resume_offer = c.cfg.resume_from
+	chs.max_early_data = c.cfg.max_early_data
 
 	ch_msg := chs.build_client_hello() or { return err }
 	c.write_plain_record(.handshake, ch_msg)!
+
+	// 0-RTT: seal the early payload with the early traffic keys and send it
+	// optimistically, before the ServerHello arrives. The record sequence
+	// stays local so the handshake key epochs still start at zero.
+	if chs.offered_early_data {
+		if !chs.has_early_traffic {
+			return error('tls: missing early traffic keys')
+		}
+		if c.cfg.early_data.len > int(c.cfg.max_early_data) {
+			return error('tls: early data exceeds limit')
+		}
+		st := c.cfg.resume_from or { return error('tls: missing psk offer') }
+		mut early_seq := u64(0)
+		mut off := 0
+		for off < c.cfg.early_data.len {
+			mut n := c.cfg.early_data.len - off
+			if n > max_plaintext_len {
+				n = max_plaintext_len
+			}
+			rec := seal_record(st.suite, chs.early_traffic.key, chs.early_traffic.iv,
+				early_seq, .application_data, c.cfg.early_data[off..off + n]) or {
+				return err
+			}
+			c.write_all(rec)!
+			early_seq++
+			off += n
+		}
+	}
 
 	body := c.read_handshake_body() or { return err }
 	chs.process_server_hello(body) or { return err }
@@ -427,7 +600,11 @@ pub fn (mut c Conn) handshake() ! {
 			parsed, n := parse_handshake_message(ibody[ioff..]) or { return err }
 			msg_raw := ibody[ioff..ioff + n]
 			match parsed.typ {
-				.encrypted_extensions {}
+				.encrypted_extensions {
+					if chs.offered_early_data && ee_accepts_early_data(parsed.body) {
+						chs.accepted_early_data = true
+					}
+				}
 				.certificate {
 					if c.cfg.verify {
 						cert_der := extract_cert_der(parsed.body) or { return err }
@@ -528,6 +705,15 @@ pub fn (mut c Conn) handshake() ! {
 		}
 	}
 
+	// 0-RTT: the server accepted early data, so close the early flight with
+	// EndOfEarlyData before our Finished (same handshake key epoch, and
+	// part of the transcript the Finished covers).
+	if chs.offered_early_data && chs.accepted_early_data {
+		eoe := encode_handshake_message(.end_of_early_data, []u8{}) or { return err }
+		chs.transcript << eoe
+		c.write_cipher_record(.handshake, eoe)!
+	}
+
 	cf_verified := finished_verify_data_for_suite(chs.handshake_keys.client_secret, transcript_hash_for_suite(chs.transcript,
 		c.suite), c.suite) or { return err }
 	fin_body := encode_handshake_message(.finished, encode_finished(Finished{ verify_data: cf_verified })) or { return err }
@@ -559,12 +745,13 @@ fn (mut c Conn) consume_post_handshake(body []u8) ! {
 			if !c.is_server && c.has_resumption_master {
 				psk := derive_psk(c.resumption_master, nst.nonce, c.suite) or { continue }
 				c.resumption = SessionState{
-					ticket:       nst.ticket.clone()
-					psk:          psk
-					suite:        c.suite
-					created_unix: time.now().unix()
-					lifetime:     nst.lifetime
-					age_add:      nst.age_add
+					ticket:         nst.ticket.clone()
+					psk:            psk
+					suite:          c.suite
+					created_unix:   time.now().unix()
+					lifetime:       nst.lifetime
+					age_add:        nst.age_add
+					max_early_data: nst.max_early_data
 				}
 				c.has_ticket = true
 			}

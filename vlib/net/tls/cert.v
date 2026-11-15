@@ -187,9 +187,10 @@ pub fn parse_cert_pubkey(cert_msg_body []u8) !x509.PublicKey {
 // parse_cert_verify_sig extracts the scheme and signature from a TLS 1.3
 // CertificateVerify body.
 // parse_cert_verify_sig accepts the schemes net.tls implements
-// (ecdsa 0x0403/0x0503/0x0603, mldsa 0x0904/0x0905/0x0906, rsa_pss_rsae
+// (ecdsa 0x0403/0x0503/0x0603, mldsa 0x0904/0x0905/0x0906,
+// slh-dsa-shake 0x0917/0x0918/0x0919/0x091a/0x091b/0x091c, rsa_pss_rsae
 // 0x0804/0x0805/0x0806, rsa_pkcs1 0x0401/0x0501/0x0601) and rejects everything
-// else, including eddsa and rsa_pss_pss variants.
+// else, including eddsa, rsa_pss_pss variants and SLH-DSA-SHA2 schemes.
 pub fn parse_cert_verify_sig(cv_body []u8) !(u16, []u8) {
 	if cv_body.len < 4 {
 		return error('tls: truncated CertificateVerify')
@@ -198,6 +199,7 @@ pub fn parse_cert_verify_sig(cv_body []u8) !(u16, []u8) {
 	scheme := (u16(cv_body[0]) << 8) | u16(cv_body[1])
 	match scheme {
 		u16(0x0403), u16(0x0503), u16(0x0603), u16(0x0904), u16(0x0905), u16(0x0906),
+		u16(0x0917), u16(0x0918), u16(0x0919), u16(0x091a), u16(0x091b), u16(0x091c),
 		u16(0x0804), u16(0x0805), u16(0x0806), u16(0x0401), u16(0x0501), u16(0x0601) {
 		}
 		else {

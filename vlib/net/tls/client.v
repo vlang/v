@@ -36,6 +36,18 @@ pub mut:
 	resume_offer ?SessionState
 	// accepted_psk is set when the server selected our PSK identity.
 	accepted_psk bool
+	// max_early_data is the client's 0-RTT allowance (Config.max_early_data).
+	// The client offers early data only when resuming with a non-zero limit.
+	max_early_data u32
+	// offered_early_data is set when the ClientHello carried early_data.
+	offered_early_data bool
+	// accepted_early_data is set when EncryptedExtensions carried early_data.
+	accepted_early_data bool
+	// early_traffic holds the 0-RTT keys (client_early_traffic_secret) used
+	// to seal early records before the ServerHello arrives.
+	early_traffic     TrafficKeys
+	has_early_traffic bool
+	early_suite       CipherSuite
 	// requested_cert is set when the server sent CertificateRequest (mTLS).
 	requested_cert bool
 	req_schemes    []u16
@@ -112,8 +124,13 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 	// PSK offer goes last (RFC 8446 §4.2.11.2). Only offer when the ticket
 	// suite is in our offer list (binder hash must match the negotiated hash).
 	mut offered_psk := false
+	mut offered_early := false
 	if st := h.resume_offer {
 		if st.suite in h.offered && st.ticket.len > 0 && st.psk.len > 0 {
+			if h.max_early_data > 0 {
+				exts << Extension{ typ: ext_early_data, data: encode_early_data_offer() }
+				offered_early = true
+			}
 			exts << Extension{ typ: ext_psk_key_exchange_modes, data: encode_psk_modes() }
 			age_ms := u32((time.now().unix() - st.created_unix) * 1000) & 0xffffffff
 			obfuscated := age_ms + st.age_add
@@ -161,6 +178,20 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 		body2 := encode_client_hello(ch2)!
 		msg = encode_handshake_message(.client_hello, body2)!
 		h.transcript = msg.clone()
+	}
+	if offered_early {
+		// Derive the 0-RTT keys now: early records are sealed before the
+		// ServerHello arrives, from the full (binder-patched) ClientHello.
+		st := h.resume_offer or { return error('tls: missing psk offer') }
+		es := derive_early_secret_with_psk(st.psk, st.suite) or { return err }
+		ch_hash := transcript_hash_for_suite(msg, st.suite)
+		early_secret := derive_client_early_traffic_secret(es, ch_hash, st.suite) or {
+			return err
+		}
+		h.early_traffic = derive_traffic_keys(early_secret, st.suite) or { return err }
+		h.has_early_traffic = true
+		h.early_suite = st.suite
+		h.offered_early_data = true
 	}
 	return msg
 }
@@ -316,6 +347,12 @@ fn signature_algorithms_data() []u8 {
 		u16(0x0904),
 		u16(0x0905),
 		u16(0x0906),
+		u16(0x0917),
+		u16(0x0918),
+		u16(0x0919),
+		u16(0x091a),
+		u16(0x091b),
+		u16(0x091c),
 		u16(0x0804),
 		u16(0x0805),
 		u16(0x0806),
