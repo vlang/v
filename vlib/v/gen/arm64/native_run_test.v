@@ -145,6 +145,54 @@ fn test_native_linux_object_and_executable_output() {
 	}
 }
 
+fn test_native_linux_links_source_library_directives() {
+	mut cc := ''
+	$if linux && arm64 {
+		cc = 'cc'
+	}
+	for candidate in ['aarch64-linux-gnu-gcc', 'aarch64-linux-musl-gcc'] {
+		if path := os.find_abs_path_of_executable(candidate) {
+			cc = path
+			break
+		}
+	}
+	if cc == '' { return }
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_flags_${os.getpid()} with spaces')
+	dependency := os.join_path(root, 'native_dep')
+	os.mkdir_all(dependency)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'arm64_source_flags_test' }\n")!
+	c_source := os.join_path(root, 'dependency.c')
+	c_object := os.join_path(root, 'dependency.o')
+	library := os.join_path(dependency, 'libarm64_source_dependency.a')
+	os.write_file(c_source, 'int arm64_source_dependency(void) { return 42; }\n')!
+	compiled := os.exec([cc, '-c', c_source, '-o', c_object])
+	assert compiled.exit_code == 0, compiled.output
+	archiver := os.exec([cc, '-print-prog-name=ar'])
+	assert archiver.exit_code == 0, archiver.output
+	archived := os.exec([archiver.output.trim_space(), 'rcs', library, c_object])
+	assert archived.exit_code == 0, archived.output
+	os.write_file(os.join_path(dependency, 'dependency.c.v'), r'module native_dep
+#flag linux -L "@DIR"
+#flag linux -l arm64_source_dependency
+#flag darwin -l arm64_wrong_target
+fn C.arm64_source_dependency() int
+pub fn value() int { return C.arm64_source_dependency() }
+')!
+	path := os.join_path(root, 'program.v')
+	executable := os.join_path(root, 'program')
+	os.write_file(path, 'import native_dep\nfn main() { exit(native_dep.value() - 42) }\n')!
+	linked := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-nocache', '-b', 'arm64', '-os', 'linux', '-cc', cc, '-o', executable, path])
+	assert linked.exit_code == 0, linked.output
+	elf := os.read_bytes(executable)!
+	assert elf[..4] == [u8(0x7f), `E`, `L`, `F`]
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_native_linux_run_variadic_calls_arguments_and_exit_status() {
 	$if linux && arm64 {
 		root := os.join_path(os.vtmp_dir(), 'arm64_linux_run_${os.getpid()}')

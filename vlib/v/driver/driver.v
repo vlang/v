@@ -14965,7 +14965,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	} else if backend == 'arm64' {
-		arm64_directive_flags := if target.os == 'macos' {
+		arm64_directive_flags := if target.os in ['macos', 'linux'] {
 			cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 		} else {
 			[]string{}
@@ -15148,8 +15148,10 @@ pub fn run(args []string) {
 					exit(1)
 				}
 				if !is_o {
+					mut linux_c_flags := user_c_flags.clone()
+					linux_c_flags << arm64_directive_flags
 					link_arm64_linux_object(obj_file, bin_file, c_compiler, c_compiler_explicit,
-						user_c_flags, link_ld_flags, show_cc) or {
+						linux_c_flags, link_ld_flags, show_cc) or {
 						clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 						eprintln(err.msg())
 						exit(1)
