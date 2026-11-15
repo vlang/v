@@ -529,9 +529,11 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	// sources any more. The master keeps its own chunk's sources, and so does a
 	// worker without a scope, whose buffers moved to the master AST.
 	p.batch_sources = unsafe { nil }
-	for ci in 1 .. n_own_chunks {
+	for ci in 0 .. n_own_chunks {
 		if args[ci].scope != unsafe { nil } {
 			batch.release(bounds[ci], bounds[ci + 1])
+		} else {
+			p.retain_batch_sources(batch, bounds[ci], bounds[ci + 1])
 		}
 	}
 	p.next_file_id = next_chunk_file_id
@@ -622,9 +624,10 @@ fn (mut spec SpeculatedBatch) release() {
 		if spec.args[ci].scope != unsafe { nil } {
 			parser_worker_scope_free(spec.args[ci].scope)
 			spec.args[ci].scope = unsafe { nil }
-			spec.batch.release(spec.batch_start + spec.bounds[ci], spec.batch_start +
-				spec.bounds[ci + 1])
 		}
+		// Nothing from a discarded speculative AST can borrow these buffers.
+		spec.batch.release(spec.batch_start + spec.bounds[ci], spec.batch_start +
+			spec.bounds[ci + 1])
 	}
 }
 
@@ -729,6 +732,9 @@ fn (mut p Parser) merge_speculated_batch(paths []string) ?[]int {
 		if spec.args[ci].scope != unsafe { nil } {
 			spec.batch.release(spec.batch_start + spec.bounds[ci], spec.batch_start +
 				spec.bounds[ci + 1])
+		} else {
+			p.retain_batch_sources(spec.batch, spec.batch_start + spec.bounds[ci],
+				spec.batch_start + spec.bounds[ci + 1])
 		}
 	}
 	p.next_file_id = next_chunk_file_id
