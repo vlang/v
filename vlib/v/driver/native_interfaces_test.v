@@ -184,4 +184,12 @@ fn test_bundled_tinycc_native_manifest_uses_resource_headers() ! {
 	assert closure.unassignable == '', closure.unassignable
 	assert poll in closure.inputs['__v3_c_flags__']
 	assert closure.inputs['__v3_c_flags__'].any(it.ends_with('/sys/mman.h'))
+	$if macos {
+		// macOS has no /usr/include: -M must use the same SDK as object builds.
+		sdk := macos_sdk_root()
+		if sdk != '' {
+			sdk_mman := os.real_path(os.join_path(sdk, 'usr', 'include', 'sys', 'mman.h'))
+			assert sdk_mman in closure.inputs['__v3_c_flags__'], sdk_mman
+		}
+	}
 }
