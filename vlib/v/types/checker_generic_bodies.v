@@ -576,7 +576,14 @@ fn (tc &TypeChecker) type_param_branch_classes(node flat.Node, texts map[u32][]u
 					continue
 				}
 				for i, option_name in option_names {
-					marks[i] += if met.any(it.source_type_id() == option_name) { '1' } else { '0' }
+					mut matches := false
+					for candidate in met {
+						if candidate.source_type_id() == option_name {
+							matches = true
+							break
+						}
+					}
+					marks[i] += if matches { '1' } else { '0' }
 				}
 			}
 		}
