@@ -6,6 +6,13 @@ import v.scanner
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_shared_interface_method_index_keeps_exact_owners_and_empty_interfaces() {
 	reader := flat.source_type_id('fixture.Reader')
 	empty := flat.source_type_id('fixture.Empty')

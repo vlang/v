@@ -1,6 +1,7 @@
 module http
 
 import compress.brotli
+import compress.deflate
 import compress.gzip
 import compress.zlib
 
@@ -221,6 +222,198 @@ fn test_parse_response_with_chunked_and_gzip_content_encoding() {
 		chunked_body
 	resp := parse_response(content)!
 	assert resp.body == expected_body
+}
+
+fn test_response_decompression_limit_and_preview() {
+	body := 'x'.repeat(128)
+	compressed := gzip.compress(body.bytes())!
+	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed.bytestr()}'
+
+	parse_response_with_options(wire, max_total_decompressed_bytes: 127) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		return
+	}
+	assert false, 'expected the decoded-byte limit to be enforced'
+
+	resp := parse_response_with_options(wire, max_total_decompressed_bytes: 256)!
+	assert resp.body == body
+	unlimited := parse_response_with_options(wire, max_total_decompressed_bytes: 0)!
+	assert unlimited.body == body
+
+	preview := parse_response_with_options(wire,
+		max_total_decompressed_bytes: 256
+		stop_copying_limit:           32
+	)!
+	assert preview.body == body[..32]
+	copy_at_hard_limit := parse_response_with_options(wire,
+		max_total_decompressed_bytes: body.len
+		stop_copying_limit:           body.len
+	)!
+	assert copy_at_hard_limit.body == body
+	too_large := body + 'x'
+	too_large_compressed := gzip.compress(too_large.bytes())!
+	too_large_wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${too_large_compressed.bytestr()}'
+	parse_response_with_options(too_large_wire,
+		max_total_decompressed_bytes: body.len
+		stop_copying_limit:           body.len
+	) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		return
+	}
+	assert false, 'expected the hard budget to win when equal to the preview limit'
+
+	// A preview aborts once its requested prefix is available. It does not read
+	// the gzip trailer, so a checksum error after the preview is returned as that
+	// decoded prefix rather than triggering the malformed-body raw fallback.
+	mut corrupt := compressed.clone()
+	corrupt[corrupt.len - 1] ^= 1
+	corrupt_wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${corrupt.bytestr()}'
+	corrupt_preview := parse_response_with_options(corrupt_wire,
+		max_total_decompressed_bytes: 256
+		stop_copying_limit:           32
+	)!
+	assert corrupt_preview.body == body[..32]
+}
+
+fn test_response_decompression_stage_budget_normalizes_large_limits() {
+	chunk_size := i64(32768)
+	int32_stage_limit := i64(max_i32) - chunk_size
+	int64_stage_limit := max_i64 / 2
+	int32_brotli_limit := i64(max_i32) - 1
+	int64_brotli_limit := max_i64 / 2 + 1
+	actual_stage_limit := i64(deflate.max_safe_inflate_output_len())
+	if i64(max_int) == max_i64 {
+		assert actual_stage_limit == int64_stage_limit
+	} else {
+		assert actual_stage_limit == int32_stage_limit
+	}
+	assert int32_stage_limit + 1 == i64(max_i32) - chunk_size + 1
+	assert int64_stage_limit + 1 == (i64(1) << 62)
+	assert response_decompression_stage_output_limit('gzip', i64(max_i32), int32_stage_limit) == int32_stage_limit
+	assert response_decompression_stage_output_limit('br', i64(max_i32), int32_stage_limit) == int32_brotli_limit
+	assert response_decompression_stage_output_limit('deflate', max_i64, int64_stage_limit) == int64_stage_limit
+	assert response_decompression_stage_output_limit('br', max_i64, int64_stage_limit) == int64_brotli_limit
+
+	for stage_limit in [int32_stage_limit, int64_stage_limit] {
+		unlimited := response_decompression_stage_budget(0, 0, stage_limit)
+		assert unlimited.output_limit_bytes == stage_limit
+		assert !unlimited.total_budget
+
+		negative_unlimited := response_decompression_stage_budget(-1, 99, stage_limit)
+		assert negative_unlimited.output_limit_bytes == stage_limit
+		assert !negative_unlimited.total_budget
+
+		large_configured_limit := response_decompression_stage_budget(max_i64, 0, stage_limit)
+		assert large_configured_limit.output_limit_bytes == stage_limit
+		assert !large_configured_limit.total_budget
+
+		exact_total_budget := response_decompression_stage_budget(stage_limit, 0, stage_limit)
+		assert exact_total_budget.output_limit_bytes == stage_limit
+		assert exact_total_budget.total_budget
+
+		remaining_total_budget := response_decompression_stage_budget(stage_limit + 100, 100,
+			stage_limit)
+		assert remaining_total_budget.output_limit_bytes == stage_limit
+		assert remaining_total_budget.total_budget
+	}
+
+	too_large_request := response_decompression_stage_budget(10, 11, int32_stage_limit)
+	assert too_large_request.output_limit_bytes == -1
+	assert too_large_request.total_budget
+
+	for total_limit in [i64(0), i64(-1), max_i64] {
+		encoded := gzip.compress('small body'.bytes())!
+		wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${encoded.bytestr()}'
+		resp := parse_response_with_options(wire,
+			max_total_decompressed_bytes: total_limit
+			stop_copying_limit:           max_i64 - 1
+		)!
+		assert resp.body == 'small body'
+	}
+
+	stage_error := response_decompression_limit_error(0, int32_stage_limit)
+	assert stage_error.code() == response_decompression_limit_error_code
+	assert is_no_need_retry_error(stage_error.code())
+	assert stage_error.max_stage_decompressed_bytes == int32_stage_limit
+	assert stage_error.msg().contains('per-stage representation limit')
+}
+
+fn test_response_decompression_limit_applies_to_all_codecs() {
+	body := 'codec budget'.repeat(20)
+	for encoding in ['gzip', 'deflate', 'br'] {
+		if encoding == 'br' && !brotli.is_available() {
+			eprintln('skipping Brotli response limit test; libbrotli is not available')
+			continue
+		}
+		compressed := match encoding {
+			'gzip' { gzip.compress(body.bytes())! }
+			'deflate' { zlib.compress(body.bytes())! }
+			else { brotli.compress(body.bytes())! }
+		}
+		wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: ${encoding}\r\n\r\n${compressed.bytestr()}'
+		parse_response_with_options(wire, max_total_decompressed_bytes: 64) or {
+			assert err is ResponseDecompressionLimitError, 'encoding=${encoding}: ${err.msg()}'
+			continue
+		}
+		assert false, 'expected ${encoding} output to exceed the limit'
+	}
+}
+
+fn test_response_decompression_budget_is_cumulative_across_encodings() {
+	final_body := 'layer'.repeat(12)
+	inner := gzip.compress(final_body.bytes())!
+	outer := gzip.compress(inner)!
+	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip, gzip\r\n\r\n${outer.bytestr()}'
+	budget := i64(inner.len + final_body.len)
+	resp := parse_response_with_options(wire, max_total_decompressed_bytes: budget)!
+	assert resp.body == final_body
+
+	parse_response_with_options(wire, max_total_decompressed_bytes: budget - 1) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		return
+	}
+	assert false, 'expected the cumulative decoded-byte budget to be enforced'
+}
+
+fn test_response_decompression_layer_limit() {
+	mut encoded := 'x'.bytes()
+	for _ in 0 .. max_content_encoding_layers {
+		encoded = gzip.compress(encoded)!
+	}
+	encodings := 'gzip, '.repeat(max_content_encoding_layers - 1) + 'gzip'
+	mut wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: ${encodings}\r\n\r\n${encoded.bytestr()}'
+	assert parse_response(wire)!.body == 'x'
+
+	encoded = gzip.compress(encoded)!
+	too_many := 'gzip, ${encodings}'
+	wire = 'HTTP/1.1 200 OK\r\nContent-Encoding: ${too_many}\r\n\r\n${encoded.bytestr()}'
+	parse_response(wire) or {
+		assert err is ResponseContentEncodingLayerLimitError, err.msg()
+		assert err.code() == response_content_encoding_layer_limit_error_code
+		assert is_no_need_retry_error(err.code())
+		assert err.msg().contains('more than ${max_content_encoding_layers}')
+		return
+	}
+	assert false, 'expected too many Content-Encoding layers to be rejected'
+}
+
+fn test_response_default_decompression_limit_boundary() {
+	assert default_max_total_decompressed_bytes == 16 * 1024 * 1024
+	boundary := 'a'.repeat(int(default_max_total_decompressed_bytes))
+	compressed := gzip.compress(boundary.bytes())!
+	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed.bytestr()}'
+	resp := parse_response(wire)!
+	assert resp.body.len == boundary.len
+	assert resp.body == boundary
+
+	too_large := boundary + 'a'
+	compressed_large := gzip.compress(too_large.bytes())!
+	too_large_wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed_large.bytestr()}'
+	parse_response(too_large_wire) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		return
+	}
+	assert false, 'expected the default decompression limit to reject a larger body'
 }
 
 fn test_vschannel_error_message_formats_non_wsa_errors() {

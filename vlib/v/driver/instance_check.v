@@ -9,6 +9,10 @@ import v.types
 // check the instances of its generics (see start_program_instance_check_process).
 const instance_check_child_env = 'V3_INTERNAL_INSTANCE_CHECK'
 
+// instance_check_library_env preserves the parent's library checking policy
+// when a fresh process replaces the Unix fork used for generic checks.
+const instance_check_library_env = 'V3_INTERNAL_INSTANCE_CHECK_LIBRARY_INSTANCES'
+
 // instance_check_report_marker starts the report of such a process, on a line
 // of its own: what it printed before repeats what the build printed itself.
 const instance_check_report_marker = '\x1ev3 instance check report\x1e'
@@ -37,13 +41,14 @@ fn is_instance_check_child() bool {
 // rebuilds both for itself. It parses and checks the program as the build did
 // and stops where the build starts the check (run_program_instance_check_child).
 // What it prints waits in a pipe until the build asks for it (finish).
-fn start_program_instance_check_process(args []string) ProgramInstanceCheck {
+fn start_program_instance_check_process(args []string, library_instances bool) ProgramInstanceCheck {
 	executable := os.executable()
 	if executable == '' {
 		return ProgramInstanceCheck{}
 	}
 	mut environment := os.environ()
 	environment[instance_check_child_env] = '1'
+	environment[instance_check_library_env] = if library_instances { '1' } else { '0' }
 	// The arguments already hold VFLAGS.
 	environment['VFLAGS'] = ''
 	// The check reports its own result, whatever it is, and has no C to retry
@@ -104,7 +109,7 @@ fn run_program_instance_check_child(mut a flat.FlatAst, mut tc types.TypeChecker
 	flush_stderr()
 	println(instance_check_report_marker)
 	flush_stdout()
-	check_concrete_generic_bodies_of_check(mut a, mut tc, false)
+	check_concrete_generic_bodies_of_check(mut a, mut tc, os.getenv(instance_check_library_env) == '1')
 	code := if tc.errors.len > 0 { 1 } else { 0 }
 	if code == 1 {
 		print_type_diagnostics(a, []types.TypeError{}, tc.errors, is_checker_fixture, fatal_errors,

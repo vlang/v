@@ -676,8 +676,11 @@ fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
 		println('Creating `${settings.vmodules_path}`...')
 		os.mkdir(settings.vmodules_path) or {
-			vpm_error(err.msg(), verbose: true)
-			exit(1)
+			// Another installer can create the shared module store after our check.
+			if !os.is_dir(settings.vmodules_path) {
+				vpm_error(err.msg(), verbose: true)
+				exit(1)
+			}
 		}
 	}
 	verbose_println_more(@FILE_LINE, @FN, 'settings.vmodules_path: ${settings.vmodules_path}')

@@ -20,6 +20,8 @@ COMPILERS = ('gcc', 'msvc', 'tcc')
 RUNNER = 'run_multiwindow_win32_w3_green.ps1'
 EXIT_CHECK = 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
 W5_RUNNER = 'run_multiwindow_win32_w5_a1.ps1'
+# The main and multiwindow jobs build V; gcc also builds it for its self-test shards.
+BUILD_STEPS = {'gcc': 3, 'msvc': 2, 'tcc': 2}
 
 
 def workflow_sources():
@@ -47,21 +49,31 @@ def validate_master_bootstrap_contract(workflow, master):
     if re.search(r'^  (push|pull_request|merge_group):', triggers, re.M):
         raise ValueError('Windows bootstrap must use the master caller')
     jobs = workflow_block(master, 'jobs', 0)
-    for name, filename in (('bootstrap', 'bootstrapping_ci.yml'),
-                           ('windows-bootstrap-contracts', 'makev_ci.yml')):
+    callers = {f'bootstrap-{platform}': 'bootstrapping_ci.yml'
+               for platform in ('linux', 'macos', 'windows', 'termux')}
+    callers['windows-bootstrap-contracts'] = 'makev_ci.yml'
+    for name, filename in callers.items():
         caller = workflow_block(jobs, name, 2)
         if not re.search(r'^    uses: \./\.github/workflows/' + re.escape(filename) + r'$',
                          caller, re.M):
             raise ValueError(f'{name} must call {filename}')
         if re.search(r'^    (if|needs|continue-on-error):', caller, re.M):
             raise ValueError(f'{name} must run unconditionally')
-    formatting = workflow_block(jobs, 'formatting', 2)
-    needs = re.findall(r'^    needs: \[([^\]]+)\]$', formatting, re.M)
-    if len(needs) != 1 or {name.strip() for name in needs[0].split(',')} != {
-            'bootstrap', 'windows-bootstrap-contracts'}:
-        raise ValueError('formatting must depend on both bootstrap workflows')
-    if re.search(r'^    if:', formatting, re.M):
-        raise ValueError('formatting must retain the default success condition')
+        if name.startswith('bootstrap-'):
+            inputs = workflow_block(caller, 'with', 4)
+            if inputs.strip() != f'platform: {name.removeprefix("bootstrap-")}':
+                raise ValueError(f'{name} must select its bootstrap platform')
+    preflight = workflow_block(jobs, 'preflight', 2)
+    if re.findall(r'^    needs: (.+)$', preflight, re.M) != ['bootstrap-linux']:
+        raise ValueError('preflight must depend only on the Linux bootstrap')
+    if re.search(r'^    if:', preflight, re.M):
+        raise ValueError('preflight must retain the default success condition')
+    for cc in COMPILERS:
+        caller = workflow_block(jobs, f'windows_ci_{cc}', 2)
+        needs = re.findall(r'^    needs:\s*\[([^\]]+)\]$', caller, re.M)
+        if len(needs) != 1 or {name.strip() for name in needs[0].split(',') if name.strip()} != {
+                'preflight', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts'}:
+            raise ValueError(f'windows_ci_{cc} must retain its bootstrap and contract gates')
     contracts = workflow_block(workflow_block(workflow, 'jobs', 0), 'bootstrap-contracts', 2)
     if not re.search(r"^    if: github.ref == 'refs/heads/master'$", contracts, re.M):
         raise ValueError('bootstrap contracts must run on master')
@@ -85,8 +97,9 @@ def build_scripts(workflows):
             script = '\n'.join(line[10:] for line in match[1].splitlines()) + '\n'
             if re.search(r'^\.\\makev\.bat -' + cc + r'$', script, re.M):
                 scripts.append(script)
-        if len(scripts) != 2:
-            raise ValueError(f'{cc}: expected both Windows build steps, got {len(scripts)}')
+        if len(scripts) != BUILD_STEPS[cc]:
+            raise ValueError(
+                f'{cc}: expected {BUILD_STEPS[cc]} Windows build steps, got {len(scripts)}')
         result.extend((cc, script) for script in scripts)
     return result
 
@@ -265,7 +278,7 @@ class WorkflowConfigurationTests(unittest.TestCase):
     def test_missing_build_step_is_rejected(self):
         changed = dict(self.workflows)
         changed['gcc'] = changed['gcc'].replace('.\\makev.bat -gcc', 'missing', 1)
-        with self.assertRaisesRegex(ValueError, 'expected both Windows build steps'):
+        with self.assertRaisesRegex(ValueError, 'expected 3 Windows build steps, got 2'):
             build_scripts(changed)
 
     def test_file_hashes_are_byte_exact(self):
@@ -300,23 +313,78 @@ class MasterBootstrapContractTests(unittest.TestCase):
                 validate_master_bootstrap_contract(self.workflow, changed)
 
     def test_bootstrap_caller_cannot_be_skipped_or_replaced(self):
-        for changed in (
-            self.master.replace('  windows-bootstrap-contracts:\n',
-                                '  windows-bootstrap-contracts:\n    if: false\n', 1),
-            self.master.replace('uses: ./.github/workflows/makev_ci.yml',
-                                'uses: ./.github/workflows/windows_ci_gcc.yml', 1),
-        ):
-            with self.subTest(master=changed), self.assertRaises(ValueError):
-                validate_master_bootstrap_contract(self.workflow, changed)
+        names = [f'bootstrap-{platform}' for platform in ('linux', 'macos', 'windows', 'termux')]
+        for name in names + ['windows-bootstrap-contracts']:
+            body = workflow_block(self.master, name, 2)
+            mutations = [body + f'    {rule}\n' for rule in
+                         ('if: false', 'needs: preflight', 'continue-on-error: true')]
+            mutations.append(body.replace('uses: ./.github/workflows/',
+                                          'uses: ./.github/workflows/missing_', 1))
+            for mutation in mutations:
+                changed = self.master.replace(body, mutation, 1)
+                with self.subTest(job=name, mutation=mutation):
+                    self.assertNotEqual(changed, self.master)
+                    with self.assertRaisesRegex(ValueError, name):
+                        validate_master_bootstrap_contract(self.workflow, changed)
 
-    def test_formatting_requires_successful_bootstrap(self):
-        for changed in (
-            self.master.replace('needs: [bootstrap, windows-bootstrap-contracts]',
-                                'needs: [bootstrap]', 1),
-            self.master.replace('  formatting:\n', '  formatting:\n    if: always()\n', 1),
-        ):
-            with self.subTest(master=changed), self.assertRaisesRegex(ValueError, 'formatting'):
-                validate_master_bootstrap_contract(self.workflow, changed)
+    def test_each_bootstrap_selects_its_platform(self):
+        for platform in ('linux', 'macos', 'windows', 'termux'):
+            for replacement in ('all', 'other', None):
+                line = f'      platform: {platform}\n'
+                changed = self.master.replace(
+                    line, '' if replacement is None else f'      platform: {replacement}\n', 1)
+                with self.subTest(platform=platform, replacement=replacement):
+                    self.assertNotEqual(changed, self.master)
+                    with self.assertRaises(ValueError):
+                        validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_preflight_requires_successful_bootstrap(self):
+        body = workflow_block(self.master, 'preflight', 2)
+        mutations = [body.replace('    needs: bootstrap-linux\n', replacement, 1)
+                     for replacement in ('', '    needs: bootstrap-windows\n',
+                                         '    needs: [bootstrap-linux, bootstrap-macos]\n',
+                                         '    needs: windows-bootstrap-contracts\n')]
+        mutations.append('    if: always()\n' + body)
+        for mutation in mutations:
+            changed = self.master.replace(body, mutation, 1)
+            with self.subTest(mutation=mutation.split('    runs-on:', 1)[0]):
+                self.assertNotEqual(changed, self.master)
+                with self.assertRaisesRegex(ValueError, 'preflight'):
+                    validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_windows_callers_accept_prettier_wrapping(self):
+        for cc in COMPILERS:
+            body = workflow_block(self.master, f'windows_ci_{cc}', 2)
+            for value in (
+                ' [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]',
+                '\n      [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]',
+                '\n      [\n        preflight,\n        gen_vc_ci,\n'
+                '        bootstrap-windows,\n        windows-bootstrap-contracts,\n      ]',
+            ):
+                changed_body = re.sub(r'^    needs:\s*\[[^\]]+\]$',
+                                      '    needs:' + value, body, count=1, flags=re.M)
+                changed = self.master.replace(body, changed_body, 1)
+                with self.subTest(compiler=cc, needs=value):
+                    self.assertIn('    needs:' + value + '\n', changed_body)
+                    validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_windows_callers_require_successful_bootstrap_and_contracts(self):
+        for cc in COMPILERS:
+            name = f'windows_ci_{cc}'
+            body = workflow_block(self.master, name, 2)
+            gates = ['preflight', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts']
+            for gate in gates:
+                remaining = [item for item in gates if item != gate]
+                for value in (' [' + ', '.join(remaining) + ']',
+                              '\n      [' + ', '.join(remaining) + ']',
+                              '\n      [\n        ' + ',\n        '.join(remaining) + ',\n      ]'):
+                    changed_body = re.sub(r'^    needs:\s*\[[^\]]+\]$',
+                                          '    needs:' + value, body, count=1, flags=re.M)
+                    changed = self.master.replace(body, changed_body, 1)
+                    with self.subTest(compiler=cc, gate=gate, needs=value):
+                        self.assertNotEqual(changed, self.master)
+                        with self.assertRaisesRegex(ValueError, name):
+                            validate_master_bootstrap_contract(self.workflow, changed)
 
     def test_reusable_bootstrap_retains_both_platforms_and_commands(self):
         mutations = [self.workflow.replace('  workflow_call:\n', '', 1),

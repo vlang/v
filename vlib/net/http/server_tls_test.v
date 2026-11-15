@@ -138,6 +138,95 @@ fn test_server_tls_round_trip() {
 	assert resp.body == 'tls hello /hello'
 }
 
+fn send_slow_tls_request_head(port int, ready chan bool, stop chan bool) {
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{}) or {
+		ready <- false
+		return
+	}
+	defer { client.shutdown() or {} }
+	client.dial('127.0.0.1', port) or {
+		ready <- false
+		return
+	}
+	client.write_string('GET /slow HTTP/1.1\r\nX-Slow: ') or {
+		ready <- false
+		return
+	}
+	ready <- true
+	for {
+		select {
+			_ := <-stop {
+				return
+			}
+			50 * time.millisecond {
+			}
+		}
+		client.write_string('a') or { return }
+	}
+}
+
+fn request_tls_response_on_channel(port int, result chan string) {
+	response := tls_server_request_response(port,
+		'GET /alive HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n') or { err.msg() }
+	result <- response
+}
+
+fn test_server_tls_request_head_deadline_releases_worker() ! {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port()!
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         tls_handshake_budget
+		read_timeout:           5 * time.second
+		read_header_timeout:    300 * time.millisecond
+		worker_num:             1
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running()!
+	defer {
+		srv.close()
+		t.wait()
+	}
+
+	ready := chan bool{cap: 1}
+	stop := chan bool{cap: 1}
+	drip := spawn send_slow_tls_request_head(port, ready, stop)
+	if !<-ready {
+		drip.wait()
+		assert false, 'slow TLS client failed to send its partial request head'
+		return
+	}
+
+	// Keep sending partial headers until the server closes the slow connection.
+	// Without the total header deadline, the sole worker stays occupied even
+	// when each byte arrives inside read_timeout. Allow the legitimate request
+	// its own RSA handshake budget instead of timing two handshakes at 1.5 s.
+	result := chan string{cap: 1}
+	request := spawn request_tls_response_on_channel(port, result)
+	defer {
+		stop <- true
+		drip.wait()
+		request.wait()
+	}
+	select {
+		response := <-result {
+			assert response.starts_with('HTTP/1.1 200 OK\r\n'), response
+			assert response.contains('tls hello /alive')
+		}
+		2 * tls_handshake_budget {
+			assert false, 'partial TLS request head kept the sole worker occupied'
+		}
+	}
+}
+
 fn test_server_tls_rejects_oversized_and_malformed_http1_framing() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
@@ -185,6 +274,10 @@ fn test_server_tls_rejects_oversized_and_malformed_http1_framing() {
 		'POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n')!
 	assert transfer_encoding_response.starts_with('HTTP/1.1 400 Bad Request\r\n')
 	assert transfer_encoding_response.to_lower().contains('connection: close\r\n')
+
+	oversized_head := 'GET /' + 'a'.repeat(http.default_max_http1_request_head_size) + ' HTTP/1.1\r\n\r\n'
+	oversized_head_response := tls_server_request_response(port, oversized_head)!
+	assert oversized_head_response.starts_with('HTTP/1.1 431 Request Header Fields Too Large\r\n')
 }
 
 fn test_default_fetch_rejects_the_untrusted_server_certificate() {

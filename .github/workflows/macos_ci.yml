@@ -51,6 +51,8 @@ jobs:
         env:
           V_MACOS_V3_NO_FALLBACK: 1
         uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'true'
       - name: Assert V is the default compiler (fail if V1 is silently used)
         run: |
           set -uo pipefail
@@ -311,13 +313,14 @@ jobs:
     strategy:
       matrix:
         os: [macos-15, macos-26]
+        # Shard 0 runs in clang-macos; each remaining shard gets its own runner.
+        shard: [1, 2, 3, 4]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    # Shards 2/5 to 5/5 run one after another here, about 70 minutes each on macOS 26.
-    # Both images do not fit in one job: GitHub stops a hosted job after 6 hours.
-    timeout-minutes: 340
+    timeout-minutes: 90
     env:
       VFLAGS: -cc clang
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
       # Shard 1/5 (index 0) runs in clang-macos; keep the count identical in both jobs.
       VTEST_SELF_SHARD_COUNT: '5'
       # Stop a failing test session at its first failure instead of running the
@@ -343,28 +346,12 @@ jobs:
           restore-keys: |
             brew-${{ matrix.os }}-
       - name: Build V
+        # CI master waits for bootstrap-macos, then reuses its exact-commit vprod
+        # artifact on both images, with platform and checksum verification.
         uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'true'
       - name: Install iconv for encoding.iconv
-        id: iconv
         run: v run ci/macos_ci.vsh install_iconv
-      - name: Self tests (shard 2/5)
-        # Run every shard even after another one failed.
-        if: ${{ !cancelled() && steps.iconv.outcome == 'success' }}
-        env:
-          VTEST_SELF_SHARD_INDEX: '1'
-        run: v run ci/macos_ci.vsh self_tests
-      - name: Self tests (shard 3/5)
-        if: ${{ !cancelled() && steps.iconv.outcome == 'success' }}
-        env:
-          VTEST_SELF_SHARD_INDEX: '2'
-        run: v run ci/macos_ci.vsh self_tests
-      - name: Self tests (shard 4/5)
-        if: ${{ !cancelled() && steps.iconv.outcome == 'success' }}
-        env:
-          VTEST_SELF_SHARD_INDEX: '3'
-        run: v run ci/macos_ci.vsh self_tests
-      - name: Self tests (shard 5/5)
-        if: ${{ !cancelled() && steps.iconv.outcome == 'success' }}
-        env:
-          VTEST_SELF_SHARD_INDEX: '4'
+      - name: Self tests
         run: v run ci/macos_ci.vsh self_tests

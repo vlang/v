@@ -5081,13 +5081,16 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			}
 		}
 	}
-	if g.selfhost && tokens.len == 2 && tokens[0].tok == .amp && !tokens[0].is_mut_argument && tokens[1].tok == .name {
-		if local := g.locals[tokens[1].lit] {
-			if local.is_reference {
-				if expected_type_source_id != 0 && !fastc_is_pointer_type(expected_type_source_id) {
-					return g.render_call_argument_expression(tokens[1..], expected_type_source_id)
+	if g.selfhost && tokens.len > 1 && tokens[0].tok == .amp && !tokens[0].is_mut_argument {
+		operand := fastc_strip_paren_tokens(tokens[1..])
+		if operand.len == 1 && operand[0].tok == .name && !operand[0].has_source() {
+			if local := g.locals[operand[0].lit] {
+				if local.is_reference && (tokens.len == 2 || local.is_heap_value) {
+					if expected_type_source_id != 0 && !fastc_is_pointer_type(expected_type_source_id) {
+						return g.render_call_argument_expression(operand, expected_type_source_id)
+					}
+					return g.resolved_expression_name(operand[0].lit, .unknown)
 				}
-				return g.resolved_expression_name(tokens[1].lit, .unknown)
 			}
 		}
 	}
@@ -7111,6 +7114,13 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 	} else {
 		source = g.resolved_expression_name(tokens[0].lit, .unknown)
 		current_type = g.infer_expression_type(tokens[..1]) or { return none }
+		if local := g.locals[tokens[0].lit] {
+			if local.is_heap_value {
+				// Keep the C expression paired with its inferred V value type,
+				// including callers that render the bare local through this path.
+				source = '(*(${source}))'
+			}
+		}
 	}
 	mut member_path := if i == 1 {
 		tokens[0].lit

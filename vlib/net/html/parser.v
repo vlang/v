@@ -98,6 +98,18 @@ fn (mut parser Parser) init() {
 	parser.initialized = true
 }
 
+fn (mut parser Parser) reset_document() {
+	code_tags := parser.lexical_attributes.code_tags
+	parser.lexical_attributes = LexicalAttributes{
+		current_tag:    &Tag{}
+		lexeme_builder: strings.new_builder(100)
+		code_tags:      code_tags
+		outside_tag:    true
+	}
+	parser.initialized = false
+	parser.init()
+}
+
 fn (mut parser Parser) generate_tag() {
 	if parser.lexical_attributes.open_tag {
 		return
@@ -133,6 +145,12 @@ fn (mut parser Parser) set_attribute_value(value string) {
 // split_parse parses the HTML fragment
 pub fn (mut parser Parser) split_parse(data string) {
 	parser.init()
+	data_size := i64(data.len)
+	if parser.dom.source_bytes > max_i64 - data_size {
+		parser.dom.source_bytes = max_i64
+	} else {
+		parser.dom.source_bytes += data_size
+	}
 	for chr in data {
 		is_quote := chr == `"` || chr == `'`
 		string_code := match chr {
@@ -168,8 +186,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.open_comment = false
 				parser.lexical_attributes.open_tag = false
 				parser.lexical_attributes.current_tag = &Tag{
-					name:   'text'
-					closed: true
+					name:         'text'
+					closed:       true
+					is_text_node: true
 				}
 				parser.lexical_attributes.text_after_comment = true
 			} else {
@@ -208,6 +227,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				*/
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme.to_lower()
+					parser.lexical_attributes.current_tag.is_element_node = !complete_lexeme.starts_with('/')
 				} else if parser.lexical_attributes.current_tag.last_attribute != '' {
 					parser.set_attribute_value(complete_lexeme)
 				} else if complete_lexeme != '' && complete_lexeme != '/' {
@@ -230,6 +250,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				complete_lexeme := parser.builder_str()
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme.to_lower()
+					parser.lexical_attributes.current_tag.is_element_node = !complete_lexeme.starts_with('/')
 				} else if parser.lexical_attributes.current_tag.last_attribute != '' {
 					if complete_lexeme != '' {
 						parser.set_attribute_value(complete_lexeme)
@@ -265,6 +286,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				} else {
 					if parser.lexical_attributes.current_tag.name == '' {
 						parser.lexical_attributes.current_tag.name = 'text'
+						parser.lexical_attributes.current_tag.is_text_node = true
 					}
 					parser.lexical_attributes.current_tag.content = temp_string // verify later who has this content
 				}
@@ -277,8 +299,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 
 			if parser.lexical_attributes.text_after_tag == true {
 				parser.tags << &Tag{
-					name:    'text'
-					content: temp_string
+					name:         'text'
+					content:      temp_string
+					is_text_node: true
 				}
 				parser.lexical_attributes.text_after_tag = false
 			}
@@ -293,22 +316,25 @@ pub fn (mut parser Parser) split_parse(data string) {
 
 		if parser.tags.len == 0 {
 			parser.tags << &Tag{
-				name:    'text'
-				content: temp_string
+				name:         'text'
+				content:      temp_string
+				is_text_node: true
 			}
 		} else if parser.tags.len == 1 {
 			mut tag := parser.tags.first()
 
-			if tag.name == 'text' {
+			if tag.is_text_node {
 				tag.content += temp_string
 			}
 		}
 	}
 }
 
-// parse_html parses the given HTML string
+// parse_html parses the given HTML string as a new document. Use split_parse for streaming chunks.
+// If a parser resource limit is exceeded, get_dom returns an empty DOM with the reason available from parse_error.
 pub fn (mut parser Parser) parse_html(data string) {
-	parser.init()
+	parser.reset_document()
+	source_bytes_before_parse := parser.dom.source_bytes
 	mut lines := data.split_into_lines()
 	for index, line in lines {
 		parser.lexical_attributes.line_count++
@@ -316,9 +342,25 @@ pub fn (mut parser Parser) parse_html(data string) {
 		// After `split_into_lines()` we need to add `\n` again.
 		parser.split_parse(if index < lines.len - 1 { '${line}\n' } else { line })
 	}
+	data_size := i64(data.len)
+	parser.dom.source_bytes = if source_bytes_before_parse > max_i64 - data_size {
+		max_i64
+	} else {
+		source_bytes_before_parse + data_size
+	}
 	parser.finalize()
 	parser.dom.debug_file = parser.debug_file
 	parser.dom.construct(parser.tags)
+}
+
+// parse_html_checked parses the data and returns an error if nesting exceeds 256 elements or aggregate rebuilt
+// `Tag.content` bytes would exceed min(64 MiB, 256 times the input size).
+pub fn (mut parser Parser) parse_html_checked(data string) ! {
+	parser.parse_html(data)
+	dom := parser.get_dom()
+	if parse_error := dom.parse_error() {
+		return error(parse_error)
+	}
 }
 
 // finalize flushes pending text and finishes the parsing stage.
@@ -340,6 +382,7 @@ pub fn (mut parser Parser) finalize() {
 			parser.tags << &Tag{
 				name:         'text'
 				content:      parser.builder_str()
+				is_text_node: true
 				text_content: parser.builder_str()
 			}
 			parser.lexical_attributes.lexeme_builder.go_back_to(0)

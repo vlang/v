@@ -53,7 +53,9 @@ fn main() {
 		} else {
 			headers := os.walk_ext(cache, '.vh').filter(os.file_name(it).starts_with('builtin_'))
 			assert headers.len > 0, compiled.output
-			assert compiled.output.contains(headers[0]), compiled.output
+			// Timing reports shorten paths below HOME; the cache filename still
+			// identifies the exact builtin declaration header that was reused.
+			assert compiled.output.contains(os.file_name(headers[0])), compiled.output
 			assert !compiled.output.contains('Caching module builtin...'), compiled.output
 			assert objects == first_objects, 'cached builtin objects changed'
 		}

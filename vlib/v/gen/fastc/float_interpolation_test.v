@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // `${x:.2}`, `${x:8.2}`, `${x:-8.2}` and `${x:.2f}` format a float as the C backend does:
 // the precision rounds, `f` keeps trailing zeros, and the plain form trims them.
 fn test_fastc_float_interpolation_formats_match_the_c_backend() {

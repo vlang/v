@@ -555,6 +555,18 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	} else {
 		c_type
 	}
+	if is_pointer_cast {
+		operand := fastc_strip_paren_tokens(inner_tokens)
+		if operand.len == 1 && operand[0].tok == .name && !operand[0].has_source() {
+			if local := g.locals[operand[0].lit] {
+				if local.is_heap_value {
+					// An explicit pointer cast of a heap local addresses its storage,
+					// even though ordinary expressions infer the struct value type.
+					inner_expected_type = local.typ
+				}
+			}
+		}
+	}
 	if is_integer_cast && !g.in_mono_drain && !g.in_generic_placeholder {
 		operand := fastc_strip_paren_tokens(inner_tokens)
 		if operand.len == 1 && operand[0].tok == .name {

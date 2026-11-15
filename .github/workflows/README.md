@@ -10,17 +10,31 @@ early compatibility feedback.
 
 ## Master push gate
 
-All master-push CI is orchestrated by `ci_master.yml`. Its shared gate
-first runs `bootstrapping_ci.yml` and the Linux/Windows `makev_ci.yml`
-bootstrap contract matrices, then uses the optimized compiler to execute
-`test-cleancode` and `test-fmt` in order. All other push CI jobs depend
-on successful formatting; failure or cancellation of either bootstrap
-workflow prevents any downstream tests or deployments from starting.
+All master-push CI is orchestrated by `ci_master.yml`. It starts Linux,
+macOS, Windows and Termux bootstrap groups in parallel, alongside the
+Linux/Windows `makev_ci.yml` bootstrap contracts. Every bootstrap producer runs
+`test-cleancode` and `test-fmt` in order with its optimized compiler before
+uploading the artifact, including both Termux containers. Once **Linux** bootstrap
+succeeds, the `preflight` job checks CI helpers and selects suites, then
+`gen_vc_ci.yml` generates and checks `v.c` and `v_win.c` on every
+master push, including documentation-only changes and empty diffs. Linux
+suites can start after these checks without waiting for macOS or Windows
+bootstrap. macOS, Windows and Termux suites that only target those platforms
+also require their respective bootstrap group. Windows suites require the
+Windows bootstrap contracts as well. Mixed-platform suites may start with the
+Linux gate and use a source-built compiler if their platform's artifact is
+not available yet. All suites still require successful VC generation.
+
+Each failed bootstrap group still fails the overall CI run, but does not
+cancel unrelated platforms' tests. This preserves Linux results even if a
+macOS bootstrap runner is slow or fails. Compiler artifact cleanup waits for
+**all** bootstrap groups and Windows contracts to succeed before pruning
+older artifacts.
 
 Existing suites are called as reusable workflows via `workflow_call`, with
 eight small, formerly standalone checks inlined in the caller to respect
 GitHub Actions' 50-unique-reusable-workflow limit. Original ordered path
-filters live in `ci_gate_filters/*.json` and are applied by
+filters live in `ci_gate_filters/*.json` (with VC generation set to `all`) and are applied by
 `ci_gate_paths.py` to the exact before/after SHAs from the push. An
 unavailable diff conservatively runs all suites instead of skipping them.
 The gate validator rejects newly added direct-push workflows that would
@@ -42,8 +56,10 @@ macOS x64, Windows x64, Termux ARM64 and Termux x64. Linux is built on Ubuntu 22
 the binary also runs on the newer glibc runners. Termux uses Clang inside the official
 `termux/termux-docker` images on matching native ARM64 and x64 runners. Each Termux
 producer runs a sample program and rebuilds the compiler before uploading its binary.
-All producers must pass before downstream master jobs start. A failed gate skips the
-dependent jobs before they consume runner time.
+Each platform-specific suite waits for its producer, while Linux suites
+need only the Linux producer. Mixed-platform suites may fall back to a
+locally optimized compiler when an artifact has not yet been produced.
+A failing producer still marks the full master CI run as failed.
 
 Each producer uploads a seven-day artifact named `vprod-<platform>-<full-commit-sha>`.
 It contains `<full-commit-sha>-<platform>` and its `.sha256` checksum. The setup action
@@ -57,14 +73,15 @@ executable. This supports nested `working-directory` checkouts and compilation f
 project directories. A standalone compiler outside a checkout retains its build-time source
 root as a fallback.
 
-After all six producers succeed, a separate job removes older compiler artifacts from
+After all platform bootstraps, Windows bootstrap contracts, preflight checks,
+and VC generation succeed, a separate job removes older artifacts from
 completed `CI master` push runs. It preserves artifacts belonging to the current run,
 newer runs and runs still in progress, and only deletes names matching the owning run's
 exact commit and one of the six producer platforms. Other test artifacts are unaffected.
 An older commit's rerun cannot remove newer binaries. Cleanup uses the automatic
 `GITHUB_TOKEN` with `actions: write` only in that job; test jobs keep their existing
 permissions. Cleanup failure does not block tests, and seven-day expiry bounds retention
-when no later successful bootstrap performs cleanup.
+when no later successful master gate performs cleanup.
 
 Standalone jobs and reruns whose artifacts were removed build an optimized compiler
 locally. The setup action also supports `use-prebuilt: false` for jobs that require a native
@@ -238,6 +255,13 @@ GitHub retired macOS 14 images on November 2, 2026; see the
 Workflows for FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`, and similar lanes often
 depend on hosted runner behavior plus containers, VMs, or emulation layers. Treat their
 runner image as part of the tested environment.
+
+FreeBSD CI example builds use one worker (`VJOBS=1`) to leave memory for the CI script's
+compiler processes in the 8 GiB VM. The complete example selection is retained;
+the other FreeBSD test tasks keep their normal worker counts.
+
+Portable compiler snapshots keep signal masks in aligned opaque storage, so the
+OpenBSD bootstrap does not need the native SDK's `sigset_t` typedef.
 
 When changing these workflows, prefer small PRs and keep `workflow_dispatch` available
 with the `master` job condition so maintainers can rerun the lane directly.

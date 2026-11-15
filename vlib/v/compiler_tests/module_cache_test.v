@@ -756,6 +756,26 @@ fn module_cache_artifact(cache_dir string, prefix string, extension string) stri
 	return ''
 }
 
+// module_cache_metric_paths reads the file list of a `-v` metric line. The report
+// shortens paths below HOME to `~`, which CI's temporary directories are.
+fn module_cache_metric_paths(line string) []string {
+	home := os.home_dir()
+	mut paths := []string{}
+	for item in line.all_after(':').trim_space().split(' ') {
+		if item.len == 0 {
+			continue
+		}
+		paths << if item == '~' {
+			home
+		} else if item.starts_with('~/') || item.starts_with('~\\') {
+			home + item[1..]
+		} else {
+			item
+		}
+	}
+	return paths
+}
+
 fn module_cache_configuration_dirs(cache_dir string) []string {
 	mut dirs := []string{}
 	for entry in os.ls(cache_dir) or { return dirs } {
@@ -1195,7 +1215,7 @@ fn main() {
 			first_hash = module_cache_object_hash(object)
 		} else {
 			header := module_cache_artifact(cache_dir, 'callbackprobe_', '.vh')
-			assert header.len > 0 && compiled.output.contains(header), compiled.output
+			assert header.len > 0 && compiled.output.contains(os.file_name(header)), compiled.output
 			assert !compiled.output.contains('Caching module callbackprobe...'), compiled.output
 			assert object == first_object
 			assert module_cache_object_hash(object) == first_hash
@@ -1618,7 +1638,7 @@ fn main() {
 	vh_file_lines :=
 		metrics.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
 	assert vh_file_lines.len == 1, metrics.output
-	vh_files := vh_file_lines[0].all_after(':').trim_space().split(' ').filter(it.len > 0)
+	vh_files := module_cache_metric_paths(vh_file_lines[0])
 	assert vh_files.len == fields[3].int(), metrics.output
 	assert vh_files.all(it.ends_with('.vh')), metrics.output
 	mut expected_vh_lines := 0
@@ -1638,7 +1658,7 @@ fn main() {
 	v_file_lines :=
 		metrics.output.split_into_lines().filter(it.trim_space().starts_with('.v files:'))
 	assert v_file_lines.len == 1, metrics.output
-	v_files := v_file_lines[0].all_after(':').trim_space().split(' ')
+	v_files := module_cache_metric_paths(v_file_lines[0])
 	assert v_files.len == v_fields[3].int(), metrics.output
 	assert v_files == [main_file], metrics.output
 	mut expected_v_lines := 0

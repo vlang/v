@@ -2173,8 +2173,21 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 			return none
 		}
 		type_id := t.source_type_id()
-		matched := named.any(it.source_type_id() == type_id)
-			|| groups.any(tc.type_in_comptime_group(t, it))
+		mut matched := false
+		for n in named {
+			if n.source_type_id() == type_id {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			for group in groups {
+				if tc.type_in_comptime_group(t, group) {
+					matched = true
+					break
+				}
+			}
+		}
 		if matched == positive {
 			result << t
 		}

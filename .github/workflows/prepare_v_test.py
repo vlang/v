@@ -208,6 +208,39 @@ class PrepareVTests(unittest.TestCase):
         ])
         self.assertEqual(self.events("curl"), [])
 
+    def test_macos_images_reuse_the_same_exact_commit_arm64_compiler(self):
+        for version in ("15.0", "26.0"):
+            with self.subTest(version=version):
+                self.log.write_text("")
+                (self.repo / "v").unlink()
+                result = self.run_prepare(
+                    MOCK_OS="Darwin", MOCK_ARCH="arm64", MOCK_MACOS=version,
+                    V_CI_PREBUILT=str(self.asset(f"{SHA}-macos-arm64")),
+                )
+                self.assert_success(result)
+                self.assertEqual([event["args"] for event in self.events("make")], [
+                    ["-j4", "latest_vc", "latest_tcc", "latest_legacy"],
+                    ["-j4", "cache-basic-modules"],
+                ])
+                self.assertFalse(any("self" in event["args"] for event in self.events("compiler")))
+
+    def test_macos_artifacts_require_matching_commit_platform_and_checksum(self):
+        for name, digest in [
+            ("f" * 40 + "-macos-arm64", None),
+            (f"{SHA}-macos-x64", None),
+            (f"{SHA}-linux-x64", None),
+            (f"{SHA}-macos-arm64", "0" * 64),
+        ]:
+            with self.subTest(name=name, digest=digest):
+                self.log.write_text("")
+                result = self.run_prepare(
+                    MOCK_OS="Darwin", MOCK_ARCH="arm64", MOCK_MACOS="26.0",
+                    V_CI_PREBUILT=str(self.asset(name, digest)),
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.repo / "v").read_bytes(), self.original)
+                self.assertEqual(self.events("make") + self.events("compiler"), [])
+
     def test_verified_termux_artifacts_reuse_compiler_for_each_architecture(self):
         for arch, platform in [("aarch64", "termux-arm64"), ("x86_64", "termux-x64")]:
             with self.subTest(arch=arch):

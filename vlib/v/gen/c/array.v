@@ -751,6 +751,14 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		g.write('({ Array ${array_tmp} = ${copy_expr}; int ${start_tmp} = (${start_str}); int ${end_tmp} = (${end_str}); array_slice(${array_tmp}, ${start_tmp}, ${end_tmp}); })')
 	} else if is_array {
 		arr_str := if is_ptr { '*${base_str}' } else { base_str }
+		if g.race {
+			g.write(if gated { 'array__slice_ni(' } else { 'array_slice(' })
+			if is_ptr || !g.gen_race_array_read(base_id) {
+				g.write(arr_str)
+			}
+			g.write(', ${start_str}, ${end_str})')
+			return
+		}
 		if gated {
 			g.write('array__slice_ni(${arr_str}, ${start_str}, ${end_str})')
 		} else {

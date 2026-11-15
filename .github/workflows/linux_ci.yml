@@ -248,24 +248,12 @@ jobs:
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_gcc
-      - name: Self tests
-        id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_gcc
-      - name: Self tests (-prod)
-        id: self_tests_prod
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_prod_gcc
-      - name: Self tests (-cstrict)
-        id: self_tests_cstrict
-        if: ${{ success() && !cancelled() && steps.self_tests_prod.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ success() && !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
@@ -375,24 +363,12 @@ jobs:
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_clang
-      - name: Self tests
-        id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_clang
-      - name: Self tests (vprod)
-        id: self_tests_vprod
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_vprod_clang
-      - name: Self tests (-cstrict)
-        id: self_tests_cstrict
-        if: ${{ success() && !cancelled() && steps.self_tests_vprod.outcome == 'success' }}
-        run: v run ci/linux_ci.vsh self_tests_cstrict_clang
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ success() && !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
@@ -401,6 +377,103 @@ jobs:
         id: build_modules
         if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_modules_clang
+
+  # The first full self-test suite alone exceeded the old jobs' remaining 95
+  # minutes. Run each full suite in four disjoint shards, independently of the
+  # compiler/example checks. The existing essential strict suite needs one shard.
+  gcc-linux-self-tests:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, prod, strict]
+        shard: [0, 1, 2, 3]
+        exclude:
+          - suite: strict
+            shard: 1
+          - suite: strict
+            shard: 2
+          - suite: strict
+            shard: 3
+    env:
+      VFLAGS: -cc gcc
+      VTEST_FAIL_FAST: '1'
+      VJOBS: '4'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.suite == 'strict' && '1' || '4' }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      V_MACOS_V3_NO_FALLBACK: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        uses: ./.github/actions/setup-v
+      - name: Install dependencies for self tests
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+      - name: Self tests
+        if: matrix.suite == 'default'
+        run: v run ci/linux_ci.vsh self_tests_gcc
+      - name: Self tests (-prod)
+        if: matrix.suite == 'prod'
+        run: v run ci/linux_ci.vsh self_tests_prod_gcc
+      - name: Self tests (-cstrict)
+        if: matrix.suite == 'strict'
+        run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
+
+  clang-linux-self-tests:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, prod, strict]
+        shard: [0, 1, 2, 3]
+        exclude:
+          - suite: strict
+            shard: 1
+          - suite: strict
+            shard: 2
+          - suite: strict
+            shard: 3
+    env:
+      VFLAGS: -cc clang
+      VTEST_FAIL_FAST: '1'
+      VJOBS: '4'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.suite == 'strict' && '1' || '4' }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      V_MACOS_V3_NO_FALLBACK: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        uses: ./.github/actions/setup-v
+      - name: Install dependencies for self tests
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_clang
+      # The strict task uses vprod, which the preceding prod task used to build.
+      - name: Build the optimized compiler for strict self tests
+        if: matrix.suite == 'strict'
+        run: v -cc clang -o vprod -prod cmd/v
+      - name: Self tests
+        if: matrix.suite == 'default'
+        run: v run ci/linux_ci.vsh self_tests_clang
+      - name: Self tests (vprod)
+        if: matrix.suite == 'prod'
+        run: v run ci/linux_ci.vsh self_tests_vprod_clang
+      - name: Self tests (-cstrict)
+        if: matrix.suite == 'strict'
+        run: v run ci/linux_ci.vsh self_tests_cstrict_clang
 
   package2-linux:
     name: Linux ${{ matrix.compiler }}

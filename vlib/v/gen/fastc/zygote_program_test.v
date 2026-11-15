@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // These programs are built without the unit cache. A compiler that holds TinyCC then
 // compiles their units from one parse of the shared declarations (see FastcZygote);
 // any other compiler gives each unit to a TinyCC process. Both must agree.

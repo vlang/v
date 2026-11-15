@@ -75,6 +75,18 @@ const body_ident_annotation_slots = 1024
 const body_variadic_query_slots = 512
 const body_param_types_query_slots = 1024
 
+// posix_preamble_headers are the system headers the generated C of a POSIX
+// target always includes; `C.FIONREAD` and friends come from them.
+pub const posix_preamble_headers = ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h',
+	'pthread.h', 'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h',
+	'sys/mman.h', 'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h',
+	'sys/types.h', 'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h',
+	'utime.h']
+
+// apple_preamble_headers are the Apple headers the generated C always includes.
+pub const apple_preamble_headers = ['mach/mach.h', 'mach/mach_vm.h', 'CommonCrypto/CommonDigest.h',
+	'mach/mach_time.h', 'mach-o/dyld.h']
+
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
 fn c_short_name_view(name string) string {
@@ -6763,7 +6775,12 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/builtin/core_windows.h'
 		}
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
-		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
+		'os/fd.c.v' {
+			return include_arg in ['<winsock2.h>', '<poll.h>']
+				|| (g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
+					'dragonfly', 'ios']
+					&& normalized_c_include_arg_path(include_arg) == root + '/vlib/os/fd_poll.h')
+		}
 		'os/mmap_nix.c.v' {
 			return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android',
 				'termux', 'freebsd', 'openbsd', 'dragonfly']
@@ -6774,6 +6791,9 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 		'os/password_windows.c.v', 'v/driver/windows_icon_windows.c.v',
 		'v/driver/replace_file_windows.c.v' {
 			return include_arg == '<windows.h>'
+		}
+		'v/driver/native_object_cache.c.v' {
+			return normalized_c_include_arg_path(include_arg) == root + '/vlib/v/driver/native_object_cache.h'
 		}
 		'v/cmdexec/cmdexec_pipe.c.v' {
 			return include_arg == '<windows.h>'
@@ -7127,7 +7147,10 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 			}
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		if node.value == 'include' && g.core_native_header_is_redeclared(source_file, include_arg) {
+		native_cache_insert := node.value == 'insert'
+			&& normalized_c_include_arg_path(include_arg) == g.compiler_vroot.replace('\\', '/').trim_right('/') + '/vlib/v/driver/native_object_cache.h'
+		if (node.value == 'include' || native_cache_insert)
+			&& g.core_native_header_is_redeclared(source_file, include_arg) {
 			// Native objects still compile against their SDK; only the generated V
 			// translation unit uses the bodyless declarations and ABI preamble.
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg, g.compiler_vroot, source_file, include_dirs), before_import)
@@ -14155,7 +14178,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	if semantic_expected is types.MultiReturn && node.kind == .if_expr {
-		g.gen_if_expr_stmt(node)
+		g.gen_if_expr_stmt(id, node)
 		return
 	}
 	if semantic_expected is types.MultiReturn && node.kind == .block {
@@ -14190,9 +14213,15 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
 		return
 	}
-	if g.race && semantic_expected is types.String && semantic_actual is types.String
-		&& g.gen_race_string_read(id) {
-		return
+	if g.race {
+		if semantic_expected is types.String && semantic_actual is types.String
+			&& g.gen_race_string_read(id) {
+			return
+		}
+		if semantic_expected is types.Array && semantic_actual is types.Array
+			&& g.gen_race_array_read(id) {
+			return
+		}
 	}
 	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
 		return
@@ -19012,7 +19041,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.array_index_type_for_expected_arg(arr_type.elem_type, node)
 						}
 						c_elem := g.value_c_type(index_type)
-						if g.direct_array_access || g.unsafe_depth > 0 {
+						if g.direct_array_access || g.unsafe_depth > 0
+							|| (node.is_in_range_index() && !g.force_bounds_checking) {
 							g.write('(*((${c_elem}*)((')
 							g.gen_expr(base_id)
 							g.write(if is_ptr { ')->data' } else { ').data' })
@@ -19030,10 +19060,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.write('(*(${c_elem}*)array_get(')
 						}
 						base_node := g.a.nodes[int(base_id)]
-						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
-							g.write('*')
+						if !g.race || is_ptr || !g.gen_race_array_read(base_id) {
+							if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
+								g.write('*')
+							}
+							g.gen_expr(base_id)
 						}
-						g.gen_expr(base_id)
 						if accessor.len == 0 {
 							g.write(', ')
 							g.gen_expr(g.a.child(node, 1))
@@ -19066,7 +19098,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							g.gen_expr(g.a.child(node, 1))
 							g.write('))')
 						} else if unalias_type(base_type) is types.String {
-							if !g.direct_array_access && g.unsafe_depth == 0 {
+							if !g.direct_array_access && g.unsafe_depth == 0
+								&& !(node.is_in_range_index() && !g.force_bounds_checking) {
 								index_id := g.a.child(node, 1)
 								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
 								helper := match index_type.source_type_id() {
@@ -19259,7 +19292,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			g.gen_struct_init(id)
 		}
 		.if_expr {
-			g.gen_if_expr(node)
+			g.gen_if_expr(id, node)
 		}
 		.array_literal {
 			if arr := array_like_type(g.usable_expr_type(id)) {
@@ -20706,6 +20739,7 @@ fn (mut g FlatGen) preamble() {
 	} else {
 		g.headerless_libc_preamble()
 		g.headerless_cmdexec_poll_helper()
+		g.headerless_native_object_cache_helper()
 		if g.headerless_compiler_bootstrap() {
 			g.portable_native_runtime_helpers()
 		}
@@ -20964,10 +20998,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <dbghelp.h>')
 	g.writeln('#endif')
 	g.writeln('#else')
-	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
-		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
-		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
-		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+	for header in posix_preamble_headers {
 		g.writeln('#include <${header}>')
 	}
 	// Solaris ships no sys/ptrace.h. Only user code declaring fn C.ptrace needs
@@ -20982,11 +21013,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#ifdef __APPLE__')
-	g.writeln('#include <mach/mach.h>')
-	g.writeln('#include <mach/mach_vm.h>')
-	g.writeln('#include <CommonCrypto/CommonDigest.h>')
-	g.writeln('#include <mach/mach_time.h>')
-	g.writeln('#include <mach-o/dyld.h>')
+	for header in apple_preamble_headers {
+		g.writeln('#include <${header}>')
+	}
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/epoll.h>')
@@ -21014,6 +21043,12 @@ fn (mut g FlatGen) system_libc_headers() {
 }
 
 fn (mut g FlatGen) gnu_objc_compatible_stdatomic_header() {
+	if g.ccompiler == 'cplusplus' {
+		// Atomic operations use the __atomic helpers below. C++11/20 headers do
+		// not provide C11 atomic typedefs; keep channel pointer storage ABI-sized.
+		g.writeln('typedef uintptr_t atomic_uintptr_t;')
+		return
+	}
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#define _Atomic volatile')
 	g.writeln('#endif')
@@ -21853,6 +21888,16 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.headerless_fd_set_struct()
+	g.writeln('#endif')
+	// `os.fd_is_pending` polls descriptors above FD_SETSIZE. These values are
+	// shared by Linux, Android, macOS, the BSDs and Solaris.
+	g.writeln('#if !defined(_WIN32) && !defined(POLLIN)')
+	g.writeln('#define POLLIN 0x001')
+	g.writeln('#define POLLPRI 0x002')
+	g.writeln('#define POLLOUT 0x004')
+	g.writeln('#define POLLERR 0x008')
+	g.writeln('#define POLLHUP 0x010')
+	g.writeln('#define POLLNVAL 0x020')
 	g.writeln('#endif')
 	g.headerless_windows_console_structs()
 	g.headerless_winsize_struct()
@@ -24333,6 +24378,8 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// Zero-pad a formatted float after its sign; `inf`/`nan` are space-padded, as in C.
 	g.writeln("static inline string v3_f64_zpad(string s, int width) { int sign = s.len > 0 && (s.str[0] == '-' || s.str[0] == '+'); if (s.len <= sign || s.str[sign] < '0' || s.str[sign] > '9') return v3_string_pad(s, width, 0); return v3_string_zpad(s, width); }")
 	g.writeln("static inline string v3_string_rpad_zero(string s, int width) { if (s.len >= width) return s; u8* out = malloc_noscan((ptrdiff_t)width + 1); memcpy(out, s.str, (size_t)s.len); memset(out + s.len, '0', (size_t)(width - s.len)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	g.interpolation_buffer_helpers()
+	g.builder_interpolation_helpers()
 	// The 128-bit printers only exist when the program uses those types, so the map
 	// printer reaches for the preamble's decimal helpers instead, and only when one
 	// of those types shows up in an expression.
@@ -24406,7 +24453,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline bool __v3_array_contains_string(Array a, string val) { return __v3_array_index_string(a, val) >= 0; }')
 	g.writeln('static inline int __v3_array_last_index_raw(Array a, const void* val) { for (int i = a.len - 1; i >= 0; i--) if (memcmp((u8*)a.data + (size_t)i * (size_t)a.element_size, val, (size_t)a.element_size) == 0) return i; return -1; }')
 	g.writeln('static inline bool __v3_array_eq_raw(Array a, Array b, int elem_size) { return a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, (size_t)a.len * elem_size) == 0); }')
-	g.writeln('static inline bool __v3_array_eq_string(Array a, Array b) { if (a.len != b.len) return false; string* ad = (string*)a.data; string* bd = (string*)b.data; for (int i = 0; i < a.len; i++) if (ad[i].len != bd[i].len || memcmp(ad[i].str, bd[i].str, ad[i].len) != 0) return false; return true; }')
+	g.writeln('static inline bool __v3_array_eq_string(Array a, Array b) { if (a.len != b.len) return false; string* ad = (string*)a.data; string* bd = (string*)b.data; for (int i = 0; i < a.len; i++) if (ad[i].len != bd[i].len || (ad[i].len > 0 && memcmp(ad[i].str, bd[i].str, ad[i].len) != 0)) return false; return true; }')
 	g.writeln('static inline bool __v3_array_eq_array(Array a, Array b, int depth) { if (a.len != b.len || a.element_size != b.element_size) return false; if (depth <= 1 || a.element_size != sizeof(Array)) { if (a.element_size == sizeof(string)) return __v3_array_eq_string(a, b); return __v3_array_eq_raw(a, b, a.element_size); } Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (!__v3_array_eq_array(ad[i], bd[i], depth - 1)) return false; } return true; }')
 	g.writeln('void* map__get(map* m, void* key, void* zero);')
 	g.writeln('bool map__exists(map* m, void* key);')
@@ -28221,10 +28268,10 @@ fn (g &FlatGen) string_plus_call_is_nested(_id flat.NodeId, node flat.Node) bool
 	if g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs) {
 		return true
 	}
-	if _ := g.fixed_float_buffer_precision(g.a.child(&node, 1)) {
+	if _ := g.interpolation_buffer_size(g.a.child(&node, 1), 0) {
 		return true
 	}
-	if _ := g.fixed_float_buffer_precision(g.a.child(&node, 2)) {
+	if _ := g.interpolation_buffer_size(g.a.child(&node, 2), 0) {
 		return true
 	}
 	return false
@@ -29264,4 +29311,18 @@ fn (g &FlatGen) expected_enum_text() string {
 @[inline]
 fn (kind &CheckedIntKind) name_text() string {
 	return flat.source_type_name(kind.name)
+}
+
+// native_include_arg resolves an `#include`/`#insert` argument for `target` the
+// way this generator does (OS prefixes, `$d()`, `$env()`, `@VEXEROOT`, ...),
+// for native backends that compile the program's C side separately. It returns
+// '' when the directive does not apply to the target.
+pub fn native_include_arg(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) string {
+	return c_include_arg_for_target_with_values(raw, vroot, source_file, target, compile_values)
+}
+
+// native_directive_arg returns the argument of a `#define`/`#undef` directive
+// for `target`, or none when its OS prefix excludes the target.
+pub fn native_directive_arg(raw string, target pref.Target) ?string {
+	return c_directive_arg_for_target(raw.trim_space(), target)
 }

@@ -22,6 +22,9 @@ and ellipse radii scale with `Context.scale`, including rotated ellipses. A conf
 starts at its first endpoint and clips its final dash at the second endpoint. On macOS,
 `native_rendering` draws both axis-aligned and diagonal lines on the native Cocoa surface.
 
+`Context.scissor_rectf()` rounds positive clip edges outward to framebuffer pixels, including
+subpixel clips. Clips with zero or negative width or height remain empty.
+
 For GPU filled rectangles, an integer-positioned dimension of one logical pixel is aligned
 to framebuffer pixels at fractional DPI scales. Its thickness is the display scale rounded
 to the nearest whole pixel, with a minimum of one pixel, independent of its starting position.

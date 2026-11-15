@@ -30,6 +30,17 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Prefer Git Bash on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $gitBin = Join-Path $env:ProgramFiles 'Git\bin'
+        if (-not (Test-Path -LiteralPath (Join-Path $gitBin 'bash.exe'))) {
+          throw "Git Bash was not found in $gitBin"
+        }
+        # WindowsApps can put the WSL bash shim ahead of Git Bash in PATH.
+        $gitBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
     - name: Select compiler for this checkout
       id: compiler
       shell: bash
@@ -66,8 +77,9 @@ runs:
         echo "sha=$sha" >> "$GITHUB_OUTPUT"
         echo "directory=$directory" >> "$GITHUB_OUTPUT"
 
-    # All jobs in CI master depend on the bootstrap workflow. Reusable
-    # workflows share this run's artifacts without a cross-repository token.
+    # Platform producers run independently in CI master. Reusable workflows
+    # share this run's available artifacts without a cross-repository token;
+    # missing artifacts fall back to a local optimized compiler build.
     - name: Download the bootstrapped compiler
       id: artifact
       if: inputs.use-prebuilt == 'true' && steps.compiler.outputs.platform != '' && github.workflow == 'CI master' && steps.compiler.outputs.sha == github.sha

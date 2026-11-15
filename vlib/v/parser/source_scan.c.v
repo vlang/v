@@ -111,6 +111,17 @@ fn (mut b BatchSources) release(start int, end int) {
 	}
 }
 
+// retain_batch_sources transfers C-allocated sources from unscoped chunks to
+// the parser. Unlike scoped workers, their AST and line tables survive the
+// merge, so the buffers cannot be freed until release_source_storage.
+fn (mut p Parser) retain_batch_sources(batch &BatchSources, start int, end int) {
+	for i in start .. end {
+		if batch.sources[i].len > 0 && !batch.borrowed[i] {
+			p.batch_source_buffers << borrowed_source(batch.sources[i])
+		}
+	}
+}
+
 // preload_batch_source hands the next parse batch the text of `path`, which the
 // caller read with read_batch_source. The batch owns the text: a parallel batch
 // releases it with the sources it reads itself, and any other parse drops it

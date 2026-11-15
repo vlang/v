@@ -1889,6 +1889,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 	fs := new_scope(tc.file_scope)
 	return &TypeChecker{
 		a:                                     ast
+		constraints_scanned:                   tc.constraints_scanned
+		declares_constraints:                  tc.declares_constraints
 		compiler_vroot:                        tc.compiler_vroot
 		runtime_type_indexes:                  tc.runtime_type_indexes
 		module_search_paths:                   tc.module_search_paths
@@ -12584,6 +12586,20 @@ pub fn (mut tc TypeChecker) register_synth_type(id flat.NodeId, typ Type) {
 		// smartcast, so force the normal resolution path to choose between them
 		// instead of copying either one into the body-local memo.
 		memo.filled[mi] = 0
+	}
+}
+
+// A call's inferred return type can change the type of an enclosing expression.
+// For example, a shift of a generic field can resolve to void before inference.
+fn (tc &TypeChecker) invalidate_body_resolved_type_chain(id flat.NodeId) {
+	mut memo := tc.body_resolve_memo
+	if isnil(memo) || !memo.active {
+		return
+	}
+	mut current := id
+	for int(current) >= memo.lo && int(current) <= memo.hi {
+		memo.filled[int(current) - memo.lo] = 0
+		current = tc.direct_parent_id(current)
 	}
 }
 

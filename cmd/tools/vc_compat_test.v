@@ -1,5 +1,154 @@
 import os
 
+fn test_vc_compat_cache_bridge_preserves_the_first_publisher_when_links_are_denied() ! {
+	$if !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_cache_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	executable := os.join_path(root, 'snapshot')
+	temporary := os.join_path(root, 'temporary.o')
+	destination := os.join_path(root, 'cached.o')
+	cc := os.getenv_opt('CC') or { 'cc' }
+	flags := ['-std=c99', '-Werror', '-o', executable]
+	for headerless in ['', '__V_HEADERLESS_LIBC', 'CUSTOM_DEFINE_v3_headerless_bootstrap'] {
+		text := vc_compat_cache_snapshot(headerless)
+		os.write_file(source, text)!
+		os.write_file(temporary, 'first object')!
+		baseline := os.exec([cc, ...flags, source])
+		assert baseline.exit_code == 0, baseline.output
+		denied := os.exec([executable, temporary, destination, '1'])
+		assert denied.exit_code == 77, denied.output
+		assert !os.exists(destination)
+		assert os.read_file(temporary)! == 'first object'
+		checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
+			cc, ...flags])
+		assert checked.exit_code == 0, '${headerless}: ${checked.output}'
+		first := os.exec([executable, temporary, destination, '1'])
+		assert first.exit_code == 0, first.output
+		assert os.read_file(destination)! == 'first object'
+		assert !os.exists(temporary)
+		os.write_file(temporary, 'late object')!
+		late := os.exec([executable, temporary, destination, '0'])
+		assert late.exit_code == 0, late.output
+		assert os.read_file(destination)! == 'first object'
+		assert !os.exists(temporary)
+		assert os.read_file(source)! == text
+		os.rm(destination)!
+	}
+}
+
+fn test_vc_compat_cache_bridge_only_changes_the_old_publication_call() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_cache_filter_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	filter := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.awk')
+	text := vc_compat_cache_snapshot('')
+	os.write_file(source, text)!
+	without_root := os.exec(['env', 'V_BOOTSTRAP_VROOT=', 'awk', '-f', filter, source])
+	assert without_root.exit_code == 0, without_root.output
+	assert without_root.output == text
+	// The include stays an opaque path, including a checkout containing spaces.
+	checkout := os.join_path(root, 'checkout with spaces')
+	os.symlink(os.real_path(@VEXEROOT), checkout)!
+	command := ['env', 'V_BOOTSTRAP_VROOT=${checkout}', 'awk', '-f', filter, source]
+	filtered := os.exec(command)
+	assert filtered.exit_code == 0, filtered.output
+	assert filtered.output.count('static __v_result v_bootstrap_cache_link(') == 1
+	assert filtered.output.contains('#include "${checkout}/vlib/v/driver/native_object_cache.h"')
+	assert filtered.output.contains('__v_result result = v_bootstrap_cache_link(temporary, destination);')
+	assert filtered.output.contains('return os__link(temporary, destination);\n}\nconst char *embedded = "os__link(temporary, destination)";')
+	assert os.read_file(source)! == text
+	filtered_source := os.join_path(root, 'filtered.c')
+	os.write_file(filtered_source, filtered.output)!
+	cc := os.getenv_opt('CC') or { 'cc' }
+	for linux in [true, false] {
+		flags := if linux { []string{} } else { ['-U__linux__'] }
+		compiled := os.exec([cc, '-std=c99', '-Werror', ...flags, '-fsyntax-only', filtered_source])
+		assert compiled.exit_code == 0, compiled.output
+	}
+	for current in [
+		text.replace('__v_result result = os__link(temporary, destination);', '__v_result result = driver__link_native_c_object(temporary, destination);'),
+		text.replace('driver__publish_native_c_object(', 'other_publication('),
+	] {
+		os.write_file(source, current)!
+		unchanged := os.exec(command)
+		assert unchanged.exit_code == 0, unchanged.output
+		assert unchanged.output == current
+	}
+}
+
+fn vc_compat_cache_snapshot(headerless string) string {
+	text := '#define _GNU_SOURCE
+#include <errno.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <unistd.h>
+typedef struct { unsigned char *str; } string;
+typedef struct { bool ok; int err; } __v_result;
+typedef struct { bool ok; bool value; int err; } __v_result_bool;
+static int denied_link(const char *source, const char *destination) {
+    (void)source;
+    (void)destination;
+    errno = EACCES;
+    return -1;
+}
+#define link denied_link
+__v_result os__link(string temporary, string destination) {
+    if (link((char*)temporary.str, (char*)destination.str) == 0)
+        return (__v_result){.ok = true};
+    return (__v_result){.ok = false, .err = errno};
+}
+__v_result unrelated_link(string temporary, string destination) {
+    return os__link(temporary, destination);
+}
+const char *embedded = "os__link(temporary, destination)";
+__v_result_bool driver__publish_native_c_object(string temporary, string destination) {
+    __v_result result = os__link(temporary, destination);
+    if (!result.ok) {
+        if (access((char*)destination.str, F_OK) == 0) {
+            unlink((char*)temporary.str);
+            return (__v_result_bool){.ok = true, .value = false};
+        }
+        return (__v_result_bool){.ok = false, .err = result.err};
+    }
+    unlink((char*)temporary.str);
+    return (__v_result_bool){.ok = true, .value = true};
+}
+int main(int argc, char **argv) {
+    if (argc != 4) return 90;
+    string temporary = {(unsigned char*)argv[1]};
+    string destination = {(unsigned char*)argv[2]};
+    __v_result_bool result = driver__publish_native_c_object(temporary, destination);
+    if (!result.ok) return 77;
+    if (result.value != atoi(argv[3])) return 78;
+    return unrelated_link(temporary, destination).ok ? 79 : 0;
+}
+'
+	if headerless == '' {
+		return text
+	}
+	// Headerless snapshots own these libc declarations. Including fcntl.h or
+	// unistd.h after them would introduce conflicting types and prototypes.
+	return '#define ${headerless} 1\n' + text.replace('#include <stdlib.h>', 'int atoi(const char *);')
+		.replace('#include <unistd.h>', 'typedef long long off_t;
+struct flock { int snapshot_layout; };
+struct stat { int snapshot_layout; };
+struct iovec { int snapshot_layout; };
+int link(char *, char *);
+long syscall(long, ...);
+int access(char *, int);
+int unlink(char *);
+#define F_OK 0')
+		.replace('static int denied_link(const char *source, const char *destination)', 'static int denied_link(char *source, char *destination)')
+}
+
 fn test_vc_compat_uses_portable_machosign_when_native_helpers_are_missing() ! {
 	$if windows {
 		return

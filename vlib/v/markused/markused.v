@@ -18,17 +18,15 @@ const markused_source_type_closure_runtime = flat.source_type_id('__v3_builtin_c
 const markused_source_type_veb_result = flat.source_type_id('veb.Result')
 
 // library_seeds are the functions that every program keeps, whatever it calls.
-const library_seeds = ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign',
-	'c.gen_assign']
+// Compiler helpers, including interface generators, follow ordinary call edges.
+// Unconditional roots retain the code generator in tests that only use a small
+// part of a compiler module.
+const library_seeds = ['time.Time.new', 'Time.new']
 
 // parallel_callback_seeds are the callbacks that the compiler hands to its workers.
-const parallel_callback_seeds = ['c.FlatGen.gen_fn_items_scoped_batches',
-	'markused.CallCollector.collect_bodies_scoped_batches',
-	'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches',
-	'driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe', 'v.pref.detect_vroot',
-	'v.pref.detect_vexe', 'types.compare_type_errors', 'types.compare_type_notices',
-	'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
-	'sync.Semaphore.destroy']
+const parallel_callback_seeds = ['driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe',
+	'v.pref.detect_vroot', 'v.pref.detect_vexe', 'types.compare_type_errors',
+	'types.compare_type_notices', 'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy']
 
 // core_runtime_seeds and lowered_runtime_seeds are the runtime functions that the
 // code generator calls for the constructs of the language. No call in a program
@@ -311,7 +309,6 @@ mut:
 	body_import_contexts         []int
 	cache_roots                  []string
 	cached_header_enum_str_roots []u32
-	c_interface_roots            []string
 	marked_roots                 []string
 	convergence_index_complete   bool
 	fn_count                     int
@@ -323,6 +320,7 @@ mut:
 // function of the AST, `tc.top_level_idx`, and the checker's file, module and
 // function-file tables only.
 fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool) MarkusedDeclScan {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := MarkusedDeclScan{
 		fn_decls:                   map[string]FnDeclInfo{}
 		fn_decl_lists:              map[string][]FnDeclInfo{}
@@ -381,7 +379,7 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -503,16 +501,6 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 			if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
 				short := qname.all_after_last('.')
 				add_suffix_candidate(mut result.suffix_map, short, qname)
-			}
-			if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
-				result.c_interface_roots << node.value
-				if qname != node.value {
-					result.c_interface_roots << qname
-				}
-				lowered_qname := markused_c_name(qname)
-				if lowered_qname != qname {
-					result.c_interface_roots << lowered_qname
-				}
 			}
 		}
 	}
@@ -667,7 +655,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_import_contexts := []int{}
 	mut cache_roots := []string{}
 	mut cached_header_enum_str_roots := []u32{}
-	mut c_interface_roots := []string{}
 	mut marked_roots := []string{}
 	if use_prepared {
 		// These indexes remain owned by the retained helper arena until the
@@ -683,7 +670,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			import_contexts = prepared.import_contexts
 			marked_roots = prepared.marked_roots
 			cached_header_enum_str_roots = prepared.cached_header_enum_str_roots
-			c_interface_roots = prepared.c_interface_roots
 			body_ids = prepared.body_ids
 			body_modules = prepared.body_modules
 			body_import_contexts = prepared.body_import_contexts
@@ -713,7 +699,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			body_import_contexts = scan.body_import_contexts
 			cache_roots = scan.cache_roots
 			cached_header_enum_str_roots = scan.cached_header_enum_str_roots
-			c_interface_roots = scan.c_interface_roots
 			marked_roots = scan.marked_roots
 		}
 		convergence_index_complete = scan.convergence_index_complete
@@ -917,14 +902,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	// Cached module objects can call generated enum stringifiers from bodies that
 	// are intentionally absent from their public headers. Keep those program-level
-	// helpers even when no visible caller remains in the warm-cache AST.
+	// helpers even when no visible caller remains in the warm-cache AST. Their enums
+	// can belong to dependencies reloaded from source, not just cached headers.
 	for type_name in cached_header_enum_str_roots {
 		enqueue_enum_str_method(type_name, '', tc, mut used, mut queue)
 	}
 	for name in cache_roots {
-		enqueue(name, mut used, mut queue)
-	}
-	for name in c_interface_roots {
 		enqueue(name, mut used, mut queue)
 	}
 	if markused_has_node_kind(a, .debugger_stmt) {
@@ -2525,7 +2508,6 @@ mut:
 	import_contexts              []map[string]string
 	marked_roots                 []string
 	cached_header_enum_str_roots []u32
-	c_interface_roots            []string
 	auto_roots                   []string
 	body_ids                     []int
 	body_modules                 []string
@@ -2564,6 +2546,7 @@ pub fn (mut prepared PreparedMarkusedDecls) release() {
 }
 
 fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) &PreparedMarkusedDecls {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := &PreparedMarkusedDecls{
 		fn_decls:             map[string]FnDeclInfo{}
 		fn_decl_lists:        map[string][]FnDeclInfo{}
@@ -2616,7 +2599,7 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -2710,16 +2693,6 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
 			add_suffix_candidate(mut result.suffix_map, qname.all_after_last('.'), qname)
-		}
-		if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
-			result.c_interface_roots << node.value
-			if qname != node.value {
-				result.c_interface_roots << qname
-			}
-			lowered_qname := markused_c_name(qname)
-			if lowered_qname != qname {
-				result.c_interface_roots << lowered_qname
-			}
 		}
 	}
 	reachable_modules := markused_reachable_modules(a, tc)
@@ -6095,6 +6068,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 									if !has_exact_selector_call && base.kind == .ident
 										&& base.value_text() in local_values && !(receiver_name.len > 0
 										&& base.value_text() == receiver_name) {
+										has_exact_selector_call = true
+									}
+									if !has_exact_selector_call
+										&& c.selector_is_function_field(callee, cur_module, imports, local_values, local_types) {
 										has_exact_selector_call = true
 									}
 									if !has_exact_selector_call {
@@ -9861,6 +9838,28 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 		c.add_fn_value_candidates(name, cur_module, imports, mut calls)
 		c.add_const_alias_candidates(name, cur_module, imports, mut calls)
 	}
+}
+
+// A callable field is an indirect call, not a same-named global or method.
+// Its possible targets are retained where function values are assigned.
+fn (c &CallCollector) selector_is_function_field(node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) bool {
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	base_id := c.a.child(node, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	receiver := c.receiver_type_name(base_id, cur_module, imports, local_values, local_types)
+	info := c.struct_decl_info_with_imports(receiver, cur_module, imports) or { return false }
+	decl := c.a.node(info.node_id)
+	name := markused_qualify_source_type(info.module, decl.source_value_id())
+	for field in c.tc.structs[name] or { []types.StructField{} } {
+		if field.name == node.value {
+			return types.unalias_type(field.typ) is types.FnType
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) selector_is_enum_value(node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool) bool {

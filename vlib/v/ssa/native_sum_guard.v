@@ -66,7 +66,7 @@ fn (b &Builder) sum_guard_binding_addr(expr_id flat.NodeId) ?ValueID {
 	for b.valid_node_id(current) {
 		expr := b.a.nodes[int(current)]
 		if expr.kind == .ident {
-			return b.vars[expr.value_text()] or { return none }
+			return b.vars.get(expr.value_text()) or { return none }
 		}
 		if (expr.kind == .paren || (expr.kind == .prefix && expr.op == .mul))
 			&& expr.children_count > 0 {

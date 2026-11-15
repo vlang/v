@@ -746,6 +746,8 @@ mut:
 	// reconstruct the same type from the lowered text tree.
 	preserve_inplace_expr_types bool
 	inplace_child_log           []InplaceChildRewrite
+	// Shared type-match bodies cannot use one variant's recorded callee for substitution.
+	array_dsl_multitype_depth int
 	// inplace_rewrite_holds suspends the in-place child rewrites while the
 	// source subtree being transformed is still needed afterwards: a multi-type
 	// match arm transforms its body once per variant, and an array append reads
@@ -1603,6 +1605,8 @@ struct VarTypeBinding {
 	is_implicit_err bool
 mut:
 	is_ref_param bool
+	// is_immutable marks a source binding declared without `mut` (see set_var_immutable).
+	is_immutable bool
 	// mut_optional_storage is the value type (`?&T`) of a `mut a ?T` parameter whose body
 	// reads it as `?T` (`typ`), see mut_optional_view_param.
 	mut_optional_storage u32
@@ -4044,6 +4048,20 @@ fn (mut t Transformer) mark_var_as_ref_param(name string) {
 		t.clear_node_type_memo()
 		t.var_types[i].is_ref_param = true
 	}
+}
+
+// set_var_immutable records whether the current binding of `name` was declared
+// without `mut`. Rebinding the name starts a new binding with the flag cleared.
+fn (mut t Transformer) set_var_immutable(name string, value bool) {
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_types[i].is_immutable = value
+	}
+}
+
+fn (t &Transformer) var_is_immutable(name string) bool {
+	i := t.var_type_index(name)
+	return i >= 0 && t.var_types[i].is_immutable
 }
 
 fn (t &Transformer) var_is_ref_param(name string) bool {
@@ -13593,6 +13611,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if typ != 0 {
 			t.set_var_type_with_raw(child.value_text(), typ, raw_source_typ)
+			if !child.is_mut && child.op != .amp && !child_type_shape.has(.mutable_type)
+				&& !child_type_shape.has(.shared_type) {
+				t.set_var_immutable(child.value_text(), true)
+			}
 			if mut_optional_storage != 0 {
 				t.set_var_mut_optional_storage(child.value_text(), mut_optional_storage)
 			}
@@ -24513,10 +24535,31 @@ fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
 			typ = t.resolve_expr_type(id)
 		}
 		if typ != 0 && typ != flat.source_type_void {
-			return t.transform_expr_for_type(id, typ)
+			return t.materialize_scalar_select_operand(t.transform_expr_for_type(id, typ))
 		}
 	}
 	return t.transform_expr(id)
+}
+
+// materialize_scalar_select_operand snapshots a lowered scalar conditional when
+// it is used as an operand. Later operands can queue statements that mutate its
+// inputs, so the select must be evaluated before those statements. Its temporary
+// is still initialized with a conditional expression, preserving that code shape.
+fn (mut t Transformer) materialize_scalar_select_operand(id flat.NodeId) flat.NodeId {
+	value_id := t.unwrap_parens(id)
+	if int(value_id) < 0 {
+		return id
+	}
+	value := t.a.nodes[int(value_id)]
+	if value.kind != .cast_expr || value.children_count != 1 || value.pos.is_valid()
+		|| !t.is_scalar_select_type(value.typ) {
+		return id
+	}
+	choice := t.a.child_node(&value, 0)
+	if choice.kind != .if_expr || choice.typ != value.typ || choice.pos.is_valid() {
+		return id
+	}
+	return t.snapshot_transformed_expr_for_reuse(id, value.typ, 'scalar_select')
 }
 
 // materialize_value_branch_operand is transform_value_operand for a caller that rebuilds its
@@ -24537,7 +24580,7 @@ fn (mut t Transformer) materialize_value_branch_operand(id flat.NodeId) flat.Nod
 fn (mut t Transformer) materialize_value_branch_operand_for_type(id flat.NodeId, target_type_id u32) flat.NodeId {
 	pending_mark := t.pending_stmts.len
 	value := if target_type_id != 0 {
-		t.transform_expr_for_type(t.unwrap_parens(id), target_type_id)
+		t.materialize_scalar_select_operand(t.transform_expr_for_type(t.unwrap_parens(id), target_type_id))
 	} else {
 		t.transform_value_operand(id)
 	}
@@ -24647,6 +24690,11 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	}
 	if node.op in [.logical_and, .logical_or] {
 		return t.transform_and_chain_smartcasts(id)
+	}
+	if node.op in [.eq, .ne] {
+		if fused := t.lower_normalized_string_literal_compare(node) {
+			return fused
+		}
 	}
 	if node.op == .left_shift {
 		lhs_id := t.a.children[node.children_start]
@@ -25231,6 +25279,9 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	if node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
 		return t.make_empty()
+	}
+	if result := t.lower_immediate_string_slice_write(id, node) {
+		return result
 	}
 	// Materialize value `match`/`if` method receivers and arguments before builtin/method
 	// dispatch, so builtin lowerings (e.g. `(match ...).clone()` -> make_array_clone_call, or
@@ -32852,6 +32903,17 @@ fn (mut t Transformer) build_match_value_stmts(node flat.Node, target_name strin
 	return result
 }
 
+// match_subject_cannot_miss reports whether a `match` without `else` is one the
+// checker proved exhaustive: over a sum type or an enum.
+fn (mut t Transformer) match_subject_cannot_miss(expr_id flat.NodeId) bool {
+	typ := t.node_type(expr_id)
+	if t.is_sum_type_name(typ) {
+		return true
+	}
+	clean := flat.source_type_syntax(transform_trimmed_type_id(typ)).pointer_base()
+	return t.comptime_enum_members(clean).len > 0
+}
+
 // build_match_value_chain builds match value chain data for transform.
 fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_expr_id flat.NodeId, branches []flat.NodeId, idx int, target_name string, target_type_id u32) flat.NodeId {
 	if idx >= branches.len {
@@ -32910,6 +32972,11 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 	if idx + 1 < branches.len {
 		else_part := t.build_match_value_chain(match_expr_id, orig_expr_id, branches, idx + 1, target_name, target_type_id)
 		if_ids << else_part
+	} else if t.a.guard_exhaustive_match && t.match_subject_cannot_miss(orig_expr_id) {
+		// The native backend stops on a value no branch names, as it does for
+		// `return match`. The checker has already required exhaustive branches.
+		message := t.make_string_literal('match: no branch for the value')
+		if_ids << t.make_block([t.make_expr_stmt(t.make_call('panic', [message]))])
 	}
 	if_start := t.a.children.len
 	for id in if_ids {
@@ -32984,7 +33051,9 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 	// body can keep the source nodes it did not change, so none of them may be
 	// rewritten in place.
 	t.inplace_rewrite_holds++
+	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.if_value_branch_block(raw_body, target_name, target_type_id)
+	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
@@ -33058,7 +33127,9 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	// body can keep the source nodes it did not change, so none of them may be
 	// rewritten in place.
 	t.inplace_rewrite_holds++
+	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.make_block(t.transform_scope_stmts(body_ids))
+	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()

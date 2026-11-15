@@ -210,6 +210,7 @@ fn test_after_append_handler_zero_delay_rearming_owns_request_arena() {
 		routes:     &routes
 	}
 	raw := 'GET /immediate HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n'.bytes()
+	state := make_response_writer_state[AfterApp]()
 	for _ in 0 .. 16 {
 		fd, mut cli, mut ln := after_live_pair()!
 		cli.set_read_timeout(10 * time.second)
@@ -219,7 +220,7 @@ fn test_after_append_handler_zero_delay_rearming_owns_request_arena() {
 			buffer:         raw
 			client_conn_fd: fd
 			user_data:      voidptr(params)
-		}, mut out, unsafe { nil }, mut ctl)
+		}, mut out, state, mut ctl)
 		assert step == .done
 		assert ctl.takeover_mode == .manual
 		assert out.len == 0
@@ -231,4 +232,33 @@ fn test_after_append_handler_zero_delay_rearming_owns_request_arena() {
 		cli.close() or {}
 		ln.close() or {}
 	}
+}
+
+fn test_after_deferred_context_survives_writer_slot_reuse() {
+	state_ptr := make_response_writer_state[AfterApp]()
+	if state_ptr == unsafe { nil } { return }
+	mut state := unsafe { &ResponseWriterState(state_ptr) }
+	fd, mut cli, mut ln := after_live_pair()!
+	defer {
+		cli.close() or {}
+		ln.close() or {}
+	}
+	cli.set_read_timeout(10 * time.second)
+	mut app := &AfterApp{}
+	routes := generate_routes[AfterApp, AfterContext](app)!
+	params := RequestParams{ routes: &routes, defer_after_timer: true }
+	mut deferred := handle_request_and_route_with_writer[AfterApp, AfterContext](mut app,
+		http.Request{ url: '/delay' }, fd, params, &state.context)
+	assert voidptr(deferred) != voidptr(&state.context)
+	assert deferred.deferred
+	// Reuse the slot before allowing the timer to run, without relying on timing.
+	next := handle_request_and_route_with_writer[AfterApp, AfterContext](mut app,
+		http.Request{ url: '/immediate' }, 0, params, &state.context)
+	assert next.res.body == 'chained:1'
+	assert deferred.req.url == '/delay'
+	gc_collect()
+	worker := spawn after_timer(mut deferred, unsafe { nil })
+	response := after_read_until(mut cli, 'late:7')
+	worker.wait()
+	assert response.contains('late:7'), response
 }

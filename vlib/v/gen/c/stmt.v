@@ -8526,7 +8526,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					decl_type
 				}
 			} else if rhs.kind == .if_expr {
-				g.if_expr_type(&rhs)
+				g.if_expr_type(rhs_id, &rhs)
 			} else {
 				*g.usable_expr_type(rhs_id)
 			}

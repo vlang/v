@@ -97,5 +97,9 @@ fn (req &Request) vschannel_finish_response(buff &u8, length int, err_code int) 
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
 	}
-	return vschannel_parse_response(response_text, err_code, raw_body: req.raw_response_body)
+	return vschannel_parse_response(response_text, err_code,
+		raw_body:                     req.raw_response_body
+		max_total_decompressed_bytes: req.max_total_decompressed_bytes
+		stop_copying_limit:           req.stop_copying_limit
+	)
 }

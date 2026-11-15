@@ -111,7 +111,12 @@ fn answer() int { return C.fastc_native_answer() }
 fn main() { println(answer()) }
 ') or { panic(err) }
 	program := os.join_path(root, 'program')
-	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+	// The outer GCC/UBSan runner's VFLAGS must not select an unsupported FastC parser compiler.
+	// Keep the nested FastC build and all of its runtime assertions active.
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root], @VEXEROOT, {
+		'VFLAGS':  ''
+		'VOSARGS': ''
+	})
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

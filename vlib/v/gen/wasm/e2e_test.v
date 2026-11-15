@@ -547,7 +547,13 @@ assert.equal(e.sum_to(100), 4950);
 import { readFileSync } from 'node:fs';
 const bytes = readFileSync(process.argv[2]);
 assert.ok(WebAssembly.validate(bytes), 'module failed WebAssembly.validate');
-const { instance } = await WebAssembly.instantiate(bytes, {});
+// Arithmetic guards can reach the panic runtime even in a compute-only module.
+// Any panic or output while evaluating this matrix is a failure.
+const unexpectedWasi = {
+ fd_write() { assert.fail('unexpected WASI write'); },
+ proc_exit(code) { assert.fail('unexpected WASI exit ' + code); }
+};
+const { instance } = await WebAssembly.instantiate(bytes, { wasi_snapshot_preview1: unexpectedWasi });
 const e = instance.exports;
 assert.ok(e.memory instanceof WebAssembly.Memory);
 ${checks}

@@ -101,6 +101,8 @@ fn main() {
 	prefs.exclude = [os.join_path(@VEXEROOT, 'vlib/builtin/backtraces_nix.c.v')]
 	generated := generate_files([root], prefs) or { panic(err) }
 	assert generated.contains('FixedArray_EXPRHEX')
+	// A nested default struct must be a braced static initializer, not a C compound literal.
+	assert generated.contains('.key_values={.all_deleted=')
 	assert !generated.contains('FixedArray_(')
 	c_path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'fastc')
