@@ -154,7 +154,8 @@ pub fn extract_cert_der(cert_msg_body []u8) ![]u8 {
 }
 
 // parse_cert_pubkey parses the leaf certificate public key from a Certificate body.
-// parse_cert_pubkey supports RSA, P-256/P-384/P-521 ECDSA and ML-DSA-44/65/87 keys.
+// parse_cert_pubkey supports RSA, P-256/P-384/P-521 ECDSA, ML-DSA-44/65/87
+// and SLH-DSA (all 12 parameter sets parse; only SHAKE sets verify) keys.
 pub fn parse_cert_pubkey(cert_msg_body []u8) !x509.PublicKey {
 	if cert_msg_body.len < 4 {
 		return error('tls: truncated Certificate')

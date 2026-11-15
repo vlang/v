@@ -1,6 +1,7 @@
 module tls
 
 import crypto.rand
+import net
 import time
 
 fn serve_early_n(mut l Listener, n int, resumed_ch chan bool, got_ch chan string) {
@@ -512,9 +513,12 @@ fn test_ticket_replay_cache_bounded() {
 	defer {
 		clear_used_tickets()
 	}
-	// Fill past the cap with distinct nonces; the cache must stay bounded
-	// and remain functional for fresh nonces.
-	for i in 0 .. max_replay_cache_entries + 100 {
+	// A stale entry (consumed long ago) plus fresh entries up to the cap: a
+	// further mark must evict the stale entry rather than clear the cache,
+	// so old tickets stay rejected while fresh ones keep working.
+	stale_nonce := [u8(0xaa), 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22]
+	used_ticket_nonces[stale_nonce.hex()] = time.now().unix() - replay_entry_max_age - 100
+	for i in 0 .. max_replay_cache_entries - 1 {
 		mut nonce := []u8{len: 8}
 		nonce[0] = u8(i & 0xff)
 		nonce[1] = u8((i >> 8) & 0xff)
@@ -522,9 +526,128 @@ fn test_ticket_replay_cache_bounded() {
 		nonce[3] = u8((i >> 24) & 0xff)
 		mark_ticket_used(nonce)
 	}
-	assert used_ticket_nonces.len <= max_replay_cache_entries
+	assert used_ticket_nonces.len == max_replay_cache_entries
 	fresh := [u8(0xde), 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04]
 	assert !is_ticket_used(fresh)
 	mark_ticket_used(fresh)
+	assert used_ticket_nonces.len <= max_replay_cache_entries
+	assert !is_ticket_used(stale_nonce)
 	assert is_ticket_used(fresh)
+	// Recently consumed nonces survive the sweep.
+	zero := []u8{len: 8}
+	assert is_ticket_used(zero)
+}
+
+// Direct-Conn drain tests drive drain_early_data with caller-chosen keys over
+// a live loopback socket, without a full handshake. The peer sender writes
+// raw records then closes.
+fn test_early_data_drain_rejects_undecryptable() {
+	clear_used_tickets()
+	defer {
+		clear_used_tickets()
+	}
+	suite := CipherSuite.tls_aes_128_gcm_sha256
+	ekey := rand.bytes(16) or { panic(err) }
+	eiv := rand.bytes(12) or { panic(err) }
+	hkey := rand.bytes(16) or { panic(err) }
+	hiv := rand.bytes(12) or { panic(err) }
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0') or { panic(err) }
+	port := l.addr() or { panic(err) }.port() or { panic(err) }
+	sender := spawn fn [port] () {
+		mut s := net.dial_tcp('127.0.0.1:${port}') or { return }
+		defer {
+			s.close() or {}
+		}
+		frag := rand.bytes(32) or { return }
+		mut rec := []u8{}
+		rec << u8(ContentType.application_data)
+		rec << u8(0x03)
+		rec << u8(0x03)
+		rec << u8(frag.len >> 8)
+		rec << u8(frag.len & 0xff)
+		rec << frag
+		s.write(rec) or {}
+	}()
+	mut tcp := l.accept() or { panic(err) }
+	mut c := Conn{
+		tcp:               tcp
+		suite:             suite
+		client_hs_traffic: TrafficKeys{
+			key: hkey
+			iv:  hiv
+		}
+	}
+	mut shs := new_server_handshake(.off) or { panic(err) }
+	shs.accepted_early_data = true
+	shs.has_early_traffic = true
+	shs.early_traffic = TrafficKeys{
+		key: ekey
+		iv:  eiv
+	}
+	shs.transcript = []u8{}
+	shs.suite = suite
+	shs.max_early_data = 1024
+	c.drain_early_data(mut shs) or {
+		assert err.msg().contains('bad early record')
+		tcp.close() or {}
+		l.close() or {}
+		_ = sender
+		return
+	}
+	assert false, 'drain accepted an undecryptable early flight'
+}
+
+fn test_early_data_drain_enforces_limit() {
+	clear_used_tickets()
+	defer {
+		clear_used_tickets()
+	}
+	suite := CipherSuite.tls_aes_128_gcm_sha256
+	ekey := rand.bytes(16) or { panic(err) }
+	eiv := rand.bytes(12) or { panic(err) }
+	hkey := rand.bytes(16) or { panic(err) }
+	hiv := rand.bytes(12) or { panic(err) }
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0') or { panic(err) }
+	port := l.addr() or { panic(err) }.port() or { panic(err) }
+	r1 := seal_record(suite, ekey, eiv, 0, .application_data, []u8{len: 700, init: u8(`A`)}) or {
+		panic(err)
+	}
+	r2 := seal_record(suite, ekey, eiv, 1, .application_data, []u8{len: 700, init: u8(`B`)}) or {
+		panic(err)
+	}
+	sender := spawn fn [port, r1, r2] () {
+		mut s := net.dial_tcp('127.0.0.1:${port}') or { return }
+		defer {
+			s.close() or {}
+		}
+		s.write(r1) or {}
+		s.write(r2) or {}
+	}()
+	mut tcp := l.accept() or { panic(err) }
+	mut c := Conn{
+		tcp:               tcp
+		suite:             suite
+		client_hs_traffic: TrafficKeys{
+			key: hkey
+			iv:  hiv
+		}
+	}
+	mut shs := new_server_handshake(.off) or { panic(err) }
+	shs.accepted_early_data = true
+	shs.has_early_traffic = true
+	shs.early_traffic = TrafficKeys{
+		key: ekey
+		iv:  eiv
+	}
+	shs.transcript = []u8{}
+	shs.suite = suite
+	shs.max_early_data = 1024
+	c.drain_early_data(mut shs) or {
+		assert err.msg().contains('exceeds limit')
+		tcp.close() or {}
+		l.close() or {}
+		_ = sender
+		return
+	}
+	assert false, 'drain accepted early data past the limit'
 }

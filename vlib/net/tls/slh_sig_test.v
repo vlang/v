@@ -138,21 +138,27 @@ fn test_slh_chain() {
 	}
 }
 
-// test_slh_chain_tampered locks rejection of a damaged SLH-DSA signature.
+// test_slh_chain_tampered locks rejection of a damaged SLH-DSA signature,
+// for every wired parameter set (a per-set stub that always accepts would
+// pass a single-set test).
 fn test_slh_chain_tampered() {
-	store := slh_store('slhshake128s_ca_cert.pem')
-	leaf_der, _ := slh_leaf('slhshake128s_leaf_cert.pem')
-	mut bad := leaf_der.clone()
-	bad[bad.len - 1] ^= u8(0x01)
-	for r in store.roots {
-		rpk := r.public_key() or { panic(err) }
-		verify_cert_signature(bad, rpk) or {
-			assert err.msg().contains('signature') || err.msg().contains('verify')
-				|| err.msg().contains('mismatch')
-			return
+	for cs in slh_cases() {
+		store := slh_store(cs.ca)
+		leaf_der, _ := slh_leaf(cs.leaf)
+		mut bad := leaf_der.clone()
+		bad[bad.len - 1] ^= u8(0x01)
+		mut failed := false
+		for r in store.roots {
+			rpk := r.public_key() or { panic(err) }
+			verify_cert_signature(bad, rpk) or {
+				assert err.msg().contains('signature') || err.msg().contains('verify')
+					|| err.msg().contains('mismatch')
+				failed = true
+				break
+			}
 		}
+		assert failed, 'tampered SLH-DSA chain must fail for ${cs.scheme:04x}'
 	}
-	assert false, 'tampered SLH-DSA chain must fail'
 }
 
 // test_slh_vgen_chains covers V-generated SLH-DSA CA/leaf pairs.
@@ -176,8 +182,11 @@ fn test_slh_vgen_chains() {
 		verify_cert_signature(leaf_der, ca_pk) or {
 			panic('vgen slh chain ${cs.scheme:04x}: ${err}')
 		}
-		// Cross-variant: a 128s-signed leaf must not verify under a 128f CA
-		// key, and the sigAlg/key gate must be the reason.
+		// Cross-variant: same-n s/f pairs must not cross-verify (a per-set
+		// stub or OID-tail mixup would pass a single-pair test). The 128
+		// pair uses V-generated certs; the slower 192/256 pairs use the
+		// openssl fixtures at the verify layer (verify is fast for all
+		// sets; only signing is slow).
 		if cs.params == .shake_128s {
 			other_priv, _ := slh_dsa.keygen(.shake_128f) or { panic('other keygen') }
 			other_ca, _ := x509.generate_self_signed_slh_dsa(x509.CertGenOptions{
@@ -192,6 +201,23 @@ fn test_slh_vgen_chains() {
 			}
 			assert false, 'cross-variant SLH-DSA chain must fail'
 		}
+	}
+	for pair in [['slhshake192s_leaf_cert.pem', 'slhshake192f_ca_cert.pem'],
+		['slhshake192f_leaf_cert.pem', 'slhshake192s_ca_cert.pem'],
+		['slhshake256s_leaf_cert.pem', 'slhshake256f_ca_cert.pem'],
+		['slhshake256f_leaf_cert.pem', 'slhshake256s_ca_cert.pem']] {
+		store := slh_store(pair[1])
+		leaf_der, _ := slh_leaf(pair[0])
+		mut failed := false
+		for r in store.roots {
+			rpk := r.public_key() or { panic(err) }
+			verify_cert_signature(leaf_der, rpk) or {
+				assert err.msg().contains('mismatch')
+				failed = true
+				break
+			}
+		}
+		assert failed, 'cross-variant SLH-DSA chain must fail for ${pair[0]}'
 	}
 }
 
@@ -248,22 +274,26 @@ fn test_slh_sha2_not_implemented() {
 // SLH-DSA sigAlg with parameters (NULL or a trailing OID) is rejected
 // outright, never read as a primary-OID win.
 fn test_slh_sigalg_params_present() {
-	// SEQ { OID shake-128s } with NULL parameters.
-	with_null := [u8(0x06), 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, u8(0x1a), 0x05,
-		0x00]
-	slh_dsa_params_from_sigalg(with_null) or {
-		assert err.msg().contains('SLH-DSA')
-		// SEQ { OID shake-128s, OID shake-128f }: the trailing OID counts as
-		// parameters, which SLH-DSA rejects outright.
-		with_trailing := [u8(0x06), 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, u8(0x1a),
-			0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, u8(0x1b)]
-		slh_dsa_params_from_sigalg(with_trailing) or {
+	// Every SLH-DSA tail (0x14-0x1f, SHA2 then SHAKE in OID order) with NULL
+	// parameters is rejected outright, never read as a primary-OID win.
+	for tail in [u8(0x14), 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f] {
+		with_null := [u8(0x06), 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, tail, 0x05,
+			0x00]
+		slh_dsa_params_from_sigalg(with_null) or {
 			assert err.msg().contains('SLH-DSA')
-			return
+			continue
 		}
-		assert false, 'SLH-DSA sigAlg with trailing OID must fail'
+		assert false, 'SLH-DSA sigAlg with params must fail for tail ${tail:02x}'
 	}
-	assert false, 'SLH-DSA sigAlg with params must fail'
+	// SEQ { OID shake-128s, OID shake-128f }: the trailing OID counts as
+	// parameters, which SLH-DSA rejects outright.
+	with_trailing := [u8(0x06), 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, u8(0x1a),
+		0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, u8(0x1b)]
+	slh_dsa_params_from_sigalg(with_trailing) or {
+		assert err.msg().contains('SLH-DSA')
+		return
+	}
+	assert false, 'SLH-DSA sigAlg with trailing OID must fail'
 }
 
 // test_slh_cv_roundtrips exercises CertificateVerify for every wired
@@ -491,6 +521,59 @@ fn test_slh_loopback() {
 		l.close() or {}
 		_ = server
 	}
+}
+
+// test_slh_loopback_wrong_ca locks chain verification in the loopback: a
+// client that trusts only the 128f CA must reject the 128s leaf. A server
+// that skipped verification would complete the handshake and echo.
+fn test_slh_loopback_wrong_ca() {
+	td := os.join_path(@VEXEROOT, 'vlib/net/tls/testdata')
+	server_cfg := Config{
+		cert: os.join_path(td, 'slhshake128s_leaf_cert.pem')
+		key:  os.join_path(td, 'slhshake128s_leaf_key.pem')
+	}
+	mut l := listen(server_cfg) or { panic('listen: ${err}') }
+	port := l.addr() or { panic(err) }.port() or { panic(err) }
+	server := spawn fn (mut l Listener) {
+		mut conn := l.accept() or { return }
+		defer { conn.close() or {} }
+		mut buf := []u8{len: 4}
+		n := conn.read(mut buf) or { return }
+		if n > 0 {
+			conn.write('pong'.bytes()) or {}
+		}
+	}(mut l)
+	ca_der := slh_pem_block(slh_read('slhshake128f_ca_cert.pem'), 'CERTIFICATE')
+	ca_cert := x509.parse_der(ca_der) or { panic(err) }
+	client_cfg := Config{
+		server_name:  'localhost'
+		verify:       true
+		verify_chain: true
+		ca_store:     CertStore{
+			roots: [ca_cert]
+		}
+	}
+	mut c := dial('127.0.0.1', port, client_cfg) or { panic('dial: ${err}') }
+	c.handshake() or {
+		c.close() or {}
+		l.close() or {}
+		_ = server
+		return
+	}
+	c.write('ping'.bytes()) or {
+		c.close() or {}
+		l.close() or {}
+		_ = server
+		return
+	}
+	mut buf := []u8{len: 4}
+	c.read(mut buf) or {
+		c.close() or {}
+		l.close() or {}
+		_ = server
+		return
+	}
+	assert false, 'client accepted an untrusted SLH-DSA leaf'
 }
 
 // test_slh_openssl_interop checks V-generated SLH-DSA certificates under

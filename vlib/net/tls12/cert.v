@@ -10,6 +10,7 @@ module tls12
 
 import crypto.sha256
 import crypto.sha512
+import crypto.subtle
 import math.big
 import time
 
@@ -371,25 +372,32 @@ fn hash_for_oid(sig_oid string, msg []u8) !([]u8, []u8) {
 }
 
 // rsa_verify_pkcs1_v15 verifies an RSA PKCS#1 v1.5 signature over msg.
+// The decrypted block is compared against a reconstructed expected block
+// with a constant-time compare (no padding-scan branches).
 fn rsa_verify_pkcs1_v15(key RsaPublicKey, sig []u8, msg []u8, sig_oid string) ! {
 	hash, prefix := hash_for_oid(sig_oid, msg)!
-	m := os2ip(sig).big_mod_pow(key.e, key.n)!
-	// k = modulus byte length.
 	nb, _ := key.n.bytes()
 	k := nb.len
+	if sig.len != k {
+		return error('tls12: bad RSA signature length')
+	}
+	if k < prefix.len + hash.len + 11 {
+		return error('tls12: RSA modulus too small')
+	}
+	m := os2ip(sig).big_mod_pow(key.e, key.n)!
 	em := i2osp_exact(m, k)!
-	if em.len != k || em[0] != 0x00 || em[1] != 0x01 {
-		return error('tls12: bad RSA signature padding')
+	mut expected := []u8{len: k}
+	expected[1] = 0x01
+	for i in 2 .. k - prefix.len - hash.len - 1 {
+		expected[i] = 0xff
 	}
-	mut i := 2
-	for i < em.len && em[i] == 0xff {
-		i++
+	for i in 0 .. prefix.len {
+		expected[k - prefix.len - hash.len + i] = prefix[i]
 	}
-	if em.len - i < prefix.len + hash.len + 1 || em[i] != 0x00 {
-		return error('tls12: bad RSA signature padding')
+	for i in 0 .. hash.len {
+		expected[k - hash.len + i] = hash[i]
 	}
-	i++
-	if em[i..i + prefix.len] != prefix || em[i + prefix.len..] != hash {
+	if subtle.constant_time_compare(em, expected) != 1 {
 		return error('tls12: RSA signature mismatch')
 	}
 }

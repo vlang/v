@@ -27,14 +27,42 @@ fn test_dtls_record_app_epoch() {
 	}
 	enc := encode_dtls_record(rec)!
 	dec := decode_dtls_record(enc)!
+	assert dec.content_type == tls.ContentType.application_data
 	assert dec.epoch == dtls_epoch_application
 	assert dec.sequence_number == 7
+	assert dec.fragment == 'hi'.bytes()
 }
 
 fn test_dtls_record_rejects_bad() {
 	mut bad := [u8(99), 0xfe, 0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0xaa]
 	decode_dtls_record(bad) or {
 		assert err.msg().contains('content type')
+		// Wrong legacy version is rejected.
+		mut bad_ver := [u8(22), 0x03, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa]
+		decode_dtls_record(bad_ver) or {
+			assert err.msg().contains('version')
+			// Truncated header is rejected.
+			decode_dtls_record(bad_ver[..10]) or {
+				// Length mismatch is rejected.
+				mut bad_len := [u8(22), 0xfe, 0xfd, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0xaa]
+				decode_dtls_record(bad_len) or {
+					// Oversize fragment is rejected.
+					mut big := []u8{len: 2050, init: u8(0xbb)}
+					encode_dtls_record(DtlsRecord{
+						content_type:    tls.ContentType.handshake
+						epoch:           dtls_epoch_handshake
+						sequence_number: 0
+						fragment:        big
+					}) or {
+						return
+					}
+					assert false, 'expected fragment-size error'
+				}
+				return
+			}
+			assert false, 'expected truncation error'
+		}
+		assert false, 'expected version error'
 		return
 	}
 	assert false, 'expected content-type error'

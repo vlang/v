@@ -79,6 +79,33 @@ fn test_rsa_textbook_kat() {
 	if _ := private_key_from_pkcs1_der(pkcs1[..pkcs1.len - 5]) {
 		assert false, 'truncated DER must fail'
 	}
+	// validate catches corrupted numbers: n != p*q and e*d != 1 both fail.
+	bad_n := PrivateKey{
+		n:    key.p
+		e:    key.e
+		d:    key.d
+		p:    key.p
+		q:    key.q
+		dp:   key.dp
+		dq:   key.dq
+		qinv: key.qinv
+	}
+	if _ := bad_n.validate() {
+		assert false, 'validate(n != p*q) must fail'
+	}
+	bad_d := PrivateKey{
+		n:    key.n
+		e:    key.e
+		d:    key.p
+		p:    key.p
+		q:    key.q
+		dp:   key.dp
+		dq:   key.dq
+		qinv: key.qinv
+	}
+	if _ := bad_d.validate() {
+		assert false, 'validate(e*d != 1) must fail'
+	}
 }
 
 fn test_rsa_invalid_params() {
@@ -186,6 +213,15 @@ fn test_rsa_pss_sha512_2048() {
 	}
 	key.public_key().verify_pss(msg, tls_sig, .sha512) or {
 		panic('verify of tls PSS: ${err}')
+	}
+	// A damaged PSS-SHA512 signature is rejected on both sides.
+	mut bad_sig := sig.clone()
+	bad_sig[0] ^= 0x01
+	if _ := key.public_key().verify_pss(msg, bad_sig, .sha512) {
+		assert false, 'tampered PSS-SHA512 must fail'
+	}
+	if _ := tls.rsa_pss_verify(scheme, msg, bad_sig, key.e, key.n) {
+		assert false, 'tampered tls PSS-SHA512 must fail'
 	}
 }
 

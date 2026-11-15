@@ -100,6 +100,11 @@ fn test_roundtrip_fast_shake_sets() {
 		mut bad := sig.clone()
 		bad[0] ^= 0x80
 		assert !verify(msg, bad, [], pk)
+		// Trailing garbage and empty signatures fail (exact-length gate).
+		mut long := sig.clone()
+		long << u8(0x00)
+		assert !verify(msg, long, [], pk)
+		assert !verify(msg, []u8{}, [], pk)
 		// deterministic signing is stable
 		assert sign_deterministic(msg, [], sk)!.hex() == sign_deterministic(msg, [],
 			sk)!.hex()

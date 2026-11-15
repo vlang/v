@@ -53,3 +53,34 @@ fn test_winroots_fallback_loads() {
 	store := load_system_roots() or { panic('default roots: ${err}') }
 	assert store.roots.len > 0
 }
+
+// test_winroots_env_overrides_win locks the documented priority: an
+// explicit SSL_CERT_FILE or SSL_CERT_DIR beats every built-in source. A
+// regression that ignores the overrides still passes the fallback test.
+fn test_winroots_env_overrides_win() {
+	old_file := os.getenv('SSL_CERT_FILE')
+	old_dir := os.getenv('SSL_CERT_DIR')
+	defer {
+		os.setenv('SSL_CERT_FILE', old_file, true)
+		os.setenv('SSL_CERT_DIR', old_dir, true)
+	}
+	td := os.join_path(@VEXEROOT, 'vlib/net/tls/testdata')
+	ca_path := os.join_path(td, 'rsa_ca_cert.pem')
+	os.setenv('SSL_CERT_FILE', ca_path, true)
+	os.setenv('SSL_CERT_DIR', '', true)
+	store := load_system_roots() or { panic('file override: ${err}') }
+	assert store.roots.len == 1
+	dir := os.join_path(os.temp_dir(), 'tls_winroots_test')
+	os.mkdir(dir) or {}
+	ca_text := os.read_file(ca_path) or { panic('read ca: ${err}') }
+	ca_copy := os.join_path(dir, 'ca.pem')
+	os.write_file(ca_copy, ca_text) or { panic('write ca: ${err}') }
+	defer {
+		os.rm(ca_copy) or {}
+		os.rmdir(dir) or {}
+	}
+	os.setenv('SSL_CERT_FILE', '', true)
+	os.setenv('SSL_CERT_DIR', dir, true)
+	store2 := load_system_roots() or { panic('dir override: ${err}') }
+	assert store2.roots.len == 1
+}

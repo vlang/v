@@ -33,6 +33,9 @@ fn test_prf_sha256_shape() {
 	assert a == b
 	c := prf_sha256('other'.bytes(), 'label'.bytes(), 'seed'.bytes(), 48)
 	assert a != c
+	// Argument order matters: swapping label and seed changes the output.
+	swapped := prf_sha256('secret'.bytes(), 'seed'.bytes(), 'label'.bytes(), 48)
+	assert a != swapped
 	// Output length is honored exactly (multi-block P_hash).
 	d := prf_sha256('secret'.bytes(), 'label'.bytes(), 'seed'.bytes(), 100)
 	assert d.len == 100
@@ -60,6 +63,12 @@ fn test_record_gcm_roundtrip() {
 	mut gcm_bad_type := false
 	gcm_open(key, salt, 7, rectype_handshake, sealed) or { gcm_bad_type = true }
 	assert gcm_bad_type, 'GCM opened with wrong type'
+	// Tampered ciphertext fails authentication.
+	mut gcm_bad := sealed.clone()
+	gcm_bad[10] ^= 0x01
+	mut gcm_tamper_failed := false
+	gcm_open(key, salt, 7, rectype_application_data, gcm_bad) or { gcm_tamper_failed = true }
+	assert gcm_tamper_failed, 'GCM opened tampered record'
 	// Empty plaintext round-trips.
 	empty_sealed := gcm_seal(key, salt, 0, rectype_handshake, []u8{})!
 	empty_open := gcm_open(key, salt, 0, rectype_handshake, empty_sealed)!
@@ -98,6 +107,12 @@ fn test_p256_ecdh_agreement() {
 	assert sa == sb
 	// Shared secret is not trivially the private key or pubkey.
 	assert sa != priv_a[..32]
+	// Distinct peers negotiate distinct secrets (a constant stub passes the
+	// agreement check above but fails here) and the secret is non-trivial.
+	priv_c, xc, yc := p256_keygen()!
+	sc := p256_ecdh(priv_a, xc, yc)!
+	assert sc != sa
+	assert sa != []u8{len: 32}
 }
 
 fn test_p256_ecdsa_sign_verify() {
@@ -147,6 +162,27 @@ fn test_parse_test_certs() {
 	assert ec_cert.pubkey is EcPublicKey
 	verify_cert_signature(ec_cert, ec_cert.pubkey)!
 	check_validity(ec_cert, time.utc())!
+	// A damaged signature is rejected (parse break or verify failure both
+	// count as fail-closed).
+	mut tamper_failed := false
+	mut parsed_ok := true
+	mut bad_der := rsa_der.clone()
+	bad_der[bad_der.len - 1] ^= u8(0x01)
+	bad_cert := parse_certificate(bad_der) or {
+		parsed_ok = false
+		rsa_cert
+	}
+	if !parsed_ok {
+		tamper_failed = true
+	} else {
+		verify_cert_signature(bad_cert, bad_cert.pubkey) or { tamper_failed = true }
+	}
+	assert tamper_failed, 'tampered cert verified'
+	// The validity window is enforced.
+	far_future := time.utc().add_days(36500)
+	mut expiry_failed := false
+	check_validity(rsa_cert, far_future) or { expiry_failed = true }
+	assert expiry_failed, 'expired cert accepted'
 }
 
 fn test_client_hello_roundtrip() {

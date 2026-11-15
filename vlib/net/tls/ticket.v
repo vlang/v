@@ -52,35 +52,57 @@ pub mut:
 // used_ticket_nonces tracks consumed ticket nonces so a replayed ticket is
 // rejected (single-use tickets, a coarse replay protection on top of the age
 // window checked in try_accept_psk). The map is process-wide and shared by
-// every listener; it is bounded by max_replay_cache_entries (cleared when
-// full: replay protection then rests on the age window plus the binder until
-// it refills). Handshakes sharing a process must be serialized by the
-// embedder — the map has no lock because sync would drag C linkage into
-// every pure-V consumer; the in-repo Listener.accept path is serial.
-__global used_ticket_nonces = map[string]bool{}
+// every listener; values are consumption times so full caches evict only
+// entries that could no longer resume anyway (older than the ticket lifetime
+// plus skew, which the age check in try_accept_psk would reject). Handshakes
+// sharing a process must be serialized by the embedder — the map has no lock
+// because sync would drag C linkage into every pure-V consumer; the in-repo
+// Listener.accept path is serial.
+__global used_ticket_nonces = map[string]i64{}
 
 // max_replay_cache_entries bounds the replay cache for long-lived servers
 // (one entry per resumed handshake; 8 random bytes per nonce).
 const max_replay_cache_entries = 65536
+
+// replay_entry_max_age is how long a consumed nonce is retained: entries
+// older than the ticket lifetime plus the acceptance skew can never pass
+// try_accept_psk's age check again, so evicting them cannot re-enable a
+// replay that would otherwise succeed.
+const replay_entry_max_age = i64(ticket_lifetime) + 10
 
 // is_ticket_used reports whether a ticket nonce was already consumed.
 fn is_ticket_used(nonce []u8) bool {
 	return nonce.hex() in used_ticket_nonces
 }
 
-// mark_ticket_used records a ticket nonce as consumed, clearing a full
-// cache first so long-lived servers stay bounded (see above).
+// mark_ticket_used records a ticket nonce as consumed. When the cache is
+// full, entries too old to resume are evicted first; only if every entry is
+// still fresh (more resumptions than the cap within one ticket lifetime on
+// one process) does it clear, trading replay protection for bounded memory
+// in that extreme case.
 fn mark_ticket_used(nonce []u8) {
 	if used_ticket_nonces.len >= max_replay_cache_entries {
-		used_ticket_nonces = map[string]bool{}
+		now := time.now().unix()
+		mut stale := []string{}
+		for k, t in used_ticket_nonces {
+			if now - t > replay_entry_max_age {
+				stale << k
+			}
+		}
+		for k in stale {
+			used_ticket_nonces.delete(k)
+		}
+		if used_ticket_nonces.len >= max_replay_cache_entries {
+			used_ticket_nonces = map[string]i64{}
+		}
 	}
-	used_ticket_nonces[nonce.hex()] = true
+	used_ticket_nonces[nonce.hex()] = time.now().unix()
 }
 
 // clear_used_tickets drops the replay cache. Tests use it to isolate
 // single-use assertions from tickets consumed by earlier tests.
 pub fn clear_used_tickets() {
-	used_ticket_nonces = map[string]bool{}
+	used_ticket_nonces = map[string]i64{}
 }
 
 // NewSessionTicket is the parsed ticket message body (RFC 8446 §4.6.1).
