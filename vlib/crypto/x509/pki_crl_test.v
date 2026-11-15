@@ -427,6 +427,8 @@ fn test_pki_crl_unknown_critical() {
 
 // test_pki_crl_tbs_tamper_message proves TBS damage fails with a message,
 // whether the DER still parses (signature mismatch) or not (parse error).
+// Every offset is enforced: a hole at one offset must not be masked by a
+// hit at another.
 fn test_pki_crl_tbs_tamper_message() {
 	now := time.now()
 	ca, signer := pki_crl_ca()
@@ -435,7 +437,6 @@ fn test_pki_crl_tbs_tamper_message() {
 		next_update:     now.add_days(7)
 		has_next_update: true
 	}, signer) or { panic('make_crl: ${err}') }
-	mut proven := false
 	for off in [15, 25, 35, 55] {
 		if off >= der.len {
 			continue
@@ -444,16 +445,15 @@ fn test_pki_crl_tbs_tamper_message() {
 		bad[off] ^= u8(0x01)
 		if tampered := parse_crl_der(bad) {
 			if _ := verify_crl(&tampered, &ca) {
-				continue
+				assert false, 'tampered CRL at offset ${off} must fail verify'
 			} else {
 				assert err.msg().contains('signature') || err.msg().contains('bad')
 					|| err.msg().contains('mismatch')
-				proven = true
-				break
 			}
+		} else {
+			assert err.msg().len > 0, 'tampered CRL at offset ${off} must fail parse'
 		}
 	}
-	assert proven, 'no TBS offset both parsed and failed verify with a message'
 }
 
 // test_pki_crl_revoked_intermediate enforces revocation of an intermediate
@@ -543,12 +543,22 @@ fn test_pki_crl_two_issuers() {
 		]
 	}, mid_signer) or { panic('mid crl: ${err}') }
 	chain := build_chain(leaf, [mid], [ca]) or { panic('build: ${err}') }
-	// Clean pair verifies.
+	// Clean pair verifies: an empty mid CRL plus the clean root CRL.
+	empty_mid_crl, _ := make_crl(&mid, CrlGenOptions{
+		this_update:     now.add_days(-1)
+		next_update:     now.add_days(7)
+		has_next_update: true
+	}, mid_signer) or { panic('empty mid crl: ${err}') }
+	verify_chain(chain, VerifyOptions{
+		hostname: 'leaf.example.com'
+		crls:     [root_crl, empty_mid_crl]
+	}) or { panic('clean pair must verify: ${err}') }
+	// Revoked pair fails: the mid CRL revokes the leaf even though the
+	// root CRL is clean.
 	verify_chain(chain, VerifyOptions{
 		hostname: 'leaf.example.com'
 		crls:     [root_crl, mid_crl]
 	}) or {
-		// mid CRL revokes the leaf: must fail revoked.
 		assert err.msg().contains('revoked')
 		return
 	}

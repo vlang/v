@@ -675,8 +675,8 @@ pub fn encode_psk_selected_idx(idx int) []u8 {
 }
 
 // save_ticket_keys persists ticket encryption keys as a raw 32-byte concat
-// file (0600-style permissions where the OS allows). Best-effort chmod:
-// the write itself must succeed; a chmod failure never fails the save.
+// file. Ticket keys decrypt resumption PSKs, so the file must not stay
+// world-readable: on chmod failure the file is removed and save fails.
 pub fn save_ticket_keys(path string, keys [][]u8) ! {
 	if keys.len == 0 {
 		return error('tls: no ticket keys to save')
@@ -690,9 +690,12 @@ pub fn save_ticket_keys(path string, keys [][]u8) ! {
 	}
 	os.write_bytes(path, out)!
 	$if unix {
-		// Ticket keys decrypt resumption PSKs: a file anyone can read
-		// defeats them, so refuse to leave one behind on chmod failure.
-		os.chmod(path, 0o600) or { return error('tls: cannot secure ticket key file') }
+		// Remove the just-written file instead of leaving ticket keys
+		// behind with the process umask permissions.
+		os.chmod(path, 0o600) or {
+			os.rm(path) or {}
+			return error('tls: cannot secure ticket key file')
+		}
 	}
 }
 

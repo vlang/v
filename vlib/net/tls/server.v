@@ -882,8 +882,15 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 	s.offered_early_data = ch_offers_early_data(ch)
 	if s.accepted_psk && s.offered_early_data {
 		// Derive the 0-RTT keys from the full ClientHello (with binders),
-		// the same transcript the client used.
-		ch_hash := transcript_hash_for_suite(ch_msg, s.suite)
+		// the same transcript the client used — including the HRR prefix
+		// on a retried flight (RFC 8446 §7.1).
+		mut early_input := ch_msg.clone()
+		if s.is_hrr {
+			mut prefixed := s.hrr_transcript.clone()
+			prefixed << ch_msg
+			early_input = prefixed.clone()
+		}
+		ch_hash := transcript_hash_for_suite(early_input, s.suite)
 		early_secret := derive_client_early_traffic_secret(s.early_secret_psk, ch_hash,
 			s.suite) or { return err }
 		s.early_traffic = derive_traffic_keys(early_secret, s.suite) or { return err }
@@ -1198,7 +1205,15 @@ fn (mut s ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u
 				es_psk := derive_early_secret_with_psk(s.psk_key, s.suite) or { continue }
 				bk := binder_key_for(es_psk, s.suite) or { continue }
 				trunc := binder_prefix(ch_msg, psk_data) or { continue }
-				th := transcript_hash_for_suite(trunc, s.suite)
+				// After HRR the binder covers message_hash(CH1) || HRR
+				// plus the truncated second flight (RFC 8446 §4.2.11.2).
+				mut th_input := trunc.clone()
+				if s.is_hrr {
+					mut prefixed := s.hrr_transcript.clone()
+					prefixed << trunc
+					th_input = prefixed.clone()
+				}
+				th := transcript_hash_for_suite(th_input, s.suite)
 				if verify_binder(bk, th, binders[idx], s.suite) {
 					s.accepted_psk_idx = idx
 					return true, es_psk
@@ -1225,7 +1240,14 @@ fn (mut s ServerHandshake) try_accept_psk(ch_msg []u8, psk_data []u8) (bool, []u
 			es_psk := derive_early_secret_with_psk(psk, tsuite) or { continue }
 			bk := binder_key_for(es_psk, tsuite) or { continue }
 			trunc := binder_prefix(ch_msg, psk_data) or { continue }
-			th := transcript_hash_for_suite(trunc, tsuite)
+			// Same HRR prefix rule as the external-PSK arm above.
+			mut th_input := trunc.clone()
+			if s.is_hrr {
+				mut prefixed := s.hrr_transcript.clone()
+				prefixed << trunc
+				th_input = prefixed.clone()
+			}
+			th := transcript_hash_for_suite(th_input, tsuite)
 			if !verify_binder(bk, th, binders[idx], tsuite) {
 				continue
 			}

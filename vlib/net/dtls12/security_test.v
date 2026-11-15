@@ -56,19 +56,49 @@ fn test_dtls12_ecdhe_tamper_fails_finished() {
 	trans := 'test transcript'.bytes()
 	sfin := build_finished_msg(master, 'server finished', trans)!
 	verify_finished_msg(sfin, master, 'server finished', trans)!
-	// Wrong peer share: tampered X must derive a different master (or fail),
-	// and a Finished under the wrong master must not verify.
+	// Wrong peer share: a tampered X must fail closed (rejected before
+	// any secret is derived) or derive a different master under which
+	// the genuine Finished must not verify.
 	mut bad_x := sx.clone()
 	bad_x[0] ^= 0x01
 	bad_x[31] ^= 0x80
-	tampered := p256_ecdh(cpriv, bad_x, sy) or { []u8{} }
-	mut wrong_master := []u8{len: 32, init: 9}
-	if tampered.len == 32 && tampered != sec_c {
-		wrong_master = derive_master(tampered, cr, sr)!
+	tampered := p256_ecdh(cpriv, bad_x, sy) or {
+		assert err.msg().contains('not on curve') || err.msg().contains('infinity')
+		return
 	}
+	assert tampered != sec_c, 'tampered share must not derive the same secret'
+	wrong_master := derive_master(tampered, cr, sr)!
 	assert wrong_master != master
-	verify_finished_msg(sfin, wrong_master, 'server finished', trans) or { return }
+	verify_finished_msg(sfin, wrong_master, 'server finished', trans) or {
+		assert err.msg().contains('Finished') || err.msg().contains('mismatch')
+		return
+	}
 	assert false, 'tampered ECDHE share must fail Finished'
+}
+
+// Off-curve points are rejected before ECDH (invalid-curve shape).
+// The P-256 generator is the positive control; an all-zero X with a
+// valid Y is deterministically off-curve (b != 0) and must fail at
+// every entry point with a curve message, not a range message.
+fn test_dtls12_offcurve_point_rejected() {
+	c := new_p256()
+	assert p256_is_on_curve(c.gx, c.gy)
+	zero := []u8{len: 32}
+	assert !p256_is_on_curve(os2ip(zero), os2ip(zero))
+	cpriv, sx, sy := p256_keygen()!
+	mut cke := build_client_key_exchange(sx, sy)!
+	for i in 2 .. 34 {
+		cke[i] = 0
+	}
+	parse_client_key_exchange(cke) or {
+		assert err.msg().contains('not on curve')
+		p256_ecdh(cpriv, zero, sy) or {
+			assert err.msg().contains('not on curve')
+			return
+		}
+		assert false, 'ECDH must reject the off-curve point'
+	}
+	assert false, 'CKE parser must reject the off-curve point'
 }
 
 fn test_dtls12_ske_signature_tamper_fails() {
@@ -94,11 +124,16 @@ fn test_dtls12_ske_signature_tamper_fails() {
 		sig_alg:  ske.sig_alg
 		sig:      bad_sig
 	}
-	verify_server_key_exchange(bad, cr, sr, peer_pub) or { return }
+	verify_server_key_exchange(bad, cr, sr, peer_pub) or {
+		assert err.msg().contains('signature')
+		// Signature is bound to the randoms: swapped randoms must not verify.
+		verify_server_key_exchange(ske, sr, cr, peer_pub) or {
+			assert err.msg().contains('signature')
+			return
+		}
+		assert false, 'ServerKeyExchange signature must bind the randoms'
+	}
 	assert false, 'forged ServerKeyExchange signature must fail'
-	// Signature is bound to the randoms: swapped randoms must not verify.
-	verify_server_key_exchange(ske, sr, cr, peer_pub) or { return }
-	assert false, 'ServerKeyExchange signature must bind the randoms'
 }
 
 fn test_dtls12_passive_observer_cannot_decrypt() {

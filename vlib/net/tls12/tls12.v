@@ -10,9 +10,11 @@ import net
 
 // Config configures a TLS 1.2 client or server endpoint.
 pub struct Config {
-pub:
+pub mut:
 	// server_name is sent as SNI and used for verification (client).
+	// Empty means "verify against the dialed host" (filled by dial).
 	server_name string
+pub:
 	// skip_verify disables certificate verification (tests only).
 	skip_verify bool
 	// root_ders holds pinned CA certificates (DER) for chain checks.
@@ -90,10 +92,15 @@ fn dial_tcp(host string, port int) !net.TcpConn {
 // dial opens a client TLS 1.2 connection (handshake not yet run).
 pub fn dial(host string, port int, cfg Config) !&Conn {
 	tcp := dial_tcp(host, port)!
+	mut ccfg := cfg
+	// An empty server_name means "verify against the dialed host".
+	if ccfg.server_name == '' {
+		ccfg.server_name = host
+	}
 	return &Conn{
 		tcp:       tcp
 		is_client: true
-		cfg:       cfg
+		cfg:       ccfg
 	}
 }
 

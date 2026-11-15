@@ -189,13 +189,13 @@ fn test_pki_ed_openssl_verify() {
 }
 
 // test_pki_ed_tbs_tamper_message proves TBS damage fails with a message:
-// the first DER offset that still parses must fail chain building.
+// every DER offset that still parses must fail chain building, and offsets
+// that no longer parse must fail parsing (no offset may silently pass).
 fn test_pki_ed_tbs_tamper_message() {
 	ca := parse_pem(ed_testdata('ed25519_ca_cert.pem').bytestr()) or { panic('parse ca') }
 	leaf := parse_pem(ed_testdata('ed25519_leaf_cert.pem').bytestr()) or {
 		panic('parse leaf')
 	}
-	mut proven := false
 	for off in [15, 25, 35, 55, 100] {
 		if off >= leaf.raw.len {
 			continue
@@ -204,16 +204,15 @@ fn test_pki_ed_tbs_tamper_message() {
 		bad[off] ^= u8(0x01)
 		if tampered := parse_der(bad) {
 			if _ := build_chain(tampered, [], [ca]) {
-				continue
+				assert false, 'tampered leaf at offset ${off} must not build'
 			} else {
 				assert err.msg().contains('signature') || err.msg().contains('bad')
 					|| err.msg().contains('no valid chain')
-				proven = true
-				break
 			}
+		} else {
+			assert err.msg().len > 0, 'tampered leaf at offset ${off} must fail parse'
 		}
 	}
-	assert proven, 'no TBS offset both parsed and failed building with a message'
 }
 
 // test_pki_ed_sigalg_params_through_chain rejects a leaf whose outer

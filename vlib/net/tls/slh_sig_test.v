@@ -765,16 +765,9 @@ fn test_slh_loopback_wrong_ca_all() {
 			_ = server
 			continue
 		}
-		// The handshake wrongly succeeded: the echo must still not work
-		// against an untrusted leaf.
-		c.write('ping'.bytes()) or {}
-		mut buf := []u8{len: 4}
-		c.read(mut buf) or {
-			c.close() or {}
-			l.close() or {}
-			_ = server
-			continue
-		}
+		// The handshake wrongly succeeded against the wrong CA: that is
+		// the bug, full stop. Tear down and fail — a later echo failure
+		// must never excuse accepting an untrusted leaf.
 		c.close() or {}
 		l.close() or {}
 		_ = server

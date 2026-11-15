@@ -368,6 +368,29 @@ fn parse_ip_literal(name string) ![]u8 {
 		right = halves[1].split(':')
 	}
 	has_compression := halves.len == 2
+	// An embedded IPv4 tail is allowed only as the single final group.
+	// A dot anywhere else corrupts the group count below and overruns
+	// `out` (e.g. `1.2.3.4:5::6`), so reject it before counting.
+	mut tails := 0
+	for i, g in left {
+		if g.contains('.') {
+			if i != left.len - 1 || right.len > 0 {
+				return error('x509: misplaced embedded IPv4')
+			}
+			tails++
+		}
+	}
+	for i, g in right {
+		if g.contains('.') {
+			if i != right.len - 1 {
+				return error('x509: misplaced embedded IPv4')
+			}
+			tails++
+		}
+	}
+	if tails > 1 {
+		return error('x509: misplaced embedded IPv4')
+	}
 	// An embedded IPv4 tail counts as two 16-bit groups.
 	mut groups := left.len + right.len
 	if groups > 0 {

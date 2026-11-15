@@ -74,6 +74,35 @@ fn get_u24(b []u8) int {
 	return (int(b[0]) << 16) | (int(b[1]) << 8) | int(b[2])
 }
 
+// is_ip_literal reports whether name is an IPv4 or IPv6 address literal
+// (TLS callers use it to skip the SNI extension, which must not carry
+// literal IPs — RFC 6066 §3). Local helper keeps this module free of the
+// x509 dependency; mirrors x509.is_ip_literal semantics (any colon means
+// IPv6 literal, four all-numeric dot parts mean IPv4).
+fn is_ip_literal(name string) bool {
+	if name.contains(':') {
+		return true
+	}
+	parts := name.split('.')
+	if parts.len != 4 {
+		return false
+	}
+	for p in parts {
+		if p.len == 0 || p.len > 3 {
+			return false
+		}
+		for c in p.bytes() {
+			if c < `0` || c > `9` {
+				return false
+			}
+		}
+		if p.int() > 255 {
+			return false
+		}
+	}
+	return true
+}
+
 // hs_msg frames a handshake message (type + u24 length + body).
 fn hs_msg(typ u8, body []u8) []u8 {
 	mut out := []u8{cap: 4 + body.len}
@@ -175,7 +204,10 @@ fn build_client_hello_full(client_random []u8, suites []u16, server_name string,
 	body << u8(1)
 	body << u8(0)
 	mut exts := []u8{}
-	if server_name.len > 0 {
+	// SNI carries DNS names only: literal IPs must not be sent (RFC 6066
+	// §3) and an empty name is omitted. Local check keeps this module
+	// free of the x509 dependency (mirrors x509.is_ip_literal).
+	if server_name.len > 0 && !is_ip_literal(server_name) {
 		mut name_entry := []u8{}
 		name_entry << u8(0)
 		put_u16(mut name_entry, u16(server_name.len))

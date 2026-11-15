@@ -275,6 +275,12 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 	}
 	body := encode_client_hello(ch)!
 	mut msg := encode_handshake_message(.client_hello, body)!
+	// HRR prefix for binder/early hashes (RFC 8446 §4.2.11.2): on the
+	// second flight the transcript is message_hash(CH1) || HRR || CH2,
+	// so binders and the early secret hash the prefix plus the flight.
+	// Captured before the transcript is overwritten below; empty (and
+	// unused) on the first flight where is_hrr is false.
+	binder_base := if h.is_hrr { h.transcript.clone() } else { []u8{} }
 	h.transcript = msg.clone()
 	if offered_psk {
 		// One binder per identity, each under its own suite hash.
@@ -285,7 +291,13 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 			}
 			bk := binder_key_for(es_psk, psk_suites[i]) or { return err }
 			trunc := binder_prefix(msg, exts[exts.len - 1].data) or { return err }
-			th := transcript_hash_for_suite(trunc, psk_suites[i])
+			mut th_input := trunc.clone()
+			if h.is_hrr {
+				mut prefixed := binder_base.clone()
+				prefixed << trunc
+				th_input = prefixed.clone()
+			}
+			th := transcript_hash_for_suite(th_input, psk_suites[i])
 			binders << compute_binder(bk, th, psk_suites[i]) or { return err }
 		}
 		mut psk_data := exts[exts.len - 1].data.clone()
@@ -309,9 +321,16 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 	if offered_early {
 		// Derive the 0-RTT keys now: early records are sealed before the
 		// ServerHello arrives, from the full (binder-patched) ClientHello.
+		// After HRR the transcript prefix is included (RFC 8446 §7.1).
 		st := h.resume_offer or { return error('tls: missing psk offer') }
 		es := derive_early_secret_with_psk(st.psk, st.suite) or { return err }
-		ch_hash := transcript_hash_for_suite(msg, st.suite)
+		mut early_input := msg.clone()
+		if h.is_hrr {
+			mut prefixed := binder_base.clone()
+			prefixed << msg
+			early_input = prefixed.clone()
+		}
+		ch_hash := transcript_hash_for_suite(early_input, st.suite)
 		early_secret := derive_client_early_traffic_secret(es, ch_hash, st.suite) or {
 			return err
 		}
@@ -326,7 +345,8 @@ pub fn (mut h ClientHandshake) build_client_hello() ![]u8 {
 // build_second_client_hello rebuilds the ClientHello after a
 // HelloRetryRequest for h.hrr_group. Everything stays identical except
 // the key_share (now just the requested group); PSK binders are
-// recomputed over the new flight. The transcript becomes
+// recomputed over message_hash(CH1) || HRR || truncated CH2
+// (RFC 8446 §4.2.11.2). The transcript becomes
 // message_hash(CH1) || HRR || CH2.
 pub fn (mut h ClientHandshake) build_second_client_hello() ![]u8 {
 	if !h.is_hrr || h.hrr_group == u16(0) {

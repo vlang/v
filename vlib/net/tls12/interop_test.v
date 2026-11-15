@@ -839,14 +839,8 @@ fn test_openssl_no_ems_fallback() {
 	mut c := dial('127.0.0.1', port, Config{
 		server_name: 'localhost'
 		skip_verify: true
-	}) or {
-		println('skip openssl no-EMS test: dial failed')
-		return
-	}
-	c.handshake() or {
-		println('skip openssl no-EMS test: handshake failed: ${err}')
-		return
-	}
+	}) or { panic('dial vs no-EMS s_server failed: ${err}') }
+	c.handshake() or { panic('handshake vs no-EMS s_server failed: ${err}') }
 	assert !c.uses_ems(), 'server without EMS must complete on the plain-master path'
 	assert c.master.len == 48
 	c.write('hello no-ems'.bytes()) or { panic('write vs no-EMS s_server: ${err}') }

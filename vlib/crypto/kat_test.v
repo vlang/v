@@ -120,6 +120,8 @@ fn test_kat_aes128_gcm_nist() {
 	bad[0] ^= 0xff
 	if _ := g.decrypt(bad, iv, ad) {
 		assert false, 'tampered GCM ciphertext must fail authentication'
+	} else {
+		assert err.msg().len > 0, 'tampered GCM decrypt must report an error'
 	}
 }
 
@@ -137,6 +139,8 @@ fn test_kat_aes256_gcm_nist() {
 	bad256[0] ^= 0xff
 	if _ := g.decrypt(bad256, iv, ad) {
 		assert false, 'tampered AES-256-GCM ciphertext must fail authentication'
+	} else {
+		assert err.msg().len > 0, 'tampered AES-256-GCM decrypt must report an error'
 	}
 }
 
@@ -155,6 +159,8 @@ fn test_kat_chacha20poly1305_rfc8439() {
 	bad[bad.len - 1] ^= 0x01
 	if _ := co.decrypt(bad, nonce, aad) {
 		assert false, 'tampered ChaCha20-Poly1305 tag must fail verification'
+	} else {
+		assert err.msg().len > 0, 'tampered ChaCha20-Poly1305 decrypt must report an error'
 	}
 }
 

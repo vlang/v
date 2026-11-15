@@ -21,6 +21,7 @@ const p256_p_hex = 'FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFF
 const p256_n_hex = 'FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551'
 const p256_gx_hex = '6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296'
 const p256_gy_hex = '4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5'
+const p256_b_hex = '5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B'
 
 // P256 holds the curve parameters as big integers.
 struct P256 {
@@ -125,6 +126,25 @@ fn os2ip(b []u8) big.Integer {
 	return big.integer_from_bytes(b)
 }
 
+// p256_is_on_curve reports whether (x, y) satisfies the P-256 equation
+// y^2 == x^3 - 3x + b (mod p). Off-curve and twist points must be
+// rejected before ECDH: without this check a peer can force an
+// attacker-influenced premaster (invalid-curve attack shape).
+fn p256_is_on_curve(x big.Integer, y big.Integer) bool {
+	c := new_p256()
+	if x.signum < 0 || !(x < c.p) {
+		return false
+	}
+	if y.signum < 0 || !(y < c.p) {
+		return false
+	}
+	b := big.integer_from_radix(p256_b_hex, 16) or { return false }
+	three := big.integer_from_int(3)
+	lhs := (y * y) % c.p
+	rhs := ((((x * x) % c.p * x) % c.p - (three * x) % c.p).mod_euclid(c.p) + b).mod_euclid(c.p)
+	return lhs == rhs
+}
+
 // p256_keygen generates an ECDHE key pair; returns (priv, x, y) as byte strings.
 fn p256_keygen() !([]u8, []u8, []u8) {
 	c := new_p256()
@@ -149,6 +169,11 @@ fn p256_ecdh(priv []u8, peer_x []u8, peer_y []u8) ![]u8 {
 	d := os2ip(priv)
 	if d.signum == 0 || !(d < c.n) {
 		return error('dtls12: invalid ECDH private key')
+	}
+	// Defense in depth: the parsers already gate this, but any direct
+	// caller must still get a fail-closed off-curve rejection.
+	if !p256_is_on_curve(os2ip(peer_x), os2ip(peer_y)) {
+		return error('dtls12: ECDH peer point not on curve')
 	}
 	pt := c.mul(d, os2ip(peer_x), os2ip(peer_y))
 	if pt.inf {
@@ -400,6 +425,10 @@ pub fn parse_server_key_exchange(body []u8) !Dtls12Ske {
 	if !(os2ip(eph_x) < p) || !(os2ip(eph_y) < p) {
 		return error('dtls12: ServerKeyExchange point out of range')
 	}
+	// Reject off-curve/twist points before ECDH (invalid-curve shape).
+	if !p256_is_on_curve(os2ip(eph_x), os2ip(eph_y)) {
+		return error('dtls12: ServerKeyExchange point not on curve')
+	}
 	return Dtls12Ske{
 		params:   body[..69].clone()
 		eph_x:    eph_x
@@ -455,6 +484,10 @@ pub fn parse_client_key_exchange(body []u8) !([]u8, []u8) {
 	p := new_p256().p
 	if !(os2ip(px) < p) || !(os2ip(py) < p) {
 		return error('dtls12: ClientKeyExchange point out of range')
+	}
+	// Reject off-curve/twist points before ECDH (invalid-curve shape).
+	if !p256_is_on_curve(os2ip(px), os2ip(py)) {
+		return error('dtls12: ClientKeyExchange point not on curve')
 	}
 	return px, py
 }

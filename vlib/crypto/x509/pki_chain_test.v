@@ -650,22 +650,40 @@ fn test_pki_chain_name_constraints_overlap() {
 	}, bad_priv, &ca, ca_priv) or { panic('bad leaf gen') }
 	build_chain(bad_leaf, [], [ca]) or {
 		assert err.msg().contains('name constraint') || err.msg().contains('no valid chain')
-		// Excluded IP wins over the permitted range.
-		ip_priv := pki_ecdsa_key()
-		ip_leaf, _ := generate_ca_signed(CertGenOptions{
-			common_name: 'ip leaf'
-			dns_names:   ['good.example.com']
-			not_before:  now.add_days(-1)
-			not_after:   now.add_days(30)
-			ip_names:    [[u8(10), 0, 0, 5]]
-		}, ip_priv, &ca, ca_priv) or { panic('ip leaf gen') }
-		build_chain(ip_leaf, [], [ca]) or {
-			assert err.msg().contains('name constraint') || err.msg().contains('no valid chain')
-			return
-		}
-		assert false, 'leaf in the excluded IP range must fail'
+		return
 	}
 	assert false, 'leaf in the excluded DNS subtree must fail'
+}
+
+// test_pki_chain_name_constraints_overlap_ip checks that an excluded IP
+// range wins over a permitted one (split from the DNS-overlap test so a
+// DNS regression cannot silently skip IP coverage).
+fn test_pki_chain_name_constraints_overlap_ip() {
+	now := pki_now()
+	ca_priv := pki_ecdsa_key()
+	ca, _ := generate_self_signed(CertGenOptions{
+		common_name:   'PKI Overlap IP Root'
+		not_before:    now.add_days(-1)
+		not_after:     now.add_days(3650)
+		is_ca:         true
+		permitted_dns: ['example.com']
+		excluded_dns:  ['bad.example.com']
+		permitted_ips: [[u8(10), 0, 0, 0, 255, 0, 0, 0]]
+		excluded_ips:  [[u8(10), 0, 0, 0, 255, 255, 255, 0]]
+	}, ca_priv) or { panic('ca gen: ${err}') }
+	ip_priv := pki_ecdsa_key()
+	ip_leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'ip leaf'
+		dns_names:   ['good.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+		ip_names:    [[u8(10), 0, 0, 5]]
+	}, ip_priv, &ca, ca_priv) or { panic('ip leaf gen') }
+	build_chain(ip_leaf, [], [ca]) or {
+		assert err.msg().contains('name constraint') || err.msg().contains('no valid chain')
+		return
+	}
+	assert false, 'leaf in the excluded IP range must fail'
 }
 
 // test_pki_chain_two_deep_intermediate_constraints enforces a name

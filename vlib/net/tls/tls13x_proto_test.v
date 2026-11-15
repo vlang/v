@@ -948,7 +948,9 @@ fn test_tls13x_sni_only_unknown_aborts() {
 	ch := parse_client_hello(parsed.body) or { panic(err) }
 	s.select_sni_credential(ch) or {
 		assert err.msg().contains('no certificate for server name')
-		// Loopback: the handshake aborts end to end.
+		// Loopback: the handshake aborts end to end (Listener.accept
+		// runs the server handshake, so its error is the TLS-layer
+		// proof; the client handshake fails as well).
 		mut l := listen(Config{
 			verify:   false
 			cert_map: {
@@ -961,12 +963,11 @@ fn test_tls13x_sni_only_unknown_aborts() {
 		port := l.addr() or { panic(err) }.port() or { panic(err) }
 		sch := chan string{cap: 1}
 		server := spawn fn (mut l Listener, sch chan string) {
-			mut conn := l.accept() or {
-				sch <- 'accept err'
+			l.accept() or {
+				sch <- 'hs err: ${err}'
 				return
 			}
-			conn.close() or {}
-			sch <- 'accepted'
+			sch <- 'unexpected ok'
 		}(mut l, sch)
 		mut c := dial('127.0.0.1', port, Config{
 			verify:      false
@@ -974,7 +975,8 @@ fn test_tls13x_sni_only_unknown_aborts() {
 		}) or { panic(err) }
 		c.handshake() or {
 			c.close() or {}
-			assert <-sch == 'accept err'
+			got := <-sch
+			assert got.contains('no certificate for server name')
 			l.close() or {}
 			_ = server
 			return
@@ -1403,7 +1405,14 @@ fn test_tls13x_fragmentation_multi_record_count() {
 		}
 		srv.tcp = *srv_tcp
 		big := []u8{len: 50000, init: 0xab}
-		srv.write_cipher_fragmented(.handshake, big) or {
+		// Two identical flights: the first is consumed through the real
+		// read path (proves reassembly + decryption), the second is
+		// counted raw off the wire (proves multi-record framing).
+		srv.write_cipher_fragmented(.application_data, big) or {
+			done <- 'write err: ${err}'
+			return
+		}
+		srv.write_cipher_fragmented(.application_data, big) or {
 			done <- 'write err: ${err}'
 			return
 		}
@@ -1420,6 +1429,15 @@ fn test_tls13x_fragmentation_multi_record_count() {
 		client_app:     c_keys
 	}
 	c.tcp = *cli_tcp
+	// Read-path proof: the first flight must reassemble through
+	// Conn.read and decrypt byte-identical.
+	mut got_big := []u8{}
+	for got_big.len < 50000 {
+		mut chunk := []u8{len: 50000 - got_big.len}
+		n := c.read(mut chunk) or { panic(err) }
+		got_big << chunk[..n]
+	}
+	assert got_big == []u8{len: 50000, init: 0xab}
 	// Count records on the wire: header framing only, no decryption yet.
 	mut header := []u8{len: 5}
 	mut rn := cli_tcp.read(mut header) or { panic(err) }
@@ -1468,8 +1486,6 @@ fn test_tls13x_fragmentation_multi_record_count() {
 		}
 	}
 	assert nrec > 1, 'a ~50KB flight must span more than one record'
-	_ = c_keys
-	_ = c
 	ln.close() or {}
 	assert <-done == 'ok'
 }
