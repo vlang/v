@@ -169,6 +169,12 @@ fn (mut p Process) win_spawn_process() int {
 		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
 	}
+	// The child inherits every inheritable handle of this process, whether or not
+	// its own stdio is redirected. From the first handle made for it to the point
+	// where this process has closed its copies of the child's ends, no other
+	// thread may create a child (see execute_lock_windows.c.v). The failures in
+	// between end the process, so they need no unlock.
+	v_os_execute_lock()
 	if p.has_stdin_path {
 		stdin_path_wide := p.stdin_path.to_wide()
 		to_be_freed << stdin_path_wide
@@ -302,6 +308,7 @@ fn (mut p Process) win_spawn_process() int {
 	} else if p.has_stdin_path {
 		close_valid_handle(&wdata.child_stdin_read)
 	}
+	v_os_execute_unlock()
 	p.pid = int(wdata.proc_info.dw_process_id)
 	return p.pid
 }
