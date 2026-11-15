@@ -235,15 +235,28 @@ fn write_parallel_user_main_test_project(name string) string {
 fn test_parallel_cgen_worker_keeps_test_user_main_renamed() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_user_main_test_project('parallel_user_main_test_file')
-	bin_out := os.join_path(os.vtmp_dir(), 'v3_parallel_user_main_test_file_out')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', main_path, '-b', 'c', '-o',
-		bin_out])
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_parallel_user_main_test_file_out_${os.getpid()}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-keepc', main_path, '-b', 'c',
+		'-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'user-main'
-	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	// Directly compiled _test.v files require -keepc for C retention; this uses
+	// a unique temporary file rather than the ordinary <binary>.c sidecar.
+	mut retained_c := ''
+	for name in os.ls(os.vtmp_dir()) or { panic(err) } {
+		if name.starts_with(os.file_name(bin_out) + '.') && name.ends_with('.tmp.c') {
+			retained_c = os.join_path(os.vtmp_dir(), name)
+			break
+		}
+	}
+	assert retained_c != '', 'missing retained C source for ${bin_out}'
+	defer {
+		os.rm(retained_c) or {}
+	}
+	c_code := os.read_file(retained_c) or { panic(err) }
 	assert c_code.count(parallel_entry_point) == 1, c_code
 	assert c_code.contains('main__user_main'), c_code
 	assert c_code.contains('main__user_main();'), c_code
