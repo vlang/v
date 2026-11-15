@@ -100,6 +100,16 @@ fn run_child(binary string, mode string) os.Result {
 	return os.exec(['/bin/sh', '-c', '${os.quoted_path(binary)} ${mode} 2>&1'])
 }
 
+fn previous_handler_test_compiler() !string {
+	// TCC backtrace mode replaces constructor-installed handlers. These tests
+	// need Clang or GCC, including GCC-only cross-architecture CI containers.
+	for compiler in ['clang', 'gcc'] {
+		path := os.find_abs_path_of_executable(compiler) or { continue }
+		return path
+	}
+	return error('signal handler constructor tests require Clang or GCC')
+}
+
 fn test_stack_overflow_prints_a_message() {
 	$if windows {
 		return
@@ -240,8 +250,8 @@ fn main() {
 	println("unexpected survival")
 }
 ')!
-	// Clang leaves the constructor installed; TCC backtrace mode replaces it.
-	compile := os.exec([@VEXE, '-cc', 'clang', '-o', binary, source])
+	compiler := previous_handler_test_compiler()!
+	compile := os.exec([@VEXE, '-cc', compiler, '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	result := run_child(binary, '')
 	assert result.exit_code != 0, result.output
@@ -296,7 +306,8 @@ fn main() {
 	println("survived")
 }
 ')!
-	compile := os.exec([@VEXE, '-cc', 'clang', '-o', binary, source])
+	compiler := previous_handler_test_compiler()!
+	compile := os.exec([@VEXE, '-cc', compiler, '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	result := run_child(binary, '')
 	assert result.exit_code == 0, result.output

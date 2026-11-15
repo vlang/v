@@ -528,6 +528,10 @@ fn new_doc_markdown_renderer(md_link_base string) markdown.HTMLRenderer {
 		opts:             markdown.Options{
 			parser_opts:   markdown.ParserOptions{ auto_heading_id: true }
 			renderer_opts: markdown.RendererOptions{ unsafe_: true }
+			tables:        true
+			strikethrough: true
+			linkify:       true
+			task_list:     true
 		}
 		code_highlighter: fn (lang string, code string) string {
 			if lang.to_lower() != 'v' {

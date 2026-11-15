@@ -4,7 +4,7 @@ module main
 import json2
 
 struct Test {
-	id ?string = none
+	id ?string
 }
 
 fn test_main() {

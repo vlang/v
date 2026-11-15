@@ -37,6 +37,14 @@
  #  if (__GNUC__ == 4 && __GNUC_MINOR__ > 3) || (__GNUC__ >= 5)
  #    define DONT_VECTORIZE __attribute__((optimize("no-tree-vectorize")))
  #  else
+@@ -932,6 +953,7 @@
+ /* Not all platforms that support msan provide sanitizers/msan_interface.h.
+  * We therefore declare the functions we need ourselves, rather than trying to
+  * include the header file... */
+ #include <stddef.h>  /* size_t */
++#include <stdint.h>  /* intptr_t */
+ #define ZSTD_DEPS_NEED_STDINT
+ /**** skipping file: zstd_deps.h ****/
 @@ -22353,7 +22374,7 @@
  ZSTD_GEN_RECORD_FINGERPRINT(43, 8)
  

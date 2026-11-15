@@ -97,6 +97,7 @@ pub fn emit_codec(res &ResolvedFile) string {
 // because proto3 requires an enum's zero value to be present and V's zero value
 // has to be a declared member: reading a field that was never set produces the
 // zero, and an enum that cannot name it has no way to express "unset".
+// Alignment restarts at comments, matching the groups used by `v fmt`.
 pub fn emit_enum(mut e Emitter, en ResolvedEnum) {
 	emit_comment(mut e, 0, en.comments)
 	if en.allow_alias {
@@ -104,16 +105,22 @@ pub fn emit_enum(mut e Emitter, en ResolvedEnum) {
 		e.wln(0, '@[_allow_multiple_values]')
 	}
 	e.wln(0, 'pub enum ${en.v_name} {')
-	mut width := 0
-	for v in en.values {
-		if v.name.len > width {
-			width = v.name.len
+	mut start := 0
+	for start < en.values.len {
+		mut end := start + 1
+		mut width := en.values[start].name.len
+		for end < en.values.len && en.values[end].comments.len == 0 {
+			if en.values[end].name.len > width {
+				width = en.values[end].name.len
+			}
+			end++
 		}
-	}
-	for v in en.values {
-		emit_comment(mut e, 1, v.comments)
-		padding := ' '.repeat(width - v.name.len)
-		e.wln(1, '${v.name}${padding} = ${v.number}')
+		for v in en.values[start..end] {
+			emit_comment(mut e, 1, v.comments)
+			padding := ' '.repeat(width - v.name.len)
+			e.wln(1, '${v.name}${padding} = ${v.number}')
+		}
+		start = end
 	}
 	e.wln(0, '}')
 	e.w('')

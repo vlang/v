@@ -1,5 +1,8 @@
 import os
-import time
+
+$if !windows {
+	import time
+}
 
 const vwatch_stdin_vexe = @VEXE
 
@@ -180,7 +183,8 @@ fn test_watch_run_forwards_terminal_input() {
 		$if openbsd {
 			pty_ready = false
 			prompt_ready = false
-			for _ in 0 .. 100 {
+			// Cold Clang builds inside the OpenBSD VM may need longer to reach the prompt.
+			for _ in 0 .. 600 {
 				startup_output += process.stdout_read()
 				if os.exists(ready_path) {
 					pty_ready = true

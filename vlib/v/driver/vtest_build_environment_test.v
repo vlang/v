@@ -183,10 +183,22 @@ fn test_prod_build_facts_distinguish_implicit_and_explicit_tcc() {
 
 fn test_native_backend_and_freestanding_skip_gc_defines() {
 	with_clean_build_environment(fn () {
-		for args in [['-b', 'arm64'], ['-b', 'x64'], ['-d', 'freestanding']] {
+		for args in [['-b', 'arm64'], ['-b', 'amd64'], ['-d', 'freestanding']] {
 			environment := vtest_build_environment(@VEXEROOT, args)
 			assert 'gcboehm' !in environment.defines, '${args}: ${environment.defines}'
 			assert 'vgc' !in environment.defines, '${args}: ${environment.defines}'
+		}
+	})
+}
+
+fn test_native_backend_aliases_use_the_host_test_environment() {
+	with_clean_build_environment(fn () {
+		expected := vtest_build_environment(@VEXEROOT, ['-b', pref.host_arch()])
+		for args in [['-native'], ['-b', 'native'], ['-backend', 'native'], ['-b=native'],
+			['-backend=native']] {
+			environment := vtest_build_environment(@VEXEROOT, args)
+			assert environment.facts == expected.facts, args.str()
+			assert environment.defines == expected.defines, args.str()
 		}
 	})
 }

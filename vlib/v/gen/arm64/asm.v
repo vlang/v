@@ -329,6 +329,21 @@ fn asm_str_imm_b(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0x39000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
 }
 
+// fmov dd, dn
+fn asm_fmov_d_d(dd int, dn int) u32 {
+	return 0x1E604000 | (u32(dn) << 5) | u32(dd)
+}
+
+// stp dt, dt2, [rn, #simm7] (signed offset scaled by 8)
+fn asm_stp_d_offset(dt int, dt2 int, rn Reg, simm7 i32) u32 {
+	return 0x6D000000 | (u32(simm7 & 0x7F) << 15) | (u32(dt2) << 10) | (u32(rn) << 5) | u32(dt)
+}
+
+// ldp dt, dt2, [rn, #simm7] (signed offset scaled by 8)
+fn asm_ldp_d_offset(dt int, dt2 int, rn Reg, simm7 i32) u32 {
+	return 0x6D400000 | (u32(simm7 & 0x7F) << 15) | (u32(dt2) << 10) | (u32(rn) << 5) | u32(dt)
+}
+
 // stp rt, rt2, [rn, #simm7] (store pair, signed offset scaled by 8)
 // simm7 is byte offset / 8; range -512..504 step 8
 fn asm_stp_offset(rt Reg, rt2 Reg, rn Reg, simm7 i32) u32 {
@@ -458,6 +473,32 @@ fn asm_blr(rn Reg) u32 {
 	return 0xD63F0000 | (u32(rn) << 5)
 }
 
+// ldar: load-acquire of 1 << size bytes, zero-extended.
+fn asm_ldar(rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x08DFFC00 | (u32(rn) << 5) | u32(rt)
+}
+
+// stlr: store-release of the low 1 << size bytes of rt.
+fn asm_stlr(rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x089FFC00 | (u32(rn) << 5) | u32(rt)
+}
+
+// ldaxr: load-acquire exclusive of 1 << size bytes, zero-extended.
+fn asm_ldaxr(rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x085FFC00 | (u32(rn) << 5) | u32(rt)
+}
+
+// stlxr: store-release exclusive; rs is 0 when the store happened. It must differ
+// from rt and rn.
+fn asm_stlxr(rs Reg, rt Reg, rn Reg, size u32) u32 {
+	return (size << 30) | 0x0800FC00 | (u32(rs) << 16) | (u32(rn) << 5) | u32(rt)
+}
+
+// dmb ish
+fn asm_dmb_ish() u32 {
+	return 0xD5033BBF
+}
+
 // cbnz rt, #imm19
 fn asm_cbnz(rt Reg, rel19 i32) u32 {
 	return 0xB5000000 | ((u32(rel19) & 0x7FFFF) << 5) | u32(rt)
@@ -475,6 +516,7 @@ fn asm_b_cond(cond u32, rel19 i32) u32 {
 
 // Condition codes for b.cond
 const cond_eq = u32(0x0) // equal
+const cond_lo = u32(0x3) // lower (unsigned)
 
 const cond_ne = u32(0x1) // not equal
 
@@ -758,4 +800,39 @@ fn asm_ldur_s(vd int, xn Reg, simm9 i32) u32 {
 // udf #0 (undefined - trap)
 fn asm_udf() u32 {
 	return 0x00000000
+}
+
+// adds rd, rn, rm (flags set)
+fn asm_adds_reg(rd Reg, rn Reg, rm Reg) u32 {
+	return 0xAB000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// subs rd, rn, rm (flags set)
+fn asm_subs_reg(rd Reg, rn Reg, rm Reg) u32 {
+	return 0xEB000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// adc rd, rn, rm (add with carry)
+fn asm_adc(rd Reg, rn Reg, rm Reg) u32 {
+	return 0x9A000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// sbc rd, rn, rm (subtract with carry)
+fn asm_sbc(rd Reg, rn Reg, rm Reg) u32 {
+	return 0xDA000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// umulh rd, rn, rm (high 64 bits of the unsigned 128-bit product)
+fn asm_umulh(rd Reg, rn Reg, rm Reg) u32 {
+	return 0x9BC07C00 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// svc #imm (supervisor call; the kernel answers in x0)
+fn asm_svc(imm u32) u32 {
+	return 0xD4000001 | ((imm & 0xFFFF) << 5)
+}
+
+// nop
+fn asm_nop() u32 {
+	return 0xD503201F
 }

@@ -1,0 +1,77 @@
+struct CppSumNumber {
+	value int
+}
+
+struct CppSumEmpty {}
+
+type CppSumChoice = CppSumNumber | CppSumEmpty
+
+type CppNestedChoice = CppSumChoice | int
+
+type CppPointerChoice = &CppSumNumber | int
+
+struct CppSumHolder {
+	value CppSumChoice
+}
+
+const cpp_constant_choice = CppSumChoice(CppSumEmpty{})
+
+fn optional_choice(present bool) ?CppSumChoice {
+	if present {
+		return CppSumEmpty{}
+	}
+	return none
+}
+
+fn result_choice(present bool) !CppSumChoice {
+	if !present {
+		return error('missing')
+	}
+	return CppSumEmpty{}
+}
+
+fn nested_choice() CppNestedChoice {
+	return CppSumChoice(CppSumEmpty{})
+}
+
+fn counted_choice(mut trace []int) ?CppSumChoice {
+	trace << 17
+	return CppSumNumber{trace.len}
+}
+
+fn owned_pointer_choice() CppPointerChoice {
+	return &CppSumNumber{31}
+}
+
+fn borrowed_pointer_choice(value &CppSumNumber) CppPointerChoice {
+	return value
+}
+
+fn main() {
+	optional := optional_choice(true) or { panic('missing option') }
+	assert optional is CppSumEmpty
+	assert optional_choice(false) == none
+	result := result_choice(true) or { panic(err) }
+	assert result is CppSumEmpty
+	mut failure_seen := false
+	result_choice(false) or {
+		assert err.msg() == 'missing'
+		failure_seen = true
+	}
+	assert failure_seen
+	assert cpp_constant_choice is CppSumEmpty
+	nested := nested_choice()
+	assert (nested as CppSumChoice) is CppSumEmpty
+	default_holder := CppSumHolder{}
+	assert (default_holder.value as CppSumNumber).value == 0
+	mut trace := []int{}
+	counted := counted_choice(mut trace) or { panic('missing counted option') }
+	assert (counted as CppSumNumber).value == 1
+	assert trace == [17]
+	owned := owned_pointer_choice()
+	assert (owned as &CppSumNumber).value == 31
+	local := CppSumNumber{47}
+	borrowed := borrowed_pointer_choice(&local)
+	assert (borrowed as &CppSumNumber).value == 47
+	unsafe { assert voidptr(borrowed as &CppSumNumber) == voidptr(&local) }
+}

@@ -11,10 +11,13 @@ fn test_production_bundled_gc_scans_misaligned_stack_slots() {
 			os.rmdir_all(test_dir) or {}
 		}
 		program := os.join_path(test_dir, 'misaligned')
-		fixture := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata',
-			'gc_misaligned_stack_pointer.c.v')
-		build := os.exec([@VEXE, '-prod', '-cc', 'cc', '-gc', 'boehm', '-d', 'use_bundled_libgc',
-			'-o', program, fixture])
+		fixture_dir := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata')
+		fixture := os.join_path(fixture_dir, 'gc_misaligned_stack_pointer.c.v')
+		// This nested -prod build must not depend on the test runner's shared cache.
+		mut build_args := ['env', 'V3CACHE=${test_dir}', @VEXE, '-prod', '-cc', 'cc']
+		build_args << ['-gc', 'boehm', '-d', 'use_bundled_libgc']
+		build_args << ['-o', program, fixture]
+		build := os.exec(build_args)
 		assert build.exit_code == 0, build.output
 		result := os.exec([program])
 		assert result.exit_code == 0, result.output

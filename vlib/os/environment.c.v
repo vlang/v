@@ -20,64 +20,89 @@ pub fn getenv(key string) string {
 // Returns `none` if the environment variable does not exist.
 @[manualfree]
 pub fn getenv_opt(key string) ?string {
-	unsafe {
-		$if windows {
-			kw := key.to_wide()
-			defer {
-				unsafe { free(voidptr(kw)) }
+	$if freestanding || syscalls {
+		// There is neither a saved envp block nor a libc environ table in a
+		// freestanding process, so the kernel snapshot in
+		// /proc/self/environ is scanned instead.
+		v, found := fsys_getenv(key)
+		return if found { v } else { none }
+	}
+	$if !freestanding && !syscalls {
+		unsafe {
+			$if windows {
+				kw := key.to_wide()
+				defer {
+					unsafe { free(voidptr(kw)) }
+				}
+				s := C._wgetenv(kw)
+				if s == 0 {
+					return none
+				}
+				return string_from_wide(s)
+			} $else {
+				s := C.getenv(&char(key.str))
+				if s == nil {
+					return none
+				}
+				// Note: C.getenv *requires* that the result be copied.
+				return cstring_to_vstring(s)
 			}
-			s := C._wgetenv(kw)
-			if s == 0 {
-				return none
-			}
-			return string_from_wide(s)
-		} $else {
-			s := C.getenv(&char(key.str))
-			if s == nil {
-				return none
-			}
-			// Note: C.getenv *requires* that the result be copied.
-			return cstring_to_vstring(s)
 		}
 	}
 }
 
 // setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
-	$if windows {
-		format := '${name}=${value}'.to_wide()
-		defer {
-			unsafe { free(voidptr(format)) }
-		}
-		if overwrite {
-			unsafe {
-				return C._wputenv(format)
+	$if freestanding || syscalls {
+		// A freestanding process cannot change the kernel's startup snapshot;
+		// modifications would need a rebuilt env block for exec, which is what
+		// Zig's process/Environ.createPosixBlock does. Not implemented here.
+		return -1
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			format := '${name}=${value}'.to_wide()
+			defer {
+				unsafe { free(voidptr(format)) }
 			}
-		} else {
-			if getenv(name).len == 0 {
+			if overwrite {
 				unsafe {
 					return C._wputenv(format)
 				}
+			} else {
+				if getenv(name).len == 0 {
+					unsafe {
+						return C._wputenv(format)
+					}
+				}
 			}
-		}
-		return -1
-	} $else {
-		unsafe {
-			return C.setenv(&char(name.str), &char(value.str), overwrite)
+			return -1
+		} $else {
+			unsafe {
+				return C.setenv(&char(name.str), &char(value.str), overwrite)
+			}
 		}
 	}
 }
 
 // unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
-	$if windows {
-		format := '${name}='.to_wide()
-		defer {
-			unsafe { free(voidptr(format)) }
+	$if freestanding || syscalls {
+		// See setenv: the startup environment block is immutable, so nothing
+		// can be removed persistently. Zig 0.17 does not expose setenv or
+		// unsetenv at all when it does not link libc.
+		return -1
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			format := '${name}='.to_wide()
+			defer {
+				unsafe { free(voidptr(format)) }
+			}
+			return C._wputenv(format)
+		} $else {
+			return C.unsetenv(&char(name.str))
 		}
-		return C._wputenv(format)
-	} $else {
-		return C.unsetenv(&char(name.str))
 	}
 }
 
@@ -89,27 +114,35 @@ pub fn environ() map[string]string {
 	// TODO how to declare Virtual C globals?
 	// const C.environ &&char
 	mut res := map[string]string{}
-	$if windows {
-		estrings := C.GetEnvironmentStringsW()
-		res = environ_from_wide_block(estrings)
-		if estrings != unsafe { nil } {
-			C.FreeEnvironmentStringsW(estrings)
+	$if freestanding || syscalls {
+		$if linux {
+			return fsys_proc_environ_map()
 		}
-	} $else {
-		// if anything belongs to an unsafe block, this abomination absolutely does.
-		start := unsafe { &&char(voidptr(C.environ)) }
-		mut i := 0
-		for {
-			x := unsafe { start[i] }
-			if x == 0 {
-				break
+		return bf_environ()
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			estrings := C.GetEnvironmentStringsW()
+			res = environ_from_wide_block(estrings)
+			if estrings != unsafe { nil } {
+				C.FreeEnvironmentStringsW(estrings)
 			}
-			eline := unsafe { cstring_to_vstring(x) }
-			eq_index := eline.index_u8(`=`)
-			if eq_index > 0 {
-				res[eline[0..eq_index]] = eline[eq_index + 1..]
+		} $else {
+			// if anything belongs to an unsafe block, this abomination absolutely does.
+			start := unsafe { &&char(voidptr(C.environ)) }
+			mut i := 0
+			for {
+				x := unsafe { start[i] }
+				if x == 0 {
+					break
+				}
+				eline := unsafe { cstring_to_vstring(x) }
+				eq_index := eline.index_u8(`=`)
+				if eq_index > 0 {
+					res[eline[0..eq_index]] = eline[eq_index + 1..]
+				}
+				i++
 			}
-			i++
 		}
 	}
 	return res

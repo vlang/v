@@ -73,7 +73,7 @@ pub fn transaction[T](mut conn TransactionalConnection, f fn (mut Tx) !T) !T {
 	if !tx.is_active() {
 		return error(tx_callback_closed_err)
 	}
-	tx.commit()!
+	tx.commit_or_rollback()!
 	return result
 }
 
@@ -150,7 +150,7 @@ pub fn (mut tx Tx) transaction[T](f fn (mut Tx) !T) !T {
 	if !nested.is_active() {
 		return error(tx_callback_closed_err)
 	}
-	nested.commit()!
+	nested.commit_or_rollback()!
 	return result
 }
 
@@ -167,6 +167,20 @@ pub fn (mut sp Savepoint) release() ! {
 	sp.ensure_active('release')!
 	sp.inner.conn.orm_release_savepoint(sp.inner.name)!
 	sp.inner.active = false
+}
+
+// commit_or_rollback commits `tx`. A failed commit can leave the transaction open (SQLite keeps it
+// after a busy COMMIT), and the caller of `transaction` has no handle to close it, so roll it back.
+fn (mut tx Tx) commit_or_rollback() ! {
+	tx.commit() or {
+		commit_err := err
+		if tx.is_active() {
+			tx.rollback() or {
+				return error('transaction commit failed: ${commit_err.msg()}; rollback failed: ${err.msg()}')
+			}
+		}
+		return commit_err
+	}
 }
 
 fn (tx Tx) is_active() bool {

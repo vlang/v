@@ -100,3 +100,18 @@ fn test_encode_escapes_values_holding_both_quote_kinds() {
 		assert decoded.description == value
 	}
 }
+
+fn test_encode_preserves_backend() {
+	source := "Module {
+	name: 'app'
+	description: ''
+	version: '0.0.1'
+	license: 'MIT'
+	backend: 'fastc'
+	dependencies: []
+}"
+	manifest := vmod.decode(source)!
+	assert manifest.backend == 'fastc'
+	assert vmod.encode(manifest) == source
+	assert !vmod.encode(vmod.decode("Module { name: 'app' }")!).contains('backend')
+}

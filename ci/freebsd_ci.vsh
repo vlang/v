@@ -81,7 +81,7 @@ fn check_math() {
 	exec_args(['v', '-silent', 'test', 'vlib/math'])
 	println('Test the math module, using only the pure V versions,')
 	println('                          without the .c.v overrides.')
-	exec_args(['v', '-silent', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math'])
+	exec_args(['v', '-silent', '-d', 'pure_v_math', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -125,7 +125,9 @@ fn run_essential_tests() {
 fn build_examples() {
 	if common.is_github_job {
 		println('::group::Build examples')
-		exec_args(['v', '-W', 'build-examples'])
+		// Leave memory for the CI script's compiler processes in the 8 GiB FreeBSD VM.
+		// Two concurrent example builds can exhaust swap and kill the task runner.
+		exec_args(['env', 'VJOBS=1', 'v', '-W', 'build-examples'])
 		println('::endgroup::')
 	} else {
 		println('### Build examples')

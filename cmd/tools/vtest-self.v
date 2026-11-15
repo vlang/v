@@ -134,10 +134,17 @@ const skip_with_fsanitize_memory = [
 	'cmd/tools/vpm/install_version_input_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'cmd/tools/vpm/install_version_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'cmd/tools/vpm/update_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	// These integration tests enter uninstrumented EGL/Mesa drivers, whose internal
+	// allocations MSan cannot track (libEGL fails in scandir64 during initialization).
+	// Keep CPU canvas tests instrumented; canvas CI, ASan and UBSan still run these.
+	'vlib/gg/canvas/gpu_context_linux_test.c.v',
+	'vlib/gg/canvas/gpu_surface_linux_test.v',
+	'vlib/gg/canvas/gpu_surface_test.v',
 	'vlib/net/tcp_simple_client_server_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
 	'vlib/net/http/http_proxy_test.v',
+	'vlib/net/http/http_proxy_origin_form_test.v', // -d use_openssl: uninstrumented libcrypto trips MSan in OPENSSL_init_ssl
 	'vlib/net/http/status_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
@@ -334,7 +341,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
 	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
-	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
 	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
 	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -367,6 +373,13 @@ const skip_on_ubuntu_musl = [
 	'vlib/veb/tests/veb_app_test.v',
 	'vlib/ncurses/ncurses_test.v',
 	'vlib/v/tests/fixed_array_update_c_struct_alias_test.v',
+]
+
+// On Linux, every file of gg.canvas includes EGL/OpenGL and FreeType headers. The musl
+// Docker image has neither for musl-gcc (`EGL/egl.h: No such file or directory`), so
+// none of the module's tests can compile there.
+const skip_dirs_on_ubuntu_musl = [
+	'vlib/gg/canvas',
 ]
 
 fn Config.init(vargs []string, targs []string) !Config {
@@ -548,6 +561,10 @@ fn main() {
 	}
 	if cfg.is_ubuntu_musl_ci {
 		tsession.skip_files << skip_on_ubuntu_musl
+		for dir in skip_dirs_on_ubuntu_musl {
+			dir_prefix := os.join_path(vroot, dir) + os.path_separator
+			tsession.skip_files << tsession.files.filter(it.starts_with(dir_prefix))
+		}
 		tsession.custom_defines << 'self_ubuntu_musl_ci'
 	}
 	// dump(tsession.skip_files)

@@ -9,7 +9,7 @@ const tccbin_contract_sha = $d('tccbin_contract_sha', '')
 
 fn main() {
 	if os.args.len < 2 {
-		eprintln('usage: tccbin-automation <contract|contract-binding|dry-run|vc-lock-dry-run|staged-preflight|candidate-preflight|candidate-compose|issue-dry-run|live-state|receiver|handoff|workflow-run|validate|canonicalize|fingerprint>')
+		eprintln('usage: tccbin-automation <contract|contract-binding|dry-run|vc-lock-dry-run|staged-preflight|candidate-preflight|candidate-compose|issue-dry-run|toolchain-observe|live-state|receiver|handoff|workflow-run|validate|canonicalize|fingerprint>')
 		exit(2)
 	}
 	automation_root := os.real_path(os.join_path(os.getwd(), 'thirdparty', 'tccbin_automation'))
@@ -131,6 +131,18 @@ fn main() {
 				exit(1)
 			}
 			println('resolved=true owner=${projection.owner_repository} os=${projection.os} entries=${projection.entries.len} open=${projection.should_be_open} writes=0')
+		}
+		'toolchain-observe' {
+			if os.args.len != 7 || os.args[3] !in ['producer', 'validator'] {
+				eprintln('usage: tccbin-automation toolchain-observe <target-id> <producer|validator> <runner-label> <evidence-dir> <observation-path>')
+				exit(2)
+			}
+			observation := bin.collect_toolchain_observation(automation_root, os.args[2],
+				os.args[3], os.args[4], os.args[5], os.args[6]) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			println('target=${observation.target_id} phase=${observation.phase} profile_id=${observation.profile_id} observation_sha256=${observation.observation_sha256}')
 		}
 		'live-state' {
 			run_live_state_command(automation_root)

@@ -60,6 +60,9 @@ populated:
 - **`Learn more:`** — set `learn_more string`; newlines split the block
   into separate lines.
 
+Flag descriptions align with command descriptions, including when a long flag precedes a flag
+with an abbreviation. Flag declaration order does not change the description column.
+
 Sections that have nothing to render are simply omitted, so existing apps
 see no change unless they opt in by setting these fields. See
 `examples/cli_groups.v` for a runnable program that exercises all of them.

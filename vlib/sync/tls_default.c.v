@@ -1,10 +1,13 @@
 module sync
 
-// Pthread TLS API functions (via C interface)
-fn C.pthread_key_create(key voidptr, voidptr) i32
-fn C.pthread_key_delete(key u64) i32
-fn C.pthread_setspecific(key u64, const_ptr voidptr) i32
-fn C.pthread_getspecific(key u64) voidptr
+#flag @VEXEROOT/vlib/sync/thread_helper.o
+
+// The native helper converts pthread_key_t to/from the shared u64 key storage.
+// Do not redeclare pthread APIs with a key type that differs from the platform.
+fn C.v_sync_tls_create(key voidptr) i32
+fn C.v_sync_tls_delete(const_key voidptr) i32
+fn C.v_sync_tls_set(const_key voidptr, const_value voidptr) i32
+fn C.v_sync_tls_get(const_key voidptr) voidptr
 
 // new_tls creates new TLS storage initialized with the given `value`
 pub fn new_tls[T](value T) !ThreadLocalStorage[T] {
@@ -13,9 +16,9 @@ pub fn new_tls[T](value T) !ThreadLocalStorage[T] {
 	}
 	mut key := u64(0)
 	// Validate key allocation
-	if C.pthread_key_create(voidptr(&key), 0) == 0 {
+	if C.v_sync_tls_create(&key) == 0 {
 		// Initialize storage and verify success
-		if C.pthread_setspecific(key, convert_t_to_voidptr(value)!) == 0 {
+		if C.v_sync_tls_set(&key, convert_t_to_voidptr(value)!) == 0 {
 			return ThreadLocalStorage[T]{
 				key:    key
 				in_use: true
@@ -33,7 +36,7 @@ pub fn new_tls[T](value T) !ThreadLocalStorage[T] {
 @[inline]
 pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 	if t.in_use {
-		if C.pthread_setspecific(t.key, convert_t_to_voidptr(value)!) != 0 {
+		if C.v_sync_tls_set(&t.key, convert_t_to_voidptr(value)!) != 0 {
 			return error('set: Failed to update TLS value: ${value}')
 		}
 	} else {
@@ -45,7 +48,7 @@ pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 @[inline]
 pub fn (mut t ThreadLocalStorage[T]) get() !T {
 	if t.in_use {
-		return convert_voidptr_to_t[T](C.pthread_getspecific(t.key))
+		return convert_voidptr_to_t[T](C.v_sync_tls_get(&t.key))
 	}
 	return error('get: TLS storage is already destroyed')
 }
@@ -53,7 +56,7 @@ pub fn (mut t ThreadLocalStorage[T]) get() !T {
 // destroy releases TLS resources (must be called manually).
 @[inline]
 pub fn (mut t ThreadLocalStorage[T]) destroy() ! {
-	if C.pthread_key_delete(t.key) == 0 {
+	if C.v_sync_tls_delete(&t.key) == 0 {
 		t.in_use = false
 	} else {
 		return error('destroy: Failed to release TLS resources')

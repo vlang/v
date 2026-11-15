@@ -1397,7 +1397,7 @@ fn test_full_contract_report_is_green() {
 	report := bin.run_contract_checks(automation_root()) or { panic(err) }
 	assert report.schema_count == 22
 	assert report.manifest_count == 2
-	assert report.hygiene_files == 108
+	assert report.hygiene_files == 111
 }
 
 fn test_schema_reference_is_reread_for_each_validation() {
@@ -1790,21 +1790,37 @@ fn test_production_registry_locks_the_six_reviewed_legacy_base_literals() {
 		toolchain := target.object_value('toolchain_profile') or {
 			panic('toolchain profile binding missing')
 		}
-		assert (toolchain.object_value('profile_id') or { panic('profile ID missing') }).kind == .null_value
-		assert (toolchain.object_value('profile_path') or { panic('profile path missing') }).kind == .null_value
-		assert (toolchain.object_value('profile_sha256') or { panic('profile hash missing') }).kind == .null_value
+		profile_id := toolchain.object_value('profile_id') or { panic('profile ID missing') }
+		profile_path := toolchain.object_value('profile_path') or { panic('profile path missing') }
+		profile_sha256 := toolchain.object_value('profile_sha256') or {
+			panic('profile hash missing')
+		}
+		if id == 'macos-arm64' {
+			assert profile_id.string_value == 'macos-arm64-github-hosted-clang-v1'
+			assert profile_path.string_value == 'toolchain-profiles/macos-arm64.profile.json'
+			assert profile_sha256.string_value == 'f8022035063578f6102896ed1fb0046dd3f286880f44dab6173cac8e6711b4bc'
+		} else {
+			assert profile_id.kind == .null_value
+			assert profile_path.kind == .null_value
+			assert profile_sha256.kind == .null_value
+		}
 	}
 	assert observed == expected
 }
 
-fn test_toolchain_profile_registry_is_dormant_and_both_wire_schemas_are_closed() {
-	registry_source := os.read_file(os.join_path(automation_root(), 'targets.json')) or {
+fn test_toolchain_profile_registry_binds_only_reviewed_profiles_and_both_wire_schemas_are_closed() {
+	production_source := os.read_file(os.join_path(automation_root(), 'targets.json')) or {
 		panic(err)
 	}
-	production_issues := validate_schema_source('targets.schema.json', registry_source,
-		'toolchain-profile-production-null-bindings')
+	production_issues := validate_schema_source('targets.schema.json', production_source,
+		'toolchain-profile-production-bindings')
 	assert production_issues.len == 0, '${production_issues}'
-	binding_marker := '"toolchain_profile": {\n        "profile_id": null,\n        "profile_path": null,\n        "profile_sha256": null\n      }'
+	binding_marker := dormant_toolchain_binding
+	assert production_source.count(binding_marker) == 6 - production_toolchain_bindings.len
+	for binding in production_toolchain_bindings {
+		assert production_source.count(binding) == 1
+	}
+	registry_source := dormant_registry_source(automation_root())
 	assert registry_source.count(binding_marker) == 6
 	half_binding := registry_source.replace_once(binding_marker,
 		'"toolchain_profile": {\n        "profile_id": "freebsd-amd64-synthetic-v1",\n        "profile_path": null,\n        "profile_sha256": null\n      }')
@@ -1995,7 +2011,7 @@ fn test_legacy_onboarding_registry_is_dormant_until_one_canonical_policy_is_revi
 	os.cp_all(os.join_path(root, 'schemas'), os.join_path(temporary, 'schemas'), true) or {
 		panic(err)
 	}
-	registry_source := os.read_file(os.join_path(root, 'targets.json')) or { panic(err) }
+	registry_source := dormant_registry_source(root)
 	half_pair := registry_source.replace_once('"policy_path": null,\n        "policy_sha256": null',
 		'"policy_path": "onboarding/freebsd-amd64.policy.json",\n        "policy_sha256": null')
 	half_pair_issues := validate_schema_source('targets.schema.json', half_pair,
@@ -2086,7 +2102,7 @@ fn test_managed_baseline_activation_policy_loader_is_dormant_and_closed() {
 	os.cp_all(os.join_path(root, 'schemas'), os.join_path(temporary, 'schemas'), true) or {
 		panic(err)
 	}
-	registry_source := os.read_file(os.join_path(root, 'targets.json')) or { panic(err) }
+	registry_source := dormant_registry_source(root)
 	evidence_fixture := managed_baseline_evidence_fixture(schema_fixture_with_resolved_producer('manifest-complete.valid.json',
 		'linux-amd64'))
 	manifest := bin.parse_strict_json(evidence_fixture.manifest_source) or { panic(err) }

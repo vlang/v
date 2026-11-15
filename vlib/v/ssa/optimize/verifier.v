@@ -232,7 +232,7 @@ fn verify_uses(m &ssa.Module, stage string) {
 					if !instr.is_value_operand(oi) {
 						continue
 					}
-					if op_id > 0 && op_id < m.values.len {
+					if op_id > 0 && op_id < m.values.len && m.values[op_id].has_use_list() {
 						mut already_counted := false
 						for previous in 0 .. oi {
 							if instr.is_value_operand(previous) && instr.operands[previous] == op_id {

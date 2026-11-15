@@ -94,9 +94,12 @@ pub const retry_timeout_env = 'VTEST_RETRY_TIMEOUT'
 
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 // Each worker compiles a separate test program, so bound automatic parallelism
-// by a conservative memory budget. VJOBS remains an explicit override.
-const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
-const max_automatic_test_jobs = 4
+// by a memory budget per worker, and by the CPU count. Test builds of the
+// compiler's own modules peak at 0.4-1.5 GiB of RSS, a median of 0.6 GiB, and
+// the test programs at under 0.7 GiB (`/usr/bin/time -l` on macOS arm64, for
+// `vlib/v/{types,transform,gen/c,modulecache,driver}`), so 2 GiB leaves room for
+// the occasional larger build. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(2) * 1024 * 1024 * 1024
 
 // get_test_timeout_s returns the per-test wall limit in seconds: `VTEST_TIMEOUT` when it is set to
 // a number, else default_test_timeout_s.
@@ -124,16 +127,30 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	if jobs > memory_jobs {
 		jobs = memory_jobs
 	}
-	if jobs > max_automatic_test_jobs {
-		jobs = max_automatic_test_jobs
-	}
 	return jobs
 }
 
-@[markused]
-fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+// CgroupLimit is a limit that the test runner reads from the directories of a cgroup.
+enum CgroupLimit {
+	memory_v1 // memory.limit_in_bytes, in bytes
+	memory_v2 // memory.max, in bytes
+	cpu_v1    // cpu.cfs_quota_us / cpu.cfs_period_us, in CPUs
+	cpu_v2    // cpu.max, in CPUs
+}
+
+fn (limit CgroupLimit) fs_type() string {
+	return if limit in [.memory_v1, .cpu_v1] { 'cgroup' } else { 'cgroup2' }
+}
+
+fn (limit CgroupLimit) controller() string {
+	return if limit in [.memory_v1, .memory_v2] { 'memory' } else { 'cpu' }
+}
+
+// cgroup_paths returns the unified (v2) cgroup path of /proc/self/cgroup, and the
+// v1 path of each controller.
+fn cgroup_paths(cgroups string) (string, map[string]string) {
 	mut v2_path := ''
-	mut v1_memory_path := ''
+	mut v1_paths := map[string]string{}
 	for line in cgroups.split_into_lines() {
 		first_separator := line.index(':') or { continue }
 		second_separator := line.index_after(':', first_separator + 1) or { continue }
@@ -141,22 +158,43 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 		cgroup_path := line[second_separator + 1..]
 		if controllers == '' {
 			v2_path = cgroup_path
-		} else if 'memory' in controllers.split(',') {
-			v1_memory_path = cgroup_path
+			continue
+		}
+		for controller in controllers.split(',') {
+			v1_paths[controller] = cgroup_path
 		}
 	}
-	if v1_memory_path != '' {
-		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup', 'memory.limit_in_bytes') {
+	return v2_path, v1_paths
+}
+
+fn cgroup_limit_from_contents(cgroups string, mountinfo string, v1 CgroupLimit, v2 CgroupLimit) !u64 {
+	v2_path, v1_paths := cgroup_paths(cgroups)
+	v1_path := v1_paths[v1.controller()] or { '' }
+	if v1_path != '' {
+		if limit := cgroup_limit_for_hierarchy(mountinfo, v1_path, v1) {
 			return limit
 		}
 	}
 	if v2_path != '' {
-		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+		return cgroup_limit_for_hierarchy(mountinfo, v2_path, v2)
 	}
-	return error('no cgroup memory limit found')
+	return error('no cgroup ${v2.controller()} limit found')
 }
 
-fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
+@[markused]
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	return cgroup_limit_from_contents(cgroups, mountinfo, .memory_v1, .memory_v2)
+}
+
+// cgroup_cpu_limit_from_contents returns the CPU quota of the cgroup, rounded up
+// to whole CPUs. `sysconf` reports the CPUs of the host, not this quota.
+@[markused]
+fn cgroup_cpu_limit_from_contents(cgroups string, mountinfo string) !int {
+	return int(cgroup_limit_from_contents(cgroups, mountinfo, .cpu_v1, .cpu_v2)!)
+}
+
+fn cgroup_limit_for_hierarchy(mountinfo string, cgroup_path string, kind CgroupLimit) !u64 {
+	fs_type := kind.fs_type()
 	for line in mountinfo.split_into_lines() {
 		parts := line.split(' - ')
 		if parts.len != 2 {
@@ -169,14 +207,15 @@ fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_ty
 		}
 		mount_root := decode_mountinfo_path(mount_parts[3])
 		mount_point := decode_mountinfo_path(mount_parts[4])
-		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+		if fs_parts[0] != fs_type
+			|| (fs_type == 'cgroup' && kind.controller() !in fs_parts[2].split(',')) {
 			continue
 		}
-		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path, limit_file) {
+		if limit := cgroup_limit_in_hierarchy(mount_root, mount_point, cgroup_path, kind) {
 			return limit
 		}
 	}
-	return error('no cgroup memory limit found')
+	return error('no cgroup ${kind.controller()} limit found')
 }
 
 fn decode_mountinfo_path(path string) string {
@@ -196,7 +235,7 @@ fn decode_mountinfo_path(path string) string {
 	return result.str()
 }
 
-fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+fn cgroup_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, kind CgroupLimit) !u64 {
 	mut relative_path := cgroup_path.trim_left('/')
 	trimmed_root := mount_root.trim_right('/')
 	if trimmed_root != '' {
@@ -209,13 +248,12 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 		// mount_root, so relative_path already maps from the visible mount point.
 	}
 	mut current_path := os.join_path(mount_point, relative_path)
-	mut memory_limit := u64(0)
+	mut lowest_limit := u64(0)
 	for {
-		if content := os.read_file(os.join_path(current_path, limit_file)) {
-			if limit := cgroup_memory_limit_value(content) {
-				if memory_limit == 0 || limit < memory_limit {
-					memory_limit = limit
-				}
+		// The effective limit of a cgroup is the lowest one along its ancestors.
+		if limit := cgroup_directory_limit(current_path, kind) {
+			if lowest_limit == 0 || limit < lowest_limit {
+				lowest_limit = limit
 			}
 		}
 		if current_path == mount_point {
@@ -227,10 +265,32 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 		}
 		current_path = parent_path
 	}
-	if memory_limit == 0 {
-		return error('cgroup memory limit is unlimited')
+	if lowest_limit == 0 {
+		return error('cgroup ${kind.controller()} limit is unlimited')
 	}
-	return memory_limit
+	return lowest_limit
+}
+
+fn cgroup_directory_limit(dir string, kind CgroupLimit) !u64 {
+	return match kind {
+		.memory_v1 {
+			cgroup_memory_limit_value(os.read_file(os.join_path(dir, 'memory.limit_in_bytes'))!)!
+		}
+		.memory_v2 {
+			cgroup_memory_limit_value(os.read_file(os.join_path(dir, 'memory.max'))!)!
+		}
+		.cpu_v1 {
+			cgroup_cpu_limit_value(os.read_file(os.join_path(dir, 'cpu.cfs_quota_us'))!,
+				os.read_file(os.join_path(dir, 'cpu.cfs_period_us'))!)!
+		}
+		.cpu_v2 {
+			fields := os.read_file(os.join_path(dir, 'cpu.max'))!.fields()
+			if fields.len != 2 {
+				return error('invalid cgroup cpu.max')
+			}
+			cgroup_cpu_limit_value(fields[0], fields[1])!
+		}
+	}
 }
 
 fn cgroup_memory_limit_value(content string) !u64 {
@@ -243,6 +303,21 @@ fn cgroup_memory_limit_value(content string) !u64 {
 		return error('invalid cgroup memory limit')
 	}
 	return limit
+}
+
+// cgroup_cpu_limit_value rounds a CPU quota up to whole CPUs: a quota of 150000 per
+// period of 100000 allows 2 workers. A quota of `max` (v2) or -1 (v1) is unlimited.
+fn cgroup_cpu_limit_value(quota_text string, period_text string) !u64 {
+	quota := quota_text.trim_space()
+	if quota == 'max' || quota.starts_with('-') {
+		return error('cgroup cpu limit is unlimited')
+	}
+	quota_us := quota.u64()
+	period_us := period_text.trim_space().u64()
+	if quota_us == 0 || period_us == 0 {
+		return error('invalid cgroup cpu limit')
+	}
+	return (quota_us + period_us - 1) / period_us
 }
 
 @[markused]
@@ -269,16 +344,41 @@ fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configur
 	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
 }
 
+@[markused]
+fn effective_test_cpus(cpu_jobs int, cgroup_cpu_limit int) int {
+	if cgroup_cpu_limit > 0 && cgroup_cpu_limit < cpu_jobs {
+		return cgroup_cpu_limit
+	}
+	return cpu_jobs
+}
+
+fn test_runner_cpus(cpu_jobs int) int {
+	$if linux {
+		cgroup_cpu_limit := cgroup_cpu_limit_from_contents(os.read_file('/proc/self/cgroup') or {
+			return cpu_jobs
+		}, os.read_file('/proc/self/mountinfo') or { return cpu_jobs }) or { return cpu_jobs }
+		return effective_test_cpus(cpu_jobs, cgroup_cpu_limit)
+	}
+	return cpu_jobs
+}
+
 fn test_runner_jobs(will_compile bool) int {
-	cpu_jobs := runtime.nr_jobs()
+	mut cpu_jobs := runtime.nr_jobs()
 	if !will_compile {
 		return test_session_jobs(false, cpu_jobs, 0, 0)
 	}
+	// In a container, the CPU quota of its cgroup bounds the workers that can run.
+	cpu_jobs = test_runner_cpus(cpu_jobs)
 	configured_jobs := os.getenv('VJOBS').int()
 	total_memory := test_runner_memory() or {
 		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)
 	}
 	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
+}
+
+fn test_compiler_jobs(available_cpus int, test_jobs int, configured_jobs int) int {
+	// Concurrent tests share the CPU budget instead of each starting a full pool.
+	return int_max(1, int_min(configured_jobs, available_cpus / int_max(1, test_jobs)))
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -348,8 +448,9 @@ pub mut:
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
-	benchmark_mu &sync.Mutex = sync.new_mutex()
-	resume_dir   string
+	benchmark_mu  &sync.Mutex = sync.new_mutex()
+	resume_dir    string
+	compiler_jobs int
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -583,6 +684,21 @@ pub fn timed_out_message(timeout_s int) string {
 	return 'timed out after ${timeout_s} s: the test and its child processes were killed'
 }
 
+fn (mut ts TestSession) exec_compiler(args []string, mtc MessageThreadContext) os.Result {
+	// Stats also launches the test program; preserve its environment.
+	if !ts.will_compile || ts.show_stats || ts.compiler_jobs < 1
+		|| ts.compiler_jobs == runtime.nr_jobs() || args.len == 0 {
+		return ts.exec(args, mtc)
+	}
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: VJOBS=${ts.compiler_jobs} ${args.join(' ')}',
+			mtc)
+	}
+	return cmdexec.run_in_merged_with_env(args[0], args[1..], '', {
+		'VJOBS': ts.compiler_jobs.str()
+	})
+}
+
 // system runs a legacy command string.
 @[deprecated: 'use TestSession.system_args with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
@@ -769,6 +885,8 @@ pub fn (mut ts TestSession) test() {
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
+	ts.compiler_jobs = test_compiler_jobs(test_runner_cpus(runtime.nr_cpus()), njobs,
+		runtime.nr_jobs())
 	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(
 		callback: worker_trunner
@@ -969,8 +1087,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	defer {
-		if produces_file_output && ts.rm_binaries {
-			os.rmdir_all(test_folder_path) or {}
+		if produces_file_output {
+			if ts.rm_binaries {
+				os.rmdir_all(test_folder_path) or {}
+			} else if ts.exec_mode == .compile_and_run {
+				os.rm(generated_binary_fpath) or {}
+				$if macos {
+					os.rmdir_all(generated_binary_fpath + '.dSYM') or {}
+				}
+			}
 		}
 	}
 	mut test_succeeded := true
@@ -1051,7 +1176,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = ts.exec(compile_argv, mtc)
+			compile_r = ts.exec_compiler(compile_argv, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {
@@ -1318,6 +1443,7 @@ pub fn build_v_args_failed(args []string) bool {
 	return false
 }
 
+// building_any_v_binaries_failed builds the debug and production V executables, reporting failures.
 pub fn building_any_v_binaries_failed() bool {
 	eheader('Building V binaries...')
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
@@ -1326,13 +1452,37 @@ pub fn building_any_v_binaries_failed() bool {
 	vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir) or { panic(err) }
 	mut failed := false
-	v_build_commands := ['${vexe} -o v_g             -g  cmd/v',
-		'${vexe} -o v_prod_g  -prod -g  cmd/v', '${vexe} -o v_cg            -cg cmd/v',
-		'${vexe} -o v_prod_cg -prod -cg cmd/v', '${vexe} -o v_prod    -prod     cmd/v']
+	mut inherited_options := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
+	inherited_options << '-prod'
+	production_cc := if pref.tcc_with_prod_requested(inherited_options) {
+		pref.find_system_assembler() or {
+			eprintln('Production V binaries require GCC or Clang when VFLAGS selects TinyCC')
+			return true
+		}
+	} else {
+		''
+	}
+	if production_cc != '' {
+		eprintln('Using ${production_cc} for production V binaries')
+	}
+	v_build_options := [
+		['-o', 'v_g', '-g'],
+		['-o', 'v_prod_g', '-prod', '-g'],
+		['-o', 'v_cg', '-cg'],
+		['-o', 'v_prod_cg', '-prod', '-cg'],
+		['-o', 'v_prod', '-prod'],
+	]
 	mut bmark := benchmark.new_benchmark()
-	for cmd in v_build_commands {
+	for options in v_build_options {
+		mut args := [vexe]
+		args << options
+		if '-prod' in options && production_cc != '' {
+			args << ['-cc', production_cc]
+		}
+		args << 'cmd/v'
+		cmd := args.map(os.quoted_path(it)).join(' ')
 		bmark.step()
-		if build_v_args_failed(os.split_args(cmd) or { panic(err) }) {
+		if build_v_args_failed(args) {
 			bmark.fail()
 			failed = true
 			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))

@@ -39,14 +39,16 @@ fn (mut b Builder) declared_field_default_value(struct_name_id u32, field_name s
 	old_types := b.var_type_names
 	b.cur_module = initializer.module_name
 	// Defaults belong to the declaration's scope, regardless of the caller's locals.
-	b.vars = b.global_vars.clone()
+	b.vars = VarTable{
+		locals: b.global_vars.clone()
+	}
 	b.var_type_names = b.global_type_names.clone()
 	prefix := b.cur_module + '.'
 	for name, address in b.global_vars {
 		if name.starts_with(prefix) {
 			short := name[prefix.len..]
 			if !short.contains('.') {
-				b.vars[short] = address
+				b.vars.set(short, address)
 				b.var_type_names.set_id(short, b.global_type_names.type_id(name) or { 0 })
 			}
 		}

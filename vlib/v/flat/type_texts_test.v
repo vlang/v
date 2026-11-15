@@ -182,9 +182,9 @@ fn test_source_type_resolution_shape_preserves_wrappers_and_exact_spelling() {
 fn test_source_type_declaration_shape_preserves_exact_space_and_typeof_rules() {
 	assert sizeof(SourceTypeShape) == sizeof(u32)
 	assert !source_type_shape(0).has(.unusable_decl)
-	for text in ['unknown', 'array', 'map', 'struct', '?unknown', 'XunknownY', 'Option', 'Option_int',
-		'__v_option', '__v_option_int', 'Result', 'Result_int', ' O ption ', '__v_ option _int',
-		' R esult _int', 'typeof(value)', 'typeof( '] {
+	for text in ['unknown', 'array', 'map', 'struct', 'union', '?unknown', 'XunknownY', 'Option',
+		'Option_int', '__v_option', '__v_option_int', 'Result', 'Result_int', ' O ption ',
+		'__v_ option _int', ' R esult _int', 'typeof(value)', 'typeof( '] {
 		assert source_type_shape(source_type_id(text)).has(.unusable_decl), text
 	}
 	for text in ['void', 'array ', ' map', 'struct\t', 'ma p', 'unk nown', '\tOption', 'O\tption',

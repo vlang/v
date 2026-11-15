@@ -80,6 +80,16 @@ PowerShell.
 To build with Visual Studio, run `makev.bat -msvc`. If the bundled TCC bootstrap cannot be
 compiled or fails while building the next compiler stage, the script retries with MSVC,
 then Clang and GCC.
+Windows ARM64 releases are available as `v_windows_arm64.zip`. Install Visual Studio's
+C++ ARM64 build tools and a Windows SDK, then use `v -cc msvc file.v` to build native
+applications with the C backend. To build the compiler and release tools from source,
+run `./cmd/tools/builders/windows_arm64_release.ps1` in native ARM64 PowerShell 7 on Windows 11.
+Source bootstrapping also needs Visual Studio's x64 C++ tools and Windows 11's x64 emulation
+to run the downloaded Windows snapshot. The script then explicitly targets ARM64 for the
+compiler stages, release tools, and application smoke test, checking their PE architecture.
+It builds and runs an application before packaging and does not require an x64 TCC bundle.
+On native Windows ARM64, `v up -skip_v_self` uses this same bootstrap script and requires
+native ARM64 PowerShell 7 and both Visual Studio toolchains; it keeps the compiler native.
 `makev.bat -clang` keeps Clang's installed target: LLVM-MinGW uses its GNU runtime,
 while Visual Studio's Clang uses the adjacent `clang-cl.exe` and the MSVC SDK.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
@@ -100,6 +110,8 @@ On Unix-like systems, `make` and the `v self` bootstrap fallback stream compatib
 for older `vc/v.c` snapshots to the C compiler. These match the peak RSS helper's return type
 to `i64`, guard Linux-only `prctl` code, and teach pre-`uint` compilers the new integer
 spelling and allocator signatures. The snapshot stays unchanged on disk.
+On FreeBSD, the filter preserves the snapshot's time types in headerless mode and uses
+the system definitions when building with native headers.
 The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, builds use PowerShell to prepare a temporary snapshot with the same integer
@@ -126,10 +138,10 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
-Previously cached modules are validated with the updated compiler. Successful checks that
-produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
-Different build configurations can compile the same module separately.
-Use `v up -v` to show progress for every checked cache configuration, including reused objects.
+When the V checkout or TCC changes, or the compiler is rebuilt, it runs `v wipe-cache`
+to clear module, object, temporary, and compiled tool caches. If nothing changes,
+the caches are preserved. Subsequent builds recreate the caches they need;
+`v up` does not replay previously recorded build configurations or test selectors.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
@@ -253,6 +265,14 @@ make
 Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
 For faster development builds, keep the Termux `tcc` package installed; V will use it by default
 when no compatible bundled `thirdparty/tcc` binary is available on the host.
+To check that a program compiles with TCC without retrying with Clang, run
+`./v -cc tcc -no-retry-compilation run examples/hello_world.v`.
+V supplies the Android/Termux atomic fence and dynamic-loading link dependencies. Older TCC
+packages may still need updates for Bionic headers and compiler builtins; their errors remain
+visible with `-no-retry-compilation`.
+
+On Android devices that forbid hard links in app storage, V publishes native C cache objects
+with an atomic no-replace rename. This preserves completed objects during concurrent builds.
 
 ### C compiler
 
@@ -347,6 +367,8 @@ shell/editor after that, so that it can pick up the new PATH variable.
 > `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
 
+`v symlink` preserves shared compiler temporary files, including the directory selected by `VTMP`.
+
 ## Editor/IDE Plugins
 
 - [Atom](https://github.com/vlang/awesome-v#atom)
@@ -397,15 +419,21 @@ production compiler. Other C toolchains and failed PGO attempts use a regular pr
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
-Use `v -b arm64 file.v` on macOS ARM64 or `v -b x64 file.v` on Linux AMD64 to compile
-with a native backend. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
+architecture: `-b amd64` (`-b x64` remains an alias) for AMD64, or `-b arm64` for ARM64.
+Without `-arch`, the target defaults to the compiler's host architecture. Pass `-arch arm64`
+or `-arch amd64` to select a different target. The same backend platform requirements apply:
+macOS ARM64 and Linux AMD64 support executables; Linux ARM64 supports object output only,
+such as `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux.
+On Linux AMD64, `v -b amd64 -o hello_world.o hello_world.v` also emits an ELF object.
+Use `v -b arm64 self` or `v -b amd64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native
-build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
+build. Use `-o v_arm64` or `-o v_amd64` to keep the current compiler and write a separate
 executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
 and `version`. The native compiler includes the C backend and leaves out FastC by default.
-For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
-Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+For amd64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
+Very large amd64 modules may skip the global SSA pass to bound compiler memory. The ARM64
 backend retains its existing optimization behavior.
 
 ```bash

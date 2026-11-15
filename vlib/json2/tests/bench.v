@@ -168,4 +168,29 @@ fn main() {
 	}
 
 	b.measure('json2.decode[SumTypes](\'"abcdefghijklimnopqrstuv"\')!')
+
+	println('\n***encoding***')
+	small := Stru{
+		val:  1
+		val2: 'lala'
+		val3: Stru2{
+			a:         2
+			churrasco: 'leleu'
+		}
+	}
+	for i := 0; i < max_iterations; i++ {
+		_ := json2.encode[Stru](small)
+	}
+	b.measure('json2.encode[Stru](small)')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := json2.encode('small')
+	}
+	b.measure("json2.encode('small')")
+
+	large_string := 'payload'.repeat(2048)
+	for i := 0; i < max_iterations / 1000; i++ {
+		_ := json2.encode(large_string)
+	}
+	b.measure('json2.encode(large string)')
 }

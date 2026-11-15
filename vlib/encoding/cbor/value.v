@@ -4,11 +4,13 @@ module cbor
 // the schema isn't known at compile time, when you need to inspect tags,
 // or when keys aren't strings:
 //
-//   v := cbor.decode[cbor.Value](bytes)!
-//   match v {
-//       cbor.Text { println(v.value) }
-//       else { ... }
-//   }
+// ```v ignore
+// v := cbor.decode[cbor.Value](bytes)!
+// match v {
+// 	cbor.Text { println(v.value) }
+// 	else { ... }
+// }
+// ```
 //
 // For known schemas prefer `decode[YourStruct]` — it's faster and avoids
 // the heap allocations of building a Value tree.
@@ -26,11 +28,11 @@ pub type Value = Array
 
 // IntNum holds the full unsigned/negative CBOR integer range. CBOR allows
 // values from -(2^64) to 2^64-1, which exceeds either i64 or u64 alone, so
-// the sign bit is split out and the magnitude carried as u64.
+// the sign bit is split out and the magnitude carried as u64:
 //
-//   for unsigned: negative=false, magnitude=value
-//   for negative: negative=true,  magnitude=encoded_argument
-//                 actual integer  = -1 - i64(magnitude) (when it fits i64)
+// - for unsigned values: `negative` is false, and `magnitude` is the value;
+// - for negative values: `negative` is true, and `magnitude` is the encoded
+//   argument, so the value is `-1 - i64(magnitude)` (when it fits in i64).
 pub struct IntNum {
 pub:
 	negative  bool

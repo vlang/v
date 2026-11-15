@@ -282,6 +282,32 @@ pub enum Color {
 	assert used['colors__Color__autostr']
 }
 
+fn test_cached_header_keeps_source_enum_autostr_helper_without_visible_call() {
+	for cached in [false, true] {
+		ext := if cached { 'vh' } else { 'v' }
+		body := if cached { '' } else { '{}' }
+		a, tc := parse_checked_two_file_source('source_enum_autostr_${ext}', '
+module main
+
+import cached
+
+enum State {
+	ready
+}
+
+fn main() {
+	cached.touch()
+}
+', 'cached/cached.${ext}', 'module cached\n\npub fn touch() ${body}\n')
+		used := mark_used(a, tc)
+		assert used['State__autostr'] == cached
+		mut prepared := prepare_markused_declarations(a, tc, true)
+		prepared_used := mark_used_without_generic_detection_prepared(a, tc, mut prepared)
+		assert prepared_used['State__autostr'] == cached
+		prepared.release()
+	}
+}
+
 // test_imported_operator_infix_seeds_operator_methods validates this v3 regression case.
 fn test_imported_operator_infix_seeds_operator_methods() {
 	a, tc := parse_checked_two_file_source('imported_operator_infix', imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v', imported_operator_module_source())

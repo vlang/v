@@ -465,6 +465,22 @@ fn (mut g FlatGen) collect_interface_impls() {
 	iface_names.sort_with_compare(compare_interface_source_type_ids)
 	// The implementer queries of this loop share one checker context.
 	memo_opened := g.tc.begin_interface_impl_queries()
+	if !isnil(g.c_struct_refs_handoff) {
+		// The IError implementer list is most of this scan and does not depend
+		// on the referenced C structs, which the loop below filters with:
+		// memoize it while the master still collects those.
+		for iface_id in iface_names {
+			if g.is_ierror_type_name(iface_id) {
+				_ = g.tc.ierror_impl_names()
+				break
+			}
+		}
+		mut handoff := g.c_struct_refs_handoff
+		_ = <-handoff.ch
+		g.referenced_c_struct_ids = handoff.ids
+		g.referenced_c_struct_ids_ready = handoff.ready
+		g.c_struct_refs_handoff = unsafe { nil }
+	}
 	for iface_id in iface_names {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
@@ -999,6 +1015,9 @@ fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
 
 fn (mut g FlatGen) ierror_none_literal_string() string {
 	type_id := g.ierror_type_id_for_pattern(flat.source_type_id('None__'))
+	if g.ccompiler == 'cplusplus' {
+		return g.cpp_ierror_initializer('memdup(&(None__){E_STRUCT}, sizeof(None__))', type_id, true)
+	}
 	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){E_STRUCT}, sizeof(None__)), ._object_is_boxed = true}'
 }
 
@@ -1040,9 +1059,12 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 			expr
 		}
 	} else {
-		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
+		'memdup(${g.cpp_copy_source('(${concrete_ct}[]){${expr}}')}, sizeof(${concrete_ct}))'
 	}
 	boxed := pointer_object_is_owned || object.starts_with('memdup(')
+	if g.ccompiler == 'cplusplus' {
+		return g.cpp_ierror_initializer(object, type_id, boxed)
+	}
 	return '(IError){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}}'
 }
 
@@ -1614,6 +1636,11 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name_id u32, method string)
 		return false
 	}
 	if g.cache_split {
+		// Cached callers can refer to methods of a module rebuilt from source.
+		// Keep its dispatchers even when those callers' bodies are unavailable.
+		if g.cache_const_modules[iface_name.all_before_last('.')] {
+			return true
+		}
 		decl_key := g.interface_method_signature_key(iface_name_id, method) or { '' }
 		if source_file := g.tc.fn_type_files[decl_key] {
 			// A cached object can call an interface dispatch from a function body that
@@ -2473,9 +2500,10 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			}
 			if name_id in [cgen_u128_source_type, cgen_i128_source_type] {
 				// The 128-bit types have no `(u)64` spelling that can carry them, so
-				// they render through their own str method.
+				// they render through their own str method. Pass the value directly:
+				// a C cast to its own type is invalid for the portable struct form.
 				name := flat.source_type_name(name_id)
-				return '${name}__str((${name})(${expr}))'
+				return '${name}__str(${expr})'
 			}
 			return none
 		}

@@ -158,13 +158,46 @@ fn test_boundary_configs_are_accepted() {
 		max_lifetime:       0
 		idle_timeout:       0
 		get_timeout:        0
+		retry_base_delay:   0
 		max_retry_delay:    0
 		max_retry_attempts: 0
 	})!
-	assert p.stats().total_conns == 2
-	c := p.get()!
-	p.put(c)!
+	// Zero lifetime and idle limits expire connections immediately. Only check
+	// that the configuration is accepted; acquisition can legitimately time out.
 	p.close()
+	assert src.made >= 2
+	assert p.stats().total_conns == 0
+}
+
+fn test_zero_get_timeout_uses_available_connections() {
+	mut src := &ConnSource{}
+	factory := conn_source(mut src)
+	mut p := pool.new_connection_pool(factory, pool.ConnectionPoolConfig{
+		max_conns:          2
+		min_idle_conns:     2
+		get_timeout:        0
+		retry_base_delay:   0
+		max_retry_delay:    0
+		max_retry_attempts: 0
+	})!
+	defer {
+		p.close()
+	}
+	assert p.stats().total_conns == 2
+	c1 := p.get()!
+	c2 := p.get()!
+	assert p.stats().active_conns == 2
+	if _ := p.get() {
+		assert false, 'an exhausted pool with zero get_timeout must fail'
+	} else {
+		assert err.msg() == 'Connection acquisition timeout'
+	}
+	p.put(c1)!
+	c3 := p.get()!
+	assert (c3 as PooledConn).id == (c1 as PooledConn).id
+	p.put(c2)!
+	p.put(c3)!
+	assert p.stats().active_conns == 0
 }
 
 fn test_update_config_rejects_invalid_values_and_keeps_the_pool_usable() {

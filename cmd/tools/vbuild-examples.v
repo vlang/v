@@ -15,6 +15,8 @@ const efolders = [
 	'examples/veb_fullstack',
 ]
 
+const macos_efolders = ['examples/macos_tray']
+
 pub fn normalised_vroot_path(path string) string {
 	return os.real_path(os.join_path_single(vroot, path)).replace('\\', '/')
 }
@@ -27,9 +29,11 @@ fn main() {
 	strict_v3 := '-old-compiler' !in requested_flags
 	mut project_folders := efolders.clone()
 	$if macos {
-		project_folders << 'examples/macos_tray'
+		project_folders << macos_efolders
 	}
-	mut skip_prefixes := project_folders.map(normalised_vroot_path(it))
+	mut skip_prefixes := efolders.map(normalised_vroot_path(it))
+	// Support files remain excluded even when their project cannot run on this host.
+	skip_prefixes << macos_efolders.map(normalised_vroot_path(it))
 	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn [strict_v3, project_folders] (mut session testing.TestSession) {
 		if strict_v3 {
 			// V3 has only a limited JavaScript compatibility generator. Keep full-backend

@@ -2,23 +2,10 @@ name: vlib modules CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**.v'
-      - 'vlib/**.md'
-      - 'cmd/tools/vdoc/**.v'
-      - 'cmd/tools/vdoc/theme/**.js'
-      - 'cmd/tools/vdoc/theme/**.css'
-      - 'cmd/tools/vdoc/theme/**.svg'
-      - 'cmd/tools/vdoc/theme/**.html'
-      - '**/module_docs_ci.yml'
+  workflow_call:
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: module_docs-${{ github.workflow }}-${{ github.ref }}
+  group: module_docs-module_docs_ci-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 permissions:
@@ -40,7 +27,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Update packages, before running apt install
         run: .github/workflows/disable_azure_mirror.sh && v retry -- sudo apt update -y -qq
       - name: Install dependencies (some modules wrap C libs)
@@ -50,8 +37,6 @@ jobs:
             sqlite3 libsqlite3-dev libfreetype6-dev \
             libx11-dev libxi-dev freeglut3-dev \
             libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev libegl-dev
-      - name: Install markdown from vpm
-        run: v retry -- v install markdown
       - name: Test v doc
         run: VJOBS=1 ./v test cmd/tools/vdoc/
       - name: Build module documentation for all platforms and check the examples in the comments

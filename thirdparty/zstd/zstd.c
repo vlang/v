@@ -954,6 +954,7 @@ unsigned char* ZSTD_maybeNullPtrAdd(unsigned char* ptr, ptrdiff_t add)
  * We therefore declare the functions we need ourselves, rather than trying to
  * include the header file... */
 #include <stddef.h>  /* size_t */
+#include <stdint.h>  /* intptr_t */
 #define ZSTD_DEPS_NEED_STDINT
 /**** skipping file: zstd_deps.h ****/
 

@@ -3,7 +3,7 @@ module flat
 // Keep the old allocating predicate as an independent oracle for byte-level
 // spelling behavior. Production code should neither replace nor intern text.
 fn unusable_decl_space_oracle(text string) bool {
-	if text in ['unknown', 'array', 'map', 'struct'] || text.contains('unknown')
+	if text in ['unknown', 'array', 'map', 'struct', 'union'] || text.contains('unknown')
 		|| (text.len >= 8 && text.contains('typeof(')) {
 		return true
 	}
@@ -51,10 +51,10 @@ fn test_unusable_decl_keeps_non_space_bytes_and_raw_checks_exact() {
 		}
 	}
 	for text in ['', ' ', '  ', 'unknown', '?unknown', 'XunknownY', 'unk nown', 'Unknown', 'array',
-		'array ', ' map', 'ma p', 'struct', 'struct\t', 'typeof(', 'typeof( ', 'typeof(value)',
-		'typeof (value)', 'TYPEOF(value)', 'Option_unknown', 'O ptionunk nown', 'option', '__V_option',
-		'result', '?Option', '&Result', 'O', '__v_optio', 'Resul', 'OptionThing', 'Option[T]',
-		'__v_optionThing', 'Resultant', 'O  p t i o n  _ int'] {
+		'array ', ' map', 'ma p', 'struct', 'struct\t', 'union', 'union\t', 'typeof(', 'typeof( ',
+		'typeof(value)', 'typeof (value)', 'TYPEOF(value)', 'Option_unknown', 'O ptionunk nown',
+		'option', '__V_option', 'result', '?Option', '&Result', 'O', '__v_optio', 'Resul', 'OptionThing',
+		'Option[T]', '__v_optionThing', 'Resultant', 'O  p t i o n  _ int'] {
 		assert_unusable_decl_space_oracle(text)
 	}
 }

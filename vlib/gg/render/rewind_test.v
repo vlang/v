@@ -63,11 +63,12 @@ fn test_rewind_recovers_from_an_unfinished_overflowing_primitive() {
 	assert ctx.num_commands() == 0
 	ctx.matrix_mode_projection()
 	ctx.ortho(0, 16, 16, 0, -1, 1)
+	ctx.c4b(255, 0, 0, 255)
 	rewind_test_quad(ctx)
 	assert ctx.num_vertices() == 6
 	assert ctx.num_commands() == 1
 	assert ctx.error() == .no_error
-	assert ctx.render_cpu(16, 16, 0xffffffff).pixels[2 * 16 + 2] != 0xffffffff
+	assert ctx.render_cpu(16, 16, 0xffffffff).pixels[2 * 16 + 2] == 0xff0000ff
 }
 
 fn test_recording_counters_include_expanded_vertices_and_control_commands() {

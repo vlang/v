@@ -33,21 +33,26 @@ fn test_windows_stat_reports_negative_filetime_values() {
 		for path in [file, folder] {
 			set_negative_stat_times_for_test(path, seconds)!
 		}
-		for path in [file, folder, folder + path_separator] {
+		for path in [file, folder, folder + path_separator, folder + '/', folder + '\\\\'] {
 			st := stat(path)!
 			assert st.atime == seconds, '${path}: ${seconds}: ${st.atime}'
 			assert st.mtime == seconds, '${path}: ${seconds}: ${st.mtime}'
 			assert st.ctime == seconds, '${path}: ${seconds}: ${st.ctime}'
 		}
 	}
-	if _ := stat(join_path(root, 'missing')) {
-		assert false, 'stat must still fail for a missing path'
-	} else {
-		assert err.code() == int(C.ENOENT)
+	for path in [file + path_separator, file + '/', join_path(root, 'missing'),
+		join_path(root, 'missing') + path_separator] {
+		if _ := stat(path) {
+			assert false, 'stat must still fail for ${path}'
+		} else {
+			assert err.code() == int(C.ENOENT)
+		}
 	}
+	volume_root := volume_name(root) + path_separator
+	assert stat(volume_root)!.get_filetype() == .directory
 }
 
-fn test_windows_stat_negative_times_follow_live_symlinks() {
+fn test_windows_stat_times_follow_live_symlinks() {
 	$if !x64 && !x32 {
 		// os.symlink currently supports Windows x64 and x32 only.
 		return
@@ -70,11 +75,18 @@ fn test_windows_stat_negative_times_follow_live_symlinks() {
 			}
 			panic(err)
 		}
-		set_negative_stat_times_for_test(path, -86_400)!
-		target_stat := stat(path)!
-		link_stat := stat(link_path)!
-		assert link_stat.atime == target_stat.atime
-		assert link_stat.mtime == target_stat.mtime
-		assert link_stat.ctime == target_stat.ctime
+		// The link's own timestamps stay positive when its target predates it.
+		// A CRT that reports link-entry metadata must still query the target.
+		for seconds in [i64(-86_400), 0, 1, 1_700_000_000] {
+			set_negative_stat_times_for_test(path, seconds)!
+			target_stat := stat(path)!
+			link_stat := stat(link_path)!
+			assert target_stat.atime == seconds
+			assert target_stat.mtime == seconds
+			assert target_stat.ctime == seconds
+			assert link_stat.atime == target_stat.atime
+			assert link_stat.mtime == target_stat.mtime
+			assert link_stat.ctime == target_stat.ctime
+		}
 	}
 }

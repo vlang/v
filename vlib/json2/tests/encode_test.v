@@ -8,11 +8,20 @@ type BoolAlias = bool
 type IntAlias = int
 type FloatAlias = f64
 
+// Keep non-JSON metadata valid while testing that the encoder ignores it.
+@[attribute]
+struct Badattr {
+	value string
+}
+
+@[attribute]
+struct Foobar {}
+
 enum TestEnum {
 	a
 	b  @[json: 'BBB']
 	c = 10
-	d  @[badattr: 'bad'; foobar]
+	d  @[Badattr: 'bad'; Foobar]
 }
 
 type EnumAlias = TestEnum

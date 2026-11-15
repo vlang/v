@@ -4,15 +4,28 @@ import os
 import time
 
 fn test_dev_dependencies_for_tool() {
-	// vdoc declares its own dependency in its own `v.mod`, so this reads the tool
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_manifest_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	old_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', os.join_path(base, 'v'), true)
+	write_tool_manifest(base)!
+	defer {
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
+	}
+	// A tool declares its dependencies in its own `v.mod`, so this reads the tool
 	// rather than a table the compiler carries.
 	assert dev_dependencies_for_tool('vdoc') == ['markdown']
-	// A tool with no `dev_dependencies` entry, and a name that is not a tool.
+	assert external_modules_for_tool('vdoc') == ['markdown']
+	// A tool with no `v.mod`, and a name that is not a tool.
 	assert dev_dependencies_for_tool('vfmt') == []
 	assert dev_dependencies_for_tool('') == []
 	assert dev_dependencies_for_tool('../vdoc') == []
-	assert external_modules_for_tool('vdoc') == ['markdown']
-	assert external_module_dependencies_for_tool['vdoc'] == ['markdown']
+}
+
+fn test_the_bundled_vdoc_has_no_dev_dependencies() {
+	// vdoc renders markdown with `x.markdown` from vlib, so it needs nothing to be installed.
+	assert dev_dependencies_for_tool('vdoc') == []
 }
 
 fn write_tool_manifest(root string) ! {
@@ -22,20 +35,22 @@ fn write_tool_manifest(root string) ! {
 }
 
 fn test_ensure_modules_for_tool_are_installed_keeps_installed_modules() {
-	vmodules := os.join_path(os.vtmp_dir(), 'util_module_deps_${os.getpid()}')
-	os.rmdir_all(vmodules) or {}
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
 	markdown_dir := os.join_path(vmodules, 'markdown')
 	os.mkdir_all(markdown_dir)!
 	os.write_file(os.join_path(markdown_dir, 'v.mod'), "Module {\n\tname: 'markdown'\n}\n")!
 	old_vmodules := os.getenv_opt('VMODULES')
+	old_vexe := os.getenv_opt('VEXE')
+	// VEXE points to a missing program, so that a clone or an update would fail.
+	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', vmodules, true)
 	defer {
-		if value := old_vmodules {
-			os.setenv('VMODULES', value, true)
-		} else {
-			os.unsetenv('VMODULES')
-		}
-		os.rmdir_all(vmodules) or {}
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
 	}
 	// An already installed module must be reused as is, without cloning or updating it.
 	ensure_modules_for_tool_are_installed('vdoc', '', false)!

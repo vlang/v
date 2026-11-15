@@ -65,7 +65,7 @@ jobs:
       - name: Build the local compiler
         run: |
           make
-          ./v -o ./vnew cmd/v
+          VFLAGS= sh cmd/tools/build_vprod.sh ./v ./vnew clang
       - name: Validate the scheduled reconciler without state or dispatch access
         if: needs.preflight.outputs.dispatch_requested == 'false'
         run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run

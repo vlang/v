@@ -18,10 +18,11 @@ pub fn transform_and_validate[T](data map[string]string) ValueWithErrors[T, map[
 	}
 }
 
+// Preserve arbitrary fixture metadata with the legacy whole-string spelling.
 struct BasicStruct {
-	str    string @[max_length: 15; min_length: 3; req]
-	number int    @[max: 100; min: 3; req]
-	b      bool   @[req]
+	str    string @['max_length: 15'; 'min_length: 3'; 'req']
+	number int    @[max: 100; min: 3; 'req']
+	b      bool   @['req']
 }
 
 fn test_generics_with_multi_generics_fn_name() {

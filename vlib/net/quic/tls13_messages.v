@@ -101,8 +101,10 @@ pub fn parse_handshake_message(buf []u8) !(HandshakeMessage, int) {
 // compute_finished_verify_data implements RFC 8446 §4.4.4's Finished
 // message computation:
 //
-//	finished_key = HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
-//	verify_data  = HMAC(finished_key, Transcript-Hash(...))
+// ```
+// finished_key = HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
+// verify_data  = HMAC(finished_key, Transcript-Hash(...))
+// ```
 //
 // `base_secret` is whichever side's traffic secret applies — the client's
 // Finished uses client_handshake_traffic_secret, the server's uses

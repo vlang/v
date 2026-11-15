@@ -163,4 +163,20 @@ fn test_h3_proxy_preserves_content_encoded_body() {
 	}
 	assert h3_response_to_http(upstream)!.body == 'encoded upstream body'
 	assert h3_response_to_http(upstream, raw_body: true)!.body.bytes() == compressed
+	assert h3_response_to_http(upstream, stop_copying_limit: 4)!.body == 'encoded upstream body'
+	assert h3_response_to_http(upstream, raw_body: true, stop_copying_limit: 4)!.body.bytes() == compressed
+}
+
+fn test_h3_response_to_http_enforces_decoded_byte_limit() {
+	compressed := gzip.compress('decoded body'.repeat(100).bytes())!
+	upstream := H3ClientResponse{
+		status:  200
+		headers: [quic.QpackFieldLine{ name: 'content-encoding', value: 'gzip' }]
+		body:    compressed
+	}
+	h3_response_to_http(upstream, max_total_decompressed_bytes: 32) or {
+		assert err is ResponseDecompressionLimitError, err.msg()
+		return
+	}
+	assert false, 'expected HTTP/3 decoded-byte limit to be enforced'
 }

@@ -35,6 +35,11 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	tc.interface_names[flat.source_type_id('IError')] = true
 	fault := *tc.parse_type(flat.source_type_id('Fault'))
 	fault_pointer := types.Type(types.Pointer{ base_type: &fault })
+	// Borrowed type descriptors must outlive their composite type values.
+	// A temporary used as a Pointer/OptionType/Array child expires after its expression.
+	int_type := types.Type(types.int_)
+	bool_type := types.Type(types.bool_)
+	void_type := types.Type(types.void_)
 	tc.type_aliases.set_id(flat.source_type_id('FaultRef'), flat.source_type_id('&Fault'))
 	tc.type_aliases.set_id(flat.source_type_id('FaultRefAlias'), flat.source_type_id('FaultRef'))
 	tc.type_aliases.set_id(flat.source_type_id('FaultValueAlias'), flat.source_type_id('Fault'))
@@ -51,7 +56,7 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 			'pointer_alias' { *tc.parse_type(flat.source_type_id('FaultRef')) }
 			'pointer_alias_chain' { *tc.parse_type(flat.source_type_id('FaultRefAlias')) }
 			'value_alias' { *tc.parse_type(flat.source_type_id('FaultValueAlias')) }
-			'wrong_pointer' { types.Type(types.Pointer{ base_type: types.Type(types.int_) }) }
+			'wrong_pointer' { types.Type(types.Pointer{ base_type: &int_type }) }
 			'other_pointer' {
 				types.Type(types.Pointer{ base_type: tc.parse_type(flat.source_type_id('OtherFault')) })
 			}
@@ -62,14 +67,14 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 		}
 		match tail_kind {
 			'optional' {
-				tc.fn_param_types['Fault.clone'] << types.Type(types.OptionType{ base_type: types.Type(types.int_) })
+				tc.fn_param_types['Fault.clone'] << types.Type(types.OptionType{ base_type: &int_type })
 			}
 			'variadic', 'native_variadic' {
 				tc.fn_param_types['Fault.clone'] << types.Type(types.Array{
 					elem_type: if tail_kind == 'variadic' {
-						types.Type(types.bool_)
+						&bool_type
 					} else {
-						types.Type(types.void_)
+						&void_type
 					}
 				})
 				tc.fn_variadic['Fault.clone'] = true
@@ -87,7 +92,7 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	g.a = &a
 	g.tc = &tc
 	g.register_struct_decl_info_at(int(params_id), 'CloneParams', 'CloneParams', 'main',
-		'main.v', params_decl)
+		'main.v', 'main.v', params_decl)
 	g.iface_impls[flat.source_type_id('IError')] = [flat.source_type_id('Fault')]
 	g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('IError'), flat.source_type_id('Fault'))] = 1
 	assert g.ownership_type_requires_destruction(fault, 0) == needs_drop

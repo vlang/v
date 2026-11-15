@@ -2170,13 +2170,13 @@ fn test_a_prepared_server_scans_the_prepared_modules_anew_for_a_program_that_cha
 	}
 	dir := os.join_path(work_dir, 'prepared_scan_anew')
 	os.mkdir_all(dir)!
-	// strconv calls a function `tos`: a program's own `tos` could change what
-	// the scan of strconv finds.
+	// strings reads this return-type entry before it needs the closure runtime.
+	// A program's own declaration must invalidate that prepared scan dependency.
 	os.write_file(os.join_path(dir, 'main.v'), shared_program +
-		'\nfn tos(x int) int {\n\treturn x\n}\n')!
+		'\nfn levenshtein_distance(x int) int {\n\treturn x\n}\n')!
 	checked, trace := check_as_prepared_server(dir, fn (_ string) {})
 	assert checked == one_shot_check(dir)
-	assert trace.contains('scanning the prepared modules anew: the program writes `r:tos`'), trace
+	assert trace.contains('scanning the prepared modules anew: the program writes `r:levenshtein_distance`'), trace
 }
 
 // generic_heavy_program has many instances of generic functions, which the end

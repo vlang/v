@@ -191,6 +191,8 @@ fn C.sqlite3_free(voidptr)
 
 fn C.sqlite3_changes(&C.sqlite3) i32
 
+fn C.sqlite3_get_autocommit(&C.sqlite3) i32
+
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {
 	db := &C.sqlite3(unsafe { nil })
@@ -303,6 +305,10 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
+	if stmt == unsafe { nil } {
+		// an empty or comment-only query compiles to no statement, and stepping it is a misuse
+		return []map[string]string{}
+	}
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut col_names := []string{cap: nr_cols}
 	for i in 0 .. nr_cols {
@@ -323,6 +329,9 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 		}
 		rows << row
 	}
+	if is_error(res) {
+		return db.error_message(res, query)
+	}
 	return rows
 }
 
@@ -340,6 +349,10 @@ pub fn (db &DB) exec(query string) ![]Row {
 	}
 	defer {
 		C.sqlite3_finalize(stmt)
+	}
+	if stmt == unsafe { nil } {
+		// an empty or comment-only query compiles to no statement, and stepping it is a misuse
+		return []Row{}
 	}
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut col_names := []string{cap: nr_cols}
@@ -366,6 +379,9 @@ pub fn (db &DB) exec(query string) ![]Row {
 			}
 		}
 		rows << row
+	}
+	if is_error(res) {
+		return db.error_message(res, query)
 	}
 	return rows
 }
@@ -604,7 +620,11 @@ pub fn (mut db DB) commit() ! {
 }
 
 // rollback rollbacks the current transaction.
+// It does nothing when no transaction is active, e.g. after SQLite rolled it back on an error.
 pub fn (mut db DB) rollback() ! {
+	if !db.in_transaction() {
+		return
+	}
 	db.exec('ROLLBACK;')!
 }
 
@@ -612,6 +632,10 @@ pub fn (mut db DB) rollback() ! {
 pub fn (mut db DB) rollback_to(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
+	}
+	if !db.in_transaction() {
+		// an error already rolled back the whole transaction, and its savepoints with it
+		return
 	}
 	db.exec('ROLLBACK TO ${savepoint};')!
 }
@@ -621,7 +645,17 @@ pub fn (mut db DB) release_savepoint(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
+	if !db.in_transaction() {
+		// an error already rolled back the whole transaction, and its savepoints with it
+		return
+	}
 	db.exec('RELEASE SAVEPOINT ${savepoint};')!
+}
+
+// in_transaction reports whether a transaction is active on the connection.
+// SQLite ends a transaction on its own after some errors, see https://www.sqlite.org/c3ref/get_autocommit.html
+fn (db &DB) in_transaction() bool {
+	return C.sqlite3_get_autocommit(db.conn) == 0
 }
 
 // tables returns the names of all user tables in the database.

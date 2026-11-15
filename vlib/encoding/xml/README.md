@@ -11,6 +11,8 @@ The public function `parse_single_node` can be used to parse a single node from
 an implementation of `io.Reader`, which can help parse large XML documents on an
 element-by-element basis. Sample usage is provided in the `parser_test.v` file.
 
+XML element nesting is limited to 256 levels. Elements beyond that depth return a parse error.
+
 ## Usage
 
 ### Parsing XML Files

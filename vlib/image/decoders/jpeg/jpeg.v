@@ -1697,7 +1697,7 @@ fn (mut d JpegDecoder) arith_start_pass(scan_comps []int, ss int, _se int, ah in
 	} else {
 		d.arith_mode = 'seq'
 	}
-	for ci, c_idx in scan_comps {
+	for c_idx in scan_comps {
 		comp := d.components[c_idx]
 		if !d.is_prog || (ss == 0 && ah == 0) {
 			tbl := comp.dc_table
