@@ -82,6 +82,10 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	assert !v3_web_native_interface(os.join_path(root, 'thirdparty', 'zstd', 'zstd.c'), root)
 	assert !v3_web_native_interface(os.join_path(root, 'thirdparty', 'mbedtls', 'include_other', 'x.h'), root)
 	assert !v3_web_native_interface(os.join_path(root, 'thirdparty', 'mbedtls', 'include', 'x.c'), root)
+	assert v3_web_native_interface(os.real_path(os.join_path(@VEXEROOT, 'vlib', 'v',
+		'cmdexec', 'cmdexec_poll.h')), @VEXEROOT)
+	assert !v3_web_native_interface(os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h'),
+		@VEXEROOT)
 	forced := cgen.CacheNativeInputs{
 		module_inputs: inputs.module_inputs
 		macro_paths:   {
@@ -129,10 +133,17 @@ fn test_tinycc_interface_contract_pin_rejects_bundle_edits() ! {
 	poll_header := os.join_path(root, 'vlib', 'os', 'fd_poll.h')
 	os.mkdir_all(os.dir(poll_header))!
 	os.cp(os.join_path(@VEXEROOT, 'vlib', 'os', 'fd_poll.h'), poll_header)!
+	cmdexec_header := os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h')
+	os.mkdir_all(os.dir(cmdexec_header))!
+	os.cp(os.join_path(@VEXEROOT, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h'), cmdexec_header)!
 	assert v3_pinned_web_native_interfaces(root)
 	os.write_file(poll_header, 'modified')!
 	assert !v3_pinned_web_native_interfaces(root)
 	os.cp(os.join_path(@VEXEROOT, 'vlib', 'os', 'fd_poll.h'), poll_header)!
+	assert v3_pinned_web_native_interfaces(root)
+	os.write_file(cmdexec_header, 'modified')!
+	assert !v3_pinned_web_native_interfaces(root)
+	os.cp(os.join_path(@VEXEROOT, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h'), cmdexec_header)!
 	assert v3_pinned_web_native_interfaces(root)
 	added := os.join_path(headers, '.added.inc')
 	os.write_file(added, '#define LATER __DATE__\n')!
