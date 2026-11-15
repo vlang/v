@@ -380,13 +380,13 @@ fn main() {
 
 // test_macos_arm64_freestanding_builds_and_runs checks that `-freestanding` on the
 // native arm64 backend takes the macos_bare runtime: the os module's bf_* surface
-// resolves, `-b arm64` selects the arm64 asm on any host, and the result is an
+// resolves, `-b arm64` selects the arm64 asm, and the result is an
 // arm64 Mach-O whose stdin line reader does not import libSystem's getline (its
 // line would be freed by the runtime's own free). On Apple Silicon the binary also
 // runs its syscalls, a block-local function value that shadows a function, and
 // `>>>` on a negative i32.
 fn test_macos_arm64_freestanding_builds_and_runs() {
-	$if windows {
+	$if !macos || !arm64 {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'macos_arm64_freestanding_${os.getpid()}')

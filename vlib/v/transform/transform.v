@@ -9460,7 +9460,10 @@ fn ordinary_escape_param_may_borrow_local(typ types.Type, depth int) bool {
 	}
 	return match typ {
 		types.Pointer, types.Unknown { true }
-		types.Alias, types.OptionType, types.ResultType {
+		types.Alias {
+			ordinary_escape_param_may_borrow_local(typ.base_type, depth + 1)
+		}
+		types.OptionType, types.ResultType {
 			ordinary_escape_param_may_borrow_local(typ.base_type, depth + 1)
 		}
 		types.Array {
