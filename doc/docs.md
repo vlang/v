@@ -10851,6 +10851,7 @@ ARM64, Linux AMD64, and Linux ARM64 support executables. For example,
 Cross linking uses `aarch64-linux-gnu-gcc` or `aarch64-linux-musl-gcc` when available;
 use `-cc` to select another Linux ARM64 toolchain, including its startup files and libc.
 Linux ARM64 linking honors libraries and objects declared through source `#flag` directives.
+Environment `CFLAGS` are applied before explicit `-cflags` options.
 Exported V functions and their dependencies remain available to linked C code.
 Object output (`-o hello_world.o`) works without a target linker, including from an AMD64 host.
 For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.

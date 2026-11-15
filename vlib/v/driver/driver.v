@@ -15148,7 +15148,8 @@ pub fn run(args []string) {
 					exit(1)
 				}
 				if !is_o {
-					mut linux_c_flags := user_c_flags.clone()
+					mut linux_c_flags := environment_c_flags.clone()
+					linux_c_flags << user_c_flags
 					linux_c_flags << arm64_directive_flags
 					link_arm64_linux_object(obj_file, bin_file, c_compiler, c_compiler_explicit,
 						linux_c_flags, link_ld_flags, show_cc) or {

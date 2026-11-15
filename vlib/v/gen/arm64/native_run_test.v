@@ -223,6 +223,34 @@ fn main() { exit(C.call_callback() - 42) }
 	}
 }
 
+fn test_native_linux_links_environment_cflags_before_explicit_flags() {
+	cc := linux_arm64_test_c_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_cflags_${os.getpid()} with spaces')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_source := os.join_path(root, 'dependency.c')
+	c_object := os.join_path(root, 'dependency.o')
+	os.write_file(c_source, 'int environment_dependency(void) { return 42; }\n')!
+	compiled := os.exec([cc, '-c', c_source, '-o', c_object])
+	assert compiled.exit_code == 0, compiled.output
+	os.write_file(os.join_path(root, 'order.c'), '#if V_ARM64_LINK_ORDER != 2\n#error explicit flags must follow environment flags\n#endif\n')!
+	path := os.join_path(root, 'program.v')
+	executable := os.join_path(root, 'program')
+	os.write_file(path, r'#flag linux "@DIR/order.c"
+fn C.environment_dependency() int
+fn main() { exit(C.environment_dependency() - 42) }
+')!
+	linked := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1',
+		'CFLAGS=${os.quoted_path(c_object)} -DV_ARM64_LINK_ORDER=1', @VEXE, '-gc', 'none', '-nocache',
+		'-b', 'arm64', '-os', 'linux', '-cc', cc, '-cflags', '-DV_ARM64_LINK_ORDER=2', '-o',
+		executable, path])
+	assert linked.exit_code == 0, linked.output
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_native_linux_run_variadic_calls_arguments_and_exit_status() {
 	$if linux && arm64 {
 		root := os.join_path(os.vtmp_dir(), 'arm64_linux_run_${os.getpid()}')
