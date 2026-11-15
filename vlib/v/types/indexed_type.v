@@ -14,7 +14,8 @@ pub fn (tc &TypeChecker) semantic_type_id(value Type) ?TypeId {
 
 fn (tc &TypeChecker) indexed_type_cache() &IndexedTypeCache {
 	mut cache := unsafe { tc.type_cache }
-	if isnil(cache.indexed_types) || cache.indexed_types.owner != tc.type_interner {
+	if isnil(cache.indexed_types)
+		|| voidptr(cache.indexed_types.owner) != voidptr(tc.type_interner) {
 		cache.indexed_types = &IndexedTypeCache{
 			owner: tc.type_interner
 		}
@@ -125,7 +126,7 @@ pub fn (tc &TypeChecker) parse_type_id(text u32) ?TypeId {
 	if tc.type_param_texts.len == 0 && !isnil(tc.type_cache)
 		&& tc.type_cache.alias_parse_stack.len == 0 {
 		cache := tc.type_cache.parsed_scalars
-		if !isnil(cache) && cache.owner == tc.type_interner && text != 0 {
+		if !isnil(cache) && voidptr(cache.owner) == voidptr(tc.type_interner) && text != 0 {
 			slot := parsed_scalar_slot(text)
 			if cache.texts[slot] == text {
 				return cache.ids[slot]
@@ -150,7 +151,7 @@ fn parsed_scalar_slot(source_id u32) int {
 @[direct_array_access; inline]
 fn (tc &TypeChecker) parsed_scalar_type(text u32) ?&Type {
 	cache := tc.type_cache.parsed_scalars
-	if isnil(cache) || cache.owner != tc.type_interner || text == 0 {
+	if isnil(cache) || voidptr(cache.owner) != voidptr(tc.type_interner) || text == 0 {
 		return none
 	}
 	slot := parsed_scalar_slot(text)
@@ -169,7 +170,8 @@ fn (tc &TypeChecker) remember_parsed_scalar_type(text u32, id TypeId, value &Typ
 		return
 	}
 	mut type_cache := unsafe { tc.type_cache }
-	if isnil(type_cache.parsed_scalars) || type_cache.parsed_scalars.owner != tc.type_interner {
+	if isnil(type_cache.parsed_scalars)
+		|| voidptr(type_cache.parsed_scalars.owner) != voidptr(tc.type_interner) {
 		type_cache.parsed_scalars = &ParsedScalarTypeCache{
 			owner:  tc.type_interner
 			// Unfilled slots are guarded by their nonempty text key.
