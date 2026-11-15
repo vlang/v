@@ -16,6 +16,9 @@ fn probe(signed i64, unsigned u64) {
     logical := value >>> 65
     combined := (value + i128(1)) ^ i128(other)
     pointer := &value
+    equal := value == i128(other)
+    less := value < i128(-1)
+    at_least := other >= u128(1)
     same_pointer := pointer == pointer
     copy := unsafe { *pointer }
 }
@@ -95,35 +98,16 @@ fn main() {
 ') or { panic(err) }
 	built := cmdexec.run(@VEXE, ['-gc', 'none', '-o', driver, driver_source])
 	assert built.exit_code == 0, built.output
-	mut cases := [
-		'fn probe() bool { high := u128(1) << 80\nreturn high == u128(0) }',
-		'fn probe(x i128) i128 { return -x }',
-		'fn probe(x u128) u128 { return ~x }',
-		'fn probe(x u128, y u128) u128 { return x * y }',
-		'fn probe(x u128, y u128) u128 { return x / y }',
-		'fn probe(x u128, y u128) u128 { return x % y }',
-		'fn probe(x u128, shift int) u128 { return x << shift }',
-		'fn probe(x i128, shift int) i128 { return x >> shift }',
-		'fn probe(x i128, shift int) i128 { return x >>> shift }',
+	cases := [
+		// Negation, complement, multiplication, division, shifts, ++/--, float and
+		// pointer conversions and ranges are lowered; arm64_self_host_test.v runs them.
 		'fn probe() { mut x := u128(1)\nx += u128(1) }',
 		'struct Box { mut: value u128 }\nfn probe() { mut x := Box{value: u128(1)}\nx.value += u128(1) }',
 		'fn probe() { mut x := [u128(1)]\nx[0] += u128(1) }',
 		'fn probe(mut x u128) { x += u128(1) }',
 		'fn probe() { mut x := u128(1)\np := &x\nunsafe { *p += u128(1) } }',
-		'fn probe() { mut x := u128(1)\nx++ }',
-		'fn probe() { mut x := u128(1)\nx-- }',
-		'fn probe(x f64) i128 { return i128(x) }',
-		'fn probe(x i128) f64 { return f64(x) }',
-		'fn probe(x u128) u64 { return u64(x) }',
-		'fn probe(x u128) int { return match x { u128(1) { 1 } else { 0 } } }',
-		'fn probe(x u128) { match x { u128(1) {} else {} } }',
-		'fn probe(x u128) voidptr { return voidptr(x) }',
-		'fn probe(x voidptr) u128 { return u128(x) }',
-		'fn probe(x u128) bool { return x in u128(1)..u128(3) }',
-		'fn probe() { for n in u128(1)..u128(3) {} }',
 		'fn probe() u128 { return u128(0x10000000000000000) }',
 		'fn probe() u128 { return u128(18446744073709551616) }',
-		'struct Box { value u128 }\nfn probe(x u128) Box { return Box{value: ~x} }',
 		'fn probe(i u128) int { a := [1, 2, 3]!\nreturn a[i] }',
 		'fn probe(i u128) int { a := [1, 2, 3]\nreturn a[i] }',
 		'fn probe(i u128) u8 { return "abc"[i] }',
@@ -132,11 +116,7 @@ fn main() {
 		'fn probe(i u128) string { return "abc"[i..] }',
 		'fn probe(i u128) { mut a := [1, 2, 3]!\na[i] = 4 }',
 		'fn probe(i u128) int { a := [1, 2, 3]!\nreturn unsafe { &a[0] }[i] }',
-		'fn probe(x u128) int { a := [u128(1), u128(2)]\nreturn a.index(x) }',
 	]
-	for operator in ['!=', '<', '<=', '>', '>='] {
-		cases << 'fn probe(x u128, y u128) bool { return x ${operator} y }'
-	}
 	for index, source in cases {
 		path := os.join_path(dir, 'case_${index}.v')
 		os.write_file(path, 'module main\n${source}\nfn main() {}\n') or { panic(err) }

@@ -58,6 +58,63 @@ fn test_execute_with_stderr_redirection() {
 	assert os.exists(stderr_path)
 }
 
+fn test_execute_preserves_explicit_stream_redirections() {
+	source := os.join_path(tfolder, 'stream output.v')
+	binary := os.join_path(tfolder, $if windows { 'stream output.exe' } $else { 'stream output' })
+	os.write_file(source, 'fn main() { println("stdout"); eprintln("stderr") }\n')!
+	build := os.exec([@VEXE, '-o', binary, source])
+	assert build.exit_code == 0, build.output
+	command := os.quoted_path(binary)
+	stdout_path := os.join_path(tfolder, 'stdout output.txt')
+	stderr_path := os.join_path(tfolder, 'stderr output.txt')
+
+	both := os.execute(command)
+	assert both.exit_code == 0, both.output
+	assert both.output.replace('\r\n', '\n') in ['stdout\nstderr\n', 'stderr\nstdout\n']
+
+	stdout_only := os.execute('${command} > ${os.quoted_path(stdout_path)}')
+	assert stdout_only.exit_code == 0, stdout_only.output
+	assert stdout_only.output.replace('\r\n', '\n') == 'stderr\n'
+	assert os.read_file(stdout_path)!.replace('\r\n', '\n') == 'stdout\n'
+
+	stderr_only := os.execute('${command} 2> ${os.quoted_path(stderr_path)}')
+	assert stderr_only.exit_code == 0, stderr_only.output
+	assert stderr_only.output.replace('\r\n', '\n') == 'stdout\n'
+	assert os.read_file(stderr_path)!.replace('\r\n', '\n') == 'stderr\n'
+
+	combined := os.execute('${command} > ${os.quoted_path(stdout_path)} 2>&1')
+	assert combined.exit_code == 0, combined.output
+	assert combined.output == ''
+	assert os.read_file(stdout_path)!.replace('\r\n', '\n') in ['stdout\nstderr\n', 'stderr\nstdout\n']
+
+	// Redirections are applied in order: duplicate the captured stdout first.
+	reordered := os.execute('${command} 2>&1 > ${os.quoted_path(stdout_path)}')
+	assert reordered.exit_code == 0, reordered.output
+	assert reordered.output.replace('\r\n', '\n') == 'stderr\n'
+	assert os.read_file(stdout_path)!.replace('\r\n', '\n') == 'stdout\n'
+}
+
+fn test_execute_preserves_windows_echo_output() {
+	$if windows {
+		for payload in ['plain', 'ending2', 'ending9', 'two trailing spaces  ', r'C:\path\',
+			'"quoted text"'] {
+			result := os.execute('echo ${payload}')
+			assert result.exit_code == 0, result.output
+			assert result.output.replace('\r\n', '\n') == '${payload}\n', result.output
+		}
+		env_name := 'V_SHELL_OUTPUT_${os.getpid()}'
+		env_value := r'expanded C:\path\' + '  '
+		os.setenv(env_name, env_value, true)
+		defer { os.unsetenv(env_name) }
+		result := os.execute('echo %${env_name}%')
+		assert result.exit_code == 0, result.output
+		assert result.output.replace('\r\n', '\n') == '${env_value}\n', result.output
+		raw_result := unsafe { os.raw_execute('echo %${env_name}%') }
+		assert raw_result.exit_code == 0, raw_result.output
+		assert raw_result.output.replace('\r\n', '\n') == '${env_value}\n', raw_result.output
+	}
+}
+
 fn test_execute_with_linefeeds() {
 	if os.user_os() == 'windows' {
 		return

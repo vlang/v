@@ -845,6 +845,42 @@ fn test_rmdir_all() {
 	assert !os.exists('some')
 }
 
+fn test_rm_and_rmdir_all_remove_directory_symlinks() ! {
+	root := os.join_path(os.getwd(), 'rm_dir_links')
+	target := os.join_path(os.getwd(), 'rm_dir_links_target')
+	gone_target := os.join_path(os.getwd(), 'rm_dir_links_gone_target')
+	os.rmdir_all(root) or {}
+	os.rmdir_all(target) or {}
+	os.rmdir_all(gone_target) or {}
+	defer {
+		os.rmdir_all(root) or {}
+		os.rmdir_all(target) or {}
+		os.rmdir_all(gone_target) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'sub'))!
+	os.mkdir(target)!
+	os.write_file(os.join_path(target, 'keep.txt'), 'keep')!
+	os.mkdir(gone_target)!
+
+	// os.rm removes a live directory symlink itself, not its target.
+	direct_link := os.join_path(root, 'direct_link')
+	os.symlink(target, direct_link) or { handle_privilege_error(err) or { return } }
+	assert os.is_link(direct_link)
+	os.rm(direct_link)!
+	assert !os.is_link(direct_link)
+	assert os.read_file(os.join_path(target, 'keep.txt'))! == 'keep'
+
+	// os.rmdir_all removes live and dangling directory symlinks without following them.
+	os.symlink(target, os.join_path(root, 'sub', 'live_link'))!
+	dangling_link := os.join_path(root, 'dangling_link')
+	os.symlink(gone_target, dangling_link)!
+	os.rmdir(gone_target)!
+	assert os.is_link(dangling_link)
+	os.rmdir_all(root)!
+	assert !os.exists(root)
+	assert os.read_file(os.join_path(target, 'keep.txt'))! == 'keep'
+}
+
 fn test_rmdir_not_exist() ! {
 	dir := 'non_existing_dir'
 	assert !os.exists(dir)

@@ -4,7 +4,9 @@ import os
 import rand
 import test_utils { cmd_ok_args, cmd_fail_args }
 
-const range_test_path = os.join_path(os.vtmp_dir(), 'vpm_version_range_${rand.ulid()}')
+// Keep nested Git clones away from the runner's per-test VTMP on Windows:
+// a deep clone path makes Git fail with `fatal: '$GIT_DIR' too big`.
+const range_test_path = os.join_path(os.temp_dir(), 'vr_${rand.ulid()}')
 const range_original_dir = os.getwd()
 const range_vexe = @VEXE
 const range_vpm_exe = os.join_path(range_test_path, if os.user_os() == 'windows' {
@@ -19,7 +21,7 @@ fn testsuite_begin() {
 	test_utils.set_test_env(os.join_path(range_test_path, 'build_store'))
 	os.setenv('VEXE', range_vexe, true)
 	// Compile once, so changing the isolated module store does not rebuild the tool.
-	cmd_ok_args(@LOCATION, [range_vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
+	cmd_ok_args(@LOCATION, [range_vexe, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER,
 		'-gc', 'none', '-o', range_vpm_exe, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
@@ -123,7 +125,9 @@ fn range_add_tag(repo string, module_name string, tag string) !string {
 fn range_create_repo(name string) !string {
 	repo := os.join_path(range_test_path, name + '_repo')
 	os.mkdir_all(repo)!
-	range_git(repo, ['init', '-b', 'main'])
+	range_git(repo, ['init', '-q'])
+	range_git(repo, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert range_git(repo, ['symbolic-ref', '--short', 'HEAD']) == 'main'
 	for tag in ['v1.2.0', 'v1.9.0', 'v1.10.0', 'v1.11.0-beta.1', 'v2.0.0'] {
 		range_add_tag(repo, name, tag)!
 	}

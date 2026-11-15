@@ -17,5 +17,8 @@ fn main() {
 }
 ```
 
+`Manifest.backend` stores the `backend` field, such as `backend: 'fastc'`. The `v`
+command uses it as the default `-b` value for builds of the project.
+
 Catalog and workspace fields represent metadata; dependency strings retain their
 literal meaning in the package manager.

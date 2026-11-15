@@ -47,8 +47,14 @@ pub enum OpCode {
 	get_element_ptr
 	heap_alloc // Heap allocate memory for a type (malloc+zero): returns ptr
 	fence      // Memory ordering barrier
-	cmpxchg    // Atomic compare-exchange
-	atomicrmw  // Atomic read-modify-write
+	// Sequentially consistent atomics. Every one but atomic_store and fence
+	// yields the value that memory held before it.
+	atomic_load  // atomic_load ptr
+	atomic_store // atomic_store value, ptr
+	atomic_xchg  // atomic_xchg ptr, value
+	atomic_add   // atomic_add ptr, delta
+	atomic_sub   // atomic_sub ptr, delta
+	cmpxchg      // cmpxchg ptr, expected, desired
 	// Comparisons
 	lt
 	gt
@@ -75,6 +81,7 @@ pub enum OpCode {
 	bitcast
 	phi
 	select
+	inline_asm         // Inline assembly block for the target ISA
 	assign             // Copy op used during phi elimination
 	inline_string_init // Build a string struct by value: (string){str, len}
 	// Concurrency
@@ -134,6 +141,10 @@ pub:
 	is_union    bool // True for union types (all fields overlap at offset 0)
 	is_packed   bool // True when struct fields have byte alignment
 	alignment   int  // Explicit aggregate alignment in bytes; 0 uses the natural alignment
+	// A C struct laid out by the C compiler (cgo-style probe): its size and the
+	// offset of each field, -1 for a field the probe did not find.
+	size          int
+	field_offsets []int
 }
 
 // TypeStore represents type store data used by ssa.
@@ -262,6 +273,14 @@ pub enum ValueKind {
 }
 
 // Value represents value data used by ssa.
+// has_use_list reports whether a value keeps its users. Constants and symbols
+// have too many (a single `0` is used all over a large program) and nothing asks
+// for them; their lists made building and pruning quadratic.
+@[inline]
+pub fn (v &Value) has_use_list() bool {
+	return v.kind !in [.constant, .global, .func_ref, .string_literal]
+}
+
 pub struct Value {
 pub mut:
 	id    ValueID
@@ -292,6 +311,60 @@ pub mut:
 	pos        token.Pos
 	atomic_ord AtomicOrdering
 	inline     InlineHint // Inline hint for call instructions
+	asm_id     int        // Inline-asm spec: 1-based index into Module.asm_specs, 0 = none
+}
+
+// InlineAsmIO describes one inline-asm input or output operand: the constraint
+// string as written (for example `=r`, `0`, `D`, `g`) and the block template
+// alias that instructions reference. `child_index` names the .asm_stmt's
+// parsed expression child in source order (outputs first, then inputs).
+pub struct InlineAsmIO {
+pub:
+	alias       string
+	constraint  string
+	child_index int
+}
+
+// InlineAsmSpec lowers one `asm` block into a target-neutral description the
+// native emitters can consume. Instructions stay as written in the V source,
+// so the structured "destination-first" operand syntax survives; every operand
+// reference names an InlineAsmIO by its alias.
+pub struct InlineAsmSpec {
+pub:
+	arch        string // canonical arch of the block as named in the source
+	is_volatile bool
+	is_intel    bool
+	is_raw      bool
+	insts       []string      // template lines, one per instruction
+	ios         []InlineAsmIO // outputs then inputs, in source order
+	clobbered   []string
+}
+
+// asm_spec resolves the spec an inline_asm instruction points at. The id is
+// 1-based so the zero value means "no spec" without a lookup.
+pub fn (m &Module) asm_spec(instr &Instruction) ?&InlineAsmSpec {
+	if instr.op != .inline_asm || instr.asm_id <= 0 || instr.asm_id > m.asm_specs.len {
+		return none
+	}
+	return m.asm_specs[instr.asm_id - 1]
+}
+
+// add_inline_asm_spec registers a parsed asm block and returns its 1-based id.
+pub fn (mut m Module) add_inline_asm_spec(spec InlineAsmSpec) int {
+	m.asm_specs << spec
+	return m.asm_specs.len
+}
+
+// instruction_set_asm_id attaches an inline-asm spec id to the instruction that
+// defines val_id. asm_id is 1-based; 0 leaves the spec unset.
+pub fn (mut m Module) instruction_set_asm_id(val_id ValueID, spec_id int) {
+	if val_id <= 0 || val_id >= m.values.len {
+		return
+	}
+	index := m.values[val_id].index
+	if index >= 0 && index < m.instrs.len {
+		m.instrs[index].asm_id = spec_id
+	}
 }
 
 // is_block_operand reports whether operand `idx` names a basic block rather
@@ -405,13 +478,35 @@ pub struct TargetData {
 pub:
 	ptr_size      int  = 8
 	endian_little bool = true
+	// os / arch are the target (pref.Target.os: 'linux', 'macos', ...;
+	// .arch: 'amd64', 'arm64'); empty means the compiler host, for callers
+	// that never cross-compile.
+	os   string
+	arch string
+}
+
+// is_linux reports whether the target OS is Linux. The native libc ABI
+// overrides (struct stat/dirent/flock offsets, errno and stdio symbols)
+// follow the target, so a Linux-hosted compiler emitting a macOS binary
+// gets Darwin's layouts.
+pub fn (t TargetData) is_linux() bool {
+	if t.os.len > 0 {
+		return t.os == 'linux'
+	}
+	$if linux {
+		return true
+	} $else {
+		return false
+	}
 }
 
 // Module represents module data used by ssa.
 @[heap]
 pub struct Module {
 pub mut:
-	name       string
+	name string
+	// errors contains unsupported source expressions encountered during SSA construction.
+	errors     []string
 	target     TargetData
 	track_uses bool = true
 	type_store TypeStore
@@ -427,7 +522,30 @@ pub mut:
 	c_typedef_structs map[int]bool
 	// Constant cache: "type:name" -> ValueID for deduplication.
 	const_cache map[string]ValueID
+	// Inline-asm block specs lowered from V `asm` sources. The field is
+	// separate so no instruction carries its whole spec; see asm_id.
+	asm_specs []InlineAsmSpec
+	// Freestanding `@[export]` shadow table: C name -> the internal V fn's
+	// SSA name. Native codegen resolves libc-shaped calls against the binary's
+	// own bodies with this instead of an undefined reference.
+	export_c_names map[string]string
+	// `@[c: 'symbol'] fn C.NAME` bindings: C name -> the linker symbol native
+	// code calls (header macros such as Boehm's GC_MALLOC have no symbol).
+	c_extern_symbols map[string]string
+	// `@[export: 'name']` functions: SSA function name -> exported C name.
+	export_aliases map[string]string
+	// `@[noinline]` functions, by SSA function name; the optimizer's inliner
+	// leaves their calls alone.
+	noinline_fns map[string]bool
+	// Function name -> index, so registering a symbol does not scan funcs.
+	func_index map[string]int
 mut:
+	// A function worker builds one body at a time: constants are interned per
+	// function, and values of the worker's earlier functions are out of bounds.
+	is_function_worker   bool
+	function_consts      map[string]ValueID
+	seed_value_end       int
+	fragment_value_start int
 	// Layout queries are hot in both SSA construction and native codegen. Keep
 	// their scratch and completed sizes on the module instead of allocating two
 	// type-table-sized arrays for every query.
@@ -507,11 +625,7 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 			if !m.instrs[instr_idx].is_value_operand(oi) {
 				continue
 			}
-			if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
-				mut op_val := m.values[op_id]
-				op_val.uses << val_id
-				m.values[op_id] = op_val
-			}
+			m.add_value_user(op_id, val_id)
 		}
 	}
 	return val_id
@@ -536,11 +650,7 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 			if !m.instrs[instr_idx].is_value_operand(oi) {
 				continue
 			}
-			if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
-				mut op_val := m.values[op_id]
-				op_val.uses << val_id
-				m.values[op_id] = op_val
-			}
+			m.add_value_user(op_id, val_id)
 		}
 	}
 	return val_id
@@ -556,18 +666,14 @@ pub fn (mut m Module) append_phi_operands(phi_val_id ValueID, val ValueID, block
 	instr.operands << val
 	instr.operands << block_id
 	m.instrs[instr_idx] = instr
-	if m.track_uses && val > 0 && val < m.values.len {
-		if phi_val_id !in m.values[val].uses {
-			mut op_val := m.values[val]
-			op_val.uses << phi_val_id
-			m.values[val] = op_val
-		}
+	if m.track_uses {
+		m.add_value_user(val, phi_val_id)
 	}
 }
 
 // remove_value_user removes one instruction from a value's unique user list.
 pub fn (mut m Module) remove_value_user(value_id ValueID, user_id ValueID) {
-	if value_id <= 0 || value_id >= m.values.len {
+	if value_id <= 0 || value_id >= m.values.len || !m.values[value_id].has_use_list() {
 		return
 	}
 	mut value := m.values[value_id]
@@ -581,7 +687,8 @@ pub fn (mut m Module) remove_value_user(value_id ValueID, user_id ValueID) {
 
 // add_value_user records one instruction in a value's unique user list.
 pub fn (mut m Module) add_value_user(value_id ValueID, user_id ValueID) {
-	if value_id <= 0 || value_id >= m.values.len || user_id <= 0 || user_id >= m.values.len {
+	if value_id <= 0 || value_id >= m.values.len || user_id <= 0 || user_id >= m.values.len
+		|| !m.values[value_id].has_use_list() {
 		return
 	}
 	if user_id in m.values[value_id].uses {
@@ -684,10 +791,9 @@ pub fn (mut m Module) discard_emission_since(value_count int, instruction_count 
 // add_block updates add block state for Module.
 pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)
-	unique := '${name}_${id}'
 	m.blocks << BasicBlock{
 		id:     id
-		name:   unique
+		name:   name
 		parent: func_id
 	}
 	mut f := m.funcs[func_id]
@@ -699,12 +805,11 @@ pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 
 // new_function supports new function handling for Module.
 pub fn (mut m Module) new_function(name string, ret TypeID) int {
-	for i, f in m.funcs {
-		if f.name == name {
-			return i
-		}
+	if existing := m.func_index[name] {
+		return existing
 	}
 	id := m.funcs.len
+	m.func_index[name] = id
 	m.funcs << Function{
 		id:   id
 		name: name
@@ -717,6 +822,7 @@ pub fn (mut m Module) new_function(name string, ret TypeID) int {
 // name index and therefore does not need new_function's linear duplicate scan.
 pub fn (mut m Module) add_function(name string, ret TypeID) int {
 	id := m.funcs.len
+	m.func_index[name] = id
 	m.funcs << Function{
 		id:   id
 		name: name
@@ -792,7 +898,14 @@ pub fn (mut m Module) add_global_with_data(name string, elem_type TypeID, is_con
 // add_external_global registers (or reuses) a global defined outside this module
 // (e.g. C runtime globals such as __stdoutp). Returns the global pointer value.
 pub fn (mut m Module) add_external_global(name string, typ TypeID) ValueID {
-	for v in m.values {
+	for i := 0; i < m.values.len; i++ {
+		if m.is_function_worker && i == m.seed_value_end {
+			i = m.fragment_value_start
+			if i >= m.values.len {
+				break
+			}
+		}
+		v := m.values[i]
 		if v.kind == .global && v.name == name {
 			return v.id
 		}
@@ -814,6 +927,14 @@ pub fn (mut m Module) get_or_add_const(typ TypeID, name string) ValueID {
 		if existing > 0 {
 			return existing
 		}
+	}
+	if m.is_function_worker {
+		if existing := m.function_consts[key] {
+			return existing
+		}
+		id := m.add_value(.constant, typ, name, 0)
+		m.function_consts[key] = id
+		return id
 	}
 	id := m.add_value(.constant, typ, name, 0)
 	m.const_cache[key] = id
@@ -887,6 +1008,10 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 		cache[typ_id] = m.target.ptr_size
 		return m.target.ptr_size
 	}
+	if typ.kind == .struct_t && typ.size > 0 {
+		cache[typ_id] = typ.size
+		return typ.size
+	}
 	if typ.width > 0 {
 		size := (typ.width + 7) / 8
 		cache[typ_id] = size
@@ -914,6 +1039,13 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 		if typ.params.len > 0 || typ.ret_type > 0 {
 			cache[typ_id] = 8
 			return 8
+		}
+		if typ.kind == .struct_t {
+			// An empty struct takes one byte, as in C and V's C backend, so an
+			// embedded `Error` or `Empty` does not share its offset with the next
+			// field and storing its zero value cannot overwrite that field.
+			cache[typ_id] = 1
+			return 1
 		}
 		return 0
 	}
@@ -1071,11 +1203,7 @@ pub fn (mut m Module) replace_uses(old_id ValueID, new_id ValueID) {
 		}
 		if changed {
 			m.instrs[val.index] = instr
-			if user_id !in m.values[new_id].uses {
-				mut new_val := m.values[new_id]
-				new_val.uses << user_id
-				m.values[new_id] = new_val
-			}
+			m.add_value_user(new_id, user_id)
 		}
 	}
 	mut old_val := m.values[old_id]
@@ -1091,6 +1219,9 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 	typ := m.type_store.types[typ_id]
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
 		return 0
+	}
+	if field_idx < typ.field_offsets.len && typ.field_offsets[field_idx] >= 0 {
+		return typ.field_offsets[field_idx]
 	}
 	key := (u64(typ_id) << 32) | u64(field_idx)
 	if cached := m.field_offset_cache[key] {

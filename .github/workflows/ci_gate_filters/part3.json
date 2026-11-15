@@ -1,0 +1,210 @@
+[
+  {
+    "workflow": "paths_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/paths_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "periodic_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "**/periodic_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "process_regressions_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/v/cmdexec/**",
+      "vlib/v/util/vflags/**",
+      "cmd/v/**",
+      "vlib/v/driver/**",
+      ".github/workflows/process_regressions_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "puzzle_vibes_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/v/checker/**.v",
+      "vlib/v/gen/c/**.v",
+      "thirdparty/**",
+      "cmd/tools/builders/**.v",
+      "cmd/tools/vshader.v",
+      "**/puzzle_vibes_ci.yml",
+      "!**_test.v",
+      "!**.md"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "release_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      ".github/workflows/release_ci.yml",
+      "cmd/tools/builders/windows_arm64_release.ps1"
+    ],
+    "permissions": "contents: write"
+  },
+  {
+    "workflow": "riscv64_linux_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/riscv64_linux_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read\n  packages: write"
+  },
+  {
+    "workflow": "s390x_linux_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/s390x_linux_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read\n  packages: write"
+  },
+  {
+    "workflow": "sanitized_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "!**",
+      "!**.md",
+      "!**.yml",
+      "vlib/builtin/**.v",
+      "vlib/strconv/**.v",
+      "vlib/strings/**.v",
+      "vlib/math/**.v",
+      "vlib/math/big/**.v",
+      "vlib/arrays/**.v",
+      "vlib/crypto/ecdsa/**.v",
+      "vlib/datatypes/**.v",
+      "vlib/os/**.v",
+      "vlib/sync/**.v",
+      "vlib/v/**.v",
+      "vlib/v/ast/**.v",
+      "vlib/v/scanner/**.v",
+      "vlib/v/parser/**.v",
+      "vlib/v/checker/**.v",
+      "vlib/v/gen/c/**.v",
+      "vlib/v/builder/**.v",
+      "vlib/v/cflag/**.v",
+      "vlib/v/live/**.v",
+      "vlib/v/util/**.v",
+      "vlib/v/markused/**.v",
+      "vlib/json2/**.v",
+      "**/sanitized_ci.yml",
+      ".github/workflows/build_msan_libpq.sh",
+      ".github/workflows/build_msan_sqlite.sh",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "sdl_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**",
+      "thirdparty/**",
+      "cmd/tools/builders/**.v",
+      "cmd/tools/vshader.v",
+      "**/sdl_ci.yml",
+      "!**.md",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "symlink_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "cmd/tools/vsymlink/**.v",
+      ".github/workflows/symlink_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "tccbin_automation_contract.yml",
+    "shard": "master",
+    "mode": "all",
+    "patterns": [],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "termux_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/termux_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "test_selection_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "cmd/tools/vtest*.v",
+      "cmd/tools/testing/**",
+      "cmd/v/**",
+      "vlib/v/build_constraint/**",
+      "vlib/v/pref/**",
+      "vlib/v/util/vflags/**",
+      ".github/workflows/test_selection_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "time_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**",
+      "cmd/tools/builders/**.v",
+      "**/time_ci.yml",
+      "!**.md",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  }
+]

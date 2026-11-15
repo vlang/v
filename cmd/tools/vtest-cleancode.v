@@ -83,33 +83,46 @@ fn tsession(vargs string, tool_cmd string, tool_args string, flist []string, sli
 }
 
 fn v_test_vetting(vargs string) ! {
-	mut vet_known_exceptions := vet_known_failing.clone()
-	if os.user_os() == 'windows' {
-		vet_known_exceptions << vet_known_failing_windows
+	// CI can run the two large sessions in separate processes to bound GC lifetime.
+	stage := os.getenv('VTEST_CLEANCODE_STAGE')
+	if stage != '' && stage != 'vet' && stage != 'fmt' {
+		return error('VTEST_CLEANCODE_STAGE must be either vet or fmt')
 	}
-	vet_known_exceptions = vet_known_exceptions.map(os.abs_path(os.join_path(vroot, it)))
-	expanded_vet_list :=
-		(util.find_all_v_files(vet_folders)!).filter(os.abs_path(it) !in vet_known_exceptions)
-	vet_session := tsession(vargs, '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list, vet_known_exceptions)
-
-	fmt_cmd, fmt_args := if is_fix {
-		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
-	} else {
-		'${os.quoted_path(vexe)} fmt -inprocess -verify', 'fmt -inprocess -verify'
-	}
-	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
-	exceptions :=
-		(util.find_all_v_files(vfmt_known_failing_exceptions) or { return }).map(os.abs_path)
-	filtered_vfmt_list := vfmt_list.filter(os.abs_path(it) !in exceptions)
-	verify_session := tsession(vargs, fmt_cmd, fmt_args, filtered_vfmt_list, exceptions)
-
-	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
-		eprintln('\n')
-		if vet_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v vet` failed ${vet_session.benchmark.nfail} times.')
+	mut vet_failures := 0
+	if stage != 'fmt' {
+		mut vet_known_exceptions := vet_known_failing.clone()
+		if os.user_os() == 'windows' {
+			vet_known_exceptions << vet_known_failing_windows
 		}
-		if verify_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v fmt -verify` failed ${verify_session.benchmark.nfail} times.')
+		vet_known_exceptions = vet_known_exceptions.map(os.abs_path(os.join_path(vroot, it)))
+		expanded_vet_list :=
+			(util.find_all_v_files(vet_folders)!).filter(os.abs_path(it) !in vet_known_exceptions)
+		vet_session := tsession(vargs, '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list, vet_known_exceptions)
+
+		vet_failures = vet_session.benchmark.nfail
+	}
+	mut fmt_failures := 0
+	if stage != 'vet' {
+		fmt_cmd, fmt_args := if is_fix {
+			'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
+		} else {
+			'${os.quoted_path(vexe)} fmt -inprocess -verify', 'fmt -inprocess -verify'
+		}
+		vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
+		exceptions :=
+			(util.find_all_v_files(vfmt_known_failing_exceptions) or { return }).map(os.abs_path)
+		filtered_vfmt_list := vfmt_list.filter(os.abs_path(it) !in exceptions)
+		verify_session := tsession(vargs, fmt_cmd, fmt_args, filtered_vfmt_list, exceptions)
+
+		fmt_failures = verify_session.benchmark.nfail
+	}
+	if vet_failures > 0 || fmt_failures > 0 {
+		eprintln('\n')
+		if vet_failures > 0 {
+			eprintln('WARNING: `v vet` failed ${vet_failures} times.')
+		}
+		if fmt_failures > 0 {
+			eprintln('WARNING: `v fmt -verify` failed ${fmt_failures} times.')
 		}
 		exit(1)
 	}

@@ -600,10 +600,10 @@ fn (t &Type) composite_source_type_id() u32 {
 	}
 	if t is FnType {
 		count := t.params.len + if t.return_type is Void { 0 } else { 1 }
-		mut small := [16]u32{}
+		mut source_parts_buffer := [16]u32{}
 		// This borrowed stack view cannot escape: the composition cache owns its keys.
-		mut parts := if count <= small.len {
-			unsafe { []u32(array{ data: &small[0], len: count, cap: small.len, element_size: sizeof(u32), flags: .nogrow | .nofree }) }
+		mut parts := if count <= source_parts_buffer.len {
+			unsafe { []u32(array{ data: &source_parts_buffer[0], len: count, cap: source_parts_buffer.len, element_size: sizeof(u32), flags: .nogrow | .nofree }) }
 		} else {
 			[]u32{len: count}
 		}
@@ -641,10 +641,10 @@ fn (t &Type) composite_source_type_id() u32 {
 		return flat.source_type_composition_one(.channel, t.elem_type.source_type_id())
 	}
 	if t is MultiReturn {
-		mut small := [16]u32{}
-		mut parts := if t.types.len <= small.len {
+		mut source_parts_buffer := [16]u32{}
+		mut parts := if t.types.len <= source_parts_buffer.len {
 			// The cache consumes this view before the stack buffer expires.
-			unsafe { []u32(array{ data: &small[0], len: t.types.len, cap: small.len, element_size: sizeof(u32), flags: .nogrow | .nofree }) }
+			unsafe { []u32(array{ data: &source_parts_buffer[0], len: t.types.len, cap: source_parts_buffer.len, element_size: sizeof(u32), flags: .nogrow | .nofree }) }
 		} else {
 			[]u32{len: t.types.len}
 		}

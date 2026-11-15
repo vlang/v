@@ -30,6 +30,7 @@ pub mut:
 	repo_url     string
 	repo_branch  string = 'master'
 	author       string
+	backend      string
 	dependencies []string
 	unknown      map[string][]string
 	catalog      map[string]string
@@ -281,6 +282,9 @@ fn (mut p Parser) parse() !Manifest {
 					}
 					'author' {
 						mn.author = field_value
+					}
+					'backend' {
+						mn.backend = field_value
 					}
 					'dependencies' {
 						deps, idx := get_array_content(tokens, i + 1, true)!

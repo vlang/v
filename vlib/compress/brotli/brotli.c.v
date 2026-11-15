@@ -2,17 +2,24 @@
 module brotli
 
 import os
+import dl
 
-$if linux {
-	#flag -ldl
+// Keep the sanitizer helper in a separate native object so its symbol survives
+// module-cache splitting. The C compiler owns MemorySanitizer feature detection.
+#define V_BROTLI_MSAN_DATA const volatile void
+#flag @VMODROOT/vlib/compress/brotli/brotli_msan.c
+
+@[c_extern]
+fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
+
+fn unpoison_output(data voidptr, len uint) {
+	$if !native {
+		if len > 0 {
+			// The cast adds the sanitizer interface's C pointer qualifiers.
+			C.v_brotli_msan_unpoison(unsafe { &C.V_BROTLI_MSAN_DATA(data) }, len)
+		}
+	}
 }
-
-#insert "@VEXEROOT/vlib/compress/brotli/brotli_dl.h"
-
-fn C.v_brotli_open(const_name &char) voidptr
-fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr
-fn C.v_brotli_close(handle voidptr) int
-fn C.v_brotli_msan_unpoison(ptr voidptr, len uint)
 
 const min_quality = 0
 const max_quality = 11
@@ -39,6 +46,20 @@ type FNDecoderGetErrorCode = fn (voidptr) int
 
 type FNDecoderErrorString = fn (int) charptr
 
+// DecompressCallback receives decoded chunks and returns the chunk length to continue or 0 to stop.
+pub type DecompressCallback = fn (chunk []u8, userdata voidptr) int
+
+struct DecompressedBuffer {
+mut:
+	data []u8
+}
+
+fn append_decompressed_chunk(chunk []u8, userdata voidptr) int {
+	mut buffer := unsafe { &DecompressedBuffer(userdata) }
+	buffer.data << chunk
+	return chunk.len
+}
+
 // Mode tunes the Brotli encoder for generic, text, or font data.
 pub enum Mode {
 	generic = 0
@@ -60,7 +81,7 @@ pub:
 pub struct DecompressParams {}
 
 fn open_library_name(name string) voidptr {
-	return C.v_brotli_open(&char(name.str))
+	return dl.open(name, dl.rtld_lazy)
 }
 
 fn open_env_library(env_name string) voidptr {
@@ -134,11 +155,11 @@ fn open_decoder_library() !voidptr {
 }
 
 fn close_library(handle voidptr) {
-	C.v_brotli_close(handle)
+	dl.close(handle)
 }
 
 fn library_symbol(handle voidptr, name string, kind string) !voidptr {
-	sym := C.v_brotli_sym(handle, &char(name.str))
+	sym := dl.sym(handle, name)
 	if sym == 0 {
 		return error('brotli: could not load ${kind} symbol ${name}')
 	}
@@ -196,13 +217,28 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if ok == 0 {
 		return error('brotli: compression failed')
 	}
-	C.v_brotli_msan_unpoison(dst.data, encoded_size)
+	unpoison_output(dst.data, encoded_size)
 	keep_dst = true
 	return dst[..int(encoded_size)]
 }
 
 // decompress decompresses a Brotli stream and returns the decompressed bytes.
 pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
+	mut buffer := DecompressedBuffer{}
+	mut keep_data := false
+	defer {
+		if !keep_data {
+			unsafe { buffer.data.free() }
+		}
+	}
+	decompress_with_callback(data, append_decompressed_chunk, voidptr(&buffer))!
+	keep_data = true
+	return buffer.data
+}
+
+// decompress_with_callback decompresses a Brotli stream and delivers output chunks to `cb`.
+// Returning 0 from `cb` stops decoding before the remaining input is validated.
+pub fn decompress_with_callback(data []u8, cb DecompressCallback, userdata voidptr) !int {
 	dec := open_decoder_library()!
 	defer {
 		close_library(dec)
@@ -224,19 +260,13 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 	defer {
 		decoder_destroy(state)
 	}
-	mut out := []u8{}
-	mut keep_out := false
-	defer {
-		if !keep_out {
-			unsafe { out.free() }
-		}
-	}
 	mut chunk := []u8{len: decode_chunk_size}
 	defer {
 		unsafe { chunk.free() }
 	}
 	mut available_in := uint(data.len)
 	mut next_in := unsafe { &u8(data.data) }
+	mut delivered := 0
 	for {
 		mut available_out := uint(chunk.len)
 		mut next_out := unsafe { &u8(chunk.data) }
@@ -245,16 +275,18 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 			&total_out)
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
-			C.v_brotli_msan_unpoison(chunk.data, uint(produced))
-			out << chunk[..produced]
+			unpoison_output(chunk.data, uint(produced))
+			if cb(chunk[..produced], userdata) != produced {
+				return delivered
+			}
+			delivered += produced
 		}
 		match result {
 			decoder_result_success {
 				if available_in != 0 {
 					return error('brotli: trailing data after stream')
 				}
-				keep_out = true
-				return out
+				return delivered
 			}
 			decoder_result_needs_more_output {
 				if produced == 0 {

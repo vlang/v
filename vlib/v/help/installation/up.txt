@@ -1,17 +1,25 @@
 Update the V compiler to the latest version from https://github.com/vlang/v.
 
+It then checks the bundled TinyCC for updates. The TinyCC checkout is only
+fetched and changed when its upstream branch has moved; otherwise `v up` reports
+that TCC is already up to date.
+
 On Linux, a compatible older TinyCC bundle is kept in place while its upstream
 revision is unchanged and it still passes the host compatibility check. This
-preserves cache inputs instead of checking out incompatible commits again.
+preserves cache inputs instead of checking out incompatible commits again. When
+no commit of the unchanged branch suits the host, the system compiler stays in
+use without checking the branch again; `make fresh_tcc` checks it again.
 
 After updating the checkout, it skips rebuilding the compiler if its implementation
 sources and dependencies have not changed since the executable's recorded revision.
 Documentation and test-only changes do not trigger a rebuild. An unknown revision,
 a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebuilding.
 
-After a successful update, it runs `v wipe-cache` to clear module, object,
+After a successful update that changes the V checkout or TCC, or rebuilds the compiler,
+it runs `v wipe-cache` to clear module, object,
 temporary, and compiled tool caches, including VCACHE, VTMP, V3CACHE, and
-VTOOLS_CACHE_DIR. This also runs when V is already up to date. Subsequent builds
+VTOOLS_CACHE_DIR. When nothing changes, the caches are preserved. If the TCC revision
+cannot be determined, the caches are cleared conservatively. Subsequent builds
 recreate the caches they need. Previously recorded build configurations and test
 selectors are not replayed. A failed cache cleanup makes the update fail.
 On Windows, the cached updater exits before its launcher wipes the caches,
@@ -32,6 +40,7 @@ Options:
   -skills            Refresh the installed agent skills that fell behind, in
                      ~/.agents/skills, like `v skills update --global` does.
   -skip_v_self       Rebuild with make or makev.bat instead of `v self`.
+                     Windows ARM64 uses the native PowerShell bootstrap script.
   -skip_current      Recompile even when the checkout is already at the
                      revision.
   -h, -help, --help  Show this help and exit.

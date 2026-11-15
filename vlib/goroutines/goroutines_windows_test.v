@@ -262,8 +262,8 @@ fn test_windows_buffered_fifo_wrap() {
 	assert chan_len(c) == 3
 	// Full: non-blocking send fails.
 	mut extra := 99
-	sent := chan_send(c, voidptr(&extra), false)
-	assert !sent
+	sent_when_full := chan_send(c, voidptr(&extra), false)
+	assert !sent_when_full
 	// Drain two, wrapping the read index, then refill past the write index.
 	for want in [1, 2] {
 		mut recv_val := 0

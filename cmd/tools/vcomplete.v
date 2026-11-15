@@ -287,7 +287,6 @@ const auto_complete_flags = [
 	'-cmain',
 	'-line-info',
 	'-check-unused-fn-args',
-	'-check-return',
 	'-use-coroutines',
 ]
 const auto_complete_flags_cover = [

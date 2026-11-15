@@ -42,6 +42,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 				return g.unsupported('closure capture `${capture_name}` without a local value')
 			}
 			mut capture_type := fastc_normalize_inferred_type(local.typ)
+			if local.is_heap_value {
+				// Heap promotion changes storage, not the value copied into a closure.
+				capture_type = flat.source_type_syntax(capture_type).c_pointer_base()
+			}
 			if local.fn_return_type != 0 || local.fn_signature_key != '' {
 				if signature := g.callable_signature_for_expression([FastcExpressionToken{ tok: .name, lit: capture_name }]) {
 					capture_type = flat.source_type_id(fastc_callable_type_name(FastcFunctionTypeInfo{ parameter_types: signature.parameter_types, return_type: signature.return_type, option_value_type: signature.option_type }))
@@ -64,11 +68,21 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			capture_names << capture_name
 			capture_types << capture_type
 			capture_params << '${if is_mut_capture && !capture_is_function { 'mut ' } else { '' }}${capture_name} ${capture_source_type}'
-			capture_value := g.local_c_name(capture_name)
+			capture_storage := g.local_c_name(capture_name)
+			capture_value := if local.is_heap_value {
+				'(*(${capture_storage}))'
+			} else {
+				capture_storage
+			}
 			capture_values << if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_map_prefix) {
 				'builtin__map_clone(&(${capture_value}))'
 			} else if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_array_prefix) {
-				'builtin__array_clone_to_depth(&(${capture_value}), 1)'
+				clone_depth := g.capture_array_clone_depth(capture_type)
+				if clone_depth > 0 {
+					'builtin__array_clone_to_depth(&(${capture_value}), ${clone_depth})'
+				} else {
+					'builtin__array_clone(&(${capture_value}))'
+				}
 			} else {
 				capture_value
 			}
@@ -122,7 +136,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	origin_offset := fastc_original_source_offset(g.source_origins, g.source_offset + anon_start)
 	// Compile-time iterations share source positions, but each literal has its own body.
 	literal_id := g.temporary_name('anon')
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${origin_offset}_${fastc_name_key(g.current_function)}_${literal_id}'
+	// Nested literal names must not grow recursively: TinyCC truncates long
+	// native symbols, which can merge distinct callbacks at link time.
+	owner_id := fastc_fnv_hash(u64(1469598103934665603), g.current_function).hex()
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${origin_offset}_${owner_id}_${literal_id}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]
@@ -344,6 +361,26 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 	g.deferred_lines << '\t'.repeat(g.indent) + line
 }
 
+// capture_array_clone_depth is the number of nested array levels below a
+// captured array, as V's own array clone uses. The runtime recognizes nested
+// elements only by their size, so a positive depth for `[]T` would reinterpret
+// any struct the size of a string or an array as one, and copy the memory its
+// first pointer field addresses instead of the element itself.
+fn (g &Parser) capture_array_clone_depth(typ_id u32) int {
+	mut depth := 0
+	mut element := g.array_element_type(typ_id) or { return 0 }
+	for {
+		resolved := g.underlying_alias_type(element)
+		query := flat.source_type_query(resolved)
+		if !query.has(.c_array_prefix) || query.has(.c_pointer_suffix) {
+			break
+		}
+		depth++
+		element = g.array_element_type(resolved) or { break }
+	}
+	return depth
+}
+
 fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	if payload := fastc_typed_option_payload(typ_id) {
 		return '?' + g.capture_type_source(payload)?
@@ -356,6 +393,11 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		element := g.array_element_type(typ_id)?
 		return '[]' + g.capture_type_source(element)?
 	}
+	if flat.source_type_query(typ_id).has(.c_fixed_array_prefix) {
+		length := fastc_fixed_array_length_id(typ_id)?
+		element := fastc_fixed_array_element_type(typ_id)?
+		return '[' + length + ']' + g.capture_type_source(element)?
+	}
 	if flat.source_type_query(typ_id).has(.c_map_prefix) {
 		key_source_id, value_source_id := g.map_key_value_types(typ_id)?
 		key := key_source_id
@@ -364,7 +406,13 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
 	}
 	if fastc_primitive_c_type_id(typ_id) != none {
-		return typ
+		// Capture parameters are parsed as V source again, so private integer
+		// spellings must use their public names, including within composite types.
+		return match typ_id {
+			flat.source_type_isize { 'int' }
+			flat.source_type_usize { 'uint' }
+			else { typ }
+		}
 	}
 	signature := g.functions[typ] or { g.mono_functions[typ] or { fastc_callable_signature(typ_id) or { FastcFunctionSignature{} } } }
 	if signature.return_type != 0 {

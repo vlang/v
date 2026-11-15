@@ -397,6 +397,10 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		nptr = unsafe { &u8(vgc_realloc(old_data, uint(new_size))) }
 	} $else $if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
+	} $else $if freestanding {
+		// the freestanding runtime (builtin/freestanding.c.v or linux_bare)
+		// provides realloc/1 in place of the libc call
+		nptr = unsafe { &u8(realloc(old_data, uint(new_size))) }
 	} $else {
 		$if windows {
 			// Warning! On windows, we always use _aligned_realloc to reallocate memory.
@@ -461,6 +465,11 @@ pub fn vcalloc(n int) &u8 {
 			}
 			_ht_alloc(ptr, n)
 			return ptr
+		} $else $if freestanding {
+			// route through the freestanding runtime instead of the libc calloc
+			r := unsafe { __calloc(1, uint(n)) }
+			_ht_alloc(r, n)
+			return &u8(r)
 		} $else {
 			r := unsafe { C.calloc(1, n) }
 			_ht_alloc(r, n)
@@ -567,6 +576,10 @@ pub fn free(ptr voidptr) {
 			}
 			unsafe { C.GC_FREE(ptr) }
 		}
+	} $else $if freestanding {
+		// route through the freestanding runtime instead of the libc free
+		unsafe { __free(ptr) }
+		return
 	} $else {
 		$if builtin_arena ? {
 			// Arena memory is released in bulk by its arena.

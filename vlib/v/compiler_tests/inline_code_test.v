@@ -62,7 +62,15 @@ fn assert_inline_interrupt_cleanup(eval_args []string, ready_message string, sig
 	process.set_work_folder(root)
 	process.set_args(args)
 	process.set_redirect_stdio()
+	// A test runner started as a background job of a non-interactive shell ignores
+	// SIGINT and SIGQUIT, and the wrapper keeps an inherited ignore for the program
+	// it runs, as nohup expects, so the signal below would never stop that program.
+	// While both are caught here, the exec of the wrapper resets them to the default.
+	previous_int_handler := os.signal_opt(.int, fn (_ os.Signal) {}) or { panic(err) }
+	previous_quit_handler := os.signal_opt(.quit, fn (_ os.Signal) {}) or { panic(err) }
 	process.run()
+	os.signal_opt(.int, previous_int_handler) or { panic(err) }
+	os.signal_opt(.quit, previous_quit_handler) or { panic(err) }
 	mut output := ''
 	mut started := false
 	for _ in 0 .. 1800 {
@@ -87,7 +95,7 @@ fn assert_inline_interrupt_cleanup(eval_args []string, ready_message string, sig
 	}
 	prefix := '.v3_inline_${process.pid}_'
 	before := os.ls(root) or { panic(err) }
-	interrupt := os.exec(['/bin/kill', '-${signal}', '-${process.pid}'])
+	interrupt := os.exec(['/bin/kill', '-${signal}', '--', '-${process.pid}'])
 	for _ in 0 .. 100 {
 		output += process.stdout_read() + process.stderr_read()
 		if !process.is_alive() {

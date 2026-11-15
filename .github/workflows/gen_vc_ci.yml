@@ -2,20 +2,7 @@ name: VC gen
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.vv'
-      - '**.out'
-      - '**.md'
-      - '**.yml'
-      - '!**/gen_vc_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/gen_vc/**'
-      - 'thirdparty/tccbin_automation/bootstrap/vc.lock'
-      - 'thirdparty/tccbin_automation/tests/workflow_contract_test.v'
+  workflow_call:
 
 permissions:
   contents: read
@@ -23,7 +10,7 @@ permissions:
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: gen_vc-${{ github.workflow }}-${{ github.ref }}
+  group: gen_vc-gen_vc_ci-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 # Exactly one of the two jobs runs for each master event. `deploy` publishes vlang/vc from vlang/v master
@@ -39,7 +26,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Generate and check v.c and v_win.c
         run: |
           ./v -o gen_vc cmd/tools/gen_vc
@@ -57,7 +46,9 @@ jobs:
           persist-credentials: false
           ref: master
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Regenerate v.c and v_win.c
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"

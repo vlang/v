@@ -937,6 +937,9 @@ fn (mut app App) ensure_render_context(key string, target WindowRenderTargetInfo
 		created := render.new_context(render.Desc{
 			max_vertices: 1 << 17
 			max_commands: 1 << 15
+			color_format: target.color_format
+			depth_format: target.depth_format
+			sample_count: target.sample_count
 		})
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)

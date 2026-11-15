@@ -106,6 +106,14 @@ fn self_tests_tcc() {
 	self_tests()
 }
 
+fn self_tests_vprod_tcc() {
+	// Keep the optimized test compiler while still checking a TCC debug self-build.
+	exec_args(['v', '-keepc', '-cc', 'tcc', '-g', '-o', 'v_tcc_debug', 'self'])
+	exec_args(['./v_tcc_debug', 'run', 'examples/hello_world.v'])
+	// Emit a separate result line for every file instead of hiding successes.
+	exec_args(['v', '-W', 'test-self', 'vlib'])
+}
+
 fn build_examples_tcc() {
 	build_examples()
 }
@@ -449,12 +457,12 @@ fn test_inline_assembly() {
 	exec_args(['v', 'test', 'vlib/v/slow_tests/assembly'])
 }
 
-// Keep this list in the same order as the active tasks in
-// .github/workflows/linux_ci.yml. The aggregate runner changes compiler flags at
-// the same boundaries as the three workflow jobs.
-// Order is deliberate on both sides: the cheapest check that can prove a checkout
-// broken runs first, and `build_v_with_prealloc`, which is five compiler builds,
-// runs last so a red run reports the cheap signal before paying for it.
+// Keep the same tasks as .github/workflows/linux_ci.yml. GCC/Clang self tests run
+// in separate matrix jobs there; the aggregate runner keeps them serial and
+// changes compiler flags at the same boundaries as the three compiler lanes.
+// Retain task order within each compiler lane for local resume checkpoints.
+// `build_v_with_prealloc` stays last in the TCC lane: it is five compiler builds,
+// so the cheaper checks should report a broken checkout before paying for it.
 const ci_tasks = [
 	'all_code_is_formatted_tcc',
 	'install_dependencies_for_examples_and_tools_tcc',
@@ -464,7 +472,7 @@ const ci_tasks = [
 	'verify_v_test_works_tcc',
 	'test_pure_v_math_module_tcc',
 	'test_inline_assembly',
-	'self_tests_tcc',
+	'self_tests_vprod_tcc',
 	'build_examples_tcc',
 	'run_submodule_example_tcc',
 	'build_tools_tcc',
@@ -565,7 +573,7 @@ fn ci_vflags(task_index int) string {
 		return '-cc tcc -no-retry-compilation'
 	}
 	if task_index < ci_tasks.index('all_code_is_formatted_clang') {
-		return ''
+		return '-cc gcc'
 	}
 	return '-cc clang'
 }
@@ -636,6 +644,7 @@ const all_tasks = {
 	'verify_v_test_works_tcc':                           Task{verify_v_test_works_tcc, 'Verify `v test` works (tcc)'}
 	'test_pure_v_math_module_tcc':                       Task{test_pure_v_math_module_tcc, 'Test pure V math module (tcc)'}
 	'self_tests_tcc':                                    Task{self_tests_tcc, 'Self tests (tcc)'}
+	'self_tests_vprod_tcc':                              Task{self_tests_vprod_tcc, 'Self tests using the optimized compiler (tcc)'}
 	'build_examples_tcc':                                Task{build_examples_tcc, 'Build examples (tcc)'}
 	'run_submodule_example_tcc':                         Task{run_submodule_example_tcc, 'Run submodule example (tcc)'}
 	'build_tools_tcc':                                   Task{build_tools_tcc, 'Build V tools (tcc)'}

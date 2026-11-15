@@ -1,6 +1,12 @@
 import json2
 import time
 
+struct F1 {
+	f ?struct {
+		a int
+	}
+}
+
 struct Person {
 mut:
 	name     string
@@ -9,7 +15,36 @@ mut:
 	deathday ?time.Time
 }
 
-fn test_main() {
+struct WithOptMap {
+mut:
+	m ?map[string]string
+	n ?map[string]int
+}
+
+struct BaseWithOptMap {
+mut:
+	bm ?map[string]string
+}
+
+struct EmbedWithOptMap {
+	BaseWithOptMap
+mut:
+	m ?map[string]string
+}
+
+fn test_decode_option_nested_struct_field() {
+	present := json2.decode[F1]('{"f":{"a":1}}')!
+	if f := present.f {
+		assert f.a == 1
+	} else {
+		assert false
+	}
+
+	absent := json2.decode[F1]('{}')!
+	assert absent.f == none
+}
+
+fn test_decode_option_time_fields() {
 	resp := '{"name": "Bob", "age": 20, "birthday": "2025-10-12 10:14:52"}'
 	person := json2.decode[Person](resp)!
 	assert '${person}' == "Person{
@@ -18,4 +53,39 @@ fn test_main() {
     birthday: 2025-10-12 10:14:52
     deathday: Option(none)
 }"
+}
+
+// https://github.com/vlang/v/issues/27810
+fn test_decode_option_map_field() {
+	foo := json2.decode[WithOptMap]('{"m":{"a":"b"}}')!
+	if m := foo.m {
+		assert m['a'] == 'b'
+	} else {
+		assert false
+	}
+	assert foo.n == none
+}
+
+fn test_decode_option_map_field_null() {
+	foo := json2.decode[WithOptMap]('{"m":null,"n":{"x":1}}')!
+	assert foo.m == none
+	if n := foo.n {
+		assert n['x'] == 1
+	} else {
+		assert false
+	}
+}
+
+fn test_decode_option_map_field_with_embed() {
+	foo := json2.decode[EmbedWithOptMap]('{"bm":{"k":"v"},"m":{"a":"b"}}')!
+	if bm := foo.bm {
+		assert bm['k'] == 'v'
+	} else {
+		assert false
+	}
+	if m := foo.m {
+		assert m['a'] == 'b'
+	} else {
+		assert false
+	}
 }

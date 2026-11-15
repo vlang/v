@@ -12,6 +12,10 @@ Cached builds preserve the same module initialization order as uncached builds.
 Dependencies initialize before their importers, and direct imports are visited
 in source order even when the importer has no `init()` function of its own.
 
+Custom `free()` methods keep their original function scope during incremental rebuilds.
+Calling a module's own `free` or a selectively imported function preserves receiver mutations,
+while a direct call to builtin `free(receiver)` retains the shallow-copy behavior for named values.
+
 Declaration headers preserve macros that define static storage, including generated string literals.
 Parallel C compilation can include these definitions in each translation unit.
 GNU `__extension__` markers remain on typedefs and external declarations. Replication checks

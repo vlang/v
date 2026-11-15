@@ -3,10 +3,58 @@ module yaml
 import strconv
 import strings
 
+// Block parsing uses several stack frames per collection, so keep this limit
+// conservative for platforms with small process and worker stacks.
+const max_nesting_depth = 64
+// Bound repeated work when aliases share large or duplicated subtrees.
+const max_alias_expanded_nodes = u64(1_000_000)
+// Leave formatting headroom while limiting output amplification beyond input.
+const max_alias_expanded_output_extra = u64(16 * 1024 * 1024)
+
+struct AliasExpansionBudget {
+	max_nodes       u64
+	max_output_size u64
+mut:
+	nodes     u64
+	json_size u64
+	yaml_size u64
+}
+
+fn (mut budget AliasExpansionBudget) count_node() ! {
+	if budget.nodes >= budget.max_nodes {
+		return error('yaml: alias expansion exceeds the maximum node count')
+	}
+	budget.nodes++
+}
+
+fn (mut budget AliasExpansionBudget) add_json_size(size u64) ! {
+	if size > budget.max_output_size - budget.json_size {
+		return error('yaml: alias expansion exceeds the maximum output size')
+	}
+	budget.json_size += size
+}
+
+fn (mut budget AliasExpansionBudget) add_yaml_size(size u64) ! {
+	if size > budget.max_output_size - budget.yaml_size {
+		return error('yaml: alias expansion exceeds the maximum output size')
+	}
+	budget.yaml_size += size
+}
+
+fn increment_nesting_depth(depth int) !int {
+	if depth >= max_nesting_depth {
+		return error('yaml: exceeded the maximum nesting depth')
+	}
+	return depth + 1
+}
+
 struct Parser {
 mut:
 	lines           []string
 	idx             int
+	depth           int
+	source_len      u64
+	has_aliases     bool
 	anchors         map[string]Any
 	directives_done bool
 }
@@ -20,7 +68,113 @@ fn (mut p Parser) parse() !Any {
 	if indent < 0 {
 		return null
 	}
-	return p.parse_node(indent)
+	root := p.parse_node(indent)!
+	if p.has_aliases {
+		mut budget := AliasExpansionBudget{
+			max_nodes:       max_alias_expanded_nodes
+			max_output_size: p.source_len + max_alias_expanded_output_extra
+		}
+		validate_alias_expansion(root, 0, 0, mut budget)!
+	}
+	return root
+}
+
+// validate_alias_expansion bounds the semantic tree produced by aliases before
+// recursive serializers or decoders can expand shared values without limit.
+fn validate_alias_expansion(value Any, parent_depth int, yaml_indent u64, mut budget AliasExpansionBudget) ! {
+	budget.count_node()!
+	match value {
+		[]Any {
+			depth := increment_nesting_depth(parent_depth)!
+			budget.add_json_size(2)!
+			if value.len == 0 {
+				budget.add_yaml_size(2)!
+				return
+			}
+			mut first := true
+			for item in value {
+				if !first {
+					budget.add_json_size(1)!
+					budget.add_yaml_size(1)!
+				}
+				first = false
+				budget.add_yaml_size(add_output_sizes(yaml_indent, 2, budget.max_output_size))!
+				validate_alias_expansion(item, depth, yaml_indent + 2, mut budget)!
+			}
+		}
+		map[string]Any {
+			depth := increment_nesting_depth(parent_depth)!
+			budget.add_json_size(2)!
+			if value.len == 0 {
+				budget.add_yaml_size(2)!
+				return
+			}
+			mut first := true
+			for key, item in value {
+				if !first {
+					budget.add_yaml_size(1)!
+					budget.add_json_size(1)!
+				}
+				first = false
+				key_size := escaped_string_size(key, budget.max_output_size)
+				budget.add_json_size(add_output_sizes(key_size, 1, budget.max_output_size))!
+				yaml_prefix := add_output_sizes(yaml_indent, key_size, budget.max_output_size)
+				budget.add_yaml_size(add_output_sizes(yaml_prefix, 2, budget.max_output_size))!
+				validate_alias_expansion(item, depth, yaml_indent + 2, mut budget)!
+			}
+		}
+		string {
+			size := escaped_string_size(value, budget.max_output_size)
+			budget.add_json_size(size)!
+			budget.add_yaml_size(size)!
+		}
+		bool {
+			size := if value { u64(4) } else { u64(5) }
+			budget.add_json_size(size)!
+			budget.add_yaml_size(size)!
+		}
+		Null {
+			budget.add_json_size(4)!
+			budget.add_yaml_size(4)!
+		}
+		f64, i64, int, u64 {
+			size := u64(value.str().len)
+			budget.add_json_size(size)!
+			budget.add_yaml_size(size)!
+		}
+	}
+}
+
+// escaped_string_size matches write_json_escaped_string, used by both YAML
+// and JSON emitters, without allocating an encoded copy of the string.
+fn add_output_sizes(left u64, right u64, limit u64) u64 {
+	if right > limit || left > limit - right {
+		return limit + 1
+	}
+	return left + right
+}
+
+fn escaped_string_size(value string, limit u64) u64 {
+	mut size := add_output_sizes(u64(value.len), 2, limit)
+	if size > limit {
+		return size
+	}
+	for i in 0 .. value.len {
+		c := value[i]
+		if c < 0x20 {
+			size = add_output_sizes(size, if c in [`\b`, `\f`, `\n`, `\r`, `\t`] {
+				1
+			} else {
+				5
+			}, limit)
+		} else if c in [`"`, `\\`] {
+			size = add_output_sizes(size, 1, limit)
+		}
+		if size > limit {
+			return size
+		}
+	}
+	return size
 }
 
 fn (mut p Parser) parse_node(indent int) !Any {
@@ -34,9 +188,17 @@ fn (mut p Parser) parse_node(indent int) !Any {
 	}
 	content := p.current_content()!
 	if content.starts_with('-') && (content.len == 1 || content[1] == ` `) {
+		p.depth = increment_nesting_depth(p.depth)!
+		defer {
+			p.depth--
+		}
 		return p.parse_sequence(current_indent)
 	}
 	if split_mapping_entry(content).ok {
+		p.depth = increment_nesting_depth(p.depth)!
+		defer {
+			p.depth--
+		}
 		return p.parse_mapping(current_indent)
 	}
 	d := extract_decorators(content)
@@ -51,7 +213,7 @@ fn (mut p Parser) parse_node(indent int) !Any {
 	if d.rest.starts_with('[') || d.rest.starts_with('{') {
 		p.idx++
 		full := p.collect_flow_continuation(d.rest)!
-		return p.register_anchor(d.anchor, parse_flow_value(full)!)
+		return p.register_anchor(d.anchor, parse_flow_value(full, p.depth)!)
 	}
 	p.idx++
 	if d.rest.len > 0 && (d.rest[0] == `"` || d.rest[0] == `'`) {
@@ -152,7 +314,7 @@ fn (mut p Parser) parse_mapping_value(rest_in string, indent int) !Any {
 		Any(p.parse_block_scalar(indent, d.rest)!)
 	} else if d.rest.starts_with('[') || d.rest.starts_with('{') {
 		full := p.collect_flow_continuation(d.rest)!
-		parse_flow_value(full)!
+		parse_flow_value(full, p.depth)!
 	} else if d.rest.len > 0 && (d.rest[0] == `"` || d.rest[0] == `'`) {
 		quoted := p.gather_quoted_continuation(d.rest)!
 		parse_scalar(quoted)!
@@ -203,10 +365,14 @@ fn (mut p Parser) parse_sequence_item(rest_in string, indent int) !Any {
 		Any(p.parse_block_scalar(indent, d.rest)!)
 	} else if d.rest.starts_with('[') || d.rest.starts_with('{') {
 		full := p.collect_flow_continuation(d.rest)!
-		parse_flow_value(full)!
+		parse_flow_value(full, p.depth)!
 	} else {
 		entry := split_mapping_entry(d.rest)
 		if entry.ok {
+			p.depth = increment_nesting_depth(p.depth)!
+			defer {
+				p.depth--
+			}
 			mut result := map[string]Any{}
 			child_indent := indent + 2
 			result[entry.key] = p.parse_mapping_value(entry.rest, child_indent)!
@@ -241,8 +407,10 @@ fn (mut p Parser) parse_sequence_item(rest_in string, indent int) !Any {
 	return p.register_anchor(d.anchor, value)
 }
 
-fn (p &Parser) resolve_alias(name string) Any {
-	return p.anchors[name] or { null }
+fn (mut p Parser) resolve_alias(name string) Any {
+	value := p.anchors[name] or { return null }
+	p.has_aliases = true
+	return value
 }
 
 // register_anchor associates `value` with `anchor` when the latter is set,

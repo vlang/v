@@ -51,9 +51,11 @@ fn create_tcc_macos_libgc_test_source(root string, name string, content string) 
 }
 
 fn create_tcc_macos_libgc_test_fixture(name string, content string) !TccMacosLibgcTestFixture {
-	root := os.join_path(os.vtmp_dir(), 'v_builder_tcc_macos_libgc_${os.getpid()}_${name}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root, mode: 0o700)!
+	requested_root := os.join_path(os.vtmp_dir(), 'v_builder_tcc_macos_libgc_${os.getpid()}_${name}')
+	os.rmdir_all(requested_root) or {}
+	os.mkdir_all(requested_root, mode: 0o700)!
+	// HOME fallback validation resolves its parent before reporting child paths.
+	root := os.real_path(requested_root)
 	data_base := os.join_path(root, 'persistent data root')
 	os.mkdir(data_base, mode: 0o700)!
 	libgc := create_tcc_macos_libgc_test_source(root, 'primary', content)!

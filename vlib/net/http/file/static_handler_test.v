@@ -105,6 +105,68 @@ fn test_auto_index_lists_the_folder_when_no_index_file_is_configured() {
 	assert sub_row > 0 && file_row > sub_row
 }
 
+fn test_directory_listing_escapes_untrusted_names() {
+	$if windows {
+		// Windows forbids angle brackets and double quotes in file names.
+		return
+	}
+	folder := fixture_folder()
+	defer {
+		os.rmdir_all(folder) or {}
+	}
+	img_name := '<img src=x onerror=alert(1)>.txt'
+	quote_name := '" onmouseover=alert(1) x=".txt'
+	plus_name := 'a+b.txt'
+	unsafe_dir := '<svg onload=alert(1)>'
+	os.write_file(os.join_path(folder, img_name), 'image payload')!
+	os.write_file(os.join_path(folder, quote_name), 'quote payload')!
+	os.write_file(os.join_path(folder, plus_name), 'plus payload')!
+	os.mkdir_all(os.join_path(folder, unsafe_dir))!
+	os.rm(os.join_path(folder, 'index.html'))!
+	mut h := handler(folder, 'index.html', true)
+
+	root := fetch(mut h, '/')
+	assert root.status_code == 200
+	assert root.body.contains('&lt;img src=x onerror=alert(1)&gt;.txt')
+	assert !root.body.contains('<img src=x onerror=alert(1)>')
+	assert root.body.contains('&#34; onmouseover=alert(1) x=&#34;.txt')
+	assert root.body.contains('href="/%3Cimg%20src=x%20onerror=alert%281%29%3E.txt"')
+	assert root.body.contains('href="/%22%20onmouseover=alert%281%29%20x=%22.txt"')
+	assert root.body.contains('href="/a%2Bb.txt"')
+	assert !root.body.contains('href="/" onmouseover=')
+	assert fetch(mut h, url_path_escape('/${img_name}')).body == 'image payload'
+	assert fetch(mut h, url_path_escape('/${quote_name}')).body == 'quote payload'
+	assert fetch(mut h, url_path_escape('/${plus_name}')).body == 'plus payload'
+
+	unsafe_dir_url := url_path_escape('/${unsafe_dir}')
+	dir_listing := fetch(mut h, unsafe_dir_url)
+	assert dir_listing.status_code == 200
+	assert dir_listing.body.contains('<title>Index of local folder &lt;svg onload=alert(1)&gt;</title>')
+	assert dir_listing.body.contains('href="${unsafe_dir_url}"')
+	assert dir_listing.body.contains('&lt;svg onload=alert(1)&gt;</a>')
+}
+
+fn test_directory_listing_escapes_portable_untrusted_names() {
+	folder := fixture_folder()
+	defer { os.rmdir_all(folder) or {} }
+	name := "a&b' +.txt"
+	dir_name := "folder&'"
+	os.write_file(os.join_path(folder, name), 'portable payload')!
+	os.mkdir_all(os.join_path(folder, dir_name))!
+	os.rm(os.join_path(folder, 'index.html'))!
+	mut h := handler(folder, 'index.html', true)
+	root := fetch(mut h, '/')
+	assert root.status_code == 200
+	assert root.body.contains('a&amp;b&#39; +.txt')
+	assert !root.body.contains(name)
+	assert root.body.contains('href="/a&amp;b%27%20%2B.txt"')
+	assert fetch(mut h, url_path_escape('/${name}')).body == 'portable payload'
+	listing := fetch(mut h, url_path_escape('/${dir_name}'))
+	assert listing.status_code == 200
+	assert listing.body.contains('folder&amp;&#39;')
+	assert !listing.body.contains(dir_name)
+}
+
 fn test_a_directory_without_an_index_file_is_listed() {
 	folder := fixture_folder()
 	defer {
@@ -136,8 +198,8 @@ fn test_the_query_string_and_percent_escapes_are_stripped() {
 	assert fetch(mut h, '/hello.txt?x=1').body == 'hello world'
 	// %68 is 'h'; the URL is decoded before the path is built
 	assert fetch(mut h, '/%68ello.txt').body == 'hello world'
-	// an escape that decodes to nothing useful just misses the file
-	assert fetch(mut h, '/%zz').status_code == 404
+	// A malformed escape is rejected before the file path is resolved.
+	assert fetch(mut h, '/%zz').status_code == 400
 }
 
 fn test_a_path_escaping_the_base_folder_is_forbidden() {

@@ -3,7 +3,7 @@ import os
 #include <signal.h>
 #include <sys/stat.h>
 
-fn C.mkfifo(&char, u32) i32
+fn C.mkfifo(&char, u16) i32
 
 fn test_write_file_array_closes_file_after_broken_pipe() {
 	root := os.join_path(os.vtmp_dir(), 'write_array_fifo_${os.getpid()}')
@@ -17,7 +17,7 @@ fn test_write_file_array_closes_file_after_broken_pipe() {
 	before := os.ls('/dev/fd')!.len
 	for i in 0 .. 8 {
 		fifo := os.join_path(root, 'closed_reader_${i}')
-		assert C.mkfifo(&char(fifo.str), u32(0o600)) == 0
+		assert C.mkfifo(&char(fifo.str), u16(0o600)) == 0
 		// The child uses libc only after fork, then exits without running V cleanup.
 		pid := unsafe { C.fork() }
 		assert pid >= 0

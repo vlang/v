@@ -39,7 +39,6 @@ fn map_hash_string(pkey voidptr) u64 {
 const map_hash_k0 = u64(0x2d358dccaa6c78a5)
 const map_hash_k1 = u64(0x8bb84b93962eacc9)
 const map_hash_k2 = u64(0x4b33a62ed433d4a3)
-const map_hash_k3 = u64(0x4d5a2da51de1aa47)
 
 // map_hash_word returns the 8 bytes at `p` as a little-endian word. Assembling the
 // word from its bytes is defined for any alignment of the key, and gives the same
@@ -59,60 +58,44 @@ fn map_hash_half(p &u8) u64 {
 	}
 }
 
-// map_hash_bytes hashes the `len` bytes at `key` the way wyhash does: 16 bytes for
-// each 128-bit product, which `_wymix` folds into 64 bits, and three such products
-// side by side for a long key. A key of up to 16 bytes takes two products.
+// map_hash_bytes hashes the `len` bytes at `key` with wyhash's 128-bit product
+// mix (`_wymix`): one product per 16 bytes, the last 16 bytes overlapping the
+// ones before, and one product for a key of up to 16 bytes. The length enters
+// through a multiplied seed, so keys that differ only in their last bytes and
+// length still mix differently. Compared with full wyhash this drops the
+// separate finalizing product and the three-lane loop for long keys: map keys
+// are short, and the lookup cost is in the few products, not in bandwidth.
 // The hash is only for the maps of a program: `hash.wyhash_c` does not change.
-@[inline; unsafe]
+// It stays a leaf call: inlined into `key_to_index` it would make the C
+// optimizer stop inlining the lookup helpers into the map operations instead.
+@[noinline; unsafe]
 fn map_hash_bytes(key &u8, len int) u64 {
 	unsafe {
 		mut p := key
-		mut seed := map_hash_k0
-		mut a := u64(0)
-		mut b := u64(0)
+		mut seed := map_hash_k0 ^ (u64(len) * map_hash_k2)
 		if len <= 16 {
+			mut a := u64(0)
+			mut b := u64(0)
 			if len >= 8 {
-				if len < 16 {
-					// These halves are adjacent, so one unaligned word load suffices.
-					first := map_hash_word(p)
-					a = (first << 32) | (first >> 32)
-					b = map_hash_word(p + len - 8)
-				} else {
-					a = (map_hash_half(p) << 32) | map_hash_half(p + 8)
-					b = (map_hash_half(p + 12) << 32) | map_hash_half(p + 4)
-				}
+				// These words overlap for a key under 16 bytes and still cover it.
+				a = map_hash_word(p)
+				b = map_hash_word(p + len - 8)
 			} else if len >= 4 {
-				first := map_hash_half(p)
-				last := map_hash_half(p + len - 4)
-				a = (first << 32) | first
-				b = (last << 32) | last
+				a = map_hash_half(p)
+				b = map_hash_half(p + len - 4)
 			} else if len > 0 {
 				a = (u64(p[0]) << 16) | (u64(p[len >> 1]) << 8) | u64(p[len - 1])
 			}
-		} else {
-			mut left := len
-			if left > 48 {
-				mut seed1 := seed
-				mut seed2 := seed
-				for left > 48 {
-					seed = C._wymix(map_hash_word(p) ^ map_hash_k1, map_hash_word(p + 8) ^ seed)
-					seed1 = C._wymix(map_hash_word(p + 16) ^ map_hash_k2, map_hash_word(p + 24) ^ seed1)
-					seed2 = C._wymix(map_hash_word(p + 32) ^ map_hash_k3, map_hash_word(p + 40) ^ seed2)
-					p += 48
-					left -= 48
-				}
-				seed ^= seed1 ^ seed2
-			}
-			for left > 16 {
-				seed = C._wymix(map_hash_word(p) ^ map_hash_k1, map_hash_word(p + 8) ^ seed)
-				p += 16
-				left -= 16
-			}
-			// The last 16 bytes of the key, which overlap the ones already mixed.
-			a = map_hash_word(p + left - 16)
-			b = map_hash_word(p + left - 8)
+			return C._wymix(a ^ map_hash_k1, b ^ seed)
 		}
-		return C._wymix(C._wymix(a ^ map_hash_k1, b ^ seed) ^ map_hash_k0 ^ u64(len), map_hash_k1)
+		mut left := len
+		for left > 16 {
+			seed = C._wymix(map_hash_word(p) ^ map_hash_k1, map_hash_word(p + 8) ^ seed)
+			p += 16
+			left -= 16
+		}
+		// The last 16 bytes of the key, which overlap the ones already mixed.
+		return C._wymix(map_hash_word(p + left - 16) ^ map_hash_k1, map_hash_word(p + left - 8) ^ seed)
 	}
 }
 

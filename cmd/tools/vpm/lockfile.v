@@ -153,6 +153,7 @@ fn package_hash_files(root string, relative string) ![]string {
 	mut files := []string{}
 	for name in os.ls(os.join_path(root, relative))!.sorted() {
 		if name in ['.git', '.hg', '.svn'] { continue }
+		if relative == '' && name == binary_directory { continue }
 		child := os.join_path(relative, name)
 		path := os.join_path(root, child)
 		if !os.is_link(path) && os.is_dir(path) {

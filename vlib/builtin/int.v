@@ -13,10 +13,12 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
-// The legacy receiver keeps existing isize method calls working during migration.
-// str returns the string equivalent of x.
-pub fn (x isize) str() string {
-	return i64(x).str()
+$if !fastc_backend ? {
+	// The legacy receiver keeps C backend method calls working during migration.
+	// str returns the string equivalent of x.
+	pub fn (x isize) str() string {
+		return i64(x).str()
+	}
 }
 
 // str returns the string equivalent of x.

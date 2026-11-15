@@ -225,6 +225,30 @@ timestamps, keeping `Time.nanosecond` in `0 .. 999_999_999`. `unix_nanosecond` a
 `unix_microsecond` carry out-of-range subsecond arguments into the seconds component.
 `Location.unix_nanosecond_to_local` applies the same normalization before choosing the zone.
 
+## Timers
+
+`time.new_timer(d)` sends the current time once on `timer.c` after at least `d`.
+The channel has capacity one, and nonpositive durations expire immediately.
+Call `timer.stop()` when abandoning a timer to release its waiting worker.
+
+`stop()` cancels an active expiration, waits for its worker to finish, and removes any buffered
+value. It returns `true` when it canceled an active worker and `false` after the timer had sent
+its value or was already stopped. It leaves `timer.c` open.
+
+`reset(d)` cancels the previous expiration, removes any buffered value, and starts a new wait.
+It returns whether the previous timer was active, using the same definition as `stop()`.
+Receives begun after `reset()` returns cannot receive a value from the previous expiration.
+Calls to `stop()` and `reset()` on the same timer are safe from concurrent threads.
+
+```v
+import time
+
+mut timer := time.new_timer(time.second)
+defer { timer.stop() }
+timer.reset(10 * time.millisecond)
+println(<-timer.c)
+```
+
 ## Calendar arithmetic and monotonic readings
 
 `Time.weekday()` returns a `Weekday` enum using ISO numbering: Monday is 1 and Sunday is 7.
@@ -242,3 +266,23 @@ readings to measure elapsed time; the value is not a Unix timestamp or a portabl
 
 Darwin clock initialization retains its native function declarations in cached and uncached C
 builds, preserving headerless output without adding a Mach SDK include to the module.
+
+## Tickers
+
+`time.new_ticker(d)` sends periodic time values on `ticker.c`. The duration must be positive;
+zero and negative durations panic. The channel holds at most one tick. A slow receiver causes
+ticks to be dropped, while later ticks continue on the original monotonic schedule.
+
+Call `ticker.stop()` when finished to release its waiting worker, even for a long interval.
+It waits for the worker to finish and removes any buffered tick. The channel stays open,
+and repeated or concurrent calls to `stop()` are safe.
+
+```v
+import time
+
+mut ticker := time.new_ticker(10 * time.millisecond)
+defer { ticker.stop() }
+for _ in 0 .. 3 {
+	println(<-ticker.c)
+}
+```

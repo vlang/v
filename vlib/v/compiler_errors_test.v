@@ -188,8 +188,11 @@ fn test_all() {
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'], false)
 	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests, false)
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
-	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
-	tasks.add('', module_dir, '-new-compiler -prod run', '.out', v3_module_tests, true)
+	// TinyCC rejects -prod. Keep these fixtures on the selected compiler;
+	// optimizing compiler jobs still cover production mode.
+	module_options := $if tinyc { 'run' } $else { '-prod run' }
+	tasks.add('', module_dir, module_options, '.out', module_tests, true)
+	tasks.add('', module_dir, '-new-compiler ${module_options}', '.out', v3_module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests, false)

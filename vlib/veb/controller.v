@@ -73,7 +73,7 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 			handle_route[A, X](mut global_app, mut user_context, url, host, &routes)
 			// Preserve the handled context on the heap before the stack-local user context goes away.
 			mut ctx_mut := unsafe { &Context(ctx) }
-			ctx_mut.preserve_for_response_writer(user_context.Context)
+			ctx_mut.preserve_for_response_writer(mut user_context.Context)
 			return ctx
 		}
 	}

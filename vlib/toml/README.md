@@ -212,6 +212,20 @@ can be converted to a V type.
 | val = 3.14                 |      .f32() / .f64()          |
 | val = 100                  |      .int() / .i64() / .u64() |
 
+Integers from `-9223372036854775808` through `9223372036854775807` are stored as `i64`.
+Positive integers through `18446744073709551615` are also accepted and stored as `u64`
+when they exceed the signed range. Larger integers and negative integers below the signed
+range cause a parse error. Decimal, hexadecimal, octal, and binary forms preserve their value.
+
+Typed integer decoding skips values outside the destination type's range and non-integer
+values, retaining a field's default or omitting the element from an array or map. Decimal
+strings are accepted for compatibility with older encoded values. A negative integer cannot
+fill a `u64` field. Direct `Any.int()`, `Any.i64()`, and `Any.u64()` conversions return zero
+for integers outside the destination range.
+
+`nan`, `+nan`, `-nan`, `inf`, `+inf`, and `-inf` are stored as `f64` values. Use `.f64()`
+or `.f32()` to retrieve these special floating-point values.
+
 Read more about values in the [TOML specification](https://toml.io/en/v1.0.0#spec).
 
 ## TOML to JSON

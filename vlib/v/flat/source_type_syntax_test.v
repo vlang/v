@@ -2395,87 +2395,65 @@ fn test_source_type_syntax_borrowed_backend_ranges_keep_exact_bytes() {
 	}
 }
 
-fn assert_source_type_syntax_recent_out_of_range(invalid_id u32, marker &SourceTypeSyntaxEntry) {
-	slot := voidptr(&g_source_type_syntax_recent[invalid_id & 4095])
-	saved := source_type_syntax_pointer_load(slot)
-	defer { source_type_syntax_pointer_store(slot, saved) }
-	// A valid published pointer with another full owner cannot validate an invalid ID.
-	source_type_syntax_pointer_store(slot, voidptr(marker))
-	assert isnil(source_type_syntax_find(invalid_id))
-	assert source_type_syntax_pointer_load(slot) == voidptr(marker)
+fn source_type_syntax_dense_slot(id u32) voidptr {
+	dense := unsafe { &voidptr(source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_entries))) }
+	assert !isnil(dense)
+	return unsafe { voidptr(&dense[id]) }
 }
 
-fn test_source_type_syntax_recent_zero_and_out_of_range_ids() {
+fn test_source_type_syntax_dense_zero_and_out_of_range_ids() {
 	marker_id := source_type_id('RecentSyntaxZeroMarkerFresh8611')
 	source_type_syntax(marker_id)
-	marker := source_type_syntax_find(marker_id)
-	zero_slot := voidptr(&g_source_type_syntax_recent[0])
-	saved_zero := source_type_syntax_pointer_load(zero_slot)
-	defer { source_type_syntax_pointer_store(zero_slot, saved_zero) }
-	// Occupying slot zero must not affect the independent empty spelling slot.
-	source_type_syntax_pointer_store(zero_slot, voidptr(marker))
+	assert !isnil(source_type_syntax_find(marker_id))
+	// The empty spelling has its own slot zero, independent of positive IDs.
 	empty := source_type_syntax(0)
 	assert empty.kind() == .empty
 	assert empty.trimmed() == 0
 	assert empty.args().len == 0
 	assert &source_type_syntax_find(0).syntax == empty
-	assert source_type_syntax_pointer_load(zero_slot) == voidptr(marker)
+	assert source_type_syntax_pointer_load(source_type_syntax_dense_slot(0)) == voidptr(source_type_syntax_find(0))
+	assert source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_empty)) == voidptr(source_type_syntax_find(0))
 	for invalid_id in [u32(source_type_chunk_count * source_type_chunk_size) + 1, u32(0xffffffff)] {
-		assert_source_type_syntax_recent_out_of_range(invalid_id, marker)
+		// An ID outside the spelling space has no dense slot and no page.
+		assert isnil(source_type_syntax_find(invalid_id))
 	}
 }
 
-fn test_source_type_syntax_recent_collisions_keep_authoritative_entries() {
+fn test_source_type_syntax_dense_slots_hold_authoritative_entries() {
 	first_id := source_type_id('RecentSyntaxCollisionFirstFresh8612')
-	mut second_id := u32(0)
-	// Interning does not parse syntax or create child spellings, so these fresh
-	// names find the next owner of the same slot within one complete cache cycle.
-	for index in 0 .. 4096 {
-		candidate := source_type_id('RecentSyntaxCollisionPaddingFresh8613_${index}')
-		if candidate & 4095 == first_id & 4095 {
-			second_id = candidate
-			break
-		}
-	}
-	assert second_id != 0
-	assert second_id == first_id + 4096
-	assert second_id & 4095 == first_id & 4095
+	second_id := source_type_id('RecentSyntaxCollisionSecondFresh8613')
 	first := source_type_syntax(first_id)
 	second := source_type_syntax(second_id)
 	assert first != second
-	slot := voidptr(&g_source_type_syntax_recent[first_id & 4095])
-	second_entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+	first_slot := source_type_syntax_dense_slot(first_id)
+	first_entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(first_slot)) }
+	assert !isnil(first_entry)
+	assert &first_entry.syntax == first
+	second_entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(source_type_syntax_dense_slot(second_id))) }
 	assert !isnil(second_entry)
 	assert &second_entry.syntax == second
-	// Repeated evictions must recover the exact canonical record from its page.
+	// An empty dense slot falls back to the same authoritative page record.
+	source_type_syntax_pointer_store(first_slot, voidptr(unsafe { nil }))
+	defer { source_type_syntax_pointer_store(first_slot, voidptr(first_entry)) }
 	for _ in 0 .. 4 {
 		assert source_type_syntax(first_id) == first
 		assert first.trimmed() == first_id
 		assert first.args().len == 0
-		first_entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
-		assert !isnil(first_entry)
-		assert &first_entry.syntax == first
 		assert source_type_syntax(second_id) == second
 		assert second.trimmed() == second_id
 		assert second.args().len == 0
-		retained := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
-		assert !isnil(retained)
-		assert &retained.syntax == second
 	}
-	// An empty recent slot also falls back to the same authoritative record.
-	source_type_syntax_pointer_store(slot, voidptr(unsafe { nil }))
-	assert source_type_syntax(first_id) == first
-	assert source_type_syntax(second_id) == second
+	assert isnil(source_type_syntax_pointer_load(first_slot))
 }
 
-fn test_source_type_syntax_recent_publication_outlives_worker_arenas() {
+fn test_source_type_syntax_dense_publication_outlives_worker_arenas() {
 	raw := 'RecentSyntaxArenaFresh8614.Pair[[]T, fn (U) V]'
 	id := source_type_id(raw)
 	assert isnil(source_type_syntax_find(id))
 	handle := spawn source_type_syntax_general_in_recycled_scope(raw)
 	assert handle.wait() == id
-	slot := voidptr(&g_source_type_syntax_recent[id & 4095])
-	// Observe the writer's recent publication before any reader can refresh it.
+	slot := source_type_syntax_dense_slot(id)
+	// Observe the writer's dense publication before any reader can refresh it.
 	published := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
 	assert !isnil(published)
 	assert !isnil(published.syntax.payload)
@@ -2484,8 +2462,9 @@ fn test_source_type_syntax_recent_publication_outlives_worker_arenas() {
 	assert published.syntax.args() == [source_type_id('[]T'), source_type_id('fn (U) V')]
 	assert source_type_syntax(id) == &published.syntax
 	// The authoritative record and its payload survive both worker arena reuse
-	// and eviction of the recent pointer that originally made them observable.
+	// and the loss of the dense pointer that originally made them observable.
 	source_type_syntax_pointer_store(slot, voidptr(unsafe { nil }))
+	defer { source_type_syntax_pointer_store(slot, voidptr(published)) }
 	retained := source_type_syntax(id)
 	assert retained == &published.syntax
 	assert retained.kind() == .generic

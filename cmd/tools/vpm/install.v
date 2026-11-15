@@ -151,6 +151,14 @@ fn dir_has_v_files(dir string) bool {
 
 fn install_modules(modules []Module, selected_server_url string, mut scope LockScope) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
+	// Verify all binary payloads before replacing any installed checkout.
+	for m in modules {
+		m.prepare_binaries() or {
+			vpm_error('failed to prepare binaries for `${m.name}`: ${err.msg()}')
+			for candidate in modules { os.rmdir_all(candidate.tmp_path) or {} }
+			exit(1)
+		}
+	}
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
@@ -259,6 +267,10 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 						return .failed
 					}
 					scope.record(m)
+					m.install_prepared_binaries() or {
+						vpm_error(err.msg())
+						return .failed
+					}
 					return .skipped
 				}
 			}
@@ -267,6 +279,10 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 			&& head_revision(m.install_path) != ''
 			&& head_revision(m.install_path) == head_revision(m.tmp_path) {
 			println('Module `${m.name}${at_version(m.version)}` is already installed.')
+			m.install_prepared_binaries() or {
+				vpm_error(err.msg())
+				return .failed
+			}
 			scope.record(m)
 			return .skipped
 		}
@@ -281,6 +297,10 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 				installed_revision := head_revision(m.install_path)
 				if installed_revision == entry.revision {
 					verbose_println('`${m.name}` is already installed at the locked revision `${entry.revision}`.')
+					m.install_prepared_binaries() or {
+						vpm_error(err.msg())
+						return .failed
+					}
 					return .skipped
 				}
 				// The installed checkout drifted from the locked revision: put the
@@ -290,6 +310,10 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 				println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
 				(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
 					vpm_error('failed to restore `${m.name}` to the locked revision `${entry.revision}` in `${m.install_path_fmted}`: ${err.msg()}')
+					return .failed
+				}
+				m.install_prepared_binaries() or {
+					vpm_error(err.msg())
 					return .failed
 				}
 				return .skipped

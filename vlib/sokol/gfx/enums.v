@@ -238,6 +238,16 @@ pub enum VertexFormat as u32 {
 	uint10_n2
 	half2
 	half4
+	// 32-bit integer attributes, read by the shader as int/uint vectors
+	// (V sokol patch; GL requires GL 3.0+ / GLES 3).
+	int
+	int2
+	int3
+	int4
+	uint
+	uint2
+	uint3
+	uint4
 	_num
 	_force_u32 = 0x7FFFFFFF
 }

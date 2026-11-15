@@ -1,5 +1,16 @@
 module os
 
+fn test_clearenv_windows_with_tinyc() {
+	compiler := join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !is_file(compiler) {
+		return
+	}
+	// Compile the shared clearenv cases with TCC, without retrying another compiler.
+	result := exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cc', compiler,
+		'-gc', 'none', join_path(@VEXEROOT, 'vlib', 'os', 'clearenv_test.v')])
+	assert result.exit_code == 0, result.output
+}
+
 fn clearenv_windows_test_set(name string, value string) {
 	wide_name := name.to_wide()
 	wide_value := value.to_wide()

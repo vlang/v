@@ -130,7 +130,7 @@ fn fastc_c_global_name(key string) string {
 	if key == 'byte' {
 		return 'main__byte'
 	}
-	return fastc_c_identifier(key.replace('.', '__'))
+	return fastc_c_value_identifier(key.replace('.', '__'))
 }
 
 fn fastc_c_function_name(module_name string, name string) string {
@@ -233,7 +233,8 @@ fn fastc_signature_c_name(key string, signature FastcFunctionSignature) string {
 	}
 	name := key.all_after_last('.')
 	prefix := key.all_before_last('.')
-	return if prefix == '' || prefix == signature.module_name {
+	// An undotted key is a main-module function: `all_before_last` returns it whole.
+	return if !key.contains('.') || prefix == '' || prefix == signature.module_name {
 		fastc_c_function_name(signature.module_name, name)
 	} else {
 		fastc_method_c_name(signature.module_name, fastc_c_declared_type_name(prefix), name)

@@ -1,7 +1,6 @@
 module math
 
-// These are all just typed casts of the f64 versions, so they must agree with the f64
-// result cast to f32.
+// Check the f32 variants against f64 references at representative inputs.
 fn test_floorf_matches_floor() {
 	for x in [f32(0.0), 1.5, -1.5, 3.0, -3.0, 0.25, 100.75, -100.75, 1e10, -1e10] {
 		assert floorf(x) == f32(floor(f64(x)))
@@ -59,20 +58,25 @@ fn test_pow10_is_exact_over_the_documented_range() {
 	assert pow10(-1000) == 0.0
 }
 
-// The f32 trigonometric helpers agree with the f64 versions cast to f32. sinf and cosf
-// are exact cast-throughs; tanf is its own reduction, so it carries a relative error
-// near f32 precision (~1e-7) and is compared with a tolerance.
+fn f32_within_one_ulp(actual f32, expected f32) bool {
+	return actual >= nextafter32(expected, f32(inf(-1)))
+		&& actual <= nextafter32(expected, f32(inf(1)))
+}
+
+// The C overrides use independent f32 libm routines. Their results can differ from
+// the cast f64 reference by one representable f32 step, as with OpenBSD's sinf(1).
 fn test_sinf_cosf_and_tanf_match_their_f64_versions() {
 	for x in [f32(0.0), 0.5, 1.0, 2.0, 3.0, 100.0, 0.25, -1.0] {
-		assert sinf(x) == f32(sin(f64(x)))
-		assert cosf(x) == f32(cos(f64(x)))
-		assert tolerance(tanf(x), tan(f64(x)), 1e-5)
+		assert f32_within_one_ulp(sinf(x), f32(sin(f64(x))))
+		assert f32_within_one_ulp(cosf(x), f32(cos(f64(x))))
+		assert f32_within_one_ulp(tanf(x), f32(tan(f64(x))))
 	}
-	assert sinf(1.0) == f32(0.8414709848078965)
-	assert cosf(1.0) == f32(0.5403023058681398)
-	assert tanf(1.0) == f32(1.557407724654902)
+	assert f32_within_one_ulp(sinf(1.0), f32(0.8414709848078965))
+	assert f32_within_one_ulp(cosf(1.0), f32(0.5403023058681398))
+	assert f32_within_one_ulp(tanf(1.0), f32(1.557407724654902))
 	assert sinf(0.0) == f32(0.0)
 	assert cosf(0.0) == f32(1.0)
+	assert tanf(0.0) == f32(0.0)
 }
 
 // The lolremez approximations are documented as approximations, so the check is a loose

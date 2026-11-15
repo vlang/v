@@ -3,9 +3,9 @@ module math
 // floor returns the greatest integer value less than or equal to x.
 //
 // special cases are:
-// floor(±0) = ±0
-// floor(±inf) = ±inf
-// floor(nan) = nan
+// - `floor(±0) = ±0`
+// - `floor(±inf) = ±inf`
+// - `floor(nan) = nan`
 pub fn floor(x f64) f64 {
 	if x == 0 || is_nan(x) || is_inf(x, 0) {
 		return x
@@ -24,9 +24,9 @@ pub fn floor(x f64) f64 {
 // floorf returns the greatest integer value less than or equal to x.
 //
 // special cases are:
-// floor(±0) = ±0
-// floor(±inf) = ±inf
-// floor(nan) = nan
+// - `floor(±0) = ±0`
+// - `floor(±inf) = ±inf`
+// - `floor(nan) = nan`
 pub fn floorf(x f32) f32 {
 	// TODO
 	return f32(floor(f64(x)))
@@ -49,9 +49,9 @@ pub fn floorf(x f32) f32 {
 // ceil returns the least integer value greater than or equal to x.
 //
 // special cases are:
-// ceil(±0) = ±0
-// ceil(±inf) = ±inf
-// ceil(nan) = nan
+// - `ceil(±0) = ±0`
+// - `ceil(±inf) = ±inf`
+// - `ceil(nan) = nan`
 pub fn ceil(x f64) f64 {
 	return -floor(-x)
 }
@@ -59,9 +59,9 @@ pub fn ceil(x f64) f64 {
 // trunc returns the integer value of x.
 //
 // special cases are:
-// trunc(±0) = ±0
-// trunc(±inf) = ±inf
-// trunc(nan) = nan
+// - `trunc(±0) = ±0`
+// - `trunc(±inf) = ±inf`
+// - `trunc(nan) = nan`
 pub fn trunc(x f64) f64 {
 	if x == 0 || is_nan(x) || is_inf(x, 0) {
 		return x
@@ -73,9 +73,9 @@ pub fn trunc(x f64) f64 {
 // round returns the nearest integer, rounding half away from zero.
 //
 // special cases are:
-// round(±0) = ±0
-// round(±inf) = ±inf
-// round(nan) = nan
+// - `round(±0) = ±0`
+// - `round(±inf) = ±inf`
+// - `round(nan) = nan`
 pub fn round(x f64) f64 {
 	mut bits := f64_bits(x)
 	mut e_ := (bits >> shift) & mask
@@ -130,9 +130,9 @@ pub fn round_sig(x f64, sig_digits int) f64 {
 // round_to_even returns the nearest integer, rounding ties to even.
 //
 // special cases are:
-// round_to_even(±0) = ±0
-// round_to_even(±inf) = ±inf
-// round_to_even(nan) = nan
+// - `round_to_even(±0) = ±0`
+// - `round_to_even(±inf) = ±inf`
+// - `round_to_even(nan) = nan`
 pub fn round_to_even(x f64) f64 {
 	mut bits := f64_bits(x)
 	mut e_ := (bits >> shift) & mask

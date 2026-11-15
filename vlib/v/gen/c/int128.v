@@ -7,8 +7,8 @@ import v.types { unalias_type }
 //
 // The C type names `u128` and `i128` come from `prim_c_type`, which already
 // falls through by size. What they mean is decided by the helper header
-// (`int128_helpers.h`, embedded below): the compiler's own `__int128` where it
-// exists, a two-u64 struct everywhere else.
+// (`int128_helpers.h`, embedded below): the compiler's own `__int128` where the
+// toolchain supports it, a two-u64 struct everywhere else.
 //
 // Every 128-bit operation is emitted as a call to a `__v_u128_*` / `__v_i128_*`
 // helper, never as a C operator. That keeps one code path for both
@@ -16,10 +16,10 @@ import v.types { unalias_type }
 // tests as the native one.
 
 // int128_portable reports whether this build must use the struct
-// representation. The header decides for itself from `__SIZEOF_INT128__`, which
-// the compilers that have the native type set; `-d v3_no_native_int128` forces
-// the fallback so the MSVC code path can be built and run on a host with no
-// MSVC.
+// representation. The header uses `__SIZEOF_INT128__` outside the MSVC ABI,
+// whose runtime lacks the native division helpers. `-d v3_no_native_int128`
+// forces the fallback so the MSVC code path can be built and run on another
+// host.
 fn (g &FlatGen) int128_portable() bool {
 	return 'v3_no_native_int128' in g.compile_defines
 }

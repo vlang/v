@@ -1,0 +1,6 @@
+vlib/v/parser/tests/keyword_variable_name_err.vv:2:2: error: cannot use keyword `go` as a variable name
+    1 | fn main() {
+    2 |     go := 1
+      |     ~~
+    3 |     println(1)
+    4 | }

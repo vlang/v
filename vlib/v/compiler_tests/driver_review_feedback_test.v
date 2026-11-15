@@ -40,9 +40,11 @@ fn build_driver_review_v3(root string) string {
 }
 
 fn test_driver_preserves_delegated_cli_modes() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_review_feedback_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	requested_root := os.join_path(os.vtmp_dir(), 'v3_driver_review_feedback_${os.getpid()}')
+	os.rmdir_all(requested_root) or {}
+	os.mkdir_all(requested_root) or { panic(err) }
+	// Imported source diagnostics report physical paths on macOS.
+	root := os.real_path(requested_root)
 	defer {
 		os.rmdir_all(root) or {}
 	}
@@ -196,7 +198,12 @@ fn main() {
 	main_printfn_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-printfn',
 		'main__main', '-o', main_printfn_output, printfn_source], driver_review_environment())
 	assert main_printfn_compile.exit_code == 0, main_printfn_compile.output
-	assert main_printfn_compile.output.contains('int main(int argc, char** argv)'), main_printfn_compile.output
+	host_entry_point := $if windows {
+		'int wmain(int argc, wchar_t** argv)'
+	} $else {
+		'int main(int argc, char** argv)'
+	}
+	assert main_printfn_compile.output.contains(host_entry_point), main_printfn_compile.output
 
 	js_source := os.join_path(root, 'alias.v')
 	os.write_file(js_source, "fn main() {\n\tprintln('js alias')\n}\n")!

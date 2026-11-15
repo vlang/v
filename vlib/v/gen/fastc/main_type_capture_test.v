@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_fastc_closures_capture_main_module_structs_and_pointers() {
 	$if !macos && !linux {
 		return
@@ -25,6 +32,17 @@ fn make(counter &Counter) fn (int) int {
 	}
 }
 
+fn nested[T](value T) T {
+	first := fn [value] () T {
+		second := fn [value] () T {
+			third := fn [value] () T { return value }
+			return third()
+		}
+		return second()
+	}
+	return first()
+}
+
 fn (mut counter Counter) callback() fn () int {
 	return fn [mut counter] () int {
 		increment := fn [mut counter] () { counter.value++ }
@@ -34,6 +52,8 @@ fn (mut counter Counter) callback() fn () int {
 }
 
 fn main() {
+	assert nested[int](42) == 42
+	assert nested[string]("nested") == "nested"
 	mut counter := &Counter{value: 40}
 	first := make(counter)
 	assert first(2) == 42

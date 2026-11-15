@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Download V
         run: |
           .github/workflows/retry.sh wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
@@ -30,10 +33,13 @@ jobs:
 
   prebuilt-macos-arm64:
     if: github.ref == 'refs/heads/master'
-    ## macos-14 is a m1 runner
-    runs-on: macos-14
+    # Keep the release architecture explicit when runner aliases change.
+    runs-on: macos-15
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Download V
         run: |
           .github/workflows/retry.sh wget https://github.com/vlang/v/releases/latest/download/v_macos_arm64.zip
@@ -48,9 +54,12 @@ jobs:
 
   prebuilt-macos-x86_64:
     if: github.ref == 'refs/heads/master'
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Download V
         run: |
           .github/workflows/retry.sh wget https://github.com/vlang/v/releases/latest/download/v_macos_x86_64.zip
