@@ -1135,16 +1135,6 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, node_inde
 	if module_name == 'builtin' && node.value == 'u8.vbytes' {
 		return false
 	}
-	if module_name == 'c' && file_name.ends_with('/gen/c/interface.v') {
-		return true
-	}
-	if module_name == 'c'
-		&& (node.value in ['sum_type_index', 'sum_type_index_resolved', 'FlatGen.sum_type_index',
-			'FlatGen.sum_type_index_resolved']
-			|| qfn.ends_with('__FlatGen__sum_type_index')
-			|| qfn.ends_with('__FlatGen__sum_type_index_resolved')) {
-		return true
-	}
 	is_anon_fn := node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_')
 	if is_anon_fn {
 		if !g.has_used_fn_filter() || module_name in ['', 'main'] || g.test_files[file_name]
