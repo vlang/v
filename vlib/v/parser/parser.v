@@ -168,6 +168,9 @@ mut:
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
 	batch_sources &BatchSources = unsafe { nil }
+	// C-allocated batch texts retained by unscoped parse chunks until source
+	// storage can be released after parsing and comptime declaration resolution.
+	batch_source_buffers []string
 	// The files that the caller expects in the batch after the next one, and the
 	// parse of such files that the batch before this one did ahead of time (see
 	// speculate_next_batch).
@@ -427,6 +430,17 @@ pub fn (mut p Parser) release_source_storage() {
 	p.export_records = []ExportRecord{}
 	p.s.src = ''
 	p.s.lit = ''
+	// Kept complete file texts must outlive the C-allocated buffers they
+	// originally borrowed; ordinary node/metadata text has been interned.
+	if p.batch_source_buffers.len > 0 && p.keep_source_texts {
+		for file_id, text in p.a.source_texts {
+			p.a.source_texts[file_id] = text.clone()
+		}
+	}
+	for src in p.batch_source_buffers {
+		unsafe { C.free(src.str) }
+	}
+	p.batch_source_buffers = []string{}
 	p.a.source_buffers = []string{}
 }
 
