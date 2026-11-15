@@ -923,20 +923,205 @@ fn test_h2_pool_goaway_redial() {
 		assert false, 'server: ${err}'
 		return
 	}
-	r1 := fetch(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
+	defer { stop_h2_pool_srv(mut listener, th) }
+	r1 := fetch(
+		url:          'https://127.0.0.1:${port}/first'
+		validate:     false
+		enable_http2: true
+		max_retries:  1
+	) or {
 		assert false, 'fetch 1: ${err}'
 		return
 	}
 	assert r1.status_code == 200
 	assert r1.body == h2t_body
-	r2 := fetch(url: 'https://127.0.0.1:${port}/second', validate: false, enable_http2: true) or {
+	r2 := fetch(
+		url:          'https://127.0.0.1:${port}/second'
+		validate:     false
+		enable_http2: true
+		max_retries:  1
+	) or {
 		assert false, 'fetch 2: ${err}'
 		return
 	}
 	assert r2.status_code == 200
 	assert r2.body == h2t_body
 	assert srv.accept_count() == 2, 'expected a redial after GOAWAY, got ${srv.accept_count()} accepts'
-	stop_h2_pool_srv(mut listener, th)
+}
+
+// The old TLS reader can still be polling while its closer waits for the I/O
+// mutex. Control those two events independently so this test does not depend
+// on the host mutex scheduler reproducing reader starvation.
+@[heap]
+struct H2OrphanPollTransport {
+	read_started chan bool = chan bool{cap: 1}
+	read_result  chan bool = chan bool{cap: 2}
+}
+
+fn (mut t H2OrphanPollTransport) read(mut _buf []u8) !int {
+	select {
+		t.read_started <- true {
+		}
+		5 * time.second {
+			return error('orphan reader was not observed')
+		}
+	}
+	select {
+		poll := <-t.read_result {
+			if poll {
+				return error('orphan transport read timeout')
+			}
+			return error('orphan transport closed')
+		}
+		5 * time.second {
+			return error('orphan reader was not released')
+		}
+	}
+	return 0
+}
+
+fn (mut t H2OrphanPollTransport) write(buf []u8) !int {
+	return buf.len
+}
+
+fn test_h2_pool_orphan_reader_retires_before_close_completes() {
+	mut srv := &H2PoolSrv{}
+	port, mut listener, th := start_h2_pool_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	mut t := new_transport()
+	defer {
+		t.close_idle()
+		stop_h2_pool_srv(mut listener, th)
+	}
+	req := prepare(
+		url:          'https://127.0.0.1:${port}/replacement'
+		validate:     false
+		enable_http2: true
+	) or {
+		assert false, 'prepare: ${err}'
+		return
+	}
+	key := transport_pool_key(req, 'https', '127.0.0.1', port)
+	mut old_transport := &H2OrphanPollTransport{}
+	close_started := chan bool{cap: 1}
+	close_release := chan bool{cap: 1}
+	reader_done := chan string{cap: 1}
+	fmu := sync.new_mutex()
+	// Start the reader explicitly to observe its exit, with the same locks
+	// as new_h2_mux_conn. The pool owns one reference to this idle GOAWAY mux.
+	mut orphan := &H2MuxConn{
+		transport:       old_transport
+		fmu:             fmu
+		fcv:             sync.new_cond(fmu)
+		goaway:          true
+		close_transport: fn [close_started, close_release] () {
+			close_started <- true
+			select {
+				_ := <-close_release {
+				}
+				5 * time.second {
+				}
+			}
+		}
+	}
+	reader := spawn fn [mut orphan, reader_done] () {
+		orphan.read_loop()
+		orphan.smu.lock()
+		reason := orphan.conn_err
+		orphan.smu.unlock()
+		reader_done <- reason
+	}()
+	mut reader_joined := false
+	defer {
+		// Also release a second read on the unfixed path, so failure never
+		// strands the reader or the replacement request.
+		select {
+			close_release <- true {
+			}
+			else {
+			}
+		}
+		select {
+			old_transport.read_result <- false {
+			}
+			else {
+			}
+		}
+		if !reader_joined {
+			reader.wait()
+		}
+	}
+	mut reader_started := false
+	select {
+		_ := <-old_transport.read_started {
+			reader_started = true
+		}
+		5 * time.second {
+		}
+	}
+	assert reader_started, 'the orphan reader did not start'
+	if !reader_started {
+		return
+	}
+	t.h2_conns[key] = orphan
+	replacement_done := chan string{cap: 1}
+	replacement := spawn fn [mut t, req, key, port, replacement_done] () {
+		// Bypass fetch's outer retry loop so it cannot hide delayed orphan
+		// retirement by opening another replacement connection.
+		resp := t.h2_dial_and_do(req, key, '', .get, '127.0.0.1', port, '/replacement',
+			'', req.header) or {
+			replacement_done <- err.msg()
+			return
+		}
+		if resp.status_code != 200 || resp.body != h2t_body {
+			replacement_done <- 'unexpected replacement response: ${resp.status_code}, ${resp.body}'
+			return
+		}
+		replacement_done <- ''
+	}()
+	mut closer_started := false
+	select {
+		_ := <-close_started {
+			closer_started = true
+		}
+		5 * time.second {
+		}
+	}
+	mut reader_retired := false
+	mut reader_reason := 'reader did not finish'
+	if closer_started {
+		old_transport.read_result <- true
+		select {
+			reason := <-reader_done {
+				reader_reason = reason
+				reader_retired = reason == 'connection retired while idle'
+			}
+			_ := <-old_transport.read_started {
+				reader_reason = 'reader started another poll'
+			}
+			5 * time.second {
+			}
+		}
+	}
+	close_release <- true
+	old_transport.read_result <- false
+	mut replacement_error := 'replacement request did not complete'
+	select {
+		result := <-replacement_done {
+			replacement_error = result
+		}
+		10 * time.second {
+		}
+	}
+	replacement.wait()
+	reader.wait()
+	reader_joined = true
+	assert closer_started, 'the orphan closer did not start'
+	assert reader_retired, 'the idle orphan reader did not retire while close was pending: ${reader_reason}'
+	assert replacement_error == '', replacement_error
+	assert srv.accept_count() == 1, 'expected one replacement connection without an outer retry'
 }
 
 // A dial failure on the pooled h2 ALPN-probing path must preserve the

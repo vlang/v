@@ -365,7 +365,7 @@ fn (g &Parser) power_helper(kind string) string {
 	}
 	body := match kind {
 		'f64' {
-			'f64 ${name}(f64 base, f64 exponent) {\n\textern double pow(double, double);\n\treturn pow(base, exponent);\n}'
+			'f64 ${name}(f64 base, f64 exponent) {\n\textern double (pow)(double, double);\n\treturn pow(base, exponent);\n}'
 		}
 		'u64' {
 			'u64 ${name}(u64 base, i64 exponent) {\n\tif (exponent < 0) {\n\t\tif (base == 0) return (u64)-1;\n\t\treturn base == 1 ? 1 : 0;\n\t}\n\tu64 value = 1;\n\tfor (; exponent > 0; exponent >>= 1) {\n\t\tif ((exponent & 1) != 0) value *= base;\n\t\tbase *= base;\n\t}\n\treturn value;\n}'

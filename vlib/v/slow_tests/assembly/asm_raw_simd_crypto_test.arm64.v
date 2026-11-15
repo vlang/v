@@ -1,8 +1,13 @@
-// vtest build: !msvc
+// vtest build: !msvc && !tinyc
+// TCC rejects NEON registers as asm clobbers (`invalid clobber register 'v8'`).
 
 import encoding.binary
 import encoding.hex
 import os
+
+// Linux assemblers default to baseline ARMv8 without the optional PMULL extension.
+// Execution is still guarded by can_run_pmull_test below.
+#flag linux -march=armv8-a+crypto
 
 // raw_chacha20_block_neon keeps one ChaCha state row in each NEON register.
 fn raw_chacha20_block_neon(state &[16]u32) [16]u32 {

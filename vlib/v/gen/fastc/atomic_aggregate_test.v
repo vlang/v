@@ -67,8 +67,7 @@ fn fastc_atomic_aggregate_parser(source string) Parser {
 fn test_fastc_atomic_aggregate_values_match_streaming_output_and_state() {
 	stops := [token.Token.semicolon, .comma, .rpar, .rsbr, .rcbr, .colon, .lcbr]
 	for source in ['value;', 'value,', 'value)', 'value]', 'value}', 'value:', 'value {', 'value\n',
-		'renamed;', 'mutable;', 'items;', 'values;', 'value /* comment */;', 'value\n*pointer = 2;',
-		'value\n/* comment */ .count;'] {
+		'renamed;', 'mutable;', 'items;', 'values;', 'value /* comment */;', 'value\n*pointer = 2;'] {
 		for expected in [u32(0), flat.source_type_id('Record'), flat.source_type_id('Iface'),
 			flat.source_type_id('Choice'), fastc_type_option, flat.source_type_id('__v_result'),
 			flat.source_type_voidptr] {
@@ -97,9 +96,10 @@ fn test_fastc_atomic_aggregate_values_match_streaming_output_and_state() {
 
 fn test_fastc_atomic_aggregate_rejections_leave_the_scanner_and_metadata_unchanged() {
 	stops := [token.Token.semicolon, .comma, .rpar, .rsbr, .rcbr, .colon, .lcbr]
-	for source in ['value + other;', 'value\n + other;', 'value\n .count;', 'value\n// comment\n + other;',
-		'reference;', 'pointer;', 'alias;', 'boxed;', 'iface;', 'optional;', 'wrapper;', 'result;',
-		'fixed;', 'origin;', 'generic;', 'C;', 'value();'] {
+	for source in ['value + other;', 'value\n + other;', 'value\n .count;',
+		'value\n/* comment */ .count;', 'value\n// comment\n + other;', 'reference;', 'pointer;',
+		'alias;', 'boxed;', 'iface;', 'optional;', 'wrapper;', 'result;', 'fixed;', 'origin;',
+		'generic;', 'C;', 'value();'] {
 		mut g := fastc_atomic_aggregate_parser(source)
 		before := g.s
 		before_tok := g.tok

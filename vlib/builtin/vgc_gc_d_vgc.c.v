@@ -5,8 +5,14 @@
 @[has_globals]
 module builtin
 
+#include "@VEXEROOT/vlib/builtin/vgc_scan.h"
+
 fn C.v3_vgc_mark_global_arrays()
 fn C.vgc_data_ranges(lo &uint, hi &uint, max int) int
+fn C.vgc_read_candidate(address voidptr) uint
+fn C.vgc_current_fake_stack() voidptr
+fn C.vgc_real_stack_address(fake_stack voidptr, address uint) uint
+fn C.vgc_fake_frame_range(fake_stack voidptr, address uint, begin &uint, end &uint) uint
 
 // ============================================================
 // GC Orchestration (translated from Go's runtime.gcStart, gcMarkDone, gcMarkTermination)
@@ -198,7 +204,20 @@ fn vgc_mark_roots() {
 			continue
 		}
 		if cache.stack_lo > 0 && cache.stack_hi > 0 && cache.stack_hi > cache.stack_lo {
-			vgc_scan_range(cache.stack_lo, cache.stack_hi)
+			vgc_scan_stack_range(cache.stack_lo, cache.stack_hi, cache.stack_lo, cache.stack_hi,
+				cache.fake_stack)
+			if cache.fake_stack != unsafe { nil } {
+				// The spill buffer itself can be in a fake frame. Scan its saved
+				// registers too, including references to the callers' fake frames.
+				mut frame_lo := uint(0)
+				mut frame_hi := uint(0)
+				real := C.vgc_fake_frame_range(cache.fake_stack, cache.stack_marker, &frame_lo,
+					&frame_hi)
+				if real != 0 && real >= cache.stack_lo && real <= cache.stack_hi {
+					vgc_scan_stack_range(frame_lo, frame_hi, cache.stack_lo, cache.stack_hi,
+						cache.fake_stack)
+				}
+			}
 		}
 		// The thread keeps packing small objects into its tiny block.
 		if cache.tiny != 0 {
@@ -254,9 +273,33 @@ fn vgc_scan_range(lo uint, hi uint) {
 	start := (lo + sizeof(uint) - 1) & ~(uint(sizeof(uint)) - 1)
 	mut addr := start
 	for addr + sizeof(uint) <= hi {
-		val := unsafe { *(&uint(voidptr(addr))) }
+		val := C.vgc_read_candidate(voidptr(addr))
 		if val != 0 {
 			vgc_shade(val)
+		}
+		addr += sizeof(uint)
+	}
+}
+
+// ASan keeps escaped locals in fake frames outside the physical stack. The
+// physical stack and saved registers contain references to those frames. Only
+// visit frames whose corresponding real frame is still inside the active stack.
+fn vgc_scan_stack_range(lo uint, hi uint, stack_lo uint, stack_hi uint, fake_stack voidptr) {
+	vgc_scan_range(lo, hi)
+	if fake_stack == unsafe { nil } {
+		return
+	}
+	mut addr := (lo + sizeof(uint) - 1) & ~(uint(sizeof(uint)) - 1)
+	for addr + sizeof(uint) <= hi {
+		candidate := C.vgc_read_candidate(voidptr(addr))
+		if candidate != 0 {
+			mut frame_lo := uint(0)
+			mut frame_hi := uint(0)
+			real := C.vgc_fake_frame_range(fake_stack, candidate, &frame_lo, &frame_hi)
+			if real != 0 && real >= stack_lo && real <= stack_hi {
+				// Do not recurse: a fake frame can contain references to itself.
+				vgc_scan_range(frame_lo, frame_hi)
+			}
 		}
 		addr += sizeof(uint)
 	}
@@ -370,7 +413,7 @@ fn vgc_scan_precise(obj_addr uint, ptrmap u64, ptr_words u8) {
 		}
 		// Read the pointer at this offset
 		ptr_addr := obj_addr + uint(bit) * word_size
-		val := unsafe { *(&uint(voidptr(ptr_addr))) }
+		val := C.vgc_read_candidate(voidptr(ptr_addr))
 		if val != 0 {
 			vgc_shade(val)
 		}

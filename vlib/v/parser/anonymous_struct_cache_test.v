@@ -195,3 +195,20 @@ fn test_anonymous_struct_cache_resets_between_files() {
 	assert p.anonymous_struct_types.name_buckets.len == 0
 	assert p.anonymous_struct_count == 0
 }
+
+fn test_anonymous_union_literal_shape_cache_is_separate_from_structs() {
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_text('kinds.v', 'fn main() {
+	u := union {number: 1}
+	s := struct {number: 2}
+}
+')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	unions := p.anonymous_union_types.typed_candidates(['number'], [flat.source_type_int]) or { []u32{} }
+	structs := p.anonymous_struct_types.typed_candidates(['number'], [flat.source_type_int]) or { []u32{} }
+	assert unions.len == 1
+	assert structs.len == 1
+	assert unions[0] != structs[0]
+	assert flat.source_type_name(unions[0]).starts_with('AnonUnion_')
+	assert flat.source_type_name(structs[0]).starts_with('AnonStruct_')
+}

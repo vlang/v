@@ -1,0 +1,4 @@
+fn main() {
+	go := 1
+	println(1)
+}

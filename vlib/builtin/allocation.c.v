@@ -40,7 +40,17 @@ __global total_m = i64(0)
 // no matching hook and they would be reported as permanently live. Reject that
 // combination at C compile time rather than emit misleading stats. The guard is
 // emitted as C preprocessor code so `-cross` can still preserve conditional C.
-#insert "@VEXEROOT/vlib/builtin/track_heap_checks.h"
+#if defined(CUSTOM_DEFINE_track_heap) && (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm))
+#error "-d track_heap requires manual memory management; rebuild with -gc none"
+#endif
+
+#if defined(CUSTOM_DEFINE_track_heap) && defined(CUSTOM_DEFINE_vgc)
+#error "-d track_heap requires manual memory management; rebuild with -gc none"
+#endif
+
+#if defined(CUSTOM_DEFINE_track_heap) && (defined(_VPREALLOC) || defined(CUSTOM_DEFINE_prealloc))
+#error "-d track_heap requires manual memory management; rebuild with -gc none (not -prealloc)"
+#endif
 
 fn C.vheap_alloc(p voidptr, n u64)
 fn C.vheap_free(p voidptr)
@@ -387,6 +397,10 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		nptr = unsafe { &u8(vgc_realloc(old_data, uint(new_size))) }
 	} $else $if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
+	} $else $if freestanding {
+		// the freestanding runtime (builtin/freestanding.c.v or linux_bare)
+		// provides realloc/1 in place of the libc call
+		nptr = unsafe { &u8(realloc(old_data, uint(new_size))) }
 	} $else {
 		$if windows {
 			// Warning! On windows, we always use _aligned_realloc to reallocate memory.
@@ -451,6 +465,11 @@ pub fn vcalloc(n int) &u8 {
 			}
 			_ht_alloc(ptr, n)
 			return ptr
+		} $else $if freestanding {
+			// route through the freestanding runtime instead of the libc calloc
+			r := unsafe { __calloc(1, uint(n)) }
+			_ht_alloc(r, n)
+			return &u8(r)
 		} $else {
 			r := unsafe { C.calloc(1, n) }
 			_ht_alloc(r, n)
@@ -557,6 +576,10 @@ pub fn free(ptr voidptr) {
 			}
 			unsafe { C.GC_FREE(ptr) }
 		}
+	} $else $if freestanding {
+		// route through the freestanding runtime instead of the libc free
+		unsafe { __free(ptr) }
+		return
 	} $else {
 		$if builtin_arena ? {
 			// Arena memory is released in bulk by its arena.

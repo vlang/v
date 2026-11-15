@@ -108,8 +108,11 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp) or { return err }
-			return err
+			// A failed attempt to remove a nonempty destination must not hide the
+			// error that actually stopped the copy.
+			copy_error := err
+			rmdir(dp) or {}
+			return copy_error
 		}
 	}
 }
@@ -665,19 +668,26 @@ pub fn expand_tilde_to_home(path string) string {
 // write_file writes `text` data to a file with the given `path`.
 // If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
-	$if vlibc ? {
+	$if freestanding || syscalls {
 		// The synchronous write borrows the immutable string buffer.
-		e := vlibc_write_file(path, unsafe { text.str.vbytes(text.len) })
-		if e != .enoerror {
-			return error_with_code('write_file failed: ${e}', int(e))
-		}
+		fsys_write_file(path, unsafe { text.str.vbytes(text.len) })!
 		return
-	} $else {
-		mut f := create(path)!
-		defer {
-			f.close()
+	}
+	$if !freestanding && !syscalls {
+		$if vlibc ? {
+			// The synchronous write borrows the immutable string buffer.
+			e := vlibc_write_file(path, unsafe { text.str.vbytes(text.len) })
+			if e != .enoerror {
+				return error_with_code('write_file failed: ${e}', int(e))
+			}
+			return
+		} $else {
+			mut f := create(path)!
+			defer {
+				f.close()
+			}
+			unsafe { f.write_full_buffer(text.str, uint(text.len))! }
 		}
-		unsafe { f.write_full_buffer(text.str, uint(text.len))! }
 	}
 }
 

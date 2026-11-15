@@ -11,6 +11,8 @@ mut:
 }
 
 // intern returns the numeric identity of text, caching its process-owned spelling.
+// The slot is masked to the fixed cache size, so its accesses need no bounds check.
+@[direct_array_access]
 pub fn (mut table TypeTextTable) intern(text string) u32 {
 	if text.len == 0 {
 		return 0
@@ -45,6 +47,8 @@ pub:
 	texts &TypeTextTable = &TypeTextTable{}
 pub mut:
 	ids map[string]u32
+	// base holds names shared by many tables, consulted after `ids`.
+	base &TypeTextBindings = unsafe { nil }
 }
 
 // from_names indexes source spellings supplied at a compiler integration boundary.
@@ -58,7 +62,7 @@ pub fn TypeTextBindings.from_names(values map[string]string) TypeTextBindings {
 
 // get returns the spelling of a present binding, including an explicitly empty one.
 pub fn (bindings &TypeTextBindings) get(name string) ?string {
-	id := bindings.ids[name] or { return none }
+	id := bindings.type_id(name) or { return none }
 	return bindings.texts.text(id)
 }
 
@@ -70,12 +74,18 @@ pub fn (bindings &TypeTextBindings) value(name string) string {
 // value_id returns a binding's source identity, or zero when it is absent.
 @[inline]
 pub fn (bindings &TypeTextBindings) value_id(name string) u32 {
-	return bindings.ids[name] or { 0 }
+	return bindings.type_id(name) or { 0 }
 }
 
 // type_id returns the numeric source-spelling identity of a present binding.
 pub fn (bindings &TypeTextBindings) type_id(name string) ?u32 {
-	return bindings.ids[name] or { return none }
+	if id := bindings.ids[name] {
+		return id
+	}
+	if bindings.base != unsafe { nil } {
+		return bindings.base.type_id(name)
+	}
+	return none
 }
 
 // set_id stores an identity from this binding table without formatting its spelling.
@@ -91,7 +101,7 @@ pub fn (mut bindings TypeTextBindings) set(name string, text string) {
 
 // contains reports whether a binding exists, including one with an empty spelling.
 pub fn (bindings &TypeTextBindings) contains(name string) bool {
-	return name in bindings.ids
+	return name in bindings.ids || (bindings.base != unsafe { nil } && bindings.base.contains(name))
 }
 
 // keys returns the declaration or binding names in insertion order.
@@ -133,6 +143,7 @@ pub fn (bindings &TypeTextBindings) clone() TypeTextBindings {
 	return TypeTextBindings{
 		texts: bindings.texts
 		ids:   bindings.ids.clone()
+		base:  bindings.base
 	}
 }
 

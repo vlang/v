@@ -1,11 +1,10 @@
-import v.scanner
-import v.parser
+import v.checker.tests.private_symbols
 import time { vpc_now }
 import io { ReaderWriterImpl }
 
 fn main() {
-	println(scanner.single_quote)
-	println(parser.State.html)
+	println(private_symbols.answer)
+	println(private_symbols.State.ready)
 	vpc_now()
 	_ = {
 		'h': 2

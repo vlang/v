@@ -24,10 +24,8 @@ name: macOS CI (gitly_ci)
 # serialized (one macOS CI job at a time) without dropping any commit.
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_call:
+
   workflow_dispatch:
 
 permissions:
@@ -35,7 +33,7 @@ permissions:
 
 jobs:
   macos-gitly-ci:
-    if: ${{ github.repository == 'vlang/v' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v'
     runs-on: [self-hosted, macOS, gitly-ci]
     timeout-minutes: 120
     env:
@@ -52,10 +50,13 @@ jobs:
             exit 1
           fi
 
-      - name: Build and test the V trigger helper
-        run: |
-          make -j2
-          ./v -silent test cmd/tools/gitly_trigger/
+      - name: Prepare the optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          make-args: -j2
+          symlink: false
+      - name: Test the V trigger helper
+        run: ./v -silent test cmd/tools/gitly_trigger/
 
       - name: Run gitly_ci and stream logs live
         run: |

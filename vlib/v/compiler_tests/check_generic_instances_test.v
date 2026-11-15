@@ -1367,6 +1367,11 @@ fn main() {
 // build_with_modules builds the program `files` with the library `modules`
 // outside it, as check_with_modules checks it.
 fn build_with_modules(name string, files map[string]string, modules map[string]string) os.Result {
+	return build_with_modules_env(name, files, modules, [])
+}
+
+// build_with_modules_env builds with the additional environment entries `env`.
+fn build_with_modules_env(name string, files map[string]string, modules map[string]string, env []string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_library_${name}_${os.getpid()}')
 	modules_dir := os.join_path(dir, 'modules')
 	program := os.join_path(dir, 'program')
@@ -1383,15 +1388,18 @@ fn build_with_modules(name string, files map[string]string, modules map[string]s
 			os.write_file(path, content) or { panic(err) }
 		}
 	}
-	return os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', 'VMODULES=${modules_dir}', @VEXE, '-new-compiler',
-		'-nocolor', '-o', os.join_path(dir, 'main'), os.join_path(program, 'main.v')])
+	mut cmd := ['env', 'V_MACOS_V3_NO_FALLBACK=1', 'VMODULES=${modules_dir}']
+	cmd << env
+	cmd << [@VEXE, '-new-compiler', '-nocolor', '-o', os.join_path(dir, 'main'),
+		os.join_path(program, 'main.v')]
+	return os.exec(cmd)
 }
 
 // An instance of a library generic that the program's own code asks for is
 // checked as an instance of the program's generics is, and reported in the
 // library's body, as V 0.5.2 does, also when the program declares no generic
-// function itself: in a check, and in a build that checks the instances in a
-// fork of itself, which Windows cannot. An instance that the library asks for,
+// function itself: in a check, and in a Unix build, whether the instance check
+// uses a fork or a fresh musl process. An instance that the library asks for,
 // `inner[int]`, is the library's and is not checked.
 fn test_an_instance_of_a_library_generic_that_the_program_asks_for_is_checked() {
 	files := {
@@ -1402,6 +1410,12 @@ fn test_an_instance_of_a_library_generic_that_the_program_asks_for_is_checked() 
 		'chklib/chklib.v': checked_library_module
 	}
 	mut results := [check_with_modules('checked_library', files, modules).res]
+	process := build_with_modules_env('checked_library_process', files, modules, [
+		'V3_INTERNAL_INSTANCE_CHECK=1',
+		'V3_INTERNAL_INSTANCE_CHECK_LIBRARY_INSTANCES=1',
+	])
+	assert process.output.contains('\x1ev3 instance check report\x1e'), process.output
+	results << process
 	$if !windows {
 		results << build_with_modules('checked_library_build', files, modules)
 	}
@@ -1427,7 +1441,12 @@ fn test_instances_of_a_library_generic_with_the_expected_types_stay_valid() {
 		'chklib/chklib.v': checked_library_module
 	}
 	check := check_with_modules('checked_library_valid', files, modules)
-	for res in [check.res, build_with_modules('checked_library_valid_build', files, modules)] {
+	process := build_with_modules_env('checked_library_valid_process', files, modules, [
+		'V3_INTERNAL_INSTANCE_CHECK=1',
+		'V3_INTERNAL_INSTANCE_CHECK_LIBRARY_INSTANCES=1',
+	])
+	assert process.output.contains('\x1ev3 instance check report\x1e'), process.output
+	for res in [check.res, process, build_with_modules('checked_library_valid_build', files, modules)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}

@@ -4628,9 +4628,9 @@ fn multiwindow_emit_macos_multiwindow_test_c() string {
 		os.rm(c_path) or {}
 	}
 
-	cmd := '${os.quoted_path(@VEXE)} -os macos -d gg_multiwindow -d sokol_metal -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(target_path)}'
-	result := os.exec([@VEXE, '-os', 'macos', '-d', 'gg_multiwindow', '-d', 'sokol_metal', '-path',
-		'${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, target_path])
+	cmd := '${os.quoted_path(@VEXE)} -os macos -cc clang -d gg_multiwindow -d sokol_metal -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(target_path)}'
+	result := os.exec([@VEXE, '-os', 'macos', '-cc', 'clang', '-d', 'gg_multiwindow', '-d',
+		'sokol_metal', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, target_path])
 	assert result.exit_code == 0, 'emit macOS multiwindow C failed
 command: ${cmd}
 exit_code: ${result.exit_code}

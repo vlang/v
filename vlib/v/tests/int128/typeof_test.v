@@ -4,24 +4,24 @@
 // native representation, or failed to compile where the value is a struct.
 fn test_typeof_names_the_wider_operand() {
 	x := (u128(1) << 100) + u128(5)
-	assert typeof(x + u64(1)) == 'u128'
-	assert typeof(u64(1) + x) == 'u128'
-	assert typeof(x + 1) == 'u128'
-	assert typeof(x) == 'u128'
-	assert typeof(x + u128(1)) == 'u128'
+	assert typeof(x + u64(1)).name == 'u128'
+	assert typeof(u64(1) + x).name == 'u128'
+	assert typeof(x + 1).name == 'u128'
+	assert typeof(x).name == 'u128'
+	assert typeof(x + u128(1)).name == 'u128'
 }
 
 fn test_typeof_leaves_narrow_expressions_alone() {
-	assert typeof(u64(1) + u64(1)) == 'u64'
-	assert typeof(int(1) + 2) == 'int'
+	assert typeof(u64(1) + u64(1)).name == 'u64'
+	assert typeof(int(1) + 2).name == 'int'
 	a := u64(3)
-	assert typeof(a * 2) == 'u64'
+	assert typeof(a * 2).name == 'u64'
 }
 
 fn test_typeof_on_a_signed_wide_expression() {
 	y := i128(-5)
-	assert typeof(y + i64(1)) == 'i128'
-	assert typeof(y + 1) == 'i128'
+	assert typeof(y + i64(1)).name == 'i128'
+	assert typeof(y + 1).name == 'i128'
 }
 
 fn test_typeof_on_a_shift_keeps_the_left_operand() {
@@ -29,12 +29,12 @@ fn test_typeof_on_a_shift_keeps_the_left_operand() {
 	// generator emits a 64-bit shift when the left operand is 64 bits wide, and
 	// naming the result u128 made printing it fail the C compile.
 	count := u128(1)
-	assert typeof(u64(4) << count) == 'u64'
-	assert typeof(u64(4) >> count) == 'u64'
-	assert typeof(4 << count) == 'int'
+	assert typeof(u64(4) << count).name == 'u64'
+	assert typeof(u64(4) >> count).name == 'u64'
+	assert typeof(4 << count).name == 'int'
 	x := (u128(1) << 100) + u128(5)
-	assert typeof(x << count) == 'u128'
-	assert typeof(x >> count) == 'u128'
+	assert typeof(x << count).name == 'u128'
+	assert typeof(x >> count).name == 'u128'
 }
 
 fn test_a_count_past_the_width_shifts_every_bit_out() {
@@ -54,9 +54,9 @@ fn test_typeof_on_a_logical_right_shift_is_unsigned() {
 	// operand is. Naming it after the operand sent the value to the signed printer
 	// and disagreed with the shift helper, which returns a `u128`.
 	y := i128(-1)
-	assert typeof(y >>> 1) == 'u128'
-	assert typeof(y >>> u128(1)) == 'u128'
-	assert typeof(u128(5) >>> 1) == 'u128'
+	assert typeof(y >>> 1).name == 'u128'
+	assert typeof(y >>> u128(1)).name == 'u128'
+	assert typeof(u128(5) >>> 1).name == 'u128'
 	assert (y >>> 1).str() == '170141183460469231731687303715884105727'
 	assert (y >>> 127).str() == '1'
 }
@@ -70,10 +70,10 @@ fn test_typeof_on_a_call_keeps_the_call_type() {
 	// The type of the expression is what the printer and `typeof` both come from,
 	// and it used to be taken from the widest operand anywhere below it.
 	x := (u128(1) << 100) + u128(5)
-	assert typeof(takes_wide(x)) == 'int'
-	assert typeof(u8(x)) == 'u8'
-	assert typeof(u128(x)) == 'u128'
-	assert typeof(x) == 'u128'
+	assert typeof(takes_wide(x)).name == 'int'
+	assert typeof(u8(x)).name == 'u8'
+	assert typeof(u128(x)).name == 'u128'
+	assert typeof(x).name == 'u128'
 }
 
 fn test_str_on_a_mixed_width_expression_keeps_the_value() {

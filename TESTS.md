@@ -43,10 +43,12 @@ and will exit with a 0 exit code, if they all had 0 failing assertions.
 `v -stats file_test.v` - this will run the test_ functions, and show a
 report about how much time it took to run each of them too.
 
-Implicit test executables and their macOS debug symbols are removed after the test process exits,
+Test executables and their macOS debug symbols are removed after the test process exits,
 including failed assertions, panics, and nonzero exits. This also applies with `-stats`, `-keepc`,
-and `v run file_test.v`; `-keepc` still retains generated C. An explicit `-o` keeps the requested
-output for later execution or debugging.
+and `v run file_test.v`; `-keepc` still retains generated C. Explicit `-o` outputs are also removed
+after execution. To keep an executable for later execution or debugging, compile without running
+it using `v -skip-running -o test_binary file_test.v`.
+`-skip-running` takes precedence over `-stats` and `VTEST_SHOW_ASSERTS`.
 
 NB 2: You can also run many test files at once (in parallel, depending on
 how many cores you have), with:
@@ -56,10 +58,24 @@ recursively.
 `v -stats test folder` - same, but will also produce timing reports
 about how fast each test_ function in each _test.v file ran.
 
-By default, `v test` uses at most four parallel workers and budgets one worker per 8 GiB
-of memory. On Linux it uses the lower of physical memory and the active cgroup memory limit.
+Test binaries are removed after execution even with `VTEST_KEEP_SESSION=1`. That setting keeps
+the session folder and other artifacts for inspection.
+
+The `v test` runner is built for the host using the C backend. Backend and target options such
+as `-b arm64` apply to the test programs it compiles. Architecture-suffixed test discovery
+uses the requested `-arch`, including when it differs from the runner's host architecture.
+
+By default, `v test` uses one parallel worker per CPU and budgets one worker per 2 GiB of
+memory, whichever is lower. On Linux it uses the lower of physical memory and the active
+cgroup memory limit, and the lower of the CPU count and the cgroup CPU quota.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
+
+`cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
+including expected failures. It streams child output to stderr while retaining that output
+for its assertions, so a watchdog failure leaves the nested command's progress in the log.
+Set `VTOOLS_CACHE_VERBOSE=1`, `VTEST_SHOW_CMD=1`, and `VTEST_SHOW_START=1` to include
+tool-cache decisions and test compilation/execution commands in that progress.
 
 Skipped test paths are resolved before comparison, so selecting a file through a symlink
 does not bypass its platform or architecture exclusion.
@@ -162,6 +178,10 @@ the `vlib/v/tests/known_errors/testdata/` folder.
 `v build-examples` discovers files with a `main`, `no_main`, or implicit main module,
 and builds configured projects as folders. Leading comments, attributes, and directives do not
 affect module discovery. Library modules are checked when the programs that import them compile.
+The macOS tray example is built as a project on macOS and excluded on other hosts.
+
+When `VFLAGS` selects TinyCC, `v build-vbinaries` uses an installed GCC or Clang for its
+production variants. Debug variants retain TinyCC. Other compiler selections are preserved.
 
 ## Formatting tests
 
@@ -208,11 +228,11 @@ This runs tests for:
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
 
-Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics,
-legacy JSON code-generation errors, and the `with_check_option` cases. The current driver selects
-that compiler for those fixtures; other fixtures start with the current compiler and may use its
-normal compatibility fallback. The suite remains runnable on master even though the legacy
-compiler sources were removed from this tree.
+Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics
+and legacy JSON code-generation errors. The current driver selects that compiler for those
+fixtures; other fixtures, including the `with_check_option` cases, start with the current compiler
+and may use its normal compatibility fallback. The suite remains runnable on master even though
+the legacy compiler sources were removed from this tree.
 
 Prepare the compatibility compiler from the repository root before running the complete suite:
 

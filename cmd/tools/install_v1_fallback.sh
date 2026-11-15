@@ -29,7 +29,13 @@ path_owner() {
 }
 
 path_permissions() {
-	stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+	# BSD's %Lp omits the sticky, setuid, and setgid bits. Read the full
+	# octal mode and discard only the file type, matching GNU stat's %a.
+	permissions=$(stat -c %a "$1" 2>/dev/null || stat -f %Op "$1" 2>/dev/null) || return 1
+	case "$permissions" in
+		''|*[!0-7]*) return 1 ;;
+	esac
+	printf '%o\n' "$((0$permissions & 07777))"
 }
 
 validate_trusted_temp_root() {
@@ -357,6 +363,8 @@ fallback_compatibility_is_installed() {
 }
 
 sha256_of() {
+	# Git for Windows initializes binary mode on stdin even when hashing a file.
+	# Compiler-spawned installers can inherit a closed stdin handle.
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
 	elif command -v shasum >/dev/null 2>&1; then
@@ -368,7 +376,7 @@ sha256_of() {
 	else
 		return 1
 	fi
-}
+} < /dev/null
 
 candidate_has_expected_version() {
 	candidate_version=$("$candidate" version 2>/dev/null) || return 1
@@ -399,8 +407,9 @@ download_release() {
 		bsdtar -xf "$archive" -C "$release_tree" || return 1
 	elif command -v unzip >/dev/null 2>&1; then
 		unzip -q "$archive" -d "$release_tree" || return 1
-	elif command -v tar >/dev/null 2>&1; then
-		tar -xf "$archive" -C "$release_tree" || return 1
+	elif [ -x "$bootstrap_v" ]; then
+		# A minimal CI image may have no system ZIP extractor; tar cannot read ZIPs.
+		"$bootstrap_v" -gc none run cmd/tools/extract_v1_fallback_zip.v "$archive" "$release_tree" || return 1
 	else
 		return 1
 	fi

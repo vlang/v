@@ -40,11 +40,13 @@ pub:
 
 // fetch is a `fetch('s3://bucket/key', { ... })`-style helper.
 //
-// Examples:
+// For example:
 //
-//   resp := s3.fetch('s3://my-bucket/path/to/file.txt')!
-//   resp := s3.fetch('s3://my-bucket/key', method: .put, body: 'hello'.bytes())!
-//   resp := s3.fetch('s3://key', method: .get, credentials: s3.Credentials{ bucket: 'b', ... })!
+// ```v ignore
+// resp := s3.fetch('s3://my-bucket/path/to/file.txt')!
+// resp := s3.fetch('s3://my-bucket/key', method: .put, body: 'hello'.bytes())!
+// resp := s3.fetch('s3://key', method: .get, credentials: s3.Credentials{ bucket: 'b', ... })!
+// ```
 //
 // The URL must use the `s3://` scheme. Anything else is rejected outright
 // (avoids accidentally calling a real HTTP endpoint with S3 credentials).

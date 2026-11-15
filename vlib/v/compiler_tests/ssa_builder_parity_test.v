@@ -81,13 +81,14 @@ fn ret_operand(m &ssa.Module, name string) ssa.ValueID {
 	return ssa.ValueID(0)
 }
 
-// Native int returns are 32 bits; a constant can arrive through a 64-bit truncation.
+// Native int returns follow the target width; 32-bit targets truncate 64-bit constants.
 fn assert_native_int_constant_return(m &ssa.Module, name string, expected string) {
 	mut value := m.values[ret_operand(m, name)]
 	typ := m.type_store.types[value.typ]
 	assert typ.kind == .int_t
-	assert typ.width == 32
+	assert typ.width == m.target.ptr_size * 8
 	if value.kind == .instruction {
+		assert typ.width == 32
 		instruction := m.instrs[value.index]
 		assert instruction.op == .trunc
 		assert instruction.operands.len == 1
@@ -316,9 +317,13 @@ fn set_kind(attr voidptr) {
 fn test_c_fn_decl_registers_extern_signature() {
 	m := build_source('c_fn_decl', '
 fn C.abs(x int) int
+fn C.fixed_i32(x i32) i32
+fn C.read_int(x &int) int
+fn C.callback(value fn (int) int) fn (int) int
 
 fn main() {
 	_ := C.abs(-3)
+	_ := C.fixed_i32(-3)
 }
 ')
 	f := find_func(m, 'C.abs')
@@ -326,6 +331,20 @@ fn main() {
 	ret_type := m.type_store.types[f.typ]
 	assert ret_type.kind == .int_t
 	assert ret_type.width == 32
+	fixed := find_func(m, 'C.fixed_i32')
+	assert fixed.is_c_extern
+	for instruction in func_instrs(m, 'main') {
+		if instruction.op == .call && m.values[instruction.operands[0]].name in ['abs', 'C.abs'] {
+			assert m.type_store.types[m.values[instruction.operands[1]].typ].width == 32
+		}
+	}
+	callback := find_func(m, 'C.callback')
+	callback_type := m.type_store.types[callback.typ]
+	assert callback_type.kind == .func_t
+	assert m.type_store.types[callback_type.ret_type].width == 32
+	assert m.type_store.types[callback_type.params[0]].width == 32
+	assert m.type_store.types[fixed.typ].kind == .int_t
+	assert m.type_store.types[fixed.typ].width == 32
 }
 
 // test_function_parameter_call_lowers_to_call_indirect validates this v3 regression case.
@@ -532,7 +551,7 @@ fn widen(x u8) i64 {
 	return i64(x)
 }
 
-fn widen_signed(x int) i64 {
+fn widen_signed(x i32) i64 {
 	return i64(x)
 }
 ')
@@ -554,6 +573,31 @@ fn widen_signed(x int) i64 {
 	}
 	assert found_zext
 	assert has_instr_op(m, 'widen_signed', .sext)
+}
+
+fn test_native_int_constants_and_casts_follow_target_width() {
+	for pointer_size in [4, 8] {
+		a, tc := parse_checked_source('platform_int_width_${pointer_size}', '
+fn answer() int {
+	return 42
+}
+
+fn convert(value int) i64 {
+	return i64(value)
+}
+
+fn fixed(value i32) i64 {
+	return i64(value)
+}
+')
+		m := ssa.build_with_options(a, map[string]bool{}, tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: pointer_size }
+		})
+		assert_native_int_constant_return(m, 'answer', '42')
+		assert has_instr_op(m, 'convert', .sext) == (pointer_size == 4)
+		assert has_instr_op(m, 'fixed', .sext)
+		assert m.type_store.types[m.values[ret_operand(m, 'convert')].typ].width == 64
+	}
 }
 
 // test_unsigned_integer_infix_uses_unsigned_ops validates this v3 regression case.
@@ -736,10 +780,25 @@ fn main() {
 			continue
 		}
 		suffix := m.values[instr.operands[2]]
-		assert suffix.name == '.vvmrc'
-		assert suffix.kind == .string_literal
 		assert suffix.typ == m.values[instr.operands[1]].typ
-		return
+		assert suffix.kind == .instruction
+		load := m.instrs[suffix.index]
+		assert load.op == .load
+		slot := load.operands[0]
+		for store in func_instrs(m, 'main') {
+			if store.op != .store { continue }
+			address := m.values[store.operands[1]]
+			if address.kind != .instruction { continue }
+			field := m.instrs[address.index]
+			if field.op == .get_element_ptr && field.operands[0] == slot
+				&& m.values[field.operands[1]].name == '0' {
+				data := m.values[store.operands[0]]
+				assert data.kind == .string_literal
+				assert data.name == '.vvmrc'
+				return
+			}
+		}
+		assert false, 'missing materialized suffix bytes'
 	}
 	assert false, 'missing call to consume'
 }
@@ -768,7 +827,83 @@ fn cache_item(cache &Cache) string {
 	return cache.recent[2]
 }
 ')
-	assert_native_int_constant_return(m, 'cache_size', '64')
+	assert_native_int_constant_return(m, 'cache_size', '96')
 	assert !has_call_to(m, 'cache_item', 'array_get')
 	assert has_instr_op(m, 'cache_item', .load)
+}
+
+fn test_native_c_struct_integer_layout_remains_the_c_abi() {
+	m := build_source('c_integer_layout', 'struct C.Pair { first int
+ second int }
+struct Pair { first int
+ second int }
+struct C.Array { values [2]int }
+__global C.native_count int
+fn c_pair_size() int { return sizeof(C.Pair) }
+fn v_pair_size() int { return sizeof(Pair) }
+fn c_array_size() int { return sizeof(C.Array) }
+')
+	assert_native_int_constant_return(m, 'c_pair_size', '8')
+	assert_native_int_constant_return(m, 'v_pair_size', '16')
+	assert_native_int_constant_return(m, 'c_array_size', '8')
+	mut found_external := false
+	for global in m.globals {
+		if global.name == 'native_count' {
+			assert global.linkage == .external
+			assert m.type_store.types[global.typ].width == 32
+			found_external = true
+		}
+	}
+	assert found_external
+}
+
+fn test_c_uint_uses_size_t_width_in_parameters_returns_callbacks_and_structs() {
+	for pointer_size in [4, 8] {
+		a, tc := parse_checked_source('c_size_t_${pointer_size}', 'fn C.malloc(n uint) voidptr
+fn C.calloc(count uint, bytes uint) voidptr
+fn C.memcpy(destination voidptr, source voidptr, count uint) voidptr
+fn C.size_value(n uint) uint
+fn C.size_callback(callback fn (uint) uint) fn (uint) uint
+struct C.Sized { count uint
+ code int }
+fn allocate(n uint) voidptr { return C.malloc(n) }
+fn zero_allocate(n uint) voidptr { return C.calloc(n, n) }
+fn copy(destination voidptr, source voidptr, n uint) voidptr {
+ return C.memcpy(destination, source, n)
+}
+fn c_sized_size() int { return sizeof(C.Sized) }
+')
+		m := ssa.build_with_options(a, map[string]bool{}, tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: pointer_size }
+		})
+		for name, size_arguments in {
+			'allocate':      [1]
+			'zero_allocate': [1, 2]
+			'copy':          [3]
+		} {
+			mut calls := 0
+			for instruction in func_instrs(m, name) {
+				if instruction.op != .call { continue }
+				calls++
+				for index in size_arguments {
+					argument := m.values[instruction.operands[index]]
+					assert m.type_store.types[argument.typ].kind == .int_t
+					assert m.type_store.types[argument.typ].width == pointer_size * 8
+				}
+			}
+			assert calls == 1
+		}
+		size_value := find_func(m, 'C.size_value')
+		assert m.type_store.types[size_value.typ].width == pointer_size * 8
+		callback := find_func(m, 'C.size_callback')
+		signature := m.type_store.types[callback.typ]
+		assert signature.kind == .func_t
+		assert m.type_store.types[signature.ret_type].width == pointer_size * 8
+		assert m.type_store.types[signature.params[0]].width == pointer_size * 8
+		assert_native_int_constant_return(m, 'c_sized_size', if pointer_size == 8 {
+			'16'
+		} else {
+			'8'
+		})
+	}
 }

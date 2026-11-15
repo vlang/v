@@ -1,5 +1,6 @@
 Use `exec_args(args)` for literal program arguments. A leading `v` selects the
 compiler from this checkout; leading `NAME=value` elements set the child environment.
+The compiler is also resolved when it is invoked through Valgrind.
 `exec_args_with_progress(args, outputs)` also checkpoints successful outputs.
 
 The command string versions are deprecated. When a task requires shell syntax,

@@ -1,4 +1,5 @@
 import os
+import v.pref
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -320,13 +321,13 @@ fn test_self_build_defaults_to_c_backend() {
 	}
 	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
 	assert build.exit_code == 0, build.output
-	// Ordinary and production self-builds must not opt into optional backends.
+	// Ordinary rebuilds stay small; production builds optimize and train FastC.
 	default_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_fastc_default_test'])
 	assert default_result.exit_code == 0, default_result.output
 	assert !default_result.output.contains('-compile-backend'), default_result.output
-	for backend in ['fastc', 'arm64', 'x64', 'wasm', 'eval', 'ssa'] {
+	for backend in ['fastc', 'arm64', 'amd64', 'x64', 'wasm', 'eval', 'ssa'] {
 		assert default_result.output.contains('-d skip_${backend}'), default_result.output
 	}
 	assert_vself_preserves_full_cli(default_result.output)
@@ -334,7 +335,17 @@ fn test_self_build_defaults_to_c_backend() {
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod', '-o',
 			'/tmp/vself_fastc_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
-	assert !prod_result.output.contains('-compile-backend'), prod_result.output
+	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
+	assert !prod_result.output.contains('-d skip_fastc'), prod_result.output
+	for backend in ['arm64', 'amd64', 'x64', 'wasm', 'eval', 'ssa'] {
+		assert prod_result.output.contains('-d skip_${backend}'), prod_result.output
+	}
+	assert_vself_preserves_full_cli(prod_result.output)
+	prod_vflags_result := os.exec(['env', 'VFLAGS=-prod', 'VEXE=${noop}', tool, 'self', '-o',
+		'/tmp/vself_fastc_prod_vflags_test'])
+	assert prod_vflags_result.exit_code == 0, prod_vflags_result.output
+	assert prod_vflags_result.output.contains('-compile-backend fastc'), prod_vflags_result.output
+	assert !prod_vflags_result.output.contains('-d skip_fastc'), prod_vflags_result.output
 	for opt_in in [['-compile-backend', 'fastc'], ['-all-backends']] {
 		result := os.exec(['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', ...opt_in, '-o',
 			'/tmp/vself_backend_opt_in_test'])
@@ -348,6 +359,14 @@ fn test_self_build_defaults_to_c_backend() {
 	assert !wasm_result.output.contains('-d skip_wasm'), wasm_result.output
 	assert !wasm_result.output.contains('-d skip_ssa'), wasm_result.output
 	assert wasm_result.output.contains('-d skip_fastc'), wasm_result.output
+	for backend in ['amd64', 'x64', 'x86_64', 'x86-64'] {
+		result := os.exec(['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-compile-backend',
+			backend, '-o', '/tmp/vself_amd64_opt_in_test'])
+		assert result.exit_code == 0, result.output
+		assert !result.output.contains('-d skip_amd64'), result.output
+		assert !result.output.contains('-d skip_x64'), result.output
+		assert !result.output.contains('-d skip_ssa'), result.output
+	}
 	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-old-compiler']] {
 		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
 		args << opt_out
@@ -355,12 +374,20 @@ fn test_self_build_defaults_to_c_backend() {
 		result := os.exec(args)
 		assert result.exit_code == 0, result.output
 		assert !result.output.contains('-compile-backend'), result.output
+		prod_opt_out := os.exec(['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-prod', ...opt_out,
+			'-o', '/tmp/vself_fastc_prod_opt_out_test'])
+		assert prod_opt_out.exit_code == 0, prod_opt_out.output
+		assert !prod_opt_out.output.contains('-compile-backend'), prod_opt_out.output
 	}
 	vflags_result :=
 		os.exec(['env', 'VFLAGS=-d skip_fastc', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_fastc_vflags_test'])
 	assert vflags_result.exit_code == 0, vflags_result.output
 	assert !vflags_result.output.contains('-compile-backend'), vflags_result.output
+	prod_skip_result := os.exec(['env', 'VFLAGS=-d skip_fastc', 'VEXE=${noop}', tool, 'self', '-prod',
+		'-o', '/tmp/vself_fastc_prod_skip_test'])
+	assert prod_skip_result.exit_code == 0, prod_skip_result.output
+	assert !prod_skip_result.output.contains('-compile-backend'), prod_skip_result.output
 }
 
 fn test_self_bootstrap_handles_the_old_peak_rss_return_type() ! {
@@ -484,4 +511,179 @@ fn test_arm64_self_build_preserves_native_options_and_full_cli() {
 		'-o', '/tmp/vself_arm64_failed_test'])
 	assert failure.exit_code != 0, failure.output
 	assert !failure.output.contains('bootstrap fallback'), failure.output
+}
+
+fn test_native_self_build_aliases_follow_host_backend() {
+	$if windows {
+		return
+	}
+	if pref.host_arch() !in ['amd64', 'arm64'] {
+		return
+	}
+	noop := os.find_abs_path_of_executable('echo') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_native_options_${os.getpid()}')
+	defer { os.rm(tool) or {} }
+	build := os.exec([vexe, '-nocache', '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	output := os.join_path(os.vtmp_dir(), 'vself_native_output_${os.getpid()}')
+	for backend_args in [
+		['-native'],
+		['-b', 'native'],
+		['-backend', 'native'],
+		['-b=native'],
+		['-backend=native'],
+	] {
+		for prefix in [[]string{}, ['-b', 'c']] {
+			result := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', ...prefix,
+				...backend_args, '-o', output])
+			assert result.exit_code == 0, result.output
+			assert !result.output.contains('-prealloc'), result.output
+			assert !result.output.contains('-d skip_'), result.output
+			assert result.output.contains('-no-memory-limit') == (pref.host_arch() == 'arm64'), result.output
+			assert_vself_preserves_full_cli(result.output)
+		}
+		inherited := os.exec(['env', '-u', 'CC', 'VFLAGS=${backend_args.join(' ')}', 'VEXE=${noop}',
+			tool, 'self', '-o', output])
+		assert inherited.exit_code == 0, inherited.output
+		assert !inherited.output.contains('-prealloc'), inherited.output
+		assert !inherited.output.contains('-d skip_'), inherited.output
+		assert inherited.output.contains('-no-memory-limit') == (pref.host_arch() == 'arm64'), inherited.output
+		for arch in ['amd64', 'arm64'] {
+			other_arch := if arch == 'amd64' { 'arm64' } else { 'amd64' }
+			for options in [
+				['-arch', arch, ...backend_args],
+				[...backend_args, '-arch', arch],
+				['-arch', other_arch, ...backend_args, '-arch', arch],
+			] {
+				// ARM64 self-builds need a different memory policy even when the
+				// compiler that launches the build runs on AMD64, and vice versa.
+				target_result := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self',
+					...options, '-o', output])
+				assert target_result.exit_code == 0, target_result.output
+				assert target_result.output.contains('-no-memory-limit') == (arch == 'arm64'), '${options}: ${target_result.output}'
+				assert !target_result.output.contains('-prealloc'), target_result.output
+				assert !target_result.output.contains('-d skip_'), target_result.output
+				assert_vself_preserves_full_cli(target_result.output)
+			}
+			inherited_target := os.exec(['env', '-u', 'CC',
+				'VFLAGS=${backend_args.join(' ')} -arch ${other_arch}', 'VEXE=${noop}', tool, 'self',
+				'-arch', arch, '-o', output])
+			assert inherited_target.exit_code == 0, inherited_target.output
+			assert inherited_target.output.contains('-no-memory-limit') == (arch == 'arm64'), inherited_target.output
+			assert_vself_preserves_full_cli(inherited_target.output)
+		}
+		for c_backend in [['-b', 'c'], ['-backend=c']] {
+			overridden := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self',
+				...backend_args, ...c_backend, '-o', output])
+			assert overridden.exit_code == 0, overridden.output
+			assert overridden.output.contains('-d skip_amd64'), overridden.output
+			assert overridden.output.contains('-d skip_arm64'), overridden.output
+			assert_vself_preserves_full_cli(overridden.output)
+		}
+	}
+	for value in ['-native', '-b=native', '-backend=native'] {
+		literal := os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-cflags',
+			value, '-o', output])
+		assert literal.exit_code == 0, literal.output
+		assert literal.output.contains('-d skip_amd64'), literal.output
+		assert literal.output.contains('-d skip_arm64'), literal.output
+	}
+}
+
+fn test_native_self_aliases_overridden_by_fastc_repeat() {
+	$if windows {
+		return
+	}
+	failing_compiler := os.find_abs_path_of_executable('false') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_fastc_native_override_${os.getpid()}')
+	defer { os.rm(tool) or {} }
+	build := os.exec([vexe, '-nocache', '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	for backend_args in [
+		['-b', 'amd64'],
+		['-native'],
+		['-b', 'native'],
+		['-backend', 'native'],
+		['-b=native'],
+		['-backend=native'],
+	] {
+		// Reaching the mock compiler proves that repeat validation accepted the
+		// selected FastC backend, without replacing any compiler executable.
+		result := os.exec(['env', 'VFLAGS=', 'VEXE=${failing_compiler}', tool, 'self', ...backend_args,
+			'-b', 'fastc', 'x2'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot compile to'), result.output
+		assert !result.output.contains('cannot preserve these options'), result.output
+	}
+	for value in ['-native', '-b=native', '-backend=native'] {
+		result := os.exec(['env', 'VFLAGS=', 'VEXE=${failing_compiler}', tool, 'self', '-cflags',
+			value, '-b', 'fastc', 'x2'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot preserve these options'), result.output
+		assert result.output.contains('-cflags ${value}'), result.output
+	}
+}
+
+fn assert_no_preprocessor_includes(code string) {
+	for line in code.split_into_lines() {
+		text := line.trim_space()
+		if text.starts_with('#') {
+			directive := text[1..].trim_left(' \t')
+			assert !directive.starts_with('include') && !directive.starts_with('import'), line
+		}
+	}
+}
+
+fn test_self_generated_compiler_c_needs_no_headers() {
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vself_no_headers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	compiler := os.join_path(root, 'compiler')
+	build := os.exec(['env', '-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CC', '-u', 'CFLAGS', '-u', 'LDFLAGS',
+		'VTMP=${root}', vexe, '-cc', clang, '-gc', 'none', '-keepc', '-no-retry-compilation', '-o',
+		compiler, 'self'])
+	assert build.exit_code == 0, build.output
+	files := os.walk_ext(root, '.tmp.c').filter(os.file_name(it).starts_with('compiler.'))
+	assert files.len == 1, os.walk_ext(root, '.c').str()
+	code := os.read_file(files[0])!
+	assert_no_preprocessor_includes(code)
+	checked := os.exec([clang, '-std=gnu11', '-nostdinc', '-fsyntax-only', '-Wno-everything',
+		'-Wno-incompatible-function-pointer-types', '-Wno-int-conversion',
+		'-Werror=implicit-function-declaration', '-x', 'c', files[0]])
+	assert checked.exit_code == 0, checked.output
+	version := os.exec([compiler, 'version'])
+	assert version.exit_code == 0 && version.output.starts_with('V '), version.output
+}
+
+fn test_track_heap_guards_need_no_header() {
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vself_heap_guards_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	generated := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {}\n')!
+	for mode in [['-gc', 'none'], ['-gc', 'boehm'], ['-gc', 'vgc'], ['-gc', 'none', '-prealloc']] {
+		built := os.exec([vexe, '-nocache', ...mode, '-d', 'track_heap', '-o', generated, source])
+		assert built.exit_code == 0, '${mode}: ${built.output}'
+		if mode == ['-gc', 'none'] {
+			assert_no_preprocessor_includes(os.read_file(generated)!)
+			checked := os.exec([clang, '-std=gnu11', '-nostdinc', '-fsyntax-only', '-Wno-everything',
+				'-Wno-incompatible-function-pointer-types', '-Wno-int-conversion', '-x', 'c',
+				generated])
+			assert checked.exit_code == 0, checked.output
+		} else {
+			checked := os.exec([vexe, '-nocache', '-cc', clang, ...mode, '-d', 'track_heap', '-o',
+				os.join_path(root, 'invalid'), source])
+			assert checked.exit_code != 0, mode.str()
+			assert checked.output.contains('track_heap requires manual memory management'), checked.output
+		}
+	}
 }

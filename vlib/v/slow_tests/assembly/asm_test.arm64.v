@@ -1,3 +1,6 @@
+// vtest build: !tinyc
+// TCC's ARM64 assembler does not implement the cmp instruction used below.
+
 fn test_inline_asm() {
 	a, mut b := 10, 0
 	asm arm64 {
@@ -55,7 +58,7 @@ fn test_inline_asm() {
 		mov w0, 7
 		str w0, [m]
 		; ; r (m)
-		; w0
+		; x0
 		  memory
 	}
 	assert l == 7
@@ -70,9 +73,34 @@ fn test_asm_generic() {
 	assert b == true
 }
 
+struct GuardedAsmBool {
+	value bool
+	guard [8]u8
+}
+
+fn test_asm_generic_bool_preserves_adjacent_bytes() {
+	guarded := GuardedAsmBool{
+		guard: [8]u8{init: 0xa5}
+	}
+	assert generic_asm(guarded.value)
+	assert guarded.value
+	assert guarded.guard == [8]u8{init: 0xa5}
+}
+
 fn generic_asm[T](var &T) T {
 	mut ret := unsafe { T(14) }
-	unsafe {
+	$if T is bool {
+		// A bool occupies one byte; an x-register load/store overwrites its neighbors.
+		asm volatile arm64 {
+			ldrb w0, [var]
+			add x0, x0, ret
+			strb w0, [var]
+			; ; r (var)
+			  r (ret)
+			; x0
+			  memory
+		}
+	} $else {
 		asm volatile arm64 {
 			ldr x0, [var]
 			add x0, x0, ret

@@ -629,6 +629,7 @@ fn type_text_has_unresolved_generic_placeholder(typ_id u32) bool {
 
 // resolve_selector_type resolves the type of a .selector node (e.g. `obj.field`).
 // Looks up the base expression type, then finds the field in the struct definition.
+@[direct_array_access]
 fn (t &Transformer) resolve_selector_type(node flat.Node) u32 {
 	if node.kind != .selector || node.children_count == 0 || t.smartcast_stack.len > 0
 		|| isnil(t.selector_type_cache) {
@@ -1373,6 +1374,7 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	return t.normalize_type_alias_cached(type_id)
 }
 
+@[direct_array_access]
 fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 	if isnil(t.alias_cache) {
 		return t.normalize_type_alias_uncached(type_id)
@@ -1765,9 +1767,9 @@ fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u
 		for param in syntax.function_params() {
 			parts << t.normalize_type_in_module(flat.source_type_syntax(param).legacy_parameter_mut_type(), mod)
 		}
-		normalized_ret := t.normalize_type_in_module(syntax.function_result(), mod)
-		if normalized_ret != 0 {
-			parts << normalized_ret
+		if syntax.function_result() != 0 {
+			ret := fn_type_return_type_text(clean_id) or { syntax.function_result() }
+			parts << t.normalize_type_in_module(ret, mod)
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
@@ -1935,7 +1937,13 @@ fn (t &Transformer) node_type(id flat.NodeId) u32 {
 		.bool_literal { return flat.source_type_bool }
 		.float_literal { return flat.source_type_f64 }
 		.int_literal { return flat.source_type_int }
-		.string_literal, .string_interp { return flat.source_type_string }
+		.string_literal {
+			if t.a.nodes[idx].children_count != 1
+				|| t.a.nodes[idx].value_text() !in ['__v3_comptime_zero', '__v3_comptime_new'] {
+				return flat.source_type_string
+			}
+		}
+		.string_interp { return flat.source_type_string }
 		.nil_literal { return flat.source_type_voidptr }
 		.char_literal {
 			return if t.a.nodes[idx].value.starts_with('c:') {
@@ -1990,6 +1998,30 @@ fn (t &Transformer) node_type(id flat.NodeId) u32 {
 	return t.node_type_uncached(id)
 }
 
+// bound_ident_type is the type node_type_uncached derives for an identifier that
+// names a local binding while no smartcast is active: resolve_ident_expr_type
+// returns the binding's normalized type, and node_type_uncached returns that type
+// unchanged unless it is a `typeof` spelling, an unresolved generic argument or,
+// outside the compiler build, a struct candidate the checker may override. Those
+// cases, unbound names and active smartcasts return 0 and keep the general path.
+@[direct_array_access; inline]
+fn (t &Transformer) bound_ident_type(idx int) u32 {
+	if t.smartcast_stack.len != 0 {
+		return u32(0)
+	}
+	i := t.var_type_index(t.a.nodes[idx].value_text())
+	if i < 0 || t.var_types[i].typ == 0 {
+		return u32(0)
+	}
+	bound_type := t.normalize_type_alias(t.var_types[i].typ)
+	if bound_type == 0 || flat.source_type_shape(bound_type).has(.typeof_expr)
+		|| (!t.building_v && flat.source_type_query(bound_type).has(.struct_candidate))
+		|| t.generic_arg_is_unresolved(bound_type) {
+		return u32(0)
+	}
+	return bound_type
+}
+
 @[direct_array_access]
 fn (t &Transformer) node_type_memo_miss(id flat.NodeId, slot int) u32 {
 	mut memo := t.node_type_memo
@@ -2011,6 +2043,12 @@ fn (t &Transformer) node_type_memo_miss(id flat.NodeId, slot int) u32 {
 fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 	if int(id) < 0 {
 		return u32(0)
+	}
+	if t.a.nodes[int(id)].kind == .ident {
+		bound_type := t.bound_ident_type(int(id))
+		if bound_type != 0 {
+			return bound_type
+		}
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .fn_literal || node.kind == .lambda_expr {

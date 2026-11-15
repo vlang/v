@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const harness_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
 fn build_v3_with(name string, flags string) string {
 	v3_bin := os.join_path(os.temp_dir(), name)
@@ -300,7 +301,7 @@ fn test_two() {
 }
 "
 	order_c := gen_c(v3_bin, 'harness_order', '_test.c.v', order_src)
-	assert order_c.contains('int main('), order_c
+	assert order_c.contains(harness_entry_point), order_c
 	one_idx := order_c.index('test_one();') or { -1 }
 	two_idx := order_c.index('test_two();') or { -1 }
 	assert one_idx >= 0, order_c
@@ -311,7 +312,7 @@ fn test_two() {
 
 	parallel_v3_bin := build_v3_with('v3_test_file_harness_parallel_test', '-d parallel')
 	parallel_c := gen_c(parallel_v3_bin, 'harness_parallel_order', '_test.c.v', order_src)
-	assert parallel_c.contains('int main('), parallel_c
+	assert parallel_c.contains(harness_entry_point), parallel_c
 	assert parallel_c.contains('test_one();'), parallel_c
 	assert parallel_c.contains('test_two();'), parallel_c
 	parallel_run := compile_and_run(parallel_v3_bin, 'harness_parallel_order_run', '_test.c.v',
@@ -471,7 +472,7 @@ fn test_one() {
 	println('lonely')
 }
 ")
-	assert ordinary_c.contains('int main('), ordinary_c
+	assert ordinary_c.contains(harness_entry_point), ordinary_c
 	assert !ordinary_c.contains('test_lonely();'), ordinary_c
 }
 
@@ -637,7 +638,7 @@ fn test_one() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_user_main', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	assert c_code.contains('test_one();'), c_code
 	run := compile_and_run(v3_bin, 'harness_user_main_run', '_test.v', src)
 	assert run.exit_code == 0, run.output
@@ -655,7 +656,7 @@ fn test_call_main() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_user_main_callable', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	assert c_code.contains('main__user_main'), c_code
 	assert c_code.contains('main__user_main();'), c_code
 	assert c_code.contains('test_call_main();'), c_code
@@ -675,7 +676,7 @@ fn main() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_user_main_forward', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	proto_idx := c_code.index('void main__user_main(void);') or { -1 }
 	test_idx := c_code.index('void test_call_main(void) {') or { -1 }
 	assert proto_idx >= 0, c_code
@@ -702,7 +703,7 @@ fn test_call_both() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_user_main_collision', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	assert c_code.contains('void main__user_main('), c_code
 	assert c_code.contains('void main__user_main_1('), c_code
 	assert c_code.contains('main__user_main();'), c_code
@@ -724,7 +725,7 @@ fn test_fn_value_main() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_user_main_fn_value', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	assert c_code.contains('main__user_main'), c_code
 	assert c_code.contains('test_fn_value_main();'), c_code
 	assert !c_code.contains('= main;'), c_code
@@ -748,7 +749,7 @@ fn test_fn_arg_main() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_user_main_fn_arg', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	assert c_code.contains('takes(main__user_main);'), c_code
 	assert !c_code.contains('takes(main);'), c_code
 	run := compile_and_run(v3_bin, 'harness_user_main_fn_arg_run', '_test.v', src)
@@ -775,7 +776,7 @@ fn test_shadowed_main() {
 }
 "
 	c_code := gen_c(v3_bin, 'harness_shadowed_main_fn_value_call', '_test.v', src)
-	assert c_code.count('int main(') == 1, c_code
+	assert c_code.count(harness_entry_point) == 1, c_code
 	assert c_code.contains('main();'), c_code
 	assert !c_code.contains('main__user_main();'), c_code
 	run := compile_and_run(v3_bin, 'harness_shadowed_main_fn_value_call_run', '_test.v', src)

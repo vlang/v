@@ -49,6 +49,10 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 	ctx.closure_forbidden_captures['value'] = true
 	ctx.local_decl_rhs_by_name['value'] = [LocalDeclRhs{ rhs: flat.NodeId(1) }]
 	ctx.bool_condition_exprs['value'] = flat.NodeId(1)
+	ctx.preflight_option_layers[flat.NodeId(1)] = PreflightOptionLayer{
+		keys:                ['value']
+		restores_smartcasts: true
+	}
 	ctx.unsafe_alias_break_states = unsafe_states
 	ctx.pointer_alias_break_states = pointer_states
 	ctx.pointer_alias_continue_states = pointer_states
@@ -73,6 +77,8 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 		'value': ['target']
 	}]]
 	assert cloned.method_value_locals['value']
+	assert cloned.preflight_option_layers[flat.NodeId(1)].keys == ['value']
+	assert cloned.preflight_option_layers[flat.NodeId(1)].restores_smartcasts
 	assert (cloned.mut_param_base_types['value'] or { panic('lost cloned type') }) == builtin_int_type
 	assert (cloned.mut_local_owners['value'] or { panic('lost cloned owner') }).storage_key() == owner.storage_key()
 	// Reset retains a usable typed map, including maps that contain owners/arrays.

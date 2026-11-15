@@ -2,21 +2,10 @@ name: Package 2 multiwindow musl exclusion smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - smoke/x-multiwindow-windows-20260717
-    paths:
-      - '.github/workflows/multiwindow_musl_exclusion_smoke.yml'
-      - 'vlib/gg/multiwindow_render_runtime_contract_test.v'
-      - 'vlib/gg/multiwindow_services_contract_test.v'
-      - 'vlib/x/multiwindow/service_native_win32_no_flag_test.v'
-      - 'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v'
-      - 'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v'
-      - 'vlib/sokol/gfx/metal_private_hook_contract_test.v'
-      - 'cmd/tools/vtest-self.v'
+  workflow_call:
 
 concurrency:
-  group: package2-musl-exclusion-${{ github.workflow }}-${{ github.ref }}
+  group: package2-musl-exclusion-multiwindow_musl_exclusion_smoke-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -27,6 +16,7 @@ permissions:
 
 jobs:
   multiwindow-musl-exclusion:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     env:
       # Stop a failing test session at its first failure instead of
@@ -48,7 +38,10 @@ jobs:
       - name: Add Alpine build dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
-        run: CC=gcc make
+        run: |
+          set -eu
+          CC=gcc make
+          VFLAGS= ./v self -prod -cc gcc -parallel-cc
       - name: Verify candidate-owned tests are skipped under musl
         run: |
           set -eu

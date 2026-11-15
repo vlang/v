@@ -13,6 +13,15 @@ show "Clone vtcc"
 .github/workflows/retry.sh git clone https://github.com/medvednikov/vtcc --branch stable --quiet vtcc/
 du -s vtcc/
 
+# Identifier tokens grow past 65535 in the generated V compiler; EOF remains -1.
+# Remove this compatibility patch once stable VTCC widens its token enum.
+vtcc_patch="$(pwd)/.github/vtcc_token_width.patch"
+if git -C vtcc apply --check "$vtcc_patch"; then
+	git -C vtcc apply "$vtcc_patch"
+else
+	git -C vtcc apply --reverse --check "$vtcc_patch"
+fi
+
 show "Compile vtcc"
 cd vtcc/
 v run make.vsh

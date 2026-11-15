@@ -134,9 +134,9 @@
         "policy_sha256": null
       },
       "toolchain_profile": {
-        "profile_id": null,
-        "profile_path": null,
-        "profile_sha256": null
+        "profile_id": "macos-arm64-github-hosted-clang-v1",
+        "profile_path": "toolchain-profiles/macos-arm64.profile.json",
+        "profile_sha256": "f8022035063578f6102896ed1fb0046dd3f286880f44dab6173cac8e6711b4bc"
       }
     },
     {

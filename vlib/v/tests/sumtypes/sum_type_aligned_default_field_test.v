@@ -22,5 +22,6 @@ fn default_aligned_value(value &DefaultAlignedSum) int {
 fn test_default_map_field_retains_aligned_constructor() {
 	mut holder := DefaultAlignedMap{}
 	holder.values[1] = DefaultAlignedSmall{42}
-	assert default_aligned_value(holder.values[1]) == 42
+	// The map is unchanged while this checked pointer borrows its entry.
+	assert default_aligned_value(unsafe { &holder.values[1] or { panic('missing entry') } }) == 42
 }

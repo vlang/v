@@ -1,0 +1,157 @@
+struct Counter {
+mut:
+	calls int
+}
+
+fn (mut c Counter) next() u8 {
+	c.calls++
+	return `b`
+}
+
+fn (mut c Counter) text() string {
+	c.calls++
+	return 'abc'
+}
+
+type CustomBytes = string
+
+fn (s CustomBytes) bytes() []u8 { return [u8(`z`)] }
+
+fn byte_sum(s string) int {
+	mut total := 0
+	for i, c in s.bytes() { total += i + int(c) }
+	return total
+}
+
+fn byte_find(s string) bool {
+	for c in s.bytes() { if c == `z` { return true } }
+	return false
+}
+
+fn literal_loop() int {
+	mut total := 0
+	for c in 'a\x00é'.bytes() { total += int(c) }
+	return total
+}
+
+fn small_set(c u8) bool { return c in 'aab\x00é'.bytes() }
+
+fn large_set(c u8) bool { return c in 'abcdefghijklmnopqrstuvwxyz\x00é'.bytes() }
+
+fn wide_small(c int) bool { return c in 'a'.bytes() }
+
+fn wide_large(c int) bool { return c in 'abcdefghijklmnopqrstuvwxyz'.bytes() }
+
+fn not_set(c u8) bool { return c !in 'abc'.bytes() }
+
+fn empty_set(mut counter Counter) bool { return counter.next() in ''.bytes() }
+
+fn contains_set(mut counter Counter) bool { return 'abc'.bytes().contains(counter.next()) }
+
+fn alias_loop() int {
+	mut total := 0
+	for c in CustomBytes('a').bytes() { total += int(c) }
+	return total
+}
+
+fn snapshot_loop(s string, mut data []u8) int {
+	mut total := 0
+	for c in s.bytes() {
+		data[1] = `z`
+		total += int(c)
+	}
+	return total
+}
+
+fn callback_loop(s string, mut counter Counter) int {
+	mut total := 0
+	for c in s.bytes() {
+		counter.next()
+		total += int(c)
+	}
+	return total
+}
+
+fn mutable_loop() int {
+	mut total := 0
+	for mut c in 'ab'.bytes() {
+		c++
+		total += int(c)
+	}
+	return total
+}
+
+fn byte_control(s string) int {
+	mut total := 0
+	for i, c in (s.bytes()) {
+		if i == 0 { continue }
+		if c == `!` { break }
+		total += int(c)
+	}
+	return total
+}
+
+fn scalar_alias_loop(s string, value &u8) int {
+	mut total := 0
+	for c in s.bytes() {
+		unsafe { *value = 0 }
+		total += int(c)
+	}
+	return total
+}
+
+fn local_alias_loop() int {
+	mut value := u64(0x0101)
+	text := unsafe { tos(&u8(&value), int(sizeof(value))) }
+	mut total := 0
+	for c in text.bytes() {
+		value = 0
+		total += int(c)
+	}
+	return total
+}
+
+@[unsafe]
+fn unsafe_function_loop(s string) int {
+	mut total := 0
+	for c in s.bytes() { total += int(c) }
+	return total
+}
+
+fn main() {
+	if byte_sum('abc') != 297 || byte_sum('') != 0 || byte_sum('é') != 365 { panic('sum') }
+	if !byte_find('az') || byte_find('abc') || byte_find('') { panic('find') }
+	if literal_loop() != 461 { panic('literal') }
+	for i in 0 .. 256 {
+		b := u8(i)
+		want_small := b == `a` || b == `b` || b == 0 || b == 195 || b == 169
+		want_large := (b >= `a` && b <= `z`) || b == 0 || b == 195 || b == 169
+		if small_set(b) != want_small || large_set(b) != want_large { panic('membership') }
+		if not_set(b) != !(b == `a` || b == `b` || b == `c`) { panic('negation') }
+	}
+	mut counter := Counter{}
+	if empty_set(mut counter) || counter.calls != 1 { panic('empty effects') }
+	if !contains_set(mut counter) || counter.calls != 2 { panic('contains effects') }
+	if false && empty_set(mut counter) { panic('short circuit') }
+	if counter.calls != 2 { panic('short circuit effects') }
+	mut total := 0
+	for c in counter.text().bytes() { total += int(c) }
+	if counter.calls != 3 || total != 294 { panic('source effects') }
+	if alias_loop() != 122 { panic('alias method') }
+	mut data := 'abc'.bytes()
+	text := unsafe { tos(data.data, data.len) }
+	if snapshot_loop(text, mut data) != 294 || data[1] != `z` { panic('snapshot') }
+	if callback_loop('abc', mut counter) != 294 || counter.calls != 6 { panic('callback') }
+	if mutable_loop() != 197 { panic('mutable') }
+	mut value := u8(`a`)
+	value_text := unsafe { tos(&value, 1) }
+	if scalar_alias_loop(value_text, &value) != 97 || value != 0 { panic('scalar snapshot') }
+	if local_alias_loop() != 2 { panic('local snapshot') }
+	if byte_control('ab!c') != 98 { panic('control') }
+	if u8(`z`) !in CustomBytes('a').bytes() { panic('alias membership') }
+	if !wide_small(353) || !wide_large(-159) || wide_small(256) || wide_large(-1) {
+		panic('byte conversion')
+	}
+	if unsafe { unsafe_function_loop('abc') } != 294 { panic('unsafe function') }
+	println('ok')
+}

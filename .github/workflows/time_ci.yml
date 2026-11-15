@@ -1,23 +1,10 @@
 name: Time CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/time_ci.yml'
-      - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/time_ci.yml'
-      - '!**.md'
+  workflow_call:
 
 concurrency:
-  group: time-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: time-time_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -37,7 +24,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -50,7 +39,7 @@ jobs:
         run: TZ=Europe/Paris ./v test vlib/time/
 
   time-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
@@ -62,7 +51,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -87,7 +78,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: .\makev.bat
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Test time functions in a timezone UTC-12
         run: tzutil /s "Dateline Standard Time" && ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3

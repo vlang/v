@@ -40,7 +40,10 @@ fn test_cached_module_initializers_follow_reordered_imports_and_uncached_cleanup
 	assert startup_cache_output(root, 'cold') == 'first\nsecond\ncold\ncleanup second\ncleanup first'
 	os.write_file(main, startup_cache_source(['initfirst', 'initsecond'], 'done'))!
 	incremental := startup_cache_build(root, cache, 'warm', [])
-	assert incremental.contains('cgen (incremental)'), incremental
+	// The driver enables incremental program caching only on macOS.
+	$if macos {
+		assert incremental.contains('cgen (incremental)'), incremental
+	}
 	assert startup_cache_output(root, 'warm') == 'first\nsecond\ndone\ncleanup second\ncleanup first'
 	os.write_file(main, startup_cache_source(['initsecond', 'initfirst'], 'done'))!
 	startup_cache_build(root, cache, 'uncached', ['-nocache'])
@@ -87,7 +90,9 @@ fn test_wrapper_dependencies_outlive_cleanup_in_cached_and_uncached_builds() ! {
 	assert startup_cache_output(root, 'cold') == 'second\nfirst\ncold\ncleanup first\ncleanup second'
 	os.write_file(main, 'import library\nfn main() { library.marker(); println("done") }\n')!
 	incremental := startup_cache_build(root, cache, 'warm', ['-enable-globals'])
-	assert incremental.contains('cgen (incremental)'), incremental
+	$if macos {
+		assert incremental.contains('cgen (incremental)'), incremental
+	}
 	expected := 'second\nfirst\ndone\ncleanup first\ncleanup second'
 	assert startup_cache_output(root, 'warm') == expected
 	// The wrapper still visits initsecond first when independent imports are reordered.

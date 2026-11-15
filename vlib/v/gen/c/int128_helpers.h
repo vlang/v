@@ -4,7 +4,9 @@
 #define V_INT128_STRUCT_ATTR __attribute__((aligned(16)))
 #endif
 
-#if defined(__SIZEOF_INT128__) && !defined(V_INT128_PORTABLE)
+/* Clang exposes __int128 for the MSVC ABI, but the MSVC runtime does not
+ * provide its division helpers. Use the same limb representation as cl.exe. */
+#if defined(__SIZEOF_INT128__) && !defined(V_INT128_PORTABLE) && !defined(_MSC_VER)
 
 typedef unsigned __int128 u128;
 typedef __int128 i128;

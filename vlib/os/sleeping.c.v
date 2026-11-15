@@ -10,16 +10,23 @@ fn C.nanosleep(req &C.timespec, rem &C.timespec) i32
 
 // sleep_ms provides a cross platform way to sleep, without having to `import time` for a time.sleep/1 call.
 fn sleep_ms(ms i64) {
-	$if windows {
-		C.Sleep(u32(ms))
-	} $else {
-		mut req := C.timespec{ms / 1000, 1_000_000 * (ms % 1000)}
-		rem := C.timespec{}
-		for C.nanosleep(&req, &rem) < 0 {
-			if C.errno == C.EINTR {
-				req = rem
-			} else {
-				break
+	$if freestanding || syscalls {
+		// loops on nanosleep internally, remasking with the remainder on EINTR
+		fs_sleep_ms(ms)
+		return
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			C.Sleep(u32(ms))
+		} $else {
+			mut req := C.timespec{ms / 1000, 1_000_000 * (ms % 1000)}
+			rem := C.timespec{}
+			for C.nanosleep(&req, &rem) < 0 {
+				if C.errno == C.EINTR {
+					req = rem
+				} else {
+					break
+				}
 			}
 		}
 	}

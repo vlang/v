@@ -9,15 +9,15 @@ struct UserInfo {
 	age  int
 }
 
-fn g[T](x T) string {
+fn g[T]() string {
 	return 'abc'
 }
 
-fn response_to_string[T](response Response[T]) string {
-	return g(response)
+fn response_to_string[T]() string {
+	return g[T]()
 }
 
 fn test_main() {
-	res := response_to_string(Response{1, 'success', ?UserInfo{'Jay Chou', 46}})
+	res := response_to_string[UserInfo]()
 	assert res == 'abc'
 }

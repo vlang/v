@@ -190,6 +190,33 @@ fn main() {
 	assert output == expected, output
 }
 
+fn test_fastc_collection_strings_preserve_platform_integer_storage() {
+	$if !macos && !linux {
+		return
+	}
+	if sizeof(voidptr) != 8 {
+		return
+	}
+	output := fastc_program_output('wide_collection_strings', 'module main
+fn main() {
+    positive := int(4294967297)
+    negative := -positive
+    println({positive: negative})
+    println({"wide": positive})
+    println([positive, negative])
+    println([positive, negative]!)
+    println([uint(4294967297)])
+    println([uint(4294967297)]!)
+    fixed := [positive, negative]!
+    println("\${fixed}")
+}
+')
+	expected := ['{4294967297: -4294967297}', "{'wide': 4294967297}", '[4294967297, -4294967297]',
+		'[4294967297, -4294967297]', '[4294967297]', '[4294967297]', '[4294967297, -4294967297]',
+		''].join('\n')
+	assert output == expected, output
+}
+
 // Enum discriminants that use `**` on integer literals are folded to constants,
 // grouping to the right as the C backend does.
 fn test_fastc_enum_discriminants_fold_integer_powers() {

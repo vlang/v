@@ -13,19 +13,22 @@ struct SourceRunResult {
 fn run_source_with_timeout(source_name string, source string) !SourceRunResult {
 	base_dir := os.join_path(os.vtmp_dir(), '${source_name}_${os.getpid()}')
 	source_path := os.join_path(base_dir, '${source_name}.v')
+	executable_path := os.join_path(base_dir, source_name + $if windows { '.exe' } $else { '' })
 	os.rmdir_all(base_dir) or {}
 	os.mkdir_all(base_dir)!
 	defer {
 		os.rmdir_all(base_dir) or {}
 	}
 	os.write_file(source_path, source)!
-	mut p := os.new_process(vexe)
-	p.set_args(['run', source_path])
+	// The deadline checks runtime locking, not compilation by an instrumented compiler.
+	compiled := os.exec([vexe, '-o', executable_path, source_path])
+	if compiled.exit_code != 0 {
+		return error('compilation failed\n${compiled.output}')
+	}
+	mut p := os.new_process(executable_path)
 	p.set_redirect_stdio()
-	// `v run` forks a grandchild for the compiled binary. On timeout, killing only the
-	// child V leaves that grandchild alive holding the stdout/stderr pipe ends, which
-	// makes stdout_slurp() block forever waiting for EOF (notably on musl, where the
-	// nested rwlock simply hangs instead of returning EDEADLK). Kill the whole pgroup.
+	// Kill the whole process group on timeout before draining its pipes, so a
+	// descendant cannot keep stdout_slurp() waiting for EOF.
 	p.use_pgroup = true
 	p.run()
 	mut timeout_ticks := 0
@@ -79,7 +82,7 @@ fn test_nested_shared_lock_fails_without_hanging() {
 		'}',
 	].join_lines()
 	result := run_source_with_timeout('shared_nested_lock_runtime', source) or {
-		assert false, 'nested shared lock hung\n${err}'
+		assert false, 'nested shared lock probe failed\n${err}'
 		return
 	}
 	assert result.code != 0, 'expected nested shared lock failure, got output:\n${result.output}'
@@ -134,7 +137,7 @@ fn test_shared_generic_heap_method_call_does_not_hang() {
 		'}',
 	].join_lines()
 	result := run_source_with_timeout('shared_generic_heap_method_call', source) or {
-		assert false, 'shared generic heap method call hung\n${err}'
+		assert false, 'shared generic heap method call probe failed\n${err}'
 		return
 	}
 	assert result.code == 0, result.output

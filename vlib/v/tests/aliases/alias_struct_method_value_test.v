@@ -47,7 +47,7 @@ fn test_a_method_of_a_struct_alias_named_without_a_call_calls_it() {
 }
 
 fn test_a_mut_method_of_a_struct_alias_named_without_a_call_changes_it() {
-	mut a := &Alias(&Plain{
+	mut a := &Alias(Plain{
 		id: 1
 	})
 	bump := a.bump

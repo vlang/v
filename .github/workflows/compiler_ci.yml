@@ -2,24 +2,23 @@ name: Compiler CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/v/**'
-  pull_request:
-    paths:
-      - 'vlib/v/**'
+  workflow_call:
 
 concurrency:
-  group: compiler-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: compiler-compiler_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+env:
+  # Optimize the separate V3 drivers built and shared by test_all.vsh as well
+  # as the outer ./v; this does not add -prod to the programs under test.
+  V3_TEST_PROD_COMPILER: '1'
+
 jobs:
   compiler:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -28,7 +27,9 @@ jobs:
           persist-credentials: false
       - name: Build V
         id: build
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check native compiler flag routing
         run: ./v -new-compiler vlib/v/driver/c_link_input_flags_test.v
       - name: Check cached header declaration semantics
@@ -55,28 +56,71 @@ jobs:
       - name: Test compiler
         run: ./v run vlib/v/test_all.vsh --skip-units
 
-  # Section 1 of test_all.vsh, the V3 unit tests, takes several hours of serial work. Each job
-  # runs every n-th file of the sorted list (`--shard i/n`); n is the number of shards below.
-  # The matrix takes ten runners, so it runs only for pushes to master, not for pull requests.
+  # Section 1 of test_all.vsh runs with the shared optimized compiler. One job
+  # runs it as one `--shard i/n` process per CPU of the runner (every n-th file of the sorted
+  # list). Each process gets its own VTMP, TMPDIR and V3CACHE, so the shards share no build state.
+  # It runs only for pushes to master, not for pull requests.
   unit-tests:
-    name: V3 unit tests (${{ matrix.shard }}/${{ strategy.job-total }})
-    if: github.event_name == 'push'
+    name: V3 unit tests
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Install Objective-C compiler
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
       - name: Test compiler
-        run: ./v run vlib/v/test_all.vsh --units-only --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          set -uo pipefail
+          shards="$(nproc)"
+          logs="$RUNNER_TEMP/v3-unit-tests"
+          mkdir -p "$logs"
+          # Optimize the nested test driver once before fan-out. Each shard
+          # copies it into its private directory instead of running concurrent
+          # production compiler builds with multiplied peak memory.
+          ./v -gc none -path "$PWD/vlib" -prod -cc clang -parallel-cc \
+            -o "$logs/shared-v3" vlib/v/v.v || exit $?
+          export V3_TEST_UNIT_SHARED_V3="$logs/shared-v3"
+          export V3_TEST_UNIT_V3_SRC="$PWD/vlib/v/v.v"
+          pids=()
+          for i in $(seq 1 "$shards"); do
+            mkdir -p "$logs/vtmp-$i"
+            # A private VTMP per shard keeps the concurrent `v run` builds of test_all.vsh
+            # apart. Every line of the shared live log is prefixed with its shard.
+            # A background job of a non-interactive shell ignores SIGINT and SIGQUIT, and
+            # the tests would inherit that; `env` restores the default handling, so that
+            # tests which interrupt the programs they start behave as in a foreground run.
+            (
+              VTMP="$logs/vtmp-$i" env --default-signal=INT,QUIT \
+                ./v run vlib/v/test_all.vsh --units-only --shard "$i/$shards" 2>&1 \
+                | tee "$logs/shard-$i.log" | sed -u "s|^|[$i/$shards] |"
+              exit "${PIPESTATUS[0]}"
+            ) &
+            pids+=("$!")
+          done
+          failed=()
+          for i in $(seq 1 "$shards"); do
+            wait "${pids[$((i - 1))]}" || failed+=("$i")
+          done
+          for i in "${failed[@]}"; do
+            log="$logs/shard-$i.log"
+            echo "::error::V3 unit test shard $i/$shards failed"
+            if grep -q 'unit test files failed:' "$log"; then
+              sed -n '/unit test files failed:/,$p' "$log"
+            else
+              tail -n 60 "$log"
+            fi
+          done
+          if [ "${#failed[@]}" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All $shards V3 unit test shards passed"

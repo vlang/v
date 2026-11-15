@@ -16,12 +16,12 @@ module openssl
 #flag freebsd -L/usr/local/lib
 
 // Installed through choco:
-#flag windows -IC:/Program Files/OpenSSL-Win64/include
-#flag windows -LC:/Program Files/OpenSSL-Win64/lib/VC/x64/MD
+#flag windows -I"C:/Program Files/OpenSSL-Win64/include"
+#flag windows -L"C:/Program Files/OpenSSL-Win64/lib/VC/x64/MD"
 
 // Installed on the CI:
-#flag windows -IC:/Program Files/OpenSSL/include
-#flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
+#flag windows -I"C:/Program Files/OpenSSL/include"
+#flag windows -L"C:/Program Files/OpenSSL/lib/VC/x64/MD"
 
 $if $pkgconfig('openssl') {
 	#pkgconfig --cflags --libs openssl
@@ -132,7 +132,7 @@ fn C.v_net_openssl_SSL_CTX_client_CA_names_count(ctx &C.SSL_CTX) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
-fn C.SSL_set_fd(ssl &C.SSL, fd i32) i32
+fn C.v_net_openssl_SSL_set_fd(ssl &C.SSL, fd i32) i32
 
 fn C.SSL_connect(&C.SSL) i32
 

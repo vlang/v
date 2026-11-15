@@ -9,7 +9,6 @@ struct SymlinkOptions {
 }
 
 fn main() {
-	at_exit(|| os.rmdir_all(os.vtmp_dir()) or {}) or {}
 	options := parse_symlink_options(os.args[1..]) or {
 		println(symlink_usage)
 		exit(1)

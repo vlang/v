@@ -21,8 +21,8 @@ fn test_join_chunks_concatenates_the_chunks_in_order() {
 	assert unsafe { joined.vbytes(6) } == payload
 }
 
-// A zero-length entry with no pointer is the end of the table, and a non-zero
-// offset with no further data is simply truncated there.
+// A zero-length entry with no pointer ends the table. The unused tail is zeroed,
+// and the requested length still bounds copies from a longer chunk.
 fn test_join_chunks_stops_at_the_terminator_and_truncates_to_the_requested_length() {
 	payload := [u8(9), 8, 7, 6]
 	chunks := [EmbedFileChunk{
@@ -33,12 +33,32 @@ fn test_join_chunks_stops_at_the_terminator_and_truncates_to_the_requested_lengt
 		len:  2
 	}]
 	joined := join_chunks(&chunks[0], 4)
-	assert unsafe { joined.vbytes(2) } == [u8(9), 8]
-	// The count is what bounds the join, so a count past the data stops short.
+	assert unsafe { joined.vbytes(4) } == [u8(9), 8, 0, 0]
 	short := join_chunks(&chunks[0], 3)
 	assert unsafe { short.vbytes(3) } == [u8(9), 8, 0]
+	truncated := join_chunks(&chunks[0], 1)
+	assert unsafe { truncated.vbytes(1) } == [u8(9)]
+	empty := [EmbedFileChunk{}]
+	zeroed := join_chunks(&empty[0], 4)
+	assert unsafe { zeroed.vbytes(4) } == [u8(0), 0, 0, 0]
 	// A count of zero still returns a usable buffer rather than a null pointer.
 	assert join_chunks(&chunks[0], 0) != unsafe { nil }
+}
+
+fn test_join_chunks_zero_fills_after_linked_tables() {
+	payload := [u8(1), 2, 3, 4]
+	tail := [EmbedFileChunk{
+		data: unsafe { &payload[2] }
+		len:  2
+	}, EmbedFileChunk{}]
+	chunks := [EmbedFileChunk{
+		data: unsafe { &payload[0] }
+		len:  2
+	}, EmbedFileChunk{
+		data: unsafe { &u8(&tail[0]) }
+	}]
+	joined := join_chunks(&chunks[0], 6)
+	assert unsafe { joined.vbytes(6) } == [u8(1), 2, 3, 4, 0, 0]
 }
 
 // The index is what `-usecache` looks the embed up in, and it ends with a

@@ -2,32 +2,7 @@ name: VC gen
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths-ignore:
-      - '**.vv'
-      - '**.out'
-      - '**.md'
-      - '**.yml'
-      - '!**/gen_vc_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/gen_vc/**'
-      - 'thirdparty/tccbin_automation/bootstrap/vc.lock'
-      - 'thirdparty/tccbin_automation/tests/workflow_contract_test.v'
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.vv'
-      - '**.out'
-      - '**.md'
-      - '**.yml'
-      - '!**/gen_vc_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/gen_vc/**'
-      - 'thirdparty/tccbin_automation/bootstrap/vc.lock'
-      - 'thirdparty/tccbin_automation/tests/workflow_contract_test.v'
+  workflow_call:
 
 permissions:
   contents: read
@@ -35,15 +10,15 @@ permissions:
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: gen_vc-${{ github.workflow }}-${{ github.ref }}
+  group: gen_vc-gen_vc_ci-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
-# Exactly one of the two jobs runs for each event. `deploy` publishes vlang/vc from vlang/v master
+# Exactly one of the two jobs runs for each master event. `deploy` publishes vlang/vc from vlang/v master
 # until the vcgen.vlang.io service takes over (see doc/vcgen_service.md): setting the repository
 # variable VCGEN_SERVICE to `live` hands publishing to the service, and `validate` runs instead.
 jobs:
   validate:
-    if: github.event_name == 'pull_request' || github.repository != 'vlang/v' || github.ref != 'refs/heads/master' || vars.VCGEN_SERVICE == 'live'
+    if: github.ref == 'refs/heads/master' && (github.repository != 'vlang/v' || vars.VCGEN_SERVICE == 'live')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,14 +26,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Generate and check v.c and v_win.c
         run: |
           ./v -o gen_vc cmd/tools/gen_vc
           ./gen_vc snapshot . vc_snapshot
 
   deploy:
-    if: github.event_name != 'pull_request' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && vars.VCGEN_SERVICE != 'live'
+    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v' && vars.VCGEN_SERVICE != 'live'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -69,7 +46,9 @@ jobs:
           persist-credentials: false
           ref: master
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Regenerate v.c and v_win.c
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"

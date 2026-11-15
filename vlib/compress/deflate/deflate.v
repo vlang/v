@@ -6,6 +6,24 @@ import hash.crc32
 
 pub type ChunkCallback = fn (chunk []u8, userdata voidptr) int
 
+// max_safe_inflate_output_len returns the largest DEFLATE output limit that can be
+// enforced by the callback before the history array reaches an unsafe size.
+pub fn max_safe_inflate_output_len() int {
+	return int(max_safe_inflate_output_len_for(i64(max_int), i64(inflate_callback_chunk_size)))
+}
+
+fn max_safe_inflate_output_len_for(max_array_len i64, callback_chunk_size i64) i64 {
+	// With 64-bit `int`, ensure_cap can grow to 2^62 but doubling past it can
+	// overflow. Limit accepted output to 2^62 - 1 so the callback at 2^62 aborts
+	// before the next push. On 32-bit `int`, growth safely clamps at max_int;
+	// leave one byte before the last callback boundary to abort there.
+	if max_array_len == max_i64 {
+		return max_array_len / 2
+	}
+	last_callback_boundary := (max_array_len / callback_chunk_size) * callback_chunk_size
+	return last_callback_boundary - 1
+}
+
 // CompressFormat selects the output container around the RFC 1951 payload.
 pub enum CompressFormat {
 	zlib
@@ -130,8 +148,8 @@ pub fn validate_gzip_header(data []u8) !GzipHeader {
 // compress compresses data as zlib, gzip, or raw DEFLATE.
 pub fn compress(data []u8, format CompressParams) ![]u8 {
 	return match format.format {
-		.zlib { compress_zlib(data) }
-		.gzip { compress_gzip(data) }
+		.zlib { compress_zlib(data)! }
+		.gzip { compress_gzip(data)! }
 		.raw_deflate { deflate_compress_fixed(data)! }
 	}
 }
@@ -269,8 +287,10 @@ pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !
 		}
 	}
 	// raw DEFLATE
-	res := inflate_with_callback(data, cb, userdata)!
-	return res.delivered
+	mut res := inflate_with_callback(data, cb, userdata)!
+	delivered := res.delivered
+	unsafe { res.decoded.free() }
+	return delivered
 }
 
 fn decompress_zlib_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
@@ -280,17 +300,23 @@ fn decompress_zlib_with_callback(data []u8, cb ChunkCallback, userdata voidptr) 
 	}
 	payload := data[header.payload_start..data.len - 4]
 	expected := binary.big_endian_u32_at(data, data.len - 4)
-	res := inflate_with_callback(payload, cb, userdata)!
+	mut res := inflate_with_callback(payload, cb, userdata)!
 	if res.aborted {
-		return res.delivered
+		delivered := res.delivered
+		unsafe { res.decoded.free() }
+		return delivered
 	}
 	if res.consumed != payload.len {
+		unsafe { res.decoded.free() }
 		return error('invalid zlib stream: trailing data before adler32')
 	}
 	if adler32.sum(res.decoded) != expected {
+		unsafe { res.decoded.free() }
 		return error('invalid zlib stream: adler32 mismatch')
 	}
-	return res.delivered
+	delivered := res.delivered
+	unsafe { res.decoded.free() }
+	return delivered
 }
 
 fn decompress_gzip_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
@@ -299,12 +325,19 @@ fn decompress_gzip_with_callback(data []u8, cb ChunkCallback, userdata voidptr) 
 	for {
 		member := data[offset..]
 		header := validate_gzip_header(member)!
-		res := inflate_with_callback(member[header.payload_start..member.len - 8], cb, userdata)!
+		mut res := inflate_with_callback(member[header.payload_start..member.len - 8], cb, userdata)!
 		delivered += res.delivered
 		if res.aborted {
+			unsafe { res.decoded.free() }
 			return delivered
 		}
-		offset += validate_gzip_trailer(member, header.payload_start + res.consumed, res.decoded)!
+		member_size := validate_gzip_trailer(member, header.payload_start + res.consumed,
+			res.decoded) or {
+			unsafe { res.decoded.free() }
+			return err
+		}
+		unsafe { res.decoded.free() }
+		offset += member_size
 		if offset == data.len {
 			return delivered
 		}
