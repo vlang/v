@@ -289,12 +289,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./vprod-selfcheck.exe run examples/hello_world.v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Check code formatting on Windows
+      # Release the vet runner's GC heap before starting the formatting session.
+      - name: Check code vetting on Windows
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          VTEST_CLEANCODE_STAGE: vet
         run: |
           # Fail early if vet would rebuild for every input in test-cleancode.
           .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          ./v.exe -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check code formatting on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VTEST_CLEANCODE_STAGE: fmt
+        run: |
           ./v.exe -silent test-cleancode
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./v.exe -silent test-fmt
