@@ -18079,6 +18079,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op == .amp && (node.flags & flat.node_flag_retained_reference) != 0 {
+				base_type := types.unwrap_pointer(g.parse_node_type(node))
+				ct := g.value_c_type(base_type)
+				g.write(g.heap_local_memdup_expr(g.expr_to_string(child_id), base_type, ct, false))
+				return
+			}
 			if node.op == .amp && child.kind == .selector && child.children_count > 0 {
 				base_id := g.a.child(&child, 0)
 				base_type := g.usable_expr_type(base_id)
@@ -28204,8 +28210,13 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 				if child.kind == .field_init {
 					if ftyp := g.struct_field_type(node.source_value_id(), child.value) {
 						// An interface field boxes its value, even without an explicit cast.
+						clean_field := cgen_unalias_type(ftyp)
 						if ftyp is types.Array || ftyp is types.Map
-							|| cgen_unalias_type(ftyp) is types.Interface {
+							|| clean_field is types.Interface
+							|| clean_field is types.OptionType
+							|| clean_field is types.ResultType {
+							// Nested option/result compound literals are not constant
+							// initializers on GCC 12. Materialize them in _vinit.
 							all_const = false
 							break
 						}

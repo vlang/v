@@ -401,6 +401,9 @@ pub const node_flag_borrowed_map_key = u8(8)
 // node_flag_in_range_index marks an `.index` read the transform proved in range
 // (see Node.is_in_range_index()). The bit is shared with the flags above.
 pub const node_flag_in_range_index = u8(8)
+// node_flag_retained_reference marks an implicit `&temporary` retained by a field.
+// It uses the same bit on prefix nodes; the C backend must copy its backing value.
+pub const node_flag_retained_reference = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
