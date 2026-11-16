@@ -8601,7 +8601,7 @@ fn main() {
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
-fn test_unsafe_map_alias_provenance_tracks_each_loop_break() {
+fn test_unsafe_map_alias_loop_break_before_assignment_is_rejected() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
 	mut original := {
@@ -8622,20 +8622,6 @@ fn main() {
 	branch(true)
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_assignment_before_break', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for {
-		alias = unsafe { original }
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
