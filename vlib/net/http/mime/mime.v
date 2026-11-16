@@ -1,5 +1,10 @@
 module mime
 
+@[inline]
+fn lower_byte(c u8) u8 {
+	return if c >= `A` && c <= `Z` { c + 32 } else { c }
+}
+
 pub struct MimeType {
 	source       string
 	extensions   []string
@@ -12,9 +17,18 @@ pub fn get_complete_mime_type(mt string) MimeType {
 	return db[mt]
 }
 
+// lookup returns the MIME type for the given file extension, or '' when unknown.
+// The extension may be given with or without a leading '.', and is compared
+// ASCII case-insensitively without allocating.
+@[direct_array_access; inline]
+pub fn lookup(ext string) string {
+	return lookup_generated(ext)
+}
+
 // returns the MIME type for the given file extension
+@[inline]
 pub fn get_mime_type(ext string) string {
-	return ext_to_mt_str[ext]
+	return lookup_generated(ext)
 }
 
 // returns a `content-type` header ready to use for the given MIME type
