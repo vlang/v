@@ -1192,6 +1192,7 @@ pub fn (mut ctx Context) error(s string) {
 
 fn fast_send_resp_header(mut conn net.TcpConn, resp http.Response) ! {
 	mut sb := strings.new_builder(resp.body.len + 200)
+	defer { unsafe { sb.free() } }
 	sb.write_string('HTTP/')
 	sb.write_string(resp.http_version)
 	sb.write_string(' ')
@@ -1204,7 +1205,8 @@ fn fast_send_resp_header(mut conn net.TcpConn, resp http.Response) ! {
 		version: resp.version()
 	)
 	sb.write_string('\r\n')
-	send_string(mut conn, sb.str())!
+	// send_string finishes writing and tracing before the builder is freed.
+	send_string(mut conn, unsafe { tos(sb.data, sb.len) })!
 }
 
 // Formats resp to a string suitable for HTTP response transmission
