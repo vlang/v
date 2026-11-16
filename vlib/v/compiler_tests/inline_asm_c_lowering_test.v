@@ -246,9 +246,16 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
 		assert !c_source.contains('.byte \\\$0x27'), c_source
 	}
-	mut compilers := ['clang']
-	if _ := os.find_abs_path_of_executable('gcc') {
+	// Windows' hosted clang targets MSVC, not the MinGW ABI of GNU inline asm.
+	// Keep the generated-C assertions and execute the asm with GCC on Windows.
+	mut compilers := []string{}
+	$if windows {
 		compilers << 'gcc'
+	} $else {
+		compilers << 'clang'
+		if _ := os.find_abs_path_of_executable('gcc') {
+			compilers << 'gcc'
+		}
 	}
 	for compiler in compilers {
 		compile := os.exec([v3_bin, '-enable-globals', '-cc', compiler, '-o', bin_path, source_path])
