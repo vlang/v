@@ -2685,6 +2685,8 @@ fn test_channel_alias_close_method_wins_over_builtin() {
 	assert out == '71'
 	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime', 'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
 	assert pointer_c.contains('sync__Channel__close(*p,')
+	assert pointer_c.contains('sizeof(IError)')
+	assert !pointer_c.contains('sync__Channel__close(*p);')
 }
 
 fn test_channel_reference_auto_str_reads_channel_value() {
