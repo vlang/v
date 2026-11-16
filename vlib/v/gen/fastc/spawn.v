@@ -54,6 +54,11 @@ fn (g &Parser) fastc_thread_value_type(thread_type_id u32) ?u32 {
 	return fastc_thread_value_type_from_name(name_id)
 }
 
+// fastc_thread_typedef declares one thread handle type; all handles share a layout.
+fn fastc_thread_typedef(thread_type string) string {
+	return 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
+}
+
 fn fastc_thread_wait_name(thread_type string) string {
 	return '__vf_thread_wait_${thread_type.all_after(fastc_thread_type_prefix)}'
 }
@@ -405,7 +410,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 	g.type_memo.clear()
 	g.thread_value_types.set_id(thread_type, value_type_source_id)
 	if thread_type !in g.spawn_typedefs {
-		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
+		g.spawn_typedefs[thread_type] = fastc_thread_typedef(thread_type)
 		// Thread handles are routinely collected into arrays for joining.
 		g.composite_types['Array_${thread_type}'] = true
 	}

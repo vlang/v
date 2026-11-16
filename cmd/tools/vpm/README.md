@@ -11,10 +11,54 @@ dependencies. The resolver can report a module more than once while backtracking
 
 Git packages include their file contents in the initial clone, so checkout can complete
 without a second network request for missing file blobs. Submodules are installed recursively.
+
 Git installs use shallow clones. Branch updates follow their configured upstream using a
 fast-forward pull; detached tag or lockfile checkouts outside constrained projects follow the
 origin's default branch. Updates refuse uncommitted changes or unpublished local commits.
 Exact project refs stay pinned along with their lockfile entries.
+
+## Precompiled native assets
+
+A module can declare host-specific native libraries in `vpm-binaries.json`:
+
+```json
+{
+  "version": 1,
+  "targets": {
+    "macos-arm64": [{
+      "path": "libexample.a",
+      "url": "https://github.com/owner/example/releases/download/v1.0.0/libexample-arm64.a",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }]
+  }
+}
+```
+
+Targets use V OS and architecture names, such as `macos-arm64`, `macos-amd64`,
+`linux-amd64` and `windows-amd64`. VPM selects the host running the installer;
+this does not select assets for a cross-compilation target. Hosts without an entry
+retain the module's ordinary source/system-library behavior.
+
+`v install` verifies every selected file's SHA256 before replacing an installed
+module. `v update` refreshes assets with the source revision. Repeated installs
+verify and reuse intact local assets, and repair missing or corrupt files.
+Git updates restore the previous source revision if native asset preparation fails.
+Removing the manifest or the host's target removes the previous managed payload,
+including when restoring an older locked revision. Cached files are copied through
+fresh staging directories, without following symlinks in the checkout or copying
+unlisted cache entries.
+Downloads require HTTPS, with loopback HTTP permitted for local development.
+Paths must be relative and are confined to the module's `.vpm-binaries/` directory;
+VPM does not extract archives or execute package scripts. Use link flags such as
+`#flag @VMODROOT/.vpm-binaries/libexample.a` and keep public headers in the source
+repository. Include required license notices and use immutable release URLs.
+
+The pinned manifest participates in project lockfile content hashes. Its derived,
+host-specific `.vpm-binaries/` directory is reserved for VPM and excluded from those
+hashes and local Git status. Asset bytes are checked against the manifest separately.
+This supports native libraries and other binary inputs, not precompiled V compiler
+objects: V bindings still compile against the application's V version and GC mode.
+
 
 ## Semantic version ranges
 

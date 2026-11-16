@@ -1846,6 +1846,7 @@ fn test_json_migration_matches_formatter_fixtures() {
 		expected := os.read_file(expected_path) or { panic(err) }
 		actual := vfmt_file_with_json_migration(input)
 		assert actual == expected, os.file_name(input)
+		assert vfmt('json_fixed_point', actual) == actual, os.file_name(input)
 	}
 }
 
@@ -3096,4 +3097,23 @@ fn test_formatter_multiline_parenthesized_condition_with_comments() {
 		assert formatted.count('// ' + comment) == 1
 	}
 	assert vfmt('commented_parenthesized_condition_again', formatted) == formatted
+}
+
+// test_json_migration_expands_long_encode_calls checks that a migrated `json2.encode`
+// call too long for one line gets the named arguments one per line, as the formatter
+// gives any call, so formatting the result again changes nothing.
+fn test_json_migration_expands_long_encode_calls() {
+	source := "import json\n\nstruct Config {\n\tname string\n}\n\nfn main() {\n\tconfig_with_a_long_name := Config{\n\t\tname: 'x'\n\t}\n\tprintln(json.encode_pretty(config_with_a_long_name))\n}\n"
+	out := vfmt_with_json_migration('long_encode_pretty', source)
+	assert out.contains('json2.encode(config_with_a_long_name,\n\t\tprettify:       true\n'), out
+	assert vfmt('long_encode_pretty_twice', out) == out
+	// A multi-line struct literal argument: the width counts from the call's first line, as
+	// call_args_layout_source does, not from the literal's closing line.
+	literal := "import json\n\nstruct Response {\n\tstatus string\n}\n\nfn reply() string {\n\treturn json.encode_pretty(Response{\n\t\tstatus: 'ok'\n\t})\n}\n"
+	literal_out := vfmt_with_json_migration('long_encode_pretty_literal', literal)
+	assert vfmt('long_encode_pretty_literal_twice', literal_out) == literal_out, literal_out
+	// Without arguments the options alone push the call past 100 columns.
+	empty := 'import json\n\nfn reply() string {\n\treturn json.encode_pretty()\n}\n'
+	empty_out := vfmt_with_json_migration('encode_pretty_no_args', empty)
+	assert vfmt('encode_pretty_no_args_twice', empty_out) == empty_out, empty_out
 }

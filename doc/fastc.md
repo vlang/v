@@ -43,6 +43,7 @@ FastC uses all available CPU cores for generation by default. Native bridge prog
 six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
 concurrent TinyCC units for these programs, without reducing the C generation worker count.
 `VJOBS` overrides these defaults; `-no-parallel` selects one worker.
+Uncached macOS builds stream generated units directly to TinyCC as rendering finishes.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -54,7 +55,8 @@ with its source byte offset; FastC does not silently switch to the C backend.
 
 A project can make FastC its default with `backend: 'fastc'` in its `v.mod`. Builds, runs, and
 tests of files under that `v.mod` then use FastC without `-b fastc`; an explicit `-b c` selects
-the C backend again.
+the C backend again. Such a default build does not keep the generated C; `-b fastc` on the
+command line keeps it as `<output>.c`, and `-keepc` keeps it in the temporary folder.
 
 Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
@@ -94,6 +96,13 @@ and source positions.
 
 Ordinary programs support the following constructs:
 
+- Typed pointer comparisons with `nil` in either operand order, including values returned
+  from C calls. Assigning `nil` to a typed pointer still requires `unsafe`.
+- Method calls on pointer fields promoted through embedded structs, including calls inside
+  arithmetic and compound assignments.
+- Parallel declarations of option fields retain their payload types for guards and fallbacks.
+- Struct-valued result fallbacks support conditionals that return from both branches.
+  Nested multi-return guards keep their own result type when a branch returns.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for
@@ -103,6 +112,7 @@ Ordinary programs support the following constructs:
 - Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
   and `.len`.
   Lookup of an absent key returns the value type's zero value.
+  Call-backed map reads evaluate the receiver before the key and retain stored option values.
 - Array and map element reads in local initializers and function arguments.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 
@@ -145,13 +155,15 @@ parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
 Native function parameters can also name imported V types, such as `gg.Color`.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
+Callback aliases and loop callbacks do not affect option values captured by later closures.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
 Enum value iteration provides each value's `attrs`, and `$for attr in Enum.attributes` provides
 the `name`, `arg` and `has_arg` of the enum's own attributes.
 Member and operator continuations can follow comments on a new line.
 `$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
 Optional collection elements preserve their payload types. Array guards and `or` fallbacks
-handle both missing indices and stored `none` elements. Struct equality compares optional,
+handle both missing indices and stored `none` elements. Explicit unwrapping remains valid after
+terminal `none` guards. Struct equality compares optional,
 map, array, sum-type, and interface fields by value. Function values retain their signatures
 through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
 Project imports honor explicit `-path` search roots, including replacements for vlib modules.
@@ -222,6 +234,10 @@ Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings,
 Multiline values can continue with leading binary operators or a following `else` branch.
 Expression blocks run their scoped defers before yielding their saved value; branch-local
 cleanup stays inside its branch. `defer(fn)` remains active until the function exits.
+Selected `$if` expression branches can begin with local declarations or assignments before
+their final value, including declarations with an `or { return ... }` fallback.
+Branch-local optional values retain their payload type; final nested `$if` and postfix
+expressions retain their values after preceding statements.
 A leading `mut` in a parallel declaration makes every target mutable, matching the C backend.
 References to sum conversions such as `&Sum(variant)` retain both the sum tag and its payload
 after the creating function returns, including within narrowed match branches.

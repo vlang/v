@@ -24,6 +24,32 @@ fn test_escape_unescape() {
 	assert unescaped == original
 }
 
+fn test_query_unescape_rejects_malformed_escapes() {
+	for input in ['%', '%zz', '%4', '%A', '%2z', '%C3%A', '%%z', 'trailing%2', '%l', '%t', '%c',
+		'%c+'] {
+		if result := urllib.query_unescape(input) {
+			_ = result
+			assert false, 'query_unescape accepted malformed escape ${input}'
+		} else {
+			assert err.msg().contains('invalid URL escape')
+		}
+		if result := urllib.path_unescape(input) {
+			_ = result
+			assert false, 'path_unescape accepted malformed escape ${input}'
+		} else {
+			assert err.msg().contains('invalid URL escape')
+		}
+	}
+}
+
+fn test_query_unescape_keeps_valid_escape_semantics() {
+	assert urllib.query_unescape('%25')! == '%'
+	assert urllib.query_unescape('%2541')! == '%41'
+	assert urllib.query_unescape('%C3%A9')! == 'é'
+	assert urllib.query_unescape('a+b')! == 'a b'
+	assert urllib.path_unescape('a+b')! == 'a+b'
+}
+
 fn test_parse_query() {
 	q1 := urllib.parse_query('format=%22%25l%3A+%25c+%25t%22')!
 	q2 := urllib.parse_query('format="%l:+%c+%t"')!
@@ -31,6 +57,33 @@ fn test_parse_query() {
 	// dump(q2)
 	assert q1.get('format')? == '"%l: %c %t"'
 	assert q2.get('format')? == '"%l: %c %t"'
+}
+
+fn test_parse_query_preserves_literal_percent_markers() {
+	query := urllib.parse_query('%zz=%l+%c+%t&%l=%t&chain=%z%z&letter=%cZ&short=%c&valid=%cA')!
+	assert query.get('%zz')? == '%l %c %t'
+	assert query.get('%l')? == '%t'
+	assert query.get('chain')? == '%z%z'
+	assert query.get('letter')? == '%cZ'
+	assert query.get('short')? == '%c'
+	assert query.get('valid')? == urllib.query_unescape('%cA')!
+}
+
+fn test_parse_query_rejects_incomplete_hex_escapes() {
+	for input in ['%', '%4', '%A', '%4l', '%2z', '%C3%A', '%d', '%e', '%%z', '%%%z', '%%%%z', '%c%'] {
+		if values := urllib.parse_query('key=${input}') {
+			_ = values
+			assert false, 'parse_query accepted malformed escape ${input}'
+		} else {
+			assert err.msg().contains('failed parsing query string')
+		}
+	}
+	if values := urllib.parse_query('%C3%A=value') {
+		_ = values
+		assert false, 'parse_query accepted a malformed escape in the key'
+	} else {
+		assert err.msg().contains('failed parsing query string')
+	}
 }
 
 fn test_parse_query_orders() {

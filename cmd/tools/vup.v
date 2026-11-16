@@ -103,8 +103,9 @@ fn main() {
 	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
 	os.chdir(app.vroot)!
 	println('Updating V...')
+	previous_checkout_hash := version.githash(app.vroot) or { '' }
 	app.update_from_master()
-	if !app.update_tcc() {
+	tcc_updated := app.update_tcc() or {
 		app.show_current_v_version()
 		eprintln('Updating TCC *failed*.')
 		eprintln('Try running `${get_tcc_update_cmd()}` .')
@@ -116,12 +117,15 @@ fn main() {
 		if !os.exists(app.current_vexe_path()) { @VCURRENTHASH } else { '' }
 	}
 	current_hash_from_filesystem := version.githash(vroot) or { '' }
+	mut needs_cache_wipe := tcc_updated || previous_checkout_hash == ''
+		|| previous_checkout_hash != current_hash_from_filesystem
 	if !app.skip_current && !app.is_prod && !app.skip_v_self
 		&& current_v_hash != '' && current_hash_from_filesystem != ''
 		&& current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
 		current_vexe_path := app.current_vexe_path()
-		if !os.exists(current_vexe_path) {
+		missing_compiler := !os.exists(current_vexe_path)
+		if missing_compiler {
 			eprintln('`${current_vexe_path}` is missing, trying `${get_make_cmd_name()}` to restore it...')
 			if !app.make('') {
 				app.show_current_v_version()
@@ -130,7 +134,7 @@ fn main() {
 				exit(1)
 			}
 		}
-		app.finish_update()
+		app.finish_update(needs_cache_wipe || missing_compiler)
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -144,6 +148,7 @@ fn main() {
 			eprintln('Try running `${get_make_cmd_name()}` .')
 			exit(1)
 		}
+		needs_cache_wipe = true
 	} else {
 		println('> compiler sources did not change, not recompiling V.')
 	}
@@ -152,11 +157,12 @@ fn main() {
 		eprintln('`v up` failed. Run `cd ${os.quoted_path(app.vroot)} && ${v_upstream_pull_command()} && ${get_make_cmd_name()}` to finish updating V.')
 		exit(1)
 	}
-	app.finish_update()
+	app.finish_update(needs_cache_wipe)
 }
 
-// finish_update lets the Windows launcher clean caches after this executable exits.
-fn (app App) finish_update() {
+// finish_update reports the result and clears caches only when the update requires it.
+// On Windows, the launcher cleans caches after this executable exits.
+fn (app App) finish_update(needs_cache_wipe bool) {
 	// Private handshake; keep in sync with cmd/v/toolcache.v.
 	deferred_wipe_exit_code := 80
 	app.show_current_v_version()
@@ -165,12 +171,12 @@ fn (app App) finish_update() {
 	} $else {
 		false
 	}
-	if !defer_cleanup {
+	if needs_cache_wipe && !defer_cleanup {
 		app.wipe_cache()
 	}
 	app.report_skills()
 	app.report_fmt_hook()
-	if defer_cleanup {
+	if needs_cache_wipe && defer_cleanup {
 		exit(deferred_wipe_exit_code)
 	}
 }
@@ -344,10 +350,11 @@ fn v_upstream_pull_command() string {
 	return 'git pull --rebase ${v_upstream_url} ${v_upstream_branch}'
 }
 
-fn (app App) update_tcc() bool {
+// update_tcc returns whether TCC changed. Unknown revisions require cache cleanup too.
+fn (app App) update_tcc() !bool {
 	$if windows && arm64 {
 		app.vprintln('> Windows ARM64 uses MSVC; no bundled TCC update is needed.')
-		return true
+		return false
 	}
 	command := get_tcc_update_cmd()
 	if os.user_os() != 'windows' {
@@ -363,7 +370,7 @@ fn (app App) update_tcc() bool {
 	if result.exit_code != 0 {
 		eprintln('> `${command}` failed:')
 		eprintln(result.output)
-		return false
+		return error('failed to update TCC')
 	}
 	app.vprintln(result.output)
 	new_revision := tcc_revision()
@@ -374,7 +381,7 @@ fn (app App) update_tcc() bool {
 	} else {
 		println('> updated TCC to ${new_revision#[..7]}.')
 	}
-	return true
+	return old_revision == '' || new_revision == '' || old_revision != new_revision
 }
 
 // tcc_revision returns the commit of the bundled TCC checkout, or '' when there is

@@ -19,6 +19,9 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Configure apt mirrors and download retries
+      shell: bash
+      run: bash .github/workflows/disable_azure_mirror.sh
     - name: Select apt package profile
       id: package-profile
       shell: bash

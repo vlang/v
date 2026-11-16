@@ -47,6 +47,9 @@ pub mut:
 
 	stop_copying_limit   i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	// Cumulative decoded-byte limit across Content-Encoding layers.
+	// Nonpositive values disable cumulative accounting; per-stage array ceilings still apply.
+	max_total_decompressed_bytes i64 = default_max_total_decompressed_bytes
 }
 
 // new_request creates a new Request given the request `method`, `url_`, and
@@ -173,33 +176,34 @@ pub fn prepare(config FetchConfig) !Request {
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url ${config.url}') }
 	req := Request{
-		method:                   config.method
-		url:                      url
-		data:                     config.data
-		header:                   config.header
-		cookies:                  config.cookies
-		user_agent:               config.user_agent
-		user_ptr:                 config.user_ptr
-		verbose:                  config.verbose
-		validate:                 config.validate
-		read_timeout:             config.read_timeout
-		write_timeout:            config.write_timeout
-		verify:                   config.verify
-		cert:                     config.cert
-		proxy:                    config.proxy
-		cert_key:                 config.cert_key
-		in_memory_verification:   config.in_memory_verification
-		allow_redirect:           config.allow_redirect
-		max_retries:              config.max_retries
-		enable_http2:             config.enable_http2
-		enable_http3:             config.enable_http3
-		disable_connection_reuse: config.disable_connection_reuse
-		on_progress:              config.on_progress
-		on_progress_body:         config.on_progress_body
-		on_redirect:              config.on_redirect
-		on_finish:                config.on_finish
-		stop_copying_limit:       config.stop_copying_limit
-		stop_receiving_limit:     config.stop_receiving_limit
+		method:                       config.method
+		url:                          url
+		data:                         config.data
+		header:                       config.header
+		cookies:                      config.cookies
+		user_agent:                   config.user_agent
+		user_ptr:                     config.user_ptr
+		verbose:                      config.verbose
+		validate:                     config.validate
+		read_timeout:                 config.read_timeout
+		write_timeout:                config.write_timeout
+		verify:                       config.verify
+		cert:                         config.cert
+		proxy:                        config.proxy
+		cert_key:                     config.cert_key
+		in_memory_verification:       config.in_memory_verification
+		allow_redirect:               config.allow_redirect
+		max_retries:                  config.max_retries
+		enable_http2:                 config.enable_http2
+		enable_http3:                 config.enable_http3
+		disable_connection_reuse:     config.disable_connection_reuse
+		on_progress:                  config.on_progress
+		on_progress_body:             config.on_progress_body
+		on_redirect:                  config.on_redirect
+		on_finish:                    config.on_finish
+		stop_copying_limit:           config.stop_copying_limit
+		stop_receiving_limit:         config.stop_receiving_limit
+		max_total_decompressed_bytes: config.max_total_decompressed_bytes
 	}
 	return req
 }

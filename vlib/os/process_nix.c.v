@@ -2,6 +2,19 @@ module os
 
 fn C.setpgid(pid i32, pgid i32) i32
 
+// glibc hides pipe2 without GNU feature macros, even when unistd.h is included.
+// Set this for the entire Linux C translation unit, including C2V projects.
+#flag linux -D_GNU_SOURCE
+
+// Cross-generated C snapshots cannot link native objects. The pipe2 declaration
+// is hidden by libc feature macros in some such builds, so declare the C ABI here.
+// Both the descriptor array and the flags use 32-bit C ints.
+@[c_extern]
+fn C.pipe2(fds &i32, flags i32) i32
+
+@[c_extern]
+fn C.v_os_process_pipe_cloexec(fds &i32) i32
+
 // child_spawn_code_prefix is the `; code: N` separator that `IError.str()` adds.
 // It is a literal, so the forked child can copy it without allocating.
 const child_spawn_code_prefix = '; code: '
@@ -139,6 +152,25 @@ fn unix_child_report_errno(prefix string) {
 	unsafe { C.write(2, &buf[0], uint(n)) }
 }
 
+// unix_process_pipe keeps a later child from inheriting another Process's pipes.
+// Set CLOEXEC atomically on hosted Linux: pipe() followed by fcntl() leaves a
+// window in which another thread can fork/exec with the descriptors still open.
+// dup2() clears CLOEXEC on the intended child's standard streams below.
+fn unix_process_pipe(fds &i32) i32 {
+	$if linux {
+		$if !freestanding && !syscalls {
+			$if !vlibc ? {
+				$if cross ? {
+					return C.pipe2(fds, C.O_CLOEXEC)
+				} $else {
+					return C.v_os_process_pipe_cloexec(fds)
+				}
+			}
+		}
+	}
+	return C.pipe(fds)
+}
+
 fn (mut p Process) unix_spawn_process() int {
 	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
 	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
@@ -148,11 +180,11 @@ fn (mut p Process) unix_spawn_process() int {
 	if p.use_stdio_ctl {
 		mut dont_care := 0
 		if !p.has_stdin_path {
-			dont_care = C.pipe(&pipeset[0]) // pipe read end 0 <- 1 pipe write end
+			dont_care = unix_process_pipe(&pipeset[0]) // pipe read end 0 <- 1 pipe write end
 		}
-		dont_care = C.pipe(&pipeset[2]) // pipe read end 2 <- 3 pipe write end
+		dont_care = unix_process_pipe(&pipeset[2]) // pipe read end 2 <- 3 pipe write end
 		if !p.merge_stdio {
-			dont_care = C.pipe(&pipeset[4]) // pipe read end 4 <- 5 pipe write end
+			dont_care = unix_process_pipe(&pipeset[4]) // pipe read end 4 <- 5 pipe write end
 		}
 		_ = dont_care // using `_` directly on each above `pipe` fails to avoid C compiler generate an `-Wunused-result` warning
 	}

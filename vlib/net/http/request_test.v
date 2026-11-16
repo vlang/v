@@ -147,6 +147,12 @@ fn test_parse_form() {
   }') == {}
 }
 
+fn test_parse_form_skips_malformed_percent_escape() {
+	assert http.parse_form('bad=%C3%A&good=1') == {
+		'good': '1'
+	}
+}
+
 fn test_parse_multipart_form() {
 	boundary := '6844a625b1f0b299'
 	names := ['foo', 'fooz']

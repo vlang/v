@@ -116,6 +116,12 @@ fn test_br_prefix_elements_preserve_own_text_and_children() {
 	for name in ['br', 'br/'] {
 		assert Tag{ name: name }.text() == '\n'
 	}
+	legacy_text := Tag{
+		name:    'text'
+		content: 'raw text'
+	}
+	assert legacy_text.text() == 'raw text'
+	assert legacy_text.str() == 'raw text'
 	assert Tag{}.text() == ''
 }
 
@@ -146,4 +152,88 @@ fn test_search_by_empty_attribute_value_recurses_in_document_order() {
 	assert tag.get_tags_by_attribute('disabled').len == 2
 	assert tag.get_tags_by_attribute_value('disabled', '').len == 2
 	assert tag.get_tag_by_attribute('disabled')? == matches[0]
+}
+
+fn test_tag_walkers_handle_deep_caller_built_tree() {
+	small_leaf := &Tag{
+		name:    'leaf'
+		content: 'x'
+	}
+	small_root := &Tag{
+		name:     'root'
+		children: [small_leaf]
+	}
+	assert small_root.str() == '<root><leaf>x</leaf></root>'
+
+	depth := 150_000
+	mut root := &Tag{
+		name:    'root'
+		content: 'r'
+	}
+	mut current := root
+	for index in 0 .. depth {
+		mut child := &Tag{
+			name:    'node'
+			content: 'x'
+		}
+		if index == depth - 1 {
+			child.name = 'leaf'
+			child.attributes['id'] = 'target'
+			child.class_set.add('target')
+		}
+		current.children << child
+		current = child
+	}
+	assert root.get_tags('node').len == depth - 1
+	assert root.get_tag('leaf')?.name == 'leaf'
+	assert root.get_tag_by_attribute('id')?.name == 'leaf'
+	assert root.get_tags_by_attribute('id').len == 1
+	assert root.get_tag_by_attribute_value('id', 'target')?.name == 'leaf'
+	assert root.get_tags_by_attribute_value('id', 'target').len == 1
+	assert root.get_tag_by_class_name('target')?.name == 'leaf'
+	assert root.get_tags_by_class_name('target').len == 1
+	assert root.text().len == depth + 1
+	leaf := root.get_tag('leaf')?
+	assert leaf.str() == '<leaf id="target">x</leaf>'
+	serialized := root.str()
+	leaf_index := serialized.index('<leaf id="target">') or { -1 }
+	assert leaf_index >= 0, 'serialized length ${serialized.len}, tail: ${serialized[serialized.len - 100..]}'
+	assert serialized[leaf_index..].starts_with('<leaf id="target">x</leaf>')
+}
+
+fn test_tag_walkers_skip_cycles_and_revisit_shared_children() {
+	mut cyclic := &Tag{
+		name:    'cycle'
+		content: 'safe'
+	}
+	cyclic.children << cyclic
+	assert cyclic.get_tag('cycle') == none
+	assert cyclic.get_tags('cycle').len == 0
+	assert cyclic.text() == 'safe'
+	assert cyclic.str() == '<cycle>safe</cycle>'
+
+	shared := &Tag{
+		name:    'leaf'
+		content: 'x'
+	}
+	left := &Tag{
+		name:     'left'
+		content:  'l'
+		children: [shared]
+	}
+	right := &Tag{
+		name:     'right'
+		content:  'r'
+		children: [shared]
+	}
+	root := &Tag{
+		name:     'root'
+		children: [left, right]
+	}
+	shared_matches := root.get_tags('leaf')
+	assert shared_matches.len == 2
+	assert shared_matches[0].name == 'leaf'
+	assert shared_matches[1].name == 'leaf'
+	assert root.text() == 'lxrx'
+	assert root.str() == '<root><left>l<leaf>x</leaf></left><right>r<leaf>x</leaf></right></root>'
 }

@@ -112,6 +112,15 @@ fn test_parallel_c_generation_leaves_native_header_ownership_to_c_compiler() {
 	assert !user_safe
 }
 
+fn test_parallel_c_generation_keeps_stateless_poll_interface() {
+	helper := os.join_path(@VEXEROOT, 'vlib', 'os', 'fd_poll.h')
+	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\n'
+	header, safe := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+	assert safe
+	assert header.contains('#include "${helper}"')
+	assert !header.contains('v_os_fd_poll_revents')
+}
+
 fn test_parallel_c_generation_keeps_shipped_headers_opaque() {
 	helper := os.join_path(@VEXEROOT, 'vlib', 'v', 'flat', 'flat_payload_helpers.h')
 	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n#include <stdio.h>\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'

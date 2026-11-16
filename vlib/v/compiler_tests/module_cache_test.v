@@ -756,6 +756,26 @@ fn module_cache_artifact(cache_dir string, prefix string, extension string) stri
 	return ''
 }
 
+// module_cache_metric_paths reads the file list of a `-v` metric line. The report
+// shortens paths below HOME to `~`, which CI's temporary directories are.
+fn module_cache_metric_paths(line string) []string {
+	home := os.home_dir()
+	mut paths := []string{}
+	for item in line.all_after(':').trim_space().split(' ') {
+		if item.len == 0 {
+			continue
+		}
+		paths << if item == '~' {
+			home
+		} else if item.starts_with('~/') || item.starts_with('~\\') {
+			home + item[1..]
+		} else {
+			item
+		}
+	}
+	return paths
+}
+
 fn module_cache_configuration_dirs(cache_dir string) []string {
 	mut dirs := []string{}
 	for entry in os.ls(cache_dir) or { return dirs } {
@@ -1195,13 +1215,73 @@ fn main() {
 			first_hash = module_cache_object_hash(object)
 		} else {
 			header := module_cache_artifact(cache_dir, 'callbackprobe_', '.vh')
-			assert header.len > 0 && compiled.output.contains(header), compiled.output
+			assert header.len > 0 && compiled.output.contains(os.file_name(header)), compiled.output
 			assert !compiled.output.contains('Caching module callbackprobe...'), compiled.output
 			assert object == first_object
 			assert module_cache_object_hash(object) == first_hash
 		}
 		// Both the program-owned and cached-module-owned captured callbacks run.
 		assert run_module_cache_binary(output) == 'ok'
+	}
+}
+
+// An input reached through a symlink names the VROOT differently from cgen, which
+// works from real source paths. Paths written to cached headers then stopped
+// matching the shipped ABI helpers, so a warm build selected another libc preamble
+// and rebuilt every module from source.
+fn test_warm_build_through_symlinked_vroot_reuses_cached_modules() {
+	$if !linux && !macos {
+		return
+	}
+	v3_bin := module_cache_compiler()
+	project := create_module_cache_shipped_project('v3_symlinked_vroot_${os.getpid()}')
+	vroot := os.dir(os.dir(project))
+	link := vroot + '_link'
+	os.rm(link) or {}
+	os.symlink(vroot, link) or { panic(err) }
+	defer {
+		os.rm(link) or {}
+		os.rmdir_all(vroot) or {}
+	}
+	write_module_cache_file(os.dir(project), 'symlinkprobe/probe.v', 'module symlinkprobe
+
+pub fn value() int {
+	return 7
+}
+')
+	cache_dir := os.join_path(project, 'cache')
+	mut first_object := ''
+	for phase in ['cold', 'warm'] {
+		// A different program needs the module objects again. Rebuilding an
+		// identical one would reuse the whole program and never look them up.
+		source := os.join_path(link, 'vlib', 'cachefixture', '${phase}.v')
+		os.write_file(source, 'import symlinkprobe
+
+fn main() {
+	println(symlinkprobe.value() + ${if phase == 'cold' { 0 } else { 1 }})
+}
+') or {
+			panic(err)
+		}
+		output := os.join_path(project, phase)
+		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
+			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
+			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
+			source])
+		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
+		object := module_cache_artifact(cache_dir, 'symlinkprobe_', '.o')
+		assert object.len > 0, '${phase}: no cached module object'
+		if phase == 'cold' {
+			first_object = object
+		} else {
+			// A missed object restarts the build from source. That build can find
+			// the object again by its C, so only the restart reveals the miss.
+			assert compiled.output.count('=== V compiler benchmark ===') == 1, compiled.output
+			assert !compiled.output.contains('Caching module '), compiled.output
+			assert object == first_object
+		}
+		assert run_module_cache_binary(output) == if phase == 'cold' { '7' } else { '8' }
 	}
 }
 
@@ -1558,7 +1638,7 @@ fn main() {
 	vh_file_lines :=
 		metrics.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
 	assert vh_file_lines.len == 1, metrics.output
-	vh_files := vh_file_lines[0].all_after(':').trim_space().split(' ').filter(it.len > 0)
+	vh_files := module_cache_metric_paths(vh_file_lines[0])
 	assert vh_files.len == fields[3].int(), metrics.output
 	assert vh_files.all(it.ends_with('.vh')), metrics.output
 	mut expected_vh_lines := 0
@@ -1578,7 +1658,7 @@ fn main() {
 	v_file_lines :=
 		metrics.output.split_into_lines().filter(it.trim_space().starts_with('.v files:'))
 	assert v_file_lines.len == 1, metrics.output
-	v_files := v_file_lines[0].all_after(':').trim_space().split(' ')
+	v_files := module_cache_metric_paths(v_file_lines[0])
 	assert v_files.len == v_fields[3].int(), metrics.output
 	assert v_files == [main_file], metrics.output
 	mut expected_v_lines := 0

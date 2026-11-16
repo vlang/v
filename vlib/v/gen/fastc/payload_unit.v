@@ -13,8 +13,14 @@ pub struct FastcPayloadUnit {
 pub:
 	// units declares the payloads `extern` in the first unit too.
 	units FastcUnitLayout
-	// source defines every payload; it is empty when the build keeps them in place.
-	source string
+	// pieces define every payload; there are none when the build keeps them in place.
+	// They stay apart: the payloads of a large program are tens of megabytes.
+	pieces []string
+}
+
+// source returns the text of the payload unit.
+pub fn (unit &FastcPayloadUnit) source() string {
+	return unit.pieces.join('')
 }
 
 // fastc_split_payload_unit moves the embedded files out of the first unit of a split
@@ -46,7 +52,7 @@ pub fn fastc_split_payload_unit(pieces []string, units FastcUnitLayout, jobs int
 			...units
 			define_texts: define_texts
 		}
-		source: source.join('')
+		pieces: source
 	}
 }
 
@@ -59,14 +65,16 @@ pub:
 
 // fastc_payload_object returns the object of a payload unit, from the unit cache when
 // `use_cache` is set and the same TinyCC and arguments already compiled that text.
-// Without a payload there is no object.
-pub fn fastc_payload_object(tcc string, base_args []string, source string, build_dir string, use_cache bool) FastcPayloadObject {
-	if source == '' {
+// Without a payload there is no object. The text is joined only to compile it.
+pub fn fastc_payload_object(tcc string, base_args []string, pieces []string, build_dir string, use_cache bool) FastcPayloadObject {
+	if pieces.len == 0 {
 		return FastcPayloadObject{}
 	}
 	configuration := fastc_unit_cache_configuration(tcc, base_args)
-	key := fastc_unit_cache_hash(source, fastc_unit_cache_hash('fastc-payload-v1\x00${configuration}',
-		u64(0x9b05688c2b3e6c1f)))
+	mut key := fastc_unit_cache_hash('fastc-payload-v2\x00${configuration}', u64(0x9b05688c2b3e6c1f))
+	for piece in pieces {
+		key = fastc_unit_cache_hash(piece, key)
+	}
 	cache_dir := os.join_path_single(os.vtmp_dir(), 'v3_fastc_unit_cache')
 	cached := os.join_path_single(cache_dir, 'payload_${key.hex()}.o')
 	if use_cache && os.is_file(cached) && os.file_size(cached) > 0 {
@@ -76,7 +84,7 @@ pub fn fastc_payload_object(tcc string, base_args []string, source string, build
 	}
 	path := os.join_path_single(build_dir, 'payload.c')
 	object := os.join_path_single(build_dir, 'payload.o')
-	os.write_file(path, source) or {
+	os.write_file(path, pieces.join('')) or {
 		return FastcPayloadObject{
 			error: err.msg()
 		}

@@ -8,15 +8,8 @@ name: Notices CI
 # reports the rest, ready to be added to the list once they are fixed.
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**'
-      - 'cmd/v/**'
-      - 'cmd/tools/vtest*.v'
-      - 'cmd/tools/testing/**'
-      - '**/notices_ci.yml'
+  workflow_call:
+
   schedule:
     # Weekly: the sweep runs the modules that are not gated yet, so it takes
     # longer than a PR lane may.
@@ -24,7 +17,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: notices-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: notices-notices_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -49,15 +42,12 @@ jobs:
         include:
           - os: ubuntu-22.04
             cc: gcc
-            build: make
             v: ./v
-          - os: macos-14
+          - os: macos-15
             cc: clang
-            build: make
             v: ./v
           - os: windows-2025
             cc: gcc
-            build: .\makev.bat -gcc
             v: ./v.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -68,7 +58,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: ${{ matrix.build }}
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       # Any vlib change can add a notice to any module, and notices differ per
       # platform, so the list runs on every PR and on master, on all three
       # operating systems. A failure means the change added a notice to a
@@ -104,7 +96,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Sweep every vlib module under -N
         shell: bash
         run: |

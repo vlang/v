@@ -108,8 +108,11 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp) or { return err }
-			return err
+			// A failed attempt to remove a nonempty destination must not hide the
+			// error that actually stopped the copy.
+			copy_error := err
+			rmdir(dp) or {}
+			return copy_error
 		}
 	}
 }

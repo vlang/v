@@ -191,8 +191,9 @@ struct RequestHead {
 }
 
 // frame_request_length inspects the bytes received so far and returns:
-//   -1          -> incomplete; read more bytes
-//   total >= 0  -> a complete message occupying exactly `total` bytes is present
+// - `-1` -> incomplete; read more bytes
+// - `total >= 0` -> a complete message occupying exactly `total` bytes is present
+//
 // It errors only on genuinely malformed framing (map to 400). Body length comes
 // from Content-Length, or from chunked decoding (Transfer-Encoding), or is zero.
 pub fn frame_request_length(buf []u8) !int {

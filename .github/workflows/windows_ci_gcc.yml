@@ -1,19 +1,10 @@
 name: CI Windows GCC
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**.bat'
-      - '!**/windows_ci_gcc.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: windows-windows_ci_gcc-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -69,7 +60,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Check ECDSA with the optimized compiler
+        run: .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
@@ -183,17 +179,14 @@ jobs:
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v -silent -d pure_v_math -exclude '@vlib\math\*.c.v' test vlib/math/
-      - name: Self tests
-        id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
-        run: v -silent test-self vlib
       - name: Build option_test.c.v with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
         id: test_v_js
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v -o hi.js examples/js_hello_world.v && node hi.js
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
+        # The loop and interpolation need the compatibility compiler's full JS backend.
+        run: v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js
       - name: Build examples
         id: build_examples
         if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
@@ -380,6 +373,49 @@ jobs:
             '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
             ./gg_multiwindow_gcc.exe
 
+  # The serial compiler/tool checks take about 57 minutes before the full
+  # self-test suite starts. Keep that coverage separate from four test shards.
+  gcc-windows-self-tests:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      VTEST_FAIL_FAST: '1'
+      VJOBS: '4'
+      VFLAGS: -cc gcc
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '4'
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Build
+        run: |
+          .\makev.bat -gcc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe symlink
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Install dependencies
+        run: |
+          v retry -- v setup-freetype
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\.github\workflows\windows-install-sqlite.bat
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Self tests
+        run: v -silent test-self vlib
+
   gcc-multiwindow:
     runs-on: windows-2025
     timeout-minutes: 150
@@ -411,6 +447,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}

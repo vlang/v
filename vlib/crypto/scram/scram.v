@@ -266,7 +266,9 @@ pub fn new_credentials(mechanism Mechanism, password string) !Credentials {
 
 // encode renders the credentials in this one-line storage format:
 //
-//     <mechanism> "$" <iterations> ":" <salt> "$" <stored key> ":" <server key>
+// ```
+// <mechanism> "$" <iterations> ":" <salt> "$" <stored key> ":" <server key>
+// ```
 //
 // with the three binary fields in base64. For `.sha1`, this is the RFC 5803
 // `authPassword` scheme laid out in the syntax of RFC 3112 §2 and can

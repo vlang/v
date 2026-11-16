@@ -1,7 +1,6 @@
 module transform
 
 import os
-import v.flat
 import v.gen.c as cgen
 import v.parser
 import v.pref

@@ -58,11 +58,13 @@ pub fn realloc(ptr voidptr, new_size int) voidptr {
 	return profiler_context.allocator.realloc_fn(ptr, new_size, profiler_context.allocator.ctx)
 }
 
-// Scoped allocator helper - saves and restores the allocator
+// push_allocator is a scoped allocator helper, which saves and restores the allocator.
 // Usage:
-//   old := profiler.push_allocator(my_allocator)
-//   defer { profiler.pop_allocator(old) }
-//   // ... all allocations here use my_allocator
+// ```v ignore
+// old := profiler.push_allocator(my_allocator)
+// defer { profiler.pop_allocator(old) }
+// // ... all allocations here use my_allocator
+// ```
 pub fn push_allocator(a Allocator) Allocator {
 	old := profiler_context.allocator
 	profiler_context.allocator = a

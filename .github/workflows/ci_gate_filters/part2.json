@@ -1,0 +1,184 @@
+[
+  {
+    "workflow": "gen_vc_ci.yml",
+    "shard": "master",
+    "mode": "all",
+    "patterns": [],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "gg_regressions_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**",
+      "examples/gg/multiwindow.v",
+      "thirdparty/**",
+      "cmd/tools/builders/**.v",
+      "**/gg_regressions_ci.yml",
+      "!**.md",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "h2spec.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/net/http/h2_*.v",
+      "vlib/net/http/server*.v",
+      "vlib/net/http/http*.v",
+      "vlib/net/http/h2spec/**",
+      "vlib/net/mbedtls/**",
+      ".github/workflows/h2spec.yml",
+      ".github/workflows/ci_master.yml"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "linux_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/linux_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "macos_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/macos_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "macos_gitly_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "module_docs_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**.v",
+      "vlib/**.md",
+      "cmd/tools/vdoc/**.v",
+      "cmd/tools/vdoc/theme/**.js",
+      "cmd/tools/vdoc/theme/**.css",
+      "cmd/tools/vdoc/theme/**.svg",
+      "cmd/tools/vdoc/theme/**.html",
+      "**/module_docs_ci.yml"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "module_docs_lint.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "**/cmd/tools/vdoc/theme/**"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "more_extensive_but_slower_tests_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/more_extensive_but_slower_tests_ci.yml",
+      "examples/**",
+      "cmd/tools/**",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "multiwindow_musl_exclusion_smoke.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      ".github/workflows/multiwindow_musl_exclusion_smoke.yml",
+      "vlib/gg/multiwindow_render_runtime_contract_test.v",
+      "vlib/gg/multiwindow_services_contract_test.v",
+      "vlib/x/multiwindow/service_native_win32_no_flag_test.v",
+      "vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v",
+      "vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v",
+      "vlib/sokol/gfx/metal_private_hook_contract_test.v",
+      "cmd/tools/vtest-self.v"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "notices_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**",
+      "cmd/v/**",
+      "cmd/tools/vtest*.v",
+      "cmd/tools/testing/**",
+      "**/notices_ci.yml",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "openbsd_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "**",
+      "!**.md",
+      "!**.yml",
+      "!cmd/tools/**",
+      ".github/workflows/openbsd_ci.yml",
+      "ci/openbsd_ci.vsh",
+      "cmd/tools/builders/**.v",
+      "cmd/tools/vwatch_stdin_test.v",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "other_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/other_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v"
+    ],
+    "permissions": "contents: read"
+  }
+]

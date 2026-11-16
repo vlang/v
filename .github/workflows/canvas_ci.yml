@@ -1,14 +1,8 @@
 name: Canvas Linux CI
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'vlib/gg/canvas/**'
-      - 'vlib/sokol/**'
-      - 'thirdparty/sokol/**'
-      - 'examples/assets/fonts/**'
-      - '.github/workflows/canvas_ci.yml'
+  workflow_call:
+
   pull_request:
     paths:
       - 'vlib/gg/canvas/**'
@@ -18,7 +12,7 @@ on:
       - '.github/workflows/canvas_ci.yml'
 
 concurrency:
-  group: canvas-linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: canvas-linux-canvas_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -53,7 +47,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfreetype-dev libegl-dev libgl-dev libgl1-mesa-dri libx11-dev libxi-dev libxcursor-dev glslang-tools
       - name: Build V
-        run: make -j4
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Run canvas tests without a display server
         run: |
           canvas_vtmp="$(mktemp -d "${RUNNER_TEMP}/v-canvas.XXXXXX")"

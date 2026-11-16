@@ -5487,7 +5487,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				if node.kind == .c_fn_decl && node.is_mut {
 					trusted_c_fns[node.value] = true
 				}
-				if !calls_recover && node_calls_recover(a, tc, id) {
+				if !calls_recover && node_calls_recover(a, tc, id, false, false) {
 					calls_recover = true
 				}
 			}
@@ -6650,25 +6650,99 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 }
 
 // node_calls_recover reports whether the code below a node calls the builtin
-// `recover()`.
-fn node_calls_recover(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId) bool {
+// `recover()`, or with `values`, also uses it as a value, like `f := recover`.
+// With `values`, `shadowed` says that the function around the node binds the name
+// itself, as a parameter, a capture or a local.
+fn node_calls_recover(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, values bool, shadowed bool) bool {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return false
 	}
 	node := a.nodes[int(id)]
-	if node.kind == .call && node.children_count == 1 {
+	// What a name the checker leaves unresolved stands for. It leaves the body of a
+	// generic function unresolved and untyped.
+	unresolved := if shadowed { '' } else { 'recover' }
+	if values && node.kind == .ident && node.value == 'recover' {
+		// A typed name that is not the builtin's value is not the builtin.
+		untyped := tc.expr_type(id) == none
+		name := tc.resolved_fn_value_name(id) or { if untyped { unresolved } else { '' } }
+		if name in ['recover', 'builtin.recover'] {
+			return true
+		}
+	}
+	mut start := 0
+	mut bound := shadowed
+	if values && node.kind in [.fn_decl, .fn_literal] {
+		// A function sees the locals around it only through its captures, which come
+		// before its parameters.
+		bound = false
+		for start < node.children_count {
+			child := a.child_node(&node, start)
+			if child.kind !in [.ident, .param] {
+				break
+			}
+			bound = bound || child.value == 'recover'
+			start++
+		}
+	} else if node.kind == .call && node.children_count > 0 {
 		callee := a.child_node(&node, 0)
 		if callee.kind == .ident && callee.value == 'recover' {
 			// A module can have a function of that name of its own.
-			name := tc.resolved_call_name(id) or { 'recover' }
-			if name in ['recover', 'builtin.recover'] {
+			name := tc.resolved_call_name(id) or { unresolved }
+			if node.children_count == 1 && name in ['recover', 'builtin.recover'] {
 				return true
 			}
+			// The call itself was decided above; its callee is not a value use.
+			start = 1
 		}
 	}
-	for i in 0 .. node.children_count {
-		if node_calls_recover(a, tc, a.child(&node, i)) {
+	for i in start .. node.children_count {
+		child_id := a.child(&node, i)
+		child := a.node(child_id)
+		if values && node.kind in [.fn_decl, .fn_literal, .block] && binds_recover(a, child) {
+			// `recover := value` in a function body or a block: the value comes first, and the
+			// name is a local from the next statement on. Elsewhere, like an if-guard, which
+			// binds only in its guarded block, the name stays unbound and counts.
+			if node_calls_recover(a, tc, a.child(child, 1), values, bound) {
+				return true
+			}
+			bound = true
+		} else if node_calls_recover(a, tc, child_id, values, bound) {
 			return true
+		}
+	}
+	return false
+}
+
+// binds_recover reports whether a statement is `recover := value`.
+fn binds_recover(a &flat.FlatAst, node &flat.Node) bool {
+	if node.kind != .decl_assign || node.children_count != 2 {
+		return false
+	}
+	name := a.child_node(node, 0)
+	return name.kind == .ident && name.value == 'recover'
+}
+
+// declarations_use_recover reports whether a declaration of the program may use the
+// builtin `recover`, by calling it or using it as a value. A name the checker leaves
+// unresolved counts, unless the function around it binds that name itself, so the
+// answer errs toward panic frames. A build that keeps every concrete function
+// (`-no-skip-unused`) can run any of them, as an object file can export them.
+pub fn declarations_use_recover(a &flat.FlatAst, tc &types.TypeChecker) bool {
+	for node_idx in tc.top_level_idx {
+		file := a.nodes[node_idx]
+		if file.kind != .file {
+			continue
+		}
+		// Each declaration on its own, also inside a top-level block: a top-level
+		// `recover :=` of a script binds nothing for the declarations after it.
+		for i in 0 .. file.children_count {
+			mut decl_ids := []flat.NodeId{}
+			append_declaration_nodes(a, a.child(&file, i), mut decl_ids)
+			for id in decl_ids {
+				if node_calls_recover(a, tc, id, true, false) {
+					return true
+				}
+			}
 		}
 	}
 	return false

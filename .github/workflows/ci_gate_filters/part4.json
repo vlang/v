@@ -1,0 +1,230 @@
+[
+  {
+    "workflow": "toml_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**",
+      ".github/actions/setup-v/**",
+      "**/toml_ci.yml",
+      ".github/workflows/ci_master.yml",
+      "!**.md",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "tools_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "cmd/**",
+      "!cmd/tools/vpm/**",
+      "vlib/**",
+      "thirdparty/**",
+      "!**.md",
+      "**/tools_ci.yml",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "v_apps_and_modules_compile_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/v_apps_and_modules_compile_ci.yml",
+      "examples/**",
+      "cmd/tools/vrepl.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "vab_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "vlib/**",
+      "thirdparty/**",
+      "cmd/tools/builders/**.v",
+      "**/vab_ci.yml",
+      "!**.md",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "vinix_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/vinix_ci.yml",
+      "!.github/workflows/ci_master.yml",
+      "cmd/tools/vrepl.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "vpm_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "**/vpm_ci.yml",
+      "**/cmd/tools/vpm/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "vsl_and_vtl_compile_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/vsl_and_vtl_compile_ci.yml",
+      "examples/**",
+      "cmd/tools/vrepl.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "vup_works.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "**.vv",
+      "**.out",
+      "!**/vup_works.yml",
+      "!cmd/tools/vup.v",
+      "cmd/tools/vrepl.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "wasm_backend_ci.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "cmd/tools/builders/**.v",
+      "vlib/builtin/**.v",
+      "vlib/v/**.v",
+      "vlib/v/ast/**.v",
+      "vlib/v/scanner/**.v",
+      "vlib/v/parser/**.v",
+      "vlib/v/checker/**.v",
+      "vlib/v/gen/c/**.v",
+      "vlib/v/builder/**.v",
+      "vlib/v/cflag/**.v",
+      "vlib/v/live/**.v",
+      "vlib/v/util/**.v",
+      "vlib/v/markused/**.v",
+      "vlib/v/gen/wasm/**.v",
+      "vlib/v/gen/wasm/tests/**.v",
+      "vlib/v/gen/wasm/tests/**.vv",
+      "vlib/v/gen/wasm/tests_decompile/**.v",
+      "vlib/v/gen/wasm/tests_decompile/**.vv",
+      "**/wasm_backend_ci.yml",
+      ".github/workflows/ci_master.yml",
+      "!vlib/v/gen/fastc/**",
+      "!vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  },
+  {
+    "workflow": "websockets_ci.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**/websockets_ci.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "windows_ci_gcc.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**.bat",
+      "!**/windows_ci_gcc.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "windows_ci_msvc.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**.bat",
+      "!**/windows_ci_msvc.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "windows_ci_tcc.yml",
+    "shard": "master",
+    "mode": "paths-ignore",
+    "patterns": [
+      "**.md",
+      "**.yml",
+      "!**.bat",
+      "!**/windows_ci_tcc.yml",
+      "cmd/tools/**",
+      "!cmd/tools/builders/**.v",
+      "!cmd/tools/oldv.v",
+      "!cmd/tools/oldv_test.v",
+      "!cmd/tools/vdoc/**.v",
+      "!cmd/tools/vvet/**.v",
+      "vlib/v/gen/fastc/**",
+      "vlib/v/fastcdriver/**"
+    ],
+    "permissions": "contents: read"
+  },
+  {
+    "workflow": "workflow_lint.yml",
+    "shard": "master",
+    "mode": "paths",
+    "patterns": [
+      "**.yml"
+    ],
+    "permissions": "contents: read",
+    "inline": true
+  }
+]

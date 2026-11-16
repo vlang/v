@@ -1266,7 +1266,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
-	assert v3_effective_c_compiler_for_codegen('x64', 'cc', false, pref.host_target()) == 'tinyc'
+	assert v3_effective_c_compiler_for_codegen('amd64', 'cc', false, pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
@@ -1731,11 +1731,15 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
-fn test_x64_backend_aliases_are_normalized() {
-	for alias in ['amd64', 'x86_64', 'x86-64'] {
-		assert normalize_backend_name(alias) == 'x64'
+fn test_amd64_backend_aliases_are_normalized() {
+	for alias in ['x64', 'x86_64', 'x86-64'] {
+		assert normalize_backend_name(alias) == 'amd64'
 	}
-	assert normalize_backend_name('x64') == 'x64'
+	assert normalize_backend_name('amd64') == 'amd64'
+}
+
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
 }
 
 fn test_v3_fastc_default_linker_flags() {
@@ -2231,6 +2235,32 @@ fn test_v3_native_macos_selects_bundled_tcc_by_default() {
 		assert explicit.implicit_tcc == '', arch
 		assert !explicit.use_implicit_tcc_semantics, arch
 	}
+}
+
+fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:  'linux'
+			c_compiler: compiler
+			is_tcc:     compiler == 'tinyc'
+			is_o:       true
+		})
+		assert plan.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
+	}
+	for target_os in ['windows', 'macos', 'freebsd', 'openbsd'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ target_os: target_os })
+		assert '-D_GNU_SOURCE' !in plan.before_inputs
+	}
+	freestanding := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:       'linux'
+		is_freestanding: true
+	})
+	assert '-D_GNU_SOURCE' !in freestanding.before_inputs
+	provided := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:           'linux'
+		environment_c_flags: ['-D_GNU_SOURCE']
+	})
+	assert provided.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
 }
 
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {
