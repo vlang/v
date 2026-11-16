@@ -230,6 +230,10 @@ fn Element.decode(src []u8) !(Element, int) {
 // decode deserializes back bytes in src from offet `loc` into Element.
 // Basically, its tries to parse a Universal class Element when it is possible.
 fn Element.decode_with_rule(src []u8, loc int, rule EncodingRule) !(Element, int) {
+	return Element.decode_with_rule_at_depth(src, loc, rule, 0)!
+}
+
+fn Element.decode_with_rule_at_depth(src []u8, loc int, rule EncodingRule, nesting_depth int) !(Element, int) {
 	tag, length_pos := Tag.decode_with_rule(src, loc, rule)!
 	length, content_pos := Length.decode_with_rule(src, length_pos, rule)!
 	// get the bytes
@@ -242,7 +246,7 @@ fn Element.decode_with_rule(src []u8, loc int, rule EncodingRule) !(Element, int
 		unsafe { src[content_pos..content_pos + length] }
 	}
 	next_pos := content_pos + length
-	elem := parse_element(tag, bytes)!
+	elem := parse_element_with_depth(tag, bytes, nesting_depth)!
 
 	return elem, next_pos
 }

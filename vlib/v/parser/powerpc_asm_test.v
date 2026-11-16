@@ -59,7 +59,7 @@ fn test_powerpc_memory_only_barrier_is_architecture_independent() {
 }
 
 fn test_powerpc_empty_assembly_requires_c_backend() {
-	for backend in ['x64', 'arm64', 'wasm', 'js', 'eval', 'fastc'] {
+	for backend in ['amd64', 'arm64', 'wasm', 'js', 'eval', 'fastc'] {
 		arch := if backend == 'arm64' { 'arm64' } else { 'amd64' }
 		for body in ['', '; ; ; memory'] {
 			diagnostics := powerpc_asm_diagnostics('fn main() { asm ppc { ${body} } }', arch,

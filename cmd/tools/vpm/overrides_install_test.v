@@ -34,7 +34,9 @@ fn override_git(repo string, args []string) string {
 fn override_repo(directory string) !string {
 	repo := os.join_path(override_test_root, directory)
 	os.mkdir_all(repo)!
-	override_git(repo, ['init', '-b', 'main'])
+	override_git(repo, ['init', '-q'])
+	override_git(repo, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert override_git(repo, ['symbolic-ref', '--short', 'HEAD']) == 'main'
 	return repo
 }
 

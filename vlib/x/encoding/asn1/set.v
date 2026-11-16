@@ -63,11 +63,11 @@ pub fn (s Set) tag() Tag {
 // Note: Required for DER encoding.
 // The encodings of the component values of a set value shall appear in an order determined by their tags.
 // The canonical order for tags is based on the outermost tag of each type and is defined as follows:
-//   a) those elements or alternatives with universal class tags shall appear first, followed by those with
-//      application class tags, followed by those with context-specific tags, followed by those with private class
-//      tags;
-//   b) within each class of tags, the elements or alternatives shall appear in ascending order of their tag
-//      numbers.
+// - a) those elements or alternatives with universal class tags shall appear first, followed by those with
+//   application class tags, followed by those with context-specific tags, followed by those with private class
+//   tags;
+// - b) within each class of tags, the elements or alternatives shall appear in ascending order of their tag
+//   numbers.
 pub fn (s Set) payload() ![]u8 {
 	// workaround by working with the copy of Set, changing it to 'mut s Set` would encounter some issues
 	// ie, with messages `asn1.Set` incorrectly implements method `payload` of interface `asn1.Element`:
@@ -117,19 +117,22 @@ fn Set.decode_with_rule(bytes []u8, loc int, rule EncodingRule) !(Set, int) {
 		unsafe { bytes[content_pos..content_pos + length] }
 	}
 	next := content_pos + length
-	set := Set.from_bytes(payload)!
+	set := Set.from_bytes(payload, 1)!
 	return set, next
 }
 
 // bytes should seq.fields payload, not includes the tag
-fn Set.from_bytes(bytes []u8) !Set {
+fn Set.from_bytes(bytes []u8, nesting_depth int) !Set {
+	if nesting_depth > max_nesting_depth {
+		return error('exceeded the maximum nesting depth')
+	}
 	mut set := Set{}
 	if bytes.len == 0 {
 		return set
 	}
 	mut i := 0
 	for i < bytes.len {
-		el, pos := Element.decode_with_rule(bytes, i, .der)!
+		el, pos := Element.decode_with_rule_at_depth(bytes, i, .der, nesting_depth)!
 		i = pos
 		set.add_element(el)!
 	}

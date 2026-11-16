@@ -559,7 +559,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 						smartcast.typ
 					}
 				} else if local := g.locals[item.lit] {
-					if local.is_reference && local.smartcast_origin_type != 0 {
+					if local.is_heap_value {
+						fastc_trim_pointer_type(local.typ)
+					} else if local.is_reference && local.smartcast_origin_type != 0 {
 						g.narrowed_numeric_operand_type(tokens[start..end], local.typ)
 					} else {
 						local.typ
@@ -859,9 +861,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					}
 				}
 				function_key := g.function_key_for_call(tokens, call_name_index)
-				signature := if function_key in g.functions {
-					g.functions[function_key]
-				} else {
+				signature := g.functions[function_key] or {
 					g.mono_functions[function_key] or { FastcFunctionSignature{} }
 				}
 				if signature.return_type != 0 {
@@ -1177,6 +1177,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					&& g.is_reference_local_base(tokens[start..open_index], base_type) {
 					// Slicing a `mut` string local copies bytes of the string it refers to.
 					return flat.source_type_syntax(base_type).c_pointer_base()
+				}
+				if flat.source_type_query(base_layout_id).has(.c_array_prefix) {
+					// Slicing an array behind a pointer (a `mut` parameter) yields an array value.
+					return fastc_trim_pointer_type(base_type)
 				}
 				return base_type
 			}
@@ -1652,6 +1656,9 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 
 						current_type = fastc_array_c_type_id(fastc_normalize_inferred_type(element))
 					}
+				} else if flat.source_type_query(current_layout_id).has(.c_array_prefix) {
+					// Slicing an array behind a pointer yields an array value.
+					current_type = fastc_trim_pointer_type(current_type)
 				}
 			} else if current_layout_id == flat.source_type_string || g.is_string_layout(current_type) {
 				current_type = g.indexed_string_type(current_type, tokens[start..index])

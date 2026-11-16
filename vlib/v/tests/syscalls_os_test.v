@@ -119,6 +119,10 @@ fn main() {
 		mut args := [vexe, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
 		if mode != 'hosted' {
 			args << '-${mode}'
+			// TinyCC has inline assembly only for x86, and retries are disabled above.
+			$if arm64 {
+				args << ['-cc', 'cc']
+			}
 		}
 		args << ['-o', exe, source]
 		build := os.exec(args)

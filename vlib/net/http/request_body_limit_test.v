@@ -54,6 +54,22 @@ fn test_public_parse_request_has_a_safe_default_limit() {
 	}
 }
 
+fn test_request_head_str_enforces_total_size_limit() {
+	prefix := 'GET / HTTP/1.1\r\nX: '
+	suffix := '\r\n\r\n'
+	value_len := default_max_http1_request_head_size - prefix.len - suffix.len
+	within_limit := prefix + 'a'.repeat(value_len) + suffix
+	assert within_limit.len == default_max_http1_request_head_size
+	parse_request_head_str(within_limit) or { panic('accepted boundary request head: ${err}') }
+
+	over_limit := prefix + 'a'.repeat(value_len + 1) + suffix
+	if _ := parse_request_head_str(over_limit) {
+		assert false, 'accepted request head above the configured size limit'
+	} else {
+		assert err is RequestHeaderLimitError
+	}
+}
+
 fn test_request_body_limit_rejects_invalid_content_lengths() {
 	invalid_values := ['', '-1', '+1', '1x', '${max_int}0']
 	for value in invalid_values {

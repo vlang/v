@@ -28,6 +28,14 @@ fn main() {
 }
 ```
 
+## Parser resource limits
+
+Parsing rejects documents deeper than 256 elements or when aggregate `Tag.content` bytes rebuilt by
+normalization exceed `min(64 MiB, 256 × input bytes)`. Content that needs no normalization is not
+counted. `parse_checked` and `parse_file_checked` return errors for these limits. Legacy `parse` and
+`parse_file` return an empty DOM, and `dom.parse_error()` exposes the reason.
+`Parser.parse_html_checked` provides the same error path for direct parser use.
+
 More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html_test.v)
 
 Comments are omitted from the parsed tree. Text before and after comments remains in order,

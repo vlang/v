@@ -52,14 +52,15 @@ pub fn parse_text(text string) !Doc {
 		// `yaml.Any` tree directly — no second-pass `from_json2` rebuild.
 		// Falls through to the block parser if the body is anything other
 		// than a clean flow document.
-		if val := parse_flow_value(trimmed) {
+		if val := parse_flow_value(trimmed, 0) {
 			return Doc{
 				root: val
 			}
 		}
 	}
 	mut parser := Parser{
-		lines: normalized.split('\n')
+		lines:      normalized.split('\n')
+		source_len: u64(text.len)
 	}
 	return Doc{
 		root: parser.parse()!
@@ -85,7 +86,13 @@ pub fn encode[T](value T) string {
 	// text is read back with the YAML parser. Routing it through `json2.Any`
 	// instead would turn every number into an `f64`, which writes integers as
 	// `8080.0` and drops precision for values above 2^53.
-	doc := parse_text(json2.encode(value)) or { return '' }
+	json := json2.encode(value)
+	doc := parse_text(json) or {
+		if err.msg() == 'yaml: exceeded the maximum nesting depth' {
+			return json
+		}
+		return ''
+	}
 	return doc.to_yaml()
 }
 

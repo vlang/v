@@ -2,18 +2,10 @@ name: Database CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/db_ci.yml'
-      - 'examples/**'
-      - 'doc/**'
+  workflow_call:
 
 concurrency:
-  group: db-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: db-db_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -42,12 +34,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install mysql client headers
         run: |
           .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y libmariadb-dev
+          # The image's primary HTTP mirror stalled and exhausted the 900s retry budget.
+          # Use its HTTPS fallback directly and avoid fetching unused translations.
+          sudo sed -i 's@http://archive.ubuntu.com/@https://archive.ubuntu.com/@g' /etc/apt/apt-mirrors.txt
+          ./v retry -- sudo apt-get -o Acquire::Languages=none -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+          ./v retry -- sudo apt-get install --quiet -y libmariadb-dev
       - name: Run mysql driver tests
         run: ./v -d network -d started_mysqld -silent test vlib/db/mysql/
 
@@ -72,7 +67,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install postgres client headers
         run: |
           .github/workflows/disable_azure_mirror.sh
@@ -99,7 +94,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
       - name: Install ODBC dependencies
         run: |
           .github/workflows/disable_azure_mirror.sh

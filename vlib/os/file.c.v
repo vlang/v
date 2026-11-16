@@ -951,9 +951,10 @@ pub enum SeekMode {
 
 // seek moves the file cursor (if any) associated with a file to a new location, offset `pos` bytes from the origin.
 // The origin is dependent on the `mode` and can be:
-//   .start   -> the origin is the start of the file
-//   .current -> the current position/cursor in the file
-//   .end     -> the end of the file
+// - `.start` -> the origin is the start of the file
+// - `.current` -> the current position/cursor in the file
+// - `.end` -> the end of the file
+//
 // If the file is not seek-able, or an error occurs, the error will
 // be returned to the caller.
 // A successful call to the fseek() function clears the end-of-file

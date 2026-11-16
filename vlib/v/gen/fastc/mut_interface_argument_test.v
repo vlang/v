@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // `f(mut value)` for a `mut x Interface` parameter hands the callee the caller's value, so
 // what the callee changes through the interface is seen by the caller.
 fn test_fastc_mut_argument_to_a_mut_interface_parameter_is_the_value_itself() {

@@ -41,10 +41,11 @@ fn test_add_automatic_execution_retry() {
 }
 
 fn test_automatic_test_jobs_respects_memory_and_cpu_limits() {
-	assert automatic_test_jobs(18, u64(128) * 1024 * 1024 * 1024, 0) == 4
-	assert automatic_test_jobs(18, u64(32) * 1024 * 1024 * 1024, 0) == 4
-	assert automatic_test_jobs(18, u64(16) * 1024 * 1024 * 1024, 0) == 2
-	assert automatic_test_jobs(18, u64(8) * 1024 * 1024 * 1024, 0) == 1
+	assert automatic_test_jobs(18, u64(128) * 1024 * 1024 * 1024, 0) == 18
+	assert automatic_test_jobs(18, u64(32) * 1024 * 1024 * 1024, 0) == 16
+	assert automatic_test_jobs(10, u64(16) * 1024 * 1024 * 1024, 0) == 8
+	assert automatic_test_jobs(18, u64(8) * 1024 * 1024 * 1024, 0) == 4
+	assert automatic_test_jobs(18, u64(3) * 1024 * 1024 * 1024, 0) == 1
 	assert automatic_test_jobs(2, u64(128) * 1024 * 1024 * 1024, 0) == 2
 	assert automatic_test_jobs(0, 0, 0) == 1
 }
@@ -56,7 +57,7 @@ fn test_automatic_test_jobs_preserves_vjobs_override() {
 fn test_noncompiling_test_sessions_use_cpu_jobs() {
 	assert test_session_jobs(false, 18, u64(8) * 1024 * 1024 * 1024, 0) == 18
 	assert test_session_jobs(false, 7, u64(8) * 1024 * 1024 * 1024, 7) == 7
-	assert test_session_jobs(true, 18, u64(8) * 1024 * 1024 * 1024, 0) == 1
+	assert test_session_jobs(true, 18, u64(8) * 1024 * 1024 * 1024, 0) == 4
 }
 
 fn test_decode_mountinfo_path() {
@@ -153,6 +154,48 @@ fn test_effective_test_memory_uses_lower_cgroup_limit() {
 	cgroup_memory_limit := u64(8) * 1024 * 1024 * 1024
 	assert effective_test_memory(physical_memory, cgroup_memory_limit) == cgroup_memory_limit
 	assert effective_test_memory(cgroup_memory_limit, physical_memory) == cgroup_memory_limit
+}
+
+fn test_cgroup_v2_cpu_limit_uses_lowest_quota_in_parents() {
+	mount_point := os.join_path(os.vtmp_dir(), 'testing_cgroup_cpu_limit_${os.getpid()}')
+	defer {
+		os.rmdir_all(mount_point) or {}
+	}
+	os.mkdir_all(os.join_path(mount_point, 'container', 'work'))!
+	os.write_file(os.join_path(mount_point, 'container', 'cpu.max'), '150000 100000\n')!
+	os.write_file(os.join_path(mount_point, 'container', 'work', 'cpu.max'), 'max 100000\n')!
+	cgroups := '0::/container/work'
+	mountinfo := '36 25 0:32 / ${mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw'
+	// 1.5 CPUs of quota allow 2 workers.
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo)! == 2
+	os.write_file(os.join_path(mount_point, 'container', 'cpu.max'), 'max 100000\n')!
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo) or { -1 } == -1
+}
+
+fn test_cgroup_v1_cpu_limit_reads_cfs_quota() {
+	mount_point := os.join_path(os.vtmp_dir(), 'testing_cgroup_cpu_limit_${os.getpid()}')
+	defer {
+		os.rmdir_all(mount_point) or {}
+	}
+	container := os.join_path(mount_point, 'docker', 'container')
+	os.mkdir_all(container)!
+	os.write_file(os.join_path(container, 'cpu.cfs_quota_us'), '200000\n')!
+	os.write_file(os.join_path(container, 'cpu.cfs_period_us'), '100000\n')!
+	cgroups := '4:cpu,cpuacct:/docker/container\n5:memory:/docker/container'
+	mountinfo := '29 23 0:26 / ${mount_point} rw,relatime - cgroup cgroup rw,cpu,cpuacct'
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo)! == 2
+	// The memory controller is not mounted there, so it has no memory limit.
+	assert cgroup_memory_limit_from_contents(cgroups, mountinfo) or { u64(0) } == 0
+	os.write_file(os.join_path(container, 'cpu.cfs_quota_us'), '-1\n')!
+	assert cgroup_cpu_limit_from_contents(cgroups, mountinfo) or { -1 } == -1
+}
+
+fn test_effective_test_cpus_uses_lower_cgroup_limit() {
+	assert effective_test_cpus(64, 2) == 2
+	assert effective_test_cpus(4, 8) == 4
+	assert effective_test_cpus(10, 0) == 10
+	// A 2-CPU container on a 64-CPU host with 64 GiB runs 2 workers, not 32.
+	assert automatic_test_jobs(effective_test_cpus(64, 2), u64(64) * 1024 * 1024 * 1024, 0) == 2
 }
 
 fn test_os_suffix_selection_preserves_android_outside_termux() {

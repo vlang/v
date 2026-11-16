@@ -146,17 +146,18 @@ mut:
 pub:
 	config SSLConnectConfig
 pub mut:
-	server_fd    C.mbedtls_net_context
-	ssl          C.mbedtls_ssl_context
-	conf         C.mbedtls_ssl_config
-	certs        &SSLCerts = unsafe { nil }
-	ctr_drbg     C.mbedtls_ctr_drbg_context
-	entropy      C.mbedtls_entropy_context
-	handle       int
-	duration     time.Duration
-	opened       bool
-	ip           string
-	read_timeout time.Duration
+	server_fd     C.mbedtls_net_context
+	ssl           C.mbedtls_ssl_context
+	conf          C.mbedtls_ssl_config
+	certs         &SSLCerts = unsafe { nil }
+	ctr_drbg      C.mbedtls_ctr_drbg_context
+	entropy       C.mbedtls_entropy_context
+	handle        int
+	duration      time.Duration
+	opened        bool
+	ip            string
+	read_timeout  time.Duration
+	read_deadline time.Time
 
 	owns_socket bool
 	// alpn_list is a NUL-terminated C array of pointers to the protocol
@@ -551,6 +552,9 @@ fn ssl_read_timeout_ms(timeout time.Duration) u32 {
 		return 0
 	}
 	timeout_ms := timeout.milliseconds()
+	if timeout_ms <= 0 {
+		return 1
+	}
 	if timeout_ms > i64(max_u32) {
 		return max_u32
 	}
@@ -569,6 +573,17 @@ fn ssl_timeout_deadline(timeout time.Duration) time.Time {
 		return time.unix(0)
 	}
 	return time.now().add(timeout)
+}
+
+fn ssl_read_deadline(timeout time.Duration, read_deadline time.Time) time.Time {
+	mut deadline := ssl_timeout_deadline(timeout)
+	if read_deadline.is_zero() || read_deadline == time.unix(0) {
+		return deadline
+	}
+	if deadline.unix() == 0 || read_deadline < deadline {
+		deadline = read_deadline
+	}
+	return deadline
 }
 
 fn ssl_remaining_timeout(deadline time.Time) time.Duration {
@@ -592,6 +607,11 @@ pub fn (mut s SSLConn) set_read_timeout(timeout time.Duration) {
 	s.read_timeout = timeout
 	s.duration = timeout
 	C.mbedtls_ssl_conf_read_timeout(&s.conf, ssl_read_timeout_ms(timeout))
+}
+
+// set_read_deadline sets an absolute deadline for subsequent reads.
+pub fn (mut s SSLConn) set_read_deadline(deadline time.Time) {
+	s.read_deadline = deadline
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.
@@ -934,9 +954,24 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := ssl_timeout_deadline(s.duration)
+	deadline := ssl_read_deadline(s.duration, s.read_deadline)
+	// The deadline uses the remaining time for a native read, so restore the
+	// configured timeout on every exit (success, EOF, error, or timeout).
+	defer {
+		C.mbedtls_ssl_conf_read_timeout(&s.conf, ssl_read_timeout_ms(s.duration))
+	}
 	// s.wait_for_read(deadline - time.now())!
 	for {
+		if deadline.unix() != 0 {
+			remaining := deadline - time.now()
+			if remaining <= 0 {
+				return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, read deadline exceeded',
+					C.MBEDTLS_ERR_SSL_TIMEOUT)
+			}
+			C.mbedtls_ssl_conf_read_timeout(&s.conf, ssl_read_timeout_ms(remaining))
+		} else {
+			C.mbedtls_ssl_conf_read_timeout(&s.conf, ssl_read_timeout_ms(s.duration))
+		}
 		res = C.mbedtls_ssl_read(&s.ssl, buf_ptr, len)
 		if res > 0 {
 			return res
@@ -1070,6 +1105,14 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
+	}
+	if handle < 0 {
+		return error_with_code('net.mbedtls: invalid socket handle for select', C.EINVAL)
+	}
+	$if !windows {
+		if handle >= C.FD_SETSIZE {
+			return error_with_code('net.mbedtls: socket handle exceeds FD_SETSIZE', C.EINVAL)
+		}
 	}
 	set := C.fd_set{}
 

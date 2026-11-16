@@ -4,11 +4,19 @@
 module http
 
 import compress.brotli
+import compress.deflate
 import compress.gzip
 import compress.zlib
 import net.http.chunked
 import strconv
 import strings
+
+pub const default_max_total_decompressed_bytes = i64(16 * 1024 * 1024)
+
+const max_content_encoding_layers = 8
+
+const response_decompression_limit_error_code = -20016
+const response_content_encoding_layer_limit_error_code = -20017
 
 // Response represents the result of the request
 pub struct Response {
@@ -84,7 +92,52 @@ struct ResponseParseOptions {
 	raw_body bool
 	// headers_only parses only the status line and headers. The caller already
 	// holds the decoded body, so chunk framing and content encoding are skipped.
-	headers_only bool
+	headers_only                 bool
+	max_total_decompressed_bytes i64 = default_max_total_decompressed_bytes
+	stop_copying_limit           i64 = -1
+	// A transport stopped before receiving the complete encoded body.
+	input_truncated bool
+}
+
+// ResponseDecompressionLimitError is returned when decoded output exceeds its configured or
+// representational limit.
+pub struct ResponseDecompressionLimitError {
+	Error
+pub:
+	max_total_decompressed_bytes i64
+	// max_stage_decompressed_bytes is nonzero when a stage's array representation
+	// ceiling, rather than the configured total budget, stopped decoding.
+	max_stage_decompressed_bytes i64
+}
+
+// msg returns which decoded-output limit was exceeded.
+pub fn (err ResponseDecompressionLimitError) msg() string {
+	if err.max_stage_decompressed_bytes > 0 {
+		return 'http: decoded response exceeded the ${err.max_stage_decompressed_bytes}-byte per-stage representation limit'
+	}
+	return 'http: decoded response exceeded the ${err.max_total_decompressed_bytes}-byte limit'
+}
+
+// code marks a deterministic decompression limit error as non-retryable.
+pub fn (_ ResponseDecompressionLimitError) code() int {
+	return response_decompression_limit_error_code
+}
+
+// ResponseContentEncodingLayerLimitError is returned when a response has too many encoding layers.
+pub struct ResponseContentEncodingLayerLimitError {
+	Error
+pub:
+	max_layers int
+}
+
+// msg returns the maximum number of accepted Content-Encoding layers.
+pub fn (err ResponseContentEncodingLayerLimitError) msg() string {
+	return 'http: response has more than ${err.max_layers} Content-Encoding layers'
+}
+
+// code marks a deterministic encoding-layer limit error as non-retryable.
+pub fn (_ ResponseContentEncodingLayerLimitError) code() int {
+	return response_content_encoding_layer_limit_error_code
 }
 
 // parse_response_with_options leaves content encodings intact for a reverse proxy.
@@ -98,7 +151,11 @@ fn parse_response_with_options(resp string, opts ResponseParseOptions) !Response
 		body = chunked.decode(body)!
 	}
 	if !opts.raw_body && !opts.headers_only {
-		body = decode_response_body(body, header.get(.content_encoding) or { '' })
+		body = decode_response_body(body, header.get(.content_encoding) or { '' },
+			opts.max_total_decompressed_bytes, opts.stop_copying_limit, opts.input_truncated)!
+	}
+	if opts.stop_copying_limit > 0 && body.len > opts.stop_copying_limit {
+		body = body[..int(opts.stop_copying_limit)]
 	}
 	return Response{
 		http_version: version
@@ -129,36 +186,200 @@ fn parse_header_tokens(header_value string) []string {
 	return tokens
 }
 
-fn decode_response_body(body string, content_encoding string) string {
+struct ResponseDecompressionSink {
+mut:
+	data           []u8
+	max_output_len int
+	max_stored_len int
+	output_len     int
+	over_limit     bool
+}
+
+fn collect_response_decompressed_chunk(chunk []u8, userdata voidptr) int {
+	mut sink := unsafe { &ResponseDecompressionSink(userdata) }
+	remaining := sink.max_output_len - sink.output_len
+	if chunk.len > remaining {
+		store_remaining := sink.max_stored_len - sink.data.len
+		store_len := if store_remaining < remaining { store_remaining } else { remaining }
+		if store_len > 0 {
+			sink.data << chunk[..store_len]
+		}
+		sink.over_limit = true
+		return 0
+	}
+	sink.output_len += chunk.len
+	store_remaining := sink.max_stored_len - sink.data.len
+	store_len := if store_remaining < chunk.len { store_remaining } else { chunk.len }
+	if store_len > 0 {
+		sink.data << chunk[..store_len]
+	}
+	return chunk.len
+}
+
+struct ResponseDecompressionStageBudget {
+	output_limit_bytes i64
+	total_budget       bool
+}
+
+fn response_decompression_stage_budget(max_total_decompressed_bytes i64, total_decompressed_bytes i64,
+	max_stage_output_bytes i64) ResponseDecompressionStageBudget {
+	if max_total_decompressed_bytes <= 0 {
+		return ResponseDecompressionStageBudget{
+			output_limit_bytes: max_stage_output_bytes
+		}
+	}
+	remaining_budget := max_total_decompressed_bytes - total_decompressed_bytes
+	if remaining_budget <= max_stage_output_bytes {
+		return ResponseDecompressionStageBudget{
+			output_limit_bytes: remaining_budget
+			total_budget:       true
+		}
+	}
+	return ResponseDecompressionStageBudget{
+		output_limit_bytes: max_stage_output_bytes
+	}
+}
+
+fn response_decompression_stage_output_limit(encoding string, max_array_len i64,
+	deflate_output_limit i64) i64 {
+	if encoding != 'br' {
+		return deflate_output_limit
+	}
+	if max_array_len == max_i64 {
+		return max_array_len / 2 + 1
+	}
+	return max_array_len - 1
+}
+
+fn response_decompression_limit_error(total_limit i64, stage_limit i64) ResponseDecompressionLimitError {
+	return ResponseDecompressionLimitError{
+		max_total_decompressed_bytes: total_limit
+		max_stage_decompressed_bytes: stage_limit
+	}
+}
+
+fn decode_response_body(body string, content_encoding string, max_total_decompressed_bytes i64,
+	stop_copying_limit i64, input_truncated bool) !string {
 	if body.len == 0 {
+		return body
+	}
+	if input_truncated {
 		return body
 	}
 	encodings := parse_header_tokens(content_encoding)
 	if encodings.len == 0 {
 		return body
 	}
-	mut decoded := body.bytes()
-	for i := encodings.len - 1; i >= 0; i-- {
-		encoding := encodings[i]
-		decoded = match encoding {
-			'gzip', 'x-gzip' {
-				gzip.decompress(decoded) or { return body }
-			}
-			'br' {
-				brotli.decompress(decoded) or { return body }
-			}
-			'deflate' {
-				zlib.decompress(decoded) or { return body }
-			}
-			'identity' {
-				decoded
-			}
-			else {
-				return body
-			}
+	if encodings.len > max_content_encoding_layers {
+		return ResponseContentEncodingLayerLimitError{
+			max_layers: max_content_encoding_layers
 		}
 	}
-	return decoded.bytestr()
+	for encoding in encodings {
+		if encoding != 'identity' && encoding !in ['gzip', 'x-gzip', 'br', 'deflate'] {
+			return body
+		}
+	}
+	mut final_encoding_index := -1
+	for i, encoding in encodings {
+		if encoding != 'identity' {
+			final_encoding_index = i
+			break
+		}
+	}
+	mut decoded := body.bytes()
+	mut total_decompressed_bytes := i64(0)
+	deflate_output_limit := i64(deflate.max_safe_inflate_output_len())
+	callback := deflate.ChunkCallback(collect_response_decompressed_chunk)
+	for i := encodings.len - 1; i >= 0; i-- {
+		encoding := encodings[i]
+		if encoding == 'identity' {
+			continue
+		}
+		max_stage_output_bytes := response_decompression_stage_output_limit(encoding,
+			i64(max_int), deflate_output_limit)
+		stage_budget := response_decompression_stage_budget(max_total_decompressed_bytes,
+			total_decompressed_bytes, max_stage_output_bytes)
+		if stage_budget.output_limit_bytes < 0 {
+			unsafe { decoded.free() }
+			return response_decompression_limit_error(max_total_decompressed_bytes, 0)
+		}
+		stage_limit := int(stage_budget.output_limit_bytes)
+		mut output_limit := stage_limit
+		mut stored_limit := stage_limit
+		mut preview_limit := false
+		if i == final_encoding_index && stop_copying_limit > 0
+			&& stop_copying_limit < stage_budget.output_limit_bytes {
+			output_limit = int(stop_copying_limit)
+			stored_limit = int(stop_copying_limit)
+			preview_limit = true
+		}
+		mut sink := ResponseDecompressionSink{
+			max_output_len: output_limit
+			max_stored_len: stored_limit
+		}
+		mut decode_failed := false
+		match encoding {
+			'gzip', 'x-gzip' {
+				gzip.decompress_with_callback(decoded, callback, voidptr(&sink)) or {
+					decode_failed = true
+					0
+				}
+			}
+			'br' {
+				brotli.decompress_with_callback(decoded, callback, voidptr(&sink)) or {
+					decode_failed = true
+					0
+				}
+			}
+			'deflate' {
+				zlib.decompress_with_callback(decoded, callback, voidptr(&sink)) or {
+					decode_failed = true
+					0
+				}
+			}
+			else {
+				decode_failed = true
+			}
+		}
+		if sink.over_limit {
+			if preview_limit {
+				preview := sink.data.bytestr()
+				unsafe {
+					decoded.free()
+					sink.data.free()
+				}
+				return preview
+			}
+			unsafe {
+				decoded.free()
+				sink.data.free()
+			}
+			stage_error_limit := if stage_budget.total_budget {
+				i64(0)
+			} else {
+				stage_budget.output_limit_bytes
+			}
+			return response_decompression_limit_error(max_total_decompressed_bytes,
+				stage_error_limit)
+		}
+		if decode_failed {
+			unsafe {
+				decoded.free()
+				sink.data.free()
+			}
+			return body
+		}
+		if max_total_decompressed_bytes > 0 {
+			total_decompressed_bytes += i64(sink.output_len)
+		}
+		unsafe { decoded.free() }
+		decoded = sink.data
+		sink.data = []u8{}
+	}
+	result := decoded.bytestr()
+	unsafe { decoded.free() }
+	return result
 }
 
 // parse_status_line parses the first HTTP response line into the HTTP

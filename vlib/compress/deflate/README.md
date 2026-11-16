@@ -40,6 +40,8 @@ Gzip decompression reads all concatenated members and validates each member sepa
 
 A callback returning zero aborts decompression immediately. The returned count covers delivered
 bytes; unread compressed data and container checksums are not validated after an abort.
+`max_safe_inflate_output_len()` returns the largest output limit that can be enforced before the
+internal DEFLATE history array reaches its platform growth limit.
 
 Inflation rejects dynamic blocks without an end-of-block code, invalid or incomplete Huffman
 codes, and code-length repeats beyond the declared alphabets. A literals-only block may omit

@@ -1182,12 +1182,18 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 }
 
 fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) bool {
+	return t.bare_struct_name_is_local_to_module(name_id, t.cur_module)
+}
+
+// bare_struct_name_is_local_to_module reports whether the bare spelling `name_id`
+// names a struct declared in `module_name`.
+fn (t &Transformer) bare_struct_name_is_local_to_module(name_id u32, module_name string) bool {
 	if name_id == 0 || flat.source_type_shape(name_id).has(.dotted) {
 		return false
 	}
-	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+	if module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		qname := flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), name_id)
+			flat.source_type_id(module_name), name_id)
 		return qname in t.structs || (!isnil(t.tc) && qname in t.tc.structs)
 	}
 	name := name_id
@@ -1197,8 +1203,8 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) boo
 	if isnil(t.tc) || name_id !in t.tc.structs {
 		return false
 	}
-	module_name := t.tc.struct_modules[name_id] or { '' }
-	return module_name.len == 0 || module_name in ['main', 'builtin']
+	struct_module := t.tc.struct_modules[name_id] or { '' }
+	return struct_module.len == 0 || struct_module in ['main', 'builtin']
 }
 
 // bare_sum_type_name_is_local_to_current_module is the sum type counterpart of

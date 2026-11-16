@@ -423,8 +423,8 @@ pub:
 	strategy      Strategy = .default
 }
 
-// compresses an array of bytes using zstd and returns the compressed bytes in a new array
-// extra compression parameters can be set by `params`
+// compresses an array of bytes using zstd and returns the compressed bytes in a new array.
+// Extra compression parameters can be set by `params`.
 // Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := zstd.compress(b, compression_level: 10)!; assert cmpr.len < b.len; dc := zstd.decompress(cmpr)!; assert b == dc
 pub fn compress(data []u8, params CompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_compressBound(data.len)
@@ -445,8 +445,8 @@ pub:
 	window_log_max int
 }
 
-// decompresses an array of bytes using zstd and returns the decompressed bytes in a new array
-// extra decompression parameters can be set by `params`
+// decompresses an array of bytes using zstd and returns the decompressed bytes in a new array.
+// Extra decompression parameters can be set by `params`.
 // Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := zstd.compress(b, compression_level: 10)!; assert cmpr.len < b.len; dc := zstd.decompress(cmpr)!; assert b == dc
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_getFrameContentSize(data.data, frame_header_size_max)
@@ -492,10 +492,10 @@ pub fn (mut c CCtx) set(c_param CParameter, val int) ! {
 }
 
 // compress_stream2 do stream compress on `input`, and store compressed data in `output`.
-// `mode`:
-// 	.zstd_e_continue => continue stream compression.
-// 	.zstd_e_flush => flush data
-// 	.zstd_e_end => it is the last frame
+// `mode` can be:
+// - `.zstd_e_continue` => continue stream compression.
+// - `.zstd_e_flush` => flush data
+// - `.zstd_e_end` => it is the last frame
 pub fn (mut c CCtx) compress_stream2(output &OutBuffer, input &InBuffer, mode EndDirective) !uint {
 	res := C.ZSTD_compressStream2(c.ctx, output, input, mode)
 	check_error(res)!
@@ -547,22 +547,26 @@ pub fn (mut d DCtx) free_dctx() uint {
 }
 
 // store_array compress an `array`'s data, and store it to file `fname`.
-// extra compression parameters can be set by `params`
+// Extra compression parameters can be set by `params`.
 // WARNING: Because struct padding, some data in struct may be marked unused.
 // So, when `store_array`, it will cause memory fsanitize fail with 'use-of-uninitialized-value'.
 // It can be safely ignored.
 // For example, following struct may cause memory fsanitize fail:
+// ```v ignore
 // struct MemoryTrace {
 // 	operation u8
 // 	address   u64
 // 	size      u8
 // }
-// By changing it into following , you can pass the memory fsanitize check :
+// ```
+// By changing it into following, you can pass the memory fsanitize check:
+// ```v ignore
 // struct MemoryTrace {
 // 	operation u64
 // 	address   u64
 // 	size      u64
 // }
+// ```
 pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	mut fout := os.open_file(fname, 'wb')!
 	mut cctx := new_cctx(params)!

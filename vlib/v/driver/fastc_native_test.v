@@ -159,11 +159,86 @@ fn test_fastc_native_bridge_reuses_a_compiled_owner_after_an_unused_macro_change
 					'native_value': 'int native_value(void);'
 				}
 			}
-			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '')!
+			mut validation := V3FastcNativeValidation{}
+			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '', mut validation)!
 			assert os.is_file(bridge.library)
 			libraries << bridge.library
 		}
 		assert libraries[0] == libraries[1]
+	}
+}
+
+fn test_fastc_native_bridge_overlapped_validation_reports_changed_inputs() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_overlap_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		generation := fastc.GenerationResult{
+			c_pieces:            ['#include "${header}"\n']
+			units:               fastc.FastcUnitLayout{ head_end: 1 }
+			native_declarations: {
+				'native_value': 'int native_value(void);'
+			}
+		}
+		mut serial := V3FastcNativeValidation{}
+		built := v3_fastc_native_bridge(&generation, &prefs, [], '', mut serial)!
+		assert serial.pending.len == 0
+		// A reused manifest is hashed beside the compilation and joined before the link.
+		mut overlapped := V3FastcNativeValidation{
+			overlap: true
+		}
+		reused := v3_fastc_native_bridge(&generation, &prefs, [], '', mut overlapped)!
+		assert reused.library == built.library
+		assert overlapped.pending.len == 1
+		assert overlapped.wait()
+		// An input that changes after the manifest was written fails the join, so the
+		// driver builds again without the overlap instead of linking the old library.
+		os.write_file(header, 'static int native_value(void) { return 8; }\n')!
+		mut changed := V3FastcNativeValidation{
+			overlap: true
+		}
+		stale := v3_fastc_native_bridge(&generation, &prefs, [], '', mut changed)!
+		assert stale.library == built.library
+		assert !changed.wait()
+		mut rebuilt_validation := V3FastcNativeValidation{}
+		rebuilt := v3_fastc_native_bridge(&generation, &prefs, [], '', mut rebuilt_validation)!
+		assert rebuilt.library != built.library
+	}
+}
+
+fn test_fastc_native_failed_build_with_changed_inputs_runs_again() ! {
+	$if !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_checked_result_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, '#include <stdio.h>\n')!
+		signature := v3_fastc_native_read_signature(header)
+		failed := V3FastCCompileResult{
+			command: 'tcc'
+			output:  'native.h:1: error: include file not found'
+		}
+		// A failure with unchanged native inputs is the program's own.
+		mut unchanged := V3FastcNativeValidation{
+			overlap: true
+		}
+		assert unchanged.add([header], [signature], [], 1)
+		kept := v3_fastc_native_checked_result(failed, mut unchanged)
+		assert !kept.native_inputs_changed
+		assert kept.output == failed.output
+		// A header that changed under its reused manifest can name a framework the
+		// recorded dependencies lack: the build runs again as a cache miss.
+		os.write_file(header, '#include <Cocoa/Cocoa.h>\n')!
+		mut changed := V3FastcNativeValidation{
+			overlap: true
+		}
+		assert changed.add([header], [signature], [], 1)
+		retried := v3_fastc_native_checked_result(failed, mut changed)
+		assert retried.native_inputs_changed
+		assert !retried.success
 	}
 }
 
@@ -348,7 +423,7 @@ fn test_fastc_native_signatures_cover_block_boundaries_and_refresh() ! {
 			bytes[offset] ^= 1
 			os.write_file_array(path, bytes)!
 			assert v3_fastc_native_file_signature(path, false, mut stats) == original
-			assert !v3_fastc_native_dependencies_match([path], [original])
+			assert !v3_fastc_native_dependencies_match([path], [original], [])
 			assert v3_fastc_native_file_signature(path, true, mut stats) != original
 			os.write_file_array(path, []u8{len: 131073, init: u8(index % 251)})!
 			assert v3_fastc_native_file_signature(path, true, mut stats) == original

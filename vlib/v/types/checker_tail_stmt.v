@@ -3795,7 +3795,40 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 	if tc.translated_numeric_expr_compatible(id, current, next) {
 		return tc.translated_common_numeric_type(current, next)
 	}
+	if ((is_byte_type(current) && next is Rune) || (current is Rune && is_byte_type(next)))
+		&& tc.if_rune_tails_fit_byte(id) {
+		return if is_byte_type(current) { current } else { next }
+	}
 	return tc.choose_if_tail_type(current, next)
+}
+
+// if_rune_tails_fit_byte only gives byte context to character literals that fit.
+// Explicit rune values and Unicode literals retain their rune result type.
+fn (tc &TypeChecker) if_rune_tails_fit_byte(id flat.NodeId) bool {
+	mut current := id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind != .if_expr || node.children_count < 3 {
+			return false
+		}
+		for i in 1 .. 3 {
+			branch := tc.a.child(node, i)
+			if i == 2 && tc.a.node(branch).kind == .if_expr {
+				current = branch
+				break
+			}
+			tail := tc.branch_tail_expr_id(branch)
+			if !tc.valid_node_id(tail) { return false }
+			if !is_byte_type(tc.resolve_type(tail)) {
+				literal := tc.a.node(tail)
+				if literal.kind != .char_literal { return false }
+				value := match_char_literal_value(literal.value) or { return false }
+				if value < 0 || value > 255 { return false }
+			}
+			if i == 2 { return true }
+		}
+	}
+	return false
 }
 
 // translated_integer_literal_type returns the C type of an integer literal in a translated file:
@@ -10823,9 +10856,33 @@ fn (tc &TypeChecker) fn_key_is_static_associated(key string) bool {
 	return tc.static_associated_fn_keys[key]
 }
 
+@[direct_array_access]
 fn (tc &TypeChecker) static_assoc_type_candidates(type_ident_id u32) []u32 {
 	if type_ident_id == 0 {
 		return []u32{}
+	}
+	// Most identifiers that reach this point are values the post-check phases can
+	// no longer see as bindings, and name no type at all. The answer depends only on
+	// the identifier, the file's imports, the module and the type tables, so an
+	// empty one is remembered until one of those changes.
+	slot := int(type_ident_id & 63)
+	if !isnil(tc.qualify_name_cache) {
+		mut cache := tc.qualify_name_cache
+		fingerprint := tc.qualify_table_fingerprint()
+		if !same_string(cache.no_static_type_module, tc.cur_module)
+			|| !same_string(cache.no_static_type_file, tc.cur_file)
+			|| cache.no_static_type_mode != tc.resolution_type_mode
+			|| cache.no_static_type_fingerprint != fingerprint
+			|| cache.no_static_type_generics != tc.struct_generic_params.len {
+			cache.no_static_type_module = tc.cur_module
+			cache.no_static_type_file = tc.cur_file
+			cache.no_static_type_mode = tc.resolution_type_mode
+			cache.no_static_type_fingerprint = fingerprint
+			cache.no_static_type_generics = tc.struct_generic_params.len
+			cache.no_static_type_ids = [64]u32{}
+		} else if cache.no_static_type_ids[slot] == type_ident_id {
+			return []u32{}
+		}
 	}
 	// Import aliases are keyed by symbol strings.
 	type_ident := flat.source_type_name(type_ident_id)
@@ -10843,6 +10900,10 @@ fn (tc &TypeChecker) static_assoc_type_candidates(type_ident_id u32) []u32 {
 		if tc.static_assoc_type_known(candidate_id) && candidate_id !in result {
 			result << candidate_id
 		}
+	}
+	if result.len == 0 && !isnil(tc.qualify_name_cache) {
+		mut cache := tc.qualify_name_cache
+		cache.no_static_type_ids[slot] = type_ident_id
 	}
 	return result
 }
@@ -13515,6 +13576,13 @@ fn (tc &TypeChecker) interface_impl_candidates(iface_name_id u32, excluded map[u
 // sorted once; the candidates that depend on the interface are merged in.
 // Sorting by spelling orders the IDs totally, since an ID names one spelling.
 fn (tc &TypeChecker) memo_interface_impl_candidates(iface_name_id u32) []u32 {
+	base := tc.memo_interface_impl_base_candidates()
+	return merge_interface_impl_candidates(base, tc.memo_interface_impl_extra_candidates(iface_name_id))
+}
+
+// memo_interface_impl_base_candidates lists, sorted by spelling, the structs,
+// enums and aliases, which every interface tests.
+fn (tc &TypeChecker) memo_interface_impl_base_candidates() []u32 {
 	mut memo := tc.interface_impl_memo
 	if !memo.base_candidates_ready {
 		mut base_set := map[u32]bool{}
@@ -13535,6 +13603,13 @@ fn (tc &TypeChecker) memo_interface_impl_candidates(iface_name_id u32) []u32 {
 		memo.base_candidates = base
 		memo.base_candidates_ready = true
 	}
+	return memo.base_candidates
+}
+
+// memo_interface_impl_extra_candidates is the set of candidates of
+// `iface_name_id` that depend on the interface (see memo_interface_impl_candidates).
+fn (tc &TypeChecker) memo_interface_impl_extra_candidates(iface_name_id u32) map[u32]bool {
+	mut memo := tc.interface_impl_memo
 	mut extra_set := map[u32]bool{}
 	has_no_requirements := tc.interface_has_no_requirements(iface_name_id)
 	accepts_implicit_str := tc.interface_accepts_implicit_str(iface_name_id)
@@ -13570,7 +13645,42 @@ fn (tc &TypeChecker) memo_interface_impl_candidates(iface_name_id u32) []u32 {
 			extra_set[short_name] = true
 		}
 	}
-	return merge_interface_impl_candidates(memo.base_candidates, extra_set)
+	return extra_set
+}
+
+// merge_interface_impls merges two lists of implementers that are each in
+// spelling order into one, without duplicates.
+fn merge_interface_impls(first []u32, second []u32) []u32 {
+	if second.len == 0 {
+		return first
+	}
+	mut merged := []u32{cap: first.len + second.len}
+	mut i := 0
+	mut j := 0
+	for i < first.len && j < second.len {
+		first_id := first[i]
+		second_id := second[j]
+		order := compare_interface_impl_spelling_ids(&first_id, &second_id)
+		if order <= 0 {
+			merged << first_id
+			i++
+			if order == 0 {
+				j++
+			}
+		} else {
+			merged << second_id
+			j++
+		}
+	}
+	for i < first.len {
+		merged << first[i]
+		i++
+	}
+	for j < second.len {
+		merged << second[j]
+		j++
+	}
+	return merged
 }
 
 // merge_interface_impl_candidates merges the sorted `base` candidates with the
@@ -14097,21 +14207,34 @@ pub fn (tc &TypeChecker) ierror_impl_names() []u32 {
 			fallback = fallback.base
 		}
 	}
+	impls := tc.ierror_impls_among(tc.ierror_impl_candidates())
+	if tc.type_cache != unsafe { nil } {
+		mut cache := unsafe { tc.type_cache }
+		cache.ierror_impl_names = flat.TypeTextList{ ids: impls.clone() }
+		cache.ierror_impl_names_set = true
+	}
+	return impls
+}
+
+// ierror_impl_candidates lists, sorted by spelling, the structs that
+// ierror_impl_names tests.
+fn (tc &TypeChecker) ierror_impl_candidates() []u32 {
 	mut struct_names := []u32{}
 	for name, _ in tc.structs {
 		struct_names << name
 	}
 	struct_names.sort_with_compare(compare_interface_impl_spelling_ids)
+	return struct_names
+}
+
+// ierror_impls_among lists, in order, the `candidates` that are compatible
+// with the builtin `IError`.
+fn (tc &TypeChecker) ierror_impls_among(candidates []u32) []u32 {
 	mut impls := []u32{}
-	for name in struct_names {
+	for name in candidates {
 		if tc.named_type_compatible_with_ierror(name) {
 			impls << name
 		}
-	}
-	if tc.type_cache != unsafe { nil } {
-		mut cache := unsafe { tc.type_cache }
-		cache.ierror_impl_names = flat.TypeTextList{ ids: impls.clone() }
-		cache.ierror_impl_names_set = true
 	}
 	return impls
 }
@@ -14181,6 +14304,8 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 			}
 			if method !in memo.required_methods {
 				memo.required_methods[method] = memo.required_methods.len
+				bit := required_method_bit(method)
+				memo.required_method_bits[bit >> 6] |= u64(1) << (bit & 63)
 			}
 		}
 	}
@@ -14196,13 +14321,31 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 	memo.method_keys_ready = true
 }
 
+// required_method_bit spreads method names over the bits of
+// InterfaceImplMemo.required_method_bits by their length and outer bytes.
+@[direct_array_access; inline]
+fn required_method_bit(name string) int {
+	if name.len == 0 {
+		return 0
+	}
+	return (name.len * 131 + int(name[0]) * 31 + int(name[name.len - 1])) & 4095
+}
+
+@[direct_array_access]
 fn (mut memo InterfaceImplMemo) index_method_receiver_key(key string) {
 	last_dot := key.last_index_u8(`.`)
 	if last_dot < 0 {
 		return
 	}
 	tail := unsafe { key.substr_unsafe(last_dot + 1, key.len) }
-	method_idx := memo.required_methods[tail] or { -1 }
+	// Most keys declare a method that no interface requires: the bit test
+	// settles them without hashing the name.
+	tail_bit := required_method_bit(tail)
+	method_idx := if memo.required_method_bits[tail_bit >> 6] & (u64(1) << (tail_bit & 63)) != 0 {
+		memo.required_methods[tail] or { -1 }
+	} else {
+		-1
+	}
 	// `X.@m` is probed for the method `m`.
 	escaped_idx := if tail.len > 1 && tail[0] == `@` {
 		memo.required_methods[unsafe { tail.substr_unsafe(1, tail.len) }] or { -1 }
@@ -15503,9 +15646,12 @@ mut:
 	metadata_names    map[u32]u32
 	method_keys_ready bool
 	required_methods  map[string]int
-	receiver_parts    map[string]int
-	method_receivers  map[u64]bool
-	receiver_lookups  map[u32]ReceiverMethodLookup
+	// One bit per required method, by required_method_bit of its name: a key
+	// whose last component has no bit set names no required method.
+	required_method_bits [64]u64
+	receiver_parts       map[string]int
+	method_receivers     map[u64]bool
+	receiver_lookups     map[u32]ReceiverMethodLookup
 }
 
 // ReceiverMethodLookup is what memo_proves_no_receiver_method knows of a
@@ -15535,17 +15681,20 @@ pub fn (tc &TypeChecker) begin_interface_impl_queries() bool {
 // begin_interface_impl_queries_sharing is begin_interface_impl_queries with the
 // method-receiver index of `shared` (see memo_index_method_receivers), which
 // only reads the declared signatures and is read-only once built, in place of
-// indexing every signature key again for this checker.
+// indexing every signature key again for this checker. The sorted base
+// candidates of `shared`, when it has them, are shared read-only the same way.
 fn (tc &TypeChecker) begin_interface_impl_queries_sharing(shared &InterfaceImplMemo) bool {
 	if !isnil(tc.interface_impl_memo) {
 		return false
 	}
 	mut writable := unsafe { tc }
 	writable.interface_impl_memo = &InterfaceImplMemo{
-		method_keys_ready: shared.method_keys_ready
-		required_methods:  shared.required_methods
-		receiver_parts:    shared.receiver_parts
-		method_receivers:  shared.method_receivers
+		method_keys_ready:     shared.method_keys_ready
+		required_methods:      shared.required_methods
+		receiver_parts:        shared.receiver_parts
+		method_receivers:      shared.method_receivers
+		base_candidates:       shared.base_candidates
+		base_candidates_ready: shared.base_candidates_ready
 	}
 	return true
 }
@@ -17777,6 +17926,10 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	// types; walking the full arena to rediscover a parent for each such lookup
 	// makes self-host transformation quadratic.
 	parsed := idx < tc.direct_parent_ids.len
+	if !parsed && tc.smartcasts.len == 0 {
+		// No dynamic smartcast can match, so the expression key is not needed.
+		return none
+	}
 	// Neither the expression key nor the dynamic smartcast lookup below changes
 	// the cache, so one read of the cached state serves both of its checks.
 	state := if parsed && !isnil(cache) { cache.lexical_smartcast_state(idx) } else { u32(0) }

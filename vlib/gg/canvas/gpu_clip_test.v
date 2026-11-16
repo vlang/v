@@ -61,16 +61,15 @@ fn test_intersect_rrect_and_rect_combine_into_one_element() {
 }
 
 fn test_save_and_restore_remove_and_revalidate_elements() {
-	mut ctx := new_gpu_context() or {
-		eprintln('skipping: ${err}')
-		return
-	}
-	defer {
-		ctx.free()
-	}
-	mut s := ctx.new_surface(width: 64, height: 48) or { panic(err) }
-	defer {
-		s.free()
+	// Saving and restoring the clip only records CPU state. Keep this test
+	// independent of GPU drivers, which are not instrumented by MemorySanitizer.
+	mut s := GpuSurface{
+		width:        64
+		height:       48
+		sample_count: 1
+		transform:    identity_transform()
+		bounds:       new_bounds_manager(64, 48)
+		clip:         new_clip_stack(64, 48)
 	}
 	s.clip_rect(Rect.ltrb(10, 10, 20, 20), .difference, false) or { panic(err) }
 	s.save()
@@ -82,6 +81,7 @@ fn test_save_and_restore_remove_and_revalidate_elements() {
 	s.restore()
 	assert s.clip.saves.len == 1 && s.clip.elements.len == 1
 	assert s.clip.current().oldest_valid == 0
+	assert !s.clip.elements[0].is_invalid()
 	// A save without clips is deferred and leaves no save record.
 	s.save()
 	s.restore()

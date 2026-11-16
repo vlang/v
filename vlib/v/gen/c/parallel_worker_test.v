@@ -158,6 +158,16 @@ fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
 	return &g, &tc
 }
 
+fn test_interface_impl_scan_worker_does_not_read_master_c_name_cache() {
+	$if !v3_no_parallel ? {
+		g, _ := parallel_worker_test_gen(true)
+		worker := g.new_interface_impl_scan_worker()
+		assert voidptr(worker.c_name_cache) != voidptr(g.c_name_cache)
+		assert isnil(worker.c_name_cache.base)
+		assert g.cname('main.Master.name') == worker.cname('main.Master.name')
+	}
+}
+
 fn test_parallel_dispatch_worker_owns_checker_outside_scoped_batching() {
 	g, tc := parallel_worker_test_gen(false)
 	w := g.new_parallel_dispatch_worker(1)

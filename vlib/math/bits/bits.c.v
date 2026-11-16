@@ -72,6 +72,55 @@ pub fn leading_zeros_64(x u64) int {
 	return leading_zeros_64_default(x)
 }
 
+// --- Len ---
+// len_16 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+@[inline]
+pub fn len_16(x u16) int {
+	if x == 0 {
+		return 0
+	}
+	$if msvc {
+		mut pos := 0
+		_ := C._BitScanReverse(&pos, u32(x))
+		return pos + 1
+	} $else $if !tinyc {
+		return 32 - C.__builtin_clz(u32(x))
+	}
+	return len_16_default(x)
+}
+
+// len_32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+@[inline]
+pub fn len_32(x u32) int {
+	if x == 0 {
+		return 0
+	}
+	$if msvc {
+		mut pos := 0
+		_ := C._BitScanReverse(&pos, x)
+		return pos + 1
+	} $else $if !tinyc {
+		return 32 - C.__builtin_clz(x)
+	}
+	return len_32_default(x)
+}
+
+// len_64 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
+@[inline]
+pub fn len_64(x u64) int {
+	if x == 0 {
+		return 0
+	}
+	$if msvc {
+		mut pos := 0
+		_ := C._BitScanReverse64(&pos, x)
+		return pos + 1
+	} $else $if !tinyc {
+		return 64 - C.__builtin_clzll(x)
+	}
+	return len_64_default(x)
+}
+
 fn C.__builtin_ctz(x u32) i32
 fn C.__builtin_ctzll(x u64) i32
 fn C._BitScanForward(pos &int, x u32) u8

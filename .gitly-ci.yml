@@ -2,8 +2,8 @@
 # self-hosted macOS runner. gitly_ci runs each step and streams its output back
 # into the GitHub Actions log in real time (.github/workflows/macos_gitly_ci.yml).
 #
-# V is built from the checked-out source first, then every task runs with that
-# freshly built ./v. Like GitHub Actions, gitly_ci stops at the first failing
+# An optimized V compiler is prepared for the checked-out source, then every task
+# runs with that ./v. Like GitHub Actions, gitly_ci stops at the first failing
 # step, so tasks are ordered reliable-first: the long / environment-heavy ones
 # (build_examples, run_sanitizers, self_tests) run last so a failure there does
 # not hide the rest.
@@ -14,8 +14,8 @@
 jobs:
   macos-clang:
     steps:
-      - name: Build V from source
-        run: make -j4
+      - name: Prepare the optimized V compiler
+        run: sh .github/workflows/prepare_v.sh
       - name: v doctor
         run: ./v run ci/macos_ci.vsh v_doctor
       - name: Build V using V

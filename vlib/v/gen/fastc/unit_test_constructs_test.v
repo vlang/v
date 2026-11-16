@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // Constructs blobly_emb's unit tests use, printed against the C backend's output: a fn-typed
 // field called with a method-call argument, a call through an array element, a raw fixed
 // array assigned to a local, fixed arrays sized by constant arithmetic and by `$d(...)`,
