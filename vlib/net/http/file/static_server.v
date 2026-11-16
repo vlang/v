@@ -125,7 +125,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 			res.set_status(.not_found)
 			'not found'
 		}
-		mt := mime.get_mime_type(os.file_ext(requested_file_path).all_after_first('.'))
+		mt := mime.lookup(os.file_ext(requested_file_path))
 		content_type = mime.get_content_type(mt)
 	}
 	res.body = body
