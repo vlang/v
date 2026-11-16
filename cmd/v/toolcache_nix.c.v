@@ -28,6 +28,8 @@ fn C.renameat(old_directory i32, const_old_path &char, new_directory i32, const_
 
 fn C.unlinkat(directory i32, const_path &char, flags i32) i32
 
+fn C.unlink(const_path &char) i32
+
 // ToolCacheEntryDir pins the directory that receives a compiled tool. All publication and
 // cleanup is relative to this descriptor, so replacing its pathname cannot redirect a write.
 struct ToolCacheEntryDir {
@@ -457,43 +459,59 @@ fn tool_cache_wipe_item_from(information &C.stat) ToolCacheWipeItem {
 }
 
 // item describes `name` in the folder. A link is described itself, not what it points to. A name
-// that cannot be inspected is reported as something of nobody's.
+// that cannot be inspected (no file descriptor left, for example) is reported as `.unknown`, of
+// nobody's.
 //
 // The name is inspected with `lstat` while the open folder is the working folder, which is put
-// back at once. `fstatat` would do without that, but needs `AT_SYMLINK_NOFOLLOW`, whose value the
-// headerless compiler bootstrap does not carry. `v wipe-cache` runs on one thread, so nothing else
-// sees the working folder change. When the working folder cannot be opened to come back to, the
-// name is opened and closed instead; that gives up a lock this process holds on the file, so a
-// caller does not ask about a lock file it holds (the wipe looks at a name before it locks it).
+// back at once, through a handle on it. `fstatat` would do without that, but needs
+// `AT_SYMLINK_NOFOLLOW`, whose value the headerless compiler bootstrap does not carry.
+// `v wipe-cache` runs on one thread, so nothing else sees the working folder change. Without a
+// handle on the working folder there is no way back, and the name is not looked at: the wipe works
+// from `/`, which gives one (see `tool_cache_wipe_leave_working_folder`), so that happens only when
+// no descriptor is left. No other way of looking stands in: opening the name instead says nothing
+// of a link, or of a file this user cannot read, and failed a wipe on every one of them.
 fn (dir ToolCacheWipeDir) item(name string) ToolCacheWipeItem {
 	unknown := ToolCacheWipeItem{
-		kind:  .other
+		kind:  .unknown
 		owner: u32(0xffffffff)
 	}
 	mut information := C.stat{}
 	back := C.open(c'.', C.O_RDONLY | C.O_DIRECTORY, 0)
-	if back >= 0 {
-		if C.fchdir(dir.fd) == 0 {
-			failed := C.lstat(&char(name.str), &information) != 0
-			code := C.errno
-			C.fchdir(back)
-			C.close(back)
-			if !failed {
-				return tool_cache_wipe_item_from(&information)
-			}
-			return if code == C.ENOENT { ToolCacheWipeItem{} } else { unknown }
-		}
+	if back < 0 {
+		return unknown
+	}
+	if C.fchdir(dir.fd) != 0 {
 		C.close(back)
+		return unknown
 	}
-	// The working folder cannot be opened, so it could not be put back: look at the name by opening
-	// it instead, which tells nothing about a link or about a file this user cannot read.
-	fd := C.openat(dir.fd, &char(name.str), C.O_RDONLY | C.O_NOFOLLOW | C.O_NONBLOCK, 0)
-	if fd < 0 {
-		return if C.errno == C.ENOENT { ToolCacheWipeItem{} } else { unknown }
+	failed := C.lstat(&char(name.str), &information) != 0
+	code := C.errno
+	C.fchdir(back)
+	C.close(back)
+	if !failed {
+		return tool_cache_wipe_item_from(&information)
 	}
-	failed := C.fstat(fd, &information) != 0
-	C.close(fd)
-	return if failed { unknown } else { tool_cache_wipe_item_from(&information) }
+	return if code == C.ENOENT { ToolCacheWipeItem{} } else { unknown }
+}
+
+// tool_cache_wipe_leave_working_folder moves the process to `/` for the wipe, and returns the
+// folder to come back to, or '' when that folder has no name (it was removed, or a folder above it
+// may not be read). The wipe looks at every name from inside the folder it holds open, and comes
+// back through a handle on the working folder (see `item`): `/` always gives one, while the folder
+// the wipe was started from may not be readable (`sudo -u someone` started in a folder that is not
+// theirs, for example), or may have been removed. Every setting has its one form by then (see
+// `tool_cache_wipe_place`), so none needs the working folder any more.
+fn tool_cache_wipe_leave_working_folder() string {
+	back := os.getwd()
+	os.chdir('/') or {}
+	return back
+}
+
+// tool_cache_wipe_come_back returns to the folder the wipe was started from, when it has a name.
+fn tool_cache_wipe_come_back(back string) {
+	if back != '' {
+		os.chdir(back) or {}
+	}
 }
 
 // open_folder opens the real folder `name` in the folder. A link there is not followed. When
@@ -521,6 +539,15 @@ fn (dir ToolCacheWipeDir) remove_file(name string) ! {
 	}
 }
 
+// tool_cache_unlink removes what is at `path` when it is no folder; a link is removed itself. It never
+// removes a folder, unlike `os.rm`, which takes an empty one. Something that is gone already counts as
+// removed.
+fn tool_cache_unlink(path string) ! {
+	if C.unlink(&char(path.str)) != 0 && C.errno != C.ENOENT {
+		return error(os.posix_get_error_msg(C.errno))
+	}
+}
+
 // remove_folder removes the folder `name` when it is empty. A name that is gone already counts as
 // removed.
 fn (dir ToolCacheWipeDir) remove_folder(name string) ! {
@@ -534,9 +561,11 @@ fn (dir ToolCacheWipeDir) remove_folder(name string) ! {
 // at any depth, and never followed.
 fn (dir ToolCacheWipeDir) remove_tree(name string) ! {
 	child := dir.open_folder(name) or {
+		opened := err.msg()
 		if dir.item(name).kind == .folder {
-			// A real folder that cannot be read can still go when it is empty.
-			dir.remove_folder(name) or { return error('${name}: ${err.msg()}') }
+			// A real folder that cannot be read can still go when it is empty. When it cannot, why it
+			// could not be opened is what the user needs to know, not that it is not empty.
+			dir.remove_folder(name) or { return error('${name}: ${opened}') }
 			return
 		}
 		// A file, a link, or whatever else is no folder goes as it is.
@@ -623,23 +652,25 @@ fn (dir ToolCacheWipeDir) try_lock(name string) ToolCacheWipeLock {
 }
 
 // create_lock_file makes the lock file `name` for the user `owner` when nothing has that name, and
-// reports whether it did. A link at that name is not followed. The superuser, wiping for another
-// user, hands the file to that user, whose builds accept only a lock file of their own (see
-// `ensure_tool_cache_lock_file`).
-fn (dir ToolCacheWipeDir) create_lock_file(name string, owner u32) bool {
+// fails with the reason when it does not. A link at that name is not followed. The superuser,
+// wiping for another user, hands the file to that user, whose builds accept only a lock file of
+// their own (see `ensure_tool_cache_lock_file`).
+fn (dir ToolCacheWipeDir) create_lock_file(name string, owner u32) ! {
 	fd := C.openat(dir.fd, &char(name.str), C.O_WRONLY | C.O_CREAT | C.O_EXCL | C.O_NOFOLLOW,
 		0o600)
 	if fd < 0 {
-		return false
+		return error(os.posix_get_error_msg(C.errno))
 	}
-	mut created := true
+	mut problem := ''
 	if owner != u32(os.getuid()) && C.fchown(fd, owner, u32(0xffffffff)) != 0 {
 		// A lock file that the user's builds would reject must not stay.
+		problem = 'it could not be handed to user ${owner}: ${os.posix_get_error_msg(C.errno)}'
 		C.unlinkat(dir.fd, &char(name.str), 0)
-		created = false
 	}
 	C.close(fd)
-	return created
+	if problem != '' {
+		return error(problem)
+	}
 }
 
 // repair_lock_file sets the lock file `name` to mode 0600, so that it can be locked again. A file

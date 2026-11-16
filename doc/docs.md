@@ -74,8 +74,14 @@ On Windows, the cached updater exits before its launcher wipes the caches,
 so the running executable does not block cleanup. Cleanup failures are returned
 by the launcher.
 
-`v wipe-cache` wipes a tool cache folder entry by entry, so a build that runs alongside the
-wipe, or alongside `v up`, keeps what it works with and does not make the cleanup fail:
+`v wipe-cache` wipes a tool cache folder entry by entry, so that a tool being built alongside the
+wipe, or alongside `v up`, keeps its entry and its lock file, and does not make the cleanup fail.
+Everything else in `VTMP` is removed as before, the object files that a build in progress writes
+to `<VTMP>/v3_thirdparty_objs` included, so a build that still needs them can fail. What stays
+for a build in progress, or because it belongs to another account, does not fail the wipe;
+anything else that should go and stays does, and the wipe names it. A dry run fails too where a
+tool cache folder cannot be opened or looked into, or where the lock file of a tool cannot be
+used; whether something could be removed it cannot tell without removing it:
 
 * The entries of a tool that another process has locked at that moment (a build in progress)
   stay, and the output names the tool. The wipe holds the build locks it takes until it is done
@@ -86,20 +92,41 @@ wipe, or alongside `v up`, keeps what it works with and does not make the cleanu
 * A lock file that cannot be opened is set to mode 0600, so that it can be locked again. Outside
   Windows this is done only where nobody else could swap the file for a link: its folder is yours
   or root's, others cannot write to that folder or only with the sticky bit, and the file is yours
-  and has no other hard link. Otherwise the file is left as it is, and the entries of its tool are
-  kept. The entries of a tool are also kept when its lock file cannot be made, or when something
-  that is no regular file has the lock file's name and is not the wipe's to remove.
+  and has no other hard link. Run as root, the wipe repairs another user's lock file only in a
+  folder that no other account can write to, sticky bit or not. Otherwise the file is left as it
+  is, the entries of its tool are kept, and the wipe fails and names the file: those entries stay
+  for no build. So it does when a tool's lock file cannot be made, or when something that is no
+  regular file has the lock file's name and is not the wipe's to remove. A dry run assumes that a
+  lock file can be made.
 * In a tool cache folder that is yours alone (you own it, and neither its group nor others can
   write to it), everything else is removed, whoever owns it. In any other tool cache folder only
   what you own is removed: what other accounts own there is guarded by their build locks, which
   the wipe cannot take. Run as root, the wipe removes what any user owns, and takes each entry
   under the build lock of the user who built it. On Windows, where the ACL of a folder decides
-  who can write to it, every tool cache folder counts as yours alone.
+  who can write to it, every tool cache folder counts as yours alone. In a folder that others can
+  write to without the sticky bit, which V never builds in, another account can still swap a name
+  for one of its own between the wipe's look at the owner and the removal.
 * A folder V moved aside, `<folder>.untrusted-<seconds>-<pid>`, is wiped the same way. Nothing is
   built in it any more, so once nothing in it is kept, the lock files the wipe holds are removed
-  too, and then the folder itself. A lock file of another user stays there, and the folder with
-  it. Any other `<folder>.untrusted-*` folder is wiped like a tool cache folder.
-* A tool cache folder that the wipe leaves empty is removed.
+  too, and then the folder itself; when they cannot be removed, the wipe fails. A lock file of
+  another user stays there, and the folder with it, unless the wipe runs as root, which holds the
+  build locks of every user. Any other `<folder>.untrusted-*` folder is wiped like a tool cache
+  folder.
+* A folder V builds tools in (the one `VTOOLS_CACHE_DIR` names, or a default one) stays, even
+  when the wipe leaves it empty, and so do the folders on the way to one: a build makes them some
+  steps before it makes its lock file, and would fail on a folder removed in between. Any other
+  tool cache folder that the wipe leaves empty is removed.
+* A name the wipe cannot look at (when it runs out of file descriptors, for example) stays, and
+  the wipe fails: it could be a lock file that a build holds.
+* A `VTOOLS_CACHE_DIR` that is a symbolic link is left as it is, and the wipe does not follow
+  it, also when it is written with a separator or `/.` at its end; the output says so. The wipe
+  follows no link at a place it wipes, since it cannot tell your own link from one that another
+  account put in a folder you share. Set `VTOOLS_CACHE_DIR` to the folder itself to have it
+  wiped. Links in the folders above those places are followed, as builds follow them: when the
+  `VTMP` path is a link, `--tools` wipes the `tools` folder behind it, where builds go too.
+* With `--dry-run` or `--verbose`, the list of tool cache candidates tells what a build would do
+  with each folder. Like a build, it looks through a link, and it finds out whether a folder can
+  be written to by making a file in it and removing it again.
 
 A tool cache folder inside another folder being wiped (`<VTMP>/tools`, or `VTOOLS_CACHE_DIR`
 when it points into `VTMP`, `VCACHE` or `V3CACHE`) gets the same treatment whether or not
@@ -107,11 +134,26 @@ when it points into `VTMP`, `VCACHE` or `V3CACHE`) gets the same treatment wheth
 builds. This covers the tool cache folders the wipe knows: the one that its own
 `VTOOLS_CACHE_DIR` names, the default ones, and the `.untrusted-*` folders next to them. A tool
 cache folder that only the `VTOOLS_CACHE_DIR` of another process names is removed with the
-folder it lies in.
+folder it lies in. The folder a `VTOOLS_CACHE_DIR` link leads to is known too, since builds use
+it: when it lies inside `VTMP`, `VCACHE` or `V3CACHE`, the wipe of that folder comes to it
+without the link, and wipes it entry by entry like any tool cache folder. A folder is the same
+folder however a setting spells it: with `..` after a link (taken as the system takes it), with a
+separator at its end, and on Windows in another case or by its short name. A setting given as a
+relative path is taken from the folder the wipe is started from; when that folder has no name (it
+was removed, or a folder above it may not be read), the wipe fails and says so. A wipe that is not
+asked to wipe the tool caches makes none of their folders, and needs none of them.
 
-Outside Windows, a build moves a default tool cache folder aside when it does not trust it, and
-builds in a new folder at the same path. A wipe that has opened the folder by then stays in the
-folder it opened, does not touch the new one, and says so.
+Outside Windows, a build moves a default tool cache folder aside when it does not trust it (a
+symbolic link there included), and builds in a new folder at the same path. The wipe knows a tool
+cache folder by where it lies, and decides what to do there from what it finds when it opens it,
+so the build in such a new folder is kept whenever the folder appears. A wipe that has opened the
+folder by then stays in the folder it opened, does not touch the new one, and says so. A new
+folder that appears only after the wipe, opening that path, found a link there or nothing, is
+left as it is.
+
+Two wipes can run at the same time, and both succeed. Each reports what it did itself: a tool
+that one of them names as locked may be held by the other wipe, which then removes the entries
+the first one kept.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
