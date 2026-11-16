@@ -1,4 +1,4 @@
-// vtest build: !musl? && !self_ubuntu_musl_ci? // the runtime needs ucontext
+// vtest build: (linux || macos) && !musl? && !self_ubuntu_musl_ci? // needs ucontext
 module goroutines
 
 fn test_native_atomic_helpers_use_the_supplied_address() {
