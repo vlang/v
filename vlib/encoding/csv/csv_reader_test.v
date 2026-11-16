@@ -299,6 +299,43 @@ fn test_csv_string() {
 	csvr.dispose_csv_reader()
 }
 
+fn test_random_access_large_cells() {
+	file_path := os.join_path(os.temp_dir(), 'test_csv_large_cell.csv')
+	large_cell := 'left${'Q'.repeat(70_000)}right'
+	csv_text := '"${large_cell}",tail\r\n'
+	os.write_file(file_path, csv_text)!
+
+	for mem_buf_size in [16, 64 * 1024] {
+		for quote_remove in [false, true] {
+			mut csvr := csv.csv_reader(
+				file_path:    file_path
+				mem_buf_size: mem_buf_size
+				end_line_len: csv.endline_crlf_len
+				quote_remove: quote_remove
+			)!
+			want := if quote_remove { large_cell } else { '"${large_cell}"' }
+			assert csvr.get_cell(x: 0, y: 0)! == want
+			csvr.dispose_csv_reader()
+		}
+	}
+	os.rm(file_path)!
+
+	// The cell ends at the read window boundary; quote trimming must not
+	// inspect the exclusive end offset.
+	boundary_cell := 'B'.repeat(64 * 1024 - 2)
+	os.write_file(file_path, '"${boundary_cell}",tail\n')!
+	mut boundary_reader := csv.csv_reader(file_path: file_path, quote_remove: true)!
+	assert boundary_reader.get_cell(x: 0, y: 0)! == boundary_cell
+	boundary_reader.dispose_csv_reader()
+	os.rm(file_path)!
+
+	ram_cell := 'R'.repeat(70_000)
+	mut ram_reader := csv.csv_reader_from_string('"${ram_cell}",tail\n')!
+	ram_reader.quote_remove = true
+	assert ram_reader.get_cell(x: 0, y: 0)! == ram_cell
+	ram_reader.dispose_csv_reader()
+}
+
 fn test_coherence() {
 	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
 	mut f := os.open_file(file_path_str, 'w')!

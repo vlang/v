@@ -386,62 +386,82 @@ pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 			start++
 		}
 
-		mut len := end - start
-		// println("len calc: ${len}")
-		if len <= 0 {
+		if start < 0 || end < start || end > cr.end_index
+			|| (cr.mem_buf_type == file_csv && end > cr.f_len) {
+			return error('ERROR: CSV cell range is outside the source!')
+		}
+		len := end - start
+		if len == 0 {
 			return cr.empty_cell
 		}
-
-		// fill the buffer if needed
-		if !(start >= cr.mem_buf_start && end < cr.mem_buf_end) {
-			cr.fill_buffer(start)!
+		if len > i64(max_int) - 1 {
+			return error('ERROR: CSV cell is too large to return!')
 		}
-		unsafe {
-			// execute this section only if we need to remove the quotes
-			if cr.quote_remove {
-				// println("[${start},${end}] len:${len}")
-				// remove front quote and spaces
-				mut tmp_p := &u8(cr.mem_buf) + start - cr.start_index
-				for start < end {
-					if *tmp_p == cr.quote {
-						start++
-						break
-					}
-					start++
-					tmp_p++
-				}
-				// println("after start quote filtering [${start},${end}] len:${len}")
-				// remove back quote and spaces
-				tmp_p = &u8(cr.mem_buf) + end - cr.start_index
-				for end > start {
-					if *tmp_p == cr.quote {
-						break
-					}
-					tmp_p--
-					end--
-				}
-				// println("after end quote filtering [${start},${end}] len:${len}")
 
-				len = end - start
-				// println("len calc2: ${len}")
-				if len <= 0 {
+		read_file_cell := cr.mem_buf_type == file_csv && len > cr.mem_buf_size
+		if read_file_cell {
+			cr.f.seek(start, .start)!
+		} else {
+			// Keep the configured file buffer as a read window, not a cell limit.
+			if !(start >= cr.mem_buf_start && end <= cr.mem_buf_end) {
+				cr.fill_buffer(start)!
+			}
+			if start < cr.mem_buf_start || end > cr.mem_buf_end {
+				return error('ERROR: CSV cell is not fully available in the read buffer!')
+			}
+		}
+
+		mut tmp_mem := unsafe { malloc_noscan(int(len + 1)) }
+		if read_file_cell {
+			read_bytes_count := cr.f.read_into_ptr(tmp_mem, int(len)) or {
+				unsafe {
+					free(tmp_mem)
+				}
+				return err
+			}
+			if read_bytes_count != int(len) {
+				unsafe {
+					free(tmp_mem)
+				}
+				return error('ERROR: CSV cell changed while it was being read!')
+			}
+		} else {
+			mem_start := &u8(cr.mem_buf) + start - cr.start_index
+			unsafe {
+				vmemcpy(tmp_mem, mem_start, int(len))
+			}
+		}
+
+		unsafe {
+			mut cell_start := 0
+			mut cell_end := int(len)
+			if cr.quote_remove {
+				// Trim only bytes copied into the returned cell buffer.
+				for cell_start < cell_end {
+					if tmp_mem[cell_start] == cr.quote {
+						cell_start++
+						break
+					}
+					cell_start++
+				}
+				for cell_end > cell_start {
+					cell_end--
+					if tmp_mem[cell_end] == cr.quote {
+						break
+					}
+				}
+				cell_len := cell_end - cell_start
+				if cell_len <= 0 {
+					free(tmp_mem)
 					return cr.empty_cell
 				}
-				// println("[${start},${end}] len:${len}")
+				if cell_start > 0 {
+					vmemmove(tmp_mem, &u8(tmp_mem) + cell_start, cell_len)
+				}
+				cell_end = cell_len
 			}
-
-			// create the string from the buffer
-			mut tmp_mem := malloc_noscan(int(len + 1))
-			/*
-			defer {
-				free(tmp_mem)
-			}
-			*/
-			mem_start := &u8(cr.mem_buf) + start - cr.start_index
-			vmemcpy(tmp_mem, mem_start, int(len))
-			tmp_mem[len] = 0 // 0 for C string compatibility
-			ret_str := tos(tmp_mem, int(len))
-			return ret_str
+			tmp_mem[cell_end] = 0 // 0 for C string compatibility
+			return tos(tmp_mem, cell_end)
 		}
 	}
 	return cr.default_cell
