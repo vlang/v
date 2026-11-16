@@ -7,6 +7,20 @@ const parallel_vlib_dir = os.dir(parallel_v3_dir)
 const parallel_v3_src = os.join_path(parallel_v3_dir, 'v.v')
 const parallel_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
+fn parallel_prod_v3_path() string {
+	return os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
+}
+
+fn testsuite_begin() {
+	os.rm(parallel_prod_v3_path()) or {}
+	os.rm(parallel_prod_v3_path() + '.c') or {}
+}
+
+fn testsuite_end() {
+	os.rm(parallel_prod_v3_path()) or {}
+	os.rm(parallel_prod_v3_path() + '.c') or {}
+}
+
 fn setup_parallel_v3_cache() {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_cache_${os.getpid()}')
 	if os.getenv('V3CACHE') == cache_dir {
@@ -32,11 +46,17 @@ fn build_parallel_v3() string {
 fn build_parallel_prod_v3() string {
 	setup_parallel_v3_cache()
 	vexe := @VEXE
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	// Both self-host regressions use this immutable driver with identical build flags.
+	v3_bin := parallel_prod_v3_path()
+	if os.is_file(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-prealloc', '-prod', '-path',
 			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
+	if build.exit_code != 0 {
+		os.rm(v3_bin) or {}
+	}
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
