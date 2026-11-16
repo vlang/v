@@ -3,8 +3,10 @@ import json2 as json
 import strings
 import os
 
-// Regenerates db.v: the full MIME type database (`const db`), plus a
-// case-insensitive extension -> MIME type lookup built as a CHD perfect hash
+// Regenerates db.v: the full MIME type database as static tables (sorted
+// names plus packed per-type info, binary searched by `db_index` in
+// lookup.v), and a case-insensitive extension -> MIME type lookup built as
+// a CHD perfect hash
 // (compress, hash, displace; Belazzougui, Boldi, Pagh, Vigna). The generator
 // is fully deterministic: given the same db.json input, it always produces
 // byte-identical output.
@@ -15,6 +17,10 @@ import os
 // ASCII-case-folded branchlessly and mixed with a multiply, so the lookup
 // cost is independent of the extension length. Unknown extensions are the
 // common case for a file server, and they pay the same fixed cost as hits.
+//
+// All tables are plain constant arrays, which V emits as static data: no
+// map is built at program startup. The lookup code itself lives in
+// lookup.v; ph_fold, ph_w8 and the mix constants below must match it.
 //
 // When a command line argument is given, it is used as the mime-db source
 // (the format of the jshttp/mime-db `db.json`) instead of downloading it;
@@ -53,13 +59,13 @@ const ph_m4 = u64(0x9E3779B97F4A7C15)
 
 // ph_fold lowercases the ASCII letters 'A'..'Z' in every byte of `w`
 // branchlessly: bytes in the range get bit 0x20 set, every other byte
-// (digits, '-', '_', '.', all bytes above 'Z') is left untouched.
+// (digits, '-', '_', '.', and all non-ASCII bytes) is left untouched.
 @[inline]
 fn ph_fold(w u64) u64 {
 	a := w & 0x7F7F7F7F7F7F7F7F
 	ge_a := (a + 0x3F3F3F3F3F3F3F3F) & 0x8080808080808080
 	gt_z := (a + 0x2525252525252525) & 0x8080808080808080
-	return w | ((ge_a & ~gt_z) >> 2)
+	return w | ((ge_a & ~gt_z & ~w) >> 2)
 }
 
 // ph_w8 returns the 8 bytes at `p` as a little-endian word. It is assembled
@@ -152,10 +158,10 @@ struct PhTables {
 	disp        []u16
 	slots       []u32 // packed slot values
 	blob        []u8
-	mimes       []string
+	names       []string
 }
 
-// mirrors the lookup_generated function emitted into db.v, so that the tables
+// mirrors `lookup` in lookup.v, so that the tables
 // are verified against every known extension before anything is written
 fn ph_check(t PhTables, ext string) string {
 	mut i := 0
@@ -170,7 +176,7 @@ fn ph_check(t PhTables, ext string) string {
 	x := (w1 * t.m1) ^ (wl * ph_m2) ^ (wm * ph_m3) ^ (u64(l) * ph_m4)
 	h := u32(x ^ (x >> 32))
 	slot := t.slots[((h >> t.slot_shift) + u32(t.disp[h & t.bmask])) & t.tmask]
-	// branchless finish, mirroring the emitted lookup_generated
+	// branchless finish, mirroring `lookup`
 	el := int((slot >> t.mbits) & 31)
 	off := int(slot >> (t.mbits + 5)) - 1
 	p := unsafe { &u8(t.blob.data) + off + 9 }
@@ -183,7 +189,7 @@ fn ph_check(t PhTables, ext string) string {
 	eq &= if l > 8 { u64(wl == stl) } else { u64(1) }
 	eq &= if l > 16 { u64(wm == stm) } else { u64(1) }
 	idx := if eq != 0 { slot & t.mime_mask } else { u32(0) }
-	return t.mimes[idx]
+	return t.names[idx]
 }
 
 fn ph_hex_byte(b u8) string {
@@ -208,6 +214,42 @@ fn ph_v_literal(bytes []u8) string {
 	return sb.str()
 }
 
+// write `const name = [items...]` on one line; vfmt wraps it densely
+fn emit_list(mut sb strings.Builder, name string, items []string) {
+	sb.writeln('const ${name} = [${items.join(', ')}]')
+	sb.writeln('')
+}
+
+// typed wraps the first element in a `typ(...)` cast, which types the
+// whole array literal
+fn typed(typ string, vals []string) []string {
+	mut res := vals.clone()
+	if res.len > 0 {
+		res[0] = '${typ}(${res[0]})'
+	}
+	return res
+}
+
+fn quoted(s []string) []string {
+	return s.map("'${ph_v_literal(it.bytes())}'")
+}
+
+// index_table returns the sorted distinct values of `vals`, with '' first
+fn index_table(vals []string, limit int, what string) []string {
+	mut seen := map[string]bool{}
+	seen[''] = true
+	for v in vals {
+		seen[v] = true
+	}
+	mut res := seen.keys()
+	res.sort()
+	if res.len > limit {
+		eprintln('too many distinct ${what} values: ${res.len} > ${limit}')
+		exit(1)
+	}
+	return res
+}
+
 fn main() {
 	mime_folder := dir(executable())
 	chdir(mime_folder)!
@@ -217,7 +259,49 @@ fn main() {
 	} else {
 		http.get('https://raw.githubusercontent.com/jshttp/mime-db/master/db.json')!.body
 	}
-	mt_map := json.decode[map[string]MimeType](db_text)!
+	mut mt_map := json.decode[map[string]MimeType](db_text)!
+	// the V source extensions, see the overrides in ext_to_mt below
+	if 'text/x-vlang' !in mt_map {
+		mt_map['text/x-vlang'] = MimeType{
+			extensions:   ['v', 'vsh']
+			compressible: true
+		}
+	}
+
+	// --- the MIME type database ------------------------------------------------
+	// db_names is sorted for the binary search in db_index; index 0 is the
+	// empty string, used both for unknown types and for unknown extensions
+	mut names := mt_map.keys()
+	names.sort()
+	names.insert(0, '')
+	mut name_idx := map[string]int{}
+	for i, name in names {
+		name_idx[name] = i
+	}
+	mut all_sources := []string{}
+	mut all_charsets := []string{}
+	for _, mt in mt_map {
+		all_sources << mt.source
+		all_charsets << mt.charset
+	}
+	sources := index_table(all_sources, 8, 'source')
+	charsets := index_table(all_charsets, 16, 'charset')
+	// db_info[i] = ext_start << 16 | ext_count << 8 | charset << 4 |
+	// source << 1 | compressible, with the extensions in db_exts
+	mut db_exts := []string{}
+	mut info := []u32{len: names.len}
+	for i, name in names {
+		if i == 0 {
+			continue
+		}
+		mt := mt_map[name]
+		if mt.extensions.len > 255 || db_exts.len + mt.extensions.len > 0xFFFF {
+			eprintln('too many extensions for db_info at ${name}')
+			exit(1)
+		}
+		info[i] = (u32(db_exts.len) << 16) | (u32(mt.extensions.len) << 8) | (u32(charsets.index(mt.charset)) << 4) | (u32(sources.index(mt.source)) << 1) | u32(mt.compressible)
+		db_exts << mt.extensions
+	}
 
 	// extension -> media type (lowercase keys: lookups are case-insensitive)
 	mut ext_to_mt := map[string]string{}
@@ -230,10 +314,7 @@ fn main() {
 	ext_to_mt['vsh'] = 'text/x-vlang'
 
 	// deterministic, sorted key list
-	mut exts := []string{cap: ext_to_mt.len}
-	for ext in ext_to_mt.keys() {
-		exts << ext
-	}
+	mut exts := ext_to_mt.keys()
 	exts.sort()
 	n := exts.len
 
@@ -300,52 +381,29 @@ fn main() {
 
 	// --- pack the tables ------------------------------------------------------
 	// extensions blob: 8 padding bytes, then [u8 ext_len][ext bytes] ... per
-	// extension, then 8 more padding bytes. The padding lets the emitted
-	// lookup read every window of a stored key with one word load, whatever
-	// its position: unknown extensions pay no mispredicted early exits, so
-	// the whole comparison after the slot probe is branchless.
-	mut blob := []u8{cap: n * 8 + 16}
-	for _ in 0 .. 8 {
-		blob << 0
-	}
+	// extension, then 16 more padding bytes. The padding lets `lookup` read
+	// every window of any stored key with one word load, whatever its
+	// position and length (the middle window reads key bytes 8..16, even
+	// for a 1 byte key at the very end), so the whole comparison after the
+	// slot probe is branchless and in bounds.
+	mut blob := []u8{len: 8, cap: n * 8 + 24}
 	mut ext_off := map[string]int{}
-	mut max_ext_len := 0
 	for ext in exts {
 		if ext.len > 24 {
 			eprintln('extension longer than 24 bytes cannot be covered by the hash windows: ${ext}')
 			exit(1)
 		}
-		if ext.len > max_ext_len {
-			max_ext_len = ext.len
-		}
-		if ext !in ext_off {
-			// the offset of the entry's length byte, ignoring the leading
-			// padding (the emitted lookup adds it back as a constant)
-			ext_off[ext] = blob.len - 8
-			blob << u8(ext.len)
-			blob << ext.bytes()
-		}
+		// the offset of the entry's length byte, ignoring the leading
+		// padding (`lookup` adds it back as a constant)
+		ext_off[ext] = blob.len - 8
+		blob << u8(ext.len)
+		blob << ext.bytes()
 	}
-	for _ in 0 .. 8 {
-		blob << 0
-	}
-	// unique media types; index 0 is reserved for the empty string, so a
-	// miss can select it with a single conditional move
-	mut mimes := []string{cap: n + 1}
-	mut mime_idx := map[string]int{}
-	mimes << ''
-	mime_idx[''] = 0
-	for ext in exts {
-		mt := ext_to_mt[ext]
-		if mt !in mime_idx {
-			mime_idx[mt] = mimes.len
-			mimes << mt
-		}
-	}
-	// mime index bits packed into each slot next to the extension length and
-	// the blob offset
+	blob << []u8{len: 16}
+	// the slots point into db_names, whose index 0 is the empty string, so
+	// a miss can select it with a single conditional move
 	mut mbits := 12
-	for mimes.len > (1 << mbits) {
+	for names.len > (1 << mbits) {
 		mbits++
 	}
 	if blob.len >= (1 << (32 - mbits - 5)) {
@@ -353,52 +411,40 @@ fn main() {
 		exit(1)
 	}
 	// slot: 0 = empty, otherwise
-	//   ((ext_offset + 1) << (mbits + 5)) | (ext_len << mbits) | mime_index
+	//   ((ext_offset + 1) << (mbits + 5)) | (ext_len << mbits) | name_index
 	mut packed := []u32{len: tslots}
 	for s in 0 .. tslots {
 		if slots[s] != -1 {
-			i := slots[s]
-			ext := exts[i]
-			packed[s] = (u32(ext_off[ext] + 1) << (mbits + 5)) | (u32(ext.len) << mbits) |
-				u32(mime_idx[ext_to_mt[ext]])
+			ext := exts[slots[s]]
+			packed[s] = (u32(ext_off[ext] + 1) << (mbits + 5)) | (u32(ext.len) << mbits) | u32(name_idx[ext_to_mt[ext]])
 		}
 	}
 
 	// --- self-check before emitting anything ----------------------------------
-	// ph_check mirrors the lookup_generated function emitted into db.v
 	tables := PhTables{
 		m1:          m1
 		slot_shift:  slot_shift
 		mbits:       mbits
-		max_ext_len: max_ext_len
+		max_ext_len: 24
 		bmask:       bmask
 		tmask:       tmask
 		mime_mask:   u32((1 << mbits) - 1)
 		disp:        disp
 		slots:       packed
 		blob:        blob
-		mimes:       mimes
+		names:       names
 	}
 	for ext in exts {
-		if ph_check(tables, ext) != ext_to_mt[ext] {
-			eprintln('self-check failed for extension: ${ext}')
-			exit(1)
-		}
-		if ph_check(tables, '.' + ext) != ext_to_mt[ext] {
-			eprintln('self-check failed for dot-prefixed extension: ${ext}')
-			exit(1)
-		}
-		if ph_check(tables, ext.to_upper()) != ext_to_mt[ext] {
-			eprintln('self-check failed for uppercased extension: ${ext}')
-			exit(1)
-		}
-		if ph_check(tables, '.' + ext.to_upper()) != ext_to_mt[ext] {
-			eprintln('self-check failed for dot-prefixed uppercased extension: ${ext}')
-			exit(1)
+		want := ext_to_mt[ext]
+		for variant in [ext, '.' + ext, ext.to_upper(), '.' + ext.to_upper()] {
+			if ph_check(tables, variant) != want {
+				eprintln('self-check failed for extension: ${variant}')
+				exit(1)
+			}
 		}
 	}
 	for miss in ['', '.', 'no_such_extension', 'not-an-extension', 'index.html', 'htmX', 'W0FF',
-		'pngx', '..html', 'html ', 'zzzzzzzzzzzzzzzzzzzzzzzzzzz'] {
+		'pngx', '..html', 'html ', 'zzzzzzzzzzzzzzzzzzzzzzzzzzz', 'j\xcdon'] {
 		if ph_check(tables, miss) != '' {
 			eprintln('self-check failed for unknown extension: ${miss}')
 			exit(1)
@@ -406,168 +452,45 @@ fn main() {
 	}
 
 	// --- emit db.v -------------------------------------------------------------
-	mut sb := strings.new_builder(1024 * 1024)
+	mut sb := strings.new_builder(512 * 1024)
 	sb.writeln('module mime')
 	sb.writeln('')
 	sb.writeln('// FILE AUTOGENERATED BY `build.vsh` - DO NOT MANUALLY EDIT')
 	sb.writeln('//')
-	sb.writeln('// Contains the full MIME type database, plus the extension -> MIME type')
-	sb.writeln('// lookup used by `lookup`/`get_mime_type`: a CHD perfect hash')
-	sb.writeln('// (compress, hash, displace) over ${n} known file extensions, stored as')
-	sb.writeln('// constant data. A lookup hashes and compares the extension as up to')
-	sb.writeln('// three 8-byte windows, ASCII-case-folded branchlessly, so its cost does')
-	sb.writeln('// not grow with the extension length.')
+	sb.writeln('// The MIME type database and a CHD perfect hash over ${n} file extensions,')
+	sb.writeln('// as constant data; the code using it is in lookup.v and mime.v.')
 	sb.writeln('')
-	sb.writeln('const db = ${mt_map}')
-	sb.writeln('')
-	sb.writeln('// hash mix constants: ph_m1 is the first candidate multiplier whose')
-	sb.writeln('// 20-bit hash is injective over all known extensions')
 	sb.writeln('const ph_m1 = u64(0x${m1.hex()})')
-	sb.writeln('const ph_m2 = u64(0x8BB84B93962EACC9)')
-	sb.writeln('const ph_m3 = u64(0x4B33A62ED433D4A3)')
-	sb.writeln('const ph_m4 = u64(0x9E3779B97F4A7C15)')
+	sb.writeln('const ph_slot_shift = ${slot_shift}')
+	sb.writeln('const ph_bmask = u32(${bmask})')
+	sb.writeln('const ph_tmask = u32(${tmask})')
+	sb.writeln('const ph_mbits = ${mbits}')
 	sb.writeln('')
-	sb.writeln("// ph_fold lowercases the ASCII letters 'A'..'Z' in every byte of `w`")
-	sb.writeln('// branchlessly: bytes in the range get bit 0x20 set, every other byte')
-	sb.writeln("// (digits, '-', '_', '.', all bytes above 'Z') is left untouched.")
-	sb.writeln('@[inline]')
-	sb.writeln('fn ph_fold(w u64) u64 {')
-	sb.writeln('\ta := w & 0x7F7F7F7F7F7F7F7F')
-	sb.writeln('\tge_a := (a + 0x3F3F3F3F3F3F3F3F) & 0x8080808080808080')
-	sb.writeln('\tgt_z := (a + 0x2525252525252525) & 0x8080808080808080')
-	sb.writeln('\treturn w | ((ge_a & ~gt_z) >> 2)')
-	sb.writeln('}')
-	sb.writeln('')
-	sb.writeln('// ph_w8 returns the 8 bytes at `p` as a little-endian word. It is')
-	sb.writeln('// assembled from single bytes, which is defined for any alignment, and')
-	sb.writeln('// an optimizing compiler folds it into one load.')
-	sb.writeln('@[direct_array_access; inline; unsafe]')
-	sb.writeln('fn ph_w8(p &u8) u64 {')
-	sb.writeln('\treturn unsafe {')
-	sb.writeln('\t\tu64(p[0]) | u64(p[1]) << 8 | u64(p[2]) << 16 | u64(p[3]) << 24')
-	sb.writeln('\t\t\t| u64(p[4]) << 32 | u64(p[5]) << 40 | u64(p[6]) << 48 | u64(p[7]) << 56')
-	sb.writeln('\t}')
-	sb.writeln('}')
-	sb.writeln('')
-	sb.writeln('// bucket displacement for the perfect hash:')
-	sb.writeln('// slot = ((h >> ${slot_shift}) + ph_disp[h & ${nbuckets - 1}]) & ${tslots - 1}')
-	sb.writeln('const ph_disp = [')
-	for v in disp {
-		sb.writeln('\tu16(${v}),')
-	}
-	sb.writeln(']')
-	sb.writeln('')
-	sb.writeln('// ${tslots} hash slots: 0 = empty, otherwise')
-	sb.writeln('//   ((ext_offset + 1) << ${mbits + 5}) | (ext_len << ${mbits}) | mime_index')
-	sb.writeln('const ph_slots = [')
-	for v in packed {
-		sb.writeln('\tu32(${v}),')
-	}
-	sb.writeln(']')
-	sb.writeln('')
-	sb.writeln('// packed extensions: 8 padding bytes, then [u8 ext_len][ext bytes] per')
-	sb.writeln('// extension, then 8 more padding bytes. Every window of a stored key')
-	sb.writeln('// is readable with one word load, whatever its position.')
+	sb.writeln('// bucket displacements: slot = ((h >> ph_slot_shift) + ph_disp[h & ph_bmask]) & ph_tmask')
+	emit_list(mut sb, 'ph_disp', typed('u16', disp.map(it.str())))
+	sb.writeln('// hash slots: 0 = empty, otherwise')
+	sb.writeln('//   ((ext_offset + 1) << (ph_mbits + 5)) | (ext_len << ph_mbits) | db_names index')
+	emit_list(mut sb, 'ph_slots', typed('u32', packed.map(it.str())))
+	sb.writeln('// packed extensions: 8 padding bytes, [u8 ext_len][ext bytes] per extension,')
+	sb.writeln('// then 16 padding bytes, so every key window is readable with one word load')
 	sb.writeln("const ph_blob = '${ph_v_literal(blob)}'")
 	sb.writeln('')
-	sb.writeln('// unique MIME types, indexed by the low ${mbits} bits of a ph_slots value;')
-	sb.writeln('// index 0 is the empty string, returned for unknown extensions')
-	sb.writeln('const ph_mimes = [')
-	for v in mimes {
-		sb.writeln("\t'${ph_v_literal(v.bytes())}',")
-	}
-	sb.writeln(']')
-	sb.writeln('')
-	// ph_masks[l] covers the low 8*min(l, 8) bits of a folded window word
-	mut masks := []u64{len: max_ext_len + 1}
-	for li in 0 .. max_ext_len + 1 {
-		masks[li] = if li >= 8 { u64(0xFFFFFFFFFFFFFFFF) } else { (u64(1) << (8 * li)) - 1 }
-	}
-	sb.writeln('// ph_masks[l] covers the low 8*min(l, 8) bits of a folded window word')
-	sb.writeln('const ph_masks = [')
-	for li in 0 .. max_ext_len + 1 {
-		sb.writeln('\tu64(${masks[li]}),')
-	}
-	sb.writeln(']')
-	sb.writeln('')
-	sb.writeln('const ph_max_ext_len = ${max_ext_len}')
-	sb.writeln('')
-	sb.writeln("// lookup returns the MIME type for the given file extension, or '' when")
-	sb.writeln('// unknown. The extension may be given with or without a leading dot,')
-	sb.writeln('// and is compared ASCII case-insensitively without allocating.')
-	sb.writeln('//')
-	sb.writeln('// The extension is hashed and compared as up to three 8-byte windows,')
-	sb.writeln('// ASCII-case-folded branchlessly, so the cost does not grow with its')
-	sb.writeln('// length: short extensions are gathered one byte at a time, long ones')
-	sb.writeln('// are read with whole word loads. After the single table probe the')
-	sb.writeln('// finish is branchless - unknown extensions take no mispredicted')
-	sb.writeln('// early exits, which is what dominated their cost.')
-	sb.writeln('@[direct_array_access; inline]')
-	sb.writeln('pub fn lookup(ext string) string {')
-	sb.writeln('\tmut i := 0')
-	sb.writeln('\tif ext.len > 0 && ext[0] == `.` {')
-	sb.writeln('\t\ti = 1')
-	sb.writeln('\t}')
-	sb.writeln('\tl := ext.len - i')
-	sb.writeln('\tif l == 0 || l > ph_max_ext_len {')
-	sb.writeln("\t\treturn ''")
-	sb.writeln('\t}')
-	sb.writeln('\tmut w1 := u64(0)')
-	sb.writeln('\tmut wl := u64(0)')
-	sb.writeln('\tmut wm := u64(0)')
-	sb.writeln('\tif l >= 8 {')
-	sb.writeln('\t\tp := unsafe { ext.str + i }')
-	sb.writeln('\t\tw1 = ph_fold(unsafe { ph_w8(p) })')
-	sb.writeln('\t\tif l > 8 {')
-	sb.writeln('\t\t\twl = ph_fold(unsafe { ph_w8(p + l - 8) })')
-	sb.writeln('\t\t}')
-	sb.writeln('\t\tif l > 16 {')
-	sb.writeln('\t\t\twm = ph_fold(unsafe { ph_w8(p + 8) })')
-	sb.writeln('\t\t}')
-	sb.writeln('\t} else {')
-	sb.writeln('\t\t// gather the bytes into one little-endian word with a rolling')
-	sb.writeln('\t\t// place multiplier, so no runtime shift (and its overflow')
-	sb.writeln('\t\t// check) is needed')
-	sb.writeln('\t\tmut w := u64(0)')
-	sb.writeln('\t\tmut pow := u64(1)')
-	sb.writeln('\t\tfor j in 0 .. l {')
-	sb.writeln('\t\t\tw += u64(ext[i + j]) * pow')
-	sb.writeln('\t\t\tpow <<= 8')
-	sb.writeln('\t\t}')
-	sb.writeln('\t\tw1 = ph_fold(w)')
-	sb.writeln('\t}')
-	sb.writeln('\tx := if l >= 8 {')
-	sb.writeln('\t\t(w1 * ph_m1) ^ (wl * ph_m2) ^ (wm * ph_m3) ^ (u64(l) * ph_m4)')
-	sb.writeln('\t} else {')
-	sb.writeln('\t\t(w1 * ph_m1) ^ (u64(l) * ph_m4)')
-	sb.writeln('\t}')
-	sb.writeln('\th := u32(x ^ (x >> 32))')
-	sb.writeln('\tslot := ph_slots[((h >> ${slot_shift}) + ph_disp[h & ${nbuckets - 1}]) & ${tslots - 1}]')
-	sb.writeln('\t// branchless finish: read every window of the stored key, compare, and')
-	sb.writeln('\t// select the result; ph_mimes[0] is the empty string for a miss')
-	sb.writeln('\tel := int((slot >> ${mbits}) & 31)')
-	sb.writeln('\toff := int(slot >> ${mbits + 5}) - 1')
-	sb.writeln('\tp := unsafe { ph_blob.str + off + 9 }')
-	sb.writeln('\tm := ph_masks[l]')
-	sb.writeln('\tst1 := unsafe { ph_w8(p) }')
-	sb.writeln('\t// slot == 0 needs no test of its own: it stores el = 0, and l >= 1')
-	sb.writeln('\tmut eq := u64(el == l)')
-	sb.writeln('\teq &= u64((w1 & m) == (st1 & m))')
-	sb.writeln('\tif l > 8 {')
-	sb.writeln('\t\tstl := unsafe { ph_w8(p + el - 8) }')
-	sb.writeln('\t\teq &= u64(wl == stl)')
-	sb.writeln('\t}')
-	sb.writeln('\tif l > 16 {')
-	sb.writeln('\t\tstm := unsafe { ph_w8(p + 8) }')
-	sb.writeln('\t\teq &= u64(wm == stm)')
-	sb.writeln('\t}')
-	sb.writeln('\tidx := if eq != 0 { slot & ${(1 << mbits) - 1} } else { u32(0) }')
-	sb.writeln('\treturn ph_mimes[idx]')
-	sb.writeln('}')
-	sb.writeln('')
+	sb.writeln('// sorted MIME type names; index 0 is the empty string for unknown types')
+	emit_list(mut sb, 'db_names', quoted(names))
+	emit_list(mut sb, 'db_sources', quoted(sources))
+	emit_list(mut sb, 'db_charsets', quoted(charsets))
+	sb.writeln('// the extensions of every MIME type, in db_names order')
+	emit_list(mut sb, 'db_exts', quoted(db_exts))
+	sb.writeln('// per db_names entry: ext_start << 16 | ext_count << 8 | db_charsets index << 4 |')
+	sb.writeln('//   db_sources index << 1 | compressible')
+	emit_list(mut sb, 'db_info', typed('u32', info.map(it.str())))
 
 	write_file('db.v', sb.str())!
-	execute('${@VEXE} fmt -w db.v')
+	res := os.exec([@VEXE, 'fmt', '-w', 'db.v'])
+	if res.exit_code != 0 {
+		eprintln(res.output)
+		exit(1)
+	}
 	println('db.v was regenerated. New file size: ${file_size('db.v')} bytes .')
 	load := f64(n) / f64(tslots)
 	mut max_disp := 0
@@ -576,5 +499,5 @@ fn main() {
 			max_disp = int(v)
 		}
 	}
-	println('perfect hash: multiplier=0x${m1.hex()}, slots=${tslots}, load=${load:.3f}, unique mimes=${mimes.len}, max displacement=${max_disp}')
+	println('perfect hash: multiplier=0x${m1.hex()}, slots=${tslots}, load=${load:.3f}, mime types=${names.len - 1}, max displacement=${max_disp}')
 }
