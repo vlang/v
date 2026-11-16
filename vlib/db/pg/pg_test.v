@@ -167,18 +167,21 @@ fn test_listen_notify() {
 		assert false, 'Expected a notification but got none'
 		return
 	}
+	c.listen('late_channel')!
 	for i in 1 .. 9 {
-		c.notify('kept_channel', 'later payload ${i:02}')!
+		c.notify('late_channel', 'later payload ${i:02}')!
 		c.consume_input()!
 		later := c.get_notification() or {
 			assert false, 'Expected notification ${i} but got none'
 			return
 		}
+		assert later.channel == 'late_channel'
 		assert later.payload == 'later payload ${i:02}'
 	}
 	assert kept.channel == 'kept_channel'
 	assert kept.payload == 'first payload 00'
 	c.unlisten('kept_channel')!
+	c.unlisten('late_channel')!
 
 	// Test socket (should return valid fd)
 	socket_fd := c.socket()
