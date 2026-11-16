@@ -158,6 +158,28 @@ fn test_listen_notify() {
 	c.listen('channel2')!
 	c.unlisten_all()!
 
+	// A notification owns its strings: libpq frees the PGnotify block, and the
+	// blocks of later notifications of the same size take its place.
+	c.listen('kept_channel')!
+	c.notify('kept_channel', 'first payload 00')!
+	c.consume_input()!
+	kept := c.get_notification() or {
+		assert false, 'Expected a notification but got none'
+		return
+	}
+	for i in 1 .. 9 {
+		c.notify('kept_channel', 'later payload ${i:02}')!
+		c.consume_input()!
+		later := c.get_notification() or {
+			assert false, 'Expected notification ${i} but got none'
+			return
+		}
+		assert later.payload == 'later payload ${i:02}'
+	}
+	assert kept.channel == 'kept_channel'
+	assert kept.payload == 'first payload 00'
+	c.unlisten('kept_channel')!
+
 	// Test socket (should return valid fd)
 	socket_fd := c.socket()
 	assert socket_fd >= 0
