@@ -34,7 +34,9 @@ fn create_local_git_module(repo_path string, module_name string) string {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
 		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
-	cmd_ok_args(@LOCATION, ['git', 'init', '-b', 'main', repo_path])
+	cmd_ok_args(@LOCATION, ['git', 'init', '-q', repo_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'symbolic-ref', '--short', 'HEAD']).output.trim_space() == 'main'
 	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'v.mod'])
 	cmd_ok_args(@LOCATION,
 		['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit',

@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_fastc_call_head_rewriting_ignores_c_literals() {
 	assert fastc_replace_c_call_at_head(r'"m->get(1)" + m->get(id(2))', 'm->get(',
 		'replacement()') == r'"m->get(1)" + replacement()'

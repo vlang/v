@@ -102,6 +102,20 @@ If the bounded compressed prefix cannot be decompressed, it retains the encoded 
 ordinary response parsing. The client still reads the full response and invokes progress callbacks,
 so streaming downloads can keep a bounded preview without losing data in the callbacks.
 
+Decoded response bodies are limited to 16 MiB total across `Content-Encoding` layers by default.
+Set `FetchConfig.max_total_decompressed_bytes` to a larger positive value for larger bodies; a
+nonpositive value disables the cumulative limit. Each decoded stage still has a representational
+ceiling. Gzip and deflate stages are capped at `max_int - 32768` with 32-bit `int`, or `2^62 - 1`
+with `-d new_int -x64`; Brotli stages are capped at `max_int - 1` or `2^62`, respectively.
+Exceeding either ceiling returns `ResponseDecompressionLimitError`. This bounds decoded output, not
+total process memory; transport buffers and decoder history also use memory. Responses may contain
+at most eight content-encoding layers.
+A positive `stop_copying_limit` smaller than the remaining decoded-byte budget caps the stored
+decoded body and stops decoding once that preview is full. Any remaining compressed data and its
+checksum are not validated. If the preview limit is at or above the remaining decoded-byte budget,
+exceeding the hard budget returns `ResponseDecompressionLimitError`. A received encoded prefix
+known to be incomplete is kept as-is rather than decoded.
+
 With HTTP/2 negotiation disabled, returning an error from `on_progress` or `on_progress_body`
 stops an HTTP/1.1 request without retrying or replaying it, including on a reused connection.
 The caller receives the original callback error with its type and code preserved. This also
@@ -149,6 +163,12 @@ An HTTP/2 request with a field name that is not a token, or a field value with C
 NUL, is malformed: its stream is reset and the handler is not called. A request with more
 than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
 answered with `431 Request Header Fields Too Large`.
+
+HTTP/1 request lines and headers are limited to 64 KiB in total; oversized heads receive
+`431 Request Header Fields Too Large` and the connection is closed. `Server.read_header_timeout`
+sets the total time allowed to receive that head (30 seconds by default); set it to `0` to
+disable the deadline. `Server.read_timeout` continues to control individual reads and request
+bodies.
 
 HTTP/1.1 `Content-Length` bodies are limited to 8 MiB by default before the server allocates
 their storage. Set `Server.max_http1_request_body_size` to another positive byte count to

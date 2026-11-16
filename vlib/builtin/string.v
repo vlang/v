@@ -1243,6 +1243,34 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	return res
 }
 
+// split_next returns the next part of `s.split(delim)` for a nonempty `delim`, starting at
+// `*pos`, and moves `*pos` past the delimiter that ends it, or past the end of `s` after the
+// last part. The compiler lowers `for part in s.split('lit') {` to calls of it, which yields
+// the same parts as `split` without building the array first.
+@[direct_array_access]
+fn (s string) split_next(delim string, pos &int) string {
+	start := *pos
+	mut end := -1
+	if delim.len == 1 {
+		i := string_index_byte(unsafe { s.str + start }, s.len - start, delim.str[0])
+		if i >= 0 {
+			end = start + i
+		}
+	} else {
+		end = s.index_after_(delim, start)
+	}
+	if end < 0 {
+		unsafe {
+			*pos = s.len + 1
+		}
+		return s.substr(start, s.len)
+	}
+	unsafe {
+		*pos = end + delim.len
+	}
+	return s.substr(start, end)
+}
+
 // rsplit_nth splits the string based on the passed `delim` substring in reverse order.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
@@ -1846,6 +1874,25 @@ pub fn (s string) to_lower_ascii() string {
 	}
 }
 
+// to_lower_ascii_eq reports whether `s.to_lower_ascii() == a` without allocating the lowered
+// string. Only `s` is lowered. The compiler lowers that comparison to this call.
+@[direct_array_access]
+fn (s string) to_lower_ascii_eq(a string) bool {
+	if s.len != a.len {
+		return false
+	}
+	for i in 0 .. s.len {
+		mut c := s[i]
+		if c >= `A` && c <= `Z` {
+			c += 32
+		}
+		if c != a[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // to_lower returns the string in all lowercase characters.
 // Example: assert 'Hello V'.to_lower() == 'hello v'
 @[direct_array_access]
@@ -2049,6 +2096,25 @@ pub fn (s string) find_between(start string, end string) string {
 @[inline]
 pub fn (s string) trim_space() string {
 	return s.trim(' \n\t\v\f\r')
+}
+
+// trim_space_eq reports whether `s.trim_space() == a` without allocating the trimmed string.
+// The compiler lowers that comparison to this call.
+@[direct_array_access]
+fn (s string) trim_space_eq(a string) bool {
+	mut start := 0
+	mut end := s.len
+	// `\t`, `\n`, `\v`, `\f` and `\r` are the consecutive bytes 9 to 13.
+	for start < end && (s[start] == ` ` || (s[start] >= `\t` && s[start] <= `\r`)) {
+		start++
+	}
+	for end > start && (s[end - 1] == ` ` || (s[end - 1] >= `\t` && s[end - 1] <= `\r`)) {
+		end--
+	}
+	if end - start != a.len {
+		return false
+	}
+	return a.len == 0 || unsafe { vmemcmp(s.str + start, a.str, a.len) } == 0
 }
 
 // trim_space_left strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start of the string.
@@ -2807,8 +2873,13 @@ pub fn (s string) bytes() []u8 {
 	if s.len == 0 {
 		return []
 	}
-	mut buf := []u8{len: s.len}
-	unsafe { vmemcpy(buf.data, s.str, s.len) }
+	// Every byte is copied over below, so allocate without zeroing (`len: 0, cap: n` takes
+	// the uninitialized path), then expose the copied bytes.
+	mut buf := []u8{cap: s.len}
+	unsafe {
+		vmemcpy(buf.data, s.str, s.len)
+		buf.len = s.len
+	}
 	return buf
 }
 

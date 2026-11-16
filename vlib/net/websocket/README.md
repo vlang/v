@@ -51,6 +51,11 @@ See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode f
 Incoming 64-bit frame lengths must have the most significant bit clear and fit in
 V's `int` range. Oversized lengths are rejected before allocating the payload buffer.
 
+Incoming messages in the blocking `Client` and `Server` APIs default to 8 MiB.
+Set `ClientOpt.max_message_bytes` or `ServerOpt.max_message_bytes` to a positive
+limit for the application. A frame or fragmented message that exceeds it is
+closed with status 1009 before its payload is read.
+
 ## Owning a client connection
 
 Plain `ws://` clients and accepted server connections do not create TLS contexts.

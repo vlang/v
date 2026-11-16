@@ -1,19 +1,10 @@
 name: Graphics CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**'
-      - 'examples/gg/multiwindow.v'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/gg_regressions_ci.yml'
-      - '!**.md'
+  workflow_call:
 
 concurrency:
-  group: gg-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: gg-regressions-gg_regressions_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -46,7 +37,7 @@ jobs:
           printf 'VTMP=%s\n' "$graphics_vtmp" >> "$GITHUB_ENV"
 
       - name: Build local v
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Clear module cache
         run: |

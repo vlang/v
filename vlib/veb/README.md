@@ -955,6 +955,62 @@ curl http://localhost:8080/api.html
 curl http://localhost:8080/api
 ```
 
+## Request activity hooks
+
+An application can implement `before_handle_request(req http.Request)` and
+`after_handle_request(req http.Request)` methods to account for request activity.
+These optional hooks surround both regular and TLS dispatch, including static
+files, routing errors and middleware that returns early. The after hook runs
+when dispatch returns, before the transport finishes writing the response.
+Applications without both methods keep their existing behavior.
+
+```v
+module main
+
+import net.http
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {
+	veb.Middleware[Context]
+}
+
+fn (mut app App) before_handle_request(req http.Request) {
+	// Begin process-wide activity accounting.
+}
+
+fn (mut app App) after_handle_request(req http.Request) {
+	// End activity accounting on every dispatch return path.
+}
+
+@['/']
+fn (mut app App) index(mut ctx Context) veb.Result { return ctx.text('Hello') }
+
+fn main() {
+	mut app := &App{}
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+For upgraded connections, account for message callbacks separately instead of
+keeping a request active for the entire lifetime of an idle connection.
+
+The hooks run on the dispatching worker. When workers handle requests concurrently,
+use synchronization for any shared counters or other application state. The after
+hook covers dispatch completion; a deferred `Context.after()` callback or an upgraded
+connection can continue after it returns.
+
+In ordinary Boehm GC builds, veb shares response bodies it owns with its private
+response writer and reuses one writer snapshot per fasthttp worker. Application
+contexts and their retained response aliases remain independent of that snapshot.
+Deferred responses receive an independent heap snapshot before a timer starts.
+Controller dispatch and nested use of a busy writer slot keep the allocating path.
+Other memory modes, including `-gc none`, `-prealloc`, autofree and ownership mode,
+keep the response-body copying path.
+
 ## Middleware
 
 Middleware in web development is (loosely defined) a hidden layer that sits between

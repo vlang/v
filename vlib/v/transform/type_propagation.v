@@ -1998,6 +1998,30 @@ fn (t &Transformer) node_type(id flat.NodeId) u32 {
 	return t.node_type_uncached(id)
 }
 
+// bound_ident_type is the type node_type_uncached derives for an identifier that
+// names a local binding while no smartcast is active: resolve_ident_expr_type
+// returns the binding's normalized type, and node_type_uncached returns that type
+// unchanged unless it is a `typeof` spelling, an unresolved generic argument or,
+// outside the compiler build, a struct candidate the checker may override. Those
+// cases, unbound names and active smartcasts return 0 and keep the general path.
+@[direct_array_access; inline]
+fn (t &Transformer) bound_ident_type(idx int) u32 {
+	if t.smartcast_stack.len != 0 {
+		return u32(0)
+	}
+	i := t.var_type_index(t.a.nodes[idx].value_text())
+	if i < 0 || t.var_types[i].typ == 0 {
+		return u32(0)
+	}
+	bound_type := t.normalize_type_alias(t.var_types[i].typ)
+	if bound_type == 0 || flat.source_type_shape(bound_type).has(.typeof_expr)
+		|| (!t.building_v && flat.source_type_query(bound_type).has(.struct_candidate))
+		|| t.generic_arg_is_unresolved(bound_type) {
+		return u32(0)
+	}
+	return bound_type
+}
+
 @[direct_array_access]
 fn (t &Transformer) node_type_memo_miss(id flat.NodeId, slot int) u32 {
 	mut memo := t.node_type_memo
@@ -2019,6 +2043,12 @@ fn (t &Transformer) node_type_memo_miss(id flat.NodeId, slot int) u32 {
 fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 	if int(id) < 0 {
 		return u32(0)
+	}
+	if t.a.nodes[int(id)].kind == .ident {
+		bound_type := t.bound_ident_type(int(id))
+		if bound_type != 0 {
+			return bound_type
+		}
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .fn_literal || node.kind == .lambda_expr {

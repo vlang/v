@@ -104,17 +104,30 @@ fn (mut g FlatGen) write_line_directive_text(directive string) {
 	g.line_start = true
 }
 
-// gen_race_string_read records the original header before a string is passed by value.
+fn (mut g FlatGen) gen_race_string_read(id flat.NodeId) bool {
+	if !g.race || types.unalias_type(g.usable_expr_type(id)) !is types.String {
+		return false
+	}
+	return g.gen_race_header_read(id, 'string')
+}
+
+fn (mut g FlatGen) gen_race_array_read(id flat.NodeId) bool {
+	if !g.race || types.unalias_type(g.usable_expr_type(id)) !is types.Array {
+		return false
+	}
+	return g.gen_race_header_read(id, 'Array')
+}
+
+// gen_race_header_read records the original header before it is passed by value.
 // C compiler instrumentation can miss the argument copy, while reads inside the callee
 // only describe its private copy. Keep the source address in one temporary: an indexed
-// string can have side effects in its index expression.
-fn (mut g FlatGen) gen_race_string_read(id flat.NodeId) bool {
-	if !g.race || types.unalias_type(g.usable_expr_type(id)) !is types.String
-		|| !g.race_string_read_is_lvalue(id) {
+// array or string can have side effects in its index expression.
+fn (mut g FlatGen) gen_race_header_read(id flat.NodeId, c_type string) bool {
+	if !g.race_header_read_is_lvalue(id) {
 		return false
 	}
 	pointer := g.tmp_name()
-	g.write('({ const string* ${pointer} = &(')
+	g.write('({ const ${c_type}* ${pointer} = &(')
 	g.gen_expr(id)
 	g.write('); __tsan_read_range((void*)${pointer}, sizeof(*${pointer})); *${pointer}; })')
 	return true
@@ -122,13 +135,13 @@ fn (mut g FlatGen) gen_race_string_read(id flat.NodeId) bool {
 
 // Calls, map lookups, and overloaded indexes may produce C temporaries. Only take
 // the address of storage that the normal expression path already reads as an lvalue.
-fn (mut g FlatGen) race_string_read_is_lvalue(id flat.NodeId) bool {
+fn (mut g FlatGen) race_header_read_is_lvalue(id flat.NodeId) bool {
 	node := g.a.nodes[int(id)]
 	return match node.kind {
 		.ident { true }
 		.prefix { node.op == .mul }
 		.selector, .paren {
-			node.children_count > 0 && g.race_string_read_is_lvalue(g.a.child(&node, 0))
+			node.children_count > 0 && g.race_header_read_is_lvalue(g.a.child(&node, 0))
 		}
 		.index {
 			if node.value == 'range' || node.children_count == 0 {
@@ -152,7 +165,7 @@ fn (mut g FlatGen) race_string_read_is_lvalue(id flat.NodeId) bool {
 			}
 			concrete_type := concrete_receiver_type(base_type)
 			(concrete_type is types.Array || concrete_type is types.ArrayFixed)
-				&& g.race_string_read_is_lvalue(base_id)
+				&& g.race_header_read_is_lvalue(base_id)
 		}
 		else { false }
 	}

@@ -36,16 +36,17 @@ pub:
 
 // new_pool_processor returns a new PoolProcessor instance.
 // The parameters of new_pool_processor are:
-//    context.maxjobs: when 0 (the default), the PoolProcessor will use a
-//      number of threads, that is optimal for your system to process your items.
-//    context.callback: this should be a callback function, that each worker
-//      thread in the pool will run for each item.
-//      The callback function will receive as parameters:
-//      1) the PoolProcessor instance, so it can call
-//            p.get_item[int](idx) to get the actual item at index idx
-//      2) idx - the index of the currently processed item
-//      3) task_id - the index of the worker thread in which the callback
-//            function is running.
+// - `context.maxjobs`: when 0 (the default), the PoolProcessor will use a
+//   number of threads, that is optimal for your system to process your items.
+// - `context.callback`: this should be a callback function, that each worker
+//   thread in the pool will run for each item.
+//
+// The callback function will receive as parameters:
+// 1. the PoolProcessor instance, so it can call
+//    `p.get_item[int](idx)` to get the actual item at index idx
+// 2. `idx` - the index of the currently processed item
+// 3. `task_id` - the index of the worker thread in which the callback
+//    function is running.
 pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	if context.callback == unsafe { nil } {
 		panic('You need to pass a valid callback to new_pool_processor.')

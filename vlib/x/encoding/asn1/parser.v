@@ -88,11 +88,15 @@ pub fn (mut p Parser) read_bytes(length int) ![]u8 {
 // read_tlv read an Element from the parser data.
 // Its return an Element, you should cast it to underlying data if you need.
 pub fn (mut p Parser) read_tlv() !Element {
+	return p.read_tlv_with_depth(0)!
+}
+
+fn (mut p Parser) read_tlv_with_depth(nesting_depth int) !Element {
 	tag := p.read_tag()!
 	length := p.read_length()!
 	content := p.read_bytes(length)!
 
-	elem := parse_element(tag, content)!
+	elem := parse_element_with_depth(tag, content, nesting_depth)!
 	return elem
 }
 

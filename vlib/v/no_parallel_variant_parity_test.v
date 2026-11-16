@@ -15,7 +15,8 @@ fn test_no_parallel_variants_define_every_externally_called_function() {
 		assert os.exists(serial_path), 'missing serial variant for ${parallel_path}'
 		serial_fns := declared_fns(os.read_file(serial_path) or { panic(err) })
 		module_sources := sibling_module_sources(parallel_path, serial_path)
-		for name, is_pub in declared_fns(os.read_file(parallel_path) or { panic(err) }) {
+		parallel_source := os.read_file(parallel_path) or { panic(err) }
+		for name, is_pub in declared_fns(parallel_source) {
 			if name in serial_fns {
 				continue
 			}
@@ -23,6 +24,12 @@ fn test_no_parallel_variants_define_every_externally_called_function() {
 			// always required. A private one is required once another file of the
 			// same module calls it.
 			assert !is_pub, '${os.base(serial_path)} lacks public `${name}` from ${os.base(parallel_path)}'
+			// A private method on a type defined only in the parallel variant
+			// cannot be called by the serial module. Do not confuse an unrelated
+			// method with the same name (e.g. BatchSources.release) for a call.
+			if only_parallel_local_methods(parallel_source, name, module_sources) {
+				continue
+			}
 			for source in module_sources {
 				assert !calls_fn(source, name), '${os.base(serial_path)} lacks `${name}`, which ${os.base(parallel_path)} defines and its module calls'
 			}
@@ -31,6 +38,54 @@ fn test_no_parallel_variants_define_every_externally_called_function() {
 	}
 	// Guard against the walk silently matching nothing after a rename.
 	assert checked >= 5
+}
+
+// only_parallel_local_methods reports that every declaration of name in the
+// parallel variant is a private method on a type absent from serial module
+// sources. Calls to a different receiver's same-named method are unrelated.
+fn only_parallel_local_methods(parallel_source string, name string, module_sources []string) bool {
+	mut found := false
+	for line in parallel_source.split_into_lines() {
+		if !line.starts_with('fn ') {
+			continue
+		}
+		signature := line.all_after('fn ')
+		method_signature := if signature.starts_with('(') {
+			signature.all_after(') ')
+		} else {
+			signature
+		}
+		if method_signature.all_before('(').all_before('[').trim_space() != name {
+			continue
+		}
+		if !signature.starts_with('(') {
+			return false
+		}
+		receiver := signature.all_before(')').fields().last().trim_left('&')
+		if !parallel_source.split_into_lines().contains('struct ${receiver} {') {
+			return false
+		}
+		for source in module_sources {
+			for source_line in source.split_into_lines() {
+				// A reference in a comment is not visible to the serial build.
+				if source_line.all_before('//').contains(receiver) {
+					return false
+				}
+			}
+		}
+		found = true
+	}
+	return found
+}
+
+fn test_parallel_local_method_parity_keeps_externally_called_methods() {
+	parallel := 'struct SpeculatedBatch {\n}\nfn (mut spec SpeculatedBatch) release() {\n}\n'
+	shared_sources := ['fn (mut b BatchSources) release(start int, end int) {}']
+	assert only_parallel_local_methods(parallel, 'release', shared_sources)
+	assert only_parallel_local_methods(parallel, 'release', ['speculated_batch voidptr // &SpeculatedBatch'])
+	assert !only_parallel_local_methods(parallel, 'release', ['fn use(spec SpeculatedBatch) {}'])
+	assert !only_parallel_local_methods('fn (mut p Parser) release() {}', 'release', [])
+	assert !only_parallel_local_methods('fn release() {}', 'release', [])
 }
 
 // declared_fns maps the name of every top-level function and method declared in

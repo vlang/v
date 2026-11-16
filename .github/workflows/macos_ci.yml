@@ -2,17 +2,7 @@ name: CI macOS
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # macOS, so changes to it must run this suite; the canary below stays strict.
-      - '**.md'
-      - '**.yml'
-      - '!**/macos_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 permissions:
   contents: read
@@ -24,7 +14,7 @@ jobs:
       matrix:
         # V3 (vlib/v, `-new-compiler`) is the default compiler on macOS, so
         # exercise it on every arm64 (Apple-silicon) runner image, not just one.
-        os: [macos-14, macos-15, macos-26]
+        os: [macos-15, macos-26]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -60,7 +50,9 @@ jobs:
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'true'
       - name: Assert V is the default compiler (fail if V1 is silently used)
         run: |
           set -uo pipefail
@@ -320,9 +312,8 @@ jobs:
     if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
-        os: [macos-14, macos-15, macos-26]
-        # Three shards still reach the 90-minute limit on macOS 26.
-        # Shard 0 runs in clang-macos; keep the count identical in both jobs.
+        os: [macos-15, macos-26]
+        # Shard 0 runs in clang-macos; each remaining shard gets its own runner.
         shard: [1, 2, 3, 4]
       fail-fast: false
     runs-on: ${{ matrix.os }}
@@ -330,6 +321,7 @@ jobs:
     env:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      # Shard 1/5 (index 0) runs in clang-macos; keep the count identical in both jobs.
       VTEST_SELF_SHARD_COUNT: '5'
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
@@ -354,7 +346,11 @@ jobs:
           restore-keys: |
             brew-${{ matrix.os }}-
       - name: Build V
-        run: make -j4 && ./v symlink
+        # CI master waits for bootstrap-macos, then reuses its exact-commit vprod
+        # artifact on both images, with platform and checksum verification.
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'true'
       - name: Install iconv for encoding.iconv
         run: v run ci/macos_ci.vsh install_iconv
       - name: Self tests

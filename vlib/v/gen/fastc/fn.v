@@ -1826,12 +1826,71 @@ fn fastc_scalar_zero_literal_type(name string) ?string {
 
 // fastc_primitive_c_type accepts V primitive spellings, excluding removed aliases.
 // The emitter still uses its private C storage identities internally.
+// It is asked about most identifiers of every expression, so it compares the
+// spelling directly: interning each probed name contended on the shared type table.
 fn fastc_primitive_c_type(raw_type string) ?string {
-	if raw_type == 'isize' || raw_type == 'usize' {
-		return none
+	match raw_type.len {
+		2 {
+			if raw_type == 'i8' { return 'i8' }
+			if raw_type == 'u8' { return 'u8' }
+		}
+		3 {
+			match raw_type[0] {
+				`f` {
+					if raw_type == 'f32' { return 'f32' }
+					if raw_type == 'f64' { return 'f64' }
+				}
+				`i` {
+					if raw_type == 'i16' { return 'i16' }
+					if raw_type == 'i32' { return 'i32' }
+					if raw_type == 'i64' { return 'i64' }
+					if raw_type == 'int' { return 'int' }
+				}
+				`u` {
+					if raw_type == 'u16' { return 'u16' }
+					if raw_type == 'u32' { return 'u32' }
+					if raw_type == 'u64' { return 'u64' }
+				}
+				`m` {
+					if raw_type == 'map' { return 'map' }
+				}
+				`a` {
+					if raw_type == 'any' { return 'voidptr' }
+				}
+				else {}
+			}
+		}
+		4 {
+			if raw_type == 'bool' { return 'bool' }
+			if raw_type == 'char' { return 'char' }
+			if raw_type == 'rune' { return 'rune' }
+			if raw_type == 'chan' { return 'chan' }
+			if raw_type == 'uint' { return 'usize' }
+		}
+		5 {
+			if raw_type == 'array' { return 'array' }
+		}
+		6 {
+			if raw_type == 'string' { return 'string' }
+			if raw_type == 'Option' { return 'Option' }
+		}
+		7 {
+			if raw_type == 'voidptr' { return 'voidptr' }
+			if raw_type == 'byteptr' { return 'byteptr' }
+			if raw_type == 'charptr' { return 'charptr' }
+		}
+		10 {
+			if raw_type == '__v_result' { return '__v_result' }
+		}
+		11 {
+			if raw_type == 'int_literal' { return 'i64' }
+		}
+		13 {
+			if raw_type == 'float_literal' { return 'f64' }
+		}
+		else {}
 	}
-	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
-	return flat.source_type_name(mapped)
+	return none
 }
 
 fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.Token) bool {

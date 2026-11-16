@@ -2,20 +2,10 @@ name: s390 CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # Linux, including this s390x runner.
-      - '**.md'
-      - '**.yml'
-      - '!**/s390x_linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: s390x-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: s390x-s390x_linux_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -49,11 +39,15 @@ jobs:
             apt-get update -q -y
             apt-get install -q -y make gcc git file coreutils binutils
           run: |
+            # The checkout belongs to the host runner, not the container's root user.
+            # Scope Git's ownership exception to this mounted repository only.
+            git config --global --add safe.directory "$(pwd -P)"
             uname -a
             make --version
             gcc --version
             ls -la
             make
+            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
             file ./v
             ls -la ./v
             # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,

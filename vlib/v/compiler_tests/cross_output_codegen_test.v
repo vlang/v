@@ -420,7 +420,10 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	// check is folded for the generating host, so the target C preprocessor has to
 	// pick the header from the libc it actually compiles against.
 	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
-	header := os.join_path(@VEXEROOT, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h').replace('\\', '/')
+	// @VMODROOT expands to a native root (with backslashes on Windows), while
+	// the remaining path in the V source uses forward slashes. Check that exact
+	// emitted path rather than changing how the source directive is spelled.
+	header := @VEXEROOT + '/vlib/v/cmdexec/cmdexec_poll.h'
 	assert c_code.contains('#include "${header}"'), c_code
 	assert !c_code.contains('static inline short v_cmdexec_poll_revents('), c_code
 }

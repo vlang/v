@@ -211,9 +211,9 @@ const sb7 = -2.24409524465858183362e+01
 // erf returns the error function of x.
 //
 // special cases are:
-// erf(+inf) = 1
-// erf(-inf) = -1
-// erf(nan) = nan
+// - `erf(+inf) = 1`
+// - `erf(-inf) = -1`
+// - `erf(nan) = nan`
 pub fn erf(a f64) f64 {
 	mut x := a
 	very_tiny := 2.848094538889218e-306 // 0x0080000000000000
@@ -292,9 +292,9 @@ pub fn erf(a f64) f64 {
 // erfc returns the complementary error function of x.
 //
 // special cases are:
-// erfc(+inf) = 0
-// erfc(-inf) = 2
-// erfc(nan) = nan
+// - `erfc(+inf) = 0`
+// - `erfc(-inf) = 2`
+// - `erfc(nan) = nan`
 pub fn erfc(a f64) f64 {
 	mut x := a
 	tiny := 1.0 / f64(u64(1) << 56) // 2**-56

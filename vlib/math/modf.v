@@ -6,8 +6,8 @@ const modf_maxpowtwo = 4.503599627370496000e+15
 // that sum to f. Both values have the same sign as f.
 //
 // special cases are:
-// modf(±inf) = ±inf, nan
-// modf(nan) = nan, nan
+// - `modf(±inf) = ±inf, nan`
+// - `modf(nan) = nan, nan`
 pub fn modf(f f64) (f64, f64) {
 	abs_f := abs(f)
 	mut i := 0.0

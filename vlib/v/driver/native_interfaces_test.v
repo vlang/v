@@ -126,6 +126,13 @@ fn test_tinycc_interface_contract_pin_rejects_bundle_edits() ! {
 	for name in ['mbedtls_helpers.h', 'mbedtls_threading.h'] {
 		os.cp(os.join_path(@VEXEROOT, 'vlib', 'net', 'mbedtls', name), os.join_path(helper_dir, name))!
 	}
+	poll_header := os.join_path(root, 'vlib', 'os', 'fd_poll.h')
+	os.mkdir_all(os.dir(poll_header))!
+	os.cp(os.join_path(@VEXEROOT, 'vlib', 'os', 'fd_poll.h'), poll_header)!
+	assert v3_pinned_web_native_interfaces(root)
+	os.write_file(poll_header, 'modified')!
+	assert !v3_pinned_web_native_interfaces(root)
+	os.cp(os.join_path(@VEXEROOT, 'vlib', 'os', 'fd_poll.h'), poll_header)!
 	assert v3_pinned_web_native_interfaces(root)
 	added := os.join_path(headers, '.added.inc')
 	os.write_file(added, '#define LATER __DATE__\n')!

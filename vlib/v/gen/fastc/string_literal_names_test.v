@@ -4,6 +4,13 @@ import os
 import v.cmdexec
 import v.flat
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // A constant is renamed to its C spelling wherever its name appears in the rendered C, but
 // never inside a string literal: `'x = "app"' + app` keeps the literal's `app`. A field
 // default that names it only inside `${...}` still renders it as the string it is.

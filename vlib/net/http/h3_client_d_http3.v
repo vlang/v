@@ -98,10 +98,11 @@ fn h3_response_to_http(h3resp H3ClientResponse, opts ResponseParseOptions) !Resp
 			return error('h3: malformed response: ${err.msg()}')
 		}
 	}
-	body := if opts.raw_body {
+	mut body := if opts.raw_body {
 		h3resp.body.bytestr()
 	} else {
-		decode_response_body(h3resp.body.bytestr(), h.get(.content_encoding) or { '' })
+		decode_response_body(h3resp.body.bytestr(), h.get(.content_encoding) or { '' },
+			opts.max_total_decompressed_bytes, -1, false)!
 	}
 	status := status_from_int(h3resp.status)
 	return Response{

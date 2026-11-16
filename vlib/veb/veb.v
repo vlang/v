@@ -160,6 +160,7 @@ struct SslRequestParams {
 	benchmark_page_generation bool
 	max_request_buffer_size   int
 	max_request_body_size     int
+	read_header_timeout       time.Duration = http.default_http1_request_head_timeout
 }
 
 // render_request dispatches one request without starting a listener and returns
@@ -215,7 +216,7 @@ fn listen_addr(params RunParams) string {
 // request_read_error_response returns the response for a request that
 // `read_request_from_buffered_reader` could not read.
 fn request_read_error_response(err IError) http.Response {
-	if err is http.HeaderLimitError {
+	if err is http.HeaderLimitError || err is http.RequestHeaderLimitError {
 		return http_431
 	}
 	if err is RequestBodyLimitError {
@@ -240,6 +241,15 @@ fn (err RequestBodyLimitError) msg() string {
 // read the rest of that body.
 fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_body_size int) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
+	return read_request_body_from_buffered_reader(mut reader, mut req, max_request_body_size)
+}
+
+fn read_request_from_buffered_reader_with_timeout(mut reader io.BufferedReader, max_request_body_size int, mut conn http.RequestReadDeadlineSetter, read_header_timeout time.Duration) !http.Request {
+	mut req := http.parse_request_head_with_timeout(mut reader, mut conn, read_header_timeout)!
+	return read_request_body_from_buffered_reader(mut reader, mut req, max_request_body_size)
+}
+
+fn read_request_body_from_buffered_reader(mut reader io.BufferedReader, mut req http.Request, max_request_body_size int) !http.Request {
 	length_values := req.header.values(.content_length)
 	if length_values.len > 0 && req.header.contains(.transfer_encoding) {
 		return error('conflicting request body framing')
@@ -362,6 +372,15 @@ fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
 
 fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Context {
 	mut global_app := unsafe { &A(params.global_app) }
+	$if A is RequestActivityApp {
+		global_app.before_handle_request(req)
+	}
+	defer {
+		$if A is RequestActivityApp {
+			global_app.after_handle_request(req)
+		}
+	}
+
 	page_gen_start := time.ticks()
 	mut url := urllib.parse(req.url) or {
 		eprintln('[veb] error parsing path "${req.url}": ${err}')
@@ -395,7 +414,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 			user_context, url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			ctx.preserve_for_response_writer(user_context.Context)
+			ctx.preserve_for_response_writer(mut user_context.Context)
 			return ctx
 		}
 	}
@@ -406,7 +425,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	}
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
 	// Preserve the handled context on the heap before the stack-local user context goes away.
-	ctx.preserve_for_response_writer(user_context.Context)
+	ctx.preserve_for_response_writer(mut user_context.Context)
 	return ctx
 }
 

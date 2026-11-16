@@ -6,10 +6,11 @@ import v.pref
 import v.vmod
 
 // project_backends are the `backend` values that a project's v.mod can select.
-const project_backends = ['c', 'fastc', 'arm64', 'x64', 'wasm']
+const project_backends = ['c', 'fastc', 'arm64', 'amd64', 'wasm']
 
 // with_project_backend selects the backend named by the `backend` field of the input's v.mod,
-// such as `backend: 'fastc'`, when the command line does not select one with `-b`.
+// such as `backend: 'fastc'`, when the command line does not select one with `-b`. The driver
+// reads `driver.project_backend_flag` before it as "the project's default backend".
 fn with_project_backend(args []string) []string {
 	compiler_args := compiler_args_before_program(args)
 	if backend_option_given(compiler_args) {
@@ -24,7 +25,7 @@ fn with_project_backend(args []string) []string {
 	if backend == '' {
 		return args
 	}
-	mut result := ['-b', backend]
+	mut result := [driver.project_backend_flag, '-b', backend]
 	result << args
 	return result
 }
@@ -110,7 +111,8 @@ fn run_project_tests(runs [][]string) int {
 
 // backend_option_given reports whether the compiler options in `args` select a backend.
 fn backend_option_given(args []string) bool {
-	if compiler_option_requested(args, '-b') || compiler_option_requested(args, '-backend') {
+	if compiler_option_requested(args, '-b') || compiler_option_requested(args, '-backend')
+		|| compiler_option_requested(args, '-native') {
 		return true
 	}
 	for arg in args {
@@ -168,9 +170,13 @@ fn project_backend(input string) string {
 	if manifest.backend == '' {
 		return ''
 	}
-	if manifest.backend !in project_backends {
+	backend := match manifest.backend {
+		'x64', 'x86_64', 'x86-64' { 'amd64' }
+		else { manifest.backend }
+	}
+	if backend !in project_backends {
 		eprintln('${vmod_path}: unknown backend `${manifest.backend}`; expected ${project_backends.join(', ')}')
 		exit(1)
 	}
-	return manifest.backend
+	return backend
 }

@@ -101,10 +101,15 @@ fn h2_response_to_http(h2resp H2ClientResponse, opts ResponseParseOptions) !Resp
 			return error('h2: malformed response: ${err.msg()}')
 		}
 	}
-	body := if opts.raw_body {
+	mut body := if opts.raw_body {
 		h2resp.body.bytestr()
 	} else {
-		decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' })
+		decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' },
+			opts.max_total_decompressed_bytes, opts.stop_copying_limit,
+			h2resp.body_truncated)!
+	}
+	if opts.raw_body && opts.stop_copying_limit > 0 && body.len > opts.stop_copying_limit {
+		body = body[..int(opts.stop_copying_limit)]
 	}
 	status := status_from_int(h2resp.status)
 	return Response{

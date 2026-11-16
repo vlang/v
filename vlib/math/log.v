@@ -88,9 +88,9 @@ pub fn log1p(x f64) f64 {
 // log_b returns the binary exponent of x.
 //
 // special cases are:
-// log_b(±inf) = +inf
-// log_b(0) = -inf
-// log_b(nan) = nan
+// - `log_b(±inf) = +inf`
+// - `log_b(0) = -inf`
+// - `log_b(nan) = nan`
 pub fn log_b(x f64) f64 {
 	if x == 0 {
 		return inf(-1)
@@ -107,9 +107,9 @@ pub fn log_b(x f64) f64 {
 // ilog_b returns the binary exponent of x as an integer.
 //
 // special cases are:
-// ilog_b(±inf) = max_i32
-// ilog_b(0) = min_i32
-// ilog_b(nan) = max_i32
+// - `ilog_b(±inf) = max_i32`
+// - `ilog_b(0) = min_i32`
+// - `ilog_b(nan) = max_i32`
 pub fn ilog_b(x f64) int {
 	if x == 0 {
 		return int(min_i32)
