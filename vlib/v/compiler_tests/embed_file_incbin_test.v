@@ -42,10 +42,9 @@ fn expected_output() string {
 }
 
 // retained_c_file names the C source kept next to the `-o` output of a `-b c` build.
-// V derives it from the output name verbatim and appends `.exe` to that name on
-// Windows, so the file is `app_retained.c` elsewhere and `app_retained.exe.c` there.
+// V uses the requested output name before adding the executable suffix.
 fn retained_c_file(name string) string {
-	return os.join_path(incbin_workspace, name + $if windows { '.exe' } $else { '' } + '.c')
+	return os.join_path(incbin_workspace, name + '.c')
 }
 
 fn build_and_run(name string, flags string) (os.Result, string) {
