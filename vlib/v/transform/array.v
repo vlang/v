@@ -3789,7 +3789,7 @@ fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, defau
 }
 
 // lower_array_filter_call builds lower array filter call data for transform.
-fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
+fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node, base_type_id u32, lowered_base flat.NodeId) ?flat.NodeId {
 	if node.children_count < 2 || !flat.source_type_shape(base_type_id).has(.array_type) {
 		return none
 	}
@@ -3806,7 +3806,8 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	}
 	source_needs_drop := !t.expr_can_take_address(base_id) && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type_id))
-	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type_id, 'filter_source')
+	source := if lowered_base == flat.empty_node { t.transform_expr(base_id) } else { lowered_base }
+	base := t.stable_transformed_expr_for_reuse(source, base_type_id, 'filter_source')
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	out_name := t.new_temp('filter')
@@ -3938,11 +3939,13 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	for stmt in prefix {
 		t.pending_stmts << stmt
 	}
-	return t.make_ident(out_name)
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), base_type_id)
+	return result
 }
 
 // lower_array_map_call builds lower array map call data for transform.
-fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
+fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, base_type_id u32, lowered_base flat.NodeId) ?flat.NodeId {
 	fixed := t.is_fixed_array_type(base_type_id)
 	if node.children_count < 2 || (!fixed && !flat.source_type_shape(base_type_id).has(.array_type)) {
 		return none
@@ -4170,10 +4173,11 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	} else {
 		base_type_id
 	})
+	source := if lowered_base == flat.empty_node { t.transform_expr(base_id) } else { lowered_base }
 	source_expr := if heap_backed_source {
-		t.fixed_array_value_to_array(base_id, base_type_id, source_type)
+		t.fixed_array_data_to_array(source, base_type_id, source_type)
 	} else {
-		t.transform_expr(base_id)
+		source
 	}
 	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'map_source')
 	mut prefix := []flat.NodeId{}
@@ -7179,7 +7183,7 @@ fn (t &Transformer) is_array_transform_call(id flat.NodeId) bool {
 }
 
 // lower_array_count_call builds lower array count call data for transform.
-fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
+fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node, base_type_id u32, lowered_base flat.NodeId) ?flat.NodeId {
 	if node.children_count < 2 || !flat.source_type_shape(base_type_id).has(.array_type) {
 		return none
 	}
@@ -7187,7 +7191,8 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	base_id := t.a.child(&fn_node, 0)
 	source_is_owned_temporary := !t.expr_can_take_address(base_id) && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type_id))
-	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type_id, 'count_source')
+	source := if lowered_base == flat.empty_node { t.transform_expr(base_id) } else { lowered_base }
+	base := t.stable_transformed_expr_for_reuse(source, base_type_id, 'count_source')
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	result_name := t.new_temp('count')
@@ -7242,7 +7247,7 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 }
 
 // lower_array_any_all_call builds lower array any all call data for transform.
-fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Node, base_type_id u32, method string) ?flat.NodeId {
+fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Node, base_type_id u32, method string, lowered_base flat.NodeId) ?flat.NodeId {
 	if node.children_count < 2 || !flat.source_type_shape(base_type_id).has(.array_type) {
 		return none
 	}
@@ -7255,7 +7260,8 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	}
 	source_is_owned_temporary := !t.expr_can_take_address(base_id) && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type_id))
-	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type_id, '${method}_source')
+	source := if lowered_base == flat.empty_node { t.transform_expr(base_id) } else { lowered_base }
+	base := t.stable_transformed_expr_for_reuse(source, base_type_id, '${method}_source')
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	result_name := t.new_temp(method)
