@@ -1,5 +1,7 @@
 module html
 
+import strings
+
 @[params]
 pub struct EscapeConfig {
 pub:
@@ -15,8 +17,6 @@ pub:
 	all bool
 }
 
-const escape_seq = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
-const escape_quote_seq = ['"', '&#34;', "'", '&#39;']
 const unescape_seq = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
 const unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 
@@ -25,11 +25,46 @@ const unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 // HTML will also be translated. Both double and single quotes will be affected.
 // **Note:** escape() supports funky accents by doing nothing about them. V's UTF-8
 // support through `string` is robust enough to deal with these cases.
+@[direct_array_access]
 pub fn escape(input string, config EscapeConfig) string {
-	return if config.quote {
-		input.replace_each(escape_seq).replace_each(escape_quote_seq)
-	} else {
-		input.replace_each(escape_seq)
+	// Templates call this for every interpolated value, so scan the input once
+	// instead of running a `replace_each` pass per sequence list.
+	mut extra := 0
+	for c in input {
+		extra += escape_entity(c, config.quote).len
+	}
+	if extra == 0 {
+		return input.clone()
+	}
+	mut sb := strings.new_builder(input.len + extra + 1)
+	defer {
+		unsafe { sb.free() }
+	}
+	for c in input {
+		entity := escape_entity(c, config.quote)
+		if entity.len == 0 {
+			sb.write_u8(c)
+		} else {
+			sb.write_string(entity)
+		}
+	}
+	return sb.str()
+}
+
+// escape_entity returns the entity that replaces `c`, or an empty string when `c` is kept.
+@[inline]
+fn escape_entity(c u8, quote bool) string {
+	return match c {
+		`&` { '&amp;' }
+		`<` { '&lt;' }
+		`>` { '&gt;' }
+		`"` {
+			if quote { '&#34;' } else { '' }
+		}
+		`'` {
+			if quote { '&#39;' } else { '' }
+		}
+		else { '' }
 	}
 }
 
