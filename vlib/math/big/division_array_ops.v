@@ -14,7 +14,7 @@ fn bit_set(mut a []u64, n int) {
 	a[byte_offset] |= mask
 }
 
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 fn knuth_divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient []u64, mut remainder []u64) {
 	m := operand_a.len - operand_b.len
 	n := operand_b.len

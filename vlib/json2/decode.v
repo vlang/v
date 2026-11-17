@@ -213,7 +213,7 @@ fn json_string_end(json string, start int) int {
 }
 
 // word_has_byte reports whether one of the 8 bytes of `word` is `b`.
-@[inline]
+@[ignore_overflow; inline]
 fn word_has_byte(word u64, b u8) bool {
 	// A byte of `diff` is zero where `word` has `b`. The subtraction sets the high bit
 	// of a zero byte, that `~diff` keeps, and without a zero byte no high bit is left.

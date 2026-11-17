@@ -1,11 +1,13 @@
 module subtle
 
 // constant_time_byte_eq returns 1 when x == y.
+@[ignore_overflow]
 pub fn constant_time_byte_eq(x u8, y u8) int {
 	return int((u32(x ^ y) - 1) >> 31)
 }
 
 // constant_time_eq returns 1 when x == y.
+@[ignore_overflow]
 pub fn constant_time_eq(x int, y int) int {
 	return int((u64(u32(x ^ y)) - 1) >> 63)
 }
