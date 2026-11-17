@@ -1093,6 +1093,7 @@ mut:
 	global_cinit_names            map[string]bool
 	static_c_initializer          bool
 	const_init_depth              int                             // >0 while a const initializer is inlined; see ident_is_local_binding
+	static_aggregate_init_depth   int                             // >0 while rendering brace-only static aggregate children
 	shared_type_names             map[string]SharedTypeInfo       // __shared__ wrapper name -> wrapped type metadata
 	shared_alias_pointer_cache    map[u32]map[string][]types.Type // source spelling -> file/module resolution results
 	shared_alias_pointer_shorts   map[u32]u32                     // alias short spelling ID -> shared inner source ID; 0 means ambiguous
@@ -16904,10 +16905,18 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					parts << g.const_expr_to_string(g.a.child(&node, i), seen)
 				}
 			}
-			'(${ct}){${parts.join(', ')}}'
+			if g.static_aggregate_init_depth > 0 {
+				'{${parts.join(', ')}}'
+			} else {
+				'(${ct}){${parts.join(', ')}}'
+			}
 		}
 		.string_literal {
-			'(string){(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
+			if g.static_aggregate_init_depth > 0 {
+				'{(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
+			} else {
+				'(string){(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
+			}
 		}
 		.typeof_expr {
 			type_name := g.typeof_type_name(node)
@@ -27830,7 +27839,16 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		if unaliased_elem is types.Enum {
 			g.expected_enum = unaliased_elem.source_type_id()
 		}
+		// File-scope fixed-array elements are C initializer subobjects, not
+		// expressions. C99 compound literals inside these initializers are not
+		// constant on older GCC, even if all of their fields are literals.
+		if node.kind in [.struct_init, .string_literal] {
+			g.static_aggregate_init_depth++
+		}
 		const_val := g.const_expr_to_string(val_id, []string{})
+		if node.kind in [.struct_init, .string_literal] {
+			g.static_aggregate_init_depth--
+		}
 		g.expected_enum = old_expected_enum
 		if trimmed_space(const_val).len > 0 {
 			builder.write_string(const_val)
