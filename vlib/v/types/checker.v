@@ -19722,7 +19722,8 @@ fn (tc &TypeChecker) attribute_warning_head_owns_node(head AttributeWarningHead,
 	return true
 }
 
-// warn_unknown_attribute_names warns once per real attribute name. Whole-string
+// warn_unknown_attribute_names errors once per real attribute name. Whole-string
+// (warn_ prefix is historic; unknown names are now errors, see rfcs#35 RFC Q7).
 // metadata and flattened call arguments are not names, while independently
 // written Name and Name_key attributes both remain eligible for warnings.
 fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, mut warning_heads map[string][]AttributeWarningHead) {
