@@ -71,28 +71,32 @@ when a default is honest, in `references/OPTION-RESULT.md`.
 V enums and sum types plus `match` are the way to model a closed set. A `match`
 over a sum type is checked for exhaustiveness, which is the point: adding a
 variant turns every incomplete `match` into a compile error instead of a silent
-fallthrough. A `match` over a plain enum is not checked yet by this compiler, so
-handle every variant yourself.
+fallthrough. Plain (non-flag) enum matches whose conditions name enum variants
+are checked too: cover every declared value or add `else`.
 
 The diagnostic names what is missing: ``match must be exhaustive (add match
 branches for: `string` or `else {}` at the end)``. Two ways out — handle every
 variant, or add an `else` branch and accept that a new variant changes nothing.
 
-```v ignore
+```v
 enum Status {
-    pending
-    running
-    done
-    failed
+	pending
+	running
+	done
+	failed
 }
 
 fn label(s Status) string {
-    return match s {
-        .pending { 'queued' }
-        .running { 'in progress' }
-        .done { 'finished' }
-        .failed { 'could not finish' }
-    }
+	return match s {
+		.pending { 'queued' }
+		.running { 'in progress' }
+		.done { 'finished' }
+		.failed { 'could not finish' }
+	}
+}
+
+fn main() {
+	assert label(.done) == 'finished'
 }
 ```
 
