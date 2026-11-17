@@ -65,13 +65,15 @@ fn test_cross_documents_a_symbol_of_several_platforms_once() {
 	file_methods := d.contents['File']!.children.filter(it.name == 'close')
 	assert file_methods.len == 1
 	assert file_methods[0].platforms == []
-	// A constant with a different value on each platform is documented once for each value.
+	// A constant with a different value on each platform is documented with each value, like
+	// the variants of a function.
 	consts := d.contents['Constants']!.children.filter(child_key(it) == 'sep')
-	assert consts.map(it.content) == ["pub const sep = '/'", r"pub const sep = '\\'"]
+	assert consts.map(it.content) == ["pub const sep = '/'"]
 	assert platforms_note(consts[0].platforms, fn (name string) string {
 		return name
 	}) == 'Available on Unix only.'
-	assert consts[1].platforms == [.windows]
+	assert consts[0].variants.map(it.content) == [r"pub const sep = '\\'"]
+	assert consts[0].variants[0].platforms == [.windows]
 	mode := d.contents['Mode']!
 	assert mode.platforms == []
 	assert mode.children.filter(it.name == 'has').len == 1
@@ -84,16 +86,23 @@ fn test_cross_groups_the_constants_of_the_same_platforms() {
 	defer { os.rmdir_all(dir) or {} }
 	d := generate(dir, true, true, .cross)!
 	consts := d.contents['Constants']!.children.filter(child_key(it).starts_with('flag_'))
-	// A constant with a doc comment starts a new group, which the constants after it join.
+	// A constant with a doc comment starts a new group, which the constants after it join. A
+	// constant with a value for each platform is not in a group, so it has all its values.
 	assert consts.map(it.content) == [
-		'pub const flag_a = C.FLAG_A\npub const flag_b = C.FLAG_B',
+		'pub const flag_a = C.FLAG_A',
+		'pub const flag_b = C.FLAG_B',
 		'pub const flag_c = C.FLAG_C\npub const flag_d = C.FLAG_D',
 		'pub const flag_e = C.FLAG_E',
-		'pub const flag_a = 0\npub const flag_b = 0',
 	]
-	assert consts.map(it.comments.len) == [0, 1, 1, 0]
+	assert consts.map(it.variants.map(it.content)) == [
+		['pub const flag_a = 0'],
+		['pub const flag_b = 0'],
+		[]string{},
+		[]string{},
+	]
+	assert consts.map(it.comments.len) == [0, 0, 1, 1]
 	unix := cross_platforms.len - 1
-	assert consts.map(it.platforms.len) == [unix, unix, unix, 1]
+	assert consts.map(it.platforms.len) == [unix, unix, unix, unix]
 }
 
 fn test_cross_documents_each_different_declaration_of_a_symbol() {
@@ -186,6 +195,28 @@ fn test_a_doc_comment_on_one_platform_documents_the_symbol() {
 	assert d.contents['run']!.merge_comments().trim_space() == 'run runs.'
 }
 
+fn test_cross_documents_apart_the_declarations_with_other_comments() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_cross_other_comments_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a_nix.c.v'), 'module a\n\n// run runs.\npub fn run() {}\n\n// stop stops.\npub fn stop() {}\n\n// wait waits.\n// Example: assert true\npub fn wait() {}\n')!
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\n// run does nothing on Windows.\npub fn run() {}\n\n// stop stops.\npub fn stop() {}\n\n// wait waits.\n// Example: assert false\npub fn wait() {}\n')!
+	d := generate(dir, true, true, .cross)!
+	// The same declaration with another comment, or other examples, is not documented with the
+	// comment of another platform.
+	for name in ['run', 'wait'] {
+		node := d.contents[name]!
+		assert node.platforms.len > 0 && node.variants.len == 1, name
+		assert node.variants[0].content == node.content, name
+		assert node.variants[0].platforms != node.platforms, name
+	}
+	assert d.contents['run']!.merge_comments().trim_space() != d.contents['run']!.variants[0].merge_comments().trim_space()
+	// The same comment documents all the platforms once.
+	assert d.contents['stop']!.platforms == []
+	assert d.contents['stop']!.variants.len == 0
+}
+
 fn test_available_on_host() {
 	host := host_platform()
 	assert available_on_host(DocNode{})
@@ -221,9 +252,10 @@ fn test_cross_preserves_distinct_string_values_of_platform_constants() {
 	os.write_file(os.join_path(dir, 'value_windows.c.v'), "module value\n\npub const text = 'two spaces'\n")!
 	d := generate(dir, true, true, .cross)!
 	values := d.contents['Constants']!.children
-	assert values.len == 2
+	assert values.len == 1
 	assert values[0].platforms.len == cross_platforms.len - 1
-	assert values[1].platforms == [.windows]
+	assert values[0].variants.map(it.content) == ["pub const text = 'two spaces'"]
+	assert values[0].variants[0].platforms == [.windows]
 }
 
 fn test_declaration_shape_preserves_string_literal_contents() {
@@ -278,7 +310,8 @@ fn test_cross_selects_host_examples_when_identical_declarations_are_merged() {
 	os.write_file(host_file, 'module demo\n\n// shared is the host form.\n// Example: assert true\npub fn shared() {}\n\npub fn undocumented() {}\n')!
 	d := generate(dir, true, true, .cross)!
 	node := d.contents['shared']!
-	assert node.variants.len == 0
+	// With other comments, the declarations are documented apart, each with its examples.
+	assert node.variants.len == 1
 	assert !json2.encode(node).contains('host_example_source')
 	declarations := declarations_on_host(node)
 	assert declarations.len == 1
