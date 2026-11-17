@@ -5139,14 +5139,22 @@ fn (mut d WebpDecoder) detect_layout() ! {
 	}
 }
 
+// parse_metadata keeps the first ICCP, EXIF and XMP chunk of the file. The
+// container specification lets a reader ignore the later ones of each kind.
 fn (mut d WebpDecoder) parse_metadata() {
+	mut seen_icc := false
+	mut seen_exif := false
+	mut seen_xmp := false
 	for c in d.chunks {
-		if fc_eq(c.fourcc, chunk_iccp) {
+		if fc_eq(c.fourcc, chunk_iccp) && !seen_icc {
 			d.icc_profile = c.payload
-		} else if fc_eq(c.fourcc, chunk_exif) {
+			seen_icc = true
+		} else if fc_eq(c.fourcc, chunk_exif) && !seen_exif {
 			d.exif = c.payload
-		} else if fc_eq(c.fourcc, chunk_xmp) {
+			seen_exif = true
+		} else if fc_eq(c.fourcc, chunk_xmp) && !seen_xmp {
 			d.xmp = c.payload
+			seen_xmp = true
 		}
 	}
 }
@@ -7709,6 +7717,36 @@ pub fn (mut p WebpPlayer) free() {
 	unsafe {
 		p.anim.frames.free()
 	}
+}
+
+// Metadata holds the raw ICCP, EXIF and XMP chunks of a WEBP file.
+pub struct Metadata {
+pub:
+	icc_profile []u8 // ICC color profile
+	exif        []u8 // EXIF data, as stored in the file
+	xmp         []u8 // XMP packet
+}
+
+// decode_metadata returns the ICCP, EXIF and XMP chunks of a WEBP file,
+// without decoding its pixels. A chunk the file does not have is empty, and
+// only the first chunk of each kind is returned. The payloads are copies, so
+// they stay valid after `data` changes. The image bitstream is not validated.
+pub fn decode_metadata(data []u8) !Metadata {
+	mut d := WebpDecoder{
+		data:       data
+		max_sample: 255
+	}
+	d.parse() or {
+		d.cleanup()
+		return err
+	}
+	metadata := Metadata{
+		icc_profile: d.icc_profile.clone()
+		exif:        d.exif.clone()
+		xmp:         d.xmp.clone()
+	}
+	d.cleanup()
+	return metadata
 }
 
 // decode decodes a WEBP file into a common.Image (RGBA).
