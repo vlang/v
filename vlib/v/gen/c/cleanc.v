@@ -16638,6 +16638,15 @@ fn (mut g FlatGen) const_array_literal_storage_type_for_name(name string, val_id
 	})
 }
 
+// const_initializer_to_string emits aggregate braces where C already supplies the type.
+fn (mut g FlatGen) const_initializer_to_string(id flat.NodeId, seen []string) string {
+	old_static_initializer := g.static_c_initializer
+	g.static_c_initializer = true
+	result := g.const_expr_to_string(id, seen)
+	g.static_c_initializer = old_static_initializer
+	return result
+}
+
 // const_expr_to_string converts const expr to string data for c.
 fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
@@ -16655,6 +16664,20 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		// A cast to the struct representation plus a plain `<<` does not compile on
 		// the portable path, and it silently truncates on the native one.
 		return g.expr_to_string(id)
+	}
+	initializer := g.static_c_initializer
+	if initializer && node.kind == .paren && node.children_count == 1 {
+		return g.const_expr_to_string(g.a.child(&node, 0), seen)
+	}
+	if initializer && node.kind !in [.ident, .selector, .array_literal, .struct_init, .string_literal,
+		.postfix] {
+		// Operands of expressions, such as &Point{...}, still need typed literals.
+		g.static_c_initializer = false
+	}
+	defer {
+		if initializer {
+			g.static_c_initializer = true
+		}
 	}
 	return match node.kind {
 		.ident, .selector {
@@ -16904,10 +16927,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					parts << g.const_expr_to_string(g.a.child(&node, i), seen)
 				}
 			}
-			'(${ct}){${parts.join(', ')}}'
+			if g.static_c_initializer {
+				'{${parts.join(', ')}}'
+			} else {
+				'(${ct}){${parts.join(', ')}}'
+			}
 		}
 		.string_literal {
-			'(string){(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
+			prefix := if g.static_c_initializer { '' } else { '(string)' }
+			'${prefix}{(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
 		}
 		.typeof_expr {
 			type_name := g.typeof_type_name(node)
@@ -25637,7 +25665,7 @@ fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId, expect
 			continue
 		}
 		constant := g.global_scalar_static_initializer(child_id, elem_type) or {
-			g.const_expr_to_string(child_id, []string{})
+			g.const_initializer_to_string(child_id, []string{})
 		}
 		if trimmed_space(constant).len > 0 {
 			g.write(constant)
@@ -27509,14 +27537,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		}
 		g.writeln('${linkage_attr}const ${ct} ${qname} = ${init_str};')
 	} else if unalias_type(v_type) is types.Struct {
-		// MSVC cannot initialize a file-scope object from a compound literal.
-		// C-backed structs may be declared in an external header, so the MSVC
-		// compatibility pass cannot discover their type from the generated C.
-		mut init_str := expr_str
-		cast_prefix := '(${ct})'
-		if init_str.starts_with('${cast_prefix}{') {
-			init_str = init_str[cast_prefix.len..]
-		}
+		// Nested compound literals are not constant initializers on GCC 12, and
+		// MSVC also requires bare braces for file-scope struct initializers.
+		init_str := g.const_initializer_to_string(val_id, []string{})
 		g.writeln('${linkage_attr}const ${ct} ${qname} = ${init_str};')
 	} else {
 		g.writeln('${linkage_attr}const ${ct} ${qname} = ${expr_str};')
@@ -27830,7 +27853,7 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		if unaliased_elem is types.Enum {
 			g.expected_enum = unaliased_elem.source_type_id()
 		}
-		const_val := g.const_expr_to_string(val_id, []string{})
+		const_val := g.const_initializer_to_string(val_id, []string{})
 		g.expected_enum = old_expected_enum
 		if trimmed_space(const_val).len > 0 {
 			builder.write_string(const_val)
