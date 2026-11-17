@@ -214,12 +214,19 @@ fn main() {
 	assert os.is_file(js_output)
 
 	multi_extension_source := os.join_path(root, 'multi_extension.c.v')
-	multi_extension_output := os.join_path(root, 'multi_extension')
+	mut multi_extension_output := os.join_path(root, 'multi_extension')
+	// A default Windows build appends .exe; the multi-extension source
+	// still produces one binary, not a stray .c intermediate.
+	$if windows {
+		multi_extension_output += '.exe'
+	}
 	os.write_file(multi_extension_source, 'fn main() {}\n')!
 	multi_extension_compile := run_driver_review_process(v3_bin,
 		['-nocache', multi_extension_source], driver_review_environment())
 	assert multi_extension_compile.exit_code == 0, multi_extension_compile.output
 	assert os.is_file(multi_extension_output)
+	multi_extension_run := cmdexec.run(multi_extension_output, [])
+	assert multi_extension_run.exit_code == 0, multi_extension_run.output
 	assert !os.exists(os.join_path(root, 'multi_extension.c'))
 
 	bounds_source := os.join_path(root, 'forced_bounds.v')
