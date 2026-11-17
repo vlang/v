@@ -151,7 +151,7 @@ fn join_names(platforms []Platform, emphasize fn (string) string) string {
 
 // child_key returns what tells a child of a symbol apart from its other children: its name, or
 // for a constant, which has no name of its own in the docs, the name that it declares.
-fn child_key(node DocNode) string {
+pub fn child_key(node DocNode) string {
 	if node.kind != .const_group {
 		return node.name
 	}
