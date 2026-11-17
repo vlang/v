@@ -1,5 +1,7 @@
 module hex
 
+import strings
+
 const hex_digits = '0123456789abcdef'
 const hex_digits_upper = '0123456789ABCDEF'
 
@@ -102,38 +104,46 @@ fn char2nibble(b u8, index int) !u8 {
 // encoding/hex.Dump. It is named hexdump (rather than dump) to avoid
 // colliding with V's builtin `dump` debug function.
 pub fn hexdump(data []u8) string {
-	mut sb := ''
+	if data.len == 0 {
+		return ''
+	}
+	// Each full 16-byte row emits 79 bytes:
+	// 10 (offset) + 49 (hex, incl. the extra gap after byte 8)
+	// + 2 (' |') + 16 (ascii) + 2 ('|\n').
+	rows := (data.len + 15) / 16
+	mut sb := strings.new_builder(rows * 79)
 	mut i := 0
 	for i < data.len {
-		// offset
-		sb += '${i:08x}  '
-		// hex bytes
+		sb.write_string('${i:08x}  ')
 		for j in 0 .. 16 {
 			if i + j < data.len {
-				sb += '${data[i + j]:02x} '
+				b := data[i + j]
+				sb.write_byte(hex_digits[b >> 4])
+				sb.write_byte(hex_digits[b & 0xf])
+				sb.write_byte(` `)
 				if j == 7 {
-					sb += ' '
+					sb.write_byte(` `)
 				}
 			} else {
-				sb += '   '
+				sb.write_string('   ')
 				if j == 7 {
-					sb += ' '
+					sb.write_byte(` `)
 				}
 			}
 		}
-		sb += ' |'
+		sb.write_string(' |')
 		for j in 0 .. 16 {
 			if i + j < data.len {
 				b := data[i + j]
 				if b >= 32 && b < 127 {
-					sb += b.ascii_str()
+					sb.write_byte(b)
 				} else {
-					sb += '.'
+					sb.write_byte(`.`)
 				}
 			}
 		}
-		sb += '|\n'
+		sb.write_string('|\n')
 		i += 16
 	}
-	return sb
+	return sb.str()
 }
