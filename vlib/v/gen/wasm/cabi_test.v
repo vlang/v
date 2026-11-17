@@ -5,7 +5,10 @@ module wasm
 // A guest `echo_len(s string) int` compiled with wasm_cabi on must export
 // `echo_len` as (i32 ptr, i32 len) -> i32, with memory and cabi_realloc
 // exported. A backend-generated wrapper materializes the V string and calls
-// the original single-pointer function, which stays unexported. The shim era
+// the original single-pointer function, which stays unexported. A guest
+// `hello() string` exports `hello` as () -> i32, the canonical indirect
+// single-pointer result pointing at an 8-byte (ptr, len) pair (sync lifts
+// allow MAX_FLAT_RESULTS = 1). The shim era
 // (a hand-written echo_len_cabi in guest source) is frozen in
 // testdata/echo_len.shim.wasm for shape parity.
 
@@ -279,6 +282,16 @@ fn test_cabi_export_signature() {
 	echo_type := sigs[funcs[echo_idx - n_imports]]
 	assert echo_type.params == [u8(0x7f), u8(0x7f)], 'echo_len params must be (i32, i32)'
 	assert echo_type.results == [u8(0x7f)], 'echo_len result must be i32'
+	// cabi_realloc is the canonical 4-argument allocator.
+	realloc_idx := exports['cabi_realloc']
+	realloc_type := sigs[funcs[realloc_idx - n_imports]]
+	assert realloc_type.params == [u8(0x7f), u8(0x7f), u8(0x7f), u8(0x7f)], 'cabi_realloc params must be (i32, i32, i32, i32)'
+	assert realloc_type.results == [u8(0x7f)], 'cabi_realloc result must be i32'
+	// hello uses the indirect single-pointer string result.
+	hello_idx := exports['hello']
+	hello_type := sigs[funcs[hello_idx - n_imports]]
+	assert hello_type.params == [], 'hello params must be empty'
+	assert hello_type.results == [u8(0x7f)], 'hello result must be a single i32 pointer'
 	// the inner single-pointer function is still present but unexported
 	mut found_inner := false
 	for name, _ in exports {
@@ -539,7 +552,13 @@ const echo_len = instance.exports.echo_len;
 const first_byte = instance.exports.first_byte;
 const shout = instance.exports.shout;
 const hello = instance.exports.hello;
+const realloc = instance.exports.cabi_realloc;
 function put(off, arr) { mem().set(arr, off); }
+// canonical realloc takes (old, old_size, align, new_size)
+const r1 = realloc(0, 0, 1, 8);
+const r2 = realloc(0, 0, 1, 8);
+assert(r1 !== 0 && r2 !== 0);
+assert.notEqual(r1, r2);
 // hello -> 5
 put(4096, [104, 101, 108, 108, 111]);
 assert.equal(echo_len(4096, 5), 5);
@@ -555,10 +574,10 @@ assert.equal(echo_len(8192, 2), 2);
 assert.equal(shout(4096, 5, 1), 105);
 assert.equal(shout(4096, 5, 0), 5);
 console.log('cabi-shout-ok shout=105,5');
-const hr = hello();
-assert.equal(hr.length, 2);
-const hp = hr[0];
-const hl = hr[1];
+const rp = hello();
+const dv = new DataView(instance.exports.memory.buffer);
+const hp = dv.getUint32(rp, true);
+const hl = dv.getUint32(rp + 4, true);
 assert.equal(hl, 2);
 const got = Array.from(mem().slice(hp, hp + hl));
 assert.deepEqual(got, [104, 105]);

@@ -180,7 +180,8 @@ pub fn wrap_core_module(core []u8) []u8 {
 // and/or a string result. comp_params/comp_labels describe the component
 // function type, comp_results its (zero or one) results; core_params and
 // core_results give the expected core wasm signature the export must have
-// to be lifted (strings expand to two i32s).
+// to be lifted (string params expand to two i32s; a string result is the
+// canonical indirect single i32 pointer to an 8-byte (ptr, len) pair).
 pub struct CabiStringExport {
 pub mut:
 	wit_name     string
@@ -203,20 +204,35 @@ pub mut:
 pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringExport) []u8 {
 	// If we can lift at least one function, produce a richer component.
 	exports, types, _defined, _, func_typeidx := parse_core_module(core)
-	// Detect memory and realloc exports for canonical opts.
+	// Detect memory and realloc exports for canonical opts. The component's
+	// core-memory index space is populated only by explicit aliases, so the
+	// memory export must be aliased before a `(memory 0)` canon opt can
+	// reference it. Likewise the `(realloc f)` opt takes the component-level
+	// core-func alias index, not the nested module's original func index.
+	mut mem_name := ''
 	mut has_memory := false
-	mut realloc_idx := -1
+	mut realloc_name := ''
+	mut realloc_found := false
 	for e in exports {
-		if e.kind == 2 { has_memory = true }
-		if e.kind == 0 && (e.name == 'cabi_realloc' || e.name == 'realloc') {
-			realloc_idx = e.idx
+		if e.kind == 2 && !has_memory {
+			has_memory = true
+			mem_name = e.name
+		}
+		if e.kind == 0 && (e.name == 'cabi_realloc' || e.name == 'realloc') && !realloc_found {
+			realloc_found = true
+			realloc_name = e.name
 		}
 	}
-	// Determine liftable exports.
+	// Determine liftable exports, excluding the canonical realloc itself
+	// (it is an adapter for canon opts, not a component export) and the
+	// WASI `_start` entry (a command export, not a component function; its
+	// name is not a valid component extern name).
 	mut liftable := []CoreExport{}
 	mut str_specs := map[string]CabiStringExport{}
 	for e in exports {
 		if e.kind != 0 { continue }
+		if e.name == 'cabi_realloc' || e.name == 'realloc' { continue }
+		if e.name == '_start' { continue }
 		// Canonical-ABI string export: core signature must match the expansion.
 		if spec := string_exports[e.name] {
 			ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
@@ -320,16 +336,47 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 	coreinst_payload << leb128.encode_u32(0) // module idx
 	coreinst_payload << leb128.encode_u32(0) // arg count
 
-	// Alias section payload: alias core exports
-	mut alias_payload := []u8{}
-	alias_payload << leb128.encode_u32(u32(liftable.len))
+	// Alias section payload: alias core exports. Func aliases come first so
+	// liftable indices 0..liftable.len-1 stay stable; the realloc adapter (if
+	// present) gets the next func-alias index; the memory alias lives in the
+	// separate core-memory index space (index 0).
+	mut func_alias_names := []string{}
 	for e in liftable {
+		func_alias_names << e.name
+	}
+	mut realloc_alias_idx := -1
+	if realloc_found {
+		mut found_idx := -1
+		for i, n in func_alias_names {
+			if n == realloc_name {
+				found_idx = i
+				break
+			}
+		}
+		if found_idx >= 0 {
+			realloc_alias_idx = found_idx
+		} else {
+			realloc_alias_idx = func_alias_names.len
+			func_alias_names << realloc_name
+		}
+	}
+	mut alias_payload := []u8{}
+	alias_payload << leb128.encode_u32(u32(func_alias_names.len + if has_memory { 1 } else { 0 }))
+	for n in func_alias_names {
 		alias_payload << u8(0x00) // core sort prefix
 		alias_payload << u8(0x00) // core func sort
 		alias_payload << u8(0x01) // core instance
 		alias_payload << leb128.encode_u32(0) // instance idx
-		alias_payload << leb128.encode_u32(u32(e.name.len))
-		alias_payload << e.name.bytes()
+		alias_payload << leb128.encode_u32(u32(n.len))
+		alias_payload << n.bytes()
+	}
+	if has_memory {
+		alias_payload << u8(0x00) // core sort prefix
+		alias_payload << u8(0x02) // core memory sort
+		alias_payload << u8(0x01) // core instance
+		alias_payload << leb128.encode_u32(0) // instance idx
+		alias_payload << leb128.encode_u32(u32(mem_name.len))
+		alias_payload << mem_name.bytes()
 	}
 
 	// Canonical section payload: lift each
@@ -347,9 +394,9 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			opts << leb128.encode_u32(0)
 			nopts++
 		}
-		if realloc_idx >= 0 {
+		if realloc_found {
 			opts << u8(0x04)
-			opts << leb128.encode_u32(u32(realloc_idx))
+			opts << leb128.encode_u32(u32(realloc_alias_idx))
 			nopts++
 		}
 		canon_payload << leb128.encode_u32(u32(nopts))
@@ -357,7 +404,8 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		canon_payload << leb128.encode_u32(u32(i)) // type idx
 	}
 
-	// Export section payload
+	// Export section payload: each export ends with the mandatory byte for an
+	// absent optional export type (0x00); the decoder reads it unconditionally.
 	mut export_payload := []u8{}
 	export_payload << leb128.encode_u32(u32(liftable.len))
 	for i, e in liftable {
@@ -370,6 +418,7 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		export_payload << ename.bytes()
 		export_payload << u8(0x01) // sort func
 		export_payload << leb128.encode_u32(u32(i)) // func idx
+		export_payload << u8(0x00) // absent optional externtype
 	}
 
 	// Assemble

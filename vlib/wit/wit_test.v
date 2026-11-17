@@ -138,7 +138,8 @@ interface i {
 }
 
 fn test_wrap_component_lifts_string_export() {
-	// core module with (i32, i32) -> i32 echo_len, cabi_realloc and memory
+	// core module with (i32, i32) -> i32 echo_len, () -> i32 hello (indirect
+	// string result), cabi_realloc (4-arg) and memory
 	mut m := wasm.Module{}
 	mut echo := m.new_function('echo_len', [.i32_t, .i32_t], [.i32_t])
 	{
@@ -150,10 +151,9 @@ fn test_wrap_component_lifts_string_export() {
 		shout.local_get(2)
 	}
 	m.commit(shout, true)
-	mut hello := m.new_function('hello', [], [.i32_t, .i32_t])
+	mut hello := m.new_function('hello', [], [.i32_t])
 	{
 		hello.i32_const(0)
-		hello.i32_const(2)
 	}
 	m.commit(hello, true)
 	mut realloc := m.new_function('cabi_realloc', [.i32_t, .i32_t, .i32_t, .i32_t], [
@@ -371,13 +371,28 @@ world echo {
 				name := comp[p..p + ln].bytestr()
 				p += ln
 				export_names << name
-				// sort + idx
+				// sort + idx + mandatory optional-type byte (0x00 when absent)
 				p++
 				for {
 					b := comp[p]
 					p++
 					if b & 0x80 == 0 {
 						break
+					}
+				}
+				// optional externtype discriminator: 0x00 = absent, 0x01 = present
+				assert p < comp.len, 'export must end with optional-type byte'
+				et := comp[p]
+				p++
+				assert et == 0x00, 'export optional-type byte must be 0x00, got ${et}'
+				if et == 0x01 {
+					// skip the ascribed type (should not occur in this fixture)
+					for {
+						b := comp[p]
+						p++
+						if b & 0x80 == 0 {
+							break
+						}
 					}
 				}
 			}

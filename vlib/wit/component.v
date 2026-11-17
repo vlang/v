@@ -60,7 +60,10 @@ fn wit_func_lift(f WitFunc) ?wasm.CabiStringExport {
 			return none
 		}
 		if r.prim == 'string' {
-			core_results = [u8(0x7f), u8(0x7f)]
+			// Canonical indirect string result: the core wrapper returns a
+			// single i32 pointer to the 8-byte (ptr, len) pair
+			// (MAX_FLAT_RESULTS = 1 for sync lifts).
+			core_results = [u8(0x7f)]
 			comp_results = [u8(0x73)]
 			has_string = true
 		} else {
@@ -174,7 +177,8 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 		r := f.results[0]
 		if r.kind == .prim {
 			if r.prim == 'string' {
-				core_results = [u8(0x7f), u8(0x7f)]
+				// Canonical indirect string result: single i32 pointer.
+				core_results = [u8(0x7f)]
 				comp_results = [u8(0x73)]
 				has_lift = true
 			} else {

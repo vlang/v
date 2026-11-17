@@ -23,26 +23,27 @@ mut:
 	strings     map[int]int
 	// literal_text_addr holds the address a literal's bytes occupy, keyed by kind
 	// and text, so a repeat of a literal that has already been laid out reuses it.
-	literal_text_addr map[string]int
-	data              []u8
-	stack_global      int
-	heap_global       int
-	stack_bottom      int
-	write_index       int
-	exit_index        int
-	alloc_index       int
-	cur               Code
-	locals            []u8
-	value_local       map[int]int
-	slots             map[int]int
-	phi_snapshots     map[int]int
-	frame_size        int
-	frame_local       int
-	pc_local          int
-	sret_local        int = -1
-	nparams           int
-	cur_ret           ssa.TypeID
-	warnings          []string
+	literal_text_addr  map[string]int
+	data               []u8
+	stack_global       int
+	heap_global        int
+	stack_bottom       int
+	write_index        int
+	exit_index         int
+	alloc_index        int
+	cabi_realloc_index int = -1
+	cur                Code
+	locals             []u8
+	value_local        map[int]int
+	slots              map[int]int
+	phi_snapshots      map[int]int
+	frame_size         int
+	frame_local        int
+	pc_local           int
+	sret_local         int = -1
+	nparams            int
+	cur_ret            ssa.TypeID
+	warnings           []string
 	// wasm_cabi enables canonical-ABI wrappers for exported string params.
 	wasm_cabi bool
 	// cabi_scratch is the linear-memory address of the 16-byte slot used by
@@ -182,6 +183,14 @@ pub fn (mut g SSAGen) gen() ! {
 	}
 	g.alloc_index = g.mod.reserve_func_index(helper_count - 1)
 	g.emit_allocator()
+	if g.wasm_cabi {
+		// The canonical ABI realloc is (old, old_size, align, new_size) -> ptr.
+		// The bump allocator above is (size) -> ptr and stays internal; the
+		// adapter below implements the 4-argument contract on top of it.
+		g.cabi_realloc_index = g.mod.reserve_func_index(helper_count)
+		g.emit_cabi_realloc_adapter()
+		helper_count++
+	}
 	mut table := []int{}
 	for i, fid in functions {
 		f := g.m.funcs[fid]
@@ -195,7 +204,7 @@ pub fn (mut g SSAGen) gen() ! {
 	}
 	g.mod.add_export('memory', export_mem, 0)
 	if g.wasm_cabi {
-		g.mod.add_export('cabi_realloc', export_func, g.alloc_index)
+		g.mod.add_export('cabi_realloc', export_func, g.cabi_realloc_index)
 	}
 	mut used_exports := map[string]bool{}
 	used_exports['memory'] = true
@@ -310,8 +319,10 @@ fn (g &SSAGen) cabi_wrappable(fid int) bool {
 
 // emit_cabi_wrapper emits a canonical-ABI wrapper for an exported function
 // with string params: each V string param becomes (i32 ptr, i32 len), other
-// params are forwarded unchanged, and a V string result becomes an
-// (i32 ptr, i32 len) pair. String params are materialized as
+// params are forwarded unchanged, and a V string result uses the canonical
+// indirect single-pointer result (MAX_FLAT_RESULTS = 1 for sync lifts): the
+// wrapper returns an i32 pointing to an 8-byte (ptr, len) pair in linear
+// memory. String params are materialized as
 // string{str, len, is_lit: false} structs in the module scratch slots;
 // a string result uses the backend's hidden sret slot convention
 // (caller-provided struct pointer, void core return). Wrappers need no
@@ -339,7 +350,9 @@ fn (mut g SSAGen) emit_cabi_wrapper(inner_idx int, fid int) int {
 	str_ret := g.cabi_string_param(f.typ)
 	mut results := []u8{}
 	if str_ret {
-		results << valtype_i32
+		// Canonical indirect result: a single i32 pointer to the 8-byte
+		// (ptr, len) pair. A flat (i32, i32) pair would exceed
+		// MAX_FLAT_RESULTS = 1 for synchronous lifts.
 		results << valtype_i32
 	} else if g.wtype(f.typ) != .void {
 		results << wt_valtype(g.wtype(f.typ))
@@ -398,16 +411,25 @@ fn (mut g SSAGen) emit_cabi_wrapper(inner_idx int, fid int) int {
 		}
 	}
 	if str_ret {
-		// string results use the hidden sret slot: pass it, then read back
-		// the (ptr, len) the inner function stored there
+		// string results use the hidden sret slot: pass it, then normalize
+		// the V string struct there into the canonical 8-byte (ptr, len)
+		// layout at the same address and return its pointer.
 		c.i32_const(i64(sret_slot))
 	}
 	c.call(inner_idx)
 	if str_ret {
+		off0 := g.m.struct_field_offset(f.typ, 0)
+		off1 := g.m.struct_field_offset(f.typ, 1)
+		// *(sret+0) = *(sret+off0); *(sret+4) = *(sret+off1)
 		c.i32_const(i64(sret_slot))
-		c.i32_load(g.m.struct_field_offset(f.typ, 0))
 		c.i32_const(i64(sret_slot))
-		c.i32_load(g.m.struct_field_offset(f.typ, 1))
+		c.i32_load(off0)
+		c.i32_store(0)
+		c.i32_const(i64(sret_slot))
+		c.i32_const(i64(sret_slot))
+		c.i32_load(off1)
+		c.i32_store(4)
+		c.i32_const(i64(sret_slot))
 	}
 	c.end()
 	ti := g.mod.add_type(wparams, results)
@@ -1484,6 +1506,56 @@ fn (mut g SSAGen) emit_allocator() {
 	c.end()
 	ti := g.mod.add_type([valtype_i32], [valtype_i32])
 	g.mod.add_func(ti, [valtype_i32, valtype_i32, valtype_i32], c.bytes)
+}
+
+// emit_cabi_realloc_adapter emits the canonical-ABI realloc:
+// (old: i32, old_size: i32, align: i32, new_size: i32) -> i32.
+// It allocates new_size bytes via the internal bump allocator, copies
+// min(old_size, new_size) bytes when old != 0, and returns the new pointer.
+// A new_size of 0 returns 0. Alignment is satisfied by the 16-byte-aligned
+// bump allocator for the canonical align values (1, 2, 4, 8); larger aligns
+// are not specially handled (documented limitation, same as realloc.v).
+fn (mut g SSAGen) emit_cabi_realloc_adapter() {
+	mut c := Code{}
+	// if new_size == 0 { return 0 }
+	c.local_get(3)
+	c.i32_const(0)
+	c.raw(0x46) // i32.eq
+	c.if_void()
+	c.i32_const(0)
+	c.ret()
+	c.end()
+	// new_ptr = malloc(new_size)
+	c.local_get(3)
+	c.call(g.alloc_index)
+	c.local_set(4)
+	// if old != 0 {
+	c.local_get(0)
+	c.if_void()
+	// if old_size != 0 {
+	c.local_get(1)
+	c.if_void()
+	// memory.copy(new_ptr, old, min(old_size, new_size))
+	c.local_get(4)
+	c.local_get(0)
+	c.local_get(1)
+	c.local_get(3)
+	c.local_get(1)
+	c.local_get(3)
+	c.raw(0x49) // i32.lt_u: old_size < new_size ?
+	c.raw(0x1b) // select: old_size if lt else new_size
+	c.raw(0xfc)
+	c.raw(0x0a)
+	c.raw(0x00)
+	c.raw(0x00)
+	c.end()
+	c.end()
+	c.local_get(4)
+	c.end()
+	ti := g.mod.add_type([valtype_i32, valtype_i32, valtype_i32, valtype_i32], [
+		valtype_i32,
+	])
+	g.mod.add_func(ti, [valtype_i32], c.bytes)
 }
 
 fn ssa_wasm_binary(op ssa.OpCode, w WType) !u8 {
