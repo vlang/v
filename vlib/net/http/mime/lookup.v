@@ -105,19 +105,42 @@ pub fn lookup(ext string) string {
 	return db_names[idx]
 }
 
-// db_index returns the index of the MIME type `mt` in `db_names`, or 0
-// (the empty sentinel entry) when it is unknown
-@[direct_array_access]
-fn db_index(mt string) int {
-	mut lo := 1
-	mut hi := db_names.len
-	for lo < hi {
-		mid := int(u32(lo + hi) >> 1)
-		if db_names[mid] < mt {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
+// name_hash hashes a whole MIME type name as 8-byte little-endian words
+// (the last one overlapping for lengths that are not a multiple of 8)
+@[direct_array_access; inline]
+fn name_hash(s string) u32 {
+	mut h := u64(s.len) * ph_m4
+	mut i := 0
+	// unsafe: every word read is within s[0..s.len]
+	for i + 8 <= s.len {
+		h = (h ^ unsafe { ph_w8(s.str + i) }) * ph_m3
+		h ^= h >> 29
+		i += 8
 	}
-	return if lo < db_names.len && db_names[lo] == mt { lo } else { 0 }
+	if i < s.len {
+		mut w := u64(0)
+		if s.len >= 8 {
+			w = unsafe { ph_w8(s.str + s.len - 8) }
+		} else {
+			mut pow := u64(1)
+			for j in 0 .. s.len {
+				w += u64(s[j]) * pow
+				pow <<= 8
+			}
+		}
+		h = (h ^ w) * ph_m3
+		h ^= h >> 29
+	}
+	h *= ph_m2
+	return u32(h ^ (h >> 32))
+}
+
+// db_index returns the index of the MIME type `mt` in `db_names`, or 0
+// (the empty sentinel entry) when it is unknown: one perfect hash probe
+// and one string comparison
+@[direct_array_access; inline]
+fn db_index(mt string) int {
+	h := name_hash(mt)
+	idx := int(nh_slots[((h >> nh_shift) + nh_disp[h & nh_bmask]) & nh_tmask])
+	return if db_names[idx] == mt { idx } else { 0 }
 }
