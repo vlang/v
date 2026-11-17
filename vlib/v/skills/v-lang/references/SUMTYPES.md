@@ -57,9 +57,25 @@ intent:
 An `else` branch is a decision to be open-ended, not a convenience. Reaching for
 it to silence the error turns a compile-time guarantee into a runtime `else`.
 
-A `match` over a plain enum is not checked for exhaustiveness yet by this
-compiler: a missing variant compiles. Write every variant anyway, so the code is
-right under a stricter checker and to a reader.
+Plain (non-flag) enum matches whose conditions name enum variants are checked
+for exhaustiveness too: cover every declared value or add `else`. This statement
+match is rejected because `.done` is missing:
+
+```v failcompile
+enum Status {
+	pending
+	running
+	done
+}
+
+fn main() {
+	status := Status.done
+	match status {
+		.pending { println('queued') }
+		.running { println('in progress') }
+	}
+}
+```
 
 ## Narrowing with is and as
 
