@@ -1917,8 +1917,12 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert built.exit_code == 0, built.output
 	assert built.output == 'built\n', built.output
 	implicit_program := os.join_path(root, 'implicit_build.v')
-	implicit_binary := os.join_path(root, 'implicit_build')
-	implicit_c := implicit_binary + '.c'
+	implicit_binary_base := os.join_path(root, 'implicit_build')
+	mut implicit_binary := implicit_binary_base
+	$if windows {
+		implicit_binary += '.exe'
+	}
+	implicit_c := implicit_binary_base + '.c'
 	os.write_file(implicit_program, "println('implicit')")!
 	os.write_file(implicit_c, 'existing C source')!
 	implicit_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', implicit_program])
@@ -2251,7 +2255,14 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
 		path_output, source])
 	assert path_compile.exit_code == 0, path_compile.output
-	assert os.is_file(path_output)
+	mut expected_path_output := path_output
+	$if windows {
+		expected_path_output += '.exe'
+	}
+	assert os.is_file(expected_path_output)
+	path_run := cmdexec.run(expected_path_output, [])
+	assert path_run.exit_code == 0, path_run.output
+	assert path_run.output == 'ok\n', path_run.output
 
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
