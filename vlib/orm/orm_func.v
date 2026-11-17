@@ -1687,20 +1687,34 @@ pub fn (qb_ &QueryBuilder[T]) insert[T](value T) !&QueryBuilder[T] {
 
 fn (qb_ &QueryBuilder[T]) v_sql_insert_and_last_id(value T) !int {
 	mut qb := unsafe { qb_ }
-	_ = qb.insert_value_with_fields(value, []string{})!
-	return qb.conn.last_id()
+	key := qb.insert_value_with_fields(value, []string{})!
+	return qb.inserted_last_id(key)
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_insert_with_fields_and_last_id(value T, initialized_fields []string) !int {
 	mut qb := unsafe { qb_ }
-	_ = qb.insert_value_with_sql_fields(value, initialized_fields)!
-	return qb.conn.last_id()
+	key := qb.insert_value_with_sql_fields(value, initialized_fields)!
+	return qb.inserted_last_id(key)
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_insert_many_and_last_id(values []T) !int {
 	mut qb := unsafe { qb_ }
-	qb.insert_many(values)!
-	return qb.conn.last_id()
+	key := qb.insert_many_values(values)!
+	return qb.inserted_last_id(key)
+}
+
+// inserted_last_id returns the id for `sql db { insert ... }`. When the primary
+// key is serial (or missing), `inserted_primary_value` has already read it from
+// `last_id()`, so that value is reused instead of asking the connection again:
+// pooled connections like `db.pg.DB` hand the stashed id out only once.
+fn (qb &QueryBuilder[T]) inserted_last_id(key Primitive) int {
+	if primary := find_save_primary_field_name(qb.meta) {
+		if !primary_field_is_serial(qb.meta, primary) {
+			mut conn := qb.conn
+			return conn.last_id()
+		}
+	}
+	return primitive_to_int(key)
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_create_and_zero() !int {
@@ -1798,20 +1812,28 @@ fn (qb &QueryBuilder[T]) v_sql_upsert_conflict_groups() [][]string {
 // Uses batch INSERT for efficiency when inserting multiple records.
 pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	_ = qb.insert_many_values(values)!
+	return qb
+}
+
+// insert_many_values inserts `values` and returns the primary key of the last one.
+fn (qb_ &QueryBuilder[T]) insert_many_values(values []T) !Primitive {
+	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
 	qb.prepare()!
 	if values.len == 0 {
-		return error('${@FN}(): `insert` need at least one record')
+		return error('insert_many(): `insert` need at least one record')
 	}
 	mut batch := qb.fill_insert_data_with_fields(values[0], []string{})!
 	batch.batch_rows = values.len
+	mut key := Primitive(Null{})
 	if batch.auto_fields.len > 0 {
 		for value in values {
-			_ = qb.insert_value_with_fields(value, []string{})!
+			key = qb.insert_value_with_fields(value, []string{})!
 		}
-		return qb
+		return key
 	}
 	for i in 1 .. values.len {
 		next := qb.fill_insert_data_with_fields(values[i], []string{})!
@@ -1822,10 +1844,10 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	qb.conn.insert(qb.config.table, batch)!
 	for value in values {
 		data := fill_data_with_struct[T](value, qb.meta)
-		key := qb.inserted_primary_value(value, data)
+		key = qb.inserted_primary_value(value, data)
 		qb.insert_child_relations(value, key, []string{})!
 	}
-	return qb
+	return key
 }
 
 // save updates mapped fields except sql_insert_only fields, using the primary key or `id`.
