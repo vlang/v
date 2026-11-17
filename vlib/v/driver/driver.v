@@ -9059,6 +9059,22 @@ fn v3_prod_c_object_optimization_flags(is_prod bool, no_prod_options bool, is_sh
 	return v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, false, false, is_tcc).filter(it != '-flto')
 }
 
+// v3_clang_lifetime_flags works around Clang 14 forwarding a by-value struct
+// argument to a return temporary after its lifetime.end. The subsequent stack
+// reuse corrupts strings in optimized compilers, including generic conditions
+// and native cache paths. Keep optimization enabled, without those markers.
+fn v3_clang_lifetime_flags(version string) []string {
+	for line in version.split_into_lines() {
+		if line.contains('clang version ') {
+			if line.all_after('clang version ').all_before('.') == '14' {
+				return ['-Xclang', '-disable-lifetime-markers']
+			}
+			return []
+		}
+	}
+	return []
+}
+
 fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flags string, pic_flag string) {
 	if c_standard.len > 0 {
 		args << c_standard
@@ -15700,6 +15716,10 @@ pub fn run(args []string) {
 		wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
 		if wrapv_flag.len > 0 {
 			warn_args << wrapv_flag
+		}
+		if effective_c_compiler == 'clang' && (!c_only || generate_c_project.len > 0) {
+			_, compiler_version := c_object_compiler_identity(c_compiler, mut c_object_cache_stats)
+			warn_args << v3_clang_lifetime_flags(compiler_version)
 		}
 		mut all_compile_c_flags := environment_c_flags.clone()
 		all_compile_c_flags << generated_c_flags
