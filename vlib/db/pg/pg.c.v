@@ -1089,10 +1089,11 @@ pub fn (mut c Conn) get_notification() ?Notification {
 	defer {
 		C.PQfreemem(notify)
 	}
+	// The strings are copied: the deferred PQfreemem frees the block they point into.
 	return Notification{
-		channel: unsafe { notify.relname.vstring() }
+		channel: unsafe { cstring_to_vstring(notify.relname) }
 		pid:     notify.be_pid
-		payload: unsafe { notify.extra.vstring() }
+		payload: unsafe { cstring_to_vstring(notify.extra) }
 	}
 }
 
