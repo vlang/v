@@ -5163,11 +5163,14 @@ fn v3_publish_unchanged_build_from_ast(cache_dir string, key string, executable 
 // program besides the inputs of its C plan and the configuration of the module
 // cache: the linker flags of the command line, whether TinyCC or the system
 // compiler links, the options in `build_options`, which change how the C of
-// the program is generated, compiled or linked and are no part of either, and the
-// variables of the environment that send a compiler or a linker to other files.
-fn v3_program_executable_link_signature(link_ld_flags []string, links_with_tcc bool, build_options []string) string {
+// the program is generated, compiled or linked and are no part of either, the
+// explicit `-O` level, and the variables of the environment that send a
+// compiler or a linker to other files.
+fn v3_program_executable_link_signature(link_ld_flags []string, links_with_tcc bool, build_options []string, c_opt_level string) string {
+	mut options := build_options.clone()
+	options << 'c_opt_level=${c_opt_level}'
 	return ['v3-program-link-2', link_ld_flags.join('\x00'), links_with_tcc.str(),
-		build_options.join('\x00'), v3_link_environment_signature()].join('\x01')
+		options.join('\x00'), v3_link_environment_signature()].join('\x01')
 }
 
 // v3_cc_dir_short_root_len is the length from which a directory that a tool runs in moves
@@ -12015,6 +12018,7 @@ pub fn run(args []string) {
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
 		'no_prod_options=${no_prod_options}',
+		'c_opt_level=${c_opt_level}',
 		'no_closures=${no_closures}',
 		'debug=${is_debug}',
 		'c_debug=${is_c_debug}',
@@ -13020,7 +13024,7 @@ pub fn run(args []string) {
 		'explicit_mutability=${!disable_explicit_mutability}',
 		'values=${program_compile_values.join(',')}',
 		'output_dir=${program_executable_output_dir}',
-	])
+	], c_opt_level)
 	mut program_executable_input := V3CgenCacheInput{}
 	mut program_executable_input_ready := false
 	if program_executable_enabled && !cache_state.force_source
@@ -16496,7 +16500,8 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			program_main_identity := modulecache.file_signature(published_c_source)
-			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '), cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
+			macos_main_opt_flag := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc, c_opt_level).join(' ')
+			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, macos_main_opt_flag, pic_flag, warn_args.join(' '), cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 				message := err.msg()
 				restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
 					v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags,

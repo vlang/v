@@ -2568,3 +2568,56 @@ fn test_driver_cli_opt_level_flags() {
 		assert agreed_run.output.trim_space() == 'ok'
 	}
 }
+
+fn test_driver_cli_opt_level_warmed_cache() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_opt_warm_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'warm.v')
+	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	cache := os.join_path(root, 'cache')
+	tmp := os.join_path(root, 'tmp')
+	os.mkdir_all(cache) or { panic(err) }
+	os.mkdir_all(tmp) or { panic(err) }
+	environment := {
+		'VFLAGS':                 ''
+		'VTMP':                   tmp
+		'V3CACHE':                cache
+		'V3_CACHE_TRACE':         '1'
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	}
+	build := fn (v3_bin string, source string, output string, extra []string, environment map[string]string) os.Result {
+		mut args := []string{}
+		args << extra
+		args << ['-o', output, source]
+		return run_driver_with_environment(v3_bin, args, environment)
+	}
+	output0 := os.join_path(root, 'opt_warm_0')
+	output3 := os.join_path(root, 'opt_warm_3')
+	first0 := build(v3_bin, source, output0, ['-O0'], environment)
+	assert first0.exit_code == 0, first0.output
+	assert !first0.output.contains('V3 program executable restored'), first0.output
+	second0 := build(v3_bin, source, output0, ['-O0'], environment)
+	assert second0.exit_code == 0, second0.output
+	assert second0.output.contains('V3 program executable restored'), second0.output
+	// A warmed -O0 executable must not satisfy an -O3 build: the level is
+	// part of the executable identity, so this is a miss, not a restore.
+	first3 := build(v3_bin, source, output3, ['-O3'], environment)
+	assert first3.exit_code == 0, first3.output
+	assert !first3.output.contains('V3 program executable restored'), first3.output
+	second3 := build(v3_bin, source, output3, ['-O3'], environment)
+	assert second3.exit_code == 0, second3.output
+	assert second3.output.contains('V3 program executable restored'), second3.output
+	for output in [output0, output3] {
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'ok', run.output
+	}
+}

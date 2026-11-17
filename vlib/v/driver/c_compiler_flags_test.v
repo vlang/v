@@ -2475,3 +2475,14 @@ fn test_v3_no_opt_level_by_default_without_prod() {
 	}
 	assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
 }
+
+fn test_v3_program_executable_link_covers_opt_level() {
+	base := ['strict=false', 'no_std=false']
+	same_a := v3_program_executable_link_signature([], false, base, '0')
+	same_b := v3_program_executable_link_signature([], false, base, '0')
+	assert same_a == same_b
+	other := v3_program_executable_link_signature([], false, base, '3')
+	assert other != same_a, 'changing -O0 to -O3 must change the executable identity'
+	empty := v3_program_executable_link_signature([], false, base, '')
+	assert empty != same_a, 'an explicit level must differ from no level'
+}
