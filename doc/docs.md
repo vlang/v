@@ -1704,6 +1704,7 @@ users.sort_with_compare(custom_sort_fn)
 
 Iteration over an array slice keeps the array's element type: iterating `[]string` yields
 strings, including when the containing function is reached through generic calls.
+The slice bounds in a `for ... in` loop are evaluated once, before the first iteration.
 
 A slice is a part of a parent array. Initially it refers to the elements
 between two indices separated by a `..` operator. The right-side index must
