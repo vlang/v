@@ -6,9 +6,11 @@ import os
 import v.astquery
 import v.skills
 
-// The tests below exercise the tool handlers in process. They deliberately avoid
+// The tests below exercise the tool handlers in process. Most of them avoid
 // `v_check`, `v_run`, `v_test_run` and `v_doctor`: those start the compiler, and
-// a test that shells out would test the sandbox as much as the code.
+// a test that shells out tests the sandbox as much as the code. The few that do
+// run the compiler check what only a real run shows, like how `v_check` counts a
+// `builder error`.
 
 const test_root = os.join_path(os.vtmp_dir(), 'v_vmcp_test_${os.getpid()}')
 
@@ -418,7 +420,7 @@ fn test_check_json_pages_diagnostics_but_keeps_totals() {
 		exit_code: 1
 		command:   'v -check a.v'
 	}
-	answer := check_json(ws, probe_path('main.v'), run, items, 2)
+	answer := check_json(ws, probe_path('main.v'), run, items, '', 2)
 	flat := replace_all(answer, '\t', '')
 	// Counts describe all three; only the array is paged.
 	assert field(flat, 'error_count') == '2', answer
@@ -600,7 +602,7 @@ fn test_a_run_that_never_started_says_so_instead_of_reporting_an_exit_code() {
 		command:      'v check main.v'
 		launch_error: 'exec failed (SetHandleInformation): The handle is invalid.'
 	}
-	answer := check_json(ws, probe_path('main.v'), run, [], 0)
+	answer := check_json(ws, probe_path('main.v'), run, [], '', 0)
 	assert answer.contains('"started":\tfalse'), answer
 	assert answer.contains('could not be started'), answer
 	// An `error_count` of zero next to a non-zero exit code would read as a clean
@@ -619,7 +621,7 @@ fn test_a_run_that_did_start_reports_its_exit_code() {
 		path: 'main.v'
 		line: 1
 		kind: 'error'
-	}], 0)
+	}], '', 0)
 	assert answer.contains('"started":\ttrue'), answer
 	assert answer.contains('"exit_code":\t1'), answer
 	assert answer.contains('"error_count":\t1'), answer
@@ -1060,6 +1062,139 @@ fn test_parse_diagnostics_keeps_a_message_without_a_position() {
 fn test_parse_diagnostics_ignores_a_line_that_is_not_a_diagnostic() {
 	items := parse_diagnostics('note: something happened\nplain text\n')
 	assert items.len == 0, items.len.str()
+}
+
+fn test_read_check_output_reads_json_diagnostics() {
+	output := '{"file":"a.v","line":2,"col":9,"end_line":2,"end_col":12,"severity":"error",' +
+		'"message":"cannot use `string` as type `int` in return argument","details":"one\\ntwo",' +
+		'"called_from":[{"file":"b.v","line":7,"col":3}]}\n' +
+		'{"severity":"error","label":"builder error","message":"redefinition of function `main`"}\n' +
+		'{"file":"c.v","line":1,"col":8,"end_line":1,"end_col":17,"severity":"warning","message":"unused"}\n'
+	items, unclaimed := read_check_output(output)
+	assert unclaimed == '', unclaimed
+	assert items.len == 3, items.len.str()
+	assert items[0].path == 'a.v' && items[0].line == 2 && items[0].column == 9, '${items[0]}'
+	assert items[0].end_line == 2 && items[0].end_column == 12, '${items[0]}'
+	assert items[0].kind == 'error' && items[0].label == '', '${items[0]}'
+	assert items[0].details == 'one\ntwo', items[0].details
+	assert items[0].called_from == [CallSite{
+		path:   'b.v'
+		line:   7
+		column: 3
+	}], '${items[0].called_from}'
+	// A message without a position is still a record, and still an error.
+	assert !items[1].parsed(), '${items[1]}'
+	assert items[1].label == 'builder error', items[1].label
+	assert items[2].kind == 'warning', items[2].kind
+	assert count_errors(items) == 2
+	assert count_by_kind(items, 'warning') == 1
+}
+
+fn test_read_check_output_keeps_the_text_the_json_does_not_cover() {
+	output := 'Compiler output from the default V compiler:\n' +
+		'{"file":"a.v","line":1,"col":1,"end_line":1,"end_col":2,"severity":"error","message":"first"}\n' +
+		"builder error: c.v doesn't exist\n" +
+		'b.v:3:4: error: second\n    3 |     x\n      |     ^\n' +
+		'{"severity":"notice","message":"third"}\n' + '{"not":"a diagnostic"}\n'
+	items, unclaimed := read_check_output(output)
+	// The records keep the order the compiler printed them in.
+	assert items.map(it.message) == ['first', 'second', 'third'], '${items.map(it.message)}'
+	assert items[1].path == 'b.v' && items[1].line == 3, '${items[1]}'
+	// The lines after a text diagnostic are its source context, as in text mode.
+	assert items[1].raw.contains('|     x'), items[1].raw
+	assert count_errors(items) == 2
+	assert unclaimed.contains('Compiler output from the default V compiler:'), unclaimed
+	assert unclaimed.contains("builder error: c.v doesn't exist"), unclaimed
+	assert unclaimed.contains('{"not":"a diagnostic"}'), unclaimed
+	assert !unclaimed.contains('second'), unclaimed
+}
+
+fn test_read_check_output_of_a_clean_check_is_empty() {
+	items, unclaimed := read_check_output('')
+	assert items.len == 0
+	assert unclaimed == ''
+}
+
+fn test_diagnostic_json_adds_the_span_and_details_only_when_known() {
+	rendered := Diagnostic{
+		path:        'a.v'
+		line:        2
+		column:      9
+		end_line:    2
+		end_column:  12
+		kind:        'error'
+		label:       'builder error'
+		message:     'boom'
+		details:     'why'
+		called_from: [CallSite{
+			path:   'b.v'
+			line:   7
+			column: 3
+		}]
+	}.to_json()
+	parsed := json.decode[map[string]json.Any](rendered) or { panic('the diagnostic did not render') }
+	assert (parsed['end_line'] or { json.Any(0) }).int() == 2, rendered
+	assert (parsed['end_column'] or { json.Any(0) }).int() == 12, rendered
+	assert parsed['label']!.str() == 'builder error', rendered
+	assert parsed['details']!.str() == 'why', rendered
+	sites := (parsed['called_from'] or { json.Any([]json.Any{}) }).as_array()
+	assert sites.len == 1, rendered
+	site := sites[0].as_map()
+	assert site['path']!.str() == 'b.v', rendered
+	assert (site['line'] or { json.Any(0) }).int() == 7, rendered
+	assert (site['column'] or { json.Any(0) }).int() == 3, rendered
+	plain := Diagnostic{
+		path:    'a.v'
+		line:    1
+		column:  1
+		kind:    'error'
+		message: 'boom'
+	}.to_json()
+	for key in ['end_line', 'end_column', 'label', 'details', 'called_from', 'raw'] {
+		assert !plain.contains('"${key}"'), plain
+	}
+}
+
+fn test_check_json_shows_the_output_no_diagnostic_claimed() {
+	ws := probe_workspace()
+	run := CompilerRun{
+		exit_code: 1
+		command:   'v -json-errors -check main.v'
+	}
+	answer := check_json(ws, probe_path('main.v'), run, [], 'V panic: boom', 0)
+	assert field(replace_all(answer, '\t', ''), 'output') == 'V panic: boom', answer
+	clean := check_json(ws, probe_path('main.v'), CompilerRun{
+		command: 'v -json-errors -check main.v'
+	}, [], '', 0)
+	assert !clean.contains('"output"'), clean
+}
+
+fn test_check_counts_a_builder_error_and_reports_its_span() {
+	ws := probe_workspace()
+	os.write_file(os.join_path(ws.root, 'missing_import.v'),
+		'module main\n\nimport no_such_module_for_vmcp\n')!
+	answer := call_tool_on(ws, 'v_check', '{"path": "missing_import.v"}')
+	flat := replace_all(answer, '\t', '')
+	assert field(flat, 'exit_code') == '1', answer
+	// The text form says `builder error:`, which is no known kind; the JSON form
+	// says `severity: error`, so the failed check is no longer counted as clean.
+	assert field(flat, 'error_count') == '1', answer
+	assert answer.contains('"label":\t"builder error"'), answer
+	assert answer.contains('"end_column":'), answer
+	assert !answer.contains('"raw"'), answer
+}
+
+fn test_check_reports_a_warning_without_counting_an_error() {
+	ws := probe_workspace()
+	os.write_file(os.join_path(ws.root, 'unused.v'),
+		'module main\n\nfn unused_local() {\n\tx := 1\n}\n')!
+	answer := call_tool_on(ws, 'v_check', '{"path": "unused.v"}')
+	flat := replace_all(answer, '\t', '')
+	assert field(flat, 'exit_code') == '0', answer
+	assert field(flat, 'error_count') == '0', answer
+	assert field(flat, 'warning_count') == '1', answer
+	assert answer.contains('unused variable'), answer
+	assert !answer.contains('"output"'), answer
 }
 
 fn test_diagnostic_json_carries_the_fields_a_reader_needs() {
