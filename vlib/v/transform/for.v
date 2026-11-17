@@ -1352,6 +1352,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	container_has_smartcast := t.expr_has_smartcast(container_id)
 	mut container := if int(fixed_range_container) >= 0 {
 		fixed_range_container
+	} else if t.is_range_index_expr(t.unwrap_parens(container_id)) {
+		// Capture the slice before the loop so the body cannot change its bounds.
+		slice := t.transform_expr(container_id)
+		tmp_name := t.new_temp('for_container')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, slice, iter_type_id)
+		t.make_ident(tmp_name)
 	} else if direct_map_index_container {
 		if flat.source_type_shape(flat.source_type_syntax(source_container_type_source_id_2).source_wrapper_base()).has(.array_type) {
 			t.stabilize_original_lvalue_receiver(container_id) or { container_id }
