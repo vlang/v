@@ -600,8 +600,12 @@ fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![
 
 // get_table_column_type_map returns a map where the key represents the column name,
 // and the value represents its data type.
+// Column names and data types are normalized to lowercase so temporal detection
+// does not depend on server casing. The table name itself is matched exactly:
+// on case-sensitive installations (lower_case_table_names=0) `Events` and
+// `events` can coexist, and LOWER(TABLE_NAME) would collapse both into one entry.
 fn (db DB) get_table_column_type_map(table string) !map[string]string {
-	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE LOWER(TABLE_NAME) = LOWER('${table}')"
+	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}'"
 	mut column_type_map := map[string]string{}
 	results := db.query(data_type_query)!
 

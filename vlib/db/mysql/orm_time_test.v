@@ -66,3 +66,43 @@ fn test_orm_time_values_follow_the_sql_column_types() {
 	assert column_types['epoch'] == 'datetime'
 	assert column_types['count'] == 'int'
 }
+
+fn test_orm_table_name_matching_preserves_case() {
+	$if !network ? {
+		return
+	}
+	mut db := connect(
+		host:     '127.0.0.1'
+		port:     u32($d('mysql_test_port', 3306))
+		username: 'root'
+		password: $d('mysql_test_password', '12345678')
+		dbname:   'mysql'
+	)!
+	defer {
+		db.close() or {}
+	}
+	lower_table := 'mysql_orm_case_events'
+	upper_table := 'MYSQL_ORM_CASE_EVENTS'
+	db.exec('DROP TABLE IF EXISTS ${lower_table}')!
+	db.exec('DROP TABLE IF EXISTS ${upper_table}')!
+	defer {
+		db.exec('DROP TABLE IF EXISTS ${lower_table}') or {}
+		db.exec('DROP TABLE IF EXISTS ${upper_table}') or {}
+	}
+	// Case-distinct tables can only coexist with lower_case_table_names=0.
+	// On case-insensitive servers the second CREATE would collide, so skip.
+	mode_res := db.query('SELECT @@lower_case_table_names')!
+	mode_rows := mode_res.rows()
+	if mode_rows.len == 0 || mode_rows[0].vals[0] != '0' {
+		eprintln('> Skipping ${@FN}: requires lower_case_table_names=0.')
+		return
+	}
+	// Uppercase column on purpose: keys and type names stay normalized,
+	// while the table name itself must match exactly.
+	db.exec('CREATE TABLE ${lower_table} (TS DATETIME)')!
+	db.exec('CREATE TABLE ${upper_table} (ts BIGINT)')!
+	lower_types := db.get_table_column_type_map(lower_table)!
+	upper_types := db.get_table_column_type_map(upper_table)!
+	assert lower_types['ts'] == 'datetime'
+	assert upper_types['ts'] == 'bigint'
+}
