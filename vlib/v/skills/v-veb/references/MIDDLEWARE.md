@@ -130,7 +130,12 @@ import sync.stdatomic
 
 pub struct App {
 mut:
-	state shared State
+	hits &stdatomic.AtomicVal[u64] = stdatomic.new_atomic(u64(0))
+}
+
+pub fn (mut app App) index(mut ctx Context) veb.Result {
+	n := app.hits.add(1) + 1 // `add` returns the previous value
+	return ctx.text('request number: ${n}')
 }
 ```
 
@@ -142,15 +147,15 @@ other work that can block.**
 
 ```v ignore
 // Serve a directory at a URL prefix.
-app.mount_static_folder_at('/var/share/myassets', '/assets')
+app.mount_static_folder_at('/var/share/myassets', '/assets')!
 
 // Serve a directory at the site root.
-app.handle_static('public', true)
+app.handle_static('public', true)!
 ```
 
-Mount at a prefix rather than at the root when you also have routes: a root mount
-claims everything that is not a route, which turns a missing asset into a
-surprising 200.
+Both return a result: a missing directory is an error, so propagate it with `!`
+or handle it with `or`. A file is only served when it exists; a path that is not
+a file falls through to the routes.
 
 veb infers the content type from the file extension. Set `ctx.content_type` when
 you need to override it.
@@ -172,14 +177,16 @@ pub fn (ctx &Context) before_request() {
 }
 ```
 
-The `$if` keeps the trace out of a release build. For anything that is not a
-tracing aid, prefer middleware — it is easier to remove and to test.
+The `$if` keeps the trace out of any build that does not pass
+`-d trace_before_request`, `-prod` or not. For anything that is not a tracing
+aid, prefer middleware — it is easier to remove and to test.
 
 ## Testing a veb app
 
-A veb handler is reached through the server, not by constructing a `Context`
-yourself. The pattern the standard library's own tests use is: start the server on
-a port, wait for it to be up, make a real request, assert on the response.
+From an application, a veb handler is reached through the server, not by
+constructing a `Context` yourself: the in-memory dispatch that veb's own tests use
+is private to the module. The pattern is: start the server on a port, wait for it
+to be up, make a real request, assert on the response.
 
 ```v ignore
 import net.http

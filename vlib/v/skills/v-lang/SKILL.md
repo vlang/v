@@ -26,11 +26,11 @@ each one fails in a way that does not look like the mistake.
 | --- | --- | --- |
 | A value that may be absent | `fn f() ?int` | `return 0` as a sentinel |
 | An operation that can fail | `fn f() !int` | `return -1` |
-| Unwrap, no default | `x or { return error('...') }` | `x or { 0 }` on a result |
-| Unwrap, with a default | `x or { 0 }` on an option | `x or { return }` on an option |
-| Branch on a closed set | `enum` + exhaustive `match` | a string constant |
-| Mutate an argument | `fn f(mut x T)` | `x = ...` silently failing |
-| Mutate the caller's struct | `fn (mut t &T)` | `fn (mut t T)` (a copy) |
+| Propagate an error | `x!` in a function returning `!T` | `x or { panic(err) }` |
+| Unwrap, with a default | `x or { 0 }`, on an option or a result | a sentinel return |
+| Branch on a closed set | `enum` + a `match` on every variant | a string constant |
+| Mutate an argument | `fn f(mut x T)`, called as `f(mut x)` | `x = ...` on a plain one |
+| Mutate the receiver | `fn (mut t T)` | `fn (mut t &T)` (rejected) |
 | Run code at compile time | `$if`, `$for` | a runtime `if` |
 
 ## `?T` is not `!T`
@@ -57,9 +57,10 @@ fn read_port(path string) !int {
 }
 ```
 
-The rule that catches people: inside `or { ... }` on a **result**, the block must
-produce that result's error value, so it is `return error(...)` and not a bare
-`return`. On an **option**, `or { default }` supplies a value.
+The `or { ... }` block either supplies a value of the unwrapped type, as in
+`or { 0 }`, or leaves with `return`, `break`, `continue` or `panic`; a `return`
+there follows the enclosing function's return type. `err` exists only in the
+block of a **result**. To pass an error up unchanged, write `x!`.
 
 **Default**: return `!T` for anything that touches the outside world, and `?T` for
 a lookup that is legitimately absent. Full detail, including how to propagate and
@@ -67,13 +68,15 @@ when a default is honest, in `references/OPTION-RESULT.md`.
 
 ## Sum types and match
 
-V enums plus `match` are the way to model a closed set. `match` over an enum is
-checked for exhaustiveness, which is the point: adding a variant turns every
-incomplete `match` into a compile error instead of a silent fallthrough.
+V enums and sum types plus `match` are the way to model a closed set. A `match`
+over a sum type is checked for exhaustiveness, which is the point: adding a
+variant turns every incomplete `match` into a compile error instead of a silent
+fallthrough. A `match` over a plain enum is not checked yet by this compiler, so
+handle every variant yourself.
 
-The diagnostic is exact: `non-exhaustive match expression without `else``. Two
-ways out — handle every variant, or add an `else` branch and accept that a new
-variant changes nothing.
+The diagnostic names what is missing: ``match must be exhaustive (add match
+branches for: `string` or `else {}` at the end)``. Two ways out — handle every
+variant, or add an `else` branch and accept that a new variant changes nothing.
 
 ```v ignore
 enum Status {
@@ -103,34 +106,37 @@ Function arguments are immutable. A receiver is immutable unless it is declared
 cause: the author assumed mutation was the default.
 
 ```v ignore
+struct App {
+mut:
+	port int // a field is assignable only in a `mut:` section
+}
+
 // Rejected: `app` is immutable.
 // fn serve(app App) { app.port = 8080 }
 
-// Accepted: the argument is mutable.
-fn serve(mut app App) { app.port = 8080 }
+// Rejected too: a pointer does not make it writable.
+// fn serve(app &App) { app.port = 8080 }
 
-// Accepted, and it reaches the caller: the receiver is a pointer.
-fn serve(app &App) { app.port = 8080 }
-
-// Accepted: the field itself is declared mutable.
-struct Server {
-mut:
-    port int
+// Accepted, and the caller sees the change: call it as `serve(mut app)`.
+fn serve(mut app App) {
+	app.port = 8080
 }
 ```
 
-`mut` on a **value** receiver mutates a copy, so the caller's struct is
-unchanged. `mut` on a **pointer** receiver mutates the caller's. That difference
-is silent at the call site, which is why `references/MUTABILITY.md` exists.
+A `mut` parameter or receiver is the caller's object, not a copy: the change
+reaches the caller. `mut` is only allowed on arrays, maps, structs, interfaces and
+pointers; return a new number instead of taking `mut n int`. Closures are the
+exception: a capture is a copy. See `references/MUTABILITY.md`.
 
 ## Module names must match directories
 
-`module foo` must live in a directory named `foo`. A mismatch imports cleanly and
-then resolves to nothing, with no error pointing at the name. The `module` line
-carries no hierarchy — the directory nesting supplies it.
+`module foo` must live in a directory named `foo`. `import foo` of a directory
+whose files say `module bar` fails with *"bad module definition: ... imports
+module "foo" but ... is defined as module `bar`"*. The `module` line carries no
+hierarchy — the directory nesting supplies it.
 
-This is why a project built by `v new` has `src/main.v` with `module main` rather
-than `module src`.
+This is why a file named after a directory does not make a module: the
+directory does.
 
 ## Comptime is `$`, and it excludes branches
 
@@ -150,12 +156,17 @@ $if linux {
 A runtime `if` that mentions a platform-specific symbol will not compile on the
 other platforms, because there is no exclusion. Available in `$if`: `windows`,
 `linux`, `macos`, `js`, `freebsd`, `android`, `debug`, `prod`, and your own
-`$d custom_flag ? { ... }` — note the `?`.
+`$if custom_flag ? { ... }`, enabled with `-d custom_flag` — note the `?`: without
+it, a build that does not pass the flag fails with `undefined ident`.
+`$d('name', default)` is different: it reads the value of `-d name=value`.
 
-## No implicit conversions
+## Numeric conversions
 
-`int` is 32 bit and `i64` is 64. `f64` and `int` do not mix. Nothing converts
-implicitly, which is deliberate: a silent narrowing is a bug you find later.
+An integer widens implicitly to a larger integer type, as in `i8 + i64`, and an
+integer mixes with a float in arithmetic. A float is never assigned to an integer
+implicitly: `int(x)` says where the fraction is dropped. `int` follows the
+pointer width with the C backend, so 64 bits on a 64-bit target; use `i32` or
+`i64` when the width matters, as in a file format or a protocol.
 
 Be explicit at the boundary, and prefer `strconv` over hand-rolled parsing.
 
