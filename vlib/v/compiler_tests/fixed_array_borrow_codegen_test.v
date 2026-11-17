@@ -145,7 +145,7 @@ fn main() {
 		binary_path += '.exe'
 	}
 	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-cc',
-		'clang', '-gc', 'none', '-o', binary_path, source_path])
+		@CCOMPILER, '-gc', 'none', '-o', binary_path, source_path])
 	assert compiled.exit_code == 0, compiled.output
 	run := os.exec([binary_path])
 	assert run.exit_code == 0, run.output
