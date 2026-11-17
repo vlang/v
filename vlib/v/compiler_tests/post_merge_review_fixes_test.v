@@ -276,13 +276,17 @@ fn main() {
 
 fn test_filelock_helpers_are_inlined_in_generated_c() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'filelock_helpers_inline', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')
+	// Use the actual platform signatures: Windows locks a HANDLE, POSIX locks an fd.
+	fd_type := $if windows { 'voidptr' } $else { 'i32' }
+	lock_int_type := $if windows { 'int' } $else { 'i32' }
+	invalid_handle := $if windows { 'voidptr(-1)' } $else { 'i32(-1)' }
+	c_source := gen_c(v3_bin, 'filelock_helpers_inline', 'import os.filelock\n\nfn C.v_filelock_lock(${fd_type}, ${lock_int_type}, ${lock_int_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_unlock(${fd_type}, u64, u64) ${lock_int_type}\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(${invalid_handle}, 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(${invalid_handle}, u64(0), u64(0))\n}\n')
 	assert !c_source.contains('filelock_helpers.h')
 	assert c_source.contains('static inline int v_filelock_lock(')
 	assert c_source.contains('static inline int v_filelock_unlock(')
 	assert c_source.contains('#ifndef V_OS_FILELOCK_HELPERS_H')
 	assert !c_source.contains('v_filelock_status')
-	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
+	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl', 'import os.filelock\n\nfn C.v_filelock_lock(${fd_type}, ${lock_int_type}, ${lock_int_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_unlock(${fd_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(${invalid_handle}, 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
 	assert status_source.contains('int v_filelock_status(')
 	out := run_good(v3_bin, 'filelock_user_names_not_helpers', 'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
 	assert out == '7'
