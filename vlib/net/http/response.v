@@ -37,8 +37,10 @@ pub mut:
 	// `Content-Length` and with `Connection: close`, calls `stream` on the worker
 	// thread, and closes the connection when it returns. `body` is not sent. A
 	// stream holds its worker while it runs, so size `worker_num` for them. Its
-	// use is server-sent events (`StreamWriter.write_event`). The HTTP/2 path
-	// does not stream: it sends the response without a body.
+	// use is server-sent events (`StreamWriter.write_event`). A response that has
+	// no body (to HEAD, or with status 1xx, 204 or 304) is its head alone, and
+	// `stream` is not called. The HTTP/2 path does not stream: it sends the
+	// response without a body.
 	stream StreamFn = unsafe { nil }
 }
 
