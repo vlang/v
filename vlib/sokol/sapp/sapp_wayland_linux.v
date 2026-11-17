@@ -628,7 +628,7 @@ $if sokol_wayland ? {
 			} else if C.strcmp(iface, c'wl_seat') == 0 {
 				g_sapp_state.wl.seat = &C.wl_seat(C.wl_registry_bind(registry, name,
 					&C.wl_seat_interface, 5))
-				C.wl_seat_add_listener(g_sapp_state.wl.seat, unsafe { voidptr(&wl_seat_listener) }, nil)
+				C.wl_seat_add_listener(g_sapp_state.wl.seat, unsafe { voidptr(&wl_seat_listener) }, unsafe { nil })
 			} else if C.strcmp(iface, c'wl_shm') == 0 {
 				g_sapp_state.wl.shm = &C.wl_shm(C.wl_registry_bind(registry, name,
 					&C.wl_shm_interface, 1))
