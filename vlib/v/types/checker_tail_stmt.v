@@ -7730,12 +7730,19 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	mut base_type := tc.smartcast_type(base_id) or {
 		tc.lexical_match_smartcast_type(base_id) or { tc.resolve_type(base_id) }
 	}
-	if type_contains_unknown(base_type) && base.kind == .call {
+	if base.kind == .call
+		&& (type_contains_unknown(base_type) || generic_semantic_type_has_placeholder(base_type)
+			|| tc.type_text_has_generic_placeholder(base_type.source_type_id())) {
 		// A generic call used directly as a selector base can keep an open
 		// return type in the expression cache. Resolve its signature from the
-		// call arguments before looking up the selected field.
+		// call arguments before looking up the selected field. The cached base
+		// can be an unresolved generic struct application (e.g. `Box[T]`),
+		// for which `type_contains_unknown` is false, so also trigger on any
+		// semantic or textual generic placeholder.
 		resolved_base_type := tc.resolve_generic_call_arg_type(base_id)
-		if !type_contains_unknown(resolved_base_type) {
+		if !type_contains_unknown(resolved_base_type)
+			&& !generic_semantic_type_has_placeholder(resolved_base_type)
+			&& !tc.type_text_has_generic_placeholder(resolved_base_type.source_type_id()) {
 			base_type = resolved_base_type
 		}
 	}
@@ -21665,6 +21672,17 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer())
 				&& !(tc.node_is_in_translated_file(id) && translated_integer_type(lt)
 					&& translated_integer_type(rt)) {
+				// An operand that is still an open generic (e.g. `Box[T]` from an
+				// inferred call) is not definitively non-integer yet. Return an
+				// unknown instead of void so the result is not memoized as void
+				// before `check_selector` resolves the generic call base.
+				if type_contains_unknown(lt) || type_contains_unknown(rt)
+					|| generic_semantic_type_has_placeholder(lt)
+					|| generic_semantic_type_has_placeholder(rt)
+					|| tc.type_text_has_generic_placeholder(lt.source_type_id())
+					|| tc.type_text_has_generic_placeholder(rt.source_type_id()) {
+					return unknown_type('open generic shift operand')
+				}
 				return builtin_void_type
 			}
 			if node.op == .left_shift && array_type_from_receiver(lt) != none {
