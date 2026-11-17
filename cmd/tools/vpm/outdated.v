@@ -153,7 +153,10 @@ fn project_constraints() map[string][]string {
 	if root_dir == '' {
 		return constraints
 	}
-	for dep in project_deps_for_manifest(root_dir, manifest) {
+	for dep in project_deps_for_manifest(root_dir, manifest) or {
+		vpm_error(err.msg())
+		exit(1)
+	} {
 		name := if dep.starts_with('git@') && dep.count('@') == 1 {
 			dep.trim_space()
 		} else {

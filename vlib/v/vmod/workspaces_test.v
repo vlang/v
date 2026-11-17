@@ -70,3 +70,25 @@ fn test_nearest_workspace_root_finds_innermost_and_returns_empty_outside() {
 	}
 	assert nearest_workspace_root(plain) == ''
 }
+
+fn test_nearest_workspace_root_respects_v_mod_stop() {
+	root := os.join_path(os.temp_dir(), 'vmod_ws_stop_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	independent := os.join_path(root, 'members', 'stopped')
+	os.mkdir_all(independent) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'root' workspaces: ['members/*'] }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(independent, 'v.mod'), "Module { name: 'stopped' }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(independent, '.v.mod.stop'), '') or { panic(err) }
+	// The stopped project must not resolve to the ancestor workspace.
+	assert nearest_workspace_root(independent) == ''
+	nested := os.join_path(independent, 'src')
+	os.mkdir_all(nested) or { panic(err) }
+	assert nearest_workspace_root(nested) == ''
+}

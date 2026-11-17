@@ -70,7 +70,10 @@ fn detached_project_pin(name string, path string) string {
 		mut dep_groups := [project_dependencies(manifest)]
 		if manifest.workspaces.len > 0 {
 			for member_dir in vmod.workspace_member_dirs(dir, manifest) {
-				member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or { continue }
+				member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or {
+					vpm_error('failed to read workspace member `${member_dir}`: ${err.msg()}')
+					exit(1)
+				}
 				bases << member_dir
 				dep_groups << project_dependencies(member_manifest)
 			}

@@ -74,7 +74,7 @@ fn build_dep_graph() !DepGraph {
 	}
 	roots := module_roots()
 	mut queue := []string{}
-	root_deps := project_deps_for_manifest(project.vmod_folder, root)
+	root_deps := project_deps_for_manifest(project.vmod_folder, root)!
 	graph.root_deps = graph.node_ids(root_deps, roots, mut queue, '')
 	for i := 0; i < queue.len; i++ {
 		id := queue[i]

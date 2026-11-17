@@ -61,7 +61,8 @@ fn parse_override(entry string) !Override {
 // every workspace member manifest. The root is parsed first and wins on
 // duplicate selectors (a member entry with the same requiring, constraint and
 // name is skipped). A malformed member override is an error, the same as a
-// malformed root one; unreadable member manifests are skipped.
+// malformed root one; an unreadable member manifest is an error too, so a
+// broken member cannot silently lose its pins.
 pub fn workspace_overrides(root string, root_manifest vmod.Manifest) ![]Override {
 	mut merged := parse_overrides(root_manifest.unknown['dependency_overrides'] or { []string{} })!
 	if root_manifest.workspaces.len == 0 {
@@ -72,7 +73,9 @@ pub fn workspace_overrides(root string, root_manifest vmod.Manifest) ![]Override
 		seen[o.requiring + '@' + o.constraint + '>' + o.name] = true
 	}
 	for member_dir in vmod.workspace_member_dirs(root, root_manifest) {
-		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or { continue }
+		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or {
+			return error('failed to read workspace member `${member_dir}`: ${err.msg()}')
+		}
 		for raw in member_manifest.unknown['dependency_overrides'] or { []string{} } {
 			o := parse_override(raw)!
 			key := o.requiring + '@' + o.constraint + '>' + o.name

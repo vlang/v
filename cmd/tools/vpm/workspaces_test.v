@@ -175,7 +175,7 @@ fn test_workspace_dependencies() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	deps := workspace_dependencies(root)
+	deps := workspace_dependencies(root) or { panic(err) }
 	assert 'foo' in deps
 	assert 'bar' in deps
 	assert 'baz' in deps
@@ -197,19 +197,19 @@ fn test_workspace_dependencies_dedupes_and_orders() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	deps := workspace_dependencies(root)
+	deps := workspace_dependencies(root) or { panic(err) }
 	assert deps == ['foo', 'shared', 'bar', 'baz'], 'got ${deps}'
 }
 
 fn test_project_deps_for_manifest_plain_and_workspace() {
 	plain := vmod.decode("Module { name: 'plain' dependencies: ['a'] }") or { panic(err) }
-	assert project_deps_for_manifest('/tmp/plain', plain) == ['a']
+	assert project_deps_for_manifest('/tmp/plain', plain) or { panic(err) } == ['a']
 	root := make_workspace_fixture()
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	deps := project_deps_for_manifest(root, manifest)
+	deps := project_deps_for_manifest(root, manifest) or { panic(err) }
 	assert 'foo' in deps
 	assert 'bar' in deps
 	assert 'baz' in deps
@@ -221,7 +221,7 @@ fn test_workspace_manifests_includes_root_and_members_in_order() {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	members := workspace_manifests(root, manifest)
+	members := workspace_manifests(root, manifest) or { panic(err) }
 	assert members.len == 4
 	assert members[0].dir == root
 	assert members[0].manifest.name == 'root'
@@ -237,7 +237,7 @@ fn test_workspace_manifests_plain_project_has_only_root() {
 		os.rmdir_all(root) or {}
 	}
 	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
-	members := workspace_manifests(root, manifest)
+	members := workspace_manifests(root, manifest) or { panic(err) }
 	assert members.len == 1
 	assert members[0].dir == root
 	assert members[0].manifest.name == 'plain'
@@ -254,4 +254,76 @@ fn test_widen_for_latest() {
 	}) == 'baz'
 	// Exact branch pins are not ranges and do not satisfy `*`: they stay pinned.
 	assert widen_for_latest('foo@main', [], map[string]string{}) == 'foo@main'
+}
+
+fn test_workspace_dependencies_fails_on_malformed_member() {
+	root := os.join_path(os.temp_dir(), 'vpm_ws_bad_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'members', 'svc')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'),
+		"Module { name: 'root' workspaces: ['members/*'] dependencies: ['foo'] }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'members', 'svc', 'v.mod'), "Module { name: 'svc' dependencies: ['bar'] }") or {
+		panic(err)
+	}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
+	// Sanity: valid member aggregates.
+	deps := workspace_dependencies_for_manifest(root, manifest) or { panic(err) }
+	assert 'bar' in deps
+	// Corrupting the member must abort instead of silently dropping it.
+	os.write_file(os.join_path(root, 'members', 'svc', 'v.mod'), 'Module { name: !!! }') or {
+		panic(err)
+	}
+	mut failed := false
+	workspace_dependencies_for_manifest(root, manifest) or { failed = true }
+	assert failed, 'malformed member manifest must abort resolution'
+	mut manifests_failed := false
+	workspace_manifests(root, manifest) or { manifests_failed = true }
+	assert manifests_failed, 'malformed member manifest must abort workspace_manifests'
+}
+
+fn test_workspace_normalize_dep_preserves_declaring_dir() {
+	root := os.join_path(os.temp_dir(), 'vpm_ws_local_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'deps', 'local_repo')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'members', 'svc', 'local_repo')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	root_dep := workspace_normalize_dep('./deps/local_repo@^1', root)
+	assert !root_dep.starts_with('./'), 'root local must normalize, got ${root_dep}'
+	assert root_dep.ends_with('@^1')
+	assert root_dep.contains(os.real_path(os.join_path(root, 'deps', 'local_repo')))
+	member_dir := os.join_path(root, 'members', 'svc')
+	member_dep := workspace_normalize_dep('./local_repo@^1', member_dir)
+	assert !member_dep.starts_with('./'), 'member local must normalize, got ${member_dep}'
+	assert member_dep.contains(os.real_path(os.join_path(member_dir, 'local_repo')))
+	assert root_dep != member_dep, 'different declaring dirs must not collapse'
+	// Registered names and absolute locals pass through unchanged.
+	assert workspace_normalize_dep('vsl@^1', root) == 'vsl@^1'
+	abs_repo := os.real_path(root)
+	assert workspace_normalize_dep(abs_repo + '@^1', root) == abs_repo + '@^1'
+}
+
+fn test_workspace_pending_requirements_preserves_member_requiring() {
+	root := os.join_path(os.temp_dir(), 'vpm_ws_req_${rand.ulid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'members', 'svc')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'root' workspaces: ['members/*'] }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'members', 'svc', 'v.mod'),
+		"Module { name: 'svc' dependencies: ['review_dep@^1.0.0'] }") or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { panic(err) }
+	pending := workspace_pending_requirements(['review_dep@^1.0.0'], root, manifest, 'root',
+		'root') or { panic(err) }
+	assert pending.len == 1, 'expected one edge, got ${pending}'
+	assert pending[0].requiring == 'svc', 'member edge must keep its name, got ${pending[0].requiring}'
 }

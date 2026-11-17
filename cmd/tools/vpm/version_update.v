@@ -4,7 +4,10 @@ import os
 import v.vmod
 
 fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
-	deps := project_deps_for_manifest(dir, manifest)
+	deps := project_deps_for_manifest(dir, manifest) or {
+		vpm_error(err.msg())
+		exit(1)
+	}
 	if deps.any(is_version_range(requirement_version(it))) {
 		return true
 	}
@@ -99,7 +102,10 @@ fn update_versioned_project(query []string) bool {
 		vpm_error('`--precise VERSION` requires one package (`-p PACKAGE` or a positional name).')
 		exit(1)
 	}
-	original_dependencies := project_deps_for_manifest(dir, manifest)
+	original_dependencies := project_deps_for_manifest(dir, manifest) or {
+		vpm_error(err.msg())
+		exit(1)
+	}
 	changes := project_update_changes(original_dependencies, targets, settings.precise)
 	mut selector := new_install_server_selector()
 	mut scope := LockScope{}
@@ -108,7 +114,10 @@ fn update_versioned_project(query []string) bool {
 	// Per-manifest working copies keep, for every aggregated requirement, the
 	// manifest and local index it came from. `--latest` widens and rewrites each
 	// manifest separately, so member constraints land in the member `v.mod`.
-	mut manifests := workspace_manifests(dir, manifest)
+	mut manifests := workspace_manifests(dir, manifest) or {
+		vpm_error(err.msg())
+		exit(1)
+	}
 	mut orig_lists := manifests.map(project_dependencies(it.manifest))
 	mut dep_lists := [][]string{cap: orig_lists.len}
 	for lst in orig_lists {
@@ -126,11 +135,12 @@ fn update_versioned_project(query []string) bool {
 		}
 		dependencies = []string{}
 		mut seen := map[string]bool{}
-		for lst in dep_lists {
+		for li, lst in dep_lists {
 			for dep in lst {
-				if dep !in seen {
-					seen[dep] = true
-					dependencies << dep
+				normalized := workspace_normalize_dep(dep, manifests[li].dir)
+				if normalized !in seen {
+					seen[normalized] = true
+					dependencies << normalized
 				}
 			}
 		}
@@ -156,19 +166,21 @@ fn update_versioned_project(query []string) bool {
 				if dep == orig_lists[li][di] {
 					continue
 				}
+				norm_dep := workspace_normalize_dep(dep, manifests[li].dir)
 				for mut m in selected {
-					if dep in m.requested_aliases {
+					if norm_dep in m.requested_aliases {
 						version := version_tag(m.version) or {
 							vpm_error('cannot widen `${dep}` without a semantic-version release.')
 							exit(1)
 						}
 						widened := lockfile_module_key(dep) + '@^' + version.str()
+						norm_widened := workspace_normalize_dep(widened, manifests[li].dir)
 						mut mm := manifests[li].manifest
 						set_project_dependency(mut mm, di, widened)
 						manifests[li].manifest = mm
 						dirty[li] = true
-						if m.requested == dep {
-							m.requested = widened
+						if m.requested == norm_dep {
+							m.requested = norm_widened
 							m.version_range = requirement_version(m.requested)
 						}
 					}

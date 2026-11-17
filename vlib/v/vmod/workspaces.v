@@ -51,6 +51,9 @@ pub fn workspace_member_dirs(root string, manifest Manifest) []string {
 // nearest_workspace_root walks up from `start` and returns the first directory
 // whose `v.mod` declares a non-empty `workspaces` list. It returns '' when none
 // is found. `start` may be a file or a directory; files resolve via their folder.
+// An explicit `.v.mod.stop` marker ends the walk: what lies above it is not
+// part of this project, so an ancestor workspace is never returned for a
+// stopped independent project.
 pub fn nearest_workspace_root(start string) string {
 	mut dir := os.real_path(start)
 	if dir == '' {
@@ -66,6 +69,9 @@ pub fn nearest_workspace_root(start string) string {
 			if manifest.workspaces.len > 0 {
 				return dir
 			}
+		}
+		if os.exists(os.join_path(dir, '.v.mod.stop')) {
+			break
 		}
 		parent := os.dir(dir)
 		if parent == dir {

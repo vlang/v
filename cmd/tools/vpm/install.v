@@ -41,7 +41,10 @@ fn vpm_install(query []string) {
 		} else {
 			println('Detected workspace root at `${root_dir}`. Using it...')
 		}
-		project_deps_for_manifest(root_dir, manifest)
+		project_deps_for_manifest(root_dir, manifest) or {
+			vpm_error(err.msg())
+			exit(1)
+		}
 	} else {
 		query
 	}

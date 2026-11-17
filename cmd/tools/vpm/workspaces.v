@@ -13,9 +13,10 @@ mut:
 
 // workspace_manifests returns the root manifest plus every workspace member
 // manifest. Callers needing per-manifest indexes (e.g. `--latest` write-back)
-// use this instead of the flattened dependency list. Unreadable member manifests
-// are skipped, the same as in dependency aggregation.
-fn workspace_manifests(root string, root_manifest vmod.Manifest) []WorkspaceManifest {
+// use this instead of the flattened dependency list. A member whose `v.mod`
+// cannot be read or parsed is an error: skipping it would silently drop its
+// requirements and rewrite the lockfile without them.
+fn workspace_manifests(root string, root_manifest vmod.Manifest) ![]WorkspaceManifest {
 	mut out := [WorkspaceManifest{
 		dir:      root
 		manifest: root_manifest
@@ -24,7 +25,9 @@ fn workspace_manifests(root string, root_manifest vmod.Manifest) []WorkspaceMani
 		return out
 	}
 	for member_dir in vmod.workspace_member_dirs(root, root_manifest) {
-		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or { continue }
+		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or {
+			return error('failed to read workspace member `${member_dir}`: ${err.msg()}')
+		}
 		out << WorkspaceManifest{
 			dir:      member_dir
 			manifest: member_manifest
@@ -104,9 +107,9 @@ fn workspace_aware_project() vmod.ModFileAndFolder {
 // aggregated workspace requirements when `manifest` declares `workspaces`, and
 // the plain project requirements otherwise. It removes the `if workspaces`
 // branch that every `vpm` command would otherwise repeat.
-fn project_deps_for_manifest(root string, manifest vmod.Manifest) []string {
+fn project_deps_for_manifest(root string, manifest vmod.Manifest) ![]string {
 	if manifest.workspaces.len > 0 {
-		return workspace_dependencies_for_manifest(root, manifest)
+		return workspace_dependencies_for_manifest(root, manifest)!
 	}
 	return project_dependencies(manifest)
 }
@@ -115,34 +118,100 @@ fn project_deps_for_manifest(root string, manifest vmod.Manifest) []string {
 // and every workspace member, de-duplicated while preserving order. It stays `pub`
 // as the one-call entry for callers holding only a root path; internal commands
 // holding the manifest use `workspace_dependencies_for_manifest` to avoid re-reading.
-pub fn workspace_dependencies(root string) []string {
-	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or { return []string{} }
-	return workspace_dependencies_for_manifest(root, manifest)
+pub fn workspace_dependencies(root string) ![]string {
+	manifest := vmod.from_file(os.join_path(root, 'v.mod')) or {
+		return error('failed to read `${os.join_path(root, 'v.mod')}`: ${err.msg()}')
+	}
+	return workspace_dependencies_for_manifest(root, manifest)!
+}
+
+// workspace_split_dep splits a dependency string into its identity and version
+// suffix, mirroring `lockfile_module_key` without collapsing registries.
+fn workspace_split_dep(dep string) (string, string) {
+	if dep.starts_with('git@') {
+		if dep.count('@') > 1 {
+			ident, version := dep.rsplit_once('@') or { dep, '' }
+			return ident, version
+		}
+		return dep, ''
+	}
+	ident, version := dep.rsplit_once('@') or { dep, '' }
+	if version != '' && version.contains(':') {
+		return '${ident}@${version}', ''
+	}
+	return ident, version
+}
+
+// workspace_normalize_dep resolves a relative local dependency against the
+// directory of the manifest that declares it. Registered names and already
+// absolute locals pass through unchanged, so `v install` works from any
+// workspace directory: a root `./deps/x` becomes `/ws/deps/x` and a member
+// `./local` becomes `/ws/members/svc/local`, both absolute before resolution.
+// A relative `file://` URL keeps its scheme with an absolute path.
+fn workspace_normalize_dep(dep string, base_dir string) string {
+	ident, version := workspace_split_dep(dep)
+	version_suffix := if version == '' { '' } else { '@' + version }
+	if ident.starts_with('file://') {
+		inner := os.expand_tilde_to_home(ident.trim_string_left('file://'))
+		if os.is_abs_path(inner) {
+			return dep
+		}
+		if base_dir == '' {
+			return dep
+		}
+		abs := os.real_path(os.join_path(base_dir, inner))
+		resolved := if abs == '' { os.abs_path(os.join_path(base_dir, inner)) } else { abs }
+		return 'file://' + resolved + version_suffix
+	}
+	if os.is_abs_path(os.expand_tilde_to_home(ident)) {
+		return dep
+	}
+	expanded := os.expand_tilde_to_home(ident)
+	is_relative := expanded.starts_with('./') || expanded.starts_with('../')
+		|| expanded.starts_with('.\\') || expanded.starts_with('..\\')
+	mut is_local := is_relative
+	if !is_local && base_dir != '' && expanded != '' && expanded != '.' && expanded != '..'
+		&& os.exists(os.join_path(base_dir, expanded)) {
+		is_local = true
+	}
+	if !is_local {
+		return dep
+	}
+	if base_dir == '' {
+		return dep
+	}
+	abs := os.real_path(os.join_path(base_dir, expanded))
+	resolved := if abs == '' { os.abs_path(os.join_path(base_dir, expanded)) } else { abs }
+	return resolved + version_suffix
 }
 
 // workspace_dependencies_for_manifest is the manifest-aware variant: callers that
-// already hold the root manifest avoid reading `v.mod` a second time.
-fn workspace_dependencies_for_manifest(root string, manifest vmod.Manifest) []string {
+// already hold the root manifest avoid reading `v.mod` a second time. Local
+// requirements are normalized against the manifest that declares them, and a
+// member whose `v.mod` cannot be parsed aborts the run instead of silently
+// dropping its requirements from the install and the lockfile.
+fn workspace_dependencies_for_manifest(root string, manifest vmod.Manifest) ![]string {
 	mut deps := []string{}
 	mut seen := map[string]bool{}
 	for dep in project_dependencies(manifest) {
-		if dep in seen {
+		normalized := workspace_normalize_dep(dep, root)
+		if normalized in seen {
 			continue
 		}
-		seen[dep] = true
-		deps << dep
+		seen[normalized] = true
+		deps << normalized
 	}
 	for member_dir in vmod.workspace_member_dirs(root, manifest) {
 		member_manifest := vmod.from_file(os.join_path(member_dir, 'v.mod')) or {
-			verbose_println('Skipping workspace member `${member_dir}`: ${err.msg()}')
-			continue
+			return error('failed to read workspace member `${member_dir}`: ${err.msg()}')
 		}
 		for dep in project_dependencies(member_manifest) {
-			if dep in seen {
+			normalized := workspace_normalize_dep(dep, member_dir)
+			if normalized in seen {
 				continue
 			}
-			seen[dep] = true
-			deps << dep
+			seen[normalized] = true
+			deps << normalized
 		}
 	}
 	return deps
