@@ -4,11 +4,9 @@ module main
 
 import sokol.audio
 
-$if self_sanitize_memory ? {
-	// System ALSA is not instrumented. Exercise setup and shutdown with Sokol's
-	// instrumented dummy backend; the other lanes still exercise native audio.
-	#flag -DSOKOL_DUMMY_BACKEND
-}
+// Select the dummy backend from the C compiler's actual instrumentation flags.
+// The test runner's self_sanitize_memory define only controls test selection.
+#preinclude "@VMODROOT/vlib/sokol/audio/audio_test_backend.h"
 
 fn test_sokol_audio_setup_and_shutdown() {
 	audio.setup()
