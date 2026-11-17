@@ -25351,6 +25351,11 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 		} else {
 			-1
 		}
+		if is_method && node.children_count > 1 && t.operand_writes_storage(recv_id) {
+			// Materialize a receiver that mutates storage before reading its arguments.
+			// The ordinary C call path otherwise leaves that order to the C compiler.
+			last_branch = 1
+		}
 		for i in 1 .. node.children_count {
 			// Array callback expressions bind `it` inside their lowering. Materializing
 			// an `if`/`match` callback here would hoist it outside the generated loop,

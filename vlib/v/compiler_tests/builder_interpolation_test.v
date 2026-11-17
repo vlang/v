@@ -7,7 +7,7 @@ fn test_builder_interpolation_codegen_and_runtime() {
 	source := os.join_path(dir, 'main.v')
 	os.cp(os.join_path(@VMODROOT, 'vlib/v/compiler_tests/testdata/builder_interpolation.vv'), source)!
 	output := os.join_path(dir, 'main.c')
-	generated := os.exec([@VEXE, '-nocache', '-o', output, source])
+	generated := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output, source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(output)!
 	line := code.all_after('void append_line(').all_after('void append_line(').all_before('\n}')
@@ -17,8 +17,14 @@ fn test_builder_interpolation_codegen_and_runtime() {
 	assert code.contains('v3_f64_exp_buf(')
 	assert code.contains('v3_numeric_pad_buf(')
 	for flags in [[]string{}, ['-gc', 'none'], ['-prod'], ['-autofree']] {
-		mut args := [@VEXE, '-nocache']
+		mut args := [@VEXE, '-new-compiler', '-nocache']
 		args << flags
+		$if tinyc {
+			if '-prod' in flags {
+				// TinyCC rejects production builds; retain the production case with GCC.
+				args << ['-cc', 'gcc']
+			}
+		}
 		args << ['run', source]
 		result := os.exec(args)
 		assert result.exit_code == 0, '${args}: ${result.output}'
