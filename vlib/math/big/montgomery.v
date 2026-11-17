@@ -6,6 +6,7 @@ import math.bits
 //
 // Newton's iteration doubles the number of correct bits each step, starting
 // from the fact that an odd number is its own inverse modulo 8.
+@[ignore_overflow]
 fn mod_inv_digit(d u64) u64 {
 	mut inv := d // correct modulo 8
 	for _ in 0 .. 5 {
@@ -68,7 +69,7 @@ fn (a Integer) mont_mul_subquadratic(b Integer, ctx MontgomeryContext) Integer {
 }
 
 // mont_mul_cios interleaves multiplication and reduction without materialising the product.
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 fn (a Integer) mont_mul_cios(b Integer, ctx MontgomeryContext) Integer {
 	s := ctx.n.digits.len
 	n := ctx.n.digits

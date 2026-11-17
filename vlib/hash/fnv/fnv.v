@@ -31,6 +31,7 @@ pub fn write32(h u32, data []u8) u32 {
 }
 
 // write32a updates h with data using FNV-1a.
+@[ignore_overflow]
 pub fn write32a(h u32, data []u8) u32 {
 	mut x := h
 	for b in data {

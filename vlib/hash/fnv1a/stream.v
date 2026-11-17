@@ -16,6 +16,7 @@ pub fn new_fnv1a64() &Fnv1a64 {
 }
 
 // write absorbs bytes into the hash state.
+@[ignore_overflow]
 pub fn (mut h Fnv1a64) write(p []u8) ! {
 	for b in p {
 		h.state = (h.state ^ b) * fnv64_prime

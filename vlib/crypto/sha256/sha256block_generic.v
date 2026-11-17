@@ -76,7 +76,7 @@ const _k = [
 
 // The rounds rotate with plain shifts rather than bits.rotate_left_32: compilers that
 // do not inline (TinyCC) would otherwise make ten calls per round.
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
