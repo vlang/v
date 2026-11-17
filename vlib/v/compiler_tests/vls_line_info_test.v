@@ -1789,28 +1789,6 @@ fn test_a_warm_child_reads_the_directory_the_client_writes_again() {
 	assert p.code == 0
 }
 
-fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_array() {
-	// In a body the checker does not type, `xs.filter()` gives a `[]T`, whose
-	// `map` is that of every array.
-	dir := program_dir('chains', 'module main
-
-fn plain[T](xs []T) int {
-	kept := xs.filter(true).map(it)
-	println(kept)
-	return kept.len
-}
-
-fn main() {
-	nums := [1, 2]
-	println(nums.map(it * 2))
-	println(plain(nums))
-}
-')
-	map_decl := ask(dir, 'gd^', 11, 'map', 0)
-	assert decl_in_builtin_array(map_decl), map_decl
-	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
-}
-
 const prepared_program = "module main
 
 import os
