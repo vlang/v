@@ -16,10 +16,17 @@ platforms has a note, like `Available on Windows only.`, which is a `//` comment
 output. A symbol that is available on all platforms has none.
 
 A symbol that is declared differently on some platforms, like a struct with other fields on
-Windows, is documented once for each declaration, each with its own note. Declarations that
-only differ in their attributes, comments, layout, or the names of their parameters are
-documented as one. Constants that follow each other and are available on the same platforms
-are documented together. Differences inside string literals remain distinct constant values.
+Windows, or a constant with another value, is documented once for each declaration, together and
+each with its own note. Declarations that only differ in their attributes, layout, or the names
+of their parameters are documented as one, unless they have other doc comments or examples, so
+that each platform shows its own. A doc comment that is only written on one platform documents
+all of them. Differences inside string literals remain distinct constant values. Constants that
+follow each other and are available on the same platforms are documented together, unless they
+have another value on other platforms.
+
+In the html output, a selector next to the name of the module shows only the symbols and the
+declarations of one platform. The selected platform is kept for the other modules, and applied
+while their pages load. Changing the platform keeps the section that is being read in place.
 
 Examples, with `-check-examples` or `-unsafe-run-examples`, are only checked for the symbols
 that are available on the platform that `v doc` runs on. When declarations have different
