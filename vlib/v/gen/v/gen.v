@@ -4980,8 +4980,14 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	for fid in fields {
 		f := g.a.node(fid)
 		g.emit_blank_line_between(previous, fid)
-		g.emit_comments_before(f.pos.offset)
-		g.source_end = int_max(g.source_end, f.pos.offset)
+		if f.is_mut && !cur_mut {
+			// Doc comments written below `mut:` belong to the member, so only the
+			// comments before the specifier itself are emitted ahead of it.
+			if spec_end := g.access_specifier_end(g.source_end, f.pos.offset) {
+				g.emit_comments_before(spec_end)
+				g.source_end = int_max(g.source_end, spec_end)
+			}
+		}
 		if f.is_mut != cur_mut {
 			if f.is_mut {
 				g.indent--
@@ -4990,6 +4996,8 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 			}
 			cur_mut = f.is_mut
 		}
+		g.emit_comments_before(f.pos.offset)
+		g.source_end = int_max(g.source_end, f.pos.offset)
 		mut suffix_width := 0
 		pads_comment := int(fid) in comment_align
 		if pads_comment {
