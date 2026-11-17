@@ -34,9 +34,10 @@ pub fn pubkey_from_string(s string) !PublicKey {
 	if s.len == 0 {
 		return error('crypto.ecdsa: empty PEM string')
 	}
-	// mbedTLS reads PEM from a NUL-terminated buffer whose length counts the NUL.
-	mut buf := s.bytes()
-	buf << 0
+	mut buf := pem_buffer(s)
+	defer {
+		wipe_and_free(mut buf)
+	}
 	return public_key_from_pk(buf)
 }
 
@@ -47,8 +48,10 @@ pub fn privkey_from_string(s string) !PrivateKey {
 	if s.len == 0 {
 		return error('crypto.ecdsa: empty PEM string')
 	}
-	mut buf := s.bytes()
-	buf << 0
+	mut buf := pem_buffer(s)
+	defer {
+		wipe_and_free(mut buf)
+	}
 	mut ctr_drbg := C.mbedtls_ctr_drbg_context{}
 	mut entropy := C.mbedtls_entropy_context{}
 	init_rng(mut ctr_drbg, mut entropy)!
@@ -68,14 +71,22 @@ pub fn privkey_from_string(s string) !PrivateKey {
 	}
 	keypair := ec_keypair(&pk)!
 	nid := nid_of_group(C.mbedtls_ecp_keypair_get_group_id(keypair))!
+	// The key's public point must be d*G (pkparse derives it when the key omits
+	// it); a mismatched pair is refused, as OpenSSL's EVP_PKEY_check refuses it.
+	cret := C.mbedtls_ecp_check_pub_priv(keypair, keypair, C.mbedtls_ctr_drbg_random,
+		voidptr(&ctr_drbg))
+	if cret != 0 {
+		return error_with_code('crypto.ecdsa: the public key does not match the private key',
+			cret)
+	}
 	mut scalar := []u8{len: nid.byte_size()}
+	defer {
+		wipe_and_free(mut scalar)
+	}
 	mut olen := uint(0)
 	wret := C.mbedtls_ecp_write_key_ext(keypair, &olen, scalar.data, uint(scalar.len))
 	if wret != 0 {
 		return error_with_code('crypto.ecdsa: mbedtls_ecp_write_key_ext failed', wret)
-	}
-	defer {
-		unsafe { vmemset(scalar.data, 0, scalar.len) }
 	}
 	return new_key_from_seed(scalar[..int(olen)], nid: nid, fixed_size: true)
 }
@@ -96,6 +107,9 @@ fn public_key_from_pk(buf []u8) !PublicKey {
 	nid := nid_of_group(C.mbedtls_ecp_keypair_get_group_id(keypair))!
 	// An uncompressed point is 0x04 followed by both coordinates.
 	mut point := []u8{len: 1 + 2 * nid.byte_size()}
+	defer {
+		unsafe { point.free() }
+	}
 	mut olen := uint(0)
 	wret := C.mbedtls_ecp_write_public_key(keypair, C.MBEDTLS_ECP_PF_UNCOMPRESSED, &olen,
 		point.data, uint(point.len))
@@ -103,6 +117,23 @@ fn public_key_from_pk(buf []u8) !PublicKey {
 		return error_with_code('crypto.ecdsa: mbedtls_ecp_write_public_key failed', wret)
 	}
 	return PublicKey.from_uncompressed_bytes(point[..int(olen)], nid: nid)
+}
+
+// pem_buffer copies s into the NUL-terminated buffer mbedTLS reads PEM from
+// (its length counts the NUL), allocated once at its final size so that no
+// other copy of the key text is left behind; free it with wipe_and_free.
+fn pem_buffer(s string) []u8 {
+	mut buf := []u8{len: s.len + 1}
+	unsafe { vmemcpy(buf.data, s.str, s.len) }
+	return buf
+}
+
+// wipe_and_free zeroes buf, which may hold key material, and frees it.
+fn wipe_and_free(mut buf []u8) {
+	unsafe {
+		vmemset(buf.data, 0, buf.len)
+		buf.free()
+	}
 }
 
 // ec_keypair is the EC key a parsed pk context holds; any other key type is refused.

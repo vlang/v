@@ -173,3 +173,19 @@ fn test_pubkey_bytes_delegates_to_uncompressed_bytes() ! {
 	}
 	assert pub_key.bytes()! == pub_key.uncompressed_bytes()!
 }
+
+// p256_mismatched_sec1 is p256_sec1 with its scalar replaced by 1 and its
+// public point kept: an inconsistent pair, which `openssl ec -check` refuses.
+const p256_mismatched_sec1 = '-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABoAoGCCqGSM49
+AwEHoUQDQgAEuyKg9MnOWtJ9NzCxgeGfIREFJZ7tzJ0gXO9qY6GatVRfuZGGR8di
+U6M7WWN0zrXjSNmQF8gPaIXy4sGFgS+wpQ==
+-----END EC PRIVATE KEY-----'
+
+fn test_a_mismatched_key_pair_is_refused() {
+	privkey_from_string(p256_mismatched_sec1) or {
+		assert err.msg().contains('does not match')
+		return
+	}
+	assert false, 'a private key whose public point is not d*G was accepted'
+}

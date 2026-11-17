@@ -462,6 +462,8 @@ fn C.mbedtls_ecp_write_key_ext(key &C.mbedtls_ecdsa_context, olen &uint, buf &u8
 
 fn C.mbedtls_ecp_write_public_key(key &C.mbedtls_ecdsa_context, format int, olen &uint, buf &u8, buflen uint) int
 
+fn C.mbedtls_ecp_check_pub_priv(pub &C.mbedtls_ecdsa_context, prv &C.mbedtls_ecdsa_context, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
+
 fn C.mbedtls_ctr_drbg_init(ctx &C.mbedtls_ctr_drbg_context)
 
 fn C.mbedtls_ctr_drbg_free(ctx &C.mbedtls_ctr_drbg_context)
