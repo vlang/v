@@ -23,6 +23,7 @@
 	--menu-search-badge-background-color: #00000044;
 	--menu-search-badge-background-hover-color: #0000004d;
 	--toc-text-color: #2779bd;
+	--toc-detail-color: #6b7280;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #2c3e64;
 	--code-background-color: #edf2f7;
@@ -64,6 +65,7 @@ html.dark {
 	--menu-search-badge-background-color: #4a5568;
 	--menu-search-badge-background-hover-color: #4a5568;
 	--toc-text-color: #90cdf4;
+	--toc-detail-color: #94a3b8;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #cbd5e0;
 	--code-background-color: #2d3748;
@@ -605,6 +607,92 @@ hr {
 .doc-toc li ul a {
 	font-weight: 400;
 	padding-left: 0.8rem;
+}
+/* The groups of the table of contents, like the functions and the types of a module. */
+.doc-toc summary {
+	cursor: pointer;
+	color: var(--toc-text-color);
+	font-size: 0.9rem;
+	font-weight: 600;
+	/* Like the links, after their border. */
+	padding-left: calc(0.4rem + 2px);
+	list-style: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.doc-toc summary::-webkit-details-marker {
+	display: none;
+}
+.doc-toc summary::before {
+	content: '▸';
+	display: inline-block;
+	width: 1em;
+}
+.doc-toc details[open] > summary::before {
+	content: '▾';
+}
+.doc-toc details summary > a {
+	display: inline;
+	padding-left: 0;
+	border-left: none;
+}
+/* The entries without their own group line up with the ones that have one. */
+.doc-toc details > ul > li > a {
+	padding-left: calc(0.4rem + 1em);
+}
+.doc-toc details > ul {
+	padding-left: 0.8rem;
+}
+/* The functions of a module, and the methods of a type, like `(mut f File) read(buf)`. */
+.doc-toc details > ul a {
+	font-weight: 400;
+	white-space: nowrap;
+	line-height: 1.75;
+}
+/* The receiver, the type parameters and the parameters are dimmed, so that the names stand out. */
+.doc-toc .toc-detail {
+	color: var(--toc-detail-color);
+}
+/* A deprecated symbol, with a badge that stays visible when its label is cut. */
+.doc-toc a.deprecated {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+/* A deprecated type with members stays on the line of its marker. */
+.doc-toc summary > a.deprecated {
+	display: inline-flex;
+	max-width: calc(100% - 1em);
+	vertical-align: bottom;
+}
+.doc-toc a.deprecated > .toc-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	text-decoration: line-through;
+}
+.doc-toc .toc-badge {
+	flex: none;
+	padding: 0 0.35rem;
+	border-radius: 100px;
+	font-size: 0.7rem;
+	font-weight: 500;
+	line-height: 1.4;
+	color: var(--attribute-deprecated-text-color);
+	background-color: var(--attribute-deprecated-background-color);
+}
+/* The types are entries of their group, not headings of the table of contents. */
+.doc-toc .toc-group details > summary {
+	font-weight: 400;
+}
+.doc-toc details details > ul {
+	margin-left: 0.5rem;
+	padding-left: 0.5rem;
+	border-left: 1px solid var(--menu-indent-line-color);
+}
+.doc-toc .toc-count {
+	font-weight: 400;
+	color: var(--toc-detail-color);
 }
 
 /* Code highlight */

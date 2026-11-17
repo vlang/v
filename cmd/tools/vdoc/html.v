@@ -130,9 +130,9 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
 		prefix:      if dn.parent_name != '' {
-			'${dn.kind} (${dn.parent_name})'
+			'${kind_label(dn)} (${dn.parent_name})'
 		} else {
-			'${dn.kind} '
+			'${kind_label(dn)} '
 		}
 		description: dn_description
 		badge:       mod
@@ -249,13 +249,18 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
-	if is_module_readme(d.head) {
+	contents.writeln(without_symbol_ids(vd.doc_node_html(d.head, '', head_md_link_base, true,
+		cfg.include_examples), dcs_contents))
+	// The navigation lists the symbols of the module only on a page of one module, without `-m`.
+	with_symbols_toc := !cfg.is_multi && vd.docs.len <= 1
+	if with_symbols_toc && is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
 		vd.write_content(&cn, mut links, mut contents)
-		write_toc(cn, mut symbols_toc) // write head
+		if with_symbols_toc {
+			write_toc(cn, mut symbols_toc) // write head
+		}
 	}
 	if cfg.html_only_contents {
 		// no need for theming, styling etc, useful for testing and for external documentation generators
@@ -313,7 +318,7 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 		result = result.replace('{{ right_content }}', '')
 	} else {
 		result = result.replace('{{ right_content }}', if cfg.is_multi && d.head.name != 'README' {
-			'<div class="doc-toc"><ul>${symbols_toc_str}</ul></div>'
+			'<div class="doc-toc">${grouped_toc_html(d.head, dcs_contents)}</div>'
 		} else {
 			''
 		})
@@ -580,7 +585,7 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
-			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
+			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${kind_label(dn)} ${sym_name}${hash_link}</${head_tag}>')
 		}
 		if link != '' {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
@@ -633,6 +638,42 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// without_symbol_ids returns the html of the module description `head_html`, whose headings,
+// like `# scrypt`, have other ids than the symbols of the module in `contents`, like `fn scrypt`,
+// so that the links to the symbols, like the ones of the table of contents, lead to them.
+fn without_symbol_ids(head_html string, contents []doc.DocNode) string {
+	mut result := head_html
+	for cn in contents {
+		for node in [cn, ...cn.children] {
+			id := get_node_id(node)
+			if id == '' {
+				continue
+			}
+			for level in 1 .. 7 {
+				result = result.replace('<h${level} id="${id}">', '<h${level} id="${id}-heading">')
+			}
+		}
+	}
+	return result
+}
+
+// kind_label returns the kind of the symbol `dn` as it is declared, like `struct` or `fn`, and
+// `union` for a union, which is documented as a struct.
+fn kind_label(dn doc.DocNode) string {
+	if dn.kind == .struct {
+		for line in dn.content.split_into_lines() {
+			if line.starts_with('@[') {
+				continue
+			}
+			if line.starts_with('union ') || line.starts_with('pub union ') {
+				return 'union'
+			}
+			break
+		}
+	}
+	return dn.kind.str()
 }
 
 // declaration_html returns the signature of `dn`, after the platforms that it is available on,
@@ -803,6 +844,273 @@ fn blockquote_payload_starts_new_block(payload string) bool {
 	return line_before_spaces.count('#') == line_before_spaces.len
 }
 
+// grouped_toc_html returns the table of contents of a module, like the one of pkg.go.dev: its
+// overview, its constants, its functions, and its types, each with its methods. The functions
+// and the types can be collapsed.
+fn grouped_toc_html(head doc.DocNode, contents []doc.DocNode) string {
+	mut types := map[string]doc.DocNode{}
+	for cn in contents {
+		if cn.kind in [.struct, .enum, .interface, .typedef] {
+			types[cn.name] = cn
+		}
+	}
+	mut static_fns := map[string][]doc.DocNode{}
+	mut functions := []doc.DocNode{}
+	mut variables := []doc.DocNode{}
+	mut has_constants := false
+	for cn in contents {
+		match cn.kind {
+			.const_group {
+				has_constants = cn.children.len > 0 || cn.content != ''
+			}
+			.variable {
+				variables << cn
+			}
+			.function, .method {
+				// A static function, like `Mode.from`, is listed with its type.
+				type_name := cn.name.all_before_last('.')
+				if cn.name.contains('.') && type_name in types {
+					static_fns[type_name] << cn
+				} else {
+					functions << cn
+				}
+			}
+			else {}
+		}
+	}
+	mut toc := strings.new_builder(1024)
+	toc.write_string('<ul>')
+	if is_module_readme(head) && head.comments.len > 0 && head.comments[0].text.len > 0 {
+		toc.write_string('<li><a href="#readme_${slug(head.name)}">Overview</a></li>')
+	}
+	if has_constants {
+		toc.write_string('<li><a href="#Constants">Constants</a></li>')
+	}
+	if variables.len > 0 {
+		toc.write_string(toc_group_html('Variables', variables.map(toc_link_html(it.name,
+			it.name, it))))
+	}
+	if functions.len > 0 {
+		toc.write_string(toc_group_html('Functions', functions.map(toc_link_html(it.name,
+			toc_call_label(it.content, it.name), it))))
+	}
+	mut type_entries := []string{}
+	mut type_names := types.keys()
+	type_names.sort()
+	for type_name in type_names {
+		t := types[type_name]
+		mut members := (static_fns[t.name] or { []doc.DocNode{} }).map(toc_link_html(it.name,
+			toc_call_label(it.content, it.name), it))
+		members << t.children.map(toc_link_html('${t.name}.${it.name}', toc_call_label(it.content,
+			it.name), it))
+		// A type without a declaration, like a private type with public methods, has no section.
+		label := '${kind_label(t)} ${t.name}'
+		link := if t.content == '' {
+			html.escape(label)
+		} else if deprecation := deprecation_of(t) {
+			'<a class="deprecated" href="#${slug(t.name)}" title="${html.escape(toc_title(label, deprecation))}"><span class="toc-label">${html.escape(label)}</span>${toc_deprecated_badge}</a>'
+		} else {
+			'<a href="#${slug(t.name)}">${html.escape(label)}</a>'
+		}
+		type_entries << if members.len == 0 {
+			'<li>${link}</li>'
+		} else {
+			'<li><details><summary>${link}</summary><ul>${members.join('')}</ul></details></li>'
+		}
+	}
+	if type_entries.len > 0 {
+		toc.write_string(toc_group_html('Types', type_entries))
+	}
+	toc.write_string('</ul>')
+	return toc.str()
+}
+
+// toc_group_html returns a group of the table of contents, like the functions of a module, which
+// is collapsed, and shows how many entries it has.
+fn toc_group_html(title string, entries []string) string {
+	return '<li><details class="toc-group"><summary>${title} <span class="toc-count">(${entries.len})</span></summary><ul>${entries.join('')}</ul></details></li>'
+}
+
+const toc_deprecated_badge = '<span class="toc-badge">deprecated</span>'
+
+// deprecation_of returns the message of the `@[deprecated]` attribute of `dn`, or of one of its
+// declarations, which is empty when it has none, or `none` when `dn` is not deprecated.
+fn deprecation_of(dn doc.DocNode) ?string {
+	for tag in dn.tags {
+		// One attribute group can have several attributes, like `@[inline; deprecated]`.
+		for attribute in split_attributes(tag.trim_string_left('@[').trim_string_right(']')) {
+			// `@[deprecated_after: 'date']` only comes with `@[deprecated]`.
+			if attribute.all_before(':').trim_space() == 'deprecated' {
+				return if attribute.contains(':') {
+					attribute.all_after(':').trim_space().trim('\'"')
+				} else {
+					''
+				}
+			}
+		}
+	}
+	for variant in dn.variants {
+		if message := deprecation_of(variant) {
+			return message
+		}
+	}
+	return none
+}
+
+// split_attributes splits the attributes of an attribute group, like `inline; deprecated: 'use x'`,
+// at the semicolons that are not in a string, like the one of `deprecated: 'use x; or y'`.
+fn split_attributes(group string) []string {
+	mut result := []string{}
+	mut quote := u8(0)
+	mut start := 0
+	for i, c in group {
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+		} else if c in [`'`, `"`] {
+			quote = c
+		} else if c == `;` {
+			result << group[start..i]
+			start = i + 1
+		}
+	}
+	result << group[start..]
+	return result
+}
+
+// toc_title returns the tooltip of an entry of the table of contents, with the message of its
+// deprecation, if any.
+fn toc_title(label string, deprecation string) string {
+	return if deprecation == '' { label } else { '${label}, deprecated: ${deprecation}' }
+}
+
+// toc_link_html returns an entry of the table of contents, which links to the symbol `dn` named
+// `name`. In a label like `(mut f File) read[T](buf)`, the name stands out from the rest, which
+// is dimmed. A deprecated symbol is marked as such.
+fn toc_link_html(name string, label string, dn doc.DocNode) string {
+	mut receiver := ''
+	mut rest := label
+	if label.starts_with('(') {
+		receiver = label.all_before(') ') + ') '
+		rest = label.all_after(') ')
+	}
+	mut name_end := rest.len
+	for i, c in rest {
+		if c in [`[`, `(`] {
+			name_end = i
+			break
+		}
+	}
+	mut parts := ''
+	if receiver != '' {
+		parts += '<span class="toc-detail">${html.escape(receiver)}</span>'
+	}
+	parts += html.escape(rest[..name_end])
+	if name_end < rest.len {
+		parts += '<span class="toc-detail">${html.escape(rest[name_end..])}</span>'
+	}
+	if deprecation := deprecation_of(dn) {
+		return '<li><a class="deprecated" href="#${slug(name)}" title="${html.escape(toc_title(label, deprecation))}"><span class="toc-label">${parts}</span>${toc_deprecated_badge}</a></li>'
+	}
+	return '<li><a href="#${slug(name)}" title="${html.escape(label)}">${parts}</a></li>'
+}
+
+// toc_call_label returns how the function or the method declared by `content` is called, with
+// the names of its parameters and the receiver of a method as it is declared, like
+// `abs_path(path)`, `File.open(path)`, `map[T, U](a, f)` or `(mut f File) read(buf)`, for the
+// table of contents.
+// It returns `name` for anything else.
+fn toc_call_label(content string, name string) string {
+	lines := content.split_into_lines()
+	// A long signature can continue on the next lines.
+	start := fn_line_index(lines)
+	if start < 0 {
+		return name
+	}
+	mut sig := lines[start..].map(it.trim_space()).join(' ').all_after('fn ').trim_space()
+	mut receiver := ''
+	if sig.starts_with('(') {
+		end := toc_closing_paren(sig, 0)
+		if end < 0 {
+			return name
+		}
+		receiver = '(${sig[1..end].fields().join(' ').replace(', ', ',').replace(',', ', ')}) '
+		sig = sig[end + 1..].trim_space()
+	}
+	open := sig.index_u8(`(`)
+	if open < 0 {
+		return name
+	}
+	close := toc_closing_paren(sig, open)
+	if close < 0 {
+		return name
+	}
+	// The name includes the parameters of a generic function, like `map[T, U]`.
+	fn_name := sig[..open].trim_space().replace(' ', '').replace(',', ', ')
+	params := toc_split_params(sig[open + 1..close]).map(toc_param_name(it))
+	return '${receiver}${fn_name}(${params.join(', ')})'
+}
+
+// fn_line_index returns the index of the line of `lines` that starts the declaration of a
+// function, or -1.
+fn fn_line_index(lines []string) int {
+	for i, line in lines {
+		if line.starts_with('fn ') || line.starts_with('pub fn ') {
+			return i
+		}
+	}
+	return -1
+}
+
+// toc_closing_paren returns the index of the `)` that closes the `(` at `open` in `s`, or -1.
+fn toc_closing_paren(s string, open int) int {
+	mut depth := 0
+	for i := open; i < s.len; i++ {
+		if s[i] in [`(`, `[`, `{`] {
+			depth++
+		} else if s[i] in [`)`, `]`, `}`] {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// toc_split_params splits the parameters of a function at the commas that separate them, and not
+// at the ones in their types, like in `f fn (int, int) int`.
+fn toc_split_params(params string) []string {
+	mut result := []string{}
+	mut depth := 0
+	mut start := 0
+	for i, c in params {
+		if c in [`(`, `[`, `{`] {
+			depth++
+		} else if c in [`)`, `]`, `}`] {
+			depth--
+		} else if c == `,` && depth == 0 {
+			result << params[start..i]
+			start = i + 1
+		}
+	}
+	if params[start..].trim_space() != '' {
+		result << params[start..]
+	}
+	return result
+}
+
+// toc_param_name returns the name of the parameter `param`, like `buf` for `mut buf []u8`, or its
+// type when it has no name.
+fn toc_param_name(param string) string {
+	words := param.fields().filter(it !in ['mut', 'shared'])
+	if words.len == 0 {
+		return ''
+	}
+	return words[0].trim_left('.')
+}
+
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name == '' || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
@@ -818,11 +1126,11 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 		toc.write_string('<li class="open"><a href="#readme_${toc_slug}">README</a>')
 	} else if dn.name != 'Constants' {
-		toc.write_string('<li class="open"><a href="#${toc_slug}">${dn.kind} ${dn.name}</a>')
+		toc.write_string('<li class="open"><a href="#${toc_slug}">${kind_label(dn)} ${dn.name}</a>')
 		toc.writeln('        <ul>')
 		for child in dn.children {
 			cname := dn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">${child.kind} ${child.name}</a></li>')
+			toc.writeln('<li><a href="#${slug(cname)}">${kind_label(child)} ${child.name}</a></li>')
 		}
 		toc.writeln('</ul>')
 	} else {

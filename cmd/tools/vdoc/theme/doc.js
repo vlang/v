@@ -8,7 +8,18 @@
 	setupSearch();
 	setupCollapse();
 	setupCodeCopy();
+	setupTocGroups();
 })();
+
+// setupTocGroups makes a click on the name of a type in the table of contents also show its
+// members, like the marker before it.
+function setupTocGroups() {
+	document.querySelectorAll('.doc-toc summary > a').forEach((a) =>
+		a.addEventListener('click', () => {
+			a.closest('details').open = true;
+		}),
+	);
+}
 
 function setupScrollSpy() {
 	const mainContent = document.querySelector('#main-content');
@@ -31,7 +42,8 @@ function setupScrollSpy() {
 		for (const [i, position] of sectionPositions.entries()) {
 			if (position >= mainContent.scrollTop) {
 				const link = toc.querySelector('a[href="#' + sections[i].id + '"]');
-				if (link) {
+				// A link in a collapsed group of the table of contents is not shown.
+				if (link && link.offsetParent !== null) {
 					// Set current menu link as active
 					link.classList.add('active');
 					const tocStart = toc.getBoundingClientRect().top + window.scrollY;
