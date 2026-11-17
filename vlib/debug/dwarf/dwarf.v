@@ -3,6 +3,30 @@ module dwarf
 import encoding.binary
 import encoding.leb128
 
+// decode_u64_checked decodes a ULEB128 and rejects truncated or overflowing inputs.
+fn decode_u64_checked(b []u8) !(u64, int) {
+	v, n := leb128.decode_u64(b)
+	if n <= 0 {
+		if n == 0 {
+			return error('dwarf: truncated LEB128')
+		}
+		return error('dwarf: overflowing LEB128')
+	}
+	return v, n
+}
+
+// decode_i64_checked decodes an SLEB128 and rejects truncated or overflowing inputs.
+fn decode_i64_checked(b []u8) !(i64, int) {
+	v, n := leb128.decode_i64(b)
+	if n <= 0 {
+		if n == 0 {
+			return error('dwarf: truncated LEB128')
+		}
+		return error('dwarf: overflowing LEB128')
+	}
+	return v, n
+}
+
 // Supported DWARF versions.
 pub const version2 = u16(2)
 pub const version3 = u16(3)
@@ -149,11 +173,11 @@ pub fn parse_info(info []u8, abbrev []u8) ![]Unit {
 		if unit_len == 0 {
 			break
 		}
-		start := pos + 4
-		end := start + int(unit_len)
-		if end > info.len {
+		if u64(unit_len) > u64(info.len - pos - 4) {
 			return error('dwarf: truncated unit')
 		}
+		start := pos + 4
+		end := start + int(unit_len)
 		u := parse_unit(info[start..end], abbrev)!
 		units << u
 		pos = end
@@ -182,11 +206,14 @@ fn parse_unit(data []u8, abbrev []u8) !Unit {
 			return error('dwarf: unsupported address size ${addr_size}')
 		}
 		abbrev_offset := binary.little_endian_u32(data[4..8])
+		if u64(abbrev_offset) > u64(abbrev.len) {
+			return error('dwarf: abbrev offset out of range')
+		}
 		decls := parse_abbrev_table(abbrev, int(abbrev_offset))!
 		mut dies := []Die{}
 		mut dpos := 8
 		for dpos < data.len {
-			die, next := parse_die(data, dpos, decls, addr_size)!
+			die, next := parse_die(data, dpos, decls, addr_size, version)!
 			dpos = next
 			if die.tag == 0 {
 				break
@@ -199,6 +226,9 @@ fn parse_unit(data []u8, abbrev []u8) !Unit {
 		return error('dwarf: truncated unit header')
 	}
 	abbrev_offset := binary.little_endian_u32(data[2..6])
+	if u64(abbrev_offset) > u64(abbrev.len) {
+		return error('dwarf: abbrev offset out of range')
+	}
 	addr_size := data[6]
 	if addr_size != 4 && addr_size != 8 {
 		return error('dwarf: unsupported address size ${addr_size}')
@@ -207,7 +237,7 @@ fn parse_unit(data []u8, abbrev []u8) !Unit {
 	mut dies := []Die{}
 	mut dpos := 7
 	for dpos < data.len {
-		die, next := parse_die(data, dpos, decls, addr_size)!
+		die, next := parse_die(data, dpos, decls, addr_size, version)!
 		dpos = next
 		if die.tag == 0 {
 			break
@@ -228,12 +258,15 @@ pub fn parse_abbrev_table(abbrev []u8, offset int) !map[u64]AbbrevDecl {
 		if pos >= abbrev.len {
 			return error('dwarf: truncated abbrev table')
 		}
-		code, n := leb128.decode_u64(abbrev[pos..])
+		code, n := decode_u64_checked(abbrev[pos..])!
 		pos += n
 		if code == 0 {
 			break
 		}
-		tag, n2 := leb128.decode_u64(abbrev[pos..])
+		if pos >= abbrev.len {
+			return error('dwarf: truncated abbrev decl')
+		}
+		tag, n2 := decode_u64_checked(abbrev[pos..])!
 		pos += n2
 		if pos >= abbrev.len {
 			return error('dwarf: truncated abbrev decl')
@@ -245,9 +278,12 @@ pub fn parse_abbrev_table(abbrev []u8, offset int) !map[u64]AbbrevDecl {
 			if pos >= abbrev.len {
 				return error('dwarf: truncated abbrev attrs')
 			}
-			name, n3 := leb128.decode_u64(abbrev[pos..])
+			name, n3 := decode_u64_checked(abbrev[pos..])!
 			pos += n3
-			form, n4 := leb128.decode_u64(abbrev[pos..])
+			if pos >= abbrev.len {
+				return error('dwarf: truncated abbrev attrs')
+			}
+			form, n4 := decode_u64_checked(abbrev[pos..])!
 			pos += n4
 			if name == 0 && form == 0 {
 				break
@@ -259,11 +295,11 @@ pub fn parse_abbrev_table(abbrev []u8, offset int) !map[u64]AbbrevDecl {
 	return decls
 }
 
-fn parse_die(data []u8, pos int, decls map[u64]AbbrevDecl, addr_size u8) !(Die, int) {
+fn parse_die(data []u8, pos int, decls map[u64]AbbrevDecl, addr_size u8, version u16) !(Die, int) {
 	if pos >= data.len {
 		return error('dwarf: DIE past end of unit')
 	}
-	code, n := leb128.decode_u64(data[pos..])
+	code, n := decode_u64_checked(data[pos..])!
 	mut cur := pos + n
 	if code == 0 {
 		return Die{}, cur
@@ -271,14 +307,14 @@ fn parse_die(data []u8, pos int, decls map[u64]AbbrevDecl, addr_size u8) !(Die, 
 	decl := decls[code] or { return error('dwarf: unknown abbrev code ${code}') }
 	mut attrs := []Attr{}
 	for aa in decl.attrs {
-		val, next := parse_attr_value(data, cur, aa.form, addr_size)!
+		val, next := parse_attr_value(data, cur, aa.form, addr_size, version)!
 		attrs << Attr{ name: aa.name, form: aa.form, value: val }
 		cur = next
 	}
 	mut children := []Die{}
 	if decl.has_children {
 		for cur < data.len {
-			child, next := parse_die(data, cur, decls, addr_size)!
+			child, next := parse_die(data, cur, decls, addr_size, version)!
 			cur = next
 			if child.tag == 0 {
 				break
@@ -289,7 +325,7 @@ fn parse_die(data []u8, pos int, decls map[u64]AbbrevDecl, addr_size u8) !(Die, 
 	return Die{ tag: decl.tag, has_children: decl.has_children, attrs: attrs, children: children }, cur
 }
 
-fn parse_attr_value(data []u8, pos int, form u64, addr_size u8) !(AttrValue, int) {
+fn parse_attr_value(data []u8, pos int, form u64, addr_size u8, version u16) !(AttrValue, int) {
 	if pos > data.len {
 		return error('dwarf: attribute past end of unit')
 	}
@@ -333,11 +369,11 @@ fn parse_attr_value(data []u8, pos int, form u64, addr_size u8) !(AttrValue, int
 			return AttrValue(tail[..end].bytestr()), pos + end + 1
 		}
 		form_udata, form_ref_udata {
-			v, nn := leb128.decode_u64(tail)
+			v, nn := decode_u64_checked(tail)!
 			return AttrValue(v), pos + nn
 		}
 		form_sdata {
-			v, nn := leb128.decode_i64(tail)
+			v, nn := decode_i64_checked(tail)!
 			return AttrValue(i64(v)), pos + nn
 		}
 		form_addr {
@@ -350,60 +386,65 @@ fn parse_attr_value(data []u8, pos int, form u64, addr_size u8) !(AttrValue, int
 			return AttrValue(u64(binary.little_endian_u32(tail[..4]))), pos + 4
 		}
 		form_block, form_exprloc {
-			v, nn := leb128.decode_u64(tail)
-			end := nn + int(v)
-			if end > tail.len {
+			v, nn := decode_u64_checked(tail)!
+			if u64(nn) + v > u64(tail.len) {
 				return error('dwarf: truncated block form')
 			}
+			end := nn + int(v)
 			return AttrValue(tail[nn..end].clone()), pos + end
 		}
 		form_block1 {
 			if tail.len < 1 {
 				return error('dwarf: truncated block1 form')
 			}
-			end := 1 + int(tail[0])
-			if end > tail.len {
+			blen := u64(tail[0])
+			if blen + 1 > u64(tail.len) {
 				return error('dwarf: truncated block1 form')
 			}
+			end := 1 + int(blen)
 			return AttrValue(tail[1..end].clone()), pos + end
 		}
 		form_block2 {
 			if tail.len < 2 {
 				return error('dwarf: truncated block2 form')
 			}
-			end := 2 + int(binary.little_endian_u16(tail[..2]))
-			if end > tail.len {
+			blen := u64(binary.little_endian_u16(tail[..2]))
+			if blen + 2 > u64(tail.len) {
 				return error('dwarf: truncated block2 form')
 			}
+			end := 2 + int(blen)
 			return AttrValue(tail[2..end].clone()), pos + end
 		}
 		form_block4 {
 			if tail.len < 4 {
 				return error('dwarf: truncated block4 form')
 			}
-			end := 4 + int(binary.little_endian_u32(tail[..4]))
-			if end > tail.len {
+			blen := u64(binary.little_endian_u32(tail[..4]))
+			if blen + 4 > u64(tail.len) {
 				return error('dwarf: truncated block4 form')
 			}
+			end := 4 + int(blen)
 			return AttrValue(tail[4..end].clone()), pos + end
 		}
 		form_ref_addr {
-			// Classic DWARF32 reference, sized by address size.
-			if tail.len < int(addr_size) {
+			// DWARF32: 8 bytes in v2 (address-sized), 4 bytes from v3 onward.
+			// 64-bit DWARF is rejected elsewhere.
+			ref_size := if version == 2 { int(addr_size) } else { 4 }
+			if tail.len < ref_size {
 				return error('dwarf: truncated ref_addr form')
 			}
-			if addr_size == 8 {
+			if ref_size == 8 {
 				return AttrValue(binary.little_endian_u64(tail[..8])), pos + 8
 			}
 			return AttrValue(u64(binary.little_endian_u32(tail[..4]))), pos + 4
 		}
 		form_indirect {
 			// The real form follows as a ULEB128.
-			v, nn := leb128.decode_u64(tail)
+			v, nn := decode_u64_checked(tail)!
 			if v == form_indirect {
 				return error('dwarf: nested indirect form')
 			}
-			return parse_attr_value(data, pos + nn, v, addr_size)
+			return parse_attr_value(data, pos + nn, v, addr_size, version)
 		}
 		else {
 			return error('dwarf: unsupported form ${form}')

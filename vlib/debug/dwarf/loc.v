@@ -1,7 +1,6 @@
 module dwarf
 
 import encoding.binary
-import encoding.leb128
 
 // Common location operation codes.
 pub const dw_op_addr = u8(0x03)
@@ -94,7 +93,10 @@ pub fn parse_loc_expr(data []u8, addr_size u8) ![]LocOp {
 		}
 		// breg0..breg31 carry one SLEB operand.
 		if op >= dw_op_breg0 && op <= dw_op_breg31 {
-			v, n := leb128.decode_i64(data[pos..])
+			if pos >= data.len {
+				return error('dwarf: truncated breg op')
+			}
+			v, n := decode_i64_checked(data[pos..])!
 			pos += n
 			out << LocOp{ op: op, operands: [u64(i64(v))] }
 			continue
@@ -149,27 +151,47 @@ pub fn parse_loc_expr(data []u8, addr_size u8) ![]LocOp {
 				out << LocOp{ op: op, operands: [u64(i64(i32(binary.little_endian_u32(data[pos..pos + 4]))))] }
 				pos += 4
 			}
-			dw_op_const8u, dw_op_const8s, dw_op_call_ref {
+			dw_op_const8u, dw_op_const8s {
 				if pos + 8 > data.len {
 					return error('dwarf: truncated 8-byte op')
 				}
 				out << LocOp{ op: op, operands: [binary.little_endian_u64(data[pos..pos + 8])] }
 				pos += 8
 			}
+			dw_op_call_ref {
+				// DWARF32 offset into .debug_info: 4 bytes.
+				if pos + 4 > data.len {
+					return error('dwarf: truncated call_ref op')
+				}
+				out << LocOp{ op: op, operands: [u64(binary.little_endian_u32(data[pos..pos + 4]))] }
+				pos += 4
+			}
 			dw_op_constu, dw_op_plus_uconst, dw_op_regx {
-				v, n := leb128.decode_u64(data[pos..])
+				if pos >= data.len {
+					return error('dwarf: truncated uleb op')
+				}
+				v, n := decode_u64_checked(data[pos..])!
 				pos += n
 				out << LocOp{ op: op, operands: [v] }
 			}
 			dw_op_consts, dw_op_fbreg {
-				v, n := leb128.decode_i64(data[pos..])
+				if pos >= data.len {
+					return error('dwarf: truncated sleb op')
+				}
+				v, n := decode_i64_checked(data[pos..])!
 				pos += n
 				out << LocOp{ op: op, operands: [u64(i64(v))] }
 			}
 			dw_op_bregx {
-				r, n := leb128.decode_u64(data[pos..])
+				if pos >= data.len {
+					return error('dwarf: truncated bregx op')
+				}
+				r, n := decode_u64_checked(data[pos..])!
 				pos += n
-				off, n2 := leb128.decode_i64(data[pos..])
+				if pos >= data.len {
+					return error('dwarf: truncated bregx op')
+				}
+				off, n2 := decode_i64_checked(data[pos..])!
 				pos += n2
 				out << LocOp{ op: op, operands: [r, u64(i64(off))] }
 			}
@@ -184,21 +206,33 @@ pub fn parse_loc_expr(data []u8, addr_size u8) ![]LocOp {
 				// Piece sizes are validated as present; the piece
 				// stack itself is a consumer concern.
 				if op == dw_op_piece {
-					v, n := leb128.decode_u64(data[pos..])
+					if pos >= data.len {
+						return error('dwarf: truncated piece op')
+					}
+					v, n := decode_u64_checked(data[pos..])!
 					pos += n
 					out << LocOp{ op: op, operands: [v] }
 				} else {
-					size, n := leb128.decode_u64(data[pos..])
+					if pos >= data.len {
+						return error('dwarf: truncated bit_piece op')
+					}
+					size, n := decode_u64_checked(data[pos..])!
 					pos += n
-					off, n2 := leb128.decode_u64(data[pos..])
+					if pos >= data.len {
+						return error('dwarf: truncated bit_piece op')
+					}
+					off, n2 := decode_u64_checked(data[pos..])!
 					pos += n2
 					out << LocOp{ op: op, operands: [size, off] }
 				}
 			}
 			dw_op_implicit_value {
-				v, n := leb128.decode_u64(data[pos..])
+				if pos >= data.len {
+					return error('dwarf: truncated implicit value')
+				}
+				v, n := decode_u64_checked(data[pos..])!
 				pos += n
-				if pos + int(v) > data.len {
+				if u64(pos) + v > u64(data.len) {
 					return error('dwarf: truncated implicit value')
 				}
 				pos += int(v)

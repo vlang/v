@@ -143,3 +143,89 @@ fn test_rejects_bad_abbrev_offset() {
 		assert err.msg().contains('out of range')
 	}
 }
+
+fn test_rejects_truncated_abbrev_leb() {
+	if _ := parse_abbrev_table([u8(0x80)], 0) {
+		assert false, 'expected truncated LEB error'
+	} else {
+		assert err.msg().contains('truncated') || err.msg().contains('LEB128')
+	}
+	mut ov := []u8{}
+	for _ in 0 .. 11 {
+		ov << u8(0x80)
+	}
+	ov << u8(0x01)
+	if _ := parse_abbrev_table(ov, 0) {
+		assert false, 'expected overflowing LEB error'
+	} else {
+		assert err.msg().contains('overflowing') || err.msg().contains('LEB128')
+	}
+}
+
+fn abbrev_refaddr_fixture() []u8 {
+	return [u8(1), 0x11, 0x01, 0x03, 0x10, 0x00, 0x00, 0x00]
+}
+
+fn test_ref_addr_v4_is_4_bytes() {
+	mut b := []u8{}
+	b << [u8(0), 0, 0, 0]
+	b << [u8(4), 0]
+	b << [u8(0), 0, 0, 0]
+	b << u8(8)
+	b << u8(1)
+	b << [u8(0x78), 0x56, 0x34, 0x12]
+	b << u8(0)
+	unit_len := b.len - 4
+	b[0] = u8(unit_len)
+	units := parse_info(b, abbrev_refaddr_fixture())!
+	assert units.len == 1
+	assert units[0].dies[0].attrs[0].value == AttrValue(u64(0x12345678))
+	// truncated 3-byte ref_addr must fail
+	mut t := []u8{}
+	t << [u8(0), 0, 0, 0]
+	t << [u8(4), 0]
+	t << [u8(0), 0, 0, 0]
+	t << u8(8)
+	t << u8(1)
+	t << [u8(0x78), 0x56, 0x34]
+	unit_len2 := t.len - 4
+	t[0] = u8(unit_len2)
+	if _ := parse_info(t, abbrev_refaddr_fixture()) {
+		assert false, 'expected truncated ref_addr error'
+	} else {
+		assert err.msg().contains('truncated')
+	}
+}
+
+fn test_ref_addr_v2_is_addr_sized() {
+	mut b := []u8{}
+	b << [u8(0), 0, 0, 0]
+	b << [u8(2), 0]
+	b << [u8(0), 0, 0, 0]
+	b << u8(8)
+	b << u8(1)
+	b << [u8(0x00), 0x40, 0, 0, 0, 0, 0, 0]
+	b << u8(0)
+	unit_len := b.len - 4
+	b[0] = u8(unit_len)
+	units := parse_info(b, abbrev_refaddr_fixture())!
+	assert units[0].dies[0].attrs[0].value == AttrValue(u64(0x4000))
+}
+
+fn test_rejects_truncated_udata_attr() {
+	abbr := [u8(1), 0x11, 0x00, 0x03, 0x0f, 0x00, 0x00, 0x00]
+	mut info := []u8{}
+	info << [u8(0), 0, 0, 0]
+	info << [u8(4), 0]
+	info << [u8(0), 0, 0, 0]
+	info << u8(8)
+	info << u8(1)
+	info << u8(0x80)
+	unit_len := info.len - 4
+	info[0] = u8(unit_len)
+	if _ := parse_info(info, abbr) {
+		assert false, 'expected truncated LEB error'
+	} else {
+		assert err.msg().contains('truncated')
+	}
+}
