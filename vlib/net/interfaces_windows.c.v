@@ -62,8 +62,9 @@ pub fn interfaces() ![]Interface {
 	off_ua_sock := 8 + ps
 	mut out := []Interface{}
 	unsafe {
-		// The list head is the Next field, after length/ifindex.
-		mut cur := read_ptr_at(buf.data, off_next)
+		// GetAdaptersAddresses writes the first node at buf.data itself;
+		// its Next field points at the second adapter.
+		mut cur := u64(buf.data)
 		for cur != 0 {
 			base := &u8(cur)
 			name := wide_to_string(read_ptr_at(base, off_fname))

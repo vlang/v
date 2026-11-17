@@ -65,15 +65,16 @@ fn sockaddr_to_string(sa &u8) string {
 	if isnil(sa) {
 		return ''
 	}
-	// BSD sockaddrs start with a length byte; elsewhere family is first.
+	// BSD sockaddrs start with len(u8) + family(u8); elsewhere family(u16) is first.
+	// Either way sockaddr_in.addr is at offset 4 and sockaddr_in6.addr at 8.
+	// See Apple xnu bsd/netinet/in.h and bsd/netinet6/in.h.
 	$if macos || freebsd || openbsd || netbsd || dragonfly {
-		shift := 1
-		family := read_u16_at(sa, shift)
+		family := read_u8_at(sa, 1)
 		if int(family) == C.AF_INET {
-			return format_v4(read_u32_at(sa, shift + 4))
+			return format_v4(read_u32_at(sa, 4))
 		}
 		if int(family) == C.AF_INET6 {
-			return canonical_ipv6_from_bytes(copy_bytes_at(sa, shift + 8, 16)) or { '' }
+			return canonical_ipv6_from_bytes(copy_bytes_at(sa, 8, 16)) or { '' }
 		}
 	} $else {
 		family := read_u16_at(sa, 0)

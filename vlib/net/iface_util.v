@@ -4,6 +4,13 @@ module net
 // of exotic pointer casts; only plain byte indexing is used. Bases are
 // `&u8` so no conversion happens inside.
 
+// read_u8_at reads a single byte at offset off from base.
+fn read_u8_at(p &u8, off int) u8 {
+	unsafe {
+		return p[off]
+	}
+}
+
 // read_u16_at reads a little-endian u16 at byte offset off from base.
 fn read_u16_at(p &u8, off int) u16 {
 	unsafe {
