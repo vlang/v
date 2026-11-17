@@ -4115,10 +4115,6 @@ fn main() {
 		assert !inactive.output.contains('operator `**` is not supported by the V3 ${backend} backend'), inactive.output
 		if backend == 'arm64' {
 			assert_linux_arm64_object(object_path)
-			executable := os.exec([v3_bin, '-b', backend, '-os', 'linux', '-arch', 'arm64', '-o',
-				inactive_src + '.exe', inactive_src])
-			assert executable.exit_code != 0
-			assert executable.output.contains('the experimental Linux ARM64 backend supports object output only; use -o file.o'), executable.output
 		}
 		active_src := os.join_path(os.temp_dir(), 'v3_${backend}_active_generic_power.v')
 		os.write_file(active_src, inactive_code.replace('[string]', '[int]')) or { panic(err) }

@@ -10846,9 +10846,14 @@ architecture. Without `-arch`, the target defaults to the compiler's host archit
 Pass `-arch amd64` to select `-b amd64` (`-b x64`), or `-arch arm64` to select `-b arm64`.
 The architecture option can appear before or after the native backend option.
 Explicit backend selection remains available, with the same platform requirements: macOS
-ARM64 and Linux AMD64 support executables. Linux ARM64 currently supports object output only;
-for example, `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux emits an ARM64
-ELF object, including from an AMD64 host. It does not link a Linux ARM64 executable.
+ARM64, Linux AMD64, and Linux ARM64 support executables. For example,
+`v -b native -arch arm64 hello_world.v` on Linux emits an ARM64 ELF executable.
+Cross linking uses `aarch64-linux-gnu-gcc` or `aarch64-linux-musl-gcc` when available;
+use `-cc` to select another Linux ARM64 toolchain, including its startup files and libc.
+Linux ARM64 linking honors libraries and objects declared through source `#flag` directives.
+Environment `CFLAGS` are applied before explicit `-cflags` options.
+Exported V functions and their dependencies remain available to linked C code.
+Object output (`-o hello_world.o`) works without a target linker, including from an AMD64 host.
 For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.
 
 The native backends do not link a garbage collector yet, so they always build as if `-gc none`
@@ -12048,9 +12053,9 @@ extract time instead of emitting silently broken machine code.
 path (its live function calls other functions and prints strings); it
 remains an example for the C shared-library workflow.
 
-Linux ARM64 output is experimental and currently supports relocatable objects
-only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
-native live reloading on Linux are not yet supported.
+Linux ARM64 output is experimental and supports executable linking with a Linux ARM64
+toolchain, as well as relocatable objects (`v -b arm64 -os linux -o program.o program.v`).
+Native live reloading on Linux is not yet supported.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
