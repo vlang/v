@@ -7805,7 +7805,7 @@ fn v3_test_build_fact_name(name string) bool {
 		'termux', 'solaris', 'haiku', 'qnx', 'serenity', 'vinix', 'wasm32_emscripten', 'tinyc',
 		'tcc', 'clang', 'gcc', 'mingw', 'msvc', 'cplusplus', 'amd64', 'arm64', 'arm32', 'x86',
 		'i386', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x', 'loongarch64',
-		'sparc64', 'wasm32', 'prod']
+		'mips64le', 'sparc64', 'wasm32', 'prod']
 }
 
 fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []string {
@@ -7825,6 +7825,9 @@ fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []str
 		facts['rv32'] = true
 	} else if target.arch == 'riscv64' {
 		facts['rv64'] = true
+	} else if target.arch == 'mips64le' {
+		facts['mips64'] = true
+		facts['mips64el'] = true
 	}
 	if is_prod {
 		facts['prod'] = true
@@ -8519,9 +8522,9 @@ fn v3_source_is_pure_v(path string) bool {
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
 	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
 		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32', 'riscv32',
-		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'ppc64le', 'sparc64',
-		'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser', 'js_freestanding', 'wasm32',
-		'wasm']
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'mips64le',
+		'mips64', 'mips64el', 'ppc64le', 'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node',
+		'js_browser', 'js_freestanding', 'wasm32', 'wasm']
 }
 
 fn v3_type_text_uses_interop_namespace(type_id u32, namespace string) bool {
