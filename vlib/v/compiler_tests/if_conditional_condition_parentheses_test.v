@@ -18,8 +18,10 @@ fn main() {
 	assert choose(true) == 1
 }
 ')!
+	// TinyCC cannot build -prod binaries; use host GCC for TinyCC lanes.
+	prod_cc := if @CCOMPILER in ['tcc', 'tinyc'] { 'gcc' } else { @CCOMPILER }
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -prod -cc clang ${mode} run ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -prod -cc ${prod_cc} ${mode} run ${os.quoted_path(source)}')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 	os.write_file(source, 'fn choose(enabled bool) bool {
