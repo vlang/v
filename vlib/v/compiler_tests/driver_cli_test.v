@@ -2487,15 +2487,18 @@ fn test_driver_cli_cross_refusal_matrix() {
 		'unsupported target OS `bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o', output, '-arch', 'bogus', source],
 		'unsupported target architecture `bogus`')
+	native_os := os.user_os()
 	// A binary for a foreign OS refuses with a toolchain hint. `freebsd` is
-	// foreign on every CI host (windows/linux/macos): unlike `-os windows`,
-	// it never hits the MinGW rewrite, and unlike macos->linux it is never
-	// a supported cross, so it always reaches the refusal below.
-	assert_driver_cli_failure(v3_bin, ['-o', output, '-os', 'freebsd', source],
+	// foreign on every host except native FreeBSD (a supported build platform
+	// where host == target links successfully): there `openbsd` is foreign
+	// instead. Unlike `-os windows`, neither hits the MinGW rewrite, and unlike
+	// macos->linux neither is a supported cross, so both always reach the
+	// refusal below.
+	foreign_os := if native_os == 'freebsd' { 'openbsd' } else { 'freebsd' }
+	assert_driver_cli_failure(v3_bin, ['-o', output, '-os', foreign_os, source],
 		'is not supported by the default C compiler')
 	// Same OS, foreign arch refuses the same way: only the host pair links
 	// (macOS is exempt: Apple dual-arch `-arch` pairs are supported).
-	native_os := os.user_os()
 	foreign_arch := if pref.host_arch() == 'arm64' { 'amd64' } else { 'arm64' }
 	if native_os in ['windows', 'linux'] {
 		assert_driver_cli_failure(v3_bin, ['-o', output, '-os', native_os, '-arch', foreign_arch,
@@ -2504,7 +2507,7 @@ fn test_driver_cli_cross_refusal_matrix() {
 	// C output has no link step, so it never hits the toolchain refusal: both
 	// `-os cross` (portable snapshot) and a foreign `-os` emit C successfully.
 	// The content assert proves user code was emitted, not just an empty file.
-	for target in ['cross', 'freebsd'] {
+	for target in ['cross', foreign_os] {
 		c_output := os.join_path(root, 'hello_${target}.c')
 		c_compile := cmdexec.run(v3_bin, ['-o', c_output, '-os', target, source])
 		assert c_compile.exit_code == 0, c_compile.output
