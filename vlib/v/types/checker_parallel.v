@@ -5825,6 +5825,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.check_range_hi = -1
 	w.sparse_resolved_call_names = map[int]string{}
 	w.sparse_resolved_fn_values = map[int]string{}
+	w.smartcast_call_operands = map[int]u32{}
 	w.sparse_statement_nodes = map[int]bool{}
 	w.sparse_expr_type_values = map[int]Type{}
 	w.sparse_checking_nodes = map[int]bool{}
@@ -6160,6 +6161,9 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		owned_name := if scoped { name.clone() } else { name }
 		tc.sparse_resolved_fn_values[idx] = owned_name
 		tc.record_sparse_fn_value_filter_key(idx)
+	}
+	for idx, name in w.smartcast_call_operands {
+		tc.smartcast_call_operands[idx] = name
 	}
 	for idx, _ in w.sparse_statement_nodes {
 		if tc.parallel_check_sparse {

@@ -1429,6 +1429,9 @@ pub mut:
 	check_range_hi             int = -1
 	sparse_resolved_call_names map[int]string
 	sparse_resolved_fn_values  map[int]string // the only fn-value name store: a few dozen entries, a node-indexed array cost ~12 MB
+	// The source spelling of the type that a smartcast narrowed a receiver or an
+	// argument of a generic call to, for a check (see remember_smartcast_call_operands).
+	smartcast_call_operands map[int]u32
 	// Only private transform/codegen snapshots enable this conservative filter.
 	// Mutable masters and storage probes keep supporting direct map writes.
 	sparse_fn_value_filter        [64]u64
@@ -4424,6 +4427,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.v_fn_semantic_names.clear()
 	tc.checked_comptime_method_calls.clear()
 	tc.comptime_method_calls_by_decl.clear()
+	// Node ids of a previous AST name other nodes now.
+	tc.smartcast_call_operands.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.last_dependency_fn = -1
