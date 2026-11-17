@@ -815,9 +815,14 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	clean_type0_source_id := t.trim_pointer_type(expr_type_source_id)
 	clean_type0_source_id_2 := clean_type0_source_id
 	clean_type0 := clean_type0_source_id_2
-	concrete_expr_type_source_id := t.normalize_type_alias(clean_type0_source_id)
-
-	resolved_expr_sum_source_id := t.resolve_sum_name(concrete_expr_type_source_id)
+	mut concrete_expr_type_source_id := t.normalize_type_alias(clean_type0_source_id)
+	mut resolved_expr_sum_source_id := t.resolve_sum_name(concrete_expr_type_source_id)
+	alias_type := t.normalize_type_alias_chain(concrete_expr_type_source_id)
+	alias_sum := t.resolve_sum_name(alias_type)
+	if t.sum_types.contains(alias_sum) {
+		concrete_expr_type_source_id = alias_type
+		resolved_expr_sum_source_id = alias_sum
+	}
 
 	// Inside a `$for v in T.variants` body the pattern is the loop variable;
 	// the unroll substitutes it later, so there is nothing to validate yet.
@@ -825,8 +830,11 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		&& !t.validate_specialized_is_expr(concrete_expr_type_source_id, resolved_expr_sum_source_id, node.source_value_id()) {
 		return t.make_bool_literal(false)
 	}
+	// Keep a concrete generic sum's arguments instead of its declaration key.
 	clean_type := (if t.sum_types.contains(clean_type0) {
 		clean_type0_source_id_2
+	} else if t.sum_types.contains(resolved_expr_sum_source_id) {
+		concrete_expr_type_source_id
 	} else if _ := t.resolve_sum_variant_pattern_for_subject(clean_type0_source_id, node.source_value_id()) {
 		clean_type0_source_id_2
 	} else {
