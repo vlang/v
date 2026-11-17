@@ -1371,6 +1371,81 @@ fn test_h2_pooled_transport_stores_conn_by_pointer() {
 	assert voidptr(pt.conn) == voidptr(sconn), 'H2PooledTransport must wrap the same SSLConn object, not a copy of it'
 }
 
+fn test_h2_pooled_transport_idle_reader_allows_write_and_close() ! {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := port_listener.addr()!.port()!
+	port_listener.close()!
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:     h2t_cert_path
+		cert_key: h2t_key_path
+		validate: false
+	})!
+	defer {
+		listener.shutdown() or {}
+	}
+	// Keep the peer silent until both checks finish. Releasing it also unblocks
+	// every worker on failure, so a starved writer or closer cannot hang cleanup.
+	release := chan bool{cap: 1}
+	server := spawn fn (mut l mbedtls.SSLListener, release chan bool) {
+		mut conn := l.accept() or { return }
+		_ := <-release
+		conn.shutdown() or {}
+	}(mut listener, release)
+	mut sconn := ssl.new_ssl_conn(validate: false)!
+	sconn.dial('127.0.0.1', port)!
+	mut pt := new_h2_pooled_transport(mut sconn)
+	reader := spawn h2t_hammer_reader(mut pt)
+	// Start the writer while the reader owns the TLS context, rather than
+	// letting the write finish before the first read has even started.
+	deadline := time.now().add(2 * time.second)
+	mut reading := false
+	for time.now() < deadline {
+		if !pt.io_mu.try_lock() {
+			reading = true
+			break
+		}
+		pt.io_mu.unlock()
+		time.sleep(time.millisecond)
+	}
+	written := chan bool{cap: 1}
+	writer := spawn fn (mut pt H2PooledTransport, written chan bool) {
+		n := pt.write([u8(42)]) or {
+			written <- false
+			return
+		}
+		written <- n == 1
+	}(mut pt, written)
+	mut wrote := false
+	select {
+		ok := <-written {
+			wrote = ok
+		}
+		2 * time.second {
+		}
+	}
+	closed := chan bool{cap: 1}
+	closer := spawn fn (mut pt H2PooledTransport, closed chan bool) {
+		pt.close()
+		closed <- true
+	}(mut pt, closed)
+	mut closed_promptly := false
+	select {
+		_ := <-closed {
+			closed_promptly = true
+		}
+		2 * time.second {
+		}
+	}
+	release <- true
+	writer.wait()
+	closer.wait()
+	reader.wait()
+	server.wait()
+	assert reading, 'background reader did not start'
+	assert wrote, 'idle TLS reads starved the writer'
+	assert closed_promptly, 'idle TLS reads starved close()'
+}
+
 // One thread reads, one writes, and a third closes mid-flight: the adapter
 // must serialize all TLS-context access so this never crashes or hangs (this
 // codebase tests concurrency by repetition, matching h2_mux_conn_test.v).
