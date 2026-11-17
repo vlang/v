@@ -8451,6 +8451,11 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	}
 	if typ == 0 {
 		typ = t.raw_alias_type_for_expr(expr_id)
+		if sc := t.find_smartcast_for_expr(expr_id) {
+			if t.smartcast_replaces_alias_str(expr_id, typ, sc) {
+				typ = 0
+			}
+		}
 	}
 	if typ == 0 && expr_node.kind == .ident {
 		raw_var_type_source_id := t.raw_var_type(expr_node.value_text())

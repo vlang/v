@@ -6355,6 +6355,36 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ_id u32
 	})
 }
 
+// smartcast_replaces_alias_str only selects scalar payloads of value sum aliases.
+// Keep pointer-backed and shared bindings and aggregate payloads on their existing path,
+// even when that path still fails, and preserve every applicable str method.
+fn (mut t Transformer) smartcast_replaces_alias_str(expr_id flat.NodeId, alias_id u32, sc SmartcastContext) bool {
+	node := t.a.nodes[int(expr_id)]
+	if node.kind != .ident || node.value == t.cur_fn_receiver_name_text()
+		|| flat.source_type_shape(t.var_type(node.value)).has(.pointer) {
+		return false
+	}
+	// Shared interpolation reads the wrapper's whole value, even in a smartcast branch.
+	if flat.source_type_shape(t.trimmed_type_id(t.raw_var_type(node.value))).has(.shared_type) {
+		return false
+	}
+	base := t.alias_str_resolved_base_type(alias_id)
+	variant := t.normalize_type_alias(t.smartcast_target_type(sc))
+	if variant !in stringify_narrow_integer_types
+		&& variant !in [flat.source_type_bool, flat.source_type_f32, flat.source_type_f64,
+			flat.source_type_string] {
+		return false
+	}
+	if _, _ := t.alias_custom_str_method_in_chain(alias_id) {
+		return false
+	}
+	if _, _, _ := t.generic_receiver_str_method(base) {
+		return false
+	}
+	aggregate := t.stringify_aggregate_type_name(base) or { return false }
+	return t.aggregate_str_method_name(aggregate) == none
+}
+
 // stringify_expr converts an expression to text, using voidptr.str() for print arguments.
 fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.NodeId {
 	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep
@@ -6426,7 +6456,14 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.
 		}
 	}
 	if raw_alias_type_source_id_4 != 0 {
-		typ = raw_alias_type_source_id_7
+		narrowed := if sc := smartcast {
+			t.smartcast_replaces_alias_str(expr_id, raw_alias_type_source_id_4, sc)
+		} else {
+			false
+		}
+		if !narrowed {
+			typ = raw_alias_type_source_id_7
+		}
 	}
 	// `transform_expr` above already auto-dereferenced a `pointer_value_rvalues`
 	// ident (mutable for-in bindings, `@[heap]`-promoted locals, ...) to its value,
@@ -10973,6 +11010,15 @@ fn left_zero_padded_decimal_width(format string) ?int {
 }
 
 fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ_id u32) ?flat.NodeId {
+	method_name, concrete_args_source_ids, decl_key := t.generic_receiver_str_method(typ_id) or {
+		return none
+	}
+	t.mark_generic_str_method_specialization(method_name, concrete_args_source_ids)
+	return t.make_generic_str_method_call(method_name, decl_key, [expr])
+}
+
+// Resolve without emitting a call so smartcast stringification uses the same method selection.
+fn (mut t Transformer) generic_receiver_str_method(typ_id u32) ?(string, []u32, string) {
 	shape := flat.source_type_shape(typ_id)
 	if isnil(t.tc) || !shape.has(.bracketed) {
 		return none
@@ -10994,11 +11040,7 @@ fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ_id u32) ?
 	// String interpolation synthesizes this call after the source-context maps
 	// have been built. Encode the exact receiver specialization in the callee and
 	// call metadata so a later monomorphizer instance can materialize its body.
-	method_name, concrete_args_source_ids, decl_key := t.generic_str_method_specialization(info.name,
-		clean_typ, u32(0)) or { return none }
-
-	t.mark_generic_str_method_specialization(method_name, concrete_args_source_ids)
-	return t.make_generic_str_method_call(method_name, decl_key, [expr])
+	return t.generic_str_method_specialization(info.name, clean_typ, u32(0))
 }
 
 // generic_str_method_specialization infers the generic declaration arguments from the exact
