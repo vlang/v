@@ -1,5 +1,7 @@
 module quick
 
+import math
+
 fn reverse_str(s string) string {
 	r := s.runes()
 	mut out := []rune{len: r.len}
@@ -44,5 +46,27 @@ fn test_rng_deterministic() {
 	mut b := new_rng(42)
 	for _ in 0 .. 10 {
 		assert a.next_u64() == b.next_u64()
+	}
+}
+
+fn test_f64_wide_finite_range() {
+	mut g := F64Generator{ lo: -1e308, hi: 1e308 }
+	mut rng := new_rng(1)
+	for _ in 0 .. 1000 {
+		v := g.generate(mut rng)
+		assert math.is_finite(v), 'expected finite, got ${v}'
+		assert v >= -1e308 && v < 1e308, 'out of [lo, hi): ${v}'
+	}
+}
+
+fn test_f64_adjacent_representable() {
+	lo := 1.0
+	hi := 1.0000000000000002
+	assert hi > lo
+	mut g := F64Generator{ lo: lo, hi: hi }
+	mut rng := new_rng(1)
+	for _ in 0 .. 1000 {
+		v := g.generate(mut rng)
+		assert v >= lo && v < hi, 'expected [lo, hi), got ${v}'
 	}
 }

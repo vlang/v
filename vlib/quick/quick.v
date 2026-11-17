@@ -1,5 +1,7 @@
 module quick
 
+import math
+
 // Rng is a small deterministic xorshift64* generator. Tests stay
 // reproducible: the same seed always yields the same values.
 pub struct Rng {
@@ -96,8 +98,31 @@ pub:
 }
 
 pub fn (mut g F64Generator) generate(mut rng Rng) f64 {
+	if !(g.hi > g.lo) {
+		return g.lo
+	}
 	frac := f64(rng.next_u64() >> 11) / f64(u64(1) << 53)
-	return g.lo + frac * (g.hi - g.lo)
+	// Clamp infinite endpoints to the finite extremes. The clamped
+	// interval is a subset of [lo, hi), so every value stays in contract
+	// while remaining finite.
+	lo := if math.is_inf(g.lo, -1) { -math.max_f64 } else { g.lo }
+	hi := if math.is_inf(g.hi, 1) { math.max_f64 } else { g.hi }
+	if !(hi > lo) {
+		return g.lo
+	}
+	// Overflow-safe interpolation: each term is bounded by
+	// max(|lo|, |hi|), so the sum cannot overflow to inf for finite
+	// endpoints, unlike lo + frac * (hi - lo).
+	v := lo * (1.0 - frac) + hi * frac
+	// Enforce the exclusive upper bound: rounding can push v to hi,
+	// notably when lo and hi are adjacent representable values.
+	if v >= hi {
+		return math.nextafter(hi, lo)
+	}
+	if v < lo {
+		return lo
+	}
+	return v
 }
 
 pub fn (mut g F64Generator) render(v f64) string {
