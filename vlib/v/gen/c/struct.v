@@ -4496,7 +4496,12 @@ fn (mut g FlatGen) gen_local_shared_value_selector(base_id flat.NodeId, field st
 		return true
 	}
 	g.write('->val.')
-	g.write(c_field_name(field))
+	// Shared storage is handled before the general synthetic sum-tag selector.
+	if field == '__v_sum_type_tag__' && g.sum_type_name_for_type(base_type) != none {
+		g.write('typ')
+	} else {
+		g.write(c_field_name(field))
+	}
 	if base_type is types.Struct {
 		if _ := g.shared_field_info(base_type.source_type_id(), field) {
 			g.write('->val')
