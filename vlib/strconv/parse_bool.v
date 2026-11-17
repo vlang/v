@@ -12,3 +12,12 @@ pub fn parse_bool(s string) !bool {
 		else { return error('strconv: ParseBool: parsing "${s}": invalid syntax') }
 	}
 }
+
+// format_bool returns "true" or "false" according to the value of b.
+// Mirrors Go's strconv.FormatBool.
+pub fn format_bool(b bool) string {
+	if b {
+		return 'true'
+	}
+	return 'false'
+}
