@@ -16,3 +16,24 @@ vlib/v/checker/tests/attribute_unknown_hint.vv:7:3: warning: unknown attribute `
     7 | @[ninline]
       |   ~~~~~~~
     8 | fn tie_prefers_same_first_letter() {}
+    9 |
+vlib/v/checker/tests/attribute_unknown_hint.vv:10:3: warning: unknown attribute `deprecatd`. Did you mean `deprecated`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    8 | fn tie_prefers_same_first_letter() {}
+    9 |
+   10 | @[deprecatd]
+      |   ~~~~~~~~~
+   11 | fn same_letter_hint_unchanged() {}
+   12 |
+vlib/v/checker/tests/attribute_unknown_hint.vv:13:3: warning: unknown attribute `xeprecatec`. Did you mean `deprecated`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   11 | fn same_letter_hint_unchanged() {}
+   12 |
+   13 | @[xeprecatec]
+      |   ~~~~~~~~~~
+   14 | fn cross_letter_at_max_minus_one_suggests() {}
+   15 |
+vlib/v/checker/tests/attribute_unknown_hint.vv:16:3: warning: unknown attribute `xeprecatxx` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   14 | fn cross_letter_at_max_minus_one_suggests() {}
+   15 |
+   16 | @[xeprecatxx]
+      |   ~~~~~~~~~~
+   17 | fn cross_letter_at_max_no_hint() {}
