@@ -21,10 +21,15 @@ fn test_temporary_conversion_chains() {
 		assert !body.contains('Array_u8__bytestr('), body
 	}
 	// Repeat the default mode to exercise both a cold and a warm module cache.
+	// TinyCC cannot compile -prod; keep running that case with host GCC on TCC lanes.
+	prod_cc := if @CCOMPILER in ['tcc', 'tinyc'] { 'gcc' } else { @CCOMPILER }
 	for flags in [[]string{}, []string{}, ['-nocache', '-gc', 'none'], ['-nocache', '-prod'],
 		['-nocache', '-autofree']] {
 		mut args := [@VEXE]
 		args << flags
+		if '-prod' in flags {
+			args << ['-cc', prod_cc]
+		}
 		args << ['run', source]
 		result := os.exec(args)
 		assert result.exit_code == 0, '${args}: ${result.output}'
