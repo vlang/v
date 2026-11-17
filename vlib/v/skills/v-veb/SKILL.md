@@ -110,16 +110,20 @@ mut:
 }
 
 pub fn (mut app App) index(mut ctx Context) veb.Result {
+	mut hits := 0
 	lock app.state {
 		app.state.hits++
+		hits = app.state.hits
 	}
-	return ctx.text('${app.state.hits}')
+	return ctx.text('${hits}')
 }
 ```
 
-`shared` is what makes the field shared rather than per-request. Omitting it, or
-writing without the `lock`, is a data race — and it is the mistake that matters
-most in a veb app.
+The `App` is shared by every request, while each request gets its own `Context`.
+`shared` makes the compiler require a `lock` or `rlock` around every access to the
+field, including reads: copy the value out under the lock, as above. A plain
+mutable field written by concurrent requests is a data race — and it is the
+mistake that matters most in a veb app.
 
 ## Middleware
 
@@ -149,9 +153,10 @@ See `references/MIDDLEWARE.md`.
 
 ## Templates
 
-`$veb.html()` renders the templates directory; `$veb.html('name.html')` renders one
-file; `$tmpl` renders a string in memory, which is how a layout is composed with a
-page:
+`$veb.html()` renders the template named after the handler, `index.html` for
+`index`, found next to the source file or under `templates/`;
+`$veb.html('name.html')` renders the file it names; `$tmpl` renders a string in
+memory, which is how a layout is composed with a page:
 
 ```v ignore
 @['/']
