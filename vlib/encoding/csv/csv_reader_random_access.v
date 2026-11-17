@@ -426,7 +426,7 @@ pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 				return error('ERROR: CSV cell changed while it was being read!')
 			}
 		} else {
-			mem_start := &u8(cr.mem_buf) + start - cr.start_index
+			mem_start := unsafe { &u8(cr.mem_buf) + start - cr.start_index }
 			unsafe {
 				vmemcpy(tmp_mem, mem_start, int(len))
 			}
