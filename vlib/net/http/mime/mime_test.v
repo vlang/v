@@ -58,7 +58,7 @@ fn test_lookup_covers_all_db_extensions() {
 	assert db_names[0] == ''
 	for i in 1 .. db_names.len {
 		mt := db_names[i]
-		assert db_names[i - 1] < mt // sorted, for the binary search
+		assert db_names[i - 1] < mt // sorted and unique
 		assert exists(mt)
 		for ext in get_complete_mime_type(mt).extensions {
 			res := lookup(ext)
@@ -80,6 +80,10 @@ fn test_unknown_mime_types() {
 	assert get_complete_mime_type('zzzz/after-the-last-one') == MimeType{}
 	assert !exists('')
 	assert !exists('text/htm')
+	assert !exists('a')
+	assert !exists('application/jso')
+	assert !exists('application/jsonx')
+	assert !exists('APPLICATION/JSON') // MIME type names are matched exactly
 	assert get_content_type('nope/nope') == 'nope/nope; charset=utf-8'
 	assert get_content_type('text/plain') == 'text/plain; charset=utf-8'
 	assert get_default_ext('text/x-vlang') == 'v'

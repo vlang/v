@@ -4,9 +4,9 @@ import strings
 import os
 
 // Regenerates db.v: the full MIME type database as static tables (sorted
-// names plus packed per-type info, binary searched by `db_index` in
-// lookup.v), and a case-insensitive extension -> MIME type lookup built as
-// a CHD perfect hash
+// names plus packed per-type info, found by `db_index` in lookup.v through
+// a CHD perfect hash over the names), and a case-insensitive extension ->
+// MIME type lookup built as another CHD perfect hash
 // (compress, hash, displace; Belazzougui, Boldi, Pagh, Vigna). The generator
 // is fully deterministic: given the same db.json input, it always produces
 // byte-identical output.
@@ -146,6 +146,87 @@ fn displace_bucket(b int, ext_idx []int, hashes []u32, mut slots []int, mut disp
 	}
 }
 
+// Chd is a CHD perfect hash over a set of u32 key hashes:
+// slot = ((h >> shift) + disp[h & bmask]) & tmask, slots[slot] = key index
+struct Chd {
+	disp  []u16
+	slots []int // -1 = empty
+	bmask u32
+	tmask u32
+	shift int
+}
+
+// chd sizes the slot table, buckets the keys by hash, then displaces the
+// buckets, largest first (cheaper searches); ties by bucket id, so the
+// result is fully deterministic
+fn chd(hashes []u32) Chd {
+	n := hashes.len
+	mut tslots := 2048 // keep the load factor <= 0.75
+	for n * 100 > tslots * 75 {
+		tslots *= 2
+	}
+	nbuckets := tslots >> 2
+	tmask := u32(tslots - 1)
+	bmask := u32(nbuckets - 1)
+	// bucket and slot use disjoint bit ranges of the hash
+	mut shift := 0
+	for (1 << shift) < nbuckets {
+		shift++
+	}
+	mut buckets := [][]int{len: nbuckets, init: []int{cap: 4}}
+	for i in 0 .. n {
+		buckets[hashes[i] & bmask] << i
+	}
+	mut max_bucket := 0
+	for bucket in buckets {
+		if bucket.len > max_bucket {
+			max_bucket = bucket.len
+		}
+	}
+	mut slots := []int{len: tslots, init: -1}
+	mut disp := []u16{len: nbuckets}
+	for size := max_bucket; size >= 1; size-- {
+		for b in 0 .. nbuckets {
+			if buckets[b].len == size {
+				displace_bucket(b, buckets[b], hashes, mut slots, mut disp, tmask, shift)
+			}
+		}
+	}
+	return Chd{
+		disp:  disp
+		slots: slots
+		bmask: bmask
+		tmask: tmask
+		shift: shift
+	}
+}
+
+// name_hash hashes a whole MIME type name as 8-byte little-endian words;
+// it must match `name_hash` in lookup.v
+fn name_hash(s string) u32 {
+	mut h := u64(s.len) * ph_m4
+	mut i := 0
+	for i + 8 <= s.len {
+		h = (h ^ unsafe { ph_w8(s.str + i) }) * ph_m3
+		h ^= h >> 29
+		i += 8
+	}
+	if i < s.len {
+		mut w := u64(0)
+		if s.len >= 8 {
+			w = unsafe { ph_w8(s.str + s.len - 8) }
+		} else {
+			for j in 0 .. s.len {
+				w |= u64(s[j]) << (8 * j)
+			}
+		}
+		h = (h ^ w) * ph_m3
+		h ^= h >> 29
+	}
+	h *= ph_m2
+	return u32(h ^ (h >> 32))
+}
+
 // the generated perfect hash tables, shared by the self-check below
 struct PhTables {
 	m1          u64
@@ -269,7 +350,7 @@ fn main() {
 	}
 
 	// --- the MIME type database ------------------------------------------------
-	// db_names is sorted for the binary search in db_index; index 0 is the
+	// db_names is sorted for a deterministic output; index 0 is the
 	// empty string, used both for unknown types and for unknown extensions
 	mut names := mt_map.keys()
 	names.sort()
@@ -346,38 +427,13 @@ fn main() {
 		hashes[i] = ph_hash(ext, 0, ext.len, m1)
 	}
 
-	// --- CHD: size the slot table, bucket by hash, then displace -------------
-	mut tslots := 2048 // keep the load factor <= 0.75
-	for n * 100 > tslots * 75 {
-		tslots *= 2
-	}
-	nbuckets := tslots >> 2
-	tmask := u32(tslots - 1)
-	bmask := u32(nbuckets - 1)
-	slot_shift := 9 // bucket and slot use disjoint bit ranges of the hash
-
-	mut buckets := [][]int{len: nbuckets, init: []int{cap: 4}}
-	for i in 0 .. n {
-		buckets[hashes[i] & bmask] << i
-	}
-	// displace the largest buckets first (cheaper searches); ties by bucket id,
-	// so the result is fully deterministic
-	mut max_bucket := 0
-	for bucket in buckets {
-		if bucket.len > max_bucket {
-			max_bucket = bucket.len
-		}
-	}
-	mut slots := []int{len: tslots, init: -1}
-	mut disp := []u16{len: nbuckets}
-	for size := max_bucket; size >= 1; size-- {
-		for b in 0 .. nbuckets {
-			if buckets[b].len != size {
-				continue
-			}
-			displace_bucket(b, buckets[b], hashes, mut slots, mut disp, tmask, slot_shift)
-		}
-	}
+	ph := chd(hashes)
+	tslots := ph.slots.len
+	slots := ph.slots
+	disp := ph.disp
+	tmask := ph.tmask
+	bmask := ph.bmask
+	slot_shift := ph.shift
 
 	// --- pack the tables ------------------------------------------------------
 	// extensions blob: 8 padding bytes, then [u8 ext_len][ext bytes] ... per
@@ -451,6 +507,27 @@ fn main() {
 		}
 	}
 
+	// --- MIME type name -> db_names index, another CHD ------------------------
+	nh := chd(names[1..].map(name_hash(it)))
+	if names.len > 0xFFFF {
+		eprintln('too many MIME types for u16 name slots: ${names.len}')
+		exit(1)
+	}
+	// 0 = empty slot, which selects the '' sentinel name
+	nh_slots := nh.slots.map(if it == -1 { u16(0) } else { u16(it + 1) })
+	for i, name in names {
+		for probe in [name, name + 'x', name#[..-1]] {
+			h := name_hash(probe)
+			idx := int(nh_slots[((h >> nh.shift) + nh.disp[h & nh.bmask]) & nh.tmask])
+			got := if names[idx] == probe { idx } else { 0 }
+			want := if probe == name { i } else { name_idx[probe] or { 0 } }
+			if got != want {
+				eprintln('self-check failed for MIME type: ${probe}')
+				exit(1)
+			}
+		}
+	}
+
 	// --- emit db.v -------------------------------------------------------------
 	mut sb := strings.new_builder(512 * 1024)
 	sb.writeln('module mime')
@@ -477,6 +554,13 @@ fn main() {
 	sb.writeln('')
 	sb.writeln('// sorted MIME type names; index 0 is the empty string for unknown types')
 	emit_list(mut sb, 'db_names', quoted(names))
+	sb.writeln('// name hash: db_names index = nh_slots[((h >> nh_shift) + nh_disp[h & nh_bmask]) & nh_tmask]')
+	sb.writeln('const nh_shift = ${nh.shift}')
+	sb.writeln('const nh_bmask = u32(${nh.bmask})')
+	sb.writeln('const nh_tmask = u32(${nh.tmask})')
+	sb.writeln('')
+	emit_list(mut sb, 'nh_disp', typed('u16', nh.disp.map(it.str())))
+	emit_list(mut sb, 'nh_slots', typed('u16', nh_slots.map(it.str())))
 	emit_list(mut sb, 'db_sources', quoted(sources))
 	emit_list(mut sb, 'db_charsets', quoted(charsets))
 	sb.writeln('// the extensions of every MIME type, in db_names order')
