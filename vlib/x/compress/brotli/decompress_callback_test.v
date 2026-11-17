@@ -45,3 +45,40 @@ fn test_decompress_with_callback_propagates_decode_errors() {
 	}
 	assert false, 'invalid input must fail in both decompress and decompress_with_callback'
 }
+
+fn test_decompress_with_callback_early_stop_skips_trailing_validation() {
+	plain := 'a'.repeat(131072).bytes()
+	compressed := compress(plain)!
+	mut trailing := compressed.clone()
+	trailing << u8(0xff)
+	mut calls := 0
+	mut ref := &calls
+	delivered := decompress_with_callback(trailing, fn (chunk []u8, calls &int) int {
+		unsafe {
+			*calls += 1
+		}
+		return 0
+	}, ref)!
+	assert calls == 1
+	assert delivered == 0
+}
+
+fn test_decompress_with_callback_trailing_errors_after_delivery() {
+	plain := 'a'.repeat(131072).bytes()
+	compressed := compress(plain)!
+	mut trailing := compressed.clone()
+	trailing << u8(0xff)
+	mut calls := 0
+	mut ref := &calls
+	decompress_with_callback(trailing, fn (chunk []u8, calls &int) int {
+		unsafe {
+			*calls += 1
+		}
+		return chunk.len
+	}, ref) or {
+		assert err.msg() != ''
+		assert calls > 0
+		return
+	}
+	assert false, 'trailing data must fail when the callback keeps going'
+}
