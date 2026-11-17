@@ -4184,6 +4184,10 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	if options.is_shared {
 		before_inputs << '-shared'
+		if options.target_os == 'windows' && options.c_compiler != 'msvc' && !options.is_tcc {
+			// Explicit dllexport disables MinGW's automatic exports unless requested.
+			before_inputs << '-Wl,--export-all-symbols'
+		}
 		if !options.is_liveshared && options.target_os !in ['windows', 'wasm32']
 			&& options.c_compiler != 'msvc' {
 			before_inputs << '-fvisibility=hidden'

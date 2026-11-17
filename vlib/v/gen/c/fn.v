@@ -6096,11 +6096,9 @@ fn (g &FlatGen) exported_symbol_attribute() string {
 	if !g.is_shared {
 		return ''
 	}
-	// MSVC, and TinyCC for Windows targets, export only `dllexport` symbols from a DLL.
-	// MinGW's linker exports every symbol of a DLL that marks none, so GCC and Clang keep
-	// the visibility attribute there and their DLLs keep exporting all functions.
-	if g.ccompiler == 'msvc' || (g.target.os == 'windows' && (g.ccompiler == 'tinyc'
-		|| g.ccompiler.to_lower().contains('tcc'))) {
+	// Windows DLL exports use the PE attribute. The MinGW link still
+	// auto-exports its other symbols through the driver's linker flags.
+	if g.ccompiler == 'msvc' || g.target.os == 'windows' {
 		return '__declspec(dllexport) '
 	}
 	return '__attribute__((visibility("default"))) '

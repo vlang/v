@@ -544,6 +544,7 @@ fn test_mingw_links_its_own_runtime_statically_after_the_program_libraries() {
 			// The driver adds winpthread and the other runtime libraries after the last
 			// argument, where they come from static archives.
 			assert args.last() == '-Wl,-Bstatic', c_compiler
+			assert ('-Wl,--export-all-symbols' in args) == is_shared, c_compiler
 			assert args.index('-lws2_32') < args.index('-Wl,-Bstatic')
 			assert args.index('-lmylib') < args.index('-Wl,-Bstatic')
 		}
