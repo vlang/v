@@ -8,6 +8,10 @@ $if windows {
 } $else {
 	#include <sys/socket.h>
 }
+$if windows {
+	#flag -lws2_32
+	#include <winsock2.h>
+}
 
 pub struct Response {
 pub:
