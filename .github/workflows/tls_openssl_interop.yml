@@ -368,14 +368,16 @@ jobs:
             grep -q 'ECHO_OK' "srv_$suite.log" || { echo "no V echo for $suite"; cat "srv_$suite.log"; exit 1; }
             grep -q 'ping' "cli_$suite.log" || { echo "no openssl echo for $suite"; cat "cli_$suite.log"; exit 1; }
             # pure-V client against openssl server (handshake only; s_server
-            # is not an echo server).
-            openssl s_server -accept "$p2" -tls1_3 -ciphersuites "$suite" \
+            # is not an echo server). s_server reads handshake input from
+            # stdin, so keep it open with sleep; a closed stdin makes it
+            # abort the connection before ServerHello (empty client error).
+            sleep 30 | openssl s_server -accept "$p2" -tls1_3 -ciphersuites "$suite" \
               -cert "$TD/rsa_leaf_cert.pem" -key "$TD/rsa_leaf_pkcs8_key.pem" \
               -naccept 1 >"ssrv_$suite.log" 2>&1 &
             ssrvpid=$!
             sleep 2
             V_TLS_PORT="$p2" V_TLS_SUITE="$suite" V_TLS_MODE=hs "$CLI" >"vcli_$suite.log" 2>&1 || {
-              echo "V client failed for $suite"; cat "vcli_$suite.log"; kill "$ssrvpid" 2>/dev/null || true; exit 1; }
+              echo "V client failed for $suite"; cat "vcli_$suite.log"; echo "--- ssrv log ---"; cat "ssrv_$suite.log" || true; kill "$ssrvpid" 2>/dev/null || true; exit 1; }
             grep -q 'HANDSHAKE_OK' "vcli_$suite.log" || { echo "no V-client handshake for $suite"; cat "vcli_$suite.log"; exit 1; }
             wait "$ssrvpid" || true
           done
