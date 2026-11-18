@@ -410,6 +410,10 @@ pub const node_flag_mut_builtin_pointer_param = u8(16)
 // node_flag_literal_interpolation_text marks a string literal whose source token
 // contained `${...}` as literal text (for example, `\${name}` or a raw string).
 pub const node_flag_literal_interpolation_text = u8(32)
+// node_flag_implicit_result_error_decl marks a synthesized Result error declaration.
+pub const node_flag_implicit_result_error_decl = u8(32)
+// node_flag_result_error_message marks a generated call that reads a panic message from a Result.
+pub const node_flag_result_error_message = u8(32)
 // node_flag_detached_spawn marks a `spawn` whose thread handle is discarded, so the
 // backend starts its thread detached (see Node.is_detached_spawn()).
 pub const node_flag_detached_spawn = u8(64)

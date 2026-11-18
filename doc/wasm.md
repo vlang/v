@@ -44,6 +44,11 @@ error. Aggregate language features remain experimental. Dynamic arrays of primit
 structs whose fields all have a lowering, options and results are supported; maps, fixed and
 nested arrays, aggregate array elements, and structs holding an unlifted field type are not, and
 still produce a compiler error rather than a wrong answer.
+Result values such as `!int` support both a returned value and an `error(...)`
+branch, and can be unwrapped with `or { ... }`.
+Reading `err` inside an `or` block produces a compile-time diagnostic. A Result's `!` can
+propagate to a Result-returning caller. When `!` would panic and print the error, compilation
+reports that the error value is unsupported. Use `or { ... }` to handle the failure.
 
 Floating-point calculations are supported, but formatting a float as text remains unsupported.
 Fixed float interpolation is rejected instead of returning a placeholder value.

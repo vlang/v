@@ -23516,7 +23516,7 @@ fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.N
 // the error it handles `err`: an `or {}` block, or the plain `else` block right
 // after an `if x := call() {` guard. It follows the tree rather than the scopes,
 // for the checks that keep no scope for such a block.
-fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
+pub fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
 	mut child := id
 	mut parent := tc.direct_parent_id(child)
 	for tc.valid_node_id(parent) {
