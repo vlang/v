@@ -30,6 +30,7 @@ module wasm
 
 import encoding.hex
 import os
+import v.cmdexec
 import v.parser
 import v.pref
 import v.ssa
@@ -895,7 +896,10 @@ fn stub_child(tag string) {
 }
 
 fn stub_child_build(tag string) string {
-	res := os.exec([os.executable(), '--stub-child', tag])
+	mut environment := os.environ()
+	// The child exits before suite teardown. Its files belong to the parent's scratch tree.
+	environment['STUB_SCRATCH'] = stub_scratch()
+	res := cmdexec.run_in_merged_with_env(os.executable(), ['--stub-child', tag], '', environment)
 	return res.output
 }
 
