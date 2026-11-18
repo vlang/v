@@ -1233,9 +1233,15 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if node.op in [.plus, .minus, .mul] {
 				left_typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).source_type_id()
 				right_typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 1), map[string]Type{})).source_type_id()
-				if left_typ == right_typ && left_typ in [flat.source_type_u8, flat.source_type_i8, comptime_source_type_byte, flat.source_type_u16, flat.source_type_i16, flat.source_type_u32, flat.source_type_i32] {
-					if node.op == .plus { return comptime_enum_integer_cast(left + right, left_typ) }
-					if node.op == .minus { return comptime_enum_integer_cast(left - right, left_typ) }
+				if left_typ == right_typ && left_typ in [flat.source_type_u8, flat.source_type_i8,
+					comptime_source_type_byte, flat.source_type_u16, flat.source_type_i16,
+					flat.source_type_u32, flat.source_type_i32] {
+					if node.op == .plus {
+						return comptime_enum_integer_cast(left + right, left_typ)
+					}
+					if node.op == .minus {
+						return comptime_enum_integer_cast(left - right, left_typ)
+					}
 					return comptime_enum_integer_cast(left * right, left_typ)
 				}
 			}
