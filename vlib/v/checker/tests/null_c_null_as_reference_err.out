@@ -95,18 +95,25 @@ vlib/v/checker/tests/null_c_null_as_reference_err.vv:34:6: error: cannot null ca
    34 |     _ = &Node(1 - 1)
       |         ~~~~~~~~~~~~
    35 |     _ = &Node(0 * 5)
-   36 |     mut h := Holder{
+   36 |     _ = &Node(u64(~u8(0)) + 1)
 vlib/v/checker/tests/null_c_null_as_reference_err.vv:35:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
    33 |     _ = &int(C.NULL)
    34 |     _ = &Node(1 - 1)
    35 |     _ = &Node(0 * 5)
       |         ~~~~~~~~~~~~
-   36 |     mut h := Holder{
-   37 |         a: C.NULL
-vlib/v/checker/tests/null_c_null_as_reference_err.vv:37:6: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   36 |     _ = &Node(u64(~u8(0)) + 1)
+   37 |     mut h := Holder{
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:36:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   34 |     _ = &Node(1 - 1)
    35 |     _ = &Node(0 * 5)
-   36 |     mut h := Holder{
-   37 |         a: C.NULL
+   36 |     _ = &Node(u64(~u8(0)) + 1)
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   37 |     mut h := Holder{
+   38 |         a: C.NULL
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:38:6: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   36 |     _ = &Node(u64(~u8(0)) + 1)
+   37 |     mut h := Holder{
+   38 |         a: C.NULL
       |            ~~~~~~
-   38 |     }
-   39 |     println(p.x + h.a.x)
+   39 |     }
+   40 |     println(p.x + h.a.x)

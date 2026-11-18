@@ -6410,7 +6410,16 @@ fn (tc &TypeChecker) cast_operand_is_zero(id flat.NodeId) bool {
 	// computed address like `u64(buf) + offset` involves a runtime value and
 	// stays allowed for struct pointer targets.
 	if value := tc.const_int_expr(id, tc.cur_module, []) {
-		return value == 0
+		if value != 0 {
+			return false
+		}
+		// The signed fold ignores integer cast widths and signedness, so
+		// `u64(~u32(0)) + 1` wrongly folds to zero. Only treat the operand
+		// as null when wrapping 64-bit evaluation agrees.
+		if unsigned_value := tc.const_uint_expr(id, tc.cur_module, []) {
+			return unsigned_value == 0
+		}
+		return false
 	}
 	node := tc.a.node(id)
 	if node.kind == .int_literal {
@@ -6423,7 +6432,15 @@ fn (tc &TypeChecker) cast_operand_is_zero(id flat.NodeId) bool {
 		return false
 	}
 	if value := tc.const_int_value(node.value, []string{}) {
-		return value == 0
+		if value != 0 {
+			return false
+		}
+		// As above, a named const may hold a mistyped nonzero address such as
+		// `u64(~u32(0)) + 1`; confirm with wrapping 64-bit evaluation.
+		if unsigned_value := tc.const_uint_expr(id, tc.cur_module, []) {
+			return unsigned_value == 0
+		}
+		return false
 	}
 	file := tc.a.source_files[node.pos.id] or { return false }
 	source := tc.source_texts_by_file[file.name] or { return false }
@@ -6466,11 +6483,23 @@ fn (tc &TypeChecker) cast_operand_is_null_pointer(id flat.NodeId) bool {
 		}
 		if inner.kind == .ident && inner.value.len > 0 {
 			if const_value := tc.const_int_value(inner.value, []string{}) {
-				return const_value == 0
+				if const_value != 0 {
+					return false
+				}
+				if unsigned_value := tc.const_uint_expr(inner_id, tc.cur_module, []) {
+					return unsigned_value == 0
+				}
+				return false
 			}
 		}
 		if const_value := tc.const_int_expr(inner_id, tc.cur_module, []) {
-			return const_value == 0
+			if const_value != 0 {
+				return false
+			}
+			if unsigned_value := tc.const_uint_expr(inner_id, tc.cur_module, []) {
+				return unsigned_value == 0
+			}
+			return false
 		}
 	}
 	return false

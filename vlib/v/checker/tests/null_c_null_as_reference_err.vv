@@ -33,6 +33,7 @@ fn main() {
 	_ = &int(C.NULL)
 	_ = &Node(1 - 1)
 	_ = &Node(0 * 5)
+	_ = &Node(u64(~u8(0)) + 1)
 	mut h := Holder{
 		a: C.NULL
 	}

@@ -60,3 +60,16 @@ fn test_voidptr_zero_forms_stay_allowed() {
 	assert d == voidptr(0)
 	assert d == C.NULL
 }
+
+fn test_typed_nonzero_addresses_stay_allowed() {
+	a := &Node(u64(~u32(0)) + 1)
+	assert u64(a) == u64(1) << 32
+	b := &Node(u64(0xffffffffffffffff) / 2)
+	assert u64(b) == u64(0x7fffffffffffffff)
+	d := &Node(u64(0xffffffff) + 1)
+	assert u64(d) == u64(1) << 32
+	e := &Node(u64(0x80000000) << 1)
+	assert u64(e) == u64(1) << 32
+	f := &Node(u64(~u32(5)) + 6)
+	assert u64(f) == u64(1) << 32
+}
