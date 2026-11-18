@@ -134,3 +134,46 @@ fn main() {
 		assert result.exit_code == 0, result.output
 	}
 }
+
+fn test_native_shift_counts_are_checked_at_the_operand_width() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_shift_counts_${os.getpid()}.v')
+		output := path.all_before_last('.')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+		}
+		os.write_file(path, 'fn shift(count i64) {
+	a := i8(-8)
+	assert a >> count == 0
+	assert a >>> count == 0
+	assert i16(-8) << count == 0
+	assert i64(-8) >> count == 0
+}
+
+fn narrow(count i64) i8 {
+	return i8(-8) >> count
+}
+
+fn main() {
+	shift(-1)
+	shift(64)
+	shift(65)
+	assert narrow(7) == -1
+	assert narrow(8) == 0
+	assert narrow(31) == 0
+}
+')!
+		for production in [false, true] {
+			mut args := [@VEXE]
+			if production {
+				args << '-prod'
+			}
+			args << ['-b', 'arm64', '-gc', 'none', '-o', output, path]
+			compiled := os.exec(args)
+			assert compiled.exit_code == 0, compiled.output
+			result := os.exec([output])
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
