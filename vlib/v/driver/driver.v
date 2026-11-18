@@ -14652,7 +14652,6 @@ pub fn run(args []string) {
 			eprintln('ppc64le support is not compiled into this executable')
 			exit(1)
 		}
-
 	} else if backend == 'arm64' {
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)

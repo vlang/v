@@ -1001,7 +1001,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 					.fptosi {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 32 }
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
+						} else {
+							32
+						}
 						if dst_width <= 32 {
 							g.emit32(rv_fcvt_w_s(rv_reg_t0, 0))
 						} else {
@@ -1012,7 +1016,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 					.fptoui {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 32 }
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
+						} else {
+							32
+						}
 						if dst_width <= 32 {
 							g.emit32(rv_fcvt_wu_s(rv_reg_t0, 0))
 						} else {
@@ -1024,7 +1032,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 32 }
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
+						} else {
+							32
+						}
 						signed := g.is_signed_int_type(src_typ)
 						if src_width <= 32 {
 							if signed {
@@ -1046,7 +1058,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 32 }
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
+						} else {
+							32
+						}
 						if src_width <= 32 {
 							g.emit32(rv_fcvt_s_wu(0, rv_reg_t0))
 						} else {
@@ -1113,7 +1129,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 					.fptosi {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 64 }
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
+						} else {
+							64
+						}
 						if dst_width <= 32 {
 							g.emit32(rv_fcvt_w_d(rv_reg_t0, 0))
 						} else {
@@ -1124,7 +1144,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 					.fptoui {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 64 }
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
+						} else {
+							64
+						}
 						if dst_width <= 32 {
 							g.emit32(rv_fcvt_wu_d(rv_reg_t0, 0))
 						} else {
@@ -1136,7 +1160,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 64 }
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
+						} else {
+							64
+						}
 						signed := g.is_signed_int_type(src_typ)
 						if src_width <= 32 {
 							if signed {
@@ -1158,7 +1186,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 64 }
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
+						} else {
+							64
+						}
 						if src_width <= 32 {
 							g.emit32(rv_fcvt_d_wu(0, rv_reg_t0))
 						} else {
@@ -1302,23 +1334,47 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit32(rv_fmv_d_x(1, rv_reg_t0))
 				match instr.op {
 					.eq {
-						if is_f32_cmp { g.emit32(rv_feq_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_feq_d(rv_reg_t0, 0, 1)) }
+						if is_f32_cmp {
+							g.emit32(rv_feq_s(rv_reg_t0, 0, 1))
+						} else {
+							g.emit32(rv_feq_d(rv_reg_t0, 0, 1))
+						}
 					}
 					.ne {
-						if is_f32_cmp { g.emit32(rv_feq_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_feq_d(rv_reg_t0, 0, 1)) }
+						if is_f32_cmp {
+							g.emit32(rv_feq_s(rv_reg_t0, 0, 1))
+						} else {
+							g.emit32(rv_feq_d(rv_reg_t0, 0, 1))
+						}
 						g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
 					}
 					.lt {
-						if is_f32_cmp { g.emit32(rv_flt_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_flt_d(rv_reg_t0, 0, 1)) }
+						if is_f32_cmp {
+							g.emit32(rv_flt_s(rv_reg_t0, 0, 1))
+						} else {
+							g.emit32(rv_flt_d(rv_reg_t0, 0, 1))
+						}
 					}
 					.gt {
-						if is_f32_cmp { g.emit32(rv_flt_s(rv_reg_t0, 1, 0)) } else { g.emit32(rv_flt_d(rv_reg_t0, 1, 0)) }
+						if is_f32_cmp {
+							g.emit32(rv_flt_s(rv_reg_t0, 1, 0))
+						} else {
+							g.emit32(rv_flt_d(rv_reg_t0, 1, 0))
+						}
 					}
 					.le {
-						if is_f32_cmp { g.emit32(rv_fle_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_fle_d(rv_reg_t0, 0, 1)) }
+						if is_f32_cmp {
+							g.emit32(rv_fle_s(rv_reg_t0, 0, 1))
+						} else {
+							g.emit32(rv_fle_d(rv_reg_t0, 0, 1))
+						}
 					}
 					.ge {
-						if is_f32_cmp { g.emit32(rv_fle_s(rv_reg_t0, 1, 0)) } else { g.emit32(rv_fle_d(rv_reg_t0, 1, 0)) }
+						if is_f32_cmp {
+							g.emit32(rv_fle_s(rv_reg_t0, 1, 0))
+						} else {
+							g.emit32(rv_fle_d(rv_reg_t0, 1, 0))
+						}
 					}
 					else {
 						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 0))
@@ -2739,99 +2795,130 @@ fn rv_fmv_d_x(fd int, rs int) u32 {
 fn rv_fadd_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x01 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fsub_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x05 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmul_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x09 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fdiv_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x0d << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fadd_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x00 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fsub_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x04 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmul_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x08 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fdiv_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x0c << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // Conversions double.
 fn rv_fcvt_w_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_wu_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_l_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_lu_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_w(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_wu(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_l(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_lu(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // Conversions single.
 fn rv_fcvt_w_s(rd int, rs1 int) u32 {
 	return (0x60 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_wu_s(rd int, rs1 int) u32 {
 	return (0x60 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_l_s(rd int, rs1 int) u32 {
 	return (0x60 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_lu_s(rd int, rs1 int) u32 {
 	return (0x60 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_w(rd int, rs1 int) u32 {
 	return (0x68 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_wu(rd int, rs1 int) u32 {
 	return (0x68 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_l(rd int, rs1 int) u32 {
 	return (0x68 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_lu(rd int, rs1 int) u32 {
 	return (0x68 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_d(rd int, rs1 int) u32 {
 	return (0x20 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_s(rd int, rs1 int) u32 {
 	return (0x21 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // Comparisons double/single.
 fn rv_feq_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (2 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_flt_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (1 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fle_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_feq_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (2 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_flt_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (1 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fle_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
@@ -2840,103 +2927,135 @@ fn rv_fle_s(rd int, rs1 int, rs2 int) u32 {
 fn rv_fadd_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x01 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fsub_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x05 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmul_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x09 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fdiv_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x0d << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fsqrt_d(rd int, rs1 int) u32 {
 	return (0x2d << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmin_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x14 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmax_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x15 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // Single-precision.
 fn rv_fadd_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x00 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fsub_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x04 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmul_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x08 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fdiv_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x0c << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // Conversions.
 fn rv_fcvt_w_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_wu_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_l_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_lu_d(rd int, rs1 int) u32 {
 	return (0x61 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_w(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_wu(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_l(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_lu(rd int, rs1 int) u32 {
 	return (0x69 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_d_s(rd int, rs1 int) u32 {
 	return (0x21 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_d(rd int, rs1 int) u32 {
 	return (0x20 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_w_s(rd int, rs1 int) u32 {
 	return (0x60 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_wu_s(rd int, rs1 int) u32 {
 	return (0x60 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_w(rd int, rs1 int) u32 {
 	return (0x68 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fcvt_s_wu(rd int, rs1 int) u32 {
 	return (0x68 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // Comparisons (result in integer rd).
 fn rv_feq_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (2 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_flt_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (1 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fle_d(rd int, rs1 int, rs2 int) u32 {
 	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_feq_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (2 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_flt_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (1 << 12) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fle_s(rd int, rs1 int, rs2 int) u32 {
 	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
 }
+
 // fmv between int and fp regs (32-bit).
 fn rv_fmv_x_w(rd int, fs int) u32 {
 	return (0x70 << 25) | (u32(fs) << 15) | (u32(rd) << 7) | 0x53
 }
+
 fn rv_fmv_w_x(fd int, rs int) u32 {
 	return (0x78 << 25) | (u32(rs) << 15) | (u32(fd) << 7) | 0x53
 }
