@@ -93,6 +93,18 @@ fn test_f64_add_loads_both_operands_into_the_registers_it_names() {
 	assert words.len == 4
 }
 
+fn test_float_less_than_conditions_exclude_unordered_operands() {
+	for width in [32, 64] {
+		mut m := ssa.Module.new()
+		less := compare_words(mut m, .lt, width, false)
+		assert asm_cset_lo(Reg(8)) in less
+		assert asm_cset_lt(Reg(8)) !in less
+		less_or_equal := compare_words(mut m, .le, width, false)
+		assert asm_cset_ls(Reg(8)) in less_or_equal
+		assert asm_cset_le(Reg(8)) !in less_or_equal
+	}
+}
+
 fn test_same_value_as_both_operands_is_loaded_once() {
 	mut m := ssa.Module.new()
 	words := binop_words(mut m, .fsub, 64, true)
