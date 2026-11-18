@@ -20,7 +20,7 @@ pub const err_timed_out_code = errors_base + 9
 pub const err_connection_refused = error_with_code('net: connection refused', errors_base + 10)
 
 pub fn socket_error_message(potential_code int, s string) !int {
-	return socket_error(potential_code) or { return error('${err.msg()}; ${s}') }
+	return socket_error(potential_code) or { return error_with_code('${err.msg()}; ${s}', err.code()) }
 }
 
 pub fn socket_error(potential_code int) !int {
