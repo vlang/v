@@ -142,6 +142,64 @@ fn test_ffi_lifetime_contracts_in_build_and_check() {
 	}
 }
 
+fn test_ffi_lifetime_contracts_with_autofree() {
+	root := os.join_path(os.vtmp_dir(), 'ffi_lifetime_autofree_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	sources := [
+		"@[nonnull: 'p']\nfn C.review_count(p &u8) int\nfn main() {\n\ttext := 'hello'\n\tprintln(C.review_count(text.str))\n}\n",
+		"@[nonnull: 'p']\nfn handler(p &u8) int {\n\treturn 0\n}\nfn main() {\n\ts := 'hi'\n\tprintln(handler(s.str))\n}\n",
+	]
+	for i, program in sources {
+		source := os.join_path(root, 'autofree_${i}.v')
+		os.write_file(source, program) or { panic(err) }
+		for mode in ['build', 'check'] {
+			mut command := [@VEXE, '-autofree']
+			if mode == 'check' {
+				command << '-check'
+			} else {
+				command << ['-o', os.join_path(root, 'autofree_${i}.c')]
+			}
+			command << source
+			result := os.exec(command)
+			assert result.exit_code == 0, 'autofree ${i} ${mode}: ${result.output}'
+		}
+	}
+}
+
+fn test_ffi_lifetime_returns_owned_resolves_own_module() {
+	root := os.join_path(os.vtmp_dir(), 'ffi_lifetime_owned_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'resource')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	releasers := ['release', 'resource.release']
+	for i, releaser in releasers {
+		os.write_file(os.join_path(root, 'resource', 'resource.v'),
+			"module resource\n@[returns_owned: '${releaser}']\npub fn acquire() voidptr {\n\treturn unsafe { nil }\n}\npub fn release(p voidptr) {}\n") or {
+			panic(err)
+		}
+		source := os.join_path(root, 'main_${i}.v')
+		os.write_file(source,
+			'import resource\nfn main() {\n\tp := resource.acquire()\n\tresource.release(p)\n\tprintln(1)\n}\n') or {
+			panic(err)
+		}
+		for mode in ['build', 'check'] {
+			mut command := [@VEXE, '-gc', 'none']
+			if mode == 'check' {
+				command << '-check'
+			} else {
+				command << ['-o', os.join_path(root, 'owned_${i}.c')]
+			}
+			command << source
+			result := os.exec(command)
+			assert result.exit_code == 0, 'releaser ${releaser} ${mode}: ${result.output}'
+		}
+	}
+}
+
 fn test_ffi_lifetime_cannot_reuse_an_unsafe_cached_dependency() {
 	root := os.join_path(os.vtmp_dir(), 'ffi_lifetime_cached_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'ffidep')) or { panic(err) }

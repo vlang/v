@@ -44,7 +44,9 @@ pub fn (tc &TypeChecker) has_ffi_lifetime_contracts() bool {
 // `@[nonnull]`/`@[noescape]` arguments. Annotations on C declarations are
 // trusted claims; unannotated C declarations keep their current behavior.
 // Unresolvable callees are silently skipped (fail open).
-pub fn (mut tc TypeChecker) check_ffi_lifetime_contracts(lowered bool, unsupported_modes string) {
+// These checks are independent of the noalloc mode restriction: compiler-generated
+// allocation operations do not invalidate pointer/lifetime schemas.
+pub fn (mut tc TypeChecker) check_ffi_lifetime_contracts(lowered bool) {
 	if !tc.has_ffi_lifetime_contracts() {
 		return
 	}
@@ -187,13 +189,14 @@ pub fn (mut tc TypeChecker) check_ffi_lifetime_contracts(lowered bool, unsupport
 			if releaser.len == 0 || releaser.contains(',') {
 				continue
 			}
-			if scan.contract_function(releaser, '') == none {
+			releaser_module := scan.module_of(index, node)
+			if scan.contract_function(releaser, releaser_module) == none {
 				tc.record_transform_error(flat.NodeId(index), node.pos,
 					'@[ffi] `@[returns_owned]` names unknown releaser `${releaser}`')
 			}
 		}
 	}
-	scan.check_call_sites(unsupported_modes)
+	scan.check_call_sites()
 }
 
 // FfiLifetimeContract holds the parsed parameter contracts of one declaration.
@@ -246,7 +249,7 @@ fn (s &FfiLifetimeScan) contract_function(name string, module_name string) ?FfiL
 
 // check_call_sites visits every V function body and checks statically known
 // arguments of calls resolving to declarations with nonnull/noescape contracts.
-fn (mut s FfiLifetimeScan) check_call_sites(unsupported_modes string) {
+fn (mut s FfiLifetimeScan) check_call_sites() {
 	for index, node in s.tc.a.nodes {
 		if node.kind != .fn_decl || ffi_foreign(node) {
 			continue
@@ -263,15 +266,6 @@ fn (mut s FfiLifetimeScan) check_call_sites(unsupported_modes string) {
 			id:     flat.NodeId(index)
 			module: s.module_of(index, node)
 			name:   node.value
-		}
-		if unsupported_modes != '' {
-			key := '${int(decl.id)}:unsupported'
-			if !s.reported[key] {
-				s.reported[key] = true
-				s.tc.record_transform_error(decl.id, node.pos,
-					'@[ffi] `${decl.name}` cannot be proven: compiler-generated ${unsupported_modes} operations cannot be proven safe')
-			}
-			continue
 		}
 		s.check_body_calls(decl, node)
 	}
