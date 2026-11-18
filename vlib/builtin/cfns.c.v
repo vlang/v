@@ -19,25 +19,25 @@ __global C.environ &&char
 __global C._wyp &u64
 
 // <string.h>
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.memcpy(dest voidptr, const_src voidptr, n uint) voidptr
 
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n uint) i32
 
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.memmove(dest voidptr, const_src voidptr, n uint) voidptr
 
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.memset(str voidptr, c i32, n uint) voidptr
 
-@[noalloc]
+@[noalloc; nosuspend]
 fn C.memchr(str voidptr, c i32, n uint) voidptr
 
-@[noalloc]
+@[noalloc; nosuspend]
 fn C.memmem(haystack voidptr, haystacklen uint, needle voidptr, needlelen uint) voidptr
 
-@[noalloc]
+@[noalloc; nosuspend]
 fn C.mempcpy(dest voidptr, src voidptr, n uint) voidptr
 
 @[markused; trusted]
@@ -51,7 +51,7 @@ fn C.malloc(uint) voidptr
 @[markused]
 fn C.realloc(a voidptr, b uint) voidptr
 
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.free(ptr voidptr)
 
 @[markused]
@@ -86,7 +86,7 @@ fn C.exit(code i32)
 @[markused]
 fn C.qsort(base voidptr, items uint, item_size uint, cb C.qsort_callback_func)
 
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.strlen(const_s &char) uint
 
 @[trusted]
@@ -201,7 +201,7 @@ fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 fn C._execvp(cmd_path &char, args voidptr) i32
 
 // The generated test runner compares environment values without V AST calls.
-@[markused; noalloc]
+@[markused; noalloc; nosuspend]
 fn C.strcmp(const_s1 &char, const_s2 &char) i32
 
 @[trusted]

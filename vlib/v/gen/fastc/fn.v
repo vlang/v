@@ -550,6 +550,7 @@ fn (mut g Parser) skip_attribute() !bool {
 	mut condition_value := true
 	mut at_item_start := true
 	mut has_noalloc := false
+	mut has_nosuspend := false
 	for depth > 0 {
 		if g.tok == .eof {
 			return g.unsupported('unfinished attribute')
@@ -572,6 +573,9 @@ fn (mut g Parser) skip_attribute() !bool {
 		if depth == 1 && at_item_start && g.tok == .name && g.lit == 'noalloc' {
 			has_noalloc = true
 		}
+		if depth == 1 && at_item_start && g.tok == .name && g.lit == 'nosuspend' {
+			has_nosuspend = true
+		}
 		if depth == 1 && at_item_start && g.tok == .key_unsafe {
 			// `@[unsafe]` marks the whole function body as an unsafe region.
 			g.next_declaration_is_unsafe = true
@@ -588,7 +592,7 @@ fn (mut g Parser) skip_attribute() !bool {
 		}
 		g.next()
 	}
-	if has_noalloc {
+	if has_noalloc || has_nosuspend {
 		// FastC emits C without the allocation-contract checker. Only foreign
 		// declarations may carry trusted contracts on this backend.
 		mut look := g.s
@@ -600,6 +604,11 @@ fn (mut g Parser) skip_attribute() !bool {
 			next = look.scan()
 		}
 		if next != .key_fn || look.scan() != .name || look.lit != 'C' || look.scan() != .dot {
+			if has_noalloc && has_nosuspend {
+				return g.unsupported('@[noalloc, nosuspend] contracts; use the C backend')
+			} else if has_nosuspend {
+				return g.unsupported('@[nosuspend] contracts; use the C backend')
+			}
 			return g.unsupported('@[noalloc] contracts; use the C backend')
 		}
 	}
