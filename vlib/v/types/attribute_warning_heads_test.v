@@ -1,5 +1,10 @@
 module types
 
+fn test_builtin_attribute_names_include_orm_immutable() {
+	assert is_builtin_attribute_name('immutable')
+	assert !is_builtin_attribute_name('Immutable')
+}
+
 fn test_attribute_warning_heads_distinguish_names_from_metadata_and_arguments() {
 	source := "@[foo; foo_bar; Call('first', named: 'value', 'second'); 'legacy']\nfn example() {}"
 	heads := attribute_warning_heads(source)

@@ -2,7 +2,7 @@ import db.sqlite
 
 struct InsertOnlyUser {
 	id int @[primary]
-	creator string @[sql_insert_only]
+	creator string @[immutable]
 	name string
 }
 

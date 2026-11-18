@@ -2,7 +2,7 @@
 
 import os
 
-fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() ! {
+fn test_immutable_diagnostics_in_compile_and_check_modes() ! {
 	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_parity_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -12,7 +12,7 @@ fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() ! {
 		module_name := 'fixture_${fixture}'
 		module_dir := os.join_path(root, module_name)
 		os.mkdir(module_dir)!
-		source := os.read_file(os.join_path(fixtures, 'orm_sql_insert_only_${fixture}.vv'))!
+		source := os.read_file(os.join_path(fixtures, 'orm_immutable_${fixture}.vv'))!
 		os.write_file(os.join_path(module_dir, '${fixture}.v'), 'module ${module_name}\n\n' +
 			source.replace_once('fn main()', 'pub fn check() !'))!
 		imports << 'import ${module_name} as _'
@@ -43,7 +43,7 @@ fn check_${name}() ! {
 
 struct InsertOnlyUser {
  id int @[primary]
- creator string @[sql_insert_only]
+ creator string @[immutable]
  name string
 }
 pub fn check() ! {
@@ -51,7 +51,7 @@ ${calls.join('\n')}
 }
 ")!
 	imports << 'import fixture_grouped as _'
-	attribute_source := os.read_file(os.join_path(fixtures, 'orm_sql_insert_only_attribute.vv'))!
+	attribute_source := os.read_file(os.join_path(fixtures, 'orm_immutable_attribute.vv'))!
 	os.write_file(os.join_path(root, 'attribute.v'), attribute_source.replace_once('module main',
 		'module main\n\n${imports.join('\n')}\n'))!
 
@@ -74,7 +74,7 @@ ${calls.join('\n')}
 	}
 }
 
-fn test_sql_insert_only_accepts_valid_dynamic_assignments() {
+fn test_immutable_accepts_valid_dynamic_assignments() {
 	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_valid_assignments_${os.getpid()}')
 	grouped_dir := os.join_path(root, 'grouped_assignments')
 	os.mkdir_all(grouped_dir)!
@@ -85,7 +85,7 @@ import orm
 import grouped_assignments
 struct InsertOnlyUser {
  id int @[primary]
- creator string @[sql_insert_only]
+ creator string @[immutable]
  name string
 }
 
@@ -111,7 +111,7 @@ fn main() {
 import db.sqlite
 struct InsertOnlyUser {
  id int @[primary]
- creator string @[sql_insert_only]
+ creator string @[immutable]
  name string
  active bool
 }
