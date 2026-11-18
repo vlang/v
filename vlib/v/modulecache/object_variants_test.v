@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import crypto.sha256
 import time
 
 const object_lease_test_dir = 'V3_TEST_OBJECT_LEASE_DIR'
@@ -10,7 +11,7 @@ fn testsuite_begin() {
 	if root == '' {
 		return
 	}
-	manager := Manager{ dir: root, enabled: true }
+	manager := Manager{ dir: os.join_path(root, 'config'), enabled: true }
 	mut lease := manager.begin_object_cache_build() or { exit(2) }
 	os.write_file(os.join_path(root, 'reader-ready'), '') or { exit(3) }
 	for _ in 0 .. 3000 {
@@ -27,7 +28,7 @@ fn test_retired_objects_are_reclaimed_after_the_last_reader_releases_them() ! {
 	root := os.join_path(os.vtmp_dir(), 'v3_object_variant_gc_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	defer { os.rmdir_all(root) or {} }
-	manager := Manager{ dir: root, enabled: true }
+	manager := Manager{ dir: os.join_path(root, 'config'), enabled: true }
 	mut writer := manager.begin_object_cache_build()!
 	source := os.join_path(root, 'foo.v')
 	os.write_file(source, 'module foo\n')!
@@ -45,6 +46,16 @@ fn test_retired_objects_are_reclaimed_after_the_last_reader_releases_them() ! {
 		entries << entry
 	}
 	assert manager.object_variant_keys('foo', [source], 'flags').len == max_object_variants
+
+	// Retired artifacts may also have a hard link in the shared pool.
+	pool := os.join_path(root, '.shared_objects')
+	os.mkdir_all(pool)!
+	key := sha256.hexhash('retired')
+	pool_base := os.join_path(pool, key)
+	os.link(entries[0].object, pool_base + '.o') or { os.cp(entries[0].object, pool_base + '.o')! }
+	os.link(entries[0].c_source, pool_base + '.c') or { os.cp(entries[0].c_source, pool_base + '.c')! }
+	os.write_file(pool_base + '.sha256', 'stamp')!
+	os.write_file(entries[0].object + '.pool', key)!
 
 	mut reader := os.new_process(os.executable())
 	mut environment := os.environ()
@@ -68,6 +79,7 @@ fn test_retired_objects_are_reclaimed_after_the_last_reader_releases_them() ! {
 	writer.release()
 	mut next_build := manager.begin_object_cache_build()!
 	assert os.exists(entries[0].object)
+	assert os.exists(pool_base + '.o')
 	next_build.release()
 
 	os.write_file(os.join_path(root, 'release-reader'), '')!
@@ -75,6 +87,11 @@ fn test_retired_objects_are_reclaimed_after_the_last_reader_releases_them() ! {
 	assert reader.code == 0
 	mut final_build := manager.begin_object_cache_build()!
 	defer { final_build.release() }
+	assert !os.exists(pool_base + '.o')
+	assert !os.exists(pool_base + '.c')
+	assert !os.exists(pool_base + '.sha256')
+	assert !os.exists(entries[0].object + '.pool')
+
 	for entry in entries[..3] {
 		assert !os.exists(entry.object)
 		assert !os.exists(entry.object_stamp)

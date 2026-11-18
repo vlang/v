@@ -1677,15 +1677,35 @@ fn (m &Manager) collect_retired_object_variants(retired string) {
 			object := os.join_path(m.dir, name)
 			os.rm(object) or { if os.exists(object) { continue } }
 			os.rm(object + '.stamp') or { if os.exists(object + '.stamp') { continue } }
-			os.rm(os.join_path(m.dir, stem + '.c')) or {
-				if os.exists(os.join_path(m.dir, stem + '.c')) {
-					continue
-				}
-			}
+			source := os.join_path(m.dir, stem + '.c')
+			os.rm(source) or { if os.exists(source) { continue } }
+			m.retire_shared_object_copy(object)
 		}
 		os.rm(os.join_path(retired, name)) or {}
 	}
 	os.rmdir(retired) or {}
+}
+
+// The shared pool is an optional cache. Linked artifacts in other
+// configurations remain valid even if a concurrent lookup misses this copy.
+fn (m &Manager) retire_shared_object_copy(object string) {
+	marker := object + '.pool'
+	key := os.read_file(marker) or { return }
+	defer { os.rm(marker) or {} }
+	if key.len != 64 || !key.bytes().all(it.is_hex_digit()) {
+		return
+	}
+	base := os.join_path(os.dir(m.dir), '.shared_objects', key)
+	for extension in ['.o', '.c'] {
+		if info := os.stat(base + extension) {
+			if info.nlink > 1 {
+				return
+			}
+		}
+	}
+	os.rm(base + '.sha256') or {}
+	os.rm(base + '.o') or {}
+	os.rm(base + '.c') or {}
 }
 
 fn object_variant_key(source_hash string, dependency_inputs map[string]string) string {
