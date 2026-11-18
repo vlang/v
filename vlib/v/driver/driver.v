@@ -4311,131 +4311,115 @@ fn write_v3_c_project(project_dir string, c_source string, c_compiler string, pl
 	}
 }
 
-struct V3JsCompatStatement {
-	start int
-	end   int
-	code  string
+struct V3JsCompatToken {
+	kind         compiler_token.Token
+	start        int
+	end          int
+	interpolated bool
 }
 
-// Mask comments while preserving the offsets used to order the statements.
-fn v3_js_compat_source_without_comments(source string, input_file string) string {
+fn (tok V3JsCompatToken) text(source string) string {
+	return source[tok.start..tok.end]
+}
+
+// Retain the spelling of string arguments and mask comments for the global alias scan.
+fn scan_v3_js_compat_source(source string, input_file string) ([]V3JsCompatToken, string) {
 	mut files := compiler_token.FileSet.new()
 	file := files.add_file(input_file, source.len)
-	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments | .skip_interpolation)
+	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments)
 	lex.init(file, source)
+	mut tokens := []V3JsCompatToken{}
 	mut code := source.bytes()
 	for {
 		kind := lex.scan()
 		if kind == .eof {
 			break
 		}
+		start := lex.pos
 		if kind == .comment {
-			for i in lex.pos .. lex.offset {
+			for i in start .. lex.offset {
 				if code[i] !in [10, 13] {
 					code[i] = 32
 				}
 			}
+			continue
 		}
+		interpolated := kind == .string && lex.in_str_inter
+		if interpolated {
+			// Do not collect names from inside an interpolated string, even
+			// when the interpolation itself contains nested string literals.
+			for lex.in_str_inter || lex.in_str_incomplete {
+				if lex.scan() == .eof {
+					break
+				}
+			}
+		}
+		tokens << V3JsCompatToken{kind, start, lex.offset, interpolated}
 	}
-	return code.bytestr()
+	return tokens, code.bytestr()
+}
+
+fn v3_js_compat_quoted_literal(source string, tok V3JsCompatToken) ?string {
+	if tok.kind != .string {
+		return none
+	}
+	literal := tok.text(source)
+	if literal.len < 2 || literal[0] !in [`'`, `"`]
+		|| literal[literal.len - 1] != literal[0] {
+		return none
+	}
+	return literal
 }
 
 fn emit_v3_js_compat_program(input_file string, output_file string) ! {
-	source := v3_js_compat_source_without_comments(os.read_file(input_file)!, input_file)
+	source := os.read_file(input_file)!
+	tokens, source_without_comments := scan_v3_js_compat_source(source, input_file)
 	mut output := strings.new_builder(source.len)
-	emitted_global := emit_v3_js_exported_global_aliases(source, mut output)
-	mut statements := []V3JsCompatStatement{}
-	mut offset := 0
-	double_quote := [u8(34)].bytestr()
-	js_eval_prefix := 'JS.eval(' + double_quote
-	js_eval_suffix := double_quote + '.str'
-	for offset < source.len {
-		relative_start := source[offset..].index(js_eval_prefix) or { break }
-		start := offset + relative_start
-		payload_start := start + js_eval_prefix.len
-		relative_end := source[payload_start..].index(js_eval_suffix) or {
-			return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
+	emitted_global := emit_v3_js_exported_global_aliases(source_without_comments, mut output)
+	mut emitted_statement := false
+	for i, tok in tokens {
+		if tok.kind != .name || (i > 0 && tokens[i - 1].kind == .dot) {
+			continue
 		}
-		payload_end := payload_start + relative_end
-		offset = payload_end + js_eval_suffix.len
-		statements << V3JsCompatStatement{start, offset, source[payload_start..payload_end]}
-	}
-	mut line_start := 0
-	for line in source.split('\n') {
-		mut line_offset := 0
-		for line_offset < line.len {
-			statement := v3_js_literal_println_statement(line, line_start, line_offset) or { break }
-			statements << statement
-			line_offset = statement.end - line_start
+		match tok.text(source) {
+			'println' {
+				if i + 3 >= tokens.len || tokens[i + 1].kind != .lpar
+					|| tokens[i + 2].interpolated || tokens[i + 3].kind != .rpar {
+					continue
+				}
+				argument := v3_js_compat_quoted_literal(source, tokens[i + 2]) or { continue }
+				if argument.contains_any('\r\n') {
+					continue
+				}
+				output.writeln('console.log(${argument});')
+				emitted_statement = true
+			}
+			'JS' {
+				if i + 4 >= tokens.len || tokens[i + 1].kind != .dot
+					|| tokens[i + 2].kind != .name || tokens[i + 2].text(source) != 'eval'
+					|| tokens[i + 3].kind != .lpar {
+					continue
+				}
+				argument := v3_js_compat_quoted_literal(source, tokens[i + 4]) or { continue }
+				if argument[0] != `"` {
+					continue
+				}
+				if i + 7 >= tokens.len || tokens[i + 5].kind != .dot
+					|| tokens[i + 6].kind != .name || tokens[i + 6].text(source) != 'str'
+					|| tokens[i + 7].kind != .rpar {
+					return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
+				}
+				output.writeln(argument[1..argument.len - 1])
+				emitted_statement = true
+			}
+			else {}
 		}
-		line_start += line.len + 1
 	}
-	if !emitted_global && statements.len == 0 {
+	if !emitted_global && !emitted_statement {
 		return error('the V3 JavaScript compatibility generator currently supports only JS.eval and literal println')
-	}
-	statements.sort(a.start < b.start)
-	mut previous_end := 0
-	for statement in statements {
-		// Ignore apparent println calls inside a JS.eval payload.
-		if statement.start >= previous_end {
-			output.writeln(statement.code)
-			previous_end = statement.end
-		}
 	}
 	os.mkdir_all(os.dir(output_file))!
 	os.write_file(output_file, output.str())!
-}
-
-fn v3_js_literal_println_statement(line string, line_start int, from int) ?V3JsCompatStatement {
-	prefix := 'println('
-	mut offset := from
-	for offset < line.len {
-		relative := line[offset..].index(prefix) or { return none }
-		start := offset + relative
-		if start > 0 {
-			previous := line[start - 1]
-			if previous == `.` || previous == `_` || (previous >= `0` && previous <= `9`)
-				|| (previous >= `A` && previous <= `Z`) || (previous >= `a` && previous <= `z`) {
-				offset = start + prefix.len
-				continue
-			}
-		}
-		mut argument_start := start + prefix.len
-		for argument_start < line.len && line[argument_start] in [` `, `\t`] {
-			argument_start++
-		}
-		if argument_start >= line.len || line[argument_start] !in [`'`, `"`] {
-			offset = start + prefix.len
-			continue
-		}
-		quote := line[argument_start]
-		mut escaped := false
-		for i := argument_start + 1; i < line.len; i++ {
-			ch := line[i]
-			if escaped {
-				escaped = false
-				continue
-			}
-			if ch == `\\` {
-				escaped = true
-				continue
-			}
-			if ch != quote {
-				continue
-			}
-			mut close := i + 1
-			for close < line.len && line[close] in [` `, `\t`] {
-				close++
-			}
-			if close < line.len && line[close] == `)` {
-				argument := line[argument_start..i + 1]
-				return V3JsCompatStatement{line_start + start, line_start + close + 1, 'console.log(${argument});'}
-			}
-			break
-		}
-		offset = start + prefix.len
-	}
-	return none
 }
 
 fn emit_v3_js_exported_global_aliases(source string, mut output strings.Builder) bool {

@@ -168,3 +168,25 @@ fn test_js_backend_ignores_calls_in_comments() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'live\nhttps://example.test\nafter\nfrom JS\nlast'
 }
+
+fn test_js_backend_ignores_calls_in_string_literals() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('string_literals')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := 'fn main() {
+	println(\'live\') _ = "println(\'ghost\')"
+	_ = "https://example.test/println(\'url\')" println(\'after URL\')
+	_ = "/* println(\'comment-like\') */"
+	_ = r\'JS.eval("console.log(123);".str)\'
+	_ = "\${\'}\'} println(\'interpolated\')"
+	JS.eval("console.log(\'from JS\');".str) println(\'last\')
+}'
+	run := js_run_program(root, 'string_literals.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'live\nafter URL\nfrom JS\nlast'
+}
