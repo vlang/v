@@ -71,7 +71,17 @@ pub fn decompress_with_callback(data []u8, cb DecompressCallback, userdata voidp
 		unsafe { metadata.free() }
 	}
 	mut recent_distances := [16, 15, 11, 4]
+	defer {
+		unsafe {
+			recent_distances.free()
+		}
+	}
 	mut distance_index := [0]
+	defer {
+		unsafe {
+			distance_index.free()
+		}
+	}
 	mut sink := CbSink{
 		cb:       cb
 		userdata: userdata
@@ -107,7 +117,13 @@ pub fn decompress_with_callback(data []u8, cb DecompressCallback, userdata voidp
 			else { return error('brotli: invalid meta-block nibble code') }
 		}
 		if mnibbles == 0 {
-			metadata << decode_empty_meta_block(mut br)!
+			empty_block := decode_empty_meta_block(mut br)!
+			defer {
+				unsafe {
+					empty_block.free()
+				}
+			}
+			metadata << empty_block
 			if is_last {
 				if !br.padding_bits_are_zero() {
 					return error('brotli: non-zero padding after last metadata meta-block')
@@ -197,6 +213,23 @@ fn decode_uncompressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen 
 	return true
 }
 
+// free_prefix_decoders releases decoder tables built while reading one
+// meta-block header. Every table is freshly built per block, so freeing
+// each element once is safe; empty slots from an early error return are
+// skipped, which is what makes one deferred call cover every exit.
+fn free_prefix_decoders(mut decs []PrefixDecoder) {
+	for i in 0 .. decs.len {
+		if decs[i].entries.len > 0 {
+			decs[i].entries.free()
+		}
+		if decs[i].flat.len > 0 {
+			unsafe {
+				decs[i].flat.free()
+			}
+		}
+	}
+}
+
 fn decode_compressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen int, window_size int,
 	dictionary []u8, mut recent_distances []int, mut distance_index []int, mut sink CbSink) !bool {
 	start_len := out.len
@@ -204,6 +237,35 @@ fn decode_compressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen in
 	mut block_type_decs := []PrefixDecoder{len: 3}
 	mut block_count_decs := []PrefixDecoder{len: 3}
 	mut block_remaining := [0, 0, 0]
+	mut literal_context_modes := []int{}
+	mut literal_context_map := []int{}
+	mut distance_context_map := []int{}
+	mut literal_trees := []PrefixDecoder{}
+	mut insert_copy_trees := []PrefixDecoder{}
+	mut distance_trees := []PrefixDecoder{}
+	mut prev_block := [1, 1, 1]
+	mut curr_block := [0, 0, 0]
+	// Every table above is function-local: the trees and maps are freshly
+	// built while reading this block's header and die with it, so one
+	// deferred free covers every exit, including an early error or an
+	// early stop. Empty slots from an aborted header read are skipped by
+	// the length guards.
+	defer {
+		unsafe {
+			nbltypes.free()
+			block_remaining.free()
+			literal_context_modes.free()
+			literal_context_map.free()
+			distance_context_map.free()
+			prev_block.free()
+			curr_block.free()
+		}
+		free_prefix_decoders(mut block_type_decs)
+		free_prefix_decoders(mut block_count_decs)
+		free_prefix_decoders(mut literal_trees)
+		free_prefix_decoders(mut insert_copy_trees)
+		free_prefix_decoders(mut distance_trees)
+	}
 	for i in 0 .. 3 {
 		nbltypes[i] = read_trees_count(mut r)!
 		if nbltypes[i] >= 2 {
@@ -220,12 +282,10 @@ fn decode_compressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen in
 	npostfix := int(r.read_bits(2)!)!
 	ndirect_field := int(r.read_bits(4)!)!
 	ndirect := int(u32(ndirect_field) << u32(npostfix))
-	mut literal_context_modes := []int{}
 	for _ in 0 .. nbltypes_l {
 		literal_context_modes << int(r.read_bits(2)!)!
 	}
 	ntrees_l := read_trees_count(mut r)!
-	mut literal_context_map := []int{}
 	if ntrees_l >= 2 {
 		literal_context_map = read_context_map(mut r, 64 * nbltypes_l, ntrees_l)!
 	} else {
@@ -235,7 +295,6 @@ fn decode_compressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen in
 		}
 	}
 	ntrees_d := read_trees_count(mut r)!
-	mut distance_context_map := []int{}
 	if ntrees_d >= 2 {
 		distance_context_map = read_context_map(mut r, 4 * nbltypes_d, ntrees_d)!
 	} else {
@@ -244,21 +303,16 @@ fn decode_compressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen in
 			distance_context_map[i] = 0
 		}
 	}
-	mut literal_trees := []PrefixDecoder{}
 	for _ in 0 .. ntrees_l {
 		literal_trees << read_prefix_tree(mut r, 256)!
 	}
-	mut insert_copy_trees := []PrefixDecoder{}
 	for _ in 0 .. nbltypes_i {
 		insert_copy_trees << read_prefix_tree(mut r, 704)!
 	}
 	distance_alphabet_size := 16 + ndirect + (48 << npostfix)
-	mut distance_trees := []PrefixDecoder{}
 	for _ in 0 .. ntrees_d {
 		distance_trees << read_prefix_tree(mut r, distance_alphabet_size)!
 	}
-	mut prev_block := [1, 1, 1]
-	mut curr_block := [0, 0, 0]
 	mut produced := 0
 	mut command_count := 0
 	mut p1 := u8(0)
