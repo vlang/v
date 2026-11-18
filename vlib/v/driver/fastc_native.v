@@ -93,30 +93,88 @@ $if !skip_fastc ? {
 			if bench_phases {
 				eprintln('fastc-phase native.bridge ${bridge_sw.elapsed().microseconds()}us')
 			}
-			pieces := v3_fastc_native_program_pieces(generation, &bridge)
-			if keep_c {
-				fastc.write_c_pieces(keep_c_output_file(bin_file), pieces) or {
-					return V3FastCCompileResult{ command: 'FastC native bridge', output: err.msg() }
-				}
+			if generation.units.native_file_headers.len == 0 {
+				return v3_fastc_native_compile_program(generation, &bridge, bin_file, prefs, flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, bridge_sw, mut prestarted, mut validation)
 			}
-			mut program_flags := tcc_cached_main_flags(v3_tcc_dylib_native_flags(flags))
-			program_flags << v3_tcc_dylib_sdk_flags(os.dir(bridge.library), bridge.dependencies)
-			program_flags << bridge.library
-			program_deps := v3_fastc_native_program_dependencies(pieces, generation.units, program_flags, sdk, prefs.target, fastc.fastc_tcc_job_count(prefs), mut validation) or {
-				return V3FastCCompileResult{ command: 'FastC native dependencies', output: err.msg() }
+			// A module can read a native constant in a file that has headers of its
+			// own. The headers that its other files include for declared functions then
+			// stay with the native owner, as long as TinyCC accepts the program without
+			// them. When it does not, the constant comes from one of those headers: the
+			// program is built with the headers of the module, and the next build starts
+			// that way.
+			mut file_headers := bridge.sources.clone()
+			for header in generation.units.native_file_headers {
+				file_headers << os.real_path(header)
+			}
+			strict := V3FastcNativeBridge{
+				functions:    bridge.functions
+				adapters:     bridge.adapters
+				sources:      file_headers
+				dependencies: bridge.dependencies
+				library:      bridge.library
+			}
+			mut marker_key := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-module-headers-v1'.bytes())
+			marker_key = c_hash_bytes(marker_key, file_headers.join('\x00').bytes())
+			marker_key = c_hash_bytes(marker_key, flags.join('\x00').bytes())
+			marker := os.join_path(os.vtmp_dir(), 'v3_fastc_native', 'module_headers_${marker_key.hex()}')
+			module_first := os.exists(marker)
+			first_bridge := if module_first { &bridge } else { &strict }
+			second_bridge := if module_first { &strict } else { &bridge }
+			first := v3_fastc_native_compile_program(generation, first_bridge, bin_file, prefs, flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, bridge_sw, mut prestarted, mut validation)
+			if first.success || first.native_inputs_changed {
+				return first
 			}
 			if bench_phases {
-				eprintln('fastc-phase native.program_dependencies ${bridge_sw.elapsed().microseconds()}us')
+				eprintln('fastc-phase native.module_headers ${bridge_sw.elapsed().microseconds()}us first=${module_first}')
 			}
-			program_flags << v3_tcc_dylib_program_link_flags(flags, program_deps, sdk)
-			// TinyCC must reopen its own selected header branches on every build.
-			// The native owner's dependency manifest validates only the native library.
-
-			// Native inputs rule out executable caching; the payload object names none of them.
-			jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted, mut validation)
+			mut no_prestarted := fastc.FastcPrestartedCUnits{}
+			second := v3_fastc_native_compile_program(generation, second_bridge, bin_file, prefs, flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, bridge_sw, mut no_prestarted, mut validation)
+			if second.success {
+				if module_first {
+					os.rm(marker) or {}
+				} else {
+					os.write_file(marker, 'module\n') or {}
+				}
+				return second
+			}
+			if second.native_inputs_changed || !module_first {
+				return second
+			}
+			// Neither program compiles: report the one with the headers of the module.
+			if keep_c {
+				fastc.write_c_pieces(keep_c_output_file(bin_file), v3_fastc_native_program_pieces(generation, &bridge)) or {}
+			}
+			return first
 		}
 		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted, mut validation)
+	}
+
+	// v3_fastc_native_compile_program compiles and links the TinyCC program of a
+	// generation whose native code is in `bridge`, without the headers that
+	// `bridge.sources` names.
+	fn v3_fastc_native_compile_program(generation &fastc.GenerationResult, bridge &V3FastcNativeBridge, bin_file string, prefs &pref.Preferences, flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, bridge_sw time.StopWatch, mut prestarted fastc.FastcPrestartedCUnits, mut validation V3FastcNativeValidation) V3FastCCompileResult {
+		pieces := v3_fastc_native_program_pieces(generation, bridge)
+		if keep_c {
+			fastc.write_c_pieces(keep_c_output_file(bin_file), pieces) or {
+				return V3FastCCompileResult{ command: 'FastC native bridge', output: err.msg() }
+			}
+		}
+		mut program_flags := tcc_cached_main_flags(v3_tcc_dylib_native_flags(flags))
+		program_flags << v3_tcc_dylib_sdk_flags(os.dir(bridge.library), bridge.dependencies)
+		program_flags << bridge.library
+		program_deps := v3_fastc_native_program_dependencies(pieces, generation.units, program_flags, sdk, prefs.target, fastc.fastc_tcc_job_count(prefs), mut validation) or {
+			return V3FastCCompileResult{ command: 'FastC native dependencies', output: err.msg() }
+		}
+		if os.getenv('FASTC_BENCH_PHASES') != '' {
+			eprintln('fastc-phase native.program_dependencies ${bridge_sw.elapsed().microseconds()}us')
+		}
+		program_flags << v3_tcc_dylib_program_link_flags(flags, program_deps, sdk)
+		// TinyCC must reopen its own selected header branches on every build.
+		// The native owner's dependency manifest validates only the native library.
+
+		// Native inputs rule out executable caching; the payload object names none of them.
+		jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
+		return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted, mut validation)
 	}
 
 	// V3FastcNativeValidation hashes the inputs of reused native manifests beside

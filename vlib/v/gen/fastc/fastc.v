@@ -1322,6 +1322,10 @@ pub mut:
 	// native_exports declares the exported V functions among those declarations:
 	// a C binding can still name them.
 	native_exports string
+	// native_file_headers are like native_headers, in a module whose native
+	// constants are all read by files with headers of their own. The driver
+	// falls back to the module's headers when TinyCC needs one of these.
+	native_file_headers []string
 	// The head pieces from native_decl_start up to native_decl_end declare the
 	// constants and types of the V program, between the native headers and the
 	// native sources that may name some of them.
@@ -3069,7 +3073,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		native_symbols = native_context.references.keys()
 	}
-	units.native_headers = fastc_native_function_only_headers(sources, functions, declared_types, native_context)
+	units.native_headers, units.native_file_headers = fastc_native_function_only_headers(sources,
+		functions, declared_types, native_context)
 	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
 		prefs.vroot) + fastc_gc_thread_redirects(prefs)
 	if prefs.target_libc_headers {
@@ -3557,33 +3562,42 @@ fn fastc_conditional_directives_only(pieces []string) bool {
 }
 
 // Only V tokens establish ownership. Native constants or undeclared native
-// types keep their module's headers in the consumer for the C compiler. A file
-// with headers of its own takes those names from them, and keeps only them: a
-// header of another file in its module stays with the native owner.
-fn fastc_native_function_only_headers(sources []FastcSourceFile, functions map[string]FastcFunctionSignature, declared_types map[u32]bool, context FastcNativeSourceContext) []string {
+// types keep their module's headers in the consumer for the C compiler: the
+// first result lists the headers of files that need only functions declared in
+// V, in modules without such names. The second lists more of them, in modules
+// where every such name is in a file with headers of its own. Those headers
+// probably declare it, but only the C compiler can tell, so the driver keeps
+// the second list with the native owner only while TinyCC accepts the program.
+fn fastc_native_function_only_headers(sources []FastcSourceFile, functions map[string]FastcFunctionSignature, declared_types map[u32]bool, context FastcNativeSourceContext) ([]string, []string) {
 	mut needs_headers := map[string]bool{}
+	mut needs_other_headers := map[string]bool{}
 	for source in sources {
-		if context.files_with_headers[source.path] {
-			continue
-		}
 		for name in context.references_by_file[source.path] {
 			if 'C.' + name !in functions
 				&& !fastc_source_type_key_exists(declared_types, '#Cstruct#' + name)
 				&& !fastc_source_type_key_exists(declared_types, '#Ctypedef#' + name) {
 				needs_headers[source.header.module_name] = true
+				if !context.files_with_headers[source.path] {
+					needs_other_headers[source.header.module_name] = true
+				}
 			}
 		}
 	}
 	mut headers := []string{}
+	mut file_headers := []string{}
 	for source in sources {
-		if needs_headers[source.header.module_name] { continue }
+		if needs_other_headers[source.header.module_name] { continue }
 		references := context.references_by_file[source.path]
 		if references.len == 0 || references.any('C.' + it !in functions) { continue }
 		for header in context.local_headers[source.path] {
-			if header !in headers { headers << header }
+			if needs_headers[source.header.module_name] {
+				if header !in file_headers { file_headers << header }
+			} else if header !in headers {
+				headers << header
+			}
 		}
 	}
-	return headers
+	return headers, file_headers.filter(it !in headers)
 }
 
 fn fastc_native_bridge_declarations(functions map[string]FastcFunctionSignature, context FastcNativeSourceContext, vroot string) map[string]string {

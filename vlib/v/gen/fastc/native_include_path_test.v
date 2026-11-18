@@ -62,6 +62,44 @@ fn test_native_owner_keeps_a_header_beside_a_file_with_its_own_constants() ! {
 	assert run.exit_code == 0, run.output
 }
 
+fn test_native_constant_from_another_file_header_keeps_the_module_headers() ! {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_native_module_constants_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'native_module_constants' }")!
+	os.write_file(os.join_path(root, 'native.h'), '#define NATIVE_LIMIT 4\nstatic int native_value(void) { return 42; }\n')!
+	os.write_file(os.join_path(root, 'main.c.v'), 'module main\n' +
+		'#flag darwin -framework Foundation\n' + '#include "@VMODROOT/native.h"\n' +
+		'fn C.native_value() i32\n' +
+		'fn main() {\n\tassert C.native_value() == 42\n\tassert native_limit() == 4\n}\n')!
+	// This file has a header of its own, but its constant comes from the header
+	// of the other file: only the C compiler can tell.
+	os.write_file(os.join_path(root, 'limits.c.v'), 'module main\n' + '#include <stdio.h>\n' +
+		'fn native_limit() int {\n\treturn C.NATIVE_LIMIT\n}\n')!
+	program := os.join_path(root, 'program')
+	previous_phases := os.getenv_opt('FASTC_BENCH_PHASES')
+	os.setenv('FASTC_BENCH_PHASES', '1', true)
+	defer {
+		if value := previous_phases {
+			os.setenv('FASTC_BENCH_PHASES', value, true)
+		} else {
+			os.unsetenv('FASTC_BENCH_PHASES')
+		}
+	}
+	// TinyCC rejects the program without the other file's header; the build keeps
+	// the headers of the module, and the next build starts with them.
+	for expect_retry in [true, false] {
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('native.module_headers') == expect_retry, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_native_include_paths_resolve_dir_like_the_emitted_directive() {
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_native_include_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'webgl'))!
