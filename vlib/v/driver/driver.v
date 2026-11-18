@@ -4311,108 +4311,148 @@ fn write_v3_c_project(project_dir string, c_source string, c_compiler string, pl
 	}
 }
 
-struct V3JsCompatToken {
-	kind         compiler_token.Token
-	start        int
-	end          int
-	interpolated bool
-}
-
-fn (tok V3JsCompatToken) text(source string) string {
-	return source[tok.start..tok.end]
-}
-
-// Retain the spelling of string arguments and mask comments for the global alias scan.
-fn scan_v3_js_compat_source(source string, input_file string) ([]V3JsCompatToken, string) {
+// Mask comments while preserving the line boundaries used by the global alias scan.
+fn v3_js_compat_source_without_comments(source string, input_file string) string {
 	mut files := compiler_token.FileSet.new()
 	file := files.add_file(input_file, source.len)
-	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments)
+	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments | .skip_interpolation)
 	lex.init(file, source)
-	mut tokens := []V3JsCompatToken{}
 	mut code := source.bytes()
 	for {
 		kind := lex.scan()
 		if kind == .eof {
 			break
 		}
-		start := lex.pos
 		if kind == .comment {
-			for i in start .. lex.offset {
+			for i in lex.pos .. lex.offset {
 				if code[i] !in [10, 13] {
 					code[i] = 32
 				}
 			}
-			continue
 		}
-		interpolated := kind == .string && lex.in_str_inter
-		if interpolated {
-			// Do not collect names from inside an interpolated string, even
-			// when the interpolation itself contains nested string literals.
-			for lex.in_str_inter || lex.in_str_incomplete {
-				if lex.scan() == .eof {
-					break
-				}
-			}
-		}
-		tokens << V3JsCompatToken{kind, start, lex.offset, interpolated}
 	}
-	return tokens, code.bytestr()
+	return code.bytestr()
 }
 
-fn v3_js_compat_quoted_literal(source string, tok V3JsCompatToken) ?string {
-	if tok.kind != .string {
+fn v3_js_compat_quoted_literal(source string, node &flat.Node) ?string {
+	if node.kind != .string_literal || node.children_count != 0 || !node.pos.is_valid() {
 		return none
 	}
-	literal := tok.text(source)
-	if literal.len < 2 || literal[0] !in [`'`, `"`]
-		|| literal[literal.len - 1] != literal[0] {
+	start := int(node.pos.offset)
+	end := int(node.pos.end)
+	if start < 0 || end > source.len || end - start < 2 {
+		return none
+	}
+	literal := source[start..end]
+	if literal[0] !in [`'`, `"`] || literal[literal.len - 1] != literal[0] {
 		return none
 	}
 	return literal
 }
 
+fn v3_js_compat_call(a &flat.FlatAst, node &flat.Node, source string) ?string {
+	if node.kind != .call || node.children_count != 2 {
+		return none
+	}
+	callee := a.child_node(node, 0)
+	arg := a.child_node(node, 1)
+	if callee.kind == .ident && callee.value == 'println' {
+		literal := v3_js_compat_quoted_literal(source, arg) or { return none }
+		if literal.contains_any('\r\n') {
+			return none
+		}
+		return 'console.log(${literal});'
+	}
+	if callee.kind == .selector && callee.value == 'eval' && callee.children_count == 1 {
+		receiver := a.child_node(callee, 0)
+		if receiver.kind == .ident && receiver.value == 'JS' && arg.kind == .selector
+			&& arg.value == 'str' && arg.children_count == 1 {
+			literal := v3_js_compat_quoted_literal(source, a.child_node(arg, 0)) or { return none }
+			if literal[0] == `"` {
+				return literal[1..literal.len - 1]
+			}
+		}
+	}
+	return none
+}
+
+// Discarding a string literal is harmless. Interpolated expressions can have
+// effects of their own, so only accept interpolations made up of string literals.
+fn v3_js_compat_discard(a &flat.FlatAst, node &flat.Node) bool {
+	if node.kind != .assign || node.children_count != 2 {
+		return false
+	}
+	lhs := a.child_node(node, 0)
+	if lhs.kind != .ident || lhs.value != '_' {
+		return false
+	}
+	rhs := a.child_node(node, 1)
+	return rhs.kind == .string_literal
+		|| (rhs.kind == .string_interp && a.children_of(rhs).all(a.node(it).kind == .string_literal))
+}
+
 fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	source := os.read_file(input_file)!
-	tokens, source_without_comments := scan_v3_js_compat_source(source, input_file)
-	mut output := strings.new_builder(source.len)
-	emitted_global := emit_v3_js_exported_global_aliases(source_without_comments, mut output)
-	mut emitted_statement := false
-	for i, tok in tokens {
-		if tok.kind != .name || (i > 0 && tokens[i - 1].kind == .dot) {
-			continue
+	mut prefs := pref.new_preferences()
+	prefs.backend = 'js'
+	prefs.preserve_comptime_conditionals = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_text(input_file, source)
+	for diagnostic in p.diagnostics {
+		if diagnostic.severity !in ['warning:', 'notice:'] {
+			return error('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${diagnostic.severity} ${diagnostic.message}')
 		}
-		match tok.text(source) {
-			'println' {
-				if i + 3 >= tokens.len || tokens[i + 1].kind != .lpar
-					|| tokens[i + 2].interpolated || tokens[i + 3].kind != .rpar {
-					continue
+	}
+	file := a.node(flat.NodeId(a.file_node_ids.last()))
+	mut statements := []flat.NodeId{}
+	mut has_main := false
+	for id in a.children_of(file) {
+		node := a.node(id)
+		match node.kind {
+			.fn_decl {
+				if node.value in ['init', 'cleanup'] {
+					return error('${backend_node_location(a, *node)}error: the V3 JavaScript compatibility generator does not support ${node.value} functions')
 				}
-				argument := v3_js_compat_quoted_literal(source, tokens[i + 2]) or { continue }
-				if argument.contains_any('\r\n') {
-					continue
+				if node.value == 'main' {
+					if has_main || node.generic_params().len > 0 {
+						return error('${input_file}: error: the V3 JavaScript compatibility generator requires a single non-generic main function')
+					}
+					has_main = true
+					statements << a.children_of(node)
 				}
-				output.writeln('console.log(${argument});')
-				emitted_statement = true
 			}
-			'JS' {
-				if i + 4 >= tokens.len || tokens[i + 1].kind != .dot
-					|| tokens[i + 2].kind != .name || tokens[i + 2].text(source) != 'eval'
-					|| tokens[i + 3].kind != .lpar {
-					continue
-				}
-				argument := v3_js_compat_quoted_literal(source, tokens[i + 4]) or { continue }
-				if argument[0] != `"` {
-					continue
-				}
-				if i + 7 >= tokens.len || tokens[i + 5].kind != .dot
-					|| tokens[i + 6].kind != .name || tokens[i + 6].text(source) != 'str'
-					|| tokens[i + 7].kind != .rpar {
-					return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
-				}
-				output.writeln(argument[1..argument.len - 1])
-				emitted_statement = true
+			.empty, .module_decl, .import_decl, .struct_decl, .enum_decl, .interface_decl,
+			.type_decl, .const_decl, .global_decl, .c_fn_decl {
 			}
-			else {}
+			else {
+				statements << id
+			}
+		}
+	}
+	mut output := strings.new_builder(source.len)
+	emitted_global := source.contains('__global')
+		&& emit_v3_js_exported_global_aliases(v3_js_compat_source_without_comments(source, input_file), mut output)
+	mut emitted_statement := false
+	// The global export fixture only needs the aliases. Its assertions are
+	// evaluated by the full JS backend.
+	if !emitted_global || !statements.all(a.node(it).kind == .assert_stmt) {
+		for id in statements {
+			stmt := a.node(id)
+			if stmt.kind == .return_stmt && stmt.children_count == 0 {
+				emitted_statement = true
+				break
+			}
+			if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+				if code := v3_js_compat_call(a, a.child_node(stmt, 0), source) {
+					output.writeln(code)
+					emitted_statement = true
+					continue
+				}
+			}
+			if v3_js_compat_discard(a, stmt) {
+				continue
+			}
+			return error('${backend_node_location(a, *stmt)}error: the V3 JavaScript compatibility generator supports only direct literal println and JS.eval statements in main or at script top level')
 		}
 	}
 	if !emitted_global && !emitted_statement {

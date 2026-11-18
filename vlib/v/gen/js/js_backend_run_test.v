@@ -190,3 +190,44 @@ fn test_js_backend_ignores_calls_in_string_literals() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'live\nafter URL\nfrom JS\nlast'
 }
+
+fn test_js_backend_rejects_calls_in_unsupported_control_flow() {
+	root := js_new_fixture_root('control_flow')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for i, source in [
+		"fn main() { println('live') if false { println('dead') } }",
+		"fn main() { println('live') \$if custom_flag ? { println('conditional') } }",
+		'fn main() { println(\'live\') for { JS.eval("console.log(\'loop\');".str) } }',
+		"fn main() { println('live') abort() println('dead') }\nfn abort() { panic('stop') }",
+	] {
+		output := os.join_path(root, 'control_flow_${i}.js')
+		program := js_write_fixture(root, 'control_flow_${i}.js.v', source)!
+		code, message, _ := js_compile(program, output)
+		assert code != 0, message
+		assert message.contains('supports only direct literal println and JS.eval statements'), message
+		assert !os.exists(output)
+	}
+	output := os.join_path(root, 'init.js')
+	program := js_write_fixture(root, 'init.js.v', "fn main() { println('live') } fn init() { panic('stop') }")!
+	code, message, _ := js_compile(program, output)
+	assert code != 0, message
+	assert message.contains('does not support init functions'), message
+	assert !os.exists(output)
+}
+
+fn test_js_backend_stops_at_return_and_ignores_unused_functions() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('return_and_unused')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := "fn unused() { println('unused') } fn main() { println('live') return; println('dead') }"
+	run := js_run_program(root, 'return_and_unused.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'live'
+}
