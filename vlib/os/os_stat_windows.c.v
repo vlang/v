@@ -247,7 +247,7 @@ pub fn is_dir(path string) bool {
 
 // is_link returns a boolean indicating whether `path` is a link.
 // Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
-// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md).
 pub fn is_link(path string) bool {
 	path_ := path.replace('/', '\\')
 	attr := C.GetFileAttributesW(path_.to_wide())
