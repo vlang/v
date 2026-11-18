@@ -8,11 +8,6 @@ import v.pref
 import v.transform
 import v.types
 
-const custom_str_tests_dir = os.dir(@FILE)
-const custom_str_v3_dir = os.dir(custom_str_tests_dir)
-const custom_str_v3_src = os.join_path(custom_str_v3_dir, 'v.v')
-const custom_str_vexe = @VEXE
-
 // parse_checked_two_file_source reads parse checked two file source input for v3 tests.
 fn parse_checked_two_file_source(name string, main_source string, module_rel string, module_source string) (&flat.FlatAst, &types.TypeChecker) {
 	root := os.join_path(os.temp_dir(), 'v3_markused_${name}_project')
@@ -64,14 +59,21 @@ fn parse_checked_prelude_user_source(name string, prelude_rel string, prelude_so
 	return a, &tc
 }
 
-// build_v3_bin builds v3 bin data for v3 tests.
-fn build_v3_bin(name string) string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
-	// v.v guards against being built with a garbage collector (see the `$if gcboehm`
-	// `$compile_error` blocks at its top), so this sub-build must pass `-gc none`.
-	build := os.exec([custom_str_vexe, '-gc', 'none', '-o', v3_bin, '${custom_str_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn compile_markused_fixture(name string, main_source string, module_rel string, module_source string) ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_markused_${name}_${os.getpid()}')
+	source_dir := os.join_path(root, 'src')
+	module_path := os.join_path(source_dir, module_rel)
+	os.mkdir_all(os.dir(module_path))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(source_dir, 'main.v'), main_source)!
+	os.write_file(module_path, module_source)!
+
+	// The unit runner supplies V3 even when it builds this test with V1.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	args << ['-o', os.join_path(root, 'program'), source_dir]
+	compile := os.exec(args)
+	assert compile.exit_code == 0, compile.output
 }
 
 // imported_enum_main_source supports imported enum main source handling for v3 tests.
@@ -478,100 +480,40 @@ fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_fil
 }
 
 // test_imported_enum_print_compile_keeps_str_method validates this v3 regression case.
-fn test_imported_enum_print_compile_keeps_str_method() {
-	v3_bin := build_v3_bin('imported_enum_print_str_test')
-
-	root := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_print_input')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
-	}
-	os.mkdir_all(os.join_path(root, 'colors')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'), imported_enum_main_source('println(c)')) or {
-		panic(err)
-	}
-	os.write_file(os.join_path(root, 'colors/colors.v'), imported_enum_module_source()) or {
-		panic(err)
-	}
-	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_print_input_bin')
-	compile := os.exec([v3_bin, '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
+fn test_imported_enum_print_compile_keeps_str_method() ! {
+	compile_markused_fixture('imported_enum_print', imported_enum_main_source('println(c)'),
+		'colors/colors.v', imported_enum_module_source())!
 }
 
 // test_imported_operator_compile_keeps_operator_methods validates this v3 regression case.
-fn test_imported_operator_compile_keeps_operator_methods() {
-	v3_bin := build_v3_bin('imported_operator_test')
-
-	root := os.join_path(os.temp_dir(), 'v3_markused_imported_operator_input')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
-	}
-	os.mkdir_all(os.join_path(root, 'vectors')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'), imported_operator_main_source(imported_operator_usage_source())) or { panic(err) }
-	os.write_file(os.join_path(root, 'vectors/vectors.v'), imported_operator_module_source()) or {
-		panic(err)
-	}
-	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_operator_input_bin')
-	compile := os.exec([v3_bin, '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
+fn test_imported_operator_compile_keeps_operator_methods() ! {
+	compile_markused_fixture('imported_operator', imported_operator_main_source(imported_operator_usage_source()),
+		'vectors/vectors.v', imported_operator_module_source())!
 }
 
 // test_optional_struct_zero_compile_keeps_imported_default_helper
 // validates this v3 regression case.
-fn test_optional_struct_zero_compile_keeps_imported_default_helper() {
-	v3_bin := build_v3_bin('imported_struct_default_or_test')
-
-	root := os.join_path(os.temp_dir(), 'v3_markused_imported_struct_default_or_input')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
-	}
-	os.mkdir_all(os.join_path(root, 'defaults')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'), imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box')) or {
-		panic(err)
-	}
-	os.write_file(os.join_path(root, 'defaults/defaults.v'), imported_struct_default_module_source()) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_struct_default_or_input_bin')
-	compile := os.exec([v3_bin, '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
+fn test_optional_struct_zero_compile_keeps_imported_default_helper() ! {
+	compile_markused_fixture('imported_struct_default_or',
+		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
+		'defaults/defaults.v', imported_struct_default_module_source())!
 }
 
 // test_imported_optional_enum_interpolation_compile_keeps_str_method
 // validates this v3 regression case.
-fn test_imported_optional_enum_interpolation_compile_keeps_str_method() {
-	v3_bin := build_v3_bin('imported_optional_enum_interp_str_test')
-
-	root := os.join_path(os.temp_dir(), 'v3_markused_imported_optional_enum_interp_input')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
-	}
-	os.mkdir_all(os.join_path(root, 'colors')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'), imported_optional_enum_main_source('_ := "\${maybe_color()}"')) or { panic(err) }
-	os.write_file(os.join_path(root, 'colors/colors.v'), imported_enum_module_source()) or {
-		panic(err)
-	}
-	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_optional_enum_interp_input_bin')
-	compile := os.exec([v3_bin, '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
+fn test_imported_optional_enum_interpolation_compile_keeps_str_method() ! {
+	compile_markused_fixture('imported_optional_enum_interp',
+		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
+		imported_enum_module_source())!
 }
 
-fn test_imported_enum_direct_str_compile_keeps_autostr_helper() {
-	v3_bin := build_v3_bin('imported_enum_direct_autostr_test')
-
-	root := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
-	}
-	os.mkdir_all(os.join_path(root, 'colors')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'), imported_enum_main_source('_ := c.str()')) or {
-		panic(err)
-	}
-	os.write_file(os.join_path(root, 'colors/colors.v'), 'module colors
+fn test_imported_enum_direct_str_compile_keeps_autostr_helper() ! {
+	compile_markused_fixture('imported_enum_direct_autostr', imported_enum_main_source('_ := c.str()'),
+		'colors/colors.v', 'module colors
 
 pub enum Color {
 	red
 	blue
 }
-') or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input_bin')
-	compile := os.exec([v3_bin, '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
+')!
 }
