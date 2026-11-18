@@ -5,10 +5,11 @@ const parallel_tests_dir = os.dir(@FILE)
 const parallel_v3_dir = os.dir(parallel_tests_dir)
 const parallel_vlib_dir = os.dir(parallel_v3_dir)
 const parallel_v3_src = os.join_path(parallel_v3_dir, 'v.v')
+const parallel_exe_suffix = $if windows { '.exe' } $else { '' }
 const parallel_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
 fn parallel_prod_v3_path() string {
-	return os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
+	return os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}' + parallel_exe_suffix)
 }
 
 fn testsuite_begin() {
@@ -525,7 +526,7 @@ fn test_no_parallel_directory_selfhost_retains_parallel_support() {
 	assert compile.output.contains('\n  cgen '), compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
-	assert os.exists(bin_out), compile.output
+	assert os.is_file(bin_out + parallel_exe_suffix), compile.output
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('flat_cgen_chunk_thread'), c_code
 	assert c_code.contains('flat_cgen_job_count'), c_code

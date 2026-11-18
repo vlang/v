@@ -27,7 +27,8 @@ void v_gc_set_warn_proc(GC_warn_proc cb) { GC_set_warn_proc(cb); }
 void* v_gc_get_warn_proc(void) { return (void*)GC_get_warn_proc(); }
 void v_gc_set_abort_func(GC_abort_func cb) { GC_set_abort_func(cb); }
 void* v_gc_get_abort_func(void) { return (void*)GC_get_abort_func(); }
-void v_gc_call_abort_func(void* cb, const char* msg) { ((GC_abort_func)cb)(msg); }
+// Match the V C binding's `&char`; GC_abort_func accepts a const view of this buffer.
+void v_gc_call_abort_func(void* cb, char* msg) { ((GC_abort_func)cb)(msg); }
 
 // The native backends' generated runtime (maps, closures, string helpers) calls
 // the libc allocator by name. With the collector linked in, the arm64 backend

@@ -943,6 +943,7 @@ fn test_driver_c_project_and_dump_include_effective_dependency_flags() {
 		os.rmdir_all(root) or {}
 	}
 	v3_bin := build_driver_cli_v3(root)
+	cc := $if windows { 'gcc' } $else { 'cc' }
 	native_source := os.join_path(root, 'native_dependency.c')
 	os.write_file(native_source, '#ifndef V3_REVIEW_DEPENDENCY_FLAG
 #error missing generated dependency flag
@@ -965,49 +966,55 @@ fn main() {
 ')!
 	project_dir := os.join_path(root, r'project $with spaces')
 	project_dump := os.join_path(root, 'project_flags.txt')
-	generate := cmdexec.run(v3_bin, ['-silent', '-prod', '-dump-c-flags', project_dump,
+	generate := cmdexec.run(v3_bin, ['-silent', '-cc', cc, '-prod', '-dump-c-flags', project_dump,
 		'-generate-c-project', project_dir, source])
 	assert generate.exit_code == 0, generate.output
 	build_command := os.read_file(os.join_path(project_dir, 'build_command.txt'))!
 	project_flags := os.read_lines(project_dump)!
-	for expected in ['-std=gnu11', '-O3', '-flto', '-DV3_REVIEW_DEPENDENCY_FLAG=1',
-		resolved_native_source] {
+	for expected in ['-std=gnu11', '-O3', '-flto', '-DV3_REVIEW_DEPENDENCY_FLAG=1'] {
 		assert build_command.contains(expected), build_command
 		assert expected in project_flags, project_flags.str()
 	}
-	assert !build_command.contains(resolved_native_source.all_before_last('.c') + '.o'), build_command
+	assert project_flags.any(it.ends_with('native_dependency.c')
+		&& os.real_path(it) == resolved_native_source), project_flags.str()
+	assert build_command.replace('\\', '/').contains(resolved_native_source.replace('\\', '/')), build_command
+	assert !build_command.contains('native_dependency.o'), build_command
 	batch_command := os.read_file(os.join_path(project_dir, 'build.bat'))!
-	assert batch_command.contains('"${project_dir}'), batch_command
+	assert batch_command.replace('\\', '/').contains('"${project_dir.replace('\\', '/')}'), batch_command
 	assert !batch_command.contains("'${project_dir}"), batch_command
 	makefile := os.read_file(os.join_path(project_dir, 'Makefile'))!
 	assert makefile.contains(r'project $$with spaces'), makefile
-	make_build := cmdexec.run('make', ['-C', project_dir])
-	assert make_build.exit_code == 0, make_build.output
-	project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
-	assert project_build.exit_code == 0, project_build.output
+	$if windows {
+		batch_build := cmdexec.run(os.join_path(project_dir, 'build.bat'), [])
+		assert batch_build.exit_code == 0, batch_build.output
+	} $else {
+		make_build := cmdexec.run('make', ['-C', project_dir])
+		assert make_build.exit_code == 0, make_build.output
+		project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
+		assert project_build.exit_code == 0, project_build.output
+		backslash_project_dir := os.join_path(root, r'project\backslash')
+		backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
+			backslash_project_dir, source])
+		assert backslash_generate.exit_code == 0, backslash_generate.output
+		backslash_build := cmdexec.run('sh', [
+			os.join_path(backslash_project_dir, 'build.sh'),
+		])
+		assert backslash_build.exit_code == 0, backslash_build.output
+		backslash_make := cmdexec.run('make', ['-C', backslash_project_dir])
+		assert backslash_make.exit_code == 0, backslash_make.output
+	}
 	project_run := cmdexec.run(os.join_path(project_dir, 'effective_flags'), [])
 	assert project_run.exit_code == 0, project_run.output
 	assert project_run.output == '42\n', project_run.output
 
-	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
-		source])
-	assert backslash_generate.exit_code == 0, backslash_generate.output
-	backslash_build := cmdexec.run('sh', [
-		os.join_path(backslash_project_dir, 'build.sh'),
-	])
-	assert backslash_build.exit_code == 0, backslash_build.output
-	backslash_make := cmdexec.run('make', ['-C', backslash_project_dir])
-	assert backslash_make.exit_code == 0, backslash_make.output
-
 	bin_output := os.join_path(root, 'effective_flags')
 	bin_dump := os.join_path(root, 'binary_flags.txt')
-	compile := cmdexec.run(v3_bin, ['-silent', '-prod', '-showcc', '-dump-c-flags', bin_dump, '-o',
-		bin_output, source])
+	compile := cmdexec.run(v3_bin, ['-silent', '-cc', cc, '-prod', '-showcc', '-dump-c-flags',
+		bin_dump, '-o', bin_output, source])
 	assert compile.exit_code == 0, compile.output
 	bin_flags := os.read_lines(bin_dump)!
 	for expected in ['-std=gnu11', '-O3', '-flto', '-w', '-Wno-int-conversion',
-		'-DV3_REVIEW_DEPENDENCY_FLAG=1', '-lm'] {
+		'-DV3_REVIEW_DEPENDENCY_FLAG=1', $if windows { '-municode' } $else { '-lm' }] {
 		assert expected in bin_flags, bin_flags.str()
 		assert compile.output.contains(expected), compile.output
 	}
@@ -1068,7 +1075,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	dump_result := run_driver_in_work_folder(v3_bin, ['-silent', '-dump-c-flags', 'doc', '-o',
 		dump_output, source], dump_case)
 	assert dump_result.exit_code == 0, dump_result.output
-	assert os.is_file(dump_output)
+	assert os.is_file(dump_output + $if windows { '.exe' } $else { '' })
 	assert os.is_file(os.join_path(dump_case, 'doc'))
 
 	// `-message-limit` takes a number (156d46a47f), so `doc` is an invalid limit; it is
@@ -1917,8 +1924,12 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert built.exit_code == 0, built.output
 	assert built.output == 'built\n', built.output
 	implicit_program := os.join_path(root, 'implicit_build.v')
-	implicit_binary := os.join_path(root, 'implicit_build')
-	implicit_c := implicit_binary + '.c'
+	implicit_binary_base := os.join_path(root, 'implicit_build')
+	mut implicit_binary := implicit_binary_base
+	$if windows {
+		implicit_binary += '.exe'
+	}
+	implicit_c := implicit_binary_base + '.c'
 	os.write_file(implicit_program, "println('implicit')")!
 	os.write_file(implicit_c, 'existing C source')!
 	implicit_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', implicit_program])
@@ -1979,7 +1990,7 @@ fn main() {
 	implicit_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'run', run_program])
 	assert implicit_run.exit_code == 0, implicit_run.output
 	assert implicit_run.output == 'ran once\n', implicit_run.output
-	assert !os.exists(run_binary)
+	assert !os.exists(run_binary + $if windows { '.exe' } $else { '' })
 	assert !os.exists(run_binary + '.c')
 	$if !windows {
 		interrupted_program := os.join_path(root, 'interrupted_run.v')
@@ -2251,7 +2262,14 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
 		path_output, source])
 	assert path_compile.exit_code == 0, path_compile.output
-	assert os.is_file(path_output)
+	mut expected_path_output := path_output
+	$if windows {
+		expected_path_output += '.exe'
+	}
+	assert os.is_file(expected_path_output)
+	path_run := cmdexec.run(expected_path_output, [])
+	assert path_run.exit_code == 0, path_run.output
+	assert path_run.output == 'ok\n', path_run.output
 
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
