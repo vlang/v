@@ -1,39 +1,53 @@
-module c
+module main
 
 import os
 
 fn test_sumtype_rejects_infinite_layout_and_mutable_variant_conversion() {
-	sources := [
-		'type Tree = int | Branch
-struct Branch { child Tree }
-fn main() {}',
-		'type Tree = int | Branch
-struct Branch { children [2]Tree }
-fn main() {}',
-		'struct Item {}
-type Value = int | Item
-fn update(mut value Value) {}
-fn main() { mut item := Item{}
- update(mut item) }',
-		'struct Item {}
-type Value = int | Item
-struct Holder { values []&Value }
-fn main() { holder := Holder{values: [&Item{}]}
- println(holder.values.len) }',
-	]
-	expected := [
-		'cannot be defined recursively',
-		'cannot be defined recursively',
-		'sum type reference requires',
-		'invalid array element',
-	]
-	path := os.join_path(os.vtmp_dir(), 'sumtype_invalid_${os.getpid()}.v')
-	defer { os.rm(path) or {} }
-	for i, source in sources {
-		os.write_file(path, source)!
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
-		assert result.exit_code != 0, source
-		assert result.output.contains(expected[i]), result.output
+	root := os.join_path(os.vtmp_dir(), 'sumtype_invalid_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for name, source in {
+		'recursive.v':       'type DirectTree = int | DirectBranch
+struct DirectBranch { child DirectTree }
+'
+		'recursive_array.v': 'type ArrayTree = int | ArrayBranch
+struct ArrayBranch { children [2]ArrayTree }
+'
+		'mutable_variant.v': 'struct MutableItem {}
+type MutableValue = int | MutableItem
+fn update(mut value MutableValue) {}
+fn exercise_mutable_variant() {
+	mut item := MutableItem{}
+	update(mut item)
+}
+'
+		'array_element.v':   'struct ArrayItem {}
+type ArrayValue = int | ArrayItem
+struct Holder { values []&ArrayValue }
+fn exercise_array_element() {
+	holder := Holder{values: [&ArrayItem{}]}
+	println(holder.values.len)
+}
+'
+		'main.v':            'fn main() {
+	exercise_mutable_variant()
+	exercise_array_element()
+}
+'
+	} {
+		os.write_file(os.join_path(root, name), source)!
+	}
+	result := os.exec([@VEXE, '-new-compiler', '-nocolor', '-check', root])
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines()
+	for name, message in {
+		'recursive.v':       'cannot be defined recursively'
+		'recursive_array.v': 'cannot be defined recursively'
+		'mutable_variant.v': 'sum type reference requires'
+		'array_element.v':   'invalid array element'
+	} {
+		assert diagnostics.any(it.contains('${name}:') && it.contains('error:')
+			&& it.contains(message)), result.output
 	}
 }
 
