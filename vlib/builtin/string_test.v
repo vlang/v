@@ -1113,6 +1113,8 @@ fn test_hash() {
 }
 
 fn test_trim() {
+	assert ''.trim(' ') == ''
+	assert ''.trim('あ') == ''
 	assert 'banana'.trim('bna') == ''
 	assert 'abc'.trim('ac') == 'b'
 	assert 'aaabccc'.trim('ac') == 'b'
@@ -1121,6 +1123,8 @@ fn test_trim() {
 
 fn test_trim_indexes() {
 	mut left, mut right := 0, 0
+	left, right = ''.trim_indexes(' \n\t')
+	assert left == 0 && right == 0
 	left, right = '- -- - '.trim_indexes(' -')
 	assert left == 0 && right == 0
 	left, right = '- hello-world!\t'.trim_indexes(' -\t')
@@ -1130,6 +1134,8 @@ fn test_trim_indexes() {
 }
 
 fn test_trim_left() {
+	assert ''.trim_left('x') == ''
+	assert ''.trim_left('あ') == ''
 	mut s := 'module main'
 	assert s.trim_left(' ') == 'module main'
 	s = ' module main'
@@ -1142,6 +1148,8 @@ fn test_trim_left() {
 }
 
 fn test_trim_right() {
+	assert ''.trim_right('x') == ''
+	assert ''.trim_right('あ') == ''
 	mut s := 'module main'
 	assert s.trim_right(' ') == 'module main'
 	s = 'module main '
