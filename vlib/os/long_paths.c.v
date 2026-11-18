@@ -71,8 +71,9 @@ $if windows {
 	const long_paths_error_access_denied = 5
 	const long_paths_error_file_not_found = 2
 
-	// windows_long_paths_status reads the policy value, mapping every failure
-	// to disabled (absent key or value: the default is off) or unknown.
+	// windows_long_paths_status reads the policy value: a missing key or
+	// value means disabled (the default is off), any other read failure
+	// means unknown.
 	fn windows_long_paths_status() LongPathsStatus {
 		wsub := long_paths_registry_subkey.to_wide()
 		defer {
@@ -83,19 +84,30 @@ $if windows {
 			unsafe { free(wvalue) }
 		}
 		mut hkey := voidptr(nil)
-		if C.RegOpenKeyExW(hkey_local_machine, wsub, 0, long_paths_access_mask, voidptr(&hkey)) != success {
+		open_res := C.RegOpenKeyExW(hkey_local_machine, wsub, 0, long_paths_access_mask,
+			voidptr(&hkey))
+		if open_res == long_paths_error_file_not_found {
+			// Absent key: long paths default to off.
+			return .disabled
+		}
+		if open_res != success {
 			return .unknown
 		}
 		defer {
 			C.RegCloseKey(hkey)
 		}
-		mut reserved := u32(0)
 		mut typ := u32(0)
 		mut raw := [4]u8{}
 		mut size := u32(4)
-		if C.RegQueryValueExW(hkey, wvalue, &reserved, &typ, &raw[0], &size) != success {
-			// Absent value or key: long paths default to off.
+		// lpReserved must be NULL; anything else is rejected.
+		query_res := C.RegQueryValueExW(hkey, wvalue, &u32(unsafe { nil }), &typ, &raw[0],
+			&size)
+		if query_res == long_paths_error_file_not_found {
+			// Absent value: long paths default to off.
 			return .disabled
+		}
+		if query_res != success {
+			return .unknown
 		}
 		if typ != long_paths_reg_dword || size != 4 {
 			return .unknown

@@ -14,6 +14,10 @@ fn build_enable_long_paths_tool() !string {
 }
 
 fn test_enable_long_paths_help() {
+	$if !windows {
+		// The tool exits before parsing options where it is unsupported.
+		return
+	}
 	tool := build_enable_long_paths_tool()!
 	defer {
 		os.rmdir_all(os.dir(tool)) or {}
@@ -25,6 +29,10 @@ fn test_enable_long_paths_help() {
 }
 
 fn test_enable_long_paths_rejects_unknown_options() {
+	$if !windows {
+		// The tool exits before parsing options where it is unsupported.
+		return
+	}
 	tool := build_enable_long_paths_tool()!
 	defer {
 		os.rmdir_all(os.dir(tool)) or {}
@@ -35,6 +43,10 @@ fn test_enable_long_paths_rejects_unknown_options() {
 }
 
 fn test_enable_long_paths_check_reports_without_writing() {
+	$if !windows {
+		// The policy report below only runs where the tool is supported.
+		return
+	}
 	tool := build_enable_long_paths_tool()!
 	defer {
 		os.rmdir_all(os.dir(tool)) or {}
@@ -53,6 +65,19 @@ fn test_enable_long_paths_check_reports_without_writing() {
 	} else {
 		assert res.exit_code == 1, res.output
 	}
+}
+
+fn test_enable_long_paths_unsupported_platform() {
+	$if windows {
+		return
+	}
+	tool := build_enable_long_paths_tool()!
+	defer {
+		os.rmdir_all(os.dir(tool)) or {}
+	}
+	res := os.exec([tool, '--check'])
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('only supported on Windows'), res.output
 }
 
 fn test_enable_long_paths_reports_when_already_enabled() {
