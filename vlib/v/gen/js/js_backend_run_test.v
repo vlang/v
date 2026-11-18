@@ -146,3 +146,25 @@ fn test_js_backend_preserves_literal_and_eval_statement_order() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'first\nsecond\nthird\nfourth'
 }
+
+fn test_js_backend_ignores_calls_in_comments() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('comments')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := 'fn main() {
+	println(\'live\') /* println(\'ghost\') */
+	println(\'https://example.test\') /* /* println(\'nested\') */ println(\'outer\') */ println(\'after\')
+	/* JS.eval("console.log(\'hidden\');".str)
+	   println(\'also hidden\')
+	*/ JS.eval("console.log(\'from JS\');".str)
+	println(\'last\') // println(\'line comment\')
+}'
+	run := js_run_program(root, 'comments.js.v', source.replace('\n', '\r\n'), [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'live\nhttps://example.test\nafter\nfrom JS\nlast'
+}

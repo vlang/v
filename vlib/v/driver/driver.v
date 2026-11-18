@@ -20,6 +20,7 @@ import v.markused
 import v.modulecache
 import v.parser
 import v.pref
+import v.scanner
 import v.tempname
 import v.token as compiler_token
 import v.transform
@@ -4316,8 +4317,31 @@ struct V3JsCompatStatement {
 	code  string
 }
 
+// Mask comments while preserving the offsets used to order the statements.
+fn v3_js_compat_source_without_comments(source string, input_file string) string {
+	mut files := compiler_token.FileSet.new()
+	file := files.add_file(input_file, source.len)
+	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments | .skip_interpolation)
+	lex.init(file, source)
+	mut code := source.bytes()
+	for {
+		kind := lex.scan()
+		if kind == .eof {
+			break
+		}
+		if kind == .comment {
+			for i in lex.pos .. lex.offset {
+				if code[i] !in [10, 13] {
+					code[i] = 32
+				}
+			}
+		}
+	}
+	return code.bytestr()
+}
+
 fn emit_v3_js_compat_program(input_file string, output_file string) ! {
-	source := os.read_file(input_file)!
+	source := v3_js_compat_source_without_comments(os.read_file(input_file)!, input_file)
 	mut output := strings.new_builder(source.len)
 	emitted_global := emit_v3_js_exported_global_aliases(source, mut output)
 	mut statements := []V3JsCompatStatement{}
@@ -4374,11 +4398,6 @@ fn v3_js_literal_println_statement(line string, line_start int, from int) ?V3JsC
 				|| (previous >= `A` && previous <= `Z`) || (previous >= `a` && previous <= `z`) {
 				offset = start + prefix.len
 				continue
-			}
-		}
-		if comment := line[..start].index('//') {
-			if comment >= 0 {
-				return none
 			}
 		}
 		mut argument_start := start + prefix.len
