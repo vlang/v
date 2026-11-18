@@ -161,34 +161,43 @@ fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
 	}
 }
 
+fn check_comptime_string_diagnostics(root string, name string, source string, expected []string) ! {
+	path := os.join_path(root, '${name}.v')
+	os.write_file(path, source)!
+	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-nocolor',
+		'-o', os.join_path(root, '${name}.c'), path])
+	assert result.exit_code != 0, result.output
+	path_prefix := os.real_path(path).replace('\\', '/')
+	errors := result.output.replace('\\', '/').split_into_lines().filter(it.starts_with(path_prefix + ':')
+		&& it.contains(': error: '))
+	assert errors.len == expected.len, result.output
+	// Each invalid function is on a separate line so its own error must be present.
+	for index, message in expected {
+		location := '${path_prefix}:${index + 1}:'
+		assert errors.any(it.starts_with(location) && it.contains(message)), result.output
+	}
+}
+
 fn test_comptime_string_sources_reject_runtime_or_unsupported_operands() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_string_sources_invalid_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	cases := {
-		'mutable_source':        "fn main() { mut path := 'a/b'; path = 'c/d'; \$for part in path.split('/') { println(part) } }"
-		'runtime_source':        "fn walk(path string) { \$for part in path.split('/') { println(part) } }\nfn main() { walk('a/b') }"
-		'unsupported_source':    "fn main() { \$for part in 'abc'.bytes() { println(part) } }"
-		'mutable_condition':     "fn main() { mut path := 'a'; path = 'b'; \$if path.starts_with('a') { println('bad') } }"
-		'overflow_slice':        "fn main() { \$for part in 'abc'[4294967296..].fields() { println(part) } }"
-		'overflow_high_slice':   "fn main() { \$for part in 'abc'[..4294967296].fields() { println(part) } }"
-		'overflow_condition':    "fn main() { \$if 'abc'[4294967296..].starts_with('a') { println('bad') } }"
-		'unsupported_condition': "fn main() { \$if 'abc'.repeat(1) == 'abc' { println('bad') } }"
-	}
-	for name, source in cases {
-		path := os.join_path(root, '${name}.v')
-		os.write_file(path, source)!
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o',
-			os.join_path(root, '${name}.c'), path])
-		assert result.exit_code != 0, '${name}: ${result.output}'
-		if name == 'mutable_condition' {
-			assert result.output.contains('`path` is mut and may have changed since its definition'), result.output
-		} else if name in ['unsupported_condition', 'overflow_condition'] {
-			assert result.output.contains('cannot evaluate `\$if` condition'), result.output
-		} else {
-			assert result.output.contains('on a compile-time-known string'), result.output
-		}
-	}
+	loop_error := 'on a compile-time-known string'
+	condition_error := 'cannot evaluate `\$if` condition'
+	// Checker errors stop the build before the transformer can report its errors.
+	check_comptime_string_diagnostics(root, 'checker', r"fn mutable_source() { mut path := 'a/b'; path = 'c/d'; $for part in path.split('/') { println(part) } }
+fn runtime_source(path string) { $for part in path.split('/') { println(part) } }
+fn unsupported_source() { $for part in 'abc'.bytes() { println(part) } }
+fn mutable_condition() { mut path := 'a'; path = 'b'; $if path.starts_with('a') { println('bad') } }
+fn overflow_high_slice() { $for part in 'abc'[..4294967296].fields() { println(part) } }
+fn main() { mutable_source(); runtime_source('a/b'); unsupported_source(); mutable_condition(); overflow_high_slice() }
+", [loop_error, loop_error, loop_error, '`path` is mut and may have changed since its definition',
+		loop_error])!
+	check_comptime_string_diagnostics(root, 'transform', r"fn overflow_slice() { $for part in 'abc'[4294967296..].fields() { println(part) } }
+fn overflow_condition() { $if 'abc'[4294967296..].starts_with('a') { println('bad') } }
+fn unsupported_condition() { $if 'abc'.repeat(1) == 'abc' { println('bad') } }
+fn main() { overflow_slice(); overflow_condition(); unsupported_condition() }
+", [loop_error, condition_error, condition_error])!
 }
 
 fn test_comptime_string_constant_operands_keep_their_module_scope() {
