@@ -8,7 +8,7 @@ fn test_sumtype_aggregate_const_uses_runtime_storage() ! {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
+	binary := os.join_path(root, 'main')
 	os.write_file(source, 'struct Empty {}
 struct Payload { value int }
 type Value = Empty | Payload | int
@@ -18,13 +18,11 @@ fn main() {
  assert empty_value is Empty
  assert (payload_value as Payload).value == 42
 }')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-o', output, source])
-	assert generated_result.exit_code == 0, generated_result.output
-	generated := os.read_file(output)!
+	run := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'c', '-o', binary, 'run', source])
+	assert run.exit_code == 0, run.output
+	generated := os.read_file('${binary}.c')!
 	assert generated.contains('Value main__empty_value;')
 	assert generated.contains('Value main__payload_value;')
 	assert !generated.contains('const Value main__empty_value = ')
 	assert !generated.contains('const Value main__payload_value = ')
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', source])
-	assert run_result.exit_code == 0, run_result.output
 }

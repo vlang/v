@@ -118,7 +118,7 @@ fn test_sumtype_pointer_variants_keep_references_and_escaping_local_storage() {
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
 	path := os.join_path(dir, 'main.v')
-	output := os.join_path(dir, 'main.c')
+	binary := os.join_path(dir, 'main')
 	source := '@[aligned: 64]
 struct Payload { mut: value int }
 type PointerPayload = int | &Payload
@@ -153,9 +153,10 @@ fn main() {
  } else { assert false }
 }'
 	os.write_file(path, source)!
-	generated_result := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output, path])
-	assert generated_result.exit_code == 0, generated_result.output
-	generated := os.read_file(output)!
+	// An explicit C backend retains the translation unit used for the executable.
+	run := os.exec([@VEXE, '-new-compiler', '-nocache', '-b', 'c', '-o', binary, 'run', path])
+	assert run.exit_code == 0, run.output
+	generated := os.read_file('${binary}.c')!
 	local := sumtype_test_function_body(generated, 'from_local')
 	assert local.contains('v3_aligned_memdup('), local
 	assert local.contains(', 64)') || local.contains('__alignof__('), local
@@ -164,8 +165,6 @@ fn main() {
 		assert !body.contains('memdup'), body
 		assert !body.contains('._pointer_variant_is_owned = true'), body
 	}
-	run := os.exec([@VEXE, '-new-compiler', '-nocache', 'run', path])
-	assert run.exit_code == 0, run.output
 }
 
 fn test_sumtype_zero_reassignment_keeps_scalar_variant() {
