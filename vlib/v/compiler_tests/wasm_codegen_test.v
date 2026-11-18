@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -129,6 +130,72 @@ fn main() {
 		assert res.exit_code != 0, res.output
 		assert res.output.contains('the V wasm backend does not support reading the Result error value yet'), res.output
 		assert !os.exists(output)
+	}
+}
+
+fn test_wasm_result_error_value_in_external_module_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_result_dependency_${os.getpid()}')
+	modules := os.join_path(root, 'modules')
+	program := os.join_path(root, 'program')
+	helper := os.join_path(modules, 'helper', 'helper.v')
+	os.mkdir_all(os.dir(helper))!
+	os.mkdir_all(program)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(helper, "module helper
+fn inner() !int { return error('empty') }
+pub fn read() !int {
+	value := inner() or {
+		println(err.msg())
+		-7
+	}
+	return value
+}
+pub fn read_generic[T](fallback T) !T {
+	if value := inner() {
+		println(value)
+	} else {
+		println(err.msg())
+	}
+	return fallback
+}
+pub fn fallback() !int {
+	value := inner() or { -7 }
+	return value
+}
+")!
+	source := os.join_path(program, 'main.v')
+	output := os.join_path(program, 'main.wasm')
+	mut env := os.environ()
+	env['VMODULES'] = modules
+	env['V_MACOS_V3_NO_FALLBACK'] = '1'
+	for call in ['read()', 'read_generic[int](-7)', 'fallback()'] {
+		os.write_file(source, 'import helper
+fn wrapped() !int {
+	value := helper.${call}!
+	return value + 1
+}
+fn main() { println(wrapped() or { -9 }) }
+')!
+		for production in [false, true] {
+			mut args := ['-nocolor', '-b', 'wasm', '-o', output, source]
+			if production {
+				args.prepend('-prod')
+			}
+			res := cmdexec.run_in_merged_with_env(v3_binary(), args, program, env)
+			if call != 'fallback()' {
+				assert res.exit_code != 0, res.output
+				assert res.output.contains('${helper}:'), res.output
+				assert res.output.contains('the V wasm backend does not support reading the Result error value yet'), res.output
+				assert !os.exists(output)
+			} else {
+				assert res.exit_code == 0, res.output
+				assert_valid_wasm(output)
+				run_wasi_expect(output, ['-6'])
+				os.rm(output)!
+			}
+		}
 	}
 }
 

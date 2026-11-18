@@ -2330,7 +2330,13 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 	if int(err_expr) < 0 || !t.has_ierror_interface() {
 		return
 	}
-	stmts << t.make_guard_value_decls('err', err_expr, flat.source_type_id('IError'))
+	decls := t.make_guard_value_decls('err', err_expr, flat.source_type_id('IError'))
+	if t.a.node(err_expr).kind == .selector {
+		for decl in decls {
+			t.a.nodes[int(decl)].flags |= flat.node_flag_implicit_result_error_decl
+		}
+	}
+	stmts << decls
 	i := t.var_type_index('err')
 	t.clear_node_type_memo()
 	t.var_types[i] = VarTypeBinding{

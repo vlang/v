@@ -21341,7 +21341,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 				return msg
 			}
 		}
-		if msg := unsupported_backend_node_error(a, tc, flat.NodeId(idx), backend, diagnose_aggregates, fallback_location, mut visited) {
+		if msg := unsupported_backend_node_error(a, tc, flat.NodeId(idx), backend, diagnose_aggregates, fallback_location, false, mut visited) {
 			return msg
 		}
 	}
@@ -21373,7 +21373,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 				diagnose_aggregates := tc.diagnostic_files.len == 0
 					|| cur_file in tc.diagnostic_files
 				fallback_location := backend_node_location(a, *field)
-				if msg := unsupported_backend_node_error(a, tc, a.child(field, 0), backend, diagnose_aggregates, fallback_location, mut visited) {
+				if msg := unsupported_backend_node_error(a, tc, a.child(field, 0), backend, diagnose_aggregates, fallback_location, false, mut visited) {
 					return msg
 				}
 			}
@@ -21390,7 +21390,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 				diagnose_aggregates := tc.diagnostic_files.len == 0
 					|| cur_file in tc.diagnostic_files
 				fallback_location := backend_node_location(a, *field)
-				if msg := unsupported_backend_node_error(a, tc, expr_id, backend, diagnose_aggregates, fallback_location, mut visited) {
+				if msg := unsupported_backend_node_error(a, tc, expr_id, backend, diagnose_aggregates, fallback_location, false, mut visited) {
 					return msg
 				}
 			}
@@ -21403,7 +21403,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 				|| source_file.name in tc.diagnostic_files
 		}
 		fallback_location := backend_node_location(a, *a.node(expr_id))
-		if msg := unsupported_backend_node_error(a, tc, expr_id, backend, diagnose_aggregates, fallback_location, mut visited) {
+		if msg := unsupported_backend_node_error(a, tc, expr_id, backend, diagnose_aggregates, fallback_location, false, mut visited) {
 			return msg
 		}
 	}
@@ -21642,21 +21642,27 @@ fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int)
 	}
 }
 
-fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
+fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, implicit_result_error_in_scope bool, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
 		return none
 	}
 	visited[idx] = true
 	node := a.nodes[idx]
-	if backend == 'wasm' && diagnose_aggregates {
-		// The Wasm Result path can test the success flag, but it cannot expose the
-		// error payload. Synthetic err bindings have no source position.
-		if node.kind == .ident && node.value == 'err' && node.pos.is_valid()
+	// Source handlers carry their own location. Specialized handlers may
+	// already have a synthesized binding and no position on the read.
+	if backend == 'wasm' && node.kind == .ident && node.value == 'err'
+		&& (implicit_result_error_in_scope || (node.pos.is_valid() && tc.err_block_holds(id)
 			&& tc.resolve_type(id).source_type_id() in [flat.source_type_id('IError'),
-				flat.source_type_id('builtin.IError')] {
-			return '${backend_node_location(a, node)}error: the V wasm backend does not support reading the Result error value yet'
+				flat.source_type_id('builtin.IError')])) {
+		location := if node.pos.is_valid() {
+			backend_node_location(a, node)
+		} else {
+			fallback_location
 		}
+		return '${location}error: the V wasm backend does not support reading the Result error value yet'
+	}
+	if backend == 'wasm' && diagnose_aggregates {
 		mut unsupported_type := u32(0)
 		if node.kind in [.array_literal, .array_init, .map_init, .struct_init] {
 			unsupported_type = tc.resolve_type(id).source_type_id()
@@ -21724,9 +21730,23 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		}
 		return '${location}error: `\$res()` is not supported by the V3 ${backend} backend'
 	}
+	mut checks_result_error := implicit_result_error_in_scope
+		&& node.kind !in [.fn_decl, .fn_literal, .lambda_expr]
 	for i in 0 .. node.children_count {
-		if msg := unsupported_backend_node_error(a, tc, a.child(&node, i), backend, diagnose_aggregates, fallback_location, mut visited) {
+		child_id := a.child(&node, i)
+		// A declaration's left-hand side introduces a new binding.
+		check_child := checks_result_error && (node.kind != .decl_assign || i != 0)
+		if msg := unsupported_backend_node_error(a, tc, child_id, backend, diagnose_aggregates, fallback_location, check_child, mut visited) {
 			return msg
+		}
+		if backend == 'wasm' && node.kind == .block && int(child_id) >= 0 {
+			child := a.node(child_id)
+			if child.kind == .decl_assign && child.children_count > 0 {
+				binding := a.child_node(child, 0)
+				if binding.kind == .ident && binding.value == 'err' {
+					checks_result_error = (child.flags & flat.node_flag_implicit_result_error_decl) != 0
+				}
+			}
 		}
 	}
 	return none
