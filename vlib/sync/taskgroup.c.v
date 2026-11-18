@@ -105,11 +105,14 @@ pub fn (mut g TaskGroup[T]) spawn(f fn () !T) ! {
 	spawn fn [T](group &TaskGroup[T], idx int, f fn () !T) {
 		mut gg := group
 		value := f() or {
+			// Record the error and cancel before the (possibly blocking)
+			// channel send, so siblings observing cancellation are woken
+			// even when the outcomes channel is already full.
+			gg.note_error(err)
 			gg.outcomes <- TaskOutcome[T]{
 				idx: idx
 				err: err
 			}
-			gg.note_error(err)
 			gg.wg.done()
 			return
 		}

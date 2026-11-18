@@ -120,3 +120,26 @@ fn test_taskgroup_nil_job() {
 	}
 	assert false, 'spawning a nil job must fail'
 }
+
+fn test_taskgroup_failure_cancels_before_wait_when_channel_full() {
+	mut group := sync.new_task_group[int]()
+	ctx := group.context()
+	group.spawn(fn () !int {
+		return 1
+	}) or { panic('spawn failed: ${err}') }
+	// Let the success fill the capacity-one outcomes channel.
+	time.sleep(150 * time.millisecond)
+	group.spawn(fn () !int {
+		return error('boom')
+	}) or { panic('spawn failed: ${err}') }
+	// Give the failed child time to run. With send-before-note_error it
+	// blocks on the full channel before recording the error, so
+	// cancellation is not yet visible; with the fix it records first.
+	time.sleep(150 * time.millisecond)
+	assert ctx.is_cancelled(), 'first error must cancel before wait drains outcomes'
+	group.wait() or {
+		assert err.msg() == 'boom'
+		return
+	}
+	assert false, 'wait must return the first task error'
+}
