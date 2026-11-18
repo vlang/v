@@ -95,6 +95,46 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	assert v3_native_interface_closure(&a, &prefs, [], compiler, &forced).unassignable != ''
 }
 
+// This audited Windows header is declaration-only, so Clang/GCC can check
+// its exact dependency closure with their compiler-produced -M manifest.
+// A modified header and TinyCC must still fail closed; no test is skipped.
+fn test_windows_core_header_manifest_is_audited_and_invalidateable() ! {
+	compiler := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'core_windows_interface_${os.getpid()}')
+	header := os.join_path(root, 'vlib', 'builtin', 'core_windows.h')
+	os.mkdir_all(os.dir(header))!
+	defer { os.rmdir_all(root) or {} }
+	original := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'core_windows.h')
+	os.cp(original, header)!
+	canonical := os.real_path(header)
+	assert v3_windows_core_native_interface(canonical, root)
+	assert !v3_windows_core_native_interface(os.join_path(root, 'elsewhere', 'core_windows.h'),
+		root)
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, os.join_path(root, 'vlib', 'builtin', 'main.c.v'))
+	a.add_val(.module_decl, 'builtin')
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"${canonical}"') })
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'builtin': [canonical]
+		}
+		native_paths:  {
+			canonical: true
+		}
+	}
+	prefs := pref.Preferences{ vroot: root, target: pref.host_target() }
+	closure := v3_native_interface_closure(&a, &prefs, [], compiler, &inputs)
+	assert closure.unassignable == '', closure.unassignable
+	assert canonical in closure.inputs['__v3_c_flags__']
+	assert v3_native_interface_closure(&a, &prefs, [], 'tcc', &inputs).unassignable != ''
+	os.write_file(header, '#define UNREVIEWED_NATIVE_STORAGE 1\n')!
+	assert !v3_windows_core_native_interface(canonical, root)
+	assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable != ''
+	os.cp(original, header)!
+	assert v3_windows_core_native_interface(canonical, root)
+	assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable == ''
+}
+
 fn assert_native_interface_environment_override(name string, a &flat.FlatAst, prefs &pref.Preferences, compiler string, inputs &cgen.CacheNativeInputs) {
 	original := os.getenv_opt(name)
 	defer {

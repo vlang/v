@@ -23,6 +23,15 @@ fn v3_web_native_interface(path string, vroot string) bool {
 	]
 }
 
+// Windows core_windows.h is a declaration-only ABI interface (no storage or
+// mutable implementation). Audit its exact bytes; any edit disables reuse
+// until that contract is re-reviewed. TinyCC keeps its separate bundle pin.
+fn v3_windows_core_native_interface(path string, vroot string) bool {
+	header := os.real_path(os.join_path(os.real_path(vroot), 'vlib', 'builtin', 'core_windows.h'))
+	if path != header { return false }
+	return (v3_file_sha256_hex(header) or { return false }) == 'fc10573182f1bcb809b79a3e3296e36a6e83450228ab363bdf6fd093b74e645f'
+}
+
 // A TinyCC build cannot reliably diagnose date/time macros. Its interface
 // contract is limited to this audited bundled snapshot, hashed as opaque bytes.
 // Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (98 files).
@@ -99,7 +108,8 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	for paths in native_inputs.module_inputs.values() {
 		for path in paths {
 			if native_inputs.macro_paths[path]
-				|| (native_inputs.native_paths[path] && !v3_web_native_interface(path, prefs.vroot)) {
+				|| (native_inputs.native_paths[path] && !v3_web_native_interface(path, prefs.vroot)
+					&& (tinycc || !v3_windows_core_native_interface(path, prefs.vroot))) {
 				return result
 			}
 		}
