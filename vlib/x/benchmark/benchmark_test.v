@@ -100,23 +100,12 @@ fn test_max_bench_time() {
 }
 
 fn test_performance() {
-	scheduler := [func_1, func_2, func_3]
-	expected := [false, false, false]
-	mut actual := []bool{}
-
-	for i in scheduler {
-		mut bench := setup(i) or {
-			eprintln('Error creating benchmark: ${err}')
-			return
-		}
-
+	iterations := 100
+	for workload in [func_1, func_2, func_3] {
+		mut bench := setup(workload, n: iterations)!
 		bench.run()
-		actual << bench.failed
-	}
-
-	assert expected.len == actual.len
-	for i := 0; i < expected.len; i++ {
-		assert expected[i] == actual[i]
+		assert !bench.failed
+		assert bench.benchmark_result.n == iterations
 	}
 }
 
