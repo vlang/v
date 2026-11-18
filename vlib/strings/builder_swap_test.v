@@ -1,5 +1,11 @@
 import strings
 
+// Preserve intentionally borrowed headers under autofree; the tests free them explicitly.
+@[manualfree]
+fn borrow_swap_builder(mut target strings.Builder, source []u8) {
+	unsafe { vmemcpy(&target, &source, int(sizeof(strings.Builder))) }
+}
+
 // swap exchanges storage, so the content and the accumulated capacity travel
 // with the buffer, in both directions and without copying any bytes.
 fn test_swap_exchanges_content() {
@@ -108,10 +114,13 @@ fn test_swap_keeps_noslices_flag() {
 	assert a.str() == 'z1234567890'
 }
 
+// Keep the intentional aliases even when this test runs with autofree.
+@[manualfree]
 fn test_swap_shared_prefix_exchanges_distinct_headers() {
 	mut owner := strings.new_builder(32)
 	owner.write_string('abcdef')
-	mut prefix := strings.Builder(owner[..2])
+	mut prefix := strings.new_builder(0)
+	borrow_swap_builder(mut prefix, owner[..2])
 	owner_flags := owner.flags
 	prefix_flags := prefix.flags
 	assert owner.data == prefix.data
@@ -131,12 +140,15 @@ fn test_swap_shared_prefix_exchanges_distinct_headers() {
 	}
 }
 
+@[manualfree]
 fn test_swap_preserves_offsets_and_slice_detachment() {
 	mut backing := '012345'.bytes()
 	mut a := strings.new_builder(32)
 	a.write_string('abcdef')
 	a.drop(2)
-	mut b := strings.Builder(backing[1..4])
+	mut b := strings.new_builder(0)
+	// Borrow the slice header explicitly instead of acquiring an autofree copy.
+	borrow_swap_builder(mut b, backing[1..4])
 	a_data := a.data
 	b_data := b.data
 	a_flags := a.flags
