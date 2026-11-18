@@ -376,6 +376,15 @@ fn test_native_self_launcher_executes_its_helper() {
 	}
 }
 
+fn publish_native_live_edit(path string, source string, mtime i64) ! {
+	staged := path + '.tmp'
+	defer { os.rm(staged) or {} }
+	os.write_file(staged, source)!
+	os.utime(staged, mtime, mtime)!
+	// Publish the contents and timestamp together so the reloader cannot see a partial edit.
+	os.rename(staged, path)!
+}
+
 fn test_native_live_reload_installs_new_code_after_an_edit() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64 \$ live reload ${os.getpid()}.v')
@@ -388,6 +397,7 @@ fn test_native_live_reload_installs_new_code_after_an_edit() {
 		}
 		source := 'module main\nfn C.puts(s &u8) int\nfn C.fflush(f voidptr) int\nfn C.usleep(us u32) int\nfn init() { C.puts(c"initialized") }\nfn helper(n int) int { return n + 3 }\n@[live]\nfn hot(n int) int { return n + 1 }\nstruct LiveHolder { bias int }\nstruct OtherHolder {}\n@[live]\nfn (h LiveHolder) value(n int) int { return n + 1 + h.bias }\nfn (h OtherHolder) value(n int) int { return 99 }\nfn main() { holder := LiveHolder{}; other := OtherHolder{}; mut saved := hot; mut captured := false; for { value := hot(7); if other.value(7) != 99 || holder.value(7) != value { C.puts(c"method mismatch"); C.fflush(unsafe { nil }); return }; if value == 8 { C.puts(c"before") } else if value == 9 { if !captured { saved = hot; captured = true }; C.puts(c"after") } else if value == 10 && saved(7) == 9 { C.puts(c"again") }; C.fflush(unsafe { nil }); C.usleep(100000) } }\n'
 		os.write_file(path, source)!
+		initial_mtime := os.file_last_mod_unix(path)
 		built := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
 			'-nocache', '-b', 'arm64', '-os', 'macos', '-o', output, path])
 		assert built.exit_code == 0, built.output
@@ -412,9 +422,8 @@ fn test_native_live_reload_installs_new_code_after_an_edit() {
 		}
 		assert saw_before, 'process state: ${process.status}; output: ${os.read_file(log) or { '' }}'
 		assert (os.read_file(log) or { '' }).contains('initialized')
-		// The runtime watches second-resolution modification times.
-		time.sleep(1100 * time.millisecond)
-		os.write_file(path, source.replace('return n + 1', 'return n + 2'))!
+		publish_native_live_edit(path, source.replace('return n + 1', 'return n + 2'),
+			initial_mtime + 1)!
 		mut saw_after := false
 		for _ in 0 .. 600 {
 			if (os.read_file(log) or { '' }).contains('after') {
@@ -426,8 +435,9 @@ fn test_native_live_reload_installs_new_code_after_an_edit() {
 		}
 		assert saw_after, os.read_file(log) or { '' }
 		// One extraction succeeds before the method needs a fixup; publish neither and retry.
-		time.sleep(1100 * time.millisecond)
-		os.write_file(path, source.replace('return n + 1', 'return n + 3').replace('return n + 3 + h.bias', 'return helper(n)'))!
+		failed_mtime := initial_mtime + 2
+		publish_native_live_edit(path, source.replace('return n + 1', 'return n + 3').replace('return n + 3 + h.bias', 'return helper(n)'),
+			failed_mtime)!
 		mut saw_failure := false
 		for _ in 0 .. 600 {
 			if (os.read_file(log) or { '' }).contains('[live] rebuild failed') {
@@ -438,9 +448,9 @@ fn test_native_live_reload_installs_new_code_after_an_edit() {
 			time.sleep(50 * time.millisecond)
 		}
 		assert saw_failure, os.read_file(log) or { '' }
-		failed_mtime := os.file_last_mod_unix(path)
-		os.write_file(path, source.replace('return n + 1', 'return n + 3'))!
-		os.utime(path, failed_mtime, failed_mtime)!
+		// Keep the failed timestamp to verify the reloader retries it after the repair.
+		publish_native_live_edit(path, source.replace('return n + 1', 'return n + 3'),
+			failed_mtime)!
 		mut saw_again := false
 		for _ in 0 .. 600 {
 			if (os.read_file(log) or { '' }).contains('again') {
@@ -490,8 +500,8 @@ fn test_native_live_reload_watches_each_source_file() {
 			time.sleep(50 * time.millisecond)
 		}
 		assert saw_before, os.read_file(log) or { '' }
-		os.write_file(other_path, other_source.replace('return n + 1', 'return n + 2'))!
-		os.utime(other_path, initial_mtime + 10, initial_mtime + 10)!
+		publish_native_live_edit(other_path, other_source.replace('return n + 1', 'return n + 2'),
+			initial_mtime + 10)!
 		mut saw_secondary := false
 		for _ in 0 .. 600 {
 			if (os.read_file(log) or { '' }).contains('secondary changed') {
@@ -503,8 +513,8 @@ fn test_native_live_reload_watches_each_source_file() {
 		}
 		assert saw_secondary, os.read_file(log) or { '' }
 		// This timestamp remains below the other file's: a single maximum would miss it.
-		os.write_file(main_path, source.replace('return n + 1', 'return n + 2'))!
-		os.utime(main_path, initial_mtime + 2, initial_mtime + 2)!
+		publish_native_live_edit(main_path, source.replace('return n + 1', 'return n + 2'),
+			initial_mtime + 2)!
 		mut saw_both := false
 		for _ in 0 .. 600 {
 			if (os.read_file(log) or { '' }).contains('both changed') {
