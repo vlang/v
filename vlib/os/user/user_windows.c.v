@@ -33,7 +33,10 @@ pub fn lookup(name string) !User {
 
 pub fn lookup_id(uid string) !User {
 	u := current()!
-	if u.uid != '' && u.uid != uid {
+	// current() reports uid '' on Windows (no numeric account IDs are
+	// exposed), so compare directly like lookup() does: only the known
+	// uid matches, every other requested ID is unknown.
+	if u.uid != uid {
 		return error('user: unknown uid ${uid}')
 	}
 	return u

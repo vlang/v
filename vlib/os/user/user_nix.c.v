@@ -70,8 +70,22 @@ pub fn lookup(name string) !User {
 }
 
 pub fn lookup_id(uid string) !User {
-	uid_int := uid.int()
-	pw := C.getpwuid(uid_int)
+	if uid == '' {
+		return error('user: invalid uid ${uid}')
+	}
+	// Strictly parse the decimal UID: uid.int() silently yields 0 for
+	// '', 'not-a-uid' or '0suffix', which would look up UID 0 instead.
+	mut n := i64(0)
+	for c in uid.bytes() {
+		if c < `0` || c > `9` {
+			return error('user: invalid uid ${uid}')
+		}
+		n = n * 10 + i64(c) - 48
+		if n > 2147483647 {
+			return error('user: invalid uid ${uid}')
+		}
+	}
+	pw := C.getpwuid(int(n))
 	if isnil(pw) {
 		return error('user: unknown uid ${uid}')
 	}
