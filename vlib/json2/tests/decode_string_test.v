@@ -22,45 +22,75 @@ fn test_surrogate() {
 	assert json.decode[string](r'"\ud83d\ude00 text"')! == '😀 text'
 }
 
-fn test_invalid_surrogate() {
-	if _ := json.decode[string](r'"\ud83d"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got no valid escape sequence.'
-		}
-	}
+// Lone `\uXXXX` surrogate escapes decode to their WTF-8 3-byte form instead of
+// erroring (see https://github.com/vlang/v/issues/32389). RFC 8259 section 7
+// allows any `\uXXXX` escape, JavaScript `JSON.parse` accepts lone surrogates,
+// and `JSON.stringify` can emit them, so rejecting them made such input
+// unreadable. A head surrogate directly followed by a trail surrogate escape
+// still decodes as one code point (see test_surrogate).
+fn test_lone_surrogate_decodes_as_wtf8() {
+	assert json.decode[string](r'"\ud800"')!.bytes().hex() == 'eda080'
+	assert json.decode[string](r'"\ud83d"')!.bytes().hex() == 'eda0bd'
+	assert json.decode[string](r'"\udc00"')!.bytes().hex() == 'edb080'
+	assert json.decode[string](r'"\ude00"')!.bytes().hex() == 'edb880'
+	assert json.decode[string](r'"a\udc00b"')!.bytes().hex() == '61edb08062'
+	// A head surrogate only joins a trail surrogate escape directly after it;
+	// otherwise each half is kept on its own, like JavaScript engines do.
+	assert json.decode[string](r'"\ud83d\ud83d\ude00"')!.bytes().hex() == 'eda0bdf09f9880'
+	assert json.decode[string](r'"\ud83d\ude00\ude00"')!.bytes().hex() == 'f09f9880edb880'
+	assert json.decode[string](r'"\ud83d\n\n\n\n"')!.bytes().hex() == 'eda0bd0a0a0a0a'
+	assert json.decode[string](r'"\ud83dx\ude00"')!.bytes().hex() == 'eda0bd78edb880'
+	assert json.decode[string](r'"\ud83d\u0041"')!.bytes().hex() == 'eda0bd41'
+	// The report in #32389, via the generic value type.
+	value := json.decode[json.Any]('["\\ud800", "a\\udc00b"]')!
+	assert value.as_array().map(it.str().bytes().hex()) == ['eda080', '61edb08062']
+}
 
-	if _ := json.decode[string](r'"\ud83d\n\n\n\n"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got no valid escape sequence.'
+// A preserved WTF-8 surrogate must encode as `\uXXXX` in both default and
+// `escape_unicode` modes, so decode/encode/decode round-trips instead of
+// emitting invalid UTF-8 (default) or three U+FFFD (escaped).
+fn test_lone_surrogate_encode_roundtrip() {
+	for escape_unicode in [false, true] {
+		// Lone units keep their lowercase escape in both modes.
+		for raw in [r'"\ud800"', r'"\udc00"', r'"a\udc00b"'] {
+			decoded := json.decode[string](raw)!
+			encoded := json.encode(decoded, escape_unicode: escape_unicode)
+			assert encoded == raw
+			assert json.decode[string](encoded)!.bytes().hex() == decoded.bytes().hex()
 		}
-	}
-
-	if _ := json.decode[string](r'"\ud83d\ud83d"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got D83D.'
+		// A lone head before a valid pair escapes on its own; the pair stays
+		// one code point (raw emoji by default, surrogate pair when escaped).
+		combo := json.decode[string](r'"\ud83d\ud83d\ude00"')!
+		assert combo.bytes().hex() == 'eda0bdf09f9880'
+		encoded_combo := json.encode(combo, escape_unicode: escape_unicode)
+		if escape_unicode {
+			assert encoded_combo == r'"\ud83d\uD83D\ude00"'
+		} else {
+			assert encoded_combo == '"\\ud83d😀"'
 		}
-	}
-
-	if _ := json.decode[string](r'"\ude00\ud83d"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Got trail surrogate: DE00 before head surrogate.'
+		assert json.decode[string](encoded_combo)!.bytes().hex() == combo.bytes().hex()
+		// Valid-pair control: no lone unit, so default keeps raw UTF-8.
+		pair := json.decode[string](r'"\ud83d\ude00"')!
+		assert pair.bytes().hex() == 'f09f9880'
+		encoded_pair := json.encode(pair, escape_unicode: escape_unicode)
+		if escape_unicode {
+			assert encoded_pair == r'"\uD83D\ude00"'
+		} else {
+			assert encoded_pair == '"😀"'
 		}
+		assert json.decode[string](encoded_pair)! == pair
+		// The generic value type carries the same WTF-8 bytes as strings.
+		any_value := json.decode[json.Any](r'"\ud800"')!
+		encoded_any := json.encode(any_value, escape_unicode: escape_unicode)
+		assert encoded_any == r'"\ud800"'
+		assert json.decode[json.Any](encoded_any)!.str().bytes().hex() == 'eda080'
+		// Map keys go through the same string encoder, so they round-trip too.
+		key_map := json.decode[map[string]string](r'{"\ud800":"v","a\udc00b":"w","ok":"x"}')!
+		assert key_map.keys().len == 3
+		encoded_map := json.encode(key_map, escape_unicode: escape_unicode)
+		assert encoded_map.contains(r'\ud800')
+		assert encoded_map.contains(r'\udc00')
+		assert json.decode[map[string]string](encoded_map)! == key_map
 	}
 }
 
