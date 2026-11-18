@@ -23,14 +23,15 @@ fn wit_prim_codes(p string) (int, int) {
 }
 
 // wit_func_lift describes how one WIT function maps onto a core export, or
-// none when the shape is not liftable. The doc-free form lifts only
-// string/primitive shapes; use wit_func_lift_with_doc for enum/flags-aware
+// none when the shape is not liftable. The doc-free form lifts
+// string/primitive shapes and preserves the declared WIT mapping for every
+// supported primitive signature, including primitive-only functions without
+// strings; use wit_func_lift_with_doc for enum/flags-aware
 // lifting (enums lift as s32, flags as u32).
 fn wit_func_lift(f WitFunc) ?wasm.CabiStringExport {
 	mut core_params := []u8{}
 	mut comp_params := []u8{}
 	mut comp_labels := []string{}
-	mut has_string := false
 	for p in f.params {
 		if p.typ.kind != .prim {
 			return none
@@ -40,7 +41,6 @@ fn wit_func_lift(f WitFunc) ?wasm.CabiStringExport {
 			core_params << u8(0x7f)
 			comp_params << u8(0x73)
 			comp_labels << p.name
-			has_string = true
 			continue
 		}
 		cc, cv := wit_prim_codes(p.typ.prim)
@@ -65,7 +65,6 @@ fn wit_func_lift(f WitFunc) ?wasm.CabiStringExport {
 			// (MAX_FLAT_RESULTS = 1 for sync lifts).
 			core_results = [u8(0x7f)]
 			comp_results = [u8(0x73)]
-			has_string = true
 		} else {
 			cc, cv := wit_prim_codes(r.prim)
 			if cc < 0 {
@@ -75,9 +74,6 @@ fn wit_func_lift(f WitFunc) ?wasm.CabiStringExport {
 			comp_results = [u8(cv)]
 		}
 	} else {
-		return none
-	}
-	if !has_string {
 		return none
 	}
 	return wasm.CabiStringExport{
@@ -122,6 +118,7 @@ fn wit_is_flags(name string, doc WitDoc) bool {
 }
 
 // wit_func_lift_with_doc lifts string/primitive shapes like wit_func_lift and
+// preserves primitive-only signatures (WIT names and unsigned types survive),
 // additionally lifts enum params/results as component s32 over core i32 and
 // flags params/results (32 or fewer flags) as component u32 over core i32.
 // Composite shapes (lists, records, variants, options/results, tuples, maps,
@@ -132,7 +129,6 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 	mut core_params := []u8{}
 	mut comp_params := []u8{}
 	mut comp_labels := []string{}
-	mut has_lift := false
 	for p in f.params {
 		if p.typ.kind == .prim {
 			if p.typ.prim == 'string' {
@@ -140,7 +136,6 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 				core_params << u8(0x7f)
 				comp_params << u8(0x73)
 				comp_labels << p.name
-				has_lift = true
 				continue
 			}
 			cc, cv := wit_prim_codes(p.typ.prim)
@@ -157,14 +152,12 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 				core_params << u8(0x7f)
 				comp_params << u8(0x7a)
 				comp_labels << p.name
-				has_lift = true
 				continue
 			}
 			if wit_is_flags(p.typ.name, doc) {
 				core_params << u8(0x7f)
 				comp_params << u8(0x79)
 				comp_labels << p.name
-				has_lift = true
 				continue
 			}
 		}
@@ -180,7 +173,6 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 				// Canonical indirect string result: single i32 pointer.
 				core_results = [u8(0x7f)]
 				comp_results = [u8(0x73)]
-				has_lift = true
 			} else {
 				cc, cv := wit_prim_codes(r.prim)
 				if cc < 0 {
@@ -193,11 +185,9 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 			if wit_is_enum(r.name, doc) {
 				core_results = [u8(0x7f)]
 				comp_results = [u8(0x7a)]
-				has_lift = true
 			} else if wit_is_flags(r.name, doc) {
 				core_results = [u8(0x7f)]
 				comp_results = [u8(0x79)]
-				has_lift = true
 			} else {
 				return none
 			}
@@ -205,9 +195,6 @@ fn wit_func_lift_with_doc(f WitFunc, doc WitDoc) ?wasm.CabiStringExport {
 			return none
 		}
 	} else {
-		return none
-	}
-	if !has_lift {
 		return none
 	}
 	return wasm.CabiStringExport{

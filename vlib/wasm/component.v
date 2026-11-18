@@ -60,14 +60,22 @@ struct CoreExport {
 	idx  int
 }
 
-// parse core wasm module: returns func exports and func type info.
-fn parse_core_module(core []u8) ([]CoreExport, []CoreFuncType, []int, int, []int) {
+struct CoreImport {
+	mod     string
+	name    string
+	kind    u8
+	typeidx int
+}
+
+// parse core wasm module: returns func exports, func type info and imports.
+fn parse_core_module(core []u8) ([]CoreExport, []CoreFuncType, []int, int, []int, []CoreImport) {
 	mut exports := []CoreExport{}
 	mut types := []CoreFuncType{}
 	mut import_func_types := []int{}
 	mut defined_func_typeidx := []int{}
 	mut import_func_count := 0
-	if core.len < 8 { return exports, types, defined_func_typeidx, 0, []int{} }
+	mut imports := []CoreImport{}
+	if core.len < 8 { return exports, types, defined_func_typeidx, 0, []int{}, imports }
 	mut i := 8
 	for i < core.len {
 		if i >= core.len { break }
@@ -99,15 +107,17 @@ fn parse_core_module(core []u8) ([]CoreExport, []CoreFuncType, []int, int, []int
 			// import section
 			count := read_uleb128(core, &i)
 			for _ in 0 .. count {
-				read_name(core, &i) // module name
-				read_name(core, &i) // field name
+				mod := read_name(core, &i)
+				field := read_name(core, &i)
 				kind := core[i]
 				i++
 				if kind == 0 {
 					ti := read_uleb128(core, &i)
 					import_func_types << ti
 					import_func_count++
+					imports << CoreImport{ mod: mod, name: field, kind: kind, typeidx: ti }
 				} else if kind == 1 {
+					imports << CoreImport{ mod: mod, name: field, kind: kind, typeidx: -1 }
 					// table
 					i++ // elem type
 					// limits
@@ -116,12 +126,14 @@ fn parse_core_module(core []u8) ([]CoreExport, []CoreFuncType, []int, int, []int
 					read_uleb128(core, &i)
 					if ft & 0x01 != 0 { read_uleb128(core, &i) }
 				} else if kind == 2 {
+					imports << CoreImport{ mod: mod, name: field, kind: kind, typeidx: -1 }
 					// memory
 					ft := core[i]
 					i++
 					read_uleb128(core, &i)
 					if ft & 0x01 != 0 { read_uleb128(core, &i) }
 				} else if kind == 3 {
+					imports << CoreImport{ mod: mod, name: field, kind: kind, typeidx: -1 }
 					// global
 					i += 2 // valtype + mut
 				}
@@ -148,9 +160,9 @@ fn parse_core_module(core []u8) ([]CoreExport, []CoreFuncType, []int, int, []int
 	}
 	// build func_types slice aligned with function index space
 	mut func_typeidx := []int{}
-	for t in import_func_types { func_typeidx << t }
-	for t in defined_func_typeidx { func_typeidx << t }
-	return exports, types, defined_func_typeidx, import_func_count, func_typeidx
+	for tt in import_func_types { func_typeidx << tt }
+	for tt in defined_func_typeidx { func_typeidx << tt }
+	return exports, types, defined_func_typeidx, import_func_count, func_typeidx, imports
 }
 
 fn core_to_component_valtype(ct u8) int {
@@ -196,6 +208,14 @@ pub mut:
 // that core exports listed in string_exports are lifted with the given
 // canonical-ABI string params/results and canonical (memory) (realloc)
 // options, and exported under their WIT name.
+// Core imports with numeric-only func signatures are forwarded: each import
+// becomes a component import (named `mod.field`), lowered to a core func,
+// bundled per module into inline-export instances, and supplied as
+// instantiation args for the wrapped module. This keeps the produced
+// component valid when the core imports e.g. wasi_snapshot_preview1.fd_write.
+// Cores with unsupported imports (non-func kinds or unmappable types) fall
+// back to plain module wrapping instead of emitting an invalid zero-arg
+// instantiation.
 // Known limitations: the scratch/sret scheme above is not reentrant
 // (nested host -> guest -> host -> guest calls clobber outer slots);
 // lifted string results assume static-lifetime guest data; composite types
@@ -203,7 +223,7 @@ pub mut:
 // yet and fall back to plain wrapping.
 pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringExport) []u8 {
 	// If we can lift at least one function, produce a richer component.
-	exports, types, _defined, _, func_typeidx := parse_core_module(core)
+	exports, types, _defined, _, func_typeidx, core_imports := parse_core_module(core)
 	// Detect memory and realloc exports for canonical opts. The component's
 	// core-memory index space is populated only by explicit aliases, so the
 	// memory export must be aliased before a `(memory 0)` canon opt can
@@ -230,9 +250,15 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 	mut liftable := []CoreExport{}
 	mut str_specs := map[string]CabiStringExport{}
 	for e in exports {
-		if e.kind != 0 { continue }
-		if e.name == 'cabi_realloc' || e.name == 'realloc' { continue }
-		if e.name == '_start' { continue }
+		if e.kind != 0 {
+			continue
+		}
+		if e.name == 'cabi_realloc' || e.name == 'realloc' {
+			continue
+		}
+		if e.name == '_start' {
+			continue
+		}
 		// Canonical-ABI string export: core signature must match the expansion.
 		if spec := string_exports[e.name] {
 			ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
@@ -247,7 +273,9 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		}
 		// map export idx to typeidx
 		ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
-		if ti < 0 || ti >= types.len { continue }
+		if ti < 0 || ti >= types.len {
+			continue
+		}
 		ft := types[ti]
 		// check params/results supported and at most one result
 		mut ok := true
@@ -258,7 +286,9 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			}
 		}
 		if ok {
-			if ft.results.len > 1 { ok = false }
+			if ft.results.len > 1 {
+				ok = false
+			}
 			for r in ft.results {
 				if core_to_component_valtype(r) < 0 {
 					ok = false
@@ -266,7 +296,9 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 				}
 			}
 		}
-		if ok { liftable << e }
+		if ok {
+			liftable << e
+		}
 	}
 	if liftable.len == 0 {
 		// fallback: just wrap module
@@ -284,10 +316,117 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		write_section(mut out, int(ComponentSection.core_module_section), payload)
 		return out
 	}
-
-	// Type section payload
+	// Forward core imports when the core needs host functions (e.g. a
+	// `println` guest importing wasi_snapshot_preview1.fd_write). Only
+	// numeric-only func imports are supported; anything else falls back to
+	// plain module wrapping instead of emitting an invalid zero-arg instance.
+	mut imp_types := [][]u8{}
+	mut imp_comp_results := [][]u8{}
+	mut forward_imports := false
+	mut n_imp := 0
+	if core_imports.len > 0 {
+		mut ok_all := true
+		for imp in core_imports {
+			if imp.kind != 0 {
+				ok_all = false
+				break
+			}
+			if imp.typeidx < 0 || imp.typeidx >= types.len {
+				ok_all = false
+				break
+			}
+			ft := types[imp.typeidx]
+			if ft.results.len > 1 {
+				ok_all = false
+				break
+			}
+			for p in ft.params {
+				if core_to_component_valtype(p) < 0 {
+					ok_all = false
+					break
+				}
+			}
+			if !ok_all {
+				break
+			}
+			for r in ft.results {
+				if core_to_component_valtype(r) < 0 {
+					ok_all = false
+					break
+				}
+			}
+			if !ok_all {
+				break
+			}
+		}
+		if !ok_all {
+			// unsupported imports: valid fallback without instantiation
+			mut out := []u8{}
+			out << u8(0x00)
+			out << u8(0x61)
+			out << u8(0x73)
+			out << u8(0x6d)
+			out << u8(0x0d)
+			out << u8(0x00)
+			out << u8(0x01)
+			out << u8(0x00)
+			mut payload := []u8{}
+			payload << core
+			write_section(mut out, int(ComponentSection.core_module_section), payload)
+			return out
+		}
+		for imp in core_imports {
+			ft := types[imp.typeidx]
+			mut cp := []u8{}
+			for p in ft.params {
+				cp << u8(core_to_component_valtype(p))
+			}
+			mut cr := []u8{}
+			for r in ft.results {
+				cr << u8(core_to_component_valtype(r))
+			}
+			imp_types << cp
+			imp_comp_results << cr
+		}
+		forward_imports = true
+		n_imp = core_imports.len
+	}
+	// Group imports by module for per-module inline-export instances.
+	mut mod_order := []string{}
+	mut mod_to_impidx := map[string][]int{}
+	if forward_imports {
+		for idx, imp in core_imports {
+			if imp.mod !in mod_to_impidx {
+				mod_order << imp.mod
+				mod_to_impidx[imp.mod] = []int{}
+			}
+			mod_to_impidx[imp.mod] << idx
+		}
+	}
+	n_mod := mod_order.len
+	main_inst_idx := n_mod
+	// Type section payload: import types first, then lift types.
 	mut type_payload := []u8{}
-	type_payload << leb128.encode_u32(u32(liftable.len))
+	type_payload << leb128.encode_u32(u32(n_imp + liftable.len))
+	for ii in 0 .. n_imp {
+		cp := imp_types[ii]
+		cr := imp_comp_results[ii]
+		type_payload << u8(0x40) // functype
+		type_payload << leb128.encode_u32(u32(cp.len))
+		for idxp, p in cp {
+			label := 'p${idxp}'
+			type_payload << leb128.encode_u32(u32(label.len))
+			type_payload << label.bytes()
+			type_payload << p
+		}
+		if cr.len == 0 {
+			type_payload << u8(0x01)
+			type_payload << u8(0x00)
+		} else {
+			type_payload << u8(0x00)
+			type_payload << cr[0]
+		}
+	}
 	for e in liftable {
 		ti := if e.idx >= 0 && e.idx < func_typeidx.len { func_typeidx[e.idx] } else { -1 }
 		ft := types[ti]
@@ -328,18 +467,60 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			type_payload << u8(core_to_component_valtype(ft.results[0]))
 		}
 	}
-
-	// Core instance section payload: instantiate module 0
+	// Import section payload (component imports for host funcs).
+	mut import_payload := []u8{}
+	if forward_imports {
+		import_payload << leb128.encode_u32(u32(n_imp))
+		for ii, imp in core_imports {
+			iname := '${imp.mod}.${imp.name}'
+			import_payload << u8(0x00) // nameattributes plain
+			import_payload << leb128.encode_u32(u32(iname.len))
+			import_payload << iname.bytes()
+			import_payload << u8(0x01) // sort func
+			import_payload << leb128.encode_u32(u32(ii)) // type idx
+		}
+	}
+	// Canon lowers payload (separate canon section before instances).
+	mut lower_payload := []u8{}
+	if forward_imports {
+		lower_payload << leb128.encode_u32(u32(n_imp))
+		for ii in 0 .. n_imp {
+			lower_payload << u8(0x01)
+			lower_payload << u8(0x00) // func sort
+			lower_payload << leb128.encode_u32(u32(ii)) // component func idx
+			lower_payload << leb128.encode_u32(u32(0)) // no opts
+		}
+	}
+	// Core instance section payload: inline-export instances per module, then
+	// instantiate module 0 with those instances as args.
 	mut coreinst_payload := []u8{}
-	coreinst_payload << leb128.encode_u32(1) // count
+	coreinst_payload << leb128.encode_u32(u32(n_mod + 1)) // count
+	for mi, mname in mod_order {
+		coreinst_payload << u8(0x01) // inline exports
+		idxs := mod_to_impidx[mname]
+		coreinst_payload << leb128.encode_u32(u32(idxs.len))
+		for imp_idx in idxs {
+			fname := core_imports[imp_idx].name
+			coreinst_payload << leb128.encode_u32(u32(fname.len))
+			coreinst_payload << fname.bytes()
+			coreinst_payload << u8(0x00) // core func sort
+			coreinst_payload << leb128.encode_u32(u32(imp_idx)) // lowered core func idx
+		}
+		_ = mi
+	}
 	coreinst_payload << u8(0x00) // instantiate
 	coreinst_payload << leb128.encode_u32(0) // module idx
-	coreinst_payload << leb128.encode_u32(0) // arg count
-
-	// Alias section payload: alias core exports. Func aliases come first so
-	// liftable indices 0..liftable.len-1 stay stable; the realloc adapter (if
-	// present) gets the next func-alias index; the memory alias lives in the
-	// separate core-memory index space (index 0).
+	coreinst_payload << leb128.encode_u32(u32(n_mod)) // arg count
+	for mi, mname in mod_order {
+		coreinst_payload << leb128.encode_u32(u32(mname.len))
+		coreinst_payload << mname.bytes()
+		coreinst_payload << u8(0x12) // instance sort
+		coreinst_payload << leb128.encode_u32(u32(mi)) // instance idx
+	}
+	// Alias section payload: alias core exports from the main instance. Func
+	// aliases come first so liftable indices stay stable after the lowered
+	// import funcs; the realloc adapter (if present) gets the next func-alias
+	// index; the memory alias lives in the separate core-memory index space.
 	mut func_alias_names := []string{}
 	for e in liftable {
 		func_alias_names << e.name
@@ -354,9 +535,9 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			}
 		}
 		if found_idx >= 0 {
-			realloc_alias_idx = found_idx
+			realloc_alias_idx = n_imp + found_idx
 		} else {
-			realloc_alias_idx = func_alias_names.len
+			realloc_alias_idx = n_imp + func_alias_names.len
 			func_alias_names << realloc_name
 		}
 	}
@@ -366,7 +547,7 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		alias_payload << u8(0x00) // core sort prefix
 		alias_payload << u8(0x00) // core func sort
 		alias_payload << u8(0x01) // core instance
-		alias_payload << leb128.encode_u32(0) // instance idx
+		alias_payload << leb128.encode_u32(u32(main_inst_idx)) // instance idx
 		alias_payload << leb128.encode_u32(u32(n.len))
 		alias_payload << n.bytes()
 	}
@@ -374,18 +555,17 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		alias_payload << u8(0x00) // core sort prefix
 		alias_payload << u8(0x02) // core memory sort
 		alias_payload << u8(0x01) // core instance
-		alias_payload << leb128.encode_u32(0) // instance idx
+		alias_payload << leb128.encode_u32(u32(main_inst_idx)) // instance idx
 		alias_payload << leb128.encode_u32(u32(mem_name.len))
 		alias_payload << mem_name.bytes()
 	}
-
 	// Canonical section payload: lift each
 	mut canon_payload := []u8{}
 	canon_payload << leb128.encode_u32(u32(liftable.len))
 	for i, _ in liftable {
 		canon_payload << u8(0x00)
 		canon_payload << u8(0x00) // func sort
-		canon_payload << leb128.encode_u32(u32(i)) // core func idx (alias index)
+		canon_payload << leb128.encode_u32(u32(n_imp + i)) // core func idx (alias index)
 		// opts: the count is the number of options, not bytes.
 		mut opts := []u8{}
 		mut nopts := 0
@@ -401,9 +581,8 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		}
 		canon_payload << leb128.encode_u32(u32(nopts))
 		canon_payload << opts
-		canon_payload << leb128.encode_u32(u32(i)) // type idx
+		canon_payload << leb128.encode_u32(u32(n_imp + i)) // type idx
 	}
-
 	// Export section payload: each export ends with the mandatory byte for an
 	// absent optional export type (0x00); the decoder reads it unconditionally.
 	mut export_payload := []u8{}
@@ -417,10 +596,9 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 		export_payload << leb128.encode_u32(u32(ename.len))
 		export_payload << ename.bytes()
 		export_payload << u8(0x01) // sort func
-		export_payload << leb128.encode_u32(u32(i)) // func idx
+		export_payload << leb128.encode_u32(u32(n_imp + i)) // func idx
 		export_payload << u8(0x00) // absent optional externtype
 	}
-
 	// Assemble
 	mut out := []u8{}
 	out << u8(0x00)
@@ -431,22 +609,26 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 	out << u8(0x00)
 	out << u8(0x01)
 	out << u8(0x00)
-
 	// type section id 7
 	write_section(mut out, int(ComponentSection.type_section), type_payload)
 	// core module section id 1
 	mut mod_payload := []u8{}
 	mod_payload << core
 	write_section(mut out, int(ComponentSection.core_module_section), mod_payload)
+	if forward_imports {
+		// import section id 10
+		write_section(mut out, int(ComponentSection.import_section), import_payload)
+		// canon lowers section id 8 (before instances)
+		write_section(mut out, int(ComponentSection.canon_section), lower_payload)
+	}
 	// core instance section id 2
 	write_section(mut out, int(ComponentSection.core_instance_section), coreinst_payload)
 	// alias section id 6
 	write_section(mut out, int(ComponentSection.alias_section), alias_payload)
-	// canon section id 8
+	// canon lifts section id 8
 	write_section(mut out, int(ComponentSection.canon_section), canon_payload)
 	// export section id 11
 	write_section(mut out, int(ComponentSection.export_section), export_payload)
-
 	return out
 }
 
