@@ -4674,7 +4674,8 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 	}
 	mut letters := []u8{}
 	mut paren_depth := 0
-	for ch in fmt {
+	mut invalid_idx := -1
+	for i, ch in fmt {
 		if ch == `(` {
 			paren_depth++
 			continue
@@ -4682,12 +4683,34 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 		if ch == `)` {
 			if paren_depth > 0 {
 				paren_depth--
+				continue
 			}
+			invalid_idx = i
+			break
+		}
+		if paren_depth > 0 {
 			continue
 		}
-		if paren_depth == 0 && ((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)) {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) {
 			letters << ch
+		} else if ch != `-` && ch != `+` && ch != `.` && !(ch >= `0` && ch <= `9`) {
+			// Flags outside parentheses are limited to `-`, `0`/`+` padding and
+			// the `+` sign flag; anything else (e.g. `>`, `<`, `^`, fill
+			// characters) was silently ignored by the backends.
+			invalid_idx = i
+			break
 		}
+	}
+	if invalid_idx >= 0 {
+		bad := fmt[invalid_idx]
+		bad_pos := token.new_span(node.pos.id, node.pos.offset + invalid_idx, node.pos.offset +
+			invalid_idx + 1)
+		tc.record_error_at(.call_arg_mismatch, 'unknown character `${bad.ascii_str()}` in the format of a string interpolation', id, bad_pos)
+		return
+	}
+	if paren_depth > 0 {
+		tc.record_error_at(.call_arg_mismatch, 'unclosed `(` in the format of a string interpolation', id, node.pos)
+		return
 	}
 	if letters.len > 1 {
 		tc.record_error_at(.call_arg_mismatch, 'format specifier may only be one letter', id, node.pos)

@@ -1,0 +1,11 @@
+fn main() {
+	n := 1
+	s := 'ab'
+	println('[${n:>3}]')
+	println('[${n:<3}]')
+	println('[${n:^5}]')
+	println('[${n:*^5}]')
+	println('[${s:^6}]')
+	println('[${n:!d}]')
+	println('[${n:3}]')
+}
