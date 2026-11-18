@@ -271,25 +271,17 @@ fn (mut handler MyCustomHttpHostHandler) handle(req http.Request) http.Response 
 }
 
 fn test_host_header_sent_to_server() {
-	ip := '127.0.0.1'
-	port := 54671
 	log.warn('${@FN} started')
 	defer { log.warn('${@FN} finished') }
 	mut server := &http.Server{
-		handler: MyCustomHttpHostHandler{}
-		addr:    '${ip}:${port}'
+		handler:        MyCustomHttpHostHandler{}
+		addr:           '127.0.0.1:0'
+		accept_timeout: atimeout
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running() or {
-		estr := err.str()
-		if estr == 'maximum retries reached' {
-			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
-			return
-		}
-		log.fatal(estr)
-	}
+	server.wait_till_running()!
 	defer {
-		server.stop()
+		server.close()
 		t.wait()
 	}
 	dump(server.addr)
@@ -297,7 +289,7 @@ fn test_host_header_sent_to_server() {
 	dump(x)
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
-	assert x.body.ends_with('${ip}:${port}')
+	assert x.body == 'Host was: ${server.addr}'
 }
 
 //
@@ -755,13 +747,16 @@ fn (mut _ RequestHeadLimitHandler) handle(_ http.Request) http.Response {
 	}
 }
 
-fn send_slow_request_head(addr string) {
-	mut conn := net.dial_tcp(addr) or { return }
-	defer { conn.close() or {} }
-	conn.write_string('GET / HTTP/1.1\r\nX-Slow: ') or { return }
+fn drip_request_head(mut conn net.TcpConn, stop chan bool) {
 	for _ in 0 .. 40 {
-		time.sleep(50 * time.millisecond)
-		conn.write_string('a') or { break }
+		select {
+			_ := <-stop {
+				return
+			}
+			50 * time.millisecond {
+			}
+		}
+		conn.write_string('a') or { return }
 	}
 }
 
@@ -772,32 +767,41 @@ fn test_server_bounds_http1_request_head_size_and_duration() {
 		read_header_timeout:  300 * time.millisecond
 		worker_num:           1
 		handler:              RequestHeadLimitHandler{}
-		addr:                 '127.0.0.1:18205'
+		addr:                 '127.0.0.1:0'
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
+	defer {
+		server.stop()
+		t.wait()
+	}
 
-	mut oversized_conn := net.dial_tcp('127.0.0.1:18205')!
+	mut oversized_conn := net.dial_tcp(server.addr)!
 	oversized_conn.set_read_timeout(2 * time.second)
 	oversized_conn.write_string('GET /' + 'a'.repeat(http.default_max_http1_request_head_size) + ' HTTP/1.1\r\n\r\n')!
 	oversized_response := read_http_response(mut oversized_conn)!
 	assert oversized_response.starts_with('HTTP/1.1 431 Request Header Fields Too Large\r\n')
 	oversized_conn.close() or {}
 
-	drip := spawn send_slow_request_head('127.0.0.1:18205')
-	time.sleep(500 * time.millisecond)
-	mut legitimate_conn := net.dial_tcp('127.0.0.1:18205')!
+	mut slow := net.dial_tcp(server.addr)!
+	defer { slow.close() or {} }
+	slow.write_string('GET / HTTP/1.1\r\nX-Slow: ')!
+	stop := chan bool{cap: 1}
+	drip := spawn drip_request_head(mut slow, stop)
+	defer {
+		stop <- true
+		drip.wait()
+	}
+	// Both connections use one worker. The complete request can only get a
+	// response once the server has stopped reading the slow header.
+	mut legitimate_conn := net.dial_tcp(server.addr)!
+	defer { legitimate_conn.close() or {} }
 	legitimate_conn.set_read_timeout(1 * time.second)
 	legitimate_conn.write_string('GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
 	legitimate_response := read_http_response(mut legitimate_conn)!
 	assert legitimate_response.starts_with('HTTP/1.1 200 OK\r\n')
 	assert legitimate_response.ends_with('ok')
-	legitimate_conn.close() or {}
-	drip.wait()
-
-	server.stop()
-	t.wait()
 }
 
 fn read_http_response(mut conn net.TcpConn) !string {
