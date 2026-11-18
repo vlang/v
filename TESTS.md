@@ -71,6 +71,20 @@ cgroup memory limit, and the lower of the CPU count and the cgroup CPU quota.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+The test builds of a session share one V3 module cache, `vtest_module_cache` in `VTMP`. It is
+kept apart from the default cache of your own builds, and it persists across sessions, so a
+module is compiled again only when its sources or its dependencies change. One build at a time
+populates it; the builds that start beside it wait and then read what it published. Set
+`V3CACHE` to use another directory, or `V3_TEST_ISOLATE_CACHE=1` for a cache per compiler.
+Tests of the cache itself stay out of the shared cache: the files in `vlib/v/modulecache/`,
+`*cache*_test.v`, `unchanged_build_*` and `program_executable_*` files, and tests that pass
+their own `-nocache` or `V3CACHE`. They are compiled with `-nocache` and run with a `V3CACHE`
+of their own.
+
+Set `VTEST_NOCACHE=1` to compile every test file from scratch, with `-nocache`. A cached test
+run of the compiler's own modules reads most of them from the cache, so it does not cover their
+complete uncached compilation; `./v self` and a test run with `VTEST_NOCACHE=1` do.
+
 `cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
 including expected failures. It streams child output to stderr while retaining that output
 for its assertions, so a watchdog failure leaves the nested command's progress in the log.

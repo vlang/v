@@ -704,12 +704,15 @@ fn test_cached_object_accepts_recorded_dependency_superset() {
 	manager := modulecache.new_manager(root, 'dependency-superset', true, '', '')
 	assert manager.ensure_dir()
 	compile_signature := 'flags'
-	entry := manager.object_entry('foo', [source], compile_signature)
-	os.write_file(entry.object, '') or { panic(err) }
-	manager.write_stamp('foo', [source], {
+	recorded_inputs := {
 		first_dependency: modulecache.file_signature(first_dependency)
 		extra_dependency: modulecache.file_signature(extra_dependency)
-	}, compile_signature) or { panic(err) }
+	}
+	entry := manager.object_publish_entry('foo', [source], compile_signature, recorded_inputs)
+	os.write_file(entry.object, '') or { panic(err) }
+	manager.write_object_stamp(entry, 'foo', [source], recorded_inputs, compile_signature) or {
+		panic(err)
+	}
 	_ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, {
 		first_dependency: modulecache.file_signature(first_dependency)
 	}) or {
@@ -734,6 +737,76 @@ fn test_cached_object_accepts_recorded_dependency_superset() {
 	{
 		assert false, 'a changed dependency must invalidate the object'
 	}
+}
+
+fn test_cached_objects_of_conflicting_dependency_inputs_coexist() {
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_dependency_variants_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'foo.v')
+	write_module_cache_file(root, 'foo.v', 'module foo')
+	write_module_cache_file(root, 'shared.h', '#define SHARED 1')
+	write_module_cache_file(root, 'first.h', '#define FIRST 1')
+	write_module_cache_file(root, 'second.h', '#define SECOND 1')
+	shared := os.join_path(root, 'shared.h')
+	first := {
+		shared:                        modulecache.file_signature(shared)
+		os.join_path(root, 'first.h'): modulecache.file_signature(os.join_path(root, 'first.h'))
+	}
+	second := {
+		shared:                         modulecache.file_signature(shared)
+		os.join_path(root, 'second.h'): modulecache.file_signature(os.join_path(root, 'second.h'))
+	}
+	manager := modulecache.new_manager(root, 'dependency-variants', true, '', '')
+	assert manager.ensure_dir()
+	compile_signature := 'flags'
+	// Two programs generate the same C for the module, but include other native
+	// headers. The second must not replace the object of the first one.
+	first_entry := manager.object_publish_entry('foo', [source], compile_signature, first)
+	// Both builds choose their paths while the cache is cold, before either
+	// has published its object or stamp.
+	second_entry := manager.object_publish_entry('foo', [source], compile_signature, second)
+	assert second_entry.object != first_entry.object
+	os.write_file(first_entry.object, 'first') or { panic(err) }
+	manager.write_object_stamp(first_entry, 'foo', [source], first, compile_signature) or {
+		panic(err)
+	}
+	os.write_file(second_entry.object, 'second') or { panic(err) }
+	manager.write_object_stamp(second_entry, 'foo', [source], second, compile_signature) or {
+		panic(err)
+	}
+	for _ in 0 .. 2 {
+		found_first := manager.valid_object_for_compile_signature('foo', [source], compile_signature,
+			first) or {
+			assert false, 'the first program must keep its object'
+			return
+		}
+		assert found_first.object == first_entry.object
+		found_second := manager.valid_object_for_compile_signature('foo', [source],
+			compile_signature, second) or {
+			assert false, 'the second program must keep its object'
+			return
+		}
+		assert found_second.object == second_entry.object
+	}
+	// A build that reuses an object records its inputs without narrowing the stamp.
+	manager.write_reused_stamp('foo', [source], {
+		shared: modulecache.file_signature(shared)
+	}, compile_signature) or { panic(err) }
+	_ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, first) or {
+		assert false, 'a reusing build must keep the stamp of the object it reused'
+		return
+	}
+	// An edited dependency cannot overwrite the old object used by a running build.
+	write_module_cache_file(root, 'first.h', '#define FIRST 2')
+	edited := {
+		shared:                        modulecache.file_signature(shared)
+		os.join_path(root, 'first.h'): modulecache.file_signature(os.join_path(root, 'first.h'))
+	}
+	assert manager.object_publish_entry('foo', [source], compile_signature, edited).object != first_entry.object
 }
 
 fn module_cache_object_hashes(cache_dir string) map[string]u64 {

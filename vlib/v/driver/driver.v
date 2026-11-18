@@ -12263,7 +12263,18 @@ pub fn run(args []string) {
 	}
 	large_cold_cache_bypass := cache_candidate_enabled
 		&& valid_v3_large_cold_cache_marker(large_cold_cache_marker)
-	cache_enabled := cache_candidate_enabled && !large_cold_cache_bypass
+	mut cache_enabled := cache_candidate_enabled && !large_cold_cache_bypass
+	if cache_enabled {
+		wait_for_v3_cache_population(cache_probe_manager.dir)
+		if lease := cache_probe_manager.begin_object_cache_build() {
+			mut build := unsafe { v3_module_object_cache_build }
+			build.file_lock = lease
+			build.acquired = true
+		} else {
+			cache_enabled = false
+		}
+	}
+	defer { release_v3_module_object_cache_build() }
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled, build_pseudo_values, version_pseudo_values)
 	if large_cold_cache_bypass {
 		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
@@ -13413,6 +13424,9 @@ pub fn run(args []string) {
 			// populated later: only a graph that is too large keeps the bypass.
 			if population == .bypass {
 				_ = write_v3_large_cold_cache_marker(large_cold_cache_marker, fallback_report_sources.keys())
+			}
+			if population == .contended {
+				restart_v3_to_wait_for_cache_population()
 			}
 			restart_v3_without_cache('')
 		}
@@ -18305,13 +18319,17 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		bundle_signature := v3_cached_object_content_signature(object_base, bundle_content)
 		// Another program, or this one before an edit, may have generated the same C
 		// for these modules. Its object is the one this C compiles to.
-		mut bundle_is_compiled := if _ := state.manager.reusable_object('builtin', state.bundle_sources,
+		mut bundle_entry := state.manager.object_publish_entry('builtin', state.bundle_sources,
+			bundle_signature, bundle_dependencies)
+		bundle_reused := if found := state.manager.reusable_object('builtin', state.bundle_sources,
 			bundle_signature, bundle_dependencies)
 		{
+			bundle_entry = found
 			true
 		} else {
 			false
 		}
+		mut bundle_is_compiled := bundle_reused
 		if !bundle_is_compiled {
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
@@ -18336,7 +18354,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, bundle_code) + bundle_code
 			}
-			compiled := compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, state, 'builtin') or {
+			compiled := compile_v3_cached_object(state.object_compiler, bundle_entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, state, 'builtin') or {
 				prealloc_scope_leave_for_v3(bundle_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(bundle_compile_scope)
@@ -18347,7 +18365,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			prealloc_scope_leave_for_v3(bundle_compile_scope)
 			prealloc_scope_free_for_v3(bundle_compile_scope)
 		}
-		entry := state.manager.object_entry('builtin', state.bundle_sources, bundle_signature)
+		entry := bundle_entry
 		for module_name, header in state.headers {
 			if !module_is_builtin_bundle(state, tc.a, module_name) {
 				continue
@@ -18356,7 +18374,13 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				state.manager.write_header(module_name, source_files, header)!
 			}
 		}
-		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies, bundle_signature)!
+		if bundle_reused {
+			state.manager.write_reused_stamp('builtin', state.bundle_sources, bundle_dependencies,
+				bundle_signature)!
+		} else {
+			state.manager.write_object_stamp(entry, 'builtin', state.bundle_sources, bundle_dependencies,
+				bundle_signature)!
+		}
 		state.manager.write_object_alias('builtin', state.bundle_sources, v3_cached_object_alias_signature(object_base,
 			scopes, state, bundle_roots, common_visible), bundle_content)!
 		object_paths['builtin'] = entry.object
@@ -18389,14 +18413,17 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		module_content := sha256.hexhash(body)
 		module_signature := v3_cached_object_content_signature(object_base, module_content)
 		dependencies := cache_object_dependency_signatures(state, tc.a, [module_name])
-		entry := state.manager.object_entry(module_name, source_files, module_signature)
-		mut module_is_compiled := if _ := state.manager.reusable_object(module_name, source_files,
+		mut entry := state.manager.object_publish_entry(module_name, source_files, module_signature,
+			dependencies)
+		module_reused := if found := state.manager.reusable_object(module_name, source_files,
 			module_signature, dependencies)
 		{
+			entry = found
 			true
 		} else {
 			false
 		}
+		mut module_is_compiled := module_reused
 		if !module_is_compiled {
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
@@ -18431,7 +18458,13 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}
-		state.manager.write_stamp(module_name, source_files, dependencies, module_signature)!
+		if module_reused {
+			state.manager.write_reused_stamp(module_name, source_files, dependencies,
+				module_signature)!
+		} else {
+			state.manager.write_object_stamp(entry, module_name, source_files, dependencies,
+				module_signature)!
+		}
 		state.manager.write_object_alias(module_name, source_files, v3_cached_object_alias_signature(object_base,
 			scopes, state, [module_name], common_visible), module_content)!
 		object_paths[module_name] = entry.object
@@ -19299,6 +19332,53 @@ fn acquire_v3_cache_population_lock(cache_dir string) V3CachePopulationLockResul
 	return .acquired
 }
 
+// The lease covers loading, publishing and linking module objects.
+const v3_module_object_cache_build = &V3CachePopulationLock{}
+
+fn release_v3_module_object_cache_build() {
+	mut build := unsafe { v3_module_object_cache_build }
+	if build.acquired {
+		build.file_lock.release()
+		build.acquired = false
+	}
+}
+
+const v3_internal_cache_population_wait_env = 'V3_INTERNAL_CACHE_POPULATION_WAIT'
+const v3_cache_population_wait_limit = 3
+
+// restart_v3_to_wait_for_cache_population restarts a build that found another
+// build populating the cache for its compiler-module graph. The restarted build
+// waits for that population before it parses anything (see
+// wait_for_v3_cache_population), then reads what was published from the cache,
+// instead of compiling the whole graph again without it. A build that has waited
+// v3_cache_population_wait_limit times returns, and restarts without the cache.
+fn restart_v3_to_wait_for_cache_population() {
+	waits := os.getenv(v3_internal_cache_population_wait_env).int()
+	if waits >= v3_cache_population_wait_limit {
+		return
+	}
+	os.setenv(v3_internal_cache_population_wait_env, '${waits + 1}', true)
+	restart_v3_after_cache_invalidation('')
+}
+
+// wait_for_v3_cache_population blocks a build that restart_v3_to_wait_for_cache_population
+// restarted until the population lock of `cache_dir` is free, and gives it up at once.
+fn wait_for_v3_cache_population(cache_dir string) {
+	if is_instance_check_child() || os.getenv(v3_internal_cache_population_wait_env) == '' {
+		return
+	}
+	path := os.join_path(cache_dir, v3_cache_population_lock_name)
+	if !os.is_file(path) {
+		return
+	}
+	mut file_lock := filelock.new_file(path, mode: .exclusive)
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 module cache: waiting for another build to populate the cache')
+	}
+	file_lock.acquire() or { return }
+	file_lock.release()
+}
+
 // release_v3_cache_population_lock gives up the population lock before this build
 // waits for another process: a build that it restarts or retries as a child (on
 // Windows every restart), or the program it runs.
@@ -19426,6 +19506,7 @@ fn restart_v3_without_cache(build_dir string) {
 }
 
 fn restart_v3_with_args(extra_args []string, build_dir string) {
+	release_v3_module_object_cache_build()
 	cleanup_c_build_dir(build_dir)
 	executable := os.executable()
 	mut args := extra_args.clone()
@@ -19453,6 +19534,7 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 // The child is a process of its own: its launcher stages a fallback marker under the
 // child's pid and reports the child's failures itself.
 fn exit_with_child_build(executable string, args []string) {
+	release_v3_module_object_cache_build()
 	release_v3_cache_population_lock()
 	release_v3_fallback_marker()
 	exit(os.system_args([executable, ...args]))
