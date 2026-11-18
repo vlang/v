@@ -1314,6 +1314,19 @@ pub mut:
 	// group of complete definitions begins. Every unit declares them, so a
 	// build that shares one parse of the head may spread them over its units.
 	solo_starts []int
+	// native_owner_end is the number of head pieces a native source can name: no
+	// native directive follows them. The V declarations after them are the
+	// prototypes, constants and globals of the program, which change with ordinary
+	// edits of V code.
+	native_owner_end int
+	// native_exports declares the exported V functions among those declarations:
+	// a C binding can still name them.
+	native_exports string
+	// The head pieces from native_decl_start up to native_decl_end declare the
+	// constants and types of the V program, between the native headers and the
+	// native sources that may name some of them.
+	native_decl_start int
+	native_decl_end   int
 }
 
 // c_source joins the generated C pieces into one string.
@@ -1633,6 +1646,8 @@ mut:
 	lit                  string
 	out                  strings.Builder
 	protos               strings.Builder
+	// The prototypes of this file's exported C functions: see FastcUnitLayout.
+	export_prototypes []string
 	// The function definitions of this file, recorded for the reachability
 	// prune: see FastcFileGenOutput.
 	function_id_table    map[string]int
@@ -2008,6 +2023,7 @@ mut:
 	refs              []int
 	root_refs         []int
 	has_main_entry    bool
+	export_prototypes []string
 	fixed_array_types flat.TypeTextBindings
 	composite_types   map[string]bool
 	spawn_typedefs    map[string]string
@@ -2164,6 +2180,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		refs:              refs
 		root_refs:         root_refs
 		has_main_entry:    source_file.header.module_name in ['', 'main'] && gen.has_main
+		export_prototypes: gen.export_prototypes
 		fixed_array_types: gen.fixed_array_types
 		composite_types:   gen.composite_types
 		spawn_typedefs:    gen.spawn_typedefs
@@ -3016,6 +3033,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		pieces << '\n'
 	}
+	units.native_decl_start = pieces.len
 	pieces << fastc_piece(constant_output.macros)
 	pieces << fastc_piece(type_output.declarations_head)
 	pieces << fastc_piece(composite_typedefs)
@@ -3035,6 +3053,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << spawn_typedefs[function_type_name]
 	}
 	pieces << fastc_piece(callback_fixed_array_declarations)
+	units.native_decl_end = pieces.len
 	for include in native_source_includes {
 		pieces << include
 	}
@@ -3056,6 +3075,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	if prefs.target_libc_headers {
 		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
+	units.native_owner_end = pieces.len
+	mut export_prototypes := strings.new_builder(256)
+	for output in outputs {
+		for prototype in output.export_prototypes {
+			export_prototypes.writeln(prototype)
+		}
+	}
+	units.native_exports = fastc_take_string(mut export_prototypes)
 	extern_indexes << pieces.len
 	extern_texts << fastc_extern_declarations(constant_output.declarations, true)
 	define_texts << fastc_extern_declarations(constant_output.declarations, false)
