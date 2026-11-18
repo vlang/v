@@ -1,31 +1,26 @@
-import time
-
 struct Struct {
 	ch chan int
 }
 
-fn listen(ch chan int) {
-	for {
-		t := <-ch or { break }
-		println(t)
+fn listen(ch chan int) int {
+	value := <-ch
+	if _ := <-ch {
+		assert false, 'expected the channel to close after one value'
 	}
+	return value
 }
 
-fn sp_array() {
+fn test_main() {
 	mut array := [3]chan int{}
-	for a in 0 .. 3 {
-		spawn listen(array[a])
+	mut listeners := []thread int{cap: array.len}
+	for a in 0 .. array.len {
+		listeners << spawn listen(array[a])
 	}
 	for i, a in array {
 		a <- i
 	}
-	time.sleep(1000 * time.millisecond)
 	for c in array {
 		c.close()
 	}
-}
-
-fn test_main() {
-	sp_array()
-	assert true
+	assert listeners.wait() == [0, 1, 2]
 }
