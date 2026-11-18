@@ -138,3 +138,35 @@ fn test_handle_raw_file_read_failure_closes_with_complete_500() {
 	assert resp.header.get(.connection) or { '' } == 'close'
 	assert !out.contains('HTTP/1.1 200')
 }
+
+fn raw_sub_static_app() (RawApp, string) {
+	dir := os.join_path(os.temp_dir(), 'veb_handle_raw_sub_static')
+	os.mkdir_all(os.join_path(dir, 'sub')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'index.html'), '<h1>index</h1>') or { panic(err) }
+	os.write_file(os.join_path(dir, 'sub', 'index.html'), '<h1>sub</h1>') or { panic(err) }
+	mut app := RawApp{}
+	app.handle_static(dir, true) or { panic(err) }
+	return app, dir
+}
+
+fn test_handle_raw_static_dir_without_trailing_slash_serves_index() {
+	mut app, dir := raw_sub_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'GET /sub HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.ok)
+	assert resp.body == '<h1>sub</h1>'
+}
+
+fn test_handle_raw_static_dir_with_trailing_slash_serves_index() {
+	mut app, dir := raw_sub_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'GET /sub/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.ok)
+	assert resp.body == '<h1>sub</h1>'
+}
