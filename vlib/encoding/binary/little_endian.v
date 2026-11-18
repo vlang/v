@@ -257,7 +257,7 @@ pub fn little_endian_put_u64_at(mut b []u8, v u64, o int) {
 	}
 }
 
-// little_endian_put_u64_end writes a u64 to the last eight bytes in the array b at in little endian order.
+// little_endian_put_u64_end writes a u64 to the last eight bytes in the array b in little endian order.
 @[direct_array_access; inline]
 pub fn little_endian_put_u64_end(mut b []u8, v u64) {
 	little_endian_put_u64_at(mut b, v, b.len - 8)
