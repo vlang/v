@@ -105,8 +105,17 @@ fn speculated_batch_shape(p &Parser, starts [][]int) string {
 	return out.str()
 }
 
+// The test owns the parser's C-allocated parallel batch sources and worker pool.
+fn close_speculated_batch_test_parser(mut p Parser) {
+	p.discard_speculated_batch()
+	p.release_source_storage()
+	assert p.batch_source_buffers.len == 0
+	p.a.close_workers()
+}
+
 fn parse_two_batches(files SpeculatedBatchFiles, speculate []string) (string, bool, bool) {
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	if speculate.len > 0 {
 		p.speculate_next_batch(speculate)
@@ -151,6 +160,7 @@ fn test_a_batch_that_continues_a_module_is_parsed_in_its_turn() {
 	assert was_ahead
 	assert ahead == plain
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	p.speculate_next_batch(files.second)
 	p.parse_files_dispatch(files.first, true)
@@ -166,6 +176,7 @@ fn test_a_batch_parsed_ahead_is_not_read_again() {
 	}
 	files := write_speculated_batch_files(root, false)
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	p.speculate_next_batch(files.second)
 	p.parse_files_dispatch(files.first, true)
@@ -207,6 +218,7 @@ fn test_a_changed_const_state_drops_the_parse_ahead() {
 	mut shapes := []string{}
 	for speculate in [false, true] {
 		mut p := Parser.new(pref.new_preferences())
+		defer { close_speculated_batch_test_parser(mut p) }
 		p.a.worker_pool = workers.new(3)
 		if speculate {
 			p.speculate_next_batch(files.second)
@@ -234,6 +246,7 @@ fn test_a_parse_ahead_can_be_discarded() {
 	}
 	files := write_speculated_batch_files(root, false)
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	p.speculate_next_batch(files.second)
 	p.parse_files_dispatch(files.first, true)
@@ -252,6 +265,7 @@ fn test_a_serial_batch_ignores_the_files_ahead() {
 	}
 	files := write_speculated_batch_files(root, false)
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.speculate_next_batch(files.second)
 	_, was_parallel := p.parse_files_dispatch(files.first, false)
 	assert !was_parallel
