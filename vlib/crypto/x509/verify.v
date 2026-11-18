@@ -455,7 +455,11 @@ fn check_name_constraints(ca &Certificate, child &Certificate) ! {
 // valid_link checks one chain edge: issuer match is the caller's job; this
 // enforces CA status, keyCertSign, validity, signature, name constraints
 // and pathLenConstraint. Trust anchors are exempt from the CA flag only.
-fn valid_link(child &Certificate, parent &Certificate, now time.Time, anchor bool, below_ca int) ! {
+// The parent's name constraints apply to every certificate below it in the
+// path (RFC 5280 4.2.1.10), not just the immediate child: below_all holds
+// the complete below-parent path so a SAN-less subordinate CA cannot
+// launder an out-of-scope leaf.
+fn valid_link(child &Certificate, parent &Certificate, now time.Time, anchor bool, below_ca int, below_all []Certificate) ! {
 	if !valid_at(child, now) || !valid_at(parent, now) {
 		return error('x509: certificate not valid at this time')
 	}
@@ -472,7 +476,9 @@ fn valid_link(child &Certificate, parent &Certificate, now time.Time, anchor boo
 	if parent.has_key_usage && parent.key_usage & ku_key_cert_sign == 0 {
 		return error('x509: parent cannot sign certificates')
 	}
-	check_name_constraints(parent, child)!
+	for i in 0 .. below_all.len {
+		check_name_constraints(parent, &below_all[i])!
+	}
 	parent_pk := parent.public_key() or { return error('x509: bad parent public key') }
 	verify_child_signature(child, parent_pk)!
 }
@@ -481,7 +487,9 @@ fn valid_link(child &Certificate, parent &Certificate, now time.Time, anchor boo
 // intermediates to a trust anchor in roots. The direct-root fast path
 // (leaf issued by, or equal to, a root) is tried before the DFS. Every
 // edge enforces issuer match, CA status, keyCertSign, validity windows,
-// signature, name constraints and pathLenConstraint.
+// signature, name constraints and pathLenConstraint. Name constraints
+// propagate down the complete path: each ancestor is checked against
+// every certificate below it (RFC 5280 4.2.1.10).
 pub fn build_chain(leaf Certificate, intermediates []Certificate, roots []Certificate) ![]Certificate {
 	return build_chain_at(leaf, intermediates, roots, time.now())
 }
@@ -509,7 +517,7 @@ fn build_chain_at(leaf Certificate, intermediates []Certificate, roots []Certifi
 		if r.subject_der != leaf.issuer_der {
 			continue
 		}
-		valid_link(leaf, r, now, true, 0) or { continue }
+		valid_link(leaf, r, now, true, 0, [leaf]) or { continue }
 		return [leaf, r]
 	}
 	// Full search over intermediates and cross-signing roots.
@@ -554,7 +562,7 @@ fn dfs_chain(mut path []Certificate, pool []Certificate, roots []Certificate, no
 				below_ca++
 			}
 		}
-		valid_link(child, parent, now, anchor, below_ca) or { continue }
+		valid_link(child, parent, now, anchor, below_ca, path) or { continue }
 		path << parent
 		if anchor && path.len > best.len {
 			best = path.clone()

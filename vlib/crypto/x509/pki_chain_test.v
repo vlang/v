@@ -686,6 +686,114 @@ fn test_pki_chain_name_constraints_overlap_ip() {
 	assert false, 'leaf in the excluded IP range must fail'
 }
 
+// test_pki_chain_name_constraints_transitive_dns enforces an ancestor's
+// permitted subtree through a SAN-less subordinate CA (RFC 5280 4.2.1.10):
+// the subordinate itself carries no names to check, so an edge-only check
+// would launder an out-of-scope leaf.
+fn test_pki_chain_name_constraints_transitive_dns() {
+	now := pki_now()
+	root_priv := pki_ecdsa_key()
+	root, _ := generate_self_signed(CertGenOptions{
+		common_name: 'PKI Transitive Root'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(3650)
+		is_ca:       true
+	}, root_priv) or { panic('root gen') }
+	mid1_priv := pki_ecdsa_key()
+	mid1, _ := generate_ca_signed(CertGenOptions{
+		common_name:   'PKI Constrained Mid'
+		not_before:    now.add_days(-1)
+		not_after:     now.add_days(1825)
+		is_ca:         true
+		permitted_dns: ['example.com']
+	}, mid1_priv, &root, root_priv) or { panic('mid1 gen') }
+	// SAN-less subordinate CA: no names of its own to violate mid1.
+	sub_priv := pki_ecdsa_key()
+	sub, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'PKI Sub CA'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(900)
+		is_ca:       true
+	}, sub_priv, &mid1, mid1_priv) or { panic('sub gen') }
+	// In-scope leaf through the subordinate: must validate.
+	ok_priv := pki_ecdsa_key()
+	ok_leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'ok.example.com'
+		dns_names:   ['ok.example.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, ok_priv, &sub, sub_priv) or { panic('ok leaf gen') }
+	chain := build_chain(ok_leaf, [sub, mid1], [root]) or { panic('in-scope build: ${err}') }
+	assert chain.len == 4
+	verify_chain(chain, VerifyOptions{
+		hostname: 'ok.example.com'
+	}) or { panic('in-scope verify: ${err}') }
+	// Out-of-scope leaf through the same subordinate: must fail.
+	evil_priv := pki_ecdsa_key()
+	evil_leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'evil.com'
+		dns_names:   ['evil.com']
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+	}, evil_priv, &sub, sub_priv) or { panic('evil leaf gen') }
+	build_chain(evil_leaf, [sub, mid1], [root]) or {
+		assert err.msg().contains('name constraint') || err.msg().contains('no valid chain')
+		return
+	}
+	assert false, 'out-of-scope leaf laundered through a SAN-less subordinate must fail'
+}
+
+// test_pki_chain_name_constraints_transitive_ip is the IP-range analogue:
+// an ancestor's permitted IP subtree must reach past a SAN-less
+// subordinate CA to the leaf.
+fn test_pki_chain_name_constraints_transitive_ip() {
+	now := pki_now()
+	root_priv := pki_ecdsa_key()
+	root, _ := generate_self_signed(CertGenOptions{
+		common_name: 'PKI Transitive IP Root'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(3650)
+		is_ca:       true
+	}, root_priv) or { panic('root gen') }
+	mid1_priv := pki_ecdsa_key()
+	mid1, _ := generate_ca_signed(CertGenOptions{
+		common_name:   'PKI Constrained IP Mid'
+		not_before:    now.add_days(-1)
+		not_after:     now.add_days(1825)
+		is_ca:         true
+		permitted_ips: [[u8(10), 0, 0, 0, 255, 0, 0, 0]]
+	}, mid1_priv, &root, root_priv) or { panic('mid1 gen') }
+	sub_priv := pki_ecdsa_key()
+	sub, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'PKI Sub IP CA'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(900)
+		is_ca:       true
+	}, sub_priv, &mid1, mid1_priv) or { panic('sub gen') }
+	ok_priv := pki_ecdsa_key()
+	ok_leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'ok ip leaf'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+		ip_names:    [[u8(10), 1, 2, 3]]
+	}, ok_priv, &sub, sub_priv) or { panic('ok leaf gen') }
+	chain := build_chain(ok_leaf, [sub, mid1], [root]) or { panic('in-scope build: ${err}') }
+	assert chain.len == 4
+	verify_chain(chain, VerifyOptions{}) or { panic('in-scope verify: ${err}') }
+	evil_priv := pki_ecdsa_key()
+	evil_leaf, _ := generate_ca_signed(CertGenOptions{
+		common_name: 'evil ip leaf'
+		not_before:  now.add_days(-1)
+		not_after:   now.add_days(30)
+		ip_names:    [[u8(192), 0, 2, 1]]
+	}, evil_priv, &sub, sub_priv) or { panic('evil leaf gen') }
+	build_chain(evil_leaf, [sub, mid1], [root]) or {
+		assert err.msg().contains('name constraint') || err.msg().contains('no valid chain')
+		return
+	}
+	assert false, 'out-of-range IP leaf laundered through a SAN-less subordinate must fail'
+}
+
 // test_pki_chain_two_deep_intermediate_constraints enforces a name
 // constraint two levels down: the root constrains mid1, mid1 constrains
 // mid2's SANs, and the chain validates end to end.
