@@ -101,6 +101,35 @@ fn main() {
 	run_wasi_expect(wasm, ['2', '-1', '-2'])
 }
 
+fn test_wasm_result_panic_propagation_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_result_panic_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.wasm')
+	os.write_file(source, "fn parse() !int {
+	return error('empty')
+}
+fn main() {
+	value := parse()!
+	println(value)
+}
+")!
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, source]
+		if production {
+			args.insert(1, '-prod')
+		}
+		res := os.exec(args)
+		assert res.exit_code != 0, res.output
+		assert res.output.contains('main.v:'), res.output
+		assert res.output.contains('the V wasm backend does not support using `!` to panic with a Result error value yet'), res.output
+		assert !os.exists(output)
+	}
+}
+
 fn test_wasm_result_error_value_is_rejected() {
 	root := os.join_path(os.vtmp_dir(), 'wasm_result_error_${os.getpid()}')
 	os.mkdir_all(root)!

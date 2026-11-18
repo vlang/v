@@ -1590,6 +1590,7 @@ fn (mut t Transformer) make_propagation_panic_stmts(mode string, err_expr flat.N
 	err_addr := t.make_prefix(.amp, err_expr)
 	err_message := t.make_call_typed('IError__msg', [err_addr], flat.source_type_string)
 	if mode != '?' {
+		t.a.nodes[int(err_message)].flags |= flat.node_flag_result_error_message
 		return [t.make_panic_expr_stmt_at(err_message, source_id)]
 	}
 	message_name := t.new_temp('propagation_message')

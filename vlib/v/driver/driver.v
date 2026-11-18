@@ -21649,6 +21649,10 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 	}
 	visited[idx] = true
 	node := a.nodes[idx]
+	if backend == 'wasm' && node.kind == .call
+		&& (node.flags & flat.node_flag_result_error_message) != 0 {
+		return '${fallback_location}error: the V wasm backend does not support using `!` to panic with a Result error value yet'
+	}
 	// Source handlers carry their own location. Specialized handlers may
 	// already have a synthesized binding and no position on the read.
 	if backend == 'wasm' && node.kind == .ident && node.value == 'err'
