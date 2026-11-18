@@ -42,17 +42,18 @@ fn make_response_writer_state[A]() voidptr {
 	return &ResponseWriterState{}
 }
 
-const http_500_response = 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
-const http_400_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const http_400_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\nConnection: close\r\n\r\n400 Bad Request'.bytes()
 const http_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 // request_head_error_response returns the raw response for a request head that
-// `http.parse_request_head_str` rejected.
+// `http.parse_request_head_str` rejected: 431 when the head exceeds its byte
+// limit, 400 for any other parse failure. A malformed request line is a client
+// error, never an internal one, so only limit errors avoid the 400.
 fn request_head_error_response(err IError) []u8 {
 	if err is http.HeaderLimitError || err is http.RequestHeaderLimitError {
 		return http_431_response
 	}
-	return http_500_response
+	return http_400_response
 }
 
 // The va_scope_* helpers wrap V's -prealloc request-arena API so the append
