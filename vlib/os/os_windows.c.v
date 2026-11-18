@@ -74,11 +74,12 @@ fn windows_needs_extended_path(path string) bool {
 	return windows_utf16_len(path) >= windows_max_path
 }
 
-// rm_windows_extended retries the deletion of the file at `path` through its
-// Win32 extended-length form, which the CRT `_wremove` used by `os.rm` cannot
-// resolve past MAX_PATH when long paths are disabled in the OS. Like `os.rm`
-// it clears the read-only attribute first, and restores it when the deletion
-// fails. It returns whether the retry removed the file.
+// rm_windows_extended retries the deletion of the file or directory link at
+// `path` through its Win32 extended-length form, which the CRT `_wremove`
+// used by `os.rm` cannot resolve past MAX_PATH when long paths are disabled
+// in the OS. Like `os.rm` it clears the read-only attribute first, and
+// restores it when the deletion fails. It returns whether the retry removed
+// the file or link.
 fn rm_windows_extended(path string) bool {
 	ext := windows_extended_path(path)
 	if ext == path {
@@ -89,9 +90,14 @@ fn rm_windows_extended(path string) bool {
 		unsafe { free(wext) }
 	}
 	attrs := C.GetFileAttributesW(wext)
+	is_dir_link := attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+		&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) != 0
+		&& attrs & u32(C.FILE_ATTRIBUTE_REPARSE_POINT) != 0
 	mut changed := false
+	// The attributes of a link are its own, so clearing them never touches
+	// the target; mirror the read-only handling in `os.rm`.
 	if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
-		&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+		&& (attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0 || is_dir_link)
 		&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
 		without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
 		new_attrs := if without_read_only == 0 {
@@ -100,6 +106,17 @@ fn rm_windows_extended(path string) bool {
 			without_read_only
 		}
 		changed = C.SetFileAttributesW(wext, new_attrs)
+	}
+	if is_dir_link {
+		// DeleteFileW refuses directory reparse points, even dangling ones;
+		// RemoveDirectoryW deletes only the link itself.
+		if !C.RemoveDirectoryW(wext) {
+			if changed {
+				C.SetFileAttributesW(wext, attrs)
+			}
+			return false
+		}
+		return true
 	}
 	if !C.DeleteFileW(wext) {
 		if changed {
@@ -488,7 +505,9 @@ pub fn ls(path string) ![]string {
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	mut h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
-	if h_find_files == invalid_handle_value && windows_needs_extended_path(path) {
+	// Measure the actual search pattern: `path` plus `\*` can reach past
+	// MAX_PATH while `path` alone stays below it (258/259-unit dirs).
+	if h_find_files == invalid_handle_value && windows_needs_extended_path(path_files) {
 		// Retry through the extended-length form, which plain Win32 calls
 		// cannot resolve past MAX_PATH when long paths are disabled in the OS.
 		path_files = windows_extended_path(path) + '\\*'
