@@ -10817,6 +10817,10 @@ pub fn run(args []string) {
 		eprintln('the x64 backend currently supports only linux/amd64')
 		exit(1)
 	}
+	if backend == 'ppc64le' && (target.os != 'linux' || target.arch != 'ppc64le') {
+		eprintln('the ppc64le backend currently supports only linux/ppc64le')
+		exit(1)
+	}
 	if backend == 'x64' {
 		$if !linux || !amd64 {
 			eprintln('the x64 backend currently requires a linux/amd64 host')

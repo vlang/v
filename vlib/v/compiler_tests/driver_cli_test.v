@@ -2378,6 +2378,9 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
+	assert_driver_cli_failure(v3_bin, ['-os', 'linux', '-arch', 'amd64', '-b', 'ppc64le', '-o',
+		os.join_path(root, 'hello_ppc64le.o'), source],
+		'the ppc64le backend currently supports only linux/ppc64le')
 	assert_driver_cli_failure(v3_bin, ['-gc', 'bogus', source], 'unknown garbage collection mode `-gc bogus`')
 	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, ['-dvgc', source], 'v3 programs must not use a garbage collector')
