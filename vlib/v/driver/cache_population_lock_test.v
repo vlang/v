@@ -40,6 +40,12 @@ fn run_population_lock_helper() {
 				.unusable { 4 }
 			})
 		}
+		'instance-check' {
+			os.setenv(instance_check_child_env, '1', true)
+			os.setenv(v3_internal_cache_population_wait_env, '1', true)
+			wait_for_v3_cache_population(dir)
+			exit(0)
+		}
 		'handoff-parent' {
 			if acquire_v3_cache_population_lock(dir) != .acquired {
 				exit(31)
@@ -231,6 +237,33 @@ fn test_one_build_at_a_time_holds_the_population_lock() {
 	holder.wait()
 	holder.close()
 	assert acquire_v3_cache_population_lock(dir) == .acquired
+}
+
+fn test_instance_check_process_does_not_wait_for_its_parents_population_lock() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_population_instance_check_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		release_v3_cache_population_lock()
+		os.rmdir_all(root) or {}
+	}
+	assert acquire_v3_cache_population_lock(root) == .acquired
+	mut child := new_population_lock_helper(root, 'instance-check')
+	child.run()
+	defer {
+		if child.is_alive() {
+			child.signal_kill()
+		}
+		child.close()
+	}
+	for _ in 0 .. 300 {
+		if !child.is_alive() {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert !child.is_alive(), 'the checker waited for the lock held by its parent'
+	child.wait()
+	assert child.code == 0
 }
 
 fn test_child_build_releases_the_population_lock() ! {
