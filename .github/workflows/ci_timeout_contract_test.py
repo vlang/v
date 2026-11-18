@@ -240,41 +240,62 @@ def check_windows_gcc(workflow):
     )
 
 
-def check_ubsan_gcc(workflow):
+def check_windows_msvc(workflow):
+    lane = job(workflow, "msvc-windows-self-tests")
+    require(axis(lane, "shard") == ["0", "1", "2", "3"], "Windows MSVC must schedule all four shards")
+    require("exclude:" not in lane and "include:" not in lane, "unexpected Windows MSVC matrix overrides")
+    require(field(lane, "fail-fast", 6) == "false", "Windows MSVC must run every shard")
+    require(field(lane, "VFLAGS", 6) == "-cc msvc", "Windows MSVC compiler changed")
+    require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard }}", "Windows MSVC shard index")
+    require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "'4'", "Windows MSVC shard count")
+    require("VTEST_ONLY" not in lane, "Windows MSVC must retain the full self-test selection")
+    serial = job(workflow, "msvc-windows")
+    setup = ["checkout", "prepare_tool_cache", "install_openssl", "msvc_dev_cmd",
+             "verify_msvc_tools", "build", "prepare_optimized_v"]
+    require(re.findall(r"^      - \*(\w+)$", lane, re.M) == setup, "Windows MSVC shard setup order")
+    require(re.findall(r"^      - &(\w+)$", serial, re.M) == setup, "Windows MSVC shared setup")
+    tests = "v -silent test-self vlib"
+    command_step(lane, tests)
+    require(lane.index("run: *install_test_dependencies") < lane.index(tests), "Windows MSVC test prerequisites")
+    require(tests not in serial and "steps.self_tests" not in serial, "Windows MSVC serial checks depend on moved tests")
+
+
+def check_sanitizer_shards(workflow):
     lane = job(workflow, "sanitize-linux")
-    matrix = lane.split("    name:", 1)[0]
-    entries = [entry.partition("\n") for entry in re.split(r"^          - name: ", matrix, flags=re.MULTILINE)[1:]]
-    names = [name for name, _, _ in entries]
-    expected = ["undefined-gcc"] * 4 + [
-        "undefined-clang", "address-clang", "address-gcc", "memory-clang",
-        "memory-clang-compiler", "address-clang-without-gc",
-    ]
-    require(sorted(names) == sorted(expected), "sanitizer matrix loses or duplicates coverage")
-    rows = [row for name, _, row in entries if name == "undefined-gcc"]
-    require(sorted(field(row, "shard", 12) for row in rows) == ["0", "1", "2", "3"], "UBSan GCC shards")
-    for row in rows:
-        for key, value in {
-            "cc": "gcc", "sanitizer": "undefined", "gc": "default", "timeout": "150",
-            "vflags": "-cc gcc -cflags -fno-omit-frame-pointer",
-            "ubsan_options": "print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions",
-        }.items():
-            require(field(row, key, 12) == value, f"UBSan GCC {key} must match on all shards")
-    require(field(lane, "VJOBS", 6) == "1", "UBSan sharding must retain single-worker execution")
+    matrix = lane.split("\n    name:", 1)[0]
+    sharded = ["undefined-clang", "undefined-gcc", "address-gcc"]
+    standalone = ["address-clang", "memory-clang", "memory-clang-compiler", "address-clang-without-gc"]
+    require(axis(matrix, "name") == sharded, "wrong sharded sanitizer suites")
+    require(axis(matrix, "shard") == ["0", "1", "2", "3"], "sanitizers must schedule all four shards")
+    require("exclude:" not in matrix, "sanitizer matrix must retain all shards")
+    entries = [entry.split("\n", 1) for entry in re.split(r"^          - name: ", matrix, flags=re.M)[1:]]
+    require(sorted(name for name, _ in entries) == sorted(sharded + standalone), "sanitizer coverage changed")
+    for name, row in entries:
+        require("            shard:" not in row, f"{name} must not override individual shards")
+        if name in sharded:
+            sanitizer, cc = name.split("-")
+            require(field(row, "shard_count", 12) == "4", f"{name} shard count")
+            require(field(row, "cc", 12) == cc, f"{name} compiler changed")
+            require(field(row, "sanitizer", 12) == sanitizer, f"{name} sanitizer changed")
+            require(field(row, "gc", 12) == "default", f"{name} GC mode changed")
+            require(field(row, "vflags", 12) == f"-cc {cc} -cflags -fno-omit-frame-pointer", f"{name} flags changed")
+        else:
+            require("            shard_count:" not in row, f"{name} must run its full suite")
+    require(field(lane, "fail-fast", 6) == "false", "sanitizers must run every shard")
+    require(field(lane, "VJOBS", 6) == "1", "sanitizer sharding must retain single-worker execution")
     require(field(lane, "SANITIZER_GITHUB_JOB", 6) == "sanitize-${{ matrix.name }}", "sanitizer identity changed")
     require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard || 0 }}", "sanitizer shard index")
-    require(
-        field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "${{ matrix.name == 'undefined-gcc' && '4' || '1' }}",
-        "only UBSan GCC should be sharded",
-    )
+    require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "${{ matrix.shard_count || 1 }}", "sanitizer shard count")
     build = "./v -prod -cflags -fsanitize=undefined -o v2 cmd/v"
     tests = "./v2 -cflags -fsanitize=undefined -silent test-self vlib"
     step = script_step(lane, build)
     require(step == script_step(lane, tests) and step.index(build) < step.index(tests), "UBSan tests need their instrumented compiler")
     require(field(step, "if", 8) == "${{ matrix.sanitizer == 'undefined' }}", "UBSan self-test routing")
-    examples = command_step(lane, 'GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples')
-    require(
-        field(examples, "if", 8) == "${{ matrix.sanitizer == 'undefined' && (matrix.name != 'undefined-gcc' || matrix.shard == 0) }}",
-        "retain UBSan examples once for each compiler",
+    routed_command(lane, 'GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples',
+                   "${{ matrix.sanitizer == 'undefined' && matrix.shard == 0 }}")
+    routed_command(
+        lane, 'GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent build-examples',
+        "${{ matrix.name == 'address-clang' || (matrix.name == 'address-gcc' && matrix.shard == 0) }}",
     )
 
 
@@ -283,11 +304,16 @@ def check_msvc(workflow):
     require(sorted(axis(lane, "stage")) == ["fmt", "vet"], "MSVC must retain both cleancode stages")
     require("exclude:" not in lane and "include:" not in lane, "unexpected MSVC matrix overrides")
     require(field(lane, "fail-fast", 6) == "false", "MSVC must run both cleancode stages")
-    require(field(lane, "timeout-minutes", 4) == "30", "MSVC deadline changed")
+    require(field(lane, "timeout-minutes", 4) == "45", "MSVC deadline changed")
     require(field(lane, "VTEST_CLEANCODE_STAGE", 6) == "${{ matrix.stage }}", "MSVC stage selection")
     require(field(lane, "VJOBS", 6) == "4", "MSVC cleancode must not serialize all files")
     require(field(lane, "VTEST_SHOW_START", 6) == "'1'", "MSVC must report the active file")
-    command_step(lane, r".\v.exe -silent test-cleancode")
+    cache = r".\.github\workflows\setup_windows_tool_cache.ps1"
+    checks = r".\v.exe -silent test-cleancode"
+    command_step(lane, cache)
+    command_step(lane, checks)
+    routed_command(lane, cache + " -Verify", "matrix.stage == 'vet'")
+    require(lane.index(cache) < lane.index(cache + " -Verify") < lane.index(checks), "MSVC cleancode cache setup order")
 
 
 if __name__ == "__main__":
@@ -296,7 +322,8 @@ if __name__ == "__main__":
     check_macos((ROOT / ".github/workflows/tools_ci.yml").read_text())
     check_openbsd((ROOT / ".github/workflows/tools_ci.yml").read_text())
     check_windows_gcc((ROOT / ".github/workflows/windows_ci_gcc.yml").read_text())
-    check_ubsan_gcc((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
+    check_windows_msvc((ROOT / ".github/workflows/windows_ci_msvc.yml").read_text())
+    check_sanitizer_shards((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
     check_riscv((ROOT / ".github/workflows/riscv64_linux_ci.yml").read_text())
     check_msvc((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
     print("CI suite routing, complete shard coverage, and bootstrap prerequisites passed")

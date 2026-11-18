@@ -39,7 +39,8 @@ jobs:
           ) }}
       fail-fast: true
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    # Intel macOS reached formatting after 37 minutes of bootstrap and self checks.
+    timeout-minutes: ${{ matrix.platform == 'macos-x64' && 60 || 40 }}
     env:
       VFLAGS: ${{ matrix.vflags }}
       B_LFLAGS: -lm -lpthread

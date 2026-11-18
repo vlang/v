@@ -189,6 +189,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build V
         uses: ./.github/actions/setup-v
         with:
@@ -286,8 +288,8 @@ jobs:
 
   tools-freebsd:
     runs-on: ubuntu-latest
-    # VM bootstrap takes up to ten minutes before any tool tests can start.
-    timeout-minutes: 25
+    # After VM bootstrap, GCC's strict suite spends minutes per compiler fixture.
+    timeout-minutes: ${{ matrix.cc == 'gcc' && matrix.suite == 'strict' && 45 || 25 }}
     strategy:
       matrix:
         suite: [default, strict]

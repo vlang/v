@@ -11,7 +11,8 @@ jobs:
   tcc-linux:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
-    timeout-minutes: 121
+    # The full self-test suite took 90 minutes before the compiler build matrix.
+    timeout-minutes: 180
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       # Stop a failing test session at its first failure instead of running the

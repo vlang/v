@@ -144,8 +144,10 @@ class GatePathsTests(unittest.TestCase):
                 positions.append(bootstrap.index(command))
         self.assertEqual(positions, sorted(positions))
         self.assertLess(positions[-1], bootstrap.index("Copy-Item v.exe"))
-        self.assertLessEqual(int(re.search(r"^    timeout-minutes: (\d+)$",
-                                          bootstrap, re.M)[1]), 40)
+        self.assertIn(
+            "    timeout-minutes: ${{ matrix.platform == 'macos-x64' && 60 || 40 }}\n",
+            bootstrap,
+        )
 
     def test_windows_bootstrap_isolates_vet_and_fmt_processes(self):
         source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
