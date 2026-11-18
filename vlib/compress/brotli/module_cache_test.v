@@ -55,6 +55,16 @@ fn test_web_imports_retain_the_module_cache() ! {
 	root := os.join_path(os.vtmp_dir(), 'brotli_web_cache_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	// The web modules share most of their dependencies. Keep a fresh cache for
+	// this test, then reuse it across the independent import programs.
+	cache := os.join_path(root, 'cache')
+	environment := {
+		'VFLAGS':                 ''
+		'VTMP':                   os.join_path(root, 'tmp')
+		'V3CACHE':                cache
+		'V3_CACHE_TRACE':         '1'
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	}
 	for module_name, type_name in {
 		'net.http':      'http.Request'
 		'net.websocket': 'websocket.Client'
@@ -63,23 +73,16 @@ fn test_web_imports_retain_the_module_cache() ! {
 		name := module_name.replace('.', '_')
 		source := os.join_path(root, '${name}.v')
 		program := os.join_path(root, name)
-		cache := os.join_path(root, '${name}_cache')
+		module_object_prefix := type_name.all_before('.') + '_'
 		os.write_file(source, 'import ${module_name}\nfn main() { println(sizeof(${type_name}) > 0) }\n')!
-		environment := {
-			'VFLAGS':                 ''
-			'VTMP':                   os.join_path(root, 'tmp')
-			'V3CACHE':                cache
-			'V3_CACHE_TRACE':         '1'
-			'V_MACOS_V3_NO_FALLBACK': '1'
-		}
 		mut cached_objects := []string{}
 		for build in 0 .. 2 {
 			result := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', compiler, '-o', program, source], @VEXEROOT, environment)
 			assert result.exit_code == 0, '${module_name}: ${result.output}'
 			assert !result.output.contains('module cache fallback'), result.output
 			objects := module_cache_test_objects(cache)
-			assert objects.len > 1, '${module_name}: no module objects were cached: ${result.output}'
 			if build == 0 {
+				assert objects.any(os.file_name(it).starts_with(module_object_prefix)), '${module_name}: no object for the imported module was cached: ${result.output}'
 				cached_objects = objects.clone()
 			} else {
 				assert objects == cached_objects, '${module_name}: cached module objects changed: ${result.output}'
