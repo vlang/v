@@ -124,3 +124,26 @@ fn test_truncate_writer() {
 	assert n == 2
 	assert shared.data.bytestr() == 'he'
 }
+
+fn test_truncate_writer_returns_inner_count() {
+	shared := &SharedBuf{}
+	mut one := one_byte_writer(SliceWriter{ shared: shared })
+	mut w := truncate_writer(one, 3)
+	mut writer := io.Writer(w)
+	// Inner only accepts 1 byte, so the wrapper must report 1, not 3.
+	n := writer.write('hey!'.bytes())!
+	assert n == 1
+	assert shared.data.bytestr() == 'h'
+}
+
+fn test_truncate_one_byte_copy_composition() {
+	shared := &SharedBuf{}
+	mut one := one_byte_writer(SliceWriter{ shared: shared })
+	mut tw := truncate_writer(one, 3)
+	mut dst := io.Writer(tw)
+	mut src := SliceReader{ data: 'abcdef'.bytes() }
+	mut reader := io.Reader(src)
+	total := io.copy(mut dst, mut reader)!
+	assert total == 6
+	assert shared.data.bytestr() == 'abcdef'
+}

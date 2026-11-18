@@ -140,8 +140,8 @@ pub fn (mut w ErrWriter) write(buf []u8) !int {
 	return w.err
 }
 
-// TruncateWriter writes to the inner writer but reports `n` as the
-// number of bytes written, simulating a short write.
+// TruncateWriter caps each write at `n` bytes and reports what the
+// inner writer actually accepted, simulating a short write.
 pub struct TruncateWriter {
 mut:
 	inner io.Writer
@@ -157,6 +157,5 @@ pub fn (mut w TruncateWriter) write(buf []u8) !int {
 	if m == 0 {
 		return 0
 	}
-	w.inner.write(buf[..m])!
-	return m
+	return w.inner.write(buf[..m])
 }
