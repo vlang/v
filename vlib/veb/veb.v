@@ -438,21 +438,17 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	}
 	$if A is StaticApp {
 		ctx.custom_mime_types_ref = unsafe { &global_app.static_mime_types }
-		if serve_if_static[X](static_handler_config(global_app.static_files,
-			global_app.static_mime_types, global_app.static_hosts, global_app.static_prefixes,
-			global_app.enable_static_gzip, global_app.enable_static_zstd,
-			global_app.enable_static_compression, global_app.static_compression_max_size,
-			global_app.static_compression_mime_types, global_app.enable_markdown_negotiation), mut
-			user_context, url, host)
-		{
-			// Preserve the handled context on the heap before the stack-local user context goes away.
-			ctx.preserve_for_response_writer(mut user_context.Context)
-			return ctx
-		}
 	}
+	// Match controller paths first, unless the main app serves this path
+	// statically: app static files take precedence over controllers, and are
+	// served from dispatch_route below, after the global middleware runs.
 	$if A is ControllerInterface {
-		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
-			return completed_context
+		if !app_serves_static_file(global_app, req.header.get(.accept) or { '' }, url.path,
+			host) {
+			if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url,
+				host) {
+				return completed_context
+			}
 		}
 	}
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
@@ -1053,26 +1049,32 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	return params
 }
 
-// check if request is for a static file and serves it
-// returns true if we served a static file, false otherwise
-fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
+// StaticFileResolution is the static file and mime type a request path maps
+// to. resolve_static_file computes it without serving anything, so callers
+// can peek whether a request targets a static file.
+struct StaticFileResolution {
+	file_path string
+	mime_type string
+}
+
+// resolve_static_file maps a request path to the static file and mime type
+// configured for it, or none when no static file matches.
+fn resolve_static_file(static_handler StaticHandler, accept_header string, path string, host string) ?StaticFileResolution {
 	// TODO: handle url parameters properly - for now, ignore them
-	mut asked_path := url.path
-	static_handler := app
+	mut asked_path := path
 	if !static_handler.enable_markdown_negotiation && asked_path == '/'
 		&& static_handler.static_files['/'] == ''
 		&& static_handler.static_files['/index.html'] == ''
 		&& static_handler.static_files['/index.htm'] == '' {
-		return false
+		return none
 	}
 	if !static_handler.enable_markdown_negotiation
 		&& !static_handler.may_contain_static_path(asked_path) {
-		return false
+		return none
 	}
 
 	// Content negotiation for markdown files (if enabled)
 	if static_handler.enable_markdown_negotiation {
-		accept_header := user_context.req.header.get(.accept) or { '' }
 		if accept_header.contains('text/markdown') {
 			// Try markdown variants in order of priority
 			markdown_variants := [
@@ -1098,7 +1100,6 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 	if asked_path.ends_with('/') {
 		// Check for markdown index first if Accept header requests it and feature is enabled
 		if static_handler.enable_markdown_negotiation {
-			accept_header := user_context.req.header.get(.accept) or { '' }
 			if accept_header.contains('text/markdown')
 				&& static_handler.static_files[asked_path + 'index.html.md'] != '' {
 				asked_path += 'index.html.md'
@@ -1113,7 +1114,7 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 			asked_path += 'index.htm'
 		}
 	}
-	static_file := static_handler.static_files[asked_path] or { return false }
+	static_file := static_handler.static_files[asked_path] or { return none }
 
 	// StaticHandler ensures that the mime type exists on either the App or in veb
 	ext := os.file_ext(static_file).to_lower()
@@ -1121,21 +1122,50 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 
 	static_host := static_handler.static_hosts[asked_path] or { '' }
 	if static_file == '' || mime_type == '' {
-		return false
+		return none
 	}
 	if static_host != '' && static_host != host {
-		return false
+		return none
 	}
+	return StaticFileResolution{
+		file_path: static_file
+		mime_type: mime_type
+	}
+}
+
+// app_serves_static_file reports whether the main app maps a static file for
+// the request path. App static files take precedence over controllers, but
+// they are served from dispatch_route (see handle_route), after the global
+// middleware runs — a controller claims every path under its prefix, so
+// consulting it first would hide them.
+fn app_serves_static_file[A](app &A, accept_header string, path string, host string) bool {
+	$if A is StaticApp {
+		sh := static_handler_config(app.static_files, app.static_mime_types,
+			app.static_hosts, app.static_prefixes, app.enable_static_gzip, app.enable_static_zstd,
+			app.enable_static_compression, app.static_compression_max_size,
+			app.static_compression_mime_types, app.enable_markdown_negotiation)
+		if resolve_static_file(sh, accept_header, path, host) != none {
+			return true
+		}
+	}
+	return false
+}
+
+// check if request is for a static file and serves it
+// returns true if we served a static file, false otherwise
+fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
+	resolved := resolve_static_file(app, user_context.req.header.get(.accept) or { '' },
+		url.path, host) or { return false }
 
 	// Configure static file compression settings
-	user_context.set_static_compression_config(static_handler.enable_static_gzip,
-		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
-			static_handler.static_compression_max_size
+	user_context.set_static_compression_config(app.enable_static_gzip,
+		app.enable_static_zstd, app.enable_static_compression, if app.static_compression_max_size >= 0 {
+			app.static_compression_max_size
 		} else {
 			1048576 // Default: 1MB
-		}, static_handler.static_compression_mime_types)
+		}, app.static_compression_mime_types)
 
-	user_context.send_file(mime_type, static_file)
+	user_context.send_file(resolved.mime_type, resolved.file_path)
 	return true
 }
 
