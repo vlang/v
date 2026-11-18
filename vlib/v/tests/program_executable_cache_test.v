@@ -1,5 +1,4 @@
 import os
-import time
 
 // An unchanged program can reuse an executable only when all native inputs are
 // certifiable. Opaque headers instead require the C compiler on every build.
@@ -804,9 +803,6 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		os.write_file(os.join_path(later, name), 'static inline int header_answer(void) { return 1; }\n')!
 		main_file := os.join_path(root, 'main.v')
 		os.write_file(main_file, '#include <${name}>\n\nfn C.header_answer() int\n\nfn main() {\n\tprintln(C.header_answer())\n}\n')!
-		// A header that is as new as the build may be another file than the build
-		// read: an executable is kept of headers that are older.
-		time.sleep(2200 * time.millisecond)
 		assert_rebuilt(build(root, flags, main_file, 'cold'))
 		assert run_built(root, 'cold') == '1'
 		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'same'))
@@ -816,7 +812,6 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		// compiles and links gives: the C compiler reads the header again unless
 		// the compiler keeps what it made of the program by itself.
 		os.write_file(os.join_path(later, name), 'static inline int header_answer(void) { return 2; }\n')!
-		time.sleep(2200 * time.millisecond)
 		edited := build(root, flags, main_file, 'edited')
 		expected := built_without_the_cached_executable(root, flags, main_file, 'edited_linked')
 		assert run_built(root, 'edited') == expected, edited
@@ -829,7 +824,6 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 
 		// A header of the same name appears where the compiler finds it first.
 		os.write_file(os.join_path(first, name), 'static inline int header_answer(void) { return 3; }\n')!
-		time.sleep(2200 * time.millisecond)
 		shadowed := build(root, flags, main_file, 'shadowed')
 		expected_shadowed := built_without_the_cached_executable(root, flags, main_file,
 			'shadowed_linked')
@@ -847,12 +841,10 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		os.write_file(os.join_path(first, outer), '#include "${inner}"\n')!
 		os.write_file(os.join_path(later, inner), 'static inline int nested_answer(void) { return 1; }\n')!
 		os.write_file(main_file, '#include <${outer}>\n\nfn C.nested_answer() int\n\nfn main() {\n\tprintln(C.nested_answer())\n}\n')!
-		time.sleep(2200 * time.millisecond)
 		assert_rebuilt(build(root, flags, main_file, 'nested'))
 		assert run_built(root, 'nested') == '1'
 		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'nested_same'))
 		os.write_file(os.join_path(first, 'nested', inner), 'static inline int nested_answer(void) { return 2; }\n')!
-		time.sleep(2200 * time.millisecond)
 		nested := build(root, flags, main_file, 'nested_shadowed')
 		expected_nested := built_without_the_cached_executable(root, flags, main_file,
 			'nested_linked')
@@ -866,7 +858,6 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		os.write_file(os.join_path(later, name), 'static inline const char *header_answer(void) { return __DATE__ " " __TIME__; }\n')!
 		os.write_file(main_file, '#include <${name}>\n\nfn C.header_answer() &char\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(C.header_answer()) })\n}\n')!
 		os.rm(os.join_path(first, name))!
-		time.sleep(2200 * time.millisecond)
 		timed := build(root, flags, main_file, 'timed')
 		assert run_built(root, 'timed').len == 'Jan  1 2026 00:00:00'.len
 		compiles_each_time := flags == []string{} || os.user_os() != 'macos'
@@ -878,7 +869,6 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		// Token pasting can hide a time macro. Opaque headers remain C inputs;
 		// V never preprocesses their contents to decide reuse.
 		os.write_file(os.join_path(later, name), '#define HEADER_JOIN_(a, b) a##b\n#define HEADER_JOIN(a, b) HEADER_JOIN_(a, b)\nstatic inline const char *header_answer(void) { return HEADER_JOIN(__TI, ME__); }\n')!
-		time.sleep(2200 * time.millisecond)
 		pasted := build(root, flags, main_file, 'pasted')
 		if compiles_each_time {
 			assert run_built(root, 'pasted').len == '00:00:00'.len
@@ -889,7 +879,6 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		// Even unused time macro definitions remain opaque to V. The C compiler
 		// still produces the same runtime value.
 		os.write_file(os.join_path(later, name), '#define HEADER_BUILT __DATE__ " " __TIME__\nstatic inline const char *header_answer(void) { return "always"; }\n')!
-		time.sleep(2200 * time.millisecond)
 		named := build(root, flags, main_file, 'named')
 		if compiles_each_time {
 			assert run_built(root, 'named') == 'always'
