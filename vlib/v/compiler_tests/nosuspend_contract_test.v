@@ -141,6 +141,16 @@ fn test_nosuspend_contracts_in_build_and_check() {
 			accepted: false
 			source:   'import time\nfn leaf() { time.sleep(1) }\nfn middle() { leaf() }\n@[nosuspend]\nfn handler() { middle() }\nfn main() { handler() }\n'
 		},
+		NosuspendCase{
+			name:     'local_shadow_direct'
+			accepted: false
+			source:   'import time\nfn callback() int { return 1 }\nfn blocking() { time.sleep(1) }\n@[nosuspend]\nfn handler() { callback := blocking; callback() }\nfn main() { handler() }\n'
+		},
+		NosuspendCase{
+			name:     'local_shadow_transitive'
+			accepted: false
+			source:   'import time\nfn callback() int { return 1 }\nfn blocking() { time.sleep(1) }\nfn invoke(f fn ()) { callback := f; callback() }\n@[nosuspend]\nfn handler() { invoke(blocking) }\nfn main() { handler() }\n'
+		},
 	]
 	// The standalone FastC parser must reject contracts it cannot check.
 	fastc_source := os.join_path(root, 'fastc.v')

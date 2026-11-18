@@ -232,10 +232,45 @@ fn (mut s NoSuspendScan) walk_function(decl NoSuspendFunction, chain []string, a
 			parameters[child.value] = true
 		}
 	}
+	// Function bodies are direct children after the parameters, not block nodes.
+	for i in 0 .. node.children_count {
+		if s.tc.a.child_node(node, i).kind != .param {
+			s.collect_locals(s.tc.a.child(node, i), mut parameters)
+		}
+	}
 	for i in 0 .. node.children_count {
 		if s.tc.a.child_node(node, i).kind != .param {
 			s.walk(s.tc.a.child(node, i), decl, chain, anchor, parameters, false)
 		}
+	}
+}
+
+fn (s &NoSuspendScan) collect_locals(id flat.NodeId, mut bindings map[string]bool) {
+	if !s.tc.valid_node_id(id) {
+		return
+	}
+	node := s.tc.a.node(id)
+	if node.kind == .decl_assign {
+		for i := 0; i + 1 < node.children_count; i += 2 {
+			lhs := s.tc.a.child_node(node, i)
+			if lhs.kind == .ident {
+				bindings[lhs.value] = true
+			}
+		}
+	}
+	if node.kind == .for_in_stmt && node.children_count >= 2 {
+		for i in 0 .. 2 {
+			binding := s.tc.a.child_node(node, i)
+			if binding.kind == .ident {
+				bindings[binding.value] = true
+			}
+		}
+	}
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return
+	}
+	for i in 0 .. node.children_count {
+		s.collect_locals(s.tc.a.child(node, i), mut bindings)
 	}
 }
 
