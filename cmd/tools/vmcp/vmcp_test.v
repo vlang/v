@@ -2388,10 +2388,10 @@ fn test_affected_expands_a_directory_seed() {
 fn test_affected_follows_block_imports_to_other_directories() {
 	ws := probe_workspace()
 	os.mkdir_all(os.join_path(ws.project_root, 'mymod'))!
-	os.write_file(os.join_path(ws.project_root, 'mymod', 'mymod.v'), 'module mymod\npub fn hello() string {\n\treturn \'hi\'\n}\n')!
-	os.write_file(os.join_path(ws.project_root, 'mymod', 'mymod_test.v'), 'module mymod\nfn test_hello() {\n\tassert hello() == \'hi\'\n}\n')!
+	os.write_file(os.join_path(ws.project_root, 'mymod', 'mymod.v'), "module mymod\npub fn hello() string {\n\treturn 'hi'\n}\n")!
+	os.write_file(os.join_path(ws.project_root, 'mymod', 'mymod_test.v'), "module mymod\nfn test_hello() {\n\tassert hello() == 'hi'\n}\n")!
 	os.mkdir_all(os.join_path(ws.project_root, 'other'))!
-	os.write_file(os.join_path(ws.project_root, 'other', 'other_test.v'), 'module other\n\nimport (\n\tmymod\n)\n\nfn test_uses_mymod() {\n\tassert mymod.hello() == \'hi\'\n}\n')!
+	os.write_file(os.join_path(ws.project_root, 'other', 'other_test.v'), "module other\n\nimport (\n\tmymod\n)\n\nfn test_uses_mymod() {\n\tassert mymod.hello() == 'hi'\n}\n")!
 	answer := call_tool_on(ws, 'v_affected', '{"path":"mymod/mymod.v"}')
 	// Same-module test, found through its directory.
 	assert answer.contains('mymod_test.v'), answer
