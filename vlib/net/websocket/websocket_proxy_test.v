@@ -14,10 +14,10 @@ const proxy_ws_port = 30106
 
 @[heap]
 struct ProxyWebsocketTestResults {
+	echoes chan bool
+	pongs  chan bool
 pub mut:
-	nr_messages      int
-	nr_pong_received int
-	error_message    string
+	error_message string
 }
 
 fn start_proxy_ws_server(listen_port int) ! {
@@ -136,13 +136,24 @@ fn proxy_message_cb(mut client websocket.Client, msg &websocket.Message, mut res
 	}
 	match msg.payload.bytestr() {
 		'pong' {
-			res.nr_pong_received++
+			res.pongs.try_push(true)
 		}
 		'a' {
-			res.nr_messages++
+			status := res.echoes.try_push(true)
+			assert status == .success, 'received extra echoes through the proxy'
 		}
 		else {
 			res.error_message = 'unexpected payload: ${msg.payload.bytestr()}'
+		}
+	}
+}
+
+fn wait_for_proxy_event(events chan bool, description string) ! {
+	select {
+		_ := <-events {
+		}
+		5 * time.second {
+			return error('timed out waiting for ${description}')
 		}
 	}
 }
@@ -154,7 +165,10 @@ fn test_ws_connection_through_proxy() ! {
 	start_proxy_ws_server(proxy_ws_target_port)!
 	requests := chan string{cap: 1}
 	start_proxy_server(proxy_ws_port, '127.0.0.1:${proxy_ws_target_port}', requests)
-	mut results := ProxyWebsocketTestResults{}
+	mut results := ProxyWebsocketTestResults{
+		echoes: chan bool{cap: 2}
+		pongs:  chan bool{cap: 2}
+	}
 	mut client := websocket.new_client('ws://127.0.0.1:${proxy_ws_target_port}', websocket.ClientOpt{
 		proxy_url: 'http://user:pass@127.0.0.1:${proxy_ws_port}'
 	})!
@@ -162,20 +176,30 @@ fn test_ws_connection_through_proxy() ! {
 	client.on_error_ref(proxy_error_cb, &results)
 	client.on_message_ref(proxy_message_cb, &results)
 	client.connect()!
-	spawn client.listen()
-	for msg in ['a', 'a'] {
-		client.write(msg.bytes(), .text_frame)!
-		time.sleep(100 * time.millisecond)
+	defer {
+		if client.get_state() == .open {
+			client.close(1000, 'done') or {}
+		}
 	}
-	time.sleep(1500 * time.millisecond)
+	done := chan bool{cap: 1}
+	spawn fn [mut client, done] () {
+		client.listen() or {}
+		done <- true
+	}()
+	for _ in 0 .. 2 {
+		client.write_string('a')!
+		wait_for_proxy_event(results.echoes, 'a message echo through the proxy')!
+	}
+	for _ in 0 .. 2 {
+		wait_for_proxy_event(results.pongs, 'a pong response through the proxy')!
+	}
 	request := <-requests
 	auth_token := base64.encode('user:pass'.bytes())
 	assert request.starts_with('CONNECT 127.0.0.1:${proxy_ws_target_port} HTTP/1.1\r\n')
 	assert request.contains('Proxy-Connection: Keep-Alive\r\n')
 	assert request.contains('Proxy-Authorization: Basic ${auth_token}\r\n')
-	client.close(1000, 'done') or {}
-	time.sleep(100 * time.millisecond)
+	client.close(1000, 'done')!
+	wait_for_proxy_event(done, 'the client listener to exit')!
 	assert results.error_message == ''
-	assert results.nr_pong_received >= 2
-	assert results.nr_messages == 2
+	assert results.echoes.len == 0, 'received extra echoes through the proxy'
 }
