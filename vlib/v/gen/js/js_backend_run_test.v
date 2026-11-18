@@ -127,3 +127,22 @@ fn test_js_backend_compiles_a_literal_println() {
 	assert compile_code == 0, compile_output
 	assert os.exists(generated), 'compile reported: ${compile_output}'
 }
+
+fn test_js_backend_preserves_literal_and_eval_statement_order() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('order')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := 'fn main() {
+	println(\'first\')
+	JS.eval("console.log(\'second\');".str)
+	println(\'third\') println(\'fourth\')
+}'
+	run := js_run_program(root, 'order.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'first\nsecond\nthird\nfourth'
+}

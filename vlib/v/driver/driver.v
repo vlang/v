@@ -4310,41 +4310,61 @@ fn write_v3_c_project(project_dir string, c_source string, c_compiler string, pl
 	}
 }
 
+struct V3JsCompatStatement {
+	start int
+	end   int
+	code  string
+}
+
 fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	source := os.read_file(input_file)!
 	mut output := strings.new_builder(source.len)
-	mut emitted := emit_v3_js_exported_global_aliases(source, mut output)
+	emitted_global := emit_v3_js_exported_global_aliases(source, mut output)
+	mut statements := []V3JsCompatStatement{}
 	mut offset := 0
 	double_quote := [u8(34)].bytestr()
 	js_eval_prefix := 'JS.eval(' + double_quote
 	js_eval_suffix := double_quote + '.str'
 	for offset < source.len {
 		relative_start := source[offset..].index(js_eval_prefix) or { break }
-		payload_start := offset + relative_start + js_eval_prefix.len
+		start := offset + relative_start
+		payload_start := start + js_eval_prefix.len
 		relative_end := source[payload_start..].index(js_eval_suffix) or {
 			return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
 		}
 		payload_end := payload_start + relative_end
-		payload := source[payload_start..payload_end]
-		output.writeln(payload)
-		emitted = true
 		offset = payload_end + js_eval_suffix.len
+		statements << V3JsCompatStatement{start, offset, source[payload_start..payload_end]}
 	}
-	for line in source.split_into_lines() {
-		argument := v3_js_literal_println_argument(line) or { continue }
-		output.writeln('console.log(${argument});')
-		emitted = true
+	mut line_start := 0
+	for line in source.split('\n') {
+		mut line_offset := 0
+		for line_offset < line.len {
+			statement := v3_js_literal_println_statement(line, line_start, line_offset) or { break }
+			statements << statement
+			line_offset = statement.end - line_start
+		}
+		line_start += line.len + 1
 	}
-	if !emitted {
+	if !emitted_global && statements.len == 0 {
 		return error('the V3 JavaScript compatibility generator currently supports only JS.eval and literal println')
+	}
+	statements.sort(a.start < b.start)
+	mut previous_end := 0
+	for statement in statements {
+		// Ignore apparent println calls inside a JS.eval payload.
+		if statement.start >= previous_end {
+			output.writeln(statement.code)
+			previous_end = statement.end
+		}
 	}
 	os.mkdir_all(os.dir(output_file))!
 	os.write_file(output_file, output.str())!
 }
 
-fn v3_js_literal_println_argument(line string) ?string {
+fn v3_js_literal_println_statement(line string, line_start int, from int) ?V3JsCompatStatement {
 	prefix := 'println('
-	mut offset := 0
+	mut offset := from
 	for offset < line.len {
 		relative := line[offset..].index(prefix) or { return none }
 		start := offset + relative
@@ -4389,7 +4409,8 @@ fn v3_js_literal_println_argument(line string) ?string {
 				close++
 			}
 			if close < line.len && line[close] == `)` {
-				return line[argument_start..i + 1]
+				argument := line[argument_start..i + 1]
+				return V3JsCompatStatement{line_start + start, line_start + close + 1, 'console.log(${argument});'}
 			}
 			break
 		}
