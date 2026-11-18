@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // A module that is neither in vlib nor in a module directory nor beside the importing
 // file can still be a project checked out next to the one being built. The legacy
@@ -11,10 +12,18 @@ const sibling_module_tests_dir = os.dir(@FILE)
 const sibling_module_v3_dir = os.dir(sibling_module_tests_dir)
 const sibling_module_vlib_dir = os.dir(sibling_module_v3_dir)
 const sibling_module_v3_src = os.join_path(sibling_module_v3_dir, 'v.v')
+const sibling_module_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_sibling_module_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(sibling_module_compiler_dir) or {}
+}
 
 fn sibling_module_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_sibling_module_compiler_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(sibling_module_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(sibling_module_compiler_dir) or { panic(err) }
 	build := os.exec([sibling_module_vexe, '-gc', 'none', '-path',
 		'${sibling_module_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, sibling_module_v3_src])
 	assert build.exit_code == 0, build.output
