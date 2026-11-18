@@ -899,11 +899,15 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	mut sa := SecurityAttributes{}
 	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.b_inherit_handle = true
+	// From here until this process has closed its copy of the pipe's write end, no
+	// other thread may create a child: it would inherit that end and hold it open.
+	v_os_execute_lock()
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read), voidptr(&child_stdout_write),
 		voidptr(&sa), 0)
 	if !create_pipe_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
+		v_os_execute_unlock()
 		return Result{
 			exit_code: error_num
 			output:    'exec failed (CreatePipe): ${error_msg}'
@@ -918,6 +922,9 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	if !set_handle_info_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
+		close_valid_handle(&child_stdout_read)
+		close_valid_handle(&child_stdout_write)
+		v_os_execute_unlock()
 		return Result{
 			exit_code: error_num
 			output:    'exec failed (SetHandleInformation): ${error_msg}'
@@ -952,12 +959,16 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
+		close_valid_handle(&child_stdout_read)
+		close_valid_handle(&child_stdout_write)
+		v_os_execute_unlock()
 		return Result{
 			exit_code: error_num
 			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${display_cmd}'
 		}
 	}
 	close_valid_handle(&child_stdout_write)
+	v_os_execute_unlock()
 	buf := [4096]u8{}
 	mut read_data := strings.new_builder(1024)
 	for {
