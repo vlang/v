@@ -45,6 +45,40 @@ fn test_fastc_compound_generic_arguments_do_not_use_the_first_literal_type() {
 	]
 }
 
+fn test_fastc_imported_generic_specializes_nested_call_statements() ! {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_generic_statement_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'setup'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+
+import setup
+
+fn main() {
+	setup.prepare[u16]()
+	setup.prepare[u32]()
+}
+')!
+	os.write_file(os.join_path(root, 'setup', 'setup.v'), r'module setup
+
+pub fn prepare[T]() {
+	announce[T]()
+}
+
+fn announce[T]() {
+	println(sizeof(T))
+}
+')!
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '2\n4'
+}
+
 fn test_fastc_qualified_test_modules_monomorphize_their_generics() {
 	$if !macos && !linux {
 		return
