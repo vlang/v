@@ -246,9 +246,14 @@ int main(int argc, char **argv) {
             args.append("-DV3_TEST_HEADERLESS")
         subprocess.run(args, check=True, timeout=20)
         ready = Path(root) / (binary.name + ".ready")
-        send((shlex.join([str(binary), str(ready)]) + " & job=$!; echo JOB:$job; fg; echo EARLY_STATUS:$?\n").encode())
+        send((shlex.join([str(binary), str(ready)]) + " & job=$!; echo JOB:$job\n").encode())
         read_until(b"\r\nJOB:")
         compiler = int(read_until(b"\r\n").strip())
+        # The TOSTOP child must stop before fg. Otherwise the shell can give a
+        # still-running job the terminal before the driver observes that stop.
+        read_published_text(ready)
+        wait_job_stopped()
+        send(b"fg; echo EARLY_STATUS:$?\n")
         read_until(b"EARLY_WRITE_OK")
         read_until(b"EARLY_STATUS:0")
         read_until(b"VPTY> ")
