@@ -1283,6 +1283,10 @@ pub mut:
 	enum_names                            map[u32]bool
 	enum_fields                           map[u32][]string
 	flag_enums                            map[u32]bool
+	non_exhaustive_enums                  map[u32]bool
+	non_exhaustive_sums                   map[u32]bool
+	enum_modules                          map[u32]string
+	sum_modules                           map[u32]string
 	interface_names                       map[u32]bool
 	interface_generic_params              map[u32][]u32
 	interface_fields                      map[u32][]StructField
@@ -1790,6 +1794,10 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		enum_names:                              map[u32]bool{}
 		enum_fields:                             map[u32][]string{}
 		flag_enums:                              map[u32]bool{}
+		non_exhaustive_enums:                    map[u32]bool{}
+		non_exhaustive_sums:                     map[u32]bool{}
+		enum_modules:                            map[u32]string{}
+		sum_modules:                             map[u32]string{}
 		interface_names:                         map[u32]bool{}
 		interface_generic_params:                map[u32][]u32{}
 		interface_fields:                        map[u32][]StructField{}
@@ -1964,6 +1972,10 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		enum_names:                            tc.enum_names
 		enum_fields:                           tc.enum_fields
 		flag_enums:                            tc.flag_enums
+		non_exhaustive_enums:                  tc.non_exhaustive_enums
+		non_exhaustive_sums:                   tc.non_exhaustive_sums
+		enum_modules:                          tc.enum_modules
+		sum_modules:                           tc.sum_modules
 		interface_names:                       tc.interface_names
 		interface_generic_params:              tc.interface_generic_params
 		interface_fields:                      tc.interface_fields
@@ -2389,6 +2401,10 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.enum_names = tc.enum_names.clone()
 	tc.enum_fields = clone_owned_source_type_string_list_map(tc.enum_fields)
 	tc.flag_enums = tc.flag_enums.clone()
+	tc.non_exhaustive_enums = tc.non_exhaustive_enums.clone()
+	tc.non_exhaustive_sums = tc.non_exhaustive_sums.clone()
+	tc.enum_modules = clone_owned_source_type_string_map(tc.enum_modules)
+	tc.sum_modules = clone_owned_source_type_string_map(tc.sum_modules)
 	tc.interface_names = tc.interface_names.clone()
 	tc.interface_generic_params = clone_owned_id_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_owned_source_type_struct_field_map(tc.interface_fields)
@@ -5047,6 +5063,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 				if node.typ_text() == 'flag' {
 					tc.flag_enums[qn_id] = true
 				}
+				tc.enum_modules[qn_id] = tc.cur_module
+				if tc.declaration_has_attribute(flat.NodeId(tl_idx), 'non_exhaustive') {
+					tc.non_exhaustive_enums[qn_id] = true
+				}
 			}
 			.struct_decl {
 				qname_id := tc.qualify_decl_name_id(node.source_value_id())
@@ -5090,6 +5110,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 					}
 					qname_id := tc.qualify_decl_name_id(node.source_value_id())
 					tc.sum_types.set_ids(qname_id, variants)
+					tc.sum_modules[qname_id] = tc.cur_module
+					if tc.declaration_has_attribute(flat.NodeId(tl_idx), 'non_exhaustive') {
+						tc.non_exhaustive_sums[qname_id] = true
+					}
 					if param_ids.len > 0 {
 						tc.sum_generic_params[qname_id] = param_ids
 						if qname_id != node.source_value_id() {
@@ -5105,6 +5129,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 						}
 						qname_id := tc.qualify_decl_name_id(node.source_value_id())
 						tc.sum_types.set_ids(qname_id, variants)
+						tc.sum_modules[qname_id] = tc.cur_module
+						if tc.declaration_has_attribute(flat.NodeId(tl_idx), 'non_exhaustive') {
+							tc.non_exhaustive_sums[qname_id] = true
+						}
 						if param_ids.len > 0 {
 							tc.sum_generic_params[qname_id] = param_ids
 							if qname_id != node.source_value_id() {
@@ -19028,6 +19056,7 @@ const builtin_attribute_names = [
 	'nocopy',
 	'noinit',
 	'noinline',
+	'non_exhaustive',
 	'noreturn',
 	'omitempty',
 	'only',
