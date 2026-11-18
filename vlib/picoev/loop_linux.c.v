@@ -10,7 +10,20 @@ fn C.epoll_create(__flags i32) i32
 fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
 fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
 
-// C.epoll_event / C.epoll_data come from <sys/epoll.h> (included above).
+@[typedef]
+union C.epoll_data {
+mut:
+	ptr voidptr
+	fd  int
+	u32 u32
+	u64 u64
+}
+
+@[packed]
+pub struct C.epoll_event {
+	events u32
+	data   C.epoll_data
+}
 
 @[heap]
 pub struct EpollLoop {
