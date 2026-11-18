@@ -16,6 +16,8 @@ This also applies when writing through the returned element, such as `cells.last
 
 Appending `s.bytes()` to a `[]u8` preserves the source bytes as they were before the append,
 including when an unsafe string view overlaps the destination's storage or array header.
+This includes the storage prefix retained after `drop()` or `pop_left()`, even if appending grows
+the array and frees its old allocation.
 
 Default array `sort()` and `sorted()` keep equal elements in their original order.
 For floating point elements, NaNs follow all other values. Equal signed zeros and NaNs
