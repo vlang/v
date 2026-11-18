@@ -459,13 +459,20 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		ctx.res.header.set(.etag, etag)
 		ctx.res.header.set(.last_modified, last_modified)
 		ctx.res.header.set(.accept_ranges, 'bytes')
+		if ctx.req.method == .head {
+			// HEAD mirrors the full representation's headers with no body.
+			ctx.res.header.set(.content_length, data.len.str())
+			return ctx.send_response_to_client(content_type, '')
+		}
 		return ctx.send_response_to_client(content_type, data)
 	}
 	// Default: serve uncompressed file in streaming mode (zero-copy sendfile).
 	// Range requests fall through to the full 200 body here: the streaming
 	// transports have no offset support yet, and a full response is always legal.
-	ctx.return_type = .file
-	ctx.return_file = file_path
+	if ctx.req.method != .head {
+		ctx.return_type = .file
+		ctx.return_file = file_path
+	}
 	ctx.res.header.set(.content_length, file_size.str())
 	ctx.res.header.set(.etag, etag)
 	ctx.res.header.set(.last_modified, last_modified)
@@ -526,8 +533,10 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 		return true
 	}
 	// Serve existing compressed file in streaming mode (zero-copy)
-	ctx.return_type = .file
-	ctx.return_file = compressed_path
+	if ctx.req.method != .head {
+		ctx.return_type = .file
+		ctx.return_file = compressed_path
+	}
 	ctx.res.header.set(.content_encoding, encoding_name)
 	ctx.res.header.set(.vary, 'Accept-Encoding')
 	compressed_size := os.file_size(compressed_path)
@@ -586,8 +595,10 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 	ctx.already_compressed = true
 	if write_success {
 		// Serve the newly cached file in streaming mode (zero-copy)
-		ctx.return_type = .file
-		ctx.return_file = compressed_path
+		if ctx.req.method != .head {
+			ctx.return_type = .file
+			ctx.return_file = compressed_path
+		}
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
 		ctx.res.header.set(.content_length, compressed.len.str())
@@ -596,6 +607,10 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 		// Fallback: serve compressed content from memory (no caching)
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
+		if ctx.req.method == .head {
+			ctx.res.header.set(.content_length, compressed.len.str())
+			return ctx.send_response_to_client(content_type, '')
+		}
 		return ctx.send_response_to_client(content_type, compressed.bytestr())
 	}
 }
