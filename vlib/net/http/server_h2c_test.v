@@ -233,7 +233,7 @@ fn test_server_h2c_sniff_uses_request_head_deadline() {
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
 	defer {
-		server.stop()
+		server.close()
 		t.wait()
 	}
 

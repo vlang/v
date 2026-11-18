@@ -179,7 +179,7 @@ fn test_server_custom_handler() {
 	assert progress_calls.chunks.last().bytestr().contains('xyz def')
 	assert progress_calls.redirected_to == ['http://${server.addr}/big']
 
-	server.stop()
+	server.close()
 	t.wait()
 
 	if mut server.handler is MyHttpHandler {
@@ -246,8 +246,8 @@ fn test_my_counting_handler_on_random_port() {
 					x := http.fetch(url: url, data: 'my data') or { panic(err) }
 					log.info(x.body)
 				}
-				server.stop()
-				log.warn('server stopped')
+				server.close()
+				log.warn('server closed')
 			}(mut server)
 		}
 	}
@@ -345,7 +345,7 @@ fn test_server_normalizes_invalid_handler_response() {
 	assert response.to_lower().contains('content-type: text/plain')
 	assert response.to_lower().contains('content-length: 0')
 
-	server.stop()
+	server.close()
 	t.wait()
 }
 
@@ -380,7 +380,7 @@ fn test_server_coerces_invalid_status_code_to_internal_server_error() {
 	assert lines[0] == 'HTTP/1.1 500 Internal Server Error'
 	assert response.ends_with('broken status')
 
-	server.stop()
+	server.close()
 	t.wait()
 }
 
@@ -469,7 +469,7 @@ fn test_redirects_change_post_to_get_only_when_required() {
 		assert resp.body == 'preserved-post'
 	}
 
-	server.stop()
+	server.close()
 	t.wait()
 }
 
@@ -543,7 +543,7 @@ fn test_server_keep_alive() {
 	assert resp3.contains('request #3')
 	assert resp3.to_lower().contains('connection: close')
 
-	server.stop()
+	server.close()
 	t.wait()
 
 	// Verify all 3 requests were handled
@@ -597,7 +597,7 @@ fn test_server_keep_alive_many_requests() {
 	assert resp_done.contains('/done')
 	assert resp_done.to_lower().contains('connection: close')
 
-	server.stop()
+	server.close()
 	t.wait()
 	if mut server.handler is KeepAliveHandler {
 		assert server.handler.request_count == total_requests + 1
@@ -657,7 +657,7 @@ fn test_server_max_keep_alive_requests() {
 	assert resp3.contains('request #3')
 	assert resp3.to_lower().contains('connection: close'), 'Expected connection: close after max requests reached'
 
-	server.stop()
+	server.close()
 	t.wait()
 
 	if mut server.handler is DelayedRequestHeadDeadlineHandler {
@@ -734,7 +734,7 @@ fn test_server_rejects_oversized_http1_body_before_handler() {
 	assert malformed_response.to_lower().contains('connection: close\r\n')
 	malformed_conn.close() or {}
 
-	server.stop()
+	server.close()
 	t.wait()
 }
 
@@ -773,7 +773,7 @@ fn test_server_bounds_http1_request_head_size_and_duration() {
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
 	defer {
-		server.stop()
+		server.close()
 		t.wait()
 	}
 
