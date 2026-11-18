@@ -15241,7 +15241,6 @@ pub fn run(args []string) {
 			eprintln('ppc64le support is not compiled into this executable')
 			exit(1)
 		}
-
 	} else if backend == 'arm64' {
 		arm64_directive_flags := if target.os in ['macos', 'linux'] {
 			cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)

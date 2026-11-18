@@ -254,7 +254,8 @@ fn self_build_backend_skips(args []string) []string {
 		'eval':        ['eval']
 	} {
 		if aliases.any(it in included) {
-			if backend in ['arm64', 'amd64', 'riscv64', 's390x', 'arm32', 'ppc64le', 'loongarch64', 'wasm'] {
+			if backend in ['arm64', 'amd64', 'riscv64', 's390x', 'arm32', 'ppc64le', 'loongarch64',
+				'wasm'] {
 				needs_ssa = true
 			}
 			continue
