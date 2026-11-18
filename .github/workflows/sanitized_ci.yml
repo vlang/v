@@ -41,8 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # These suites outgrew a serial run. Keep one worker per runner and
-        # distribute the same test corpus across runners.
+        # Distribute the same test corpus across runners.
         name: [undefined-clang, undefined-gcc, address-gcc]
         shard: [0, 1, 2, 3]
         include:
@@ -113,7 +112,9 @@ jobs:
       VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
-      VJOBS: 1
+      # Use two test workers per shard on four-CPU runners. Keep headroom
+      # for instrumented builds and tests that spawn compilers.
+      VJOBS: ${{ matrix.shard_count && 2 || 1 }}
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard || 0 }}
       VTEST_SELF_SHARD_COUNT: ${{ matrix.shard_count || 1 }}
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
@@ -147,9 +148,8 @@ jobs:
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
+          ./v retry -- sudo apt install --quiet -y \
+            $SANITIZER_BASE_PACKAGES $SANITIZER_GRAPHICS_PACKAGES $SANITIZER_CLANG_PACKAGES
       - name: Build instrumented libpq for MemorySanitizer
         if: ${{ matrix.name == 'memory-clang' }}
         run: |
@@ -253,16 +253,11 @@ jobs:
           persist-credentials: false
       - name: Prepare private tool cache
         run: .\.github\workflows\setup_windows_tool_cache.ps1
-      - name: Build
-        run: |
-          echo %VFLAGS%
-          echo $VFLAGS
-          .\makev.bat -msvc
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\v.exe -prod -cc msvc self
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: V doctor
-        run: .\v.exe doctor
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+          doctor: 'true'
       - name: Verify vet tool cache
         if: matrix.stage == 'vet'
         run: .\.github\workflows\setup_windows_tool_cache.ps1 -Verify

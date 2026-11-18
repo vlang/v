@@ -59,6 +59,25 @@ def script_step(text, command):
 
 
 def check_linux(workflow):
+    tcc = job(workflow, "tcc-linux")
+    require(axis(tcc, "shard") == ["0", "1", "2"], "Linux TCC must schedule all three shards")
+    require(field(tcc, "fail-fast", 6) == "false", "Linux TCC must run every shard")
+    require("include:" not in tcc and "exclude:" not in tcc, "unexpected Linux TCC matrix overrides")
+    tests = command_step(tcc, "v run ci/linux_ci.vsh self_tests_vprod_tcc")
+    require(field(tests, "VTEST_SELF_SHARD_INDEX", 10) == "${{ matrix.shard }}", "Linux TCC shard index")
+    require(field(tests, "VTEST_SELF_SHARD_COUNT", 10) == "'3'", "Linux TCC shard count")
+    require("VTEST_ONLY" not in tcc, "Linux TCC must retain the full self-test selection")
+    condition = field(tests, "if", 8)
+    require("steps.install_dependencies.outcome == 'success'" in condition, "all Linux TCC shards need dependencies")
+    require("matrix.shard != 0 || steps.test_inline_assembly.outcome == 'success'" in condition,
+            "nonzero Linux TCC shards must run without the serial checks")
+    for task in ("test_v_to_c_tcc", "build_examples_tcc"):
+        step = command_step(tcc, f"v run ci/linux_ci.vsh {task}")
+        require("matrix.shard == 0" in field(step, "if", 8), f"{task} must run once")
+    binaries = command_step(tcc, "v run ci/linux_ci.vsh build_vbinaries_tcc")
+    require(field(binaries, "VFLAGS", 10) == "${{ env.VFLAGS }} -parallel-cc",
+            "Linux TCC production build checks need parallel C compilation")
+
     for compiler, prod_task in [("gcc", "prod_gcc"), ("clang", "vprod_clang")]:
         name = f"{compiler}-linux-self-tests"
         lane = job(workflow, name)
@@ -251,12 +270,15 @@ def check_windows_msvc(workflow):
     require("VTEST_ONLY" not in lane, "Windows MSVC must retain the full self-test selection")
     serial = job(workflow, "msvc-windows")
     setup = ["checkout", "prepare_tool_cache", "install_openssl", "msvc_dev_cmd",
-             "verify_msvc_tools", "build", "prepare_optimized_v"]
+             "verify_msvc_tools"]
     require(re.findall(r"^      - \*(\w+)$", lane, re.M) == setup, "Windows MSVC shard setup order")
     require(re.findall(r"^      - &(\w+)$", serial, re.M) == setup, "Windows MSVC shared setup")
     tests = "v -silent test-self vlib"
     command_step(lane, tests)
-    require(lane.index("run: *install_test_dependencies") < lane.index(tests), "Windows MSVC test prerequisites")
+    positions = [lane.index(part) for part in ("uses: ./.github/actions/setup-v",
+                                               "run: *install_test_dependencies", tests)]
+    require(positions == sorted(positions), "Windows MSVC test prerequisites")
+    require("makev.bat" not in lane, "Windows MSVC shards should reuse the prepared compiler")
     require(tests not in serial and "steps.self_tests" not in serial, "Windows MSVC serial checks depend on moved tests")
 
 
@@ -282,7 +304,8 @@ def check_sanitizer_shards(workflow):
         else:
             require("            shard_count:" not in row, f"{name} must run its full suite")
     require(field(lane, "fail-fast", 6) == "false", "sanitizers must run every shard")
-    require(field(lane, "VJOBS", 6) == "1", "sanitizer sharding must retain single-worker execution")
+    require(field(lane, "VJOBS", 6) == "${{ matrix.shard_count && 2 || 1 }}",
+            "only sharded sanitizer suites should use two workers")
     require(field(lane, "SANITIZER_GITHUB_JOB", 6) == "sanitize-${{ matrix.name }}", "sanitizer identity changed")
     require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard || 0 }}", "sanitizer shard index")
     require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "${{ matrix.shard_count || 1 }}", "sanitizer shard count")
@@ -313,7 +336,9 @@ def check_msvc(workflow):
     command_step(lane, cache)
     command_step(lane, checks)
     routed_command(lane, cache + " -Verify", "matrix.stage == 'vet'")
-    require(lane.index(cache) < lane.index(cache + " -Verify") < lane.index(checks), "MSVC cleancode cache setup order")
+    positions = [lane.index(part) for part in (cache, "uses: ./.github/actions/setup-v",
+                                               cache + " -Verify", checks)]
+    require(positions == sorted(positions), "MSVC cleancode cache setup order")
 
 
 if __name__ == "__main__":

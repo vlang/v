@@ -317,7 +317,9 @@ jobs:
           operating_system: freebsd
           version: '15.1'
           memory: 8G
-          cpu_count: 2
+          # The four-vCPU host leaves one CPU for the runner. Three test
+          # workers fit the compiler test runner's memory budget in 8 GiB.
+          cpu_count: 3
           shell: sh
           sync_files: runner-to-vm
           environment_variables: VFLAGS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME

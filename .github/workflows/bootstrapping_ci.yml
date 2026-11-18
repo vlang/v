@@ -66,6 +66,9 @@ jobs:
           ./v_from_vc run examples/hello_world.v
           ./v_from_vc -o v_from_vc_produced_native_v cmd/v
           ./v_from_vc_produced_native_v run examples/hello_world.v
+          first_vc=$(mktemp "$RUNNER_TEMP/bootstrap-vc.XXXXXX")
+          trap 'rm -f "$first_vc"' EXIT
+          cp vc/v.c "$first_vc"
           ### the next make invocation will simulate building V from scratch
           make local=1
           ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
@@ -78,7 +81,11 @@ jobs:
           ./v_from_vc2 run examples/hello_world.v
           ./v_from_vc2 -o v_from_vc_produced_native_v2 cmd/v
           ./v_from_vc_produced_native_v2 run examples/hello_world.v
-          make local=1
+          # Both bootstrap chains run their own binaries. Rebuild with make
+          # again only when its generated C input changed.
+          if ! cmp -s "$first_vc" vc/v.c; then
+            make local=1
+          fi
           ls -la v vc/v.c
           ls -la v_from_vc v_from_vc_produced_native_v
           ls -la v_from_vc2 v_from_vc_produced_native_v2
@@ -164,8 +171,10 @@ jobs:
             echo "::error::temporary v up remote already exists: $vup_remote"
             exit 1
           fi
-          git init --bare "$vup_remote"
-          GIT_ALLOW_PROTOCOL=file git push "$vup_remote" "$tested_sha:refs/heads/master"
+          # The checkout lives for the entire test. Borrow its objects to
+          # avoid repacking and pushing the full master history locally.
+          GIT_ALLOW_PROTOCOL=file git clone --bare --shared --no-tags . "$vup_remote"
+          git -C "$vup_remote" update-ref refs/heads/master "$tested_sha"
           git -C "$vup_remote" symbolic-ref HEAD refs/heads/master
           bare_sha=$(git -C "$vup_remote" rev-parse 'HEAD^{commit}')
           if [ "$bare_sha" != "$tested_sha" ]; then

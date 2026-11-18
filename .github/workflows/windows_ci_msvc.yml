@@ -100,8 +100,7 @@ jobs:
             throw 'd3d11.h not found in INCLUDE; Windows SDK is not visible to the D3D11 multiwindow lane'
           }
           Write-Host "Found d3d11.h at $($headers[0])"
-      - &build
-        name: Build
+      - name: Build
         if: ${{ success() && !cancelled() && steps.verify_msvc_tools.outcome == 'success' }}
         id: build
         run: |
@@ -111,8 +110,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - &prepare_optimized_v
-        name: Prepare optimized V compiler
+      - name: Prepare optimized V compiler
         uses: ./.github/actions/setup-v
         with:
           symlink: 'false'
@@ -377,8 +375,8 @@ jobs:
       - *install_openssl
       - *msvc_dev_cmd
       - *verify_msvc_tools
-      - *build
-      - *prepare_optimized_v
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
       - name: Install dependencies
         run: *install_test_dependencies
       - name: Self tests

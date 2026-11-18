@@ -11,8 +11,11 @@ jobs:
   tcc-linux:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
-    # The full self-test suite took 90 minutes before the compiler build matrix.
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       # Stop a failing test session at its first failure instead of running the
@@ -43,7 +46,7 @@ jobs:
         uses: ./.github/actions/setup-v
       - name: Check Linux CI runner contracts
         id: runner_contracts
-        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' && matrix.shard == 0 }}
         run: sh ci/linux_ci_resume_test.sh
       # Cheapest high-signal check first: a `v vet`/`v fmt -verify` failure must not
       # cost the whole compile matrix below, and this ordering costs no extra runner.
@@ -53,7 +56,7 @@ jobs:
         run: v run ci/linux_ci.vsh all_code_is_formatted_tcc
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
-        if: ${{ success() && !cancelled() && steps.format.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' && (matrix.shard != 0 || steps.format.outcome == 'success') }}
         run: |
           set -uo pipefail
           # A monumental default-compiler change should be provable, not assumed:
@@ -72,7 +75,7 @@ jobs:
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_tcc
       - name: Test v->c
         id: test_v_to_c
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' && matrix.shard == 0 }}
         run: v run ci/linux_ci.vsh test_v_to_c_tcc
       - name: v self compilation
         id: v_self_compilation
@@ -96,14 +99,17 @@ jobs:
         run: v run ci/linux_ci.vsh test_inline_assembly
       - name: Self tests
         id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_inline_assembly.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' && (matrix.shard != 0 || steps.test_inline_assembly.outcome == 'success') }}
+        env:
+          VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+          VTEST_SELF_SHARD_COUNT: '3'
         run: v run ci/linux_ci.vsh self_tests_vprod_tcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' && matrix.shard == 0 }}
         run: v run ci/linux_ci.vsh build_examples_tcc
       - name: Run the submodule example, using a relative path
         id: run_submodule_example
@@ -116,6 +122,10 @@ jobs:
       - name: Build v binaries
         id: build_v_binaries
         if: ${{ success() && !cancelled() && steps.build_v_tools.outcome == 'success' }}
+        env:
+          # Production variants select Clang on this lane. Compile their C units
+          # concurrently while retaining the TCC debug builds.
+          VFLAGS: ${{ env.VFLAGS }} -parallel-cc
         run: v run ci/linux_ci.vsh build_vbinaries_tcc
       - name: Build benches
         id: build_benches
