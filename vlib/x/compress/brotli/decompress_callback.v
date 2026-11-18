@@ -16,28 +16,46 @@ mut:
 	delivered_offset int
 }
 
+// deliver_take copies the next `take` bytes into a fresh chunk, invokes the
+// callback, and frees the chunk before returning: the chunk slice is only
+// valid for the duration of the callback, so no per-take buffer can outlive
+// its call. Copying (instead of slicing `out`) keeps `out` free of slice
+// marks, which is what allows `out` to reclaim old backings on growth with
+// `.noslices` under `-gc none`.
+fn (mut s CbSink) deliver_take(out []u8, take int) bool {
+	mut chunk := []u8{len: take}
+	for i in 0 .. take {
+		chunk[i] = out[s.delivered_offset + i]
+	}
+	ok := s.cb(chunk, s.userdata) == take
+	unsafe { chunk.free() }
+	if !ok {
+		return false
+	}
+	s.delivered += take
+	s.delivered_offset += take
+	return true
+}
+
 fn (mut s CbSink) deliver_full(out []u8) bool {
 	for out.len - s.delivered_offset >= callback_chunk_size {
-		chunk := out[s.delivered_offset..s.delivered_offset + callback_chunk_size]
-		if s.cb(chunk, s.userdata) != chunk.len {
+		if !s.deliver_take(out, callback_chunk_size) {
 			return false
 		}
-		s.delivered += chunk.len
-		s.delivered_offset += chunk.len
 	}
 	return true
 }
 
 fn (mut s CbSink) deliver_rest(out []u8) bool {
-	if s.delivered_offset >= out.len {
-		return true
+	for s.delivered_offset < out.len {
+		mut take := out.len - s.delivered_offset
+		if take > callback_chunk_size {
+			take = callback_chunk_size
+		}
+		if !s.deliver_take(out, take) {
+			return false
+		}
 	}
-	chunk := out[s.delivered_offset..]
-	if s.cb(chunk, s.userdata) != chunk.len {
-		return false
-	}
-	s.delivered += chunk.len
-	s.delivered_offset += chunk.len
 	return true
 }
 
@@ -57,14 +75,22 @@ pub fn decompress_with_callback(data []u8, cb DecompressCallback, userdata voidp
 	if data.len == 1 && data[0] == 6 {
 		return 0
 	}
-	mut br := BitReader{
+	mut br := &BitReader{
 		data: data
+	}
+	defer {
+		unsafe { free(br) }
 	}
 	window_bits := decode_window_bits(mut br)!
 	window_size := 1 << window_bits
 	mut out := []u8{}
+	// allow freeing of old data during <<
+	unsafe { out.flags.set(.noslices) }
 	defer {
-		unsafe { out.free() }
+		unsafe {
+			out.flags.clear(.noslices)
+			out.free()
+		}
 	}
 	mut metadata := []u8{}
 	defer {
@@ -82,9 +108,12 @@ pub fn decompress_with_callback(data []u8, cb DecompressCallback, userdata voidp
 			distance_index.free()
 		}
 	}
-	mut sink := CbSink{
+	mut sink := &CbSink{
 		cb:       cb
 		userdata: userdata
+	}
+	defer {
+		unsafe { free(sink) }
 	}
 	for {
 		is_last := br.read_bit()! == 1
@@ -197,12 +226,21 @@ fn decode_uncompressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen 
 		return error('brotli: non-zero padding before uncompressed block')
 	}
 	r.align_byte()
-	if r.remaining_bytes() < mlen {
-		return error('brotli: truncated uncompressed meta-block')
-	}
+	// Consume incrementally so the callback can stop early on a truncated
+	// tail: deliver each available chunk before requiring the missing
+	// remainder. A callback returning short stops decoding successfully
+	// with the bytes delivered so far; only a callback that keeps going
+	// past the available input reports truncation.
 	mut remaining := mlen
 	for remaining > 0 {
-		take := if remaining > callback_chunk_size { callback_chunk_size } else { remaining }
+		avail := r.remaining_bytes()
+		if avail <= 0 {
+			return error('brotli: truncated uncompressed meta-block')
+		}
+		mut take := if remaining > callback_chunk_size { callback_chunk_size } else { remaining }
+		if take > avail {
+			take = avail
+		}
 		out << r.data[r.pos..r.pos + take]
 		r.pos += take
 		remaining -= take
@@ -216,17 +254,23 @@ fn decode_uncompressed_meta_block_streaming(mut r BitReader, mut out []u8, mlen 
 // free_prefix_decoders releases decoder tables built while reading one
 // meta-block header. Every table is freshly built per block, so freeing
 // each element once is safe; empty slots from an early error return are
-// skipped, which is what makes one deferred call cover every exit.
+// skipped, which is what makes one deferred call cover every exit. The
+// outer element arrays are freed too so no backing survives the block.
 fn free_prefix_decoders(mut decs []PrefixDecoder) {
 	for i in 0 .. decs.len {
 		if decs[i].entries.len > 0 {
-			decs[i].entries.free()
+			unsafe {
+				decs[i].entries.free()
+			}
 		}
 		if decs[i].flat.len > 0 {
 			unsafe {
 				decs[i].flat.free()
 			}
 		}
+	}
+	unsafe {
+		decs.free()
 	}
 }
 
