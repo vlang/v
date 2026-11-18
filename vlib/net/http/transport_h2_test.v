@@ -1303,13 +1303,14 @@ fn test_h2_pool_disable_reuse_opt_out() {
 
 // --- H2PooledTransport adapter-level concurrency ---
 
-fn h2t_echo_conn(mut conn mbedtls.SSLConn) {
+fn h2t_echo_peer(mut listener mbedtls.SSLListener) {
+	mut conn := listener.accept() or { return }
 	defer {
 		conn.shutdown() or {}
 	}
 	conn.set_read_timeout(10 * time.second)
+	mut buf := []u8{len: 4096}
 	for {
-		mut buf := []u8{len: 4096}
 		n := conn.read(mut buf) or { return }
 		if n <= 0 {
 			return
@@ -1318,17 +1319,11 @@ fn h2t_echo_conn(mut conn mbedtls.SSLConn) {
 	}
 }
 
-fn h2t_echo_loop(mut listener mbedtls.SSLListener) {
-	for {
-		mut conn := listener.accept() or { return }
-		spawn h2t_echo_conn(mut conn)
-	}
-}
-
-fn h2t_hammer_reader(mut pt H2PooledTransport) int {
+fn h2t_hammer_reader(mut pt H2PooledTransport, echoed chan bool) int {
+	echo_goal := 4 * 1024
 	mut total := 0
+	mut buf := []u8{len: 2048}
 	for {
-		mut buf := []u8{len: 2048}
 		n := pt.read(mut buf) or {
 			// Mirror the real consumer (H2MuxConn.read_loop): timeout errors
 			// are benign wake-ups to re-poll on; anything else ends the read
@@ -1338,6 +1333,9 @@ fn h2t_hammer_reader(mut pt H2PooledTransport) int {
 				continue
 			}
 			return total
+		}
+		if total < echo_goal && total + n >= echo_goal {
+			echoed <- true
 		}
 		total += n
 	}
@@ -1394,7 +1392,7 @@ fn test_h2_pooled_transport_idle_reader_allows_write_and_close() ! {
 	mut sconn := ssl.new_ssl_conn(validate: false)!
 	sconn.dial('127.0.0.1', port)!
 	mut pt := new_h2_pooled_transport(mut sconn)
-	reader := spawn h2t_hammer_reader(mut pt)
+	reader := spawn h2t_hammer_reader(mut pt, chan bool{cap: 1})
 	// Start the writer while the reader owns the TLS context, rather than
 	// letting the write finish before the first read has even started.
 	deadline := time.now().add(2 * time.second)
@@ -1473,7 +1471,7 @@ fn test_h2_pooled_transport_concurrent_read_write_close() {
 			assert false, 'listener: ${err}'
 			return
 		}
-		th := spawn h2t_echo_loop(mut listener)
+		th := spawn h2t_echo_peer(mut listener)
 		mut sconn := ssl.new_ssl_conn(validate: false) or {
 			assert false, 'ssl conn: ${err}'
 			return
@@ -1483,17 +1481,26 @@ fn test_h2_pooled_transport_concurrent_read_write_close() {
 			return
 		}
 		mut pt := new_h2_pooled_transport(mut sconn)
-		rt := spawn h2t_hammer_reader(mut pt)
+		echoed := chan bool{cap: 1}
+		rt := spawn h2t_hammer_reader(mut pt, echoed)
 		wt := spawn h2t_hammer_writer(mut pt)
-		time.sleep(200 * time.millisecond)
+		mut exchanged := false
+		select {
+			_ := <-echoed {
+				exchanged = true
+			}
+			5 * time.second {
+			}
+		}
 		pt.close()
 		writes := wt.wait()
 		reads := rt.wait()
-		assert writes >= 0 && reads >= 0, 'round ${round}: hammer threads must terminate cleanly'
 		// A second close must be a no-op, not a double-free.
 		pt.close()
-		listener.shutdown() or {}
 		th.wait()
+		listener.shutdown() or {}
+		assert writes >= 0 && reads >= 0, 'round ${round}: hammer threads must terminate cleanly'
+		assert exchanged, 'round ${round}: reader did not receive enough echoed data'
 	}
 }
 
@@ -1535,14 +1542,18 @@ fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
 		assert false, 'listener: ${err}'
 		return
 	}
+	defer {
+		listener.shutdown() or {}
+	}
 	// Server: complete the handshake, then go captive -- never read again,
 	// simulating a healthy-but-slow peer that has stopped draining its
 	// receive buffer (not a dead or closed one).
-	th := spawn fn (mut l mbedtls.SSLListener) {
+	release := chan bool{cap: 1}
+	th := spawn fn (mut l mbedtls.SSLListener, release chan bool) {
 		mut sconn := l.accept() or { return }
-		time.sleep(2 * time.second)
+		_ := <-release
 		sconn.shutdown() or {}
-	}(mut listener)
+	}(mut listener, release)
 
 	mut sconn := ssl.new_ssl_conn(validate: false) or {
 		assert false, 'ssl conn: ${err}'
@@ -1563,7 +1574,7 @@ fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
 	payload := []u8{len: 512 * 1024, init: u8(0xab)}
 
 	write_done := chan bool{cap: 1}
-	spawn fn [mut pt, payload, write_done] () {
+	writer := spawn fn [mut pt, payload, write_done] () {
 		pt.write(payload) or {}
 		write_done <- true
 	}()
@@ -1575,16 +1586,20 @@ fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
 	// multiple of that interval must still find the write in flight: that is
 	// only possible if it is retrying against something much longer than
 	// 50ms.
+	mut returned_early := false
 	select {
 		_ := <-write_done {
-			assert false, 'write() returned within 250ms even though the peer never disconnected -- it must be retrying against the write stall budget, not the short read-poll interval'
+			returned_early = true
 		}
 		250 * time.millisecond {
 			// still in flight, as expected on fixed code
 		}
 	}
 
+	// The write can hold the I/O lock until the peer disconnects.
+	release <- true
 	pt.close()
-	_ := <-write_done
+	writer.wait()
 	th.wait()
+	assert !returned_early, 'write() returned within 250ms while the peer was still connected'
 }
