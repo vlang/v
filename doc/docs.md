@@ -6628,6 +6628,33 @@ rlock m {
 }
 ```
 
+### Structured Concurrency with TaskGroup
+
+`sync.TaskGroup` runs a set of closures concurrently and joins them all.
+`wait` returns the results in submission order, regardless of completion
+order. The first child error cancels the group; `wait` reports that error
+after every child has finished:
+
+```v
+import sync
+
+fn main() {
+	mut group := sync.new_task_group[int]()
+	for i in 0 .. 4 {
+		id := i
+		group.spawn(fn [id] () !int {
+			return id * 10
+		})!
+	}
+	println(group.wait()!) // [0, 10, 20, 30]
+}
+```
+
+A group is single-use: spawning after `wait` has started and waiting twice
+both return errors. Tasks observe cancellation through the group's
+`TaskContext` (`ctx := group.context()`, then `ctx.check_cancelled()!`),
+which is also cancelled automatically on the first child error.
+
 ### Difference Between Channels and Shared Objects
 
 **Purpose**:
