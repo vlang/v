@@ -10941,6 +10941,11 @@ Currently there is no debugging support for binaries created by the native backe
 
 ### Javascript Backend
 
+The V3 compatibility generator emits direct literal `println` and `JS.eval` statements in
+source order inside `main` or at script top level. It reports unsupported control flow
+before generating JavaScript. Constant and global initializers are limited to scalar and
+function literals. Calls in initializers and aggregate defaults produce a diagnostic.
+
 To debug the generated Javascript output you can activate source maps:
 `v -b js -sourcemap hello.v -o hello.js`
 
