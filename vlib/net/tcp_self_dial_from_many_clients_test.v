@@ -76,7 +76,7 @@ fn start_server(schannel chan int, shared ctx Context) {
 	}
 }
 
-fn start_client(i int, shared ctx Context) {
+fn start_client(i int, close_clients chan bool, shared ctx Context) {
 	elog('client [${i}]: start')
 	mut tcp_con := net.dial_tcp('127.0.0.1:${xport}') or {
 		elog('client [${i}]: net.dial_tcp err ${err}')
@@ -90,7 +90,7 @@ fn start_client(i int, shared ctx Context) {
 	}
 	elog('client [${i}]: conn is connected, con.sock.handle: ${tcp_con.sock.handle}')
 	tcp_con.write([u8(i)]) or { elog('client [${i}]: write failed, err: ${err}') }
-	time.sleep(1 * time.second)
+	_ = <-close_clients or { false }
 	elog('client [${i}]: closing connection...')
 	tcp_con.close() or {
 		elog('client [${i}]: close failed, err: ${err}')
@@ -113,19 +113,26 @@ fn test_tcp_self_dialing() {
 	svalue := <-server_channel
 	elog('>>> server was started: ${svalue}. Starting clients:')
 	client_count := 20
+	close_clients := chan bool{}
 	for i in 0 .. client_count {
-		spawn start_client(i, shared ctx)
+		spawn start_client(i, close_clients, shared ctx)
 		elog('>>> started client ${i}')
 	}
 	for {
-		finished := rlock ctx {
+		ready_to_close, finished := rlock ctx {
+			all_dials_reported := ctx.ok_client_dials + ctx.fail_client_dials == client_count
+			all_accepted := ctx.ok_server_accepts == ctx.ok_client_dials
 			clients_finished := ctx.ok_client_close + ctx.fail_client_close + ctx.fail_client_dials
 			servers_finished := ctx.ok_server_close + ctx.fail_server_close
-			clients_finished == client_count && ctx.ok_server_accepts == ctx.ok_client_dials
+			all_dials_reported && all_accepted, clients_finished == client_count && all_accepted
 				&& servers_finished == ctx.ok_server_accepts
 		}
 		if finished || sw.elapsed() >= 5 * time.second {
 			break
+		}
+		// Keep the successful connections open together until the server has accepted them all.
+		if ready_to_close && !close_clients.closed {
+			close_clients.close()
 		}
 		time.sleep(10 * time.millisecond)
 	}
