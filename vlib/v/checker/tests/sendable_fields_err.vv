@@ -1,0 +1,40 @@
+@[sendable]
+struct SendableWithPointer {
+	p &int
+}
+
+@[sendable]
+struct SendableWithChannel {
+	ch chan int
+}
+
+@[sendable]
+struct SendableWithFn {
+	f ?fn (int) int
+}
+
+@[sendable]
+struct SendableWithC {
+	x C.int
+}
+
+@[sendable]
+struct SendableInner {
+	x int
+}
+
+@[sendable]
+struct SendableNestedBad {
+	inner SendableInner
+	p     &int
+}
+
+@[sendable]
+struct SendableCollectionsBad {
+	xs []&int
+	m  map[string]chan int
+}
+
+fn main() {
+	println('done')
+}

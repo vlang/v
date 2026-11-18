@@ -1,0 +1,23 @@
+@[sendable]
+struct SendablePoint {
+	x int
+}
+
+@[sendable]
+struct SendableBad {
+	p &int
+}
+
+fn main() {
+	p := SendablePoint{ x: 5 }
+	h := spawn fn [p] () int {
+		return p.x * 2
+	}()
+	println(h.wait())
+	mut v := 7
+	b := SendableBad{ p: &v }
+	g := spawn fn [b] () int {
+		return 0
+	}()
+	println(g.wait())
+}

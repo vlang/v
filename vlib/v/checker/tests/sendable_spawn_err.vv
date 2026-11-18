@@ -1,0 +1,27 @@
+@[sendable]
+struct SendablePoint {
+	x int
+	y int
+}
+
+@[sendable]
+struct SendableBad {
+	p &int
+}
+
+fn work(p SendablePoint) int {
+	return p.x + p.y
+}
+
+fn bad_work(b SendableBad) int {
+	return 0
+}
+
+fn main() {
+	h := spawn work(SendablePoint{ x: 1, y: 2 })
+	println(h.wait())
+	mut v := 5
+	b := SendableBad{ p: &v }
+	g := spawn bad_work(b)
+	println(g.wait())
+}

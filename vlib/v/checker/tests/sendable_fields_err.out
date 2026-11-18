@@ -1,0 +1,49 @@
+vlib/v/checker/tests/sendable_fields_err.vv:3:4: error: field `p` of sendable struct `SendableWithPointer` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+    1 | @[sendable]
+    2 | struct SendableWithPointer {
+    3 |     p &int
+      |       ~~~~
+    4 | }
+    5 |
+vlib/v/checker/tests/sendable_fields_err.vv:8:5: error: field `ch` of sendable struct `SendableWithChannel` is not sendable: channel `chan int` is not sendable (transfer values, don't share channels)
+    6 | @[sendable]
+    7 | struct SendableWithChannel {
+    8 |     ch chan int
+      |        ~~~~~~~~
+    9 | }
+   10 |
+vlib/v/checker/tests/sendable_fields_err.vv:13:2: error: field `f` of sendable struct `SendableWithFn` is not sendable: option payload of `?fn(int) int` is not sendable: function value `fn(int) int` is not sendable
+   11 | @[sendable]
+   12 | struct SendableWithFn {
+   13 |     f ?fn (int) int
+      |     ~~~~~~~~~~~~~~~
+   14 | }
+   15 |
+vlib/v/checker/tests/sendable_fields_err.vv:18:4: error: field `x` of sendable struct `SendableWithC` is not sendable: foreign C type `C.int` is not sendable
+   16 | @[sendable]
+   17 | struct SendableWithC {
+   18 |     x C.int
+      |       ~~~~~
+   19 | }
+   20 |
+vlib/v/checker/tests/sendable_fields_err.vv:29:8: error: field `p` of sendable struct `SendableNestedBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   27 | struct SendableNestedBad {
+   28 |     inner SendableInner
+   29 |     p     &int
+      |           ~~~~
+   30 | }
+   31 |
+vlib/v/checker/tests/sendable_fields_err.vv:34:5: error: field `xs` of sendable struct `SendableCollectionsBad` is not sendable: array element of `[]&int` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   32 | @[sendable]
+   33 | struct SendableCollectionsBad {
+   34 |     xs []&int
+      |        ~~~~~~
+   35 |     m  map[string]chan int
+   36 | }
+vlib/v/checker/tests/sendable_fields_err.vv:35:5: error: field `m` of sendable struct `SendableCollectionsBad` is not sendable: map value of `map[string]chan int` is not sendable: channel `chan int` is not sendable (transfer values, don't share channels)
+   33 | struct SendableCollectionsBad {
+   34 |     xs []&int
+   35 |     m  map[string]chan int
+      |        ~~~~~~~~~~~~~~~~~~~
+   36 | }
+   37 |

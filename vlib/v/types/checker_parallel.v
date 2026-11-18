@@ -1984,6 +1984,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
+					if tc.declaration_has_attribute(node_id, 'sendable') {
+						tc.check_sendable_struct_decl(node_id, node)
+					}
 					if tc.declaration_has_attribute(node_id, 'attribute') {
 						tc.check_attribute_schema_decl(node_id, node)
 					}

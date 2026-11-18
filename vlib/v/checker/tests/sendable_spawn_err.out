@@ -1,0 +1,21 @@
+vlib/v/checker/tests/sendable_spawn_err.vv:16:13: notice: unused parameter: `b`
+   14 | }
+   15 | 
+   16 | fn bad_work(b SendableBad) int {
+      |             ^
+   17 |     return 0
+   18 | }
+vlib/v/checker/tests/sendable_spawn_err.vv:9:4: error: field `p` of sendable struct `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+    7 | @[sendable]
+    8 | struct SendableBad {
+    9 |     p &int
+      |       ~~~~
+   10 | }
+   11 |
+vlib/v/checker/tests/sendable_spawn_err.vv:25:22: error: spawn argument of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   23 |     mut v := 5
+   24 |     b := SendableBad{ p: &v }
+   25 |     g := spawn bad_work(b)
+      |                         ^
+   26 |     println(g.wait())
+   27 | }

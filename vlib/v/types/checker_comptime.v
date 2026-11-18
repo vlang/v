@@ -3596,7 +3596,23 @@ fn (mut tc TypeChecker) check_spawn_expr(id flat.NodeId, node flat.Node) {
 					&& tc.mut_param_expr_base(arg_id, arg_type) == none {
 					tc.record_error_at(.call_arg_mismatch, 'function in `spawn` statement cannot contain mutable non-reference arguments', arg_id, arg.pos)
 				}
+				// RFC 008: transferred arguments must be sendable.
+				if param_idx < info.params.len {
+					if param_idx >= 0 && param_idx < info.shared_params.len
+						&& info.shared_params[param_idx] {
+						// Explicit `shared` parameters share memory with locking,
+						// they do not transfer ownership.
+					} else {
+						expected := info.params[param_idx]
+						if tc.expr_compatible(arg_id, arg_type, &expected) {
+							tc.check_sendable_spawn_arg(arg_id, *arg_type)
+						}
+					}
+				} else {
+					tc.check_sendable_spawn_arg(arg_id, *arg_type)
+				}
 			}
+			tc.check_sendable_spawn_closure_captures(child_id)
 		}
 	}
 	tc.check_node(child_id)
@@ -4827,6 +4843,10 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		channel_type := unalias_and_unwrap_pointer_type(child_type)
 		if channel_type !is Channel {
 			tc.record_error_at(.assignment_mismatch, 'operator `<-` can only be used with `chan` types, but the value after `<-` is of type `${child_type.name()}` instead', id, tc.prefix_operator_pos(id, '<-'))
+		} else {
+			// RFC 008: received channel values must be sendable.
+			channel := channel_type as Channel
+			tc.check_sendable_channel_pop(id, *channel.elem_type)
 		}
 		return
 	}
@@ -9560,6 +9580,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				tc.array_element_diagnostic_pos(rhs_id)
 			}
 			tc.record_error_at(.assignment_mismatch, message, rhs_id, rhs_pos)
+		} else {
+			// RFC 008: transferred channel values must be sendable.
+			tc.check_sendable_channel_push(rhs_id, rhs_type)
 		}
 		tc.register_synth_type(id, builtin_void_type)
 		return

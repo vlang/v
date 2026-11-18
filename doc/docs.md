@@ -6286,6 +6286,35 @@ fn main() {
 }
 ```
 
+### Sendable types
+
+A `@[sendable]` struct opts into recursive transfer checking. Every field must
+be sendable: primitives, strings, enums, arrays, maps, options, results,
+aliases, and nested sendable structs recurse. Pointers, function values,
+channels, shared fields, interfaces, and foreign `C` types fail closed.
+
+```v
+@[sendable]
+struct Point {
+	x int
+	y int
+}
+
+fn main() {
+	ch := chan Point{cap: 1}
+	ch <- Point{x: 1, y: 2}
+	p := <-ch
+	h := spawn fn (p Point) int {
+		return p.x + p.y
+	}(p)
+	println(h.wait())
+}
+```
+
+`spawn`/`go` arguments, channel pushes (`ch <- v`), pops (`<-ch`), and
+spawned closure captures of `@[sendable]` types must be sendable. Ordinary
+calls are unaffected. Transfer moves values; sharing still needs `shared`.
+
 ### Channels
 
 Channels are the preferred way to communicate between threads. They allow threads to exchange data
