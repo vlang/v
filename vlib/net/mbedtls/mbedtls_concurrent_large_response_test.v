@@ -7,6 +7,7 @@ import net
 import net.html
 import net.http
 import net.mbedtls
+import sync
 import sync.pool
 import time
 
@@ -20,6 +21,8 @@ const concurrent_large_response_test_key = '-----BEGIN RSA PRIVATE KEY-----\nMII
 struct ConcurrentLargeResponseContext {
 	expected_body       string
 	expected_link_count int
+mut:
+	start &sync.Barrier
 }
 
 struct ConcurrentLargeResponseResult {
@@ -47,19 +50,19 @@ fn test_https_large_bodies_can_be_processed_concurrently() {
 		validate:               false
 		in_memory_verification: true
 	})!
-	server := spawn serve_large_html_responses(mut listener, concurrent_large_response_body(),
-		concurrent_large_response_requests)
+	expected_body := concurrent_large_response_body()
+	server := spawn serve_large_html_responses(mut listener, expected_body)
 
 	mut urls := []string{cap: concurrent_large_response_requests}
 	for i in 0 .. concurrent_large_response_requests {
 		urls << 'https://127.0.0.1:${port}/?req=${i}'
 	}
-	expected_body := concurrent_large_response_body()
 	mut pp := pool.new_pool_processor(callback: concurrent_large_response_worker)
 	pp.set_max_jobs(concurrent_large_response_workers)
 	pp.set_shared_context(&ConcurrentLargeResponseContext{
 		expected_body:       expected_body
 		expected_link_count: concurrent_large_response_links
+		start:               sync.new_barrier(concurrent_large_response_workers)
 	})
 	pp.work_on_items(urls)
 	server.wait()
@@ -162,13 +165,13 @@ fn serve_incomplete_https_response(mut listener mbedtls.SSLListener) bool {
 	return false
 }
 
-fn serve_large_html_responses(mut listener mbedtls.SSLListener, body string, request_count int) {
+fn serve_large_html_responses(mut listener mbedtls.SSLListener, body string) {
 	defer {
 		listener.shutdown() or {}
 	}
 	// Each request uses one connection, including the reused ALPN probe.
-	mut handlers := []thread{cap: request_count}
-	for _ in 0 .. request_count {
+	mut handlers := []thread{cap: concurrent_large_response_requests}
+	for _ in 0 .. concurrent_large_response_requests {
 		mut conn := listener.accept() or { panic(err) }
 		handlers << spawn write_large_html_response(mut conn, body)
 	}
@@ -210,7 +213,6 @@ fn write_large_html_response(mut conn mbedtls.SSLConn, body string) {
 		}
 		conn.write_string(body[start..end]) or { return }
 		start = end
-		time.sleep(1 * time.millisecond)
 	}
 }
 
@@ -236,11 +238,8 @@ fn write_chunked_html_response(mut conn mbedtls.SSLConn, body string) bool {
 			start + concurrent_large_response_chunk_size
 		}
 		chunk := body[start..end]
-		conn.write_string('${chunk.len:x}\r\n') or { return true }
-		conn.write_string(chunk) or { return true }
-		conn.write_string('\r\n') or { return true }
+		conn.write_string('${chunk.len:x}\r\n${chunk}\r\n') or { return true }
 		start = end
-		time.sleep(1 * time.millisecond)
 	}
 	conn.write_string('0\r\n\r\n') or { return true }
 	return true
@@ -248,7 +247,11 @@ fn write_chunked_html_response(mut conn mbedtls.SSLConn, body string) bool {
 
 fn concurrent_large_response_worker(mut pp pool.PoolProcessor, idx int, _wid int) &ConcurrentLargeResponseResult {
 	url := pp.get_item[string](idx)
-	ctx := unsafe { &ConcurrentLargeResponseContext(pp.get_shared_context()) }
+	mut ctx := unsafe { &ConcurrentLargeResponseContext(pp.get_shared_context()) }
+	if idx < concurrent_large_response_workers {
+		// Let every worker start its first request together.
+		ctx.start.wait()
+	}
 	resp := http.fetch(
 		method:   .get
 		url:      url
