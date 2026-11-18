@@ -1489,6 +1489,13 @@ fn decode_prefix_lengths_rfc(mut r BitReader, alphabet_size int) ![]int {
 
 fn read_prefix_tree(mut r BitReader, alphabet_size int) !PrefixDecoder {
 	lengths := decode_prefix_lengths_rfc(mut r, alphabet_size)!
+	// The lengths feed the decoder tables below; the array itself is not
+	// retained, so it is freed here rather than leaking per tree.
+	defer {
+		unsafe {
+			lengths.free()
+		}
+	}
 	return build_prefix_decoder(lengths) or {
 		return err
 	}
