@@ -338,6 +338,7 @@ const fastc_c_reserved_identifiers = {
 	'char':     true
 	'const':    true
 	'continue': true
+	'complex':  true
 	'default':  true
 	'do':       true
 	'double':   true
@@ -2285,16 +2286,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 	}
 	for key, signature in functions {
-		if key == 'main' || key.contains('.') || signature.module_name !in ['', 'main'] {
+		if key == 'main' || key.starts_with('C.') || signature.is_global
+			|| (key !in constants && key !in globals) {
 			continue
 		}
-		// A main-module function shares the `main__` namespace with the main module's
-		// constants and the global `byte`. V accepts a constant and a function of the
-		// same name, so such a function is named in FastC's own namespace instead.
+		// V accepts a constant and a function of the same name. When their C
+		// spellings also coincide, give the function a distinct symbol.
 		c_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
-		if c_name.starts_with('main__')
-			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
-			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
+		if (constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name {
+			function_c_names[key] = '__vf_function_${c_name.trim_string_left('main__')}'
 		}
 	}
 	// A method is named `<module>__<Receiver>_<method>`, which a free function of the

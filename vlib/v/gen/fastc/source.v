@@ -184,14 +184,16 @@ fn fastc_local_c_include_path(path string, source_file string) string {
 	if source_file == '' {
 		return os.join_path(os.getwd(), name)
 	}
-	source_dir := if os.is_abs_path(source_file) {
-		os.dir(source_file)
-	} else {
-		os.dir(os.abs_path(source_file))
+	source := if os.is_abs_path(source_file) { source_file } else { os.abs_path(source_file) }
+	source_dir := os.dir(source)
+	origin_file := os.real_path(source)
+	if source == origin_file {
+		// The single-source API also accepts paths to files that do not exist.
+		return os.join_path(os.real_path(source_dir), name)
 	}
-	origin_dir := os.dir(os.real_path(source_file))
+	origin_dir := os.dir(origin_file)
 	if source_dir != origin_dir {
-		staged := os.join_path(source_dir, name)
+		staged := os.join_path(os.real_path(source_dir), name)
 		if os.exists(staged) {
 			return staged
 		}

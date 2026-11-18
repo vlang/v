@@ -424,11 +424,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			} else {
 				'.'
 			}
-			comparison := if fastc_trim_pointer_type(g.underlying_alias_type(element_type)) == flat.source_type_string {
-				'builtin__string_eq(__vf_contains_item, ((${flat.source_type_name(element_type)} *)__vf_contains_collection${access}data)[__vf_contains_index])'
-			} else {
-				'(__vf_contains_item == ((${element_storage_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
-			}
+			candidate := '((${element_storage_type} *)__vf_contains_collection${access}data)[__vf_contains_index]'
+			comparison := g.stored_equality_source('__vf_contains_item', candidate, element_type, [],
+				0)
 			receiver_decl_type := g.declaration_c_type(receiver_type, receiver.source)
 			call_source := '({ ${element_storage_type} __vf_contains_item = (${argument}); ${receiver_decl_type} __vf_contains_collection = (${receiver.source}); bool __vf_contains_found = false; for (${fastc_output_c_type('int')} __vf_contains_index = 0; __vf_contains_index < __vf_contains_collection${access}len; __vf_contains_index++) { if (${comparison}) { __vf_contains_found = true; break; } } __vf_contains_found; })'
 			if receiver_start == 0 && call_end == tokens.len - 1 {

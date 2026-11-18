@@ -2166,6 +2166,17 @@ fn (mut g Parser) parse_assert_statement() ! {
 	if condition == '' {
 		return g.unsupported('empty assert condition')
 	}
+	narrowing := if g.selfhost {
+		tokens := fastc_strip_paren_tokens(g.last_expression)
+		if tokens.len >= 3 && tokens[0].tok == .name && tokens[1].tok == .key_is
+			&& tokens[0].lit in g.locals {
+			g.conjunction_narrowing(tokens)
+		} else {
+			none
+		}
+	} else {
+		none
+	}
 	mut message := if g.selfhost { '_S("assertion failed")' } else { '"assertion failed"' }
 	if g.tok == .comma {
 		g.next()
@@ -2176,6 +2187,11 @@ fn (mut g Parser) parse_assert_statement() ! {
 		}
 	}
 	g.consume_statement_end()
+	defer {
+		if cast := narrowing {
+			g.bind_fallthrough_type_test(cast.path, cast.smartcast.value_type)
+		}
+	}
 	if g.selfhost && g.prefs.is_test {
 		// A failed assert in a test build fails the running test and moves on to the next,
 		// running the deferred blocks a return from here would run.
@@ -2413,10 +2429,6 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 // target, blanking `_` positions. `member_targets` holds the rendered lvalues by
 // target index; the remaining `names` entries are plain names (or `_`).
 fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targets map[int]FastcRenderedExpression) ! {
-	if g.tok != .assign {
-		return g.unsupported('parallel assignment operator `${g.token_source()}`')
-	}
-	g.next()
 	mut targets := []FastcRenderedExpression{cap: names.len}
 	for i, name in names {
 		if member_target := member_targets[i] {
@@ -2426,55 +2438,7 @@ fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targe
 			targets << rendered[0]
 		}
 	}
-	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
-	mut values := []string{}
-	mut value_types := []u32{}
-	previous_expected_type := g.expected_expression_type
-	for {
-		g.expected_expression_type = if values.len < targets.len {
-			targets[values.len].typ
-		} else {
-			u32(0)
-		}
-		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
-		if value == '' {
-			return g.unsupported('empty parallel assignment')
-		}
-		values << value
-		value_types << g.last_expression_type
-		if g.tok != .comma {
-			break
-		}
-		g.next()
-	}
-	g.expected_expression_type = previous_expected_type
-	g.consume_statement_end()
-	if values.len > 1 {
-		if values.len != targets.len {
-			return g.unsupported('parallel assignment with ${targets.len} targets and ${values.len} values')
-		}
-		mut temporaries := []string{cap: values.len}
-		for i, value in values {
-			temporary := g.temporary_name('parallel')
-			declaration_type := g.declaration_c_type(value_types[i], value)
-			g.write_line('${declaration_type} ${temporary} = (${value});')
-			temporaries << temporary
-		}
-		for i, target in targets {
-			if target.source != '' {
-				g.write_line('${target.source} = ${temporaries[i]};')
-			}
-		}
-		return
-	}
-	temporary := g.temporary_name('multi_return')
-	g.write_line('MultiReturn ${temporary} = (${values[0]});')
-	for i, target in targets {
-		if target.source == '' {
-			continue
-		}
-		g.write_line('memcpy(&${target.source}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${target.source})), sizeof(${target.source}));')
-	}
+	return g.emit_parallel_expression_assignment(targets)
 }
 
 // parallel_rhs_is_option_tuple_or reports whether the RHS of a parallel `:=` (the
@@ -2729,6 +2693,10 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 			written_targets << g.last_expression.clone()
 		}
 	}
+	return g.emit_parallel_expression_assignment(targets)
+}
+
+fn (mut g Parser) emit_parallel_expression_assignment(targets []FastcRenderedExpression) ! {
 	if g.tok != .assign {
 		return g.unsupported('parallel assignment operator `${g.token_source()}`')
 	}
@@ -2738,17 +2706,28 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 	mut value_types := []u32{}
 	previous_expected_type := g.expected_expression_type
 	for {
-		g.expected_expression_type = if values.len < targets.len {
-			targets[values.len].typ
+		target_type := if values.len < targets.len { targets[values.len].typ } else { u32(0) }
+		option_payload := fastc_typed_option_payload(target_type) or { u32(0) }
+		g.expected_expression_type = if option_payload != 0 {
+			fastc_type_option
 		} else {
-			u32(0)
+			target_type
 		}
-		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+		mut value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if value == '' {
 			return g.unsupported('empty parallel assignment')
 		}
+		mut value_type := g.last_expression_type
+		if option_payload != 0 && value_type !in [fastc_type_option, fastc_type_result,
+			fastc_type_multi_return]
+			&& fastc_typed_option_payload(value_type) == none {
+			value = g.render_call_argument_expression(g.last_expression, target_type) or {
+				return g.unsupported('parallel assignment to an optional value')
+			}
+			value_type = fastc_type_option
+		}
 		values << value
-		value_types << g.last_expression_type
+		value_types << value_type
 		if g.tok != .comma {
 			break
 		}
@@ -2797,9 +2776,16 @@ fn (g &Parser) validate_parallel_expression_assignment_target(source string, tok
 		lit: '='
 	}
 	g.validate_expression_mutation_lvalue(mutation_tokens)!
+	mut target_type := typ_source_id
+	if typ_source_id == fastc_type_option {
+		payload := g.option_value_type_for_expression(tokens)
+		if payload != 0 {
+			target_type = flat.source_type_id(fastc_typed_option_type(payload))
+		}
+	}
 	return FastcRenderedExpression{
 		source: source
-		typ:    typ_source_id
+		typ:    target_type
 	}
 }
 

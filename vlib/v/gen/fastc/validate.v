@@ -451,9 +451,10 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	}
 	function_key := g.unqualified_function_key(name)
 	if function_key in g.functions || function_key in g.mono_functions {
-		if !function_key.contains('.') && (name in g.constants || name in g.globals) {
-			// V accepts a main-module function that shares its name with a constant
-			// or global, and they have different C names. Keep the V name, so that
+		if fastc_constant_key(g.module_name, name) in g.constants
+			|| (!function_key.contains('.') && name in g.globals) {
+			// V accepts a function that shares its name with a constant or global,
+			// and they have different C names. Keep the V name, so that
 			// render_constant_references names the function in a call and the
 			// constant in any other use; a main global keeps the V name in C.
 			return fastc_c_identifier(name)
