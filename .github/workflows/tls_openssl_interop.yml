@@ -349,6 +349,18 @@ jobs:
           if [ "$RUNNER_OS" = 'Windows' ]; then EXE='.exe'; fi
           SRV="./tls_interop_server$EXE"
           CLI="./tls_interop_client$EXE"
+          # Wait up to $3 seconds for pattern $2 to appear in log file $1.
+          # Proves the server is listening instead of hoping a blind sleep
+          # is long enough on slow runners.
+          wait_for_log() {
+            i=0
+            while [ "$i" -lt "$3" ]; do
+              if grep -q "$2" "$1" 2>/dev/null; then return 0; fi
+              sleep 1
+              i=$((i + 1))
+            done
+            return 1
+          }
           i=0
           for suite in TLS_AES_128_GCM_SHA256 TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256; do
             i=$((i + 1))
@@ -358,7 +370,7 @@ jobs:
             V_TLS_PORT="$p1" V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
               V_TLS_SUITE="$suite" V_TLS_NCONN=1 "$SRV" >"srv_$suite.log" 2>&1 &
             srvpid=$!
-            sleep 2
+            wait_for_log "srv_$suite.log" 'READY' 60 || { echo "V server did not start for $suite"; cat "srv_$suite.log"; kill "$srvpid" 2>/dev/null || true; exit 1; }
             # s_client exits nonzero on the server close_notify EOF; the
             # fail-closed asserts below (not the exit code) decide.
             printf 'ping' | openssl s_client -connect "127.0.0.1:$p1" -tls1_3 -ciphersuites "$suite" \
@@ -368,14 +380,16 @@ jobs:
             grep -q 'ECHO_OK' "srv_$suite.log" || { echo "no V echo for $suite"; cat "srv_$suite.log"; exit 1; }
             grep -q 'ping' "cli_$suite.log" || { echo "no openssl echo for $suite"; cat "cli_$suite.log"; exit 1; }
             # pure-V client against openssl server (handshake only; s_server
-            # is not an echo server). s_server reads handshake input from
-            # stdin, so keep it open with sleep; a closed stdin makes it
-            # abort the connection before ServerHello (empty client error).
-            sleep 30 | openssl s_server -accept "$p2" -tls1_3 -ciphersuites "$suite" \
+            # is not an echo server). s_server consumes stdin every loop
+            # iteration: a pipe with no data (e.g. `sleep 30 |`) makes it
+            # never reach accept on Windows, while a closed stdin makes it
+            # abort the connection before ServerHello. Feeding empty lines
+            # keeps the accept loop running on every platform.
+            yes '' | openssl s_server -accept "$p2" -tls1_3 -ciphersuites "$suite" \
               -cert "$TD/rsa_leaf_cert.pem" -key "$TD/rsa_leaf_pkcs8_key.pem" \
               -naccept 1 >"ssrv_$suite.log" 2>&1 &
             ssrvpid=$!
-            sleep 2
+            wait_for_log "ssrv_$suite.log" 'ACCEPT' 60 || { echo "openssl server did not start for $suite"; cat "ssrv_$suite.log" || true; kill "$ssrvpid" 2>/dev/null || true; exit 1; }
             V_TLS_PORT="$p2" V_TLS_SUITE="$suite" V_TLS_MODE=hs "$CLI" >"vcli_$suite.log" 2>&1 || {
               echo "V client failed for $suite"; cat "vcli_$suite.log"; echo "--- ssrv log ---"; cat "ssrv_$suite.log" || true; kill "$ssrvpid" 2>/dev/null || true; exit 1; }
             grep -q 'HANDSHAKE_OK' "vcli_$suite.log" || { echo "no V-client handshake for $suite"; cat "vcli_$suite.log"; exit 1; }
@@ -386,7 +400,7 @@ jobs:
           V_TLS_PORT=15451 V_TLS_CERT="$TD/p384_leaf_cert.pem" V_TLS_KEY="$TD/p384_leaf_key.pem" \
             V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 "$SRV" >srv_ec.log 2>&1 &
           srvpid=$!
-          sleep 2
+          wait_for_log 'srv_ec.log' 'READY' 60 || { echo 'V server did not start for ECDSA'; cat srv_ec.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           printf 'ping' | openssl s_client -connect '127.0.0.1:15451' -tls1_3 \
             -ciphersuites TLS_AES_128_GCM_SHA256 -CAfile "$TD/p384_ca_cert.pem" \
             -verify_return_error -quiet >cli_ec.log 2>&1 || true
@@ -403,12 +417,21 @@ jobs:
           if [ "$RUNNER_OS" = 'Windows' ]; then EXE='.exe'; fi
           SRV="./tls_interop_server$EXE"
           CLI="./tls_interop_client$EXE"
+          wait_for_log() {
+            i=0
+            while [ "$i" -lt "$3" ]; do
+              if grep -q "$2" "$1" 2>/dev/null; then return 0; fi
+              sleep 1
+              i=$((i + 1))
+            done
+            return 1
+          }
           # Stateless-ticket resumption between two pure-V endpoints must
           # report resumed=true on the second handshake.
           V_TLS_PORT=15452 V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
             V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=2 "$SRV" >srv_resume.log 2>&1 &
           srvpid=$!
-          sleep 2
+          wait_for_log 'srv_resume.log' 'READY' 60 || { echo 'resumption server did not start'; cat srv_resume.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           V_TLS_PORT=15452 V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_MODE=resume "$CLI" >cli_resume.log 2>&1 || {
             echo 'resumption client failed'; cat cli_resume.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           wait "$srvpid" || { echo 'resumption server failed'; cat srv_resume.log; exit 1; }
@@ -418,7 +441,7 @@ jobs:
           V_TLS_PORT=15453 V_TLS_CERT="$TD/mldsa65_leaf_cert.pem" V_TLS_KEY="$TD/mldsa65_leaf_key.pem" \
             V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 "$SRV" >srv_ml.log 2>&1 &
           srvpid=$!
-          sleep 2
+          wait_for_log 'srv_ml.log' 'READY' 60 || { echo 'ML-DSA server did not start'; cat srv_ml.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           V_TLS_PORT=15453 V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_MODE=echo "$CLI" >cli_ml.log 2>&1 || {
             echo 'ML-DSA client failed'; cat cli_ml.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           wait "$srvpid" || { echo 'ML-DSA server failed'; cat srv_ml.log; exit 1; }
@@ -433,12 +456,21 @@ jobs:
           EXE=''
           if [ "$RUNNER_OS" = 'Windows' ]; then EXE='.exe'; fi
           SRV="./tls_interop_server$EXE"
+          wait_for_log() {
+            i=0
+            while [ "$i" -lt "$3" ]; do
+              if grep -q "$2" "$1" 2>/dev/null; then return 0; fi
+              sleep 1
+              i=$((i + 1))
+            done
+            return 1
+          }
           # Accept: openssl presents a P-384 client cert the V server trusts.
           V_TLS_PORT=15454 V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
             V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 V_TLS_MTLS=1 \
             V_TLS_CLIENT_CA="$TD/p384_ca_cert.pem" "$SRV" >srv_mtls_ok.log 2>&1 &
           srvpid=$!
-          sleep 2
+          wait_for_log 'srv_mtls_ok.log' 'READY' 60 || { echo 'mTLS server did not start'; cat srv_mtls_ok.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           printf 'ping' | openssl s_client -connect '127.0.0.1:15454' -tls1_3 \
             -ciphersuites TLS_AES_128_GCM_SHA256 -CAfile "$TD/rsa_ca_cert.pem" \
             -cert "$TD/p384_leaf_cert.pem" -key "$TD/p384_leaf_key.pem" \
@@ -452,7 +484,7 @@ jobs:
             V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 V_TLS_MTLS=1 \
             V_TLS_CLIENT_CA="$TD/p384_ca_cert.pem" "$SRV" >srv_mtls_no.log 2>&1 &
           srvpid=$!
-          sleep 2
+          wait_for_log 'srv_mtls_no.log' 'READY' 60 || { echo 'mTLS reject server did not start'; cat srv_mtls_no.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
           printf 'ping' | openssl s_client -connect '127.0.0.1:15455' -tls1_3 \
             -ciphersuites TLS_AES_128_GCM_SHA256 -CAfile "$TD/rsa_ca_cert.pem" \
             -verify_return_error -quiet >cli_mtls_no.log 2>&1 || true
