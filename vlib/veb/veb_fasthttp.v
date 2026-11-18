@@ -166,9 +166,9 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		// so callers using `<-app.started` actually see the server ready.
 		handle.wait_till_running() or {}
 		global_app.before_accept_loop()
-		server_thread.wait() or { panic(err) }
+		server_thread.wait()!
 	} $else {
-		server.run() or { panic(err) }
+		server.run()!
 	}
 }
 
@@ -198,6 +198,11 @@ fn listening_process_ids(port int) []int {
 }
 
 fn prompt_to_kill_processes_listening_on_port(port int) {
+	// Never prompt when stdin is not a terminal: services, CI, and tests
+	// would otherwise block forever waiting for an answer nobody can give.
+	if os.is_atty(0) <= 0 {
+		return
+	}
 	pids := listening_process_ids(port)
 	if pids.len == 0 {
 		return
