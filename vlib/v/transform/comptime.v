@@ -178,8 +178,8 @@ enum AttributeSchemaFieldKind {
 
 // AttributeSchemaFieldInfo is one field of a `@[attribute]` schema struct.
 struct AttributeSchemaFieldInfo {
-	name          string
-	kind          AttributeSchemaFieldKind
+	name string
+	kind AttributeSchemaFieldKind
 	// type_id is the declared field type; for an enum field, the enum itself.
 	type_id       u32
 	has_default   bool

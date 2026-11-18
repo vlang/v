@@ -18892,7 +18892,7 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 
 // AttributeSchemaField is one field of a custom attribute schema.
 struct AttributeSchemaField {
-	name        string
+	name string
 	// type_id is a source spelling ID, distinct from semantic TypeId.
 	type_id     u32
 	has_default bool

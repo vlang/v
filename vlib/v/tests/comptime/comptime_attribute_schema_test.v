@@ -154,6 +154,7 @@ fn test_attribute_schema_method_calls() {
 		}
 	}
 }
+
 type SchemaPath = string
 type SchemaNumber = uint
 type SchemaBoolean = bool

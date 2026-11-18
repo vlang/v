@@ -174,6 +174,7 @@ fn route_attrs_strings(attrs []VAttribute) []string {
 	}
 	return out
 }
+
 fn has_route_attributes(attrs []string) bool {
 	if attrs.len == 0 {
 		return false
