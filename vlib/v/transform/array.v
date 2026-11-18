@@ -1620,6 +1620,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	if node.kind != .infix || node.op != .left_shift || node.children_count < 2 {
 		return none
 	}
+	if appended := t.lower_append_string_bytes(node) {
+		mut stmts := []flat.NodeId{}
+		t.drain_pending(mut stmts)
+		stmts << t.make_expr_stmt(appended)
+		return stmts
+	}
 	lhs_id := t.a.child(&node, 0)
 	rhs_id := t.a.child(&node, 1)
 	if lowered := t.try_lower_optional_array_append_stmt(node, lhs_id, rhs_id) {
@@ -3024,6 +3030,42 @@ fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.N
 	t.detach_owned_array_slice_for_mutation(t.array_lvalue_value(base, base_type_id),
 		t.trim_all_pointer_type(base_type_id), t.make_infix(.gt, count, t.make_int_literal(0)))
 	return t.make_call_typed('array_push_many_ptr', [base_addr, value, count], flat.source_type_void)
+}
+
+// lower_append_string_bytes lowers `buf << s.bytes()` on a `[]u8` to
+// `array.push_string_bytes`, which appends the string's bytes without the temporary array.
+// Snapshot the string before resolving the destination, which its evaluation can rebind.
+fn (mut t Transformer) lower_append_string_bytes(node flat.Node) ?flat.NodeId {
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind != .call || rhs.children_count != 1 || isnil(t.tc) || t.tc.autofree_enabled()
+		|| !t.expr_is_plain_lvalue(lhs_id) {
+		return none
+	}
+	selector := t.a.child_node(&rhs, 0)
+	if selector.kind != .selector || selector.value != 'bytes' || selector.children_count != 1 {
+		return none
+	}
+	lhs_type := t.lvalue_type(lhs_id)
+	if t.trim_pointer_type(lhs_type) != transform_identity_u8_array {
+		return none
+	}
+	str_id := t.a.child(selector, 0)
+	if t.node_type(str_id) != flat.source_type_string
+		|| t.resolve_receiver_method_name(str_id, 'bytes') != 'string.bytes'
+		|| !t.call_resolved_to_method(rhs_id, 'string.bytes') {
+		return none
+	}
+	// A fresh string would need an ownership drop; keep the ordinary path for it.
+	if !t.expr_can_take_address(str_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	str_expr := t.snapshot_expr_for_reuse(str_id)
+	base_addr := t.runtime_addr(t.transform_lvalue(lhs_id), lhs_type)
+	t.mark_fn_used('array.push_string_bytes')
+	return t.make_call_typed('array.push_string_bytes', [base_addr, str_expr], flat.source_type_void)
 }
 
 fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
