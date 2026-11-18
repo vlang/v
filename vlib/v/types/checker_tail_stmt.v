@@ -7730,9 +7730,23 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	mut base_type := tc.smartcast_type(base_id) or {
 		tc.lexical_match_smartcast_type(base_id) or { tc.resolve_type(base_id) }
 	}
-	if base.kind == .call
-		&& (type_contains_unknown(base_type) || generic_semantic_type_has_placeholder(base_type)
-			|| tc.type_text_has_generic_placeholder(base_type.source_type_id())) {
+	// `type_contains_unknown` and `generic_semantic_type_has_placeholder` both
+	// return false for `Struct` (the semantic payload is only a name id), so an
+	// unresolved generic struct application such as `Box[T]` would skip the
+	// resolution below if we only checked the semantic type. Trigger also on any
+	// textual generic placeholder, on the struct-specific placeholder application,
+	// and on a generic call base itself (covers a cached type that already lost
+	// its placeholder spelling).
+	mut is_open_generic_base := type_contains_unknown(base_type)
+		|| generic_semantic_type_has_placeholder(base_type)
+		|| tc.type_text_has_generic_placeholder(base_type.source_type_id())
+		|| tc.type_text_has_generic_struct_placeholder_application(base_type.source_type_id())
+	if base.kind == .call && !is_open_generic_base {
+		if info := tc.resolve_call_info(base_id, base) {
+			is_open_generic_base = tc.call_generic_params(info.name).len > 0
+		}
+	}
+	if base.kind == .call && is_open_generic_base {
 		// A generic call used directly as a selector base can keep an open
 		// return type in the expression cache. Resolve its signature from the
 		// call arguments before looking up the selected field. The cached base
@@ -7742,7 +7756,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		resolved_base_type := tc.resolve_generic_call_arg_type(base_id)
 		if !type_contains_unknown(resolved_base_type)
 			&& !generic_semantic_type_has_placeholder(resolved_base_type)
-			&& !tc.type_text_has_generic_placeholder(resolved_base_type.source_type_id()) {
+			&& !tc.type_text_has_generic_placeholder(resolved_base_type.source_type_id())
+			&& !tc.type_text_has_generic_struct_placeholder_application(resolved_base_type.source_type_id()) {
 			base_type = resolved_base_type
 		}
 	}
@@ -21676,11 +21691,15 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				// inferred call) is not definitively non-integer yet. Return an
 				// unknown instead of void so the result is not memoized as void
 				// before `check_selector` resolves the generic call base.
+				// `Struct` carries no semantic placeholder payload, so also check
+				// the struct-specific textual application.
 				if type_contains_unknown(lt) || type_contains_unknown(rt)
 					|| generic_semantic_type_has_placeholder(lt)
 					|| generic_semantic_type_has_placeholder(rt)
 					|| tc.type_text_has_generic_placeholder(lt.source_type_id())
-					|| tc.type_text_has_generic_placeholder(rt.source_type_id()) {
+					|| tc.type_text_has_generic_placeholder(rt.source_type_id())
+					|| tc.type_text_has_generic_struct_placeholder_application(lt.source_type_id())
+					|| tc.type_text_has_generic_struct_placeholder_application(rt.source_type_id()) {
 					return unknown_type('open generic shift operand')
 				}
 				return builtin_void_type
