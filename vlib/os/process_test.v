@@ -6,30 +6,57 @@ const vroot = os.dir(vexe)
 const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
 const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
-const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
-const echo_process_source_filename = os.join_path(tfolder, 'echo.v')
 const delayed_output_exe_filename = os.join_path(tfolder, 'delayed_output.exe')
 const delayed_output_source_filename = os.join_path(tfolder, 'delayed_output.v')
+const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
 const utf16le_output_exe_filename = os.join_path(tfolder, 'utf16le_output.exe')
-const utf16le_output_source_filename = os.join_path(tfolder, 'utf16le_output.v')
 const stdin_exit_exe_filename = os.join_path(tfolder, 'stdin_exit.exe')
-const stdin_exit_source_filename = os.join_path(tfolder, 'stdin_exit.v')
 const stdin_copy_exe_filename = os.join_path(tfolder, 'stdin_copy.exe')
-const stdin_copy_source_filename = os.join_path(tfolder, 'stdin_copy.v')
 const argv_echo_exe_filename = os.join_path(tfolder, 'argv_echo.exe')
-const argv_echo_source_filename = os.join_path(tfolder, 'argv_echo.v')
-const echo_process_source_code = '
+const process_io_source = os.join_path(tfolder, 'process_io.v')
+const process_io_source_code = '
 module main
+
 import io
 import os
 
 fn main() {
-	unbuffer_stdout()
-	mut reader := io.new_buffered_reader(reader: os.stdin(), cap: 1)
-	for {
-		line := reader.read_line()!
-		println(line)
-		eprintln(line)
+	match os.file_name(os.args[0]) {
+		"echo.exe" {
+			unbuffer_stdout()
+			mut reader := io.new_buffered_reader(reader: os.stdin(), cap: 1)
+			for {
+				line := reader.read_line()!
+				println(line)
+				eprintln(line)
+			}
+		}
+		"utf16le_output.exe" {
+			payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
+			mut out := os.stdout()
+			out.write(payload) or { panic(err) }
+		}
+		"stdin_exit.exe" {
+			_ = os.get_raw_line()
+			exit(7)
+		}
+		"stdin_copy.exe" {
+			payload := io.read_all(reader: os.stdin()) or { panic(err) }
+			if os.args.len > 1 {
+				os.write_file_array(os.args[1], payload) or { panic(err) }
+				return
+			}
+			mut out := os.stdout()
+			out.write(payload) or { panic(err) }
+		}
+		"argv_echo.exe" {
+			for arg in os.args[1..] {
+				println(arg)
+			}
+		}
+		else {
+			panic("unknown process I/O fixture mode")
+		}
 	}
 }
 '
@@ -43,54 +70,6 @@ fn main() {
 	time.sleep(500 * time.millisecond)
 	println("late")
 	time.sleep(300 * time.millisecond)
-}
-'
-
-const utf16le_output_source_code = '
-module main
-import os
-
-fn main() {
-	payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
-	mut out := os.stdout()
-	out.write(payload) or { panic(err) }
-}
-'
-
-const stdin_exit_source_code = '
-module main
-import os
-
-fn main() {
-	_ = os.get_raw_line()
-	exit(7)
-}
-'
-
-const stdin_copy_source_code = '
-module main
-import io
-import os
-
-fn main() {
-	payload := io.read_all(reader: os.stdin()) or { panic(err) }
-	if os.args.len > 1 {
-		os.write_file_array(os.args[1], payload) or { panic(err) }
-		return
-	}
-	mut out := os.stdout()
-	out.write(payload) or { panic(err) }
-}
-'
-
-const argv_echo_source_code = '
-module main
-import os
-
-fn main() {
-	for arg in os.args[1..] {
-		println(arg)
-	}
 }
 '
 
@@ -110,29 +89,19 @@ fn testsuite_begin() {
 	}
 	assert os.exists(test_os_process)
 
-	os.write_file(echo_process_source_filename, echo_process_source_code)!
-	os.system_args([vexe, '-o', echo_process_exe_filename, echo_process_source_filename])
-	assert os.exists(echo_process_exe_filename)
+	os.write_file(process_io_source, process_io_source_code)!
+	build := os.exec([vexe, '-o', stdin_copy_exe_filename, process_io_source])
+	assert build.exit_code == 0, build.output
+	assert os.exists(stdin_copy_exe_filename)
+	// Dispatch by executable name so every fixture receives its original arguments.
+	for fixture in [echo_process_exe_filename, utf16le_output_exe_filename, stdin_exit_exe_filename,
+		argv_echo_exe_filename] {
+		os.cp(stdin_copy_exe_filename, fixture)!
+	}
 
 	os.write_file(delayed_output_source_filename, delayed_output_source_code)!
 	os.system_args([vexe, '-o', delayed_output_exe_filename, delayed_output_source_filename])
 	assert os.exists(delayed_output_exe_filename)
-
-	os.write_file(utf16le_output_source_filename, utf16le_output_source_code)!
-	os.system_args([vexe, '-o', utf16le_output_exe_filename, utf16le_output_source_filename])
-	assert os.exists(utf16le_output_exe_filename)
-
-	os.write_file(stdin_exit_source_filename, stdin_exit_source_code)!
-	os.system_args([vexe, '-o', stdin_exit_exe_filename, stdin_exit_source_filename])
-	assert os.exists(stdin_exit_exe_filename)
-
-	os.write_file(stdin_copy_source_filename, stdin_copy_source_code)!
-	os.system_args([vexe, '-o', stdin_copy_exe_filename, stdin_copy_source_filename])
-	assert os.exists(stdin_copy_exe_filename)
-
-	os.write_file(argv_echo_source_filename, argv_echo_source_code)!
-	os.system_args([vexe, '-o', argv_echo_exe_filename, argv_echo_source_filename])
-	assert os.exists(argv_echo_exe_filename)
 }
 
 fn testsuite_end() {
