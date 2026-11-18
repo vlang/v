@@ -48,7 +48,7 @@ fn test_scan_accepts_all_unicode_space_separators() {
 	for code in [0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007,
 		0x2008, 0x2009, 0x200a, 0x202f, 0x205f, 0x3000] {
 		space := rune(code).str()
-		assert decode[int](space + '1' + space, json5: true)! == 1
+		assert decode_json5[int](space + '1' + space)! == 1
 		mut s := new_json5_scanner(space + '1' + space + 'true' + space)
 		assert s.next()!.lit == '1'
 		assert s.next()!.kind == .bool
