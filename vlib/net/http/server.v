@@ -376,7 +376,7 @@ fn stream_response(mut conn net.TcpConn, mut resp Response, method Method) {
 		eprintln('error sending response: ${err}')
 		return
 	}
-	if response_has_no_body(method, resp.status_code) {
+	if streamed_response_has_no_body(method, resp.status_code) {
 		return
 	}
 	mut writer := StreamWriter{
@@ -387,6 +387,16 @@ fn stream_response(mut conn net.TcpConn, mut resp Response, method Method) {
 			eprintln('the stream ended with an error: ${err}')
 		}
 	}
+}
+
+// streamed_response_has_no_body reports the responses that end after their
+// head (RFC 9112 §6.3): to HEAD, or with a 1xx, 204 or 304 status. It covers the
+// whole 1xx class. The client's `response_has_no_body` names only 101 to 103,
+// because the client does not parse interim responses: for a `100 Continue`
+// it reads on to the final response.
+fn streamed_response_has_no_body(method Method, status_code int) bool {
+	return method == .head || (status_code >= 100 && status_code < 200)
+		|| status_code in [204, 304]
 }
 
 fn normalize_server_response(mut resp Response, req Request) {

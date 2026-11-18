@@ -11,9 +11,9 @@ fn (h StreamingHandler) handle(req http.Request) http.Response {
 			status_code: 200
 		}
 	}
-	if req.url == '/empty' {
+	if req.url.starts_with('/status/') {
 		return http.Response{
-			status_code: 204
+			status_code: req.url.all_after_last('/').int()
 			stream:      fn (mut writer http.StreamWriter) ! {
 				writer.write_string('hello')!
 			}
@@ -112,9 +112,12 @@ fn test_a_response_without_a_body_is_its_head_alone() {
 	assert !head.contains('content-length')
 	assert head_text.all_after('\r\n\r\n') == ''
 
-	empty_text := request(address, 'GET /empty HTTP/1.1\r\nHost: test\r\n\r\n')!
-	empty_head := empty_text.all_before('\r\n\r\n').to_lower()
-	assert empty_head.starts_with('http/1.1 204 no content')
-	assert !empty_head.contains('content-length')
-	assert empty_text.all_after('\r\n\r\n') == ''
+	// 100 and 199 cover the whole informational class, not only 101 to 103.
+	for code in [100, 199, 204, 304] {
+		text := request(address, 'GET /status/${code} HTTP/1.1\r\nHost: test\r\n\r\n')!
+		status_head := text.all_before('\r\n\r\n').to_lower()
+		assert status_head.starts_with('http/1.1 ${code}'), 'status ${code}'
+		assert !status_head.contains('content-length'), 'status ${code}'
+		assert text.all_after('\r\n\r\n') == '', 'status ${code} sent a body'
+	}
 }
