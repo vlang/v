@@ -51,9 +51,9 @@ struct Third {
 }
 
 fn main() {
-	_ := json2.decode[First]('{}', json5: true) or { First{} }
-	_ := json2.decode[Second]('{}', json5: true) or { Second{} }
-	_ := json2.decode[Third]('{}', json5: true) or { Third{} }
+	_ := json2.decode_json5[First]('{}') or { First{} }
+	_ := json2.decode_json5[Second]('{}') or { Second{} }
+	_ := json2.decode_json5[Third]('{}') or { Third{} }
 }
 "
 

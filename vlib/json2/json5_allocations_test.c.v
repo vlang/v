@@ -7,6 +7,17 @@ import os
 
 fn C.json5_heap_live_bytes() u64
 
+// decode_json_variant decodes standard JSON with decode and JSON5 with
+// decode_json5, preserving the standard/JSON5 allocation parity checks below
+// now that decode itself is standard-only (see issue #31406).
+@[manualfree]
+fn decode_json_variant[T](input string, json5 bool) !T {
+	if json5 {
+		return decode_json5[T](input)!
+	}
+	return decode[T](input)!
+}
+
 struct Json5PortOnly {
 	port int
 }
@@ -66,10 +77,10 @@ fn test_json5_unquoted_struct_keys_release_encoding_temporaries() {
 fn test_json5_integer_decoding_releases_temporary_storage() {
 	for input in ['123', "'123'", '0x7b', '+123', '-123'] {
 		expected := if input == '-123' { -123 } else { 123 }
-		assert decode[int](input, json5: true)! == expected
+		assert decode_json5[int](input)! == expected
 		before := C.json5_heap_live_bytes()
 		for _ in 0 .. 1000 {
-			assert decode[int](input, json5: true)! == expected
+			assert decode_json5[int](input)! == expected
 		}
 		assert C.json5_heap_live_bytes() == before
 	}
@@ -84,10 +95,10 @@ fn test_json5_large_hexadecimal_float_decoding_releases_temporary_storage() {
 		} else {
 			18446744073709551616.0
 		}
-		assert decode[f64](input, json5: true)! == expected
+		assert decode_json5[f64](input)! == expected
 		before := C.json5_heap_live_bytes()
 		for _ in 0 .. 100 {
-			assert decode[f64](input, json5: true)! == expected
+			assert decode_json5[f64](input)! == expected
 		}
 		assert C.json5_heap_live_bytes() == before
 	}
@@ -111,11 +122,11 @@ fn test_json5_reuse_releases_normalized_text_of_ignored_fields() {
 @[manualfree]
 fn test_json5_string_results_own_only_their_returned_text() {
 	input := "'" + 'x'.repeat(8192) + "'"
-	first := decode[string](input, json5: true)!
+	first := decode_json5[string](input)!
 	unsafe { first.free() }
 	before := C.json5_heap_live_bytes()
 	for _ in 0 .. 100 {
-		decoded := decode[string](input, json5: true)!
+		decoded := decode_json5[string](input)!
 		assert decoded.len == 8192
 		unsafe { decoded.free() }
 	}
@@ -133,7 +144,7 @@ fn test_decode_any_releases_serialization_scratch_for_numbers() {
 			// Measure direct decoding so the assertion isolates wrapper scratch storage.
 			baseline := C.json5_heap_live_bytes()
 			for _ in 0 .. 100 {
-				assert decode[int](input, json5: json5)! == number
+				assert decode_json_variant[int](input, json5)! == number
 			}
 			decoder_allocations := C.json5_heap_live_bytes() - baseline
 			before := C.json5_heap_live_bytes()
@@ -155,7 +166,7 @@ fn test_decode_any_string_results_own_only_their_returned_text() {
 		input := '"${text}"'
 		baseline := C.json5_heap_live_bytes()
 		for _ in 0 .. 10 {
-			decoded := decode[string](input, json5: json5)!
+			decoded := decode_json_variant[string](input, json5)!
 			unsafe { decoded.free() }
 		}
 		decoder_allocations := C.json5_heap_live_bytes() - baseline
@@ -179,7 +190,7 @@ fn test_decode_any_escaped_strings_release_encoding_temporaries() {
 		unsafe { first.free() }
 		baseline := C.json5_heap_live_bytes()
 		for _ in 0 .. 10 {
-			decoded := decode[string](input, json5: json5)!
+			decoded := decode_json_variant[string](input, json5)!
 			unsafe { decoded.free() }
 		}
 		decoder_allocations := C.json5_heap_live_bytes() - baseline
@@ -203,7 +214,7 @@ fn test_decode_file_releases_file_contents_for_numeric_results() {
 		assert decode_file[int](path, json5: json5)! == 123
 		baseline := C.json5_heap_live_bytes()
 		for _ in 0 .. 10 {
-			assert decode[int](input, json5: json5)! == 123
+			assert decode_json_variant[int](input, json5)! == 123
 		}
 		decoder_allocations := C.json5_heap_live_bytes() - baseline
 		before := C.json5_heap_live_bytes()
@@ -222,7 +233,7 @@ fn test_doc_decode_and_reflect_release_serialization_scratch() {
 		assert doc.reflect[int]() == 123
 		baseline := C.json5_heap_live_bytes()
 		for _ in 0 .. 200 {
-			assert decode[int]('123', json5: json5)! == 123
+			assert decode_json_variant[int]('123', json5)! == 123
 		}
 		decoder_allocations := C.json5_heap_live_bytes() - baseline
 		before := C.json5_heap_live_bytes()
@@ -246,7 +257,7 @@ fn test_doc_decode_releases_scratch_for_large_ignored_fields() {
 		assert doc.decode[Json5PortOnly]()!.port == 123
 		baseline := C.json5_heap_live_bytes()
 		for _ in 0 .. 10 {
-			assert decode[Json5PortOnly](input, json5: json5)!.port == 123
+			assert decode_json_variant[Json5PortOnly](input, json5)!.port == 123
 		}
 		decoder_allocations := C.json5_heap_live_bytes() - baseline
 		before := C.json5_heap_live_bytes()

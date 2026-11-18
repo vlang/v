@@ -416,6 +416,9 @@ fn parse_json5_float(text string) !f64 {
 
 // parse parses JSON into a dynamic Any value. Set `json5: true` for JSON5 syntax.
 pub fn parse(text string, params DecoderOptions) !Any {
+	if params.json5 {
+		return decode_json5[Any](text, params)
+	}
 	return decode[Any](text, params)
 }
 
@@ -437,6 +440,9 @@ pub fn parse_file(path string, params DecoderOptions) !Doc {
 pub fn decode_file[T](path string, params DecoderOptions) !T {
 	text := os.read_file(path)!
 	defer { unsafe { text.free() } }
+	if params.json5 {
+		return decode_json5[T](text, params)
+	}
 	return decode[T](text, params)
 }
 
@@ -450,5 +456,8 @@ pub fn decode_any[T](value Any, params DecoderOptions) !T {
 	encode_append(value, mut bytes, json5: params.json5)
 	text := bytes.bytestr()
 	defer { unsafe { text.free() } }
+	if params.json5 {
+		return decode_json5[T](text, params)
+	}
 	return decode[T](text, params)
 }
