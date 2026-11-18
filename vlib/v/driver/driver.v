@@ -4391,6 +4391,55 @@ fn v3_js_compat_discard(a &flat.FlatAst, node &flat.Node) bool {
 		|| (rhs.kind == .string_interp && a.children_of(rhs).all(a.node(it).kind == .string_literal))
 }
 
+// Only skip initializers whose evaluation cannot run user code or fail.
+fn v3_js_compat_inert_initializer(a &flat.FlatAst, node &flat.Node) bool {
+	match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr {
+			return node.children_count == 0
+		}
+		.fn_literal {
+			// Creating a function value does not execute its body.
+			return true
+		}
+		.paren {
+			return node.children_count == 1
+				&& v3_js_compat_inert_initializer(a, a.child_node(node, 0))
+		}
+		.prefix {
+			return node.children_count == 1 && node.op in [.plus, .minus]
+				&& a.child_node(node, 0).kind in [.int_literal, .float_literal]
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn v3_js_compat_validate_initializers(a &flat.FlatAst, decl &flat.Node) ! {
+	for id in a.children_of(decl) {
+		field := a.node(id)
+		if field.children_count == 1 {
+			if v3_js_compat_inert_initializer(a, a.child_node(field, 0)) {
+				continue
+			}
+		} else if field.children_count == 0 {
+			// A default-initialized aggregate can execute its field initializers.
+			if field.typ in [flat.source_type_bool, flat.source_type_char, flat.source_type_rune,
+				flat.source_type_string, flat.source_type_int, flat.source_type_i8,
+				flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
+				flat.source_type_isize, flat.source_type_uint, flat.source_type_u8,
+				flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+				flat.source_type_usize, flat.source_type_f32, flat.source_type_f64,
+				flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
+				continue
+			}
+		}
+		kind := if decl.kind == .const_decl { 'constant' } else { 'global' }
+		return error('${backend_node_location(a, *field)}error: the V3 JavaScript compatibility generator does not support this ${kind} initializer for `${field.value}`')
+	}
+}
+
 fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	source := os.read_file(input_file)!
 	mut prefs := pref.new_preferences()
@@ -4406,6 +4455,7 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	file := a.node(flat.NodeId(a.file_node_ids.last()))
 	mut statements := []flat.NodeId{}
 	mut has_main := false
+	mut has_globals := false
 	for id in a.children_of(file) {
 		node := a.node(id)
 		match node.kind {
@@ -4421,8 +4471,15 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 					statements << a.children_of(node)
 				}
 			}
+			.comptime_if, .comptime_for {
+				return error('${backend_node_location(a, *node)}error: the V3 JavaScript compatibility generator does not support top-level compile-time control flow')
+			}
+			.const_decl, .global_decl {
+				v3_js_compat_validate_initializers(a, node)!
+				has_globals = has_globals || node.kind == .global_decl
+			}
 			.empty, .module_decl, .import_decl, .struct_decl, .enum_decl, .interface_decl,
-			.type_decl, .const_decl, .global_decl, .c_fn_decl {
+			.type_decl, .c_fn_decl {
 			}
 			else {
 				statements << id
@@ -4430,7 +4487,7 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 		}
 	}
 	mut output := strings.new_builder(source.len)
-	emitted_global := source.contains('__global')
+	emitted_global := has_globals
 		&& emit_v3_js_exported_global_aliases(v3_js_compat_source_without_comments(source, input_file), mut output)
 	mut emitted_statement := false
 	// The global export fixture only needs the aliases. Its assertions are

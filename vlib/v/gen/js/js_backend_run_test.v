@@ -231,3 +231,87 @@ fn test_js_backend_stops_at_return_and_ignores_unused_functions() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'live'
 }
+
+fn test_js_backend_rejects_unsupported_startup_initializers() {
+	root := js_new_fixture_root('startup')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	declarations := {
+		'constant':       'const value = announce()'
+		'constant_group': 'const (\n\tliteral = 1\n\tvalue = (announce())\n)'
+		'global':         '__global value = announce()'
+		'global_group':   '__global (\n\tliteral = 1\n\tvalue int = announce()\n)'
+		'global_default': '__global value Startup\nstruct Startup { number int = announce() }'
+	}
+	for name, declaration in declarations {
+		source := "@[has_globals]
+module main
+
+${declaration}
+
+fn announce() int {
+	println('init')
+	return 1
+}
+
+fn main() { println('main') }"
+		program := js_write_fixture(root, '${name}.v', source)!
+		output := os.join_path(root, '${name}.js')
+		code, message, _ := js_compile(program, output)
+		kind := name.all_before('_')
+		assert code != 0, message
+		assert message.contains('${name}.v:'), message
+		assert message.contains('does not support this ${kind} initializer for `value`'), message
+		assert !os.exists(output)
+	}
+	// Top-level declarations can run before main even when written after it.
+	program := js_write_fixture(root, 'conditional.v', "fn announce() int {
+	println('init')
+	return 1
+}
+
+fn main() {
+	println('main')
+	return
+}
+
+\$if enabled ? {
+	const value = announce()
+}")!
+	output := os.join_path(root, 'conditional.js')
+	code, message, _ := js_compile(program, output)
+	assert code != 0, message
+	assert message.contains('does not support top-level compile-time control flow'), message
+	assert !os.exists(output)
+}
+
+fn test_js_backend_allows_inert_startup_declarations() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('inert_startup')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := '@[has_globals]
+module main
+
+const literal = (-42)
+__global flag bool
+__global label = \'label\'
+
+@[export: \'TIC\']
+__global tic = fn (value int) int {
+	return value + 1
+}
+
+fn main() {
+	JS.eval("console.log(globalThis.TIC(4));".str)
+	println(\'main\')
+}'
+	run := js_run_program(root, 'inert_startup.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5\nmain'
+}
