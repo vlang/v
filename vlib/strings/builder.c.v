@@ -137,6 +137,52 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 	other = new_builder(other_new_cap)
 }
 
+// swap exchanges the contents, capacity and storage metadata of two builders
+// without allocating or copying bytes. Both builders remain usable.
+// Swapping a builder with itself does nothing.
+@[inline; manualfree]
+pub fn (mut b Builder) swap(mut other Builder) {
+	// Exchange owned headers without autofree cloning either allocation.
+	mut tmp := [sizeof(Builder)]u8{}
+	unsafe {
+		vmemcpy(&tmp[0], &b, int(sizeof(Builder)))
+		vmemmove(&b, &other, int(sizeof(Builder)))
+		vmemcpy(&other, &tmp[0], int(sizeof(Builder)))
+	}
+}
+
+// transfer_to appends all of b's contents to target, leaving b empty and reusable.
+// An independent empty target exchanges storage with b without copying bytes.
+// Otherwise, target appends the bytes and b is cleared, retaining its capacity
+// unless it shares storage with slices. Aliased buffers detach before transfer.
+// Transferring a builder to itself does nothing.
+@[manualfree]
+pub fn (mut b Builder) transfer_to(mut target Builder) {
+	if &b == &target || b.len == 0 {
+		return
+	}
+	// Compare allocation starts, including slices and buffers advanced by drop().
+	shared_storage := target.data != unsafe { nil }
+		&& unsafe { &u8(b.data) - b.offset == &u8(target.data) - target.offset }
+	if target.len == 0 {
+		if shared_storage {
+			// Do not give b an empty alias that could overwrite the transferred bytes.
+			target = new_builder(0)
+		}
+		b.swap(mut target)
+		return
+	}
+	// Detach the target before growth can invalidate an aliased source.
+	if shared_storage {
+		target = target.clone()
+		// The clone owns independent storage, so growth can free its old buffer.
+		unsafe { target.flags.set(.noslices) }
+	}
+	// The source stays alive until the synchronous append has finished.
+	unsafe { target.write_ptr(b.data, b.len) }
+	b.clear()
+}
+
 // byte_at returns a byte, located at a given index `i`.
 // Note: it can panic, if there are not enough bytes in the strings builder yet.
 @[inline]
