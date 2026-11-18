@@ -73,7 +73,8 @@ fn test_cached_tool_publishes_and_tracks_its_application_manifest() ! {
 	source := os.join_path(directory, 'vdemo.v')
 	os.write_file(source, 'module main\n')!
 	// Source timestamps must be older than the recorded build start.
-	time.sleep(1100 * time.millisecond)
+	modified := time.now().unix() - 2
+	os.utime(source, modified, modified)!
 	cache := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
 	entry := ToolCacheEntry{
 		name:                 'vdemo'
@@ -302,6 +303,11 @@ fn test_the_cache_key_covers_vflags() {
 	assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, 'VFLAGS must be part of the key'
 }
 
+// toolcache_fixture_build_start places a synthetic build after its newly written inputs.
+fn toolcache_fixture_build_start() i64 {
+	return time.now().unix() + 1
+}
+
 // fresh_cache_fixture builds a cache entry whose recorded inputs are all still valid.
 fn fresh_cache_fixture(name string) (ToolCacheEntry, string) {
 	directory := toolcache_test_dir(name)
@@ -314,16 +320,13 @@ fn fresh_cache_fixture(name string) (ToolCacheEntry, string) {
 	os.mkdir_all(module_dir) or { panic(err) }
 	dependency := os.join_path(module_dir, 'demomod.v')
 	os.write_file(dependency, 'module demomod\n') or { panic(err) }
-	// The build has to look strictly newer than the sources it consumed, exactly like a
-	// real build does. `os.stat` only reports whole seconds, so wait for the next one.
-	time.sleep(1100 * time.millisecond)
 	entry := ToolCacheEntry{
 		name:        'vdemo'
 		binary:      binary
 		manifest:    binary + '.inputs'
 		unbuildable: binary + '.unbuildable'
 	}
-	manifest := encode_tool_cache_manifest([dependency], time.now().unix())
+	manifest := encode_tool_cache_manifest([dependency], toolcache_fixture_build_start())
 	os.write_file(entry.manifest, manifest) or { panic(err) }
 	assert tool_cache_is_fresh(entry), 'the fixture itself must start out fresh'
 	return entry, dependency
@@ -369,8 +372,7 @@ fn test_project_boundary_markers_invalidate_the_cache() {
 			os.mkdir(marker)!
 		}
 		assert !tool_cache_is_fresh(entry), 'adding ${marker_name} must force a rebuild'
-		time.sleep(1100 * time.millisecond)
-		os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
+		os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], toolcache_fixture_build_start()))!
 		assert tool_cache_is_fresh(entry)
 		if marker_name == '.v.mod.stop' {
 			os.write_file(marker, 'marker contents changed')!
@@ -422,7 +424,8 @@ fn test_a_dependency_touched_during_the_build_invalidates_the_cache() {
 		binary:   binary
 		manifest: binary + '.inputs'
 	}
-	os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
+	started := os.stat(dependency)!.mtime
+	os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], started))!
 	assert !tool_cache_is_fresh(entry)
 }
 
@@ -490,9 +493,7 @@ fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {
 	dumped := os.join_path(directory, 'sources')
 	os.write_file(dumped, dependency + '\n')!
 	entry := unbuildable_fixture(directory, 'a')
-	// The recorded build has to look strictly newer than the sources it read.
-	time.sleep(1100 * time.millisecond)
-	record_unbuildable_tool(entry, dumped, time.now().unix(), 'the compiler said no')
+	record_unbuildable_tool(entry, dumped, toolcache_fixture_build_start(), 'the compiler said no')
 
 	recorded := unbuildable_tool_failure(entry) or { '' }
 	assert recorded == 'the compiler said no', 'a just recorded failure must be reused'
@@ -657,9 +658,9 @@ fn test_pruning_preserves_other_fresh_keys_and_failures_until_their_inputs_chang
 			os.write_file(entry.unbuildable, 'error: rejected source')!
 		}
 	}
-	time.sleep(1100 * time.millisecond)
+	started := toolcache_fixture_build_start()
 	for index, entry in entries {
-		manifest := encode_tool_cache_manifest([dependencies[index]], time.now().unix())
+		manifest := encode_tool_cache_manifest([dependencies[index]], started)
 		os.write_file(if index < 2 { entry.manifest } else { entry.unbuildable_manifest }, manifest)!
 	}
 
@@ -1038,8 +1039,7 @@ fn test_an_embedded_asset_is_recorded_and_invalidates_the_cache() {
 		binary:   binary
 		manifest: binary + '.inputs'
 	}
-	time.sleep(1100 * time.millisecond)
-	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, toolcache_fixture_build_start()))!
 	assert tool_cache_is_fresh(entry), 'the freshly built tool must not start out stale'
 
 	os.write_file(asset, 'second revision, a different length')!
@@ -1116,11 +1116,13 @@ fn test_a_native_input_is_recorded_and_invalidates_the_cache() {
 		binary:   binary
 		manifest: binary + '.inputs'
 	}
-	time.sleep(1100 * time.millisecond)
-	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	started := toolcache_fixture_build_start()
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, started))!
 	assert tool_cache_is_fresh(entry), 'the freshly built tool must not start out stale'
 
 	os.write_file(native_source, '#include "helper.h"\nint native_double(int x) { return x * 3; }\n')!
+	// The edit keeps the file size, so give it a different modification second.
+	os.utime(native_source, started, started)!
 	assert !tool_cache_is_fresh(entry), 'editing a compiled C source must force a rebuild'
 }
 
@@ -1358,8 +1360,7 @@ fn test_a_restored_nested_module_invalidates_a_recorded_failure() {
 	os.write_file(dumped, '')!
 	details := 'x.v:2:1: builder error: cannot import module "db.sqlite" (not found)'
 
-	time.sleep(1100 * time.millisecond)
-	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	record_unbuildable_tool(entry, dumped, toolcache_fixture_build_start(), details)
 	recorded := os.read_file(entry.unbuildable_manifest)!
 	assert recorded.contains(os.join_path(directory, 'vlib', 'db', 'sqlite')), 'the missing module path must be stamped, got:\n${recorded}'
 	assert unresolved_import_modules(details) == ['db.sqlite']
@@ -1418,8 +1419,7 @@ fn test_a_restored_vmodules_module_invalidates_a_recorded_failure() {
 	os.write_file(dumped, '')!
 	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
 
-	time.sleep(1100 * time.millisecond)
-	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	record_unbuildable_tool(entry, dumped, toolcache_fixture_build_start(), details)
 	recorded := os.read_file(entry.unbuildable_manifest)!
 	assert recorded.contains(os.join_path(vmodules, 'acme', 'widget')), 'the vmodules path must be stamped, got:\n${recorded}'
 	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
@@ -1491,8 +1491,7 @@ fn test_adding_a_source_under_a_vmod_subdir_invalidates_a_recorded_failure() {
 	dumped := os.join_path(directory, 'sources.txt')
 	os.write_file(dumped, '')!
 	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
-	time.sleep(1100 * time.millisecond)
-	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	record_unbuildable_tool(entry, dumped, toolcache_fixture_build_start(), details)
 	recorded := os.read_file(entry.unbuildable_manifest)!
 	real_module_manifest := os.real_path(module_manifest)
 	real_nested_dir := os.real_path(nested_dir)
@@ -1644,8 +1643,7 @@ fn test_restoring_an_existing_alias_target_invalidates_a_recorded_failure() {
 	dumped := os.join_path(directory, 'sources.txt')
 	os.write_file(dumped, '')!
 	details := 'x.v:2:1: builder error: cannot import module "foo.bar" (not found)'
-	time.sleep(1100 * time.millisecond)
-	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	record_unbuildable_tool(entry, dumped, toolcache_fixture_build_start(), details)
 	mut alias_manifests := map[string]bool{}
 	assert module_alias_targets(os.real_path(search_root), 'foo.bar', mut alias_manifests) == [
 		target,
@@ -1696,8 +1694,7 @@ fn test_changing_an_ancestor_module_manifest_invalidates_a_recorded_failure() {
 	dumped := os.join_path(directory, 'sources.txt')
 	os.write_file(dumped, '')!
 	details := '${source}:3:1: builder error: cannot import module "foo.bar" (not found)'
-	time.sleep(1100 * time.millisecond)
-	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	record_unbuildable_tool(entry, dumped, toolcache_fixture_build_start(), details)
 	recorded := os.read_file(entry.unbuildable_manifest)!
 	assert vmod_manifest_inputs(module_dir) == [
 		os.join_path(os.real_path(module_dir), 'v.mod'),
@@ -1775,8 +1772,7 @@ fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
 		binary:   binary
 		manifest: binary + '.inputs'
 	}
-	time.sleep(1100 * time.millisecond)
-	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, toolcache_fixture_build_start()))!
 	// An input that was absent when recorded and still is must read as unchanged. `os.stat`
 	// cannot date it, so a freshness check that trusted `last_modified` here would call it
 	// changed on every lookup and rebuild the tool forever.
