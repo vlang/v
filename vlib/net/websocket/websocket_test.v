@@ -249,8 +249,9 @@ fn test_on_attached_error_does_not_leak_client() ! {
 	mut client := websocket.new_client('ws://localhost:30005')!
 	client.on_close(client_close_ignore_cb)
 	client.connect()!
-	spawn client.listen()
-	time.sleep(500 * time.millisecond)
+	done := start_ws_listener(mut client)
+	// The server removes the client before closing its socket.
+	wait_for_ws_event(done, 'the rejected client listener to exit')!
 
 	client_count := rlock ws.server_state {
 		ws.server_state.clients.len

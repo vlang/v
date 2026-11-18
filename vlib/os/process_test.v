@@ -63,13 +63,20 @@ fn main() {
 
 const delayed_output_source_code = '
 module main
+import os
 import time
 
 fn main() {
-	unbuffer_stdout()
-	time.sleep(500 * time.millisecond)
+	if os.args[1..] != ["--wait-for-stdin"] {
+		return
+	}
+	// Bound the wait even if the parent is stuck reading from stdout.
+	spawn fn () {
+		time.sleep(5 * time.second)
+		exit(2)
+	}()
+	_ = os.get_raw_line()
 	println("late")
-	time.sleep(300 * time.millisecond)
 }
 '
 
@@ -554,6 +561,7 @@ fn test_close_before_wait_preserves_exit_code() {
 fn test_stdout_read_returns_immediately_when_no_data_is_pending() {
 	eprintln(@FN)
 	mut p := os.new_process(delayed_output_exe_filename)
+	p.set_args(['--wait-for-stdin'])
 	p.set_redirect_stdio()
 	p.run()
 	defer {
@@ -567,7 +575,9 @@ fn test_stdout_read_returns_immediately_when_no_data_is_pending() {
 	elapsed_ms := sw.elapsed().milliseconds()
 	assert output == ''
 	assert elapsed_ms < 300, 'stdout_read blocked for ${elapsed_ms}ms'
+	p.stdin_write('continue\n')
 	p.wait()
+	assert p.code == 0
 	assert p.stdout_slurp().contains('late')
 }
 
