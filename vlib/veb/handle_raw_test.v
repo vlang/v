@@ -182,14 +182,32 @@ fn test_handle_raw_static_get_still_serves_the_file() {
 	assert resp.body == '<h1>index</h1>'
 }
 
-fn test_handle_raw_static_conditional_post_keeps_412() {
-	// A matching If-None-Match on POST still reaches send_file, keeping the
-	// documented 412 instead of a 405.
+fn test_handle_raw_static_conditional_non_retrieval_is_405() {
+	// RFC 9110 section 13.2.1 gives the method check precedence over
+	// conditional evaluation, so conditional headers never smuggle a body
+	// out through a non-retrieval method.
 	mut app, dir := raw_static_app()
 	defer { os.rmdir_all(dir) or {} }
-	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
-		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: *\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
-		panic(err)
+	cases := [
+		'POST /index.html with Range',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-2\r\nConnection: close\r\n\r\n',
+		'POST /index.html with If-Modified-Since garbage',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-Modified-Since: garbage\r\nConnection: close\r\n\r\n',
+		'POST /index.html with mismatching If-None-Match',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: "not-the-etag"\r\nConnection: close\r\n\r\n',
+		'POST /index.html with matching If-None-Match',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: *\r\nConnection: close\r\n\r\n',
+		'DELETE /index.html with Range',
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-2\r\nConnection: close\r\n\r\n',
+		'DELETE /index.html with If-Modified-Since garbage',
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nIf-Modified-Since: garbage\r\nConnection: close\r\n\r\n',
+		'DELETE /index.html with mismatching If-None-Match',
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: "not-the-etag"\r\nConnection: close\r\n\r\n',
+	]
+	for i := 0; i < cases.len; i += 2 {
+		resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+			cases[i + 1].bytes()).bytestr()) or { panic(err) }
+		assert resp.status_code == int(http.Status.method_not_allowed), cases[i]
+		assert resp.body != '<h1>index</h1>', cases[i]
 	}
-	assert resp.status_code == int(http.Status.precondition_failed)
 }
