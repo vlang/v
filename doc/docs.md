@@ -2915,6 +2915,7 @@ for i in 0 .. 5 {
 
 `low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
+The loop captures the initial value of `low` before evaluating `high`.
 
 > [!NOTE]
 > This exclusive range notation and zero-based indexing follow principles of
