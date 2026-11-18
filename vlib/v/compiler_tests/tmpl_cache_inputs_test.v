@@ -78,11 +78,12 @@ fn (p TemplateProject) write(relative_path string, content string) {
 	os.write_file(path, content) or { panic(err) }
 }
 
-fn (p TemplateProject) build() TemplateBuild {
-	// Use a V-only fixture so the executable cache's native-header policy does not decide
-	// whether these tests can exercise template invalidation.
-	built := os.exec(['env', 'V3CACHE=${p.cache}', 'V3_CACHE_TRACE=1', @VEXE, '-cc', 'cc', '-gc',
-		'none', '-d', 'no_segfault_handler', '-o', p.output, p.main])
+fn (p TemplateProject) build_with_executable_cache(use_cache bool, compiler_flags ...string) TemplateBuild {
+	disabled := if use_cache { '0' } else { '1' }
+	built := os.exec(['env', 'V3CACHE=${p.cache}', 'V3_CACHE_TRACE=1',
+		'V3_DISABLE_UNCHANGED_BUILD_CACHE=1', 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=${disabled}',
+		@VEXE, '-cc', 'cc', '-gc', 'none', '-d', 'no_segfault_handler', ...compiler_flags,
+		'-o', p.output, p.main])
 	assert built.exit_code == 0, built.output
 	run := os.exec([p.output])
 	assert run.exit_code == 0, run.output
@@ -92,23 +93,49 @@ fn (p TemplateProject) build() TemplateBuild {
 	}
 }
 
-fn test_a_changed_template_is_not_served_from_the_executable_cache() {
+fn (p TemplateProject) build() TemplateBuild {
+	return p.build_with_executable_cache(false)
+}
+
+fn test_a_changed_template_rebuilds_the_program() {
 	p := new_template_project('root')
 	defer { os.rmdir_all(p.root) or {} }
 	p.write('main.v', page_program)
 	p.write('page.txt', 'first\n')
 	assert p.build().output == 'first\n'
-	unchanged := p.build()
-	assert unchanged.trace.contains(restored_executable), unchanged.trace
-	assert unchanged.output == 'first\n'
 
-	p.write('page.txt', 'changed\n')
-	changed := p.build()
-	assert !changed.trace.contains(restored_executable), changed.trace
-	assert changed.output == 'changed\n'
-	again := p.build()
-	assert again.trace.contains(restored_executable), again.trace
-	assert again.output == 'changed\n'
+	p.write('page.txt', 'other\n')
+	assert p.build().output == 'other\n'
+}
+
+fn test_executable_cache_follows_template_inputs_when_eligible() {
+	check_template_executable_cache('executable', false)
+	$if linux {
+		// Hosted GCC reads stdc-predef.h implicitly. The freestanding fixture
+		// verifies a real executable hit separately from that bypass case.
+		check_template_executable_cache('freestanding', true, '-cflags', '-ffreestanding')
+	}
+}
+
+fn check_template_executable_cache(name string, require_restore bool, compiler_flags ...string) {
+	p := new_template_project(name)
+	defer { os.rmdir_all(p.root) or {} }
+	p.write('main.v', page_program)
+	native_header_bypass := 'V3 program executable not cached: native headers require C compiler processing'
+	for expected in ['first\n', 'other\n'] {
+		p.write('page.txt', expected)
+		cold := p.build_with_executable_cache(true, ...compiler_flags)
+		assert cold.output == expected
+		assert !cold.trace.contains(restored_executable), cold.trace
+		warm := p.build_with_executable_cache(true, ...compiler_flags)
+		assert warm.output == expected
+		if !require_restore && cold.trace.contains(native_header_bypass) {
+			assert warm.trace.contains(native_header_bypass), warm.trace
+			assert !warm.trace.contains(restored_executable), warm.trace
+		} else {
+			assert warm.trace.contains(restored_executable), warm.trace
+		}
+	}
 }
 
 fn test_a_changed_include_of_a_template_is_not_served_from_the_caches() {
@@ -122,7 +149,6 @@ fn test_a_changed_include_of_a_template_is_not_served_from_the_caches() {
 
 	p.write('leaf.txt', 'changed leaf\n')
 	changed := p.build()
-	assert !changed.trace.contains(restored_executable), changed.trace
 	assert changed.output == 'page\nnested\nchanged leaf\n'
 
 	p.write('nested.txt', 'changed nested\n@include "leaf.txt"\n')
@@ -136,11 +162,14 @@ fn test_a_changed_template_of_a_cached_module_rebuilds_its_object() {
 	p.write('pages/pages.v', module_page_source)
 	p.write('pages/page.txt', 'first\n')
 	assert p.build().output == 'first\n'
-	// The module's body is not parsed from here on. Its template must keep the identity
-	// that the build which did parse it gave to the executable.
+	objects := os.walk_ext(p.cache, '.o').filter(os.file_name(it).starts_with('pages_'))
+	assert objects.len > 0, 'the cold build did not produce a cached pages object'
+	mods := objects.map(os.file_last_mod_unix(it))
 	unchanged := p.build()
-	assert unchanged.trace.contains(restored_executable), unchanged.trace
 	assert unchanged.output == 'first\n'
+	assert !unchanged.trace.contains('module=pages reason='), unchanged.trace
+	assert os.walk_ext(p.cache, '.o').filter(os.file_name(it).starts_with('pages_')) == objects
+	assert objects.map(os.file_last_mod_unix(it)) == mods
 
 	p.write('pages/page.txt', 'changed\n')
 	changed := p.build()
