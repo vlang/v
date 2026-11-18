@@ -57,10 +57,14 @@ fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, m
 	project := vmod.get_cache().get_by_folder(os.getwd())
 	root_file := if scope.active { os.join_path(scope.dir, 'v.mod') } else { project.vmod_file }
 	mut root_name := 'command line'
+	mut root_dir := ''
+	mut root_manifest := vmod.Manifest{}
 	if root_file != '' {
 		manifest := vmod.from_file(root_file)!
 		root_name = manifest.name
-		overrides = parse_overrides(manifest.unknown['dependency_overrides'] or { []string{} })!
+		root_dir = os.dir(root_file)
+		root_manifest = manifest
+		overrides = workspace_overrides(root_dir, manifest)!
 	}
 
 	mut r := Resolver{
@@ -72,8 +76,13 @@ fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, m
 	}
 	mut pending := []Requirement{}
 	root := if scope.active { os.file_name(scope.dir) } else { 'command line' }
-	for raw in query {
-		pending << Requirement{ raw: raw, chain: [root], root: true, requiring: root_name }
+	if root_file != '' && root_manifest.workspaces.len > 0 {
+		pending = workspace_pending_requirements(query, root_dir, root_manifest, root,
+			root_name)!
+	} else {
+		for raw in query {
+			pending << Requirement{ raw: raw, chain: [root], root: true, requiring: root_name }
+		}
 	}
 	selected := r.solve(pending, map[string]Module{}, map[string][]Requirement{}, mut selector, mut scope) or {
 		r.cleanup([]Module{})
@@ -95,6 +104,67 @@ fn (mut r Resolver) cleanup(keep []Module) {
 			rmdir_all(path) or {}
 		}
 	}
+}
+
+// workspace_pending_requirements expands an aggregated workspace query into one
+// initial requirement per declaring manifest. The flattened dependency list
+// loses which member asked for what, so a member-scoped override like
+// `svc>review_dep: v2.0.0` would never match when every edge claims to require
+// the root. Matching by exact normalized string first (and by lock key when
+// `--latest` widened the constraint) restores the declaring member as the
+// requiring module for each edge.
+fn workspace_pending_requirements(query []string, root_dir string, root_manifest vmod.Manifest, root_label string, root_name string) ![]Requirement {
+	manifests := workspace_manifests(root_dir, root_manifest)!
+	mut per_manifest := [][]string{cap: manifests.len}
+	for wm in manifests {
+		mut lst := []string{}
+		for dep in project_dependencies(wm.manifest) {
+			lst << workspace_normalize_dep(dep, wm.dir)
+		}
+		per_manifest << lst
+	}
+	mut pending := []Requirement{}
+	for raw in query {
+		mut matched := []int{}
+		for mi, lst in per_manifest {
+			if raw in lst {
+				matched << mi
+			}
+		}
+		if matched.len == 0 {
+			key := lockfile_module_key(raw)
+			for mi, lst in per_manifest {
+				for dep in lst {
+					if lockfile_module_key(dep) == key {
+						matched << mi
+						break
+					}
+				}
+			}
+		}
+		if matched.len == 0 {
+			pending << Requirement{ raw: raw, chain: [root_label], root: true, requiring: root_name }
+			continue
+		}
+		for mi in matched {
+			mut requiring := manifests[mi].manifest.name
+			if requiring == '' {
+				requiring = root_name
+			}
+			// Avoid duplicate edges with the same raw and requiring module.
+			mut dupe := false
+			for existing in pending {
+				if existing.raw == raw && existing.requiring == requiring {
+					dupe = true
+					break
+				}
+			}
+			if !dupe {
+				pending << Requirement{ raw: raw, chain: [root_label], root: true, requiring: requiring }
+			}
+		}
+	}
+	return pending
 }
 
 // source discovers repository identity without following the current HEAD's
