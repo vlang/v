@@ -78,6 +78,19 @@ fn test_handle_raw_malformed_input_is_400_not_a_panic() {
 	assert resp.status_code == int(http.Status.bad_request)
 }
 
+fn test_handle_raw_malformed_request_line_is_400_with_body() {
+	// An empty request target or a doubled space before the HTTP version is a
+	// client error: the server answers 400 with a framed body, never an empty
+	// 500. See https://github.com/vlang/v/issues/32333.
+	for raw in ['GET  HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n',
+		'GET /  HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'] {
+		resp := raw_app_response(raw)
+		assert resp.status_code == int(http.Status.bad_request)
+		assert resp.body == '400 Bad Request'
+		assert resp.header.get(.content_length) or { '' } == resp.body.len.str()
+	}
+}
+
 fn test_handle_raw_head_dispatches_without_a_panic() {
 	// HEAD is accepted by the request-line parser and routed like any other
 	// method; this route only allows GET, so the dispatcher answers 405 with
