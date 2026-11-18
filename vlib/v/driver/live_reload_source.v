@@ -128,7 +128,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	for idx, path in source_files {
 		out += '\tlive_nm_${idx} := os.file_last_mod_unix(${v3_v_string_literal(path)})\n'
 	}
-	out += '\tif ${unchanged_checks.join(' && ')} { return }\n\tif live_disabled { return }\n\tmut live_ok := true\n\tmut live_consecutive_failures := 0\n'
+	out += '\tif ${unchanged_checks.join(' && ')} { return }\n\tif live_disabled { return }\n\tmut live_ok := true\n'
 	for m in live_mangled {
 		storage := m.bytes().hex()
 		out += '\tmut live_next_${storage} := voidptr(unsafe { nil })\n'
@@ -226,8 +226,8 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += 'fn live_page_protect_rx(p voidptr) bool {\n'
 			out += '\treturn C.mprotect(p, uint(0x4000), 5) == 0\n'
 			out += '}\n\n'
-			out += 'fn live_page_flush(p voidptr) {\n'
-			out += '\tC.sys_icache_invalidate(p, uint(0x4000))\n'
+			out += 'fn live_page_flush(p voidptr, size uint) {\n'
+			out += '\tC.sys_icache_invalidate(p, size)\n'
 			out += '}\n'
 		}
 		'linux' {
@@ -250,8 +250,8 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += 'fn live_page_protect_rx(p voidptr) bool {\n'
 			out += '\treturn C.mprotect(p, uint(0x4000), 5) == 0\n'
 			out += '}\n\n'
-			out += 'fn live_page_flush(p voidptr) {\n'
-			out += '\tC.__clear_cache(p, voidptr(u64(p) + u64(0x4000)))\n'
+			out += 'fn live_page_flush(p voidptr, size uint) {\n'
+			out += '\tC.__clear_cache(p, voidptr(u64(p) + u64(size)))\n'
 			out += '}\n'
 		}
 		'windows' {
@@ -275,8 +275,8 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += '\tmut old := uint(0)\n'
 			out += '\treturn C.VirtualProtect(p, uint(0x4000), 0x20, &old)\n'
 			out += '}\n\n'
-			out += 'fn live_page_flush(p voidptr) {\n'
-			out += '\tC.FlushInstructionCache(C.GetCurrentProcess(), p, uint(0x4000))\n'
+			out += 'fn live_page_flush(p voidptr, size uint) {\n'
+			out += '\tC.FlushInstructionCache(C.GetCurrentProcess(), p, size)\n'
 			out += '}\n'
 		}
 		else {
@@ -293,7 +293,7 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += 'fn live_page_protect_rx(p voidptr) bool {\n'
 			out += '\treturn false\n'
 			out += '}\n\n'
-			out += 'fn live_page_flush(p voidptr) {\n'
+			out += 'fn live_page_flush(p voidptr, size uint) {\n'
 			out += '}\n'
 		}
 	}
