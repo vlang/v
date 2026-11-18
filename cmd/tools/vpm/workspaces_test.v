@@ -244,16 +244,33 @@ fn test_workspace_manifests_plain_project_has_only_root() {
 }
 
 fn test_widen_for_latest() {
-	assert widen_for_latest('foo', [], map[string]string{}) == 'foo@*'
-	assert widen_for_latest('foo@^1.0.0', [], map[string]string{}) == 'foo@*'
+	assert widen_for_latest('foo', [], map[string]string{}, '') == 'foo@*'
+	assert widen_for_latest('foo@^1.0.0', [], map[string]string{}, '') == 'foo@*'
 	assert widen_for_latest('foo', ['foo'], {
 		'foo': ''
-	}) == 'foo@*'
+	}, '') == 'foo@*'
 	assert widen_for_latest('baz', ['foo'], {
 		'foo': ''
-	}) == 'baz'
+	}, '') == 'baz'
 	// Exact branch pins are not ranges and do not satisfy `*`: they stay pinned.
-	assert widen_for_latest('foo@main', [], map[string]string{}) == 'foo@main'
+	assert widen_for_latest('foo@main', [], map[string]string{}, '') == 'foo@main'
+	// A relative member requirement selects via its normalized identity but
+	// keeps its original spelling when widened.
+	rel_root := os.join_path(os.temp_dir(), 'vpm_widen_relative_${rand.ulid()}')
+	os.mkdir_all(os.join_path(rel_root, 'deps', 'review_dep')) or { panic(err) }
+	member_dir := os.join_path(rel_root, 'members', 'svc')
+	os.mkdir_all(member_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(rel_root) or {}
+	}
+	norm_key := lockfile_module_key(workspace_normalize_dep('file://../../deps/review_dep@^1',
+		member_dir))
+	assert widen_for_latest('file://../../deps/review_dep@^1', ['review_dep'], {
+		norm_key: ''
+	}, member_dir) == 'file://../../deps/review_dep@*'
+	assert widen_for_latest('file://../../deps/review_dep@^1', ['other'], {
+		'other': ''
+	}, member_dir) == 'file://../../deps/review_dep@^1'
 }
 
 fn test_workspace_dependencies_fails_on_malformed_member() {

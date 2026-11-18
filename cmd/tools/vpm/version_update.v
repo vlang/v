@@ -130,7 +130,8 @@ fn update_versioned_project(query []string) bool {
 	if settings.is_latest {
 		for li in 0 .. dep_lists.len {
 			for di in 0 .. dep_lists[li].len {
-				dep_lists[li][di] = widen_for_latest(dep_lists[li][di], targets, changes)
+				dep_lists[li][di] = widen_for_latest(dep_lists[li][di], targets, changes,
+					manifests[li].dir)
 			}
 		}
 		dependencies = []string{}

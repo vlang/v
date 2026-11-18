@@ -38,15 +38,19 @@ fn workspace_manifests(root string, root_manifest vmod.Manifest) ![]WorkspaceMan
 
 // widen_for_latest rewrites one dependency string to its `@*` form when
 // `--latest` selects it: every requirement is widened unless targets limit the
-// run to packages whose lock key is absent from `changes`.
-fn widen_for_latest(dep string, targets []string, changes map[string]string) string {
-	ident := lockfile_module_key(dep)
+// run to packages whose normalized lock key is absent from `changes`.
+// Selection uses the identity normalized against the declaring manifest's
+// directory (`base_dir`), so a relative member requirement matches the
+// normalized keys in `changes`; the widened string keeps the original
+// declaration spelling for manifest write-back.
+fn widen_for_latest(dep string, targets []string, changes map[string]string, base_dir string) string {
+	ident := lockfile_module_key(workspace_normalize_dep(dep, base_dir))
 	if targets.len != 0 && ident !in changes {
 		return dep
 	}
 	constraint := requirement_version(dep)
 	if constraint == '' || is_version_range(constraint) || tag_satisfies_range(constraint, '*') {
-		return ident + '@*'
+		return lockfile_module_key(dep) + '@*'
 	}
 	return dep
 }
