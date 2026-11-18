@@ -383,10 +383,20 @@ fn test_fastc_program_dependency_key_ignores_only_declarations() {
 		assert v3_fastc_preprocessor_lines(declarations) == '#include <stdio.h>\n'
 		assert v3_fastc_preprocessor_lines(declarations.replace('void a', 'int b')) == v3_fastc_preprocessor_lines(declarations)
 		// Comments, digraphs and continued lines can change which headers are opened.
-		assert v3_fastc_preprocessor_lines('/* x\n#include <a.h>\n*/\n') == '/* x\n#include <a.h>\n*/\n'
+		assert v3_fastc_preprocessor_lines('/* x\n#include <a.h>\n*/\n#include <b.h>\n') == '/* x\n#include <a.h>\n*/\n#include <b.h>\n'
 		assert v3_fastc_preprocessor_lines('%:include <a.h>\nint x;\n') == '%:include <a.h>\n'
 		assert v3_fastc_preprocessor_lines('// note \\\n#include <a.h>\n') == '// note \\\n#include <a.h>\n'
 		assert v3_fastc_preprocessor_lines('int a = 1 \\\r\n+ 2;\n') == 'int a = 1 \\\r\n+ 2;\n'
+		assert v3_fastc_preprocessor_lines('#inc\\\nlude <a.h>\nint x;\n') == '#inc\\\nlude <a.h>\n'
+		assert v3_fastc_preprocessor_lines('# /* note */ include <a.h>\nint x;\n') == '# /* note */ include <a.h>\n'
+		// Nothing is opened after the last line that can include a file: the
+		// constants of the program are macros that follow the headers.
+		assert v3_fastc_preprocessor_lines('#define A 1\n#include <a.h>\n#define main__limit 4\nint x;\n#pragma pack(push, 1)\n/* note */\n') == '#define A 1\n#include <a.h>\n'
+		assert v3_fastc_preprocessor_lines('#define main__limit 4\n') == ''
+		// The `#include` of a macro body is text, unless a comment hides the macro.
+		assert v3_fastc_preprocessor_lines('#include <a.h>\n#define main__shader (_S("#include <metal_stdlib>"))\n') == '#include <a.h>\n'
+		assert v3_fastc_preprocessor_lines('/*\n#define A 1 */ #include <a.h>\nint x;\n') == '/*\n#define A 1 */ #include <a.h>\n'
+		assert v3_fastc_preprocessor_lines('int x; /* note */ #include <a.h>\n') == 'int x; /* note */ #include <a.h>\n'
 	}
 }
 

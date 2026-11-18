@@ -843,7 +843,7 @@ $if !skip_fastc ? {
 		// The directives key is a function of the consumer text, which its path names.
 		// It is kept under that name, so a reused head is neither joined nor scanned.
 		// Rename the file when v3_fastc_preprocessor_lines changes.
-		directives_path := path + '.directives-v1'
+		directives_path := path + '.directives-v2'
 		mut directives_key := os.read_file(directives_path) or { '' }
 		if directives_key == '' {
 			directives_key = c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(head.join('')).bytes()).hex()
@@ -940,20 +940,52 @@ $if !skip_fastc ? {
 
 	// v3_fastc_preprocessor_lines keeps the lines of generated C that can change what
 	// the preprocessor opens: directives (also after a comment, or spelled `%:`), comment
-	// delimiters, and continued lines. The other lines are ordinary declarations.
+	// delimiters, and continued lines. The other lines are ordinary declarations. Nothing
+	// is opened after the last line that can include a file, so the lines after it (the
+	// constants of the program, as macros) are left out as well.
 	fn v3_fastc_preprocessor_lines(text string) string {
 		mut out := strings.new_builder(text.len / 8)
 		mut start := 0
 		mut continued := false
+		mut include_end := 0
 		for start < text.len {
 			mut end := start
 			mut keep := continued
+			mut includes := false
+			// A line that begins with another directive holds no include: the `#` of
+			// a macro body is text. A comment that ends on the line can hide that start.
+			mut first := true
+			mut other_directive := false
+			mut closes_comment := false
 			for end < text.len && text[end] != `\n` {
 				c := text[end]
-				if c == `#` || (c == `%` && end + 1 < text.len && text[end + 1] == `:`)
-					|| (c == `/` && end + 1 < text.len && text[end + 1] == `*`)
-					|| (c == `*` && end + 1 < text.len && text[end + 1] == `/`) {
+				is_directive := c == `#` || (c == `%` && end + 1 < text.len && text[end + 1] == `:`)
+				if is_directive || (c == `/` && end + 1 < text.len && text[end + 1] == `*`) {
 					keep = true
+				}
+				if c == `*` && end + 1 < text.len && text[end + 1] == `/` {
+					keep = true
+					closes_comment = true
+				}
+				if is_directive {
+					// `#include`, `#import`, a comment before either, or a spliced line.
+					mut word := if c == `#` { end + 1 } else { end + 2 }
+					for word < text.len && text[word] in [` `, `\t`] {
+						word++
+					}
+					rest := text[word..if word + 8 < text.len { word + 8 } else { text.len }]
+					if rest.starts_with('include') || rest.starts_with('import') || rest.starts_with('/*')
+						|| rest.starts_with('\\') || rest.len == 0 || rest[0] in [
+						`\n`,
+						`\r`,
+					] {
+						includes = true
+					} else if first {
+						other_directive = true
+					}
+				}
+				if c !in [` `, `\t`] {
+					first = false
 				}
 				end++
 			}
@@ -961,14 +993,21 @@ $if !skip_fastc ? {
 			if last >= start && text[last] == `\r` {
 				last--
 			}
+			if other_directive && !closes_comment {
+				includes = false
+			}
+			includes = includes || continued
 			continued = last >= start && text[last] == `\\`
 			if keep || continued {
 				out.write_string(text[start..end])
 				out.write_u8(`\n`)
+				if includes || continued {
+					include_end = out.len
+				}
 			}
 			start = end + 1
 		}
-		return out.str()
+		return out.str()[..include_end]
 	}
 
 	fn v3_fastc_native_program_pieces(generation &fastc.GenerationResult, bridge &V3FastcNativeBridge) []string {
