@@ -146,34 +146,49 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	assert test_results.nr_messages == 2
 }
 
-fn on_message_cb_2(mut cli websocket.Client, msg &websocket.Message) ! {
-	if msg.opcode == .text_frame {
-		cli.close(1000, 'closing connection')!
+fn count_close(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+	res.nr_closes++
+}
+
+fn wait_for_ws_event(events chan bool, description string) ! {
+	select {
+		_ := <-events {
+		}
+		5 * time.second {
+			return error('timed out waiting for ${description}')
+		}
 	}
 }
 
-fn on_close_cb_2(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
-	res.nr_closes++
+fn start_ws_listener(mut client websocket.Client) chan bool {
+	done := chan bool{cap: 1}
+	spawn fn [mut client, done] () {
+		client.listen() or {}
+		done <- true
+	}()
+	return done
 }
 
 fn test_on_close_when_server_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30003, '')
-	ws.on_message(on_message_cb_2)
+	closed := chan bool{cap: 1}
+	ws.on_message(fn [closed] (mut cli websocket.Client, msg &websocket.Message) ! {
+		if msg.opcode == .text_frame {
+			cli.close(1000, 'closing connection')!
+			closed <- true
+		}
+	})
 	mut test_results := WebsocketTestResults{}
-	ws.on_close_ref(on_close_cb_2, &test_results)
+	ws.on_close_ref(count_close, &test_results)
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30003')!
 	client.connect()!
-	spawn client.listen()
-	time.sleep(1000 * time.millisecond)
+	done := start_ws_listener(mut client)
 	client.write_string('a message')!
-	time.sleep(1000 * time.millisecond)
+	wait_for_ws_event(closed, 'the server close')!
+	wait_for_ws_event(done, 'the client listener to exit')!
 	assert test_results.nr_closes == 1
-}
-
-fn on_close_cb_3(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
-	res.nr_closes++
 }
 
 fn test_close_unconnected_client_returns_error() ! {
@@ -187,16 +202,25 @@ fn test_close_unconnected_client_returns_error() ! {
 
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
+	ws.on_attached(fn (mut sc websocket.ServerClient) ! {
+		sc.client.write_string('ready')!
+	})
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30004')!
 	mut test_results := WebsocketTestResults{}
-	client.on_close_ref(on_close_cb_3, &test_results)
+	client.on_close_ref(count_close, &test_results)
+	ready := chan bool{cap: 1}
+	client.on_message(fn [ready] (mut cli websocket.Client, msg &websocket.Message) ! {
+		if msg.opcode == .text_frame && msg.payload.bytestr() == 'ready' {
+			ready <- true
+		}
+	})
 	client.connect()!
-	spawn client.listen()
-	time.sleep(1000 * time.millisecond)
+	done := start_ws_listener(mut client)
+	wait_for_ws_event(ready, 'the client listener to receive the first message')!
 	client.close(1000, 'closing connection')!
-	time.sleep(1000 * time.millisecond)
+	wait_for_ws_event(done, 'the client listener to exit')!
 	assert test_results.nr_closes == 1
 }
 
