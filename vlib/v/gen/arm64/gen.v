@@ -1224,10 +1224,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
 			lhs_typ := g.m.values[instr.operands[0]].typ
-			if g.is_float_type(lhs_typ) {
-				// Float comparison: FCMP sets NZCV; the same condition codes used
-				// for signed integers give the expected ordered results (matching
-				// the v2 backend). Comparing at the operands' own width avoids
+			is_float := g.is_float_type(lhs_typ)
+			if is_float {
+				// Comparing at the operands' own width avoids
 				// widening two f32 values to f64 just to throw the difference away.
 				lhs_reg, rhs_reg := float_operand_regs(instr.operands[0], instr.operands[1])
 				if g.is_f32_type(lhs_typ) {
@@ -1248,12 +1247,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 				rhs_reg := g.load_val(instr.operands[1], 9)
 				g.emit32(asm_cmp_reg(Reg(lhs_reg), Reg(rhs_reg)))
 			}
+			// FCMP sets C and V for unordered operands. LO and LS exclude
+			// that case, whereas the signed integer conditions LT and LE include it.
 			match instr.op {
 				.eq { g.emit32(asm_cset_eq(Reg(8))) }
 				.ne { g.emit32(asm_cset_ne(Reg(8))) }
-				.lt { g.emit32(asm_cset_lt(Reg(8))) }
+				.lt { g.emit32(if is_float { asm_cset_lo(Reg(8)) } else { asm_cset_lt(Reg(8)) }) }
 				.gt { g.emit32(asm_cset_gt(Reg(8))) }
-				.le { g.emit32(asm_cset_le(Reg(8))) }
+				.le { g.emit32(if is_float { asm_cset_ls(Reg(8)) } else { asm_cset_le(Reg(8)) }) }
 				.ge { g.emit32(asm_cset_ge(Reg(8))) }
 				.ult { g.emit32(asm_cset_lo(Reg(8))) }
 				.ugt { g.emit32(asm_cset_hi(Reg(8))) }
