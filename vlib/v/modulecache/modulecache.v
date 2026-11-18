@@ -2991,7 +2991,7 @@ fn c_native_localize_function_definitions(source string) string {
 				continue
 			}
 			if last_code == `;` {
-				out.write_string(pending.str())
+				pending.transfer_to(mut out)
 			}
 			in_block_comment = next_comment
 			continue
@@ -3001,7 +3001,7 @@ fn c_native_localize_function_definitions(source string) string {
 		in_block_comment = next_comment
 	}
 	if pending.len > 0 {
-		out.write_string(pending.str())
+		pending.transfer_to(mut out)
 	}
 	return out.str()
 }

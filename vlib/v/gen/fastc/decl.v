@@ -2638,7 +2638,7 @@ fn fastc_hoist_c_type_aliases(source string) string {
 	}
 	defines.write_string(fastc_order_function_typedefs(aliases.str() + function_aliases.str()))
 	defines.writeln('')
-	defines.write_string(bodies.str())
+	bodies.transfer_to(mut defines)
 	return defines.str()
 }
 

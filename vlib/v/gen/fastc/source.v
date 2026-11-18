@@ -1199,7 +1199,6 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 	}
 	// The stamps and the blob layout: the previous memo's token and time are
 	// not part of the comparison, so an unchanged program rewrites nothing.
-	mut stamp_lines := strings.new_builder(8192)
 	mut blob_size := fastc_memo_token_width + 1
 	mut stamps := []FastcFileStamp{cap: sources.len}
 	for source_file in sources {
@@ -1211,10 +1210,9 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 			stamp = fastc_file_stamp(source_file.path) or { FastcFileStamp{} }
 		}
 		stamps << stamp
-		stamp_lines.writeln('F\t' + source_file.path + '\t${stamp.size}\t${stamp.mtime}\t${stamp.ctime}\t${stamp.inode}\t${blob_size}')
+		out.writeln('F\t' + source_file.path + '\t${stamp.size}\t${stamp.mtime}\t${stamp.ctime}\t${stamp.inode}\t${blob_size}')
 		blob_size += source_file.source.len + 1
 	}
-	out.write_string(stamp_lines.str())
 	// One lookup per cache key: the walk resolves a module once per key too.
 	mut seen_lookups := map[string]bool{}
 	for i, module_name in lookup_modules {

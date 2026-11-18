@@ -39,6 +39,21 @@ Builder buffer methods clamp requested byte ranges to the stored buffer. Negativ
 `go_back_to` and `cut_to` treat negative positions as zero and leave positions past the end alone.
 `spart` returns only the intersection of the requested range with the buffer.
 
+`Builder.swap(mut other)` exchanges contents, capacity, and storage metadata without
+allocating or copying bytes. Both builders remain usable, including when they are slice views.
+Swapping a builder with itself does nothing.
+The storage exchange also applies when compiling with `-autofree`.
+
+`source.transfer_to(mut target)` appends all source bytes and empties the source. When the
+target is empty, it swaps storage, so the source receives the target's empty buffer. Otherwise,
+it appends directly without an intermediate string and clears the source for reuse. Independent
+builders retain the source's capacity; shared storage follows array slice detachment rules.
+Detached targets own their new storage and release replaced buffers when growing with `-gc none`.
+When an empty target aliases the source, the source receives a fresh zero-capacity builder
+instead of the target's alias, so reusing the source cannot overwrite the transferred bytes.
+Self-transfer does nothing, and an empty source leaves both buffers unchanged. Unlike
+`target.drain_builder(mut source, cap)`, transfer does not free and recreate the source buffer.
+
 `split_after(s, sep)` retains each separator in its preceding piece, including a final empty
 piece after a trailing separator. An empty separator returns `[s]`. `equal_fold(a, b)` folds
 ASCII letters only. `last_index_any(s, chars)` searches bytes and returns a byte index or `-1`;
