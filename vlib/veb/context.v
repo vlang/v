@@ -212,6 +212,14 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 	ctx.res.header.set_custom(key, value)!
 }
 
+// response_sends_body reports whether a response with the given status code may
+// carry an auto-generated Content-Length header. RFC 9110, section 8.6 forbids
+// Content-Length in 1xx and 204 responses, and 304 responses carry no body.
+fn response_sends_body(status_code int) bool {
+	return status_code != int(http.Status.not_modified)
+		&& status_code != int(http.Status.no_content) && (status_code < 100 || status_code > 199)
+}
+
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
 // and the response body to `response`
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
@@ -242,7 +250,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if !ctx.res.header.contains(.content_length) && ctx.res.status_code != int(http.Status.not_modified) {
+	if !ctx.res.header.contains(.content_length) && response_sends_body(ctx.res.status_code) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers
@@ -630,7 +638,7 @@ pub fn (mut ctx Context) server_error_with_status(s http.Status) Result {
 	return ctx.send_response_to_client('text/plain', 'Server error')
 }
 
-// send a 204 No Content response without body and content-type
+// send a 204 No Content response without body, content-type, or content-length
 pub fn (mut ctx Context) no_content() Result {
 	ctx.res.set_status(.no_content)
 	return ctx.send_response_to_client('', '')

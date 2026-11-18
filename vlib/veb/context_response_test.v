@@ -109,8 +109,23 @@ fn test_send_response_to_client_leaves_no_content_type_for_an_empty_mimetype() {
 	ctx.no_content()
 	assert ctx.res.status_code == int(http.Status.no_content)
 	assert ctx.res.body == ''
-	assert_header(ctx.res.header, .content_length, '0')
+	assert_header_absent(ctx.res.header, .content_length)
 	assert_header_absent(ctx.res.header, .content_type)
+}
+
+fn test_send_response_to_client_omits_content_length_for_an_informational_status() {
+	mut ctx := resp_ctx(.get, {})
+	ctx.res.set_status(.processing)
+	ctx.send_response_to_client('text/plain', 'x')
+	assert ctx.res.status_code == int(http.Status.processing)
+	assert_header_absent(ctx.res.header, .content_length)
+}
+
+fn test_send_response_to_client_keeps_a_preset_content_length_on_a_no_content_status() {
+	mut ctx := resp_ctx(.get, {})
+	ctx.res.header.set(.content_length, '0')
+	ctx.no_content()
+	assert_header(ctx.res.header, .content_length, '0')
 }
 
 fn test_send_response_to_client_drops_a_second_response_over_one_connection() {
