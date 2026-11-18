@@ -98,7 +98,6 @@ fn read_v_mod(mut ws Workspace) {
 fn vmod_from_file(path string) !vmod.Manifest {
 	return vmod.from_file(path)
 }
-}
 
 // compiler_exe returns the `v` executable to invoke.
 //
