@@ -2,6 +2,18 @@ module strings
 
 import os
 
+const tabwriter_overflow_probe_arg = '--vtest-tabwriter-overflow'
+
+fn testsuite_begin() {
+	if os.args.len != 2 || os.args[1] != tabwriter_overflow_probe_arg {
+		return
+	}
+	mut w := TabWriter{ min_width: max_int, padding: 1 }
+	w.write_row(['', 'x'])
+	println(w.render())
+	exit(0)
+}
+
 fn test_tabwriter_basic() {
 	mut w := TabWriter{}
 	w.write_row(['name', 'age'])
@@ -99,19 +111,7 @@ fn test_tabwriter_empty_rows_and_single_column() {
 }
 
 fn test_tabwriter_column_width_overflow_panics_before_allocation() {
-	path := os.join_path(os.vtmp_dir(), 'tabwriter_overflow_${os.getpid()}.v')
-	defer {
-		os.rm(path) or {}
-	}
-	os.write_file(path, 'import strings
-
-fn main() {
-	mut w := strings.TabWriter{min_width: max_int, padding: 1}
-	w.write_row(["", "x"])
-	println(w.render())
-}
-')!
-	result := os.exec([@VEXE, 'run', path])
+	result := os.exec([os.executable(), tabwriter_overflow_probe_arg])
 	assert result.exit_code != 0
 	assert result.output.contains('strings.TabWriter: column width overflow'), result.output
 }
