@@ -2,7 +2,23 @@ import mcp
 import os
 
 fn main() {
-	mut client := mcp.connect_stdio(os.args[1], [], mcp.ClientConfig{
+	match os.args[1] {
+		'server' { serve()! }
+		'client' { listen()! }
+		else { panic('expected server or client mode') }
+	}
+}
+
+fn serve() ! {
+	mut server := mcp.new_server(name: 'listen-regression', version: '1')
+	server.add_tool(mcp.Tool{ name: 'ping' }, fn (_ mcp.Context, _ string) !mcp.ToolResult {
+		return mcp.tool_text_result('pong')
+	})!
+	server.serve_stdio()!
+}
+
+fn listen() ! {
+	mut client := mcp.connect_stdio(os.executable(), ['server'], mcp.ClientConfig{
 		protocol_version: mcp.protocol_version_2026_07_28
 	})!
 	defer { client.close() }

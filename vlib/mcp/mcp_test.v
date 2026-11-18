@@ -513,18 +513,12 @@ fn test_external_stdio_client_returns_after_acknowledgment() {
 	root := os.join_path(os.vtmp_dir(), 'mcp_listen_consumer_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	server := os.join_path(root, 'server' + $if windows { '.exe' } $else { '' })
-	consumer := os.join_path(root, 'consumer' + $if windows { '.exe' } $else { '' })
-	for source, binary in {
-		'listen_server.v':   server
-		'listen_consumer.v': consumer
-	} {
-		path := os.join_path(@VEXEROOT, 'vlib/mcp/testdata', source)
-		built := os.exec([@VEXE, '-o', binary, path])
-		assert built.exit_code == 0, built.output
-	}
-	mut process := os.new_process(consumer)
-	process.set_args([server])
+	fixture := os.join_path(root, 'listen' + $if windows { '.exe' } $else { '' })
+	source := os.join_path(@VEXEROOT, 'vlib/mcp/testdata', 'listen_round_trip.v')
+	built := os.exec([@VEXE, '-o', fixture, source])
+	assert built.exit_code == 0, built.output
+	mut process := os.new_process(fixture)
+	process.set_args(['client'])
 	process.set_redirect_stdio()
 	process.run()
 	deadline := time.now().add(30 * time.second)
