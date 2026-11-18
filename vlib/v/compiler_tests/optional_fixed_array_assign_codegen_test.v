@@ -5,15 +5,23 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const optional_array_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_optional_array_compiler_${os.getpid()}')
+const v3_bin = os.join_path(optional_array_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
+
+fn testsuite_begin() {
+	os.rmdir_all(optional_array_compiler_dir) or {}
+	os.mkdir_all(optional_array_compiler_dir)!
+	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}|@vlib|@vmodules', '-o', v3_bin,
+		v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(optional_array_compiler_dir) or {}
+}
 
 fn test_assign_fixed_array_call_to_option_field() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_assign_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_assign_input_${pid}.v')
 	os.write_file(src, 'struct Foo {
 mut:
@@ -47,12 +55,6 @@ fn main() {
 
 fn test_indexed_optional_fixed_array_assignment_keeps_the_option_wrapper() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_input_${pid}.v')
 	os.write_file(src, 'struct Empty {}
 
@@ -95,12 +97,6 @@ fn main() {
 
 fn test_optional_map_index_comparison_preserves_evaluation_order() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_input_${pid}.v')
 	os.write_file(src, 'struct Trace {
 mut:
@@ -141,12 +137,6 @@ fn main() {
 
 fn test_smartcasted_optional_array_index_keeps_the_wrapper() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_input_${pid}.v')
 	os.write_file(src, 'type OptionalInts = []?int
 
@@ -173,12 +163,6 @@ fn main() {
 
 fn test_nested_smartcasts_keep_optional_array_indexes_wrapped() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_nested_smartcasted_optional_array_index_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_nested_smartcasted_optional_array_index_input_${pid}.v')
 	os.write_file(src, 'struct Foo {}
 
