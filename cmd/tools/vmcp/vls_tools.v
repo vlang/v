@@ -22,11 +22,11 @@ fn spec_vls_hover() ToolSpec {
 	return read_only_spec('v_vls_hover',
 		'Hover information at a position in a V source file using VLS. Only available when `vls` is installed.',
 		input_schema(['path', 'line', 'character'], {
-			'path': SchemaProperty{
+			'path':      SchemaProperty{
 				kind:        'string'
 				description: 'The .v file.'
 			}
-			'line': SchemaProperty{
+			'line':      SchemaProperty{
 				kind:        'integer'
 				description: 'Zero-based line number.'
 			}
@@ -71,11 +71,11 @@ fn spec_vls_definition() ToolSpec {
 	return read_only_spec('v_vls_definition',
 		'Go to definition at a position using VLS.',
 		input_schema(['path', 'line', 'character'], {
-			'path': SchemaProperty{
+			'path':      SchemaProperty{
 				kind:        'string'
 				description: 'The .v file.'
 			}
-			'line': SchemaProperty{
+			'line':      SchemaProperty{
 				kind:        'integer'
 				description: 'Zero-based line number.'
 			}
@@ -106,11 +106,11 @@ fn spec_vls_references() ToolSpec {
 	return read_only_spec('v_vls_references',
 		'Find references at a position using VLS.',
 		input_schema(['path', 'line', 'character'], {
-			'path': SchemaProperty{
+			'path':      SchemaProperty{
 				kind:        'string'
 				description: 'The .v file.'
 			}
-			'line': SchemaProperty{
+			'line':      SchemaProperty{
 				kind:        'integer'
 				description: 'Zero-based line number.'
 			}
@@ -141,11 +141,11 @@ fn spec_vls_rename() ToolSpec {
 	return writing_spec('v_vls_rename',
 		'Rename a symbol at a position using VLS.',
 		input_schema(['path', 'line', 'character', 'newName'], {
-			'path': SchemaProperty{
+			'path':      SchemaProperty{
 				kind:        'string'
 				description: 'The .v file.'
 			}
-			'line': SchemaProperty{
+			'line':      SchemaProperty{
 				kind:        'integer'
 				description: 'Zero-based line number.'
 			}
@@ -153,7 +153,7 @@ fn spec_vls_rename() ToolSpec {
 				kind:        'integer'
 				description: 'Zero-based character offset.'
 			}
-			'newName': SchemaProperty{
+			'newName':   SchemaProperty{
 				kind:        'string'
 				description: 'The new name.'
 			}
@@ -209,11 +209,11 @@ fn spec_vls_completion() ToolSpec {
 	return read_only_spec('v_vls_completion',
 		'Completion candidates at a position using VLS.',
 		input_schema(['path', 'line', 'character'], {
-			'path': SchemaProperty{
+			'path':      SchemaProperty{
 				kind:        'string'
 				description: 'The .v file.'
 			}
-			'line': SchemaProperty{
+			'line':      SchemaProperty{
 				kind:        'integer'
 				description: 'Zero-based line number.'
 			}
