@@ -3722,25 +3722,61 @@ fn (tc &TypeChecker) clone_call_callee_has_checked_arity(call_id flat.NodeId, fn
 }
 
 // clone_local_holds_capturing_closure reports whether the clone `fn_idx`
-// declares the local `name` with a capturing closure, `read := fn [x] ...`.
+// declares the local `name` with a capturing closure, `read := fn [x] ...`,
+// or with another local that holds one, `alias := read`. The clone counts the
+// captures of the closure as parameters while the call passes none, so either
+// spelling calls with fewer arguments than the clone sees.
 fn (tc &TypeChecker) clone_local_holds_capturing_closure(fn_idx flat.NodeId, name string) bool {
 	if !tc.valid_node_id(fn_idx) {
 		return false
 	}
+	mut direct := map[string]bool{}
+	mut alias_sources := map[string][]string{}
 	mut stack := [fn_idx]
 	for stack.len > 0 {
 		node := tc.a.node(stack.pop())
-		if node.kind == .decl_assign && node.children_count == 2 {
+		if (node.kind == .decl_assign || node.kind == .assign) && node.children_count == 2 {
 			lhs := tc.a.child_node(node, 0)
-			if lhs.kind == .ident && lhs.value == name
-				&& tc.capturing_closure_value(tc.a.child_node(node, 1)) {
-				return true
+			rhs := tc.a.child_node(node, 1)
+			if lhs.kind == .ident && lhs.value.len > 0 {
+				if tc.capturing_closure_value(rhs) {
+					direct[lhs.value] = true
+				} else {
+					mut current := rhs
+					for current.kind in [.paren, .cast_expr, .expr_stmt]
+						&& current.children_count > 0 {
+						current = tc.a.child_node(current, 0)
+					}
+					if current.kind == .ident && current.value.len > 0
+						&& current.value != lhs.value {
+						alias_sources[lhs.value] << current.value
+					}
+				}
 			}
 		}
 		for i in 0 .. node.children_count {
 			child := tc.a.child(node, i)
 			if tc.valid_node_id(child) {
 				stack << child
+			}
+		}
+	}
+	mut visited := map[string]bool{}
+	mut work := [name]
+	for work.len > 0 {
+		current_name := work.pop()
+		if current_name in visited {
+			continue
+		}
+		visited[current_name] = true
+		if current_name in direct {
+			return true
+		}
+		if sources := alias_sources[current_name] {
+			for source in sources {
+				if source !in visited {
+					work << source
+				}
 			}
 		}
 	}
@@ -4445,7 +4481,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 			&& (tc.fn_context.return_type !is Unknown || return_type_is_open_generic)
 			&& !type_allows_implicit_return(tc.fn_context.return_type)
 			&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
-			&& !has_deferred_generic_return && tc.should_diagnose(flat.NodeId(fn_idx)) {
+			&& !has_deferred_generic_return
+			&& !tc.fn_body_terminates_with_resolved_noreturn(node, flat.NodeId(fn_idx))
+			&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 			message := 'missing return at end of function `${node.value.all_after_last('.')}`'
 			tc.record_error_at(.return_mismatch, message, flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
 		}
@@ -5736,6 +5774,43 @@ fn (tc &TypeChecker) fn_body_contains_return(node flat.Node) bool {
 		}
 	}
 	return false
+}
+
+// fn_body_terminates_with_resolved_noreturn reports whether the body of the
+// function `node` terminates without falling through once user-defined
+// `@[noreturn]` callees are resolved. The syntactic check that runs before it
+// only recognizes builtin `panic`/`exit`: an open generic body has not been
+// checked yet, so its resolved-call cache is empty and a `die()` tail call
+// looks like fallthrough. Resolving every call in the body first populates
+// that cache, and the existing syntactic check then judges the body exactly
+// as the checked body of a non-generic function does, including `if`/`match`
+// control flow whose every branch ends in such a call.
+fn (mut tc TypeChecker) fn_body_terminates_with_resolved_noreturn(node flat.Node, fn_id flat.NodeId) bool {
+	tc.precache_body_calls_for_termination(fn_id)
+	return tc.fn_body_definitely_returns(node)
+}
+
+// precache_body_calls_for_termination resolves every call under `fn_id` so a
+// later syntactic termination check sees user-defined `@[noreturn]` callees.
+// Only the resolved-call name cache is populated; no diagnostics are recorded.
+fn (mut tc TypeChecker) precache_body_calls_for_termination(fn_id flat.NodeId) {
+	if !tc.valid_node_id(fn_id) {
+		return
+	}
+	mut stack := [fn_id]
+	for stack.len > 0 {
+		id := stack.pop()
+		node := tc.a.node(id)
+		if node.kind == .call {
+			_ = tc.call_never_returns_resolving(id)
+		}
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+			}
+		}
+	}
 }
 
 fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[u32]bool) bool {

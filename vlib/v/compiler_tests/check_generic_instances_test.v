@@ -104,6 +104,30 @@ fn test_valid_generic_struct_methods_stay_valid() {
 	assert error_lines(res.output) == [], res.output
 }
 
+// A generic function or method that ends in a user-defined `@[noreturn]` call
+// does not fall through: no `return` is missing. The builtin `panic`/`exit`
+// and an infinite loop terminate the same way.
+fn test_generic_noreturn_terminated_functions_stay_valid() {
+	source := "@[noreturn]\nfn die() { panic('expected') }\n\nfn fail[T]() T { die() }\n\nstruct NBox[T] {\n\tv T\n}\n\nfn (b NBox[T]) fail() T { die() }\n\nfn panic_fail[T]() T { panic('boom') }\n\nfn exit_fail[T]() T { exit(1) }\n\nfn loop_fail[T]() T { for {} }\n\nfn main() {\n\tif false { _ = fail[int]() }\n\tif false { _ = NBox[int]{}.fail() }\n\tif false { _ = panic_fail[int]() }\n\tif false { _ = exit_fail[int]() }\n\tif false { _ = loop_fail[int]() }\n\tprintln('ok')\n}\n"
+	for res in [check_program('noreturn_valid_check', source),
+		build_program('noreturn_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// Calling a capturing closure through another local bound to it passes no
+// arguments either: the clone counts the captures as parameters for the alias
+// as it does for the original.
+fn test_generic_closure_alias_calls_stay_valid() {
+	source := 'fn apply[T](value T) {\n\tread := fn [value] [T]() { println(value) }\n\talias := read\n\talias()\n\tread()\n}\n\nfn main() {\n\tapply(3)\n}\n'
+	for res in [check_program('closure_alias_check', source),
+		build_program('closure_alias_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
 fn test_instances_that_have_what_the_body_uses_stay_valid() {
 	res := check_program('valid', "fn show[T](x T) string {\n\treturn x.name\n}\n\nfn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n\tprintln(call(User{ name: 'b' }))\n}\n")
 	assert res.exit_code == 0, res.output
