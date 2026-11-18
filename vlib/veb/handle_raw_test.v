@@ -138,3 +138,58 @@ fn test_handle_raw_file_read_failure_closes_with_complete_500() {
 	assert resp.header.get(.connection) or { '' } == 'close'
 	assert !out.contains('HTTP/1.1 200')
 }
+
+fn raw_static_app() (RawApp, string) {
+	dir := os.join_path(os.temp_dir(), 'veb_handle_raw_static')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'index.html'), '<h1>index</h1>') or { panic(err) }
+	mut app := RawApp{}
+	app.handle_static(dir, true) or { panic(err) }
+	return app, dir
+}
+
+fn test_handle_raw_static_post_is_405_with_allow() {
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.method_not_allowed)
+	allow := resp.header.get_custom('Allow') or { '' }
+	assert allow.contains('GET')
+	assert allow.contains('HEAD')
+}
+
+fn test_handle_raw_static_delete_is_405() {
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.method_not_allowed)
+}
+
+fn test_handle_raw_static_get_still_serves_the_file() {
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'GET /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.ok)
+	assert resp.body == '<h1>index</h1>'
+}
+
+fn test_handle_raw_static_conditional_post_keeps_412() {
+	// A matching If-None-Match on POST still reaches send_file, keeping the
+	// documented 412 instead of a 405.
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: *\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.precondition_failed)
+}

@@ -1053,6 +1053,15 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	return params
 }
 
+// static_request_is_conditional reports whether the request carries a
+// precondition header that send_file evaluates. Such requests keep flowing
+// to send_file, so matching validators keep their documented 304/412 answers
+// instead of a 405.
+fn static_request_is_conditional(header http.Header) bool {
+	return header.contains(.if_none_match) || header.contains(.if_modified_since)
+		|| header.contains(.range)
+}
+
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
@@ -1125,6 +1134,15 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 	}
 	if static_host != '' && static_host != host {
 		return false
+	}
+
+	// Static files are only served for retrieval methods. Conditional
+	// requests still reach send_file below, so matching validators keep
+	// their documented 304/412 answers.
+	if user_context.req.method != .get && user_context.req.method != .head
+		&& !static_request_is_conditional(user_context.req.header) {
+		user_context.method_not_allowed([http.Method.get, http.Method.head])
+		return true
 	}
 
 	// Configure static file compression settings
