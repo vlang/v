@@ -8529,6 +8529,11 @@ V has several attributes that modify the behavior of functions and structs.
 growing an existing mutable array parameter. `@[noalloc: strict]` also forbids that growth.
 See [Allocation contracts](noalloc.md) for conservative checks and foreign function contracts.
 
+FFI lifetime contracts (`@[nonnull]`, `@[noescape]`, `@[len_of]`, `@[returns_owned]`,
+`@[returns_borrowed]`) declare pointer, length, and ownership expectations for foreign
+and V functions. Schemas are validated and call sites are checked where arguments are
+statically known. See [FFI lifetime contracts](ffi_lifetime.md).
+
 An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 Attributes with arguments support both `name: value` and call-style `name(value)` syntax.
