@@ -2,13 +2,6 @@ module net
 
 fn C.getnameinfo(sa voidptr, salen u32, host &char, hostlen u32, serv &char, servlen u32, flags int) int
 
-$if windows {
-	// ws2tcpip.h numbering differs from POSIX netdb.h.
-	const ni_namereqd = 4
-} $else {
-	const ni_namereqd = 8
-}
-
 const ni_maxhost = 1025
 
 // lookup_addr performs a reverse DNS lookup of the IP literal `addr`
@@ -55,7 +48,7 @@ pub fn lookup_addr(addr string) ![]string {
 fn reverse_lookup_name(a Addr) !string {
 	buf := [ni_maxhost]char{}
 	rc := C.getnameinfo(voidptr(&a), a.len(), &buf[0], u32(buf.len), &char(unsafe { nil }),
-		0, ni_namereqd)
+		0, C.NI_NAMEREQD)
 	wrap_getaddrinfo_error(rc)!
 	unsafe {
 		return cstring_to_vstring(&buf[0])
