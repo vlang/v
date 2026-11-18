@@ -93,6 +93,26 @@ fn test_parse_response_with_empty_reason_phrase() {
 	assert x.body == 'Foo'
 }
 
+fn test_parse_response_without_header_fields() {
+	// A response may carry no header fields at all: the empty line
+	// terminating the header section directly follows the status line.
+	content := 'HTTP/1.1 204 No Content\r\n\r\n'
+	x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 204
+	assert x.status_msg == 'No Content'
+	assert x.header.keys().len == 0
+	assert x.body == ''
+
+	content_with_body := 'HTTP/1.1 200 OK\r\n\r\nFoo'
+	y := parse_response(content_with_body)!
+	assert y.http_version == '1.1'
+	assert y.status_code == 200
+	assert y.status_msg == 'OK'
+	assert y.header.keys().len == 0
+	assert y.body == 'Foo'
+}
+
 fn test_parse_response_with_cookies() {
 	cookie_id := 'v_is_best'
 	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: id=${cookie_id}\r\nContent-Length: 3\r\n\r\nFoo'
