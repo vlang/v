@@ -385,7 +385,7 @@ fn test_environment_of_a_link_is_part_of_what_identifies_its_executable() {
 		}
 	}
 	signature := fn () string {
-		return v3_program_executable_link_signature(['-lanswer'], false, []string{})
+		return v3_program_executable_link_signature(['-lanswer'], false, []string{}, '')
 	}
 	os.setenv('LIBRARY_PATH', '/first', true)
 	first := signature()
@@ -733,11 +733,11 @@ fn test_files_keep_identities_only_while_they_are_the_files_that_were_read() {
 }
 
 fn test_program_executable_link_signature_tells_builds_apart() {
-	base := v3_program_executable_link_signature(['-lm'], false, ['strict=false'])
-	assert base == v3_program_executable_link_signature(['-lm'], false, ['strict=false'])
-	assert base != v3_program_executable_link_signature(['-lm', '-lz'], false, ['strict=false'])
-	assert base != v3_program_executable_link_signature(['-lm'], true, ['strict=false'])
-	assert base != v3_program_executable_link_signature(['-lm'], false, ['strict=true'])
+	base := v3_program_executable_link_signature(['-lm'], false, ['strict=false'], '')
+	assert base == v3_program_executable_link_signature(['-lm'], false, ['strict=false'], '')
+	assert base != v3_program_executable_link_signature(['-lm', '-lz'], false, ['strict=false'], '')
+	assert base != v3_program_executable_link_signature(['-lm'], true, ['strict=false'], '')
+	assert base != v3_program_executable_link_signature(['-lm'], false, ['strict=true'], '')
 }
 
 fn test_a_command_that_names_the_time_of_the_compilation_is_asked_about_it() {

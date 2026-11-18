@@ -2534,3 +2534,161 @@ fn test_driver_cli_cross_refusal_matrix() {
 		assert os.read_file(c_output)!.contains('"ok"'), c_output
 	}
 }
+
+fn test_driver_cli_opt_level_flags() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_opt_level_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'hello.v')
+	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	output := os.join_path(root, 'hello')
+	// Two different levels cannot both apply, so the driver refuses with a
+	// naming diagnostic instead of silently following "last wins". This fails
+	// during argument parsing, before any compiler runs.
+	assert_driver_cli_failure(v3_bin, ['-O2', '-O3', '-o', output, source],
+		'conflicting optimization levels')
+	assert_driver_cli_failure(v3_bin, ['-Os', '-O0', '-o', output, source],
+		'conflicting optimization levels')
+	assert_driver_cli_failure(v3_bin, ['-prod', '-Oz', '-O1', '-o', output, source],
+		'conflicting optimization levels')
+	// A level smuggled through -cflags conflicts the same way: two levels
+	// cannot both apply wherever they come from.
+	assert_driver_cli_failure(v3_bin, ['-O2', '-cflags', '-O3', '-o', output, source],
+		'conflicting optimization levels')
+	assert_driver_cli_failure(v3_bin, ['-cflags', '-O3', '-O2', '-o', output, source],
+		'conflicting optimization levels')
+	if false_exe := os.find_abs_path_of_executable('false') {
+		// Exercise the final C compiler command without needing runtime objects
+		// to be built by the deliberately failing compiler first.
+		check_opt_level := fn (v3_bin string, false_exe string, root string, source string, extra []string, want []string, unwanted []string) {
+			mut args := ['-showcc', '-cc', false_exe, '-o', os.join_path(root, 'opt_probe')]
+			args << extra
+			args << source
+			result := cmdexec.run(v3_bin, args)
+			assert result.exit_code != 0
+			// The C command itself must be on display: bare flag substrings
+			// also match driver diagnostics, which prove nothing was compiled.
+			plain_command := cmdexec.display(false_exe, ['-std=gnu11'])
+			feature_command := cmdexec.display(false_exe, ['-D_GNU_SOURCE', '-std=gnu11'])
+			assert result.output.contains(plain_command) || result.output.contains(feature_command), result.output
+			for flag in want {
+				assert result.output.contains(flag), result.output
+			}
+			for flag in unwanted {
+				assert !result.output.contains(flag), result.output
+			}
+		}
+		// An explicit level travels verbatim and never enables LTO on its own.
+		check_opt_level(v3_bin, false_exe, root, source, ['-O2'], ['-O2'], ['-O3', '-flto'])
+		check_opt_level(v3_bin, false_exe, root, source, ['-Os'], ['-Os'], ['-O3', '-flto'])
+		// Repeating the same level is accepted: only differing levels conflict.
+		check_opt_level(v3_bin, false_exe, root, source, ['-O2', '-O2'], ['-O2'], [
+			'-O3',
+			'-flto',
+		])
+		// With -prod the explicit level replaces the default but keeps the rest.
+		check_opt_level(v3_bin, false_exe, root, source, ['-prod', '-O1'], ['-O1', '-flto'], [
+			'-O3',
+			'-O2',
+		])
+		// -prod -no-prod-options drops the automatic flags but keeps the explicit level.
+		check_opt_level(v3_bin, false_exe, root, source, ['-prod', '-no-prod-options', '-Oz'],
+			['-Oz'], ['-O3', '-flto'])
+		// The same level through -cflags agrees with the explicit one: a real
+		// build succeeds. (showcc with a deliberately failing -cc cannot be
+		// used here: runtime objects under novel user flags miss the object
+		// cache and would be built with the failing compiler.)
+		mut same_output := os.join_path(root, 'opt_same')
+		$if windows {
+			same_output += '.exe'
+		}
+		same := cmdexec.run(v3_bin, ['-O2', '-cflags', '-O2', '-o', same_output, source])
+		assert same.exit_code == 0, same.output
+		assert os.is_file(same_output)
+		same_run := cmdexec.run(same_output, [])
+		assert same_run.exit_code == 0, same_run.output
+		assert same_run.output.trim_space() == 'ok'
+		// A CFLAGS-carried level composes the same way: differing refuses,
+		// agreeing reaches the C command.
+		mut cflags_conflict := os.environ()
+		cflags_conflict['CFLAGS'] = '-O3'
+		conflict := run_driver_with_environment(v3_bin, ['-O1', '-o', os.join_path(root,
+			'cflags_conflict'), source], cflags_conflict)
+		assert conflict.exit_code != 0, conflict.output
+		assert conflict.output.contains('conflicting optimization levels'), conflict.output
+		assert conflict.output.contains('(from CFLAGS)'), conflict.output
+		mut cflags_same := os.environ()
+		cflags_same['CFLAGS'] = '-O1'
+		mut agreed_output := os.join_path(root, 'cflags_same')
+		$if windows {
+			agreed_output += '.exe'
+		}
+		agreed := run_driver_with_environment(v3_bin, ['-O1', '-o', agreed_output, source],
+			cflags_same)
+		assert agreed.exit_code == 0, agreed.output
+		agreed_run := cmdexec.run(agreed_output, [])
+		assert agreed_run.exit_code == 0, agreed_run.output
+		assert agreed_run.output.trim_space() == 'ok'
+	}
+}
+
+fn test_driver_cli_opt_level_warmed_cache() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_opt_warm_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'warm.v')
+	// NOTE: the warmed-cache fixture must be cache-eligible. A literal-only
+	// `println('ok')` program takes the minimal-literal-output fast path,
+	// which `cache_candidate_enabled` explicitly excludes, so it never
+	// creates/restores the program executable cache entry.
+	os.write_file(source, 'fn main() { a := [1, 2, 3]\n\tprintln(a.len) }\n') or { panic(err) }
+	cache := os.join_path(root, 'cache')
+	tmp := os.join_path(root, 'tmp')
+	os.mkdir_all(cache) or { panic(err) }
+	os.mkdir_all(tmp) or { panic(err) }
+	environment := {
+		'VFLAGS':                 ''
+		'VTMP':                   tmp
+		'V3CACHE':                cache
+		'V3_CACHE_TRACE':         '1'
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	}
+	build := fn (v3_bin string, source string, output string, extra []string, environment map[string]string) os.Result {
+		mut args := []string{}
+		args << extra
+		args << ['-o', output, source]
+		return run_driver_with_environment(v3_bin, args, environment)
+	}
+	output0 := os.join_path(root, 'opt_warm_0')
+	output3 := os.join_path(root, 'opt_warm_3')
+	first0 := build(v3_bin, source, output0, ['-O0'], environment)
+	assert first0.exit_code == 0, first0.output
+	assert !first0.output.contains('V3 program executable restored'), first0.output
+	second0 := build(v3_bin, source, output0, ['-O0'], environment)
+	assert second0.exit_code == 0, second0.output
+	assert second0.output.contains('V3 program executable restored'), second0.output
+	// A warmed -O0 executable must not satisfy an -O3 build: the level is
+	// part of the executable identity, so this is a miss, not a restore.
+	first3 := build(v3_bin, source, output3, ['-O3'], environment)
+	assert first3.exit_code == 0, first3.output
+	assert !first3.output.contains('V3 program executable restored'), first3.output
+	second3 := build(v3_bin, source, output3, ['-O3'], environment)
+	assert second3.exit_code == 0, second3.output
+	assert second3.output.contains('V3 program executable restored'), second3.output
+	for output in [output0, output3] {
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '3', run.output
+	}
+}
