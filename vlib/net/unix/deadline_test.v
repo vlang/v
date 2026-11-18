@@ -49,14 +49,16 @@ fn test_epoch_subsecond_accept_deadlines_are_due() ! {
 			os.rm(path) or {}
 		}
 		listener.set_accept_deadline(time.unix_nanosecond(0, nanosecond))
-		// Wake an incorrectly infinite wait so a regression fails without hanging.
-		connector := spawn unix_connect_after_deadline_delay(path)
+		// Queue a connection so an incorrectly infinite wait returns immediately.
+		mut client := unix.connect_stream(path)!
+		defer {
+			client.close() or {}
+		}
 		mut timed_out := false
 		listener.wait_for_accept() or {
 			assert err.code() == net.err_timed_out.code()
 			timed_out = true
 		}
-		connector.wait()
 		assert timed_out, 'expired deadline waited for a connection'
 	}
 }
