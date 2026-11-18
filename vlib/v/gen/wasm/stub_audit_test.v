@@ -36,12 +36,20 @@ import v.ssa
 import v.transform
 import v.types
 
+const stub_default_scratch = os.join_path(os.vtmp_dir(), 'wasm_stub_${os.getpid()}')
+
 fn stub_scratch() string {
 	custom := os.getenv('STUB_SCRATCH')
 	if custom.len > 0 {
 		return custom
 	}
-	return os.join_path(os.home_dir(), 'AppData', 'Local', 'Temp', 'opencode', 'wasmstub')
+	return stub_default_scratch
+}
+
+fn testsuite_end() {
+	if os.getenv('STUB_SCRATCH') == '' {
+		os.rmdir_all(stub_default_scratch) or {}
+	}
 }
 
 fn stub_enter_workspace() {
