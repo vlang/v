@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 
@@ -9,61 +9,57 @@ fn test_parallel_computed_constant_guards_select_the_same_runtime_branch() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_guards_codegen_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	for case in ['direct', 'chained', 'else_if', 'match'] {
-		guard := if case == 'else_if' {
-			"chosen == 'yes' && following == 'yes'"
-		} else if case == 'chained' {
-			"chosen == 'yes'"
-		} else {
-			'route_has_get_method'
-		}
-		contents := [
-			if case == 'else_if' {
-				"const route_has_get_method = 'GET /users'.starts_with('POST')\n"
-			} else {
-				"const route_has_get_method = 'GET /users'.starts_with('GET')\n"
-			},
-			if case == 'else_if' {
-				"\$if route_has_get_method { const chosen = 'wrong' } \$else \$if false { const inactive = 'unused' } \$else \$if true { const chosen = 'yes' } \$else { const dead = 'unused' }\nconst following = 'yes'\n"
-			} else if case == 'match' {
-				"\$match route_has_get_method { true { const chosen = 'yes' } \$else { const chosen = 'no' } }\n\$if chosen == 'yes' { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n"
-			} else if case == 'chained' {
-				"\$if route_has_get_method { const chosen = 'yes' } \$else { const chosen = 'no' }\n"
-			} else {
-				'fn padding() {}\n'
-			},
-			if case == 'match' {
-				'fn padding() {}\n'
-			} else {
-				"\$if ${guard} { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n"
-			},
-			'fn main() { println(selected()) }\n',
-		]
-		for i, content in contents {
-			os.write_file(os.join_path(root, '${i}.v'), content + '\n'.repeat(40000 - content.len))!
-		}
-		for serial in [false, true] {
-			binary := os.join_path(root, 'selected_${case}_${serial}${exe_suffix}')
-			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang',
-				'-gc', 'none', '-o', binary]
-			if serial { args << '-no-parallel' }
-			args << root
-			mut child := os.new_process(@VEXE)
-			child.set_args(args)
-			mut environment := os.environ()
-			environment['VJOBS'] = '4'
-			child.set_environment(environment)
-			child.set_redirect_stdio_merged()
-			child.run()
-			output := child.stdout_slurp()
-			child.wait()
-			code := child.code
-			child.close()
-			assert code == 0, output
-			result := os.exec([binary])
-			assert result.exit_code == 0, result.output
-			assert result.output.trim_space() == 'yes', '${case} ${serial}: ${result.output}'
-		}
+	// Keep the constants, guards and callers in separate padded files so the
+	// same project exercises cross-file evaluation with both worker settings.
+	sources := [
+		"const direct_has_get = 'GET /users'.starts_with('GET')
+const chained_has_get = 'GET /users'.starts_with('GET')
+const else_if_has_get = 'GET /users'.starts_with('POST')
+const match_has_get = 'GET /users'.starts_with('GET')
+",
+		"\$if chained_has_get { const chained_chosen = 'yes' } \$else { const chained_chosen = 'no' }
+\$if else_if_has_get { const else_if_chosen = 'wrong' } \$else \$if false { const inactive = 'unused' } \$else \$if true { const else_if_chosen = 'yes' } \$else { const dead = 'unused' }
+const following = 'yes'
+\$match match_has_get { true { const match_chosen = 'yes' } \$else { const match_chosen = 'no' } }
+\$if match_chosen == 'yes' { fn match_selected() string { return 'yes' } } \$else { fn match_selected() string { return 'no' } }
+",
+		"\$if direct_has_get { fn direct_selected() string { return 'yes' } } \$else { fn direct_selected() string { return 'no' } }
+\$if chained_chosen == 'yes' { fn chained_selected() string { return 'yes' } } \$else { fn chained_selected() string { return 'no' } }
+\$if else_if_chosen == 'yes' && following == 'yes' { fn else_if_selected() string { return 'yes' } } \$else { fn else_if_selected() string { return 'no' } }
+",
+		"fn main() {
+	println('direct: ' + direct_selected())
+	println('chained: ' + chained_selected())
+	println('else_if: ' + else_if_selected())
+	println('match: ' + match_selected())
+}
+",
+	]
+	for i, source in sources {
+		os.write_file(os.join_path(root, '${i}.v'), source + '\n'.repeat(40000 - source.len))!
+	}
+	expected := ['direct: yes', 'chained: yes', 'else_if: yes', 'match: yes']
+	for serial in [false, true] {
+		binary := os.join_path(root, 'selected_${serial}${exe_suffix}')
+		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang', '-gc',
+			'none', '-o', binary]
+		if serial { args << '-no-parallel' }
+		args << root
+		mut child := os.new_process(@VEXE)
+		child.set_args(args)
+		mut environment := os.environ()
+		environment['VJOBS'] = '4'
+		child.set_environment(environment)
+		child.set_redirect_stdio_merged()
+		child.run()
+		output := child.stdout_slurp()
+		child.wait()
+		code := child.code
+		child.close()
+		assert code == 0, output
+		result := os.exec([binary])
+		assert result.exit_code == 0, result.output
+		assert result.output.split_into_lines() == expected, 'serial=${serial}: ${result.output}'
 	}
 }
 
@@ -292,10 +288,16 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_string_import_waves_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'config'))!
 	os.mkdir_all(os.join_path(root, 'broken'))!
+	os.mkdir_all(os.join_path(root, 'broken_syntax'))!
 	os.mkdir_all(os.join_path(root, 'route_data'))!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "import_waves" }')!
 	data_source := 'module route_data\npub const yes = true\npub const value = 3\n'
+	broken_path := os.join_path(root, 'broken/broken.v')
+	invalid_function := 'fn unused() { missing() }\n'
+	invalid_syntax := 'fn unused( { }\n'
+	os.write_file(os.join_path(root, 'broken_syntax/broken_syntax.v'), 'module broken_syntax\n' +
+		invalid_syntax)!
 	path := os.join_path(root, 'main.v')
 	saved_no_file_index := os.getenv('V3_NO_FILE_IDX')
 	defer { os.setenv('V3_NO_FILE_IDX', saved_no_file_index, true) }
@@ -306,17 +308,15 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 		args << ['-o', os.join_path(root, 'selected${exe_suffix}'), path]
 		os.write_file(os.join_path(root, 'route_data/route_data.v'), data_source)!
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = false\n')!
+		os.write_file(broken_path, 'module broken\n' + invalid_function)!
 		for nested in [false, true] {
-			body := '\$if cfg.enabled {\n import broken\n}\n'
+			body := '\$if cfg.enabled {\n import broken\n import broken_syntax\n}\n'
 			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
 			os.write_file(path, "import config as cfg\n${guarded}fn main() { println('ok') }\n")!
-			for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
-				os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
-				result := os.exec(args)
-				assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
-				run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
-				assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
-			}
+			result := os.exec(args)
+			assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
+			run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
+			assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
 		}
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = true\n')!
 		for nested in [false, true] {
@@ -329,8 +329,8 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 			assert run.exit_code == 0, run.output
 		}
 		os.write_file(path, 'import config as cfg\n\$if string is string {\n \$if cfg.enabled {\n  import broken\n }\n}\nfn main() {}\n')!
-		for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
-			os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
+		for body in [invalid_function, invalid_syntax] {
+			os.write_file(broken_path, 'module broken\n' + body)!
 			result := os.exec(args)
 			assert result.exit_code != 0, '${mode}: ${result.output}'
 			assert result.output.contains('broken.v'), result.output
