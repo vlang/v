@@ -257,12 +257,31 @@ pub fn (m map[string]Any) as_strings() map[string]string {
 	return result
 }
 
+// is_bare_toml_key returns whether `k` is a valid TOML bare key
+// (`[A-Za-z0-9_-]+`). Any other key must be quoted on encode, or it either
+// fails to parse again (e.g. a `#` truncated by a comment) or silently
+// becomes a dotted path (`a.b` decodes as the table `a` holding `b`).
+fn is_bare_toml_key(k string) bool {
+	if k == '' {
+		return false
+	}
+	for c in k.bytes() {
+		match c {
+			`a`...`z`, `A`...`Z`, `0`...`9`, `_`, `-` {}
+			else {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // to_toml returns the contents of the map
 // as a TOML encoded `string`.
 pub fn (m map[string]Any) to_toml() string {
 	mut toml_text := ''
 	for k, v in m {
-		key := if k.contains(' ') { '"${k}"' } else { k }
+		key := if is_bare_toml_key(k) { k } else { '"${escape_basic_string(k)}"' }
 		toml_text += '${key} = ${v.to_toml()}\n'
 	}
 	toml_text = toml_text.trim_right('\n')
@@ -275,7 +294,7 @@ pub fn (m map[string]Any) to_inline_toml() string {
 	mut toml_text := '{'
 	mut i := 1
 	for k, v in m {
-		key := if k.contains(' ') { '"${k}"' } else { k }
+		key := if is_bare_toml_key(k) { k } else { '"${escape_basic_string(k)}"' }
 		delimiter := if i < m.len { ',' } else { '' }
 		toml_text += ' ${key} = ${v.to_toml()}${delimiter}'
 		i++
