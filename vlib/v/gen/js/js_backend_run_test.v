@@ -315,3 +315,31 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5\nmain'
 }
+
+fn test_js_backend_decodes_v_string_escapes_before_emission() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('literal_escapes')!
+	defer { os.rmdir_all(root) or {} }
+	source := 'fn main() {
+	println(\'\\a\\U0001f600\\xc3\\xa9\')
+	println(\'quote: " and slash: \\\\ out\')
+	JS.eval("console.log(\\"from eval\\");".str)
+}'
+	run := js_run_program(root, 'literal_escapes.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output == '\x07😀é\nquote: " and slash: \\ out\nfrom eval\n'
+}
+
+fn test_js_backend_rejects_invalid_utf8_literal_before_emission() {
+	root := js_new_fixture_root('invalid_utf8')!
+	defer { os.rmdir_all(root) or {} }
+	program := js_write_fixture(root, 'invalid_utf8.js.v', "fn main() { println('\\xff') }")!
+	output := os.join_path(root, 'invalid_utf8.js')
+	code, message, _ := js_compile(program, output)
+	assert code != 0, message
+	assert message.contains('compatibility generator'), message
+	assert !os.exists(output)
+}
