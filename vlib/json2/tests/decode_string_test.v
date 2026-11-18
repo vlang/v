@@ -22,46 +22,28 @@ fn test_surrogate() {
 	assert json.decode[string](r'"\ud83d\ude00 text"')! == '😀 text'
 }
 
-fn test_invalid_surrogate() {
-	if _ := json.decode[string](r'"\ud83d"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got no valid escape sequence.'
-		}
-	}
-
-	if _ := json.decode[string](r'"\ud83d\n\n\n\n"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got no valid escape sequence.'
-		}
-	}
-
-	if _ := json.decode[string](r'"\ud83d\ud83d"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Expected a trail surrogate after a head surrogate, but got D83D.'
-		}
-	}
-
-	if _ := json.decode[string](r'"\ude00\ud83d"') {
-		assert false
-	} else {
-		if err is json.JsonDecodeError {
-			assert err.line == 1
-			assert err.character == 1
-			assert err.message == 'Data: Got trail surrogate: DE00 before head surrogate.'
-		}
-	}
+// Lone `\uXXXX` surrogate escapes decode to their WTF-8 3-byte form instead of
+// erroring (see https://github.com/vlang/v/issues/32389). RFC 8259 section 7
+// allows any `\uXXXX` escape, JavaScript `JSON.parse` accepts lone surrogates,
+// and `JSON.stringify` can emit them, so rejecting them made such input
+// unreadable. A head surrogate directly followed by a trail surrogate escape
+// still decodes as one code point (see test_surrogate).
+fn test_lone_surrogate_decodes_as_wtf8() {
+	assert json.decode[string](r'"\ud800"')!.bytes().hex() == 'eda080'
+	assert json.decode[string](r'"\ud83d"')!.bytes().hex() == 'eda0bd'
+	assert json.decode[string](r'"\udc00"')!.bytes().hex() == 'edb080'
+	assert json.decode[string](r'"\ude00"')!.bytes().hex() == 'edb880'
+	assert json.decode[string](r'"a\udc00b"')!.bytes().hex() == '61edb08062'
+	// A head surrogate only joins a trail surrogate escape directly after it;
+	// otherwise each half is kept on its own, like JavaScript engines do.
+	assert json.decode[string](r'"\ud83d\ud83d\ude00"')!.bytes().hex() == 'eda0bdf09f9880'
+	assert json.decode[string](r'"\ud83d\ude00\ude00"')!.bytes().hex() == 'f09f9880edb880'
+	assert json.decode[string](r'"\ud83d\n\n\n\n"')!.bytes().hex() == 'eda0bd0a0a0a0a'
+	assert json.decode[string](r'"\ud83dx\ude00"')!.bytes().hex() == 'eda0bd78edb880'
+	assert json.decode[string](r'"\ud83d\u0041"')!.bytes().hex() == 'eda0bd41'
+	// The report in #32389, via the generic value type.
+	value := json.decode[json.Any]('["\\ud800", "a\\udc00b"]')!
+	assert value.as_array().map(it.str().bytes().hex()) == ['eda080', '61edb08062']
 }
 
 struct Inner {
