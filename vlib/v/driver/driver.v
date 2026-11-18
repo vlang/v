@@ -20,6 +20,7 @@ import v.markused
 import v.modulecache
 import v.parser
 import v.pref
+import v.scanner
 import v.tempname
 import v.token as compiler_token
 import v.transform
@@ -4338,92 +4339,212 @@ fn write_v3_c_project(project_dir string, c_source string, c_compiler string, pl
 	}
 }
 
+// Mask comments while preserving the line boundaries used by the global alias scan.
+fn v3_js_compat_source_without_comments(source string, input_file string) string {
+	mut files := compiler_token.FileSet.new()
+	file := files.add_file(input_file, source.len)
+	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments | .skip_interpolation)
+	lex.init(file, source)
+	mut code := source.bytes()
+	for {
+		kind := lex.scan()
+		if kind == .eof {
+			break
+		}
+		if kind == .comment {
+			for i in lex.pos .. lex.offset {
+				if code[i] !in [10, 13] {
+					code[i] = 32
+				}
+			}
+		}
+	}
+	return code.bytestr()
+}
+
+fn v3_js_compat_quoted_literal(source string, node &flat.Node) ?string {
+	if node.kind != .string_literal || node.children_count != 0 || !node.pos.is_valid() {
+		return none
+	}
+	start := int(node.pos.offset)
+	end := int(node.pos.end)
+	if start < 0 || end > source.len || end - start < 2 {
+		return none
+	}
+	literal := source[start..end]
+	if literal[0] !in [`'`, `"`] || literal[literal.len - 1] != literal[0] {
+		return none
+	}
+	return literal
+}
+
+fn v3_js_compat_call(a &flat.FlatAst, node &flat.Node, source string) ?string {
+	if node.kind != .call || node.children_count != 2 {
+		return none
+	}
+	callee := a.child_node(node, 0)
+	arg := a.child_node(node, 1)
+	if callee.kind == .ident && callee.value == 'println' {
+		literal := v3_js_compat_quoted_literal(source, arg) or { return none }
+		if literal.contains_any('\r\n') {
+			return none
+		}
+		return 'console.log(${literal});'
+	}
+	if callee.kind == .selector && callee.value == 'eval' && callee.children_count == 1 {
+		receiver := a.child_node(callee, 0)
+		if receiver.kind == .ident && receiver.value == 'JS' && arg.kind == .selector
+			&& arg.value == 'str' && arg.children_count == 1 {
+			literal := v3_js_compat_quoted_literal(source, a.child_node(arg, 0)) or { return none }
+			if literal[0] == `"` {
+				return literal[1..literal.len - 1]
+			}
+		}
+	}
+	return none
+}
+
+// Discarding a string literal is harmless. Interpolated expressions can have
+// effects of their own, so only accept interpolations made up of string literals.
+fn v3_js_compat_discard(a &flat.FlatAst, node &flat.Node) bool {
+	if node.kind != .assign || node.children_count != 2 {
+		return false
+	}
+	lhs := a.child_node(node, 0)
+	if lhs.kind != .ident || lhs.value != '_' {
+		return false
+	}
+	rhs := a.child_node(node, 1)
+	return rhs.kind == .string_literal
+		|| (rhs.kind == .string_interp && a.children_of(rhs).all(a.node(it).kind == .string_literal))
+}
+
+// Only skip initializers whose evaluation cannot run user code or fail.
+fn v3_js_compat_inert_initializer(a &flat.FlatAst, node &flat.Node) bool {
+	match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr {
+			return node.children_count == 0
+		}
+		.fn_literal {
+			// Creating a function value does not execute its body.
+			return true
+		}
+		.paren {
+			return node.children_count == 1
+				&& v3_js_compat_inert_initializer(a, a.child_node(node, 0))
+		}
+		.prefix {
+			return node.children_count == 1 && node.op in [.plus, .minus]
+				&& a.child_node(node, 0).kind in [.int_literal, .float_literal]
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn v3_js_compat_validate_initializers(a &flat.FlatAst, decl &flat.Node) ! {
+	for id in a.children_of(decl) {
+		field := a.node(id)
+		if field.children_count == 1 {
+			if v3_js_compat_inert_initializer(a, a.child_node(field, 0)) {
+				continue
+			}
+		} else if field.children_count == 0 {
+			// A default-initialized aggregate can execute its field initializers.
+			if field.typ in [flat.source_type_bool, flat.source_type_char, flat.source_type_rune,
+				flat.source_type_string, flat.source_type_int, flat.source_type_i8,
+				flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
+				flat.source_type_isize, flat.source_type_uint, flat.source_type_u8,
+				flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+				flat.source_type_usize, flat.source_type_f32, flat.source_type_f64,
+				flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
+				continue
+			}
+		}
+		kind := if decl.kind == .const_decl { 'constant' } else { 'global' }
+		return error('${backend_node_location(a, *field)}error: the V3 JavaScript compatibility generator does not support this ${kind} initializer for `${field.value}`')
+	}
+}
+
 fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	source := os.read_file(input_file)!
-	mut output := strings.new_builder(source.len)
-	mut emitted := emit_v3_js_exported_global_aliases(source, mut output)
-	mut offset := 0
-	double_quote := [u8(34)].bytestr()
-	js_eval_prefix := 'JS.eval(' + double_quote
-	js_eval_suffix := double_quote + '.str'
-	for offset < source.len {
-		relative_start := source[offset..].index(js_eval_prefix) or { break }
-		payload_start := offset + relative_start + js_eval_prefix.len
-		relative_end := source[payload_start..].index(js_eval_suffix) or {
-			return error('V3 JavaScript compatibility generation requires JS.eval with a string argument')
+	mut prefs := pref.new_preferences()
+	prefs.backend = 'js'
+	prefs.preserve_comptime_conditionals = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_text(input_file, source)
+	for diagnostic in p.diagnostics {
+		if diagnostic.severity !in ['warning:', 'notice:'] {
+			return error('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${diagnostic.severity} ${diagnostic.message}')
 		}
-		payload_end := payload_start + relative_end
-		payload := source[payload_start..payload_end]
-		output.writeln(payload)
-		emitted = true
-		offset = payload_end + js_eval_suffix.len
 	}
-	for line in source.split_into_lines() {
-		argument := v3_js_literal_println_argument(line) or { continue }
-		output.writeln('console.log(${argument});')
-		emitted = true
+	file := a.node(flat.NodeId(a.file_node_ids.last()))
+	mut statements := []flat.NodeId{}
+	mut has_main := false
+	mut has_globals := false
+	for id in a.children_of(file) {
+		node := a.node(id)
+		match node.kind {
+			.fn_decl {
+				if node.value in ['init', 'cleanup'] {
+					return error('${backend_node_location(a, *node)}error: the V3 JavaScript compatibility generator does not support ${node.value} functions')
+				}
+				if node.value == 'main' {
+					if has_main || node.generic_params().len > 0 {
+						return error('${input_file}: error: the V3 JavaScript compatibility generator requires a single non-generic main function')
+					}
+					has_main = true
+					statements << a.children_of(node)
+				}
+			}
+			.comptime_if, .comptime_for {
+				return error('${backend_node_location(a, *node)}error: the V3 JavaScript compatibility generator does not support top-level compile-time control flow')
+			}
+			.const_decl, .global_decl {
+				v3_js_compat_validate_initializers(a, node)!
+				has_globals = has_globals || node.kind == .global_decl
+			}
+			.empty, .module_decl, .import_decl, .struct_decl, .enum_decl, .interface_decl,
+			.type_decl, .c_fn_decl {
+			}
+			else {
+				statements << id
+			}
+		}
 	}
-	if !emitted {
+	mut output := strings.new_builder(source.len)
+	emitted_global := has_globals
+		&& emit_v3_js_exported_global_aliases(v3_js_compat_source_without_comments(source, input_file), mut output)
+	mut emitted_statement := false
+	// The global export fixture only needs the aliases. Its assertions are
+	// evaluated by the full JS backend.
+	if !emitted_global || !statements.all(a.node(it).kind == .assert_stmt) {
+		for id in statements {
+			stmt := a.node(id)
+			if stmt.kind == .return_stmt && stmt.children_count == 0 {
+				emitted_statement = true
+				break
+			}
+			if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+				if code := v3_js_compat_call(a, a.child_node(stmt, 0), source) {
+					output.writeln(code)
+					emitted_statement = true
+					continue
+				}
+			}
+			if v3_js_compat_discard(a, stmt) {
+				continue
+			}
+			return error('${backend_node_location(a, *stmt)}error: the V3 JavaScript compatibility generator supports only direct literal println and JS.eval statements in main or at script top level')
+		}
+	}
+	if !emitted_global && !emitted_statement {
 		return error('the V3 JavaScript compatibility generator currently supports only JS.eval and literal println')
 	}
 	os.mkdir_all(os.dir(output_file))!
 	os.write_file(output_file, output.str())!
-}
-
-fn v3_js_literal_println_argument(line string) ?string {
-	prefix := 'println('
-	mut offset := 0
-	for offset < line.len {
-		relative := line[offset..].index(prefix) or { return none }
-		start := offset + relative
-		if start > 0 {
-			previous := line[start - 1]
-			if previous == `.` || previous == `_` || (previous >= `0` && previous <= `9`)
-				|| (previous >= `A` && previous <= `Z`) || (previous >= `a` && previous <= `z`) {
-				offset = start + prefix.len
-				continue
-			}
-		}
-		if comment := line[..start].index('//') {
-			if comment >= 0 {
-				return none
-			}
-		}
-		mut argument_start := start + prefix.len
-		for argument_start < line.len && line[argument_start] in [` `, `\t`] {
-			argument_start++
-		}
-		if argument_start >= line.len || line[argument_start] !in [`'`, `"`] {
-			offset = start + prefix.len
-			continue
-		}
-		quote := line[argument_start]
-		mut escaped := false
-		for i := argument_start + 1; i < line.len; i++ {
-			ch := line[i]
-			if escaped {
-				escaped = false
-				continue
-			}
-			if ch == `\\` {
-				escaped = true
-				continue
-			}
-			if ch != quote {
-				continue
-			}
-			mut close := i + 1
-			for close < line.len && line[close] in [` `, `\t`] {
-				close++
-			}
-			if close < line.len && line[close] == `)` {
-				return line[argument_start..i + 1]
-			}
-			break
-		}
-		offset = start + prefix.len
-	}
-	return none
 }
 
 fn emit_v3_js_exported_global_aliases(source string, mut output strings.Builder) bool {

@@ -126,3 +126,191 @@ fn test_js_backend_compiles_a_literal_println() {
 	assert compile_code == 0, compile_output
 	assert os.exists(generated), 'compile reported: ${compile_output}'
 }
+
+fn test_js_backend_preserves_literal_and_eval_statement_order() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('order')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := 'fn main() {
+	println(\'first\')
+	JS.eval("console.log(\'second\');".str)
+	println(\'third\') println(\'fourth\')
+}'
+	run := js_run_program(root, 'order.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'first\nsecond\nthird\nfourth'
+}
+
+fn test_js_backend_ignores_calls_in_comments() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('comments')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := 'fn main() {
+	println(\'live\') /* println(\'ghost\') */
+	println(\'https://example.test\') /* /* println(\'nested\') */ println(\'outer\') */ println(\'after\')
+	/* JS.eval("console.log(\'hidden\');".str)
+	   println(\'also hidden\')
+	*/ JS.eval("console.log(\'from JS\');".str)
+	println(\'last\') // println(\'line comment\')
+}'
+	run := js_run_program(root, 'comments.js.v', source.replace('\n', '\r\n'), [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'live\nhttps://example.test\nafter\nfrom JS\nlast'
+}
+
+fn test_js_backend_ignores_calls_in_string_literals() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('string_literals')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := 'fn main() {
+	println(\'live\') _ = "println(\'ghost\')"
+	_ = "https://example.test/println(\'url\')" println(\'after URL\')
+	_ = "/* println(\'comment-like\') */"
+	_ = r\'JS.eval("console.log(123);".str)\'
+	_ = "\${\'}\'} println(\'interpolated\')"
+	JS.eval("console.log(\'from JS\');".str) println(\'last\')
+}'
+	run := js_run_program(root, 'string_literals.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'live\nafter URL\nfrom JS\nlast'
+}
+
+fn test_js_backend_rejects_calls_in_unsupported_control_flow() {
+	root := js_new_fixture_root('control_flow')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for i, source in [
+		"fn main() { println('live') if false { println('dead') } }",
+		"fn main() { println('live') \$if custom_flag ? { println('conditional') } }",
+		'fn main() { println(\'live\') for { JS.eval("console.log(\'loop\');".str) } }',
+		"fn main() { println('live') abort() println('dead') }\nfn abort() { panic('stop') }",
+	] {
+		output := os.join_path(root, 'control_flow_${i}.js')
+		program := js_write_fixture(root, 'control_flow_${i}.js.v', source)!
+		code, message, _ := js_compile(program, output)
+		assert code != 0, message
+		assert message.contains('supports only direct literal println and JS.eval statements'), message
+		assert !os.exists(output)
+	}
+	output := os.join_path(root, 'init.js')
+	program := js_write_fixture(root, 'init.js.v', "fn main() { println('live') } fn init() { panic('stop') }")!
+	code, message, _ := js_compile(program, output)
+	assert code != 0, message
+	assert message.contains('does not support init functions'), message
+	assert !os.exists(output)
+}
+
+fn test_js_backend_stops_at_return_and_ignores_unused_functions() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('return_and_unused')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := "fn unused() { println('unused') } fn main() { println('live') return; println('dead') }"
+	run := js_run_program(root, 'return_and_unused.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'live'
+}
+
+fn test_js_backend_rejects_unsupported_startup_initializers() {
+	root := js_new_fixture_root('startup')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	declarations := {
+		'constant':       'const value = announce()'
+		'constant_group': 'const (\n\tliteral = 1\n\tvalue = (announce())\n)'
+		'global':         '__global value = announce()'
+		'global_group':   '__global (\n\tliteral = 1\n\tvalue int = announce()\n)'
+		'global_default': '__global value Startup\nstruct Startup { number int = announce() }'
+	}
+	for name, declaration in declarations {
+		source := "@[has_globals]
+module main
+
+${declaration}
+
+fn announce() int {
+	println('init')
+	return 1
+}
+
+fn main() { println('main') }"
+		program := js_write_fixture(root, '${name}.v', source)!
+		output := os.join_path(root, '${name}.js')
+		code, message, _ := js_compile(program, output)
+		kind := name.all_before('_')
+		assert code != 0, message
+		assert message.contains('${name}.v:'), message
+		assert message.contains('does not support this ${kind} initializer for `value`'), message
+		assert !os.exists(output)
+	}
+	// Top-level declarations can run before main even when written after it.
+	program := js_write_fixture(root, 'conditional.v', "fn announce() int {
+	println('init')
+	return 1
+}
+
+fn main() {
+	println('main')
+	return
+}
+
+\$if enabled ? {
+	const value = announce()
+}")!
+	output := os.join_path(root, 'conditional.js')
+	code, message, _ := js_compile(program, output)
+	assert code != 0, message
+	assert message.contains('does not support top-level compile-time control flow'), message
+	assert !os.exists(output)
+}
+
+fn test_js_backend_allows_inert_startup_declarations() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
+	root := js_new_fixture_root('inert_startup')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := '@[has_globals]
+module main
+
+const literal = (-42)
+__global flag bool
+__global label = \'label\'
+
+@[export: \'TIC\']
+__global tic = fn (value int) int {
+	return value + 1
+}
+
+fn main() {
+	JS.eval("console.log(globalThis.TIC(4));".str)
+	println(\'main\')
+}'
+	run := js_run_program(root, 'inert_startup.js.v', source, [])!
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5\nmain'
+}
