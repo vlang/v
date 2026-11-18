@@ -69,61 +69,49 @@ fn test_conn_remains_intact() {
 	http.get('http://${localserver}/reset')!
 
 	mut conn := simple_tcp_client()!
+	defer { conn.close() or {} }
+
 	conn.write_string(default_request)!
-
-	mut read := io.read_all(reader: conn)!
-	mut response := read.bytestr()
-	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
-	assert response.ends_with('${response_body}:1') == true, 'read response: ${response}'
-
-	// send request again over the same connection
+	assert_keep_alive_response(mut conn, '${response_body}:1')!
+	// Send the next request over the same connection.
 	conn.write_string(default_request)!
-
-	read = io.read_all(reader: conn)!
-	response = read.bytestr()
-	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
-	assert response.ends_with('${response_body}:2') == true, 'read response: ${response}'
-
-	conn.close() or {}
+	assert_keep_alive_response(mut conn, '${response_body}:2')!
 }
 
 fn test_conn_remains_intact_after_reusable_takeover() {
 	http.get('http://${localserver}/reset')!
 
 	mut conn := simple_tcp_client()!
+	defer { conn.close() or {} }
 	conn.write_string('GET /reusable HTTP/1.1\r\nUser-Agent: VTESTS\r\nAccept: */*\r\n\r\n')!
 
-	mut response := read_until_contains(mut conn, '\r\n0\r\n\r\n')!
+	response := read_until_contains(mut conn, '\r\n0\r\n\r\n')!
 	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
 	assert response.contains('manual:0') == true, 'read response: ${response}'
 	assert response.contains('\r\n0\r\n\r\n') == true, 'read response: ${response}'
 
-	// send request again over the same connection
+	// Send the next request over the same connection.
 	conn.write_string(default_request)!
-
-	read := io.read_all(reader: conn)!
-	response = read.bytestr()
-	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
-	assert response.ends_with('${response_body}:1') == true, 'read response: ${response}'
-
-	conn.close() or {}
+	assert_keep_alive_response(mut conn, '${response_body}:1')!
 }
 
 fn test_reusable_takeover_honors_connection_close() {
 	http.get('http://${localserver}/reset')!
 
 	mut conn := simple_tcp_client()!
+	defer { conn.close() or {} }
 	conn.write_string('GET /reusable HTTP/1.1\r\nUser-Agent: VTESTS\r\nAccept: */*\r\nConnection: close\r\n\r\n')!
 
 	response := read_until_contains(mut conn, '\r\n0\r\n\r\n')!
 	assert response.contains('manual:0') == true, 'read response: ${response}'
-	assert response.contains('\r\n0\r\n\r\n') == true, 'read response: ${response}'
+	assert response.ends_with('\r\n0\r\n\r\n'), 'read response: ${response}'
 
-	conn.write_string(default_request) or {}
-	next := io.read_all(reader: conn) or { []u8{} }
-	assert next.len == 0
-
-	conn.close() or {}
+	mut next := []u8{len: 1}
+	if n := conn.read(mut next) {
+		assert n == 0, 'expected EOF after the response, read ${n} bytes'
+	} else {
+		assert err is io.Eof, 'expected EOF after the response, got ${err}'
+	}
 }
 
 fn test_support_http_1() {
@@ -146,6 +134,22 @@ fn test_support_http_1() {
 }
 
 // utility code:
+
+fn assert_keep_alive_response(mut conn net.TcpConn, expected_body string) ! {
+	raw := read_until_contains(mut conn, '\r\n\r\n')!
+	response := http.parse_response(raw)!
+	length := response.header.get(.content_length) or {
+		return error('keep-alive response is missing Content-Length')
+	}
+	assert length == expected_body.len.str()
+	connection := response.header.get(.connection) or { '' }
+	assert connection.to_lower() != 'close'
+	assert response.body.len <= expected_body.len
+	// The header read may have already received part or all of the body.
+	mut remaining := []u8{len: expected_body.len - response.body.len}
+	io.read_exact(mut conn, mut remaining)!
+	assert response.body + remaining.bytestr() == expected_body
+}
 
 fn simple_tcp_client() !&net.TcpConn {
 	mut client := &net.TcpConn(unsafe { nil })
