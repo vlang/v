@@ -382,9 +382,8 @@ pub fn target_dir(scope Scope, base string) string {
 // rather than overwritten: an agent must not silently discard local edits to a
 // checked-in skill. `dry_run` computes the same result without writing.
 //
-// A symlink sitting where the skill would go is refused. `os.is_dir` and
-// `os.rmdir_all` both follow their argument, so `--force` over a link would
-// list and delete the *target's* contents rather than the link. Provenance symlinks and
+// A symlink sitting where the skill would go is refused, including with --force,
+// so installation preserves both the link and its target. Provenance symlinks and
 // non-regular files are refused before installed content is replaced.
 pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	validate_name(skill.name)!
