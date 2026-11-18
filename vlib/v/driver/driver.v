@@ -2481,12 +2481,13 @@ fn resolve_v3_version_executable(version_name string) !string {
 	for env_name in ['VVM_HOME', 'VVM_DIR'] {
 		vvm_root := os.getenv(env_name).trim_space()
 		if vvm_root.len > 0 {
+			// Check both layouts with and without the Windows extension so a
+			// symlinked or cross-platform VVM tree is found on any host.
+			paths << os.join_path(vvm_root, normalized, 'bin', 'v')
+			paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v')
 			$if windows {
 				paths << os.join_path(vvm_root, normalized, 'bin', 'v.exe')
 				paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v.exe')
-			} $else {
-				paths << os.join_path(vvm_root, normalized, 'bin', 'v')
-				paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v')
 			}
 		}
 	}
