@@ -6414,10 +6414,6 @@ fn main() {
 	assert run_module_cache_binary(strict_output) == '43'
 }
 
-// test_incremental_program_cache_rebuilds_rejected_restored_body builds a program that
-// imports mcp (its C pulls in mbedtls), then edits one string literal. The incremental
-// restore of the first build must not make the second build fail on a redefinition of
-// a C type from the prefix, nor leave a stale executable behind.
 fn test_incremental_program_cache_rebuilds_rejected_restored_body() {
 	$if !macos {
 		return
@@ -6429,24 +6425,54 @@ fn test_incremental_program_cache_rebuilds_rejected_restored_body() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn label(value string) string {
+	return value
+}
+')
+	// Give the C compiler a duplicate type definition on the first attempt
+	// after the edit. The recovery build disables incremental restoration.
+	real_cc := os.find_abs_path_of_executable('cc') or { panic('system cc not found') }
+	cc_wrapper := os.join_path(root, 'cc')
+	write_module_cache_file(root, 'cc', '#!/bin/sh
+if [ "\$V3_TEST_REJECT_RESTORED_BODY" = 1 ] && [ "\$V3_CACHE_DISABLE_INCREMENTAL" != 1 ]; then
+	for input do
+		case "\$input" in
+			*/program_main_*.c.tmp.*)
+				printf "\\nstruct v3_recovery_probe { int value; };\\nstruct v3_recovery_probe { int value; };\\n" >> "\$input" || exit 1
+				break
+				;;
+		esac
+	done
+fi
+exec ${os.quoted_path(real_cc)} "\$@"
+')
+	os.chmod(cc_wrapper, 0o700) or { panic(err) }
+
 	cache_dir := os.join_path(root, 'cache')
 	main_file := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'app')
 	for word in ['first', 'second', 'third'] {
 		write_module_cache_file(root, 'main.v', "module main
 
-import mcp
+import cached
 
 fn label() string {
 	return '${word}'
 }
 
 fn main() {
-	_ := mcp.Server{}
-	println(label())
+	println(cached.label(label()))
 }
 ")
-		output := os.join_path(root, word)
-		compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+		reject := word == 'second'
+		compiled := os.exec(['env', 'VFLAGS=', 'V3CACHE=${cache_dir}', 'V3_CACHE_TRACE=1',
+			'V3_CACHE_DISABLE_INCREMENTAL=', 'V3_TEST_REJECT_RESTORED_BODY=${int(reject)}', v3_bin,
+			'-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc', cc_wrapper, '-show-timings',
+			'-enable-globals', '-o', output, main_file])
+		assert compiled.exit_code == 0, compiled.output
+		assert compiled.output.count('the C compiler rejected the program main restored by the incremental cache') == int(reject), compiled.output
 		assert run_module_cache_binary(output) == word
 	}
 }
