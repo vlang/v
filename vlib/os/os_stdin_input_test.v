@@ -14,6 +14,10 @@ fn main() {
 		'get_line' {
 			println(os.get_line())
 		}
+		'get_line_pair_bytes' {
+			println(os.get_line().bytes())
+			println(os.get_line().bytes())
+		}
 		'get_lines' {
 			println(os.get_lines().str())
 		}
@@ -68,7 +72,7 @@ fn testsuite_begin() {
 	os.mkdir_all(stdin_probe.dir)!
 	source := os.join_path(stdin_probe.dir, 'stdin_probe.v')
 	os.write_file(source, stdin_probe_source)!
-	build := os.exec([@VEXE, '-o', stdin_probe.exe, source])
+	build := os.exec([@VEXE, '-nocache', '-o', stdin_probe.exe, source])
 	assert build.exit_code == 0, build.output
 }
 
@@ -108,9 +112,11 @@ fn test_get_line_returns_one_line_without_its_newline() {
 	assert stdin_probe.feed('get_line', 'only\n') == 'only'
 	// An empty stdin gives an empty line rather than an error.
 	assert stdin_probe.feed('get_line', '') == ''
-	// NOTE: `get_line()` trims `\r\n` on Windows but only `\n` elsewhere
-	// (os.v:459), so a CRLF line keeps a trailing `\r` off Windows. No CRLF
-	// payload is asserted here, because the two platforms disagree.
+}
+
+fn test_get_line_strips_crlf_on_all_platforms() {
+	output := stdin_probe.feed('get_line_pair_bytes', 'first\r\nsecond\n')
+	assert output.replace('\r\n', '\n') == '[102, 105, 114, 115, 116]\n[115, 101, 99, 111, 110, 100]'
 }
 
 fn test_get_lines_and_get_lines_joined_stop_at_a_blank_line() {
