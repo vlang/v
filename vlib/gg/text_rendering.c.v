@@ -473,6 +473,20 @@ fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
 	return advance, bounds
 }
 
+// text_width returns the width of the `string` `s` in pixels.
+pub fn (ctx &Context) text_width(s string) int {
+	$if macos {
+		if ctx.native_rendering {
+			return darwin_text_width(s)
+		}
+	}
+	if !ctx.font_inited {
+		return 0
+	}
+	advance, _ := ctx.text_metrics(s)
+	return int(advance / ctx.scale)
+}
+
 // text_width_cfg returns the width of `s` using the supplied TextCfg.
 pub fn (ctx &Context) text_width_cfg(s string, cfg TextCfg) int {
 	if !ctx.font_inited {
