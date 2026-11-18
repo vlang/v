@@ -68,3 +68,84 @@ fn assemble64(n1 u8, n2 u8, n3 u8, n4 u8, n5 u8, n6 u8, n7 u8, n8 u8) u64 {
 fn assemble32(n1 u8, n2 u8, n3 u8, n4 u8) u32 {
 	return u32(n1) << 26 | u32(n2) << 20 | u32(n3) << 14 | u32(n4) << 8
 }
+
+// CorruptInputError is returned by `decode_strict` for input that is not valid
+// base64. `offset` is the zero-based index of the byte where the input was found
+// invalid, or the input length when the input ends too early. When the input has
+// several defects, it is the first one met while reading from the start.
+pub struct CorruptInputError {
+	Error
+pub:
+	offset int
+}
+
+// msg formats a CorruptInputError for `IError.msg()`.
+pub fn (e CorruptInputError) msg() string {
+	return 'base64: invalid input at byte ${e.offset}'
+}
+
+// decode_strict decodes `data` like `decode`, but returns a `CorruptInputError`
+// instead of decoding invalid input to wrong bytes. `data` must be canonical
+// standard base64 (RFC 4648, sections 4 and 3.5): only `A`-`Z`, `a`-`z`, `0`-`9`,
+// `+` and `/`, a length that is a multiple of 4, `=` only as the final one or two
+// padding bytes, and the unused bits of the last symbol set to zero. Whitespace,
+// line breaks and the URL-safe alphabet are rejected too. Use it for input you
+// did not encode yourself.
+// Example: assert base64.decode_strict('Zm9v')! == 'foo'.bytes()
+pub fn decode_strict(data string) ![]u8 {
+	// Symbols run up to the first `=`, which starts the padding.
+	mut symbols := 0
+	for symbols < data.len && data[symbols] != `=` {
+		if strict_value(data[symbols]) < 0 {
+			return CorruptInputError{
+				offset: symbols
+			}
+		}
+		symbols++
+	}
+	mut padding := 0
+	if symbols < data.len {
+		// The padding fills the last group of 4: 2 symbols then `==`, or 3
+		// symbols then `=`.
+		padding = 4 - symbols % 4
+		if padding > 2 {
+			return CorruptInputError{
+				offset: symbols
+			}
+		}
+		// The last symbol carries bits that encode no output byte: 4 before
+		// `==`, 2 before `=`. A canonical encoder sets them to zero.
+		unused_bits_mask := if padding == 2 { 0x0f } else { 0x03 }
+		if strict_value(data[symbols - 1]) & unused_bits_mask != 0 {
+			return CorruptInputError{
+				offset: symbols - 1
+			}
+		}
+		for i in symbols .. data.len {
+			if data[i] != `=` || i >= symbols + padding {
+				return CorruptInputError{
+					offset: i
+				}
+			}
+		}
+	}
+	if data.len % 4 != 0 {
+		return CorruptInputError{
+			offset: data.len
+		}
+	}
+	return decode(data)
+}
+
+// strict_value returns the value of a symbol of the standard base64 alphabet,
+// or -1 for any other byte.
+fn strict_value(c u8) int {
+	return match c {
+		`A`...`Z` { int(c - `A`) }
+		`a`...`z` { int(c - `a`) + 26 }
+		`0`...`9` { int(c - `0`) + 52 }
+		`+` { 62 }
+		`/` { 63 }
+		else { -1 }
+	}
+}
