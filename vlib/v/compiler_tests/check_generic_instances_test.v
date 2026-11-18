@@ -71,6 +71,39 @@ fn test_a_method_of_a_generic_struct_is_checked_for_each_instance() {
 	assert error_lines(res.output) == ['15:13: `int` has no property `name`'], res.output
 }
 
+// A method of a generic struct that declares a return type but returns
+// nothing is reported for the declaration itself: no instance returns either.
+fn test_a_generic_struct_method_without_a_return_is_reported() {
+	res := check_program('method_missing_return', 'struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n}\n\nfn main() {\n\tprintln(Box[int]{ v: 1 }.label())\n}\n')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['14:1: missing return at end of function `label`'], res.output
+}
+
+// Assigning through the immutable receiver of a method of a generic struct is
+// reported for the instance: the receiver is immutable whatever `T` is.
+fn test_a_generic_struct_method_assigning_through_an_immutable_receiver_is_reported() {
+	res := check_program('method_immutable_receiver', 'struct Box[T] {\nmut:\n\tv T\n}\n\nfn (b &Box[T]) set(v T) {\n\tb.v = v\n}\n\nfn main() {\n\tmut b := Box[int]{}\n\tb.set(1)\n\tprintln(b.v)\n}\n')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['16:2: `b` is immutable, declare it with `mut` to make it mutable'], res.output
+}
+
+// Calling a method of a generic struct with fewer arguments than it takes is
+// reported where the generic caller does so: the missing arguments are not
+// zeroes.
+fn test_a_generic_struct_method_called_with_fewer_arguments_is_reported() {
+	res := check_program('method_arg_count', 'struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) show(n int, rest []int) {\n\tprintln(n)\n\tprintln(rest.len)\n}\n\nfn call[T](b Box[T]) {\n\tb.show()\n}\n\nfn main() {\n\tcall(Box[int]{ v: 1 })\n}\n')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['20:4: expected 2 arguments, but got 0'], res.output
+}
+
+// Methods of a generic struct that return, mutate through a `mut` receiver,
+// and are called with the right number of arguments stay valid.
+fn test_valid_generic_struct_methods_stay_valid() {
+	res := check_program('methods_valid', 'struct Box[T] {\nmut:\n\tv T\n}\n\nfn (b &Box[T]) get() T {\n\treturn b.v\n}\n\nfn (mut b Box[T]) set(v T) {\n\tb.v = v\n}\n\nfn (b Box[T]) show(n int, rest []int) int {\n\tif rest.len > 0 {\n\t\treturn n + rest[0]\n\t}\n\treturn n\n}\n\nfn call[T](b Box[T]) int {\n\treturn b.show(1, [2])\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tv: 3\n\t}\n\tprintln(b.get())\n\tb.set(10)\n\tprintln(b.get())\n\tprintln(call(b))\n}\n')
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
 fn test_instances_that_have_what_the_body_uses_stay_valid() {
 	res := check_program('valid', "fn show[T](x T) string {\n\treturn x.name\n}\n\nfn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n\tprintln(call(User{ name: 'b' }))\n}\n")
 	assert res.exit_code == 0, res.output
