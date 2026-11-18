@@ -180,6 +180,10 @@ world echo {
 	mut has_string_result := false
 	mut lift_has_mem_opt := false
 	mut lift_has_realloc_opt := false
+	mut alias_func_names := []string{}
+	mut alias_mem_names := []string{}
+	mut canon_mem_vals := []int{}
+	mut canon_realloc_vals := []int{}
 	for pos < comp.len {
 		sid := comp[pos]
 		pos++
@@ -255,6 +259,60 @@ world echo {
 				}
 			}
 		}
+		if sid == 6 {
+			// alias section: func aliases sort 0x00, core-memory alias sort 0x02.
+			// The (memory 0) canon opt only resolves if a memory alias exists,
+			// and the (realloc f) opt takes the component-level func-alias
+			// index, not the nested module's original func index.
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x00, 'alias must target a core sort'
+				p++
+				sort := comp[p]
+				p++
+				assert comp[p] == 0x01, 'alias must target the core instance'
+				p++
+				// instance idx
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				mut ln := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					ln |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				name := comp[p..p + ln].bytestr()
+				p += ln
+				if sort == 0x00 {
+					alias_func_names << name
+				} else if sort == 0x02 {
+					alias_mem_names << name
+				} else {
+					assert false, 'unexpected alias sort ${sort}'
+				}
+			}
+		}
 		if sid == 8 {
 			// canon section: any lift carrying both memory and realloc opts
 			mut p := pos
@@ -301,22 +359,32 @@ world echo {
 					p++
 					if code == 0x03 {
 						has_mem = true
+						mut mv := 0
+						mut msh := 0
 						for {
 							b := comp[p]
 							p++
+							mv |= (int(b) & 0x7f) << msh
+							msh += 7
 							if b & 0x80 == 0 {
 								break
 							}
 						}
+						canon_mem_vals << mv
 					} else if code == 0x04 {
 						has_re = true
+						mut rv := 0
+						mut rsh := 0
 						for {
 							b := comp[p]
 							p++
+							rv |= (int(b) & 0x7f) << rsh
+							rsh += 7
 							if b & 0x80 == 0 {
 								break
 							}
 						}
+						canon_realloc_vals << rv
 					} else {
 						for {
 							b := comp[p]
@@ -406,4 +474,15 @@ world echo {
 	assert 'hello' in export_names
 	assert lift_has_mem_opt, 'canon lift must carry (memory)'
 	assert lift_has_realloc_opt, 'canon lift must carry (realloc)'
+	assert 'memory' in alias_mem_names, 'component must alias core memory, got ${alias_mem_names}'
+	re_alias := alias_func_names.index('cabi_realloc')
+	assert re_alias >= 0, 'component must alias cabi_realloc, got ${alias_func_names}'
+	assert canon_mem_vals.len > 0
+	for mv in canon_mem_vals {
+		assert mv == 0, 'memory opt must reference core-memory alias 0, got ${mv}'
+	}
+	assert canon_realloc_vals.len > 0
+	for rv in canon_realloc_vals {
+		assert rv == re_alias, 'realloc opt must use component-level alias index ${re_alias}, got ${rv}'
+	}
 }
