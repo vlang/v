@@ -87,15 +87,17 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 
 $if !windows {
 	#include <sys/select.h>
-} $else {
-	@[typedef]
-	pub struct C.fd_set {}
+}
 
-	pub struct C.timeval {
-	pub:
-		tv_sec  u64
-		tv_usec u64
-	}
+// C.fd_set and C.timeval are declared here for the V checker;
+// the C compiler uses <sys/select.h>.
+@[typedef]
+pub struct C.fd_set {}
+
+pub struct C.timeval {
+pub:
+	tv_sec  u64
+	tv_usec u64
 }
 
 fn C.select(ndfs i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
