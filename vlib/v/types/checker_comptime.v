@@ -7665,8 +7665,8 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 	value_id := tc.a.child(&node, 0)
 	container_id := tc.a.child(&node, 1)
 	tc.check_node(value_id)
-	value_type_raw := tc.resolve_type(value_id)
-	value_type := unalias_type(value_type_raw)
+	mut value_type_raw := tc.resolve_type(value_id)
+	mut value_type := unalias_type(value_type_raw)
 	container := tc.a.node(container_id)
 	if value_sum_type := in_expr_sum_subject_type(value_type) {
 		if container.kind == .array_literal {
@@ -7713,6 +7713,10 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 			first_type := unalias_type(tc.resolve_type(tc.a.child(literal, 0)))
 			if first_type is SumType
 				&& tc.direct_sum_assignment_variant_matches(value_type_raw, first_type) {
+				expected_elem_type = first_type
+			} else if tc.a.node(value_id).kind == .enum_val && first_type is Enum {
+				// Like `==`, an enum shorthand on the left takes its type from
+				// the literal's element type: `.a in [Kind.a]`.
 				expected_elem_type = first_type
 			}
 		}
@@ -7767,6 +7771,12 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 			container_type.elem_type
 		} else {
 			(container_type as ArrayFixed).elem_type
+		}
+		// Like `==`, an enum shorthand on the left takes its type from the
+		// element type of the right operand: `.a in kinds`.
+		if tc.a.node(value_id).kind == .enum_val && unalias_type(element_type) is Enum {
+			value_type_raw = tc.resolve_expr(value_id, element_type)
+			value_type = unalias_type(value_type_raw)
 		}
 		pointer_element_compatible := value_type is Pointer
 			&& tc.type_compatible(value_type.base_type, element_type)
