@@ -739,14 +739,13 @@ pub fn (mut ctx Context) takeover_conn() {
 fn (mut ctx Context) prepare_takeover_conn() {
 	if ctx.conn == unsafe { nil } && ctx.client_fd >= 0 {
 		// For the fasthttp backend: create a TcpConn from the raw fd on demand.
-		// Set the fd to blocking mode. fasthttp uses non-blocking sockets,
-		// but TcpConn.write() expects blocking behavior for reliable writes.
-		$if !windows {
-			flags := C.fcntl(ctx.client_fd, C.F_GETFL, 0)
-			if flags != -1 {
-				C.fcntl(ctx.client_fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
-			}
-		}
+		// Keep the fd non-blocking: TcpConn.write() only applies the write
+		// timeout when send() reports it would block (vlang/v#32329), which
+		// never happens on a blocking socket, so a stalled client would keep
+		// the writer blocked indefinitely. The non-blocking write path waits
+		// for writability with the timeout and loops until every byte is sent,
+		// so writes stay reliable.
+		net.set_blocking(ctx.client_fd, false) or {}
 		ctx.conn = &net.TcpConn{
 			sock:          net.TcpSocket{
 				Socket: net.Socket{
@@ -754,21 +753,14 @@ fn (mut ctx Context) prepare_takeover_conn() {
 				}
 			}
 			handle:        ctx.client_fd
-			is_blocking:   true
+			is_blocking:   false
 			read_timeout:  30 * time.second
 			write_timeout: 30 * time.second
 		}
 	} else if ctx.conn != unsafe { nil } {
-		// The connection exists but uses non-blocking I/O.
-		// Switch to blocking mode for reliable SSE writes.
-		fd := ctx.conn.handle
-		$if !windows {
-			flags := C.fcntl(fd, C.F_GETFL, 0)
-			if flags != -1 {
-				C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
-			}
-		}
-		ctx.conn.is_blocking = true
+		// The connection exists: make sure it uses non-blocking I/O, so the
+		// write timeout below actually bounds TcpConn.write() (see above).
+		ctx.conn.set_blocking(false) or {}
 		ctx.conn.set_read_timeout(30 * time.second)
 		ctx.conn.set_write_timeout(30 * time.second)
 	}
