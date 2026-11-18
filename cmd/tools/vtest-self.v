@@ -313,7 +313,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v',
 	'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v',
 	'vlib/x/multiwindow/service_native_win32_no_flag_test.v',
-	'vlib/sokol/gfx/metal_private_hook_contract_test.v',
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -340,7 +339,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_func_test.v',
 	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
-	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
 	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
 	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -379,6 +377,8 @@ const skip_on_ubuntu_musl = [
 // Docker image has neither for musl-gcc (`EGL/egl.h: No such file or directory`), so
 // none of the module's tests can compile there.
 const skip_dirs_on_ubuntu_musl = [
+	'vlib/sokol/audio', // requires musl-native ALSA headers
+	'vlib/sokol/gfx', // sokol_app.h requires musl-native OpenGL and X11 headers
 	'vlib/gg/canvas',
 ]
 
