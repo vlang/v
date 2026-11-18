@@ -297,7 +297,6 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_string_import_waves_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'config'))!
 	os.mkdir_all(os.join_path(root, 'broken'))!
-	os.mkdir_all(os.join_path(root, 'broken_syntax'))!
 	os.mkdir_all(os.join_path(root, 'route_data'))!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "import_waves" }')!
@@ -305,38 +304,77 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 	broken_path := os.join_path(root, 'broken/broken.v')
 	invalid_function := 'fn unused() { missing() }\n'
 	invalid_syntax := 'fn unused( { }\n'
-	os.write_file(os.join_path(root, 'broken_syntax/broken_syntax.v'), 'module broken_syntax\n' +
-		invalid_syntax)!
+	// Distinct imports let the direct and nested guards exercise separate modules.
+	for name, body in {
+		'broken_syntax':        invalid_syntax
+		'nested_broken':        invalid_function
+		'nested_broken_syntax': invalid_syntax
+		'nested_data':          'pub const yes = true\npub const value = 2\n'
+	} {
+		module_dir := os.join_path(root, name)
+		os.mkdir_all(module_dir)!
+		os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${name}\n${body}')!
+	}
 	path := os.join_path(root, 'main.v')
+	executable := os.join_path(root, 'selected${exe_suffix}')
 	saved_no_file_index := os.getenv('V3_NO_FILE_IDX')
 	defer { os.setenv('V3_NO_FILE_IDX', saved_no_file_index, true) }
 	for mode in ['parallel', 'serial', 'full_scan'] {
 		os.setenv('V3_NO_FILE_IDX', if mode == 'full_scan' { '1' } else { '' }, true)
 		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
 		if mode == 'serial' { args << '-no-parallel' }
-		args << ['-o', os.join_path(root, 'selected${exe_suffix}'), path]
+		args << ['-o', executable, path]
 		os.write_file(os.join_path(root, 'route_data/route_data.v'), data_source)!
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = false\n')!
 		os.write_file(broken_path, 'module broken\n' + invalid_function)!
-		for nested in [false, true] {
-			body := '\$if cfg.enabled {\n import broken\n import broken_syntax\n}\n'
-			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
-			os.write_file(path, "import config as cfg\n${guarded}fn main() { println('ok') }\n")!
-			result := os.exec(args)
-			assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
-			run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
-			assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
-		}
+		os.write_file(path, r"import config as cfg
+$if cfg.enabled {
+ import broken
+ import broken_syntax
+}
+$if string is string {
+ $if cfg.enabled {
+  import nested_broken
+  import nested_broken_syntax
+ }
+}
+fn main() { println('ok') }
+")!
+		disabled := os.exec(args)
+		assert disabled.exit_code == 0, '${mode}: ${disabled.output}'
+		disabled_run := os.exec([executable])
+		assert disabled_run.exit_code == 0 && disabled_run.output.trim_space() == 'ok', disabled_run.output
+
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = true\n')!
-		for nested in [false, true] {
-			body := '\$if cfg.enabled {\n import route_data as rd\n}\n\$if rd.yes {\n fn chosen() int { return 1 }\n} \$else {\n fn chosen() Unavailable { return missing() }\n}\n'
-			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
-			os.write_file(path, 'import config as cfg\n${guarded}fn main() { assert chosen() == 1 }\n')!
-			result := os.exec(args)
-			assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
-			run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
-			assert run.exit_code == 0, run.output
-		}
+		os.write_file(path, r'import config as cfg
+$if cfg.enabled {
+ import route_data as rd
+}
+$if string is string {
+ $if cfg.enabled {
+  import nested_data as nd
+ }
+ $if nd.yes {
+  fn chosen_nested() int { return nd.value }
+ } $else {
+  fn chosen_nested() Unavailable { return missing() }
+ }
+}
+$if rd.yes {
+ fn chosen() int { return 1 }
+} $else {
+ fn chosen() Unavailable { return missing() }
+}
+fn main() {
+ assert chosen() == 1
+ assert chosen_nested() == 2
+}
+')!
+		enabled := os.exec(args)
+		assert enabled.exit_code == 0, '${mode}: ${enabled.output}'
+		enabled_run := os.exec([executable])
+		assert enabled_run.exit_code == 0, enabled_run.output
+
 		os.write_file(path, 'import config as cfg\n\$if string is string {\n \$if cfg.enabled {\n  import broken\n }\n}\nfn main() {}\n')!
 		for body in [invalid_function, invalid_syntax] {
 			os.write_file(broken_path, 'module broken\n' + body)!
@@ -349,7 +387,7 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 		os.write_file(path, "\$if selected.starts_with('y') {\n import route_data\n}\n\$if int is int { const selected = 'yes' }\nfn main() { assert route_data.value == 3 }\n")!
 		result := os.exec(args)
 		assert result.exit_code == 0, '${mode}: ${result.output}'
-		run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
+		run := os.exec([executable])
 		assert run.exit_code == 0, run.output
 	}
 }
