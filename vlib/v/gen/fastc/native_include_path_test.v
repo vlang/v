@@ -50,3 +50,28 @@ fn test_native_include_paths_resolve_dir_like_the_emitted_directive() {
 	emitted := fastc_resolve_c_pseudo_paths('include "@DIR/native.h"', prefs.vroot, source)
 	assert emitted == 'include "${header}"'
 }
+
+fn test_fastc_includes_headers_staged_beside_a_symlinked_v_source() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_staged_include_${os.getpid()}')
+	original := os.join_path(root, 'original')
+	project := os.join_path(root, 'app')
+	staged := os.join_path(project, 'bridge')
+	os.mkdir_all(original)!
+	os.mkdir_all(staged)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(original, 'bridge.c.v')
+	os.write_file(source, 'module bridge\n#include "@DIR/native.h"\n#include "original.h"\npub fn value() int { return C.BRIDGE_VALUE }\n')!
+	os.symlink(source, os.join_path(staged, 'bridge.c.v'))!
+	os.write_file(os.join_path(staged, 'native.h'), '#define BRIDGE_VALUE 42\n')!
+	os.write_file(os.join_path(original, 'original.h'), '')!
+	os.write_file(os.join_path(project, 'main.v'), 'module main\nimport bridge\nfn main() { assert bridge.value() == 42 }\n')!
+	output := os.join_path(root, 'program.c')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', output, project])
+	assert build.exit_code == 0, build.output
+	generated := os.read_file(output)!
+	assert generated.contains('#include "${os.join_path(staged, 'native.h')}"')
+	assert generated.contains('#include "${os.join_path(original, 'original.h')}"')
+}

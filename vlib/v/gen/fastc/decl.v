@@ -1145,6 +1145,12 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 			initializers.writeln('\t${c_name} = ${initializer};')
 		}
 		g.global_types.set_id(key, typ)
+		if typ == fastc_type_option {
+			payload := g.option_value_type_for_expression(g.last_expression)
+			if payload != 0 {
+				g.global_option_types.set_id(key, payload)
+			}
+		}
 		g.skip_semicolons()
 		return
 	}
