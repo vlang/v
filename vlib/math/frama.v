@@ -9,9 +9,12 @@ pub fn frama(values []f64, period int) []f64 {
 	out[0] = values[0]
 	for i in 1 .. values.len {
 		start := if i >= period { i - period } else { 0 }
+		// Split the active window [start..i] into halves derived from
+		// the window bounds, not the absolute position.
+		mid := start + (i - start + 1) / 2
 		mut h1 := values[start]
 		mut l1 := values[start]
-		for j in start .. i / 2 + start + 1 {
+		for j in start .. mid + 1 {
 			if values[j] > h1 {
 				h1 = values[j]
 			}
@@ -19,9 +22,9 @@ pub fn frama(values []f64, period int) []f64 {
 				l1 = values[j]
 			}
 		}
-		mut h2 := values[i / 2 + start]
-		mut l2 := values[i / 2 + start]
-		for j in i / 2 + start .. i + 1 {
+		mut h2 := values[mid]
+		mut l2 := values[mid]
+		for j in mid .. i + 1 {
 			if values[j] > h2 {
 				h2 = values[j]
 			}

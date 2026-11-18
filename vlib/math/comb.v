@@ -14,7 +14,18 @@ pub fn comb(n int, k int) i64 {
 	}
 	mut res := i64(1)
 	for i in 0 .. kk {
-		res = res * i64(n - i) / i64(i + 1)
+		num := i64(n - i)
+		den := i64(i + 1)
+		// Cancel before multiplying so the running product stays the
+		// exact binomial coefficient and never overflows when the
+		// final result fits.
+		g1 := gcd(res, den)
+		res_div := res / g1
+		den_div := den / g1
+		g2 := gcd(num, den_div)
+		num_div := num / g2
+		den_final := den_div / g2
+		res = res_div / den_final * num_div
 	}
 	return res
 }

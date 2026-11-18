@@ -2,20 +2,24 @@ module math
 
 // multinomial returns n! / (k1! * k2! * ...).
 pub fn multinomial(n int, ks []int) i64 {
-	mut denom := i64(1)
+	mut total := 0
 	for k in ks {
-		denom *= factorial_i64(k)
+		if k < 0 {
+			return 0
+		}
+		total += k
 	}
-	return factorial_i64(n) / denom
-}
-
-fn factorial_i64(n int) i64 {
-	if n <= 1 {
-		return 1
+	if total != n {
+		return 0
 	}
-	mut res := i64(1)
-	for i in 2 .. n + 1 {
-		res *= i64(i)
+	// n!/(k1! k2! ...) = C(n,k1)*C(n-k1,k2)*... . Each partial product
+	// equals the running multinomial and is bounded by the final value,
+	// so no intermediate factorial overflows when the result fits.
+	mut acc := i64(1)
+	mut rem := n
+	for k in ks {
+		acc *= comb(rem, k)
+		rem -= k
 	}
-	return res
+	return acc
 }
