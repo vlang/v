@@ -147,8 +147,15 @@ pub fn conn_write_timeout(c &Conn) time.Duration {
 // connection before returning.
 pub fn dial_with_timeouts(host string, port int, cfg Config, t Timeouts) !&Conn {
 	tcp := dial_tcp_bounded('${host}:${port}', t.connect_timeout_ms)!
+	mut ccfg := cfg
+	// An empty server_name means "verify against the dialed host": without
+	// this default any valid chain (for any name) would be accepted.
+	// Mirrors dial() so timeout and async (delegating) paths verify identically.
+	if ccfg.server_name == '' {
+		ccfg.server_name = host
+	}
 	mut c := &Conn{
-		cfg: cfg
+		cfg: ccfg
 		tcp: tcp
 	}
 	if t.handshake_timeout_ms > 0 {

@@ -831,6 +831,9 @@ pub fn (mut c Conn) handshake() ! {
 	mut server_finished := false
 	mut hs_records := 0
 	mut carry := []u8{}
+	mut saw_certificate := false
+	mut saw_certificate_verify := false
+	mut cv_verified := false
 	for !server_finished {
 		hs_records++
 		// Bound the handshake flight: a legitimate flight is a handful of
@@ -878,6 +881,7 @@ pub fn (mut c Conn) handshake() ! {
 					chs.ocsp_response = parsed.body.clone()
 				}
 				.certificate {
+					saw_certificate = true
 					if c.cfg.verify {
 						cert_ders := extract_chain_ders(parsed.body) or { return err }
 						leaf0 := x509.parse_der(cert_ders[0]) or { return error(error_bad_signature) }
@@ -891,11 +895,13 @@ pub fn (mut c Conn) handshake() ! {
 					}
 				}
 				.certificate_verify {
+					saw_certificate_verify = true
 					if c.cfg.verify {
 						key := chs.server_cert_key or { return error('tls: no server pubkey') }
 						transcript_hash := transcript_hash_for_suite(chs.transcript, c.suite)
 						content := cv_content(true, transcript_hash)
 						verify_certificate_verify(parsed.body, key, content) or { return err }
+						cv_verified = true
 					}
 				}
 				.finished {
@@ -934,6 +940,21 @@ pub fn (mut c Conn) handshake() ! {
 			carry = carry[ioff..].clone()
 		} else {
 			carry = []u8{}
+		}
+	}
+
+	// RFC 8446 §4.4.2-4.4.3: a full handshake must authenticate the server
+	// with Certificate + CertificateVerify; only a negotiated PSK may omit
+	// them. Key confirmation (Finished MAC) alone does not establish identity.
+	if !chs.accepted_psk {
+		if !saw_certificate {
+			return error('tls: missing server certificate')
+		}
+		if !saw_certificate_verify {
+			return error('tls: missing server CertificateVerify')
+		}
+		if c.cfg.verify && !cv_verified {
+			return error('tls: missing server CertificateVerify')
 		}
 	}
 

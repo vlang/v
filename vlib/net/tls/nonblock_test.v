@@ -4,6 +4,9 @@
 // so no threads leak between tests.
 module tls
 
+import crypto.pem
+import crypto.rsa
+import crypto.x509
 import net
 import time
 
@@ -278,4 +281,118 @@ fn test_nonblock_connect_timeout_test_net_1() ! {
 		return
 	}
 	assert false, 'connect to TEST-NET-1 must fail'
+}
+
+// wrong_example_server starts a verified TLS server presenting a cert for
+// wrong.example, trusted via the returned PEM. Each caller gets a fresh
+// listener; the acceptor serves one echo exchange.
+fn wrong_example_server() !(&Listener, int, string) {
+	key := rsa.generate_key(rsa.KeyGenOptions{ bits: 1024 }) or { panic('keygen: ${err}') }
+	now := time.now()
+	_, cert_der := rsa.generate_self_signed(x509.CertGenOptions{
+		common_name: 'wrong.example'
+		dns_names:   ['wrong.example']
+		not_before:  now
+		not_after:   now.add_days(30)
+	}, key) or { panic('cert gen: ${err}') }
+	key_pem := key.to_pem_pkcs8() or { panic('key pem: ${err}') }
+	cert_pem := pem.Block{
+		block_type: 'CERTIFICATE'
+		data:       cert_der
+	}.encode(pem.EncodeConfig{}) or { panic('cert pem: ${err}') }
+	mut l := listen(Config{
+		verify: false
+		cert:   cert_pem
+		key:    key_pem
+	}) or { panic('listen: ${err}') }
+	port := l.addr() or { panic(err) }.port() or { panic(err) }
+	return l, port, cert_pem
+}
+
+// dial_with_timeouts must default an empty server_name to the dialed host
+// (mirroring dial): a leaf for wrong.example must be rejected when dialing
+// 127.0.0.1 without a name, and accepted with the matching name.
+fn test_nonblock_timeouts_default_server_name() {
+	t := Timeouts{
+		connect_timeout_ms:   2000
+		handshake_timeout_ms: 5000
+	}
+	mut l1, port1, cert_pem1 := wrong_example_server() or { panic(err) }
+	srv1 := spawn nonblock_tls_echo_once(mut l1)
+	if mut c_bad := dial_with_timeouts('127.0.0.1', port1, Config{
+		verify:       true
+		verify_chain: true
+		ca_cert_pem:  cert_pem1.bytes()
+	}, t) {
+		c_bad.close() or {}
+		srv1.wait()
+		l1.close() or {}
+		assert false, 'dial_with_timeouts with empty server_name must reject wrong.example cert'
+	} else {
+		assert err.msg().contains('host') || err.msg().contains('mismatch')
+			|| err.msg().contains('untrusted') || err.msg().contains('chain'), 'unexpected err: ${err}'
+		srv1.wait()
+		l1.close() or {}
+	}
+	mut l2, port2, cert_pem2 := wrong_example_server() or { panic(err) }
+	srv2 := spawn nonblock_tls_echo_once(mut l2)
+	mut c := dial_with_timeouts('127.0.0.1', port2, Config{
+		server_name:  'wrong.example'
+		verify:       true
+		verify_chain: true
+		ca_cert_pem:  cert_pem2.bytes()
+	}, t) or { panic('matching name must verify: ${err}') }
+	c.write('ping'.bytes()) or { panic(err) }
+	mut buf := []u8{len: 4}
+	assert c.read(mut buf) or { panic(err) } == 4
+	assert buf == 'ping'.bytes()
+	c.close() or {}
+	srv2.wait()
+	l2.close() or {}
+}
+
+// dial_async delegates to dial_with_timeouts, so it must enforce the same
+// host default: empty names reject, matching names verify.
+fn test_nonblock_async_default_server_name() {
+	mut l1, port1, cert_pem1 := wrong_example_server() or { panic(err) }
+	srv1 := spawn nonblock_tls_echo_once(mut l1)
+	tcfg_bad := TimeoutConfig{
+		cfg:                  Config{
+			verify:       true
+			verify_chain: true
+			ca_cert_pem:  cert_pem1.bytes()
+		}
+		connect_timeout_ms:   2000
+		handshake_timeout_ms: 5000
+	}
+	mut ch := dial_async('127.0.0.1', port1, tcfg_bad)
+	r := <-ch
+	assert !r.ok, 'async dial with empty server_name must reject wrong.example cert'
+	assert r.err_msg.contains('host') || r.err_msg.contains('mismatch')
+		|| r.err_msg.contains('untrusted') || r.err_msg.contains('chain'), 'unexpected err: ${r.err_msg}'
+	srv1.wait()
+	l1.close() or {}
+	mut l2, port2, cert_pem2 := wrong_example_server() or { panic(err) }
+	srv2 := spawn nonblock_tls_echo_once(mut l2)
+	tcfg_ok := TimeoutConfig{
+		cfg:                  Config{
+			server_name:  'wrong.example'
+			verify:       true
+			verify_chain: true
+			ca_cert_pem:  cert_pem2.bytes()
+		}
+		connect_timeout_ms:   2000
+		handshake_timeout_ms: 5000
+	}
+	mut ch2 := dial_async('127.0.0.1', port2, tcfg_ok)
+	r2 := <-ch2
+	assert r2.ok, 'async dial with matching name must verify: ${r2.err_msg}'
+	mut c := r2.result() or { panic(err) }
+	c.write('pong'.bytes()) or { panic(err) }
+	mut buf := []u8{len: 4}
+	assert c.read(mut buf) or { panic(err) } == 4
+	assert buf == 'pong'.bytes()
+	c.close() or {}
+	srv2.wait()
+	l2.close() or {}
 }
