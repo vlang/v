@@ -259,7 +259,7 @@ fn tool_repo_brief(ws &Workspace, arguments string) string {
 
 fn spec_affected() ToolSpec {
 	return read_only_spec('v_affected',
-		'List the test files a change can reach through the local import graph. Pass a file or directory, or omit it to use the git worktree (staged, unstaged and untracked files). Same-module tests count via their directory. Only modules under the project root are followed.',
+		'List the test files a change can reach through the local import graph. Pass a file or directory, or omit it to use the git worktree (staged, unstaged and untracked files). Same-module tests count via their directory, including the directories of transitively reached modules. Only modules under the project root are followed.',
 		input_schema([], {
 			'path': SchemaProperty{
 				kind:        'string'
@@ -299,9 +299,12 @@ fn tool_affected(ws &Workspace, arguments string) string {
 	}
 	graph := import_graph(ws)
 	reached := propagate(graph, seed)
-	mut seed_dirs := map[string]bool{}
-	for s in seed.keys() {
-		seed_dirs[os.dir(s)] = true
+	// A reached file pulls in the tests of its whole module: a test file
+	// rarely imports its own module, so directory membership is the signal
+	// that the change can break it.
+	mut reached_dirs := map[string]bool{}
+	for r in reached.keys() {
+		reached_dirs[os.dir(r)] = true
 	}
 	mut tests := []string{}
 	for file in ws.v_files(ws.project_root) {
@@ -309,9 +312,9 @@ fn tool_affected(ws &Workspace, arguments string) string {
 			continue
 		}
 		real := os.real_path(file)
-		// Same-module tests share a directory with the changed file, so they
+		// Same-module tests share a directory with a reached file, so they
 		// count even though they import nothing.
-		if real in reached || os.dir(real) in seed_dirs
+		if real in reached || os.dir(real) in reached_dirs
 			|| file_imported_by_changed(real, reached, graph) {
 			tests << ws.relative(file)
 		}

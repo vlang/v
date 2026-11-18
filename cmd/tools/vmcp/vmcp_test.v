@@ -2405,3 +2405,17 @@ fn test_affected_without_git_explains_itself() {
 	assert answer.contains('error'), answer
 	assert answer.contains('git'), answer
 }
+
+fn test_affected_includes_same_module_tests_of_transitively_reached_modules() {
+	ws := probe_workspace()
+	os.mkdir_all(os.join_path(ws.project_root, 'dep'))!
+	os.write_file(os.join_path(ws.project_root, 'dep', 'dep.v'), 'module dep\npub fn value() int {\n\treturn 1\n}\n')!
+	os.mkdir_all(os.join_path(ws.project_root, 'consumer'))!
+	os.write_file(os.join_path(ws.project_root, 'consumer', 'consumer.v'), 'module consumer\nimport dep\npub fn value() int {\n\treturn dep.value()\n}\n')!
+	os.write_file(os.join_path(ws.project_root, 'consumer', 'consumer_test.v'), 'module consumer\nfn test_value() {\n\tassert value() == 1\n}\n')!
+	answer := call_tool_on(ws, 'v_affected', '{"path":"dep/dep.v"}')
+	// consumer_test.v imports nothing, but its module is reached through
+	// consumer.v, so the change can break it.
+	assert answer.contains('consumer/consumer_test.v'), answer
+	assert answer.contains('"count": 1') || answer.contains('"count":\t1'), answer
+}
