@@ -129,11 +129,13 @@ mut:
 	a [4]int
 }
 
-fn writer(mut c Cell) {
+fn writer(mut c Cell, ready chan bool, finish chan bool) {
+	ready <- true
 	for i in 0 .. 1000 {
 		c.s = i.str()
 		c.a[1] = i
 	}
+	_ = <-finish
 }
 
 fn read_mut_param(mut c Cell) {
@@ -146,7 +148,10 @@ fn read_mut_param_in_parens(mut a [4]int) {
 
 fn main() {
 	mut c := &Cell{}
-	t := spawn writer(mut c)
+	ready := chan bool{}
+	finish := chan bool{}
+	t := spawn writer(mut c, ready, finish)
+	_ = <-ready
 	read := \$d("read", "string")
 	for _ in 0 .. 1000 {
 		match read {
@@ -158,6 +163,7 @@ fn main() {
 			else { read_mut_param_in_parens(mut c.a) }
 		}
 	}
+	finish <- true
 	t.wait()
 	println("done")
 }
