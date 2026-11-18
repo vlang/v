@@ -1057,6 +1057,11 @@ pub fn (h Header) str() string {
 // parse_headers parses a newline delimited string into a Header struct
 fn parse_headers(s string) !Header {
 	mut h := new_header()
+	if s.trim_space() == '' {
+		// No header fields (e.g. a `204 No Content` response whose empty
+		// line directly follows the status line).
+		return h
+	}
 	mut last_key := ''
 	mut last_value := ''
 	for line in s.split_into_lines() {
