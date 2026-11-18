@@ -5679,7 +5679,9 @@ fn (tc &TypeChecker) expr_subtree_has_undefined_ident_error(id flat.NodeId) bool
 	for diagnostic in tc.errors {
 		if diagnostic.kind != .unknown_ident
 			|| (!diagnostic.msg.starts_with('undefined variable:')
-				&& !diagnostic.msg.starts_with('undefined ident:')) {
+				&& !diagnostic.msg.starts_with('undefined ident:')
+				&& !(diagnostic.msg.starts_with('module `')
+					&& diagnostic.msg.ends_with('is not a value'))) {
 			continue
 		}
 		if diagnostic.node == id {
