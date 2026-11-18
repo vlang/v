@@ -1056,26 +1056,24 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	}
 	range_type_source_id := t.range_loop_var_type_name(low_id)
 
-	// Route value `match`/`if` range bounds through value lowering (e.g.
-	// `for i in (match node { First { lower_first(node)! } ... }) .. 10`); otherwise a
-	// propagating branch tail is lowered in a value-less statement context and emits an
-	// empty expression. `transform_value_operand` materializes such a bound into a value
-	// temp (stable for reuse in the loop condition); non-branch bounds keep
-	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound: if the high
-	// bound hoists a value branch whose prelude can mutate a syntactically stable low bound
-	// (`for i in low .. (match node { First { change_low(mut low)! } ... })`), snapshot the
-	// low bound's source-order value so the loop initializer reads it before that prelude.
-	low := if t.is_value_match_or_if_operand(low_id) {
+	// Lower `match`/`if` bounds as values so propagating branch tails produce a value.
+	mut low := if t.is_value_match_or_if_operand(low_id) {
 		t.transform_value_operand(low_id)
-	} else if t.operand_hoists_value_branch(high_id) && t.operand_needs_ordering_snapshot(low_id) {
-		t.snapshot_expr_for_reuse(low_id)
 	} else {
 		t.stable_expr_for_reuse(low_id)
 	}
+	high_prelude_start := t.pending_stmts.len
 	high := if t.is_value_match_or_if_operand(high_id) {
 		t.transform_value_operand(high_id)
 	} else {
 		t.stable_expr_for_reuse(high_id)
+	}
+	// Hoisted upper-bound code can change the storage read by the lower bound.
+	if t.pending_stmts.len > high_prelude_start && t.operand_needs_ordering_snapshot(low) {
+		low_name := t.new_temp('range_low')
+		capture := t.make_decl_assign_typed(low_name, low, range_type_source_id)
+		t.pending_stmts.insert(high_prelude_start, capture)
+		low = t.make_ident(low_name)
 	}
 	escaping_value := t.guard_value_needs_heap_storage(key.value, range_type_source_id)
 	loop_name := if escaping_value {
