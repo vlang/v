@@ -21573,16 +21573,12 @@ fn wasm_supported_array_elem(type_id u32) bool {
 // would otherwise loop the walk for ever.
 fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
 	name_id := flat.source_type_syntax(type_id).main_at_base()
-	// Option types (`?T`) lower in the wasm backend when their payload does:
-	// gen.v handles types.OptionType and the SSA backend lowers the leading
-	// `ok` plus payload. Walk the payload instead of looking the option up in
-	// tc.structs, where it is not registered as a regular struct.
-	if flat.source_type_shape(name_id).has(.option_type) {
+	// Options and results are synthesized aggregates. Validate their payloads
+	// instead of looking the wrappers up in tc.structs.
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.option_type) || shape.has(.result_type) {
 		inner := flat.source_type_syntax(name_id).raw_base()
 		if inner == 0 { return false }
-		if flat.source_type_shape(inner).has(.array_type) {
-			return wasm_supported_array_elem(inner)
-		}
 		if inner in [flat.source_type_id('int'), flat.source_type_id('i8'), flat.source_type_id('i16'),
 			flat.source_type_id('i32'), flat.source_type_id('i64'), flat.source_type_id('u8'),
 			flat.source_type_id('u16'), flat.source_type_id('u32'), flat.source_type_id('u64'),
@@ -21590,6 +21586,11 @@ fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
 			flat.source_type_id('f64'), flat.source_type_id('bool'), flat.source_type_id('char'),
 			flat.source_type_id('rune'), flat.source_type_id('string')] {
 			return true
+		}
+		// The Result call path does not lower aggregate payloads yet.
+		if shape.has(.result_type) { return false }
+		if flat.source_type_shape(inner).has(.array_type) {
+			return wasm_supported_array_elem(inner)
 		}
 		if inner in tc.structs { return wasm_supported_struct(tc, inner) }
 		return false

@@ -81,6 +81,23 @@ fn run_wasi_expect(wasm string, expected []string) {
 	}
 }
 
+fn test_wasm_result_values_pass_cli_validation() {
+	src := "fn parse(text string) !int {
+	if text.len == 0 {
+		return error('empty')
+	}
+	return text.len
+}
+fn main() {
+	println(parse('ok') or { -1 })
+	println(parse('') or { -1 })
+}
+"
+	wasm := compile_to_wasm(v3_binary(), src, 'wasm_result_cli')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['2', '-1'])
+}
+
 fn test_wasm_block_scoping_preserves_outer_locals() {
 	v3_bin := v3_binary()
 	// A for-initializer and a loop-body declaration must not alter outer locals:
