@@ -30,7 +30,9 @@ const integration_key = '-----BEGIN RSA PRIVATE KEY-----\nMIIJKQIBAAKCAgEAuoAjh+
 // TlsSvc is the GrpcService the integration tests talk to. It never touches
 // generated stubs: every payload is a bare string, which is enough to prove the
 // wire contract end to end.
-struct TlsSvc {}
+struct TlsSvc {
+	release_slow_call chan bool
+}
 
 fn (mut s TlsSvc) grpc_call(path string, reqs [][]u8, mut ctx ServerContext) !([][]u8, bool) {
 	match path {
@@ -51,9 +53,13 @@ fn (mut s TlsSvc) grpc_call(path string, reqs [][]u8, mut ctx ServerContext) !([
 			}
 		}
 		'/tls.Echo/Slow' {
-			// deliberately outlive the caller's deadline, so the client's
-			// response-wait watchdog has something to fire on
-			time.sleep(time.second)
+			// Wait for the deadline check, with a fallback if the client misses it.
+			select {
+				_ := <-s.release_slow_call {
+				}
+				1 * time.second {
+				}
+			}
 			return [reqs[0]], true
 		}
 		else {
@@ -73,9 +79,9 @@ fn pick_port() !int {
 
 // start_tls_server brings up a GrpcServer on loopback TLS with HTTP/2 enabled,
 // already running when it returns. `tls_budget` bounds the handshake.
-fn start_tls_server(port int) (&http.Server, thread) {
+fn start_tls_server(port int, service TlsSvc) (&http.Server, thread) {
 	mut grpc_srv := GrpcServer{}
-	grpc_srv.mount(TlsSvc{})
+	grpc_srv.mount(service)
 	mut srv := &http.Server{
 		addr:                   '127.0.0.1:${port}'
 		cert:                   integration_cert
@@ -92,7 +98,6 @@ fn start_tls_server(port int) (&http.Server, thread) {
 		t.wait()
 		panic('integration gRPC server failed to start: ${err}')
 	}
-	time.sleep(50 * time.millisecond)
 	return srv, t
 }
 
@@ -127,7 +132,7 @@ fn test_integration_unary_over_tls_h2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
@@ -160,7 +165,7 @@ fn test_integration_default_validate_rejects_self_signed_server() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
@@ -184,7 +189,7 @@ fn test_integration_server_stream_over_tls_h2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
@@ -210,7 +215,7 @@ fn test_integration_client_stream_over_tls_h2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
@@ -237,7 +242,7 @@ fn test_integration_error_status_over_tls_h2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
@@ -263,7 +268,7 @@ fn test_integration_unknown_procedure_over_tls_h2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
@@ -280,10 +285,8 @@ fn test_integration_unknown_procedure_over_tls_h2() {
 }
 
 // test_integration_deadline_over_tls_h2 checks that a deadline shorter than the
-// server's answer surfaces as deadline_exceeded rather than as the transport's
-// own wording. The handler sleeps well past the deadline on purpose: a deadline
-// is a bound, not a guarantee of failure, so a fast server may legitimately beat
-// it.
+// server's answer surfaces as deadline_exceeded. The test holds the handler
+// until the client returns to ensure the response stays pending.
 fn test_integration_deadline_over_tls_h2() {
 	if skip_without_tls_server_backend() {
 		return
@@ -292,15 +295,17 @@ fn test_integration_deadline_over_tls_h2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	release_slow_call := chan bool{}
+	mut srv, t := start_tls_server(port, TlsSvc{ release_slow_call: release_slow_call })
 	defer {
+		release_slow_call.close()
 		srv.close()
 		t.wait()
 	}
 	mut c := tls_client(port)
 
 	if _ := c.unary('/tls.Echo/Slow', 'x'.bytes(), timeout(150 * time.millisecond)) {
-		assert false, 'a 150ms deadline must not beat a 1s handler'
+		assert false, 'expected the 150ms deadline to expire while the handler waited'
 	} else {
 		assert err is StatusError, 'expected StatusError, got ${err.msg()}'
 		e := err as StatusError
@@ -320,7 +325,7 @@ fn test_integration_client_requires_http2() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	mut srv, t := start_tls_server(port)
+	mut srv, t := start_tls_server(port, TlsSvc{})
 	defer {
 		srv.close()
 		t.wait()
