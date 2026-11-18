@@ -23,11 +23,24 @@ fn ntdll_fn(name &char) FN_NTSuspendResume {
 	return the_fn
 }
 
-fn failed_cfn_report_error(ok bool, label string) {
+// win_spawn_failed ends the process over a failure inside the critical section of
+// win_spawn_process. `exit` runs the registered at_exit callbacks, and one of them
+// may start a process of its own: with the creation lock still held it would wait
+// for it forever (an SRW lock is not recursive). So the handles made for the child
+// are closed and the lock is released first; the error is read before either, since
+// closing a handle may replace it.
+fn win_spawn_failed(ok bool, label string, mut wdata WProcess) {
 	if ok {
 		return
 	}
 	error_num := int(C.GetLastError())
+	close_valid_handle(&wdata.child_stdin_read)
+	close_valid_handle(&wdata.child_stdin_write)
+	close_valid_handle(&wdata.child_stdout_read)
+	close_valid_handle(&wdata.child_stdout_write)
+	close_valid_handle(&wdata.child_stderr_read)
+	close_valid_handle(&wdata.child_stderr_write)
+	v_os_execute_unlock()
 	error_msg := get_error_msg(error_num)
 	eprintln('failed ${label}: ${error_msg}')
 	exit(1)
@@ -169,6 +182,13 @@ fn (mut p Process) win_spawn_process() int {
 		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
 	}
+	// The child inherits every inheritable handle of this process, whether or not
+	// its own stdio is redirected. From the first handle made for it to the point
+	// where this process has closed its copies of the child's ends, no other
+	// thread may create a child (see execute_lock_windows.c.v). A failure in
+	// between ends the process through win_spawn_failed, which releases the lock
+	// first: the exit runs at_exit callbacks, and one of them may start a process.
+	v_os_execute_lock()
 	if p.has_stdin_path {
 		stdin_path_wide := p.stdin_path.to_wide()
 		to_be_freed << stdin_path_wide
@@ -176,7 +196,7 @@ fn (mut p Process) win_spawn_process() int {
 			C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE, voidptr(&sa),
 			C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL, 0)
 		if stdin_handle == invalid_handle_value {
-			failed_cfn_report_error(false, 'CreateFileW stdin')
+			win_spawn_failed(false, 'CreateFileW stdin', mut wdata)
 		}
 		wdata.child_stdin_read = &u32(stdin_handle)
 	}
@@ -184,24 +204,24 @@ fn (mut p Process) win_spawn_process() int {
 		if !p.has_stdin_path {
 			create_pipe_ok0 := C.CreatePipe(voidptr(&wdata.child_stdin_read),
 				voidptr(&wdata.child_stdin_write), voidptr(&sa), 65536)
-			failed_cfn_report_error(create_pipe_ok0, 'CreatePipe stdin')
+			win_spawn_failed(create_pipe_ok0, 'CreatePipe stdin', mut wdata)
 			set_handle_info_ok0 := C.SetHandleInformation(wdata.child_stdin_write,
 				C.HANDLE_FLAG_INHERIT, 0)
-			failed_cfn_report_error(set_handle_info_ok0, 'SetHandleInformation')
+			win_spawn_failed(set_handle_info_ok0, 'SetHandleInformation', mut wdata)
 		}
 		create_pipe_ok1 := C.CreatePipe(voidptr(&wdata.child_stdout_read),
 			voidptr(&wdata.child_stdout_write), voidptr(&sa), 65536)
-		failed_cfn_report_error(create_pipe_ok1, 'CreatePipe stdout')
+		win_spawn_failed(create_pipe_ok1, 'CreatePipe stdout', mut wdata)
 		set_handle_info_ok1 := C.SetHandleInformation(wdata.child_stdout_read,
 			C.HANDLE_FLAG_INHERIT, 0)
-		failed_cfn_report_error(set_handle_info_ok1, 'SetHandleInformation')
+		win_spawn_failed(set_handle_info_ok1, 'SetHandleInformation', mut wdata)
 		if !p.merge_stdio {
 			create_pipe_ok2 := C.CreatePipe(voidptr(&wdata.child_stderr_read),
 				voidptr(&wdata.child_stderr_write), voidptr(&sa), 65536)
-			failed_cfn_report_error(create_pipe_ok2, 'CreatePipe stderr')
+			win_spawn_failed(create_pipe_ok2, 'CreatePipe stderr', mut wdata)
 			set_handle_info_ok2 := C.SetHandleInformation(wdata.child_stderr_read,
 				C.HANDLE_FLAG_INHERIT, 0)
-			failed_cfn_report_error(set_handle_info_ok2, 'SetHandleInformation stderr')
+			win_spawn_failed(set_handle_info_ok2, 'SetHandleInformation stderr', mut wdata)
 		}
 		start_info.h_std_input = wdata.child_stdin_read
 		start_info.h_std_output = wdata.child_stdout_write
@@ -294,7 +314,7 @@ fn (mut p Process) win_spawn_process() int {
 		} else {
 			voidptr(0)
 		}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
-	failed_cfn_report_error(create_process_ok, 'CreateProcess `${p.filename}`')
+	win_spawn_failed(create_process_ok, 'CreateProcess `${p.filename}`', mut wdata)
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
@@ -302,6 +322,7 @@ fn (mut p Process) win_spawn_process() int {
 	} else if p.has_stdin_path {
 		close_valid_handle(&wdata.child_stdin_read)
 	}
+	v_os_execute_unlock()
 	p.pid = int(wdata.proc_info.dw_process_id)
 	return p.pid
 }
