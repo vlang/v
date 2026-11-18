@@ -39,7 +39,7 @@ pub fn invert(value TcFlag) TcFlag {
 }
 
 // tcgetattr is an unsafe wrapper around C.termios and keeps its semantic.
-// It is only implemented for Unix like OSes
+// It is only implemented for Unix like OSes.
 pub fn tcgetattr(fd int, mut t Termios) int {
 	$if wasm32_emscripten {
 		return 0
@@ -57,7 +57,7 @@ pub fn tcsetattr(fd int, optional_actions int, mut t Termios) int {
 }
 
 // ioctl is an unsafe wrapper around C.ioctl and keeps its semantic.
-// It is only implemented for Unix like OSes
+// It is only implemented for Unix like OSes.
 pub fn ioctl(fd int, request u64, arg voidptr) int {
 	eprintln('ioctl, fd: ${fd}, request: ${request}, arg: ${arg}')
 	return 0
