@@ -46,6 +46,7 @@ nested arrays, aggregate array elements, and structs holding an unlifted field t
 still produce a compiler error rather than a wrong answer.
 Result values such as `!int` support both a returned value and an `error(...)`
 branch, and can be unwrapped with `or { ... }`.
+Reading `err` inside an `or` block produces a compile-time diagnostic.
 
 Floating-point calculations are supported, but formatting a float as text remains unsupported.
 Fixed float interpolation is rejected instead of returning a placeholder value.

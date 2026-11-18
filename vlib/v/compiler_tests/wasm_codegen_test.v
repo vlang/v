@@ -88,14 +88,48 @@ fn test_wasm_result_values_pass_cli_validation() {
 	}
 	return text.len
 }
+fn fallback(err int) int { return err }
 fn main() {
 	println(parse('ok') or { -1 })
 	println(parse('') or { -1 })
+	println(parse('') or { fallback(-2) })
 }
 "
 	wasm := compile_to_wasm(v3_binary(), src, 'wasm_result_cli')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['2', '-1'])
+	run_wasi_expect(wasm, ['2', '-1', '-2'])
+}
+
+fn test_wasm_result_error_value_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_result_error_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.wasm')
+	os.write_file(source, "fn read_value(ok bool) !int {
+	if !ok { return error('empty') }
+	return 42
+}
+fn main() {
+	value := read_value(false) or {
+		println(err.msg())
+		-7
+	}
+	println(value)
+}
+")!
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, source]
+		if production {
+			args.insert(1, '-prod')
+		}
+		res := os.exec(args)
+		assert res.exit_code != 0, res.output
+		assert res.output.contains('the V wasm backend does not support reading the Result error value yet'), res.output
+		assert !os.exists(output)
+	}
 }
 
 fn test_wasm_block_scoping_preserves_outer_locals() {

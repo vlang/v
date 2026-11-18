@@ -21650,6 +21650,13 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 	visited[idx] = true
 	node := a.nodes[idx]
 	if backend == 'wasm' && diagnose_aggregates {
+		// The Wasm Result path can test the success flag, but it cannot expose the
+		// error payload. Synthetic err bindings have no source position.
+		if node.kind == .ident && node.value == 'err' && node.pos.is_valid()
+			&& tc.resolve_type(id).source_type_id() in [flat.source_type_id('IError'),
+				flat.source_type_id('builtin.IError')] {
+			return '${backend_node_location(a, node)}error: the V wasm backend does not support reading the Result error value yet'
+		}
 		mut unsupported_type := u32(0)
 		if node.kind in [.array_literal, .array_init, .map_init, .struct_init] {
 			unsupported_type = tc.resolve_type(id).source_type_id()
