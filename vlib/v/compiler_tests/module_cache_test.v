@@ -717,12 +717,15 @@ fn test_cached_object_accepts_recorded_dependency_superset() {
 	manager := modulecache.new_manager(root, 'dependency-superset', true, '', '')
 	assert manager.ensure_dir()
 	compile_signature := 'flags'
-	entry := manager.object_entry('foo', [source], compile_signature)
-	os.write_file(entry.object, '') or { panic(err) }
-	manager.write_stamp('foo', [source], {
+	recorded_inputs := {
 		first_dependency: modulecache.file_signature(first_dependency)
 		extra_dependency: modulecache.file_signature(extra_dependency)
-	}, compile_signature) or { panic(err) }
+	}
+	entry := manager.object_publish_entry('foo', [source], compile_signature, recorded_inputs)
+	os.write_file(entry.object, '') or { panic(err) }
+	manager.write_object_stamp(entry, 'foo', [source], recorded_inputs, compile_signature) or {
+		panic(err)
+	}
 	_ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, {
 		first_dependency: modulecache.file_signature(first_dependency)
 	}) or {
