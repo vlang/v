@@ -203,14 +203,16 @@ $if !skip_fastc ? {
 		// The prototypes, constants and globals after `native_owner_end` follow every
 		// native directive, so no native source can name them. They change with ordinary
 		// edits of V code, and the owner must not: only the exported V functions among
-		// them are declared for the bindings below. A native directive after them (a
-		// conditional include) keeps the whole head.
+		// them are declared for the bindings below. A directive after them that can
+		// open a file or change a macro (a conditional include) keeps the whole head.
 		mut owner_end := generation.units.native_owner_end
 		if owner_end <= 0 || owner_end > generation.units.head_end {
 			owner_end = generation.units.head_end
 		}
 		for i in owner_end .. generation.units.head_end {
-			if generation.c_pieces[i].contains('#include') || generation.c_pieces[i].contains('#import') {
+			piece := generation.c_pieces[i]
+			if piece.contains('#') && (piece.contains('#include') || piece.contains('#import')
+				|| piece.contains('#define') || piece.contains('#undef') || piece.contains('#pragma')) {
 				owner_end = generation.units.head_end
 				break
 			}
@@ -321,18 +323,20 @@ $if !skip_fastc ? {
 		full_marker string
 	}
 
-	// v3_fastc_native_lean_bridge builds the owner with only the V declarations that the
+	// v3_fastc_native_lean_bridge builds the owner with only the V types that the
 	// generated bindings mention, and those an earlier Clang run reported missing.
-	// A native source can name any constant or type of the program, but V cannot know
-	// which without reading it; an owner with all of them is recompiled after every edit
-	// of an unrelated struct or constant. Clang is the judge instead: it rejects a native
-	// source that names a declaration the lean owner lacks, the missing names are added,
-	// and a program whose native code needs more than that keeps the full head. The names
+	// A native source can name any type of the program, but V cannot know which
+	// without reading it; an owner with all of them is recompiled after every edit of
+	// an unrelated struct. Clang is the judge instead: it rejects a native source that
+	// names a declaration the lean owner lacks, the missing names are added, and a
+	// program whose native code needs more than that keeps the full head. The names
 	// are a hint kept beside the cache for the program's native sources and flags, so a
 	// new C binding does not lose them; a wrong hint only costs a rejected compilation.
-	// A native source that tests a V constant with `#ifdef` would not be rejected.
+	// Every constant of the program stays, as a macro: a native source that tests one
+	// with `#ifdef` compiles without it too. A changed constant is settled by the text
+	// Clang preprocesses the owner to, like any other macro.
 	fn v3_fastc_native_lean_bridge(prefs &pref.Preferences, flags []string, sdk string, parts &V3FastcNativeOwnerParts, before []string, region []string, after []string, mut validation V3FastcNativeValidation) V3FastcNativeLeanResult {
-		mut key := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-lean-v1'.bytes())
+		mut key := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-lean-v2'.bytes())
 		key = v3_fastc_hash_pieces(before, key)
 		key = v3_fastc_hash_pieces(after, key)
 		key = contenthash.sum64_string(parts.bindings, key)
@@ -657,16 +661,47 @@ $if !skip_fastc ? {
 			return error('FastC native dependencies changed during preprocessing: ' + source)
 		}
 		v3_fastc_native_validate_inputs(before.files, signatures, 'preprocessing', mut stats)!
+		// Clang leaves up to eight empty lines where directives stood, so a macro that
+		// nothing uses would still change the text by one line. Without line markers
+		// (`-P`) the empty lines carry nothing.
+		expanded := os.read_file(staged)!
+		compact := v3_fastc_native_without_empty_lines(expanded)
+		if compact.len != expanded.len {
+			os.write_file(staged, compact)!
+		}
 		signature := v3_fastc_native_file_signature(staged, false, mut stats)
 		if signature == '' { return error('cannot sign preprocessed native input: ' + source) }
 		canonical_source := os.real_path(source)
-		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v2'.bytes())
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v3'.bytes())
 		hash = c_hash_bytes(hash, signature.bytes())
 		hash = c_hash_bytes(hash, deps.files.filter(it != source && it != canonical_source).join('\x00').bytes())
 		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
 		path := os.join_path(dir, 'preprocessed_' + hash.hex() + '.mi')
 		if !os.is_file(path) { publish_native_c_object(staged, path)! }
 		return V3FastcNativePreprocessedSource{ path: path, dependencies: before.files, signatures: signatures }
+	}
+
+	// v3_fastc_native_without_empty_lines drops the lines of preprocessed text that
+	// hold nothing but spaces.
+	fn v3_fastc_native_without_empty_lines(text string) string {
+		mut out := strings.new_builder(text.len)
+		mut start := 0
+		for start < text.len {
+			mut end := start
+			mut empty := true
+			for end < text.len && text[end] != `\n` {
+				if text[end] !in [` `, `\t`, `\r`] {
+					empty = false
+				}
+				end++
+			}
+			if !empty {
+				out.write_string(text[start..end])
+				out.write_u8(`\n`)
+			}
+			start = end + 1
+		}
+		return out.str()
 	}
 
 	// v3_fastc_native_declarations derives the native owner's declarations from the program

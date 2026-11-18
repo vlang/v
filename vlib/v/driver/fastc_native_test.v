@@ -478,24 +478,30 @@ fn test_fastc_native_declarations_split_by_name() {
 
 fn test_fastc_native_lean_declarations_keep_what_the_seeds_mention() {
 	$if !skip_fastc ? {
-		text := '#define main__limit (((main__Kind)(4)))\n' + '#define main__unused (((int)(5)))\n' +
-			'typedef struct main__Point main__Point;\n' + 'typedef struct main__Other main__Other;\n' +
-			'typedef int main__Kind;\n' + '#pragma pack(push, 1)\n' +
+		macros := '#define main__limit (((main__Kind)(4)))\n' + '#define main__unused (((int)(5)))\n'
+		text := macros + 'typedef struct main__Point main__Point;\n' +
+			'typedef struct main__Other main__Other;\n' + 'typedef int main__Kind;\n' +
+			'typedef int main__Unused;\n' + '#pragma pack(push, 1)\n' +
 			'struct main__Point {\n\tint x;\n\tmain__Kind kind;\n};\n' + '#pragma pack(pop)\n' +
 			'struct main__Other {\n\tmain__Point point;\n};\n'
+		// Every macro stays, and names nothing: a native source can test one with `#ifdef`.
+		assert v3_fastc_native_lean_declarations(text, [], []) == macros + '#pragma pack(push, 1)\n' +
+			'#pragma pack(pop)\n'
 		// A binding mentions the struct; its field type and the pragmas come with it.
 		point := v3_fastc_native_lean_declarations(text, ['int native(main__Point* point);'], [])
-		assert point == 'typedef struct main__Point main__Point;\n' + 'typedef int main__Kind;\n' +
+		assert point == macros + 'typedef struct main__Point main__Point;\n' + 'typedef int main__Kind;\n' +
 			'#pragma pack(push, 1)\n' + 'struct main__Point {\n\tint x;\n\tmain__Kind kind;\n};\n' +
 			'#pragma pack(pop)\n'
-		// A name reported by Clang is a seed like any other.
-		limit := v3_fastc_native_lean_declarations(text, [], ['main__limit'])
-		assert limit == '#define main__limit (((main__Kind)(4)))\n' + 'typedef int main__Kind;\n' +
-			'#pragma pack(push, 1)\n' + '#pragma pack(pop)\n'
-		assert v3_fastc_native_lean_declarations(text, ['main__Other value;'], []) == text.replace('#define main__limit (((main__Kind)(4)))\n',
-			'').replace('#define main__unused (((int)(5)))\n', '')
+		// A name reported by Clang is a seed like any other: here the type that an
+		// expanded macro mentions.
+		kind := v3_fastc_native_lean_declarations(text, [], ['main__Kind'])
+		assert kind == macros + 'typedef int main__Kind;\n' + '#pragma pack(push, 1)\n' +
+			'#pragma pack(pop)\n'
+		assert v3_fastc_native_lean_declarations(text, ['main__Other value;'], []) == text.replace('typedef int main__Unused;\n',
+			'')
 		message := "native.m:3:9: error: unknown type name 'main__Other'; did you mean 'main__Point'?\n" +
-			"native.m:4:2: error: use of undeclared identifier 'native_only'\n"
+			"native.m:4:2: error: use of undeclared identifier 'native_only'\n" +
+			"native.m:5:2: note: expanded from macro 'main__limit'\n"
 		assert v3_fastc_native_missing_declarations(message, text, ['main__Point']) == [
 			'main__Other',
 		]
@@ -545,6 +551,53 @@ fn test_fastc_native_bridge_owner_ignores_declarations_its_native_code_cannot_na
 		}
 		assert libraries[0] == libraries[1]
 		assert libraries[0] != libraries[2]
+	}
+}
+
+fn test_fastc_native_bridge_owner_keeps_the_constants_its_native_code_can_test() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_macros_tested_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		// No binding mentions the constant, and the source compiles without it.
+		source := os.join_path(root, 'native.m')
+		os.write_file(source, 'int native_limit(void) {\n#ifdef main__limit\n\treturn main__limit;\n#else\n\treturn -1;\n#endif\n}\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		mut libraries := []string{}
+		mut owners := []string{}
+		for constants in ['#define main__limit (((int)(4)))\n', '#define main__limit (((int)(5)))\n',
+			'#define main__other (((int)(4)))\n',
+			'#define main__limit (((int)(4)))\n#define main__other (((int)(6)))\n'] {
+			generation := fastc.GenerationResult{
+				c_pieces:            ['#include "${header}"\n',
+					constants + 'typedef int main__Unused;\n', '#include "${source}"\n',
+					'int v_f1(void);\n']
+				units:               fastc.FastcUnitLayout{
+					head_end:          4
+					native_decl_start: 1
+					native_decl_end:   2
+					native_owner_end:  3
+				}
+				native_declarations: {
+					'native_value': 'int native_value(void);'
+					'native_limit': 'int native_limit(void);'
+				}
+			}
+			mut validation := V3FastcNativeValidation{}
+			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '', mut validation)!
+			assert validation.wait()
+			assert os.is_file(bridge.library)
+			libraries << bridge.library
+			owners << constants
+		}
+		// The value and the presence of the constant both reach the native source.
+		assert libraries[0] != libraries[1]
+		assert libraries[0] != libraries[2]
+		assert libraries[1] != libraries[2]
+		// A constant that the native source neither tests nor expands does not.
+		assert libraries[0] == libraries[3]
 	}
 }
 

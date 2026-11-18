@@ -292,20 +292,27 @@ $if !skip_fastc ? {
 
 	// v3_fastc_native_lean_declarations keeps the declarations of `text` that the seed
 	// texts and names mention, with everything those declarations mention in turn, in
-	// their original order. Unrecognized declarations and directives stay.
+	// their original order. Every macro stays: a native source can test one with
+	// `#ifdef` and compile either way, so only its presence keeps that choice. A
+	// macro is no seed, since its body is text until something expands it. Other
+	// directives and unrecognized declarations stay as well.
 	fn v3_fastc_native_lean_declarations(text string, seed_texts []string, seed_names []string) string {
 		declarations := v3_fastc_native_split_declarations(text)
 		mut by_name := map[string][]int{}
+		mut kept := []bool{len: declarations.len}
 		for i, declaration in declarations {
+			if text[declaration.start] == `#` {
+				kept[i] = true
+				continue
+			}
 			for name in declaration.names {
 				by_name[name] << i
 			}
 		}
-		mut kept := []bool{len: declarations.len}
 		mut queued := map[string]bool{}
 		mut queue := []string{}
 		for i, declaration in declarations {
-			if declaration.names.len > 0 { continue }
+			if kept[i] || declaration.names.len > 0 { continue }
 			kept[i] = true
 			for name in v3_fastc_native_identifiers(text[declaration.start..declaration.end]) {
 				if name in by_name && !queued[name] {
@@ -342,7 +349,7 @@ $if !skip_fastc ? {
 				}
 			}
 		}
-		mut out := strings.new_builder(4096)
+		mut out := strings.new_builder(text.len / 2)
 		for i, declaration in declarations {
 			if !kept[i] { continue }
 			out.write_string(text[declaration.start..declaration.end])
@@ -358,6 +365,8 @@ $if !skip_fastc ? {
 	fn v3_fastc_native_missing_declarations(message string, text string, known []string) []string {
 		mut declared := map[string]bool{}
 		for declaration in v3_fastc_native_split_declarations(text) {
+			// Macros are never left out.
+			if text[declaration.start] == `#` { continue }
 			for name in declaration.names {
 				declared[name] = true
 			}
