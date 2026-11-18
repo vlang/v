@@ -171,7 +171,7 @@ fn unix_process_pipe(fds &i32) i32 {
 	return C.pipe(fds)
 }
 
-fn (mut p Process) unix_spawn_process() int {
+fn (mut p Process) unix_spawn_process(start_stopped bool) int {
 	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
 	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
 	// 64-bit, so `pipe` would write out of bounds). The fds convert back to `int`
@@ -225,6 +225,9 @@ fn (mut p Process) unix_spawn_process() int {
 	//
 	if p.use_pgroup {
 		C.setpgid(0, 0)
+	}
+	if start_stopped {
+		C.kill(C.getpid(), C.SIGSTOP)
 	}
 	mut stdin_fd := -1
 	if p.has_stdin_path {
@@ -309,6 +312,29 @@ fn (mut p Process) unix_wait() {
 	p.impl_check_pid_status(false, 0)
 }
 
+// run_stopped starts a Unix child and waits for it to stop before exec.
+// Use signal_continue to let it execute once parent-side setup is complete.
+pub fn (mut p Process) run_stopped() ! {
+	if p.status != .not_started {
+		return error('process already started')
+	}
+	p._spawn(true)
+	if p.pid <= 0 {
+		p.status = .aborted
+		return error('could not start stopped process')
+	}
+	// Native WUNTRACED values also used by the portable C run-signal helper.
+	wait_untraced := $if solaris || qnx { 4 } $else { 2 }
+	if p.impl_check_pid_status(false, wait_untraced) {
+		return
+	}
+	if !p.reaped {
+		p.signal_kill()
+		p.wait()
+	}
+	return error('process did not stop before exec')
+}
+
 fn (mut p Process) unix_is_alive() bool {
 	return p.impl_check_pid_status(true, C.WNOHANG)
 }
@@ -317,7 +343,12 @@ fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_option
 	mut cstatus := 0
 	mut ret := -1
 	$if !emscripten ? {
-		ret = C.waitpid(p.pid, &cstatus, waitpid_options)
+		for {
+			ret = C.waitpid(p.pid, &cstatus, waitpid_options)
+			if ret >= 0 || C.errno != C.EINTR {
+				break
+			}
+		}
 	}
 	p.code = ret
 	if ret == -1 {
@@ -325,6 +356,11 @@ fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_option
 		return false
 	}
 	if exit_early_on_ret0 && ret == 0 {
+		return true
+	}
+	// The low status byte is 0x7f for a stopped Unix child.
+	if cstatus & 0xff == 0x7f {
+		p.status = .stopped
 		return true
 	}
 	p.reaped = true
