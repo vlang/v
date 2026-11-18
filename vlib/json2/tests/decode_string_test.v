@@ -46,6 +46,54 @@ fn test_lone_surrogate_decodes_as_wtf8() {
 	assert value.as_array().map(it.str().bytes().hex()) == ['eda080', '61edb08062']
 }
 
+// A preserved WTF-8 surrogate must encode as `\uXXXX` in both default and
+// `escape_unicode` modes, so decode/encode/decode round-trips instead of
+// emitting invalid UTF-8 (default) or three U+FFFD (escaped).
+fn test_lone_surrogate_encode_roundtrip() {
+	for escape_unicode in [false, true] {
+		// Lone units keep their lowercase escape in both modes.
+		for raw in [r'"\ud800"', r'"\udc00"', r'"a\udc00b"'] {
+			decoded := json.decode[string](raw)!
+			encoded := json.encode(decoded, escape_unicode: escape_unicode)
+			assert encoded == raw
+			assert json.decode[string](encoded)!.bytes().hex() == decoded.bytes().hex()
+		}
+		// A lone head before a valid pair escapes on its own; the pair stays
+		// one code point (raw emoji by default, surrogate pair when escaped).
+		combo := json.decode[string](r'"\ud83d\ud83d\ude00"')!
+		assert combo.bytes().hex() == 'eda0bdf09f9880'
+		encoded_combo := json.encode(combo, escape_unicode: escape_unicode)
+		if escape_unicode {
+			assert encoded_combo == r'"\ud83d\uD83D\ude00"'
+		} else {
+			assert encoded_combo == '"\\ud83d😀"'
+		}
+		assert json.decode[string](encoded_combo)!.bytes().hex() == combo.bytes().hex()
+		// Valid-pair control: no lone unit, so default keeps raw UTF-8.
+		pair := json.decode[string](r'"\ud83d\ude00"')!
+		assert pair.bytes().hex() == 'f09f9880'
+		encoded_pair := json.encode(pair, escape_unicode: escape_unicode)
+		if escape_unicode {
+			assert encoded_pair == r'"\uD83D\ude00"'
+		} else {
+			assert encoded_pair == '"😀"'
+		}
+		assert json.decode[string](encoded_pair)! == pair
+		// The generic value type carries the same WTF-8 bytes as strings.
+		any_value := json.decode[json.Any](r'"\ud800"')!
+		encoded_any := json.encode(any_value, escape_unicode: escape_unicode)
+		assert encoded_any == r'"\ud800"'
+		assert json.decode[json.Any](encoded_any)!.str().bytes().hex() == 'eda080'
+		// Map keys go through the same string encoder, so they round-trip too.
+		key_map := json.decode[map[string]string](r'{"\ud800":"v","a\udc00b":"w","ok":"x"}')!
+		assert key_map.keys().len == 3
+		encoded_map := json.encode(key_map, escape_unicode: escape_unicode)
+		assert encoded_map.contains(r'\ud800')
+		assert encoded_map.contains(r'\udc00')
+		assert json.decode[map[string]string](encoded_map)! == key_map
+	}
+}
+
 struct Inner {
 mut:
 	ok string
