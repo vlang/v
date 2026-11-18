@@ -44,3 +44,6 @@ contracts.
 Calls to the known `panic`, `exit`, `C.exit`, and `C.abort` functions are
 exempt, including their arguments handling for termination, because they
 terminate execution. Statements before a terminating call remain checked.
+The exemption applies only to the actual `builtin`, `os`, and `C`
+declarations: local bindings or struct fields that spell the same name are
+still rejected as indirect calls.

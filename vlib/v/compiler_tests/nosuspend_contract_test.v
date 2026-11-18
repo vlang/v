@@ -151,6 +151,31 @@ fn test_nosuspend_contracts_in_build_and_check() {
 			accepted: false
 			source:   'import time\nfn callback() int { return 1 }\nfn blocking() { time.sleep(1) }\nfn invoke(f fn ()) { callback := f; callback() }\n@[nosuspend]\nfn handler() { invoke(blocking) }\nfn main() { handler() }\n'
 		},
+		NosuspendCase{
+			name:     'shadowed_terminal_module'
+			accepted: false
+			source:   "import time\ntype Callback = fn ()\nstruct Actions { exit Callback = unsafe { nil } }\nfn blocking() { println('entered blocking callback')\ntime.sleep(1) }\n@[nosuspend]\nfn handler() { os := Actions{exit: blocking}\nos.exit() }\nfn main() { handler() }\n"
+		},
+		NosuspendCase{
+			name:     'shadowed_terminal_transitive'
+			accepted: false
+			source:   'import time\ntype Callback = fn ()\nstruct Actions { exit Callback = unsafe { nil } }\nfn blocking() { time.sleep(1) }\nfn middle() { os := Actions{exit: blocking}\nos.exit() }\n@[nosuspend]\nfn handler() { middle() }\nfn main() { handler() }\n'
+		},
+		NosuspendCase{
+			name:     'struct_fn_field'
+			accepted: false
+			source:   'import time\ntype Callback = fn ()\nstruct Actions { exit Callback = unsafe { nil } }\nfn blocking() { time.sleep(1) }\n@[nosuspend]\nfn handler() { receiver := Actions{exit: blocking}\nreceiver.exit() }\nfn main() { handler() }\n'
+		},
+		NosuspendCase{
+			name:     'terminal_builtin_exit'
+			accepted: true
+			source:   '@[nosuspend]\nfn handler() { exit(0) }\nfn main() { if false { handler() } }\n'
+		},
+		NosuspendCase{
+			name:     'terminal_c_exit'
+			accepted: true
+			source:   '@[nosuspend]\nfn handler() { C.exit(0) }\nfn main() { if false { handler() } }\n'
+		},
 	]
 	// The standalone FastC parser must reject contracts it cannot check.
 	fastc_source := os.join_path(root, 'fastc.v')
