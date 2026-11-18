@@ -247,6 +247,25 @@ fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
 	run_wasi_expect(wasm, ['-128', '0', '0', '-32768', '4', '-128', '44'])
 }
 
+fn test_wasm_narrow_runtime_shift_uses_operand_width() {
+	src := 'fn report(count i64) {
+	value := i8(-8)
+	println(int(value >> count))
+	println(int(value >>> count))
+	println(int(i16(-8) >> count))
+}
+fn main() {
+	report(7)
+	report(8)
+	report(16)
+	report(-1)
+}
+'
+	wasm := compile_to_wasm(v3_binary(), src, 'wasm_narrow_shift_width')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['-1', '1', '-1', '0', '0', '-1', '0', '0', '0', '0', '0', '0'])
+}
+
 fn test_wasm_runtime_oversized_shift_is_zero() {
 	v3_bin := v3_binary()
 	// V yields 0 when a runtime shift count is >= the operand width, whereas
