@@ -1,8 +1,6 @@
-import time
-
 fn test_main() {
 	ch := chan int{}
-	go do_send(ch)
+	sender := go do_send(ch)
 	mut a := 0
 	for select {
 		x := <-ch {
@@ -12,7 +10,7 @@ fn test_main() {
 	} {
 	}
 	assert a == 45
-	time.sleep(500 * time.millisecond)
+	sender.wait()
 }
 
 fn do_send(ch chan int) {
