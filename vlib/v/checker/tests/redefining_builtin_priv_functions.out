@@ -1,0 +1,5 @@
+vlib/v/checker/tests/redefining_builtin_priv_functions.vv:1:1: error: cannot redefine builtin private function `new_node`
+    1 | fn new_node() int {
+      | ~~~~~~~~~~~~~~~~~
+    2 |     return 7
+    3 | }
