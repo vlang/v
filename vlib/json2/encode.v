@@ -195,6 +195,32 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	}
 }
 
+// wtf8_surrogate_at returns the UTF-16 surrogate unit (0xD800..0xDFFF) encoded
+// as WTF-8 at `val[i]`, or 0 when there is none. A lone surrogate has no UTF-8
+// encoding; the decoder preserves it as the 3-byte CESU-8-like sequence
+// (0xED 0xA0..0xBF 0x80..0xBF, e.g. U+D800 as ED A0 80). The encoder must
+// re-escape those bytes as `\uXXXX` in both default and `escape_unicode` modes:
+// copying them would emit invalid UTF-8, and `utf8_rune_at` below rejects them
+// as U+FFFD. 0 never collides with a unit, since units start at 0xD800.
+@[direct_array_access; inline]
+fn wtf8_surrogate_at(val string, i int) u32 {
+	if val[i] != 0xed {
+		return 0
+	}
+	if i + 2 >= val.len {
+		return 0
+	}
+	b1 := val[i + 1]
+	b2 := val[i + 2]
+	if b1 < 0xa0 || b1 > 0xbf {
+		return 0
+	}
+	if b2 & 0xc0 != 0x80 {
+		return 0
+	}
+	return (u32(val[i] & 0x0f) << 12) | (u32(b1 & 0x3f) << 6) | u32(b2 & 0x3f)
+}
+
 // next_string_escape returns the next byte needing JSON escaping, or val.len.
 @[direct_array_access; ignore_overflow; inline]
 fn next_string_escape(val string, start int, escape_unicode bool) int {
@@ -206,7 +232,8 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 		// A byte below 0x20 leaves a high bit after subtraction and masking.
 		control := (word - u64(0x2020202020202020)) & ~word & u64(0x8080808080808080)
 		if control != 0 || word_has_byte(word, `"`) || word_has_byte(word, `\\`)
-			|| (escape_unicode && word & u64(0x8080808080808080) != 0) {
+			|| (escape_unicode && word & u64(0x8080808080808080) != 0)
+			|| word_has_byte(word, 0xed) {
 			break
 		}
 		i += 8
@@ -215,6 +242,10 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 	for i < val.len {
 		b := val[i]
 		if b < 0x20 || b == `"` || b == `\\` || (escape_unicode && b >= 0x80) {
+			break
+		}
+		// In default mode high bytes are copied, except WTF-8 surrogates.
+		if b == 0xed && wtf8_surrogate_at(val, i) != 0 {
 			break
 		}
 		i++
@@ -235,7 +266,8 @@ fn (mut encoder Encoder) encode_string(val string) {
 		character := val[end]
 		escape := character < 0x20 || character in [`"`, `\\`]
 		unicode := encoder.escape_unicode && character >= 0x80
-		if !escape && !unicode {
+		wtf8 := character == 0xed && wtf8_surrogate_at(val, end) != 0
+		if !escape && !unicode && !wtf8 {
 			end = next_string_escape(val, end + 1, encoder.escape_unicode)
 			continue
 		}
@@ -249,6 +281,15 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 fn (mut encoder Encoder) encode_escape(val string, index int) int {
 	character := val[index]
+	// A preserved WTF-8 surrogate always escapes as `\uXXXX`, in both default
+	// and `escape_unicode` modes, so it round-trips through the decoder.
+	if character == 0xed {
+		unit := wtf8_surrogate_at(val, index)
+		if unit != 0 {
+			encoder.encode_unicode_escape(unit, false)
+			return 3
+		}
+	}
 	if encoder.escape_unicode && character >= 0x80 {
 		code_point, width := utf8_rune_at(val, index)
 		encoder.encode_unicode(code_point)

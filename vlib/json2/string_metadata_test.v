@@ -54,8 +54,7 @@ fn test_string_metadata_tracks_keys_nested_values_and_reused_slots() ! {
 fn test_string_metadata_recovers_after_malformed_escapes_and_preserves_values() ! {
 	mut buffer := DecodeBuffer{}
 	retained := decode_reuse[MetadataMessage](r'{"text":"\ud83d\ude00","nonce":"old"}', mut buffer)!
-	for input in [r'"\x"', r'"\u12"', r'"\uQQQQ"', r'"\ud800"', r'"\udc00"', r'"\ud800\u0041"',
-		r'{"text":"unterminated', r'["\n"', r'{"text":"a\"'] {
+	for input in [r'"\x"', r'"\u12"', r'"\uQQQQ"', r'{"text":"unterminated', r'["\n"', r'{"text":"a\"'] {
 		mut rejected := false
 		decode_reuse[Any](input, mut buffer) or { rejected = true }
 		assert rejected
@@ -63,6 +62,19 @@ fn test_string_metadata_recovers_after_malformed_escapes_and_preserves_values() 
 		check_metadata_tokens('"plain"', buffer)
 		assert decode_reuse[string](r'"\t\u00e9"', mut buffer)! == '\té'
 		check_metadata_tokens(r'"\t\u00e9"', buffer)
+	}
+	// Lone surrogate escapes are valid: they decode to their WTF-8 3-byte form
+	// (see test_lone_surrogate_decodes_as_wtf8), so unlike the malformed inputs
+	// above they are accepted, and reusing the buffer after them keeps working.
+	for input, expected in {
+		r'"\ud800"':       'eda080'
+		r'"\udc00"':       'edb080'
+		r'"\ud800\u0041"': 'eda08041'
+	} {
+		assert decode_reuse[Any](input, mut buffer)!.str().bytes().hex() == expected
+		check_metadata_tokens(input, buffer)
+		assert decode_reuse[string]('"plain"', mut buffer)! == 'plain'
+		check_metadata_tokens('"plain"', buffer)
 	}
 	assert retained == MetadataMessage{ text: '😀', nonce: 'old' }
 }
