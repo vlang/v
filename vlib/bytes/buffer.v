@@ -1,6 +1,9 @@
 module bytes
 
+import io
+
 // Buffer is a variable-sized buffer of bytes with Read and Write methods.
+// Read reports io.Eof once the buffer is empty; Write implements io.Writer.
 // Mirrors Go's bytes.Buffer (simplified).
 pub struct Buffer {
 mut:
@@ -15,7 +18,7 @@ pub fn new_buffer_with_bytes(b []u8) Buffer {
 	return Buffer{ buf: b.clone() }
 }
 
-pub fn (mut b Buffer) write(p []u8) int {
+pub fn (mut b Buffer) write(p []u8) !int {
 	b.buf << p
 	return p.len
 }
@@ -45,7 +48,13 @@ pub fn (mut b Buffer) reset() {
 	b.buf = []u8{}
 }
 
-pub fn (mut b Buffer) read(mut p []u8) int {
+pub fn (mut b Buffer) read(mut p []u8) !int {
+	if p.len == 0 {
+		return 0
+	}
+	if b.buf.len == 0 {
+		return io.Eof{}
+	}
 	n := if p.len < b.buf.len { p.len } else { b.buf.len }
 	for i in 0 .. n {
 		p[i] = b.buf[i]
