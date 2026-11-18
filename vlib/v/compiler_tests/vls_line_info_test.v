@@ -934,6 +934,22 @@ fn ask_many(dir string, questions []string) []string {
 	return answer.split('\n')
 }
 
+struct HoverExpectation {
+	line string
+	word string
+	text string
+}
+
+fn assert_hovers(name string, program string, checks []HoverExpectation) {
+	dir := program_dir(name, program)
+	questions := checks.map(word_question(it.line, 'hv^', line_of(program, it.line), it.word, 0))
+	answers := ask_many(dir, questions)
+	assert answers.len == checks.len, answers.str()
+	for i, check in checks {
+		assert answers[i] == '${i}\t${hover_of(check.text)}', '${check.line}: ${check.word}'
+	}
+}
+
 fn test_several_questions_get_an_answer_each() {
 	// A hover, a definition, and a column past the end of its line.
 	assert ask_many(work_dir, ['41:hv^9', '42:gd^7', '43:hv^40']) == [
@@ -1549,17 +1565,10 @@ fn main() {
 	assert ask(dir, 'hv^', 4, 'it', 0) == hover_of('it T')
 }
 
-// local asks about the first `word` of the line of locals_program that reads
-// `text`.
-fn local(code string, text string, word string) string {
-	line := locals_program.split('\n').index(text) + 1
-	assert line > 0, '`${text}` is not a line of locals_program'
-	return ask(os.join_path(work_dir, 'locals'), code, line, word, 0)
-}
-
 fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 	// The type its value has, with a type parameter by its name; a variable of
 	// a `for ... in` loop has what its container holds.
+	mut checks := []HoverExpectation{}
 	for text, want in {
 		'\tlengths := xs.map(it.name.len)': 'lengths []int'
 		'\tfor n in lengths {':             'n int'
@@ -1574,8 +1583,7 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 		'\tfor k in 0 .. 3 {':              'k int'
 		'\t\ttotal += n':                   'total int'
 	} {
-		name := want.all_before(' ')
-		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
+		checks << HoverExpectation{text, want.all_before(' '), want}
 	}
 	for text, want in {
 		'\tfor n in lengths {':    'lengths []int'
@@ -1584,9 +1592,9 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 		'\tfor i, item in xs {':   'item T\\nT: implements main.Named'
 		'\tfor key, value in m {': 'value T\\nT: implements main.Named'
 	} {
-		name := want.all_before(' ')
-		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
+		checks << HoverExpectation{text, want.all_before(' '), want}
 	}
+	assert_hovers('locals', locals_program, checks)
 	// A local that holds a `T` has what its constraint declares, as the `T` does.
 	line := locals_program.split('\n').index("\tprintln('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')") + 1
 	assert line > 0
@@ -2940,35 +2948,38 @@ fn narrowed(code string, text string, word string, nth int) string {
 }
 
 fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
-	// Outside the `$if`s that decide it, a type parameter stays, with what it
-	// can be on a line of its own.
 	number3 := 'T: int | i64 | f64'
-	assert narrowed('hv^', 'fn half[T Number3](x T, y T, xs []T) f64 {', 'x', 0) == hover_of('x T\\n${number3}')
-	assert narrowed('hv^', '\tsame := x', 'same', 0) == hover_of('same T\\n${number3}')
-	// In the branch of `$if T is f64 {` it is `f64`, for every value of it.
-	assert narrowed('hv^', '\t\tprintln(xs)', 'xs', 0) == hover_of('xs []f64')
-	for word in ['x', 'y', 'same', 'zero'] {
-		assert narrowed('hv^', '\t\treturn x + y + same + zero', word, 0) == hover_of('${word} f64')
-	}
-	// Its `$else` leaves the rest of the set.
-	assert narrowed('hv^', '\t\treturn f64(x)', 'x', 0) == hover_of('x T\\nT: int | i64')
-	// `$if x is f64 {` asks the same of a value; `$if T in [i64, f64] {` leaves
-	// each type of its list.
-	assert narrowed('hv^', '\t\treturn x', 'x', 0) == hover_of('x f64')
-	assert narrowed('hv^', '\t\treturn f64(x) * 2.0', 'x', 0) == hover_of('x T\\nT: i64 | f64')
-	// An interface: what implements it; in the branch of `$if a is User {`, `User`.
-	assert narrowed('hv^', '\t\treturn a.age', 'a', 0) == hover_of('a main.User')
-	assert narrowed('hv^', '\treturn a.name.len', 'a', 0) == hover_of('a T\\nT: implements main.Named')
-	// A struct as the constraint stands for itself and the structs that embed it.
-	assert narrowed('hv^', '\treturn u.name', 'u', 0) == hover_of('u T\\nT: main.User or a struct that embeds it')
-	// A local that holds a `T`: a `$if` on it decides `T`, and a literal that
-	// writes its type, `[]T{}`, has it.
 	named := 'T: implements main.Named'
-	assert narrowed('hv^', '\tmut all := []T{}', 'all', 0) == hover_of('all []T\\n${named}')
-	assert narrowed('hv^', '\t\treturn y.age + mine.len + all.len', 'y', 0) == hover_of('y main.User')
-	assert narrowed('hv^', '\t\treturn y.age + mine.len + all.len', 'age', 0) == hover_of('age int')
-	assert narrowed('hv^', '\t\treturn y.age + mine.len + all.len', 'mine', 0) == hover_of('mine []main.User')
-	assert narrowed('hv^', '\treturn all.len', 'all', 0) == hover_of('all []T\\n${named}')
+	assert_hovers('narrowing', narrowing_program, [
+		// Outside the `$if`s that decide it, a type parameter stays, with what it
+		// can be on a line of its own.
+		HoverExpectation{'fn half[T Number3](x T, y T, xs []T) f64 {', 'x', 'x T\\n${number3}'},
+		HoverExpectation{'\tsame := x', 'same', 'same T\\n${number3}'},
+		// In the branch of `$if T is f64 {` it is `f64`, for every value of it.
+		HoverExpectation{'\t\tprintln(xs)', 'xs', 'xs []f64'},
+		HoverExpectation{'\t\treturn x + y + same + zero', 'x', 'x f64'},
+		HoverExpectation{'\t\treturn x + y + same + zero', 'y', 'y f64'},
+		HoverExpectation{'\t\treturn x + y + same + zero', 'same', 'same f64'},
+		HoverExpectation{'\t\treturn x + y + same + zero', 'zero', 'zero f64'},
+		// Its `$else` leaves the rest of the set.
+		HoverExpectation{'\t\treturn f64(x)', 'x', 'x T\\nT: int | i64'},
+		// `$if x is f64 {` asks the same of a value; `$if T in [i64, f64] {` leaves
+		// each type of its list.
+		HoverExpectation{'\t\treturn x', 'x', 'x f64'},
+		HoverExpectation{'\t\treturn f64(x) * 2.0', 'x', 'x T\\nT: i64 | f64'},
+		// An interface: what implements it; in the branch of `$if a is User {`, `User`.
+		HoverExpectation{'\t\treturn a.age', 'a', 'a main.User'},
+		HoverExpectation{'\treturn a.name.len', 'a', 'a T\\nT: implements main.Named'},
+		// A struct as the constraint stands for itself and the structs that embed it.
+		HoverExpectation{'\treturn u.name', 'u', 'u T\\nT: main.User or a struct that embeds it'},
+		// A local that holds a `T`: a `$if` on it decides `T`, and a literal that
+		// writes its type, `[]T{}`, has it.
+		HoverExpectation{'\tmut all := []T{}', 'all', 'all []T\\n${named}'},
+		HoverExpectation{'\t\treturn y.age + mine.len + all.len', 'y', 'y main.User'},
+		HoverExpectation{'\t\treturn y.age + mine.len + all.len', 'age', 'age int'},
+		HoverExpectation{'\t\treturn y.age + mine.len + all.len', 'mine', 'mine []main.User'},
+		HoverExpectation{'\treturn all.len', 'all', 'all []T\\n${named}'},
+	])
 }
 
 fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
@@ -3383,109 +3394,93 @@ fn main() {
 }
 "
 
-struct JoinedHover {
-	line string
-	word string
-	text string
-}
-
-fn assert_joined_hovers(checks []JoinedHover) {
-	dir := program_dir('joined', joined_program)
-	questions := checks.map(word_question(it.line, 'hv^', line_of(joined_program, it.line), it.word, 0))
-	answers := ask_many(dir, questions)
-	assert answers.len == checks.len, answers.str()
-	for i, check in checks {
-		assert answers[i] == '${i}\t${hover_of(check.text)}', '${check.line}: ${check.word}'
-	}
-}
-
 const all_numbers = 'i8 | i16 | int | u8 | f32 | f64'
 
 fn test_values_tested_together_with_and_are_each_the_type_they_are_tested_for() {
 	sum := '\t\tsum := A(a) + B(b) + C(c)'
-	assert_joined_hovers([
+	assert_hovers('joined', joined_program, [
 		// `$if a is f64 && b is f64 && c is f64 {`: in its branch each of them is an
 		// `f64`, and so is a local that adds them; after it, any type of `Number`.
-		JoinedHover{'\t\ttotal := a + b + c', 'a', 'a f64'},
-		JoinedHover{'\t\ttotal := a + b + c', 'b', 'b f64'},
-		JoinedHover{'\t\ttotal := a + b + c', 'c', 'c f64'},
-		JoinedHover{'\t\ttotal := a + b + c', 'total', 'total f64'},
-		JoinedHover{'\t\treturn total', 'total', 'total f64'},
-		JoinedHover{'\treturn f64(a) + f64(b) + f64(c)', 'a', 'a A\\nA: ${all_numbers}'},
+		HoverExpectation{'\t\ttotal := a + b + c', 'a', 'a f64'},
+		HoverExpectation{'\t\ttotal := a + b + c', 'b', 'b f64'},
+		HoverExpectation{'\t\ttotal := a + b + c', 'c', 'c f64'},
+		HoverExpectation{'\t\ttotal := a + b + c', 'total', 'total f64'},
+		HoverExpectation{'\t\treturn total', 'total', 'total f64'},
+		HoverExpectation{'\treturn f64(a) + f64(b) + f64(c)', 'a', 'a A\\nA: ${all_numbers}'},
 		// The same tests on the type parameters, which are `f64` there too.
-		JoinedHover{sum, 'A', '[A Number]\\nA: f64'},
-		JoinedHover{sum, 'C', '[C Number]\\nC: f64'},
-		JoinedHover{sum, 'b', 'b f64'},
-		JoinedHover{sum, 'sum', 'sum f64'},
+		HoverExpectation{sum, 'A', '[A Number]\\nA: f64'},
+		HoverExpectation{sum, 'C', '[C Number]\\nC: f64'},
+		HoverExpectation{sum, 'b', 'b f64'},
+		HoverExpectation{sum, 'sum', 'sum f64'},
 		// Its `$else` is where one of them is not: each can be any type.
-		JoinedHover{'\t\treturn f64(a) * f64(b) * f64(c)', 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) * f64(b) * f64(c)', 'b', 'b B\\nB: ${all_numbers}'},
 	])
 }
 
 fn test_values_tested_together_against_lists_keep_what_their_lists_leave() {
-	assert_joined_hovers([
+	assert_hovers('joined', joined_program, [
 		// `in` keeps the types of its list, `!in` the others, for each value.
-		JoinedHover{'\t\treturn f64(a) + f64(b)', 'a', 'a A\\nA: f32 | f64'},
-		JoinedHover{'\t\treturn f64(a) + f64(b)', 'b', 'b B\\nB: i8 | u8'},
-		JoinedHover{'\t\treturn f64(a) / f64(b)', 'a', 'a A\\nA: i8 | i16 | int | u8'},
-		JoinedHover{'\t\treturn f64(a) / f64(b)', 'b', 'b B\\nB: i16 | int | f32 | f64'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b)', 'a', 'a A\\nA: f32 | f64'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b)', 'b', 'b B\\nB: i8 | u8'},
+		HoverExpectation{'\t\treturn f64(a) / f64(b)', 'a', 'a A\\nA: i8 | i16 | int | u8'},
+		HoverExpectation{'\t\treturn f64(a) / f64(b)', 'b', 'b B\\nB: i16 | int | f32 | f64'},
 		// Their `$else`s: one value may be in its list, when the other is not.
-		JoinedHover{'\t\treturn f64(a) - f64(b)', 'a', 'a A\\nA: ${all_numbers}'},
-		JoinedHover{'\t\treturn f64(a) - f64(b)', 'b', 'b B\\nB: ${all_numbers}'},
-		JoinedHover{'\t\treturn f64(a) - f64(b) - 1.0', 'a', 'a A\\nA: ${all_numbers}'},
-		JoinedHover{'\t\treturn f64(a) - f64(b) - 1.0', 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) - f64(b)', 'a', 'a A\\nA: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) - f64(b)', 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) - f64(b) - 1.0', 'a', 'a A\\nA: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) - f64(b) - 1.0', 'b', 'b B\\nB: ${all_numbers}'},
 	])
 }
 
 fn test_values_tested_together_with_or_are_decided_in_the_else() {
-	assert_joined_hovers([
+	assert_hovers('joined', joined_program, [
 		// `$if a is f64 || b is f64 {`: either may be an `f64`, so in its branch each
 		// can be any type; in its `$else` neither is one.
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 2.0', 'a', 'a A\\nA: ${all_numbers}'},
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 2.0', 'b', 'b B\\nB: ${all_numbers}'},
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 3.0', 'a', 'a A\\nA: i8 | i16 | int | u8 | f32'},
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 3.0', 'b', 'b B\\nB: i8 | i16 | int | u8 | f32'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 2.0', 'a', 'a A\\nA: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 2.0', 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 3.0', 'a', 'a A\\nA: i8 | i16 | int | u8 | f32'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 3.0', 'b', 'b B\\nB: i8 | i16 | int | u8 | f32'},
 		// `in` and `!in` joined with `||`: its `$else` is where `a` is not in its
 		// list and `b` is in its.
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 4.0', 'a', 'a A\\nA: ${all_numbers}'},
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 5.0', 'a', 'a A\\nA: i16 | int | f32 | f64'},
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 5.0', 'b', 'b B\\nB: f32 | f64'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 4.0', 'a', 'a A\\nA: ${all_numbers}'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 5.0', 'a', 'a A\\nA: i16 | int | f32 | f64'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 5.0', 'b', 'b B\\nB: f32 | f64'},
 		// `!is` joined with `||`: its `$else` is where both are `f64`.
-		JoinedHover{'\t\treturn f64(a) + f64(b) + 6.0', 'b', 'b B\\nB: ${all_numbers}'},
-		JoinedHover{'\t\treturn a + b', 'a', 'a f64'},
-		JoinedHover{'\t\treturn a + b', 'b', 'b f64'},
+		HoverExpectation{'\t\treturn f64(a) + f64(b) + 6.0', 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{'\t\treturn a + b', 'a', 'a f64'},
+		HoverExpectation{'\t\treturn a + b', 'b', 'b f64'},
 	])
 }
 
 fn test_each_branch_of_a_chain_of_tests_on_several_values_leaves_what_the_others_did_not_take() {
 	last := '\t\treturn f64(a) * f64(b) * 7.0'
-	assert_joined_hovers([
-		JoinedHover{'\t\treturn a * b', 'a', 'a f64'},
-		JoinedHover{'\t\treturn a * b', 'b', 'b f64'},
-		JoinedHover{'\t\treturn f64(a * b)', 'a', 'a f32'},
-		JoinedHover{'\t\treturn f64(a * b)', 'b', 'b f32'},
+	assert_hovers('joined', joined_program, [
+		HoverExpectation{'\t\treturn a * b', 'a', 'a f64'},
+		HoverExpectation{'\t\treturn a * b', 'b', 'b f64'},
+		HoverExpectation{'\t\treturn f64(a * b)', 'a', 'a f32'},
+		HoverExpectation{'\t\treturn f64(a * b)', 'b', 'b f32'},
 		// `$else $if a is f64 {`: `a` is an `f64`, so `b` is not, or the first
 		// branch would have taken them.
-		JoinedHover{'\t\treturn a + f64(b)', 'a', 'a f64'},
-		JoinedHover{'\t\treturn a + f64(b)', 'b', 'b B\\nB: i8 | i16 | int | u8 | f32'},
+		HoverExpectation{'\t\treturn a + f64(b)', 'a', 'a f64'},
+		HoverExpectation{'\t\treturn a + f64(b)', 'b', 'b B\\nB: i8 | i16 | int | u8 | f32'},
 		// The last `$else`: `a` is not an `f64`; `b` can be any type.
-		JoinedHover{last, 'a', 'a A\\nA: i8 | i16 | int | u8 | f32'},
-		JoinedHover{last, 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{last, 'a', 'a A\\nA: i8 | i16 | int | u8 | f32'},
+		HoverExpectation{last, 'b', 'b B\\nB: ${all_numbers}'},
 		// A value in the condition of a later test is what the tests before leave.
-		JoinedHover{'\t} \$else \$if a is f32 && b is f32 {', 'a', 'a A\\nA: ${all_numbers}'},
+		HoverExpectation{'\t} \$else \$if a is f32 && b is f32 {', 'a', 'a A\\nA: ${all_numbers}'},
 	])
 }
 
 fn test_a_value_tested_three_times_in_parentheses_or_after_not_is_what_the_tests_leave() {
-	assert_joined_hovers([
-		JoinedHover{'\t\treturn f64(x) + 8.0', 'x', 'x T\\nT: i8 | i16 | u8'},
-		JoinedHover{'\t\treturn y', 'y', 'y f64'},
-		JoinedHover{'\t\treturn f64(z) + 9.0', 'z', 'z T\\nT: i8 | i16 | int | u8 | f32'},
-		JoinedHover{'\t\treturn z', 'z', 'z f64'},
+	assert_hovers('joined', joined_program, [
+		HoverExpectation{'\t\treturn f64(x) + 8.0', 'x', 'x T\\nT: i8 | i16 | u8'},
+		HoverExpectation{'\t\treturn y', 'y', 'y f64'},
+		HoverExpectation{'\t\treturn f64(z) + 9.0', 'z', 'z T\\nT: i8 | i16 | int | u8 | f32'},
+		HoverExpectation{'\t\treturn z', 'z', 'z f64'},
 		// A group in a list, and `!in` in an `$else $if`.
-		JoinedHover{'\t\treturn f64(v) + 10.0', 'v', 'v T\\nT: i8 | f32 | f64'},
-		JoinedHover{'\t\treturn f64(v) + 11.0', 'v', 'v T\\nT: i16 | u8'},
-		JoinedHover{'\t\treturn f64(v) + 12.0', 'v', 'v int'},
+		HoverExpectation{'\t\treturn f64(v) + 10.0', 'v', 'v T\\nT: i8 | f32 | f64'},
+		HoverExpectation{'\t\treturn f64(v) + 11.0', 'v', 'v T\\nT: i16 | u8'},
+		HoverExpectation{'\t\treturn f64(v) + 12.0', 'v', 'v int'},
 	])
 }
 
@@ -3494,40 +3489,40 @@ fn test_values_of_interfaces_tested_together_are_the_types_they_are_tested_for()
 	first := '\t\treturn a.name.len + b.name.len + 1'
 	second := '\t\treturn a.name.len + b.name.len + 2'
 	third := '\t\treturn a.name.len + b.name.len + 3'
-	assert_joined_hovers([
+	assert_hovers('joined', joined_program, [
 		// A local that holds a value of a type parameter, tested with a parameter.
-		JoinedHover{'\t\treturn x.age + b.level', 'x', 'x main.User'},
-		JoinedHover{'\t\treturn x.age + b.level', 'b', 'b main.Admin'},
-		JoinedHover{'\treturn x.name.len + b.name.len', 'x', 'x A\\nA: ${named}'},
-		JoinedHover{'\treturn x.name.len + b.name.len', 'b', 'b B\\nB: ${named}'},
+		HoverExpectation{'\t\treturn x.age + b.level', 'x', 'x main.User'},
+		HoverExpectation{'\t\treturn x.age + b.level', 'b', 'b main.Admin'},
+		HoverExpectation{'\treturn x.name.len + b.name.len', 'x', 'x A\\nA: ${named}'},
+		HoverExpectation{'\treturn x.name.len + b.name.len', 'b', 'b B\\nB: ${named}'},
 		// `in` keeps the types of its list; `!in` on an interface leaves any other
 		// type that implements it, and its `$else` the types of its list.
-		JoinedHover{first, 'a', 'a A\\nA: main.User | main.Admin'},
-		JoinedHover{first, 'b', 'b B\\nB: ${named}'},
-		JoinedHover{second, 'a', 'a A\\nA: ${named}'},
-		JoinedHover{second, 'b', 'b B\\nB: ${named}'},
+		HoverExpectation{first, 'a', 'a A\\nA: main.User | main.Admin'},
+		HoverExpectation{first, 'b', 'b B\\nB: ${named}'},
+		HoverExpectation{second, 'a', 'a A\\nA: ${named}'},
+		HoverExpectation{second, 'b', 'b B\\nB: ${named}'},
 		// The last `$else`: `a` is in the list, so `b` is a `User`, or the first
 		// branch would have taken them.
-		JoinedHover{third, 'a', 'a A\\nA: main.User | main.Admin'},
-		JoinedHover{third, 'b', 'b main.User'},
+		HoverExpectation{third, 'a', 'a A\\nA: main.User | main.Admin'},
+		HoverExpectation{third, 'b', 'b main.User'},
 	])
 }
 
 fn test_a_test_that_cannot_be_followed_leaves_the_others_their_types() {
 	inner := '\t\t\treturn f64(a) + b + f64(c)'
-	assert_joined_hovers([
+	assert_hovers('joined', joined_program, [
 		// A test that the editor cannot follow, `sizeof(B) == 8`, may go either way,
 		// and the other tests still decide their values; one of a type parameter
 		// without a constraint decides it too.
-		JoinedHover{'\t\treturn a + f64(u)', 'a', 'a f64'},
-		JoinedHover{'\t\treturn a + f64(u)', 'u', 'u int'},
-		JoinedHover{'\t\treturn a + f64(b) * 2.0', 'a', 'a f64'},
-		JoinedHover{'\t\treturn a + f64(b) * 2.0', 'b', 'b B\\nB: ${all_numbers}'},
+		HoverExpectation{'\t\treturn a + f64(u)', 'a', 'a f64'},
+		HoverExpectation{'\t\treturn a + f64(u)', 'u', 'u int'},
+		HoverExpectation{'\t\treturn a + f64(b) * 2.0', 'a', 'a f64'},
+		HoverExpectation{'\t\treturn a + f64(b) * 2.0', 'b', 'b B\\nB: ${all_numbers}'},
 		// Nested tests: the outer one on a type parameter, the inner one on two
 		// values.
-		JoinedHover{inner, 'a', 'a A\\nA: f32 | f64'},
-		JoinedHover{inner, 'b', 'b f64'},
-		JoinedHover{inner, 'c', 'c C\\nC: i8 | i16'},
+		HoverExpectation{inner, 'a', 'a A\\nA: f32 | f64'},
+		HoverExpectation{inner, 'b', 'b f64'},
+		HoverExpectation{inner, 'c', 'c C\\nC: i8 | i16'},
 	])
 }
 
@@ -3567,36 +3562,31 @@ fn main() {
 }
 "
 
-// operation asks for the hover of the first `word` of the line of
-// operations_program that reads `text`.
-fn operation(text string, word string) string {
-	return ask(program_dir('operations', operations_program), 'hv^', line_of(operations_program,
-		text), word, 0)
-}
-
 fn test_a_local_whose_value_is_an_operation_on_values_of_type_parameters_has_its_type() {
-	// An operation on numbers has the type of its operands, the first one that
-	// is not a literal; a comparison and a logical operation are a `bool`.
 	signed := 'A: i8 | int | f64'
-	assert operation('\tcast := A(a)', 'cast') == hover_of('cast A\\n${signed}')
-	assert operation('\ttwice := a + a', 'twice') == hover_of('twice A\\n${signed}')
-	assert operation('\tcasts := A(a) * A(a)', 'casts') == hover_of('casts A\\n${signed}')
-	assert operation('\tmixed := f64(a) + f64(b)', 'mixed') == hover_of('mixed f64')
-	assert operation('\tleft := 2 * a', 'left') == hover_of('left A\\n${signed}')
-	assert operation('\tgrouped := (a + a) / a', 'grouped') == hover_of('grouped A\\n${signed}')
-	assert operation('\tnegative := -a', 'negative') == hover_of('negative A\\n${signed}')
-	assert operation('\tcompared := a < a', 'compared') == hover_of('compared bool')
-	assert operation('\tboth := compared && twice > a', 'both') == hover_of('both bool')
-	// In the branch of `$if A is f64 && B is f64 {` they are `f64`s.
 	ret := '\t\treturn joined + twice + cast + casts + mixed + left + grouped + negative'
-	assert operation('\t\tjoined := a + b', 'joined') == hover_of('joined f64')
-	assert operation(ret, 'twice') == hover_of('twice f64')
-	assert operation(ret, 'negative') == hover_of('negative f64')
-	// A shift has the type of what it shifts, not of how far; `+` on a value of
-	// no known type has the type of the other operand.
-	assert operation('\tshifted := a << 2', 'shifted') == hover_of('shifted A\\nA: i8 | int')
-	assert operation('\twidened := 1 << a', 'widened') == hover_of('widened int')
-	assert operation("\ttext := a.str() + '!'", 'text') == hover_of('text string')
+	assert_hovers('operations', operations_program, [
+		// An operation on numbers has the type of its operands, the first one that
+		// is not a literal; a comparison and a logical operation are a `bool`.
+		HoverExpectation{'\tcast := A(a)', 'cast', 'cast A\\n${signed}'},
+		HoverExpectation{'\ttwice := a + a', 'twice', 'twice A\\n${signed}'},
+		HoverExpectation{'\tcasts := A(a) * A(a)', 'casts', 'casts A\\n${signed}'},
+		HoverExpectation{'\tmixed := f64(a) + f64(b)', 'mixed', 'mixed f64'},
+		HoverExpectation{'\tleft := 2 * a', 'left', 'left A\\n${signed}'},
+		HoverExpectation{'\tgrouped := (a + a) / a', 'grouped', 'grouped A\\n${signed}'},
+		HoverExpectation{'\tnegative := -a', 'negative', 'negative A\\n${signed}'},
+		HoverExpectation{'\tcompared := a < a', 'compared', 'compared bool'},
+		HoverExpectation{'\tboth := compared && twice > a', 'both', 'both bool'},
+		// In the branch of `$if A is f64 && B is f64 {` they are `f64`s.
+		HoverExpectation{'\t\tjoined := a + b', 'joined', 'joined f64'},
+		HoverExpectation{ret, 'twice', 'twice f64'},
+		HoverExpectation{ret, 'negative', 'negative f64'},
+		// A shift has the type of what it shifts, not of how far; `+` on a value of
+		// no known type has the type of the other operand.
+		HoverExpectation{'\tshifted := a << 2', 'shifted', 'shifted A\\nA: i8 | int'},
+		HoverExpectation{'\twidened := 1 << a', 'widened', 'widened int'},
+		HoverExpectation{"\ttext := a.str() + '!'", 'text', 'text string'},
+	])
 }
 
 const joined_members_program = 'module main
@@ -3801,19 +3791,13 @@ fn main() {
 }
 "
 
-// generic_form asks for the hover of the `nth` `word` of the line of
-// generic_forms_program that reads `text`.
-fn generic_form(text string, word string, nth int) string {
-	return ask(program_dir('generic_forms', generic_forms_program), 'hv^', line_of(generic_forms_program,
-		text), word, nth)
-}
-
 fn test_a_local_of_a_generic_body_has_the_type_the_check_gives_its_value() {
 	// What a value of a type parameter makes of a local is written with the type
 	// parameter, and what it can be on a line of its own: an `if` or a `match`
 	// used as a value, an array, its element, a map, a generic struct and its
 	// field, and what `or {}`, `dump()` and `&` give.
 	signed := 'A: i8 | int | f64'
+	mut checks := []HoverExpectation{}
 	for local, typ in {
 		'\tbigger := if a > a { a } else { a }': 'A'
 		'\tpicked := match a {':                 'A'
@@ -3831,7 +3815,7 @@ fn test_a_local_of_a_generic_body_has_the_type_the_check_gives_its_value() {
 		'\tdoubled := values.map(it * 2)':       '[]A'
 	} {
 		word := local.trim_space().all_before(' ')
-		assert generic_form(local, word, 0) == hover_of('${word} ${typ}\\n${signed}'), local
+		checks << HoverExpectation{local, word, '${word} ${typ}\\n${signed}'}
 	}
 	// What the type parameters do not decide has its own type.
 	for local, typ in {
@@ -3841,14 +3825,17 @@ fn test_a_local_of_a_generic_body_has_the_type_the_check_gives_its_value() {
 		'\tts := typeof(a).name':                         'string'
 	} {
 		word := local.trim_space().all_before(' ')
-		assert generic_form(local, word, 0) == hover_of('${word} ${typ}'), local
+		checks << HoverExpectation{local, word, '${word} ${typ}'}
 	}
 	// With an interface as the constraint.
 	named := 'T: implements main.Named'
-	assert generic_form('\tboxed := Box[T]{', 'boxed', 0) == hover_of('boxed Box[T]\\n${named}')
-	assert generic_form('\theld := boxed.item', 'held', 0) == hover_of('held T\\n${named}')
-	assert generic_form('\tnames := [x.name]', 'names', 0) == hover_of('names []string')
-	assert generic_form('\tgreeting := x.greet()', 'greeting', 0) == hover_of('greeting string')
+	checks << [
+		HoverExpectation{'\tboxed := Box[T]{', 'boxed', 'boxed Box[T]\\n${named}'},
+		HoverExpectation{'\theld := boxed.item', 'held', 'held T\\n${named}'},
+		HoverExpectation{'\tnames := [x.name]', 'names', 'names []string'},
+		HoverExpectation{'\tgreeting := x.greet()', 'greeting', 'greeting string'},
+	]
+	assert_hovers('generic_forms', generic_forms_program, checks)
 }
 
 fn test_a_generic_call_in_a_generic_body_returns_what_its_arguments_bind() {
@@ -3856,6 +3843,7 @@ fn test_a_generic_call_in_a_generic_body_returns_what_its_arguments_bind() {
 	// declares; so do the other generic calls, with their type arguments
 	// written or not, and the methods of a generic struct.
 	signed := 'A: i8 | int | f64'
+	mut checks := []HoverExpectation{}
 	for local, typ in {
 		'\tsame := identity(a)':                 'A'
 		'\ttwice_same := identity(identity(a))': 'A'
@@ -3865,28 +3853,33 @@ fn test_a_generic_call_in_a_generic_body_returns_what_its_arguments_bind() {
 		'\tgot := boxed.get()':                  'A'
 	} {
 		word := local.trim_space().all_before(' ')
-		assert generic_form(local, word, 0) == hover_of('${word} ${typ}\\n${signed}'), local
+		checks << HoverExpectation{local, word, '${word} ${typ}\\n${signed}'}
 	}
-	assert generic_form('\tcount := count_of(a)', 'count', 0) == hover_of('count int')
-	// The guard of an `if` and the variable of a `for` loop.
-	assert generic_form('\t\tprintln(found)', 'found', 0) == hover_of('found A\\n${signed}')
-	assert generic_form('\t\tprintln(elem)', 'elem', 0) == hover_of('elem A\\n${signed}')
-	// A type parameter without a constraint.
-	assert generic_form('\tcopy := identity(u)', 'copy', 0) == hover_of('copy U')
+	checks << [
+		HoverExpectation{'\tcount := count_of(a)', 'count', 'count int'},
+		// The guard of an `if` and the variable of a `for` loop.
+		HoverExpectation{'\t\tprintln(found)', 'found', 'found A\\n${signed}'},
+		HoverExpectation{'\t\tprintln(elem)', 'elem', 'elem A\\n${signed}'},
+		// A type parameter without a constraint.
+		HoverExpectation{'\tcopy := identity(u)', 'copy', 'copy U'},
+	]
+	assert_hovers('generic_forms', generic_forms_program, checks)
 }
 
 fn test_a_type_parameter_without_a_constraint_is_what_a_compile_time_test_makes_it() {
-	// `$if u is int {`: `u` is an `int` there, and so is a local that holds it;
-	// `$else $if U is string {`, a `string`. `in` leaves the types of its list
-	// and the `$else` of `!in` the types of its. What no test decides stays `U`.
-	assert generic_form('\t\tn := u + 1', 'u', 0) == hover_of('u int')
-	assert generic_form('\t\tn := u + 1', 'n', 0) == hover_of('n int')
-	assert generic_form('\t\tk := U(0)', 'U', 0) == hover_of('[U]\\nU: int')
-	assert generic_form('\t\treturn u', 'u', 0) == hover_of('u string')
-	assert generic_form('\t\tsmall := u', 'small', 0) == hover_of('small U\\nU: i8 | i16')
-	assert generic_form('\t\tfloat := u', 'u', 0) == hover_of('u U\\nU: f32 | f64')
-	assert generic_form("\t\treturn 'other \${copy}'", 'copy', 0) == hover_of('copy U')
-	assert generic_form('\tcopy := identity(u)', 'u', 0) == hover_of('u U')
+	assert_hovers('generic_forms', generic_forms_program, [
+		// `$if u is int {`: `u` is an `int` there, and so is a local that holds it;
+		// `$else $if U is string {`, a `string`. `in` leaves the types of its list
+		// and the `$else` of `!in` the types of its. What no test decides stays `U`.
+		HoverExpectation{'\t\tn := u + 1', 'u', 'u int'},
+		HoverExpectation{'\t\tn := u + 1', 'n', 'n int'},
+		HoverExpectation{'\t\tk := U(0)', 'U', '[U]\\nU: int'},
+		HoverExpectation{'\t\treturn u', 'u', 'u string'},
+		HoverExpectation{'\t\tsmall := u', 'small', 'small U\\nU: i8 | i16'},
+		HoverExpectation{'\t\tfloat := u', 'u', 'u U\\nU: f32 | f64'},
+		HoverExpectation{"\t\treturn 'other \${copy}'", 'copy', 'copy U'},
+		HoverExpectation{'\tcopy := identity(u)', 'u', 'u U'},
+	])
 	// Completion offers there what an `int` offers.
 	dir := program_dir('generic_forms', generic_forms_program)
 	branch := '\t\treturn n.str() + k.str() + u.hex()'
