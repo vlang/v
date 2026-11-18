@@ -871,22 +871,31 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut status_code := -1
 	mut has_truncated_body := false
 	mut framed_complete := false
+	// The bytes read past any interim responses are this loop's first input.
+	pending, pending_eof := req.read_past_interim_responses(con, receive_chunk_cb, bp)!
+	mut pending_pos := 0
 	for {
 		readcounter++
-		len := receive_chunk_cb(con, bp, bufsize) or {
-			if err is io.Eof {
-				body_so_far := if headers_end >= 0 && old_len > body_pos {
-					old_len - body_pos
-				} else {
-					u64(0)
-				}
-				if !response_has_no_body(req.method, status_code) {
-					validate_received_response_completion(has_content_length, expected_size,
-						body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
-				}
-				break
+		mut len := 0
+		mut at_eof := false
+		if pending_pos < pending.len {
+			len = if pending.len - pending_pos < bufsize {
+				pending.len - pending_pos
+			} else {
+				bufsize
 			}
-			return err
+			unsafe { vmemcpy(bp, &pending[pending_pos], len) }
+			pending_pos += len
+		} else if pending_eof {
+			at_eof = true
+		} else {
+			len = receive_chunk_cb(con, bp, bufsize) or {
+				if err !is io.Eof {
+					return err
+				}
+				at_eof = true
+				0
+			}
 		}
 		$if debug_http ? {
 			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
@@ -894,7 +903,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
 		}
-		if len <= 0 {
+		if at_eof || len <= 0 {
 			body_so_far := if headers_end >= 0 && old_len > body_pos {
 				old_len - body_pos
 			} else {
@@ -1041,6 +1050,62 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		has_truncated_body:           has_truncated_body
 		reusable:                     framed_complete
 	}
+}
+
+// read_past_interim_responses reads the start of a response and drops the
+// interim (1xx) responses that may precede the final one, such as `100
+// Continue` or `103 Early Hints` (RFC 9110 §15.2). `101 Switching Protocols`
+// is final: it ends HTTP/1.1 on the connection. It returns the bytes read
+// after the last interim response, which begin the final response, and
+// whether the connection ended. Interim responses are not passed to the
+// progress callbacks; more than `stop_receiving_limit` bytes of them is an
+// error.
+fn (req &Request) read_past_interim_responses(con voidptr, receive_chunk_cb FnReceiveChunk, bp &u8) !([]u8, bool) {
+	mut buf := []u8{}
+	mut dropped := i64(0)
+	for {
+		if buf.len >= interim_status_prefix_len {
+			if !starts_with_interim_status(buf) {
+				return buf, false
+			}
+			head_end := buf.bytestr().index_(headers_body_boundary)
+			if head_end >= 0 {
+				head_len := head_end + headers_body_boundary.len
+				dropped += head_len
+				buf = buf[head_len..].clone()
+				continue
+			}
+		}
+		if req.stop_receiving_limit > 0 && dropped + buf.len > req.stop_receiving_limit {
+			return error('http.request: the interim responses exceed stop_receiving_limit')
+		}
+		len := receive_chunk_cb(con, bp, bufsize) or {
+			if err is io.Eof {
+				return buf, true
+			}
+			return err
+		}
+		if len <= 0 {
+			return buf, true
+		}
+		unsafe { buf.push_many(bp, len) }
+	}
+	return buf, false
+}
+
+// interim_status_prefix_len is the length of `HTTP/1.1 1xx`, enough of a
+// status line to tell an interim response.
+const interim_status_prefix_len = 12
+
+// starts_with_interim_status reports whether buf begins with the status line
+// of an interim response: `HTTP/1.x 1xx`, other than 101.
+fn starts_with_interim_status(buf []u8) bool {
+	if buf.len < interim_status_prefix_len || buf[..7].bytestr() != 'HTTP/1.'
+		|| !buf[7].is_digit() || buf[8] != ` ` || buf[9] != `1` || !buf[10].is_digit()
+		|| !buf[11].is_digit() {
+		return false
+	}
+	return !(buf[10] == `0` && buf[11] == `1`)
 }
 
 fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
