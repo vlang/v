@@ -180,11 +180,13 @@ fn test_a_new_page_sees_a_failed_build() {
 	// The status is still `failed` from the previous test.
 	mut conn, head := open_stream(sse_port)
 	got := read_until(mut conn, 'error: second', head)
-	conn.close() or {}
 	assert got.contains('event: hello'), got
 	assert got.contains('event: status\ndata: failed\n'), got
 	write_status('ok\n')
-	time.sleep(200 * time.millisecond)
+	ok_event := 'event: status\ndata: ok\n'
+	recovery := read_until(mut conn, ok_event, '')
+	conn.close() or {}
+	assert recovery.contains(ok_event), recovery
 	mut conn2, head2 := open_stream(sse_port)
 	conn2.close() or {}
 	assert !head2.contains('event: status'), head2
