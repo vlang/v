@@ -12,6 +12,7 @@ mut:
 	n int
 }
 
+@[heap]
 struct Db {
 mut:
 	cmd_buf []u8
@@ -20,6 +21,25 @@ mut:
 struct Outer {
 mut:
 	db Db
+}
+
+struct AppendOuter {
+mut:
+	child &Db
+}
+
+fn replace_child(mut outer AppendOuter, next &Db) string {
+	outer.child = next
+	return 'x'
+}
+
+fn test_string_evaluated_before_rebound_destination() {
+	mut first := &Db{ cmd_buf: 'a'.bytes() }
+	mut second := &Db{ cmd_buf: 'b'.bytes() }
+	mut outer := AppendOuter{ child: first }
+	outer.child.cmd_buf << replace_child(mut outer, second).bytes()
+	assert first.cmd_buf.bytestr() == 'a'
+	assert second.cmd_buf.bytestr() == 'bx'
 }
 
 fn reference_append(prefix []u8, s string) []u8 {

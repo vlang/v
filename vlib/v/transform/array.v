@@ -3034,8 +3034,7 @@ fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.N
 
 // lower_append_string_bytes lowers `buf << s.bytes()` on a `[]u8` to
 // `array.push_string_bytes`, which appends the string's bytes without the temporary array.
-// The destination must be a plain identifier or field chain, so evaluating the string
-// after resolving it cannot reorder side effects.
+// Snapshot the string before resolving the destination, which its evaluation can rebind.
 fn (mut t Transformer) lower_append_string_bytes(node flat.Node) ?flat.NodeId {
 	lhs_id := t.a.child(&node, 0)
 	rhs_id := t.a.child(&node, 1)
@@ -3063,8 +3062,8 @@ fn (mut t Transformer) lower_append_string_bytes(node flat.Node) ?flat.NodeId {
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
 		return none
 	}
+	str_expr := t.snapshot_expr_for_reuse(str_id)
 	base_addr := t.runtime_addr(t.transform_lvalue(lhs_id), lhs_type)
-	str_expr := t.transform_expr(str_id)
 	t.mark_fn_used('array.push_string_bytes')
 	return t.make_call_typed('array.push_string_bytes', [base_addr, str_expr], flat.source_type_void)
 }
