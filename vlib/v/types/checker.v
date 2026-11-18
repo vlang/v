@@ -20065,6 +20065,11 @@ fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema At
 			}
 		}
 	}
+	// TODO: validate array elements against the field's element type (reject
+	// e.g. `[1]` for `[]string`, `['a']` for `[]int`, `[True]` for `[]bool`,
+	// bare `[read]` for `[]Mode`, and nested `[[1, 2]]` with an element-level
+	// diagnostic). Currently only the outer `[...]` shape is checked, so
+	// mismatched elements silently materialize.
 }
 
 // attribute_kind_word phrases an expected argument kind for diagnostics.
