@@ -15,12 +15,22 @@ fn testsuite_end() {
 	os.rmdir_all(auxiliary_c_struct_root) or {}
 }
 
+fn run_c_struct_fixture(source string, flags []string) !string {
+	binary := os.join_path(os.dir(source), 'main')
+	// An explicit C backend keeps the translation unit used for the executable.
+	result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'c', ...flags, '-o', binary,
+		'run', source])
+	if result.exit_code != 0 {
+		return error(result.output)
+	}
+	return '${binary}.c'
+}
+
 fn test_unreferenced_c_struct_binding_does_not_redefine_header_type() ! {
 	root := os.join_path(os.vtmp_dir(), 'unreferenced_c_struct_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
 	os.write_file(source, 'import net as _
 struct C.pollfd {
 mut:
@@ -49,8 +59,7 @@ fn main() {
  holder := Holder{}
  assert holder.items[0].value == 0
 }')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-o', output, source])
-	assert generated_result.exit_code == 0, generated_result.output
+	output := run_c_struct_fixture(source, [])!
 	generated := os.read_file(output)!
 	assert !generated.contains('struct pollfd {')
 	assert !generated.contains('UnusedInner')
@@ -62,8 +71,6 @@ fn main() {
 	assert generated.contains('struct DirectLayout {')
 	assert generated.contains('struct SizeOnlyLayout {')
 	assert generated.contains('struct OffsetOnlyLayout {')
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', source])
-	assert run_result.exit_code == 0, run_result.output
 }
 
 fn auxiliary_c_struct_declarations() !string {
@@ -74,7 +81,6 @@ fn auxiliary_c_struct_declarations() !string {
 	}
 	os.mkdir_all(root)!
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
 	os.write_file(source, '
 struct C.OptionalItem { value int }
 struct C.UnusedAliasItem { value int }
@@ -95,16 +101,7 @@ __global C.items [1]C.GlobalItem
 
 fn main() {}
 ')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-enable-globals', '-o',
-		output, source])
-	if generated_result.exit_code != 0 {
-		return error(generated_result.output)
-	}
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-enable-globals', '-cc', 'clang',
-		'run', source])
-	if run_result.exit_code != 0 {
-		return error(run_result.output)
-	}
+	output := run_c_struct_fixture(source, ['-enable-globals', '-cc', 'clang'])!
 	// Share the C only after the fixture has also linked and run.
 	os.mv(output, checked)!
 	return os.read_file(checked)
@@ -144,7 +141,6 @@ fn test_empty_interface_stringification_omits_unused_c_layouts() ! {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
 	os.write_file(source, 'struct C.UnusedInterfaceLayout { value int }
 struct C.BoxedInterfaceLayout { value int }
 interface Empty {}
@@ -157,11 +153,8 @@ fn main() {
 	assert "\${boxed}".contains("BoxedInterfaceLayout")
 	assert boxed is C.BoxedInterfaceLayout
 }')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-o', output, source])
-	assert generated_result.exit_code == 0, generated_result.output
+	output := run_c_struct_fixture(source, ['-cc', 'clang'])!
 	generated := os.read_file(output)!
 	assert !generated.contains('UnusedInterfaceLayout')
 	assert generated.contains('struct BoxedInterfaceLayout {')
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-cc', 'clang', 'run', source])
-	assert run_result.exit_code == 0, run_result.output
 }
