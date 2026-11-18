@@ -212,28 +212,40 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 	ctx.res.header.set_custom(key, value)!
 }
 
+// discard_superseded_response clears a pending file transfer, leftover body,
+// and stale representation headers before a response helper prepares the
+// replacement headers. A replacement must start from a clean slate: if the
+// old state were cleared after the new headers are prepared (inside
+// send_response_to_client), the fresh headers would be mistaken for the old
+// response and deleted, leaving e.g. a zero Content-Length for a file.
+fn (mut ctx Context) discard_superseded_response() {
+	if ctx.return_type == .file || ctx.res.body.len > 0 {
+		ctx.return_type = .normal
+		ctx.return_file = ''
+		ctx.already_compressed = false
+		ctx.release_response_body()
+		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
+			.content_range, .accept_ranges, .etag, .last_modified, .vary] {
+			ctx.res.header.delete(header)
+		}
+	}
+}
+
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
 // and the response body to `response`. A call always starts a new response:
 // a file transfer armed by an earlier send_file, or a body left by one, belongs
 // to a superseded response, so its representation headers are discarded and
 // recomputed below. Without this, replacing a file response (e.g. from after
 // middleware) would emit the new body and then stream the original file.
-// send_file arms its transfer only after this call returns, so its own send
+// send_file discards the superseded state before preparing its own headers
+// and arms its transfer only after this call returns, so its own send
 // never observes armed state here.
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && ctx.takeover_mode == .none {
 		eprintln('[veb] a response cannot be sent twice over one connection')
 		return Result{}
 	}
-	if ctx.return_type == .file || ctx.res.body.len > 0 {
-		ctx.return_type = .normal
-		ctx.return_file = ''
-		ctx.already_compressed = false
-		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
-			.content_range, .accept_ranges, .etag, .last_modified, .vary] {
-			ctx.res.header.delete(header)
-		}
-	}
+	ctx.discard_superseded_response()
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
@@ -360,6 +372,10 @@ pub fn (mut ctx Context) file(file_path string) Result {
 }
 
 fn (mut ctx Context) send_file(content_type string, file_path string) Result {
+	// Start the replacement from a clean slate before preparing its headers:
+	// send_response_to_client runs after those headers exist, so it must not
+	// observe the superseded transfer/body here.
+	ctx.discard_superseded_response()
 	mut file := os.open(file_path) or {
 		eprint('[veb] error while trying to open file: ${err.msg()}')
 		ctx.res.set_status(.not_found)
