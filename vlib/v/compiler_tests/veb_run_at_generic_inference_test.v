@@ -68,22 +68,19 @@ fn test_veb_run_at_checks_explicit_type_argument_count() {
 		} else {
 			'import veb as ${module_name}'
 		}
-		for type_args, count in {
-			'Program':               1
-			'Program, Context, int': 3
-		} {
-			source := veb_run_at_source.replace('import veb', import_line)
-				.replace('veb.run_at(', 'veb.run_at[${type_args}](')
-				.replace('veb.', '${module_name}.')
-			root := veb_run_at_project('count_${module_name}_${count}', source)!
-			defer { os.rmdir_all(root) or {} }
-			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', ...flags, '-o',
-					os.join_path(root, 'app.c'), root])
-				assert result.exit_code != 0, result.output
-				assert result.output.contains('expected 2 generic parameters, got ${count}'), result.output
-				assert !result.output.contains('C compilation error'), result.output
-			}
+		source := veb_run_at_source.replace('import veb', import_line)
+			.replace('veb.run_at(mut p, port: 8080)!', 'veb.run_at[Program](mut p, port: 8080)!
+	veb.run_at[Program, Context, int](mut p, port: 8080)!')
+			.replace('veb.', '${module_name}.')
+		root := veb_run_at_project('count_${module_name}', source)!
+		defer { os.rmdir_all(root) or {} }
+		for flags in [[]string{}, ['-no-parallel']] {
+			result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', ...flags, '-o',
+				os.join_path(root, 'app.c'), root])
+			assert result.exit_code != 0, result.output
+			assert result.output.contains('expected 2 generic parameters, got 1'), result.output
+			assert result.output.contains('expected 2 generic parameters, got 3'), result.output
+			assert !result.output.contains('C compilation error'), result.output
 		}
 	}
 }
