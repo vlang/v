@@ -36,6 +36,32 @@ fn test_native_owner_keeps_symlinked_and_parent_relative_headers() ! {
 	}
 }
 
+fn test_native_owner_keeps_a_header_beside_a_file_with_its_own_constants() ! {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_native_owner_constants_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'native_owner_constants' }")!
+	// Clang accepts this block; TinyCC must consume the explicit V binding only.
+	os.write_file(os.join_path(root, 'native.h'), 'static int native_value(void) { return ((int (^)(void))^{ return 42; })(); }\n')!
+	os.write_file(os.join_path(root, 'limits.h'), '#define NATIVE_LIMIT 4\n')!
+	os.write_file(os.join_path(root, 'main.c.v'), 'module main\n' +
+		'#flag darwin -framework Foundation\n' + '#include "@VMODROOT/native.h"\n' +
+		'fn C.native_value() i32\n' +
+		'fn main() {\n\tassert C.native_value() == 42\n\tassert native_limit() == 4\n}\n')!
+	// The constant comes from this file's own header: it does not keep the other
+	// header of the module in the TinyCC program.
+	os.write_file(os.join_path(root, 'limits.c.v'), 'module main\n' +
+		'#include "@VMODROOT/limits.h"\n' + 'fn native_limit() int {\n\treturn C.NATIVE_LIMIT\n}\n')!
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
 fn test_native_include_paths_resolve_dir_like_the_emitted_directive() {
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_native_include_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'webgl'))!

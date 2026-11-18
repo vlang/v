@@ -3530,10 +3530,15 @@ fn fastc_conditional_directives_only(pieces []string) bool {
 }
 
 // Only V tokens establish ownership. Native constants or undeclared native
-// types keep their module's headers in the consumer for the C compiler.
+// types keep their module's headers in the consumer for the C compiler. A file
+// with headers of its own takes those names from them, and keeps only them: a
+// header of another file in its module stays with the native owner.
 fn fastc_native_function_only_headers(sources []FastcSourceFile, functions map[string]FastcFunctionSignature, declared_types map[u32]bool, context FastcNativeSourceContext) []string {
 	mut needs_headers := map[string]bool{}
 	for source in sources {
+		if context.files_with_headers[source.path] {
+			continue
+		}
 		for name in context.references_by_file[source.path] {
 			if 'C.' + name !in functions
 				&& !fastc_source_type_key_exists(declared_types, '#Cstruct#' + name)
