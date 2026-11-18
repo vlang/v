@@ -24,7 +24,11 @@ jobs:
           set -euo pipefail
           for module in vsl vtl; do
             module_revision=$(git ls-remote --exit-code "https://github.com/vlang/$module.git" HEAD | cut -f1)
-            [[ "$module_revision" =~ ^[0-9a-f]{40}$ ]]
+            # Avoid depending on platform-specific bash regex matching or errexit.
+            if [ "${#module_revision}" -ne 40 ] || [[ "$module_revision" == *[!0-9a-f]* ]]; then
+              echo "Invalid $module revision from upstream" >&2
+              exit 1
+            fi
             printf '%s=%s\n' "$module" "$module_revision" >> "$GITHUB_OUTPUT"
           done
 

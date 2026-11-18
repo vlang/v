@@ -101,11 +101,11 @@ class CleanupTests(unittest.TestCase):
     def test_paginates_before_deleting_and_keeps_unrelated_artifacts(self):
         self.api.artifacts += [{"id": 9999, "name": "test-results"}]
         with patch.object(cleanup, "PAGE_SIZE", 2):
-            self.assertEqual(self.clean(), 4)
+            self.assertEqual(self.clean(), 6)
         first_delete = next(i for i, call in enumerate(self.api.calls) if call[0] == "DELETE")
         pages = [i for i, (_, path) in enumerate(self.api.calls)
                  if path.startswith(f"{cleanup.API_ROOT}/artifacts?")]
-        self.assertEqual(len(pages), 5)
+        self.assertEqual(len(pages), 7)
         self.assertLess(max(pages), first_delete)
         self.assertEqual({a["id"] for a in self.api.artifacts},
                          {a["id"] for a in artifacts(self.current)} | {9999})
@@ -115,7 +115,7 @@ class CleanupTests(unittest.TestCase):
                       run(60, status="waiting"), run(50, status="requested")]:
             self.api.runs[other["id"]] = other
             self.api.artifacts += artifacts(other)
-        self.assertEqual(self.clean(), 4)
+        self.assertEqual(self.clean(), 6)
         self.assertEqual(set(self.api.deleted), {a["id"] for a in artifacts(self.old)})
 
     def test_stale_rerun_cannot_remove_newer_run(self):
@@ -123,7 +123,7 @@ class CleanupTests(unittest.TestCase):
         newer = run(300, updated_at="2026-01-01T00:00:00Z")
         self.api.runs[300] = newer
         self.api.artifacts += artifacts(newer)
-        self.assertEqual(self.clean(), 4)
+        self.assertEqual(self.clean(), 6)
         self.assertTrue({a["id"] for a in artifacts(newer)}.isdisjoint(self.api.deleted))
 
     def test_incomplete_expired_or_duplicate_replacement_keeps_everything(self):
@@ -141,6 +141,22 @@ class CleanupTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.clean()
                 self.assertEqual(self.api.deleted, [])
+
+    def test_missing_termux_replacement_keeps_old_compilers(self):
+        for platform in ("termux-arm64", "termux-x64"):
+            with self.subTest(platform=platform):
+                self.setUp()
+                name = f"vprod-{platform}-{self.current['head_sha']}"
+                self.api.artifacts = [a for a in self.api.artifacts if a["name"] != name]
+                with self.assertRaises(ValueError):
+                    self.clean()
+                self.assertEqual(self.api.deleted, [])
+
+    def test_legacy_four_platform_set_is_cleaned_after_six_replacements(self):
+        old_artifacts = [a for a in artifacts(self.old) if not a["name"].startswith("vprod-termux-")]
+        self.api.artifacts = artifacts(self.current) + old_artifacts
+        self.assertEqual(self.clean(), 4)
+        self.assertEqual(set(self.api.deleted), {a["id"] for a in old_artifacts})
 
     def test_preserves_other_repositories_workflows_events_and_branches(self):
         changes = [
@@ -162,6 +178,7 @@ class CleanupTests(unittest.TestCase):
         base = artifacts(self.old)[0]
         cases = [
             {"name": "vprod-linux-arm64-" + self.old["head_sha"]},
+            {"name": "vprod-termux-arm-" + self.old["head_sha"]},
             {"name": "vprod-linux-x64-" + "a" * 39},
             {"name": base["name"] + "-logs"},
             {"name": "vprod-linux-x64-" + self.current["head_sha"]},
@@ -207,7 +224,7 @@ class CleanupTests(unittest.TestCase):
         first = artifacts(self.old)[0]["id"]
         endpoint = f"{cleanup.API_ROOT}/artifacts/{first}"
         self.api.errors["DELETE", endpoint] = 404
-        self.assertEqual(self.clean(), 3)
+        self.assertEqual(self.clean(), 5)
         self.setUp()
         self.api.errors["DELETE", endpoint] = 403
         with self.assertRaises(cleanup.APIError):

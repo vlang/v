@@ -22,14 +22,30 @@ fn (mut g Parser) parse_block_body() !bool {
 			terminates = false
 		}
 		g.statement_reachable = outer_statement_reachable && !terminates
-		if g.selfhost && g.or_value_capture && ((g.tok == .key_if && g.if_starts_final_block_expression()) || (g.tok == .key_match && g.match_starts_final_block_expression())) {
-			// The block's final value is an `if`/`match` EXPRESSION (`or { if c { a } else { b } }`);
-			// read it as a value (a ternary/stmt-expr) so a guard variable inside it stays in the
-			// branch scope, instead of parsing it as statements whose value leaks out of scope.
-			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-			g.capture_or_value(value)
-			g.skip_semicolons()
-			continue
+		if g.selfhost && g.or_value_capture && g.local_scope_depth == g.or_value_scope_depth
+			&& g.or_value_expected_type != flat.source_type_void {
+			is_wrapper := g.wrapper_starts_final_block_expression()
+			if is_wrapper || (g.tok == .key_if && g.if_starts_final_block_expression())
+				|| (g.tok == .key_match && g.match_starts_final_block_expression()) {
+				// Read the final conditional or value-producing wrapper as an expression,
+				// keeping its branch values and locals in their own scope. Only the `or`
+				// block's final statement is its value; a final `if`/`match` in a nested
+				// loop or statement body still belongs to that body. Void-result handlers
+				// only execute statements, including compile-time branches without `else`.
+				value := if is_wrapper {
+					g.read_final_block_wrapper_value()!
+				} else {
+					g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+				}
+				if is_wrapper && g.last_expression_type in [u32(0), flat.source_type_void] {
+					// A selected wrapper may only return or panic, without a fallback value.
+					g.write_line('${value};')
+				} else {
+					g.capture_or_value(value)
+				}
+				g.skip_semicolons()
+				continue
+			}
 		}
 		statement_terminates := g.parse_statement()!
 		if statement_terminates {
@@ -3452,6 +3468,24 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	fastc_register_composite_type(flat.source_type_id(declaration_type), mut g.composite_types)
 	if is_volatile {
 		declaration_type = 'volatile ${declaration_type}'
+	}
+	// `@[heap]` promises that a struct's addresses outlive the frame that made it,
+	// so a callee may store `&local` or a `mut local` argument. As in the C
+	// backend, every local of such a struct lives on the heap: the C variable
+	// holds the pointer and the V local is a reference to it.
+	if g.selfhost && !is_static && !is_volatile && g.heap_structs.len > 0 && local_type_id != 0
+		&& !fastc_is_pointer_type(local_type_id) && local_type in g.heap_structs {
+		storage_type := fastc_output_c_type(local_type)
+		pointer_type := flat.source_type_composition_two(.concat, local_type_id, flat.source_type_id('*'))
+		g.write_line('${storage_type} *${c_name};')
+		g.write_line('${c_name} = (${storage_type} *)${fastc_heap_copy_expression(storage_type, expression)};')
+		g.set_scoped_local(name, FastcLocal{
+			is_mut:        is_mut
+			is_reference:  true
+			is_heap_value: true
+			typ:           pointer_type
+		})
+		return
 	}
 	if is_static {
 		// V function statics may have runtime initializers. Keep C static storage and guard

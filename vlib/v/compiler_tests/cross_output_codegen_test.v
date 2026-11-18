@@ -258,19 +258,6 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }
 
-fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
-	c_code := cross_generate_with('-cross -os windows -cc msvc', 'windows_bcrypt', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
-	windows_index := c_code.index('#include <windows.h>') or {
-		assert false, 'the Windows base header is missing'
-		return
-	}
-	bcrypt_index := c_code.index('#include <bcrypt.h>') or {
-		assert false, 'the BCrypt header is missing'
-		return
-	}
-	assert windows_index < bcrypt_index, c_code.all_before('typedef signed char i8;')
-}
-
 // runtime_program prints a value, not a literal, so its C has the full V runtime.
 const runtime_program = "module main\n\nfn main() {\n\tmessage := 'ok'\n\tprintln(message)\n}\n"
 
@@ -420,7 +407,10 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	// check is folded for the generating host, so the target C preprocessor has to
 	// pick the header from the libc it actually compiles against.
 	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
-	header := os.join_path(@VEXEROOT, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h').replace('\\', '/')
+	// @VMODROOT expands to a native root (with backslashes on Windows), while
+	// the remaining path in the V source uses forward slashes. Check that exact
+	// emitted path rather than changing how the source directive is spelled.
+	header := @VEXEROOT + '/vlib/v/cmdexec/cmdexec_poll.h'
 	assert c_code.contains('#include "${header}"'), c_code
 	assert !c_code.contains('static inline short v_cmdexec_poll_revents('), c_code
 }
@@ -517,6 +507,15 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
 		c_code := cross_generate_with('-cross -os windows -cc ${ccompiler}', 'headers_${ccompiler}',
 			'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+		windows_index := c_code.index('#include <windows.h>') or {
+			assert false, '-cc ${ccompiler}: the Windows base header is missing'
+			return
+		}
+		bcrypt_index := c_code.index('#include <bcrypt.h>') or {
+			assert false, '-cc ${ccompiler}: the BCrypt header is missing'
+			return
+		}
+		assert windows_index < bcrypt_index, '-cc ${ccompiler}: ${c_code.all_before('typedef signed char i8;')}'
 		guard_error := msvc_only_header_guard_error(c_code)
 		assert guard_error == '', '-cc ${ccompiler}: ${guard_error}'
 		includes := c_code.split_into_lines().filter(it.trim_space().starts_with('#include'))

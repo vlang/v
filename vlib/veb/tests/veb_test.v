@@ -51,21 +51,16 @@ fn test_a_simple_veb_app_runs_in_the_background() {
 		res := os.system_args(['sh', '-c', script, 'v', ...server_args, veb_logfile])
 		assert res == 0
 	}
-	$if macos {
-		time.sleep(1000 * time.millisecond)
-	} $else {
-		time.sleep(100 * time.millisecond)
-	}
-	// A freshly built server can need much longer than the fixed pause to start
-	// listening on a slow or emulated machine; wait for its port to accept.
+	// Retry until the server accepts connections, allowing for slow startup.
 	for _ in 0 .. 100 {
 		mut probe := net.dial_tcp(localserver) or {
 			time.sleep(100 * time.millisecond)
 			continue
 		}
 		probe.close() or {}
-		break
+		return
 	}
+	assert false, 'veb test server did not start listening on ${localserver}'
 }
 
 // web client tests follow

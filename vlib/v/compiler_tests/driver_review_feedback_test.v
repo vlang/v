@@ -198,7 +198,12 @@ fn main() {
 	main_printfn_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-printfn',
 		'main__main', '-o', main_printfn_output, printfn_source], driver_review_environment())
 	assert main_printfn_compile.exit_code == 0, main_printfn_compile.output
-	assert main_printfn_compile.output.contains('int main(int argc, char** argv)'), main_printfn_compile.output
+	host_entry_point := $if windows {
+		'int wmain(int argc, wchar_t** argv)'
+	} $else {
+		'int main(int argc, char** argv)'
+	}
+	assert main_printfn_compile.output.contains(host_entry_point), main_printfn_compile.output
 
 	js_source := os.join_path(root, 'alias.v')
 	os.write_file(js_source, "fn main() {\n\tprintln('js alias')\n}\n")!
@@ -209,12 +214,19 @@ fn main() {
 	assert os.is_file(js_output)
 
 	multi_extension_source := os.join_path(root, 'multi_extension.c.v')
-	multi_extension_output := os.join_path(root, 'multi_extension')
+	mut multi_extension_output := os.join_path(root, 'multi_extension')
+	// A default Windows build appends .exe; the multi-extension source
+	// still produces one binary, not a stray .c intermediate.
+	$if windows {
+		multi_extension_output += '.exe'
+	}
 	os.write_file(multi_extension_source, 'fn main() {}\n')!
 	multi_extension_compile := run_driver_review_process(v3_bin,
 		['-nocache', multi_extension_source], driver_review_environment())
 	assert multi_extension_compile.exit_code == 0, multi_extension_compile.output
 	assert os.is_file(multi_extension_output)
+	multi_extension_run := cmdexec.run(multi_extension_output, [])
+	assert multi_extension_run.exit_code == 0, multi_extension_run.output
 	assert !os.exists(os.join_path(root, 'multi_extension.c'))
 
 	bounds_source := os.join_path(root, 'forced_bounds.v')

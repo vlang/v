@@ -559,7 +559,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 						smartcast.typ
 					}
 				} else if local := g.locals[item.lit] {
-					if local.is_reference && local.smartcast_origin_type != 0 {
+					if local.is_heap_value {
+						fastc_trim_pointer_type(local.typ)
+					} else if local.is_reference && local.smartcast_origin_type != 0 {
 						g.narrowed_numeric_operand_type(tokens[start..end], local.typ)
 					} else {
 						local.typ

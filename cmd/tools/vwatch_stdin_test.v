@@ -177,30 +177,26 @@ fn test_watch_run_forwards_terminal_input() {
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}
 		process.run()
-		mut pty_ready := true
-		mut prompt_ready := true
+		mut pty_ready := $if openbsd { false } $else { true }
+		mut prompt_ready := false
 		mut startup_output := ''
-		$if openbsd {
-			pty_ready = false
-			prompt_ready = false
-			// Cold Clang builds inside the OpenBSD VM may need longer to reach the prompt.
-			for _ in 0 .. 600 {
-				startup_output += process.stdout_read()
-				if os.exists(ready_path) {
-					pty_ready = true
-				}
-				if startup_output.contains('Enter name:') {
-					prompt_ready = true
-				}
-				if pty_ready && prompt_ready {
-					break
-				}
-				if !process.is_alive() {
-					startup_output += process.stdout_read()
-					break
-				}
-				time.sleep(100 * time.millisecond)
+		// Compiling the watched program can take longer on a busy runner.
+		// Wait for its prompt before typing or starting the response deadline.
+		for _ in 0 .. 600 {
+			startup_output += process.stdout_read()
+			$if openbsd {
+				pty_ready = os.exists(ready_path)
 			}
+			prompt_ready = startup_output.contains('Enter name:')
+			if pty_ready && prompt_ready {
+				break
+			}
+			if !process.is_alive() {
+				startup_output += process.stdout_read()
+				prompt_ready = startup_output.contains('Enter name:')
+				break
+			}
+			time.sleep(100 * time.millisecond)
 		}
 		if pty_ready && prompt_ready && process.is_alive() {
 			process.stdin_write('Alice\n')

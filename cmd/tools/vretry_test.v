@@ -27,25 +27,31 @@ fn test_retry() {
 	defer {
 		log.warn('... done')
 	}
-	tpath := os.join_path(os.vtmp_dir(), 'vretry_test')
+	tpath := os.join_path(os.abs_path(os.vtmp_dir()), 'vretry_test_${os.getpid()}')
 	os.rmdir_all(tpath) or {}
 	os.mkdir_all(tpath)!
 	defer {
 		os.rmdir_all(tpath) or {}
 	}
 	os.chdir(vroot)!
-	fail_cmd := '${vexe} run cmd/tools/check_retry.vsh too many arguments'
+	fixture := os.join_path(tpath, 'check_retry.exe')
+	build := os.exec([vexe, '-skip-running', '-o', fixture, 'cmd/tools/check_retry.vsh'])
+	assert build.exit_code == 0, build.output
+	fail_args := [fixture, 'too', 'many', 'arguments']
+	failure_output := "['too', 'many', 'arguments']"
 	if is_ci {
 		// Skip longer running test on local runs.
-		res := run('${vexe} retry ${fail_cmd}')
-		assert res.exit_code != 0
-		assert res.output.contains('error: exceeded maximum number of retries')
+		res := os.exec([vexe, 'retry', '--', ...fail_args])
+		assert res.exit_code == 1, res.output
+		assert res.output.contains('error: exceeded maximum number of retries (10)!'), res.output
+		assert res.output.count(failure_output) == 10, res.output
 	}
 
-	mut res := run('${vexe} retry -d 0.2 -r 3 ${fail_cmd}')
+	mut res := os.exec([vexe, 'retry', '-d', '0.2', '-r', '3', '--', ...fail_args])
 	dump_on_ci(res)
-	assert res.exit_code != 0
-	assert res.output.contains('error: exceeded maximum number of retries (3)!')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('error: exceeded maximum number of retries (3)!'), res.output
+	assert res.output.count(failure_output) == 3, res.output
 
 	pass_cmd := '${vexe} run cmd/tools/check_retry.vsh'
 	res = run('${vexe} retry ${pass_cmd}')

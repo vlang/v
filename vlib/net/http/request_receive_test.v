@@ -263,3 +263,39 @@ fn test_receive_all_data_copy_limit_preserves_content_encoding() ! {
 		}
 	}
 }
+
+fn test_receive_all_data_stop_receiving_preserves_incomplete_gzip_prefix() ! {
+	body := 'gzip prefix should not be partially decoded'.repeat(100)
+	compressed := gzip.compress(body.bytes())!
+	partial := compressed[..compressed.len - 4]
+	headers := 'HTTP/1.1 200 OK\r\nContent-Length: ${compressed.len * 2}\r\nContent-Encoding: gzip\r\n\r\n'
+	mut fixture := ReceiveAllDataFixture{
+		parts: [headers + partial.bytestr()]
+	}
+	mut req := Request{
+		stop_receiving_limit: i64(headers.len + partial.len - 1)
+	}
+	mut content := strings.new_builder(64)
+	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(&fixture),
+		receive_all_data_fixture_cb)!
+	assert info.has_truncated_body
+	assert !info.reusable
+	resp := parse_received_response(content.str(), info)!
+	assert resp.body.bytes() == partial
+}
+
+fn test_download_preview_stays_bounded_for_large_brotli_body() ! {
+	if !brotli.is_available() {
+		eprintln('skipping large Brotli preview test; libbrotli is not available')
+		return
+	}
+	body := []u8{len: 32 * 1024 * 1024}
+	compressed := brotli.compress(body)!
+	assert compressed.len < 65536
+	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed.len}\r\n\r\n${compressed.bytestr()}'
+	resp := parse_received_response(wire, ReceivedResponseInfo{
+		stop_copying_limit: 65536
+	})!
+	assert resp.body.len == 65536
+	assert resp.body.bytes() == body[..65536]
+}

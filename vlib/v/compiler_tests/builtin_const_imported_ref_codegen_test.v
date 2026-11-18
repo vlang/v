@@ -49,7 +49,8 @@ fn main() {
 	assert c_code.contains('= (u64)(builtin__max_u64);'), c_code
 	assert c_code.contains('= (u64)((u64)(base));'), c_code
 	assert c_code.contains('v_panic(_S("division by zero"))'), c_code
-	assert c_code.contains('__if_val_') && c_code.contains('builtin__max_u64;'), c_code
+	// `if bit_size == 64 { max_u64 } else { ... }` is a scalar select, emitted as a conditional.
+	assert c_code.contains('? builtin__max_u64 :'), c_code
 	assert !c_code.contains('(max_u64 /'), c_code
 	assert !c_code.contains('= max_u64;'), c_code
 }

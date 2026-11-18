@@ -4,10 +4,23 @@ set -eu
 
 platform() {
   arch=$(uname -m)
-  case "$(uname -s):$arch" in
+  host_os=$(uname -s)
+  termux_prefix=
+  case "${PREFIX:-}" in *com.termux*) termux_prefix=1 ;; esac
+  if [ "$host_os" = Linux ] && [ -n "${TERMUX_VERSION:-}$termux_prefix" ]; then
+    # Termux uses Android's bionic libc, so it cannot reuse glibc binaries.
+    # A 64-bit kernel can host 32-bit Termux; require a known 64-bit userland.
+    [ "$(getconf LONG_BIT 2>/dev/null)" = 64 ] || return 0
+    case "$arch" in
+      aarch64) echo termux-arm64 ;;
+      x86_64) echo termux-x64 ;;
+    esac
+    return
+  fi
+  case "$host_os:$arch" in
     Linux:x86_64)
-      # The shared Linux compiler is built on Ubuntu 22.04. musl, Android and
-      # older glibc installations must build their own native compiler.
+      # The shared Linux compiler is built on Ubuntu 22.04. musl, non-Termux
+      # Android and older glibc installations must build their own compiler.
       if getconf GNU_LIBC_VERSION 2>/dev/null | awk '
         { split($2, v, "."); if ($1 == "glibc" && (v[1] > 2 || (v[1] == 2 && v[2] >= 35))) ok = 1 }
         END { exit !ok }'; then

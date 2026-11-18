@@ -145,7 +145,10 @@ jobs:
       - name: Build the parser test tool
         run: ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Install zzuf
-        run: ./v retry -- sudo apt install -qq zzuf
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update -y -qq
+          ./v retry -- sudo apt install -qq zzuf
       - name: Run test-parser
         run: |
           ./v test-parser --show_source --linear examples/hello_world.v

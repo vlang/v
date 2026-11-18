@@ -4,31 +4,9 @@ import log
 import time
 
 /*
-The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
-
-It does so by writing a new generated program containing a @[live] fn pmessage() string {...} function,
-(that program is in `vlib/v/live/live_test_template.vv`)
-then runs the generated program at the start *in the background*,
-waits some time, so that the program could run a few iterations, then modifies its source
-(simulates a developer that has saved a new version of the program source),
-then it waits some more, modifies it again and saves it once more.
-
-On each modification, the running program, should detect that its source code has changed,
-and recompile a shared library, which it then it should load, and thus modify its own
-behavior at runtime (the pmessage function).
-
-If everything works fine, the output of the generated program would have changed at least 1-2 times,
-which then is detected by the test program (the histogram checks).
-
-Since this test program is sensitive to coordination (or lack of) of several processes,
-it tries to sidestep the coordination issue by polling the file system for the existence
-of files, ORIGINAL.txt ... STOP.txt , which are appended to by the generated program.
-
-Note: That approach of monitoring the state of the running generated program, is clearly not ideal,
-but sidesteps the issue of coordinating processes through IPC or stdin/stdout in hopefully
-not very flaky way.
-
-TODO: Cleanup this when/if v has better process control/communication primitives.
+The generated -live program writes a marker for each version of pmessage() that it runs.
+Wait for each marker before editing the source again. The STOP version lets the program
+exit so the test can check its complete output.
 */
 const vexe = os.getenv('VEXE')
 const vtmp_folder = os.join_path(os.vtmp_dir(), 'live_tests_${os.getpid()}')
@@ -49,16 +27,13 @@ fn get_source_template() string {
 }
 
 fn atomic_write_source(source string) {
-	// The reloader compares whole-second modification times.
 	previous_mtime := os.file_last_mod_unix(source_file)
-	for time.now().unix() <= previous_mtime {
-		time.sleep(10 * time.millisecond)
-	}
-
-	// Note: here wrtiting is done in 2 steps, since os.write_file can take some time,
-	// during which the file will be modified, but it will still be not completely written.
-	// The os.mv after that, guarantees that the reloader will see a complete valid V program.
 	os.write_file(tmp_file, source) or { panic(err) }
+	// Stamp the staged source before publishing it. The reloader needs a newer whole-second mtime.
+	if os.file_last_mod_unix(tmp_file) <= previous_mtime {
+		next_mtime := previous_mtime + 1
+		os.utime(tmp_file, next_mtime, next_mtime) or { panic(err) }
+	}
 	os.mv(tmp_file, source_file) or { panic(err) }
 }
 
@@ -131,7 +106,7 @@ fn testsuite_end() {
 	assert histogram['START'] > 0
 	assert histogram['ORIGINAL'] > 0
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
-	// assert histogram['END'] > 0
+	assert histogram['END'] > 0
 	$if !keep_results ? {
 		os.rmdir_all(vtmp_folder) or {}
 		log.info('Removed ${vtmp_folder} . Use `-d keep_results` to override.')
@@ -148,7 +123,10 @@ fn remove_live_attr_from_source() {
 	log.info('> remove @[live] attr from pmessage() while program is running ...')
 	source_without_live :=
 		live_program_source.replace('ORIGINAL', 'NO_LIVE').replace('@[live]\n', '')
+	// Wait for a fresh marker from the original executable's fallback implementation.
+	os.rm(res_original_file) or { panic(err) }
 	atomic_write_source(source_without_live)
+	wait_for_file('ORIGINAL')
 }
 
 fn wait_for_file(new string) {
@@ -161,9 +139,7 @@ fn wait_for_file(new string) {
 			log.info('   checking ${i:3d}/${max_wait_cycles:-3d}, waited for: ${sw.elapsed().seconds():6.3f}s, for ${expected_file} ...')
 		}
 		if os.exists(expected_file) {
-			assert true
 			log.info('> done waiting for ${expected_file}, iteration: ${i:3d}, waited for: ${sw.elapsed().seconds():6.3f}s')
-			time.sleep(80 * time.millisecond)
 			return
 		}
 		time.sleep(1 * time.millisecond)
@@ -178,9 +154,9 @@ fn setup_cycles_environment() {
 	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }
 
-fn run_in_background(cmd string) {
+fn run_in_background(cmd string) thread {
 	log.warn('running in background: ${cmd} ...')
-	spawn fn (cmd string) {
+	return spawn fn (cmd string) {
 		res := os.exec(os.split_args(cmd) or { panic(err) })
 		log.warn('Background cmd ended. res.exit_code: ${res.exit_code} | res.output.len: ${res.output.len}')
 		if res.exit_code != 0 {
@@ -191,7 +167,6 @@ fn run_in_background(cmd string) {
 		}
 		assert res.exit_code == 0
 	}(cmd)
-	log.warn('the live program should be running in the background now')
 }
 
 fn must_exec_cmd(cmd string) {
@@ -202,7 +177,7 @@ fn must_exec_cmd(cmd string) {
 	panic('command failed: ${cmd}\n${res.output}')
 }
 
-fn test_live_program_can_be_compiled() {
+fn test_live_program_reloads_and_stops() {
 	setup_cycles_environment()
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
 	log.info('Compiling with compile_cmd:')
@@ -211,35 +186,13 @@ fn test_live_program_can_be_compiled() {
 		main_source_file])
 	log.info('> DONE')
 	assert compile_res == 0
-	run_in_background('${os.quoted_path(genexe_file)}')
+	program := run_in_background('${os.quoted_path(genexe_file)}')
 	wait_for_file('ORIGINAL')
-}
-
-fn test_live_program_can_be_changed_1() {
 	change_source('CHANGED')
-	time.sleep(250 * time.millisecond)
-	assert true
-}
-
-fn test_live_program_can_be_changed_2() {
 	remove_live_attr_from_source()
-	time.sleep(1 * time.second)
-	assert true
-}
-
-fn test_live_program_can_be_changed_3() {
 	change_source('ANOTHER')
-	time.sleep(250 * time.millisecond)
-	assert true
-}
-
-fn test_live_program_can_be_changed_4() {
-	time.sleep(500 * time.millisecond)
 	change_source('STOP')
-	time.sleep(250 * time.millisecond)
-	change_source('STOP')
-	change_source('STOP')
-	assert true
+	program.wait()
 }
 
 fn test_live_windows_sokol_sharedlive_build_uses_host_import_lib() {

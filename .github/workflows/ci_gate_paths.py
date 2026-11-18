@@ -3,7 +3,7 @@
 
 GitHub's workflow_call trigger cannot have a paths filter. The manifests store
 the original, ordered on.push paths/paths-ignore patterns. The caller runs this
-script against the push's exact before/after commits after bootstrap and fmt.
+script against the push's exact before/after commits after Linux bootstrap and fmt.
 No external Python packages are required.
 """
 import argparse
@@ -122,8 +122,8 @@ def validate(entries):
                 raise ValueError(f"{name} missing from master CI caller")
             if not re.search(rf"(?m)^  {re.escape(key)}:$", caller):
                 raise ValueError(f"{name} missing a caller job")
-        if f"needs.formatting.outputs.{key} == 'true'" not in caller:
-            raise ValueError(f"{name} can bypass formatting")
+        if f"needs.preflight.outputs.{key} == 'true'" not in caller:
+            raise ValueError(f"{name} can bypass preflight")
     for path in ROOT.glob("*.yml"):
         if path.name in known or path == CALLER:
             continue

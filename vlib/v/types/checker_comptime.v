@@ -4246,6 +4246,10 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	if unalias_type(tc.resolve_type(id)) !is Array {
 		return
 	}
+	// The detail reads the source file; build it only for a notice that is reported.
+	if !tc.should_diagnose_notice(id) {
+		return
+	}
 	pos := tc.index_suffix_diagnostic_pos(id)
 	file := tc.a.source_files[pos.id] or { return }
 	detail := compiler_errors.formatted_source_error('details:', 'To silence this notice, use either an explicit `a[..].clone()`,\nor use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.', file, pos)

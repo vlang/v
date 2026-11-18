@@ -193,7 +193,7 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	}
 	// Keep the subprocess independent of the test runner's flags, and make a
 	// V3 failure fail the test instead of accepting output from a V1 fallback.
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED']
+	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED', 'VTMP']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -213,6 +213,8 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	os.unsetenv('VOSARGS')
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
+	// Keep the generated source in the test's own directory for inspection.
+	os.setenv('VTMP', root, true)
 	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
 		os.join_path(os.dir(@VEXE), 'v')
 	} else {
@@ -220,12 +222,17 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	}
 	for mode in ['', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
 		'none'] {
+		mut compiler_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
+		if mode.len > 0 {
+			compiler_args << ['-gc', mode]
+		}
 		for index, snippet in [r"print('\n')", r"print('\r\n')"] {
-			source := os.join_path(root, 'literal_${mode}_${index}.v')
+			name := 'literal_${mode}_${index}'
+			source := os.join_path(root, '${name}.v')
 			os.write_file(source, 'fn main() { ${snippet} }\n')!
-			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
-			if mode.len > 0 {
-				args << ['-gc', mode]
+			mut args := compiler_args.clone()
+			if index == 0 {
+				args << ['-keepc', '-o', os.join_path(root, name)]
 			}
 			args << ['run', source]
 			result := cmdexec.run_with_timeout(vexe, args, 120_000)
@@ -234,15 +241,9 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 			// cmdexec captures both streams without trimming newline bytes.
 			assert result.output.bytes() == expected, result.output
 			if index == 0 {
-				c_path := os.join_path(root, 'literal_${mode}.c')
-				mut c_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
-				if mode.len > 0 {
-					c_args << ['-gc', mode]
-				}
-				c_args << ['-o', c_path, source]
-				generated := cmdexec.run_with_timeout(vexe, c_args, 120_000)
-				assert generated.exit_code == 0, generated.output
-				output := os.read_file(c_path)!
+				kept := os.ls(root)!.filter(it.starts_with('${name}.') && it.ends_with('.tmp.c'))
+				assert kept.len == 1, 'expected retained C for ${name}, got ${kept}'
+				output := os.read_file(os.join_path(root, kept[0]))!
 				assert !output.contains('v_gc_init();'), mode
 				assert !output.contains('v_gc_malloc'), mode
 				assert !output.contains('v_gc_register_displacement'), mode
@@ -259,11 +260,7 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 }
 ')!
 		runtime_c := os.join_path(root, 'runtime_${mode}.c')
-		mut runtime_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
-		if mode.len > 0 {
-			runtime_args << ['-gc', mode]
-		}
-		runtime_args << ['-o', runtime_c, runtime_source]
+		runtime_args := [...compiler_args, '-o', runtime_c, runtime_source]
 		generated := cmdexec.run_with_timeout(vexe, runtime_args, 120_000)
 		assert generated.exit_code == 0, generated.output
 		output := os.read_file(runtime_c)!

@@ -65,7 +65,11 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 }
 
 fn (g &Parser) or_block_has_statements() bool {
-	return g.block_has_statements_from(g.tok, g.lit, g.s.offset)
+	return g.block_has_statements_from(g.tok, g.lit, g.s.offset, false)
+}
+
+fn (g &Parser) block_expression_has_statements() bool {
+	return g.block_has_statements_from(g.tok, g.lit, g.s.offset, true)
 }
 
 // unsafe_block_has_statements reports whether the `unsafe { ... }` starting at the
@@ -86,14 +90,14 @@ fn (g &Parser) unsafe_block_has_statements() bool {
 	if first in [.key_if, .key_match, .dollar] || (first == .name && probe.lit == 'panic') {
 		// These may be the block's whole value (`unsafe { if c { a } else { b } }`), which the
 		// transparent reader handles; only a statement before the value needs the block reader.
-		return g.block_scan_has_statements(first, probe.offset)
+		return g.block_scan_has_statements(first, probe.offset, false)
 	}
-	return g.block_has_statements_from(first, probe.lit, probe.offset)
+	return g.block_has_statements_from(first, probe.lit, probe.offset, false)
 }
 
 // block_has_statements_from reports whether the block body whose first token is `first_tok`
 // (with the source offset just past it) holds statements rather than a single value.
-fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string, offset int) bool {
+fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string, offset int, postfix_is_value bool) bool {
 	if first_tok == .string && fastc_string_literal_is_incomplete(first_lit) {
 		return false
 	}
@@ -107,31 +111,44 @@ fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string
 		.key_break, .key_continue, .key_assert] {
 		return true
 	}
-	return g.block_scan_has_statements(first_tok, offset)
+	return g.block_scan_has_statements(first_tok, offset, postfix_is_value)
 }
 
 // block_scan_has_statements scans the block body from `first_tok` for a top-level
 // assignment, `return` or statement boundary before the block's closing `}`.
-fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool {
+fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int, postfix_is_value bool) bool {
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = offset
 	mut tok := first_tok
 	mut depth := 0
 	for tok != .eof {
-		if tok == .lcbr {
+		if tok in [.lcbr, .lpar, .lsbr] {
 			depth++
-		} else if tok == .rcbr {
+		} else if tok in [.rcbr, .rpar, .rsbr] {
 			if depth == 0 {
 				return false
 			}
 			depth--
 		} else if depth == 0 && tok == .key_return {
 			return true
-		} else if depth == 0 && (tok.is_assignment() || tok in [.inc, .dec]) {
-			// A top-level assignment or `++`/`--` makes the block a statement block
-			// (`or { x = '' }`), not a trailing value expression.
+		} else if depth == 0 && tok.is_assignment() {
 			return true
+		} else if depth == 0 && tok.is_postfix() {
+			if !postfix_is_value {
+				return true
+			}
+			// The scanner does not insert a semicolon after `++`/`--`. Match the
+			// expression reader's newline boundary before looking for another value.
+			postfix_end := lookahead.offset
+			tok = lookahead.scan()
+			if fastc_source_range_has_newline(g.s.src, postfix_end, lookahead.pos) {
+				for tok == .semicolon {
+					tok = lookahead.scan()
+				}
+				return tok != .rcbr
+			}
+			continue
 		} else if depth == 0 && tok == .semicolon {
 			next_token := lookahead.scan()
 			if fastc_token_continues_expression(next_token) || next_token in [.plus, .minus] {
@@ -1139,13 +1156,90 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	return then_terminates && else_terminates
 }
 
+// wrapper_starts_final_block_expression recognizes a final `unsafe` block or
+// compile-time if chain. Their selected body's value belongs to the enclosing
+// expression, while statements nested inside that body keep their own scopes.
+fn (g &Parser) wrapper_starts_final_block_expression() bool {
+	if g.tok != .key_unsafe && !(g.tok == .dollar && g.dollar_keyword_is('if')) {
+		return false
+	}
+	mut probe := scanner.new_scanner(g.prefs, .skip_interpolation)
+	probe.init(g.s.current_file(), g.s.src)
+	probe.offset = g.s.offset
+	mut tok := probe.scan()
+	if g.tok == .dollar {
+		if tok != .key_if {
+			return false
+		}
+		tok = probe.scan()
+	} else if tok != .lcbr {
+		return false
+	}
+	for {
+		for tok != .lcbr && tok != .eof {
+			if tok in [.lpar, .lsbr] {
+				tok = fastc_skip_balanced_tokens(mut probe, tok, tok, if tok == .lpar {
+					.rpar
+				} else {
+					.rsbr
+				}) or { return false }
+			} else {
+				tok = probe.scan()
+			}
+		}
+		if tok != .lcbr {
+			return false
+		}
+		tok = fastc_skip_balanced_tokens(mut probe, tok, .lcbr, .rcbr) or { return false }
+		for tok == .semicolon {
+			tok = probe.scan()
+		}
+		if g.tok == .key_unsafe || tok != .dollar {
+			return tok == .rcbr
+		}
+		if probe.scan() != .key_else {
+			return false
+		}
+		tok = probe.scan()
+		if tok == .dollar {
+			if probe.scan() != .key_if {
+				return false
+			}
+			tok = probe.scan()
+		} else if tok != .lcbr {
+			return false
+		}
+	}
+	return false
+}
+
+// read_final_block_wrapper_value keeps a terminating unsafe block's zero type;
+// re-inferring its opaque C atom would mistake its unreachable `0` for a value.
+fn (mut g Parser) read_final_block_wrapper_value() !string {
+	if g.tok == .key_unsafe {
+		atom := g.read_unsafe_block_expression_atom()!
+		g.last_expression_type = atom.typ
+		g.last_option_value_type = atom.option_value_type
+		g.last_expression = [atom]
+		return atom.lit
+	}
+	return g.read_comptime_if_expression()!
+}
+
 fn (g &Parser) if_starts_final_block_expression() bool {
 	// Interpolation braces belong to the string, not the condition's branch block.
 	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
+	is_comptime := g.tok == .dollar
 	mut prev := token.Token.unknown
 	mut tok := lookahead.scan()
+	if is_comptime {
+		if tok != .key_if {
+			return false
+		}
+		tok = lookahead.scan()
+	}
 	for {
 		// Scan to the block-opening `{`, skipping any `unsafe { … }` that appears in the
 		// condition itself (`if x != unsafe { nil } { … }`), and option fallback blocks,
@@ -1181,12 +1275,24 @@ fn (g &Parser) if_starts_final_block_expression() bool {
 		for tok == .semicolon {
 			tok = lookahead.scan()
 		}
+		if is_comptime {
+			if tok != .dollar {
+				return tok == .rcbr
+			}
+			tok = lookahead.scan()
+		}
 		if tok != .key_else {
 			return false
 		}
 		tok = lookahead.scan()
 		for tok == .semicolon {
 			tok = lookahead.scan()
+		}
+		if is_comptime && tok == .dollar {
+			tok = lookahead.scan()
+			if tok != .key_if {
+				return false
+			}
 		}
 		if tok == .key_if {
 			prev = .key_if

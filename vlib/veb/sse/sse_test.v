@@ -32,7 +32,6 @@ fn handle_sse_conn(mut ctx Context) {
 	mut sse_conn := sse.start_connection(mut ctx.Context)
 
 	for _ in 0 .. 3 {
-		time.sleep(time.second)
 		sse_conn.send_message(data: 'ping') or { break }
 	}
 	sse_conn.close()

@@ -3,6 +3,28 @@ import v.skills
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
+const vup_test_tools_dir = os.join_path(os.abs_path(os.vtmp_dir()), 'vup_test_tools_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rmdir_all(vup_test_tools_dir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(vup_test_tools_dir) or {}
+}
+
+fn vup_test_tool(name string) !string {
+	tool := os.join_path(vup_test_tools_dir, name)
+	if !os.is_executable(tool) {
+		os.mkdir_all(vup_test_tools_dir)!
+		build := os.exec([vexe, '-o', tool, os.join_path(vroot, 'cmd', 'tools', name + '.v')])
+		if build.exit_code != 0 {
+			os.rm(tool) or {}
+			return error('could not build ${name}: ${build.output}')
+		}
+	}
+	return tool
+}
 
 // held_back_line and held_back_hint are what `v up` says about the skills it
 // leaves alone, whether they were edited or have no install record.
@@ -105,10 +127,7 @@ fn vup_report_fixture() !(string, string, string, string) {
 		'\n  echo "alpha: updated 2 file(s)"\n  echo "beta was edited" >&2\n  exit 1\nfi\n' +
 		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
 
-	tool := os.join_path(root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
-	assert build.exit_code == 0, build.output
-	return root, home, tool, bin_dir
+	return root, home, vup_test_tool('vup')!, bin_dir
 }
 
 // run_vup runs the built tool with only the stand-ins on PATH and `home` as the
@@ -128,9 +147,7 @@ fn test_vup_preserves_caches_without_updates_and_wipes_after_rebuilds() ! {
 		os.rmdir_all(root) or {}
 	}
 	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
-	wipe_tool := os.join_path(root, 'vwipe-cache')
-	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
-	assert build.exit_code == 0, build.output
+	wipe_tool := vup_test_tool('vwipe-cache')!
 	log := os.join_path(root, 'compiler_calls.log')
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
@@ -286,9 +303,7 @@ fn test_vup_reports_real_cache_filesystem_failures() ! {
 		os.chmod(locked, 0o700) or {}
 		os.rmdir_all(root) or {}
 	}
-	wipe_tool := os.join_path(root, 'vwipe-cache')
-	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
-	assert build.exit_code == 0, build.output
+	wipe_tool := vup_test_tool('vwipe-cache')!
 	// Exercise both the compiler's built-in command and the standalone tool.
 	for cleanup in [vexe, wipe_tool] {
 		write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
@@ -693,9 +708,7 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 		os.rmdir_all(test_root) or {}
 	}
 
-	tool := os.join_path(test_root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
-	assert build.exit_code == 0, build.output
+	tool := vup_test_tool('vup')!
 
 	git_refs := os.join_path(test_root, '.git', 'refs', 'heads')
 	os.mkdir_all(git_refs)!

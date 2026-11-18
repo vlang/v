@@ -59,6 +59,57 @@ fn test_v3_platform_c_compiler() {
 	assert v3_platform_c_compiler('macos') == 'cc'
 }
 
+fn test_clang_lifetime_workaround_recognizes_the_compiler_banner() {
+	for banner in ['clang version 14.0.6', 'Ubuntu clang version 14.0.0-1ubuntu1.1',
+		'Debian clang version 14.0.6', 'Apple clang version 14.0.3 (clang-1403.0.22.14.1)'] {
+		assert v3_clang_lifetime_flags(banner) == ['-Xclang', '-disable-lifetime-markers']
+	}
+	for banner in ['clang version 19.1.7\nInstalledDir: /opt/clang version 14.0.6/bin',
+		'clang version 15.0.7', 'gcc version 14.0.0', ''] {
+		assert v3_clang_lifetime_flags(banner) == [], banner
+	}
+}
+
+fn test_clang_lifetime_workaround_reaches_native_builds_and_c_projects() {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_clang_lifetime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	wrapper := os.join_path(root, 'clang-wrapper')
+	source := os.join_path(root, 'main.v')
+	program := os.join_path(root, 'program')
+	os.write_file(source, "fn main() { assert ' hello '.trim_space() == 'hello' }\n")!
+	for version in ['14.0.6', '19.1.7'] {
+		os.write_file(wrapper, '#!/bin/sh\nif [ "$1" = "--version" ]; then\n  echo "clang version ${version}"\n  exit 0\nfi\nexec ${os.quoted_path(clang)} "$@"\n')!
+		os.chmod(wrapper, 0o700)!
+		args := ['-new-compiler', '-nocache', '-gc', 'none', '-cc', wrapper, '-cflags', '-O2',
+			'-showcc']
+		mut build_args := args.clone()
+		build_args << ['-o', program, source]
+		built := cmdexec.run_in(v3_driver_test_executable(), build_args, root)
+		assert built.exit_code == 0, built.output
+		assert built.output.contains('-disable-lifetime-markers') == (version == '14.0.6'), built.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		project := os.join_path(root, 'project_${version}')
+		mut export_args := args.clone()
+		export_args << [
+			'-generate-c-project',
+			project,
+			'-o',
+			os.join_path(root, 'program.c'),
+			source,
+		]
+		exported := cmdexec.run_in(v3_driver_test_executable(), export_args, root)
+		assert exported.exit_code == 0, exported.output
+		makefile := os.read_file(os.join_path(project, 'Makefile'))!
+		assert makefile.contains('-disable-lifetime-markers') == (version == '14.0.6'), makefile
+	}
+}
+
 fn test_v3_cache_accepts_default_cc_alias() {
 	assert v3_c_compiler_matches_default_cc('cc')
 	assert !v3_c_compiler_matches_default_cc('v3-definitely-missing-c-compiler')
@@ -1266,7 +1317,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
-	assert v3_effective_c_compiler_for_codegen('x64', 'cc', false, pref.host_target()) == 'tinyc'
+	assert v3_effective_c_compiler_for_codegen('amd64', 'cc', false, pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
@@ -1731,11 +1782,15 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
-fn test_x64_backend_aliases_are_normalized() {
-	for alias in ['amd64', 'x86_64', 'x86-64'] {
-		assert normalize_backend_name(alias) == 'x64'
+fn test_amd64_backend_aliases_are_normalized() {
+	for alias in ['x64', 'x86_64', 'x86-64'] {
+		assert normalize_backend_name(alias) == 'amd64'
 	}
-	assert normalize_backend_name('x64') == 'x64'
+	assert normalize_backend_name('amd64') == 'amd64'
+}
+
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
 }
 
 fn test_v3_fastc_default_linker_flags() {
@@ -2231,6 +2286,32 @@ fn test_v3_native_macos_selects_bundled_tcc_by_default() {
 		assert explicit.implicit_tcc == '', arch
 		assert !explicit.use_implicit_tcc_semantics, arch
 	}
+}
+
+fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:  'linux'
+			c_compiler: compiler
+			is_tcc:     compiler == 'tinyc'
+			is_o:       true
+		})
+		assert plan.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
+	}
+	for target_os in ['windows', 'macos', 'freebsd', 'openbsd'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ target_os: target_os })
+		assert '-D_GNU_SOURCE' !in plan.before_inputs
+	}
+	freestanding := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:       'linux'
+		is_freestanding: true
+	})
+	assert '-D_GNU_SOURCE' !in freestanding.before_inputs
+	provided := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:           'linux'
+		environment_c_flags: ['-D_GNU_SOURCE']
+	})
+	assert provided.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
 }
 
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {

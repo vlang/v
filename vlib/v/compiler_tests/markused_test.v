@@ -2412,7 +2412,8 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	body := c_code.all_after('int main(').all_before('\n}')
+	entry_point := $if windows { 'int wmain(' } $else { 'int main(' }
+	body := c_code.all_after(entry_point).all_before('\n}')
 	assert body.contains('.ok')
 	assert body.contains('.value')
 	assert !body.contains('new_map(')

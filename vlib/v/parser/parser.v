@@ -167,7 +167,21 @@ mut:
 	prepass_lines PrepassLineFile
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
-	batch_sources                     &BatchSources = unsafe { nil }
+	batch_sources &BatchSources = unsafe { nil }
+	// C-allocated batch texts retained by unscoped parse chunks until source
+	// storage can be released after parsing and comptime declaration resolution.
+	batch_source_buffers []string
+	// The files that the caller expects in the batch after the next one, and the
+	// parse of such files that the batch before this one did ahead of time (see
+	// speculate_next_batch).
+	next_batch_paths []string
+	speculated_batch voidptr // &SpeculatedBatch
+	// Set for a worker that parses files of the batch after the current one.
+	parses_ahead bool
+	// Texts that the caller read for the next parallel parse batch, which owns
+	// them from then on (see preload_batch_source), and the index of each by path.
+	batch_preloads                    []string
+	batch_preload_index               map[string]int
 	local_binding_undos               []LocalBindingUndo
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -416,6 +430,17 @@ pub fn (mut p Parser) release_source_storage() {
 	p.export_records = []ExportRecord{}
 	p.s.src = ''
 	p.s.lit = ''
+	// Kept complete file texts must outlive the C-allocated buffers they
+	// originally borrowed; ordinary node/metadata text has been interned.
+	if p.batch_source_buffers.len > 0 && p.keep_source_texts {
+		for file_id, text in p.a.source_texts {
+			p.a.source_texts[file_id] = text.clone()
+		}
+	}
+	for src in p.batch_source_buffers {
+		unsafe { C.free(src.str) }
+	}
+	p.batch_source_buffers = []string{}
 	p.a.source_buffers = []string{}
 }
 
@@ -11775,7 +11800,7 @@ fn (p &Parser) supports_c_inline_asm_lowering() bool {
 // an inline assembly block for its own target architecture. A block for another
 // architecture is declined, which keeps a `$if` guard for it effective.
 fn (p &Parser) supports_native_inline_asm_lowering() bool {
-	return (p.prefs.backend == 'x64' && p.prefs.target.arch == 'amd64')
+	return (p.prefs.backend in ['amd64', 'x64'] && p.prefs.target.arch == 'amd64')
 		|| (p.prefs.backend == 'arm64' && p.prefs.target.arch == 'arm64')
 }
 

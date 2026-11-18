@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // A project module named like a vlib module (Vox's `clipboard`) must win over vlib in
 // every importing directory, as it does for the C backend.
 fn test_project_module_shadows_vlib_module_in_submodules() ! {

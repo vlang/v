@@ -70,7 +70,7 @@ pub fn make_names_ptr() &Names {
 }
 "
 
-const sql_alias_visibility_main = "module main
+const sql_alias_visibility_main = 'module main
 
 import aliases
 import db.sqlite
@@ -82,9 +82,16 @@ struct Account {
 
 EXTRA_DECLARATIONS
 
-PARAMETER_QUERY
+PROBES
 
 fn main() {
+	PROBE_CALLS
+}
+'
+
+const sql_alias_visibility_probe = "PARAMETER_QUERY
+
+fn probe_OPERATION() ! {
 	mut db := sqlite.connect(':memory:')!
 	sql db { create table Account }!
 	row := Account{name: 'first'}
@@ -104,12 +111,24 @@ fn main() {
 }
 "
 
-fn sql_alias_visibility_result(name string, is_public bool, expression string, is_update bool, check_only bool, is_type_public bool, import_name string) os.Result {
-	return sql_alias_visibility_wrapped_result(name, is_public, expression, is_update,
+enum SqlAliasVisibilityQuery {
+	selection
+	update
+	both
+}
+
+fn sql_alias_visibility_queries(valid bool) []SqlAliasVisibilityQuery {
+	// Compile accepted operations together. Rejected operations are isolated so
+	// each must emit its own diagnostic in both compiler modes.
+	return if valid { [.both] } else { [.selection, .update] }
+}
+
+fn sql_alias_visibility_result(name string, is_public bool, expression string, query SqlAliasVisibilityQuery, check_only bool, is_type_public bool, import_name string) os.Result {
+	return sql_alias_visibility_wrapped_result(name, is_public, expression, query,
 		check_only, is_type_public, import_name, '', '')
 }
 
-fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression string, is_update bool, check_only bool, is_type_public bool, import_name string, wrapper string, lock_receiver string) os.Result {
+fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression string, query SqlAliasVisibilityQuery, check_only bool, is_type_public bool, import_name string, wrapper string, lock_receiver string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'aliases')) or { panic(err) }
@@ -126,14 +145,6 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		''
 	})
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source) or { panic(err) }
-	mut statement := if is_update {
-		'sql db { update Account set name = ${expression} where id == 1 }!'
-	} else {
-		'found := sql db { select from Account where name == ${expression} }!\n\tassert found.len == 1'
-	}
-	if wrapper.len > 0 {
-		statement = '${wrapper} ${lock_receiver} {\n\t\t${statement}\n\t}'
-	}
 	closure_name := if expression.contains('whole_parameter_closure_items') {
 		'whole_parameter_closure_items'
 	} else if expression.contains('parameter_closure_items') {
@@ -144,19 +155,6 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		'closure_items'
 	} else {
 		''
-	}
-	if closure_name.len > 0 {
-		body := if closure_name == 'nested_closure_items' {
-			'inner := fn [mut db, ${closure_name}] () ! {\n\t\t${statement}\n\t}\n\tinner()!'
-		} else {
-			statement
-		}
-		capture := if closure_name.starts_with('whole_') {
-			'shared ${closure_name}'
-		} else {
-			closure_name
-		}
-		statement = 'callback := fn [mut db, ${capture}] () ! {\n\t${body}\n}\n\tcallback()!'
 	}
 	parameter_name := if expression.contains('whole_parameter_closure_items') {
 		'whole_parameter_closure_items'
@@ -169,25 +167,19 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	} else {
 		''
 	}
-	mut parameter_query := ''
-	if parameter_name.len > 0 {
-		body := statement
-		parameter_type := if parameter_name.starts_with('whole_') {
-			'shared ${parameter_name} []aliases.WrappedNames'
-		} else {
-			'${parameter_name} []shared aliases.WrappedNames'
-		}
-		argument := if parameter_name.starts_with('whole_') {
-			'shared ${parameter_name}'
-		} else {
-			parameter_name
-		}
-		parameter_query = 'fn query(mut db sqlite.DB, ${parameter_type}) ! {\n\t${body}\n}'
-		statement = 'query(mut db, ${argument})!'
+	operations := if query == .both {
+		[SqlAliasVisibilityQuery.selection, .update]
+	} else {
+		[query]
+	}
+	mut probes := []string{cap: operations.len}
+	for operation in operations {
+		probes << sql_alias_visibility_probe_source(operation, expression, wrapper, lock_receiver,
+			closure_name, parameter_name)
 	}
 	source := os.join_path(dir, 'main.v')
-	main_source := sql_alias_visibility_main.replace('STATEMENT', statement)
-		.replace('PARAMETER_QUERY', parameter_query)
+	main_source := sql_alias_visibility_main.replace('PROBES', probes.join('\n'))
+		.replace('PROBE_CALLS', operations.map('probe_${it}()!').join('\n\t'))
 		.replace('EXTRA_DECLARATIONS', if expression.contains('shared_collection') {
 			'struct SharedNamesItems {\nmut:\n\tvalues []shared aliases.WrappedNames\n}'
 		} else if expression.contains('holders[') || expression.contains('holders [') {
@@ -238,24 +230,64 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	return os.exec([executable])
 }
 
+fn sql_alias_visibility_probe_source(operation SqlAliasVisibilityQuery, expression string, wrapper string, lock_receiver string, closure_name string, parameter_name string) string {
+	mut statement := if operation == .update {
+		'sql db { update Account set name = ${expression} where id == 1 }!'
+	} else {
+		'found := sql db { select from Account where name == ${expression} }!\n\tassert found.len == 1'
+	}
+	if wrapper.len > 0 {
+		statement = '${wrapper} ${lock_receiver} {\n\t\t${statement}\n\t}'
+	}
+	if closure_name.len > 0 {
+		body := if closure_name == 'nested_closure_items' {
+			'inner := fn [mut db, ${closure_name}] () ! {\n\t\t${statement}\n\t}\n\tinner()!'
+		} else {
+			statement
+		}
+		capture := if closure_name.starts_with('whole_') {
+			'shared ${closure_name}'
+		} else {
+			closure_name
+		}
+		statement = 'callback := fn [mut db, ${capture}] () ! {\n\t${body}\n}\n\tcallback()!'
+	}
+	mut parameter_query := ''
+	if parameter_name.len > 0 {
+		parameter_type := if parameter_name.starts_with('whole_') {
+			'shared ${parameter_name} []aliases.WrappedNames'
+		} else {
+			'${parameter_name} []shared aliases.WrappedNames'
+		}
+		argument := if parameter_name.starts_with('whole_') {
+			'shared ${parameter_name}'
+		} else {
+			parameter_name
+		}
+		parameter_query = 'fn query_${operation}(mut db sqlite.DB, ${parameter_type}) ! {\n\t${statement}\n}'
+		statement = 'query_${operation}(mut db, ${argument})!'
+	}
+	return sql_alias_visibility_probe.replace('OPERATION', operation.str())
+		.replace('PARAMETER_QUERY', parameter_query)
+		.replace('STATEMENT', statement)
+}
+
 fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
 	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
 		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
-		for is_update in [false, true] {
-			result := sql_alias_visibility_result('public_${i}_${is_update}', true, expression,
-				is_update, false, true, 'aliases')
-			assert result.exit_code == 0, result.output
-		}
+		result := sql_alias_visibility_result('public_${i}_both', true, expression,
+			.both, false, true, 'aliases')
+		assert result.exit_code == 0, result.output
 	}
 }
 
 fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
 	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
 		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
-		for is_update in [false, true] {
+		for query in [SqlAliasVisibilityQuery.selection, .update] {
 			for check_only in [false, true] {
-				result := sql_alias_visibility_result('private_${i}_${is_update}_${check_only}',
-					false, expression, is_update, check_only, true, 'aliases')
+				result := sql_alias_visibility_result('private_${i}_${query}_${check_only}',
+					false, expression, query, check_only, true, 'aliases')
 				assert result.exit_code != 0, result.output
 				assert result.output.contains('method `aliases.WrappedNames.clone` is private'), result.output
 			}
@@ -266,12 +298,12 @@ fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
 fn test_imported_alias_conversions_obey_type_and_method_visibility_in_sql_values() {
 	for import_name in ['aliases', 'renamed'] {
 		expression := '${import_name}.WrappedNames(values).clone()[0].name'
-		for is_update in [false, true] {
-			for check_only in [false, true] {
-				for is_method_public in [false, true] {
-					for is_type_public in [false, true] {
-						result := sql_alias_visibility_result('conversion_${import_name}_${is_update}_${check_only}_${is_method_public}_${is_type_public}',
-							is_method_public, expression, is_update, check_only, is_type_public,
+		for check_only in [false, true] {
+			for is_method_public in [false, true] {
+				for is_type_public in [false, true] {
+					for query in sql_alias_visibility_queries(is_type_public && is_method_public) {
+						result := sql_alias_visibility_result('conversion_${import_name}_${query}_${check_only}_${is_method_public}_${is_type_public}',
+							is_method_public, expression, query, check_only, is_type_public,
 							import_name)
 						if !is_type_public {
 							assert result.exit_code != 0, result.output
@@ -296,10 +328,10 @@ fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
 		import_name := if expression.starts_with('renamed.') { 'renamed' } else { 'aliases' }
 		method_receiver := if i == 3 { 'Names' } else { 'WrappedNames' }
 		for is_public in [true, false] {
-			for is_update in [false, true] {
+			for query in sql_alias_visibility_queries(is_public) {
 				for check_only in [false, true] {
-					result := sql_alias_visibility_result('pointer_${i}_${is_public}_${is_update}_${check_only}',
-						is_public, expression, is_update, check_only, true, import_name)
+					result := sql_alias_visibility_result('pointer_${i}_${is_public}_${query}_${check_only}',
+						is_public, expression, query, check_only, true, import_name)
 					if is_public {
 						assert result.exit_code == 0, result.output
 					} else {
@@ -317,10 +349,10 @@ fn test_multiple_pointer_alias_methods_keep_resolution_and_visibility_in_sql_val
 		'(ptr_ptr_values).clone()[0].name', 'renamed.make_ptr_ptr().clone()[0].name'] {
 		import_name := if expression.starts_with('renamed.') { 'renamed' } else { 'aliases' }
 		for is_public in [true, false] {
-			for is_update in [false, true] {
+			for query in sql_alias_visibility_queries(is_public) {
 				for check_only in [false, true] {
-					result := sql_alias_visibility_result('multiple_pointer_${i}_${is_public}_${is_update}_${check_only}',
-						is_public, expression, is_update, check_only, true, import_name)
+					result := sql_alias_visibility_result('multiple_pointer_${i}_${is_public}_${query}_${check_only}',
+						is_public, expression, query, check_only, true, import_name)
 					if is_public {
 						assert result.exit_code == 0, result.output
 					} else {
@@ -337,7 +369,7 @@ fn test_multiple_pointer_alias_methods_keep_declared_sql_result_types() {
 	for import_name in ['aliases', 'renamed'] {
 		expression := '${import_name}.make_ptr_ptr().clone()[0]'
 		result := sql_alias_visibility_result('multiple_pointer_result_${import_name}',
-			true, expression, false, true, true, import_name)
+			true, expression, .selection, true, true, import_name)
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('this expression has type `aliases.Holder`'), result.output
 	}
@@ -348,10 +380,10 @@ fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_value
 		'(ref_values).clone()[0].name', 'renamed.make_refs().clone()[0].name'] {
 		import_name := if expression.starts_with('renamed.') { 'renamed' } else { 'aliases' }
 		for is_public in [true, false] {
-			for is_update in [false, true] {
+			for query in sql_alias_visibility_queries(is_public) {
 				for check_only in [false, true] {
-					result := sql_alias_visibility_result('hidden_pointer_${i}_${is_public}_${is_update}_${check_only}',
-						is_public, expression, is_update, check_only, true, import_name)
+					result := sql_alias_visibility_result('hidden_pointer_${i}_${is_public}_${query}_${check_only}',
+						is_public, expression, query, check_only, true, import_name)
 					if is_public {
 						assert result.exit_code == 0, result.output
 					} else {
@@ -375,10 +407,10 @@ fn test_mut_alias_methods_require_mutable_storage_in_sql_values() {
 		'(optional_none_values or { values }).mutate()[0].name', 'values.inspect()[0].name',
 		'renamed.make().inspect()[0].name'] {
 		import_name := if expression.contains('renamed.') { 'renamed' } else { 'aliases' }
-		for is_update in [false, true] {
+		for query in [SqlAliasVisibilityQuery.selection, .update] {
 			for check_only in [false, true] {
-				result := sql_alias_visibility_result('immutable_${i}_${is_update}_${check_only}',
-					true, expression, is_update, check_only, true, import_name)
+				result := sql_alias_visibility_result('immutable_${i}_${query}_${check_only}',
+					true, expression, query, check_only, true, import_name)
 				assert result.exit_code != 0, result.output
 				if expression.starts_with('values.') {
 					assert result.output.contains('`values` is immutable'), result.output
@@ -396,12 +428,10 @@ fn test_mut_alias_methods_keep_ordinary_storage_exceptions_in_sql_values() {
 		'aliases.make_refs().mutate()[0].name',
 		'(mutable_optional_values or { values }).mutate()[0].name'] {
 		import_name := if expression.contains('renamed.') { 'renamed' } else { 'aliases' }
-		for is_update in [false, true] {
-			for check_only in [false, true] {
-				result := sql_alias_visibility_result('mutable_${i}_${is_update}_${check_only}',
-					true, expression, is_update, check_only, true, import_name)
-				assert result.exit_code == 0, result.output
-			}
+		for check_only in [false, true] {
+			result := sql_alias_visibility_result('mutable_${i}_both_${check_only}',
+				true, expression, .both, check_only, true, import_name)
+			assert result.exit_code == 0, result.output
 		}
 	}
 }
@@ -410,12 +440,13 @@ fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
 	for method in ['mutate', 'inspect', 'clone'] {
 		import_name := if method == 'inspect' { 'renamed' } else { 'aliases' }
 		for wrapper in ['', 'rlock', 'lock'] {
-			for is_update in [false, true] {
+			valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
+			for query in sql_alias_visibility_queries(valid) {
 				for check_only in [false, true] {
-					result := sql_alias_visibility_wrapped_result('shared_${method}_${wrapper}_${is_update}_${check_only}',
-						true, 'shared_values.${method}()[0].name', is_update, check_only,
+					result := sql_alias_visibility_wrapped_result('shared_${method}_${wrapper}_${query}_${check_only}',
+						true, 'shared_values.${method}()[0].name', query, check_only,
 						true, import_name, wrapper, 'shared_values')
-					if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+					if valid {
 						assert result.exit_code == 0, result.output
 					} else {
 						assert result.exit_code != 0, result.output
@@ -439,12 +470,13 @@ fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_valu
 		for method in ['mutate', 'clone'] {
 			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
 			for wrapper in ['', 'rlock', 'lock'] {
-				for is_update in [false, true] {
+				valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
+				for query in sql_alias_visibility_queries(valid) {
 					for check_only in [false, true] {
-						result := sql_alias_visibility_wrapped_result('shared_element_${i}_${method}_${wrapper}_${is_update}_${check_only}',
-							true, '${receiver}.${method}()[0].name', is_update, check_only,
+						result := sql_alias_visibility_wrapped_result('shared_element_${i}_${method}_${wrapper}_${query}_${check_only}',
+							true, '${receiver}.${method}()[0].name', query, check_only,
 							true, import_name, wrapper, receiver)
-						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+						if valid {
 							assert result.exit_code == 0, result.output
 						} else {
 							assert result.exit_code != 0, result.output
@@ -468,12 +500,13 @@ fn test_alias_methods_keep_captured_shared_array_locks_in_sql_values() {
 		for method in ['mutate', 'clone'] {
 			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
 			for wrapper in ['', 'rlock', 'lock'] {
-				for is_update in [false, true] {
+				valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
+				for query in sql_alias_visibility_queries(valid) {
 					for check_only in [false, true] {
-						result := sql_alias_visibility_wrapped_result('shared_capture_${i}_${method}_${wrapper}_${is_update}_${check_only}',
-							true, '${receiver}.${method}()[0].name', is_update, check_only,
+						result := sql_alias_visibility_wrapped_result('shared_capture_${i}_${method}_${wrapper}_${query}_${check_only}',
+							true, '${receiver}.${method}()[0].name', query, check_only,
 							true, import_name, wrapper, receiver)
-						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+						if valid {
 							assert result.exit_code == 0, result.output
 						} else {
 							assert result.exit_code != 0, result.output
@@ -496,12 +529,13 @@ fn test_alias_methods_keep_whole_shared_array_locks_in_sql_values() {
 	for i, name in ['whole_parameter_items', 'whole_parameter_closure_items'] {
 		for method in ['mutate', 'clone'] {
 			for wrapper in ['', 'rlock', 'lock'] {
-				for is_update in [false, true] {
+				valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
+				for query in sql_alias_visibility_queries(valid) {
 					for check_only in [false, true] {
-						result := sql_alias_visibility_wrapped_result('shared_whole_${i}_${method}_${wrapper}_${is_update}_${check_only}',
-							true, '${name}[0].${method}()[0].name', is_update, check_only,
+						result := sql_alias_visibility_wrapped_result('shared_whole_${i}_${method}_${wrapper}_${query}_${check_only}',
+							true, '${name}[0].${method}()[0].name', query, check_only,
 							true, 'aliases', wrapper, name)
-						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+						if valid {
 							assert result.exit_code == 0, result.output
 						} else {
 							assert result.exit_code != 0, result.output
@@ -531,10 +565,10 @@ fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_s
 			'(optional_some_values or { values }).clone()[0].name',
 		] {
 			for is_public in [true, false] {
-				for is_update in [false, true] {
+				for query in sql_alias_visibility_queries(is_public) {
 					for check_only in [false, true] {
-						result := sql_alias_visibility_result('fallback_${import_name}_${i}_${is_public}_${is_update}_${check_only}',
-							is_public, expression, is_update, check_only, true, import_name)
+						result := sql_alias_visibility_result('fallback_${import_name}_${i}_${is_public}_${query}_${check_only}',
+							is_public, expression, query, check_only, true, import_name)
 						if is_public {
 							assert result.exit_code == 0, result.output
 						} else {
@@ -557,7 +591,7 @@ fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
 			'(optional_some_values or { values }).clone()[0]',
 		] {
 			result := sql_alias_visibility_result('fallback_result_${import_name}_${i}',
-				true, expression, false, true, true, import_name)
+				true, expression, .selection, true, true, import_name)
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('this expression has type `aliases.Holder`'), result.output
 		}

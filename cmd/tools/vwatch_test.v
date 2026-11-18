@@ -73,9 +73,6 @@ fn test_watch_run_reloads_on_source_change() {
 	first_run_error := wait_for_marker(marker_path, 'V1', 'initial V1 run', mut process)
 	mut reload_error := ''
 	if first_run_error == '' {
-		// os.file_last_mod_unix has a 1 second resolution, so make sure the edit lands in a later second,
-		// otherwise the change detection loop can not notice that the source file was modified at all:
-		time.sleep(1500 * time.millisecond)
 		write_versioned_source(source_path, 'V2')!
 
 		// the watcher should detect the change, recompile, and rerun, updating the marker to V2:
@@ -106,8 +103,7 @@ fn test_watch_run_keeps_the_windows_manifest_after_reload() ! {
 	process.set_args(['watch', '-cc', 'tcc', 'run', source, marker])
 	mut errors := []string{}
 	for version in ['V1', 'V2'] {
-		if version == 'V2' { time.sleep(1500 * time.millisecond) }
-		os.write_file(source, "module main
+		write_watched_source(source, "module main
 import os
 fn main() {
 	manifest := os.read_file(os.executable() + '.manifest') or { panic(err) }
@@ -155,7 +151,6 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 		errors << 'the first build never served `version V1`'
 	} else {
 		// A broken build must leave the old version serving, and say so:
-		time.sleep(1500 * time.millisecond)
 		write_veb_app(app_dir, port, 'V2', false)!
 		if !wait_for_log('build failed; the previous version keeps running', mut process, mut
 			log)
@@ -169,7 +164,6 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 			errors << 'the build status was not `failed`: `${get_text(base + '/status')}`'
 		}
 		// Fixing it swaps in the new version:
-		time.sleep(1500 * time.millisecond)
 		write_veb_app(app_dir, port, 'V3', true)!
 		if !wait_for_http(base + '/', 'version V3', mut process, mut log) {
 			errors << 'the fixed build never served `version V3`'
@@ -198,7 +192,7 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 
 fn write_veb_app(app_dir string, port int, version string, valid bool) ! {
 	broken := if valid { '' } else { '\n\tthis does not compile' }
-	os.write_file(os.join_path(app_dir, 'main.v'), "module main
+	write_watched_source(os.join_path(app_dir, 'main.v'), "module main
 
 import os
 import veb
@@ -269,8 +263,18 @@ fn wait_for_log(text string, mut process os.Process, mut log []string) bool {
 	return false
 }
 
+fn write_watched_source(path string, contents string) ! {
+	previous := os.file_last_mod_unix(path)
+	os.write_file(path, contents)!
+	// vwatch compares whole-second modification times.
+	if os.file_last_mod_unix(path) == previous {
+		modified := previous + 1
+		os.utime(path, modified, modified)!
+	}
+}
+
 fn write_versioned_source(source_path string, version string) ! {
-	os.write_file(source_path,
+	write_watched_source(source_path,
 		"import os\nfn main() {\n\tos.write_file(os.args[1], '${version}') or { panic(err) }\n}\n")!
 }
 

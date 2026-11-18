@@ -86,6 +86,10 @@ modules. Ignored local names remain stable when cached headers replace source fi
 reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
 changes still invalidate the affected objects.
 
+The stateless native helper used by `os` for file-descriptor polling supports module caching
+and parallel C compilation. Its dependencies are tracked through C compiler manifests;
+V does not inspect C headers to infer their ownership.
+
 Relative cache paths are resolved against the directory where `v up` was invoked.
 When `VCACHE` is unset, this includes the `.cache` directory under the first
 `VMODULES` entry, or `~/.vmodules/.cache` by default. Cleanup stops and returns a
@@ -1005,6 +1009,11 @@ assert '-0b1111_0000_1010'.int() == -3850
 For more advanced `string` processing and conversions, refer to the
 [vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
+A loop such as `for part in s.split(',') { ... }` evaluates the source once and uses a snapshot
+of its bytes taken before the loop body runs. Reassigning the source or changing aliased backing
+storage in the body does not affect later parts. Each part is an independent, NUL-terminated copy,
+even when the compiler generates the parts on demand instead of building an array first.
+
 #### String interpolation
 
 Array interpolation resolves each element in its declaring module, including when another
@@ -1276,6 +1285,7 @@ f2 := 456e+2 // 45600
 
 Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
 and a cast to a smaller integer type keeps the low bits.
+String interpolation preserves that integer width before formatting a wrapped result.
 Two opt-in flags turn these into runtime panics:
 
 * `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
@@ -1299,6 +1309,8 @@ fn hash_step(h u32, b u8) u32 {
 ### Arrays
 
 Returning a new array through helper calls preserves each helper's parameter scope.
+Chained array methods also use the concrete result type of a generic mapper, as in
+`values.map(it.str()).join(', ')`.
 
 
 An array is a collection of data elements of the same type. An array literal is a
@@ -1619,6 +1631,11 @@ nums := [1, 2, 3]
 println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
+
+For `s.bytes().any(...)` and `s.bytes().all(...)`, the compiler can scan the string directly
+without allocating a temporary byte array when the predicate only compares bytes with literals
+or uses builtin byte classifiers such as `is_digit()`. Explicit lambda parameters may shadow
+the string receiver: `s.bytes().all(|s| s.is_digit())` checks whether every byte is a digit.
 
 There are further built-in methods for arrays:
 
@@ -1982,6 +1999,8 @@ m.delete('two')
 Maps can have keys of type string, rune, integer, float, voidptr,
 enum, or fixed arrays of those supported key types.
 Struct keys are rejected, including when a generic key parameter is instantiated with a struct.
+The native ARM64 backend keeps fixed-array keys distinct from string keys even when their
+storage sizes are equal.
 
 The whole map can be initialized using this short syntax:
 
@@ -2339,6 +2358,11 @@ x := if n > 2 {
 }
 dump(x)
 ```
+
+An `if` expression combining a byte value with character literals that fit in a byte retains
+the byte type. For example, ``name.bytes().map(if it == `-` { `_` } else { it })`` produces
+`[]u8`, so the result supports `.bytestr()`. Wider literals and explicit rune values retain
+the rune type.
 
 When comparing an enum value with an `if` or `match` expression using `==` or `!=`,
 the enum operand supplies the type for shorthand values such as `.red` in the branches.
@@ -3175,7 +3199,8 @@ blocks ran. Runtime errors that panic, like an array index out of range, can be
 recovered as well. Signals, like a segmentation fault, cannot.
 
 Any call to `recover()` that `main` can reach counts, even one in a branch that
-is never taken. In a program without one, a panic runs no deferred blocks: the
+is never taken. With `-no-skip-unused`, such a call in a function that nothing calls
+counts too. In a program without one, a panic runs no deferred blocks: the
 program prints the message and exits.
 
 ### Goto
@@ -5842,6 +5867,10 @@ another module, including arguments inside arrays, pointers, and maps.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
 
+The type of a field accessed directly on a generic function's result is determined by the
+concrete type arguments, including when they are inferred. For example, if `wrap(3)`
+returns a `Box[int]` with a `value` field of type `int`, `wrap(3).value << 1` yields `6`.
+
 Returning a generic struct as a generic interface retains its concrete methods, including when
 an interface type argument is itself a generic interface.
 
@@ -8422,7 +8451,8 @@ project that locks other revisions of the same packages switches them back. Use
    `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
    given with `-e` or on standard input belongs to no project, and each target
    of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
-   `fastc`, `arm64`, `x64`, and `wasm`.
+   `fastc`, `arm64`, `amd64`, and `wasm`. The aliases `x64`, `x86_64`, and `x86-64`
+   select `amd64`.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
@@ -10764,6 +10794,10 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
 
+Test builds (`v test` and `v file_test.v`) discard generated C after compilation,
+even with an explicit backend such as `-b c`. Use `-keepc` or `-o file.c` to retain it;
+`-cg` also retains its build directory for C source debugging.
+
 On macOS, debug builds keep their `.dSYM` bundle beside the final executable.
 
 For best debugging experience if you are writing a low-level wrapper for an existing
@@ -10807,11 +10841,24 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
-so they always
-build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
-allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
+architecture. Without `-arch`, the target defaults to the compiler's host architecture.
+Pass `-arch amd64` to select `-b amd64` (`-b x64`), or `-arch arm64` to select `-b arm64`.
+The architecture option can appear before or after the native backend option.
+Explicit backend selection remains available, with the same platform requirements: macOS
+ARM64, Linux AMD64, and Linux ARM64 support executables. For example,
+`v -b native -arch arm64 hello_world.v` on Linux emits an ARM64 ELF executable.
+Cross linking uses `aarch64-linux-gnu-gcc` or `aarch64-linux-musl-gcc` when available;
+use `-cc` to select another Linux ARM64 toolchain, including its startup files and libc.
+Linux ARM64 linking honors libraries and objects declared through source `#flag` directives.
+Environment `CFLAGS` are applied before explicit `-cflags` options.
+Exported V functions and their dependencies remain available to linked C code.
+Object output (`-o hello_world.o`) works without a target linker, including from an AMD64 host.
+For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.
+
+The native backends do not link a garbage collector yet, so they always build as if `-gc none`
+was passed. For AMD64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large AMD64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
@@ -10820,10 +10867,20 @@ ARM64 resolves a fixed set of platform C constants. Other C constants produce an
 use the C backend when a header defines a constant the native backend does not support.
 The supported set includes the memory-order and pthread compatibility constants used by
 V's synchronization runtime.
-The x64 backend is experimental. Calls without a native implementation fail compilation
+The AMD64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
 currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+
+The AMD64 backend emits ELF object code and uses the host C toolchain to link a Linux
+executable. `-b x64`, `-b x86_64`, and `-b x86-64` remain aliases for `-b amd64`.
+To compile and run hello world on Linux AMD64:
+
+```sh
+v -b amd64 -o hello_world examples/hello_world.v
+./hello_world
+```
+
 Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
 or void returns. Taking the address of a variadic C function, one with floating-point arguments
 or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain
@@ -11988,6 +12045,7 @@ Single functions can be extracted as raw machine code with `-hot-fn`:
 v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
 ```
 
+Extraction omits program startup and thread-local initialization.
 Only self-contained `@[live]` functions are supported for now: functions
 needing address fixups (calls, string literals, globals) are rejected at
 extract time instead of emitting silently broken machine code.
@@ -11995,9 +12053,9 @@ extract time instead of emitting silently broken machine code.
 path (its live function calls other functions and prints strings); it
 remains an example for the C shared-library workflow.
 
-Linux ARM64 output is experimental and currently supports relocatable objects
-only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
-native live reloading on Linux are not yet supported.
+Linux ARM64 output is experimental and supports executable linking with a Linux ARM64
+toolchain, as well as relocatable objects (`v -b arm64 -os linux -o program.o program.v`).
+Native live reloading on Linux is not yet supported.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).

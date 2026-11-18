@@ -117,19 +117,22 @@ fn Set.decode_with_rule(bytes []u8, loc int, rule EncodingRule) !(Set, int) {
 		unsafe { bytes[content_pos..content_pos + length] }
 	}
 	next := content_pos + length
-	set := Set.from_bytes(payload)!
+	set := Set.from_bytes(payload, 1)!
 	return set, next
 }
 
 // bytes should seq.fields payload, not includes the tag
-fn Set.from_bytes(bytes []u8) !Set {
+fn Set.from_bytes(bytes []u8, nesting_depth int) !Set {
+	if nesting_depth > max_nesting_depth {
+		return error('exceeded the maximum nesting depth')
+	}
 	mut set := Set{}
 	if bytes.len == 0 {
 		return set
 	}
 	mut i := 0
 	for i < bytes.len {
-		el, pos := Element.decode_with_rule(bytes, i, .der)!
+		el, pos := Element.decode_with_rule_at_depth(bytes, i, .der, nesting_depth)!
 		i = pos
 		set.add_element(el)!
 	}

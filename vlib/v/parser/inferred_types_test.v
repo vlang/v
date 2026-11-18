@@ -59,6 +59,10 @@ fn test_parallel_merges_relocate_inferred_type_links_in_every_field() {
 	os.write_file(use, "module main\n\nfn main() {\n\tx := 'hello'\n\tmut a := []typeof(x){}\n\ta << x\n\tb := []typeof(x.len + 1){}\n\tf := fn (s typeof(x)) typeof(s.len) {\n\t\treturn s.len\n\t}\n\t_ = b\n\t_ = f\n}\n")!
 	paths << use
 	mut serial := Parser.new(pref.new_preferences())
+	defer {
+		serial.release_source_storage()
+		serial.a.close_workers()
+	}
 	_, serial_was_parallel := serial.parse_files_dispatch(paths, false)
 	assert !serial_was_parallel
 	expected := inferred_type_links(serial.a)
@@ -69,6 +73,10 @@ fn test_parallel_merges_relocate_inferred_type_links_in_every_field() {
 			os.setenv('V3_NO_PAR_PARSE_MERGE', '1', true)
 		}
 		mut p := Parser.new(pref.new_preferences())
+		defer {
+			p.release_source_storage()
+			p.a.close_workers()
+		}
 		p.a.worker_pool = workers.new(3)
 		_, was_parallel := p.parse_files_dispatch(paths, true)
 		os.unsetenv('V3_NO_PAR_PARSE_MERGE')

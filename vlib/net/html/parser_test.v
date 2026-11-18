@@ -30,6 +30,75 @@ fn test_parse_one_tag_with_text() {
 	assert parser.tags.first().text() == text_content
 }
 
+fn test_parse_html_reuse_starts_a_fresh_document() {
+	mut parser := Parser{}
+	first_input := '<div>'.repeat(6) + '</div>'.repeat(6)
+	second_input := '<p>ok</p>'
+	assert first_input.len == 66
+	assert second_input.len == 9
+
+	parser.parse_html(first_input)
+	first_dom := parser.get_dom()
+	assert first_dom.get_root().children.len == 1
+	assert first_dom.source_bytes == first_input.len
+
+	parser.parse_html(second_input)
+	second_dom := parser.get_dom()
+	second_root := second_dom.get_root()
+	assert parser.tags.len == 2
+	assert parser.tags[0].name == 'p'
+	assert parser.tags[1].name == '/p'
+	assert second_dom.parse_error() == none
+	assert second_dom.source_bytes == second_input.len
+	assert second_root.name == 'p'
+	assert second_root.content == 'ok'
+	assert second_root.children.len == 0
+	assert second_root.str() == second_input
+	assert second_dom.get_tags(name: 'div').len == 0
+	assert second_dom.get_tags(name: 'p').len == 1
+	mut normalized_content_bytes := i64(0)
+	for tag in second_dom.all_tags {
+		if tag.children.len > 0 {
+			normalized_content_bytes += i64(tag.content.len)
+		}
+	}
+	assert normalized_content_bytes <= i64(second_input.len) * html_max_content_expansion_ratio
+}
+
+fn test_parse_html_reuse_after_limit_error_resets_error_state() {
+	mut parser := Parser{}
+	depth := html_max_nesting_depth + 1
+	parser.parse_html('<div>'.repeat(depth) + '</div>'.repeat(depth))
+	assert parser.get_dom().parse_error() != none
+
+	parser.parse_html_checked('<p>ok</p>') or { panic(err) }
+	dom := parser.get_dom()
+	assert dom.parse_error() == none
+	assert dom.source_bytes == 9
+	assert dom.get_root().name == 'p'
+	assert dom.get_root().content == 'ok'
+}
+
+fn test_parse_html_reuse_preserves_custom_code_tags() {
+	mut parser := Parser{}
+	parser.add_code_tag('sample-code')
+	first_input := '<sample-code>first <b>raw</sample-code>'
+	parser.parse_html(first_input)
+	first_root := parser.get_dom().get_root()
+	assert first_root.content == 'first <b>raw'
+	assert first_root.str() == first_input
+
+	second_input := '<sample-code>second <i>raw</sample-code>'
+	parser.parse_html(second_input)
+	second_dom := parser.get_dom()
+	second_root := second_dom.get_root()
+	assert second_dom.parse_error() == none
+	assert second_root.name == 'sample-code'
+	assert second_root.children.len == 0
+	assert second_root.content == 'second <i>raw'
+	assert second_root.str() == second_input
+}
+
 fn test_split_parse() {
 	mut parser := Parser{}
 	parser.init()

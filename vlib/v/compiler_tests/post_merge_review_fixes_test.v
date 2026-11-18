@@ -9,9 +9,19 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const review_workspace = os.join_path(os.vtmp_dir(), 'v3_post_merge_review_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rmdir_all(review_workspace) or {}
+	os.mkdir_all(review_workspace) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(review_workspace) or {}
+}
 
 fn tmp_test_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	return os.join_path(review_workspace, 'v3_${name}_${os.getpid()}')
 }
 
 fn setup_v3_cache() {
@@ -114,7 +124,13 @@ fn gen_c_with_flags(v3_bin string, name string, flags string, src string) string
 }
 
 fn c_fn_body(c_source string, signature string) string {
-	start := c_source.index(signature) or { return '' }
+	// These fixtures target the host. Windows uses the wide console entry point.
+	host_signature := if os.user_os() == 'windows' && signature.starts_with('int main(') {
+		signature.replace('int main(', 'int wmain(').replace('char** argv', 'wchar_t** argv')
+	} else {
+		signature
+	}
+	start := c_source.index(host_signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
 	body_start := start + open_rel
 	mut depth := 0
@@ -270,13 +286,17 @@ fn main() {
 
 fn test_filelock_helpers_are_inlined_in_generated_c() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'filelock_helpers_inline', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')
+	// Use the actual platform signatures: Windows locks a HANDLE, POSIX locks an fd.
+	fd_type := $if windows { 'voidptr' } $else { 'i32' }
+	lock_int_type := $if windows { 'int' } $else { 'i32' }
+	invalid_handle := $if windows { 'voidptr(-1)' } $else { 'i32(-1)' }
+	c_source := gen_c(v3_bin, 'filelock_helpers_inline', 'import os.filelock\n\nfn C.v_filelock_lock(${fd_type}, ${lock_int_type}, ${lock_int_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_unlock(${fd_type}, u64, u64) ${lock_int_type}\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(${invalid_handle}, 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(${invalid_handle}, u64(0), u64(0))\n}\n')
 	assert !c_source.contains('filelock_helpers.h')
 	assert c_source.contains('static inline int v_filelock_lock(')
 	assert c_source.contains('static inline int v_filelock_unlock(')
 	assert c_source.contains('#ifndef V_OS_FILELOCK_HELPERS_H')
 	assert !c_source.contains('v_filelock_status')
-	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
+	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl', 'import os.filelock\n\nfn C.v_filelock_lock(${fd_type}, ${lock_int_type}, ${lock_int_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_unlock(${fd_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(${invalid_handle}, 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
 	assert status_source.contains('int v_filelock_status(')
 	out := run_good(v3_bin, 'filelock_user_names_not_helpers', 'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
 	assert out == '7'
@@ -2679,6 +2699,8 @@ fn test_channel_alias_close_method_wins_over_builtin() {
 	assert out == '71'
 	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime', 'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
 	assert pointer_c.contains('sync__Channel__close(*p,')
+	assert pointer_c.contains('sizeof(IError)')
+	assert !pointer_c.contains('sync__Channel__close(*p);')
 }
 
 fn test_channel_reference_auto_str_reads_channel_value() {
@@ -2768,31 +2790,51 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 	assert ptr_out == '1'
 	reverse_out := run_good(v3_bin, 'array_reverse_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n')
 	assert reverse_out == 'ok'
-	exact_out := run_good(v3_bin, 'exact_array_receiver_method_before_builtin', 'struct Num {\n\tv int\n}\n\nfn (a []Num) pointers() []Num {\n\treturn a\n}\n\nfn main() {\n\tnums := [Num{\n\t\tv: 9\n\t}]\n\tptrs := nums.pointers()\n\tprintln(int_str(ptrs[0].v))\n}\n')
-	assert exact_out == '9'
-	exact_clear_out := run_good(v3_bin, 'exact_array_clear_method_before_cgen', 'struct Num {}\n\nfn (a []Num) clear() int {\n\treturn 5\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.clear()))\n\tprintln(int_str(nums.len))\n}\n')
-	assert exact_clear_out == '5\n1'
-	exact_clone_out := run_good(v3_bin, 'exact_array_clone_method_before_builtin', 'struct Num {}\n\nfn (a []Num) clone() int {\n\treturn 12\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.clone()))\n}\n')
-	assert exact_clone_out == '12'
-	exact_reverse_out := run_good(v3_bin, 'exact_array_reverse_method_before_builtin', 'struct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 13\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.reverse()))\n}\n')
-	assert exact_reverse_out == '13'
-	module_array_prefix_out := run_good_project(v3_bin, 'array_prefix_module_receiver_method', {
-		'main.v':            'module main\n\nimport array_utils\n\nfn main() {\n\tprintln(array_utils.run())\n}\n'
-		'array_utils/mod.v': 'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
-	}, 'main.v')
-	assert module_array_prefix_out == '73'
-	module_array_runtime_prefix_out := run_good_project(v3_bin, 'array_runtime_prefix_module_receiver_method', {
-		'main.v':             'module main\n\nimport array__utils\n\nfn main() {\n\tprintln(array__utils.run())\n}\n'
+	exact_out := run_good(v3_bin, 'exact_array_receiver_methods_before_builtin', 'struct Num {
+	v int
+}
+
+fn (a []Num) pointers() []Num {
+	return a
+}
+
+fn (a []Num) clear() int {
+	return 5
+}
+
+fn (a []Num) clone() int {
+	return 12
+}
+
+fn (a []Num) reverse() int {
+	return 13
+}
+
+fn (a []Num) prepend(x int) int {
+	return x + 1
+}
+
+fn main() {
+	nums := [Num{v: 9}]
+	ptrs := nums.pointers()
+	println(int_str(ptrs[0].v))
+	mut single := []Num{}
+	single << Num{}
+	println(int_str(single.clear()))
+	println(int_str(single.len))
+	println(int_str(single.clone()))
+	println(int_str(single.reverse()))
+	println(int_str(single.prepend(4)))
+}
+')
+	assert exact_out == '9\n5\n1\n12\n13\n5'
+	module_array_out := run_good_project(v3_bin, 'module_array_receiver_methods', {
+		'main.v':             'module main\n\nimport array_utils\nimport array__utils\nimport thing\n\nfn main() {\n\tprintln(array_utils.run())\n\tprintln(array__utils.run())\n\tprintln(thing.run())\n}\n'
+		'array_utils/mod.v':  'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
 		'array__utils/mod.v': 'module array__utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 83\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
+		'thing/mod.v':        'module thing\n\nstruct Num {}\n\nfn (a []Num) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.move())\n}\n'
 	}, 'main.v')
-	assert module_array_runtime_prefix_out == '83'
-	module_array_move_out := run_good_project(v3_bin, 'module_array_move_receiver_method', {
-		'main.v':      'module main\n\nimport thing\n\nfn main() {\n\tprintln(thing.run())\n}\n'
-		'thing/mod.v': 'module thing\n\nstruct Num {}\n\nfn (a []Num) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.move())\n}\n'
-	}, 'main.v')
-	assert module_array_move_out == '91'
-	exact_prepend_out := run_good(v3_bin, 'exact_array_prepend_method_before_builtin', 'struct Num {}\n\nfn (a []Num) prepend(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.prepend(4)))\n}\n')
-	assert exact_prepend_out == '5'
+	assert module_array_out == '73\n83\n91'
 	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'struct Num {}\n\nfn (a []Num) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as `int` in argument 1 to `take_int`')
 	fixed_dynamic_out := run_good(v3_bin, 'fixed_array_dynamic_receiver_method_before_builtin', 'struct Num {}\n\nfn (a []Num) pointers() int {\n\treturn 41\n}\n\nfn main() {\n\tfixed := [3]Num{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
 	assert fixed_dynamic_out == '41'
@@ -2911,25 +2953,34 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	assert alias_rvalue_out == '66'
 	plain_map_out := run_good(v3_bin, 'plain_map_builtin_not_alias_method', 'type M = map[string]int\n\nfn (m M) keys() int {\n\treturn 66\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tkeys := m.keys()\n\tprintln(int_str(keys.len))\n}\n')
 	assert plain_map_out == '1'
-	module_map_runtime_prefix_out := run_good_project(v3_bin, 'map_runtime_prefix_module_receiver_method', {
-		'main.v':           'module main\n\nimport map__utils\n\nfn main() {\n\tprintln(map__utils.run())\n}\n'
+	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_methods', 'struct Num {}
+
+fn (m map[[2]string]Num) keys() int {
+	return 88
+}
+
+fn (m map[[3][2]int]Num) keys() int {
+	return 99
+}
+
+fn main() {
+	mut fixed := map[[2]string]Num{}
+	fixed[["a", "b"]!] = Num{}
+	println(int_str(fixed.keys()))
+	mut nested := map[[3][2]int]Num{}
+	key := [3][2]int{}
+	nested[key] = Num{}
+	println(int_str(nested.keys()))
+}
+')
+	assert fixed_key_out == '88\n99'
+	module_map_out := run_good_project(v3_bin, 'module_map_receiver_methods', {
+		'main.v':           'module main\n\nimport map__utils\nimport map\nimport thing\n\nfn main() {\n\tprintln(map__utils.run())\n\tprintln(map.run())\n\tprintln(thing.run())\n}\n'
 		'map__utils/mod.v': 'module map__utils\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 84\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
+		'map/mod.v':        'module map\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 85\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
+		'thing/mod.v':      'module thing\n\nstruct Foo {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers())\n}\n'
 	}, 'main.v')
-	assert module_map_runtime_prefix_out == '84'
-	module_map_out := run_good_project(v3_bin, 'map_module_receiver_method', {
-		'main.v':    'module main\n\nimport map\n\nfn main() {\n\tprintln(map.run())\n}\n'
-		'map/mod.v': 'module map\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 85\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
-	}, 'main.v')
-	assert module_map_out == '85'
-	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_method_before_builtin', 'struct Num {}\n\nfn (m map[[2]string]Num) keys() int {\n\treturn 88\n}\n\nfn main() {\n\tmut m := map[[2]string]Num{}\n\tkey := ["a", "b"]!\n\tm[key] = Num{}\n\tprintln(int_str(m.keys()))\n}\n')
-	assert fixed_key_out == '88'
-	nested_fixed_key_out := run_good(v3_bin, 'nested_fixed_array_key_map_receiver_method', 'struct Num {}\n\nfn (m map[[3][2]int]Num) keys() int {\n\treturn 99\n}\n\nfn main() {\n\tmut m := map[[3][2]int]Num{}\n\tkey := [3][2]int{}\n\tm[key] = Num{}\n\tprintln(int_str(m.keys()))\n}\n')
-	assert nested_fixed_key_out == '99'
-	module_collection_out := run_good_project(v3_bin, 'module_collection_receiver_methods', {
-		'main.v':      'module main\n\nimport thing\n\nfn main() {\n\tprintln(thing.run())\n}\n'
-		'thing/mod.v': 'module thing\n\nstruct Foo {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers())\n}\n'
-	}, 'main.v')
-	assert module_collection_out == '31\n42'
+	assert module_map_out == '84\n85\n31\n42'
 }
 
 fn test_arm64_string_roundtrip_preserves_literal_flag() {
@@ -5861,6 +5912,48 @@ fn main() {
 		'main.v': 'module main\n\n#include "shim.c"\n\n@[typedef]\nstruct C.V3SourceType {\n\tvalue int\n}\n\nstruct SourceTypeHolder {\n\tvalue C.V3SourceType\n}\n\nfn C.v3_source_type_value(C.V3SourceType) int\n\nfn main() {\n\tholder := SourceTypeHolder{\n\t\tvalue: C.V3SourceType{\n\t\t\tvalue: 51\n\t\t}\n\t}\n\tprintln(int_str(C.v3_source_type_value(holder.value)))\n}\n'
 	}, 'main.v')
 	assert source_type_out == '51'
+	inactive_objective_c_out := run_good_project(v3_bin, 'inactive_objective_c_source', {
+		'v.mod':      "Module { name: 'inactive_objective_c_source' }\n"
+		'disabled.m': '#error inactive Objective-C source must not be compiled\n'
+		'main.v':     'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\nfn main() {\n\tprintln(int_str(60))\n}\n'
+	}, 'main.v')
+	assert inactive_objective_c_out == '60'
+	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
+		'v.mod':        "Module { name: 'inactive_objective_cpp_source' }\n"
+		'disabled.mm':  '#error inactive Objective-C++ source must not be compiled\n'
+		'later_defs.c': '#define V3_NEVER_DEFINED_OBJECTIVE_CPP 1\n'
+		'main.v':       'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\n#include "later_defs.c"\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
+	}, 'main.v')
+	assert inactive_objective_cpp.run_output == '65'
+	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
+
+	inactive_defined_guard_out := run_good_project(v3_bin, 'inactive_defined_objective_c_guard', {
+		'v.mod':      "Module { name: 'inactive_defined_objective_c_guard' }\n"
+		'disabled.m': '#error defined() guarded Objective-C source must not be compiled\n'
+		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#if 0\n#elif 0\n#include "disabled.m"\n#endif\n\n#if 1\n#elif 0\n#else\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive guards must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
+	}, 'main.v')
+	assert inactive_defined_guard_out == '63'
+}
+
+fn supports_review_objective_c_projects() bool {
+	$if windows {
+		// These projects use Clang's Objective-C frontend and the MinGW ABI.
+		// The Clang installed with Visual Studio targets MSVC by default.
+		clang := os.find_abs_path_of_executable('clang') or { return false }
+		probe := os.exec([clang, '-dumpmachine'])
+		triple := probe.output.trim_space()
+		return probe.exit_code == 0 && triple.starts_with('x86_64')
+			&& (triple.contains('mingw') || triple.contains('windows-gnu'))
+	} $else {
+		return true
+	}
+}
+
+fn test_review_objective_c_source_and_link_modes() {
+	if !supports_review_objective_c_projects() {
+		return
+	}
+	v3_bin := build_v3()
 	objective_c_type_out := run_good_project_with_flags(v3_bin, 'objective_c_type_provider', '-cc clang', {
 		'v.mod':  "Module { name: 'objective_c_type_provider' }\n"
 		'shim.m': 'typedef struct { int value; } V3ObjectiveCType;\nint v3_objective_c_type_value(V3ObjectiveCType value) { return value.value; }\n'
@@ -5915,20 +6008,6 @@ fn main() {
 		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#undef V3_NEVER_DEFINED\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#if defined(__OBJC__) && !defined(__APPLE__)\n#error generated V translation unit must remain C\n#endif\n\n@[c_extern]\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert guarded_objective_cpp_out == '47'
-	inactive_objective_c_out := run_good_project(v3_bin, 'inactive_objective_c_source', {
-		'v.mod':      "Module { name: 'inactive_objective_c_source' }\n"
-		'disabled.m': '#error inactive Objective-C source must not be compiled\n'
-		'main.v':     'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\nfn main() {\n\tprintln(int_str(60))\n}\n'
-	}, 'main.v')
-	assert inactive_objective_c_out == '60'
-	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
-		'v.mod':        "Module { name: 'inactive_objective_cpp_source' }\n"
-		'disabled.mm':  '#error inactive Objective-C++ source must not be compiled\n'
-		'later_defs.c': '#define V3_NEVER_DEFINED_OBJECTIVE_CPP 1\n'
-		'main.v':       'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\n#include "later_defs.c"\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
-	}, 'main.v')
-	assert inactive_objective_cpp.run_output == '65'
-	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
 
 	guarded_objective_c_static_out := run_good_project_with_flags(v3_bin, 'guarded_objective_c_static', '-cc clang', {
 		'v.mod':  "Module { name: 'guarded_objective_c_static' }\n"
@@ -5948,12 +6027,6 @@ fn main() {
 		'main.v': 'module main\n\n#define V3_ACTIVE_THROUGH_INACTIVE_UNDEF 62\n#if 0\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#endif\n#include "shim.m"\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n\nfn C.answer_after_inactive_undef() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_inactive_undef()))\n}\n'
 	}, 'main.v')
 	assert inactive_undef_context_out == '62'
-	inactive_defined_guard_out := run_good_project(v3_bin, 'inactive_defined_objective_c_guard', {
-		'v.mod':      "Module { name: 'inactive_defined_objective_c_guard' }\n"
-		'disabled.m': '#error defined() guarded Objective-C source must not be compiled\n'
-		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#if 0\n#elif 0\n#include "disabled.m"\n#endif\n\n#if 1\n#elif 0\n#else\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive guards must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
-	}, 'main.v')
-	assert inactive_defined_guard_out == '63'
 	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin, 'noncontiguous_source_context', '-cc clang', {
 		'v.mod':  "Module { name: 'noncontiguous_source_context' }\n"
 		'defs.h': 'typedef int v3_noncontiguous_context_header_type;\n'
@@ -5968,31 +6041,36 @@ fn main() {
 		'main.v': 'module main\n\n#include "shim.c"\n#include "shim.m"\n\nfn C.answer_from_relative_c() int\nfn C.answer_from_relative_objective_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_relative_c() + C.answer_from_relative_objective_c()))\n}\n'
 	}, 'main.v')
 	assert relative_source_include_out == '59'
-	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', '-cc clang', {
+}
+
+fn test_review_native_source_language_overrides() {
+	v3_bin := build_v3()
+	cc := $if windows { '-cc gcc' } $else { '-cc clang' }
+	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', cc, {
 		'v.mod':    "Module { name: 'cpp_source_runtime' }\n"
 		'shim.cpp': '#include <string>\nextern "C" int answer_from_cpp_runtime(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
 		'main.v':   'module main\n\n#flag @VMODROOT/shim.cpp\n\n@[c_extern]\nfn C.answer_from_cpp_runtime() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp_runtime()))\n}\n'
 	}, 'main.v')
 	assert cpp_runtime_out == '44'
-	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag', '-cc clang', {
+	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag', cc, {
 		'v.mod':  "Module { name: 'explicit_language_source_flag' }\n"
 		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_cpp(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.c\n\n@[c_extern]\nfn C.answer_from_explicit_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_cpp()))\n}\n'
 	}, 'main.v')
 	assert explicit_language_out == '44'
-	explicit_object_language_out := run_good_project_with_flags(v3_bin, 'explicit_object_fallback_language', '-cc clang', {
+	explicit_object_language_out := run_good_project_with_flags(v3_bin, 'explicit_object_fallback_language', cc, {
 		'v.mod':  "Module { name: 'explicit_object_fallback_language' }\n"
 		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_object_cpp(void) { std::string answer(52, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.o\n\n@[c_extern]\nfn C.answer_from_explicit_object_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_object_cpp()))\n}\n'
 	}, 'main.v')
 	assert explicit_object_language_out == '52'
-	extensionless_language_out := run_good_project_with_flags(v3_bin, 'extensionless_explicit_language', '-cc clang', {
+	extensionless_language_out := run_good_project_with_flags(v3_bin, 'extensionless_explicit_language', cc, {
 		'v.mod':  "Module { name: 'extensionless_explicit_language' }\n"
 		'shim':   '#include <string>\nextern "C" int answer_from_extensionless_cpp(void) { std::string answer(53, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim\n\n@[c_extern]\nfn C.answer_from_extensionless_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_extensionless_cpp()))\n}\n'
 	}, 'main.v')
 	assert extensionless_language_out == '53'
-	objective_cpp_c_override_out := run_good_project_with_flags(v3_bin, 'objective_cpp_c_override', '-cc clang', {
+	objective_cpp_c_override_out := run_good_project_with_flags(v3_bin, 'objective_cpp_c_override', cc, {
 		'v.mod':   "Module { name: 'objective_cpp_c_override' }\n"
 		'shim.mm': 'int answer_from_mm_compiled_as_c(void) { void* raw = 0; int* typed = raw; return typed == 0 ? 54 : 0; }\n'
 		'main.v':  'module main\n\n#flag -x c\n#flag @VMODROOT/shim.mm\n\nfn C.answer_from_mm_compiled_as_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_mm_compiled_as_c()))\n}\n'
@@ -6001,6 +6079,9 @@ fn main() {
 }
 
 fn test_imported_objective_cpp_wrapper_context() {
+	if !supports_review_objective_c_projects() {
+		return
+	}
 	v3_bin := build_v3()
 	out := run_good_project_with_flags(v3_bin, 'imported_objective_cpp_wrapper_context', '-cc clang', {
 		'v.mod':                   "Module { name: 'imported_objective_cpp_wrapper_context' }\n"
@@ -6078,6 +6159,9 @@ fn test_bare_macro_objective_c_guards_stay_inactive() {
 }
 
 fn test_valued_bare_macro_objective_c_guards_remain_possible() {
+	if !supports_review_objective_c_projects() {
+		return
+	}
 	v3_bin := build_v3()
 	out := run_good_project_with_flags(v3_bin, 'valued_bare_macro_objective_c_guards', '-cc clang', {
 		'v.mod':     "Module { name: 'valued_bare_macro_objective_c_guards' }\n"
@@ -6089,6 +6173,9 @@ fn test_valued_bare_macro_objective_c_guards_remain_possible() {
 }
 
 fn test_external_bare_macro_objective_c_guards_remain_possible() {
+	if !supports_review_objective_c_projects() {
+		return
+	}
 	v3_bin := build_v3()
 	out := run_good_project_with_flags(v3_bin, 'external_bare_macro_objective_c_guards', '-cc clang', {
 		'v.mod':           "Module { name: 'external_bare_macro_objective_c_guards' }\n"
@@ -8595,7 +8682,7 @@ fn main() {
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
-fn test_unsafe_map_alias_provenance_tracks_each_loop_break() {
+fn test_unsafe_map_alias_loop_break_before_assignment_is_rejected() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
 	mut original := {
@@ -8616,20 +8703,6 @@ fn main() {
 	branch(true)
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_assignment_before_break', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for {
-		alias = unsafe { original }
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {

@@ -102,27 +102,7 @@ fn (mut g FlatGen) gen_string_join_parts(parts []flat.NodeId, interpolation bool
 	name := '__v3_internal_symbol_join_${g.tmp_count}'
 	g.tmp_count++
 	g.write('({ string ${name}[${parts.len}]; ')
-	mut float_buffer_bytes := 0
-	for i, part in parts {
-		if precision := g.fixed_float_buffer_precision(part) {
-			// Bound total stack use even for interpolations with thousands of operands.
-			if float_buffer_bytes + precision + 312 <= 16384 {
-				float_buffer_bytes += precision + 312
-				// Keep each buffer alive until string_plus_many copies all operands.
-				g.write('u8 ${name}_float_${i}[${precision + 312}]; ${name}[${i}] = v3_f64_fixed_buf(')
-				g.gen_string_interp_child_expr(g.a.child(&g.a.nodes[int(part)], 1))
-				g.write(', ${precision}, ${name}_float_${i}); ')
-				continue
-			}
-		}
-		g.write('${name}[${i}] = ')
-		if interpolation {
-			g.gen_string_interp_child_expr(part)
-		} else {
-			g.gen_expr_as_string(part)
-		}
-		g.write('; ')
-	}
+	g.gen_interpolation_part_assignments(parts, name, interpolation)
 	g.write('string_plus_many(${parts.len}, ${name}); })')
 }
 
@@ -133,27 +113,6 @@ fn (g &FlatGen) can_use_fixed_float_buffer() bool {
 		&& (!g.has_used_fn_filter()
 			|| (g.used_fn_contains('strconv.f64_to_decimal_exact_int')
 				&& g.used_fn_contains('strconv.f64_to_decimal')))
-}
-
-fn (g &FlatGen) fixed_float_buffer_precision(id flat.NodeId) ?int {
-	node := g.a.nodes[int(id)]
-	if node.kind != .call || node.children_count != 3 {
-		return none
-	}
-	callee := g.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value != 'v3_f64_fixed' {
-		return none
-	}
-	precision := g.a.child_node(&node, 2)
-	// Bound stack use; dynamic and unusually large precisions retain the existing path.
-	if precision.kind != .int_literal {
-		return none
-	}
-	value := precision.value.int()
-	if value < 0 || value > 126 || !g.can_use_fixed_float_buffer() {
-		return none
-	}
-	return value
 }
 
 fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) types.Type {

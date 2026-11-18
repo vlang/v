@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Focused regression checks for CI push path selectors and gated callers."""
+import json
+import re
 import unittest
 import ci_gate_paths as gate
 
@@ -13,6 +15,160 @@ class GatePathsTests(unittest.TestCase):
         gate.validate(list(self.entries.values()))
         self.assertEqual(len(self.entries), 54)
         self.assertEqual(sum(bool(e.get("inline")) for e in self.entries.values()), 8)
+
+    def test_vc_generation_runs_on_every_master_push(self):
+        for paths in ([], ["README.md"], [".github/workflows/linux_ci.yml"]):
+            with self.subTest(paths=paths):
+                self.assertTrue(gate.should_run(paths, self.entries["gen_vc_ci.yml"]))
+
+    @staticmethod
+    def caller_jobs():
+        caller = gate.CALLER.read_text(encoding="utf-8").split("\njobs:\n", 1)[1]
+        return dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  \S|\Z)", caller, re.M | re.S))
+
+    @staticmethod
+    def dependencies(job):
+        match = re.search(r"^    needs:\s*(\[[^\]]*\]|[^\n]+)$", job, re.M)
+        if match is None:
+            return None
+        return {name.strip() for name in match[1].strip("[]").split(",") if name.strip()}
+
+    def test_dependencies_accept_prettier_wrapping(self):
+        expected = {"preflight", "gen_vc_ci"}
+        for value in (
+            " [preflight, gen_vc_ci]",
+            "\n      [preflight, gen_vc_ci]",
+            "\n      [\n        preflight,\n        gen_vc_ci,\n      ]",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(self.dependencies(f"    needs:{value}\n"), expected)
+
+    def test_vc_generation_gates_every_downstream_job(self):
+        jobs = self.caller_jobs()
+        preflight = {
+            "bootstrap-linux", "bootstrap-macos", "bootstrap-windows",
+            "bootstrap-termux", "windows-bootstrap-contracts", "preflight",
+        }
+        self.assertIn("gen_vc_ci", jobs)
+        for name, body in jobs.items():
+            if name in preflight:
+                continue
+            with self.subTest(job=name):
+                needs = self.dependencies(body)
+                self.assertIsNotNone(needs)
+                if name == "gen_vc_ci":
+                    self.assertEqual(needs, {"preflight"})
+                else:
+                    self.assertIn("gen_vc_ci", needs)
+                    if name != "cleanup-vprod":
+                        self.assertIn("preflight", needs)
+                self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
+
+    def test_linux_preflight_does_not_wait_for_other_platforms(self):
+        jobs = self.caller_jobs()
+        for platform in ("linux", "macos", "windows", "termux"):
+            with self.subTest(platform=platform):
+                body = jobs[f"bootstrap-{platform}"]
+                self.assertIn("uses: ./.github/workflows/bootstrapping_ci.yml", body)
+                self.assertIn(f"platform: {platform}", body)
+                self.assertIsNone(self.dependencies(body))
+        self.assertEqual(self.dependencies(jobs["preflight"]), {"bootstrap-linux"})
+        self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"preflight"})
+        for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci", "release_ci"):
+            with self.subTest(job=job):
+                self.assertEqual(
+                    self.dependencies(jobs[job]), {"preflight", "gen_vc_ci"}
+                )
+
+    def test_other_platforms_retain_bootstrap_gates(self):
+        jobs = self.caller_jobs()
+        for name in ("macos_ci", "macos_gitly_ci"):
+            self.assertIn("bootstrap-macos", self.dependencies(jobs[name]))
+        for name in ("windows_ci_gcc", "windows_ci_msvc", "windows_ci_tcc"):
+            self.assertTrue(
+                {"bootstrap-windows", "windows-bootstrap-contracts"}
+                <= self.dependencies(jobs[name])
+            )
+        self.assertIn("bootstrap-termux", self.dependencies(jobs["termux_ci"]))
+        self.assertEqual(
+            self.dependencies(jobs["cleanup-vprod"]),
+            {"gen_vc_ci", "bootstrap-macos", "bootstrap-windows",
+             "bootstrap-termux", "windows-bootstrap-contracts"},
+        )
+
+    def test_bootstrap_platform_matrix_matches_all_producers(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        platforms = {}
+        for group in ("linux", "macos", "windows"):
+            match = re.search(
+                rf"inputs\.platform == '{group}' && '(\[[^'\n]+\])'", source
+            )
+            self.assertIsNotNone(match, group)
+            platforms[group] = json.loads(match[1])
+        all_match = re.search(r"(?m)^\s*'(\[\{\"os\":[^'\n]+\])'$", source)
+        self.assertIsNotNone(all_match)
+        combined = json.loads(all_match[1])
+        self.assertCountEqual(
+            combined, [runner for group in platforms.values() for runner in group]
+        )
+        self.assertEqual([r["platform"] for r in platforms["linux"]], ["linux-x64"])
+        self.assertEqual(
+            {r["platform"] for r in platforms["macos"]}, {"macos-arm64", "macos-x64"}
+        )
+        self.assertEqual([r["platform"] for r in platforms["windows"]], ["windows-x64"])
+        self.assertIn("inputs.platform != 'termux'", source)
+        self.assertIn("inputs.platform == 'all' || inputs.platform == 'termux'", source)
+        self.assertIn("inputs.platform || 'all'", source)
+
+    def test_windows_bootstrap_reuses_tools_before_full_formatting_checks(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        bootstrap = source.split("\n  bootstrap-termux:", 1)[0]
+        steps = re.split(r"^      - ", bootstrap, flags=re.M)[1:]
+        commands = [
+            r".\.github\workflows\setup_windows_tool_cache.ps1",
+            "makev.bat",
+            "& ./.github/workflows/prepare_v.ps1",
+            r".\.github\workflows\setup_windows_tool_cache.ps1 -Verify",
+            "./v.exe -silent test-fmt",
+        ]
+        positions = []
+        for command in commands:
+            with self.subTest(command=command):
+                matches = [step for step in steps if re.search(
+                    rf"^        (?:run: |  ){re.escape(command)}$", step, re.M
+                )]
+                self.assertEqual(len(matches), 1)
+                step = matches[0]
+                self.assertIn("        if: runner.os == 'Windows'\n", step)
+                self.assertNotIn("continue-on-error:", step)
+                positions.append(bootstrap.index(command))
+        self.assertEqual(positions, sorted(positions))
+        self.assertLess(positions[-1], bootstrap.index("Copy-Item v.exe"))
+        self.assertIn(
+            "    timeout-minutes: ${{ matrix.platform == 'macos-x64' && 60 || 40 }}\n",
+            bootstrap,
+        )
+
+    def test_windows_bootstrap_isolates_vet_and_fmt_processes(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        bootstrap = source.split("\n  bootstrap-termux:", 1)[0]
+        steps = re.split(r"^      - ", bootstrap, flags=re.M)[1:]
+        command = "./v.exe -silent test-cleancode"
+        checks = [step for step in steps if command in step]
+        self.assertEqual(len(checks), 2)
+        for stage, step in zip(("vet", "fmt"), checks):
+            with self.subTest(stage=stage):
+                self.assertIn("        if: runner.os == 'Windows'\n", step)
+                self.assertRegex(step, rf"(?m)^          VTEST_CLEANCODE_STAGE: '?{stage}'?$")
+                self.assertEqual(step.count(command), 1)
+                self.assertIn(
+                    command + "\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+                    step,
+                )
+                self.assertNotIn("continue-on-error:", step)
+        self.assertIn(r".\.github\workflows\setup_windows_tool_cache.ps1 -Verify", checks[0])
+        self.assertIn("./v.exe -silent test-fmt", checks[1])
+        self.assertLess(bootstrap.index(checks[1]), bootstrap.index("Copy-Item v.exe"))
 
     def test_fastc_only_push_skips_platform_workflows(self):
         paths = ["vlib/v/gen/fastc/codegen.v"]

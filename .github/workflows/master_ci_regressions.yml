@@ -1,0 +1,116 @@
+name: Master CI regressions
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/compiler_tests/**'
+      - '.github/workflows/master_ci_regressions.yml'
+      - '.github/workflows/build_on_ubuntu_25_ci.yml'
+      - '.github/workflows/linux_ci.yml'
+      - '.github/workflows/macos_ci.yml'
+      - '.github/workflows/other_ci.yml'
+      - '.github/workflows/tools_ci.yml'
+      - '.github/workflows/riscv64_linux_ci.yml'
+      - '.github/workflows/sanitized_ci.yml'
+      - '.github/workflows/windows_ci_gcc.yml'
+      - '.github/workflows/v_apps_and_modules_compile_ci.yml'
+      - '.github/workflows/disable_azure_mirror*'
+      - '.github/workflows/ci_timeout_contract_test.py'
+      - '.github/workflows/prepare_v*'
+      - '.github/workflows/setup_windows_tool_cache.ps1'
+      - '.github/actions/setup-v/**'
+      - '.github/actions/cache-apt-packages-action/**'
+      - 'ci/linux_ci.vsh'
+      - 'ci/linux_ci_resume_test.sh'
+      - 'makev.bat'
+      - 'GNUmakefile'
+  workflow_dispatch:
+
+concurrency:
+  group: master-ci-regressions-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Linux workflow contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VJOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check apt source setup
+        run: bash .github/workflows/disable_azure_mirror_test.sh
+      - name: Check CI task coverage and deadlines
+        run: python3 .github/workflows/ci_timeout_contract_test.py
+      - name: Check optimized compiler artifact reuse
+        run: python3 .github/workflows/prepare_v_test.py
+      - name: Build V
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Check Linux task checkpoint and resume behavior
+        run: sh ci/linux_ci_resume_test.sh
+      - name: Check hosted apt dependencies
+        timeout-minutes: 10
+        run: |
+          bash .github/workflows/disable_azure_mirror.sh
+          sudo apt-get -qq update
+          sudo apt-get -qq --no-install-recommends install sassc
+          sassc --version
+
+  windows:
+    name: Windows regressions (${{ matrix.cc }})
+    runs-on: windows-2025
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [tcc, msvc]
+    env:
+      VJOBS: '2'
+      VTEST_FAIL_FAST: '0'
+      VFLAGS: -cc ${{ matrix.cc }} -no-retry-compilation
+      V_CI_CCOMPILER: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      # Both lanes need a production compiler for setup-v; tests keep their
+      # explicit matrix compiler through VFLAGS, including nested V builds.
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Bootstrap V
+        run: |
+          .\makev.bat "-$env:V_CI_CCOMPILER"
+          if ($LASTEXITCODE -ne 0) { throw "V bootstrap failed (exit $LASTEXITCODE)" }
+      - name: Prepare optimized V compiler
+        id: build
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Check complex macro identifiers without compiler fallback
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
+          if ($LASTEXITCODE -ne 0) { throw "Complex identifier regression failed (exit $LASTEXITCODE)" }
+      - name: Check synthesized entry points and cleanup
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 20
+        run: |
+          $tests = @(
+            'vlib/v/compiler_tests/comptime_top_level_decl_codegen_test.v'
+            'vlib/v/compiler_tests/executable_cleanup_test.v'
+            'vlib/v/compiler_tests/mixed_lock_codegen_test.v'
+          )
+          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
+          if ($LASTEXITCODE -ne 0) { throw "Entry point regressions failed (exit $LASTEXITCODE)" }

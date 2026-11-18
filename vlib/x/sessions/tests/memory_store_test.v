@@ -40,10 +40,14 @@ fn test_store_get() {
 }
 
 fn test_store_session_expired() {
-	mut store := sessions.MemoryStore[User]{}
-	store.set('a', default_user)!
-
-	time.sleep(2 * max_age)
+	mut store := sessions.MemoryStore[User]{
+		data: {
+			'a': sessions.MemoryStoreSessions[User]{
+				created_at: time.now().add(-2 * max_age)
+				data:       default_user
+			}
+		}
+	}
 
 	if _ := store.get('a', max_age) {
 		assert false, 'session should be expired!'

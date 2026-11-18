@@ -9,9 +9,11 @@ from urllib.request import Request, urlopen
 
 REPOSITORY = "vlang/v"
 WORKFLOW = ".github/workflows/ci_master.yml"
-PLATFORMS = {"linux-x64", "macos-arm64", "macos-x64", "windows-x64"}
+PLATFORMS = {
+    "linux-x64", "macos-arm64", "macos-x64", "windows-x64", "termux-arm64", "termux-x64",
+}
 ARTIFACT_NAME = re.compile(
-    r"vprod-(linux-x64|macos-arm64|macos-x64|windows-x64)-([0-9a-f]{40})"
+    r"vprod-(linux-x64|macos-arm64|macos-x64|windows-x64|termux-arm64|termux-x64)-([0-9a-f]{40})"
 )
 COMMIT = re.compile(r"[0-9a-f]{40}")
 PAGE_SIZE = 100
@@ -122,7 +124,7 @@ def require_replacement(api, current):
         if platform and artifact.get("expired") is False and positive_id(artifact.get("size_in_bytes")):
             platforms.append(platform)
     if len(platforms) != len(PLATFORMS) or set(platforms) != PLATFORMS:
-        raise ValueError("Current run has no complete four-platform compiler set; keeping old artifacts")
+        raise ValueError("Current run has no complete compiler set; keeping old artifacts")
 
 
 def older_completed_run(run, current):

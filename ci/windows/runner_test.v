@@ -1,6 +1,7 @@
 module windows
 
 import os
+import yaml
 
 fn test_windows_workflow_validation_plans() {
 	root := os.getenv_opt('V_CI_TEST_ROOT') or { @VEXEROOT }
@@ -10,8 +11,27 @@ fn test_windows_workflow_validation_plans() {
 		assert job.env['VTEST_FAIL_FAST'] == '1'
 		assert job.steps[0].id == 'all_code_is_formatted'
 		self_tests := job.steps.filter(it.id == 'self_tests')
-		assert self_tests.len == 1
-		assert self_tests[0].script.trim_space() == 'v -silent test-self vlib'
+		if compiler == 'gcc' {
+			// GCC's full V self-tests moved to the dedicated sharded job; they
+			// no longer run in the regular gcc-windows validation worker.
+			assert self_tests.len == 0
+			doc := yaml.parse_file(os.join_path(root, '.github', 'workflows',
+				'windows_ci_gcc.yml'))!
+			shards := doc.value_opt('jobs.gcc-windows-self-tests')!
+			mut native_self_tests := 0
+			for value in shards.value('steps').array() {
+				step := value.as_map()
+				if command := step['run'] {
+					if command.string().trim_space() == 'v -silent test-self vlib' {
+						native_self_tests++
+					}
+				}
+			}
+			assert native_self_tests == 1
+		} else {
+			assert self_tests.len == 1
+			assert self_tests[0].script.trim_space() == 'v -silent test-self vlib'
+		}
 		fastc := job.steps.filter(it.id == 'build_and_run_hello_world_with_b_fastc')
 		assert fastc.len == 1
 		assert 'VFLAGS' in fastc[0].env

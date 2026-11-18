@@ -1,0 +1,72 @@
+module main
+
+import net.http
+import os
+import x.sessions
+
+// Run the probe before the generated app starts listening for connections.
+fn init() {
+	if os.args.len == 2 && os.args[1] == '--check-web-login' {
+		verify_web_login_rotation() or { panic(err) }
+		println('web login rotation verified')
+		exit(0)
+	}
+}
+
+fn web_login_cookie_value(ctx &Context) string {
+	for cookie in ctx.res.cookies() {
+		if cookie.name == 'sid' {
+			return cookie.value
+		}
+	}
+	return ''
+}
+
+fn verify_web_login_rotation() ! {
+	secret := 'web-login-rotation-test-secret'.bytes()
+	mut app := &App{
+		sessions: sessions.Sessions[User]{
+			store:  sessions.MemoryStore[User]{}
+			secret: secret
+		}
+	}
+	mut first_ctx := Context{}
+	app.login(mut first_ctx, 'alice')
+	first_cookie := web_login_cookie_value(&first_ctx)
+	assert first_cookie != ''
+	first_sid, first_valid := sessions.verify_session_id(first_cookie, secret)
+	assert first_valid
+	// A second login presenting the first cookie must rotate the cookie.
+	mut second_ctx := Context{}
+	second_ctx.req.add_cookie(http.Cookie{
+		name:  'sid'
+		value: first_cookie
+	})
+	app.login(mut second_ctx, 'bob')
+	second_cookie := web_login_cookie_value(&second_ctx)
+	assert second_cookie != ''
+	assert second_cookie != first_cookie
+	second_sid, second_valid := sessions.verify_session_id(second_cookie, secret)
+	assert second_valid
+	assert second_sid != first_sid
+	// The old session is destroyed.
+	if _ := app.sessions.store.get(first_sid, 0) {
+		assert false, 'old session must be destroyed on re-login'
+	}
+	assert app.sessions.store.get(second_sid, 0)! == User{ name: 'bob' }
+	// The previous cookie no longer accesses the new session.
+	mut stale_ctx := Context{}
+	stale_ctx.req.add_cookie(http.Cookie{
+		name:  'sid'
+		value: first_cookie
+	})
+	if _ := app.sessions.get(stale_ctx) {
+		assert false, 'previous cookie must not access the new session'
+	}
+	mut fresh_ctx := Context{}
+	fresh_ctx.req.add_cookie(http.Cookie{
+		name:  'sid'
+		value: second_cookie
+	})
+	assert app.sessions.get(fresh_ctx)! == User{ name: 'bob' }
+}

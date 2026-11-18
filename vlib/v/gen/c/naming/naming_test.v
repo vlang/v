@@ -16,6 +16,8 @@ fn test_collision_lookup_length_boundary() {
 	assert c_name('volatilex') == 'volatilex'
 	assert c_name('snprintf') == 'v_snprintf'
 	assert c_name('snprintfx') == 'snprintfx'
+	assert c_name('canonicalize') == 'v_canonicalize'
+	assert c_name('canonicalizex') == 'canonicalizex'
 	assert c_name('_str_12345') == 'v__str_12345'
 	assert c_name('_str_1234x') == '_str_1234x'
 }
@@ -74,6 +76,17 @@ fn test_fn_ptr_encoded_round_trips_nested_keys() {
 	nested_ret, nested_params := fn_ptr_encoded_split(deep_parts[0])
 	assert nested_ret == 'i64'
 	assert fn_ptr_encoded_params(nested_params) == [inner, 'i64']
+}
+
+// A GNU feature macro exposes libc basename(), which conflicts with a plain
+// V `fn basename(...)` unless C generation uses a disjoint identifier.
+fn test_basename_libc_collision_under_gnu_source() {
+	assert is_libc_collision('basename')
+	assert plain_name_may_be_reserved('basename')
+	assert c_name('basename') == '${internal_symbol_c_prefix}libc_basename'
+	assert c_name('basename') != c_name('v_basename')
+	assert c_name('basename') != c_name(c_name('basename'))
+	assert c_name('C.basename') == 'basename'
 }
 
 fn test_file_function_names_do_not_collide_with_libc() {

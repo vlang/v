@@ -7,6 +7,13 @@ import v.pref
 import v.scanner
 import v.token
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_fastc_qualified_test_source_identifies_its_entry_module() {
 	mut prefs := pref.new_preferences()
 	prefs.is_test = true

@@ -28,13 +28,16 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - &checkout
+        uses: actions/checkout@v7
         id: uses_checkout_v7
         with:
           persist-credentials: false
-      - name: Prepare private tool cache
+      - &prepare_tool_cache
+        name: Prepare private tool cache
         run: .\.github\workflows\setup_windows_tool_cache.ps1
-      - name: Install OpenSSL
+      - &install_openssl
+        name: Install OpenSSL
         id: install_openssl
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
@@ -78,12 +81,14 @@ jobs:
 
           Write-Host "OpenSSL install:"
           Get-ChildItem $libDir
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+      - &msvc_dev_cmd
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         id: uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0
         if: ${{ success() && !cancelled() && steps.install_openssl.outcome == 'success' }}
         with:
           arch: x64
-      - name: Verify MSVC tools
+      - &verify_msvc_tools
+        name: Verify MSVC tools
         id: verify_msvc_tools
         if: ${{ success() && !cancelled() && steps.uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0.outcome == 'success' }}
         run: |
@@ -301,9 +306,11 @@ jobs:
       - name: Install dependencies
         id: install_dependencies
         if: ${{ success() && !cancelled() && steps.test_cc_msvc_works.outcome == 'success' }}
-        run: |
+        run: &install_test_dependencies |
           v retry -- v setup-freetype
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\.github\workflows\windows-install-sqlite.bat
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: v doctor
         id: v_doctor
         if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
@@ -324,14 +331,11 @@ jobs:
         id: test_fasthttp_module
         if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v -silent test vlib/fasthttp/
-      - name: Self tests
-        id: self_tests
-        if: ${{ success() && !cancelled() && steps.test_fasthttp_module.outcome == 'success' }}
-        run: v -silent test-self vlib
       - name: Test v->js
         id: test_v_js
-        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        run: v -o hi.js examples/js_hello_world.v && node hi.js
+        if: ${{ success() && !cancelled() && steps.test_fasthttp_module.outcome == 'success' }}
+        # The loop and interpolation need the compatibility compiler's full JS backend.
+        run: v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         id: test_v_binaries
         if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
@@ -348,6 +352,35 @@ jobs:
         id: v2_self_compilation
         if: ${{ success() && !cancelled() && steps.compile_and_run_the_veb_example_fasthttp_and_check_its_html.outcome == 'success' }}
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+  msvc-windows-self-tests:
+    runs-on: windows-2022
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      VTEST_FAIL_FAST: '1'
+      VJOBS: '4'
+      VFLAGS: -cc msvc
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '4'
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - *checkout
+      - *prepare_tool_cache
+      - *install_openssl
+      - *msvc_dev_cmd
+      - *verify_msvc_tools
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+      - name: Install dependencies
+        run: *install_test_dependencies
+      - name: Self tests
+        run: v -silent test-self vlib
 
   msvc-multiwindow:
     runs-on: windows-2022

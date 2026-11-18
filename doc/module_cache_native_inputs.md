@@ -10,6 +10,9 @@ files use the same conservative fallback. The
 compiler no longer scans bundled mbedTLS or other headers to decide whether their contents can be
 replicated into cached objects. Embedded resources retain their ordinary dependency records.
 
+The `os` polling helper includes its header relative to `fd.c.v`, so copied standard libraries
+do not need a repository `v.mod` for that include.
+
 On macOS, cached development builds with Objective-C sources can compile the application unit
 with TCC and link a native development dylib. Clang compiles the native owner and external V
 modules. Application-directory modules remain in the TCC unit; other modules retain cached
@@ -62,6 +65,10 @@ Zstd is built as a separate `#flag` object, whose C compiler dependency manifest
 its implementation is not copied into V module objects. With Clang or GCC on Unix, importing
 `net.http`, `net.websocket`, or `veb` therefore retains the ordinary module cache. Windows SChannel still
 uses the conservative fallback for its bundled implementation and opaque context layout.
+
+Cached V function bodies can call generated enum stringifiers that their declaration headers
+do not name. Builds using those headers retain the stringifiers for enums loaded from either
+headers or source, so refreshing a dependency does not leave cached callers with missing symbols.
 
 The shipped mbedTLS public include tree and V's two mbedTLS helper headers have an explicit
 interface-only contract: ABI types and inline helpers may appear in every cached unit, while

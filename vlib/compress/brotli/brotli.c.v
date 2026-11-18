@@ -46,6 +46,20 @@ type FNDecoderGetErrorCode = fn (voidptr) int
 
 type FNDecoderErrorString = fn (int) charptr
 
+// DecompressCallback receives decoded chunks and returns the chunk length to continue or 0 to stop.
+pub type DecompressCallback = fn (chunk []u8, userdata voidptr) int
+
+struct DecompressedBuffer {
+mut:
+	data []u8
+}
+
+fn append_decompressed_chunk(chunk []u8, userdata voidptr) int {
+	mut buffer := unsafe { &DecompressedBuffer(userdata) }
+	buffer.data << chunk
+	return chunk.len
+}
+
 // Mode tunes the Brotli encoder for generic, text, or font data.
 pub enum Mode {
 	generic = 0
@@ -210,6 +224,21 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 
 // decompress decompresses a Brotli stream and returns the decompressed bytes.
 pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
+	mut buffer := DecompressedBuffer{}
+	mut keep_data := false
+	defer {
+		if !keep_data {
+			unsafe { buffer.data.free() }
+		}
+	}
+	decompress_with_callback(data, append_decompressed_chunk, voidptr(&buffer))!
+	keep_data = true
+	return buffer.data
+}
+
+// decompress_with_callback decompresses a Brotli stream and delivers output chunks to `cb`.
+// Returning 0 from `cb` stops decoding before the remaining input is validated.
+pub fn decompress_with_callback(data []u8, cb DecompressCallback, userdata voidptr) !int {
 	dec := open_decoder_library()!
 	defer {
 		close_library(dec)
@@ -231,19 +260,13 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 	defer {
 		decoder_destroy(state)
 	}
-	mut out := []u8{}
-	mut keep_out := false
-	defer {
-		if !keep_out {
-			unsafe { out.free() }
-		}
-	}
 	mut chunk := []u8{len: decode_chunk_size}
 	defer {
 		unsafe { chunk.free() }
 	}
 	mut available_in := uint(data.len)
 	mut next_in := unsafe { &u8(data.data) }
+	mut delivered := 0
 	for {
 		mut available_out := uint(chunk.len)
 		mut next_out := unsafe { &u8(chunk.data) }
@@ -253,15 +276,17 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
 			unpoison_output(chunk.data, uint(produced))
-			out << chunk[..produced]
+			if cb(chunk[..produced], userdata) != produced {
+				return delivered
+			}
+			delivered += produced
 		}
 		match result {
 			decoder_result_success {
 				if available_in != 0 {
 					return error('brotli: trailing data after stream')
 				}
-				keep_out = true
-				return out
+				return delivered
 			}
 			decoder_result_needs_more_output {
 				if produced == 0 {
