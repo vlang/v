@@ -79,8 +79,10 @@ fn (p TemplateProject) write(relative_path string, content string) {
 }
 
 fn (p TemplateProject) build() TemplateBuild {
+	// Use a V-only fixture so the executable cache's native-header policy does not decide
+	// whether these tests can exercise template invalidation.
 	built := os.exec(['env', 'V3CACHE=${p.cache}', 'V3_CACHE_TRACE=1', @VEXE, '-cc', 'cc', '-gc',
-		'none', '-o', p.output, p.main])
+		'none', '-d', 'no_segfault_handler', '-o', p.output, p.main])
 	assert built.exit_code == 0, built.output
 	run := os.exec([p.output])
 	assert run.exit_code == 0, run.output
