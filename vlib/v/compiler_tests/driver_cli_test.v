@@ -2581,7 +2581,11 @@ fn test_driver_cli_opt_level_warmed_cache() {
 	}
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'warm.v')
-	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	// NOTE: the warmed-cache fixture must be cache-eligible. A literal-only
+	// `println('ok')` program takes the minimal-literal-output fast path,
+	// which `cache_candidate_enabled` explicitly excludes, so it never
+	// creates/restores the program executable cache entry.
+	os.write_file(source, 'fn main() { a := [1, 2, 3]\n\tprintln(a.len) }\n') or { panic(err) }
 	cache := os.join_path(root, 'cache')
 	tmp := os.join_path(root, 'tmp')
 	os.mkdir_all(cache) or { panic(err) }
@@ -2618,6 +2622,6 @@ fn test_driver_cli_opt_level_warmed_cache() {
 	for output in [output0, output3] {
 		run := cmdexec.run(output, [])
 		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == 'ok', run.output
+		assert run.output.trim_space() == '3', run.output
 	}
 }
