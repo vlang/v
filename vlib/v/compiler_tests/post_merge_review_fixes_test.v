@@ -9,9 +9,19 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const review_workspace = os.join_path(os.vtmp_dir(), 'v3_post_merge_review_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rmdir_all(review_workspace) or {}
+	os.mkdir_all(review_workspace) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(review_workspace) or {}
+}
 
 fn tmp_test_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	return os.join_path(review_workspace, 'v3_${name}_${os.getpid()}')
 }
 
 fn setup_v3_cache() {
@@ -2780,31 +2790,51 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 	assert ptr_out == '1'
 	reverse_out := run_good(v3_bin, 'array_reverse_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n')
 	assert reverse_out == 'ok'
-	exact_out := run_good(v3_bin, 'exact_array_receiver_method_before_builtin', 'struct Num {\n\tv int\n}\n\nfn (a []Num) pointers() []Num {\n\treturn a\n}\n\nfn main() {\n\tnums := [Num{\n\t\tv: 9\n\t}]\n\tptrs := nums.pointers()\n\tprintln(int_str(ptrs[0].v))\n}\n')
-	assert exact_out == '9'
-	exact_clear_out := run_good(v3_bin, 'exact_array_clear_method_before_cgen', 'struct Num {}\n\nfn (a []Num) clear() int {\n\treturn 5\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.clear()))\n\tprintln(int_str(nums.len))\n}\n')
-	assert exact_clear_out == '5\n1'
-	exact_clone_out := run_good(v3_bin, 'exact_array_clone_method_before_builtin', 'struct Num {}\n\nfn (a []Num) clone() int {\n\treturn 12\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.clone()))\n}\n')
-	assert exact_clone_out == '12'
-	exact_reverse_out := run_good(v3_bin, 'exact_array_reverse_method_before_builtin', 'struct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 13\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.reverse()))\n}\n')
-	assert exact_reverse_out == '13'
-	module_array_prefix_out := run_good_project(v3_bin, 'array_prefix_module_receiver_method', {
-		'main.v':            'module main\n\nimport array_utils\n\nfn main() {\n\tprintln(array_utils.run())\n}\n'
-		'array_utils/mod.v': 'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
-	}, 'main.v')
-	assert module_array_prefix_out == '73'
-	module_array_runtime_prefix_out := run_good_project(v3_bin, 'array_runtime_prefix_module_receiver_method', {
-		'main.v':             'module main\n\nimport array__utils\n\nfn main() {\n\tprintln(array__utils.run())\n}\n'
+	exact_out := run_good(v3_bin, 'exact_array_receiver_methods_before_builtin', 'struct Num {
+	v int
+}
+
+fn (a []Num) pointers() []Num {
+	return a
+}
+
+fn (a []Num) clear() int {
+	return 5
+}
+
+fn (a []Num) clone() int {
+	return 12
+}
+
+fn (a []Num) reverse() int {
+	return 13
+}
+
+fn (a []Num) prepend(x int) int {
+	return x + 1
+}
+
+fn main() {
+	nums := [Num{v: 9}]
+	ptrs := nums.pointers()
+	println(int_str(ptrs[0].v))
+	mut single := []Num{}
+	single << Num{}
+	println(int_str(single.clear()))
+	println(int_str(single.len))
+	println(int_str(single.clone()))
+	println(int_str(single.reverse()))
+	println(int_str(single.prepend(4)))
+}
+')
+	assert exact_out == '9\n5\n1\n12\n13\n5'
+	module_array_out := run_good_project(v3_bin, 'module_array_receiver_methods', {
+		'main.v':             'module main\n\nimport array_utils\nimport array__utils\nimport thing\n\nfn main() {\n\tprintln(array_utils.run())\n\tprintln(array__utils.run())\n\tprintln(thing.run())\n}\n'
+		'array_utils/mod.v':  'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
 		'array__utils/mod.v': 'module array__utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 83\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
+		'thing/mod.v':        'module thing\n\nstruct Num {}\n\nfn (a []Num) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.move())\n}\n'
 	}, 'main.v')
-	assert module_array_runtime_prefix_out == '83'
-	module_array_move_out := run_good_project(v3_bin, 'module_array_move_receiver_method', {
-		'main.v':      'module main\n\nimport thing\n\nfn main() {\n\tprintln(thing.run())\n}\n'
-		'thing/mod.v': 'module thing\n\nstruct Num {}\n\nfn (a []Num) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.move())\n}\n'
-	}, 'main.v')
-	assert module_array_move_out == '91'
-	exact_prepend_out := run_good(v3_bin, 'exact_array_prepend_method_before_builtin', 'struct Num {}\n\nfn (a []Num) prepend(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\tprintln(int_str(nums.prepend(4)))\n}\n')
-	assert exact_prepend_out == '5'
+	assert module_array_out == '73\n83\n91'
 	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'struct Num {}\n\nfn (a []Num) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as `int` in argument 1 to `take_int`')
 	fixed_dynamic_out := run_good(v3_bin, 'fixed_array_dynamic_receiver_method_before_builtin', 'struct Num {}\n\nfn (a []Num) pointers() int {\n\treturn 41\n}\n\nfn main() {\n\tfixed := [3]Num{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
 	assert fixed_dynamic_out == '41'
@@ -2923,25 +2953,34 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	assert alias_rvalue_out == '66'
 	plain_map_out := run_good(v3_bin, 'plain_map_builtin_not_alias_method', 'type M = map[string]int\n\nfn (m M) keys() int {\n\treturn 66\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tkeys := m.keys()\n\tprintln(int_str(keys.len))\n}\n')
 	assert plain_map_out == '1'
-	module_map_runtime_prefix_out := run_good_project(v3_bin, 'map_runtime_prefix_module_receiver_method', {
-		'main.v':           'module main\n\nimport map__utils\n\nfn main() {\n\tprintln(map__utils.run())\n}\n'
+	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_methods', 'struct Num {}
+
+fn (m map[[2]string]Num) keys() int {
+	return 88
+}
+
+fn (m map[[3][2]int]Num) keys() int {
+	return 99
+}
+
+fn main() {
+	mut fixed := map[[2]string]Num{}
+	fixed[["a", "b"]!] = Num{}
+	println(int_str(fixed.keys()))
+	mut nested := map[[3][2]int]Num{}
+	key := [3][2]int{}
+	nested[key] = Num{}
+	println(int_str(nested.keys()))
+}
+')
+	assert fixed_key_out == '88\n99'
+	module_map_out := run_good_project(v3_bin, 'module_map_receiver_methods', {
+		'main.v':           'module main\n\nimport map__utils\nimport map\nimport thing\n\nfn main() {\n\tprintln(map__utils.run())\n\tprintln(map.run())\n\tprintln(thing.run())\n}\n'
 		'map__utils/mod.v': 'module map__utils\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 84\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
+		'map/mod.v':        'module map\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 85\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
+		'thing/mod.v':      'module thing\n\nstruct Foo {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers())\n}\n'
 	}, 'main.v')
-	assert module_map_runtime_prefix_out == '84'
-	module_map_out := run_good_project(v3_bin, 'map_module_receiver_method', {
-		'main.v':    'module main\n\nimport map\n\nfn main() {\n\tprintln(map.run())\n}\n'
-		'map/mod.v': 'module map\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 85\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
-	}, 'main.v')
-	assert module_map_out == '85'
-	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_method_before_builtin', 'struct Num {}\n\nfn (m map[[2]string]Num) keys() int {\n\treturn 88\n}\n\nfn main() {\n\tmut m := map[[2]string]Num{}\n\tkey := ["a", "b"]!\n\tm[key] = Num{}\n\tprintln(int_str(m.keys()))\n}\n')
-	assert fixed_key_out == '88'
-	nested_fixed_key_out := run_good(v3_bin, 'nested_fixed_array_key_map_receiver_method', 'struct Num {}\n\nfn (m map[[3][2]int]Num) keys() int {\n\treturn 99\n}\n\nfn main() {\n\tmut m := map[[3][2]int]Num{}\n\tkey := [3][2]int{}\n\tm[key] = Num{}\n\tprintln(int_str(m.keys()))\n}\n')
-	assert nested_fixed_key_out == '99'
-	module_collection_out := run_good_project(v3_bin, 'module_collection_receiver_methods', {
-		'main.v':      'module main\n\nimport thing\n\nfn main() {\n\tprintln(thing.run())\n}\n'
-		'thing/mod.v': 'module thing\n\nstruct Foo {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers())\n}\n'
-	}, 'main.v')
-	assert module_collection_out == '31\n42'
+	assert module_map_out == '84\n85\n31\n42'
 }
 
 fn test_arm64_string_roundtrip_preserves_literal_flag() {
