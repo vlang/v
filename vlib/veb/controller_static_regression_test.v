@@ -112,3 +112,19 @@ fn regression_handle_app_request(mut app AppStaticRegressionApp, req http.Reques
 	return handle_request_and_route[AppStaticRegressionApp, RegressionContext](mut app, req, 0,
 		params)
 }
+
+fn test_controller_on_root_serves_static_index() {
+	dir := os.join_path(os.temp_dir(), 'veb_controller_root_static')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'index.html'), '<h1>index</h1>') or { panic(err) }
+
+	mut files := ControllerStaticRootBase{}
+	files.handle_static(dir, true) or { panic(err) }
+	ctrl_path := controller[ControllerStaticRootBase, RegressionContext]('/', mut
+		files) or { panic(err) }
+
+	completed := regression_handle_controller_request(ctrl_path, '/')
+	assert completed.res.status_code == int(http.Status.ok)
+	assert completed.return_type == .file
+}
