@@ -8150,7 +8150,8 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			continue
 		}
 		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
-			&& it.msg.starts_with('undefined variable')
+			&& (it.msg.starts_with('undefined variable')
+				|| it.msg == 'module `${it.node_value}` is not a value')
 			&& (it.node_value == node.typ_text()
 				|| (it.node_value.len > 1 && node.typ_text().starts_with(it.node_value)))) {
 			continue
