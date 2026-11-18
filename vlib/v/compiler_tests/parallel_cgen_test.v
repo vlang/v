@@ -8,18 +8,27 @@ const parallel_v3_src = os.join_path(parallel_v3_dir, 'v.v')
 const parallel_exe_suffix = $if windows { '.exe' } $else { '' }
 const parallel_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
+fn parallel_v3_path() string {
+	return os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_test_${os.getpid()}' + parallel_exe_suffix)
+}
+
 fn parallel_prod_v3_path() string {
 	return os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}' + parallel_exe_suffix)
 }
 
+fn cleanup_parallel_v3_compilers() {
+	for executable in [parallel_v3_path(), parallel_prod_v3_path()] {
+		os.rm(executable) or {}
+		os.rm(executable + '.c') or {}
+	}
+}
+
 fn testsuite_begin() {
-	os.rm(parallel_prod_v3_path()) or {}
-	os.rm(parallel_prod_v3_path() + '.c') or {}
+	cleanup_parallel_v3_compilers()
 }
 
 fn testsuite_end() {
-	os.rm(parallel_prod_v3_path()) or {}
-	os.rm(parallel_prod_v3_path() + '.c') or {}
+	cleanup_parallel_v3_compilers()
 }
 
 fn setup_parallel_v3_cache() {
@@ -31,30 +40,16 @@ fn setup_parallel_v3_cache() {
 	os.setenv('V3CACHE', cache_dir, true)
 }
 
-// build_parallel_v3 builds parallel v3 data for v3 tests.
+// build_parallel_v3 builds the plain driver once for this test process.
 fn build_parallel_v3() string {
 	setup_parallel_v3_cache()
-	vexe := @VEXE
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o',
-			v3_bin, '${parallel_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn build_parallel_prod_v3() string {
-	setup_parallel_v3_cache()
-	vexe := @VEXE
-	// Both self-host regressions use this immutable driver with identical build flags.
-	v3_bin := parallel_prod_v3_path()
-	if os.is_file(v3_bin) {
+	v3_bin := parallel_v3_path()
+	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.exec([vexe, '-gc', 'none', '-prealloc', '-prod', '-path',
-			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
+		os.exec([@VEXE, '-gc', 'none', '-path', '${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${parallel_v3_src}'])
 	if build.exit_code != 0 {
 		os.rm(v3_bin) or {}
 	}
@@ -62,14 +57,20 @@ fn build_parallel_prod_v3() string {
 	return v3_bin
 }
 
-fn build_parallel_prealloc_prod_v3() string {
+fn build_parallel_prod_v3() string {
 	setup_parallel_v3_cache()
-	vexe := @VEXE
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_prealloc_prod_cgen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	// Compiler builds enable parallel support by default. The preallocation
+	// and self-host tests can use the same optimized driver.
+	v3_bin := parallel_prod_v3_path()
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
-		os.exec([vexe, '-gc', 'none', '-prod', '-prealloc', '-d', 'parallel', '-path',
+		os.exec([@VEXE, '-gc', 'none', '-prealloc', '-prod', '-path',
 			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
+	if build.exit_code != 0 {
+		os.rm(v3_bin) or {}
+	}
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -465,7 +466,7 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 }
 
 fn test_prealloc_keeps_parallel_transform_enabled() {
-	v3_bin := build_parallel_prealloc_prod_v3()
+	v3_bin := build_parallel_prod_v3()
 	main_path := write_parallel_module_init_project('parallel_prealloc_cgen_${os.getpid()}')
 	c_out := os.join_path(os.vtmp_dir(), 'v3_parallel_prealloc_transform_${os.getpid()}.c')
 	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-enable-globals', '-nocache',
