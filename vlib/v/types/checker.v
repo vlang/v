@@ -4829,7 +4829,7 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node, module_n
 		.fn_decl {
 			name := checker_qualified_fn_name(module_name, node.value)
 			tc.set_declaration_visibility(name, visibility)
-			if module_name == 'builtin' && visibility.is_pub {
+			if module_name == 'builtin' {
 				tc.set_declaration_visibility('builtin.${node.value}', visibility)
 			}
 		}

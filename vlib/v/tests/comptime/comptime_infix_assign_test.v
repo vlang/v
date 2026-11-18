@@ -18,7 +18,7 @@ fn enc[T](item T) string {
 			else { return '' }
 		}
 
-		return u64_to_hex(u64(item), len)
+		return u64_to_hex_test_helper(u64(item), len)
 	} $else $if T is $array {
 		mut hex := ''
 		for val in item {
@@ -43,7 +43,7 @@ fn enc[T](item T) string {
 }
 
 @[direct_array_access; inline]
-fn u64_to_hex(nn u64, len u8) string {
+fn u64_to_hex_test_helper(nn u64, len u8) string {
 	mut n := nn
 	mut buf := [17]u8{}
 	buf[len] = 0
