@@ -529,6 +529,10 @@ fn testsuite_end() {
 fn ask(dir string, code string, line int, word string, nth int) string {
 	source := os.read_file(os.join_path(dir, 'main.v')) or { panic(err) }
 	text := source.split('\n')[line - 1]
+	return ask_at(dir, word_question(text, code, line, word, nth))
+}
+
+fn word_question(text string, code string, line int, word string, nth int) string {
 	mut found := -1
 	mut seen := 0
 	for i := 0; i + word.len <= text.len; i++ {
@@ -542,7 +546,7 @@ fn ask(dir string, code string, line int, word string, nth int) string {
 		}
 	}
 	assert found >= 0, '`${word}` is not on line ${line}: ${text}'
-	return ask_at(dir, '${line}:${code}${found + 1}')
+	return '${line}:${code}${found + 1}'
 }
 
 // ask_at asks `-line-info` about `spec` of main.v of `dir`, and asks its method
@@ -554,10 +558,14 @@ fn ask_at(dir string, spec string) string {
 }
 
 fn ask_at_only(dir string, spec string) string {
+	return run_line_info(dir, spec).trim_space()
+}
+
+fn run_line_info(dir string, spec string) string {
 	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
 		'main.v:' + '${spec}', 'main.v'], dir)
 	assert res.exit_code == 0, res.output
-	return res.output.trim_space()
+	return res.output
 }
 
 // same_answer_in_method_form asks the question `spec` of the method form of the
@@ -920,11 +928,10 @@ fn test_inlay_hints_of_the_whole_file() {
 // ask_many asks several questions at once, `line:<code><column>` each: the
 // answers come one per line, after the index of their question.
 fn ask_many(dir string, questions []string) []string {
-	spec := questions.map('main.v:${it}').join('\t')
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
-		'${spec}', 'main.v'], dir)
-	assert res.exit_code == 0, res.output
-	return res.output.trim_right('\n').split('\n')
+	spec := questions.join('\tmain.v:')
+	answer := run_line_info(dir, spec).trim_right('\n')
+	same_answer_in_method_form(dir, spec, answer.trim_space())
+	return answer.split('\n')
 }
 
 fn test_several_questions_get_an_answer_each() {
@@ -3376,129 +3383,152 @@ fn main() {
 }
 "
 
-// joined asks for the hover of the `nth` `word` of the line of joined_program
-// that reads `text`.
-fn joined(text string, word string, nth int) string {
-	return ask(program_dir('joined', joined_program), 'hv^', line_of(joined_program, text), word,
-		nth)
+struct JoinedHover {
+	line string
+	word string
+	text string
+}
+
+fn assert_joined_hovers(checks []JoinedHover) {
+	dir := program_dir('joined', joined_program)
+	questions := checks.map(word_question(it.line, 'hv^', line_of(joined_program, it.line), it.word, 0))
+	answers := ask_many(dir, questions)
+	assert answers.len == checks.len, answers.str()
+	for i, check in checks {
+		assert answers[i] == '${i}\t${hover_of(check.text)}', '${check.line}: ${check.word}'
+	}
 }
 
 const all_numbers = 'i8 | i16 | int | u8 | f32 | f64'
 
 fn test_values_tested_together_with_and_are_each_the_type_they_are_tested_for() {
-	// `$if a is f64 && b is f64 && c is f64 {`: in its branch each of them is an
-	// `f64`, and so is a local that adds them; after it, any type of `Number`.
-	for word in ['a', 'b', 'c'] {
-		assert joined('\t\ttotal := a + b + c', word, 0) == hover_of('${word} f64')
-	}
-	assert joined('\t\ttotal := a + b + c', 'total', 0) == hover_of('total f64')
-	assert joined('\t\treturn total', 'total', 0) == hover_of('total f64')
-	assert joined('\treturn f64(a) + f64(b) + f64(c)', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
-	// The same tests on the type parameters, which are `f64` there too.
 	sum := '\t\tsum := A(a) + B(b) + C(c)'
-	assert joined(sum, 'A', 0) == hover_of('[A Number]\\nA: f64')
-	assert joined(sum, 'C', 0) == hover_of('[C Number]\\nC: f64')
-	assert joined(sum, 'b', 0) == hover_of('b f64')
-	assert joined(sum, 'sum', 0) == hover_of('sum f64')
-	// Its `$else` is where one of them is not: each can be any type.
-	assert joined('\t\treturn f64(a) * f64(b) * f64(c)', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+	assert_joined_hovers([
+		// `$if a is f64 && b is f64 && c is f64 {`: in its branch each of them is an
+		// `f64`, and so is a local that adds them; after it, any type of `Number`.
+		JoinedHover{'\t\ttotal := a + b + c', 'a', 'a f64'},
+		JoinedHover{'\t\ttotal := a + b + c', 'b', 'b f64'},
+		JoinedHover{'\t\ttotal := a + b + c', 'c', 'c f64'},
+		JoinedHover{'\t\ttotal := a + b + c', 'total', 'total f64'},
+		JoinedHover{'\t\treturn total', 'total', 'total f64'},
+		JoinedHover{'\treturn f64(a) + f64(b) + f64(c)', 'a', 'a A\\nA: ${all_numbers}'},
+		// The same tests on the type parameters, which are `f64` there too.
+		JoinedHover{sum, 'A', '[A Number]\\nA: f64'},
+		JoinedHover{sum, 'C', '[C Number]\\nC: f64'},
+		JoinedHover{sum, 'b', 'b f64'},
+		JoinedHover{sum, 'sum', 'sum f64'},
+		// Its `$else` is where one of them is not: each can be any type.
+		JoinedHover{'\t\treturn f64(a) * f64(b) * f64(c)', 'b', 'b B\\nB: ${all_numbers}'},
+	])
 }
 
 fn test_values_tested_together_against_lists_keep_what_their_lists_leave() {
-	// `in` keeps the types of its list, `!in` the others, for each value.
-	assert joined('\t\treturn f64(a) + f64(b)', 'a', 0) == hover_of('a A\\nA: f32 | f64')
-	assert joined('\t\treturn f64(a) + f64(b)', 'b', 0) == hover_of('b B\\nB: i8 | u8')
-	assert joined('\t\treturn f64(a) / f64(b)', 'a', 0) == hover_of('a A\\nA: i8 | i16 | int | u8')
-	assert joined('\t\treturn f64(a) / f64(b)', 'b', 0) == hover_of('b B\\nB: i16 | int | f32 | f64')
-	// Their `$else`s: one value may be in its list, when the other is not.
-	for line in ['\t\treturn f64(a) - f64(b)', '\t\treturn f64(a) - f64(b) - 1.0'] {
-		assert joined(line, 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
-		assert joined(line, 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
-	}
+	assert_joined_hovers([
+		// `in` keeps the types of its list, `!in` the others, for each value.
+		JoinedHover{'\t\treturn f64(a) + f64(b)', 'a', 'a A\\nA: f32 | f64'},
+		JoinedHover{'\t\treturn f64(a) + f64(b)', 'b', 'b B\\nB: i8 | u8'},
+		JoinedHover{'\t\treturn f64(a) / f64(b)', 'a', 'a A\\nA: i8 | i16 | int | u8'},
+		JoinedHover{'\t\treturn f64(a) / f64(b)', 'b', 'b B\\nB: i16 | int | f32 | f64'},
+		// Their `$else`s: one value may be in its list, when the other is not.
+		JoinedHover{'\t\treturn f64(a) - f64(b)', 'a', 'a A\\nA: ${all_numbers}'},
+		JoinedHover{'\t\treturn f64(a) - f64(b)', 'b', 'b B\\nB: ${all_numbers}'},
+		JoinedHover{'\t\treturn f64(a) - f64(b) - 1.0', 'a', 'a A\\nA: ${all_numbers}'},
+		JoinedHover{'\t\treturn f64(a) - f64(b) - 1.0', 'b', 'b B\\nB: ${all_numbers}'},
+	])
 }
 
 fn test_values_tested_together_with_or_are_decided_in_the_else() {
-	// `$if a is f64 || b is f64 {`: either may be an `f64`, so in its branch each
-	// can be any type; in its `$else` neither is one.
-	assert joined('\t\treturn f64(a) + f64(b) + 2.0', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
-	assert joined('\t\treturn f64(a) + f64(b) + 2.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
-	assert joined('\t\treturn f64(a) + f64(b) + 3.0', 'a', 0) == hover_of('a A\\nA: i8 | i16 | int | u8 | f32')
-	assert joined('\t\treturn f64(a) + f64(b) + 3.0', 'b', 0) == hover_of('b B\\nB: i8 | i16 | int | u8 | f32')
-	// `in` and `!in` joined with `||`: its `$else` is where `a` is not in its
-	// list and `b` is in its.
-	assert joined('\t\treturn f64(a) + f64(b) + 4.0', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
-	assert joined('\t\treturn f64(a) + f64(b) + 5.0', 'a', 0) == hover_of('a A\\nA: i16 | int | f32 | f64')
-	assert joined('\t\treturn f64(a) + f64(b) + 5.0', 'b', 0) == hover_of('b B\\nB: f32 | f64')
-	// `!is` joined with `||`: its `$else` is where both are `f64`.
-	assert joined('\t\treturn f64(a) + f64(b) + 6.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
-	assert joined('\t\treturn a + b', 'a', 0) == hover_of('a f64')
-	assert joined('\t\treturn a + b', 'b', 0) == hover_of('b f64')
+	assert_joined_hovers([
+		// `$if a is f64 || b is f64 {`: either may be an `f64`, so in its branch each
+		// can be any type; in its `$else` neither is one.
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 2.0', 'a', 'a A\\nA: ${all_numbers}'},
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 2.0', 'b', 'b B\\nB: ${all_numbers}'},
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 3.0', 'a', 'a A\\nA: i8 | i16 | int | u8 | f32'},
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 3.0', 'b', 'b B\\nB: i8 | i16 | int | u8 | f32'},
+		// `in` and `!in` joined with `||`: its `$else` is where `a` is not in its
+		// list and `b` is in its.
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 4.0', 'a', 'a A\\nA: ${all_numbers}'},
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 5.0', 'a', 'a A\\nA: i16 | int | f32 | f64'},
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 5.0', 'b', 'b B\\nB: f32 | f64'},
+		// `!is` joined with `||`: its `$else` is where both are `f64`.
+		JoinedHover{'\t\treturn f64(a) + f64(b) + 6.0', 'b', 'b B\\nB: ${all_numbers}'},
+		JoinedHover{'\t\treturn a + b', 'a', 'a f64'},
+		JoinedHover{'\t\treturn a + b', 'b', 'b f64'},
+	])
 }
 
 fn test_each_branch_of_a_chain_of_tests_on_several_values_leaves_what_the_others_did_not_take() {
-	assert joined('\t\treturn a * b', 'a', 0) == hover_of('a f64')
-	assert joined('\t\treturn a * b', 'b', 0) == hover_of('b f64')
-	assert joined('\t\treturn f64(a * b)', 'a', 0) == hover_of('a f32')
-	assert joined('\t\treturn f64(a * b)', 'b', 0) == hover_of('b f32')
-	// `$else $if a is f64 {`: `a` is an `f64`, so `b` is not, or the first
-	// branch would have taken them.
-	assert joined('\t\treturn a + f64(b)', 'a', 0) == hover_of('a f64')
-	assert joined('\t\treturn a + f64(b)', 'b', 0) == hover_of('b B\\nB: i8 | i16 | int | u8 | f32')
-	// The last `$else`: `a` is not an `f64`; `b` can be any type.
 	last := '\t\treturn f64(a) * f64(b) * 7.0'
-	assert joined(last, 'a', 0) == hover_of('a A\\nA: i8 | i16 | int | u8 | f32')
-	assert joined(last, 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
-	// A value in the condition of a later test is what the tests before leave.
-	assert joined('\t} \$else \$if a is f32 && b is f32 {', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
+	assert_joined_hovers([
+		JoinedHover{'\t\treturn a * b', 'a', 'a f64'},
+		JoinedHover{'\t\treturn a * b', 'b', 'b f64'},
+		JoinedHover{'\t\treturn f64(a * b)', 'a', 'a f32'},
+		JoinedHover{'\t\treturn f64(a * b)', 'b', 'b f32'},
+		// `$else $if a is f64 {`: `a` is an `f64`, so `b` is not, or the first
+		// branch would have taken them.
+		JoinedHover{'\t\treturn a + f64(b)', 'a', 'a f64'},
+		JoinedHover{'\t\treturn a + f64(b)', 'b', 'b B\\nB: i8 | i16 | int | u8 | f32'},
+		// The last `$else`: `a` is not an `f64`; `b` can be any type.
+		JoinedHover{last, 'a', 'a A\\nA: i8 | i16 | int | u8 | f32'},
+		JoinedHover{last, 'b', 'b B\\nB: ${all_numbers}'},
+		// A value in the condition of a later test is what the tests before leave.
+		JoinedHover{'\t} \$else \$if a is f32 && b is f32 {', 'a', 'a A\\nA: ${all_numbers}'},
+	])
 }
 
 fn test_a_value_tested_three_times_in_parentheses_or_after_not_is_what_the_tests_leave() {
-	assert joined('\t\treturn f64(x) + 8.0', 'x', 0) == hover_of('x T\\nT: i8 | i16 | u8')
-	assert joined('\t\treturn y', 'y', 0) == hover_of('y f64')
-	assert joined('\t\treturn f64(z) + 9.0', 'z', 0) == hover_of('z T\\nT: i8 | i16 | int | u8 | f32')
-	assert joined('\t\treturn z', 'z', 0) == hover_of('z f64')
-	// A group in a list, and `!in` in an `$else $if`.
-	assert joined('\t\treturn f64(v) + 10.0', 'v', 0) == hover_of('v T\\nT: i8 | f32 | f64')
-	assert joined('\t\treturn f64(v) + 11.0', 'v', 0) == hover_of('v T\\nT: i16 | u8')
-	assert joined('\t\treturn f64(v) + 12.0', 'v', 0) == hover_of('v int')
+	assert_joined_hovers([
+		JoinedHover{'\t\treturn f64(x) + 8.0', 'x', 'x T\\nT: i8 | i16 | u8'},
+		JoinedHover{'\t\treturn y', 'y', 'y f64'},
+		JoinedHover{'\t\treturn f64(z) + 9.0', 'z', 'z T\\nT: i8 | i16 | int | u8 | f32'},
+		JoinedHover{'\t\treturn z', 'z', 'z f64'},
+		// A group in a list, and `!in` in an `$else $if`.
+		JoinedHover{'\t\treturn f64(v) + 10.0', 'v', 'v T\\nT: i8 | f32 | f64'},
+		JoinedHover{'\t\treturn f64(v) + 11.0', 'v', 'v T\\nT: i16 | u8'},
+		JoinedHover{'\t\treturn f64(v) + 12.0', 'v', 'v int'},
+	])
 }
 
 fn test_values_of_interfaces_tested_together_are_the_types_they_are_tested_for() {
-	// A local that holds a value of a type parameter, tested with a parameter.
-	assert joined('\t\treturn x.age + b.level', 'x', 0) == hover_of('x main.User')
-	assert joined('\t\treturn x.age + b.level', 'b', 0) == hover_of('b main.Admin')
 	named := 'implements main.Named'
-	assert joined('\treturn x.name.len + b.name.len', 'x', 0) == hover_of('x A\\nA: ${named}')
-	assert joined('\treturn x.name.len + b.name.len', 'b', 0) == hover_of('b B\\nB: ${named}')
-	// `in` keeps the types of its list; `!in` on an interface leaves any other
-	// type that implements it, and its `$else` the types of its list.
 	first := '\t\treturn a.name.len + b.name.len + 1'
-	assert joined(first, 'a', 0) == hover_of('a A\\nA: main.User | main.Admin')
-	assert joined(first, 'b', 0) == hover_of('b B\\nB: ${named}')
 	second := '\t\treturn a.name.len + b.name.len + 2'
-	assert joined(second, 'a', 0) == hover_of('a A\\nA: ${named}')
-	assert joined(second, 'b', 0) == hover_of('b B\\nB: ${named}')
-	// The last `$else`: `a` is in the list, so `b` is a `User`, or the first
-	// branch would have taken them.
 	third := '\t\treturn a.name.len + b.name.len + 3'
-	assert joined(third, 'a', 0) == hover_of('a A\\nA: main.User | main.Admin')
-	assert joined(third, 'b', 0) == hover_of('b main.User')
+	assert_joined_hovers([
+		// A local that holds a value of a type parameter, tested with a parameter.
+		JoinedHover{'\t\treturn x.age + b.level', 'x', 'x main.User'},
+		JoinedHover{'\t\treturn x.age + b.level', 'b', 'b main.Admin'},
+		JoinedHover{'\treturn x.name.len + b.name.len', 'x', 'x A\\nA: ${named}'},
+		JoinedHover{'\treturn x.name.len + b.name.len', 'b', 'b B\\nB: ${named}'},
+		// `in` keeps the types of its list; `!in` on an interface leaves any other
+		// type that implements it, and its `$else` the types of its list.
+		JoinedHover{first, 'a', 'a A\\nA: main.User | main.Admin'},
+		JoinedHover{first, 'b', 'b B\\nB: ${named}'},
+		JoinedHover{second, 'a', 'a A\\nA: ${named}'},
+		JoinedHover{second, 'b', 'b B\\nB: ${named}'},
+		// The last `$else`: `a` is in the list, so `b` is a `User`, or the first
+		// branch would have taken them.
+		JoinedHover{third, 'a', 'a A\\nA: main.User | main.Admin'},
+		JoinedHover{third, 'b', 'b main.User'},
+	])
 }
 
 fn test_a_test_that_cannot_be_followed_leaves_the_others_their_types() {
-	// A test that the editor cannot follow, `sizeof(B) == 8`, may go either way,
-	// and the other tests still decide their values; one of a type parameter
-	// without a constraint decides it too.
-	assert joined('\t\treturn a + f64(u)', 'a', 0) == hover_of('a f64')
-	assert joined('\t\treturn a + f64(u)', 'u', 0) == hover_of('u int')
-	assert joined('\t\treturn a + f64(b) * 2.0', 'a', 0) == hover_of('a f64')
-	assert joined('\t\treturn a + f64(b) * 2.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
-	// Nested tests: the outer one on a type parameter, the inner one on two
-	// values.
 	inner := '\t\t\treturn f64(a) + b + f64(c)'
-	assert joined(inner, 'a', 0) == hover_of('a A\\nA: f32 | f64')
-	assert joined(inner, 'b', 0) == hover_of('b f64')
-	assert joined(inner, 'c', 0) == hover_of('c C\\nC: i8 | i16')
+	assert_joined_hovers([
+		// A test that the editor cannot follow, `sizeof(B) == 8`, may go either way,
+		// and the other tests still decide their values; one of a type parameter
+		// without a constraint decides it too.
+		JoinedHover{'\t\treturn a + f64(u)', 'a', 'a f64'},
+		JoinedHover{'\t\treturn a + f64(u)', 'u', 'u int'},
+		JoinedHover{'\t\treturn a + f64(b) * 2.0', 'a', 'a f64'},
+		JoinedHover{'\t\treturn a + f64(b) * 2.0', 'b', 'b B\\nB: ${all_numbers}'},
+		// Nested tests: the outer one on a type parameter, the inner one on two
+		// values.
+		JoinedHover{inner, 'a', 'a A\\nA: f32 | f64'},
+		JoinedHover{inner, 'b', 'b f64'},
+		JoinedHover{inner, 'c', 'c C\\nC: i8 | i16'},
+	])
 }
 
 const operations_program = "module main
