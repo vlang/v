@@ -20,8 +20,10 @@ fn testsuite_end() {
 }
 
 fn global_decl_build_v3() string {
-	v3_bin := os.join_path(global_decl_temp_dir(), 'v3_global_decl_codegen_test')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(global_decl_temp_dir(), 'v3_global_decl_codegen_test') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([global_decl_vexe, '-gc', 'none', '-path',
 			'${global_decl_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${global_decl_v3_src}'])
