@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import os.filelock
 import crypto.sha256
 import strings
 import v.flat
@@ -13,7 +14,7 @@ import v.util.cache_refresh
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-58'
+const cache_format = 'v3-module-cache-59'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -1528,24 +1529,30 @@ pub fn (m &Manager) reusable_object(cache_name string, source_files []string, co
 
 fn (m &Manager) object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string, trace bool) ?Entry {
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	primary := m.object_entry(cache_name, source_files, compile_signature)
-	primary_miss := m.object_variant_miss(primary, source_hash, compile_signature,
-		dependency_inputs)
-	if primary_miss == '' {
-		return primary
+	exact := m.object_variant_entry_for_key(cache_name, source_files, compile_signature,
+		object_variant_key(source_hash, dependency_inputs))
+	mut reason := m.object_variant_miss(exact, source_hash, compile_signature, dependency_inputs)
+	if reason == '' {
+		return exact
 	}
-	// Programs whose dependency inputs conflict with the primary object keep
-	// variants beside it (see object_publish_entry). The latest are checked first.
+	// A previous build whose dependency map covers this build can serve it too.
 	keys := m.object_variant_keys(cache_name, source_files, compile_signature)
 	for i := keys.len - 1; i >= 0; i-- {
 		candidate := m.object_variant_entry_for_key(cache_name, source_files, compile_signature,
 			keys[i])
-		if m.object_variant_miss(candidate, source_hash, compile_signature, dependency_inputs) == '' {
+		if candidate.object == exact.object {
+			continue
+		}
+		miss := m.object_variant_miss(candidate, source_hash, compile_signature, dependency_inputs)
+		if miss == '' {
 			return candidate
+		}
+		if reason == object_variant_missing {
+			reason = miss
 		}
 	}
 	if trace {
-		cache_trace_module_miss(cache_name, primary_miss)
+		cache_trace_module_miss(cache_name, reason)
 	}
 	return none
 }
@@ -1571,16 +1578,6 @@ fn (m &Manager) object_variant_miss(entry Entry, source_hash string, compile_sig
 		return 'object was built against other dependency interfaces${object_stamp_dependency_mismatch(stamp, dependency_inputs)}'
 	}
 	return ''
-}
-
-// object_variant_entry returns the C artifacts of a module for one effective
-// compile-flag set and one set of dependency inputs. The dependency inputs of one
-// generated C differ between programs (e.g. by the native headers that the whole
-// program includes), so each set keeps its own object instead of replacing the
-// object of another program.
-pub fn (m &Manager) object_variant_entry(module_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) Entry {
-	return m.object_variant_entry_for_key(module_name, source_files, compile_signature,
-		dependency_inputs_key(dependency_inputs))
 }
 
 fn (m &Manager) object_variant_entry_for_key(module_name string, source_files []string, compile_signature string, key string) Entry {
@@ -1609,17 +1606,90 @@ fn (m &Manager) object_variant_keys(module_name string, source_files []string, c
 	return content.split_into_lines().filter(it.len > 0 && !it.contains_any(' \t/\\'))
 }
 
-// record_object_variant adds `key` to the recorded variants of one generated C,
-// keeping the most recent ones. Concurrent writers can drop each other's key: the
-// variant then remains reachable by its exact dependency inputs only.
+// record_object_variant updates the lookup index and marks old artifacts for
+// collection. An active compiler may still be about to link one of them.
 fn (m &Manager) record_object_variant(module_name string, source_files []string, compile_signature string, key string) ! {
+	mut index_lock := object_cache_lock(os.join_path(m.dir, 'object_variants.lock'), .exclusive)!
+	index_lock.acquire()!
+	defer { index_lock.release() }
 	mut keys := m.object_variant_keys(module_name, source_files, compile_signature).filter(it != key)
 	keys << key
+	retired := os.join_path(m.dir, 'retired_object_variants')
 	if keys.len > max_object_variants {
+		os.mkdir_all(retired)!
+		for evicted in keys[..keys.len - max_object_variants] {
+			entry := m.object_variant_entry_for_key(module_name, source_files, compile_signature,
+				evicted)
+			os.write_file(os.join_path(retired, os.file_name(entry.object)), '')!
+		}
 		keys = keys[keys.len - max_object_variants..].clone()
 	}
 	write_atomic(m.object_variants_path(module_name, source_files, compile_signature),
 		keys.join('\n') + '\n')!
+	entry := m.object_variant_entry_for_key(module_name, source_files, compile_signature, key)
+	os.rm(os.join_path(retired, os.file_name(entry.object))) or {}
+}
+
+fn object_cache_lock(path string, mode filelock.LockMode) !filelock.FileLock {
+	if !os.exists(path) {
+		os.write_file(path, '') or {
+			if !os.is_file(path) {
+				return err
+			}
+		}
+	}
+	return filelock.new_file(path, mode: mode)
+}
+
+// begin_object_cache_build acquires a shared lease on cached module artifacts.
+// Only a compiler that can acquire the exclusive lease may delete retired
+// objects, so paths handed to the linker remain valid throughout a build.
+pub fn (m &Manager) begin_object_cache_build() !filelock.FileLock {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	path := os.join_path(m.dir, 'object_cache_build.lock')
+	retired := os.join_path(m.dir, 'retired_object_variants')
+	if os.is_dir(retired) {
+		mut cleanup := object_cache_lock(path, .exclusive)!
+		if cleanup.try_acquire() {
+			m.collect_retired_object_variants(retired)
+			cleanup.release()
+		}
+	}
+	mut build := object_cache_lock(path, .shared)!
+	build.acquire()!
+	return build
+}
+
+fn (m &Manager) collect_retired_object_variants(retired string) {
+	names := os.ls(retired) or { return }
+	for name in names {
+		if !name.ends_with('.o') {
+			continue
+		}
+		stem := name.all_before_last('.o')
+		index := os.join_path(m.dir, stem.all_before_last('_') + '.variants')
+		key := stem.all_after_last('_')
+		// An interrupted publisher can leave a marker for an indexed object.
+		content := os.read_file(index) or { continue }
+		if key !in content.split_into_lines() {
+			object := os.join_path(m.dir, name)
+			os.rm(object) or { if os.exists(object) { continue } }
+			os.rm(object + '.stamp') or { if os.exists(object + '.stamp') { continue } }
+			os.rm(os.join_path(m.dir, stem + '.c')) or {
+				if os.exists(os.join_path(m.dir, stem + '.c')) {
+					continue
+				}
+			}
+		}
+		os.rm(os.join_path(retired, name)) or {}
+	}
+	os.rmdir(retired) or {}
+}
+
+fn object_variant_key(source_hash string, dependency_inputs map[string]string) string {
+	return hash_text(source_hash + '\n' + dependency_inputs_key(dependency_inputs))
 }
 
 fn dependency_inputs_key(dependency_inputs map[string]string) string {
@@ -2182,48 +2252,12 @@ fn program_executable_of_stamp(stamp string, slot string) string {
 	return '${slot}_${hash_text(stamp[..identity_end + 1])}.exe'
 }
 
-// object_publish_entry returns where a build that compiles the object of a module
-// for this generated C publishes it. That is the primary object of object_entry,
-// unless another program still uses that object: its stamp records other inputs
-// than this build's, (other native headers that the whole program includes, other
-// imported modules), and every input that both record has the same signature, and
-// is still current. This build then keeps its object beside it, in the variant of
-// object_variant_entry, so that neither program replaces the object of the other.
-// An input that the two record with different signatures has changed since the
-// primary object was built: this build replaces that object.
+// object_publish_entry picks an artifact path before compilation, independent of
+// which other processes have already written an object or its stamp. Builds
+// that read different inputs cannot overwrite an object another build will link.
 pub fn (m &Manager) object_publish_entry(module_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) Entry {
-	primary := m.object_entry(module_name, source_files, compile_signature)
-	if !os.is_file(primary.object) {
-		return primary
-	}
-	stamp := os.read_file(primary.object_stamp) or { return primary }
-	mut recorded := map[string]string{}
-	for line in stamp.split_into_lines() {
-		if line.starts_with('dependency=') {
-			dependency := parse_object_stamp_dependency(line) or { return primary }
-			recorded[dependency.path] = dependency.signature
-		}
-	}
-	mut serves := true
-	for path, signature in dependency_inputs {
-		if recorded_signature := recorded[path] {
-			if recorded_signature != signature {
-				return primary
-			}
-		} else {
-			serves = false
-		}
-	}
-	if serves {
-		return primary
-	}
-	mut dependency_metadata := map[string]string{}
-	if !object_stamp_valid_with_metadata_cache(stamp, entry_stamp(m.salt, m.source_signature(source_files)), mut
-		dependency_metadata)
-	{
-		return primary
-	}
-	return m.object_variant_entry(module_name, source_files, compile_signature, dependency_inputs)
+	return m.object_variant_entry_for_key(module_name, source_files, compile_signature,
+		object_variant_key(m.source_signature(source_files), dependency_inputs))
 }
 
 // write_stamp refreshes a cache stamp after the object and header are durable.
@@ -2242,9 +2276,7 @@ pub fn (m &Manager) write_object_stamp(object Entry, module_name string, source_
 	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
 	write_atomic(object.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
-	if object.object != m.object_entry(module_name, source_files, compile_signature).object {
-		m.record_object_variant(module_name, source_files, compile_signature, object.object.all_before_last('.o').all_after_last('_'))!
-	}
+	m.record_object_variant(module_name, source_files, compile_signature, object.object.all_before_last('.o').all_after_last('_'))!
 }
 
 // write_reused_stamp records, for a build that links an object which another

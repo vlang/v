@@ -11994,11 +11994,19 @@ pub fn run(args []string) {
 	}
 	large_cold_cache_bypass := cache_candidate_enabled
 		&& valid_v3_large_cold_cache_marker(large_cold_cache_marker)
-	cache_enabled := cache_candidate_enabled && !large_cold_cache_bypass
-	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled, build_pseudo_values, version_pseudo_values)
+	mut cache_enabled := cache_candidate_enabled && !large_cold_cache_bypass
 	if cache_enabled {
-		wait_for_v3_cache_population(cache_manager.dir)
+		wait_for_v3_cache_population(cache_probe_manager.dir)
+		if lease := cache_probe_manager.begin_object_cache_build() {
+			mut build := unsafe { v3_module_object_cache_build }
+			build.file_lock = lease
+			build.acquired = true
+		} else {
+			cache_enabled = false
+		}
 	}
+	defer { release_v3_module_object_cache_build() }
+	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled, build_pseudo_values, version_pseudo_values)
 	if large_cold_cache_bypass {
 		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
 	}
@@ -18833,6 +18841,17 @@ fn acquire_v3_cache_population_lock(cache_dir string) V3CachePopulationLockResul
 	return .acquired
 }
 
+// The lease covers loading, publishing and linking module objects.
+const v3_module_object_cache_build = &V3CachePopulationLock{}
+
+fn release_v3_module_object_cache_build() {
+	mut build := unsafe { v3_module_object_cache_build }
+	if build.acquired {
+		build.file_lock.release()
+		build.acquired = false
+	}
+}
+
 const v3_internal_cache_population_wait_env = 'V3_INTERNAL_CACHE_POPULATION_WAIT'
 const v3_cache_population_wait_limit = 3
 
@@ -18854,7 +18873,7 @@ fn restart_v3_to_wait_for_cache_population() {
 // wait_for_v3_cache_population blocks a build that restart_v3_to_wait_for_cache_population
 // restarted until the population lock of `cache_dir` is free, and gives it up at once.
 fn wait_for_v3_cache_population(cache_dir string) {
-	if os.getenv(v3_internal_cache_population_wait_env) == '' {
+	if is_instance_check_child() || os.getenv(v3_internal_cache_population_wait_env) == '' {
 		return
 	}
 	path := os.join_path(cache_dir, v3_cache_population_lock_name)
@@ -18996,6 +19015,7 @@ fn restart_v3_without_cache(build_dir string) {
 }
 
 fn restart_v3_with_args(extra_args []string, build_dir string) {
+	release_v3_module_object_cache_build()
 	cleanup_c_build_dir(build_dir)
 	executable := os.executable()
 	mut args := extra_args.clone()
@@ -19023,6 +19043,7 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 // The child is a process of its own: its launcher stages a fallback marker under the
 // child's pid and reports the child's failures itself.
 fn exit_with_child_build(executable string, args []string) {
+	release_v3_module_object_cache_build()
 	release_v3_cache_population_lock()
 	release_v3_fallback_marker()
 	exit(os.system_args([executable, ...args]))

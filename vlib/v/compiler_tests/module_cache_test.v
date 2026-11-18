@@ -763,13 +763,14 @@ fn test_cached_objects_of_conflicting_dependency_inputs_coexist() {
 	// Two programs generate the same C for the module, but include other native
 	// headers. The second must not replace the object of the first one.
 	first_entry := manager.object_publish_entry('foo', [source], compile_signature, first)
-	assert first_entry.object == manager.object_entry('foo', [source], compile_signature).object
+	// Both builds choose their paths while the cache is cold, before either
+	// has published its object or stamp.
+	second_entry := manager.object_publish_entry('foo', [source], compile_signature, second)
+	assert second_entry.object != first_entry.object
 	os.write_file(first_entry.object, 'first') or { panic(err) }
 	manager.write_object_stamp(first_entry, 'foo', [source], first, compile_signature) or {
 		panic(err)
 	}
-	second_entry := manager.object_publish_entry('foo', [source], compile_signature, second)
-	assert second_entry.object != first_entry.object
 	os.write_file(second_entry.object, 'second') or { panic(err) }
 	manager.write_object_stamp(second_entry, 'foo', [source], second, compile_signature) or {
 		panic(err)
@@ -796,13 +797,13 @@ fn test_cached_objects_of_conflicting_dependency_inputs_coexist() {
 		assert false, 'a reusing build must keep the stamp of the object it reused'
 		return
 	}
-	// An edited dependency leaves no program for the old object: it is replaced.
+	// An edited dependency cannot overwrite the old object used by a running build.
 	write_module_cache_file(root, 'first.h', '#define FIRST 2')
 	edited := {
 		shared:                        modulecache.file_signature(shared)
 		os.join_path(root, 'first.h'): modulecache.file_signature(os.join_path(root, 'first.h'))
 	}
-	assert manager.object_publish_entry('foo', [source], compile_signature, edited).object == first_entry.object
+	assert manager.object_publish_entry('foo', [source], compile_signature, edited).object != first_entry.object
 }
 
 fn module_cache_object_hashes(cache_dir string) map[string]u64 {
