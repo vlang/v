@@ -27,10 +27,12 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 
 // v3_gc_is_disabled reports whether the collector of `gc_mode` must be left out of
 // the build.
-// A build for another OS or architecture has no Boehm collector: the bundled
-// libgc and its headers are the host's, and the target's toolchain may have
-// none. vgc stays in: it is V code and one header (thirdparty/vgc), which picks
-// the target's system calls itself, so it builds for any target that it supports
+// Cross C output for a concrete foreign target keeps the collector: the
+// target links its own libgc with its own toolchain (fixes #31421).
+// Portable `-os cross` output stays collector-free: it must not resolve
+// host libgc paths (see the `$first_existing` libgc flags). vgc stays in:
+// it is V code and one header (thirdparty/vgc), which picks the target's
+// system calls itself, so it builds for any target that it supports
 // natively.
 // The x64 backend is in that group for its own reason: it allocates through
 // libc, so no collector is ever compiled in. The arm64 backend does the same by

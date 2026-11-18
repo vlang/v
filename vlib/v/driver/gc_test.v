@@ -71,7 +71,10 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 	for mode in ['', 'boehm', 'boehm_incr'] {
 		assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c', mode)
 		assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', mode)
-		assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', mode)
+		// Cross C output keeps the collector (issue #31421): a concrete foreign
+		// target links its own libgc with its own toolchain. Portable `-os cross`
+		// output stays collector-free: it must not resolve host libgc paths.
+		assert !v3_gc_is_disabled(false, true, host.os, host.arch, 'c', mode)
 		assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', mode)
 		assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', mode)
 		assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c', mode)
@@ -105,9 +108,10 @@ fn test_vgc_is_kept_for_cross_compilation() {
 	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c', 'vgc')
 	assert !v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', 'vgc')
 	assert !v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', 'vgc')
-	// The compiler itself, portable C output and the native backend have no collector.
+	// The compiler itself and the native backend have no collector. Cross C
+	// output keeps it (issue #31421).
 	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', 'vgc')
-	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', 'vgc')
+	assert !v3_gc_is_disabled(false, true, host.os, host.arch, 'c', 'vgc')
 	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', 'vgc')
 	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'amd64', 'vgc')
 }
