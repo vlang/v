@@ -1145,7 +1145,10 @@ fn (sh StaticHandler) may_contain_static_path(path string) bool {
 	}
 	for prefix in sh.static_prefixes {
 		if prefix.ends_with('/') {
-			if path.starts_with(prefix) {
+			// Also accept the prefix without its trailing slash: the
+			// slash-appending logic in serve_if_static resolves it to
+			// the directory index (e.g. `/sub` serves `/sub/index.html`).
+			if path.starts_with(prefix) || path == prefix.trim_right('/') {
 				return true
 			}
 		} else if path == prefix {
