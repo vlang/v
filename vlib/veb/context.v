@@ -213,11 +213,26 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 }
 
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
-// and the response body to `response`
+// and the response body to `response`. A call always starts a new response:
+// a file transfer armed by an earlier send_file, or a body left by one, belongs
+// to a superseded response, so its representation headers are discarded and
+// recomputed below. Without this, replacing a file response (e.g. from after
+// middleware) would emit the new body and then stream the original file.
+// send_file arms its transfer only after this call returns, so its own send
+// never observes armed state here.
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && ctx.takeover_mode == .none {
 		eprintln('[veb] a response cannot be sent twice over one connection')
 		return Result{}
+	}
+	if ctx.return_type == .file || ctx.res.body.len > 0 {
+		ctx.return_type = .normal
+		ctx.return_file = ''
+		ctx.already_compressed = false
+		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
+			.content_range, .accept_ranges, .etag, .last_modified, .vary] {
+			ctx.res.header.delete(header)
+		}
 	}
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
@@ -456,13 +471,17 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	// Default: serve uncompressed file in streaming mode (zero-copy sendfile).
 	// Range requests fall through to the full 200 body here: the streaming
 	// transports have no offset support yet, and a full response is always legal.
-	ctx.return_type = .file
-	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
 	ctx.res.header.set(.etag, etag)
 	ctx.res.header.set(.last_modified, last_modified)
 	ctx.res.header.set(.accept_ranges, 'bytes')
-	return ctx.send_response_to_client(content_type, '')
+	result := ctx.send_response_to_client(content_type, '')
+	// Arm the streaming transfer only after the send finalizes the headers:
+	// a later send starts a replacement response and must observe the armed
+	// state to cancel it (see send_response_to_client).
+	ctx.return_type = .file
+	ctx.return_file = file_path
+	return result
 }
 
 fn normalize_static_compression_mime_type(mime_type string) string {
@@ -518,14 +537,16 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 		return true
 	}
 	// Serve existing compressed file in streaming mode (zero-copy)
-	ctx.return_type = .file
-	ctx.return_file = compressed_path
 	ctx.res.header.set(.content_encoding, encoding_name)
 	ctx.res.header.set(.vary, 'Accept-Encoding')
 	compressed_size := os.file_size(compressed_path)
 	ctx.res.header.set(.content_length, compressed_size.str())
-	ctx.already_compressed = true
 	ctx.send_response_to_client(content_type, '')
+	// Arm the streaming transfer only after the send finalizes the headers
+	// (see send_response_to_client).
+	ctx.return_type = .file
+	ctx.return_file = compressed_path
+	ctx.already_compressed = true
 	return true
 }
 
@@ -578,12 +599,15 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 	ctx.already_compressed = true
 	if write_success {
 		// Serve the newly cached file in streaming mode (zero-copy)
-		ctx.return_type = .file
-		ctx.return_file = compressed_path
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
 		ctx.res.header.set(.content_length, compressed.len.str())
-		return ctx.send_response_to_client(content_type, '')
+		result := ctx.send_response_to_client(content_type, '')
+		// Arm the streaming transfer only after the send finalizes the
+		// headers (see send_response_to_client).
+		ctx.return_type = .file
+		ctx.return_file = compressed_path
+		return result
 	} else {
 		// Fallback: serve compressed content from memory (no caching)
 		ctx.res.header.set(.content_encoding, encoding_name)
