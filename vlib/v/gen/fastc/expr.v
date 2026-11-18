@@ -2503,18 +2503,22 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	mut expression_tokens := []FastcExpressionToken{cap: 16}
 	if prefix.len > 0 {
 		mut prefix_name := prefix
-		if g.selfhost && prefix in g.generic_method_names && g.tok == .lpar {
+		if g.selfhost && g.tok in [.lpar, .lsbr] && prefix in g.generic_method_names {
 			// Simple statements consumed their first name before entering this
 			// reader. Queue that call just as the ordinary name-token path does.
 			saved_scan := g.s
 			g.s.offset = g.s.pos
-			if mono := g.queue_expression_monomorphization([FastcExpressionToken{
+			specialized := g.queue_expression_monomorphization([FastcExpressionToken{
 				tok: .name
 				lit: prefix
-			}]) {
-				prefix_name = mono
-			}
+			}])
 			g.s = saved_scan
+			if mono := specialized {
+				prefix_name = mono
+				if g.tok == .lsbr {
+					g.skip_balanced(.lsbr, .rsbr)!
+				}
+			}
 		}
 		mut prefix_source := g.resolved_expression_name(prefix_name, .unknown)
 		if g.tok in [.inc, .dec] {
