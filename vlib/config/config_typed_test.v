@@ -357,3 +357,205 @@ fn test_config_precedence_every_layer() {
 	assert c2.port == 3000, 'cli must beat file'
 	assert c2.host == 'envhost', 'env still beats file for other keys'
 }
+
+struct SecretFileConfig {
+	token string @[secret]
+}
+
+fn test_config_secret_toml_parse_error_redacted() {
+	path := os.join_path(os.temp_dir(), 'v_config_secret_parse.toml')
+	os.write_file(path, 'token = FAKE_SECRET_32494\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	load[SecretFileConfig](files: [path]) or {
+		assert !err.msg().contains('FAKE_SECRET_32494'), 'parse error must not echo secret input: ${err.msg()}'
+		assert err.msg().contains('redacted'), 'secret parse errors must note redaction: ${err.msg()}'
+		return
+	}
+	assert false, 'invalid TOML must error'
+}
+
+fn test_config_nosecret_toml_parse_error_keeps_details() {
+	path := os.join_path(os.temp_dir(), 'v_config_plain_parse.toml')
+	os.write_file(path, 'count = FAKE_PLAINTEXT_32494\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	load[PlainIntConfig](files: [path]) or {
+		assert err.msg().contains('cannot read'), err.msg()
+		assert !err.msg().contains('redacted'), 'non-secret errors keep parser details: ${err.msg()}'
+		return
+	}
+	assert false, 'invalid TOML must error'
+}
+
+struct SecretMapConfig {
+	credentials map[string]int @[secret]
+}
+
+fn test_config_secret_map_cli_key_redacted() {
+	load[SecretMapConfig](
+		cli:        ['--credentials=FAKE_SECRET_MAP_KEY=invalid']
+		env_prefix: 'VLIB_TEST_SECMAP_UNSET_'
+	) or {
+		msg := err.msg()
+		assert !msg.contains('FAKE_SECRET_MAP_KEY'), 'secret map input must not leak: ${msg}'
+		assert msg.contains('`credentials`'), 'setting must still be named: ${msg}'
+		assert msg.contains('redacted'), 'secret errors must note redaction: ${msg}'
+		return
+	}
+	assert false, 'bad secret map value must error'
+}
+
+fn test_config_secret_map_file_key_redacted() {
+	path := os.join_path(os.temp_dir(), 'v_config_secret_map.toml')
+	os.write_file(path, '[credentials]\nFAKE_FILE_MAP_KEY = "oops"\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	load[SecretMapConfig](files: [path]) or {
+		msg := err.msg()
+		assert !msg.contains('FAKE_FILE_MAP_KEY'), 'secret map input must not leak: ${msg}'
+		assert msg.contains('`credentials`'), 'setting must still be named: ${msg}'
+		assert msg.contains('redacted'), 'secret errors must note redaction: ${msg}'
+		return
+	}
+	assert false, 'bad secret map value must error'
+}
+
+struct PlainMapConfig {
+	limits map[string]int
+}
+
+fn test_config_plain_map_error_names_key() {
+	load[PlainMapConfig](
+		cli:        ['--limits=MYKEY=bad']
+		env_prefix: 'VLIB_TEST_PMAP_UNSET_'
+	) or {
+		assert err.msg().contains('limits.MYKEY'), 'non-secret map errors name the key: ${err.msg()}'
+		return
+	}
+	assert false, 'bad map value must error'
+}
+
+struct DatabaseConfig {
+	host string = 'localhost'
+	port int    = 5432
+}
+
+struct RequiredDbConfig {
+	db DatabaseConfig @[required]
+}
+
+struct OptionalDbConfig {
+	db DatabaseConfig
+}
+
+fn test_config_required_nested_struct_wrong_shape_errors() {
+	path := os.join_path(os.temp_dir(), 'v_config_db_shape.toml')
+	os.write_file(path, 'db = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	load[RequiredDbConfig](files: [path]) or {
+		assert err.msg().contains('`db`'), err.msg()
+		return
+	}
+	assert false, 'array for a required nested struct must error'
+}
+
+fn test_config_optional_nested_struct_wrong_shape_errors() {
+	path := os.join_path(os.temp_dir(), 'v_config_db_shape_opt.toml')
+	os.write_file(path, 'db = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	load[OptionalDbConfig](files: [path]) or {
+		assert err.msg().contains('`db`'), err.msg()
+		return
+	}
+	assert false, 'array for an optional nested struct must error'
+}
+
+fn test_config_nested_struct_shape_controls() {
+	valid := os.join_path(os.temp_dir(), 'v_config_db_valid.toml')
+	os.write_file(valid, '[db]\nhost = "real"\nport = 1234\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(valid) or {}
+	}
+	cfg := load[RequiredDbConfig](files: [valid])!
+	assert cfg.db.host == 'real'
+	assert cfg.db.port == 1234
+	empty := os.join_path(os.temp_dir(), 'v_config_db_empty.toml')
+	os.write_file(empty, '# empty\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(empty) or {}
+	}
+	load[RequiredDbConfig](files: [empty]) or {
+		assert err.msg().contains('[missing]'), err.msg()
+		return
+	}
+	assert false, 'missing required struct must error'
+	opt := load[OptionalDbConfig](files: [empty])!
+	assert opt.db.host == 'localhost', 'native defaults apply when optional struct is absent'
+	assert opt.db.port == 5432
+}
+
+struct UnderscoreHttpConfig {
+	read_timeout int = 30
+}
+
+struct UnderscoreServerConfig {
+	http_server UnderscoreHttpConfig
+	token       string @[default: 't']
+}
+
+fn test_config_nested_dotted_cli_with_underscores() {
+	dotted := load[UnderscoreServerConfig](
+		cli:        ['--http_server.read_timeout=90']
+		env_prefix: 'VLIB_TEST_USCORE_UNSET_'
+	)!
+	assert dotted.http_server.read_timeout == 90, 'dotted underscore CLI must apply'
+	dashed := load[UnderscoreServerConfig](
+		cli:        ['--http-server.read-timeout=91']
+		env_prefix: 'VLIB_TEST_USCORE_UNSET_'
+	)!
+	assert dashed.http_server.read_timeout == 91, 'dotted dashed CLI must apply'
+	flat_dashed := load[UnderscoreServerConfig](
+		cli:        ['--http-server-read-timeout=92']
+		env_prefix: 'VLIB_TEST_USCORE_UNSET_'
+	)!
+	assert flat_dashed.http_server.read_timeout == 92, 'flat dashed CLI must apply'
+	flat_score := load[UnderscoreServerConfig](
+		cli:        ['--http_server_read_timeout=93']
+		env_prefix: 'VLIB_TEST_USCORE_UNSET_'
+	)!
+	assert flat_score.http_server.read_timeout == 93, 'flat underscore CLI must apply'
+}
+
+struct RequiredUnderscoreConfig {
+	http_server UnderscoreHttpConfig @[required]
+}
+
+fn test_config_required_nested_struct_dotted_cli_counts() {
+	cfg := load[RequiredUnderscoreConfig](
+		cli:        ['--http_server.read_timeout=90']
+		env_prefix: 'VLIB_TEST_USCORE_REQ_'
+	)!
+	assert cfg.http_server.read_timeout == 90, 'dotted CLI must satisfy required nested struct'
+}

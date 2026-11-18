@@ -76,13 +76,17 @@ pub fn (e ConfigError) code() int {
 // ```
 pub fn load[T](opts LoadOptions) !T {
 	cli := parse_cli_args(opts.cli)
+	mut cfg := T{}
+	contains_secret := has_secret_value(cfg)
 	mut docs := []toml.Doc{}
 	for path in opts.files {
 		docs << toml.parse_file(path) or {
+			if contains_secret && os.is_file(path) {
+				return error('config: cannot read `${path}`: invalid TOML (details redacted: config contains @[secret] fields)')
+			}
 			return error('config: cannot read `${path}`: ${err.msg()}')
 		}
 	}
-	mut cfg := T{}
 	$if T is $struct {
 		load_into(mut cfg, '', '', opts.env_prefix, cli, docs, false)!
 	} $else {
@@ -182,6 +186,19 @@ fn load_into[T](mut cfg T, cli_prefix string, toml_prefix string, env_prefix str
 					reason:   'required key was not provided'
 				}
 			}
+			for doc in docs {
+				if v := doc.value_opt(toml_key) {
+					if v is map[string]toml.Any {
+						continue
+					}
+					return ConfigError{
+						setting:  toml_key
+						source:   'file'
+						expected: 'struct'
+						reason:   'expected a table value'
+					}
+				}
+			}
 			mut nested := cfg.$(field.name)
 			load_into(mut nested, child_cli_prefix, child_toml_prefix, child_env_prefix,
 				cli, docs, is_secret)!
@@ -201,7 +218,7 @@ fn subtree_provided(cli_full_name string, toml_parent_key string, child_env_pref
 			return true
 		}
 	}
-	dot_cli := '--' + toml_parent_key
+	dot_cli := ('--' + toml_parent_key).replace('_', '-')
 	for k in cli.keys() {
 		if k == dot_cli || k.starts_with(dot_cli + '-') || k.starts_with(dot_cli + '.') {
 			return true
@@ -252,7 +269,7 @@ fn load_string_field(current string, full_name string, toml_key string, attrs []
 	if v := cli['--' + full_name.replace('_', '-')] {
 		return v
 	}
-	if v := cli['--' + toml_key] {
+	if v := cli['--' + toml_key.replace('_', '-')] {
 		return v
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -303,7 +320,7 @@ fn load_int_field(current int, full_name string, toml_key string, attrs []string
 	if v := cli['--' + full_name.replace('_', '-')] {
 		return parse_config_int(toml_key, v, 'cli', is_secret)!
 	}
-	if v := cli['--' + toml_key] {
+	if v := cli['--' + toml_key.replace('_', '-')] {
 		return parse_config_int(toml_key, v, 'cli', is_secret)!
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -355,7 +372,7 @@ fn load_bool_field(current bool, full_name string, toml_key string, attrs []stri
 	if v := cli['--' + full_name.replace('_', '-')] {
 		return parse_config_bool(toml_key, v, 'cli', is_secret)!
 	}
-	if v := cli['--' + toml_key] {
+	if v := cli['--' + toml_key.replace('_', '-')] {
 		return parse_config_bool(toml_key, v, 'cli', is_secret)!
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -407,7 +424,7 @@ fn load_u16_field(current u16, full_name string, toml_key string, attrs []string
 	if v := cli['--' + full_name.replace('_', '-')] {
 		return parse_config_u16(toml_key, v, 'cli', is_secret)!
 	}
-	if v := cli['--' + toml_key] {
+	if v := cli['--' + toml_key.replace('_', '-')] {
 		return parse_config_u16(toml_key, v, 'cli', is_secret)!
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -459,7 +476,7 @@ fn load_i64_field(current i64, full_name string, toml_key string, attrs []string
 	if v := cli['--' + full_name.replace('_', '-')] {
 		return parse_config_i64(toml_key, v, 'cli', is_secret)!
 	}
-	if v := cli['--' + toml_key] {
+	if v := cli['--' + toml_key.replace('_', '-')] {
 		return parse_config_i64(toml_key, v, 'cli', is_secret)!
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -511,7 +528,7 @@ fn load_f64_field(current f64, full_name string, toml_key string, attrs []string
 	if v := cli['--' + full_name.replace('_', '-')] {
 		return parse_config_f64(toml_key, v, 'cli', is_secret)!
 	}
-	if v := cli['--' + toml_key] {
+	if v := cli['--' + toml_key.replace('_', '-')] {
 		return parse_config_f64(toml_key, v, 'cli', is_secret)!
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -566,7 +583,7 @@ fn load_array_field[T](current []T, full_name string, toml_key string, attrs []s
 		if v := cli['--' + full_name.replace('_', '-')] {
 			return parse_array_string[T](v, toml_key, 'cli', is_secret)!
 		}
-		if v := cli['--' + toml_key] {
+		if v := cli['--' + toml_key.replace('_', '-')] {
 			return parse_array_string[T](v, toml_key, 'cli', is_secret)!
 		}
 		env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -612,7 +629,7 @@ fn load_map_field[K, V](current map[K]V, full_name string, toml_key string, attr
 			if v := cli['--' + full_name.replace('_', '-')] {
 				return parse_map_string[K, V](v, toml_key, 'cli', is_secret)!
 			}
-			if v := cli['--' + toml_key] {
+			if v := cli['--' + toml_key.replace('_', '-')] {
 				return parse_map_string[K, V](v, toml_key, 'cli', is_secret)!
 			}
 			env_name := attr_arg(attrs, 'env') or { env_prefix + toml_key.all_after_last('.').to_upper() }
@@ -928,7 +945,7 @@ fn parse_map_string[K, V](raw string, setting string, source string, is_secret b
 				}
 				k := pair[..idx].trim_space()
 				v := pair[idx + 1..].trim_space()
-				out[K(k)] = V(parse_config_bool('${setting}.${k}', v, source,
+				out[K(k)] = V(parse_config_bool(map_entry_setting(setting, k, is_secret), v, source,
 					is_secret)!)
 			}
 			return out
@@ -953,7 +970,7 @@ fn parse_map_string[K, V](raw string, setting string, source string, is_secret b
 				}
 				k := pair[..idx].trim_space()
 				v := pair[idx + 1..].trim_space()
-				out[K(k)] = V(parse_config_int('${setting}.${k}', v, source,
+				out[K(k)] = V(parse_config_int(map_entry_setting(setting, k, is_secret), v, source,
 					is_secret)!)
 			}
 			return out
@@ -978,7 +995,7 @@ fn parse_map_string[K, V](raw string, setting string, source string, is_secret b
 				}
 				k := pair[..idx].trim_space()
 				v := pair[idx + 1..].trim_space()
-				out[K(k)] = V(parse_config_u16('${setting}.${k}', v, source,
+				out[K(k)] = V(parse_config_u16(map_entry_setting(setting, k, is_secret), v, source,
 					is_secret)!)
 			}
 			return out
@@ -1003,7 +1020,7 @@ fn parse_map_string[K, V](raw string, setting string, source string, is_secret b
 				}
 				k := pair[..idx].trim_space()
 				v := pair[idx + 1..].trim_space()
-				out[K(k)] = V(parse_config_i64('${setting}.${k}', v, source,
+				out[K(k)] = V(parse_config_i64(map_entry_setting(setting, k, is_secret), v, source,
 					is_secret)!)
 			}
 			return out
@@ -1028,7 +1045,7 @@ fn parse_map_string[K, V](raw string, setting string, source string, is_secret b
 				}
 				k := pair[..idx].trim_space()
 				v := pair[idx + 1..].trim_space()
-				out[K(k)] = V(parse_config_f64('${setting}.${k}', v, source,
+				out[K(k)] = V(parse_config_f64(map_entry_setting(setting, k, is_secret), v, source,
 					is_secret)!)
 			}
 			return out
@@ -1058,7 +1075,7 @@ fn decode_any_map[K, V](any toml.Any, setting string, is_secret bool) !map[K]V {
 			for k, item in values {
 				if item is []toml.Any || item is map[string]toml.Any {
 					return ConfigError{
-						setting:  '${setting}.${k}'
+						setting:  map_entry_setting(setting, k, is_secret)
 						source:   'file'
 						expected: 'string'
 						reason:   'expected a string value'
@@ -1082,13 +1099,13 @@ fn decode_any_map[K, V](any toml.Any, setting string, is_secret bool) !map[K]V {
 			for k, item in values {
 				if item is []toml.Any || item is map[string]toml.Any {
 					return ConfigError{
-						setting:  '${setting}.${k}'
+						setting:  map_entry_setting(setting, k, is_secret)
 						source:   'file'
 						expected: 'bool'
 						reason:   'expected a boolean value'
 					}
 				}
-				out[K(k)] = V(parse_config_bool('${setting}.${k}', any_to_scalar_string(item),
+				out[K(k)] = V(parse_config_bool(map_entry_setting(setting, k, is_secret), any_to_scalar_string(item),
 					'file', is_secret)!)
 			}
 			return out
@@ -1107,13 +1124,13 @@ fn decode_any_map[K, V](any toml.Any, setting string, is_secret bool) !map[K]V {
 			for k, item in values {
 				if item is []toml.Any || item is map[string]toml.Any {
 					return ConfigError{
-						setting:  '${setting}.${k}'
+						setting:  map_entry_setting(setting, k, is_secret)
 						source:   'file'
 						expected: 'int'
 						reason:   'expected an integer value'
 					}
 				}
-				out[K(k)] = V(parse_config_int('${setting}.${k}', any_to_scalar_string(item),
+				out[K(k)] = V(parse_config_int(map_entry_setting(setting, k, is_secret), any_to_scalar_string(item),
 					'file', is_secret)!)
 			}
 			return out
@@ -1132,13 +1149,13 @@ fn decode_any_map[K, V](any toml.Any, setting string, is_secret bool) !map[K]V {
 			for k, item in values {
 				if item is []toml.Any || item is map[string]toml.Any {
 					return ConfigError{
-						setting:  '${setting}.${k}'
+						setting:  map_entry_setting(setting, k, is_secret)
 						source:   'file'
 						expected: 'u16'
 						reason:   'expected an integer value'
 					}
 				}
-				out[K(k)] = V(parse_config_u16('${setting}.${k}', any_to_scalar_string(item),
+				out[K(k)] = V(parse_config_u16(map_entry_setting(setting, k, is_secret), any_to_scalar_string(item),
 					'file', is_secret)!)
 			}
 			return out
@@ -1157,13 +1174,13 @@ fn decode_any_map[K, V](any toml.Any, setting string, is_secret bool) !map[K]V {
 			for k, item in values {
 				if item is []toml.Any || item is map[string]toml.Any {
 					return ConfigError{
-						setting:  '${setting}.${k}'
+						setting:  map_entry_setting(setting, k, is_secret)
 						source:   'file'
 						expected: 'i64'
 						reason:   'expected an integer value'
 					}
 				}
-				out[K(k)] = V(parse_config_i64('${setting}.${k}', any_to_scalar_string(item),
+				out[K(k)] = V(parse_config_i64(map_entry_setting(setting, k, is_secret), any_to_scalar_string(item),
 					'file', is_secret)!)
 			}
 			return out
@@ -1182,13 +1199,13 @@ fn decode_any_map[K, V](any toml.Any, setting string, is_secret bool) !map[K]V {
 			for k, item in values {
 				if item is []toml.Any || item is map[string]toml.Any {
 					return ConfigError{
-						setting:  '${setting}.${k}'
+						setting:  map_entry_setting(setting, k, is_secret)
 						source:   'file'
 						expected: 'f64'
 						reason:   'expected a float value'
 					}
 				}
-				out[K(k)] = V(parse_config_f64('${setting}.${k}', any_to_scalar_string(item),
+				out[K(k)] = V(parse_config_f64(map_entry_setting(setting, k, is_secret), any_to_scalar_string(item),
 					'file', is_secret)!)
 			}
 			return out
@@ -1245,6 +1262,34 @@ fn has_attr(attrs []string, name string) bool {
 		}
 	}
 	return false
+}
+
+// has_secret_value reports whether T (transitively) marks any field @[secret].
+// TOML parse errors echo source lines, so load() redacts them when the
+// target config can hold secrets.
+fn has_secret_value[T](v T) bool {
+	$if T is $struct {
+		$for field in T.fields {
+			if has_attr(field.attrs, 'secret') {
+				return true
+			}
+			$if field.is_struct {
+				if has_secret_value(v.$(field.name)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// map_entry_setting names a map entry diagnostic. Secret maps omit the
+// caller-supplied key so sensitive input never appears in the setting path.
+fn map_entry_setting(setting string, k string, is_secret bool) string {
+	if is_secret {
+		return setting
+	}
+	return '${setting}.${k}'
 }
 
 // int_error builds the ConfigError for an invalid integer.
