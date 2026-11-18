@@ -170,3 +170,39 @@ fn test_handle_raw_static_dir_with_trailing_slash_serves_index() {
 	assert resp.status_code == int(http.Status.ok)
 	assert resp.body == '<h1>sub</h1>'
 }
+
+fn raw_head_static_app() (RawApp, string) {
+	dir := os.join_path(os.temp_dir(), 'veb_handle_raw_head_static')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'index.html'), '<h1>index</h1>') or { panic(err) }
+	mut app := RawApp{}
+	app.handle_static(dir, true) or { panic(err) }
+	return app, dir
+}
+
+fn test_handle_raw_static_head_has_headers_but_no_body() {
+	// A HEAD response carries the GET-equivalent headers, including
+	// Content-Length and validators, but no content (RFC 9110 9.3.2).
+	mut app, dir := raw_head_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'HEAD /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.ok)
+	assert resp.body == ''
+	assert resp.header.get(.content_length) or { '' } == '<h1>index</h1>'.len.str()
+	assert resp.header.contains(.etag)
+}
+
+fn test_handle_raw_static_head_conditional_match_is_304() {
+	// A matching validator on HEAD still answers 304 through send_file.
+	mut app, dir := raw_head_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'HEAD /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: *\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.not_modified)
+	assert resp.body == ''
+}
