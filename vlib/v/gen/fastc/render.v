@@ -7494,14 +7494,7 @@ fn (g &Parser) render_fixed_array_value(tokens []FastcExpressionToken) ?string {
 }
 
 fn fastc_fixed_array_fill_source(typ u32, length string, value string) string {
-	element := '__vf_fixed_value.data[__vf_fixed_index]'
-	element_type := fastc_fixed_array_element_type(typ) or { u32(0) }
-	assignment := if fastc_fixed_array_element_type(element_type) != none {
-		'memcpy(${element}, (${value}).data, sizeof(${element}));'
-	} else {
-		'${element} = (${value});'
-	}
-	return '({ ${flat.source_type_name(typ)} __vf_fixed_value; for (int __vf_fixed_index = 0; __vf_fixed_index < ${length}; __vf_fixed_index++) { ${assignment} } __vf_fixed_value; })'
+	return '({ ${flat.source_type_name(typ)} __vf_fixed_value; for (int __vf_fixed_index = 0; __vf_fixed_index < ${length}; __vf_fixed_index++) { __vf_fixed_value.data[__vf_fixed_index] = (${value}); } __vf_fixed_value; })'
 }
 
 // struct_equality_helper keeps recursive and sum-type equality finite in generated C.
