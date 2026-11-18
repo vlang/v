@@ -206,3 +206,76 @@ fn test_handle_raw_static_head_conditional_match_is_304() {
 	assert resp.status_code == int(http.Status.not_modified)
 	assert resp.body == ''
 }
+
+fn raw_static_app() (RawApp, string) {
+	dir := os.join_path(os.temp_dir(), 'veb_handle_raw_static')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'index.html'), '<h1>index</h1>') or { panic(err) }
+	mut app := RawApp{}
+	app.handle_static(dir, true) or { panic(err) }
+	return app, dir
+}
+
+fn test_handle_raw_static_post_is_405_with_allow() {
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.method_not_allowed)
+	allow := resp.header.get_custom('Allow') or { '' }
+	assert allow.contains('GET')
+	assert allow.contains('HEAD')
+}
+
+fn test_handle_raw_static_delete_is_405() {
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.method_not_allowed)
+}
+
+fn test_handle_raw_static_get_still_serves_the_file() {
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+		'GET /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()) or {
+		panic(err)
+	}
+	assert resp.status_code == int(http.Status.ok)
+	assert resp.body == '<h1>index</h1>'
+}
+
+fn test_handle_raw_static_conditional_non_retrieval_is_405() {
+	// RFC 9110 section 13.2.1 gives the method check precedence over
+	// conditional evaluation, so conditional headers never smuggle a body
+	// out through a non-retrieval method.
+	mut app, dir := raw_static_app()
+	defer { os.rmdir_all(dir) or {} }
+	cases := [
+		'POST /index.html with Range',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-2\r\nConnection: close\r\n\r\n',
+		'POST /index.html with If-Modified-Since garbage',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-Modified-Since: garbage\r\nConnection: close\r\n\r\n',
+		'POST /index.html with mismatching If-None-Match',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: "not-the-etag"\r\nConnection: close\r\n\r\n',
+		'POST /index.html with matching If-None-Match',
+		'POST /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: *\r\nConnection: close\r\n\r\n',
+		'DELETE /index.html with Range',
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-2\r\nConnection: close\r\n\r\n',
+		'DELETE /index.html with If-Modified-Since garbage',
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nIf-Modified-Since: garbage\r\nConnection: close\r\n\r\n',
+		'DELETE /index.html with mismatching If-None-Match',
+		'DELETE /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: "not-the-etag"\r\nConnection: close\r\n\r\n',
+	]
+	for i := 0; i < cases.len; i += 2 {
+		resp := http.parse_response(handle_raw[RawApp, RawContext](mut app,
+			cases[i + 1].bytes()).bytestr()) or { panic(err) }
+		assert resp.status_code == int(http.Status.method_not_allowed), cases[i]
+		assert resp.body != '<h1>index</h1>', cases[i]
+	}
+}

@@ -1127,6 +1127,14 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 		return false
 	}
 
+	// Static files are only served for retrieval methods. RFC 9110 section
+	// 13.2.1 gives the method check precedence over conditional evaluation,
+	// so conditional headers never admit a non-retrieval method.
+	if user_context.req.method != .get && user_context.req.method != .head {
+		user_context.method_not_allowed([http.Method.get, http.Method.head])
+		return true
+	}
+
 	// Configure static file compression settings
 	user_context.set_static_compression_config(static_handler.enable_static_gzip,
 		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
