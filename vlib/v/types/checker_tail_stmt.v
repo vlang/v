@@ -9916,6 +9916,13 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if tc.has_active_import(name) {
+		// A module name is only meaningful before a selector (`os.args`).
+		// Any other use treats the module as a value, which cgen cannot
+		// emit: it names the module as a C identifier and fails there.
+		if !tc.ident_is_module_selector_base(id) {
+			tc.record_error_at(.unknown_ident, 'module `${name}` is not a value', id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, unresolved_name_type())
+		}
 		return
 	}
 	// `qname` also keys the scope and const lookups above; probe the type tables once.
@@ -9958,6 +9965,22 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			tc.checker_fixture_template_ident_pos(id, node.pos))
 		tc.register_synth_type(id, unresolved_name_type())
 	}
+}
+
+// ident_is_module_selector_base reports whether the ident is the base of a
+// selector (`os` in `os.args`), the only position where a module name is
+// meaningful. Parentheses around the base are skipped, as in `(os).args`.
+fn (tc &TypeChecker) ident_is_module_selector_base(id flat.NodeId) bool {
+	mut current_id := id
+	mut parent_id := tc.direct_parent_id(current_id)
+	for tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .paren {
+		current_id = parent_id
+		parent_id = tc.direct_parent_id(current_id)
+	}
+	if !tc.valid_node_id(parent_id) || tc.a.node(parent_id).kind != .selector {
+		return false
+	}
+	return tc.a.child(tc.a.node(parent_id), 0) == current_id
 }
 
 fn (tc &TypeChecker) ident_uses_forbidden_closure_capture(name string) bool {

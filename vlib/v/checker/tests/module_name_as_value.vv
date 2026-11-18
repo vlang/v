@@ -1,0 +1,14 @@
+import os
+
+fn takes(b []u8) int {
+	return b.len
+}
+
+fn main() {
+	x := os
+	y := takes(os)
+	z := '${takes(os)}'
+	println(x)
+	println(y)
+	println(z)
+}
