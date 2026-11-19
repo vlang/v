@@ -23,6 +23,7 @@ const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const v3_retry_env = 'V_MACOS_V3_RETRY'
 
 const external_commands = [
+	'api',
 	'ast',
 	'bin2v',
 	'bug',
