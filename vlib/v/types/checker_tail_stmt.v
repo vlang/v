@@ -11472,6 +11472,16 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 	if tc.sum_variant_type_for_pattern(expected_name_comparison_type_id, actual_name_comparison_type_id) != none {
 		return true
 	}
+	// A refined alias is distinct from its base: a raw value never flows into
+	// it implicitly, while equal refinements stay mutually compatible.
+	if expected_refined := tc.refined_alias_info(expected) {
+		if actual_refined := tc.refined_alias_info(actual) {
+			if tc.refined_names_match(actual_refined.name_id, expected_refined.name_id) {
+				return true
+			}
+		}
+		return false
+	}
 	if actual is Alias && expected is Alias {
 		return tc.type_compatible(actual.base_type, expected.base_type)
 	}

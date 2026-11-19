@@ -1277,6 +1277,7 @@ pub mut:
 	type_alias_modules                    map[u32]string
 	type_alias_generic_params             map[u32][]u32 // generic alias base name -> type-param spelling IDs
 	type_alias_c_abi_fns                  map[u32]string
+	refined_aliases                       map[u32]RefinedAliasDecl
 	recursive_alias_names                 map[u32]bool
 	sum_types                             flat.SourceTypeListBindings
 	sum_generic_params                    map[u32][]u32 // generic sum type base name -> type-param spelling IDs (e.g. Tree -> [T])
@@ -1864,6 +1865,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		enclosing_generic_params_by_node:        map[int][]u32{}
 		declaration_attributes:                  map[int][]string{}
 		attribute_schemas:                       map[string][]AttributeSchema{}
+		refined_aliases:                         map[u32]RefinedAliasDecl{}
 		noalloc_terminal_functions:              map[string]bool{}
 		type_declaration_ids:                    map[u32][]int{}
 		strings_builder_bindings:                map[string]bool{}
@@ -1959,6 +1961,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		type_alias_modules:                    tc.type_alias_modules
 		type_alias_generic_params:             tc.type_alias_generic_params
 		type_alias_c_abi_fns:                  tc.type_alias_c_abi_fns
+		refined_aliases:                       tc.refined_aliases
 		sum_types:                             tc.sum_types
 		sum_generic_params:                    tc.sum_generic_params
 		enum_names:                            tc.enum_names
@@ -2097,6 +2100,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		declaration_attribute_kinds:           tc.declaration_attribute_kinds
 		declaration_attributes:                tc.declaration_attributes
 		attribute_schemas:                     tc.attribute_schemas
+		refined_aliases:                       tc.refined_aliases
 		type_declaration_ids:                  tc.type_declaration_ids
 		first_type_declaration_ids:            tc.first_type_declaration_ids
 		strings_builder_bindings:              tc.strings_builder_bindings
@@ -2384,6 +2388,7 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.c_typedef_structs = tc.c_typedef_structs.clone()
 	tc.type_alias_generic_params = clone_owned_id_list_map(tc.type_alias_generic_params)
 	tc.type_alias_c_abi_fns = clone_owned_source_type_string_map(tc.type_alias_c_abi_fns)
+	tc.refined_aliases = tc.refined_aliases.clone()
 	tc.sum_types = tc.sum_types.clone_owned()
 	tc.sum_generic_params = clone_owned_id_list_map(tc.sum_generic_params)
 	tc.enum_names = tc.enum_names.clone()
@@ -4998,6 +5003,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	tc.static_associated_signature_count = tc.fn_ret_types.len
 	tc.build_const_suffixes()
+	tc.check_refined_alias_requirements()
 	tc.build_struct_embed_index()
 	if tc.building_v_fast {
 		tc.cache_direct_struct_field_types()
@@ -5140,6 +5146,7 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 							tc.type_alias_c_abi_fns[node.source_value_id()] = c_abi_fn
 						}
 					}
+					tc.register_refined_alias_range(node, tl_idx, qname_id, node.source_value_id())
 				}
 			}
 			.interface_decl {
@@ -19040,6 +19047,7 @@ const builtin_attribute_names = [
 	'primary',
 	'private',
 	'put',
+	'range',
 	'raw',
 	'references',
 	'repeats',
