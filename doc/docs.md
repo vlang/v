@@ -7096,12 +7096,12 @@ Request-scoped work should use `prealloc_scope_begin()` /
 `-prealloc` needs `_Thread_local` (bundled tcc is excluded on some CI jobs)
 and macOS support is partial.
 
-For scoped arenas without `-prealloc`, use the `arena` module: while an arena
-is pushed on a thread, all V allocations on that thread (strings, arrays,
-maps, ...) come from it, and they are released together by `reset()` or
-`free()`. This keeps memory bounded in long-running, multi-threaded
-programs built with `-gc none`. It also works with the default GC, but not
-with `-prealloc`, which has its own scopes.
+For scoped arenas, use the `arena` module: while an arena is pushed on a
+thread, all V allocations on that thread (strings, arrays, maps, ...) come
+from it, and they are released together by `reset()` or `free()`. This keeps
+memory bounded in long-running, multi-threaded programs built with `-gc none`.
+It also works with the default GC and with `-prealloc`, where a pushed arena
+is backed by a `prealloc_scope_*` arena.
 
 ```v
 import arena
