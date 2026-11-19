@@ -5,6 +5,7 @@
 // scripted in-process HTTP/2 server over an in-memory blocking pipe.
 module http
 
+import io
 import sync
 import time
 
@@ -14,6 +15,7 @@ mut:
 	mu       &sync.Mutex
 	readable &sync.Cond
 	data     []u8
+	offset   int
 	closed   bool
 }
 
@@ -33,6 +35,11 @@ fn (mut p MuxPipeBuf) write(buf []u8) !int {
 	if p.closed {
 		return error('pipe: write to closed pipe')
 	}
+	// Compact only after consuming at least as many bytes as we must move.
+	if p.offset > 0 && p.offset >= p.data.len - p.offset {
+		p.data.delete_many(0, p.offset)
+		p.offset = 0
+	}
 	p.data << buf
 	p.readable.signal()
 	return buf.len
@@ -43,14 +50,18 @@ fn (mut p MuxPipeBuf) read(mut buf []u8) !int {
 	defer {
 		p.mu.unlock()
 	}
-	for p.data.len == 0 && !p.closed {
+	for p.offset == p.data.len && !p.closed {
 		p.readable.wait()
 	}
-	if p.data.len == 0 {
+	if p.offset == p.data.len {
 		return error('eof')
 	}
-	n := copy(mut buf, p.data)
-	p.data.delete_many(0, n)
+	n := copy(mut buf, p.data[p.offset..])
+	p.offset += n
+	if p.offset == p.data.len {
+		p.data.clear()
+		p.offset = 0
+	}
 	return n
 }
 
@@ -111,12 +122,10 @@ fn new_test_mux_conn(mut cend MuxPipeEnd) &H2MuxConn {
 @[heap]
 struct MuxTestPeer {
 mut:
-	end      &MuxPipeEnd
-	rbuf     []u8
-	read_buf []u8 = []u8{len: 4096}
-	decoder  H2HpackDecoder
-	encoder  H2HpackEncoder
-	mu       &sync.Mutex = sync.new_mutex()
+	end     &MuxPipeEnd
+	decoder H2HpackDecoder
+	encoder H2HpackEncoder
+	mu      &sync.Mutex = sync.new_mutex()
 	// stream id -> request :path, in arrival order
 	paths               map[u32]string
 	stream_ids          []u32
@@ -143,15 +152,8 @@ fn (mut p MuxTestPeer) failure_msg() string {
 }
 
 fn (mut p MuxTestPeer) read_exact(n int) ![]u8 {
-	for p.rbuf.len < n {
-		got := p.end.read(mut p.read_buf)!
-		if got <= 0 {
-			return error('peer: pipe closed')
-		}
-		p.rbuf << p.read_buf[..got]
-	}
-	out := p.rbuf[..n].clone()
-	p.rbuf.delete_many(0, n)
+	mut out := []u8{len: n}
+	io.read_full(mut p.end, mut out)!
 	return out
 }
 
@@ -2522,59 +2524,46 @@ fn test_mux_watchdog_timeout_sends_rst_stream() {
 // full read_timeout and sends a SECOND, bogus RST_STREAM for a stream that was
 // already cleanly cancelled and deregistered (Codex P2, vlang/v#27643
 // pullrequestreview-4630174759).
-fn test_mux_cancel_stream_stops_pending_watchdog() {
+fn test_mux_cancel_stream_stops_pending_watchdog() ! {
 	mut cend, mut pend := new_mux_pipe()
+	defer {
+		cend.close_both()
+	}
 	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
 	mut out := &MuxResults{}
-	read_timeout := 300 * time.millisecond
-	mut workers := []thread{}
-	workers << spawn mux_worker(mut conn, H2ClientRequest{
+	worker := spawn mux_worker(mut conn, H2ClientRequest{
 		authority:            't'
 		path:                 '/partial'
-		read_timeout:         read_timeout
+		read_timeout:         5 * time.second
 		stop_receiving_limit: 4
 	}, mut out)
-	peer_thread := spawn fn (mut peer MuxTestPeer) {
-		peer.read_preface() or {
-			peer.fail('preface: ${err.msg()}')
-			return
-		}
-		ids := peer.wait_for_headers(1) or {
-			peer.fail('headers: ${err.msg()}')
-			return
-		}
-		id := ids[0]
-		peer.respond_headers(id, false) or {
-			peer.fail('respond: ${err.msg()}')
-			return
-		}
-		peer.write_frame(H2DataFrame{
-			stream_id: id
-			data:      'abcdefgh'.bytes()
-		}) or {
-			peer.fail('data: ${err.msg()}')
-			return
-		}
-		// Keep consuming frames (a lingering watchdog's bogus second
-		// RST_STREAM, if the bug is present) until the main goroutine closes
-		// the pipe.
-		for {
-			peer.pump() or { return }
-		}
-	}(mut peer)
-	workers.wait()
-	assert out.errs.len == 0, 'expected the stop_receiving_limit to cleanly stop the response, got: ${out.errs}'
-	// Outlive read_timeout so a still-alive watchdog (the bug) has time to
-	// fire and send its bogus second RST_STREAM before the pipe closes.
-	time.sleep(read_timeout + 400 * time.millisecond)
+	peer.read_preface()!
+	id := peer.wait_for_headers(1)![0]
+	conn.smu.lock()
+	mut stream := conn.streams[id] or {
+		conn.smu.unlock()
+		return error('stream ${id} disappeared before the peer responded')
+	}
+	conn.smu.unlock()
+	peer.respond_headers(id, false)!
+	peer.write_frame(H2DataFrame{
+		stream_id: id
+		data:      'abcdefgh'.bytes()
+	})!
+	worker.wait()
+	phase_done := h2_response_phase_done(stream)
+	// Exercise the expiry path if the watchdog races with cancellation.
+	h2_stream_timeout_watchdog(mut conn, mut stream, 0, 'waiting for a response',
+		h2_response_phase_done, h2_response_phase_since)
+	// Closing the pipe lets the peer drain the queued frames through EOF.
 	cend.close_both()
-	peer_thread.wait()
-	assert peer.failure_msg() == ''
-	peer.mu.lock()
-	rst := peer.rst_streams.clone()
-	peer.mu.unlock()
-	assert rst.len == 1, 'expected exactly one RST_STREAM (from cancel_stream itself); a lingering watchdog sent a second one: ${rst}'
+	for {
+		peer.pump() or { break }
+	}
+	assert out.errs.len == 0, 'expected the stop_receiving_limit to cleanly stop the response, got: ${out.errs}'
+	assert phase_done, 'the cancelled response still had an active watchdog phase'
+	assert peer.rst_streams == [id], 'expected only the cancellation reset, got: ${peer.rst_streams}'
 }
