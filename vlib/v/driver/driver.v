@@ -11954,8 +11954,10 @@ pub fn run(args []string) {
 		&& target.os == host_target.os && target.arch == host_target.arch
 		&& target.os in ['macos', 'linux']
 	// A program that only prints literals needs a fraction of builtin, which is
-	// parsed for it each time. The cached builtin is ready without that.
+	// parsed for it each time. The cached builtin is ready without that. A debug or
+	// coverage build also needs the backtrace printer and what it calls.
 	minimal_literal_output := file_list.len == 0 && !is_prof && !is_trace_calls && !no_skip_unused
+		&& !is_debug && coverage_dir.len == 0
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut noalloc_modes := []string{}
 	if ownership_mode || 'ownership' in prefs.user_defines {
@@ -13349,10 +13351,13 @@ pub fn run(args []string) {
 		// MSVC's regular runtime demangles backtraces with string slices, which only
 		// become `string.substr` calls after markused. Proven Windows ASCII output
 		// emits no runtime and can omit those dependencies too.
+		// A debug or coverage build emits that runtime too: its backtrace printer
+		// slices and appends, which also become runtime calls only after markused.
 		// A module cache build checks and compiles whole modules, also for a program
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
+			&& !is_debug && coverage_dir.len == 0
 			&& backend !in ['arm64', 'amd64'] && test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
