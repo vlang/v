@@ -48,6 +48,18 @@ pub:
 	color  StyleValue
 }
 
+// Tag is a sum type with plain builtin variants.
+pub type Tag = string | int
+
+// describe_tag returns a readable form of an optional tag.
+pub fn describe_tag(value ?Tag) string {
+	v := value or { return 'none' }
+	return match v {
+		string { 'text ${v}' }
+		int { 'number ${v}' }
+	}
+}
+
 struct ForInitDeclaration {
 	n int
 }
