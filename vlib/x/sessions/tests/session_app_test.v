@@ -9,7 +9,7 @@ const port = 13010
 const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 const cookie_name = 'SESSION_ID'
-const max_age = time.second * 2
+const max_age = time.minute
 
 pub struct User {
 pub mut:
@@ -81,6 +81,20 @@ pub fn (mut app App) destroy_session(mut ctx Context) veb.Result {
 	return ctx.ok('')
 }
 
+// age_session backdates the saved record and returns the data loaded by the middleware.
+@['/age_session'; post]
+pub fn (mut app App) age_session(mut ctx Context) veb.Result {
+	if mut app.sessions.store is sessions.MemoryStore[User] {
+		sid := ctx.session_id
+		if sid !in app.sessions.store.data {
+			return ctx.not_found()
+		}
+		app.sessions.store.data[sid].created_at = time.now().add(-2 * max_age)
+		return ctx.text('${ctx.session_data}')
+	}
+	return ctx.server_error('expected the fixture memory store')
+}
+
 fn testsuite_begin() {
 	spawn fn () {
 		time.sleep(exit_after)
@@ -101,7 +115,12 @@ fn testsuite_begin() {
 
 	app.use(veb_middleware.create[User, Context](mut app.sessions))
 
-	spawn veb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)
+	spawn veb.run_at[App, Context](mut app,
+		host:               '127.0.0.1'
+		port:               port
+		family:             .ip
+		timeout_in_seconds: 2
+	)
 	// app startup time
 	_ := <-app.started
 	wait_for_server()!
@@ -152,13 +171,12 @@ fn test_destroy_session() {
 
 fn test_session_expired() {
 	sid := get_session_id()!
-	mut x := make_request_with_session_id(.get, '/session_data', sid)!
-	assert x.body != 'Option(none)'
+	live := make_request_with_session_id(.post, '/age_session', sid)!
+	assert live.status() == .ok
+	assert live.body == '${?User(default_user)}'
 
-	time.sleep(max_age)
-
-	x = make_request_with_session_id(.get, '/session_data', sid)!
-	assert x.body == 'Option(none)'
+	expired := make_request_with_session_id(.get, '/session_data', sid)!
+	assert expired.body == 'Option(none)'
 }
 
 // Utility
