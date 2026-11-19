@@ -1,8 +1,12 @@
 import os
 
-const vexe = os.quoted_path(@VEXE)
+const tfolder = os.join_path(os.vtmp_dir(), 'vclean_test_${os.getpid()}')
+const original_dir = os.getwd()
 
-const tfolder = os.join_path(os.vtmp_dir(), 'vclean_test')
+fn testsuite_end() {
+	os.chdir(original_dir)!
+	os.rmdir_all(tfolder)!
+}
 
 fn test_clean_refuses_whitespace_basename_and_preserves_unrelated_file() {
 	root := prepare_project('whitespace')!
@@ -47,6 +51,12 @@ fn default_exe(root string) string {
 	return os.join_path_single(root, os.file_name(root) + exe_postfix())
 }
 
+fn copy_executable_fixture(root string) !string {
+	exe := default_exe(root)
+	os.cp(os.executable(), exe)!
+	return exe
+}
+
 // build compiles the project at `root` the way a user would, so that the naming
 // the tests assert against is the compiler's own and not a copy of it.
 fn build(root string) ! {
@@ -74,7 +84,8 @@ fn test_clean_removes_what_the_compiler_wrote() {
 // executable is named after the file, not after the folder holding it.
 fn test_clean_accepts_a_single_source_file() {
 	root := prepare_project('singlefile')!
-	build(root)!
+	os.chdir(root)!
+	project_exe := copy_executable_fixture(root)!
 	// A second entry point beside the first, so a named file has its own output.
 	os.write_file(os.join_path(root, 'tool.v'), "module main\n\nfn main() {\n\tprintln('tool')\n}\n")!
 	res := os.exec([@VEXE, 'tool.v'])
@@ -84,12 +95,13 @@ fn test_clean_accepts_a_single_source_file() {
 	out := os.exec([@VEXE, 'clean', 'tool.v'])
 	assert out.exit_code == 0, out.output
 	assert !os.exists(exe), '${exe} is still there'
+	assert os.is_file(project_exe), 'cleaning a source file must preserve the project executable'
 }
 
 fn test_clean_dry_run_changes_nothing() {
 	root := prepare_project('dryrun')!
-	build(root)!
-	exe := default_exe(root)
+	os.chdir(root)!
+	exe := copy_executable_fixture(root)!
 	res := os.exec([@VEXE, 'clean', '-n', '.'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('rm ${exe}'), res.output
@@ -100,15 +112,17 @@ fn test_clean_dry_run_changes_nothing() {
 // most here: only the one predictable name is ever removed.
 fn test_clean_leaves_unrelated_files_alone() {
 	root := prepare_project('unrelated')!
-	build(root)!
+	os.chdir(root)!
+	exe := copy_executable_fixture(root)!
 	decoy := os.join_path_single(root, 'other' + exe_postfix())
 	os.write_file(decoy, 'not a build output')!
 	notes := os.join_path(root, 'notes.txt')
 	os.write_file(notes, 'notes')!
 	res := os.exec([@VEXE, 'clean', '.'])
 	assert res.exit_code == 0, res.output
-	assert os.is_file(decoy), 'a file that is not the build output must survive'
-	assert os.is_file(notes), 'an unrelated file must survive'
+	assert !os.exists(exe), '${exe} is still there'
+	assert os.read_file(decoy)! == 'not a build output'
+	assert os.read_file(notes)! == 'notes'
 }
 
 // test_clean_refuses_an_input_it_cannot_name makes sure an unclear path stops
@@ -162,8 +176,7 @@ fn test_clean_reports_failed_removal_and_continues_other_inputs() {
 		return
 	}
 	root := prepare_project('permission_failure')!
-	build(root)!
-	exe := default_exe(root)
+	exe := copy_executable_fixture(root)!
 	os.chmod(root, 0o555)!
 	defer { os.chmod(root, 0o755) or {} }
 	// Root and some filesystem configurations ignore directory mode bits.
@@ -175,10 +188,10 @@ fn test_clean_reports_failed_removal_and_continues_other_inputs() {
 		return
 	}
 	other := prepare_project('permission_other')!
-	build(other)!
+	other_exe := copy_executable_fixture(other)!
 	res := os.exec([@VEXE, 'clean', root, '${other}'])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot remove'), res.output
 	assert os.is_file(exe)
-	assert !os.exists(default_exe(other))
+	assert !os.exists(other_exe)
 }
