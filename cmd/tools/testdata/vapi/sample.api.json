@@ -74,6 +74,7 @@
 			"attrs":	[],
 			"generics":	[],
 			"methods":	[{
+					"is_mut":	false,
 					"name":	"greet",
 					"params":	[{
 							"is_mut":	false,

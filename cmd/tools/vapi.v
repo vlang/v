@@ -98,6 +98,7 @@ pub:
 	name   string
 	params []ApiParam
 	ret    string @[json: 'return']
+	is_mut bool
 }
 
 // ApiInterface is one public interface.
@@ -228,6 +229,10 @@ fn print_usage() {
 }
 
 // collect_v_files lists the V sources that make up the module at target.
+// Only files directly in the target directory belong to the module: every
+// subdirectory is its own (sub)module, so recursing would silently merge
+// unrelated declarations (e.g. `hello` from `collision` and `hello` from
+// `collision.child`) into one snapshot under a single module name.
 fn collect_v_files(target string) []string {
 	if os.is_file(target) {
 		if target.ends_with('.v') {
@@ -236,27 +241,18 @@ fn collect_v_files(target string) []string {
 		return []string{}
 	}
 	root := os.real_path(target)
+	entries := os.ls(root) or { return []string{} }
 	mut files := []string{}
-	collect_dir(root, root, mut files)
-	files.sort()
-	return files
-}
-
-fn collect_dir(root string, dir string, mut files []string) {
-	entries := os.ls(dir) or { return }
 	for entry in entries {
-		path := os.join_path(dir, entry)
-		if os.is_dir(path) {
-			if path != root && os.is_file(os.join_path(path, 'v.mod')) {
-				continue
-			}
-			collect_dir(root, path, mut files)
-		} else if entry.ends_with('.v') && !entry.ends_with('_test.v')
+		path := os.join_path(root, entry)
+		if os.is_file(path) && entry.ends_with('.v') && !entry.ends_with('_test.v')
 			&& !entry.ends_with('.js.v') && !entry.ends_with('.native.v')
 			&& !entry.ends_with('.wasm.v') {
 			files << os.real_path(path)
 		}
 	}
+	files.sort()
+	return files
 }
 
 // snapshot_module builds the deterministic public API snapshot of target.
@@ -282,8 +278,11 @@ fn snapshot_module(target string) !ApiSnapshot {
 	mut mod_name := ''
 	for node in a.nodes {
 		if node.kind == .module_decl {
-			mod_name = node.value
-			break
+			if mod_name == '' {
+				mod_name = node.value
+			} else if node.value != mod_name {
+				return error('mixed modules `${mod_name}` and `${node.value}` in `${target}`; snapshot one module at a time')
+			}
 		}
 	}
 	if mod_name == '' {
@@ -526,6 +525,7 @@ fn iface_from_node(a &flat.FlatAst, tc &types.TypeChecker, idx int) ApiInterface
 			name:   cn.value
 			params: params
 			ret:    ret
+			is_mut: cn.is_mut
 		}
 	}
 	methods.sort(a.name < b.name)
@@ -732,6 +732,8 @@ fn encode_snapshot(s ApiSnapshot) string {
 		for m in it.methods {
 			w.array_item()
 			w.begin_object()
+			w.key('is_mut')
+			w.boolean(m.is_mut)
 			w.key('name')
 			w.string(m.name)
 			w.key('params')
@@ -1157,6 +1159,9 @@ fn check_interfaces(base ApiSnapshot, cur ApiSnapshot, mut breaking []string, mu
 			}
 			if bm.ret != cm.ret {
 				breaking << 'interface `${name}` method `${mname}` return changed `${bm.ret}` -> `${cm.ret}`'
+			}
+			if bm.is_mut != cm.is_mut {
+				breaking << 'interface `${name}` method `${mname}` mutability changed'
 			}
 		}
 		for mname, _ in cur_methods {
