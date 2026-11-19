@@ -138,6 +138,11 @@ a textured and a flat-colored cube with the space bar.
 loads mesh primitives from a glTF 2.0 `.gltf` (embedded or external buffers,
 float attributes, 8/16/32-bit indices). Neither loader reads skins,
 animations or texture images.
+`mat4_from_m4()` and `mat4_to_m4()` bridge `gg.m4.Mat4` and the matrix type
+used by `gg/render`. `m4` applies matrices to row vectors while `gg/render`
+uses column vectors, so the helpers transform the basis vectors instead of
+copying the 16 floats; this keeps `m4.mul_vec()` and the render matrix
+equivalent.
 
 ## Multi-Window Applications
 
