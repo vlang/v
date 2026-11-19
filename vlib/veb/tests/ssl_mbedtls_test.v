@@ -6,6 +6,8 @@ import time
 import veb
 
 const https_port = 13013
+const https_timeout_seconds = 1
+const slow_head_close_limit = https_timeout_seconds * time.second + 800 * time.millisecond
 
 pub struct Context {
 	veb.Context
@@ -48,7 +50,7 @@ fn test_veb_serves_https_requests() ! {
 		host:               '127.0.0.1'
 		port:               https_port
 		family:             .ip
-		timeout_in_seconds: 2
+		timeout_in_seconds: https_timeout_seconds
 		ssl_config:         mbedtls.SSLConnectConfig{
 			cert:     cert_path
 			cert_key: key_path
@@ -119,7 +121,11 @@ fn test_veb_closes_a_slow_https_request_head() ! {
 	slow.set_read_timeout(4 * time.second)
 	slow.write_string('GET / HTTP/1.1\r\nX-Slow: ')!
 	started := time.new_stopwatch()
-	for _ in 0 .. 30 {
+	// Keep delivering bytes until the absolute request-head deadline closes the connection.
+	for {
+		if started.elapsed() >= slow_head_close_limit {
+			return error('slow request stayed open after ${started.elapsed()}')
+		}
 		time.sleep(100 * time.millisecond)
 		slow.write_string('a') or { break }
 	}
@@ -137,5 +143,5 @@ fn test_veb_closes_a_slow_https_request_head() ! {
 	}
 	response_text := response.bytestr()
 	assert response_text == '' || response_text.starts_with('HTTP/1.1 400 Bad Request\r\n'), response_text
-	assert started.elapsed() < 2800 * time.millisecond, 'slow request closed after ${started.elapsed()}'
+	assert started.elapsed() < slow_head_close_limit, 'slow request closed after ${started.elapsed()}'
 }
