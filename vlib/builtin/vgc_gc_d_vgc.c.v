@@ -10,6 +10,7 @@ module builtin
 fn C.v3_vgc_mark_global_arrays()
 fn C.vgc_data_ranges(lo &uint, hi &uint, max int) int
 fn C.vgc_read_candidate(address voidptr) uint
+fn C.vgc_ctz64(mask u64) u8
 fn C.vgc_current_fake_stack() voidptr
 fn C.vgc_real_stack_address(fake_stack voidptr, address uint) uint
 fn C.vgc_fake_frame_range(fake_stack voidptr, address uint, begin &uint, end &uint) uint
@@ -287,12 +288,28 @@ fn vgc_scan_range(lo uint, hi uint) {
 	// Align to word boundaries
 	start := (lo + sizeof(uint) - 1) & ~(uint(sizeof(uint)) - 1)
 	mut addr := start
-	for addr + sizeof(uint) <= hi {
+	word := sizeof(uint)
+	// Fetch eight words per iteration. Shading still validates each candidate,
+	// but the loads are adjacent so gcc/clang can keep them in flight, which is
+	// the portable form of the GreenTea "scan a range in order" idea.
+	chunk := word * 8
+	for addr + chunk <= hi {
+		vgc_shade(C.vgc_read_candidate(voidptr(addr)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 2)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 3)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 4)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 5)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 6)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 7)))
+		addr += chunk
+	}
+	for addr + word <= hi {
 		val := C.vgc_read_candidate(voidptr(addr))
 		if val != 0 {
 			vgc_shade(val)
 		}
-		addr += sizeof(uint)
+		addr += word
 	}
 }
 
@@ -413,41 +430,16 @@ fn vgc_drain_mark_work() {
 fn vgc_scan_precise(obj_addr uint, ptrmap u64, ptr_words u8) {
 	mut mask := ptrmap
 	word_size := sizeof(uint)
+	// One count-trailing-zeros per pointer word, rather than a six-step
+	// binary search. vgc_ctz64 lowers to a single instruction on gcc/clang
+	// and MSVC x64; the portable fallback is a short shift loop for tcc.
 	for mask != 0 {
-		// Find lowest set bit (next pointer offset)
-		mut bit := u8(0)
-		mut m := mask
-		// Count trailing zeros to find the bit position
-		if m & 0xFFFFFFFF == 0 {
-			bit += 32
-			m >>= 32
-		}
-		if m & 0xFFFF == 0 {
-			bit += 16
-			m >>= 16
-		}
-		if m & 0xFF == 0 {
-			bit += 8
-			m >>= 8
-		}
-		if m & 0xF == 0 {
-			bit += 4
-			m >>= 4
-		}
-		if m & 0x3 == 0 {
-			bit += 2
-			m >>= 2
-		}
-		if m & 0x1 == 0 {
-			bit += 1
-		}
-		// Read the pointer at this offset
+		bit := C.vgc_ctz64(mask)
 		ptr_addr := obj_addr + uint(bit) * word_size
 		val := C.vgc_read_candidate(voidptr(ptr_addr))
 		if val != 0 {
 			vgc_shade(val)
 		}
-		// Clear this bit and continue
 		mask &= mask - 1
 	}
 }
