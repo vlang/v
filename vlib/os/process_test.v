@@ -1,12 +1,10 @@
 import io
 import os
+import os.cmdline
 import time
 
-const vexe = os.getenv('VEXE')
-const vroot = os.dir(vexe)
 const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests_${os.getpid()}')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
-const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 const delayed_output_exe_filename = os.join_path(tfolder, 'delayed_output.exe')
 const pipe_output_exe_filename = os.join_path(tfolder, 'pipe_output.exe')
 const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
@@ -76,7 +74,20 @@ fn run_process_io_fixture(name string) bool {
 				wait_for_stdin()
 			}
 		}
-		'exact_tool.exe.exe', 'pathext_tool.exe' {
+		'test_os_process.exe', 'test os process.exe', 'process_from_path.exe', 'preferred_tool.exe',
+		'exact_tool.exe', 'pathext_tool.com' {
+			args := os.args[1..]
+			if '-show_wd' in args {
+				println('stdout, WORK_DIR=${os.getwd()}')
+			}
+			if '-show_env' in args {
+				for key, value in os.environ() {
+					println('stdout, ${key}=${value}')
+				}
+			}
+			exit(cmdline.option(args, '-exitcode', '0').int())
+		}
+		'exact_tool.exe.exe', 'pathext_tool.exe', 'where.exe' {
 			// The executable lookup tests expect these decoys to exit with 0.
 		}
 		'spawn.exe' {
@@ -99,16 +110,16 @@ fn testsuite_begin() {
 	}
 	os.rmdir_all(tfolder) or {}
 	os.mkdir_all(tfolder)!
-	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
+	prebuilt := os.getenv('WINE_TEST_OS_PROCESS_EXE')
+	if prebuilt != '' {
 		// Make it easier to run the test under wine emulation, by just
 		// prebuilding the executable with:
 		//   v -os windows -o x.exe cmd/tools/test_os_process.v
 		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v
-		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process)!
+		os.cp(prebuilt, test_os_process)!
 	} else {
-		os.system_args([vexe, '-o', '${test_os_process}', test_os_process_source])
+		os.cp(os.executable(), test_os_process)!
 	}
-	assert os.exists(test_os_process)
 
 	for fixture in [echo_process_exe_filename, utf16le_output_exe_filename, stdin_exit_exe_filename,
 		stdin_copy_exe_filename, argv_echo_exe_filename, delayed_output_exe_filename,
@@ -144,7 +155,7 @@ fn test_set_work_folder() {
 	p.set_redirect_stdio()
 	p.wait()
 	assert p.code == 0
-	output := p.stdout_slurp().trim_space()
+	output := p.stdout_slurp()
 	p.close()
 	$if trace_process_output ? {
 		eprintln('p output: "${output}"')
@@ -414,31 +425,31 @@ fn test_new_process_tries_the_suffixes_in_pathext_order_on_windows() {
 
 fn test_run() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '150', '-period_ms', '50'])
+	mut p := os.new_process(delayed_output_exe_filename)
+	p.set_args(['--wait-for-stdin'])
+	p.set_redirect_stdio()
 	p.run()
+	defer {
+		p.close()
+	}
 	assert p.status == .running
 	assert p.pid > 0
 	assert p.pid != os.getpid()
-	mut i := 0
-	for {
-		if !p.is_alive() {
-			break
-		}
+	assert p.is_alive()
+
+	p.stdin_write('continue\n')
+	sw := time.new_stopwatch()
+	for p.is_alive() && sw.elapsed() < echo_wait_timeout * time.second {
 		$if trace_process_output ? {
 			os.system_args(['ps', '-opid=', '-oppid=', '-ouser=', '-onice=', '-of=', '-ovsz=',
 				'-orss=', '-otime=', '-oargs=', '-p', '${p.pid}'])
 		}
-		time.sleep(50 * time.millisecond)
-		i++
+		time.sleep(time.millisecond)
 	}
+	assert !p.is_alive(), 'child should exit after receiving stdin'
 	p.wait()
 	assert p.code == 0
 	assert p.status == .exited
-
-	eprintln('polling iterations: ${i}')
-	assert i < 50
-	p.close()
 }
 
 fn test_wait() {
@@ -655,7 +666,7 @@ fn concurrent_spawn_worker(id int, spawns int) int {
 	for i in 0 .. spawns {
 		expected := (id + i) % 5
 		mut p := os.new_process(test_os_process)
-		p.set_args(['-exitcode', '${expected}', '-timeout_ms', '50', '-period_ms', '200'])
+		p.set_args(['-exitcode', '${expected}', '-timeout_ms', '0'])
 		p.set_redirect_stdio()
 		p.wait()
 		_ = p.stdout_slurp()
