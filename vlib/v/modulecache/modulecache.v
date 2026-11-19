@@ -5500,6 +5500,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	mut seen := map[string]bool{}
 	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
+	mut mapped_declarations := []string{}
 	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
@@ -5587,7 +5588,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				// back to its source file. Only such bodies get a directive: the header
 				// is its dependents' signature, and line numbers make every edit above
 				// the declaration change it.
-				line_directive := if source_embedded && raw_source.text.contains('panic(') {
+				line_directive := if source_embedded && node_calls_panic(a, effective_id) {
 					cached_declaration_line_directive(a, node, raw_source.start, prefix_lines)
 				} else {
 					''
@@ -5602,15 +5603,13 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
 				if line_directive.len > 0 {
-					out.writeln(line_directive)
-					out.writeln(text)
-					// Number the rest of the header by its own lines again: the line after
-					// this directive is the physical line `newlines + 2`.
-					out.writeln('#line ${builder_newline_count(out) + 2}')
+					// A `#line` directive maps all the lines after it, so the mapped
+					// declarations go last, each after its own directive.
+					mapped_declarations << '${line_directive}\n${text}'
 				} else {
 					out.writeln(text)
+					out.writeln('')
 				}
-				out.writeln('')
 			}
 		}
 	}
@@ -5626,6 +5625,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		}
 		text := header_import_text(a, node, import_paths, mut selected_imports)
 		seen[key] = true
+		out.writeln(text)
+		out.writeln('')
+	}
+	for text in mapped_declarations {
 		out.writeln(text)
 		out.writeln('')
 	}
@@ -5893,6 +5896,30 @@ struct CachedSourcePathEdit {
 	replacement string
 }
 
+// node_calls_panic reports whether the declaration `id` calls `panic`. It matches
+// the callee by name, because the bodies of generic functions stay unresolved; a
+// function of that name of the module's own only costs a needless directive.
+fn node_calls_panic(a &flat.FlatAst, id flat.NodeId) bool {
+	mut pending := [id]
+	for pending.len > 0 {
+		current := pending.pop()
+		if int(current) < 0 || int(current) >= a.nodes.len {
+			continue
+		}
+		node := a.nodes[int(current)]
+		if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value == 'panic' {
+				return true
+			}
+		}
+		for i in 0 .. node.children_count {
+			pending << a.child(&node, i)
+		}
+	}
+	return false
+}
+
 // cached_declaration_line_directive returns a `#line` directive that maps the
 // declaration source starting at byte `start` (preceded by `prefix_lines` extra
 // header lines) back to its logical source position.
@@ -5909,17 +5936,6 @@ fn cached_declaration_line_directive(a &flat.FlatAst, node flat.Node, start int,
 	}
 	name := position.filename.replace('\\', '\\\\').replace('"', '\\"')
 	return '#line ${line} "${name}"'
-}
-
-@[direct_array_access]
-fn builder_newline_count(b strings.Builder) int {
-	mut count := 0
-	for i in 0 .. b.len {
-		if b[i] == `\n` {
-			count++
-		}
-	}
-	return count
 }
 
 fn cached_embedded_declaration_source(source string, vroot string, source_file string, source_line int) string {

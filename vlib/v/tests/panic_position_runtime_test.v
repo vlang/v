@@ -80,6 +80,7 @@ fn test_print_backtrace_keeps_its_caller() {
 	assert frames == ['show()', 'main()'], result.output
 }
 
+// The panics are on lines 11, 19 and 27.
 const generic_module_source = "module probe
 
 pub fn ok() int {
@@ -94,7 +95,30 @@ pub fn fail[T](x T) T {
 	}
 	return y
 }
+
+pub fn fail_spaced[T](x T) T {
+	y := x
+	if true {
+		panic ('spaced')
+	}
+	return y
+}
+
+pub fn fail_commented[T](x T) T {
+	y := x
+	if true {
+		panic/* why */('commented')
+	}
+	return y
+}
 "
+
+const generic_module_second_source = 'module probe
+
+pub fn length_of[T](value T) int {
+	return value.len
+}
+'
 
 // test_cached_generic_panic_keeps_its_source_position checks that a generic body,
 // which a warm build reparses from the module cache header, still reports the line
@@ -110,8 +134,11 @@ fn test_cached_generic_panic_keeps_its_source_position() {
 	root := os.join_path(vtmp_folder, 'generic_module')
 	module_dir := os.join_path(root, 'modules', 'probe')
 	os.mkdir_all(module_dir) or { panic(err) }
-	module_path := os.join_path(module_dir, 'probe.v')
+	module_path := os.join_path(module_dir, 'a.v')
 	os.write_file(module_path, generic_module_source) or { panic(err) }
+	os.write_file(os.join_path(module_dir, 'b.v'), generic_module_second_source) or {
+		panic(err)
+	}
 	old_vmodules := os.getenv('VMODULES')
 	old_vtmp := os.getenv('VTMP')
 	os.setenv('VMODULES', os.join_path(root, 'modules'), true)
@@ -120,9 +147,16 @@ fn test_cached_generic_panic_keeps_its_source_position() {
 		os.setenv('VMODULES', old_vmodules, true)
 		os.setenv('VTMP', old_vtmp, true)
 	}
-	// The first build caches `probe`; the second one specializes `fail` again from
-	// the cached header.
-	for i, call in ['probe.fail[int](3)', "probe.fail[string]('s')"] {
+	// The first build caches `probe`; the later ones specialize its functions again
+	// from the cached header.
+	cases := {
+		'probe.fail[int](3)':                      11
+		"probe.fail[string]('s')":                 11
+		"probe.fail_spaced[string]('s')":          19
+		'probe.fail_commented[f64](1.5)':          27
+		"println(probe.length_of[string]('abc'))": 0
+	}
+	for i, call in cases.keys() {
 		source_path := os.join_path(root, 'main_${i}.v')
 		exe_path := os.join_path(root, 'main_${i}${exe_suffix()}')
 		os.write_file(source_path, 'import probe\n\nfn main() {\n\tprintln(probe.ok())\n\t${call}\n}\n') or {
@@ -131,9 +165,23 @@ fn test_cached_generic_panic_keeps_its_source_position() {
 		compilation := os.exec([vexe, '-cc', 'cc', '-o', exe_path, source_path])
 		assert compilation.exit_code == 0, 'compilation failed: ${compilation.output}'
 		result := os.exec([exe_path])
+		line := cases[call]
+		if line == 0 {
+			assert result.exit_code == 0, result.output
+			continue
+		}
 		assert result.exit_code == 1, result.output
-		assert result.output.contains('     at: ${module_path}:11 in probe.fail'), result.output
+		assert result.output.contains('     at: ${module_path}:${line} in probe.fail'), result.output
 	}
+	// A declaration after a mapped one must not report the mapped one's file.
+	source_path := os.join_path(root, 'main_error.v')
+	os.write_file(source_path, 'import probe\n\nfn main() {\n\tprintln(probe.length_of[int](3))\n}\n') or {
+		panic(err)
+	}
+	compilation := os.exec([vexe, '-cc', 'cc', '-o', os.join_path(root, 'main_error'), source_path])
+	assert compilation.exit_code != 0, compilation.output
+	assert compilation.output.contains('has no property `len`'), compilation.output
+	assert !compilation.output.contains('a.v:'), compilation.output
 }
 
 fn compile_and_run_panic_program(name string, flags []string) (string, string) {
