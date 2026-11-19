@@ -2010,6 +2010,17 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	if interface_fixed_fields.len > 0 {
 		g.write('({${name} ${interface_fixed_tmp} = (${name}){')
 	}
+	// With -gc vgc, use a compile-time pointer map for plain structs whose
+	// pointer-bearing fields are all direct pointers or strings. Everything
+	// else (alignment, fixed arrays, unions, nested pointer layouts) keeps
+	// the existing conservative memdup path.
+	mut vgc_ptrmap := ''
+	mut vgc_ptr_words := 0
+	if 'vgc' in g.compile_defines && !is_union_init && !is_sum_literal
+		&& interface_fixed_fields.len == 0 && clean_init_type is types.Struct {
+		vgc_ptrmap, vgc_ptr_words = g.vgc_struct_ptrmap_expr(lookup_name, name)
+	}
+	use_vgc_typed := vgc_ptrmap.len > 0
 	mut align_arg := ''
 	mut seen_aligned := map[u32]bool{}
 	if align := g.struct_decl_alignment_for_init_names(node.source_value_id(), lookup_name) {
@@ -2024,7 +2035,11 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 	} else {
 		if interface_fixed_fields.len == 0 {
-			g.write('(${name}*)memdup(&(${name}){')
+			g.write(if use_vgc_typed {
+				'(${name}*)vgc_memdup_typed(&(${name}){'
+			} else {
+				'(${name}*)memdup(&(${name}){'
+			})
 		}
 	}
 	mut allowed_fields := map[string]bool{}
@@ -2211,10 +2226,47 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 	} else if align_arg.len > 0 {
 		g.write('}, sizeof(${name}), ${align_arg})')
+	} else if use_vgc_typed {
+		g.write('}, (int)sizeof(${name}), (u64)(${vgc_ptrmap}), (u8)${vgc_ptr_words})')
 	} else {
 		g.write('}, sizeof(${name}))')
 	}
 	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
+}
+
+// vgc_struct_ptrmap_expr builds a C expression with one bit per pointer word
+// of a struct, using offsetof so the compiler, not the V code generator, owns
+// the target's field layout. Only direct pointer/string fields are precise;
+// a field that contains pointers in a nested layout makes the whole struct
+// fall back to conservative scanning, which is always safe. A word count is
+// returned alongside the expression for vgc_memdup_typed's ptr_words argument.
+fn (g &FlatGen) vgc_struct_ptrmap_expr(source_id u32, c_name string) (string, int) {
+	fields := g.struct_fields_for_type(source_id) or { return '', 0 }
+	mut terms := []string{}
+	mut words := 0
+	for field in fields {
+		typ := unalias_type(field.typ)
+		direct := typ is types.Pointer || typ is types.String
+		mut seen := map[u32]bool{}
+		if !g.type_is_reftype(field.typ, mut seen) {
+			continue
+		}
+		if !direct {
+			// Nested pointers, arrays, maps, interfaces and sums need a
+			// layout-aware recursive map. Keep the conservative path for now.
+			return '', 0
+		}
+		if words >= 64 {
+			return '', 0
+		}
+		cfield := g.init_field_c_name(source_id, field.name)
+		terms << '((u64)1 << ((offsetof(${c_name}, ${cfield})) / sizeof(voidptr)))'
+		words++
+	}
+	if words == 0 {
+		return '', 0
+	}
+	return terms.join(' | '), words
 }
 
 fn (g &FlatGen) struct_init_has_named_field(node flat.Node, name string) bool {
