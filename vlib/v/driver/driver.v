@@ -22397,6 +22397,9 @@ mut:
 	needs_debugger       bool
 	has_debugger         bool
 	has_overflow         bool
+	// needs_overflow is set when a scanned `@[overflow: 'checked']` or
+	// `@[overflow: 'saturating']` function needs the `builtin.overflow` helpers.
+	needs_overflow bool
 }
 
 // ImplicitScanFlags are what an implicit-import scan found so far.
@@ -22410,6 +22413,7 @@ struct ImplicitScanFlags {
 	needs_debugger   bool
 	has_debugger     bool
 	has_overflow     bool
+	needs_overflow   bool
 }
 
 fn (scan &ImplicitImportScan) flags() ImplicitScanFlags {
@@ -22423,6 +22427,7 @@ fn (scan &ImplicitImportScan) flags() ImplicitScanFlags {
 		needs_debugger:   scan.needs_debugger
 		has_debugger:     scan.has_debugger
 		has_overflow:     scan.has_overflow
+		needs_overflow:   scan.needs_overflow
 	}
 }
 
@@ -22437,6 +22442,7 @@ fn (mut scan ImplicitImportScan) add_flags(flags ImplicitScanFlags) {
 	scan.needs_debugger = scan.needs_debugger || flags.needs_debugger
 	scan.has_debugger = scan.has_debugger || flags.has_debugger
 	scan.has_overflow = scan.has_overflow || flags.has_overflow
+	scan.needs_overflow = scan.needs_overflow || flags.needs_overflow
 }
 
 // PreparedScan is the implicit-import scan of the modules a diagnostics server
@@ -22555,7 +22561,7 @@ fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_
 		a.add_node(debugger_import_node())
 		scan.has_debugger = true
 	}
-	if check_overflow && !scan.has_overflow {
+	if (check_overflow || scan.needs_overflow) && !scan.has_overflow {
 		a.add_node(overflow_import_node())
 		scan.has_overflow = true
 	}
@@ -22571,6 +22577,51 @@ fn sync_import_node() flat.Node {
 		value: 'sync'
 		typ:   flat.source_type_id('sync')
 	}
+}
+
+// overflow_attr_name_view borrows the name of a raw attribute: the text before
+// its first `:`, without surrounding whitespace. It mirrors the code
+// generator's spelling so the import scan agrees with emission on which
+// functions carry a policy.
+fn overflow_attr_name_view(raw string) string {
+	mut end := raw.len
+	for i in 0 .. raw.len {
+		if raw[i] == `:` {
+			end = i
+			break
+		}
+	}
+	mut start := 0
+	for start < end && raw[start] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		start++
+	}
+	for end > start && raw[end - 1] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		end--
+	}
+	if start == 0 && end == raw.len {
+		return raw
+	}
+	return raw[start..end]
+}
+
+// overflow_directive_needs_helpers reports whether an `@attributes:` directive
+// node targets a function whose `overflow` policy needs the `builtin.overflow`
+// helpers: `checked` instruments the body and `saturating` clamps it, while the
+// default and `wrapping` need no helper calls.
+fn overflow_directive_needs_helpers(node &flat.Node) bool {
+	if node.kind != .directive || !node.value.starts_with('@attributes:') {
+		return false
+	}
+	for raw_attr in node.generic_params() {
+		if overflow_attr_name_view(raw_attr) != 'overflow' || !raw_attr.contains(':') {
+			continue
+		}
+		value := raw_attr.all_after(':').trim_space().trim('\'"').to_lower_ascii()
+		if value in ['checked', 'saturating'] {
+			return true
+		}
+	}
+	return false
 }
 
 // watched_v_source_paths returns the resolved paths of the `.v`, `.vv` and `.vsh`
@@ -22788,6 +22839,9 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 			} else if node.value == 'builtin.overflow' {
 				scan.has_overflow = true
 			}
+		}
+		if !scan.needs_overflow && overflow_directive_needs_helpers(node) {
+			scan.needs_overflow = true
 		}
 		if node.kind == .debugger_stmt {
 			scan.needs_debugger = true

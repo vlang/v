@@ -128,6 +128,34 @@ fn cgen_attr_name_view(raw string) string {
 	return unsafe { raw.substr_unsafe(start, end) }
 }
 
+// Overflow policies for `@[overflow: '...']` function attributes. The default
+// follows the `-check-overflow` flag, `checked` always instruments the function,
+// `wrapping` keeps modular arithmetic, and `saturating` clamps results to the
+// limits of the type. `@[ignore_overflow]` means `wrapping`.
+const overflow_policy_default = u8(0)
+const overflow_policy_checked = u8(1)
+const overflow_policy_wrapping = u8(2)
+const overflow_policy_saturating = u8(3)
+
+// overflow_policy_from_value maps an `overflow` attribute value to its policy.
+// Anything but the three known spellings is the default; the checker reports
+// the invalid value, so code generation stays quiet and predictable here.
+fn overflow_policy_from_value(value string) u8 {
+	return match value.to_lower_ascii() {
+		'checked' { overflow_policy_checked }
+		'wrapping' { overflow_policy_wrapping }
+		'saturating' { overflow_policy_saturating }
+		else { overflow_policy_default }
+	}
+}
+
+// overflow_policy_of_attrs reads the `overflow` policy from raw attribute
+// texts like `overflow: 'checked'`, defaulting when it is absent or invalid.
+fn overflow_policy_of_attrs(raw_attrs []string) u8 {
+	value := cgen_decl_attr_arg(raw_attrs, 'overflow') or { return overflow_policy_default }
+	return overflow_policy_from_value(value)
+}
+
 fn manual_stdlib_c_headers() string {
 	// Some platform headers expose formatted I/O and memory functions as fortified
 	// macros. Undefine those macros before replaying V1's manual declarations.
@@ -904,32 +932,35 @@ mut:
 	is_debug                       bool
 	check_overflow                 bool
 	ignore_overflow                bool
-	check_casts                    bool
-	check_scope_vlib_prefixes      []string
-	user_code_checks               bool
-	force_bounds_checking          bool
-	is_shared                      bool
-	interface_exports              []string
-	object_file_mode               bool
-	tcc_program_unit               bool
-	native_function_aliases        map[string]string
-	no_builtin                     bool
-	suppress_main                  bool
-	coverage_dir                   string
-	coverage_build_options         string
-	race                           bool
-	line_directives                bool
-	vlines                         bool
-	line_directive_paths           map[string]string
-	line_directive_fn_start        int
-	coverage_files                 map[string]&CoverageInfo
-	coverage_counter_count         int
-	cache_program_files            map[string]bool
-	incremental_fn_names           map[string]bool
-	str_lits                       []string
-	str_lit_ids                    map[string]int
-	str_lits_shared                bool
-	str_lit_chunk_indexes          []int // body chunk of each literal past str_lits_base_len
+	// overflow_policy is the `@[overflow: '...']` policy of the function being
+	// generated (default/checked/wrapping/saturating, see overflow_policy_*).
+	overflow_policy           u8
+	check_casts               bool
+	check_scope_vlib_prefixes []string
+	user_code_checks          bool
+	force_bounds_checking     bool
+	is_shared                 bool
+	interface_exports         []string
+	object_file_mode          bool
+	tcc_program_unit          bool
+	native_function_aliases   map[string]string
+	no_builtin                bool
+	suppress_main             bool
+	coverage_dir              string
+	coverage_build_options    string
+	race                      bool
+	line_directives           bool
+	vlines                    bool
+	line_directive_paths      map[string]string
+	line_directive_fn_start   int
+	coverage_files            map[string]&CoverageInfo
+	coverage_counter_count    int
+	cache_program_files       map[string]bool
+	incremental_fn_names      map[string]bool
+	str_lits                  []string
+	str_lit_ids               map[string]int
+	str_lits_shared           bool
+	str_lit_chunk_indexes     []int // body chunk of each literal past str_lits_base_len
 	// Worker snapshots inherit this immutable prefix from their parent generator.
 	str_lits_base_len int
 	global_types      map[string]types.Type
@@ -19581,7 +19612,9 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 	} else {
 		value_type
 	}
-	helper := if normalize_bool {
+	helper := if g.fn_overflow_saturating() {
+		g.integer_overflow_sat_helper(helper_type, op) or { return false }
+	} else if normalize_bool {
 		''
 	} else {
 		g.integer_overflow_helper(helper_type, op) or { return false }
@@ -28755,7 +28788,13 @@ fn (g &FlatGen) translated_bool_destination(id flat.NodeId, typ &types.Type) boo
 }
 
 fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
-	if !g.check_overflow || g.ignore_overflow || node.op !in [.plus, .minus, .mul] {
+	if node.op !in [.plus, .minus, .mul] {
+		return false
+	}
+	if g.fn_overflow_saturating() {
+		return g.gen_saturating_integer_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type)
+	}
+	if !g.fn_overflow_checked() {
 		return false
 	}
 	mut helper_type := lhs_type
@@ -28793,14 +28832,70 @@ fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs
 	return true
 }
 
+// gen_saturating_integer_infix writes `lhs op rhs` for `@[overflow:
+// 'saturating']` through a helper that clamps to the limits of the type,
+// mirroring gen_checked_integer_infix without any panic.
+fn (mut g FlatGen) gen_saturating_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	mut helper_type := lhs_type
+	mut translated_ct := ''
+	if g.expr_is_in_translated_file(id) && translated_integer_scalar_type(lhs_type)
+		&& translated_integer_scalar_type(rhs_type) {
+		result_type := unalias_type(g.usable_expr_type(id))
+		if result_type.is_integer() {
+			helper_type = if result_type.source_type_id() == flat.source_type_int {
+				g.tc.parse_type(flat.source_type_i32)
+			} else {
+				result_type
+			}
+			translated_ct = g.translated_numeric_c_type(id, result_type)
+		}
+	}
+	helper := g.integer_overflow_sat_helper(helper_type, node.op) or { return false }
+	g.write('${helper}(')
+	if translated_ct.len > 0 {
+		g.write('(${translated_ct})(')
+	}
+	g.gen_expr(lhs_id)
+	if translated_ct.len > 0 {
+		g.write(')')
+	}
+	g.write(', ')
+	if translated_ct.len > 0 {
+		g.write('(${translated_ct})(')
+	}
+	g.gen_expr(rhs_id)
+	if translated_ct.len > 0 {
+		g.write(')')
+	}
+	g.write(')')
+	return true
+}
+
 fn (g &FlatGen) integer_overflow_helper(typ &types.Type, op flat.Op) ?string {
-	if !g.check_overflow || g.ignore_overflow {
+	if !g.fn_overflow_checked() {
 		return none
 	}
 	op_name := match op {
 		.plus, .plus_assign, .inc { 'add' }
 		.minus, .minus_assign, .dec { 'sub' }
 		.mul, .mul_assign { 'mul' }
+		else { return none }
+	}
+	kind := g.checked_int_kind(typ) or { return none }
+	return 'builtin__overflow__${op_name}_${kind.helper_suffix()}'
+}
+
+// integer_overflow_sat_helper names the `builtin.overflow` helper that clamps
+// `typ` `op` to the limits of the type for `@[overflow: 'saturating']`, or none
+// when the function saturates nothing or the type has no saturating helper.
+fn (g &FlatGen) integer_overflow_sat_helper(typ &types.Type, op flat.Op) ?string {
+	if !g.fn_overflow_saturating() {
+		return none
+	}
+	op_name := match op {
+		.plus, .plus_assign, .inc { 'add_sat' }
+		.minus, .minus_assign, .dec { 'sub_sat' }
+		.mul, .mul_assign { 'mul_sat' }
 		else { return none }
 	}
 	kind := g.checked_int_kind(typ) or { return none }
@@ -28860,18 +28955,53 @@ fn (g &FlatGen) checked_int_kind(typ &types.Type) ?CheckedIntKind {
 	}
 }
 
+// fn_overflow_checked reports whether integer arithmetic in the current function
+// panics on overflow: an explicit `@[overflow: 'checked']` always does, while
+// the default follows `-check-overflow` unless the function wraps.
+fn (g &FlatGen) fn_overflow_checked() bool {
+	if g.overflow_policy == overflow_policy_checked {
+		return true
+	}
+	if g.overflow_policy == overflow_policy_saturating {
+		return false
+	}
+	return g.check_overflow && !g.ignore_overflow
+}
+
+// fn_overflow_saturating reports whether integer arithmetic in the current
+// function clamps to the limits of the type: `@[overflow: 'saturating']`.
+fn (g &FlatGen) fn_overflow_saturating() bool {
+	return g.overflow_policy == overflow_policy_saturating
+}
+
+// fn_user_overflow_checked reports whether negation and shift counts in the
+// current function panic on overflow. An explicit `@[overflow: 'checked']`
+// applies everywhere, including vlib; the flag only applies to user code.
+fn (g &FlatGen) fn_user_overflow_checked() bool {
+	if g.overflow_policy == overflow_policy_checked {
+		return true
+	}
+	if g.overflow_policy == overflow_policy_saturating {
+		return false
+	}
+	return g.check_overflow && g.user_code_checks
+}
+
 // overflow_checks_active reports whether `-check-overflow` instruments the
 // integer arithmetic being generated: `+ - *`, and `/ %` for `min / -1`.
+// A per-function policy overrides the flag: `checked` instruments, while
+// `wrapping` and `saturating` never panic.
 fn (g &FlatGen) overflow_checks_active() bool {
-	return g.check_overflow && !g.ignore_overflow && !g.static_c_initializer
+	return g.fn_overflow_checked() && !g.static_c_initializer
 }
 
 // user_overflow_checks_active reports whether `-check-overflow` instruments the
 // negation of signed integers and the shift counts being generated. vlib relies
 // on both wrapping (`u64(-x)` for `min_i64`) and V's defined result for a shift
 // by the width or more (`x >> (64 - s)` with `s == 0` in `bits.rotate_left_64`).
+// An explicit `@[overflow: 'checked']` instruments every file it is written in.
 fn (g &FlatGen) user_overflow_checks_active() bool {
-	return g.check_overflow && g.user_code_checks && !g.static_c_initializer
+	return g.fn_user_overflow_checked() && !g.static_c_initializer
 }
 
 // cast_checks_active reports whether `-check-casts` instruments the integer
@@ -28883,6 +29013,21 @@ fn (g &FlatGen) cast_checks_active() bool {
 // gen_checked_integer_negation writes `-x` for a signed integer `x` through a
 // helper that panics for the minimum value, whose negation does not fit.
 fn (mut g FlatGen) gen_checked_integer_negation(id flat.NodeId, child_id flat.NodeId) bool {
+	if g.fn_overflow_saturating() && !g.expr_is_in_translated_file(id) {
+		child := g.a.nodes[int(child_id)]
+		if child.kind in [.int_literal, .float_literal] {
+			// The checker validates constant operands; `-128` must stay a literal.
+			return false
+		}
+		kind := g.checked_int_kind(g.usable_expr_type(child_id)) or { return false }
+		if kind.unsigned {
+			return false
+		}
+		g.write('builtin__overflow__neg_sat_${kind.helper_suffix()}(')
+		g.gen_expr(child_id)
+		g.write(')')
+		return true
+	}
 	if !g.user_overflow_checks_active() || g.expr_is_in_translated_file(id) {
 		return false
 	}
@@ -28905,6 +29050,9 @@ fn (mut g FlatGen) gen_checked_integer_negation(id flat.NodeId, child_id flat.No
 // range check, when the target type cannot hold every value of the source type.
 // A value that does not fit panics instead of being truncated or reinterpreted.
 fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Type, arg_id flat.NodeId, arg_type types.Type, ct string) bool {
+	if g.fn_overflow_saturating() && !g.expr_is_in_translated_file(id) {
+		return g.gen_saturating_integer_cast(id, target_type, arg_id, arg_type, ct)
+	}
 	if !g.cast_checks_active() || g.expr_is_in_translated_file(id) {
 		return false
 	}
@@ -28940,6 +29088,73 @@ fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Ty
 	g.gen_cast_value_operand(arg_id, target_type)
 	g.write('); if (${check}) builtin__overflow__${reporter}(${tmp}, _S("${src.name_text()}"), _S("${dst.name_text()}")); (${ct})(${tmp}); })')
 	return true
+}
+
+// gen_saturating_integer_cast writes the integer cast `ct(arg)` for
+// `@[overflow: 'saturating']` with a clamp to the target range, when the target
+// type cannot hold every value of the source type. A value that does not fit
+// saturates at the limit instead of being truncated or reinterpreted.
+fn (mut g FlatGen) gen_saturating_integer_cast(id flat.NodeId, target_type types.Type, arg_id flat.NodeId, arg_type types.Type, ct string) bool {
+	dst := g.checked_int_kind(target_type) or { return false }
+	src := g.checked_int_kind(arg_type) or { return false }
+	tmp := g.tmp_name()
+	clamp := integer_cast_sat_clamp(src, dst, tmp)
+	if clamp.len == 0 {
+		return false
+	}
+	mut lit := g.a.nodes[int(arg_id)]
+	for lit.kind == .paren && lit.children_count > 0 {
+		lit = g.a.nodes[int(g.a.child(&lit, 0))]
+	}
+	if lit.kind == .int_literal {
+		// An untyped literal like `u64(0xcbf29ce484222325)` is only nominally `int`:
+		// compare its exact value with the target range, not the wrapped `int` value.
+		if value := strconv.parse_uint(lit.value.replace('_', ''), util.v_literal_parse_base(lit.value), 64) {
+			limit := if dst.unsigned { dst.bits } else { dst.bits - 1 }
+			if limit >= 64 || value < (u64(1) << limit) {
+				return false
+			}
+		}
+	}
+	if value := g.shift_count_const_value(arg_id, []string{}) {
+		if integer_cast_const_fits(i64(value), src, dst) {
+			return false
+		}
+	}
+	wide := if src.unsigned { 'u64' } else { 'i64' }
+	g.write('({ ${wide} ${tmp} = (${wide})(')
+	g.gen_cast_value_operand(arg_id, target_type)
+	g.write('); ${clamp} (${ct})(${tmp}); })')
+	return true
+}
+
+// integer_cast_sat_clamp returns the C statements that clamp the value `tmp`,
+// widened to `i64`/`u64` from the `src` type, to the `dst` type limits, or ''
+// when every `src` value fits.
+fn integer_cast_sat_clamp(src CheckedIntKind, dst CheckedIntKind, tmp string) string {
+	if !src.unsigned {
+		if !dst.unsigned {
+			if dst.bits >= src.bits {
+				return ''
+			}
+			half := u64(1) << (dst.bits - 1)
+			return 'if (${tmp} < -${half}LL) { ${tmp} = -${half}LL; } else if (${tmp} > ${half - 1}LL) { ${tmp} = ${half - 1}LL; }'
+		}
+		if dst.bits >= src.bits {
+			return 'if (${tmp} < 0) { ${tmp} = 0; }'
+		}
+		return 'if (${tmp} < 0) { ${tmp} = 0; } else if (${tmp} > ${(u64(1) << dst.bits) - 1}LL) { ${tmp} = ${(u64(1) << dst.bits) - 1}LL; }'
+	}
+	if dst.unsigned {
+		if dst.bits >= src.bits {
+			return ''
+		}
+		return 'if (${tmp} > ${(u64(1) << dst.bits) - 1}ULL) { ${tmp} = ${(u64(1) << dst.bits) - 1}ULL; }'
+	}
+	if dst.bits > src.bits {
+		return ''
+	}
+	return 'if (${tmp} > ${(u64(1) << (dst.bits - 1)) - 1}ULL) { ${tmp} = ${(u64(1) << (dst.bits - 1)) - 1}ULL; }'
 }
 
 // integer_cast_range_check returns the C condition under which the value `tmp`,
@@ -29019,6 +29234,15 @@ fn (mut g FlatGen) gen_checked_integer_division_value(lhs_text string, rhs_tmp s
 		g.gen_expr(rhs_id)
 	}
 	g.write('); ')
+	if allow_overflow_check && g.fn_overflow_saturating() {
+		if kind := g.checked_int_kind(result_type) {
+			if !kind.unsigned {
+				op_name := if op in [.div, .div_assign] { 'div_sat' } else { 'mod_sat' }
+				g.write('(${c_type})builtin__overflow__${op_name}_${kind.helper_suffix()}(${lhs_text}, ${rhs_tmp})')
+				return
+			}
+		}
+	}
 	if allow_overflow_check && g.overflow_checks_active() {
 		if kind := g.checked_int_kind(result_type) {
 			if !kind.unsigned {
