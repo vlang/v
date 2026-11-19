@@ -3599,6 +3599,7 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 				&& tc.clone_call_callee_has_checked_arity(err.node, fn_idx))
 			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
 				&& !tc.concrete_guard_options[err.node])
+			|| is_concrete_non_exhaustive_error(err)
 			|| tc.is_container_layout_error(err.msg)
 			|| tc.is_container_type_error(err.msg) {
 			kept << err
@@ -4004,6 +4005,14 @@ fn (tc &TypeChecker) operator_operands_are_plain(id flat.NodeId) bool {
 // `if a != none { if v := a {} }` (see concrete_guard_options).
 fn is_concrete_if_guard_error(msg string) bool {
 	return msg == 'expression should either return an Option or a Result'
+}
+
+// is_concrete_non_exhaustive_error reports whether `err` requires an `else`
+// for a match on an external non-exhaustive enum or sum type. The clone types
+// a generic subject with its concrete type, so this contract diagnostic is
+// reliable for an instance and must survive the instance filter.
+fn is_concrete_non_exhaustive_error(err TypeError) bool {
+	return err.kind == .condition_mismatch && err.msg.starts_with('match on non-exhaustive `')
 }
 
 // operand_is_plain reports whether `id` is a name, a literal, or a field, a
