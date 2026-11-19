@@ -29,6 +29,24 @@ pub fn (a Vec3) scale(s f32) Vec3 {
 	return Vec3{a.x * s, a.y * s, a.z * s}
 }
 
+// cross returns the cross product of two vectors.
+pub fn (a Vec3) cross(b Vec3) Vec3 {
+	return Vec3{
+		x: a.y * b.z - a.z * b.y
+		y: a.z * b.x - a.x * b.z
+		z: a.x * b.y - a.y * b.x
+	}
+}
+
+// normalized returns a unit-length copy, or a zero vector for a zero input.
+pub fn (a Vec3) normalized() Vec3 {
+	len := f32(math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z))
+	if len == 0 {
+		return Vec3{}
+	}
+	return a.scale(1.0 / len)
+}
+
 // Projection selects how a Camera3D maps the scene onto the screen.
 pub enum Projection {
 	perspective

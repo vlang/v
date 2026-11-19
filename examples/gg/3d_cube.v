@@ -38,8 +38,11 @@ fn frame(data voidptr) {
 	mut cam := gg.Camera3D{}
 	cam.orbit(app.angle, 20.0, 7.0)
 	ctx.begin_3d(cam)
+	ctx.draw_grid(20, 1.0, gg.gray)
 	ctx.draw_cube(gg.Vec3{-1.2, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
 	ctx.draw_cube(gg.Vec3{1.2, 0, 0}, gg.Vec3{2, 2, 2}, gg.blue)
+	ctx.draw_sphere(gg.Vec3{0, 2.2, 0}, 0.9, 8, 16, gg.green)
+	ctx.draw_cylinder(gg.Vec3{-3, -1, 0}, gg.Vec3{-3, 1, 0}, 0.4, 12, gg.yellow)
 	ctx.draw_cube_wires(gg.Vec3{0, -1.6, 0}, gg.Vec3{2, 0.4, 2}, gg.white)
 	ctx.end_3d()
 	ctx.end()

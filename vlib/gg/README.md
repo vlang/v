@@ -120,7 +120,8 @@ distance)` places the camera around its target using degrees. 3D drawing uses
 depth testing with backface culling; `ctx.end_3d()` restores the regular 2D
 painter-order pipelines, so HUD and text can be drawn afterwards.
 
-`draw_cube()` and `draw_cube_wires()` are the first 3D primitives. More
+The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
+`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`. More
 primitives and mesh support are tracked in
 https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v`.
 
