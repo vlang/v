@@ -18932,6 +18932,8 @@ enum AttributeFieldKind {
 // attribute_target_kind_word names a declaration kind the way target
 // restrictions spell it: 'fn', 'struct', 'enum', 'field', 'value' (enum
 // value), 'interface'. Anything else reports as 'declaration'.
+// Method, union, alias, sumtype, const, and global targets refine this
+// mapping in attribute_target_kind_word_for (RFC 013, Phase 0).
 fn attribute_target_kind_word(kind flat.NodeKind) string {
 	return match kind {
 		.fn_decl { 'fn' }
@@ -18946,9 +18948,168 @@ fn attribute_target_kind_word(kind flat.NodeKind) string {
 }
 
 // is_attribute_target_name reports whether `name` may restrict an attribute
-// schema to a declaration kind.
+// schema to a declaration kind (RFC 013, Phase 0 targets).
 fn is_attribute_target_name(name string) bool {
-	return name in ['fn', 'struct', 'enum', 'field', 'value', 'interface', 'module']
+	return name in ['fn', 'method', 'struct', 'union', 'enum', 'field', 'value', 'interface', 'module',
+		'const', 'global', 'type', 'alias', 'sumtype']
+}
+
+// is_schema_backed_attribute_name reports whether `name` matches a registered
+// schema visible from `module`. Builtins keep precedence today; this hook
+// exists for future shadowing where a schema may replace a builtin (RFC 013).
+fn (tc &TypeChecker) is_schema_backed_attribute_name(name string, module string) bool {
+	short := name.all_after_last('.')
+	qualifier := if name.contains('.') { name.all_before_last('.') } else { '' }
+	for schema in tc.attribute_schemas[short] or { return false } {
+		if qualifier.len > 0 {
+			if schema.module == qualifier {
+				return true
+			}
+		} else if attribute_modules_compatible(schema.module, module) {
+			return true
+		}
+	}
+	return false
+}
+
+// attribute_target_kind_word_for names the target of `node` for restriction
+// checks (RFC 013, Phase 0). It refines attribute_target_kind_word: methods
+// report 'method', unions 'union', type declarations 'alias'/'sumtype',
+// constants 'const', and globals 'global'.
+fn (tc &TypeChecker) attribute_target_kind_word_for(node flat.Node) string {
+	match node.kind {
+		.fn_decl {
+			if node.children_count > 0 {
+				first := tc.a.child_node(&node, 0)
+				if first.kind == .param && first.op == .dot {
+					return 'method'
+				}
+			}
+			return 'fn'
+		}
+		.struct_decl {
+			if node.typ_text().contains('union') {
+				return 'union'
+			}
+			return 'struct'
+		}
+		.type_decl {
+			if node.children_count > 0 {
+				return 'sumtype'
+			}
+			if node.typ != 0 {
+				if flat.source_type_syntax(node.typ).union_parts().len > 1 {
+					return 'sumtype'
+				}
+				return 'alias'
+			}
+			return 'type'
+		}
+		.const_decl, .const_field {
+			return 'const'
+		}
+		.global_decl {
+			return 'global'
+		}
+		else {
+			return attribute_target_kind_word(node.kind)
+		}
+	}
+}
+
+// attribute_target_allows reports whether a schema with `targets` may apply
+// to a declaration whose precise kind word is `kind_word`. Exact matches
+// always pass; 'fn' covers methods, 'struct' covers unions, and 'type'
+// covers alias/sumtype so Phase 0 adds new targets without changing
+// existing validation.
+fn attribute_target_allows(targets []string, kind_word string) bool {
+	if kind_word in targets {
+		return true
+	}
+	if kind_word == 'method' && 'fn' in targets {
+		return true
+	}
+	if kind_word == 'union' && 'struct' in targets {
+		return true
+	}
+	if kind_word in ['alias', 'sumtype'] && 'type' in targets {
+		return true
+	}
+	return false
+}
+
+// attribute_const_kind maps a const Type to the argument kind it may satisfy.
+fn attribute_const_kind(typ Type) AttributeFieldKind {
+	clean := unalias_type(&typ)
+	if clean is String {
+		return .string_
+	}
+	if clean.is_integer() {
+		return .integer
+	}
+	if clean.source_type_id() == flat.source_type_bool {
+		return .boolean
+	}
+	if clean is Enum {
+		return .enum_
+	}
+	return .unsupported
+}
+
+// attribute_const_arg_kind resolves a bare or qualified const name to the
+// argument kind its type permits, or none when no visible const matches.
+// Lookup mirrors V-strict module resolution without depending on cur_module.
+fn (tc &TypeChecker) attribute_const_arg_kind(value string, module string) ?AttributeFieldKind {
+	trimmed := value.trim_space()
+	if trimmed.len == 0 || trimmed.starts_with('.') {
+		return none
+	}
+	if !is_bare_ident(trimmed.all_after_last('.')) {
+		return none
+	}
+	mut candidates := []string{}
+	if trimmed.contains('.') {
+		candidates << trimmed
+	} else {
+		if module.len > 0 && module !in ['', 'main'] {
+			candidates << '${module}.${trimmed}'
+		}
+		candidates << trimmed
+		candidates << 'main.${trimmed}'
+		candidates << 'builtin.${trimmed}'
+	}
+	for key in candidates {
+		if typ := tc.const_types[key] {
+			resolved := tc.const_type_from_initializer(key, typ)
+			if resolved is Unknown {
+				continue
+			}
+			kind := attribute_const_kind(resolved)
+			if kind != .unsupported {
+				return kind
+			}
+		}
+	}
+	if key := tc.const_key_for_suffix(trimmed) {
+		if typ := tc.const_types[key] {
+			resolved := tc.const_type_from_initializer(key, typ)
+			if !(resolved is Unknown) {
+				kind := attribute_const_kind(resolved)
+				if kind != .unsupported {
+					return kind
+				}
+			}
+		}
+	}
+	return none
+}
+
+// attribute_const_enum_matches reports whether a const of enum type `const_typ`
+// declares the same enum as the schema field `field_type_id`.
+fn attribute_const_enum_matches(const_typ Type, field_type_id u32) bool {
+	const_name := flat.source_type_name(const_typ.source_type_id()).all_after_last('.').to_lower()
+	field_name := flat.source_type_name(flat.source_type_syntax(trimmed_source_type_id(field_type_id)).unqualified()).all_after_last('.').to_lower()
+	return const_name == field_name && const_name.len > 0
 }
 
 // builtin_attribute_names enumerates the attribute names the compiler itself
@@ -19414,7 +19575,17 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
 					tc.declaration_attributes[i], lo, hi)
 			}
-			.const_decl, .global_decl, .c_fn_decl {
+			.const_decl, .global_decl {
+				lo, hi := attribute_use_window(node)
+				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+					tc.declaration_attributes[i], lo, hi)
+				node_id := flat.NodeId(i)
+				if !tc.should_check_source_name(node_id) {
+					continue
+				}
+				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi, mut warning_heads)
+			}
+			.c_fn_decl {
 				lo, hi := attribute_use_window(node)
 				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
 					tc.declaration_attributes[i], lo, hi)
@@ -19525,9 +19696,9 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 	uses := tc.attribute_use_schemas(schema_pieces, module)
 	for use in uses {
 		pos := tc.attribute_use_pos(node, use.base, lo, hi)
-		if use.schema.targets.len > 0
-			&& attribute_target_kind_word(node.kind) !in use.schema.targets {
-			tc.record_error_at(.assignment_mismatch, 'attribute `${use.base}` cannot be applied to `${attribute_target_kind_word(node.kind)}`', node_id, pos)
+		kind_word := tc.attribute_target_kind_word_for(node)
+		if use.schema.targets.len > 0 && !attribute_target_allows(use.schema.targets, kind_word) {
+			tc.record_error_at(.assignment_mismatch, 'attribute `${use.base}` cannot be applied to `${kind_word}`', node_id, pos)
 			continue
 		}
 		tc.check_attribute_use_args(node_id, use.schema, use.base, schema_pieces, pos, module)
@@ -20020,8 +20191,9 @@ fn schema_field_index(schema AttributeSchema, name string) int {
 }
 
 // check_attribute_arg_value checks one argument value against its schema
-// field: literal kind first, then enum membership for enum fields. Fields
-// whose type is unsupported are skipped here; the schema declaration itself
+// field: literal kind first, then const expressions via const_exprs lookup
+// (RFC 013, Phase 0), then enum membership for enum fields. Fields whose
+// type is unsupported are skipped here; the schema declaration itself
 // already errors for those.
 fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema AttributeSchema, base string, field AttributeSchemaField, value string, pos token.Pos, module string) {
 	kind := tc.attribute_field_kind(field.type_id)
@@ -20030,6 +20202,50 @@ fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema At
 	}
 	got := attribute_arg_kind(value)
 	if got == .unsupported {
+		// A bare or qualified const name may satisfy any field whose type
+		// matches the const's type. Invalid const uses stay compile errors.
+		if const_kind := tc.attribute_const_arg_kind(value, module) {
+			if const_kind != kind {
+				tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+				return
+			}
+			if kind == .enum_ {
+				// Enum consts must declare the same enum as the field.
+				mut matched := false
+				if decl_id := tc.attribute_enum_decl(field.type_id, module) {
+					_ = decl_id
+					for key in [value, if module.len > 0 && module !in ['', 'main'] {
+						'${module}.${value}'
+					} else {
+						value
+					}, 'main.${value.all_after_last('.')}', 'builtin.${value.all_after_last('.')}'] {
+						if typ := tc.const_types[key] {
+							resolved := tc.const_type_from_initializer(key, typ)
+							if !(resolved is Unknown) && attribute_const_enum_matches(resolved, field.type_id) {
+								matched = true
+								break
+							}
+						}
+					}
+					if !matched {
+						// Fall back to suffix table for selective imports.
+						if key := tc.const_key_for_suffix(value.all_after_last('.')) {
+							if typ := tc.const_types[key] {
+								resolved := tc.const_type_from_initializer(key, typ)
+								if !(resolved is Unknown) && attribute_const_enum_matches(resolved, field.type_id) {
+									matched = true
+								}
+							}
+						}
+					}
+					if !matched {
+						enum_name := flat.source_type_name(flat.source_type_syntax(trimmed_source_type_id(field.type_id)).unqualified())
+						tc.record_error_at(.assignment_mismatch, '`${value}` is not a value of enum `${enum_name}`', node_id, pos)
+					}
+				}
+			}
+			return
+		}
 		tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
 		return
 	}

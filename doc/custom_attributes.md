@@ -4,6 +4,12 @@ A struct marked with `@[attribute]` declares a metadata schema. Schemas cannot b
 embedded, or supplied as generic type arguments. This restriction covers generic types,
 function and method calls, and generic functions taken as values.
 
+An `@[attribute: 'target']` marker restricts a schema to declaration kinds. Supported
+targets are `fn`, `method`, `struct`, `union`, `enum`, `field`, `value`, `interface`,
+`module`, `const`, `global`, `type`, `alias`, and `sumtype`. Compatibility shims keep
+Phase 0 validation stable: `fn` covers methods, `struct` covers unions, and `type`
+covers `alias` and `sumtype`. A use on any other kind is a compile error.
+
 ## Unknown attribute names
 
 An attribute that is neither a builtin nor a registered schema warns (warn-first migration,
@@ -84,8 +90,17 @@ fn main() {
 ```
 
 Supported schema field types are `string`, integer types (including `uint` and `rune`),
-`bool`, enums, and aliases of those types.
-A use the checker rejects (unknown field, wrong arity) keeps the legacy pieces
+`bool`, enums, and aliases of those types. Argument values may be literals or
+const expressions: a bare or module-qualified const name whose type matches the
+field is accepted, and an invalid const use is a compile error. Simple string,
+integer, boolean, and enum consts resolve to literals for typed comptime
+materialization; complex const expressions remain legacy where they cannot bind.
+
+Attribute uses accept call syntax `@[Route('/index', method: 'get')]` and the
+equivalent struct-literal spelling `@[Route{path: '/index', method: 'get'}]`.
+Both desugar to the same flattened pieces, so the checker, comptime narrowing,
+and `v fmt` treat them identically. A use the checker rejects (unknown field,
+wrong arity) keeps the legacy pieces
 so the checker diagnostic stays authoritative. Copies of the loop variable
 (`r := attr`) keep the `VAttribute` view; narrowing applies to direct `attr`
 uses. Inside that narrowed branch, schema fields named `name`, `arg`, `has_arg`, or

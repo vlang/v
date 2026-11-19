@@ -755,7 +755,8 @@ fn comptime_reflected_attributes_loop_var(node flat.Node, var_name string) strin
 fn (mut t Transformer) unroll_reflected_attributes_loop(loop_id flat.NodeId, attr_var string, data RawAttributeData, decl_module string, inner_vars []string) flat.NodeId {
 	t.ignore_comptime_for_subtree(loop_id)
 	schemas := t.comptime_attribute_schemas()
-	attrs := comptime_attribute_instances_from_raw(data, decl_module, schemas)
+	resolved := t.comptime_resolve_attribute_const_data(data, decl_module)
+	attrs := comptime_attribute_instances_from_raw(resolved, decl_module, schemas)
 	loop := t.a.nodes[int(loop_id)]
 	body := t.a.nodes[int(t.a.child(&loop, 0))]
 	body_stmts := t.a.children_of(&body).clone()
@@ -937,7 +938,160 @@ fn (mut t Transformer) comptime_attribute_instances(source string, loop_id flat.
 		return []AttributeMeta{}
 	}
 	data := t.comptime_node_raw_attribute_data(decl_idx)
-	return comptime_attribute_instances_from_raw(data, decl_module, schemas)
+	resolved := t.comptime_resolve_attribute_const_data(data, decl_module)
+	return comptime_attribute_instances_from_raw(resolved, decl_module, schemas)
+}
+
+// comptime_resolve_attribute_const_data replaces const-expression argument
+// values with their literal spellings (RFC 013, Phase 0). The checker
+// validates const types via const_exprs; the transform resolves simple
+// string, integer, boolean, and enum consts to literals so typed
+// materialization sees the same values. Complex consts stay as written and
+// remain legacy when they cannot bind.
+fn (mut t Transformer) comptime_resolve_attribute_const_data(data RawAttributeData, decl_module string) RawAttributeData {
+	if data.attrs.len == 0 || isnil(t.tc) {
+		return data
+	}
+	mut attrs := data.attrs.clone()
+	mut kinds := data.kinds.clone()
+	for i in 0 .. attrs.len {
+		raw := attrs[i]
+		if !raw.contains(':') {
+			continue
+		}
+		value := raw.all_after(':').trim_space()
+		if literal, kind := t.comptime_attribute_const_literal(value, decl_module) {
+			name := raw.all_before(':').trim_space()
+			attrs[i] = '${name}: ${literal}'
+			if i < kinds.len {
+				kinds[i] = kind
+			}
+		}
+	}
+	return RawAttributeData{
+		attrs: attrs
+		kinds: kinds
+	}
+}
+
+// comptime_attribute_const_literal resolves a const-expression argument to
+// its literal spelling and piece kind, or none when `value` is already a
+// literal, a dot-enum shorthand, or no visible const.
+fn (mut t Transformer) comptime_attribute_const_literal(value string, decl_module string) ?(string, int) {
+	trimmed := value.trim_space()
+	if trimmed.len == 0 || trimmed.starts_with('.') {
+		return none
+	}
+	if comptime_attr_is_string_literal(trimmed)
+		|| comptime_attribute_is_integer_literal(trimmed) || trimmed in ['true', 'false'] {
+		return none
+	}
+	if !comptime_attribute_is_bare_ident(trimmed.all_after_last('.')) {
+		return none
+	}
+	return t.comptime_attribute_const_literal_inner(trimmed, decl_module, 0)
+}
+
+fn (mut t Transformer) comptime_attribute_const_literal_inner(name string, decl_module string, depth int) ?(string, int) {
+	if depth > 8 || isnil(t.tc) {
+		return none
+	}
+	mut candidates := []string{}
+	if name.contains('.') {
+		candidates << name
+	} else {
+		if decl_module.len > 0 && decl_module !in ['', 'main'] {
+			candidates << '${decl_module}.${name}'
+		}
+		candidates << name
+		candidates << 'main.${name}'
+		candidates << 'builtin.${name}'
+	}
+	for key in candidates {
+		expr_id := t.tc.const_exprs[key] or { continue }
+		typ := t.tc.const_types[key] or { continue }
+		clean := types.unalias_type(&typ)
+		if clean is types.String {
+			node := t.a.node(expr_id)
+			match node.kind {
+				.string_literal {
+					return comptime_cond_string_literal(node.value), 1
+				}
+				.ident {
+					if node.value != name {
+						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
+							return lit, kind
+						}
+					}
+				}
+				else {}
+			}
+			continue
+		}
+		if clean.is_integer() {
+			node := t.a.node(expr_id)
+			match node.kind {
+				.int_literal {
+					return node.value, 2
+				}
+				.prefix {
+					if node.op == .minus && node.children_count == 1 {
+						inner := t.a.child_node(node, 0)
+						if inner.kind == .int_literal {
+							return '-${inner.value}', 2
+						}
+					}
+				}
+				.ident {
+					if node.value != name {
+						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
+							return lit, kind
+						}
+					}
+				}
+				else {}
+			}
+			continue
+		}
+		if clean.source_type_id() == flat.source_type_bool {
+			node := t.a.node(expr_id)
+			match node.kind {
+				.bool_literal {
+					return node.value, 3
+				}
+				.ident {
+					if node.value != name {
+						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
+							return lit, kind
+						}
+					}
+				}
+				else {}
+			}
+			continue
+		}
+		if clean is types.Enum {
+			node := t.a.node(expr_id)
+			match node.kind {
+				.selector {
+					return '.' + node.value, 0
+				}
+				.enum_val {
+					return '.' + node.value.all_after_last('.'), 0
+				}
+				.ident {
+					if node.value != name {
+						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
+							return lit, kind
+						}
+					}
+				}
+				else {}
+			}
+			continue
+		}
+	}
+	return none
 }
 
 // comptime_attribute_instances_from_raw materializes declaration, field, and enum-value
