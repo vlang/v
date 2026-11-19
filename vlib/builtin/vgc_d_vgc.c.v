@@ -35,6 +35,7 @@ fn C.vgc_bitmap_get(bits &u8, idx u32) int
 fn C.vgc_bitmap_set(bits &u8, idx u32)
 fn C.vgc_bitmap_clear(bits &u8, idx u32)
 fn C.vgc_bitmap_test_and_set(bits &u8, idx u32) int
+fn C.vgc_bitmap_atomic_test_set(bits &u8, idx u32) int
 fn C.vgc_popcount8(x u8) int
 fn C.vgc_size_class(size u32) u8
 fn C.vgc_get_class_size(cls int) u32
