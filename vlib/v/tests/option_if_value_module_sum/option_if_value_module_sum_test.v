@@ -93,3 +93,17 @@ fn test_match_option_value_of_a_module_sum_type() {
 	assert ifoptstyle.describe(ifoptstyle.shadow_from_match(1).radius) == 'keyword thin'
 	assert ifoptstyle.describe(ifoptstyle.shadow_from_match(2).radius) == 'length 2'
 }
+
+fn test_if_option_sum_value_passed_directly_as_call_argument() {
+	items := [ifoptstyle.Tag('auto'), ifoptstyle.Tag(2)]
+	assert ifoptstyle.describe_tag(if items.len > 0 {
+		?ifoptstyle.Tag(items[0])
+	} else {
+		?ifoptstyle.Tag(none)
+	}) == 'text auto'
+	assert ifoptstyle.describe_tag(if items.len > 2 {
+		?ifoptstyle.Tag(items[1])
+	} else {
+		?ifoptstyle.Tag(none)
+	}) == 'none'
+}
