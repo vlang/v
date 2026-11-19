@@ -445,9 +445,9 @@ fn Config.init(vargs []string, targs []string) !Config {
 	return cfg
 }
 
-fn self_test_matches_filename(path string) bool {
+fn self_test_matches_filename(path string, node_present bool) bool {
 	if path.ends_with('_test.v') || path.ends_with('_test.c.v')
-		|| (testing.is_node_present && path.ends_with('_test.js.v')) {
+		|| (node_present && path.ends_with('_test.js.v')) {
 		return true
 	}
 	name := os.file_name(path)
@@ -507,9 +507,10 @@ fn main() {
 	}
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
+	node_present := testing.is_node_present()
 	for dir in cfg.test_dirs {
-		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
-			if self_test_matches_filename(p) {
+		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref, node_present] (p string) {
+			if self_test_matches_filename(p, node_present) {
 				unsafe {
 					tpaths_ref[p] = true
 				}

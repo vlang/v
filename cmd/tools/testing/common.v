@@ -57,21 +57,28 @@ pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
 // Note, it works with `-no-parallel`, and it works when that whole expr is inside a function, like below:
 pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
-pub const pkgcmd = get_pkgcmd()
+// The probes below start other programs (node, pkg-config, ps ...), which together take
+// about a tenth of a second. They run only for the `// vtest build:` constraints of the
+// selected test files that name their defines, not on every start of the test runner.
 
-pub const is_node_present = os.exec(['node', '--version']).exit_code == 0
+// is_node_present reports whether `node` can run, which the JS backend tests need.
+pub fn is_node_present() bool {
+	return os.exec(['node', '--version']).exit_code == 0
+}
 
-pub const is_go_present = os.exec(['go', 'version']).exit_code == 0
+fn is_go_present() bool {
+	return os.exec(['go', 'version']).exit_code == 0
+}
 
-pub const is_ruby_present = os.exec(['ruby', '--version']).exit_code == 0
-	&& os.exec(['${pkgcmd}', 'ruby', '--libs']).exit_code == 0
+fn is_ruby_present() bool {
+	return os.exec(['ruby', '--version']).exit_code == 0
+		&& os.exec(['${get_pkgcmd()}', 'ruby', '--libs']).exit_code == 0
+}
 
-pub const is_python_present = os.exec(['python', '--version']).exit_code == 0
-	&& os.exec(['${pkgcmd}', 'python3', '--libs']).exit_code == 0
-
-pub const is_sqlite3_present = get_present_sqlite()
-
-pub const all_processes = get_all_processes()
+fn is_python_present() bool {
+	return os.exec(['python', '--version']).exit_code == 0
+		&& os.exec(['${get_pkgcmd()}', 'python3', '--libs']).exit_code == 0
+}
 
 pub const header_bytes_to_search_for_module_main = 500
 
@@ -376,7 +383,7 @@ fn get_present_sqlite() bool {
 		return os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
 	}
 	return os.exec(['sqlite3', '--version']).exit_code == 0
-		&& os.exec(['${pkgcmd}', 'sqlite3', '--libs']).exit_code == 0
+		&& os.exec(['${get_pkgcmd()}', 'sqlite3', '--libs']).exit_code == 0
 }
 
 fn get_all_processes() []string {
@@ -852,7 +859,7 @@ pub fn (mut ts TestSession) test() {
 	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
-	ts.setup_build_environment()
+	ts.setup_build_environment(remaining_files)
 
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
@@ -1484,7 +1491,7 @@ pub fn get_test_details(file string) TestDetails {
 }
 
 pub fn find_started_process(pname string) !string {
-	for line in all_processes {
+	for line in get_all_processes() {
 		if line.contains(pname) {
 			return line
 		}
@@ -1525,15 +1532,15 @@ fn check_openssl_present() bool {
 	}
 	$if openbsd {
 		return os.exec(['eopenssl35', '--version']).exit_code == 0
-			&& os.exec(['${pkgcmd}', 'eopenssl35', '--libs']).exit_code == 0
+			&& os.exec(['${get_pkgcmd()}', 'eopenssl35', '--libs']).exit_code == 0
 	} $else {
 		return os.exec(['openssl', '--version']).exit_code == 0
-			&& os.exec(['${pkgcmd}', 'openssl', '--libs']).exit_code == 0
+			&& os.exec(['${get_pkgcmd()}', 'openssl', '--libs']).exit_code == 0
 	}
 }
 
 fn check_modern_openssl_present() bool {
-	if !is_openssl_present {
+	if !check_openssl_present() {
 		return false
 	}
 	mut version_cmd := 'openssl version'
@@ -1556,22 +1563,8 @@ fn has_modern_openssl_version(output string) bool {
 	return version.satisfies('>=3.5.0')
 }
 
-pub const is_openssl_present = check_openssl_present()
-pub const is_modern_openssl_present = check_modern_openssl_present()
-
-// is_started_mysqld is true, when the test runner determines that there is a running mysql server
-pub const is_started_mysqld = find_started_process('mysqld') or { '' }
-
-// is_started_postgres is true, when the test runner determines that there is a running postgres server
-pub const is_started_postgres = find_started_process('postgres') or { '' }
-
-// is_started_mssql is true, when the test runner determines that there is a running sql server
-pub const is_started_mssql = find_started_process('sqlservr') or { '' }
-
-// is_started_redis is true, when the test runner determines that there is a running redis server
-// on the default port 6379, which the db.redis tests connect to. A redis-server, that another tool
-// started on a different port, can not serve them.
-pub const is_started_redis = find_started_redis_on_default_port(all_processes) or { '' }
+// A running redis-server only serves the db.redis tests on the default port 6379, which they
+// connect to; one that another tool started on a different port can not serve them.
 
 fn find_started_redis_on_default_port(process_lines []string) !string {
 	for line in process_lines {
@@ -1582,43 +1575,70 @@ fn find_started_redis_on_default_port(process_lines []string) !string {
 	return error('could not find a redis-server process, that serves the default port 6379')
 }
 
-pub fn (mut ts TestSession) setup_build_environment() {
+// build_constraints returns the `// vtest build:` expressions of `files`.
+fn build_constraints(files []string) []string {
+	mut constraints := []string{}
+	for file in files {
+		text := os.read_file(file) or { continue }
+		if !text.contains('// vtest build:') {
+			continue
+		}
+		for line in text.split_into_lines() {
+			if line.starts_with('// vtest build:') {
+				constraints << line.all_after(':').trim_space()
+			}
+		}
+	}
+	return constraints
+}
+
+pub fn (mut ts TestSession) setup_build_environment(files []string) {
 	facts, mut defines := pref.get_build_facts_and_defines()
-	// add the runtime information, that the test runner has already determined by checking once:
 	if github_job.starts_with('sanitize-') {
 		defines << 'sanitized_job'
 	}
-	if is_started_mysqld != '' {
-		defines << 'started_mysqld'
+	// Add the runtime information that a constraint of these files asks for.
+	constraints := build_constraints(files)
+	needs := fn [constraints] (define string) bool {
+		return constraints.any(it.contains(define))
 	}
-	if is_started_postgres != '' {
-		defines << 'started_postgres'
+	if needs('started_') {
+		processes := get_all_processes()
+		started := fn [processes] (pname string) bool {
+			return processes.any(it.contains(pname))
+		}
+		if started('mysqld') {
+			defines << 'started_mysqld'
+		}
+		if started('postgres') {
+			defines << 'started_postgres'
+		}
+		if started('sqlservr') {
+			defines << 'started_mssql'
+		}
+		if _ := find_started_redis_on_default_port(processes) {
+			defines << 'started_redis'
+		}
 	}
-	if is_started_mssql != '' {
-		defines << 'started_mssql'
-	}
-	if is_started_redis != '' {
-		defines << 'started_redis'
-	}
-	if is_node_present {
+	if needs('present_node') && is_node_present() {
 		defines << 'present_node'
 	}
-	if is_python_present {
+	if needs('present_python') && is_python_present() {
 		defines << 'present_python'
 	}
-	if is_ruby_present {
+	if needs('present_ruby') && is_ruby_present() {
 		defines << 'present_ruby'
 	}
-	if is_go_present {
+	if needs('present_go') && is_go_present() {
 		defines << 'present_go'
 	}
-	if is_sqlite3_present {
+	if needs('present_sqlite3') && get_present_sqlite() {
 		defines << 'present_sqlite3'
 	}
-	if is_openssl_present {
+	if needs('present_openssl') && check_openssl_present() {
 		defines << 'present_openssl'
 	}
-	if is_modern_openssl_present {
+	if needs('has_modern_openssl') && check_modern_openssl_present() {
 		defines << 'has_modern_openssl'
 	}
 
