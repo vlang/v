@@ -387,7 +387,10 @@ fn parse_attr_value(data []u8, pos int, form u64, addr_size u8, version u16) !(A
 		}
 		form_block, form_exprloc {
 			v, nn := decode_u64_checked(tail)!
-			if u64(nn) + v > u64(tail.len) {
+			if nn > tail.len {
+				return error('dwarf: truncated block form')
+			}
+			if v > u64(tail.len - nn) {
 				return error('dwarf: truncated block form')
 			}
 			end := nn + int(v)

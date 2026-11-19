@@ -229,3 +229,81 @@ fn test_rejects_truncated_udata_attr() {
 		assert err.msg().contains('truncated')
 	}
 }
+
+fn block_abbr_fixture() []u8 {
+	return [u8(1), 0x11, 0x00, 0x03, 0x09, 0x00, 0x00, 0x00]
+}
+
+fn info_with_block_payload(payload []u8) []u8 {
+	mut info := []u8{}
+	info << [u8(0), 0, 0, 0]
+	info << [u8(4), 0]
+	info << [u8(0), 0, 0, 0]
+	info << u8(8)
+	info << u8(1)
+	info << payload
+	info << u8(0)
+	unit_len := info.len - 4
+	info[0] = u8(unit_len)
+	info[1] = u8(unit_len >> 8)
+	info[2] = u8(unit_len >> 16)
+	info[3] = u8(unit_len >> 24)
+	return info
+}
+
+fn test_block_valid_two_bytes() {
+	units := parse_info(info_with_block_payload([u8(2), 0xaa, 0xbb]),
+		block_abbr_fixture())!
+	assert units.len == 1
+	val := units[0].dies[0].attrs[0].value
+	if val is []u8 {
+		assert val == [u8(0xaa), 0xbb]
+	} else {
+		assert false, 'expected block bytes'
+	}
+}
+
+fn test_block_truncated_returns_error() {
+	mut info := []u8{}
+	info << [u8(0), 0, 0, 0]
+	info << [u8(4), 0]
+	info << [u8(0), 0, 0, 0]
+	info << u8(8)
+	info << u8(1)
+	info << u8(5)
+	info << u8(0xaa)
+	info << u8(0xbb)
+	unit_len := info.len - 4
+	info[0] = u8(unit_len)
+	if _ := parse_info(info, block_abbr_fixture()) {
+		assert false, 'expected truncated block error'
+	} else {
+		assert err.msg().contains('truncated')
+	}
+}
+
+fn test_block_wrapping_length_returns_error() {
+	// Ten-byte ULEB128 encoding of u64 maximum; u64(nn) + v wraps.
+	mut payload := []u8{}
+	for _ in 0 .. 9 {
+		payload << u8(0xff)
+	}
+	payload << u8(0x01)
+	mut info := []u8{}
+	info << [u8(0), 0, 0, 0]
+	info << [u8(4), 0]
+	info << [u8(0), 0, 0, 0]
+	info << u8(8)
+	info << u8(1)
+	info << payload
+	unit_len := info.len - 4
+	info[0] = u8(unit_len)
+	info[1] = u8(unit_len >> 8)
+	info[2] = u8(unit_len >> 16)
+	info[3] = u8(unit_len >> 24)
+	if _ := parse_info(info, block_abbr_fixture()) {
+		assert false, 'expected truncated block error'
+	} else {
+		assert err.msg().contains('truncated')
+	}
+}

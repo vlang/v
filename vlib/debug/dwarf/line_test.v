@@ -342,3 +342,143 @@ fn test_loc_call_ref_is_4_bytes() {
 		assert err.msg().contains('truncated')
 	}
 }
+
+fn v5_two_file_header(mut b []u8) (int, int) {
+	b << [u8(0), 0, 0, 0]
+	b << [u8(5), 0]
+	b << [u8(8), 0]
+	hlpos := b.len
+	b << [u8(0), 0, 0, 0]
+	hstart := b.len
+	b << [u8(1), 1, 1, 0xfb, 14, 13]
+	for _ in 0 .. 12 {
+		b << u8(0)
+	}
+	b << u8(1)
+	b << u8(1)
+	b << u8(0x08)
+	b << u8(2)
+	b << 'd0'.bytes()
+	b << u8(0)
+	b << 'd1'.bytes()
+	b << u8(0)
+	b << u8(2)
+	b << u8(1)
+	b << u8(0x08)
+	b << u8(2)
+	b << u8(0x0f)
+	b << u8(2)
+	b << 'main.c'.bytes()
+	b << u8(0)
+	b << u8(0)
+	b << 'helper.h'.bytes()
+	b << u8(0)
+	b << u8(1)
+	return hlpos, hstart
+}
+
+fn finish_line_unit(mut b []u8, hlpos int, hstart int) {
+	hlen := b.len - hstart
+	b[hlpos] = u8(hlen)
+	b[hlpos + 1] = u8(hlen >> 8)
+	b[hlpos + 2] = u8(hlen >> 16)
+	b[hlpos + 3] = u8(hlen >> 24)
+	ulen := b.len - 4
+	b[0] = u8(ulen)
+	b[1] = u8(ulen >> 8)
+	b[2] = u8(ulen >> 16)
+	b[3] = u8(ulen >> 24)
+}
+
+fn test_line_v5_initial_file_is_one() {
+	mut b := []u8{}
+	hlpos, hstart := v5_two_file_header(mut b)
+	finish_line_unit(mut b, hlpos, hstart)
+	b << [u8(0), 9, 2, 0x00, 0x40, 0, 0, 0, 0, 0, 0]
+	b << u8(1)
+	b << [u8(0), 1, 1]
+	b << [u8(0), 9, 2, 0x00, 0x50, 0, 0, 0, 0, 0, 0]
+	b << u8(1)
+	b << [u8(0), 1, 1]
+	ulen := b.len - 4
+	b[0] = u8(ulen)
+	b[1] = u8(ulen >> 8)
+	b[2] = u8(ulen >> 16)
+	b[3] = u8(ulen >> 24)
+	t := parse_line_table(b, 8, [], [])!
+	assert t.rows.len == 4
+	assert t.rows[0].file == 'helper.h'
+	assert t.rows[0].address == 0x4000
+	assert t.rows[1].end_sequence
+	assert t.rows[2].file == 'helper.h'
+	assert t.rows[2].address == 0x5000
+	assert t.rows[3].end_sequence
+}
+
+fn test_line_v5_huge_set_file_is_unknown() {
+	mut b := []u8{}
+	hlpos, hstart := v5_two_file_header(mut b)
+	finish_line_unit(mut b, hlpos, hstart)
+	b << [u8(0), 9, 2, 0x00, 0x40, 0, 0, 0, 0, 0, 0]
+	b << u8(4)
+	for _ in 0 .. 9 {
+		b << u8(0xff)
+	}
+	b << u8(0x01)
+	b << u8(1)
+	b << [u8(0), 1, 1]
+	ulen := b.len - 4
+	b[0] = u8(ulen)
+	b[1] = u8(ulen >> 8)
+	b[2] = u8(ulen >> 16)
+	b[3] = u8(ulen >> 24)
+	t := parse_line_table(b, 8, [], [])!
+	assert t.rows.len == 2
+	assert t.rows[0].file == ''
+}
+
+fn test_line_v5_huge_dir_index_is_unknown() {
+	mut b := []u8{}
+	b << [u8(0), 0, 0, 0]
+	b << [u8(5), 0]
+	b << [u8(8), 0]
+	hlpos := b.len
+	b << [u8(0), 0, 0, 0]
+	hstart := b.len
+	b << [u8(1), 1, 1, 0xfb, 14, 13]
+	for _ in 0 .. 12 {
+		b << u8(0)
+	}
+	b << u8(1)
+	b << u8(1)
+	b << u8(0x08)
+	b << u8(2)
+	b << 'd0'.bytes()
+	b << u8(0)
+	b << 'd1'.bytes()
+	b << u8(0)
+	b << u8(2)
+	b << u8(1)
+	b << u8(0x08)
+	b << u8(2)
+	b << u8(0x0f)
+	b << u8(1)
+	b << 'a.c'.bytes()
+	b << u8(0)
+	for _ in 0 .. 9 {
+		b << u8(0xff)
+	}
+	b << u8(0x01)
+	finish_line_unit(mut b, hlpos, hstart)
+	b << [u8(0), 9, 2, 0x00, 0x40, 0, 0, 0, 0, 0, 0]
+	b << [u8(0), 1, 1]
+	ulen := b.len - 4
+	b[0] = u8(ulen)
+	b[1] = u8(ulen >> 8)
+	b[2] = u8(ulen >> 16)
+	b[3] = u8(ulen >> 24)
+	t := parse_line_table(b, 8, [], [])!
+	assert t.files.len == 1
+	assert t.files[0].name == 'a.c'
+	assert t.files[0].dir == ''
+}

@@ -272,7 +272,7 @@ fn parse_v24_files(body []u8, pos int, hdr_end int, dirs []string) !([]LineFile,
 			return error('dwarf: truncated file list')
 		}
 		mut dir := ''
-		if dir_idx > 0 && int(dir_idx) <= dirs.len {
+		if dir_idx > 0 && dir_idx <= u64(dirs.len) {
 			dir = dirs[int(dir_idx) - 1]
 		}
 		files << LineFile{ name: name, dir: dir, time: mtime, size: size }
@@ -479,7 +479,7 @@ fn parse_v5_files(body []u8, pos int, hdr_end int, dirs []string, strtab []u8, l
 		}
 		// DWARF5 section 6.2.4: directory and file indices are zero-based.
 		mut dir := ''
-		if int(dir_idx) < dirs.len {
+		if dir_idx < u64(dirs.len) {
 			dir = dirs[int(dir_idx)]
 		}
 		files << LineFile{ name: name, dir: dir, time: mtime, size: size }
@@ -490,12 +490,12 @@ fn parse_v5_files(body []u8, pos int, hdr_end int, dirs []string, strtab []u8, l
 fn file_name_for(files []LineFile, file u64, version u16) string {
 	if version == 5 {
 		// DWARF5 section 6.2.4: file 0 is the first entry.
-		if int(file) < files.len {
+		if file < u64(files.len) {
 			return files[int(file)].name
 		}
 		return ''
 	}
-	if file >= 1 && int(file) <= files.len {
+	if file >= 1 && file <= u64(files.len) {
 		return files[int(file) - 1].name
 	}
 	return ''
@@ -503,12 +503,12 @@ fn file_name_for(files []LineFile, file u64, version u16) string {
 
 fn dir_for(dirs []string, dir_idx u64, version u16) string {
 	if version == 5 {
-		if int(dir_idx) < dirs.len {
+		if dir_idx < u64(dirs.len) {
 			return dirs[int(dir_idx)]
 		}
 		return ''
 	}
-	if dir_idx > 0 && int(dir_idx) <= dirs.len {
+	if dir_idx > 0 && dir_idx <= u64(dirs.len) {
 		return dirs[int(dir_idx) - 1]
 	}
 	return ''
@@ -535,7 +535,10 @@ fn run_line_program(prog []u8, s LineSetup) ![]LineRow {
 	mut rows := []LineRow{}
 	mut files := s.files.clone()
 	mut address := u64(0)
-	mut file := if s.version == 5 { u64(0) } else { u64(1) }
+	// DWARF 5 section 6.2.2, Table 6.4: the file register is initialized
+	// to 1 even though v5 file indexes are zero-based (DWARF 6 issue
+	// 210713.1 changes the initial value to 0 only for DWARF 6).
+	mut file := u64(1)
 	mut line := 1
 	mut column := u64(0)
 	mut is_stmt := s.default_is_stmt
@@ -584,7 +587,9 @@ fn run_line_program(prog []u8, s LineSetup) ![]LineRow {
 						discriminator:  discriminator
 					}
 					address = 0
-					file = if s.version == 5 { u64(0) } else { u64(1) }
+					// DWARF 5 section 6.2.2, Table 6.4: end_sequence resets
+					// the file register to 1 (see initialization above).
+					file = u64(1)
 					line = 1
 					column = 0
 					is_stmt = s.default_is_stmt
