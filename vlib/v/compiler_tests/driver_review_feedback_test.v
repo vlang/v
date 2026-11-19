@@ -344,7 +344,9 @@ fn main() {
 	assert directory_impure.exit_code != 0, directory_impure.output
 	assert directory_impure.output.contains('C code will not be allowed in pure .v files'), directory_impure.output
 
-	assert directory_impure.output.contains(directory_interop_file), directory_impure.output
+	// Diagnostics spell Windows paths with `/`.
+	assert directory_impure.output.replace('\\', '/').contains(directory_interop_file.replace('\\',
+		'/')), directory_impure.output
 
 	import_project := os.join_path(root, 'impure_import')
 	import_module := os.join_path(import_project, 'impurejs')
@@ -360,7 +362,8 @@ fn main() {
 	assert import_impure.exit_code != 0, import_impure.output
 	assert import_impure.output.contains('JS code will not be allowed in pure .v files'), import_impure.output
 
-	assert import_impure.output.contains(import_interop_file), import_impure.output
+	assert import_impure.output.replace('\\', '/').contains(import_interop_file.replace('\\',
+		'/')), import_impure.output
 
 	notice_source := os.join_path(root, 'notice.v')
 	os.write_file(notice_source, 'fn unused() {}\n\nfn main() {}\n')!
