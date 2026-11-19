@@ -176,6 +176,123 @@ fn core_to_component_valtype(ct u8) int {
 	}
 }
 
+// sanitize_component_label maps an arbitrary core module or field name to a
+// valid Component Model label tail: lowercase kebab-case over `[0-9a-z-]`
+// where every run of unsupported bytes collapses to a single `-`. The result
+// always starts with a letter (`h`/`h-` fallback), so joining two results
+// with `-` stays a valid label. Uniqueness across imports is carried by the
+// `imp<idx>` prefix added by component_host_import_name, not by this mapping.
+fn sanitize_component_label(s string) string {
+	mut out := []u8{}
+	mut last_dash := true // collapse runs and trim a leading dash
+	for i in 0 .. s.len {
+		c := s[i]
+		mut ch := c
+		if c >= 65 && c <= 90 {
+			ch = c + 32
+		} else if !((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 45) {
+			ch = 45 // `-`
+		}
+		if ch == 45 {
+			if !last_dash {
+				out << ch
+				last_dash = true
+			}
+		} else {
+			out << ch
+			last_dash = false
+		}
+	}
+	for out.len > 0 && out.last() == 45 {
+		out.delete_last()
+	}
+	res := out.bytestr()
+	if res == '' {
+		return 'h'
+	}
+	if res[0] >= 48 && res[0] <= 57 {
+		return 'h-' + res
+	}
+	return res
+}
+
+// component_host_import_name builds the component-level import name for the
+// `idx`-th forwarded core function import from core module `mod`, field
+// `name`. The name is `imp<idx>-<mod>-<field>` after sanitization, which is a
+// valid plain `label`: it starts with a letter and only joins valid labels
+// with `-`. The `imp<idx>` prefix also makes the names strongly unique: the
+// canonical form (hyphens stripped, acronyms lowercased) is `imp` + the
+// decimal index + the stripped base, and the stripped base always starts
+// with a letter, so two canonical forms can only match when the indices
+// match - and the index is unique per import. The original `mod`/`name` are
+// kept verbatim in the core-instance bindings.
+fn component_host_import_name(idx int, mod string, field string) string {
+	return 'imp${idx}-${sanitize_component_label(mod)}-${sanitize_component_label(field)}'
+}
+
+// is_component_label reports whether `s` parses as a Component Model `label`:
+// hyphen-separated runs of `[0-9a-z]+` or `[0-9A-Z]+`, starting with a letter.
+fn is_component_label(s string) bool {
+	if s == '' {
+		return false
+	}
+	if s[0] == 45 || s[s.len - 1] == 45 {
+		return false
+	}
+	parts := s.split('-')
+	for i, p in parts {
+		if !is_label_fragment(p, i == 0) {
+			return false
+		}
+	}
+	return true
+}
+
+fn is_label_fragment(f string, first bool) bool {
+	if f == '' {
+		return false
+	}
+	mut lower := 0
+	mut upper := 0
+	for i in 0 .. f.len {
+		c := f[i]
+		if c >= 97 && c <= 122 {
+			lower++
+		} else if c >= 65 && c <= 90 {
+			upper++
+		} else if c >= 48 && c <= 57 {
+			if first && i == 0 {
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+	if lower > 0 && upper > 0 {
+		return false
+	}
+	return true
+}
+
+// canonical_component_label canonicalizes `s` per the Component Model
+// strong-uniqueness rule: strip `-` and lowercase ASCII capitals. Two names
+// in one scope are strongly unique iff their canonical forms differ.
+fn canonical_component_label(s string) string {
+	mut out := []u8{cap: s.len}
+	for i in 0 .. s.len {
+		c := s[i]
+		if c == 45 {
+			continue
+		}
+		if c >= 65 && c <= 90 {
+			out << c + 32
+		} else {
+			out << c
+		}
+	}
+	return out.bytestr()
+}
+
 fn write_section(mut out []u8, id u8, payload []u8) {
 	out << id
 	out << leb128.encode_u32(u32(payload.len))
@@ -209,8 +326,9 @@ pub mut:
 // canonical-ABI string params/results and canonical (memory) (realloc)
 // options, and exported under their WIT name.
 // Core imports with numeric-only func signatures are forwarded: each import
-// becomes a component import (named `mod.field`), lowered to a core func,
-// bundled per module into inline-export instances, and supplied as
+// becomes a component import (named `imp<idx>-<mod>-<field>` in valid
+// kebab-case, e.g. `imp0-wasi-snapshot-preview1-fd-write`), lowered to a
+// core func, bundled per module into inline-export instances, and supplied as
 // instantiation args for the wrapped module. This keeps the produced
 // component valid when the core imports e.g. wasi_snapshot_preview1.fd_write.
 // Cores with unsupported imports (non-func kinds or unmappable types) fall
@@ -467,12 +585,14 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			type_payload << u8(core_to_component_valtype(ft.results[0]))
 		}
 	}
-	// Import section payload (component imports for host funcs).
+	// Import section payload (component imports for host funcs). Names are
+	// valid plain labels (`imp<idx>-<mod>-<field>`); the original core
+	// module/field names are kept verbatim in the core-instance bindings.
 	mut import_payload := []u8{}
 	if forward_imports {
 		import_payload << leb128.encode_u32(u32(n_imp))
 		for ii, imp in core_imports {
-			iname := '${imp.mod}.${imp.name}'
+			iname := component_host_import_name(ii, imp.mod, imp.name)
 			import_payload << u8(0x00) // nameattributes plain
 			import_payload << leb128.encode_u32(u32(iname.len))
 			import_payload << iname.bytes()
