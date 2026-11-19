@@ -1,6 +1,8 @@
 @[has_globals]
 module builtin
 
+#insert "@VEXEROOT/vlib/builtin/track_heap_decls.h"
+
 // v_memory_panic will be true, *only* when a call to malloc/realloc/vcalloc etc could not succeed.
 // In that situation, functions that are registered with at_exit(), should be able to limit their
 // activity accordingly, by checking this flag.
@@ -35,21 +37,23 @@ __global total_m = i64(0)
 // them to observe live allocations at runtime. The `@[if track_heap ?]` attribute
 // compiles the hooks to no-ops (zero cost) when the flag is off.
 //
-// track_heap models *manual* memory management (`-gc none`): the free hook only
-// fires on the manual-free path, so under a GC the collector reclaims blocks with
-// no matching hook and they would be reported as permanently live. Reject that
-// combination at C compile time rather than emit misleading stats. The guard is
-// emitted as C preprocessor code so `-cross` can still preserve conditional C.
+// With -prealloc the hooks are reported at *block* granularity instead:
+// vheap_alloc fires when an arena block is mapped (or taken from the recycle
+// pool) and vheap_free when it is returned or recycled. Individual bump
+// allocations inside the block are not reported, so trackers should treat a
+// block as one live allocation.
+//
+// The free hook only fires on the manual-free path, so under a GC the
+// collector reclaims blocks with no matching hook and they would be reported
+// as permanently live. Reject that combination at C compile time rather than
+// emit misleading stats. The guard is emitted as C preprocessor code so
+// `-cross` can still preserve conditional C.
 #if defined(CUSTOM_DEFINE_track_heap) && (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm))
 #error "-d track_heap requires manual memory management; rebuild with -gc none"
 #endif
 
 #if defined(CUSTOM_DEFINE_track_heap) && defined(CUSTOM_DEFINE_vgc)
 #error "-d track_heap requires manual memory management; rebuild with -gc none"
-#endif
-
-#if defined(CUSTOM_DEFINE_track_heap) && (defined(_VPREALLOC) || defined(CUSTOM_DEFINE_prealloc))
-#error "-d track_heap requires manual memory management; rebuild with -gc none (not -prealloc)"
 #endif
 
 fn C.vheap_alloc(p voidptr, n u64)
