@@ -2396,6 +2396,40 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.interface_abstract_methods = clone_owned_source_type_string_list_map(tc.interface_abstract_methods)
 }
 
+// clone_registered_fn_metadata_owned detaches the tables that registering a function
+// writes (register_fn_signature and the generated-signature helpers) from the arena that
+// was current while they grew. Cgen registers the functions it synthesizes through the
+// shared checker inside its stage arena; a reader after that arena is released, such as
+// the module cache plan, would otherwise look up freed map storage.
+pub fn (mut tc TypeChecker) clone_registered_fn_metadata_owned() {
+	mut ret_types := map[string]Type{}
+	ret_types.reserve(u32(tc.fn_ret_types.len))
+	for name, ret in tc.fn_ret_types {
+		ret_types[name] = clone_owned_type(&ret)
+	}
+	tc.fn_ret_types = ret_types.move()
+	mut param_types := map[string][]Type{}
+	param_types.reserve(u32(tc.fn_param_types.len))
+	for name, params in tc.fn_param_types {
+		param_types[name] = clone_owned_types(params)
+	}
+	tc.fn_param_types = param_types.move()
+	mut shared_params := map[string][]bool{}
+	shared_params.reserve(u32(tc.fn_shared_params.len))
+	for name, flags in tc.fn_shared_params {
+		shared_params[name] = flags.clone()
+	}
+	tc.fn_shared_params = shared_params.move()
+	tc.fn_variadic = clone_owned_string_bool_map(tc.fn_variadic)
+	tc.c_variadic_fns = clone_owned_string_bool_map(tc.c_variadic_fns)
+	tc.fn_implicit_veb_ctx = clone_owned_string_bool_map(tc.fn_implicit_veb_ctx)
+	tc.fn_type_modules = clone_owned_string_string_map(tc.fn_type_modules)
+	tc.fn_type_files = clone_owned_string_string_map(tc.fn_type_files)
+	tc.receiver_method_suffix_index = clone_owned_string_string_map(tc.receiver_method_suffix_index)
+	tc.receiver_method_short_names = clone_owned_string_bool_map(tc.receiver_method_short_names)
+	tc.collection_method_short_names = clone_owned_string_bool_map(tc.collection_method_short_names)
+}
+
 // transform_signatures_changed reports whether a transform fork detached and
 // added signature state that its parent must merge.
 pub fn (tc &TypeChecker) transform_signatures_changed() bool {

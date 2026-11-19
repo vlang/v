@@ -15548,6 +15548,11 @@ pub fn run(args []string) {
 			}
 			cgen_worker_scopes := g.take_parallel_worker_scopes()
 			prealloc_scope_leave_for_v3(cgen_scope)
+			if cache_state.manager.enabled {
+				// The module cache plan reads function signatures after Cgen's arena is
+				// released, and Cgen registers the functions it synthesizes in them.
+				pre_tc.clone_registered_fn_metadata_owned()
+			}
 			if !incremental_cache_hit {
 				generated_c_flags = clone_string_list(scoped_generated_c_flags)
 			}
