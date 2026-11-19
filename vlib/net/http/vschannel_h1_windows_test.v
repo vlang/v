@@ -18,146 +18,86 @@ const vh1t_key_path = @VEXEROOT +
 	'/vlib/net/websocket/tests/autobahn/fuzzing_server_wss/config/server.key'
 const vh1t_body = 'hello from a keep-alive peer'
 
-// vh1t_serve_one responds once, then holds the connection open for longer
-// than the test's own completion-time bound before finally closing --
-// exactly what a compliant HTTP/1.1 keep-alive peer is allowed to do. Bounded
-// (rather than left open forever) so this test cannot hang indefinitely even
-// if the fix regresses; the assertion below only needs the client to finish
-// well before the server closes, not for the server to never close at all.
-fn vh1t_serve_one(mut conn mbedtls.SSLConn) {
+fn vh1t_serve_content_length(mut listener mbedtls.SSLListener, suffix string, request_done chan bool) !bool {
+	mut conn := listener.accept_with_timeout(5 * time.second)!
 	defer {
 		conn.shutdown() or {}
 	}
-	conn.set_read_timeout(10 * time.second)
-	mut buf := []u8{len: 4096}
-	mut sofar := []u8{}
-	for !sofar.bytestr().contains('\r\n\r\n') {
-		n := conn.read(mut buf) or { return }
-		if n <= 0 {
-			return
+	vh1t_read_request(mut conn)!
+	conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: ${vh1t_body.len}${suffix}\r\n\r\n${vh1t_body}')!
+	// Keep the peer open until the client returns. If the client waits for EOF,
+	// close after the deadline and report that the server had to close first.
+	select {
+		_ := <-request_done {
+			return true
 		}
-		sofar << buf[..n]
+		3 * time.second {
+		}
 	}
-	conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: ${vh1t_body.len}\r\n\r\n${vh1t_body}') or {
-		return
+	return false
+}
+
+fn vh1t_check_content_length(suffix string) ! {
+	port, mut listener := vh1t_start_listener()!
+	defer {
+		listener.shutdown() or {}
 	}
-	time.sleep(3 * time.second)
+	request_done := chan bool{cap: 1}
+	th := spawn vh1t_serve_content_length(mut listener, suffix, request_done)
+	resp := vh1t_fetch(port) or {
+		request_done <- true
+		th.wait() or {}
+		return err
+	}
+	request_done <- true
+	client_finished_first := th.wait()!
+	assert resp.status_code == 200
+	assert resp.body == vh1t_body
+	assert client_finished_first, 'client waited for the keep-alive peer to close after receiving Content-Length bytes'
 }
 
 fn test_vschannel_h1_one_shot_does_not_wait_for_keep_alive_peer_to_close() {
-	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
-		assert false, 'port: ${err}'
-		return
-	}
-	port := port_listener.addr() or {
-		assert false, 'addr: ${err}'
-		return
-	}.port() or {
-		assert false, 'addr.port: ${err}'
-		return
-	}
-	port_listener.close() or {}
+	vh1t_check_content_length('')!
+}
+
+fn test_vschannel_h1_content_length_with_trailing_whitespace_still_frames() {
+	// The completion detector must allow optional whitespace after the length.
+	vh1t_check_content_length(' \t')!
+}
+
+fn vh1t_start_listener() !(int, &mbedtls.SSLListener) {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := port_listener.addr()!.port()!
+	port_listener.close()!
 	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
 		cert:     vh1t_cert_path
 		cert_key: vh1t_key_path
 		validate: false
-	}) or {
-		assert false, 'listener: ${err}'
-		return
-	}
-	th := spawn fn (mut l mbedtls.SSLListener) {
-		mut conn := l.accept() or { return }
-		vh1t_serve_one(mut conn)
-	}(mut listener)
-
-	started := time.now()
-	resp := fetch(
-		url:          'https://127.0.0.1:${port}/'
-		validate:     false
-		enable_http2: false
-	) or {
-		assert false, 'fetch: ${err}'
-		return
-	}
-	elapsed := time.now() - started
-
-	assert resp.status_code == 200
-	assert resp.body == vh1t_body
-	assert elapsed < 1500 * time.millisecond, 'expected the one-shot client to stop reading once Content-Length bytes arrived, not wait for the keep-alive peer to close -- took ${elapsed}'
-
-	listener.shutdown() or {}
-	th.wait()
+	})!
+	return port, listener
 }
 
-// vh1t_serve_trailing_ows_cl is vh1t_serve_one with trailing optional
-// whitespace after the Content-Length value -- legal per RFC 7230's
-// field-value grammar (OWS on both sides), and emitted by real servers. The
-// completion detector must trim it rather than fail the strict digit parse
-// and fall back to waiting for the peer to close (which would reintroduce
-// the exact hang vlang/v#27705 fixed, for these servers only).
-fn vh1t_serve_trailing_ows_cl(mut conn mbedtls.SSLConn) {
-	defer {
-		conn.shutdown() or {}
-	}
+fn vh1t_fetch(port int) !Response {
+	return fetch(
+		url:                      'https://127.0.0.1:${port}/'
+		validate:                 false
+		max_retries:              1
+		enable_http2:             false
+		disable_connection_reuse: true
+	)
+}
+
+fn vh1t_read_request(mut conn mbedtls.SSLConn) ! {
 	conn.set_read_timeout(10 * time.second)
 	mut buf := []u8{len: 4096}
 	mut sofar := []u8{}
 	for !sofar.bytestr().contains('\r\n\r\n') {
-		n := conn.read(mut buf) or { return }
+		n := conn.read(mut buf)!
 		if n <= 0 {
-			return
+			return error('peer closed before sending request headers')
 		}
 		sofar << buf[..n]
 	}
-	conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: ${vh1t_body.len} \t\r\n\r\n${vh1t_body}') or {
-		return
-	}
-	time.sleep(3 * time.second)
-}
-
-fn test_vschannel_h1_content_length_with_trailing_whitespace_still_frames() {
-	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
-		assert false, 'port: ${err}'
-		return
-	}
-	port := port_listener.addr() or {
-		assert false, 'addr: ${err}'
-		return
-	}.port() or {
-		assert false, 'addr.port: ${err}'
-		return
-	}
-	port_listener.close() or {}
-	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
-		cert:     vh1t_cert_path
-		cert_key: vh1t_key_path
-		validate: false
-	}) or {
-		assert false, 'listener: ${err}'
-		return
-	}
-	th := spawn fn (mut l mbedtls.SSLListener) {
-		mut conn := l.accept() or { return }
-		vh1t_serve_trailing_ows_cl(mut conn)
-	}(mut listener)
-
-	started := time.now()
-	resp := fetch(
-		url:          'https://127.0.0.1:${port}/'
-		validate:     false
-		enable_http2: false
-	) or {
-		assert false, 'fetch: ${err}'
-		return
-	}
-	elapsed := time.now() - started
-
-	assert resp.status_code == 200
-	assert resp.body == vh1t_body
-	assert elapsed < 1500 * time.millisecond, 'expected trailing OWS after the Content-Length value to be trimmed, not to defeat completion detection and wait for the peer to close -- took ${elapsed}'
-
-	listener.shutdown() or {}
-	th.wait()
 }
 
 const vh1t_te_ext_early = '0\r\n\r\n'
@@ -173,61 +113,28 @@ const vh1t_te_ext_rest = 'REST-AFTER-FAKE-CHUNK-TERMINATOR'
 // silently truncating the body. Unknown codings must fall back to
 // read-until-close; the server closes right after the second write, so the
 // correct path stays fast.
-fn vh1t_serve_xchunked(mut conn mbedtls.SSLConn) {
+fn vh1t_serve_xchunked(mut listener mbedtls.SSLListener) ! {
+	mut conn := listener.accept_with_timeout(5 * time.second)!
 	defer {
 		conn.shutdown() or {}
 	}
-	conn.set_read_timeout(10 * time.second)
-	mut buf := []u8{len: 4096}
-	mut sofar := []u8{}
-	for !sofar.bytestr().contains('\r\n\r\n') {
-		n := conn.read(mut buf) or { return }
-		if n <= 0 {
-			return
-		}
-		sofar << buf[..n]
-	}
-	conn.write_string('HTTP/1.1 200 OK\r\nTransfer-Encoding: xchunked\r\n\r\n${vh1t_te_ext_early}') or {
-		return
-	}
+	vh1t_read_request(mut conn)!
+	conn.write_string('HTTP/1.1 200 OK\r\nTransfer-Encoding: xchunked\r\n\r\n${vh1t_te_ext_early}')!
 	time.sleep(400 * time.millisecond)
-	conn.write_string(vh1t_te_ext_rest) or { return }
+	conn.write_string(vh1t_te_ext_rest)!
 }
 
-fn test_vschannel_h1_transfer_encoding_extension_token_is_not_chunked() {
-	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
-		assert false, 'port: ${err}'
-		return
+fn test_vschannel_h1_transfer_encoding_extension_token_is_not_chunked() ! {
+	port, mut listener := vh1t_start_listener()!
+	defer {
+		listener.shutdown() or {}
 	}
-	port := port_listener.addr() or {
-		assert false, 'addr: ${err}'
-		return
-	}.port() or {
-		assert false, 'addr.port: ${err}'
-		return
+	th := spawn vh1t_serve_xchunked(mut listener)
+	resp := vh1t_fetch(port) or {
+		th.wait() or {}
+		return err
 	}
-	port_listener.close() or {}
-	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
-		cert:     vh1t_cert_path
-		cert_key: vh1t_key_path
-		validate: false
-	}) or {
-		assert false, 'listener: ${err}'
-		return
-	}
-	th := spawn fn (mut l mbedtls.SSLListener) {
-		mut conn := l.accept() or { return }
-		vh1t_serve_xchunked(mut conn)
-	}(mut listener)
-
-	resp := fetch(
-		url:          'https://127.0.0.1:${port}/'
-		validate:     false
-		enable_http2: false
-	) or {
-		assert false, 'fetch: ${err}'
-		return
-	}
+	th.wait()!
 
 	assert resp.status_code == 200
 	// parse_response leaves an unknown transfer coding's body raw (its own
@@ -235,7 +142,4 @@ fn test_vschannel_h1_transfer_encoding_extension_token_is_not_chunked() {
 	// so the full raw bytes -- including everything after the fake chunk
 	// terminator -- must survive to here.
 	assert resp.body == vh1t_te_ext_early + vh1t_te_ext_rest, 'body truncated at a fake chunk terminator inside a non-chunked (extension-coded) response'
-
-	listener.shutdown() or {}
-	th.wait()
 }
