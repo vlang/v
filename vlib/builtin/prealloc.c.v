@@ -76,6 +76,13 @@ const prealloc_default_align = sizeof(voidptr) * 2
 __global g_memory_block &VMemoryBlock
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
+// Live (not cumulative) instrumented totals, maintained only with
+// `-d prealloc_stats`. `used_bytes` is rewound on scope reentry and
+// decremented on block release; `mapped_bytes` counts storage still backed
+// by the OS, including blocks parked in the recycle pool.
+__global g_prealloc_mapped_bytes i64
+__global g_prealloc_used_bytes i64
+__global g_prealloc_block_count i64
 __global g_prealloc_keep_at_exit bool
 // Read by every thread that frees a block, through the `_i32` atomics.
 __global g_prealloc_keep_freed i32
@@ -192,10 +199,33 @@ fn prealloc_block_pool_free() {
 				C.munmap(g_prealloc_block_pool.starts[i], uint(g_prealloc_block_pool.sizes[i]))
 			}
 		}
+		prealloc_stats_add_mapped(-g_prealloc_block_pool.bytes)
 		g_prealloc_block_pool.count = 0
 		g_prealloc_block_pool.bytes = 0
 		prealloc_block_pool_unlock()
 	}
+}
+
+// prealloc_stats_add_mapped adds `delta` to the live mapped-storage counter.
+// It is a no-op unless `-d prealloc_stats` is set, so the default allocator
+// fast path stays unchanged.
+@[if prealloc_stats ?]
+fn prealloc_stats_add_mapped(delta i64) {
+	C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
+}
+
+// prealloc_stats_add_used adds `delta` to the live bumped-bytes counter.
+// It is a no-op unless `-d prealloc_stats` is set.
+@[if prealloc_stats ?]
+fn prealloc_stats_add_used(delta i64) {
+	C.v_prealloc_atomic_add_i64(&g_prealloc_used_bytes, delta)
+}
+
+// prealloc_stats_add_block adds `delta` to the live block counter.
+// It is a no-op unless `-d prealloc_stats` is set.
+@[if prealloc_stats ?]
+fn prealloc_stats_add_block(delta i64) {
+	C.v_prealloc_atomic_add_i64(&g_prealloc_block_count, delta)
 }
 
 // PreallocStats is a process-wide snapshot of instrumented arena allocations.
@@ -203,8 +233,11 @@ fn prealloc_block_pool_free() {
 pub struct PreallocStats {
 pub:
 	enabled          bool
-	allocation_count u64
-	allocated_bytes  u64
+	allocation_count u64 // cumulative malloc calls, as before
+	allocated_bytes  u64 // cumulative bytes requested, as before
+	mapped_bytes     u64 // storage still backed by the OS, incl. the recycle pool
+	used_bytes       u64 // bytes bumped into live blocks (approximate with threads)
+	block_count      u64 // live VMemoryBlock structs
 }
 
 // prealloc_stats_snapshot returns allocation totals across every prealloc
@@ -215,6 +248,9 @@ pub fn prealloc_stats_snapshot() PreallocStats {
 			enabled:          true
 			allocation_count: u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocation_count))
 			allocated_bytes:  u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocated_bytes))
+			mapped_bytes:     u64(C.v_prealloc_atomic_load_i64(&g_prealloc_mapped_bytes))
+			used_bytes:       u64(C.v_prealloc_atomic_load_i64(&g_prealloc_used_bytes))
+			block_count:      u64(C.v_prealloc_atomic_load_i64(&g_prealloc_block_count))
 		}
 	} $else {
 		return PreallocStats{}
@@ -437,6 +473,9 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	}
 
 	fixed_align := if align <= 1 { 1 } else { align }
+	// A pooled block is already counted in mapped_bytes; only fresh storage
+	// obtained from the OS adds to the live mapped total.
+	mut from_pool := false
 	$if windows {
 		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
 	} $else {
@@ -449,6 +488,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 						// cost nothing and the block returns to the pool whole.
 						v.start = unsafe { &u8(pooled) }
 						v.mmap_allocated = true
+						from_pool = true
 						block_size = pooled_size
 						$if prealloc_memset ? {
 							unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
@@ -491,6 +531,10 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	}
 	v.stop = unsafe { &u8(i64(v.start) + block_size) }
 	v.current = v.start
+	if !from_pool {
+		prealloc_stats_add_mapped(i64(block_size))
+	}
+	prealloc_stats_add_block(1)
 	$if trace_prealloc ? {
 		if v.is_scope {
 			C.fprintf(C.stderr, c'[trace_prealloc] block alloc block=%p previous=%p id=%d size=%lld at_least=%lld align=%lld start=%p stop=%p\n', v, prev, v.id, block_size, at_least, align, v.start, v.stop)
@@ -599,6 +643,7 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 			mb.mallocs++
 			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
 			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
+			prealloc_stats_add_used(i64(n))
 		} $else {
 			$if trace_prealloc ? {
 				mb.mallocs++
@@ -629,6 +674,7 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 	$if windows {
 		// Warning! On windows, we always use _aligned_free to free memory.
 		C._aligned_free(mb.start)
+		prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
 	} $else {
 		$if !freestanding && !vinix {
 			if mb.mmap_allocated {
@@ -642,14 +688,21 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 						C.fprintf(C.stderr, c'[recycle-miss] size=%lld\n', size)
 					}
 					C.munmap(mb.start, uint(size))
+					// Recycled blocks stay mapped, so they remain counted until
+					// prealloc_block_pool_free releases them.
+					prealloc_stats_add_mapped(-size)
 				}
 			} else {
 				C.free(mb.start)
+				prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
 			}
 		} $else {
 			C.free(mb.start)
+			prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
 		}
 	}
+	prealloc_stats_add_used(-i64(vmemory_block_used(mb)))
+	prealloc_stats_add_block(-1)
 	C.free(mb)
 }
 
@@ -1035,6 +1088,7 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes int) bool {
 				if last_kept != 0 && kept + size > keep_bytes {
 					break
 				}
+				prealloc_stats_add_used(-i64(vmemory_block_used(mb)))
 				mb.current = mb.start
 				kept += size
 				last_kept = mb
@@ -1255,6 +1309,7 @@ fn prealloc_realloc(old_data &u8, old_size int, new_size int) &u8 {
 					mb.mallocs++
 					C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
 					C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(new_size))
+					prealloc_stats_add_used(i64(new_size - old_size))
 				} $else {
 					$if trace_prealloc ? {
 						mb.mallocs++
@@ -1288,4 +1343,86 @@ fn prealloc_calloc(n int) &u8 {
 @[unsafe]
 fn prealloc_malloc_align(n int, align int) &u8 {
 	return unsafe { vmemory_block_malloc(n, align) }
+}
+
+// PreallocChunk describes one allocation block owned by a prealloc scope.
+pub struct PreallocChunk {
+pub:
+	start    voidptr
+	used     u64
+	capacity u64
+}
+
+// PreallocChunkIter walks the blocks of a settled prealloc scope without
+// allocating. Do not mutate the scope while the iterator is in use.
+pub struct PreallocChunkIter {
+mut:
+	scope   voidptr
+	current voidptr
+}
+
+// prealloc_scope_chunk_iter returns an iterator over the blocks of `scope_ptr`.
+// The scope must be settled: no thread may add or remove blocks during iteration.
+@[unsafe]
+pub fn prealloc_scope_chunk_iter(scope_ptr voidptr) PreallocChunkIter {
+	$if prealloc {
+		if scope_ptr == unsafe { nil } {
+			return PreallocChunkIter{}
+		}
+		unsafe {
+			scope := &VPreallocScope(scope_ptr)
+			return PreallocChunkIter{
+				scope:   scope_ptr
+				current: scope.first
+			}
+		}
+	} $else {
+		return PreallocChunkIter{}
+	}
+}
+
+// next returns the next block of the scope, or none when the walk is done.
+@[unsafe]
+pub fn (mut it PreallocChunkIter) next() ?PreallocChunk {
+	$if prealloc {
+		if it.current == unsafe { nil } {
+			return none
+		}
+		unsafe {
+			scope := &VPreallocScope(it.scope)
+			mut mb := &VMemoryBlock(it.current)
+			for mb != 0 && (!mb.is_scope || mb.scope != scope) {
+				mb = mb.next
+			}
+			if mb == 0 {
+				it.current = unsafe { nil }
+				return none
+			}
+			chunk := PreallocChunk{
+				start:    mb.start
+				used:     u64(vmemory_block_used(mb))
+				capacity: u64(vmemory_block_size(mb))
+			}
+			it.current = mb.next
+			return chunk
+		}
+	} $else {
+		return none
+	}
+}
+
+// prealloc_current_chunk_capacity returns the free bytes in the calling
+// thread's current allocation block, or zero when no block is initialized.
+pub fn prealloc_current_chunk_capacity() u64 {
+	$if prealloc {
+		unsafe {
+			mb := g_memory_block
+			if mb == unsafe { nil } {
+				return 0
+			}
+			return u64(i64(mb.stop) - i64(mb.current))
+		}
+	} $else {
+		return 0
+	}
 }
