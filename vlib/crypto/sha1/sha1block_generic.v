@@ -6,8 +6,6 @@
 // optimized version can be substituted
 module sha1
 
-import math.bits
-
 const _k0 = u32(0x5A827999)
 const _k1 = u32(0x6ED9EBA1)
 const _k2 = u32(0x8F1BBCDC)
@@ -41,10 +39,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 			mut i := 0
 			for i < 16 {
 				f := b & c | (~b) & d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k0)
+				t := ((a << 5) | (a >> 27)) + f + e + w[i & 0xf] + u32(_k0)
 				e = d
 				d = c
-				c = bits.rotate_left_32(b, 30)
+				c = ((b << 30) | (b >> 2))
 				b = a
 				a = t
 				i++
@@ -53,10 +51,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b & c | (~b) & d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k0)
+				t := ((a << 5) | (a >> 27)) + f + e + w[i & 0xf] + u32(_k0)
 				e = d
 				d = c
-				c = bits.rotate_left_32(b, 30)
+				c = ((b << 30) | (b >> 2))
 				b = a
 				a = t
 				i++
@@ -65,10 +63,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b ^ c ^ d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k1)
+				t := ((a << 5) | (a >> 27)) + f + e + w[i & 0xf] + u32(_k1)
 				e = d
 				d = c
-				c = bits.rotate_left_32(b, 30)
+				c = ((b << 30) | (b >> 2))
 				b = a
 				a = t
 				i++
@@ -77,10 +75,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := ((b | c) & d) | (b & c)
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k2)
+				t := ((a << 5) | (a >> 27)) + f + e + w[i & 0xf] + u32(_k2)
 				e = d
 				d = c
-				c = bits.rotate_left_32(b, 30)
+				c = ((b << 30) | (b >> 2))
 				b = a
 				a = t
 				i++
@@ -89,10 +87,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b ^ c ^ d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k3)
+				t := ((a << 5) | (a >> 27)) + f + e + w[i & 0xf] + u32(_k3)
 				e = d
 				d = c
-				c = bits.rotate_left_32(b, 30)
+				c = ((b << 30) | (b >> 2))
 				b = a
 				a = t
 				i++
