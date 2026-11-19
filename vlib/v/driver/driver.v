@@ -20279,8 +20279,9 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	unique := tempname.unique_token()
 	// GCC records the input basename in otherwise-identical object files. Put the
 	// stable cache basename in a unique directory so recompiles remain byte-for-byte
-	// reproducible without sacrificing concurrent-writer isolation.
-	tmp_dir := '${entry.c_source}.tmp.${unique}'
+	// reproducible without sacrificing concurrent-writer isolation. The directory
+	// does not repeat that basename: on Windows the whole path must fit MAX_PATH.
+	tmp_dir := os.join_path_single(os.dir(entry.c_source), '.tmp.${unique}')
 	os.mkdir_all(tmp_dir)!
 	tmp_source := os.join_path(tmp_dir, os.file_name(entry.c_source))
 	defer {
