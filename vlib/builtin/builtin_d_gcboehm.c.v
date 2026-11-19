@@ -210,7 +210,10 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -L/usr/local/lib
 			#flag -I/usr/local/include
-			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+			// Soft lookup: portable cross output evaluates every OS branch on
+			// the host, which may not have a static libgc (issue #31421).
+			// Without it, fall back to `-lgc` for the target toolchain.
+			#flag $when_first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
 			#flag -lgc
 		}
 		#flag -lpthread
