@@ -60,6 +60,7 @@ fn test_init_falls_back_from_empty_or_invalid_manifest_names() {
 	defer {
 		os.chdir(old_wd) or {}
 	}
+	mut projects := []string{}
 	for i, manifest in ["Module { name: '' }\n", 'not a module\n'] {
 		folder := os.join_path(root, 'fallback-project-${i}')
 		name := 'fallback_project_${i}'
@@ -73,10 +74,15 @@ fn test_init_falls_back_from_empty_or_invalid_manifest_names() {
 		assert os.read_file('v.mod') or { panic(err) } == manifest
 		assert (os.read_file('${name}/${name}.v') or { panic(err) }).starts_with('module ${name}\n')
 		assert (os.read_file('.gitignore') or { panic(err) }).split_into_lines().contains(name)
-		tests := os.exec(['sh', '-c',
-			'${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -cc clang -gc none test . < /dev/null'])
-		assert tests.exit_code == 0, tests.output
+		assert os.is_file('tests/square_test.v')
+		projects << folder
 	}
+	os.chdir(root) or { panic(err) }
+	mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+		'test']
+	args << projects
+	tests := os.exec(args)
+	assert tests.exit_code == 0, tests.output
 }
 
 fn test_init_normalizes_hyphenated_library_identifier_without_changing_manifest() {
