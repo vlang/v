@@ -176,7 +176,7 @@ fn test_retry_mechanism() {
 	factory := create_mock_factory(mut test_conns, true, 3) // First 3 attempts fail
 	config := pool.ConnectionPoolConfig{
 		max_retry_attempts: 5
-		retry_base_delay:   10 * time.millisecond
+		retry_base_delay:   0
 		min_idle_conns:     0 // No idle connections
 	}
 
