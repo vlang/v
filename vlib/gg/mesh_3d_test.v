@@ -5,7 +5,9 @@ import math
 fn test_generated_meshes_are_indexed() {
 	cube := gen_mesh_cube(Vec3{2, 2, 2})
 	assert cube.valid()
-	assert cube.vertices.len == 8
+	assert cube.vertices.len == 24
+	assert cube.normals.len == 24
+	assert cube.uvs.len == 48
 	assert cube.indices.len == 36
 	plane := gen_mesh_plane(4, 4, 2)
 	assert plane.valid()
@@ -29,4 +31,21 @@ fn test_rotate_3d_turns_90_degrees() {
 	v := rotate_3d(Vec3{1, 0, 0}, Vec3{0, 90, 0})
 	assert math.abs(v.x) < 1e-4
 	assert v.z < -0.999
+}
+
+fn norm_close(a Vec3, b Vec3) bool {
+	return math.abs(a.x - b.x) < 1e-4 && math.abs(a.y - b.y) < 1e-4
+		&& math.abs(a.z - b.z) < 1e-4
+}
+
+fn test_cylinder_normals_are_translation_invariant() {
+	base := gen_mesh_cylinder(Vec3{0, 0, 0}, Vec3{0, 1, 0}, 1, 8)
+	moved := gen_mesh_cylinder(Vec3{10, 0, 0}, Vec3{10, 1, 0}, 1, 8)
+	assert base.normals.len == moved.normals.len
+	for i in 0 .. base.normals.len {
+		assert norm_close(base.normals[i], moved.normals[i])
+	}
+	assert norm_close(base.normals[0], Vec3{0, 0, 1})
+	assert norm_close(base.normals[6], Vec3{0, -1, 0})
+	assert norm_close(base.normals[9], Vec3{0, 1, 0})
 }
