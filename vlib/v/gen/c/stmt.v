@@ -18,6 +18,7 @@ const ownership_propagation_sync_expr_value = '__v3_ownership_propagation_sync'
 const pending_loop_label_marker = '__v_pending_loop_label:'
 const skip_scope_drops_block_value = '__v3_skip_scope_drops'
 const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
+const reuse_scope_drops_block_value = '__v3_reuse_scope_drops'
 
 struct CInlineAsmIO {
 	constraint string
@@ -1042,6 +1043,7 @@ fn (g &FlatGen) block_scope_drop_prefix_count(block flat.Node) int {
 fn (mut g FlatGen) take_scope_ownership_drops() []types.OwnershipDropEntry {
 	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
 	entries := g.tc.ownership_drop_entries_at_scope_exit(fn_name, g.ownership_scope_index)
+	g.last_scope_drop_entries = entries.clone()
 	g.ownership_scope_index++
 	return entries
 }

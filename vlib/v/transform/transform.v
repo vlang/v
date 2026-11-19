@@ -56,6 +56,7 @@ pub const option_unwrap_marker = '?opt'
 const option_unwrap_marker_id = flat.source_type_id(option_unwrap_marker)
 const skip_scope_drops_block_value = '__v3_skip_scope_drops'
 const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
+const reuse_scope_drops_block_value = '__v3_reuse_scope_drops'
 
 const generated_variant_access_marker = '__v3_generated_variant_access'
 const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
@@ -30692,6 +30693,12 @@ fn (mut t Transformer) make_block_prefix_scope_drops(stmts []flat.NodeId) flat.N
 	return id
 }
 
+fn (mut t Transformer) make_block_reuse_scope_drops(stmts []flat.NodeId) flat.NodeId {
+	id := t.make_block(stmts)
+	t.a.nodes[int(id)].value = reuse_scope_drops_block_value
+	return id
+}
+
 // make_infix builds make infix data for transform.
 pub fn (mut t Transformer) make_infix(op flat.Op, lhs flat.NodeId, rhs flat.NodeId) flat.NodeId {
 	start := t.a.children.len
@@ -33149,11 +33156,12 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	t.inplace_rewrite_holds++
 	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := if cond_idx > 0 {
-		// Only the first lowered variant consumes the source branch's scope-drop
-		// slot. The checker recorded one slot for the original body; additional
-		// clones would shift every later slot (e.g. drops for a guard variable in
-		// another branch) into the wrong arm. See #32454.
-		t.make_block_skip_scope_drops(t.transform_scope_stmts(body_ids))
+		// Duplicated variants reuse the first variant's cleanup site instead of
+		// consuming another checker slot. The checker recorded one slot for the
+		// original body, so an extra slot per clone would shift later slots into
+		// the wrong arm (#32454). Reusing the entries also keeps every variant's
+		// locals freed.
+		t.make_block_reuse_scope_drops(t.transform_scope_stmts(body_ids))
 	} else {
 		t.make_block(t.transform_scope_stmts(body_ids))
 	}
