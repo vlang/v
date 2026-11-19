@@ -1184,12 +1184,12 @@ fn test_wasm_float_cast_of_large_literal() {
 
 fn test_wasm_shift_over_width_semantics() {
 	v3_bin := v3_binary()
-	// V promotes narrow types to int for shifts, so i8(-1) >> 8 stays -1 (the
-	// computation width is 32), while full-width over-width shifts zero out.
+	// Runtime shifts return zero when the count reaches the left operand's width,
+	// even when WASM represents the operand in a wider register.
 	src := 'fn rc(n int) int {\n\treturn n\n}\n\nfn main() {\n\tprintln(int(i8(-1) >> rc(8)))\n\tprintln(u32(1) << rc(32))\n\ta := u64(1)\n\tprintln(a << rc(64))\n\tprintln(int(i8(-5) >>> rc(1)))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftsem')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['-1', '0', '0', '125'])
+	run_wasi_expect(wasm, ['0', '0', '0', '125'])
 }
 
 fn test_wasm_mixed_signed_unsigned_comparison() {
