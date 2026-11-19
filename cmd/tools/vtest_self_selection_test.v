@@ -2,14 +2,24 @@ import os
 import v.pref
 import v.cmdexec
 
+const self_selection_dir = os.join_path(os.vtmp_dir(), 'vtest_self_runner_${os.getpid()}')
+const self_selection_tool = os.join_path(self_selection_dir, 'vtest-self.exe')
+
+fn testsuite_begin() {
+	os.mkdir_all(self_selection_dir) or { panic(err) }
+	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o',
+		self_selection_tool, os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest-self.v')], 180_000)
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(self_selection_dir) or {}
+}
+
 fn test_test_self_discovers_host_architecture_files() {
 	root := os.join_path(@VEXEROOT, 'vtest_self_selection_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	tool := os.join_path(root, 'vtest-self.exe')
-	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o',
-		tool, os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest-self.v')], 180_000)
-	assert build.exit_code == 0, build.output
 	fixture_dir := os.join_path(root, 'parent.with.dots')
 	os.mkdir_all(fixture_dir)!
 	host_arch := pref.host_arch()
@@ -48,7 +58,7 @@ fn test_test_self_discovers_host_architecture_files() {
 	}
 	os.setenv('VEXE', @VEXE, true)
 	relative_dir := os.join_path(os.base(root), 'parent.with.dots')
-	result := cmdexec.run_with_timeout(tool, ['-gc', 'none', 'test-self', relative_dir], 120_000)
+	result := cmdexec.run_with_timeout(self_selection_tool, ['-gc', 'none', 'test-self', relative_dir], 120_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('${host_spellings.len} passed, ${host_spellings.len} total'), result.output
 	for spelling in host_spellings {
@@ -60,10 +70,6 @@ fn test_test_self_keeps_environment_flags_out_of_nested_compilers() {
 	root := os.join_path(@VEXEROOT, 'vtest_self_environment_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	tool := os.join_path(root, 'vtest-self.exe')
-	build := cmdexec.run_with_timeout(@VEXE, ['-nocache', '-o', tool,
-		os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest-self.v')], 180_000)
-	assert build.exit_code == 0, build.output
 	fixture := os.join_path(root, 'environment_test.v')
 	os.write_file(fixture, 'import os
 fn test_environment() {
@@ -93,7 +99,7 @@ fn test_environment() {
 	}
 	os.setenv('VEXE', @VEXE, true)
 	os.setenv('VFLAGS', '-new-compiler -cc ${@CCOMPILER} -d vtest_self_environment_define', true)
-	result := cmdexec.run_with_timeout(tool, ['test-self', os.base(root)], 120_000)
+	result := cmdexec.run_with_timeout(self_selection_tool, ['test-self', os.base(root)], 120_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('1 passed, 1 total'), result.output
 }

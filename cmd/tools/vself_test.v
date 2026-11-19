@@ -326,6 +326,7 @@ fn test_self_build_defaults_to_c_backend() {
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_fastc_default_test'])
 	assert default_result.exit_code == 0, default_result.output
+	assert default_result.output.contains('-nocache'), default_result.output
 	assert !default_result.output.contains('-compile-backend'), default_result.output
 	for backend in ['fastc', 'arm64', 'amd64', 'x64', 'wasm', 'eval', 'ssa'] {
 		assert default_result.output.contains('-d skip_${backend}'), default_result.output
