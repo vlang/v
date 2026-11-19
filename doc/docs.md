@@ -10957,6 +10957,8 @@ Integer literals must fit in a single 64-bit limb; construct larger values with 
 bitwise operations.
 Use the C backend for the full set of 128-bit operations.
 
+ARM64 variable shifts return zero for negative counts or counts at or above the operand width.
+
 Currently there is no debugging support for binaries created by the native backends.
 
 ### Javascript Backend
