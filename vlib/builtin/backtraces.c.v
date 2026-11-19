@@ -110,7 +110,9 @@ fn eprint_backtrace_frame(symbol string, file_line string) {
 	mut in_generic_params := false
 	for i < symbol.len && n < buf.len - 4 {
 		c := symbol[i]
-		if c == `_` && i + 7 <= symbol.len && symbol[i + 1] == `_` && symbol[i + 2] == `p` && symbol[i + 3] == `t` && symbol[i + 4] == `r` && symbol[i + 5] == `_` && symbol[i + 6] == `_` {
+		if c == `_` && i + 7 <= symbol.len && symbol[i + 1] == `_`
+			&& symbol[i + 2] == `p` && symbol[i + 3] == `t` && symbol[i + 4] == `r`
+			&& symbol[i + 5] == `_` && symbol[i + 6] == `_` {
 			buf[n] = `&`
 			n++
 			i += 7
