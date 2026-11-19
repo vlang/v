@@ -7638,8 +7638,8 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 	value_id := tc.a.child(&node, 0)
 	container_id := tc.a.child(&node, 1)
 	tc.check_node(value_id)
-	value_type_raw := tc.resolve_type(value_id)
-	value_type := unalias_type(value_type_raw)
+	mut value_type_raw := tc.resolve_type(value_id)
+	mut value_type := unalias_type(value_type_raw)
 	container := tc.a.node(container_id)
 	if value_sum_type := in_expr_sum_subject_type(value_type) {
 		if container.kind == .array_literal {
@@ -7713,6 +7713,27 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 		pointed := unalias_type(container_type.base_type)
 		if pointed is Map || pointed is Array || pointed is ArrayFixed {
 			container_type = pointed
+		}
+	}
+	// Like `==` (see `check_infix`), an enum shorthand on the left takes its
+	// type from the right operand. Without this the shorthand keeps the `int`
+	// it synthesizes to without context and always mismatches an enum element.
+	if tc.a.node(value_id).kind == .enum_val {
+		if container_type is Array || container_type is ArrayFixed {
+			element_type := if container_type is Array {
+				container_type.elem_type
+			} else {
+				(container_type as ArrayFixed).elem_type
+			}
+			if unalias_type(element_type) is Enum {
+				value_type_raw = tc.resolve_expr(value_id, element_type)
+				value_type = unalias_type(value_type_raw)
+			}
+		} else if container_type is Map {
+			if unalias_type(container_type.key_type) is Enum {
+				value_type_raw = tc.resolve_expr(value_id, container_type.key_type)
+				value_type = unalias_type(value_type_raw)
+			}
 		}
 	}
 	op := tc.in_operator_name(value_id, container_id)
