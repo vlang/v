@@ -8,6 +8,28 @@ fn testsuite_end() {
 	os.rm(amd64_test_compiler) or {}
 }
 
+// This catches newly introduced builtin helpers missing from the SSA/native call graph.
+// The failure on 63120d8 was: "ssa: unknown function backtrace_symbol_has_at".
+fn test_amd64_native_compilation_keeps_builtin_backtrace_helpers_reachable() {
+	$if linux && amd64 {
+		compiler := amd64_test_compiler_path()
+		root := os.join_path(os.vtmp_dir(), 'amd64_backtrace_helpers_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(source, "fn main() {\n\tprintln('native builtin call graph intact')\n}\n")!
+		compiled := os.exec([compiler, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
+			'-b', 'amd64', '-o', output, source])
+		assert compiled.exit_code == 0, compiled.output
+		ran := os.exec([output])
+		assert ran.exit_code == 0, ran.output
+		assert ran.output.trim_space() == 'native builtin call graph intact', ran.output
+	}
+}
+
 fn amd64_test_compiler_path() string {
 	if !os.exists(amd64_test_compiler) {
 		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-d',
