@@ -38,7 +38,7 @@ fn wasm_gate_check(src string) string {
 		}
 		mut visited := []bool{len: a.nodes.len}
 		if msg := unsupported_backend_node_error(a, &tc, flat.NodeId(idx), 'wasm', true,
-			'', mut visited) {
+			'', false, mut visited) {
 			msgs << msg
 		}
 	}
@@ -93,4 +93,49 @@ fn test_wasm_supported_array_elem() {
 
 fn test_wasm_gate_admits_pointer_to_primitive_field() {
 	assert wasm_gate_check('module main\nstruct P {\n\tvalue &int\n}\nfn main() {\n\tvalue := 42\n\tp := P{value: &value}\n\tprintln(*p.value)\n}\n') == ''
+}
+
+// A Result-typed field (`!T`) lowers like an Option-typed field (`?T`) when
+// its payload does: gen.v admits both through the same aggregate path, so the
+// driver gate mirrors the Option handling for Result. Direct and aliased
+// Result fields never reach the gate (the checker rejects storing a Result),
+// and scalar Result fixtures contain no aggregate literal for the gate walk,
+// so this path is pinned at the type level instead of through a source
+// fixture that would never invoke the gate.
+fn test_wasm_gate_result_field_with_supported_payload() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_gate_result_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'g.v')
+	os.write_file(path, 'module main\nfn main() {}\n') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	for d in p.diagnostics {
+		assert false, 'DIAG ${d.severity} ${d.file}:${d.line}:${d.column} ${d.message}'
+	}
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	// A supported payload is admitted, mirroring the existing Option field.
+	assert wasm_struct_field_supported(&tc, types.ResultType{
+		base_type: &types.Type(types.int_)
+	}, 0)
+	assert wasm_struct_field_supported(&tc, types.OptionType{
+		base_type: &types.Type(types.int_)
+	}, 0)
+	// A payload without a lowering stays rejected.
+	map_payload := types.Map{
+		key_type:   &types.Type(types.string_)
+		value_type: &types.Type(types.int_)
+	}
+	assert !wasm_struct_field_supported(&tc, types.ResultType{
+		base_type: &types.Type(map_payload)
+	}, 0)
+	assert !wasm_struct_field_supported(&tc, types.OptionType{
+		base_type: &types.Type(map_payload)
+	}, 0)
 }
