@@ -5380,6 +5380,9 @@ mut:
 	native_sources []string
 	inputs         map[string][]string
 	unassignable   string
+	// SHA-256 digests of native inputs that were already hashed while building the
+	// closure, keyed by path, so that preparing the cache does not hash them again.
+	digests map[string]string
 }
 
 fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs) V3NativeInputClosure {
@@ -5407,6 +5410,10 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs 
 		for paths in closure.inputs.values() {
 			for path in paths {
 				if path in digests {
+					continue
+				}
+				if digest := closure.digests[path] {
+					digests[path] = digest
 					continue
 				}
 				if digest := v3_file_sha256_hex(path) {
