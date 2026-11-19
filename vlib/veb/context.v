@@ -67,6 +67,13 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// response_sent tracks whether `send_response_to_client` already finalized
+	// a response. After-middleware runs with `done` reset, so a replacement
+	// send cannot tell a superseded static response from a first send by state
+	// alone: a static HEAD has no armed transfer and an empty body. This flag
+	// lets a replacement clear its stale representation headers anyway, while
+	// first sends keep honoring pre-set headers.
+	response_sent bool
 	// Deferred response state, armed by `Context.after`: `deferred_cb` runs no
 	// sooner than `deferred_ms` milliseconds after the handler returns, with
 	// `deferred_arg`. `handle_request_and_route` spawns the timer thread once
@@ -218,34 +225,43 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 // old state were cleared after the new headers are prepared (inside
 // send_response_to_client), the fresh headers would be mistaken for the old
 // response and deleted, leaving e.g. a zero Content-Length for a file.
-fn (mut ctx Context) discard_superseded_response() {
-	if ctx.return_type == .file || ctx.res.body.len > 0 {
+// It returns whether a previous response was superseded. `response_sent`
+// covers responses with no other trace: a static HEAD has no armed transfer
+// and an empty body, yet its headers still belong to the old response.
+fn (mut ctx Context) discard_superseded_response() bool {
+	if ctx.return_type == .file || ctx.res.body.len > 0 || ctx.response_sent {
 		ctx.return_type = .normal
 		ctx.return_file = ''
 		ctx.already_compressed = false
+		ctx.response_sent = false
 		ctx.release_response_body()
 		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
 			.content_range, .accept_ranges, .etag, .last_modified, .vary] {
 			ctx.res.header.delete(header)
 		}
+		return true
 	}
+	return false
 }
 
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
 // and the response body to `response`. A call always starts a new response:
-// a file transfer armed by an earlier send_file, or a body left by one, belongs
-// to a superseded response, so its representation headers are discarded and
-// recomputed below. Without this, replacing a file response (e.g. from after
-// middleware) would emit the new body and then stream the original file.
+// a file transfer armed by an earlier send_file, a body left by one, or any
+// finalized earlier response belongs to a superseded response, so its
+// representation headers are discarded and recomputed below. Without this,
+// replacing a file response (e.g. from after middleware) would emit the new
+// body and then stream the original file.
 // send_file discards the superseded state before preparing its own headers
 // and arms its transfer only after this call returns, so its own send
-// never observes armed state here.
+// never observes armed state here. A HEAD request replacing a sent response
+// keeps the replacement length but stores no payload, so the wire stays
+// headers-only like the superseded HEAD response.
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && ctx.takeover_mode == .none {
 		eprintln('[veb] a response cannot be sent twice over one connection')
 		return Result{}
 	}
-	ctx.discard_superseded_response()
+	replaced := ctx.discard_superseded_response()
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
@@ -261,6 +277,16 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 		ctx.res.body = response.clone()
 	}
 	if response_body_can_share_gc_buffer() { ctx.owned_response_body = ctx.res.body.str }
+	if replaced && ctx.req.method == .head
+		&& ctx.res.status_code != int(http.Status.not_modified) {
+		// A HEAD replacement advertises the replacement length but emits no
+		// payload: the superseded static response was headers-only, so the new
+		// body must not reach the wire either. Ordinary (first-send) HEAD
+		// responses keep their historical behavior.
+		ctx.res.header.set(.content_length, ctx.res.body.len.str())
+		ctx.release_response_body()
+		ctx.owned_response_body = unsafe { nil }
+	}
 	// Prefer explicit overrides from Context state or a pre-set response header.
 	mut custom_mimetype := ctx.content_type
 	if custom_mimetype.len == 0 {
@@ -288,6 +314,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
 		ctx.release_response_body()
 	}
+	ctx.response_sent = true
 	// result is send in `veb.v`, `handle_route`
 	return Result{}
 }
@@ -494,9 +521,12 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	result := ctx.send_response_to_client(content_type, '')
 	// Arm the streaming transfer only after the send finalizes the headers:
 	// a later send starts a replacement response and must observe the armed
-	// state to cancel it (see send_response_to_client).
-	ctx.return_type = .file
-	ctx.return_file = file_path
+	// state to cancel it (see send_response_to_client). A HEAD response is
+	// headers-only, so no transfer is armed for it.
+	if ctx.req.method != .head {
+		ctx.return_type = .file
+		ctx.return_file = file_path
+	}
 	return result
 }
 
@@ -559,9 +589,11 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 	ctx.res.header.set(.content_length, compressed_size.str())
 	ctx.send_response_to_client(content_type, '')
 	// Arm the streaming transfer only after the send finalizes the headers
-	// (see send_response_to_client).
-	ctx.return_type = .file
-	ctx.return_file = compressed_path
+	// (see send_response_to_client). A HEAD response is headers-only.
+	if ctx.req.method != .head {
+		ctx.return_type = .file
+		ctx.return_file = compressed_path
+	}
 	ctx.already_compressed = true
 	return true
 }
@@ -620,9 +652,12 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 		ctx.res.header.set(.content_length, compressed.len.str())
 		result := ctx.send_response_to_client(content_type, '')
 		// Arm the streaming transfer only after the send finalizes the
-		// headers (see send_response_to_client).
-		ctx.return_type = .file
-		ctx.return_file = compressed_path
+		// headers (see send_response_to_client). A HEAD response is
+		// headers-only.
+		if ctx.req.method != .head {
+			ctx.return_type = .file
+			ctx.return_file = compressed_path
+		}
 		return result
 	} else {
 		// Fallback: serve compressed content from memory (no caching)

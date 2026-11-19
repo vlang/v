@@ -135,6 +135,10 @@ fn file_replace_after(mut ctx FileReplaceContext) bool {
 }
 
 fn file_replace_handle(path string, extra_headers map[http.CommonHeader]string) &Context {
+	return file_replace_handle_method(.get, path, extra_headers)
+}
+
+fn file_replace_handle_method(method http.Method, path string, extra_headers map[http.CommonHeader]string) &Context {
 	mut app := &FileReplaceApp{}
 	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
 		panic(err)
@@ -149,7 +153,7 @@ fn file_replace_handle(path string, extra_headers map[http.CommonHeader]string) 
 	}
 	return handle_request_and_route[FileReplaceApp, FileReplaceContext](mut app,
 		http.Request{
-			method: .get
+			method: method
 			url:    path
 			header: header
 		}, 0, RequestParams{ routes: &routes })
@@ -257,4 +261,159 @@ fn test_static_middleware_file_to_compressed_file_keeps_encoding_and_length() {
 	mut wire := head.clone()
 	wire << raw_gz
 	assert wire.len == head.len + raw_gz.len
+}
+
+fn static_middleware_head_handle(path string, extra_headers map[http.CommonHeader]string) &Context {
+	mut app := &StaticMiddlewareApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: static_middleware_before)
+	app.use(handler: static_middleware_after, after: true)
+	routes := generate_routes[StaticMiddlewareApp, StaticMiddlewareContext](app) or { panic(err) }
+	mut header := http.new_header_from_map({
+		http.CommonHeader.host: 'localhost'
+	})
+	for key, value in extra_headers {
+		header.set(key, value)
+	}
+	return handle_request_and_route[StaticMiddlewareApp, StaticMiddlewareContext](mut app,
+		http.Request{
+			method: .head
+			url:    path
+			header: header
+		}, 0, RequestParams{ routes: &routes })
+}
+
+fn replace_static_head_handle(path string) &Context {
+	mut app := &ReplaceStaticApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: replace_static_after, after: true)
+	routes := generate_routes[ReplaceStaticApp, ReplaceStaticContext](app) or { panic(err) }
+	return handle_request_and_route[ReplaceStaticApp, ReplaceStaticContext](mut app,
+		http.Request{
+			method: .head
+			url:    path
+			header: http.new_header_from_map({
+				http.CommonHeader.host: 'localhost'
+			})
+		}, 0, RequestParams{ routes: &routes })
+}
+
+fn test_static_middleware_head_static_is_headers_only() {
+	// A plain static HEAD response carries headers but arms no file
+	// transfer and stores no body, so the live server emits no payload.
+	completed := static_middleware_head_handle('/sub.txt', {})
+	assert completed.res.status_code == int(http.Status.ok)
+	assert completed.return_type == .normal
+	assert completed.return_file == ''
+	assert completed.res.body == ''
+	assert completed.res.header.get(.content_length) or { '' } == '3'
+	assert completed.res.header.get(.content_type) or { '' } == 'text/plain'
+	assert completed.res.header.get_custom('X-Before') or { '' } == '1'
+	assert completed.res.header.get_custom('X-After') or { '' } == '1'
+
+	mut app := &StaticMiddlewareApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: static_middleware_before)
+	app.use(handler: static_middleware_after, after: true)
+	out := handle_raw[StaticMiddlewareApp, StaticMiddlewareContext](mut app,
+		'HEAD /sub.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()
+	resp := http.parse_response(out) or { panic(err) }
+	assert resp.status_code == int(http.Status.ok)
+	assert resp.body == ''
+	assert resp.header.get(.content_length) or { '' } == '3'
+}
+
+fn test_static_middleware_head_to_text_replacement_emits_no_payload() {
+	// The after-middleware replaces the headers-only static HEAD response
+	// with 403 + text: the stale file headers must be gone and the new body
+	// must not reach the wire, while Content-Length advertises it.
+	completed := replace_static_head_handle('/sub.txt')
+	assert completed.res.status_code == int(http.Status.forbidden)
+	assert completed.return_type == .normal
+	assert completed.return_file == ''
+	assert completed.res.body == ''
+	assert completed.res.header.get(.content_length) or { '' } == 'blocked'.len.str()
+	assert completed.res.header.get(.content_type) or { '' } == 'text/plain'
+	assert !completed.res.header.contains(.content_encoding)
+
+	mut app := &ReplaceStaticApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: replace_static_after, after: true)
+	out := handle_raw[ReplaceStaticApp, ReplaceStaticContext](mut app,
+		'HEAD /index.htm HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes()).bytestr()
+	resp := http.parse_response(out) or { panic(err) }
+	assert resp.status_code == int(http.Status.forbidden)
+	assert resp.body == ''
+	assert resp.header.get(.content_length) or { '' } == 'blocked'.len.str()
+	assert resp.header.get(.content_type) or { '' } == 'text/plain'
+	assert !out.contains('htm')
+}
+
+fn test_static_middleware_head_file_to_file_has_no_payload() {
+	// Replacing a static HEAD with another file keeps the new file headers
+	// but arms nothing and stores no body.
+	completed := file_replace_handle_method(.head, '/sub.txt', {})
+	want_len := os.file_size(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'root.txt'))
+	assert completed.res.status_code == int(http.Status.ok)
+	assert completed.return_type == .normal
+	assert completed.return_file == ''
+	assert completed.res.body == ''
+	assert completed.res.header.get(.content_length) or { '' } == want_len.str()
+	assert completed.res.header.get(.content_type) or { '' } == 'text/plain'
+	mut head := []u8{}
+	completed.res.write_to(mut head)
+	assert head.bytestr().contains('Content-Length: ${want_len}')
+}
+
+fn test_static_middleware_head_to_text_clears_compressed_headers() {
+	// A gzip static HEAD carries Content-Encoding and the compressed length.
+	// Replacing it with text must drop the encoding and recompute the length,
+	// still without a payload.
+	dir := os.join_path(os.temp_dir(), 'veb_head_replace_gzip')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	orig := os.join_path(dir, 'orig.txt')
+	repl := os.join_path(dir, 'repl.txt')
+	os.write_file(orig, 'sub') or { panic(err) }
+	repl_contents := 'replacement contents'
+	os.write_file(repl, repl_contents) or { panic(err) }
+	compressed := gzip.compress(repl_contents.bytes()) or { panic(err) }
+	os.write_file(repl + '.gz', compressed.bytestr()) or { panic(err) }
+
+	mut req := http.Request{
+		method: .head
+		url:    '/orig.txt'
+		header: http.new_header_from_map({
+			http.CommonHeader.host:            'localhost'
+			http.CommonHeader.accept_encoding: 'gzip'
+		})
+	}
+	mut ctx := &Context{
+		req:                         req
+		enable_static_gzip:          true
+		static_compression_max_size: 1048576
+	}
+	ctx.send_file('text/plain', orig)
+	assert ctx.return_type == .normal
+	assert ctx.return_file == ''
+	assert ctx.res.body == ''
+	assert ctx.res.header.get(.content_encoding) or { '' } == 'gzip'
+	ctx.done = false
+	ctx.res.set_status(.forbidden)
+	ctx.text('blocked')
+	assert ctx.res.status_code == int(http.Status.forbidden)
+	assert ctx.return_type == .normal
+	assert ctx.return_file == ''
+	assert ctx.res.body == ''
+	assert ctx.res.header.get(.content_length) or { '' } == 'blocked'.len.str()
+	assert ctx.res.header.get(.content_type) or { '' } == 'text/plain'
+	assert !ctx.res.header.contains(.content_encoding)
 }
