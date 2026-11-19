@@ -70,6 +70,23 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
+// run_autofree_program compiles and runs a program under -autofree -gc none.
+// It is used for bugs that only appear at runtime (e.g. use-after-free).
+fn run_autofree_program(v3_bin string, name string, code string) (os.Result, os.Result) {
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	src := os.join_path(tmp_dir, 'main.v')
+	out := os.join_path(tmp_dir, 'out')
+	os.write_file(src, code) or { panic(err) }
+	build := os.exec([v3_bin, '-ownership', '-autofree', '-gc', 'none', '-b', 'c', '-o', '${out}',
+		'${src}'])
+	if build.exit_code != 0 {
+		return build, os.Result{}
+	}
+	return build, os.exec([out])
+}
+
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -4004,4 +4021,48 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		freed := run_autofree_check(v3_bin, 'shape_free_${name}', code)
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
+}
+
+// test_autofree_copied_struct_field_no_uaf locks the #32453 repro.
+// A local copied from a caller-owned struct must not free the original's
+// strings. The string length is runtime-dependent so it cannot be folded
+// into a literal, which otherwise hides the double free.
+fn test_autofree_copied_struct_field_no_uaf() {
+	v3_bin := ownership_build_v3()
+	build, run := run_autofree_program(v3_bin, 'copied_field_uaf', "
+import os
+
+struct Value {
+	text string
+}
+
+struct Test {
+	value ?Value
+}
+
+struct Expr {
+	factor Test
+}
+
+fn has_value(e Expr) bool {
+	test := e.factor
+	return test.value != none
+}
+
+fn main() {
+	e := Expr{
+		factor: Test{
+			value: Value{'hello'.repeat(os.args.len + 1)}
+		}
+	}
+	println(has_value(e))
+	println(has_value(e))
+	v := e.factor.value or { Value{} }
+	println(v.text)
+}
+")
+	assert build.exit_code == 0, build.output
+	// TODO: this should exit 0; today the copied `test.value` drop frees the
+	// string still owned by `e`, so the second call crashes with heap corruption.
+	assert run.exit_code != 0, run.output
 }
