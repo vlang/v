@@ -13038,6 +13038,12 @@ fn (mut g FlatGen) gen_interface_pointer_arg(arg_id flat.NodeId, expected types.
 }
 
 fn (mut g FlatGen) gen_callback_fn_value_for_expected_type(arg_id flat.NodeId, expected types.Type) bool {
+	// A captured V closure can have a void target while the callback slot
+	// requires !void. Adapt the target, keeping its captured context, instead
+	// of casting a void-returning function to a result-returning ABI.
+	if g.gen_c_callback_closure_abi_adapter(arg_id, expected, true) {
+		return true
+	}
 	return g.gen_callback_fn_value_for_expected_c_abi(arg_id, expected, '')
 }
 
@@ -13220,7 +13226,7 @@ fn (mut g FlatGen) gen_c_callback_closure_abi_adapter(arg_id flat.NodeId, expect
 		return false
 	}
 	if emit_cast {
-		mut expected_ct := encoded
+		mut expected_ct := if encoded.len > 0 { encoded } else { g.tc.c_type(expected) }
 		if expected_ct.starts_with('fn_ptr:') {
 			expected_ct = g.resolve_fn_ptr_type(expected_ct)
 		}
