@@ -2027,9 +2027,9 @@ fn main() {
 	multiwindow_assert_command_ok('run child gg import smoke', run_cmd, run)
 }
 
-fn test_multiwindow_user_program_input_fn_compile_imports_only_gg() {
+fn test_multiwindow_user_program_compiles_callbacks_and_legacy_context() {
 	vlib_dir := os.dir(@DIR)
-	source_path, out_path_base := multiwindow_temp_paths('gg_multiwindow_input_fn_compile')
+	source_path, out_path_base := multiwindow_temp_paths('gg_multiwindow_public_compile')
 	c_path := '${out_path_base}.c'
 	source := 'import gg
 
@@ -2040,12 +2040,32 @@ fn on_input(event gg.WindowInputEvent, mut app gg.App) ! {
 	_ = app.capabilities()
 }
 
-fn main() {
+fn check_input_callback() ! {
 	mut app := gg.new_app(backend: .mock)!
 	empty := gg.WindowInputEvent{}
 	_ = empty.event.typ
 	app.run(input_fn: on_input) or {}
 	app.stop() or {}
+}
+
+fn check_render_callback() {
+	mut app := gg.new_app(require_renderer: true) or { return }
+	app.run(frame_fn: fn (mut app gg.App) ! {
+		_ = app.capabilities()
+	}) or {}
+	app.stop() or {}
+}
+
+fn check_legacy_context() {
+	ctx := gg.new_context(width: 1, height: 1, create_window: false)
+	assert ctx.width == 1
+	assert ctx.height == 1
+}
+
+fn main() {
+	check_input_callback()!
+	check_render_callback()
+	check_legacy_context()
 }
 '
 	assert source.contains('import gg')
@@ -2060,7 +2080,7 @@ fn main() {
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
 	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
 		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, source_path])
-	multiwindow_assert_command_ok('compile child input_fn API smoke', cmd, compile)
+	multiwindow_assert_command_ok('compile child callbacks and legacy context', cmd, compile)
 }
 
 fn test_multiwindow_user_program_mock_window_operations() {
@@ -2132,33 +2152,6 @@ fn main() {
 	multiwindow_assert_command_ok('run child async post smoke', run_cmd, run)
 }
 
-fn test_multiwindow_auto_render_api_user_program_has_no_renderer_flag() {
-	vlib_dir := os.dir(@DIR)
-	source_path, out_path_base := multiwindow_temp_paths('gg_multiwindow_auto_render_api_compile')
-	c_path := '${out_path_base}.c'
-	source := 'import gg
-
-fn main() {
-	mut app := gg.new_app(require_renderer: true) or { return }
-	app.run(frame_fn: fn (mut app gg.App) ! {
-		_ = app.capabilities()
-	}) or {}
-	app.stop() or {}
-}
-'
-	os.write_file(source_path, source) or { panic(err) }
-	defer {
-		os.rm(source_path) or {}
-		os.rm(c_path) or {}
-		os.rm(out_path_base) or {}
-	}
-
-	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
-	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
-		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, source_path])
-	multiwindow_assert_command_ok('compile child auto render API smoke', cmd, compile)
-}
-
 fn test_multiwindow_checked_in_example_compiles_without_running() {
 	vlib_dir := os.dir(@DIR)
 	_, out_path_base := multiwindow_temp_paths('gg_multiwindow_checked_in_example_compile')
@@ -2227,31 +2220,6 @@ ${output}'
 	} $else {
 		return
 	}
-}
-
-fn test_multiwindow_does_not_break_legacy_context_compile() {
-	vlib_dir := os.dir(@DIR)
-	source_path, out_path_base := multiwindow_temp_paths('gg_legacy_context_compile')
-	c_path := '${out_path_base}.c'
-	source := 'import gg
-
-fn main() {
-	ctx := gg.new_context(width: 1, height: 1, create_window: false)
-	assert ctx.width == 1
-	assert ctx.height == 1
-}
-'
-	os.write_file(source_path, source) or { panic(err) }
-	defer {
-		os.rm(source_path) or {}
-		os.rm(c_path) or {}
-		os.rm(out_path_base) or {}
-	}
-
-	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
-	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
-		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, source_path])
-	multiwindow_assert_command_ok('compile child legacy gg.Context smoke', cmd, compile)
 }
 
 fn multiwindow_facade_source() string {
