@@ -572,6 +572,9 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 		}
 	}
 	vmemory_abort_on_nil(v.start, block_size)
+	// With -d track_heap, report the block as one live allocation. The hook is
+	// a no-op when the flag is off.
+	_ht_alloc(v.start, block_size)
 	$if prealloc_memset ? {
 		unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
 	}
@@ -726,7 +729,7 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 	$if windows {
 		// Warning! On windows, we always use _aligned_free to free memory.
 		C._aligned_free(mb.start)
-		prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
+		_ht_free(mb.start)
 	} $else {
 		$if !freestanding && !vinix {
 			if mb.mmap_allocated {
@@ -744,13 +747,17 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 					// prealloc_block_pool_free releases them.
 					prealloc_stats_add_mapped(-size)
 				}
+				// The tracker sees the block freed on reuse or on unmap.
+				_ht_free(mb.start)
 			} else {
 				C.free(mb.start)
 				prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
+				_ht_free(mb.start)
 			}
 		} $else {
 			C.free(mb.start)
 			prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
+			_ht_free(mb.start)
 		}
 	}
 	prealloc_stats_add_used(-i64(vmemory_block_used(mb)))
