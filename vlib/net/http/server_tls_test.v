@@ -124,9 +124,6 @@ fn test_server_tls_round_trip() {
 		srv.close()
 		t.wait()
 	}
-	// Give the listener a beat to come up.
-	time.sleep(50 * time.millisecond)
-
 	resp := http.fetch(
 		url:      'https://127.0.0.1:${port}/hello'
 		validate: false
@@ -311,8 +308,6 @@ fn test_default_fetch_rejects_the_untrusted_server_certificate() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
 	// One attempt: a rejected certificate is an error, not a reason to retry the handshake.
 	if resp := http.fetch(
 		url:         'https://127.0.0.1:${port}/hello'
@@ -985,8 +980,6 @@ fn test_server_tls_h2_negotiation() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
 	// Client opts into HTTP/2; server must select `h2` via ALPN and serve the
 	// request through its HTTP/2 driver.
 	resp := http.fetch(
@@ -1056,8 +1049,6 @@ fn test_server_tls_sets_remote_addr() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
 	mut spoofed := http.new_header()
 	spoofed.add_custom('remote-addr', '6.6.6.6') or {
 		assert false, 'add_custom: ${err}'

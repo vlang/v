@@ -500,7 +500,11 @@ fn test_h1_idle_eviction() {
 		return
 	}
 	mut t := new_transport()
-	t.idle_timeout = 50 * time.millisecond
+	t.idle_timeout = time.minute
+	defer {
+		t.close_idle()
+		stop_ka_srv(mut listener, th)
+	}
 	req := prepare(url: 'http://127.0.0.1:${port}/') or {
 		assert false, 'prepare: ${err}'
 		return
@@ -510,7 +514,14 @@ fn test_h1_idle_eviction() {
 		return
 	}
 	assert r1.status_code == 200
-	time.sleep(150 * time.millisecond)
+	key := transport_pool_key(req, 'http', '127.0.0.1', port)
+	t.mu.lock()
+	mut idle := t.h1_idle[key] or { []&H1PooledConn{} }
+	if idle.len == 1 {
+		idle[0].idle_since = time.now().add(-2 * t.idle_timeout)
+	}
+	t.mu.unlock()
+	assert idle.len == 1, 'the first request should leave one idle connection'
 	// The pooled connection has sat idle past the timeout: it must be evicted
 	// and a fresh one dialled.
 	r2 := t.round_trip(req, .get, 'http', '127.0.0.1', port, '/', '', req.header) or {
@@ -519,10 +530,6 @@ fn test_h1_idle_eviction() {
 	}
 	assert r2.status_code == 200
 	assert srv.accept_count() == 2
-	// This test pools in its own private Transport, so flush that one before
-	// the joint teardown.
-	t.close_idle()
-	stop_ka_srv(mut listener, th)
 }
 
 // --- TLS (h1 over mbedtls) reuse ---
