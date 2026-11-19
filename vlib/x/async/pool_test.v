@@ -535,13 +535,18 @@ fn test_pool_parent_cancellation_is_observed_by_cooperative_job() {
 fn test_pool_non_cooperative_job_finishes_naturally_after_parent_cancel() {
 	parent_ctx, cancel := xasync.with_cancel()
 	mut pool := xasync.new_pool_with_context(parent_ctx, workers: 1, queue_size: 1)!
+	started := chan bool{cap: 1}
+	release := chan bool{cap: 1}
 	finished := chan bool{cap: 1}
-	pool.try_submit(fn [finished] (mut ctx context.Context) ! {
+	pool.try_submit(fn [started, release, finished] (mut ctx context.Context) ! {
 		_ = ctx
-		time.sleep(20 * time.millisecond)
+		started <- true
+		_ = <-release
 		finished <- true
 	})!
+	wait_for_bool_signal(started, 'pool job did not start before parent cancellation')
 	cancel()
+	release <- true
 	pool.close()!
 	assert <-finished
 }
