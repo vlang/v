@@ -538,6 +538,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		end := if omitted_end {
 			if is_fixed_array {
 				fastc_fixed_array_length_id(fastc_trim_pointer_type(base_layout_type)) or { return none }
+			} else if !g.selfhost && base_layout_type == flat.source_type_string {
+				if receiver_is_pointer {
+					'strlen((*(${receiver_source})) ? (*(${receiver_source})) : "")'
+				} else {
+					'strlen((${receiver_source}) ? (${receiver_source}) : "")'
+				}
 			} else {
 				'${receiver_source}${access}len'
 			}

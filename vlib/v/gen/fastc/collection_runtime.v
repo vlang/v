@@ -49,6 +49,45 @@ static array builtin__array_slice(array values, i64 start, i64 end) {
 	values.len = (int)(end - start); values.cap = values.len;
 	return values;
 }
+static array builtin__array_slice_ni(array values, i64 start, i64 end) {
+	i64 len = values.len;
+	i64 s = start, e = end;
+	if (s < 0) { s += len; if (s < 0) s = 0; }
+	if (e < 0) { e += len; if (e < 0) e = 0; }
+	if (e > len) e = len;
+	if (s > len || e < s) {
+		array empty = values;
+		empty.len = 0; empty.cap = 0;
+		return empty;
+	}
+	values.data = (unsigned char *)values.data + (size_t)s * (size_t)values.element_size;
+	values.len = (int)(e - s); values.cap = values.len;
+	return values;
+}
+static string builtin__string_substr(string value, i64 start, i64 end) {
+	size_t len = strlen(value ? value : "");
+	if (start < 0 || end < start || (i64)len < end) {
+		fputs("string slice out of range\n", stderr); exit(1);
+	}
+	size_t n = (size_t)(end - start);
+	char *result = v_fastc_collection_alloc(n + 1);
+	if (n) memcpy(result, (value ? value : "") + start, n);
+	result[n] = 0;
+	return result;
+}
+static string builtin__string_substr_ni(string value, i64 start, i64 end) {
+	size_t len = strlen(value ? value : "");
+	i64 s = start, e = end;
+	if (s < 0) { s += (i64)len; if (s < 0) s = 0; }
+	if (e < 0) { e += (i64)len; if (e < 0) e = 0; }
+	if ((size_t)e > len) e = (i64)len;
+	if (s > (i64)len || e < s) return "";
+	size_t n = (size_t)(e - s);
+	char *result = v_fastc_collection_alloc(n + 1);
+	if (n) memcpy(result, (value ? value : "") + (size_t)s, n);
+	result[n] = 0;
+	return result;
+}
 static u8 builtin__string_at(string value, i64 index) {
 	return (u8)value[builtin__v_fixed_index(index, (i64)strlen(value ? value : ""))];
 }
