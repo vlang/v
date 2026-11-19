@@ -8025,6 +8025,10 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
+	if clean_recv is Struct && !tc.selector_is_call_callee(id)
+		&& !tc.selector_is_assignment_lhs(id) && tc.struct_guarded_by.len > 0 {
+		tc.check_guarded_field_access(id, node, clean_recv.source_type_id())
+	}
 	if typ := tc.selector_type(id, node) {
 		tc.register_synth_type(id, typ)
 		return

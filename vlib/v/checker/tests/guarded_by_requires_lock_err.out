@@ -1,0 +1,6 @@
+vlib/v/checker/tests/guarded_by_requires_lock_err.vv:19:12: error: call to `Store.get` requires lock `s.mu` to be held
+   17 |         s.entries['a'] = 1
+   18 |     }
+   19 |     println(s.get('a'))
+      |               ~~~~~~~~
+   20 | }

@@ -5539,6 +5539,12 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.check_call_deprecation(id, node, info)
+		if tc.requires_lock_fns.len > 0 {
+			tc.check_call_requires_lock(id, node, info)
+		}
+		if tc.struct_guarded_by.len > 0 {
+			tc.maybe_track_mutex_lock_unlock(node, info)
+		}
 		tc.check_call_arg_types(id, node, info)
 		tc.check_c_callback_abi_args(id, node, info)
 		tc.invalidate_smartcasts_after_call(node, info)

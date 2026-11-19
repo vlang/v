@@ -1,0 +1,6 @@
+vlib/v/checker/tests/guarded_by_helper_nesting_err.vv:25:12: error: call to `Store.helper` requires lock `s.mu` to be held
+   23 |         println(s.helper('a'))
+   24 |     }
+   25 |     println(s.helper('a'))
+      |               ~~~~~~~~~~~
+   26 | }

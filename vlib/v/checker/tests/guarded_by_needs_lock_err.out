@@ -1,0 +1,13 @@
+vlib/v/checker/tests/guarded_by_needs_lock_err.vv:11:4: error: `s.entries` is guarded by `mu` and needs explicit lock `s.mu`
+    9 | fn main() {
+   10 |     mut s := Store{}
+   11 |     s.entries['a'] = 1
+      |       ~~~~~~~
+   12 |     println(s.entries['a'])
+   13 | }
+vlib/v/checker/tests/guarded_by_needs_lock_err.vv:12:12: error: `s.entries` is guarded by `mu` and needs explicit lock `s.mu`
+   10 |     mut s := Store{}
+   11 |     s.entries['a'] = 1
+   12 |     println(s.entries['a'])
+      |               ~~~~~~~
+   13 | }

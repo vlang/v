@@ -15816,17 +15816,24 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 	}
 	mut locked_names := []string{}
 	mut locked_base_keys := []string{}
+	mut locked_mutex_keys := []string{}
 	for i in 0 .. node.children_count - 1 {
 		object_id := tc.a.child(&node, i)
 		object := tc.a.node(object_id)
 		mode := tc.lock_object_mode(node, i)
 		tc.check_node(object_id)
 		is_shared := tc.expr_is_shared_arg(object_id)
-		if !is_shared {
+		is_mutex := !is_shared && tc.is_mutex_lock_object(object_id)
+		if !is_shared && !is_mutex {
 			object_type := if object.kind == .ident { 'variable' } else { 'struct element' }
 			tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(object_id)}` must be declared as `shared` ${object_type} to be locked', object_id, object.pos)
 		}
 		if is_shared {
+			if unstable_id := tc.lock_object_unstable_dependency(object_id) {
+				tc.record_error_at(.assignment_mismatch, 'cannot lock `${tc.source_text_for_node(object_id)}`: selector bases and indices must be stable expressions', unstable_id, tc.a.node(unstable_id).pos)
+			}
+		}
+		if is_mutex {
 			if unstable_id := tc.lock_object_unstable_dependency(object_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot lock `${tc.source_text_for_node(object_id)}`: selector bases and indices must be stable expressions', unstable_id, tc.a.node(unstable_id).pos)
 			}
@@ -15849,6 +15856,18 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 			locked_names << lock_name
 			tc.record_locked_shared_base_keys(object_id, lock_name, mut locked_base_keys)
 		}
+		if is_mutex {
+			mutex_key := tc.guarded_lock_identity_key(object_id)
+			if mutex_key.len > 0 {
+				if (tc.fn_context.held_mutex_locks[mutex_key] or { 0 }) > 0 {
+					tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(object_id)}` is already locked',
+						object_id, object.pos)
+				} else {
+					tc.fn_context.held_mutex_locks[mutex_key]++
+					locked_mutex_keys << mutex_key
+				}
+			}
+		}
 	}
 	tc.lock_depth++
 	tc.check_stmt_node(tc.a.child(&node, node.children_count - 1))
@@ -15867,6 +15886,13 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 	}
 	for key in locked_base_keys {
 		tc.fn_context.locked_shared_base_names.delete(key)
+	}
+	for key in locked_mutex_keys {
+		if (tc.fn_context.held_mutex_locks[key] or { 0 }) > 1 {
+			tc.fn_context.held_mutex_locks[key]--
+		} else {
+			tc.fn_context.held_mutex_locks.delete(key)
+		}
 	}
 }
 
@@ -20898,6 +20924,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
+		if tc.struct_guarded_by.len > 0 {
+			tc.check_guarded_assign_lhs(lhs_id)
+		}
 		source_rhs_type := tc.resolve_type(rhs_id)
 		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
 			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
