@@ -13126,6 +13126,9 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 			g.write(wrapper)
 			return true
 		}
+	} else if expected_c_abi.len == 0
+		&& g.gen_callback_closure_abi_adapter(arg_id, expected, false, true) {
+		return true
 	}
 	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
 	if g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
@@ -13226,15 +13229,24 @@ fn (g &FlatGen) callback_closure_target(id flat.NodeId) ?CallbackClosureTarget {
 // while replacing its generated target with a C-ABI adapter. The executable closure
 // still carries the original context; only its jump target changes.
 fn (mut g FlatGen) gen_c_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, emit_cast bool) bool {
+	return g.gen_callback_closure_abi_adapter(arg_id, expected, true, emit_cast)
+}
+
+// gen_callback_closure_abi_adapter is gen_c_callback_closure_abi_adapter for a V
+// callback type when `c_abi` is false: a capturing literal that returns nothing,
+// passed where `fn (...) !` is expected, must be called through an adapter that
+// returns the result. A bare cast lets the caller read a result the literal never
+// wrote, and on x86-64 the caller's hidden result pointer becomes the first argument.
+fn (mut g FlatGen) gen_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, c_abi bool, emit_cast bool) bool {
 	expected_fn := fn_type_from(expected) or { return false }
 	target := g.callback_closure_target(arg_id) or { return false }
 	actual_fn := g.callback_fn_value_type(target.name) or { return false }
-	encoded := g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn)
+	encoded := if c_abi { g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn) } else { '' }
 	wrapper := g.ensure_callback_userdata_wrapper(target.name, actual_fn, expected_fn, encoded) or {
 		return false
 	}
 	if emit_cast {
-		mut expected_ct := encoded
+		mut expected_ct := if c_abi { encoded } else { g.tc.c_type(expected) }
 		if expected_ct.starts_with('fn_ptr:') {
 			expected_ct = g.resolve_fn_ptr_type(expected_ct)
 		}
