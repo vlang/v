@@ -333,6 +333,22 @@ pub fn (ctx &Context) load_matrix(m []f32) {
 	st.matrix_dirty = true
 }
 
+// load_mat4 replaces the current matrix with m.
+pub fn (ctx &Context) load_mat4(m Mat4) {
+	mut st := ctx.st
+	st.matrix_stack[st.cur_matrix_mode.value][st.matrix_tos[st.cur_matrix_mode.value]] = m
+	st.matrix_dirty = true
+}
+
+// mult_mat4 multiplies the current matrix by m.
+pub fn (ctx &Context) mult_mat4(m Mat4) {
+	mut st := ctx.st
+	idx := st.cur_matrix_mode.value
+	cur := st.matrix_stack[idx][st.matrix_tos[idx]]
+	st.matrix_stack[idx][st.matrix_tos[idx]] = mat4_mul(cur, m)
+	st.matrix_dirty = true
+}
+
 pub fn (ctx &Context) load_transpose_matrix(m []f32) {
 	mut st := ctx.st
 	mm := mat4_from_array(m)

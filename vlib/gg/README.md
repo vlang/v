@@ -80,6 +80,50 @@ fn frame(mut ctx gg.Context) {
 }
 ```
 
+## 3D drawing
+
+`gg` stays a 2D-first library, but it can render simple depth-tested 3D.
+Set `depth: true` in `gg.Config` to request a depth buffer, then bracket 3D
+drawing between `ctx.begin_3d(camera)` and `ctx.end_3d()`:
+
+```v cgen
+module main
+
+import gg
+
+fn main() {
+	mut ctx := gg.new_context(
+		width:        640
+		height:       480
+		window_title: '3D cube'
+		depth:        true
+		frame_fn:     frame
+	)
+	ctx.run()
+}
+
+fn frame(data voidptr) {
+	ctx := unsafe { &gg.Context(data) }
+	ctx.begin()
+	mut camera := gg.Camera3D{}
+	camera.orbit(30, 20, 7)
+	ctx.begin_3d(camera)
+	ctx.draw_cube(gg.Vec3{0, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
+	ctx.end_3d()
+	ctx.end()
+}
+```
+
+`Camera3D` has `position`, `target`, `up`, `fovy`, `near`, `far` and a
+`projection` of `.perspective` or `.orthographic`. `camera.orbit(yaw, pitch,
+distance)` places the camera around its target using degrees. 3D drawing uses
+depth testing with backface culling; `ctx.end_3d()` restores the regular 2D
+painter-order pipelines, so HUD and text can be drawn afterwards.
+
+`draw_cube()` and `draw_cube_wires()` are the first 3D primitives. More
+primitives and mesh support are tracked in
+https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v`.
+
 ## Multi-Window Applications
 
 `gg.App` is an additive multi-window facade for programs that need to manage

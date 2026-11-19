@@ -34,6 +34,9 @@ pub mut:
 	// sample_count must match the render pass the context draws into: the window's
 	// framebuffer sample count for the default pass (0 falls back to 1).
 	sample_count int
+	// depth_test creates a second set of default pipelines with depth testing and
+	// backface culling enabled. Select them with Context.set_depth_test().
+	depth_test bool
 }
 
 pub struct MatrixMode {
@@ -80,6 +83,8 @@ pub mut:
 	pip_stack         [max_stack_depth]Pipeline
 	pip_tos           int
 	def_pip           Pipeline
+	depth_pip         Pipeline
+	depth_test        bool
 	matrix_stack      [3][max_stack_depth]Mat4
 	matrix_tos        [3]int
 	cur_matrix_mode   MatrixMode
@@ -159,8 +164,14 @@ pub fn new_context(desc Desc) &Context {
 	st.cur_img = st.def_img
 	st.cur_smp = st.def_smp
 	st.def_pip = Pipeline{ id: 0 }
+	st.depth_pip = Pipeline{ id: 0 }
+	// Depth pipelines are built on request, but the 2D pipeline stays selected
+	// until the caller explicitly enters a 3D scope.
 	if gfx.is_valid() {
-		st.def_pip = st_make_default_pipeline(st)
+		st.def_pip = st_make_default_pipeline(st, false)
+		if desc.depth_test {
+			st.depth_pip = st_make_default_pipeline(st, true)
+		}
 	}
 
 	ctx := &Context{ st: st }
@@ -175,7 +186,7 @@ pub fn new_context(desc Desc) &Context {
 	return ctx
 }
 
-fn st_make_default_pipeline(st &State) Pipeline {
+fn st_make_default_pipeline(st &State, depth bool) Pipeline {
 	mut p := Pipeline{}
 	p.id = 0
 	for i in 0 .. num_primitive_types {
@@ -199,6 +210,12 @@ fn st_make_default_pipeline(st &State) Pipeline {
 		d.colors[0].pixel_format = st.color_format
 		d.depth.pixel_format = st.depth_format
 		d.face_winding = st.face_winding
+		if depth && st.depth_format != .none && st.depth_format != ._default {
+			// Depth-tested 3D default: nearer fragments win, backfaces are culled.
+			d.depth.compare = .less_equal
+			d.depth.write_enabled = true
+			d.cull_mode = .back
+		}
 		if d.colors[0].write_mask == ._default {
 			d.colors[0].write_mask = .rgb
 		}
@@ -324,6 +341,11 @@ pub fn (ctx &Context) destroy() {
 				gfx.destroy_pipeline(pipeline)
 			}
 		}
+		for index, pipeline in st.depth_pip.pips {
+			if index != 5 && pipeline.id != 0 && pipeline.id != st.def_pip.pips[index].id {
+				gfx.destroy_pipeline(pipeline)
+			}
+		}
 		if st.def_img.id != 0 {
 			gfx.destroy_image(st.def_img)
 		}
@@ -336,6 +358,7 @@ pub fn (ctx &Context) destroy() {
 	}
 	st.vbuf = gfx.Buffer{}
 	st.def_pip = Pipeline{}
+	st.depth_pip = Pipeline{}
 	st.def_img = gfx.Image{}
 	st.def_smp = gfx.Sampler{}
 	st.shader = gfx.Shader{}

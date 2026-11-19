@@ -142,9 +142,12 @@ pub:
 	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen     bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
-	scale          f32 = 1.0
-	sample_count   int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	fullscreen   bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
+	scale        f32 = 1.0
+	sample_count int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	// depth enables a depth buffer for the default framebuffer. Required by 3D
+	// drawing (ctx.begin_3d/ctx.end_3d); 2D apps should leave it false.
+	depth          bool
 	texture_filter TextureFilter = .linear // default texture filter for newly created images; use `.nearest` for pixel art scaling
 	swap_interval  int           = 1       // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
 	// ved needs this
@@ -326,14 +329,19 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 	*/
 	gfx.setup(&desc)
-	ctx.r = render.new_context(render.Desc{
+	mut render_desc := render.Desc{
 		max_vertices: 1 << 17
 		max_commands: 1 << 15
 		face_winding: .ccw
 		// Pipelines have to match the window framebuffer's sample count, or
 		// sg_apply_pipeline rejects every draw of the default pass.
 		sample_count: if ctx.config.sample_count > 0 { ctx.config.sample_count } else { 1 }
-	})
+	}
+	if ctx.config.depth {
+		render_desc.depth_format = sapp.glue_swapchain().depth_format
+		render_desc.depth_test = true
+	}
+	ctx.r = render.new_context(render_desc)
 	ctx.r.defaults()
 	ctx.set_scale()
 	if !ctx.config.resizable {
@@ -964,7 +972,7 @@ pub fn (ctx &Context) end(options EndOptions) {
 }
 
 fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchain) {
-	action := match options.how {
+	mut action := match options.how {
 		.clear {
 			if ctx.bg_color.a < 255 {
 				if ctx.translucent_bg_seed_pending {
@@ -979,6 +987,14 @@ fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchai
 		}
 		.passthru {
 			dontcare_pass
+		}
+	}
+	if ctx.config.depth {
+		// Clear depth to the far plane each frame so nearer 3D fragments win.
+		action.depth = gfx.DepthAttachmentAction{
+			load_action:  .clear
+			store_action: .dontcare
+			clear_value:  1.0
 		}
 	}
 	ctx.frame_pass = gfx.Pass{ action: action, swapchain: swapchain }
