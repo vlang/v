@@ -5,6 +5,8 @@ import net.http
 import time
 import fasthttp
 
+const after_live_delay_ms = 400
+
 struct AfterApp {}
 
 struct AfterContext {
@@ -25,7 +27,7 @@ fn after_chain(mut ctx Context, arg u64) {
 
 @['/delay']
 fn (mut app AfterApp) delay(mut ctx AfterContext) Result {
-	return ctx.after(400, after_answer, 7)
+	return ctx.after(after_live_delay_ms, after_answer, 7)
 }
 
 @['/chain']
@@ -73,10 +75,11 @@ fn test_after_without_transport_answers_inline() {
 
 fn test_after_without_transport_waits_at_least_ms() {
 	mut ctx := after_inline_ctx()
-	start := time.ticks()
-	ctx.after(150, after_answer, 1)
-	elapsed := time.ticks() - start
-	assert elapsed >= 120, 'deferred response answered after ${elapsed}ms, want >= 120ms'
+	timer := time.new_stopwatch()
+	ctx.after(40, after_answer, 1)
+	elapsed := timer.elapsed()
+	// Allow for Windows' sleep granularity.
+	assert elapsed >= 24 * time.millisecond, 'deferred response answered after ${elapsed}'
 	assert ctx.res.body == 'late:1'
 }
 
@@ -256,6 +259,9 @@ fn test_after_deferred_context_survives_writer_slot_reuse() {
 		http.Request{ url: '/immediate' }, 0, params, &state.context)
 	assert next.res.body == 'chained:1'
 	assert deferred.req.url == '/delay'
+	assert deferred.deferred_ms == after_live_delay_ms
+	// The slot has already been reused. Start the saved callback on the next timer turn.
+	deferred.deferred_ms = 0
 	gc_collect()
 	worker := spawn after_timer(mut deferred, unsafe { nil })
 	response := after_read_until(mut cli, 'late:7')
