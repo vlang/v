@@ -3830,18 +3830,26 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 	if params := t.implicit_veb_call_param_types(call_name) {
 		return params
 	}
+	if node.children_count > 0 {
+		fn_node := t.a.node(t.a.child(&node, 0))
+		// A local variable holding a function value shadows any same-named
+		// function declaration, including private functions of imported
+		// modules that are not visible unqualified. Resolve its parameters
+		// from the variable's type before consulting declarations.
+		if fn_node.kind == .ident && (t.var_type(fn_node.value)) != 0 {
+			fn_id := t.a.child(&node, 0)
+			if fn_type := t.call_callee_fn_type(fn_id) {
+				return fn_type.params.map(*it.typ)
+			}
+			return []types.Type{}
+		}
+	}
 	if params := t.call_param_types_from_decl(call_name) {
 		return params
 	}
 	if node.children_count > 0 {
 		fn_id := t.a.child(&node, 0)
 		fn_node := t.a.node(t.a.child(&node, 0))
-		if fn_node.kind == .ident && (t.var_type(fn_node.value)) != 0 {
-			if fn_type := t.call_callee_fn_type(fn_id) {
-				return fn_type.params.map(*it.typ)
-			}
-			return []types.Type{}
-		}
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			base_id := t.a.child(fn_node, 0)
 			method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
