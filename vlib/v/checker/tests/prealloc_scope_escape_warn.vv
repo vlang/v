@@ -1,0 +1,12 @@
+@[unsafe]
+fn leaky() &u8 {
+	scope := prealloc_scope_begin()
+	p := malloc(64)
+	prealloc_scope_end(scope)
+	return p
+}
+
+fn main() {
+	_ = unsafe { leaky() }
+	println('ok')
+}
