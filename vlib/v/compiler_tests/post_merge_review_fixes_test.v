@@ -60,6 +60,13 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run_good_backend(v3_bin, name, 'c', src)
 }
 
+// run_good_with_c returns the program output and the C retained by its build.
+fn run_good_with_c(v3_bin string, name string, src string) (string, string) {
+	out := run_good(v3_bin, name, src)
+	c_source := os.read_file('${tmp_test_path(name)}.c') or { panic(err) }
+	return out, c_source
+}
+
 fn run_good_with_flags(v3_bin string, name string, flags string, src string) string {
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
@@ -1221,14 +1228,13 @@ fn main() {
 	println(render(wide))
 }
 '
-	c_source := gen_c(v3_bin, 'interface_auto_str_guarded_preludes', source)
+	out, c_source := run_good_with_c(v3_bin, 'interface_auto_str_guarded_preludes_run', source)
 	render_body := c_fn_body(c_source, 'string render(IValue value) {')
 	assert render_body.len > 0, c_source
 	first_tag_guard := render_body.index('._typ') or { -1 }
 	first_object_read := render_body.index('._object') or { -1 }
 	assert first_tag_guard >= 0, render_body
 	assert first_object_read > first_tag_guard, render_body
-	out := run_good(v3_bin, 'interface_auto_str_guarded_preludes_run', source)
 	assert out.contains('Narrow'), out
 	assert out.contains('7'), out
 	assert out.contains('Wide'), out
@@ -1261,13 +1267,12 @@ fn main() {
 	println(same(other, other).str())
 }
 '
-	c_source := gen_c(v3_bin, 'interface_equality_guarded_preludes', source)
+	out, c_source := run_good_with_c(v3_bin, 'interface_equality_guarded_preludes_run', source)
 	same_body := c_fn_body(c_source, 'bool same(IValue left, IValue right) {')
 	guard_pos := same_body.index('if (') or { -1 }
 	array_cast_pos := same_body.index('WithArray*') or { -1 }
 	assert guard_pos >= 0, same_body
 	assert array_cast_pos > guard_pos, same_body
-	out := run_good(v3_bin, 'interface_equality_guarded_preludes_run', source)
 	assert out == 'true\ntrue'
 }
 
@@ -2366,9 +2371,8 @@ fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
 	println(int_str(b))
 }
 '
-	c_source := gen_c(v3_bin, 'builtin_addr_pointer_variable_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'builtin_addr_pointer_variable', source)
 	assert c_source.contains('&p'), c_source
-	out := run_good(v3_bin, 'builtin_addr_pointer_variable', source)
 	assert out == '1\n7'
 }
 
@@ -2398,10 +2402,9 @@ fn main() {
 	println(int_str((*p).n))
 }
 '
-	c_source := gen_c(v3_bin, 'builtin_addr_overloaded_index_materializes_getter_result_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'builtin_addr_overloaded_index_materializes_getter_result', source)
 	assert c_source.contains('addr'), c_source
 	assert !c_source.contains('&Dict__index('), c_source
-	out := run_good(v3_bin, 'builtin_addr_overloaded_index_materializes_getter_result', source)
 	assert out == '7'
 }
 
@@ -2413,10 +2416,9 @@ fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 
 fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'dynamic_enum_array_literal_width', 'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	out, c_source := run_good_with_c(v3_bin, 'dynamic_enum_array_literal_width_run', 'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
 	assert c_source.contains('__new_array_noscan(0, 2, sizeof(main__Tiny))'), c_source
 	assert !c_source.contains('__new_array_noscan(0, 2, sizeof(i64))'), c_source
-	out := run_good(v3_bin, 'dynamic_enum_array_literal_width_run', 'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
 	assert out == '0\n1'
 }
 
@@ -2542,10 +2544,9 @@ fn main() {
 fn test_interpolation_joins_without_intermediate_storage() {
 	v3_bin := build_v3()
 	source := "fn concat_path(dir string, name string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', name))\n}\n"
-	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
+	out, c_source := run_good_with_c(v3_bin, 'nested_string_plus_owned_intermediate_run', source)
 	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
 	assert c_source.contains(', __v3_internal_symbol_join_'), c_source
-	out := run_good(v3_bin, 'nested_string_plus_owned_intermediate_run', source)
 	assert out == 'root/file'
 }
 
@@ -2604,9 +2605,8 @@ fn main() {
 	println(int_str(c.n))
 }
 '
-	out := run_good(v3_bin, 'for_mut_item_receiver_run', item_src)
+	out, item_c := run_good_with_c(v3_bin, 'for_mut_item_receiver_run', item_src)
 	assert out == '3\n4\n5\n2'
-	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
 	item_main := c_fn_body(item_c, 'int main(')
 	assert item_main.len > 0, item_c
 	assert item_main.contains('Item* item ='), item_main
@@ -3054,12 +3054,11 @@ fn main() {
 	}
 }
 '
-	c_source := gen_c(v3_bin, 'aligned_alias_heap_cast', source)
+	out, c_source := run_good_with_c(v3_bin, 'aligned_alias_heap_cast_run', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
 	assert main_body.contains('(main__Aligned*)v3_aligned_memdup('), main_body
 	assert !main_body.contains('(main__Aligned*)memdup('), main_body
 	assert main_body.contains('v3_aligned_free(p)'), main_body
-	out := run_good(v3_bin, 'aligned_alias_heap_cast_run', source)
 	assert out == '7'
 }
 
@@ -3212,19 +3211,17 @@ fn test_formatted_interpolation_alias_uses_string_representation() {
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
 	v3_bin := build_v3()
 	source := 'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n'
-	c_source := gen_c(v3_bin, 'callback_pointer_return_to_voidptr_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'callback_pointer_return_to_voidptr', source)
 	assert c_source.contains('.callback = make_item_callback_adapter_'), c_source
 	assert c_source.contains('return (void*)('), c_source
-	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr', source)
 	assert out == '42'
 }
 
 fn test_enum_pointer_receiver_builtin_str_passes_enum_value() {
 	v3_bin := build_v3()
 	source := 'enum VCS {\n\tgit\n\thg\n}\n\nfn (vcs &VCS) text() string {\n\treturn vcs.str()\n}\n\nfn main() {\n\tvcs := VCS.hg\n\tprintln(vcs.text())\n}\n'
-	c_source := gen_c(v3_bin, 'enum_pointer_receiver_builtin_str_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'enum_pointer_receiver_builtin_str', source)
 	assert c_source.contains('return VCS__autostr(*(vcs));'), c_source
-	out := run_good(v3_bin, 'enum_pointer_receiver_builtin_str', source)
 	assert out == 'hg'
 }
 
@@ -3907,14 +3904,13 @@ fn main() {
 	println(int_str(m["b"]))
 }
 '
-	c_source := gen_c(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer', source)
 	body := c_fn_body(c_source, 'map* keep(map* p) {')
 	assert body.contains('return (map*)(p);'), body
 	assert !body.contains('map _t') && !body.contains('&_t') && !body.contains('&p'), body
 	void_body := c_fn_body(c_source, 'map* from_void(void* p) {')
 	assert void_body.contains('return (map*)(p);'), void_body
 	assert !void_body.contains('&p'), void_body
-	out := run_good(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer', source)
 	assert out == '2'
 }
 
@@ -3976,44 +3972,40 @@ fn test_callback_lambda_lift_forwards_optional_void_failures() {
 fn test_user_new_map_call_with_args_uses_renamed_symbol() {
 	v3_bin := build_v3()
 	source := 'fn new_map(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tprintln(int_str(new_map(41)))\n}\n'
-	c_source := gen_c(v3_bin, 'user_new_map_call_with_args', source)
+	out, c_source := run_good_with_c(v3_bin, 'user_new_map_call_with_args_run', source)
 	assert c_source.contains('main__new_map(41)'), c_source
 	assert !c_source.contains('(new_map(41)'), c_source
-	out := run_good(v3_bin, 'user_new_map_call_with_args_run', source)
 	assert out == '42'
 }
 
 fn test_amp_interface_cast_heap_copies_concrete_source() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'amp_interface_cast_heap_copy', source)
+	out, c_source := run_good_with_c(v3_bin, 'amp_interface_cast_heap_copy_run', source)
 	make_body := c_fn_body(c_source, '\nReader* make(void) {')
 	assert make_body.contains('._object = (main__Box*)(memdup(&b, sizeof(main__Box)))')
 	assert make_body.contains('memdup(&(Reader){')
 	assert !make_body.contains('__iface_box_')
-	out := run_good(v3_bin, 'amp_interface_cast_heap_copy_run', source)
 	assert out == '5'
 }
 
 fn test_interface_cast_from_local_address_preserves_pointer_identity() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.get()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_local_address_identity', source)
+	out, c_source := run_good_with_c(v3_bin, 'interface_local_address_identity_run', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
 	assert main_body.contains('._object = __iface_src_'), main_body
 	assert !main_body.contains('memdup(&b, sizeof(Box))'), main_body
-	out := run_good(v3_bin, 'interface_local_address_identity_run', source)
 	assert out == '2'
 	mut_source := 'interface Writer {\nmut:\n\tset(n int)\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (mut b Box) set(n int) {\n\tb.n = n\n}\n\nfn (b Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tmut w := Writer(&b)\n\tw.set(3)\n\tprintln(int_str(b.n))\n\tprintln(int_str(w.get()))\n}\n'
 	mut_out := run_good(v3_bin, 'interface_local_address_identity_mut_run', mut_source)
 	assert mut_out == '3\n3'
 	escape_source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn make_reader() Reader {\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr := Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make_reader()\n\tprintln(int_str(r.get()))\n}\n'
-	escape_c := gen_c(v3_bin, 'interface_local_address_escape_box', escape_source)
+	escape_out, escape_c := run_good_with_c(v3_bin, 'interface_local_address_escape_box_run', escape_source)
 	make_reader_body := c_fn_body(escape_c, '\nReader make_reader(void) {')
 	assert make_reader_body.contains('Box* b ='), make_reader_body
 	assert make_reader_body.contains('memdup'), make_reader_body
 	assert !make_reader_body.contains('Box b ='), make_reader_body
-	escape_out := run_good(v3_bin, 'interface_local_address_escape_box_run', escape_source)
 	assert escape_out == '6'
 	escape_variants := run_good_with_flags(v3_bin, 'interface_local_address_escape_variants', '-enable-globals', 'interface Reader {
 	get() int
@@ -4142,7 +4134,7 @@ fn main() {
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'mut_interface_arg_borrows_existing_box', source)
+	out, c_source := run_good_with_c(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	assert main_body != '', c_source
 	// Interface calls can retain the mutable view, so its existing box is heap-promoted.
@@ -4150,7 +4142,6 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	// Heap-promoted caller storage is already a pointer to the existing interface box.
 	assert main_body.contains('call(&visitor);') || main_body.contains('call(visitor);'), main_body
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
-	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
 	assert out == '1'
 
 	assign_source := 'interface Base {
@@ -4179,29 +4170,26 @@ fn main() {
 	println(int_str(b.get()))
 }
 '
-	assign_c := gen_c(v3_bin, 'mut_interface_arg_assignment_keeps_storage', assign_source)
+	assign_out, assign_c := run_good_with_c(v3_bin, 'mut_interface_arg_assignment_keeps_storage_run', assign_source)
 	assert assign_c.contains('update(&b);')
 	assert !assign_c.contains('update(&((Base[]){b})[0]);')
-	assign_out := run_good(v3_bin, 'mut_interface_arg_assignment_keeps_storage_run', assign_source)
 	assert assign_out == '7'
 }
 
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
 	v3_bin := build_v3()
 	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'
-	c_source := gen_c(v3_bin, 'pointer_interface_rvalue_sources', source)
+	out, c_source := run_good_with_c(v3_bin, 'pointer_interface_rvalue_sources_run', source)
 	assert c_source.contains('memdup(&__iface_box_')
-	out := run_good(v3_bin, 'pointer_interface_rvalue_sources_run', source)
 	assert out == '7\n9'
 }
 
 fn test_pointer_interface_cast_heap_copies_converted_interface_source() {
 	v3_bin := build_v3()
 	source := 'interface Base {\n\tget() int\n}\n\ninterface Narrow {\n\tBase\n\textra() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nfn (i Item) extra() int {\n\treturn i.n + 1\n}\n\nfn make_narrow() Narrow {\n\treturn Item{\n\t\tn: 11\n\t}\n}\n\nfn use(value &Base) int {\n\treturn value.get()\n}\n\nfn make_base() &Base {\n\tnarrow := make_narrow()\n\treturn &Base(narrow)\n}\n\nfn main() {\n\tprintln(int_str(use(make_base())))\n}\n'
-	c_source := gen_c(v3_bin, 'pointer_interface_converted_source', source)
+	out, c_source := run_good_with_c(v3_bin, 'pointer_interface_converted_source_run', source)
 	assert c_source.contains('Base __iface_cast_')
 	assert c_source.contains('return (Base*)(memdup(&__iface_box_')
-	out := run_good(v3_bin, 'pointer_interface_converted_source_run', source)
 	assert out == '11'
 }
 
@@ -4616,15 +4604,13 @@ fn main() {
 fn test_overloaded_index_compound_assignment_uses_v_operators() {
 	v3_bin := build_v3()
 	string_source := 'struct Dict {\nmut:\n\tvalues map[string]string\n}\n\nfn (d Dict) [] (key string) string {\n\treturn d.values[key]\n}\n\nfn (mut d Dict) []= (key string, value string) {\n\td.values[key] = value\n}\n\nfn main() {\n\tmut d := Dict{\n\t\tvalues: {\n\t\t\t"name": "a"\n\t\t}\n\t}\n\td["name"] += "x"\n\tprintln(d.values["name"])\n}\n'
-	string_c := gen_c(v3_bin, 'overloaded_index_compound_string_operator_c', string_source)
+	string_out, string_c := run_good_with_c(v3_bin, 'overloaded_index_compound_string_operator', string_source)
 	assert string_c.contains('string__plus('), string_c
-	string_out := run_good(v3_bin, 'overloaded_index_compound_string_operator', string_source)
 	assert string_out == 'ax'
 
 	struct_source := 'struct Num {\n\tn int\n}\n\nfn (a Num) + (b Num) Num {\n\treturn Num{\n\t\tn: a.n + b.n\n\t}\n}\n\nstruct Slot {\nmut:\n\tvalue Num\n}\n\nfn (s Slot) [] (key string) Num {\n\t_ := key\n\treturn s.value\n}\n\nfn (mut s Slot) []= (key string, value Num) {\n\t_ := key\n\ts.value = value\n}\n\nfn main() {\n\tmut s := Slot{\n\t\tvalue: Num{\n\t\t\tn: 3\n\t\t}\n\t}\n\ts["value"] += Num{\n\t\tn: 4\n\t}\n\tprintln(int_str(s.value.n))\n}\n'
-	struct_c := gen_c(v3_bin, 'overloaded_index_compound_struct_operator_c', struct_source)
+	struct_out, struct_c := run_good_with_c(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
 	assert struct_c.contains('__v3_internal_symbol_op_Num__plus('), struct_c
-	struct_out := run_good(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
 	assert struct_out == '7'
 }
 
@@ -4657,10 +4643,9 @@ fn main() {
 	println(int_str(read(d["a"])))
 }
 '
-	c_source := gen_c(v3_bin, 'overloaded_index_ref_arg_materializes_getter_result_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'overloaded_index_ref_arg_materializes_getter_result', source)
 	assert c_source.contains('ref_arg'), c_source
 	assert !c_source.contains('&Dict__index('), c_source
-	out := run_good(v3_bin, 'overloaded_index_ref_arg_materializes_getter_result', source)
 	assert out == '7'
 }
 
@@ -4698,13 +4683,12 @@ fn main() {
 	println(read(Value(d["a"])))
 }
 '
-	c_source := gen_c(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result_c', source)
+	out, c_source := run_good_with_c(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result', source)
 	entry_signature := if c_source.contains('int wmain(') { 'int wmain(' } else { 'int main(' }
 	main_body := c_fn_body(c_source, entry_signature)
 	assert main_body.contains('main__read(&((Value[])'), main_body
 	assert main_body.count('Dict__op_index(') == 1, main_body
 	assert !main_body.contains('&Dict__op_index('), main_body
-	out := run_good(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result', source)
 	assert out == 'ok'
 }
 
@@ -5072,10 +5056,9 @@ fn main() {
 	println(int_str(*p))
 }
 '
-	c_source := gen_c(v3_bin, 'amp_uppercase_index_operand_preserves_postfix', source)
+	out, c_source := run_good_with_c(v3_bin, 'amp_uppercase_index_operand_preserves_postfix_run', source)
 	assert c_source.contains('i64* p ='), c_source
 	assert !c_source.contains('i64 p = (*(i64*)array_get(*&'), c_source
-	out := run_good(v3_bin, 'amp_uppercase_index_operand_preserves_postfix_run', source)
 	assert out == '2'
 }
 
@@ -5165,11 +5148,10 @@ fn main() {
 	println(take_base(if true { make_child("Grace", 7) } else { child }))
 }
 '
-	c_source := gen_c(v3_bin, 'interface_upcast_promoted_struct_field', source)
+	out, c_source := run_good_with_c(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
 	assert main_body.contains('.name = child.name'), main_body
 	assert !main_body.contains('->name'), main_body
-	out := run_good(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
 	assert out == 'Ada\nGrace'
 }
 
