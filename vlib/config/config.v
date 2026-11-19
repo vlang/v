@@ -186,19 +186,6 @@ fn load_into[T](mut cfg T, cli_prefix string, toml_prefix string, env_prefix str
 					reason:   'required key was not provided'
 				}
 			}
-			for doc in docs {
-				if v := doc.value_opt(toml_key) {
-					if v is map[string]toml.Any {
-						continue
-					}
-					return ConfigError{
-						setting:  toml_key
-						source:   'file'
-						expected: 'struct'
-						reason:   'expected a table value'
-					}
-				}
-			}
 			mut nested := cfg.$(field.name)
 			load_into(mut nested, child_cli_prefix, child_toml_prefix, child_env_prefix,
 				cli, docs, is_secret)!
@@ -235,6 +222,34 @@ fn subtree_provided(cli_full_name string, toml_parent_key string, child_env_pref
 		}
 	}
 	return false
+}
+
+// malformed_parent_key returns the outermost ancestor of toml_key that is
+// present in doc with a non-table value, if any. Leaf loaders consult it
+// before the leaf itself so a malformed parent honors the same first-file
+// precedence as leaf values: an unused lower-priority parent never rejects a
+// complete higher-priority configuration, while a parent that would otherwise
+// be replaced by defaults still errors.
+fn malformed_parent_key(toml_key string, doc toml.Doc) ?string {
+	parts := toml_key.split('.')
+	if parts.len < 2 {
+		return none
+	}
+	mut prefix := parts[0]
+	if v := doc.value_opt(prefix) {
+		if v !is map[string]toml.Any {
+			return prefix
+		}
+	}
+	for i in 1 .. parts.len - 1 {
+		prefix += '.' + parts[i]
+		if v := doc.value_opt(prefix) {
+			if v !is map[string]toml.Any {
+				return prefix
+			}
+		}
+	}
+	return none
 }
 
 // any_to_scalar_string renders a TOML scalar for string coercion.
@@ -277,6 +292,14 @@ fn load_string_field(current string, full_name string, toml_key string, attrs []
 		return v
 	}
 	for doc in docs {
+		if bad := malformed_parent_key(toml_key, doc) {
+			return ConfigError{
+				setting:  bad
+				source:   'file'
+				expected: 'struct'
+				reason:   'expected a table value'
+			}
+		}
 		if v := doc.value_opt(toml_key) {
 			match v {
 				[]toml.Any, map[string]toml.Any {
@@ -328,6 +351,14 @@ fn load_int_field(current int, full_name string, toml_key string, attrs []string
 		return parse_config_int(toml_key, v, 'env', is_secret)!
 	}
 	for doc in docs {
+		if bad := malformed_parent_key(toml_key, doc) {
+			return ConfigError{
+				setting:  bad
+				source:   'file'
+				expected: 'struct'
+				reason:   'expected a table value'
+			}
+		}
 		if v := doc.value_opt(toml_key) {
 			match v {
 				[]toml.Any, map[string]toml.Any {
@@ -380,6 +411,14 @@ fn load_bool_field(current bool, full_name string, toml_key string, attrs []stri
 		return parse_config_bool(toml_key, v, 'env', is_secret)!
 	}
 	for doc in docs {
+		if bad := malformed_parent_key(toml_key, doc) {
+			return ConfigError{
+				setting:  bad
+				source:   'file'
+				expected: 'struct'
+				reason:   'expected a table value'
+			}
+		}
 		if v := doc.value_opt(toml_key) {
 			match v {
 				[]toml.Any, map[string]toml.Any {
@@ -432,6 +471,14 @@ fn load_u16_field(current u16, full_name string, toml_key string, attrs []string
 		return parse_config_u16(toml_key, v, 'env', is_secret)!
 	}
 	for doc in docs {
+		if bad := malformed_parent_key(toml_key, doc) {
+			return ConfigError{
+				setting:  bad
+				source:   'file'
+				expected: 'struct'
+				reason:   'expected a table value'
+			}
+		}
 		if v := doc.value_opt(toml_key) {
 			match v {
 				[]toml.Any, map[string]toml.Any {
@@ -484,6 +531,14 @@ fn load_i64_field(current i64, full_name string, toml_key string, attrs []string
 		return parse_config_i64(toml_key, v, 'env', is_secret)!
 	}
 	for doc in docs {
+		if bad := malformed_parent_key(toml_key, doc) {
+			return ConfigError{
+				setting:  bad
+				source:   'file'
+				expected: 'struct'
+				reason:   'expected a table value'
+			}
+		}
 		if v := doc.value_opt(toml_key) {
 			match v {
 				[]toml.Any, map[string]toml.Any {
@@ -536,6 +591,14 @@ fn load_f64_field(current f64, full_name string, toml_key string, attrs []string
 		return parse_config_f64(toml_key, v, 'env', is_secret)!
 	}
 	for doc in docs {
+		if bad := malformed_parent_key(toml_key, doc) {
+			return ConfigError{
+				setting:  bad
+				source:   'file'
+				expected: 'struct'
+				reason:   'expected a table value'
+			}
+		}
 		if v := doc.value_opt(toml_key) {
 			match v {
 				[]toml.Any, map[string]toml.Any {
@@ -591,6 +654,14 @@ fn load_array_field[T](current []T, full_name string, toml_key string, attrs []s
 			return parse_array_string[T](v, toml_key, 'env', is_secret)!
 		}
 		for doc in docs {
+			if bad := malformed_parent_key(toml_key, doc) {
+				return ConfigError{
+					setting:  bad
+					source:   'file'
+					expected: 'struct'
+					reason:   'expected a table value'
+				}
+			}
 			if v := doc.value_opt(toml_key) {
 				return decode_any_array[T](v, toml_key, is_secret)!
 			}
@@ -637,6 +708,14 @@ fn load_map_field[K, V](current map[K]V, full_name string, toml_key string, attr
 				return parse_map_string[K, V](v, toml_key, 'env', is_secret)!
 			}
 			for doc in docs {
+				if bad := malformed_parent_key(toml_key, doc) {
+					return ConfigError{
+						setting:  bad
+						source:   'file'
+						expected: 'struct'
+						reason:   'expected a table value'
+					}
+				}
 				if v := doc.value_opt(toml_key) {
 					return decode_any_map[K, V](v, toml_key, is_secret)!
 				}

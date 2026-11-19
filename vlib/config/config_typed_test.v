@@ -559,3 +559,122 @@ fn test_config_required_nested_struct_dotted_cli_counts() {
 	)!
 	assert cfg.http_server.read_timeout == 90, 'dotted CLI must satisfy required nested struct'
 }
+
+fn test_config_nested_struct_higher_file_wins_over_malformed_lower() {
+	high := os.join_path(os.temp_dir(), 'v_config_db_high.toml')
+	os.write_file(high, '[db]\nhost = "high.db"\nport = 6000\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(high) or {}
+	}
+	low := os.join_path(os.temp_dir(), 'v_config_db_low.toml')
+	os.write_file(low, 'db = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(low) or {}
+	}
+	cfg := load[RequiredDbConfig](files: [high, low])!
+	assert cfg.db.host == 'high.db', 'first file must win over malformed lower file'
+	assert cfg.db.port == 6000
+	load[RequiredDbConfig](files: [low, high]) or {
+		assert err.msg().contains('`db`'), err.msg()
+		return
+	}
+	assert false, 'malformed first file must error even with valid fallback'
+}
+
+fn test_config_nested_struct_cli_beats_malformed_file() {
+	low := os.join_path(os.temp_dir(), 'v_config_db_cli.toml')
+	os.write_file(low, 'db = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(low) or {}
+	}
+	cfg := load[RequiredDbConfig](
+		cli:   ['--db-host=cli.db', '--db-port=7000']
+		files: [low]
+	)!
+	assert cfg.db.host == 'cli.db', 'complete cli must beat malformed file'
+	assert cfg.db.port == 7000
+	load[RequiredDbConfig](cli: ['--db-host=cli.db'], files: [low]) or {
+		assert err.msg().contains('`db`'), 'partial cli must not silence malformed file: ${err.msg()}'
+		return
+	}
+	assert false, 'partial cli override must still report malformed parent'
+}
+
+fn test_config_nested_struct_env_beats_malformed_file() {
+	low := os.join_path(os.temp_dir(), 'v_config_db_env.toml')
+	os.write_file(low, 'db = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(low) or {}
+	}
+	os.setenv('VLIB_TEST_PREC2_DB_HOST', 'env.db', true)
+	os.setenv('VLIB_TEST_PREC2_DB_PORT', '8000', true)
+	defer {
+		os.unsetenv('VLIB_TEST_PREC2_DB_HOST')
+		os.unsetenv('VLIB_TEST_PREC2_DB_PORT')
+	}
+	cfg := load[RequiredDbConfig](env_prefix: 'VLIB_TEST_PREC2_', files: [low])!
+	assert cfg.db.host == 'env.db', 'complete env must beat malformed file'
+	assert cfg.db.port == 8000
+}
+
+fn test_config_scalar_cli_beats_malformed_file() {
+	path := os.join_path(os.temp_dir(), 'v_config_scalar_shape.toml')
+	os.write_file(path, 'port = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	cfg := load[PrecConfig](
+		cli:        ['--port=7000']
+		env_prefix: 'VLIB_TEST_PREC_UNSET_'
+		files:      [path]
+	)!
+	assert cfg.port == 7000, 'cli must beat malformed scalar file value'
+}
+
+struct InnerNested {
+	host string = 'localhost'
+	port int    = 5432
+}
+
+struct MidNested {
+	db InnerNested
+}
+
+struct OuterNested {
+	mid MidNested
+}
+
+fn test_config_two_level_nested_higher_wins_over_malformed_lower() {
+	high := os.join_path(os.temp_dir(), 'v_config_two_high.toml')
+	os.write_file(high, '[mid.db]\nhost = "high.db"\nport = 6000\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(high) or {}
+	}
+	low := os.join_path(os.temp_dir(), 'v_config_two_low.toml')
+	os.write_file(low, 'mid = []\n') or {
+		panic('write: ${err}')
+	}
+	defer {
+		os.rm(low) or {}
+	}
+	cfg := load[OuterNested](files: [high, low])!
+	assert cfg.mid.db.host == 'high.db', 'first file must win for two-level nesting'
+	assert cfg.mid.db.port == 6000
+	load[OuterNested](files: [low]) or {
+		assert err.msg().contains('`mid`'), err.msg()
+		return
+	}
+	assert false, 'malformed two-level parent must error when it would replace defaults'
+}
