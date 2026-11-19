@@ -4149,6 +4149,60 @@ fn (g &FlatGen) expr_is_addressable(id flat.NodeId) bool {
 	}
 }
 
+// transparent_receiver_lvalue_id strips no-op alias casts (and parentheses)
+// from a method receiver down to the underlying expression. A generic method
+// called through a cross-module type alias reaches cgen with its receiver
+// wrapped in a cast to the parent type (e.g. `(inner__Ctx)(d)`). The cast is
+// a C no-op, but it hides the lvalue from expr_is_addressable, so a `mut`
+// receiver is materialized into a temporary and its writes are lost.
+// See https://github.com/vlang/v/issues/32402.
+fn (g &FlatGen) transparent_receiver_lvalue_id(id flat.NodeId) flat.NodeId {
+	mut cur := id
+	mut depth := 0
+	for depth < 32 && int(cur) >= 0 && int(cur) < g.a.nodes.len {
+		node := g.a.nodes[int(cur)]
+		if node.kind == .paren && node.children_count == 1 {
+			cur = g.a.child(&node, 0)
+			depth++
+			continue
+		}
+		if node.kind != .cast_expr || node.children_count == 0 {
+			break
+		}
+		child_id := g.a.child(&node, 0)
+		target_type := g.tc.parse_type(g.generic_default_type_id(node.source_value_id()))
+		operand_type := g.usable_expr_type(child_id)
+		if unalias_type(target_type).source_type_id() != unalias_type(operand_type).source_type_id()
+			|| g.tc.c_type(target_type) != g.tc.c_type(operand_type) {
+			break
+		}
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .ident && g.receiver_ident_storage_is_pointer(child_id) {
+			// The storage already holds a pointer; leave the cast alone so the
+			// existing pointer-storage handling keeps emitting it directly.
+			break
+		}
+		cur = child_id
+		depth++
+	}
+	return cur
+}
+
+// gen_transparent_alias_receiver_addr emits `&lvalue` for a call argument
+// hidden behind a no-op alias cast (e.g. `(inner__Ctx)(d)` for a generic
+// method called through a cross-module type alias). Materializing such an
+// argument into a compound literal would lose `mut` writes.
+// See https://github.com/vlang/v/issues/32402.
+fn (mut g FlatGen) gen_transparent_alias_receiver_addr(arg_id flat.NodeId) bool {
+	stripped := g.transparent_receiver_lvalue_id(arg_id)
+	if stripped == arg_id || !g.expr_is_addressable(stripped) {
+		return false
+	}
+	g.write('&')
+	g.gen_expr(stripped)
+	return true
+}
+
 // expr_is_stable_for_reuse reports whether evaluating an expression repeatedly is free of
 // observable side effects. This is intentionally narrower than addressability: `xs[next()]`
 // is an lvalue, but the index must still be evaluated exactly once.
@@ -9451,8 +9505,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						// Any receiver that is not an lvalue has to be materialized: `&`
 						// applied to a call result (`err.msg()` on `f()`, possibly behind
 						// parentheses) is not valid C.
+						// A no-op alias cast around the receiver hides an lvalue without
+						// changing it; take the address of the underlying expression
+						// instead of copying it. See transparent_receiver_lvalue_id.
+						mut receiver_expr_id := base_id
+						if receiver_wants_ptr && !is_ptr_base {
+							receiver_expr_id = g.transparent_receiver_lvalue_id(base_id)
+						}
 						materialize_receiver := receiver_wants_ptr && !is_ptr_base
-							&& !g.expr_is_addressable(base_id)
+							&& !g.expr_is_addressable(receiver_expr_id)
 						if materialize_receiver {
 							receiver_ct := g.tc.c_type(types.unwrap_pointer(base_type))
 							g.write('&((${receiver_ct}[]){')
@@ -9461,7 +9522,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						} else if !receiver_wants_ptr && is_ptr_base {
 							g.write('*')
 						}
-						g.gen_expr(base_id)
+						g.gen_expr(receiver_expr_id)
 						if materialize_receiver {
 							g.write('})[0]')
 						}
@@ -9791,6 +9852,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					g.write('(${ct}[]){')
 					g.gen_expr_with_expected_type(arg_id, value_type)
 					g.write('}')
+				} else if needs_addr && g.gen_transparent_alias_receiver_addr(arg_id) {
+					// handled
 				} else if needs_addr && (arg_node.kind in [.call, .struct_init, .cast_expr, .assoc]
 					|| (arg_node.kind == .index && arg_node.value == 'range')) {
 					pt := param_types[arg_idx]
@@ -15996,6 +16059,8 @@ fn (mut g FlatGen) gen_call_args_for_callee(fn_name string, node &flat.Node, sta
 			g.write('(${ct}[]){')
 			g.gen_expr_with_expected_type(arg_id, value_type)
 			g.write('}')
+		} else if needs_addr && g.gen_transparent_alias_receiver_addr(arg_id) {
+			// handled
 		} else if needs_addr && (arg_node.kind in [.call, .struct_init, .cast_expr, .assoc]
 			|| (arg_node.kind == .index && arg_node.value == 'range')
 			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))) {
@@ -16548,8 +16613,15 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		// handled
 	} else {
 		// `&` on a call result (or any other rvalue) is not valid C; bind it first.
+		// A no-op alias cast around the receiver hides an lvalue without
+		// changing it; take the address of the underlying expression instead
+		// of copying it. See transparent_receiver_lvalue_id.
+		mut receiver_expr_id := receiver_id
+		if receiver_wants_ptr && !receiver_is_ptr {
+			receiver_expr_id = g.transparent_receiver_lvalue_id(receiver_id)
+		}
 		materialize_receiver := receiver_wants_ptr && !receiver_is_ptr
-			&& !g.expr_is_addressable(receiver_id)
+			&& !g.expr_is_addressable(receiver_expr_id)
 		if materialize_receiver {
 			receiver_ct := g.tc.c_type(types.unwrap_pointer(receiver_type))
 			g.write('&((${receiver_ct}[]){')
@@ -16558,7 +16630,7 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		} else if !receiver_wants_ptr && receiver_is_ptr {
 			g.write('*')
 		}
-		g.gen_expr(receiver_id)
+		g.gen_expr(receiver_expr_id)
 		if materialize_receiver {
 			g.write('})[0]')
 		}
