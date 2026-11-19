@@ -27,7 +27,8 @@ fn vtoolchain_test_tool() !string {
 
 fn run_toolchain(root string, upstream string, extra ...string) !os.Result {
 	tool := vtoolchain_test_tool()!
-	mut env := ['V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN_UPSTREAM=${upstream}']
+	mut env := ['V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN_UPSTREAM=${upstream}',
+		'V_TOOLCHAIN_SETTINGS=${os.join_path(root, 'settings.toml')}', 'V_TOOLCHAIN_PROJECT=${root}']
 	// Keep HOME stable; toolchains_root prefers the override above.
 	env << 'HOME=${os.home_dir()}'
 	mut cmd := ['env']
@@ -144,4 +145,50 @@ fn test_toolchain_install_from_local_git_tag() ! {
 	listed := run_toolchain(root, upstream, 'list')!
 	assert listed.exit_code == 0, listed.output
 	assert listed.output.contains('v0.0.99'), listed.output
+}
+
+fn test_toolchain_default_and_use_write_config() ! {
+	tool := vtoolchain_test_tool()!
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_config_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	settings := os.join_path(root, 'settings.toml')
+	pin := os.join_path(root, 'v-toolchain.toml')
+	set_default := os.exec(['env', 'V_TOOLCHAIN_SETTINGS=${settings}', tool, 'toolchain', 'default',
+		'0.4.11'])
+	assert set_default.exit_code == 0, set_default.output
+	assert (os.read_file(settings)!).contains('default_toolchain = "v0.4.11"'), settings
+	set_use := os.exec(['env', 'V_TOOLCHAIN_PROJECT=${root}', tool, 'toolchain', 'use', 'master'])
+	assert set_use.exit_code == 0, set_use.output
+	assert (os.read_file(pin)!).contains('toolchain = "master"'), pin
+	show_default := os.exec(['env', 'V_TOOLCHAIN_SETTINGS=${settings}', tool, 'toolchain', 'default'])
+	assert show_default.exit_code == 0, show_default.output
+	assert show_default.output.contains('v0.4.11'), show_default.output
+	show_use := os.exec(['env', 'V_TOOLCHAIN_PROJECT=${root}', tool, 'toolchain', 'use'])
+	assert show_use.exit_code == 0, show_use.output
+	assert show_use.output.contains('master'), show_use.output
+}
+
+fn test_toolchain_run_uses_requested_version() ! {
+	tool := vtoolchain_test_tool()!
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_run_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(dir)!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.cp(vexe, os.join_path(dir, exe_name))!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', tool, 'toolchain', 'run', '1.2.3', '--',
+		'version'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('V 0.5.2'), result.output
+	missing := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', tool, 'toolchain', 'run', '9.9.9', '--',
+		'version'])
+	assert missing.exit_code == 1, missing.output
+	assert missing.output.contains('not installed'), missing.output
 }

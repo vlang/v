@@ -9,6 +9,7 @@ import v.cmdexec
 import v.driver
 import v.help
 import v.pref
+import v.toolchain
 import v.util
 
 const v_version = '0.5.2'
@@ -135,6 +136,16 @@ fn main() {
 	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
 	mut args := remove_obsolete_skip_unused_flag(merged_v_args())
+	// Resolve the active toolchain before any other launcher work. The
+	// `toolchain` manager and `up` stay local so they can manage the launchers
+	// themselves. The dispatch marker prevents the selected compiler from
+	// resolving a toolchain again.
+	if os.getenv(toolchain.dispatch_env) == '' {
+		_, command := find_command(args)
+		if toolchain_dispatch_allowed(command) && dispatch_to_toolchain() {
+			return
+		}
+	}
 	if args.len == 0 {
 		run_external_tool(args, -1, 'repl')
 		return
@@ -543,6 +554,46 @@ fn find_command(args []string) (int, string) {
 		}
 	}
 	return -1, ''
+}
+
+// toolchain_dispatch_allowed keeps the commands that manage toolchains and
+// updates in the launcher that was invoked, so they can operate on all
+// installed checkouts.
+fn toolchain_dispatch_allowed(command string) bool {
+	return command != 'toolchain' && command != 'up'
+}
+
+// dispatch_to_toolchain starts the selected toolchain's compiler when it is
+// installed and built. An unavailable selection is left alone so that a
+// machine without installed toolchains keeps using the current compiler.
+fn dispatch_to_toolchain() bool {
+	selection := toolchain.select()
+	root := toolchain.configured_root()
+	dir := toolchain.toolchain_dir(root, selection.version)
+	exe := toolchain.executable_in(dir)
+	if exe == '' {
+		if toolchain.debug_enabled() {
+			eprintln('v toolchain: `${selection.version}` from ${selection.source} has no built compiler in `${dir}`; using the current compiler')
+		}
+		return false
+	}
+	if toolchain.debug_enabled() {
+		eprintln('v toolchain: dispatching to `${selection.version}` from ${selection.source}: ${exe}')
+	}
+	mut environment := os.environ()
+	environment['VEXE'] = exe
+	environment['VEXEROOT'] = dir
+	environment[toolchain.dispatch_env] = '1'
+	mut child := os.new_process(exe)
+	// Forward the original arguments. VFLAGS stays in the environment so the
+	// selected compiler parses it once, just as the current launcher does.
+	child.set_args(os.args[1..])
+	child.set_environment(environment)
+	child.wait()
+	code := child.code
+	child.close()
+	exit(code)
+	return false
 }
 
 fn run_external_tool(args []string, command_index int, command string) {

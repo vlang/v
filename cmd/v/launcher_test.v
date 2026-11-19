@@ -1242,3 +1242,36 @@ fn test_host_tool_filters_preserve_other_option_operands() {
 	assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-cflags', '-arch',
 		'-cflags', 'arm64']
 }
+
+fn test_toolchain_dispatch_command_gating() {
+	assert toolchain_dispatch_allowed('')
+	assert toolchain_dispatch_allowed('version')
+	assert toolchain_dispatch_allowed('run')
+	assert !toolchain_dispatch_allowed('toolchain')
+	assert !toolchain_dispatch_allowed('up')
+}
+
+fn test_toolchain_dispatch_uses_selected_compiler() {
+	// The test binary is built by the compiler on PATH. A bootstrap compiler
+	// from before launcher dispatch cannot exercise this path.
+	binary := os.read_file(@VEXE) or {
+		return
+	}
+	if !binary.contains('V_TOOLCHAIN_DISPATCHED') {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_launcher_toolchain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(dir)!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.cp(@VEXE, os.join_path(dir, exe_name))!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN=1.2.3', 'V_TOOLCHAIN_DEBUG=1',
+		@VEXE, 'version'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('dispatching to'), result.output
+	assert result.output.contains('V 0.5.2'), result.output
+}
