@@ -253,15 +253,14 @@ fn (mut ctx Context) discard_superseded_response() bool {
 // body and then stream the original file.
 // send_file discards the superseded state before preparing its own headers
 // and arms its transfer only after this call returns, so its own send
-// never observes armed state here. A HEAD request replacing a sent response
-// keeps the replacement length but stores no payload, so the wire stays
-// headers-only like the superseded HEAD response.
+// never observes armed state here. A HEAD request keeps the advertised
+// length but stores no payload, so the wire stays headers-only.
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && ctx.takeover_mode == .none {
 		eprintln('[veb] a response cannot be sent twice over one connection')
 		return Result{}
 	}
-	replaced := ctx.discard_superseded_response()
+	ctx.discard_superseded_response()
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
@@ -277,15 +276,20 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 		ctx.res.body = response.clone()
 	}
 	if response_body_can_share_gc_buffer() { ctx.owned_response_body = ctx.res.body.str }
-	if replaced && ctx.req.method == .head
-		&& ctx.res.status_code != int(http.Status.not_modified) {
-		// A HEAD replacement advertises the replacement length but emits no
-		// payload: the superseded static response was headers-only, so the new
-		// body must not reach the wire either. Ordinary (first-send) HEAD
-		// responses keep their historical behavior.
-		ctx.res.header.set(.content_length, ctx.res.body.len.str())
-		ctx.release_response_body()
-		ctx.owned_response_body = unsafe { nil }
+	if ctx.req.method == .head && response_allows_body(ctx.res.status_code) {
+		// HEAD must not emit a payload: advertise the replacement length but
+		// store nothing, whether this is a first send (before-middleware
+		// refusal) or a replacement of a headers-only static response.
+		if ctx.res.body.len > 0 {
+			ctx.res.header.set(.content_length, ctx.res.body.len.str())
+			ctx.release_response_body()
+			ctx.owned_response_body = unsafe { nil }
+		} else {
+			// Keep the advertised length (static file size or a pre-set
+			// replacement length) and ensure the body stays empty.
+			ctx.release_response_body()
+			ctx.owned_response_body = unsafe { nil }
+		}
 	}
 	// Prefer explicit overrides from Context state or a pre-set response header.
 	mut custom_mimetype := ctx.content_type
@@ -295,7 +299,11 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if !ctx.res.header.contains(.content_length) && ctx.res.status_code != int(http.Status.not_modified) {
+	if !response_allows_body(ctx.res.status_code) {
+		ctx.res.header.delete(.content_length)
+		ctx.release_response_body()
+		ctx.owned_response_body = unsafe { nil }
+	} else if !ctx.res.header.contains(.content_length) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers

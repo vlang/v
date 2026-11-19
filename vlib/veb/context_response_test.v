@@ -109,7 +109,7 @@ fn test_send_response_to_client_leaves_no_content_type_for_an_empty_mimetype() {
 	ctx.no_content()
 	assert ctx.res.status_code == int(http.Status.no_content)
 	assert ctx.res.body == ''
-	assert_header(ctx.res.header, .content_length, '0')
+	assert_header_absent(ctx.res.header, .content_length)
 	assert_header_absent(ctx.res.header, .content_type)
 }
 

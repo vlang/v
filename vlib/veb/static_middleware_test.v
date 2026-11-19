@@ -417,3 +417,69 @@ fn test_static_middleware_head_to_text_clears_compressed_headers() {
 	assert ctx.res.header.get(.content_type) or { '' } == 'text/plain'
 	assert !ctx.res.header.contains(.content_encoding)
 }
+
+// head_refuse_before rejects every request with 403 + text, exercising the
+// before-middleware short-circuit path that has no superseded response.
+fn head_refuse_before(mut ctx StaticMiddlewareContext) bool {
+	ctx.res.set_status(.forbidden)
+	ctx.text('blocked')
+	return false
+}
+
+// empty_after replaces any response with 204 No Content.
+fn empty_after(mut ctx ReplaceStaticContext) bool {
+	ctx.no_content()
+	return false
+}
+
+// wire_head_and_payload splits raw response bytes at the header terminator.
+// A HEAD response must have zero bytes after it; using parse_response would
+// hide a smuggled payload behind a HEAD-aware client.
+fn wire_head_and_payload(out []u8) (string, []u8) {
+	s := out.bytestr()
+	idx := s.index('\r\n\r\n') or { panic('missing header terminator') }
+	return s[..idx + 4], out[idx + 4..]
+}
+
+fn test_static_middleware_head_before_refusal_has_no_body_on_wire() {
+	mut app := &StaticMiddlewareApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: head_refuse_before)
+	out := handle_raw[StaticMiddlewareApp, StaticMiddlewareContext](mut app,
+		'HEAD /sub.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes())
+	head, payload := wire_head_and_payload(out)
+	assert head.contains('403')
+	assert head.contains('Content-Length: 7')
+	assert payload.len == 0
+	assert !out.bytestr().contains('blocked')
+}
+
+fn test_static_middleware_head_after_no_content_has_no_length_and_no_body() {
+	mut app := &ReplaceStaticApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: empty_after, after: true)
+	out := handle_raw[ReplaceStaticApp, ReplaceStaticContext](mut app,
+		'HEAD /sub.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'.bytes())
+	head, payload := wire_head_and_payload(out)
+	assert head.contains('204')
+	assert !head.contains('Content-Length')
+	assert payload.len == 0
+}
+
+fn test_static_middleware_head_after_no_content_gzip_has_no_length_and_no_body() {
+	mut app := &ReplaceStaticApp{}
+	app.handle_static(os.join_path(os.dir(@FILE), 'tests', 'testdata', 'sub_folder'), true) or {
+		panic(err)
+	}
+	app.use(handler: empty_after, after: true)
+	out := handle_raw[ReplaceStaticApp, ReplaceStaticContext](mut app,
+		'HEAD /sub.txt HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nConnection: close\r\n\r\n'.bytes())
+	head, payload := wire_head_and_payload(out)
+	assert head.contains('204')
+	assert !head.contains('Content-Length')
+	assert payload.len == 0
+}
