@@ -2,6 +2,7 @@ module imp
 
 import hash
 import os
+import time
 
 // Check selects how a flow decides whether it can be skipped.
 pub enum Check {
@@ -58,16 +59,17 @@ pub fn system_args(args []string) ! {
 @[params]
 pub struct Flow {
 pub:
-	id    string @[required]
-	name  string // display name, derived from the id when unset
-	help  string
-	takes []string // input files and directories
-	gives []string // output files and directories
-	check Check = .mtime
-	pre   []FlowDep // hooks run before this flow
-	post  []FlowDep // hooks run after this flow
-	flags []Flag    // command line switches this flow reads with `flag`
-	flow  FlowFn @[required]
+	id     string @[required]
+	name   string // display name, derived from the id when unset
+	help   string
+	takes  []string // input files and directories
+	gives  []string // output files and directories
+	restat bool     // restore output mtimes when the body rewrote identical content
+	check  Check = .mtime
+	pre    []FlowDep // hooks run before this flow
+	post   []FlowDep // hooks run after this flow
+	flags  []Flag    // command line switches this flow reads with `flag`
+	flow   FlowFn @[required]
 mut:
 	enabled      []string // the flags set on the command line
 	script_flags []string // the ids declared with `Context.flag`
@@ -673,6 +675,7 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 		c.visit(hook.id, [], mut pass)!
 	}
 	println('>> ${f.display_name()}')
+	stamps := if f.restat { snapshot_outputs(f.gives) } else { []OutputStamp{} }
 	if f.check != .none {
 		// marked first, so that a failed or interrupted run, which may have left
 		// newer or partial outputs, is never mistaken for a good one
@@ -690,6 +693,9 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 			return error('flow `${f.id}` did not produce `${path}`')
 		}
 	}
+	if f.restat {
+		restore_outputs(stamps)
+	}
 	if f.check == .hash {
 		os.mkdir_all(os.dir(stamp_path(f)))!
 		os.write_file(stamp_path(f), digest)!
@@ -698,6 +704,46 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 		os.rm(dirty_path(f))!
 	}
 	return f.post.map(it.id)
+}
+
+// OutputStamp remembers a file's content and mtime so that restat can undo a
+// rewrite that did not actually change the file.
+struct OutputStamp {
+	path  string
+	mtime i64
+	hash  string
+}
+
+// snapshot_outputs records the files in `paths` that exist and are not
+// directories. Other outputs are left to the flow that owns them.
+fn snapshot_outputs(paths []string) []OutputStamp {
+	mut stamps := []OutputStamp{}
+	for path in paths {
+		if !os.exists(path) || is_real_dir(path) {
+			continue
+		}
+		bytes := os.read_bytes(path) or { continue }
+		stamps << OutputStamp{
+			path:  path
+			mtime: os.file_last_mod_unix(path)
+			hash:  hash.sum64(bytes, 0).hex_full()
+		}
+	}
+	return stamps
+}
+
+// restore_outputs puts back the mtimes of files whose content is unchanged.
+// Downstream mtime flows then see no change and can still skip. Failure to set
+// a timestamp is not a build failure: the output itself is correct.
+fn restore_outputs(stamps []OutputStamp) {
+	now := int(time.now().unix())
+	for stamp in stamps {
+		bytes := os.read_bytes(stamp.path) or { continue }
+		if hash.sum64(bytes, 0).hex_full() != stamp.hash {
+			continue
+		}
+		os.utime(stamp.path, now, int(stamp.mtime)) or {}
+	}
 }
 
 // stamp_dir holds the state of flows between runs, relative to the working

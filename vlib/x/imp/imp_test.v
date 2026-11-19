@@ -186,6 +186,53 @@ fn test_hash_skip_needs_outputs_and_inputs() {
 	assert !is_unchanged(f, digest)
 }
 
+// test_restat_keeps_downstream_up_to_date checks that a producer rewriting an
+// identical output does not force a downstream mtime flow to rebuild.
+fn test_restat_keeps_downstream_up_to_date() {
+	sandbox('restat')
+	os.write_file('src', '')!
+	set_mtime('src', -100)
+	mut c := new()
+	c.add_flow(
+		id:     'gen'
+		gives:  ['mid']
+		restat: true
+		check:  .none
+		flow:   fn (_ Flow) ! {
+			os.write_file('mid', 'same')!
+		}
+	)
+	c.add_flow(id: 'build', takes: ['mid'], gives: ['out'], flow: record)
+	c.execute(['gen', 'build'])!
+	assert contents('log') == 'build '
+	set_mtime('mid', -100)
+	c.execute(['gen'])!
+	// gen rewrote the same content, so build still sees an up to date input
+	c.execute(['build'])!
+	assert contents('log') == 'build '
+}
+
+// test_restat_reruns_when_content_changes checks that a real change is not
+// hidden by restat.
+fn test_restat_reruns_when_content_changes() {
+	sandbox('restat_change')
+	mut c := new()
+	c.add_flow(
+		id:     'gen'
+		gives:  ['mid']
+		restat: true
+		check:  .none
+		flow:   fn (_ Flow) ! {
+			os.write_file('mid', (os.read_file('mid') or { '' }) + 'x')!
+		}
+	)
+	c.add_flow(id: 'build', takes: ['mid'], gives: ['out'], flow: record)
+	c.execute(['gen', 'build'])!
+	c.execute(['gen'])!
+	c.execute(['build'])!
+	assert contents('log') == 'build build '
+}
+
 // test_walks_do_not_follow_links checks that a link loop in an input directory
 // cannot trap the skip checks, which take a dangling link as an entry like any
 // other.
