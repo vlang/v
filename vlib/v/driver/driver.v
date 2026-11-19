@@ -12069,6 +12069,10 @@ pub fn run(args []string) {
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled, build_pseudo_values, version_pseudo_values)
 	if large_cold_cache_bypass {
 		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
+		if tcc_dylib {
+			// Use the same whole-program ABI when the marker skips the bridge.
+			restart_v3_without_cache('')
+		}
 	}
 	mut unchanged_build_cache_dir := ''
 	mut unchanged_build_cache_key := ''
@@ -13209,7 +13213,7 @@ pub fn run(args []string) {
 	// bounded whole-program pipeline; existing whole/generic/incremental hits still
 	// keep their fast path.
 	if should_restart_v3_large_cold_cache(cache_state.manager.enabled, scope_prealloc_stages, a.nodes.len, cgen_cache_hit, generic_cache_hit, incremental_cache_hit) {
-		population := v3_large_cache_population(compiler_tree_input || tcc_dylib, cache_state, a.nodes.len)
+		population := v3_large_cache_population(compiler_tree_input, cache_state, a.nodes.len)
 		if population != .populate {
 			// A build that waits for another one to populate the cache finds it
 			// populated later: only a graph that is too large keeps the bypass.
@@ -15538,12 +15542,10 @@ pub fn run(args []string) {
 			// stage arena; all of them can grow while servicing those queries.
 			pre_tc.reset_type_interners()
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
-			if !(should_run || test_files.len > 0 || served.from_server) {
-				// A plain build ends with the process once the C compiler has run,
-				// and allocates little until then. Leave the arenas that the
-				// release threads, the ending workers and the exit handler would
-				// unmap from here on mapped: the OS reclaims them at exit with
-				// less work than a page-table teardown per resident page.
+			if !cache_state.manager.enabled && !(should_run || test_files.len > 0 || served.from_server) {
+				// An uncached build allocates little after cgen, so the OS can reclaim
+				// its freed arenas at exit. Cache population still builds C sources
+				// in disposable arenas and needs to recycle their blocks per module.
 				$if prealloc {
 					unsafe { prealloc_keep_freed_memory() }
 				}
@@ -18999,7 +19001,9 @@ enum V3LargeCachePopulation {
 	populate  // keep the cache
 }
 
-// v3_large_cache_population decides it. Other programs always bypass the cache.
+// v3_large_cache_population admits large compiler graphs and native bridge
+// graphs with a cached builtin bundle. A cold native bridge would generate the
+// whole source graph plus the cache units, which can exceed the memory budget.
 // The tests of the compiler's own modules (input_is_compiler_tree) import much of
 // the compiler, which a persisted bypass would keep from ever being cached, so
 // each of them would compile all of it again. One whose imported modules all come
@@ -19008,7 +19012,9 @@ enum V3LargeCachePopulation {
 // cache: the builds that start beside it, as the tests of `v test` do, skip the
 // cache this time only, and find those modules cached later.
 fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState, node_count int) V3LargeCachePopulation {
-	if (!compiler_tree_input || node_count >= compiler_tree_large_cold_cache_node_limit) && !state.native_bridge {
+	if (!state.native_bridge && (!compiler_tree_input
+		|| node_count >= compiler_tree_large_cold_cache_node_limit))
+		|| (state.native_bridge && !state.bundle_valid && node_count >= scoped_large_cold_cache_node_limit) {
 		trace_v3_cache_fallback(v3_large_cold_cache_reason)
 		return .bypass
 	}
@@ -19219,6 +19225,14 @@ fn valid_v3_large_cold_cache_marker(path string) bool {
 }
 
 fn restart_v3_without_cache(build_dir string) {
+	// The native bridge has already selected the platform compiler for its
+	// cached objects. Removing the bridge flag changes the program's compiler.
+	if v3_internal_tcc_dylib_flag in os.args && v3_internal_tcc_no_retry_flag in os.args {
+		cleanup_c_build_dir(build_dir)
+		release_v3_fallback_marker()
+		eprintln('cannot build the TCC native bridge: the module cache is unavailable and -no-retry-compilation prevents switching compilers')
+		exit(1)
+	}
 	restart_v3_with_args(['-nocache'], build_dir)
 }
 

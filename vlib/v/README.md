@@ -533,6 +533,10 @@ Module caching is enabled by default for supported builds, including `-cc clang`
 and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its own module
 objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
 faster without the cache, while later builds reuse the cached modules and executable.
+For a large macOS development build that needs the TinyCC native bridge, V uses
+the platform C compiler for the whole program when the bridge lacks a cached
+builtin bundle. This bounds memory spent preparing the initial module cache.
+With `-no-retry-compilation`, the compiler reports an error in this case.
 The former `-usecache` flag is no longer accepted.
 The C backend rejects `-prod` with TinyCC, including compiler aliases and renamed copies.
 Use Clang or GCC for production builds. Help, formatter, and other tool commands remain available
