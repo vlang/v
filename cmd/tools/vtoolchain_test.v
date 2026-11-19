@@ -192,3 +192,45 @@ fn test_toolchain_run_uses_requested_version() ! {
 	assert missing.exit_code == 1, missing.output
 	assert missing.output.contains('not installed'), missing.output
 }
+
+fn test_toolchain_remove_and_gc() ! {
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_remove_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	checkout := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(os.join_path(checkout, '.git'))!
+	for leftover in ['v1.2.3_old', 'v9.9.9_removing', 'v0.0.1.stage', 'partial'] {
+		os.mkdir_all(os.join_path(root, leftover))!
+	}
+	removed := run_toolchain(root, 'unused', 'remove', '1.2.3')!
+	assert removed.exit_code == 0, removed.output
+	assert removed.output.contains('Removed `v1.2.3`'), removed.output
+	assert !os.exists(checkout)
+	cleaned := run_toolchain(root, 'unused', 'gc')!
+	assert cleaned.exit_code == 0, cleaned.output
+	assert !os.exists(os.join_path(root, 'v1.2.3_old'))
+	assert !os.exists(os.join_path(root, 'v9.9.9_removing'))
+	assert !os.exists(os.join_path(root, 'v0.0.1.stage'))
+	assert !os.exists(os.join_path(root, 'partial'))
+}
+
+fn test_toolchain_update_requires_built_checkout() ! {
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_update_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	checkout := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(os.join_path(checkout, '.git'))!
+	result := run_toolchain(root, 'unused', 'update', '1.2.3')!
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('not an installed and built toolchain'), result.output
+	assert os.is_dir(checkout)
+	// v up options are forwarded rather than rejected as tool options.
+	with_option := run_toolchain(root, 'unused', 'update', '1.2.3', '-v')!
+	assert with_option.exit_code == 1, with_option.output
+	assert with_option.output.contains('not an installed and built toolchain'), with_option.output
+	assert !with_option.output.contains('unknown option'), with_option.output
+}

@@ -14,6 +14,9 @@ const usage = 'Usage: v toolchain <command> [options]\n' +
 	'  default [version]  Show or set the per-user default toolchain.\n' +
 	'  use [version]      Show or set the toolchain pinned in this repository.\n' +
 	'  run <version> [--] [args...]  Run a command with a specific toolchain.\n' +
+	'  update [version]   Pull and rebuild a toolchain, keeping the old one on failure.\n' +
+	'  remove <version>   Remove an installed toolchain.\n' +
+	'  gc                 Remove stale update and removal leftovers.\n' +
 	'\n' +
 	'Options:\n' +
 	'  -h, -help, --help  Show this help and exit.\n' +
@@ -32,6 +35,9 @@ const usage = 'Usage: v toolchain <command> [options]\n' +
 	'  v toolchain default 0.4.11\n' +
 	'  v toolchain use master\n' +
 	'  v toolchain run 0.4.11 -- version\n' +
+	'  v toolchain update 0.4.11\n' +
+	'  v toolchain remove 0.4.7\n' +
+	'  v toolchain gc\n' +
 	'  v toolchain list\n'
 
 const help_options = ['-h', '-help', '--help', 'help']
@@ -58,12 +64,14 @@ fn tool_args() []string {
 
 fn unknown_options(rest []string) []string {
 	mut unknown := []string{}
+	forward_up_options := rest.len > 0 && rest[0] == 'update'
 	for arg in rest {
 		// Everything after `--` belongs to the command run by `toolchain run`.
 		if arg == '--' {
 			break
 		}
-		if arg.starts_with('-') && arg !in help_options {
+		if arg.starts_with('-') && arg !in help_options
+			&& !(forward_up_options && arg in toolchain.up_options) {
 			unknown << arg
 		}
 	}
@@ -242,6 +250,162 @@ fn run_version(raw string, rest []string) {
 	exit(code)
 }
 
+struct Checkout {
+	dir string
+	exe string
+}
+
+// installed_checkout returns the paths of a checkout that is both installed
+// and already built.
+fn installed_checkout(version string) ?Checkout {
+	dir := toolchain.toolchain_dir(toolchain.configured_root(), version)
+	if !os.is_dir(os.join_path(dir, '.git')) {
+		return none
+	}
+	exe := toolchain.executable_in(dir)
+	if exe == '' {
+		return none
+	}
+	return Checkout{
+		dir: dir
+		exe: exe
+	}
+}
+
+// update_version moves the checkout aside, runs `v up` inside it, and moves it
+// back only on success. A failed update restores the previous checkout.
+fn update_version(raw string, rest []string) {
+	version := normalized_version(raw)
+	checkout := installed_checkout(version) or {
+		eprintln('`${version}` is not an installed and built toolchain.')
+		eprintln('Run `v toolchain install ${version}` and build it first.')
+		exit(1)
+		return
+	}
+	backup := checkout.dir + '_old'
+	if os.exists(backup) {
+		os.rmdir_all(backup) or {
+			eprintln('could not remove stale backup `${backup}`; run `v toolchain gc`: ${err.msg()}')
+			exit(1)
+			return
+		}
+	}
+	os.rename(checkout.dir, backup) or {
+		eprintln('could not move `${checkout.dir}` aside: ${err.msg()}')
+		exit(1)
+		return
+	}
+	exe := toolchain.executable_in(backup)
+	if exe == '' {
+		os.rename(backup, checkout.dir) or {}
+		eprintln('`${backup}` has no built compiler; restored the original checkout.')
+		exit(1)
+		return
+	}
+	println('Updating `${version}` in `${backup}` ...')
+	mut child_args := ['up']
+	child_args << rest
+	mut environment := os.environ()
+	environment['VEXE'] = exe
+	environment['VEXEROOT'] = backup
+	environment[toolchain.dispatch_env] = '1'
+	mut child := os.new_process(exe)
+	child.set_args(child_args)
+	child.set_environment(environment)
+	child.wait()
+	code := child.code
+	child.close()
+	if code != 0 {
+		os.rmdir_all(checkout.dir) or {}
+		os.rename(backup, checkout.dir) or {
+			eprintln('could not restore `${checkout.dir}` from `${backup}`; it is kept for recovery')
+			exit(1)
+			return
+		}
+		eprintln('update of `${version}` failed; restored the previous checkout.')
+		exit(code)
+		return
+	}
+	os.rmdir_all(checkout.dir) or {}
+	os.rename(backup, checkout.dir) or {
+		eprintln('could not activate `${checkout.dir}`; the updated checkout is in `${backup}`')
+		exit(1)
+		return
+	}
+	println('Updated `${version}` in `${checkout.dir}`.')
+}
+
+// remove_version removes an installed checkout, using a rename so a failed
+// removal leaves a recoverable `_removing` directory for `gc`.
+fn remove_version(raw string) {
+	version := normalized_version(raw)
+	dir := toolchain.toolchain_dir(toolchain.configured_root(), version)
+	if !os.is_dir(dir) {
+		eprintln('`${version}` is not installed in `${dir}`.')
+		exit(1)
+		return
+	}
+	if toolchain.select().version == version {
+		println('Note: `${version}` is the active toolchain; clear its pin or default too.')
+	}
+	temp := dir + '_removing'
+	os.rmdir_all(temp) or {}
+	mut moved := true
+	os.rename(dir, temp) or {
+		moved = false
+	}
+	if moved {
+		os.rmdir_all(temp) or {
+			eprintln('could not remove `${temp}`; run `v toolchain gc`: ${err.msg()}')
+			exit(1)
+			return
+		}
+	} else {
+		os.rmdir_all(dir) or {
+			eprintln('could not remove `${dir}`: ${err.msg()}')
+			exit(1)
+			return
+		}
+	}
+	println('Removed `${version}` from `${dir}`.')
+}
+
+// gc_toolchains removes update and removal leftovers plus directories that
+// are not complete checkouts.
+fn gc_toolchains() {
+	root := toolchain.configured_root()
+	if !os.is_dir(root) {
+		println('Nothing to clean in `${root}`.')
+		return
+	}
+	entries := os.ls(root) or {
+		eprintln('could not list `${root}`: ${err.msg()}')
+		exit(1)
+		return
+	}
+	mut removed := 0
+	for e in entries {
+		full := os.join_path(root, e)
+		if !os.is_dir(full) {
+			continue
+		}
+		stale := e.ends_with('_old') || e.ends_with('_removing') || e.ends_with('_stage')
+			|| e.ends_with('.stage') || !os.is_dir(os.join_path(full, '.git'))
+		if !stale {
+			continue
+		}
+		os.rmdir_all(full) or {
+			eprintln('could not remove `${full}`: ${err.msg()}')
+			continue
+		}
+		println('Removed `${full}`.')
+		removed++
+	}
+	if removed == 0 {
+		println('Nothing to clean in `${root}`.')
+	}
+}
+
 fn main() {
 	rest := tool_args()
 	unknown := unknown_options(rest)
@@ -302,6 +466,37 @@ fn main() {
 				return
 			}
 			run_version(rest[1], rest[2..])
+		}
+		'update' {
+			mut version := toolchain.select().version
+			mut forwarded := []string{}
+			if rest.len > 1 {
+				if rest[1].starts_with('-') {
+					forwarded = rest[1..]
+				} else {
+					version = rest[1]
+					if rest.len > 2 {
+						forwarded = rest[2..]
+					}
+				}
+			}
+			update_version(version, forwarded)
+		}
+		'remove' {
+			if rest.len != 2 {
+				eprintln('Usage: v toolchain remove <version>')
+				exit(1)
+				return
+			}
+			remove_version(rest[1])
+		}
+		'gc' {
+			if rest.len != 1 {
+				eprintln('v toolchain gc takes no arguments.')
+				exit(1)
+				return
+			}
+			gc_toolchains()
 		}
 		else {
 			eprintln('unknown toolchain command `${rest[0]}`.')

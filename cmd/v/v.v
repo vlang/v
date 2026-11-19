@@ -211,6 +211,20 @@ fn main() {
 	if '-new-compiler' !in compiler_args && v3_fixture_requires_compatibility_compiler(compiler_args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
+	// `v up` updates the selected toolchain when one is explicitly configured;
+	// otherwise it keeps updating the launcher's own checkout. A dispatched
+	// child launcher runs `up` in place, so it must not take this path again.
+	if command == 'up' && os.getenv(toolchain.dispatch_env) == '' && toolchain_update_active() {
+		mut tool_args := ['toolchain', 'update']
+		for arg in args[..command_index] {
+			if arg in toolchain.up_options {
+				tool_args << arg
+			}
+		}
+		tool_args << args[command_index + 1..]
+		run_external_tool(tool_args, 0, 'toolchain')
+		return
+	}
 	if command in ['help', '-h', '--help'] {
 		print_help(args, command_index)
 		return
@@ -561,6 +575,18 @@ fn find_command(args []string) (int, string) {
 // installed checkouts.
 fn toolchain_dispatch_allowed(command string) bool {
 	return command != 'toolchain' && command != 'up'
+}
+
+// toolchain_update_active reports whether `v up` should update a toolchain
+// instead of the launcher's own checkout. An implicit `stable` fallback does
+// not count: machines with no toolchain config keep the existing `v up`.
+fn toolchain_update_active() bool {
+	selection := toolchain.select()
+	if selection.source == 'default' {
+		return false
+	}
+	dir := toolchain.toolchain_dir(toolchain.configured_root(), selection.version)
+	return toolchain.executable_in(dir) != ''
 }
 
 // dispatch_to_toolchain starts the selected toolchain's compiler when it is

@@ -18,6 +18,8 @@ pub const pin_file = 'v-toolchain.toml'
 pub const pin_key = 'toolchain'
 pub const settings_key = 'default_toolchain'
 pub const default_version = 'stable'
+// up_options are the `v up` flags that `toolchain update` forwards.
+pub const up_options = ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current']
 
 // Selection describes the toolchain a `v` invocation resolved to.
 pub struct Selection {

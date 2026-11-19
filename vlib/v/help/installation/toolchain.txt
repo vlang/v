@@ -18,7 +18,14 @@ Usage:
   v toolchain use [version]      Show or set this repository's pin.
   v toolchain run <version> [--] [args...]
                                  Run a command with a specific toolchain.
+  v toolchain update [version]   Pull and rebuild a toolchain. The old checkout
+                                 is restored if the update fails.
+  v toolchain remove <version>   Remove an installed toolchain.
+  v toolchain gc                 Remove update and removal leftovers.
   v toolchain -h                 Show toolchain help.
+
+`v up` updates the selected toolchain when a toolchain is explicitly
+configured; otherwise it keeps updating the launcher's own checkout.
 
 The active toolchain is resolved in this order:
 
