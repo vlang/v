@@ -1,0 +1,24 @@
+Install, list, and manage multiple V compiler versions side by side.
+
+P0 supports installing an isolated checkout per version and listing what
+is installed. Each toolchain lives in its own directory so one machine
+can keep several V versions without manual git checkouts:
+
+  ~/.v/toolchains/v0.4.11/
+  ~/.v/toolchains/master/
+
+Each directory is a full V checkout, because V resolves vlib, thirdparty,
+and vc relative to VEXE. Build the installed checkout before using it.
+
+Usage:
+  v toolchain install <version>  Install master, stable, latest, nightly,
+                                 or a tag like 0.4.11 / v0.4.11.
+  v toolchain list                List installed versions.
+  v toolchain -h                  Show toolchain help.
+
+Channels resolve to master in P0. Tags keep their v prefix, so 0.4.11
+installs into ~/.v/toolchains/v0.4.11 from branch v0.4.11.
+
+Examples:
+  v toolchain install 0.4.11
+  v toolchain list

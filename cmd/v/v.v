@@ -83,6 +83,7 @@ const external_commands = [
 	'time',
 	'timeout',
 	'tool',
+	'toolchain',
 	'tracev',
 	'translate',
 	'unlink',
