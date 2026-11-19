@@ -83,6 +83,9 @@ __global g_prealloc_allocated_bytes i64
 __global g_prealloc_mapped_bytes i64
 __global g_prealloc_used_bytes i64
 __global g_prealloc_block_count i64
+// Set with `-d prealloc_limits`; 0 means unlimited. Only block growth
+// consults it, so allocations fitting in the current block still succeed.
+__global g_prealloc_limit_bytes i64
 __global g_prealloc_keep_at_exit bool
 // Read by every thread that frees a block, through the `_i32` atomics.
 __global g_prealloc_keep_freed i32
@@ -207,9 +210,8 @@ fn prealloc_block_pool_free() {
 }
 
 // prealloc_stats_add_mapped adds `delta` to the live mapped-storage counter.
-// It is a no-op unless `-d prealloc_stats` is set, so the default allocator
-// fast path stays unchanged.
-@[if prealloc_stats ?]
+// It is needed by both `-d prealloc_stats` and `-d prealloc_limits`; the
+// updates are on noinline block create/free paths, never the bump hot path.
 fn prealloc_stats_add_mapped(delta i64) {
 	C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
 }
@@ -222,10 +224,31 @@ fn prealloc_stats_add_used(delta i64) {
 }
 
 // prealloc_stats_add_block adds `delta` to the live block counter.
-// It is a no-op unless `-d prealloc_stats` is set.
-@[if prealloc_stats ?]
+// The update is on noinline block create/free paths only.
 fn prealloc_stats_add_block(delta i64) {
 	C.v_prealloc_atomic_add_i64(&g_prealloc_block_count, delta)
+}
+
+// prealloc_set_limit caps the mapped arena storage at `bytes`. Zero removes
+// the cap. The limit is checked only when a new block is needed, matching
+// bumpalo semantics: shrinking it does not invalidate the current block.
+@[unsafe]
+pub fn prealloc_set_limit(bytes i64) {
+	$if prealloc_limits ? {
+		clamped := if bytes < 0 { i64(0) } else { bytes }
+		current := C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+		C.v_prealloc_atomic_add_i64(&g_prealloc_limit_bytes, clamped - current)
+	}
+}
+
+// prealloc_limit returns the current mapped-storage cap, or zero when
+// unlimited or when the program was built without `-d prealloc_limits`.
+pub fn prealloc_limit() i64 {
+	$if prealloc_limits ? {
+		return C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+	} $else {
+		return 0
+	}
 }
 
 // PreallocStats is a process-wide snapshot of instrumented arena allocations.
@@ -431,7 +454,11 @@ fn prealloc_trace_scope(action &char, scope &VPreallocScope) {
 
 @[unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, at_least int, align int) &VMemoryBlock {
-	return unsafe { vmemory_block_new_sized(prev, at_least, align, int(prealloc_block_size)) }
+	mb := unsafe { vmemory_block_new_sized(prev, at_least, align, int(prealloc_block_size)) }
+	if mb == unsafe { nil } {
+		panic('prealloc allocation limit exceeded')
+	}
+	return mb
 }
 
 @[unsafe]
@@ -467,6 +494,14 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 		}
 	} else {
 		base_block_size
+	}
+	$if prealloc_limits ? {
+		limit := C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+		if limit > 0
+			&& C.v_prealloc_atomic_load_i64(&g_prealloc_mapped_bytes) + i64(block_size) > limit {
+			C.free(v)
+			return unsafe { nil }
+		}
 	}
 	$if prealloc_trace_malloc ? {
 		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld, align: %lld\n', v.id, block_size, at_least, align)
@@ -567,7 +602,7 @@ fn vmemory_block_init_thread() &VMemoryBlock {
 }
 
 @[noinline; unsafe]
-fn vmemory_block_grow(previous &VMemoryBlock, n int, align int) &VMemoryBlock {
+fn vmemory_block_grow(previous &VMemoryBlock, n int, align int) ?&VMemoryBlock {
 	unsafe {
 		was_scope := previous.is_scope
 		scope := previous.scope
@@ -598,6 +633,9 @@ fn vmemory_block_grow(previous &VMemoryBlock, n int, align int) &VMemoryBlock {
 			min_block_size *= 2
 		}
 		mut mb := vmemory_block_new_sized(previous, n, align, min_block_size)
+		if mb == unsafe { nil } {
+			return none
+		}
 		mb.is_scope = was_scope
 		mb.scope = scope
 		// Keep any reusable blocks after the new one: the scope frees its chain.
@@ -633,7 +671,10 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 		mut current := vmemory_align_up(mb.current, align)
 		remaining := i64(mb.stop) - i64(current)
 		if _unlikely_(remaining < n) {
-			mb = vmemory_block_grow(mb, n, align)
+			mb = vmemory_block_grow(mb, n, align) or {
+				panic('prealloc allocation limit exceeded')
+				return unsafe { nil }
+			}
 			current = vmemory_align_up(mb.current, align)
 		}
 		res := &u8(current)
@@ -863,6 +904,10 @@ pub fn prealloc_scope_begin() voidptr {
 		scope.previous = vmemory_block_current_or_new()
 		scope.saved_next = scope.previous.next
 		scope.first = vmemory_block_new_sized(scope.previous, int(prealloc_scope_block_size), 0, int(prealloc_scope_block_size))
+		if scope.first == unsafe { nil } {
+			C.free(scope)
+			panic('prealloc allocation limit exceeded')
+		}
 		scope.first.is_scope = true
 		scope.first.scope = scope
 		scope.min_address = uint(scope.first.start)
@@ -1343,6 +1388,55 @@ fn prealloc_calloc(n int) &u8 {
 @[unsafe]
 fn prealloc_malloc_align(n int, align int) &u8 {
 	return unsafe { vmemory_block_malloc(n, align) }
+}
+
+// vmemory_block_try_malloc_aligned mirrors the bump fast path but returns
+// none instead of aborting when the limit prevents a new block.
+@[inline; unsafe]
+fn vmemory_block_try_malloc_aligned(n int, align int) ?&u8 {
+	unsafe {
+		mut mb := vmemory_block_current_or_new()
+		mut current := vmemory_align_up(mb.current, align)
+		remaining := i64(mb.stop) - i64(current)
+		if remaining < n {
+			mb = vmemory_block_grow(mb, n, align) or { return none }
+			current = vmemory_align_up(mb.current, align)
+		}
+		res := &u8(current)
+		mb.current = current
+		mb.current += n
+		$if prealloc_stats ? {
+			mb.mallocs++
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
+			prealloc_stats_add_used(i64(n))
+		}
+		return res
+	}
+}
+
+// prealloc_try_malloc allocates `n` bytes from the current arena, or returns
+// none when `-d prealloc_limits` is set and a new block would exceed the cap.
+// A zero-length request also returns none. The ordinary `malloc` keeps
+// aborting on exhaustion; this is the recoverable variant.
+@[unsafe]
+pub fn prealloc_try_malloc(n int) ?&u8 {
+	$if prealloc {
+		if n <= 0 {
+			return none
+		}
+		return unsafe { vmemory_block_try_malloc_aligned(n, vmemory_effective_align(0)) }
+	} $else {
+		return none
+	}
+}
+
+// prealloc_try_calloc is the zeroing variant of prealloc_try_malloc.
+@[unsafe]
+pub fn prealloc_try_calloc(n int) ?&u8 {
+	ptr := unsafe { prealloc_try_malloc(n) } or { return none }
+	unsafe { C.memset(ptr, 0, n) }
+	return ptr
 }
 
 // PreallocChunk describes one allocation block owned by a prealloc scope.
