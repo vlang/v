@@ -93,6 +93,28 @@ fn test_ir_text_round_trip_is_stable() {
 	assert m2.asm_specs[0].insts == ['nop']
 }
 
+fn test_ir_text_detached_instructions_round_trip() {
+	mut m := Module.new()
+	i32_type := m.type_store.get_int(32)
+	fid := m.new_function('main', i32_type)
+	entry := m.add_block(fid, 'entry')
+	c1 := m.get_or_add_const(i32_type, '1')
+	c2 := m.get_or_add_const(i32_type, '2')
+	s := m.add_instr(.add, entry, i32_type, [c1, c2])
+	_ = m.add_instr(.ret, entry, i32_type, [c2])
+	// Simulate optimizer dead-code removal: detach the add from its block.
+	m.detach_instruction_uses(s)
+	mut blk := m.blocks[entry]
+	blk.instrs.delete(0)
+	m.blocks[entry] = blk
+	text := module_to_text(m)!
+	assert text.contains('detached\n')
+	mut m2 := module_from_text(text)!
+	assert module_to_text(m2)! == text
+	assert m2.values[s].kind == .instruction
+	assert m2.values[s].index >= 0
+}
+
 fn test_ir_text_rejects_bad_input() {
 	_ = module_from_text('') or {
 		assert err.msg().contains('empty')

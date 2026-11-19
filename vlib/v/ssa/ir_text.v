@@ -96,11 +96,42 @@ pub fn module_to_text(m &Module) !string {
 			}
 		}
 	}
+	write_detached_instructions(mut sb, m)!
 	write_meta_maps(mut sb, m)
 	for i, spec in m.asm_specs {
 		sb.write_string('  ${asm_spec_to_text(i + 1, spec)}\n')
 	}
 	return sb.str()
+}
+
+// write_detached_instructions emits instructions that are no longer attached
+// to any block (typically dead code the optimizer removed from blocks but
+// left in the values array). Without this section the text would silently
+// drop values and the parser could not rebuild the exact values array.
+fn write_detached_instructions(mut sb strings.Builder, m &Module) ! {
+	mut attached := map[ValueID]bool{}
+	for f in m.funcs {
+		for blk_id in f.blocks {
+			for val_id in m.blocks[blk_id].instrs {
+				attached[val_id] = true
+			}
+		}
+	}
+	mut started := false
+	for i in 1 .. m.values.len {
+		val := m.values[i]
+		if val.kind != .instruction || val.id in attached {
+			continue
+		}
+		if !started {
+			sb.write_string('detached\n')
+			started = true
+		}
+		if val.index < 0 || val.index >= m.instrs.len {
+			return error('ssa: detached value %v${val.id} has invalid instruction index')
+		}
+		sb.write_string('  ${instruction_to_text(m.instrs[val.index], val.id)!}\n')
+	}
 }
 
 // global_value_id finds the value id of the global at the given globals index.
@@ -800,6 +831,7 @@ pub mut:
 	noinline_fns      map[string]bool
 	asm_specs         []InlineAsmSpec
 	max_value_id      int
+	detached          []TextInstrDef
 }
 
 // module_from_text parses the text format back into a module. Use-lists,
@@ -829,6 +861,7 @@ pub fn module_from_text(src string) !&Module {
 		return error('ssa: unsupported text version ${version}, want ${ir_version}')
 	}
 	mut cur_func := -1
+	mut in_detached := false
 	for li in 1 .. lines.len {
 		line_no := li + 1
 		line := lines[li].trim_space()
@@ -862,25 +895,36 @@ pub fn module_from_text(src string) !&Module {
 			'asm_spec' {
 				tm.asm_specs << parse_text_asm_spec(toks)!
 			}
+			'detached' {
+				if toks.len != 1 {
+					return error('ssa: bad detached marker')
+				}
+				in_detached = true
+			}
 			else {
 				if toks[0].len > 0 && toks[0][0] == `@` {
 					if cur_func < 0 {
 						return error('ssa: line ${line_no}: block outside function')
 					}
+					in_detached = false
 					mut f := tm.funcs[cur_func]
 					f.blocks << parse_text_block(toks)!
 					tm.funcs[cur_func] = f
 				} else if toks[0].starts_with('%v') && toks.len > 2 && toks[1] == '=' {
-					if cur_func < 0 || tm.funcs[cur_func].blocks.len == 0 {
-						return error('ssa: line ${line_no}: instruction outside block')
-					}
 					ins := parse_text_instr(mut tm, toks)!
-					mut f := tm.funcs[cur_func]
-					last := f.blocks.len - 1
-					mut b := f.blocks[last]
-					b.instrs << ins
-					f.blocks[last] = b
-					tm.funcs[cur_func] = f
+					if in_detached {
+						tm.detached << ins
+					} else {
+						if cur_func < 0 || tm.funcs[cur_func].blocks.len == 0 {
+							return error('ssa: line ${line_no}: instruction outside block')
+						}
+						mut f := tm.funcs[cur_func]
+						last := f.blocks.len - 1
+						mut b := f.blocks[last]
+						b.instrs << ins
+						f.blocks[last] = b
+						tm.funcs[cur_func] = f
+					}
 				} else {
 					return error('ssa: line ${line_no}: cannot parse `${line}`')
 				}
@@ -1767,30 +1811,22 @@ fn materialize_text_module(tm TextModule) !&Module {
 	for f in tm.funcs {
 		for b in f.blocks {
 			for ins in b.instrs {
-				if int(ins.val_id) <= 0 || int(ins.val_id) >= m.values.len {
-					return error('ssa: instruction value out of range')
-				}
-				idx := m.instrs.len
-				m.instrs << Instruction{
-					op:         ins.op
-					operands:   ins.operands
-					block:      b.id
-					typ:        ins.typ
-					atomic_ord: ins.atomic
-					inline:     ins.inline
-					asm_id:     ins.asm_id
-				}
-				mut val := m.values[ins.val_id]
-				if val.kind != .instruction {
-					return error('ssa: instruction value kind mismatch')
-				}
-				val.index = idx
-				m.values[ins.val_id] = val
+				append_text_instr(mut m, ins, b.id)!
 				mut blk := m.blocks[b.id]
 				blk.instrs << ins.val_id
 				m.blocks[b.id] = blk
 			}
 		}
+	}
+	for ins in tm.detached {
+		// Detached instructions keep no block: the values array never compacts,
+		// but blocks only reference live instructions.
+		append_text_instr(mut m, ins, BlockID(-1))!
+	}
+	// Validate detached instructions the same way (blocks are never removed
+	// from m.blocks, so their block operands stay in range).
+	for ins in tm.detached {
+		validate_text_instr(m, tm, ins)!
 	}
 	// Validate type and id references before rebuilding derived state.
 	for id in 1 .. m.values.len {
@@ -1808,23 +1844,7 @@ fn materialize_text_module(tm TextModule) !&Module {
 				return error('ssa: function has invalid block')
 			}
 			for ins in b.instrs {
-				if int(ins.typ) < 0 || int(ins.typ) >= m.type_store.types.len {
-					return error('ssa: instruction has invalid type')
-				}
-				tmp := Instruction{
-					op:       ins.op
-					operands: ins.operands
-				}
-				for oi, op_id in ins.operands {
-					if tmp.is_value_operand(oi)
-						&& (int(op_id) <= 0 || int(op_id) > tm.max_value_id) {
-						return error('ssa: instruction has invalid value operand')
-					}
-					if tmp.is_block_operand(oi)
-						&& (int(op_id) < 0 || int(op_id) >= m.blocks.len) {
-						return error('ssa: instruction has invalid block operand')
-					}
-				}
+				validate_text_instr(m, tm, ins)!
 			}
 		}
 	}
@@ -1903,6 +1923,48 @@ fn materialize_text_module(tm TextModule) !&Module {
 		m.asm_specs << spec
 	}
 	return m
+}
+
+// append_text_instr appends one parsed instruction and links its value.
+fn append_text_instr(mut m Module, ins TextInstrDef, block BlockID) ! {
+	if int(ins.val_id) <= 0 || int(ins.val_id) >= m.values.len {
+		return error('ssa: instruction value out of range')
+	}
+	idx := m.instrs.len
+	m.instrs << Instruction{
+		op:         ins.op
+		operands:   ins.operands
+		block:      block
+		typ:        ins.typ
+		atomic_ord: ins.atomic
+		inline:     ins.inline
+		asm_id:     ins.asm_id
+	}
+	mut val := m.values[ins.val_id]
+	if val.kind != .instruction {
+		return error('ssa: instruction value kind mismatch')
+	}
+	val.index = idx
+	m.values[ins.val_id] = val
+}
+
+// validate_text_instr checks one parsed instruction's type and operand ranges.
+fn validate_text_instr(m &Module, tm TextModule, ins TextInstrDef) ! {
+	if int(ins.typ) < 0 || int(ins.typ) >= m.type_store.types.len {
+		return error('ssa: instruction has invalid type')
+	}
+	tmp := Instruction{
+		op:       ins.op
+		operands: ins.operands
+	}
+	for oi, op_id in ins.operands {
+		if tmp.is_value_operand(oi) && (int(op_id) <= 0 || int(op_id) > tm.max_value_id) {
+			return error('ssa: instruction has invalid value operand')
+		}
+		if tmp.is_block_operand(oi) && (int(op_id) < 0 || int(op_id) >= m.blocks.len) {
+			return error('ssa: instruction has invalid block operand')
+		}
+	}
 }
 
 // materialize_text_type recreates one type with the same interning call the

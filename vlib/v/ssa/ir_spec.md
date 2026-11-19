@@ -25,7 +25,9 @@ Text IDs are scoped to the text. The printer emits:
 1. `vir <version>` header and `target` line.
 2. Types in array order, values (constants, funcrefs, string literals,
    detached `phi_result`s) in ID order, globals, functions with blocks
-   and instructions, `meta` side tables, `asm_spec` blocks.
+   and instructions, a `detached` section for instructions no block
+   references anymore (dead code the optimizer removed from blocks but
+   left in the values array), `meta` side tables, `asm_spec` blocks.
 3. Every instruction carries its value ID (`%vN = <op> ...`), so the
    parser rebuilds the exact value/instruction/block arrays.
 
