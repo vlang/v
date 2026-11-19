@@ -42,6 +42,7 @@ Function-signature shapes the component wrapper lifts today:
 | multiple string params (each expands to `(i32, i32)`) | ✅ |
 | string returns, `(ptr, len)` pair via hidden sret slot | ✅ |
 | enums (as s32 over core i32) / flags (as u32 over core i32) | ✅ |
+| > 16 flattened params (each string counts as two) | ❌ (no indirect adapter yet; refused, plain-wrapper fallback) |
 | lists / records / variants / resources | ❌ (layout helpers exist, no wrapper yet) |
 | options / results / tuples / maps | ❌ (layout helpers exist, no wrapper yet) |
 

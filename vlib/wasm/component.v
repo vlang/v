@@ -176,6 +176,46 @@ fn core_to_component_valtype(ct u8) int {
 	}
 }
 
+// max_flat_params is the canonical ABI limit (MAX_FLAT_PARAMS): a lifted
+// function whose flattened params exceed this must travel indirectly via
+// memory. The wrapper has no indirect-parameter adapter yet, so such
+// functions are refused (exports skipped, imports trigger a plain-module
+// fallback) instead of emitting an invalid lift.
+const max_flat_params = 16
+
+// core_flat_param_count counts the flattened core params of `ft`: each
+// supported scalar (i32/i64/f32/f64) is one flat slot, anything else is
+// unsupported and returns -1.
+fn core_flat_param_count(ft CoreFuncType) int {
+	mut n := 0
+	for p in ft.params {
+		if core_to_component_valtype(p) < 0 {
+			return -1
+		}
+		n++
+	}
+	return n
+}
+
+// component_flat_param_count counts the flattened component params: a
+// string (0x73) occupies two flat slots (ptr, len), every other known
+// scalar occupies one, anything else is unsupported and returns -1.
+fn component_flat_param_count(comp_params []u8) int {
+	mut n := 0
+	for c in comp_params {
+		if c == 0x73 {
+			n += 2
+		} else if c == 0x7a || c == 0x78 || c == 0x76 || c == 0x75 || c == 0x79
+			|| c == 0x77 || c == 0x7f || c == 0x7d || c == 0x7b || c == 0x7e
+			|| c == 0x7c || c == 0x74 {
+			n += 1
+		} else {
+			return -1
+		}
+	}
+	return n
+}
+
 // sanitize_component_label maps an arbitrary core module or field name to a
 // valid Component Model label tail: lowercase kebab-case over `[0-9a-z-]`
 // where every run of unsupported bytes collapses to a single `-`. The result
@@ -331,9 +371,11 @@ pub mut:
 // core func, bundled per module into inline-export instances, and supplied as
 // instantiation args for the wrapped module. This keeps the produced
 // component valid when the core imports e.g. wasi_snapshot_preview1.fd_write.
-// Cores with unsupported imports (non-func kinds or unmappable types) fall
-// back to plain module wrapping instead of emitting an invalid zero-arg
-// instantiation.
+// Cores with unsupported imports (non-func kinds, unmappable types, or more
+// than 16 flattened params) fall back to plain module wrapping instead of
+// emitting an invalid zero-arg instantiation. Over-arity exports are
+// skipped the same way (each string counts as two flat slots); when no
+// export remains liftable the wrapper also falls back to plain wrapping.
 // Known limitations: the scratch/sret scheme above is not reentrant
 // (nested host -> guest -> host -> guest calls clobber outer slots);
 // lifted string results assume static-lifetime guest data; composite types
@@ -383,8 +425,15 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			if ti >= 0 && ti < types.len {
 				ft := types[ti]
 				if ft.params == spec.core_params && ft.results == spec.core_results {
-					liftable << e
-					str_specs[e.name] = spec
+					flat := component_flat_param_count(spec.comp_params)
+					if flat >= 0 && flat <= max_flat_params {
+						liftable << e
+						str_specs[e.name] = spec
+						continue
+					}
+					// Arity above MAX_FLAT_PARAMS needs an indirect
+					// adapter; refuse this export instead of emitting
+					// an invalid lift.
 					continue
 				}
 			}
@@ -395,14 +444,14 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 			continue
 		}
 		ft := types[ti]
-		// check params/results supported and at most one result
-		mut ok := true
-		for p in ft.params {
-			if core_to_component_valtype(p) < 0 {
-				ok = false
-				break
-			}
+		// check params/results supported and at most one result; params
+		// above MAX_FLAT_PARAMS need indirect memory passing, which has
+		// no adapter yet, so refuse them instead of emitting an invalid lift.
+		flat := core_flat_param_count(ft)
+		if flat < 0 || flat > max_flat_params {
+			continue
 		}
+		mut ok := true
 		if ok {
 			if ft.results.len > 1 {
 				ok = false
@@ -458,11 +507,13 @@ pub fn wrap_core_module_strings(core []u8, string_exports map[string]CabiStringE
 				ok_all = false
 				break
 			}
-			for p in ft.params {
-				if core_to_component_valtype(p) < 0 {
-					ok_all = false
-					break
-				}
+			// Lowered imports must also fit MAX_FLAT_PARAMS; above it the
+			// canonical ABI requires indirect memory passing, which has
+			// no adapter yet, so fall back instead of emitting an invalid lift.
+			flat := core_flat_param_count(ft)
+			if flat < 0 || flat > max_flat_params {
+				ok_all = false
+				break
 			}
 			if !ok_all {
 				break
