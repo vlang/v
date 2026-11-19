@@ -94,3 +94,12 @@ fn test_wasm_supported_array_elem() {
 fn test_wasm_gate_admits_pointer_to_primitive_field() {
 	assert wasm_gate_check('module main\nstruct P {\n\tvalue &int\n}\nfn main() {\n\tvalue := 42\n\tp := P{value: &value}\n\tprintln(*p.value)\n}\n') == ''
 }
+
+// Result (`!T`) lowers like Option (`?T`) when its payload does: the SSA
+// backend already lowers the leading `ok` plus payload, so the driver gate
+// must admit `!int` while still rejecting `!map[string]int`.
+fn test_wasm_gate_admits_result_with_supported_payload() {
+	assert wasm_gate_check("module main\nfn parse(s string) !int {\n\tif s.len == 0 {\n\t\treturn error('empty')\n\t}\n\treturn s.len\n}\nfn main() {\n\tprintln(parse('ok') or { -1 })\n}\n") == ''
+	bad := wasm_gate_check("module main\nfn bad() !map[string]int {\n\treturn error('bad')\n}\nfn main() {\n\tprintln(bad() or { map[string]int{} })\n}\n")
+	assert bad.contains('does not support type'), bad
+}

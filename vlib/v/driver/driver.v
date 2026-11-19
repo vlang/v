@@ -21589,11 +21589,12 @@ fn wasm_supported_array_elem(type_id u32) bool {
 // would otherwise loop the walk for ever.
 fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
 	name_id := flat.source_type_syntax(type_id).main_at_base()
-	// Option types (`?T`) lower in the wasm backend when their payload does:
-	// gen.v handles types.OptionType and the SSA backend lowers the leading
-	// `ok` plus payload. Walk the payload instead of looking the option up in
+	// Option (`?T`) and result (`!T`) types lower in the wasm backend when their payload does:
+	// gen.v handles types.OptionType/ResultType and the SSA backend lowers the leading
+	// `ok` plus payload. Walk the payload instead of looking the option/result up in
 	// tc.structs, where it is not registered as a regular struct.
-	if flat.source_type_shape(name_id).has(.option_type) {
+	if flat.source_type_shape(name_id).has(.option_type)
+		|| flat.source_type_shape(name_id).has(.result_type) {
 		inner := flat.source_type_syntax(name_id).raw_base()
 		if inner == 0 { return false }
 		if flat.source_type_shape(inner).has(.array_type) {
@@ -21642,6 +21643,9 @@ fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int)
 		types.OptionType {
 			return wasm_struct_field_supported(tc, typ.base_type, depth)
 		}
+		types.ResultType {
+			return wasm_struct_field_supported(tc, typ.base_type, depth)
+		}
 		types.Struct {
 			return wasm_struct_fields_supported(tc, typ.source_type_id(), depth + 1)
 		}
@@ -21679,9 +21683,10 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			}
 			// Struct literals lower too, when every field has a lowering: the
 			// backend already copies aggregates through pointers and returns
-			// them through the sret slot. Nested structs, strings and pointers
-			// are accepted; arrays, maps, options and results as fields are
-			// not, so a struct holding one stays rejected.
+			// them through the sret slot. Nested structs, strings, pointers,
+			// options and results with supported payloads are accepted; arrays,
+			// maps and other aggregates as fields are not, so a struct holding
+			// one stays rejected.
 			if node.kind == .struct_init && wasm_supported_struct(tc, unsupported_type) {
 				unsupported_type = 0
 			}
