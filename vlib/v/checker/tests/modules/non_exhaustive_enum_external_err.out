@@ -1,0 +1,7 @@
+vlib/v/checker/tests/modules/non_exhaustive_enum_external_err/main.v:6:2: error: match on non-exhaustive `Status` from module `amod` must include `else {}`
+    4 | 
+    5 | fn test_status(s amod.Status) int {
+    6 |     match s {
+      |     ~~~~~~~~~
+    7 |         .ready {
+    8 |             return 1

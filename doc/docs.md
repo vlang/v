@@ -4744,6 +4744,12 @@ An importing module's same-named enum does not change that default, including in
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
+A public enum or sum type marked `@[non_exhaustive]` opts into an open
+contract: external modules must include an `else` branch even when all
+currently known variants are listed, so adding a variant is non-breaking
+for fallback consumers. The defining module keeps exhaustive matching
+without a fallback.
+
 Enum fields can re-use reserved keywords:
 
 The `@` escape is also accepted in qualified and shorthand member references, including
