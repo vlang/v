@@ -1,0 +1,10 @@
+module main
+
+@[wire: 'little_endian']
+struct BadInt {
+	n int
+}
+
+fn main() {
+	println(BadInt{})
+}

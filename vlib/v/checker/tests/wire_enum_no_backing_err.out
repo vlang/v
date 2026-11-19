@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wire_enum_no_backing_err.vv:10:4: error: wire field `BadEnum.e` has enum type `NoBacking` without explicit fixed-size backing: declare it as `enum NoBacking as u8` (or u16, u32, u64, i8, i16, i32, i64)
+    8 | @[wire: 'little_endian']
+    9 | struct BadEnum {
+   10 |     e NoBacking
+      |       ~~~~~~~~~
+   11 | }
+   12 |

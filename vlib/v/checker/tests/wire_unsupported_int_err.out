@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wire_unsupported_int_err.vv:5:4: error: wire field `BadInt.n` has unsupported type `int`: wire structs support u8, u16, u32, u64, i8, i16, i32, i64, bool, f32, f64, enums with explicit fixed-size backing, fixed arrays, and nested wire structs
+    3 | @[wire: 'little_endian']
+    4 | struct BadInt {
+    5 |     n int
+      |       ~~~
+    6 | }
+    7 |

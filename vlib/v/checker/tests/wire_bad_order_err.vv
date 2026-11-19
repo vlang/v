@@ -1,0 +1,10 @@
+module main
+
+@[wire: 'middle_endian']
+struct BadOrder {
+	a u8
+}
+
+fn main() {
+	println(BadOrder{})
+}

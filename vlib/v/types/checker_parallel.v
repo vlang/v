@@ -1990,6 +1990,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				}
 				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
+					tc.check_wire_structs(node_id, node)
 				}
 			}
 			.type_decl, .interface_decl {
