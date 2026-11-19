@@ -144,6 +144,16 @@ uses column vectors, so the helpers transform the basis vectors instead of
 copying the 16 floats; this keeps `m4.mul_vec()` and the render matrix
 equivalent.
 
+## CPU rendering
+
+`gg` can draw without a window or GPU: `ctx.render_cpu(w, h, clear_color)`
+rasterizes the recorded 2D commands into a `render.Frame` with a pixel buffer
+and `save_ppm()`. `ctx.render_cpu_3d(w, h, clear_color, camera)` adds a depth
+buffer, so the same 3D camera, meshes, lighting and fog render to memory. Both
+work with a `Context` created normally; the GPU window is simply never opened.
+Depth-tested CPU drawing rejects fragments behind the camera or past the far
+plane, and interpolates texture coordinates with perspective correction.
+
 ## Multi-Window Applications
 
 `gg.App` is an additive multi-window facade for programs that need to manage
