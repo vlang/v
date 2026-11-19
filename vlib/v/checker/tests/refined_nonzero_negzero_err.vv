@@ -1,0 +1,14 @@
+@[range: 'nonzero']
+type Nonzero = int
+
+fn Nonzero.from(value int) !Nonzero {
+	if value == 0 {
+		return error('zero')
+	}
+	return Nonzero(value)
+}
+
+fn main() {
+	x := Nonzero(-0)
+	println(int(x))
+}
