@@ -1,9 +1,10 @@
+import io
 import os
 import time
 
 const vexe = os.getenv('VEXE')
 const vroot = os.dir(vexe)
-const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests_${os.getpid()}')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
 const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 const delayed_output_exe_filename = os.join_path(tfolder, 'delayed_output.exe')
@@ -13,13 +14,6 @@ const utf16le_output_exe_filename = os.join_path(tfolder, 'utf16le_output.exe')
 const stdin_exit_exe_filename = os.join_path(tfolder, 'stdin_exit.exe')
 const stdin_copy_exe_filename = os.join_path(tfolder, 'stdin_copy.exe')
 const argv_echo_exe_filename = os.join_path(tfolder, 'argv_echo.exe')
-const process_io_source = os.join_path(tfolder, 'process_io.v')
-const process_io_source_code = '
-module main
-
-import io
-import os
-import time
 
 fn wait_for_stdin() {
 	// Bound the wait even if the parent is stuck reading from stdout.
@@ -30,71 +24,79 @@ fn wait_for_stdin() {
 	_ = os.get_raw_line()
 }
 
-fn main() {
-	match os.file_name(os.args[0]) {
-		"echo.exe" {
+fn run_process_io_fixture(name string) bool {
+	match name {
+		'echo.exe' {
 			unbuffer_stdout()
 			mut reader := io.new_buffered_reader(reader: os.stdin(), cap: 1)
 			for {
-				line := reader.read_line()!
+				line := reader.read_line() or { panic(err) }
 				println(line)
 				eprintln(line)
 			}
 		}
-		"utf16le_output.exe" {
+		'utf16le_output.exe' {
 			payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
 			mut out := os.stdout()
 			out.write(payload) or { panic(err) }
 		}
-		"stdin_exit.exe" {
+		'stdin_exit.exe' {
 			_ = os.get_raw_line()
 			exit(7)
 		}
-		"stdin_copy.exe" {
+		'stdin_copy.exe' {
 			payload := io.read_all(reader: os.stdin()) or { panic(err) }
 			if os.args.len > 1 {
 				os.write_file_array(os.args[1], payload) or { panic(err) }
-				return
+			} else {
+				mut out := os.stdout()
+				out.write(payload) or { panic(err) }
 			}
-			mut out := os.stdout()
-			out.write(payload) or { panic(err) }
 		}
-		"argv_echo.exe" {
+		'argv_echo.exe' {
 			for arg in os.args[1..] {
 				println(arg)
 			}
 		}
-		"delayed_output.exe" {
-			if os.args[1..] == ["--wait-for-stdin"] {
+		'delayed_output.exe' {
+			if os.args[1..] == ['--wait-for-stdin'] {
 				wait_for_stdin()
-				println("late")
+				println('late')
 			}
 		}
-		"pipe_output.exe" {
+		'pipe_output.exe' {
 			unbuffer_stdout()
-			println("stdout, start")
-			eprintln("stderr, start")
+			println('stdout, start')
+			eprintln('stderr, start')
 			for i in 1 .. 5 {
-				println("stdout, " + i.str())
-				eprintln("stderr, " + i.str())
+				println('stdout, ' + i.str())
+				eprintln('stderr, ' + i.str())
 			}
-			if os.args[1..] == ["--wait-for-stdin"] {
+			if os.args[1..] == ['--wait-for-stdin'] {
 				wait_for_stdin()
 			}
 		}
-		"exact_tool.exe.exe", "pathext_tool.exe" {
+		'exact_tool.exe.exe', 'pathext_tool.exe' {
 			// The executable lookup tests expect these decoys to exit with 0.
 		}
+		'spawn.exe' {
+			println('stale-prefix-exe')
+		}
 		else {
-			panic("unknown process I/O fixture mode")
+			return false
 		}
 	}
+	return true
 }
-'
 
 const echo_wait_timeout = 5 // seconds
 
 fn testsuite_begin() {
+	// Copies of the test binary use the filename to select an I/O fixture
+	// before normal suite setup, leaving each fixture's arguments intact.
+	if run_process_io_fixture(os.file_name(os.executable())) {
+		exit(0)
+	}
 	os.rmdir_all(tfolder) or {}
 	os.mkdir_all(tfolder)!
 	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
@@ -108,14 +110,10 @@ fn testsuite_begin() {
 	}
 	assert os.exists(test_os_process)
 
-	os.write_file(process_io_source, process_io_source_code)!
-	build := os.exec([vexe, '-o', stdin_copy_exe_filename, process_io_source])
-	assert build.exit_code == 0, build.output
-	assert os.exists(stdin_copy_exe_filename)
-	// Dispatch by executable name so every fixture receives its original arguments.
 	for fixture in [echo_process_exe_filename, utf16le_output_exe_filename, stdin_exit_exe_filename,
-		argv_echo_exe_filename, delayed_output_exe_filename, pipe_output_exe_filename] {
-		os.cp(stdin_copy_exe_filename, fixture)!
+		stdin_copy_exe_filename, argv_echo_exe_filename, delayed_output_exe_filename,
+		pipe_output_exe_filename] {
+		os.cp(os.executable(), fixture)!
 	}
 }
 
@@ -189,10 +187,8 @@ fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
 	spaced_exe := os.join_path(spaced_dir, 'test os process.exe')
 	os.cp(test_os_process, spaced_exe)!
 
-	stale_source := os.join_path(tfolder, 'spawn.v')
 	stale_exe := os.join_path(tfolder, 'spawn.exe')
-	os.write_file(stale_source, 'fn main() {\n\tprintln("stale-prefix-exe")\n}\n')!
-	assert os.system_args([vexe, '-o', stale_exe, stale_source]) == 0
+	os.cp(os.executable(), stale_exe)!
 
 	mut p := os.new_process(spaced_exe)
 	p.set_args(['-show_env', '-target', 'stdout'])
