@@ -1,8 +1,25 @@
 import os
 
 const doctor_fixture_dir = os.join_path(os.vtmp_dir(), 'vdoctor_fixture_${os.getpid()}')
+const doctor_git_name = 'git' + $if windows { '.exe' } $else { '' }
 
 fn testsuite_begin() {
+	marker := os.getenv('DOCTOR_FETCH_TEST_MARKER')
+	if marker != '' && os.file_name(os.executable()) == doctor_git_name {
+		args := os.args[1..]
+		if args == ['rev-parse', '--is-inside-work-tree'] {
+			println('true')
+		} else if args == ['-C', '.', 'describe', '--abbrev=8', '--dirty', '--always', '--tags'] {
+			println('fixture')
+		} else if 'fetch' in args {
+			if args != ['-C', '.', 'fetch', 'V_REPO'] {
+				eprintln('Unexpected Git fetch arguments: ${args}')
+				exit(1)
+			}
+			os.write_file(marker, 'fetched') or { panic(err) }
+		}
+		exit(0)
+	}
 	os.rmdir_all(doctor_fixture_dir) or {}
 }
 
@@ -172,24 +189,7 @@ fn test_doctor_fetch_reaches_git_through_timeout() {
 	root := os.join_path(os.vtmp_dir(), 'doctor_fetch_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	stub_source := os.join_path(root, 'git.v')
-	os.write_file(stub_source, '
-import os
-fn main() {
-	args := os.args[1..]
-	if args == ["rev-parse", "--is-inside-work-tree"] {
-		println("true")
-	} else if args == ["-C", ".", "describe", "--abbrev=8", "--dirty", "--always", "--tags"] {
-		println("fixture")
-	} else if "fetch" in args {
-		assert args == ["-C", ".", "fetch", "V_REPO"], args.str()
-		os.write_file(os.getenv("DOCTOR_FETCH_TEST_MARKER"), "fetched")!
-	}
-}
-')!
-	stub := os.join_path(root, 'git' + $if windows { '.exe' } $else { '' })
-	build := os.exec([@VEXE, '-o', stub, stub_source])
-	assert build.exit_code == 0, build.output
+	os.cp(os.executable(), os.join_path(root, doctor_git_name))!
 	marker := os.join_path(root, 'fetch.marker')
 	os.setenv('DOCTOR_FETCH_TEST_MARKER', marker, true)
 	os.setenv('DOCTOR_FETCH_TEST_DIR', root, true)

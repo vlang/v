@@ -1,6 +1,27 @@
 import os
 import v.cmdexec
 
+const packaging_compiler_name = 'v' + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
+	if os.getenv('VTEST_SANDBOXED_PACKAGING') != '1'
+		|| os.file_name(os.executable()) != packaging_compiler_name {
+		return
+	}
+	mut output := ''
+	for i, arg in os.args {
+		if arg == '-o' && i + 1 < os.args.len {
+			output = os.args[i + 1]
+		}
+	}
+	if output != '' {
+		os.cp(os.executable(), output) or { panic(err) }
+		os.chmod(output, 0o755) or { panic(err) }
+		os.write_file(output + '.manifest', os.file_name(output)) or { panic(err) }
+	}
+	exit(0)
+}
+
 fn test_build_tools_keeps_manifests_beside_each_packaged_executable() ! {
 	root := os.join_path(os.vtmp_dir(), 'v build tools manifests ${os.getpid()}')
 	os.mkdir_all(root)!
@@ -11,23 +32,8 @@ fn test_build_tools_keeps_manifests_beside_each_packaged_executable() ! {
 	assert built.exit_code == 0, built.output
 	// A small compiler substitute makes packaging produce sidecars on every host,
 	// independently of which Windows linker is installed.
-	fake_source := os.join_path(root, 'compiler.v')
-	os.write_file(fake_source, "module main
-import os
-fn main() {
-	mut output := ''
-	for i, arg in os.args {
-		if arg == '-o' && i + 1 < os.args.len { output = os.args[i + 1] }
-	}
-	if output == '' { return }
-	os.cp(os.executable(), output) or { panic(err) }
-	os.chmod(output, 0o755) or { panic(err) }
-	os.write_file(output + '.manifest', os.file_name(output)) or { panic(err) }
-}
-")!
-	fake := os.join_path(root, 'v' + suffix)
-	compiler := cmdexec.run(@VEXE, ['-o', fake, fake_source])
-	assert compiler.exit_code == 0, compiler.output
+	fake := os.join_path(root, packaging_compiler_name)
+	os.cp(os.executable(), fake)!
 	tools := os.join_path(root, 'cmd', 'tools')
 	os.mkdir_all(os.join_path(root, 'vlib'))!
 	os.mkdir_all(os.join_path(tools, 'vwhere'))!
