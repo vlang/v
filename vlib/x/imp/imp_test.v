@@ -21,10 +21,9 @@ fn set_mtime(path string, offset i64) {
 	os.utime(path, int(stamp), int(stamp)) or { panic(err) }
 }
 
-// record is a flow body that reads the inputs, creates the outputs and appends
-// the flow id to `log`, so that a test can check the order flows ran in.
-// Directories are left to the test.
-fn record(f Flow) ! {
+// read_inputs_and_write_outputs exercises the flow's file dependencies,
+// leaving directories to the test.
+fn read_inputs_and_write_outputs(f Flow) ! {
 	for path in f.takes {
 		if !os.is_dir(path) {
 			os.read_file(path)!
@@ -35,7 +34,16 @@ fn record(f Flow) ! {
 			os.write_file(path, f.id)!
 		}
 	}
-	os.write_file('log', (os.read_file('log') or { '' }) + '${f.id} ')!
+}
+
+// record appends the flow id to `log` after its file operations succeed.
+fn record(f Flow) ! {
+	read_inputs_and_write_outputs(f)!
+	mut log := os.open_append('log')!
+	defer {
+		log.close()
+	}
+	log.write_string('${f.id} ')!
 }
 
 // contents returns the text of the file `path`, or a marker when it cannot be
@@ -2210,6 +2218,30 @@ fn (mut r Lcg) next(n int) int {
 	return int((r.state >> 33) % u64(n))
 }
 
+// clear_keeping_state_dirs removes everything under `dir` but the state
+// directories themselves, which are only emptied: recreating them for every
+// random graph costs more than the graph's own file operations.
+fn clear_keeping_state_dirs(dir string) ! {
+	for entry in os.ls(dir)! {
+		if entry != stamp_dir {
+			remove(os.join_path(dir, entry))!
+			continue
+		}
+		for kind in os.ls(os.join_path(dir, stamp_dir))! {
+			kind_dir := os.join_path(dir, stamp_dir, kind)
+			for name in os.ls(kind_dir)! {
+				os.rm(os.join_path(kind_dir, name))!
+			}
+		}
+	}
+}
+
+// RandomGraphTrace collects the flows a random graph pass runs, in order.
+struct RandomGraphTrace {
+mut:
+	ran []string
+}
+
 // test_random_graphs_run_each_reachable_flow_once runs many random graphs of
 // pre hooks, dependencies and post hooks, optional or required. Each graph is
 // requested twice. The first time nothing can be skipped; the second time every
@@ -2225,10 +2257,13 @@ fn test_random_graphs_run_each_reachable_flow_once() {
 	mut r := Lcg{
 		state: 20261104
 	}
+	mut trace := &RandomGraphTrace{}
+	record_run := fn [mut trace] (f Flow) ! {
+		read_inputs_and_write_outputs(f)!
+		trace.ran << f.id
+	}
 	for round in 0 .. 1200 {
-		for entry in os.ls(dir)! {
-			remove(entry)!
-		}
+		clear_keeping_state_dirs(dir)!
 		forward := round % 2 == 0
 		n := 2 + r.next(7)
 		mut flows := []Flow{}
@@ -2274,7 +2309,7 @@ fn test_random_graphs_run_each_reachable_flow_once() {
 				check: .hash
 				pre:   pre
 				post:  post
-				flow:  record
+				flow:  record_run
 			}
 		}
 		mut c := new()
@@ -2285,9 +2320,9 @@ fn test_random_graphs_run_each_reachable_flow_once() {
 		graph := flows.map('${it.id} takes ${it.takes} pre ${it.pre} post ${it.post}').join('; ')
 		for skipping in [false, true] {
 			what := 'round ${round}, ${requested} requested, skipping ${skipping}; ${graph}'
-			os.rm('log') or {}
+			trace.ran.clear()
 			c.execute([requested]) or { assert false, '${err.msg()}; ${what}' }
-			ran := (os.read_file('log') or { '' }).fields()
+			ran := trace.ran
 			check_random_pass(flows, requested, skipping, ran, what)
 			if forward {
 				mut seen := map[string]bool{}
