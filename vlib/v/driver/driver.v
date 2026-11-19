@@ -25939,12 +25939,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		resolved_collision_seeds = prepared.resolved_collision_seeds.clone()
 		unresolved_modules = prepared.unresolved_modules.clone()
 	}
-	if check_overflow {
-		// C generation names the late-injected overflow helpers by their full
-		// module path. Preserve that path even though it is the only module named
-		// `overflow` in this build.
-		forced_full_module_paths['builtin.overflow'] = true
-	}
 	bundle_import_file := cache_bundle_import_file(prefs.get_vlib_module_path('builtin'))
 	if builtin_sources := cache_state.module_sources['builtin'] {
 		if builtin_sources.len > 0 {

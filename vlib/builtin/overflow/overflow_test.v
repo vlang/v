@@ -60,3 +60,19 @@ fn test_neg_sat_signed_min() {
 	assert neg_sat_i64(min_i64) == max_i64
 	assert neg_sat_i8(42) == -42
 }
+
+fn test_div_sat_signed_min_div_minus_one() {
+	assert div_sat_i8(min_i8, -1) == max_i8
+	assert div_sat_i16(min_i16, -1) == max_i16
+	assert div_sat_i32(min_i32, -1) == max_i32
+	assert div_sat_i64(min_i64, -1) == max_i64
+	assert div_sat_i8(100, 4) == 25
+}
+
+fn test_mod_sat_signed_min_mod_minus_one() {
+	assert mod_sat_i8(min_i8, -1) == 0
+	assert mod_sat_i16(min_i16, -1) == 0
+	assert mod_sat_i32(min_i32, -1) == 0
+	assert mod_sat_i64(min_i64, -1) == 0
+	assert mod_sat_i8(100, 7) == 2
+}
