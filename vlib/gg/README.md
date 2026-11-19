@@ -123,10 +123,12 @@ first-person movement. 3D drawing uses depth testing with backface culling;
 painter-order pipelines, so HUD and text can be drawn afterwards.
 
 The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
-`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`. Use
-`screen_to_world_ray()` with `ray_sphere()` or `ray_box()` for picking. More
-primitives and mesh support are tracked in
-https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v`.
+`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`. For
+custom geometry, `Mesh3D` plus `gen_mesh_cube/plane/sphere/cylinder` and
+`ctx.draw_mesh()` draw indexed triangles with a position, rotation and scale.
+Use `screen_to_world_ray()` with `ray_sphere()` or `ray_box()` for picking.
+More primitives are tracked in https://github.com/vlang/v/issues/32523.
+See `examples/gg/3d_cube.v`.
 
 ## Multi-Window Applications
 

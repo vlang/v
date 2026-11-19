@@ -9,10 +9,12 @@ struct App {
 mut:
 	gg    &gg.Context = unsafe { nil }
 	angle f32
+	mesh  gg.Mesh3D
 }
 
 fn main() {
 	mut app := &App{}
+	app.mesh = gg.gen_mesh_cube(gg.Vec3{1, 1, 1})
 	app.gg = gg.new_context(
 		width:        win_width
 		height:       win_height
@@ -43,6 +45,8 @@ fn frame(data voidptr) {
 	ctx.draw_cube(gg.Vec3{1.2, 0, 0}, gg.Vec3{2, 2, 2}, gg.blue)
 	ctx.draw_sphere(gg.Vec3{0, 2.2, 0}, 0.9, 8, 16, gg.green)
 	ctx.draw_cylinder(gg.Vec3{-3, -1, 0}, gg.Vec3{-3, 1, 0}, 0.4, 12, gg.yellow)
+	ctx.draw_mesh(&app.mesh, gg.Vec3{0, 3, 0}, gg.Vec3{0, 45, 0}, 1.0,
+		gg.rgb(255, 0, 255))
 	ctx.draw_cube_wires(gg.Vec3{0, -1.6, 0}, gg.Vec3{2, 0.4, 2}, gg.white)
 	ctx.end_3d()
 	ctx.end()
