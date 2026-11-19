@@ -174,6 +174,7 @@ enum AttributeSchemaFieldKind {
 	integer
 	boolean
 	enum_
+	array_
 }
 
 // AttributeSchemaFieldInfo is one field of a `@[attribute]` schema struct.
@@ -899,6 +900,12 @@ fn comptime_attribute_schema_field_kind(typ types.Type) ?(AttributeSchemaFieldKi
 	if clean is types.Enum {
 		return AttributeSchemaFieldKind.enum_, clean.name_id
 	}
+	if clean is types.Array {
+		elem := types.unalias_type(clean.elem_type)
+		if elem is types.String || elem.is_integer() || elem.source_type_id() == flat.source_type_bool || elem is types.Enum {
+			return AttributeSchemaFieldKind.array_, typ.source_type_id()
+		}
+	}
 	return none
 }
 
@@ -1195,7 +1202,18 @@ fn comptime_attribute_value_matches(field_kind AttributeSchemaFieldKind, value s
 		.boolean { kind == 3 && (value == 'true' || value == 'false') }
 		.integer { kind == 2 && comptime_attribute_is_integer_literal(value) }
 		.enum_ { value.len > 1 && value[0] == `.` && comptime_attribute_is_bare_ident(value[1..]) }
+		.array_ { kind == 0 && comptime_attribute_value_is_array(value) }
 	}
+}
+
+// comptime_attribute_value_is_array reports whether a raw argument value has
+// the bracketed shape the parser records for array arguments (recorded piece
+// kind 0): surrounding spaces are trimmed, then the text must start with `[`
+// and end with `]`. Only the outer shape is checked, mirroring the checker's
+// `attribute_arg_kind`; element validation is still TODO (vlang/rfcs#35).
+fn comptime_attribute_value_is_array(value string) bool {
+	trimmed := value.trim_space()
+	return trimmed.len > 1 && trimmed[0] == `[` && trimmed[trimmed.len - 1] == `]`
 }
 
 // comptime_attribute_is_integer_literal mirrors the checker's decimal, hex,
@@ -1830,6 +1848,106 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 				typ:   field.type_id
 			})
 		}
+		.array_ {
+			mut elems := []flat.NodeId{}
+			mut inner := raw.trim_space()
+			if inner.starts_with('[') && inner.ends_with(']') {
+				inner = inner[1..inner.len - 1].trim_space()
+			}
+			// Resolve the element type from the declared array type, mirroring
+			// comptime_attribute_schema_field_kind: aliases are followed, so
+			// `[]MyInt` dispatches on `int` and `[]MyEnum` builds enum values
+			// instead of falling back to strings.
+			mut elem_is_string := false
+			mut elem_is_int := false
+			mut elem_is_bool := false
+			mut elem_is_enum := false
+			mut elem_type_id := u32(0)
+			mut elem_enum_name := ''
+			if !isnil(t.tc) {
+				parsed_arr := t.tc.parse_type(field.type_id)
+				if !(parsed_arr is types.Unknown) {
+					arr_clean := types.unalias_type(parsed_arr)
+					if arr_clean is types.Array {
+						elem := types.unalias_type(arr_clean.elem_type)
+						if elem is types.String {
+							elem_is_string = true
+						} else if elem.is_integer() {
+							elem_is_int = true
+							elem_type_id = elem.source_type_id()
+						} else if elem.source_type_id() == flat.source_type_bool {
+							elem_is_bool = true
+						} else if elem is types.Enum {
+							elem_is_enum = true
+							elem_type_id = elem.name_id
+							elem_enum_name = flat.source_type_name(elem_type_id)
+						}
+					}
+				}
+			}
+			if inner.len > 0 {
+				// Split by top-level commas (bracket- and quote-aware) so string
+				// elements containing commas or brackets are not broken. A
+				// backslash escapes the next byte, so an escaped quote does not
+				// end the string.
+				mut parts := []string{}
+				mut depth := 0
+				mut in_str := false
+				mut str_quote := u8(0)
+				mut start := 0
+				mut i := 0
+				for i < inner.len {
+					c := inner[i]
+					if in_str {
+						if c == `\\` && i + 1 < inner.len {
+							i += 2
+							continue
+						}
+						if c == str_quote {
+							in_str = false
+						}
+						i++
+						continue
+					}
+					if c == `'` || c == `"` {
+						in_str = true
+						str_quote = c
+					} else if c == `[` || c == `{` || c == `(` {
+						depth++
+					} else if c == `]` || c == `}` || c == `)` {
+						if depth > 0 { depth-- }
+					} else if c == `,` && depth == 0 {
+						parts << inner[start..i]
+						start = i + 1
+					}
+					i++
+				}
+				if start < inner.len {
+					parts << inner[start..]
+				}
+				for part in parts {
+					p := part.trim_space()
+					if p.len == 0 { continue }
+					if elem_is_string {
+						elems << t.make_string_literal(comptime_attr_unquote(p))
+					} else if elem_is_int {
+						elems << t.make_int_literal_typed(p, elem_type_id)
+					} else if elem_is_bool {
+						elems << t.make_bool_literal(p == 'true')
+					} else if elem_is_enum {
+						name := if p.starts_with('.') { p[1..] } else { comptime_attr_unquote(p) }
+						elems << t.a.add_node(flat.Node{
+							kind:  .enum_val
+							value: '${elem_enum_name}.${name}'
+							typ:   elem_type_id
+						})
+					} else {
+						elems << t.make_string_literal(comptime_attr_unquote(p))
+					}
+				}
+			}
+			t.make_array_literal_typed(elems, field.type_id)
+		}
 	}
 }
 
@@ -1860,7 +1978,7 @@ fn subst_attribute_schema_field_cond(cond string, var_name string, attr Attribut
 
 // comptime_attribute_schema_field_cond_value is the condition text of a bound
 // schema field value. Integers are written in decimal, so that `0x10` matches
-// a `16` in the condition.
+// a `16` in the condition. Arrays keep their `[...]` literal text.
 fn comptime_attribute_schema_field_cond_value(field AttributeSchemaFieldInfo, raw string) string {
 	return match field.kind {
 		.string_ {
@@ -1875,7 +1993,7 @@ fn comptime_attribute_schema_field_cond_value(field AttributeSchemaFieldInfo, ra
 				raw
 			}
 		}
-		.boolean, .enum_ {
+		.boolean, .enum_, .array_ {
 			raw
 		}
 	}
