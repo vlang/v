@@ -24145,10 +24145,10 @@ fn (mut g FlatGen) heap_tracking_fallback_decls() {
 	// Weak fallbacks keep ordinary builds linkable. Tracking builds require the
 	// user hooks and must not receive definitions in the same translation unit.
 	if g.object_file_mode {
-		g.writeln('static void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+		g.writeln('static void vheap_alloc(void* p, uint64_t n) { (void)p; (void)n; }')
 		g.writeln('static void vheap_free(void* p) { (void)p; }')
 	} else {
-		g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+		g.writeln('__attribute__((weak)) void vheap_alloc(void* p, uint64_t n) { (void)p; (void)n; }')
 		g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
 	}
 }
