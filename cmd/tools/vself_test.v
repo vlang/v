@@ -36,8 +36,14 @@ fn assert_vself_preserves_prod_options(output string) {
 	assert_vself_preserves_full_cli(output)
 }
 
-fn vself_mock_compiler_source() string {
-	return "module main
+fn vself_mock_compiler() !string {
+	compiler := os.join_path(vself_fixture_dir, 'mock_compiler')
+	if os.is_executable(compiler) {
+		return compiler
+	}
+	os.mkdir_all(vself_fixture_dir)!
+	source := os.join_path(vself_fixture_dir, 'mock_compiler.v')
+	os.write_file(source, "module main
 
 import os
 
@@ -64,7 +70,13 @@ fn main() {
 	os.write_file(output + '.manifest', 'replacement manifest') or { panic(err) }
 	println(os.args.last())
 }
-"
+")!
+	build := os.exec([vexe, '-o', compiler, source])
+	if build.exit_code != 0 {
+		os.rm(compiler) or {}
+		return error(build.output)
+	}
+	return compiler
 }
 
 fn test_linux_tinyc_self_build_does_not_enable_prealloc() {
@@ -235,12 +247,8 @@ fn test_other_native_host_self_replacement_preserves_cli() {
 
 	// The stub keeps this test fast, but only emits a replacement when vself asks
 	// for cmd/v. Targeting standalone v.v makes the replacement fail.
-	mock_source := os.join_path(root, 'mock_compiler.v')
-	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
-	mock_build :=
-		os.exec([vexe, '-o', isolated_vexe, mock_source])
-	assert mock_build.exit_code == 0, mock_build.output
+	os.cp(vself_mock_compiler()!, isolated_vexe)!
 	os.write_file('${isolated_vexe}.manifest', 'previous manifest')!
 	vself_tool := os.join_path(root, 'vself')
 	vself_build := os.exec([vexe, '-nocache', '-d', 'vself_test_other_transition', '-o',
@@ -296,12 +304,8 @@ fn test_windows_plain_self_transition_does_not_install_fallback() {
 		os.symlink(os.join_path(vroot, directory), os.join_path(root, directory)) or { panic(err) }
 	}
 
-	mock_source := os.join_path(root, 'mock_compiler.v')
-	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
-	mock_build :=
-		os.exec([vexe, '-o', isolated_vexe, mock_source])
-	assert mock_build.exit_code == 0, mock_build.output
+	os.cp(vself_mock_compiler()!, isolated_vexe)!
 	vself_tool := os.join_path(root, 'vself')
 	vself_build := os.exec([vexe, '-nocache', '-d', 'vself_test_windows_transition', '-o',
 		'${vself_tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
@@ -399,11 +403,7 @@ fn test_self_bootstrap_handles_the_old_peak_rss_return_type() ! {
 	os.mkdir_all(os.join_path(root, 'vc'))!
 	defer { os.rmdir_all(root) or {} }
 	os.symlink(os.join_path(vroot, 'cmd'), os.join_path(root, 'cmd'))!
-	mock_source := os.join_path(root, 'mock_compiler.v')
-	os.write_file(mock_source, vself_mock_compiler_source())!
-	mock := os.join_path(root, 'stage2')
-	mock_build := os.exec([vexe, '-o', mock, mock_source])
-	assert mock_build.exit_code == 0, mock_build.output
+	mock := vself_mock_compiler()!
 	tool := vself_test_tool()
 	// Force the first self-build to fail and exercise the C bootstrap fallback.
 	broken := os.join_path(root, 'v')
@@ -658,20 +658,21 @@ fn test_track_heap_guards_need_no_header() {
 	source := os.join_path(root, 'main.v')
 	generated := os.join_path(root, 'main.c')
 	os.write_file(source, 'fn main() {}\n')!
-	for mode in [['-gc', 'none'], ['-gc', 'boehm'], ['-gc', 'vgc'], ['-gc', 'none', '-prealloc']] {
-		built := os.exec([vexe, '-nocache', ...mode, '-d', 'track_heap', '-o', generated, source])
-		assert built.exit_code == 0, '${mode}: ${built.output}'
-		if mode == ['-gc', 'none'] {
-			assert_no_preprocessor_includes(os.read_file(generated)!)
-			checked := os.exec([clang, '-std=gnu11', '-nostdinc', '-fsyntax-only', '-Wno-everything',
-				'-Wno-incompatible-function-pointer-types', '-Wno-int-conversion', '-x', 'c',
-				generated])
-			assert checked.exit_code == 0, checked.output
-		} else {
-			checked := os.exec([vexe, '-nocache', '-cc', clang, ...mode, '-d', 'track_heap', '-o',
-				os.join_path(root, 'invalid'), source])
-			assert checked.exit_code != 0, mode.str()
-			assert checked.output.contains('track_heap requires manual memory management'), checked.output
-		}
+	built := os.exec([vexe, '-nocache', '-gc', 'none', '-d', 'track_heap', '-o', generated, source])
+	assert built.exit_code == 0, built.output
+	assert_no_preprocessor_includes(os.read_file(generated)!)
+	checked := os.exec([clang, '-std=gnu11', '-nostdinc', '-fsyntax-only', '-Wno-everything',
+		'-Wno-incompatible-function-pointer-types', '-Wno-int-conversion', '-x', 'c', generated])
+	assert checked.exit_code == 0, checked.output
+
+	// Keep the generated C from each failed native build to check both stages.
+	for i, mode in [['-gc', 'boehm'], ['-gc', 'vgc'], ['-gc', 'none', '-prealloc']] {
+		name := 'invalid_${i}'
+		rejected := os.exec(['env', 'VTMP=${root}', vexe, '-nocache', '-no-retry-compilation',
+			'-keepc', '-cc', clang, ...mode, '-d', 'track_heap', '-o', os.join_path(root, name),
+			source])
+		assert rejected.exit_code != 0, mode.str()
+		assert rejected.output.contains('error: "-d track_heap requires manual memory management'), rejected.output
+		assert os.walk_ext(root, '.tmp.c').any(os.file_name(it).starts_with('${name}.')), mode.str()
 	}
 }
