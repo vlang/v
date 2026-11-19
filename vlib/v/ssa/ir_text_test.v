@@ -115,6 +115,22 @@ fn test_ir_text_detached_instructions_round_trip() {
 	assert m2.values[s].index >= 0
 }
 
+fn test_ir_text_phi_result_value_round_trip() {
+	mut m := Module.new()
+	i32_type := m.type_store.get_int(32)
+	fid := m.new_function('main', i32_type)
+	entry := m.add_block(fid, 'entry')
+	c1 := m.get_or_add_const(i32_type, '1')
+	// A phi result left behind by phi elimination: detached, by value.
+	pr := m.add_value(.phi_result, i32_type, '', -1)
+	_ = m.add_instr(.ret, entry, i32_type, [c1])
+	text := module_to_text(m)!
+	assert text.contains('phi_result')
+	mut m2 := module_from_text(text)!
+	assert module_to_text(m2)! == text
+	assert m2.values[pr].kind == .phi_result
+}
+
 fn test_ir_text_rejects_bad_input() {
 	_ = module_from_text('') or {
 		assert err.msg().contains('empty')

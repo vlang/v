@@ -1370,7 +1370,7 @@ fn parse_text_value(mut tm TextModule, toks []string) ! {
 			}
 		}
 		'value' {
-			if toks.len != 6 || toks[4] != 'idx' {
+			if toks.len != 7 || toks[5] != 'idx' {
 				return error('ssa: bad value line')
 			}
 			id := parse_value_id(toks[1])!
@@ -1379,7 +1379,7 @@ fn parse_text_value(mut tm TextModule, toks []string) ! {
 				kind:  value_kind_from_name(toks[2])!
 				typ:   parse_type_id(toks[3])!
 				name:  unquote_text(toks[4])!
-				index: parse_digits(toks[5])!
+				index: int(parse_i64(toks[6])!)
 			}
 		}
 		else {
