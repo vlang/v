@@ -48,8 +48,8 @@ fn record_no_auth(path string) {
 }
 
 fn main() {
-	if os.args.len < 7 {
-		eprintln('usage: smtp_tls_test_server <mode> <host> <cert> <key> <ready_path> <result_path>')
+	if os.args.len !in [7, 8] {
+		eprintln('usage: smtp_tls_test_server <mode> <host> <cert> <key> <ready_path> <result_path> [accept_timeout_ms]')
 		exit(1)
 	}
 	mode := os.args[1]
@@ -58,13 +58,22 @@ fn main() {
 	key := os.args[4]
 	ready_path := os.args[5]
 	result_path := os.args[6]
+	accept_timeout := if os.args.len == 8 {
+		os.args[7].int() * time.millisecond
+	} else {
+		10 * time.second
+	}
+	if accept_timeout <= 0 {
+		eprintln('accept_timeout_ms must be positive')
+		exit(1)
+	}
 
 	// listen
 	mut listener := net.listen_tcp(.ip, '${host}:0', net.ListenOptions{}) or {
 		eprintln('listen failed: ${err}')
 		exit(1)
 	}
-	listener.set_accept_timeout(10 * time.second)
+	listener.set_accept_timeout(accept_timeout)
 	addr := listener.addr() or {
 		eprintln('addr failed: ${err}')
 		exit(1)

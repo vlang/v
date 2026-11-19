@@ -1,6 +1,7 @@
 // vtest build: present_openssl? && !(windows && tinyc)
 module smtp
 
+import net
 import os
 import rand
 import time
@@ -25,8 +26,10 @@ fn test_tls_server_exits_when_no_client_connects() ! {
 	result_path := os.join_path(scratch, 'result')
 	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
 	mut server := os.new_process(executable)
+	// No client will connect, so this probe can exercise the accept timeout
+	// without the longer startup budget used by the TLS client tests.
 	server.set_args(['starttls', '127.0.0.1', os.join_path(cert_dir, 'server.crt'),
-		os.join_path(cert_dir, 'server.key'), ready_path, result_path])
+		os.join_path(cert_dir, 'server.key'), ready_path, result_path, '250'])
 	server.set_redirect_stdio()
 	server.run()
 	defer {
@@ -45,12 +48,14 @@ fn test_tls_server_exits_when_no_client_connects() ! {
 	port := os.read_file(ready_path)!.int()
 	assert port > 0 && port <= 65535
 	assert !os.exists('${ready_path}.tmp')
-	for server.is_alive() && time.since(started) < 15 * time.second {
+	exit_deadline := time.now().add(5 * time.second)
+	for server.is_alive() && time.now() < exit_deadline {
 		time.sleep(20 * time.millisecond)
 	}
 	assert !server.is_alive(), 'SMTP TLS test server waited indefinitely without a client'
 	server.wait()
 	assert server.code != 0
-	assert server.stderr_slurp().contains('accept failed:')
+	stderr := server.stderr_slurp()
+	assert stderr.contains('accept failed: ${net.err_timed_out.msg()}'), stderr
 	assert !os.exists(result_path)
 }
