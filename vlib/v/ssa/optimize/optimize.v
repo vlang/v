@@ -26,94 +26,13 @@ pub fn optimize(mut m ssa.Module) {
 }
 
 // optimize_with_options supports optimize with options handling for optimize.
+// It runs the default pass pipeline through a PassManager; the pipeline
+// performs the same steps, in the same order and under the same
+// conditions, as the previous handwritten sequence.
 pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	m.track_uses = true
-	rebuild_use_lists(mut m)
-	build_cfg(mut m)
-	verify_ssa(m, 'initial normalization')
-	verify_pipeline_checkpoint(m, opts, 'input')
-
-	if opts.mem2reg {
-		inline_functions(mut m)
-		rebuild_use_lists(mut m)
-		build_cfg(mut m)
-		verify_pipeline_checkpoint(m, opts, 'inline')
-	}
-
-	constant_fold(mut m)
-
-	branch_fold(mut m)
-	build_cfg(mut m)
-	// Branch folding can drop a phi block's predecessor edge; keep phis consistent.
-	prune_phi_operands(mut m)
-
-	if opts.mem2reg {
-		// Normalize the CFG *before* SSA construction so that every phi
-		// predecessor (a reachable CFG predecessor) stays present in the
-		// function afterwards. Block-removing passes must not run once phis
-		// exist, or their predecessor operands would dangle.
-		dead_code_elimination(mut m)
-		// DCE updates use lists as it removes instructions and cannot alter
-		// terminators, so the current uses and CFG remain valid here.
-		remove_unreachable_blocks(mut m)
-		merge_blocks(mut m)
-		// Unreachable-block removal detaches its instruction uses incrementally;
-		// merge_blocks leaves the final CFG current after batching block edits.
-		// Inlining a function that never returns leaves its continuation block
-		// unreachable; phis must forget edges from blocks that are now gone.
-		prune_phi_operands(mut m)
-
-		// Structural SSA construction: dominators -> mem2reg -> simplify phis.
-		cfg := cfg_data_from_module(m)
-		dom := compute_dominators(mut m, &cfg)
-		verify_pipeline_checkpoint(m, opts, 'compute_dominators')
-		promote_memory_to_register(mut m, dom, &cfg)
-		verify_pipeline_checkpoint(m, opts, 'mem2reg')
-		simplify_phi_nodes(mut m)
-		verify_pipeline_checkpoint(m, opts, 'simplify_phi')
-		// With locals in SSA form, later passes can see through them.
-		constant_fold(mut m)
-		common_subexpression_elimination(mut m)
-		verify_pipeline_checkpoint(m, opts, 'cse')
-		optimize_memory(mut m)
-		verify_pipeline_checkpoint(m, opts, 'memory')
-		simplify_phi_nodes(mut m)
-	}
-
-	// Phi elimination lowers phis to assign copies for backends that cannot
-	// resolve phis natively. Runs whenever requested (input phis from the builder
-	// or a worker merge may exist even without mem2reg).
-	if opts.eliminate_phis {
-		eliminate_phi_nodes(mut m)
-		verify_pipeline_checkpoint(m, opts, 'eliminate_phi')
-	}
-
-	dead_code_elimination(mut m)
-
-	remove_unreachable_blocks(mut m)
-	if !opts.mem2reg {
-		// Without SSA construction, block-merging is phi-aware and safe to run.
-		merge_blocks(mut m)
-	}
-	if opts.mem2reg {
-		// No merge ran after unreachable-block removal in this mode.
-		build_cfg(mut m)
-	}
-
-	// Final phi-consistency pass: any phi still present must match the final CFG.
-	prune_phi_operands(mut m)
-
-	verify_ssa(m, 'optimization')
-	verify_pipeline_checkpoint(m, opts, 'final')
-}
-
-// verify_pipeline_checkpoint validates verify pipeline checkpoint state for optimize.
-fn verify_pipeline_checkpoint(m &ssa.Module, opts OptimizeOptions, pass_name string) {
-	if opts.verify_each_pass || opts.strict_verify {
-		verify_and_panic_with_options(m, pass_name, VerifyPanicOptions{
-			allow_noncritical: !opts.strict_verify
-		})
-	}
+	mut pm := PassManager.new(default_pipeline(opts))
+	pm.run(mut m, opts)
 }
 
 // rebuild_use_lists supports rebuild use lists handling for optimize.
