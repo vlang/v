@@ -4132,7 +4132,5 @@ fn main() {
 }
 ")
 	assert build.exit_code == 0, build.output
-	// TODO: this should exit 0; today the copied `test.value` drop frees the
-	// string still owned by `e`, so the second call crashes with heap corruption.
-	assert run.exit_code != 0, run.output
+	assert run.exit_code == 0, run.output
 }
