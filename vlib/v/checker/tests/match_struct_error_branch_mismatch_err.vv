@@ -1,0 +1,15 @@
+struct Foo {
+	x int
+}
+
+fn f(n int) !Foo {
+	ans := match n {
+		1 { Foo{1} }
+		else { error('bad') }
+	}
+	return ans
+}
+
+fn main() {
+	println(f(1) or { Foo{} })
+}
