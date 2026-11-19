@@ -10,13 +10,23 @@ fn tmp_pointer_interface_str_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 }
 
-fn build_v3_pointer_interface_str() string {
-	v3_bin := tmp_pointer_interface_str_path('pointer_interface_str')
+// One compiler serves the whole suite; each case used to build its own.
+const build_v3_pointer_interface_str_path = tmp_pointer_interface_str_path('pointer_interface_str_${os.getpid()}')
+
+fn testsuite_begin() {
+	v3_bin := build_v3_pointer_interface_str_path
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(build_v3_pointer_interface_str_path) or {}
+}
+
+fn build_v3_pointer_interface_str() string {
+	return build_v3_pointer_interface_str_path
 }
 
 fn test_pointer_to_interface_stringification_uses_pointer_path() {
