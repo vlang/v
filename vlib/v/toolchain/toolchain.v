@@ -254,7 +254,7 @@ pub fn set_key_in_file(path string, key string, value string) ! {
 		if !inserted {
 			result << entry
 		}
-		lines = result
+		lines = result.clone()
 	}
 	os.mkdir_all(os.dir(path))!
 	os.write_file(path, lines.join('\n').trim_right('\n') + '\n')!
@@ -288,10 +288,10 @@ pub fn select() Selection {
 			}
 		}
 	}
-	vmod := os.join_path(project_root(), 'v.mod')
-	if os.is_file(vmod) {
-		if raw := read_vmod_key(vmod, pin_key) {
-			if selection := selection_from(raw, vmod) {
+	manifest_path := os.join_path(project_root(), 'v.mod')
+	if os.is_file(manifest_path) {
+		if raw := read_vmod_key(manifest_path, pin_key) {
+			if selection := selection_from(raw, manifest_path) {
 				return selection
 			}
 		}
