@@ -12069,6 +12069,10 @@ pub fn run(args []string) {
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled, build_pseudo_values, version_pseudo_values)
 	if large_cold_cache_bypass {
 		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
+		if tcc_dylib {
+			// Use the same whole-program ABI when the marker skips the bridge.
+			restart_v3_without_cache('')
+		}
 	}
 	mut unchanged_build_cache_dir := ''
 	mut unchanged_build_cache_key := ''
@@ -13209,7 +13213,7 @@ pub fn run(args []string) {
 	// bounded whole-program pipeline; existing whole/generic/incremental hits still
 	// keep their fast path.
 	if should_restart_v3_large_cold_cache(cache_state.manager.enabled, scope_prealloc_stages, a.nodes.len, cgen_cache_hit, generic_cache_hit, incremental_cache_hit) {
-		population := v3_large_cache_population(compiler_tree_input || tcc_dylib, cache_state, a.nodes.len)
+		population := v3_large_cache_population(compiler_tree_input, cache_state, a.nodes.len)
 		if population != .populate {
 			// A build that waits for another one to populate the cache finds it
 			// populated later: only a graph that is too large keeps the bypass.
@@ -18997,7 +19001,9 @@ enum V3LargeCachePopulation {
 	populate  // keep the cache
 }
 
-// v3_large_cache_population decides it. Other programs always bypass the cache.
+// v3_large_cache_population admits large compiler graphs and native bridge
+// graphs with a cached builtin bundle. A cold native bridge would generate the
+// whole source graph plus the cache units, which can exceed the memory budget.
 // The tests of the compiler's own modules (input_is_compiler_tree) import much of
 // the compiler, which a persisted bypass would keep from ever being cached, so
 // each of them would compile all of it again. One whose imported modules all come
@@ -19006,7 +19012,9 @@ enum V3LargeCachePopulation {
 // cache: the builds that start beside it, as the tests of `v test` do, skip the
 // cache this time only, and find those modules cached later.
 fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState, node_count int) V3LargeCachePopulation {
-	if (!compiler_tree_input || node_count >= compiler_tree_large_cold_cache_node_limit) && !state.native_bridge {
+	if (!state.native_bridge && (!compiler_tree_input
+		|| node_count >= compiler_tree_large_cold_cache_node_limit))
+		|| (state.native_bridge && !state.bundle_valid && node_count >= scoped_large_cold_cache_node_limit) {
 		trace_v3_cache_fallback(v3_large_cold_cache_reason)
 		return .bypass
 	}

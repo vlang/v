@@ -133,6 +133,16 @@ fn test_large_cache_population_of_compiler_modules() ! {
 	assert v3_large_cache_population(true, warm, limit - 1) == .populate
 	assert !os.exists(os.join_path(warm.manager.dir, v3_cache_population_lock_name))
 
+	// A native bridge with no builtin bundle uses the bounded whole-program path.
+	mut bridge := population_test_state(root, ['builtin', 'small'], sources)
+	bridge.native_bridge = true
+	assert v3_large_cache_population(false, bridge, large) == .bypass
+	assert !os.exists(os.join_path(bridge.manager.dir, v3_cache_population_lock_name))
+	bridge.bundle_valid = true
+	bridge.parsed_from_source.delete('builtin')
+	assert v3_large_cache_population(false, bridge, large) == .populate
+	release_v3_cache_population_lock()
+
 	cold := population_test_state(root, ['small'], sources)
 	assert v3_large_cache_population(false, cold, large) == .bypass
 	assert v3_large_cache_population(true, cold, limit - 1) == .populate
