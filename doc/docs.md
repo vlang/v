@@ -7156,13 +7156,22 @@ heavy GC tracing everything or expensive RC for each object.
 For developers willing to have more low-level control, memory can be managed manually with
 `-gc none`.
 
-Arena allocation is available via a `-prealloc` flag. Note: currently this mode is only
-suitable to speed up short lived, single-threaded, batch-like programs (like compilers).
+Arena allocation is available via a `-prealloc` flag. It uses thread-local
+bump arenas (16MB base blocks, 256KB scope blocks) plus a process-wide block
+pool, and suits batch-like programs (like compilers) best: `free()` is a
+no-op and memory is reclaimed in bulk at scope end or process exit.
+Request-scoped work should use `prealloc_scope_begin()` /
+`prealloc_scope_end()` (see `vlib/builtin/README.md`); that scope API is
+`unsafe` because a rewound or freed scope invalidates its pointers.
+`-prealloc` needs `_Thread_local` (bundled tcc is excluded on some CI jobs)
+and macOS support is partial.
 
-For scoped arenas, use the `arena` module: while an arena is pushed on a thread, all V
-allocations on that thread (strings, arrays, maps, ...) come from it, and they are released
-together by `reset()` or `free()`. This keeps memory bounded in long-running, multi-threaded
-programs built with `-gc none`. It also works with the default GC, but not with `-prealloc`.
+For scoped arenas without `-prealloc`, use the `arena` module: while an arena
+is pushed on a thread, all V allocations on that thread (strings, arrays,
+maps, ...) come from it, and they are released together by `reset()` or
+`free()`. This keeps memory bounded in long-running, multi-threaded
+programs built with `-gc none`. It also works with the default GC, but not
+with `-prealloc`, which has its own scopes.
 
 ```v
 import arena

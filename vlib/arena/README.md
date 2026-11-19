@@ -66,7 +66,9 @@ fn main() {
 * The default Boehm GC: arena chunks are allocated as uncollectable, but scanned memory, so
   GC objects that are only referenced from arena memory stay alive.
 * `-prealloc` and `-gc vgc` are not supported, and using `arena` with them is a compile
-  time error. `-prealloc` has its own scopes (`prealloc_scope_begin()`).
+  time error. `-prealloc` has its own scopes (`prealloc_scope_begin()` with
+  `leave`/`reenter`/`end`/`free_after`), which mirror `push`/`pop`/`reset`
+  for `-prealloc` builds, including cross-thread handoff.
 
 Programs that do not import `arena` are not affected: V compiles the allocator hooks into
 builtin (with `-d builtin_arena`) only for programs that import the module. Until such a
