@@ -635,10 +635,11 @@ fn (mut m map) rehash() {
 
 fn (mut m map) reserve_metas(meta_bytes u32) {
 	unsafe {
-		// TODO: use realloc_data here too
-		x := v_realloc(byteptr(m.metas), int(meta_bytes))
-		m.metas = &u32(x)
-		vmemset(m.metas, 0, int(meta_bytes))
+		// Old metas are discarded and rebuilt below, so allocate fresh
+		// instead of reallocating (v_realloc cannot preserve unknown-size
+		// blocks under -prealloc; use realloc_data when content matters).
+		free(m.metas)
+		m.metas = &u32(vcalloc(int(meta_bytes)))
 	}
 	for i := 0; i < m.key_values.len; i++ {
 		if !m.key_values.has_index(i) {

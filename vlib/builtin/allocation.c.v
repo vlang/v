@@ -316,11 +316,14 @@ pub fn v_realloc(b &u8, n int) &u8 {
 		}
 	}
 	$if prealloc {
-		unsafe {
-			new_ptr = malloc(n)
-			C.memcpy(new_ptr, b, n)
+		if b == unsafe { nil } {
+			return unsafe { malloc(n) }
 		}
-		return new_ptr
+		// The old block size is unknown here (unlike realloc_data), so copying
+		// `n` bytes would over-read the old block when growing. The only
+		// in-tree users rebuild contents anyway and no longer use this path.
+		// Fail loudly instead of silent UB, so callers migrate to realloc_data.
+		panic('v_realloc with -prealloc requires known old size; use realloc_data')
 	} $else $if vgc ? {
 		new_ptr = unsafe { &u8(vgc_realloc(b, uint(n))) }
 	} $else $if gcboehm ? {
