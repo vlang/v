@@ -86,7 +86,10 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update -y -qq
-          ./v retry -- sudo apt install --quiet -y mingw-w64 wine wine64 winetricks libssl-dev sqlite3 libsqlite3-dev
+          # Only the x86-64 MinGW toolchain is used, and wine only runs console programs.
+          # The full mingw-w64, winetricks and wine's recommends were ~450 MB of downloads,
+          # which a slow mirror could not deliver within `v retry`'s 15 minutes.
+          ./v retry -- sudo apt install --quiet -y --no-install-recommends gcc-mingw-w64-x86-64 wine wine64 libssl-dev sqlite3 libsqlite3-dev
 
       - name: Show diagnostics for wine
         run: |
