@@ -17,13 +17,23 @@ const match_tail_v3_dir = os.dir(match_tail_tests_dir)
 const match_tail_vlib_dir = os.dir(match_tail_v3_dir)
 const match_tail_v3_src = os.join_path(match_tail_v3_dir, 'v.v')
 
-fn match_tail_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_match_tail_compiler_${os.getpid()}')
+// One compiler serves the whole suite; each case used to build its own.
+const match_tail_build_v3_path = os.join_path(os.temp_dir(), 'v3_match_tail_compiler_${os.getpid()}')
+
+fn testsuite_begin() {
+	v3_bin := match_tail_build_v3_path
 	os.rm(v3_bin) or {}
 	build := os.exec([match_tail_vexe, '-gc', 'none', '-path',
 		'${match_tail_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${match_tail_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(match_tail_build_v3_path) or {}
+}
+
+fn match_tail_build_v3() string {
+	return match_tail_build_v3_path
 }
 
 fn match_tail_build_and_run(v3_bin string, root string, source string) os.Result {
