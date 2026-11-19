@@ -589,10 +589,15 @@ fn vgc_drain_spanq() {
 		}
 		if !span.hit && span.rep_addr != 0 {
 			// Single pending object: skip the bitmap pass.
-			vgc_scan_obj(span, span.rep_addr)
+			// `vgc_scan_obj` may mark new objects in this same span, which
+			// re-enqueues it and overwrites `span.rep_addr`. Snapshot the
+			// address and set its scanned bit BEFORE scanning so the bit
+			// cannot land on the wrong object.
+			rep := span.rep_addr
 			unsafe {
-				C.vgc_bitmap_set(scanned, u32((span.rep_addr - span.base) / uint(span.elem_size)))
+				C.vgc_bitmap_set(scanned, u32((rep - span.base) / uint(span.elem_size)))
 			}
+			vgc_scan_obj(span, rep)
 			C.vgc_counter_add(&vgc_heap.gc_single_obj_spans, u64(1))
 			continue
 		}
