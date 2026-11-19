@@ -12,13 +12,15 @@ module builtin
 //
 // Every live chunk is listed in a process-wide registry, so free() and
 // realloc on any thread can tell arena memory from heap memory. Its readers
-// take no lock (see arena_registry_find).
+// take no lock (see arena_registry_find). Under -prealloc, a pushed arena is
+// a prealloc scope instead: the registry and chunks are unused, and the
+// scope handle is kept in VArena.scope.
 //
 // Only programs that use the `arena` module contain this file and the hooks
 // in the allocation entry points: the compiler defines `builtin_arena` for
 // them. Until such a program creates its first arena, each entry point only
-// checks one atomic global (see g_arena_hooks_ready). -prealloc and -gc vgc builds
-// never call into this file.
+// checks one atomic global (see g_arena_hooks_ready). -gc vgc builds never
+// call into this file; -prealloc builds use its scope-backed path.
 
 const arena_magic = u32(0x41524e41)
 const arena_default_chunk_size = int(64 * 1024)
@@ -40,10 +42,12 @@ mut:
 	magic u32
 	// 0: idle, 1: pushed on a thread's allocator stack, 2: being reset or freed.
 	// Accessed through the C `_i32` atomics.
-	state          i32
-	chunk          &VArenaChunk = unsafe { nil } // serves new allocations
-	last           &u8          = unsafe { nil } // the most recent allocation
-	below          &VArena      = unsafe { nil } // next arena down the thread's stack
+	state i32
+	chunk &VArenaChunk = unsafe { nil } // serves new allocations
+	last  &u8          = unsafe { nil } // the most recent allocation
+	below &VArena      = unsafe { nil } // next arena down the thread's stack
+	// scope is the prealloc scope backing this arena, when built with -prealloc.
+	scope          voidptr = unsafe { nil }
 	chunk_size     int // size of the next regular chunk
 	max_chunk_size int
 }
@@ -283,8 +287,21 @@ fn arena_owner(ptr voidptr) (&VArena, uint) {
 // arena_owns_ptr reports whether `ptr` is memory of a live arena, which free()
 // must leave alone.
 fn arena_owns_ptr(ptr voidptr) bool {
-	owner, _ := unsafe { arena_owner(ptr) }
-	return owner != unsafe { nil }
+	$if prealloc {
+		// Under -prealloc, free() is a no-op, but keep ownership queries
+		// useful for arena users by checking every active scope.
+		mut a := g_arena_top
+		for a != unsafe { nil } {
+			if a.scope != unsafe { nil } && unsafe { prealloc_scope_owns(a.scope, ptr) } {
+				return true
+			}
+			a = a.below
+		}
+		return false
+	} $else {
+		owner, _ := unsafe { arena_owner(ptr) }
+		return owner != unsafe { nil }
+	}
 }
 
 @[unsafe]
@@ -366,7 +383,29 @@ fn arena_alloc_current(n int, align int) &u8 {
 	if a == unsafe { nil } {
 		return unsafe { nil }
 	}
-	return unsafe { arena_alloc(mut a, n, align) }
+	$if prealloc {
+		// A pushed arena is a prealloc scope; the current block already is
+		// the scope's block, so route straight to its bump allocator.
+		return unsafe { vmemory_block_malloc(n, if align > 0 { align } else { arena_align() }) }
+	} $else {
+		return unsafe { arena_alloc(mut a, n, align) }
+	}
+}
+
+// arena_prealloc_available returns the bytes readable from `ptr` to the end
+// of its prealloc block. It is used when v_realloc has no old size: copying
+// that many bytes is safe and matches the non-prealloc arena's behavior.
+$if prealloc {
+	fn arena_prealloc_available(ptr &u8) int {
+		mut mb := g_memory_block
+		for mb != unsafe { nil } {
+			if uint(ptr) >= uint(mb.start) && uint(ptr) < uint(mb.stop) {
+				return int(i64(mb.stop) - i64(ptr))
+			}
+			mb = mb.previous
+		}
+		return 0
+	}
 }
 
 // arena_realloc resizes `old_data` when it is arena memory, and returns nil
@@ -375,45 +414,59 @@ fn arena_alloc_current(n int, align int) &u8 {
 // current allocator and left in its arena. realloc(nil, n) allocates from the
 // current arena.
 fn arena_realloc(old_data &u8, old_size int, new_size int) &u8 {
-	unsafe {
-		if old_data == nil {
-			if new_size <= 0 {
-				return nil
-			}
-			return arena_alloc_current(new_size, 0)
-		}
-		owner, chunk_stop := arena_owner(old_data)
-		if owner == nil {
-			return nil
-		}
+	$if prealloc {
 		if new_size <= 0 {
 			return old_data
 		}
-		mut top := g_arena_top
-		if top == owner && top.last == old_data {
-			mut c := top.chunk
-			if i64(c.stop) - i64(old_data) >= i64(new_size) {
-				c.cursor = old_data + new_size
+		if g_arena_top == unsafe { nil } {
+			return unsafe { nil }
+		}
+		if old_data == unsafe { nil } {
+			return unsafe { vmemory_block_malloc(new_size, 0) }
+		}
+		known_size := if old_size < 0 { arena_prealloc_available(old_data) } else { old_size }
+		return unsafe { prealloc_realloc(old_data, known_size, new_size) }
+	} $else {
+		unsafe {
+			if old_data == nil {
+				if new_size <= 0 {
+					return nil
+				}
+				return arena_alloc_current(new_size, 0)
+			}
+			owner, chunk_stop := arena_owner(old_data)
+			if owner == nil {
+				return nil
+			}
+			if new_size <= 0 {
 				return old_data
 			}
+			mut top := g_arena_top
+			if top == owner && top.last == old_data {
+				mut c := top.chunk
+				if i64(c.stop) - i64(old_data) >= i64(new_size) {
+					c.cursor = old_data + new_size
+					return old_data
+				}
+			}
+			new_ptr := if top != nil { arena_alloc(mut top, new_size, 0) } else { malloc(new_size) }
+			mut n := new_size
+			if old_size >= 0 && old_size < n {
+				n = old_size
+			}
+			// Without the old size, copy what the chunk holds: it is mapped memory.
+			available := int(chunk_stop - uint(old_data))
+			if available < n {
+				n = available
+			}
+			// A new block in the same chunk starts at or after the end of the old
+			// one, so the bytes before it hold all of the old block.
+			if uint(new_ptr) > uint(old_data) && uint(new_ptr) - uint(old_data) < uint(n) {
+				n = int(uint(new_ptr) - uint(old_data))
+			}
+			C.memcpy(new_ptr, old_data, uint(n))
+			return new_ptr
 		}
-		new_ptr := if top != nil { arena_alloc(mut top, new_size, 0) } else { malloc(new_size) }
-		mut n := new_size
-		if old_size >= 0 && old_size < n {
-			n = old_size
-		}
-		// Without the old size, copy what the chunk holds: it is mapped memory.
-		available := int(chunk_stop - uint(old_data))
-		if available < n {
-			n = available
-		}
-		// A new block in the same chunk starts at or after the end of the old
-		// one, so the bytes before it hold all of the old block.
-		if uint(new_ptr) > uint(old_data) && uint(new_ptr) - uint(old_data) < uint(n) {
-			n = int(uint(new_ptr) - uint(old_data))
-		}
-		C.memcpy(new_ptr, old_data, uint(n))
-		return new_ptr
 	}
 }
 
@@ -471,8 +524,8 @@ fn arena_checked(handle voidptr) &VArena {
 // selects 64KB). It is the low-level hook behind `arena.new()`; use that.
 @[unsafe]
 pub fn v_arena_new(chunk_size int) voidptr {
-	$if prealloc || vgc ?|| freestanding || vinix {
-		panic('arena: scoped arenas are not supported with -prealloc, -gc vgc, -freestanding or on Vinix')
+	$if vgc ?|| freestanding || vinix {
+		panic('arena: scoped arenas are not supported with -gc vgc, -freestanding or on Vinix')
 	}
 	mut a := unsafe { &VArena(C.calloc(1, sizeof(VArena))) }
 	vmemory_abort_on_nil(a, int(sizeof(VArena)))
@@ -504,6 +557,13 @@ pub fn v_arena_push(handle voidptr) {
 	if C.v_prealloc_atomic_cas_i32(&a.state, 0, 1) == 0 {
 		panic('arena: push() of an arena that is already active on this or another thread')
 	}
+	$if prealloc {
+		a.scope = unsafe { prealloc_scope_begin() }
+		if a.scope == unsafe { nil } {
+			C.v_prealloc_atomic_cas_i32(&a.state, 1, 0)
+			panic('arena: could not start a prealloc scope')
+		}
+	}
 	a.below = g_arena_top
 	g_arena_top = a
 }
@@ -520,6 +580,9 @@ pub fn v_arena_pop(handle voidptr) {
 	if top != a {
 		panic('arena: pop() of an arena that is not the innermost active arena of this thread')
 	}
+	$if prealloc {
+		unsafe { prealloc_scope_leave(a.scope) }
+	}
 	g_arena_top = a.below
 	a.below = unsafe { nil }
 	C.v_prealloc_atomic_cas_i32(&a.state, 1, 0)
@@ -533,7 +596,20 @@ pub fn v_arena_reset(handle voidptr) {
 	if C.v_prealloc_atomic_cas_i32(&a.state, 0, 2) == 0 {
 		panic('arena: reset() of an active arena; pop() it first')
 	}
-	unsafe { arena_release_chunks(mut a, true) }
+	$if prealloc {
+		keep := if a.max_chunk_size > 0 { a.max_chunk_size } else { a.chunk_size }
+		reused := unsafe { prealloc_scope_reenter(a.scope, keep) }
+		if !reused {
+			// Retained or being freed: start a fresh scope for the next batch.
+			a.scope = unsafe { prealloc_scope_begin() }
+		}
+		// reset() leaves the arena inactive, so leave the rewound scope.
+		if a.scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(a.scope) }
+		}
+	} $else {
+		unsafe { arena_release_chunks(mut a, true) }
+	}
 	C.v_prealloc_atomic_cas_i32(&a.state, 2, 0)
 }
 
@@ -546,7 +622,14 @@ pub fn v_arena_free(handle voidptr) {
 		panic('arena: free() of an active arena; pop() it first')
 	}
 	unsafe {
-		arena_release_chunks(mut a, false)
+		$if prealloc {
+			if a.scope != unsafe { nil } {
+				prealloc_scope_end(a.scope)
+				a.scope = unsafe { nil }
+			}
+		} $else {
+			arena_release_chunks(mut a, false)
+		}
 		a.magic = 0
 		C.free(a)
 	}
@@ -564,27 +647,46 @@ pub fn v_arena_current() voidptr {
 // reset, and the bytes of its chunks.
 pub fn v_arena_stats(handle voidptr) (int, int) {
 	a := arena_checked(handle)
-	mut used := i64(0)
-	mut capacity := i64(0)
-	mut c := a.chunk
-	for c != unsafe { nil } {
-		used += i64(c.cursor) - i64(c.start)
-		capacity += i64(c.stop) - i64(c.start)
-		c = c.prev
+	$if prealloc {
+		if a.scope == unsafe { nil } {
+			return 0, 0
+		}
+		mut used := i64(0)
+		mut capacity := i64(0)
+		mut iter := unsafe { prealloc_scope_chunk_iter(a.scope) }
+		for {
+			chunk := unsafe { iter.next() } or { break }
+			used += i64(chunk.used)
+			capacity += i64(chunk.capacity)
+		}
+		return int(used), int(capacity)
+	} $else {
+		mut used := i64(0)
+		mut capacity := i64(0)
+		mut c := a.chunk
+		for c != unsafe { nil } {
+			used += i64(c.cursor) - i64(c.start)
+			capacity += i64(c.stop) - i64(c.start)
+			c = c.prev
+		}
+		return int(used), int(capacity)
 	}
-	return int(used), int(capacity)
 }
 
 // v_arena_owns reports whether `ptr` points into the memory of an arena.
 pub fn v_arena_owns(handle voidptr, ptr voidptr) bool {
 	a := arena_checked(handle)
-	addr := uint(ptr)
-	mut c := a.chunk
-	for c != unsafe { nil } {
-		if addr >= uint(c.start) && addr < uint(c.stop) {
-			return true
+	$if prealloc {
+		return a.scope != unsafe { nil } && unsafe { prealloc_scope_owns(a.scope, ptr) }
+	} $else {
+		addr := uint(ptr)
+		mut c := a.chunk
+		for c != unsafe { nil } {
+			if addr >= uint(c.start) && addr < uint(c.stop) {
+				return true
+			}
+			c = c.prev
 		}
-		c = c.prev
+		return false
 	}
-	return false
 }
