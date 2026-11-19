@@ -12,7 +12,8 @@ pub fn print_backtrace() {
 			println(bare_backtrace())
 		} $else $if tinyc && !macos {
 			C.tcc_backtrace(c'Backtrace')
-		} $else $if use_libbacktrace ? {
+		} $else $if use_libbacktrace ?&& !tinyc {
+			// TinyCC has no unwind library, so its print_libbacktrace is an empty stub.
 			$if openbsd {
 				print_backtrace_skipping_top_frames(2)
 			} $else {

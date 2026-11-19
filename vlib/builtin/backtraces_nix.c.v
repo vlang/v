@@ -104,27 +104,24 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 				for i in 0 .. nr_actual_frames {
 					sframe := unsafe { tos2(&u8(csymbols[i])) }
 					// macOS format: `0   main   0x00000001047232f8 veb__run_T_main__App_main__Context + 356`
-					image, mut raw_symbol := bsd_backtrace_frame_image_and_symbol(sframe)
-					if raw_symbol.len == 0 || image == 'dyld' || image.starts_with('libsystem_')
-						|| raw_symbol.starts_with('GC_') {
-						// Skip the loader, libc and the frames of the garbage collector,
-						// which start the threads of a V program.
-						continue
+					image, symbol := bsd_backtrace_frame_image_and_symbol(sframe)
+					// Skip the loader, libc and the frames of the garbage collector, which
+					// start the threads of a V program.
+					if symbol.len > 0 && image != 'dyld' && !image.starts_with('libsystem_')
+						&& !symbol.starts_with('GC_') {
+						mut file_line := if i < file_lines.len { file_lines[i] } else { '' }
+						if backtrace_file_line_is_generated(file_line) {
+							file_line = ''
+						}
+						if file_line.len > 0 {
+							has_file_lines = true
+						}
+						eprint_backtrace_frame(if i < atos_symbols.len && atos_symbols[i].len > 0 {
+							atos_symbols[i]
+						} else {
+							symbol
+						}, file_line)
 					}
-					if i < atos_symbols.len && atos_symbols[i].len > 0 {
-						raw_symbol = atos_symbols[i]
-					}
-					mut file_line := ''
-					if i < file_lines.len {
-						file_line = file_lines[i]
-					}
-					if backtrace_file_line_is_generated(file_line) {
-						file_line = ''
-					}
-					if file_line.len > 0 {
-						has_file_lines = true
-					}
-					eprint_backtrace_frame(raw_symbol, file_line)
 				}
 				if !has_file_lines {
 					$if !debug {
@@ -193,25 +190,30 @@ fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) ([]string, []strin
 			// Unlike `backtrace_symbols`, which only sees exported symbols, `atos`
 			// also names static functions.
 			symbols << if line.contains(' (in ') { line.all_before(' (in ') } else { '' }
-			// atos output format: `func_name (in binary) (file.v:42)`
-			// Extract the last parenthesized (file:line) part:
-			paren_pos := line.index_last_('(')
-			if paren_pos >= 0 {
-				file_part := line[paren_pos + 1..]
-				end_paren := file_part.index_last_(')')
-				if end_paren >= 0 {
-					file_line := file_part[..end_paren]
-					if file_line.contains(':') && !file_line.starts_with('in ') {
-						lines << file_line
-						continue
-					}
-				}
-			}
-			lines << ''
+			lines << atos_output_file_line(line)
 		}
 		return symbols, lines
 	}
 	return []string{}, []string{}
+}
+
+// atos_output_file_line returns the `file:line` of an `atos` output line like
+// `func_name (in binary) (file.v:42)`, or '' when atos did not resolve one.
+fn atos_output_file_line(line string) string {
+	paren_pos := line.index_last_('(')
+	if paren_pos < 0 {
+		return ''
+	}
+	file_part := line[paren_pos + 1..]
+	end_paren := file_part.index_last_(')')
+	if end_paren < 0 {
+		return ''
+	}
+	file_line := file_part[..end_paren]
+	if file_line.contains(':') && !file_line.starts_with('in ') {
+		return file_line
+	}
+	return ''
 }
 
 // backtrace_file_line_is_generated reports whether a resolved `file:line` points
