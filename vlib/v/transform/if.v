@@ -927,6 +927,14 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 		// generic f64 calls like math.min), so use the branch type itself.
 		actual_result_type = branch_type_source_id
 	}
+	if flat.source_type_shape(branch_type_source_id).has(.option_type)
+		&& !t.is_optional_type_name(actual_result_type) {
+		// Branches of explicit option casts (`?T(x)`, `?T(none)`) are option
+		// values. A payload-typed temporary cannot hold their assignments
+		// (incompatible C types), so keep the option type itself, as the
+		// assignment form already does.
+		actual_result_type = branch_type_source_id
+	}
 	if !borrowed_result {
 		if select_type := t.scalar_select_type(node, actual_result_type) {
 			return t.lower_scalar_select(node, select_type)
