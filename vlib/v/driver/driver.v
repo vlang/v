@@ -3701,11 +3701,13 @@ fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool
 
 fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, is_tcc bool) {
 	if is_tcc && !v3_tcc_backtrace_enabled(target_os, target_arch, is_shared)
-		&& 'no_backtrace' !in user_defines {
+		&& target_os != 'macos' && 'no_backtrace' !in user_defines {
 		// The builtin backtrace implementation must match the native TCC flag plan.
 		// Shared libraries cannot link TCC's runtime symbols, while its initializer
 		// crashes in dyld on macOS arm64 due to unaligned access. On Windows amd64,
 		// its vectored handler terminates recoverable first-chance exceptions.
+		// On macOS, builtin walks the stack with libSystem's `backtrace()` instead,
+		// which needs no TCC runtime.
 		user_defines << 'no_backtrace'
 	}
 	if is_tcc && !is_shared && target_os == 'windows' && target_arch == 'amd64'

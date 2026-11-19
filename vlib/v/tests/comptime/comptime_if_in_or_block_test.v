@@ -79,8 +79,11 @@ fn main() {
 	// The `panic(err)` branch must be emitted as a bare statement, never as an
 	// assignment to the result temp.
 	assert !generated.contains('= v_panic'), generated
+	assert !generated.contains('= panic_debug'), generated
 	assert !generated.contains(' = (\n\t\t#if'), generated
-	assert generated.contains('v_panic(IError__str(err));')
+	// Outside of `-prod`, a `panic()` call passes its .v position along.
+	assert generated.contains('panic_debug(10, '), generated
+	assert generated.contains(', IError__str(err));'), generated
 	// The value branch must still assign to the result temp.
 	assert generated.contains('= (i64)(0);')
 }

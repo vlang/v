@@ -1,0 +1,96 @@
+import os
+
+const vexe = @VEXE
+const vtmp_folder = os.join_path(os.vtmp_dir(), 'panic_position_runtime_tests_${os.getpid()}')
+
+@[markused]
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
+const panic_program = "fn inner(x int) int {
+	if x > 2 {
+		panic('boom \${x}')
+	}
+	return x
+}
+
+fn middle(x int) int {
+	return inner(x + 1)
+}
+
+fn main() {
+	println(middle(2))
+}
+"
+
+fn testsuite_begin() {
+	os.mkdir_all(vtmp_folder) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(vtmp_folder) or {}
+}
+
+// test_panic_shows_its_v_line_without_debug_info checks that a panic names the .v
+// line of the `panic()` call, and the functions on the stack, without `-g`.
+fn test_panic_shows_its_v_line_without_debug_info() {
+	source_path, output := compile_and_run_panic_program('nodebug', [])
+	lines := output.replace('\r', '').split_into_lines()
+	assert lines[0] == 'V panic: boom 3', output
+	assert lines[1] == '     at: ${source_path.replace('\\', '/')}:3 in main.inner()', output
+	$if macos {
+		// libSystem's backtrace() works for every C compiler, TinyCC included.
+		frames := lines.filter(it.ends_with('()') && !it.contains(' '))
+		assert frames == ['inner()', 'middle()', 'main()'], output
+		assert output.contains('(build with `-g` to see the .v line of every frame)'), output
+	}
+}
+
+// test_debug_panic_shows_the_v_line_of_every_frame checks the Go-like stack trace of a
+// `-g` build: every V frame is followed by its .v file:line.
+fn test_debug_panic_shows_the_v_line_of_every_frame() {
+	$if !macos {
+		// Other systems resolve frames with tools that are not always installed.
+		return
+	}
+	if os.exec(['clang', '--version']).exit_code != 0 {
+		return
+	}
+	source_path, output := compile_and_run_panic_program('debug', ['-cc', 'clang', '-g'])
+	assert output.contains('     file: ${source_path}:3'), output
+	real_source := os.real_path(source_path)
+	assert output.contains('inner()\n\t${real_source}:3\nmiddle()\n\t${real_source}:9\nmain()\n\t${real_source}:13'), output
+}
+
+// test_print_backtrace_keeps_its_caller checks that `print_backtrace()` starts at the
+// function that called it.
+fn test_print_backtrace_keeps_its_caller() {
+	$if !macos {
+		return
+	}
+	source_path := os.join_path(vtmp_folder, 'print_backtrace.v')
+	exe_path := os.join_path(vtmp_folder, 'print_backtrace${exe_suffix()}')
+	os.write_file(source_path, 'fn show() {\n\tprint_backtrace()\n}\n\nfn main() {\n\tshow()\n}\n') or {
+		panic(err)
+	}
+	compilation := os.exec([vexe, '-o', exe_path, source_path])
+	assert compilation.exit_code == 0, 'compilation failed: ${compilation.output}'
+	result := os.exec([exe_path])
+	assert result.exit_code == 0, result.output
+	frames := result.output.split_into_lines().filter(it.ends_with('()') && !it.contains(' '))
+	assert frames == ['show()', 'main()'], result.output
+}
+
+fn compile_and_run_panic_program(name string, flags []string) (string, string) {
+	source_path := os.join_path(vtmp_folder, '${name}.v')
+	exe_path := os.join_path(vtmp_folder, '${name}${exe_suffix()}')
+	os.write_file(source_path, panic_program) or { panic(err) }
+	compilation := os.exec([vexe, ...flags, '-o', exe_path, source_path])
+	assert compilation.exit_code == 0, 'compilation failed: ${compilation.output}'
+	result := os.exec([exe_path])
+	assert result.exit_code == 1, result.output
+	return source_path, result.output
+}
+
+fn exe_suffix() string {
+	return if os.user_os() == 'windows' { '.exe' } else { '' }
+}

@@ -8046,16 +8046,30 @@ fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int,
 	return is_native_variadic
 }
 
-fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+// panic_call_reports_position reports whether a `panic()` call passes its V source
+// position to the runtime. `-g` builds report every call. Other non-prod builds report
+// calls outside the compiler's vlib (and vlib's own `_test.v` files), so that a panic
+// names the user's .v line without debug info; `-prod` binaries keep no source paths.
+fn (g &FlatGen) panic_call_reports_position(filename string) bool {
 	if g.is_debug {
+		return true
+	}
+	return filename.ends_with('_test.v') || !g.c_source_file_is_in_vlib(filename)
+}
+
+fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+	mut reported := false
+	if g.is_debug || !g.is_prod {
 		if position := g.a.source_position(node.pos) {
-			module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-			fn_name := g.cur_fn_name.all_after_last('.')
-			g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
-		} else {
-			g.write('v_panic(')
+			if g.panic_call_reports_position(position.filename) {
+				module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+				fn_name := g.cur_fn_name.all_after_last('.')
+				g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
+				reported = true
+			}
 		}
-	} else {
+	}
+	if !reported {
 		g.write('v_panic(')
 	}
 	if node.children_count > 1 {
