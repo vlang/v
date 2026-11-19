@@ -3205,10 +3205,25 @@ fn cache_native_source_contexts(a &flat.FlatAst, vroot string, c_flags []string,
 	mut imports := map[string][]string{}
 	mut cur_file := ''
 	mut cur_module := 'main'
+	// No module imports builtin, so its directives are in no context. The runtime
+	// modules beside it, such as the implicitly imported builtin.closure, are left out
+	// the same way: their platform headers (`<synchapi.h>` on Windows) would make every
+	// later `#ifdef` of a user macro uncertain.
+	builtin_dir := if vroot.len > 0 {
+		os.join_path(vroot, 'vlib', 'builtin').replace('\\', '/') + '/'
+	} else {
+		''
+	}
+	mut in_builtin_dir := false
 	for node_idx, node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = 'main'
+			in_builtin_dir = builtin_dir.len > 0
+				&& cur_file.replace('\\', '/').starts_with(builtin_dir)
+			continue
+		}
+		if in_builtin_dir {
 			continue
 		}
 		if node.kind == .module_decl {
