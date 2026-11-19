@@ -92,6 +92,7 @@ mut:
 	check_period_ms int = scan_period_ms
 	vexe            string
 	affected_paths  []string
+	input_files     map[string]bool // the exact files that the compiler reported or `--add` named, spelled as the folder scan spells them
 	vfiles          []VFileStat
 	opts            []string
 	rerun_channel   chan RerunCommand
@@ -110,6 +111,7 @@ mut:
 	cmd_before_run  string   // a command to run before each re-run
 	cmd_after_run   string   // a command to run after each re-run
 	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for veb apps, to monitor for just *.v,*.js,*.css,*.html in veb projects.
+	implied_filter  bool     // whether `only_watch` was implied for a veb project, instead of being asked for by the user
 	has_run         bool     // whether the watched command is `run`
 	is_veb          bool     // whether the program uses veb
 	build_first     bool     // for veb apps: build while the old server runs, and swap on success
@@ -142,7 +144,7 @@ fn (context &Context) str() string {
 	return 'Context{ pid: ${context.pid}, is_worker: ${context.is_worker}, check_period_ms: ${context.check_period_ms}, vexe: ${context.vexe}, opts: ${context.opts}, is_exiting: ${context.is_exiting}, vfiles: ${context.vfiles}'
 }
 
-fn (mut context Context) is_ext_ignored(pf string, pf_ext string) bool {
+fn (mut context Context) is_ext_ignored(pf string, pf_ext string, is_input bool) bool {
 	if pf.starts_with('.') && pf.contains('.v3cc.') {
 		// V3 creates its temporary C build directory next to the output binary.
 		// Watching it would interrupt the active compiler and start an endless
@@ -150,9 +152,13 @@ fn (mut context Context) is_ext_ignored(pf string, pf_ext string) bool {
 		return true
 	}
 	for ipattern in context.ignore_exts {
-		if pf_ext.match_glob(ipattern) {
+		// without `--ignore` the list is `['']`, that would match a file without an extension
+		if ipattern != '' && pf_ext.match_glob(ipattern) {
 			return true
 		}
+	}
+	if is_input {
+		return false
 	}
 	if pf_ext in ['', '.so', '.a'] {
 		// on unix, the executables saved by compilers, usually do not have extensions at all, and shared libs are .so
@@ -211,7 +217,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		}
 		mut is_veb_found := false
 		for vf in paths {
-			apaths[os.real_path(os.dir(vf))] = true
+			dir := os.real_path(os.dir(vf))
+			apaths[dir] = true
+			context.input_files[os.join_path_single(dir, os.file_name(vf))] = true
 			if vf.contains('veb.v') {
 				is_veb_found = true
 				context.is_veb = true
@@ -221,6 +229,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		if is_veb_found {
 			if !os.args.any(it.starts_with('--only-watch')) {
 				context.only_watch = default_veb_suffixes.split_any(',')
+				context.implied_filter = true
 				// veb is often used with SQLite .db or .sqlite3 files right next to the executable/source,
 				// that are updated by the veb app, causing a restart of the app, which in turn causes the
 				// browser to reload the current page, that probably triggered the update in the first place.
@@ -228,7 +237,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 				// current (project) folder, will also cause this.
 				println('`v watch` detected that you are compiling a veb project.')
 				println('   Because of that, the `--only-watch=${default_veb_suffixes}` flag was also implied.')
-				println('   In result, `v watch` will ignore changes to other files.')
+				println('   In result, `v watch` will ignore changes to other files, unless they are compiled into the program.')
 				println('   Add your own --only-watch filter, if you wish to override that choice.')
 				println('')
 			}
@@ -259,7 +268,12 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		mut files := os.ls(path) or { []string{} }
 		next_file: for pf in files {
 			pf_path := os.join_path_single(path, pf)
-			if context.only_watch.len > 0 && context.only_watch[0] != '' {
+			// The implied veb filter and the built-in ignore list guess which files matter.
+			// A file that the compiler reported is known to matter, whatever its type, so
+			// only a filter that the user asked for can still exclude it.
+			is_input := pf_path in context.input_files
+			if context.only_watch.len > 0 && context.only_watch[0] != ''
+				&& !(is_input && context.implied_filter) {
 				// in the whitelist mode, first only allow files, which match at least one of the patterns in context.only_watch:
 				mut matched_pattern_idx := -1
 				for ow_pattern_idx, ow_pattern in context.only_watch {
@@ -276,7 +290,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			}
 			// by default allow everything, except very specific extensions (backup files, executables etc):
 			pf_ext := os.file_ext(pf).to_lower()
-			if context.is_ext_ignored(pf, pf_ext) {
+			if context.is_ext_ignored(pf, pf_ext, is_input) {
 				context.elog('> ${@METHOD} ignored extension: ${pf_ext}, for file: ${pf_path}')
 				continue
 			}
