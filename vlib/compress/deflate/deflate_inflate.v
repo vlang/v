@@ -1,6 +1,6 @@
 module deflate
 
-import hash.huffman
+import compress.huffman
 
 // vfmt off
 // RFC 1951 length/distance decode tables

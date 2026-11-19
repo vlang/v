@@ -1,6 +1,6 @@
 module brotli
 
-import hash.huffman
+import compress.huffman
 
 fn meta_block_nibbles(mlen int) int {
 	if mlen <= 0x10000 {
