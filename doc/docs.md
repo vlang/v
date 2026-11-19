@@ -10952,6 +10952,7 @@ The V3 compatibility generator emits direct literal `println` and `JS.eval` stat
 source order inside `main` or at script top level. It reports unsupported control flow
 before generating JavaScript. Constant and global initializers are limited to scalar and
 function literals. Calls in initializers and aggregate defaults produce a diagnostic.
+String literals in these calls use V escape sequences and must decode to valid UTF-8.
 
 To debug the generated Javascript output you can activate source maps:
 `v -b js -sourcemap hello.v -o hello.js`

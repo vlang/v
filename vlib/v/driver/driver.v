@@ -7,6 +7,7 @@ import strconv
 import strings
 import time
 import crypto.sha256
+import encoding.utf8
 import v.ansi
 import v.bench
 import v.cmdexec
@@ -4354,6 +4355,24 @@ fn v3_js_compat_quoted_literal(source string, node &flat.Node) ?string {
 	return literal
 }
 
+// Quote the decoded V value as a JavaScript string literal.
+fn v3_js_compat_quote(value string) string {
+	mut output := strings.new_builder(value.len + 2)
+	output.write_u8(`"`)
+	for ch in value {
+		if ch in [`"`, `\\`] {
+			output.write_u8(`\\`)
+			output.write_u8(ch)
+		} else if ch < 0x20 {
+			output.write_string('\\x${ch:02x}')
+		} else {
+			output.write_u8(ch)
+		}
+	}
+	output.write_u8(`"`)
+	return output.str()
+}
+
 fn v3_js_compat_call(a &flat.FlatAst, node &flat.Node, source string) ?string {
 	if node.kind != .call || node.children_count != 2 {
 		return none
@@ -4361,19 +4380,20 @@ fn v3_js_compat_call(a &flat.FlatAst, node &flat.Node, source string) ?string {
 	callee := a.child_node(node, 0)
 	arg := a.child_node(node, 1)
 	if callee.kind == .ident && callee.value == 'println' {
-		literal := v3_js_compat_quoted_literal(source, arg) or { return none }
-		if literal.contains_any('\r\n') {
+		_ = v3_js_compat_quoted_literal(source, arg) or { return none }
+		if !utf8.validate_str(arg.value) {
 			return none
 		}
-		return 'console.log(${literal});'
+		return 'console.log(${v3_js_compat_quote(arg.value)});'
 	}
 	if callee.kind == .selector && callee.value == 'eval' && callee.children_count == 1 {
 		receiver := a.child_node(callee, 0)
 		if receiver.kind == .ident && receiver.value == 'JS' && arg.kind == .selector
 			&& arg.value == 'str' && arg.children_count == 1 {
-			literal := v3_js_compat_quoted_literal(source, a.child_node(arg, 0)) or { return none }
-			if literal[0] == `"` {
-				return literal[1..literal.len - 1]
+			payload := a.child_node(arg, 0)
+			literal := v3_js_compat_quoted_literal(source, payload) or { return none }
+			if literal[0] == `"` && utf8.validate_str(payload.value) {
+				return payload.value
 			}
 		}
 	}
