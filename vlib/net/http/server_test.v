@@ -21,7 +21,8 @@ fn test_server_stop() {
 		log.warn('${@FN} finished')
 	}
 	mut server := &http.Server{
-		accept_timeout: atimeout
+		// Keep the idle accept poll longer than the 100ms call budget below.
+		accept_timeout: 250 * time.millisecond
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
@@ -444,18 +445,11 @@ fn test_redirects_change_post_to_get_only_when_required() {
 	mut server := &http.Server{
 		accept_timeout:       atimeout
 		handler:              RedirectMethodHandler{}
-		addr:                 '127.0.0.1:18204'
+		addr:                 '127.0.0.1:0'
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running() or {
-		estr := err.str()
-		if estr == 'maximum retries reached' {
-			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
-			return
-		}
-		log.fatal(estr)
-	}
+	server.wait_till_running()!
 
 	for path in ['/redirect-301', '/redirect-302', '/redirect-303'] {
 		resp := http.post('http://${server.addr}${path}', 'payload')!
@@ -613,28 +607,21 @@ fn test_server_max_keep_alive_requests() {
 		accept_timeout:          atimeout
 		read_header_timeout:     200 * time.millisecond
 		handler:                 DelayedRequestHeadDeadlineHandler{}
-		addr:                    '127.0.0.1:18200'
+		addr:                    '127.0.0.1:0'
 		show_startup_message:    false
 		max_keep_alive_requests: 3 // Limit to 3 requests per connection
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running() or {
-		estr := err.str()
-		if estr == 'maximum retries reached' {
-			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
-			return
-		}
-		log.fatal(estr)
-	}
+	server.wait_till_running()!
 
 	// Test that connection closes after max_keep_alive_requests
-	mut conn := net.dial_tcp('127.0.0.1:18200')!
+	mut conn := net.dial_tcp(server.addr)!
 	defer { conn.close() or {} }
 	conn.set_read_timeout(5 * time.second)
 	conn.set_write_timeout(5 * time.second)
 
 	// Send first request
-	request1 := 'GET /test1 HTTP/1.1\r\nHost: 127.0.0.1:18200\r\nConnection: keep-alive\r\n\r\n'
+	request1 := 'GET /test1 HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: keep-alive\r\n\r\n'
 	conn.write(request1.bytes())!
 	mut resp1 := read_http_response(mut conn)!
 	log.info('Response 1: ${resp1}')
@@ -642,7 +629,7 @@ fn test_server_max_keep_alive_requests() {
 	assert resp1.to_lower().contains('connection: keep-alive')
 
 	// Send second request
-	request2 := 'GET /test2 HTTP/1.1\r\nHost: 127.0.0.1:18200\r\nConnection: keep-alive\r\n\r\n'
+	request2 := 'GET /test2 HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: keep-alive\r\n\r\n'
 	conn.write(request2.bytes())!
 	mut resp2 := read_http_response(mut conn)!
 	log.info('Response 2: ${resp2}')
@@ -650,7 +637,7 @@ fn test_server_max_keep_alive_requests() {
 	assert resp2.to_lower().contains('connection: keep-alive')
 
 	// Send third request - should get Connection: close since max is reached
-	request3 := 'GET /test3 HTTP/1.1\r\nHost: 127.0.0.1:18200\r\nConnection: keep-alive\r\n\r\n'
+	request3 := 'GET /test3 HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: keep-alive\r\n\r\n'
 	conn.write(request3.bytes())!
 	mut resp3 := read_http_response(mut conn)!
 	log.info('Response 3: ${resp3}')
@@ -697,13 +684,13 @@ fn test_server_rejects_oversized_http1_body_before_handler() {
 		worker_num:                  1
 		max_http1_request_body_size: 4
 		handler:                     RequestBodyEchoHandler{}
-		addr:                        '127.0.0.1:18204'
+		addr:                        '127.0.0.1:0'
 		show_startup_message:        false
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
 
-	mut allowed_conn := net.dial_tcp('127.0.0.1:18204')!
+	mut allowed_conn := net.dial_tcp(server.addr)!
 	allowed_conn.set_read_timeout(5 * time.second)
 	allowed_conn.write_string('POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest')!
 	allowed_response := read_http_response(mut allowed_conn)!
@@ -711,7 +698,7 @@ fn test_server_rejects_oversized_http1_body_before_handler() {
 	assert allowed_response.ends_with('test')
 	allowed_conn.close() or {}
 
-	mut oversized_conn := net.dial_tcp('127.0.0.1:18204')!
+	mut oversized_conn := net.dial_tcp(server.addr)!
 	oversized_conn.set_read_timeout(5 * time.second)
 	oversized_conn.write_string('POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n')!
 	oversized_response := read_http_response(mut oversized_conn)!
@@ -726,7 +713,7 @@ fn test_server_rejects_oversized_http1_body_before_handler() {
 	}
 	oversized_conn.close() or {}
 
-	mut malformed_conn := net.dial_tcp('127.0.0.1:18204')!
+	mut malformed_conn := net.dial_tcp(server.addr)!
 	malformed_conn.set_read_timeout(5 * time.second)
 	malformed_conn.write_string('POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\n\r\n')!
 	malformed_response := read_http_response(mut malformed_conn)!
