@@ -4,22 +4,6 @@ import v.parser
 import v.pref
 import v.types
 
-const local_vexe = @VEXE
-const local_tests_dir = os.dir(@FILE)
-const local_v3_dir = os.dir(local_tests_dir)
-const local_vlib_dir = os.dir(local_v3_dir)
-
-fn proxy_to_local_v3_if_needed() bool {
-	if os.getenv('V3_MATCH_GENERIC_PATTERN_INNER') == '1' {
-		return false
-	}
-	cmd := 'V3_MATCH_GENERIC_PATTERN_INNER=1 ${os.quoted_path(local_vexe)} -gc none -path "${local_vlib_dir}|@vlib|@vmodules" ${os.quoted_path(@FILE)}'
-	result := os.exec(['env', 'V3_MATCH_GENERIC_PATTERN_INNER=1', local_vexe, '-gc', 'none', '-path',
-		'${local_vlib_dir}' + '|@vlib|@vmodules', @FILE])
-	assert result.exit_code == 0, result.output
-	return true
-}
-
 fn parse_match_generic_pattern_source(src string) &flat.FlatAst {
 	path := os.join_path(os.temp_dir(), 'v3_match_generic_pattern_${os.getpid()}.v')
 	os.write_file(path, src) or { panic(err) }
@@ -114,9 +98,6 @@ fn branch_has_direct_array_literal(a &flat.FlatAst, branch flat.Node) bool {
 }
 
 fn test_match_branch_generic_type_patterns_are_consumed() {
-	if proxy_to_local_v3_if_needed() {
-		return
-	}
 	a := parse_match_generic_pattern_source('
 struct Empty {}
 
@@ -218,9 +199,6 @@ type Tree[T] = Empty | &Node[T]
 '
 
 fn test_generic_sum_type_checker_accepts_shared_field_on_concrete_sum() {
-	if proxy_to_local_v3_if_needed() {
-		return
-	}
 	assert_checker_ok('generic_sum_shared_field', '
 struct A[T] {
 	x T
@@ -239,9 +217,6 @@ fn get(s S[int]) int {
 }
 
 fn test_generic_sum_type_checker_accepts_methods_returns_and_smartcasts() {
-	if proxy_to_local_v3_if_needed() {
-		return
-	}
 	assert_checker_ok('generic_sum_method_and_returns', generic_sum_defs +
 		'
 fn (tree Tree[T]) size[T]() int {
@@ -281,9 +256,6 @@ fn main() {
 }
 
 fn test_generic_sum_type_checker_rejects_wrong_generic_variant() {
-	if proxy_to_local_v3_if_needed() {
-		return
-	}
 	assert_checker_error_contains('generic_sum_wrong_variant_arg', generic_sum_defs +
 		'
 fn bad() Tree[int] {
@@ -299,9 +271,6 @@ fn main() {}
 }
 
 fn test_generic_sum_type_checker_rejects_non_variant_pattern() {
-	if proxy_to_local_v3_if_needed() {
-		return
-	}
 	assert_checker_error_contains('generic_sum_non_variant_pattern', generic_sum_defs +
 		'
 fn bad(tree Tree[int]) int {
@@ -317,9 +286,6 @@ fn main() {}
 }
 
 fn test_generic_sum_type_checker_accepts_qualified_generic_variant_pattern() {
-	if proxy_to_local_v3_if_needed() {
-		return
-	}
 	root := os.join_path(os.temp_dir(), 'v3_generic_sum_checker_qualified_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	foo_path := os.join_path(root, 'foo', 'foo.v')
