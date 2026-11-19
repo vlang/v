@@ -34,8 +34,8 @@ fn count_gsnode(n &GSNode) int {
 fn test_vgc_greentea_span_batching() {
 	gc_collect()
 	before := vgc_mark_stats()
-	root := build_gsnode(12)
-	assert count_gsnode(root) == 8191
+	root := build_gsnode(13)
+	assert count_gsnode(root) == 16383
 	gc_collect()
 	after := vgc_mark_stats()
 	assert after.gc_cycles == before.gc_cycles + 1
@@ -45,5 +45,5 @@ fn test_vgc_greentea_span_batching() {
 	assert after.objs_scanned > before.objs_scanned
 	// Density: more than one object per span dequeue on this tree.
 	assert after.objs_scanned - before.objs_scanned > after.span_dequeues - before.span_dequeues
-	assert count_gsnode(root) == 8191
+	assert count_gsnode(root) == 16383
 }
