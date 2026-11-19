@@ -52,6 +52,12 @@ ctx.flow()
 | `flags` | []imp.Flag read with self.flag |
 | `flow`  | fn (self imp.Flow) ! |
 
+## state directory
+Flow state lives under `.imp` by default. Set `ctx.cache_dir` to keep it
+elsewhere, or pass `--cache-dir=<path>` on the command line. The path is never
+an input to a flow, so changing it does not itself cause a rebuild; a fresh
+directory simply has no state and runs every flow once.
+
 ## hooks
 | declaration                                | result |
 |--------------------------------------------|--------|
