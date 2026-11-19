@@ -38,6 +38,25 @@ fn test_headless_cpu_context_renders_cube() {
 	assert f32(px & 0xff) > 170.0
 }
 
+fn test_headless_cpu_context_renders_textured_mesh() {
+	mut ctx := gg.new_context_cpu()
+	cam := gg.Camera3D{ position: gg.Vec3{0, 0, 5}, target: gg.Vec3{0, 0, 0} }
+	pixels := []u8{len: 4 * 2 * 2, init: 200}
+	img := &gg.Image{
+		data:        pixels.data
+		width:       2
+		height:      2
+		nr_channels: 4
+		ok:          true
+	}
+	mat := gg.Material3D{ texture: img }
+	mesh := gg.gen_mesh_cube(gg.Vec3{1, 1, 1})
+	ctx.draw_material_mesh(&mesh, gg.Vec3{}, gg.Vec3{}, 1.0, &mat, cam)
+	frame := ctx.render_cpu_3d(64, 64, gg.black, cam)
+	px := frame.pixels[32 * 64 + 32]
+	assert f32(px & 0xff) > 150.0
+}
+
 fn test_headless_cpu_context_renders_2d() {
 	mut ctx := gg.new_context_cpu()
 	ctx.r.matrix_mode_projection()

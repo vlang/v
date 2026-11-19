@@ -3,6 +3,7 @@
 module gg
 
 import math
+import gg.render
 
 // Light3D is a directional light. `direction` is the way the light travels.
 pub struct Light3D {
@@ -109,9 +110,12 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 			uvs << 0
 		}
 	}
-	if !isnil(mat.texture) && mat.texture.simg_ok {
+	if !isnil(mat.texture) && (mat.texture.simg_ok || mat.texture.data != unsafe { nil }) {
 		img := mat.texture
-		ctx.r.load_pipeline(ctx.pipeline.depth_alpha)
+		register_cpu_image(ctx.r, img)
+		if ctx.pipeline != unsafe { nil } {
+			ctx.r.load_pipeline(ctx.pipeline.depth_alpha)
+		}
 		ctx.r.enable_texture()
 		ctx.r.texture(img.simg, img.ssmp)
 		ctx.r.begin_triangles()
@@ -121,7 +125,9 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 		}
 		ctx.r.end()
 		ctx.r.disable_texture()
-		ctx.r.load_default_pipeline()
+		if ctx.pipeline != unsafe { nil } {
+			ctx.r.load_default_pipeline()
+		}
 		return
 	}
 	ctx.r.begin_triangles()
@@ -134,9 +140,10 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 
 // draw_billboard draws a camera-facing textured quad at pos.
 pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f32, height f32, color Color) {
-	if !ctx.config.depth || !img.simg_ok {
+	if !ctx.config.depth || (!img.simg_ok && img.data == unsafe { nil }) {
 		return
 	}
+	register_cpu_image(ctx.r, img)
 	forward := cam.forward()
 	right := cam.right()
 	up := right.cross(forward).normalized()
@@ -146,7 +153,9 @@ pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f
 	p1 := pos + right.scale(hw) - up.scale(hh)
 	p2 := pos + right.scale(hw) + up.scale(hh)
 	p3 := pos - right.scale(hw) + up.scale(hh)
-	ctx.r.load_pipeline(ctx.pipeline.depth_alpha)
+	if ctx.pipeline != unsafe { nil } {
+		ctx.r.load_pipeline(ctx.pipeline.depth_alpha)
+	}
 	ctx.r.enable_texture()
 	ctx.r.texture(img.simg, img.ssmp)
 	ctx.r.begin_triangles()
@@ -157,5 +166,21 @@ pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f
 	}
 	ctx.r.end()
 	ctx.r.disable_texture()
-	ctx.r.load_default_pipeline()
+	if ctx.pipeline != unsafe { nil } {
+		ctx.r.load_default_pipeline()
+	}
+}
+
+// register_cpu_image copies an image's pixels into the CPU rasterizer once,
+// so textured 3D draws work without a GPU.
+fn register_cpu_image(r &render.Context, img &Image) {
+	if img.data == unsafe { nil } || img.width <= 0 || img.height <= 0 {
+		return
+	}
+	id := int(img.simg.id)
+	if r.is_image_registered(id) {
+		return
+	}
+	filter := if img.texture_filter == .linear { 1 } else { 0 }
+	r.register_image(id, img.data, img.width, img.height, 4, filter)
 }
