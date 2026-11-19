@@ -20,6 +20,22 @@ const server_tls_cert = $embed_file('../testdata/localhost_test_cert.pem').to_st
 
 const server_tls_key = $embed_file('../testdata/localhost_test_key.pem').to_string()
 
+// A real 165-byte TLS 1.2 ClientHello captured from V's own mbedtls client.
+// The exact bytes (random/session id) are irrelevant; the server only needs a
+// structurally valid first flight to start the handshake and then block
+// waiting for the client's ClientKeyExchange, which never arrives.
+const stalled_tls_client_hello = [u8(0x16), 0x03, 0x03, 0x00, 0xa0, 0x01, 0x00, 0x00, 0x9c, 0x03,
+	0x03, 0x6a, 0x3d, 0x34, 0x4c, 0x8f, 0x46, 0x64, 0xd8, 0xe9, 0x2d, 0x46, 0x16, 0xd3, 0xf2, 0x87,
+	0xe4, 0xee, 0xc5, 0x57, 0x6c, 0x8e, 0xd7, 0x36, 0x19, 0x3b, 0x35, 0x7a, 0x01, 0x03, 0xde, 0x6e,
+	0x64, 0x00, 0x00, 0x24, 0xc0, 0x2c, 0xc0, 0x2b, 0xc0, 0x30, 0xc0, 0x2f, 0xc0, 0x24, 0xc0, 0x23,
+	0xc0, 0x28, 0xc0, 0x27, 0xc0, 0x0a, 0xc0, 0x09, 0xc0, 0x14, 0xc0, 0x13, 0x00, 0x9d, 0x00, 0x9c,
+	0x00, 0x3d, 0x00, 0x3c, 0x00, 0x35, 0x00, 0x2f, 0x01, 0x00, 0x00, 0x4f, 0x00, 0x0a, 0x00, 0x08,
+	0x00, 0x06, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x00, 0x0d,
+	0x00, 0x1a, 0x00, 0x18, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x02, 0x01,
+	0x04, 0x03, 0x05, 0x03, 0x02, 0x03, 0x02, 0x02, 0x06, 0x01, 0x06, 0x03, 0x00, 0x23, 0x00, 0x00,
+	0x00, 0x10, 0x00, 0x0e, 0x00, 0x0c, 0x02, 0x68, 0x32, 0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31,
+	0x2e, 0x31, 0x00, 0x17, 0x00, 0x00, 0xff, 0x01, 0x00, 0x01, 0x00]
+
 struct EchoHandler {
 mut:
 	last_path string
@@ -520,22 +536,6 @@ fn test_server_tls_close_under_handshake_flood() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	// A real 165-byte TLS 1.2 ClientHello captured from V's own mbedtls client.
-	// The exact bytes (random/session id) are irrelevant; the server only needs a
-	// structurally valid first flight to start the handshake and then block
-	// waiting for the client's ClientKeyExchange, which never arrives.
-	client_hello := [u8(0x16), 0x03, 0x03, 0x00, 0xa0, 0x01, 0x00, 0x00, 0x9c, 0x03, 0x03, 0x6a,
-		0x3d, 0x34, 0x4c, 0x8f, 0x46, 0x64, 0xd8, 0xe9, 0x2d, 0x46, 0x16, 0xd3, 0xf2, 0x87, 0xe4,
-		0xee, 0xc5, 0x57, 0x6c, 0x8e, 0xd7, 0x36, 0x19, 0x3b, 0x35, 0x7a, 0x01, 0x03, 0xde, 0x6e,
-		0x64, 0x00, 0x00, 0x24, 0xc0, 0x2c, 0xc0, 0x2b, 0xc0, 0x30, 0xc0, 0x2f, 0xc0, 0x24, 0xc0,
-		0x23, 0xc0, 0x28, 0xc0, 0x27, 0xc0, 0x0a, 0xc0, 0x09, 0xc0, 0x14, 0xc0, 0x13, 0x00, 0x9d,
-		0x00, 0x9c, 0x00, 0x3d, 0x00, 0x3c, 0x00, 0x35, 0x00, 0x2f, 0x01, 0x00, 0x00, 0x4f, 0x00,
-		0x0a, 0x00, 0x08, 0x00, 0x06, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x0b, 0x00, 0x02,
-		0x01, 0x00, 0x00, 0x0d, 0x00, 0x1a, 0x00, 0x18, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04,
-		0x01, 0x05, 0x01, 0x02, 0x01, 0x04, 0x03, 0x05, 0x03, 0x02, 0x03, 0x02, 0x02, 0x06, 0x01,
-		0x06, 0x03, 0x00, 0x23, 0x00, 0x00, 0x00, 0x10, 0x00, 0x0e, 0x00, 0x0c, 0x02, 0x68, 0x32,
-		0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, 0x00, 0x17, 0x00, 0x00, 0xff, 0x01,
-		0x00, 0x01, 0x00]
 	mut srv := &http.Server{
 		addr:                   '127.0.0.1:${port}'
 		cert:                   server_tls_cert
@@ -562,7 +562,7 @@ fn test_server_tls_close_under_handshake_flood() {
 	mut clients := []&net.TcpConn{}
 	for _ in 0 .. 4 {
 		mut c := net.dial_tcp('127.0.0.1:${port}') or { continue }
-		c.write(client_hello) or {}
+		c.write(stalled_tls_client_hello) or {}
 		clients << c
 	}
 	defer {
@@ -728,6 +728,25 @@ fn test_server_tls_close_interrupts_idle_h2() {
 	assert srv.status() == .closed
 }
 
+fn wait_for_tls_h2_ping_ack(mut client mbedtls.SSLConn, expected []u8) ! {
+	client.set_read_timeout(2 * time.second)
+	mut header_bytes := []u8{len: http.h2_frame_header_len}
+	for _ in 0 .. 8 {
+		io.read_full(mut client, mut header_bytes)!
+		header := http.h2_parse_frame_header(header_bytes)!
+		if header.length > 16_384 {
+			return error('unexpected HTTP/2 frame size: ${header.length}')
+		}
+		mut payload := []u8{len: int(header.length)}
+		io.read_full(mut client, mut payload)!
+		frame := http.h2_parse_frame(header, payload)!
+		if frame is http.H2PingFrame && frame.ack && frame.data == expected {
+			return
+		}
+	}
+	return error('server did not acknowledge the ping after the incomplete HTTP/2 request')
+}
+
 fn test_server_tls_close_interrupts_incomplete_h2_request() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
@@ -789,6 +808,8 @@ fn test_server_tls_close_interrupts_incomplete_h2_request() {
 		end_headers: true
 		end_stream:  false
 	}).encode()
+	probe := 'shutdown'.bytes()
+	out << http.H2Frame(http.H2PingFrame{ data: probe }).encode()
 	written := client.write(out) or {
 		srv.close()
 		t.wait()
@@ -796,7 +817,13 @@ fn test_server_tls_close_interrupts_incomplete_h2_request() {
 		return
 	}
 	assert written == out.len
-	time.sleep(100 * time.millisecond)
+	// The ack confirms the server processed the preceding HEADERS.
+	wait_for_tls_h2_ping_ack(mut client, probe) or {
+		srv.close()
+		t.wait()
+		assert false, err.msg()
+		return
+	}
 
 	sw := time.new_stopwatch()
 	srv.close()
@@ -810,31 +837,14 @@ fn test_server_tls_parallel_handshakes() {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
 		return
 	}
-	$if macos {
-		eprintln('skipping: macOS mbedTLS rejects the silent TCP probes')
-		return
-	}
 	port := pick_port() or {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	// Prove handshakes run in parallel on the worker threads, not serially on the
-	// accept thread. The discriminator is placed at the HANDSHAKE layer, not at the
-	// request handler: a barrier inside the handler only proves two *handlers*
-	// overlapped, which a serial-accept-then-queue design also produces (the accept
-	// thread can complete two handshakes one after another and hand both completed
-	// connections to workers that then park together). Counting overlapping handlers
-	// would therefore miss exactly the regression we care about.
-	//
-	// Instead, occupy `stall` workers with raw TCP connections that complete the TCP
-	// connect but never send a ClientHello, so each one wedges a worker *inside*
-	// complete_handshake (blocked reading the handshake). Then fire `live` real HTTPS
-	// clients. If handshakes run per-worker in parallel, the remaining free workers
-	// service the live clients concurrently and they succeed. If the implementation
-	// regresses to handshaking serially on the accept thread, the very first stalled
-	// connection wedges that thread mid-handshake and no later connection — stalled or
-	// live — is ever accepted/serviced, so every live fetch fails. worker_num must be
-	// >= stall + live so a free worker exists for each live client.
+	// Occupy `stall` workers with clients that start a handshake and stop after
+	// ClientHello. Each server record confirms a handshake has started. A serial
+	// accept loop would have to finish the first handshake before starting the next.
+	// Leave one free worker per live client so their full handshakes can complete.
 	worker_num := 4
 	stall := 2
 	live := 2
@@ -859,35 +869,32 @@ fn test_server_tls_parallel_handshakes() {
 		srv.close()
 		t.wait()
 	}
-	// Wedge `stall` workers mid-handshake with silent TCP connections.
 	mut stalled := []&net.TcpConn{}
+	defer {
+		for mut c in stalled {
+			c.close() or {}
+		}
+	}
 	for _ in 0 .. stall {
-		c := net.dial_tcp('127.0.0.1:${port}') or {
+		mut c := net.dial_tcp('127.0.0.1:${port}') or {
 			assert false, 'stall dial failed: ${err}'
 			return
 		}
 		stalled << c
+		c.set_read_timeout(tls_handshake_budget / 2)
+		c.write(stalled_tls_client_hello) or {
+			assert false, 'could not send ClientHello: ${err}'
+			return
+		}
+		mut content_type := []u8{len: 1}
+		io.read_full(mut c, mut content_type) or {
+			assert false, 'server did not start a stalled TLS handshake: ${err}'
+			return
+		}
+		assert content_type[0] == 0x16, 'expected a TLS handshake record, got ${content_type[0]}'
 	}
-	// Give the accept loop time to hand each stalled connection to a worker (and, in
-	// a regressed serial-accept design, to become wedged on the first one) before the
-	// live clients connect.
-	time.sleep(500 * time.millisecond)
-	// Fire live clients while the stalled sockets occupy workers. With parallel
-	// per-worker handshakes, at least one free worker services a live client in
-	// well under a second. A transient TLS client-side handshake error is not, by
-	// itself, proof that the accept thread regressed to serial handshaking; the
-	// discriminator is that no live request can complete while the accept thread is
-	// wedged inside a stalled handshake.
-	//
-	// The discriminator is time-bounded on purpose: a serial-accept regression does
-	// eventually service the live clients — but only after the stalled handshakes hit
-	// their budget (handshake_timeout == accept_timeout == 10s here, x2 stalled), so
-	// without a bound the test would merely run slower, not fail. The bound is on the
-	// WAIT itself (a select deadline below), not the client: http.fetch cannot bound
-	// this for us because Request.ssl_do dials and completes the TLS handshake before
-	// req.read_timeout applies (and retries on socket errors), so a read_timeout would
-	// not cap a regressed handshake. The select makes the regression fail promptly at
-	// ~6s; a real parallel handshake completes in well under a second.
+	// Give live clients less time than the stalled handshakes' 10s budget.
+	// The fetch read timeout starts after the TLS handshake, so bound the result wait.
 	live_budget := 6 * time.second
 	results := chan string{cap: live}
 	sw := time.new_stopwatch()
@@ -917,9 +924,7 @@ fn test_server_tls_parallel_handshakes() {
 			results <- resp.body
 		}()
 	}
-	// Collect live results within a single `live_budget`, bounding the wait so a
-	// serialized-handshake regression fails at ~6s instead of hanging on the
-	// client's own handshake timeout.
+	// Collect all live results under one deadline.
 	mut ok := 0
 	mut received := 0
 	mut failures := []string{}
@@ -943,11 +948,6 @@ fn test_server_tls_parallel_handshakes() {
 		}
 	}
 	assert ok > 0, 'expected at least one live handshake to complete within ${live_budget} while ${stall} workers were mid-handshake; got ${ok}/${live}, failures: ${failures} - handshakes appear serialized on the accept thread, not parallel'
-	// Release the stalled sockets; srv.close() in the defer also force-closes any the
-	// worker is still blocked on via the idle tracker.
-	for mut c in stalled {
-		c.close() or {}
-	}
 }
 
 fn test_server_tls_h2_negotiation() {
