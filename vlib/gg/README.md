@@ -133,6 +133,10 @@ are baked into vertex colors, so no custom shader or extra backend work is
 needed. More primitives are tracked in
 https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v` and
 `examples/gg/3d_material.v`.
+`load_mesh_obj()` loads a static Wavefront `.obj`, and `load_mesh_gltf()`
+loads mesh primitives from a glTF 2.0 `.gltf` (embedded or external buffers,
+float attributes, 8/16/32-bit indices). Neither loader reads skins,
+animations or texture images.
 
 ## Multi-Window Applications
 
