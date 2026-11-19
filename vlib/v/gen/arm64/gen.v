@@ -1143,8 +1143,30 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.gen_float_binop(fop, instr.operands[0], instr.operands[1], val_id)
 				return
 			}
+			mut check_shift_count := false
+			mut shift_width := 64
+			if instr.op in [.shl, .ashr, .lshr] {
+				narrow_width := g.narrow_int_width(val.typ)
+				if narrow_width != 0 {
+					shift_width = narrow_width
+				}
+				count := g.m.values[instr.operands[1]]
+				if count.kind == .constant {
+					if u64(parse_arm64_int(count.name)) >= u64(shift_width) {
+						g.emit_mov_imm(8, 0)
+						g.store_val(8, val_id)
+						return
+					}
+				} else {
+					check_shift_count = true
+				}
+			}
 			lhs_reg := g.load_val(instr.operands[0], 8)
 			rhs_reg := g.load_val(instr.operands[1], 9)
+			if check_shift_count {
+				// ARM64 masks the count. An unsigned comparison also rejects negative counts.
+				g.emit32(asm_cmp_imm(Reg(rhs_reg), u32(shift_width)))
+			}
 			match instr.op {
 				.add {
 					g.emit32(asm_add_reg(Reg(8), Reg(lhs_reg), Reg(rhs_reg)))
@@ -1188,6 +1210,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit32(asm_lsrv(Reg(8), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				else {}
+			}
+			if check_shift_count {
+				g.emit32(asm_csel_lo_or_zero(Reg(8), Reg(8)))
 			}
 			if instr.op in [.add, .sub, .mul, .shl] {
 				// The ops run on the full x register; a narrower integer has to
