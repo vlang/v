@@ -519,7 +519,18 @@ fn (mut s NoSuspendScan) walk(id flat.NodeId, decl NoSuspendFunction, chain []st
 		}
 		return
 	}
-	if node.kind in [.match_stmt, .select_stmt, .comptime_if] {
+	if node.kind == .select_stmt {
+		s.report(id, chain, anchor, '`select` may suspend')
+		if node.children_count > 0 {
+			s.walk(s.tc.a.child(node, 0), decl, chain, anchor, mut bindings, false)
+			for i in 1 .. node.children_count {
+				mut branch_scope := bindings.clone()
+				s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut branch_scope, false)
+			}
+		}
+		return
+	}
+	if node.kind in [.match_stmt, .comptime_if] {
 		if node.children_count > 0 {
 			s.walk(s.tc.a.child(node, 0), decl, chain, anchor, mut bindings, false)
 			for i in 1 .. node.children_count {

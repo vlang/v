@@ -57,6 +57,11 @@ fn test_nosuspend_contracts_in_build_and_check() {
 			source:   '@[nosuspend]\nfn handler(a chan int, b chan int) int { select { x := <-a { return x } y := <-b { return y } }; return 0 }\nfn main() {}\n'
 		},
 		NosuspendCase{
+			name:     'timeout_select'
+			accepted: false
+			source:   '@[nosuspend]\nfn pause() { select { 20000000 {} } }\nfn main() { pause() }\n'
+		},
+		NosuspendCase{
 			name:     'lock_stmt'
 			accepted: false
 			source:   '@[nosuspend]\nfn handler(shared arr []int) { lock arr { unsafe { arr[0] = 1 } } }\nfn main() {}\n'
