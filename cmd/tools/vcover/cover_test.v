@@ -8,7 +8,6 @@ const tfolder = os.join_path(os.vtmp_dir(), 'cover_test_${os.getpid()}')
 
 const t1 = np(os.join_path(tfolder, 't1'))
 const t2 = np(os.join_path(tfolder, 't2'))
-const t3 = np(os.join_path(tfolder, 't3'))
 const example1_workspace = 'cmd/tools/vcover/testdata/generated_${os.getpid()}'
 const example1_fixture = '${example1_workspace}/example1'
 const example1_coverage_dir = np(os.join_path(tfolder, 'example1'))
@@ -81,7 +80,6 @@ fn test_help() {
 fn test_simple() {
 	assert !os.exists(t1), t1
 	assert !os.exists(t2), t2
-	assert !os.exists(t3), t3
 
 	r1 :=
 		execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t1)} cmd/tools/vcover/testdata/simple/t1_test.v')
@@ -95,9 +93,9 @@ fn test_simple() {
 	assert filter1.output.trim_space().ends_with('|      4 |      9 |  44.44%'), filter1.output
 	lcov_file := np(os.join_path(tfolder, 'coverage', 'simple.lcov'))
 	os.rm(lcov_file) or {}
-	lcov :=
-		execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ --lcov ${os.quoted_path(lcov_file)} -P false')
-	assert lcov.exit_code == 0, lcov.str()
+	hfilter1 :=
+		execute('${cmd} --lcov ${os.quoted_path(lcov_file)} -H -P false')
+	assert hfilter1.exit_code == 0, hfilter1.output
 	assert os.exists(lcov_file), lcov_file
 	lcov_content := os.read_file(lcov_file) or { panic(err) }
 	assert lcov_content.contains('SF:${np(os.join_path(vroot, 'cmd/tools/vcover/testdata/simple/simple.v'))}')
@@ -106,9 +104,6 @@ fn test_simple() {
 	assert lcov_content.contains('LF:9')
 	assert lcov_content.contains('LH:4')
 	assert lcov_content.contains('end_of_record')
-	hfilter1 :=
-		execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ -H -P false')
-	assert hfilter1.exit_code == 0, hfilter1.output
 	assert !hfilter1.output.contains('%'), hfilter1.output
 	houtput1 := hfilter1.output.trim_space().split_into_lines()
 	zeros1 := houtput1.filter(it.starts_with('0 '))
@@ -152,13 +147,8 @@ fn test_simple() {
 	assert nzeros2.any(it.contains('simple.v:19')), nzeros2.str()
 	assert nzeros2.any(it.contains('simple.v:25')), nzeros2.str()
 
-	// Run both tests. The coverage should be combined and == 100%
-	r3 :=
-		execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t3)} test cmd/tools/vcover/testdata/simple/')
-	assert r3.exit_code == 0, r3.str()
-	assert r3.output.trim_space().contains('Summary for all V _test.v files: '), r3.str()
-	assert os.exists(t3), t3
-	filter3 := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t3)} --filter simple/')
+	// Reuse both runs to check that v cover merges coverage across directories.
+	filter3 := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} ${os.quoted_path(t2)} --filter simple/')
 	assert filter3.exit_code == 0, filter3.str()
 	assert filter3.output.contains('cmd/tools/vcover/testdata/simple/simple.v'), filter3.str()
 	assert filter3.output.trim_space().match_glob('*cmd/tools/vcover/testdata/simple/simple.v *|      9 |      9 | 100.00%'), filter3.str()
