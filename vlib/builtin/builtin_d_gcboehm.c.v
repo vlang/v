@@ -6,6 +6,13 @@ $if musl ? {
 	#flag -DNO_GETCONTEXT=1
 }
 
+$if gc_proportional_growth ? {
+	// Opt-in mitigation for #32272: grow the Boehm heap in proportion to its
+	// size when free space runs low, instead of one full collection per 8 MiB
+	// increment. Costs up to ~2x the live heap.
+	#flag -DV_GC_PROPORTIONAL_GROWTH=1
+}
+
 $if macos || linux {
 	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
 	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
@@ -491,5 +498,16 @@ fn gc_restore_roots_after_debugger_init(use_manual_roots bool) {
 	$if linux {
 		C.v__gc_register_main_data_roots_linux()
 		C.GC_set_no_dls(0)
+	}
+}
+
+$if gc_proportional_growth ? {
+	fn C.v_gc_expansion_count() u64
+
+	// v_gc_expansion_count_report returns how many proportional heap
+	// expansions the Boehm helper has performed. Only present with
+	// `-d gc_proportional_growth`; used by the regression test.
+	fn v_gc_expansion_count_report() u64 {
+		return C.v_gc_expansion_count()
 	}
 }
