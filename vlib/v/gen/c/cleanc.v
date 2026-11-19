@@ -28664,7 +28664,7 @@ fn (mut g FlatGen) gen_guarded_shift_from_text(lhs_text string, rhs_id flat.Node
 			helper := if op == .left_shift { 'shl' } else { 'shr' }
 			g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); i64 ${rhs_tmp} = (i64)(')
 			g.gen_shift_count_value(rhs_id)
-			g.write('); (${result_type})builtin__overflow__${helper}_${suffix}(${lhs_tmp}, ${rhs_tmp}); })')
+			g.write('); (${result_type})overflow__${helper}_${suffix}(${lhs_tmp}, ${rhs_tmp}); })')
 			return
 		}
 	}
@@ -28882,10 +28882,10 @@ fn (g &FlatGen) integer_overflow_helper(typ &types.Type, op flat.Op) ?string {
 		else { return none }
 	}
 	kind := g.checked_int_kind(typ) or { return none }
-	return 'builtin__overflow__${op_name}_${kind.helper_suffix()}'
+	return 'overflow__${op_name}_${kind.helper_suffix()}'
 }
 
-// integer_overflow_sat_helper names the `builtin.overflow` helper that clamps
+// integer_overflow_sat_helper names the `overflow` helper that clamps
 // `typ` `op` to the limits of the type for `@[overflow: 'saturating']`, or none
 // when the function saturates nothing or the type has no saturating helper.
 fn (g &FlatGen) integer_overflow_sat_helper(typ &types.Type, op flat.Op) ?string {
@@ -28899,18 +28899,18 @@ fn (g &FlatGen) integer_overflow_sat_helper(typ &types.Type, op flat.Op) ?string
 		else { return none }
 	}
 	kind := g.checked_int_kind(typ) or { return none }
-	return 'builtin__overflow__${op_name}_${kind.helper_suffix()}'
+	return 'overflow__${op_name}_${kind.helper_suffix()}'
 }
 
 // CheckedIntKind is the width and signedness of an integer type that has
-// `builtin.overflow` helpers.
+// `overflow` helpers.
 struct CheckedIntKind {
 	unsigned bool
 	bits     int
 	name     u32
 }
 
-// helper_suffix is the type part of a `builtin.overflow` helper name, like `i64`.
+// helper_suffix is the type part of an `overflow` helper name, like `i64`.
 fn (k CheckedIntKind) helper_suffix() string {
 	prefix := if k.unsigned { 'u' } else { 'i' }
 	return '${prefix}${k.bits}'
@@ -29023,7 +29023,7 @@ fn (mut g FlatGen) gen_checked_integer_negation(id flat.NodeId, child_id flat.No
 		if kind.unsigned {
 			return false
 		}
-		g.write('builtin__overflow__neg_sat_${kind.helper_suffix()}(')
+		g.write('overflow__neg_sat_${kind.helper_suffix()}(')
 		g.gen_expr(child_id)
 		g.write(')')
 		return true
@@ -29040,7 +29040,7 @@ fn (mut g FlatGen) gen_checked_integer_negation(id flat.NodeId, child_id flat.No
 	if kind.unsigned {
 		return false
 	}
-	g.write('builtin__overflow__neg_${kind.helper_suffix()}(')
+	g.write('overflow__neg_${kind.helper_suffix()}(')
 	g.gen_expr(child_id)
 	g.write(')')
 	return true
@@ -29086,7 +29086,7 @@ fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Ty
 	reporter := if src.unsigned { 'cast_overflow_unsigned' } else { 'cast_overflow_signed' }
 	g.write('({ ${wide} ${tmp} = (${wide})(')
 	g.gen_cast_value_operand(arg_id, target_type)
-	g.write('); if (${check}) builtin__overflow__${reporter}(${tmp}, _S("${src.name_text()}"), _S("${dst.name_text()}")); (${ct})(${tmp}); })')
+	g.write('); if (${check}) overflow__${reporter}(${tmp}, _S("${src.name_text()}"), _S("${dst.name_text()}")); (${ct})(${tmp}); })')
 	return true
 }
 
@@ -29238,7 +29238,7 @@ fn (mut g FlatGen) gen_checked_integer_division_value(lhs_text string, rhs_tmp s
 		if kind := g.checked_int_kind(result_type) {
 			if !kind.unsigned {
 				op_name := if op in [.div, .div_assign] { 'div_sat' } else { 'mod_sat' }
-				g.write('(${c_type})builtin__overflow__${op_name}_${kind.helper_suffix()}(${lhs_text}, ${rhs_tmp})')
+				g.write('(${c_type})overflow__${op_name}_${kind.helper_suffix()}(${lhs_text}, ${rhs_tmp})')
 				return
 			}
 		}
@@ -29247,7 +29247,7 @@ fn (mut g FlatGen) gen_checked_integer_division_value(lhs_text string, rhs_tmp s
 		if kind := g.checked_int_kind(result_type) {
 			if !kind.unsigned {
 				op_name := if op in [.div, .div_assign] { 'div' } else { 'mod' }
-				g.write('(${c_type})builtin__overflow__${op_name}_${kind.helper_suffix()}(${lhs_text}, ${rhs_tmp})')
+				g.write('(${c_type})overflow__${op_name}_${kind.helper_suffix()}(${lhs_text}, ${rhs_tmp})')
 				return
 			}
 		}

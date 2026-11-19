@@ -19033,6 +19033,7 @@ const builtin_attribute_names = [
 	'only',
 	'optional',
 	'options',
+	'overflow',
 	'packed',
 	'params',
 	'patch',
