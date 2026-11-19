@@ -180,9 +180,12 @@ pub mut:
 	// font draws the text atlas: the same alpha blend as `alpha`, but with the
 	// font shader that reads the r8 atlas's red channel as coverage.
 	font render.Pipeline
+	// depth_alpha is the textured alpha pipeline with depth testing enabled,
+	// used by textured 3D meshes and billboards.
+	depth_alpha render.Pipeline
 }
 
-fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
+fn (mut container PipelineContainer) init_pipeline(r &render.Context, depth bool) {
 	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
 
 	// Alpha
@@ -253,6 +256,14 @@ fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 			}
 		}
 		container.font = r.make_pipeline_with_shader(font_pipdesc, render.make_font_shader())
+		if depth {
+			mut depth_alpha_desc := alpha_pipdesc
+			depth_alpha_desc.label = c'depth-alpha-pipeline'
+			depth_alpha_desc.depth.compare = .less_equal
+			depth_alpha_desc.depth.write_enabled = true
+			depth_alpha_desc.cull_mode = .back
+			container.depth_alpha = r.make_pipeline(depth_alpha_desc)
+		}
 	}
 }
 
@@ -390,7 +401,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 
 	// Pipeline
 	ctx.pipeline = &PipelineContainer{}
-	ctx.pipeline.init_pipeline(ctx.r)
+	ctx.pipeline.init_pipeline(ctx.r, ctx.config.depth)
 
 	ctx.timer = time.new_stopwatch()
 	ctx.update_timer = time.new_stopwatch()

@@ -127,8 +127,12 @@ The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
 custom geometry, `Mesh3D` plus `gen_mesh_cube/plane/sphere/cylinder` and
 `ctx.draw_mesh()` draw indexed triangles with a position, rotation and scale.
 Use `screen_to_world_ray()` with `ray_sphere()` or `ray_box()` for picking.
-More primitives are tracked in https://github.com/vlang/v/issues/32523.
-See `examples/gg/3d_cube.v`.
+`Material3D` adds a directional `Light3D`, fog and an optional texture;
+`draw_material_mesh()` and `draw_billboard()` render them. Lighting and fog
+are baked into vertex colors, so no custom shader or extra backend work is
+needed. More primitives are tracked in
+https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v` and
+`examples/gg/3d_material.v`.
 
 ## Multi-Window Applications
 

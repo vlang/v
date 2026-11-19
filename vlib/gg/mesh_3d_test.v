@@ -5,7 +5,9 @@ import math
 fn test_generated_meshes_are_indexed() {
 	cube := gen_mesh_cube(Vec3{2, 2, 2})
 	assert cube.valid()
-	assert cube.vertices.len == 8
+	assert cube.vertices.len == 24
+	assert cube.normals.len == 24
+	assert cube.uvs.len == 48
 	assert cube.indices.len == 36
 	plane := gen_mesh_plane(4, 4, 2)
 	assert plane.valid()
