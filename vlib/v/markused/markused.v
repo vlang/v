@@ -221,6 +221,16 @@ pub fn mark_used_checking_library_bodies(a &flat.FlatAst, mut tc types.TypeCheck
 		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil }, false)
 }
 
+// mark_used_checking_library_bodies_full_runtime is mark_used_checking_library_bodies
+// for a build that emits the whole runtime even for a program that only prints
+// literals, such as a debug build, whose backtrace printers call helpers that the
+// transform introduces after markused.
+pub fn mark_used_checking_library_bodies_full_runtime(a &flat.FlatAst, mut tc types.TypeChecker, parallel bool) (map[string]bool, bool) {
+	tc.library_body_convergence_complete = false
+	return mark_used_with_test_files(a, &tc, map[string]bool{}, map[string]bool{}, false, true,
+		false, false, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil }, false)
+}
+
 // reachable_const_exprs returns const initializer expressions referenced by the supplied
 // post-transform AST roots, including transitive const-to-const references.
 pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []flat.NodeId, root_modules []string, root_files []string) []flat.NodeId {

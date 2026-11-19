@@ -13888,6 +13888,11 @@ pub fn run(args []string) {
 			eprintln('  [ttime] mu pre             ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			mu_stage_sw.restart()
 		}
+		// markused gives a program that only prints literals the minimal runtime. A
+		// debug or coverage build emits the backtrace printers anyway, and the slices
+		// and appends in them become runtime calls only after markused.
+		debug_literal_full_runtime := (is_debug || coverage_dir.len > 0)
+			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if no_skip_unused {
 			// Every concrete function is used here, `recover` among them, so that cannot
 			// say whether the program uses it. Any of them can run (an object file can
@@ -13922,10 +13927,13 @@ pub fn run(args []string) {
 				used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			}
 			uses_generics = false
+		} else if library_body_frontiers && debug_literal_full_runtime {
+			used_fns, uses_generics = markused.mark_used_checking_library_bodies_full_runtime(a, mut pre_tc,
+				check_may_be_parallel)
 		} else if library_body_frontiers {
 			used_fns, uses_generics = markused.mark_used_checking_library_bodies(a, mut pre_tc,
 				check_may_be_parallel)
-		} else if effective_c_compiler == 'msvc'
+		} else if effective_c_compiler == 'msvc' || debug_literal_full_runtime
 			|| (target.os in ['windows', 'ios'] && markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)) {
 			// Retain MSVC backtrace dependencies and Windows' Unicode console output
 			// when the minimal literal path cannot replace the ordinary runtime.
@@ -13992,7 +14000,8 @@ pub fn run(args []string) {
 				}
 				// The types of those bodies can lead markused to more functions.
 				used_fns, uses_generics = v3_mark_used_for_program(a, mut pre_tc, scope_prealloc_markused,
-					effective_c_compiler == 'msvc', prefs.verbose, markused_decls)
+					effective_c_compiler == 'msvc' || debug_literal_full_runtime, prefs.verbose,
+					markused_decls)
 			}
 		}
 		if !isnil(markused_decls) {
