@@ -12739,10 +12739,19 @@ fn (mut tc TypeChecker) ownership_can_move_var(name string, target string, pos f
 			return false
 		}
 	}
-	if conflict := tc.ownership_borrow_conflict(name) {
-		if tc.ownership_release_borrow_if_dead(conflict, pos) {
-			return true
+	for _ in 0 .. 128 {
+		conflict := tc.ownership_borrow_conflict(name) or { return true }
+		if !tc.ownership_release_borrow_if_dead(conflict, pos) {
+			msg := if conflict.name == name {
+				'cannot move `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+			} else {
+				'cannot move `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+			}
+			tc.record_error(.assignment_mismatch, msg, pos)
+			return false
 		}
+	}
+	if conflict := tc.ownership_borrow_conflict(name) {
 		msg := if conflict.name == name {
 			'cannot move `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
 		} else {
@@ -13500,16 +13509,26 @@ fn (mut tc TypeChecker) ownership_report_moved(name string, info MovedVar, id fl
 }
 
 fn (mut tc TypeChecker) ownership_check_reassign(name string, pos flat.NodeId) {
-	conflict := tc.ownership_borrow_conflict(name) or { return }
-	if tc.ownership_release_borrow_if_dead(conflict, pos) {
-		return
+	for _ in 0 .. 128 {
+		conflict := tc.ownership_borrow_conflict(name) or { return }
+		if !tc.ownership_release_borrow_if_dead(conflict, pos) {
+			msg := if conflict.name == name {
+				'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+			} else {
+				'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+			}
+			tc.record_error(.assignment_mismatch, msg, pos)
+			return
+		}
 	}
-	msg := if conflict.name == name {
-		'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
-	} else {
-		'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+	if conflict := tc.ownership_borrow_conflict(name) {
+		msg := if conflict.name == name {
+			'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+		} else {
+			'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+		}
+		tc.record_error(.assignment_mismatch, msg, pos)
 	}
-	tc.record_error(.assignment_mismatch, msg, pos)
 }
 
 // ownership_borrower_base returns the root identifier of a borrower storage key
