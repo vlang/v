@@ -363,15 +363,19 @@ fn vgc_drain_mark_work() {
 		if obj_addr == 0 {
 			break
 		}
+		C.vgc_counter_add(&vgc_heap.gc_work_gets, u64(1))
 		span := vgc_find_span(voidptr(obj_addr))
 		if span == unsafe { nil } || span.noscan {
 			continue // noscan objects don't contain pointers
 		}
+		C.vgc_counter_add(&vgc_heap.gc_spans_visited, u64(1))
 		if span.has_ptrmap {
 			// Precise scanning: only check known pointer word offsets
+			C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
 			vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
 		} else {
 			// Conservative fallback: scan every word
+			C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
 			obj_size := uint(span.elem_size)
 			vgc_scan_range(obj_addr, obj_addr + obj_size)
 		}
@@ -458,6 +462,7 @@ fn vgc_work_put(addr uint) {
 			buf.obj[buf.nobj] = addr
 			buf.nobj++
 		}
+		C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
 		return
 	}
 
@@ -491,6 +496,7 @@ fn vgc_work_put(addr uint) {
 		buf.obj[buf.nobj] = addr
 		buf.nobj++
 	}
+	C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
 	C.vgc_mutex_unlock(&vgc_heap.work_lock)
 }
 
@@ -752,4 +758,29 @@ fn vgc_memory_use() uint {
 	used := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
 	unmapped := C.vgc_atomic_load_u64(&vgc_heap.unmapped_bytes)
 	return if used > unmapped { uint(used - unmapped) } else { uint(0) }
+}
+
+// VGCMarkStats holds GreenTea baseline metrics for the object-queue marker.
+// It is the P0 density proxy: with the current object queue, spans_visited
+// counts span visits (one per dequeued scanable object), so objs_scanned /
+// spans_visited is ~1. A span queue (P1) should push it above 1 on
+// high-fanout heaps.
+pub struct VGCMarkStats {
+pub:
+	work_puts     u64 // objects enqueued for scanning
+	work_gets     u64 // objects dequeued for scanning
+	spans_visited u64 // dequeued objects whose span was scanable
+	objs_scanned  u64 // objects actually scanned
+	gc_cycles     u64 // completed GC cycles
+}
+
+// vgc_mark_stats returns the current GreenTea baseline counters.
+pub fn vgc_mark_stats() VGCMarkStats {
+	return VGCMarkStats{
+		work_puts:     C.vgc_counter_load(&vgc_heap.gc_work_puts)
+		work_gets:     C.vgc_counter_load(&vgc_heap.gc_work_gets)
+		spans_visited: C.vgc_counter_load(&vgc_heap.gc_spans_visited)
+		objs_scanned:  C.vgc_counter_load(&vgc_heap.gc_objs_scanned)
+		gc_cycles:     C.vgc_atomic_load_u64(&vgc_heap.gc_cycle)
+	}
 }
