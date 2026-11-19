@@ -263,6 +263,13 @@ mut:
 	gc_stop_epoch   u32 // atomic: numbers the stop-the-world requests, skipping 0
 	// Sweep state
 	sweep_done u32 // atomic
+	// GreenTea baseline metrics (P0): object-queue density proxy.
+	// Counted with vgc_counter_add (cheap volatile add on 64-bit, atomic
+	// on 32-bit), read with vgc_counter_load. No behavior change.
+	gc_work_puts     u64 // objects enqueued for scanning
+	gc_work_gets     u64 // objects dequeued for scanning
+	gc_spans_visited u64 // dequeued objects whose span was scanable
+	gc_objs_scanned  u64 // objects actually scanned (precise or conservative)
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
 	gc_percent int // like Go's GOGC, default 100
 }
