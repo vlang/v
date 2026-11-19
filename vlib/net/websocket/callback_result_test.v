@@ -30,7 +30,9 @@ fn test_push_and_reply_with_void_and_reference_callbacks() ! {
 	mut server := websocket.new_server(.ip, 30019, '')
 	connected := chan bool{cap: 1}
 	server.on_attached(fn [connected] (mut sc websocket.ServerClient) {
-		spawn callback_pusher(mut sc, connected)
+		// The worker borrows sc, so finish it before the attached callback releases that borrow.
+		worker := spawn callback_pusher(mut sc, connected)
+		worker.wait()
 	})
 	server.on_message(fn (mut ws websocket.Client, msg &websocket.Message) {
 		ws.write_string(msg.payload.bytestr()) or { panic(err) }
