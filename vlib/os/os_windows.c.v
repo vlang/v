@@ -615,6 +615,19 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	mut sa := SecurityAttributes{}
 	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.b_inherit_handle = true
+	// CreateProcessW copies every inheritable handle open in this process at
+	// that instant into the child. Keep pipe creation, the spawn and the
+	// parent-side close of the write end atomic across threads, otherwise a
+	// concurrent spawn captures this pipe's write end and this call cannot see
+	// EOF until that unrelated child exits.
+	mut lock_held := true
+	mut lock_held_ptr := &lock_held
+	v_os_execute_lock()
+	defer {
+		if *lock_held_ptr {
+			v_os_execute_unlock()
+		}
+	}
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read), voidptr(&child_stdout_write),
 		voidptr(&sa), 0)
 	if !create_pipe_ok {
@@ -674,6 +687,10 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 		}
 	}
 	close_valid_handle(&child_stdout_write)
+	unsafe {
+		*lock_held_ptr = false
+	}
+	v_os_execute_unlock()
 	buf := [4096]u8{}
 	mut read_data := strings.new_builder(1024)
 	for {
