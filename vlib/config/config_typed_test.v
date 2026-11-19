@@ -625,6 +625,45 @@ fn test_config_nested_struct_env_beats_malformed_file() {
 	assert cfg.db.port == 8000
 }
 
+struct CustomEnvDbConfig {
+	host string @[env: 'VLIB_TEST_CUSTOM_DB_HOST']
+	port int    @[env: 'VLIB_TEST_CUSTOM_DB_PORT']
+}
+
+struct RequiredCustomEnvConfig {
+	db CustomEnvDbConfig @[required]
+}
+
+struct OptionalCustomEnvConfig {
+	db CustomEnvDbConfig
+}
+
+fn test_config_required_nested_struct_leaf_custom_env_counts() {
+	os.setenv('VLIB_TEST_CUSTOM_DB_HOST', 'custom.db', true)
+	os.setenv('VLIB_TEST_CUSTOM_DB_PORT', '9000', true)
+	defer {
+		os.unsetenv('VLIB_TEST_CUSTOM_DB_HOST')
+		os.unsetenv('VLIB_TEST_CUSTOM_DB_PORT')
+	}
+	cfg := load[RequiredCustomEnvConfig](env_prefix: 'VLIB_TEST_UNUSED_PREFIX_')!
+	assert cfg.db.host == 'custom.db', 'leaf custom env must satisfy required parent'
+	assert cfg.db.port == 9000
+	opt := load[OptionalCustomEnvConfig](env_prefix: 'VLIB_TEST_UNUSED_PREFIX_')!
+	assert opt.db.host == 'custom.db', 'leaf custom env must apply to optional parent'
+	assert opt.db.port == 9000
+}
+
+fn test_config_required_nested_struct_leaf_custom_env_missing() {
+	os.unsetenv('VLIB_TEST_CUSTOM_DB_HOST')
+	os.unsetenv('VLIB_TEST_CUSTOM_DB_PORT')
+	load[RequiredCustomEnvConfig](env_prefix: 'VLIB_TEST_UNUSED_PREFIX_') or {
+		assert err.msg().contains('`db`'), err.msg()
+		assert err.msg().contains('[missing]'), err.msg()
+		return
+	}
+	assert false, 'unset leaf custom env must report missing required parent'
+}
+
 fn test_config_scalar_cli_beats_malformed_file() {
 	path := os.join_path(os.temp_dir(), 'v_config_scalar_shape.toml')
 	os.write_file(path, 'port = []\n') or {

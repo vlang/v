@@ -178,7 +178,7 @@ fn load_into[T](mut cfg T, cli_prefix string, toml_prefix string, env_prefix str
 				}
 			}
 			if has_attr(field.attrs, 'required')
-				&& !subtree_provided(full_name, toml_key, child_env_prefix, cli, docs) {
+				&& !subtree_provided(full_name, toml_key, child_env_prefix, cli, docs, cfg.$(field.name)) {
 				return ConfigError{
 					setting:  toml_key
 					source:   'missing'
@@ -197,28 +197,52 @@ fn load_into[T](mut cfg T, cli_prefix string, toml_prefix string, env_prefix str
 }
 
 // subtree_provided reports whether any source provides a value under the
-// nested table at toml_parent_key.
-fn subtree_provided(cli_full_name string, toml_parent_key string, child_env_prefix string, cli map[string]string, docs []toml.Doc) bool {
-	cli_base := '--' + cli_full_name.replace('_', '-')
-	for k in cli.keys() {
-		if k == cli_base || k.starts_with(cli_base + '-') || k.starts_with(cli_base + '.') {
-			return true
-		}
-	}
-	dot_cli := ('--' + toml_parent_key).replace('_', '-')
-	for k in cli.keys() {
-		if k == dot_cli || k.starts_with(dot_cli + '-') || k.starts_with(dot_cli + '.') {
-			return true
-		}
-	}
-	for k in os.environ().keys() {
-		if k.starts_with(child_env_prefix) {
-			return true
-		}
-	}
+// nested table at toml_parent_key. It mirrors the leaf resolution in the
+// loaders (cli full and dotted names, env via @[env] or prefix + leaf, file
+// leaf or malformed ancestor), recursing into nested structs with the same
+// intermediate @[env] prefix handling as load_into. Any provided leaf counts;
+// a present-but-malformed parent table also counts, so shape errors surface
+// from the loaders instead of a parent-level [missing] diagnostic.
+fn subtree_provided[T](cli_full_name string, toml_parent_key string, child_env_prefix string, cli map[string]string, docs []toml.Doc, child T) bool {
 	for doc in docs {
 		if _ := doc.value_opt(toml_parent_key) {
 			return true
+		}
+	}
+	$for field in T.fields {
+		fname := field.name
+		leaf_full := cli_full_name + '_' + fname
+		leaf_toml := toml_parent_key + '.' + fname
+		$if field.is_struct {
+			mut nested_env := child_env_prefix + fname.to_upper() + '_'
+			if custom := attr_arg(field.attrs, 'env') {
+				nested_env = custom
+				if !nested_env.ends_with('_') {
+					nested_env += '_'
+				}
+			}
+			if subtree_provided(leaf_full, leaf_toml, nested_env, cli, docs, child.$(field.name)) {
+				return true
+			}
+		} $else {
+			if _ := cli['--' + leaf_full.replace('_', '-')] {
+				return true
+			}
+			if _ := cli['--' + leaf_toml.replace('_', '-')] {
+				return true
+			}
+			env_name := attr_arg(field.attrs, 'env') or { child_env_prefix + fname.to_upper() }
+			if _ := os.getenv_opt(env_name) {
+				return true
+			}
+			for doc in docs {
+				if _ := doc.value_opt(leaf_toml) {
+					return true
+				}
+				if _ := malformed_parent_key(leaf_toml, doc) {
+					return true
+				}
+			}
 		}
 	}
 	return false
