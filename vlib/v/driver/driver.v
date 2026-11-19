@@ -17108,8 +17108,12 @@ Please install the corresponding development package/libraries and make sure the
 			os.rm(temporary_object) or {}
 		}
 		// C debug information names these exact sources, including the per-build src.c.
-		// Keep them available for the debugger instead of retaining only a renamed copy.
-		if !is_c_debug {
+		// Keep them available for the debugger instead of retaining only a renamed copy,
+		// unless the program is removed once it has run, which `-cg run` does.
+		c_debug_program_removed := (should_run && remove_binary_after_run)
+			|| (!should_run && !skip_running && test_files.len > 0
+				&& (!explicit_output || is_checker_fixture || show_test_stats))
+		if !is_c_debug || c_debug_program_removed {
 			for source_flag in generated_c_flags {
 				clean := source_flag.trim_space()
 				if c_generated_native_source_context(clean, cc_dir) {
