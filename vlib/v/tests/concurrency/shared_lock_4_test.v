@@ -29,8 +29,9 @@ fn test_shared_lock() {
 	shared z := &St{
 		a: read_threads
 	}
+	mut readers := []thread{cap: read_threads}
 	for _ in 0 .. read_threads {
-		spawn x.f(shared z)
+		readers << spawn x.f(shared z)
 	}
 	for i in 0 .. writes {
 		lock x { // wait for ongoing reads to finish, don't start new ones
@@ -40,16 +41,8 @@ fn test_shared_lock() {
 		} // now new reads are possible again
 		time.sleep(20 * time.millisecond)
 	}
-	// wait until all read threads are finished
-	for finished := false; true; {
-		mut rr := 0
-		rlock z {
-			rr = z.a
-			finished = z.a == 0
-		}
-		if finished {
-			break
-		}
-		time.sleep(100 * time.millisecond)
+	readers.wait()
+	rlock z {
+		assert z.a == 0
 	}
 }
