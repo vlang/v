@@ -121,7 +121,8 @@ depth testing with backface culling; `ctx.end_3d()` restores the regular 2D
 painter-order pipelines, so HUD and text can be drawn afterwards.
 
 The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
-`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`. More
+`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`. Use
+`screen_to_world_ray()` with `ray_sphere()` or `ray_box()` for picking. More
 primitives and mesh support are tracked in
 https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v`.
 

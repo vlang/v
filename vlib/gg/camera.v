@@ -29,6 +29,11 @@ pub fn (a Vec3) scale(s f32) Vec3 {
 	return Vec3{a.x * s, a.y * s, a.z * s}
 }
 
+// dot returns the dot product of two vectors.
+pub fn (a Vec3) dot(b Vec3) f32 {
+	return a.x * b.x + a.y * b.y + a.z * b.z
+}
+
 // cross returns the cross product of two vectors.
 pub fn (a Vec3) cross(b Vec3) Vec3 {
 	return Vec3{
