@@ -4070,8 +4070,8 @@ fn main() {
 	println('ok')
 }
 ")
-	// TODO: this should compile; today the Insert-branch `query` drop
-	// is emitted in the Delete/Select branch (`query` undeclared).
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('query'), res.output
+	// The Insert-branch `query` drop must stay in the Insert branch. Before the
+	// fix, the duplicated multi-type arm shifted the checker's scope-drop index
+	// and emitted `(query).body` in the Delete/Select branch (undeclared).
+	assert res.exit_code == 0, res.output
 }
