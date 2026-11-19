@@ -1036,8 +1036,19 @@ fn vgc_malloc_typed_opts(n uint, ptrmap u64, ptr_words u8, zero_fill bool) voidp
 		return unsafe { nil }
 	}
 
-	// Set precise pointer map on span (first typed allocation wins)
-	if ptrmap != 0 && !span.has_ptrmap {
+	// Precise maps are per-span: equal-sized structs with different pointer
+	// offsets share a size class and span. If a new allocation disagrees with
+	// the installed map (or is untyped), revert the whole span to conservative
+	// scanning so no live pointer is missed. Only install a map on a fresh span.
+	if span.has_ptrmap {
+		if ptrmap == 0 || ptrmap != span.ptrmap || ptr_words != span.ptr_words {
+			unsafe {
+				(&VGC_Span(span)).has_ptrmap = false
+				(&VGC_Span(span)).ptrmap = 0
+				(&VGC_Span(span)).ptr_words = 0
+			}
+		}
+	} else if ptrmap != 0 && span.alloc_count == 0 {
 		unsafe {
 			(&VGC_Span(span)).has_ptrmap = true
 			(&VGC_Span(span)).ptrmap = ptrmap
