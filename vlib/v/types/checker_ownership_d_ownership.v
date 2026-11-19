@@ -12674,6 +12674,9 @@ fn (mut tc TypeChecker) ownership_can_move_var(name string, target string, pos f
 		}
 	}
 	if conflict := tc.ownership_borrow_conflict(name) {
+		if tc.ownership_release_borrow_if_dead(conflict, pos) {
+			return true
+		}
 		msg := if conflict.name == name {
 			'cannot move `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
 		} else {
