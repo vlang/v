@@ -42,6 +42,14 @@ Round-trip guarantee: `print(parse(print(m))) == print(m)`, and the
 parsed module passes the structured verifier (`optimize.verify`) when
 the original does.
 
+Notes:
+
+- `global` lines carry the element type (`GlobalVar.typ`); the global
+  SSA value holds a pointer to it, restored on parse.
+- Types keep explicit identities: every entry is registered verbatim,
+  and the interning cache is rebuilt first-ID-wins, so distinct
+  registered types with one shape stay distinct.
+
 ## Conventions for frontends
 
 - All instruction operands are IDs (`%vN` values, `@bN` blocks).

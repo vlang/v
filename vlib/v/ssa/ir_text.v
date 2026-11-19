@@ -1746,12 +1746,19 @@ fn materialize_text_module(tm TextModule) !&Module {
 			return error('ssa: type materialized out of order')
 		}
 	}
+	rebuild_text_type_cache(mut m)
 	for id in 1 .. tm.max_value_id + 1 {
 		if id !in tm.value_defs {
 			return error('ssa: value %v${id} has no definition')
 		}
 		def := tm.value_defs[id]
-		new_id := m.add_value(def.kind, def.typ, def.name, def.index)
+		mut typ := def.typ
+		if def.kind == .global {
+			// The `global` line carries the element type (GlobalVar.typ);
+			// the global SSA value holds a pointer to it (see add_global).
+			typ = m.type_store.get_ptr(def.typ)
+		}
+		new_id := m.add_value(def.kind, typ, def.name, def.index)
 		if int(new_id) != id {
 			return error('ssa: value materialized out of order')
 		}
@@ -1967,33 +1974,59 @@ fn validate_text_instr(m &Module, tm TextModule, ins TextInstrDef) ! {
 	}
 }
 
-// materialize_text_type recreates one type with the same interning call the
-// builder used, so type IDs match the printed order exactly.
+// materialize_text_type recreates one type with its explicit identity, so
+// type IDs match the printed order exactly. Every entry is registered
+// verbatim: interned getters (get_tuple and friends) must not run here,
+// since they would collapse distinct registered types sharing one shape
+// (for example two empty structs). The interning cache is rebuilt
+// afterwards by rebuild_text_type_cache, first ID wins.
 fn materialize_text_type(mut m Module, t Type) !TypeID {
-	match t.kind {
-		.int_t {
-			if t.is_unsigned {
-				return m.type_store.get_uint(t.width)
+	return m.type_store.register(t)
+}
+
+// rebuild_text_type_cache repopulates the interning cache from the
+// materialized types, first ID wins. Later get_* calls (such as the
+// global pointer restoration) then hit the existing IDs instead of
+// registering duplicates.
+fn rebuild_text_type_cache(mut m Module) {
+	for i, t in m.type_store.types {
+		match t.kind {
+			.int_t {
+				key := if t.is_unsigned { 'u${t.width}' } else { 'i${t.width}' }
+				if key !in m.type_store.cache {
+					m.type_store.cache[key] = TypeID(i)
+				}
 			}
-			return m.type_store.get_int(t.width)
-		}
-		.float_t {
-			return m.type_store.get_float(t.width)
-		}
-		.ptr_t {
-			return m.type_store.get_ptr(t.elem_type)
-		}
-		.array_t {
-			return m.type_store.get_array(t.elem_type, t.len)
-		}
-		.struct_t {
-			if t.field_names.len == 0 {
-				return m.type_store.get_tuple(t.fields)
+			.float_t {
+				key := 'f${t.width}'
+				if key !in m.type_store.cache {
+					m.type_store.cache[key] = TypeID(i)
+				}
 			}
-			return m.type_store.register(t)
-		}
-		else {
-			return m.type_store.register(t)
+			.ptr_t {
+				key := 'p${t.elem_type}'
+				if key !in m.type_store.cache {
+					m.type_store.cache[key] = TypeID(i)
+				}
+			}
+			.array_t {
+				key := 'a${t.elem_type}_${t.len}'
+				if key !in m.type_store.cache {
+					m.type_store.cache[key] = TypeID(i)
+				}
+			}
+			.struct_t {
+				if t.field_names.len == 0 {
+					mut key := 'tuple'
+					for f in t.fields {
+						key += '_${f}'
+					}
+					if key !in m.type_store.cache {
+						m.type_store.cache[key] = TypeID(i)
+					}
+				}
+			}
+			else {}
 		}
 	}
 }

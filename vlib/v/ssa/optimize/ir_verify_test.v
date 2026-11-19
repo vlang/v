@@ -89,3 +89,23 @@ fn test_verify_accepts_text_round_trip() {
 	errors := verify(m2)
 	assert errors.len == 0
 }
+
+fn test_verify_accepts_global_load_store_text_round_trip() {
+	mut m := ssa.Module.new()
+	void_t := ssa.TypeID(0)
+	i32_type := m.type_store.get_int(32)
+	g := m.add_global('counter', i32_type)
+	fid := m.new_function('main', i32_type)
+	entry := m.add_block(fid, 'entry')
+	loaded := m.add_instr(.load, entry, i32_type, [g])
+	one := m.get_or_add_const(i32_type, '1')
+	next := m.add_instr(.add, entry, i32_type, [loaded, one])
+	m.add_instr(.store, entry, void_t, [next, g])
+	m.add_instr(.ret, entry, i32_type, [next])
+	assert verify(m).len == 0
+	text := ssa.module_to_text(m)!
+	mut m2 := ssa.module_from_text(text)!
+	assert ssa.module_to_text(m2)! == text
+	errors := verify(m2)
+	assert errors.len == 0
+}

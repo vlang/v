@@ -162,3 +162,50 @@ fn test_ir_text_rejects_bad_input() {
 	}
 	assert false, 'expected error for bad type'
 }
+
+fn test_ir_text_global_load_store_round_trip() {
+	mut m := Module.new()
+	void_t := TypeID(0)
+	i32_type := m.type_store.get_int(32)
+	g := m.add_global('counter', i32_type)
+	// The global SSA value holds a pointer to the element type.
+	assert m.type_store.types[m.values[g].typ].kind == .ptr_t
+	fid := m.new_function('main', i32_type)
+	entry := m.add_block(fid, 'entry')
+	loaded := m.add_instr(.load, entry, i32_type, [g])
+	one := m.get_or_add_const(i32_type, '1')
+	next := m.add_instr(.add, entry, i32_type, [loaded, one])
+	_ = m.add_instr(.store, entry, void_t, [next, g])
+	_ = m.add_instr(.ret, entry, i32_type, [next])
+	text1 := module_to_text(m)!
+	mut m2 := module_from_text(text1)!
+	text2 := module_to_text(m2)!
+	assert text1 == text2
+	// Pointer type survived the round-trip (printer shows element type).
+	assert m2.values[g].typ == m.values[g].typ
+	assert m2.type_store.types[m2.values[g].typ].kind == .ptr_t
+	assert m2.globals.len == 1
+	assert m2.globals[0].typ == i32_type
+}
+
+fn test_ir_text_distinct_empty_structs_round_trip() {
+	mut m := Module.new()
+	empty_a := m.type_store.register(Type{
+		kind:   .struct_t
+		fields: []TypeID{}
+	})
+	empty_b := m.type_store.register(Type{
+		kind:   .struct_t
+		fields: []TypeID{}
+	})
+	assert empty_a != empty_b
+	m.c_struct_names[int(empty_a)] = 'EmptyA'
+	m.c_struct_names[int(empty_b)] = 'EmptyB'
+	text1 := module_to_text(m)!
+	mut m2 := module_from_text(text1)!
+	text2 := module_to_text(m2)!
+	assert text1 == text2
+	assert m2.type_store.types.len == m.type_store.types.len
+	assert m2.c_struct_names[int(empty_a)] == 'EmptyA'
+	assert m2.c_struct_names[int(empty_b)] == 'EmptyB'
+}
