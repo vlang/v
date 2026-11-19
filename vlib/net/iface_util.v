@@ -12,20 +12,42 @@ fn read_u8_at(p &u8, off int) u8 {
 }
 
 // read_u16_at reads a little-endian u16 at byte offset off from base.
+// Use it only for network wire bytes (ports, IPv4 octets); never for C
+// struct integer fields, which are stored in native byte order.
 fn read_u16_at(p &u8, off int) u16 {
 	unsafe {
 		return u16(p[off]) | u16(p[off + 1]) << 8
 	}
 }
 
+// read_u16_native_at reads a native-endian u16 at byte offset off from base.
+// Use it for C struct fields such as sa_family_t, which is a native unsigned
+// short: on big-endian hosts (s390x, ppc) family 2 is stored as `00 02`,
+// while read_u16_at would misreport it as 512.
+fn read_u16_native_at(p &u8, off int) u16 {
+	unsafe {
+		return *(&u16(p + off))
+	}
+}
+
 // read_u32_at reads a little-endian u32 at byte offset off from base.
+// Same wire-bytes-only restriction as read_u16_at.
 fn read_u32_at(p &u8, off int) u32 {
 	unsafe {
 		return u32(p[off]) | u32(p[off + 1]) << 8 | u32(p[off + 2]) << 16 | u32(p[off + 3]) << 24
 	}
 }
 
+// read_u32_native_at reads a native-endian u32 at byte offset off from base.
+// Use it for C struct fields such as native int/enum values.
+fn read_u32_native_at(p &u8, off int) u32 {
+	unsafe {
+		return *(&u32(p + off))
+	}
+}
+
 // read_u64_at reads a little-endian u64 at byte offset off from base.
+// Same wire-bytes-only restriction as read_u16_at.
 fn read_u64_at(p &u8, off int) u64 {
 	unsafe {
 		mut v := u64(0)
@@ -36,12 +58,19 @@ fn read_u64_at(p &u8, off int) u64 {
 	}
 }
 
+// read_u64_native_at reads a native-endian u64 at byte offset off from base.
+fn read_u64_native_at(p &u8, off int) u64 {
+	unsafe {
+		return *(&u64(p + off))
+	}
+}
+
 // read_ptr_at reads a native pointer at byte offset off from base.
 fn read_ptr_at(p &u8, off int) u64 {
 	if sizeof(voidptr) == 8 {
-		return read_u64_at(p, off)
+		return read_u64_native_at(p, off)
 	}
-	return u64(read_u32_at(p, off))
+	return u64(read_u32_native_at(p, off))
 }
 
 // copy_bytes_at copies n bytes at byte offset off from base.

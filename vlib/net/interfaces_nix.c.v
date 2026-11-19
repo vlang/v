@@ -77,7 +77,9 @@ fn sockaddr_to_string(sa &u8) string {
 			return canonical_ipv6_from_bytes(copy_bytes_at(sa, 8, 16)) or { '' }
 		}
 	} $else {
-		family := read_u16_at(sa, 0)
+		// sa_family_t is a native-endian unsigned short; the LE wire
+		// reader would misdecode it on big-endian hosts (s390x, ppc).
+		family := read_u16_native_at(sa, 0)
 		if int(family) == C.AF_INET {
 			// sockaddr_in: family(2) port(2) addr(4); network order.
 			return format_v4(read_u32_at(sa, 4))

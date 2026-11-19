@@ -68,7 +68,8 @@ pub fn interfaces() ![]Interface {
 		for cur != 0 {
 			base := &u8(cur)
 			name := wide_to_string(read_ptr_at(base, off_fname))
-			up := read_u32_at(base, off_oper) == u32(iface_oper_status_up)
+			// OperStatus is a native C int field, not wire bytes.
+			up := read_u32_native_at(base, off_oper) == u32(iface_oper_status_up)
 			mut iface := Interface{ name: name, up: up }
 			mut u := read_ptr_at(base, off_unicast)
 			for u != 0 {
@@ -110,7 +111,8 @@ fn sockaddr_to_string(sa u64) string {
 		return ''
 	}
 	base := voidptr(sa)
-	family := read_u16_at(base, 0)
+	// ADDRESS_FAMILY is a native-endian u16, like sa_family_t on POSIX.
+	family := read_u16_native_at(base, 0)
 	if int(family) == 2 { // AF_INET
 		return format_v4(read_u32_at(base, 4))
 	}
