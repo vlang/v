@@ -2964,7 +2964,8 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
 		|| name.starts_with('map.')
 		|| name in ['map_map_eq', 'map_map_ne', 'VMapData.free']
-		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
+		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos',
+			'eprint_backtrace_frame']
 }
 
 // skip_source_fn_in_module supports skip source fn in module handling for Builder.
