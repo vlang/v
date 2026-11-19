@@ -26,6 +26,40 @@ fn vup_test_tool(name string) !string {
 	return tool
 }
 
+fn vup_host_fixture() !string {
+	tool := os.join_path(vup_test_tools_dir, 'vup_host_fixture')
+	if os.is_executable(tool) {
+		return tool
+	}
+	os.mkdir_all(vup_test_tools_dir)!
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	deferred := 'defer_cleanup := $if windows {'
+	arm64 := '$if windows && arm64 {'
+	assert source.count(deferred) == 1
+	assert source.count(arm64) == 3
+	assert source.count('@VCURRENTHASH') == 1
+	// Simulate the platforms per invocation and match the fallback fixture's revision.
+	file := '${tool}.v'
+	os.write_file(file, source.replace_each([
+		deferred,
+		'defer_cleanup := if os.getenv("VUP_TEST_HOST") == "windows" {',
+		'$else {\n\t\tfalse',
+		'else {\n\t\tfalse',
+		arm64,
+		'if os.getenv("VUP_TEST_HOST") == "windows-arm64" {',
+		'$else {\n\t\tcommand = if',
+		'else {\n\t\tcommand = if',
+		'@VCURRENTHASH',
+		"'abcdef0'",
+	]))!
+	build := os.exec([vexe, '-o', tool, file])
+	if build.exit_code != 0 {
+		os.rm(tool) or {}
+		return error('could not build the vup host fixture: ${build.output}')
+	}
+	return tool
+}
+
 // held_back_line and held_back_hint are what `v up` says about the skills it
 // leaves alone, whether they were edited or have no install record.
 const held_back_line = '> skills: left alone because they were edited locally or have no install record: '
@@ -346,23 +380,15 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 	}
 	root, home, _, bin_dir := vup_report_fixture()!
 	defer { os.rmdir_all(root) or {} }
-	// Exercise the Windows finish path on this host; the cross-generation test
-	// separately checks that the unmodified Windows source compiles.
-	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
-	assert source.count('defer_cleanup := $if windows {') == 1
-	modified := source.replace('defer_cleanup := $if windows {', 'defer_cleanup := $if !windows {')
-	file := os.join_path(root, 'vup_deferred.v')
-	os.write_file(file, modified)!
-	tool := os.join_path(root, 'vup_deferred')
-	build := os.exec([vexe, '-o', tool, file])
-	assert build.exit_code == 0, build.output
+	tool := vup_host_fixture()!
+	command := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VUP_TEST_HOST=windows', 'VUP_DEFER_CACHE_WIPE=1', tool]
 	install(root, os.join_path(home, '.agents', 'skills'), 'alpha')!
 	rebundle(root, 'alpha')!
 	log := os.join_path(root, 'calls.log')
 	for options in [[]string{}, ['-skip_current'], ['-prod'], ['-h'], ['--unknown']] {
 		os.write_file(log, '')!
-		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
-			'VUP_DEFER_CACHE_WIPE=1', tool, ...options])
+		result := os.exec([...command, ...options])
 		expected := if options.len == 0 || '-h' in options {
 			0
 		} else if '--unknown' in options {
@@ -384,8 +410,7 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 	for make_name in ['make', 'gmake'] {
 		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\nexit 9\n')!
 	}
-	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
-		'VUP_DEFER_CACHE_WIPE=1', tool])
+	failed := os.exec(command)
 	assert failed.exit_code == 1, failed.output
 	assert !failed.output.contains('Current V version:') || failed.output.contains('Updating TCC *failed*.'), failed.output
 }
@@ -503,20 +528,14 @@ fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
 	}
 	root, home, _, bin_dir := vup_report_fixture()!
 	defer { os.rmdir_all(root) or {} }
-	// Exercise the ARM64 command path with process fixtures on this host. The
-	// Windows C-generation test also checks the unmodified target-specific code.
-	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
-	assert source.count('$if windows && arm64 {') == 3
-	file := os.join_path(root, 'vup_arm64.v')
-	os.write_file(file, source.replace('$if windows && arm64 {', '$if !windows {'))!
-	tool := os.join_path(root, 'vup_arm64')
-	build := os.exec([vexe, '-o', tool, file])
-	assert build.exit_code == 0, build.output
+	tool := vup_host_fixture()!
+	command := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VUP_TEST_HOST=windows-arm64', tool, '-skip_v_self']
 	bootstrap_log := os.join_path(root, 'bootstrap.log')
 	bootstrap := os.join_path(root, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')
 	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\n' +
 		'printf "%s\\n" "\$@" > ' + os.quoted_path(bootstrap_log) + '\nexit 0\n')!
-	result := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	result := os.exec(command)
 	assert result.exit_code == 0, result.output
 	assert os.read_file(bootstrap_log)!.split_into_lines() == ['-NoProfile', '-ExecutionPolicy',
 		'Bypass', '-File', bootstrap]
@@ -524,7 +543,7 @@ fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
 	assert !calls.contains('make'), calls
 	assert !calls.contains('latest_tcc'), calls
 	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\necho "ARM64 bootstrap failed"\nexit 9\n')!
-	failed := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	failed := os.exec(command)
 	assert failed.exit_code != 0, failed.output
 	assert failed.output.contains('ARM64 bootstrap failed'), failed.output
 	assert failed.output.contains('Recompiling V *failed*.'), failed.output
@@ -748,15 +767,7 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 		os.rmdir_all(test_root) or {}
 	}
 
-	// Give the test tool a known embedded hash so the fallback and checkout can
-	// appear current while the primary compiler is missing.
-	vup_source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
-	assert vup_source.count('@VCURRENTHASH') == 1
-	test_source := os.join_path(test_root, 'vup.v')
-	os.write_file(test_source, vup_source.replace('@VCURRENTHASH', "'abcdef0'"))!
-	tool := os.join_path(test_root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', test_source])
-	assert build.exit_code == 0, build.output
+	tool := vup_host_fixture()!
 
 	git_refs := os.join_path(test_root, '.git', 'refs', 'heads')
 	os.mkdir_all(git_refs)!
@@ -787,7 +798,7 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 
 	path := '${bin_dir}:${os.getenv('PATH')}'
 	primary_vexe := os.join_path(os.real_path(test_root), 'v')
-	result := os.exec(['env', 'PATH=' + '${path}',
+	result := os.exec(['env', 'PATH=' + '${path}', 'VUP_TEST_HOST=unix',
 		'VEXE=' + '${os.join_path(test_root, 'v1_fallback')}', '${tool}'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('`${primary_vexe}` is missing, trying `make` to restore it...'), result.output
