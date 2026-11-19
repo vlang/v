@@ -304,7 +304,14 @@ fn test_filelock_helpers_are_inlined_in_generated_c() {
 	assert c_source.contains('#ifndef V_OS_FILELOCK_HELPERS_H')
 	assert !c_source.contains('v_filelock_status')
 	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl', 'import os.filelock\n\nfn C.v_filelock_lock(${fd_type}, ${lock_int_type}, ${lock_int_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_unlock(${fd_type}, u64, u64) ${lock_int_type}\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(${invalid_handle}, 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
-	assert status_source.contains('int v_filelock_status(')
+	// A user function with the helpers' prefix keeps its own declaration. A Windows
+	// unit includes the SDK headers, so cgen leaves bodyless C functions of a file
+	// without `#include` or `#flag` to them and writes no prototype on that target.
+	$if windows {
+		assert !status_source.contains('v_filelock_status(void) {'), status_source
+	} $else {
+		assert status_source.contains('int v_filelock_status(')
+	}
 	out := run_good(v3_bin, 'filelock_user_names_not_helpers', 'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
 	assert out == '7'
 }
