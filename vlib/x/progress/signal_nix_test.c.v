@@ -1,24 +1,51 @@
 import os
+import time
+import x.progress
+
+const progress_signal_probe = '--vtest-progress-signal'
+
+#include <signal.h>
+
+fn C.raise(i32) i32
+
+fn app_handler(_ os.Signal) {
+	exit(42)
+}
+
+fn run_progress_signal_probe(mode string) {
+	sig := if mode.ends_with('term') { os.Signal.term } else { os.Signal.int }
+	if mode.starts_with('handler') {
+		os.signal_opt(sig, app_handler) or { panic(err) }
+	} else if mode.starts_with('ignore') {
+		os.signal_ignore(sig)
+	}
+	mut mb := progress.MultiBar.new(force: true, delay: 5 * time.millisecond)
+	mut sp := mb.add_spinner(text: 'work')
+	mb.start()
+	time.sleep(30 * time.millisecond)
+	C.raise(i32(sig))
+	time.sleep(30 * time.millisecond)
+	sp.finish()
+	mb.wait()
+}
+
+fn testsuite_begin() {
+	if os.args.len == 3 && os.args[1] == progress_signal_probe {
+		run_progress_signal_probe(os.args[2])
+		exit(0)
+	}
+}
 
 // The display hides the cursor, so it must give it back however the program
 // ends, while leaving the application's own signal handling alone (the same
 // contract as term.show_cursor_on_exit).
 fn test_cursor_is_restored_and_application_signal_handling_is_preserved() {
-	$if windows {
-		return
-	}
-	fixture := os.join_path(@VMODROOT, 'vlib', 'x', 'progress', 'testdata', 'signal_fixture.c.v')
-	binary := os.join_path(os.vtmp_dir(), 'x_progress_signal_${os.getpid()}')
-	defer {
-		os.rm(binary) or {}
-	}
-	compiled := os.exec([@VEXE, '-o', binary, fixture])
-	assert compiled.exit_code == 0, compiled.output
+	binary := os.executable()
 	hide := '\x1b[?25l'
 	show := '\x1b[?25h'
 	for mode in ['default-int', 'default-term', 'handler-int', 'handler-term', 'ignore-int',
 		'ignore-term'] {
-		result := os.exec([binary, mode])
+		result := os.exec([binary, progress_signal_probe, mode])
 		assert result.output.contains(hide), '${mode}: ${result.output}'
 		assert result.output.contains(show), '${mode}: ${result.output}'
 		if mode.starts_with('default') {
