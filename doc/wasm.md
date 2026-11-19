@@ -121,6 +121,7 @@ Integer literals retain their width until an operation or comparison selects its
 including full-width constants in production optimization. Numeric assignments and arguments
 convert to their declared types before optimization, for both direct calls and function values.
 Floating-point unary negation preserves signed zero in both unoptimized and optimized output.
+Runtime shifts return zero when the count is negative or reaches the operand type width.
 Constants and global initializers in moduleless scripts keep the script module scope after imports.
 Implicit-main scripts retain imported functions called by their top-level statements. User
 functions retain their bodies when their names overlap synthetic runtime helpers.
