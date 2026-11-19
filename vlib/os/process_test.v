@@ -7,7 +7,7 @@ const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
 const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 const delayed_output_exe_filename = os.join_path(tfolder, 'delayed_output.exe')
-const delayed_output_source_filename = os.join_path(tfolder, 'delayed_output.v')
+const pipe_output_exe_filename = os.join_path(tfolder, 'pipe_output.exe')
 const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
 const utf16le_output_exe_filename = os.join_path(tfolder, 'utf16le_output.exe')
 const stdin_exit_exe_filename = os.join_path(tfolder, 'stdin_exit.exe')
@@ -19,6 +19,16 @@ module main
 
 import io
 import os
+import time
+
+fn wait_for_stdin() {
+	// Bound the wait even if the parent is stuck reading from stdout.
+	spawn fn () {
+		time.sleep(5 * time.second)
+		exit(2)
+	}()
+	_ = os.get_raw_line()
+}
 
 fn main() {
 	match os.file_name(os.args[0]) {
@@ -54,29 +64,31 @@ fn main() {
 				println(arg)
 			}
 		}
+		"delayed_output.exe" {
+			if os.args[1..] == ["--wait-for-stdin"] {
+				wait_for_stdin()
+				println("late")
+			}
+		}
+		"pipe_output.exe" {
+			unbuffer_stdout()
+			println("stdout, start")
+			eprintln("stderr, start")
+			for i in 1 .. 5 {
+				println("stdout, " + i.str())
+				eprintln("stderr, " + i.str())
+			}
+			if os.args[1..] == ["--wait-for-stdin"] {
+				wait_for_stdin()
+			}
+		}
+		"exact_tool.exe.exe", "pathext_tool.exe" {
+			// The executable lookup tests expect these decoys to exit with 0.
+		}
 		else {
 			panic("unknown process I/O fixture mode")
 		}
 	}
-}
-'
-
-const delayed_output_source_code = '
-module main
-import os
-import time
-
-fn main() {
-	if os.args[1..] != ["--wait-for-stdin"] {
-		return
-	}
-	// Bound the wait even if the parent is stuck reading from stdout.
-	spawn fn () {
-		time.sleep(5 * time.second)
-		exit(2)
-	}()
-	_ = os.get_raw_line()
-	println("late")
 }
 '
 
@@ -102,13 +114,9 @@ fn testsuite_begin() {
 	assert os.exists(stdin_copy_exe_filename)
 	// Dispatch by executable name so every fixture receives its original arguments.
 	for fixture in [echo_process_exe_filename, utf16le_output_exe_filename, stdin_exit_exe_filename,
-		argv_echo_exe_filename] {
+		argv_echo_exe_filename, delayed_output_exe_filename, pipe_output_exe_filename] {
 		os.cp(stdin_copy_exe_filename, fixture)!
 	}
-
-	os.write_file(delayed_output_source_filename, delayed_output_source_code)!
-	os.system_args([vexe, '-o', delayed_output_exe_filename, delayed_output_source_filename])
-	assert os.exists(delayed_output_exe_filename)
 }
 
 fn testsuite_end() {
@@ -450,8 +458,7 @@ fn test_wait() {
 
 fn test_slurping_output() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '600', '-period_ms', '50'])
+	mut p := os.new_process(pipe_output_exe_filename)
 	p.set_redirect_stdio()
 	assert p.status != .exited
 	p.wait()
@@ -583,10 +590,11 @@ fn test_stdout_read_returns_immediately_when_no_data_is_pending() {
 
 fn test_pipe_read_while_process_is_alive() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '600', '-period_ms', '50'])
+	mut p := os.new_process(pipe_output_exe_filename)
+	p.set_args(['--wait-for-stdin'])
 	p.set_redirect_stdio()
 	p.run()
+	defer { p.close() }
 	mut stdout_output := ''
 	mut stderr_output := ''
 	mut timeout := 0
@@ -603,16 +611,17 @@ fn test_pipe_read_while_process_is_alive() {
 		time.sleep(20 * time.millisecond)
 		timeout++
 	}
-	p.wait()
-	p.close()
+	assert p.is_alive(), 'child must stay alive until the pipe reads finish'
 	assert stdout_output.contains('stdout, start'), stdout_output
 	assert stderr_output.contains('stderr, start'), stderr_output
+	p.stdin_write('continue\n')
+	p.wait()
+	assert p.code == 0
 }
 
 fn test_pipe_read_returns_none_after_eof() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '120', '-period_ms', '50'])
+	mut p := os.new_process(pipe_output_exe_filename)
 	p.set_redirect_stdio()
 	p.wait()
 	assert p.code == 0
