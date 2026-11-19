@@ -39,7 +39,7 @@ fn build_v3_review_transform() string {
 		return v3_bin
 	}
 	build :=
-		os.exec([vexe, '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin

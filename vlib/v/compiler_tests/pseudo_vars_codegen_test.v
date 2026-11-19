@@ -50,10 +50,8 @@ fn test_at_mod_codegen() {
 }
 
 fn test_at_file_line_codegen_uses_source_line() {
-	v3_bin := os.join_path(pseudo_vars_fixture_dir, 'v3_prealloc' + exe_suffix)
-	build := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', v3_module_path, '-o', v3_bin,
-		v3_src])
-	assert build.exit_code == 0, build.output
+	// Compiler builds default to -prealloc, so the shared compiler is that build.
+	v3_bin := pseudo_vars_compiler()
 
 	main_src := os.join_path(os.temp_dir(), 'v3_file_line_main.v')
 	main_bin := os.join_path(os.temp_dir(), 'v3_file_line_main')

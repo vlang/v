@@ -13,8 +13,8 @@ fn dump_expr_build_v3() string {
 	}
 	os.rm(v3_bin) or {}
 	build :=
-		os.exec([dump_expr_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${dump_expr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${dump_expr_v3_src}'])
+		os.exec([dump_expr_vexe, '-gc', 'none', '-path', '${dump_expr_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${dump_expr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

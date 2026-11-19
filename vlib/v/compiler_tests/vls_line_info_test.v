@@ -486,8 +486,8 @@ fn main() {
 "
 
 fn testsuite_begin() {
-	res := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${'${vlib_dir}|@vlib|@vmodules'}',
-		'-o', line_info_v3_bin, '${v3_src}'])
+	res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
+		line_info_v3_bin, '${v3_src}'])
 	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }

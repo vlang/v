@@ -101,10 +101,8 @@ fn test_objective_c_flags_are_applied_to_standalone_build() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(c_flag_compiler_dir, 'v3_prealloc')
-	build := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', v3_module_path, '-o', v3_bin,
-		v3_src])
-	assert build.exit_code == 0, build.output
+	// Compiler builds default to -prealloc, so the shared compiler is that build.
+	v3_bin := c_flag_v3_compiler()
 
 	src := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}.v')
 	os.write_file(src,

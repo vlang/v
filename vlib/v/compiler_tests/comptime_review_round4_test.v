@@ -23,8 +23,8 @@ fn round4_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.exec([round4_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${round4_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${round4_v3_src}'])
+		os.exec([round4_vexe, '-gc', 'none', '-path', '${round4_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${round4_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

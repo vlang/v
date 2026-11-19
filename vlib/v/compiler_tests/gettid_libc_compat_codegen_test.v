@@ -18,10 +18,10 @@ fn gettid_compat_build_v3() string {
 	if os.exists(gettid_compat_v3_bin) {
 		return gettid_compat_v3_bin
 	}
-	// -prealloc enables the parallel declaration worker that must emit the helper
-	// before function bodies can call it.
+	// Compiler builds default to -prealloc, which enables the parallel declaration
+	// worker that must emit the helper before function bodies can call it.
 	build :=
-		os.exec([gettid_compat_vexe, '-prealloc', '-path',
+		os.exec([gettid_compat_vexe, '-gc', 'none', '-path',
 			'${gettid_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', gettid_compat_v3_bin,
 			'${gettid_compat_v3_src}'])
 	assert build.exit_code == 0, build.output

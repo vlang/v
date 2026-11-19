@@ -17,7 +17,7 @@ fn test_pointer_map_index_is_preserved_in_multi_return_lvalue() {
 		os.rm(bin + '.c') or {}
 	}
 	build :=
-		os.exec([pointer_map_lvalue_vexe, '-gc', 'none', '-prealloc', '-path',
+		os.exec([pointer_map_lvalue_vexe, '-gc', 'none', '-path',
 			'${pointer_map_lvalue_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${pointer_map_lvalue_v3_src}'])
 	assert build.exit_code == 0, build.output
