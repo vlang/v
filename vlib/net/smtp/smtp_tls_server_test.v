@@ -2,9 +2,19 @@
 module smtp
 
 import net
+import net.smtp.testdata.tls_server
 import os
 import rand
 import time
+
+const smtp_server_probe = '--vtest-smtp-tls-server'
+
+fn testsuite_begin() {
+	if os.args.len > 1 && os.args[1] == smtp_server_probe {
+		tls_server.run(os.args[2..])
+		exit(0)
+	}
+}
 
 fn test_tls_server_exits_when_no_client_connects() ! {
 	scratch := os.join_path(os.vtmp_dir(), 'smtp_tls_server_${rand.uuid_v4()}')
@@ -12,23 +22,13 @@ fn test_tls_server_exits_when_no_client_connects() ! {
 	defer {
 		os.rmdir_all(scratch) or {}
 	}
-	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'testdata', 'smtp_tls_test_server.v')
-	executable := os.join_path(scratch, 'smtp_tls_test_server') + $if windows { '.exe' } $else { '' }
-	mut build := os.new_process(@VEXE)
-	build.set_args(['-o', executable, helper])
-	build.set_redirect_stdio()
-	build.wait()
-	build_error := build.stderr_slurp()
-	build.close()
-	assert build.code == 0, build_error
-
 	ready_path := os.join_path(scratch, 'ready')
 	result_path := os.join_path(scratch, 'result')
 	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
-	mut server := os.new_process(executable)
+	mut server := os.new_process(os.executable())
 	// No client will connect, so this probe can exercise the accept timeout
 	// without the longer startup budget used by the TLS client tests.
-	server.set_args(['starttls', '127.0.0.1', os.join_path(cert_dir, 'server.crt'),
+	server.set_args([smtp_server_probe, 'starttls', '127.0.0.1', os.join_path(cert_dir, 'server.crt'),
 		os.join_path(cert_dir, 'server.key'), ready_path, result_path, '250'])
 	server.set_redirect_stdio()
 	server.run()
