@@ -797,7 +797,7 @@ fn add_sat_i8(x i8, y i8) i8 {
 	if x > 0 && y > 0 && res < 0 {
 		return max_i8
 	}
-	if x < 0 && y < 0 && res > 0 {
+	if x < 0 && y < 0 && res >= 0 {
 		return min_i8
 	}
 	return res
@@ -886,7 +886,7 @@ fn add_sat_i16(x i16, y i16) i16 {
 	if x > 0 && y > 0 && res < 0 {
 		return max_i16
 	}
-	if x < 0 && y < 0 && res > 0 {
+	if x < 0 && y < 0 && res >= 0 {
 		return min_i16
 	}
 	return res
@@ -975,7 +975,7 @@ fn add_sat_i32(x i32, y i32) i32 {
 	if x > 0 && y > 0 && res < 0 {
 		return max_i32
 	}
-	if x < 0 && y < 0 && res > 0 {
+	if x < 0 && y < 0 && res >= 0 {
 		return min_i32
 	}
 	return res
@@ -1064,7 +1064,7 @@ fn add_sat_i64(x i64, y i64) i64 {
 	if x > 0 && y > 0 && res < 0 {
 		return max_i64
 	}
-	if x < 0 && y < 0 && res > 0 {
+	if x < 0 && y < 0 && res >= 0 {
 		return min_i64
 	}
 	return res
