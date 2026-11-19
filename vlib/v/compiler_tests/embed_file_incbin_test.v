@@ -97,7 +97,13 @@ fn test_keepc_and_dumped_flags_do_not_use_temporary_incbin_objects() {
 }
 
 fn test_prod_incbin_build_with_a_cold_and_warm_cache() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'embed_file_incbin_cache_${os.getpid()}')
+	$if msvc {
+		// MSVC cannot assemble the payload; it keeps the array form.
+		return
+	}
+	// A short name: the module cache nests long temporary names below it, and on
+	// Windows the whole path has to stay under MAX_PATH.
+	cache_dir := os.join_path(os.vtmp_dir(), 'eic_${os.getpid()}')
 	os.rmdir_all(cache_dir) or {}
 	old_cache := os.getenv_opt('V3CACHE')
 	old_trace := os.getenv_opt('V3_CACHE_TRACE')
