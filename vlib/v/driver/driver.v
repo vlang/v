@@ -18835,22 +18835,38 @@ fn cache_dependency_modules(state &V3ModuleCacheState, roots []string) []string 
 }
 
 fn cache_dependency_header_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
+	mut memo := map[string]string{}
+	return cache_dependency_header_signatures_memo(state, roots, mut memo)
+}
+
+fn cache_dependency_header_signatures_memo(state &V3ModuleCacheState, roots []string, mut memo map[string]string) map[string]string {
 	mut signatures := map[string]string{}
 	for module_name in cache_dependency_modules(state, roots) {
-		cache_add_module_header_signature(state, module_name, mut signatures)
+		cache_add_module_header_signature_memo(state, module_name, mut signatures, mut memo)
 	}
 	return signatures
 }
 
 fn cache_add_module_header_signature(state &V3ModuleCacheState, module_name string, mut signatures map[string]string) {
+	mut memo := map[string]string{}
+	cache_add_module_header_signature_memo(state, module_name, mut signatures, mut memo)
+}
+
+// cache_add_module_header_signature_memo adds the header signature of `module_name`
+// to `signatures`, hashing each module header once per memo.
+fn cache_add_module_header_signature_memo(state &V3ModuleCacheState, module_name string, mut signatures map[string]string, mut memo map[string]string) {
 	source_files := state.module_sources[module_name] or { return }
 	entry := state.manager.entry(module_name, source_files)
-	if header := state.headers[module_name] {
-		signatures[entry.header] = modulecache.header_signature(header)
+	// File paths are the other keys of the memo; a NUL never occurs in one.
+	key := 'header\0${entry.header}'
+	if signature := memo[key] {
+		signatures[entry.header] = signature
 		return
 	}
-	header := os.read_file(entry.header) or { return }
-	signatures[entry.header] = modulecache.header_signature(header)
+	header := state.headers[module_name] or { os.read_file(entry.header) or { return } }
+	signature := modulecache.header_signature(header)
+	memo[key] = signature
+	signatures[entry.header] = signature
 }
 
 fn cache_object_dependency_signatures(state &V3ModuleCacheState, a &flat.FlatAst, roots []string) map[string]string {
@@ -18859,11 +18875,12 @@ fn cache_object_dependency_signatures(state &V3ModuleCacheState, a &flat.FlatAst
 }
 
 // cache_object_dependency_signatures_memo is cache_object_dependency_signatures with the
-// signatures of native input files kept in `file_signatures`. Objects of one build share
-// many native headers, which would otherwise be read and hashed once per object. The
-// caller owns the map and must not keep it past the prealloc scope that filled it.
+// signatures of native input files and module headers kept in `file_signatures`. Objects
+// of one build share most of them, which would otherwise be read and hashed once per
+// object. The caller owns the map and must not keep it past the prealloc scope that
+// filled it.
 fn cache_object_dependency_signatures_memo(state &V3ModuleCacheState, a &flat.FlatAst, roots []string, mut file_signatures map[string]string) map[string]string {
-	mut signatures := cache_dependency_header_signatures(state, roots)
+	mut signatures := cache_dependency_header_signatures_memo(state, roots, mut file_signatures)
 	// The parser injects these imports into the program stream instead of a
 	// particular file. Their position therefore cannot assign them to a stable
 	// owner module; every cached object that can reference their generated
@@ -18871,13 +18888,14 @@ fn cache_object_dependency_signatures_memo(state &V3ModuleCacheState, a &flat.Fl
 	implicit_modules := ['sync', 'v.embed_file', 'builtin.closure']
 	for implicit_name in implicit_modules {
 		if implicit_module := cache_state_module_name(state, implicit_name) {
-			cache_add_module_header_signature(state, implicit_module, mut signatures)
+			cache_add_module_header_signature_memo(state, implicit_module, mut signatures, mut
+				file_signatures)
 		}
 	}
 	// Every cached translation unit is compiled with the builtin bundle's declarations
 	// prefix, even when its V module has no explicit builtin import.
 	for module_name in cache_builtin_bundle_roots(state, a) {
-		cache_add_module_header_signature(state, module_name, mut signatures)
+		cache_add_module_header_signature_memo(state, module_name, mut signatures, mut file_signatures)
 	}
 	mut external_input_modules := map[string]bool{}
 	for root in roots {

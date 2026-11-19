@@ -2330,13 +2330,24 @@ fn sanitize_name(name string) string {
 }
 
 fn hash_text(value string) string {
-	return hash_bytes(u64(1469598103934665603), value.bytes()).hex()
+	return hash_string(u64(1469598103934665603), value).hex()
 }
 
 fn hash_bytes(initial u64, bytes []u8) u64 {
 	mut hash := initial
 	for c in bytes {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return hash
+}
+
+// hash_string is hash_bytes over the bytes of `value`, without copying them. Module
+// headers are hashed for every cached object that depends on them.
+@[direct_array_access]
+fn hash_string(initial u64, value string) u64 {
+	mut hash := initial
+	for i in 0 .. value.len {
+		hash = (hash ^ u64(value[i])) * u64(1099511628211)
 	}
 	return hash
 }
