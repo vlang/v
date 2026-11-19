@@ -84,6 +84,48 @@ fn test_select_reads_vmod_pin() ! {
 	assert selection.version == 'v7.7.7'
 }
 
+fn test_select_reads_vmod_pin_with_commas() ! {
+	root := tmp_root()
+	os.rmdir_all(root) or {}
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := "Module {\n\tname: 'demo',\n\ttoolchain: 'v6.6.6',\n\tversion: '0.0.0'\n}\n"
+	os.write_file(os.join_path(project, 'v.mod'), manifest)!
+	os.setenv(project_env, project, true)
+	os.setenv(version_env, '', true)
+	os.setenv(settings_env, os.join_path(root, 'missing.toml'), true)
+	defer {
+		os.setenv(project_env, '', true)
+		os.setenv(version_env, '', true)
+		os.setenv(settings_env, '', true)
+	}
+	assert select().version == 'v6.6.6'
+	// A single-line Module block with commas is valid too.
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'demo', toolchain: 'v5.5.5' }\n")!
+	assert select().version == 'v5.5.5'
+}
+
+fn test_set_key_stays_at_top_level() ! {
+	root := tmp_root()
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'settings.toml')
+	os.write_file(path, '[other]\nfoo = "bar"\ndefault_toolchain = "v9.9.9"\n')!
+	// A key inside a table is not a top-level default.
+	assert read_key(path, settings_key) == none
+	set_key_in_file(path, settings_key, 'v0.4.11')!
+	text := os.read_file(path)!
+	assert text.starts_with('default_toolchain = "v0.4.11"\n'), text
+	assert (read_key(path, settings_key) or { '' }) == 'v0.4.11'
+	assert (read_key(path, 'foo') or { '' }) == '' // foo is inside a table
+}
+
 fn test_select_falls_back_to_settings_then_default() ! {
 	root := tmp_root()
 	os.rmdir_all(root) or {}

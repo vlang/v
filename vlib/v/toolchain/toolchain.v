@@ -4,7 +4,7 @@
 module toolchain
 
 import os
-import toml
+import v.vmod
 
 pub const dispatch_env = 'V_TOOLCHAIN_DISPATCHED'
 pub const debug_env = 'V_TOOLCHAIN_DEBUG'
@@ -147,42 +147,62 @@ pub fn executable_in(dir string) string {
 	return ''
 }
 
-// read_key_file reads a string key from a TOML file. Malformed or missing
-// files are treated as "no value" so that a bad config cannot break the
-// launcher.
+// read_key_file reads a top-level quoted string key from a small TOML file.
+// Malformed or missing files are treated as "no value" so that a bad config
+// cannot break the launcher. This deliberately avoids importing `toml`: the
+// launcher already links `v.vmod`, and adding `toml` to `cmd/v` breaks a fresh
+// compiler build.
 fn read_key_file(path string, key string) ?string {
 	text := os.read_file(path) or {
 		return none
 	}
-	doc := toml.parse_text(text) or {
-		return none
+	mut in_table := false
+	for line in text.split('\n') {
+		trimmed := line.trim_space()
+		if trimmed == '' || trimmed.starts_with('#') {
+			continue
+		}
+		if trimmed.starts_with('[') {
+			in_table = true
+			continue
+		}
+		if in_table || !trimmed.starts_with(key) {
+			continue
+		}
+		rest := trimmed[key.len..].trim_space()
+		if !rest.starts_with('=') {
+			continue
+		}
+		value := rest[1..].trim_space()
+		for quote in ['"', "'"] {
+			if value.starts_with(quote) {
+				if closing := value[1..].index(quote) {
+					inner := value[1..1 + closing]
+					if inner != '' {
+						return inner
+					}
+				}
+			}
+		}
 	}
-	value := doc.value(key).string().trim_space()
-	if value == '' {
-		return none
-	}
-	return value
+	return none
 }
 
-// read_vmod_key reads a quoted string field from a v.mod file. v.mod uses
-// V's `key: 'value'` syntax rather than TOML, so it needs its own reader.
+// read_vmod_key reads an unknown string field from a v.mod file using the
+// same parser as the compiler. Whole-line matching would miss valid fields
+// with a trailing comma or on the same line as `Module {`.
 fn read_vmod_key(path string, key string) ?string {
 	text := os.read_file(path) or {
 		return none
 	}
-	for line in text.split('\n') {
-		trimmed := line.trim_space()
-		mut value := ''
-		if trimmed.starts_with(key + ':') || trimmed.starts_with(key + '=') {
-			value = trimmed[key.len + 1..].trim_space()
-		} else {
-			continue
-		}
-		for quote in ["'", '"'] {
-			if value.len >= 2 && value.starts_with(quote) && value.ends_with(quote) {
-				return value[1..value.len - 1]
-			}
-		}
+	manifest := vmod.decode(text) or {
+		return none
+	}
+	values := manifest.unknown[key] or {
+		return none
+	}
+	if values.len > 0 && values[0] != '' {
+		return values[0]
 	}
 	return none
 }
@@ -202,9 +222,14 @@ pub fn set_key_in_file(path string, key string, value string) ! {
 	}
 	entry := '${key} = "${value}"'
 	mut replaced := false
+	mut in_table := false
 	for i, line in lines {
 		trimmed := line.trim_space()
-		if !trimmed.starts_with(key) {
+		if trimmed.starts_with('[') {
+			in_table = true
+			continue
+		}
+		if in_table || !trimmed.starts_with(key) {
 			continue
 		}
 		rest := trimmed[key.len..].trim_space()
@@ -215,11 +240,21 @@ pub fn set_key_in_file(path string, key string, value string) ! {
 		}
 	}
 	if !replaced {
-		if lines.len > 0 && lines.last().trim_space() == '' {
-			lines[lines.len - 1] = entry
-		} else {
-			lines << entry
+		// Keep the key at top level: inserting after a table would put it in
+		// that table, where the launcher deliberately does not look for it.
+		mut result := []string{}
+		mut inserted := false
+		for line in lines {
+			if !inserted && line.trim_space().starts_with('[') {
+				result << entry
+				inserted = true
+			}
+			result << line
 		}
+		if !inserted {
+			result << entry
+		}
+		lines = result
 	}
 	os.mkdir_all(os.dir(path))!
 	os.write_file(path, lines.join('\n').trim_right('\n') + '\n')!
