@@ -359,38 +359,99 @@ fn vgc_shade(addr uint) {
 	if span.alloc_bits == unsafe { nil } || C.vgc_bitmap_get(span.alloc_bits, obj_idx) == 0 {
 		return
 	}
-	// Mark it (grey -> will be scanned)
+	// Mark it (grey -> will be scanned). With several mark workers the
+	// mark bit and the queue insertion must be one critical section:
+	// vgc_bitmap_test_and_set is a plain byte read-modify-write.
 	if span.mark_bits != unsafe { nil } {
-		if C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0 {
-			// Newly marked. vgc_greentea queues the span (coarse work
-			// item) with per-object gray bits; default queues the object.
-			obj_addr := span.base + uint(obj_idx) * uint(span.elem_size)
+		obj_addr := span.base + uint(obj_idx) * uint(span.elem_size)
+		parallel := vgc_heap.gc_nworkers > 1
+		if parallel {
+			C.vgc_mutex_lock(&vgc_heap.work_lock)
+		}
+		if C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0 && !span.noscan {
 			$if vgc_greentea ? {
-				if !span.noscan {
-					vgc_spanq_add(span, obj_addr)
-				}
+				vgc_spanq_add(span, obj_addr)
 			} $else {
-				if !span.noscan {
-					vgc_work_put(obj_addr)
-				}
+				vgc_work_put_locked(obj_addr)
 			}
+		}
+		if parallel {
+			C.vgc_mutex_unlock(&vgc_heap.work_lock)
 		}
 	}
 }
 
-// Mark the heap. Currently single-threaded on purpose.
-//
-// Parallel marking (spawning helper threads that all run vgc_drain_mark_work) is
-// NOT correct yet: vgc_bitmap_test_and_set() on mark_bits is a plain non-atomic
-// read-modify-write, so two workers marking objects whose mark bits live in the same
-// byte can lose a mark and let a live object be swept. Until the mark bitmap uses
-// atomic ops (and the rest of the parallel path is audited), force a single worker.
-// This keeps marking race-free and makes the unlocked arena reads in vgc_find_span
-// safe (no concurrent readers, and the sole mutator is blocked inside gc_start).
+// vgc_mark_worker drains shared mark work until the main thread signals
+// that it has drained its own queue and the queue is empty. Mark-bit updates
+// and queue insertions are serialized by work_lock in vgc_shade.
+fn vgc_mark_worker() {
+	mut round := 0
+	for {
+		obj_addr := vgc_work_get()
+		if obj_addr == 0 {
+			if C.vgc_atomic_load_u32(&vgc_heap.gc_mark_done) != 0 {
+				break
+			}
+			round++
+			C.vgc_backoff(round)
+			continue
+		}
+		round = 0
+		C.vgc_counter_add(&vgc_heap.gc_work_gets, u64(1))
+		vgc_scan_work_obj(obj_addr)
+	}
+	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
+}
+
+// vgc_parallel_mark starts helper workers when built with
+// -d vgc_parallel_mark. The default stays single-threaded: the shared
+// work lock makes parallel marks correct, but it is only a win for large
+// pointer-rich heaps. vgc_greentea also stays single-threaded, since its
+// span queue is not yet protected by work_lock.
 fn vgc_parallel_mark() {
-	vgc_heap.gc_nworkers = 1
+	mut nworkers := 1
+	$if vgc_parallel_mark ? {
+		$if !vgc_greentea ? {
+			nworkers = C.vgc_num_cpus()
+			if nworkers < 2 {
+				nworkers = 2
+			} else if nworkers > 4 {
+				nworkers = 4
+			}
+		}
+	}
+	vgc_heap.gc_nworkers = nworkers
 	C.vgc_atomic_store_u32(&vgc_heap.gc_workers_done, 0)
+	C.vgc_atomic_store_u32(&vgc_heap.gc_mark_done, 0)
+	if nworkers > 1 {
+		for _ in 1 .. nworkers {
+			C.vgc_start_thread(vgc_mark_worker)
+		}
+	}
 	vgc_drain_mark_work()
+	C.vgc_atomic_store_u32(&vgc_heap.gc_mark_done, 1)
+	if nworkers > 1 {
+		mut round := 0
+		for C.vgc_atomic_load_u32(&vgc_heap.gc_workers_done) < u32(nworkers - 1) {
+			round++
+			C.vgc_backoff(round)
+		}
+	}
+}
+
+// vgc_scan_work_obj scans one grey object and shades its referents.
+fn vgc_scan_work_obj(obj_addr uint) {
+	span := vgc_find_span(voidptr(obj_addr))
+	if span == unsafe { nil } || span.noscan {
+		return
+	}
+	C.vgc_counter_add(&vgc_heap.gc_spans_visited, u64(1))
+	C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
+	if span.has_ptrmap {
+		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
+	} else {
+		vgc_scan_range(obj_addr, obj_addr + uint(span.elem_size))
+	}
 }
 
 // Drain the mark work queue - scan grey objects and mark their referents.
@@ -407,21 +468,7 @@ fn vgc_drain_mark_work() {
 			break
 		}
 		C.vgc_counter_add(&vgc_heap.gc_work_gets, u64(1))
-		span := vgc_find_span(voidptr(obj_addr))
-		if span == unsafe { nil } || span.noscan {
-			continue // noscan objects don't contain pointers
-		}
-		C.vgc_counter_add(&vgc_heap.gc_spans_visited, u64(1))
-		if span.has_ptrmap {
-			// Precise scanning: only check known pointer word offsets
-			C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
-			vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
-		} else {
-			// Conservative fallback: scan every word
-			C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
-			obj_size := uint(span.elem_size)
-			vgc_scan_range(obj_addr, obj_addr + obj_size)
-		}
+		vgc_scan_work_obj(obj_addr)
 	}
 }
 
@@ -578,6 +625,35 @@ fn vgc_can_use_work_fastpath() bool {
 	return vgc_heap.ncaches <= 1 && vgc_heap.gc_nworkers <= 1
 }
 
+// vgc_work_put_locked queues an object with work_lock already held. It is
+// used by vgc_shade so the mark-bit test and the queue insertion are one
+// critical section when several mark workers are active.
+fn vgc_work_put_locked(addr uint) {
+	mut buf := vgc_heap.work_full
+	if buf == unsafe { nil } || buf.nobj >= 256 {
+		mut new_buf := vgc_heap.work_empty
+		if new_buf != unsafe { nil } {
+			unsafe { vgc_heap.work_empty = new_buf.next }
+		} else {
+			new_buf = unsafe { &VGC_WorkBuf(C.vgc_os_alloc(uint(sizeof(VGC_WorkBuf)))) }
+			if new_buf == unsafe { nil } {
+				return
+			}
+		}
+		unsafe {
+			new_buf.nobj = 0
+			new_buf.next = vgc_heap.work_full
+			vgc_heap.work_full = new_buf
+		}
+		buf = new_buf
+	}
+	unsafe {
+		buf.obj[buf.nobj] = addr
+		buf.nobj++
+	}
+	C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
+}
+
 // Add a pointer to the mark work queue
 fn vgc_work_put(addr uint) {
 	if vgc_can_use_work_fastpath() {
@@ -610,36 +686,7 @@ fn vgc_work_put(addr uint) {
 	}
 
 	C.vgc_mutex_lock(&vgc_heap.work_lock)
-
-	// Get or create a work buffer
-	mut buf := vgc_heap.work_full
-	if buf == unsafe { nil } || buf.nobj >= 256 {
-		// Need a new buffer
-		mut new_buf := vgc_heap.work_empty
-		if new_buf != unsafe { nil } {
-			unsafe {
-				vgc_heap.work_empty = new_buf.next
-			}
-		} else {
-			new_buf = unsafe { &VGC_WorkBuf(C.vgc_os_alloc(uint(sizeof(VGC_WorkBuf)))) }
-			if new_buf == unsafe { nil } {
-				C.vgc_mutex_unlock(&vgc_heap.work_lock)
-				return
-			}
-		}
-		unsafe {
-			new_buf.nobj = 0
-			new_buf.next = vgc_heap.work_full
-			vgc_heap.work_full = new_buf
-		}
-		buf = new_buf
-	}
-
-	unsafe {
-		buf.obj[buf.nobj] = addr
-		buf.nobj++
-	}
-	C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
+	vgc_work_put_locked(addr)
 	C.vgc_mutex_unlock(&vgc_heap.work_lock)
 }
 

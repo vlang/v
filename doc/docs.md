@@ -7081,6 +7081,11 @@ For programs whose live heap keeps growing, `-d gc_proportional_growth` makes th
 grow the heap in proportion to its size when free space runs low. This avoids one full collection
 per 8 MiB of growth, at the cost of using up to about twice the live heap.
 
+With `-gc vgc`, `-d vgc_parallel_mark` enables helper threads for the mark phase (up to four).
+Mark-bit updates and work-queue insertion stay serialized, so it is opt-in because the lock can
+cost more than it saves on small heaps. The GreenTea span queue (`-d vgc_greentea`) remains
+single-threaded.
+
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
 Remaining small percentage of objects is freed via GC. The developer doesn't need to change
