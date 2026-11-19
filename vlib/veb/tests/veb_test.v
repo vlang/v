@@ -12,6 +12,7 @@ const veb_server_probe = '--vtest-veb-server'
 const veb_logfile = os.getenv('VEB_LOGFILE')
 const tcp_r_timeout = 10 * time.second
 const tcp_w_timeout = 10 * time.second
+const veb_fixture_timeout_seconds = 1
 
 struct VebTestServer {
 mut:
@@ -98,20 +99,19 @@ fn test_a_simple_tcp_client_zero_content_length() {
 	assert watch.elapsed() < 1 * time.second
 }
 
-fn test_timeout_after_delayed_body() {
-	// content length is 10, but we don't send anything. The request should timeout,
-	// but not error.
-	watch := time.new_stopwatch(auto_start: true)
+fn test_timeout_after_delayed_body() ! {
+	// Send the headers and let the server time out waiting for the body.
+	watch := time.new_stopwatch()
 	res := simple_tcp_client(
 		path:       '/json_echo'
 		headers:    'Content-Length: 10\r\n\r\n'
 		method_str: 'POST'
-	) or {
-		assert err.msg() == ''
-		return
-	}
+	)!
 
+	assert res.starts_with('HTTP/1.1 408 Request Timeout\r\n')
 	assert res.ends_with('408 Request Timeout')
+	elapsed := watch.elapsed()
+	assert elapsed >= veb_fixture_timeout_seconds * time.second, '408 arrived after ${elapsed}'
 }
 
 fn test_a_simple_tcp_client_html_page() {
@@ -453,7 +453,7 @@ fn run_veb_test_server(port int) {
 		host:               'localhost'
 		port:               port
 		family:             .ip
-		timeout_in_seconds: 2
+		timeout_in_seconds: veb_fixture_timeout_seconds
 	) or { panic(err) }
 }
 
@@ -555,7 +555,7 @@ pub fn (mut app ServerApp) empty_response_body(mut ctx ServerContext) veb.Result
 	return ctx.ok('')
 }
 
-// shutdown exits the fixture after sending an authenticated response.
+// shutdown stops the fixture gracefully after an authenticated request.
 pub fn (mut app ServerApp) shutdown(mut ctx ServerContext) veb.Result {
 	session_key := ctx.get_cookie('skey') or { return ctx.not_found() }
 	if session_key != 'superman' {
@@ -567,8 +567,7 @@ pub fn (mut app ServerApp) shutdown(mut ctx ServerContext) veb.Result {
 
 fn (mut app ServerApp) exit_gracefully() {
 	eprintln('>> webserver: exit_gracefully')
-	time.sleep(100 * time.millisecond)
-	exit(0)
+	app.server.shutdown(timeout: 2 * time.second) or { panic(err) }
 }
 
 // large_response returns the large JSON fixture.
@@ -579,14 +578,11 @@ pub fn (mut app ServerApp) large_response(mut ctx ServerContext) veb.Result {
 		value     f64
 	}
 
-	mut arr := []Tick{}
-	for i in 0 .. 16000 {
-		arr << Tick{
-			date_time: i.str()
-			timestamp: i
-			value:     i
-		}
-	}
+	ticks := []Tick{len: 16000, init: Tick{
+		date_time: index.str()
+		timestamp: index
+		value:     index
+	}}
 
-	return ctx.json(arr)
+	return ctx.json(ticks)
 }
