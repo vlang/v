@@ -9015,6 +9015,12 @@ fn main() {
 You can read [Enum](#enums) values and their attributes.
 
 ```v
+@[attribute: 'value']
+struct RED {}
+
+@[attribute: 'value']
+struct BLUE {}
+
 enum Color {
 	red   @[RED]  // first attribute
 	blue  @[BLUE] // second attribute
@@ -9056,6 +9062,9 @@ numeric value to be known to V; they are omitted for enums containing C-derived 
 You can read [Struct](#structs) attributes.
 
 ```v
+@[attribute]
+struct COLOR {}
+
 @[COLOR]
 struct Foo {
 	a int
@@ -9068,7 +9077,7 @@ fn main() {
 }
 
 // Output:
-// StructAttribute{
+// VAttribute{
 //    name: 'COLOR'
 //    has_arg: false
 //    arg: ''
