@@ -52,6 +52,12 @@ ctx.flow()
 | `flags` | []imp.Flag read with self.flag |
 | `flow`  | fn (self imp.Flow) ! |
 
+## command line
+`-n` / `--dry-run` prints the flows that would run without writing outputs or
+state. `-v` / `--verbose` shows each flow's `takes` and `gives` on stderr. Both
+add a `summary: N run, N skipped, N failed` line. Options may appear anywhere,
+like flow flags.
+
 ## hooks
 | declaration                                | result |
 |--------------------------------------------|--------|
