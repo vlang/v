@@ -1866,7 +1866,16 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			return none
 		}
 		Interface {
-			return typ.source_type_id()
+			name_id := typ.source_type_id()
+			if name_id in [ownership_source_ierror, ownership_source_builtin_ierror] {
+				if tc.autofree_mode {
+					// Autofree keeps V's value-copy aliasing: error values are shared,
+					// so a copy does not need a per-implementer clone (#32452).
+					return none
+				}
+				return tc.ownership_default_clone_missing_ierror_method()
+			}
+			return name_id
 		}
 		else {
 			return none
@@ -12912,7 +12921,7 @@ fn (tc &TypeChecker) ownership_borrowed_copy_missing_clone(id flat.NodeId, typ T
 	clean := unalias_type(typ)
 	if clean is Interface && (clean.source_type_id() == ownership_source_ierror
 		|| clean.source_type_id() == ownership_source_builtin_ierror) {
-		if tc.ownership_expr_reads_message_error_const(id) {
+		if tc.autofree_mode || tc.ownership_expr_reads_message_error_const(id) {
 			return none
 		}
 		bad_type_id := tc.ownership_default_clone_missing_ierror_method() or { return none }
