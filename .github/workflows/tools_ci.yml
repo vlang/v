@@ -300,6 +300,8 @@ jobs:
             suite: strict
       fail-fast: false
     env:
+      # The guest has 8 GiB RAM; parallel compiler self-tests exhausted swap.
+      VJOBS: '1'
       VFLAGS: -cc ${{ matrix.cc }}
       V_CI_SUITE: ${{ matrix.suite }}
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
@@ -317,12 +319,12 @@ jobs:
           operating_system: freebsd
           version: '15.1'
           memory: 8G
-          # The four-vCPU host leaves one CPU for the runner. Three test
-          # workers fit the compiler test runner's memory budget in 8 GiB.
+          # Keep all three test shards; VJOBS=1 caps memory-intensive
+          # compilations within each shard rather than dropping tests.
           cpu_count: 3
           shell: sh
           sync_files: runner-to-vm
-          environment_variables: VFLAGS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME
+          environment_variables: VFLAGS VJOBS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME
 
       - name: Tests tools on FreeBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
