@@ -28,6 +28,8 @@ pub fn is_main_thread() bool {
 	return g_main_thread_id == signal_thread_id()
 }
 
+#include <signal.h>
+
 @[typedef]
 pub struct C.sigset_t {}
 
