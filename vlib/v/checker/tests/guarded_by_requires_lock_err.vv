@@ -13,8 +13,8 @@ fn (s &Store) get(key string) int {
 
 fn main() {
 	mut s := Store{}
-	lock s.mu {
-		s.entries['a'] = 1
-	}
+	s.mu.lock()
+	s.entries['a'] = 1
+	s.mu.unlock()
 	println(s.get('a'))
 }

@@ -844,6 +844,7 @@ mut:
 	locked_shared_modes                      map[string][]u8
 	locked_shared_base_names                 map[string]string
 	held_mutex_locks                         map[string]int
+	held_mutex_modes                         map[string][]u8
 	pointer_binding_value_keys               map[string][]string
 	immutable_reference_aliases              map[string]bool
 	fresh_map_fields                         map[string]FreshMapField
@@ -906,6 +907,7 @@ fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.locked_shared_modes.clear()
 	ctx.locked_shared_base_names.clear()
 	ctx.held_mutex_locks.clear()
+	ctx.held_mutex_modes.clear()
 	if ctx.pointer_binding_values_shared {
 		ctx.pointer_binding_value_keys = map[string][]string{}
 	} else {
@@ -971,6 +973,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		locked_shared_modes:                      src.locked_shared_modes.clone()
 		locked_shared_base_names:                 src.locked_shared_base_names.clone()
 		held_mutex_locks:                         src.held_mutex_locks.clone()
+		held_mutex_modes:                         src.held_mutex_modes.clone()
 		pointer_binding_value_keys:               clone_pointer_binding_value_keys(src.pointer_binding_value_keys)
 		immutable_reference_aliases:              src.immutable_reference_aliases.clone()
 		fresh_map_fields:                         src.fresh_map_fields.clone()

@@ -1,0 +1,19 @@
+import sync
+
+struct Store {
+mut:
+	mu    sync.Mutex
+	value int @[guarded_by: 'mu']
+}
+
+fn get_value(mut s Store, should_lock bool) int {
+	if should_lock {
+		s.mu.lock()
+	}
+	return s.value
+}
+
+fn main() {
+	mut s := Store{}
+	println(get_value(mut s, true))
+}

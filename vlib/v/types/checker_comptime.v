@@ -14593,9 +14593,14 @@ fn (mut tc TypeChecker) ownership_record_or_fallback_error_return_drops(id flat.
 fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
 	outer_defer_unsafe_depth := tc.defer_unsafe_depth
 	tc.defer_unsafe_depth = tc.unsafe_depth
+	// A deferred `unlock()` runs at function exit, not at the `defer` point,
+	// so it must not clear the currently held guard. Likewise a deferred
+	// `lock()` is not held yet. Check the body without leaking its facts.
+	saved_locks, saved_modes := tc.snapshot_held_mutex_locks()
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
 	}
+	tc.restore_held_mutex_locks(saved_locks, saved_modes)
 	tc.defer_unsafe_depth = outer_defer_unsafe_depth
 }
 
@@ -15483,6 +15488,9 @@ fn (mut tc TypeChecker) check_for_stmt(id flat.NodeId, node flat.Node) {
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	loop_may_skip_body := node.children_count > 1 && tc.a.child_node(&node, 1).kind != .empty
+	// Lock facts are function-wide: the body may run zero times, so only
+	// locks held both before the loop and after the body survive.
+	loop_mutex_base_locks, loop_mutex_base_modes := tc.snapshot_held_mutex_locks()
 	$if ownership ? {
 		if node.children_count > 2 {
 			post_id := tc.a.child(&node, 2)
@@ -15613,6 +15621,9 @@ fn (mut tc TypeChecker) check_for_stmt(id flat.NodeId, node flat.Node) {
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
 	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
+	loop_mutex_body_locks, loop_mutex_body_modes := tc.snapshot_held_mutex_locks()
+	tc.intersect_held_mutex_locks(loop_mutex_base_locks, loop_mutex_base_modes, loop_mutex_body_locks,
+		loop_mutex_body_modes)
 	if has_cond_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
@@ -15816,7 +15827,9 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 	}
 	mut locked_names := []string{}
 	mut locked_base_keys := []string{}
-	mut locked_mutex_keys := []string{}
+	// Snapshot the mutex facts: the block body may itself call `lock()` /
+	// `unlock()` methods, so restoring is fail-safe where a pop list is not.
+	saved_mutex_locks, saved_mutex_modes := tc.snapshot_held_mutex_locks()
 	for i in 0 .. node.children_count - 1 {
 		object_id := tc.a.child(&node, i)
 		object := tc.a.node(object_id)
@@ -15863,8 +15876,21 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 					tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(object_id)}` is already locked',
 						object_id, object.pos)
 				} else {
-					tc.fn_context.held_mutex_locks[mutex_key]++
-					locked_mutex_keys << mutex_key
+					// Plain `sync.Mutex`/`sync.RwMutex` values have no C
+					// lowering for `lock` blocks yet (`&s.mu->mtx` does not
+					// compile). Keep the diagnostic until the backend
+					// supports it; runtime code must use the method form.
+					// The guard is still tracked for the body so only this
+					// diagnostic fires, not a cascade of missing-lock errors.
+					keyword := if node.value == 'rlock' { '`rlock`' } else { '`lock`' }
+					suggestion := if node.value == 'rlock' {
+						'use `s.mu.rlock()`/`s.mu.runlock()` instead'
+					} else {
+						'use `s.mu.lock()`/`s.mu.unlock()` instead'
+					}
+					tc.record_error_at(.assignment_mismatch, '${keyword} blocks are not supported for `sync.Mutex`/`sync.RwMutex` values yet; ${suggestion}',
+						object_id, object.pos)
+					tc.push_held_mutex_lock(mutex_key, mode)
 				}
 			}
 		}
@@ -15887,13 +15913,7 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 	for key in locked_base_keys {
 		tc.fn_context.locked_shared_base_names.delete(key)
 	}
-	for key in locked_mutex_keys {
-		if (tc.fn_context.held_mutex_locks[key] or { 0 }) > 1 {
-			tc.fn_context.held_mutex_locks[key]--
-		} else {
-			tc.fn_context.held_mutex_locks.delete(key)
-		}
-	}
+	tc.restore_held_mutex_locks(saved_mutex_locks, saved_mutex_modes)
 }
 
 fn (tc &TypeChecker) lock_object_unstable_dependency(id flat.NodeId) ?flat.NodeId {
@@ -16525,6 +16545,9 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	// Lock facts are function-wide: the body may run zero times, so only
+	// locks held both before the loop and after the body survive.
+	for_in_mutex_base_locks, for_in_mutex_base_modes := tc.snapshot_held_mutex_locks()
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
 	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
@@ -16584,6 +16607,9 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
 	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
+	for_in_mutex_body_locks, for_in_mutex_body_modes := tc.snapshot_held_mutex_locks()
+	tc.intersect_held_mutex_locks(for_in_mutex_base_locks, for_in_mutex_base_modes, for_in_mutex_body_locks,
+		for_in_mutex_body_modes)
 	tc.pop_scope()
 	if mut_binding_name.len > 0 {
 		if had_mut_base {

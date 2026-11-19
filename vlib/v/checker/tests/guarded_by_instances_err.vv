@@ -9,10 +9,10 @@ mut:
 fn main() {
 	mut a := Store{}
 	mut b := Store{}
-	lock a.mu {
-		a.entries['x'] = 1
-		b.entries['x'] = 2
-		println(a.entries['x'])
-		println(b.entries['x'])
-	}
+	a.mu.lock()
+	a.entries['x'] = 1
+	b.entries['x'] = 2
+	println(a.entries['x'])
+	println(b.entries['x'])
+	a.mu.unlock()
 }

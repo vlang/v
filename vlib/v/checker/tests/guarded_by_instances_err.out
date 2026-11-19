@@ -1,14 +1,14 @@
-vlib/v/checker/tests/guarded_by_instances_err.vv:14:5: error: `b.entries` is guarded by `mu` and needs explicit lock `b.mu`
-   12 |     lock a.mu {
-   13 |         a.entries['x'] = 1
-   14 |         b.entries['x'] = 2
-      |           ~~~~~~~
-   15 |         println(a.entries['x'])
-   16 |         println(b.entries['x'])
-vlib/v/checker/tests/guarded_by_instances_err.vv:16:13: error: `b.entries` is guarded by `mu` and needs explicit lock `b.mu`
-   14 |         b.entries['x'] = 2
-   15 |         println(a.entries['x'])
-   16 |         println(b.entries['x'])
-      |                   ~~~~~~~
-   17 |     }
+vlib/v/checker/tests/guarded_by_instances_err.vv:14:4: error: `b.entries` is guarded by `mu` and needs explicit lock `b.mu`
+   12 |     a.mu.lock()
+   13 |     a.entries['x'] = 1
+   14 |     b.entries['x'] = 2
+      |       ~~~~~~~
+   15 |     println(a.entries['x'])
+   16 |     println(b.entries['x'])
+vlib/v/checker/tests/guarded_by_instances_err.vv:16:12: error: `b.entries` is guarded by `mu` and needs explicit lock `b.mu`
+   14 |     b.entries['x'] = 2
+   15 |     println(a.entries['x'])
+   16 |     println(b.entries['x'])
+      |               ~~~~~~~
+   17 |     a.mu.unlock()
    18 | }

@@ -23277,6 +23277,12 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	then_id := tc.a.child(&node, 1)
 	then_uses_block_scope := guard_bindings.len == 0 && tc.valid_node_id(then_id)
 		&& tc.a.nodes[int(then_id)].kind == .block
+	// Lock facts are function-wide and updated lexically. Snapshot the base
+	// so a conditional `lock()` does not leak onto paths that skip it.
+	base_mutex_locks, base_mutex_modes := tc.snapshot_held_mutex_locks()
+	mut then_mutex_locks := map[string]int{}
+	mut then_mutex_modes := map[string][]u8{}
+	mut then_mutex_reachable := false
 	had_saved_smartcasts := tc.smartcasts.len > 0
 	saved_smartcasts := if had_saved_smartcasts {
 		clone_smartcasts(tc.smartcasts)
@@ -23320,7 +23326,11 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	if !condition_is_false && !tc.stmt_definitely_returns(then_id) {
 		unsafe_alias_paths << tc.share_unsafe_alias_owners()
 		pointer_alias_paths << tc.share_pointer_binding_value_keys()
+		then_mutex_locks, then_mutex_modes = tc.snapshot_held_mutex_locks()
+		then_mutex_reachable = true
 	}
+	// Check the else path from the base facts, not from the then facts.
+	tc.restore_held_mutex_locks(base_mutex_locks, base_mutex_modes)
 	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base
 	tc.fn_context.unsafe_alias_owners_shared = true
 	// Every update detaches shared maps, so restoring the base needs no copy or comparison.
@@ -23368,6 +23378,55 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		}
 		$if ownership ? {
 			tc.ownership_add_branch_group_base()
+		}
+	}
+	// Merge held-mutex facts fail-closed: only locks held on every reachable
+	// path survive. A conditional `lock()` without `else` never leaks, and a
+	// constant condition keeps only its taken side.
+	if node.children_count > 2 {
+		else_id := tc.a.child(&node, 2)
+		else_reachable := !condition_is_true && !tc.stmt_definitely_returns(else_id)
+		if condition_is_true {
+			// Else is dead; keep the then facts.
+			if then_mutex_reachable {
+				tc.restore_held_mutex_locks(then_mutex_locks, then_mutex_modes)
+			} else {
+				tc.restore_held_mutex_locks(base_mutex_locks, base_mutex_modes)
+			}
+		} else if condition_is_false {
+			// Then is dead; current facts are already the else facts.
+		} else if then_mutex_reachable && else_reachable {
+			else_mutex_locks, else_mutex_modes := tc.snapshot_held_mutex_locks()
+			tc.restore_held_mutex_locks(then_mutex_locks, then_mutex_modes)
+			// Intersect then with else, leaving the merged facts current.
+			// Snapshot else first because intersect reads both inputs.
+			then_copy_locks, then_copy_modes := tc.snapshot_held_mutex_locks()
+			tc.intersect_held_mutex_locks(then_copy_locks, then_copy_modes, else_mutex_locks,
+				else_mutex_modes)
+		} else if then_mutex_reachable {
+			// Else returns; keep then.
+			tc.restore_held_mutex_locks(then_mutex_locks, then_mutex_modes)
+		} else if else_reachable {
+			// Then returns; current facts are already else.
+		} else {
+			// Both sides return; keep base to avoid leaking into dead code.
+			tc.restore_held_mutex_locks(base_mutex_locks, base_mutex_modes)
+		}
+	} else {
+		if condition_is_true {
+			// No else and always taken; keep the then facts.
+			if then_mutex_reachable {
+				tc.restore_held_mutex_locks(then_mutex_locks, then_mutex_modes)
+			} else {
+				tc.restore_held_mutex_locks(base_mutex_locks, base_mutex_modes)
+			}
+		} else if condition_is_false || !then_mutex_reachable {
+			tc.restore_held_mutex_locks(base_mutex_locks, base_mutex_modes)
+		} else {
+			// Paths: then taken vs skipped. Keep only what both hold.
+			then_copy_locks, then_copy_modes := tc.snapshot_held_mutex_locks()
+			tc.intersect_held_mutex_locks(then_copy_locks, then_copy_modes, base_mutex_locks,
+				base_mutex_modes)
 		}
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)

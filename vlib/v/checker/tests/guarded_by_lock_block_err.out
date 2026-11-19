@@ -1,0 +1,7 @@
+vlib/v/checker/tests/guarded_by_lock_block_err.vv:11:7: error: `lock` blocks are not supported for `sync.Mutex`/`sync.RwMutex` values yet; use `s.mu.lock()`/`s.mu.unlock()` instead
+    9 | fn main() {
+   10 |     mut s := Store{}
+   11 |     lock s.mu {
+      |          ~~~~
+   12 |         s.value = 42
+   13 |     }

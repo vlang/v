@@ -18,9 +18,9 @@ fn (s &Store) helper(key string) int {
 
 fn main() {
 	mut s := Store{}
-	lock s.mu {
-		s.entries['a'] = 1
-		println(s.helper('a'))
-	}
+	s.mu.lock()
+	s.entries['a'] = 1
+	println(s.helper('a'))
+	s.mu.unlock()
 	println(s.helper('a'))
 }

@@ -210,8 +210,9 @@ fn (mut tc TypeChecker) check_guarded_field_access(id flat.NodeId, node flat.Nod
 }
 
 // check_guarded_assign_lhs diagnoses a write to a `@[guarded_by]` field
-// without the guard lock held. It walks index chains so `s.m[k] = v` and
-// `s.m[k] += v` still require `lock s.mu`.
+// without the guard write lock held. It walks index chains so `s.m[k] = v`
+// and `s.m[k] += v` still require `lock s.mu`. A read (`rlock()`) guard is
+// not enough for a write.
 fn (mut tc TypeChecker) check_guarded_assign_lhs(lhs_id flat.NodeId) {
 	mut current := tc.unwrap_paren_expr_id(lhs_id)
 	for _ in 0 .. 32 {
@@ -227,7 +228,7 @@ fn (mut tc TypeChecker) check_guarded_assign_lhs(lhs_id flat.NodeId) {
 					if base_type is Struct {
 						if guard := tc.struct_guarded_by_field(base_type.source_type_id(), node.value) {
 							required := tc.guarded_required_lock_key(base_id, guard)
-							if !tc.guarded_lock_held(required) {
+							if !tc.guarded_write_lock_held(required) {
 								access_text := tc.source_text_for_node(current).trim_space()
 								required_text := tc.shared_lock_key(base_id)
 								required_display := if required_text.len > 0 {
@@ -439,14 +440,143 @@ fn (mut tc TypeChecker) seed_requires_lock_for_fn(fn_idx int, node flat.Node) {
 			key = textual + '\x00' + storage_key
 		}
 	}
+	tc.push_held_mutex_lock(key, `w`)
+}
+
+// push_held_mutex_lock records a held mutex lock with the given mode (`w` for
+// `lock()`, `r` for `rlock()`). Counts and mode stacks stay in sync so branch
+// merges and deferred bodies can intersect them fail-closed.
+fn (mut tc TypeChecker) push_held_mutex_lock(key string, mode u8) {
+	if key.len == 0 {
+		return
+	}
 	tc.fn_context.held_mutex_locks[key]++
+	mut modes := (tc.fn_context.held_mutex_modes[key] or { []u8{} }).clone()
+	modes << mode
+	tc.fn_context.held_mutex_modes[key] = modes
+}
+
+// pop_held_mutex_lock releases one level of the held mutex lock. Both
+// `unlock()` and `runlock()` pop the most recent mode so a deferred or
+// explicit release always clears the matching acquisition. Returns false when
+// no lock was held.
+fn (mut tc TypeChecker) pop_held_mutex_lock(key string) bool {
+	if key.len == 0 {
+		return false
+	}
+	if (tc.fn_context.held_mutex_locks[key] or { 0 }) <= 0 {
+		return false
+	}
+	if (tc.fn_context.held_mutex_locks[key] or { 0 }) > 1 {
+		tc.fn_context.held_mutex_locks[key]--
+	} else {
+		tc.fn_context.held_mutex_locks.delete(key)
+	}
+	mut modes := (tc.fn_context.held_mutex_modes[key] or { []u8{} }).clone()
+	if modes.len > 0 {
+		modes.delete_last()
+	}
+	if modes.len == 0 {
+		tc.fn_context.held_mutex_modes.delete(key)
+	} else {
+		tc.fn_context.held_mutex_modes[key] = modes
+	}
+	return true
+}
+
+// guarded_write_lock_held reports whether a write (`lock()`) guard is held
+// for `key`. A read (`rlock()`) guard allows reads but not writes.
+fn (tc &TypeChecker) guarded_write_lock_held(key string) bool {
+	if key.len == 0 {
+		return false
+	}
+	if (tc.fn_context.held_mutex_locks[key] or { 0 }) <= 0 {
+		return false
+	}
+	for mode in tc.fn_context.held_mutex_modes[key] or { []u8{} } {
+		if mode != `r` {
+			return true
+		}
+	}
+	return false
+}
+
+// snapshot_held_mutex_locks clones the current held-mutex facts so an `if`
+// branch or a `defer` body can be checked without leaking its acquisitions.
+fn (tc &TypeChecker) snapshot_held_mutex_locks() (map[string]int, map[string][]u8) {
+	return tc.fn_context.held_mutex_locks.clone(), tc.fn_context.held_mutex_modes.clone()
+}
+
+// restore_held_mutex_locks replaces the current held-mutex facts with a
+// snapshot taken before a branch or a `defer` body.
+fn (mut tc TypeChecker) restore_held_mutex_locks(locks map[string]int, modes map[string][]u8) {
+	tc.fn_context.held_mutex_locks = locks.clone()
+	tc.fn_context.held_mutex_modes = modes.clone()
+}
+
+// intersect_held_mutex_locks keeps only the locks held on every reachable
+// path. A write guard survives only when every path holds a write; otherwise
+// a surviving read guard still allows reads but rejects writes fail-closed.
+fn (mut tc TypeChecker) intersect_held_mutex_locks(a_locks map[string]int, a_modes map[string][]u8,
+	b_locks map[string]int, b_modes map[string][]u8) {
+	mut merged_locks := map[string]int{}
+	mut merged_modes := map[string][]u8{}
+	for key, a_count in a_locks {
+		b_count := b_locks[key] or { continue }
+		if a_count <= 0 || b_count <= 0 {
+			continue
+		}
+		mut a_has_write := false
+		for mode in a_modes[key] or { []u8{} } {
+			if mode != `r` {
+				a_has_write = true
+				break
+			}
+		}
+		mut b_has_write := false
+		for mode in b_modes[key] or { []u8{} } {
+			if mode != `r` {
+				b_has_write = true
+				break
+			}
+		}
+		if a_has_write && b_has_write {
+			merged_locks[key] = if a_count < b_count { a_count } else { b_count }
+			merged_modes[key] = [`w`]
+		} else {
+			// Both sides hold the guard (at least read), but at least one
+			// side lacks a write, so only reads stay allowed.
+			merged_locks[key] = if a_count < b_count { a_count } else { b_count }
+			merged_modes[key] = [`r`]
+		}
+	}
+	tc.fn_context.held_mutex_locks = merged_locks.move()
+	tc.fn_context.held_mutex_modes = merged_modes.move()
+}
+
+// merge_held_mutex_paths folds every recorded branch-end fact set into the
+// current facts fail-closed: only locks held on every path survive, and a
+// write guard survives only when every path holds a write. An empty path
+// list leaves the current facts untouched; callers restore the base when no
+// path is reachable.
+fn (mut tc TypeChecker) merge_held_mutex_paths(locks_list []map[string]int, modes_list []map[string][]u8) {
+	if locks_list.len == 0 || locks_list.len != modes_list.len {
+		return
+	}
+	tc.restore_held_mutex_locks(locks_list[0], modes_list[0])
+	for i in 1 .. locks_list.len {
+		cur_locks, cur_modes := tc.snapshot_held_mutex_locks()
+		tc.intersect_held_mutex_locks(cur_locks, cur_modes, locks_list[i], modes_list[i])
+	}
 }
 
 // maybe_track_mutex_lock_unlock tracks `m.lock()` / `m.rlock()` and
-// `m.unlock()` calls on `sync.Mutex` / `sync.RwMutex` receivers so
-// `@[guarded_by]` accesses after an explicit lock are accepted. The C
-// backend cannot express `lock s.mu { ... }` for a plain Mutex value,
-// so runtime code must use the method form.
+// `m.unlock()` / `m.runlock()` calls on `sync.Mutex` / `sync.RwMutex`
+// receivers so `@[guarded_by]` accesses after an explicit lock are accepted.
+// Read and write modes are tracked separately: `rlock()` allows reads but a
+// write still needs `lock()`. The C backend cannot express
+// `lock s.mu { ... }` for a plain Mutex value, so runtime code must use the
+// method form.
 fn (mut tc TypeChecker) maybe_track_mutex_lock_unlock(node flat.Node, info CallInfo) {
 	if !info.has_receiver || node.children_count == 0 {
 		return
@@ -456,7 +586,7 @@ fn (mut tc TypeChecker) maybe_track_mutex_lock_unlock(node flat.Node, info CallI
 		return
 	}
 	method := callee.value
-	if method !in ['lock', 'rlock', 'unlock'] {
+	if method !in ['lock', 'rlock', 'unlock', 'runlock'] {
 		return
 	}
 	receiver_id := tc.a.child(callee, 0)
@@ -470,13 +600,13 @@ fn (mut tc TypeChecker) maybe_track_mutex_lock_unlock(node flat.Node, info CallI
 	if key.len == 0 {
 		return
 	}
-	if method == 'unlock' {
-		if (tc.fn_context.held_mutex_locks[key] or { 0 }) > 1 {
-			tc.fn_context.held_mutex_locks[key]--
-		} else {
-			tc.fn_context.held_mutex_locks.delete(key)
-		}
+	if method == 'unlock' || method == 'runlock' {
+		tc.pop_held_mutex_lock(key)
 		return
 	}
-	tc.fn_context.held_mutex_locks[key]++
+	if method == 'rlock' {
+		tc.push_held_mutex_lock(key, `r`)
+		return
+	}
+	tc.push_held_mutex_lock(key, `w`)
 }
