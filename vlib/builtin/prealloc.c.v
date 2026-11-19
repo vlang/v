@@ -303,11 +303,22 @@ mut:
 	stop  uint
 }
 
+// VCleanupEntry holds an explicit destructor registered on a prealloc scope.
+// Entries come from libc malloc so they survive while the arena is torn down.
+struct VCleanupEntry {
+mut:
+	cb   fn (voidptr)
+	arg  voidptr
+	next &VCleanupEntry = 0
+}
+
 @[heap]
 struct VPreallocScope {
 mut:
 	previous &VMemoryBlock = 0
 	first    &VMemoryBlock = 0
+	// cleanup_head is LIFO; see prealloc_scope_on_cleanup.
+	cleanup_head &VCleanupEntry = 0
 	// saved_next holds the blocks that followed `previous` when this scope was
 	// linked after it: a reentered parent scope keeps rewound blocks there.
 	// Unlinking the scope restores them instead of dropping them from the chain.
@@ -947,12 +958,60 @@ pub fn prealloc_scope_checkpoint(label &char) {
 	}
 }
 
+// prealloc_scope_on_cleanup registers `cb(arg)` to run when `scope_ptr` is
+// finally freed (end / free_after / last release). Callbacks run LIFO and
+// must not allocate from the scope being torn down. Reentering a scope drops
+// registered callbacks without running them, since their arguments are
+// invalidated. Abandoning a scope also drops them without running.
+// Requires `-d prealloc_cleanup`; the call is a no-op without it.
+@[if prealloc_cleanup ?]
+pub fn prealloc_scope_on_cleanup(scope_ptr voidptr, cb fn (voidptr), arg voidptr) {
+	$if prealloc {
+		if scope_ptr == unsafe { nil } {
+			return
+		}
+		unsafe {
+			scope := &VPreallocScope(scope_ptr)
+			entry := &VCleanupEntry(C.malloc(sizeof(VCleanupEntry)))
+			vmemory_abort_on_nil(entry, sizeof(VCleanupEntry))
+			entry.cb = cb
+			entry.arg = arg
+			entry.next = scope.cleanup_head
+			scope.cleanup_head = entry
+		}
+	}
+}
+
+@[unsafe]
+fn prealloc_scope_run_cleanup(scope &VPreallocScope) {
+	mut entry := scope.cleanup_head
+	scope.cleanup_head = unsafe { nil }
+	for entry != unsafe { nil } {
+		next := entry.next
+		entry.cb(entry.arg)
+		C.free(entry)
+		entry = next
+	}
+}
+
+@[unsafe]
+fn prealloc_scope_clear_cleanup(scope &VPreallocScope) {
+	mut entry := scope.cleanup_head
+	scope.cleanup_head = unsafe { nil }
+	for entry != unsafe { nil } {
+		next := entry.next
+		C.free(entry)
+		entry = next
+	}
+}
+
 @[unsafe]
 fn prealloc_scope_free_blocks(scope &VPreallocScope) {
 	if scope == unsafe { nil } {
 		return
 	}
 	unsafe {
+		prealloc_scope_run_cleanup(scope)
 		if scope.previous != 0 {
 			prealloc_scope_unlink(scope)
 		}
@@ -991,6 +1050,10 @@ fn prealloc_scope_finish_if_ready(scope &VPreallocScope) {
 		}
 		if C.v_prealloc_atomic_load_i32(&scope.abandoned) == 0 {
 			prealloc_scope_free_blocks(scope)
+		} else {
+			// Ownership was transferred to user code; callbacks would destroy
+			// values the new owner still needs.
+			prealloc_scope_clear_cleanup(scope)
 		}
 		C.free(scope.ranges)
 		C.free(scope)
@@ -1124,6 +1187,9 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes int) bool {
 				return false
 			}
 			parent := vmemory_block_current_or_new()
+			// Pointers from the previous batch are invalid after rewind, so any
+			// registered callbacks would reference dead values.
+			prealloc_scope_clear_cleanup(scope)
 			// Keep the first blocks, up to `keep_bytes`, for reuse; free the rest.
 			mut kept := int(0)
 			mut last_kept := &VMemoryBlock(nil)
