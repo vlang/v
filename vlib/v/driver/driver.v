@@ -15538,12 +15538,10 @@ pub fn run(args []string) {
 			// stage arena; all of them can grow while servicing those queries.
 			pre_tc.reset_type_interners()
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
-			if !(should_run || test_files.len > 0 || served.from_server) {
-				// A plain build ends with the process once the C compiler has run,
-				// and allocates little until then. Leave the arenas that the
-				// release threads, the ending workers and the exit handler would
-				// unmap from here on mapped: the OS reclaims them at exit with
-				// less work than a page-table teardown per resident page.
+			if !cache_state.manager.enabled && !(should_run || test_files.len > 0 || served.from_server) {
+				// An uncached build allocates little after cgen, so the OS can reclaim
+				// its freed arenas at exit. Cache population still builds C sources
+				// in disposable arenas and needs to recycle their blocks per module.
 				$if prealloc {
 					unsafe { prealloc_keep_freed_memory() }
 				}
