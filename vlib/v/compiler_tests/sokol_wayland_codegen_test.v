@@ -1,6 +1,14 @@
 import os
 import v.cmdexec
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_linux_gg_wayland_uses_the_new_compiler_and_32_bit_pipe_descriptors() {
 	root := os.join_path(os.vtmp_dir(), 'sokol_wayland_codegen_${os.getpid()}')
 	os.mkdir_all(root)!

@@ -3,6 +3,14 @@ import v.cmdexec
 
 const vexe = @VEXE
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn cross_generate(name string, source string) string {
 	return cross_generate_with('-os cross', name, source)
 }
