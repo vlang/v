@@ -196,6 +196,23 @@ fn test_optimized_in_expression_with_enum() {
 	assert a == false
 }
 
+// for issue 32480: enum shorthand on the left of `in`/`!in`
+fn test_in_expression_with_enum_shorthand() {
+	kinds := [Colors.green, Colors.blue]
+	assert .green in kinds
+	assert .red !in kinds
+	assert .yellow !in kinds
+	fixed := [Colors.green, Colors.blue]!
+	assert .blue in fixed
+	assert .red !in fixed
+	m := {
+		Colors.green: 1
+		Colors.blue:  2
+	}
+	assert .green in m
+	assert .red !in m
+}
+
 fn test_optimized_in_expression_with_string() {
 	mut a := false
 	a = true && 'bc' in ['ab', 'bc']
