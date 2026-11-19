@@ -33148,7 +33148,15 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	// rewritten in place.
 	t.inplace_rewrite_holds++
 	t.array_dsl_multitype_depth += int(n_conds > 1)
-	body_block := t.make_block(t.transform_scope_stmts(body_ids))
+	body_block := if cond_idx > 0 {
+		// Only the first lowered variant consumes the source branch's scope-drop
+		// slot. The checker recorded one slot for the original body; additional
+		// clones would shift every later slot (e.g. drops for a guard variable in
+		// another branch) into the wrong arm. See #32454.
+		t.make_block_skip_scope_drops(t.transform_scope_stmts(body_ids))
+	} else {
+		t.make_block(t.transform_scope_stmts(body_ids))
+	}
 	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
