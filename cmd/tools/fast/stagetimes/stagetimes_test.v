@@ -1,4 +1,4 @@
-module main
+module stagetimes
 
 fn test_parse_v1_stage_measurements() {
 	output := '24  ms SCAN
