@@ -16,3 +16,15 @@ fn test_local_closure_shadows_imported_private_fn() {
 	assert out.len == 1
 	assert out[0] == 3
 }
+
+fn helper(a int, b int) int {
+	return a - b
+}
+
+// A local closure also keeps shadowing a same-module function.
+fn test_local_closure_shadows_same_module_fn() {
+	helper := fn (a int, b int) int {
+		return a + b
+	}
+	assert helper(2, 3) == 5
+}
