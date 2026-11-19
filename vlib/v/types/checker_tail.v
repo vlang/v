@@ -1532,6 +1532,13 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			])
 			return
 		}
+		raw_type := tc.resolve_type(child_id)
+		if info := tc.refined_alias_info(raw_type) {
+			source := tc.source_text_for_node(child_id)
+			type_name := flat.source_type_name(info.name_id)
+			tc.record_error(.assignment_mismatch, 'cannot ${action} `${source}`: type `${type_name}` is refined; use `${type_name}.from(value)!` to check the value at runtime', id)
+			return
+		}
 		child_type := unalias_type(tc.resolve_type(child_id))
 		if is_unresolved_name_type(child_type) {
 			return

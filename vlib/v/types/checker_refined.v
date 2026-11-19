@@ -202,17 +202,21 @@ pub fn (r RefinedRange) contains_value(negative bool, magnitude string) bool {
 	if mag == '' {
 		return false
 	}
-	if r.exclude_zero && !negative && mag == '0' {
+	mut neg := negative
+	if mag == '0' {
+		neg = false
+	}
+	if r.exclude_zero && mag == '0' {
 		return false
 	}
 	if r.has_lo {
-		order := compare_refined_magnitudes(negative, mag, r.lo_negative, r.lo_mag)
+		order := compare_refined_magnitudes(neg, mag, r.lo_negative, r.lo_mag)
 		if order < 0 || (order == 0 && r.lo_exclusive) {
 			return false
 		}
 	}
 	if r.has_hi {
-		order := compare_refined_magnitudes(negative, mag, r.hi_negative, r.hi_mag)
+		order := compare_refined_magnitudes(neg, mag, r.hi_negative, r.hi_mag)
 		if order > 0 || (order == 0 && r.hi_exclusive) {
 			return false
 		}
