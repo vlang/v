@@ -119,6 +119,11 @@ not allocate from the scope being torn down. `prealloc_scope_reenter` drops call
 running them because their arguments become invalid; `prealloc_scope_abandon` does the same because
 ownership was transferred. Without the define the registration call is a no-op.
 
+`-d track_heap` works with `-prealloc`: each arena block is reported to `vheap_alloc` when it is
+mapped or taken from the recycle pool, and to `vheap_free` when it is returned or recycled.
+Individual bump allocations inside a block are not reported, so trackers see block-granular
+live allocations rather than one entry per V allocation.
+
 `string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
 string removes matches of a nonempty search string. Pairs are applied in order to disjoint matches
 of the original input; replacement text is not searched again. Input, search strings, and
