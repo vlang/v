@@ -234,3 +234,50 @@ fn test_toolchain_update_requires_built_checkout() ! {
 	assert with_option.output.contains('not an installed and built toolchain'), with_option.output
 	assert !with_option.output.contains('unknown option'), with_option.output
 }
+
+fn test_toolchain_update_failure_keeps_original_checkout() ! {
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_rollback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	checkout := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(os.join_path(checkout, '.git'))!
+	os.write_file(os.join_path(checkout, 'marker'), 'original')!
+	// When git is available, commit the checkout so the rollback can be
+	// verified by revision as well as by file content.
+	mut original_head := ''
+	if os.find_abs_path_of_executable('git') != none {
+		for git_args in [['init'], ['add', '.'], ['-c', 'user.name=V test', '-c',
+			'user.email=test@example.invalid', 'commit', '-qm', 'fixture']] {
+			mut cmd := ['git', '-C', checkout]
+			cmd << git_args
+			res := os.exec(cmd)
+			assert res.exit_code == 0, res.output
+		}
+		head := os.exec(['git', '-C', checkout, 'rev-parse', 'HEAD'])
+		assert head.exit_code == 0, head.output
+		original_head = head.output.trim_space()
+		assert original_head != ''
+	}
+	fake_source := "import os\n\nfn main() {\n\troot := os.getenv('VEXEROOT')\n\tos.write_file(os.join_path(root, 'mutated'), 'yes') or {}\n\texit(1)\n}\n"
+	fake_program := os.join_path(root, 'fake_up.v')
+	os.write_file(fake_program, fake_source)!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	build := os.exec([vexe, '-o', os.join_path(checkout, exe_name), fake_program])
+	assert build.exit_code == 0, build.output
+	result := run_toolchain(root, 'unused', 'update', '1.2.3')!
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('unchanged'), result.output
+	assert !result.output.contains('restor'), result.output
+	// The staging tree was mutated and failed, but the original is intact.
+	assert (os.read_file(os.join_path(checkout, 'marker'))!) == 'original'
+	assert !os.exists(os.join_path(checkout, 'mutated'))
+	assert !os.exists(checkout + '_stage')
+	assert !os.exists(checkout + '_old')
+	if original_head != '' {
+		head := os.exec(['git', '-C', checkout, 'rev-parse', 'HEAD'])
+		assert head.exit_code == 0, head.output
+		assert head.output.trim_space() == original_head
+	}
+}

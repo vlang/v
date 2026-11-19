@@ -272,8 +272,34 @@ fn installed_checkout(version string) ?Checkout {
 	}
 }
 
-// update_version moves the checkout aside, runs `v up` inside it, and moves it
-// back only on success. A failed update restores the previous checkout.
+// git_head returns the HEAD revision of the checkout in `dir`, or '' when
+// git is unavailable or `dir` is not a git checkout. It lets update verify
+// that a failed run left the original checkout untouched.
+fn git_head(dir string) string {
+	res := os.exec(['git', '-C', dir, 'rev-parse', 'HEAD'])
+	if res.exit_code != 0 {
+		return ''
+	}
+	return res.output.trim_space()
+}
+
+// copy_dir copies a checkout into a staging directory. The original stays
+// untouched while `v up` runs in the copy, so a failure cannot mutate it.
+fn copy_dir(src string, dst string) ! {
+	os.mkdir_all(dst)!
+	for entry in os.ls(src)! {
+		from := os.join_path(src, entry)
+		to := os.join_path(dst, entry)
+		if os.is_dir(from) {
+			copy_dir(from, to)!
+		} else {
+			os.cp(from, to)!
+		}
+	}
+}
+
+// update_version updates a separate staging checkout and flips it into place
+// only on success. A failed update leaves the original checkout untouched.
 fn update_version(raw string, rest []string) {
 	version := normalized_version(raw)
 	checkout := installed_checkout(version) or {
@@ -282,32 +308,42 @@ fn update_version(raw string, rest []string) {
 		exit(1)
 		return
 	}
-	backup := checkout.dir + '_old'
-	if os.exists(backup) {
-		os.rmdir_all(backup) or {
-			eprintln('could not remove stale backup `${backup}`; run `v toolchain gc`: ${err.msg()}')
-			exit(1)
-			return
+	staging := checkout.dir + '_stage'
+	old := checkout.dir + '_old'
+	for stale in [staging, old] {
+		if os.exists(stale) {
+			os.rmdir_all(stale) or {
+				eprintln('could not remove stale `${stale}`; run `v toolchain gc`: ${err.msg()}')
+				exit(1)
+				return
+			}
 		}
 	}
-	os.rename(checkout.dir, backup) or {
-		eprintln('could not move `${checkout.dir}` aside: ${err.msg()}')
+	original_head := git_head(checkout.dir)
+	copy_dir(checkout.dir, staging) or {
+		eprintln('could not stage `${checkout.dir}` into `${staging}`: ${err.msg()}')
 		exit(1)
 		return
 	}
-	exe := toolchain.executable_in(backup)
+	if original_head != '' && git_head(staging) != original_head {
+		os.rmdir_all(staging) or {}
+		eprintln('could not stage `${checkout.dir}`: staged HEAD differs; the original checkout is unchanged.')
+		exit(1)
+		return
+	}
+	exe := toolchain.executable_in(staging)
 	if exe == '' {
-		os.rename(backup, checkout.dir) or {}
-		eprintln('`${backup}` has no built compiler; restored the original checkout.')
+		os.rmdir_all(staging) or {}
+		eprintln('`${staging}` has no built compiler; the original checkout is unchanged.')
 		exit(1)
 		return
 	}
-	println('Updating `${version}` in `${backup}` ...')
+	println('Updating `${version}` in `${staging}` ...')
 	mut child_args := ['up']
 	child_args << rest
 	mut environment := os.environ()
 	environment['VEXE'] = exe
-	environment['VEXEROOT'] = backup
+	environment['VEXEROOT'] = staging
 	environment[toolchain.dispatch_env] = '1'
 	mut child := os.new_process(exe)
 	child.set_args(child_args)
@@ -316,22 +352,31 @@ fn update_version(raw string, rest []string) {
 	code := child.code
 	child.close()
 	if code != 0 {
-		os.rmdir_all(checkout.dir) or {}
-		os.rename(backup, checkout.dir) or {
-			eprintln('could not restore `${checkout.dir}` from `${backup}`; it is kept for recovery')
-			exit(1)
+		if original_head != '' && git_head(checkout.dir) != original_head {
+			os.rmdir_all(staging) or {}
+			eprintln('update of `${version}` failed and the original checkout changed unexpectedly.')
+			exit(code)
 			return
 		}
-		eprintln('update of `${version}` failed; restored the previous checkout.')
+		os.rmdir_all(staging) or {}
+		eprintln('update of `${version}` failed; the original checkout in `${checkout.dir}` is unchanged.')
 		exit(code)
 		return
 	}
-	os.rmdir_all(checkout.dir) or {}
-	os.rename(backup, checkout.dir) or {
-		eprintln('could not activate `${checkout.dir}`; the updated checkout is in `${backup}`')
+	// Only now replace the original with the successfully updated staging tree.
+	os.rename(checkout.dir, old) or {
+		eprintln('could not move the original checkout aside: ${err.msg()}')
 		exit(1)
 		return
 	}
+	os.rename(staging, checkout.dir) or {
+		os.rename(old, checkout.dir) or {}
+		eprintln('could not activate `${checkout.dir}`; the original was restored')
+		exit(1)
+		return
+	}
+	// Windows may keep the old compiler locked; gc removes that leftover.
+	os.rmdir_all(old) or {}
 	println('Updated `${version}` in `${checkout.dir}`.')
 }
 
