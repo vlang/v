@@ -755,7 +755,7 @@ fn comptime_reflected_attributes_loop_var(node flat.Node, var_name string) strin
 fn (mut t Transformer) unroll_reflected_attributes_loop(loop_id flat.NodeId, attr_var string, data RawAttributeData, decl_module string, inner_vars []string) flat.NodeId {
 	t.ignore_comptime_for_subtree(loop_id)
 	schemas := t.comptime_attribute_schemas()
-	resolved := t.comptime_resolve_attribute_const_data(data, decl_module)
+	resolved := t.comptime_resolve_attribute_const_data(data, decl_module, '')
 	attrs := comptime_attribute_instances_from_raw(resolved, decl_module, schemas)
 	loop := t.a.nodes[int(loop_id)]
 	body := t.a.nodes[int(t.a.child(&loop, 0))]
@@ -772,22 +772,24 @@ fn (mut t Transformer) unroll_reflected_attributes_loop(loop_id flat.NodeId, att
 }
 
 fn (mut t Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
-	decl_idx, _ := t.comptime_attribute_decl(source, loop_id) or { return []AttributeMeta{} }
+	decl_idx, _, _ := t.comptime_attribute_decl(source, loop_id) or { return []AttributeMeta{} }
 	return t.comptime_node_attribute_metas(decl_idx)
 }
 
 // comptime_attribute_decl finds the reflected declaration of an attributes
-// loop, returning its node index and module.
-fn (t &Transformer) comptime_attribute_decl(source string, loop_id flat.NodeId) ?(int, string) {
+// loop, returning its node index, module, and file.
+fn (t &Transformer) comptime_attribute_decl(source string, loop_id flat.NodeId) ?(int, string, string) {
 	raw_name := t.comptime_reflection_source(source, loop_id)
 	name := t.comptime_resolve_selective_import_reflection_source(raw_name)
 	lookup_name := if name.starts_with('main.') { name['main.'.len..] } else { name }
 	mut module_name := ''
+	mut file_name := ''
 	for idx in 0 .. t.a.nodes.len {
 		// This read-only scan keeps the borrowed AST node valid.
 		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .file {
 			module_name = ''
+			file_name = node.value
 			continue
 		}
 		if node.kind == .module_decl {
@@ -805,7 +807,7 @@ fn (t &Transformer) comptime_attribute_decl(source string, loop_id flat.NodeId) 
 		reflection_name := qualified.replace('@static@', '.')
 		if reflection_name == name || reflection_name == lookup_name
 			|| (module_name == t.cur_module && node.value == lookup_name) {
-			return idx, module_name
+			return idx, module_name, file_name
 		}
 	}
 	return none
@@ -934,11 +936,11 @@ fn comptime_attribute_piece_named(raw string, name string) bool {
 // legacy `VAttribute` view. With no schemas registered the result matches
 // `comptime_attribute_metas` exactly.
 fn (mut t Transformer) comptime_attribute_instances(source string, loop_id flat.NodeId, schemas []AttributeSchemaInfo) []AttributeMeta {
-	decl_idx, decl_module := t.comptime_attribute_decl(source, loop_id) or {
+	decl_idx, decl_module, decl_file := t.comptime_attribute_decl(source, loop_id) or {
 		return []AttributeMeta{}
 	}
 	data := t.comptime_node_raw_attribute_data(decl_idx)
-	resolved := t.comptime_resolve_attribute_const_data(data, decl_module)
+	resolved := t.comptime_resolve_attribute_const_data(data, decl_module, decl_file)
 	return comptime_attribute_instances_from_raw(resolved, decl_module, schemas)
 }
 
@@ -947,8 +949,10 @@ fn (mut t Transformer) comptime_attribute_instances(source string, loop_id flat.
 // validates const types via const_exprs; the transform resolves simple
 // string, integer, boolean, and enum consts to literals so typed
 // materialization sees the same values. Complex consts stay as written and
-// remain legacy when they cannot bind.
-fn (mut t Transformer) comptime_resolve_attribute_const_data(data RawAttributeData, decl_module string) RawAttributeData {
+// remain legacy when they cannot bind. `decl_file` is the declaring file for
+// alias-precise resolution; empty falls back to a module-wide alias search
+// sharing the checker's canonical identity.
+fn (mut t Transformer) comptime_resolve_attribute_const_data(data RawAttributeData, decl_module string, decl_file string) RawAttributeData {
 	if data.attrs.len == 0 || isnil(t.tc) {
 		return data
 	}
@@ -960,7 +964,7 @@ fn (mut t Transformer) comptime_resolve_attribute_const_data(data RawAttributeDa
 			continue
 		}
 		value := raw.all_after(':').trim_space()
-		if literal, kind := t.comptime_attribute_const_literal(value, decl_module) {
+		if literal, kind := t.comptime_attribute_const_literal(value, decl_module, decl_file) {
 			name := raw.all_before(':').trim_space()
 			attrs[i] = '${name}: ${literal}'
 			if i < kinds.len {
@@ -977,7 +981,7 @@ fn (mut t Transformer) comptime_resolve_attribute_const_data(data RawAttributeDa
 // comptime_attribute_const_literal resolves a const-expression argument to
 // its literal spelling and piece kind, or none when `value` is already a
 // literal, a dot-enum shorthand, or no visible const.
-fn (mut t Transformer) comptime_attribute_const_literal(value string, decl_module string) ?(string, int) {
+fn (mut t Transformer) comptime_attribute_const_literal(value string, decl_module string, decl_file string) ?(string, int) {
 	trimmed := value.trim_space()
 	if trimmed.len == 0 || trimmed.starts_with('.') {
 		return none
@@ -989,107 +993,188 @@ fn (mut t Transformer) comptime_attribute_const_literal(value string, decl_modul
 	if !comptime_attribute_is_bare_ident(trimmed.all_after_last('.')) {
 		return none
 	}
-	return t.comptime_attribute_const_literal_inner(trimmed, decl_module, 0)
+	return t.comptime_attribute_const_literal_inner(trimmed, decl_module, decl_file, 0)
 }
 
-fn (mut t Transformer) comptime_attribute_const_literal_inner(name string, decl_module string, depth int) ?(string, int) {
+// comptime_attribute_resolve_const_key resolves a const name to its canonical
+// checker key, sharing the checker's identity (`attribute_resolve_const_key`).
+// Direct and bare candidates come first; dotted names then try the declaring
+// file's import alias (`file_import_module`, the transform twin of
+// `resolve_import_alias`), then a module-wide alias search for field/enum
+// uses without a declaring file, then the const suffix table.
+fn (t &Transformer) comptime_attribute_resolve_const_key(name string, decl_module string, decl_file string) ?string {
+	trimmed := name.trim_space()
+	if trimmed.len == 0 || trimmed.starts_with('.') {
+		return none
+	}
+	if !comptime_attribute_is_bare_ident(trimmed.all_after_last('.')) {
+		return none
+	}
+	if isnil(t.tc) {
+		return none
+	}
+	if trimmed.contains('.') {
+		if trimmed in t.tc.const_exprs || trimmed in t.tc.const_types {
+			return trimmed
+		}
+	} else {
+		if decl_module.len > 0 && decl_module !in ['', 'main'] {
+			candidate := '${decl_module}.${trimmed}'
+			if candidate in t.tc.const_exprs || candidate in t.tc.const_types {
+				return candidate
+			}
+		}
+		for candidate in [trimmed, 'main.${trimmed}', 'builtin.${trimmed}'] {
+			if candidate in t.tc.const_exprs || candidate in t.tc.const_types {
+				return candidate
+			}
+		}
+	}
+	if trimmed.contains('.') {
+		dot := trimmed.index('.') or { -1 }
+		if dot > 0 {
+			alias := trimmed[..dot]
+			rest := trimmed[dot + 1..]
+			if decl_file.len > 0 {
+				if resolved := t.file_import_module(decl_file, alias) {
+					qname := '${resolved}.${rest}'
+					if qname in t.tc.const_exprs || qname in t.tc.const_types {
+						return qname
+					}
+				}
+			}
+			norm_decl := if decl_module in ['', 'main'] { 'main' } else { decl_module }
+			mut found := ''
+			mut ambiguous := false
+			for fkey, mod in t.tc.file_imports {
+				nl := fkey.index('\n') or { continue }
+				if fkey[nl + 1..] != alias {
+					continue
+				}
+				file := fkey[..nl]
+				fmod := t.tc.file_modules[file] or { '' }
+				norm_fmod := if fmod in ['', 'main'] { 'main' } else { fmod }
+				if norm_fmod != norm_decl {
+					continue
+				}
+				qname := '${mod}.${rest}'
+				if qname in t.tc.const_exprs || qname in t.tc.const_types {
+					if found.len == 0 {
+						found = qname
+					} else if found != qname {
+						ambiguous = true
+						break
+					}
+				}
+			}
+			if !ambiguous && found.len > 0 {
+				return found
+			}
+		}
+	}
+	if key := t.tc.const_suffixes[trimmed] {
+		if key.len > 0 {
+			return key
+		}
+	}
+	if key := t.tc.const_suffixes[trimmed.all_after_last('.')] {
+		if key.len > 0 {
+			return key
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) comptime_attribute_const_literal_inner(name string, decl_module string, decl_file string, depth int) ?(string, int) {
 	if depth > 8 || isnil(t.tc) {
 		return none
 	}
-	mut candidates := []string{}
-	if name.contains('.') {
-		candidates << name
-	} else {
-		if decl_module.len > 0 && decl_module !in ['', 'main'] {
-			candidates << '${decl_module}.${name}'
+	key := t.comptime_attribute_resolve_const_key(name, decl_module, decl_file) or { return none }
+	expr_id := t.tc.const_exprs[key] or { return none }
+	typ := t.tc.const_types[key] or { return none }
+	// Chained consts (`a = b`) resolve `b` in the module that owns `a`,
+	// mirroring the checker's qualified lookup via `const_owner_module`.
+	next_module := t.tc.const_owner_module(key)
+	next_decl_module := if next_module.len > 0 { next_module } else { decl_module }
+	clean := types.unalias_type(&typ)
+	if clean is types.String {
+		node := t.a.node(expr_id)
+		match node.kind {
+			.string_literal {
+				return comptime_cond_string_literal(node.value), 1
+			}
+			.ident {
+				if node.value != name {
+					if lit, kind := t.comptime_attribute_const_literal_inner(node.value, next_decl_module, decl_file, depth + 1) {
+						return lit, kind
+					}
+				}
+			}
+			else {}
 		}
-		candidates << name
-		candidates << 'main.${name}'
-		candidates << 'builtin.${name}'
+		return none
 	}
-	for key in candidates {
-		expr_id := t.tc.const_exprs[key] or { continue }
-		typ := t.tc.const_types[key] or { continue }
-		clean := types.unalias_type(&typ)
-		if clean is types.String {
-			node := t.a.node(expr_id)
-			match node.kind {
-				.string_literal {
-					return comptime_cond_string_literal(node.value), 1
-				}
-				.ident {
-					if node.value != name {
-						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
-							return lit, kind
-						}
-					}
-				}
-				else {}
+	if clean.is_integer() {
+		node := t.a.node(expr_id)
+		match node.kind {
+			.int_literal {
+				return node.value, 2
 			}
-			continue
-		}
-		if clean.is_integer() {
-			node := t.a.node(expr_id)
-			match node.kind {
-				.int_literal {
-					return node.value, 2
-				}
-				.prefix {
-					if node.op == .minus && node.children_count == 1 {
-						inner := t.a.child_node(node, 0)
-						if inner.kind == .int_literal {
-							return '-${inner.value}', 2
-						}
+			.prefix {
+				if node.op == .minus && node.children_count == 1 {
+					inner := t.a.child_node(node, 0)
+					if inner.kind == .int_literal {
+						return '-${inner.value}', 2
 					}
 				}
-				.ident {
-					if node.value != name {
-						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
-							return lit, kind
-						}
-					}
-				}
-				else {}
 			}
-			continue
-		}
-		if clean.source_type_id() == flat.source_type_bool {
-			node := t.a.node(expr_id)
-			match node.kind {
-				.bool_literal {
-					return node.value, 3
-				}
-				.ident {
-					if node.value != name {
-						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
-							return lit, kind
-						}
+			.ident {
+				if node.value != name {
+					if lit, kind := t.comptime_attribute_const_literal_inner(node.value, next_decl_module, decl_file, depth + 1) {
+						return lit, kind
 					}
 				}
-				else {}
 			}
-			continue
+			else {}
 		}
-		if clean is types.Enum {
-			node := t.a.node(expr_id)
-			match node.kind {
-				.selector {
-					return '.' + node.value, 0
-				}
-				.enum_val {
-					return '.' + node.value.all_after_last('.'), 0
-				}
-				.ident {
-					if node.value != name {
-						if lit, kind := t.comptime_attribute_const_literal_inner(node.value, decl_module, depth + 1) {
-							return lit, kind
-						}
+		return none
+	}
+	if clean.source_type_id() == flat.source_type_bool {
+		node := t.a.node(expr_id)
+		match node.kind {
+			.bool_literal {
+				return node.value, 3
+			}
+			.ident {
+				if node.value != name {
+					if lit, kind := t.comptime_attribute_const_literal_inner(node.value, next_decl_module, decl_file, depth + 1) {
+						return lit, kind
 					}
 				}
-				else {}
 			}
-			continue
+			else {}
 		}
+		return none
+	}
+	if clean is types.Enum {
+		node := t.a.node(expr_id)
+		match node.kind {
+			.selector {
+				return '.' + node.value, 0
+			}
+			.enum_val {
+				return '.' + node.value.all_after_last('.'), 0
+			}
+			.ident {
+				if node.value != name {
+					if lit, kind := t.comptime_attribute_const_literal_inner(node.value, next_decl_module, decl_file, depth + 1) {
+						return lit, kind
+					}
+				}
+			}
+			else {}
+		}
+		return none
 	}
 	return none
 }

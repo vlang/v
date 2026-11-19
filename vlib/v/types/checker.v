@@ -19056,10 +19056,13 @@ fn attribute_const_kind(typ Type) AttributeFieldKind {
 	return .unsupported
 }
 
-// attribute_const_arg_kind resolves a bare or qualified const name to the
-// argument kind its type permits, or none when no visible const matches.
-// Lookup mirrors V-strict module resolution without depending on cur_module.
-fn (tc &TypeChecker) attribute_const_arg_kind(value string, module string) ?AttributeFieldKind {
+// attribute_resolve_const_key resolves a bare or qualified const name to its
+// canonical checker key using the same rules as ordinary expressions:
+// `const_key_for_name` (which expands import aliases via `resolve_import_alias`
+// and `qualify_name`) with a `const_key_for_suffix` fallback mirroring
+// `const_type_for_selector`. The caller checks `private_declaration` so
+// private constants report the ordinary `constant ... is private` error.
+fn (tc &TypeChecker) attribute_resolve_const_key(value string) ?string {
 	trimmed := value.trim_space()
 	if trimmed.len == 0 || trimmed.starts_with('.') {
 		return none
@@ -19067,49 +19070,70 @@ fn (tc &TypeChecker) attribute_const_arg_kind(value string, module string) ?Attr
 	if !is_bare_ident(trimmed.all_after_last('.')) {
 		return none
 	}
-	mut candidates := []string{}
-	if trimmed.contains('.') {
-		candidates << trimmed
-	} else {
-		if module.len > 0 && module !in ['', 'main'] {
-			candidates << '${module}.${trimmed}'
-		}
-		candidates << trimmed
-		candidates << 'main.${trimmed}'
-		candidates << 'builtin.${trimmed}'
+	if key := tc.const_key_for_name(trimmed) {
+		return key
 	}
-	for key in candidates {
-		if typ := tc.const_types[key] {
-			resolved := tc.const_type_from_initializer(key, typ)
-			if resolved is Unknown {
-				continue
+	qname := tc.qualify_name(trimmed)
+	if qname != trimmed {
+		if key := tc.const_key_for_suffix(qname) {
+			if key.len > 0 {
+				return key
 			}
-			kind := attribute_const_kind(resolved)
-			if kind != .unsupported {
-				return kind
-			}
+		}
+	}
+	if key := tc.const_key_for_suffix(trimmed.all_after_last('.')) {
+		if key.len > 0 {
+			return key
 		}
 	}
 	if key := tc.const_key_for_suffix(trimmed) {
-		if typ := tc.const_types[key] {
-			resolved := tc.const_type_from_initializer(key, typ)
-			if !(resolved is Unknown) {
-				kind := attribute_const_kind(resolved)
-				if kind != .unsupported {
-					return kind
-				}
-			}
+		if key.len > 0 {
+			return key
 		}
 	}
 	return none
 }
 
+// attribute_const_arg_kind resolves a bare or qualified const name to the
+// argument kind its type permits, or none when no visible const matches.
+// Resolution uses `attribute_resolve_const_key` (ordinary import-alias and
+// name rules); private constants are not visible here so the caller can
+// report the ordinary private error instead of a type-mismatch error.
+fn (tc &TypeChecker) attribute_const_arg_kind(value string, module string) ?AttributeFieldKind {
+	_ = module
+	key := tc.attribute_resolve_const_key(value) or { return none }
+	if _ := tc.private_declaration(key) {
+		return none
+	}
+	typ := tc.const_types[key] or { return none }
+	resolved := tc.const_type_from_initializer(key, typ)
+	if resolved is Unknown {
+		return none
+	}
+	kind := attribute_const_kind(resolved)
+	if kind == .unsupported {
+		return none
+	}
+	return kind
+}
+
 // attribute_const_enum_matches reports whether a const of enum type `const_typ`
-// declares the same enum as the schema field `field_type_id`.
-fn attribute_const_enum_matches(const_typ Type, field_type_id u32) bool {
-	const_name := flat.source_type_name(const_typ.source_type_id()).all_after_last('.').to_lower()
-	field_name := flat.source_type_name(flat.source_type_syntax(trimmed_source_type_id(field_type_id)).unqualified()).all_after_last('.').to_lower()
-	return const_name == field_name && const_name.len > 0
+// declares the same nominal enum as the schema field `field_type_id`.
+// Comparison is on trimmed nominal type IDs with alias transparency only:
+// no lowercasing and no short-name shortening, so `one.Mode` never matches
+// `two.Mode`.
+fn (tc &TypeChecker) attribute_const_enum_matches(const_typ Type, field_type_id u32) bool {
+	const_clean := unalias_type(&const_typ)
+	if const_clean is Enum {
+		const_id := trimmed_source_type_id(const_clean.source_type_id())
+		field_typ := tc.parse_type(field_type_id)
+		field_clean := unalias_type(field_typ)
+		if field_clean is Enum {
+			field_id := trimmed_source_type_id(field_clean.source_type_id())
+			return const_id == field_id && const_id != 0
+		}
+	}
+	return false
 }
 
 // builtin_attribute_names enumerates the attribute names the compiler itself
@@ -20203,50 +20227,43 @@ fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema At
 	got := attribute_arg_kind(value)
 	if got == .unsupported {
 		// A bare or qualified const name may satisfy any field whose type
-		// matches the const's type. Invalid const uses stay compile errors.
-		if const_kind := tc.attribute_const_arg_kind(value, module) {
-			if const_kind != kind {
-				tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
-				return
-			}
-			if kind == .enum_ {
-				// Enum consts must declare the same enum as the field.
-				mut matched := false
-				if decl_id := tc.attribute_enum_decl(field.type_id, module) {
-					_ = decl_id
-					for key in [value, if module.len > 0 && module !in ['', 'main'] {
-						'${module}.${value}'
-					} else {
-						value
-					}, 'main.${value.all_after_last('.')}', 'builtin.${value.all_after_last('.')}'] {
-						if typ := tc.const_types[key] {
-							resolved := tc.const_type_from_initializer(key, typ)
-							if !(resolved is Unknown) && attribute_const_enum_matches(resolved, field.type_id) {
-								matched = true
-								break
-							}
-						}
-					}
-					if !matched {
-						// Fall back to suffix table for selective imports.
-						if key := tc.const_key_for_suffix(value.all_after_last('.')) {
-							if typ := tc.const_types[key] {
-								resolved := tc.const_type_from_initializer(key, typ)
-								if !(resolved is Unknown) && attribute_const_enum_matches(resolved, field.type_id) {
-									matched = true
-								}
-							}
-						}
-					}
-					if !matched {
-						enum_name := flat.source_type_name(flat.source_type_syntax(trimmed_source_type_id(field.type_id)).unqualified())
-						tc.record_error_at(.assignment_mismatch, '`${value}` is not a value of enum `${enum_name}`', node_id, pos)
-					}
-				}
-			}
+		// matches the const's type. Resolution shares the ordinary
+		// expression identity (`attribute_resolve_const_key`); private
+		// constants report the ordinary private error. Invalid const uses
+		// stay compile errors.
+		key := tc.attribute_resolve_const_key(value) or {
+			tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
 			return
 		}
-		tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+		if _ := tc.private_declaration(key) {
+			tc.record_error_at(.unknown_type, 'constant `${key}` is private', node_id, pos)
+			return
+		}
+		typ := tc.const_types[key] or {
+			tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+			return
+		}
+		resolved := tc.const_type_from_initializer(key, typ)
+		if resolved is Unknown {
+			tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+			return
+		}
+		const_kind := attribute_const_kind(resolved)
+		if const_kind == .unsupported {
+			tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+			return
+		}
+		if const_kind != kind {
+			tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+			return
+		}
+		if kind == .enum_ {
+			// Enum consts must declare the same nominal enum as the field.
+			if !tc.attribute_const_enum_matches(resolved, field.type_id) {
+				enum_name := flat.source_type_name(flat.source_type_syntax(trimmed_source_type_id(field.type_id)).unqualified())
+				tc.record_error_at(.assignment_mismatch, '`${value}` is not a value of enum `${enum_name}`', node_id, pos)
+			}
+		}
 		return
 	}
 	if got != kind {
