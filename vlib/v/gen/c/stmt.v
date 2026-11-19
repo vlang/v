@@ -1823,7 +1823,12 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 // gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
 // Owned concrete objects are released. Borrowed pointer-backed
 // interfaces and the process-wide none and error-sentinel objects remain untouched.
+// In autofree mode IError copies are borrowed shared aliases: the field owner frees,
+// copies are never freed here, so ownership drops for IError are skipped.
 fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut expanding map[u64]bool) {
+	if g.tc.autofree_mode {
+		return
+	}
 	object := '((${expr})._object)'
 	// Drop helpers are emitted before global definitions. Local extern
 	// declarations keep the two process-wide sentinel comparisons valid there.
@@ -1868,7 +1873,22 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 // gen_ownership_clone_ierror clones a failed result's IError without erasing its dynamic
 // payload type. Result errors own pointer-backed implementations, so even an unboxed source
 // receives independent storage in the clone.
+// In autofree mode the error value is shared: the copy is borrowed (never freed),
+// the field owner frees. The stricter ownership-mode clone/panic path is unchanged.
 fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
+	if g.tc.autofree_mode {
+		tmp := g.tmp_count
+		g.tmp_count++
+		source := '_clone_ierror_source${tmp}'
+		result := '_clone_ierror_result${tmp}'
+		g.write('({ IError ${source} = ')
+		g.gen_expr(id)
+		g.writeln(';')
+		g.writeln('IError ${result} = ${source};')
+		g.writeln('${result}._object_is_boxed = false;')
+		g.write('${result}; })')
+		return
+	}
 	tmp := g.tmp_count
 	g.tmp_count++
 	source := '_clone_ierror_source${tmp}'
