@@ -9,10 +9,18 @@ import x.markdown
 import term
 
 const vexe_path = @VEXE
-const vexe_ = os.quoted_path(vexe_path)
+const vdoc_exe = os.executable()
 const tpath = os.join_path(os.vtmp_dir(), 'vod_test_module')
 
 fn testsuite_begin() {
+	// The CLI fixtures can run the vdoc code already linked into this suite.
+	// Run it before setting up the suite directory so the child inherits the
+	// caller's fixtures and working directory.
+	if os.args.len > 1 && os.args[1] == 'doc' {
+		main()
+		exit(0)
+	}
+	os.setenv('VEXE', vexe_path, true)
 	os.rmdir_all(tpath) or {}
 	os.mkdir_all(tpath)!
 	os.chdir(tpath)!
@@ -136,7 +144,7 @@ fn test_vlib_builtin_docs_exclude_alternative_runtimes() {
 	}
 	assert get_modules(root) == expected
 	output := os.join_path(tpath, 'builtin_docs', 'output')
-	os.exec_opt([vexe_path, 'doc', '-m', '-f', 'html', '-os', 'cross', '-no-timestamp', '-o', output,
+	os.exec_opt([vdoc_exe, 'doc', '-m', '-f', 'html', '-os', 'cross', '-no-timestamp', '-o', output,
 		root])!
 	html := os.read_file(os.join_path(output, 'builtin.html'))!
 	assert html.contains('id="builtin_api"')
@@ -498,7 +506,7 @@ pub fn square(x int) int {
         return x * x
 }
 ')!
-	res := os.exec_opt([vexe_path, 'doc', '-m', 'src/', '-v']) or { panic(err) }
+	res := os.exec_opt([vdoc_exe, 'doc', '-m', 'src/', '-v']) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.contains('square')
 }
@@ -565,7 +573,7 @@ pub fn greet() string {
 	return 'hello'
 }
 ")!
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', '-readme',
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', '-readme',
 		'-comments', '${'./' + mod_dir}']) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.replace('\r\n', '\n').trim_space() == 'module overview
@@ -592,7 +600,7 @@ pub enum Bar {
 	bar
 }
 ')!
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '-',
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '-',
 		'-html-only-contents', '${'./' + mod_dir}']) or { panic(err) }
 	assert res.exit_code == 0
 	output := res.output.replace('\r\n', '\n')
@@ -607,8 +615,7 @@ fn test_doc_generates_for_modules_without_public_symbols() {
 
 const internal = 1
 ')!
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-',
-		'${'./' + mod_dir}']) or {
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', '${'./' + mod_dir}']) or {
 		panic(err)
 	}
 	assert res.exit_code == 0
@@ -727,8 +734,8 @@ pub fn only_win() int {
 }
 ')!
 	// `-color` exercises the original crash path in `gen_plaintext`.
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-color', '-f', 'text', '-o',
-		'-', '${'./' + base_dir}']) or { panic(err) }
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-m', '-color', '-f', 'text', '-o', '-',
+		'${'./' + base_dir}']) or { panic(err) }
 	// The crash showed up as a non-zero exit code (V panic), so this is the key check.
 	assert res.exit_code == 0
 	assert res.output.contains('hello')
@@ -755,7 +762,7 @@ pub fn only_win() int {
 }
 ')!
 	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
-	res := os.exec([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '${'./' + out_dir}',
+	res := os.exec([vdoc_exe, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '${'./' + out_dir}',
 		'${'./' + base_dir}'])
 	assert res.exit_code != 0
 	assert res.output.contains('No documentation found')
@@ -803,7 +810,7 @@ fn test_vmod_subdirs_are_documented_as_part_of_the_module() {
 	assert d.contents.keys().sorted() == ['deep_fn', 'root_fn', 'sub_fn']
 	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested'),
 		os.join_path(root, 'internal_other')]
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
 	assert res.output.contains('fn root_fn()')
 	assert res.output.contains('fn sub_fn()')
 	assert res.output.contains('fn deep_fn()')
@@ -825,7 +832,7 @@ fn test_vmod_external_subdirs_without_root_files() {
 		'../subdirs_external_only_sources/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
 	})!
 	assert get_modules(root) == [root]
-	os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
+	os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
 	output := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
 	assert output.contains('fn external_fn()')
 }
@@ -921,8 +928,8 @@ fn test_repo_file_path_for_links_keeps_external_subdirs() {
 	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
 	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
 	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
-		'-html-only-contents', '-comments', root])!
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-f', 'html', '-o', '-', '-html-only-contents',
+		'-comments', root])!
 	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
 	assert res.output.contains('https://github.com/example/project/blob/main/other/sub.v#L')
 	assert res.output.contains('https://github.com/example/project/blob/main/shared/guide.md')
@@ -1019,8 +1026,8 @@ fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
 		}
 	}
 	root := os.join_path(repo, 'examples', 'mypkg')
-	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
-		'-html-only-contents', '-comments', root])!
+	res := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-f', 'html', '-o', '-', '-html-only-contents',
+		'-comments', root])!
 	assert res.output.contains('https://github.com/example/mypkg/blob/main/root.v#L')
 	assert res.output.contains('https://github.com/example/mypkg/blob/main/internal/sub.v#L')
 	assert res.output.contains('https://github.com/example/mypkg/blob/main/guide.md')
@@ -1072,8 +1079,8 @@ fn test_vdocignore_applies_to_vmod_subdirs() {
 	// A file ignored through one alias is still documented when reached through another one.
 	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'ignored_link'))!
 	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'allowed_link'))!
-	single := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
-	os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
+	single := os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
+	os.exec_opt([vdoc_exe, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
 	multi := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
 	for output in [single.output, multi] {
 		assert output.contains('fn root_fn()')
@@ -1096,12 +1103,12 @@ fn test_os_cross_labels_the_symbols_of_some_platforms() {
 	os.write_file(os.join_path(dir, 'plat_windows.c.v'), 'module plat\n\npub fn on_windows() {}\n')!
 	os.write_file(os.join_path(dir, 'plat_nix.c.v'), 'module plat\n\npub fn on_unix() {}\n')!
 	for platform in ['cross', 'all'] {
-		res := os.exec_opt([vexe_path, 'doc', '-os', platform, '-f', 'text', '-o', '-', dir])!
+		res := os.exec_opt([vdoc_exe, 'doc', '-os', platform, '-f', 'text', '-o', '-', dir])!
 		assert res.output.contains('fn everywhere()\n// Available on Unix only.\nfn on_unix()\n// Available on Windows only.\nfn on_windows()\n'), res.output
 	}
 	// In HTML, the note comes right before the signature, which the theme attaches it to.
-	html := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-',
-		'-html-only-contents', dir])!
+	html := os.exec_opt([vdoc_exe, 'doc', '-os', 'cross', '-f', 'html', '-o', '-', '-html-only-contents',
+		dir])!
 	assert html.output.contains('<p class="platforms">Available on <strong>Windows</strong> only.</p>\n<pre class="signature">'), html.output
 }
 
@@ -1111,7 +1118,7 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 	defer { os.rmdir_all(dir) or {} }
 	os.write_file(os.join_path(dir, 'lock_nix.c.v'), 'module lock\n\n// Lock uses pthreads.\n@[heap]\npub struct Lock {\n\tm int\n}\n\npub const spins = 10 // spins before sleeping\n')!
 	os.write_file(os.join_path(dir, 'lock_windows.c.v'), 'module lock\n\n// Lock uses an SRWLOCK.\npub struct Lock {\n\tm voidptr\n}\n\npub const spins = 10 // how often to spin\n')!
-	res := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-comments', '-f', 'text', '-o', '-',
+	res := os.exec_opt([vdoc_exe, 'doc', '-os', 'cross', '-comments', '-f', 'text', '-o', '-',
 		dir])!
 	// A constant that is only written differently is documented once.
 	assert res.output.contains('const spins = 10 // spins before sleeping\n'), res.output
@@ -1119,8 +1126,8 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 	// Each declaration is followed by its own comment.
 	assert res.output.contains('// Available on Unix only.\n@[heap]\nstruct Lock {\n\tm int\n}\n    Lock uses pthreads.\n// Available on Windows only.\nstruct Lock {\n\tm voidptr\n}\n    Lock uses an SRWLOCK.\n'), res.output
 	// In HTML, each declaration shows its own attributes in its signature, not above all of them.
-	html := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-',
-		'-html-only-contents', dir])!
+	html := os.exec_opt([vdoc_exe, 'doc', '-os', 'cross', '-f', 'html', '-o', '-', '-html-only-contents',
+		dir])!
 	assert !html.output.contains('<div class="attributes">'), html.output
 	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
 }
