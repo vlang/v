@@ -20425,12 +20425,16 @@ fn (mut tc TypeChecker) check_wire_field_type(node_id flat.NodeId, node flat.Nod
 		return
 	} else if clean is Struct {
 		spelling := clean.source_type_id()
-		if tc.type_declaration_ids[spelling].len == 0 {
-			return
-		}
-		if nested_id := tc.source_struct_decl_id_for_name(spelling) {
-			if tc.declaration_has_attribute(nested_id, 'wire') {
-				return
+		// Instantiated generics like `PlainGeneric[u16]` have no direct index
+		// entry (declarations are indexed by base); resolve through
+		// source_struct_decl_id_for_name which strips the generic application,
+		// and never treat a lookup miss as success. Generic applications are
+		// rejected outright: wire layout must be fully concrete.
+		if !flat.source_type_syntax(trimmed_source_type_id(spelling)).application_valid() {
+			if nested_id := tc.source_struct_decl_id_for_name(spelling) {
+				if tc.declaration_has_attribute(nested_id, 'wire') {
+					return
+				}
 			}
 		}
 		type_name := flat.source_type_name(field_type_id)
@@ -20463,14 +20467,14 @@ fn (mut tc TypeChecker) check_wire_array_elem_type(node_id flat.NodeId, node fla
 		return
 	} else if clean is Struct {
 		spelling := clean.source_type_id()
-		if tc.type_declaration_ids[spelling].len != 0 {
+		// Same as above: never treat a lookup miss as success, and reject
+		// generic applications outright.
+		if !flat.source_type_syntax(trimmed_source_type_id(spelling)).application_valid() {
 			if nested_id := tc.source_struct_decl_id_for_name(spelling) {
 				if tc.declaration_has_attribute(nested_id, 'wire') {
 					return
 				}
 			}
-		} else {
-			return
 		}
 	}
 	type_name := flat.source_type_name(field_type_id)

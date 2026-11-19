@@ -1,0 +1,20 @@
+module main
+
+struct PlainGeneric[T] {
+	v T
+}
+
+@[wire: 'little_endian']
+struct BadGenericField {
+	inner PlainGeneric[u16]
+}
+
+@[wire: 'little_endian']
+struct BadGenericArray {
+	items [2]PlainGeneric[u16]
+}
+
+fn main() {
+	println(BadGenericField{})
+	println(BadGenericArray{})
+}
