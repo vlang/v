@@ -167,6 +167,9 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 }
 ```
 
+In a template, `@include "partials.txt/header.txt"` uses that path as written.
+If the filename has no extension, the compiler appends `.html`.
+
 ## Validation
 
 A veb app is checked the same way as any V code, and `-check` catches most of it —

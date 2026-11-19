@@ -108,6 +108,16 @@ fn test_a_changed_template_rebuilds_the_program() {
 	assert p.build().output == 'other\n'
 }
 
+fn test_template_include_preserves_path_components() {
+	p := new_template_project('include_path')
+	defer { os.rmdir_all(p.root) or {} }
+	p.write('main.v', page_program)
+	p.write('page.txt', '@include "partials.txt/header.txt.txt"\n@include "partials.html/footer"\n')
+	p.write('partials.txt/header.txt.txt', 'header\n')
+	p.write('partials.html/footer.html', 'footer\n')
+	assert p.build().output == 'header\nfooter\n'
+}
+
 fn test_executable_cache_follows_template_inputs_when_eligible() {
 	check_template_executable_cache('executable', false)
 	$if linux {
