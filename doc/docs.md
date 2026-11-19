@@ -7138,6 +7138,10 @@ allocation, so allocation counters also observe warmed small-object allocations.
 platform C compiler unless `-cc` selects one explicitly. This option preserves compiler selection
 when GC is disabled or `-d dynamic_boehm` is enabled; an empty define value does not enable a flag.
 
+For programs whose live heap keeps growing, `-d gc_proportional_growth` makes the Boehm runtime
+grow the heap in proportion to its size when free space runs low. This avoids one full collection
+per 8 MiB of growth, at the cost of using up to about twice the live heap.
+
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
 Remaining small percentage of objects is freed via GC. The developer doesn't need to change
