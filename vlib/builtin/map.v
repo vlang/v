@@ -689,8 +689,9 @@ fn (mut m map) rehash() {
 fn (mut m map) reserve_metas(meta_bytes u32) {
 	unsafe {
 		// The table is rebuilt from scratch below, so the old contents are
-		// garbage: drop them instead of copying (v_realloc) and zero the
-		// fresh noscan table in one go.
+		// garbage: drop them instead of copying (v_realloc cannot preserve
+		// unknown-size blocks under -prealloc; use realloc_data when content
+		// matters) and zero the fresh noscan table in one go.
 		free(m.metas)
 		m.metas = &u32(vcalloc_noscan(int(meta_bytes)))
 	}
