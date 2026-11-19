@@ -118,6 +118,12 @@ scope, excluding allocator metadata and address gaps between blocks. It returns 
 scope and saturates at `uint`'s maximum on overflow. This query is unsafe: no thread may add or
 remove blocks while it runs.
 
+With `-d prealloc_cleanup`, `prealloc_scope_on_cleanup(scope, cb, arg)` registers a callback that
+runs when the scope is finally freed. Callbacks run LIFO, before its blocks are recycled, and must
+not allocate from the scope being torn down. `prealloc_scope_reenter` drops callbacks without
+running them because their arguments become invalid; `prealloc_scope_abandon` does the same because
+ownership was transferred. Without the define the registration call is a no-op.
+
 `string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
 string removes matches of a nonempty search string. Pairs are applied in order to disjoint matches
 of the original input; replacement text is not searched again. Input, search strings, and
