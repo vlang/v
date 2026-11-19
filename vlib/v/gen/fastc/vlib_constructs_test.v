@@ -217,3 +217,39 @@ fn test_fastc_builds_a_test_file_inside_builtin() {
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_fastc_single_file_string_slices_use_the_hosted_runtime() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_single_file_string_slice_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn text() string {
+	println('receiver')
+	return 'abcdef'
+}
+
+fn main() {
+	value := 'abcdef'
+	println(value[1..3])
+	println(value[..2])
+	println(text()[4..])
+	println(value#[-2..])
+	println(value#[1..99])
+	println(value#[9..])
+}")!
+	output := os.join_path(root, 'program')
+	result := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', output, source],
+		os.real_path(os.join_path(@DIR, '../../../..')), {
+			'VEXE':                   @VEXE
+			'VFLAGS':                 ''
+			'VOSARGS':                ''
+			'V_MACOS_V3_NO_FALLBACK': '1'
+		})
+	assert result.exit_code == 0, result.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'bc\nab\nreceiver\nef\nef\nbcdef\n\n', run.output
+}

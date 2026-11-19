@@ -107,6 +107,7 @@ Ordinary programs support the following constructs:
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for
   integers, booleans, strings, and enums.
+  Single-file builds support checked string slices and clamped slices using `#`.
 - `if`, `match`, loops, `break`, `continue`, function calls, and selected compile-time conditions.
 - Dynamic array literals such as `[1, 2, 3]` and `['a', 'b']`, with checked element access.
 - Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
