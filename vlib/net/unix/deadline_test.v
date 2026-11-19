@@ -26,15 +26,17 @@ fn test_a_read_deadline_wins_over_the_timeout() ! {
 	defer {
 		server.close() or {}
 	}
-	server.set_read_timeout(100 * time.millisecond)
-	server.set_read_deadline(time.now().add(400 * time.millisecond))
+	server.set_read_timeout(10 * time.millisecond)
 	sw := time.new_stopwatch()
-	server.wait_for_read() or {}
-	assert sw.elapsed() >= 350 * time.millisecond, 'returned after ${sw.elapsed()}'
+	server.set_read_deadline(time.now().add(60 * time.millisecond))
+	mut timed_out := false
+	server.wait_for_read() or { timed_out = err.code() == net.err_timed_out_code }
+	assert timed_out, 'expected the read deadline to expire'
+	assert sw.elapsed() >= 40 * time.millisecond, 'returned after ${sw.elapsed()}'
 }
 
 fn unix_connect_after_deadline_delay(path string) {
-	time.sleep(100 * time.millisecond)
+	time.sleep(20 * time.millisecond)
 	mut client := unix.connect_stream(path) or { panic(err) }
 	client.close() or { panic(err) }
 }
@@ -81,12 +83,12 @@ fn test_unset_accept_deadlines_allow_waiting_without_a_timeout() ! {
 }
 
 fn unix_write_after_deadline_delay(path string) {
-	time.sleep(100 * time.millisecond)
+	time.sleep(50 * time.millisecond)
 	mut client := unix.connect_stream(path) or { panic(err) }
 	defer {
 		client.close() or {}
 	}
-	time.sleep(100 * time.millisecond)
+	time.sleep(50 * time.millisecond)
 	client.write_string('future') or { panic(err) }
 }
 
