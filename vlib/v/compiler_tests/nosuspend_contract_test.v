@@ -176,6 +176,26 @@ fn test_nosuspend_contracts_in_build_and_check() {
 			accepted: true
 			source:   '@[nosuspend]\nfn handler() { C.exit(0) }\nfn main() { if false { handler() } }\n'
 		},
+		NosuspendCase{
+			name:     'expired_inner_shadow'
+			accepted: true
+			source:   'fn compute() int { return 7 }\n@[nosuspend]\nfn handler(flag bool) int { if flag { compute := 1\n_ = compute }\nreturn compute() }\nfn main() { assert handler(true) == 7\nassert handler(false) == 7 }\n'
+		},
+		NosuspendCase{
+			name:     'tuple_second_binding'
+			accepted: false
+			source:   'import time\ntype Callback = fn ()\nfn callback() {}\nfn blocking() { time.sleep(time.millisecond) }\nfn pair() (int, Callback) { return 1, blocking }\n@[nosuspend]\nfn handler() { n, callback := pair()\n_ = n\ncallback() }\nfn main() { handler() }\n'
+		},
+		NosuspendCase{
+			name:     'tuple_first_binding'
+			accepted: false
+			source:   'import time\ntype Callback = fn ()\nfn blocking() { time.sleep(time.millisecond) }\nfn pair() (Callback, int) { return blocking, 1 }\n@[nosuspend]\nfn handler() { callback, n := pair()\n_ = n\ncallback() }\nfn main() { handler() }\n'
+		},
+		NosuspendCase{
+			name:     'tuple_unused'
+			accepted: true
+			source:   'fn pair() (int, int) { return 1, 2 }\n@[nosuspend]\nfn handler() int { a, b := pair()\nreturn a + b }\nfn main() { assert handler() == 3 }\n'
+		},
 	]
 	// The standalone FastC parser must reject contracts it cannot check.
 	fastc_source := os.join_path(root, 'fastc.v')

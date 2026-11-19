@@ -225,53 +225,68 @@ fn (mut s NoSuspendScan) walk_function(decl NoSuspendFunction, chain []string, a
 		s.report(decl.id, chain, anchor, 'function body is unavailable')
 		return
 	}
-	mut parameters := map[string]u32{}
+	mut bindings := map[string]u32{}
 	for i in 0 .. node.children_count {
 		child := s.tc.a.child_node(node, i)
 		if child.kind == .param {
-			parameters[child.value] = child.typ
+			bindings[child.value] = child.typ
 		}
 	}
 	// Function bodies are direct children after the parameters, not block nodes.
+	// Walk statements in order with lexical scopes so expired block bindings do
+	// not shadow later direct calls and tuple bindings are all visible.
 	for i in 0 .. node.children_count {
 		if s.tc.a.child_node(node, i).kind != .param {
-			s.collect_locals(s.tc.a.child(node, i), mut parameters)
-		}
-	}
-	for i in 0 .. node.children_count {
-		if s.tc.a.child_node(node, i).kind != .param {
-			s.walk(s.tc.a.child(node, i), decl, chain, anchor, parameters, false)
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut bindings, false)
 		}
 	}
 }
 
-fn (s &NoSuspendScan) collect_locals(id flat.NodeId, mut bindings map[string]u32) {
-	if !s.tc.valid_node_id(id) {
-		return
+// nosuspend_decl_slots returns the child indices holding LHS declaration targets
+// and RHS value expressions of a `decl_assign` node. The flat layout varies:
+// a single `x := y` is `[LHS, RHS...]`; an if-guard `a, b := expr` is
+// `[LHS0, RHS, LHS1, ...]` (one RHS, value = lhs count); a multi
+// `a, b := c, d` interleaves as `[LHS0, RHS0, LHS1, RHS1, ...]`.
+fn nosuspend_decl_slots(node flat.Node) ([]int, []int) {
+	count := int(node.children_count)
+	n := node.value.int()
+	if n >= 2 && count == n + 1 {
+		mut lhs := []int{cap: n}
+		lhs << 0
+		for i in 2 .. count {
+			lhs << i
+		}
+		return lhs, [1]
 	}
-	node := s.tc.a.node(id)
-	if node.kind == .decl_assign {
-		for i := 0; i + 1 < node.children_count; i += 2 {
-			lhs := s.tc.a.child_node(node, i)
-			if lhs.kind == .ident {
-				bindings[lhs.value] = s.type_name(s.tc.a.child(node, i + 1), bindings)
+	if n >= 2 && count == 2 * n {
+		mut lhs := []int{cap: n}
+		mut rhs := []int{cap: n}
+		for i in 0 .. count {
+			if i % 2 == 0 {
+				lhs << i
+			} else {
+				rhs << i
 			}
 		}
+		return lhs, rhs
 	}
-	if node.kind == .for_in_stmt && node.children_count >= 2 {
-		for i in 0 .. 2 {
-			binding := s.tc.a.child_node(node, i)
-			if binding.kind == .ident {
-				bindings[binding.value] = s.type_name(s.tc.a.child(node, i), bindings)
-			}
-		}
+	mut rhs := []int{cap: if count > 1 { count - 1 } else { 0 }}
+	for i in 1 .. count {
+		rhs << i
 	}
-	if node.kind in [.fn_literal, .lambda_expr] {
+	return [0], rhs
+}
+
+fn (mut s NoSuspendScan) add_nosuspend_binding(mut bindings map[string]u32, lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	lhs := s.tc.a.node(lhs_id)
+	if lhs.kind != .ident || lhs.value == '' || lhs.value == '_' {
 		return
 	}
-	for i in 0 .. node.children_count {
-		s.collect_locals(s.tc.a.child(node, i), mut bindings)
+	mut typ := s.type_name(lhs_id, bindings)
+	if typ == flat.source_type_unknown && s.tc.valid_node_id(rhs_id) {
+		typ = s.type_name(rhs_id, bindings)
 	}
+	bindings[lhs.value] = typ
 }
 
 fn (s &NoSuspendScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
@@ -369,11 +384,158 @@ fn (s &NoSuspendScan) terminal(id flat.NodeId, decl NoSuspendFunction, bindings 
 }
 
 fn (mut s NoSuspendScan) walk(id flat.NodeId, decl NoSuspendFunction, chain []string, anchor flat.NodeId,
-	parameters map[string]u32, callee_position bool) {
+	mut bindings map[string]u32, callee_position bool) {
 	if !s.tc.valid_node_id(id) {
 		return
 	}
 	node := s.tc.a.node(id)
+	// Lexical scopes: bindings added inside a block, loop body, branch, or
+	// closure are visible only there and in later statements of the same scope.
+	// Walking statements in order with cloned scope maps keeps expired inner
+	// bindings from shadowing later direct calls.
+	if node.kind == .decl_assign {
+		lhs_slots, rhs_slots := nosuspend_decl_slots(*node)
+		for rhs_idx in rhs_slots {
+			if rhs_idx < int(node.children_count) {
+				s.walk(s.tc.a.child(node, rhs_idx), decl, chain, anchor, mut bindings, false)
+			}
+		}
+		for li in 0 .. lhs_slots.len {
+			lhs_idx := lhs_slots[li]
+			if lhs_idx >= int(node.children_count) {
+				continue
+			}
+			rhs_idx := if li < rhs_slots.len {
+				rhs_slots[li]
+			} else if rhs_slots.len > 0 {
+				rhs_slots[0]
+			} else {
+				-1
+			}
+			rhs_id := if rhs_idx >= 0 && rhs_idx < int(node.children_count) {
+				s.tc.a.child(node, rhs_idx)
+			} else {
+				flat.empty_node
+			}
+			s.add_nosuspend_binding(mut bindings, s.tc.a.child(node, lhs_idx), rhs_id)
+		}
+		return
+	}
+	if node.kind == .block {
+		mut inner := bindings.clone()
+		for i in 0 .. node.children_count {
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut inner, false)
+		}
+		return
+	}
+	if node.kind == .for_in_stmt {
+		mut header := node.value.int()
+		if header < 3 {
+			header = 3
+		}
+		if header > int(node.children_count) {
+			header = int(node.children_count)
+		}
+		for i in 2 .. header {
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut bindings, false)
+		}
+		mut body_scope := bindings.clone()
+		for i in 0 .. 2 {
+			if i >= int(node.children_count) {
+				break
+			}
+			binding := s.tc.a.child_node(node, i)
+			if binding.kind == .ident && binding.value != '' && binding.value != '_' {
+				body_scope[binding.value] = s.type_name(s.tc.a.child(node, i), bindings)
+			}
+		}
+		for i in header .. int(node.children_count) {
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut body_scope, false)
+		}
+		return
+	}
+	if node.kind == .for_stmt {
+		mut loop_scope := bindings.clone()
+		for i in 0 .. node.children_count {
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut loop_scope, false)
+		}
+		return
+	}
+	if node.kind == .if_expr && node.children_count > 0 {
+		cond_node := s.tc.a.child_node(node, 0)
+		if cond_node.kind == .decl_assign {
+			lhs_slots, rhs_slots := nosuspend_decl_slots(*cond_node)
+			for rhs_idx in rhs_slots {
+				if rhs_idx < int(cond_node.children_count) {
+					s.walk(s.tc.a.child(cond_node, rhs_idx), decl, chain, anchor, mut bindings, false)
+				}
+			}
+			mut then_scope := bindings.clone()
+			for li in 0 .. lhs_slots.len {
+				lhs_idx := lhs_slots[li]
+				if lhs_idx >= int(cond_node.children_count) {
+					continue
+				}
+				rhs_idx := if li < rhs_slots.len {
+					rhs_slots[li]
+				} else if rhs_slots.len > 0 {
+					rhs_slots[0]
+				} else {
+					-1
+				}
+				rhs_id := if rhs_idx >= 0 && rhs_idx < int(cond_node.children_count) {
+					s.tc.a.child(cond_node, rhs_idx)
+				} else {
+					flat.empty_node
+				}
+				s.add_nosuspend_binding(mut then_scope, s.tc.a.child(cond_node, lhs_idx), rhs_id)
+			}
+			if node.children_count > 1 {
+				s.walk(s.tc.a.child(node, 1), decl, chain, anchor, mut then_scope, false)
+			}
+			for i in 2 .. node.children_count {
+				s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut bindings, false)
+			}
+			return
+		}
+		s.walk(s.tc.a.child(node, 0), decl, chain, anchor, mut bindings, false)
+		for i in 1 .. node.children_count {
+			mut branch_scope := bindings.clone()
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut branch_scope, false)
+		}
+		return
+	}
+	if node.kind in [.fn_literal, .lambda_expr] {
+		mut closure_scope := bindings.clone()
+		for i in 0 .. node.children_count {
+			child := s.tc.a.child_node(node, i)
+			if child.kind == .param {
+				if child.value != '' && child.value != '_' {
+					closure_scope[child.value] = child.typ
+				}
+				continue
+			}
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut closure_scope, false)
+		}
+		return
+	}
+	if node.kind in [.match_stmt, .select_stmt, .comptime_if] {
+		if node.children_count > 0 {
+			s.walk(s.tc.a.child(node, 0), decl, chain, anchor, mut bindings, false)
+			for i in 1 .. node.children_count {
+				mut branch_scope := bindings.clone()
+				s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut branch_scope, false)
+			}
+			return
+		}
+	}
+	if node.kind == .comptime_for {
+		mut loop_scope := bindings.clone()
+		for i in 0 .. node.children_count {
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut loop_scope, false)
+		}
+		return
+	}
 	mut reason := ''
 	match node.kind {
 		.spawn_expr { reason = '`spawn` may suspend' }
@@ -405,7 +567,7 @@ fn (mut s NoSuspendScan) walk(id flat.NodeId, decl NoSuspendFunction, chain []st
 			display := s.tc.call_display_name(*node)
 			callee := s.tc.a.child_node(node, 0)
 			mut indirect := false
-			if callee.kind == .ident && callee.value in parameters {
+			if callee.kind == .ident && callee.value in bindings {
 				indirect = true
 			}
 			if callee.kind in [.index, .paren, .prefix, .call] {
@@ -413,13 +575,13 @@ fn (mut s NoSuspendScan) walk(id flat.NodeId, decl NoSuspendFunction, chain []st
 				for base.children_count > 0 && base.kind in [.index, .paren, .prefix, .call] {
 					base = s.tc.a.child_node(base, 0)
 				}
-				if base.kind == .ident && base.value in parameters {
+				if base.kind == .ident && base.value in bindings {
 					indirect = true
 				}
 			}
 			if callee.kind == .selector && callee.children_count > 0 {
 				receiver := unalias_type(unwrap_pointer(s.tc.parse_type(s.type_name(s.tc.a.child(callee,
-					0), parameters))))
+					0), bindings))))
 				if receiver is Interface {
 					indirect = true
 				} else if receiver is Struct {
@@ -433,18 +595,18 @@ fn (mut s NoSuspendScan) walk(id flat.NodeId, decl NoSuspendFunction, chain []st
 					// Without a proven receiver type the selector may be a
 					// function field, so fail closed before any terminal exemption.
 					base := s.tc.a.child_node(callee, 0)
-					if base.kind == .ident && base.value in parameters {
+					if base.kind == .ident && base.value in bindings {
 						indirect = true
 					}
 				}
 			}
 			if indirect {
 				reason = 'indirect or interface call may suspend'
-			} else if s.terminal(id, decl, parameters) && !s.has_control_exit(id) {
+			} else if s.terminal(id, decl, bindings) && !s.has_control_exit(id) {
 				// Terminating calls never resume, but their arguments are still
 				// evaluated. Walk arguments below without following the callee.
 				for i in 1 .. node.children_count {
-					s.walk(s.tc.a.child(node, i), decl, chain, anchor, parameters, false)
+					s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut bindings, false)
 				}
 				return
 			} else if nosuspend_blocking_call(name, display) {
@@ -478,9 +640,9 @@ fn (mut s NoSuspendScan) walk(id flat.NodeId, decl NoSuspendFunction, chain []st
 	}
 	for i in 0 .. node.children_count {
 		if node.kind == .call && i == 0 {
-			s.walk(s.tc.a.child(node, i), decl, chain, anchor, parameters, true)
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut bindings, true)
 		} else {
-			s.walk(s.tc.a.child(node, i), decl, chain, anchor, parameters, false)
+			s.walk(s.tc.a.child(node, i), decl, chain, anchor, mut bindings, false)
 		}
 	}
 }
