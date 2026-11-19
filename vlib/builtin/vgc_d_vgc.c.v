@@ -50,7 +50,7 @@ fn C.vgc_now_ns() u64
 fn C.vgc_set_thread_exit_hook(f fn (voidptr))
 fn C.vgc_watch_thread_exit(idx int)
 fn C.vgc_call_with_registers_spilled(f fn (voidptr, voidptr), arg voidptr)
-fn C.vgc_start_thread(f voidptr)
+fn C.vgc_start_thread(f fn ())
 fn C.vgc_num_cpus() int
 
 // ============================================================
@@ -284,6 +284,7 @@ mut:
 	// GC worker coordination
 	gc_workers_done u32 // atomic
 	gc_nworkers     int
+	gc_mark_done    u32 // atomic: main drained its queue; workers may exit when empty
 	gc_stop_flag    u32 // atomic: tells threads to stop for GC
 	gc_stop_epoch   u32 // atomic: numbers the stop-the-world requests, skipping 0
 	// Sweep state
