@@ -5069,7 +5069,8 @@ fn (tc &TypeChecker) expr_subtree_has_undefined_ident_error(id flat.NodeId) bool
 	for diagnostic in tc.errors {
 		if diagnostic.kind != .unknown_ident
 			|| (!diagnostic.msg.starts_with('undefined variable:')
-				&& !diagnostic.msg.starts_with('undefined ident:')) {
+				&& !diagnostic.msg.starts_with('undefined ident:')
+				&& !diagnostic.msg.contains('cannot be used as a value')) {
 			continue
 		}
 		if diagnostic.node == id {
@@ -5085,7 +5086,8 @@ fn (tc &TypeChecker) expr_subtree_has_undefined_variable_error(id flat.NodeId) b
 	}
 	root := tc.a.node(id)
 	for diagnostic in tc.errors {
-		if diagnostic.kind != .unknown_ident || !diagnostic.msg.starts_with('undefined variable:') {
+		if diagnostic.kind != .unknown_ident || (!diagnostic.msg.starts_with('undefined variable:')
+			&& !diagnostic.msg.contains('cannot be used as a value')) {
 			continue
 		}
 		if diagnostic.node == id {
