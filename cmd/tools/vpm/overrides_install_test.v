@@ -1,3 +1,4 @@
+// vtest vflags: -new-compiler -no-retry-compilation
 module main
 
 import json2
@@ -7,18 +8,17 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 
 const override_test_root = os.join_path(os.vtmp_dir(), 'vpm_overrides_${os.getpid()}')
 const override_original_dir = os.getwd()
-const override_vpm_exe = os.join_path(override_test_root, if os.user_os() == 'windows' {
-	'vpm.exe'
-} else {
-	'vpm'
-})
+const override_vpm_exe = os.executable()
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	os.mkdir_all(override_test_root)!
 	test_utils.set_test_env(os.join_path(override_test_root, 'build-store'))
 	os.setenv('VEXE', @VEXE, true)
-	cmd_ok_args(@LOCATION, [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER,
-		'-gc', 'none', '-o', override_vpm_exe, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {
