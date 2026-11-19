@@ -80,6 +80,62 @@ fn test_print_backtrace_keeps_its_caller() {
 	assert frames == ['show()', 'main()'], result.output
 }
 
+const generic_module_source = "module probe
+
+pub fn ok() int {
+	return 1
+}
+
+// fail panics for every value.
+pub fn fail[T](x T) T {
+	y := x
+	if true {
+		panic('probe fail')
+	}
+	return y
+}
+"
+
+// test_cached_generic_panic_keeps_its_source_position checks that a generic body,
+// which a warm build reparses from the module cache header, still reports the line
+// of its original source file.
+fn test_cached_generic_panic_keeps_its_source_position() {
+	$if windows {
+		// The module cache needs a C compiler other than the bundled TinyCC.
+		return
+	}
+	if os.exec(['cc', '--version']).exit_code != 0 {
+		return
+	}
+	root := os.join_path(vtmp_folder, 'generic_module')
+	module_dir := os.join_path(root, 'modules', 'probe')
+	os.mkdir_all(module_dir) or { panic(err) }
+	module_path := os.join_path(module_dir, 'probe.v')
+	os.write_file(module_path, generic_module_source) or { panic(err) }
+	old_vmodules := os.getenv('VMODULES')
+	old_vtmp := os.getenv('VTMP')
+	os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+	os.setenv('VTMP', os.join_path(root, 'vtmp'), true)
+	defer {
+		os.setenv('VMODULES', old_vmodules, true)
+		os.setenv('VTMP', old_vtmp, true)
+	}
+	// The first build caches `probe`; the second one specializes `fail` again from
+	// the cached header.
+	for i, call in ['probe.fail[int](3)', "probe.fail[string]('s')"] {
+		source_path := os.join_path(root, 'main_${i}.v')
+		exe_path := os.join_path(root, 'main_${i}${exe_suffix()}')
+		os.write_file(source_path, 'import probe\n\nfn main() {\n\tprintln(probe.ok())\n\t${call}\n}\n') or {
+			panic(err)
+		}
+		compilation := os.exec([vexe, '-cc', 'cc', '-o', exe_path, source_path])
+		assert compilation.exit_code == 0, 'compilation failed: ${compilation.output}'
+		result := os.exec([exe_path])
+		assert result.exit_code == 1, result.output
+		assert result.output.contains('     at: ${module_path}:11 in probe.fail'), result.output
+	}
+}
+
 fn compile_and_run_panic_program(name string, flags []string) (string, string) {
 	source_path := os.join_path(vtmp_folder, '${name}.v')
 	exe_path := os.join_path(vtmp_folder, '${name}${exe_suffix()}')

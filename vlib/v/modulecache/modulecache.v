@@ -5547,8 +5547,14 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 						effective_attrs << source_attr
 					}
 				}
+				raw_source := if source_embedded {
+					declaration_source_with_line(a, node, source_file, mut source_cache) or {
+						CachedDeclarationSource{}
+					}
+				} else {
+					CachedDeclarationSource{}
+				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_with_line(a, node, source_file, mut source_cache) or { CachedDeclarationSource{} }
 					cached_embedded_declaration_source(raw_source.text, vroot, source_file, raw_source.line)
 				} else {
 					decl_text(a, tc, module_name, node, vroot, source_file, import_paths, effective_attrs, source_is_public)
@@ -5572,8 +5578,19 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 						'@[trusted]'
 					}
 				}
+				mut prefix_lines := 0
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
+					prefix_lines = attrs_text.count('\n') + 1
+				}
+				// A panic in an embedded body reports its .v position, so map the body
+				// back to its source file. Only such bodies get a directive: the header
+				// is its dependents' signature, and line numbers make every edit above
+				// the declaration change it.
+				line_directive := if source_embedded && raw_source.text.contains('panic(') {
+					cached_declaration_line_directive(a, node, raw_source.start, prefix_lines)
+				} else {
+					''
 				}
 				if type_key != 0 {
 					seen_types[type_key] = true
@@ -5584,7 +5601,15 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					origin := cached_struct_sources[node.value] or { source_file }
 					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
-				out.writeln(text)
+				if line_directive.len > 0 {
+					out.writeln(line_directive)
+					out.writeln(text)
+					// Number the rest of the header by its own lines again: the line after
+					// this directive is the physical line `newlines + 2`.
+					out.writeln('#line ${builder_newline_count(out) + 2}')
+				} else {
+					out.writeln(text)
+				}
 				out.writeln('')
 			}
 		}
@@ -5820,8 +5845,9 @@ fn declaration_node_source_is_embeddable(a &flat.FlatAst, id flat.NodeId) bool {
 }
 
 struct CachedDeclarationSource {
-	text string
-	line int
+	text  string
+	line  int
+	start int // byte offset of `text` in its source file
 }
 
 fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?string {
@@ -5851,8 +5877,9 @@ fn declaration_source_with_line(a &flat.FlatAst, node flat.Node, file_name strin
 	}
 	text := source[start..end]
 	return CachedDeclarationSource{
-		text: text
-		line: if text.contains('@LINE') || text.contains('@FILE_LINE') {
+		text:  text
+		start: start
+		line:  if text.contains('@LINE') || text.contains('@FILE_LINE') {
 			source[..start].count('\n') + 1
 		} else {
 			1
@@ -5864,6 +5891,35 @@ struct CachedSourcePathEdit {
 	start       int
 	end         int
 	replacement string
+}
+
+// cached_declaration_line_directive returns a `#line` directive that maps the
+// declaration source starting at byte `start` (preceded by `prefix_lines` extra
+// header lines) back to its logical source position.
+fn cached_declaration_line_directive(a &flat.FlatAst, node flat.Node, start int, prefix_lines int) string {
+	file := a.source_files[node.pos.id] or { return '' }
+	if start < 0 || start > file.size {
+		return ''
+	}
+	// A header that is cached again keeps the position its own directives give.
+	position := file.logical_position_at(start)
+	line := position.line - prefix_lines
+	if line < 1 || position.filename.len == 0 {
+		return ''
+	}
+	name := position.filename.replace('\\', '\\\\').replace('"', '\\"')
+	return '#line ${line} "${name}"'
+}
+
+@[direct_array_access]
+fn builder_newline_count(b strings.Builder) int {
+	mut count := 0
+	for i in 0 .. b.len {
+		if b[i] == `\n` {
+			count++
+		}
+	}
+	return count
 }
 
 fn cached_embedded_declaration_source(source string, vroot string, source_file string, source_line int) string {
