@@ -1,6 +1,9 @@
 module picohttpparser
 
-$if !windows {
+$if windows {
+	// Declares `send`; a cached module object does not get it from another module.
+	#include <winsock2.h>
+} $else {
 	#include <sys/socket.h>
 }
 
