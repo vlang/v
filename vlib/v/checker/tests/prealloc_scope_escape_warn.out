@@ -1,0 +1,7 @@
+vlib/v/checker/tests/prealloc_scope_escape_warn.vv:6:9: warning: `p` was allocated in a prealloc/arena scope and may outlive it; clone/copy it before the scope ends
+    4 |     p := malloc(64)
+    5 |     prealloc_scope_end(scope)
+    6 |     return p
+      |            ^
+    7 | }
+    8 |
