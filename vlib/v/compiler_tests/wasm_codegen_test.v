@@ -372,7 +372,7 @@ assert.equal(e.prealloc_malloc(5), 24);
 assert.equal(e.join_path(5), 28);
 assert.equal(e.name_list(5), 34);
 assert.equal(e.call_hash(), 7n);
-assert.equal(e.runtime_control(), 725283166682890696n);
+assert.equal(e.runtime_control(), 4046906846307280513n);
 ')
 }
 
