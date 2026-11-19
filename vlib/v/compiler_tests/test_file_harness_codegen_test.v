@@ -17,11 +17,9 @@ fn build_v3_with(name string, flags string) string {
 }
 
 const harness_v3_name = 'v3_test_file_harness_test_${os.getpid()}'
-const harness_parallel_v3_name = 'v3_test_file_harness_parallel_test_${os.getpid()}'
 
 fn testsuite_end() {
 	os.rm(os.join_path(os.temp_dir(), harness_v3_name)) or {}
-	os.rm(os.join_path(os.temp_dir(), harness_parallel_v3_name)) or {}
 }
 
 // build_v3 builds the compiler on first use; every case used to build its own.
@@ -322,16 +320,8 @@ fn test_two() {
 	order_run := compile_and_run(v3_bin, 'harness_order_run', '_test.c.v', order_src)
 	assert order_run.exit_code == 0, order_run.output
 	assert order_run.output.trim_space() == 'one\ntwo'
-
-	parallel_v3_bin := build_v3_with(harness_parallel_v3_name, '-d parallel')
-	parallel_c := gen_c(parallel_v3_bin, 'harness_parallel_order', '_test.c.v', order_src)
-	assert parallel_c.contains(harness_entry_point), parallel_c
-	assert parallel_c.contains('test_one();'), parallel_c
-	assert parallel_c.contains('test_two();'), parallel_c
-	parallel_run := compile_and_run(parallel_v3_bin, 'harness_parallel_order_run', '_test.c.v',
-		order_src)
-	assert parallel_run.exit_code == 0, parallel_run.output
-	assert parallel_run.output.trim_space() == 'one\ntwo'
+	// Compiler builds enable the parallel generator by default, so this also covers what a
+	// separate `-d parallel` build used to check.
 
 	hooks_src := "fn testsuite_begin() {
 	println('begin')
