@@ -4,12 +4,21 @@ import encoding.hex
 // Reading the test runner's own stdin would block whenever the suite is
 // started from a terminal, and would return whatever the runner happened to
 // pipe in. Every `os.get_*` input helper is therefore exercised through a small
-// child binary, which this test compiles and then feeds a file through
-// `Process.set_stdin_path`, so the input is fully determined.
-const stdin_probe_source = r"import os
+// separate process. The test executable doubles as the probe and reads
+// from a fixture file attached by `Process.set_stdin_path`.
+const stdin_probe_arg = '--vtest-stdin-probe'
+const stdin_marker = '\nEND-MARKER\n'
+const stdin_probe = StdinProbe{
+	dir: os.join_path(os.vtmp_dir(), 'os_stdin_input_tests_${os.getpid()}')
+	exe: os.executable()
+}
 
-fn main() {
-	mode := if os.args.len > 1 { os.args[1] } else { '' }
+struct StdinProbe {
+	exe string
+	dir string
+}
+
+fn run_stdin_probe(mode string) {
 	match mode {
 		'get_line' {
 			println(os.get_line())
@@ -53,27 +62,14 @@ fn main() {
 	}
 	println('END-MARKER')
 }
-"
-
-const stdin_marker = '\nEND-MARKER\n'
-const stdin_probe_dir = os.join_path(os.vtmp_dir(), 'os_stdin_input_tests_${os.getpid()}')
-const stdin_probe = StdinProbe{
-	dir: stdin_probe_dir
-	exe: os.join_path(stdin_probe_dir, $if windows { 'stdin_probe.exe' } $else { 'stdin_probe' })
-}
-
-struct StdinProbe {
-	exe string
-	dir string
-}
 
 fn testsuite_begin() {
+	if os.args.len == 3 && os.args[1] == stdin_probe_arg {
+		run_stdin_probe(os.args[2])
+		exit(0)
+	}
 	os.rmdir_all(stdin_probe.dir) or {}
 	os.mkdir_all(stdin_probe.dir)!
-	source := os.join_path(stdin_probe.dir, 'stdin_probe.v')
-	os.write_file(source, stdin_probe_source)!
-	build := os.exec([@VEXE, '-nocache', '-o', stdin_probe.exe, source])
-	assert build.exit_code == 0, build.output
 }
 
 fn testsuite_end() {
@@ -87,7 +83,7 @@ fn (p StdinProbe) feed(mode string, payload string) string {
 	input := os.join_path(p.dir, 'stdin.txt')
 	os.write_file(input, payload) or { panic(err) }
 	mut child := os.new_process(p.exe)
-	child.set_args([mode])
+	child.set_args([stdin_probe_arg, mode])
 	child.set_redirect_stdio()
 	child.set_stdin_path(input)
 	child.run()
