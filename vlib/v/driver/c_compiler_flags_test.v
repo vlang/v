@@ -1753,7 +1753,10 @@ fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
 fn test_add_v3_tcc_compat_defines() {
 	mut macos_arm64 := []string{}
 	add_v3_tcc_compat_defines(mut macos_arm64, 'macos', 'arm64', false, true)
-	assert macos_arm64 == ['no_backtrace']
+	// macOS builtin walks the stack with libSystem's backtrace(), not TCC's runtime.
+	assert macos_arm64.len == 0
+	add_v3_tcc_compat_defines(mut macos_arm64, 'macos', 'arm64', true, true)
+	assert macos_arm64.len == 0
 
 	mut shared_defines := ['custom']
 	add_v3_tcc_compat_defines(mut shared_defines, 'linux', 'amd64', true, true)

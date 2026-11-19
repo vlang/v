@@ -368,6 +368,7 @@ argument, e.g. `v new abc`.
     * [Compiling for iOS](#compiling-for-ios)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
+        * [Panics and stack traces](#panics-and-stack-traces)
         * [Native Backend binaries](#native-backend-binaries)
         * [Javascript Backend](#javascript-backend)
 
@@ -10832,6 +10833,42 @@ use `v help`, `v help build` and `v help build-c`.
 
 * [CodeLite](codelite.md)
 * [Visual Studio Code](vscode.md)
+
+### Panics and stack traces
+
+A panic prints its message, the .v file and line of the `panic()` call, and a stack trace
+of the functions that led to it, innermost first:
+
+```text
+V panic: boom 3
+     at: p.v:3 in main.inner()
+ v hash: afbcf1d
+    pid: 0x2d72
+    tid: 0x2d72
+
+inner()
+middle()
+main()
+(build with `-g` to see the .v line of every frame)
+```
+
+Without `-g`, the executable has no line information, so only the `panic()` call has a .v
+line. `-prod` executables leave it out as well, so they do not contain source paths. Build
+with `-g` to see the .v line of every frame, like in Go:
+
+```text
+inner()
+	/home/user/p.v:3
+middle()
+	/home/user/p.v:9
+main()
+	/home/user/p.v:15
+```
+
+On macOS the lines come from `atos`, which can not read the debug information of TinyCC,
+so use `-cc clang -g` there. On Linux they come from `addr2line`. Panics that the runtime
+raises, like an array index out of range, show the .v line of your code only in such a
+stack trace.
 
 ### Native Backend binaries
 

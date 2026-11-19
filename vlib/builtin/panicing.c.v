@@ -1,6 +1,7 @@
 module builtin
 
-// panic_debug private function that V uses for panics, -cg/-g is passed
+// panic_debug private function that V uses for panics that know their V source
+// position: every `panic()` call with -g/-cg, and calls outside vlib in non-prod builds.
 // recent versions of tcc print nicer backtraces automatically
 // Note: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
@@ -27,25 +28,38 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		// vfmt off
 		// Note: be carefull to not allocate here, avoid string interpolation
 		flush_stdout()
-		eprintln('================ V panic ================')
-		eprint('   module: '); eprintln(mod)
-		eprint(' function: '); eprint(fn_name); eprintln('()')
-		eprint('  message: '); eprintln(s)
-		eprint('     file: '); eprint(file); eprint(':');
-	    C.fprintf(C.stderr, c'%d\n', line_no)
-		eprint('   v hash: '); eprintln(vcurrent_hash())
-		$if !vinix {
-			eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
-			eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+		$if debug {
+			eprintln('================ V panic ================')
+			eprint('   module: '); eprintln(mod)
+			eprint(' function: '); eprint(fn_name); eprintln('()')
+			eprint('  message: '); eprintln(s)
+			eprint('     file: '); eprint(file); eprint(':');
+			C.fprintf(C.stderr, c'%d\n', line_no)
+			eprint('   v hash: '); eprintln(vcurrent_hash())
+			$if !vinix {
+				eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
+				eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+			}
+			eprintln('=========================================')
+		} $else {
+			// Without `-g`, only the panic call site knows its .v line.
+			eprint('V panic: '); eprintln(s)
+			eprint('     at: '); eprint(file); eprint(':');
+			C.fprintf(C.stderr, c'%d', line_no)
+			eprint(' in '); eprint(mod); eprint('.'); eprint(fn_name); eprintln('()')
+			eprint(' v hash: '); eprintln(vcurrent_hash())
+			$if !vinix {
+				eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
+				eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+			}
 		}
-		eprintln('=========================================')
 		flush_stdout()
 		// vfmt on
 		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
-		} $else $if tinyc && (!glibc || arm64) {
+		} $else $if tinyc && !macos && (!glibc || arm64) {
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			} $else {
@@ -121,7 +135,7 @@ pub fn panic(s string) {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
-		} $else $if tinyc && (!glibc || arm64) {
+		} $else $if tinyc && !macos && (!glibc || arm64) {
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			} $else {

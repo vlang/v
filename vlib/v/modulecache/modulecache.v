@@ -5500,6 +5500,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	mut seen := map[string]bool{}
 	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
+	mut mapped_declarations := []string{}
 	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
@@ -5547,8 +5548,14 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 						effective_attrs << source_attr
 					}
 				}
+				raw_source := if source_embedded {
+					declaration_source_with_line(a, node, source_file, mut source_cache) or {
+						CachedDeclarationSource{}
+					}
+				} else {
+					CachedDeclarationSource{}
+				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_with_line(a, node, source_file, mut source_cache) or { CachedDeclarationSource{} }
 					cached_embedded_declaration_source(raw_source.text, vroot, source_file, raw_source.line)
 				} else {
 					decl_text(a, tc, module_name, node, vroot, source_file, import_paths, effective_attrs, source_is_public)
@@ -5572,8 +5579,19 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 						'@[trusted]'
 					}
 				}
+				mut prefix_lines := 0
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
+					prefix_lines = attrs_text.count('\n') + 1
+				}
+				// A panic in an embedded body reports its .v position, so map the body
+				// back to its source file. Only such bodies get a directive: the header
+				// is its dependents' signature, and line numbers make every edit above
+				// the declaration change it.
+				line_directive := if source_embedded && node_calls_panic(a, effective_id) {
+					cached_declaration_line_directive(a, node, raw_source.start, prefix_lines)
+				} else {
+					''
 				}
 				if type_key != 0 {
 					seen_types[type_key] = true
@@ -5584,8 +5602,14 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					origin := cached_struct_sources[node.value] or { source_file }
 					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
-				out.writeln(text)
-				out.writeln('')
+				if line_directive.len > 0 {
+					// A `#line` directive maps all the lines after it, so the mapped
+					// declarations go last, each after its own directive.
+					mapped_declarations << '${line_directive}\n${text}'
+				} else {
+					out.writeln(text)
+					out.writeln('')
+				}
 			}
 		}
 	}
@@ -5601,6 +5625,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		}
 		text := header_import_text(a, node, import_paths, mut selected_imports)
 		seen[key] = true
+		out.writeln(text)
+		out.writeln('')
+	}
+	for text in mapped_declarations {
 		out.writeln(text)
 		out.writeln('')
 	}
@@ -5820,8 +5848,9 @@ fn declaration_node_source_is_embeddable(a &flat.FlatAst, id flat.NodeId) bool {
 }
 
 struct CachedDeclarationSource {
-	text string
-	line int
+	text  string
+	line  int
+	start int // byte offset of `text` in its source file
 }
 
 fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?string {
@@ -5851,8 +5880,9 @@ fn declaration_source_with_line(a &flat.FlatAst, node flat.Node, file_name strin
 	}
 	text := source[start..end]
 	return CachedDeclarationSource{
-		text: text
-		line: if text.contains('@LINE') || text.contains('@FILE_LINE') {
+		text:  text
+		start: start
+		line:  if text.contains('@LINE') || text.contains('@FILE_LINE') {
 			source[..start].count('\n') + 1
 		} else {
 			1
@@ -5864,6 +5894,48 @@ struct CachedSourcePathEdit {
 	start       int
 	end         int
 	replacement string
+}
+
+// node_calls_panic reports whether the declaration `id` calls `panic`. It matches
+// the callee by name, because the bodies of generic functions stay unresolved; a
+// function of that name of the module's own only costs a needless directive.
+fn node_calls_panic(a &flat.FlatAst, id flat.NodeId) bool {
+	mut pending := [id]
+	for pending.len > 0 {
+		current := pending.pop()
+		if int(current) < 0 || int(current) >= a.nodes.len {
+			continue
+		}
+		node := a.nodes[int(current)]
+		if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value == 'panic' {
+				return true
+			}
+		}
+		for i in 0 .. node.children_count {
+			pending << a.child(&node, i)
+		}
+	}
+	return false
+}
+
+// cached_declaration_line_directive returns a `#line` directive that maps the
+// declaration source starting at byte `start` (preceded by `prefix_lines` extra
+// header lines) back to its logical source position.
+fn cached_declaration_line_directive(a &flat.FlatAst, node flat.Node, start int, prefix_lines int) string {
+	file := a.source_files[node.pos.id] or { return '' }
+	if start < 0 || start > file.size {
+		return ''
+	}
+	// A header that is cached again keeps the position its own directives give.
+	position := file.logical_position_at(start)
+	line := position.line - prefix_lines
+	if line < 1 || position.filename.len == 0 {
+		return ''
+	}
+	name := position.filename.replace('\\', '\\\\').replace('"', '\\"')
+	return '#line ${line} "${name}"'
 }
 
 fn cached_embedded_declaration_source(source string, vroot string, source_file string, source_line int) string {
