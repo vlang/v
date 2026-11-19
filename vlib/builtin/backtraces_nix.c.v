@@ -147,9 +147,11 @@ fn bsd_backtrace_frame_image_and_symbol(sframe string) (string, string) {
 	// The image name can contain spaces, so split around the address instead of
 	// splitting all fields.
 	addr_start := sframe.index(' 0x') or { return '', '' }
-	number_and_image := sframe[..addr_start].trim_space()
+	// An ASCII `trim_chars`, like the other frame parsers in this file, keeps `trim`
+	// and its rune path out of the backtrace code.
+	number_and_image := sframe[..addr_start].trim_chars(' \t', .trim_both)
 	number_end := number_and_image.index(' ') or { return '', '' }
-	image := number_and_image[number_end..].trim_space()
+	image := number_and_image[number_end..].trim_chars(' \t', .trim_both)
 	addr_and_symbol := sframe[addr_start + 1..]
 	symbol_start := addr_and_symbol.index(' ') or { return image, '' }
 	symbol_and_offset := addr_and_symbol[symbol_start + 1..]
