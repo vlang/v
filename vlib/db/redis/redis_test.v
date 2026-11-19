@@ -54,8 +54,11 @@ fn test_redis_basic() {
 	assert db.hget[string]('map', 'c')! == '3'
 	assert db.hgetall[string]('map')! == m
 
-	// test expire
-	assert db.expire('int', 1)!
+	// Verify EXPIRE sets a seconds-based TTL, then use a short millisecond TTL
+	// to exercise the transition to a missing key.
+	assert db.expire('int', 120)!
+	assert db.ttl('int')! in 1 .. 121
+	assert db.pexpire('int', 20)!
 	expiry_wait := time.new_stopwatch()
 	for expiry_wait.elapsed() < 2 * time.second {
 		if db.exists('int')! == 0 {
