@@ -359,31 +359,31 @@ fn vgc_shade(addr uint) {
 	if span.alloc_bits == unsafe { nil } || C.vgc_bitmap_get(span.alloc_bits, obj_idx) == 0 {
 		return
 	}
-	// Mark it (grey -> will be scanned). With several mark workers the
-	// mark bit and the queue insertion must be one critical section:
-	// vgc_bitmap_test_and_set is a plain byte read-modify-write.
+	// Mark it (grey -> will be scanned). Parallel workers use a 32-bit
+	// compare-and-swap on the mark bitmap; the single-worker path keeps the
+	// cheaper plain byte read-modify-write.
 	if span.mark_bits != unsafe { nil } {
 		obj_addr := span.base + uint(obj_idx) * uint(span.elem_size)
 		parallel := vgc_heap.gc_nworkers > 1
+		mut newly := false
 		if parallel {
-			C.vgc_mutex_lock(&vgc_heap.work_lock)
+			newly = C.vgc_bitmap_atomic_test_set(span.mark_bits, obj_idx) == 0
+		} else {
+			newly = C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0
 		}
-		if C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0 && !span.noscan {
+		if newly && !span.noscan {
 			$if vgc_greentea ? {
 				vgc_spanq_add(span, obj_addr)
 			} $else {
-				vgc_work_put_locked(obj_addr)
+				vgc_work_put(obj_addr)
 			}
-		}
-		if parallel {
-			C.vgc_mutex_unlock(&vgc_heap.work_lock)
 		}
 	}
 }
 
 // vgc_mark_worker drains shared mark work until the main thread signals
-// that it has drained its own queue and the queue is empty. Mark-bit updates
-// and queue insertions are serialized by work_lock in vgc_shade.
+// that it has drained its own queue and the queue is empty. Mark bits are
+// set atomically; only the shared work queue needs work_lock.
 fn vgc_mark_worker() {
 	mut round := 0
 	for {
@@ -404,8 +404,8 @@ fn vgc_mark_worker() {
 }
 
 // vgc_parallel_mark starts helper workers when built with
-// -d vgc_parallel_mark. The default stays single-threaded: the shared
-// work lock makes parallel marks correct, but it is only a win for large
+// -d vgc_parallel_mark. The default stays single-threaded: helper threads
+// contend on the shared work queue, which is only a win for large
 // pointer-rich heaps. vgc_greentea also stays single-threaded, since its
 // span queue is not yet protected by work_lock.
 fn vgc_parallel_mark() {
@@ -625,9 +625,8 @@ fn vgc_can_use_work_fastpath() bool {
 	return vgc_heap.ncaches <= 1 && vgc_heap.gc_nworkers <= 1
 }
 
-// vgc_work_put_locked queues an object with work_lock already held. It is
-// used by vgc_shade so the mark-bit test and the queue insertion are one
-// critical section when several mark workers are active.
+// vgc_work_put_locked queues an object with work_lock already held. The
+// caller holds the queue lock; mark bits are now updated atomically.
 fn vgc_work_put_locked(addr uint) {
 	mut buf := vgc_heap.work_full
 	if buf == unsafe { nil } || buf.nobj >= 256 {

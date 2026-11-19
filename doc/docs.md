@@ -7082,9 +7082,9 @@ grow the heap in proportion to its size when free space runs low. This avoids on
 per 8 MiB of growth, at the cost of using up to about twice the live heap.
 
 With `-gc vgc`, `-d vgc_parallel_mark` enables helper threads for the mark phase (up to four).
-Mark-bit updates and work-queue insertion stay serialized, so it is opt-in because the lock can
-cost more than it saves on small heaps. The GreenTea span queue (`-d vgc_greentea`) remains
-single-threaded.
+Mark bits are updated with 32-bit atomic compare-and-swap; only the shared work queue is locked,
+so this is opt-in because queue contention can cost more than it saves on small heaps. The
+GreenTea span queue (`-d vgc_greentea`) remains single-threaded.
 
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
