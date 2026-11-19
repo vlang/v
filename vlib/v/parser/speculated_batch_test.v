@@ -12,10 +12,10 @@ fn speculated_batch_test_root(name string) string {
 	return root
 }
 
-// speculated_batch_source is a module of `fns` functions; a `$if` over
-// `guard_const`, when given, picks one of two more, and `declares` adds a const.
-fn speculated_batch_source(mod string, tag string, fns int, declares string, guard_const string) string {
-	mut src := strings.new_builder(fns * 64)
+// speculated_batch_source places functions on both sides of a comment sized for
+// the chunk splitter. Optional declarations exercise the const prepasses.
+fn speculated_batch_source(mod string, tag string, padding_bytes int, declares string, guard_const string) string {
+	mut src := strings.new_builder(padding_bytes + 256)
 	src.writeln('module ${mod}')
 	src.writeln('')
 	if declares.len > 0 {
@@ -30,9 +30,9 @@ fn speculated_batch_source(mod string, tag string, fns int, declares string, gua
 		src.writeln('}')
 		src.writeln('')
 	}
-	for i in 0 .. fns {
-		src.writeln('fn ${tag}_padding_${i}(x int) int { return x + ${i} }')
-	}
+	src.writeln('fn ${tag}_padding_0(x int) int { return x + 0 }')
+	src.writeln('/*' + ' '.repeat(padding_bytes) + '*/')
+	src.writeln('fn ${tag}_padding_1(x int) int { return x + 1 }')
 	return src.str()
 }
 
@@ -52,8 +52,8 @@ fn write_speculated_batch_files(root string, continues_module bool) SpeculatedBa
 		path := os.join_path(root, 'first_${i}.v')
 		declares := if i == 1 { 'batch_width' } else { '' }
 		// One file is much larger than the others, like a real batch.
-		fns := if i == 3 { 2400 } else { 500 }
-		os.write_file(path, speculated_batch_source('alpha', 'first_${i}', fns, declares,
+		padding_bytes := (if i == 3 { 120 } else { 24 }) * 1024
+		os.write_file(path, speculated_batch_source('alpha', 'first_${i}', padding_bytes, declares,
 			'')) or { panic(err) }
 		first << path
 	}
@@ -67,8 +67,8 @@ fn write_speculated_batch_files(root string, continues_module bool) SpeculatedBa
 			guard = 'batch_width'
 		}
 		// The large file is a chunk of its own, after the one of the const.
-		fns := if i == 2 { 1800 } else { 400 }
-		os.write_file(path, speculated_batch_source(mod, 'second_${i}', fns, declares,
+		padding_bytes := (if i == 2 { 96 } else { 20 }) * 1024
+		os.write_file(path, speculated_batch_source(mod, 'second_${i}', padding_bytes, declares,
 			guard)) or { panic(err) }
 		second << path
 	}

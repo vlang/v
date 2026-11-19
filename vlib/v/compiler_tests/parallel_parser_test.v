@@ -140,9 +140,7 @@ fn test_parallel_parser_preserves_template_metadata_and_warning_severity() {
 			src.writeln('}')
 			src.writeln('')
 		}
-		for i in 0 .. 1000 {
-			src.writeln('fn template_padding_${file_index}_${i}() int { return ${i} }')
-		}
+		src.write_string(pp_module_padding)
 		path := os.join_path(dir, '${file_index}.v')
 		os.write_file(path, src.str()) or { panic(err) }
 		files << path
@@ -362,9 +360,7 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 			src.writeln('}')
 			src.writeln('')
 		}
-		for i in 0 .. 1000 {
-			src.writeln('fn padding_${file_index}_${i}() int { return ${i} }')
-		}
+		src.write_string(pp_module_padding)
 		path := os.join_path(dir, '${file_index}.v')
 		os.write_file(path, src.str()) or { panic(err) }
 		files << path
