@@ -110,15 +110,15 @@ fn eprint_backtrace_frame(symbol string, file_line string) {
 	mut in_generic_params := false
 	for i < symbol.len && n < buf.len - 4 {
 		c := symbol[i]
-		if c == `_` && backtrace_symbol_has_at(symbol, i, '__ptr__') {
+		if c == `_` && i + 7 <= symbol.len && symbol[i + 1] == `_` && symbol[i + 2] == `p` && symbol[i + 3] == `t` && symbol[i + 4] == `r` && symbol[i + 5] == `_` && symbol[i + 6] == `_` {
 			buf[n] = `&`
 			n++
 			i += 7
-		} else if c == `_` && backtrace_symbol_has_at(symbol, i, '__') {
+		} else if c == `_` && i + 2 <= symbol.len && symbol[i + 1] == `_` {
 			buf[n] = `.`
 			n++
 			i += 2
-		} else if c == `_` && !in_generic_params && backtrace_symbol_has_at(symbol, i, '_T_') {
+		} else if c == `_` && !in_generic_params && i + 3 <= symbol.len && symbol[i + 1] == `T` && symbol[i + 2] == `_` {
 			// `base_T_type1_type2` => `base[type1, type2]`
 			buf[n] = `[`
 			n++
@@ -150,18 +150,6 @@ fn eprint_backtrace_frame(symbol string, file_line string) {
 	}
 }
 
-@[direct_array_access]
-fn backtrace_symbol_has_at(symbol string, pos int, part string) bool {
-	if pos + part.len > symbol.len {
-		return false
-	}
-	for j in 0 .. part.len {
-		if symbol[pos + j] != part[j] {
-			return false
-		}
-	}
-	return true
-}
 
 fn eprint_space_padding(output string, max_len int) {
 	padding_len := max_len - output.len
