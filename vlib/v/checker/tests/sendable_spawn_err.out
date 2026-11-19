@@ -12,10 +12,24 @@ vlib/v/checker/tests/sendable_spawn_err.vv:9:4: error: field `p` of sendable str
       |       ~~~~
    10 | }
    11 |
-vlib/v/checker/tests/sendable_spawn_err.vv:25:22: error: spawn argument of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
-   23 |     mut v := 5
-   24 |     b := SendableBad{ p: &v }
-   25 |     g := spawn bad_work(b)
+vlib/v/checker/tests/sendable_spawn_err.vv:52:22: error: spawn argument of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   50 |     mut v := 5
+   51 |     b := SendableBad{ p: &v }
+   52 |     g := spawn bad_work(b)
       |                         ^
-   26 |     println(g.wait())
-   27 | }
+   53 |     println(g.wait())
+   54 |     gr := spawn b.zero()
+vlib/v/checker/tests/sendable_spawn_err.vv:54:14: error: spawn receiver of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   52 |     g := spawn bad_work(b)
+   53 |     println(g.wait())
+   54 |     gr := spawn b.zero()
+      |                 ^
+   55 |     println(gr.wait())
+   56 |     bp := SendableParcel[&int]{ value: &v }
+vlib/v/checker/tests/sendable_spawn_err.vv:39:31: error: spawn argument of type `SendableParcel[&int]` is not sendable: field `value` of `SendableParcel[&int]` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   37 | 
+   38 | fn launch_parcel[T](p SendableParcel[T]) int {
+   39 |     h := spawn consume_parcel[T](p)
+      |                                  ^
+   40 |     return h.wait()
+   41 | }

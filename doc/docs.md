@@ -6311,9 +6311,13 @@ fn main() {
 }
 ```
 
-`spawn`/`go` arguments, channel pushes (`ch <- v`), pops (`<-ch`), and
-spawned closure captures of `@[sendable]` types must be sendable. Ordinary
-calls are unaffected. Transfer moves values; sharing still needs `shared`.
+`spawn`/`go` arguments, method receivers (`spawn p.read()`), channel pushes
+(`ch <- v`), pops (`<-ch`), and spawned closure captures of `@[sendable]`
+types must be sendable, including closures bound to a local (`f := fn [p]
+...; spawn f()`). Generic functions are checked again for each concrete
+instantiation, so `Parcel[&int]` fails even when the open `Parcel[T]` body
+cannot judge it. Ordinary calls are unaffected. Transfer moves values;
+sharing still needs `shared`.
 
 ### Channels
 

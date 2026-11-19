@@ -206,6 +206,32 @@ fn (mut tc TypeChecker) check_sendable_spawn_arg(arg_id flat.NodeId, arg_type Ty
 	}
 }
 
+// check_sendable_spawn_receiver requires a `spawn`/`go` method call receiver
+// to be sendable. A spawned `p.read()` copies `p` to the new thread, which is
+// the same ownership transfer as passing `p` as an argument. Only types marked
+// `@[sendable]` are checked here; unmarked receivers keep their existing
+// behavior for backward compatibility. An explicit `shared` receiver shares
+// memory with locking and stays exempt.
+fn (mut tc TypeChecker) check_sendable_spawn_receiver(receiver_id flat.NodeId, receiver_type Type) {
+	receiver := tc.a.node(receiver_id)
+	if receiver.value == 'shared' || receiver.value.starts_with('shared:')
+		|| receiver.value == 'atomic' || receiver.value.starts_with('atomic:') {
+		return
+	}
+	if tc.current_binding_is_shared(receiver.value) {
+		return
+	}
+	if !tc.type_has_declaration_attribute(&receiver_type, 'sendable') {
+		return
+	}
+	mut seen := map[u32]bool{}
+	ok, reason := tc.type_is_sendable(receiver_type, mut seen, 0)
+	if !ok {
+		tc.record_error_at(.call_arg_mismatch, 'spawn receiver of type `${receiver_type.name()}` is not sendable: ${reason}',
+			receiver_id, tc.a.node(receiver_id).pos)
+	}
+}
+
 // check_sendable_channel_push requires a pushed channel value to be sendable.
 // Only `@[sendable]`-marked values are checked; unmarked values keep their
 // existing channel compatibility diagnostics for backward compatibility.
@@ -237,8 +263,8 @@ fn (mut tc TypeChecker) check_sendable_channel_pop(id flat.NodeId, elem_type Typ
 }
 
 // check_sendable_spawn_closure_captures requires explicit closure captures of a
-// spawned call to be sendable. Only `fn_literal` captures are checked here;
-// ordinary calls are unaffected.
+// spawned call to be sendable. Inline literals and closures bound to a local
+// are checked here; ordinary calls are unaffected.
 fn (mut tc TypeChecker) check_sendable_spawn_closure_captures(call_id flat.NodeId) {
 	call := tc.a.node(call_id)
 	mut stack := []flat.NodeId{}
@@ -249,42 +275,94 @@ fn (mut tc TypeChecker) check_sendable_spawn_closure_captures(call_id flat.NodeI
 		cur_id := stack.pop()
 		cur := tc.a.node(cur_id)
 		if cur.kind == .fn_literal {
-			for j in 0 .. cur.children_count {
-				cap_id := tc.a.child(cur, j)
-				cap := tc.a.node(cap_id)
-				if cap.kind != .ident || cap.value.len == 0 {
-					continue
-				}
-				// Parameters are not captures.
-				mut is_param := false
-				for k in 0 .. cur.children_count {
-					param := tc.a.child_node(cur, k)
-					if param.kind == .param && param.value == cap.value {
-						is_param = true
-						break
-					}
-				}
-				if is_param {
-					continue
-				}
-				if capture_type := tc.cur_scope.lookup(cap.value) {
-					// Only `@[sendable]`-marked captures are checked; unmarked
-					// captures keep their existing behavior for compatibility.
-					if !tc.type_has_declaration_attribute(&capture_type, 'sendable') {
-						continue
-					}
-					mut seen := map[u32]bool{}
-					ok, reason := tc.type_is_sendable(capture_type, mut seen, 0)
-					if !ok {
-						tc.record_error_at(.call_arg_mismatch, 'spawned closure capture `${cap.value}` of type `${capture_type.name()}` is not sendable: ${reason}',
-							cap_id, tc.node_value_diagnostic_pos(cap_id))
-					}
-				}
-			}
+			tc.check_sendable_fn_literal_captures(cur_id)
 			continue
 		}
 		for i in 0 .. cur.children_count {
 			stack << tc.a.child(cur, i)
+		}
+	}
+	// A spawned closure bound to a local (`f := fn [p] ...` followed by
+	// `spawn f()`) transfers the same captures as an inline literal. The
+	// binding is followed through simple aliases (`g := f`) and method
+	// values (`f := p.read`, which close over their receiver).
+	if call.children_count > 0 {
+		callee := tc.a.child_node(call, 0)
+		if callee.kind == .ident && callee.value.len > 0 {
+			tc.check_sendable_bound_closure_captures(callee.value, call_id)
+		}
+	}
+}
+
+// check_sendable_bound_closure_captures validates the captures behind a
+// closure spawned through a local binding. `name` is resolved to the nearest
+// preceding declaration, following alias chains (`g := f`) to the bound
+// function literal or method value.
+fn (mut tc TypeChecker) check_sendable_bound_closure_captures(name string, call_id flat.NodeId) {
+	mut current := name
+	mut seen := map[string]bool{}
+	for _ in 0 .. 8 {
+		if seen[current] {
+			return
+		}
+		seen[current] = true
+		rhs := tc.local_decl_rhs_before(current, call_id) or { return }
+		rhs_node := tc.a.node(rhs)
+		if rhs_node.kind == .fn_literal {
+			tc.check_sendable_fn_literal_captures(rhs)
+			return
+		}
+		if rhs_node.kind == .ident && rhs_node.value.len > 0 {
+			current = rhs_node.value
+			continue
+		}
+		if rhs_node.kind == .selector && rhs_node.children_count > 0 {
+			if _ := fn_type_from_type(tc.resolve_type(rhs)) {
+				base_id := tc.a.child(rhs_node, 0)
+				base_type := unalias_type(tc.resolve_type(base_id))
+				tc.check_sendable_spawn_receiver(base_id, *base_type)
+			}
+		}
+		return
+	}
+}
+
+// check_sendable_fn_literal_captures requires the captures of the spawned
+// function literal `literal_id` to be sendable. Only `@[sendable]`-marked
+// captures are checked here; unmarked captures keep their existing behavior
+// for backward compatibility.
+fn (mut tc TypeChecker) check_sendable_fn_literal_captures(literal_id flat.NodeId) {
+	literal := tc.a.node(literal_id)
+	for j in 0 .. literal.children_count {
+		cap_id := tc.a.child(literal, j)
+		cap := tc.a.node(cap_id)
+		if cap.kind != .ident || cap.value.len == 0 {
+			continue
+		}
+		// Parameters are not captures.
+		mut is_param := false
+		for k in 0 .. literal.children_count {
+			param := tc.a.child_node(literal, k)
+			if param.kind == .param && param.value == cap.value {
+				is_param = true
+				break
+			}
+		}
+		if is_param {
+			continue
+		}
+		if capture_type := tc.cur_scope.lookup(cap.value) {
+			// Only `@[sendable]`-marked captures are checked; unmarked
+			// captures keep their existing behavior for compatibility.
+			if !tc.type_has_declaration_attribute(&capture_type, 'sendable') {
+				continue
+			}
+			mut seen := map[u32]bool{}
+			ok, reason := tc.type_is_sendable(capture_type, mut seen, 0)
+			if !ok {
+				tc.record_error_at(.call_arg_mismatch, 'spawned closure capture `${cap.value}` of type `${capture_type.name()}` is not sendable: ${reason}',
+					cap_id, tc.node_value_diagnostic_pos(cap_id))
+			}
 		}
 	}
 }

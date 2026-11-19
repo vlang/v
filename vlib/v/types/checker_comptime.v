@@ -3612,6 +3612,26 @@ fn (mut tc TypeChecker) check_spawn_expr(id flat.NodeId, node flat.Node) {
 					tc.check_sendable_spawn_arg(arg_id, *arg_type)
 				}
 			}
+			// RFC 008: a spawned method call transfers its receiver (`spawn p.read()`
+			// copies `p`), so the receiver is validated like an argument.
+			if info.has_receiver {
+				mut receiver_callee := tc.a.child_node(child, 0)
+				if receiver_callee.kind == .index && receiver_callee.children_count > 0 {
+					receiver_callee = tc.a.child_node(receiver_callee, 0)
+				}
+				if receiver_callee.kind == .selector && receiver_callee.children_count > 0 {
+					receiver_id := tc.a.child(receiver_callee, 0)
+					receiver_type := unalias_type(tc.resolve_type(receiver_id))
+					if info.params.len > 0 {
+						expected := info.params[0]
+						if tc.expr_compatible(receiver_id, receiver_type, &expected) {
+							tc.check_sendable_spawn_receiver(receiver_id, *receiver_type)
+						}
+					} else {
+						tc.check_sendable_spawn_receiver(receiver_id, *receiver_type)
+					}
+				}
+			}
 			tc.check_sendable_spawn_closure_captures(child_id)
 		}
 	}

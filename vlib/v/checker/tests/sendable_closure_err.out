@@ -1,10 +1,17 @@
-vlib/v/checker/tests/sendable_closure_err.vv:19:17: warning: unused variable: `b`
-   17 |     mut v := 7
-   18 |     b := SendableBad{ p: &v }
-   19 |     g := spawn fn [b] () int {
+vlib/v/checker/tests/sendable_closure_err.vv:38:17: warning: unused variable: `b`
+   36 |     mut v := 7
+   37 |     b := SendableBad{ p: &v }
+   38 |     g := spawn fn [b] () int {
       |                    ^
-   20 |         return 0
-   21 |     }()
+   39 |         return 0
+   40 |     }()
+vlib/v/checker/tests/sendable_closure_err.vv:42:12: warning: unused variable: `b`
+   40 |     }()
+   41 |     println(g.wait())
+   42 |     g2 := fn [b] () int {
+      |               ^
+   43 |         return 0
+   44 |     }
 vlib/v/checker/tests/sendable_closure_err.vv:8:4: error: field `p` of sendable struct `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
     6 | @[sendable]
     7 | struct SendableBad {
@@ -12,10 +19,24 @@ vlib/v/checker/tests/sendable_closure_err.vv:8:4: error: field `p` of sendable s
       |       ~~~~
     9 | }
    10 |
-vlib/v/checker/tests/sendable_closure_err.vv:19:17: error: spawned closure capture `b` of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
-   17 |     mut v := 7
-   18 |     b := SendableBad{ p: &v }
-   19 |     g := spawn fn [b] () int {
+vlib/v/checker/tests/sendable_closure_err.vv:38:17: error: spawned closure capture `b` of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   36 |     mut v := 7
+   37 |     b := SendableBad{ p: &v }
+   38 |     g := spawn fn [b] () int {
       |                    ^
-   20 |         return 0
-   21 |     }()
+   39 |         return 0
+   40 |     }()
+vlib/v/checker/tests/sendable_closure_err.vv:42:12: error: spawned closure capture `b` of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   40 |     }()
+   41 |     println(g.wait())
+   42 |     g2 := fn [b] () int {
+      |               ^
+   43 |         return 0
+   44 |     }
+vlib/v/checker/tests/sendable_closure_err.vv:47:7: error: spawn receiver of type `SendableBad` is not sendable: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   45 |     w := spawn g2()
+   46 |     println(w.wait())
+   47 |     m := b.zero
+      |          ^
+   48 |     n := spawn m()
+   49 |     println(n.wait())

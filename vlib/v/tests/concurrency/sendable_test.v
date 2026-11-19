@@ -66,3 +66,54 @@ fn test_sendable_closure_capture() {
 	}()
 	assert h.wait() == 13
 }
+
+@[sendable]
+struct Parcel[T] {
+	value T
+}
+
+fn consume_parcel[T](p Parcel[T]) int {
+	_ = p
+	return 1
+}
+
+fn launch_parcel[T](p Parcel[T]) int {
+	h := spawn consume_parcel[T](p)
+	return h.wait()
+}
+
+fn (p Point) sum() int {
+	return p.x + p.y
+}
+
+fn test_sendable_generic_specialization() {
+	assert launch_parcel(Parcel[int]{ value: 21 }) == 1
+}
+
+fn test_sendable_method_receiver() {
+	p := Point{ x: 4, y: 5 }
+	h := spawn p.sum()
+	assert h.wait() == 9
+}
+
+fn test_sendable_bound_closure() {
+	p := Point{ x: 4, y: 5 }
+	f := fn [p] () int {
+		return p.x * 2 + p.y
+	}
+	h := spawn f()
+	assert h.wait() == 13
+}
+
+fn test_sendable_bound_method_value() {
+	p := Point{ x: 4, y: 5 }
+	d := p.sum
+	h := spawn d()
+	assert h.wait() == 9
+	g := fn [p] () int {
+		return p.x
+	}
+	alias := g
+	k := spawn alias()
+	assert k.wait() == 4
+}
