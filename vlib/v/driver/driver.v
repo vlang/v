@@ -19225,6 +19225,14 @@ fn valid_v3_large_cold_cache_marker(path string) bool {
 }
 
 fn restart_v3_without_cache(build_dir string) {
+	// The native bridge has already selected the platform compiler for its
+	// cached objects. Removing the bridge flag changes the program's compiler.
+	if v3_internal_tcc_dylib_flag in os.args && v3_internal_tcc_no_retry_flag in os.args {
+		cleanup_c_build_dir(build_dir)
+		release_v3_fallback_marker()
+		eprintln('cannot build the TCC native bridge: the module cache is unavailable and -no-retry-compilation prevents switching compilers')
+		exit(1)
+	}
 	restart_v3_with_args(['-nocache'], build_dir)
 }
 
