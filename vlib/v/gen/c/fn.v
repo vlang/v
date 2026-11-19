@@ -408,7 +408,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 					|| program_modules[item_module]
 				direct_array_access:       direct_array_access_fns.contains(i, node)
 				ignore_overflow:           ignore_overflow_fns.contains(i, node)
-					|| item_module == 'builtin.overflow' || policy == overflow_policy_wrapping
+					|| item_module in ['builtin.overflow', 'overflow'] || policy == overflow_policy_wrapping
 				overflow_policy:           policy
 			}
 		})

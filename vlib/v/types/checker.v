@@ -19534,6 +19534,28 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 		tc.check_attribute_use_args(node_id, use.schema, use.base, schema_pieces, pos, module)
 	}
 	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, mut warning_heads)
+	tc.check_overflow_attribute_value(node_id, node, pieces, lo, hi)
+}
+
+// check_overflow_attribute_value validates the `overflow` function attribute:
+// `@[overflow: 'checked']`, `'wrapping'` or `'saturating'`. Anything else,
+// including a missing value, is an error; code generation treats it as the
+// default so builds stay predictable after the diagnostic.
+fn (mut tc TypeChecker) check_overflow_attribute_value(node_id flat.NodeId, node flat.Node, pieces []string, lo int, hi int) {
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if name != 'overflow' {
+			continue
+		}
+		mut value := ''
+		if raw.contains(':') {
+			value = raw.all_after(':').trim_space().trim('\'"').to_lower_ascii()
+		}
+		if value !in ['checked', 'wrapping', 'saturating'] {
+			pos := tc.attribute_use_pos(node, 'overflow', lo, hi)
+			tc.record_error_at(.assignment_mismatch, "invalid value '${value}' for attribute 'overflow': expected 'checked', 'wrapping' or 'saturating'", node_id, pos)
+		}
+	}
 }
 
 // AttributeWarningHead retains a real, unquoted source name, rather than a
