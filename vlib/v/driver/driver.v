@@ -18854,6 +18854,15 @@ fn cache_add_module_header_signature(state &V3ModuleCacheState, module_name stri
 }
 
 fn cache_object_dependency_signatures(state &V3ModuleCacheState, a &flat.FlatAst, roots []string) map[string]string {
+	mut file_signatures := map[string]string{}
+	return cache_object_dependency_signatures_memo(state, a, roots, mut file_signatures)
+}
+
+// cache_object_dependency_signatures_memo is cache_object_dependency_signatures with the
+// signatures of native input files kept in `file_signatures`. Objects of one build share
+// many native headers, which would otherwise be read and hashed once per object. The
+// caller owns the map and must not keep it past the prealloc scope that filled it.
+fn cache_object_dependency_signatures_memo(state &V3ModuleCacheState, a &flat.FlatAst, roots []string, mut file_signatures map[string]string) map[string]string {
 	mut signatures := cache_dependency_header_signatures(state, roots)
 	// The parser injects these imports into the program stream instead of a
 	// particular file. Their position therefore cannot assign them to a stable
@@ -18889,7 +18898,9 @@ fn cache_object_dependency_signatures(state &V3ModuleCacheState, a &flat.FlatAst
 	for raw_module_name in input_modules {
 		if raw_module_name == '__v3_c_flags__' {
 			for path in state.module_external_inputs[raw_module_name] {
-				signature := state.external_input_signatures[v3_external_input_key(raw_module_name, path)] or { modulecache.file_signature(path) }
+				signature := state.external_input_signatures[v3_external_input_key(raw_module_name, path)] or {
+					cached_file_signature(mut file_signatures, path)
+				}
 				if signature.len > 0 {
 					signatures[path] = signature
 				}
@@ -18905,13 +18916,25 @@ fn cache_object_dependency_signatures(state &V3ModuleCacheState, a &flat.FlatAst
 			continue
 		}
 		for path in state.module_external_inputs[raw_module_name] {
-			signature := state.external_input_signatures[v3_external_input_key(raw_module_name, path)] or { modulecache.file_signature(path) }
+			signature := state.external_input_signatures[v3_external_input_key(raw_module_name, path)] or {
+				cached_file_signature(mut file_signatures, path)
+			}
 			if signature.len > 0 {
 				signatures[path] = signature
 			}
 		}
 	}
 	return signatures
+}
+
+// cached_file_signature returns the signature of `path`, computing it once per memo.
+fn cached_file_signature(mut file_signatures map[string]string, path string) string {
+	if signature := file_signatures[path] {
+		return signature
+	}
+	signature := modulecache.file_signature(path)
+	file_signatures[path] = signature
+	return signature
 }
 
 fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState, a &flat.FlatAst) bool {
@@ -20145,6 +20168,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 	}
 	common := cache_common_visible_modules(state, a)
 	mut missing := false
+	mut file_signatures := map[string]string{}
 	for object_name in state.objects.keys() {
 		roots := if object_name == 'builtin' {
 			cache_builtin_bundle_roots(state, a)
@@ -20165,7 +20189,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 			missing = true
 			continue
 		}
-		dependency_inputs := cache_object_dependency_signatures(state, a, roots)
+		dependency_inputs := cache_object_dependency_signatures_memo(state, a, roots, mut file_signatures)
 		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files, v3_cached_object_content_signature(object_base, content_key), dependency_inputs) {
 			state.objects[object_name] = entry.object
 		} else {
