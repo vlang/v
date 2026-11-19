@@ -116,8 +116,10 @@ fn frame(data voidptr) {
 
 `Camera3D` has `position`, `target`, `up`, `fovy`, `near`, `far` and a
 `projection` of `.perspective` or `.orthographic`. `camera.orbit(yaw, pitch,
-distance)` places the camera around its target using degrees. 3D drawing uses
-depth testing with backface culling; `ctx.end_3d()` restores the regular 2D
+distance)` places the camera around its target using degrees;
+`orbit_by(dx, dy, zoom)` handles mouse drag and scroll, and `fly(...)` handles
+first-person movement. 3D drawing uses depth testing with backface culling;
+`ctx.end_3d()` restores the regular 2D
 painter-order pipelines, so HUD and text can be drawn afterwards.
 
 The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
