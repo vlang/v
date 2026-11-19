@@ -92,6 +92,9 @@ struct FlatFnGenItem {
 	is_program                bool
 	direct_array_access       bool
 	ignore_overflow           bool
+	// overflow_policy is the `@[overflow: '...']` policy of the function
+	// (default/checked/wrapping/saturating, see overflow_policy_*).
+	overflow_policy u8
 mut:
 	cost              int
 	skip_prelude_scan bool
@@ -142,6 +145,22 @@ fn (attrs &DirectArrayAccessFns) contains(node_idx int, node flat.Node) bool {
 	return attrs.node_ids[node_idx]
 }
 
+// OverflowPolicyFns holds the `@[overflow: '...']` policy of attributed
+// functions, mirroring DirectArrayAccessFns so generic clones keep the policy
+// of their template through the shared source position.
+struct OverflowPolicyFns {
+	node_ids         map[int]u8
+	source_positions map[u64]u8
+}
+
+@[inline]
+fn (attrs &OverflowPolicyFns) policy(node_idx int, node flat.Node) u8 {
+	if node.pos.is_valid() {
+		return attrs.source_positions[flat_fn_source_position_key(node)]
+	}
+	return attrs.node_ids[node_idx]
+}
+
 @[inline]
 fn flat_fn_source_position_key(node flat.Node) u64 {
 	return (u64(node.pos.id) << 32) | u64(node.pos.offset)
@@ -186,15 +205,15 @@ fn (mut g FlatGen) ensure_fn_gen_items() []FlatFnGenItem {
 
 // collect_fn_gen_items updates collect fn gen items state for c.
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
-	direct_array_access_fns, ignore_overflow_fns, program_modules := g.fn_gen_selection_info()
+	direct_array_access_fns, ignore_overflow_fns, overflow_policy_fns, program_modules := g.fn_gen_selection_info()
 	// Defer cost/prep until after preferred-file and emission filtering. When
 	// the parallel path asks for prep, that walk also collects C-extern refs.
 	prep := g.want_parallel_prep
 	mut candidates := if prep && g.scope_parallel_workers && par_cgen_prep_enabled() {
-		g.collect_fn_gen_candidates_parallel(direct_array_access_fns, ignore_overflow_fns, program_modules)
+		g.collect_fn_gen_candidates_parallel(direct_array_access_fns, ignore_overflow_fns, overflow_policy_fns, program_modules)
 	} else {
 		nodes := g.top_level_nodes()
-		g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns, ignore_overflow_fns, program_modules)
+		g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns, ignore_overflow_fns, overflow_policy_fns, program_modules)
 	}
 	// One entry per preferred name; each candidate keeps the index of its entry,
 	// so the selection pass below needs no name lookups.
@@ -295,6 +314,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			is_program:                item.is_program
 			direct_array_access:       item.direct_array_access
 			ignore_overflow:           item.ignore_overflow
+			overflow_policy:           item.overflow_policy
 		})
 	}
 	// Sort compact (name, index) keys instead of moving whole items through every
@@ -329,7 +349,7 @@ struct FlatFnGenItemSortKey {
 	idx    int
 }
 
-fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end int, first_file string, first_module string, direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end int, first_file string, first_module string, direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, overflow_policy_fns OverflowPolicyFns, program_modules map[string]bool) []FlatFnGenCandidate {
 	mut candidates := []FlatFnGenCandidate{cap: end - start}
 	mut cur_module := first_module
 	mut cur_file := first_file
@@ -384,6 +404,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 			continue
 		}
 		preferred_name := g.fn_c_name_in_module_known(item_module, node.value, qfn)
+		policy := overflow_policy_fns.policy(i, node)
 		candidates << moved_flat_fn_gen_candidate(FlatFnGenCandidate{
 			preferred_name: preferred_name
 			item:           FlatFnGenItem{
@@ -396,18 +417,21 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 					|| program_modules[item_module]
 				direct_array_access:       direct_array_access_fns.contains(i, node)
 				ignore_overflow:           ignore_overflow_fns.contains(i, node)
-					|| item_module == 'builtin.overflow'
+					|| item_module == 'builtin.overflow' || policy == overflow_policy_wrapping
+				overflow_policy:           policy
 			}
 		})
 	}
 	return candidates
 }
 
-fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccessFns, map[string]bool) {
+fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccessFns, OverflowPolicyFns, map[string]bool) {
 	mut direct_node_ids := map[int]bool{}
 	mut direct_source_positions := map[u64]bool{}
 	mut overflow_node_ids := map[int]bool{}
 	mut overflow_source_positions := map[u64]bool{}
+	mut overflow_node_policies := map[int]u8{}
+	mut overflow_source_policies := map[u64]u8{}
 	mut program_modules := map[string]bool{}
 	mut non_program_modules := map[string]bool{}
 	mut scan_file_is_program := false
@@ -442,6 +466,7 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 		}
 		mut has_direct_array_access := false
 		mut has_ignore_overflow := false
+		overflow_policy := overflow_policy_of_attrs(directive.generic_params())
 		for raw_attr in directive.generic_params() {
 			attr_name := cgen_attr_name_view(raw_attr)
 			if attr_name == 'direct_array_access' && !g.force_bounds_checking {
@@ -450,7 +475,8 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 				has_ignore_overflow = true
 			}
 		}
-		if !has_direct_array_access && !has_ignore_overflow {
+		if !has_direct_array_access && !has_ignore_overflow
+			&& overflow_policy == overflow_policy_default {
 			continue
 		}
 		target_idx := directive.value['@attributes:'.len..].int()
@@ -473,6 +499,12 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 				overflow_source_positions[flat_fn_source_position_key(target)] = true
 			}
 		}
+		if overflow_policy != overflow_policy_default {
+			overflow_node_policies[target_idx] = overflow_policy
+			if target.pos.is_valid() {
+				overflow_source_policies[flat_fn_source_position_key(target)] = overflow_policy
+			}
+		}
 	}
 	return DirectArrayAccessFns{
 		node_ids:         direct_node_ids
@@ -480,6 +512,9 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 	}, DirectArrayAccessFns{
 		node_ids:         overflow_node_ids
 		source_positions: overflow_source_positions
+	}, OverflowPolicyFns{
+		node_ids:         overflow_node_policies
+		source_positions: overflow_source_policies
 	}, program_modules
 }
 
@@ -634,6 +669,8 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.direct_array_access = item.direct_array_access
 		old_ignore_overflow := g.ignore_overflow
 		g.ignore_overflow = item.ignore_overflow
+		old_overflow_policy := g.overflow_policy
+		g.overflow_policy = item.overflow_policy
 		old_user_code_checks := g.user_code_checks
 		g.user_code_checks = (g.check_overflow || g.check_casts) && !item.ignore_overflow
 			&& g.file_gets_user_code_checks(item.file)
@@ -643,6 +680,7 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.gen_fn_in_module(item.node_id, node, item.module, item.skip_prelude_scan)
 		g.cur_fn_is_specialized = old_cur_fn_is_specialized
 		g.user_code_checks = old_user_code_checks
+		g.overflow_policy = old_overflow_policy
 		g.ignore_overflow = old_ignore_overflow
 		g.direct_array_access = old_direct_array_access
 		if g.cache_split {
