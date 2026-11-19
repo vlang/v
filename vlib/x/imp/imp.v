@@ -58,16 +58,17 @@ pub fn system_args(args []string) ! {
 @[params]
 pub struct Flow {
 pub:
-	id    string @[required]
-	name  string // display name, derived from the id when unset
-	help  string
-	takes []string // input files and directories
-	gives []string // output files and directories
-	check Check = .mtime
-	pre   []FlowDep // hooks run before this flow
-	post  []FlowDep // hooks run after this flow
-	flags []Flag    // command line switches this flow reads with `flag`
-	flow  FlowFn @[required]
+	id      string @[required]
+	name    string // display name, derived from the id when unset
+	help    string
+	takes   []string // input files and directories
+	gives   []string // output files and directories
+	depfile string   // write discovered inputs here in Makefile depfile syntax
+	check   Check = .mtime
+	pre     []FlowDep // hooks run before this flow
+	post    []FlowDep // hooks run after this flow
+	flags   []Flag    // command line switches this flow reads with `flag`
+	flow    FlowFn @[required]
 mut:
 	enabled      []string // the flags set on the command line
 	script_flags []string // the ids declared with `Context.flag`
@@ -286,7 +287,7 @@ fn (c &Context) find(id string) !Flow {
 fn (c &Context) producers(flow Flow) []string {
 	mut ids := []string{}
 	for other in c.flows {
-		if other.id != flow.id && flow.takes.any(overlaps_any(it, other.gives)) {
+		if other.id != flow.id && all_inputs(flow).any(overlaps_any(it, other.gives)) {
 			ids << other.id
 		}
 	}
@@ -659,7 +660,7 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	}
 	// checked here and not earlier: a required pre hook or a dependency may
 	// have just removed or rebuilt the outputs
-	digest := if f.check == .hash { c.digest(f) } else { '' }
+	mut digest := if f.check == .hash { c.digest(f) } else { '' }
 	skip := !os.exists(dirty_path(f)) && match f.check {
 		.mtime { !f.flags.any(it.id in c.enabled) && is_up_to_date(f) }
 		.hash { is_unchanged(f, digest) }
@@ -690,7 +691,21 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 			return error('flow `${f.id}` did not produce `${path}`')
 		}
 	}
+	if f.depfile != '' {
+		// store what the tool discovered, so that later runs can check it before
+		// deciding to skip. A missing depfile after success is a script mistake.
+		paths := parse_depfile(f.depfile) or {
+			return error('flow `${f.id}` has a bad depfile: ${err.msg()}')
+		}
+		os.mkdir_all(os.dir(deps_path(f)))!
+		os.write_file(deps_path(f), paths.join('\n'))!
+	}
 	if f.check == .hash {
+		if f.depfile != '' {
+			// the first run discovers inputs that were absent from the key above;
+			// store a digest that already includes them so the next run can skip
+			digest = c.digest(f)
+		}
 		os.mkdir_all(os.dir(stamp_path(f)))!
 		os.write_file(stamp_path(f), digest)!
 	}
@@ -746,11 +761,70 @@ fn dirty_path(f Flow) string {
 	return state_file('dirty', f)
 }
 
+// deps_path is where a flow keeps the inputs discovered from its depfile.
+fn deps_path(f Flow) string {
+	return state_file('deps', f)
+}
+
+// discovered_deps returns the paths recorded from the flow's last successful
+// depfile. They are implicit inputs: changes in them defeat the skip check.
+fn discovered_deps(f Flow) []string {
+	content := os.read_file(deps_path(f)) or { return []string{} }
+	return content.split('\n').filter(it != '')
+}
+
+// all_inputs is every path whose content or mtime can affect the flow's output.
+fn all_inputs(f Flow) []string {
+	mut inputs := f.takes.clone()
+	inputs << discovered_deps(f)
+	return inputs
+}
+
+// parse_depfile reads the Makefile-style dependency file written by a flow.
+// Only the part after the first colon on each logical line is used, which is
+// enough for the output of compiler -MD flags. Continuations and comments are
+// folded away; no recipe or variable expansion is supported.
+fn parse_depfile(path string) ![]string {
+	content := os.read_file(path) or { return error('could not read depfile `${path}`') }
+	mut logical := []string{}
+	mut line := ''
+	for raw in content.split('\n') {
+		part := raw.trim_space()
+		if part.ends_with('\\') {
+			line += ' ' + part[..part.len - 1]
+			continue
+		}
+		logical << line + ' ' + part
+		line = ''
+	}
+	if line != '' {
+		logical << line
+	}
+	mut paths := []string{}
+	for entry in logical {
+		colon := entry.index_u8(`:`)
+		if colon < 0 {
+			continue
+		}
+		for word in entry[colon + 1..].fields() {
+			// strip a trailing escape used for spaces in file names
+			clean := word.replace('\\ ', ' ')
+			if clean != '' && clean !in paths {
+				paths << clean
+			}
+		}
+	}
+	return paths
+}
+
 // excluded_keys are the paths left out of the inputs of `f`: its outputs, and
 // the state imp keeps.
 fn excluded_keys(f Flow) []string {
 	mut keys := f.gives.map(path_key(it))
 	keys << path_key(stamp_dir)
+	if f.depfile != '' {
+		keys << path_key(f.depfile)
+	}
 	return keys
 }
 
@@ -760,7 +834,7 @@ fn excluded_keys(f Flow) []string {
 fn (c &Context) digest(f Flow) string {
 	mut lines := []string{}
 	excluded := excluded_keys(f)
-	for path in f.takes {
+	for path in all_inputs(f) {
 		hash_path(path, path_key(path), excluded, mut lines)
 	}
 	lines.sort()
@@ -795,7 +869,8 @@ fn hash_path(path string, key string, excluded []string, mut lines []string) {
 // is_unchanged reports whether a hash flow can be skipped. Like mtime flows, it
 // needs outputs and all inputs present.
 fn is_unchanged(f Flow, digest string) bool {
-	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
+	if f.gives.len == 0 || f.gives.any(!os.exists(it))
+		|| (all_inputs(f)).any(!os.exists(it)) {
 		return false
 	}
 	return (os.read_file(stamp_path(f)) or { '' }) == digest
@@ -810,7 +885,8 @@ fn is_unchanged(f Flow, digest string) bool {
 // of one second, so a tie counts as out of date: a needless rebuild beats a
 // stale binary.
 fn is_up_to_date(f Flow) bool {
-	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
+	if f.gives.len == 0 || f.gives.any(!os.exists(it))
+		|| (all_inputs(f)).any(!os.exists(it)) {
 		return false
 	}
 	excluded := excluded_keys(f)
@@ -819,7 +895,7 @@ fn is_up_to_date(f Flow) bool {
 		oldest_output = min_i64_of(oldest_output, oldest_mtime(path))
 	}
 	mut newest_input := i64(0)
-	for path in f.takes {
+	for path in all_inputs(f) {
 		newest_input = max_i64_of(newest_input, newest_mtime(path, path_key(path), excluded))
 	}
 	return newest_input < oldest_output

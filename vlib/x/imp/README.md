@@ -46,11 +46,19 @@ ctx.flow()
 | `help`  | help text |
 | `takes` | input paths |
 | `gives` | output paths |
+| `depfile` | file where the body writes discovered inputs |
 | `check` | .mtime (default), .hash or .none |
 | `pre`   | []imp.FlowDep run before |
 | `post`  | []imp.FlowDep run after |
 | `flags` | []imp.Flag read with self.flag |
 | `flow`  | fn (self imp.Flow) ! |
+
+A body can discover inputs the build script did not know about, such as C
+headers from a compiler `-MD` file. Set `depfile` to the path where the body
+writes a Makefile-style dependency file; imp stores the paths on success and
+treats them as inputs from then on, both for skip checks and for linking the
+flows that produce them. Only the part after the first colon of each line is
+used, with line continuations folded away.
 
 ## hooks
 | declaration                                | result |
