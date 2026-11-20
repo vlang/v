@@ -4465,3 +4465,75 @@ fn main() {
 	assert build.exit_code == 0, build.output
 	assert run.exit_code == 0, run.output
 }
+
+// test_ownership_nll_lite_preserves_call_and_drop_loans covers the two
+// lifetime regressions from review: an explicit borrow passed to a call, and
+// a borrower whose Drop reads a borrowed field at scope exit.
+fn test_ownership_nll_lite_preserves_call_and_drop_loans() {
+	v3_bin := ownership_build_v3()
+
+	call := run_ownership_check(v3_bin, 'explicit_borrow_call_arg', "
+fn foo(a &string, b string) {
+	_ = a
+	_ = b
+}
+
+fn main() {
+	s := 'hello'.to_owned()
+	foo(&s, s)
+}
+")
+	assert call.exit_code != 0, call.output
+	assert call.output.contains('cannot move `s` because it is borrowed by `foo`'), call.output
+
+	drop_loan := run_ownership_check(v3_bin, 'drop_reads_borrow', "
+struct Conn {
+	name string
+}
+
+struct Observer implements Drop {
+	c &Conn
+}
+
+fn (o Observer) drop() {
+	println(o.c.name)
+}
+
+fn consume(conn Conn) {
+	println(conn.name)
+}
+
+fn main() {
+	conn := Conn{name: 'x'}
+	observer := Observer{c: &conn}
+	println(observer.c.name)
+	consume(conn)
+}
+")
+	assert drop_loan.exit_code != 0, drop_loan.output
+	assert drop_loan.output.contains('cannot move `conn` because it is borrowed by `observer.c`'), drop_loan.output
+
+	multi := run_ownership_check(v3_bin, 'two_borrowers_one_move', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+struct Stmt { c &Conn }
+fn (s Stmt) run() { println(s.c.name) }
+fn start(mut conn Conn) {
+	s := Stmt{c: &conn}
+	t := Stmt{c: &conn}
+	s.run()
+	other := conn
+	t.run()
+	println(other.name)
+}
+fn main() {
+	mut conn := Conn{name: 'x'}
+	start(mut conn)
+}
+")
+	assert multi.exit_code != 0, multi.output
+	assert multi.output.contains('cannot move `conn` because it is borrowed by `t.c`'), multi.output
+}
