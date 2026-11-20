@@ -13669,54 +13669,58 @@ fn (tc &TypeChecker) ownership_subtree_uses_base(root flat.NodeId, base string) 
 	return false
 }
 
-// ownership_subtree_contains_node reports whether `target` is inside `root`.
-fn (tc &TypeChecker) ownership_subtree_contains_node(root flat.NodeId, target flat.NodeId) bool {
-	if !tc.valid_node_id(root) {
-		return false
-	}
-	mut pending := [root]
-	for pending.len > 0 {
-		cur := pending.pop()
-		if cur == target {
-			return true
-		}
-		pending << tc.a.children_of(tc.a.node(cur))
-	}
-	return false
-}
-
 // ownership_branch_has_use_after reports whether a branch rooted at `root`
 // reads `base` at or after `target` in source order. Flat AST children are
-// ordered, so every sibling after the one containing `target` is a later read,
-// including the other arm of an if/else or match. A read inside `target` itself
-// also keeps the loan alive.
+// ordered, so every sibling after the one on the path to `target` is a later
+// read, including the other arm of an if/else or match.
 fn (tc &TypeChecker) ownership_branch_has_use_after(root flat.NodeId, target flat.NodeId, base string) bool {
 	if base == '' || !tc.valid_node_id(root) {
 		return false
 	}
-	mut current := root
-	for tc.valid_node_id(current) {
-		if current == target {
-			return tc.ownership_subtree_uses_base(current, base)
+	if root == target {
+		return tc.ownership_subtree_uses_base(target, base)
+	}
+	// Build the ancestor chain from target up to root using parent links. This is
+	// O(depth) instead of re-walking each child subtree to locate the target.
+	mut path := []flat.NodeId{}
+	mut cur := target
+	for _ in 0 .. 256 {
+		if cur == root {
+			break
 		}
-		node := tc.a.node(current)
-		mut target_child := flat.empty_node
-		for i in 0 .. node.children_count {
-			child := tc.a.child(node, i)
-			if target_child == flat.empty_node && tc.ownership_subtree_contains_node(child, target) {
-				target_child = child
+		parent := tc.direct_parent_id(cur)
+		if !tc.valid_node_id(parent) {
+			return false
+		}
+		path << cur
+		cur = parent
+	}
+	if cur != root {
+		return false
+	}
+	mut ancestor := root
+	for i := path.len - 1; i >= 0; i-- {
+		child_on_path := path[i]
+		node := tc.a.node(ancestor)
+		mut found := false
+		for j in 0 .. node.children_count {
+			child := tc.a.child(node, j)
+			if !found {
+				if child == child_on_path {
+					found = true
+				}
 				continue
 			}
-			if target_child != flat.empty_node && tc.ownership_subtree_uses_base(child, base) {
+			if tc.ownership_subtree_uses_base(child, base) {
 				return true
 			}
 		}
-		if target_child == flat.empty_node {
+		if !found {
 			return false
 		}
-		current = target_child
+		ancestor = child_on_path
 	}
-	return false
+	return tc.ownership_subtree_uses_base(target, base)
 }
 
 // ownership_body_has_escaping_use reports whether the function body rooted at
