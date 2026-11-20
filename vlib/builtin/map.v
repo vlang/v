@@ -78,9 +78,11 @@ struct DenseArray {
 	key_bytes   int
 	value_bytes int
 mut:
-	cap     int
-	len     int
-	deletes u32 // count
+	key_noscan   bool = false // keys contain no GC pointers: skip them in mark
+	value_noscan bool = false // values contain no GC pointers: skip them in mark
+	cap          int
+	len          int
+	deletes      u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &u8 = unsafe { nil }
@@ -139,6 +141,22 @@ fn (mut d DenseArray) trim_deleted_tail() {
 	}
 }
 
+// realloc_data_noscan grows a pointer-free buffer on a noscan span: allocate
+// zeroed noscan storage, copy the old contents, release the old block.
+@[unsafe]
+fn realloc_data_noscan(old_data &u8, old_size int, new_size int) &u8 {
+	if old_data == unsafe { nil } {
+		return unsafe { malloc_noscan(new_size) }
+	}
+	unsafe {
+		new_data := malloc_noscan(new_size)
+		min_size := if old_size < new_size { old_size } else { new_size }
+		vmemcpy(new_data, old_data, min_size)
+		free(old_data)
+		return new_data
+	}
+}
+
 fn (mut d DenseArray) reserve(n int) {
 	if n <= d.cap {
 		return
@@ -148,13 +166,21 @@ fn (mut d DenseArray) reserve(n int) {
 	old_value_size := d.value_bytes * old_cap
 	d.cap = n
 	unsafe {
-		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+		if d.key_noscan {
+			d.keys = realloc_data_noscan(d.keys, old_key_size, d.key_bytes * d.cap)
+		} else {
+			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+		}
 		// Zero-sized values keep the initial one-byte allocation across growth.
 		if d.value_bytes != 0 {
-			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+			if d.value_noscan {
+				d.values = realloc_data_noscan(d.values, old_value_size, d.value_bytes * d.cap)
+			} else {
+				d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+			}
 		}
 		if d.deletes != 0 {
-			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
+			d.all_deleted = realloc_data_noscan(d.all_deleted, old_cap, d.cap)
 			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
 		}
 	}
@@ -170,12 +196,20 @@ fn (mut d DenseArray) expand() int {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
-			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+			if d.key_noscan {
+				d.keys = realloc_data_noscan(d.keys, old_key_size, d.key_bytes * d.cap)
+			} else {
+				d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+			}
 			if d.value_bytes != 0 {
-				d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+				if d.value_noscan {
+					d.values = realloc_data_noscan(d.values, old_value_size, d.value_bytes * d.cap)
+				} else {
+					d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+				}
 			}
 			if d.deletes != 0 {
-				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
+				d.all_deleted = realloc_data_noscan(d.all_deleted, old_cap, d.cap)
 				vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
 			}
 		}
@@ -1053,21 +1087,31 @@ pub fn (m &map) values() array {
 @[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
-		key_bytes:   d.key_bytes
-		value_bytes: d.value_bytes
-		cap:         d.cap
-		len:         d.len
-		deletes:     d.deletes
-		all_deleted: unsafe { nil }
-		values:      unsafe { nil }
-		keys:        unsafe { nil }
+		key_bytes:    d.key_bytes
+		value_bytes:  d.value_bytes
+		key_noscan:   d.key_noscan
+		value_noscan: d.value_noscan
+		cap:          d.cap
+		len:          d.len
+		deletes:      d.deletes
+		all_deleted:  unsafe { nil }
+		values:       unsafe { nil }
+		keys:         unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {
-			res.all_deleted = memdup(d.all_deleted, d.cap)
+			res.all_deleted = memdup_noscan(d.all_deleted, d.cap)
 		}
-		res.keys = memdup(d.keys, d.cap * d.key_bytes)
-		res.values = memdup(d.values, d.cap * d.value_bytes)
+		if d.key_noscan {
+			res.keys = memdup_noscan(d.keys, d.cap * d.key_bytes)
+		} else {
+			res.keys = memdup(d.keys, d.cap * d.key_bytes)
+		}
+		if d.value_noscan {
+			res.values = memdup_noscan(d.values, d.cap * d.value_bytes)
+		} else {
+			res.values = memdup(d.values, d.cap * d.value_bytes)
+		}
 	}
 	return res
 }
@@ -1076,7 +1120,11 @@ fn (d &DenseArray) clone() DenseArray {
 @[unsafe]
 pub fn (m &map) clone() map {
 	if m.metas == unsafe { nil } {
-		return new_map(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn, m.free_fn)
+		mut out := new_map(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn,
+			m.free_fn)
+		out.key_values.key_noscan = m.key_values.key_noscan
+		out.key_values.value_noscan = m.key_values.value_noscan
+		return out
 	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{

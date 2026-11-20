@@ -6769,6 +6769,21 @@ fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
 		g.write('new_map_aligned(${args}, __alignof__(${c_key}), __alignof__(${c_val}))')
 		return
 	}
+	// Pointer-free sides live on noscan spans, mirroring array_allocation_expr.
+	key_noscan := !g.tc.allocation_layout(key_type).has(.scanned)
+	val_noscan := !g.tc.allocation_layout(value_type).has(.scanned)
+	if key_noscan && val_noscan {
+		g.write('new_map_noscan_key_value(${args})')
+		return
+	}
+	if key_noscan {
+		g.write('new_map_noscan_key(${args})')
+		return
+	}
+	if val_noscan {
+		g.write('new_map_noscan_value(${args})')
+		return
+	}
 	g.write('new_map(${args})')
 }
 
