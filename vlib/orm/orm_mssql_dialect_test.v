@@ -47,7 +47,7 @@ fn test_mssql_select_offset_precedes_fetch_with_numbered_markers() {
 	assert query.ends_with('OFFSET @p2 ROWS FETCH NEXT @p1 ROWS ONLY;'), query
 }
 
-fn test_mssql_table_gen_uses_string_literal_for_xtype() {
+fn test_mssql_table_gen_uses_string_literals_in_guard() {
 	fields := [
 		orm.TableField{
 			name: 'id'
@@ -56,5 +56,18 @@ fn test_mssql_table_gen_uses_string_literal_for_xtype() {
 	]
 	query := orm.orm_table_gen(.mssql, orm.Table{ name: 'users' }, '"', true, 0, fields,
 		mssql_type_from_v, true)!
-	assert query.starts_with('IF NOT EXISTS (SELECT * FROM sysobjects WHERE name="users" and xtype=\'U\') CREATE TABLE "users" ('), query
+	assert query.starts_with('IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=\'users\' and xtype=\'U\') CREATE TABLE "users" ('), query
+}
+
+fn test_mssql_table_gen_escapes_quote_in_name_lookup() {
+	fields := [
+		orm.TableField{
+			name: 'id'
+			typ:  orm.type_idx['int']
+		},
+	]
+	query := orm.orm_table_gen(.mssql, orm.Table{ name: "o'brien" }, '"', true, 0, fields,
+		mssql_type_from_v, true)!
+	assert query.contains("WHERE name='o''brien' and xtype='U'"), query
+	assert query.contains('CREATE TABLE "o\'brien" ('), query
 }

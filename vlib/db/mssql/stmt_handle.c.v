@@ -59,6 +59,16 @@ fn (h HStmt) prepare(sql_ string) ! {
 	check_error(retcode, 'SQLPrepare()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 }
 
+// reserve_param_indicators preallocates indicator storage for n parameters.
+// ODBC retains every indicator address handed to SQLBindParameter until
+// SQLExecute runs, so all storage must exist before the first bind: growing
+// the array per bind would move it and leave ODBC with dangling pointers.
+fn (mut h HStmt) reserve_param_indicators(n int) {
+	if h.param_indicators.len < n {
+		h.param_indicators = []i64{len: n}
+	}
+}
+
 // bind_parameter binds one 1-based parameter marker. A none value is bound as SQL NULL.
 fn (mut h HStmt) bind_parameter(index int, value ?string) ! {
 	if h.param_indicators.len < index {
@@ -81,6 +91,49 @@ fn (mut h HStmt) bind_parameter(index int, value ?string) ! {
 		C.SQLSMALLINT(C.SQL_VARCHAR), column_size, C.SQLSMALLINT(0), value_ptr, buffer_length,
 		voidptr(&h.param_indicators[index - 1]))
 	check_error(retcode, 'SQLBindParameter()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+}
+
+// more_results advances to the next result set of a multi-statement batch.
+// It returns false when no result set remains.
+fn (h HStmt) more_results() !bool {
+	retcode := C.SQLMoreResults(h.hstmt)
+	if retcode == C.SQLRETURN(C.SQL_NO_DATA) {
+		return false
+	}
+	check_error(retcode, 'SQLMoreResults()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+	return true
+}
+
+// read_single_int reads the first column of the first row of the current
+// result set as an int, for single-value batches like SELECT SCOPE_IDENTITY().
+fn (mut h HStmt) read_single_int() !int {
+	h.prepare_read()!
+	rows := h.read_rows()!
+	if rows.len == 0 || rows[0].vals.len == 0 {
+		return error('db.mssql: value result set is empty')
+	}
+	if rows[0].is_null(0) {
+		return error('db.mssql: value result is NULL')
+	}
+	return rows[0].val(0).int()
+}
+
+// indicator_is_null reports whether an indicator cell holds SQL_NULL_DATA.
+// The cell is read back through the real SQLLEN width: on 32-bit targets the
+// driver writes only four bytes, so comparing the whole i64 cell with -1
+// would miss NULLs (the zeroed high half stays 0).
+fn indicator_is_null(cell i64) bool {
+	$if x64 {
+		return cell == i64(C.SQL_NULL_DATA)
+	} $else {
+		return indicator_is_null_32(cell)
+	}
+}
+
+// indicator_is_null_32 reads the low 32 bits of a cell, matching a 32-bit
+// SQLLEN write into a zeroed eight-byte cell (little-endian).
+fn indicator_is_null_32(cell i64) bool {
+	return i32(cell & 0xffff_ffff) == i32(C.SQL_NULL_DATA)
 }
 
 // execute runs a previously prepared statement with its bound parameters.
@@ -184,7 +237,7 @@ fn (h HStmt) read_rows() ![]Row {
 			mut has_null := false
 			for i, content in h.buffers {
 				row << unsafe { cstring_to_vstring(content.data) }
-				if h.indicators[i] == i64(C.SQL_NULL_DATA) {
+				if indicator_is_null(h.indicators[i]) {
 					nulls[i] = true
 					has_null = true
 				}

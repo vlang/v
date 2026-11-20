@@ -1436,8 +1436,11 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 
 	if alternative {
-		// xtype is a string literal in T-SQL, independent of the identifier quote q.
-		str = "IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table.name}${q} and xtype='U') CREATE TABLE ${q}${table.name}${q} ("
+		// The lookup value is a T-SQL string literal, independent of the identifier
+		// quote q: with QUOTED_IDENTIFIER ON, "name" would name a column, so the
+		// guard would never match. See https://learn.microsoft.com/en-us/sql/t-sql/statements/set-quoted-identifier-transact-sql
+		name_lit := sql_string_literal(sql_dialect, table.name)!
+		str = "IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${name_lit} and xtype='U') CREATE TABLE ${q}${table.name}${q} ("
 	}
 
 	mut fs := []string{}

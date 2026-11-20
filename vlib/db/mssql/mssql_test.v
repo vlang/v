@@ -122,6 +122,7 @@ fn test_parameterized_exec_and_last_id() {
 	assert res.rows == [mssql.Row{ vals: ['alice', 'hello'] }]
 
 	conn.exec('insert into vlang_mssql_bind_test (name, note) values (?, ?)', ['bob', none])!
+	assert conn.last_id() == 2
 	null_res := conn.exec('select name, note from vlang_mssql_bind_test where name = ?', ['bob'])!
 	assert null_res.rows[0].vals[0] == 'bob'
 	assert null_res.rows[0].is_null(1)

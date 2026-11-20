@@ -41,6 +41,8 @@ fn C.SQLBindParameter(statement_handle C.SQLHSTMT, parameter_number C.SQLUSMALLI
 
 fn C.SQLFreeStmt(statement_handle C.SQLHSTMT, option C.SQLUSMALLINT) C.SQLRETURN
 
+fn C.SQLMoreResults(statement_handle C.SQLHSTMT) C.SQLRETURN
+
 fn C.SQLBindCol(statement_handle C.SQLHSTMT, column_number C.SQLUSMALLINT, target_type C.SQLSMALLINT, target_value C.SQLPOINTER,
 	buffer_length C.SQLLEN, str_len_or_ind &C.SQLLEN) C.SQLRETURN
 

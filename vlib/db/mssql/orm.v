@@ -11,7 +11,7 @@ pub fn (mut conn Connection) select(config orm.SelectConfig, data orm.QueryData,
 
 	// T-SQL emits OFFSET before FETCH NEXT, while the query builder appends the
 	// limit value before the offset value, so swap the last two bound values.
-	params := mssql_bind(where_with_tenant)
+	mut params := mssql_bind(where_with_tenant)
 	params << mssql_select_data_params(config, data)
 
 	res := conn.exec(query, params)!
@@ -130,9 +130,9 @@ fn check_savepoint_name(name string) ! {
 	}
 	for i, c in name {
 		valid := if i == 0 {
-			c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+			c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 		} else {
-			c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+			c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
 		}
 		if !valid {
 			return error('db.mssql: invalid savepoint name: ${name}')
