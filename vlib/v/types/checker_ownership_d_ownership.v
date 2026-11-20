@@ -13564,8 +13564,10 @@ fn (mut tc TypeChecker) ownership_release_borrow_if_dead(conflict OwnershipBorro
 			if stmt_id == stmt {
 				seen_stmt = true
 				// A use inside the conflicting statement itself (for example
-				// on its right-hand side) keeps the loan alive.
-				if tc.ownership_subtree_uses_base(stmt_id, base) {
+				// on its right-hand side) keeps the loan alive. For a nested
+				// branch this is handled by ownership_branch_has_use_after;
+				// the whole subtree also contains reads before `pos`.
+				if stmt == pos && tc.ownership_subtree_uses_base(stmt_id, base) {
 					return false
 				}
 			}
