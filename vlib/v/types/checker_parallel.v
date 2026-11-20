@@ -1392,9 +1392,13 @@ struct CheckChunkArgs {
 	chunk_queue   chan int
 	scope_enabled bool
 	index         int
+	// promote_to is the checker whose node caches the task promotes out of its
+	// arena after each chunk of bodies (see CheckChunkPromotion), or nil.
+	promote_to voidptr
 mut:
 	scope     voidptr
 	processed []CheckWorkItem
+	promotion &CheckChunkPromotion = unsafe { nil }
 }
 
 fn check_chunk_thread(arg voidptr) voidptr {
@@ -1412,6 +1416,11 @@ fn check_chunk_thread(arg voidptr) voidptr {
 		scoped_check_worker_batches / 12
 	}
 	w.reuse_check_batch_scope = a.scope_enabled
+	mut master := unsafe { &TypeChecker(a.promote_to) }
+	if a.promote_to != unsafe { nil } {
+		// What is left to the master is listed in this task's arena.
+		a.promotion = &CheckChunkPromotion{}
+	}
 	if a.dynamic_items != unsafe { nil } {
 		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
 		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
@@ -1424,9 +1433,17 @@ fn check_chunk_thread(arg voidptr) voidptr {
 				w.check_fn_items_serial(chunk)
 			}
 			a.processed << chunk
+			if a.promote_to != unsafe { nil } {
+				// The bodies are merged into this worker's accumulator, and no later
+				// chunk writes their nodes: promote them while their nodes are at hand.
+				master.promote_check_chunk(chunk, mut a.promotion, a.scope)
+			}
 		}
 	} else if a.scope_enabled {
 		w.check_scoped_batches(*items, batch_limit)
+		if a.promote_to != unsafe { nil } {
+			master.promote_check_chunk(*items, mut a.promotion, a.scope)
+		}
 	} else {
 		w.check_fn_items_serial(*items)
 	}
@@ -1434,6 +1451,17 @@ fn check_chunk_thread(arg voidptr) voidptr {
 	w.check_batch_scope = unsafe { nil }
 	w.reuse_check_batch_scope = false
 	check_worker_scope_leave(a.scope)
+	if a.promote_to != unsafe { nil } {
+		if a.promotion.names_pending {
+			// The names outlive the arena: they go to this thread's persistent one.
+			if a.dynamic_items == unsafe { nil } {
+				master.promote_check_chunk_call_names(*items)
+			} else {
+				master.promote_check_chunk_call_names(a.processed)
+			}
+		}
+		a.promotion.done = true
+	}
 	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
 	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
 	return unsafe { nil }
@@ -2405,6 +2433,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	if dynamic_dispatch {
 		dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
 	}
+	// A scoped worker promotes the node caches of its bodies out of its arena as
+	// its last step, while the others still check theirs, instead of in a pool
+	// phase after all of them: the interners of this checker, which the promotion
+	// probes, are not written before the pool joins (forks intern into their own).
+	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+	promote_in_tasks := par_clone && !isnil(tc.type_interner)
 	for ci in 0 .. chunk_count {
 		mut worker := voidptr(tc)
 		if tc.scope_parallel_check_workers {
@@ -2419,6 +2453,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			chunk_queue:   chunk_queue
 			scope_enabled: tc.scope_parallel_check_workers
 			index:         ci
+			promote_to:    if promote_in_tasks { voidptr(tc) } else { unsafe { nil } }
 		}
 	}
 	// The master checks its own chunk under the same range discipline as the
@@ -2493,11 +2528,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	// worker scope is still alive; only unknown-type interning stays serial.
 	// All checking has joined and sparse-cache promotion has finished. The
 	// master interner stays frozen until these clone tasks have also joined.
-	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
 	mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
 	mut mg_clone_ns := u64(0)
 	mut mg_merge_ns := u64(0)
-	if par_clone {
+	mut mg_left_types := 0
+	mut mg_left_nodes := 0
+	if par_clone && !promote_in_tasks {
 		mg_t0 := time.sys_mono_now()
 		for ci in 0 .. chunk_count {
 			clone_args << CheckCloneChunkArgs{
@@ -2523,9 +2559,14 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 		// Scoped-mode forks always own private interners, even when this compiler
 		// was built without the prealloc allocator and therefore has no arena.
 		scoped := tc.scope_parallel_check_workers
+		promoted := scoped && !isnil(args[ci].promotion) && args[ci].promotion.done
 		if scoped {
 			mg_t0 := time.sys_mono_now()
-			if par_clone {
+			if promoted {
+				mg_left_types += args[ci].promotion.types.len
+				mg_left_nodes += args[ci].promotion.nodes.len
+				tc.intern_promoted_expr_types(args[ci].promotion)
+			} else if par_clone && !promote_in_tasks {
 				tc.intern_expr_type_misses(clone_args[ci].miss)
 			} else {
 				tc.clone_parallel_worker_node_caches(chunks[ci])
@@ -2543,7 +2584,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	}
 	mg_clone_ms := f64(mg_clone_ns) / 1e6
 	mg_merge_ms := f64(mg_merge_ns) / 1e6
-	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms (left types: ${mg_left_types} of ${mg_left_nodes} nodes)')
 	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 	check_worker_scope_free(setup_scope)
 	if bodies_only {
@@ -6169,6 +6210,152 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 		}
 	}
 	return unsafe { nil }
+}
+
+// CheckChunkPromotion is what a worker of a scoped parallel check leaves to the
+// master when it promotes the node caches of its bodies out of its arena itself,
+// chunk by chunk, while the other workers still check theirs. The master's
+// type interner is frozen until the pool joins, so the worker only probes it,
+// and lists the types it does not hold for the master to intern, in the order
+// in which a promotion after the join would have.
+@[heap]
+struct CheckChunkPromotion {
+mut:
+	done bool
+	// The expression types that the master's interner does not hold: the node
+	// `nodes[i]` has the type `types[type_of[i]]`, and `types` lists each of the
+	// worker's canonical types once, in the order of its first node.
+	nodes   []i32
+	type_of []i32
+	types   []&Type
+	// names_pending is set when a chunk's call names could not be given
+	// persistent storage right after the chunk: the task then promotes those of
+	// all its chunks at its end.
+	names_pending bool
+	missing       map[u64]i32
+	cache         CheckChunkPromotionCache
+}
+
+// CheckChunkPromotionCache maps the worker's canonical types to what a probe of
+// the master's interner found: its canonical type, or else the position of the
+// type among those the master does not hold. A worker's interner keeps one
+// instance of a type, alive until the worker's arena is released, so the
+// pointer identifies it.
+struct CheckChunkPromotionCache {
+mut:
+	ptrs   [4096]voidptr
+	values [4096]voidptr
+	misses [4096]i32
+}
+
+// promote_check_chunk promotes the node caches of the bodies `items`, which the
+// calling worker of a parallel check has checked and merged into its
+// accumulator, to `tc`, the master, which the worker may only read. `scope` is
+// the worker's arena, current at the call: what is left to the master is listed
+// in it, and the names go to the thread's persistent arena under it.
+fn (mut tc TypeChecker) promote_check_chunk(items []CheckWorkItem, mut p CheckChunkPromotion, scope voidptr) {
+	tc.promote_check_chunk_types(items, mut p)
+	if p.names_pending {
+		return
+	}
+	$if prealloc {
+		if scope != unsafe { nil } {
+			state := unsafe { prealloc_scope_suspend(scope) }
+			if state == unsafe { nil } {
+				p.names_pending = true
+				return
+			}
+			tc.promote_check_chunk_call_names(items)
+			unsafe { prealloc_scope_resume(scope, state) }
+			return
+		}
+	}
+	tc.promote_check_chunk_call_names(items)
+}
+
+// promote_check_chunk_types rebinds the expression types of the nodes of `items`
+// to the canonical ones of `tc`, the master, whose interner the caller, a worker
+// of a parallel check, may only read. The types it does not hold are left as
+// they are, and listed in `p`.
+@[direct_array_access]
+fn (mut tc TypeChecker) promote_check_chunk_types(items []CheckWorkItem, mut p CheckChunkPromotion) {
+	if isnil(tc.type_interner) {
+		return
+	}
+	for item in items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				typ := tc.expr_type_values[idx]
+				key := u64(voidptr(typ))
+				slot := int((key >> 4) & 4095)
+				if p.cache.ptrs[slot] != voidptr(typ) {
+					mut value := unsafe { nil }
+					mut miss := i32(0)
+					if known := p.missing[key] {
+						miss = known
+					} else if canonical := tc.type_interner.probe_frozen(typ) {
+						value = voidptr(canonical)
+					} else {
+						miss = i32(p.types.len)
+						p.missing[key] = miss
+						p.types << typ
+					}
+					p.cache.ptrs[slot] = voidptr(typ)
+					p.cache.values[slot] = value
+					p.cache.misses[slot] = miss
+				}
+				if p.cache.values[slot] != unsafe { nil } {
+					tc.expr_type_values[idx] = unsafe { &Type(p.cache.values[slot]) }
+				} else {
+					p.nodes << i32(idx)
+					p.type_of << p.cache.misses[slot]
+				}
+			}
+		}
+	}
+}
+
+// promote_check_chunk_call_names gives the resolved call names of the nodes of
+// `items` storage in the current arena, as check_clone_chunk_thread does.
+@[direct_array_access]
+fn (mut tc TypeChecker) promote_check_chunk_call_names(items []CheckWorkItem) {
+	mut names := CheckNamePromotionCache{}
+	for item in items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut
+					names)
+			}
+		}
+	}
+}
+
+// intern_promoted_expr_types interns the expression types that a worker's
+// promotion left to the master (see CheckChunkPromotion), each when its first
+// node comes up, and rebinds their nodes. A node that a merge has written since
+// holds a canonical type already.
+@[direct_array_access]
+fn (mut tc TypeChecker) intern_promoted_expr_types(p &CheckChunkPromotion) {
+	if p.nodes.len == 0 {
+		return
+	}
+	mut cache := CheckTypePromotionCache{}
+	mut canonical := []voidptr{len: p.types.len}
+	for i, node in p.nodes {
+		idx := int(node)
+		slot := p.type_of[i]
+		typ := p.types[slot]
+		if voidptr(tc.expr_type_values[idx]) != voidptr(typ) {
+			continue
+		}
+		if canonical[slot] == unsafe { nil } {
+			promoted := tc.cached_check_type_promotion(typ, mut cache, true, false) or {
+				tc.promote_check_type(*typ)
+			}
+			canonical[slot] = voidptr(promoted)
+		}
+		tc.expr_type_values[idx] = unsafe { &Type(canonical[slot]) }
+	}
 }
 
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
