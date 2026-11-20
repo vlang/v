@@ -26722,6 +26722,11 @@ fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_nod
 	}
 	short_name := import_path.all_after_last('.')
 	_, canonical_path := a.intern_text(import_path)
+	if short_name.len == import_path.len {
+		// A path of one name is what the module declarations of its files say
+		// already, in the canonical text that the parse gave them.
+		return
+	}
 	for i in first_node .. end_node {
 		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
 			a.nodes[i].value = canonical_path
