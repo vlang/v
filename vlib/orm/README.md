@@ -11,6 +11,10 @@ For `.vsql`, use `orm.orm_select_gen_with_dialect`, which spells a limit and an 
 and the comment before a `@[unique: 'group']` constraint. A `@[default]` must be a value vsql
 accepts as a column default, such as a literal or `CURRENT_TIMESTAMP`.
 
+A ready-made `orm.Connection` driver for vsql ships with the
+[`elliotchance.vsql`](https://vpm.vlang.io/packages/elliotchance.vsql) VPM package as
+`vorm` (`import elliotchance.vsql.vorm`).
+
 ## Deprecation notice: orm_fn
 
 > [!WARNING]
