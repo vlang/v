@@ -75,8 +75,17 @@ static inline unsigned vgc_ctz64(uint64_t x) {
 static inline int vgc_bitmap_atomic_test_set(uint8_t* bits, uint32_t index) {
     // The mark bitmaps live in span metadata, whose `bits` array is 8-byte
     // aligned, so 32-bit words are safe to compare-and-swap on all targets.
+    // Bit `index` lives in byte `index>>3`, bit `index&7`, so on big-endian
+    // targets the word mask must mirror the byte order (byte 0 is the most
+    // significant) instead of using the little-endian `index&31` position.
     uint32_t* word = &((uint32_t*)bits)[index >> 5];
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    const uint32_t mask = (uint32_t)1u << ((3u - ((index >> 3) & 3u)) * 8u + (index & 7u));
+#elif defined(__BIG_ENDIAN__) || defined(_BIG_ENDIAN) || defined(__ARMEB__) || defined(__MIPSEB__) || defined(__s390x__) || defined(__zarch__)
+    const uint32_t mask = (uint32_t)1u << ((3u - ((index >> 3) & 3u)) * 8u + (index & 7u));
+#else
     const uint32_t mask = 1u << (index & 31u);
+#endif
 #if defined(__TINYC__)
     extern _Bool __atomic_compare_exchange_4(uint32_t*, uint32_t*, uint32_t, int, int, int);
     uint32_t expected = *word;
