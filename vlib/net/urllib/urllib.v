@@ -247,18 +247,19 @@ fn unescape_with_query_compatibility(s_ string, mode EncodingMode, preserve_pars
 				if i + 2 >= s.len {
 					return error(error_msg('unescape: invalid escape sequence', ''))
 				}
-				t.write_string(((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2])).ascii_str())
+				// write_byte avoids a 2-byte malloc per decoded byte from ascii_str().
+				t.write_byte((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 				i += 2
 			}
 			`+` {
 				if mode == .encode_query_component {
-					t.write_string(' ')
+					t.write_byte(` `)
 				} else {
-					t.write_string('+')
+					t.write_byte(`+`)
 				}
 			}
 			else {
-				t.write_string(s[i].ascii_str())
+				t.write_byte(s[i])
 			}
 		}
 	}
