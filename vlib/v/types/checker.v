@@ -1635,6 +1635,9 @@ mut:
 	// Only set during check_semantics_opt; forks and views share the immutable
 	// indexes (see CheckDeclIndexes).
 	check_decl_indexes &CheckDeclIndexes = unsafe { nil }
+	// What a parallel check found ahead for the scans that follow it (see
+	// CheckTailPrepared), on the checker that ran it: forks and views have none.
+	check_tail &CheckTailPrepared = unsafe { nil }
 	// Private to one checking checker: views do not inherit it.
 	source_type_keyword_memo &SourceTypeKeywordMemo = unsafe { nil }
 	// Only set on the checker that runs the serial interface index loop.
@@ -6765,6 +6768,7 @@ fn (mut tc TypeChecker) invalidate_subtree_expr_types(expr_id flat.NodeId) {
 	tc.invalidate_checked_type_id(idx)
 	if idx < tc.expr_type_set.len {
 		tc.expr_type_set[idx] = false
+		tc.note_check_tail_write(idx)
 	}
 	tc.sparse_expr_type_values.delete(idx)
 	node := tc.a.nodes[idx]
@@ -8214,6 +8218,17 @@ fn (tc &TypeChecker) import_needs_usage_check(node &flat.Node, file string) bool
 }
 
 fn (tc &TypeChecker) unused_import_nodes_by_file() map[int][]int {
+	file_ids := tc.unused_import_file_ids()
+	// A parallel check lists them while its pool checks the bodies.
+	prepared, is_prepared := tc.prepared_unused_import_nodes(file_ids)
+	if is_prepared {
+		return prepared
+	}
+	return tc.nodes_of_files(file_ids)
+}
+
+// unused_import_file_ids lists the files of the imports whose use is checked.
+fn (tc &TypeChecker) unused_import_file_ids() []int {
 	mut file_ids := []int{}
 	mut file := tc.cur_file
 	for idx in tc.top_level_idx {
@@ -8224,7 +8239,7 @@ fn (tc &TypeChecker) unused_import_nodes_by_file() map[int][]int {
 			file_ids << node.pos.id
 		}
 	}
-	return tc.nodes_of_files(file_ids)
+	return file_ids
 }
 
 struct UnusedImportCandidate {
@@ -12672,6 +12687,7 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < tc.resolved_call_names.len {
 		tc.resolved_call_names[idx] = cached_name(canonical)
 		tc.resolved_call_set[idx] = true
+		tc.note_check_tail_write(idx)
 	}
 }
 
@@ -12762,6 +12778,7 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 		if idx < tc.expr_type_values.len {
 			tc.expr_type_values[idx] = tc.intern_type_reference(cached_typ)
 			tc.expr_type_set[idx] = true
+			tc.note_check_tail_write(idx)
 		}
 	} else if tc.keep_placeholder_types && typ is Unknown {
 		if typ.placeholder != 0 {

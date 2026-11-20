@@ -1644,6 +1644,7 @@ fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
+	tc.release_check_tail()
 	if !isnil(tc.a) {
 		tc.check_decl_indexes = tc.new_check_decl_indexes()
 		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
@@ -2466,7 +2467,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	// cache writes out of the worker-owned shared array ranges. The mutating
 	// value checks already ran before any chunk was created.
 	tc.parallel_check_sparse = true
-	mut tasks := []workers.Task{cap: chunk_count + 1}
+	mut tasks := []workers.Task{cap: chunk_count + 2}
 	// Synchronous tasks run on the master in order. With dynamic dispatch its body
 	// chunks are checked by a fork pulling from the shared queue, so run the
 	// signature checks first: the helpers then take over the bodies the master
@@ -2487,11 +2488,29 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	} else {
 		voidptr(tc)
 	}
+	// The scans that follow the check on this thread are prepared beside the
+	// pool as well, as far as they read only the AST (see CheckTailPrepared).
+	mut tail_scan_args := &CheckTailScanArgs{
+		tc:    voidptr(tc)
+		items: unsafe { voidptr(&items) }
+	}
+	if promote_in_tasks && !bodies_only && isnil(tc.incremental) {
+		tc.release_check_tail()
+		tc.check_tail = tc.new_check_tail_prepared()
+		tail_scan_args.tail = tc.check_tail
+	}
 	if signatures_first {
 		tasks << workers.Task{
 			run:        signature_run
 			arg:        signature_arg
 			force_sync: true
+		}
+		if !isnil(tail_scan_args.tail) {
+			tasks << workers.Task{
+				run:        check_tail_scan_thread
+				arg:        voidptr(tail_scan_args)
+				force_sync: true
+			}
 		}
 	}
 	for ci in 0 .. chunk_count {
@@ -2507,6 +2526,13 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			run:        signature_run
 			arg:        signature_arg
 			force_sync: true
+		}
+		if !isnil(tail_scan_args.tail) {
+			tasks << workers.Task{
+				run:        check_tail_scan_thread
+				arg:        voidptr(tail_scan_args)
+				force_sync: true
+			}
 		}
 	}
 	check_worker_scope_leave(setup_scope)
@@ -2533,6 +2559,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	mut mg_merge_ns := u64(0)
 	mut mg_left_types := 0
 	mut mg_left_nodes := 0
+	mut mg_result_calls := 0
 	if par_clone && !promote_in_tasks {
 		mg_t0 := time.sys_mono_now()
 		for ci in 0 .. chunk_count {
@@ -2563,8 +2590,15 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 		if scoped {
 			mg_t0 := time.sys_mono_now()
 			if promoted {
+				mut tail := tc.check_tail
+				if !isnil(tail) {
+					for idx in args[ci].promotion.result_calls {
+						tail.mark_result_call(int(idx))
+					}
+				}
 				mg_left_types += args[ci].promotion.types.len
 				mg_left_nodes += args[ci].promotion.nodes.len
+				mg_result_calls += args[ci].promotion.result_calls.len
 				tc.intern_promoted_expr_types(args[ci].promotion)
 			} else if par_clone && !promote_in_tasks {
 				tc.intern_expr_type_misses(clone_args[ci].miss)
@@ -2584,7 +2618,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	}
 	mg_clone_ms := f64(mg_clone_ns) / 1e6
 	mg_merge_ms := f64(mg_merge_ns) / 1e6
-	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms (left types: ${mg_left_types} of ${mg_left_nodes} nodes)')
+	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms (left types: ${mg_left_types} of ${mg_left_nodes} nodes, result calls: ${mg_result_calls})')
 	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 	check_worker_scope_free(setup_scope)
 	if bodies_only {
@@ -3691,6 +3725,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 	for idx, name in tc.sparse_resolved_call_names {
 		tc.resolved_call_names[idx] = cached_name(name)
 		tc.resolved_call_set[idx] = true
+		tc.note_check_tail_write(idx)
 	}
 	for idx, _ in tc.sparse_statement_nodes {
 		tc.statement_nodes[idx] = true
@@ -3699,6 +3734,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.invalidate_checked_type_id(idx)
 		tc.expr_type_values[idx] = tc.intern_type_reference(typ)
 		tc.expr_type_set[idx] = true
+		tc.note_check_tail_write(idx)
 	}
 	tc.sparse_resolved_call_names.clear()
 	tc.sparse_statement_nodes.clear()
@@ -6228,6 +6264,9 @@ mut:
 	nodes   []i32
 	type_of []i32
 	types   []&Type
+	// The calls of the bodies that may return a Result (see
+	// call_may_return_result), in node order within each chunk.
+	result_calls []i32
 	// names_pending is set when a chunk's call names could not be given
 	// persistent storage right after the chunk: the task then promotes those of
 	// all its chunks at its end.
@@ -6276,12 +6315,13 @@ fn (mut tc TypeChecker) promote_check_chunk(items []CheckWorkItem, mut p CheckCh
 // promote_check_chunk_types rebinds the expression types of the nodes of `items`
 // to the canonical ones of `tc`, the master, whose interner the caller, a worker
 // of a parallel check, may only read. The types it does not hold are left as
-// they are, and listed in `p`.
+// they are, and listed in `p`, as are the calls that may return a Result.
 @[direct_array_access]
 fn (mut tc TypeChecker) promote_check_chunk_types(items []CheckWorkItem, mut p CheckChunkPromotion) {
 	if isnil(tc.type_interner) {
 		return
 	}
+	user_code_start := tc.a.user_code_start
 	for item in items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
@@ -6310,6 +6350,10 @@ fn (mut tc TypeChecker) promote_check_chunk_types(items []CheckWorkItem, mut p C
 					p.nodes << i32(idx)
 					p.type_of << p.cache.misses[slot]
 				}
+			}
+			if idx >= user_code_start && tc.a.nodes[idx].kind == .call
+				&& tc.call_may_return_result(idx) {
+				p.result_calls << i32(idx)
 			}
 		}
 	}
@@ -6506,6 +6550,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		} else {
 			tc.resolved_call_names[idx] = cached_name(owned_name)
 			tc.resolved_call_set[idx] = true
+			tc.note_check_tail_write(idx)
 		}
 	}
 	for idx, name in w.sparse_resolved_fn_values {
@@ -6532,6 +6577,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		} else {
 			tc.expr_type_values[idx] = tc.intern_type_reference(owned_type)
 			tc.expr_type_set[idx] = true
+			tc.note_check_tail_write(idx)
 		}
 	}
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
