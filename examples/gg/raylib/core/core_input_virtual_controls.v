@@ -55,18 +55,18 @@ fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
 	if e.typ == .touches_moved || e.typ == .touches_began {
 		if e.num_touches > 0 {
-			app.update_pressed(e.touches[0].pos_x, e.touches[0].pos_y, true)
+			update_pressed(mut app, e.touches[0].pos_x, e.touches[0].pos_y, true)
 		}
 	} else if e.typ == .touches_ended || e.typ == .touches_cancelled {
 		app.pressed = -1
 	} else if e.typ == .mouse_down {
-		app.update_pressed(e.mouse_x, e.mouse_y, true)
+		update_pressed(mut app, e.mouse_x, e.mouse_y, true)
 	} else if e.typ == .mouse_up {
 		app.pressed = -1
 	}
 }
 
-fn update_pressed(mut app App, x f32, y f32, is_down bool) {
+fn update_pressed(mut app &App, x f32, y f32, is_down bool) {
 	app.pressed = -1
 	if !is_down {
 		return

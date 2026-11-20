@@ -21,13 +21,13 @@ fn img_pixel(img &gg.Image, x int, y int) gg.Color {
 
 struct App {
 mut:
-	ctx      &gg.Context = unsafe { nil }
-	cam      gg.Camera3D
-	map_img  gg.Image
-	atlas    gg.Image
-	mesh     gg.Mesh3D
-	model    gg.Model3D
-	map_pos  gg.Vec3 = gg.Vec3{-16, 0, -8}
+	ctx     &gg.Context = unsafe { nil }
+	cam     gg.Camera3D
+	map_img gg.Image
+	atlas   gg.Image
+	mesh    gg.Mesh3D
+	model   gg.Model3D
+	map_pos gg.Vec3 = gg.Vec3{-16, 0, -8}
 }
 
 fn init(data voidptr) {
@@ -43,11 +43,15 @@ fn init(data voidptr) {
 		mut cells := []u8{len: app.map_img.width * app.map_img.height}
 		for y in 0 .. app.map_img.height {
 			for x in 0 .. app.map_img.width {
-				cells[y * app.map_img.width + x] = if img_pixel(&app.map_img, x, y).r > 128 { 1 } else { 0 }
+				cells[y * app.map_img.width + x] = if img_pixel(&app.map_img, x, y).r > 128 {
+					1
+				} else {
+					0
+				}
 			}
 		}
 		app.mesh = gg.gen_mesh_cubicmap(cells, app.map_img.width, app.map_img.height, 1.0)
-		app.model = gg.Model3D{mesh: &app.mesh, pos: app.map_pos}
+		app.model = gg.Model3D{ mesh: &app.mesh, pos: app.map_pos }
 		app.model.material.texture = &app.atlas
 	}
 }
@@ -57,8 +61,8 @@ fn frame(data voidptr) {
 	old := app.cam.position
 	app.cam.update(.first_person, app.ctx, 1.0 / 60.0)
 	if app.map_img.data != unsafe { nil } && app.map_img.width > 0 {
-		cx := int(app.cam.position.x - app.map_pos.x + 0.5)
-		cy := int(app.cam.position.z - app.map_pos.z + 0.5)
+		mut cx := int(app.cam.position.x - app.map_pos.x + 0.5)
+		mut cy := int(app.cam.position.z - app.map_pos.z + 0.5)
 		if cx < 0 { cx = 0 }
 		if cy < 0 { cy = 0 }
 		if cx >= app.map_img.width { cx = app.map_img.width - 1 }
@@ -69,9 +73,9 @@ fn frame(data voidptr) {
 			mut xx := cx - 1
 			for xx <= cx + 1 {
 				if xx >= 0 && xx < app.map_img.width && yy >= 0 && yy < app.map_img.height {
-					if img_pixel(&app.map_img, xx, yy).r == 255 &&
-						math.abs(app.cam.position.x - (app.map_pos.x - 0.5 + f32(xx))) < 0.6 &&
-						math.abs(app.cam.position.z - (app.map_pos.z - 0.5 + f32(yy))) < 0.6 {
+					if img_pixel(&app.map_img, xx, yy).r == 255
+						&& math.abs(app.cam.position.x - (app.map_pos.x - 0.5 + f32(xx))) < 0.6
+						&& math.abs(app.cam.position.z - (app.map_pos.z - 0.5 + f32(yy))) < 0.6 {
 						collide = true
 					}
 				}

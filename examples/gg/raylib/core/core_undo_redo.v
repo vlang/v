@@ -149,7 +149,13 @@ fn frame(data voidptr) {
 	gx, gy := f32(40), f32(60)
 	mut i := app.first
 	for i < app.current {
-		ctx.draw_rect(x: gx + f32(app.states[i].x) * cell_size, y: gy + f32(app.states[i].y) * cell_size, w: cell_size, h: cell_size, color: light_gray)
+		ctx.draw_rect(
+			x:     gx + f32(app.states[i].x) * cell_size
+			y:     gy + f32(app.states[i].y) * cell_size
+			w:     cell_size
+			h:     cell_size
+			color: light_gray
+		)
 		i++
 	}
 	mut y := 0
@@ -164,12 +170,18 @@ fn frame(data voidptr) {
 			gx + f32(x) * cell_size, gy + f32(grid_cells_y) * cell_size, gray)
 		x++
 	}
-	ctx.draw_rect(x: gx + f32(app.player.x) * cell_size, y: gy + f32(app.player.y) * cell_size, w: cell_size + 1, h: cell_size + 1, color: app.player.color)
+	ctx.draw_rect(
+		x:     gx + f32(app.player.x) * cell_size
+		y:     gy + f32(app.player.y) * cell_size
+		w:     cell_size + 1
+		h:     cell_size + 1
+		color: app.player.color
+	)
 
 	bx, by := f32(110), f32(400)
 	ctx.draw_rect(x: bx + 8 + f32(app.current) * cell_size, y: by - 10, w: 8, h: 8, color: gg.red)
-	ctx.draw_rect_empty(bx + 2 + f32(app.first) * cell_size, by + 27, 8, 8, black)
-	ctx.draw_rect_empty(bx + 14 + f32(app.last) * cell_size, by + 27, 8, 8, black)
+	ctx.draw_rect_empty(bx + 2 + f32(app.first) * cell_size, by + 27, 8, 8, gg.black)
+	ctx.draw_rect_empty(bx + 14 + f32(app.last) * cell_size, by + 27, 8, 8, gg.black)
 	i = 0
 	for i < max_states {
 		c := if i <= app.last && i >= app.first { sky_blue } else { light_gray }
@@ -177,7 +189,13 @@ fn frame(data voidptr) {
 		ctx.draw_rect_empty(bx + f32(i) * cell_size, by, cell_size, cell_size, gray)
 		i++
 	}
-	ctx.draw_rect(x: bx + f32(app.current) * cell_size, y: by, w: cell_size, h: cell_size, color: gold)
+	ctx.draw_rect(
+		x:     bx + f32(app.current) * cell_size
+		y:     by
+		w:     cell_size
+		h:     cell_size
+		color: gold
+	)
 	ctx.draw_rect_empty(bx + f32(app.current) * cell_size, by, cell_size, cell_size, orange)
 	ctx.draw_text(25, 409, 'UNDO STATES:', size: 10, color: dark_gray)
 	ctx.end()

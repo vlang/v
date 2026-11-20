@@ -15,6 +15,7 @@ const maroon = gg.Color{128, 0, 0, 255}
 const lime = gg.Color{124, 252, 0, 255}
 const gray = gg.Color{130, 130, 130, 255}
 const black = gg.Color{0, 0, 0, 255}
+const cube_pos = gg.Vec3{0, 0, 0}
 
 struct App {
 mut:
@@ -47,7 +48,6 @@ fn update(dt f32, data voidptr) {
 fn frame(data voidptr) {
 	app := unsafe { &App(data) }
 	ctx := app.gg
-	const cube_pos = gg.Vec3{0, 0, 0}
 	screen_pos := gg.world_to_screen(gg.Vec3{0, 2.5, 0}, app.cam, ctx.width, ctx.height)
 
 	ctx.begin()

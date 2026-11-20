@@ -25,7 +25,7 @@ fn on_frame(data voidptr) {
 			continue
 		}
 		ratio := f32(max_trail - i) / max_trail
-		c := skyblue
+		mut c := skyblue
 		c.a = u8(255 * (ratio * 0.5 + 0.5))
 		ctx.draw_circle_filled(p.x, p.y, 15 * ratio, c)
 	}

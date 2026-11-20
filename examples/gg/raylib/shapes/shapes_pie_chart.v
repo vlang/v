@@ -16,9 +16,9 @@ fn hsv(h f32) gg.Color {
 	s := f32(0.75)
 	v := f32(0.9)
 	c := v * s
-	x := c * (1 - math.absf((h / 60) % 2 - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(h / 60), 2.0)) - 1))
 	m := v - c
-	r, g, b := f32(0), f32(0), f32(0)
+	mut r, mut g, mut b := f32(0), f32(0), f32(0)
 	if h < 60 {
 		r, g = c, x
 	} else if h < 120 {
@@ -59,7 +59,7 @@ fn on_frame(data voidptr) {
 	r := f32(205)
 	mut total := f32(0)
 	for i in 0 .. app.slices { total += app.values[i] }
-	start := f32(0)
+	mut start := f32(0)
 	for i in 0 .. app.slices {
 		sweep := if total > 0 { app.values[i] / total * 360 } else { f32(0) }
 		mid := start + sweep / 2
@@ -94,11 +94,11 @@ fn on_frame(data voidptr) {
 
 	ctx.draw_rect_filled(525, 5, 270, 440, gg.Color{200, 200, 200, 128})
 	ctx.draw_rect_empty(525, 5, 270, 440, gray_c)
-	ctx.draw_text(545, 15, 'Slices: ${app.slices} [+/-]', size: 16, color: black)
-	ctx.draw_text(545, 40, 'Values: ${app.show_values} [V]', size: 16, color: black)
-	ctx.draw_text(545, 65, 'Percent: ${app.show_pct} [P]', size: 16, color: black)
-	ctx.draw_text(545, 90, 'Donut: ${app.donut} [D]', size: 16, color: black)
-	ctx.draw_text(545, 115, 'Inner radius: ${int(app.inner)} [[/]]', size: 16, color: black)
+	ctx.draw_text(545, 15, 'Slices: ${app.slices} [+/-]', size: 16, color: gg.black)
+	ctx.draw_text(545, 40, 'Values: ${app.show_values} [V]', size: 16, color: gg.black)
+	ctx.draw_text(545, 65, 'Percent: ${app.show_pct} [P]', size: 16, color: gg.black)
+	ctx.draw_text(545, 90, 'Donut: ${app.donut} [D]', size: 16, color: gg.black)
+	ctx.draw_text(545, 115, 'Inner radius: ${int(app.inner)} [[/]]', size: 16, color: gg.black)
 	ctx.end()
 }
 
@@ -134,7 +134,7 @@ fn on_update(dt f32, data voidptr) {
 	dx, dy := mx - 265, my - 225
 	dist := math.sqrtf(dx * dx + dy * dy)
 	if dist <= 225 && (!app.donut || dist >= app.inner) {
-		angle := f32(math.degrees(math.atan2(dy, dx)))
+		mut angle := f32(math.degrees(math.atan2(dy, dx)))
 		if angle < 0 { angle += 360 }
 		mut cur := f32(0)
 		mut total := f32(0)

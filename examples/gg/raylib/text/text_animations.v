@@ -5,20 +5,18 @@ import gg
 import math
 import rand
 
-const (
-	msg = 'This is an animated text!'
-	raywhite = gg.Color{245, 245, 245, 255}
-	gray_c   = gg.Color{130, 130, 130, 255}
-	purple_t = gg.Color{200, 122, 255, 255}
-	names = ['Waving', 'Flashing', 'Shaking']!
-)
+const msg = 'This is an animated text!'
+const raywhite = gg.Color{245, 245, 245, 255}
+const gray_c = gg.Color{130, 130, 130, 255}
+const purple_t = gg.Color{200, 122, 255, 255}
+const names = ['Waving', 'Flashing', 'Shaking']!
 
 struct App {
 mut:
 	ctx      &gg.Context = unsafe { nil }
-	delta    f32 = 24
-	duration f32 = 60
-	offset   f32 = 6
+	delta    f32         = 24
+	duration f32         = 60
+	offset   f32         = 6
 	anim     int
 	frames   int
 }
@@ -37,9 +35,9 @@ fn on_frame(data voidptr) {
 		chstr := '${ch}'
 		cw := f32(ctx.text_width(chstr)) + 4
 		t := f32((app.frames + int(f32(i) * app.offset)) % int(app.duration))
-		gx := x
-		gy := f32(250)
-		alpha := u8(255)
+		mut gx := x
+		mut gy := f32(250)
+		mut alpha := u8(255)
 		match app.anim {
 			0 {
 				if t < app.duration / 2 {
@@ -59,7 +57,7 @@ fn on_frame(data voidptr) {
 			}
 			else {}
 		}
-		col := purple_t
+		mut col := purple_t
 		col.a = alpha
 		ctx.draw_text(int(gx), int(gy), chstr, size: 30, color: col)
 		x += cw
@@ -68,19 +66,33 @@ fn on_frame(data voidptr) {
 }
 
 fn ease_sine_in(t f64) f64 { return 1 - math.cos(t * math.pi / 2) }
+
 fn ease_sine_out(t f64) f64 { return math.sin(t * math.pi / 2) }
+
 fn ease_sine_in_out(t f64) f64 { return -(math.cos(math.pi * t) - 1) / 2 }
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
 	if e.typ != .key_down { return }
 	match e.key_code {
-		.s { if app.delta > 10 { app.delta -= 2 } }
-		.w { if app.delta < 60 { app.delta += 2 } }
-		.a { if app.duration > 20 { app.duration -= 5 } }
-		.d { if app.duration < 120 { app.duration += 5 } }
-		.z { if app.offset > 0 { app.offset-- } }
-		.x { if app.offset < 15 { app.offset++ } }
+		.s {
+			if app.delta > 10 { app.delta -= 2 }
+		}
+		.w {
+			if app.delta < 60 { app.delta += 2 }
+		}
+		.a {
+			if app.duration > 20 { app.duration -= 5 }
+		}
+		.d {
+			if app.duration < 120 { app.duration += 5 }
+		}
+		.z {
+			if app.offset > 0 { app.offset-- }
+		}
+		.x {
+			if app.offset < 15 { app.offset++ }
+		}
 		.q { app.anim = if app.anim == 0 { 2 } else { app.anim - 1 } }
 		.e { app.anim = (app.anim + 1) % 3 }
 		else {}

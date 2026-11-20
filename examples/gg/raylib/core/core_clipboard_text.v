@@ -64,7 +64,7 @@ fn cut(mut app App) {
 	app.input = ''
 }
 
-fn copy(mut app App) {
+fn copy_text(mut app App) {
 	gg.set_clipboard_text(app.input)
 	app.clipboard = gg.get_clipboard_text()
 }
@@ -86,7 +86,7 @@ fn on_event(e &gg.Event, data voidptr) {
 				if mx >= b.x && mx <= b.x + b.width && my >= b.y && my <= b.y + b.height {
 					match b.label {
 						'CUT' { cut(mut app) }
-						'COPY' { copy(mut app) }
+						'COPY' { copy_text(mut app) }
 						'PASTE' { paste(mut app) }
 						'CLEAR' { app.input = '' }
 						'RND' { app.input = 'The quick brown fox jumps over the lazy dog' }
@@ -103,7 +103,7 @@ fn on_event(e &gg.Event, data voidptr) {
 				if app.ctrl_down {
 					match e.key_code {
 						.x { cut(mut app) }
-						.c { copy(mut app) }
+						.c { copy_text(mut app) }
 						.v { paste(mut app) }
 						else {}
 					}
@@ -136,7 +136,13 @@ fn frame(data voidptr) {
 		size:  20
 		color: maroon
 	)
-	ctx.draw_rect(x: 50, y: 120, w: 652, h: 40, color: if app.editing { sky_blue } else { light_gray })
+	ctx.draw_rect(
+		x:     50
+		y:     120
+		w:     652
+		h:     40
+		color: if app.editing { sky_blue } else { light_gray }
+	)
 	ctx.draw_rect_empty(50, 120, 652, 40, gray)
 	ctx.draw_text(56, 126, app.input + (if app.editing { '_' } else { '' }),
 		size:  20

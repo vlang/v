@@ -93,19 +93,3 @@ fn frame(data voidptr) {
 	)
 	ctx.end()
 }
-
-fn main() {
-	mut app := &App{}
-	app.gg = gg.new_context(
-		width:         win_width
-		height:        win_height
-		window_title:  'raylib [shaders] example - fog rendering'
-		bg_color:      gg.gray
-		depth:         true
-		user_data:     app
-		update_fn:     update
-		frame_fn:      frame
-		create_window: true
-	)
-	app.gg.run()
-}

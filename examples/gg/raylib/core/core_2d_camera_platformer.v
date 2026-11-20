@@ -140,7 +140,7 @@ fn update(dt f32, data voidptr) {
 }
 
 fn update_camera(mut app App, dt f32) {
-	cam := &app.cam
+	mut cam := &app.cam
 	pos := app.player.position
 	cam.offset = gg.Vec2{f32(screen_width) / 2, f32(screen_height) / 2}
 
@@ -227,7 +227,13 @@ fn frame(data voidptr) {
 	for e in app.env_items {
 		ctx.draw_rect(x: e.x, y: e.y, w: e.width, h: e.height, color: e.color)
 	}
-	ctx.draw_rect(x: app.player.position.x - 20, y: app.player.position.y - 40, w: 40, h: 40, color: gg.red)
+	ctx.draw_rect(
+		x:     app.player.position.x - 20
+		y:     app.player.position.y - 40
+		w:     40
+		h:     40
+		color: gg.red
+	)
 	ctx.draw_circle_filled(app.player.position.x, app.player.position.y, 5, gold)
 	ctx.end_2d()
 

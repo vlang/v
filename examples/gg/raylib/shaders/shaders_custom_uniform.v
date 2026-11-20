@@ -59,7 +59,7 @@ fn update(dt f32, data voidptr) {
 }
 
 fn event(e &gg.Event, data voidptr) {
-	app := unsafe { &App(data) }
+	mut app := unsafe { &App(data) }
 	app.mouse_x = e.mouse_x
 	app.mouse_y = e.mouse_y
 }
@@ -73,8 +73,8 @@ fn frame(data voidptr) {
 			dy := f32(y) - app.mouse_y / 2
 			r := math.sqrt(dx * dx + dy * dy)
 			a := math.atan2(dy, dx) + 2.5 / (1 + r * 0.05)
-			sx := int(app.mouse_x / 2 + math.cosf(a) * r)
-			sy := int(app.mouse_y / 2 + math.sinf(a) * r)
+			mut sx := int(app.mouse_x / 2 + f32(math.cos(f64(a))) * r)
+			mut sy := int(app.mouse_y / 2 + f32(math.sin(f64(a))) * r)
 			if sx < 0 || sx >= img_w || sy < 0 || sy >= img_h {
 				sx, sy = x, y
 			}

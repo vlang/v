@@ -58,7 +58,7 @@ fn frame(data voidptr) {
 		app.cam.target.y = limit
 	}
 
-	bar_h := f32(screen_height) * 100 / (app.max_y - f32(screen_height) + 1)
+	mut bar_h := f32(screen_height) * 100 / (app.max_y - f32(screen_height) + 1)
 	if bar_h > f32(screen_height - text_top) {
 		bar_h = f32(screen_height - text_top)
 	}

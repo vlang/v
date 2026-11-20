@@ -1,6 +1,7 @@
 // Port of raylib [shaders] example - model shader.
 // PORT NOTE: shader grayscale.fs requires gg user-shader support (not yet available);
-// approximated with a neutral gray Material3D on generated meshes (gg has no .obj loader).
+// approximated with a neutral gray Material3D on generated meshes (a custom
+// model shader is unavailable; gg does load OBJ/glTF via gg.load_model).
 module main
 
 import gg

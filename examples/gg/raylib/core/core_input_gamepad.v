@@ -79,8 +79,8 @@ fn frame(data voidptr) {
 		ctx.draw_circle_filled(p.x, p.y, 17, if pressed(ctx, keys[i]) { colors[i] } else { white })
 	}
 	// Sticks controlled with IJKL
-	lx := f32(0)
-	ly := f32(0)
+	mut lx := f32(0)
+	mut ly := f32(0)
 	if pressed(ctx, .i) { ly -= 20 }
 	if pressed(ctx, .k) { ly += 20 }
 	if pressed(ctx, .j) { lx -= 20 }
@@ -95,7 +95,7 @@ fn frame(data voidptr) {
 	ctx.draw_text(14, 54, 'VIBRATE (not available)', size: 10, color: dark_gray)
 	ctx.draw_text(10, 430, 'PORT NOTE: no gamepad APIs in gg/sokol.',
 		size:  10
-		color: gray
+		color: gg.gray
 	)
 	ctx.end()
 }

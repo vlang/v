@@ -11,10 +11,10 @@ import rand
 const screen_raywhite = gg.Color{245, 245, 245, 255}
 
 fn hsv(h_in f32, s f32, v f32) gg.Color {
-	mut h := h_in % 360
+	mut h := f32(math.fmod(f64(h_in), 360.0))
 	if h < 0 { h += 360 }
 	c := v * s
-	x := c * (1 - math.abs((h / 60.0) % 2.0 - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(h / 60.0), 2.0)) - 1))
 	m := v - c
 	mut r := f32(0)
 	mut g := f32(0)
@@ -111,10 +111,10 @@ fn frame(data voidptr) {
 		}
 		y++
 	}
-	for y in 1 .. app.img_h {
+	for yy in 1 .. app.img_h {
 		for x in 0 .. app.img_w {
-			c := app.palette[app.indices[x + y * app.img_w]]
-			i := (x + y * app.img_w) * 4
+			c := app.palette[app.indices[x + yy * app.img_w]]
+			i := (x + yy * app.img_w) * 4
 			unsafe {
 				app.buf[i] = c.r
 				app.buf[i + 1] = c.g

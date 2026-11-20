@@ -145,8 +145,8 @@ fn draw_adsr(ctx &gg.Context) {
 	bounds_x, bounds_y, bounds_w, bounds_h := 100, 250, 400, 100
 	ctx.draw_rect_filled(bounds_x, bounds_y, bounds_w, bounds_h, gg.Color{211, 211, 211, 90})
 	ctx.draw_rect_empty(bounds_x, bounds_y, bounds_w, bounds_h, gg.gray)
-	sustain_width := 1.0
-	total := env.attack_time + env.decay_time + sustain_width + env.release_time
+	sustain_width := f32(1.0)
+	mut total := env.attack_time + env.decay_time + sustain_width + env.release_time
 	if total <= 0 {
 		total = 1
 	}
@@ -173,7 +173,7 @@ fn frame(data voidptr) {
 	draw_slider(ctx, 140, 'Sustain', env.sustain_level, 0.0, 1.0, '${env.sustain_level:.2f}')
 	draw_slider(ctx, 180, 'Release (s)', env.release_time, 0.1, 3.0, '${env.release_time:.2f}s')
 	draw_adsr(ctx)
-	gy := 350 - env.current_value * 100
+	gy := int(350 - env.current_value * 100)
 	ctx.draw_circle_filled(520, gy, 5, gg.dark_red)
 	ctx.draw_text(535, gy - 5, 'Current Gain: ${env.current_value:.2f}',
 		size:  10

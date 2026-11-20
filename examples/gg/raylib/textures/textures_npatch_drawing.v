@@ -40,7 +40,8 @@ fn frame(data voidptr) {
 	app.r2.height = my - app.r2.y
 	app.r3.width = mx - app.r3.x
 	app.r4.height = my - app.r4.y
-	for r in [&app.r1, &app.r2, &app.r3, &app.r4] {
+	mut rects := [&app.r1, &app.r2, &app.r3, &app.r4]
+	for mut r in rects {
 		if r.width < 1 {
 			r.width = 1
 		}

@@ -4,17 +4,15 @@ module main
 import gg
 import math
 
-const (
-	raywhite = gg.Color{245, 245, 245, 255}
-	maroon   = gg.Color{190, 33, 55, 255}
-	gray_c   = gg.Color{130, 130, 130, 255}
-)
+const raywhite = gg.Color{245, 245, 245, 255}
+const maroon = gg.Color{190, 33, 55, 255}
+const gray_c = gg.Color{130, 130, 130, 255}
 
 fn hsv(h f32, s f32, v f32) gg.Color {
 	c := v * s
-	x := c * (1 - math.absf((h / 60) % 2 - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(h / 60), 2.0)) - 1))
 	m := v - c
-	r, g, b := f32(0), f32(0), f32(0)
+	mut r, mut g, mut b := f32(0), f32(0), f32(0)
 	if h < 60 {
 		r, g = c, x
 	} else if h < 120 {
@@ -32,9 +30,9 @@ fn hsv(h f32, s f32, v f32) gg.Color {
 }
 
 fn hilbert_step(order int, index int) (f32, f32) {
-	px := [4]int{0, 0, 1, 1}
-	py := [4]int{0, 1, 1, 0}
-	hi := index & 3
+	px := [4]int[0, 0, 1, 1]
+	py := [4]int[0, 1, 1, 0]
+	mut hi := index & 3
 	mut vx, mut vy := f32(px[hi]), f32(py[hi])
 	mut idx := index
 	for j := 1; j < order; j++ {
@@ -66,13 +64,13 @@ fn hilbert_step(order int, index int) (f32, f32) {
 
 struct App {
 mut:
-	ctx   &gg.Context = unsafe { nil }
-	order int = 2
-	size  f32 = 450
-	thick f32 = 2
-	count int
-	animate bool = true
-	path  []gg.Vec2
+	ctx        &gg.Context = unsafe { nil }
+	order      int         = 2
+	size       f32         = 450
+	thick      f32         = 2
+	count      int
+	animate    bool = true
+	path       []gg.Vec2
 	prev_order int
 	prev_size  f32
 }
@@ -130,7 +128,9 @@ fn on_event(e &gg.Event, data voidptr) {
 			if app.order > 2 { app.order-- }
 		}
 		.t { app.thick += 1 }
-		.g { if app.thick > 1 { app.thick-- } }
+		.g {
+			if app.thick > 1 { app.thick-- }
+		}
 		.z { app.size -= 10 }
 		.x { app.size += 10 }
 		else {}

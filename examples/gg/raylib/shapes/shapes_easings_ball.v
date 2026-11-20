@@ -26,7 +26,7 @@ fn on_frame(data voidptr) {
 	if app.state >= 2 {
 		ctx.draw_rect_filled(0, 0, f32(ctx.width), f32(ctx.height), green_c)
 	}
-	col := red_c
+	mut col := red_c
 	col.a = u8(255 * (1 - app.alpha))
 	ctx.draw_circle_filled(app.ball_x, 200, app.radius, col)
 	if app.state == 3 {

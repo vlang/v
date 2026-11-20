@@ -87,7 +87,7 @@ fn on_frame(data voidptr) {
 
 	face_size := f32(24)
 	spacing := f32(8)
-	x_offset := f32(4)
+	mut x_offset := f32(4)
 	for digit in 0 .. 6 {
 		for row in 0 .. 6 {
 			for col in 0 .. 4 {

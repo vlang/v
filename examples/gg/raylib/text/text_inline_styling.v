@@ -6,12 +6,10 @@ module main
 import gg
 import rand
 
-const (
-	raywhite = gg.Color{245, 245, 245, 255}
-	black_c  = gg.Color{0, 0, 0, 255}
-	green_c  = gg.Color{0, 158, 47, 255}
-	red_c    = gg.Color{230, 41, 55, 255}
-)
+const raywhite = gg.Color{245, 245, 245, 255}
+const black_c = gg.Color{0, 0, 0, 255}
+const green_c = gg.Color{0, 158, 47, 255}
+const red_c = gg.Color{230, 41, 55, 255}
 
 fn hex_byte(s string) u8 {
 	mut v := 0
@@ -32,10 +30,10 @@ fn hex_byte(s string) u8 {
 fn parse_hex(s string) gg.Color {
 	if s.len < 8 { return gg.Color{255, 255, 255, 255} }
 	return gg.Color{
-		r:      hex_byte(s[0..2])
-		g:      hex_byte(s[2..4])
-		b:      hex_byte(s[4..6])
-		a:      hex_byte(s[6..8])
+		r: hex_byte(s[0..2])
+		g: hex_byte(s[2..4])
+		b: hex_byte(s[4..6])
+		a: hex_byte(s[6..8])
 	}
 }
 
@@ -47,9 +45,9 @@ fn draw_styled(ctx &gg.Context, x int, y int, text string, size int, base gg.Col
 	mut run := ''
 	for i < text.len {
 		if text[i] == `[` && i + 2 < text.len {
-			end := text.index_from(']', i) or { -1 }
+			end := text.index_after(']', i + 1) or { -1 }
 			if end > i {
-				tag := text[i + 1 .. end]
+				tag := text[i + 1..end]
 				if tag == 'r' {
 					flush(ctx, px, y, run, size, front, back)
 					px += ctx.text_width(run) + 4 * run.len

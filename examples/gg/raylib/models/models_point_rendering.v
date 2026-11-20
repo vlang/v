@@ -21,11 +21,11 @@ mut:
 
 struct App {
 mut:
-	ctx      &gg.Context = unsafe { nil }
-	cam      gg.Camera3D
-	points   []Point
-	num      int = 1000
-	use_alt  bool
+	ctx     &gg.Context = unsafe { nil }
+	cam     gg.Camera3D
+	points  []Point
+	num     int = 1000
+	use_alt bool
 }
 
 fn make_points(n int) []Point {
@@ -38,8 +38,7 @@ fn make_points(n int) []Point {
 		hue := int(h) % 360
 		c := hsv(hue, 0.8, 0.9)
 		pts[i] = Point{
-			pos:   gg.Vec3{r * f32(math.sin(f64(theta))) * f32(math.cos(f64(phi))),
-				r * f32(math.sin(f64(theta))) * f32(math.sin(f64(phi))), r * f32(math.cos(f64(theta)))}
+			pos:   gg.Vec3{r * f32(math.sin(f64(theta))) * f32(math.cos(f64(phi))), r * f32(math.sin(f64(theta))) * f32(math.sin(f64(phi))), r * f32(math.cos(f64(theta)))}
 			color: c
 		}
 	}
@@ -49,7 +48,7 @@ fn make_points(n int) []Point {
 fn hsv(h int, s f32, v f32) gg.Color {
 	hf := f32(h) / 60.0
 	c := v * s
-	x := c * (1 - math.abs((hf % 2.0) - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(hf), 2.0)) - 1))
 	m := v - c
 	mut r := f32(0)
 	mut g := f32(0)
@@ -108,13 +107,17 @@ fn frame(data voidptr) {
 	app.ctx.draw_sphere_wires(gg.Vec3{}, 1, 10, 10, gg.Color{255, 255, 0, 255})
 	app.ctx.end_3d()
 	app.ctx.draw_text(10, 330, 'Point Count: ${app.num} (capped at ${max_points})',
-		size: 30, color: gg.white)
+		size:  30
+		color: gg.white
+	)
 	app.ctx.draw_text(10, 40, 'UP - Increase points', size: 20, color: gg.white)
 	app.ctx.draw_text(10, 70, 'DOWN - Decrease points', size: 20, color: gg.white)
 	app.ctx.draw_text(10, 100, 'SPACE - Drawing function', size: 20, color: gg.white)
 	if app.use_alt {
 		app.ctx.draw_text(10, 130, 'Using: small cubes (point mode unavailable)',
-			size: 20, color: pr_red)
+			size:  20
+			color: pr_red
+		)
 	} else {
 		app.ctx.draw_text(10, 130, 'Using: small cubes', size: 20, color: pr_green)
 	}

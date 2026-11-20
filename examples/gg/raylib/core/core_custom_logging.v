@@ -20,7 +20,7 @@ mut:
 }
 
 fn log_msg(level string, msg string) {
-	stamp := time.now().format('YYYY-MM-DD HH:mm:ss')
+	stamp := time.now().custom_format('YYYY-MM-DD HH:mm:ss')
 	println('[${stamp}] [${level}]: ${msg}')
 }
 

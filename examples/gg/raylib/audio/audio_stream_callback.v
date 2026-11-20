@@ -69,11 +69,14 @@ fn wave_callback(buffer &f32, num_frames i32, num_channels i32) {
 		}
 	}
 	if frames <= wave_history.len {
-		for i in 0 .. wave_history.len - frames {
-			wave_history[i] = wave_history[i + frames]
-		}
-		for i in 0 .. frames {
-			wave_history[wave_history.len - frames + i] = buffer[i]
+		// Unsafe is needed to index the raw audio buffer pointer supplied by sokol.
+		unsafe {
+			for i in 0 .. wave_history.len - frames {
+				wave_history[i] = wave_history[i + frames]
+			}
+			for i in 0 .. frames {
+				wave_history[wave_history.len - frames + i] = buffer[i]
+			}
 		}
 	}
 }

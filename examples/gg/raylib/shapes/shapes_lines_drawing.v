@@ -12,9 +12,9 @@ const lightgray = gg.Color{200, 200, 200, 255}
 
 fn hsv(h f32, s f32, v f32) gg.Color {
 	c := v * s
-	x := c * (1 - math.absf((h / 60) % 2 - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(h / 60), 2.0)) - 1))
 	m := v - c
-	r, g, b := f32(0), f32(0), f32(0)
+	mut r, mut g, mut b := f32(0), f32(0), f32(0)
 	if h < 60 {
 		r, g = c, x
 	} else if h < 120 {

@@ -1,27 +1,30 @@
 module main
 
 // raylib [text] example - strings management, ported to gg.
-// PORT NOTE: gg has no 3D text, so this is a faithful 2D port of the physics and
-// slicing/gluing behaviour of text particles.
+// PORT NOTE: gg has 3D text via draw_text_3d, but this example keeps raylib's
+// 2D presentation. Slicing is implemented; gluing is not (left-control is a
+// visual-only control in the HUD).
 import gg
 import math
 import rand
 
-const (
-	max_particles = 100
-	font_size     = 30
-	raywhite      = gg.Color{245, 245, 245, 255}
-	black_c       = gg.Color{0, 0, 0, 255}
-	darkgray      = gg.Color{80, 80, 80, 255}
-)
+const max_particles = 100
+const font_size = 30
+const raywhite = gg.Color{245, 245, 245, 255}
+const black_c = gg.Color{0, 0, 0, 255}
+const darkgray = gg.Color{80, 80, 80, 255}
 
 struct Particle {
 mut:
 	text       string
-	x, y       f32
-	w, h       f32
-	vx, vy     f32
-	px, py     f32
+	x          f32
+	y          f32
+	w          f32
+	h          f32
+	vx         f32
+	vy         f32
+	px         f32
+	py         f32
 	padding    f32 = 5
 	border     f32 = 5
 	friction   f32 = 0.99
@@ -35,16 +38,21 @@ mut:
 	ctx     &gg.Context = unsafe { nil }
 	parts   []Particle
 	grabbed int = -1
-	off_x, off_y f32
+	off_x   f32
+	off_y   f32
 }
 
 fn make_particle(ctx &gg.Context, s string, x f32, y f32, color gg.Color) Particle {
 	pad := f32(5)
 	return Particle{
-		text: s, x: x, y: y,
-		w: f32(ctx.text_width(s)) + pad * 2, h: font_size + pad * 2,
-		vx: f32(rand.intn(401) or { 0 } - 200), vy: f32(rand.intn(401) or { 0 } - 200),
-		color: color,
+		text:  s
+		x:     x
+		y:     y
+		w:     f32(ctx.text_width(s)) + pad * 2
+		h:     font_size + pad * 2
+		vx:    f32(rand.intn(401) or { 0 } - 200)
+		vy:    f32(rand.intn(401) or { 0 } - 200)
+		color: color
 	}
 }
 
@@ -56,7 +64,7 @@ fn (mut app App) prepare(s string) {
 fn (mut app App) slice(index int, by_char string) {
 	if index < 0 || index >= app.parts.len { return }
 	p := app.parts[index]
-	pieces := if by_char == '' { []string{} } else { p.text.split(by_char) }
+	mut pieces := if by_char == '' { []string{} } else { p.text.split(by_char) }
 	if by_char == '' {
 		half := p.text.len / 2
 		if half == 0 { return }
@@ -84,9 +92,13 @@ fn on_frame(data voidptr) {
 		b := p.border
 		ctx.draw_rect_filled(p.x - b, p.y - b, p.w + b * 2, p.h + b * 2, black_c)
 		ctx.draw_rect_filled(p.x, p.y, p.w, p.h, p.color)
-		ctx.draw_text(int(p.x + p.padding), int(p.y + p.padding), p.text, size: font_size, color: black_c)
+		ctx.draw_text(int(p.x + p.padding), int(p.y + p.padding), p.text,
+			size:  font_size
+			color: black_c
+		)
 	}
-	ctx.draw_text(10, 10, 'grab a text particle by pressing with the mouse and throw it by releasing',
+	ctx.draw_text(10, 10,
+		'grab a text particle by pressing with the mouse and throw it by releasing',
 		size:  10
 		color: darkgray
 	)
@@ -102,7 +114,10 @@ fn on_frame(data voidptr) {
 		size:  10
 		color: darkgray
 	)
-	ctx.draw_text(10, ctx.height - 30, 'TEXT PARTICLE COUNT: ${app.parts.len}', size: 20, color: black_c)
+	ctx.draw_text(10, ctx.height - 30, 'TEXT PARTICLE COUNT: ${app.parts.len}',
+		size:  20
+		color: black_c
+	)
 	ctx.end()
 }
 
@@ -170,16 +185,28 @@ fn on_update(dt f32, data voidptr) {
 		} else {
 			p.x += p.vx * dt
 			p.y += p.vy * dt
-			if p.x + p.w >= w { p.x = w - p.w; p.vx = -p.vx * p.elasticity }
-			if p.x <= 0 { p.x = 0; p.vx = -p.vx * p.elasticity }
-			if p.y + p.h >= h { p.y = h - p.h; p.vy = -p.vy * p.elasticity }
-			if p.y <= 0 { p.y = 0; p.vy = -p.vy * p.elasticity }
+			if p.x + p.w >= w {
+				p.x = w - p.w
+				p.vx = -p.vx * p.elasticity
+			}
+			if p.x <= 0 {
+				p.x = 0
+				p.vx = -p.vx * p.elasticity
+			}
+			if p.y + p.h >= h {
+				p.y = h - p.h
+				p.vy = -p.vy * p.elasticity
+			}
+			if p.y <= 0 {
+				p.y = 0
+				p.vy = -p.vy * p.elasticity
+			}
 			p.vx *= p.friction
 			p.vy *= p.friction
 		}
 		app.parts[i] = p
 	}
-	_ = math.absf(w)
+	_ = math.abs(w)
 }
 
 fn main() {

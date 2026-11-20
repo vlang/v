@@ -67,6 +67,14 @@ fn init(data voidptr) {
 	}
 }
 
+fn cleanup(data voidptr) {
+	app := unsafe { &App(data) }
+	if !isnil(app.rt) {
+		mut rt := app.rt
+		rt.free()
+	}
+}
+
 fn frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	if app.ctx.pressed_keys[gg.KeyCode.right] {
@@ -131,15 +139,15 @@ fn frame(data voidptr) {
 	app.ctx.begin()
 	for ty in 0 .. app.tiles_y {
 		for tx in 0 .. app.tiles_x {
-			x := f32(tx * map_tile_size)
-			y := f32(ty * map_tile_size)
+			fx := f32(tx * map_tile_size)
+			fy := f32(ty * map_tile_size)
 			c := if app.tile_ids[ty * app.tiles_x + tx] == 0 {
 				fog_blue
 			} else {
 				gg.Color{0, 121, 241, 230}
 			}
-			app.ctx.draw_rect_filled(x, y, map_tile_size, map_tile_size, c)
-			app.ctx.draw_rect_empty(x, y, map_tile_size, map_tile_size, gg.Color{0, 42, 141, 128})
+			app.ctx.draw_rect_filled(fx, fy, map_tile_size, map_tile_size, c)
+			app.ctx.draw_rect_empty(fx, fy, map_tile_size, map_tile_size, gg.Color{0, 42, 141, 128})
 		}
 	}
 	app.ctx.draw_rect_filled(app.player_x, app.player_y, player_size, player_size, gg.red)
@@ -167,6 +175,7 @@ fn main() {
 		user_data:    app
 		init_fn:      init
 		frame_fn:     frame
+		cleanup_fn:   cleanup
 		bg_color:     fog_raywhite
 		depth:        true
 	)

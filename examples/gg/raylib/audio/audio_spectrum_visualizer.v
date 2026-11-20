@@ -54,12 +54,12 @@ fn capture_callback(buffer &f32, num_frames i32, num_channels i32) {
 }
 
 // fft performs an in-place iterative Cooley-Tukey radix-2 FFT.
-fn fft(a []Complex) {
+fn fft(mut a []Complex) {
 	n := a.len
 	// Bit-reversal permutation.
 	mut j := 0
 	for i := 1; i < n - 1; i++ {
-		bit := n >> 1
+		mut bit := n >> 1
 		for j >= bit {
 			j -= bit
 			bit >>= 1
@@ -104,7 +104,7 @@ fn capture_frame() {
 		sample := f64(capture_buffer[(capture_pos + i) % fft_window_size])
 		work[i] = Complex{sample * blackman, 0}
 	}
-	fft(work)
+	fft(mut work)
 	for i in 0 .. fft_window_size {
 		spectrum[i] = work[i].real
 	}
@@ -115,7 +115,7 @@ fn capture_frame() {
 		smoothed := smoothing * prev_magnitudes[bin] + (1 - smoothing) * f32(magnitude)
 		prev_magnitudes[bin] = smoothed
 		value := math.log(math.max(f64(smoothed), 1e-40)) * db_scale
-		normalized := f32((value - min_decibels) * inverse_range)
+		mut normalized := f32((value - min_decibels) * inverse_range)
 		if normalized < 0 {
 			normalized = 0
 		} else if normalized > 1 {

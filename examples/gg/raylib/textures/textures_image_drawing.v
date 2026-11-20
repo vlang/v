@@ -97,7 +97,7 @@ fn init(data voidptr) {
 			}
 		}
 	}
-	work = cropped_parrot
+	work = cropped_parrot.clone()
 	app.h = crop_h
 	put_pixel(work, app.w, app.h, 10, 10, drawing_raywhite)
 	for y in 20 .. 30 {

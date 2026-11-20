@@ -10,41 +10,51 @@ import gg
 import math
 import rand
 
-const (
-	raywhite = gg.Color{245, 245, 245, 255}
-	black_c  = gg.Color{0, 0, 0, 255}
-	red_c    = gg.Color{230, 41, 55, 255}
-	maroon   = gg.Color{190, 33, 55, 255}
-	blue_c   = gg.Color{0, 121, 241, 255}
-	darkblue = gg.Color{0, 82, 172, 255}
-	darkgreen= gg.Color{0, 117, 44, 255}
-	darkgray = gg.Color{80, 80, 80, 255}
-	violet   = gg.Color{135, 61, 190, 255}
-	max_layers = 32
-)
+const raywhite = gg.Color{245, 245, 245, 255}
+const black_c = gg.Color{0, 0, 0, 255}
+const red_c = gg.Color{230, 41, 55, 255}
+const maroon = gg.Color{190, 33, 55, 255}
+const blue_c = gg.Color{0, 121, 241, 255}
+const darkblue = gg.Color{0, 82, 172, 255}
+const darkgreen = gg.Color{0, 117, 44, 255}
+const darkgray = gg.Color{80, 80, 80, 255}
+const violet = gg.Color{135, 61, 190, 255}
+const max_layers = 32
 
 fn hsv(h f32) gg.Color {
-	c, x, m := f32(1), f32(1 - math.absf((h / 60) % 2 - 1)), f32(0)
-	r, g, b := f32(0), f32(0), f32(0)
-	if h < 60 { r, g = c, x } else if h < 120 { r, g = x, c } else if h < 180 { g, b = c, x } else if h < 240 { g, b = x, c } else if h < 300 { r, b = x, c } else { r, b = c, x }
+	c, x, m := f32(1), f32(1 - math.abs(f32(math.fmod(f64(h / 60), 2.0)) - 1)), f32(0)
+	mut r, mut g, mut b := f32(0), f32(0), f32(0)
+	if h < 60 {
+		r, g = c, x
+	} else if h < 120 {
+		r, g = x, c
+	} else if h < 180 {
+		g, b = c, x
+	} else if h < 240 {
+		g, b = x, c
+	} else if h < 300 {
+		r, b = x, c
+	} else {
+		r, b = c, x
+	}
 	return gg.Color{u8((r + m) * 255), u8((g + m) * 255), u8((b + m) * 255), 255}
 }
 
 struct App {
 mut:
-	ctx       &gg.Context = unsafe { nil }
-	text      string = 'Hello ~~World~~ in 3D!'
-	font_size f32 = 20
-	spacing   f32 = 2
-	line_gap  f32 = 4
-	layers    int = 1
-	layer_gap f32 = 4
-	spin      bool = true
-	multicolor bool
+	ctx         &gg.Context = unsafe { nil }
+	text        string      = 'Hello ~~World~~ in 3D!'
+	font_size   f32         = 20
+	spacing     f32         = 2
+	line_gap    f32         = 4
+	layers      int         = 1
+	layer_gap   f32         = 4
+	spin        bool        = true
+	multicolor  bool
 	show_letter bool
-	show_text bool
-	time      f32
-	colors    []gg.Color
+	show_text   bool
+	time        f32
+	colors      []gg.Color
 }
 
 fn (mut app App) randomize_colors() {
@@ -90,8 +100,8 @@ fn on_frame(data voidptr) {
 			i++
 			continue
 		}
-		dx := f32(0)
-		dy := f32(0)
+		mut dx := f32(0)
+		mut dy := f32(0)
 		if wave && app.spin {
 			dx = math.sinf(app.time * 3 - f32(k) * 0.35) * 9
 			dy = math.sinf(app.time * 3 - f32(k) * 0.35) * 7
@@ -106,7 +116,8 @@ fn on_frame(data voidptr) {
 		xpos += f32(ctx.text_width(ch)) + app.spacing
 		k++
 	}
-	ctx.draw_text(10, 35, 'Drag & drop a font file to change the font!\nType something, see what happens!\n\nPress [F3] to toggle the camera',
+	ctx.draw_text(10, 35,
+		'Drag & drop a font file to change the font!\nType something, see what happens!\n\nPress [F3] to toggle the camera',
 		size:  10
 		color: black_c
 	)
@@ -114,11 +125,13 @@ fn on_frame(data voidptr) {
 		size:  12
 		color: darkgray
 	)
-	ctx.draw_text(10, 380, '[Tab] multicolor  click cube: random color  Backspace: delete  Enter: newline',
+	ctx.draw_text(10, 380,
+		'[Tab] multicolor  click cube: random color  Backspace: delete  Enter: newline',
 		size:  12
 		color: darkgray
 	)
-	ctx.draw_text(ctx.width - 300, 10, '${app.layers} layer(s) - ${if app.spin { "ORBITAL" } else { "FREE" }} camera',
+	ctx.draw_text(ctx.width - 300, 10,
+		'${app.layers} layer(s) - ${if app.spin { 'ORBITAL' } else { 'FREE' }} camera',
 		size:  12
 		color: darkgreen
 	)
@@ -136,8 +149,12 @@ fn on_event(e &gg.Event, data voidptr) {
 		.f1 { app.show_letter = !app.show_letter }
 		.f2 { app.show_text = !app.show_text }
 		.f3 { app.spin = !app.spin }
-		.home { if app.layers > 1 { app.layers-- } }
-		.end { if app.layers < max_layers { app.layers++ } }
+		.home {
+			if app.layers > 1 { app.layers-- }
+		}
+		.end {
+			if app.layers < max_layers { app.layers++ }
+		}
 		.left { app.font_size -= 1 }
 		.right { app.font_size += 1 }
 		.up { app.spacing -= 1 }
@@ -145,7 +162,9 @@ fn on_event(e &gg.Event, data voidptr) {
 		.page_up { app.line_gap -= 1 }
 		.page_down { app.line_gap += 1 }
 		.tab { app.multicolor = !app.multicolor }
-		.backspace { if app.text.len > 0 { app.text = app.text[..app.text.len - 1] } }
+		.backspace {
+			if app.text.len > 0 { app.text = app.text[..app.text.len - 1] }
+		}
 		.enter { app.text += '\n' }
 		else {}
 	}

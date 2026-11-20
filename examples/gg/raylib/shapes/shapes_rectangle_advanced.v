@@ -38,7 +38,7 @@ fn draw_round_grad(ctx &gg.Context, x f32, y f32, w f32, h f32, rl f32, rr f32, 
 		ctx.draw_circle_filled(x + w - rr_r, y, rr_r, right)
 		ctx.draw_circle_filled(x + w - rr_r, y + h, rr_r, right)
 	}
-	_ = math.absf(rl)
+	_ = math.abs(rl)
 }
 
 struct App {
@@ -53,7 +53,7 @@ fn on_frame(data voidptr) {
 	w := f32(ctx.width) / 2
 	h := f32(ctx.height) / 6
 	x := f32(ctx.width) / 2 - w / 2
-	y := f32(ctx.height) / 2 - 5 * (h / 2)
+	mut y := f32(ctx.height) / 2 - 5 * (h / 2)
 	draw_round_grad(ctx, x, y, w, h, 0.8, 0.8, blue_c, red_c)
 	y += h + 1
 	draw_round_grad(ctx, x, y, w, h, 0.5, 1.0, red_c, pink)

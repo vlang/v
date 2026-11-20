@@ -32,13 +32,13 @@ fn init(data voidptr) {
 	app.original = app.ctx.create_image('resources/raylib_logo.png') or { gg.Image{} }
 
 	app.rot90 = app.ctx.create_image('resources/raylib_logo.png') or { gg.Image{} }
-	gg.image_rotate_90(&app.rot90)
+	gg.image_rotate_90(mut &app.rot90)
 	app.idx90 = cache_img(app.ctx, app.rot90)
 
 	app.rotm90 = app.ctx.create_image('resources/raylib_logo.png') or { gg.Image{} }
-	gg.image_rotate_90(&app.rotm90)
-	gg.image_rotate_90(&app.rotm90)
-	gg.image_rotate_90(&app.rotm90)
+	gg.image_rotate_90(mut &app.rotm90)
+	gg.image_rotate_90(mut &app.rotm90)
+	gg.image_rotate_90(mut &app.rotm90)
 	app.idxm90 = cache_img(app.ctx, app.rotm90)
 }
 
@@ -75,7 +75,7 @@ fn frame(data voidptr) {
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
-	if (e.typ == .mouse_button_down && e.mouse_button == .left)
+	if (e.typ == .mouse_down && e.mouse_button == .left)
 		|| (e.typ == .key_down && e.key_code == .right) {
 		app.current = (app.current + 1) % 3
 	}

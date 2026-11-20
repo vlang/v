@@ -18,13 +18,13 @@ fn draw_tiled(ctx &gg.Context, img &gg.Image, src gg.Rect, dst gg.Rect, rotation
 	th := src.height * scale
 	mut dy := f32(0)
 	for dy < dst.height {
-		part_h := th
+		mut part_h := th
 		if dy + part_h > dst.height {
 			part_h = dst.height - dy
 		}
 		mut dx := f32(0)
 		for dx < dst.width {
-			part_w := tw
+			mut part_w := tw
 			if dx + part_w > dst.width {
 				part_w = dst.width - dx
 			}
@@ -109,7 +109,7 @@ fn frame(data voidptr) {
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
-	if e.typ == .mouse_button_down && e.mouse_button == .left {
+	if e.typ == .mouse_down && e.mouse_button == .left {
 		mx := f32(e.mouse_x)
 		my := f32(e.mouse_y)
 		for i in 0 .. app.patterns.len {

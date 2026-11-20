@@ -94,7 +94,7 @@ fn update(dt f32, data voidptr) {
 	_ = dt
 	mut app := unsafe { &App(data) }
 	if !app.paused {
-		step(app)
+		step(mut app)
 	}
 }
 

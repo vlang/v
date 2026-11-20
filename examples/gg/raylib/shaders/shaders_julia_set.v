@@ -133,8 +133,8 @@ fn frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	for y in 0 .. img_h {
 		for x in 0 .. img_w {
-			zx := (f32(x) / f32(img_w) - 0.5) * 3 / app.zoom + app.ox
-			zy := (f32(y) / f32(img_h) - 0.5) * 3 / app.zoom + app.oy
+			mut zx := (f32(x) / f32(img_w) - 0.5) * 3 / app.zoom + app.ox
+			mut zy := (f32(y) / f32(img_h) - 0.5) * 3 / app.zoom + app.oy
 			mut i := 0
 			for i < max_iter && zx * zx + zy * zy < 4 {
 				xt := zx * zx - zy * zy + app.cx

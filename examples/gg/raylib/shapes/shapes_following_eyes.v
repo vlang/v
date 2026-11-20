@@ -46,8 +46,8 @@ fn on_update(dt f32, data voidptr) {
 	app.iris_rx, app.iris_ry = mx, my
 	limit := app.sclera_rad - app.iris_rad
 	// clamp each iris to its sclera
-	dx := app.iris_lx - app.sclera_lx
-	dy := app.iris_ly - app.sclera_ly
+	mut dx := app.iris_lx - app.sclera_lx
+	mut dy := app.iris_ly - app.sclera_ly
 	if math.sqrtf(dx * dx + dy * dy) > limit {
 		a := f32(math.atan2(dy, dx))
 		app.iris_lx = app.sclera_lx + limit * math.cosf(a)

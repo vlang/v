@@ -15,11 +15,11 @@ const num_models = 9
 
 struct App {
 mut:
-	ctx    &gg.Context = unsafe { nil }
-	cam    gg.Camera3D
-	meshes [num_models]gg.Mesh3D
-	models [num_models]gg.Model3D
-	check  gg.Image
+	ctx     &gg.Context = unsafe { nil }
+	cam     gg.Camera3D
+	meshes  [num_models]gg.Mesh3D
+	models  [num_models]gg.Model3D
+	check   gg.Image
 	current int
 }
 
@@ -59,7 +59,7 @@ fn init(data voidptr) {
 			pixels[i * 4 + 3] = 255
 		}
 	}
-	app.check = gg.Image{width: 2, height: 2, nr_channels: 4, ok: true, data: pixels.data}
+	app.check = gg.Image{ width: 2, height: 2, nr_channels: 4, ok: true, data: pixels.data }
 	_ = cache_img(app.ctx, app.check)
 
 	app.meshes[0] = gg.gen_mesh_plane(2, 2, 4)
@@ -72,7 +72,7 @@ fn init(data voidptr) {
 	app.meshes[7] = gg.gen_mesh_polygon(gg.Vec3{}, 2, 5, 0.5)
 	app.meshes[8] = custom_triangle()
 	for i in 0 .. num_models {
-		app.models[i] = gg.Model3D{mesh: &app.meshes[i]}
+		app.models[i] = gg.Model3D{ mesh: &app.meshes[i] }
 		app.models[i].material.texture = &app.check
 	}
 }
@@ -90,15 +90,19 @@ fn frame(data voidptr) {
 	app.ctx.end_3d()
 	app.ctx.draw_rect_filled(30, 400, 310, 30, gg.Color{135, 206, 235, 128})
 	app.ctx.draw_rect_empty(30, 400, 310, 30, mg_darkblue)
-	app.ctx.draw_text(40, 410, 'MOUSE LEFT BUTTON to CYCLE PROCEDURAL MODELS', size: 10, color: mg_skyblue)
-	names := ['PLANE', 'CUBE', 'SPHERE', 'HEMISPHERE', 'CYLINDER', 'TORUS', 'KNOT', 'POLY', 'Custom (triangle)']
+	app.ctx.draw_text(40, 410, 'MOUSE LEFT BUTTON to CYCLE PROCEDURAL MODELS',
+		size:  10
+		color: mg_skyblue
+	)
+	names := ['PLANE', 'CUBE', 'SPHERE', 'HEMISPHERE', 'CYLINDER', 'TORUS', 'KNOT', 'POLY',
+		'Custom (triangle)']
 	app.ctx.draw_text(560, 10, names[app.current], size: 20, color: mg_darkgray)
 	app.ctx.end()
 }
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
-	if (e.typ == .mouse_button_down && e.mouse_button == .left) || e.key_code == .right {
+	if (e.typ == .mouse_down && e.mouse_button == .left) || e.key_code == .right {
 		app.current = (app.current + 1) % num_models
 	} else if e.key_code == .left {
 		app.current = (app.current + num_models - 1) % num_models

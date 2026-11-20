@@ -103,7 +103,7 @@ fn frame(data voidptr) {
 	positions := [gg.Rect{410, 10, 0, 0}, gg.Rect{600, 10, 0, 0}, gg.Rect{410, 230, 0, 0},
 		gg.Rect{600, 230, 0, 0}]
 	for i in 0 .. 4 {
-		p := positions[i]
+		mut p := positions[i]
 		p.width = f32(app.w) * 0.8 / 2
 		p.height = f32(app.h) * 0.8 / 2
 		if app.idx[i] >= 0 {

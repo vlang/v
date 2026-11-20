@@ -110,18 +110,42 @@ fn frame(data voidptr) {
 	ctx.draw_text(198, 83, 'Last gesture', size: 20, color: black)
 	ctx.draw_text(182, 112, 'Swipe   Tap    Pinch Touch', size: 10, color: black)
 	lp := gg.Vec2{165, 130}
-	ctx.draw_rect(x: lp.x + 20, y: lp.y, w: 20, h: 20, color: if app.last == .swipe_up { red } else { light_gray })
-	ctx.draw_rect(x: lp.x, y: lp.y + 20, w: 20, h: 20, color: if app.last == .swipe_left { red } else { light_gray })
-	ctx.draw_rect(x: lp.x + 40, y: lp.y + 20, w: 20, h: 20, color: if app.last == .swipe_right {
-		red
-	} else {
-		light_gray
-	})
-	ctx.draw_rect(x: lp.x + 20, y: lp.y + 40, w: 20, h: 20, color: if app.last == .swipe_down {
-		red
-	} else {
-		light_gray
-	})
+	ctx.draw_rect(
+		x:     lp.x + 20
+		y:     lp.y
+		w:     20
+		h:     20
+		color: if app.last == .swipe_up { red } else { light_gray }
+	)
+	ctx.draw_rect(
+		x:     lp.x
+		y:     lp.y + 20
+		w:     20
+		h:     20
+		color: if app.last == .swipe_left { red } else { light_gray }
+	)
+	ctx.draw_rect(
+		x:     lp.x + 40
+		y:     lp.y + 20
+		w:     20
+		h:     20
+		color: if app.last == .swipe_right {
+			red
+		} else {
+			light_gray
+		}
+	)
+	ctx.draw_rect(
+		x:     lp.x + 20
+		y:     lp.y + 40
+		w:     20
+		h:     20
+		color: if app.last == .swipe_down {
+			red
+		} else {
+			light_gray
+		}
+	)
 	ctx.draw_circle_filled(lp.x + 80, lp.y + 16, 10, if app.last == .tap {
 		blue
 	} else {
@@ -135,15 +159,15 @@ fn frame(data voidptr) {
 	ctx.draw_text(10, 10, 'Log', size: 20, color: black)
 	for i in 0 .. log_size {
 		idx := (app.log_index + i) % log_size
-		ctx.draw_text(10, 420 - f32(i) * 20, app.log[idx],
+		ctx.draw_text(10, 420 - i * 20, app.log[idx],
 			size:  20
 			color: if i == 0 { color_for(app.last) } else { light_gray }
 		)
 	}
 
 	pp := gg.Vec2{266, 315}
-	ctx.draw_text(pp.x + 55, pp.y + 76, 'Angle', size: 10, color: black)
-	ctx.draw_text(pp.x + 55, pp.y + 92, '${app.angle:.2f}',
+	ctx.draw_text(int(pp.x + 55), int(pp.y + 76), 'Angle', size: 10, color: black)
+	ctx.draw_text(int(pp.x + 55), int(pp.y + 92), '${app.angle:.2f}',
 		size:  20
 		color: color_for(app.last)
 	)

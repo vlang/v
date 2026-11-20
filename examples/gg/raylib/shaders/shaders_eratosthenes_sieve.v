@@ -60,7 +60,7 @@ fn frame(data voidptr) {
 		dx, dy := f32(x - img_w / 2), f32(y - img_h / 2)
 		r := math.sqrt(dx * dx + dy * dy)
 		angle := math.atan2(dy, dx)
-		idx := int(r * 12 + angle * 4) % limit
+		mut idx := int(r * 12 + angle * 4) % limit
 		if idx < 0 {
 			idx += limit
 		}

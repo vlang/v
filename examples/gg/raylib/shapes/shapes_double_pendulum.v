@@ -75,9 +75,9 @@ fn on_frame(data voidptr) {
 fn on_update(dt f32, data voidptr) {
 	mut app := unsafe { &App(data) }
 	length_scaler := f32(0.1)
-	L1 := app.l1 * length_scaler
-	L2 := app.l2 * length_scaler
-	total_m := app.m1 + app.m2
+	len1 := app.l1 * length_scaler
+	len2 := app.l2 * length_scaler
+	total_mass := app.m1 + app.m2
 	step := dt / simulation_steps
 	step2 := step * step
 	for _ in 0 .. simulation_steps {
@@ -86,15 +86,15 @@ fn on_update(dt f32, data voidptr) {
 		cos_d := math.cosf(delta)
 		cos_2d := math.cosf(2 * delta)
 		ww1, ww2 := app.w1 * app.w1, app.w2 * app.w2
-		den := L1 * (2 * app.m1 + app.m2 - app.m2 * cos_2d)
+		den := len1 * (2 * app.m1 + app.m2 - app.m2 * cos_2d)
 		if den == 0 {
 			continue
 		}
 		a1 := (-g_grav * (2 * app.m1 + app.m2) * math.sinf(app.t1) -
 			app.m2 * g_grav * math.sinf(app.t1 - 2 * app.t2) -
-			2 * sin_d * app.m2 * (ww2 * L2 + ww1 * L1 * cos_d)) / den
-		a2 := (2 * sin_d * (ww1 * L1 * total_m + g_grav * total_m * math.cosf(app.t1) +
-			ww2 * L2 * app.m2 * cos_d)) / (L2 * (2 * app.m1 + app.m2 - app.m2 * cos_2d))
+			2 * sin_d * app.m2 * (ww2 * len2 + ww1 * len1 * cos_d)) / den
+		a2 := (2 * sin_d * (ww1 * len1 * total_mass + g_grav * total_mass * math.cosf(app.t1) +
+			ww2 * len2 * app.m2 * cos_d)) / (len2 * (2 * app.m1 + app.m2 - app.m2 * cos_2d))
 		app.t1 += app.w1 * step + 0.5 * a1 * step2
 		app.t2 += app.w2 * step + 0.5 * a2 * step2
 		app.w1 += a1 * step

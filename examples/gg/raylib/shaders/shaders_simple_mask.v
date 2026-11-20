@@ -55,7 +55,7 @@ fn frame(data voidptr) {
 	ctx.begin()
 	ctx.set_camera(app.cam)
 	ctx.begin_3d() or { panic(err.msg()) }
-	mat := gg.Material3D{
+	mut mat := gg.Material3D{
 		color:     gg.rgb(120, 80, 200)
 		ambient:   0.3
 		light:     gg.Light3D{ direction: gg.Vec3{0.5, -1, 0.2} }

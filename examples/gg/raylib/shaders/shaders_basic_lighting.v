@@ -14,7 +14,7 @@ mut:
 	cam     gg.Camera3D
 	cube    gg.Mesh3D
 	plane   gg.Mesh3D
-	enabled = [true, true, true, true]
+	enabled []bool = [true, true, true, true]
 	lights  []gg.Vec3
 	colors  []gg.Color
 }

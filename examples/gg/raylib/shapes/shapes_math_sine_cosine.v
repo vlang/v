@@ -6,6 +6,10 @@ import gg
 import math
 
 const wave_points = 36
+const sx = f32(20)
+const sy = f32(330)
+const sw = f32(200)
+const sh = f32(100)
 const raywhite = gg.Color{245, 245, 245, 255}
 const gray_c = gg.Color{130, 130, 130, 255}
 const red_c = gg.Color{230, 41, 55, 255}
@@ -49,10 +53,6 @@ fn on_frame(data voidptr) {
 	ctx.draw_line(cx - r, cy, cx + r, cy, gray_c)
 
 	// wave graphs
-	const sx = f32(20)
-	const sy = f32(330)
-	const sw = f32(200)
-	const sh = f32(100)
 	ctx.draw_line(sx, sy, sx, sy + sh, gray_c)
 	ctx.draw_line(sx + sw, sy, sx + sw, sy + sh, gray_c)
 	ctx.draw_line(sx, sy + sh / 2, sx + sw, sy + sh / 2, gray_c)

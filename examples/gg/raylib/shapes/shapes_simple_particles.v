@@ -47,7 +47,7 @@ fn (mut app App) emit() {
 	p.alive = true
 	p.x, p.y = app.ex, app.ey
 	p.kind = app.kind
-	speed := f32(rand.intn(10) or { 0 }) / 5
+	mut speed := f32(rand.intn(10) or { 0 }) / 5
 	match app.kind {
 		0 {
 			p.radius = 5
@@ -75,7 +75,7 @@ fn on_frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	ctx := app.ctx
 	ctx.begin()
-	i := app.tail
+	mut i := app.tail
 	for i != app.head {
 		p := app.particles[i]
 		if p.alive {
@@ -125,7 +125,7 @@ fn on_update(dt f32, data voidptr) {
 	}
 	w := f32(app.ctx.width)
 	h := f32(app.ctx.height)
-	i := app.tail
+	mut i := app.tail
 	for i != app.head {
 		mut p := app.particles[i]
 		p.life += 1.0 / 60

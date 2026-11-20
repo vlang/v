@@ -54,7 +54,7 @@ fn on_event(e &gg.Event, data voidptr) {
 	if e.typ == .mouse_down && e.mouse_button == .left {
 		mx, my := f32(e.mouse_x), f32(e.mouse_y)
 		if mx >= 40 && mx <= 88 && my >= 10 && my <= 38 {
-			app.directory = os.dir_name(app.directory)
+			app.directory = os.dir(app.directory)
 			refresh(mut app)
 			return
 		}

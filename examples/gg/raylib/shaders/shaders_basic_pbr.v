@@ -17,7 +17,7 @@ mut:
 	floor   gg.Mesh3D
 	lights  []gg.Vec3
 	colors  []gg.Color
-	enabled = [true, true, true, true]
+	enabled []bool = [true, true, true, true]
 }
 
 fn main() {

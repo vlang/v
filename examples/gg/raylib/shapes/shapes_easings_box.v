@@ -42,7 +42,7 @@ fn on_frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	ctx := app.ctx
 	ctx.begin()
-	c := black_t
+	mut c := black_t
 	c.a = u8(255 * math.max(f64(0), f64(app.alpha)))
 	draw_rot_rect(ctx, app.x, app.y, app.w, app.h, app.rotation, c)
 	ctx.draw_text(10, ctx.height - 25, 'PRESS [SPACE] TO RESET BOX ANIMATION!',

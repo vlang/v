@@ -41,7 +41,7 @@ fn main() {
 
 fn update(dt f32, data voidptr) {
 	mut app := unsafe { &App(data) }
-	var_dir := gg.Vec3{}
+	mut var_dir := gg.Vec3{}
 	if app.gg.pressed_keys[gg.KeyCode.w] {
 		var_dir.z += 1
 	}

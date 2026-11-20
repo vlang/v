@@ -14,21 +14,21 @@ const mp_maroon = gg.Color{128, 0, 0, 255}
 
 struct App {
 mut:
-	ctx        &gg.Context = unsafe { nil }
-	cam        gg.Camera3D
-	model      gg.Model3D
-	has_model  bool
+	ctx          &gg.Context = unsafe { nil }
+	cam          gg.Camera3D
+	model        gg.Model3D
+	has_model    bool
 	first_person bool
-	hit_name   string
-	hit        gg.RayHit
-	hit_color  gg.Color
-	bary       gg.Vec3
-	tri_hit    gg.RayHit
-	sp         gg.Vec3 = gg.Vec3{-30, 5, 5}
-	sr         f32 = 4
-	ta         gg.Vec3 = gg.Vec3{-25, 0.5, 0}
-	tb         gg.Vec3 = gg.Vec3{-4, 2.5, 1}
-	tc         gg.Vec3 = gg.Vec3{-8, 6.5, 0}
+	hit_name     string
+	hit          gg.RayHit
+	hit_color    gg.Color
+	bary         gg.Vec3
+	tri_hit      gg.RayHit
+	sp           gg.Vec3 = gg.Vec3{-30, 5, 5}
+	sr           f32     = 4
+	ta           gg.Vec3 = gg.Vec3{-25, 0.5, 0}
+	tb           gg.Vec3 = gg.Vec3{-4, 2.5, 1}
+	tc           gg.Vec3 = gg.Vec3{-8, 6.5, 0}
 }
 
 fn barycenter(p gg.Vec3, a gg.Vec3, b gg.Vec3, c gg.Vec3) gg.Vec3 {
@@ -64,13 +64,16 @@ fn init(data voidptr) {
 	}
 }
 
-fn closest(candidate gg.RayHit, name string, color gg.Color, best &gg.RayHit, best_name &string, best_color &gg.Color) {
+fn closest(candidate gg.RayHit, name string, color gg.Color, mut best &gg.RayHit, mut best_name &string, mut best_color &gg.Color) {
 	if candidate.hit && (!best.hit || candidate.distance < best.distance) {
 		best.hit = candidate.hit
 		best.distance = candidate.distance
 		best.point = candidate.point
-		best_name = name
-		best_color = color
+		// Dereferenced writes require an unsafe block.
+		unsafe {
+			*best_name = name
+			*best_color = color
+		}
 	}
 }
 
@@ -89,24 +92,24 @@ fn frame(data voidptr) {
 	g1 := gg.Vec3{-50, 0, 50}
 	g2 := gg.Vec3{50, 0, 50}
 	g3 := gg.Vec3{50, 0, -50}
-	gnd := gg.ray_triangle(ray, g0, g1, g2)
+	mut gnd := gg.ray_triangle(ray, g0, g1, g2)
 	if !gnd.hit {
 		gnd = gg.ray_triangle(ray, g0, g2, g3)
 	}
-	closest(gnd, 'Ground', mp_green, &app.hit, &app.hit_name, &app.hit_color)
+	closest(gnd, 'Ground', mp_green, mut &app.hit, mut &app.hit_name, mut &app.hit_color)
 
 	app.tri_hit = gg.ray_triangle(ray, app.ta, app.tb, app.tc)
-	closest(app.tri_hit, 'Triangle', mp_purple, &app.hit, &app.hit_name, &app.hit_color)
+	closest(app.tri_hit, 'Triangle', mp_purple, mut &app.hit, mut &app.hit_name, mut &app.hit_color)
 	if app.tri_hit.hit && app.hit_name == 'Triangle' {
 		app.bary = barycenter(app.tri_hit.point, app.ta, app.tb, app.tc)
 	}
 
 	sph := gg.ray_sphere(ray, app.sp, app.sr)
-	closest(sph, 'Sphere', mp_orange, &app.hit, &app.hit_name, &app.hit_color)
+	closest(sph, 'Sphere', mp_orange, mut &app.hit, mut &app.hit_name, mut &app.hit_color)
 
 	if app.has_model {
 		mesh_hit := gg.ray_mesh(ray, app.model.mesh, app.model.pos, app.model.rotation, 1.0)
-		closest(mesh_hit, 'Mesh', mp_orange, &app.hit, &app.hit_name, &app.hit_color)
+		closest(mesh_hit, 'Mesh', mp_orange, mut &app.hit, mut &app.hit_name, mut &app.hit_color)
 	}
 
 	app.ctx.begin()
@@ -134,13 +137,22 @@ fn frame(data voidptr) {
 	if app.hit.hit {
 		app.ctx.draw_text(10, 70, 'Distance: ${app.hit.distance:.2f}', size: 10, color: mp_black())
 		p := app.hit.point
-		app.ctx.draw_text(10, 85, 'Hit Pos: ${p.x:.2f} ${p.y:.2f} ${p.z:.2f}', size: 10, color: mp_black())
+		app.ctx.draw_text(10, 85, 'Hit Pos: ${p.x:.2f} ${p.y:.2f} ${p.z:.2f}',
+			size:  10
+			color: mp_black()
+		)
 		if app.hit_name == 'Triangle' {
-			app.ctx.draw_text(10, 100, 'Barycenter: ${app.bary.x:.2f} ${app.bary.y:.2f} ${app.bary.z:.2f}',
-				size: 10, color: mp_black())
+			app.ctx.draw_text(10, 100,
+				'Barycenter: ${app.bary.x:.2f} ${app.bary.y:.2f} ${app.bary.z:.2f}',
+				size:  10
+				color: mp_black()
+			)
 		}
 	}
-	app.ctx.draw_text(10, 430, 'Right click mouse to toggle camera controls', size: 10, color: gg.gray)
+	app.ctx.draw_text(10, 430, 'Right click mouse to toggle camera controls',
+		size:  10
+		color: gg.gray
+	)
 	app.ctx.end()
 }
 

@@ -17,7 +17,7 @@ mut:
 }
 
 fn thick_rect(ctx &gg.Context, x f32, y f32, w f32, h f32, t f32, c gg.Color) {
-	n := int(math.absf(t))
+	n := int(math.abs(t))
 	for i in 0 .. n + 1 {
 		o := f32(i)
 		ctx.draw_rect_empty(x - o, y - o, w + o * 2, h + o * 2, c)
@@ -25,7 +25,7 @@ fn thick_rect(ctx &gg.Context, x f32, y f32, w f32, h f32, t f32, c gg.Color) {
 }
 
 fn thick_circle(ctx &gg.Context, x f32, y f32, r f32, t f32, c gg.Color) {
-	n := int(math.absf(t))
+	n := int(math.abs(t))
 	for i in 0 .. n + 1 {
 		ctx.draw_circle_empty(x, y, r - f32(i), c)
 	}

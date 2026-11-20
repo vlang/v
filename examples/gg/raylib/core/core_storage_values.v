@@ -31,7 +31,12 @@ fn save_value(position int, value int) bool {
 	mut buf := data.clone()
 	needed := (position + 1) * 4
 	if buf.len < needed {
-		buf.resize(needed, 0)
+		// V slices have no resize method; grow into a new zero-initialized slice.
+		mut grown := []u8{len: needed, init: 0}
+		for i in 0 .. buf.len {
+			grown[i] = buf[i]
+		}
+		buf = grown.clone()
 	}
 	for i in 0 .. 4 {
 		buf[position * 4 + i] = u8((u32(value) >> u32(i * 8)) & 0xff)

@@ -77,6 +77,18 @@ fn update(dt f32, data voidptr) {
 	app.sub_cam.update(.orbital, app.ctx, dt)
 }
 
+fn cleanup(data voidptr) {
+	app := unsafe { &App(data) }
+	if !isnil(app.rt_obs) {
+		mut rt := app.rt_obs
+		rt.free()
+	}
+	if !isnil(app.rt_sub) {
+		mut rt := app.rt_sub
+		rt.free()
+	}
+}
+
 fn frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	app.ctx.begin()
@@ -148,6 +160,7 @@ fn main() {
 		init_fn:      init
 		frame_fn:     frame
 		update_fn:    update
+		cleanup_fn:   cleanup
 		bg_color:     fb_black
 		depth:        true
 	)

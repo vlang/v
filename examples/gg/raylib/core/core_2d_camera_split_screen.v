@@ -89,17 +89,17 @@ fn draw_world(ctx &gg.Context, app &App, view int) {
 	} else {
 		ctx.begin_2d(app.cam2)
 	}
-	for i in 0 .. screen_width / player_size + 1 {
+	for i in 0 .. int(screen_width / player_size) + 1 {
 		x := f32(i) * player_size
 		ctx.draw_line(x, 0, x, screen_height, light_gray)
 	}
-	for i in 0 .. screen_height / player_size + 1 {
+	for i in 0 .. int(screen_height / player_size) + 1 {
 		y := f32(i) * player_size
 		ctx.draw_line(0, y, screen_width, y, light_gray)
 	}
-	for i in 0 .. screen_width / player_size {
-		for j in 0 .. screen_height / player_size {
-			ctx.draw_text(10 + player_size * i, 15 + player_size * j, '[${i},${j}]',
+	for i in 0 .. int(screen_width / player_size) {
+		for j in 0 .. int(screen_height / player_size) {
+			ctx.draw_text(int(10 + player_size * i), int(15 + player_size * j), '[${i},${j}]',
 				size:  10
 				color: light_gray
 			)

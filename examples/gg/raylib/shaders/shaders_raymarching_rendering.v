@@ -56,7 +56,7 @@ fn frame(data voidptr) {
 			mut t := f32(0)
 			mut hit := false
 			for _ in 0 .. 24 {
-				p := ro + rd.scale(t)
+				mut p := ro + rd.scale(t)
 				p.z -= math.sinf(app.time) * 0.5
 				d := f32(math.sqrt(f64(p.x * p.x + p.y * p.y + p.z * p.z))) - 1.0
 				if d < 0.01 {

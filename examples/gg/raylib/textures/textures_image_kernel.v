@@ -46,7 +46,7 @@ fn convolve(src []u8, out []u8, w int, h int, kernel []f32) {
 	}
 }
 
-fn normalize(kernel []f32) {
+fn normalize(mut kernel []f32) {
 	mut sum := f32(0)
 	for v in kernel {
 		sum += v
@@ -75,9 +75,9 @@ fn init(data voidptr) {
 	h := cat.height
 	orig := unsafe { (&u8(cat.data)).vbytes(w * h * 4).clone() }
 
-	gaussian := [f32(1), 2, 1, 2, 4, 2, 1, 2, 1]
-	sobel := [f32(1), 0, -1, 2, 0, -2, 1, 0, -1]
-	sharpen := [f32(0), -1, 0, -1, 5, -1, 0, -1, 0]
+	mut gaussian := [f32(1), 2, 1, 2, 4, 2, 1, 2, 1]
+	mut sobel := [f32(1), 0, -1, 2, 0, -2, 1, 0, -1]
+	mut sharpen := [f32(0), -1, 0, -1, 5, -1, 0, -1, 0]
 	normalize(mut gaussian)
 	normalize(mut sobel)
 	normalize(mut sharpen)
@@ -92,11 +92,13 @@ fn init(data voidptr) {
 	mut next := []u8{len: w * h * 4}
 	for _ in 0 .. 6 {
 		convolve(tmp, next, w, h, gaussian)
-		unsafe { for i in 0 .. tmp.len { tmp[i] = next[i] }
-		 }
+		unsafe {
+			for i in 0 .. tmp.len { tmp[i] = next[i] }
+		}
 	}
-	unsafe { for i in 0 .. app.store[2].len { app.store[2][i] = tmp[i] }
-	 }
+	unsafe {
+		for i in 0 .. app.store[2].len { app.store[2][i] = tmp[i] }
+	}
 	app.store[3] = orig.clone()
 
 	for i in 0 .. 4 {

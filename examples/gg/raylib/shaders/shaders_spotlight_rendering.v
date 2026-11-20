@@ -50,7 +50,7 @@ fn main() {
 	mut app := &App{}
 	for _ in 0 .. max_stars {
 		mut s := Star{}
-		reset_star(&s)
+		reset_star(mut &s)
 		app.stars << s
 	}
 	app.spots = [
@@ -87,7 +87,7 @@ fn update(dt f32, data voidptr) {
 		s.x += s.sx
 		s.y += s.sy
 		if s.x < 0 || s.x > win_width || s.y < 0 || s.y > win_height {
-			reset_star(s)
+			reset_star(mut s)
 		}
 	}
 	for i in 1 .. max_spots {

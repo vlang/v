@@ -30,7 +30,10 @@ fn frame(data voidptr) {
 		x := 400 - f32(app.texture.width) / 2
 		y := 225 - f32(app.texture.height) / 2 - 20
 		app.ctx.draw_image(x, y, f32(app.texture.width), f32(app.texture.height), &app.texture)
-		app.ctx.draw_text(x + 20, y + 300, '[Parrots font drawing]', size: 24, color: gg.white)
+		app.ctx.draw_text(int(x + 20), int(y + 300), '[Parrots font drawing]',
+			size:  24
+			color: gg.white
+		)
 	} else {
 		app.ctx.draw_rect_empty(40, 40, 720, 370, itext_darkgray)
 		app.ctx.draw_text(280, 200, 'FONT ATLAS (unavailable in gg)',

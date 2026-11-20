@@ -54,12 +54,15 @@ fn sine_callback(buffer &f32, num_frames i32, num_channels i32) {
 		}
 	}
 	// Shift the visualization history and append the fresh mono samples.
+	// Unsafe is needed to index the raw audio buffer pointer supplied by sokol.
 	if channels == 1 && frames <= last_samples.len {
-		for i in 0 .. last_samples.len - frames {
-			last_samples[i] = last_samples[i + frames]
-		}
-		for i in 0 .. frames {
-			last_samples[last_samples.len - frames + i] = buffer[i]
+		unsafe {
+			for i in 0 .. last_samples.len - frames {
+				last_samples[i] = last_samples[i + frames]
+			}
+			for i in 0 .. frames {
+				last_samples[last_samples.len - frames + i] = buffer[i]
+			}
 		}
 	}
 }

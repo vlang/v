@@ -83,7 +83,7 @@ fn init(data voidptr) {
 			for x in 0 .. w {
 				ddx := f32(x) - f32(w) / 2
 				ddy := f32(y) - f32(h) / 2
-				dist := if mode == 3 {
+				mut dist := if mode == 3 {
 					f32(math.sqrt(f64(ddx * ddx + ddy * ddy))) / f32(math.sqrt(f64(dx * dx + dy * dy)) / 2)
 				} else {
 					f32(math.max(f64(math.abs(ddx) / f64(dx)), f64(math.abs(ddy) / f64(dy)))) * 2
@@ -212,7 +212,7 @@ fn frame(data voidptr) {
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
-	if (e.typ == .mouse_button_down && e.mouse_button == .left)
+	if (e.typ == .mouse_down && e.mouse_button == .left)
 		|| (e.typ == .key_down && e.key_code == .right) {
 		app.current = (app.current + 1) % 9
 	}

@@ -1,27 +1,25 @@
 module main
 
 // raylib [text] example - font filters, ported to gg.
-// PORT NOTE: gg has no per-font texture filters or mipmap generation. The nearest
-// filter is configured globally via new_context(texture_filter: .nearest); the
-// filter number keys are kept as a visual selection only.
+// PORT NOTE: gg has no per-font texture filters or mipmap generation. The N key
+// toggles a nearest-vs-linear flag shown in the HUD; the filter number keys are
+// a visual selection only and do not change the atlas filter.
 import gg
 
-const (
-	raywhite  = gg.Color{245, 245, 245, 255}
-	lightgray = gg.Color{200, 200, 200, 255}
-	gray_c    = gg.Color{130, 130, 130, 255}
-	darkgray  = gg.Color{80, 80, 80, 255}
-	black_c   = gg.Color{0, 0, 0, 255}
-)
+const raywhite = gg.Color{245, 245, 245, 255}
+const lightgray = gg.Color{200, 200, 200, 255}
+const gray_c = gg.Color{130, 130, 130, 255}
+const darkgray = gg.Color{80, 80, 80, 255}
+const black_c = gg.Color{0, 0, 0, 255}
 
 struct App {
 mut:
-	ctx        &gg.Context = unsafe { nil }
-	font_size  f32 = 96
-	tx         f32 = 40
-	ty         f32
-	filter     int
-	nearest    bool
+	ctx       &gg.Context = unsafe { nil }
+	font_size f32         = 96
+	tx        f32         = 40
+	ty        f32
+	filter    int
+	nearest   bool
 }
 
 fn on_frame(data voidptr) {
@@ -38,7 +36,7 @@ fn on_frame(data voidptr) {
 	)
 	ctx.draw_rect_filled(0, f32(ctx.height - 80), f32(ctx.width), 80, lightgray)
 	ctx.draw_text(20, ctx.height - 50, 'Font size: ${app.font_size:.2f}', size: 10, color: darkgray)
-	ctx.draw_text(20, ctx.height - 30, 'Text size: [${ctx.text_width("Loaded Font")}, 96]',
+	ctx.draw_text(20, ctx.height - 30, 'Text size: [${ctx.text_width('Loaded Font')}, 96]',
 		size:  10
 		color: darkgray
 	)

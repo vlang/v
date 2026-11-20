@@ -5,19 +5,17 @@ module main
 
 import gg
 
-const (
-	win_width  = 800
-	win_height = 450
-	font_size  = 12
-	ramp       = ' .:-=+*#%@'
-)
+const win_width = 800
+const win_height = 450
+const font_size = 12
+const ramp = ' .:-=+*#%@'
 
 struct App {
 mut:
-	gg      &gg.Context = unsafe { nil }
-	font    f32 = 9
-	circle_x f32 = 40
-	speed   f32 = 1
+	gg       &gg.Context = unsafe { nil }
+	font     f32         = 9
+	circle_x f32         = 40
+	speed    f32         = 1
 }
 
 fn main() {
@@ -60,9 +58,11 @@ fn frame(data voidptr) {
 	app := unsafe { &App(data) }
 	ctx := app.gg
 	ctx.begin()
-	step := int(app.font) + 2
-	for y in 40 .. win_height step step {
-		for x in 0 .. win_width step step {
+	stride := int(app.font) + 2
+	mut y := 40
+	for y < win_height {
+		mut x := 0
+		for x < win_width {
 			// Procedural luminance: bright sprite-like blob plus a moving circle.
 			fx, fy := f32(x), f32(y)
 			mut blob := f32(0)
@@ -72,7 +72,7 @@ fn frame(data voidptr) {
 			}
 			circle := 1.0 - ((fx - app.circle_x) * (fx - app.circle_x) +
 				(fy - f32(win_height) / 2) * (fy - f32(win_height) / 2)) / f32(9000)
-			lum := if blob > circle { blob } else { circle }
+			mut lum := if blob > circle { blob } else { circle }
 			if lum < 0 {
 				lum = 0
 			}
@@ -84,10 +84,14 @@ fn frame(data voidptr) {
 				ch := ramp[idx]
 				ctx.draw_text(x, y, '${ch:c}', size: int(app.font), color: gg.light_gray)
 			}
+			x += stride
 		}
+		y += stride
 	}
 	ctx.draw_rect_filled(0, 0, f32(win_width), 30, gg.black)
-	ctx.draw_text(120, 8, 'Ascii effect - FontSize:${app.font:.0f} - [Left] -1 [Right] +1', size: 14,
-		color: gg.light_gray)
+	ctx.draw_text(120, 8, 'Ascii effect - FontSize:${app.font:.0f} - [Left] -1 [Right] +1',
+		size:  14
+		color: gg.light_gray
+	)
 	ctx.end()
 }

@@ -55,7 +55,7 @@ fn frame(data voidptr) {
 	center_text(ctx, 'Window is ${logical.width} "logical points" wide',
 		logical.width / 2, 120, 20, orange)
 
-	odd := true
+	mut odd := true
 	mut i := cell_size
 	for i < logical.width {
 		if odd {
@@ -68,7 +68,7 @@ fn frame(data voidptr) {
 	}
 
 	odd = true
-	last_text_x := -30
+	mut last_text_x := -30
 	i = cell_size
 	for i < ctx.width {
 		x := int(f32(i) / scale)

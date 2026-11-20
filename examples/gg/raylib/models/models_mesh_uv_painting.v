@@ -54,21 +54,21 @@ fn paint_disc(canvas []u8, cx int, cy int, r int, c gg.Color) {
 
 struct App {
 mut:
-	ctx      &gg.Context = unsafe { nil }
-	cam      gg.Camera3D
-	mesh     gg.Mesh3D
-	model    gg.Model3D
-	canvas   []u8
+	ctx        &gg.Context = unsafe { nil }
+	cam        gg.Camera3D
+	mesh       gg.Mesh3D
+	model      gg.Model3D
+	canvas     []u8
 	canvas_img gg.Image
-	shape    int
-	tool     int
-	color    gg.Color = gg.Color{230, 41, 55, 255}
-	palette  [8]gg.Color
-	brush    int = 12
-	has_last bool
-	last_x   int
-	last_y   int
-	orbit    bool
+	shape      int
+	tool       int
+	color      gg.Color = gg.Color{230, 41, 55, 255}
+	palette    [8]gg.Color
+	brush      int = 12
+	has_last   bool
+	last_x     int
+	last_y     int
+	orbit      bool
 }
 
 fn rebuild_mesh(mut app &App, shape int) {
@@ -81,7 +81,7 @@ fn rebuild_mesh(mut app &App, shape int) {
 	} else {
 		app.mesh = gg.gen_mesh_torus(gg.Vec3{}, 1.6, 0.6, 16, 32)
 	}
-	app.model = gg.Model3D{mesh: &app.mesh}
+	app.model = gg.Model3D{ mesh: &app.mesh }
 	app.model.material.texture = &app.canvas_img
 	app.shape = shape
 }
@@ -110,9 +110,9 @@ fn init(data voidptr) {
 		data:        app.canvas.data
 	}
 	app.canvas_img.init_sokol_image()
-	app.palette = [gg.Color{230, 41, 55, 255}, gg.Color{255, 160, 0, 255},
-		gg.Color{255, 203, 40, 255}, gg.Color{0, 255, 0, 255}, gg.Color{135, 206, 235, 255},
-		gg.Color{138, 43, 226, 255}, gg.Color{80, 80, 80, 255}, gg.Color{255, 255, 255, 255}]!
+	app.palette = [gg.Color{230, 41, 55, 255}, gg.Color{255, 160, 0, 255}, gg.Color{255, 203, 40, 255},
+		gg.Color{0, 255, 0, 255}, gg.Color{135, 206, 235, 255}, gg.Color{138, 43, 226, 255},
+		gg.Color{80, 80, 80, 255}, gg.Color{255, 255, 255, 255}]!
 	rebuild_mesh(mut app, 0)
 }
 
@@ -203,15 +203,18 @@ fn frame(data voidptr) {
 	app.ctx.draw_rect_filled(10, 10, 230, 430, gg.Color{0, 0, 0, 204})
 	app.ctx.draw_rect_empty(10, 10, 230, 430, gg.Color{80, 80, 80, 255})
 	app.ctx.draw_text(25, 22, 'MESH UV PAINTER', size: 20, color: uv_gold)
-	app.ctx.draw_text(25, 100, 'Shape: 1 sphere 2 cube 3 cylinder 4 torus', size: 10, color: uv_light)
+	app.ctx.draw_text(25, 100, 'Shape: 1 sphere 2 cube 3 cylinder 4 torus',
+		size:  10
+		color: uv_light
+	)
 	app.ctx.draw_text(25, 115, 'Tool: P paint  I picker  (no raygui)', size: 10, color: uv_light)
 	app.ctx.draw_text(25, 195, 'Active Color:', size: 10, color: uv_light)
 	app.ctx.draw_rect_filled(125, 193, 95, 20, app.color)
 	for i in 0 .. 8 {
 		r := gg.Rect{25 + f32(i % 4) * 48, 245 + f32(i / 4) * 45, 40, 38}
 		app.ctx.draw_rect_filled(r.x, r.y, r.width, r.height, app.palette[i])
-		if mx >= r.x && mx <= r.x + r.width && my >= r.y && my <= r.y + r.height &&
-			app.ctx.mouse_buttons.has(.left) {
+		if mx >= r.x && mx <= r.x + r.width && my >= r.y && my <= r.y + r.height
+			&& app.ctx.mouse_buttons.has(.left) {
 			app.color = app.palette[i]
 		}
 	}
@@ -222,7 +225,7 @@ fn frame(data voidptr) {
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
-	if e.typ == .mouse_button_down || e.typ == .mouse_button_up {
+	if e.typ == .mouse_down || e.typ == .mouse_up {
 		app.orbit = app.ctx.mouse_buttons.has(.right)
 	}
 	if e.typ != .key_down {

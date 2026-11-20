@@ -64,7 +64,7 @@ fn frame(data voidptr) {
 	ctx.begin()
 	ctx.set_camera(app.cam)
 	ctx.begin_3d() or { panic(err.msg()) }
-	mat := gg.Material3D{ color: gg.yellow, ambient: 0.5, fog_color: gg.black, fog_near: 4, fog_far: 18 }
+	mut mat := gg.Material3D{ color: gg.yellow, ambient: 0.5, fog_color: gg.black, fog_near: 4, fog_far: 18 }
 	ctx.draw_material_mesh(&app.cube, gg.Vec3{}, gg.Vec3{}, 3, &mat, app.cam)
 	mat.color = gg.red
 	ctx.draw_material_mesh(&app.floor, gg.Vec3{10, 0, 2}, gg.Vec3{}, 2, &mat, app.cam)

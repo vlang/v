@@ -91,7 +91,7 @@ fn draw_rotated_rect(ctx &gg.Context, x f32, y f32, w f32, h f32, angle f32, c g
 }
 
 fn frame(data voidptr) {
-	app := unsafe { &App(data) }
+	mut app := unsafe { &App(data) }
 	ctx := app.gg
 
 	cam_x := math.sinf(app.time) * 50 - 10

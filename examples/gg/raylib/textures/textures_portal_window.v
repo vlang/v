@@ -76,6 +76,14 @@ fn update(dt f32, data voidptr) {
 	app.other.target = app.cam.target + gg.Vec3{0, 0, -60}
 }
 
+fn cleanup(data voidptr) {
+	app := unsafe { &App(data) }
+	if !isnil(app.rt) {
+		mut rt := app.rt
+		rt.free()
+	}
+}
+
 fn frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	app.ctx.begin()
@@ -146,6 +154,7 @@ fn main() {
 		init_fn:      init
 		frame_fn:     frame
 		update_fn:    update
+		cleanup_fn:   cleanup
 		bg_color:     portal_raywhite
 		depth:        true
 	)

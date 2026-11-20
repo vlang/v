@@ -53,6 +53,14 @@ fn init(data voidptr) {
 	}
 }
 
+fn cleanup(data voidptr) {
+	app := unsafe { &App(data) }
+	if !isnil(app.rt) {
+		mut rt := app.rt
+		rt.free()
+	}
+}
+
 fn frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	mx := f32(app.ctx.mouse_pos_x)
@@ -112,6 +120,7 @@ fn main() {
 		user_data:    app
 		init_fn:      init
 		frame_fn:     frame
+		cleanup_fn:   cleanup
 		bg_color:     glass_raywhite
 		depth:        true
 	)

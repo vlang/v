@@ -12,9 +12,9 @@ const darkgreen = gg.Color{0, 117, 44, 255}
 
 fn hsv(h f32, s f32, v f32) gg.Color {
 	c := v * s
-	x := c * (1 - math.absf((h / 60) % 2 - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(h / 60), 2.0)) - 1))
 	m := v - c
-	r, g, b := f32(0), f32(0), f32(0)
+	mut r, mut g, mut b := f32(0), f32(0), f32(0)
 	if h < 60 {
 		r, g = c, x
 	} else if h < 120 {
@@ -126,7 +126,7 @@ fn on_update(dt f32, data voidptr) {
 			app.handle_x = app.cx + dx / dist * app.scale
 			app.handle_y = app.cy + dy / dist * app.scale
 		}
-		ang := (f32(math.degrees(math.atan2(dy, dx))) + 90 + 360) % 360
+		ang := f32(math.fmod(f64(f32(math.degrees(math.atan2(dy, dx))) + 90 + 360), 360.0))
 		app.color = hsv(ang, math.min(f32(1), dist / app.scale), 1)
 	}
 }

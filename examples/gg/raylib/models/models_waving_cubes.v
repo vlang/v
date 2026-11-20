@@ -10,7 +10,7 @@ const wc_raywhite = gg.Color{245, 245, 245, 255}
 fn hsv(h int, s f32, v f32) gg.Color {
 	hf := f32(h % 360) / 60.0
 	c := v * s
-	x := c * (1 - math.abs((hf % 2.0) - 1))
+	x := c * (1 - math.abs(f32(math.fmod(f64(hf), 2.0)) - 1))
 	m := v - c
 	mut r := f32(0)
 	mut g := f32(0)
@@ -79,9 +79,7 @@ fn frame(data voidptr) {
 			for z in 0 .. 15 {
 				block_scale := f32(x + y + z) / 30.0
 				scatter := f32(math.sin(f64(block_scale * 20.0 + app.time * 4.0)))
-				pos := gg.Vec3{(f32(x) - 7.5) * (scale * 3.0) + scatter,
-					(f32(y) - 7.5) * (scale * 2.0) + scatter,
-					(f32(z) - 7.5) * (scale * 3.0) + scatter}
+				pos := gg.Vec3{(f32(x) - 7.5) * (scale * 3.0) + scatter, (f32(y) - 7.5) * (scale * 2.0) + scatter, (f32(z) - 7.5) * (scale * 3.0) + scatter}
 				c := hsv((x + y + z) * 18, 0.75, 0.9)
 				size := (2.4 - scale) * block_scale
 				if size > 0 {

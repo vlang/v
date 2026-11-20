@@ -57,7 +57,7 @@ fn main() {
 	mut app := &App{}
 	app.grid = []bool{len: grid_w * grid_h, init: false}
 	app.next = []bool{len: grid_w * grid_h, init: false}
-	seed(app)
+	seed(mut app)
 	app.gg = gg.new_context(
 		width:         win_width
 		height:        win_height
@@ -86,7 +86,7 @@ fn event(e &gg.Event, data voidptr) {
 				app.speed = 1
 			}
 		}
-		.r { seed(app) }
+		.r { seed(mut app) }
 		else {}
 	}
 }
@@ -99,7 +99,7 @@ fn update(dt f32, data voidptr) {
 	}
 	app.frame++
 	if app.frame % app.speed == 0 {
-		step(app)
+		step(mut app)
 	}
 }
 

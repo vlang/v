@@ -9,8 +9,8 @@ const raywhite = gg.Color{245, 245, 245, 255}
 const black_c = gg.Color{0, 0, 0, 255}
 
 fn hsv(h f32) gg.Color {
-	c, x, m := f32(1), f32(1 - math.absf((h / 60) % 2 - 1)), f32(0)
-	r, g, b := f32(0), f32(0), f32(0)
+	c, x, m := f32(1), f32(1 - math.abs(f32(math.fmod(f64(h / 60), 2.0)) - 1)), f32(0)
+	mut r, mut g, mut b := f32(0), f32(0), f32(0)
 	if h < 60 {
 		r, g = c, x
 	} else if h < 120 {

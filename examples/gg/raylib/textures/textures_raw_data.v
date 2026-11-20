@@ -15,7 +15,7 @@ fn pixel(img gg.Image, x int, y int) gg.Color {
 	}
 	d := unsafe { &u8(img.data) }
 	i := (y * img.width + x) * 4
-	return gg.Color{d[i], d[i + 1], d[i + 2], d[i + 3]}
+	return unsafe { gg.Color{d[i], d[i + 1], d[i + 2], d[i + 3]} }
 }
 
 fn cache_raw(ctx &gg.Context, img gg.Image) int {

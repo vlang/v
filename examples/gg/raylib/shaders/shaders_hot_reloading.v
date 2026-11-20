@@ -74,7 +74,7 @@ fn frame(data voidptr) {
 			} else {
 				d := math.sqrt((fx - app.mouse_x / 2) * (fx - app.mouse_x / 2) +
 					(fy - app.mouse_y / 2) * (fy - app.mouse_y / 2))
-				v := math.sinf(d * 0.1 - app.time * 3)
+				v := math.sinf(f32(d * 0.1 - app.time * 3))
 				r = (v + 1) / 2 * 255
 				g = 80
 				b = 200

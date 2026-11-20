@@ -24,13 +24,15 @@ fn cache_rgba(ctx &gg.Context, w int, h int, buf []u8) int {
 
 fn apply_process(work []u8, orig []u8, w int, h int, mode int) {
 	if mode == 0 {
-		unsafe { for i in 0 .. work.len { work[i] = orig[i] }
-		 }
+		unsafe {
+			for i in 0 .. work.len { work[i] = orig[i] }
+		}
 		return
 	}
 	if mode == 7 || mode == 8 {
-		unsafe { for i in 0 .. work.len { work[i] = orig[i] }
-		 }
+		unsafe {
+			for i in 0 .. work.len { work[i] = orig[i] }
+		}
 		for y in 0 .. h {
 			for x in 0 .. w {
 				sx := if mode == 7 { x } else { w - 1 - x }
@@ -80,8 +82,9 @@ fn apply_process(work []u8, orig []u8, w int, h int, mode int) {
 				}
 			}
 			if pass < 2 {
-				unsafe { for i in 0 .. work.len { src[i] = work[i] }
-				 }
+				unsafe {
+					for i in 0 .. work.len { src[i] = work[i] }
+				}
 			}
 		}
 		return
@@ -157,14 +160,14 @@ fn init(data voidptr) {
 		app.orig = unsafe { (&u8(img.data)).vbytes(app.w * app.h * 4).clone() }
 		app.work = []u8{len: app.orig.len}
 		app.idx = cache_rgba(app.ctx, app.w, app.h, app.work)
-		rebuild(app)
+		rebuild(mut app)
 	}
 }
 
 fn frame(data voidptr) {
 	mut app := unsafe { &App(data) }
 	if app.reload {
-		rebuild(app)
+		rebuild(mut app)
 	}
 	app.ctx.begin()
 	app.ctx.draw_text(40, 30, 'IMAGE PROCESSING:', size: 10, color: proc_darkgray)
@@ -198,7 +201,7 @@ fn on_event(e &gg.Event, data voidptr) {
 			app.reload = true
 		}
 	}
-	if e.typ == .mouse_button_up && e.mouse_button == .left && app.hover >= 0 {
+	if e.typ == .mouse_up && e.mouse_button == .left && app.hover >= 0 {
 		app.current = app.hover
 		app.reload = true
 	}

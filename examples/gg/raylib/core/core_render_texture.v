@@ -40,6 +40,7 @@ fn main() {
 		bg_color:     ray_white
 		frame_fn:     frame
 		init_fn:      init
+		cleanup_fn:   cleanup
 		user_data:    app
 	)
 	app.gg.fps.show = true
@@ -73,6 +74,14 @@ fn make_texture_image(ctx &gg.Context, rt &gg.RenderTexture2D) &gg.Image {
 	mut ctx_mut := unsafe { &gg.Context(ctx) }
 	img.id = ctx_mut.cache_image(*img)
 	return img
+}
+
+fn cleanup(data voidptr) {
+	app := unsafe { &App(data) }
+	if !isnil(app.target) {
+		mut rt := app.target
+		rt.free()
+	}
 }
 
 fn frame(data voidptr) {

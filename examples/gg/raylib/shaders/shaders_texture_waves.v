@@ -56,8 +56,8 @@ fn frame(data voidptr) {
 		for x in 0 .. img_w {
 			fx := f32(x)
 			fy := f32(y)
-			wx := int(fx + math.sinf(fy / app.freq_y * 6.28 + app.seconds * 8) * app.amp_x * 4)
-			wy := int(fy + math.sinf(fx / app.freq_x * 6.28 + app.seconds * 8) * app.amp_y * 4)
+			mut wx := int(fx + math.sinf(fy / app.freq_y * 6.28 + app.seconds * 8) * app.amp_x * 4)
+			mut wy := int(fy + math.sinf(fx / app.freq_x * 6.28 + app.seconds * 8) * app.amp_y * 4)
 			wx = (wx + img_w * 2) % (img_w * 2)
 			wy = (wy + img_h * 2) % (img_h * 2)
 			sx := if wx >= img_w { wx - img_w } else { wx }
