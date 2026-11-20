@@ -11,6 +11,8 @@ assert writer.str() == '"   ",b\n'
 The writer quotes fields that contain the delimiter, double quotes, carriage returns, or newlines.
 It also quotes fields that begin with Unicode whitespace, including spaces and tabs, preserving
 them when read by CSV readers that trim unquoted leading whitespace.
+A record containing a single empty field is written as `""` so it survives readers that skip blank
+lines.
 
 ## Reader example
 
