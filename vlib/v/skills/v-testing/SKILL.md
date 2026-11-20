@@ -93,6 +93,23 @@ if cfg := read_config(x) {
 }
 ```
 
+`-prod` removes an `assert` together with its condition, so the condition must not
+do the work. The compiler prints a notice for a channel receive, an assignment, an
+increment or a `wait()` inside an assert in every build, and under `-prod` also for
+a call that modifies its receiver or takes a `mut` argument:
+
+```v ignore
+// Dropped by -prod: the receive never happens there.
+assert <-ch == 1
+
+// Correct: the receive is a statement of its own.
+got := <-ch
+assert got == 1
+```
+
+An operand read only for its type (`typeof(x)`, `sizeof(x)`) is never evaluated and
+gets no notice; do not bind it first, since that would run it.
+
 ## Running a subset
 
 The full suite is slow. Filter it rather than paying for all of it:

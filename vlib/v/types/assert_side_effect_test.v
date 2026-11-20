@@ -26,14 +26,32 @@ fn main() {
 }
 "
 
+// The operand of `typeof` and `sizeof` is read for its type and never evaluated: on this empty
+// unbuffered channel a receive would block for ever, and the program runs to its end. Binding the
+// receive first, as the notice advises, is what would hang it.
+const assert_unevaluated_operand_source = "
+fn main() {
+	ch := chan int{}
+	assert typeof(<-ch).name == 'int'
+	assert sizeof(<-ch) == sizeof(int)
+	mut n := 0
+	assert typeof(n++).name == 'int'
+	assert n == 0
+}
+"
+
 fn assert_side_effect_notices(flags []string) []string {
+	return assert_notices_of(assert_side_effect_source, flags)
+}
+
+fn assert_notices_of(program string, flags []string) []string {
 	root := os.join_path(os.vtmp_dir(), 'assert_side_effect_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, assert_side_effect_source.trim_left('\n')) or { panic(err) }
+	os.write_file(source, program.trim_left('\n')) or { panic(err) }
 	result := os.exec([@VEXE, '-new-compiler', ...flags, '-check', source])
 	assert result.exit_code == 0, result.output
 	return result.output.split_into_lines().filter(it.contains('notice: assert contains'))
@@ -53,4 +71,11 @@ fn test_assert_calls_that_modify_are_reported_for_prod() {
 	assert notices[1].contains('a call that modifies its receiver')
 	assert notices[2].contains('a call with a `mut` argument')
 	assert notices[3].contains('a call that modifies its receiver')
+}
+
+fn test_an_operand_read_only_for_its_type_is_not_reported() {
+	for flags in [[]string{}, ['-prod']] {
+		notices := assert_notices_of(assert_unevaluated_operand_source, flags)
+		assert notices.len == 0, '${flags}: ' + notices.join('\n')
+	}
 }

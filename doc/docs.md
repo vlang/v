@@ -6768,6 +6768,22 @@ Failure reports keep type names and string literals as written in the assertion.
 > [!NOTE]
 > All `assert` statements are *removed*, when you compile your program with the `-prod` flag.
 
+Since `-prod` removes an assert together with its condition, a condition that changes state
+does not change it in that build. The compiler prints a notice for an assert that contains a
+channel receive, an assignment, an increment or a `wait()` call; when compiling with `-prod`,
+it also prints one for a call that modifies its receiver or takes a `mut` argument. Do the work
+in a statement of its own and assert on the result:
+
+```v
+ch := chan int{cap: 1}
+ch <- 1
+value := <-ch // not `assert <-ch == 1`
+assert value == 1
+```
+
+The operand of `typeof` and `sizeof` is only read for its type and is never evaluated, so
+`assert typeof(<-ch).name == 'int'` receives nothing in any build, and gets no notice.
+
 ### Asserts with an extra message
 
 This form of the `assert` statement, will print the extra message when it fails. Note that

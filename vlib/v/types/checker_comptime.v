@@ -4212,11 +4212,12 @@ fn (mut tc TypeChecker) check_dump_expr(node flat.Node) {
 // receive, an assignment, an increment and a `wait()` are always a change. A call that modifies
 // its receiver, or takes a `mut` argument, is reported only when `certain_only` is false: many
 // methods take a `mut` receiver to read (`load`, `get`, `next`), and `-prod` is the build that
-// drops them.
+// drops them. The operand of `typeof`, `sizeof` and `__offsetof` is read for its type and never
+// evaluated, so nothing inside it happens in any build: `typeof(<-ch).name` receives nothing.
 fn (mut tc TypeChecker) assert_side_effect(id flat.NodeId, certain_only bool) ?(flat.NodeId, string) {
 	node := tc.a.node(id)
 	match node.kind {
-		.fn_literal, .lambda_expr {
+		.fn_literal, .lambda_expr, .typeof_expr, .sizeof_expr, .offsetof_expr {
 			return none
 		}
 		.prefix {

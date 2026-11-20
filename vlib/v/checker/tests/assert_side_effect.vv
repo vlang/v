@@ -23,6 +23,10 @@ fn main() {
 	assert n == 0
 	assert ch.len == 1
 	assert 'abc'.contains('b')
+	// read for its type, never evaluated: nothing is received, in any build
+	empty := chan int{}
+	assert typeof(<-empty).name == 'int'
+	assert sizeof(<-empty) == sizeof(int)
 	assert if v := answer() {
 		v == 1
 	} else {
