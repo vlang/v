@@ -5965,8 +5965,13 @@ fn (g &Parser) render_slice_option_expression(tokens []FastcExpressionToken) ?Fa
 	} else {
 		g.render_membership_candidate(slice_tokens[open + 1..range_index], flat.source_type_id('int')) or { return none }
 	}
-	high := if range_index + 1 == close {
+	receiver_len := if !g.selfhost && is_string {
+		'strlen(__vf_slice_receiver ? __vf_slice_receiver : "")'
+	} else {
 		'__vf_slice_receiver.len'
+	}
+	high := if range_index + 1 == close {
+		receiver_len
 	} else {
 		g.render_membership_candidate(slice_tokens[range_index + 1..close], flat.source_type_id('int')) or { return none }
 	}
@@ -5981,7 +5986,7 @@ fn (g &Parser) render_slice_option_expression(tokens []FastcExpressionToken) ?Fa
 		'(Option){.data=__vf_slice_ok ? v_fastc_interface_box(&__vf_slice_value, sizeof(${flat.source_type_name(value_type)})) : NULL, .state=__vf_slice_ok ? 0 : 2}'
 	}
 	return FastcRenderedExpression{
-		source: '({ ${flat.source_type_name(value_type)} __vf_slice_receiver = (${receiver_source}); int __vf_slice_low = (${low}); int __vf_slice_high = (${high}); bool __vf_slice_ok = __vf_slice_low >= 0 && __vf_slice_low <= __vf_slice_high && __vf_slice_high <= __vf_slice_receiver.len; ${flat.source_type_name(value_type)} __vf_slice_value = __vf_slice_ok ? (${slice_value}) : (${flat.source_type_name(value_type)}){0}; ${result}; })'
+		source: '({ ${flat.source_type_name(value_type)} __vf_slice_receiver = (${receiver_source}); int __vf_slice_low = (${low}); int __vf_slice_high = (${high}); bool __vf_slice_ok = __vf_slice_low >= 0 && __vf_slice_low <= __vf_slice_high && __vf_slice_high <= ${receiver_len}; ${flat.source_type_name(value_type)} __vf_slice_value = __vf_slice_ok ? (${slice_value}) : (${flat.source_type_name(value_type)}){0}; ${result}; })'
 		typ:    value_type
 	}
 }
