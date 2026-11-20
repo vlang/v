@@ -26,12 +26,15 @@ pub fn (mut r Rng) next_u64() u64 {
 	return x * 0x2545f4914f6cdd1d
 }
 
+// next_int_range returns an integer in [lo, hi), or lo when hi <= lo.
 pub fn (mut r Rng) next_int_range(lo int, hi int) int {
 	if hi <= lo {
 		return lo
 	}
-	span := u64(hi - lo)
-	return lo + int(r.next_u64() % span)
+	// The span and offset can exceed max_int.
+	span := u64(hi) - u64(lo)
+	offset := r.next_u64() % span
+	return int(u64(lo) + offset)
 }
 
 // Generator produces random values of type T for property tests.
