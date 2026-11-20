@@ -1,5 +1,8 @@
 module strings
 
+import encoding.utf8
+import io
+
 // split_after splits s at every occurrence of sep, keeping sep at the end of
 // each piece (Go's strings.SplitAfter). The final piece has no separator.
 // An empty sep returns [s] (Go splits per UTF-8 sequence there; vlib keeps
@@ -83,6 +86,28 @@ pub fn last_index_any(s string, chars string) int {
 	return -1
 }
 
+// title returns a copy of s with the first character of each word (split by
+// whitespace) converted to title case. Mirrors Go's strings.Title (deprecated
+// but still useful as a simple helper).
+pub fn title(s string) string {
+	mut out := []u8{}
+	mut prev_space := true
+	for b in s.bytes() {
+		if b.is_space() {
+			out << b
+			prev_space = true
+		} else {
+			if prev_space && b >= `a` && b <= `z` {
+				out << b - 32
+			} else {
+				out << b
+			}
+			prev_space = false
+		}
+	}
+	return out.bytestr()
+}
+
 // contains_rune reports whether s contains the rune r anywhere.
 pub fn contains_rune(s string, r rune) bool {
 	for c in s.runes() {
@@ -91,4 +116,164 @@ pub fn contains_rune(s string, r rune) bool {
 		}
 	}
 	return false
+}
+
+// fields splits s around each instance of one or more consecutive Unicode
+// (here, ASCII) whitespace characters, returning a slice of the substrings of
+// s or an empty slice if s contains only whitespace. Mirrors Go's strings.Fields.
+pub fn fields(s string) []string {
+	mut out := []string{}
+	mut start := -1
+	for i, c in s {
+		if c.is_space() {
+			if start >= 0 {
+				out << s[start..i]
+				start = -1
+			}
+		} else {
+			if start < 0 {
+				start = i
+			}
+		}
+	}
+	if start >= 0 {
+		out << s[start..]
+	}
+	return out
+}
+
+// fields_func splits s at each run of code points c satisfying f(c), returning
+// a slice of substrings of s. Mirrors Go's strings.FieldsFunc.
+pub fn fields_func(s string, f fn (rune) bool) []string {
+	mut out := []string{}
+	mut start := -1
+	mut i := 0
+	for i < s.len {
+		r, size := utf8.decode_rune_at(s, i)
+		if size == 0 {
+			break
+		}
+		if f(r) {
+			if start >= 0 {
+				out << s[start..i]
+				start = -1
+			}
+		} else {
+			if start < 0 {
+				start = i
+			}
+		}
+		i += size
+	}
+	if start >= 0 {
+		out << s[start..]
+	}
+	return out
+}
+
+// count_rune counts occurrences of r in s.
+pub fn count_rune(s string, r rune) int {
+	mut n := 0
+	for _, c in s.runes() {
+		if c == r {
+			n++
+		}
+	}
+	return n
+}
+
+// index_rune returns the byte index of the first occurrence of r in s, or -1.
+pub fn index_rune(s string, r rune) int {
+	mut idx := 0
+	for idx < s.len {
+		c, size := utf8.decode_rune_at(s, idx)
+		if size == 0 {
+			break
+		}
+		if c == r {
+			return idx
+		}
+		idx += size
+	}
+	return -1
+}
+
+// last_index_rune returns the byte index of the last occurrence of r in s, or -1.
+pub fn last_index_rune(s string, r rune) int {
+	mut idx := 0
+	mut found := -1
+	for idx < s.len {
+		c, size := utf8.decode_rune_at(s, idx)
+		if size == 0 {
+			break
+		}
+		if c == r {
+			found = idx
+		}
+		idx += size
+	}
+	return found
+}
+
+// to_valid_utf8 replaces invalid UTF-8 sequences with replacement, keeping
+// valid sequences intact. Mirrors Go's strings.ToValidUTF8.
+pub fn to_valid_utf8(s string, replacement string) string {
+	if utf8.validate_str(s) {
+		return s
+	}
+	mut out := []u8{cap: s.len}
+	mut i := 0
+	for i < s.len {
+		r, size := utf8.decode_rune_at(s, i)
+		if size == 0 {
+			break
+		}
+		if r == rune(0xfffd) && size == 1 {
+			// malformed byte: emit the replacement, consume one byte
+			out << replacement.bytes()
+			i += 1
+		} else {
+			for j in 0 .. size {
+				out << s[i + j]
+			}
+			i += size
+		}
+	}
+	return out.bytestr()
+}
+
+// Reader implements io.Reader for a string: read reports io.Eof once the
+// string is exhausted so it composes with io.multi_reader and io.read_all.
+pub struct Reader {
+mut:
+	s   string
+	pos int
+}
+
+pub fn new_reader(s string) Reader {
+	return Reader{ s: s }
+}
+
+pub fn (mut r Reader) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
+	if r.pos >= r.s.len {
+		return io.Eof{}
+	}
+	n := if buf.len < r.s.len - r.pos { buf.len } else { r.s.len - r.pos }
+	for i in 0 .. n {
+		buf[i] = r.s[r.pos + i]
+	}
+	r.pos += n
+	return n
+}
+
+pub fn (r Reader) len() int {
+	return r.s.len - r.pos
+}
+
+pub fn (mut r Reader) reset(s string) {
+	r.s = s
+	r.pos = 0
 }
