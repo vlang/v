@@ -25,6 +25,11 @@ jobs:
       - name: Build V
         uses: ./.github/actions/setup-v
 
+      # The apt cache action may restore an empty archive while reporting success.
+      # Ensure the dependencies in its SDL profile before invoking setup.vsh.
+      - name: Ensure SDL development dependencies
+        run: ./v retry -- sudo apt install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+
       - name: Install & Setup SDL
         run: v retry -- v install sdl && v ~/.vmodules/sdl/setup.vsh
 
