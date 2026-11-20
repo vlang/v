@@ -2815,7 +2815,8 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 				&& tc.resolve_type(tc.a.child(expr, 0)) !is Unknown
 				&& tc.selector_type(expr_id, *expr) == none
 			undefined_self_reference := expr_type is Unknown && expr.kind == .ident
-				&& tc.errors.any(it.node == expr_id && it.msg.starts_with('undefined variable:'))
+				&& tc.errors.any(it.node == expr_id && (it.msg.starts_with('undefined variable:')
+					|| it.msg.contains('cannot be used as a value')))
 			if (expr_type is Void && !tc.expr_subtree_has_undefined_variable_error(expr_id))
 				|| (expr_type is MultiReturn && expr_type.types.len == 0)
 				|| invalid_selector
