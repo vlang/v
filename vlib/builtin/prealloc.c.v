@@ -588,6 +588,13 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 						v.start = &u8(mmap_ptr)
 						v.mmap_allocated = true
 						fresh_mmap = true
+						$if linux {
+							// MADV_HUGEPAGE (14) cuts TLB misses on large arenas.
+							// The hint is advisory; failure is harmless.
+							if block_size >= 2 * 1024 * 1024 {
+								C.madvise(v.start, uint(block_size), 14)
+							}
+						}
 					}
 				}
 			}
