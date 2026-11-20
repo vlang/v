@@ -3252,9 +3252,14 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 		if node.typ != 0 {
 			slot := int(node.typ & 4095)
 			if text_cache.gens[slot] != text_cache.generation || text_cache.ids[slot] != node.typ {
-				text_cache.ids[slot] = node.typ
+				// The verdict only depends on the spelling: a slot that still holds
+				// this spelling from an earlier file or module keeps it, and only
+				// the candidate is listed again for the new context.
+				if text_cache.ids[slot] != node.typ {
+					text_cache.ids[slot] = node.typ
+					text_cache.verdicts[slot] = parallel_type_text_may_preseed(g, node.typ)
+				}
 				text_cache.gens[slot] = text_cache.generation
-				text_cache.verdicts[slot] = parallel_type_text_may_preseed(g, node.typ)
 				if text_cache.verdicts[slot] {
 					cands << FlatCgenPrepCandidate{ text: node.typ, item_idx: item_idx }
 				}
