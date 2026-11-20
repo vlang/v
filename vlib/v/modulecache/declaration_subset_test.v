@@ -103,6 +103,41 @@ fn test_a_header_with_nothing_to_drop_is_returned_whole() {
 	assert idx.subset('anything') == header
 }
 
+// A token paste makes a name that no identifier shows: `CALL(us, es)` calls `uses`. Nothing
+// is left out of a header that pastes, nor for a module whose code does.
+fn test_a_token_paste_keeps_the_whole_header_wherever_its_two_characters_are() {
+	protos := 'int uses(void);\nint other(void);\n'
+	call := 'int main(void) { return CALL(us, es); }'
+	// the control: without a paste the prototype that nothing names goes
+	plain := protos + '#define CALL(a, b) other()\n'
+	assert !new_declaration_index(plain).subset(call).contains('int uses(void);')
+	for where, define_call in {
+		'on the first line of the macro':                '#define CALL(a, b) a##b()'
+		'on a continued line of the macro':              '#define CALL(a, b) \\\n a ## b()'
+		'on the third line of the macro':                '#define CALL(a, b) \\\n a \\\n ## b()'
+		'split by a line splice':                        '#define CALL(a, b) a #\\\n# b()'
+		'split by a line splice with a space before it': '#define CALL(a, b) a #\\ \n# b()'
+		'spelled with digraphs':                         '%:define CALL(a, b) a %:%: b()'
+		'in a directive that follows a comment':         '/* c */ #define CALL(a, b) \\\n a ## b()'
+	} {
+		header := protos + define_call + '\n'
+		assert new_declaration_index(header).subset(call) == header, 'a paste ${where} in the header'
+		// and the same macro in the code of the module
+		assert new_declaration_index(protos).subset(define_call + '\n' + call) == protos, 'a paste ${where} in the code'
+	}
+}
+
+fn test_has_token_paste_reads_a_paste_and_nothing_else() {
+	for text in ['a ## b', 'a##b', 'a %:%: b', 'a #\\\n# b', 'a #\\\r\n# b', 'a #\\ \t\n# b', 'a #\\',
+		'a #\\  ', 'a %\\\n:%: b', '#\\\n\\\n#'] {
+		assert has_token_paste(text), text
+	}
+	for text in ['', '#define A 1', '#define S(x) #x', 'a # b', 'a #\\\n b', 'a #\\b#', 'a % b : c',
+		'100 % 3', '#include <a.h>\n#include <b.h>', '#if A\n#endif'] {
+		assert !has_token_paste(text), text
+	}
+}
+
 fn test_unreferenced_string_literal_definitions_are_left_out_with_their_continuation_lines() {
 	header := 'static string _v3_lit_1 = {"one", 3};
 static string _v3_lit_2 = {"a long literal "
