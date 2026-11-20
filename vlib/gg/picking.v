@@ -26,8 +26,8 @@ pub fn screen_to_world_ray(x f32, y f32, cam Camera3D, width f32, height f32) Ra
 		return Ray{ origin: cam.position, direction: Vec3{0, 0, -1} }
 	}
 	forward := (cam.target - cam.position).normalized()
-	right := forward.cross(cam.up).normalized()
-	cam_up := right.cross(forward)
+	right := camera_right(forward, cam.up)
+	cam_up := right.cross(forward).normalized()
 	ndc_x := 2.0 * x / width - 1.0
 	ndc_y := 1.0 - 2.0 * y / height
 	aspect := width / height

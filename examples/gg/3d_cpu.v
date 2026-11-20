@@ -23,6 +23,6 @@ fn main() {
 	mat.color = gg.blue
 	ctx.draw_material_mesh(&mesh, gg.Vec3{1.2, 0, 0}, gg.Vec3{0, -15, 0}, 1.0, &mat, cam)
 	frame := ctx.render_cpu_3d(160, 120, gg.rgb(20, 24, 32), cam)
-	frame.save_ppm('gg_cpu_3d.ppm')
+	frame.save_ppm('gg_cpu_3d.ppm') or { panic(err.msg()) }
 	println('wrote gg_cpu_3d.ppm ${frame.width}x${frame.height}, depth samples=${frame.depth.len}')
 }

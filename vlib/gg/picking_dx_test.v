@@ -34,4 +34,11 @@ fn test_world_to_screen_centre() {
 	sp := gg.world_to_screen(gg.Vec3{}, cam, 800, 600)
 	assert math.abs(sp.x - 400) < 1
 	assert math.abs(sp.y - 300) < 1
+	assert sp.visible
+}
+
+fn test_world_to_screen_rejects_points_behind_camera() {
+	cam := gg.Camera3D{ position: gg.Vec3{}, target: gg.Vec3{0, 0, -1} }
+	sp := gg.world_to_screen(gg.Vec3{0, 0, 5}, cam, 800, 600)
+	assert !sp.visible
 }

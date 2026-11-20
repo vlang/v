@@ -183,7 +183,14 @@ pub fn gen_mesh_cylinder(start Vec3, end Vec3, radius f32, slices int) Mesh3D {
 		}
 	}
 	mut normals := []Vec3{cap: verts.len}
-	for v in verts {
+	for i, v in verts {
+		// Each slice emits 6 side vertices, 3 start-cap vertices (normal
+		// -axis) and 3 end-cap vertices (normal +axis).
+		part := i % 12
+		if verts.len == slices * 12 && part >= 6 {
+			normals << if part <= 8 { axis.scale(-1) } else { axis }
+			continue
+		}
 		// Work relative to the axis origin: subtracting the axial component
 		// from the absolute position makes normals change under translation.
 		d := v - start

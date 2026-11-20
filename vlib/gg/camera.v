@@ -144,9 +144,24 @@ pub fn (cam Camera3D) forward() Vec3 {
 	return (cam.target - cam.position).normalized()
 }
 
+// camera_right returns a unit vector perpendicular to fwd, using up when it
+// is not parallel to fwd and a fixed axis otherwise. Without the fallback a
+// top-down camera (forward parallel to up) gets a zero right vector.
+fn camera_right(fwd Vec3, up Vec3) Vec3 {
+	mut right := fwd.cross(up)
+	if right.dot(right) < 1e-8 {
+		mut alt := Vec3{1, 0, 0}
+		if math.abs(fwd.x) > 0.9 {
+			alt = Vec3{0, 0, 1}
+		}
+		right = fwd.cross(alt)
+	}
+	return right.normalized()
+}
+
 // right returns the normalized right-hand direction of the camera.
 pub fn (cam Camera3D) right() Vec3 {
-	return cam.forward().cross(cam.up).normalized()
+	return camera_right(cam.forward(), cam.up)
 }
 
 // move_forward translates the camera along its view direction.

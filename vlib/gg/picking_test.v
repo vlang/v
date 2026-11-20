@@ -56,3 +56,12 @@ fn test_screen_ray_points_at_screen_centre() {
 	hit := gg.ray_sphere(ray, gg.Vec3{0, 0, 0}, 1.0)
 	assert hit.hit
 }
+
+fn test_screen_to_world_ray_with_vertical_camera() {
+	cam := gg.Camera3D{ position: gg.Vec3{0, 5, 0}, target: gg.Vec3{0, 0, 0} }
+	left := gg.screen_to_world_ray(10, 50, cam, 100, 100)
+	right := gg.screen_to_world_ray(90, 50, cam, 100, 100)
+	// With forward parallel to up, a missing right-vector fallback made both
+	// rays identical. Different pixels must now produce different directions.
+	assert math.abs(left.direction.z - right.direction.z) > 1e-3
+}

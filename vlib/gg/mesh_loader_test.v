@@ -124,3 +124,34 @@ fn test_load_mesh_gltf_position_only_non_indexed() {
 	assert mesh.normals.len == 0
 	assert mesh.uvs.len == 0
 }
+
+fn test_load_mesh_obj_rejects_malformed_numbers() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	path := os.join_path(dir, 'bad.obj')
+	os.write_file(path, 'v 1x 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n')!
+	mesh := load_mesh_obj(path) or {
+		assert err.msg().contains('invalid OBJ vertex coordinates')
+		return
+	}
+	assert false
+	_ = mesh
+}
+
+fn test_load_mesh_gltf_rejects_negative_accessor_offset() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	uri := base64.encode([u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+	json_text := '{"buffers":[{"uri":"data:application/octet-stream;base64,${uri}","byteLength":12}],' +
+		'"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":12}],' +
+		'"accessors":[{"bufferView":0,"byteOffset":-1,"componentType":5126,"count":1,"type":"VEC3"}],' +
+		'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}'
+	path := os.join_path(dir, 'bad.gltf')
+	os.write_file(path, json_text)!
+	meshes := load_mesh_gltf(path) or {
+		assert err.msg().contains('negative byte offset')
+		return
+	}
+	assert false
+	_ = meshes
+}

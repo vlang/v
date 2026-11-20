@@ -48,6 +48,20 @@ fn test_wire_generators_are_valid() {
 	assert cylinder.indices.len > 0
 }
 
+fn test_cylinder_cap_normals_point_along_axis() {
+	mesh := gen_mesh_cylinder(Vec3{0, 0, 0}, Vec3{0, 10, 0}, 1, 8)
+	assert mesh.normals.len == mesh.vertices.len
+	for j in 0 .. 8 {
+		base := j * 12
+		for k in base + 6 .. base + 9 {
+			assert math.abs(mesh.normals[k].y + 1) < 1e-5
+		}
+		for k in base + 9 .. base + 12 {
+			assert math.abs(mesh.normals[k].y - 1) < 1e-5
+		}
+	}
+}
+
 fn test_rotate_3d_turns_90_degrees() {
 	v := rotate_3d(Vec3{1, 0, 0}, Vec3{0, 90, 0})
 	assert math.abs(v.x) < 1e-4

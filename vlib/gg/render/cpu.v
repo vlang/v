@@ -472,7 +472,9 @@ fn draw_point(mut frame Frame, st &State, _cmd Command, uni Uniform, vp Viewport
 	}
 }
 
-pub fn (f Frame) save_ppm(path string) {
+// save_ppm writes the frame as a binary P6 PPM file, returning an error when
+// the file cannot be written.
+pub fn (f Frame) save_ppm(path string) ! {
 	mut data := []u8{cap: 64 + f.width * f.height * 3}
 	header := 'P6\n${f.width} ${f.height}\n255\n'
 	for c in header {
@@ -483,5 +485,5 @@ pub fn (f Frame) save_ppm(path string) {
 		data << u8((p >> 8) & 0xff)
 		data << u8((p >> 16) & 0xff)
 	}
-	os.write_file(path, data.bytestr()) or {}
+	os.write_file(path, data.bytestr())!
 }

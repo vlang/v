@@ -13,9 +13,71 @@ struct ObjIndex {
 	normal   int
 }
 
+// is_integer_token rejects V's lenient int() behaviour, which accepts a
+// numeric prefix and trailing garbage ("12x" -> 12, "abc" -> 0).
+fn is_integer_token(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	mut i := 0
+	if s[0] == 45 || s[0] == 43 { // '-' or '+'
+		i = 1
+	}
+	if i >= s.len {
+		return false
+	}
+	for i < s.len {
+		c := s[i]
+		if c < 48 || c > 57 { // '0'..'9'
+			return false
+		}
+		i++
+	}
+	return true
+}
+
+// is_float_token guards .f32() against the same lenient prefix parsing.
+fn is_float_token(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	mut i := 0
+	if s[0] == 45 || s[0] == 43 {
+		i = 1
+	}
+	mut digits := 0
+	mut dot := false
+	mut exp := false
+	for i < s.len {
+		c := s[i]
+		if c >= 48 && c <= 57 {
+			digits++
+			i++
+		} else if c == 46 && !dot && !exp { // '.'
+			dot = true
+			i++
+		} else if (c == 101 || c == 69) && !exp && digits > 0 { // 'e' or 'E'
+			exp = true
+			i++
+			if i < s.len && (s[i] == 45 || s[i] == 43) {
+				i++
+			}
+			if i >= s.len {
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+	return digits > 0
+}
+
 fn obj_index(raw string, count int) !int {
 	if raw == '' {
 		return -1
+	}
+	if !is_integer_token(raw) {
+		return error('gg: invalid OBJ face index "${raw}"')
 	}
 	value := raw.int()
 	if value > 0 {
@@ -50,17 +112,26 @@ pub fn load_mesh_obj(path string) !Mesh3D {
 				if parts.len < 4 {
 					continue
 				}
+				if !is_float_token(parts[1]) || !is_float_token(parts[2]) || !is_float_token(parts[3]) {
+					return error('gg: invalid OBJ vertex coordinates')
+				}
 				positions << Vec3{parts[1].f32(), parts[2].f32(), parts[3].f32()}
 			}
 			'vn' {
 				if parts.len < 4 {
 					continue
 				}
+				if !is_float_token(parts[1]) || !is_float_token(parts[2]) || !is_float_token(parts[3]) {
+					return error('gg: invalid OBJ normal components')
+				}
 				normals << Vec3{parts[1].f32(), parts[2].f32(), parts[3].f32()}
 			}
 			'vt' {
 				if parts.len < 3 {
 					continue
+				}
+				if !is_float_token(parts[1]) || !is_float_token(parts[2]) {
+					return error('gg: invalid OBJ UV coordinates')
 				}
 				uvs << parts[1].f32()
 				uvs << parts[2].f32()
@@ -173,10 +244,24 @@ fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, int, int) {
 		return error('gg: glTF accessor index out of range')
 	}
 	acc := doc.accessors[accessor_index]
+	if acc.count < 0 {
+		return error('gg: glTF accessor has a negative count')
+	}
 	if acc.buffer_view < 0 || acc.buffer_view >= doc.buffer_views.len {
 		return error('gg: glTF bufferView index out of range')
 	}
 	view := doc.buffer_views[acc.buffer_view]
+	if view.buffer < 0 || view.buffer >= doc.buffers.len {
+		return error('gg: glTF buffer index out of range')
+	}
+	if view.byte_offset < 0 || acc.byte_offset < 0 || view.byte_stride < 0 {
+		return error('gg: glTF accessor has a negative byte offset or stride')
+	}
+	offset := view.byte_offset + acc.byte_offset
+	// byteLength is relative to the view's own byteOffset, not the buffer.
+	if view.byte_length > 0 && acc.byte_offset >= view.byte_length {
+		return error('gg: glTF accessor starts outside its bufferView')
+	}
 	components := match acc.typ {
 		'SCALAR' { 1 }
 		'VEC2' { 2 }
@@ -191,7 +276,7 @@ fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, int, int) {
 		else { return error('gg: unsupported glTF component type') }
 	}
 	stride := if view.byte_stride > 0 { view.byte_stride } else { components * component_size }
-	return view.buffer, view.byte_offset + acc.byte_offset, stride
+	return view.buffer, offset, stride
 }
 
 fn accessor_vec3(doc &GltfDoc, buffers [][]u8, index int) ![]Vec3 {
@@ -207,7 +292,7 @@ fn accessor_vec3(doc &GltfDoc, buffers [][]u8, index int) ![]Vec3 {
 	mut out := []Vec3{cap: acc.count}
 	for i in 0 .. acc.count {
 		at := offset + i * stride
-		if at + 12 > data.len {
+		if at < 0 || at + 12 > data.len {
 			return error('gg: glTF accessor data truncated')
 		}
 		out << Vec3{binary.little_endian_f32_at(data, at), binary.little_endian_f32_at(data, at + 4), binary.little_endian_f32_at(data, at + 8)}
@@ -221,11 +306,14 @@ fn accessor_uvs(doc &GltfDoc, buffers [][]u8, index int) ![]f32 {
 		return error('gg: glTF buffer missing')
 	}
 	acc := doc.accessors[index]
+	if acc.component_type != 5126 || acc.typ != 'VEC2' {
+		return error('gg: glTF TEXCOORD_0 accessor must use float VEC2 components')
+	}
 	data := buffers[buffer_index]
 	mut out := []f32{cap: acc.count * 2}
 	for i in 0 .. acc.count {
 		at := offset + i * stride
-		if at + 8 > data.len {
+		if at < 0 || at + 8 > data.len {
 			return error('gg: glTF accessor data truncated')
 		}
 		out << binary.little_endian_f32_at(data, at)
@@ -240,10 +328,16 @@ fn accessor_indices(doc &GltfDoc, buffers [][]u8, index int) ![]u32 {
 		return error('gg: glTF buffer missing')
 	}
 	acc := doc.accessors[index]
+	if acc.typ != 'SCALAR' {
+		return error('gg: glTF index accessor must be SCALAR')
+	}
 	data := buffers[buffer_index]
 	mut out := []u32{cap: acc.count}
 	for i in 0 .. acc.count {
 		at := offset + i * stride
+		if at < 0 {
+			return error('gg: glTF index data has a negative offset')
+		}
 		match acc.component_type {
 			5121 {
 				if at >= data.len {
@@ -340,17 +434,20 @@ pub fn load_mesh_glb(path string) ![]Mesh3D {
 	for pos + 8 <= data.len {
 		chunk_len := int(binary.little_endian_u32_at(data, pos))
 		chunk_type := binary.little_endian_u32_at(data, pos + 4)
-		chunk_start := pos + 8
-		if chunk_len < 0 || chunk_start + chunk_len > data.len {
+		chunk_start := i64(pos) + 8
+		chunk_end := chunk_start + i64(chunk_len)
+		if chunk_len < 0 || chunk_end > i64(data.len) {
 			return error('gg: truncated GLB chunk')
 		}
-		chunk := data[chunk_start..chunk_start + chunk_len]
+		start := int(chunk_start)
+		end := int(chunk_end)
+		chunk := data[start..end]
 		if chunk_type == u32(0x4e4f534a) {
 			json_bytes = chunk.clone()
 		} else if chunk_type == u32(0x004e4942) {
 			bin_bytes = chunk.clone()
 		}
-		pos = chunk_start + chunk_len
+		pos = end
 	}
 	if json_bytes.len == 0 {
 		return error('gg: GLB has no JSON chunk')

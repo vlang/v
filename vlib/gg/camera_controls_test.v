@@ -22,11 +22,15 @@ fn test_orbit_tracks_state() {
 fn test_orbit_clamps_pitch_and_distance() {
 	mut cam := gg.Camera3D{}
 	cam.orbit(0, 0, 1)
-	cam.orbit_by(0, -2000, -2000)
-	assert cam.pitch <= 89
+	// pitch += dy*0.3, distance -= zoom: both deltas push past their limits.
+	cam.orbit_by(0, -2000, 2000)
+	assert close(cam.pitch, -89)
+	assert cam.pitch >= -89
+	assert close(cam.distance, 0.1)
 	assert cam.distance >= 0.1
 	cam.orbit_by(0, 2000, 0)
-	assert cam.pitch >= -89
+	assert close(cam.pitch, 89)
+	assert cam.pitch <= 89
 }
 
 fn test_move_forward_preserves_view_direction() {

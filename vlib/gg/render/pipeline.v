@@ -116,7 +116,9 @@ pub fn (ctx &Context) load_default_pipeline() {
 // It reloads the current pipeline slot, so call it before recording geometry.
 pub fn (ctx &Context) set_depth_test(enabled bool) {
 	mut st := ctx.st
-	st.depth_test = enabled
+	// Without a depth pipeline (Desc.depth_test == false) there is nothing
+	// valid to select; stay on the 2D pipeline instead of loading id 0.
+	st.depth_test = enabled && st.depth_pip.pips[0].id != 0
 	ctx.load_default_pipeline()
 }
 

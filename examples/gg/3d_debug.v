@@ -18,5 +18,5 @@ fn main() {
 	ctx.draw_model(&model, cam)
 	ctx.draw_aabb(gg.Vec3{0, 1, 0}, gg.Vec3{2, 2, 2}, gg.yellow)
 	frame := ctx.render_cpu_3d(160, 120, gg.black, cam)
-	frame.save_ppm('gg_debug_3d.ppm')
+	frame.save_ppm('gg_debug_3d.ppm') or { panic(err.msg()) }
 }

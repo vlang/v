@@ -6,9 +6,9 @@ import gg.m4
 import gg.render
 
 // mat4_from_m4 converts m4.Mat4 into the matrix type used by gg/render.
-// m4 applies matrices to row vectors with mul_vec(), while gg/render applies
-// them to column vectors; the columns of the render matrix are therefore the
-// images of the m4 basis vectors.
+// Both use column vectors: m4.mul_vec computes M*v (row-major storage), and
+// gg/render stores the same matrix column-major. Copying basis-vector images
+// into render columns is therefore a storage-order change, not a transpose.
 pub fn mat4_from_m4(src m4.Mat4) render.Mat4 {
 	mut m := render.mat4_identity()
 	for col in 0 .. 4 {

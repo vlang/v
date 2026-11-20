@@ -319,7 +319,7 @@ pub mut:
 	has_started bool
 	// Stable ids for images used by the headless CPU renderer. GPU image ids
 	// are all zero there, so they cannot key the CPU rasterizer's cache.
-	cpu_image_ids  map[voidptr]int
+	cpu_image_ids  map[string]int
 	cpu_image_next int = 1
 	// Camera stored by set_camera(), used by begin_3d() and all 3D helpers
 	// that need a view direction (fog, billboards, picking).
@@ -1011,11 +1011,19 @@ fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchai
 		}
 	}
 	if ctx.config.depth {
-		// Clear depth to the far plane each frame so nearer 3D fragments win.
-		action.depth = gfx.DepthAttachmentAction{
-			load_action:  .clear
-			store_action: .dontcare
-			clear_value:  1.0
+		// A clearing pass starts from the far plane; a passthru pass preserves
+		// both colour and depth so later passes can still occlude correctly.
+		action.depth = if options.how == .passthru {
+			gfx.DepthAttachmentAction{
+				load_action:  .load
+				store_action: .store
+			}
+		} else {
+			gfx.DepthAttachmentAction{
+				load_action:  .clear
+				store_action: .dontcare
+				clear_value:  1.0
+			}
 		}
 	}
 	ctx.frame_pass = gfx.Pass{ action: action, swapchain: swapchain }

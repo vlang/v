@@ -135,10 +135,12 @@ pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f
 }
 
 // register_cpu_image copies an image's pixels into the CPU rasterizer once
-// and returns a stable id. Headless images have no sokol handle, so the image
-// pointer is used as the identity instead of img.simg.id (which is always 0).
+// and returns a stable id. Headless images have no sokol handle, so identity
+// is the image pointer plus its buffer signature; replacing or resizing the
+// pixel buffer selects a new id instead of reusing stale pixels.
 fn register_cpu_image(ctx &Context, img &Image) int {
-	key := voidptr(img)
+	channels := if img.nr_channels > 0 && img.nr_channels <= 4 { img.nr_channels } else { 4 }
+	key := '${voidptr(img)}|${voidptr(img.data)}|${img.width}|${img.height}|${channels}'
 	if id := ctx.cpu_image_ids[key] {
 		return id
 	}
@@ -148,7 +150,7 @@ fn register_cpu_image(ctx &Context, img &Image) int {
 	ctx_mut.cpu_image_ids[key] = id
 	if img.data != unsafe { nil } && img.width > 0 && img.height > 0 {
 		filter := if img.texture_filter == .linear { 1 } else { 0 }
-		ctx.r.register_image(id, img.data, img.width, img.height, 4, filter)
+		ctx.r.register_image(id, img.data, img.width, img.height, channels, filter)
 	}
 	return id
 }

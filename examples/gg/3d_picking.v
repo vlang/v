@@ -27,6 +27,8 @@ fn main() {
 		frame_fn:     frame
 		user_data:    app
 	)
+	// Events can arrive before the first frame callback; store the camera now.
+	app.gg.set_camera(app.cam)
 	app.gg.run()
 }
 
@@ -44,8 +46,8 @@ fn frame(data voidptr) {
 	ctx.set_camera(app.cam)
 	ctx.begin_3d() or { panic(err.msg()) }
 	ctx.debug_mode3d(true, true)
-	for i, c in app.colliders {
-		color := if i == app.picked { gg.yellow } else { gg.blue }
+	for c in app.colliders {
+		color := if c.id == app.picked { gg.yellow } else { gg.blue }
 		ctx.draw_cube(c.center, c.size, color)
 	}
 	ctx.end_3d()

@@ -23,15 +23,17 @@ pub fn (ctx &Context) pick_at(e &Event, colliders []Collider) ?int {
 }
 
 // ScreenPoint is a position in framebuffer pixels, y growing downward.
+// visible is false when the point is behind the camera or the viewport is empty.
 pub struct ScreenPoint {
 pub:
-	x f32
-	y f32
+	x       f32
+	y       f32
+	visible bool
 }
 
 // world_to_screen projects a world-space point into screen pixels.
 pub fn world_to_screen(p Vec3, cam Camera3D, width int, height int) ScreenPoint {
-	if height <= 0 {
+	if width <= 0 || height <= 0 {
 		return ScreenPoint{}
 	}
 	aspect := f32(width) / f32(height)
@@ -40,12 +42,15 @@ pub fn world_to_screen(p Vec3, cam Camera3D, width int, height int) ScreenPoint 
 	x := a[0] * p.x + a[4] * p.y + a[8] * p.z + a[12]
 	y := a[1] * p.x + a[5] * p.y + a[9] * p.z + a[13]
 	w := a[3] * p.x + a[7] * p.y + a[11] * p.z + a[15]
-	if w == 0 {
+	// A non-positive w means the point is on or behind the camera plane;
+	// projecting it would mirror it into the framebuffer.
+	if w <= 0 {
 		return ScreenPoint{}
 	}
 	return ScreenPoint{
-		x: (x / w + 1) * 0.5 * f32(width)
-		y: (1 - y / w) * 0.5 * f32(height)
+		x:       (x / w + 1) * 0.5 * f32(width)
+		y:       (1 - y / w) * 0.5 * f32(height)
+		visible: true
 	}
 }
 
@@ -55,5 +60,8 @@ pub fn world_to_screen(p Vec3, cam Camera3D, width int, height int) ScreenPoint 
 pub fn (ctx &Context) draw_text_3d(text string, pos Vec3, cam Camera3D, cfg TextCfg) {
 	w, h := ctx.view_size()
 	sp := world_to_screen(pos, cam, w, h)
+	if !sp.visible {
+		return
+	}
 	ctx.draw_text(int(sp.x), int(sp.y), text, cfg)
 }
