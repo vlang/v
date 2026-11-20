@@ -522,10 +522,13 @@ pub fn skew_mean_stddev[T](data []T, mean T, sd T) T {
 	return total
 }
 
-// quantile calculates quantile points
-// for more reference
-// https://en.wikipedia.org/wiki/Quantile
+// quantile calculates the quantile at fraction f in ascending sorted data.
+// The fraction must be in [0, 1]. For a valid fraction, empty data returns T(0).
+// See https://en.wikipedia.org/wiki/Quantile.
 pub fn quantile[T](sorted_data []T, f T) !T {
+	if !(f >= T(0) && f <= T(1)) {
+		return error('index out of range')
+	}
 	if sorted_data.len == 0 {
 		return T(0)
 	}
