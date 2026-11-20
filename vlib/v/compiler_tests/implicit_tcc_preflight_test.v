@@ -139,7 +139,21 @@ fn with_implicit_tcc_environment(check fn () !) {
 }
 
 fn pipeline_stage_count(output string, stage string) int {
-	return output.split_into_lines().filter(it.trim_space().starts_with('${stage} ')).len
+	// Command output combines stdout and stderr. A diagnostic may interrupt
+	// the benchmark line before its stage name, so do not require the line
+	// to start with the stage name.
+	marker := '  ${stage} '
+	return output.split_into_lines().filter(it.contains(marker) && it.contains(' ms')).len
+}
+
+fn test_pipeline_stage_count_handles_interleaved_output() {
+	normal := '  transform               62.10 ms\n  monomorphize            21.68 ms'
+	interleaved := '  [leakcheck] tf scope 0  transform               62.10 ms'
+	assert pipeline_stage_count(normal, 'transform') == 1
+	assert pipeline_stage_count(normal, 'monomorphize') == 1
+	assert pipeline_stage_count(interleaved, 'transform') == 1
+	assert pipeline_stage_count(normal + '\n' + interleaved, 'transform') == 2
+	assert pipeline_stage_count('  transforming            62.10 ms', 'transform') == 0
 }
 
 fn check_implicit_tcc_preflight_selects_platform_before_transform() ! {
