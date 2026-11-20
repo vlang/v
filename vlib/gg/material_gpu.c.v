@@ -10,19 +10,35 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 	if !mesh.valid() || !ctx.config.depth {
 		return
 	}
+	basis := rotation_basis(rotation)
+	mut shade := *mat
+	if l := shade.light {
+		mut normalized := l
+		normalized.direction = normalized.direction.normalized()
+		shade.light = normalized
+	}
+	// Transform and shade each unique vertex once, then expand the indices.
+	// Indexed meshes reuse vertices up to six times, so this removes most of
+	// the per-fragment setup work on the CPU path and the per-vertex work on
+	// the GPU path.
+	mut world_verts := []Vec3{len: mesh.vertices.len}
+	mut vertex_colors := []Color{len: mesh.vertices.len}
+	for i, local in mesh.vertices {
+		v := apply_basis(local, basis).scale(size)
+		world := Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
+		mut n := Vec3{0, 1, 0}
+		if mesh.normals.len == mesh.vertices.len {
+			n = apply_basis(mesh.normals[i], basis)
+		}
+		world_verts[i] = world
+		vertex_colors[i] = material_color(&shade, world, n, cam)
+	}
 	mut verts := []Vec3{cap: mesh.indices.len}
 	mut colors := []Color{cap: mesh.indices.len}
 	mut uvs := []f32{cap: mesh.indices.len * 2}
 	for index in mesh.indices {
-		local := mesh.vertices[index]
-		v := rotate_3d(local, rotation).scale(size)
-		world := Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
-		mut n := Vec3{0, 1, 0}
-		if mesh.normals.len == mesh.vertices.len {
-			n = rotate_3d(mesh.normals[index], rotation).normalized()
-		}
-		verts << world
-		colors << material_color(mat, world, n, cam)
+		verts << world_verts[index]
+		colors << vertex_colors[index]
 		if mesh.uvs.len == mesh.vertices.len * 2 {
 			uvs << mesh.uvs[index * 2]
 			uvs << mesh.uvs[index * 2 + 1]

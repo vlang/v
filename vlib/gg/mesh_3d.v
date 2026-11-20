@@ -172,6 +172,33 @@ pub fn gen_mesh_cylinder(start Vec3, end Vec3, radius f32, slices int) Mesh3D {
 	return Mesh3D{ vertices: verts, normals: normals, indices: indices }
 }
 
+// RotationBasis holds the images of the three unit axes under a rotation.
+// Computing it once per draw avoids evaluating sin/cos for every vertex.
+pub struct RotationBasis {
+pub mut:
+	x Vec3
+	y Vec3
+	z Vec3
+}
+
+// rotation_basis builds a reusable basis for rot (degrees around each axis).
+pub fn rotation_basis(rot Vec3) RotationBasis {
+	return RotationBasis{
+		x: rotate_3d(Vec3{1, 0, 0}, rot)
+		y: rotate_3d(Vec3{0, 1, 0}, rot)
+		z: rotate_3d(Vec3{0, 0, 1}, rot)
+	}
+}
+
+// apply_basis rotates v using a precomputed basis.
+pub fn apply_basis(v Vec3, basis RotationBasis) Vec3 {
+	return Vec3{
+		x: basis.x.x * v.x + basis.y.x * v.y + basis.z.x * v.z
+		y: basis.x.y * v.x + basis.y.y * v.y + basis.z.y * v.z
+		z: basis.x.z * v.x + basis.y.z * v.y + basis.z.z * v.z
+	}
+}
+
 fn rotate_3d(v Vec3, rot Vec3) Vec3 {
 	pi := f32(math.pi)
 	rx := rot.x * pi / 180.0

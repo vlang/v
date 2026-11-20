@@ -8,10 +8,15 @@ pub fn (ctx &Context) draw_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, size f32,
 	if !mesh.valid() {
 		return
 	}
+	basis := rotation_basis(rotation)
+	mut world := []Vec3{len: mesh.vertices.len}
+	for i, local in mesh.vertices {
+		v := apply_basis(local, basis).scale(size)
+		world[i] = Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
+	}
 	mut verts := []Vec3{cap: mesh.indices.len}
 	for index in mesh.indices {
-		v := rotate_3d(mesh.vertices[index], rotation).scale(size)
-		verts << Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
+		verts << world[index]
 	}
 	emit_triangles(ctx, verts, color)
 }
@@ -64,9 +69,10 @@ pub fn (ctx &Context) draw_mesh_wires(mesh &Mesh3D, pos Vec3, rotation Vec3, siz
 		return
 	}
 	edges := mesh_edges(mesh)
+	basis := rotation_basis(rotation)
 	ctx.r.begin_lines()
 	for index in edges {
-		v := rotate_3d(mesh.vertices[index], rotation).scale(size)
+		v := apply_basis(mesh.vertices[index], basis).scale(size)
 		ctx.r.v3f_c4b(pos.x + v.x, pos.y + v.y, pos.z + v.z, color.r, color.g, color.b, color.a)
 	}
 	ctx.r.end()

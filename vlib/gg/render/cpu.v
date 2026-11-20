@@ -245,6 +245,10 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 	if !q0.valid || !q1.valid || !q2.valid {
 		return
 	}
+	use_depth := frame.depth.len == frame.width * frame.height
+	iw0 := 1.0 / q0.w
+	iw1 := 1.0 / q1.w
+	iw2 := 1.0 / q2.w
 	p0x, p0y := q0.x, q0.y
 	p1x, p1y := q1.x, q1.y
 	p2x, p2y := q2.x, q2.y
@@ -292,13 +296,16 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 
 			mut u := v0.u * bw0 + v1.u * bw1 + v2.u * bw2
 			mut vv := v0.v * bw0 + v1.v * bw1 + v2.v * bw2
-			use_depth := frame.depth.len == frame.width * frame.height
 			if use_depth {
-				inv_w := bw0 / q0.w + bw1 / q1.w + bw2 / q2.w
+				// Precomputed reciprocal w avoids six divisions per fragment.
+				iw0w := bw0 * iw0
+				iw1w := bw1 * iw1
+				iw2w := bw2 * iw2
+				inv_w := iw0w + iw1w + iw2w
 				if inv_w <= 0 {
 					continue
 				}
-				z := (bw0 * q0.z / q0.w + bw1 * q1.z / q1.w + bw2 * q2.z / q2.w) / inv_w
+				z := (iw0w * q0.z + iw1w * q1.z + iw2w * q2.z) / inv_w
 				if z < -1.0 || z > 1.0 {
 					continue
 				}
@@ -308,8 +315,8 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 				}
 				frame.depth[di] = z
 				// Perspective-correct texture coordinates.
-				u = (bw0 * v0.u / q0.w + bw1 * v1.u / q1.w + bw2 * v2.u / q2.w) / inv_w
-				vv = (bw0 * v0.v / q0.w + bw1 * v1.v / q1.w + bw2 * v2.v / q2.w) / inv_w
+				u = (iw0w * v0.u + iw1w * v1.u + iw2w * v2.u) / inv_w
+				vv = (iw0w * v0.v + iw1w * v1.v + iw2w * v2.v) / inv_w
 			}
 
 			c0 := v0.rgba
