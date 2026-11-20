@@ -5422,25 +5422,62 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 }
 
 fn enqueue_function_value_selectors_with_entry_main(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
-	for file_idx in 0 .. a.nodes.len {
-		// Only file nodes matter; read the others in place instead of copying them.
-		file_node := unsafe { &a.nodes[file_idx] }
-		if file_node.kind != .file {
+	// The parser's index lists the file nodes it made, the only ones with
+	// children. It replaces the scan of every node up to the last of them when
+	// it names them in the order that scan finds them; later stages append theirs.
+	mut scan_start := 0
+	if markused_file_index_is_ascending(a) {
+		for file_idx in a.file_node_ids {
+			enqueue_function_value_selectors_in_file(a, collector, fn_decls, int(file_idx), mut
+				used, mut queue)
+		}
+		scan_start = int(a.file_node_ids.last()) + 1
+	}
+	for file_idx in scan_start .. a.nodes.len {
+		enqueue_function_value_selectors_in_file(a, collector, fn_decls, file_idx, mut used, mut
+			queue)
+	}
+}
+
+// enqueue_function_value_selectors_in_file roots the function values that the
+// declarations of the file node `file_idx` name outside function bodies. Any
+// other node is ignored.
+@[direct_array_access]
+fn enqueue_function_value_selectors_in_file(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, file_idx int, mut used map[string]bool, mut queue []string) {
+	// Only file nodes matter; read the others in place instead of copying them.
+	file_node := unsafe { &a.nodes[file_idx] }
+	if file_node.kind != .file {
+		return
+	}
+	for i in 0 .. file_node.children_count {
+		child_id := a.child(file_node, i)
+		child := a.node(child_id)
+		if child.kind == .fn_decl {
 			continue
 		}
-		for i in 0 .. file_node.children_count {
-			child_id := a.child(file_node, i)
-			child := a.node(child_id)
-			if child.kind == .fn_decl {
-				continue
-			}
-			if file_idx >= a.user_code_start && int(child_id) >= a.user_code_start
-				&& markused_is_top_level_stmt(child) {
-				continue
-			}
-			enqueue_function_value_selectors_in_node(a, collector, fn_decls, child_id, mut used, mut queue)
+		if file_idx >= a.user_code_start && int(child_id) >= a.user_code_start
+			&& markused_is_top_level_stmt(child) {
+			continue
 		}
+		enqueue_function_value_selectors_in_node(a, collector, fn_decls, child_id, mut used, mut queue)
 	}
+}
+
+// markused_file_index_is_ascending reports whether a.file_node_ids is complete
+// and lists valid node indexes in strictly increasing order.
+@[direct_array_access]
+fn markused_file_index_is_ascending(a &flat.FlatAst) bool {
+	if a.file_node_ids.len == 0 || a.file_index_incomplete {
+		return false
+	}
+	mut previous := -1
+	for id in a.file_node_ids {
+		if int(id) <= previous || int(id) >= a.nodes.len {
+			return false
+		}
+		previous = int(id)
+	}
+	return true
 }
 
 fn enqueue_function_value_selectors_in_node(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, id flat.NodeId, mut used map[string]bool, mut queue []string) {
