@@ -24661,6 +24661,9 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	if insertions.len == 0 {
 		return
 	}
+	if insert_synthetic_imports_pooled(mut a, insertions) {
+		return
+	}
 	old_len := a.nodes.len
 	mut imports := []flat.Node{cap: insertions.len}
 	for insertion in insertions {
@@ -24717,6 +24720,189 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		a.children[k] = flat.NodeId(cid + shift)
 	}
 	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+}
+
+// synthetic_splice_min_nodes is the size of the moved tail of the tree from
+// which the worker pool splices synthetic imports in: an import that a module of
+// a large wave raises moves every node parsed after that module.
+const synthetic_splice_min_nodes = 262144
+
+// SyntheticSpliceArgs is one task of insert_synthetic_imports_pooled.
+struct SyntheticSpliceArgs {
+	a          voidptr // &flat.FlatAst
+	insertions voidptr // &[]SyntheticInsertion
+	// The nodes [move_start, move_end) go `shift` slots up, as far as they stay
+	// inside these bounds: the caller moves the last `shift` of them.
+	move_start int
+	move_end   int
+	shift      int
+	// The nodes [scan_start, scan_end), which nothing moves, to look through.
+	scan_start int
+	scan_end   int
+	// The entries [child_start, child_end) of the children to renumber.
+	child_start int
+	child_end   int
+	first_pos   int
+	last_pos    int
+mut:
+	// The `@attributes:` directives found, in node order: first those that
+	// nothing moved, then those of the moved nodes at their new places.
+	fixed_attrs []int
+	moved_attrs []int
+}
+
+@[direct_array_access]
+fn synthetic_splice_thread(arg voidptr) voidptr {
+	mut task := unsafe { &SyntheticSpliceArgs(arg) }
+	mut a := unsafe { &flat.FlatAst(task.a) }
+	insertions := unsafe { &[]SyntheticInsertion(task.insertions) }
+	moved := task.move_end - task.move_start - task.shift
+	if moved > 0 {
+		unsafe {
+			vmemmove(&a.nodes[task.move_start + task.shift], &a.nodes[task.move_start],
+				moved * int(sizeof(flat.Node)))
+		}
+		for i in task.move_start + task.shift .. task.move_end {
+			if a.nodes[i].kind == .directive && a.nodes[i].value.starts_with('@attributes:') {
+				task.moved_attrs << i
+			}
+		}
+	}
+	for i in task.scan_start .. task.scan_end {
+		if a.nodes[i].kind == .directive && a.nodes[i].value.starts_with('@attributes:') {
+			task.fixed_attrs << i
+		}
+	}
+	for k in task.child_start .. task.child_end {
+		cid := int(a.children[k])
+		if cid < 0 || cid < task.first_pos {
+			continue
+		}
+		shift := if cid >= task.last_pos {
+			insertions.len
+		} else {
+			synthetic_index_shift(*insertions, cid)
+		}
+		a.children[k] = flat.NodeId(cid + shift)
+	}
+	return unsafe { nil }
+}
+
+// insert_synthetic_imports_pooled is insert_synthetic_imports across the worker
+// pool, for imports whose splice moves a large tail of the tree; it returns
+// false, with the tree untouched, when the caller has to do it. The nodes behind
+// the last import move the same number of slots. Each task moves one stretch of
+// them inside the stretch's own bounds, so the tasks write disjoint nodes: the
+// last nodes of a stretch, which land in the next one, are saved here before the
+// tasks start and written when they are done. The tasks also renumber disjoint
+// ranges of the children and list the `@attributes:` directives, whose texts this
+// thread rewrites afterwards in node order, as the serial splice interns them.
+// A directive whose target does not move keeps its text.
+@[direct_array_access]
+fn insert_synthetic_imports_pooled(mut a flat.FlatAst, insertions []SyntheticInsertion) bool {
+	old_len := a.nodes.len
+	count := insertions.len
+	first_pos := insertions[0].pos
+	last_pos := insertions[count - 1].pos
+	if isnil(a.worker_pool) || a.worker_pool.size() == 0
+		|| old_len - last_pos < synthetic_splice_min_nodes {
+		return false
+	}
+	jobs := a.worker_pool.size() + 1
+	stretch := (old_len - last_pos) / jobs
+	if stretch <= count * 2 {
+		return false
+	}
+	mut imports := []flat.Node{cap: count}
+	for insertion in insertions {
+		imports << canonical_node_texts(mut a, insertion.node)
+	}
+	unsafe { a.nodes.grow_len(count) }
+	mut tasks_args := []SyntheticSpliceArgs{cap: jobs}
+	// Raw copies: pushing a node would clone its text away from the canonical one.
+	mut saved := []flat.Node{len: jobs * count}
+	for job in 0 .. jobs {
+		move_start := last_pos + stretch * job
+		move_end := if job + 1 == jobs { old_len } else { move_start + stretch }
+		unsafe {
+			vmemcpy(&saved[job * count], &a.nodes[move_end - count], count * int(sizeof(flat.Node)))
+		}
+		tasks_args << SyntheticSpliceArgs{
+			a:           voidptr(a)
+			insertions:  unsafe { voidptr(&insertions) }
+			move_start:  move_start
+			move_end:    move_end
+			shift:       count
+			scan_start:  int(i64(first_pos) * job / jobs)
+			scan_end:    int(i64(first_pos) * (job + 1) / jobs)
+			child_start: int(i64(a.children.len) * job / jobs)
+			child_end:   int(i64(a.children.len) * (job + 1) / jobs)
+			first_pos:   first_pos
+			last_pos:    last_pos
+		}
+	}
+	mut tasks := []workers.Task{cap: jobs}
+	for job in 0 .. jobs {
+		tasks << workers.Task{
+			run:        synthetic_splice_thread
+			arg:        unsafe { voidptr(&tasks_args[job]) }
+			force_sync: job == 0
+		}
+	}
+	a.worker_pool.run(tasks)
+	// The `@attributes:` directives, in node order: those before the first import,
+	// those between the imports, and those of each moved stretch and of its tail.
+	mut attrs := []int{cap: 4096}
+	for job in 0 .. jobs {
+		attrs << tasks_args[job].fixed_attrs
+	}
+	// The regions between the imports move as the serial splice moves them.
+	a.nodes[last_pos + count - 1] = imports[count - 1]
+	mut end := last_pos
+	for i := count - 2; i >= 0; i-- {
+		insertion := insertions[i]
+		if end > insertion.pos {
+			unsafe {
+				vmemmove(&a.nodes[insertion.pos + i + 1], &a.nodes[insertion.pos], int(end - insertion.pos) * int(sizeof(flat.Node)))
+			}
+		}
+		a.nodes[insertion.pos + i] = imports[i]
+		end = insertion.pos
+	}
+	for i in first_pos .. last_pos + count {
+		if a.nodes[i].kind == .directive && a.nodes[i].value.starts_with('@attributes:') {
+			attrs << i
+		}
+	}
+	for job in 0 .. jobs {
+		attrs << tasks_args[job].moved_attrs
+		move_end := tasks_args[job].move_end
+		unsafe {
+			vmemcpy(&a.nodes[move_end], &saved[job * count], count * int(sizeof(flat.Node)))
+		}
+		for idx in move_end .. move_end + count {
+			if a.nodes[idx].kind == .directive && a.nodes[idx].value.starts_with('@attributes:') {
+				attrs << idx
+			}
+		}
+	}
+	for i in attrs {
+		mut node := a.nodes[i]
+		target_idx := node.value['@attributes:'.len..].int()
+		if target_idx >= 0 && target_idx < old_len {
+			shift := synthetic_index_shift(insertions, target_idx)
+			if shift == 0 {
+				continue
+			}
+			node.value = '@attributes:${target_idx + shift}'
+			a.nodes[i] = canonical_node_texts(mut a, node)
+		}
+	}
+	for i, idx in a.file_node_ids {
+		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
+	}
+	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+	return true
 }
 
 // synthetic_index_shift returns how far an original node index moves after the
