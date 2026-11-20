@@ -162,11 +162,23 @@ fn unix_child_report_errno(prefix string) {
 // spawn has to be done by fork() instead. fork() copies the page tables of the parent, which
 // costs about 30 ms per spawn in a compiler process of 1 GB; posix_spawn shares the address
 // space until the child has called execve. A spawn that needs a work folder, or whose
-// executable cannot be resolved, or that posix_spawn refuses for any reason, is left to the
-// fork path, which has the established way of reporting those errors from the child.
+// executable cannot be resolved, or whose stdin is not a regular file, or that posix_spawn
+// refuses for any reason, is left to the fork path, which has the established way of
+// reporting those errors from the child.
 fn (p &Process) unix_try_posix_spawn(plan UnixSpawnPlan, pipeset [6]i32) int {
 	if p.work_folder != '' || plan.resolve_error.len > 0 {
 		return -1
+	}
+	if p.has_stdin_path {
+		// posix_spawn opens stdin as a file action, and its caller waits until the actions are
+		// done. The open of a FIFO waits for a writer, which may be this process after run()
+		// has returned, and the open of a device can wait as well. After fork() it is the child
+		// alone that waits. Only the open of a regular file, which cannot wait, is done here; a
+		// path that is replaced by a FIFO between this check and the spawn would wait again.
+		stdin_stat := stat(p.stdin_path) or { return -1 }
+		if stdin_stat.get_filetype() != .regular {
+			return -1
+		}
 	}
 	mut close_fds := [6]i32{}
 	mut n_close := 0
