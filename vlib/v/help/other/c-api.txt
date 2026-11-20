@@ -1,0 +1,27 @@
+c-api generates a C library release from the public API of a V module or
+package: a shared library plus a header, a Windows .def file, a pkg-config .pc
+file, a minimal C demo and a README.
+
+Usage:
+	v c-api <module-dir> -o <dir> [--lib-name <name>] [--version <v>]
+	v -c-api <module-dir> --c-api-dir <dir> -o <lib-file>
+
+Options:
+	-o, --out <dir>          Output directory (default: dist). A path ending in
+	                         .so/.dll/.dylib is treated as the library path.
+	--lib-name <name>        C library and symbol prefix (default: module name).
+	--import-path <path>     V import path for the package, when it differs from
+	                         the v.mod name (e.g. metif12.vtls).
+	--version <v>            Library version (default: 0.1.0).
+	--description <text>     Description used in the .pc file.
+	--no-submodules          Build only the module in the given directory.
+	--prod                   Production build; required when the package uses
+	                         $embed_file so embedded bytes are compiled in.
+	--no-build               Generate the source and release files only.
+	--keep-generated         Keep temporary generated sources/build tree.
+
+Every pub fn, pub method with a pointer receiver, pub const, pub struct and
+pub enum is exported. Use @[capi.CApiSkip], @[capi.CApiName('name')],
+@[capi.CApiExport] and @[capi.CApiErrno(N)] for manual control.
+
+See doc/c_api.md for the full type mapping and limitations.
