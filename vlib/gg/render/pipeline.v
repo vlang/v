@@ -108,7 +108,16 @@ pub fn (ctx &Context) load_pipeline(p Pipeline) {
 
 pub fn (ctx &Context) load_default_pipeline() {
 	mut st := ctx.st
-	st.pip_stack[st.pip_tos] = st.def_pip
+	st.pip_stack[st.pip_tos] = if st.depth_test { st.depth_pip } else { st.def_pip }
+}
+
+// set_depth_test selects whether subsequent drawing uses the depth-tested
+// default pipelines (with backface culling) or the 2D painter-order pipelines.
+// It reloads the current pipeline slot, so call it before recording geometry.
+pub fn (ctx &Context) set_depth_test(enabled bool) {
+	mut st := ctx.st
+	st.depth_test = enabled
+	ctx.load_default_pipeline()
 }
 
 pub fn (ctx &Context) push_pipeline() {

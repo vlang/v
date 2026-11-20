@@ -28,3 +28,17 @@ committing a graphics frame. It clears that context's vertices, commands, unifor
 ends any unfinished primitive, and resets the layer to zero. It preserves matrices and the
 selected color, texture and pipeline. Other contexts and the frame index are unchanged.
 Record the replacement geometry before starting its render pass.
+
+## CPU rendering
+
+`Context.render_cpu()` rasterizes the recorded commands into a `Frame` without a GPU;
+it uses painter-order compositing. `Context.render_cpu_depth()` adds a depth buffer
+with a per-pixel `LESS_EQUAL` test, near/far clipping and perspective-correct texture
+coordinates, so 3D geometry renders correctly in software. `Frame.depth` holds the
+depth value per pixel; `Frame.save_ppm()` writes the RGB pixels to a PPM file.
+
+Triangles with any vertex at or behind the near plane are skipped rather than clipped,
+and backfaces are not culled on the CPU (depth testing makes the nearest surface win).
+`Context.render_cpu_depth_with_mvp()` overrides the model-view-projection matrix stored
+in each recorded command, so the camera need not be active while geometry is recorded.
+Both CPU paths leave the command queue intact.

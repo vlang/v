@@ -8,6 +8,9 @@ pub mut:
 	width  int
 	height int
 	pixels []u32
+	// depth holds one float per pixel when rendered with render_cpu_depth().
+	// A value of 1.0 is the far plane; smaller values are nearer.
+	depth []f32
 }
 
 struct Viewport {
@@ -27,12 +30,34 @@ mut:
 	h int
 }
 
+// render_cpu rasterizes the recorded commands into a pixel buffer without a
+// GPU. It uses painter-order drawing, matching the 2D GPU pipeline.
 pub fn (ctx &Context) render_cpu(width int, height int, clear u32) Frame {
+	return ctx.render_cpu_impl(width, height, clear, false, 1.0, mat4_identity(), false)
+}
+
+// render_cpu_depth rasterizes with a depth buffer, so depth-tested 3D works
+// without a window or GPU. Triangles behind the camera are skipped.
+pub fn (ctx &Context) render_cpu_depth(width int, height int, clear u32, clear_depth f32) Frame {
+	return ctx.render_cpu_impl(width, height, clear, true, clear_depth, mat4_identity(), false)
+}
+
+// render_cpu_depth_with_mvp is like render_cpu_depth, but overrides every
+// command's model-view-projection matrix. This lets callers pass a 3D camera
+// that was not necessarily active while the commands were recorded.
+pub fn (ctx &Context) render_cpu_depth_with_mvp(width int, height int, clear u32, clear_depth f32, mvp Mat4) Frame {
+	return ctx.render_cpu_impl(width, height, clear, true, clear_depth, mvp, true)
+}
+
+fn (ctx &Context) render_cpu_impl(width int, height int, clear u32, with_depth bool, clear_depth f32, mvp_override Mat4, use_override bool) Frame {
 	mut st := ctx.st
 	mut frame := Frame{
 		width:  width
 		height: height
 		pixels: []u32{len: width * height, init: clear}
+	}
+	if with_depth {
+		frame.depth = []f32{len: width * height, init: clear_depth}
 	}
 	mut vp := Viewport{ x: 0, y: 0, w: width, h: height, origin_top_left: true }
 	mut sc := Scissor{ x: 0, y: 0, w: width, h: height }
@@ -53,7 +78,10 @@ pub fn (ctx &Context) render_cpu(width int, height int, clear u32) Frame {
 		} else if cmd.kind == .draw {
 			if cmd.num_vertices <= 0 { continue }
 			if cmd.uniform_index < 0 || cmd.uniform_index >= st.uniforms_count { continue }
-			uni := st.uniforms[cmd.uniform_index]
+			mut uni := st.uniforms[cmd.uniform_index]
+			if use_override {
+				uni.mvp = mvp_override
+			}
 			if cmd.primitive == .triangles {
 				mut i := 0
 				for i + 2 < cmd.num_vertices {
@@ -101,12 +129,22 @@ pub fn (ctx &Context) render_cpu(width int, height int, clear u32) Frame {
 	return frame
 }
 
-fn transform_vertex(v Vertex, mvp Mat4, vp Viewport) (f32, f32) {
+struct Proj {
+mut:
+	x     f32
+	y     f32
+	z     f32 // NDC depth, -1 near, 1 far
+	w     f32 // clip-space w, used for perspective-correct interpolation
+	valid bool
+}
+
+fn project_vertex(v Vertex, mvp Mat4, vp Viewport) Proj {
 	cx := mvp.v[0][0] * v.x + mvp.v[1][0] * v.y + mvp.v[2][0] * v.z + mvp.v[3][0]
 	cy := mvp.v[0][1] * v.x + mvp.v[1][1] * v.y + mvp.v[2][1] * v.z + mvp.v[3][1]
+	cz := mvp.v[0][2] * v.x + mvp.v[1][2] * v.y + mvp.v[2][2] * v.z + mvp.v[3][2]
 	cw := mvp.v[0][3] * v.x + mvp.v[1][3] * v.y + mvp.v[2][3] * v.z + mvp.v[3][3]
-	if cw == 0.0 {
-		return 0.0, 0.0
+	if cw <= 1.0e-6 {
+		return Proj{}
 	}
 	ndc_x := cx / cw
 	ndc_y := cy / cw
@@ -116,7 +154,12 @@ fn transform_vertex(v Vertex, mvp Mat4, vp Viewport) (f32, f32) {
 	} else {
 		(ndc_y + 1.0) * 0.5 * f32(vp.h) + f32(vp.y)
 	}
-	return px, py
+	return Proj{ x: px, y: py, z: cz / cw, w: cw, valid: true }
+}
+
+fn transform_vertex(v Vertex, mvp Mat4, vp Viewport) (f32, f32) {
+	p := project_vertex(v, mvp, vp)
+	return p.x, p.y
 }
 
 fn in_scissor(sc Scissor, x int, y int) bool {
@@ -196,9 +239,15 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 	v0 := st.verts[i0]
 	v1 := st.verts[i1]
 	v2 := st.verts[i2]
-	p0x, p0y := transform_vertex(v0, uni.mvp, vp)
-	p1x, p1y := transform_vertex(v1, uni.mvp, vp)
-	p2x, p2y := transform_vertex(v2, uni.mvp, vp)
+	q0 := project_vertex(v0, uni.mvp, vp)
+	q1 := project_vertex(v1, uni.mvp, vp)
+	q2 := project_vertex(v2, uni.mvp, vp)
+	if !q0.valid || !q1.valid || !q2.valid {
+		return
+	}
+	p0x, p0y := q0.x, q0.y
+	p1x, p1y := q1.x, q1.y
+	p2x, p2y := q2.x, q2.y
 
 	area := (p1x - p0x) * (p2y - p0y) - (p2x - p0x) * (p1y - p0y)
 	if area == 0.0 {
@@ -241,8 +290,27 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			bw1 := w1 / wsum
 			bw2 := w2 / wsum
 
-			u := v0.u * bw0 + v1.u * bw1 + v2.u * bw2
-			vv := v0.v * bw0 + v1.v * bw1 + v2.v * bw2
+			mut u := v0.u * bw0 + v1.u * bw1 + v2.u * bw2
+			mut vv := v0.v * bw0 + v1.v * bw1 + v2.v * bw2
+			use_depth := frame.depth.len == frame.width * frame.height
+			if use_depth {
+				inv_w := bw0 / q0.w + bw1 / q1.w + bw2 / q2.w
+				if inv_w <= 0 {
+					continue
+				}
+				z := (bw0 * q0.z / q0.w + bw1 * q1.z / q1.w + bw2 * q2.z / q2.w) / inv_w
+				if z < -1.0 || z > 1.0 {
+					continue
+				}
+				di := y * frame.width + x
+				if z > frame.depth[di] {
+					continue
+				}
+				frame.depth[di] = z
+				// Perspective-correct texture coordinates.
+				u = (bw0 * v0.u / q0.w + bw1 * v1.u / q1.w + bw2 * v2.u / q2.w) / inv_w
+				vv = (bw0 * v0.v / q0.w + bw1 * v1.v / q1.w + bw2 * v2.v / q2.w) / inv_w
+			}
 
 			c0 := v0.rgba
 			c1 := v1.rgba
@@ -314,15 +382,32 @@ fn draw_line(mut frame Frame, st &State, _cmd Command, uni Uniform, vp Viewport,
 	i0 int, i1 int) {
 	v0 := st.verts[i0]
 	v1 := st.verts[i1]
-	x0, y0 := transform_vertex(v0, uni.mvp, vp)
-	x1p, y1p := transform_vertex(v1, uni.mvp, vp)
+	q0 := project_vertex(v0, uni.mvp, vp)
+	q1 := project_vertex(v1, uni.mvp, vp)
+	if !q0.valid || !q1.valid {
+		return
+	}
+	x0, y0 := q0.x, q0.y
+	x1p, y1p := q1.x, q1.y
 	dx := x1p - x0
 	dy := y1p - y0
 	steps := int(math.max(math.abs(dx), math.abs(dy)))
 	if steps == 0 {
 		if int(x0) >= 0 && int(y0) >= 0 && int(x0) < frame.width && int(y0) < frame.height {
 			if in_scissor(sc, int(x0), int(y0)) {
-				frame.pixels[int(y0) * frame.width + int(x0)] = v0.rgba
+				ix, iy := int(x0), int(y0)
+				mut depth_ok := true
+				if frame.depth.len == frame.width * frame.height {
+					di := iy * frame.width + ix
+					if q0.z < -1.0 || q0.z > 1.0 || q0.z > frame.depth[di] {
+						depth_ok = false
+					} else {
+						frame.depth[di] = q0.z
+					}
+				}
+				if depth_ok {
+					frame.pixels[iy * frame.width + ix] = v0.rgba
+				}
 			}
 		}
 		return
@@ -333,7 +418,19 @@ fn draw_line(mut frame Frame, st &State, _cmd Command, uni Uniform, vp Viewport,
 		y := int(y0 + dy * t + 0.5)
 		if x >= 0 && y >= 0 && x < frame.width && y < frame.height {
 			if in_scissor(sc, x, y) {
-				frame.pixels[y * frame.width + x] = v0.rgba
+				mut depth_ok := true
+				if frame.depth.len == frame.width * frame.height {
+					z := q0.z + (q1.z - q0.z) * t
+					di := y * frame.width + x
+					if z < -1.0 || z > 1.0 || z > frame.depth[di] {
+						depth_ok = false
+					} else {
+						frame.depth[di] = z
+					}
+				}
+				if depth_ok {
+					frame.pixels[y * frame.width + x] = v0.rgba
+				}
 			}
 		}
 	}
@@ -341,12 +438,26 @@ fn draw_line(mut frame Frame, st &State, _cmd Command, uni Uniform, vp Viewport,
 
 fn draw_point(mut frame Frame, st &State, _cmd Command, uni Uniform, vp Viewport, sc Scissor, i int) {
 	v := st.verts[i]
-	x, y := transform_vertex(v, uni.mvp, vp)
-	ix := int(x + 0.5)
-	iy := int(y + 0.5)
+	q := project_vertex(v, uni.mvp, vp)
+	if !q.valid {
+		return
+	}
+	ix := int(q.x + 0.5)
+	iy := int(q.y + 0.5)
 	if ix >= 0 && iy >= 0 && ix < frame.width && iy < frame.height {
 		if in_scissor(sc, ix, iy) {
-			frame.pixels[iy * frame.width + ix] = v.rgba
+			mut depth_ok := true
+			if frame.depth.len == frame.width * frame.height {
+				di := iy * frame.width + ix
+				if q.z < -1.0 || q.z > 1.0 || q.z > frame.depth[di] {
+					depth_ok = false
+				} else {
+					frame.depth[di] = q.z
+				}
+			}
+			if depth_ok {
+				frame.pixels[iy * frame.width + ix] = v.rgba
+			}
 		}
 	}
 }

@@ -80,6 +80,83 @@ fn frame(mut ctx gg.Context) {
 }
 ```
 
+## 3D drawing
+
+`gg` stays a 2D-first library, but it can render simple depth-tested 3D.
+Set `depth: true` in `gg.Config` to request a depth buffer, then bracket 3D
+drawing between `ctx.begin_3d(camera)` and `ctx.end_3d()`:
+
+```v cgen
+module main
+
+import gg
+
+fn main() {
+	mut ctx := gg.new_context(
+		width:        640
+		height:       480
+		window_title: '3D cube'
+		depth:        true
+		frame_fn:     frame
+	)
+	ctx.run()
+}
+
+fn frame(data voidptr) {
+	ctx := unsafe { &gg.Context(data) }
+	ctx.begin()
+	mut camera := gg.Camera3D{}
+	camera.orbit(30, 20, 7)
+	ctx.begin_3d(camera)
+	ctx.draw_cube(gg.Vec3{0, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
+	ctx.end_3d()
+	ctx.end()
+}
+```
+
+`Camera3D` has `position`, `target`, `up`, `fovy`, `near`, `far` and a
+`projection` of `.perspective` or `.orthographic`. `camera.orbit(yaw, pitch,
+distance)` places the camera around its target using degrees;
+`orbit_by(dx, dy, zoom)` handles mouse drag and scroll, and `fly(...)` handles
+first-person movement. 3D drawing uses depth testing with backface culling;
+`ctx.end_3d()` restores the regular 2D
+painter-order pipelines, so HUD and text can be drawn afterwards.
+
+The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
+`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`;
+wireframe variants include `draw_cube_wires()` and `draw_mesh_wires()`. For
+custom geometry, `Mesh3D` plus `gen_mesh_cube/plane/sphere/cylinder` and
+`ctx.draw_mesh()` draw indexed triangles with a position, rotation and scale.
+Use `screen_to_world_ray()` with `ray_sphere()`, `ray_box()` or
+`ray_triangle()` for picking.
+`Material3D` adds a directional `Light3D`, fog and an optional texture;
+`draw_material_mesh()` and `draw_billboard()` render them. Lighting and fog
+are baked into vertex colors, so no custom shader or extra backend work is
+needed. More primitives are tracked in
+https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v` and
+`examples/gg/3d_material.v`. `examples/gg/3d_textured_cube.v` switches between
+a textured and a flat-colored cube with the space bar.
+`load_mesh_obj()` loads a static Wavefront `.obj`. `load_mesh_gltf()` reads a
+glTF 2.0 `.gltf` (embedded/base64 or external buffers) and `load_mesh_glb()`
+reads the binary `.glb` form; both return static mesh primitives with float
+attributes and 8/16/32-bit indices. Neither loader reads skins, animations or
+texture images.
+`mat4_from_m4()` and `mat4_to_m4()` bridge `gg.m4.Mat4` and the matrix type
+used by `gg/render`. `m4` applies matrices to row vectors while `gg/render`
+uses column vectors, so the helpers transform the basis vectors instead of
+copying the 16 floats; this keeps `m4.mul_vec()` and the render matrix
+equivalent.
+
+## CPU rendering
+
+`gg` can draw without a window or GPU: `ctx.render_cpu(w, h, clear_color)`
+rasterizes the recorded 2D commands into a `render.Frame` with a pixel buffer
+and `save_ppm()`. `ctx.render_cpu_3d(w, h, clear_color, camera)` adds a depth
+buffer, so the same 3D camera, meshes, lighting and fog render to memory. Both
+work with a `Context` created normally; the GPU window is simply never opened.
+Depth-tested CPU drawing rejects fragments behind the camera or past the far
+plane, and interpolates texture coordinates with perspective correction.
+
 ## Multi-Window Applications
 
 `gg.App` is an additive multi-window facade for programs that need to manage
