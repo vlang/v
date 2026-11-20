@@ -62,6 +62,21 @@ fn test_sql_interpolation_replaces_callback_binding_only() {
 	assert sql_replace_interpolation_it('it + other.it + "it"', 'current') == 'current + other.it + "it"'
 }
 
+fn test_mark_sql_db_methods_keeps_mssql_receivers_for_interface_db() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	db_id := a.add_node(flat.Node{
+		kind: .ident
+		typ:  flat.source_type_id('orm.Connection')
+	})
+	t.mark_sql_db_methods(db_id)
+	for method in ['create', 'insert', 'select', 'update', 'delete', 'drop', 'last_id'] {
+		assert t.used_fns['db.mssql.Connection.${method}']
+		assert t.used_fns['mssql.Connection.${method}']
+	}
+}
+
 fn test_sql_dynamic_guard_infers_bound_callback_field_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
