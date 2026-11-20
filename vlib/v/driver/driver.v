@@ -14061,6 +14061,9 @@ pub fn run(args []string) {
 		}
 		if verbose {
 			eprintln('  [ttime] mu tf prepare wait ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			if prepare_transform_overlap {
+				eprintln('  [ttime] mu tf prepare      ${prepared_transform.timing_summary()}')
+			}
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')

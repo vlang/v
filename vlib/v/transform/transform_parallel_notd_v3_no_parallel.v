@@ -4124,8 +4124,10 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 		threads << spawn borrow_prescan_thread(unsafe { voidptr(&args[ci]) })
 	}
 	if scan_closures {
+		sw := time.new_stopwatch()
 		t.exclusive_closure_return_fns = map[string]bool{}
 		t.collect_exclusive_closure_return_fns()
+		t.prepare_times.closure_scans = f64(sw.elapsed().microseconds()) / 1000.0
 	} else {
 		borrow_prescan_thread(unsafe { voidptr(&args[0]) })
 	}
@@ -4377,9 +4379,13 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.defer_pre_scan_indexes = true
 		t.defer_fixed_array_borrow_prep = true
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
+		mut sw := time.new_stopwatch()
 		t.prepare()
+		t.prepare_times.indexes = f64(sw.elapsed().microseconds()) / 1000.0
+		sw.restart()
 		t.add_prescan_scope(param_thread.wait())
 		t.add_prescan_scope(index_thread.wait())
+		t.prepare_times.joins = f64(sw.elapsed().microseconds()) / 1000.0
 		t.call_param_types_recent = unsafe { nil }
 		t.clear_fn_return_name_cache()
 		t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()

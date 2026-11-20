@@ -236,6 +236,8 @@ mut:
 	// fixed_array_borrow_prescanned counts the candidate parameters whose body
 	// analysis the fixed point took from the helper threads.
 	fixed_array_borrow_prescanned int
+	// prepare_times are the wall times of the preparation steps, for `-v`.
+	prepare_times PrepareTimes
 	// borrow_params_after_transform starts the summaries from the transform
 	// stage's (see prepare_fixed_array_borrow_params).
 	borrow_params_after_transform bool
@@ -1830,6 +1832,19 @@ pub:
 
 // --- entry point ---
 
+// PrepareTimes are the wall times, in ms, of the steps of prepare_with_pre_scans.
+struct PrepareTimes {
+mut:
+	total         f64
+	indexes       f64
+	joins         f64
+	candidates    f64
+	prescan       f64
+	fixed_point   f64
+	provenance    f64
+	closure_scans f64
+}
+
 // PreparedSelfhostTransform owns the read-only transformer indexes built while
 // markused walks the same checked AST on the driver thread.
 @[heap]
@@ -1857,6 +1872,13 @@ fn (mut t Transformer) add_prescan_scope(scope voidptr) {
 	}
 }
 
+// timing_summary lists how long the preparation thread took and its steps, in
+// ms, for the `-v` stage report.
+pub fn (prepared &PreparedSelfhostTransform) timing_summary() string {
+	times := prepared.transformer.prepare_times
+	return '${times.total:7.2f} ms (indexes ${times.indexes:.2f}, joins ${times.joins:.2f}, candidates ${times.candidates:.2f}, prescan ${times.prescan:.2f}, fixed point ${times.fixed_point:.2f}, provenance ${times.provenance:.2f}, closure scan ${times.closure_scans:.2f})'
+}
+
 // take_prescan_scopes transfers the pre-scan helper arenas to the driver. They
 // back index tables and possibly lowered node text, so they are released only
 // together with the preparation arena.
@@ -1882,6 +1904,7 @@ pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enable
 	if !enabled {
 		return prepared
 	}
+	sw := time.new_stopwatch()
 	scope := transform_worker_scope_begin(true)
 	prep_tc := tc.fork_for_parallel_transform(a)
 	mut t := new_transformer_view(a, prep_tc, map[string]bool{})
@@ -1894,6 +1917,7 @@ pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enable
 	// the persistent worker pool idle at the start of transform. It has usually
 	// run already, beside the borrow-summary prescan.
 	t.collect_exclusive_closure_return_fns()
+	t.prepare_times.total = f64(sw.elapsed().microseconds()) / 1000.0
 	prepared = &PreparedSelfhostTransform{
 		transformer: t
 		scope:       scope

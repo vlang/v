@@ -1,5 +1,6 @@
 module transform
 
+import time
 import v.flat
 import v.types
 
@@ -107,6 +108,7 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	}
 	t.fixed_array_borrow_node_count = t.a.nodes.len
 	t.fixed_array_borrow_prescanned = 0
+	mut sw := time.new_stopwatch()
 	mut candidates := []BorrowCandidate{}
 	mut items := []BorrowDeclItem{}
 	// The item of every declaration seen, -1 for one without known parameters.
@@ -157,7 +159,11 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	// The fixed point below keeps its order and analyses a body again itself only
 	// when the summaries proven by now could change more than which of its
 	// dependencies are still open (see BorrowBodyResult).
+	t.prepare_times.candidates = f64(sw.elapsed().microseconds()) / 1000.0
+	sw.restart()
 	prescanned := t.prescan_fixed_array_borrow_bodies(candidates, items)
+	t.prepare_times.prescan = f64(sw.elapsed().microseconds()) / 1000.0
+	sw.restart()
 	for i, c in candidates {
 		ready := i < prescanned.results.len && prescanned.results[i].matches_proven_summaries(t)
 		if ready {
@@ -219,8 +225,11 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 			}
 		}
 	}
+	t.prepare_times.fixed_point = f64(sw.elapsed().microseconds()) / 1000.0
+	sw.restart()
 	t.prepare_call_provenance_borrow_params(summarised, items, prescanned.provenance)
 	prescanned.release()
+	t.prepare_times.provenance = f64(sw.elapsed().microseconds()) / 1000.0
 }
 
 // borrow_candidate_of_param is the candidate that decides `param`, or -1 when the
