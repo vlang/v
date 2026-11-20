@@ -256,7 +256,6 @@ const skip_with_fsanitize_undefined = [
 ]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
-	'cmd/tools/fast/bench_test.v', // parsing-only test compiles fast's main package, pulling db.sqlite and the host glibc .pc/header (sys/cdefs.h)
 	'vlib/arrays/parallel/parallel_test.v',
 	'vlib/builtin/js/array_test.js.v',
 	// crypto.ecdsa (and net.quic, which imports it -- added for
