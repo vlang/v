@@ -223,6 +223,9 @@ fn test_toolchain_remove_and_gc() ! {
 	for leftover in ['v1.2.3_old', 'v9.9.9_removing', 'v0.0.1.stage', 'partial'] {
 		os.mkdir_all(os.join_path(root, leftover))!
 	}
+	prebuilt := os.join_path(root, 'v7.7.7')
+	os.mkdir_all(os.join_path(prebuilt, 'vlib'))!
+	os.mkdir_all(os.join_path(prebuilt, 'cmd'))!
 	removed := run_toolchain(root, 'unused', 'remove', '1.2.3')!
 	assert removed.exit_code == 0, removed.output
 	assert removed.output.contains('Removed `v1.2.3`'), removed.output
@@ -233,6 +236,8 @@ fn test_toolchain_remove_and_gc() ! {
 	assert !os.exists(os.join_path(root, 'v9.9.9_removing'))
 	assert !os.exists(os.join_path(root, 'v0.0.1.stage'))
 	assert !os.exists(os.join_path(root, 'partial'))
+	// A prebuilt toolchain has no .git but must survive gc.
+	assert os.is_dir(prebuilt)
 }
 
 fn test_toolchain_update_requires_built_checkout() ! {
@@ -322,4 +327,70 @@ fn test_toolchain_update_success_flips_staging() ! {
 	assert os.is_file(os.join_path(checkout, 'updated')), result.output
 	assert !os.exists(checkout + '_stage')
 	assert !os.exists(checkout + '_old')
+}
+
+fn test_toolchain_prebuilt_requires_checksum() ! {
+	tool := vtoolchain_test_tool()!
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_nochecksum_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := os.join_path(root, 'versions.json')
+	os.write_file(manifest, '{"v1.2.3":{"url":"https://example.invalid/toolchain.zip","sha256":""}}')!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN_MANIFEST=${manifest}', tool,
+		'toolchain', 'install', '1.2.3'])
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('no sha256'), result.output
+}
+
+fn test_toolchain_install_preserves_symlinks() ! {
+	$if windows {
+		return
+	}
+	tool := vtoolchain_test_tool()!
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_links_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	bundle := os.join_path(root, 'bundle')
+	os.mkdir_all(os.join_path(bundle, 'vlib'))!
+	os.mkdir_all(os.join_path(bundle, 'cmd'))!
+	os.write_file(os.join_path(bundle, 'vlib', 'real'), 'x')!
+	os.symlink('real', os.join_path(bundle, 'vlib', 'link')) or {
+		return
+	}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := os.join_path(root, 'versions.json')
+	os.write_file(manifest, '{"v1.2.3":{"url":"${bundle.replace('\\', '/')}","sha256":""}}')!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN_MANIFEST=${manifest}', tool,
+		'toolchain', 'install', '1.2.3'])
+	assert result.exit_code == 0, result.output
+	assert os.is_link(os.join_path(root, 'v1.2.3', 'vlib', 'link')), result.output
+}
+
+fn test_toolchain_update_prebuilt_uses_manifest() ! {
+	tool := vtoolchain_test_tool()!
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_prebuilt_update_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	bundle := os.join_path(root, 'bundle')
+	os.mkdir_all(os.join_path(bundle, 'vlib'))!
+	os.mkdir_all(os.join_path(bundle, 'cmd'))!
+	dir := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(os.join_path(dir, 'vlib'))!
+	os.mkdir_all(os.join_path(dir, 'cmd'))!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.cp(vexe, os.join_path(dir, exe_name))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manifest := os.join_path(root, 'versions.json')
+	os.write_file(manifest, '{"v1.2.3":{"url":"${bundle.replace('\\', '/')}","sha256":""}}')!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN_MANIFEST=${manifest}', tool,
+		'toolchain', 'update', '1.2.3'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('Updated prebuilt'), result.output
+	assert os.is_dir(os.join_path(dir, 'vlib'))
+	assert !os.exists(dir + '_old')
 }

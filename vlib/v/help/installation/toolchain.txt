@@ -52,9 +52,10 @@ A versions.json manifest can map a version to a prebuilt bundle:
 
   {"v0.4.11": {"url": "https://.../v0.4.11.zip", "sha256": "<hex>"}}
 
-Install prefers a matching manifest entry, verifies the sha256 checksum, and
-extracts the archive with `tar`. Without a matching entry, install falls back
-to a shallow git clone. `nightly` is its own directory and tracks master when
+Install prefers a matching manifest entry. Downloaded bundles must carry a
+sha256 checksum, which is verified before the archive is extracted with `tar`;
+a local-directory bundle is trusted as given. Without a matching entry, install
+falls back to a shallow git clone. `nightly` is its own directory and tracks master when
 no prebuilt is listed for it. Tags keep their v prefix, so 0.4.11 installs into
 ~/.v/toolchains/v0.4.11 from branch v0.4.11.
 

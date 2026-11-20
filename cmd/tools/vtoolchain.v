@@ -158,6 +158,9 @@ fn verify_sha256(path string, expected string) ! {
 // install_prebuilt installs a manifest-provided bundle. Local directories are
 // copied directly; files and URLs are treated as tar archives.
 fn install_prebuilt(version string, release Release, dest string) ! {
+	if !os.is_dir(release.url) && release.sha256.trim_space() == '' {
+		return error('manifest entry for `${version}` has no sha256 for a downloaded bundle')
+	}
 	staging := dest + '_stage'
 	os.rmdir_all(staging) or {}
 	if os.is_dir(release.url) {
@@ -368,7 +371,9 @@ struct Checkout {
 // and already built.
 fn installed_checkout(version string) ?Checkout {
 	dir := toolchain.toolchain_dir(toolchain.configured_root(), version)
-	if !os.is_dir(os.join_path(dir, '.git')) {
+	// Prebuilt installs have no .git; they are identifiable by their layout.
+	if !os.is_dir(os.join_path(dir, '.git'))
+		&& !(os.is_dir(os.join_path(dir, 'vlib')) && os.is_dir(os.join_path(dir, 'cmd'))) {
 		return none
 	}
 	exe := toolchain.executable_in(dir)
@@ -399,7 +404,11 @@ fn copy_dir(src string, dst string) ! {
 	for entry in os.ls(src)! {
 		from := os.join_path(src, entry)
 		to := os.join_path(dst, entry)
-		if os.is_dir(from) {
+		// Preserve links instead of following them: an untrusted bundle could
+		// otherwise contain a link to its own parent and recurse forever.
+		if os.is_link(from) {
+			os.symlink(os.readlink(from)!, to)!
+		} else if os.is_dir(from) {
 			copy_dir(from, to)!
 		} else {
 			os.cp(from, to)!
@@ -427,6 +436,31 @@ fn update_version(raw string, rest []string) {
 				return
 			}
 		}
+	}
+	// A prebuilt checkout has no git history to pull. Reinstall it from the
+	// manifest, keeping the old directory as the rollback point.
+	if !os.is_dir(os.join_path(checkout.dir, '.git')) {
+		releases := load_releases()
+		if version !in releases {
+			eprintln('`${version}` is a prebuilt toolchain with no manifest entry; reinstall it with `v toolchain install ${version}`.')
+			exit(1)
+			return
+		}
+		os.rename(checkout.dir, old) or {
+			eprintln('could not move `${checkout.dir}` aside: ${err.msg()}')
+			exit(1)
+			return
+		}
+		install_prebuilt(version, releases[version], checkout.dir) or {
+			os.rename(old, checkout.dir) or {}
+			eprintln('prebuilt update failed: ${err.msg()}')
+			exit(1)
+			return
+		}
+		apply_shared_cache(checkout.dir)
+		os.rmdir_all(old) or {}
+		println('Updated prebuilt `${version}` in `${checkout.dir}`.')
+		return
 	}
 	original_head := git_head(checkout.dir)
 	copy_dir(checkout.dir, staging) or {
@@ -543,8 +577,12 @@ fn gc_toolchains() {
 		if !os.is_dir(full) {
 			continue
 		}
+		// Prebuilt installs have no .git but are still real toolchains; only
+		// remove directories that are neither a git checkout nor a V layout.
+		complete := os.is_dir(os.join_path(full, '.git'))
+			|| (os.is_dir(os.join_path(full, 'vlib')) && os.is_dir(os.join_path(full, 'cmd')))
 		stale := e.ends_with('_old') || e.ends_with('_removing') || e.ends_with('_stage')
-			|| e.ends_with('.stage') || !os.is_dir(os.join_path(full, '.git'))
+			|| e.ends_with('.stage') || !complete
 		if !stale {
 			continue
 		}
