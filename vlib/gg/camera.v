@@ -3,8 +3,6 @@
 module gg
 
 import math
-import sokol.sapp
-import gg.render
 
 // Vec3 is a three-component vector used by the 3D helpers.
 pub struct Vec3 {
@@ -74,29 +72,6 @@ pub mut:
 	yaw      f32 = 30
 	pitch    f32 = 20
 	distance f32 = 7
-}
-
-// view_matrix returns the camera's world-to-view matrix.
-pub fn (cam Camera3D) view_matrix() render.Mat4 {
-	mut m := render.mat4_identity()
-	m.lookat(cam.position.x, cam.position.y, cam.position.z, cam.target.x, cam.target.y,
-		cam.target.z, cam.up.x, cam.up.y, cam.up.z)
-	return m
-}
-
-// projection_matrix returns the camera's view-to-clip matrix for aspect.
-pub fn (cam Camera3D) projection_matrix(aspect f32) render.Mat4 {
-	mut m := render.mat4_identity()
-	match cam.projection {
-		.perspective {
-			m.perspective(cam.fovy * math.pi / 180.0, aspect, cam.near, cam.far)
-		}
-		.orthographic {
-			m.ortho(-cam.ortho_size * aspect, cam.ortho_size * aspect, -cam.ortho_size,
-				cam.ortho_size, cam.near, cam.far)
-		}
-	}
-	return m
 }
 
 // orbit places the camera on a sphere around its target using degrees.
@@ -181,40 +156,4 @@ pub fn (mut cam Camera3D) fly(fwd f32, side f32, rise f32, yaw_delta f32, pitch_
 	cam.move_forward(fwd)
 	cam.move_right(side)
 	cam.move_up(rise)
-}
-
-// begin_3d switches the context to depth-tested 3D drawing with cam.
-// Call it after ctx.begin() and close it with ctx.end_3d() before ctx.end().
-// 3D drawing requires Config.depth = true.
-pub fn (ctx &Context) begin_3d(cam Camera3D) {
-	if !ctx.config.depth {
-		eprintln('gg: begin_3d() needs Config.depth = true')
-		return
-	}
-	ctx.r.set_depth_test(true)
-	mut r := ctx.r
-	fb_w := f32(sapp.width())
-	fb_h := f32(sapp.height())
-	aspect := if fb_h > 0 { fb_w / fb_h } else { 1.0 }
-	r.matrix_mode_projection()
-	r.load_identity()
-	r.mult_mat4(cam.projection_matrix(aspect))
-	r.matrix_mode_modelview()
-	r.load_identity()
-	r.mult_mat4(cam.view_matrix())
-	r.matrix_mode_texture()
-	r.load_identity()
-}
-
-// end_3d restores the 2D projection and painter-order pipelines.
-pub fn (ctx &Context) end_3d() {
-	ctx.r.set_depth_test(false)
-	mut r := ctx.r
-	r.matrix_mode_projection()
-	r.load_identity()
-	r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
-	r.matrix_mode_modelview()
-	r.load_identity()
-	r.matrix_mode_texture()
-	r.load_identity()
 }

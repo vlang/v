@@ -117,8 +117,11 @@ fn frame(data voidptr) {
 `Camera3D` has `position`, `target`, `up`, `fovy`, `near`, `far` and a
 `projection` of `.perspective` or `.orthographic`. `camera.orbit(yaw, pitch,
 distance)` places the camera around its target using degrees;
-`orbit_by(dx, dy, zoom)` handles mouse drag and scroll, and `fly(...)` handles
-first-person movement. 3D drawing uses depth testing with backface culling;
+`orbit_by(dx, dy, zoom)` handles mouse drag and scroll, `fly(...)` handles
+first-person movement, and `cam.update(mode, ctx, dt)` drives a camera directly
+from gg input state with `.orbital`, `.first_person`, `.free` or `.custom`.
+The math types work on every backend; the drawing methods live in `.c.v` files
+and use the Sokol renderer. 3D drawing uses depth testing with backface culling;
 `ctx.end_3d()` restores the regular 2D
 painter-order pipelines, so HUD and text can be drawn afterwards.
 

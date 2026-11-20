@@ -145,9 +145,3 @@ pub fn ray_triangle(ray Ray, a Vec3, b Vec3, c Vec3) RayHit {
 		point:    ray.origin + ray.direction.scale(dist)
 	}
 }
-
-// draw_ray draws a ray as a 3D line of unit length.
-pub fn (ctx &Context) draw_ray(ray Ray, length f32, color Color) {
-	end := ray.origin + ray.direction.scale(length)
-	ctx.draw_line_3d(ray.origin, end, color)
-}
