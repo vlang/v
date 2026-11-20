@@ -7068,7 +7068,7 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	// Under autofree, a loop binding whose only use is `name.len` is a borrow of
 	// the container, not a new owner. Cloning it would clone-and-free on every
 	// iteration with no observable effect.
-	as_borrow := tc.autofree_mode && !clones_storage_binding && clean is Array
+	as_borrow := tc.autofree_mode && clean is Array
 		&& tc.ownership_for_in_len_only_binding(node, header, target_name)
 	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id, clones_storage_binding, as_borrow)
 }
@@ -7080,6 +7080,7 @@ fn (tc &TypeChecker) ownership_for_in_len_only_binding(node flat.Node, header in
 		return false
 	}
 	mut uses := 0
+	mut len_uses := 0
 	mut pending := []flat.NodeId{}
 	for i in header .. node.children_count {
 		pending << tc.a.child(&node, i)
@@ -7088,20 +7089,20 @@ fn (tc &TypeChecker) ownership_for_in_len_only_binding(node flat.Node, header in
 		id := pending.pop()
 		n := tc.a.node(id)
 		if n.kind == .ident && n.value == name {
-			parent := tc.direct_parent_id(id)
-			if !tc.valid_node_id(parent) {
-				return false
-			}
-			p := tc.a.node(parent)
-			if p.kind != .selector || p.value != 'len' {
-				return false
-			}
 			uses++
-			continue
+		}
+		if n.kind == .selector && n.value == 'len' {
+			for c in 0 .. n.children_count {
+				child := tc.a.child(n, c)
+				cn := tc.a.node(child)
+				if cn.kind == .ident && cn.value == name {
+					len_uses++
+				}
+			}
 		}
 		pending << tc.a.children_of(n)
 	}
-	return uses > 0
+	return uses > 0 && uses == len_uses
 }
 
 fn (mut tc TypeChecker) ownership_bind_mut_for_in_var(key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, has_val bool) {
