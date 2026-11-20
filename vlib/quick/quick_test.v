@@ -70,3 +70,12 @@ fn test_f64_adjacent_representable() {
 		assert v >= lo && v < hi, 'expected [lo, hi), got ${v}'
 	}
 }
+
+fn test_int_generator_wide_range() {
+	mut g := IntGenerator{ lo: min_int, hi: 1 }
+	mut rng := new_rng(1)
+	for _ in 0 .. 100 {
+		v := g.generate(mut rng)
+		assert v >= g.lo && v < g.hi, 'expected [${g.lo}, ${g.hi}), got ${v}'
+	}
+}
