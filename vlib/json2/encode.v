@@ -40,6 +40,7 @@ mut:
 }
 
 // encode encodes a value as JSON, or JSON5 with `json5: true`.
+@[inline]
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
 		EncoderOptions: config
