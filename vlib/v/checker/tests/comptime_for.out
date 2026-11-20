@@ -38,13 +38,6 @@ vlib/v/checker/tests/comptime_for.vv:12:6: error: undefined ident: `m`
       |         ^
    13 | }
    14 |
-vlib/v/checker/tests/comptime_for.vv:19:16: error: unknown type `U`
-   17 |         $if f.typ is T {
-   18 |         }
-   19 |         $if f.typ is U {
-      |                      ^
-   20 |         }
-   21 |     }
 vlib/v/checker/tests/comptime_for.vv:22:6: error: undefined ident: `f`
    20 |         }
    21 |     }
@@ -52,3 +45,10 @@ vlib/v/checker/tests/comptime_for.vv:22:6: error: undefined ident: `f`
       |         ^
    23 | }
    24 |
+vlib/v/checker/tests/comptime_for.vv:19:16: error: unknown type `U`
+   17 |         $if f.typ is T {
+   18 |         }
+   19 |         $if f.typ is U {
+      |                      ^
+   20 |         }
+   21 |     }
