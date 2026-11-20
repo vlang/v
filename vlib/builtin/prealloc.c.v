@@ -210,10 +210,15 @@ fn prealloc_block_pool_free() {
 }
 
 // prealloc_stats_add_mapped adds `delta` to the live mapped-storage counter.
-// It is needed by both `-d prealloc_stats` and `-d prealloc_limits`; the
-// updates are on noinline block create/free paths, never the bump hot path.
+// It is inlined to nothing unless -d prealloc_stats or -d prealloc_limits is
+// set, so default builds pay no atomic cost on block map/unmap.
+@[inline]
 fn prealloc_stats_add_mapped(delta i64) {
-	C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
+	$if prealloc_stats ? {
+		C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
+	} $else $if prealloc_limits ? {
+		C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
+	}
 }
 
 // prealloc_stats_add_used adds `delta` to the live bumped-bytes counter.
@@ -223,10 +228,13 @@ fn prealloc_stats_add_used(delta i64) {
 	C.v_prealloc_atomic_add_i64(&g_prealloc_used_bytes, delta)
 }
 
-// prealloc_stats_add_block adds `delta` to the live block counter.
-// The update is on noinline block create/free paths only.
+// prealloc_stats_add_block adds `delta` to the live block counter. It is
+// inlined to nothing unless -d prealloc_stats is set.
+@[inline]
 fn prealloc_stats_add_block(delta i64) {
-	C.v_prealloc_atomic_add_i64(&g_prealloc_block_count, delta)
+	$if prealloc_stats ? {
+		C.v_prealloc_atomic_add_i64(&g_prealloc_block_count, delta)
+	}
 }
 
 // prealloc_set_limit caps the mapped arena storage at `bytes`. Zero removes
