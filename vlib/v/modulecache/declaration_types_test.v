@@ -144,6 +144,54 @@ fn test_a_token_paste_anywhere_keeps_the_types() {
 	assert plain.subset('#define P(x) x##_t\nint f(void) { return 1; }').contains('struct Unused')
 }
 
+// paste_header is a header whose one mention of the type Box is made by a token paste,
+// `sizeof(JOIN(B, ox))`. `define_join` is the text that defines JOIN.
+fn paste_header(define_join string) string {
+	return 'typedef struct { int value; } Box;\n' + define_join +
+		'\nstatic int uses(void) { return sizeof(JOIN(B, ox)); }\n'
+}
+
+fn test_a_token_paste_keeps_the_types_wherever_its_two_characters_are() {
+	code := 'int main(void) { return uses() != sizeof(int); }'
+	// the control: with no paste, a type that nothing names goes, so the test can see one go
+	plain := new_declaration_index_at(paste_header('#define JOIN(a, b) int'), .macros).subset(code)
+	assert !plain.contains('} Box;')
+	for where, define_join in {
+		'on the first line of the macro':                '#define JOIN(a, b) a ## b'
+		'on a continued line of the macro':              '#define JOIN(a, b) \\\n a ## b'
+		'on the third line of the macro':                '#define JOIN(a, b) \\\n a \\\n ## b'
+		'split by a line splice':                        '#define JOIN(a, b) a #\\\n# b'
+		'split by a line splice with a space before it': '#define JOIN(a, b) a #\\ \n# b'
+		'spelled with digraphs':                         '%:define JOIN(a, b) a %:%: b'
+		'spelled with digraphs on a continued line':     '%:define JOIN(a, b) \\\n a %:%: b'
+		'in a directive that follows a comment':         '/* c */ #define JOIN(a, b) \\\n a ## b'
+	} {
+		header := paste_header(define_join)
+		for layer in [HeaderLayer.types, .macros, .statics] {
+			out := new_declaration_index_at(header, layer).subset(code)
+			assert out == header, 'a paste ${where}, layer ${layer}'
+		}
+	}
+	// and in the code of the module, where the header has none
+	header := new_declaration_index_at(types_header, .macros)
+	for where, paste in {
+		'on a continued line':    '#define P(x) \\\n x##_t'
+		'split by a line splice': '#define P(x) x#\\\n#_t'
+		'spelled with digraphs':  '%:define P(x) x%:%:_t'
+	} {
+		out := header.subset(paste + '\nint f(void) { return 1; }')
+		assert out == types_header, 'a paste in the code, ${where}'
+	}
+}
+
+fn test_a_function_named_only_through_a_paste_keeps_its_prototype() {
+	header := 'int uses(void);\nint other(void);\n#define CALL(a, b) \\\n a##b()\n'
+	code := 'int main(void) { return CALL(us, es); }'
+	for layer in [HeaderLayer.declarations, .types, .macros, .statics] {
+		assert new_declaration_index_at(header, layer).subset(code) == header, 'layer ${layer}'
+	}
+}
+
 fn test_the_subset_is_a_subsequence_of_the_header() {
 	for code in ['', 'int f(void) { return Color__green + MAKE_POINT().x; }',
 		'int f(void) { return run(0) + use_color(0); }', 'int f(void) { return in_static(0); }'] {
