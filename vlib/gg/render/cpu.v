@@ -239,20 +239,26 @@ fn transform_vertex(v Vertex, mvp Mat4, vp Viewport) (f32, f32) {
 	return p.x, p.y
 }
 
+@[inline]
 fn in_scissor(sc Scissor, x int, y int) bool {
 	return x >= sc.x && y >= sc.y && x < sc.x + sc.w && y < sc.y + sc.h
 }
 
+@[inline]
 fn pack_color(r u8, g u8, b u8, a u8) u32 {
 	return u32(r) | (u32(g) << 8) | (u32(b) << 16) | (u32(a) << 24)
 }
 
+@[inline]
 fn unpack_r(c u32) f32 { return f32(c & 0xff) / 255.0 }
 
+@[inline]
 fn unpack_g(c u32) f32 { return f32((c >> 8) & 0xff) / 255.0 }
 
+@[inline]
 fn unpack_b(c u32) f32 { return f32((c >> 16) & 0xff) / 255.0 }
 
+@[inline]
 fn unpack_a(c u32) f32 { return f32((c >> 24) & 0xff) / 255.0 }
 
 fn sample_image(pixels []u8, w int, h int, ch_in int, filter int, u f32, v f32) u32 {
@@ -322,7 +328,17 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 	if !q0.valid || !q1.valid || !q2.valid {
 		return
 	}
-	use_depth := frame.depth.len == frame.width * frame.height
+	w := frame.width
+	h := frame.height
+	use_depth := frame.depth.len == w * h
+	// Every fragment depth is a convex combination of the three vertex depths,
+	// so if all vertices lie beyond the same clip plane no fragment can pass
+	// the z-range test below. The non-depth path deliberately does not clip on
+	// z, hence the use_depth guard to preserve its behaviour.
+	if use_depth && ((q0.z < -1.0 && q1.z < -1.0 && q2.z < -1.0)
+		|| (q0.z > 1.0 && q1.z > 1.0 && q2.z > 1.0)) {
+		return
+	}
 	iw0 := 1.0 / q0.w
 	iw1 := 1.0 / q1.w
 	iw2 := 1.0 / q2.w
@@ -335,19 +351,38 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 		return
 	}
 
-	min_x := int(math.floor(math.min(math.min(p0x, p1x), p2x)))
-	max_x := int(math.ceil(math.max(math.max(p0x, p1x), p2x)))
-	min_y := int(math.floor(math.min(math.min(p0y, p1y), p2y)))
-	max_y := int(math.ceil(math.max(math.max(p0y, p1y), p2y)))
+	// Inline min/max: avoid math.min/math.max calls in the bounding-box path.
+	mut min_xf := if p0x < p1x { p0x } else { p1x }
+	if p2x < min_xf { min_xf = p2x }
+	mut max_xf := if p0x > p1x { p0x } else { p1x }
+	if p2x > max_xf { max_xf = p2x }
+	mut min_yf := if p0y < p1y { p0y } else { p1y }
+	if p2y < min_yf { min_yf = p2y }
+	mut max_yf := if p0y > p1y { p0y } else { p1y }
+	if p2y > max_yf { max_yf = p2y }
 
-	for y in min_y .. max_y + 1 {
-		for x in min_x .. max_x + 1 {
-			if x < 0 || y < 0 || x >= frame.width || y >= frame.height {
-				continue
-			}
-			if !in_scissor(sc, x, y) {
-				continue
-			}
+	min_x := int(math.floor(min_xf))
+	max_x := int(math.ceil(max_xf))
+	min_y := int(math.floor(min_yf))
+	max_y := int(math.ceil(max_yf))
+
+	// Fold the frame-bounds and scissor tests into the loop bounds, so the
+	// per-pixel `continue` checks and the in_scissor call disappear entirely.
+	mut lo_x := if min_x > sc.x { min_x } else { sc.x }
+	if lo_x < 0 { lo_x = 0 }
+	mut hi_x := if max_x < sc.x + sc.w - 1 { max_x } else { sc.x + sc.w - 1 }
+	if hi_x >= w { hi_x = w - 1 }
+	mut lo_y := if min_y > sc.y { min_y } else { sc.y }
+	if lo_y < 0 { lo_y = 0 }
+	mut hi_y := if max_y < sc.y + sc.h - 1 { max_y } else { sc.y + sc.h - 1 }
+	if hi_y >= h { hi_y = h - 1 }
+	if lo_x > hi_x || lo_y > hi_y {
+		return
+	}
+
+	for y in lo_y .. hi_y + 1 {
+		row := y * w
+		for x in lo_x .. hi_x + 1 {
 			px := f32(x) + 0.5
 			py := f32(y) + 0.5
 			w0 := (px - p1x) * (p2y - p1y) - (py - p1y) * (p2x - p1x)
@@ -370,6 +405,7 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			bw0 := w0 / wsum
 			bw1 := w1 / wsum
 			bw2 := w2 / wsum
+			idx := row + x
 
 			mut u := v0.u * bw0 + v1.u * bw1 + v2.u * bw2
 			mut vv := v0.v * bw0 + v1.v * bw1 + v2.v * bw2
@@ -389,11 +425,10 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 				if z < -1.0 || z > 1.0 {
 					continue
 				}
-				di := y * frame.width + x
-				if z > frame.depth[di] {
+				if z > frame.depth[idx] {
 					continue
 				}
-				frame.depth[di] = z
+				frame.depth[idx] = z
 				// Attributes still in clip space do need perspective correction.
 				u = (iw0w * v0.u + iw1w * v1.u + iw2w * v2.u) / inv_w
 				vv = (iw0w * v0.v + iw1w * v1.v + iw2w * v2.v) / inv_w
@@ -421,7 +456,7 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			tb := unpack_b(tex_color) * b
 			ta := unpack_a(tex_color) * a
 
-			dst := frame.pixels[y * frame.width + x]
+			dst := frame.pixels[idx]
 			dr := unpack_r(dst)
 			dg := unpack_g(dst)
 			db := unpack_b(dst)
@@ -460,7 +495,7 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			if ng > 1.0 { ng = 1.0 }
 			if nb > 1.0 { nb = 1.0 }
 			if na > 1.0 { na = 1.0 }
-			frame.pixels[y * frame.width + x] = pack_color(u8(nr * 255), u8(ng * 255), u8(nb * 255), u8(na * 255))
+			frame.pixels[idx] = pack_color(u8(nr * 255), u8(ng * 255), u8(nb * 255), u8(na * 255))
 		}
 	}
 }
