@@ -960,6 +960,11 @@ pub mut:
 	// or file_index_incomplete is set (a source file failed to read).
 	file_node_ids         []i32
 	file_index_incomplete bool
+	// directive_scan_ids lists, in node order, the nodes that the scans for C
+	// directives read (see index_directive_scan_nodes), and directive_scan_nodes
+	// is the node count that it was built for: 0 without an index.
+	directive_scan_ids   []i32
+	directive_scan_nodes int
 	// debugger_stmts counts the `$dbg` statements the parser created, so that
 	// a scan for them can stop once it knows there is none.
 	debugger_stmts int

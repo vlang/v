@@ -3120,7 +3120,11 @@ fn native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_m
 	mut need_cpp := false
 	mut cur_file := ''
 	mut cur_module := 'main'
-	for node_idx in 0 .. a.nodes.len {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
 		// The scan only reads the AST; borrow each node instead of copying it.
 		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
@@ -6665,10 +6669,16 @@ pub fn cache_directive_flags_with_project(a &flat.FlatAst, vroot string, target 
 // parsing. Deferred type/metadata conditions are left for the checked, transformed AST.
 pub fn preflight_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
 	mut deferred := map[int]bool{}
-	for node in a.nodes {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind in [.comptime_if, .comptime_for] {
 			for i in 0 .. node.children_count {
-				mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+				mark_preflight_deferred_directives(a, a.child(node, i), mut deferred)
 			}
 		}
 	}
@@ -6694,7 +6704,13 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	for node_idx, node in a.nodes {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''

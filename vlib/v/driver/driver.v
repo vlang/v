@@ -12790,7 +12790,10 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	// The checks of the C directives below each scan the whole tree; they share
+	// one index of the nodes that such a scan reads, built when the first one runs.
 	if cache_state.manager.enabled && cache_with_tcc && target.os == 'macos' && !is_prod && !check_only && !only_check_syntax {
+		index_directive_scan_nodes(mut a)
 		mut bridge_flags := user_c_flags.clone()
 		bridge_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 		if v3_implicit_tcc_flags_incompatibility(bridge_flags, target.os, prefs.vroot) != none
@@ -12810,6 +12813,9 @@ pub fn run(args []string) {
 	// into a TinyCC interface. Even C-compatible .m files need the native ABI.
 	if retry_compilation && (explicit_tcc || use_implicit_tcc_semantics)
 		&& !check_only && !only_check_syntax && !c_only && !is_o {
+		if a.directive_scan_nodes == 0 {
+			index_directive_scan_nodes(mut a)
+		}
 		mut native_flags := environment_c_flags.clone()
 		native_flags << user_c_flags
 		native_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
@@ -12826,6 +12832,9 @@ pub fn run(args []string) {
 	}
 	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
 		&& !c_only && !is_o {
+		if a.directive_scan_nodes == 0 {
+			index_directive_scan_nodes(mut a)
+		}
 		mut preflight_flags := environment_c_flags.clone()
 		preflight_flags << user_c_flags
 		preflight_flags << link_ld_flags
@@ -12845,6 +12854,8 @@ pub fn run(args []string) {
 			return
 		}
 	}
+	// The stages from here on rewrite the tree.
+	a.drop_directive_scan_index()
 	if (verbose || show_timings) && !silent && !c_to_stdout && use_implicit_tcc_semantics {
 		println('=== V compiler benchmark ===')
 	}
@@ -15731,6 +15742,11 @@ pub fn run(args []string) {
 			}
 		}
 		if !isnil(a.worker_pool) {
+			// The C object step below asks which language the native inputs of the
+			// generated unit need, which is a scan of the whole tree for its
+			// directives: list them across the pool before it stops. Nothing
+			// rewrites the tree between here and that scan.
+			index_directive_scan_nodes(mut a)
 			// Later stages create their own workers if they need any. Let the
 			// helper threads exit while those stages run instead of joining them here.
 			mut cgen_pool := a.worker_pool
@@ -15831,6 +15847,7 @@ pub fn run(args []string) {
 		all_compile_c_flags << generated_c_flags
 		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
 			|| cgen.generated_c_unit_needs_objective_c(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
+		a.drop_directive_scan_index()
 		large_prod_c_unit := !use_parallel_c_compilation && os.is_file(published_c_source)
 			&& v3_is_large_prod_c_unit(os.file_size(published_c_source))
 		limit_large_unit_inlining := large_prod_c_unit && effective_c_compiler == 'clang'
@@ -24533,6 +24550,25 @@ fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, projec
 		}
 	}
 	return ''
+}
+
+// index_directive_scan_nodes builds the index that the scans for C directives
+// read (flat.FlatAst.index_directive_scan_nodes). With V3_VERIFY_DIRECTIVE_INDEX
+// set it also lists the nodes one by one and reports a difference.
+fn index_directive_scan_nodes(mut a flat.FlatAst) {
+	a.index_directive_scan_nodes()
+	if os.getenv('V3_VERIFY_DIRECTIVE_INDEX') == '' {
+		return
+	}
+	mut full := []i32{}
+	for i, node in a.nodes {
+		if node.kind in [.file, .module_decl, .directive, .comptime_if, .comptime_for] {
+			full << i32(i)
+		}
+	}
+	if full != a.directive_scan_ids {
+		eprintln('DIRECTIVE INDEX MISMATCH: ${a.directive_scan_ids.len} listed, ${full.len} in ${a.nodes.len} nodes')
+	}
 }
 
 // insert_synthetic_imports shifts a.nodes in place with each synthetic import spliced in
