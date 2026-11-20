@@ -30,6 +30,17 @@ fn C.SQLDisconnect(connection_handle C.SQLHDBC) C.SQLRETURN
 
 fn C.SQLExecDirect(statement_handle C.SQLHSTMT, statement_text &C.SQLCHAR, text_length C.SQLINTEGER) C.SQLRETURN
 
+fn C.SQLPrepare(statement_handle C.SQLHSTMT, statement_text &C.SQLCHAR, text_length C.SQLINTEGER) C.SQLRETURN
+
+fn C.SQLExecute(statement_handle C.SQLHSTMT) C.SQLRETURN
+
+fn C.SQLBindParameter(statement_handle C.SQLHSTMT, parameter_number C.SQLUSMALLINT,
+	input_output_type C.SQLSMALLINT, value_type C.SQLSMALLINT, parameter_type C.SQLSMALLINT,
+	column_size C.SQLULEN, decimal_digits C.SQLSMALLINT, parameter_value_ptr C.SQLPOINTER,
+	buffer_length C.SQLLEN, str_len_or_ind voidptr) C.SQLRETURN
+
+fn C.SQLFreeStmt(statement_handle C.SQLHSTMT, option C.SQLUSMALLINT) C.SQLRETURN
+
 fn C.SQLBindCol(statement_handle C.SQLHSTMT, column_number C.SQLUSMALLINT, target_type C.SQLSMALLINT, target_value C.SQLPOINTER,
 	buffer_length C.SQLLEN, str_len_or_ind &C.SQLLEN) C.SQLRETURN
 

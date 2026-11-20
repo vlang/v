@@ -11,9 +11,13 @@ mut:
 	column_count int = -1
 	// columns
 	buffers [][]char
-	// indicators for each column. Use a V pointer-sized integer to avoid arrays
-	// of C typedefs in generated code while still matching SQLLEN width.
-	indicators []int
+	// indicators for each column. i64 is at least as wide as SQLLEN on both 32- and
+	// 64-bit targets, and avoids arrays of C typedefs in generated code.
+	indicators []i64
+	// length/null indicators for bound parameters. Kept on the handle because ODBC
+	// retains the pointers until SQLExecute(), which may happen after
+	// bind_parameter returns.
+	param_indicators []i64
 }
 
 // new_hstmt constructs a new statement handle
@@ -36,6 +40,7 @@ fn new_hstmt(hdbc C.SQLHDBC) !HStmt {
 fn (mut h HStmt) close() {
 	// Deallocate handle
 	if h.hstmt != C.SQLHSTMT(C.SQL_NULL_HSTMT) {
+		C.SQLFreeStmt(h.hstmt, C.SQLUSMALLINT(C.SQL_RESET_PARAMS))
 		// check error code?
 		C.SQLFreeHandle(C.SQLSMALLINT(C.SQL_HANDLE_STMT), C.SQLHANDLE(h.hstmt))
 		h.hstmt = C.SQLHSTMT(C.SQL_NULL_HSTMT)
@@ -46,6 +51,42 @@ fn (mut h HStmt) close() {
 fn (h HStmt) exec(sql_ string) ! {
 	retcode := C.SQLExecDirect(h.hstmt, sql_.str, C.SQLINTEGER(C.SQL_NTS))
 	check_error(retcode, 'SQLExecDirect()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+}
+
+// prepare compiles a statement that has parameter markers.
+fn (h HStmt) prepare(sql_ string) ! {
+	retcode := C.SQLPrepare(h.hstmt, sql_.str, C.SQLINTEGER(C.SQL_NTS))
+	check_error(retcode, 'SQLPrepare()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+}
+
+// bind_parameter binds one 1-based parameter marker. A none value is bound as SQL NULL.
+fn (mut h HStmt) bind_parameter(index int, value ?string) ! {
+	if h.param_indicators.len < index {
+		h.param_indicators << []i64{len: index - h.param_indicators.len}
+	}
+	mut value_ptr := C.SQLPOINTER(0)
+	mut column_size := C.SQLULEN(0)
+	mut buffer_length := C.SQLLEN(0)
+	if v := value {
+		value_ptr = C.SQLPOINTER(v.str)
+		column_size = C.SQLULEN(v.len + 1)
+		buffer_length = C.SQLLEN(v.len + 1)
+		h.param_indicators[index - 1] = i64(v.len)
+	} else {
+		// SQL_NULL_DATA tells the driver to ignore value_ptr and store NULL.
+		h.param_indicators[index - 1] = i64(C.SQL_NULL_DATA)
+	}
+	retcode := C.SQLBindParameter(h.hstmt, C.SQLUSMALLINT(index),
+		C.SQLSMALLINT(C.SQL_PARAM_INPUT), C.SQLSMALLINT(C.SQL_C_CHAR),
+		C.SQLSMALLINT(C.SQL_VARCHAR), column_size, C.SQLSMALLINT(0), value_ptr, buffer_length,
+		voidptr(&h.param_indicators[index - 1]))
+	check_error(retcode, 'SQLBindParameter()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+}
+
+// execute runs a previously prepared statement with its bound parameters.
+fn (h HStmt) execute() ! {
+	retcode := C.SQLExecute(h.hstmt)
+	check_error(retcode, 'SQLExecute()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 }
 
 // retrieve_affected_rows returns number of rows affected/modified by the last operation. -1 if not applicable.
@@ -96,7 +137,7 @@ fn (mut h HStmt) prepare_read() ! {
 	h.column_count = column_count // remember the count because read will need it
 
 	h.buffers = [][]char{len: h.column_count}
-	h.indicators = []int{len: h.column_count}
+	h.indicators = []i64{len: h.column_count}
 
 	for i := 0; i < h.column_count; i++ {
 		i_col := C.SQLUSMALLINT(i + 1) // col number starts with 1
@@ -123,10 +164,10 @@ fn (mut h HStmt) prepare_read() ! {
 }
 
 // fetch all rows
-fn (h HStmt) read_rows() ![][]string {
+fn (h HStmt) read_rows() ![]Row {
 	mut retcode := C.SQLRETURN(C.SQL_SUCCESS)
 
-	mut res := [][]string{}
+	mut res := []Row{}
 
 	if h.column_count <= 0 {
 		// there is nothing in the driver to read from
@@ -135,13 +176,24 @@ fn (h HStmt) read_rows() ![][]string {
 
 	// Fetch and print each row of data until SQL_NO_DATA returned.
 	for {
-		mut row := []string{}
 		retcode = C.SQLFetch(h.hstmt)
 		if retcode == C.SQLRETURN(C.SQL_SUCCESS) || retcode == C.SQLRETURN(C.SQL_SUCCESS_WITH_INFO) {
 			// copy buffered result to res
-			for content in h.buffers {
+			mut row := []string{}
+			mut nulls := []bool{len: h.buffers.len}
+			mut has_null := false
+			for i, content in h.buffers {
 				row << unsafe { cstring_to_vstring(content.data) }
+				if h.indicators[i] == i64(C.SQL_NULL_DATA) {
+					nulls[i] = true
+					has_null = true
+				}
 			}
+			mut r := Row{ vals: row }
+			if has_null {
+				r.nulls = nulls
+			}
+			res << r
 		} else {
 			if retcode != C.SQLRETURN(C.SQL_NO_DATA) {
 				check_error(retcode, 'SQLFetch()', C.SQLHANDLE(h.hstmt),
@@ -150,7 +202,6 @@ fn (h HStmt) read_rows() ![][]string {
 				break
 			}
 		}
-		res << row
 	}
 	return res
 }
