@@ -47,31 +47,17 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		then_id := g.a.child(&cur, 1)
 		mut then_scope_drops_consumed := false
 		mut then_scope_drop_prefix_count := 0
-		mut reuse_drops := false
 		if g.valid_node_id(then_id) {
 			then_block := g.a.nodes[int(then_id)]
 			then_scope_drop_prefix_count = g.block_scope_drop_prefix_count(then_block)
-			reuse_drops = then_block.value == reuse_scope_drops_block_value
-			if reuse_drops {
-				// A duplicated multi-type arm body shares the first variant's
-				// cleanup site. Reuse those entries instead of consuming another
-				// checker slot, so every variant frees its locals (#32454).
-				g.reuse_scope_drops = true
-			}
 			then_scope_drops_consumed = g.gen_branch_block_children(then_block, 1 + then_scope_drop_prefix_count)
-			g.reuse_scope_drops = false
 			if !g.block_consumes_scope_ownership_drops(then_block) {
-				then_scope_drops_consumed = true
-			}
-			if reuse_drops {
 				then_scope_drops_consumed = true
 			}
 		}
 		if !g.stmt_tail_exits(then_id) {
 			g.gen_defers_from(defer_start)
-			if reuse_drops {
-				g.gen_ownership_drops(g.last_scope_drop_entries.clone())
-			} else if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
+			if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
 				g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
 				g.gen_scope_ownership_drops()
 			}
@@ -190,9 +176,6 @@ fn (mut g FlatGen) gen_transformed_tail_return_with_scope_drop_count(id flat.Nod
 }
 
 fn (mut g FlatGen) take_scope_ownership_drop_count(count int) []types.OwnershipDropEntry {
-	if g.reuse_scope_drops {
-		return g.last_scope_drop_entries.clone()
-	}
 	mut entries := []types.OwnershipDropEntry{}
 	for _ in 0 .. count {
 		for entry in g.take_scope_ownership_drops() {

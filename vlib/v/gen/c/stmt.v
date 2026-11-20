@@ -18,7 +18,6 @@ const ownership_propagation_sync_expr_value = '__v3_ownership_propagation_sync'
 const pending_loop_label_marker = '__v_pending_loop_label:'
 const skip_scope_drops_block_value = '__v3_skip_scope_drops'
 const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
-const reuse_scope_drops_block_value = '__v3_reuse_scope_drops'
 
 struct CInlineAsmIO {
 	constraint string
@@ -1043,7 +1042,6 @@ fn (g &FlatGen) block_scope_drop_prefix_count(block flat.Node) int {
 fn (mut g FlatGen) take_scope_ownership_drops() []types.OwnershipDropEntry {
 	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
 	entries := g.tc.ownership_drop_entries_at_scope_exit(fn_name, g.ownership_scope_index)
-	g.last_scope_drop_entries = entries.clone()
 	g.ownership_scope_index++
 	return entries
 }
@@ -1823,12 +1821,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 // gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
 // Owned concrete objects are released. Borrowed pointer-backed
 // interfaces and the process-wide none and error-sentinel objects remain untouched.
-// In autofree mode IError copies are borrowed shared aliases: the field owner frees,
-// copies are never freed here, so ownership drops for IError are skipped.
 fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut expanding map[u64]bool) {
-	if g.tc.autofree_mode {
-		return
-	}
 	object := '((${expr})._object)'
 	// Drop helpers are emitted before global definitions. Local extern
 	// declarations keep the two process-wide sentinel comparisons valid there.
@@ -1873,22 +1866,7 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 // gen_ownership_clone_ierror clones a failed result's IError without erasing its dynamic
 // payload type. Result errors own pointer-backed implementations, so even an unboxed source
 // receives independent storage in the clone.
-// In autofree mode the error value is shared: the copy is borrowed (never freed),
-// the field owner frees. The stricter ownership-mode clone/panic path is unchanged.
 fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
-	if g.tc.autofree_mode {
-		tmp := g.tmp_count
-		g.tmp_count++
-		source := '_clone_ierror_source${tmp}'
-		result := '_clone_ierror_result${tmp}'
-		g.write('({ IError ${source} = ')
-		g.gen_expr(id)
-		g.writeln(';')
-		g.writeln('IError ${result} = ${source};')
-		g.writeln('${result}._object_is_boxed = false;')
-		g.write('${result}; })')
-		return
-	}
 	tmp := g.tmp_count
 	g.tmp_count++
 	source := '_clone_ierror_source${tmp}'
