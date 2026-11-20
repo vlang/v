@@ -153,8 +153,8 @@ fn unix_child_report_errno(prefix string) {
 }
 
 // unix_process_pipe keeps a later child from inheriting another Process's pipes.
-// Set CLOEXEC atomically on hosted Linux: pipe() followed by fcntl() leaves a
-// window in which another thread can fork/exec with the descriptors still open.
+// Set CLOEXEC atomically on hosted Linux. Elsewhere pipe() is followed at once by
+// fcntl(), under the lock unix_spawn_process holds until it forks.
 // dup2() clears CLOEXEC on the intended child's standard streams below.
 fn unix_process_pipe(fds &i32) i32 {
 	$if linux {
@@ -168,7 +168,16 @@ fn unix_process_pipe(fds &i32) i32 {
 			}
 		}
 	}
-	return C.pipe(fds)
+	result := C.pipe(fds)
+	if result == 0 {
+		// Without pipe2, mark both ends at once. Otherwise every program this
+		// process spawns later, from any thread, inherits the ends it keeps.
+		unsafe {
+			C.fcntl(fds[0], C.F_SETFD, C.FD_CLOEXEC)
+			C.fcntl(fds[1], C.F_SETFD, C.FD_CLOEXEC)
+		}
+	}
+	return result
 }
 
 fn (mut p Process) unix_spawn_process(start_stopped bool) int {
@@ -177,6 +186,12 @@ fn (mut p Process) unix_spawn_process(start_stopped bool) int {
 	// 64-bit, so `pipe` would write out of bounds). The fds convert back to `int`
 	// implicitly where they are stored/closed.
 	mut pipeset := [6]i32{}
+	// Without pipe2 a pipe gets CLOEXEC only after pipe() returns. Hold the lock
+	// os.execute takes around its own pipes and spawn, from creating these pipes
+	// until the fork, so that no other V spawn forks in between.
+	$if !linux {
+		v_os_execute_lock()
+	}
 	if p.use_stdio_ctl {
 		mut dont_care := 0
 		if !p.has_stdin_path {
@@ -193,6 +208,9 @@ fn (mut p Process) unix_spawn_process(start_stopped bool) int {
 	plan := p.unix_prepare_spawn()
 	pid := fork()
 	if pid != 0 {
+		$if !linux {
+			v_os_execute_unlock()
+		}
 		// This is the parent process after the fork.
 		// Note: pid contains the process ID of the child process
 		if p.use_stdio_ctl {
