@@ -179,8 +179,29 @@ pub fn (mut m Mat4) lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center
 	side[0] = fwd[1] * up[2] - fwd[2] * up[1]
 	side[1] = fwd[2] * up[0] - fwd[0] * up[2]
 	side[2] = fwd[0] * up[1] - fwd[1] * up[0]
-	mag2 := math.sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2])
-	if mag2 != 0.0 {
+	mut mag2 := math.sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2])
+	if mag2 == 0.0 {
+		// fwd is parallel to up (a vertical camera). Pick any perpendicular
+		// axis so the view matrix does not collapse to a single point.
+		if math.abs(fwd[0]) > 0.9 {
+			side[0] = 0
+			side[1] = 0
+			side[2] = 1
+		} else {
+			side[0] = 1
+			side[1] = 0
+			side[2] = 0
+		}
+		mut t0 := fwd[1] * side[2] - fwd[2] * side[1]
+		mut t1 := fwd[2] * side[0] - fwd[0] * side[2]
+		mut t2 := fwd[0] * side[1] - fwd[1] * side[0]
+		mag2 = math.sqrt(t0 * t0 + t1 * t1 + t2 * t2)
+		if mag2 != 0.0 {
+			side[0] = t0 / mag2
+			side[1] = t1 / mag2
+			side[2] = t2 / mag2
+		}
+	} else {
 		side[0] /= mag2
 		side[1] /= mag2
 		side[2] /= mag2

@@ -129,13 +129,47 @@ fn test_load_mesh_obj_rejects_malformed_numbers() {
 	dir := os.vtmp_dir()
 	defer { os.rmdir(dir) or {} }
 	path := os.join_path(dir, 'bad.obj')
-	os.write_file(path, 'v 1x 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n')!
+	// Every numeric slot is exercised: v[1..3], vn, vt and the face index.
+	content := 'v 0 2x 0\nv 1 0 0\nv 0 1 0\n' +
+		'vn 0 0 1\nvt 0.1 0.2\nf 1/1x/1 2/2/1 3/3/1\n'
+	os.write_file(path, content)!
 	mesh := load_mesh_obj(path) or {
-		assert err.msg().contains('invalid OBJ vertex coordinates')
+		assert err.msg().contains('invalid OBJ number')
 		return
 	}
 	assert false
 	_ = mesh
+}
+
+fn test_load_mesh_obj_rejects_non_finite_numbers() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	path := os.join_path(dir, 'inf.obj')
+	os.write_file(path, 'v 1e400 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n')!
+	mesh := load_mesh_obj(path) or {
+		assert err.msg().contains('not finite')
+		return
+	}
+	assert false
+	_ = mesh
+}
+
+fn test_load_mesh_gltf_rejects_oversized_count() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	uri := base64.encode([u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+	json_text := '{"buffers":[{"uri":"data:application/octet-stream;base64,${uri}","byteLength":12}],' +
+		'"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":12}],' +
+		'"accessors":[{"bufferView":0,"componentType":5126,"count":1000000000,"type":"VEC3"}],' +
+		'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}'
+	path := os.join_path(dir, 'huge.gltf')
+	os.write_file(path, json_text)!
+	meshes := load_mesh_gltf(path) or {
+		assert err.msg().contains('outside its bufferView') || err.msg().contains('exceeds the buffer')
+		return
+	}
+	assert false
+	_ = meshes
 }
 
 fn test_load_mesh_gltf_rejects_negative_accessor_offset() {
@@ -150,6 +184,25 @@ fn test_load_mesh_gltf_rejects_negative_accessor_offset() {
 	os.write_file(path, json_text)!
 	meshes := load_mesh_gltf(path) or {
 		assert err.msg().contains('negative byte offset')
+		return
+	}
+	assert false
+	_ = meshes
+}
+
+fn test_load_mesh_gltf_rejects_accessor_past_view() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	uri := base64.encode([u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+	// Accessor declares 3 VEC3s (36 bytes) inside a 12-byte bufferView.
+	json_text := '{"buffers":[{"uri":"data:application/octet-stream;base64,${uri}","byteLength":12}],' +
+		'"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":12}],' +
+		'"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],' +
+		'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}'
+	path := os.join_path(dir, 'past.gltf')
+	os.write_file(path, json_text)!
+	meshes := load_mesh_gltf(path) or {
+		assert err.msg().contains('outside its bufferView')
 		return
 	}
 	assert false

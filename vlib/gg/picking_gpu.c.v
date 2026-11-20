@@ -36,6 +36,13 @@ pub fn world_to_screen(p Vec3, cam Camera3D, width int, height int) ScreenPoint 
 	if width <= 0 || height <= 0 {
 		return ScreenPoint{}
 	}
+	// Orthographic projection has w == 1 for every point, so the clip-w test
+	// below cannot detect points behind the camera. Reject those explicitly
+	// using view-space depth, which works for both projection modes.
+	to_point := p - cam.position
+	if to_point.dot(cam.forward()) <= 0 {
+		return ScreenPoint{}
+	}
 	aspect := f32(width) / f32(height)
 	mvp := render.mat4_mul(cam.projection_matrix(aspect), cam.view_matrix())
 	a := mvp.to_array() // column-major

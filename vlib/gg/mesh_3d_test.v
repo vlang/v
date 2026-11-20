@@ -49,15 +49,24 @@ fn test_wire_generators_are_valid() {
 }
 
 fn test_cylinder_cap_normals_point_along_axis() {
-	mesh := gen_mesh_cylinder(Vec3{0, 0, 0}, Vec3{0, 10, 0}, 1, 8)
-	assert mesh.normals.len == mesh.vertices.len
-	for j in 0 .. 8 {
-		base := j * 12
-		for k in base + 6 .. base + 9 {
-			assert math.abs(mesh.normals[k].y + 1) < 1e-5
-		}
-		for k in base + 9 .. base + 12 {
-			assert math.abs(mesh.normals[k].y - 1) < 1e-5
+	for axis in [Vec3{0, 10, 0}, Vec3{10, 0, 0}] {
+		mesh := gen_mesh_cylinder(Vec3{}, axis, 1, 8)
+		assert mesh.normals.len == mesh.vertices.len
+		unit := axis.normalized()
+		for j in 0 .. 8 {
+			base := j * 12
+			for k in base + 6 .. base + 9 {
+				n := mesh.normals[k]
+				assert math.abs(n.x + unit.x) < 1e-5
+				assert math.abs(n.y + unit.y) < 1e-5
+				assert math.abs(n.z + unit.z) < 1e-5
+			}
+			for k in base + 9 .. base + 12 {
+				n := mesh.normals[k]
+				assert math.abs(n.x - unit.x) < 1e-5
+				assert math.abs(n.y - unit.y) < 1e-5
+				assert math.abs(n.z - unit.z) < 1e-5
+			}
 		}
 	}
 }

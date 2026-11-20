@@ -3,6 +3,7 @@
 module gg
 
 import os
+import math
 import json2
 import encoding.base64
 import encoding.binary
@@ -11,6 +12,19 @@ struct ObjIndex {
 	position int
 	uv       int
 	normal   int
+}
+
+// parse_obj_float validates the token and rejects values that overflow f32
+// (e.g. "1e400" becomes +Inf, which would poison later math with NaN).
+fn parse_obj_float(raw string) !f32 {
+	if !is_float_token(raw) {
+		return error('gg: invalid OBJ number "${raw}"')
+	}
+	value := raw.f32()
+	if !math.is_finite(f64(value)) {
+		return error('gg: OBJ number "${raw}" is not finite')
+	}
+	return value
 }
 
 // is_integer_token rejects V's lenient int() behaviour, which accepts a
@@ -112,29 +126,28 @@ pub fn load_mesh_obj(path string) !Mesh3D {
 				if parts.len < 4 {
 					continue
 				}
-				if !is_float_token(parts[1]) || !is_float_token(parts[2]) || !is_float_token(parts[3]) {
-					return error('gg: invalid OBJ vertex coordinates')
-				}
-				positions << Vec3{parts[1].f32(), parts[2].f32(), parts[3].f32()}
+				x := parse_obj_float(parts[1]) or { return err }
+				y := parse_obj_float(parts[2]) or { return err }
+				z := parse_obj_float(parts[3]) or { return err }
+				positions << Vec3{x, y, z}
 			}
 			'vn' {
 				if parts.len < 4 {
 					continue
 				}
-				if !is_float_token(parts[1]) || !is_float_token(parts[2]) || !is_float_token(parts[3]) {
-					return error('gg: invalid OBJ normal components')
-				}
-				normals << Vec3{parts[1].f32(), parts[2].f32(), parts[3].f32()}
+				x := parse_obj_float(parts[1]) or { return err }
+				y := parse_obj_float(parts[2]) or { return err }
+				z := parse_obj_float(parts[3]) or { return err }
+				normals << Vec3{x, y, z}
 			}
 			'vt' {
 				if parts.len < 3 {
 					continue
 				}
-				if !is_float_token(parts[1]) || !is_float_token(parts[2]) {
-					return error('gg: invalid OBJ UV coordinates')
-				}
-				uvs << parts[1].f32()
-				uvs << parts[2].f32()
+				u := parse_obj_float(parts[1]) or { return err }
+				v := parse_obj_float(parts[2]) or { return err }
+				uvs << u
+				uvs << v
 			}
 			'f' {
 				if parts.len < 4 {
@@ -144,9 +157,13 @@ pub fn load_mesh_obj(path string) !Mesh3D {
 				for token in parts[1..] {
 					bits := token.split('/')
 					pos := obj_index(bits[0], positions.len) or { return err }
-					uv := if bits.len > 1 { obj_index(bits[1], uvs.len / 2) or { -1 } } else { -1 }
+					uv := if bits.len > 1 {
+						obj_index(bits[1], uvs.len / 2) or { return err }
+					} else {
+						-1
+					}
 					norm := if bits.len > 2 {
-						obj_index(bits[2], normals.len) or { -1 }
+						obj_index(bits[2], normals.len) or { return err }
 					} else {
 						-1
 					}
@@ -235,6 +252,11 @@ fn gltf_buffer_data(doc &GltfDoc, dir string, index int) ![]u8 {
 		comma := uri.index(',') or { return error('gg: malformed glTF data URI') }
 		return base64.decode(uri[comma + 1..])
 	}
+	// A glTF buffer URI must stay inside the asset's directory: reject
+	// absolute paths and parent-directory traversal.
+	if uri.starts_with('/') || uri.contains('..') || uri.contains('\\') {
+		return error('gg: glTF buffer URI escapes the asset directory')
+	}
 	data := os.read_file(os.join_path(dir, uri)) or { return error('gg: cannot read glTF buffer: ${err}') }
 	return data.bytes()
 }
@@ -276,6 +298,15 @@ fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, int, int) {
 		else { return error('gg: unsupported glTF component type') }
 	}
 	stride := if view.byte_stride > 0 { view.byte_stride } else { components * component_size }
+	// The whole accessor must fit inside its bufferView, not just its start.
+	// This also bounds count, which prevents a huge count from driving an
+	// enormous allocation before the per-element data check runs.
+	if acc.count > 0 && view.byte_length > 0 {
+		last := acc.byte_offset + (acc.count - 1) * stride + components * component_size
+		if last > view.byte_length {
+			return error('gg: glTF accessor extends outside its bufferView')
+		}
+	}
 	return view.buffer, offset, stride
 }
 
@@ -289,6 +320,9 @@ fn accessor_vec3(doc &GltfDoc, buffers [][]u8, index int) ![]Vec3 {
 		return error('gg: glTF VEC3 accessor must use float components')
 	}
 	data := buffers[buffer_index]
+	if acc.count > data.len / 4 + 1 {
+		return error('gg: glTF accessor count exceeds the buffer size')
+	}
 	mut out := []Vec3{cap: acc.count}
 	for i in 0 .. acc.count {
 		at := offset + i * stride
@@ -310,6 +344,9 @@ fn accessor_uvs(doc &GltfDoc, buffers [][]u8, index int) ![]f32 {
 		return error('gg: glTF TEXCOORD_0 accessor must use float VEC2 components')
 	}
 	data := buffers[buffer_index]
+	if acc.count > data.len / 4 + 1 {
+		return error('gg: glTF accessor count exceeds the buffer size')
+	}
 	mut out := []f32{cap: acc.count * 2}
 	for i in 0 .. acc.count {
 		at := offset + i * stride
@@ -332,6 +369,9 @@ fn accessor_indices(doc &GltfDoc, buffers [][]u8, index int) ![]u32 {
 		return error('gg: glTF index accessor must be SCALAR')
 	}
 	data := buffers[buffer_index]
+	if acc.count > data.len + 1 {
+		return error('gg: glTF accessor count exceeds the buffer size')
+	}
 	mut out := []u32{cap: acc.count}
 	for i in 0 .. acc.count {
 		at := offset + i * stride

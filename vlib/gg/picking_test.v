@@ -58,10 +58,14 @@ fn test_screen_ray_points_at_screen_centre() {
 }
 
 fn test_screen_to_world_ray_with_vertical_camera() {
+	// First fallback branch: forward along -Y, parallel to default up.
 	cam := gg.Camera3D{ position: gg.Vec3{0, 5, 0}, target: gg.Vec3{0, 0, 0} }
 	left := gg.screen_to_world_ray(10, 50, cam, 100, 100)
 	right := gg.screen_to_world_ray(90, 50, cam, 100, 100)
-	// With forward parallel to up, a missing right-vector fallback made both
-	// rays identical. Different pixels must now produce different directions.
 	assert math.abs(left.direction.z - right.direction.z) > 1e-3
+	// Second fallback branch: forward parallel to X (abs(fwd.x) > 0.9).
+	side_cam := gg.Camera3D{ position: gg.Vec3{5, 0, 0}, target: gg.Vec3{0, 0, 0}, up: gg.Vec3{1, 0, 0} }
+	a := gg.screen_to_world_ray(10, 50, side_cam, 100, 100)
+	b := gg.screen_to_world_ray(90, 50, side_cam, 100, 100)
+	assert math.abs(a.direction.y - b.direction.y) > 1e-3
 }

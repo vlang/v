@@ -1011,8 +1011,10 @@ fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchai
 		}
 	}
 	if ctx.config.depth {
-		// A clearing pass starts from the far plane; a passthru pass preserves
-		// both colour and depth so later passes can still occlude correctly.
+		// A clearing pass starts from the far plane and stores depth, so a
+		// later passthru pass can load it and keep occluding correctly.
+		// Colour actions are unchanged by this PR (passthru keeps its
+		// existing dontcare action).
 		action.depth = if options.how == .passthru {
 			gfx.DepthAttachmentAction{
 				load_action:  .load
@@ -1021,7 +1023,7 @@ fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchai
 		} else {
 			gfx.DepthAttachmentAction{
 				load_action:  .clear
-				store_action: .dontcare
+				store_action: .store
 				clear_value:  1.0
 			}
 		}

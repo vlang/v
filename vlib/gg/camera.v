@@ -196,15 +196,14 @@ pub fn (mut cam Camera3D) fly(fwd f32, side f32, rise f32, yaw_delta f32, pitch_
 		if pitch_delta != 0 {
 			// Pitch must rotate around the camera's own right axis. Rotating
 			// around world X has no effect once the view points along X.
-			right := look.cross(cam.up)
-			if right.dot(right) > 1e-8 {
-				k := right.normalized()
-				pitch_rad := pitch_delta * math.pi / 180.0
-				cp := f32(math.cos(pitch_rad))
-				sp := f32(math.sin(pitch_rad))
-				// Rodrigues' rotation formula around k.
-				look = look.scale(cp) + k.cross(look).scale(sp) + k.scale(k.dot(look) * (1.0 - cp))
-			}
+			// camera_right() supplies a fallback axis for vertical views so
+			// pitch is not silently dropped there.
+			k := camera_right(look.normalized(), cam.up)
+			pitch_rad := pitch_delta * math.pi / 180.0
+			cp := f32(math.cos(pitch_rad))
+			sp := f32(math.sin(pitch_rad))
+			// Rodrigues' rotation formula around k.
+			look = look.scale(cp) + k.cross(look).scale(sp) + k.scale(k.dot(look) * (1.0 - cp))
 		}
 	}
 	dir := look.normalized()
