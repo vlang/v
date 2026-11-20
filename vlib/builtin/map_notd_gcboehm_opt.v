@@ -13,8 +13,11 @@
 module builtin
 
 @[inline]
-fn __malloc_at_least_one_noscan(how_many_bytes u64) &u8 {
-	return unsafe { malloc_noscan(__at_least_one(how_many_bytes)) }
+fn __malloc_at_least_one_noscan(how_many_bytes u64, noscan bool) &u8 {
+	if noscan {
+		return unsafe { malloc_noscan(__at_least_one(how_many_bytes)) }
+	}
+	return unsafe { malloc(__at_least_one(how_many_bytes)) }
 }
 
 @[inline]
@@ -29,8 +32,8 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 		len:          0
 		deletes:      0
 		all_deleted:  unsafe { nil }
-		keys:         __malloc_at_least_one_noscan(u64(cap) * u64(key_bytes))
-		values:       __malloc_at_least_one_noscan(u64(cap) * u64(value_bytes))
+		keys:         __malloc_at_least_one_noscan(u64(cap) * u64(key_bytes), key_noscan)
+		values:       __malloc_at_least_one_noscan(u64(cap) * u64(value_bytes), value_noscan)
 	}
 }
 
