@@ -1002,6 +1002,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		auto_str_skipped_fields:          auto_str_skipped_fields
 		detect_generics:                  detect_reachable_generics
 		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
+		alias_suffixes:                   markused_alias_name_suffixes(tc)
+		alias_suffix_count:               tc.type_aliases.ids.len
+		alias_suffixes_built:             true
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
@@ -2769,6 +2772,11 @@ struct CallCollector {
 	has_local_ident_visibility       bool
 	detect_generics                  bool
 	body_checker_edges_authoritative bool
+	// The last dot segment of every type alias name, for the collector that
+	// markused builds over a checked program (see markused_alias_name_suffixes).
+	alias_suffixes       map[string]bool
+	alias_suffix_count   int
+	alias_suffixes_built bool
 }
 
 fn (c &CallCollector) imports(context int) map[string]string {
@@ -5523,11 +5531,121 @@ fn markused_qualify_source_type(mod string, name_id u32) u32 {
 	return flat.source_type_composition_two(.qualified, flat.source_type_id(mod), name_id)
 }
 
+// markused_name_shape_last_dot classifies a spelling the way the source type
+// syntax parser does before it reads a name: it returns the index of the last dot
+// of a dotted name whose segments all start with a letter or an underscore, -1 for
+// an identifier without a dot, -3 for one that starts with a digit, and -2 for any
+// other spelling, which only the general parser can split.
+@[direct_array_access]
+fn markused_name_shape_last_dot(raw string) int {
+	if raw.len == 0 {
+		return -2
+	}
+	mut segment_start := true
+	mut digit_start := false
+	mut last_dot := -1
+	for i in 0 .. raw.len {
+		ch := raw[i]
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_` {
+			segment_start = false
+		} else if ch >= `0` && ch <= `9` {
+			if segment_start {
+				digit_start = true
+			}
+			segment_start = false
+		} else if ch == `.` {
+			if segment_start {
+				return -2
+			}
+			last_dot = i
+			segment_start = true
+		} else {
+			return -2
+		}
+	}
+	if last_dot < 0 {
+		return if digit_start { -3 } else { -1 }
+	}
+	if segment_start || digit_start {
+		return -2
+	}
+	return last_dot
+}
+
+// markused_alias_name_suffixes returns the text after the last dot of every type
+// alias name. A spelling names an alias, bare or qualified by a module, only when
+// it ends in one of them.
+fn markused_alias_name_suffixes(tc &types.TypeChecker) map[string]bool {
+	mut suffixes := map[string]bool{}
+	for alias_id, _ in tc.type_aliases.ids {
+		suffixes[flat.source_type_name(alias_id).all_after_last('.')] = true
+	}
+	return suffixes
+}
+
+// alias_suffix_filter_ready reports whether alias_suffixes covers the checker's
+// alias table as it is now.
+@[inline]
+fn (c &CallCollector) alias_suffix_filter_ready() bool {
+	return c.alias_suffixes_built && c.alias_suffix_count == c.tc.type_aliases.ids.len
+}
+
+// spelling_ends_like_alias reports whether the spelling `id`, or any spelling
+// that ends in it after a dot, can be an alias name.
+fn (c &CallCollector) spelling_ends_like_alias(id u32) bool {
+	text := flat.source_type_name(id)
+	dot := text.last_index_u8(`.`)
+	if dot < 0 {
+		return text in c.alias_suffixes
+	}
+	return unsafe { text.substr_unsafe(dot + 1, text.len) } in c.alias_suffixes
+}
+
+// callee_may_name_alias reports whether one of the spellings that
+// alias_type_from_callee probes for a call's callee can be an alias name. Each of
+// them is the callee's name, bare or behind its base, an imported module or the
+// current module; they all end in the last segment of that name.
+fn (c &CallCollector) callee_may_name_alias(callee &flat.Node, imports map[string]string) bool {
+	name := callee.value
+	last_dot := markused_name_shape_last_dot(name)
+	if last_dot == -2 {
+		return true
+	}
+	if callee.kind == .selector {
+		// `base.name` and `module.name` are split by the name parser only when
+		// the base and the module are names themselves.
+		if last_dot == -3 || callee.children_count == 0 {
+			return true
+		}
+		base := c.a.child_node(callee, 0)
+		if base.kind != .ident || markused_name_shape_last_dot(base.value) in [-2, -3] {
+			return true
+		}
+		if imported := imports[base.value] {
+			if markused_name_shape_last_dot(imported) in [-2, -3] {
+				return true
+			}
+		}
+	}
+	if last_dot < 0 {
+		return name in c.alias_suffixes
+	}
+	return unsafe { name.substr_unsafe(last_dot + 1, name.len) } in c.alias_suffixes
+}
+
 // receiver_info supports receiver info handling for markused.
 fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, u32) {
 	mut receiver_struct := u32(0)
 	if node.value.contains('.') {
-		receiver_struct = flat.source_type_syntax(node.source_value_id()).qualifier()
+		// The qualifier of a dotted name is the spelling before its last dot.
+		// Interning it directly keeps every `Type.method` name, and the syntax
+		// record of each, out of the process-wide spelling table.
+		last_dot := markused_name_shape_last_dot(node.value)
+		receiver_struct = if last_dot > 0 {
+			flat.source_type_id(unsafe { node.value.substr_unsafe(0, last_dot) })
+		} else {
+			flat.source_type_syntax(node.source_value_id()).qualifier()
+		}
 	}
 	for pi in 0 .. node.children_count {
 		pc := a.child_node(node, pi)
@@ -5853,6 +5971,9 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		auto_str_skipped_fields:          c.auto_str_skipped_fields
 		detect_generics:                  c.detect_generics
 		body_checker_edges_authoritative: c.body_checker_edges_authoritative
+		alias_suffixes:                   c.alias_suffixes
+		alias_suffix_count:               c.alias_suffix_count
+		alias_suffixes_built:             c.alias_suffixes_built
 	}
 }
 
@@ -8191,6 +8312,12 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 
 fn (c &CallCollector) alias_type_from_callee(callee &flat.Node, cur_module string, imports map[string]string) ?types.Type {
 	if c.tc.type_aliases.ids.len == 0 { return none }
+	// Nearly every callee is a function, not an alias used as a conversion. Rule
+	// those out by their text: probing the candidates below interns each of them.
+	if callee.kind in [.ident, .selector] && c.alias_suffix_filter_ready()
+		&& !c.callee_may_name_alias(callee, imports) {
+		return none
+	}
 	if callee.kind == .ident && callee.source_value_id() != 0 {
 		return c.alias_type_from_name(callee.source_value_id(), cur_module, imports)
 	}
@@ -8226,10 +8353,20 @@ fn (c &CallCollector) alias_type_name_from_id(name u32, cur_module string, impor
 		return name
 	}
 	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
+		// `module.spelling` ends in the last segment of the spelling. Compose it,
+		// which interns it, only when an alias name ends that way.
+		filter := c.alias_suffix_filter_ready()
+		resolved_possible := !filter || c.spelling_ends_like_alias(resolved)
+		name_possible := name != resolved && (!filter || c.spelling_ends_like_alias(name))
+		if !resolved_possible && !name_possible {
+			return none
+		}
 		module_id := flat.source_type_id(cur_module)
-		qualified := flat.source_type_composition_two(.qualified, module_id, resolved)
-		if c.tc.type_aliases.contains(qualified) { return qualified }
-		if name != resolved {
+		if resolved_possible {
+			qualified := flat.source_type_composition_two(.qualified, module_id, resolved)
+			if c.tc.type_aliases.contains(qualified) { return qualified }
+		}
+		if name_possible {
 			qualified_name := flat.source_type_composition_two(.qualified, module_id, name)
 			if c.tc.type_aliases.contains(qualified_name) {
 				return qualified_name
