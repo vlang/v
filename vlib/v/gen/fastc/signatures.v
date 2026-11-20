@@ -77,8 +77,9 @@ fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name
 	return boundary in [.comma, .semicolon, .rpar, .eof]
 }
 
-// fastc_skip_struct_field_attributes consumes every `@[...]` attribute that follows a
-// field's type or default. It returns the next token and the required/skip flags.
+// fastc_skip_struct_field_attributes consumes every `@[...]` group at the scanner, written before a
+// field name or after a field's type or default. It returns the next token and whether the groups
+// make the field required or skipped (see `fastc_scan_struct_field_attribute`).
 fn fastc_skip_struct_field_attributes(mut scan scanner.Scanner, first token.Token) !(token.Token, bool, bool) {
 	mut tok := first
 	mut is_required := false
@@ -93,29 +94,148 @@ fn fastc_skip_struct_field_attributes(mut scan scanner.Scanner, first token.Toke
 	return tok, is_required, is_skip
 }
 
+// fastc_scan_struct_field_attribute consumes one `@[...]` group whose opening token has been read,
+// and returns the token after it and whether the group makes the field required or skipped. It
+// reads the group into attributes as V's `parse_field_attrs_with_kinds_mode` does:
+// - an attribute ends where its tokens end, and the next one starts right there, with or without
+//   a `;` or `,` between them;
+// - a name, `.` and a following name or `pub` are one name, such as `skip.Foo`;
+// - `name(...)` ends at the first `)` and takes one token per argument; V keeps `name`, or
+//   `name: arg` when an argument has no name of its own;
+// - `name: arg` takes exactly one token, which V refuses to be `]`, `:`, `[` or `}`;
+// - a quoted attribute is its text: `@['skip']` is `skip`;
+// - the group ends at its first `]` outside a call, and `@[if cond]` is a guard, not an attribute.
+// `skip` is set when an attribute is exactly `skip`, which json2, cbor, toml, the ORM's queries and
+// `field.attrs.contains('skip')` test; V's ORM `create table` also leaves out a `skip: x` column.
+// `required` is set when an attribute's name, the part before `:`, is `required`, as V's checker
+// reads it. When V's group ends with a `[` read in it still open, the tokens up to the group's
+// matching `]` are consumed and set no flag: V's struct parser drops them, or reads a name among
+// them as the next field.
 fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool, bool) {
 	mut tok := scan.scan()
-	mut depth := 1
 	mut is_required := false
 	mut is_skip := false
-	for depth > 0 {
+	// `open` counts the `[` and `@[` read in the group whose `]` has not come yet.
+	mut open := 0
+	if tok == .key_if {
+		for tok != .rsbr {
+			if tok == .eof {
+				return error('fastc parser does not support unfinished struct field attribute')
+			}
+			tok = scan.scan()
+		}
+	}
+	for tok != .rsbr {
 		if tok == .eof {
 			return error('fastc parser does not support unfinished struct field attribute')
 		}
-		if tok == .name && scan.lit == 'required' {
-			is_required = true
+		if tok in [.comma, .semicolon] {
+			tok = scan.scan()
+			continue
 		}
-		if tok == .name && scan.lit == 'skip' {
-			is_skip = true
-		}
-		if tok == .lsbr {
-			depth++
-		} else if tok == .rsbr {
-			depth--
+		is_name := tok in [.name, .key_pub]
+		mut attribute := if tok == .string { fastc_attribute_unquote(scan.lit) } else { scan.lit }
+		if tok in [.lsbr, .attribute] {
+			open++
 		}
 		tok = scan.scan()
+		if is_name && tok == .dot && fastc_attribute_next_token(scan) in [.name, .key_pub] {
+			tok = scan.scan()
+			attribute += '.' + scan.lit
+			tok = scan.scan()
+		}
+		if tok == .lpar {
+			mut has_argument := false
+			mut first_argument := ''
+			tok = scan.scan()
+			for tok != .rpar {
+				if tok == .eof {
+					return error('fastc parser does not support unfinished struct field attribute')
+				}
+				if tok == .comma {
+					tok = scan.scan()
+					continue
+				}
+				mut is_named := false
+				if tok == .name && fastc_attribute_next_token(scan) == .colon {
+					is_named = true
+					scan.scan()
+					tok = scan.scan()
+				}
+				mut argument := scan.lit.trim_space()
+				if tok == .dot && fastc_attribute_next_token(scan) == .name {
+					tok = scan.scan()
+					argument = '.' + scan.lit
+				}
+				if tok in [.lsbr, .attribute] {
+					open++
+				} else if tok == .rsbr {
+					open--
+				}
+				if !is_named && !has_argument {
+					has_argument = true
+					first_argument = argument
+				}
+				tok = scan.scan()
+			}
+			tok = scan.scan()
+			if has_argument {
+				attribute += ': ' + first_argument
+			}
+			is_skip = is_skip || attribute == 'skip'
+			is_required = is_required || fastc_attribute_name(attribute) == 'required'
+			continue
+		}
+		if tok == .colon {
+			tok = scan.scan()
+			if tok in [.rsbr, .colon, .lsbr, .rcbr] {
+				return error('fastc parser does not support struct field attribute `${attribute.trim_space()}:` without an argument')
+			}
+			attribute += ': ' + scan.lit.trim_space()
+			tok = scan.scan()
+		}
+		attribute = attribute.trim_space()
+		is_skip = is_skip || attribute == 'skip'
+		is_required = is_required || fastc_attribute_name(attribute) == 'required'
 	}
-	return tok, is_required, is_skip
+	// `tok` is the `]` that ends V's group. While a `[` read in the group is open, that `]` and the
+	// ones after it close such brackets, and the group's own `]` comes later.
+	mut unclosed := open
+	for unclosed > 0 {
+		unclosed--
+		tok = scan.scan()
+		for tok != .rsbr {
+			if tok == .eof {
+				return error('fastc parser does not support unfinished struct field attribute')
+			}
+			if tok in [.lsbr, .attribute] {
+				unclosed++
+			}
+			tok = scan.scan()
+		}
+	}
+	return scan.scan(), is_required, is_skip
+}
+
+// fastc_attribute_next_token returns the token after the one `scan` has just read, without
+// consuming it: it scans a copy of the scanner.
+fn fastc_attribute_next_token(scan scanner.Scanner) token.Token {
+	mut lookahead := scan
+	return lookahead.scan()
+}
+
+// fastc_attribute_unquote is V's `attr_unquote`: a quoted attribute's text without its quotes.
+fn fastc_attribute_unquote(text string) string {
+	if text.len >= 2 && (text[0] == `'` || text[0] == `"`) && text[text.len - 1] == text[0] {
+		return text[1..text.len - 1]
+	}
+	return text
+}
+
+// fastc_attribute_name returns an attribute's name as V's checker reads it (`attribute_name_is`):
+// the part before the first `:`, without surrounding spaces.
+fn fastc_attribute_name(attribute string) string {
+	return attribute.all_before(':').trim_space()
 }
 
 fn fastc_skip_balanced_tokens(mut scan scanner.Scanner, first token.Token, open token.Token, close token.Token) !token.Token {
