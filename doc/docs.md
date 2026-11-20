@@ -1258,10 +1258,16 @@ f2 := 456e+2 // 45600
 
 #### Checked integer arithmetic
 
-Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
+At runtime, integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
 and a cast to a smaller integer type keeps the low bits.
 String interpolation preserves that integer width before formatting a wrapped result.
-Two opt-in flags turn these into runtime panics:
+
+Known excessive literal counts for `<<` and `>>` are rejected at compile time. For a direct
+integer-literal left operand, these operators reject literal counts of 64 or more. Use a wider left
+operand, such as `u128(1) << 100`, when a 128-bit shift is intended. These compile-time checks are
+separate from the runtime behavior of shifts whose counts are not known until the program runs.
+
+Two opt-in flags turn the runtime behaviors into panics:
 
 * `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
   (with their compound forms like `-=`, `/=`). In code outside the standard library, it also

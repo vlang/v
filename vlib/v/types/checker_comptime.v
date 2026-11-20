@@ -9700,8 +9700,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		} else {
 			tc.integer_shift_bit_size(lhs_type)
 		}
-		// A literal takes the width of the type it ends up in, which can be 64 bits; no type is
-		// wider, so a literal shifted by 64 or more is 0 (or undefined in C) in every context.
+		// Direct integer-literal operands use at most 64 bits. Write an explicit i128 or u128
+		// left operand when a wider shift is intended; typed operands use their own width.
 		lhs_is_literal := lhs_node.kind == .int_literal
 		checked_bit_size := if lhs_is_literal { 64 } else { bit_size }
 		if !skip_inactive_compact_else && node.op != .right_shift_unsigned && bit_size > 0
