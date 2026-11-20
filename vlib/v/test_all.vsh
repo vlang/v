@@ -311,7 +311,7 @@ fn run_v3_unit_tests(cfg Config) {
 	os.unsetenv(unit_v3_src_env)
 	if prepared_v3 != '' {
 		// One optimized build before CI fans out avoids concurrent native optimization
-		// in every shard. A private copy keeps compiler identities and reuse logs apart.
+		// in every shard. Each shard copies it to its own path and keeps its own cache.
 		println('  Copying prepared optimized V3 test compiler...')
 		os.cp(prepared_v3, shared_v3) or { fail('failed to copy prepared V3 compiler: ${err}') }
 		os.chmod(shared_v3, 0o755) or { fail('failed to make shared V3 compiler executable: ${err}') }
@@ -321,6 +321,10 @@ fn run_v3_unit_tests(cfg Config) {
 	}
 	os.setenv(unit_shared_v3_env, shared_v3, true)
 	os.setenv(unit_v3_src_env, cfg.v3_src, true)
+	// Each batch starts from a cache that already holds the modules nearly every test
+	// compiles, builtin first among them; a cold cache rebuilt them in every batch.
+	unit_cache_base := temp_path(cfg, 'unit_cache_base')
+	warm_unit_cache(cfg, unit_cache, unit_cache_base, shared_v3)
 	test_files := unit_test_files(cfg)
 	// Run every file, so that one failure does not hide the others, and print how long each
 	// one took, so that the shards can be kept within the job time limit.
@@ -352,7 +356,13 @@ fn run_v3_unit_tests(cfg Config) {
 				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
 			}
 		}
+		if os.exists(unit_cache_base) {
+			os.cp_all(unit_cache_base, unit_cache, true) or {
+				fail('failed to restore the warm V3 unit-test cache ${unit_cache}: ${err}')
+			}
+		}
 	}
+	os.rmdir_all(unit_cache_base) or {}
 	reused := os.read_lines(reuse_log) or { []string{} }
 	println('  The shared V3 test compiler served ${reused.len} V3 builds')
 	if old_vflags == '' {
@@ -379,6 +389,39 @@ fn run_v3_unit_tests(cfg Config) {
 			println('    ${path}')
 		}
 		exit(1)
+	}
+}
+
+// warm_unit_cache builds the modules that nearly every unit test compiles into `cache`, as the
+// test runner and the shared compiler build them, and keeps a copy in `base`, which each batch
+// restores to the same path: the cache entries record their paths. A failed warm-up only leaves
+// the batches to build those modules themselves.
+fn warm_unit_cache(cfg Config, cache string, base string, shared_v3 string) {
+	os.rmdir_all(cache) or {}
+	os.rmdir_all(base) or {}
+	warmup_dir := temp_path(cfg, 'unit_cache_warmup')
+	os.rmdir_all(warmup_dir) or {}
+	os.mkdir_all(warmup_dir) or { return }
+	defer {
+		os.rmdir_all(warmup_dir) or {}
+	}
+	test_file := os.join_path(warmup_dir, 'warmup_test.v')
+	program := os.join_path(warmup_dir, 'warmup.v')
+	os.write_file(test_file, "fn test_warmup() {\n\tassert 'v'.len == 1\n}\n") or { return }
+	os.write_file(program, "fn main() {\n\tprintln('v')\n}\n") or { return }
+	println('  Warming the V3 unit-test module cache...')
+	// The command that runs each unit test file, then the two common fixture builds of
+	// the shared compiler, whose copies the tests run.
+	for args in [
+		[cfg.vexe, '-gc', 'none', '-path', cfg.vlib_dir, '-enable-globals', '-silent', 'test',
+			test_file],
+		[shared_v3, '-o', os.join_path(warmup_dir, 'warmup'), program],
+		[shared_v3, '-b', 'c', '-o', os.join_path(warmup_dir, 'warmup_c'), program],
+	] {
+		os.system_args(args)
+	}
+	if os.exists(cache) {
+		os.cp_all(cache, base, true) or { os.rmdir_all(base) or {} }
 	}
 }
 
