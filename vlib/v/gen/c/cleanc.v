@@ -1203,6 +1203,8 @@ mut:
 	ownership_loop_control_index   int
 	ownership_loop_iteration_index int
 	ownership_scope_index          int
+	last_scope_drop_entries        []types.OwnershipDropEntry
+	reuse_scope_drops              bool
 	cur_return_drops               []types.OwnershipDropEntry
 	pending_return_scope_drops     []types.OwnershipDropEntry
 	expected_expr_type             types.Type = cgen_void_type

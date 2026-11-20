@@ -4005,3 +4005,73 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
 }
+
+// test_autofree_match_branch_scope_no_leak locks the #32454 repro.
+// A local declared in one match branch must not be dropped in another.
+fn test_autofree_match_branch_scope_no_leak() {
+	v3_bin := ownership_build_v3()
+	res := run_autofree_check(v3_bin, 'match_branch_scope', "
+struct Fetch {
+	text string
+}
+
+type Body = Fetch | int
+
+struct Select {
+	body  Body
+	fetch ?Fetch
+	order []string
+	text  string
+}
+
+struct Insert {
+	table string
+	query ?Select
+}
+
+struct Delete {
+	table string
+	where ?Fetch
+}
+
+type Stmt = Delete | Insert | Select
+
+fn plan(stmt Stmt) ! {
+	if stmt is Insert {
+		return error('not a query')
+	}
+}
+
+fn resolve(stmt Stmt) ! {
+	match stmt {
+		Delete, Select {
+			plan(stmt)!
+		}
+		Insert {
+			if query := stmt.query {
+				plan(query)!
+			}
+		}
+	}
+}
+
+fn main() {
+	resolve(Insert{
+		table: 't'
+		query: Select{
+			body:  Body(1)
+			order: []string{}
+			text:  't'
+		}
+	})!
+	resolve(Delete{
+		table: 't'
+	})!
+	println('ok')
+}
+")
+	// The Insert-branch `query` drop must stay in the Insert branch. Before the
+	// fix, the duplicated multi-type arm shifted the checker's scope-drop index
+	// and emitted `(query).body` in the Delete/Select branch (undeclared).
+	assert res.exit_code == 0, res.output
+}
