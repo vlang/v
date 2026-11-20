@@ -27,6 +27,15 @@ fn test_mesh_rejects_out_of_range_indices() {
 	assert !bad.valid()
 }
 
+fn test_wire_generators_are_valid() {
+	sphere := gen_mesh_sphere(1, 4, 8)
+	cylinder := gen_mesh_cylinder(Vec3{}, Vec3{0, 1, 0}, 1, 8)
+	assert sphere.valid()
+	assert cylinder.valid()
+	assert sphere.indices.len > 0
+	assert cylinder.indices.len > 0
+}
+
 fn test_rotate_3d_turns_90_degrees() {
 	v := rotate_3d(Vec3{1, 0, 0}, Vec3{0, 90, 0})
 	assert math.abs(v.x) < 1e-4

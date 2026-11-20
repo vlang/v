@@ -114,6 +114,38 @@ pub fn ray_box(ray Ray, center Vec3, size Vec3) RayHit {
 	}
 }
 
+// ray_triangle returns the nearest intersection of ray with a triangle.
+// Both sides of the triangle are hit; use your own normal test for culling.
+pub fn ray_triangle(ray Ray, a Vec3, b Vec3, c Vec3) RayHit {
+	e1 := b - a
+	e2 := c - a
+	p := ray.direction.cross(e2)
+	det := e1.dot(p)
+	if math.abs(det) < 1e-6 {
+		return RayHit{}
+	}
+	inv_det := 1.0 / det
+	t := ray.origin - a
+	u := t.dot(p) * inv_det
+	if u < 0 || u > 1 {
+		return RayHit{}
+	}
+	q := t.cross(e1)
+	v := ray.direction.dot(q) * inv_det
+	if v < 0 || u + v > 1 {
+		return RayHit{}
+	}
+	dist := e2.dot(q) * inv_det
+	if dist < 0 {
+		return RayHit{}
+	}
+	return RayHit{
+		hit:      true
+		distance: dist
+		point:    ray.origin + ray.direction.scale(dist)
+	}
+}
+
 // draw_ray draws a ray as a 3D line of unit length.
 pub fn (ctx &Context) draw_ray(ray Ray, length f32, color Color) {
 	end := ray.origin + ray.direction.scale(length)

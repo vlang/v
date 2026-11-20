@@ -123,10 +123,12 @@ first-person movement. 3D drawing uses depth testing with backface culling;
 painter-order pipelines, so HUD and text can be drawn afterwards.
 
 The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
-`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`. For
+`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`;
+wireframe variants include `draw_cube_wires()` and `draw_mesh_wires()`. For
 custom geometry, `Mesh3D` plus `gen_mesh_cube/plane/sphere/cylinder` and
 `ctx.draw_mesh()` draw indexed triangles with a position, rotation and scale.
-Use `screen_to_world_ray()` with `ray_sphere()` or `ray_box()` for picking.
+Use `screen_to_world_ray()` with `ray_sphere()`, `ray_box()` or
+`ray_triangle()` for picking.
 `Material3D` adds a directional `Light3D`, fog and an optional texture;
 `draw_material_mesh()` and `draw_billboard()` render them. Lighting and fog
 are baked into vertex colors, so no custom shader or extra backend work is

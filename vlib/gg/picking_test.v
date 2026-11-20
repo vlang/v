@@ -30,6 +30,20 @@ fn test_ray_from_inside_box_exits() {
 	assert math.abs(hit.distance - 1.0) < 1e-4
 }
 
+fn test_ray_hits_triangle() {
+	ray := Ray{ origin: gg.Vec3{0, 0, 5}, direction: gg.Vec3{0, 0, -1} }
+	hit := gg.ray_triangle(ray, gg.Vec3{-1, -1, 1}, gg.Vec3{1, -1, 1}, gg.Vec3{0, 1, 1})
+	assert hit.hit
+	assert math.abs(hit.distance - 4.0) < 1e-4
+	assert math.abs(hit.point.z - 1.0) < 1e-4
+}
+
+fn test_ray_misses_triangle_outside_bounds() {
+	ray := Ray{ origin: gg.Vec3{5, 5, 5}, direction: gg.Vec3{0, 0, -1} }
+	hit := gg.ray_triangle(ray, gg.Vec3{-1, -1, 1}, gg.Vec3{1, -1, 1}, gg.Vec3{0, 1, 1})
+	assert !hit.hit
+}
+
 fn test_screen_ray_points_at_screen_centre() {
 	cam := gg.Camera3D{
 		position: gg.Vec3{0, 0, 5}
