@@ -11,6 +11,38 @@ Compression output format is selected by `CompressFormat` via
 
 `compress` keeps default zlib behavior, and `decompress` auto-detects all three.
 
+The effort spent looking for matches is set by `level`, from 0 to 9, with the same meaning as
+in zlib: 0 stores the data, 6 is the default, 9 searches hardest. Each block is written as
+stored, fixed Huffman or dynamic Huffman, whichever costs the fewest bits, so data that does
+not compress is stored rather than grown.
+
+```v
+import compress.deflate
+
+fn main() {
+	data := 'hello '.repeat(100).bytes()
+	small := deflate.compress(data, format: .raw_deflate, level: 9)!
+	fast := deflate.compress(data, format: .raw_deflate, level: 1)!
+	assert small.len <= fast.len
+	assert deflate.decompress(small)! == data
+}
+```
+
+A program compressing many small buffers can keep one `Compressor`, which reuses its match
+finder and Huffman tables instead of allocating them for every call:
+
+```v
+import compress.deflate
+
+fn main() {
+	mut c := deflate.new_compressor(6)!
+	for part in ['first', 'second', 'third'] {
+		raw := c.compress_raw(part.repeat(10).bytes())!
+		assert deflate.decompress(raw)! == part.repeat(10).bytes()
+	}
+}
+```
+
 ## Testing
 
 Run the module's roundtrip, stream, checksum and malformed-input tests from the repository root:
