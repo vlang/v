@@ -2885,12 +2885,14 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		return [][]FlatFnGenItem{}
 	}
 	chunk_count := if n_jobs > items.len { items.len } else { n_jobs }
-	mut chunks := [][]FlatFnGenItem{}
+	mut chunks := [][]FlatFnGenItem{cap: chunk_count}
 	mut total_cost := 0
 	for item in items {
 		total_cost += item.cost
 	}
-	mut current := []FlatFnGenItem{}
+	// The chunks are consecutive ranges of `items`: slice them instead of
+	// copying every item, and its three strings, into a list per chunk.
+	mut start := 0
 	mut consumed_cost := 0
 	mut chunk_idx := 0
 	mut chunks_left := chunk_count
@@ -2899,18 +2901,17 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		next_target := total_cost * (chunk_idx + 1) / chunk_count
 		// Leave one item for each remaining chunk even if a costly item has
 		// pushed the cumulative target past the remaining functions.
-		if current.len > 0 && chunks_left > 1
+		if idx > start && chunks_left > 1
 			&& (consumed_cost >= next_target || remaining_items == chunks_left - 1) {
-			chunks << moved_items(current)
-			current = []FlatFnGenItem{}
+			chunks << moved_items(items[start..idx])
+			start = idx
 			chunk_idx++
 			chunks_left--
 		}
-		current << item
 		consumed_cost += item.cost
 	}
-	if current.len > 0 {
-		chunks << moved_items(current)
+	if items.len > start {
+		chunks << moved_items(items[start..])
 	}
 	return chunks
 }
