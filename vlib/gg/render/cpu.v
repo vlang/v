@@ -457,6 +457,9 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 		return
 	}
 
+	// A draw command either samples a registered image or uses opaque white.
+	has_texture := cmd.image.id != 0 && cmd.image.id != st.def_img.id && cmd.image.id in st.image_data
+
 	// Vertex colours are constant across the triangle: unpack them once here
 	// instead of doing twelve shifts/masks/divides per fragment.
 	ur0, ug0, ub0, ua0 := unpack_r(v0.rgba), unpack_g(v0.rgba), unpack_b(v0.rgba), unpack_a(v0.rgba)
@@ -545,13 +548,27 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			b := ub0 * bw0 + ub1 * bw1 + ub2 * bw2
 			a := ua0 * bw0 + ua1 * bw1 + ua2 * bw2
 
-			mut tex_color := u32(0xffffffff)
-			if cmd.image.id != 0 && cmd.image.id != st.def_img.id {
-				if cmd.image.id in st.image_data {
-					img_data := st.image_data[cmd.image.id] or { ImageData{} }
-					filter := if img_data.filter == 1 { 1 } else { 0 }
-					tex_color = sample_image(img_data.pixels, img_data.width, img_data.height, img_data.channels, filter, u, vv)
+			// Fast path for the common untextured case: tex_color would be
+			// opaque white, so skip four unpacks and four multiplies. With
+			// .none, or .alpha with an opaque source, the destination unpack
+			// and blend math can be skipped too. Edge increments were already
+			// advanced at the top of the loop, so `continue` is safe here.
+			if !has_texture {
+				if cmd.blend_mode == .none {
+					frame.pixels[idx] = pack_color(u8(r * 255), u8(g * 255), u8(b * 255), u8(a * 255))
+					continue
 				}
+				if cmd.blend_mode == .alpha && a >= 1.0 {
+					frame.pixels[idx] = pack_color(u8(r * 255), u8(g * 255), u8(b * 255), 255)
+					continue
+				}
+			}
+
+			mut tex_color := u32(0xffffffff)
+			if has_texture {
+				img_data := st.image_data[cmd.image.id] or { ImageData{} }
+				filter := if img_data.filter == 1 { 1 } else { 0 }
+				tex_color = sample_image(img_data.pixels, img_data.width, img_data.height, img_data.channels, filter, u, vv)
 			}
 
 			tr := unpack_r(tex_color) * r
