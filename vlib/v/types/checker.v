@@ -1203,6 +1203,8 @@ pub mut:
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool
+	defer_fn_params                  bool // pass 2 also leaves fn_param_types to a lane; until that ran, fn_type_modules tells which names are registered
+	defer_fn_names                   bool // lanes record the C names and visible-mutation declarations of functions from their prepared names (pass2_names_from_preps)
 	fn_ancillary_registrations       []FnAncillaryRegistration
 	fn_c_variadic_registrations      []FnNamePairRegistration
 	fn_mut_receiver_registrations    []FnNamePairRegistration
@@ -5029,11 +5031,26 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
 	if parallel_pass2_ancillary {
 		tc.defer_fn_ancillary = true
+		// Every registration of pass 2 names its file, so a name is in
+		// fn_type_modules exactly when it is in fn_param_types, as long as both
+		// start empty: pass 2 can then tell a registered name without the table
+		// it leaves to a lane.
+		tc.defer_fn_params = tc.fn_param_types.len == 0 && tc.fn_type_modules.len == 0
+			&& tc.top_level_idx.len > 0 && a.nodes[tc.top_level_idx[0]].kind == .file
+			&& os.getenv('V3_NO_PAR_PASS2_PARAMS') == ''
+		// With a preparation of every function that outlives its lane's arena,
+		// lanes take its names from there.
+		tc.defer_fn_names = pass2_preps.len == tc.top_level_idx.len && tc.pass2_lanes_promote()
+			&& os.getenv('V3_NO_PAR_PASS2_NAMES') == ''
 		tc.fn_ancillary_registrations = []FnAncillaryRegistration{cap: tc.top_level_idx.len * 2}
 		tc.fn_c_variadic_registrations = []FnNamePairRegistration{cap: 64}
 		tc.fn_mut_receiver_registrations = []FnNamePairRegistration{cap: tc.top_level_idx.len / 2}
 		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 2}
-		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: tc.top_level_idx.len}
+		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: if tc.defer_fn_names {
+			0
+		} else {
+			tc.top_level_idx.len
+		}}
 	}
 	mut public_c_structs := map[u32]bool{}
 	p2_fn_ns, p2_struct_ns := tc.collect_pass2(a, tc.top_level_idx, pass2_preps, fast_pass2_registration, mut
@@ -5046,7 +5063,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	if parallel_pass2_ancillary {
 		tc.defer_fn_ancillary = false
 		// Also collects the deprecated symbols, beside the lanes.
-		tc.finish_pass2_ancillary_registrations()
+		tc.finish_pass2_ancillary_registrations(pass2_preps)
+		tc.defer_fn_params = false
+		tc.defer_fn_names = false
 	}
 	// The registrations above copied what they keep of the preparations.
 	unsafe { pass2_preps.free() }
@@ -5254,6 +5273,17 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 	}
 }
 
+// pass2_fn_name_registered reports whether pass 2 registered a signature
+// under `name`: its fn_param_types entry, or the fn_type_modules one that
+// every registration writes while the parameter table is left to a lane.
+@[inline]
+fn (tc &TypeChecker) pass2_fn_name_registered(name string) bool {
+	if tc.defer_fn_params {
+		return name in tc.fn_type_modules
+	}
+	return name in tc.fn_param_types
+}
+
 // collect_pass2 collects the struct fields and function signatures of the
 // top-level declarations `entries`, in their order, and returns the time it
 // took on functions and on structs when the checker is verbose. `pass2_preps`
@@ -5290,8 +5320,12 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				} else {
 					tc.qualify_fn_name(node.value)
 				}
+				// A lane records the prepared C names in the name cache after this
+				// loop when it takes the names from the preparations.
 				lowered_qname := if !fast_pass2_registration {
 					''
+				} else if names_ready && tc.defer_fn_names {
+					lane_prep.lowered_qname
 				} else if names_ready {
 					tc.store_c_name(qname, lane_prep.lowered_qname)
 				} else {
@@ -5301,6 +5335,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					''
 				} else if node.value == qname {
 					lowered_qname
+				} else if names_ready && tc.defer_fn_names {
+					lane_prep.lowered_source_name
 				} else if names_ready {
 					tc.store_c_name(node.value, lane_prep.lowered_source_name)
 				} else {
@@ -5309,15 +5345,19 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				// A parsed source body supersedes a matching declaration imported from
 				// a cached header. Pass 1 sees all bodyless declarations first, so clear
 				// their marker while collecting concrete source signatures in pass 2.
-				tc.source_no_body_fns.delete(qname)
-				if tc.cur_module in ['', 'main'] {
-					tc.source_no_body_fns.delete(node.value)
+				if tc.source_no_body_fns.len > 0 {
+					tc.source_no_body_fns.delete(qname)
+					if tc.cur_module in ['', 'main'] {
+						tc.source_no_body_fns.delete(node.value)
+					}
 				}
 				tc.v_fn_semantic_names[qname] = true
 				if tc.cur_module in ['', 'main', 'builtin'] {
 					tc.v_fn_semantic_names[node.value] = true
 				}
-				if fast_pass2_registration {
+				if tc.defer_fn_names {
+					// A lane registers it (pass2_names_from_preps).
+				} else if fast_pass2_registration {
 					tc.register_visible_mutation_fn_decl_with_lowered(tl_idx, tc.cur_module, qname, node.value, lowered_qname, lowered_source_name)
 				} else {
 					tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, qname, node.value)
@@ -5355,7 +5395,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					tc.register_fn_ret_type_text(qname, node.typ)
 					tc.register_fn_ret_type_text(lowered_qname, node.typ)
 					if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
-						&& node.value !in tc.fn_param_types {
+						&& !tc.pass2_fn_name_registered(node.value) {
 						tc.register_fn_signature_owned(node.value, lowered_source_name, ret_type, owned_ptypes, owned_shared_params, is_variadic, has_forwardable_ctx)
 						if is_c_variadic {
 							tc.register_c_variadic_fn_with_lowered(node.value, lowered_source_name)
@@ -5377,7 +5417,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					tc.register_fn_ret_type_text(qname, node.typ)
 					tc.register_fn_ret_type_text(tc.cached_c_name(qname), node.typ)
 					if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
-						&& node.value !in tc.fn_param_types {
+						&& !tc.pass2_fn_name_registered(node.value) {
 						tc.register_fn_signature(node.value, ret_type, ptypes, shared_params, is_variadic, has_forwardable_ctx)
 						if is_c_variadic {
 							tc.register_c_variadic_fn(node.value)
@@ -5516,7 +5556,9 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				if c_name == 'C.va_arg' {
 					continue
 				}
-				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
+				if !tc.defer_fn_names {
+					tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
+				}
 				ret_type := tc.parse_type(node.typ)
 				tc.register_c_fn_referenced_type(ret_type)
 				mut ptypes := []Type{}
@@ -9340,6 +9382,7 @@ const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__
 struct FnAncillaryRegistration {
 	name             string
 	ret_type         Type
+	params           []Type // when fn_param_types is left to a lane (defer_fn_params)
 	shared_params    []bool
 	is_variadic      bool
 	implicit_veb_ctx bool
@@ -9443,7 +9486,9 @@ fn (mut tc TypeChecker) register_fn_name_alias_owned(name string, ret_type Type,
 			}
 		}
 	}
-	tc.fn_param_types[name] = params
+	if !tc.defer_fn_params {
+		tc.fn_param_types[name] = params
+	}
 	mut write_file := false
 	if tc.cur_file.len > 0 {
 		// A refined C-extern redeclaration updates the signature tables above
@@ -9460,6 +9505,7 @@ fn (mut tc TypeChecker) register_fn_name_alias_owned(name string, ret_type Type,
 		tc.fn_ancillary_registrations << FnAncillaryRegistration{
 			name:             name
 			ret_type:         ret_type
+			params:           if tc.defer_fn_params { params } else { []Type{} }
 			shared_params:    shared_params
 			is_variadic:      is_variadic
 			implicit_veb_ctx: implicit_veb_ctx
