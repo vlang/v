@@ -168,7 +168,7 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 ```
 
 In a template, `@include "partials.txt/header.txt"` uses that path as written.
-If the filename has no extension, the compiler appends `.html`.
+An extensionless include such as `footer` resolves to `footer.html`.
 
 ## Validation
 

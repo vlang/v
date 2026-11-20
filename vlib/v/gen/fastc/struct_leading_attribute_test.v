@@ -27,8 +27,10 @@ fn test_fastc_struct_field_leading_attribute_flags_are_recorded() {
 	mut struct_fields := map[string]flat.TypeTextBindings{}
 	mut struct_field_info := map[string][]FastcStructField{}
 	mut composite_types := map[string]bool{}
+	mut thread_types := map[string]bool{}
+	mut heap_structs := map[string]bool{}
 	mut out := strings.new_builder(256)
-	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out) or {
+	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut thread_types, mut heap_structs, mut out) or {
 		panic(err)
 	}
 	fields := struct_field_info[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
@@ -63,8 +65,10 @@ fn test_fastc_struct_field_leading_attribute_edge_cases_are_recorded() {
 	mut struct_fields := map[string]flat.TypeTextBindings{}
 	mut struct_field_info := map[string][]FastcStructField{}
 	mut composite_types := map[string]bool{}
+	mut thread_types := map[string]bool{}
+	mut heap_structs := map[string]bool{}
 	mut out := strings.new_builder(256)
-	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out) or {
+	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut thread_types, mut heap_structs, mut out) or {
 		panic(err)
 	}
 	fields := struct_field_info[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
@@ -136,9 +140,11 @@ fn test_fastc_leading_skip_or_required_on_embedded_field_is_refused() {
 		mut struct_fields := map[string]flat.TypeTextBindings{}
 		mut struct_field_info := map[string][]FastcStructField{}
 		mut composite_types := map[string]bool{}
+		mut thread_types := map[string]bool{}
+		mut heap_structs := map[string]bool{}
 		mut out := strings.new_builder(256)
 		mut message := ''
-		_ = fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out) or {
+		_ = fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut thread_types, mut heap_structs, mut out) or {
 			message = err.msg()
 			token.Token.eof
 		}
@@ -203,8 +209,10 @@ fn fastc_leading_flags_emit(src string) !map[string][]FastcStructField {
 	mut struct_fields := map[string]flat.TypeTextBindings{}
 	mut struct_field_info := map[string][]FastcStructField{}
 	mut composite_types := map[string]bool{}
+	mut thread_types := map[string]bool{}
+	mut heap_structs := map[string]bool{}
 	mut out := strings.new_builder(256)
-	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out)!
+	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut thread_types, mut heap_structs, mut out)!
 	return struct_field_info
 }
 
@@ -681,8 +689,10 @@ fn fastc_struct_fields_emit(src string) !map[string][]FastcStructField {
 	mut struct_fields := map[string]flat.TypeTextBindings{}
 	mut struct_field_info := map[string][]FastcStructField{}
 	mut composite_types := map[string]bool{}
+	mut thread_types := map[string]bool{}
+	mut heap_structs := map[string]bool{}
 	mut out := strings.new_builder(256)
-	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, declared_types, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out)!
+	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, declared_types, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut thread_types, mut heap_structs, mut out)!
 	return struct_field_info
 }
 
