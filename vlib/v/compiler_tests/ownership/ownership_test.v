@@ -1400,6 +1400,82 @@ fn main() {
 	assert fail.output.contains('cannot assign to `conn.in_work` because `conn` is borrowed by `s.c`'), fail.output
 }
 
+// test_ownership_dead_borrower_in_branch extends NLL-lite to writes inside a
+// branch: a borrower read only before the branch is dead at the write.
+fn test_ownership_dead_borrower_in_branch() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'dead_borrow_branch', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn, flag bool) {
+	s := Stmt{
+		c: &conn
+	}
+	if flag {
+		s.run()
+		conn.in_work = false
+	}
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn, true)
+}
+")
+	assert ok.exit_code == 0, ok.output
+
+	fail := run_ownership_check(v3_bin, 'live_borrow_other_branch', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn, flag bool) {
+	s := Stmt{
+		c: &conn
+	}
+	if flag {
+		s.run()
+		conn.in_work = false
+	} else {
+		s.run()
+	}
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn, true)
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('cannot assign to `conn.in_work` because `conn` is borrowed by `s.c`'), fail.output
+}
+
 // test_ownership_dead_borrower_releases_borrow_on_move extends NLL-lite to
 // move sites: a borrower that is never read after the move must not block it.
 fn test_ownership_dead_borrower_releases_borrow_on_move() {

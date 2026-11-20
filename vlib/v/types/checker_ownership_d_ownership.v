@@ -13529,16 +13529,16 @@ fn (mut tc TypeChecker) ownership_release_borrow_if_dead(conflict OwnershipBorro
 				stmt = child
 				break
 			}
-			if parent_kind == .comptime_if {
+			if parent_kind in [.comptime_if, .if_expr, .match_stmt, .match_branch, .select_stmt,
+				.select_branch, .or_expr, .sql_expr] {
 				child = cur
 				cur = parent
 				continue
 			}
 			return false
 		}
-		if kind in [.if_expr, .match_stmt, .match_branch, .for_stmt, .for_in_stmt, .defer_stmt,
-			.lock_expr, .select_branch, .select_stmt, .fn_literal, .lambda_expr, .spawn_expr, .or_expr,
-			.comptime_for, .asm_stmt, .sql_expr] {
+		if kind in [.for_stmt, .for_in_stmt, .defer_stmt, .lock_expr, .fn_literal, .lambda_expr,
+			.spawn_expr, .comptime_for, .asm_stmt] {
 			return false
 		}
 		child = cur
@@ -13551,6 +13551,9 @@ fn (mut tc TypeChecker) ownership_release_borrow_if_dead(conflict OwnershipBorro
 	// assembly, and unsafe address-taking elsewhere in the body keep the loan
 	// alive even when they never read the borrower after `pos` textually.
 	if tc.ownership_body_has_escaping_use(block, base) {
+		return false
+	}
+	if stmt != pos && tc.ownership_branch_has_use_after(stmt, pos, base) {
 		return false
 	}
 	block_node := tc.a.node(block)
@@ -13594,6 +13597,56 @@ fn (tc &TypeChecker) ownership_subtree_uses_base(root flat.NodeId, base string) 
 			return true
 		}
 		pending << tc.a.children_of(node)
+	}
+	return false
+}
+
+// ownership_subtree_contains_node reports whether `target` is inside `root`.
+fn (tc &TypeChecker) ownership_subtree_contains_node(root flat.NodeId, target flat.NodeId) bool {
+	if !tc.valid_node_id(root) {
+		return false
+	}
+	mut pending := [root]
+	for pending.len > 0 {
+		cur := pending.pop()
+		if cur == target {
+			return true
+		}
+		pending << tc.a.children_of(tc.a.node(cur))
+	}
+	return false
+}
+
+// ownership_branch_has_use_after reports whether a branch rooted at `root`
+// reads `base` at or after `target` in source order. Flat AST children are
+// ordered, so every sibling after the one containing `target` is a later read,
+// including the other arm of an if/else or match. A read inside `target` itself
+// also keeps the loan alive.
+fn (tc &TypeChecker) ownership_branch_has_use_after(root flat.NodeId, target flat.NodeId, base string) bool {
+	if base == '' || !tc.valid_node_id(root) {
+		return false
+	}
+	mut current := root
+	for tc.valid_node_id(current) {
+		if current == target {
+			return tc.ownership_subtree_uses_base(current, base)
+		}
+		node := tc.a.node(current)
+		mut target_child := flat.empty_node
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if target_child == flat.empty_node && tc.ownership_subtree_contains_node(child, target) {
+				target_child = child
+				continue
+			}
+			if target_child != flat.empty_node && tc.ownership_subtree_uses_base(child, base) {
+				return true
+			}
+		}
+		if target_child == flat.empty_node {
+			return false
+		}
+		current = target_child
 	}
 	return false
 }
