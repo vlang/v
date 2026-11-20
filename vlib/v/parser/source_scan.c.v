@@ -2,6 +2,8 @@ module parser
 
 import v.token
 
+fn C.atomic_fetch_add_u32(voidptr, u32) u32
+
 // source_index_u8 returns the index of the first byte `c` of `src` at or after
 // `start`, or -1 without one. The parser asks a few questions of a whole source
 // before it parses it; this answers them at the speed of the C library's scan
@@ -225,4 +227,31 @@ pub fn read_batch_source(path string) string {
 			return tos(buf, int(size))
 		}
 	}
+}
+
+// MergePrefaultArgs is the task of merge_prefault_thread: the memory
+// [start, end) to make resident.
+struct MergePrefaultArgs {
+	start voidptr
+	end   voidptr
+}
+
+// merge_prefault_thread makes the unused capacity [start, end) of the caller's
+// node and children arrays resident before the merge of a parallel parse fills
+// it. The merge copies the nodes of every chunk there side by side, and each
+// first write to a page then waits for the kernel to map it: those faults of
+// one mapping do not run side by side, so most of the copy was that wait. Here
+// one pool thread takes them while the others still parse.
+// The caller may append to the arrays meanwhile, so a page is touched with an
+// atomic add of zero, which changes no value whatever else writes that word.
+fn merge_prefault_thread(arg voidptr) voidptr {
+	task := unsafe { &MergePrefaultArgs(arg) }
+	// Words are aligned, and no page is smaller than this stride.
+	mut addr := (u64(task.start) + 3) & ~u64(3)
+	end := u64(task.end)
+	for addr + 4 <= end {
+		C.atomic_fetch_add_u32(voidptr(addr), 0)
+		addr += 4096
+	}
+	return unsafe { nil }
 }

@@ -506,6 +506,21 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		arg:        unsafe { voidptr(&args[0]) }
 		force_sync: true
 	}
+	// The merges of this batch and of the one parsed ahead copy into the unused
+	// capacity of the caller's arrays: make that resident meanwhile, behind the
+	// chunks that the workers start with (see merge_prefault_thread).
+	mut prefaults := p.merge_prefault_ranges(total_bytes + next_bytes)
+	for pi in 0 .. prefaults.len {
+		prefault_task := workers.Task{
+			run: merge_prefault_thread
+			arg: unsafe { voidptr(&prefaults[pi]) }
+		}
+		if tasks.len > p.a.worker_pool.size() {
+			tasks.insert(p.a.worker_pool.size() - 1, prefault_task)
+		} else {
+			tasks.insert(0, prefault_task)
+		}
+	}
 	// The chunks share what each sibling file adds to the sizeof declaration
 	// tables. The table grows in the chunks' arenas, so drop it with the pool.
 	sizeof_shared := TranslatedSizeofShared.new()
@@ -592,6 +607,50 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	ahead := if next_paths.len > 0 { ', ahead: ${next_paths.len}' } else { '' }
 	p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len}${ahead})')
 	return starts, any_started
+}
+
+// merge_prefault_nodes_per_kb is a low estimate of the nodes that a parse makes
+// of 1024 source bytes (the compiler's own sources make about 120): the merge
+// of a parallel parse fills at least that much of the caller's arrays.
+const merge_prefault_nodes_per_kb = 112
+
+// merge_prefault_min_bytes is the batch size from which the capacity that its
+// merge fills is made resident ahead of it.
+const merge_prefault_min_bytes = 1048576
+
+// merge_prefault_ranges returns the unused capacity of the caller's node and
+// children arrays that the merges of a batch of `source_bytes` will fill, for
+// merge_prefault_thread: nothing unless the arrays hold that capacity already
+// (the self-host reserves its whole tree), since an array that grows moves.
+fn (p &Parser) merge_prefault_ranges(source_bytes i64) []MergePrefaultArgs {
+	mut ranges := []MergePrefaultArgs{}
+	$if prealloc {
+		if source_bytes < merge_prefault_min_bytes {
+			return ranges
+		}
+		estimate := int(source_bytes / 1024 * merge_prefault_nodes_per_kb)
+		// Twice the estimate fits: the caller's own chunk, which is appended while
+		// the task runs, then cannot make either array move under it.
+		if p.a.nodes.cap - p.a.nodes.len >= estimate * 2 {
+			unsafe {
+				start := &u8(p.a.nodes.data) + p.a.nodes.len * int(sizeof(flat.Node))
+				ranges << MergePrefaultArgs{
+					start: voidptr(start)
+					end:   voidptr(start + estimate * int(sizeof(flat.Node)))
+				}
+			}
+		}
+		if p.a.children.cap - p.a.children.len >= estimate * 2 {
+			unsafe {
+				start := &u8(p.a.children.data) + p.a.children.len * int(sizeof(flat.NodeId))
+				ranges << MergePrefaultArgs{
+					start: voidptr(start)
+					end:   voidptr(start + estimate * int(sizeof(flat.NodeId)))
+				}
+			}
+		}
+	}
+	return ranges
 }
 
 // SpeculatedBatch is the parse of the files that the caller expected in its
