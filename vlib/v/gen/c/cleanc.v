@@ -16048,6 +16048,23 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 	return ''
 }
 
+// address_operand_may_be_const_ref reports whether
+// const_ref_name_from_node_cached_for_collect can name a const for the operand
+// of an address-of expression. It is that function's own early tests: every
+// operand rejected here gets the empty name there, before any other work.
+@[direct_array_access]
+fn (g &FlatGen) address_operand_may_be_const_ref(id flat.NodeId, unique_index map[string]string) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return true
+	}
+	node := unsafe { &g.a.nodes[int(id)] }
+	return match node.kind {
+		.paren { true }
+		.ident, .selector { cgen_name_may_be_const_ref(node.value, unique_index, g.const_vals) }
+		else { false }
+	}
+}
+
 fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
 	if dot := name.last_index('.') {
 		return unsafe { name.substr_unsafe(dot + 1, name.len) }
@@ -16102,6 +16119,8 @@ struct FixedStorageNodeScanArgs {
 	fixed_candidate_shorts map[string]bool
 	ident_filter           &FixedStorageCandidateNameFilter
 	short_filter           &FixedStorageCandidateNameFilter
+	// The frozen const short-name index, for address_operand_may_be_const_ref.
+	unique_const_ref_names map[string]string
 mut:
 	address_items    []FixedStorageConstRefItem
 	ref_items        []FixedStorageConstRefItem
@@ -16248,9 +16267,14 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 		match node.kind {
 			.prefix {
 				if node.op == .amp && node.children_count > 0 {
-					scan.address_items << FixedStorageConstRefItem{
-						id: g.a.child(node, 0)
-						at: idx
+					operand_id := g.a.child(node, 0)
+					// Nearly every operand is a local: keep the ones the replay can
+					// resolve to a const.
+					if g.address_operand_may_be_const_ref(operand_id, scan.unique_const_ref_names) {
+						scan.address_items << FixedStorageConstRefItem{
+							id: operand_id
+							at: idx
+						}
 					}
 				}
 			}
@@ -16389,6 +16413,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 			fixed_candidate_shorts: fixed_candidate_shorts
 			ident_filter:           &fixed_candidate_ident_filter
 			short_filter:           &fixed_candidate_short_filter
+			unique_const_ref_names: unique_const_ref_names
 			fixed_safe_refs:        map[int]bool{}
 		}
 	}
