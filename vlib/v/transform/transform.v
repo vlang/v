@@ -254,14 +254,17 @@ mut:
 	merge_absorbed_child_shift i32
 	// const_array_fixed_storage_cache avoids rescanning the complete AST for
 	// repeated uses of the same array constant in one transform worker.
-	const_array_fixed_storage_cache     map[string]i8
-	enum_selector_filter                &EnumSelectorNameFilter = unsafe { nil }
-	enum_unqualified_index              &EnumUnqualifiedIndex   = unsafe { nil }
-	enum_types                          map[u32][]string
-	enum_explicit_first_values          map[u32]bool // the first member has a value, maybe not 0
-	enum_backing_types                  flat.SourceTypeBindings
-	cur_file                            string
-	cur_module                          string
+	const_array_fixed_storage_cache map[string]i8
+	enum_selector_filter            &EnumSelectorNameFilter = unsafe { nil }
+	enum_unqualified_index          &EnumUnqualifiedIndex   = unsafe { nil }
+	enum_types                      map[u32][]string
+	enum_explicit_first_values      map[u32]bool // the first member has a value, maybe not 0
+	enum_backing_types              flat.SourceTypeBindings
+	cur_file                        string
+	cur_module                      string
+	// fresh_array_vars tracks locals initialized with a brand-new array buffer,
+	// so append/index lowering can skip slice-detach runtime checks for them.
+	fresh_array_vars                    map[string]bool
 	cur_fn_name                         string
 	cur_fn_source_file                  string
 	cur_fn_source_module                string
@@ -6243,6 +6246,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escape_decl_depths:                     map[string]int{}
 		escaping_fixed_array_view_sources:      map[string]bool{}
 		heaped_amp_locals:                      map[string]bool{}
+		fresh_array_vars:                       map[string]bool{}
 		local_closure_cleanup_decls:            map[int]string{}
 		local_closure_cleanup_values:           map[int]string{}
 		local_closure_cleanup_assigns:          map[int]string{}
@@ -13412,6 +13416,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	outer_locals_in_scope := t.fn_body_locals_in_scope
 	t.fn_body_locals_in_scope = false
 	defer { t.fn_body_locals_in_scope = outer_locals_in_scope }
+	outer_fresh_arrays := t.fresh_array_vars
+	t.fresh_array_vars = map[string]bool{}
+	defer { t.fresh_array_vars = outer_fresh_arrays }
 	outer_comptime_locals := t.comptime_scalar_locals
 	outer_comptime_arrays := t.comptime_array_locals
 	outer_comptime_arrays_shared := t.comptime_array_locals_shared
@@ -16802,6 +16809,10 @@ fn qualified_const_key_matches(key string, qualifier string, name string) bool {
 fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return [id]
+	}
+	assign_lhs_id := t.a.child(node, 0)
+	if t.valid_node_id(assign_lhs_id) && t.a.node(assign_lhs_id).kind == .ident {
+		t.fresh_array_vars.delete(t.a.node(assign_lhs_id).value)
 	}
 	if expanded := t.try_expand_multi_return_assign(node) {
 		return expanded
@@ -20395,6 +20406,17 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ_text()} value=${node.value_text()} children=${parts.join('|')}')
 	}
 	source_lhs := t.a.node(t.a.child(&node, 0))
+	if source_lhs.kind == .ident && t.valid_node_id(source_rhs_id) {
+		rhs_node := t.a.node(source_rhs_id)
+		if rhs_node.kind == .array_init || rhs_node.kind == .array_literal {
+			t.fresh_array_vars[source_lhs.value] = true
+		} else if rhs_node.kind == .call {
+			callee := t.a.node(t.a.child(rhs_node, 0))
+			if callee.value in ['array_new', '__new_array_noscan', '__new_array_aligned'] {
+				t.fresh_array_vars[source_lhs.value] = true
+			}
+		}
+	}
 	shadows_pointer_storage := source_single_decl && source_lhs.kind == .ident
 		&& (t.heaped_amp_locals[source_lhs.value_text()] || t.pointer_value_rvalues[source_lhs.value_text()]
 			|| t.pointer_value_lvalues[source_lhs.value_text()])
