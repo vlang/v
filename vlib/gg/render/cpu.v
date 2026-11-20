@@ -459,6 +459,8 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 
 	// A draw command either samples a registered image or uses opaque white.
 	has_texture := cmd.image.id != 0 && cmd.image.id != st.def_img.id && cmd.image.id in st.image_data
+	// Solid-color triangles skip all per-fragment colour interpolation.
+	flat_color := v0.rgba == v1.rgba && v1.rgba == v2.rgba
 
 	// Vertex colours are constant across the triangle: unpack them once here
 	// instead of doing twelve shifts/masks/divides per fragment.
@@ -541,6 +543,20 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 				// Attributes still in clip space do need perspective correction.
 				u = (iw0w * v0.u + iw1w * v1.u + iw2w * v2.u) / inv_w
 				vv = (iw0w * v0.v + iw1w * v1.v + iw2w * v2.v) / inv_w
+			}
+
+			// Flat, opaque, untextured triangles are the common 2D fill case.
+			// Write the vertex colour directly instead of interpolating and
+			// repacking it per fragment.
+			if flat_color && !has_texture {
+				if cmd.blend_mode == .none {
+					frame.pixels[idx] = v0.rgba
+					continue
+				}
+				if cmd.blend_mode == .alpha && u8(v0.rgba >> 24) == 255 {
+					frame.pixels[idx] = v0.rgba
+					continue
+				}
 			}
 
 			r := ur0 * bw0 + ur1 * bw1 + ur2 * bw2
