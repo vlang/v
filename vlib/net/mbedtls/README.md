@@ -15,6 +15,16 @@ On Linux, TLS sends suppress SIGPIPE for each socket operation. A peer that clos
 the connection produces a connection-reset error without terminating the process
 or changing its SIGPIPE handler. Nonblocking backpressure remains retryable.
 
+## Coexistence with a system Mbed TLS
+
+This module uses V's vendored Mbed TLS 3.6 for its own code but does not
+export its headers to the rest of the program: C files you add yourself
+(via `#flag file.c` or your own modules) keep resolving
+`#include <mbedtls/...>` against an installed system Mbed TLS, if any.
+Note the link still carries V's vendored copy (about 1,900 `mbedtls_` /
+`psa_` symbols), so mixing it with a system Mbed TLS 4.x in one binary
+needs care at link time -- the headers just no longer silently mix.
+
 ## Thread safety
 
 `SSLConn` does not synchronize access to its TLS context. Serialize calls on the same
