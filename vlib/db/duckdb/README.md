@@ -89,11 +89,16 @@ of these; no change to `vlib/orm` is needed.
 
 | V type (ORM)                                   | DuckDB type |
 | ---------------------------------------------- | ----------- |
-| integers, bool, serial, `time.Time`, enums     | `BIGINT`    |
+| `i8`, `i16`, `int`, `i64`, `u8`, `u16`, `u32`, bool, serial, `time.Time`, enums | `BIGINT` |
+| `u64`                                          | `UBIGINT`   |
 | `f32`, `f64`                                   | `DOUBLE`    |
 | `string`                                       | `TEXT`      |
 
 `time.Time` is stored as Unix seconds. Enums are stored as their integer index.
+`u64` uses DuckDB's unsigned binder, so the full range up to
+`18446744073709551615` round-trips without wrapping. Binding such a value into
+a pre-existing signed `BIGINT` column is rejected by DuckDB instead of being
+silently truncated.
 
 ## Transactions and savepoints
 

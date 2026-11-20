@@ -13,6 +13,11 @@ struct DuckdbTag {
 	label string @[unique]
 }
 
+struct DuckdbBig {
+	id  int @[primary; sql: serial]
+	val u64
+}
+
 fn new_duckdb_orm_db() duckdb.DB {
 	return duckdb.connect(':memory:') or { panic(err) }
 }
@@ -91,6 +96,36 @@ fn test_duckdb_orm_crud() {
 	sql db {
 		drop table DuckdbPerson
 	}!
+}
+
+fn test_duckdb_orm_u64_max_roundtrip() {
+	mut db := new_duckdb_orm_db()
+	defer {
+		db.close() or { panic(err) }
+	}
+	sql db {
+		create table DuckdbBig
+	}!
+
+	// u64 columns must be UBIGINT, not BIGINT, or the maximum value wraps.
+	ddl := db.exec("SELECT sql FROM duckdb_tables() WHERE table_name = 'duckdbbig'") or {
+		panic(err)
+	}
+	assert ddl.len == 1
+	assert ddl[0].vals[0].contains('UBIGINT')
+
+	max := u64(18446744073709551615)
+	row := DuckdbBig{
+		val: max
+	}
+	sql db {
+		insert row into DuckdbBig
+	}!
+	rows := sql db {
+		select from DuckdbBig
+	}!
+	assert rows.len == 1
+	assert rows[0].val == max
 }
 
 fn test_duckdb_orm_transactions() {

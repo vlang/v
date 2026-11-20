@@ -353,6 +353,10 @@ pub fn (db &DB) prepare(query string) !Stmt {
 		if msg == '' {
 			msg = 'unknown prepare error'
 		}
+		// The error string is owned by the handle, so it must be copied into V
+		// memory (done by cstring) before the handle is released. DuckDB
+		// requires destroying the handle even when preparation fails.
+		C.duckdb_destroy_prepare(&handle)
 		return error('duckdb: prepare failed: ${msg} (${query})')
 	}
 	return Stmt{

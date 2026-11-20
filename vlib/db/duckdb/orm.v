@@ -76,6 +76,10 @@ pub fn (mut db DB) last_id() int {
 
 // duckdb_type_from_v maps V type indices to DuckDB column types.
 fn duckdb_type_from_v(typ int) !string {
+	// u64 needs UBIGINT: BIGINT would silently truncate values above i64 max.
+	if typ == typeof[u64]().idx {
+		return 'UBIGINT'
+	}
 	if typ in orm.nums || typ in orm.num64 || typ in [orm.serial, orm.time_, orm.enum_] {
 		return 'BIGINT'
 	}
@@ -225,8 +229,11 @@ fn bind_value(stmt &Stmt, mut c BindCounter, data orm.Primitive) int {
 		i8, i16, int, u8, u16, u32, bool {
 			err_code = stmt.bind_i64(c.position, i64(int(data)))
 		}
-		i64, u64 {
+		i64 {
 			err_code = stmt.bind_i64(c.position, i64(data))
+		}
+		u64 {
+			err_code = stmt.bind_u64(c.position, u64(data))
 		}
 		f32, f64 {
 			err_code = stmt.bind_f64(c.position, f64(data))
@@ -299,6 +306,10 @@ fn select_column(row Row, idx int, typ int) orm.Primitive {
 	val := row.vals[idx]
 	if typ in orm.nums || typ == -1 {
 		return val.int()
+	}
+	if typ == typeof[u64]().idx {
+		// UBIGINT values above i64 max must not be read back as wrapped i64.
+		return strconv.parse_uint(val, 10, 64) or { return orm.Null{} }
 	}
 	if typ in orm.num64 {
 		return val.i64()

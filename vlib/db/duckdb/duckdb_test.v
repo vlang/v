@@ -98,6 +98,64 @@ fn test_duckdb_error_propagation() {
 	}
 }
 
+fn test_duckdb_bind_u64_max() {
+	mut db := duckdb.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or { panic(err) }
+	}
+	db.exec('CREATE TABLE u (v UBIGINT)') or { panic(err) }
+	stmt := db.prepare('INSERT INTO u VALUES (?1)') or { panic(err) }
+	defer {
+		stmt.finalize()
+	}
+	max := u64(18446744073709551615)
+	assert stmt.bind_u64(1, max) == duckdb.success
+	stmt.exec('INSERT INTO u VALUES (?1)') or { panic(err) }
+	rows := db.exec('SELECT v FROM u') or { panic(err) }
+	assert rows.len == 1
+	assert rows[0].vals[0] == '18446744073709551615'
+}
+
+fn test_duckdb_bind_u64_does_not_wrap_into_bigint() {
+	mut db := duckdb.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or { panic(err) }
+	}
+	db.exec('CREATE TABLE s (v BIGINT)') or { panic(err) }
+	stmt := db.prepare('INSERT INTO s VALUES (?1)') or { panic(err) }
+	defer {
+		stmt.finalize()
+	}
+	assert stmt.bind_u64(1, u64(18446744073709551615)) == duckdb.success
+	// A signed BIGINT column cannot hold u64 max: DuckDB must reject it
+	// instead of silently storing the wrapped -1.
+	if _ := stmt.exec('INSERT INTO s VALUES (?1)') {
+		panic('expected out-of-range error for u64 max in BIGINT column')
+	} else {
+		assert err.msg().len > 0
+	}
+	rows := db.exec('SELECT v FROM s') or { panic(err) }
+	assert rows.len == 0
+}
+
+fn test_duckdb_failed_prepare_cleanup() {
+	mut db := duckdb.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or { panic(err) }
+	}
+	// A failed prepare must release its handle; repeated failures must not
+	// exhaust resources or leave the connection in a broken state.
+	for i in 0 .. 200 {
+		if _ := db.prepare('SELECT * FROM missing_${i}') {
+			panic('expected prepare failure')
+		} else {
+			assert err.msg().contains('missing_${i}')
+		}
+	}
+	stmt := db.prepare('SELECT 1') or { panic(err) }
+	stmt.finalize()
+}
+
 fn test_duckdb_transactions() {
 	mut db := duckdb.connect(':memory:') or { panic(err) }
 	defer {
