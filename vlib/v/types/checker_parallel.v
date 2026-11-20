@@ -804,6 +804,14 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 		}
 		pool.run(tasks)
 	}
+	// The tables hold their own copies: give the pages of the replayed lists back.
+	unsafe {
+		tc.fn_ancillary_registrations.free()
+		tc.fn_c_variadic_registrations.free()
+		tc.fn_mut_receiver_registrations.free()
+		tc.fn_ret_text_registrations.free()
+		tc.visible_mutation_registrations.free()
+	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
 	tc.fn_mut_receiver_registrations = []FnNamePairRegistration{}
@@ -812,6 +820,17 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 }
 
 fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
+	// A lane sizes the tables that collection did not reserve: a table that
+	// grows entry by entry leaves every outgrown copy behind in the lane's arena.
+	if group == 0 {
+		tc.fn_shared_params.reserve(u32(tc.fn_shared_params.len + tc.fn_ancillary_registrations.len))
+	} else if group == 2 {
+		tc.receiver_method_short_names.reserve(u32(tc.receiver_method_short_names.len +
+			tc.fn_ancillary_registrations.len / 2))
+	} else if group == 4 {
+		tc.mut_receiver_methods.reserve(u32(tc.mut_receiver_methods.len +
+			tc.fn_mut_receiver_registrations.len * 2))
+	}
 	if group < 3 {
 		for registration in tc.fn_ancillary_registrations {
 			match group {
@@ -846,22 +865,18 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		for registration in tc.fn_ret_text_registrations {
 			tc.fn_ret_type_texts.set_id(registration.name, registration.text)
 		}
-	} else if group == 6 || group == 9 {
-		// The module-qualified and module-less keys land in separate maps, so the
-		// largest registration set is split over two lanes.
+	} else if group == 6 {
 		if !isnil(tc.visible_mutation_cache) {
-			// A declaration registers up to four spellings; size the lane's map once.
+			// A declaration registers up to four spellings; size the lane's map
+			// once, so that it never grows and leaves no outgrown table behind.
 			mut cache := tc.visible_mutation_cache
-			if group == 9 {
-				cache.global_decls.reserve(u32(tc.visible_mutation_registrations.len * 3))
-			} else {
-				cache.decls.reserve(u32(tc.visible_mutation_registrations.len * 3))
-			}
+			cache.global_decls.reserve(u32(cache.global_decls.len +
+				tc.visible_mutation_registrations.len * 4))
 		}
 		for registration in tc.visible_mutation_registrations {
 			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
 				registration.qname, registration.source_name, registration.c_qname,
-				registration.c_source_name, group == 9)
+				registration.c_source_name)
 		}
 	} else if group == 7 {
 		for registration in tc.fn_ancillary_registrations {
@@ -878,7 +893,7 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 
 // pass2_ancillary_groups is the number of independent table groups filled by
 // apply_pass2_ancillary_group.
-const pass2_ancillary_groups = 10
+const pass2_ancillary_groups = 9
 
 struct Pass2AncillaryArgs {
 	tc    voidptr

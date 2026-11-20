@@ -12825,14 +12825,13 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		return
 	}
 	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
-		c_source_name, false)
-	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
-		c_source_name, true)
+		c_source_name)
 }
 
-// register_visible_mutation_fn_decl_keys records one declaration under either its
-// module-less (`global`) or its module-qualified keys.
-fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string, global bool) {
+// register_visible_mutation_fn_decl_keys records one declaration under its
+// names. The first declaration of a name owns its module-less key; a later one
+// of another module is kept under its module-qualified key.
+fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
 	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
@@ -12860,11 +12859,14 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		if candidate in candidates[..i] {
 			continue
 		}
-		if global {
-			// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
-			if candidate !in cache.global_decls {
-				cache.global_decls[candidate] = decl
+		// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
+		if first := cache.global_decls[candidate] {
+			if first.mod == decl_module {
+				// The module's first declaration of the name is that one.
+				continue
 			}
+		} else {
+			cache.global_decls[candidate] = decl
 			continue
 		}
 		key_len := decl_module.len + 1 + candidate.len
@@ -12922,6 +12924,12 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				}
 			} else if decl := cache.decls[cache_key] {
 				return decl
+			} else if decl := cache.global_decls[lookup_name] {
+				// A module's first declaration of a name has no module-qualified
+				// key when it is the first one of the program.
+				if decl.mod == fallback_mod {
+					return decl
+				}
 			}
 			if cache.decl_misses[cache_key] {
 				return none

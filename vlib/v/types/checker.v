@@ -444,9 +444,11 @@ mut:
 	storage_query_scopes  []voidptr
 	storage_query_count   int
 	storage_query_bytes   int
-	// decls holds the module-qualified keys (`mod\x01name`) and global_decls the
-	// normalized names alone. Keeping these maps separate also lets collection
-	// fill them on separate pool lanes.
+	// global_decls holds the first declaration of each normalized name. decls
+	// holds, under a module-qualified key (`mod\x01name`), a module's first
+	// declaration of a name that another module declared before it, so a
+	// module's declaration is the one in global_decls when its module matches
+	// and the one in decls otherwise.
 	decls            map[string]VisibleMutationFnDecl
 	global_decls     map[string]VisibleMutationFnDecl
 	decl_misses      map[string]bool
@@ -4659,9 +4661,10 @@ fn (mut tc TypeChecker) reserve_collect_signature_maps() {
 			// reserving here avoids their otherwise serial rehash ladders without
 			// sharing writes.
 			tc.receiver_method_suffix_index.reserve(u32(tc.receiver_method_suffix_index.len) + decl_estimate * 3)
-			if !isnil(tc.visible_mutation_cache) {
+			if !isnil(tc.visible_mutation_cache) && !tc.building_v_fast {
+				// The lane that fills it for a compiler build sizes it exactly
+				// (apply_pass2_ancillary_group).
 				mut mutation_cache := tc.visible_mutation_cache
-				mutation_cache.decls.reserve(u32(mutation_cache.decls.len) + decl_estimate * 3 / 2)
 				mutation_cache.global_decls.reserve(u32(mutation_cache.global_decls.len) +
 					decl_estimate * 3 / 2)
 			}
