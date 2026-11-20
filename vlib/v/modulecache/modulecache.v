@@ -1380,7 +1380,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		cache_trace_module_miss(module_name, 'object stamp is missing')
 		return none
 	}
-	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
+	if !object_stamp_valid_with_metadata_cache(m.dir, object_stamp, expected, mut dependency_metadata) {
 		cache_trace_module_miss(module_name, 'object dependency changed')
 		return none
 	}
@@ -1482,7 +1482,7 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+	if !object_stamp_valid(m.dir, stamp, entry_stamp(m.salt, source_hash)) {
 		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
@@ -1536,7 +1536,7 @@ fn (m &Manager) object_for_compile_signature(cache_name string, source_files []s
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+	if !object_stamp_valid(m.dir, stamp, entry_stamp(m.salt, source_hash)) {
 		if trace {
 			cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		}
@@ -1549,7 +1549,7 @@ fn (m &Manager) object_for_compile_signature(cache_name string, source_files []s
 		}
 		return none
 	}
-	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
+	if !object_stamp_dependencies_match(m.dir, stamp, dependency_inputs) {
 		if trace {
 			cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
 		}
@@ -1570,7 +1570,7 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	expected := cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature)
+	expected := cgen_entry_stamp(m.dir, m.salt, source_hash, dependency_inputs, generation_signature)
 	if stamp != expected {
 		return none
 	}
@@ -1601,7 +1601,7 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 	stamp := os.read_file(entry.stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	expected_head := entry_stamp(m.salt, source_hash) + 'generation=${hash_text(generation_signature)}\n'
-	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
+	return cached_dependency_inputs_from_stamp(m.dir, stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
 // cached_incremental_dependency_inputs restores dependency records from a
@@ -1621,10 +1621,10 @@ pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, 
 		return none
 	}
 	expected_head := entry_stamp(m.salt, declaration_signature) + 'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
-	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
+	return cached_dependency_inputs_from_stamp(m.dir, stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
-fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
+fn cached_dependency_inputs_from_stamp(dir string, stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
 	if !stamp.starts_with(expected_head) {
 		trace_dependency_restore_miss('stamp header changed')
 		return none
@@ -1642,7 +1642,7 @@ fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed
 			trace_dependency_restore_miss('malformed dependency value')
 			return none
 		}
-		key := value[..tab]
+		key := stamp_dependency_path(dir, value[..tab])
 		signature := value[tab + 1..]
 		if key in restored || fixed_seen[key] {
 			trace_dependency_restore_miss('duplicate dependency ${key}')
@@ -1690,7 +1690,7 @@ pub fn (m &Manager) valid_generic_program(source_files []string, semantic_signat
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
+	expected := cgen_entry_stamp(m.dir, m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
 	if stamp != expected {
 		return none
 	}
@@ -1709,7 +1709,7 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	os.rm(entry.prepared_stamp) or {}
 	write_atomic(entry.source, source)!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
+	stamp := cgen_entry_stamp(m.dir, m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1729,7 +1729,7 @@ pub fn (m &Manager) write_generic_program(source_files []string, semantic_signat
 	write_atomic(entry.body, body)!
 	write_atomic(entry.literals, literals)!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
+	stamp := cgen_entry_stamp(m.dir, m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1761,7 +1761,7 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 		trace_incremental_cache_miss('stamp cannot be read')
 		return none
 	}
-	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
+	expected := cgen_entry_stamp(m.dir, m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
 	if stamp != expected {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			actual_lines := stamp.split_into_lines()
@@ -1803,7 +1803,7 @@ pub fn (m &Manager) write_incremental_program(source_files []string, declaration
 	write_atomic(entry.tcc_declarations, tcc_declarations)!
 	write_atomic(entry.objects, objects.join('\n'))!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
+	stamp := cgen_entry_stamp(m.dir, m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1875,7 +1875,7 @@ fn (m &Manager) program_executable_slot(source_files []string) string {
 fn (m &Manager) program_executable_identity(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?string {
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	return 'executable_format=${program_executable_format}\n' +
-		cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature) +
+		cgen_entry_stamp(m.dir, m.salt, source_hash, dependency_inputs, generation_signature) +
 		'link=${hash_text(link_signature)}\n'
 }
 
@@ -2111,7 +2111,7 @@ fn program_executable_of_stamp(stamp string, slot string) string {
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
-	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
+	stamp := object_entry_stamp(m.dir, m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
 }
@@ -2170,36 +2170,59 @@ fn header_stamp_flags(stamp string, expected_entry string) ?HeaderStampFlags {
 	return none
 }
 
-fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
+// cache_dir_dependency_prefix starts the name that a stamp records for a dependency inside
+// the cache directory, such as an imported module header. The rest of the name is relative
+// to the directory, so a copy of the cache at another path, or a copy restored to the same
+// path, is still valid: headers are checked by content once their metadata changes.
+const cache_dir_dependency_prefix = '@cache/'
+
+// stamp_dependency_name returns the name under which a stamp records `path`.
+fn stamp_dependency_name(dir string, path string) string {
+	if dir.len > 0 && path.len > dir.len + 1 && path.starts_with(dir)
+		&& (path[dir.len] == `/` || path[dir.len] == `\\`) {
+		return cache_dir_dependency_prefix + path[dir.len + 1..]
+	}
+	return path
+}
+
+// stamp_dependency_path returns the path of a dependency that a stamp records as `name`.
+fn stamp_dependency_path(dir string, name string) string {
+	if name.starts_with(cache_dir_dependency_prefix) {
+		return os.join_path(dir, name[cache_dir_dependency_prefix.len..])
+	}
+	return name
+}
+
+fn object_entry_stamp(dir string, salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
 	out.writeln('compile=${hash_text(compile_signature)}')
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
+		out.writeln('dependency=${stamp_dependency_name(dir, path)}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
 	}
 	return out.str()
 }
 
-fn cgen_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, generation_signature string) string {
+fn cgen_entry_stamp(dir string, salt string, source_hash string, dependency_inputs map[string]string, generation_signature string) string {
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
 	out.writeln('generation=${hash_text(generation_signature)}')
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}')
+		out.writeln('dependency=${stamp_dependency_name(dir, path)}\t${dependency_inputs[path]}')
 	}
 	return out.str()
 }
 
-fn object_stamp_valid(stamp string, expected_entry string) bool {
+fn object_stamp_valid(dir string, stamp string, expected_entry string) bool {
 	mut dependency_metadata := map[string]string{}
-	return object_stamp_valid_with_metadata_cache(stamp, expected_entry, mut dependency_metadata)
+	return object_stamp_valid_with_metadata_cache(dir, stamp, expected_entry, mut dependency_metadata)
 }
 
-fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, mut dependency_metadata map[string]string) bool {
+fn object_stamp_valid_with_metadata_cache(dir string, stamp string, expected_entry string, mut dependency_metadata map[string]string) bool {
 	if !stamp.starts_with(expected_entry) {
 		return false
 	}
@@ -2218,7 +2241,7 @@ fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, m
 		if !line.starts_with('dependency=') {
 			return false
 		}
-		dependency := parse_object_stamp_dependency(line) or { return false }
+		dependency := parse_object_stamp_dependency(dir, line) or { return false }
 		current_metadata := dependency_metadata[dependency.path] or {
 			metadata := file_metadata_signature(dependency.path)
 			dependency_metadata[dependency.path] = metadata
@@ -2252,7 +2275,7 @@ struct ObjectStampDependency {
 	metadata  string
 }
 
-fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
+fn parse_object_stamp_dependency(dir string, line string) ?ObjectStampDependency {
 	if !line.starts_with('dependency=') {
 		return none
 	}
@@ -2267,19 +2290,19 @@ fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
 		return none
 	}
 	return ObjectStampDependency{
-		path:      path_and_signature[..signature_tab]
+		path:      stamp_dependency_path(dir, path_and_signature[..signature_tab])
 		signature: path_and_signature[signature_tab + 1..]
 		metadata:  value[metadata_tab + 1..]
 	}
 }
 
-fn object_stamp_dependencies_match(stamp string, expected map[string]string) bool {
+fn object_stamp_dependencies_match(dir string, stamp string, expected map[string]string) bool {
 	mut actual := map[string]string{}
 	for line in stamp.split_into_lines() {
 		if !line.starts_with('dependency=') {
 			continue
 		}
-		dependency := parse_object_stamp_dependency(line) or { return false }
+		dependency := parse_object_stamp_dependency(dir, line) or { return false }
 		if dependency.path in actual {
 			return false
 		}

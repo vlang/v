@@ -152,11 +152,46 @@ fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 fn test_cached_dependency_inputs_restore_empty_variable_value() {
 	expected_head := 'format=test\n'
 	stamp := expected_head + 'dependency=fixed\tvalue\n' + 'dependency=external-root-owner:c:0\t\n'
-	restored := cached_dependency_inputs_from_stamp(stamp, expected_head, {
+	restored := cached_dependency_inputs_from_stamp('', stamp, expected_head, {
 		'fixed': 'value'
 	}, ['external-root-owner:']) or { panic('expected cache dependency restore') }
 	assert 'external-root-owner:c:0' in restored
 	assert restored['external-root-owner:c:0'] == ''
+}
+
+// Stamps name the headers in the cache relative to it, so a copy of the cache at
+// another path stays valid, while a changed header still invalidates it.
+fn test_object_stamp_stays_valid_in_a_copy_of_the_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_relocated_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	original := os.join_path(root, 'original')
+	copy := os.join_path(root, 'copy')
+	os.mkdir_all(original)!
+	os.write_file(os.join_path(original, 'dep.vh'), 'pub fn f()\n')!
+	signature := file_signature(os.join_path(original, 'dep.vh'))
+	stamp := object_entry_stamp(original, 'salt', 'source', {
+		os.join_path(original, 'dep.vh'): signature
+	}, 'compile')
+	assert stamp.contains('dependency=${cache_dir_dependency_prefix}dep.vh\t')
+	assert !stamp.contains(original)
+	expected := entry_stamp('salt', 'source')
+	assert object_stamp_valid(original, stamp, expected)
+	os.cp_all(original, copy, true)!
+	os.rmdir_all(original)!
+	assert object_stamp_valid(copy, stamp, expected)
+	assert object_stamp_dependencies_match(copy, stamp, {
+		os.join_path(copy, 'dep.vh'): signature
+	})
+	assert cgen_entry_stamp(original, 'salt', 'source', {
+		os.join_path(original, 'dep.vh'): signature
+	}, 'generation') == cgen_entry_stamp(copy, 'salt', 'source', {
+		os.join_path(copy, 'dep.vh'): signature
+	}, 'generation')
+	os.write_file(os.join_path(copy, 'dep.vh'), 'pub fn f(x int)\n')!
+	assert !object_stamp_valid(copy, stamp, expected)
 }
 
 fn test_native_declaration_api_macro_definition_is_not_localized() {
