@@ -340,7 +340,9 @@ fn (mut p Process) unix_is_alive() bool {
 }
 
 fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_options int) bool {
-	mut cstatus := 0
+	// waitpid(2) stores a C int. An i32 status matches both the builtin
+	// declaration and a program's own `fn C.waitpid(i32, &i32, i32) i32`.
+	mut cstatus := i32(0)
 	mut ret := -1
 	$if !emscripten ? {
 		for {
@@ -364,7 +366,7 @@ fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_option
 		return true
 	}
 	p.reaped = true
-	mut pret, is_signaled := posix_wait4_to_exit_status(cstatus)
+	mut pret, is_signaled := posix_wait4_to_exit_status(int(cstatus))
 	if is_signaled {
 		p.status = .aborted
 		p.err = 'Terminated by signal ${pret:2d} (${sigint_to_signal_name(pret)})'
