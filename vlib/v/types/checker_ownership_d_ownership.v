@@ -16,6 +16,15 @@ const ownership_source_owned = flat.source_type_id('Owned')
 const ownership_source_copy = flat.source_type_id('Copy')
 const ownership_source_drop = flat.source_type_id('Drop')
 
+// ownership_for_in_is_borrow reports whether a for-in binding was recorded as
+// a non-owning view of its container (read-only `.len` use).
+pub fn (tc &TypeChecker) ownership_for_in_is_borrow(id flat.NodeId) bool {
+	if tc.ownership == unsafe { nil } {
+		return false
+	}
+	return tc.ownership.for_in_borrows[int(id)]
+}
+
 // ownership_prescan_max_rounds bounds each ownership fixed point, so that a
 // regression in path composition fails as a diagnostic instead of hanging the
 // compiler. Without it the only bound on returned-parameter paths lived in a test
