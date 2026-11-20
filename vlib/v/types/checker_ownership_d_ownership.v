@@ -277,6 +277,7 @@ mut:
 	owned_sum_drop_reads             map[int]bool
 	receiver_alias_clone_reads       map[int]bool
 	borrowed_projection_actions      map[int]OwnershipBorrowedProjectionAction
+	for_in_borrows                   map[int]bool
 	pointer_index_aliases            map[string]string
 	borrowed_storage_clone_reads     map[int]bool
 	guard_move_reads                 map[int]bool
@@ -383,6 +384,7 @@ fn new_ownership_state() &OwnershipState {
 		owned_sum_drop_reads:             map[int]bool{}
 		receiver_alias_clone_reads:       map[int]bool{}
 		borrowed_projection_actions:      map[int]OwnershipBorrowedProjectionAction{}
+		for_in_borrows:                   map[int]bool{}
 		pointer_index_aliases:            map[string]string{}
 		borrowed_storage_clone_reads:     map[int]bool{}
 		guard_move_reads:                 map[int]bool{}
@@ -508,6 +510,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		owned_sum_drop_reads:             map[int]bool{}
 		receiver_alias_clone_reads:       map[int]bool{}
 		borrowed_projection_actions:      map[int]OwnershipBorrowedProjectionAction{}
+		for_in_borrows:                   map[int]bool{}
 		pointer_index_aliases:            map[string]string{}
 		borrowed_storage_clone_reads:     map[int]bool{}
 		guard_move_reads:                 map[int]bool{}
@@ -610,6 +613,7 @@ fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
 	result.sum_move_reads = src.sum_move_reads.clone()
 	result.receiver_alias_clone_reads = src.receiver_alias_clone_reads.clone()
 	result.borrowed_projection_actions = src.borrowed_projection_actions.clone()
+	result.for_in_borrows = src.for_in_borrows.clone()
 	result.pointer_index_aliases = src.pointer_index_aliases.clone()
 	result.borrowed_storage_clone_reads = src.borrowed_storage_clone_reads.clone()
 	result.guard_move_reads = src.guard_move_reads.clone()
@@ -899,6 +903,11 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	}
 	for id, action in src.borrowed_projection_actions {
 		dst.borrowed_projection_actions[id] = action
+	}
+	for id, is_borrow in src.for_in_borrows {
+		if is_borrow {
+			dst.for_in_borrows[id] = true
+		}
 	}
 	for id, cloned in src.borrowed_storage_clone_reads {
 		if cloned {
@@ -7026,7 +7035,7 @@ fn (tc &TypeChecker) ownership_match_branch_definitely_breaks_statement_sequence
 	return tc.ownership_statement_sequence_definitely_breaks(branch, body_start)
 }
 
-fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, has_val bool) {
+fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, has_val bool, node flat.Node, header int) {
 	if tc.ownership_effects_disabled() {
 		return
 	}
@@ -7038,7 +7047,7 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	clones_storage_binding := clean is Array || clean is ArrayFixed || clean is Map
 	if clean is Map && has_val {
 		key_name := tc.ownership_lhs_name(key_id)
-		tc.ownership_bind_for_in_var_from_storage(key_name, '', key_id, true)
+		tc.ownership_bind_for_in_var_from_storage(key_name, '', key_id, true, false)
 	}
 	target_id := if has_val { val_id } else { key_id }
 	target_name := tc.ownership_lhs_name(target_id)
@@ -7047,7 +7056,43 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	} else {
 		''
 	}
-	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id, clones_storage_binding)
+	// Under autofree, a loop binding whose only use is `name.len` is a borrow of
+	// the container, not a new owner. Cloning it would clone-and-free on every
+	// iteration with no observable effect.
+	as_borrow := tc.autofree_mode && !clones_storage_binding && clean is Array
+		&& tc.ownership_for_in_len_only_binding(node, header, target_name)
+	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id, clones_storage_binding, as_borrow)
+}
+
+// ownership_for_in_len_only_binding reports whether every use of `name` inside
+// the loop body is a direct `name.len` read. Such a binding cannot escape.
+fn (tc &TypeChecker) ownership_for_in_len_only_binding(node flat.Node, header int, name string) bool {
+	if name == '' || name == '_' {
+		return false
+	}
+	mut uses := 0
+	mut pending := []flat.NodeId{}
+	for i in header .. node.children_count {
+		pending << tc.a.child(&node, i)
+	}
+	for pending.len > 0 {
+		id := pending.pop()
+		n := tc.a.node(id)
+		if n.kind == .ident && n.value == name {
+			parent := tc.direct_parent_id(id)
+			if !tc.valid_node_id(parent) {
+				return false
+			}
+			p := tc.a.node(parent)
+			if p.kind != .selector || p.value != 'len' {
+				return false
+			}
+			uses++
+			continue
+		}
+		pending << tc.a.children_of(n)
+	}
+	return uses > 0
 }
 
 fn (mut tc TypeChecker) ownership_bind_mut_for_in_var(key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, has_val bool) {
@@ -7121,12 +7166,25 @@ fn (mut tc TypeChecker) check_array_dsl_fn_borrows_element(node flat.Node, elem_
 	tc.record_error(.call_arg_mismatch, '${label} cannot consume borrowed `${elem_type.name()}` elements; use a pointer parameter or clone the element', pos)
 }
 
-fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name string, source_name string, target_id flat.NodeId, clones_storage_binding bool) bool {
+fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name string, source_name string, target_id flat.NodeId, clones_storage_binding bool, as_borrow bool) bool {
 	if target_name == '' || target_name == '_' {
 		return false
 	}
 	tc.ownership_note_decl(target_name)
 	tc.ownership_release_borrower(target_name)
+	if as_borrow {
+		mut st := tc.ownership_state()
+		st.for_in_borrows[int(target_id)] = true
+		st.owned_vars.delete(target_name)
+		st.owned_var_types.delete(target_name)
+		st.moved_vars.delete(target_name)
+		st.ownership_fn_value_vars.delete(target_name)
+		tc.ownership_clear_descendant_state(target_name)
+		if source_name.len > 0 {
+			tc.ownership_add_borrow(source_name, target_name, target_id, false)
+		}
+		return false
+	}
 	mut moved_types := []u32{}
 	if clones_storage_binding {
 		target_type := tc.resolve_type(target_id)

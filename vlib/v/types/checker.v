@@ -21176,6 +21176,15 @@ pub fn (tc &TypeChecker) autofree_enabled() bool {
 	return tc.autofree_mode
 }
 
+// ownership_for_in_is_borrow reports whether the checker recorded a for-in
+// binding as a non-owning view of its container (read-only `.len` use).
+pub fn (tc &TypeChecker) ownership_for_in_is_borrow(id flat.NodeId) bool {
+	if tc.ownership == unsafe { nil } {
+		return false
+	}
+	return tc.ownership.for_in_borrows[int(id)]
+}
+
 // struct_module_for_type returns the module that declared the named struct.
 pub fn (tc &TypeChecker) struct_module_for_type(name_id u32) string {
 	syntax := flat.source_type_syntax(name_id)
