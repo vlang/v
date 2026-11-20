@@ -1143,3 +1143,81 @@ fn test_shape_optimized_module_agrees() {
 			},
 		])
 }
+
+// ---- 11. narrow integer shifts guard against the declared width ----
+
+// An over-width runtime count yields 0 for every width: the C backend guards
+// against the declared width, while the wasm backend used to guard narrow
+// shifts against the 32-bit register width, so `i8(-8) >> 8` sign-filled to
+// -1 (issue #32504). Constant over-width counts are a checker error, so the
+// counts below arrive through parameters.
+const shape_source_narrow_shift = '
+fn shr_i8(v i8, c i64) i8 { return v >> c }
+
+fn shr_i8_w32(v i8, c int) i8 { return v >> c }
+
+fn shr_i16(v i16, c i64) i16 { return v >> c }
+
+fn shl_i8(v i8, c i64) i8 { return v << c }
+
+fn shr_u8(v u8, c i64) u8 { return v >> c }
+
+fn main() {
+	println(int(shr_i8(-8, 8)))
+	println(int(shr_i8(-8, 7)))
+	println(int(shr_i8_w32(-8, 8)))
+	println(int(shr_i16(-16, 16)))
+	println(int(shr_i16(-16, 15)))
+	println(int(shl_i8(1, 8)))
+	println(int(shr_u8(255, 8)))
+}
+'
+
+fn test_shape_narrow_shift_declared_width() {
+	shape_case('narrow_shift', shape_source_narrow_shift, '0\n-1\n0\n0\n-1\n0\n0\n', '',
+		false, [
+			ShapeRun{
+				name:     'shr_i8'
+				js_args:  ['-8', '8n']
+				expected: '0'
+			},
+			ShapeRun{
+				name:     'shr_i8'
+				js_args:  ['-8', '7n']
+				expected: '-1'
+			},
+			ShapeRun{
+				name:     'shr_i8_w32'
+				js_args:  ['-8', '8']
+				expected: '0'
+			},
+			ShapeRun{
+				name:     'shr_i16'
+				js_args:  ['-16', '16n']
+				expected: '0'
+			},
+			ShapeRun{
+				name:     'shr_i16'
+				js_args:  ['-16', '15n']
+				expected: '-1'
+			},
+			ShapeRun{
+				name:     'shl_i8'
+				js_args:  ['1', '7n']
+				expected: '-128'
+			},
+			ShapeRun{
+				name:     'shr_u8'
+				js_args:  ['255', '7n']
+				expected: '1'
+			},
+		])
+	shape_case('narrow_shift_prod', shape_source_narrow_shift, '0\n-1\n0\n0\n-1\n0\n0\n',
+		'', true, [
+			ShapeRun{
+				name:     'shr_i8'
+				js_args:  ['-8', '8n']
+				expected: '0'
+			},
+		])
+}
