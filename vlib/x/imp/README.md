@@ -44,6 +44,7 @@ ctx.flow()
 |---------|------------|
 | `name`  | display name |
 | `help`  | help text |
+| `cmd`   | command identity; bump it when the body changes |
 | `takes` | input paths |
 | `gives` | output paths |
 | `check` | .mtime (default), .hash or .none |
@@ -51,6 +52,11 @@ ctx.flow()
 | `post`  | []imp.FlowDep run after |
 | `flags` | []imp.Flag read with self.flag |
 | `flow`  | fn (self imp.Flow) ! |
+
+A flow is rebuilt not only when its inputs or set flags change, but also when
+the build program changes: recompiling the script, changing the flow's `cmd`
+identity, or upgrading the compiler all defeat the skip check. mtime flows keep
+this identity in `.imp/identity`; hash flows include it in their digest.
 
 ## hooks
 | declaration                                | result |
