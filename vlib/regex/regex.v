@@ -613,6 +613,7 @@ fn (re &RE) get_char_class(pc int) string {
 	return unsafe { tos_clone(buf_ptr) }
 }
 
+@[direct_array_access]
 fn (re &RE) check_char_class(pc int, ch rune) bool {
 	mut cc_i := re.prog[pc].cc_index
 	for cc_i >= 0 && cc_i < re.cc.len && re.cc[cc_i].cc_type != cc_end {
