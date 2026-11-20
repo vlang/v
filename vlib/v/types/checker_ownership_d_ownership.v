@@ -17,7 +17,7 @@ const ownership_source_copy = flat.source_type_id('Copy')
 const ownership_source_drop = flat.source_type_id('Drop')
 
 // ownership_for_in_is_borrow reports whether a for-in binding was recorded as
-// a non-owning view of its container (read-only `.len` use).
+// a non-owning view of its container (read-only use).
 pub fn (tc &TypeChecker) ownership_for_in_is_borrow(id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
