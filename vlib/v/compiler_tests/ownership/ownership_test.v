@@ -4513,6 +4513,39 @@ fn main() {
 	assert drop_loan.exit_code != 0, drop_loan.output
 	assert drop_loan.output.contains('cannot move `conn` because it is borrowed by `observer.c`'), drop_loan.output
 
+	drop_if := run_ownership_check(v3_bin, 'drop_reads_borrow_in_if', "
+struct Conn {
+	name string
+}
+
+struct Observer implements Drop {
+	c &Conn
+}
+
+fn (o Observer) drop() {
+	println(o.c.name)
+}
+
+fn consume(conn Conn) {
+	println(conn.name)
+}
+
+fn observe(conn Conn, flag bool) {
+	observer := Observer{c: &conn}
+	println(observer.c.name)
+	if flag {
+		consume(conn)
+	}
+}
+
+fn main() {
+	conn := Conn{name: 'x'}
+	observe(conn, true)
+}
+")
+	assert drop_if.exit_code != 0, drop_if.output
+	assert drop_if.output.contains('cannot move `conn` because it is borrowed by `observer.c`'), drop_if.output
+
 	multi := run_ownership_check(v3_bin, 'two_borrowers_one_move', "
 struct Conn {
 mut:
