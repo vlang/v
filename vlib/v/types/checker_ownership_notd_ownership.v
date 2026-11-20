@@ -22,6 +22,11 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_return(_ string, _ int) []Own
 	return []OwnershipDropEntry{}
 }
 
+// ownership_for_in_is_borrow reports no borrowed bindings when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_for_in_is_borrow(_ flat.NodeId) bool {
+	return false
+}
+
 // ownership_drop_entries_at_return_node returns no destructor entries when ownership checking is disabled.
 pub fn (tc &TypeChecker) ownership_drop_entries_at_return_node(_ string, _ flat.NodeId) []OwnershipDropEntry {
 	return []OwnershipDropEntry{}
