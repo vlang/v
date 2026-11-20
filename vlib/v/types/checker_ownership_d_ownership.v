@@ -13610,6 +13610,51 @@ fn ownership_borrower_base(borrower string) string {
 	return borrower
 }
 
+// ownership_pos_inside_call_of reports whether `id` is an argument or descendant
+// of a call whose callee is `name`. An explicit borrow passed to a call stays
+// live until the call completes, even if its textual use precedes `id`.
+fn (tc &TypeChecker) ownership_pos_inside_call_of(id flat.NodeId, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut cur := id
+	for _ in 0 .. 128 {
+		if !tc.valid_node_id(cur) {
+			return false
+		}
+		n := tc.a.node(cur)
+		if n.kind == .call && n.children_count > 0 {
+			callee := tc.a.child(n, 0)
+			if tc.a.node(callee).value == name || tc.ownership_expr_ident_name(callee) == name {
+				return true
+			}
+		}
+		cur = tc.direct_parent_id(cur)
+	}
+	return false
+}
+
+// ownership_borrower_needs_destruction reports whether the borrower root is a
+// live local with a Drop implementation. Its destructor may read the borrowed
+// field at scope exit, after the last explicit source reference.
+fn (tc &TypeChecker) ownership_borrower_needs_destruction(base string) bool {
+	if base == '' {
+		return false
+	}
+	if root_type := tc.cur_scope.lookup(base) {
+		id := unalias_type(root_type).source_type_id()
+		if id != 0 && tc.ownership_type_has_explicit_drop(id) {
+			return true
+		}
+	}
+	st := tc.ownership
+	if isnil(st) || base !in st.owned_vars {
+		return false
+	}
+	type_id := st.owned_var_types.type_id(base) or { return false }
+	return type_id != 0 && tc.ownership_type_has_explicit_drop(type_id)
+}
+
 // ownership_release_borrow_if_dead implements NLL-lite for reassign conflicts
 // (see #32455): a loan whose borrower is never read after the conflicting
 // statement in the same straight-line block is dead, so release just that loan
@@ -13622,6 +13667,15 @@ fn (mut tc TypeChecker) ownership_release_borrow_if_dead(conflict OwnershipBorro
 	}
 	base := ownership_borrower_base(conflict.borrow.borrower)
 	if base == '' {
+		return false
+	}
+	// A loan created for an argument of a still-open call is live until the
+	// call returns, regardless of where the callee name appears textually.
+	if tc.ownership_pos_inside_call_of(pos, base) {
+		return false
+	}
+	// A borrower with a Drop implementation reads its fields at scope exit.
+	if tc.ownership_borrower_needs_destruction(base) {
 		return false
 	}
 	mut st := tc.ownership_state()
