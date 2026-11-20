@@ -188,6 +188,10 @@ fn read_key_file(path string, key string) ?string {
 	text := os.read_file(path) or {
 		return none
 	}
+	// Avoid splitting the file when the key is not present at all.
+	if !text.contains(key) {
+		return none
+	}
 	mut in_table := false
 	for line in text.split('\n') {
 		trimmed := line.trim_space()
@@ -225,6 +229,10 @@ fn read_key_file(path string, key string) ?string {
 // with a trailing comma or on the same line as `Module {`.
 fn read_vmod_key(path string, key string) ?string {
 	text := os.read_file(path) or {
+		return none
+	}
+	// Most v.mod files have no toolchain field; skip the parser in that case.
+	if !text.contains(key) {
 		return none
 	}
 	manifest := vmod.decode(text) or {
@@ -312,7 +320,9 @@ pub fn select() Selection {
 			return selection
 		}
 	}
-	pin := pin_path()
+	// Resolve the project root once; both pin files live in the same place.
+	project := project_root()
+	pin := os.join_path(project, pin_file)
 	if os.is_file(pin) {
 		if raw := read_key_file(pin, pin_key) {
 			if selection := selection_from(raw, pin) {
@@ -320,7 +330,7 @@ pub fn select() Selection {
 			}
 		}
 	}
-	vmod_path := os.join_path(project_root(), 'v.mod')
+	vmod_path := os.join_path(project, 'v.mod')
 	if os.is_file(vmod_path) {
 		if raw := read_vmod_key(vmod_path, pin_key) {
 			if selection := selection_from(raw, vmod_path) {

@@ -1281,6 +1281,16 @@ fn test_toolchain_update_active_needs_explicit_selection() {
 	assert toolchain_update_active()
 }
 
+fn test_toolchain_dispatch_skips_without_toolchains_dir() {
+	missing := os.join_path(os.vtmp_dir(), 'v_launcher_no_toolchains_${os.getpid()}')
+	os.rmdir_all(missing) or {}
+	os.setenv(toolchain.root_env, missing, true)
+	defer {
+		os.setenv(toolchain.root_env, '', true)
+	}
+	assert !dispatch_to_toolchain()
+}
+
 fn test_toolchain_dispatch_uses_selected_compiler() {
 	// The test binary is built by the compiler on PATH. A bootstrap compiler
 	// from before launcher dispatch cannot exercise this path.

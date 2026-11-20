@@ -581,11 +581,15 @@ fn toolchain_dispatch_allowed(command string) bool {
 // instead of the launcher's own checkout. An implicit `stable` fallback does
 // not count: machines with no toolchain config keep the existing `v up`.
 fn toolchain_update_active() bool {
+	root := toolchain.configured_root()
+	if !os.is_dir(root) {
+		return false
+	}
 	selection := toolchain.select()
 	if selection.source == 'default' {
 		return false
 	}
-	dir := toolchain.toolchain_dir(toolchain.configured_root(), selection.version)
+	dir := toolchain.toolchain_dir(root, selection.version)
 	return toolchain.executable_in(dir) != ''
 }
 
@@ -593,8 +597,16 @@ fn toolchain_update_active() bool {
 // installed and built. An unavailable selection is left alone so that a
 // machine without installed toolchains keeps using the current compiler.
 fn dispatch_to_toolchain() bool {
-	selection := toolchain.select()
 	root := toolchain.configured_root()
+	// Most invocations have no toolchains directory. Check that first so the
+	// common path does not read project or user config files at all.
+	if !os.is_dir(root) {
+		if toolchain.debug_enabled() {
+			eprintln('v toolchain: no toolchains directory at `${root}`; using the current compiler')
+		}
+		return false
+	}
+	selection := toolchain.select()
 	dir := toolchain.toolchain_dir(root, selection.version)
 	exe := toolchain.executable_in(dir)
 	if exe == '' {
