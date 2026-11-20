@@ -20555,10 +20555,9 @@ fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Pr
 	// learn which of its entries are symbolic links from one more listing.
 	mut real_dir := ''
 	mut symlinks := flat.ListedSymlinks{}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
-		prefs.backend, prefs.target)) {
+	for file in module_dir_v_files(prefs, dir) {
 		if real_dir.len == 0 {
-			real_dir = os.real_path(dir)
+			real_dir = import_dir_real_path(dir)
 			symlinks = flat.scan_listed_symlinks(dir)
 		}
 		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir, &symlinks)
@@ -20575,7 +20574,7 @@ fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Pr
 }
 
 fn v3_directory_source_root(dir string) string {
-	return v3_directory_source_root_of(dir, os.real_path(dir))
+	return v3_directory_source_root_of(dir, import_dir_real_path(dir))
 }
 
 // v3_directory_source_root_of is v3_directory_source_root for a directory whose
@@ -25277,8 +25276,7 @@ fn predict_wave_module(prefs &pref.Preferences, mod_name string, importing_file 
 		return
 	}
 	seen_dirs[mod_dir] = true
-	files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(mod_dir, prefs.user_defines,
-		prefs.backend, prefs.target))
+	files << module_dir_v_files(prefs, mod_dir)
 }
 
 // discover_eager_selfhost_modules resolves the complete trusted compiler import
@@ -25622,6 +25620,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut pair_cursor := 0
 	mut had_deferred_imports := initial_deferred_imports.len > 0
 	mut resolve_deferred_imports := false
+	// The waves below search the same directories over and over (see ImportDirMemo).
+	begin_import_dir_memo()
 	for {
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
@@ -26124,6 +26124,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		implicit_imports.node_idx += insertions.len
 		implicit_imports.field_index_node_idx += insertions.len
 	}
+	end_import_dir_memo()
 	p.discard_speculated_batch()
 	cache_state.import_resolutions = V3ImportResolutions{
 		project_root: project_root
@@ -26497,8 +26498,8 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		module_root := module_root_for_import_dir(import_path, import_dir)
 		short_sibling_dir := os.join_path_single(module_root, short_name)
 		if short_sibling_dir != import_dir && os.is_dir(short_sibling_dir) {
-			real_import_dir = os.real_path(import_dir)
-			if os.real_path(short_sibling_dir) != real_import_dir {
+			real_import_dir = import_dir_real_path(import_dir)
+			if import_dir_real_path(short_sibling_dir) != real_import_dir {
 				return import_path
 			}
 		}
@@ -26507,9 +26508,9 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		short_project_dir := os.join_path_single(project_root, short_name)
 		if short_project_dir != import_dir && os.is_dir(short_project_dir) {
 			if real_import_dir.len == 0 {
-				real_import_dir = os.real_path(import_dir)
+				real_import_dir = import_dir_real_path(import_dir)
 			}
-			if os.real_path(short_project_dir) != real_import_dir {
+			if import_dir_real_path(short_project_dir) != real_import_dir {
 				return import_path
 			}
 		}
@@ -26517,9 +26518,9 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file, project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && short_dir != import_dir && os.is_dir(short_dir) {
 		if real_import_dir.len == 0 {
-			real_import_dir = os.real_path(import_dir)
+			real_import_dir = import_dir_real_path(import_dir)
 		}
-		if os.real_path(short_dir) != real_import_dir {
+		if import_dir_real_path(short_dir) != real_import_dir {
 			return import_path
 		}
 	}
@@ -26533,11 +26534,11 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	module_root := module_root_for_import_dir(import_path, import_dir)
 	requested_dir := os.join_path_single(module_root, import_path.replace('.', os.path_separator))
 	// One spelling names one directory: only two spellings need resolving.
-	if requested_dir == import_dir || os.real_path(requested_dir) == os.real_path(import_dir) {
+	if requested_dir == import_dir
+		|| import_dir_real_path(requested_dir) == import_dir_real_path(import_dir) {
 		return none
 	}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(import_dir,
-		prefs.user_defines, prefs.backend, prefs.target)) {
+	for file in module_dir_v_files(prefs, import_dir) {
 		module_name := declared_module_in_file(file)
 		if module_name.len > 0 {
 			return module_name
@@ -26919,12 +26920,25 @@ fn modules_layout_mkdir(dir string) string {
 }
 
 fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
+	if isnil(v3_import_dir_memo) {
+		return module_path_holds_v_sources(path, prefs)
+	}
+	if known := v3_import_dir_memo.has_sources[path] {
+		return known
+	}
+	has_sources := module_path_holds_v_sources(path, prefs)
+	v3_import_dir_memo.has_sources[path] = has_sources
+	return has_sources
+}
+
+// module_path_holds_v_sources is module_path_has_v_sources, read from the
+// directory.
+fn module_path_holds_v_sources(path string, prefs &pref.Preferences) bool {
 	if path.len == 0 || !os.is_dir(path) {
 		return false
 	}
 	source_root := v3_directory_source_root(path)
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(source_root, prefs.user_defines,
-		prefs.backend, prefs.target)).len > 0 {
+	if module_dir_v_files(prefs, source_root).len > 0 {
 		return true
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The
