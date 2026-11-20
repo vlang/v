@@ -291,7 +291,14 @@ fn build_plan(opts Options) !BuildPlan {
 	}
 }
 
+fn cleanup_generated(paths []string) {
+	for path in paths {
+		os.rm(path) or {}
+	}
+}
+
 fn main() {
+	mut generated_files := []string{}
 	mut args := os.args[1..].clone()
 	if args.len > 0 && (args[0] == 'c-api' || args[0] == 'capi') {
 		args = args[1..]
@@ -329,12 +336,7 @@ fn main() {
 			eprintln('c-api: cannot write ${runtime_path}: ${err}')
 			exit(1)
 		}
-		if !opts.keep_generated {
-			defer {
-				os.rm(wrapper_path) or {}
-				os.rm(runtime_path) or {}
-			}
-		}
+		generated_files << [wrapper_path, runtime_path]
 	}
 	result := capi.emit_files(plan.model, plan.infos, capi.EmitOptions{
 		out_dir:     opts.out_dir
@@ -347,6 +349,9 @@ fn main() {
 	}
 	if opts.no_build {
 		println('c-api: generated ${result.header}, ${result.def}, ${result.pc}, ${result.demo}, ${result.readme}')
+		if !opts.keep_generated {
+			cleanup_generated(generated_files)
+		}
 		return
 	}
 	lib_path := if opts.lib_path == '' {
@@ -377,6 +382,9 @@ fn main() {
 		if !opts.keep_generated {
 			os.rmdir_all(plan.temp_dir) or {}
 		}
+	}
+	if !opts.keep_generated {
+		cleanup_generated(generated_files)
 	}
 	if res.exit_code != 0 {
 		eprintln('c-api: shared library build failed:')
