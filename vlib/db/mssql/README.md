@@ -53,9 +53,22 @@ copy ^
 ```
 * dlls can be automatically resolved by `tcc`
 
-## TODO
-* ORM adapter (`orm.Connection`). The driver already has parameterized `exec`, `last_id()`
-  and NULL-aware rows for the adapter to build on.
+## ORM
+
+`db.mssql.Connection` implements `orm.Connection` and `orm.TransactionalConnection`, so the
+built-in `sql conn { ... }` syntax works directly:
+
+```v ignore
+import db.mssql
+
+mut conn := mssql.open(conn_str)!
+sql conn {
+    create table User
+}!
+```
+
+Limits use T-SQL `OFFSET ... FETCH NEXT` and table creation uses the `sysobjects` guard.
+SQL Server has no `RELEASE SAVEPOINT`, so `orm_release_savepoint` returns an error.
 
 ## Usage
 ```v ignore
