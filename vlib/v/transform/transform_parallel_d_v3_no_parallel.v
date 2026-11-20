@@ -73,7 +73,7 @@ fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 
 // prescan_fixed_array_borrow_bodies leaves every borrow-summary body analysis to
 // the serial fixed point when v3 is built with the internal `v3_no_parallel` define.
-fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate) BorrowPrescan {
+fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate, _ []BorrowDeclItem) BorrowPrescan {
 	return BorrowPrescan{}
 }
 

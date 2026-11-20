@@ -233,6 +233,9 @@ mut:
 	defer_fixed_array_borrow_prep bool
 	// fixed_array_borrow_node_count is the node count the summaries cover.
 	fixed_array_borrow_node_count int
+	// fixed_array_borrow_prescanned counts the candidate parameters whose body
+	// analysis the fixed point took from the helper threads.
+	fixed_array_borrow_prescanned int
 	// borrow_params_after_transform starts the summaries from the transform
 	// stage's (see prepare_fixed_array_borrow_params).
 	borrow_params_after_transform bool

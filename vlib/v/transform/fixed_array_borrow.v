@@ -11,6 +11,16 @@ struct BorrowCandidate {
 	name    string
 }
 
+// BorrowDeclItem is one declaration whose parameters are summarised. Its pointer
+// parameters are candidates[cand_start..cand_end].
+struct BorrowDeclItem {
+	name       string
+	decl       FnParamDeclRef
+	nparams    int
+	cand_start int
+	cand_end   int
+}
+
 struct BorrowParamRef {
 	decl  int
 	index int
@@ -29,31 +39,37 @@ mut:
 	ids         [4096]int
 	masks       [4096]u64
 	generations [4096]u32
-	// record_consults makes fixed_array_borrow_summary list every summary it reads
-	// in `consulted` (prescan helpers only; see BorrowBodyResult).
-	record_consults bool
-	consulted       []BorrowParamRef
+	// record_replaced makes fixed_array_call_uses_borrow list in `replaced` every
+	// callee summary whose dependency it replaced by other dependencies (prescan
+	// helpers only; see BorrowBodyResult).
+	record_replaced bool
+	replaced        []BorrowParamRef
 }
 
 // BorrowBodyResult is one candidate's body analysis, made before the serial fixed
-// point runs against no proven summaries. `consulted` lists the summaries it read,
-// all of them unproven. While none of those is proven yet, the serial analysis
-// takes the same path and reaches the same outcome.
+// point runs, against no proven summaries. A summary's state never changes whether
+// a body borrows, only its dependencies: handing storage to a proven callee
+// parameter adds none, handing it to an unproven one adds that parameter. So the
+// analysis made with a set of proven summaries has these dependencies less the
+// proven ones. The one exception is an argument whose unproven dependency the
+// analysis replaced by the dependencies of an ordinary use (see
+// fixed_array_call_uses_borrow): with that summary proven it would have none.
+// `replaced` lists those summaries.
 struct BorrowBodyResult {
 mut:
 	ready        bool
 	borrows      bool
 	dependencies []BorrowParamRef
-	consulted    []BorrowParamRef
+	replaced     []BorrowParamRef
 }
 
-// matches_proven_summaries reports whether no summary the prescan read has been
-// proven since, so its outcome is the serial one.
+// matches_proven_summaries reports whether dropping the proven dependencies gives
+// the analysis the serial fixed point would make now.
 fn (r &BorrowBodyResult) matches_proven_summaries(t &Transformer) bool {
 	if !r.ready {
 		return false
 	}
-	for param in r.consulted {
+	for param in r.replaced {
 		if t.proven_fixed_array_borrow_summary(param) {
 			return false
 		}
@@ -90,15 +106,19 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 		}
 	}
 	t.fixed_array_borrow_node_count = t.a.nodes.len
+	t.fixed_array_borrow_prescanned = 0
 	mut candidates := []BorrowCandidate{}
-	mut seen_decls := map[int]bool{}
+	mut items := []BorrowDeclItem{}
+	// The item of every declaration seen, -1 for one without known parameters.
+	mut decl_items := map[int]int{}
 	for name, decl in t.call_param_types_decl_index {
-		if decl.idx < summarised || seen_decls[decl.idx] {
+		if decl.idx < summarised || decl.idx in decl_items {
 			continue
 		}
-		seen_decls[decl.idx] = true
+		decl_items[decl.idx] = -1
 		params := t.call_param_types_from_decl(name) or { continue }
 		fn_node := t.a.node(flat.NodeId(decl.idx))
+		cand_start := candidates.len
 		mut param_idx := 0
 		for i in 0 .. fn_node.children_count {
 			param := t.a.child_node(fn_node, i)
@@ -117,12 +137,14 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 				name:    param.value
 			}
 		}
-	}
-	mut candidate_index := map[int][]int{}
-	for i, c in candidates {
-		mut indexes := candidate_index[c.decl] or { []int{len: c.nparams, init: -1} }
-		indexes[c.index] = i
-		candidate_index[c.decl] = indexes
+		decl_items[decl.idx] = items.len
+		items << BorrowDeclItem{
+			name:       name
+			decl:       decl
+			nparams:    params.len
+			cand_start: cand_start
+			cand_end:   candidates.len
+		}
 	}
 	// Inspect each body once, recording the callee parameters it requires to
 	// borrow. Propagating proven summaries through reverse edges computes the
@@ -133,10 +155,14 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	mut qi := 0
 	// Bodies are analysed up front on helper threads against no proven summaries.
 	// The fixed point below keeps its order and analyses a body again itself only
-	// when a summary that analysis read has been proven by now.
-	prescanned := t.prescan_fixed_array_borrow_bodies(candidates)
+	// when the summaries proven by now could change more than which of its
+	// dependencies are still open (see BorrowBodyResult).
+	prescanned := t.prescan_fixed_array_borrow_bodies(candidates, items)
 	for i, c in candidates {
 		ready := i < prescanned.results.len && prescanned.results[i].matches_proven_summaries(t)
+		if ready {
+			t.fixed_array_borrow_prescanned++
+		}
 		mut scanned_dependencies := []BorrowParamRef{}
 		borrows := if ready {
 			prescanned.results[i].borrows
@@ -153,6 +179,10 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 		}
 		remaining[i] = 0
 		for dependency in dependencies {
+			if ready && t.proven_fixed_array_borrow_summary(dependency) {
+				// The analysis made now would not depend on a proven summary.
+				continue
+			}
 			if dependency.decl < summarised {
 				if !t.fixed_array_borrow_summary(dependency) {
 					remaining[i] = -1
@@ -160,13 +190,12 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 				}
 				continue
 			}
-			indexes := candidate_index[dependency.decl] or { []int{} }
-			if dependency.index < 0 || dependency.index >= indexes.len
-				|| indexes[dependency.index] < 0 {
+			target := borrow_candidate_of_param(candidates, items, decl_items, dependency)
+			if target < 0 {
 				remaining[i] = -1
 				break
 			}
-			dependents[indexes[dependency.index]] << i
+			dependents[target] << i
 			remaining[i]++
 		}
 		if remaining[i] == 0 {
@@ -190,18 +219,36 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 			}
 		}
 	}
+	t.prepare_call_provenance_borrow_params(summarised, items, prescanned.provenance)
 	prescanned.release()
-	t.prepare_call_provenance_borrow_params(summarised)
 }
 
-// BorrowPrescan holds the up-front body analyses and the arenas that own them.
+// borrow_candidate_of_param is the candidate that decides `param`, or -1 when the
+// parameter is not a candidate.
+fn borrow_candidate_of_param(candidates []BorrowCandidate, items []BorrowDeclItem, decl_items map[int]int, param BorrowParamRef) int {
+	item_idx := decl_items[param.decl] or { -1 }
+	if item_idx < 0 {
+		return -1
+	}
+	item := items[item_idx]
+	for i in item.cand_start .. item.cand_end {
+		if candidates[i].index == param.index {
+			return i
+		}
+	}
+	return -1
+}
+
+// BorrowPrescan holds the up-front body analyses, the call-provenance summaries
+// made beside them (one per declaration item) and the arenas that own them.
 struct BorrowPrescan {
 mut:
-	results []BorrowBodyResult
-	scopes  []voidptr
+	results    []BorrowBodyResult
+	provenance [][]bool
+	scopes     []voidptr
 }
 
-// release frees the helper arenas that hold the prescanned dependency lists.
+// release frees the helper arenas that hold the prescanned results.
 fn (p &BorrowPrescan) release() {
 	for scope in p.scopes {
 		transform_worker_scope_free(scope)
@@ -209,18 +256,18 @@ fn (p &BorrowPrescan) release() {
 }
 
 // prescan_fixed_array_borrow_body analyses one candidate on a helper transformer
-// that sees no proven summaries, and records which summaries the analysis read.
+// that sees no proven summaries, and records which dependencies it replaced.
 fn (mut t Transformer) prescan_fixed_array_borrow_body(c BorrowCandidate) BorrowBodyResult {
 	mut memo := t.borrow_param_mentions
-	memo.record_consults = true
-	memo.consulted.clear()
+	memo.record_replaced = true
+	memo.replaced.clear()
 	mut dependencies := []BorrowParamRef{}
 	borrows := t.fixed_array_param_body_borrows(c, mut dependencies)
 	return BorrowBodyResult{
 		ready:        true
 		borrows:      borrows
 		dependencies: dependencies
-		consulted:    memo.consulted.clone()
+		replaced:     if memo.replaced.len > 0 { memo.replaced.clone() } else { []BorrowParamRef{} }
 	}
 }
 
@@ -307,10 +354,6 @@ fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, 
 }
 
 fn (t &Transformer) fixed_array_borrow_summary(param BorrowParamRef) bool {
-	if !isnil(t.borrow_param_mentions) && t.borrow_param_mentions.record_consults {
-		mut memo := t.borrow_param_mentions
-		memo.consulted << param
-	}
 	return t.proven_fixed_array_borrow_summary(param)
 }
 
@@ -481,6 +524,15 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 			if dependencies.len > dependency_start {
 				mut ordinary_dependencies := []BorrowParamRef{}
 				if t.fixed_array_param_use_borrows(arg_id, param, false, mut ordinary_dependencies) {
+					if ordinary_dependencies.len > 0 && !isnil(t.borrow_param_mentions)
+						&& t.borrow_param_mentions.record_replaced {
+						// With the callee's summary proven the argument has no dependency
+						// at all, so this analysis does not stand once it is.
+						mut memo := t.borrow_param_mentions
+						for replaced_idx in dependency_start .. dependencies.len {
+							memo.replaced << dependencies[replaced_idx]
+						}
+					}
 					dependencies.trim(dependency_start)
 					dependencies << ordinary_dependencies
 				}
