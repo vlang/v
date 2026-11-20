@@ -96,6 +96,11 @@ mut:
 	defaults []string
 	enabled  []string
 	flags    []Flag
+	dry_run  bool // print the plan without running bodies or writing state
+	verbose  bool // print each flow's inputs and outputs
+	ran      int
+	skipped  int
+	failed   int
 }
 
 // new returns an empty build context.
@@ -138,13 +143,25 @@ pub fn (mut c Context) default(ids []string) {
 
 // flow executes the flows named on the command line, or the defaults. Given
 // `help`, `-h` or `--help` first, it prints the flows and flags instead, unless
-// the script has a flow called help, which then runs. On failure it reports the
-// error and exits with status 1.
+// the script has a flow called help, which then runs. `-n`/`--dry-run` prints
+// the flows that would run without changing files, `-v`/`--verbose` shows each
+// flow's inputs and outputs, and either adds a summary. On failure it reports
+// the error and exits with status 1.
 pub fn (mut c Context) flow() {
 	c.resolve_auto_flows()
 	c.execute(os.args[1..]) or {
+		c.print_summary()
 		eprintln('imp: ${err.msg()}')
 		exit(1)
+	}
+	c.print_summary()
+}
+
+// print_summary reports what the build did, when the user asked for the extra
+// detail carried by dry-run or verbose mode.
+pub fn (c &Context) print_summary() {
+	if c.dry_run || c.verbose {
+		println('summary: ${c.ran} run, ${c.skipped} skipped, ${c.failed} failed')
 	}
 }
 
@@ -189,7 +206,16 @@ fn (mut c Context) resolve_auto_flows() {
 
 // execute parses the command line arguments and runs the flows they name.
 fn (mut c Context) execute(args []string) ! {
-	mut argv := args.clone()
+	mut argv := []string{}
+	for arg in args {
+		if arg in ['-n', '--dry-run'] {
+			c.dry_run = true
+		} else if arg in ['-v', '--verbose'] {
+			c.verbose = true
+		} else {
+			argv << arg
+		}
+	}
 	if argv.len > 0 && argv[0] in ['help', '-h', '--help'] {
 		if !c.flows.any(it.id == 'help') {
 			c.print_help()
@@ -219,6 +245,9 @@ fn (mut c Context) execute(args []string) ! {
 		mut pass := Pass{}
 		c.visit(id, [], mut pass)!
 		c.drain(mut pass)!
+		c.ran += pass.ran
+		c.skipped += pass.skipped
+		c.failed += pass.failed
 	}
 }
 
@@ -408,6 +437,9 @@ fn finish_after_work(steps []Step) []Step {
 // Pass is the progress of one requested flow and everything it pulls in.
 struct Pass {
 mut:
+	ran      int
+	skipped  int
+	failed   int
 	state    map[string]FlowState
 	stack    []string            // the active flows, outermost first
 	deferred map[string][][]Step // sequences waiting for the body of an active flow
@@ -667,12 +699,24 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	}
 	if skip {
 		println('>> ${f.display_name()} (skip)')
+		pass.skipped++
 		return f.post.filter(it.required).map(it.id)
 	}
 	for hook in f.pre.filter(!it.required) {
 		c.visit(hook.id, [], mut pass)!
 	}
+	if c.verbose {
+		eprintln('  takes: ${f.takes.join(', ')}')
+		eprintln('  gives: ${f.gives.join(', ')}')
+	}
+	if c.dry_run {
+		// report the plan, but leave the file system and all state untouched
+		println('>> ${f.display_name()} (would run)')
+		pass.ran++
+		return f.post.map(it.id)
+	}
 	println('>> ${f.display_name()}')
+	pass.ran++
 	if f.check != .none {
 		// marked first, so that a failed or interrupted run, which may have left
 		// newer or partial outputs, is never mistaken for a good one
@@ -684,9 +728,13 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 		enabled:      c.enabled
 		script_flags: c.flags.map(it.id)
 	}
-	f.flow(runnable) or { return error('flow `${f.id}` failed: ${err.msg()}') }
+	f.flow(runnable) or {
+		pass.failed++
+		return error('flow `${f.id}` failed: ${err.msg()}')
+	}
 	for path in f.gives {
 		if !os.exists(path) {
+			pass.failed++
 			return error('flow `${f.id}` did not produce `${path}`')
 		}
 	}
