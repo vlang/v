@@ -781,7 +781,18 @@ fn (mut g SSAGen) emit_instruction(id int) ! {
 			g.cur.raw(ssa_wasm_binary(instr.op, w)!)
 			init_push_zero(w, mut g.cur)
 			g.cur.local_get(count)
-			width := if w == .i64 { 64 } else { 32 }
+			// V guards an over-width count against the declared operand width
+			// (8/16 for narrow ints) and yields 0, while WASM masks the count
+			// modulo the register width. Use the declared width so a narrow
+			// signed right shift cannot sign-fill past its width (this matches
+			// the C backend, which guards against the declared width).
+			mut width := if w == .i64 { 64 } else { 32 }
+			if w == .i32 {
+				t := g.m.type_store.types[instr.typ]
+				if t.kind == .int_t && t.width > 0 && t.width < 32 {
+					width = t.width
+				}
+			}
 			if count_w == .i64 {
 				g.cur.i64_const(width)
 				g.cur.raw(0x54)
