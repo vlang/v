@@ -174,7 +174,8 @@ fn (mut g FlatGen) race_header_read_is_lvalue(id flat.NodeId) bool {
 // gen_race_blank_read generates `_ = expr` in a race build. Like Go, V reads the value of
 // `expr`, but the C compiler does not load a struct for `(void)(expr)`, and drops a value
 // that is computed without side effects, like `c.n + 1`: a race on what `expr` reads would
-// go unreported. Copying the value to a volatile variable keeps it, and its loads.
+// go unreported. Copying the value to a volatile variable keeps it, and its loads. Fixed
+// arrays and structs in memory are reported to the race detector as read instead.
 fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 	if !g.race {
 		return false
@@ -213,8 +214,19 @@ fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 		g.writeln(', sizeof(__race_blank_read)); __tsan_read_range((void*)__race_blank_read, sizeof(__race_blank_read)); }')
 		return true
 	}
-	if g.tc.c_type(typ) in ['', 'void'] {
+	c_type := g.tc.c_type(typ)
+	if c_type in ['', 'void'] {
 		return false
+	}
+	// C copies a struct, like a string, with `memcpy`. The ThreadSanitizer of clang 15 and
+	// older replaces that with a call of the plain C function, without `volatile`, which
+	// link time optimization (`-prod`) removes with its read when the copy is unused. Tell
+	// the race detector that the storage of the value is read instead, like for fixed arrays.
+	if g.is_aggregate_zero_init_type(&typ, c_type) && g.race_header_read_is_lvalue(rhs_id) {
+		g.write('{ const __auto_type __race_blank_read = &(${deref}(')
+		g.gen_expr(rhs_id)
+		g.writeln(')); __tsan_read_range((void*)__race_blank_read, sizeof(*__race_blank_read)); }')
+		return true
 	}
 	// Race builds need clang or gcc, which both deduce the type with `__auto_type`. The copy
 	// is volatile, as an optimized build (`-prod`) would drop an unused copy, and its load.

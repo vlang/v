@@ -51,6 +51,10 @@ as `copy(mut dst, src)`, and dynamic-array indexing and slicing (including gated
 The annotation evaluates the source address once and does not change mutable argument passing
 or take addresses of C rvalue expressions.
 
+`_ = value` records a read of the storage of an addressable struct, string or array value as
+well: clang 15 and older lower the unused copy to a plain `memcpy` call, which link time
+optimization (`-prod`) removes after instrumentation.
+
 Other aggregate copies still rely on the C compiler's instrumentation. `v -race` uses clang
 when it is installed; remaining misses listed in `gcc_known_misses` count as known gcc
 limitations when the suite runs with gcc.
