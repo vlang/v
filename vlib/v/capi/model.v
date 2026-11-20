@@ -27,6 +27,9 @@ pub:
 pub mut:
 	c_name      string
 	custom_name string
+	// qualifier is the V import alias used when wrappers live outside the
+	// module that declares the function (combined multi-module builds).
+	qualifier string
 }
 
 pub struct ApiType {
@@ -48,11 +51,11 @@ pub struct ApiModel {
 pub:
 	module_name string
 	prefix      string
-	types       []ApiType
-	consts      []ApiConst
 	warnings    []string
 pub mut:
-	funcs []ApiFunc
+	funcs  []ApiFunc
+	types  []ApiType
+	consts []ApiConst
 }
 
 pub fn (m ApiModel) is_enum(name string) bool {
@@ -86,6 +89,12 @@ pub fn (m ApiModel) type_by_name(name string) ?ApiType {
 // declarations. prefix overrides the C symbol prefix; when empty, the module
 // name's last segment is used.
 pub fn collect_model(dir string, prefix string) !ApiModel {
+	return collect_model_qualified(dir, prefix, '')
+}
+
+// collect_model_qualified records public declarations and, when qualifier is
+// non-empty, marks functions for calls through an imported module alias.
+pub fn collect_model_qualified(dir string, prefix string, qualifier string) !ApiModel {
 	entries := os.ls(dir) or { return error('cannot list ${dir}: ${err}') }
 	mut effective_prefix := if prefix == '' { '' } else { sanitize(prefix) }
 	mut module_name := ''
@@ -120,7 +129,7 @@ pub fn collect_model(dir string, prefix string) !ApiModel {
 				if has_attr(attrs, 'c_api_skip', 'CApiSkip') {
 					continue
 				}
-				funcs << func_from_node(a, node, docs, effective_prefix, custom_name_of(attrs))
+				funcs << func_from_node(a, node, docs, effective_prefix, custom_name_of(attrs), qualifier)
 				continue
 			}
 			if node.kind == .struct_decl {
@@ -234,7 +243,7 @@ fn custom_name_of(attrs []string) string {
 	return ''
 }
 
-fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, prefix string, custom_name string) ApiFunc {
+fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, prefix string, custom_name string, qualifier string) ApiFunc {
 	mut params := []ApiParam{}
 	mut receiver := ''
 	for i in 0 .. node.children_count {
@@ -263,6 +272,7 @@ fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, pref
 		name:        node.value
 		c_name:      cname
 		custom_name: custom_name
+		qualifier:   qualifier
 		params:      params
 		return_type: ret
 		doc:         docs['fn:${node.value}']

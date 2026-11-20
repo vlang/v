@@ -27,6 +27,20 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_qualified_wrappers_for_combined_build() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'mockpkg')
+	m := collect_model_qualified(dir, 'lib_mock', 'mock') or {
+		assert false, 'collect_model_qualified failed: ${err.msg()}'
+		return
+	}
+	mut warnings := []string{}
+	code, infos := generate_wrappers(m, mut warnings)
+	assert code.starts_with('module main')
+	assert code.contains('mock.add(p0, p1)')
+	assert code.contains('&mock.Client(self)')
+	assert infos[0].c_name == 'lib_mock_add'
+}
+
 fn test_manual_export_overrides() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'attrs')
 	m := collect_model(dir, '') or {

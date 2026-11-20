@@ -12,7 +12,13 @@ pub:
 // generate_runtime returns the V source of the small runtime used by the
 // generated wrappers. It lives in a .c.v file so C interop stays explicit.
 pub fn generate_runtime(m ApiModel) string {
-	return 'module ${m.module_name}
+	return generate_runtime_for(m, m.module_name, m.prefix)
+}
+
+// generate_runtime_for emits the shared runtime into an explicit module with
+// an explicit symbol prefix, used by combined multi-module builds.
+pub fn generate_runtime_for(m ApiModel, module_name string, prefix string) string {
+	return 'module ${module_name}
 
 __global (
 	capi_rt_error_buf []u8
@@ -42,7 +48,7 @@ fn capi_rt_set_error(msg string) {
 	capi_rt_error_buf << u8(0)
 }
 
-@[export: \'${m.prefix}_last_error\']
+@[export: \'${prefix}_last_error\']
 fn capi_rt_last_error() &char {
 	if capi_rt_error_buf.len == 0 {
 		capi_rt_error_buf = \'no error\'.bytes()
@@ -51,14 +57,14 @@ fn capi_rt_last_error() &char {
 	return &char(capi_rt_error_buf.data)
 }
 
-@[export: \'${m.prefix}_free\']
+@[export: \'${prefix}_free\']
 fn capi_rt_free(p voidptr) {
 	if p != unsafe { nil } {
 		unsafe { C.free(p) }
 	}
 }
 
-@[export: \'${m.prefix}_init\']
+@[export: \'${prefix}_init\']
 fn capi_rt_init() int {
 	return 0
 }
@@ -70,7 +76,7 @@ fn capi_rt_init() int {
 pub fn generate_wrappers(m ApiModel, mut warnings []string) (string, []ExportInfo) {
 	mut b := strings.Builder{}
 	mut infos := []ExportInfo{}
-	b.writeln('module ${m.module_name}')
+	b.writeln('module ${if qualified_model(m) { 'main' } else { m.module_name }}')
 	b.writeln('')
 	for fi, f in m.funcs {
 		if wrapper_for_func(m, fi, f, mut b, mut warnings, mut infos) {
@@ -83,6 +89,16 @@ pub fn generate_wrappers(m ApiModel, mut warnings []string) (string, []ExportInf
 		}
 	}
 	return b.str(), infos
+}
+
+fn qualified_model(m ApiModel) bool {
+	return m.funcs.len > 0 && m.funcs[0].qualifier != ''
+}
+
+// qname prefixes a symbol with its import alias when wrappers are generated
+// outside the declaring module.
+fn qname(f ApiFunc, name string) string {
+	return if f.qualifier == '' { name } else { '${f.qualifier}.${name}' }
 }
 
 fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
@@ -118,7 +134,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		}
 		decl_params << 'self voidptr'
 		c_params << 'void *self'
-		setup << '\trecv := unsafe { &${base}(self) }'
+		setup << '\trecv := unsafe { &${qname(f, base)}(self) }'
 	}
 	for i, p in f.params {
 		if p.is_receiver {
@@ -154,16 +170,16 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 			call_args << '${name} != 0'
 		} else if m.is_enum(unqualified(strip_ref(p.type_name))) {
 			etype := unqualified(strip_ref(p.type_name))
-			call_args << 'unsafe { ${etype}(${name}) }'
+			call_args << 'unsafe { ${qname(f, etype)}(${name}) }'
 		} else if p.type_name.starts_with('&') && m.is_struct(unqualified(strip_ref(p.type_name))) {
 			stype := unqualified(strip_ref(p.type_name))
 			if p.is_mut {
 				// `mut c T` is encoded as `&T` with the mut flag; pass a mutable
 				// copy of the pointed-to value rather than the pointer itself.
-				setup << '\tmut ${name}_v := unsafe { *(&${stype}(${name})) }'
+				setup << '\tmut ${name}_v := unsafe { *(&${qname(f, stype)}(${name})) }'
 				call_args << 'mut ${name}_v'
 			} else {
-				setup << '\t${name}_v := unsafe { &${stype}(${name}) }'
+				setup << '\t${name}_v := unsafe { &${qname(f, stype)}(${name}) }'
 				call_args << '${name}_v'
 			}
 		} else {
@@ -198,7 +214,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	call := if f.is_method {
 		'recv.${f.name.all_after_last('.')}(${call_args.join(', ')})'
 	} else {
-		'${f.name}(${call_args.join(', ')})'
+		'${qname(f, f.name)}(${call_args.join(', ')})'
 	}
 	if has_result {
 		if is_result(f.return_type) {

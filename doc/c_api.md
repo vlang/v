@@ -54,6 +54,21 @@ with `<prefix>_free()`. Error text from a failed `!T` call is available from
 `<prefix>_last_error()` and stays valid until the next call on that thread.
 Call `<prefix>_init()` once before using the library.
 
+## Packages with submodules
+
+When the target directory contains subdirectories with their own `module`
+declarations, all of them are included in one shared library. The import path
+is read from `v.mod` (`name` field); override it with `--import-path`, e.g.:
+
+```sh
+v c-api . --lib-name vtls --import-path metif12.vtls -o dist
+```
+
+Each submodule's functions get a `<lib>_<submodule>_<fn>` C name to avoid
+collisions. Use `--no-submodules` to build only the module in the given
+directory. During the build a temporary `VMODULES` tree is created under the
+system temp directory and removed afterwards (`--keep-generated` retains it).
+
 ## Manual control
 
 Automatic export is the default, but three attributes let a module adjust the

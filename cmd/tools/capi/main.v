@@ -1,8 +1,10 @@
 // c-api generates a C library release (shared library + header + def + pc +
-// demo + README) from the public API of a V module.
+// demo + README) from the public API of a V module or package.
 module main
 
 import os
+import rand
+import strings
 import v.capi
 
 struct Options {
@@ -11,14 +13,17 @@ mut:
 	out_dir        string = 'dist'
 	lib_path       string
 	lib_name       string
+	import_path    string
 	version        string
 	description    string
 	no_build       bool
+	no_submodules  bool
 	keep_generated bool
 }
 
 fn usage() {
 	eprintln('usage: v c-api <module-dir> [-o <dir>] [--lib-name <name>] [--version <v>]')
+	eprintln('                       [--import-path <v.module.path>] [--no-submodules]')
 	eprintln('                       [--description <text>] [--no-build] [--keep-generated]')
 }
 
@@ -49,26 +54,24 @@ fn parse_args(args []string) !Options {
 				return error('missing value for ${arg}')
 			}
 			opts.lib_path = args[i]
-		} else if arg == '--lib-name' {
+		} else if arg == '--lib-name' || arg == '--import-path' || arg == '--version' || arg == '--description' {
 			i++
 			if i >= args.len {
 				return error('missing value for ${arg}')
 			}
-			opts.lib_name = args[i]
-		} else if arg == '--version' {
-			i++
-			if i >= args.len {
-				return error('missing value for ${arg}')
+			if arg == '--lib-name' {
+				opts.lib_name = args[i]
+			} else if arg == '--import-path' {
+				opts.import_path = args[i]
+			} else if arg == '--version' {
+				opts.version = args[i]
+			} else {
+				opts.description = args[i]
 			}
-			opts.version = args[i]
-		} else if arg == '--description' {
-			i++
-			if i >= args.len {
-				return error('missing value for ${arg}')
-			}
-			opts.description = args[i]
 		} else if arg == '--no-build' {
 			opts.no_build = true
+		} else if arg == '--no-submodules' {
+			opts.no_submodules = true
 		} else if arg == '--keep-generated' {
 			opts.keep_generated = true
 		} else if arg.starts_with('-') {
@@ -94,6 +97,200 @@ fn lib_file_name(name string) string {
 	return 'lib${name}.so'
 }
 
+fn module_name_of(dir string) string {
+	entries := os.ls(dir) or { return '' }
+	for entry in entries {
+		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.ends_with('.c.v') {
+			continue
+		}
+		text := os.read_file(os.join_path(dir, entry)) or { continue }
+		for line in text.split('\n') {
+			t := line.trim_space()
+			if t.starts_with('module ') {
+				return t[7..].trim_space()
+			}
+		}
+	}
+	return ''
+}
+
+fn discover_modules(dir string, mut out []string) {
+	if module_name_of(dir) != '' {
+		out << dir
+	}
+	entries := os.ls(dir) or { return }
+	for entry in entries {
+		if entry.starts_with('.') || entry in ['cmd', 'testdata', 'tests', 'dist', 'build'] {
+			continue
+		}
+		sub := os.join_path(dir, entry)
+		if os.is_dir(sub) {
+			discover_modules(sub, mut out)
+		}
+	}
+}
+
+fn rel_dir(root string, dir string) string {
+	if dir == root {
+		return ''
+	}
+	prefix := root.trim_right(os.path_separator) + os.path_separator
+	if !dir.starts_with(prefix) {
+		return ''
+	}
+	return dir[prefix.len..].replace(os.path_separator, '.')
+}
+
+fn base_import_path(root string, opts Options) string {
+	if opts.import_path != '' {
+		return opts.import_path
+	}
+	text := os.read_file(os.join_path(root, 'v.mod')) or { return '' }
+	for line in text.split('\n') {
+		t := line.trim_space()
+		if t.starts_with('name:') {
+			return t[5..].trim_space().trim("'").trim('"')
+		}
+	}
+	return ''
+}
+
+fn import_path_of(rel string, base string) string {
+	if rel == '' {
+		return base
+	}
+	return if base == '' { rel } else { '${base}.${rel}' }
+}
+
+fn copy_module_files(src string, dst string) ! {
+	os.mkdir_all(dst) or { return error('cannot create ${dst}: ${err}') }
+	for entry in os.ls(src) or { return error('cannot list ${src}: ${err}') } {
+		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.starts_with('capi_generated') {
+			continue
+		}
+		os.copy_file(os.join_path(src, entry), os.join_path(dst, entry)) or {
+			return error('cannot copy ${entry}: ${err}')
+		}
+	}
+}
+
+fn with_imports(code string, imports []string) string {
+	if imports.len == 0 {
+		return code
+	}
+	idx := code.index('\n') or { return code }
+	mut b := strings.Builder{}
+	b.writeln(code[..idx])
+	for imp in imports {
+		b.writeln('import ${imp}')
+	}
+	b.writeln('')
+	b.write_string(code[idx + 1..])
+	return b.str()
+}
+
+struct BuildPlan {
+	model       capi.ApiModel
+	infos       []capi.ExportInfo
+	wrappers    string
+	runtime     string
+	build_input string
+	vmodules    string
+	temp_dir    string
+}
+
+fn build_plan(opts Options) !BuildPlan {
+	mut warnings := []string{}
+	if opts.no_submodules {
+		m := capi.collect_model(opts.dir, opts.lib_name) or { return err }
+		wrappers, infos := capi.generate_wrappers(m, mut warnings)
+		for w in warnings {
+			eprintln('c-api: warning: ${w}')
+		}
+		return BuildPlan{
+			model:       m
+			infos:       infos
+			wrappers:    wrappers
+			runtime:     capi.generate_runtime(m)
+			build_input: ''
+			vmodules:    ''
+			temp_dir:    ''
+		}
+	}
+	mut modules := []string{}
+	discover_modules(opts.dir, mut modules)
+	if modules.len <= 1 {
+		m := capi.collect_model(opts.dir, opts.lib_name) or { return err }
+		wrappers, infos := capi.generate_wrappers(m, mut warnings)
+		for w in warnings {
+			eprintln('c-api: warning: ${w}')
+		}
+		return BuildPlan{
+			model:       m
+			infos:       infos
+			wrappers:    wrappers
+			runtime:     capi.generate_runtime(m)
+			build_input: ''
+			vmodules:    ''
+			temp_dir:    ''
+		}
+	}
+	base := base_import_path(opts.dir, opts)
+	if base == '' {
+		return error('submodule builds need --import-path or a v.mod with a name')
+	}
+	temp_dir := os.join_path(os.vtmp_dir(), 'capi_build_${rand.ulid()}')
+	os.mkdir_all(temp_dir) or { return error('cannot create ${temp_dir}: ${err}') }
+	base_parts := base.split('.')
+	mut base_dir := temp_dir
+	for part in base_parts {
+		base_dir = os.join_path(base_dir, part)
+	}
+	mut imports := []string{}
+	mut combined := capi.ApiModel{}
+	mut first := true
+	for mdir in modules {
+		rel := rel_dir(opts.dir, mdir)
+		imp := import_path_of(rel, base)
+		qualifier := imp.all_after_last('.')
+		imports << imp
+		short := capi.sanitize(if rel == '' { 'root' } else { rel.replace('.', '_') })
+		module_prefix := '${opts.lib_name}_${short}'
+		m := capi.collect_model_qualified(mdir, module_prefix, qualifier) or { return err }
+		copy_module_files(mdir, os.join_path(base_dir, ...rel.split('.'))) or { return err }
+		if first {
+			combined = capi.ApiModel{
+				module_name: 'main'
+				prefix:      opts.lib_name
+			}
+			first = false
+		}
+		combined.funcs << m.funcs
+		combined.types << m.types
+		combined.consts << m.consts
+	}
+	wrappers, infos := capi.generate_wrappers(combined, mut warnings)
+	for w in warnings {
+		eprintln('c-api: warning: ${w}')
+	}
+	runtime := capi.generate_runtime_for(combined, 'main', opts.lib_name)
+	newline_idx := runtime.index('\n') or { 0 }
+	runtime_body := runtime[newline_idx + 1..]
+	// One .c.v file holds both the wrappers and the runtime: V only compiles
+	// the file passed as input, so a separate companion would be omitted.
+	source_path := os.join_path(temp_dir, 'capi_generated.c.v')
+	os.write_file(source_path, with_imports(wrappers, imports) + '\n' + runtime_body) or { return err }
+	return BuildPlan{
+		model:       combined
+		infos:       infos
+		wrappers:    wrappers
+		runtime:     runtime
+		build_input: source_path
+		vmodules:    temp_dir
+		temp_dir:    temp_dir
+	}
+}
+
 fn main() {
 	mut args := os.args[1..].clone()
 	if args.len > 0 && (args[0] == 'c-api' || args[0] == 'capi') {
@@ -107,39 +304,39 @@ fn main() {
 		eprintln('c-api: not a directory: ${opts.dir}')
 		exit(1)
 	}
-	model := capi.collect_model(opts.dir, opts.lib_name) or {
+	name := if opts.lib_name == '' {
+		capi.sanitize(module_name_of(opts.dir))
+	} else {
+		capi.sanitize(opts.lib_name)
+	}
+	plan := build_plan(opts) or {
 		eprintln('c-api: ${err}')
 		exit(1)
 	}
-	mut warnings := []string{}
-	wrappers, infos := capi.generate_wrappers(model, mut warnings)
-	runtime := capi.generate_runtime(model)
-	for w in warnings {
-		eprintln('c-api: warning: ${w}')
-	}
-	wrapper_path := os.join_path(opts.dir, 'capi_generated.v')
-	runtime_path := os.join_path(opts.dir, 'capi_generated.c.v')
-	if os.exists(wrapper_path) || os.exists(runtime_path) {
-		eprintln('c-api: generated files already exist in ${opts.dir}; remove them first')
-		exit(1)
-	}
-	os.write_file(wrapper_path, wrappers) or {
-		eprintln('c-api: cannot write ${wrapper_path}: ${err}')
-		exit(1)
-	}
-	os.write_file(runtime_path, runtime) or {
-		os.rm(wrapper_path) or {}
-		eprintln('c-api: cannot write ${runtime_path}: ${err}')
-		exit(1)
-	}
-	if !opts.keep_generated {
-		defer {
+	if plan.temp_dir == '' {
+		wrapper_path := os.join_path(opts.dir, 'capi_generated.v')
+		runtime_path := os.join_path(opts.dir, 'capi_generated.c.v')
+		if os.exists(wrapper_path) || os.exists(runtime_path) {
+			eprintln('c-api: generated files already exist in ${opts.dir}; remove them first')
+			exit(1)
+		}
+		os.write_file(wrapper_path, plan.wrappers) or {
+			eprintln('c-api: cannot write ${wrapper_path}: ${err}')
+			exit(1)
+		}
+		os.write_file(runtime_path, plan.runtime) or {
 			os.rm(wrapper_path) or {}
-			os.rm(runtime_path) or {}
+			eprintln('c-api: cannot write ${runtime_path}: ${err}')
+			exit(1)
+		}
+		if !opts.keep_generated {
+			defer {
+				os.rm(wrapper_path) or {}
+				os.rm(runtime_path) or {}
+			}
 		}
 	}
-	name := if opts.lib_name == '' { model.prefix } else { capi.sanitize(opts.lib_name) }
-	result := capi.emit_files(model, infos, capi.EmitOptions{
+	result := capi.emit_files(plan.model, plan.infos, capi.EmitOptions{
 		out_dir:     opts.out_dir
 		lib_name:    name
 		version:     opts.version
@@ -159,15 +356,28 @@ fn main() {
 	}
 	mut build_args := [@VEXE, '-shared', '-enable-globals', '-nocache']
 	if os.user_os() == 'windows' {
-		// GCC on Windows does not honour dllexport attributes; export all symbols
-		// so the generated .def names are actually present in the DLL.
 		build_args << '-cflags'
 		build_args << '-Wl,--export-all-symbols'
 	}
 	build_args << '-o'
 	build_args << lib_path
-	build_args << opts.dir
+	build_input := if plan.build_input == '' { opts.dir } else { plan.build_input }
+	build_args << build_input
+	old_vmodules := os.getenv_opt('VMODULES')
+	if plan.vmodules != '' {
+		os.setenv('VMODULES', plan.vmodules, true)
+	}
 	res := os.exec(build_args)
+	if plan.vmodules != '' {
+		if value := old_vmodules {
+			os.setenv('VMODULES', value, true)
+		} else {
+			os.unsetenv('VMODULES')
+		}
+		if !opts.keep_generated {
+			os.rmdir_all(plan.temp_dir) or {}
+		}
+	}
 	if res.exit_code != 0 {
 		eprintln('c-api: shared library build failed:')
 		eprintln(res.output)
