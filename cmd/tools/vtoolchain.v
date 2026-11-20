@@ -1,6 +1,10 @@
 module main
 
 import os
+import crypto.sha256
+import encoding.hex
+import json2
+import net.http
 import v.toolchain
 
 const args = arguments()
@@ -23,12 +27,14 @@ const usage = 'Usage: v toolchain <command> [options]\n' +
 	'\n' +
 	'Version:\n' +
 	'  master, stable, latest, nightly, or a tag like 0.4.11 / v0.4.11.\n' +
-	'  Channels resolve to master in P0; tags keep their v prefix.\n' +
+	'  stable/latest resolve to master; nightly has its own directory.\n' +
 	'\n' +
 	'Config:\n' +
 	'  V_TOOLCHAIN selects a toolchain for one command.\n' +
 	'  v-toolchain.toml / v.mod toolchain key pins a repository.\n' +
 	'  ~/.v/settings.toml default_toolchain sets the per-user default.\n' +
+	'  versions.json lists prebuilt bundles with url and sha256.\n' +
+	'  V_TOOLCHAIN_CACHE_DIR reuses thirdparty/tcc and vc across installs.\n' +
 	'\n' +
 	'Examples:\n' +
 	'  v toolchain install 0.4.11\n' +
@@ -121,6 +127,92 @@ fn list_toolchains() {
 	}
 }
 
+struct Release {
+	url    string
+	sha256 string
+}
+
+// load_releases reads the optional versions.json manifest. An absent or
+// malformed manifest simply disables prebuilt installs.
+fn load_releases() map[string]Release {
+	path := toolchain.manifest_path()
+	if !os.is_file(path) {
+		return map[string]Release{}
+	}
+	text := os.read_file(path) or {
+		return map[string]Release{}
+	}
+	return json2.decode[map[string]Release](text) or {
+		return map[string]Release{}
+	}
+}
+
+fn verify_sha256(path string, expected string) ! {
+	data := os.read_file(path)!
+	actual := hex.encode(sha256.sum(data.bytes()))
+	if actual.to_lower() != expected.trim_space().to_lower() {
+		return error('checksum mismatch: expected ${expected}, got ${actual}')
+	}
+}
+
+// install_prebuilt installs a manifest-provided bundle. Local directories are
+// copied directly; files and URLs are treated as tar archives.
+fn install_prebuilt(version string, release Release, dest string) ! {
+	staging := dest + '_stage'
+	os.rmdir_all(staging) or {}
+	if os.is_dir(release.url) {
+		copy_dir(release.url, staging)!
+	} else {
+		archive := os.join_path(os.vtmp_dir(), 'vtoolchain_${os.getpid()}.archive')
+		os.rm(archive) or {}
+		if os.is_file(release.url) {
+			os.cp(release.url, archive)!
+		} else {
+			http.download_file(release.url, archive)!
+		}
+		if release.sha256 != '' {
+			verify_sha256(archive, release.sha256) or {
+				os.rm(archive) or {}
+				return err
+			}
+		}
+		os.mkdir_all(staging)!
+		res := os.exec(['tar', '-xf', archive, '-C', staging])
+		os.rm(archive) or {}
+		if res.exit_code != 0 {
+			os.rmdir_all(staging) or {}
+			return error('could not extract prebuilt archive: ${res.output.trim_space()}')
+		}
+	}
+	if !os.is_dir(os.join_path(staging, 'vlib')) || !os.is_dir(os.join_path(staging, 'cmd')) {
+		os.rmdir_all(staging) or {}
+		return error('prebuilt bundle has no vlib/ or cmd/')
+	}
+	os.rename(staging, dest)!
+	println('Installed prebuilt V `${version}` from `${release.url}` into `${dest}`.')
+}
+
+fn share_cache_from(src string, dst string) {
+	if !os.is_dir(src) {
+		return
+	}
+	os.rmdir_all(dst) or {}
+	copy_dir(src, dst) or {
+		eprintln('could not reuse shared cache `${src}` at `${dst}`: ${err.msg()}')
+	}
+}
+
+// apply_shared_cache reuses an opt-in cache of TCC and vc instead of
+// downloading them again into every checkout.
+fn apply_shared_cache(dir string) {
+	cache := toolchain.shared_cache_dir()
+	if cache == '' {
+		return
+	}
+	share_cache_from(os.join_path(cache, 'thirdparty', 'tcc'), os.join_path(dir, 'thirdparty', 'tcc'))
+	share_cache_from(os.join_path(cache, 'vc'), os.join_path(dir, 'vc'))
+}
+
 fn install_version(raw string) {
 	version := normalized_version(raw)
 	root := toolchain.configured_root()
@@ -130,13 +222,29 @@ fn install_version(raw string) {
 		return
 	}
 	dest := toolchain.toolchain_dir(root, version)
-	if os.is_dir(dest) && os.is_dir(os.join_path(dest, '.git')) {
+	if os.is_dir(dest) && (os.is_dir(os.join_path(dest, '.git'))
+		|| os.is_dir(os.join_path(dest, 'vlib'))) {
 		println('`${version}` is already installed in `${dest}`.')
 		return
 	}
-	if os.exists(dest) && !os.is_dir(os.join_path(dest, '.git')) {
+	if os.exists(dest) {
 		eprintln('`${dest}` exists but is not a toolchain checkout; remove it first.')
 		exit(1)
+		return
+	}
+	releases := load_releases()
+	if version in releases {
+		install_prebuilt(version, releases[version], dest) or {
+			eprintln('prebuilt install failed: ${err.msg()}')
+			exit(1)
+			return
+		}
+		apply_shared_cache(dest)
+		if toolchain.executable_in(dest) != '' {
+			println('`${version}` is ready to use.')
+		} else {
+			println('Build it with: cd ${dest} && make')
+		}
 		return
 	}
 	branch := toolchain.branch_for(version)
@@ -164,6 +272,7 @@ fn install_version(raw string) {
 		exit(1)
 		return
 	}
+	apply_shared_cache(dest)
 	println('Installed `${version}` in `${dest}`.')
 	$if windows {
 		println('Build it with: cd ${dest} && makev.bat')

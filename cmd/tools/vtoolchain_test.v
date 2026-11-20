@@ -193,6 +193,25 @@ fn test_toolchain_run_uses_requested_version() ! {
 	assert missing.output.contains('not installed'), missing.output
 }
 
+fn test_toolchain_install_from_manifest_directory() ! {
+	tool := vtoolchain_test_tool()!
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_manifest_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	bundle := os.join_path(root, 'bundle')
+	os.mkdir_all(os.join_path(bundle, 'vlib'))!
+	os.mkdir_all(os.join_path(bundle, 'cmd'))!
+	manifest := os.join_path(root, 'versions.json')
+	os.write_file(manifest, '{"v1.2.3":{"url":"${bundle.replace('\\', '/')}","sha256":""}}')!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN_MANIFEST=${manifest}', tool,
+		'toolchain', 'install', '1.2.3'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('prebuilt'), result.output
+	assert os.is_dir(os.join_path(root, 'v1.2.3', 'vlib')), result.output
+}
+
 fn test_toolchain_remove_and_gc() ! {
 	root := os.join_path(os.vtmp_dir(), 'vtoolchain_remove_${os.getpid()}')
 	os.rmdir_all(root) or {}

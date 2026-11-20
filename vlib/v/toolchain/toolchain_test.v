@@ -9,11 +9,22 @@ fn tmp_root() string {
 fn test_normalize_version() {
 	assert (normalize_version('stable') or { '' }) == 'master'
 	assert (normalize_version('latest') or { '' }) == 'master'
-	assert (normalize_version('nightly') or { '' }) == 'master'
+	assert (normalize_version('nightly') or { '' }) == 'nightly'
 	assert (normalize_version('0.4.11') or { '' }) == 'v0.4.11'
 	assert (normalize_version('v0.4.11') or { '' }) == 'v0.4.11'
 	assert normalize_version('not-a-version') == none
 	assert normalize_version('') == none
+}
+
+fn test_nightly_branch_and_manifest_path() ! {
+	assert branch_for('nightly') == 'master'
+	assert branch_for('v0.4.11') == 'v0.4.11'
+	custom := os.join_path(tmp_root(), 'versions.json')
+	os.setenv(manifest_env, custom, true)
+	defer {
+		os.setenv(manifest_env, '', true)
+	}
+	assert manifest_path() == custom
 }
 
 fn test_set_and_read_key_preserves_other_keys() ! {

@@ -44,10 +44,19 @@ Useful environment overrides:
   V_TOOLCHAIN_SETTINGS  Change the per-user settings file.
   V_TOOLCHAIN_PROJECT   Change the repository root used for pins.
   V_TOOLCHAIN_UPSTREAM  Change the git remote used by install.
+  V_TOOLCHAIN_MANIFEST  Path to versions.json (default: in the toolchains dir).
+  V_TOOLCHAIN_CACHE_DIR Reuse thirdparty/tcc and vc from this directory.
   V_TOOLCHAIN_DEBUG=1   Explain toolchain selection on stderr.
 
-Channels resolve to master in P0. Tags keep their v prefix, so 0.4.11
-installs into ~/.v/toolchains/v0.4.11 from branch v0.4.11.
+A versions.json manifest can map a version to a prebuilt bundle:
+
+  {"v0.4.11": {"url": "https://.../v0.4.11.zip", "sha256": "<hex>"}}
+
+Install prefers a matching manifest entry, verifies the sha256 checksum, and
+extracts the archive with `tar`. Without a matching entry, install falls back
+to a shallow git clone. `nightly` is its own directory and tracks master when
+no prebuilt is listed for it. Tags keep their v prefix, so 0.4.11 installs into
+~/.v/toolchains/v0.4.11 from branch v0.4.11.
 
 Examples:
   v toolchain install 0.4.11

@@ -18,6 +18,9 @@ pub const pin_file = 'v-toolchain.toml'
 pub const pin_key = 'toolchain'
 pub const settings_key = 'default_toolchain'
 pub const default_version = 'stable'
+pub const nightly = 'nightly'
+pub const manifest_env = 'V_TOOLCHAIN_MANIFEST'
+pub const cache_env = 'V_TOOLCHAIN_CACHE_DIR'
 // up_options are the `v up` flags that `toolchain update` forwards.
 pub const up_options = ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current']
 
@@ -48,6 +51,26 @@ pub fn settings_path() string {
 		}
 	}
 	return os.join_path(os.home_dir(), '.v', 'settings.toml')
+}
+
+// manifest_path returns the release manifest used by prebuilt installs.
+// V_TOOLCHAIN_MANIFEST overrides the default for tests and mirrors.
+pub fn manifest_path() string {
+	if e := os.getenv_opt(manifest_env) {
+		if e.trim_space() != '' {
+			return e
+		}
+	}
+	return os.join_path(configured_root(), 'versions.json')
+}
+
+// shared_cache_dir returns an opt-in directory whose `thirdparty/tcc` and
+// `vc` folders are reused by installs, avoiding repeated downloads.
+pub fn shared_cache_dir() string {
+	if e := os.getenv_opt(cache_env) {
+		return e.trim_space()
+	}
+	return ''
 }
 
 // project_root returns the nearest directory that looks like a repository
@@ -115,8 +138,11 @@ pub fn normalize_version(input string) ?string {
 	if s == '' {
 		return none
 	}
-	if s in ['master', 'stable', 'latest', 'nightly'] {
+	if s in ['master', 'stable', 'latest'] {
 		return 'master'
+	}
+	if s == nightly {
+		return nightly
 	}
 	mut v := s
 	if v.starts_with('v') {
@@ -135,6 +161,10 @@ pub fn toolchain_dir(root string, version string) string {
 
 // branch_for returns the git branch/tag to clone for a normalized version.
 pub fn branch_for(version string) string {
+	// Nightly tracks master when no prebuilt is available in the manifest.
+	if version == nightly {
+		return 'master'
+	}
 	return version
 }
 
@@ -290,10 +320,10 @@ pub fn select() Selection {
 			}
 		}
 	}
-	manifest_path := os.join_path(project_root(), 'v.mod')
-	if os.is_file(manifest_path) {
-		if raw := read_vmod_key(manifest_path, pin_key) {
-			if selection := selection_from(raw, manifest_path) {
+	vmod_path := os.join_path(project_root(), 'v.mod')
+	if os.is_file(vmod_path) {
+		if raw := read_vmod_key(vmod_path, pin_key) {
+			if selection := selection_from(raw, vmod_path) {
 				return selection
 			}
 		}
