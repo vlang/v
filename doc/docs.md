@@ -7222,6 +7222,8 @@ memory manually. (See [attributes](#attributes)).
 > Autofree is still WIP. Until it stabilises and becomes the default, please
 > avoid using it. Right now allocations are handled by a minimal and well performing GC
 > until V's autofree engine is production ready.
+>
+> The intended semantics are recorded in `doc/autofree-semantics.md`.
 
 **Examples**
 
