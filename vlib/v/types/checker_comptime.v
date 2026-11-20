@@ -13395,8 +13395,8 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 	field_names.sort()
 	mut has_comparison := false
 	for i := where_idx + 1; i + 1 < tokens.len; i++ {
-		if tokens[i + 1] !in ['==', '!=', '<', '>', '<=', '>=', 'in', '!in', 'is', '!is', 'like',
-			'ilike'] {
+		if tokens[i + 1] !in ['==', '=', '!=', '<>', '<', '>', '<=', '>=', 'in', '!in', 'is', '!is',
+			'like', 'ilike'] {
 			continue
 		}
 		has_comparison = true
@@ -13414,7 +13414,7 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 	}
 	for i := where_idx + 1; i + 2 < tokens.len; i++ {
 		op := tokens[i + 1]
-		if op !in ['==', '!=', '<', '>', '<=', '>=', 'in', '!in', 'is', '!is'] {
+		if op !in ['==', '=', '!=', '<>', '<', '>', '<=', '>=', 'in', '!in', 'is', '!is'] {
 			continue
 		}
 		rhs := tokens[i + 2]
@@ -13934,6 +13934,15 @@ fn (mut tc TypeChecker) check_sql_order_by_constraint(id flat.NodeId, node flat.
 			}
 		}
 		if field_name in field_names {
+			continue
+		}
+		// A no-arg SQL function such as `random()` is a valid ORDER BY
+		// expression; it is not a struct field.
+		if field_name.ends_with('()') && field_name.len > 2 {
+			continue
+		}
+		// Tokens may be split as `random ( )` instead of `random()`.
+		if i + 3 < tokens.len && tokens[i + 3] == '(' {
 			continue
 		}
 		message :=

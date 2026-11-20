@@ -138,6 +138,17 @@ fn (mut t Transformer) transform_sql_expr(_id flat.NodeId, node flat.Node) flat.
 		}
 		return t.make_struct_init(flat.source_type_id('orm.QueryData'))
 	}
+	// Full-SQL constructs (subqueries, CTEs, grouping, set operations) are
+	// lowered before the legacy parser, which only understands flat SELECTs.
+	if node.children_count > 0 {
+		db_id_early := t.a.child(&node, 0)
+		if full := t.try_full_sql_tokens(tokens, db_id_early) {
+			transformed_full := t.transform_expr(full)
+			if int(transformed_full) >= 0 {
+				return transformed_full
+			}
+		}
+	}
 	stmts := t.parse_sql_transform_stmts(tokens) or { return t.sql_fallback_value(_id, node) }
 	if stmts.len == 0 || node.children_count == 0 {
 		return t.sql_fallback_value(_id, node)
@@ -156,6 +167,17 @@ fn (mut t Transformer) transform_sql_expr(_id flat.NodeId, node flat.Node) flat.
 	}
 	mut last := flat.empty_node
 	for i, stmt in stmts {
+		if stmt.kind == .select {
+			if full := t.try_full_sql_select(node.value.split(' '), stmt, db_expr) {
+				transformed_full := t.transform_expr(full)
+				if i + 1 < stmts.len {
+					t.pending_stmts << t.make_expr_stmt(transformed_full)
+				} else {
+					last = transformed_full
+				}
+				continue
+			}
+		}
 		call := t.sql_stmt_call(stmt, db_expr) or { return t.sql_fallback_value(_id, node) }
 		transformed_call := t.transform_expr(call)
 		if i + 1 < stmts.len {
