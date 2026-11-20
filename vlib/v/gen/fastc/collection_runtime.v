@@ -49,6 +49,21 @@ static array builtin__array_slice(array values, i64 start, i64 end) {
 	values.len = (int)(end - start); values.cap = values.len;
 	return values;
 }
+static array builtin__array_slice_ni(array values, i64 start, i64 end) {
+	i64 len = values.len;
+	i64 s = start, e = end;
+	if (s < 0) { s += len; if (s < 0) s = 0; }
+	if (e < 0) { e += len; if (e < 0) e = 0; }
+	if (e > len) e = len;
+	if (s > len || e < s) {
+		array empty = values;
+		empty.len = 0; empty.cap = 0;
+		return empty;
+	}
+	values.data = (unsigned char *)values.data + (size_t)s * (size_t)values.element_size;
+	values.len = (int)(e - s); values.cap = values.len;
+	return values;
+}
 static u8 builtin__string_at(string value, i64 index) {
 	return (u8)value[builtin__v_fixed_index(index, (i64)strlen(value ? value : ""))];
 }
