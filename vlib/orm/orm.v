@@ -156,6 +156,7 @@ pub enum SQLDialect {
 	default
 	h2
 	mysql
+	mssql // SQL Server / T-SQL, used through db.mssql (ODBC)
 	pg
 	sqlite
 	vsql // https://github.com/elliotchance/vsql
@@ -867,7 +868,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 			str += 'INSERT INTO ${q}${table.name}${q} '
 
 			if are_values_empty {
-				if row_count == 1 && sql_dialect in [.sqlite, .pg, .h2] {
+				if row_count == 1 && sql_dialect in [.sqlite, .pg, .h2, .mssql] {
 					str += 'DEFAULT VALUES'
 				} else {
 					str += '() VALUES '
@@ -1275,6 +1276,20 @@ pub fn orm_select_gen_with_dialect(sql_dialect SQLDialect, cfg SelectConfig, q s
 		if cfg.has_limit {
 			str += ' FETCH FIRST ${limit_qm} ROWS ONLY'
 		}
+	} else if sql_dialect == .mssql {
+		// T-SQL spells limiting as OFFSET/FETCH NEXT and requires an ORDER BY.
+		// The offset marker comes first in the statement, so a driver binding
+		// positional markers must bind the offset value before the limit value.
+		if cfg.has_limit || cfg.has_offset {
+			if !cfg.has_order {
+				str += ' ORDER BY (SELECT NULL)'
+			}
+			offset_value := if cfg.has_offset { offset_qm } else { '0' }
+			str += ' OFFSET ${offset_value} ROWS'
+			if cfg.has_limit {
+				str += ' FETCH NEXT ${limit_qm} ROWS ONLY'
+			}
+		}
 	} else {
 		if cfg.has_limit {
 			str += ' LIMIT ${limit_qm}'
@@ -1421,7 +1436,8 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 
 	if alternative {
-		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table.name}${q} and xtype=${q}U${q}) CREATE TABLE ${q}${table.name}${q} ('
+		// xtype is a string literal in T-SQL, independent of the identifier quote q.
+		str = "IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table.name}${q} and xtype='U') CREATE TABLE ${q}${table.name}${q} ("
 	}
 
 	mut fs := []string{}
