@@ -8082,9 +8082,37 @@ fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string,
 // Editing unbuilt compiler sources does not change that code; rebuilding the executable does.
 // The exceptions are files that a development build reads at run time, see
 // v3_cache_compiler_runtime_inputs_identity.
+//
+// The identity is the content of the executable, so copies of one compiler, such as the
+// private copies of the shared unit-test compiler, share every cached module, builtin
+// included. Hashing the executable takes tens of milliseconds, so the result is kept per
+// path and file metadata, which change with any replacement of the file.
 fn v3_cache_compiler_executable_identity(vexe string) string {
 	path := os.real_path(vexe)
-	return '${path}\t${v3_cache_file_identity(path)}'
+	metadata := modulecache.file_metadata_signature(path)
+	if metadata.len == 0 {
+		return 'content\t${modulecache.file_signature(path)}'
+	}
+	base := os.abs_path(os.getenv_opt('V3CACHE') or { os.vtmp_dir() })
+	record := os.join_path(base, 'v3_compiler_identities',
+		sha256.hexhash('${path}\t${metadata}'))
+	if recorded := os.read_file(record) {
+		if recorded.len > 0 {
+			return 'content\t${recorded}'
+		}
+	}
+	content := modulecache.file_signature(path)
+	if content.len == 0 {
+		return '${path}\t${metadata}'
+	}
+	// The file may have changed while it was hashed; record only a stable result.
+	if modulecache.file_metadata_signature(path) == metadata {
+		os.mkdir_all(os.dir(record), mode: 0o700) or {}
+		temporary := '${record}.tmp.${tempname.unique_token()}'
+		os.write_file(temporary, content) or { return 'content\t${content}' }
+		os.rename(temporary, record) or { os.rm(temporary) or {} }
+	}
+	return 'content\t${content}'
 }
 
 // v3_cache_compiler_runtime_inputs lists root-relative `$embed_file` targets of the C backend,
