@@ -19078,6 +19078,7 @@ const builtin_attribute_names = [
 	'references',
 	'repeats',
 	'required',
+	'secret',
 	'serial',
 	'serialize',
 	'short',
