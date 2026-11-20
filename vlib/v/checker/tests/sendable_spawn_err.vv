@@ -1,0 +1,58 @@
+@[sendable]
+struct SendablePoint {
+	x int
+	y int
+}
+
+@[sendable]
+struct SendableBad {
+	p &int
+}
+
+fn work(p SendablePoint) int {
+	return p.x + p.y
+}
+
+fn bad_work(b SendableBad) int {
+	return 0
+}
+
+fn (p SendablePoint) sum() int {
+	return p.x + p.y
+}
+
+fn (b SendableBad) zero() int {
+	return 0
+}
+
+@[sendable]
+struct SendableParcel[T] {
+	value T
+}
+
+fn consume_parcel[T](p SendableParcel[T]) int {
+	_ = p
+	return 1
+}
+
+fn launch_parcel[T](p SendableParcel[T]) int {
+	h := spawn consume_parcel[T](p)
+	return h.wait()
+}
+
+fn main() {
+	h := spawn work(SendablePoint{ x: 1, y: 2 })
+	println(h.wait())
+	good := SendablePoint{ x: 3, y: 4 }
+	r := spawn good.sum()
+	println(r.wait())
+	println(launch_parcel(SendableParcel[int]{ value: 6 }))
+	mut v := 5
+	b := SendableBad{ p: &v }
+	g := spawn bad_work(b)
+	println(g.wait())
+	gr := spawn b.zero()
+	println(gr.wait())
+	bp := SendableParcel[&int]{ value: &v }
+	println(launch_parcel(bp))
+}

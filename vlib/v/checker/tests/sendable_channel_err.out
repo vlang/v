@@ -1,0 +1,21 @@
+vlib/v/checker/tests/sendable_channel_err.vv:9:4: error: field `p` of sendable struct `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+    7 | @[sendable]
+    8 | struct SendableBad {
+    9 |     p &int
+      |       ~~~~
+   10 | }
+   11 |
+vlib/v/checker/tests/sendable_channel_err.vv:19:9: error: cannot push non-sendable type `SendableBad` on channel: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   17 |     bad := chan SendableBad{cap: 1}
+   18 |     mut v := 5
+   19 |     bad <- SendableBad{ p: &v }
+      |            ~~~~~~~~~~~~~~~~~~~~
+   20 |     b := <-bad
+   21 |     println('done')
+vlib/v/checker/tests/sendable_channel_err.vv:20:7: error: cannot receive non-sendable type `SendableBad` from channel: field `p` of `SendableBad` is not sendable: reference `&int` is not sendable (pointers cannot be transferred)
+   18 |     mut v := 5
+   19 |     bad <- SendableBad{ p: &v }
+   20 |     b := <-bad
+      |          ~~~~~
+   21 |     println('done')
+   22 | }
