@@ -46,11 +46,18 @@ ctx.flow()
 | `help`  | help text |
 | `takes` | input paths |
 | `gives` | output paths |
+| `restat` | restore output mtimes when content is unchanged |
 | `check` | .mtime (default), .hash or .none |
 | `pre`   | []imp.FlowDep run before |
 | `post`  | []imp.FlowDep run after |
 | `flags` | []imp.Flag read with self.flag |
 | `flow`  | fn (self imp.Flow) ! |
+
+Set `restat: true` on a flow whose body may rewrite an output with identical
+content. After the body succeeds, imp compares the content of the file outputs
+with their previous values and restores the original mtimes for the ones that
+did not change, so downstream mtime flows can still skip. Changed content is
+left alone. Directories and symlinks are not restatted.
 
 ## hooks
 | declaration                                | result |
