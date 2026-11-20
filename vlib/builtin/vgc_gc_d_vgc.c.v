@@ -397,7 +397,7 @@ fn vgc_mark_worker() {
 			continue
 		}
 		round = 0
-		C.vgc_counter_add(&vgc_heap.gc_work_gets, u64(1))
+		C.vgc_counter_add_atomic(&vgc_heap.gc_work_gets, u64(1))
 		vgc_scan_work_obj(obj_addr)
 	}
 	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
@@ -445,8 +445,8 @@ fn vgc_scan_work_obj(obj_addr uint) {
 	if span == unsafe { nil } || span.noscan {
 		return
 	}
-	C.vgc_counter_add(&vgc_heap.gc_spans_visited, u64(1))
-	C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_spans_visited, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_objs_scanned, u64(1))
 	if span.has_ptrmap {
 		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
 	} else {
@@ -467,7 +467,7 @@ fn vgc_drain_mark_work() {
 		if obj_addr == 0 {
 			break
 		}
-		C.vgc_counter_add(&vgc_heap.gc_work_gets, u64(1))
+		C.vgc_counter_add_atomic(&vgc_heap.gc_work_gets, u64(1))
 		vgc_scan_work_obj(obj_addr)
 	}
 }
@@ -516,7 +516,7 @@ fn vgc_spanq_add(span &VGC_Span, obj_addr uint) {
 	if obj_idx >= span.nelems {
 		return
 	}
-	C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_work_puts, u64(1))
 	mut mspan := unsafe { &VGC_Span(span) }
 	if span.queued {
 		// A second object was seen while the span waited. Go's `hit` flag:
@@ -537,7 +537,7 @@ fn vgc_spanq_add(span &VGC_Span, obj_addr uint) {
 		span.next = unsafe { nil }
 	}
 	vgc_heap.spanq_len++
-	C.vgc_counter_add(&vgc_heap.gc_span_enqueues, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_span_enqueues, u64(1))
 }
 
 // vgc_spanq_take dequeues the oldest span (FIFO).
@@ -555,7 +555,7 @@ fn vgc_spanq_take() &VGC_Span {
 		span.next = unsafe { nil }
 	}
 	vgc_heap.spanq_len--
-	C.vgc_counter_add(&vgc_heap.gc_span_dequeues, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_span_dequeues, u64(1))
 	return span
 }
 
@@ -564,8 +564,8 @@ fn vgc_scan_obj(span &VGC_Span, obj_addr uint) {
 	if span.noscan {
 		return
 	}
-	C.vgc_counter_add(&vgc_heap.gc_spans_visited, u64(1))
-	C.vgc_counter_add(&vgc_heap.gc_objs_scanned, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_spans_visited, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_objs_scanned, u64(1))
 	if span.has_ptrmap {
 		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
 	} else {
@@ -582,23 +582,24 @@ fn vgc_drain_spanq() {
 		if span == unsafe { nil } {
 			break
 		}
-		C.vgc_counter_add(&vgc_heap.gc_work_gets, u64(1))
+		C.vgc_counter_add_atomic(&vgc_heap.gc_work_gets, u64(1))
 		scanned := unsafe { span.scanned_bits }
 		if scanned == unsafe { nil } {
 			continue
 		}
 		if !span.hit && span.rep_addr != 0 {
-			// Single pending object: skip the bitmap pass.
-			// `vgc_scan_obj` may mark new objects in this same span, which
-			// re-enqueues it and overwrites `span.rep_addr`. Snapshot the
-			// address and set its scanned bit BEFORE scanning so the bit
-			// cannot land on the wrong object.
-			rep := span.rep_addr
+			// Single pending object: skip the bitmap pass. Save the
+			// representative before scanning: scanning can shade a
+			// same-span child and re-enqueue this span, replacing
+			// rep_addr. Mark the original scanned before its
+			// references are shaded so the child keeps its own entry.
+			orig := span.rep_addr
+			orig_idx := u32((orig - span.base) / uint(span.elem_size))
 			unsafe {
-				C.vgc_bitmap_set(scanned, u32((rep - span.base) / uint(span.elem_size)))
+				C.vgc_bitmap_set(scanned, orig_idx)
 			}
-			vgc_scan_obj(span, rep)
-			C.vgc_counter_add(&vgc_heap.gc_single_obj_spans, u64(1))
+			vgc_scan_obj(span, orig)
+			C.vgc_counter_add_atomic(&vgc_heap.gc_single_obj_spans, u64(1))
 			continue
 		}
 		seen := unsafe { span.mark_bits }
@@ -614,9 +615,9 @@ fn vgc_drain_spanq() {
 			vgc_scan_obj(span, span.base + uint(idx) * uint(span.elem_size))
 		}
 		if nobjs_scanned > 1 {
-			C.vgc_counter_add(&vgc_heap.gc_multi_obj_spans, u64(1))
+			C.vgc_counter_add_atomic(&vgc_heap.gc_multi_obj_spans, u64(1))
 		} else if nobjs_scanned == 1 {
-			C.vgc_counter_add(&vgc_heap.gc_single_obj_spans, u64(1))
+			C.vgc_counter_add_atomic(&vgc_heap.gc_single_obj_spans, u64(1))
 		}
 	}
 }
@@ -655,7 +656,7 @@ fn vgc_work_put_locked(addr uint) {
 		buf.obj[buf.nobj] = addr
 		buf.nobj++
 	}
-	C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
+	C.vgc_counter_add_atomic(&vgc_heap.gc_work_puts, u64(1))
 }
 
 // Add a pointer to the mark work queue
@@ -685,7 +686,7 @@ fn vgc_work_put(addr uint) {
 			buf.obj[buf.nobj] = addr
 			buf.nobj++
 		}
-		C.vgc_counter_add(&vgc_heap.gc_work_puts, u64(1))
+		C.vgc_counter_add_atomic(&vgc_heap.gc_work_puts, u64(1))
 		return
 	}
 
