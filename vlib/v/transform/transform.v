@@ -30686,6 +30686,23 @@ fn (mut t Transformer) make_block_skip_scope_drops(stmts []flat.NodeId) flat.Nod
 	return id
 }
 
+// collect_decl_names gathers declaration names inside a lowered branch body.
+fn (t &Transformer) collect_decl_names(id flat.NodeId, mut out []string, depth int) {
+	if depth > 64 || !t.valid_node_id(id) {
+		return
+	}
+	node := t.a.node(id)
+	if node.kind == .decl_assign && node.children_count > 0 {
+		name_node := t.a.node(t.a.child(node, 0))
+		if name_node.kind == .ident && name_node.value.len > 0 && name_node.value !in out {
+			out << name_node.value
+		}
+	}
+	for child in t.a.children_of(node) {
+		t.collect_decl_names(child, mut out, depth + 1)
+	}
+}
+
 fn (mut t Transformer) make_block_prefix_scope_drops(stmts []flat.NodeId) flat.NodeId {
 	id := t.make_block(stmts)
 	t.a.nodes[int(id)].value = prefix_scope_drops_block_value
@@ -33073,6 +33090,13 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 	t.inplace_rewrite_holds++
 	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.if_value_branch_block(raw_body, target_name, target_type_id)
+	if n_conds > 1 {
+		mut declared := []string{}
+		for body_id in body_ids {
+			t.collect_decl_names(body_id, mut declared, 0)
+		}
+		t.a.nodes[int(body_block)].value = '__v3_drop_names:' + declared.join(',')
+	}
 	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
@@ -33149,6 +33173,16 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	t.inplace_rewrite_holds++
 	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.make_block(t.transform_scope_stmts(body_ids))
+	// A duplicated variant body can receive drop entries that belong to a
+	// different branch because cgen consumes one slot per lowered arm. Mark the
+	// names actually declared here so cgen can discard foreign cleanup entries.
+	if cond_idx >= 0 && n_conds > 1 {
+		mut declared := []string{}
+		for body_id in body_ids {
+			t.collect_decl_names(body_id, mut declared, 0)
+		}
+		t.a.nodes[int(body_block)].value = '__v3_drop_names:' + declared.join(',')
+	}
 	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {

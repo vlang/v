@@ -4570,3 +4570,34 @@ fn main() {
 	assert multi.exit_code != 0, multi.output
 	assert multi.output.contains('cannot move `conn` because it is borrowed by `t.c`'), multi.output
 }
+
+// test_autofree_nested_multi_type_match drops locals declared in inner arms
+// without emitting them into a branch where they are out of scope.
+fn test_autofree_nested_multi_type_match() {
+	v3_bin := ownership_build_v3()
+	res := run_autofree_check(v3_bin, 'nested_multi_match', "
+struct A { text string }
+struct B { text string }
+type Val = A | B
+
+fn pick(v Val) string {
+	return match v {
+		A, B {
+			x := 'inner'.repeat(2)
+			match v {
+				A, B {
+					y := 'deep'.repeat(2)
+					println(y)
+				}
+			}
+			x
+		}
+	}
+}
+
+fn main() {
+	println(pick(Val(A{'a'})))
+}
+")
+	assert res.exit_code == 0, res.output
+}
