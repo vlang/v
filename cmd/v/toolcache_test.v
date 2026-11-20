@@ -2574,6 +2574,51 @@ fn test_wipe_cache_keeps_a_live_build_in_a_configured_folder_inside_vtmp() ! {
 	})!
 }
 
+// The default tool cache folder `<VTMP>/tools` is wiped as a tool cache folder by the wipe of `VTMP`
+// too, with the default options and with `--vtmp` alone: a build there keeps its entry and its lock,
+// and the rest of `VTMP` goes.
+fn test_wipe_cache_keeps_a_live_build_in_the_default_folder_inside_vtmp() ! {
+	directory := toolcache_test_dir('wipe_cache_vtmp_default_root')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	release_path := os.join_path(directory, 'lock.release')
+	with_wipe_test_caches(directory, fn [directory, release_path] (_ string) ! {
+		vtmp := os.join_path(directory, 'vtmp')
+		tools := os.join_path(vtmp, 'tools')
+		tool_cache_test_root(tools)!
+		busy_entry := tool_cache_test_entry(tools, 'vtest', 'a')!
+		staged_binary := os.join_path(busy_entry, '${tool_cache_stage_prefix}0-1-2-0', 'vtest')
+		os.mkdir_all(os.dir(staged_binary))!
+		os.write_file(staged_binary, 'half built')!
+		busy_lock := tool_cache_test_lock(tools, 'vtest')
+		os.write_file(busy_lock, '')!
+		mut holder := start_tool_cache_lock_holder(busy_lock, release_path)!
+		defer {
+			os.write_file(release_path, '') or {}
+			holder.wait()
+			holder.close()
+		}
+		for arguments in [[]string{}, ['--vtmp']] {
+			idle_entry := tool_cache_test_entry(tools, 'vfmt', 'b')!
+			temporary := os.join_path(vtmp, 'a.tmp.c')
+			session := os.join_path(vtmp, 'tsession_1')
+			os.write_file(temporary, 'c')!
+			os.mkdir_all(os.join_path(session, 'deeper'))!
+			os.write_file(os.join_path(session, 'deeper', 'file'), 'x')!
+			output := wipe_output(...arguments)!
+			context := '${arguments}\n${output}'
+			assert os.is_file(staged_binary), context
+			assert os.is_file(busy_lock), context
+			assert !os.exists(idle_entry), context
+			assert !os.exists(temporary), context
+			assert !os.exists(session), context
+			assert output.contains('V tool cache folder ${tools} was wiped, except for the tools another process has locked right now: vtest.'), context
+			assert output.contains('V tmp.c and tests folder ${vtmp} was wiped, except the tool cache folders in it: ${tools}.'), context
+		}
+	})!
+}
+
 // The tool cache folders a wipe knows are known by their paths, as deep as they lie, and whether
 // they exist yet or not.
 fn test_known_tool_cache_folders_are_found_below_a_folder_by_path() ! {
