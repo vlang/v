@@ -534,6 +534,15 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_tar
 			|| c_call_needs_prelude_scan(a, node) {
 			needs_prelude_scan = true
 		}
+		// A C function taken as a value can be a single qualified ident, not a selector.
+		if node.kind == .ident && node.value.starts_with('C.') {
+			raw_cfn := naming.c_name(node.value)
+			c_extern_refs[node.value] = true
+			c_extern_refs[raw_cfn] = true
+			if windows_target {
+				c_extern_refs[c_winapi_wide_export_name(raw_cfn)] = true
+			}
+		}
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 			base_id := a.children[node.children_start]
 			if int(base_id) >= 0 {
