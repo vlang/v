@@ -282,24 +282,51 @@ fn out_value(t string, m ApiModel, expr string) string {
 	return expr
 }
 
+fn is_literal_const(value string) bool {
+	if value.len >= 2 && ((value.starts_with("'") && value.ends_with("'"))
+		|| (value.starts_with('"') && value.ends_with('"'))) {
+		return true
+	}
+	if value == 'true' || value == 'false' {
+		return true
+	}
+	mut i := 0
+	if value.starts_with('-') || value.starts_with('+') {
+		i = 1
+	}
+	if value.len > i + 2 && value[i] == `0` && (value[i + 1] == `x` || value[i + 1] == `X`) {
+		i += 2
+	}
+	if i >= value.len {
+		return false
+	}
+	for c in value[i..] {
+		if !((c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`) || c == `_`) {
+			return false
+		}
+	}
+	return true
+}
+
 fn wrapper_for_const(m ApiModel, idx int, c ApiConst, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
 	if c.value == '' {
 		warnings << 'skipped const ${c.name}: value could not be read'
 		return false
 	}
-	if c.value.starts_with('[') || c.value.starts_with('{') {
-		warnings << 'skipped const ${c.name}: compound constants are not supported'
+	value := c.value.all_before('//').trim_space()
+	if value == '' || !is_literal_const(value) {
+		warnings << 'skipped const ${c.name}: only literal constants are supported'
 		return false
 	}
 	cname := if c.c_name != '' { c.c_name } else { '${m.prefix}_get_${sanitize(c.name)}' }
-	t := if c.value.starts_with("'") || c.value.starts_with('"') { 'string' } else { 'int' }
+	t := if value.starts_with("'") || value.starts_with('"') { 'string' } else { 'int' }
 	rt := v_wrapper_type(t, m) or { return false }
 	b.writeln("@[export: '${cname}']")
 	b.writeln('fn capi_const_${idx}() ${rt} {')
 	if t == 'string' {
-		b.writeln('\treturn &char(capi_rt_strdup(${c.value}))')
+		b.writeln('\treturn &char(capi_rt_strdup(${value}))')
 	} else {
-		b.writeln('\treturn ${c.value}')
+		b.writeln('\treturn ${value}')
 	}
 	b.writeln('}')
 	infos << ExportInfo{
