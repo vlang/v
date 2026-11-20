@@ -29,6 +29,20 @@ fn test_encoding_csv_writer_without_leading_whitespace() {
 	}
 }
 
+fn test_writer_single_empty_field() {
+	for use_crlf in [false, true] {
+		mut writer := csv.new_writer(use_crlf: use_crlf)
+		writer.write([''])!
+		writer.write(['', ''])!
+		ending := if use_crlf { '\r\n' } else { '\n' }
+		data := writer.str()
+		assert data == '""${ending},${ending}'
+		mut reader := csv.new_reader(data)
+		assert reader.read()! == ['']
+		assert reader.read()! == ['', '']
+	}
+}
+
 fn test_writer_embedded_line_endings() {
 	for use_crlf in [false, true] {
 		for field in ['a\rb', 'a\nb', 'a\r\nb', 'a\r\r\nb', 'a"\rb'] {
