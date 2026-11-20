@@ -307,9 +307,12 @@ pub fn prealloc_stats_snapshot() PreallocStats {
 @[heap]
 struct VMemoryBlock {
 mut:
-	current        &u8             = 0 // 8
-	stop           &u8             = 0 // 8
-	start          &u8             = 0 // 8
+	current &u8 = 0 // 8
+	stop    &u8 = 0 // 8
+	start   &u8 = 0 // 8
+	// zero_until is the end of the region known to be zero (fresh mmap pages).
+	// Calloc-sized bumps inside it need no memset.
+	zero_until     &u8             = 0 // 8
 	previous       &VMemoryBlock   = 0 // 8
 	next           &VMemoryBlock   = 0 // 8
 	scope          &VPreallocScope = 0
@@ -538,6 +541,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	// A pooled block is already counted in mapped_bytes; only fresh storage
 	// obtained from the OS adds to the live mapped total.
 	mut from_pool := false
+	mut fresh_mmap := false
 	$if windows {
 		if !prealloc_limit_allows(i64(block_size)) {
 			C.free(v)
@@ -583,6 +587,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 					if mmap_ptr != C.MAP_FAILED {
 						v.start = &u8(mmap_ptr)
 						v.mmap_allocated = true
+						fresh_mmap = true
 					}
 				}
 			}
@@ -608,6 +613,11 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	}
 	v.stop = unsafe { &u8(i64(v.start) + block_size) }
 	v.current = v.start
+	v.zero_until = if fresh_mmap { v.stop } else { v.start }
+	$if prealloc_memset ? {
+		// The debug memset may fill with a non-zero pattern.
+		v.zero_until = v.start
+	}
 	if !from_pool {
 		prealloc_stats_add_mapped(i64(block_size))
 	}
@@ -1240,6 +1250,8 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes int) bool {
 				}
 				prealloc_stats_add_used(-i64(vmemory_block_used(mb)))
 				mb.current = mb.start
+				// Rewound storage may be dirty, so calloc must zero it again.
+				mb.zero_until = mb.start
 				kept += size
 				last_kept = mb
 				mb = mb.next
@@ -1486,7 +1498,14 @@ fn prealloc_realloc(old_data &u8, old_size int, new_size int) &u8 {
 @[inline; unsafe]
 fn prealloc_calloc(n int) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(n, 0) }
-	unsafe { C.memset(new_ptr, 0, n) }
+	unsafe {
+		mb := g_memory_block
+		// Fresh mmap pages are already zero; only recycled or rewound storage
+		// needs a memset.
+		if i64(new_ptr) + i64(n) > i64(mb.zero_until) {
+			C.memset(new_ptr, 0, n)
+		}
+	}
 	return new_ptr
 }
 
@@ -1547,7 +1566,12 @@ pub fn prealloc_try_malloc(n int) ?&u8 {
 @[unsafe]
 pub fn prealloc_try_calloc(n int) ?&u8 {
 	ptr := unsafe { prealloc_try_malloc(n) } or { return none }
-	unsafe { C.memset(ptr, 0, n) }
+	unsafe {
+		mb := g_memory_block
+		if i64(ptr) + i64(n) > i64(mb.zero_until) {
+			C.memset(ptr, 0, n)
+		}
+	}
 	return ptr
 }
 
