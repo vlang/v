@@ -1,0 +1,116 @@
+{
+	"aliases":	[{
+			"attrs":	[],
+			"generics":	[],
+			"name":	"MyAlias",
+			"target":	"map[string]int"
+		}],
+	"consts":	[{
+			"attrs":	[],
+			"name":	"count",
+			"type":	"int"
+		}, {
+			"attrs":	[],
+			"name":	"version",
+			"type":	"string"
+		}],
+	"enums":	[{
+			"attrs":	[],
+			"is_flag":	false,
+			"name":	"Color",
+			"variants":	["blue", "green", "red"]
+		}, {
+			"attrs":	["non_exhaustive"],
+			"is_flag":	false,
+			"name":	"Status",
+			"variants":	["failed", "ready", "running"]
+		}],
+	"functions":	[{
+			"attrs":	[],
+			"generics":	[],
+			"name":	"Point.length",
+			"params":	[],
+			"receiver":	{
+				"is_mut":	false,
+				"name":	"p",
+				"type":	"Point"
+			},
+			"return":	"f64"
+		}, {
+			"attrs":	[],
+			"generics":	[{
+					"constraint":	"",
+					"name":	"T"
+				}],
+			"name":	"generic",
+			"params":	[{
+					"is_mut":	false,
+					"name":	"x",
+					"type":	"T"
+				}],
+			"receiver":	{
+				"is_mut":	false,
+				"name":	"",
+				"type":	""
+			},
+			"return":	"T"
+		}, {
+			"attrs":	[],
+			"generics":	[],
+			"name":	"hello",
+			"params":	[{
+					"is_mut":	false,
+					"name":	"name",
+					"type":	"string"
+				}],
+			"receiver":	{
+				"is_mut":	false,
+				"name":	"",
+				"type":	""
+			},
+			"return":	"string"
+		}],
+	"interfaces":	[{
+			"attrs":	[],
+			"generics":	[],
+			"methods":	[{
+					"is_mut":	false,
+					"name":	"greet",
+					"params":	[{
+							"is_mut":	false,
+							"name":	"name",
+							"type":	"string"
+						}],
+					"return":	"string"
+				}],
+			"name":	"Greeter"
+		}],
+	"module":	"sample",
+	"structs":	[{
+			"attrs":	[],
+			"fields":	[{
+					"attrs":	[],
+					"is_embed":	false,
+					"is_mut":	false,
+					"is_pub":	true,
+					"name":	"x",
+					"type":	"int"
+				}, {
+					"attrs":	[],
+					"is_embed":	false,
+					"is_mut":	true,
+					"is_pub":	true,
+					"name":	"y",
+					"type":	"int"
+				}],
+			"generics":	[],
+			"name":	"Point"
+		}],
+	"sums":	[{
+			"attrs":	[],
+			"generics":	[],
+			"name":	"MySum",
+			"variants":	["int", "string"]
+		}],
+	"version":	1
+}

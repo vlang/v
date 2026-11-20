@@ -1,0 +1,27 @@
+Snapshot and check the public API of a V module.
+
+Usage:
+  v api snapshot [--out .v/api.json] [path]     write a deterministic API snapshot
+  v api check --baseline .v/api.json [path]     compare the API against a baseline
+
+The snapshot records public functions and methods, struct fields with
+mutability, enum and sum-type variants, generic parameters with constraints,
+type aliases, interfaces, constants, attributes, and visibility. Output is
+deterministic JSON: sorted, with no file paths or timestamps, suitable for
+version control.
+
+Check reports breaking changes with the affected declaration and exits
+non-zero when source incompatibilities are found: removed functions, fields,
+variants, or constants, changed parameter or return types, field types,
+mutability, generic bounds, or visibility. Added enum or sum-type variants
+are breaking for closed types, and non-breaking for @[non_exhaustive]
+types, which require an `else` branch in external matches.
+
+Examples:
+  v api snapshot --out .v/api.json ./mymod
+  v api check --baseline .v/api.json ./mymod
+
+Options:
+  --out <file>       output file for snapshot (default: stdout)
+  --baseline <file>  baseline snapshot for check (required)
+  -h, --help         display this help and exit
