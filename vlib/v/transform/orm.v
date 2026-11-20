@@ -395,6 +395,8 @@ fn (mut t Transformer) mark_sql_db_methods(db_id flat.NodeId) {
 	if typ == flat.source_type_id('orm.Connection') {
 		receiver_types << 'sqlite.DB'
 		receiver_types << 'db.sqlite.DB'
+		receiver_types << 'mssql.Connection'
+		receiver_types << 'db.mssql.Connection'
 	}
 	for receiver_type in receiver_types {
 		for method in ['create', 'insert', 'select', 'update', 'delete', 'drop', 'last_id'] {
