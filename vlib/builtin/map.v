@@ -169,14 +169,25 @@ fn (mut d DenseArray) reserve(n int) {
 		if d.key_noscan {
 			d.keys = realloc_data_noscan(d.keys, old_key_size, d.key_bytes * d.cap)
 		} else {
+			old_keys := d.keys
 			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+			$if vgc ? {
+				// The old table is garbage: the contents moved. Reclaim the
+				// slots now when this thread owns the span instead of
+				// floating them to the next collection.
+				vgc_free(old_keys)
+			}
 		}
 		// Zero-sized values keep the initial one-byte allocation across growth.
 		if d.value_bytes != 0 {
 			if d.value_noscan {
 				d.values = realloc_data_noscan(d.values, old_value_size, d.value_bytes * d.cap)
 			} else {
+				old_values := d.values
 				d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+				$if vgc ? {
+					vgc_free(old_values)
+				}
 			}
 		}
 		if d.deletes != 0 {
@@ -199,13 +210,21 @@ fn (mut d DenseArray) expand() int {
 			if d.key_noscan {
 				d.keys = realloc_data_noscan(d.keys, old_key_size, d.key_bytes * d.cap)
 			} else {
+				old_keys := d.keys
 				d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+				$if vgc ? {
+					vgc_free(old_keys)
+				}
 			}
 			if d.value_bytes != 0 {
 				if d.value_noscan {
 					d.values = realloc_data_noscan(d.values, old_value_size, d.value_bytes * d.cap)
 				} else {
+					old_values := d.values
 					d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+					$if vgc ? {
+						vgc_free(old_values)
+					}
 				}
 			}
 			if d.deletes != 0 {
@@ -566,7 +585,7 @@ fn (mut m map) ensure_extra_metas_grow() {
 	m.extra_metas += extra_metas_inc
 	mem_size := (m.even_index + 2 + m.extra_metas)
 	unsafe {
-		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+		x := realloc_data_noscan(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 		m.metas = &u32(x)
 		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
 	}
@@ -580,7 +599,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
-			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+			x := realloc_data_noscan(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
 			vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
 		}
