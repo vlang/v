@@ -13,31 +13,33 @@ pub fn format_int(n i64, radix int) string {
 		if n == 0 {
 			return '0'
 		}
+		// A 64-bit value needs at most 64 digits (base 2), plus room for a sign
+		// and the terminating zero byte. Fill the buffer from the end in one
+		// pass and copy it out with a single allocation, instead of prepending
+		// one digit at a time, which allocated and copied O(digits^2) bytes.
+		mut buf := malloc_noscan(66)
+		mut index := 65
+		buf[index] = 0
+		index--
 		mut n_copy := u64(n)
-		uradix := u64(radix)
-		mut have_minus := false
 		if n < 0 {
-			have_minus = true
 			// Avoid negating min_i64, whose magnitude only fits in u64.
 			n_copy = u64(-(n + 1)) + 1
 		}
-		mut res := ''
+		uradix := u64(radix)
 		for n_copy != 0 {
-			tmp_0 := res
-			bdx := int(n_copy % uradix)
-			tmp_1 := base_digits[bdx].ascii_str()
-			res = tmp_1 + res
-			tmp_0.free()
-			tmp_1.free()
-			// res = base_digits[n_copy % radix].ascii_str() + res
+			buf[index] = base_digits[int(n_copy % uradix)]
+			index--
 			n_copy /= uradix
 		}
-		if have_minus {
-			final_res := '-' + res
-			res.free()
-			return final_res
+		if n < 0 {
+			buf[index] = `-`
+			index--
 		}
-		return res
+		index++
+		diff := 65 - index
+		vmemmove(buf, voidptr(buf + index), diff + 1)
+		return tos(buf, diff)
 	}
 }
 
@@ -52,18 +54,22 @@ pub fn format_uint(n u64, radix int) string {
 		if n == 0 {
 			return '0'
 		}
+		// See format_int: fill from the end and allocate once, rather than
+		// prepending one digit at a time in O(digits^2) time and allocations.
+		mut buf := malloc_noscan(66)
+		mut index := 65
+		buf[index] = 0
+		index--
 		mut n_copy := n
-		mut res := ''
 		uradix := u64(radix)
 		for n_copy != 0 {
-			tmp_0 := res
-			tmp_1 := base_digits[int(n_copy % uradix)].ascii_str()
-			res = tmp_1 + res
-			tmp_0.free()
-			tmp_1.free()
-			// res = base_digits[n_copy % uradix].ascii_str() + res
+			buf[index] = base_digits[int(n_copy % uradix)]
+			index--
 			n_copy /= uradix
 		}
-		return res
+		index++
+		diff := 65 - index
+		vmemmove(buf, voidptr(buf + index), diff + 1)
+		return tos(buf, diff)
 	}
 }
