@@ -90,6 +90,8 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 	mut is_shared := false
 	mut is_debug := false
 	mut has_cpp := false
+	// The language that `-x` selects for the inputs after it, until `-x none`.
+	mut language := ''
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -121,6 +123,7 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 				continue
 			}
 			'-x' {
+				language = next.trim_space()
 				i++
 				continue
 			}
@@ -155,7 +158,7 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 				continue
 			}
 			'-Xlinker' {
-				msvc_add_linker_option(mut link, next)
+				msvc_add_linker_options(mut link, mut inputs, [next])
 				i++
 				continue
 			}
@@ -177,7 +180,35 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 			compile << arg
 			continue
 		}
+		joined_language := c_joined_source_language(arg)
+		if joined_language.len > 0 {
+			language = joined_language
+			continue
+		}
 		lower := arg.to_lower_ascii()
+		if language in ['c', 'c++'] && !arg.starts_with('-') && !(arg.starts_with('/')
+			&& !os.exists(arg)) && !msvc_linker_input_extensions.any(lower.ends_with(it)) {
+			// `cl` takes the language of a source from its extension, and links a file
+			// without a known one as an object. `/Tc` and `/Tp` name it, as `-x` does.
+			extension_language := if lower.ends_with('.c') {
+				'c'
+			} else if msvc_source_extensions.any(lower.ends_with(it)) {
+				'c++'
+			} else {
+				''
+			}
+			if language == 'c++' {
+				has_cpp = true
+			}
+			inputs << if extension_language == language {
+				arg
+			} else if language == 'c++' {
+				'/Tp${arg}'
+			} else {
+				'/Tc${arg}'
+			}
+			continue
+		}
 		if msvc_source_extensions.any(lower.ends_with(it)) && !arg.starts_with('-') {
 			if !lower.ends_with('.c') {
 				has_cpp = true
@@ -204,9 +235,7 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 		} else if arg.starts_with('-l') {
 			msvc_add_lib(mut libs, arg[2..])
 		} else if arg.starts_with('-Wl,') {
-			for part in arg[4..].split(',') {
-				msvc_add_linker_option(mut link, part)
-			}
+			msvc_add_linker_options(mut link, mut inputs, arg[4..].split(','))
 		} else if arg.starts_with('-O') {
 			level := arg[2..]
 			compile << match level {
@@ -280,6 +309,25 @@ fn msvc_add_lib(mut libs []string, name string) {
 	}
 	if lib !in libs {
 		libs << lib
+	}
+}
+
+// msvc_add_linker_options translates the gcc-style linker arguments of one `-Wl,` or
+// `-Xlinker`. An object or a library among them is an input of the link, as it is
+// for GNU ld.
+fn msvc_add_linker_options(mut link []string, mut inputs []string, options []string) {
+	for option in options {
+		lower := option.to_lower_ascii()
+		if option.len > 0 && !option.starts_with('-') && !(option.starts_with('/')
+			&& !os.exists(option)) && msvc_linker_input_extensions.any(lower.ends_with(it)) {
+			if lower.ends_with('.def') {
+				link << '/DEF:${option}'
+			} else {
+				inputs << option
+			}
+			continue
+		}
+		msvc_add_linker_option(mut link, option)
 	}
 }
 
