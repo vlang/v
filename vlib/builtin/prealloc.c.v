@@ -237,9 +237,25 @@ fn prealloc_stats_add_block(delta i64) {
 	}
 }
 
+// prealloc_limit_allows reports whether mapping `additional` more bytes would
+// stay within the configured cap. Pool reuse does not call this: pooled blocks
+// are already counted in mapped_bytes, so they must not be rejected by a cap
+// that only limits newly mapped storage.
+@[inline]
+fn prealloc_limit_allows(additional i64) bool {
+	$if prealloc_limits ? {
+		limit := C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+		if limit > 0 && C.v_prealloc_atomic_load_i64(&g_prealloc_mapped_bytes) + additional > limit {
+			return false
+		}
+	}
+	return true
+}
+
 // prealloc_set_limit caps the mapped arena storage at `bytes`. Zero removes
-// the cap. The limit is checked only when a new block is needed, matching
+// the cap. The limit is checked only when a new block must be mapped, matching
 // bumpalo semantics: shrinking it does not invalidate the current block.
+// Call this before starting other threads; concurrent setters are not ordered.
 @[unsafe]
 pub fn prealloc_set_limit(bytes i64) {
 	$if prealloc_limits ? {
@@ -514,14 +530,6 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	} else {
 		base_block_size
 	}
-	$if prealloc_limits ? {
-		limit := C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
-		if limit > 0
-			&& C.v_prealloc_atomic_load_i64(&g_prealloc_mapped_bytes) + i64(block_size) > limit {
-			C.free(v)
-			return unsafe { nil }
-		}
-	}
 	$if prealloc_trace_malloc ? {
 		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld, align: %lld\n', v.id, block_size, at_least, align)
 	}
@@ -531,6 +539,10 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	// obtained from the OS adds to the live mapped total.
 	mut from_pool := false
 	$if windows {
+		if !prealloc_limit_allows(i64(block_size)) {
+			C.free(v)
+			return unsafe { nil }
+		}
 		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
 	} $else {
 		$if !freestanding && !vinix {
@@ -550,6 +562,10 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 					}
 				}
 				if unsafe { v.start == 0 } {
+					if !prealloc_limit_allows(i64(block_size)) {
+						C.free(v)
+						return unsafe { nil }
+					}
 					mut mmap_ptr := unsafe {
 						C.mmap(0, uint(block_size), C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
 					}
@@ -572,6 +588,10 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 			}
 		}
 		if unsafe { v.start == 0 } {
+			if !prealloc_limit_allows(i64(block_size)) {
+				C.free(v)
+				return unsafe { nil }
+			}
 			if fixed_align == 1 {
 				v.start = unsafe { C.malloc(block_size) }
 			} else {
@@ -977,8 +997,9 @@ pub fn prealloc_scope_checkpoint(label &char) {
 // finally freed (end / free_after / last release). Callbacks run LIFO and
 // must not allocate from the scope being torn down. Reentering a scope drops
 // registered callbacks without running them, since their arguments are
-// invalidated. Abandoning a scope also drops them without running.
-// Requires `-d prealloc_cleanup`; the call is a no-op without it.
+// invalidated. Abandoning a scope also drops them without running. Callbacks
+// registered from inside a destructor are dropped (freed, not run) to keep the
+// teardown finite. Without the define the registration call is a no-op.
 @[if prealloc_cleanup ?]
 pub fn prealloc_scope_on_cleanup(scope_ptr voidptr, cb fn (voidptr), arg voidptr) {
 	$if prealloc {
@@ -1007,6 +1028,9 @@ fn prealloc_scope_run_cleanup(scope &VPreallocScope) {
 		C.free(entry)
 		entry = next
 	}
+	// A callback may have registered another one; drop it without running so
+	// teardown stays finite and no entry is leaked.
+	prealloc_scope_clear_cleanup(scope)
 }
 
 @[unsafe]
@@ -1477,6 +1501,9 @@ fn prealloc_malloc_align(n int, align int) &u8 {
 fn vmemory_block_try_malloc_aligned(n int, align int) ?&u8 {
 	unsafe {
 		mut mb := vmemory_block_current_or_new()
+		$if prealloc_trace_malloc ? {
+			C.fprintf(C.stderr, c'vmemory_block_try_malloc g_memory_block.id: %d, n: %lld align: %d\n', mb.id, n, align)
+		}
 		mut current := vmemory_align_up(mb.current, align)
 		remaining := i64(mb.stop) - i64(current)
 		if remaining < n {
@@ -1491,6 +1518,10 @@ fn vmemory_block_try_malloc_aligned(n int, align int) ?&u8 {
 			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
 			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
 			prealloc_stats_add_used(i64(n))
+		} $else {
+			$if trace_prealloc ? {
+				mb.mallocs++
+			}
 		}
 		return res
 	}

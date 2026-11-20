@@ -40,6 +40,26 @@ fn test_prealloc_limit_allows_fits_but_rejects_growth() {
 			assert zeroed != none
 			z := zeroed or { panic('unreachable') }
 			unsafe { assert z[0] == 0 }
+
+			$if prealloc_stats ? {
+				$if !windows {
+					// Pool reuse must not be rejected by a cap: recycled blocks
+					// are already counted in mapped_bytes.
+					mut pool_scope := unsafe { prealloc_scope_begin() }
+					mut big_bufs := []voidptr{cap: 3}
+					for _ in 0 .. 3 {
+						big_bufs << unsafe { malloc(400 * 1024) }
+					}
+					unsafe { prealloc_scope_leave(pool_scope) }
+					assert unsafe { prealloc_scope_reenter(pool_scope, 0) }
+					mapped := prealloc_stats_snapshot().mapped_bytes
+					unsafe { prealloc_set_limit(i64(mapped)) }
+					reused := unsafe { prealloc_try_malloc(700 * 1024) }
+					assert reused != none
+					unsafe { prealloc_set_limit(0) }
+					unsafe { prealloc_scope_end(pool_scope) }
+				}
+			}
 		}
 	}
 }

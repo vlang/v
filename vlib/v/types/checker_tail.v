@@ -3198,6 +3198,14 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		if child.kind == .ident && tc.unsafe_depth == 0 {
 			tc.warn_prealloc_scope_escape(.return_mismatch, child.value, child_id, child.pos)
 		}
+		if child.kind == .prefix && child.op == .amp && child.children_count > 0
+			&& tc.unsafe_depth == 0 {
+			value_id := tc.a.child(child, 0)
+			value := tc.a.node(value_id)
+			if value.kind == .ident {
+				tc.warn_prealloc_scope_escape(.return_mismatch, value.value, value_id, value.pos)
+			}
+		}
 		raw_child_type := tc.resolve_type(child_id)
 		if raw_child_type is Void {
 			tc.check_node(child_id)
