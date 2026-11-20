@@ -762,7 +762,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v6', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -777,7 +777,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v5' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v6' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -912,7 +912,7 @@ fn c_link_plan_metadata_range(paths []string) []string {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v5')
+	out.writeln('format=v3-c-link-plan-v6')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -1774,6 +1774,11 @@ fn acquire_native_object_cache_lock(manifest_path string) (filelock.FileLock, bo
 	return file_lock, true
 }
 
+fn is_bundled_libgc_source(source_file string) bool {
+	return source_file == 'thirdparty/libgc/gc.c'
+		|| source_file.ends_with('/thirdparty/libgc/gc.c')
+}
+
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	ensure_native_object_cache_dir(cache_dir)!
@@ -1787,8 +1792,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	mut compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
 	mut platform_gc := false
 	if target.os == 'linux' && pref.ccompiler_is_tinycc(compiler)
-		&& (source_file == 'thirdparty/libgc/gc.c'
-			|| source_file.ends_with('/thirdparty/libgc/gc.c')) {
+		&& is_bundled_libgc_source(source_file) {
 		host := pref.host_target()
 		if host.os == target.os && host.arch == target.arch {
 			// Bundled Boehm uses atomic builtins that TinyCC does not implement.
@@ -1813,6 +1817,14 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// A C helper does not inherit a standard intended for the C++ main unit.
 	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
+	if is_bundled_libgc_source(source_file) && !pref.ccompiler_is_tinycc(compiler)
+		&& !c_compiler_is_msvc(compiler) {
+		// GCC -O3 makes the bundled collector retain substantially more heap
+		// after a full collection than -O2 does for the same workload (issue
+		// #31910). The last -O wins for GCC and Clang, so cap just this one
+		// translation unit at -O2 without changing the program's own flags.
+		args << '-O2'
+	}
 	if platform_gc && target.arch == 'arm64' {
 		// TinyCC's linker does not provide GCC's outlined atomic helpers.
 		args << '-mno-outline-atomics'
