@@ -13,7 +13,7 @@ fn mmap_map_nix(path string, len u64, write bool, create bool) !voidptr {
 	if create {
 		open_flags |= C.O_CREAT | C.O_TRUNC
 	}
-	fd := C.open(&char(path.str), open_flags, 0o644)
+	fd := C.open(&char(path.str), open_flags | C.O_CLOEXEC, 0o644)
 	if fd == -1 {
 		return error('os: cannot open `${path}` for mapping')
 	}
