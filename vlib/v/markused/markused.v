@@ -636,6 +636,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		a:  a
 		tc: if rt_scan_parallel { tc.fork_for_parallel_transform(a) } else { tc }
 	}
+	if rt_scan_parallel {
+		// The list is in the caller's cache when the caller derived it; it
+		// outlives the scan thread, which is joined before this pass returns.
+		rt_scan.tc.share_ierror_impl_names_from(tc)
+	}
 	rt_scan.enabled = rt_scan_parallel
 	mut rt_scan_threads := []thread{cap: 1}
 	if rt_scan_parallel {

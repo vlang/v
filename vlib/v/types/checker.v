@@ -12472,6 +12472,24 @@ pub fn (mut tc TypeChecker) share_direct_dependencies_from(source &TypeChecker) 
 	tc.symbols = source.symbols
 }
 
+// share_ierror_impl_names_from hands a stage view of `source` the list of `IError`
+// implementers that `source` already derived. A view made by
+// fork_for_parallel_transform only finds that list through a frozen base cache;
+// without one it tests every struct of the program again on its first query.
+// The view must not outlive the list of `source`.
+pub fn (tc &TypeChecker) share_ierror_impl_names_from(source &TypeChecker) {
+	if isnil(tc.type_cache) || isnil(source.type_cache) {
+		return
+	}
+	mut cache := unsafe { tc.type_cache }
+	if cache.ierror_impl_names_set || !source.type_cache.ierror_impl_names_set {
+		return
+	}
+	// ierror_impl_names returns a copy, so the two caches can share the ids.
+	cache.ierror_impl_names = source.type_cache.ierror_impl_names
+	cache.ierror_impl_names_set = true
+}
+
 fn (mut tc TypeChecker) record_direct_dependency(id SymbolId) {
 	fn_id := tc.fn_context.node_id
 	if fn_id < 0 || id == 0 {
