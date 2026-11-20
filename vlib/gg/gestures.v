@@ -206,7 +206,9 @@ fn (mut t GestureTracker) finish(now i64) ?GestureEvent {
 	}
 
 	dist := gesture_distance(t.start_pos, t.last_pos)
-	if duration >= hold_min_ms {
+	// A long press with no significant travel is a hold; if the pointer
+	// moved far it must be classified as a drag/swipe instead.
+	if duration >= hold_min_ms && dist <= 10.0 {
 		return GestureEvent{
 			kind:      .hold
 			position:  pos

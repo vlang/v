@@ -17,7 +17,7 @@ pub mut:
 	light_dir    Vec3 // direction the light travels
 	bias         f32 = 0.0015
 	strength     f32 = 0.85 // 0 = no shadow, 1 = fully dark
-	soft_samples int = 0    // 0 = single tap, 1 = 4-tap PCF
+	soft_samples int = 0    // 0 = single tap, 1 = 9-tap (3x3) PCF
 }
 
 // new_shadow_map3d creates an empty shadow map of size x size texels.
@@ -53,16 +53,14 @@ pub fn (s &ShadowMap3D) light_view_proj(target Vec3, extent f32, near f32, far f
 // map can then be attached with ctx.set_shadow_map.
 pub fn (mut s ShadowMap3D) capture_depth(ctx &Context, target Vec3, extent f32, near f32, far f32) {
 	s.view_proj = s.light_view_proj(target, extent, near, far)
-	frame := ctx.r.render_cpu_depth(s.size, s.size, 0xffffffff, 1.0)
-	// Re-render with the light's MVP by temporarily overriding the uniform.
+	// Rasterize once with the light's MVP overriding the recorded uniform.
 	frame_light := ctx.r.render_cpu_depth_with_mvp(s.size, s.size, 0xffffffff, 1.0, s.view_proj)
 	s.depth = frame_light.depth.clone()
-	_ = frame
 }
 
 // sample returns the visibility factor (1 = lit, 1-strength = shadowed) for
 // a world-space point. It compares the point's depth in light space with the
-// captured shadow map, using an optional 4-tap PCF filter.
+// captured shadow map, using an optional 3x3 PCF filter.
 pub fn (s &ShadowMap3D) sample(world Vec3) f32 {
 	if s.depth.len != s.size * s.size || s.strength <= 0 {
 		return 1.0
@@ -109,10 +107,17 @@ fn (s &ShadowMap3D) tap(u f32, v f32, depth f32) f32 {
 
 // shadow_color applies a shadow map's visibility to an already-lit colour.
 pub fn shadow_color(c Color, visibility f32) Color {
+	v := if visibility < 0 {
+		f32(0)
+	} else if visibility > 1 {
+		f32(1)
+	} else {
+		visibility
+	}
 	return Color{
-		r: u8(f32(c.r) * visibility)
-		g: u8(f32(c.g) * visibility)
-		b: u8(f32(c.b) * visibility)
+		r: u8(f32(c.r) * v)
+		g: u8(f32(c.g) * v)
+		b: u8(f32(c.b) * v)
 		a: c.a
 	}
 }

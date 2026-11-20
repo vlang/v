@@ -10,7 +10,12 @@ pub fn smooth_normals(mesh &Mesh3D, precision f32) []Vec3 {
 	p := if precision > 0 { precision } else { 1e-3 }
 	mut groups := map[string][]int{}
 	for i, v in mesh.vertices {
-		key := '${int(v.x / p)},${int(v.y / p)},${int(v.z / p)}'
+		// Round to nearest bucket so positions just across a bucket edge
+		// still merge; truncation would split them by up to one precision.
+		x := int(v.x / p + 0.5)
+		y := int(v.y / p + 0.5)
+		z := int(v.z / p + 0.5)
+		key := '${x},${y},${z}'
 		groups[key] << i
 	}
 	mut out := []Vec3{len: mesh.vertices.len}
