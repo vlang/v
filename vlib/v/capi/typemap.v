@@ -34,6 +34,11 @@ pub fn strip_ref(t string) string {
 	return if t.starts_with('&') { t[1..] } else { t }
 }
 
+// unqualified drops a module prefix, e.g. `tls.Conn` becomes `Conn`.
+pub fn unqualified(t string) string {
+	return t.all_after_last('.')
+}
+
 fn is_supported_scalar(t string) bool {
 	return t in ['string', 'bool', 'byte', 'u8', 'u16', 'u32', 'u64', 'usize', 'i8', 'i16', 'int',
 		'i32', 'rune', 'i64', 'isize', 'f32', 'f64', 'voidptr']
@@ -111,7 +116,7 @@ pub fn v_wrapper_type(t string, m ApiModel) ?string {
 	if is_result(t) || is_option(t) {
 		return v_wrapper_type(unwrap(t), m)
 	}
-	base := strip_ref(t)
+	base := unqualified(strip_ref(t))
 	if t.starts_with('&') && m.is_struct(base) {
 		return 'voidptr'
 	}
@@ -136,7 +141,7 @@ pub fn c_decl_type(t string, m ApiModel) ?string {
 	if is_result(t) || is_option(t) {
 		return c_decl_type(unwrap(t), m)
 	}
-	base := strip_ref(t)
+	base := unqualified(strip_ref(t))
 	if t.starts_with('&') && m.is_struct(base) {
 		return 'void *'
 	}

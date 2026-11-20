@@ -94,6 +94,9 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 			warnings << 'skipped ${f.name}: result slices are not supported yet'
 			return false
 		}
+	} else if is_slice(f.return_type) {
+		warnings << 'skipped ${f.name}: plain slice returns are not supported yet'
+		return false
 	}
 	ret_v := if f.return_type == '' {
 		''
@@ -108,7 +111,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	mut call_args := []string{}
 	mut setup := []string{}
 	if f.is_method {
-		base := strip_ref(f.receiver)
+		base := unqualified(strip_ref(f.receiver))
 		if !m.is_struct(base) || !f.receiver.starts_with('&') {
 			warnings << 'skipped ${f.name}: only pointer receivers on public structs are supported'
 			return false
@@ -149,11 +152,20 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 			call_args << '${name}_v'
 		} else if p.type_name == 'bool' {
 			call_args << '${name} != 0'
-		} else if m.is_enum(strip_ref(p.type_name)) {
-			call_args << '${strip_ref(p.type_name)}(${name})'
-		} else if p.type_name.starts_with('&') && m.is_struct(strip_ref(p.type_name)) {
-			setup << '\t${name}_v := unsafe { &${strip_ref(p.type_name)}(${name}) }'
-			call_args << '${name}_v'
+		} else if m.is_enum(unqualified(strip_ref(p.type_name))) {
+			etype := unqualified(strip_ref(p.type_name))
+			call_args << 'unsafe { ${etype}(${name}) }'
+		} else if p.type_name.starts_with('&') && m.is_struct(unqualified(strip_ref(p.type_name))) {
+			stype := unqualified(strip_ref(p.type_name))
+			if p.is_mut {
+				// `mut c T` is encoded as `&T` with the mut flag; pass a mutable
+				// copy of the pointed-to value rather than the pointer itself.
+				setup << '\tmut ${name}_v := unsafe { *(&${stype}(${name})) }'
+				call_args << 'mut ${name}_v'
+			} else {
+				setup << '\t${name}_v := unsafe { &${stype}(${name}) }'
+				call_args << '${name}_v'
+			}
 		} else {
 			call_args << name
 		}
@@ -217,10 +229,10 @@ fn out_value(t string, m ApiModel, expr string) string {
 	if t == 'bool' {
 		return 'if ${expr} { 1 } else { 0 }'
 	}
-	if m.is_enum(strip_ref(t)) {
+	if m.is_enum(unqualified(strip_ref(t))) {
 		return 'int(${expr})'
 	}
-	if t.starts_with('&') && m.is_struct(strip_ref(t)) {
+	if t.starts_with('&') && m.is_struct(unqualified(strip_ref(t))) {
 		return 'voidptr(${expr})'
 	}
 	return expr

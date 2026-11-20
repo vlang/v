@@ -13,6 +13,7 @@ pub:
 	name        string
 	type_name   string
 	is_receiver bool
+	is_mut      bool
 }
 
 pub struct ApiFunc {
@@ -250,6 +251,7 @@ fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, pref
 			name:        if child.value == '' { 'arg${i}' } else { child.value }
 			type_name:   typ
 			is_receiver: is_receiver
+			is_mut:      child.is_mut
 		}
 	}
 	mut ret := ''
