@@ -233,6 +233,59 @@ fn test_restat_reruns_when_content_changes() {
 	assert contents('log') == 'build build '
 }
 
+// test_restat_leaves_symlink_output_alone checks that an output that is
+// already a symlink is never snapshotted, so restat cannot reach through the
+// replacement link to retime its target.
+fn test_restat_leaves_symlink_output_alone() {
+	sandbox('restat_link')
+	os.write_file('target1', 'same')!
+	os.write_file('target2', 'same')!
+	set_mtime('target1', -100)
+	set_mtime('target2', -50)
+	before := os.file_last_mod_unix('target2')
+	os.symlink('target1', 'out')!
+	mut c := new()
+	c.add_flow(
+		id:     'gen'
+		gives:  ['out']
+		restat: true
+		check:  .none
+		flow:   fn (_ Flow) ! {
+			os.rm('out')!
+			os.symlink('target2', 'out')!
+		}
+	)
+	c.execute(['gen'])!
+	assert os.is_link('out')
+	assert os.file_last_mod_unix('target2') == before
+}
+
+// test_restat_ignores_output_replaced_by_link checks that restat revalidates
+// the output before restoring: a regular file replaced by a symlink must not
+// retime the new target, even when the content matches.
+fn test_restat_ignores_output_replaced_by_link() {
+	sandbox('restat_replaced')
+	os.write_file('out', 'same')!
+	os.write_file('target2', 'same')!
+	set_mtime('out', -100)
+	set_mtime('target2', -50)
+	before := os.file_last_mod_unix('target2')
+	mut c := new()
+	c.add_flow(
+		id:     'gen'
+		gives:  ['out']
+		restat: true
+		check:  .none
+		flow:   fn (_ Flow) ! {
+			os.rm('out')!
+			os.symlink('target2', 'out')!
+		}
+	)
+	c.execute(['gen'])!
+	assert os.is_link('out')
+	assert os.file_last_mod_unix('target2') == before
+}
+
 // test_walks_do_not_follow_links checks that a link loop in an input directory
 // cannot trap the skip checks, which take a dangling link as an entry like any
 // other.

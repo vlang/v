@@ -714,12 +714,14 @@ struct OutputStamp {
 	hash  string
 }
 
-// snapshot_outputs records the files in `paths` that exist and are not
-// directories. Other outputs are left to the flow that owns them.
+// snapshot_outputs records the files in `paths` that exist and are regular
+// files. Directories and symlinks are left to the flow that owns them: the
+// path itself is checked without following links, so a link target is never
+// read.
 fn snapshot_outputs(paths []string) []OutputStamp {
 	mut stamps := []OutputStamp{}
 	for path in paths {
-		if !os.exists(path) || is_real_dir(path) {
+		if os.is_link(path) || !os.exists(path) || is_real_dir(path) {
 			continue
 		}
 		bytes := os.read_bytes(path) or { continue }
@@ -738,6 +740,12 @@ fn snapshot_outputs(paths []string) []OutputStamp {
 fn restore_outputs(stamps []OutputStamp) {
 	now := int(time.now().unix())
 	for stamp in stamps {
+		// revalidated without following links: an output replaced by a
+		// symlink or a directory is no longer an eligible regular file, so
+		// its (possibly new) target must keep its own mtime.
+		if os.is_link(stamp.path) || is_real_dir(stamp.path) {
+			continue
+		}
 		bytes := os.read_bytes(stamp.path) or { continue }
 		if hash.sum64(bytes, 0).hex_full() != stamp.hash {
 			continue
