@@ -97,6 +97,11 @@ fn (a &array) alloc_array_data_like(total_size u64) voidptr {
 		if a.uses_noscan_data() {
 			return alloc_array_data_noscan(total_size)
 		}
+	} $else $if vgc ? {
+		if a.uses_noscan_data() {
+			raw := vcalloc_noscan(array_data_allocation_size(total_size))
+			return init_array_data(raw)
+		}
 	}
 	return alloc_array_data(total_size)
 }
@@ -110,6 +115,11 @@ fn (a &array) alloc_array_data_like_uninit(total_size u64) voidptr {
 	$if gcboehm_opt ? {
 		if a.uses_noscan_data() {
 			return alloc_array_data_noscan_uninit(total_size)
+		}
+	} $else $if vgc ? {
+		if a.uses_noscan_data() {
+			raw := unsafe { malloc_noscan_uninit(array_data_allocation_size(total_size)) }
+			return init_array_data(raw)
 		}
 	}
 	return alloc_array_data_uninit(total_size)
