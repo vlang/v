@@ -59,6 +59,29 @@ fn build_driver_cli_v3_with_flags(root string, flags []string) string {
 	return bin
 }
 
+// driver_cli_executable is the executable that the driver writes for `path`, which
+// gets the `.exe` suffix on Windows.
+fn driver_cli_executable(path string) string {
+	$if windows {
+		return path + '.exe'
+	}
+	return path
+}
+
+// driver_cli_module_cache_args prepends to `args` a C compiler that builds through
+// the module cache. A Windows `-prod` build that names no `-cc` takes MSVC when a
+// Developer Command Prompt is set up, as in the MSVC CI job, and the module cache
+// does not compile with MSVC (only with TinyCC, Clang, GCC and MinGW), so a test of
+// that cache names the MinGW GCC there.
+fn driver_cli_module_cache_args(args []string) []string {
+	mut result := []string{cap: args.len + 2}
+	$if windows {
+		result << ['-cc', 'gcc']
+	}
+	result << args
+	return result
+}
+
 fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	result := cmdexec.run(v3_bin, args)
 	assert result.exit_code != 0
@@ -1129,20 +1152,20 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	cold_output := os.join_path(root, 'cold')
-	cold := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', cold_output,
-		source], environment)
+	cold := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+		'-no-parallel', '-o', cold_output, source]), environment)
 	assert cold.exit_code == 0, cold.output
 	assert !cold.output.contains('(cached)'), cold.output
 
 	warm_output := os.join_path(root, 'warm')
-	warm := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', warm_output,
-		source], environment)
+	warm := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+		'-no-parallel', '-o', warm_output, source]), environment)
 	assert warm.exit_code == 0, warm.output
 	assert warm.output.contains('cgen (cached)'), warm.output
 
 	no_skip_output := os.join_path(root, 'no_skip')
-	no_skip := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-no-skip-unused',
-		'-o', no_skip_output, source], environment)
+	no_skip := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+		'-no-parallel', '-no-skip-unused', '-o', no_skip_output, source]), environment)
 	assert no_skip.exit_code == 0, no_skip.output
 	assert !no_skip.output.contains('(cached)'), no_skip.output
 	no_skip_run := cmdexec.run(no_skip_output, [])
@@ -1189,8 +1212,9 @@ fn test_driver_user_native_header_bypasses_cgen_cache() {
 	system_source := os.join_path(root, 'system.v')
 	os.write_file(system_source, 'module main\n\n#include <stddef.h>\n\nfn main() { println(42) }\n')!
 	for attempt in 0 .. 2 {
-		system := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o',
-			os.join_path(root, 'system_${attempt}'), system_source], environment)
+		system_args := driver_cli_module_cache_args(['-v', '-prod', '-no-parallel', '-o',
+			os.join_path(root, 'system_${attempt}'), system_source])
+		system := run_driver_with_environment(v3_bin, system_args, environment)
 		assert system.exit_code == 0, system.output
 		assert !system.output.contains(bypass), system.output
 		assert attempt == 0 || system.output.contains('cgen (cached)'), system.output
@@ -1203,8 +1227,8 @@ fn test_driver_user_native_header_bypasses_cgen_cache() {
 	for value in [41, 42] {
 		os.write_file(header, 'static inline int native_value(void) { return ${value}; }\n')!
 		output := os.join_path(root, 'user_${value}')
-		user := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', output,
-			user_source], environment)
+		user := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+			'-no-parallel', '-o', output, user_source]), environment)
 		assert user.exit_code == 0, user.output
 		assert user.output.contains(bypass), user.output
 		assert !user.output.contains('(cached)'), user.output
@@ -2126,7 +2150,7 @@ println(os.args[1..].join('|'))
 	run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'one', '--two'])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'false\ncached module\none|--two\n', run.output
-	script_binary := source.all_before_last('.vsh')
+	script_binary := driver_cli_executable(source.all_before_last('.vsh'))
 	assert os.is_file(script_binary)
 	assert !os.exists(source.all_before_last('.vsh') + '.c')
 	warm_cache_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'warm'])
@@ -2162,14 +2186,14 @@ pub fn message() string {
 	assert rebuilt_run.output == 'false\nrebuilt module\nnew\n', rebuilt_run.output
 	assert os.file_last_mod_unix(script_binary) != cache_stamp
 	explicit_run_source := os.join_path(root, 'explicit_run_script.vsh')
-	explicit_run_binary := explicit_run_source.all_before_last('.vsh')
+	explicit_run_binary := driver_cli_executable(explicit_run_source.all_before_last('.vsh'))
 	os.write_file(explicit_run_source, "println('explicit run')")!
 	explicit_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'run', explicit_run_source])
 	assert explicit_run.exit_code == 0, explicit_run.output
 	assert explicit_run.output == 'explicit run\n', explicit_run.output
 	assert !os.exists(explicit_run_binary)
 	compile_only_source := os.join_path(root, 'compile_only.vsh')
-	compile_only_binary := compile_only_source.all_before_last('.vsh')
+	compile_only_binary := driver_cli_executable(compile_only_source.all_before_last('.vsh'))
 	run_marker := os.join_path(root, 'compile_only_ran')
 	os.write_file(compile_only_source, "import os
 
@@ -2306,7 +2330,9 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert c_compile.output == '', c_compile.output
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
-	assert c_source.contains('typedef signed char i8;')
+	// The Windows builtin includes <io.h> and <fcntl.h>, so C for Windows takes the system
+	// libc preamble, which names the fixed-width types of <stdint.h> (see cgen `preamble`).
+	assert c_source.contains($if windows { 'typedef int8_t i8;' } $else { 'typedef signed char i8;' })
 	internal_define_source := os.join_path(root, 'internal_define.v')
 	os.write_file(internal_define_source, "fn main() {\n\tmessage := 'runtime'\n\tprintln(message)\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
 	internal_define_c := os.join_path(root, 'internal_define.c')
@@ -2314,7 +2340,10 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 		internal_define_source])
 	assert internal_define_compile.exit_code == 0, internal_define_compile.output
 	internal_define_output := os.read_file(internal_define_c)!
-	assert internal_define_output.contains('prealloc_vinit();')
+	// builtin_init starts the arena under `prealloc && v3_backend`, except on Windows, whose
+	// builtin_init does not: there the arena takes its first block on the first allocation.
+	arena_start := $if windows { 'return prealloc_malloc(' } $else { 'prealloc_vinit();' }
+	assert internal_define_output.contains(arena_start)
 	assert internal_define_output.contains('v3_backend_stays_internal')
 	assert !internal_define_output.contains('v3_backend_leaked_to_user')
 	verbose_output := os.join_path(root, 'hello_verbose.c')
@@ -2326,7 +2355,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
 		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
 	assert compat_compile.exit_code == 0, compat_compile.output
-	assert os.is_file(compat_output)
+	assert os.is_file(driver_cli_executable(compat_output))
 	assert !os.exists(compat_output + '.c')
 	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before
 		&& os.file_name(it).starts_with('hello_compat.'))
@@ -2501,10 +2530,10 @@ pub fn value() int {
 
 	compile := cmdexec.run_in(v3_bin, [project], work_dir)
 	assert compile.exit_code == 0, compile.output
-	output := os.join_path(project, 'project.with.dots')
+	output := driver_cli_executable(os.join_path(project, 'project.with.dots'))
 	assert os.exists(output)
-	assert !os.exists(os.join_path(work_dir, 'project.with.dots'))
-	assert !os.exists(os.join_path(work_dir, 'project'))
+	assert !os.exists(driver_cli_executable(os.join_path(work_dir, 'project.with.dots')))
+	assert !os.exists(driver_cli_executable(os.join_path(work_dir, 'project')))
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0
 	assert run.output.trim_space() == '42'
