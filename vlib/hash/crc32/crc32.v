@@ -23,11 +23,17 @@ pub const crc32q_reflected = q_reflected
 
 struct Crc32 {
 mut:
-	table []u32
+	// table is the base 256-word table; table1..table3 are the derived
+	// slicing-by-4 tables used to process four input bytes per iteration.
+	table  []u32
+	table1 []u32
+	table2 []u32
+	table3 []u32
 }
 
-// generate_table populates a 256-word table from the specified polynomial `poly`
-// to represent the polynomial for efficient processing.
+// generate_table populates the base table and the three derived tables from
+// the specified polynomial `poly` to represent the polynomial for efficient
+// processing.
 @[direct_array_access]
 fn (mut c Crc32) generate_table(poly u32) {
 	c.table = []u32{len: 256}
@@ -42,13 +48,34 @@ fn (mut c Crc32) generate_table(poly u32) {
 		}
 		c.table[i] = crc
 	}
+	// T[k+1][x] = (T[k][x] >> 8) ^ T[0][T[k][x] & 0xff]
+	c.table1 = []u32{len: 256}
+	c.table2 = []u32{len: 256}
+	c.table3 = []u32{len: 256}
+	for i in 0 .. 256 {
+		v1 := c.table[i]
+		c.table1[i] = (v1 >> 8) ^ c.table[u8(v1)]
+		v2 := c.table1[i]
+		c.table2[i] = (v2 >> 8) ^ c.table[u8(v2)]
+		v3 := c.table2[i]
+		c.table3[i] = (v3 >> 8) ^ c.table[u8(v3)]
+	}
 }
 
+// update32 folds `b` into `crc`, four bytes at a time where possible.
 @[direct_array_access]
 fn (c &Crc32) update32(crc u32, b []u8) u32 {
 	mut next := crc
-	for i in 0 .. b.len {
+	mut i := 0
+	for i + 4 <= b.len {
+		word := u32(b[i]) | (u32(b[i + 1]) << 8) | (u32(b[i + 2]) << 16) | (u32(b[i + 3]) << 24)
+		next ^= word
+		next = c.table3[u8(next)] ^ c.table2[u8(next >> 8)] ^ c.table1[u8(next >> 16)] ^ c.table[u8(next >> 24)]
+		i += 4
+	}
+	for i < b.len {
 		next = c.table[u8(next) ^ b[i]] ^ (next >> 8)
+		i++
 	}
 	return next
 }
