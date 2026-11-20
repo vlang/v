@@ -58,7 +58,9 @@ jobs:
 
   # Section 1 of test_all.vsh runs with the shared optimized compiler. One job
   # runs it as one `--shard i/n` process per CPU of the runner (every n-th file of the sorted
-  # list). Each process gets its own VTMP, TMPDIR and V3CACHE, so the shards share no build state.
+  # list). Each process gets its own VTMP, TMPDIR and V3CACHE. The modules nearly every test
+  # compiles, builtin first, are built once before the fan-out; every batch of every shard starts
+  # from a copy of that cache.
   # It runs only for pushes to master, not for pull requests.
   unit-tests:
     name: V3 unit tests
@@ -91,6 +93,8 @@ jobs:
             -o "$logs/shared-v3" vlib/v/v.v || exit $?
           export V3_TEST_UNIT_SHARED_V3="$logs/shared-v3"
           export V3_TEST_UNIT_V3_SRC="$PWD/vlib/v/v.v"
+          ./v run vlib/v/test_all.vsh --prepare-unit-cache "$logs/unit-cache" || exit $?
+          export V3_TEST_UNIT_CACHE="$logs/unit-cache"
           pids=()
           for i in $(seq 1 "$shards"); do
             mkdir -p "$logs/vtmp-$i"

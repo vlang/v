@@ -11,6 +11,9 @@ const unit_test_batch_size = 16
 // (cmd/v/shared_test_compiler.v).
 const unit_shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
 const unit_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+// A module cache that `--prepare-unit-cache` warmed once, which every unit-test batch of every
+// shard starts from instead of warming its own.
+const unit_cache_env = 'V3_TEST_UNIT_CACHE'
 // CI optimizes the harness-owned compiler drivers without changing the flags of
 // the programs they compile or the self-hosting compilers under test.
 // V3_TEST_PROD_COMPILER_CC can override the optimizing C compiler (Clang by default).
@@ -78,29 +81,32 @@ const separately_run_test_prefixes = [
 ]
 
 struct Config {
-	vexe             string
-	script_dir       string
-	repo_root        string
-	vlib_dir         string
-	tests_dir        string
-	v3_src           string
-	c99              bool
-	c99_flag         string
-	host_backend     string
-	host_os          string
-	temp_prefix      string
-	units            UnitMode
-	shard            UnitShard
-	list_units       bool
-	prod_compiler    bool
-	prod_compiler_cc string = 'clang'
+	vexe         string
+	script_dir   string
+	repo_root    string
+	vlib_dir     string
+	tests_dir    string
+	v3_src       string
+	c99          bool
+	c99_flag     string
+	host_backend string
+	host_os      string
+	temp_prefix  string
+	units        UnitMode
+	shard        UnitShard
+	list_units   bool
+	// prepare_unit_cache is the directory that `--prepare-unit-cache` fills, or ''.
+	prepare_unit_cache string
+	prod_compiler      bool
+	prod_compiler_cc   string = 'clang'
 }
 
 struct Options {
-	c99        bool
-	units      UnitMode
-	shard      UnitShard
-	list_units bool
+	c99                bool
+	units              UnitMode
+	shard              UnitShard
+	list_units         bool
+	prepare_unit_cache string
 }
 
 // UnitMode selects which sections run. CI runs the unit tests of section 1 as concurrent
@@ -185,6 +191,9 @@ fn main() {
 	if cfg.units != .skip_units {
 		section(1, 'V3 unit tests${shard_label(cfg.shard)}')
 		run_v3_unit_tests(cfg)
+	}
+	if cfg.prepare_unit_cache != '' {
+		return
 	}
 	if cfg.units == .units_only {
 		println('')
@@ -322,10 +331,38 @@ fn run_v3_unit_tests(cfg Config) {
 	os.setenv(unit_shared_v3_env, shared_v3, true)
 	os.setenv(unit_v3_src_env, cfg.v3_src, true)
 	// Each batch starts from a cache that already holds the modules nearly every test
-	// compiles, builtin first among them; a cold cache rebuilt them in every batch.
-	unit_cache_base := temp_path(cfg, 'unit_cache_base')
-	warm_unit_cache(cfg, unit_cache, unit_cache_base, shared_v3)
-	test_files := unit_test_files(cfg)
+	// compiles, builtin first among them; a cold cache rebuilt them in every batch. Cache
+	// entries name the headers they depend on relative to the cache, so a copy is valid.
+	if cfg.prepare_unit_cache != '' {
+		os.rmdir_all(cfg.prepare_unit_cache) or {}
+		warm_unit_cache(cfg, cfg.prepare_unit_cache, shared_v3)
+		if !os.is_dir(cfg.prepare_unit_cache) {
+			fail('failed to prepare the V3 unit-test module cache ${cfg.prepare_unit_cache}')
+		}
+		println('  Prepared the V3 unit-test module cache ${cfg.prepare_unit_cache}')
+	}
+	mut unit_cache_base := os.getenv(unit_cache_env)
+	mut owns_unit_cache_base := false
+	if cfg.prepare_unit_cache != '' {
+		unit_cache_base = ''
+	} else if unit_cache_base != '' {
+		if !os.is_dir(unit_cache_base) {
+			fail('${unit_cache_env} does not name a directory: ${unit_cache_base}')
+		}
+		println('  Using the prepared V3 unit-test module cache ${unit_cache_base}')
+	} else {
+		unit_cache_base = temp_path(cfg, 'unit_cache_base')
+		owns_unit_cache_base = true
+		os.rmdir_all(unit_cache_base) or {}
+		warm_unit_cache(cfg, unit_cache_base, shared_v3)
+	}
+	os.rmdir_all(unit_cache) or {}
+	if os.is_dir(unit_cache_base) {
+		os.cp_all(unit_cache_base, unit_cache, true) or {
+			fail('failed to restore the warm V3 unit-test cache ${unit_cache}: ${err}')
+		}
+	}
+	test_files := if cfg.prepare_unit_cache != '' { []string{} } else { unit_test_files(cfg) }
 	// Run every file, so that one failure does not hide the others, and print how long each
 	// one took, so that the shards can be kept within the job time limit.
 	mut failed := []string{}
@@ -356,15 +393,20 @@ fn run_v3_unit_tests(cfg Config) {
 				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
 			}
 		}
-		if os.exists(unit_cache_base) {
+		if os.is_dir(unit_cache_base) {
 			os.cp_all(unit_cache_base, unit_cache, true) or {
 				fail('failed to restore the warm V3 unit-test cache ${unit_cache}: ${err}')
 			}
 		}
 	}
-	os.rmdir_all(unit_cache_base) or {}
-	reused := os.read_lines(reuse_log) or { []string{} }
-	println('  The shared V3 test compiler served ${reused.len} V3 builds')
+	if owns_unit_cache_base {
+		os.rmdir_all(unit_cache_base) or {}
+	}
+	os.rmdir_all(unit_cache) or {}
+	if cfg.prepare_unit_cache == '' {
+		reused := os.read_lines(reuse_log) or { []string{} }
+		println('  The shared V3 test compiler served ${reused.len} V3 builds')
+	}
 	if old_vflags == '' {
 		os.unsetenv('VFLAGS')
 	} else {
@@ -392,23 +434,28 @@ fn run_v3_unit_tests(cfg Config) {
 	}
 }
 
-// warm_unit_cache builds the modules that nearly every unit test compiles into `cache`, as the
-// test runner and the shared compiler build them, and keeps a copy in `base`, which each batch
-// restores to the same path: the cache entries record their paths. A failed warm-up only leaves
+// warm_unit_cache builds the modules that nearly every unit test compiles into the module cache
+// `cache`, as the test runner and the shared compiler build them. A failed warm-up only leaves
 // the batches to build those modules themselves.
-fn warm_unit_cache(cfg Config, cache string, base string, shared_v3 string) {
-	os.rmdir_all(cache) or {}
-	os.rmdir_all(base) or {}
+fn warm_unit_cache(cfg Config, cache string, shared_v3 string) {
 	warmup_dir := temp_path(cfg, 'unit_cache_warmup')
 	os.rmdir_all(warmup_dir) or {}
 	os.mkdir_all(warmup_dir) or { return }
+	old_v3cache := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', cache, true)
 	defer {
+		restore_env('V3CACHE', old_v3cache)
 		os.rmdir_all(warmup_dir) or {}
 	}
 	test_file := os.join_path(warmup_dir, 'warmup_test.v')
 	program := os.join_path(warmup_dir, 'warmup.v')
-	os.write_file(test_file, "fn test_warmup() {\n\tassert 'v'.len == 1\n}\n") or { return }
-	os.write_file(program, "fn main() {\n\tprintln('v')\n}\n") or { return }
+	os.write_file(test_file, 'import os\n\nfn test_warmup() {\n\tassert os.args.len > 0\n}\n') or {
+		return
+	}
+	// A program that only prints literals takes a path that skips the module cache.
+	os.write_file(program, 'import os\n\nfn main() {\n\tprintln(os.args.len)\n}\n') or {
+		return
+	}
 	println('  Warming the V3 unit-test module cache...')
 	// The command that runs each unit test file, then the two common fixture builds of
 	// the shared compiler, whose copies the tests run.
@@ -419,9 +466,6 @@ fn warm_unit_cache(cfg Config, cache string, base string, shared_v3 string) {
 		[shared_v3, '-b', 'c', '-o', os.join_path(warmup_dir, 'warmup_c'), program],
 	] {
 		os.system_args(args)
-	}
-	if os.exists(cache) {
-		os.cp_all(cache, base, true) or { os.rmdir_all(base) or {} }
 	}
 }
 
@@ -556,31 +600,37 @@ fn parse_config() Config {
 		fail('FAIL: V compiler not found: ${vexe}')
 	}
 	return Config{
-		vexe:             vexe
-		script_dir:       script_dir
-		repo_root:        repo_root
-		vlib_dir:         os.join_path(repo_root, 'vlib')
-		tests_dir:        tests_dir
-		v3_src:           os.join_path(script_dir, 'v.v')
-		c99:              options.c99
-		c99_flag:         if options.c99 { '-c99' } else { '' }
-		host_backend:     native_backend_arch()
-		host_os:          os.user_os()
-		temp_prefix:      '${temp_prefix}_${os.getpid()}'
-		units:            options.units
-		shard:            options.shard
-		list_units:       options.list_units
-		prod_compiler:    os.getenv(prod_compiler_env) == '1'
-		prod_compiler_cc: os.getenv_opt('V3_TEST_PROD_COMPILER_CC') or { 'clang' }
+		vexe:               vexe
+		script_dir:         script_dir
+		repo_root:          repo_root
+		vlib_dir:           os.join_path(repo_root, 'vlib')
+		tests_dir:          tests_dir
+		v3_src:             os.join_path(script_dir, 'v.v')
+		c99:                options.c99
+		c99_flag:           if options.c99 { '-c99' } else { '' }
+		host_backend:       native_backend_arch()
+		host_os:            os.user_os()
+		temp_prefix:        '${temp_prefix}_${os.getpid()}'
+		units:              options.units
+		shard:              options.shard
+		list_units:         options.list_units
+		prepare_unit_cache: options.prepare_unit_cache
+		prod_compiler:      os.getenv(prod_compiler_env) == '1'
+		prod_compiler_cc:   os.getenv_opt('V3_TEST_PROD_COMPILER_CC') or { 'clang' }
 	}
 }
 
 const usage = 'usage: test_all.vsh [-c99] [--units-only | --skip-units] [--shard i/n] [--list-units]
+       test_all.vsh --prepare-unit-cache dir
 
   --units-only   run only section 1, the V3 unit tests
   --skip-units   run every section except section 1
   --shard i/n    run only the i-th of n near-equal parts of the unit tests (1 <= i <= n)
-  --list-units   print the unit tests that would run, and exit'
+  --list-units   print the unit tests that would run, and exit
+  --prepare-unit-cache dir
+                 build the modules that nearly every unit test compiles into the module
+                 cache `dir`, and exit; with ${unit_cache_env}=dir, unit-test runs start
+                 every batch from a copy of it'
 
 fn parse_args() Options {
 	mut c99 := false
@@ -588,6 +638,7 @@ fn parse_args() Options {
 	mut skip_units := false
 	mut shard := UnitShard{}
 	mut list_units := false
+	mut prepare_unit_cache := ''
 	args := os.args[1..]
 	mut i := 0
 	for i < args.len {
@@ -612,6 +663,13 @@ fn parse_args() Options {
 			'-list-units', '--list-units' {
 				list_units = true
 			}
+			'-prepare-unit-cache', '--prepare-unit-cache' {
+				if i + 1 >= args.len || args[i + 1] == '' {
+					fail('--prepare-unit-cache needs a directory')
+				}
+				i++
+				prepare_unit_cache = absolute_path(args[i])
+			}
 			'-h', '--help' {
 				println(usage)
 				exit(0)
@@ -625,6 +683,10 @@ fn parse_args() Options {
 	if units_only && skip_units {
 		fail('--units-only and --skip-units exclude each other')
 	}
+	if prepare_unit_cache != '' && (c99 || units_only || skip_units || shard.count > 1
+		|| list_units) {
+		fail('--prepare-unit-cache takes no other arguments')
+	}
 	if skip_units && (shard.count > 1 || list_units) {
 		fail('--skip-units runs no unit tests, so --shard and --list-units do not apply')
 	}
@@ -632,7 +694,7 @@ fn parse_args() Options {
 	if shard.count > 1 && !units_only && !list_units {
 		fail('--shard needs --units-only')
 	}
-	units := if units_only {
+	units := if units_only || prepare_unit_cache != '' {
 		UnitMode.units_only
 	} else if skip_units {
 		UnitMode.skip_units
@@ -640,10 +702,11 @@ fn parse_args() Options {
 		UnitMode.all
 	}
 	return Options{
-		c99:        c99
-		units:      units
-		shard:      shard
-		list_units: list_units
+		c99:                c99
+		units:              units
+		shard:              shard
+		list_units:         list_units
+		prepare_unit_cache: prepare_unit_cache
 	}
 }
 

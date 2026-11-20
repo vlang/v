@@ -113,8 +113,11 @@ optimized driver afterward. Setup still provisions TCC, libgc and bootstrap sour
 Compiler CI also sets `V3_TEST_PROD_COMPILER=1` so `test_all.vsh` optimizes the separate
 V3 drivers it creates for unit tests and examples. Plain nested compiler builds share that
 optimized driver; requests with custom build options still build their own compiler. The unit
-job builds it once before starting its shards, which each receive a private copy. Local runs
-can select another optimizing C compiler with `V3_TEST_PROD_COMPILER_CC`.
+job builds it once before starting its shards, which each receive a private copy. It also builds
+the modules that nearly every unit test compiles, builtin first, once with
+`test_all.vsh --prepare-unit-cache`; `V3_TEST_UNIT_CACHE` hands that module cache to the shards,
+and every batch starts from a copy of it. Local runs can select another optimizing C compiler with
+`V3_TEST_PROD_COMPILER_CC`.
 
 Changes to shared compiler setup or the bootstrap workflow select all master suites, even
 when a suite's normal path filter would skip them. Local setup regression checks are
