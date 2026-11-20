@@ -2049,7 +2049,6 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	tc.check_match_flag_enum_exhaustiveness(id, node, subject_type)
 	tc.check_match_enum_exhaustiveness(id, node, subject_type)
 	tc.check_match_bool_exhaustiveness(id, node, subject_type)
-	tc.check_match_non_exhaustive_enum_exhaustiveness(id, node, subject_type)
 	if value_context {
 		tc.check_match_branch_tail_type_diagnostics(id, node)
 	}
@@ -2192,10 +2191,8 @@ fn (mut tc TypeChecker) check_match_flag_enum_exhaustiveness(id flat.NodeId, nod
 	tc.record_error_at(.condition_mismatch, 'match must be exhaustive (add `else {}` at the end)', id, tc.match_header_pos(node))
 }
 
-// check_match_enum_exhaustiveness reports a `match` over a plain (non-flag)
-// enum that lists neither every field nor an `else` branch. A condition that
-// names no single field (a range, a constant, a call) makes the covered set
-// unknowable, so such a match is not diagnosed here.
+// check_match_enum_exhaustiveness checks coverage for plain enums and requires
+// an `else` branch for non-exhaustive enums declared in another module.
 fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
 	clean_subject := unalias_type(subject_type)
 	if clean_subject !is Enum || !tc.should_diagnose(id) {
@@ -2207,6 +2204,19 @@ fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node fla
 	}
 	if enum_subject.is_flag || enum_name in tc.flag_enums
 		|| enum_subject.source_type_id() in tc.flag_enums {
+		return
+	}
+	is_open, display_name, decl_module := tc.non_exhaustive_enum_info(enum_subject.source_type_id(),
+		enum_name)
+	if is_open && tc.non_exhaustive_decl_is_external(decl_module) {
+		for i in 1 .. node.children_count {
+			branch := tc.a.child_node(&node, i)
+			if branch.kind == .match_branch && branch.value == 'else' {
+				return
+			}
+		}
+		tc.record_error_at(.condition_mismatch, 'match on non-exhaustive `${display_name}` from module `${decl_module}` must include `else {}`',
+			id, tc.match_header_pos(node))
 		return
 	}
 	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
@@ -2227,6 +2237,7 @@ fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node fla
 			return
 		}
 		for j in 0 .. n_conds {
+			// Ranges and other expressions can cover a set of unknown fields.
 			field := tc.match_enum_condition_field(tc.a.child_node(branch, j), enum_name) or {
 				return
 			}
@@ -2313,14 +2324,7 @@ fn (tc &TypeChecker) non_exhaustive_decl_is_external(decl_module string) bool {
 
 // non_exhaustive_enum_info resolves a non-exhaustive enum to its display
 // name and declaring module. Returns false when the type is closed.
-fn (tc &TypeChecker) non_exhaustive_enum_info(subject_type Type) (bool, string, string) {
-	clean_subject := unalias_type(subject_type)
-	if clean_subject !is Enum {
-		return false, '', ''
-	}
-	enum_subject := clean_subject as Enum
-	enum_id := enum_subject.source_type_id()
-	resolved := tc.resolve_enum_name(enum_id) or { enum_id }
+fn (tc &TypeChecker) non_exhaustive_enum_info(enum_id u32, resolved u32) (bool, string, string) {
 	mut is_open := false
 	mut decl_module := ''
 	q1 := tc.qualify_type_name(enum_id)
@@ -2386,40 +2390,6 @@ fn (tc &TypeChecker) non_exhaustive_sum_info(subject_type Type) (bool, string, s
 	}
 	display_name := short_type_name(flat.source_type_name(base))
 	return true, display_name, decl_module
-}
-
-// check_match_non_exhaustive_enum_exhaustiveness requires an `else` branch
-// when an external module matches a non-exhaustive enum, even if every
-// currently known variant is listed. Same-module matches keep closed behavior.
-fn (mut tc TypeChecker) check_match_non_exhaustive_enum_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
-	if !tc.should_diagnose(id) {
-		return
-	}
-	clean_subject := unalias_type(subject_type)
-	if clean_subject !is Enum {
-		return
-	}
-	enum_subject := clean_subject as Enum
-	if enum_subject.is_flag || enum_subject.source_type_id() in tc.flag_enums {
-		return
-	}
-	if resolved := tc.resolve_enum_name(enum_subject.source_type_id()) {
-		if resolved in tc.flag_enums {
-			return
-		}
-	}
-	is_open, display_name, decl_module := tc.non_exhaustive_enum_info(subject_type)
-	if !is_open || !tc.non_exhaustive_decl_is_external(decl_module) {
-		return
-	}
-	for i in 1 .. node.children_count {
-		branch := tc.a.child_node(&node, i)
-		if branch.kind == .match_branch && branch.value == 'else' {
-			return
-		}
-	}
-	tc.record_error_at(.condition_mismatch, 'match on non-exhaustive `${display_name}` from module `${decl_module}` must include `else {}`',
-		id, tc.match_header_pos(node))
 }
 
 fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
