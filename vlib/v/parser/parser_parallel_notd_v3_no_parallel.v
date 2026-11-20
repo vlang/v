@@ -1733,6 +1733,7 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	// every payload without leaving a serial per-node miss pass behind. The pool
 	// first marks the texts the master table lacks; a text it holds already
 	// stays as it is, so only the marked ones go through the ordered inserts.
+	pmsw := time.new_stopwatch()
 	mut probes := []MergeTextProbeArgs{cap: thread_count}
 	for worker in parser_workers {
 		probes << MergeTextProbeArgs{
@@ -1750,6 +1751,7 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 		}
 	}
 	p.a.worker_pool.run(probe_tasks)
+	pm_probe_us := pmsw.elapsed().microseconds()
 	mut text_headroom := 0
 	for probe in probes {
 		for missing in probe.missing {
@@ -1767,6 +1769,7 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 			}
 		}
 	}
+	pm_intern_us := pmsw.elapsed().microseconds()
 	unsafe {
 		p.a.nodes.grow_len(node_offsets[thread_count] - base_nodes)
 		p.a.children.grow_len(child_offsets[thread_count] - base_children)
@@ -1794,6 +1797,7 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 		}
 	}
 	p.a.worker_pool.run(tasks)
+	pm_copy_us := pmsw.elapsed().microseconds()
 	// One cache serves every chunk of every merge: the texts that it maps stay
 	// where they are until the worker arenas are released below.
 	if isnil(p.merge_text_cache) {
@@ -1805,6 +1809,7 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 		p.a.intern_node_texts_at_cached(margs[ci].miss_nodes, mut p.merge_text_cache)
 		p.merge_parsed_worker_bookkeeping(mut *parser_workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2], args[ci + 1].scope, node_offsets[ci], margs[ci].pending_files, margs[ci].has_scope)
 	}
+	pm_tail_us := pmsw.elapsed().microseconds()
 	// Unmapping the worker arenas is most of the merge when done in a row; the
 	// pool releases them side by side.
 	mut free_tasks := []workers.Task{cap: thread_count}
@@ -1818,6 +1823,10 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 		}
 	}
 	p.a.worker_pool.run(free_tasks)
+	if p.prefs.verbose {
+		pm_free_us := pmsw.elapsed().microseconds()
+		p.timing_profile('  [ttime]     pm probe ${f64(pm_probe_us) / 1000.0:.2f} ms, intern ${f64(pm_intern_us - pm_probe_us) / 1000.0:.2f} ms (texts: ${text_headroom}), copy ${f64(pm_copy_us - pm_intern_us) / 1000.0:.2f} ms, tail ${f64(pm_tail_us - pm_copy_us) / 1000.0:.2f} ms, free ${f64(pm_free_us - pm_tail_us) / 1000.0:.2f} ms (chunks: ${thread_count})')
+	}
 }
 
 fn parser_worker_scope_free_thread(scope voidptr) voidptr {

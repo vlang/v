@@ -25614,6 +25614,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
+	mut ri_comptime_ns := u64(0)
+	mut ri_predict_ns := u64(0)
+	mut ri_canon_ns := u64(0)
+	mut ri_implicit_ns := u64(0)
+	mut ri_insert_ns := u64(0)
 	mut pair_cursor := 0
 	mut had_deferred_imports := initial_deferred_imports.len > 0
 	mut resolve_deferred_imports := false
@@ -25621,6 +25626,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
 		deferred_imports := p.resolve_comptime_string_declarations()
+		ri_comptime_ns += time.sys_mono_now() - ri_t0
 		if had_deferred_imports {
 			// A parsed dependency can select imports in an earlier file's guard.
 			node_idx = 0
@@ -26040,10 +26046,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				ri_coll_ms := f64(ri_collision_ns) / 1e6
 				ri_wave_ms := f64(ri_wave_ns) / 1e6
 				eprintln('  [ttime]   ri collision   ${ri_coll_ms:7.2f} ms, wave scan ${ri_wave_ms:.2f} ms (waves: ${ri_waves})')
+				eprintln('  [ttime]   ri comptime    ${f64(ri_comptime_ns) / 1e6:7.2f} ms, predict ${f64(ri_predict_ns) / 1e6:.2f} ms, canon ${f64(ri_canon_ns) / 1e6:.2f} ms, implicit scan ${f64(ri_implicit_ns) / 1e6:.2f} ms, insert ${f64(ri_insert_ns) / 1e6:.2f} ms')
 			}
 			break
 		}
 		if parse_waves_ahead && !parsed_wave_ahead && deferred_imports.len == 0 {
+			ri_t2 := time.sys_mono_now()
 			parsed_wave_ahead = true
 			mut pending := synthetic
 			mut pending_synthetic := []string{}
@@ -26058,11 +26066,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			p.speculate_next_batch(predict_next_wave_files(a, mut p, prefs, wave_files, wave_module_file_ends,
 				pending_synthetic, parsed_modules, parsed_module_identities, project_root, mut
 				module_path_cache))
+			ri_predict_ns += time.sys_mono_now() - ri_t2
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut parse_timing)
 		p.clear_preloaded_sources()
 		was_parallel = was_parallel || wave_parallel
 		wave_end_nodes := a.nodes.len
+		ri_t3 := time.sys_mono_now()
 		for i, canon in wave_canon {
 			if canon.len == 0 {
 				continue
@@ -26070,6 +26080,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			end_node := if i + 1 < starts.len { starts[i + 1] } else { wave_end_nodes }
 			canonicalize_imported_module_name(mut a, starts[i], end_node, canon)
 		}
+		ri_t4 := time.sys_mono_now()
+		ri_canon_ns += ri_t4 - ri_t3
 		// Re-check the implicit imports at each module boundary, in parse order,
 		// with each scan bounded to the nodes that existed at that boundary. This
 		// fires the seeds for exactly the module the serial loop's after-every-
@@ -26102,7 +26114,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			insertions << synthetic.insertions_at(implicit_imports, region_end, skip_closure_runtime)
 			module_start = module_file_end
 		}
+		ri_t5 := time.sys_mono_now()
+		ri_implicit_ns += ri_t5 - ri_t4
 		insert_synthetic_imports(mut a, insertions)
+		ri_insert_ns += time.sys_mono_now() - ri_t5
+		if prefs.verbose && insertions.len > 0 {
+			eprintln('  [ttime]   ri synthetic imports: ${insertions.len} (first at node ${insertions[0].pos} of ${a.nodes.len}: ${insertions[0].node.value})')
+		}
 		implicit_imports.node_idx += insertions.len
 		implicit_imports.field_index_node_idx += insertions.len
 	}
