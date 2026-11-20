@@ -2217,7 +2217,9 @@ fn (mut tc TypeChecker) ownership_note_binding(name string, typ Type, pos flat.N
 	if tc.ownership_type_is_owned(typ) || source_participates || mutable_owned_source {
 		mut moved_source := false
 		if source_name.len > 0 {
-			tc.ownership_reject_global_move(source_name, pos, name, false)
+			if tc.ownership_type_requires_destruction(typ) {
+				tc.ownership_reject_global_move(source_name, pos, name, false)
+			}
 			if source_name in st.owned_vars {
 				moved_source = tc.ownership_move_var_result(source_name, name, pos, false, '', true)
 			} else {
@@ -7065,22 +7067,22 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	} else {
 		''
 	}
-	// Under autofree, a loop binding whose only use is `name.len` is a borrow of
-	// the container, not a new owner. Cloning it would clone-and-free on every
-	// iteration with no observable effect.
+	// Under autofree, a read-only loop binding is a borrow of the container,
+	// not a new owner. Cloning it would clone-and-free on every iteration with
+	// no observable effect.
 	as_borrow := tc.autofree_mode && clean is Array
-		&& tc.ownership_for_in_len_only_binding(node, header, target_name)
+		&& tc.ownership_for_in_binding_is_read_only(node, header, target_name)
 	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id, clones_storage_binding, as_borrow)
 }
 
-// ownership_for_in_len_only_binding reports whether every use of `name` inside
-// the loop body is a direct `name.len` read. Such a binding cannot escape.
-fn (tc &TypeChecker) ownership_for_in_len_only_binding(node flat.Node, header int, name string) bool {
+// ownership_for_in_binding_is_read_only reports whether `name` is used only
+// as a read inside the loop body. Field reads (`name.field`), length reads and
+// scalar rvalue uses are safe as borrows of the container. Writes, address
+// taking, container stores, returns and closures keep the clone.
+fn (tc &TypeChecker) ownership_for_in_binding_is_read_only(node flat.Node, header int, name string) bool {
 	if name == '' || name == '_' {
 		return false
 	}
-	mut uses := 0
-	mut len_uses := 0
 	mut pending := []flat.NodeId{}
 	for i in header .. node.children_count {
 		pending << tc.a.child(&node, i)
@@ -7089,20 +7091,39 @@ fn (tc &TypeChecker) ownership_for_in_len_only_binding(node flat.Node, header in
 		id := pending.pop()
 		n := tc.a.node(id)
 		if n.kind == .ident && n.value == name {
-			uses++
+			parent := tc.direct_parent_id(id)
+			if !tc.valid_node_id(parent) {
+				return false
+			}
+			p := tc.a.node(parent)
+			if p.kind == .selector && p.children_count > 0 && tc.a.child(p, 0) == id {
+				continue
+			}
+			if p.kind in [.infix, .prefix, .paren, .cast_expr, .index] {
+				continue
+			}
+			return false
 		}
-		if n.kind == .selector && n.value == 'len' {
-			for c in 0 .. n.children_count {
-				child := tc.a.child(n, c)
-				cn := tc.a.node(child)
-				if cn.kind == .ident && cn.value == name {
-					len_uses++
-				}
+		if n.kind in [.return_stmt, .fn_literal, .lambda_expr, .defer_stmt, .spawn_expr] {
+			if tc.ownership_subtree_uses_base(id, name) {
+				return false
+			}
+		}
+		if n.kind == .assign && n.children_count > 0 {
+			if tc.ownership_subtree_uses_base(tc.a.child(n, 0), name) {
+				return false
+			}
+		}
+		if n.kind == .index_assign && n.children_count > 0 {
+			base := tc.a.child(n, 0)
+			base_node := tc.a.node(base)
+			if base_node.kind == .ident && base_node.value == name {
+				return false
 			}
 		}
 		pending << tc.a.children_of(n)
 	}
-	return uses > 0 && uses == len_uses
+	return true
 }
 
 fn (mut tc TypeChecker) ownership_bind_mut_for_in_var(key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, has_val bool) {
@@ -14090,6 +14111,11 @@ fn (mut tc TypeChecker) ownership_release_borrower(borrower string) {
 }
 
 fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeId, target string, is_call bool) {
+	// `.len` is an int scalar even when rooted in borrowed storage; it is never
+	// moved out of that storage.
+	if name.ends_with('.len') {
+		return
+	}
 	if !tc.ownership_sum_name_has_owner(name) {
 		if source := tc.ownership_borrowed_alias_source(name, false) {
 			action := if is_call { 'move into function' } else { 'move to' }
