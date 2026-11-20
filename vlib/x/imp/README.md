@@ -45,12 +45,20 @@ ctx.flow()
 | `name`  | display name |
 | `help`  | help text |
 | `takes` | input paths |
+| `deps`  | []imp.Dep explicit dependencies |
 | `gives` | output paths |
 | `check` | .mtime (default), .hash or .none |
 | `pre`   | []imp.FlowDep run before |
 | `post`  | []imp.FlowDep run after |
 | `flags` | []imp.Flag read with self.flag |
 | `flow`  | fn (self imp.Flow) ! |
+
+## dependencies
+`imp.Dep{path: 'gen.txt'}` links the flow producing that path and makes the
+change to it invalidate the skip check. `imp.Dep{id: 'lint'}` links a flow by
+name, with no shared path. `imp.Dep{after: 'gen'}` is order-only: the named flow
+runs first, but changes in it do not defeat the skip check. These complement
+the implicit dependencies inferred from `takes` and `gives`.
 
 ## hooks
 | declaration                                | result |

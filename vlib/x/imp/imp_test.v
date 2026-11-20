@@ -186,6 +186,74 @@ fn test_hash_skip_needs_outputs_and_inputs() {
 	assert !is_unchanged(f, digest)
 }
 
+// test_explicit_path_dep_links_and_invalidates checks that a path dependency
+// creates an implicit edge and takes part in the skip check.
+fn test_explicit_path_dep_links_and_invalidates() {
+	sandbox('explicit_path')
+	os.write_file('src', '')!
+	os.write_file('extra', 'a')!
+	mut c := new()
+	c.add_flow(id: 'gen', gives: ['extra'], check: .none, flow: record)
+	c.add_flow(
+		id:    'build'
+		deps:  [Dep{ path: 'extra' }]
+		gives: ['out']
+		flow:  record
+	)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build '
+	os.write_file('extra', 'b')!
+	c.execute(['build'])!
+	assert contents('log') == 'gen build gen build '
+}
+
+// test_order_only_dep_does_not_invalidate checks that an order-only producer
+// runs first, but changes in its output do not defeat the skip check.
+fn test_order_only_dep_does_not_invalidate() {
+	sandbox('order_only')
+	os.write_file('src', '')!
+	set_mtime('src', -100)
+	os.write_file('stamp.txt', 'a')!
+	mut c := new()
+	c.add_flow(id: 'gen', gives: ['stamp.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'build'
+		takes: ['src']
+		deps:  [Dep{ after: 'gen' }]
+		gives: ['out']
+		flow:  record
+	)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build '
+	os.write_file('stamp.txt', 'b')!
+	c.execute(['build'])!
+	assert contents('log') == 'gen build gen '
+}
+
+// test_explicit_id_dep_links_without_path checks that an id dependency links
+// flows that share no paths at all.
+fn test_explicit_id_dep_links_without_path() {
+	sandbox('explicit_id')
+	mut c := new()
+	c.add_flow(id: 'first', check: .none, flow: record)
+	c.add_flow(id: 'second', deps: [Dep{ id: 'first' }], check: .none, flow: record)
+	c.execute(['second'])!
+	assert contents('log') == 'first second '
+}
+
+// test_unknown_explicit_dep_is_rejected checks that a bad dependency id is
+// reported before any flow runs.
+fn test_unknown_explicit_dep_is_rejected() {
+	sandbox('unknown_dep')
+	mut c := new()
+	c.add_flow(id: 'ok', check: .none, flow: record)
+	c.add_flow(id: 'bad', deps: [Dep{ id: 'nope' }], check: .none, flow: record)
+	mut msg := ''
+	c.execute(['ok']) or { msg = err.msg() }
+	assert msg == 'flow `bad` has unknown dependency `nope`'
+	assert !os.exists('log')
+}
+
 // test_walks_do_not_follow_links checks that a link loop in an input directory
 // cannot trap the skip checks, which take a dangling link as an entry like any
 // other.
