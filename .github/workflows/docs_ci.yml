@@ -29,8 +29,10 @@ jobs:
         uses: ./.github/actions/setup-v
         with:
           symlink: false
-      - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)
-        run: ./v retry -- sudo apt install --quiet -y libx11-dev libpq-dev libssl-dev sqlite3 libsqlite3-dev
+      # The apt-profile cache may report a hit while restoring zero packages.
+      # Explicitly ensure the graphics headers used by gg/sokol Markdown examples.
+      - name: Install dependencies (database, EGL and X11 examples)
+        run: ./v retry -- sudo apt install --quiet -y libx11-dev libpq-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libegl-dev libgl-dev libxrandr-dev
       - name: Check markdown line length & code examples
         run: ./v check-md -hide-warnings .
         ## NB: -hide-warnings is used here, so that the output is less noisy,
