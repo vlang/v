@@ -1717,6 +1717,15 @@ fn (tc &TypeChecker) timing_profile(message string) {
 	}
 }
 
+// timing_step reports, when the checker is verbose, the time since `sw` was
+// last restarted as the sub-step `label`, and restarts it.
+fn (tc &TypeChecker) timing_step(mut sw time.StopWatch, label string) {
+	if tc.verbose {
+		eprintln('  [ttime]       ${label:-15s} ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		sw.restart()
+	}
+}
+
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
 // checker helpers, including ownership snapshots and inferred metadata.
 pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
@@ -4528,6 +4537,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		tc.collect_top_level_idx_fast(a, inactive_comptime_nodes)
 		tc.order_top_level_idx_by_files()
 		tc.top_level_idx_nodes_len = a.nodes.len
+		tc.timing_step(mut ck_part_sw, 'ck idx top')
 		if tc.collect_declaration_indexes_in_parallel(a) {
 			// The collecting thread reserves the rest beside the index lanes.
 			tc.reserve_declaration_visibility()
@@ -4960,21 +4970,26 @@ fn (mut tc TypeChecker) collect_declaration_visibility() {
 // and the full-scan fallback in collect()).
 fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
+	mut step_sw := time.new_stopwatch()
 	parallel_declaration_indexes := tc.prepare_collect_declaration_indexes_parallel(a)
 	if !parallel_declaration_indexes {
 		tc.build_enclosing_generic_param_index(a)
 		tc.build_type_declaration_index(a)
 		tc.build_fn_declaration_indexes(a)
 	}
+	tc.timing_step(mut step_sw, 'p1 decl idx')
 	if !tc.valid_diagnostic_fast {
 		tc.index_multiple_module_import_lines(a)
 	}
 	// Scans prepared for a line index that was not built must not outlive this AST.
 	tc.import_line_prescans = []ImportLineScan{}
+	tc.timing_step(mut step_sw, 'p1 import lines')
 	// Pass 1: collect type-level names (aliases, enums, sum types)
 	tc.collect_pass1(a, tc.top_level_idx, parallel_declaration_indexes)
+	tc.timing_step(mut step_sw, 'p1 loop')
 	tc.check_alias_declaration_cycles()
 	tc.cache_fn_generic_params(a)
+	tc.timing_step(mut step_sw, 'p1 generics')
 	// Pass 1 can parse callback aliases before later modules with same-named
 	// types have been indexed. Rebuild name-derived caches from the complete
 	// declaration table before collecting concrete signatures in pass 2.
@@ -4989,6 +5004,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.check_c_struct_redeclarations_of(a, tc.top_level_idx, mut prepared.c_structs)
 		tc.check_c_fn_redeclarations_of(a, tc.top_level_idx, mut prepared.c_fns)
 	}
+	tc.timing_step(mut step_sw, 'p1 c redecl')
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
@@ -5007,6 +5023,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// registrations. Empty when the pool is unavailable — then each fn_decl
 	// computes inline exactly as before.
 	mut pass2_preps, pass2_scopes := tc.collect_pass2_fn_preps_parallel()
+	tc.timing_step(mut step_sw, 'p2 preps')
 	fast_pass2_registration := os.getenv('V3_NO_FAST_PASS2_REGISTRATION') == ''
 	parallel_pass2_ancillary := fast_pass2_registration && tc.building_v_fast
 		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
@@ -5025,6 +5042,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		mut prepared := tc.prepared_collect
 		prepared.public_c_structs = public_c_structs.clone()
 	}
+	tc.timing_step(mut step_sw, 'p2 serial')
 	if parallel_pass2_ancillary {
 		tc.defer_fn_ancillary = false
 		// Also collects the deprecated symbols, beside the lanes.
@@ -5036,15 +5054,18 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	if !parallel_pass2_ancillary {
 		tc.collect_deprecated_symbols()
 	}
+	tc.timing_step(mut step_sw, 'p2 ancillary')
 	if p2_profile {
 		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
 	}
 	tc.timing_profile('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
+	step_sw.restart()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
 	// Globals may depend on constants whose initializer types were still pending.
 	tc.resolve_inferred_global_types(a)
+	tc.timing_step(mut step_sw, 'rs consts')
 	tc.static_associated_method_names = map[string]bool{}
 	for name, _ in tc.fn_ret_types {
 		if _, method := flat.decode_static_type_method_name(name) {
@@ -5052,11 +5073,14 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		}
 	}
 	tc.static_associated_signature_count = tc.fn_ret_types.len
+	tc.timing_step(mut step_sw, 'rs static names')
 	tc.build_const_suffixes()
 	tc.build_struct_embed_index()
+	tc.timing_step(mut step_sw, 'rs suffix+embed')
 	if tc.building_v_fast {
 		tc.cache_direct_struct_field_types()
 	}
+	tc.timing_step(mut step_sw, 'rs field types')
 	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !isnil(tc.visible_mutation_cache) {
 		mut visible_mutation_cache := tc.visible_mutation_cache

@@ -3,6 +3,7 @@ module types
 import os
 import strconv
 import strings
+import time
 import v.flat
 import v.gen.c.naming
 import v.token
@@ -15708,9 +15709,12 @@ pub fn (tc &TypeChecker) end_interface_impl_queries(opened bool) {
 }
 
 pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
+	mut step_sw := time.new_stopwatch()
 	tc.prepare_interface_requirement_indexes()
+	tc.timing_step(mut step_sw, 'if requirements')
 	tc.interface_impl_indexes = map[u32]&InterfaceImplIndex{}
 	tc.interface_impl_candidates_at_index = tc.interface_impl_candidate_names()
+	tc.timing_step(mut step_sw, 'if candidates')
 	iface_names := tc.interface_names.keys()
 	if !tc.prepare_interface_impl_indexes_parallel(iface_names) {
 		tc.interface_impl_memo = &InterfaceImplMemo{}
@@ -15727,6 +15731,7 @@ pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 		}
 		tc.interface_impl_memo = unsafe { nil }
 	}
+	tc.timing_step(mut step_sw, 'if impls')
 	// The immutable transform indexes above preserve the pre-monomorphization
 	// order. Do not leave the same lists in the mutable query cache: generic
 	// materialization can add implementers before cgen queries it again.

@@ -143,7 +143,9 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	if n_slices < 1 {
 		return false
 	}
+	mut step_sw := time.new_stopwatch()
 	tc.install_type_cache_overlay()
+	tc.timing_step(mut step_sw, '  if overlay')
 	// The last checker tests the candidates that depend on the interface.
 	mut checkers := []&TypeChecker{cap: n_slices + 1}
 	checkers << tc
@@ -153,8 +155,10 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	// The method-receiver index reads only the declared signatures, which every
 	// fork shares: index them once here instead of once per job. The same goes
 	// for the sorted candidates that every interface tests.
+	tc.timing_step(mut step_sw, '  if forks')
 	mut shared_memo := &InterfaceImplMemo{}
 	tc.memo_index_method_receivers(mut shared_memo)
+	tc.timing_step(mut step_sw, '  if receivers')
 	// A caller's own memo stays as it is: the candidates go to the shared one.
 	caller_memo := tc.interface_impl_memo
 	tc.interface_impl_memo = shared_memo
@@ -188,7 +192,9 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 			force_sync: job == 0
 		}
 	}
+	tc.timing_step(mut step_sw, '  if setup')
 	pool.run(tasks)
+	tc.timing_step(mut step_sw, '  if pool')
 	tc.restore_type_cache_base()
 	for i, iface_name in iface_names {
 		// The slices are consecutive ranges of the sorted candidates, so their
@@ -239,6 +245,10 @@ struct CollectDeclarationIndexArgs {
 fn collect_index_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectIndexPrepArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	defer {
+		tc.timing_step(mut sw, '  idx task ${a.kind}')
+	}
 	match a.kind {
 		0 {
 			tc.init_direct_parent_range(a.start, a.end)
@@ -260,6 +270,10 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 fn collect_declaration_index_thread(arg voidptr) voidptr {
 	a := unsafe { &CollectDeclarationIndexArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	defer {
+		tc.timing_step(mut sw, '  decl task ${a.kind}')
+	}
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
@@ -903,6 +917,10 @@ struct Pass2AncillaryArgs {
 fn pass2_ancillary_thread(arg voidptr) voidptr {
 	a := unsafe { &Pass2AncillaryArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	defer {
+		tc.timing_step(mut sw, '  p2 group ${a.group}')
+	}
 	if a.group == pass2_ancillary_groups {
 		// The collecting thread's own task (finish_pass2_ancillary_registrations).
 		tc.collect_deprecated_symbols()
@@ -934,7 +952,9 @@ fn pass2_fn_prep_thread(arg voidptr) voidptr {
 	view.cur_file = a.file
 	view.cur_module = a.module_name
 	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
+	mut sw := time.new_stopwatch()
 	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
+	master.timing_step(mut sw, '  p2 prep ${a.start}')
 	if scope != unsafe { nil } {
 		mark_pass2_fn_prep_scope(mut *preps, a.start, a.end, scope)
 		check_worker_scope_leave(scope)
