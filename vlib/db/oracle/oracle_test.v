@@ -70,3 +70,53 @@ fn test_orm_interface_conformance() {
 	_ = orm.Connection(conn)
 	_ = orm.TransactionalConnection(conn)
 }
+
+fn test_limit_offset_bind_order() {
+	// The recorder stands in for the OCI boundary: it captures the SQL and the
+	// values that would be handed to OCIBindByPos, without a live client.
+	mut conn := Connection{}
+	conn.record_calls = true
+	cfg := orm.SelectConfig{
+		table:      orm.Table{ name: 'users' }
+		fields:     ['id']
+		types:      [typeof[int]().idx]
+		has_limit:  true
+		has_offset: true
+	}
+	// data.data carries [limit, offset] (10 and 20 respectively).
+	data := orm.QueryData{
+		data: [orm.Primitive(10), orm.Primitive(20)]
+	}
+	conn.select(cfg, data, orm.QueryData{})!
+	assert conn.calls.len == 1
+	assert conn.calls[0].query.contains('OFFSET :2 ROWS FETCH FIRST :1 ROWS ONLY')
+	values := conn.calls[0].params.map(it.value)
+	assert values == ['20', '10'], 'expected offset before limit, got ${values}'
+}
+
+fn test_sequence_ownership_per_table() {
+	mut conn := Connection{}
+	conn.record_calls = true
+	serial_id := orm.TableField{ name: 'id', typ: orm.serial }
+	conn.create(orm.new_table('alpha', []), [serial_id])!
+	conn.create(orm.new_table('beta', []), [serial_id])!
+	assert conn.sequences['alpha'] == 'alpha_id_SEQ'
+	assert conn.sequences['beta'] == 'beta_id_SEQ'
+
+	// Insert into alpha, then last_id() must read alpha's sequence even though
+	// beta was the table created most recently.
+	conn.calls.clear()
+	conn.insert(orm.new_table('alpha', []), orm.QueryData{})!
+	assert conn.last_insert_table == 'alpha'
+	_ = conn.last_id()
+	assert conn.calls.len == 2
+	assert conn.calls[1].query == 'SELECT "alpha_id_SEQ".CURRVAL FROM DUAL', conn.calls[1].query
+
+	// Dropping alpha must drop only alpha's sequence; beta's stays recorded.
+	conn.calls.clear()
+	conn.drop(orm.new_table('alpha', []))!
+	assert conn.calls.any(it.query == 'DROP SEQUENCE "alpha_id_SEQ"')
+	assert !conn.calls.any(it.query.contains('beta_id_SEQ'))
+	assert 'alpha' !in conn.sequences
+	assert conn.sequences['beta'] == 'beta_id_SEQ'
+}

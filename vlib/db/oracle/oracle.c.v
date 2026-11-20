@@ -53,16 +53,31 @@ pub mut:
 	num_rows_affected int
 }
 
+// ExecCall records one `exec` invocation. It backs the offline test seam that
+// lets the ORM SQL-generation regressions run without a live Oracle client.
+struct ExecCall {
+	query  string
+	params []Param
+}
+
 // Connection owns the OCI handles for one Oracle session.
 pub struct Connection {
 mut:
-	env           voidptr = voidptr(0)
-	err           voidptr = voidptr(0)
-	srv           voidptr = voidptr(0)
-	svc           voidptr = voidptr(0)
-	usr           voidptr = voidptr(0)
-	is_open       bool
-	last_sequence string
+	env     voidptr = voidptr(0)
+	err     voidptr = voidptr(0)
+	srv     voidptr = voidptr(0)
+	svc     voidptr = voidptr(0)
+	usr     voidptr = voidptr(0)
+	is_open bool
+	// sequences maps a table name to the sequence backing its serial column.
+	sequences map[string]string
+	// last_insert_table is the table targeted by the most recent `insert`,
+	// used by `last_id` to pick the right sequence.
+	last_insert_table string
+	// record_calls/calls are a test-only boundary: when enabled, `exec`
+	// records its arguments and returns an empty result instead of calling OCI.
+	record_calls bool
+	calls        []ExecCall
 pub mut:
 	dsn string
 }
@@ -112,26 +127,26 @@ pub fn (mut conn Connection) connect(cfg Config) ! {
 	rc = C.OCIHandleAlloc(conn.env, voidptr(&conn.svc), u32(htype_svcctx), 0, 0)
 	conn.check(rc, 'OCIHandleAlloc(svcctx)')!
 
-	rc = C.OCIAttrSet(voidptr(&conn.svc), u32(htype_svcctx), voidptr(&conn.srv), 0, u32(attr_server),
-		conn.err)
+	// OCIAttrSet takes the target and attribute handle VALUES returned by
+	// OCIHandleAlloc, not the addresses of the variables holding them.
+	rc = C.OCIAttrSet(conn.svc, u32(htype_svcctx), conn.srv, 0, u32(attr_server), conn.err)
 	conn.check(rc, 'OCIAttrSet(server)')!
 
 	rc = C.OCIHandleAlloc(conn.env, voidptr(&conn.usr), u32(htype_session), 0, 0)
 	conn.check(rc, 'OCIHandleAlloc(session)')!
 
-	rc = C.OCIAttrSet(voidptr(&conn.usr), u32(htype_session), voidptr(user.str), u32(user.len),
+	rc = C.OCIAttrSet(conn.usr, u32(htype_session), voidptr(user.str), u32(user.len),
 		u32(attr_username), conn.err)
 	conn.check(rc, 'OCIAttrSet(username)')!
 
-	rc = C.OCIAttrSet(voidptr(&conn.usr), u32(htype_session), voidptr(pass.str), u32(pass.len),
+	rc = C.OCIAttrSet(conn.usr, u32(htype_session), voidptr(pass.str), u32(pass.len),
 		u32(attr_password), conn.err)
 	conn.check(rc, 'OCIAttrSet(password)')!
 
 	rc = C.OCISessionBegin(conn.svc, conn.err, conn.usr, u32(oci_cred_rdbms), u32(oci_default))
 	conn.check(rc, 'OCISessionBegin')!
 
-	rc = C.OCIAttrSet(voidptr(&conn.svc), u32(htype_svcctx), voidptr(&conn.usr), 0, u32(attr_session),
-		conn.err)
+	rc = C.OCIAttrSet(conn.svc, u32(htype_svcctx), conn.usr, 0, u32(attr_session), conn.err)
 	conn.check(rc, 'OCIAttrSet(session)')!
 
 	conn.dsn = dsn
@@ -172,6 +187,12 @@ pub fn (mut conn Connection) close() {
 // ...) and returns any result rows. All values are exchanged as strings and
 // converted by Oracle, which keeps the binding path simple and predictable.
 pub fn (mut conn Connection) exec(query string, params []Param) !Result {
+	// Offline test boundary: record the statement and its bound values instead
+	// of touching OCI. Production code always leaves `record_calls` false.
+	if conn.record_calls {
+		conn.calls << ExecCall{ query: query, params: params }
+		return Result{}
+	}
 	if !conn.is_open {
 		return error('oracle: connection is not open')
 	}
@@ -242,9 +263,11 @@ pub fn (mut conn Connection) exec(query string, params []Param) !Result {
 		rc = C.OCIParamGet(stmt, u32(htype_stmt), conn.err, voidptr(&param), u32(i + 1))
 		conn.check(rc, 'OCIParamGet')!
 
-		mut name_buf := [256]u8{}
+		// OCI_ATTR_NAME returns a text pointer, not inline characters. Receiving
+		// into a char array would store the pointer bytes instead of the name.
+		mut name_ptr := &char(0)
 		mut name_len := u32(0)
-		rc = C.OCIAttrGet(param, u32(dtype_param), voidptr(&name_buf[0]), &name_len, u32(attr_name),
+		rc = C.OCIAttrGet(param, u32(dtype_param), voidptr(&name_ptr), &name_len, u32(attr_name),
 			conn.err)
 		conn.check(rc, 'OCIAttrGet(name)')!
 
@@ -265,7 +288,12 @@ pub fn (mut conn Connection) exec(query string, params []Param) !Result {
 		}
 		conn.check(rc, 'OCIDefineByPos')!
 
-		res.names << unsafe { (&name_buf[0]).vstring_with_len(int(name_len)) }.clone()
+		name := if name_len > 0 && name_ptr != &char(0) {
+			unsafe { name_ptr.vstring_with_len(int(name_len)) }.clone()
+		} else {
+			''
+		}
+		res.names << name
 	}
 
 	for {
@@ -369,13 +397,15 @@ pub fn (mut conn Connection) release_savepoint(name string) ! {
 	conn.exec('RELEASE SAVEPOINT ${name}', [])!
 }
 
-// last_id returns CURRVAL of the sequence created for the most recent
-// `create()` call, or 0 when the table had no serial field.
+// last_id returns CURRVAL of the sequence backing the most recent `insert`,
+// or 0 when that table had no serial field. The sequence is resolved per table
+// so inserting into one table never reads another table's sequence.
 pub fn (mut conn Connection) last_id() int {
-	if conn.last_sequence == '' {
+	sequence := conn.sequences[conn.last_insert_table]
+	if sequence == '' {
 		return 0
 	}
-	res := conn.exec('SELECT "${conn.last_sequence}".CURRVAL FROM DUAL', []) or { return 0 }
+	res := conn.exec('SELECT "${sequence}".CURRVAL FROM DUAL', []) or { return 0 }
 	if res.rows.len == 0 || res.rows[0].vals.len == 0 {
 		return 0
 	}

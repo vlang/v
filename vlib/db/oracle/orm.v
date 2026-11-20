@@ -12,8 +12,17 @@ pub fn (mut db Connection) select(config orm.SelectConfig, data orm.QueryData, w
 	for v in where_with_tenant.data {
 		append_params(mut params, v)
 	}
-	for v in data.data {
-		append_params(mut params, v)
+	// The rewritten tail is `OFFSET ... ROWS FETCH FIRST ... ROWS ONLY`, and
+	// OCI binds by textual position. Bind the offset value before the limit
+	// value so the positional binds match the statement (e.g. [20, 10] for
+	// limit 10 / offset 20), mirroring the SQL produced by oracle_select_query.
+	if config.has_limit && config.has_offset && data.data.len >= 2 {
+		append_params(mut params, data.data[1]) // OFFSET
+		append_params(mut params, data.data[0]) // FETCH FIRST (LIMIT)
+	} else {
+		for v in data.data {
+			append_params(mut params, v)
+		}
 	}
 	res := db.exec(query, params)!
 
@@ -41,6 +50,9 @@ pub fn (mut db Connection) insert(table orm.Table, data orm.QueryData) ! {
 		append_params(mut params, v)
 	}
 	db.exec(query, params)!
+	// Remember which table was inserted into so last_id() resolves that
+	// table's sequence rather than the last-created table's.
+	db.last_insert_table = table.name
 }
 
 // update is used internally by V's ORM for processing `UPDATE` queries.
@@ -85,7 +97,7 @@ pub fn (mut db Connection) create(table orm.Table, fields []orm.TableField) ! {
 				}
 				Result{}
 			}
-			db.last_sequence = sequence
+			db.sequences[table.name] = sequence
 		}
 	}
 
@@ -93,11 +105,11 @@ pub fn (mut db Connection) create(table orm.Table, fields []orm.TableField) ! {
 		return err
 	}
 	query = query.replace('CREATE TABLE IF NOT EXISTS ', 'CREATE TABLE ')
-	if db.last_sequence != '' {
+	if sequence != '' {
 		for f in fields {
 			if field_is_serial(f) {
 				needle := '"${f.name}" NUMBER'
-				replacement := '"${f.name}" NUMBER DEFAULT "${db.last_sequence}".NEXTVAL'
+				replacement := '"${f.name}" NUMBER DEFAULT "${sequence}".NEXTVAL'
 				query = query.replace(needle, replacement)
 				break
 			}
@@ -113,17 +125,17 @@ pub fn (mut db Connection) create(table orm.Table, fields []orm.TableField) ! {
 			}
 		}
 	}
-	if sequence != '' {
-		db.last_sequence = sequence
-	}
 }
 
 // drop is used internally by V's ORM for table destroying queries (DDL).
+// Only the sequence belonging to the dropped table is removed; sequences of
+// other tables stay recorded so last_id() keeps resolving correctly.
 pub fn (mut db Connection) drop(table orm.Table) ! {
 	db.exec('DROP TABLE "${table.name}"', [])!
-	if db.last_sequence != '' {
-		_ = db.exec('DROP SEQUENCE "${db.last_sequence}"', []) or { Result{} }
-		db.last_sequence = ''
+	sequence := db.sequences[table.name]
+	if sequence != '' {
+		_ = db.exec('DROP SEQUENCE "${sequence}"', []) or { Result{} }
+		db.sequences.delete(table.name)
 	}
 }
 
