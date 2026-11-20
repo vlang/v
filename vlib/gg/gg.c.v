@@ -324,6 +324,8 @@ pub mut:
 	// Camera stored by set_camera(), used by begin_3d() and all 3D helpers
 	// that need a view direction (fog, billboards, picking).
 	camera Camera3D
+	// Optional shadow map applied while shading material meshes.
+	shadow_map ?&ShadowMap3D = none
 }
 
 fn gg_init_sokol_window(user_data voidptr) {

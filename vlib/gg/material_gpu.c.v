@@ -10,6 +10,8 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 
 // draw_material_mesh_s draws a shaded mesh with per-axis scale.
 // It returns false when the mesh is invalid or the context has no depth buffer.
+// If a shadow map is attached to the context, its visibility is applied to
+// each vertex's colour.
 pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3, size Vec3, mat &Material3D, cam Camera3D) bool {
 	if !mesh.valid() || !ctx.config.depth {
 		return false
@@ -36,6 +38,10 @@ pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3
 		}
 		world_verts[i] = world
 		vertex_colors[i] = material_color(&shade, world, n, cam)
+		if sm := ctx.shadow_map {
+			vis := sm.sample(world)
+			vertex_colors[i] = shadow_color(vertex_colors[i], vis)
+		}
 	}
 	mut verts := []Vec3{cap: mesh.indices.len}
 	mut colors := []Color{cap: mesh.indices.len}
