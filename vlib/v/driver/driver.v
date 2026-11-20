@@ -20576,7 +20576,7 @@ fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Pr
 	for file in module_dir_v_files(prefs, dir) {
 		if real_dir.len == 0 {
 			real_dir = import_dir_real_path(dir)
-			symlinks = flat.scan_listed_symlinks(dir)
+			symlinks = module_dir_symlinks(dir)
 		}
 		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir, &symlinks)
 	}
@@ -25509,7 +25509,7 @@ fn source_header_imports(source string, defines []string) []string {
 // `pending_synthetic` are the ones that the resolver splices in behind the first module
 // of the wave. The resolver stays the authority: the parser takes the files parsed
 // ahead only for a wave of exactly these files (see Parser.speculate_next_batch).
-fn predict_next_wave_files(a &flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, wave_files []string, wave_module_file_ends []int, pending_synthetic []string, parsed_modules map[string]bool, parsed_module_identities map[string]string, project_root string, mut module_path_cache map[string]string) []string {
+fn predict_next_wave_files(a &flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, wave_files []string, wave_module_file_ends []int, pending_synthetic []string, parsed_modules map[string]bool, parsed_module_identities map[string]string, project_root string, mut module_path_cache map[string]string, mut module_identity_cache map[string]string) []string {
 	if isnil(a.worker_pool) || a.worker_pool.size() == 0 {
 		return []string{}
 	}
@@ -25532,6 +25532,46 @@ fn predict_next_wave_files(a &flat.FlatAst, mut p parser.Parser, prefs &pref.Pre
 	for scan in scans {
 		p.preload_batch_source(scan.path, scan.source)
 	}
+	// The modules that the loop below resolves, each for its first importer:
+	// the pool resolves them side by side, and the loop and the wave that
+	// parses them find the answers (see warm_import_resolutions).
+	mut warm_requests := []EagerSelfhostImport{}
+	mut warm_requested := map[string]bool{}
+	mut warm_module_start := 0
+	mut warm_synthetic_placed := false
+	for module_file_end in wave_module_file_ends {
+		if module_file_end == warm_module_start {
+			continue
+		}
+		for fi in warm_module_start .. module_file_end {
+			for mod_name in scans[fi].imports {
+				if mod_name !in warm_requested && mod_name !in parsed_modules
+					&& mod_name !in parsed_module_identities {
+					warm_requested[mod_name] = true
+					warm_requests << EagerSelfhostImport{
+						path:           mod_name
+						importing_file: wave_files[fi]
+					}
+				}
+			}
+		}
+		if !warm_synthetic_placed {
+			warm_synthetic_placed = true
+			for mod_name in pending_synthetic {
+				if mod_name !in warm_requested && mod_name !in parsed_modules
+					&& mod_name !in parsed_module_identities {
+					warm_requested[mod_name] = true
+					warm_requests << EagerSelfhostImport{
+						path:           mod_name
+						importing_file: wave_files[module_file_end - 1]
+					}
+				}
+			}
+		}
+		warm_module_start = module_file_end
+	}
+	warm_import_resolutions(a, prefs, warm_requests, project_root, mut module_path_cache, mut
+		module_identity_cache)
 	mut seen := map[string]bool{}
 	mut seen_dirs := map[string]bool{}
 	mut files := []string{}
@@ -25968,6 +26008,42 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 		}
+		if parse_waves_ahead {
+			// The modules that this wave resolves, each for its first importer:
+			// the pool resolves those that no wave prediction resolved already.
+			mut warm_requests := []EagerSelfhostImport{}
+			mut warm_requested := map[string]bool{}
+			mut warm_file := cur_file
+			for scan_idx in scan_ids {
+				scan_node := a.nodes[scan_idx]
+				if scan_node.kind == .file && scan_node.value.len > 0 {
+					warm_file = scan_node.value
+					continue
+				}
+				if scan_node.kind != .import_decl || scan_node.value.len == 0 {
+					continue
+				}
+				mod_name := scan_node.value
+				if mod_name in warm_requested || mod_name in parsed_modules
+					|| mod_name in parsed_module_identities {
+					continue
+				}
+				warm_requested[mod_name] = true
+				importing_file := a.cached_header_sources[warm_file] or {
+					if warm_file.len > 0 { warm_file } else { first_file }
+				}
+				importing_dir := if importing_file.len > 0 { os.dir(importing_file) } else { '' }
+				if '${importing_dir}\n${mod_name}' in module_path_cache {
+					continue
+				}
+				warm_requests << EagerSelfhostImport{
+					path:           mod_name
+					importing_file: importing_file
+				}
+			}
+			warm_import_resolutions(a, prefs, warm_requests, project_root, mut module_path_cache, mut
+				module_identity_cache)
+		}
 		// Decide short-name collisions for the whole visible import wave before
 		// mutating any import node or parsing either module. This qualifies both
 		// sides of `a.tast`/`b.tast`, avoiding an order-dependent state where the
@@ -26369,7 +26445,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			p.speculate_next_batch(predict_next_wave_files(a, mut p, prefs, wave_files, wave_module_file_ends,
 				pending_synthetic, parsed_modules, parsed_module_identities, project_root, mut
-				module_path_cache))
+				module_path_cache, mut module_identity_cache))
 			ri_predict_ns += time.sys_mono_now() - ri_t2
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut parse_timing)
