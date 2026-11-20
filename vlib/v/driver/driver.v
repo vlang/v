@@ -663,6 +663,20 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		primary_compiler_flags: primary_compiler_flags
 		common_flags:           common_compile_flags
 	}
+	// C the program adds itself (`#flag file.c`, ...) is compiled as user
+	// code, without the vendored Mbed TLS search dirs: with them first, it
+	// would silently resolve `#include <mbedtls/...>` to the vendored 3.6
+	// headers instead of an installed system Mbed TLS (#32422). The
+	// vendored `.o` builds below keep the full flags, and the program's own
+	// `-I` dirs are untouched, so its own headers still win.
+	mut user_common_compile_flags := optimization_flags.clone()
+	user_common_compile_flags << without_mbedtls_vendored_include_dirs(c_object_compile_support_flags(flags))
+	user_c_object_flag_plan := CObjectFlagPlan{
+		environment_flags:      environment_c_flags
+		primary_compiler:       c_compiler
+		primary_compiler_flags: primary_compiler_flags
+		common_flags:           user_common_compile_flags
+	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	ensure_native_object_cache_dir(cache_dir)!
 	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
@@ -731,7 +745,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		} else if !clean.starts_with('-') && clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
-			object_path := ensure_c_source_object(clean, active_language, &object_flag_plan, c99,
+			object_path := ensure_c_source_object(clean, active_language, &user_c_object_flag_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -740,7 +754,20 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			}
 			add_c_language_runtime_link_flags(mut prepared, flags, language, target)
 		} else if c_flag_is_c_source_file(clean) {
-			prepared << flag
+			// Bare C-family sources are user code: compile each one now with
+			// the user plan (no vendored Mbed TLS dirs, see above) and link
+			// the object, instead of compiling them together with the
+			// generated program unit under the full flags.
+			stats.requests++
+			language := c_source_language(clean, active_language)
+			object_path := ensure_c_source_object(clean, active_language, &user_c_object_flag_plan, c99,
+				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
+				uncached_dir, mut stats)!
+			append_c_link_object(mut prepared, object_path, active_language)
+			if c_generated_native_source_context(clean, uncached_dir) {
+				os.rm(clean) or {}
+			}
+			add_c_language_runtime_link_flags(mut prepared, flags, language, target)
 		} else {
 			prepared << flag
 		}
@@ -2185,6 +2212,46 @@ fn c_source_from_object_file(obj_path string) ?string {
 		}
 	}
 	return none
+}
+
+// mbedtls_vendored_include_path reports whether a C flag operand or joined
+// flag value names a search dir inside V's vendored Mbed TLS tree
+// (`thirdparty/mbedtls`). Such dirs must reach only the compilations of
+// the vendored sources themselves -- never C the program adds itself
+// (#32422): with them first, a program that also uses an installed system
+// Mbed TLS would silently compile its own C against the vendored 3.6
+// headers instead of the system ones.
+fn mbedtls_vendored_include_path(arg string) bool {
+	normalized := arg.replace('\\', '/')
+	return normalized.contains('thirdparty/mbedtls/')
+		|| normalized.ends_with('thirdparty/mbedtls')
+}
+
+// without_mbedtls_vendored_include_dirs drops the vendored Mbed TLS search
+// dirs (in separate-operand and joined form) from a C flag list, keeping
+// every other flag -- including the program's own `-I` search dirs --
+// untouched.
+fn without_mbedtls_vendored_include_dirs(flags []string) []string {
+	mut out := []string{cap: flags.len}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		clean := flag.trim_space()
+		if clean in ['-I', '-isystem', '-iquote', '-idirafter', '-iprefix', '-iwithprefix',
+			'-iwithprefixbefore'] && i + 1 < flags.len
+			&& mbedtls_vendored_include_path(flags[i + 1]) {
+			i += 2
+			continue
+		}
+		if (clean.starts_with('-I') || clean.starts_with('-isystem') || clean.starts_with('-iquote')
+			|| clean.starts_with('-idirafter')) && mbedtls_vendored_include_path(clean) {
+			i++
+			continue
+		}
+		out << flag
+		i++
+	}
+	return out
 }
 
 // v3_tcc_link_has_incompatible_objects keeps foreign objects off macOS TinyCC.
