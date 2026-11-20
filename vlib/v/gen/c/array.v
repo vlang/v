@@ -507,12 +507,14 @@ fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, a
 
 // gen_nested_fixed_array_literal_copy materializes nested fixed-array elements that cannot be
 // represented as C initializers, such as calls returning fixed-array wrapper structs.
+// Return the aggregate by value: returning a pointer to a local C array from a GNU statement
+// expression leaves the caller's memmove reading a stack object that is already out of scope.
 fn (mut g FlatGen) gen_nested_fixed_array_literal_copy(node flat.Node, arr types.ArrayFixed, elem_fixed types.ArrayFixed) {
 	c_elem, dims := g.fixed_array_decl_parts(arr)
 	tmp := g.tmp_name()
-	g.write('({ ${c_elem} ${tmp}${dims} = {0}; ')
+	g.write('({ struct { ${c_elem} data${dims}; } ${tmp} = {0}; ')
 	for i in 0 .. node.children_count {
-		g.write('memmove(${tmp}[${i}], ')
+		g.write('memmove(${tmp}.data[${i}], ')
 		child_id := g.a.child(&node, i)
 		literal := g.fixed_array_compound_literal_expr(child_id, elem_fixed)
 		if trimmed_space(literal).len > 0 {
@@ -520,9 +522,9 @@ fn (mut g FlatGen) gen_nested_fixed_array_literal_copy(node flat.Node, arr types
 		} else {
 			g.gen_fixed_array_data_arg(child_id, elem_fixed)
 		}
-		g.write(', sizeof(${tmp}[${i}])); ')
+		g.write(', sizeof(${tmp}.data[${i}])); ')
 	}
-	g.write('${tmp}; })')
+	g.write('${tmp}; }).data')
 }
 
 fn fixed_array_option_payload_type(typ types.Type) ?types.ArrayFixed {
