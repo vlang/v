@@ -36,6 +36,10 @@ pub:
 	sent_bytes       u64
 	is_ack_eliciting bool
 	in_flight        bool
+	// largest_acked_in_ack is the Largest Acknowledged of the ACK frame this
+	// packet carried, if any. Once the peer acknowledges this packet, the
+	// receiver can stop acknowledging packets up to it (RFC 9000 §13.2.4).
+	largest_acked_in_ack ?u64
 }
 
 // LossDetectionSpaceState is the per-packet-number-space slice of loss
@@ -144,6 +148,39 @@ pub fn (mut ld QuicLossDetectionTimer) on_packet_sent(space QuicPacketNumberSpac
 	if is_ack_eliciting {
 		st.time_of_last_ack_eliciting_packet = now
 	}
+}
+
+// note_ack_frame_sent records that packet `packet_number`, already passed to
+// on_packet_sent, carried an ACK frame whose Largest Acknowledged is
+// `largest_acked` (RFC 9000 §13.2.4).
+pub fn (mut ld QuicLossDetectionTimer) note_ack_frame_sent(space QuicPacketNumberSpace, packet_number u64, largest_acked u64) {
+	mut st := ld.space_state(space)
+	if info := st.sent_packets[packet_number] {
+		st.sent_packets[packet_number] = SentPacketInfo{
+			...info
+			largest_acked_in_ack: largest_acked
+		}
+	}
+}
+
+// discard_space is RFC 9002 Appendix A.11's OnPacketNumberSpaceDiscarded for
+// the Initial or Handshake space: it drops that space's sent packets and
+// timers, resets pto_count, and returns the in-flight packets it dropped so
+// the caller can remove them from bytes in flight (RFC 9002 §6.4).
+pub fn (mut ld QuicLossDetectionTimer) discard_space(space QuicPacketNumberSpace) []SentPacketInfo {
+	mut in_flight := []SentPacketInfo{}
+	for _, info in ld.space_state(space).sent_packets {
+		if info.in_flight {
+			in_flight << info
+		}
+	}
+	match space {
+		.initial { ld.initial = LossDetectionSpaceState{} }
+		.handshake { ld.handshake = LossDetectionSpaceState{} }
+		.application_data { ld.application_data = LossDetectionSpaceState{} }
+	}
+	ld.pto_count = 0
+	return in_flight
 }
 
 // AckProcessingResult reports what one on_ack_received call discovered:
