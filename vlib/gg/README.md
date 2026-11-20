@@ -136,10 +136,11 @@ needed. More primitives are tracked in
 https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v` and
 `examples/gg/3d_material.v`. `examples/gg/3d_textured_cube.v` switches between
 a textured and a flat-colored cube with the space bar.
-`load_mesh_obj()` loads a static Wavefront `.obj`, and `load_mesh_gltf()`
-loads mesh primitives from a glTF 2.0 `.gltf` (embedded or external buffers,
-float attributes, 8/16/32-bit indices). Neither loader reads skins,
-animations or texture images.
+`load_mesh_obj()` loads a static Wavefront `.obj`. `load_mesh_gltf()` reads a
+glTF 2.0 `.gltf` (embedded/base64 or external buffers) and `load_mesh_glb()`
+reads the binary `.glb` form; both return static mesh primitives with float
+attributes and 8/16/32-bit indices. Neither loader reads skins, animations or
+texture images.
 `mat4_from_m4()` and `mat4_to_m4()` bridge `gg.m4.Mat4` and the matrix type
 used by `gg/render`. `m4` applies matrices to row vectors while `gg/render`
 uses column vectors, so the helpers transform the basis vectors instead of

@@ -279,24 +279,28 @@ pub fn load_mesh_gltf(path string) ![]Mesh3D {
 	for i in 0 .. doc.buffers.len {
 		buffers << gltf_buffer_data(&doc, dir, i)!
 	}
+	return meshes_from_gltf(&doc, buffers, path)
+}
+
+fn meshes_from_gltf(doc &GltfDoc, buffers [][]u8, path string) ![]Mesh3D {
 	mut result := []Mesh3D{}
 	for mesh in doc.meshes {
 		for prim in mesh.primitives {
 			if prim.attributes.position < 0 {
 				continue
 			}
-			verts := accessor_vec3(&doc, buffers, prim.attributes.position)!
+			verts := accessor_vec3(doc, buffers, prim.attributes.position)!
 			mut normals := []Vec3{}
 			if prim.attributes.normal >= 0 {
-				normals = accessor_vec3(&doc, buffers, prim.attributes.normal)!
+				normals = accessor_vec3(doc, buffers, prim.attributes.normal)!
 			}
 			mut uvs := []f32{}
 			if prim.attributes.texcoord0 >= 0 {
-				uvs = accessor_uvs(&doc, buffers, prim.attributes.texcoord0)!
+				uvs = accessor_uvs(doc, buffers, prim.attributes.texcoord0)!
 			}
 			mut indices := []u32{}
 			if prim.indices >= 0 {
-				indices = accessor_indices(&doc, buffers, prim.indices)!
+				indices = accessor_indices(doc, buffers, prim.indices)!
 			} else {
 				for i in 0 .. verts.len {
 					indices << u32(i)
@@ -309,4 +313,54 @@ pub fn load_mesh_gltf(path string) ![]Mesh3D {
 		return error('gg: no mesh primitives found in "${path}"')
 	}
 	return result
+}
+
+// load_mesh_glb loads static meshes from a binary glTF 2.0 .glb file.
+// The JSON and BIN chunks are read from the same file; no external resources
+// are required. Skins, animations and texture images are not loaded.
+pub fn load_mesh_glb(path string) ![]Mesh3D {
+	bytes := os.read_file(path) or { return error('gg: cannot read "${path}": ${err}') }
+	data := bytes.bytes()
+	if data.len < 20 {
+		return error('gg: GLB file is too short')
+	}
+	magic := binary.little_endian_u32_at(data, 0)
+	if magic != u32(0x46546c67) {
+		return error('gg: not a GLB file (bad magic)')
+	}
+	version := binary.little_endian_u32_at(data, 4)
+	if version != 2 {
+		return error('gg: unsupported GLB version ${version}')
+	}
+	mut json_bytes := []u8{}
+	mut bin_bytes := []u8{}
+	mut pos := 12
+	for pos + 8 <= data.len {
+		chunk_len := int(binary.little_endian_u32_at(data, pos))
+		chunk_type := binary.little_endian_u32_at(data, pos + 4)
+		chunk_start := pos + 8
+		if chunk_len < 0 || chunk_start + chunk_len > data.len {
+			return error('gg: truncated GLB chunk')
+		}
+		chunk := data[chunk_start..chunk_start + chunk_len]
+		if chunk_type == u32(0x4e4f534a) {
+			json_bytes = chunk.clone()
+		} else if chunk_type == u32(0x004e4942) {
+			bin_bytes = chunk.clone()
+		}
+		pos = chunk_start + chunk_len
+	}
+	if json_bytes.len == 0 {
+		return error('gg: GLB has no JSON chunk')
+	}
+	doc := json2.decode[GltfDoc](json_bytes.bytestr()) or { return error('gg: invalid GLB JSON: ${err}') }
+	mut buffers := [][]u8{}
+	for i in 0 .. doc.buffers.len {
+		if i == 0 && bin_bytes.len > 0 {
+			buffers << bin_bytes
+		} else {
+			buffers << gltf_buffer_data(&doc, os.dir(path), i)!
+		}
+	}
+	return meshes_from_gltf(&doc, buffers, path)
 }
