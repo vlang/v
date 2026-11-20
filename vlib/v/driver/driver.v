@@ -9531,7 +9531,7 @@ $if !skip_fastc ? {
 		command := cmdexec.display(compiler, args)
 		if result.exit_code != 0 { return V3FastCCompileResult{ command: command, output: output } }
 		os.mv(staged, bin_file) or { return V3FastCCompileResult{ command: command, output: err.msg() } }
-		return V3FastCCompileResult{ success: true, command: command, output: output }
+		return V3FastCCompileResult{ success: true, command: command, output: output, post_link_steps: [post_link_move_step(staged, bin_file)] }
 	}
 
 	fn compile_v3_fastc_source(pieces []string, generated_units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, payload_cache_enabled bool, jobs int, mut prestarted fastc.FastcPrestartedCUnits, mut validation V3FastcNativeValidation) V3FastCCompileResult {
