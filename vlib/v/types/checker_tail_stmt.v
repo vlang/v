@@ -2810,6 +2810,10 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 			}
 		}
 		if inferred := inferred_contextual_if_type(expected, actual) {
+			if tc.match_branch_error_value_mix(expected, actual) {
+				tc.record_match_branch_return_type_mismatch(tail_id, expected, actual)
+				return
+			}
 			expected = inferred
 			continue
 		}
