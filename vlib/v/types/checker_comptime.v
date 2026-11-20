@@ -6698,10 +6698,14 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 		return false
 	}
 	node_idx := int(id)
-	if name.len == 1 && name[0] >= `A` && name[0] <= `Z`
-		&& node_idx < tc.enclosing_generic_param_masks.len {
+	if name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
 		mask := u32(1) << u32(name[0] - `A`)
-		return tc.enclosing_generic_param_masks[node_idx] & mask != 0
+		if node_idx < tc.enclosing_generic_param_masks.len {
+			return tc.enclosing_generic_param_masks[node_idx] & mask != 0
+		}
+		if node_idx < tc.enclosing_generic_param_ranges.nodes {
+			return tc.enclosing_generic_param_ranges.mask_at(node_idx) & mask != 0
+		}
 	}
 	if tc.fn_context.node_id >= 0 && int(id) >= tc.check_range_lo && int(id) <= tc.check_range_hi {
 		params := tc.enclosing_generic_params_by_node[tc.fn_context.node_id] or { return false }

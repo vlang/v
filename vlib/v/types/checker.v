@@ -1702,8 +1702,11 @@ mut:
 	struct_embed_receivers flat.SourceTypeListBindings
 	// Immutable node -> generic parameter index shared by checker workers.
 	enclosing_generic_params_by_node map[int][]u32
-	enclosing_generic_param_masks    []u32
-	first_type_declaration_ids       map[u32]int
+	// The one-letter generic parameters of the declaration around a node: a
+	// mask per node for a small AST, node ranges for a big one.
+	enclosing_generic_param_masks  []u32
+	enclosing_generic_param_ranges GenericParamMaskRanges
+	first_type_declaration_ids     map[u32]int
 	// Immutable attribute-kind sidecars collected with declaration_attributes.
 	declaration_attribute_kinds map[int]u32
 }
@@ -2119,6 +2122,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		struct_embed_receivers:                tc.struct_embed_receivers
 		enclosing_generic_params_by_node:      tc.enclosing_generic_params_by_node
 		enclosing_generic_param_masks:         tc.enclosing_generic_param_masks
+		enclosing_generic_param_ranges:        tc.enclosing_generic_param_ranges
 		expected_expr_id:                      -1
 		expected_expr_type:                    builtin_void_type
 		smartcasts:                            tc.smartcasts
@@ -3399,7 +3403,16 @@ pub fn (tc &TypeChecker) has_fn_decl_short_name(name string) bool {
 
 fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
 	tc.enclosing_generic_params_by_node = map[int][]u32{}
-	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len}
+	if a.nodes.len >= generic_param_mask_ranges_min_nodes {
+		// A mask per node of a big AST is megabytes of zeroes.
+		tc.enclosing_generic_param_masks = []u32{}
+		tc.enclosing_generic_param_ranges = GenericParamMaskRanges{
+			nodes: a.nodes.len
+		}
+	} else {
+		tc.enclosing_generic_param_masks = []u32{len: a.nodes.len}
+		tc.enclosing_generic_param_ranges = GenericParamMaskRanges{}
+	}
 	tc.index_enclosing_generic_params(a, tc.top_level_idx)
 }
 
@@ -3451,6 +3464,11 @@ fn (mut tc TypeChecker) fill_enclosing_generic_param_mask(start int, end int, pa
 		mask |= generic_param_letter_mask(param)
 	}
 	if mask == 0 {
+		return
+	}
+	if tc.enclosing_generic_param_ranges.nodes > 0 {
+		tc.enclosing_generic_param_ranges.add(int_max(start, 0), int_min(end, tc.enclosing_generic_param_ranges.nodes),
+			mask)
 		return
 	}
 	safe_start := int_max(start, 0)
