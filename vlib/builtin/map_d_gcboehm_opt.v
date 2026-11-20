@@ -29,6 +29,7 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 	}
 }
 
+@[markused]
 fn new_map_noscan_key(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
@@ -37,6 +38,7 @@ fn new_map_noscan_key(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_
 		unsafe { &u32(vcalloc_noscan(metasize)) })
 }
 
+@[markused]
 fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
@@ -45,6 +47,7 @@ fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_e
 		unsafe { &u32(vcalloc_noscan(metasize)) })
 }
 
+@[markused]
 fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
@@ -53,6 +56,7 @@ fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 		unsafe { &u32(vcalloc_noscan(metasize)) })
 }
 
+@[markused]
 fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,
 	n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_noscan_key(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
@@ -69,6 +73,7 @@ fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapClo
 	return out
 }
 
+@[markused]
 fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,
 	n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_noscan_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
@@ -85,6 +90,7 @@ fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapC
 	return out
 }
 
+@[markused]
 fn new_map_init_noscan_key_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,
 	n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_noscan_key_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,

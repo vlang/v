@@ -347,7 +347,8 @@ pub fn (a string) clone() string {
 		return ''
 	}
 	mut b := string{
-		str: unsafe { malloc_string_buffer(a.len + 1) }
+		// Uninit: every byte is overwritten below, then NUL-terminated.
+		str: unsafe { malloc_noscan_uninit(a.len + 1) }
 		len: a.len
 	}
 	unsafe {

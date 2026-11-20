@@ -493,7 +493,7 @@ pub fn vcalloc_noscan(n int) &u8 {
 		if n < 0 {
 			_memory_panic(@FN, n)
 		}
-		return unsafe { &u8(vgc_calloc(uint(n))) }
+		return unsafe { &u8(vgc_calloc_noscan(uint(n))) }
 	} $else $if gcboehm ? {
 		if n < 0 {
 			_memory_panic(@FN, n)

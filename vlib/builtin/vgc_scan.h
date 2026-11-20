@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -50,6 +53,49 @@ static inline uintptr_t vgc_read_candidate(const void* address) {
     uintptr_t candidate;
     memcpy(&candidate, address, sizeof(candidate));
     return candidate;
+}
+
+static inline unsigned vgc_ctz64(uint64_t x) {
+#if defined(_MSC_VER) && defined(_M_X64)
+    unsigned long index = 0;
+    _BitScanForward64(&index, x);
+    return (unsigned)index;
+#elif defined(__GNUC__) || defined(__clang__)
+    return (unsigned)__builtin_ctzll(x);
+#else
+    unsigned n = 0;
+    while ((x & 1u) == 0) {
+        x >>= 1;
+        ++n;
+    }
+    return n;
+#endif
+}
+
+static inline int vgc_bitmap_atomic_test_set(uint8_t* bits, uint32_t index) {
+    // The mark bitmaps live in span metadata, whose `bits` array is 8-byte
+    // aligned, so 32-bit words are safe to compare-and-swap on all targets.
+    uint32_t* word = &((uint32_t*)bits)[index >> 5];
+    const uint32_t mask = 1u << (index & 31u);
+#if defined(__TINYC__)
+    extern _Bool __atomic_compare_exchange_4(uint32_t*, uint32_t*, uint32_t, int, int, int);
+    uint32_t expected = *word;
+    for (;;) {
+        if (expected & mask) return 1;
+        if (__atomic_compare_exchange_4(word, &expected, expected | mask, 0, 5, 5)) return 0;
+    }
+#elif defined(_MSC_VER)
+    volatile long* target = (volatile long*)word;
+    long expected = (long)*target;
+    for (;;) {
+        if (expected & (long)mask) return 1;
+        long current = _InterlockedCompareExchange(target, expected | (long)mask, expected);
+        if (current == expected) return 0;
+        expected = current;
+    }
+#else
+    return (__atomic_fetch_or(word, mask, __ATOMIC_ACQ_REL) & mask) != 0 ? 1 : 0;
+#endif
 }
 
 static inline void* vgc_current_fake_stack(void) {
