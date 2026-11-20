@@ -1,0 +1,488 @@
+module wit
+
+import os
+import wasm
+
+fn test_parse_basic() {
+	src := '
+package example:demo@0.1.0;
+
+interface types {
+	record point {
+		x: f64,
+		y: f64,
+	}
+	enum color { red, green, blue }
+	variant shape { circle(f64), empty }
+	flags perms { read, write }
+	type alias = u32;
+
+	add: func(a: s32, b: s32) -> s32;
+	greet: func(name: string) -> string;
+}
+
+world app {
+	import types;
+	export run: func();
+}
+'
+	doc := parse(src) or { panic(err) }
+	assert doc.package.namespace == 'example'
+	assert doc.package.name == 'demo'
+	assert doc.interfaces.len == 1
+	iface := doc.interfaces[0]
+	assert iface.name == 'types'
+	assert iface.items.len == 7
+	assert doc.worlds.len == 1
+	w := doc.worlds[0]
+	assert w.name == 'app'
+	assert w.imports.len == 1
+	assert w.exports.len == 1
+	// round-trip type str
+	assert prim_type('s32').str() == 's32'
+
+	generated := doc.to_v()
+	assert generated.contains('pub struct Point')
+	assert generated.contains('pub fn add')
+
+	doc2 := parse(src) or { panic(err) }
+	printed := doc2.str()
+	assert printed.contains('interface types')
+	assert printed.contains('record point')
+}
+
+fn test_wasi_fs_types_codegen_compiles() {
+	src := os.read_file('vlib/wasm/wit/testdata/wasi/fs_types.wit') or { panic(err) }
+	doc := parse(src) or { panic(err) }
+	generated := doc.to_v()
+	assert generated.len > 0
+	os.write_file('vlib/wasm/wit/testdata/wasi/fs_types_generated.v', generated) or { panic(err) }
+	res := os.exec(['v', '-check', 'vlib/wasm/wit/testdata/wasi/fs_types_generated.v'])
+	assert res.exit_code == 0, res.output
+}
+
+fn test_validate_unknown_type() {
+	src := 'package p:q;
+
+interface i {
+	f: func(x: unknown_type) -> u32;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or {
+		assert err.msg().contains('error_unknown_type')
+		return
+	}
+	panic('expected error')
+}
+
+fn test_validate_duplicate_name() {
+	src := 'package p:q;
+
+interface i {
+	x: func() -> u32;
+	x: func() -> u32;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or {
+		assert err.msg().contains('error_duplicate_name')
+		return
+	}
+	panic('expected error')
+}
+
+fn test_validate_valid() {
+	src := 'package p:q;
+
+interface i {
+	f: func(x: u32) -> u32;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or { panic(err) }
+}
+
+fn test_validate_duplicate_method() {
+	src := 'package p:q;
+
+interface i {
+	resource r {
+		m: func() -> u32;
+		m: func() -> u32;
+	}
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or {
+		assert err.msg().contains('error_duplicate_name')
+		return
+	}
+	panic('expected error')
+}
+
+fn test_parse_list_option_result() {
+	src := '
+package p:q;
+
+interface i {
+	f: func(x: list<u8>, y: option<string>) -> result<s32, string>;
+}
+'
+	doc := parse(src) or { panic(err) }
+	assert doc.interfaces.len == 1
+	f := doc.interfaces[0].items[0].func or { panic('no func') }
+	assert f.params.len == 2
+	assert f.results.len == 1
+	assert f.results[0].str() == 'result<s32, string>'
+}
+
+fn test_wrap_component_lifts_string_export() {
+	// core module with (i32, i32) -> i32 echo_len, () -> i32 hello (indirect
+	// string result), cabi_realloc (4-arg) and memory
+	mut m := wasm.Module{}
+	mut echo := m.new_function('echo_len', [.i32_t, .i32_t], [.i32_t])
+	{
+		echo.local_get(1)
+	}
+	m.commit(echo, true)
+	mut shout := m.new_function('shout', [.i32_t, .i32_t, .i32_t], [.i32_t])
+	{
+		shout.local_get(2)
+	}
+	m.commit(shout, true)
+	mut hello := m.new_function('hello', [], [.i32_t])
+	{
+		hello.i32_const(0)
+	}
+	m.commit(hello, true)
+	mut realloc := m.new_function('cabi_realloc', [.i32_t, .i32_t, .i32_t, .i32_t], [
+		.i32_t,
+	])
+	{
+		realloc.i32_const(0)
+	}
+	m.commit(realloc, true)
+	m.assign_memory('memory', true, 1, none)
+	core := m.compile()
+	doc := parse('package example:echo@0.1.0;
+
+world echo {
+	export echo-len: func(s: string) -> u32;\n\texport shout: func(s: string, loud: u8) -> u32;\n\texport hello: func() -> string;
+}
+') or { panic(err) }
+	comp := wrap_component(core, doc, '')
+	assert wasm.is_component(comp)
+	// walk component sections
+	mut pos := 8
+	mut export_names := []string{}
+	mut has_string_param := false
+	mut has_string_result := false
+	mut lift_has_mem_opt := false
+	mut lift_has_realloc_opt := false
+	mut alias_func_names := []string{}
+	mut alias_mem_names := []string{}
+	mut canon_mem_vals := []int{}
+	mut canon_realloc_vals := []int{}
+	for pos < comp.len {
+		sid := comp[pos]
+		pos++
+		mut size := 0
+		mut shift := 0
+		for {
+			b := comp[pos]
+			pos++
+			size |= (int(b) & 0x7f) << shift
+			shift += 7
+			if b & 0x80 == 0 {
+				break
+			}
+		}
+		end := pos + size
+		if sid == 7 {
+			// type section: look for a functype with one 0x73 (string) param
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x40
+				p++
+				mut pc := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					pc |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				mut ptypes := []u8{}
+				for _ in 0 .. pc {
+					mut ln := 0
+					sh = 0
+					for {
+						b := comp[p]
+						p++
+						ln |= (int(b) & 0x7f) << sh
+						sh += 7
+						if b & 0x80 == 0 {
+							break
+						}
+					}
+					p += ln
+					ptypes << comp[p]
+					p++
+				}
+				if ptypes == [u8(0x73)] {
+					has_string_param = true
+				}
+				// skip results
+				if comp[p] == 0x01 {
+					p += 2
+				} else {
+					p += 1
+					if comp[p] == 0x73 {
+						has_string_result = true
+					}
+					p += 1
+				}
+			}
+		}
+		if sid == 6 {
+			// alias section: func aliases sort 0x00, core-memory alias sort 0x02.
+			// The (memory 0) canon opt only resolves if a memory alias exists,
+			// and the (realloc f) opt takes the component-level func-alias
+			// index, not the nested module's original func index.
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x00, 'alias must target a core sort'
+				p++
+				sort := comp[p]
+				p++
+				assert comp[p] == 0x01, 'alias must target the core instance'
+				p++
+				// instance idx
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				mut ln := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					ln |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				name := comp[p..p + ln].bytestr()
+				p += ln
+				if sort == 0x00 {
+					alias_func_names << name
+				} else if sort == 0x02 {
+					alias_mem_names << name
+				} else {
+					assert false, 'unexpected alias sort ${sort}'
+				}
+			}
+		}
+		if sid == 8 {
+			// canon section: any lift carrying both memory and realloc opts
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x00
+				p++
+				assert comp[p] == 0x00
+				p++
+				// func idx
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				// opts
+				mut ocnt := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					ocnt |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				mut has_mem := false
+				mut has_re := false
+				for _ in 0 .. ocnt {
+					code := comp[p]
+					p++
+					if code == 0x03 {
+						has_mem = true
+						mut mv := 0
+						mut msh := 0
+						for {
+							b := comp[p]
+							p++
+							mv |= (int(b) & 0x7f) << msh
+							msh += 7
+							if b & 0x80 == 0 {
+								break
+							}
+						}
+						canon_mem_vals << mv
+					} else if code == 0x04 {
+						has_re = true
+						mut rv := 0
+						mut rsh := 0
+						for {
+							b := comp[p]
+							p++
+							rv |= (int(b) & 0x7f) << rsh
+							rsh += 7
+							if b & 0x80 == 0 {
+								break
+							}
+						}
+						canon_realloc_vals << rv
+					} else {
+						for {
+							b := comp[p]
+							p++
+							if b & 0x80 == 0 {
+								break
+							}
+						}
+					}
+				}
+				// type idx
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				if has_mem && has_re {
+					lift_has_mem_opt = true
+					lift_has_realloc_opt = true
+				}
+			}
+		}
+		if sid == 11 {
+			mut p := pos
+			mut cnt := 0
+			mut sh := 0
+			for {
+				b := comp[p]
+				p++
+				cnt |= (int(b) & 0x7f) << sh
+				sh += 7
+				if b & 0x80 == 0 {
+					break
+				}
+			}
+			for _ in 0 .. cnt {
+				assert comp[p] == 0x00
+				p++
+				mut ln := 0
+				sh = 0
+				for {
+					b := comp[p]
+					p++
+					ln |= (int(b) & 0x7f) << sh
+					sh += 7
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				name := comp[p..p + ln].bytestr()
+				p += ln
+				export_names << name
+				// sort + idx + mandatory optional-type byte (0x00 when absent)
+				p++
+				for {
+					b := comp[p]
+					p++
+					if b & 0x80 == 0 {
+						break
+					}
+				}
+				// optional externtype discriminator: 0x00 = absent, 0x01 = present
+				assert p < comp.len, 'export must end with optional-type byte'
+				et := comp[p]
+				p++
+				assert et == 0x00, 'export optional-type byte must be 0x00, got ${et}'
+				if et == 0x01 {
+					// skip the ascribed type (should not occur in this fixture)
+					for {
+						b := comp[p]
+						p++
+						if b & 0x80 == 0 {
+							break
+						}
+					}
+				}
+			}
+		}
+		pos = end
+	}
+	assert 'echo-len' in export_names, 'component must export echo-len, got ${export_names}'
+	assert has_string_param, 'component type must declare a string param'
+	assert has_string_result, 'component type must declare a string result'
+	assert 'shout' in export_names
+	assert 'hello' in export_names
+	assert lift_has_mem_opt, 'canon lift must carry (memory)'
+	assert lift_has_realloc_opt, 'canon lift must carry (realloc)'
+	assert 'memory' in alias_mem_names, 'component must alias core memory, got ${alias_mem_names}'
+	re_alias := alias_func_names.index('cabi_realloc')
+	assert re_alias >= 0, 'component must alias cabi_realloc, got ${alias_func_names}'
+	assert canon_mem_vals.len > 0
+	for mv in canon_mem_vals {
+		assert mv == 0, 'memory opt must reference core-memory alias 0, got ${mv}'
+	}
+	assert canon_realloc_vals.len > 0
+	for rv in canon_realloc_vals {
+		assert rv == re_alias, 'realloc opt must use component-level alias index ${re_alias}, got ${rv}'
+	}
+}
