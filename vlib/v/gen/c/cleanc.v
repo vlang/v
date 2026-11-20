@@ -516,6 +516,18 @@ mut:
 	ready bool
 }
 
+// EarlyInterfaceImpls holds the checker's implementer queries that a helper
+// thread answered ahead of collect_interface_impls (see start_iface_impls_lane):
+// ierror_impl_names, and interface_impl_names and interface_type_ids by
+// interface.
+@[heap]
+struct EarlyInterfaceImpls {
+mut:
+	ierror   []u32
+	names    map[u32][]u32
+	type_ids map[u32]map[u32]int
+}
+
 // PreseedTypeSeen deduplicates type walks during C generation. It is part of
 // FlatGen even in serial-only builds because declaration preseeding is shared.
 struct PreseedTypeSeen {
@@ -864,7 +876,8 @@ mut:
 	ast_string_literals_parsed     int  // how many leading ast_string_literals come from parsed nodes
 	referenced_c_struct_ids        map[u32]bool
 	referenced_c_struct_ids_ready  bool
-	c_struct_refs_handoff          &CStructRefsHandoff = unsafe { nil } // set on a parallel interface scan worker
+	c_struct_refs_handoff          &CStructRefsHandoff  = unsafe { nil } // set on a parallel interface scan worker
+	early_iface_impls              &EarlyInterfaceImpls = unsafe { nil } // the implementer lane's answers, for collect_interface_impls
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -1245,6 +1258,7 @@ mut:
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
 	embedded_fields_lane            voidptr                     // helper thread building embedded_fields_by_type, see start_embedded_fields_lane
 	collect_overlap_done            bool                        // see apply_fn_signature_registrations: the post-collect tables and the literal numbering are built
+	iface_impls_lane                voidptr                     // helper thread answering the checker's implementer queries, see start_iface_impls_lane
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
@@ -4042,6 +4056,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_interned = false
 	g.collect_overlap_done = false
+	g.iface_impls_lane = unsafe { nil }
+	g.early_iface_impls = unsafe { nil }
 	g.ast_string_literals_parsed = 0
 	g.referenced_c_struct_ids = map[u32]bool{}
 	g.referenced_c_struct_ids_ready = false
@@ -4330,6 +4346,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
+	// The interface scan below is mostly the checker's implementer lists, which
+	// only depend on the checked declarations: start them now.
+	g.start_iface_impls_lane(effective_no_parallel)
 	g.collect_gen_info(effective_no_parallel)
 	if g.target_libc_headers {
 		g.precompute_thread_type_usage()
@@ -4382,8 +4401,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
 				// The scan's checker reads the master's type cache as its base while
-				// the master resolves the referenced C structs below.
-				g.tc.freeze_type_cache_for_forks()
+				// the master resolves the referenced C structs below. A started
+				// implementer lane froze the cache already.
+				if !g.finish_iface_impls_lane() {
+					g.tc.freeze_type_cache_for_forks()
+				}
 				mut c_struct_refs := &CStructRefsHandoff{
 					ch: chan bool{cap: 1}
 				}
@@ -5770,6 +5792,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut cisub_sw := time.new_stopwatch()
 	g.finish_type_indexes(type_index_args, type_index_threads)
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
+	// The loop below changes the checker (globals enter its file scope): a
+	// started implementer lane, which reads the checker, has to be done by then.
+	g.join_iface_impls_lane()
 	has_parallel_fn_preps := fn_preps.ready
 	// The prepared declarations are consumed in top-level order.
 	mut prep_job := 0

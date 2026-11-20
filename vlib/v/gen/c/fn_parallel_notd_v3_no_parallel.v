@@ -900,6 +900,105 @@ fn (mut g FlatGen) finish_embedded_fields_lane() bool {
 	return true
 }
 
+// InterfaceImplsLane answers the checker's implementer queries on a helper
+// thread from the start of cgen. `tc` is a fork of the master's checker that
+// lives in `fork_scope`; `scope` holds the queries' scratch and their results.
+struct InterfaceImplsLane {
+mut:
+	tc         &types.TypeChecker = unsafe { nil }
+	threads    []thread voidptr
+	fork_scope voidptr
+	scope      voidptr
+	joined     bool
+	ierror     []u32
+	iface_ids  []u32
+	names      [][]u32
+	type_ids   []map[u32]int
+}
+
+fn iface_impls_lane_thread(arg voidptr) voidptr {
+	mut lane := unsafe { &InterfaceImplsLane(arg) }
+	lane.scope = cgen_worker_scope_begin(true)
+	opened := lane.tc.begin_interface_impl_queries()
+	lane.ierror = lane.tc.ierror_impl_names()
+	for iface_id, _ in lane.tc.interface_names {
+		if iface_id == cgen_ierror_type_name_id || iface_id == cgen_builtin_ierror_type_name_id {
+			continue
+		}
+		lane.iface_ids << iface_id
+		lane.names << lane.tc.interface_impl_names(iface_id)
+		lane.type_ids << lane.tc.interface_type_ids(iface_id)
+	}
+	lane.tc.end_interface_impl_queries(opened)
+	cgen_worker_scope_leave(lane.scope)
+	return unsafe { nil }
+}
+
+// min_iface_impls_lane_nodes is the program size from which the implementer
+// lane pays for its checker fork.
+const min_iface_impls_lane_nodes = 65_536
+
+// start_iface_impls_lane starts the checker's implementer queries beside
+// collect_gen_info: the IError implementers and every interface's implementers
+// and dispatch ids. They are nearly all of the interface scan that follows
+// (collect_interface_impls) and read only the checker's declarations, which
+// cgen does not change before that scan; with generic interfaces the scan
+// registers their applications first, so the lane is left out. The master's
+// type cache stays frozen until the scan has joined: the fork reads its base.
+fn (mut g FlatGen) start_iface_impls_lane(no_parallel bool) {
+	g.iface_impls_lane = unsafe { nil }
+	if no_parallel || !g.scope_parallel_workers || g.incremental_fn_names.len > 0
+		|| !g.has_builtins || g.a.nodes.len < min_iface_impls_lane_nodes
+		|| g.tc.interface_generic_params.len > 0 || os.getenv('V3_NO_CGEN_IFACE_LANE') != '' {
+		return
+	}
+	g.tc.freeze_type_cache_for_forks()
+	fork_scope := cgen_worker_scope_begin(true)
+	mut lane := &InterfaceImplsLane{
+		tc: g.clone_parallel_type_checker()
+	}
+	cgen_worker_scope_leave(fork_scope)
+	lane.fork_scope = fork_scope
+	lane.threads << spawn iface_impls_lane_thread(voidptr(lane))
+	g.iface_impls_lane = voidptr(lane)
+}
+
+// join_iface_impls_lane waits for a started lane's queries.
+fn (mut g FlatGen) join_iface_impls_lane() {
+	if isnil(g.iface_impls_lane) {
+		return
+	}
+	mut lane := unsafe { &InterfaceImplsLane(g.iface_impls_lane) }
+	if !lane.joined {
+		lane.threads.wait()
+		lane.joined = true
+	}
+}
+
+// finish_iface_impls_lane takes the answers of a started lane and reports
+// whether there was one, that is, whether the master's type cache is frozen.
+fn (mut g FlatGen) finish_iface_impls_lane() bool {
+	if isnil(g.iface_impls_lane) {
+		return false
+	}
+	mut lane := unsafe { &InterfaceImplsLane(g.iface_impls_lane) }
+	g.join_iface_impls_lane()
+	g.iface_impls_lane = unsafe { nil }
+	mut early := &EarlyInterfaceImpls{
+		ierror: lane.ierror.clone()
+	}
+	for i, iface_id in lane.iface_ids {
+		early.names[iface_id] = lane.names[i].clone()
+		early.type_ids[iface_id] = lane.type_ids[i].clone()
+	}
+	g.early_iface_impls = early
+	// The lane itself lives in the fork's arena.
+	fork_scope := lane.fork_scope
+	cgen_worker_scope_free(lane.scope)
+	cgen_worker_scope_free(fork_scope)
+	return true
+}
+
 // ParamTypeIndexArgs carries the short-name parameter type index
 // (precompute_param_type_index) built beside the pre-dispatch helpers.
 struct ParamTypeIndexArgs {
@@ -996,6 +1095,7 @@ fn (g &FlatGen) new_interface_impl_scan_worker() &FlatGen {
 	worker.iface_impls = map[u32][]u32{}
 	worker.iface_type_ids = map[u64]int{}
 	worker.ierror_method_emit_names = map[string]bool{}
+	worker.early_iface_impls = g.early_iface_impls
 	return worker
 }
 
