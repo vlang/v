@@ -1328,6 +1328,78 @@ fn main() {
 	assert fail_alias.output.contains('cannot move `s` because it is borrowed by `r2`'), fail_alias.output
 }
 
+fn test_ownership_dead_borrower_releases_borrow_on_reassign() {
+	v3_bin := ownership_build_v3()
+	// NLL-lite (see #32455): `s` is never read after `s.run()`, so its loan on
+	// `conn` is dead and the reassignment below must be accepted.
+	ok := run_autofree_check(v3_bin, 'dead_borrow_reassign', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	s.run()
+	conn.in_work = false
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert ok.exit_code == 0, ok.output
+
+	// A borrower that is read after the reassignment keeps the loan alive.
+	fail := run_autofree_check(v3_bin, 'live_borrow_reassign', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	s.run()
+	conn.in_work = false
+	s.run()
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('cannot assign to `conn.in_work` because `conn` is borrowed by `s.c`'), fail.output
+}
+
 fn test_ownership_move_on_call_and_borrowed_call_ok() {
 	v3_bin := ownership_build_v3()
 	fail := run_ownership_check(v3_bin, 'move_call', "
