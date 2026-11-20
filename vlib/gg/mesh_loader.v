@@ -132,14 +132,16 @@ struct GltfAccessor {
 }
 
 struct GltfAttributes {
-	position  int @[json: 'POSITION']
-	normal    int @[json: 'NORMAL']
-	texcoord0 int @[json: 'TEXCOORD_0']
+	// -1 means the attribute is absent. Zero is a valid accessor index and
+	// must not be used as a presence sentinel.
+	position  int = -1 @[json: 'POSITION']
+	normal    int = -1 @[json: 'NORMAL']
+	texcoord0 int = -1 @[json: 'TEXCOORD_0']
 }
 
 struct GltfPrimitive {
 	attributes GltfAttributes
-	indices    int
+	indices    int = -1
 }
 
 struct GltfMesh {

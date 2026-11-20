@@ -184,7 +184,10 @@ pub fn gen_mesh_cylinder(start Vec3, end Vec3, radius f32, slices int) Mesh3D {
 	}
 	mut normals := []Vec3{cap: verts.len}
 	for v in verts {
-		radial := v - axis.scale(axis.dot(v - start))
+		// Work relative to the axis origin: subtracting the axial component
+		// from the absolute position makes normals change under translation.
+		d := v - start
+		radial := d - axis.scale(axis.dot(d))
 		n := radial.normalized()
 		normals << if n.dot(n) < 0.5 { axis } else { n }
 	}

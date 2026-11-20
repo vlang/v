@@ -20,6 +20,18 @@ fn test_generated_meshes_are_indexed() {
 	assert cylinder.valid()
 }
 
+fn test_cylinder_normals_are_translation_invariant() {
+	a := gen_mesh_cylinder(Vec3{0, 0, 0}, Vec3{0, 1, 0}, 1, 8)
+	b := gen_mesh_cylinder(Vec3{10, 0, 0}, Vec3{10, 1, 0}, 1, 8)
+	assert a.normals.len == b.normals.len
+	for i in 0 .. a.normals.len {
+		assert math.abs(a.normals[i].x - b.normals[i].x) < 1e-5
+		assert math.abs(a.normals[i].y - b.normals[i].y) < 1e-5
+		assert math.abs(a.normals[i].z - b.normals[i].z) < 1e-5
+	}
+	assert math.abs(a.normals[0].z - 1.0) < 1e-5
+}
+
 fn test_mesh_rejects_out_of_range_indices() {
 	mut bad := Mesh3D{ vertices: [Vec3{0, 0, 0}], indices: [u32(3)]! }
 	assert !bad.valid()

@@ -305,7 +305,10 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 				if inv_w <= 0 {
 					continue
 				}
-				z := (iw0w * q0.z + iw1w * q1.z + iw2w * q2.z) / inv_w
+				// q*.z is already NDC depth (cz / cw). Interpolate it with
+				// screen-space barycentric weights; weighting it by 1/w here
+				// would perspective-correct the same value a second time.
+				z := q0.z * bw0 + q1.z * bw1 + q2.z * bw2
 				if z < -1.0 || z > 1.0 {
 					continue
 				}
@@ -314,7 +317,7 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 					continue
 				}
 				frame.depth[di] = z
-				// Perspective-correct texture coordinates.
+				// Attributes still in clip space do need perspective correction.
 				u = (iw0w * v0.u + iw1w * v1.u + iw2w * v2.u) / inv_w
 				vv = (iw0w * v0.v + iw1w * v1.v + iw2w * v2.v) / inv_w
 			}

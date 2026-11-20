@@ -41,7 +41,12 @@ fn test_headless_cpu_context_renders_cube() {
 fn test_headless_cpu_context_renders_textured_mesh() {
 	mut ctx := gg.new_context_cpu()
 	cam := gg.Camera3D{ position: gg.Vec3{0, 0, 5}, target: gg.Vec3{0, 0, 0} }
-	pixels := []u8{len: 4 * 2 * 2, init: 200}
+	// A distinctive red texel: white, untextured pixels must not pass.
+	mut pixels := []u8{len: 4 * 2 * 2, init: 0}
+	for i in 0 .. 4 {
+		pixels[i * 4] = 220
+		pixels[i * 4 + 3] = 255
+	}
 	img := &gg.Image{
 		data:        pixels.data
 		width:       2
@@ -54,7 +59,34 @@ fn test_headless_cpu_context_renders_textured_mesh() {
 	ctx.draw_material_mesh(&mesh, gg.Vec3{}, gg.Vec3{}, 1.0, &mat, cam)
 	frame := ctx.render_cpu_3d(64, 64, gg.black, cam)
 	px := frame.pixels[32 * 64 + 32]
-	assert f32(px & 0xff) > 150.0
+	assert (px & 0xff) > 190
+	assert ((px >> 8) & 0xff) < 40
+	assert ((px >> 16) & 0xff) < 40
+}
+
+fn test_headless_cpu_context_keeps_cpu_images_distinct() {
+	mut ctx := gg.new_context_cpu()
+	cam := gg.Camera3D{ position: gg.Vec3{0, 0, 5}, target: gg.Vec3{0, 0, 0} }
+	mesh := gg.gen_mesh_cube(gg.Vec3{1, 1, 1})
+	for channel in 0 .. 2 {
+		mut pixels := []u8{len: 4, init: 0}
+		pixels[channel] = 220
+		pixels[3] = 255
+		img := &gg.Image{
+			data:        pixels.data
+			width:       1
+			height:      1
+			nr_channels: 4
+			ok:          true
+		}
+		mat := gg.Material3D{ texture: img }
+		ctx.r.rewind()
+		ctx.draw_material_mesh(&mesh, gg.Vec3{}, gg.Vec3{}, 1.0, &mat, cam)
+		frame := ctx.render_cpu_3d(64, 64, gg.black, cam)
+		px := frame.pixels[32 * 64 + 32]
+		assert (px >> (u32(channel) * 8)) & 0xff > 190
+		assert (px >> (u32(1 - channel) * 8)) & 0xff < 40
+	}
 }
 
 fn test_headless_cpu_context_renders_2d() {

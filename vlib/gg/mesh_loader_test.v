@@ -100,3 +100,27 @@ fn test_load_mesh_gltf() {
 	assert mesh.indices == [u32(0), 1, 2]!
 	assert mesh.vertices[1].x == 1
 }
+
+fn test_load_mesh_gltf_position_only_non_indexed() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	mut bin := []u8{len: 36}
+	for i, value in [f32(0), 0, 0, 1, 0, 0, 0, 1, 0] {
+		binary.little_endian_put_f32_at(mut bin, value, i * 4)
+	}
+	uri := base64.encode(bin)
+	json_text := '{"buffers":[{"uri":"data:application/octet-stream;base64,${uri}","byteLength":36}],' +
+		'"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36}],' +
+		'"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],' +
+		'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}'
+	path := os.join_path(dir, 'position_only.gltf')
+	os.write_file(path, json_text)!
+	meshes := load_mesh_gltf(path)!
+	assert meshes.len == 1
+	mesh := meshes[0]
+	assert mesh.valid()
+	assert mesh.vertices.len == 3
+	assert mesh.indices == [u32(0), 1, 2]!
+	assert mesh.normals.len == 0
+	assert mesh.uvs.len == 0
+}

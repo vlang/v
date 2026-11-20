@@ -172,16 +172,25 @@ pub fn (mut cam Camera3D) move_up(amount f32) {
 // fly applies a frame of first-person movement and mouse look.
 // The deltas are already scaled by the caller (usually by dt).
 pub fn (mut cam Camera3D) fly(fwd f32, side f32, rise f32, yaw_delta f32, pitch_delta f32) {
-	mut look := Vec3{cam.target.x - cam.position.x, cam.target.y - cam.position.y, cam.target.z - cam.position.z}
+	mut look := cam.target - cam.position
 	if yaw_delta != 0 || pitch_delta != 0 {
 		yaw_rad := yaw_delta * math.pi / 180.0
-		pitch_rad := pitch_delta * math.pi / 180.0
 		cy := f32(math.cos(yaw_rad))
 		sy := f32(math.sin(yaw_rad))
-		rot_y := Vec3{look.x * cy + look.z * sy, look.y, -look.x * sy + look.z * cy}
-		cp := f32(math.cos(pitch_rad))
-		sp := f32(math.sin(pitch_rad))
-		look = Vec3{rot_y.x, rot_y.y * cp - rot_y.z * sp, rot_y.y * sp + rot_y.z * cp}
+		look = Vec3{look.x * cy + look.z * sy, look.y, -look.x * sy + look.z * cy}
+		if pitch_delta != 0 {
+			// Pitch must rotate around the camera's own right axis. Rotating
+			// around world X has no effect once the view points along X.
+			right := look.cross(cam.up)
+			if right.dot(right) > 1e-8 {
+				k := right.normalized()
+				pitch_rad := pitch_delta * math.pi / 180.0
+				cp := f32(math.cos(pitch_rad))
+				sp := f32(math.sin(pitch_rad))
+				// Rodrigues' rotation formula around k.
+				look = look.scale(cp) + k.cross(look).scale(sp) + k.scale(k.dot(look) * (1.0 - cp))
+			}
+		}
 	}
 	dir := look.normalized()
 	cam.target = cam.position + dir

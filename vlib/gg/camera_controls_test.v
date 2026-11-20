@@ -48,3 +48,15 @@ fn test_fly_turns_and_moves() {
 	cam.fly(1, 0, 0, 90, 0)
 	assert close(cam.position.x, -1)
 }
+
+fn test_fly_pitches_after_turning_to_x_axis() {
+	mut cam := gg.Camera3D{
+		position: gg.Vec3{0, 0, 0}
+		target:   gg.Vec3{1, 0, 0}
+	}
+	cam.fly(0, 0, 0, 0, 30)
+	fwd := cam.forward()
+	assert close(f64(fwd.x), math.cos(math.pi / 6))
+	assert close(f64(fwd.y), math.sin(math.pi / 6))
+	assert math.abs(fwd.z) < 1e-3
+}
