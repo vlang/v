@@ -27,6 +27,22 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_slice_return_wrappers() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'slices')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	mut warnings := []string{}
+	code, infos := generate_wrappers(m, mut warnings)
+	assert warnings.len == 0, warnings.join('\n')
+	assert code.contains('out &&u8')
+	assert code.contains('out_len &int')
+	assert code.contains('capi_rt_slice_copy(')
+	assert infos[0].signature == 'int slices_bytes(unsigned char **out, int *out_len)'
+	assert infos[1].signature == 'int slices_maybe_bytes(unsigned char **out, int *out_len)'
+}
+
 fn test_qualified_wrappers_for_combined_build() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'mockpkg')
 	m := collect_model_qualified(dir, 'lib_mock', 'mock') or {

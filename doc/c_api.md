@@ -34,7 +34,8 @@ after the build. Pass `--keep-generated` to inspect them.
 | `bool` | `int` (0/1) | `int` |
 | integer and float primitives | matching `stdint.h` type | same |
 | `string` | `const char *` | `char *` (caller frees) |
-| `[]T` (numeric) | `const T *items, int items_len` | — |
+| `[]T` (numeric) | `const T *items, int items_len` | `T **out, int *out_len` via `int` status |
+| `![]T` / `?[]T` | — | `T **out, int *out_len` via `int` status |
 | `!T` | `T *out` | `int` status (0 ok, -1 error) |
 | `?T` | `T *out` | `int` status (0 some, 1 none) |
 | `&PubStruct` | opaque struct pointer | same |
@@ -44,13 +45,13 @@ after the build. Pass `--keep-generated` to inspect them.
 Methods with a pointer receiver on a public struct become
 `<prefix>_<Type>_<method>(<prefix>_Type *self, ...)`.
 
-Generics, maps, channels, closures, result slices and by-value public structs
-are skipped with a warning rather than exported with a V-internal ABI.
+Generics, maps, channels, closures and by-value public structs are skipped with
+a warning rather than exported with a V-internal ABI.
 
 ## Memory and errors
 
-Strings and buffers returned by the library are C heap copies. Release them
-with `<prefix>_free()`. Error text from a failed `!T` call is available from
+Strings and slice buffers returned by the library are C heap copies. Release
+them with `<prefix>_free()`. Error text from a failed `!T` call is available from
 `<prefix>_last_error()` and stays valid until the next call on that thread.
 Call `<prefix>_init()` once before using the library.
 

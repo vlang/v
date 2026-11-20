@@ -44,7 +44,7 @@ fn is_supported_scalar(t string) bool {
 		'i32', 'rune', 'i64', 'isize', 'f32', 'f64', 'voidptr']
 }
 
-fn is_supported_slice_elem(t string) bool {
+pub fn is_supported_slice_elem(t string) bool {
 	return t in ['u8', 'byte', 'i8', 'i16', 'u16', 'int', 'i32', 'u32', 'i64', 'u64', 'f32', 'f64']
 }
 

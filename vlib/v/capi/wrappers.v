@@ -43,6 +43,18 @@ fn capi_rt_strdup(s string) voidptr {
 	return buf
 }
 
+fn capi_rt_slice_copy(data voidptr, len int, elem_size u32) voidptr {
+	if len <= 0 || data == unsafe { nil } {
+		return unsafe { nil }
+	}
+	buf := unsafe { C.malloc(len * elem_size) }
+	if buf == unsafe { nil } {
+		return unsafe { nil }
+	}
+	unsafe { C.memcpy(buf, data, len * elem_size) }
+	return buf
+}
+
 fn capi_rt_set_error(msg string) {
 	capi_rt_error_buf = msg.bytes()
 	capi_rt_error_buf << u8(0)
@@ -104,17 +116,12 @@ fn qname(f ApiFunc, name string) string {
 fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
 	mut inner := unwrap(f.return_type)
 	has_result := is_result(f.return_type) || is_option(f.return_type)
-	if has_result {
-		inner = unwrap(f.return_type)
-		if is_slice(inner) {
-			warnings << 'skipped ${f.name}: result slices are not supported yet'
-			return false
-		}
-	} else if is_slice(f.return_type) {
-		warnings << 'skipped ${f.name}: plain slice returns are not supported yet'
+	returns_slice := is_slice(inner)
+	if returns_slice && !is_supported_slice_elem(slice_elem(inner)) {
+		warnings << 'skipped ${f.name}: unsupported slice element ${slice_elem(inner)}'
 		return false
 	}
-	ret_v := if f.return_type == '' {
+	ret_v := if f.return_type == '' || returns_slice {
 		''
 	} else {
 		v_wrapper_type(f.return_type, m) or {
@@ -190,7 +197,16 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		}
 	}
 	mut ret_c := 'void'
-	if has_result {
+	mut ret_spelling := if ret_v == '' { '' } else { ' ${ret_v}' }
+	if returns_slice {
+		elem := c_prim(slice_elem(inner))
+		decl_params << 'out &&${elem}'
+		decl_params << 'out_len &int'
+		c_params << '${c_elem_type(slice_elem(inner))} **out'
+		c_params << 'int *out_len'
+		ret_c = 'int'
+		ret_spelling = ' int'
+	} else if has_result {
 		decl_params << 'out &${ret_v}'
 		mut out_c := c_decl_type(inner, m) or {
 			warnings << 'skipped ${f.name}: unsupported result type ${inner}'
@@ -199,12 +215,9 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		out_c = if inner == 'string' { 'char *' } else { out_c }
 		c_params << '${out_c} *out'
 		ret_c = 'int'
+		ret_spelling = ' int'
 	} else if f.return_type != '' {
 		ret_c = c_decl_type(f.return_type, m) or { return false }
-	}
-	mut ret_spelling := if ret_v == '' { '' } else { ' ${ret_v}' }
-	if has_result {
-		ret_spelling = ' int'
 	}
 	b.writeln("@[export: '${f.c_name}']")
 	b.writeln('fn capi_export_${idx}(${decl_params.join(', ')})${ret_spelling} {')
@@ -216,7 +229,21 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	} else {
 		'${qname(f, f.name)}(${call_args.join(', ')})'
 	}
-	if has_result {
+	if returns_slice {
+		if has_result {
+			if is_result(f.return_type) {
+				b.writeln('\tv := ${call} or { capi_rt_set_error(err.msg()); return -1 }')
+			} else {
+				b.writeln('\tv := ${call} or { return 1 }')
+			}
+		} else {
+			b.writeln('\tv := ${call}')
+		}
+		elem := c_prim(slice_elem(inner))
+		b.writeln('\tunsafe { out[0] = &${elem}(capi_rt_slice_copy(voidptr(v.data), v.len, sizeof(${elem}))) }')
+		b.writeln('\tunsafe { out_len[0] = v.len }')
+		b.writeln('\treturn 0')
+	} else if has_result {
 		if is_result(f.return_type) {
 			b.writeln('\tv := ${call} or { capi_rt_set_error(err.msg()); return -1 }')
 		} else {
