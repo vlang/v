@@ -115,7 +115,9 @@ fn module_name_of(dir string) string {
 }
 
 fn discover_modules(dir string, mut out []string) {
-	if module_name_of(dir) != '' {
+	name := module_name_of(dir)
+	// `module main` directories are programs/shims, not library submodules.
+	if name != '' && name != 'main' {
 		out << dir
 	}
 	entries := os.ls(dir) or { return }
@@ -174,18 +176,22 @@ fn copy_module_files(src string, dst string) ! {
 	}
 }
 
-fn with_imports(code string, imports []string) string {
-	if imports.len == 0 {
-		return code
-	}
-	idx := code.index('\n') or { return code }
+fn body_after_module(code string) string {
+	idx := code.index('\n') or { return '' }
+	return code[idx + 1..]
+}
+
+// combine_main_source puts the runtime first: V requires __global blocks to
+// appear before function declarations.
+fn combine_main_source(wrappers string, runtime string, imports []string) string {
 	mut b := strings.Builder{}
-	b.writeln(code[..idx])
+	b.writeln('module main')
 	for imp in imports {
 		b.writeln('import ${imp}')
 	}
 	b.writeln('')
-	b.write_string(code[idx + 1..])
+	b.writeln(body_after_module(runtime))
+	b.write_string(body_after_module(wrappers))
 	return b.str()
 }
 
@@ -274,12 +280,10 @@ fn build_plan(opts Options) !BuildPlan {
 		eprintln('c-api: warning: ${w}')
 	}
 	runtime := capi.generate_runtime_for(combined, 'main', opts.lib_name)
-	newline_idx := runtime.index('\n') or { 0 }
-	runtime_body := runtime[newline_idx + 1..]
 	// One .c.v file holds both the wrappers and the runtime: V only compiles
 	// the file passed as input, so a separate companion would be omitted.
 	source_path := os.join_path(temp_dir, 'capi_generated.c.v')
-	os.write_file(source_path, with_imports(wrappers, imports) + '\n' + runtime_body) or { return err }
+	os.write_file(source_path, combine_main_source(wrappers, runtime, imports)) or { return err }
 	return BuildPlan{
 		model:       combined
 		infos:       infos

@@ -95,8 +95,8 @@ pub fn generate_wrappers(m ApiModel, mut warnings []string) (string, []ExportInf
 			b.writeln('')
 		}
 	}
-	for c in m.consts {
-		if wrapper_for_const(m, c, mut b, mut warnings, mut infos) {
+	for ci, c in m.consts {
+		if wrapper_for_const(m, ci, c, mut b, mut warnings, mut infos) {
 			b.writeln('')
 		}
 	}
@@ -282,16 +282,20 @@ fn out_value(t string, m ApiModel, expr string) string {
 	return expr
 }
 
-fn wrapper_for_const(m ApiModel, c ApiConst, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
+fn wrapper_for_const(m ApiModel, idx int, c ApiConst, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
 	if c.value == '' {
 		warnings << 'skipped const ${c.name}: value could not be read'
 		return false
 	}
-	cname := '${m.prefix}_get_${sanitize(c.name)}'
+	if c.value.starts_with('[') || c.value.starts_with('{') {
+		warnings << 'skipped const ${c.name}: compound constants are not supported'
+		return false
+	}
+	cname := if c.c_name != '' { c.c_name } else { '${m.prefix}_get_${sanitize(c.name)}' }
 	t := if c.value.starts_with("'") || c.value.starts_with('"') { 'string' } else { 'int' }
 	rt := v_wrapper_type(t, m) or { return false }
 	b.writeln("@[export: '${cname}']")
-	b.writeln('fn capi_${cname}() ${rt} {')
+	b.writeln('fn capi_const_${idx}() ${rt} {')
 	if t == 'string' {
 		b.writeln('\treturn &char(capi_rt_strdup(${c.value}))')
 	} else {

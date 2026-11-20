@@ -46,6 +46,8 @@ pub:
 	name  string
 	value string
 	doc   string
+pub mut:
+	c_name string
 }
 
 pub struct ApiModel {
@@ -198,6 +200,9 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 		} else {
 			'${effective_prefix}_${sanitize(f.name)}'
 		}
+	}
+	for i, c in model.consts {
+		model.consts[i].c_name = '${effective_prefix}_get_${sanitize(c.name)}'
 	}
 	return model
 }
@@ -352,11 +357,37 @@ fn decl_key(line string) ?string {
 }
 
 fn const_value_of(text string, name string) string {
-	for line in text.split('\n') {
+	lines := text.split('\n')
+	for li, line in lines {
 		t := line.trim_space()
-		if t.starts_with('pub const ${name} ') && t.contains('=') {
-			return t.all_after('=').trim_space()
+		if !t.starts_with('pub const ${name} ') || !t.contains('=') {
+			continue
 		}
+		mut out := t.all_after('=').trim_space()
+		mut depth := bracket_depth(out)
+		if depth <= 0 {
+			return out
+		}
+		for next in lines[li + 1..] {
+			out += '\n' + next.trim_space()
+			depth += bracket_depth(next)
+			if depth <= 0 {
+				break
+			}
+		}
+		return out
 	}
 	return ''
+}
+
+fn bracket_depth(line string) int {
+	mut depth := 0
+	for c in line {
+		if c == `(` || c == `[` || c == `{` {
+			depth++
+		} else if c == `)` || c == `]` || c == `}` {
+			depth--
+		}
+	}
+	return depth
 }
