@@ -120,6 +120,14 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 		}
 		w.parse_into_source((*paths)[i], batch.source_at(i) or { '' })
 	}
+	if a.scope != unsafe { nil } {
+		// The merge rebinds the texts of this chunk through a cache of this arena.
+		w.merge_text_cache = if isnil(w.text_value_cache) {
+			flat.new_text_probe_cache()
+		} else {
+			w.text_value_cache
+		}
+	}
 	w.end_text_cache_batch()
 	parser_worker_scope_leave(a.scope)
 	return unsafe { nil }
@@ -1539,6 +1547,11 @@ struct ParseMergeCopyArgs {
 	node_offset  int
 	child_offset int
 	has_scope    bool
+	// The sources that the worker parsed: the files at [batch_start, batch_end)
+	// of `batch` (&BatchSources).
+	batch       voidptr
+	batch_start int
+	batch_end   int
 mut:
 	miss_nodes    []int
 	pending_files []PendingSourceFile
@@ -1592,11 +1605,21 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			cid
 		}
 	}
-	mut value_cache := new_parse_merge_text_cache()
+	// A scoped worker left a cache in its arena, which is released after the
+	// merge: one allocated here would stay in this pool thread's arena for good.
+	mut value_cache := w.merge_text_cache
+	owns_value_cache := isnil(value_cache)
+	if owns_value_cache {
+		value_cache = new_parse_merge_text_cache()
+	} else {
+		value_cache.reset()
+	}
 	defer {
-		// Only the buffers are owned here; their strings borrow the master AST.
-		unsafe {
-			free(value_cache)
+		if owns_value_cache {
+			// Only the buffers are owned here; their strings borrow the master AST.
+			unsafe {
+				free(value_cache)
+			}
 		}
 	}
 	for k in 0 .. w.a.nodes.len {
@@ -1654,13 +1677,24 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		// A source file does not necessarily have a matching source buffer:
 		// template parsing stores the generated V source separately from the
 		// real template file registered for diagnostic remapping.
+		mut batch := unsafe { &BatchSources(ma.batch) }
 		for file_id, file in w.a.source_files {
 			// The text goes with the line table: both leave the worker's arena here.
+			// The text of a file is the buffer that the batch read, which the batch
+			// then leaves to the table of kept texts; any other text (a template's
+			// generated source, a file read by the worker) is in the arena and copied.
 			has_text := file_id in w.a.source_texts
+			mut text := ''
+			if has_text {
+				text = w.a.source_texts[file_id]
+				if isnil(batch) || !batch.keep_text(text, ma.batch_start, ma.batch_end) {
+					text = text.clone()
+				}
+			}
 			ma.pending_files << PendingSourceFile{
 				file_id:  file_id
 				file:     clone_parser_source_file(file)
-				text:     if has_text { w.a.source_texts[file_id].clone() } else { '' }
+				text:     text
 				has_text: has_text
 			}
 		}
@@ -1745,6 +1779,9 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 			node_offset:  node_offsets[ci]
 			child_offset: child_offsets[ci]
 			has_scope:    args[ci + 1].scope != unsafe { nil }
+			batch:        args[ci + 1].batch
+			batch_start:  args[ci + 1].start
+			batch_end:    args[ci + 1].end
 			miss_nodes:   []int{cap: 4096}
 		}
 	}
@@ -1757,8 +1794,15 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 		}
 	}
 	p.a.worker_pool.run(tasks)
+	// One cache serves every chunk of every merge: the texts that it maps stay
+	// where they are until the worker arenas are released below.
+	if isnil(p.merge_text_cache) {
+		p.merge_text_cache = flat.new_text_probe_cache()
+	} else {
+		p.merge_text_cache.reset()
+	}
 	for ci in 0 .. thread_count {
-		p.a.intern_node_texts_at(margs[ci].miss_nodes)
+		p.a.intern_node_texts_at_cached(margs[ci].miss_nodes, mut p.merge_text_cache)
 		p.merge_parsed_worker_bookkeeping(mut *parser_workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2], args[ci + 1].scope, node_offsets[ci], margs[ci].pending_files, margs[ci].has_scope)
 	}
 	// Unmapping the worker arenas is most of the merge when done in a row; the

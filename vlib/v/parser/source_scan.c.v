@@ -98,6 +98,25 @@ fn (b &BatchSources) source_of(path string) ?string {
 	return b.source_at(idx)
 }
 
+// keep_text reports whether `text` is the whole source of one of the files at
+// [start, end) of the batch. Such a buffer is not copied for the table of kept
+// source texts: the batch hands it over and no longer frees it, like a text
+// that it only borrowed. Tasks ask for the files of distinct chunks, so each
+// writes only its own slots.
+@[direct_array_access]
+fn (mut b BatchSources) keep_text(text string, start int, end int) bool {
+	if text.len == 0 || start < 0 || end > b.sources.len {
+		return false
+	}
+	for i in start .. end {
+		if b.sources[i].str == text.str && b.sources[i].len == text.len {
+			b.borrowed[i] = true
+			return true
+		}
+	}
+	return false
+}
+
 // release frees the sources of the files at [start, end) of the batch. Only
 // call it once nothing refers to them any more.
 fn (mut b BatchSources) release(start int, end int) {

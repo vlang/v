@@ -233,6 +233,10 @@ mut:
 	// intern_parsed_node_texts): nil outside of a batch.
 	text_value_cache &flat.TextProbeCache = unsafe { nil }
 	text_type_cache  &flat.TextProbeCache = unsafe { nil }
+	// The probe cache that rebinds node texts when a parallel parse is merged: a
+	// scoped worker's lives in its arena and dies with it, the caller's serves
+	// every merge (see parse_merge_copy_thread, merge_parsed_workers_parallel).
+	merge_text_cache &flat.TextProbeCache = unsafe { nil }
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
 	// no_source_digests leaves the SHA-256 of each parsed source out (see
@@ -430,15 +434,20 @@ pub fn (mut p Parser) release_source_storage() {
 	p.export_records = []ExportRecord{}
 	p.s.src = ''
 	p.s.lit = ''
-	// Kept complete file texts must outlive the C-allocated buffers they
-	// originally borrowed; ordinary node/metadata text has been interned.
+	// A kept file text is the whole buffer that the file was parsed from: such a
+	// C-allocated buffer stays, owned by the table of kept texts from here on,
+	// instead of being copied and freed. Ordinary node/metadata text has been
+	// interned, so nothing refers to the other buffers.
+	mut kept_buffers := map[u64]bool{}
 	if p.batch_source_buffers.len > 0 && p.keep_source_texts {
-		for file_id, text in p.a.source_texts {
-			p.a.source_texts[file_id] = text.clone()
+		for _, text in p.a.source_texts {
+			kept_buffers[u64(voidptr(text.str))] = true
 		}
 	}
 	for src in p.batch_source_buffers {
-		unsafe { C.free(src.str) }
+		if u64(voidptr(src.str)) !in kept_buffers {
+			unsafe { C.free(src.str) }
+		}
 	}
 	p.batch_source_buffers = []string{}
 	p.a.source_buffers = []string{}

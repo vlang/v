@@ -1375,7 +1375,7 @@ pub fn (mut a FlatAst) intern_node_texts_range_cached(start int, end int, mut va
 	value_cache.reset()
 	type_cache.reset()
 	for idx in first .. end {
-		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
+		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values)
 	}
 }
 
@@ -1388,16 +1388,23 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 		return
 	}
 	mut value_cache := new_text_probe_cache()
-	mut type_cache := new_text_probe_cache()
+	a.intern_node_texts_at_cached(indexes, mut value_cache)
+}
+
+// intern_node_texts_at_cached is intern_node_texts_at with the probe cache of
+// the caller, which is not emptied: a merge passes the lists of all of its
+// chunks through one cache, whose pointer keys stay valid until the chunks'
+// arenas are released, instead of allocating one for every list.
+pub fn (mut a FlatAst) intern_node_texts_at_cached(indexes []int, mut value_cache TextProbeCache) {
 	for idx in indexes {
-		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
+		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values)
 	}
 }
 
 // The callers index live nodes (a parsed range, or recorded merge misses), so
 // the slot needs no bounds check; the param loop is indexed for the same reason.
 @[direct_array_access]
-fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut type_cache_ptrs [4096]voidptr, mut type_cache_vals [4096]string, mut type_cache_ids [4096]u16) {
+fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string) {
 	// Interning grows the text tables, never the node array, so this slot stays valid.
 	mut node := &a.nodes[idx]
 	node.canonicalize_source_value()
