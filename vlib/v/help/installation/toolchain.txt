@@ -1,0 +1,68 @@
+Install, select, list, and run multiple V compiler versions side by side.
+
+Each toolchain lives in its own directory, because V resolves vlib, thirdparty,
+and vc relative to VEXE:
+
+  ~/.v/toolchains/v0.4.11/
+  ~/.v/toolchains/master/
+
+Installed checkouts must be built once before they can be selected:
+
+  cd ~/.v/toolchains/v0.4.11 && make     (makev.bat on Windows)
+
+Usage:
+  v toolchain install <version>  Install master, stable, latest, nightly,
+                                 or a tag like 0.4.11 / v0.4.11.
+  v toolchain list               List installed versions; * marks the active one.
+  v toolchain default [version]  Show or set the per-user default.
+  v toolchain use [version]      Show or set this repository's pin.
+  v toolchain run <version> [--] [args...]
+                                 Run a command with a specific toolchain.
+  v toolchain update [version]   Pull and rebuild a toolchain. The old checkout
+                                 is restored if the update fails.
+  v toolchain remove <version>   Remove an installed toolchain.
+  v toolchain gc                 Remove update and removal leftovers.
+  v toolchain -h                 Show toolchain help.
+
+`v up` updates the selected toolchain when a toolchain is explicitly
+configured; otherwise it keeps updating the launcher's own checkout.
+
+The active toolchain is resolved in this order:
+
+  V_TOOLCHAIN environment variable
+  v-toolchain.toml, then v.mod, in the repository root (toolchain key)
+  ~/.v/settings.toml (default_toolchain key)
+  stable
+
+When the selected toolchain is installed and built, a plain `v` command runs
+that compiler instead of the one on PATH. Commands that manage toolchains
+(`v toolchain ...`, `v up`) always run from the launcher you invoked.
+
+Useful environment overrides:
+
+  V_TOOLCHAINS_DIR      Change where toolchains are installed.
+  V_TOOLCHAIN_SETTINGS  Change the per-user settings file.
+  V_TOOLCHAIN_PROJECT   Change the repository root used for pins.
+  V_TOOLCHAIN_UPSTREAM  Change the git remote used by install.
+  V_TOOLCHAIN_MANIFEST  Path to versions.json (default: in the toolchains dir).
+  V_TOOLCHAIN_CACHE_DIR Reuse thirdparty/tcc and vc from this directory.
+  V_TOOLCHAIN_DEBUG=1   Explain toolchain selection on stderr.
+
+A versions.json manifest can map a version to a prebuilt bundle:
+
+  {"v0.4.11": {"url": "https://.../v0.4.11.zip", "sha256": "<hex>"}}
+
+Install prefers a matching manifest entry. Downloaded bundles must carry a
+sha256 checksum, which is verified before the archive is extracted with `tar`;
+a local-directory bundle is trusted as given. Without a matching entry, install
+falls back to a shallow git clone. `nightly` is its own directory and tracks master when
+no prebuilt is listed for it. Tags keep their v prefix, so 0.4.11 installs into
+~/.v/toolchains/v0.4.11 from branch v0.4.11.
+
+Examples:
+  v toolchain install 0.4.11
+  v toolchain default 0.4.11
+  v toolchain use master
+  V_TOOLCHAIN=master v version
+  v toolchain run 0.4.11 -- version
+  v toolchain list
