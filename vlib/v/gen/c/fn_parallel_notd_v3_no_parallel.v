@@ -92,21 +92,16 @@ struct CollectGenInfoScanArgs {
 	// parsed_end is the first synthesized node, see FlatGen.parsed_node_end.
 	parsed_end int
 mut:
-	counts            CollectGenInfoScanCounts
-	top_level_pos     int
-	string_pos        int
-	parsed_strings    int
-	type_metadata_pos int
-	embed_pos         int
-	sizeof_pos        int
-	top_levels_ptr    voidptr
-	strings_ptr       voidptr
-	type_metadata_ptr voidptr
-	embed_ptr         voidptr
-	sizeof_ptr        voidptr
-	// metadata_bits records the count pass's is_type_metadata_node results, one
-	// bit per node, so the fill pass does not classify every node again.
-	metadata_bits_ptr voidptr
+	counts         CollectGenInfoScanCounts
+	parsed_strings int
+	// The slice's nodes of each list, in AST order. They live in `scope` until
+	// the master has joined the slices.
+	top_levels    []i32
+	strings       []string
+	type_metadata []i32
+	embeds        []i32
+	sizeofs       []i32
+	scope         voidptr
 	// shared_bits marks the metadata nodes collect_local_shared_type_names visits.
 	shared_bits_ptr voidptr
 	type_text_cache &TypeMetadataTextCache = unsafe { nil }
@@ -209,22 +204,29 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// collect_gen_info_scan_thread classifies the nodes of one slice of the AST:
+// it counts the declarations that size collect_gen_info's maps and lists the
+// slice's top-level, literal, type-metadata, embed and sizeof nodes in order.
 @[direct_array_access]
-fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
+fn collect_gen_info_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectGenInfoScanArgs(arg) }
 	g := unsafe { &FlatGen(a.g) }
 	incremental := g.incremental_fn_names.len > 0
-	mut metadata_bits := unsafe { &[]u64(a.metadata_bits_ptr) }
+	// The lists are joined by the master, which then frees this arena.
+	a.scope = cgen_worker_scope_begin(true)
+	n_nodes := a.end - a.start
+	mut top_levels := []i32{cap: n_nodes / 64 + 64}
+	mut literals := []string{cap: n_nodes / 24 + 64}
+	mut type_metadata := []i32{cap: n_nodes / 8 + 64}
+	mut embeds := []i32{}
+	mut sizeofs := []i32{cap: 64}
 	mut shared_bits := unsafe { &[]u64(a.shared_bits_ptr) }
 	for node_idx in a.start .. a.end {
 		// The scan only reads the AST; borrow the node instead of copying it.
 		node := unsafe { &g.a.nodes[node_idx] }
 		class := cgen_kind_class(node.kind)
 		if is_type_metadata_node_of_class(node, class, mut a.type_text_cache) {
-			a.type_metadata_pos++
-			unsafe {
-				metadata_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
-			}
+			type_metadata << i32(node_idx)
 			if shared_scan_node_relevant(g.a, node) {
 				unsafe {
 					shared_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
@@ -233,20 +235,21 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 		}
 		if class & cgen_kind_class_string_literal != 0 {
 			if node.is_embed_payload() {
-				a.embed_pos++
+				embeds << i32(node_idx)
 			} else {
-				a.string_pos++
+				// AST text outlives the list: do not copy it.
+				literals << cgen_moved_string(node.value)
 				if node_idx < a.parsed_end {
 					a.parsed_strings++
 				}
 			}
 		}
 		if class & cgen_kind_class_top_level != 0 {
-			a.top_level_pos++
+			top_levels << i32(node_idx)
 		}
 		if class & cgen_kind_class_sizeof_ref != 0
 			&& (node.kind == .offsetof_expr || node.children_count == 0) {
-			a.sizeof_pos++
+			sizeofs << i32(node_idx)
 		}
 		if class & (cgen_kind_class_top_level | cgen_kind_class_metadata) == 0 {
 			continue
@@ -279,62 +282,25 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 		}
 	}
 	g.collect_expr_c_struct_type_refs_in(a.start, a.end, mut a.c_struct_refs)
+	a.top_levels = moved_node_id_list(top_levels)
+	a.strings = moved_string_list(literals)
+	a.type_metadata = moved_node_id_list(type_metadata)
+	a.embeds = moved_node_id_list(embeds)
+	a.sizeofs = moved_node_id_list(sizeofs)
+	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
 
-@[direct_array_access]
-fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
-	mut a := unsafe { &CollectGenInfoScanArgs(arg) }
-	g := unsafe { &FlatGen(a.g) }
-	mut top_levels := unsafe { &[]i32(a.top_levels_ptr) }
-	mut literals := unsafe { &[]string(a.strings_ptr) }
-	mut type_metadata := unsafe { &[]i32(a.type_metadata_ptr) }
-	mut embeds := unsafe { &[]i32(a.embed_ptr) }
-	mut sizeofs := unsafe { &[]i32(a.sizeof_ptr) }
-	mut top_level_pos := a.top_level_pos
-	mut string_pos := a.string_pos
-	mut type_metadata_pos := a.type_metadata_pos
-	mut embed_pos := a.embed_pos
-	mut sizeof_pos := a.sizeof_pos
-	metadata_bits := unsafe { &[]u64(a.metadata_bits_ptr) }
-	for node_idx in a.start .. a.end {
-		if unsafe { metadata_bits[node_idx >> 6] } & (u64(1) << (node_idx & 63)) != 0 {
-			unsafe {
-				type_metadata[type_metadata_pos] = node_idx
-			}
-			type_metadata_pos++
-		}
-		// The fill only reads the AST; borrow the node instead of copying it.
-		node := unsafe { &g.a.nodes[node_idx] }
-		class := cgen_kind_class(node.kind)
-		if class & cgen_kind_class_string_literal != 0 {
-			if node.is_embed_payload() {
-				unsafe {
-					embeds[embed_pos] = node_idx
-				}
-				embed_pos++
-			} else {
-				unsafe {
-					literals[string_pos] = node.value
-				}
-				string_pos++
-			}
-		}
-		if class & cgen_kind_class_top_level != 0 {
-			unsafe {
-				top_levels[top_level_pos] = node_idx
-			}
-			top_level_pos++
-		}
-		if class & cgen_kind_class_sizeof_ref != 0
-			&& (node.kind == .offsetof_expr || node.children_count == 0) {
-			unsafe {
-				sizeofs[sizeof_pos] = node_idx
-			}
-			sizeof_pos++
-		}
-	}
-	return unsafe { nil }
+// moved_node_id_list and moved_string_list return their argument: a call result
+// is stored without the deep copy of an addressable array.
+@[inline]
+fn moved_node_id_list(ids []i32) []i32 {
+	return ids
+}
+
+@[inline]
+fn moved_string_list(values []string) []string {
+	return values
 }
 
 fn flat_cgen_cost_thread(arg voidptr) voidptr {
@@ -1167,8 +1133,8 @@ fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns Di
 }
 
 // scan_collect_gen_info partitions the read-only whole-AST sizing scan across
-// the persistent pool. A count pass computes exact output offsets, then a fill
-// pass writes disjoint ranges while preserving AST order.
+// the persistent pool. Every task lists the nodes of its slice in one pass; the
+// master joins the slices in AST order.
 fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCounts {
 	if no_parallel || isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0
 		|| g.a.nodes.len < 65_536 || os.getenv('V3_NO_PAR_CGEN_INFO_SCAN') != '' {
@@ -1178,12 +1144,11 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		g.flat_cgen_job_limit())
 	mut args := []CollectGenInfoScanArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
-	mut metadata_bits := []u64{len: (g.a.nodes.len + 63) / 64}
 	g.shared_scan_bits = []u64{len: (g.a.nodes.len + 63) / 64}
 	parsed_end := g.parsed_node_end()
 	for job in 0 .. n_jobs {
 		// Ranges start on a 64-node boundary, so that no two jobs write the same
-		// word of metadata_bits.
+		// word of shared_scan_bits.
 		start := if job == 0 { 0 } else { (g.a.nodes.len * job / n_jobs) & ~63 }
 		end := if job == n_jobs - 1 {
 			g.a.nodes.len
@@ -1191,29 +1156,22 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 			(g.a.nodes.len * (job + 1) / n_jobs) & ~63
 		}
 		args << CollectGenInfoScanArgs{
-			g:                 voidptr(g)
-			start:             start
-			end:               end
-			parsed_end:        parsed_end
-			metadata_bits_ptr: unsafe { voidptr(&metadata_bits) }
-			shared_bits_ptr:   unsafe { voidptr(&g.shared_scan_bits) }
-			type_text_cache:   &TypeMetadataTextCache{}
+			g:               voidptr(g)
+			start:           start
+			end:             end
+			parsed_end:      parsed_end
+			shared_bits_ptr: unsafe { voidptr(&g.shared_scan_bits) }
+			type_text_cache: &TypeMetadataTextCache{}
 		}
 	}
 	for job in 0 .. n_jobs {
 		tasks << workers.Task{
-			run:        collect_gen_info_scan_count_thread
+			run:        collect_gen_info_scan_thread
 			arg:        unsafe { voidptr(&args[job]) }
 			force_sync: job == 0
 		}
 	}
 	g.a.worker_pool.run(tasks)
-	for i in 0 .. args.len {
-		for id, _ in args[i].c_struct_refs {
-			g.expr_c_struct_refs[id] = true
-		}
-	}
-	g.expr_c_struct_refs_ready = true
 	mut counts := CollectGenInfoScanCounts{}
 	mut top_level_count := 0
 	mut string_count := 0
@@ -1221,7 +1179,11 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut type_metadata_count := 0
 	mut embed_count := 0
 	mut sizeof_count := 0
-	for mut arg in args {
+	for i in 0 .. args.len {
+		arg := unsafe { &args[i] }
+		for id, _ in arg.c_struct_refs {
+			g.expr_c_struct_refs[id] = true
+		}
 		counts.fn_count += arg.counts.fn_count
 		counts.struct_count += arg.counts.struct_count
 		counts.global_count += arg.counts.global_count
@@ -1229,46 +1191,34 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		counts.enum_field_count += arg.counts.enum_field_count
 		counts.interface_count += arg.counts.interface_count
 		counts.import_count += arg.counts.import_count
-		counted_top_levels := arg.top_level_pos
-		counted_strings := arg.string_pos
-		counted_type_metadata := arg.type_metadata_pos
-		counted_embeds := arg.embed_pos
-		counted_sizeofs := arg.sizeof_pos
-		arg.top_level_pos = top_level_count
-		arg.string_pos = string_count
-		arg.type_metadata_pos = type_metadata_count
-		arg.embed_pos = embed_count
-		arg.sizeof_pos = sizeof_count
-		top_level_count += counted_top_levels
-		string_count += counted_strings
+		top_level_count += arg.top_levels.len
+		string_count += arg.strings.len
 		parsed_string_count += arg.parsed_strings
-		type_metadata_count += counted_type_metadata
-		embed_count += counted_embeds
-		sizeof_count += counted_sizeofs
+		type_metadata_count += arg.type_metadata.len
+		embed_count += arg.embeds.len
+		sizeof_count += arg.sizeofs.len
 	}
-	g.top_level_node_ids = []i32{len: top_level_count}
-	g.ast_string_literals = []string{len: string_count}
+	g.expr_c_struct_refs_ready = true
+	g.top_level_node_ids = []i32{cap: top_level_count}
+	g.ast_string_literals = []string{cap: string_count}
 	g.ast_string_literals_parsed = parsed_string_count
-	g.type_metadata_node_ids = []i32{len: type_metadata_count}
-	g.embed_payload_node_ids = []i32{len: embed_count}
-	g.sizeof_offsetof_node_ids = []i32{len: sizeof_count}
-	for mut arg in args {
-		arg.top_levels_ptr = unsafe { voidptr(&g.top_level_node_ids) }
-		arg.strings_ptr = unsafe { voidptr(&g.ast_string_literals) }
-		arg.type_metadata_ptr = unsafe { voidptr(&g.type_metadata_node_ids) }
-		arg.embed_ptr = unsafe { voidptr(&g.embed_payload_node_ids) }
-		arg.sizeof_ptr = unsafe { voidptr(&g.sizeof_offsetof_node_ids) }
-	}
-	tasks.clear()
-	for job in 0 .. n_jobs {
-		tasks << workers.Task{
-			run:        collect_gen_info_scan_fill_thread
-			arg:        unsafe { voidptr(&args[job]) }
-			force_sync: job == 0
+	g.type_metadata_node_ids = []i32{cap: type_metadata_count}
+	g.embed_payload_node_ids = []i32{cap: embed_count}
+	g.sizeof_offsetof_node_ids = []i32{cap: sizeof_count}
+	for i in 0 .. args.len {
+		arg := unsafe { &args[i] }
+		// Plain copies of the slices: the literal texts are AST storage.
+		unsafe {
+			g.top_level_node_ids.push_many(arg.top_levels.data, arg.top_levels.len)
+			g.ast_string_literals.push_many(arg.strings.data, arg.strings.len)
+			g.type_metadata_node_ids.push_many(arg.type_metadata.data, arg.type_metadata.len)
+			g.embed_payload_node_ids.push_many(arg.embeds.data, arg.embeds.len)
+			g.sizeof_offsetof_node_ids.push_many(arg.sizeofs.data, arg.sizeofs.len)
 		}
 	}
-	g.a.worker_pool.run(tasks)
-	unsafe { metadata_bits.free() }
+	for arg in args {
+		cgen_worker_scope_free(arg.scope)
+	}
 	g.type_metadata_nodes_ready = true
 	g.embed_payload_nodes_ready = true
 	g.sizeof_offsetof_nodes_ready = true
