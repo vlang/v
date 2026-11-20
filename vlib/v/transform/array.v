@@ -3490,7 +3490,15 @@ fn (t &Transformer) array_append_literal_children_match_elem(rhs_id flat.NodeId,
 		child_shape := flat.source_type_shape(child_type_source_id)
 		if child.kind in [.array_literal, .array_init] && child.children_count == 0
 			&& (clean_elem_shape.has(.array_type) || t.is_fixed_array_type(clean_elem_source_id)) {
-			continue
+			// An untyped empty literal (`[]`) takes the destination element type, so
+			// `b << [[]]` appends one empty element. An explicitly typed empty array
+			// (`[]Node{}`) only matches the same type: `runs << [[]Node{}]` pushes
+			// the whole `[][]Node` value instead of spreading it (spreading would
+			// need a `[]Node` -> `[][]Node` element conversion that does not exist).
+			if child_type_source_id == u32(0)
+				|| child_type_source_id == flat.source_type_unknown {
+				continue
+			}
 		}
 		if child.kind == .array_literal && clean_elem_shape.has(.array_type)
 			&& t.array_append_literal_children_match_elem(child_id, flat.source_type_syntax(clean_elem_source_id).raw_base()) {
