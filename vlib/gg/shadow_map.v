@@ -5,6 +5,10 @@ module gg
 import gg.render
 import math
 
+// inv_nine is the precomputed reciprocal of the 3x3 PCF tap count, so sample()
+// multiplies instead of dividing on every filtered lookup.
+const inv_nine = f32(1) / f32(9)
+
 // ShadowMap3D is a depth texture rendered from a light's point of view.
 // It stores one depth value per shadow-map texel; gg compares a fragment's
 // light-space depth against it while baking vertex colours, so shadows work
@@ -27,6 +31,26 @@ pub mut:
 	soft_samples int  = 0    // 0 = single tap, 1 = 9-tap (3x3) PCF
 	auto_update  bool = true // recompute view_proj inside capture_depth (legacy behaviour)
 	dirty        bool = true // set by set_transform/mark_dirty, cleared after a capture
+mut:
+	// Cached column-major view-projection coefficients. Sampling runs per vertex,
+	// so reading these scalars avoids rebuilding a [16]f32 array on every call.
+	m0         f32
+	m1         f32
+	m2         f32
+	m3         f32
+	m4         f32
+	m5         f32
+	m6         f32
+	m7         f32
+	m8         f32
+	m9         f32
+	m10        f32
+	m11        f32
+	m12        f32
+	m13        f32
+	m14        f32
+	m15        f32
+	has_matrix bool
 }
 
 // new_shadow_map3d creates an empty shadow map of size x size texels.
@@ -64,12 +88,37 @@ pub fn (s &ShadowMap3D) light_view_proj(target Vec3, extent f32, near f32, far f
 // call capture_if_dirty to skip captures when nothing has changed.
 pub fn (mut s ShadowMap3D) set_transform(target Vec3, extent f32, near f32, far f32) {
 	s.view_proj = s.light_view_proj(target, extent, near, far)
+	s.cache_matrix()
 	s.last_target = target
 	s.last_extent = extent
 	s.last_near = near
 	s.last_far = far
 	s.has_capture = true
 	s.dirty = true
+}
+
+// cache_matrix stores the current view_proj as sixteen scalar coefficients so
+// per-vertex sampling can read them without rebuilding the [16]f32 array each
+// time. Call this whenever view_proj is (re)assigned inside the shadow map.
+fn (mut s ShadowMap3D) cache_matrix() {
+	a := s.view_proj.to_array()
+	s.m0 = a[0]
+	s.m1 = a[1]
+	s.m2 = a[2]
+	s.m3 = a[3]
+	s.m4 = a[4]
+	s.m5 = a[5]
+	s.m6 = a[6]
+	s.m7 = a[7]
+	s.m8 = a[8]
+	s.m9 = a[9]
+	s.m10 = a[10]
+	s.m11 = a[11]
+	s.m12 = a[12]
+	s.m13 = a[13]
+	s.m14 = a[14]
+	s.m15 = a[15]
+	s.has_matrix = true
 }
 
 // mark_dirty forces the next capture_if_dirty call to recapture, for example
@@ -90,13 +139,15 @@ pub fn (mut s ShadowMap3D) capture_depth(ctx &Context, target Vec3, extent f32, 
 	if s.auto_update {
 		s.view_proj = s.light_view_proj(target, extent, near, far)
 	}
+	s.cache_matrix()
 	s.last_target = target
 	s.last_extent = extent
 	s.last_near = near
 	s.last_far = far
 	s.has_capture = true
-	// Rasterize once with the light's MVP overriding the recorded uniform.
-	frame_light := ctx.r.render_cpu_depth_with_mvp(s.size, s.size, 0xffffffff, 1.0, s.view_proj)
+	// Depth-only rasterization: skips colour, texture and blending work,
+	// which shadow capture never needs.
+	frame_light := ctx.r.render_depth_only(s.size, s.size, 1.0, s.view_proj)
 	// The rasterizer's depth buffer is freshly allocated and no longer used by
 	// the frame, so adopt it directly instead of cloning the whole size*size
 	// buffer (V slices are reference counted, so this is just a refcount bump).
@@ -160,12 +211,25 @@ pub fn (s &ShadowMap3D) sample(world Vec3) f32 {
 	if s.depth.len != s.size * s.size || s.strength <= 0 {
 		return 1.0
 	}
-	// Read the matrix once; all sixteen coefficients stay in local variables.
-	a := s.view_proj.to_array()
-	x := a[0] * world.x + a[4] * world.y + a[8] * world.z + a[12]
-	y := a[1] * world.x + a[5] * world.y + a[9] * world.z + a[13]
-	z := a[2] * world.x + a[6] * world.y + a[10] * world.z + a[14]
-	w := a[3] * world.x + a[7] * world.y + a[11] * world.z + a[15]
+	// Prefer the cached scalar coefficients; they are identical to the
+	// column-major values returned by to_array(), but cost no array build.
+	mut x := f32(0)
+	mut y := f32(0)
+	mut z := f32(0)
+	mut w := f32(0)
+	if s.has_matrix {
+		x = s.m0 * world.x + s.m4 * world.y + s.m8 * world.z + s.m12
+		y = s.m1 * world.x + s.m5 * world.y + s.m9 * world.z + s.m13
+		z = s.m2 * world.x + s.m6 * world.y + s.m10 * world.z + s.m14
+		w = s.m3 * world.x + s.m7 * world.y + s.m11 * world.z + s.m15
+	} else {
+		// view_proj was assigned directly (no cache): build the array once.
+		a := s.view_proj.to_array()
+		x = a[0] * world.x + a[4] * world.y + a[8] * world.z + a[12]
+		y = a[1] * world.x + a[5] * world.y + a[9] * world.z + a[13]
+		z = a[2] * world.x + a[6] * world.y + a[10] * world.z + a[14]
+		w = a[3] * world.x + a[7] * world.y + a[11] * world.z + a[15]
+	}
 	if w <= 0 {
 		return 1.0
 	}
@@ -190,7 +254,7 @@ pub fn (s &ShadowMap3D) sample(world Vec3) f32 {
 				vis += s.tap(u0 + f32(dx) * step, vy, depth)
 			}
 		}
-		return vis / 9.0
+		return vis * inv_nine
 	}
 	return s.tap(u, v, depth)
 }
@@ -204,11 +268,23 @@ pub fn (s &ShadowMap3D) sample_fast(world Vec3) f32 {
 	if s.strength <= 0 || s.depth.len != s.size * s.size {
 		return 1.0
 	}
-	a := s.view_proj.to_array()
-	x := a[0] * world.x + a[4] * world.y + a[8] * world.z + a[12]
-	y := a[1] * world.x + a[5] * world.y + a[9] * world.z + a[13]
-	z := a[2] * world.x + a[6] * world.y + a[10] * world.z + a[14]
-	w := a[3] * world.x + a[7] * world.y + a[11] * world.z + a[15]
+	mut x := f32(0)
+	mut y := f32(0)
+	mut z := f32(0)
+	mut w := f32(0)
+	if s.has_matrix {
+		x = s.m0 * world.x + s.m4 * world.y + s.m8 * world.z + s.m12
+		y = s.m1 * world.x + s.m5 * world.y + s.m9 * world.z + s.m13
+		z = s.m2 * world.x + s.m6 * world.y + s.m10 * world.z + s.m14
+		w = s.m3 * world.x + s.m7 * world.y + s.m11 * world.z + s.m15
+	} else {
+		// view_proj was assigned directly (no cache): build the array once.
+		a := s.view_proj.to_array()
+		x = a[0] * world.x + a[4] * world.y + a[8] * world.z + a[12]
+		y = a[1] * world.x + a[5] * world.y + a[9] * world.z + a[13]
+		z = a[2] * world.x + a[6] * world.y + a[10] * world.z + a[14]
+		w = a[3] * world.x + a[7] * world.y + a[11] * world.z + a[15]
+	}
 	if w <= 0 {
 		return 1.0
 	}

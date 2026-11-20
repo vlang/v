@@ -126,6 +126,73 @@ pub fn (ctx &Context) render_cpu_depth_with_mvp(width int, height int, clear u32
 	return ctx.render_cpu_impl(width, height, clear, true, clear_depth, mvp, true)
 }
 
+// render_depth_only rasterizes only depth from the given MVP, skipping all
+// colour, texture and blending work. Used by shadow-map capture where only
+// the depth buffer is needed. Returns a Frame with pixels.len == 0 and a
+// depth buffer of width*height. Lines and points are intentionally ignored:
+// a single sample carries no surface depth useful for a shadow map.
+pub fn (ctx &Context) render_depth_only(width int, height int, clear_depth f32, mvp Mat4) Frame {
+	if width <= 0 || height <= 0 {
+		return Frame{}
+	}
+	mut st := ctx.st
+	mut frame := Frame{
+		width:  width
+		height: height
+		pixels: []u32{}
+	}
+	frame.depth = []f32{len: width * height, init: clear_depth}
+	mut vp := Viewport{ x: 0, y: 0, w: width, h: height, origin_top_left: true }
+	mut sc := Scissor{ x: 0, y: 0, w: width, h: height }
+
+	for ci in 0 .. st.commands_count {
+		cmd := st.commands[ci]
+		if cmd.kind == .viewport {
+			vp.x = cmd.x
+			vp.y = cmd.y
+			vp.w = cmd.w
+			vp.h = cmd.h
+			vp.origin_top_left = cmd.origin_top_left
+		} else if cmd.kind == .scissor {
+			sc.x = cmd.x
+			sc.y = cmd.y
+			sc.w = cmd.w
+			sc.h = cmd.h
+		} else if cmd.kind == .draw {
+			if cmd.num_vertices <= 0 { continue }
+			if cmd.uniform_index < 0 || cmd.uniform_index >= st.uniforms_count { continue }
+			mut uni := st.uniforms[cmd.uniform_index]
+			uni.mvp = mvp
+			if cmd.primitive == .triangles {
+				mut i := 0
+				for i + 2 < cmd.num_vertices {
+					rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+					i += 3
+				}
+			} else if cmd.primitive == .triangle_strip {
+				mut i := 0
+				for i + 2 < cmd.num_vertices {
+					if i % 2 == 0 {
+						rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+					} else {
+						rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i + 1, cmd.base_vertex + i, cmd.base_vertex + i + 2)
+					}
+					i++
+				}
+			} else if cmd.primitive == .quads {
+				// vertices are pre-expanded into a 6-vertex triangle soup
+				mut i := 0
+				for i + 2 < cmd.num_vertices {
+					rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+					i += 3
+				}
+			}
+			// .lines, .line_strip and .points are skipped (see doc comment).
+		}
+	}
+	return frame
+}
+
 fn (ctx &Context) render_cpu_impl(width int, height int, clear u32, with_depth bool, clear_depth f32, mvp_override Mat4, use_override bool) Frame {
 	mut st := ctx.st
 	mut frame := Frame{
@@ -496,6 +563,107 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			if nb > 1.0 { nb = 1.0 }
 			if na > 1.0 { na = 1.0 }
 			frame.pixels[idx] = pack_color(u8(nr * 255), u8(ng * 255), u8(nb * 255), u8(na * 255))
+		}
+	}
+}
+
+// rasterize_tri_depth is the depth-only counterpart of rasterize_tri. It uses
+// the same projection, rejection and barycentric edge-function loop, but only
+// interpolates NDC z and updates frame.depth; no colour, texture or blending
+// work is done and frame.pixels is never touched.
+fn rasterize_tri_depth(mut frame Frame, st &State, uni Uniform, vp Viewport, sc Scissor,
+	i0 int, i1 int, i2 int) {
+	v0 := st.verts[i0]
+	v1 := st.verts[i1]
+	v2 := st.verts[i2]
+	q0 := project_vertex(v0, uni.mvp, vp)
+	q1 := project_vertex(v1, uni.mvp, vp)
+	q2 := project_vertex(v2, uni.mvp, vp)
+	if !q0.valid || !q1.valid || !q2.valid {
+		return
+	}
+	// Every fragment depth is a convex combination of the three vertex depths,
+	// so if all vertices lie beyond the same clip plane, no fragment can pass
+	// the z-range test below.
+	if (q0.z < -1.0 && q1.z < -1.0 && q2.z < -1.0)
+		|| (q0.z > 1.0 && q1.z > 1.0 && q2.z > 1.0) {
+		return
+	}
+	w := frame.width
+	h := frame.height
+	p0x, p0y := q0.x, q0.y
+	p1x, p1y := q1.x, q1.y
+	p2x, p2y := q2.x, q2.y
+
+	area := (p1x - p0x) * (p2y - p0y) - (p2x - p0x) * (p1y - p0y)
+	if area == 0.0 {
+		return
+	}
+
+	mut min_xf := if p0x < p1x { p0x } else { p1x }
+	if p2x < min_xf { min_xf = p2x }
+	mut max_xf := if p0x > p1x { p0x } else { p1x }
+	if p2x > max_xf { max_xf = p2x }
+	mut min_yf := if p0y < p1y { p0y } else { p1y }
+	if p2y < min_yf { min_yf = p2y }
+	mut max_yf := if p0y > p1y { p0y } else { p1y }
+	if p2y > max_yf { max_yf = p2y }
+
+	min_x := int(math.floor(min_xf))
+	max_x := int(math.ceil(max_xf))
+	min_y := int(math.floor(min_yf))
+	max_y := int(math.ceil(max_yf))
+
+	// Fold the frame-bounds and scissor tests into the loop bounds.
+	mut lo_x := if min_x > sc.x { min_x } else { sc.x }
+	if lo_x < 0 { lo_x = 0 }
+	mut hi_x := if max_x < sc.x + sc.w - 1 { max_x } else { sc.x + sc.w - 1 }
+	if hi_x >= w { hi_x = w - 1 }
+	mut lo_y := if min_y > sc.y { min_y } else { sc.y }
+	if lo_y < 0 { lo_y = 0 }
+	mut hi_y := if max_y < sc.y + sc.h - 1 { max_y } else { sc.y + sc.h - 1 }
+	if hi_y >= h { hi_y = h - 1 }
+	if lo_x > hi_x || lo_y > hi_y {
+		return
+	}
+
+	for y in lo_y .. hi_y + 1 {
+		row := y * w
+		for x in lo_x .. hi_x + 1 {
+			px := f32(x) + 0.5
+			py := f32(y) + 0.5
+			w0 := (px - p1x) * (p2y - p1y) - (py - p1y) * (p2x - p1x)
+			w1 := (px - p2x) * (p0y - p2y) - (py - p2y) * (p0x - p2x)
+			w2 := (px - p0x) * (p1y - p0y) - (py - p0y) * (p1x - p0x)
+			inside := if area > 0 {
+				w0 <= 0 && w1 <= 0 && w2 <= 0
+			} else {
+				w0 >= 0 && w1 >= 0 && w2 >= 0
+			}
+			if !inside {
+				continue
+			}
+
+			wsum := w0 + w1 + w2
+			if wsum == 0.0 {
+				continue
+			}
+			// Edge weights have the opposite sign to area; normalize by their sum.
+			bw0 := w0 / wsum
+			bw1 := w1 / wsum
+			bw2 := w2 / wsum
+			idx := row + x
+
+			// q*.z is already NDC depth. Interpolate linearly with screen-space
+			// barycentric weights, as in rasterize_tri's depth path.
+			z := q0.z * bw0 + q1.z * bw1 + q2.z * bw2
+			if z < -1.0 || z > 1.0 {
+				continue
+			}
+			if z > frame.depth[idx] {
+				continue
+			}
+			frame.depth[idx] = z
 		}
 	}
 }
