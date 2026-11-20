@@ -1,0 +1,17 @@
+import sync
+
+struct Store {
+mut:
+	mu    sync.Mutex
+	value int @[guarded_by: 'mu']
+}
+
+fn main() {
+	mut s := Store{}
+	s.mu.lock()
+	defer {
+		s.mu.unlock()
+	}
+	s.value = 42
+	println(s.value)
+}

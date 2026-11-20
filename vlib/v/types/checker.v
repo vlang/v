@@ -843,6 +843,8 @@ mut:
 	locked_shared_names                      map[string]int
 	locked_shared_modes                      map[string][]u8
 	locked_shared_base_names                 map[string]string
+	held_mutex_locks                         map[string]int
+	held_mutex_modes                         map[string][]u8
 	pointer_binding_value_keys               map[string][]string
 	immutable_reference_aliases              map[string]bool
 	fresh_map_fields                         map[string]FreshMapField
@@ -904,6 +906,8 @@ fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.locked_shared_names.clear()
 	ctx.locked_shared_modes.clear()
 	ctx.locked_shared_base_names.clear()
+	ctx.held_mutex_locks.clear()
+	ctx.held_mutex_modes.clear()
 	if ctx.pointer_binding_values_shared {
 		ctx.pointer_binding_value_keys = map[string][]string{}
 	} else {
@@ -968,6 +972,8 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		locked_shared_names:                      src.locked_shared_names.clone()
 		locked_shared_modes:                      src.locked_shared_modes.clone()
 		locked_shared_base_names:                 src.locked_shared_base_names.clone()
+		held_mutex_locks:                         src.held_mutex_locks.clone()
+		held_mutex_modes:                         src.held_mutex_modes.clone()
 		pointer_binding_value_keys:               clone_pointer_binding_value_keys(src.pointer_binding_value_keys)
 		immutable_reference_aliases:              src.immutable_reference_aliases.clone()
 		fresh_map_fields:                         src.fresh_map_fields.clone()
@@ -1265,6 +1271,7 @@ pub mut:
 	struct_implements                  flat.SourceTypeListBindings
 	struct_shared_fields               map[u32]map[string]bool
 	struct_shared_element_fields       map[u32]map[string]bool
+	struct_guarded_by                  map[u32]map[string]string
 	struct_field_c_abi_fns             map[u32]map[string]string
 	// Concrete receiver spelling ID and method name -> substituted CallInfo for a method *value* on a
 	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
@@ -1332,6 +1339,7 @@ pub mut:
 	has_globals_files         map[string]bool
 	deprecated_symbols        map[string]DeprecationInfo
 	deprecated_modules        map[string]DeprecationInfo
+	requires_lock_fns         map[string]string
 	file_scope                &Scope = unsafe { nil }
 	cur_scope                 &Scope = unsafe { nil }
 	scope_pool                []&Scope
@@ -1776,6 +1784,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		struct_implements:                       flat.SourceTypeListBindings{}
 		struct_shared_fields:                    map[u32]map[string]bool{}
 		struct_shared_element_fields:            map[u32]map[string]bool{}
+		struct_guarded_by:                       map[u32]map[string]string{}
 		struct_field_c_abi_fns:                  map[u32]map[string]string{}
 		generic_method_value_info:               map[u32]map[string]CallInfo{}
 		params_structs:                          map[u32]bool{}
@@ -1821,6 +1830,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		has_globals_files:                       map[string]bool{}
 		deprecated_symbols:                      map[string]DeprecationInfo{}
 		deprecated_modules:                      map[string]DeprecationInfo{}
+		requires_lock_fns:                       map[string]string{}
 		file_scope:                              fs
 		cur_scope:                               fs
 		// The node-indexed cache arrays start empty: collect() sizes them via
@@ -1949,6 +1959,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		struct_implements:                     tc.struct_implements
 		struct_shared_fields:                  tc.struct_shared_fields
 		struct_shared_element_fields:          tc.struct_shared_element_fields
+		struct_guarded_by:                     tc.struct_guarded_by
 		struct_field_c_abi_fns:                tc.struct_field_c_abi_fns
 		generic_method_value_info:             tc.generic_method_value_info
 		params_structs:                        tc.params_structs
@@ -2015,6 +2026,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		has_globals_files:                     tc.has_globals_files
 		deprecated_symbols:                    tc.deprecated_symbols
 		deprecated_modules:                    tc.deprecated_modules
+		requires_lock_fns:                     tc.requires_lock_fns
 		file_scope:                            fs
 		cur_scope:                             fs
 		scope_pool:                            []&Scope{}
@@ -2378,6 +2390,7 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.struct_implements = tc.struct_implements.clone_owned()
 	tc.struct_shared_fields = clone_owned_type_owner_field_flags(tc.struct_shared_fields)
 	tc.struct_shared_element_fields = clone_owned_type_owner_field_flags(tc.struct_shared_element_fields)
+	tc.struct_guarded_by = clone_owned_type_owner_c_abi_fields(tc.struct_guarded_by)
 	tc.struct_field_c_abi_fns = clone_owned_type_owner_c_abi_fields(tc.struct_field_c_abi_fns)
 	tc.unions = tc.unions.clone()
 	tc.params_structs = tc.params_structs.clone()
@@ -5379,6 +5392,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				mut field_c_abi_fns := map[string]string{}
 				mut shared_field_names := []string{}
 				mut shared_element_field_names := []string{}
+				mut guarded_by_fields := map[string]string{}
 				mut shadows_builtin_error_embed := false
 				for i in 0 .. node.children_count {
 					f := a.child_node(node_ref, i)
@@ -5416,6 +5430,15 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					}
 					if param_source_type_is_shared(field_typ_id) {
 						shared_field_names << f.value
+					}
+					field_meta := f.generic_params()
+					if field_meta.len > 1 {
+						for raw in field_meta[1..] {
+							if guard := guarded_by_attr_value(raw) {
+								guarded_by_fields[f.value] = guard
+								break
+							}
+						}
 					}
 					clean_field_id := trimmed_source_type_id(field_typ_id)
 					field_base_id := if flat.source_type_shape(clean_field_id).has(.pointer) {
@@ -5463,6 +5486,16 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				}
 				tc.set_struct_fields(qname_id, fields, shared_field_names, shared_element_field_names,
 					field_c_abi_fns, shadows_builtin_error_embed)
+				if guarded_by_fields.len > 0 {
+					mut existing := map[string]string{}
+					if qname_id in tc.struct_guarded_by {
+						existing = tc.struct_guarded_by[qname_id].clone()
+					}
+					for field_name, guard in guarded_by_fields {
+						existing[field_name] = guard
+					}
+					tc.struct_guarded_by[qname_id] = existing
+				}
 			}
 			.c_fn_decl {
 				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
@@ -5728,6 +5761,7 @@ pub fn source_field_decl_is_volatile(field flat.Node) bool {
 fn (mut tc TypeChecker) collect_deprecated_symbols() {
 	tc.deprecated_symbols.clear()
 	tc.deprecated_modules.clear()
+	tc.requires_lock_fns.clear()
 	tc.unsafe_fn_modules.clear()
 	tc.unsafe_fn_bloom = NameBloom{}
 	tc.collect_deprecated_symbols_of(tc.top_level_idx)
@@ -5826,6 +5860,18 @@ fn (mut tc TypeChecker) collect_deprecated_symbols_of(entries []i32) {
 			tc.deprecated_symbols[qname] = info
 			if module_name in ['', 'main', 'builtin'] {
 				tc.deprecated_symbols[node.value] = info
+			}
+		}
+		if node.kind == .fn_decl {
+			for raw in attrs {
+				if guard := requires_lock_attr_value(raw) {
+					qname := checker_qualified_fn_name(module_name, node.value)
+					tc.requires_lock_fns[qname] = guard
+					if module_name in ['', 'main', 'builtin'] {
+						tc.requires_lock_fns[node.value] = guard
+					}
+					break
+				}
 			}
 		}
 	}
@@ -19034,6 +19080,7 @@ const builtin_attribute_names = [
 	'generated',
 	'generic',
 	'get',
+	'guarded_by',
 	'has_default',
 	'has_globals',
 	'head',
@@ -19078,6 +19125,7 @@ const builtin_attribute_names = [
 	'references',
 	'repeats',
 	'required',
+	'requires_lock',
 	'serial',
 	'serialize',
 	'short',

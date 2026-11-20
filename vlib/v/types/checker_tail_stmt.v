@@ -1792,6 +1792,11 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	mut unsafe_alias_paths := []map[string]bool{}
 	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	mut pointer_alias_paths := []map[string][]string{}
+	// Lock facts are function-wide: each branch is checked from the base so
+	// a `lock()` in one branch cannot leak into the next or past the match.
+	match_mutex_base_locks, match_mutex_base_modes := tc.snapshot_held_mutex_locks()
+	mut match_mutex_path_locks := []map[string]int{}
+	mut match_mutex_path_modes := []map[string][]u8{}
 	// One in-place scan for the whole match: the old per-condition
 	// source_text_for_node(...).contains(...) copied the entire match span
 	// (thousands of lines for dispatch tables) once per condition.
@@ -1809,6 +1814,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
 		tc.fn_context.pointer_binding_value_keys =
 			snapshot_pointer_binding_value_keys(pointer_alias_base)
+		tc.restore_held_mutex_locks(match_mutex_base_locks, match_mutex_base_modes)
 		if branch.kind != .match_branch {
 			tc.check_node(branch_id)
 			continue
@@ -1978,6 +1984,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			if !tc.match_branch_definitely_returns(branch) {
 				unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
 				pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+				branch_mutex_locks, branch_mutex_modes := tc.snapshot_held_mutex_locks()
+				match_mutex_path_locks << branch_mutex_locks
+				match_mutex_path_modes << branch_mutex_modes
 			}
 			continue
 		}
@@ -2033,14 +2042,28 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		if !tc.match_branch_definitely_returns(branch) {
 			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
 			pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+			branch_mutex_locks, branch_mutex_modes := tc.snapshot_held_mutex_locks()
+			match_mutex_path_locks << branch_mutex_locks
+			match_mutex_path_modes << branch_mutex_modes
 		}
 	}
 	if !tc.match_has_else_or_exhaustive_coverage(node) {
 		unsafe_alias_paths << unsafe_alias_base.clone()
 		pointer_alias_paths << snapshot_pointer_binding_value_keys(pointer_alias_base)
+		// A non-exhaustive match without `else` can fall through, so the
+		// base facts are one reachable path.
+		match_mutex_path_locks << match_mutex_base_locks.clone()
+		match_mutex_path_modes << match_mutex_base_modes.clone()
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
 	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
+	// Merge lock facts fail-closed: only locks held on every reachable
+	// branch survive. With no reachable path, keep the base facts.
+	if match_mutex_path_locks.len == 0 {
+		tc.restore_held_mutex_locks(match_mutex_base_locks, match_mutex_base_modes)
+	} else {
+		tc.merge_held_mutex_paths(match_mutex_path_locks, match_mutex_path_modes)
+	}
 	if missing_non_else {
 		tc.record_match_requires_non_else(node)
 	}
@@ -8024,6 +8047,10 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				tc.method_values_by_fn[tc.fn_context.node_id] << '${clean_recv.name()}.${node.value}'
 			}
 		}
+	}
+	if clean_recv is Struct && !tc.selector_is_call_callee(id)
+		&& !tc.selector_is_assignment_lhs(id) && tc.struct_guarded_by.len > 0 {
+		tc.check_guarded_field_access(id, node, clean_recv.source_type_id())
 	}
 	if typ := tc.selector_type(id, node) {
 		tc.register_synth_type(id, typ)

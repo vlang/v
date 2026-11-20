@@ -1,0 +1,13 @@
+vlib/v/checker/tests/guarded_by_rlock_err.vv:12:4: error: `s.value` is guarded by `mu` and needs explicit lock `s.mu`
+   10 |     mut s := Store{}
+   11 |     s.mu.rlock()
+   12 |     s.value = 42
+      |       ~~~~~
+   13 |     s.mu.runlock()
+   14 |     println(s.value)
+vlib/v/checker/tests/guarded_by_rlock_err.vv:14:12: error: `s.value` is guarded by `mu` and needs explicit lock `s.mu`
+   12 |     s.value = 42
+   13 |     s.mu.runlock()
+   14 |     println(s.value)
+      |               ~~~~~
+   15 | }

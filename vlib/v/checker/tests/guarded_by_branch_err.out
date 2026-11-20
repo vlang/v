@@ -1,0 +1,7 @@
+vlib/v/checker/tests/guarded_by_branch_err.vv:13:11: error: `s.value` is guarded by `mu` and needs explicit lock `s.mu`
+   11 |         s.mu.lock()
+   12 |     }
+   13 |     return s.value
+      |              ~~~~~
+   14 | }
+   15 |

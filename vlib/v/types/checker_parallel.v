@@ -4305,6 +4305,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
 	if has_body && should_check_generic_body && !signature_has_bare_generic_type {
+		if tc.requires_lock_fns.len > 0 {
+			tc.seed_requires_lock_for_fn(fn_idx, node)
+		}
 		tc.check_fn_body(node)
 		if !fast_valid_build {
 			tc.check_recursive_str_calls(flat.NodeId(fn_idx), node)
