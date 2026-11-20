@@ -136,12 +136,14 @@ fn main() {
 	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
 	mut args := remove_obsolete_skip_unused_flag(merged_v_args())
+	// Scan the command once; toolchain dispatch and the normal launcher path
+	// both need it, and `args` is not changed between those uses.
+	command_index, command := find_command(args)
 	// Resolve the active toolchain before any other launcher work. The
 	// `toolchain` manager and `up` stay local so they can manage the launchers
 	// themselves. The dispatch marker prevents the selected compiler from
 	// resolving a toolchain again.
 	if os.getenv(toolchain.dispatch_env) == '' {
-		_, command := find_command(args)
 		if toolchain_dispatch_allowed(command) && dispatch_to_toolchain() {
 			return
 		}
@@ -154,7 +156,6 @@ fn main() {
 		return
 	}
 	compiler_args := compiler_args_before_program(args)
-	command_index, command := find_command(args)
 	// Tool arguments belong to the tool, including a completion query for the removed flag.
 	option_args := if command in external_commands || command == 'help' {
 		args[..command_index]
