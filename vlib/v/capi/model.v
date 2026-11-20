@@ -24,7 +24,8 @@ pub:
 	is_method   bool
 	receiver    string
 pub mut:
-	c_name string
+	c_name      string
+	custom_name string
 }
 
 pub struct ApiType {
@@ -100,7 +101,8 @@ pub fn collect_model(dir string, prefix string) !ApiModel {
 		collect_docs(text, mut docs)
 		mut p := parser.Parser.new(pref.new_preferences())
 		a := p.parse_text(path, text)
-		for node in a.nodes {
+		attrs_by_node := attribute_map(a)
+		for ni, node in a.nodes {
 			if node.kind == .module_decl {
 				if module_name == '' {
 					module_name = node.value
@@ -108,10 +110,16 @@ pub fn collect_model(dir string, prefix string) !ApiModel {
 				continue
 			}
 			if node.kind == .fn_decl {
-				if node.op != .arrow {
+				attrs := attrs_by_node[ni] or { []string{} }
+				is_pub := node.op == .arrow
+				explicit := has_attr(attrs, 'c_api_export', 'CApiExport')
+				if !is_pub && !explicit {
 					continue
 				}
-				funcs << func_from_node(a, node, docs, effective_prefix)
+				if has_attr(attrs, 'c_api_skip', 'CApiSkip') {
+					continue
+				}
+				funcs << func_from_node(a, node, docs, effective_prefix, custom_name_of(attrs))
 				continue
 			}
 			if node.kind == .struct_decl {
@@ -172,12 +180,60 @@ pub fn collect_model(dir string, prefix string) !ApiModel {
 		consts:      consts
 	}
 	for i, f in model.funcs {
-		model.funcs[i].c_name = '${effective_prefix}_${sanitize(f.name)}'
+		model.funcs[i].c_name = if f.custom_name != '' {
+			sanitize(f.custom_name)
+		} else {
+			'${effective_prefix}_${sanitize(f.name)}'
+		}
 	}
 	return model
 }
 
-fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, prefix string) ApiFunc {
+// attribute_map collects `@[...]` groups, which the flat AST stores as
+// directive nodes pointing back at the declaration node index.
+fn attribute_map(a &flat.FlatAst) map[int][]string {
+	mut out := map[int][]string{}
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		idx := node.value[12..].int()
+		if idx < 0 {
+			continue
+		}
+		out[idx] = node.generic_params()
+	}
+	return out
+}
+
+fn has_attr(attrs []string, bare string, qualified string) bool {
+	for attr in attrs {
+		if attr == bare || attr.ends_with('.${qualified}') {
+			return true
+		}
+	}
+	return false
+}
+
+fn custom_name_of(attrs []string) string {
+	for attr in attrs {
+		mut marker := 'c_api_name:'
+		if attr.contains('.CApiName:') {
+			marker = '.CApiName:'
+		}
+		if idx := attr.index(marker) {
+			name := attr[idx + marker.len..].trim_space()
+			if name.len >= 2 && ((name.starts_with("'") && name.ends_with("'"))
+				|| (name.starts_with('"') && name.ends_with('"'))) {
+				return name[1..name.len - 1]
+			}
+			return sanitize(name)
+		}
+	}
+	return ''
+}
+
+fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, prefix string, custom_name string) ApiFunc {
 	mut params := []ApiParam{}
 	mut receiver := ''
 	for i in 0 .. node.children_count {
@@ -204,6 +260,7 @@ fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, pref
 	return ApiFunc{
 		name:        node.value
 		c_name:      cname
+		custom_name: custom_name
 		params:      params
 		return_type: ret
 		doc:         docs['fn:${node.value}']

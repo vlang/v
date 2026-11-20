@@ -54,6 +54,21 @@ with `<prefix>_free()`. Error text from a failed `!T` call is available from
 `<prefix>_last_error()` and stays valid until the next call on that thread.
 Call `<prefix>_init()` once before using the library.
 
+## Manual control
+
+Automatic export is the default, but three attributes let a module adjust the
+surface without writing wrappers:
+
+Import `v.capi` and use these attributes:
+
+- `@[capi.CApiSkip]` on a `pub fn` leaves it out of the C surface.
+- `@[capi.CApiName('custom_name')]` overrides the generated C symbol name.
+- `@[capi.CApiExport]` includes a private `fn` in the C surface.
+
+The bare spellings (`@[c_api_skip]`, etc.) are also recognised by the generator
+but produce an unknown-attribute warning from the checker; prefer the qualified
+forms.
+
 ## Limitations (v1)
 
 - Only one module directory per invocation; submodules are not traversed.

@@ -27,6 +27,22 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_manual_export_overrides() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'attrs')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	assert m.funcs.len == 2
+	mut names := []string{}
+	for f in m.funcs {
+		names << f.c_name
+	}
+	assert 'renamed_sum' in names, names.join(', ')
+	assert 'attrprobe_internal' in names, names.join(', ')
+	assert 'attrprobe_hidden' !in names, names.join(', ')
+}
+
 fn test_generate_wrappers() {
 	m := collect_model(fixture_dir(), '') or {
 		assert false, 'collect_model failed: ${err.msg()}'
