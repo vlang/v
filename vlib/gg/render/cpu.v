@@ -126,6 +126,41 @@ pub fn (ctx &Context) render_cpu_depth_with_mvp(width int, height int, clear u32
 	return ctx.render_cpu_impl(width, height, clear, true, clear_depth, mvp, true)
 }
 
+// rasterize_depth_cmd dispatches one draw command's triangles into a depth
+// buffer. Backfaces are culled to match the GPU's depth pipeline and to skip
+// roughly half the triangles of closed meshes.
+fn rasterize_depth_cmd(mut frame Frame, verts []Vertex, uniforms []Uniform, cmd Command, mvp Mat4, vp Viewport, sc Scissor, ccw bool) {
+	mut uni := uniforms[cmd.uniform_index]
+	uni.mvp = mvp
+	// With a top-left origin the y-axis is flipped on screen, so a front face
+	// (CCW in NDC) has negative screen-space area. A bottom-left origin keeps
+	// the sign; CW winding flips it in both cases.
+	keep_positive := if ccw { !vp.origin_top_left } else { vp.origin_top_left }
+	if cmd.primitive == .triangles {
+		mut i := 0
+		for i + 2 < cmd.num_vertices {
+			rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+			i += 3
+		}
+	} else if cmd.primitive == .triangle_strip {
+		mut i := 0
+		for i + 2 < cmd.num_vertices {
+			if i % 2 == 0 {
+				rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+			} else {
+				rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i + 1, cmd.base_vertex + i, cmd.base_vertex + i + 2)
+			}
+			i++
+		}
+	} else if cmd.primitive == .quads {
+		mut i := 0
+		for i + 2 < cmd.num_vertices {
+			rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+			i += 3
+		}
+	}
+}
+
 // render_depth_only rasterizes only depth from the given MVP, skipping all
 // colour, texture and blending work. Used by shadow-map capture where only
 // the depth buffer is needed. Returns a Frame with pixels.len == 0 and a
@@ -161,32 +196,7 @@ pub fn (ctx &Context) render_depth_only(width int, height int, clear_depth f32, 
 		} else if cmd.kind == .draw {
 			if cmd.num_vertices <= 0 { continue }
 			if cmd.uniform_index < 0 || cmd.uniform_index >= st.uniforms_count { continue }
-			mut uni := st.uniforms[cmd.uniform_index]
-			uni.mvp = mvp
-			if cmd.primitive == .triangles {
-				mut i := 0
-				for i + 2 < cmd.num_vertices {
-					rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
-					i += 3
-				}
-			} else if cmd.primitive == .triangle_strip {
-				mut i := 0
-				for i + 2 < cmd.num_vertices {
-					if i % 2 == 0 {
-						rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
-					} else {
-						rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i + 1, cmd.base_vertex + i, cmd.base_vertex + i + 2)
-					}
-					i++
-				}
-			} else if cmd.primitive == .quads {
-				// vertices are pre-expanded into a 6-vertex triangle soup
-				mut i := 0
-				for i + 2 < cmd.num_vertices {
-					rasterize_tri_depth(mut frame, st, uni, vp, sc, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
-					i += 3
-				}
-			}
+			rasterize_depth_cmd(mut frame, st.verts, st.uniforms, cmd, mvp, vp, sc, st.face_winding == .ccw)
 			// .lines, .line_strip and .points are skipped (see doc comment).
 		}
 	}
@@ -571,11 +581,11 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 // the same projection, rejection and barycentric edge-function loop, but only
 // interpolates NDC z and updates frame.depth; no colour, texture or blending
 // work is done and frame.pixels is never touched.
-fn rasterize_tri_depth(mut frame Frame, st &State, uni Uniform, vp Viewport, sc Scissor,
-	i0 int, i1 int, i2 int) {
-	v0 := st.verts[i0]
-	v1 := st.verts[i1]
-	v2 := st.verts[i2]
+fn rasterize_tri_depth(mut frame Frame, verts []Vertex, uni Uniform, vp Viewport, sc Scissor,
+	keep_positive bool, i0 int, i1 int, i2 int) {
+	v0 := verts[i0]
+	v1 := verts[i1]
+	v2 := verts[i2]
 	q0 := project_vertex(v0, uni.mvp, vp)
 	q1 := project_vertex(v1, uni.mvp, vp)
 	q2 := project_vertex(v2, uni.mvp, vp)
@@ -598,6 +608,14 @@ fn rasterize_tri_depth(mut frame Frame, st &State, uni Uniform, vp Viewport, sc 
 	area := (p1x - p0x) * (p2y - p0y) - (p2x - p0x) * (p1y - p0y)
 	if area == 0.0 {
 		return
+	}
+	// Backface culling: backfaces of closed meshes are always farther from the
+	// light and would lose the depth test anyway, so skipping them is a pure
+	// work saving that also matches the GPU depth pipeline.
+	if keep_positive {
+		if area < 0.0 { return }
+	} else {
+		if area > 0.0 { return }
 	}
 
 	mut min_xf := if p0x < p1x { p0x } else { p1x }
