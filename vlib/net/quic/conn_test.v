@@ -1873,6 +1873,43 @@ fn test_new_connection_id_sequence_reuse_and_retransmission() {
 	assert cid_test_close_code(r3)? == 0x0a
 }
 
+// The same sequence and connection ID with a different stateless reset token
+// is not a retransmission either (RFC 9000 §19.15).
+fn test_new_connection_id_same_sequence_different_token_is_protocol_violation() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	cid := [u8(5), 5, 5, 5]
+	r1 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, cid, cid_test_token(5)), now)!
+	assert cid_test_close_code(r1) == none
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, cid, cid_test_token(6)), now)!
+	assert cid_test_close_code(r2)? == 0x0a
+}
+
+// A repeat of a known sequence, connection ID and token that raises Retire
+// Prior To is not just a retransmission: the increase still applies (RFC 9000
+// §5.1.2, §19.15), so sequence 0 is retired and the DCID moves to sequence 1.
+// Found by maintainer review on vlang/v#31596.
+fn test_repeated_sequence_with_increased_retire_prior_to_retires_old_ids() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	a := [u8(0xa1), 0xa1, 0xa1, 0xa1]
+	r1 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, a, cid_test_token(0x31)),
+		now)!
+	assert cid_test_close_code(r1) == none, r1.events.str()
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(1, 1, a, cid_test_token(0x31)),
+		now)!
+	assert cid_test_close_code(r2) == none, r2.events.str()
+	assert c.largest_retire_prior_to == 1
+	assert c.dcid == a, 'still sending to the retired sequence 0'
+	frames := cid_test_sent_frames(mut c, r2)!
+	assert frames.any(it is RetireConnectionIdFrame
+		&& (it as RetireConnectionIdFrame).sequence_number == 0), 'no RETIRE_CONNECTION_ID(0) in ${frames}'
+}
+
 // RFC 9000 §19.15: a connection ID whose sequence number is below a
 // previously received Retire Prior To is retired straight away.
 fn test_new_connection_id_below_retire_prior_to_is_retired_immediately() {

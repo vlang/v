@@ -1617,18 +1617,24 @@ fn (mut c QuicConn) handle_new_connection_id_frame(f NewConnectionIdFrame) ! {
 		c.pending_retire_cids << f.sequence_number
 		return
 	}
+	// A repeat of a known sequence, connection ID and token adds nothing, but
+	// its Retire Prior To is still applied below: only a value that does not
+	// increase the retirement point is ignored (RFC 9000 §19.15).
+	mut already_known := false
 	if existing := c.peer_cids[f.sequence_number] {
-		if existing.cid == f.connection_id
-			&& (existing.token.len == 0 || existing.token == f.stateless_reset_token) {
-			return // a retransmission of a frame already applied
-		}
-		return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID reuses sequence number ${f.sequence_number} for a different connection ID or token (RFC 9000 §19.15)',
-			int(quic_error_protocol_violation))
-	}
-	for seq, known in c.peer_cids {
-		if known.cid == f.connection_id {
-			return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID repeats the connection ID of sequence ${seq} under sequence ${f.sequence_number} (RFC 9000 §19.15)',
+		if existing.cid != f.connection_id
+			|| (existing.token.len != 0 && existing.token != f.stateless_reset_token) {
+			return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID reuses sequence number ${f.sequence_number} for a different connection ID or token (RFC 9000 §19.15)',
 				int(quic_error_protocol_violation))
+		}
+		already_known = true
+	}
+	if !already_known {
+		for seq, known in c.peer_cids {
+			if known.cid == f.connection_id {
+				return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID repeats the connection ID of sequence ${seq} under sequence ${f.sequence_number} (RFC 9000 §19.15)',
+					int(quic_error_protocol_violation))
+			}
 		}
 	}
 	// RFC 9000 §19.15: retire everything below an increased Retire Prior To
@@ -1647,9 +1653,11 @@ fn (mut c QuicConn) handle_new_connection_id_frame(f NewConnectionIdFrame) ! {
 			c.pending_retire_cids << seq
 		}
 	}
-	c.peer_cids[f.sequence_number] = PeerConnectionId{
-		cid:   f.connection_id.clone()
-		token: f.stateless_reset_token.clone()
+	if !already_known {
+		c.peer_cids[f.sequence_number] = PeerConnectionId{
+			cid:   f.connection_id.clone()
+			token: f.stateless_reset_token.clone()
+		}
 	}
 	// RFC 9000 §5.1.1: the connection ID in use counts toward the limit.
 	limit := c.own_transport_parameters.active_connection_id_limit or {
