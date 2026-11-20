@@ -72,6 +72,7 @@ fn fastc_clone_file_gen_output(output &FastcFileGenOutput) FastcFileGenOutput {
 		refs:              output.refs.clone()
 		root_refs:         output.root_refs.clone()
 		has_main_entry:    output.has_main_entry
+		export_prototypes: fastc_clone_output_strings(output.export_prototypes)
 		fixed_array_types: output.fixed_array_types.clone_owned()
 		composite_types:   fastc_clone_output_bool_map(output.composite_types)
 		spawn_typedefs:    fastc_clone_output_string_map(output.spawn_typedefs)

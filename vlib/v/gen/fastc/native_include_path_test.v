@@ -36,6 +36,37 @@ fn test_native_owner_keeps_symlinked_and_parent_relative_headers() ! {
 	}
 }
 
+fn test_native_constant_from_another_file_header_keeps_the_module_headers() ! {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_native_module_constants_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'native_module_constants' }")!
+	os.write_file(os.join_path(root, 'native.h'), '#undef NATIVE_LIMIT\n#define NATIVE_LIMIT 4\nstatic int native_value(void) { return 42; }\n')!
+	// A default that applies only without the other header: the program compiles
+	// either way, with another value.
+	os.write_file(os.join_path(root, 'limits.h'), '#ifndef NATIVE_LIMIT\n#define NATIVE_LIMIT 2\n#endif\n')!
+	os.write_file(os.join_path(root, 'main.c.v'), 'module main\n' +
+		'#flag darwin -framework Foundation\n' + '#include "@VMODROOT/native.h"\n' +
+		'fn C.native_value() i32\n' +
+		'fn main() {\n\tassert C.native_value() == 42\n\tassert native_limit() == 4\n}\n')!
+	program := os.join_path(root, 'program')
+	// The file that reads the constant has a header of its own, but the constant
+	// comes from the header that the other file includes for a declared function.
+	// An include in a V file does not establish where its constants come from, so
+	// the headers of the module stay in the TinyCC program.
+	for include in ['<stdio.h>', '"@VMODROOT/limits.h"'] {
+		os.write_file(os.join_path(root, 'limits.c.v'), 'module main\n' + '#include ${include}\n' +
+			'fn native_limit() int {\n\treturn C.NATIVE_LIMIT\n}\n')!
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_native_include_paths_resolve_dir_like_the_emitted_directive() {
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_native_include_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'webgl'))!
