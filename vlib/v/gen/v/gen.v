@@ -5708,6 +5708,7 @@ fn formatter_attribute_parts(group string) []string {
 	mut start := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
+	mut brace_depth := 0
 	mut quote := u8(0)
 	mut escaped := false
 	for i := 0; i < content.len; i++ {
@@ -5732,7 +5733,12 @@ fn formatter_attribute_parts(group string) []string {
 			bracket_depth++
 		} else if c == `]` {
 			bracket_depth--
-		} else if (c == `;` || c == `,`) && paren_depth == 0 && bracket_depth == 0 {
+		} else if c == `{` {
+			brace_depth++
+		} else if c == `}` {
+			brace_depth--
+		} else if (c == `;` || c == `,`) && paren_depth == 0 && bracket_depth == 0
+			&& brace_depth == 0 {
 			piece := content[start..i].trim_space()
 			if piece.len > 0 {
 				parts << piece
