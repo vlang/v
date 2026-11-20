@@ -457,31 +457,60 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 		return
 	}
 
+	// Vertex colours are constant across the triangle: unpack them once here
+	// instead of doing twelve shifts/masks/divides per fragment.
+	ur0, ug0, ub0, ua0 := unpack_r(v0.rgba), unpack_g(v0.rgba), unpack_b(v0.rgba), unpack_a(v0.rgba)
+	ur1, ug1, ub1, ua1 := unpack_r(v1.rgba), unpack_g(v1.rgba), unpack_b(v1.rgba), unpack_a(v1.rgba)
+	ur2, ug2, ub2, ua2 := unpack_r(v2.rgba), unpack_g(v2.rgba), unpack_b(v2.rgba), unpack_a(v2.rgba)
+
+	// Incremental edge functions advance by three additions per pixel rather
+	// than recomputing six multiplies and six subtractions each time.
+	a0 := p2y - p1y
+	b0 := p1x - p2x
+	a1 := p0y - p2y
+	b1 := p2x - p0x
+	a2 := p1y - p0y
+	b2 := p0x - p1x
+	sx := f32(lo_x) + 0.5
+	sy := f32(lo_y) + 0.5
+	w0_start := (sx - p1x) * a0 + (sy - p1y) * b0
+	w1_start := (sx - p2x) * a1 + (sy - p2y) * b1
+	w2_start := (sx - p0x) * a2 + (sy - p0y) * b2
+	// The edge sum is constant across the triangle (x/y coefficients cancel),
+	// so one reciprocal normalizes every fragment.
+	wsum := w0_start + w1_start + w2_start
+	if wsum == 0.0 {
+		return
+	}
+	inv_wsum := 1.0 / wsum
+
+	mut w0_row := w0_start
+	mut w1_row := w1_start
+	mut w2_row := w2_start
 	for y in lo_y .. hi_y + 1 {
+		mut w0 := w0_row
+		mut w1 := w1_row
+		mut w2 := w2_row
 		row := y * w
 		for x in lo_x .. hi_x + 1 {
-			px := f32(x) + 0.5
-			py := f32(y) + 0.5
-			w0 := (px - p1x) * (p2y - p1y) - (py - p1y) * (p2x - p1x)
-			w1 := (px - p2x) * (p0y - p2y) - (py - p2y) * (p0x - p2x)
-			w2 := (px - p0x) * (p1y - p0y) - (py - p0y) * (p1x - p0x)
+			// Copy this pixel's edges and advance for the next one up front, so
+			// the early-exit `continue`s below cannot skip the increments.
+			lw0, lw1, lw2 := w0, w1, w2
+			w0 += a0
+			w1 += a1
+			w2 += a2
 			inside := if area > 0 {
-				w0 <= 0 && w1 <= 0 && w2 <= 0
+				lw0 <= 0 && lw1 <= 0 && lw2 <= 0
 			} else {
-				w0 >= 0 && w1 >= 0 && w2 >= 0
+				lw0 >= 0 && lw1 >= 0 && lw2 >= 0
 			}
 			if !inside {
 				continue
 			}
 
-			wsum := w0 + w1 + w2
-			if wsum == 0.0 {
-				continue
-			}
-			// The edge weights have the opposite sign to area; normalize by their sum.
-			bw0 := w0 / wsum
-			bw1 := w1 / wsum
-			bw2 := w2 / wsum
+			bw0 := lw0 * inv_wsum
+			bw1 := lw1 * inv_wsum
+			bw2 := lw2 * inv_wsum
 			idx := row + x
 
 			mut u := v0.u * bw0 + v1.u * bw1 + v2.u * bw2
@@ -511,13 +540,10 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 				vv = (iw0w * v0.v + iw1w * v1.v + iw2w * v2.v) / inv_w
 			}
 
-			c0 := v0.rgba
-			c1 := v1.rgba
-			c2 := v2.rgba
-			r := unpack_r(c0) * bw0 + unpack_r(c1) * bw1 + unpack_r(c2) * bw2
-			g := unpack_g(c0) * bw0 + unpack_g(c1) * bw1 + unpack_g(c2) * bw2
-			b := unpack_b(c0) * bw0 + unpack_b(c1) * bw1 + unpack_b(c2) * bw2
-			a := unpack_a(c0) * bw0 + unpack_a(c1) * bw1 + unpack_a(c2) * bw2
+			r := ur0 * bw0 + ur1 * bw1 + ur2 * bw2
+			g := ug0 * bw0 + ug1 * bw1 + ug2 * bw2
+			b := ub0 * bw0 + ub1 * bw1 + ub2 * bw2
+			a := ua0 * bw0 + ua1 * bw1 + ua2 * bw2
 
 			mut tex_color := u32(0xffffffff)
 			if cmd.image.id != 0 && cmd.image.id != st.def_img.id {
@@ -574,6 +600,9 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			if na > 1.0 { na = 1.0 }
 			frame.pixels[idx] = pack_color(u8(nr * 255), u8(ng * 255), u8(nb * 255), u8(na * 255))
 		}
+		w0_row += b0
+		w1_row += b1
+		w2_row += b2
 	}
 }
 
@@ -645,44 +674,57 @@ fn rasterize_tri_depth(mut frame Frame, verts []Vertex, uni Uniform, vp Viewport
 		return
 	}
 
+	// Edge-function slopes: E(x+1,y) = E + a, E(x,y+1) = E + b. Advancing
+	// three additions per pixel replaces six multiplies and six subtractions.
+	a0 := p2y - p1y
+	b0 := p1x - p2x
+	a1 := p0y - p2y
+	b1 := p2x - p0x
+	a2 := p1y - p0y
+	b2 := p0x - p1x
+
+	sx := f32(lo_x) + 0.5
+	sy := f32(lo_y) + 0.5
+	w0_start := (sx - p1x) * a0 + (sy - p1y) * b0
+	w1_start := (sx - p2x) * a1 + (sy - p2y) * b1
+	w2_start := (sx - p0x) * a2 + (sy - p0y) * b2
+	// The three edge sums to a constant across the triangle (the x and y
+	// coefficients cancel), so a single reciprocal normalizes every pixel.
+	wsum := w0_start + w1_start + w2_start
+	if wsum == 0.0 {
+		return
+	}
+	inv_wsum := 1.0 / wsum
+
+	mut w0_row := w0_start
+	mut w1_row := w1_start
+	mut w2_row := w2_start
 	for y in lo_y .. hi_y + 1 {
+		mut w0 := w0_row
+		mut w1 := w1_row
+		mut w2 := w2_row
 		row := y * w
 		for x in lo_x .. hi_x + 1 {
-			px := f32(x) + 0.5
-			py := f32(y) + 0.5
-			w0 := (px - p1x) * (p2y - p1y) - (py - p1y) * (p2x - p1x)
-			w1 := (px - p2x) * (p0y - p2y) - (py - p2y) * (p0x - p2x)
-			w2 := (px - p0x) * (p1y - p0y) - (py - p0y) * (p1x - p0x)
 			inside := if area > 0 {
 				w0 <= 0 && w1 <= 0 && w2 <= 0
 			} else {
 				w0 >= 0 && w1 >= 0 && w2 >= 0
 			}
-			if !inside {
-				continue
+			if inside {
+				// q*.z is already NDC depth; interpolate with screen-space
+				// barycentric weights, as in rasterize_tri's depth path.
+				z := q0.z * (w0 * inv_wsum) + q1.z * (w1 * inv_wsum) + q2.z * (w2 * inv_wsum)
+				if z >= -1.0 && z <= 1.0 && z <= frame.depth[row + x] {
+					frame.depth[row + x] = z
+				}
 			}
-
-			wsum := w0 + w1 + w2
-			if wsum == 0.0 {
-				continue
-			}
-			// Edge weights have the opposite sign to area; normalize by their sum.
-			bw0 := w0 / wsum
-			bw1 := w1 / wsum
-			bw2 := w2 / wsum
-			idx := row + x
-
-			// q*.z is already NDC depth. Interpolate linearly with screen-space
-			// barycentric weights, as in rasterize_tri's depth path.
-			z := q0.z * bw0 + q1.z * bw1 + q2.z * bw2
-			if z < -1.0 || z > 1.0 {
-				continue
-			}
-			if z > frame.depth[idx] {
-				continue
-			}
-			frame.depth[idx] = z
+			w0 += a0
+			w1 += a1
+			w2 += a2
 		}
+		w0_row += b0
+		w1_row += b1
+		w2_row += b2
 	}
 }
 
