@@ -44,10 +44,20 @@ fn retained_c_file(name string) string {
 	return os.join_path(incbin_workspace, name + '.c')
 }
 
+fn incbin_supported_prod_compiler_flags() []string {
+	// Production TinyCC builds are rejected, but the negative TCC tests below
+	// still check that rejection directly. Use GCC for positive prod builds.
+	if @CCOMPILER in ['tcc', 'tinyc'] {
+		return ['-cc', 'gcc']
+	}
+	return []string{}
+}
+
 fn build_and_run(name string, flags string) (os.Result, string) {
 	exe := os.join_path(incbin_workspace, name)
 	main_file := os.join_path(incbin_workspace, 'main.v')
-	build := os.exec([incbin_vexe, '-prod', '-showcc', ...(os.split_args(flags) or { panic(err) }),
+	build := os.exec([incbin_vexe, '-prod', '-showcc', ...incbin_supported_prod_compiler_flags(),
+		...(os.split_args(flags) or { panic(err) }),
 		'-o', exe, main_file])
 	assert build.exit_code == 0, build.output
 	// V writes the executable next to the `-o` name, adding `.exe` on Windows, and
@@ -67,7 +77,8 @@ fn test_the_array_form_is_kept_with_no_incbin() {
 fn test_generated_c_output_spells_the_bytes_out() {
 	out_c := os.join_path(incbin_workspace, 'out.c')
 	main_file := os.join_path(incbin_workspace, 'main.v')
-	res := os.exec([incbin_vexe, '-prod', '-o', '${out_c}', main_file])
+	res := os.exec([incbin_vexe, '-prod', ...incbin_supported_prod_compiler_flags(), '-o',
+		'${out_c}', main_file])
 	assert res.exit_code == 0, res.output
 	source := os.read_file(out_c) or { panic(err) }
 	assert source.contains('static const unsigned char _v_embed_blob_')
