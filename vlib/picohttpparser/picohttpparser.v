@@ -364,51 +364,56 @@ fn parse_http_version(buf_start &u8, buf_end &u8, mut pret Pret) int {
 	return int(c - `0`)
 }
 
+// 8-byte SWAR helpers for the header-value fast path. `has_less_u64` sets the
+// high bit of every byte of x that is < n (n <= 128); `has_byte_u64` sets it
+// for every byte equal to b. `ones` and the high-bit mask fold to constants.
+const swar_ones = u64(0x0101010101010101)
+const swar_high = u64(0x8080808080808080)
+
+@[inline]
+fn has_less_u64(x u64, n u8) u64 {
+	return (x - u64(n) * swar_ones) & ~x & swar_high
+}
+
+@[inline]
+fn has_byte_u64(x u64, b u8) u64 {
+	y := x ^ (u64(b) * swar_ones)
+	return (y - swar_ones) & ~y & swar_high
+}
+
 fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) int {
 	mut buf := unsafe { buf_start }
 	mut token_len := 0
 
-	// find non-printable char within the next 8 bytes
-	// HOT code: (TODO: should be manually inlined)
+	// Fast path: scan 8 bytes at a time while none of them can end the value.
+	// A byte < 32 (with TAB as the sole exception, handled by the scalar loop)
+	// or exactly 127 terminates the line; printable ASCII (32..126) and high
+	// bytes (128..255) are ordinary value bytes.
 	for _likely_(unsafe { buf_end - buf >= 8 }) {
-		for _ in 0 .. 8 {
-			if _unlikely_(!is_printable_ascii(*buf)) {
-				// non printable
-				unsafe {
-					goto non_printable
-				}
-			}
-			unsafe { buf++ }
+		w := unsafe { *&u64(buf) }
+		if _likely_((has_less_u64(w, 32) | has_byte_u64(w, 127)) == 0) {
+			unsafe { buf += 8 }
 			continue
-
-			non_printable:
-			// allow space and horizontal tab
-			if _likely_(*buf < ` ` && *buf != 9) || _unlikely_(*buf == 127) {
-				// found clear the line (CTL)
-				unsafe {
-					goto found_ctl
-				}
-			}
-			unsafe { buf++ }
 		}
+		break
 	}
-	// remaining characters
+
+	// Scalar path: locate the exact terminator (also handles TAB correctly,
+	// which has_less_u64 flags as a false positive).
 	for {
 		// CHECK_EOF
 		if buf == buf_end {
 			pret.ret = -2
 			return 0
 		}
-		if _likely_(*buf < ` ` && *buf != 9) || _unlikely_(*buf == 127) {
-			// found clear the line (CTL)
-			unsafe {
-				goto found_ctl
-			}
+		c := *buf
+		if c == 9 || (c >= 32 && c != 127) {
+			unsafe { buf++ }
+			continue
 		}
-		unsafe { buf++ }
+		break
 	}
 
-	found_ctl:
 	if _likely_(*buf == `\r`) {
 		unsafe { buf++ }
 		// EXPECT_CHAR
