@@ -22864,6 +22864,81 @@ fn cache_bundle_import_file(builtin_dir string) string {
 	return os.join_path_single(builtin_dir, cache_bundle_import_file_name)
 }
 
+// The bits of implicit_import_file_flags: what scan_implicit_imports learns from
+// the nodes of one file by themselves.
+const implicit_file_needs_sync = u8(1)
+const implicit_file_needs_embed = u8(2)
+const implicit_file_needs_debugger = u8(4)
+const implicit_file_has_sync = u8(8)
+const implicit_file_has_embed_import = u8(16)
+const implicit_file_has_closure = u8(32)
+const implicit_file_has_debugger = u8(64)
+const implicit_file_has_overflow = u8(128)
+
+// implicit_import_file_flags answers, for the nodes [first, end) of one parsed
+// file, every question of scan_implicit_imports that a node answers by itself:
+// which compiler-provided modules the file imports, and whether it needs the
+// sync, embed_file or debugger runtime. Whether it needs the closure runtime
+// takes the fields of the whole program, and stays with the scan. The parser
+// calls it on the thread that parsed the file (Parser.file_scan_hook), which may
+// be a pool thread with a tree of its own: it only reads those nodes and the
+// process-wide table of type spellings. The conditions are those of the loop of
+// scan_implicit_imports, which they must follow.
+@[direct_array_access]
+fn implicit_import_file_flags(a &flat.FlatAst, first int, end int) u8 {
+	mut flags := u8(0)
+	for i in first .. end {
+		node := &a.nodes[i]
+		if node.kind == .import_decl {
+			if node.value == 'sync' {
+				flags |= implicit_file_has_sync
+			} else if node.value == 'v.embed_file' {
+				flags |= implicit_file_has_embed_import
+			} else if node.value == 'builtin.closure' {
+				flags |= implicit_file_has_closure
+			} else if node.value == 'v.debug' {
+				flags |= implicit_file_has_debugger
+			} else if node.value == 'builtin.overflow' {
+				flags |= implicit_file_has_overflow
+			}
+		}
+		if node.kind == .debugger_stmt {
+			flags |= implicit_file_needs_debugger
+		}
+		if flags & implicit_file_needs_sync == 0 {
+			if node.kind == .lock_expr
+				|| (node.kind in [.field_decl, .param, .array_init, .array_literal]
+					&& type_text_has_shared_modifier(node.typ))
+				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
+				|| (node.kind == .struct_init && flat.source_type_shape(node.source_value_id()).has(.channel_type))
+				|| (node.kind == .infix && node.op == .arrow)
+				|| (node.kind == .prefix && node.op == .arrow)
+				|| (node.typ != 0 && type_text_is_channel(node.typ)) {
+				flags |= implicit_file_needs_sync
+			}
+		}
+		if flags & implicit_file_needs_embed == 0 && node.kind == .struct_init
+			&& node.source_value_id() == implicit_source_type_embed_file_data {
+			flags |= implicit_file_needs_embed
+		}
+	}
+	return flags
+}
+
+// add_file_flags is scan_implicit_imports over the nodes of a file that
+// implicit_import_file_flags answered `flags` for, for a scan that needs the
+// closure runtime already: the nodes then change nothing else of it.
+fn (mut scan ImplicitImportScan) add_file_flags(flags u8) {
+	scan.needs_sync = scan.needs_sync || flags & implicit_file_needs_sync != 0
+	scan.needs_embed = scan.needs_embed || flags & implicit_file_needs_embed != 0
+	scan.needs_debugger = scan.needs_debugger || flags & implicit_file_needs_debugger != 0
+	scan.has_sync = scan.has_sync || flags & implicit_file_has_sync != 0
+	scan.has_embed_import = scan.has_embed_import || flags & implicit_file_has_embed_import != 0
+	scan.has_closure = scan.has_closure || flags & implicit_file_has_closure != 0
+	scan.has_debugger = scan.has_debugger || flags & implicit_file_has_debugger != 0
+	scan.has_overflow = scan.has_overflow || flags & implicit_file_has_overflow != 0
+}
+
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
 	// Once every requirement that a node can raise is raised, and the parser made
 	// no `$dbg` statement, only the import declarations of the range still change
@@ -25658,6 +25733,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut resolve_deferred_imports := false
 	// The waves below search the same directories over and over (see ImportDirMemo).
 	begin_import_dir_memo()
+	// The threads that parse a wave answer the per-file questions of its
+	// implicit-import scan (see implicit_import_file_flags).
+	verify_implicit_file_flags := os.getenv('V3_VERIFY_IMPLICIT_FLAGS') != ''
+	if !prepared.capturing && os.getenv('V3_NO_IMPLICIT_FILE_FLAGS') == '' {
+		p.file_scan_hook = implicit_import_file_flags
+	}
 	for {
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
@@ -26105,6 +26186,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			ri_predict_ns += time.sys_mono_now() - ri_t2
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut parse_timing)
+		wave_file_flags := p.batch_file_scan_flags()
 		p.clear_preloaded_sources()
 		was_parallel = was_parallel || wave_parallel
 		wave_end_nodes := a.nodes.len
@@ -26146,7 +26228,24 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				module_start = module_file_end
 				continue
 			}
-			scan_implicit_imports(a, region_end, mut implicit_imports)
+			if implicit_imports.needs_closure && wave_file_flags.len == wave_files.len
+				&& implicit_imports.node_idx == starts[module_start] {
+				// Only what each node raises by itself is left to find, and the
+				// threads that parsed the files of the module found that already.
+				mut verified := implicit_imports
+				for fi in module_start .. module_file_end {
+					implicit_imports.add_file_flags(wave_file_flags[fi])
+				}
+				implicit_imports.node_idx = region_end
+				if verify_implicit_file_flags {
+					scan_implicit_imports(a, region_end, mut verified)
+					if verified.flags() != implicit_imports.flags() {
+						eprintln('IMPLICIT FILE FLAGS MISMATCH in ${wave_modules[module_idx].path}: scan ${verified.flags()}, files ${implicit_imports.flags()}')
+					}
+				}
+			} else {
+				scan_implicit_imports(a, region_end, mut implicit_imports)
+			}
 			insertions << synthetic.insertions_at(implicit_imports, region_end, skip_closure_runtime)
 			module_start = module_file_end
 		}
@@ -26161,6 +26260,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		implicit_imports.field_index_node_idx += insertions.len
 	}
 	end_import_dir_memo()
+	p.file_scan_hook = unsafe { nil }
 	p.discard_speculated_batch()
 	cache_state.import_resolutions = V3ImportResolutions{
 		project_root: project_root

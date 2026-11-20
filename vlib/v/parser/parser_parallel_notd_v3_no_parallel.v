@@ -52,6 +52,7 @@ struct ParseChunkArgs {
 	worker        voidptr // &Parser
 	paths_ptr     voidptr // &[]string
 	starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
+	flags_ptr     voidptr // &[]u8 (what Parser.file_scan_hook answers for each file)
 	prepass_chunk voidptr // &ComptimeConstPrepassChunk
 	batch         voidptr // &BatchSources
 	chunk_index   int
@@ -113,12 +114,21 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 	paths := unsafe { &[]string(a.paths_ptr) }
 	mut starts := unsafe { &[]int(a.starts_ptr) }
 	batch := unsafe { &BatchSources(a.batch) }
+	mut scan_flags := unsafe { &[]u8(a.flags_ptr) }
 	w.begin_text_cache_batch(a.end - a.start)
 	for i in a.start .. a.end {
+		first_node := w.a.nodes.len
 		unsafe {
-			(*starts)[i] = w.a.nodes.len
+			(*starts)[i] = first_node
 		}
 		w.parse_into_source((*paths)[i], batch.source_at(i) or { '' })
+		if !isnil(w.file_scan_hook) {
+			// The nodes of the file are still in this thread's cache; a later pass
+			// over the merged tree would read them from memory again.
+			unsafe {
+				(*scan_flags)[i] = w.file_scan_hook(w.a, first_node, w.a.nodes.len)
+			}
+		}
 	}
 	if a.scope != unsafe { nil } {
 		// The merge rebinds the texts of this chunk through a cache of this arena.
@@ -303,6 +313,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	mut previous_const_names := p.comptime_string_consts.clone()
 	dispatch_file_id_start := p.next_file_id
 	mut starts := []int{len: all_paths.len}
+	mut scan_flags := []u8{len: all_paths.len}
 	mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_chunks}
 	for _ in 0 .. n_chunks {
 		prepass_chunks << &ComptimeConstPrepassChunk{}
@@ -320,6 +331,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		w.quick_source_sums = p.quick_source_sums
 		w.no_source_digests = p.no_source_digests
 		w.keep_source_texts = p.keep_source_texts
+		w.file_scan_hook = p.file_scan_hook
 		if p.preloaded_sources.len > 0 {
 			// The workers only read the table, and the texts stay with the master.
 			w.preloaded_sources = p.preloaded_sources.clone()
@@ -355,6 +367,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		worker:        voidptr(p)
 		paths_ptr:     unsafe { voidptr(&all_paths) }
 		starts_ptr:    unsafe { voidptr(&starts) }
+		flags_ptr:     unsafe { voidptr(&scan_flags) }
 		prepass_chunk: voidptr(prepass_chunks[0])
 		batch:         voidptr(batch)
 		start:         bounds[0]
@@ -367,6 +380,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			worker:        voidptr(parser_workers[ci])
 			paths_ptr:     unsafe { voidptr(&all_paths) }
 			starts_ptr:    unsafe { voidptr(&starts) }
+			flags_ptr:     unsafe { voidptr(&scan_flags) }
 			prepass_chunk: voidptr(prepass_chunks[ci + 1])
 			batch:         voidptr(batch)
 			chunk_index:   ci + 1
@@ -556,6 +570,11 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			args:              args[n_own_chunks..].clone()
 			bounds:            next_bounds
 			starts:            starts[paths.len..].clone()
+			scan_flags:        if isnil(p.file_scan_hook) {
+				[]u8{}
+			} else {
+				scan_flags[paths.len..].clone()
+			}
 			batch:             batch
 			batch_start:       paths.len
 			first_file_id:     dispatch_file_id_start + paths.len
@@ -567,7 +586,9 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			keep_source_texts: p.keep_source_texts
 		})
 		starts = starts[..paths.len].clone()
+		scan_flags = scan_flags[..paths.len].clone()
 	}
+	p.batch_scan_flags = if isnil(p.file_scan_hook) { []u8{} } else { scan_flags }
 	ahead := if next_paths.len > 0 { ', ahead: ${next_paths.len}' } else { '' }
 	p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len}${ahead})')
 	return starts, any_started
@@ -589,6 +610,8 @@ mut:
 	bounds []int
 	// The worker-local first node of each file.
 	starts []int
+	// What Parser.file_scan_hook answered for each file; empty without a hook.
+	scan_flags []u8
 	// The sources of both batches; those of `paths` start at `batch_start`.
 	batch       &BatchSources = unsafe { nil }
 	batch_start int
@@ -746,6 +769,7 @@ fn (mut p Parser) merge_speculated_batch(paths []string) ?[]int {
 		}
 	}
 	p.next_file_id = next_chunk_file_id
+	p.batch_scan_flags = spec.scan_flags
 	p.timing_profile('  [ttime]   pp ahead merge   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
 	return starts
 }

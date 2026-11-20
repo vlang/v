@@ -237,6 +237,8 @@ mut:
 	// scoped worker's lives in its arena and dies with it, the caller's serves
 	// every merge (see parse_merge_copy_thread, merge_parsed_workers_parallel).
 	merge_text_cache &flat.TextProbeCache = unsafe { nil }
+	// What file_scan_hook answered for each file of the last parse batch.
+	batch_scan_flags []u8
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
 	// no_source_digests leaves the SHA-256 of each parsed source out (see
@@ -251,7 +253,12 @@ pub mut:
 	keep_source_texts bool
 	// preloaded_sources holds the text of files that the caller read already and
 	// is about to parse (see preload_source).
-	preloaded_sources          map[string]string
+	preloaded_sources map[string]string
+	// file_scan_hook, when set, is called for every parsed file with the tree that
+	// holds its nodes and their range, on the thread that parsed it; it may only
+	// read those nodes. batch_file_scan_flags returns what it answered for the
+	// files of the last batch.
+	file_scan_hook             fn (&flat.FlatAst, int, int) u8 = unsafe { nil }
 	parsed_v_files             int
 	parsed_v_file_paths        []string
 	parsed_v_header_files      int
@@ -463,13 +470,24 @@ pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
 	p.reset_translated_sizeof_declarations()
 	defer { p.parse_batch_paths = previous_paths }
 	mut starts := []int{cap: paths.len}
+	p.batch_scan_flags = []u8{}
 	p.begin_text_cache_batch(paths.len)
 	for path in paths {
 		starts << p.a.nodes.len
 		p.parse_into(path)
+		if !isnil(p.file_scan_hook) {
+			p.batch_scan_flags << p.file_scan_hook(p.a, starts.last(), p.a.nodes.len)
+		}
 	}
 	p.end_text_cache_batch()
 	return starts
+}
+
+// batch_file_scan_flags returns what file_scan_hook answered for each file of
+// the batch that parse_files_dispatch or parse_files_with_starts parsed last,
+// in the order of its paths: an empty list without a hook.
+pub fn (p &Parser) batch_file_scan_flags() []u8 {
+	return p.batch_scan_flags
 }
 
 // begin_text_cache_batch gives the files of a batch one pair of probe caches to
