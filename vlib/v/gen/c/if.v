@@ -89,7 +89,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.gen_defers_from(defer_start)
 			if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
 				g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
-				g.gen_scope_ownership_drops()
+				g.gen_scope_ownership_drops_for(then_id)
 			}
 		} else if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
 			// Keep checker cleanup-site indices aligned without emitting unreachable code.

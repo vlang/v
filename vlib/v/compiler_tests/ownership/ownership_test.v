@@ -70,6 +70,23 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
+// run_autofree_program compiles and runs a program under -autofree -gc none.
+// It is used for bugs that only appear at runtime (e.g. use-after-free).
+fn run_autofree_program(v3_bin string, name string, code string) (os.Result, os.Result) {
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	src := os.join_path(tmp_dir, 'main.v')
+	out := os.join_path(tmp_dir, 'out')
+	os.write_file(src, code) or { panic(err) }
+	build := os.exec([v3_bin, '-ownership', '-autofree', '-gc', 'none', '-b', 'c', '-o', '${out}',
+		'${src}'])
+	if build.exit_code != 0 {
+		return build, os.Result{}
+	}
+	return build, os.exec([out])
+}
+
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -1326,6 +1343,335 @@ fn main() {
 ")
 	assert fail_alias.exit_code != 0
 	assert fail_alias.output.contains('cannot move `s` because it is borrowed by `r2`'), fail_alias.output
+}
+
+fn test_ownership_dead_borrower_releases_borrow_on_reassign() {
+	v3_bin := ownership_build_v3()
+	// NLL-lite (see #32455): `s` is never read after `s.run()`, so its loan on
+	// `conn` is dead and the reassignment below must be accepted.
+	ok := run_autofree_check(v3_bin, 'dead_borrow_reassign', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	s.run()
+	conn.in_work = false
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert ok.exit_code == 0, ok.output
+
+	// A borrower that is read after the reassignment keeps the loan alive.
+	fail := run_autofree_check(v3_bin, 'live_borrow_reassign', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	s.run()
+	conn.in_work = false
+	s.run()
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('cannot assign to `conn.in_work` because `conn` is borrowed by `s.c`'), fail.output
+}
+
+// test_ownership_dead_borrower_in_branch extends NLL-lite to writes inside a
+// branch: a borrower read only before the branch is dead at the write.
+fn test_ownership_dead_borrower_in_branch() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'dead_borrow_branch', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn, flag bool) {
+	s := Stmt{
+		c: &conn
+	}
+	if flag {
+		s.run()
+		conn.in_work = false
+	}
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn, true)
+}
+")
+	assert ok.exit_code == 0, ok.output
+
+	fail := run_ownership_check(v3_bin, 'live_borrow_other_branch', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn, flag bool) {
+	s := Stmt{
+		c: &conn
+	}
+	if flag {
+		s.run()
+		conn.in_work = false
+	} else {
+		s.run()
+	}
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn, true)
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('cannot assign to `conn.in_work` because `conn` is borrowed by `s.c`'), fail.output
+}
+
+// test_ownership_dead_borrower_releases_borrow_on_move extends NLL-lite to
+// move sites: a borrower that is never read after the move must not block it.
+fn test_ownership_dead_borrower_releases_borrow_on_move() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'dead_borrow_move', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	s.run()
+	other := conn
+	println(other.name)
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert ok.exit_code == 0, ok.output
+
+	fail := run_ownership_check(v3_bin, 'live_borrow_move', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	s.run()
+	other := conn
+	s.run()
+	println(other.name)
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('cannot move `conn` because it is borrowed by `s.c`'), fail.output
+}
+
+// test_ownership_dead_plus_live_borrow_still_rejects covers the multi-borrow
+// hole: releasing one dead loan must not accept the move/reassign while a
+// second loan on the same place is still live.
+fn test_ownership_dead_plus_live_borrow_still_rejects() {
+	v3_bin := ownership_build_v3()
+	fail_move := run_ownership_check(v3_bin, 'dead_plus_live_borrow_move', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	t := Stmt{
+		c: &conn
+	}
+	s.run()
+	other := conn
+	t.run()
+	println(other.name)
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert fail_move.exit_code != 0
+	assert fail_move.output.contains('cannot move `conn` because it is borrowed by `t.c`'), fail_move.output
+
+	fail_reassign := run_autofree_check(v3_bin, 'dead_plus_live_borrow_reassign', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+
+struct Stmt {
+	c &Conn
+}
+
+fn (s Stmt) run() {
+	println(s.c.name)
+}
+
+fn start(mut conn Conn) {
+	s := Stmt{
+		c: &conn
+	}
+	t := Stmt{
+		c: &conn
+	}
+	s.run()
+	conn.in_work = false
+	t.run()
+}
+
+fn main() {
+	mut conn := Conn{
+		name: 'x'
+	}
+	start(mut conn)
+}
+")
+	assert fail_reassign.exit_code != 0
+	assert fail_reassign.output.contains('cannot assign to `conn.in_work` because `conn` is borrowed by `t.c`'), fail_reassign.output
+
+	fail_alias := run_ownership_check(v3_bin, 'dead_plus_live_borrow_alias', "
+fn main() {
+	conn := 'hello'.to_owned()
+	s := &conn
+	t := s
+	println(s)
+	other := conn
+	println(t)
+	println(other)
+}
+")
+	assert fail_alias.exit_code != 0
+	assert fail_alias.output.contains('cannot move `conn` because it is borrowed by `t`'), fail_alias.output
+
+	ok_both_dead := run_ownership_check(v3_bin, 'dead_dead_borrow_alias', "
+fn main() {
+	conn := 'hello'.to_owned()
+	s := &conn
+	t := s
+	println(s)
+	println(t)
+	other := conn
+	println(other)
+}
+")
+	assert ok_both_dead.exit_code == 0, ok_both_dead.output
 }
 
 fn test_ownership_move_on_call_and_borrowed_call_ok() {
@@ -4004,4 +4350,252 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		freed := run_autofree_check(v3_bin, 'shape_free_${name}', code)
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
+}
+
+// test_autofree_match_branch_scope_no_leak locks the #32454 repro.
+// A local declared in one match branch must not be dropped in another.
+fn test_autofree_match_branch_scope_no_leak() {
+	v3_bin := ownership_build_v3()
+	res := run_autofree_check(v3_bin, 'match_branch_scope', "
+struct Fetch {
+	text string
+}
+
+type Body = Fetch | int
+
+struct Select {
+	body  Body
+	fetch ?Fetch
+	order []string
+	text  string
+}
+
+struct Insert {
+	table string
+	query ?Select
+}
+
+struct Delete {
+	table string
+	where ?Fetch
+}
+
+type Stmt = Delete | Insert | Select
+
+fn plan(stmt Stmt) ! {
+	if stmt is Insert {
+		return error('not a query')
+	}
+}
+
+fn resolve(stmt Stmt) ! {
+	match stmt {
+		Delete, Select {
+			plan(stmt)!
+		}
+		Insert {
+			if query := stmt.query {
+				plan(query)!
+			}
+		}
+	}
+}
+
+fn main() {
+	resolve(Insert{
+		table: 't'
+		query: Select{
+			body:  Body(1)
+			order: []string{}
+			text:  't'
+		}
+	})!
+	resolve(Delete{
+		table: 't'
+	})!
+	println('ok')
+}
+")
+	// The Insert-branch `query` drop must stay in the Insert branch. Before the
+	// fix, the duplicated multi-type arm shifted the checker's scope-drop index
+	// and emitted `(query).body` in the Delete/Select branch (undeclared).
+	assert res.exit_code == 0, res.output
+}
+
+// test_autofree_copied_struct_field_no_uaf locks the #32453 repro.
+// A local copied from a caller-owned struct must not free the original's
+// strings. The string length is runtime-dependent so it cannot be folded
+// into a literal, which otherwise hides the double free.
+fn test_autofree_copied_struct_field_no_uaf() {
+	v3_bin := ownership_build_v3()
+	build, run := run_autofree_program(v3_bin, 'copied_field_uaf', "
+import os
+
+struct Value {
+	text string
+}
+
+struct Test {
+	value ?Value
+}
+
+struct Expr {
+	factor Test
+}
+
+fn has_value(e Expr) bool {
+	test := e.factor
+	return test.value != none
+}
+
+fn main() {
+	e := Expr{
+		factor: Test{
+			value: Value{'hello'.repeat(os.args.len + 1)}
+		}
+	}
+	println(has_value(e))
+	println(has_value(e))
+	v := e.factor.value or { Value{} }
+	println(v.text)
+}
+")
+	assert build.exit_code == 0, build.output
+	assert run.exit_code == 0, run.output
+}
+
+// test_ownership_nll_lite_preserves_call_and_drop_loans covers the two
+// lifetime regressions from review: an explicit borrow passed to a call, and
+// a borrower whose Drop reads a borrowed field at scope exit.
+fn test_ownership_nll_lite_preserves_call_and_drop_loans() {
+	v3_bin := ownership_build_v3()
+
+	call := run_ownership_check(v3_bin, 'explicit_borrow_call_arg', "
+fn foo(a &string, b string) {
+	_ = a
+	_ = b
+}
+
+fn main() {
+	s := 'hello'.to_owned()
+	foo(&s, s)
+}
+")
+	assert call.exit_code != 0, call.output
+	assert call.output.contains('cannot move `s` because it is borrowed by `foo`'), call.output
+
+	drop_loan := run_ownership_check(v3_bin, 'drop_reads_borrow', "
+struct Conn {
+	name string
+}
+
+struct Observer implements Drop {
+	c &Conn
+}
+
+fn (o Observer) drop() {
+	println(o.c.name)
+}
+
+fn consume(conn Conn) {
+	println(conn.name)
+}
+
+fn main() {
+	conn := Conn{name: 'x'}
+	observer := Observer{c: &conn}
+	println(observer.c.name)
+	consume(conn)
+}
+")
+	assert drop_loan.exit_code != 0, drop_loan.output
+	assert drop_loan.output.contains('cannot move `conn` because it is borrowed by `observer.c`'), drop_loan.output
+
+	drop_if := run_ownership_check(v3_bin, 'drop_reads_borrow_in_if', "
+struct Conn {
+	name string
+}
+
+struct Observer implements Drop {
+	c &Conn
+}
+
+fn (o Observer) drop() {
+	println(o.c.name)
+}
+
+fn consume(conn Conn) {
+	println(conn.name)
+}
+
+fn observe(conn Conn, flag bool) {
+	observer := Observer{c: &conn}
+	println(observer.c.name)
+	if flag {
+		consume(conn)
+	}
+}
+
+fn main() {
+	conn := Conn{name: 'x'}
+	observe(conn, true)
+}
+")
+	assert drop_if.exit_code != 0, drop_if.output
+	assert drop_if.output.contains('cannot move `conn` because it is borrowed by `observer.c`'), drop_if.output
+
+	multi := run_ownership_check(v3_bin, 'two_borrowers_one_move', "
+struct Conn {
+mut:
+	name    string
+	in_work bool
+}
+struct Stmt { c &Conn }
+fn (s Stmt) run() { println(s.c.name) }
+fn start(mut conn Conn) {
+	s := Stmt{c: &conn}
+	t := Stmt{c: &conn}
+	s.run()
+	other := conn
+	t.run()
+	println(other.name)
+}
+fn main() {
+	mut conn := Conn{name: 'x'}
+	start(mut conn)
+}
+")
+	assert multi.exit_code != 0, multi.output
+	assert multi.output.contains('cannot move `conn` because it is borrowed by `t.c`'), multi.output
+}
+
+// test_autofree_nested_multi_type_match drops locals declared in inner arms
+// without emitting them into a branch where they are out of scope.
+fn test_autofree_nested_multi_type_match() {
+	v3_bin := ownership_build_v3()
+	res := run_autofree_check(v3_bin, 'nested_multi_match', "
+struct A { text string }
+struct B { text string }
+type Val = A | B
+
+fn pick(v Val) string {
+	return match v {
+		A, B {
+			x := 'inner'.repeat(2)
+			match v {
+				A, B {
+					y := 'deep'.repeat(2)
+					println(y)
+				}
+			}
+			x
+		}
+	}
+}
+
+fn main() {
+	println(pick(Val(A{'a'})))
+}
+")
+	assert res.exit_code == 0, res.output
 }
