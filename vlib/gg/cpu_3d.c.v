@@ -37,6 +37,14 @@ pub fn (ctx &Context) render_cpu_3d(width int, height int, clear Color, cam Came
 	return ctx.r.render_cpu_depth_with_mvp(width, height, pack_cpu_color(clear), 1.0, mvp)
 }
 
+// render_cpu_3d_aa is render_cpu_3d with supersampling anti-aliasing.
+// factor of 2, 3 or 4 gives smoother edges at factor^2 the rasterization cost.
+pub fn (ctx &Context) render_cpu_3d_aa(width int, height int, clear Color, cam Camera3D, factor int) render.Frame {
+	aspect := if height > 0 { f32(width) / f32(height) } else { 1.0 }
+	mvp := render.mat4_mul(cam.projection_matrix(aspect), cam.view_matrix())
+	return ctx.r.render_cpu_depth_with_mvp_aa(width, height, pack_cpu_color(clear), 1.0, mvp, factor)
+}
+
 fn pack_cpu_color(c Color) u32 {
 	return u32(c.r) | (u32(c.g) << 8) | (u32(c.b) << 16) | (u32(c.a) << 24)
 }

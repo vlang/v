@@ -36,6 +36,83 @@ pub fn (ctx &Context) render_cpu(width int, height int, clear u32) Frame {
 	return ctx.render_cpu_impl(width, height, clear, false, 1.0, mat4_identity(), false)
 }
 
+// render_cpu_aa renders with supersampling anti-aliasing. The scene is
+// rasterized at width*factor by height*factor and box-filtered down, giving
+// smoother edges than render_cpu at the cost of factor^2 times the work.
+// factor must be 1, 2, 3 or 4; other values fall back to 1.
+pub fn (ctx &Context) render_cpu_aa(width int, height int, clear u32, factor int) Frame {
+	f := if factor >= 2 && factor <= 4 { factor } else { 1 }
+	if f == 1 {
+		return ctx.render_cpu(width, height, clear)
+	}
+	big := ctx.render_cpu_impl(width * f, height * f, clear, false, 1.0, mat4_identity(), false)
+	return downsample(big, width, height, f)
+}
+
+// render_cpu_depth_aa is render_cpu_depth with supersampling anti-aliasing.
+pub fn (ctx &Context) render_cpu_depth_aa(width int, height int, clear u32, clear_depth f32, factor int) Frame {
+	f := if factor >= 2 && factor <= 4 { factor } else { 1 }
+	if f == 1 {
+		return ctx.render_cpu_depth(width, height, clear, clear_depth)
+	}
+	big := ctx.render_cpu_impl(width * f, height * f, clear, true, clear_depth, mat4_identity(), false)
+	return downsample(big, width, height, f)
+}
+
+// render_cpu_depth_with_mvp_aa is render_cpu_depth_with_mvp with
+// supersampling anti-aliasing.
+pub fn (ctx &Context) render_cpu_depth_with_mvp_aa(width int, height int, clear u32, clear_depth f32, mvp Mat4, factor int) Frame {
+	f := if factor >= 2 && factor <= 4 { factor } else { 1 }
+	if f == 1 {
+		return ctx.render_cpu_depth_with_mvp(width, height, clear, clear_depth, mvp)
+	}
+	big := ctx.render_cpu_impl(width * f, height * f, clear, true, clear_depth, mvp, true)
+	return downsample(big, width, height, f)
+}
+
+// downsample box-filters a supersampled frame into a frame of the given size.
+fn downsample(big Frame, width int, height int, f int) Frame {
+	mut out := Frame{
+		width:  width
+		height: height
+		pixels: []u32{len: width * height}
+	}
+	if big.depth.len > 0 {
+		out.depth = []f32{len: width * height, init: 1.0}
+	}
+	n := f * f
+	for y in 0 .. height {
+		for x in 0 .. width {
+			mut r := f32(0)
+			mut g := f32(0)
+			mut b := f32(0)
+			mut a := f32(0)
+			mut nearest := f32(1)
+			for sy in 0 .. f {
+				for sx in 0 .. f {
+					p := big.pixels[(y * f + sy) * big.width + (x * f + sx)]
+					r += f32(p & 0xff)
+					g += f32((p >> 8) & 0xff)
+					b += f32((p >> 16) & 0xff)
+					a += f32((p >> 24) & 0xff)
+					if big.depth.len > 0 {
+						d := big.depth[(y * f + sy) * big.width + (x * f + sx)]
+						if d < nearest {
+							nearest = d
+						}
+					}
+				}
+			}
+			idx := y * width + x
+			out.pixels[idx] = pack_color(u8(r / n), u8(g / n), u8(b / n), u8(a / n))
+			if out.depth.len > 0 {
+				out.depth[idx] = nearest
+			}
+		}
+	}
+	return out
+}
+
 // render_cpu_depth rasterizes with a depth buffer, so depth-tested 3D works
 // without a window or GPU. Triangles behind the camera are skipped.
 pub fn (ctx &Context) render_cpu_depth(width int, height int, clear u32, clear_depth f32) Frame {
