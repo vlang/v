@@ -145,3 +145,61 @@ pub fn ray_triangle(ray Ray, a Vec3, b Vec3, c Vec3) RayHit {
 		point:    ray.origin + ray.direction.scale(dist)
 	}
 }
+
+// ColliderKind selects the shape used by a Collider in pick_nearest().
+pub enum ColliderKind {
+	sphere
+	box
+}
+
+// Collider is a simple pickable volume with a user-defined id.
+pub struct Collider {
+pub mut:
+	id     int
+	kind   ColliderKind = .box
+	center Vec3
+	size   Vec3 = Vec3{1, 1, 1}
+	radius f32  = 1
+}
+
+// ray_mesh returns the nearest hit against every triangle of a transformed mesh.
+pub fn ray_mesh(ray Ray, mesh &Mesh3D, pos Vec3, rotation Vec3, size f32) RayHit {
+	if !mesh.valid() {
+		return RayHit{}
+	}
+	basis := rotation_basis(rotation)
+	mut best := RayHit{}
+	for t in 0 .. mesh.indices.len / 3 {
+		mut p := [Vec3{}, Vec3{}, Vec3{}]!
+		for k in 0 .. 3 {
+			v := apply_basis(mesh.vertices[mesh.indices[t * 3 + k]], basis).scale(size)
+			p[k] = Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
+		}
+		hit := ray_triangle(ray, p[0], p[1], p[2])
+		if hit.hit && (!best.hit || hit.distance < best.distance) {
+			best = hit
+		}
+	}
+	return best
+}
+
+// pick_nearest returns the id of the closest collider hit by ray.
+pub fn pick_nearest(ray Ray, colliders []Collider) ?int {
+	mut best_dist := f32(0)
+	mut best_id := -1
+	for c in colliders {
+		hit := if c.kind == .sphere {
+			ray_sphere(ray, c.center, c.radius)
+		} else {
+			ray_box(ray, c.center, c.size)
+		}
+		if hit.hit && (best_id < 0 || hit.distance < best_dist) {
+			best_dist = hit.distance
+			best_id = c.id
+		}
+	}
+	if best_id < 0 {
+		return none
+	}
+	return best_id
+}

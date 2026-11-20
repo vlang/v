@@ -159,6 +159,29 @@ pub fn gen_mesh_sphere(radius f32, rings int, slices int) Mesh3D {
 pub fn gen_mesh_cylinder(start Vec3, end Vec3, radius f32, slices int) Mesh3D {
 	verts := cylinder_triangles(start, end, radius, slices)
 	axis := (end - start).normalized()
+	mut uvs := []f32{len: verts.len * 2}
+	if verts.len == slices * 12 {
+		for j in 0 .. slices {
+			u0 := f32(j) / f32(slices)
+			u1 := f32(j + 1) / f32(slices)
+			phi0 := 2.0 * f32(math.pi) * u0
+			phi1 := 2.0 * f32(math.pi) * u1
+			cap0x := 0.5 + 0.5 * f32(math.cosf(phi0))
+			cap0y := 0.5 + 0.5 * f32(math.sinf(phi0))
+			cap1x := 0.5 + 0.5 * f32(math.cosf(phi1))
+			cap1y := 0.5 + 0.5 * f32(math.sinf(phi1))
+			base := j * 24
+			side_uv := [f32(u0), 0, u1, 1, u0, 1, u0, 0, u1, 0, u1, 1]!
+			cap_uv := [f32(0.5), 0.5, cap1x, cap1y, cap0x, cap0y, 0.5, 0.5, cap0x, cap0y, cap1x,
+				cap1y]!
+			for k, value in side_uv {
+				uvs[base + k] = value
+			}
+			for k, value in cap_uv {
+				uvs[base + 12 + k] = value
+			}
+		}
+	}
 	mut normals := []Vec3{cap: verts.len}
 	for v in verts {
 		radial := v - axis.scale(axis.dot(v - start))
@@ -169,7 +192,7 @@ pub fn gen_mesh_cylinder(start Vec3, end Vec3, radius f32, slices int) Mesh3D {
 	for i in 0 .. verts.len {
 		indices[i] = u32(i)
 	}
-	return Mesh3D{ vertices: verts, normals: normals, indices: indices }
+	return Mesh3D{ vertices: verts, normals: normals, uvs: uvs, indices: indices }
 }
 
 // RotationBasis holds the images of the three unit axes under a rotation.

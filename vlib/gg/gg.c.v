@@ -317,6 +317,13 @@ pub mut:
 	// *before* the current event was different
 	fps         FPSConfig
 	has_started bool
+	// Stable ids for images used by the headless CPU renderer. GPU image ids
+	// are all zero there, so they cannot key the CPU rasterizer's cache.
+	cpu_image_ids  map[voidptr]int
+	cpu_image_next int = 1
+	// Camera stored by set_camera(), used by begin_3d() and all 3D helpers
+	// that need a view direction (fog, billboards, picking).
+	camera Camera3D
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
@@ -708,6 +715,7 @@ pub fn start(cfg Config) {
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
 	mut ctx := &Context{
+		camera:           Camera3D{}
 		user_data:        cfg.user_data
 		width:            cfg.width
 		height:           cfg.height
@@ -865,6 +873,8 @@ pub fn (mut ctx Context) refresh_ui() {
 // begin prepares the context for drawing.
 pub fn (ctx &Context) begin() {
 	ctx.r.defaults()
+	// A forgotten end_3d() must not leak depth testing into the next 2D frame.
+	ctx.r.set_depth_test(false)
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	if ctx.bg_color.a < 255 && ctx.last_bg_overlay_frame != ctx.frame {

@@ -10,6 +10,7 @@ import gg.render
 // owner and must not be passed to run().
 pub fn new_context_cpu() &Context {
 	mut ctx := &Context{
+		camera: Camera3D{}
 		config: Config{ depth: true }
 		r:      render.new_context(render.Desc{
 			max_vertices: 1 << 17

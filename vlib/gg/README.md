@@ -107,7 +107,8 @@ fn frame(data voidptr) {
 	ctx.begin()
 	mut camera := gg.Camera3D{}
 	camera.orbit(30, 20, 7)
-	ctx.begin_3d(camera)
+	ctx.set_camera(camera)
+	ctx.begin_3d() or { panic(err.msg()) }
 	ctx.draw_cube(gg.Vec3{0, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
 	ctx.end_3d()
 	ctx.end()
@@ -130,15 +131,18 @@ The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
 wireframe variants include `draw_cube_wires()` and `draw_mesh_wires()`. For
 custom geometry, `Mesh3D` plus `gen_mesh_cube/plane/sphere/cylinder` and
 `ctx.draw_mesh()` draw indexed triangles with a position, rotation and scale.
-Use `screen_to_world_ray()` with `ray_sphere()`, `ray_box()` or
-`ray_triangle()` for picking.
-`Material3D` adds a directional `Light3D`, fog and an optional texture;
-`draw_material_mesh()` and `draw_billboard()` render them. Lighting and fog
-are baked into vertex colors, so no custom shader or extra backend work is
-needed. More primitives are tracked in
-https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v` and
-`examples/gg/3d_material.v`. `examples/gg/3d_textured_cube.v` switches between
-a textured and a flat-colored cube with the space bar.
+Call `ctx.set_camera(cam)` once to make 3D helpers use it; `ctx.ray_from_mouse(e)`,
+`ctx.pick_at(e, colliders)`, `ray_mesh()` and `world_to_screen()` build on it.
+`Model3D` + `load_model()` + `ctx.draw_model()` bundle geometry, material and
+transform into one draw. `Material3D` adds a directional `Light3D`, fog and an
+optional texture; `draw_material_mesh()` and `draw_billboard()` render them.
+Lighting and fog are baked into vertex colors, so no custom shader is needed.
+`draw_axes()`, `draw_aabb()` and `debug_mode3d()` add one-call debug overlays;
+`draw_text_3d()` anchors a label at a world position. More primitives are
+tracked in https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v`,
+`3d_material.v`, `3d_picking.v` and `3d_debug.v`.
+`examples/gg/3d_textured_cube.v` switches between a textured and a flat-colored
+cube with the space bar.
 `load_mesh_obj()` loads a static Wavefront `.obj`. `load_mesh_gltf()` reads a
 glTF 2.0 `.gltf` (embedded/base64 or external buffers) and `load_mesh_glb()`
 reads the binary `.glb` form; both return static mesh primitives with float

@@ -51,7 +51,8 @@ fn frame(data voidptr) {
 	app := unsafe { &App(data) }
 	ctx := app.gg
 	ctx.begin()
-	ctx.begin_3d(app.cam)
+	ctx.set_camera(app.cam)
+	ctx.begin_3d() or { panic(err.msg()) }
 	ctx.draw_grid(20, 1.0, gg.gray)
 	ctx.draw_cube(gg.Vec3{-1.5, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
 	ctx.draw_cube(gg.Vec3{1.5, 1, 0}, gg.Vec3{1.5, 1.5, 1.5}, gg.blue)

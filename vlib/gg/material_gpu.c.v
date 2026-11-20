@@ -2,13 +2,17 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-import gg.render
-
 // draw_material_mesh records a mesh with the given material and camera.
 // Fog distances are measured from the camera, so begin_3d(cam) should use it.
-pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, size f32, mat &Material3D, cam Camera3D) {
+pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, size f32, mat &Material3D, cam Camera3D) bool {
+	return ctx.draw_material_mesh_s(mesh, pos, rotation, Vec3{size, size, size}, mat, cam)
+}
+
+// draw_material_mesh_s draws a shaded mesh with per-axis scale.
+// It returns false when the mesh is invalid or the context has no depth buffer.
+pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3, size Vec3, mat &Material3D, cam Camera3D) bool {
 	if !mesh.valid() || !ctx.config.depth {
-		return
+		return false
 	}
 	basis := rotation_basis(rotation)
 	mut shade := *mat
@@ -24,8 +28,8 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 	mut world_verts := []Vec3{len: mesh.vertices.len}
 	mut vertex_colors := []Color{len: mesh.vertices.len}
 	for i, local in mesh.vertices {
-		v := apply_basis(local, basis).scale(size)
-		world := Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
+		v := apply_basis(local, basis)
+		world := Vec3{pos.x + v.x * size.x, pos.y + v.y * size.y, pos.z + v.z * size.z}
 		mut n := Vec3{0, 1, 0}
 		if mesh.normals.len == mesh.vertices.len {
 			n = apply_basis(mesh.normals[i], basis)
@@ -49,12 +53,15 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 	}
 	if !isnil(mat.texture) && (mat.texture.simg_ok || mat.texture.data != unsafe { nil }) {
 		img := mat.texture
-		register_cpu_image(ctx.r, img)
+		cpu_id := register_cpu_image(ctx, img)
 		if ctx.pipeline != unsafe { nil } {
 			ctx.r.load_pipeline(ctx.pipeline.depth_alpha)
 		}
-		ctx.r.enable_texture()
-		ctx.r.texture(img.simg, img.ssmp)
+		if img.simg_ok && ctx.pipeline != unsafe { nil } {
+			ctx.r.texture(img.simg, img.ssmp)
+		} else {
+			ctx.r.set_image_id(u32(cpu_id))
+		}
 		ctx.r.begin_triangles()
 		for i, v in verts {
 			c := colors[i]
@@ -65,7 +72,7 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 		if ctx.pipeline != unsafe { nil } {
 			ctx.r.load_default_pipeline()
 		}
-		return
+		return true
 	}
 	ctx.r.begin_triangles()
 	for i, v in verts {
@@ -73,6 +80,7 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 		ctx.r.v3f_c4b(v.x, v.y, v.z, c.r, c.g, c.b, c.a)
 	}
 	ctx.r.end()
+	return true
 }
 
 // draw_billboard draws a camera-facing textured quad at pos.
@@ -80,7 +88,7 @@ pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f
 	if !ctx.config.depth || (!img.simg_ok && img.data == unsafe { nil }) {
 		return
 	}
-	register_cpu_image(ctx.r, img)
+	cpu_id := register_cpu_image(ctx, img)
 	forward := cam.forward()
 	right := cam.right()
 	up := right.cross(forward).normalized()
@@ -93,8 +101,11 @@ pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f
 	if ctx.pipeline != unsafe { nil } {
 		ctx.r.load_pipeline(ctx.pipeline.depth_alpha)
 	}
-	ctx.r.enable_texture()
-	ctx.r.texture(img.simg, img.ssmp)
+	if img.simg_ok && ctx.pipeline != unsafe { nil } {
+		ctx.r.texture(img.simg, img.ssmp)
+	} else {
+		ctx.r.set_image_id(u32(cpu_id))
+	}
 	ctx.r.begin_triangles()
 	points := [p0, p1, p2, p0, p2, p3]!
 	uv := [f32(0), 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]!
@@ -108,16 +119,21 @@ pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f
 	}
 }
 
-// register_cpu_image copies an image's pixels into the CPU rasterizer once,
-// so textured 3D draws work without a GPU.
-fn register_cpu_image(r &render.Context, img &Image) {
-	if img.data == unsafe { nil } || img.width <= 0 || img.height <= 0 {
-		return
+// register_cpu_image copies an image's pixels into the CPU rasterizer once
+// and returns a stable id. Headless images have no sokol handle, so the image
+// pointer is used as the identity instead of img.simg.id (which is always 0).
+fn register_cpu_image(ctx &Context, img &Image) int {
+	key := voidptr(img)
+	if id := ctx.cpu_image_ids[key] {
+		return id
 	}
-	id := int(img.simg.id)
-	if r.is_image_registered(id) {
-		return
+	id := ctx.cpu_image_next
+	mut ctx_mut := unsafe { &Context(ctx) }
+	ctx_mut.cpu_image_next++
+	ctx_mut.cpu_image_ids[key] = id
+	if img.data != unsafe { nil } && img.width > 0 && img.height > 0 {
+		filter := if img.texture_filter == .linear { 1 } else { 0 }
+		ctx.r.register_image(id, img.data, img.width, img.height, 4, filter)
 	}
-	filter := if img.texture_filter == .linear { 1 } else { 0 }
-	r.register_image(id, img.data, img.width, img.height, 4, filter)
+	return id
 }

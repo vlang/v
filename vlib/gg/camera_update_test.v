@@ -1,5 +1,7 @@
 module gg
 
+import math
+
 fn test_camera_update_orbital_uses_input_state() {
 	mut ctx := &gg.Context{}
 	ctx.mouse_dx = 10
@@ -7,8 +9,8 @@ fn test_camera_update_orbital_uses_input_state() {
 	ctx.scroll_y = 1
 	mut cam := gg.Camera3D{}
 	cam.update(.orbital, ctx, 0.016)
-	assert i32(cam.yaw) == 27
-	assert i32(cam.distance) == 6
+	assert math.abs(cam.yaw - 27.0) < 0.1
+	assert math.abs(cam.distance - 6.0) < 0.1
 }
 
 fn test_camera_update_first_person_moves_on_key() {

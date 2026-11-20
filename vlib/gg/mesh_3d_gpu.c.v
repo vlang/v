@@ -4,21 +4,28 @@ module gg
 
 // draw_mesh records a mesh transformed by pos, rotation (degrees) and scale.
 // It must be called inside a ctx.begin_3d()/ctx.end_3d() scope.
-pub fn (ctx &Context) draw_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, size f32, color Color) {
+pub fn (ctx &Context) draw_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, size f32, color Color) bool {
+	return ctx.draw_mesh_s(mesh, pos, rotation, Vec3{size, size, size}, color)
+}
+
+// draw_mesh_s draws a mesh with independent scale on each axis.
+// It returns false when the mesh has invalid indices or attributes.
+pub fn (ctx &Context) draw_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3, size Vec3, color Color) bool {
 	if !mesh.valid() {
-		return
+		return false
 	}
 	basis := rotation_basis(rotation)
 	mut world := []Vec3{len: mesh.vertices.len}
 	for i, local in mesh.vertices {
-		v := apply_basis(local, basis).scale(size)
-		world[i] = Vec3{pos.x + v.x, pos.y + v.y, pos.z + v.z}
+		v := apply_basis(local, basis)
+		world[i] = Vec3{pos.x + v.x * size.x, pos.y + v.y * size.y, pos.z + v.z * size.z}
 	}
 	mut verts := []Vec3{cap: mesh.indices.len}
 	for index in mesh.indices {
 		verts << world[index]
 	}
 	emit_triangles(ctx, verts, color)
+	return true
 }
 
 fn edge_key(p Vec3) string {

@@ -39,7 +39,8 @@ fn frame(data voidptr) {
 	ctx.begin()
 	mut cam := gg.Camera3D{}
 	cam.orbit(app.angle, 20.0, 7.0)
-	ctx.begin_3d(cam)
+	ctx.set_camera(cam)
+	ctx.begin_3d() or { panic(err.msg()) }
 	ctx.draw_grid(20, 1.0, gg.gray)
 	ctx.draw_cube(gg.Vec3{-1.2, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
 	ctx.draw_cube(gg.Vec3{1.2, 0, 0}, gg.Vec3{2, 2, 2}, gg.blue)

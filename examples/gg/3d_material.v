@@ -51,7 +51,8 @@ fn frame(data voidptr) {
 	app := unsafe { &App(data) }
 	ctx := app.gg
 	ctx.begin()
-	ctx.begin_3d(app.cam)
+	ctx.set_camera(app.cam)
+	ctx.begin_3d() or { panic(err.msg()) }
 	ctx.draw_grid(20, 1.0, gg.gray)
 	mut mat := gg.Material3D{
 		color:     gg.red

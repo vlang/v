@@ -475,6 +475,14 @@ pub fn (ctx &Context) texture(img gfx.Image, smp gfx.Sampler) {
 	st.texturing_enabled = true
 }
 
+// set_image_id selects a texture by id without requiring GPU resources.
+// It is used by the headless CPU renderer, where images have no sokol handle.
+pub fn (ctx &Context) set_image_id(id u32) {
+	mut st := ctx.st
+	st.cur_img = gfx.Image{id: id}
+	st.texturing_enabled = true
+}
+
 pub fn (ctx &Context) enable_texture() {
 	mut st := ctx.st
 	st.texturing_enabled = true

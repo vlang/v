@@ -91,19 +91,35 @@ pub fn (mut cam Camera3D) update(mode CameraMode, ctx &Context, dt f32) {
 	}
 }
 
-// begin_3d switches the context to depth-tested 3D drawing with cam.
-// Call it after ctx.begin() and close it with ctx.end_3d() before ctx.end().
-// 3D drawing requires Config.depth = true.
-pub fn (ctx &Context) begin_3d(cam Camera3D) {
+@[params]
+pub struct Begin3DOptions {
+pub:
+	cam ?Camera3D // overrides the camera stored with set_camera()
+}
+
+// set_camera stores cam on the context so 3D draws need no camera argument.
+pub fn (ctx &Context) set_camera(cam Camera3D) {
+	mut ctx_mut := unsafe { &Context(ctx) }
+	ctx_mut.camera = cam
+}
+
+// view_size returns the framebuffer size used for 3D projection and picking.
+pub fn (ctx &Context) view_size() (int, int) {
+	return sapp.width(), sapp.height()
+}
+
+// begin_3d switches the context to depth-tested 3D drawing.
+// With no argument it uses the camera stored by set_camera(); pass cam: to
+// override it for a single scope. Call after begin() and close with end_3d().
+pub fn (ctx &Context) begin_3d(options Begin3DOptions) ! {
 	if !ctx.config.depth {
-		eprintln('gg: begin_3d() needs Config.depth = true')
-		return
+		return error('gg: begin_3d requires Config.depth = true; set depth: true in gg.new_context')
 	}
+	cam := options.cam or { ctx.camera }
 	ctx.r.set_depth_test(true)
 	mut r := ctx.r
-	fb_w := f32(sapp.width())
-	fb_h := f32(sapp.height())
-	aspect := if fb_h > 0 { fb_w / fb_h } else { 1.0 }
+	fb_w, fb_h := ctx.view_size()
+	aspect := if fb_h > 0 { f32(fb_w) / f32(fb_h) } else { 1.0 }
 	r.matrix_mode_projection()
 	r.load_identity()
 	r.mult_mat4(cam.projection_matrix(aspect))
@@ -120,7 +136,8 @@ pub fn (ctx &Context) end_3d() {
 	mut r := ctx.r
 	r.matrix_mode_projection()
 	r.load_identity()
-	r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	w, h := ctx.view_size()
+	r.ortho(0.0, f32(w), f32(h), 0.0, -1.0, 1.0)
 	r.matrix_mode_modelview()
 	r.load_identity()
 	r.matrix_mode_texture()

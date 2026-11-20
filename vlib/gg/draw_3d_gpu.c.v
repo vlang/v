@@ -62,6 +62,47 @@ pub fn (ctx &Context) draw_grid(slices int, spacing f32, color Color) {
 	ctx.r.end()
 }
 
+// draw_grid_ex draws a grid with a distinct colour for the centre axes.
+pub fn (ctx &Context) draw_grid_ex(slices int, spacing f32, axes_color Color, grid_color Color) {
+	if slices <= 0 || spacing <= 0 {
+		return
+	}
+	half := f32(slices) * spacing / 2.0
+	ctx.r.begin_lines()
+	for i in 0 .. slices + 1 {
+		p := -half + f32(i) * spacing
+		is_axis := i == slices / 2
+		c := if is_axis { axes_color } else { grid_color }
+		ctx.r.v3f_c4b(-half, 0, p, c.r, c.g, c.b, c.a)
+		ctx.r.v3f_c4b(half, 0, p, c.r, c.g, c.b, c.a)
+		ctx.r.v3f_c4b(p, 0, -half, c.r, c.g, c.b, c.a)
+		ctx.r.v3f_c4b(p, 0, half, c.r, c.g, c.b, c.a)
+	}
+	ctx.r.end()
+}
+
+// draw_axes draws X (red), Y (green) and Z (blue) axes from origin.
+pub fn (ctx &Context) draw_axes(origin Vec3, size f32) {
+	ctx.draw_line_3d(origin, Vec3{origin.x + size, origin.y, origin.z}, red)
+	ctx.draw_line_3d(origin, Vec3{origin.x, origin.y + size, origin.z}, green)
+	ctx.draw_line_3d(origin, Vec3{origin.x, origin.y, origin.z + size}, blue)
+}
+
+// draw_aabb draws a wireframe axis-aligned bounding box.
+pub fn (ctx &Context) draw_aabb(center Vec3, size Vec3, color Color) {
+	ctx.draw_cube_wires(center, size, color)
+}
+
+// debug_mode3d draws the common grid and axes helpers in one call.
+pub fn (ctx &Context) debug_mode3d(show_grid bool, show_axes bool) {
+	if show_grid {
+		ctx.draw_grid_ex(10, 1.0, gray, Color{60, 60, 60, 255})
+	}
+	if show_axes {
+		ctx.draw_axes(Vec3{}, 2.0)
+	}
+}
+
 // draw_line_3d draws a single line between two points in 3D.
 pub fn (ctx &Context) draw_line_3d(start Vec3, end Vec3, color Color) {
 	ctx.r.begin_lines()
