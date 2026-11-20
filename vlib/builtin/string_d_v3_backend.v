@@ -51,3 +51,33 @@ pub fn (s string) i128() i128 {
 	}
 	return result
 }
+
+// at_i128 returns the byte at the i128 index, with the same bounds checking
+// as the narrower at_* helpers. It lives in this v3_backend-guarded file
+// (rather than string.v) because the 0.5.2 compatibility compiler, which
+// checks the current vlib, has no i128/u128 types.
+@[markused]
+fn (s string) at_i128(idx i128) u8 {
+	$if !no_bounds_checking {
+		if idx < 0 || idx >= i128(s.len) {
+			panic('string index out of range(idx,s.len): ' + idx.str() + ', ' +
+				impl_i64_to_string(s.len))
+		}
+	}
+	return unsafe { s.str[int(idx)] }
+}
+
+// at_u128 returns the byte at the u128 index, with the same bounds checking
+// as the narrower at_* helpers. It lives in this v3_backend-guarded file
+// (rather than string.v) because the 0.5.2 compatibility compiler, which
+// checks the current vlib, has no i128/u128 types.
+@[markused]
+fn (s string) at_u128(idx u128) u8 {
+	$if !no_bounds_checking {
+		if idx >= u128(s.len) {
+			panic('string index out of range(idx,s.len): ' + idx.str() + ', ' +
+				impl_i64_to_string(s.len))
+		}
+	}
+	return unsafe { s.str[int(idx)] }
+}

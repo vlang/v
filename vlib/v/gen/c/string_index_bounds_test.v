@@ -38,6 +38,64 @@ fn main() {
 	}
 }
 
+fn test_string_indexes_use_checked_helpers_for_wide_integers() {
+	generated := string_bounds_c('fn signed_wide(s string, i i128) u8 { return s[i] }
+fn unsigned_wide(s string, i u128) u8 { return s[i] }
+fn main() {
+    _ = signed_wide("abc", 1)
+    _ = unsigned_wide("abc", 1)
+}
+')
+	assert generated.contains('return string__at_i128(s, i);'), generated
+	assert generated.contains('return string__at_u128(s, i);'), generated
+}
+
+// The 0.5.2 compatibility compiler (launch_v1 fallback) checks the current
+// vlib but has no i128/u128 types: its checker rejects any unguarded builtin
+// declaration mentioning them. Files selected only with -d v3_backend stay
+// hidden from it, so every other builtin source must avoid 128-bit types.
+fn test_string_wide_index_helpers_stay_behind_v3_backend_guard() {
+	builtin_dir := os.join_path(@VEXEROOT, 'vlib', 'builtin')
+	files := os.ls(builtin_dir) or { panic(err) }
+	mut offenders := []string{}
+	for name in files {
+		if !name.ends_with('.v') || name.ends_with('_test.v') {
+			continue
+		}
+		if name.all_before('.v').contains('_d_') {
+			continue
+		}
+		text := os.read_file(os.join_path(builtin_dir, name)) or { panic(err) }
+		if mentions_128bit_type(text) {
+			offenders << name
+		}
+	}
+	assert offenders.len == 0, 'builtin sources visible to the compat compiler mention 128-bit types: ${offenders}'
+	guarded := os.read_file(os.join_path(builtin_dir, 'string_d_v3_backend.v')) or {
+		panic(err)
+	}
+	assert guarded.contains('fn (s string) at_i128(idx i128) u8')
+	assert guarded.contains('fn (s string) at_u128(idx u128) u8')
+}
+
+fn mentions_128bit_type(text string) bool {
+	for token in ['i128', 'u128'] {
+		mut start := 0
+		for {
+			idx := text.index_after(token, start) or { break }
+			before_ok := idx == 0 || (!text[idx - 1].is_alnum() && text[idx - 1] != `_`)
+			after_idx := idx + token.len
+			after_ok := after_idx >= text.len
+				|| (!text[after_idx].is_alnum() && text[after_idx] != `_`)
+			if before_ok && after_ok {
+				return true
+			}
+			start = idx + 1
+		}
+	}
+	return false
+}
+
 fn test_string_indexes_panic_at_invalid_signed_and_unsigned_positions() {
 	root := os.join_path(os.vtmp_dir(), 'string_bounds_runtime_${os.getpid()}')
 	os.mkdir_all(root)!
