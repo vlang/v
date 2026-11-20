@@ -989,6 +989,23 @@ fn test_c_extern_scan_publication_only_freezes_complete_new_refs() {
 	}
 }
 
+// A C function only taken by address can be an ident after transform. Both the
+// serial fallback and parallel cost scan must retain it before C declarations.
+fn test_c_extern_value_ident_reaches_serial_and_cost_preps() {
+	mut g, _ := parallel_worker_test_gen(false)
+	ident := g.a.add_node(flat.Node{ kind: .ident, value: 'C.value_only_symbol' })
+	mut stack := []flat.NodeId{}
+	_ = g.fn_item_cost_and_c_extern_prep(ident, mut stack)
+	assert g.c_extern_refs['C.value_only_symbol']
+	assert g.c_extern_refs['value_only_symbol']
+	mut refs := map[string]bool{}
+	cost, needs_prelude := exact_flat_fn_gen_item_cost(g.a, ident, false, mut refs, mut stack)
+	assert cost > 0
+	assert !needs_prelude
+	assert refs['C.value_only_symbol']
+	assert refs['value_only_symbol']
+}
+
 fn test_scoped_c_extern_preseed_retains_selected_body_refs() {
 	mut g, _ := parallel_worker_test_gen(true)
 	base := g.a.add_node(flat.Node{ kind: .ident, value: 'C' })
