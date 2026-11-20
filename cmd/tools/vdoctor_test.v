@@ -199,3 +199,13 @@ fn test_doctor_fetch_reaches_git_through_timeout() {
 	}
 	run_doctor_case('fetch')!
 }
+
+fn test_vdoctor_reports_win32_long_paths_policy() {
+	run_doctor_with_main('long_paths', '
+fn main() {
+	// Read-only: safe on every machine, including CI.
+	status := doctor_long_paths_status()
+	assert status == "enabled" || status == "unknown" || status.starts_with("disabled ("), status
+}
+')!
+}
