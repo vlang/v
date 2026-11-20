@@ -107,7 +107,7 @@ pub fn load_mesh_obj(path string) !Mesh3D {
 		}
 	}
 	if vertices.len == 0 {
-		return error('gg: no triangles found in "${path}"')
+		return error('gg.E0010: no triangles found in "${path}" — check that the file has f lines')
 	}
 	return Mesh3D{ vertices: vertices, normals: out_normals, uvs: out_uvs, indices: indices }
 }
@@ -273,7 +273,7 @@ fn accessor_indices(doc &GltfDoc, buffers [][]u8, index int) ![]u32 {
 // textures are not loaded.
 pub fn load_mesh_gltf(path string) ![]Mesh3D {
 	text := os.read_file(path) or { return error('gg: cannot read "${path}": ${err}') }
-	doc := json2.decode[GltfDoc](text) or { return error('gg: invalid glTF JSON: ${err}') }
+	doc := json2.decode[GltfDoc](text) or { return error('gg.E0011: invalid glTF JSON in "${path}": ${err}') }
 	dir := os.dir(path)
 	mut buffers := [][]u8{}
 	for i in 0 .. doc.buffers.len {
@@ -326,7 +326,7 @@ pub fn load_mesh_glb(path string) ![]Mesh3D {
 	}
 	magic := binary.little_endian_u32_at(data, 0)
 	if magic != u32(0x46546c67) {
-		return error('gg: not a GLB file (bad magic)')
+		return error('gg.E0012: "${path}" is not a GLB file (bad magic) — use load_mesh_gltf for .gltf')
 	}
 	version := binary.little_endian_u32_at(data, 4)
 	if version != 2 {

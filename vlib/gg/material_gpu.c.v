@@ -83,6 +83,21 @@ pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3
 	return true
 }
 
+// draw_cube_tex draws a textured cube without constructing a Mesh3D or
+// Material3D. The camera stored with set_camera() is used.
+pub fn (ctx &Context) draw_cube_tex(pos Vec3, size Vec3, img &Image, color Color) bool {
+	mesh := gen_mesh_cube(size)
+	mat := Material3D{ color: color, texture: img }
+	return ctx.draw_material_mesh(&mesh, pos, Vec3{}, 1.0, &mat, ctx.camera)
+}
+
+// draw_sphere_tex draws a textured sphere using the stored camera.
+pub fn (ctx &Context) draw_sphere_tex(center Vec3, radius f32, rings int, slices int, img &Image, color Color) bool {
+	mesh := gen_mesh_sphere(radius, rings, slices)
+	mat := Material3D{ color: color, texture: img }
+	return ctx.draw_material_mesh(&mesh, center, Vec3{}, 1.0, &mat, ctx.camera)
+}
+
 // draw_billboard draws a camera-facing textured quad at pos.
 pub fn (ctx &Context) draw_billboard(cam Camera3D, img &Image, pos Vec3, width f32, height f32, color Color) {
 	if !ctx.config.depth || (!img.simg_ok && img.data == unsafe { nil }) {

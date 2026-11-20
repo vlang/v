@@ -30,7 +30,7 @@ pub fn load_model(path string) !Model3D {
 	} else if path.ends_with('.obj') {
 		meshes << load_mesh_obj(path)!
 	} else {
-		return error('gg: load_model supports .obj, .gltf and .glb: ${path}')
+		return error('gg.E0013: load_model supports .obj, .gltf and .glb: ${path}')
 	}
 	if meshes.len == 0 {
 		return error('gg: no meshes found in "${path}"')
