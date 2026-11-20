@@ -85,7 +85,9 @@
 // atomic read-modify-write then, only a load and a store that do not tear: on a 64-bit target
 // a volatile access to an aligned 8-byte word is one load or one store (like the Linux kernel's
 // READ_ONCE and WRITE_ONCE). They are macros, so that counting an allocation costs no call, even
-// without optimization.
+// without optimization. Shared mark-phase counters (work queue, span queue, scan stats) are
+// updated by several mark workers at once, so they must use vgc_counter_add_atomic, which is
+// always an atomic read-modify-write on every target.
 // ============================================================
 #if UINTPTR_MAX > 0xFFFFFFFFu
   #define vgc_counter_load(ptr) (*(volatile uint64_t*)(ptr))
@@ -94,6 +96,7 @@
   #define vgc_counter_load(ptr) vgc_atomic_load_u64(ptr)
   #define vgc_counter_add(ptr, val) ((void)vgc_atomic_add_u64(ptr, val))
 #endif
+#define vgc_counter_add_atomic(ptr, val) ((void)vgc_atomic_add_u64(ptr, val))
 // Counts an object of size bytes, allocated for a request of n bytes, in the counters of a
 // thread's cache slot.
 #define vgc_count_alloc(live_ptr, alloc_ptr, size, n) (vgc_counter_add(live_ptr, size), vgc_counter_add(alloc_ptr, n))
