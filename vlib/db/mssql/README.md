@@ -54,7 +54,8 @@ copy ^
 * dlls can be automatically resolved by `tcc`
 
 ## TODO
-* Support ORM
+* ORM adapter (`orm.Connection`). The driver already has parameterized `exec`, `last_id()`
+  and NULL-aware rows for the adapter to build on.
 
 ## Usage
 ```v ignore
