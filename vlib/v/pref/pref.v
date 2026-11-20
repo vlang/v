@@ -619,6 +619,71 @@ fn module_path_from_search_root(mod string, mod_path string, search_root string)
 	if dir_is_module(path) {
 		return path
 	}
+	// A `base_url` manifest moves the module's sources (submodules included)
+	// under its source folder, so `foo.bar` lives at `foo/src/bar`.
+	redirected := base_url_redirected_module_candidate(search_root, mod)
+	if redirected != '' {
+		if dir_is_module(redirected) {
+			return redirected
+		}
+	}
+	return none
+}
+
+// base_url_redirected_module_candidate maps `mod` to the directory its submodule
+// would live in when the top-level module below `search_root` redirects its
+// sources with `base_url` in its `v.mod`. It returns '' when no manifest below
+// `search_root` owns a prefix of `mod`. The longest prefix wins, so a dotted
+// manifest name resolves before a shorter one.
+pub fn base_url_redirected_module_candidate(search_root string, mod string) string {
+	if !mod.contains('.') {
+		return ''
+	}
+	parts := mod.split('.')
+	for prefix_len := parts.len - 1; prefix_len >= 1; prefix_len-- {
+		top_dir := os.join_path_single(search_root, parts[..prefix_len].join(os.path_separator))
+		candidate := base_url_submodule_candidate(top_dir, mod)
+		if candidate != '' {
+			if os.is_dir(candidate) {
+				return candidate
+			}
+		}
+	}
+	return ''
+}
+
+// base_url_submodule_candidate maps `mod` into the `base_url` source folder of
+// the module in `top_dir`. It returns '' when `top_dir` holds no `v.mod` with a
+// `base_url` that owns a prefix of `mod`.
+pub fn base_url_submodule_candidate(top_dir string, mod string) string {
+	if !mod.contains('.') {
+		return ''
+	}
+	vmod_path := os.join_path_single(top_dir, 'v.mod')
+	if !os.is_file(vmod_path) {
+		return ''
+	}
+	manifest := vmod.from_file(vmod_path) or { return '' }
+	if manifest.base_url == '' || manifest.name == '' {
+		return ''
+	}
+	tail := mod_tail_after_manifest_name(mod, manifest.name) or { return '' }
+	if tail == '' {
+		return ''
+	}
+	return os.join_path_single(manifest.source_root(top_dir), tail.replace('.', os.path_separator))
+}
+
+// mod_tail_after_manifest_name strips the owning manifest name from `mod`:
+// `foo.bar` under manifest `foo` leaves `bar`. Anything else is not owned by
+// that manifest.
+fn mod_tail_after_manifest_name(mod string, manifest_name string) ?string {
+	if mod == manifest_name {
+		return ''
+	}
+	if mod.starts_with(manifest_name + '.') {
+		return mod[manifest_name.len + 1..]
+	}
 	return none
 }
 

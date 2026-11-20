@@ -79,6 +79,30 @@ fn test_manifest_subdir_probe_uses_configured_source_root() {
 	assert resolve_global_module_path(&prefs, 'sample', 'sample') == module_root
 }
 
+fn test_resolve_ancestor_module_path_uses_base_url_source_root() {
+	root := os.join_path(os.vtmp_dir(), 'v3_module_resolve_base_url_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	foo_dir := os.join_path(root, 'foo')
+	bar_dir := os.join_path(foo_dir, 'src', 'bar')
+	cmd_dir := os.join_path(foo_dir, 'cmd')
+	os.mkdir_all(bar_dir) or { panic(err) }
+	os.mkdir_all(cmd_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, '.v.mod.stop'), '')!
+	os.write_file(os.join_path(foo_dir, 'v.mod'), "Module { name: 'foo', base_url: 'src' }\n")!
+	os.write_file(os.join_path(foo_dir, 'src', 'foo.v'), "module foo\n\npub const value = 'foo'\n")!
+	os.write_file(os.join_path(bar_dir, 'bar.v'), "module bar\n\npub const value = 'bar'\n")!
+	use_file := os.join_path(cmd_dir, 'use.v')
+	os.write_file(use_file, 'module main\n')!
+
+	prefs := pref.Preferences{}
+	assert resolve_ancestor_module_path(&prefs, 'foo.bar', 'foo/bar', use_file) == os.real_path(bar_dir)
+	assert resolve_local_or_project_module_path(&prefs, 'foo.bar', 'foo/bar', use_file,
+		os.real_path(foo_dir)) == os.real_path(bar_dir)
+}
+
 fn test_manifest_subdir_probe_filters_sources_for_target() {
 	root := os.join_path(os.vtmp_dir(), 'v3_module_probe_target_${os.getpid()}')
 	os.rmdir_all(root) or {}
