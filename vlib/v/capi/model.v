@@ -29,7 +29,8 @@ pub mut:
 	custom_name string
 	// qualifier is the V import alias used when wrappers live outside the
 	// module that declares the function (combined multi-module builds).
-	qualifier string
+	qualifier  string
+	error_code int
 }
 
 pub struct ApiType {
@@ -129,7 +130,9 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 				if has_attr(attrs, 'c_api_skip', 'CApiSkip') {
 					continue
 				}
-				funcs << func_from_node(a, node, docs, effective_prefix, custom_name_of(attrs), qualifier)
+				mut func := func_from_node(a, node, docs, effective_prefix, custom_name_of(attrs), qualifier)
+				func.error_code = error_code_of(attrs)
+				funcs << func
 				continue
 			}
 			if node.kind == .struct_decl {
@@ -241,6 +244,19 @@ fn custom_name_of(attrs []string) string {
 		}
 	}
 	return ''
+}
+
+fn error_code_of(attrs []string) int {
+	for attr in attrs {
+		mut marker := 'c_api_errno:'
+		if attr.contains('.CApiErrno:') {
+			marker = '.CApiErrno:'
+		}
+		if idx := attr.index(marker) {
+			return attr[idx + marker.len..].trim_space().int()
+		}
+	}
+	return 0
 }
 
 fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, prefix string, custom_name string, qualifier string) ApiFunc {

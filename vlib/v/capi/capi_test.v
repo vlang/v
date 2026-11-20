@@ -27,6 +27,18 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_custom_error_code() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'errno')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	assert m.funcs[0].error_code == 7
+	mut warnings := []string{}
+	code, _ := generate_wrappers(m, mut warnings)
+	assert code.contains('return 7 }')
+}
+
 fn test_slice_return_wrappers() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'slices')
 	m := collect_model(dir, '') or {

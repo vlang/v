@@ -80,6 +80,8 @@ Import `v.capi` and use these attributes:
 - `@[capi.CApiSkip]` on a `pub fn` leaves it out of the C surface.
 - `@[capi.CApiName('custom_name')]` overrides the generated C symbol name.
 - `@[capi.CApiExport]` includes a private `fn` in the C surface.
+- `@[capi.CApiErrno(7)]` returns status `7` when a `!T` function fails
+  (default is `-1`); the error text is still available from `<prefix>_last_error()`.
 
 The bare spellings (`@[c_api_skip]`, etc.) are also recognised by the generator
 but produce an unknown-attribute warning from the checker; prefer the qualified
@@ -88,5 +90,5 @@ forms.
 ## Limitations (v1)
 
 - Only one module directory per invocation; submodules are not traversed.
-- `!T` reports a single error status; per-error numeric codes are not mapped.
+- A `!T` function has one failure status per function, not per error value.
 - Struct fields are not exposed; use V functions as factories and accessors.

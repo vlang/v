@@ -116,6 +116,7 @@ fn qname(f ApiFunc, name string) string {
 fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
 	mut inner := unwrap(f.return_type)
 	has_result := is_result(f.return_type) || is_option(f.return_type)
+	err_code := if f.error_code != 0 { f.error_code.str() } else { '-1' }
 	returns_slice := is_slice(inner)
 	if returns_slice && !is_supported_slice_elem(slice_elem(inner)) {
 		warnings << 'skipped ${f.name}: unsupported slice element ${slice_elem(inner)}'
@@ -232,7 +233,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	if returns_slice {
 		if has_result {
 			if is_result(f.return_type) {
-				b.writeln('\tv := ${call} or { capi_rt_set_error(err.msg()); return -1 }')
+				b.writeln('\tv := ${call} or { capi_rt_set_error(err.msg()); return ${err_code} }')
 			} else {
 				b.writeln('\tv := ${call} or { return 1 }')
 			}
@@ -245,7 +246,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		b.writeln('\treturn 0')
 	} else if has_result {
 		if is_result(f.return_type) {
-			b.writeln('\tv := ${call} or { capi_rt_set_error(err.msg()); return -1 }')
+			b.writeln('\tv := ${call} or { capi_rt_set_error(err.msg()); return ${err_code} }')
 		} else {
 			b.writeln('\tv := ${call} or { return 1 }')
 		}
