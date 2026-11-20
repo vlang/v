@@ -401,9 +401,6 @@ fn new_typed_index(header string, layer HeaderLayer) TypedIndex {
 			} else {
 				_, in_block_comment = scan_c_line(line, 0, in_block_comment)
 			}
-			if line.contains('##') {
-				has_paste = true
-			}
 			mut item := HeaderItem{
 				kind:  .always
 				first: i
@@ -411,6 +408,10 @@ fn new_typed_index(header string, layer HeaderLayer) TypedIndex {
 			}
 			mut tmp := map[string]bool{}
 			for u := i; u <= last; u++ {
+				// every line of the directive: the paste of a macro is often on a continued one
+				if has_token_paste(units[u].text) {
+					has_paste = true
+				}
 				collect_identifiers(units[u].text, mut tmp)
 			}
 			if trimmed.starts_with('#') {
@@ -460,7 +461,7 @@ fn new_typed_index(header string, layer HeaderLayer) TypedIndex {
 		last := if j >= units.len { units.len - 1 } else { j }
 		toks, from_directives := tokenize_group(units, i, last)
 		for u := i; u <= last; u++ {
-			if units[u].text.contains('##') {
+			if has_token_paste(units[u].text) {
 				has_paste = true
 			}
 		}
@@ -518,14 +519,13 @@ fn directive_defined_name(trimmed string) string {
 }
 
 fn finish_typed_index(units []CSourceUnit, mut items []HeaderItem, group_tokens [][]string, layer HeaderLayer, has_paste bool) TypedIndex {
-	// a `##` anywhere can make a name that no identifier shows: only the declarations layer
-	// is sound then
-	eff_layer := if has_paste { HeaderLayer.declarations } else { layer }
+	// a token paste anywhere can make a name that no identifier shows, the name of a type or
+	// of a function alike: nothing goes from a header with one
 	mut name_ids := map[string]int{}
 	mut by_name := [][]int{}
 	mut can_go := []bool{len: items.len}
 	for n, item in items {
-		can_go[n] = layer_lets_go(eff_layer, item.kind) && item.defs.len > 0
+		can_go[n] = !has_paste && layer_lets_go(layer, item.kind) && item.defs.len > 0
 		for name in item.defs {
 			id := name_ids[name] or {
 				name_ids[name] = by_name.len
@@ -645,7 +645,7 @@ fn (idx &TypedIndex) settle(mut need []bool, mut keep []bool, mut work []int) {
 // subset returns the header without the items that neither `code` nor the items that stay
 // need.
 fn (idx &TypedIndex) subset(code string, total_hint int) string {
-	if idx.drop_at.len == 0 || code.contains('##') {
+	if idx.drop_at.len == 0 || has_token_paste(code) {
 		return idx.joined
 	}
 	mut need := idx.base_need.clone()
