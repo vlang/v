@@ -797,7 +797,7 @@ fn (mut p Parser) process_tmpl_includes(source_line TemplateSourceLine, mut seen
 	if file_ext == '' {
 		file_ext = '.html'
 	}
-	file_name = file_name.replace(file_ext, '')
+	file_name = file_name.trim_string_right(file_ext)
 	mut file_path := os.join_path_single(dir, '${file_name}${file_ext}')
 	if os.exists(file_path) {
 		file_path = os.real_path(file_path)

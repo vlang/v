@@ -77,6 +77,10 @@ fn main() {
 }
 ```
 
+A `match` on a public enum marked `@[non_exhaustive]` requires an `else` branch
+outside the enum's defining module. The diagnostic asks for that fallback
+whether the match lists some or all of the known variants.
+
 ## Narrowing with is and as
 
 ```v
