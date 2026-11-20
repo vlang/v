@@ -166,6 +166,8 @@ pub fn host_arch() string {
 		return 'ppc'
 	} $else $if loongarch64 {
 		return 'loongarch64'
+	} $else $if mips64le {
+		return 'mips64le'
 	} $else $if sparc64 {
 		return 'sparc64'
 	} $else $if wasm32 {
@@ -175,6 +177,16 @@ pub fn host_arch() string {
 	} $else $if x32 {
 		return 'x86'
 	} $else {
+		// Runtime fallback for hosts whose architecture was unknown when this
+		// compiler was built (e.g. bootstrapping a new port with an older vc).
+		// `normalized_arch` maps common `uname -m` spellings such as `mips64`
+		// to the canonical `mips64le`; unknown machines still report `unknown`
+		// so `host_target()` keeps failing for genuinely unsupported hosts.
+		machine := os.uname().machine.to_lower()
+		canonical := normalized_arch(machine)
+		if is_supported_arch(canonical) {
+			return canonical
+		}
 		return 'unknown'
 	}
 }
@@ -216,7 +228,7 @@ pub fn default_thread_stack_size_for_bits(pointer_bits int) int {
 // can be built for; spellings such as `x86_64` must be passed through normalized_arch first.
 pub fn is_supported_arch(arch string) bool {
 	return arch in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
-		's390x', 'loongarch64', 'sparc64', 'wasm32']
+		's390x', 'loongarch64', 'mips64le', 'sparc64', 'wasm32']
 }
 
 // target_from validates and canonicalizes an OS/architecture pair.
@@ -815,7 +827,8 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 	}
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
 		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc',
-		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'mips64le', 'mips64', 'mips64el', 'sparc64',
+		'wasm32'] {
 		if normalized_arch(arch) != target.arch && file_name_has_arch_marker(file, arch) {
 			return true
 		}
@@ -923,7 +936,8 @@ pub fn get_v_files_from_dir_for_backend_target(dir string, user_defines []string
 	mut incompatible_archs := []string{}
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
 		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc',
-		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'mips64le', 'mips64', 'mips64el', 'sparc64',
+		'wasm32'] {
 		if normalized_arch(arch) != target.arch {
 			incompatible_archs << arch
 		}
@@ -1269,6 +1283,7 @@ pub fn normalized_arch(target_arch string) string {
 		'rv32', 'risc-v32' { 'riscv32' }
 		'rv64', 'risc-v64', 'riscv', 'risc-v' { 'riscv64' }
 		'ppc32', 'powerpc' { 'ppc' }
+		'mips64', 'mips64el' { 'mips64le' }
 		'wasm' { 'wasm32' }
 		else { target_arch }
 	}
@@ -1290,7 +1305,7 @@ pub fn directive_target_os(prefix string) ?string {
 pub fn directive_target_arch(prefix string) ?string {
 	normalized := normalized_arch(prefix)
 	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
-		's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+		's390x', 'loongarch64', 'mips64le', 'sparc64', 'wasm32'] {
 		return normalized
 	}
 	return none
@@ -1622,6 +1637,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'rv32', 'riscv32' {
 			return p.target.arch == 'riscv32'
 		}
+		'mips64', 'mips64el', 'mips64le' {
+			return p.target.arch == 'mips64le'
+		}
 		's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32' {
 			return p.target.arch == name
 		}
@@ -1704,6 +1722,9 @@ pub const cross_target_c_macros = {
 	'ppc64':             '__V_ppc64'
 	'ppc':               '__V_ppc'
 	'loongarch64':       '__V_loongarch64'
+	'mips64le':          '__V_mips64le'
+	'mips64el':          '__V_mips64le'
+	'mips64':            '__V_mips64le'
 	'sparc64':           '__V_sparc64'
 	'x64':               'TARGET_IS_64BIT'
 	'x32':               'TARGET_IS_32BIT'

@@ -13224,8 +13224,8 @@ fn source_override_stem(file string) (string, bool) {
 	if suffix in ['c', 'js', 'native', 'wasm', 'amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86',
 		'i386', 'i486', 'i586', 'i686', 'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'aarch32', 'arm',
 		'armv7', 'armv7l', 'rv32', 'risc-v32', 'riscv32', 'rv64', 'risc-v64', 'risc-v', 'riscv',
-		'riscv64', 'ppc', 'ppc32', 'powerpc', 'ppc64', 'ppc64le', 's390x', 'loongarch64', 'sparc64',
-		'wasm32'] {
+		'riscv64', 'ppc', 'ppc32', 'powerpc', 'ppc64', 'ppc64le', 's390x', 'loongarch64', 'mips64le',
+		'mips64', 'mips64el', 'sparc64', 'wasm32'] {
 		return stem[..dot], true
 	}
 	return stem, false
