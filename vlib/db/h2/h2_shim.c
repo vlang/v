@@ -317,28 +317,28 @@ static void h2_read_result_set(JNIEnv *env, jobject rs, H2Result *res) {
 	jmethodID next = h2_mid(env, rs_cls, "next", "()Z");
 	jmethodID get_string = h2_mid(env, rs_cls, "getString", "(I)Ljava/lang/String;");
 	jmethodID was_null = h2_mid(env, rs_cls, "wasNull", "()Z");
-	jobject md;
-	jclass md_cls;
+	jobject md = NULL;
+	jclass md_cls = NULL;
 	jmethodID get_cc, get_cn;
 	int i, cap;
 
 	if (get_md == NULL || next == NULL || get_string == NULL || was_null == NULL) {
-		return;
+		goto done;
 	}
 	md = (*env)->CallObjectMethod(env, rs, get_md);
 	if (md == NULL) {
 		h2_clear_exception(env);
-		return;
+		goto done;
 	}
 	md_cls = (*env)->GetObjectClass(env, md);
 	get_cc = h2_mid(env, md_cls, "getColumnCount", "()I");
 	get_cn = h2_mid(env, md_cls, "getColumnName", "(I)Ljava/lang/String;");
 	if (get_cc == NULL || get_cn == NULL) {
-		return;
+		goto done;
 	}
 	res->ncols = (int)(*env)->CallIntMethod(env, md, get_cc);
 	if (res->ncols <= 0) {
-		return;
+		goto done;
 	}
 	res->col_names = (char **)calloc((size_t)res->ncols, sizeof(char *));
 	for (i = 0; i < res->ncols; ++i) {
@@ -382,6 +382,16 @@ static void h2_read_result_set(JNIEnv *env, jobject rs, H2Result *res) {
 	if ((*env)->ExceptionCheck(env)) {
 		h2_clear_exception(env);
 	}
+done:
+	/* JNI local refs live until the thread detaches; this bridge never detaches,
+	 * so release them explicitly to avoid accumulating one set per query. */
+	if (md_cls != NULL) {
+		(*env)->DeleteLocalRef(env, md_cls);
+	}
+	if (md != NULL) {
+		(*env)->DeleteLocalRef(env, md);
+	}
+	(*env)->DeleteLocalRef(env, rs_cls);
 }
 
 H2Result *h2_exec(H2Conn *conn, const char *sql, const char **params, const long long *nulls,
@@ -424,19 +434,24 @@ H2Result *h2_exec(H2Conn *conn, const char *sql, const char **params, const long
 		return NULL;
 	}
 	ps_cls = (*env)->GetObjectClass(env, pstmt);
-	if (!h2_bind(env, pstmt, ps_cls, params, nulls, nparams)) {
+	if (ps_cls == NULL || !h2_bind(env, pstmt, ps_cls, params, nulls, nparams)) {
+		if (ps_cls != NULL) {
+			(*env)->DeleteLocalRef(env, ps_cls);
+		}
 		(*env)->DeleteLocalRef(env, pstmt);
 		return NULL;
 	}
 	execute = h2_mid(env, ps_cls, "execute", "()Z");
 	get_rs = h2_mid(env, ps_cls, "getResultSet", "()Ljava/sql/ResultSet;");
 	if (execute == NULL || get_rs == NULL) {
+		(*env)->DeleteLocalRef(env, ps_cls);
 		(*env)->DeleteLocalRef(env, pstmt);
 		return NULL;
 	}
 	has_rs = (*env)->CallBooleanMethod(env, pstmt, execute);
 	if ((*env)->ExceptionCheck(env)) {
 		h2_clear_exception(env);
+		(*env)->DeleteLocalRef(env, ps_cls);
 		(*env)->DeleteLocalRef(env, pstmt);
 		return NULL;
 	}
@@ -492,6 +507,7 @@ H2Result *h2_exec(H2Conn *conn, const char *sql, const char **params, const long
 			}
 		}
 	}
+	(*env)->DeleteLocalRef(env, ps_cls);
 	(*env)->DeleteLocalRef(env, pstmt);
 	return res;
 }
