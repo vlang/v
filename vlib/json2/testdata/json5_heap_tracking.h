@@ -1,6 +1,7 @@
 #ifndef JSON5_HEAP_TRACKING_H
 #define JSON5_HEAP_TRACKING_H
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #ifndef CUSTOM_DEFINE_track_heap
@@ -14,7 +15,7 @@ static struct {
 } json5_heap_blocks[4096];
 static unsigned long long json5_heap_bytes;
 
-void vheap_alloc(void *pointer, unsigned long long size) {
+void vheap_alloc(void *pointer, uint64_t size) {
     if (!pointer) return;
     for (int i = 0; i < 4096; i++) {
         if (!json5_heap_blocks[i].pointer) {
