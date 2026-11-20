@@ -459,19 +459,23 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 				module:            fn_decl_module
 				import_context:    fn_decl_import_context
 				positional_params: markused_positional_param_count(a, &node)
+				body_idx:          i32(result.body_ids.len - 1)
 			}
-			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
+			qname := qualify_fn(fn_decl_module, node.value)
+			lowered_name := markused_c_name(node.value)
+			lowered_qname := if qname != node.value { markused_c_name(qname) } else { lowered_name }
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info,
+				markused_fn_decl_key_is_exact(node.value, qname, lowered_qname))
 			if can_suffix_match {
 				add_candidate_suffix(mut result.fn_name_suffixes, node.value)
 			}
-			lowered_name := markused_c_name(node.value)
 			if lowered_name != node.value {
-				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info)
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info,
+					markused_fn_decl_key_is_exact(lowered_name, qname, lowered_qname))
 				if can_suffix_match {
 					add_candidate_suffix(mut result.fn_name_suffixes, lowered_name)
 				}
 			}
-			qname := qualify_fn(fn_decl_module, node.value)
 			if markused_fn_has_attribute(a, node_idx, 'markused') {
 				result.marked_roots << qname
 			}
@@ -485,13 +489,13 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 				result.cache_roots << qname
 			}
 			if qname != node.value {
-				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info)
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info, true)
 				if can_suffix_match {
 					add_candidate_suffix(mut result.fn_name_suffixes, qname)
 				}
-				lowered_qname := markused_c_name(qname)
 				if lowered_qname != qname {
-					add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info)
+					add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info,
+						true)
 					if can_suffix_match {
 						add_candidate_suffix(mut result.fn_name_suffixes, lowered_qname)
 					}
@@ -1015,7 +1019,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		mu_sw.restart()
 	}
-	mut body_index := map[int]int{}
+	// The slot of each declaration of `body_ids` in `body_results`, or -1.
+	mut body_slots := []i32{}
 	mut body_results := []BodyCalls{}
 	// Frontier checking discovers bodies on demand; eagerly collecting checked bodies
 	// repeats work and retains call lists for declarations the queue never reaches.
@@ -1025,16 +1030,23 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		mut checked_ids := []int{}
 		mut checked_modules := []string{}
 		mut checked_import_contexts := []int{}
+		body_slots = []i32{len: body_ids.len}
 		if tc.skips_library_bodies {
 			for i, id in body_ids {
 				node := a.node(flat.NodeId(id))
 				file := if source := a.source_files[node.pos.id] { source.name } else { '' }
 				if tc.skips_library_body_in_file(*node, file, body_modules[i]) {
+					body_slots[i] = -1
 					continue
 				}
+				body_slots[i] = i32(checked_ids.len)
 				checked_ids << id
 				checked_modules << body_modules[i]
 				checked_import_contexts << body_import_contexts[i]
+			}
+		} else {
+			for i in 0 .. body_ids.len {
+				body_slots[i] = i32(i)
 			}
 		}
 		collect_ids := if tc.skips_library_bodies { checked_ids } else { body_ids }
@@ -1043,9 +1055,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			checked_import_contexts
 		} else {
 			body_import_contexts
-		}
-		for i, id in collect_ids {
-			body_index[id] = i
 		}
 		body_results = precollect_body_calls(collector, collect_ids, collect_modules, collect_import_contexts)
 	}
@@ -1145,8 +1154,24 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	settle_callees := !collector.detect_generics && !detect_reachable_generics
 	mut processed_module_calls := map[string]&ModuleCalls{}
 	mut call_signature_count := tc.fn_ret_types.len
-	safe_alias_done.reserve(u32(fn_decls.len))
-	iface_tail_done.reserve(u32(fn_decls.len))
+	// A declared callee keeps the three states above, and its per-module mark, in
+	// arrays indexed by its key number instead (see add_fn_decl_info): nearly every
+	// callee is one, and hashing its name for each of them dominated this walk.
+	// The maps hold the names that are not declaration keys.
+	key_count := fn_decls.len
+	key_words := (key_count + 63) >> 6
+	mut key_flags := []u8{len: key_count}
+	// Without generic detection the calls of a body arrive with their key numbers:
+	// a checker dependency through `symbol_keys`, indexed by its symbol id (0 = not
+	// looked up yet), a collected call through BodyCalls.call_keys. A dependency
+	// that is settled, or already resolved for the calling module, is dropped by
+	// number before its name is even read.
+	keyed_calls := settle_callees
+	mut symbol_keys := []i32{len: if keyed_calls { 65_536 } else { 0 }}
+	mut call_keys := []i32{cap: 128}
+	mut call_symbols := []types.SymbolId{cap: 128}
+	mut last_module_name := ''
+	mut last_module_calls := &ModuleCalls(unsafe { nil })
 	if tc.verbose {
 		eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		mu_sw.restart()
@@ -1333,36 +1358,91 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			calls.clear()
+			call_keys.clear()
+			call_symbols.clear()
 			initializer_refs.clear()
-			// Direct source-level call and function-value edges are authoritative:
-			// the checker recorded them with the exact file/import/type context.
-			// The body collector below remains responsible for implicit helpers
-			// introduced by lowering and for unresolved compatibility fallbacks.
-			for dependency in tc.direct_dependency_ids(node_key) {
-				calls << tc.frozen_symbol_name(dependency)
-			}
 			// The checker's dependency edges only cover source-level calls. Implicit
 			// helpers introduced by lowering (array bounds checks, `array__get`,
 			// `v_ni_index`, ...) are discovered solely by the body collector, so it must
 			// run for correctness regardless of generics detection; only the generics
 			// bookkeeping below is gated.
-			if body_i := body_index[node_key] {
-				body := body_results[body_i]
-				calls << body.calls
-				initializer_refs << body.refs
-				if detect_reachable_generics {
-					uses_generics = uses_generics || body.uses_generics
-				}
+			mut body := BodyCalls{}
+			body_slot := if fn_info.body_idx >= 0 && fn_info.body_idx < body_slots.len {
+				body_slots[fn_info.body_idx]
+			} else {
+				i32(-1)
+			}
+			if body_slot >= 0 {
+				body = body_results[body_slot]
 			} else {
 				// Not precollected (no eager pass, or not part of that decl set) —
 				// collect inline.
 				node := a.node(fn_info.node_id)
-				body := collector.collect_body_with_generic_detection(node, fn_info.module, collector.imports(fn_info.import_context), detect_reachable_generics && !uses_generics)
-				calls << body.calls
-				initializer_refs << body.refs
-				if detect_reachable_generics {
-					uses_generics = uses_generics || body.uses_generics
+				body = collector.collect_body_with_generic_detection(node, fn_info.module, collector.imports(fn_info.import_context), detect_reachable_generics && !uses_generics)
+			}
+			initializer_refs << body.refs
+			if detect_reachable_generics {
+				uses_generics = uses_generics || body.uses_generics
+			}
+			for initializer_ref in initializer_refs {
+				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref, mut
+					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
+			}
+			// Complete callee resolution depends only on its name and caller
+			// module. A short-name fallback suppressed by a qualified sibling
+			// remains uncached: another body may need its broader candidate set.
+			if call_signature_count != tc.fn_ret_types.len {
+				processed_module_calls.clear()
+				call_signature_count = tc.fn_ret_types.len
+				last_module_calls = unsafe { nil }
+			}
+			// Bodies of one module mostly follow each other; their module names are
+			// then the same string.
+			if isnil(last_module_calls) || last_module_name.len != fn_info.module.len
+				|| last_module_name.str != fn_info.module.str {
+				last_module_calls = processed_module_calls[fn_info.module] or {
+					fresh := &ModuleCalls{
+						key_bits: []u64{len: key_words}
+					}
+					processed_module_calls[fn_info.module] = fresh
+					fresh
 				}
+				last_module_name = fn_info.module
+			}
+			mut module_calls := last_module_calls
+			// Direct source-level call and function-value edges are authoritative:
+			// the checker recorded them with the exact file/import/type context.
+			// The body collector above remains responsible for implicit helpers
+			// introduced by lowering and for unresolved compatibility fallbacks.
+			if keyed_calls {
+				for dependency in tc.direct_dependency_ids(node_key) {
+					symbol_key := if int(dependency) < symbol_keys.len {
+						symbol_keys[int(dependency)]
+					} else {
+						i32(0)
+					}
+					if symbol_key > 0 && (key_flags[symbol_key - 1] & markused_key_settled != 0
+						|| module_calls.has_key(symbol_key - 1)) {
+						// What the loop below would skip first.
+						continue
+					}
+					calls << tc.frozen_symbol_name(dependency)
+					call_keys << symbol_key
+					call_symbols << dependency
+				}
+				calls << body.calls
+				if body.call_keys.len == body.calls.len {
+					call_keys << body.call_keys
+				} else {
+					for _ in 0 .. body.calls.len {
+						call_keys << i32(0)
+					}
+				}
+			} else {
+				for dependency in tc.direct_dependency_ids(node_key) {
+					calls << tc.frozen_symbol_name(dependency)
+				}
+				calls << body.calls
 			}
 			mut unique_call_count := calls.len
 			if detect_reachable_generics {
@@ -1380,38 +1460,60 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					unique_call_count++
 				}
 			}
-			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref, mut
-					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
-			}
 			total_callees += unique_call_count
-			// Complete callee resolution depends only on its name and caller
-			// module. A short-name fallback suppressed by a qualified sibling
-			// remains uncached: another body may need its broader candidate set.
-			if call_signature_count != tc.fn_ret_types.len {
-				processed_module_calls.clear()
-				call_signature_count = tc.fn_ret_types.len
-			}
-			mut module_calls := processed_module_calls[fn_info.module] or {
-				fresh := &ModuleCalls{}
-				processed_module_calls[fn_info.module] = fresh
-				fresh
-			}
 			for call_idx in 0 .. unique_call_count {
 				callee := calls[call_idx]
-				if settle_callees && settled_callees[callee] {
-					continue
+				// The key number + 1 of a declared callee, or -1.
+				mut callee_key := if keyed_calls { call_keys[call_idx] } else { i32(0) }
+				mut callee_info := FnDeclInfo{}
+				mut has_callee_info := false
+				if callee_key == 0 {
+					if info := fn_decls[callee] {
+						callee_info = info
+						has_callee_info = true
+						callee_key = info.key_id + 1
+					} else {
+						callee_key = -1
+					}
+					if call_idx < call_symbols.len {
+						symbol := int(call_symbols[call_idx])
+						if symbol >= symbol_keys.len {
+							symbol_keys << []i32{len: symbol + 1 - symbol_keys.len + 4096}
+						}
+						symbol_keys[symbol] = callee_key
+					}
 				}
-				if module_calls.names[callee] {
-					continue
+				key_idx := int(callee_key) - 1
+				if key_idx >= 0 {
+					if settle_callees && key_flags[key_idx] & markused_key_settled != 0 {
+						continue
+					}
+					if module_calls.has_key(key_idx) {
+						continue
+					}
+				} else {
+					if settle_callees && settled_callees[callee] {
+						continue
+					}
+					if module_calls.names[callee] {
+						continue
+					}
 				}
 				if !valid_symbol_name(callee) {
-					module_calls.names[callee] = true
+					if key_idx >= 0 {
+						module_calls.add_key(key_idx)
+					} else {
+						module_calls.names[callee] = true
+					}
 					continue
 				}
 				if collector.detect_generics
 					&& collector.is_generic_index_overload_call(callee, fn_info.module) {
-					module_calls.names[callee] = true
+					if key_idx >= 0 {
+						module_calls.add_key(key_idx)
+					} else {
+						module_calls.names[callee] = true
+					}
 					enqueue(callee, mut used, mut queue)
 					lowered := markused_c_name(callee)
 					if lowered != callee {
@@ -1421,7 +1523,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					continue
 				}
 				if markused_generated_c_helper_name(callee) {
-					module_calls.names[callee] = true
+					if key_idx >= 0 {
+						module_calls.add_key(key_idx)
+					} else {
+						module_calls.names[callee] = true
+					}
 					for alias in markused_generated_c_helper_aliases(callee) {
 						enqueue(alias, mut used, mut queue)
 					}
@@ -1430,7 +1536,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				mut found_direct := false
 				// Marked as a declared function, independently of the caller.
 				mut found_declared := false
-				if callee_info := fn_decls[callee] {
+				if key_idx >= 0 {
 					found_direct = true
 					found_declared = true
 					if enqueue(callee, mut used, mut queue) {
@@ -1438,10 +1544,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: all_fns hit: "${callee}"')
 						}
 					}
-					if !safe_alias_done[callee] {
-						safe_alias_done[callee] = true
-						add_safe_decl_alias(callee, callee_info, fn_info.module, fn_decl_lists, a, mut
-							used, mut queue)
+					if key_flags[key_idx] & markused_key_alias_done == 0 {
+						key_flags[key_idx] |= markused_key_alias_done
+						if !has_callee_info {
+							callee_info = fn_decls[callee] or { FnDeclInfo{} }
+						}
+						// A key that is the own name of its only declaration has no
+						// alias to add (see add_safe_decl_alias).
+						if callee_info.key_multi || !callee_info.key_exact {
+							add_safe_decl_alias(callee, callee_info, fn_info.module, fn_decl_lists, a, mut
+								used, mut queue)
+						}
 					}
 				} else if callee in tc.fn_ret_types {
 					found_direct = true
@@ -1477,25 +1590,42 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							}
 						}
 					}
+				} else if key_idx >= 0 {
+					module_calls.add_key(key_idx)
 				} else {
 					module_calls.names[callee] = true
 				}
-				if !detect_reachable_generics {
+				if !detect_reachable_generics && key_idx < 0 {
 					module_calls.names[callee] = true
 				}
 				// Qualified call names resolve independently of the caller's module.
 				// Reuse the call itself as the cache key and avoid allocating the
 				// composite module key on the overwhelmingly common exact path.
-				iface_tail_key := if callee.index_u8(`.`) >= 0 {
-					callee
+				callee_last_dot := callee.last_index_u8(`.`)
+				mut iface_tail_pending := false
+				if key_idx >= 0 && callee_last_dot >= 0 {
+					if settle_callees {
+						key_flags[key_idx] |= markused_key_settled
+					}
+					if key_flags[key_idx] & markused_key_iface_tail_done == 0 {
+						key_flags[key_idx] |= markused_key_iface_tail_done
+						iface_tail_pending = true
+					}
 				} else {
-					'${fn_info.module}\x01${callee}'
+					iface_tail_key := if callee_last_dot >= 0 {
+						callee
+					} else {
+						'${fn_info.module}\x01${callee}'
+					}
+					if settle_callees && found_declared && callee_last_dot >= 0 {
+						settled_callees[callee] = true
+					}
+					if !iface_tail_done[iface_tail_key] {
+						iface_tail_done[iface_tail_key] = true
+						iface_tail_pending = true
+					}
 				}
-				if settle_callees && found_declared && iface_tail_key == callee {
-					settled_callees[callee] = true
-				}
-				if !iface_tail_done[iface_tail_key] {
-					iface_tail_done[iface_tail_key] = true
+				if iface_tail_pending {
 					mut iface_callee := callee
 					if normalized := interface_dispatch_dotted_name(callee, tc) {
 						iface_callee = normalized
@@ -1870,10 +2000,20 @@ fn markused_fn_decl_is_generic_template(node flat.Node, a &flat.FlatAst) bool {
 	return false
 }
 
-fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[string][]FnDeclInfo, name string, info FnDeclInfo) {
-	fn_decls[name] = info
+// add_fn_decl_info registers `info` under the key `name`. Every key gets a dense
+// number in registration order, shared by the records registered under it; the
+// reachability walk keeps its per-name state in arrays indexed by that number.
+// `key_exact` is fn_decl_key_is_exact_for_info for this key and declaration.
+fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[string][]FnDeclInfo, name string, info FnDeclInfo, key_exact bool) {
 	mut infos := fn_decl_lists[name] or { []FnDeclInfo{} }
-	infos << info
+	keyed := FnDeclInfo{
+		...info
+		key_id:    if infos.len == 0 { i32(fn_decls.len) } else { infos[0].key_id }
+		key_exact: key_exact
+		key_multi: infos.len > 0
+	}
+	fn_decls[name] = keyed
+	infos << keyed
 	fn_decl_lists[name] = infos
 }
 
@@ -1973,6 +2113,12 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 	}
 	lowered := markused_c_name(qname)
 	return lowered != qname && name == lowered
+}
+
+// markused_fn_decl_key_is_exact is fn_decl_key_is_exact_for_info for a
+// declaration whose qualified name and its C name are already at hand.
+fn markused_fn_decl_key_is_exact(name string, qname string, lowered_qname string) bool {
+	return name == qname || (lowered_qname != qname && name == lowered_qname)
 }
 
 // add_safe_decl_alias enqueues the qualified and C names of the declaration that
@@ -2489,6 +2635,16 @@ struct FnDeclInfo {
 	// positional_params counts the declared params a call passes positionally;
 	// -1 when it was not computed with the declaration.
 	positional_params int = -1
+	// body_idx is the position of the declaration in the scan's body list, or -1
+	// for a record that no declaration scan built.
+	body_idx i32 = -1
+	// The fields below describe the key a declaration scan registered this record
+	// under (see add_fn_decl_info): the dense number of that key among the scan's
+	// keys, whether the key is the declaration's own qualified or C name, and
+	// whether an earlier declaration was registered under the same key.
+	key_id    i32
+	key_exact bool
+	key_multi bool
 }
 
 // StructDeclInfo stores struct decl info metadata used by markused.
@@ -2668,30 +2824,34 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 			module:            fn_decl_module
 			import_context:    fn_decl_import_context
 			positional_params: markused_positional_param_count(a, &node)
+			body_idx:          i32(result.body_ids.len - 1)
 		}
-		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
+		qname := qualify_fn(fn_decl_module, node.value)
+		lowered_name := markused_c_name(node.value)
+		lowered_qname := if qname != node.value { markused_c_name(qname) } else { lowered_name }
+		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info,
+			markused_fn_decl_key_is_exact(node.value, qname, lowered_qname))
 		if can_suffix_match {
 			add_candidate_suffix(mut result.fn_name_suffixes, node.value)
 		}
-		lowered_name := markused_c_name(node.value)
 		if lowered_name != node.value {
-			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info)
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info,
+				markused_fn_decl_key_is_exact(lowered_name, qname, lowered_qname))
 			if can_suffix_match {
 				add_candidate_suffix(mut result.fn_name_suffixes, lowered_name)
 			}
 		}
-		qname := qualify_fn(fn_decl_module, node.value)
 		if markused_fn_has_attribute(a, node_idx, 'markused') {
 			result.marked_roots << qname
 		}
 		if qname != node.value {
-			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info)
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info, true)
 			if can_suffix_match {
 				add_candidate_suffix(mut result.fn_name_suffixes, qname)
 			}
-			lowered_qname := markused_c_name(qname)
 			if lowered_qname != qname {
-				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info)
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info,
+					true)
 				if can_suffix_match {
 					add_candidate_suffix(mut result.fn_name_suffixes, lowered_qname)
 				}
@@ -5839,10 +5999,28 @@ fn (c &CallCollector) collect_interface_boxed_return_methods(node &flat.Node, mu
 	}
 }
 
+// ModuleCalls is the set of callee names already resolved for one calling module:
+// a declared name by its key number (see add_fn_decl_info), any other by its text.
 struct ModuleCalls {
 mut:
-	names map[string]bool
+	names    map[string]bool
+	key_bits []u64
 }
+
+@[direct_array_access; inline]
+fn (calls &ModuleCalls) has_key(key_idx int) bool {
+	return calls.key_bits[key_idx >> 6] & (u64(1) << u32(key_idx & 63)) != 0
+}
+
+@[direct_array_access; inline]
+fn (mut calls ModuleCalls) add_key(key_idx int) {
+	calls.key_bits[key_idx >> 6] |= u64(1) << u32(key_idx & 63)
+}
+
+// Per-key state of the reachability walk (see mark_used_with_test_files).
+const markused_key_settled = u8(1)
+const markused_key_alias_done = u8(2)
+const markused_key_iface_tail_done = u8(4)
 
 // The declaration scan already indexes the raw, qualified and C spellings
 // accepted by library-body convergence. Probe reached names instead of
@@ -5871,7 +6049,10 @@ fn unchecked_used_library_nodes(a &flat.FlatAst, tc &types.TypeChecker, declarat
 // fn_decl body (see precollect_body_calls).
 struct BodyCalls {
 mut:
-	calls         []string
+	calls []string
+	// call_keys[i] is the key number + 1 of calls[i] when it names a declaration
+	// (see add_fn_decl_info) and -1 when it does not. Empty when not computed.
+	call_keys     []i32
 	refs          []string
 	uses_generics bool
 }
@@ -5932,6 +6113,14 @@ fn (c &CallCollector) collect_body_with_generic_detection(node &flat.Node, cur_m
 	}
 	result.uses_generics = scoped.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, c.body_checker_edges_authoritative, detect_generics, result.uses_generics, mut result.calls, mut result.refs, true)
 	c.collect_interface_boxed_return_methods(node, mut result.calls)
+	if !c.detect_generics {
+		// The walk without generic detection keeps its per-name state by key
+		// number. Resolve the names here, where bodies are collected in parallel.
+		result.call_keys = []i32{cap: result.calls.len}
+		for call in result.calls {
+			result.call_keys << if info := c.fn_decls[call] { info.key_id + 1 } else { i32(-1) }
+		}
+	}
 	return result
 }
 

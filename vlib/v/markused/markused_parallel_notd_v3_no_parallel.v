@@ -151,6 +151,7 @@ fn clone_body_calls(value BodyCalls) BodyCalls {
 	}
 	return BodyCalls{
 		calls:         calls
+		call_keys:     value.call_keys.clone()
 		refs:          refs
 		uses_generics: value.uses_generics
 	}
