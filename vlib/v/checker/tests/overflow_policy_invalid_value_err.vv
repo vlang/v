@@ -1,0 +1,8 @@
+@[overflow: 'bogus']
+fn f(x i8) i8 {
+	return x + 1
+}
+
+fn main() {
+	println(f(1))
+}
