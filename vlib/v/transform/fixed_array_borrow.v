@@ -113,12 +113,20 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	mut items := []BorrowDeclItem{}
 	// The item of every declaration seen, -1 for one without known parameters.
 	mut decl_items := map[int]int{}
+	if summarised == 0 {
+		decl_items.reserve(u32(t.call_param_types_decl_cache.len))
+	}
 	for name, decl in t.call_param_types_decl_index {
 		if decl.idx < summarised || decl.idx in decl_items {
 			continue
 		}
-		decl_items[decl.idx] = -1
-		params := t.call_param_types_from_decl(name) or { continue }
+		// The parameter pre-scan has usually cached the declaration already.
+		params := t.call_param_types_decl_cache[decl.idx] or {
+			t.call_param_types_from_decl(name) or {
+				decl_items[decl.idx] = -1
+				continue
+			}
+		}
 		fn_node := t.a.node(flat.NodeId(decl.idx))
 		cand_start := candidates.len
 		mut param_idx := 0

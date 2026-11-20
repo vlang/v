@@ -3812,6 +3812,14 @@ const pending_loop_label_marker = '__v_pending_loop_label:'
 fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
 	t.ensure_private_signature_maps()
 	t.receiver_method_suffix_index.clear()
+	// A name is indexed under itself and under each of its dotted suffixes, about
+	// two keys per name. Sized once, the table is not rehashed through every
+	// doubling and the outgrown tables are not left behind in the arena.
+	mut names := t.fn_ret_types.ids.len
+	if !isnil(t.tc) && t.tc.fn_ret_types.len > names {
+		names = t.tc.fn_ret_types.len
+	}
+	t.receiver_method_suffix_index.reserve(u32(names * 2))
 	for name, _ in t.fn_ret_types.ids {
 		t.add_receiver_method_suffix_index(name)
 	}
@@ -8732,6 +8740,11 @@ fn (t &Transformer) pointer_to_heap_attr_struct_type(typ_id u32) bool {
 	return t.tc.type_has_declaration_attribute(base_type, 'heap')
 }
 
+// The low bits of a closure-scan kind class hold the kind's span weight.
+const closure_scan_weight_mask = u8(0x0f)
+// closure_scan_special_kind marks the kinds the closure-return scan handles itself.
+const closure_scan_special_kind = u8(0x80)
+
 fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 	if t.exclusive_closure_returns_done {
 		return
@@ -8750,20 +8763,38 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 	mut span_cost := 0
 	t.literal_fn_decls = []int{cap: 64}
 	t.fn_scan_costs = []i32{len: t.a.nodes.len}
+	// Nearly every node only adds its weight to the span of its declaration: one
+	// table lookup by kind gives the weight and says whether the kind is one of
+	// the few the rest of the loop looks at.
+	mut kind_classes := [256]u8{}
+	for kind_id in 0 .. 256 {
+		kind := unsafe { flat.NodeKind(kind_id) }
+		weight := match kind {
+			.call, .struct_init { u8(8) }
+			.selector { u8(6) }
+			.assign, .decl_assign, .selector_assign, .index_assign { u8(5) }
+			.array_literal, .array_init, .map_init, .fn_literal, .lambda_expr, .string_interp {
+				u8(4)
+			}
+			.index, .if_expr, .match_stmt, .for_stmt, .for_in_stmt, .select_stmt { u8(3) }
+			.infix, .cast_expr, .as_expr, .or_expr, .return_stmt { u8(2) }
+			else { u8(1) }
+		}
+		special := kind in [.sql_expr, .fn_literal, .lambda_expr, .file, .module_decl, .struct_decl,
+			.type_decl, .interface_decl, .enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl,
+			.c_fn_decl]
+		kind_classes[kind_id] = if special { weight | closure_scan_special_kind } else { weight }
+	}
 	for idx in 0 .. t.a.nodes.len {
 		// The AST arena is unchanged during this scan.
 		node := unsafe { &t.a.nodes[idx] }
+		kind_class := kind_classes[int(node.kind)]
+		span_cost += int(kind_class & closure_scan_weight_mask)
+		if kind_class & closure_scan_special_kind == 0 {
+			continue
+		}
 		if node.kind == .sql_expr {
 			t.sql_tracking_disabled = false
-		}
-		span_cost += match node.kind {
-			.call, .struct_init { 8 }
-			.selector { 6 }
-			.assign, .decl_assign, .selector_assign, .index_assign { 5 }
-			.array_literal, .array_init, .map_init, .fn_literal, .lambda_expr, .string_interp { 4 }
-			.index, .if_expr, .match_stmt, .for_stmt, .for_in_stmt, .select_stmt { 3 }
-			.infix, .cast_expr, .as_expr, .or_expr, .return_stmt { 2 }
-			else { 1 }
 		}
 		if node.kind in [.fn_literal, .lambda_expr] {
 			literal_pending = true
