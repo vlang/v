@@ -58,6 +58,10 @@ fn test_windows_tinyc_builds_bundled_collector_with_and_without_thread_local_all
 		assert !flags.any(it.replace('\\', '/').ends_with('/thirdparty/libgc/gc.o')), flags.str()
 		assert !flags.any(it.contains('GC_BUILTIN_ATOMIC')), flags.str()
 		assert !flags.any(it.contains('libgc.a')), flags.str()
+		// The collector built from source must use the wide Win32 API even
+		// with TinyCC, whose `-municode` does not define `UNICODE` (see #32418).
+		assert flags.any(it == '-DUNICODE=1'), flags.str()
+		assert flags.any(it == '-D_UNICODE=1'), flags.str()
 		assert flags.any(it.contains('THREAD_LOCAL_ALLOC')) == thread_local, flags.str()
 		compiler := windows_target_tinyc() or { continue }
 		// Compile the selected native object's source with the actual builtin flags.
