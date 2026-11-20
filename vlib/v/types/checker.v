@@ -19059,6 +19059,7 @@ const builtin_attribute_names = [
 	'name',
 	'must_use',
 	'noalloc',
+	'nosuspend',
 	'nocopy',
 	'noinit',
 	'noinline',
