@@ -468,21 +468,24 @@ fn vgc_total_alloc() u64 {
 	return sum
 }
 
-fn vgc_ensure_registered() {
-	if C.vgc_get_cache_idx() < 0 {
+fn vgc_ensure_registered() int {
+	idx := C.vgc_get_cache_idx()
+	if idx < 0 {
 		vgc_register_thread()
+		return C.vgc_get_cache_idx()
 	}
+	return idx
 }
 
 // vgc_enter starts an allocator operation: it registers the thread, and stops it while a
 // collection runs, before it touches its cache or a span. Returns the thread's cache index.
 @[inline]
 fn vgc_enter() int {
-	vgc_ensure_registered()
+	idx := vgc_ensure_registered()
 	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
 		vgc_safepoint()
 	}
-	return C.vgc_get_cache_idx()
+	return idx
 }
 
 fn vgc_refresh_stack_range_for_sp(cache_idx int, sp uint) {
@@ -976,6 +979,7 @@ fn vgc_central_file_span(span_class int, mut span VGC_Span) {
 // Cache operations (translated from Go's mcache)
 // ============================================================
 
+@[inline]
 fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 	span := unsafe { vgc_heap.caches[cache_idx].alloc[span_class] }
 	if span != unsafe { nil } {
