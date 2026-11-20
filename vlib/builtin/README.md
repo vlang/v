@@ -124,6 +124,12 @@ mapped or taken from the recycle pool, and to `vheap_free` when it is returned o
 Individual bump allocations inside a block are not reported, so trackers see block-granular
 live allocations rather than one entry per V allocation.
 
+The arena block sizes are tunable at compile time with `-d prealloc_block_size=<bytes>` (default
+16 MiB for the thread arena) and `-d prealloc_scope_block_size=<bytes>` (default 256 KiB for the
+first scope block). Larger blocks reduce mmap/refill frequency at the cost of memory footprint.
+On non-Windows targets, freed blocks are kept in a process-wide pool of power-of-two size
+classes, so a later request reuses the smallest fitting block instead of mapping a new one.
+
 `string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
 string removes matches of a nonempty search string. Pairs are applied in order to disjoint matches
 of the original input; replacement text is not searched again. Input, search strings, and
