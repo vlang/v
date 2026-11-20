@@ -300,3 +300,26 @@ fn test_toolchain_update_failure_keeps_original_checkout() ! {
 		assert head.output.trim_space() == original_head
 	}
 }
+
+fn test_toolchain_update_success_flips_staging() ! {
+	root := os.join_path(os.vtmp_dir(), 'vtoolchain_update_ok_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	checkout := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(os.join_path(checkout, '.git'))!
+	os.write_file(os.join_path(checkout, 'marker'), 'original')!
+	fake_source := "import os\n\nfn main() {\n\troot := os.getenv('VEXEROOT')\n\tos.write_file(os.join_path(root, 'updated'), 'yes') or {}\n}\n"
+	fake_program := os.join_path(root, 'fake_up_ok.v')
+	os.write_file(fake_program, fake_source)!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	build := os.exec([vexe, '-o', os.join_path(checkout, exe_name), fake_program])
+	assert build.exit_code == 0, build.output
+	result := run_toolchain(root, 'unused', 'update', '1.2.3')!
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('Updated'), result.output
+	assert os.is_file(os.join_path(checkout, 'updated')), result.output
+	assert !os.exists(checkout + '_stage')
+	assert !os.exists(checkout + '_old')
+}
