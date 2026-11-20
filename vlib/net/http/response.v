@@ -479,7 +479,10 @@ pub fn new_response(conf ResponseConfig) Response {
 // (HTTP/1.1 200 OK).
 fn find_headers_range(data string) !(int, int) {
 	start_idx := data.index('\n') or { return error('no start index found') } + 1
-	mut count := 0
+	// The `\n` ending the status line already counts as the first line
+	// ending, so a response without header fields (`Status\r\n\r\n`)
+	// still terminates at the next empty line.
+	mut count := 1
 	for i := start_idx; i < data.len; i++ {
 		if data[i] == `\n` {
 			count++
