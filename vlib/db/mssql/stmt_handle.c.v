@@ -20,6 +20,16 @@ mut:
 	param_indicators []i64
 }
 
+// is_null_indicator reports whether a column length/indicator cell means
+// SQL NULL. Cells are i64 storage, but the driver writes SQLLEN values: 4
+// bytes on 32-bit targets, 8 bytes on 64-bit targets. A 4-byte
+// SQL_NULL_DATA write leaves the high half of the i64 zeroed, so the cell
+// reads back as 4294967295 instead of -1. Checking the low 32 bits matches
+// the ABI write width on both targets.
+fn is_null_indicator(v i64) bool {
+	return u32(v & 0xffffffff) == u32(0xffffffff)
+}
+
 // new_hstmt constructs a new statement handle
 fn new_hstmt(hdbc C.SQLHDBC) !HStmt {
 	mut retcode := C.SQLRETURN(C.SQL_SUCCESS)
@@ -59,7 +69,21 @@ fn (h HStmt) prepare(sql_ string) ! {
 	check_error(retcode, 'SQLPrepare()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 }
 
+// reserve_params allocates the full indicator buffer before binding. ODBC
+// retains the bound indicator addresses until SQLExecute, so the array must
+// not grow between binds. Call once with the total parameter count.
+fn (mut h HStmt) reserve_params(n int) {
+	if n <= 0 {
+		return
+	}
+	if h.param_indicators.len < n {
+		h.param_indicators << []i64{len: n - h.param_indicators.len}
+	}
+}
+
 // bind_parameter binds one 1-based parameter marker. A none value is bound as SQL NULL.
+// Call reserve_params with the total count before the first bind so the
+// indicator addresses stay stable through SQLExecute.
 fn (mut h HStmt) bind_parameter(index int, value ?string) ! {
 	if h.param_indicators.len < index {
 		h.param_indicators << []i64{len: index - h.param_indicators.len}
@@ -87,6 +111,40 @@ fn (mut h HStmt) bind_parameter(index int, value ?string) ! {
 fn (h HStmt) execute() ! {
 	retcode := C.SQLExecute(h.hstmt)
 	check_error(retcode, 'SQLExecute()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+}
+
+// read_identity advances through the remaining result sets of an INSERT batch
+// and returns the identity value from the trailing `SELECT SCOPE_IDENTITY()`.
+// The trailing SELECT runs in the same batch (scope) as the INSERT, unlike a
+// separate query. Returns zero when no identity result is present.
+fn (mut h HStmt) read_identity() !int {
+	mut identity := 0
+	for {
+		retcode := C.SQLMoreResults(h.hstmt)
+		if retcode == C.SQLRETURN(C.SQL_NO_DATA) {
+			break
+		}
+		check_error(retcode, 'SQLMoreResults()', C.SQLHANDLE(h.hstmt),
+			C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+		col_count := h.retrieve_column_count()!
+		if col_count <= 0 {
+			continue
+		}
+		h.prepare_read()!
+		rows := h.read_rows()!
+		if rows.len == 0 || rows[0].vals.len == 0 {
+			continue
+		}
+		val := rows[0].val(0).trim_space()
+		if val == '' || val.to_lower() == 'null' {
+			continue
+		}
+		// SCOPE_IDENTITY() returns numeric(38,0); it may render as `7` or `7.0`.
+		dot := val.index('.') or { -1 }
+		int_part := if dot >= 0 { val[..dot] } else { val }
+		identity = int_part.trim_space().int()
+	}
+	return identity
 }
 
 // retrieve_affected_rows returns number of rows affected/modified by the last operation. -1 if not applicable.
@@ -184,7 +242,7 @@ fn (h HStmt) read_rows() ![]Row {
 			mut has_null := false
 			for i, content in h.buffers {
 				row << unsafe { cstring_to_vstring(content.data) }
-				if h.indicators[i] == i64(C.SQL_NULL_DATA) {
+				if is_null_indicator(h.indicators[i]) {
 					nulls[i] = true
 					has_null = true
 				}
