@@ -1244,7 +1244,7 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSig
 	// Signature groups and the three fn-decl node maps each fill their own maps.
 	n_tasks := fn_signature_registration_groups + 3
 	mut args := []FnSignatureRegistrationArgs{cap: n_tasks}
-	mut tasks := []workers.Task{cap: n_tasks}
+	mut tasks := []workers.Task{cap: n_tasks + 2}
 	for group in 0 .. n_tasks {
 		args << FnSignatureRegistrationArgs{
 			g:                 voidptr(g)
@@ -1253,14 +1253,78 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSig
 			group:             group
 		}
 	}
+	// The master has serial work that reads none of these maps: the end of
+	// collect_gen_info and the tables and literal numbering that
+	// gen_with_used_options builds next. Do it beside the registrations instead
+	// of after them. The conditions are those under which nothing else runs in
+	// between: see gen_with_used_options.
+	overlap := !g.target_libc_headers && !g.trace_calls && g.scope_parallel_workers
+		&& g.incremental_fn_names.len == 0 && os.getenv('V3_NO_CGEN_COLLECT_OVERLAP') == ''
 	for group in 0 .. n_tasks {
 		tasks << workers.Task{
 			run:        fn_signature_registration_thread
 			arg:        unsafe { voidptr(&args[group]) }
-			force_sync: group == 0
+			force_sync: !overlap && group == 0
+		}
+	}
+	mut literals := &CollectOverlapLiterals{
+		g: voidptr(g)
+	}
+	if overlap {
+		tasks << workers.Task{
+			run: collect_overlap_literals_thread
+			arg: voidptr(literals)
+		}
+		tasks << workers.Task{
+			run:        collect_overlap_master_thread
+			arg:        voidptr(g)
+			force_sync: true
 		}
 	}
 	g.a.worker_pool.run(tasks)
+	if overlap {
+		if literals.scope != unsafe { nil } {
+			g.parallel_worker_scopes << literals.scope
+		}
+		g.ast_string_literals_interned = true
+		g.collect_overlap_done = true
+	}
+}
+
+// CollectOverlapLiterals is the literal numbering task that runs beside the
+// signature registrations. `scope` holds the literal table until cgen is done.
+struct CollectOverlapLiterals {
+	g voidptr
+mut:
+	scope voidptr
+}
+
+// collect_overlap_literals_thread numbers the struct default literals and then
+// the AST literals, as gen_with_used_options would next. Nothing else reads or
+// interns a literal until the registrations are applied.
+fn collect_overlap_literals_thread(arg voidptr) voidptr {
+	mut a := unsafe { &CollectOverlapLiterals(arg) }
+	mut g := unsafe { &FlatGen(a.g) }
+	a.scope = cgen_worker_scope_begin(true)
+	g.preseed_struct_default_string_literals()
+	g.preintern_ast_string_literals()
+	cgen_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// collect_overlap_master_thread runs on the master while the pool applies the
+// signature registrations. It reads the declaration tables of the finished
+// declaration loop and the checker, and writes tables that no registration
+// task and no literal reads.
+fn collect_overlap_master_thread(arg voidptr) voidptr {
+	mut g := unsafe { &FlatGen(arg) }
+	g.finish_collect_gen_info_tail()
+	g.precompute_post_collect_tables()
+	// The interface scan, which starts next, takes the referenced C structs.
+	if g.tc.structs.keys().any(flat.source_type_query(it).has(.c_prefix)) {
+		g.ensure_referenced_c_struct_ids()
+	}
+	return unsafe { nil }
 }
 
 fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool) bool {

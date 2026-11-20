@@ -1244,6 +1244,7 @@ mut:
 	import_type_cache               &ImportTypeCache              = unsafe { nil }
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
 	embedded_fields_lane            voidptr                     // helper thread building embedded_fields_by_type, see start_embedded_fields_lane
+	collect_overlap_done            bool                        // see apply_fn_signature_registrations: the post-collect tables and the literal numbering are built
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
@@ -4040,6 +4041,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_interned = false
+	g.collect_overlap_done = false
 	g.ast_string_literals_parsed = 0
 	g.referenced_c_struct_ids = map[u32]bool{}
 	g.referenced_c_struct_ids_ready = false
@@ -4332,11 +4334,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.target_libc_headers {
 		g.precompute_thread_type_usage()
 	}
-	g.precompute_qualified_struct_c_types()
-	g.precompute_const_short_index()
-	g.precompute_local_global_suffix_names()
-	g.precompute_c_typedef_shadow_names()
-	g.precompute_local_name_exceptions()
+	if !g.collect_overlap_done {
+		g.precompute_post_collect_tables()
+	}
 	// Interface workers must share the same referenced C layouts as declaration emission.
 	// A parallel interface scan starts first and takes the set when the master has it.
 	mut defer_c_struct_refs := false
@@ -4410,7 +4410,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Struct field defaults are emitted from their declarations when an otherwise
 		// unrelated function initializes the struct. Parallel function pre-scanning only
 		// visits that function body, so seed literals from defaults before workers fork.
-		g.preseed_struct_default_string_literals()
+		if !g.collect_overlap_done {
+			g.preseed_struct_default_string_literals()
+		}
 		g.precompute_shared_param_index()
 		if !g.skip_generics {
 			if !g.trace_calls {
@@ -4418,7 +4420,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			}
 			g.precompute_generic_fn_key_index()
 		}
-		if parallel_iface_scan {
+		if parallel_iface_scan && !g.ast_string_literals_interned {
 			$if !v3_no_parallel ? {
 				// The master would only wait for the interface scan now. Number the
 				// AST literals meanwhile: prepare_pre_dispatch_master does it next,
@@ -6164,12 +6166,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			}
 		}
 	}
-	g.modules['strings'] = 'strings'
-	g.restore_core_header_directives_for_system_libc()
-	g.materialize_objective_cpp_sources()
-	g.add_macos_shared_export_linker_flags()
 	ccio_sw := time.new_stopwatch()
-	g.collect_const_init_order_from_files()
+	if !g.collect_overlap_done {
+		g.finish_collect_gen_info_tail()
+	}
 	if profile {
 		ci_total_ms := f64(cisw.elapsed().microseconds()) / 1000.0
 		ci_fn_ms := f64(ci_fn_ns) / 1e6
@@ -6183,6 +6183,26 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.timing_profile('  [ttime]   ci fns total ${ci_total_ms:7.2f} ms, const order ${ccio_ms:7.2f} ms')
 		}
 	}
+}
+
+// finish_collect_gen_info_tail is the end of collect_gen_info that reads none of
+// the function signature maps.
+fn (mut g FlatGen) finish_collect_gen_info_tail() {
+	g.modules['strings'] = 'strings'
+	g.restore_core_header_directives_for_system_libc()
+	g.materialize_objective_cpp_sources()
+	g.add_macos_shared_export_linker_flags()
+	g.collect_const_init_order_from_files()
+}
+
+// precompute_post_collect_tables builds the lookup tables that only depend on
+// the type, const and global declarations collect_gen_info registered.
+fn (mut g FlatGen) precompute_post_collect_tables() {
+	g.precompute_qualified_struct_c_types()
+	g.precompute_const_short_index()
+	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
+	g.precompute_local_name_exceptions()
 }
 
 fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
