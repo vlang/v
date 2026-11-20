@@ -748,6 +748,11 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type &Type, expected_type &Type, op flat.Op) bool {
+	if op != .assign && tc.refined_alias_info(expected_type) != none {
+		// A compound assignment cannot prove the refined invariant, so even an
+		// in-range literal operand is rejected here.
+		return false
+	}
 	if tc.translated_numeric_expr_compatible(rhs_id, rhs_type, expected_type)
 		|| (tc.node_is_in_translated_file(rhs_id) && op in [.plus_assign, .minus_assign]
 			&& unalias_type(expected_type) is Pointer && translated_integer_type(rhs_type)) {
@@ -1525,6 +1530,13 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			tc.record_error_with_details_at(.assignment_mismatch, 'cannot ${action} `${source}` because it is non lvalue expression', child_id, tc.a.node(child_id).pos, [
 				'try rewrite this as `${source} ${rewrite_op} 1`',
 			])
+			return
+		}
+		raw_type := tc.resolve_type(child_id)
+		if info := tc.refined_alias_info(raw_type) {
+			source := tc.source_text_for_node(child_id)
+			type_name := flat.source_type_name(info.name_id)
+			tc.record_error(.assignment_mismatch, 'cannot ${action} `${source}`: type `${type_name}` is refined; use `${type_name}.from(value)!` to check the value at runtime', id)
 			return
 		}
 		child_type := unalias_type(tc.resolve_type(child_id))
@@ -3390,6 +3402,9 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		&& tc.mut_param_binding_matches_lvalue(tc.a.node(child_id).value))
 	if numeric_kind_mismatch || reference_mismatch
 		|| !tc.return_type_compatible(child_id, actual, expected) {
+		if tc.check_refined_expected_mismatch(expected, child_id, actual, .return_mismatch, id, tc.a.node(child_id).pos) {
+			return
+		}
 		clean_expected := unalias_type(expected)
 		if clean_expected is OptionType && unalias_type(clean_expected.base_type) is Interface
 			&& tc.a.node(child_id).kind == .if_expr {
@@ -4019,7 +4034,7 @@ fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type,
 	if implicit_integer_to_float_compatible(actual, expected) {
 		return true
 	}
-	if return_numeric_alias_compatible(actual, expected) {
+	if tc.refined_alias_info(expected) == none && return_numeric_alias_compatible(actual, expected) {
 		return true
 	}
 	if tc.pointer_value_compatible(actual, expected) {
@@ -4201,6 +4216,7 @@ pub fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual &Type, expe
 		|| tc.failure_literal_expr_compatible(expr_id, actual, expected)
 		|| tc.fn_literal_omitted_params_compatible(expr_id, actual, expected)
 		|| tc.fn_decl_value_mut_ref_slot_compatible(expr_id, actual, expected)
+		|| tc.refined_value_matches(expr_id, actual, expected)
 }
 
 fn translated_numeric_type(typ &Type) bool {

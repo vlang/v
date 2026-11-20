@@ -5383,6 +5383,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error(.unknown_type, 'cannot use type `any` here', id)
 		return
 	}
+	if tc.refined_alias_info(target) != none {
+		actual := tc.resolve_type(child_id)
+		if tc.check_refined_cast(id, child_id, actual, target) {
+			return
+		}
+	}
 	if generic_name_id := tc.bare_generic_decl_type_name_id(node.source_value_id()) {
 		generic_name := flat.source_type_name(generic_name_id)
 		qualified := tc.qualify_type_name(generic_name_id)

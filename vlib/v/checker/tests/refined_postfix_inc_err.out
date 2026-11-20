@@ -1,0 +1,14 @@
+vlib/v/checker/tests/refined_postfix_inc_err.vv:13:2: error: cannot increment `p`: type `Port` is refined; use `Port.from(value)!` to check the value at runtime
+   11 | fn main() {
+   12 |     mut p := Port(10)
+   13 |     p++
+      |     ~~~
+   14 |     println(u16(p))
+   15 |     mut q := Port(2)
+vlib/v/checker/tests/refined_postfix_inc_err.vv:16:2: error: cannot decrement `q`: type `Port` is refined; use `Port.from(value)!` to check the value at runtime
+   14 |     println(u16(p))
+   15 |     mut q := Port(2)
+   16 |     q--
+      |     ~~~
+   17 |     println(u16(q))
+   18 | }
