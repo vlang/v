@@ -264,7 +264,7 @@ $if !skip_fastc ? {
 		}
 		mut native_flags := v3_tcc_dylib_native_flags(flags)
 		if sdk != '' { native_flags << ['-isysroot', sdk] }
-		prepared := prepare_c_flags_for_link(native_flags, [], [], ['-O0'], true, false, '', [], prefs.target, '/usr/bin/clang', true, dir, mut validation.stats)!
+		prepared := prepare_c_flags_for_link(native_flags, [], [], ['-O0'], true, false, '', [], prefs.target, '/usr/bin/clang', true, dir, prefs.vroot, mut validation.stats)!
 		link_flags := c_dylib_link_flags(prepared)
 		mut archives := c_dylib_named_static_archive_inputs(link_flags)
 		for archive in c_dylib_force_loaded_static_archive_inputs(link_flags) {

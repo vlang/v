@@ -633,7 +633,7 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 	}
 }
 
-fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, vroot string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -670,7 +670,8 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 	// vendored `.o` builds below keep the full flags, and the program's own
 	// `-I` dirs are untouched, so its own headers still win.
 	mut user_common_compile_flags := optimization_flags.clone()
-	user_common_compile_flags << without_mbedtls_vendored_include_dirs(c_object_compile_support_flags(flags))
+	user_common_compile_flags << without_mbedtls_vendored_include_dirs(c_object_compile_support_flags(flags),
+		vroot)
 	user_c_object_flag_plan := CObjectFlagPlan{
 		environment_flags:      environment_c_flags
 		primary_compiler:       c_compiler
@@ -679,8 +680,9 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	ensure_native_object_cache_dir(cache_dir)!
-	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
-		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
+	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, &user_c_object_flag_plan,
+		c99, no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
+		mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
 	if os.getenv('V3_CACHE_TRACE') == '' {
@@ -786,15 +788,18 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 	return c_source_language_flags(prepared)
 }
 
-fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
+fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, user_object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v6', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
-		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
-		target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
-		target.object_format, use_platform_non_c_compiler.str()] {
+		user_object_flags.environment_flags.join('\x00'), user_object_flags.primary_compiler,
+		user_object_flags.primary_compiler_flags.join('\x00'),
+		user_object_flags.common_flags.join('\x00'), c99.str(), no_std.str(), pic_flag,
+		target_args.join('\x00'), compiler_path, compiler_version, target.os, target.arch, target.abi,
+		target.endian, target.pointer_bits.str(), target.object_format,
+		use_platform_non_c_compiler.str()] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -804,7 +809,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v5' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v6' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -939,7 +944,7 @@ fn c_link_plan_metadata_range(paths []string) []string {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v5')
+	out.writeln('format=v3-c-link-plan-v6')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -2215,23 +2220,61 @@ fn c_source_from_object_file(obj_path string) ?string {
 }
 
 // mbedtls_vendored_include_path reports whether a C flag operand or joined
-// flag value names a search dir inside V's vendored Mbed TLS tree
-// (`thirdparty/mbedtls`). Such dirs must reach only the compilations of
-// the vendored sources themselves -- never C the program adds itself
-// (#32422): with them first, a program that also uses an installed system
-// Mbed TLS would silently compile its own C against the vendored 3.6
-// headers instead of the system ones.
-fn mbedtls_vendored_include_path(arg string) bool {
-	normalized := arg.replace('\\', '/')
-	return normalized.contains('thirdparty/mbedtls/')
-		|| normalized.ends_with('thirdparty/mbedtls')
+// flag value names a search dir inside V's own vendored Mbed TLS tree
+// (`thirdparty/mbedtls` under `vroot`). Such dirs must reach only the
+// compilations of the vendored sources themselves -- never C the program
+// adds itself (#32422): with them first, a program that also uses an
+// installed system Mbed TLS would silently compile its own C against the
+// vendored 3.6 headers instead of the system ones. The match is anchored to
+// `vroot`: an app-owned `thirdparty/mbedtls` tree (e.g. under the program's
+// own `@DIR`) is user code and must be preserved.
+fn mbedtls_vendored_include_path(arg string, vroot string) bool {
+	if vroot.len == 0 {
+		return false
+	}
+	mut path := arg.trim_space().replace('\\', '/').trim(' \t\r\n"\'')
+	// Strip a joined search-dir prefix (`-I<dir>`, `-isystem<dir>`, ...)
+	// so the remainder is the directory itself. Longest prefixes first so
+	// `-iwithprefixbefore` is not cut as `-iwithprefix`.
+	for prefix in ['-iwithprefixbefore', '-iwithprefix', '-isystem', '-iquote', '-idirafter', '-iprefix',
+		'-I'] {
+		if path.starts_with(prefix) && path.len > prefix.len {
+			path = path[prefix.len..].trim_space().trim(' \t\r\n"\'')
+			if path.starts_with('=') {
+				path = path[1..]
+			}
+			break
+		}
+	}
+	path = path.trim_right('/')
+	if path.len == 0 {
+		return false
+	}
+	vendored := os.join_path(vroot, 'thirdparty', 'mbedtls').replace('\\', '/').trim_right('/')
+	if vendored.len == 0 {
+		return false
+	}
+	if path == vendored || path.starts_with(vendored + '/') {
+		return true
+	}
+	// The same tree through symlinks (e.g. a symlinked checkout): compare
+	// real paths when the candidate exists, without failing when it does not.
+	if os.is_dir(path) {
+		real_path := os.real_path(path).replace('\\', '/').trim_right('/')
+		real_vendored := os.real_path(os.join_path(vroot, 'thirdparty', 'mbedtls')).replace('\\',
+			'/').trim_right('/')
+		if real_path == real_vendored || real_path.starts_with(real_vendored + '/') {
+			return true
+		}
+	}
+	return false
 }
 
-// without_mbedtls_vendored_include_dirs drops the vendored Mbed TLS search
-// dirs (in separate-operand and joined form) from a C flag list, keeping
-// every other flag -- including the program's own `-I` search dirs --
-// untouched.
-fn without_mbedtls_vendored_include_dirs(flags []string) []string {
+// without_mbedtls_vendored_include_dirs drops V's own vendored Mbed TLS
+// search dirs (in separate-operand and joined form) from a C flag list,
+// keeping every other flag -- including the program's own `-I` search dirs
+// (even an app-owned `thirdparty/mbedtls` tree) -- untouched.
+fn without_mbedtls_vendored_include_dirs(flags []string, vroot string) []string {
 	mut out := []string{cap: flags.len}
 	mut i := 0
 	for i < flags.len {
@@ -2239,12 +2282,14 @@ fn without_mbedtls_vendored_include_dirs(flags []string) []string {
 		clean := flag.trim_space()
 		if clean in ['-I', '-isystem', '-iquote', '-idirafter', '-iprefix', '-iwithprefix',
 			'-iwithprefixbefore'] && i + 1 < flags.len
-			&& mbedtls_vendored_include_path(flags[i + 1]) {
+			&& mbedtls_vendored_include_path(flags[i + 1], vroot) {
 			i += 2
 			continue
 		}
 		if (clean.starts_with('-I') || clean.starts_with('-isystem') || clean.starts_with('-iquote')
-			|| clean.starts_with('-idirafter')) && mbedtls_vendored_include_path(clean) {
+			|| clean.starts_with('-idirafter') || clean.starts_with('-iprefix')
+			|| clean.starts_with('-iwithprefixbefore') || clean.starts_with('-iwithprefix'))
+			&& mbedtls_vendored_include_path(clean, vroot) {
 			i++
 			continue
 		}
@@ -9610,7 +9655,7 @@ $if !skip_fastc ? {
 		if wrapv_flag != '' { optimization_flags << wrapv_flag }
 		flags = prepare_c_flags_for_link(flags, environment_flags, []string{},
 			optimization_flags, true, false, '', native_target_args,
-			prefs.target, compiler, true, build_dir, mut object_stats) or {
+			prefs.target, compiler, true, build_dir, prefs.vroot, mut object_stats) or {
 			return V3FastCCompileResult{ command: compiler, output: err.msg() }
 		}
 		mut compile_flags := ['-std=gnu11', if prefs.is_prod { '-O2' } else { '-O0' },
@@ -15057,7 +15102,7 @@ pub fn run(args []string) {
 				mut native_object_stats := CObjectCacheStats{}
 				native_link_flags = prepare_c_flags_for_link(native_link_flags,
 					environment_c_flags, []string{}, amd64_object_optimization_flags, c99, no_std,
-					'', target_args, prefs.target, linker, false, os.vtmp_dir(),
+					'', target_args, prefs.target, linker, false, os.vtmp_dir(), prefs.vroot,
 					mut native_object_stats) or {
 					eprintln(err.msg())
 					exit(1)
@@ -15132,6 +15177,7 @@ pub fn run(args []string) {
 			target:             prefs.target
 			c99:                c99
 			no_std:             no_std
+			vroot:              prefs.vroot
 		}
 		mut arm64_link_preparation := []thread Arm64PreparedLink{}
 		// Like cgo, read the C constants that the builder does not know from the
@@ -15915,7 +15961,7 @@ pub fn run(args []string) {
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
 				primary_object_compiler_flags, object_optimization_flags, prefs.c99, no_std,
 				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
-				mut c_object_cache_stats) or {
+				prefs.vroot, mut c_object_cache_stats) or {
 				message := err.msg()
 				if retry_compilation && explicit_tcc {
 					fallback := v3_platform_c_compiler_command(host_os)
