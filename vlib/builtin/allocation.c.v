@@ -86,12 +86,15 @@ pub fn malloc(n int) &u8 {
 	}
 	mut res := &u8(unsafe { nil })
 	$if builtin_arena ? {
-		// A scoped arena of the current thread (see arena_d_builtin_arena.c.v)
-		// serves first.
-		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
-			res = g_arena_alloc_hook(n, 0)
-			if res != 0 {
-				return res
+		$if !prealloc {
+			// A scoped arena of the current thread (see arena_d_builtin_arena.c.v)
+			// serves first. Under -prealloc the arena's scope already is the
+			// current block, so the direct prealloc path below is the same hop.
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
+				res = g_arena_alloc_hook(n, 0)
+				if res != 0 {
+					return res
+				}
 			}
 		}
 	}
@@ -145,10 +148,12 @@ pub fn malloc_noscan(n int) &u8 {
 	}
 	mut res := &u8(unsafe { nil })
 	$if builtin_arena ? {
-		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
-			res = g_arena_alloc_hook(n, 0)
-			if res != 0 {
-				return res
+		$if !prealloc {
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
+				res = g_arena_alloc_hook(n, 0)
+				if res != 0 {
+					return res
+				}
 			}
 		}
 	}
@@ -257,11 +262,13 @@ pub fn malloc_uncollectable(n int) &u8 {
 
 	mut res := &u8(unsafe { nil })
 	$if builtin_arena ? {
-		// Arena chunks are uncollectable with the Boehm GC too.
-		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
-			res = g_arena_alloc_hook(n, 0)
-			if res != 0 {
-				return res
+		$if !prealloc {
+			// Arena chunks are uncollectable with the Boehm GC too.
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
+				res = g_arena_alloc_hook(n, 0)
+				if res != 0 {
+					return res
+				}
 			}
 		}
 	}
@@ -445,12 +452,14 @@ pub fn vcalloc(n int) &u8 {
 		return &u8(unsafe { nil })
 	}
 	$if builtin_arena ? {
-		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
-			arena_ptr := g_arena_alloc_hook(n, 0)
-			if arena_ptr != 0 {
-				// Reset arenas reuse their memory, so it is not zeroed.
-				unsafe { C.memset(arena_ptr, 0, n) }
-				return arena_ptr
+		$if !prealloc {
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
+				arena_ptr := g_arena_alloc_hook(n, 0)
+				if arena_ptr != 0 {
+					// Reset arenas reuse their memory, so it is not zeroed.
+					unsafe { C.memset(arena_ptr, 0, n) }
+					return arena_ptr
+				}
 			}
 		}
 	}
@@ -706,10 +715,12 @@ pub fn memdup_align(src voidptr, sz int, align int) voidptr {
 		_memory_panic(@FN, n)
 	}
 	$if builtin_arena ? {
-		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
-			arena_ptr := g_arena_alloc_hook(n, align)
-			if arena_ptr != 0 {
-				return C.memcpy(arena_ptr, src, sz)
+		$if !prealloc {
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
+				arena_ptr := g_arena_alloc_hook(n, align)
+				if arena_ptr != 0 {
+					return C.memcpy(arena_ptr, src, sz)
+				}
 			}
 		}
 	}
