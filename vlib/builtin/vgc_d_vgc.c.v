@@ -1324,6 +1324,12 @@ fn vgc_calloc(n uint) voidptr {
 	return vgc_malloc(n) // vgc_malloc already zeroes memory
 }
 
+// vgc_calloc_noscan zeroes pointer-free storage on a noscan span, so the
+// marker never scans it. Backs vcalloc_noscan under -gc vgc.
+fn vgc_calloc_noscan(n uint) voidptr {
+	return vgc_malloc_noscan_opts(n, true)
+}
+
 // Typed memdup: allocate with pointer map and copy source data.
 // Used by HEAP_vgc() macro for struct allocations with known layout.
 @[markused]
