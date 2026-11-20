@@ -61,13 +61,15 @@ fn create_module_cache_vroot(root string) {
 // The fixtures use the default C backend and the system compiler (`-cc cc`).
 // Native-cache fixtures must live in the shipped tree. User-supplied native
 // headers deliberately bypass the cache because their dependencies are opaque.
+// Windows limits paths to 260 characters, and the cache adds up to about 150 to the
+// project directory, so the tree uses short names and a short hash of `name`.
 fn create_module_cache_shipped_project(name string) string {
-	vroot := os.join_path(module_cache_vtmp_path(), 'shipped_vroot')
+	vroot := os.join_path(module_cache_vtmp_path(), 'vroot')
 	if !os.is_dir(os.join_path(vroot, 'vlib', 'builtin')) {
 		create_module_cache_vroot(vroot)
 	}
 	// Keep each project's cache and any headers in its parent directory private.
-	project := os.join_path(vroot, 'vlib', 'fixtures', name, 'cachefixture')
+	project := os.join_path(vroot, 'vlib', 'fixtures', 'f${u32(name.hash()):08x}', 'cachefixture')
 	os.rmdir_all(os.dir(project)) or {}
 	os.mkdir_all(project) or { panic(err) }
 	return project
@@ -767,6 +769,12 @@ fn module_cache_artifact(cache_dir string, prefix string, extension string) stri
 		}
 	}
 	return ''
+}
+
+// module_cache_v_string_text spells `text` as a single-quoted V string literal of a
+// cached header does: the backslashes of a Windows path are escaped too.
+fn module_cache_v_string_text(text string) string {
+	return text.replace('\\', '\\\\').replace("'", "\\'")
 }
 
 // module_cache_metric_paths reads the file list of a `-v` metric line. The report
@@ -2509,6 +2517,11 @@ fn main() {
 }
 
 fn test_native_source_fallback_keeps_foreign_declaration() {
+	// The `.m` source makes the program Objective-C, which the Windows C compilers
+	// (MinGW GCC, MSVC) do not compile.
+	$if windows {
+		return
+	}
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_native_fallback_${os.getpid()}')
 	defer {
@@ -4419,7 +4432,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'assets_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(payload_path)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(payload_path))), header
 	assert !header.contains('$embed_file("payload.txt")'), header
 
 	second_output := os.join_path(root, 'second')
@@ -4462,7 +4475,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'assets_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	escaped_payload_path := os.real_path(payload_path).replace("'", "\\'")
+	escaped_payload_path := module_cache_v_string_text(os.real_path(payload_path))
 	assert header.contains(escaped_payload_path), header
 	assert !header.contains(embed_expr), header
 
@@ -4505,7 +4518,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(source_file)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(source_file))), header
 	assert !header.contains('@FILE'), header
 	assert !header.contains('@DIR'), header
 	assert !header.contains('@LINE'), header
@@ -4550,7 +4563,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(root)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(root))), header
 	assert header.contains('cache_vmod_body'), header
 	assert !header.contains('@VMODROOT'), header
 	assert !header.contains('@VMOD_FILE'), header
@@ -4593,7 +4606,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(source_dir)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(source_dir))), header
 	assert !header.contains('@VMODROOT'), header
 
 	second_output := os.join_path(root, 'second')
