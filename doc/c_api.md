@@ -14,6 +14,10 @@ v c-api ./mymodule -o dist --lib-name mylib --version 1.2.3
 v -c-api ./mymodule --c-api-dir dist -o dist/libmylib.so
 ```
 
+Use `--prod` for release builds. It is required when a module uses
+`$embed_file`: debug builds keep the source path and fail at runtime once the
+temporary build tree has been removed; production builds embed the bytes.
+
 Generated files:
 
 - `dist/libmylib.so` (or `mylib.dll` / `libmylib.dylib`)

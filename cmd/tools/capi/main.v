@@ -18,12 +18,13 @@ mut:
 	description    string
 	no_build       bool
 	no_submodules  bool
+	prod           bool
 	keep_generated bool
 }
 
 fn usage() {
 	eprintln('usage: v c-api <module-dir> [-o <dir>] [--lib-name <name>] [--version <v>]')
-	eprintln('                       [--import-path <v.module.path>] [--no-submodules]')
+	eprintln('                       [--import-path <v.module.path>] [--no-submodules] [--prod]')
 	eprintln('                       [--description <text>] [--no-build] [--keep-generated]')
 }
 
@@ -72,6 +73,8 @@ fn parse_args(args []string) !Options {
 			opts.no_build = true
 		} else if arg == '--no-submodules' {
 			opts.no_submodules = true
+		} else if arg == '--prod' {
+			opts.prod = true
 		} else if arg == '--keep-generated' {
 			opts.keep_generated = true
 		} else if arg.starts_with('-') {
@@ -167,7 +170,10 @@ fn import_path_of(rel string, base string) string {
 fn copy_module_files(src string, dst string) ! {
 	os.mkdir_all(dst) or { return error('cannot create ${dst}: ${err}') }
 	for entry in os.ls(src) or { return error('cannot list ${src}: ${err}') } {
-		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.starts_with('capi_generated') {
+		if entry.ends_with('_test.v') || entry.starts_with('capi_generated') || entry.starts_with('.') {
+			continue
+		}
+		if os.is_dir(os.join_path(src, entry)) {
 			continue
 		}
 		os.copy_file(os.join_path(src, entry), os.join_path(dst, entry)) or {
@@ -364,6 +370,9 @@ fn main() {
 		opts.lib_path
 	}
 	mut build_args := [@VEXE, '-shared', '-enable-globals', '-nocache']
+	if opts.prod {
+		build_args << '-prod'
+	}
 	if os.user_os() == 'windows' {
 		build_args << '-cflags'
 		build_args << '-Wl,--export-all-symbols'
