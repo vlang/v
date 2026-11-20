@@ -190,6 +190,16 @@ fn test_vlib_assembled_from_links_classifies_both_spellings() {
 	assert !g.c_source_file_is_in_vlib('${base}/user.v')
 	assert !g.c_source_file_is_in_vlib('${copy}/vlib/missing.v')
 	assert (vlib_relative_source_path(staged, '${library}/vlib/os/os.c.v') or { '' }) == 'os/os.c.v'
+	// A suffix that climbs out of a vlib can resolve both spellings to an
+	// application file; that does not make it part of the compiler's vlib.
+	app := os.join_path(base, 'app')
+	os.mkdir_all(os.join_path(app, 'vlib')) or { panic(err) }
+	os.write_file(os.join_path(app, 'main.c.v'), 'module main\n') or { panic(err) }
+	g.compiler_vroot = library
+	assert os.real_path('${library}/vlib/../../app/main.c.v') == os.real_path('${app}/main.c.v')
+	assert !g.c_source_file_is_in_vlib('${app}/vlib/../../app/main.c.v')
+	assert !g.c_source_file_is_in_vlib('${app}/vlib/./../../app/main.c.v')
+	assert vlib_relative_source_path(library, '${app}/vlib/../../app/main.c.v') == none
 }
 
 fn test_cache_declaration_references_ignore_literals_and_comments() {

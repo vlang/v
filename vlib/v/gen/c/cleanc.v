@@ -6502,7 +6502,9 @@ fn vlib_relative_source_path(root string, source string) ?string {
 	mut idx := path.index_after_('/vlib/', 0)
 	for idx >= 0 {
 		relative := path[idx + 6..]
-		if relative.len > 0 {
+		// Only a plain module path names a file below the root's vlib; `.` or `..`
+		// components could resolve both spellings to the same file outside it.
+		if relative.len > 0 && vlib_relative_path_is_plain(relative) {
 			if real_source.len == 0 {
 				real_source = os.real_path(path)
 			}
@@ -6513,6 +6515,15 @@ fn vlib_relative_source_path(root string, source string) ?string {
 		idx = path.index_after_('/vlib/', idx + 1)
 	}
 	return none
+}
+
+fn vlib_relative_path_is_plain(relative string) bool {
+	for part in relative.split('/') {
+		if part.len == 0 || part == '.' || part == '..' {
+			return false
+		}
+	}
+	return true
 }
 
 // core_native_header_is_redeclared matches shipped bindings whose complete storage
