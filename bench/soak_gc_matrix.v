@@ -78,6 +78,8 @@ fn main() {
 	]
 
 	// Compile each mode once.
+	mut build_fail_n := 0
+	mut unbuilt := []string{}
 	for i in 0 .. modes.len {
 		mut cmd := [v_exe, '-gc', 'vgc']
 		for d in modes[i].defs {
@@ -94,6 +96,8 @@ fn main() {
 			eprintln(' FAILED')
 			eprintln(r.output)
 			modes[i].built = false
+			build_fail_n++
+			unbuilt << modes[i].name
 			continue
 		}
 		modes[i].built = true
@@ -165,18 +169,26 @@ fn main() {
 		}
 		println('${c.mode}\t${c.scenario}\t${c.depth}\t${c.rounds}\t${c.threads}\t${c.seed}\t${res}')
 	}
+	// Every mode that failed to build is a row of its own, so no failure is
+	// silent when every build fails and no cases run at all.
+	for name in unbuilt {
+		println('${name}\t-\t-\t-\t-\t-\tBUILD_FAIL')
+	}
 
 	if want_asan {
-		// ASan arm is best-effort: unsupported toolchains are BLOCKED.
-		println('asan\tBLOCKED\trequires gcc/clang with -fsanitize=address; tcc/MSVC on Windows cannot provide it here')
-		blocked_n++
+		// The sanitizer arm is not implemented yet: it attempts no build, so it
+		// is UNIMPLEMENTED rather than BLOCKED.
+		println('asan\tUNIMPLEMENTED\trequires gcc/clang with -fsanitize=address; no sanitizer arm runs yet')
 	} else {
-		println('(asan arm skipped; pass --asan to record it as BLOCKED where unsupported)')
+		println('(asan arm not implemented; pass --asan to record it as UNIMPLEMENTED)')
 	}
 
 	println('')
-	println('soak matrix: ${pass_n} PASS, ${fail_n} FAIL, ${blocked_n} BLOCKED over ${cases.len} cases')
-	if fail_n > 0 {
+	if unbuilt.len > 0 {
+		println('unbuilt modes: ' + unbuilt.join(', '))
+	}
+	println('soak matrix: ${pass_n} PASS, ${fail_n} FAIL, ${blocked_n} BLOCKED, ${build_fail_n} BUILD_FAIL over ${cases.len} cases')
+	if fail_n > 0 || build_fail_n > 0 {
 		exit(1)
 	}
 }

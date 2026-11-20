@@ -23,3 +23,35 @@ fn test_proportional_growth_expands_the_heap() {
 	after := v_gc_expansion_count_report()
 	assert after > before
 }
+
+// The throttle and expansion counters are touched from allocator entry points
+// on every thread, outside any shared lock, so they are atomic. Hammering
+// them concurrently must neither crash nor tear the reporting read: the
+// reported count stays monotonic.
+@[noinline]
+fn grow_concurrent_heap_for_gc_test() u64 {
+	mut blocks := [][]u8{}
+	for _ in 0 .. 16 {
+		blocks << []u8{len: 1024 * 1024, init: u8(1)}
+	}
+	mut sum := u64(0)
+	for b in blocks {
+		sum += u64(b.len) + u64(b[0])
+	}
+	return sum
+}
+
+fn test_proportional_growth_counters_survive_concurrent_allocation() {
+	before := v_gc_expansion_count_report()
+	mut threads := []thread u64{}
+	for _ in 0 .. 4 {
+		threads << spawn grow_concurrent_heap_for_gc_test()
+	}
+	mut sum := u64(0)
+	for total in threads.wait() {
+		sum += total
+	}
+	assert sum > 0
+	after := v_gc_expansion_count_report()
+	assert after >= before
+}

@@ -72,30 +72,36 @@ static inline unsigned vgc_ctz64(uint64_t x) {
 #endif
 }
 
+// The atomic mark-bit update goes through the platform CAS abstraction in
+// thirdparty/vgc/vgc_platform.h, whose TinyCC declaration takes five
+// arguments. It must not be redeclared here: a six-argument redeclaration
+// breaks the TinyCC build of every TU that includes both headers, and the V
+// driver then silently falls back to another C compiler.
+#include "vgc_platform.h"
+
+// Bit position within the 32-bit CAS word that holds the same object as the
+// byte-bit layout of vgc_bitmap_get/set (byte index>>3, bit index&7). On
+// little-endian the word's first byte holds its low bits, so the bit is
+// index&31; on big-endian it holds the high bits, so the bit is (index&31)^24.
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#define VGC_BITMAP_WORD_BIT(i) (((i) & 31u) ^ 24u)
+#else
+#define VGC_BITMAP_WORD_BIT(i) ((i) & 31u)
+#endif
+
 static inline int vgc_bitmap_atomic_test_set(uint8_t* bits, uint32_t index) {
     // The mark bitmaps live in span metadata, whose `bits` array is 8-byte
     // aligned, so 32-bit words are safe to compare-and-swap on all targets.
     uint32_t* word = &((uint32_t*)bits)[index >> 5];
-    const uint32_t mask = 1u << (index & 31u);
-#if defined(__TINYC__)
-    extern _Bool __atomic_compare_exchange_4(uint32_t*, uint32_t*, uint32_t, int, int, int);
-    uint32_t expected = *word;
+    const uint32_t mask = 1u << VGC_BITMAP_WORD_BIT(index);
     for (;;) {
-        if (expected & mask) return 1;
-        if (__atomic_compare_exchange_4(word, &expected, expected | mask, 0, 5, 5)) return 0;
+        uint32_t current = vgc_atomic_load_u32(word);
+        if (current & mask) return 1;
+        uint32_t expected = current;
+        // vgc_atomic_cas_u32 updates nothing on failure on some targets (MSVC),
+        // so the current value is reloaded above on every attempt.
+        if (vgc_atomic_cas_u32(word, &expected, current | mask)) return 0;
     }
-#elif defined(_MSC_VER)
-    volatile long* target = (volatile long*)word;
-    long expected = (long)*target;
-    for (;;) {
-        if (expected & (long)mask) return 1;
-        long current = _InterlockedCompareExchange(target, expected | (long)mask, expected);
-        if (current == expected) return 0;
-        expected = current;
-    }
-#else
-    return (__atomic_fetch_or(word, mask, __ATOMIC_ACQ_REL) & mask) != 0 ? 1 : 0;
-#endif
 }
 
 static inline void* vgc_current_fake_stack(void) {
