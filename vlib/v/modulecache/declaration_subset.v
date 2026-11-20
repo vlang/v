@@ -49,6 +49,7 @@ pub fn new_declaration_index(header string) DeclarationIndex {
 	mut in_block_comment := false
 	mut in_directive := false
 	mut droppable_bytes := 0
+	mut has_paste := false
 	for i, unit in source_units {
 		line := unit.text
 		units << line
@@ -67,6 +68,9 @@ pub fn new_declaration_index(header string) DeclarationIndex {
 		line_depth := depth
 		was_in_code := !in_block_comment && !in_directive
 		trimmed := line.trim_space()
+		if !has_paste && !trimmed.starts_with('//') && has_token_paste(line) {
+			has_paste = true
+		}
 		mut is_directive_line := in_directive
 		if !in_block_comment && !in_directive && trimmed.starts_with('#') {
 			is_directive_line = true
@@ -97,7 +101,8 @@ pub fn new_declaration_index(header string) DeclarationIndex {
 	for i, unit in units {
 		starts[i] = offset
 		offset += unit.len + 1
-		if declared[i].len > 0 || literal[i].len > 0 {
+		// a paste can make the name of any declaration: nothing goes from a header with one
+		if !has_paste && (declared[i].len > 0 || literal[i].len > 0) {
 			drop_at << i
 		}
 	}
@@ -107,18 +112,54 @@ pub fn new_declaration_index(header string) DeclarationIndex {
 		literal:         literal
 		kept:            kept
 		total_bytes:     header.len
-		droppable_bytes: droppable_bytes
+		droppable_bytes: if has_paste { 0 } else { droppable_bytes }
 		joined:          joined
 		starts:          starts
 		drop_at:         drop_at
 	}
 }
 
+// has_token_paste tells whether `text` can paste two tokens into a name that none of its
+// identifiers shows (`#define CALL(a, b) a##b()` makes `CALL(us, es)` a call of `uses`).
+// It answers for the two characters, not for a line: `##`, its digraph spelling (any `%:`
+// counts), either of them with a line splice between its characters (a backslash that ends
+// a line, with or without blanks after it), and either first character followed by a splice
+// that ends `text`, since what the next line starts with is not seen here. A paste in a
+// string literal or a comment counts too: the answer may only be true too often, and a true
+// answer keeps the whole header.
+fn has_token_paste(text string) bool {
+	for i := 0; i < text.len; i++ {
+		first := text[i]
+		if first != `#` && first != `%` {
+			continue
+		}
+		second := if first == `#` { `#` } else { `:` }
+		mut j := i + 1
+		for j < text.len && text[j] == `\\` {
+			mut k := j + 1
+			for k < text.len && (text[k] == ` ` || text[k] == `\t` || text[k] == `\r`) {
+				k++
+			}
+			if k == text.len {
+				return true
+			}
+			if text[k] != `\n` {
+				break
+			}
+			j = k + 1
+		}
+		if j < text.len && text[j] == second {
+			return true
+		}
+	}
+	return false
+}
+
 // subset returns the header without the declarations and string literal definitions that
 // neither `code` nor the units that stay mention. The order of the units that stay is the
-// header's.
+// header's. A module whose code pastes tokens is given the whole header.
 pub fn (idx &DeclarationIndex) subset(code string) string {
-	if idx.drop_at.len == 0 {
+	if idx.drop_at.len == 0 || has_token_paste(code) {
 		return idx.joined
 	}
 	mut used := map[string]bool{}
