@@ -1,0 +1,15 @@
+module main
+
+enum NoBacking {
+	a
+	b
+}
+
+@[wire: 'little_endian']
+struct BadEnum {
+	e NoBacking
+}
+
+fn main() {
+	println(BadEnum{})
+}

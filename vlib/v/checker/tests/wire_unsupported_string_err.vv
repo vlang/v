@@ -1,0 +1,10 @@
+module main
+
+@[wire: 'little_endian']
+struct BadString {
+	name string
+}
+
+fn main() {
+	println(BadString{})
+}

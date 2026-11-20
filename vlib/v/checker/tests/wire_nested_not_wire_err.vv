@@ -1,0 +1,14 @@
+module main
+
+struct Plain {
+	a u8
+}
+
+@[wire: 'little_endian']
+struct BadNested {
+	inner Plain
+}
+
+fn main() {
+	println(BadNested{})
+}
