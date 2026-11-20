@@ -929,7 +929,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for name in cache_roots {
 		enqueue(name, mut used, mut queue)
 	}
-	if markused_has_node_kind(a, .debugger_stmt) {
+	// Only the parser makes debugger statements before this pass, and it counts
+	// them: without one there is no need to read the kind of every node.
+	if a.debugger_stmts > 0 && markused_has_node_kind(a, .debugger_stmt) {
 		enqueue('debug.Debugger.interact', mut used, mut queue)
 		enqueue_debugger_custom_str_methods(tc, mut used, mut queue)
 	}
