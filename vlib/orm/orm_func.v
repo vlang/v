@@ -841,16 +841,21 @@ pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBui
 
 // table_from_struct get table from struct
 fn table_from_struct[T](meta []TableField) Table {
-	mut table_name := T.name
+	mut attrs := []VAttribute{}
+	$for a in T.attributes {
+		attrs << a
+	}
+	return table_from_struct_meta(T.name, meta, attrs)
+}
+
+// table_from_struct_meta does the runtime part of table resolution once for all models.
+fn table_from_struct_meta(type_name string, meta []TableField, attrs []VAttribute) Table {
+	mut table_name := type_name
 	// Strip generic parameters from type name (e.g., Message[Payload] -> Message)
 	if bracket_pos := table_name.index('[') {
 		table_name = table_name[..bracket_pos]
 	}
 	mut has_custom_table_name := false
-	mut attrs := []VAttribute{}
-	$for a in T.attributes {
-		attrs << a
-	}
 	for attr in attrs {
 		if attr_name_matches(attr.name, 'table') && attr.has_arg {
 			table_name = trim_attr_arg(attr.arg)
@@ -2038,8 +2043,13 @@ fn filter_sql_insert_default_fields(data QueryData, meta []TableField, initializ
 }
 
 fn (qb &QueryBuilder[T]) selected_primary_value(row []Primitive) ?Primitive {
-	primary := find_save_primary_field_name(qb.meta) or { return none }
-	index := qb.config.fields.index(primary)
+	return primary_value_from_row(qb.meta, qb.config.fields, row)
+}
+
+// primary_value_from_row is shared by all models; only metadata and the row are needed.
+fn primary_value_from_row(meta []TableField, fields []string, row []Primitive) ?Primitive {
+	primary := find_save_primary_field_name(meta) or { return none }
+	index := fields.index(primary)
 	if index < 0 || index >= row.len {
 		return none
 	}
@@ -2956,30 +2966,35 @@ fn canonical_include_optional[U](path []string, fkey string, _ ?U) ![]string {
 
 // Fetch lookup keys omitted by select without exposing them as selected scalar fields.
 fn (qb_ &QueryBuilder[T]) ensure_keys_for_includes() ! {
-	if qb_.include_paths.len == 0 || qb_.config.fields.len == 0 {
+	mut qb := unsafe { qb_ }
+	ensure_keys_for_includes_state(qb.include_paths, qb.meta, mut qb.config, mut qb.hydration_fields)!
+}
+
+// ensure_keys_for_includes_state is shared by all models; it only touches runtime state.
+fn ensure_keys_for_includes_state(include_paths [][]string, meta []TableField, mut config SelectConfig, mut hydration_fields []string) ! {
+	if include_paths.len == 0 || config.fields.len == 0 {
 		return
 	}
-	mut qb := unsafe { qb_ }
-	for path in qb.include_paths {
-		for field in qb.meta {
+	for path in include_paths {
+		for field in meta {
 			if field.name != path[0] {
 				continue
 			}
 			key := if field.is_arr {
-				find_save_primary_field_name(qb.meta) or {
+				find_save_primary_field_name(meta) or {
 					return error('include: missing primary key')
 				}
 			} else {
 				sql_field_name(field)
 			}
-			if key in qb.config.fields {
+			if key in config.fields {
 				continue
 			}
-			if qb.config.has_distinct {
+			if config.has_distinct {
 				return error('include with `distinct` requires selecting the relationship key `${key}`')
 			}
-			qb.config.fields << key
-			qb.hydration_fields << key
+			config.fields << key
+			hydration_fields << key
 		}
 	}
 }
