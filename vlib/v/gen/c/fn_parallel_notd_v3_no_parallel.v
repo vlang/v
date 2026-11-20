@@ -2946,7 +2946,7 @@ fn (mut g FlatGen) fn_item_cost_and_c_extern_prep(node_id flat.NodeId, mut stack
 		}
 		node := unsafe { &g.a.nodes[idx] }
 		cost++
-		if node.kind == .selector {
+		if node.kind == .selector || (node.kind == .ident && node.value.starts_with('C.')) {
 			g.collect_c_extern_ref_from_node(node)
 		}
 		for i := node.children_count - 1; i >= 0; i-- {
@@ -3121,6 +3121,13 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 			|| (node.kind == .defer_stmt && node.value == 'function')
 			|| c_call_needs_prelude_scan(a, node) {
 			needs_prelude_scan = true
+		}
+		// Keep address-taken C names when transform represents them as qualified idents.
+		if node.kind == .ident && node.value.starts_with('C.') {
+			raw_cfn := naming.c_name(node.value)
+			c_extern_refs[node.value] = true
+			c_extern_refs[raw_cfn] = true
+			c_extern_refs[g.c_extern_export_name(raw_cfn)] = true
 		}
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 			base_id := a.children[node.children_start]
