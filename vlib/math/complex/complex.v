@@ -148,10 +148,12 @@ pub fn (c Complex) arg() f64 {
 	return math.atan2(c.im, c.re)
 }
 
-// Complex raised to Complex Power
-// Based on
-// http://mathworld.wolfram.com/ComplexExponentiation.html
+// cpow raises c to the complex power p. A real exponent uses the same result as pow.
 pub fn (c Complex) cpow(p Complex) Complex {
+	if p.im == 0.0 {
+		return c.pow(p.re)
+	}
+	// See http://mathworld.wolfram.com/ComplexExponentiation.html for the formula.
 	a := c.arg()
 	b := math.pow(c.re, 2) + math.pow(c.im, 2)
 	d := p.re * a + (1.0 / 2) * p.im * math.log(b)
