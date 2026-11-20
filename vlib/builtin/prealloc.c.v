@@ -62,12 +62,13 @@ pub fn prealloc_discard_pages(start voidptr, size uint) {
 // trading higher memory usage for a compiler (or any single threaded batch
 // mode program), for a ~8-10% speed increase.
 
-// size of the process/thread preallocated chunk
-const prealloc_block_size = 16 * 1024 * 1024
+// Block sizes can be tuned at compile time with
+// -d prealloc_block_size=<bytes> and -d prealloc_scope_block_size=<bytes>.
+// Larger base blocks trade memory for fewer mmap calls; larger scope blocks
+// reduce refill churn in request-scoped arenas.
+const prealloc_block_size = $d('prealloc_block_size', 16 * 1024 * 1024)
 
-// size of the first chunk for a scoped prealloc arena. Request-scoped arenas
-// should not force a 16MB libc allocation for every request.
-const prealloc_scope_block_size = 256 * 1024
+const prealloc_scope_block_size = $d('prealloc_scope_block_size', 256 * 1024)
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -100,20 +101,36 @@ __global g_prealloc_keep_freed i32
 // Pooled blocks are dirty, exactly like libc malloc memory; prealloc_calloc
 // already memsets its result and nothing else may rely on the incidental
 // zero-fill of fresh mmaps.
-const prealloc_block_pool_slots = 256
-const prealloc_block_pool_max_bytes = i64(256) * 1024 * 1024
-const prealloc_block_pool_max_block = 16 * 1024 * 1024
+const prealloc_pool_bins = 16
+const prealloc_pool_bin_slots = 32
+const prealloc_pool_min_block = 64 * 1024
+const prealloc_block_pool_max_bytes = i64(512) * 1024 * 1024
+const prealloc_block_pool_max_block = 256 * 1024 * 1024
 
 struct VPreallocBlockPool {
 mut:
 	lock   i32
-	count  int
 	bytes  i64
-	starts [prealloc_block_pool_slots]voidptr
-	sizes  [prealloc_block_pool_slots]int
+	counts [prealloc_pool_bins]int
+	starts [prealloc_pool_bins * prealloc_pool_bin_slots]voidptr
+	sizes  [prealloc_pool_bins * prealloc_pool_bin_slots]int
 }
 
 __global g_prealloc_block_pool VPreallocBlockPool
+
+// prealloc_pool_bin maps a block size to a power-of-two size class. Small
+// classes are checked first by take(), so common sizes need no scan of larger
+// bins at all.
+@[inline]
+fn prealloc_pool_bin(size int) int {
+	mut bin := 0
+	mut limit := prealloc_pool_min_block
+	for bin < prealloc_pool_bins - 1 && size > limit {
+		limit <<= 1
+		bin++
+	}
+	return bin
+}
 
 // The critical sections are a scan of at most 256 entries, and block
 // allocation and release happen a few thousand times per compile, so a spin
@@ -136,18 +153,21 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 	if size <= 0 || size > prealloc_block_pool_max_block {
 		return false
 	}
+	bin := prealloc_pool_bin(size)
 	prealloc_block_pool_lock()
-	if g_prealloc_block_pool.count >= prealloc_block_pool_slots
+	count := g_prealloc_block_pool.counts[bin]
+	if count >= prealloc_pool_bin_slots
 		|| g_prealloc_block_pool.bytes + i64(size) > prealloc_block_pool_max_bytes {
 		prealloc_block_pool_unlock()
 		return false
 	}
+	idx := bin * prealloc_pool_bin_slots + count
 	unsafe {
-		g_prealloc_block_pool.starts[g_prealloc_block_pool.count] = start
-		g_prealloc_block_pool.sizes[g_prealloc_block_pool.count] = size
+		g_prealloc_block_pool.starts[idx] = start
+		g_prealloc_block_pool.sizes[idx] = size
 	}
 	g_prealloc_block_pool.bytes += i64(size)
-	g_prealloc_block_pool.count++
+	g_prealloc_block_pool.counts[bin] = count + 1
 	prealloc_block_pool_unlock()
 	return true
 }
@@ -158,38 +178,51 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 // compilers heap-allocate it, recursively entering the arena being initialized.
 @[unsafe]
 fn prealloc_block_pool_take(size int) (voidptr, int) {
-	// The count is only read under the lock: another thread may be freeing a
-	// block into the pool right now.
+	// Counts and slots are read only under the lock.
 	prealloc_block_pool_lock()
-	mut best := -1
-	for i := 0; i < g_prealloc_block_pool.count; i++ {
-		candidate := unsafe { g_prealloc_block_pool.sizes[i] }
-		if candidate < size {
-			continue
-		}
-		if best < 0 || candidate < unsafe { g_prealloc_block_pool.sizes[best] } {
-			best = i
-			if candidate == size {
-				break
+	mut best_bin := -1
+	mut best_slot := -1
+	mut best_size := 0
+	first_bin := prealloc_pool_bin(size)
+	for bin := first_bin; bin < prealloc_pool_bins; bin++ {
+		count := g_prealloc_block_pool.counts[bin]
+		for slot := 0; slot < count; slot++ {
+			idx := bin * prealloc_pool_bin_slots + slot
+			sz := unsafe { g_prealloc_block_pool.sizes[idx] }
+			if sz < size {
+				continue
+			}
+			if best_bin < 0 || sz < best_size {
+				best_bin = bin
+				best_slot = slot
+				best_size = sz
+				if sz == size {
+					break
+				}
 			}
 		}
+		if best_size == size {
+			break
+		}
 	}
-	if best < 0 {
+	if best_bin < 0 {
 		prealloc_block_pool_unlock()
 		return unsafe { nil }, 0
 	}
+	base := best_bin * prealloc_pool_bin_slots
 	mut start := unsafe { nil }
-	mut taken_size := 0
 	unsafe {
-		start = g_prealloc_block_pool.starts[best]
-		taken_size = g_prealloc_block_pool.sizes[best]
-		g_prealloc_block_pool.bytes -= i64(g_prealloc_block_pool.sizes[best])
-		g_prealloc_block_pool.count--
-		g_prealloc_block_pool.starts[best] = g_prealloc_block_pool.starts[g_prealloc_block_pool.count]
-		g_prealloc_block_pool.sizes[best] = g_prealloc_block_pool.sizes[g_prealloc_block_pool.count]
+		start = g_prealloc_block_pool.starts[base + best_slot]
+		last := g_prealloc_block_pool.counts[best_bin] - 1
+		if best_slot != last {
+			g_prealloc_block_pool.starts[base + best_slot] = g_prealloc_block_pool.starts[base + last]
+			g_prealloc_block_pool.sizes[base + best_slot] = g_prealloc_block_pool.sizes[base + last]
+		}
+		g_prealloc_block_pool.counts[best_bin] = last
 	}
+	g_prealloc_block_pool.bytes -= i64(best_size)
 	prealloc_block_pool_unlock()
-	return start, taken_size
+	return start, best_size
 }
 
 // prealloc_block_pool_free returns every pooled block to the OS.
@@ -198,12 +231,17 @@ fn prealloc_block_pool_free() {
 	$if !windows && !freestanding && !vinix {
 		prealloc_block_pool_lock()
 		unsafe {
-			for i := 0; i < g_prealloc_block_pool.count; i++ {
-				C.munmap(g_prealloc_block_pool.starts[i], uint(g_prealloc_block_pool.sizes[i]))
+			for bin := 0; bin < prealloc_pool_bins; bin++ {
+				base := bin * prealloc_pool_bin_slots
+				for slot := 0; slot < g_prealloc_block_pool.counts[bin]; slot++ {
+					C.munmap(g_prealloc_block_pool.starts[base + slot], uint(g_prealloc_block_pool.sizes[base + slot]))
+				}
 			}
 		}
 		prealloc_stats_add_mapped(-g_prealloc_block_pool.bytes)
-		g_prealloc_block_pool.count = 0
+		for bin := 0; bin < prealloc_pool_bins; bin++ {
+			g_prealloc_block_pool.counts[bin] = 0
+		}
 		g_prealloc_block_pool.bytes = 0
 		prealloc_block_pool_unlock()
 	}
