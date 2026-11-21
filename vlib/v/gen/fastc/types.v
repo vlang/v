@@ -896,6 +896,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 							return ret
 						}
 					}
+					if callable := g.constant_callable_signature(g.module_name, name) {
+						if callable.callable_index_depth == 0 && callable.return_type != 0 {
+							return callable.return_type
+						}
+					}
 					if primitive := fastc_primitive_c_type(name) {
 						return flat.source_type_id(primitive)
 					}
@@ -905,6 +910,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				}
 				if call_name_index == start + 2 && tokens[start].lit in g.imports {
 					module_name := g.imports[tokens[start].lit]
+					if callable := g.constant_callable_signature(module_name, name) {
+						if callable.callable_index_depth == 0 && callable.return_type != 0 {
+							return callable.return_type
+						}
+					}
 					type_key := fastc_type_key(module_name, name)
 					if fastc_source_type_key_exists(g.declared_types, type_key) {
 						return flat.source_type_id(fastc_c_declared_type_name(type_key))

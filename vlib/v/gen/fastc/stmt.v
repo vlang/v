@@ -3217,6 +3217,42 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 		|| (name_index == 0 && name in ['print', 'println'])
 }
 
+// has_constant_callables reports whether any constant stores function values. File parsers
+// see a fixed constant table and cache the answer; constant parsers extend the table.
+fn (g &Parser) has_constant_callables() bool {
+	if g.declaration_initializer_mode {
+		return g.constant_types.contains(fastc_constant_callables_present_key)
+	}
+	if !g.constant_callables_checked {
+		mut w := unsafe { &Parser(g) }
+		w.constant_callables_checked = true
+		w.constant_callables_present = g.constant_types.contains(fastc_constant_callables_present_key)
+	}
+	return g.constant_callables_present
+}
+
+// constant_callable_signature returns the signature of a function value stored in the
+// constant `module_name.name`, with the array dimensions in front of it.
+fn (g &Parser) constant_callable_signature(module_name string, name string) ?FastcFunctionSignature {
+	if !g.has_constant_callables() {
+		return none
+	}
+	key := fastc_constant_key(module_name, name)
+	if !g.constant_types.contains(key) {
+		return none
+	}
+	for depth in 0 .. 4 {
+		if callable_type := g.constant_types.type_id(fastc_constant_callable_key(key, depth)) {
+			signature := fastc_callable_signature(callable_type) or { return none }
+			return FastcFunctionSignature{
+				...signature
+				callable_index_depth: depth
+			}
+		}
+	}
+	return none
+}
+
 fn (g &Parser) callable_signature_for_expression(expression []FastcExpressionToken) ?FastcFunctionSignature {
 	tokens := fastc_strip_paren_tokens(expression)
 	array_end := if tokens.len > 0 && tokens.last().tok == .not {
@@ -3281,7 +3317,18 @@ fn (g &Parser) callable_signature_for_expression(expression []FastcExpressionTok
 			}
 			return none
 		}
+		if signature := g.constant_callable_signature(g.module_name, tokens[0].lit) {
+			return signature
+		}
 		return g.functions[g.function_key_for_call(tokens, 0)] or { return none }
+	}
+	if tokens.len == 3 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name
+		&& g.has_constant_callables() {
+		if imported_module := g.imports[tokens[0].lit] {
+			if signature := g.constant_callable_signature(imported_module, tokens[2].lit) {
+				return signature
+			}
+		}
 	}
 	if tokens.len >= 3 && tokens[tokens.len - 2].tok == .dot && tokens.last().tok == .name {
 		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return none }

@@ -1723,7 +1723,7 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 	}
 	mut added_types := flat.TypeTextBindings{}
 	for value in values {
-		added_types.set_id(value.key, value.typ)
+		fastc_set_constant_types(mut added_types, value)
 	}
 	return FastcConstantFileResult{
 		used_field_defaults: gen.used_field_defaults
@@ -1810,7 +1810,7 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 			if !result.failed && !result.used_field_defaults
 				&& fastc_constant_file_is_independent(result) {
 				for value in result.values {
-					constant_types.set_id(value.key, value.typ)
+					fastc_set_constant_types(mut constant_types, value)
 				}
 				continue
 			}
@@ -2000,7 +2000,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			if !result.failed && !result.used_field_defaults
 				&& fastc_constant_file_is_independent(result) {
 				for value in result.values {
-					constant_types.set_id(value.key, value.typ)
+					fastc_set_constant_types(mut constant_types, value)
 				}
 				values << result.values
 				for name, _ in result.composite_types {
@@ -2328,16 +2328,64 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 	if typ == u32(0) && is_runtime {
 		return g.unsupported('unverifiable constant `${name}` type')
 	}
-	values << FastcConstantValue{
-		key:          key
-		c_name:       c_name
-		module_name:  g.module_name
-		value:        value
-		typ:          typ
-		dependencies: dependencies
-		is_runtime:   is_runtime
+	mut callable_type := u32(0)
+	mut callable_index_depth := 0
+	if g.type_may_store_function_values(typ) {
+		if signature := g.callable_signature_for_expression(g.last_expression) {
+			callable_type = flat.source_type_id(fastc_callable_type_name(FastcFunctionTypeInfo{
+				parameter_types:   signature.parameter_types
+				return_type:       signature.return_type
+				option_value_type: signature.option_type
+			}))
+			callable_index_depth = signature.callable_index_depth
+		}
 	}
-	g.constant_types.set_id(key, typ)
+	values << FastcConstantValue{
+		key:                  key
+		c_name:               c_name
+		module_name:          g.module_name
+		value:                value
+		typ:                  typ
+		dependencies:         dependencies
+		is_runtime:           is_runtime
+		callable_type:        callable_type
+		callable_index_depth: callable_index_depth
+	}
+	fastc_set_constant_types(mut g.constant_types, values.last())
+}
+
+// type_may_store_function_values reports whether a value of `typ` can hold function values,
+// which are stored as voidptr, alone or in arrays.
+fn (g &Parser) type_may_store_function_values(typ u32) bool {
+	mut current := typ
+	for _ in 0 .. 4 {
+		if current == flat.source_type_voidptr {
+			return true
+		}
+		current = g.array_element_type(current) or { return false }
+	}
+	return false
+}
+
+// fastc_set_constant_types records a constant's type, and the signature of a function
+// value that it stores, under fastc_constant_callable_key.
+fn fastc_set_constant_types(mut constant_types flat.TypeTextBindings, value FastcConstantValue) {
+	constant_types.set_id(value.key, value.typ)
+	if value.callable_type != 0 {
+		constant_types.set_id(fastc_constant_callable_key(value.key, value.callable_index_depth),
+			value.callable_type)
+		constant_types.set_id(fastc_constant_callables_present_key, value.callable_type)
+	}
+}
+
+// fastc_constant_callables_present_key marks a program with any constant that stores function
+// values, so that the lookups for them are skipped in other programs.
+const fastc_constant_callables_present_key = '#constant_callables'
+
+// fastc_constant_callable_key names the entry for a function value stored in a constant
+// behind `depth` array dimensions.
+fn fastc_constant_callable_key(key string, depth int) string {
+	return '${key}#callable${depth}'
 }
 
 // constant_source_dependencies retains references inside lowered expressions,
