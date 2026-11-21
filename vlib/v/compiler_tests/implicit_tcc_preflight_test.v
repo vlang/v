@@ -138,8 +138,22 @@ fn with_implicit_tcc_environment(check fn () !) {
 	check() or { panic(err) }
 }
 
+// pipeline_stage_count counts the timing lines of `stage` in a `-v` report. The report
+// shares the captured output with stderr diagnostics, and `eprintln` writes its newline
+// separately, so a timing line can follow a diagnostic on the same line.
 fn pipeline_stage_count(output string, stage string) int {
-	return output.split_into_lines().filter(it.trim_space().starts_with('${stage} ')).len
+	mut count := 0
+	for line in output.split_into_lines() {
+		if line.trim_space().starts_with('${stage} ') {
+			count++
+		} else if line.contains('  ${stage} ') {
+			timing := line.all_after('  ${stage} ').trim_space()
+			if timing.len > 0 && timing[0].is_digit() && timing.contains(' ms') {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 fn check_implicit_tcc_preflight_selects_platform_before_transform() ! {
