@@ -19,10 +19,24 @@ type FN_NTSuspendResume = fn (voidptr) u64
 // ones are: the import lists of V's bundled tcc do not carry all of them, and a program
 // that links without one must not stop linking because of a function that only
 // `use_pgroup` children need.
-type FN_CreateJobObjectW = fn (voidptr, voidptr) voidptr
-type FN_SetInformationJobObject = fn (voidptr, i32, voidptr, u32) i32
-type FN_AssignProcessToJobObject = fn (voidptr, voidptr) i32
-type FN_TerminateJobObject = fn (voidptr, u32) i32
+// They are Win32 API functions, stdcall on 32-bit x86, where the callee takes its arguments
+// off the stack. The C that V writes for a function pointer type names no calling
+// convention (a `callconv` attribute on the type does not reach it), so a call through one
+// would be a cdecl call, and the caller would take the arguments off a second time. Each
+// address is called through a C pointer type that carries the SDK's convention instead.
+// HANDLE CreateJobObjectW(LPSECURITY_ATTRIBUTES, LPCWSTR): unnamed, the default security.
+#define v_os_job_create(address) (((HANDLE (WINAPI *)(void*, const void*))(address))(0, 0))
+// BOOL SetInformationJobObject(HANDLE, JOBOBJECTINFOCLASS, LPVOID, DWORD)
+#define v_os_job_set_information(address, job, info_class, info, size) (((BOOL (WINAPI *)(HANDLE, int, void*, DWORD))(address))((job), (info_class), (info), (size)))
+// BOOL AssignProcessToJobObject(HANDLE, HANDLE)
+#define v_os_job_assign(address, job, process) (((BOOL (WINAPI *)(HANDLE, HANDLE))(address))((job), (process)))
+// BOOL TerminateJobObject(HANDLE, UINT)
+#define v_os_job_terminate(address, job, exit_code) (((BOOL (WINAPI *)(HANDLE, unsigned int))(address))((job), (exit_code)))
+
+fn C.v_os_job_create(address voidptr) voidptr
+fn C.v_os_job_set_information(address voidptr, job voidptr, info_class i32, info voidptr, size u32) i32
+fn C.v_os_job_assign(address voidptr, job voidptr, process voidptr) i32
+fn C.v_os_job_terminate(address voidptr, job voidptr, exit_code u32) i32
 
 // JobObjectExtendedLimitInformation, the information class of SetInformationJobObject
 // that takes JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
@@ -184,13 +198,13 @@ pub mut:
 // that is already in a job (a child of a CI runner is) can be put in a nested job on Windows
 // 8 and later; on an older system the assignment is refused and the caller falls back.
 fn win_assign_job(mut wdata WProcess) bool {
-	create := FN_CreateJobObjectW(kernel32_fn(c'CreateJobObjectW'))
-	set_information := FN_SetInformationJobObject(kernel32_fn(c'SetInformationJobObject'))
-	assign := FN_AssignProcessToJobObject(kernel32_fn(c'AssignProcessToJobObject'))
-	if voidptr(create) == 0 || voidptr(set_information) == 0 || voidptr(assign) == 0 {
+	create_job := kernel32_fn(c'CreateJobObjectW')
+	set_information := kernel32_fn(c'SetInformationJobObject')
+	assign := kernel32_fn(c'AssignProcessToJobObject')
+	if create_job == 0 || set_information == 0 || assign == 0 {
 		return false
 	}
-	job := create(unsafe { nil }, unsafe { nil })
+	job := C.v_os_job_create(create_job)
 	if job == 0 {
 		return false
 	}
@@ -206,8 +220,9 @@ fn win_assign_job(mut wdata WProcess) bool {
 	$if x64 {
 		size = u32(144)
 	}
-	if set_information(job, win_job_object_extended_limit_information, voidptr(&info[0]), size) == 0
-		|| assign(job, wdata.proc_info.h_process) == 0 {
+	if C.v_os_job_set_information(set_information, job, win_job_object_extended_limit_information,
+		voidptr(&info[0]), size) == 0
+		|| C.v_os_job_assign(assign, job, wdata.proc_info.h_process) == 0 {
 		C.CloseHandle(job)
 		return false
 	}
@@ -443,9 +458,9 @@ fn (mut p Process) win_kill_pgroup() {
 	C.Sleep(20)
 	if !isnil(wdata.job) {
 		// Every process of the job, whatever console it has or whether it has a window.
-		terminate := FN_TerminateJobObject(kernel32_fn(c'TerminateJobObject'))
-		if voidptr(terminate) != 0 {
-			terminate(voidptr(wdata.job), 3)
+		terminate := kernel32_fn(c'TerminateJobObject')
+		if terminate != 0 {
+			C.v_os_job_terminate(terminate, voidptr(wdata.job), 3)
 		}
 	}
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
@@ -459,14 +474,14 @@ fn win_release_job(mut wdata WProcess) {
 	if isnil(wdata.job) {
 		return
 	}
-	set_information := FN_SetInformationJobObject(kernel32_fn(c'SetInformationJobObject'))
-	if voidptr(set_information) != 0 {
+	set_information := kernel32_fn(c'SetInformationJobObject')
+	if set_information != 0 {
 		mut info := [256]u8{}
 		mut size := u32(112)
 		$if x64 {
 			size = u32(144)
 		}
-		set_information(voidptr(wdata.job), win_job_object_extended_limit_information,
+		C.v_os_job_set_information(set_information, voidptr(wdata.job), win_job_object_extended_limit_information,
 			voidptr(&info[0]), size)
 	}
 	close_valid_handle(&wdata.job)

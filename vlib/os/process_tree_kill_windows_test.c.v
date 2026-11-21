@@ -156,6 +156,27 @@ fn test_the_console_event_and_terminateprocess_leave_the_grandchild() {
 	assert process_alive(grandchild), 'the grandchild is expected to outlive the two calls'
 }
 
+fn test_waiting_for_the_child_releases_its_job_and_leaves_what_it_started() {
+	mut p, grandchild := start_ping_tree(true)
+	defer {
+		cleanup_tree(mut p, grandchild)
+	}
+	assert grandchild != 0, 'the child did not start PING.EXE'
+	if p.pgroup_fallback {
+		eprintln('skipped: this process is in a job that does not allow another one')
+		return
+	}
+	wdata := unsafe { &WProcess(p.wdata) }
+	assert !isnil(wdata.job)
+	// the child alone ends (the job is not terminated), and is waited for: the wait closes
+	// the job's last handle, after clearing the flag that would end everything in it
+	C.TerminateProcess(wdata.proc_info.h_process, 0)
+	p.wait()
+	assert isnil(wdata.job), 'the job of a waited child is still open'
+	time.sleep(300 * time.millisecond)
+	assert process_alive(grandchild), 'releasing the job of a waited child ended the PING.EXE (${grandchild}) it had started'
+}
+
 fn test_a_child_without_use_pgroup_is_not_put_in_a_job() {
 	mut p, grandchild := start_ping_tree(false)
 	defer {
