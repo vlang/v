@@ -97,7 +97,10 @@ see also `v help build`.
       Cross-compiling also requires `windres` or `llvm-windres`.
 
    -showcc
-      Prints the C command that is used to build the program.
+      Prints the C command that is used to build the program, then each step taken
+      on the output after the link, one `  > ` line each: the move that puts the
+      executable in place, on macOS the code signing and dSYM steps, on Windows the
+      manifest written or removed beside it. `-v` prints the same lines.
 
    -generate-c-project <directory>
       Generate a C project folder with:
@@ -458,7 +461,10 @@ see also `v help build`.
       it is frequently helpful to use these together: -keepc -cg -showcc -show-c-output
 
    -showcc
-      Prints the C command that is used to build the program.
+      Prints the C command that is used to build the program, then each step taken
+      on the output after the link, one `  > ` line each: the move that puts the
+      executable in place, on macOS the code signing and dSYM steps, on Windows the
+      manifest written or removed beside it. `-v` prints the same lines.
 
    -nocache, --no-cache
       Disable the module cache, which is enabled by default for supported builds,
