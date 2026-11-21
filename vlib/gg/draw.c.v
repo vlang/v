@@ -1567,7 +1567,6 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c Colo
 
 	// The constant 3 is actually points.len() - 1;
 
-	step := f32(1) / steps
 	ctx.r.v2f(p1_x * ctx.scale, p1_y * ctx.scale)
 	for i in 1 .. int(steps) {
 		u := f32(i) / f32(steps)
