@@ -2645,9 +2645,16 @@ fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explic
 	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
 }
 
+// cleanup_c_build_dir removes the C build directory of a build that is over. Every failure of
+// a build ends here, so this is also where a `-cg` build that did not finish gives back the
+// directory it had set aside (see v3_set_aside_c_debug_dir).
 fn cleanup_c_build_dir(dir string) {
 	if dir.len > 0 {
 		os.rmdir_all(dir) or {}
+		set_aside := v3_c_debug_dir_set_aside(dir)
+		if os.is_dir(set_aside) {
+			os.rename(set_aside, dir) or {}
+		}
 	}
 }
 
@@ -6382,9 +6389,38 @@ fn v3_cc_dir_name(base string, is_c_debug bool, token string) string {
 	return if is_c_debug { '.${base}.v3cc.cg' } else { '.${base}.v3cc.${token}' }
 }
 
+// v3_c_debug_dir_set_aside is where the directory of the last finished `-cg` build of an output
+// waits while the next build of that output runs.
+fn v3_c_debug_dir_set_aside(cc_dir string) string {
+	return cc_dir + '.prev'
+}
+
+// v3_set_aside_c_debug_dir makes room in `cc_dir` for a new `-cg` build without losing the
+// sources of the last one. The executable that is in place names them in its C debug
+// information, and it stays in place when the new build fails, so they are moved aside, not
+// removed: cleanup_c_build_dir moves them back, and v3_keep_new_c_debug_dir removes them once
+// a new executable has replaced the old one. A directory that is already set aside was left by
+// a build that was interrupted; it is the one to keep, and `cc_dir` holds what that build left.
+fn v3_set_aside_c_debug_dir(cc_dir string) {
+	set_aside := v3_c_debug_dir_set_aside(cc_dir)
+	if os.is_dir(set_aside) {
+		os.rmdir_all(cc_dir) or {}
+		return
+	}
+	if os.is_dir(cc_dir) {
+		os.rename(cc_dir, set_aside) or { os.rmdir_all(cc_dir) or {} }
+	}
+}
+
+// v3_keep_new_c_debug_dir is called when the new executable is in place: the sources of the
+// one it replaced are no longer named by anything.
+fn v3_keep_new_c_debug_dir(cc_dir string) {
+	os.rmdir_all(v3_c_debug_dir_set_aside(cc_dir)) or {}
+}
+
 // v3_c_debug_dir_note is the one line a `-cg` build prints to say where it keeps its C sources.
 fn v3_c_debug_dir_note(cc_dir string) string {
-	return 'note: -cg keeps the C sources for the debugger in ${cc_dir} (replaced by the next -cg build of this output)'
+	return 'note: -cg keeps the C sources for the debugger in ${cc_dir} (replaced by the next -cg build of this output that succeeds)'
 }
 
 // v3_mkdir_all_shared creates `dir` and its parents, also when a concurrent build creates
@@ -16581,8 +16617,9 @@ pub fn run(args []string) {
 				cc_dir, cc_dir_moved = v3_short_build_dir(cc_dir)
 			}
 			if is_c_debug {
-				// The directory of an earlier `-cg` build of this output is replaced, not kept.
-				cleanup_c_build_dir(cc_dir)
+				// The directory of an earlier `-cg` build of this output is replaced when this
+				// build succeeds, and given back when it fails.
+				v3_set_aside_c_debug_dir(cc_dir)
 			}
 			// The output directory may not exist yet, and mkdir would fail on it.
 			v3_mkdir_all_shared(cc_dir) or {
@@ -18339,6 +18376,9 @@ Please install the corresponding development package/libraries and make sure the
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
+		}
+		if is_c_debug {
+			v3_keep_new_c_debug_dir(cc_dir)
 		}
 		$if windows {
 			// MSVC's startup dbghelp.dll hangs with a long TMP in a longPathAware
