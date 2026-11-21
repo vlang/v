@@ -1,0 +1,14 @@
+fn find(i int) ?int {
+	if i > 0 {
+		return i
+	}
+	return none
+}
+
+fn main() {
+	if b := find(0) {
+		println(b)
+	} else {
+		println(err.msg())
+	}
+}

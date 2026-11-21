@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_or_block_err_undefined_err.vv:10:11: error: undefined variable: `err` (an Option carries no error, so `err` is not bound when it fails; return a Result `!T` to get the error)
+    8 | fn main() {
+    9 |     a := find(0) or {
+   10 |         println(err)
+      |                 ~~~
+   11 |         1
+   12 |     }

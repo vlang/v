@@ -23552,6 +23552,31 @@ fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
 	return false
 }
 
+// option_failure_block_holds reports whether `id` is inside the `or {}` block or
+// the failed `if` guard `else` block of an Option, where no `err` is bound.
+fn (tc &TypeChecker) option_failure_block_holds(id flat.NodeId) bool {
+	mut child := id
+	mut parent := tc.direct_parent_id(child)
+	for tc.valid_node_id(parent) {
+		node := tc.a.node(parent)
+		if node.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
+			return false
+		}
+		if node.kind == .or_expr && node.children_count > 1 && tc.a.child(node, 1) == child
+			&& !tc.failure_has_error(tc.a.child(node, 0)) {
+			return true
+		}
+		if node.kind == .if_expr && node.children_count > 2 && tc.a.child(node, 2) == child
+			&& tc.a.node(child).kind != .if_expr && tc.a.child_node(node, 0).kind == .decl_assign
+			&& !tc.failure_has_error(tc.a.child(node, 0)) {
+			return true
+		}
+		child = parent
+		parent = tc.direct_parent_id(child)
+	}
+	return false
+}
+
 // check_valid_if_expr preserves scopes, guard bindings, smartcasts, and branch
 // expression typing without rebuilding diagnostics for the valid self-host input.
 fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
