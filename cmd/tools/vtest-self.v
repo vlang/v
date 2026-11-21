@@ -527,7 +527,9 @@ fn main() {
 		&& (shard.count == 1 || self_test_shard_for_file(it, shard.count) == shard.index))
 	// The compiler tests have their own driver, so they are excluded from `v test-self`.
 	for test_dir in temporarily_disabled_self_test_vlib_dirs {
-		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
+		// `test_dir` is written with `/`; the test paths use the platform separator.
+		test_path := test_dir.replace('/', os.path_separator)
+		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
 	}
 	if vtest.skip_ownership_autofree_tests() {
