@@ -32,11 +32,20 @@ fn (mut g Parser) parse_block_body() !bool {
 				// block's final statement is its value; a final `if`/`match` in a nested
 				// loop or statement body still belongs to that body. Void-result handlers
 				// only execute statements, including compile-time branches without `else`.
+				// The branches produce the `or` block's value type.
+				previous_expected := g.expected_expression_type
+				if !is_wrapper && g.expected_expression_type == u32(0) {
+					g.expected_expression_type = g.or_value_expected_type
+				}
 				value := if is_wrapper {
 					g.read_final_block_wrapper_value()!
 				} else {
-					g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+					g.read_expression([token.Token.semicolon, token.Token.rcbr]) or {
+						g.expected_expression_type = previous_expected
+						return err
+					}
 				}
+				g.expected_expression_type = previous_expected
 				if is_wrapper && g.last_expression_type in [u32(0), flat.source_type_void] {
 					// A selected wrapper may only return or panic, without a fallback value.
 					g.write_line('${value};')

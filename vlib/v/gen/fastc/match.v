@@ -558,7 +558,16 @@ fn (mut g Parser) read_block_expression_value() !string {
 		if !terminates { g.write_deferred_blocks_from(deferred_block_start) }
 		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
-		return '({ ${g.captured_defer_lines.join(' ')} 0; })'
+		// A branch that only returns still needs a value of the branch's type, so the
+		// conditional around it type-checks (`x := f() or { match e { 'a' { return } } }`).
+		expected := g.expected_expression_type
+		unreachable_value := if terminates && expected !in [u32(0), flat.source_type_void,
+			fastc_type_option, fastc_type_result] {
+			'(${fastc_output_c_type(flat.source_type_name(expected))}){0}'
+		} else {
+			'0'
+		}
+		return '({ ${g.captured_defer_lines.join(' ')} ${unreachable_value}; })'
 	}
 	g.skip_semicolons()
 	mut value := if g.tok == .name {
