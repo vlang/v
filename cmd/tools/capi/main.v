@@ -301,6 +301,24 @@ fn build_plan(opts Options) !BuildPlan {
 	}
 }
 
+// make_import_libraries builds the import libraries consumers need on Windows.
+// dlltool covers MinGW/GCC; `lib` covers MSVC. Missing tools only warn: the
+// generated .def is sufficient for either to be created manually.
+fn make_import_libraries(name string, lib_path string, def_path string, out_dir string) {
+	gcc_lib := os.join_path(out_dir, 'lib${name}.dll.a')
+	dlltool := os.exec(['dlltool', '-d', def_path, '--dllname', os.base(lib_path), '-l', gcc_lib])
+	if dlltool.exit_code == 0 {
+		println('c-api: importlib ${gcc_lib}')
+	} else {
+		eprintln('c-api: warning: dlltool unavailable; build ${gcc_lib} from ${def_path} manually')
+	}
+	msvc_lib := os.join_path(out_dir, '${name}.lib')
+	lib := os.exec(['lib', '/def:${def_path}', '/out:${msvc_lib}', '/machine:x64'])
+	if lib.exit_code == 0 {
+		println('c-api: importlib ${msvc_lib}')
+	}
+}
+
 fn cleanup_generated(paths []string) {
 	for path in paths {
 		os.rm(path) or {}
@@ -405,6 +423,9 @@ fn main() {
 		exit(1)
 	}
 	println('c-api: built ${lib_path}')
+	if os.user_os() == 'windows' {
+		make_import_libraries(name, lib_path, result.def, opts.out_dir)
+	}
 	println('c-api: header ${result.header}')
 	println('c-api: def    ${result.def}')
 	println('c-api: pkgcfg ${result.pc}')

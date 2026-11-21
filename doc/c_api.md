@@ -22,7 +22,8 @@ Generated files:
 
 - `dist/libmylib.so` (or `mylib.dll` / `libmylib.dylib`)
 - `dist/mylib.h` — C declarations, opaque struct handles, enum values
-- `dist/mylib.def` — Windows DLL export list
+- `dist/mylib.def` — Windows DLL export list (plus `libmylib.dll.a` /
+  `mylib.lib` import libraries when `dlltool` / `lib` are available)
 - `dist/mylib.pc` — pkg-config metadata
 - `dist/demo.c` — minimal link check
 - `dist/README.md` — consumer-facing summary
