@@ -1732,11 +1732,14 @@ mut:
 	last_expression             []FastcExpressionToken
 	// Conditional expressions have no flat token list after their branches are
 	// parsed. Preserve an Option payload type for their consuming declaration.
-	last_option_value_type     u32
-	constant_callables_checked bool
-	constant_callables_present bool
-	last_multi_return_types    flat.TypeTextList
-	member_smartcasts          map[string]FastcMemberSmartcast
+	last_option_value_type u32
+	// option_value_from_erased_generic is set when option_value_type_for_expression found the
+	// value type of an erased generic method, whose value is boxed twice.
+	option_value_from_erased_generic bool
+	constant_callables_checked       bool
+	constant_callables_present       bool
+	last_multi_return_types          flat.TypeTextList
+	member_smartcasts                map[string]FastcMemberSmartcast
 	// Set by `parse_type` to the wrapped value type when it parses an option type
 	// (`?T`), so the caller can record it on the declared local.
 	pending_option_value_type u32

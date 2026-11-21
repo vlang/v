@@ -1536,10 +1536,15 @@ fn fastc_peek_option_element(scan scanner.Scanner, path string, module_name stri
 // generic field type such as `Stack[Item]`. The scanner copy starts immediately
 // after `first`, so this does not advance declaration scanning.
 fn fastc_peek_generic_type_argument(first token.Token, scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) u32 {
-	if first != .name {
+	mut probe := scan
+	mut name_token := first
+	// `&Stack[Item]` keeps the argument of the generic struct it points to.
+	for (name_token in [.amp, .and]) {
+		name_token = probe.scan()
+	}
+	if name_token != .name {
 		return u32(0)
 	}
-	mut probe := scan
 	mut tok := probe.scan()
 	if tok == .dot {
 		if probe.scan() != .name {

@@ -115,6 +115,12 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 // literal to the generic struct's erased layout, as field and parameter types already
 // are, when the generic struct was not monomorphized (outside the entry module).
 fn (g &Parser) erased_generic_struct_literal_type(tokens []FastcExpressionToken) ?u32 {
+	if tokens.len > 0 && tokens[0].tok in [.amp, .and] {
+		// `&Box[int]{}` allocates the erased layout.
+		pointee := g.erased_generic_struct_literal_type(tokens[1..]) or { return none }
+		depth := if tokens[0].tok == .and { 2 } else { 1 }
+		return fastc_with_pointer_depth(pointee, flat.source_type_syntax(pointee).c_pointer_depth() + depth)
+	}
 	if tokens.len < 4 || tokens.last().tok != .rsbr {
 		return none
 	}

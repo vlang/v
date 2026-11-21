@@ -4183,6 +4183,9 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		base_token = base_scan.scan()
 	}
 	is_c_type := base_token == .name && base_scan.lit == 'C'
+	generic_argument := fastc_peek_generic_type_argument(tok, scan, source_file.path,
+		source_file.header.module_name, source_file.header.imports, declared_types,
+		allow_short_placeholders)
 	base_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
 	base := base_source_id
 	tok = next_token
@@ -4226,6 +4229,11 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		} else {
 			base
 		})
+		if generic_argument != 0 {
+			// `type Mailbox = Queue[Message]` names an erased generic struct; keep `Message`
+			// for method results, as a field of type `Queue[Message]` does.
+			alias_base_types.set_id(fastc_alias_generic_argument_key(c_name), generic_argument)
+		}
 		layout_type_id := fastc_trim_pointer_type(base)
 		mut layout_type := flat.source_type_name(layout_type_id)
 		if flat.source_type_query(layout_type_id).has(.c_array_prefix) {
@@ -4384,4 +4392,10 @@ fn fastc_order_function_typedefs(source string) string {
 	}
 	for index, line in lines { if !written[index] { output.writeln(line) } }
 	return output.str()
+}
+
+// fastc_alias_generic_argument_key names the alias_base_types entry for the type argument
+// of an alias of an erased generic struct.
+fn fastc_alias_generic_argument_key(c_name string) string {
+	return '${c_name}#generic_argument'
 }

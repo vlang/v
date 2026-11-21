@@ -782,11 +782,7 @@ fn (mut g Parser) parse_if() !bool {
 			if flat.source_type_query(guard_type).has(.c_pointer_suffix) {
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
-				value := if g.prefs.target_libc_headers {
-					'*(${g.option_value_expression(flat.source_type_composition_two(.concat, guard_type, flat.source_type_id('*')), guard_option)})'
-				} else {
-					'**((${fastc_output_c_type(flat.source_type_name(guard_type))} **)${guard_option}.data)'
-				}
+				value := g.option_payload_expression(guard_type, guard_option, true)
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${value};')
 			}
 			g.locals[guard_name] = FastcLocal{
@@ -1865,6 +1861,18 @@ fn (g &Parser) option_value_expression(value_type u32, option string) string {
 		return 'V_FASTC_OPTION_VALUE(${storage_type}, (${option}))'
 	}
 	return '*((${storage_type} *)${option}.data)'
+}
+
+// option_payload_expression reads an option's value. The value of an erased generic
+// method (`erased`) is a boxed `T` that the option boxes again; a pointer `T` is not boxed.
+fn (g &Parser) option_payload_expression(value_type u32, option string, erased bool) string {
+	if !erased || flat.source_type_query(value_type).has(.c_pointer_suffix) {
+		return g.option_value_expression(value_type, option)
+	}
+	if g.prefs.target_libc_headers {
+		return '*(${g.option_value_expression(flat.source_type_composition_two(.concat, value_type, flat.source_type_id('*')), option)})'
+	}
+	return '**((${fastc_output_c_type(flat.source_type_name(value_type))} **)${option}.data)'
 }
 
 fn fastc_box_expression(value_type string, expression string) string {

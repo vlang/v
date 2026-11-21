@@ -2932,9 +2932,9 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 		return array_lookup.typ
 	}
 	if generic_type_source_id := g.erased_generic_option_value_type_for_expression(tokens) {
-		generic_type := generic_type_source_id
-
-		return generic_type
+		mut w := unsafe { &Parser(g) }
+		w.option_value_from_erased_generic = true
+		return generic_type_source_id
 	}
 	// An explicit option cast (`?T(value)` / `?T(none)`) carries its payload type in
 	// the cast even though every option shares the erased C type `Option`.
@@ -3084,14 +3084,18 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 			return none
 		})
 		field := g.struct_field_metadata(owner_type, receiver_tokens.last().lit) or { return none }
-		if field.generic_argument_type == u32(0) {
-			return none
+		generic_argument := if field.generic_argument_type != 0 {
+			field.generic_argument_type
+		} else {
+			g.alias_base_types.type_id(fastc_alias_generic_argument_key(flat.source_type_name(fastc_trim_pointer_type(field.typ)))) or {
+				return none
+			}
 		}
 		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
 		if signature.return_type in [fastc_type_option, fastc_type_result] && signature.option_type == flat.source_type_voidptr {
-			return field.generic_argument_type
+			return generic_argument
 		}
 		return none
 	}

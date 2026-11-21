@@ -1137,11 +1137,14 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	// For a grouped operand the option value type must come from the balanced tokens
 	// (`make_box(x)` → Box); option_tokens still carries the unmatched leading `(`,
 	// which would defeat the lookup.
+	g.option_value_from_erased_generic = false
 	mut option_value_type := if grouped_operand {
 		g.option_value_type_for_expression(grouped_value_tokens)
 	} else {
 		g.option_value_type_for_expression(option_tokens)
 	}
+	// A method of an erased generic struct returns its boxed `T` value boxed again.
+	erased_generic_payload := g.option_value_from_erased_generic
 	if member_source := g.render_member_receiver(option_tokens) {
 		// Re-render pure member chains so pointer fields at any depth use `->`
 		// inside the Option temporary (`outer.inner.value or { ... }`).
@@ -1293,7 +1296,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		complex_unwrapped := if complex_payload_type == flat.source_type_void {
 			'0'
 		} else {
-			g.option_value_expression(complex_payload_type, temporary)
+			g.option_payload_expression(complex_payload_type, temporary, erased_generic_payload)
 		}
 		complex_success := if cast_type != 0 && complex_payload_type != cast_type {
 			'((${fastc_output_c_type(flat.source_type_name(cast_type))})(${complex_unwrapped}))'
@@ -1515,7 +1518,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	unwrapped_value := if payload_type == flat.source_type_void {
 		'0'
 	} else {
-		g.option_value_expression(payload_type, temporary)
+		g.option_payload_expression(payload_type, temporary, erased_generic_payload)
 	}
 	mut success_value := if outer_cast && payload_type != value_type {
 		'((${fastc_output_c_type(flat.source_type_name(value_type))})(${unwrapped_value}))'
