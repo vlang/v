@@ -82,24 +82,12 @@ pub fn (mut rb RingBuffer[T]) clear() {
 	}
 }
 
-// occupied returns the occupied capacity of the buffer.
+// occupied returns the number of buffered elements in constant time.
 pub fn (rb RingBuffer[T]) occupied() int {
-	mut reader := rb.reader
-	mut v := 0
-	if rb.is_empty() {
-		return v
+	if rb.writer >= rb.reader {
+		return rb.writer - rb.reader
 	}
-	for {
-		reader++
-		if reader > rb.content.len - 1 {
-			reader = 0
-		}
-		v++
-		if reader == rb.writer {
-			break
-		}
-	}
-	return v
+	return rb.content.len - rb.reader + rb.writer
 }
 
 // remaining returns the remaining capacity of the buffer.
