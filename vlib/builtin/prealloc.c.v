@@ -686,7 +686,10 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 @[unsafe]
 fn vmemory_block_free(mb &VMemoryBlock) {
 	if C.v_prealloc_atomic_load_i32(&g_prealloc_keep_freed) != 0 {
-		// The process is about to end (see prealloc_keep_freed_memory).
+		// The process is about to end (see prealloc_keep_freed_memory): keep the
+		// block mapped. Its header is still released: nothing refers to it once
+		// its scope is freed, and LeakSanitizer reports it as a leak otherwise.
+		C.free(mb)
 		return
 	}
 	$if trace_prealloc ? {
