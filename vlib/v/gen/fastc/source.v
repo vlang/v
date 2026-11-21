@@ -49,6 +49,31 @@ fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 
 // fastc_sources_with_self_module_qualifiers adds the current module's short
 // qualifier after source resolution, without loading it as a new import.
+// fastc_sources_with_self_imports lets a module name its own declarations with its own name,
+// as in `terminal.tabstop_interval` inside `module terminal`, by importing itself under that
+// name unless an import already uses it.
+fn fastc_sources_with_self_imports(sources []FastcSourceFile) []FastcSourceFile {
+	mut result := []FastcSourceFile{cap: sources.len}
+	for source in sources {
+		module_name := source.header.module_name
+		qualifier := module_name.all_after_last('.')
+		if module_name in ['', 'main', 'builtin'] || qualifier in source.header.imports {
+			result << source
+			continue
+		}
+		mut imports := source.header.imports.clone()
+		imports[qualifier] = module_name
+		result << FastcSourceFile{
+			...source
+			header: FastcSourceHeader{
+				...source.header
+				imports: imports
+			}
+		}
+	}
+	return result
+}
+
 fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	if !prefs.target_libc_headers {
 		return sources
@@ -1636,7 +1661,9 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 				continue
 			}
 			if signature.parameter_types.ids.len > 0 {
-				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
+				// Only a parameterless `init`/`cleanup` is a lifecycle hook; a module API
+				// can still use the name for an ordinary function (`oniguruma.init(...)`).
+				continue
 			}
 			calls << if c_name := function_c_names[function_key] {
 				c_name

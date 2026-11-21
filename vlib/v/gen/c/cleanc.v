@@ -7442,6 +7442,12 @@ const c_builtin_abi_helper_header_paths = [
 // (e.g. `/tmp/vlib/os/filelock/filelock_helpers.h`), silently losing its
 // declarations from the translation unit; anchoring at `vroot` suppresses only the
 // helper actually shipped under the running V installation.
+// include_arg_is_builtin_abi_helper reports whether a quoted include names one of
+// the superseded builtin helper headers, which do not make a unit Objective-C.
+pub fn include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
+	return c_include_arg_is_builtin_abi_helper(include_arg, vroot)
+}
+
 fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
 	normalized := normalized_c_include_arg_path(include_arg)
 	root := vroot.replace('\\', '/').trim_right('/')

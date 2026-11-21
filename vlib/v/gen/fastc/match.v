@@ -440,7 +440,7 @@ fn (g &Parser) normalized_match_case_key(tokens []FastcExpressionToken, rendered
 }
 
 fn (mut g Parser) read_match_block_expression_value() !string {
-	if g.tok == .dollar && g.dollar_keyword_is('if') {
+	if g.tok == .dollar && g.dollar_keyword_is('if') && g.comptime_if_ends_block() {
 		// A `$if … { value } $else { value }` arm is a compile-time expression: select
 		// the taken branch's value rather than executing it as a statement.
 		return g.read_comptime_if_expression()!
@@ -477,7 +477,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	if g.wrapper_starts_final_block_expression() {
 		return g.read_final_block_wrapper_value()!
 	}
-	if g.tok == .dollar && g.dollar_keyword_is('if') {
+	if g.tok == .dollar && g.dollar_keyword_is('if') && g.comptime_if_ends_block() {
 		// `$if … { value } $else { value }` as the block's value: select the taken
 		// branch's value rather than executing it as a statement.
 		return g.read_comptime_if_expression()!

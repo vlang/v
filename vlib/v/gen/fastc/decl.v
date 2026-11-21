@@ -115,7 +115,8 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					if tok == .name {
 						// `type C.X = ...` names a C typedef (`DWORD`), spelled bare like
 						// `@[typedef] struct C.X`; only a plain `struct C.X` is `struct X`.
-						key := flat.source_type_id(if next_c_struct_is_typedef || kind == .alias_ {
+						key := flat.source_type_id(if next_c_struct_is_typedef || kind == .alias_
+							|| fastc_c_struct_name_is_typedef(scan.lit) {
 							'#Ctypedef#${scan.lit}'
 						} else {
 							'#Cstruct#${scan.lit}'
@@ -1723,7 +1724,7 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 	}
 	mut added_types := flat.TypeTextBindings{}
 	for value in values {
-		added_types.set_id(value.key, value.typ)
+		fastc_set_constant_types(mut added_types, value)
 	}
 	return FastcConstantFileResult{
 		used_field_defaults: gen.used_field_defaults
@@ -1810,7 +1811,7 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 			if !result.failed && !result.used_field_defaults
 				&& fastc_constant_file_is_independent(result) {
 				for value in result.values {
-					constant_types.set_id(value.key, value.typ)
+					fastc_set_constant_types(mut constant_types, value)
 				}
 				continue
 			}
@@ -2000,7 +2001,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			if !result.failed && !result.used_field_defaults
 				&& fastc_constant_file_is_independent(result) {
 				for value in result.values {
-					constant_types.set_id(value.key, value.typ)
+					fastc_set_constant_types(mut constant_types, value)
 				}
 				values << result.values
 				for name, _ in result.composite_types {
@@ -2328,16 +2329,64 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 	if typ == u32(0) && is_runtime {
 		return g.unsupported('unverifiable constant `${name}` type')
 	}
-	values << FastcConstantValue{
-		key:          key
-		c_name:       c_name
-		module_name:  g.module_name
-		value:        value
-		typ:          typ
-		dependencies: dependencies
-		is_runtime:   is_runtime
+	mut callable_type := u32(0)
+	mut callable_index_depth := 0
+	if g.type_may_store_function_values(typ) {
+		if signature := g.callable_signature_for_expression(g.last_expression) {
+			callable_type = flat.source_type_id(fastc_callable_type_name(FastcFunctionTypeInfo{
+				parameter_types:   signature.parameter_types
+				return_type:       signature.return_type
+				option_value_type: signature.option_type
+			}))
+			callable_index_depth = signature.callable_index_depth
+		}
 	}
-	g.constant_types.set_id(key, typ)
+	values << FastcConstantValue{
+		key:                  key
+		c_name:               c_name
+		module_name:          g.module_name
+		value:                value
+		typ:                  typ
+		dependencies:         dependencies
+		is_runtime:           is_runtime
+		callable_type:        callable_type
+		callable_index_depth: callable_index_depth
+	}
+	fastc_set_constant_types(mut g.constant_types, values.last())
+}
+
+// type_may_store_function_values reports whether a value of `typ` can hold function values,
+// which are stored as voidptr, alone or in arrays.
+fn (g &Parser) type_may_store_function_values(typ u32) bool {
+	mut current := typ
+	for _ in 0 .. 4 {
+		if current == flat.source_type_voidptr {
+			return true
+		}
+		current = g.array_element_type(current) or { return false }
+	}
+	return false
+}
+
+// fastc_set_constant_types records a constant's type, and the signature of a function
+// value that it stores, under fastc_constant_callable_key.
+fn fastc_set_constant_types(mut constant_types flat.TypeTextBindings, value FastcConstantValue) {
+	constant_types.set_id(value.key, value.typ)
+	if value.callable_type != 0 {
+		constant_types.set_id(fastc_constant_callable_key(value.key, value.callable_index_depth),
+			value.callable_type)
+		constant_types.set_id(fastc_constant_callables_present_key, value.callable_type)
+	}
+}
+
+// fastc_constant_callables_present_key marks a program with any constant that stores function
+// values, so that the lookups for them are skipped in other programs.
+const fastc_constant_callables_present_key = '#constant_callables'
+
+// fastc_constant_callable_key names the entry for a function value stored in a constant
+// behind `depth` array dimensions.
+fn fastc_constant_callable_key(key string, depth int) string {
+	return '${key}#callable${depth}'
 }
 
 // constant_source_dependencies retains references inside lowered expressions,
@@ -4135,6 +4184,9 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		base_token = base_scan.scan()
 	}
 	is_c_type := base_token == .name && base_scan.lit == 'C'
+	generic_argument := fastc_peek_generic_type_argument(tok, scan, source_file.path,
+		source_file.header.module_name, source_file.header.imports, declared_types,
+		allow_short_placeholders)
 	base_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
 	base := base_source_id
 	tok = next_token
@@ -4178,6 +4230,11 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		} else {
 			base
 		})
+		if generic_argument != 0 {
+			// `type Mailbox = Queue[Message]` names an erased generic struct; keep `Message`
+			// for method results, as a field of type `Queue[Message]` does.
+			alias_base_types.set_id(fastc_alias_generic_argument_key(c_name), generic_argument)
+		}
 		layout_type_id := fastc_trim_pointer_type(base)
 		mut layout_type := flat.source_type_name(layout_type_id)
 		if flat.source_type_query(layout_type_id).has(.c_array_prefix) {
@@ -4256,7 +4313,9 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 		// fixed `Option` value; consume any concrete value type after it.
 		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		tok = scan.scan()
-		if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
+		if fastc_is_explicit_void_payload(tok, scan.lit) {
+			tok = scan.scan()
+		} else if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
 			_, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 		}
 	} else if tok !in [.semicolon, .eof] {
@@ -4334,4 +4393,18 @@ fn fastc_order_function_typedefs(source string) string {
 	}
 	for index, line in lines { if !written[index] { output.writeln(line) } }
 	return output.str()
+}
+
+// fastc_alias_generic_argument_key names the alias_base_types entry for the type argument
+// of an alias of an erased generic struct.
+fn fastc_alias_generic_argument_key(c_name string) string {
+	return '${c_name}#generic_argument'
+}
+
+// fastc_c_struct_name_is_typedef applies the C backend's rule for a plain `struct C.X`: only a
+// lowercase name that does not end in `_t` is spelled `struct X`; `pthread_t`, `FILE` and
+// `_IO_FILE` name typedefs.
+fn fastc_c_struct_name_is_typedef(name string) bool {
+	return name.starts_with('_') || name.len == 0 || name[0] < `a` || name[0] > `z`
+		|| name.ends_with('_t')
 }

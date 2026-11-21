@@ -1695,9 +1695,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 					local.smartcast_origin_source
 				}
 			} else if local.is_reference {
-				'(*${fastc_c_value_identifier(name)})'
+				'(*${g.local_c_name(name)})'
 			} else {
-				fastc_c_value_identifier(name)
+				g.local_c_name(name)
 			}
 		} else {
 			fastc_c_value_identifier(name)
@@ -2645,9 +2645,9 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: if local.is_reference {
-					'(*${fastc_c_value_identifier(name)})'
+					'(*${g.local_c_name(name)})'
 				} else {
-					fastc_c_value_identifier(name)
+					g.local_c_name(name)
 				}
 				typ:    (if local.is_reference {
 					fastc_trim_pointer_type(local.typ)
@@ -2932,9 +2932,9 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 		return array_lookup.typ
 	}
 	if generic_type_source_id := g.erased_generic_option_value_type_for_expression(tokens) {
-		generic_type := generic_type_source_id
-
-		return generic_type
+		mut w := unsafe { &Parser(g) }
+		w.option_value_from_erased_generic = true
+		return generic_type_source_id
 	}
 	// An explicit option cast (`?T(value)` / `?T(none)`) carries its payload type in
 	// the cast even though every option shares the erased C type `Option`.
@@ -3084,14 +3084,18 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 			return none
 		})
 		field := g.struct_field_metadata(owner_type, receiver_tokens.last().lit) or { return none }
-		if field.generic_argument_type == u32(0) {
-			return none
+		generic_argument := if field.generic_argument_type != 0 {
+			field.generic_argument_type
+		} else {
+			g.alias_base_types.type_id(fastc_alias_generic_argument_key(flat.source_type_name(fastc_trim_pointer_type(field.typ)))) or {
+				return none
+			}
 		}
 		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
 		if signature.return_type in [fastc_type_option, fastc_type_result] && signature.option_type == flat.source_type_voidptr {
-			return field.generic_argument_type
+			return generic_argument
 		}
 		return none
 	}
@@ -3217,6 +3221,42 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 		|| (name_index == 0 && name in ['print', 'println'])
 }
 
+// has_constant_callables reports whether any constant stores function values. File parsers
+// see a fixed constant table and cache the answer; constant parsers extend the table.
+fn (g &Parser) has_constant_callables() bool {
+	if g.declaration_initializer_mode {
+		return g.constant_types.contains(fastc_constant_callables_present_key)
+	}
+	if !g.constant_callables_checked {
+		mut w := unsafe { &Parser(g) }
+		w.constant_callables_checked = true
+		w.constant_callables_present = g.constant_types.contains(fastc_constant_callables_present_key)
+	}
+	return g.constant_callables_present
+}
+
+// constant_callable_signature returns the signature of a function value stored in the
+// constant `module_name.name`, with the array dimensions in front of it.
+fn (g &Parser) constant_callable_signature(module_name string, name string) ?FastcFunctionSignature {
+	if !g.has_constant_callables() {
+		return none
+	}
+	key := fastc_constant_key(module_name, name)
+	if !g.constant_types.contains(key) {
+		return none
+	}
+	for depth in 0 .. 4 {
+		if callable_type := g.constant_types.type_id(fastc_constant_callable_key(key, depth)) {
+			signature := fastc_callable_signature(callable_type) or { return none }
+			return FastcFunctionSignature{
+				...signature
+				callable_index_depth: depth
+			}
+		}
+	}
+	return none
+}
+
 fn (g &Parser) callable_signature_for_expression(expression []FastcExpressionToken) ?FastcFunctionSignature {
 	tokens := fastc_strip_paren_tokens(expression)
 	array_end := if tokens.len > 0 && tokens.last().tok == .not {
@@ -3281,7 +3321,23 @@ fn (g &Parser) callable_signature_for_expression(expression []FastcExpressionTok
 			}
 			return none
 		}
+		if signature := g.constant_callable_signature(g.module_name, tokens[0].lit) {
+			return signature
+		}
 		return g.functions[g.function_key_for_call(tokens, 0)] or { return none }
+	}
+	if tokens.len == 3 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name
+		&& g.has_constant_callables() {
+		if imported_module := g.imports[tokens[0].lit] {
+			if signature := g.constant_callable_signature(imported_module, tokens[2].lit) {
+				return signature
+			}
+		}
+	}
+	if tokens.len in [3, 5] && tokens.last().tok == .name {
+		if function_key := g.static_function_key_for_call(tokens, tokens.len - 1) {
+			return g.functions[function_key] or { return none }
+		}
 	}
 	if tokens.len >= 3 && tokens[tokens.len - 2].tok == .dot && tokens.last().tok == .name {
 		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return none }
@@ -3407,7 +3463,14 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	// direct path preserve V's `:=` without running any inference or type checker.
 	// A self-host has already inferred the C type, so spelling that type directly
 	// avoids duplicating large statement expressions in the generated source.
-	c_name := fastc_c_value_identifier(name)
+	// A local named like a C function it calls (`read := C.read(...)`) would shadow that
+	// function in its own initializer.
+	c_name := if 'C.${name}' in g.functions {
+		'_v_local_${name}'
+	} else {
+		fastc_c_value_identifier(name)
+	}
+	local_c_name := if c_name.starts_with('_v_local_') { c_name } else { '' }
 	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
 	local_type_id := if g.selfhost && g.last_expression_type == u32(0) {
 		flat.source_type_int
@@ -3470,6 +3533,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 			is_reference:  true
 			is_heap_value: true
 			typ:           pointer_type
+			c_name:        local_c_name
 		})
 		return
 	}
@@ -3505,6 +3569,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	}
 	g.set_scoped_local(name, FastcLocal{
 		is_mut:               is_mut
+		c_name:               local_c_name
 		typ:                  local_type_id
 		option_value_type:    option_value_type
 		fn_return_type:       if function_alias.callable_index_depth == 0 {

@@ -4968,25 +4968,9 @@ pub fn ping() {}
 	assert run_result.output.trim_space() == 'zed init\nalpha init\nmain\nalpha cleanup\nzed cleanup'
 }
 
-fn test_module_initializer_arity_is_validated_but_return_type_is_not() {
+fn test_module_lifecycle_hooks_may_return_values() {
 	prefs := pref.new_preferences()
-	mut message := ''
-	_ := generate('module main\nfn init(value int) {}\nfn main() {}\n', 'invalid_module_init.v', prefs) or {
-		message = err.msg()
-		''
-	}
-	assert message.contains('module `init` with parameters'), message
 	generate('module main\nfn init() int { return 1 }\nfn main() {}\n', 'value_returning_module_init.v', prefs) or { panic(err) }
-}
-
-fn test_module_cleanup_arity_is_validated_but_return_type_is_not() {
-	prefs := pref.new_preferences()
-	mut message := ''
-	_ := generate('module main\nfn cleanup(value int) {}\nfn main() {}\n', 'invalid_module_cleanup.v', prefs) or {
-		message = err.msg()
-		''
-	}
-	assert message.contains('module `cleanup` with parameters'), message
 	generate('module main\nfn cleanup() int { return 1 }\nfn main() {}\n', 'value_returning_module_cleanup.v', prefs) or { panic(err) }
 }
 

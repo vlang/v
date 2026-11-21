@@ -887,7 +887,8 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			if condition.trim_space() == '' {
 				return g.unsupported('`.sort` comparison')
 			}
-			cmp_name := 'v_fastc_sort_${fastc_c_identifier(flat.source_type_name(norm_element))}_${fastc_sort_compare_key(condition)}'
+			// A pointer element (`[]&Pin`) needs an identifier-safe spelling.
+			cmp_name := 'v_fastc_sort_${flat.source_type_name(fastc_composite_part_id(norm_element))}_${fastc_sort_compare_key(condition)}'
 			if cmp_name !in g.spawn_helpers {
 				// The same rendered comparison in two blocks with swapped element
 				// bindings yields the -1 / +1 / 0 ordering without re-rendering it.
@@ -1137,11 +1138,14 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	// For a grouped operand the option value type must come from the balanced tokens
 	// (`make_box(x)` → Box); option_tokens still carries the unmatched leading `(`,
 	// which would defeat the lookup.
+	g.option_value_from_erased_generic = false
 	mut option_value_type := if grouped_operand {
 		g.option_value_type_for_expression(grouped_value_tokens)
 	} else {
 		g.option_value_type_for_expression(option_tokens)
 	}
+	// A method of an erased generic struct returns its boxed `T` value boxed again.
+	erased_generic_payload := g.option_value_from_erased_generic
 	if member_source := g.render_member_receiver(option_tokens) {
 		// Re-render pure member chains so pointer fields at any depth use `->`
 		// inside the Option temporary (`outer.inner.value or { ... }`).
@@ -1293,7 +1297,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		complex_unwrapped := if complex_payload_type == flat.source_type_void {
 			'0'
 		} else {
-			g.option_value_expression(complex_payload_type, temporary)
+			g.option_payload_expression(complex_payload_type, temporary, erased_generic_payload)
 		}
 		complex_success := if cast_type != 0 && complex_payload_type != cast_type {
 			'((${fastc_output_c_type(flat.source_type_name(cast_type))})(${complex_unwrapped}))'
@@ -1515,7 +1519,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	unwrapped_value := if payload_type == flat.source_type_void {
 		'0'
 	} else {
-		g.option_value_expression(payload_type, temporary)
+		g.option_payload_expression(payload_type, temporary, erased_generic_payload)
 	}
 	mut success_value := if outer_cast && payload_type != value_type {
 		'((${fastc_output_c_type(flat.source_type_name(value_type))})(${unwrapped_value}))'
@@ -1805,7 +1809,10 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 			}
 		}
 	}
-	if !is_struct_literal && brace_depth > 0 {
+	if !is_struct_literal && (brace_depth > 0 || (previous_token == .rsbr
+		&& g.erased_generic_struct_literal_type(fastc_generic_type_suffix(expression_tokens[..end])) != none)) {
+		// A top-level `Box[int]{` opens a literal of an erased generic struct; keep its
+		// lines together, as for nested literals. It is rendered once complete.
 		brace_depth++
 		piece = '{'
 	}
@@ -1813,6 +1820,34 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 		piece:       piece
 		brace_depth: brace_depth
 	}
+}
+
+// fastc_generic_type_suffix returns the trailing `Name[...]` or `mod.Name[...]` tokens.
+fn fastc_generic_type_suffix(tokens []FastcExpressionToken) []FastcExpressionToken {
+	if tokens.len < 4 || tokens.last().tok != .rsbr {
+		return []FastcExpressionToken{}
+	}
+	mut depth := 0
+	mut open := tokens.len - 1
+	for open >= 0 {
+		if tokens[open].tok == .rsbr {
+			depth++
+		} else if tokens[open].tok == .lsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		open--
+	}
+	if open < 1 || tokens[open - 1].tok != .name {
+		return []FastcExpressionToken{}
+	}
+	mut start := open - 1
+	if start >= 2 && tokens[start - 1].tok == .dot && tokens[start - 2].tok == .name {
+		start -= 2
+	}
+	return tokens[start..]
 }
 
 struct FastcEnumShorthandRewrite {
@@ -1918,7 +1953,8 @@ struct FastcInlineComptimeResult {
 }
 
 fn (mut g Parser) read_inline_comptime_expression(mut result strings.Builder, mut expression_tokens []FastcExpressionToken) !FastcInlineComptimeResult {
-	if g.tok == .dollar && (g.dollar_keyword_is('embed_file') || g.dollar_keyword_is('zero')) {
+	if g.tok == .dollar && (g.dollar_keyword_is('embed_file') || g.dollar_keyword_is('zero')
+		|| g.dollar_keyword_is('new(')) {
 		value := g.read_comptime_if_expression()!
 		value_type := g.last_expression_type
 		if result.len > 0 && fastc_needs_space(result.last(), value) {
@@ -2482,7 +2518,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	// `$embed_file(...).to_string()` may be continued by a member chain, even on the
 	// following lines (`.replace(...)`), so it is read as the first operand below.
 	if prefix == '' && g.tok == .dollar && !g.dollar_keyword_is('embed_file')
-		&& !g.dollar_keyword_is('zero') {
+		&& !g.dollar_keyword_is('zero') && !g.dollar_keyword_is('new(') {
 		return g.read_comptime_if_expression()!
 	}
 	if prefix == '' && g.tok == .key_spawn {
@@ -2743,6 +2779,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			// V's top-level commas form simultaneous multi-target assignments.
 			// Copying them to C would instead emit comma operators.
 			return g.unsupported('parallel assignments')
+		}
+		if g.tok == .dollar && g.dollar_keyword_is('sizeof') {
+			// `$sizeof(T)` is `sizeof(T)`.
+			g.next()
+			continue
 		}
 		if g.tok == .dollar {
 			inline_comptime := g.read_inline_comptime_expression(mut result, mut expression_tokens)!
@@ -6232,7 +6273,12 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 	if function_value := g.render_function_value_expression(tokens) {
 		return FastcRenderedExpression{
 			source: function_value
-			typ:    g.expected_expression_type
+			// Without a target type, a function value is an address.
+			typ:    if g.expected_expression_type != 0 {
+				g.expected_expression_type
+			} else {
+				flat.source_type_voidptr
+			}
 		}
 	}
 	if tokens.len > 0 && tokens[0].tok == .key_sizeof {

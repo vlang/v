@@ -386,9 +386,12 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	}
 	mut c_type := ''
 	mut member := g.lit
-	if member in ['fields', 'values', 'attributes', 'variants'] {
+	if member in ['fields', 'values', 'attributes', 'variants', 'methods'] {
 		type_key := g.resolve_declared_type_key(first) or {
-			return g.unsupported('`\$for` over unknown type `${first}`')
+			// A field type substituted by its C name (`cli__Options`).
+			flat.source_type_existing_id(first.replace('__', '.')) or {
+				return g.unsupported('`\$for` over unknown type `${first}`')
+			}
 		}
 		c_type = fastc_c_declared_type_name(flat.source_type_name(type_key))
 		g.next()
@@ -398,8 +401,8 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		c_type = fastc_c_declared_type_name(fastc_type_key(module_name, g.lit))
 		g.next()
 		g.expect(.dot)!
-		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes', 'variants'] {
-			return g.unsupported('`\$for` only supports `.fields`, `.values`, `.attributes` or `.variants`')
+		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes', 'variants', 'methods'] {
+			return g.unsupported('`\$for` only supports `.fields`, `.values`, `.attributes`, `.variants` or `.methods`')
 		}
 		member = g.lit
 		g.next()
@@ -470,6 +473,11 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 				[]string{}
 			}
 			substituted_bodies << g.substitute_comptime_enum_value(body_source, loop_var, c_type, value_name, attrs)
+		}
+	} else if member == 'methods' {
+		for name, signature in g.comptime_type_methods(c_type) {
+			substituted_bodies << g.substitute_comptime_method(body_source, loop_var, name,
+				signature)
 		}
 	} else {
 		for field in g.struct_field_info[c_type] {
@@ -600,12 +608,40 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					tok = s.scan()
 					continue
 				}
+				if member == .name && s.lit in ['methods', 'fields', 'values', 'variants']
+					&& previous == .key_in {
+					// `$for m in field.methods` iterates the members of the field's type.
+					value_type := if field.option_value_type != 0 {
+						field.option_value_type
+					} else {
+						field.typ
+					}
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         var_pos + loop_var.len
+						replacement: flat.source_type_name(fastc_trim_pointer_type(value_type))
+					}
+					previous = member
+					tok = s.scan()
+					continue
+				}
 				if member == .name && s.lit in ['is_embed', 'is_shared'] {
 					matches := if s.lit == 'is_shared' {
 						field.is_shared
 					} else {
 						field.name.starts_with('__embedded_')
 					}
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         s.offset
+						replacement: if matches { 'true' } else { 'false' }
+					}
+					previous = if matches { token.Token.key_true } else { token.Token.key_false }
+					tok = s.scan()
+					continue
+				}
+				if member == .name && s.lit in fastc_comptime_field_flags {
+					matches := g.comptime_field_flag(field, s.lit)
 					edits << FastcSourceEdit{
 						start:       var_pos
 						end:         s.offset
@@ -653,6 +689,7 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					continue
 				}
 				if member == .name && s.lit == 'typ' {
+					is_tok_start := s.offset
 					is_tok := s.scan()
 					if is_tok == .key_is {
 						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
@@ -681,6 +718,14 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 						tok = next_after
 						continue
 					}
+					if body[..var_pos].trim_right(' \t').ends_with('sizeof(') {
+						// `sizeof(field.typ)` measures the field's type.
+						edits << FastcSourceEdit{
+							start:       var_pos
+							end:         is_tok_start
+							replacement: fastc_comptime_field_type_spelling(field)
+						}
+					}
 					previous = member
 					tok = is_tok
 					continue
@@ -697,6 +742,24 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 		tok = s.scan()
 	}
 	return fastc_apply_mapped_source_edits(source_file, edits)
+}
+
+// fastc_comptime_field_type_spelling spells the type of a `$for` field as a V type.
+fn fastc_comptime_field_type_spelling(field FastcStructField) string {
+	if field.option_value_type != 0 {
+		return '?' + fastc_comptime_type_spelling(field.option_value_type)
+	}
+	return fastc_comptime_type_spelling(field.typ)
+}
+
+fn fastc_comptime_type_spelling(typ u32) string {
+	display := fastc_c_type_display_name(typ)
+	// A qualified name needs its module's import; the C spelling resolves everywhere.
+	return if display.contains('.') && !display.contains('[') && !display.starts_with('&') {
+		flat.source_type_name(typ)
+	} else {
+		display
+	}
 }
 
 // substitute_comptime_enum_value rewrites one `$for x in Enum.values { ... }` body
@@ -1192,20 +1255,37 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 
 fn (mut g Parser) parse_comptime_or() !bool {
 	mut value := g.parse_comptime_and()!
+	g.skip_comptime_condition_line_break()
 	for g.tok == .logical_or {
 		g.next()
 		right := g.parse_comptime_and()!
 		value = value || right
+		g.skip_comptime_condition_line_break()
 	}
 	return value
 }
 
+// skip_comptime_condition_line_break skips the `;` the scanner inserts at a line break inside
+// a condition that continues on the next line with `||` or `&&`.
+fn (mut g Parser) skip_comptime_condition_line_break() {
+	if g.tok != .semicolon {
+		return
+	}
+	mut look := g.s
+	next := look.scan()
+	if next in [.logical_or, .and] {
+		g.next()
+	}
+}
+
 fn (mut g Parser) parse_comptime_and() !bool {
 	mut value := g.parse_comptime_unary()!
+	g.skip_comptime_condition_line_break()
 	for g.tok == .and {
 		g.next()
 		right := g.parse_comptime_unary()!
 		value = value && right
+		g.skip_comptime_condition_line_break()
 	}
 	return value
 }
@@ -1486,12 +1566,15 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 			left in [flat.source_type_f32, flat.source_type_f64]
 		}
 		'struct' {
-			// Builtin `string`, `array` and `map` are structs in FastC but not in V.
-			left !in [flat.source_type_string, fastc_type_array, fastc_type_map]
+			// Builtin `string`, `array` and `map` are structs in FastC but not in V. As in
+			// V, a pointer to a struct is not a struct.
+			!fastc_is_pointer_type(left)
+				&& left !in [flat.source_type_string, fastc_type_array, fastc_type_map]
 				&& left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
 		}
 		'enum' {
-			left_key in g.declared_kinds && g.declared_kinds[left_key] == .enum_
+			!fastc_is_pointer_type(left) && left_key in g.declared_kinds
+				&& g.declared_kinds[left_key] == .enum_
 		}
 		'interface' {
 			left_key in g.declared_kinds && g.declared_kinds[left_key] == .interface_
@@ -1803,6 +1886,51 @@ fn fastc_string_literal_content(literal string) string {
 	return raw
 }
 
+// comptime_if_ends_block reports whether the `$if` chain at the current `$` is the last
+// thing in its block, which makes it the block's value. Otherwise, as in
+// `{ $if !macos { return error('x') } value }`, it is a statement.
+fn (g &Parser) comptime_if_ends_block() bool {
+	mut look := g.s
+	mut tok := look.scan()
+	for tok == .key_if {
+		mut depth := 0
+		for {
+			tok = look.scan()
+			if tok == .eof {
+				return false
+			}
+			if tok in [.lpar, .lsbr] {
+				depth++
+			} else if tok in [.rpar, .rsbr] {
+				depth--
+			} else if tok == .lcbr && depth == 0 {
+				break
+			}
+		}
+		tok = fastc_skip_balanced_tokens(mut look, tok, .lcbr, .rcbr) or { return false }
+		for tok == .semicolon {
+			tok = look.scan()
+		}
+		if tok != .dollar || look.scan() != .key_else {
+			break
+		}
+		tok = look.scan()
+		if tok == .dollar {
+			tok = look.scan()
+			continue
+		}
+		if tok != .lcbr {
+			return false
+		}
+		tok = fastc_skip_balanced_tokens(mut look, tok, .lcbr, .rcbr) or { return false }
+		break
+	}
+	for tok == .semicolon {
+		tok = look.scan()
+	}
+	return tok == .rcbr
+}
+
 fn (g &Parser) dollar_keyword_is(keyword string) bool {
 	mut offset := g.s.offset
 	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`] {
@@ -1916,6 +2044,9 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	if g.tok == .name && g.lit == 'zero' {
 		return g.read_comptime_zero_expression()!
 	}
+	if g.tok == .name && g.lit == 'new' {
+		return g.read_comptime_new_expression()!
+	}
 	if g.tok == .name && g.lit == 'd' {
 		return g.read_comptime_d_expression()!
 	}
@@ -1988,6 +2119,27 @@ fn (mut g Parser) read_comptime_zero_expression() !string {
 	g.expect(.lpar)!
 	typ := g.parse_type()!
 	g.expect(.rpar)!
+	value := g.comptime_zero_value(typ)!
+	g.last_expression_type = typ
+	g.last_expression = []FastcExpressionToken{}
+	return value
+}
+
+// read_comptime_new_expression lowers `$new(T)`, a heap-allocated zero value of `T`.
+fn (mut g Parser) read_comptime_new_expression() !string {
+	g.expect(.name)!
+	g.expect(.lpar)!
+	typ := g.parse_type()!
+	g.expect(.rpar)!
+	value := g.comptime_zero_value(typ)!
+	c_type := fastc_output_c_type(flat.source_type_name(typ))
+	g.last_expression_type = flat.source_type_composition_two(.concat, typ, flat.source_type_id('*'))
+	g.last_expression = []FastcExpressionToken{}
+	return '((${c_type} *)${fastc_heap_copy_expression(flat.source_type_name(typ), value)})'
+}
+
+// comptime_zero_value renders the zero value of `typ` for `$zero` and `$new`.
+fn (mut g Parser) comptime_zero_value(typ u32) !string {
 	layout := g.underlying_alias_type(typ)
 	fastc_register_composite_type(typ, mut g.composite_types)
 	value := if fastc_is_pointer_type(layout) || fastc_is_numeric_expression_type(layout)
@@ -2014,8 +2166,6 @@ fn (mut g Parser) read_comptime_zero_expression() !string {
 	} else {
 		return g.unsupported('`\$zero` for `${flat.source_type_name(typ)}`')
 	}
-	g.last_expression_type = typ
-	g.last_expression = []FastcExpressionToken{}
 	return value
 }
 
@@ -2493,4 +2643,157 @@ fn (mut g Parser) parse_selected_comptime_block() !bool {
 	g.indent--
 	g.write_line('}')
 	return terminates
+}
+
+const fastc_comptime_field_flags = ['is_option', 'is_array', 'is_map', 'is_chan', 'is_struct',
+	'is_enum', 'is_pub', 'is_mut']
+
+// comptime_field_flag answers `field.is_map` and the other kind tests of a `$for` field on
+// its type without option, pointer and alias wrappers, as the regular compiler does.
+fn (g &Parser) comptime_field_flag(field FastcStructField, flag string) bool {
+	match flag {
+		'is_option' { return field.option_value_type != 0 || field.typ == fastc_type_option }
+		'is_pub' { return field.is_public }
+		'is_mut' { return field.is_mutable }
+		else {}
+	}
+	value_type := if field.option_value_type != 0 { field.option_value_type } else { field.typ }
+	core := fastc_trim_pointer_type(g.underlying_alias_type(fastc_trim_pointer_type(value_type)))
+	query := flat.source_type_query(core)
+	if flag == 'is_array' {
+		return query.has(.c_array_prefix) || query.has(.c_fixed_array_prefix)
+	}
+	if flag == 'is_map' {
+		return query.has(.c_map_prefix)
+	}
+	if flag == 'is_chan' {
+		return field.chan_element_type != 0 || core == fastc_type_chan
+	}
+	// Primitives, strings, arrays and maps are builtin structs in C, but not V structs.
+	if fastc_primitive_c_type_id(core) != none || query.has(.c_array_prefix)
+		|| query.has(.c_fixed_array_prefix) || query.has(.c_map_prefix) {
+		return false
+	}
+	kind := g.declared_kinds[g.semantic_type_key(core)] or { return false }
+	return (flag == 'is_struct' && kind == .struct_) || (flag == 'is_enum' && kind == .enum_)
+}
+
+// comptime_type_methods lists the methods with a receiver of the declared C type
+// `c_type`, in declaration order, for `$for method in T.methods`.
+fn (g &Parser) comptime_type_methods(c_type string) map[string]FastcFunctionSignature {
+	type_key := flat.source_type_name(g.semantic_type_key(flat.source_type_id(c_type)))
+	prefix := type_key + '.'
+	mut found := []FastcFunctionSignature{}
+	mut names := []string{}
+	for key, signature in g.functions {
+		if !key.starts_with(prefix) || signature.is_static_method || signature.is_disabled {
+			continue
+		}
+		name := key[prefix.len..]
+		if name.contains('.') {
+			continue
+		}
+		mut index := found.len
+		for index > 0 && (found[index - 1].path > signature.path
+			|| (found[index - 1].path == signature.path && found[index - 1].position > signature.position)) {
+			index--
+		}
+		found.insert(index, signature)
+		names.insert(index, name)
+	}
+	mut methods := map[string]FastcFunctionSignature{}
+	for index, name in names {
+		methods[name] = found[index]
+	}
+	return methods
+}
+
+// substitute_comptime_method rewrites one `$for method in T.methods` body: `<var>.name`
+// becomes the method name literal, `x.$<var>(...)` a direct call, and
+// `<var>.return_type is <Type>` a literal `true`/`false`.
+fn (g &Parser) substitute_comptime_method(source_file FastcSourceFile, loop_var string, method_name string, signature FastcFunctionSignature) FastcSourceFile {
+	body := source_file.source
+	file := token.File.unindexed('cm', body.len)
+	mut s := scanner.new_scanner(g.prefs, .normal)
+	s.init(file, body)
+	mut edits := []FastcSourceEdit{}
+	mut previous := token.Token.unknown
+	mut tok := s.scan()
+	for tok != .eof {
+		if tok == .dollar && previous == .dot {
+			dollar_pos := s.pos
+			name_tok := s.scan()
+			if fastc_comptime_loop_var_token(name_tok) && s.lit == loop_var {
+				edits << FastcSourceEdit{
+					start:       dollar_pos
+					end:         s.offset
+					replacement: method_name
+				}
+				previous = .name
+				tok = s.scan()
+				continue
+			}
+			previous = .dollar
+			tok = name_tok
+			continue
+		}
+		if fastc_comptime_loop_var_token(tok) && s.lit == loop_var && previous != .dot {
+			var_pos := s.pos
+			after := s.scan()
+			if after == .dot {
+				member := s.scan()
+				if member == .name && s.lit == 'name' {
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         s.offset
+						replacement: "'${method_name}'"
+					}
+					previous = .string
+					tok = s.scan()
+					continue
+				}
+				if member == .name && s.lit == 'return_type' {
+					is_tok := s.scan()
+					if is_tok == .key_is {
+						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
+						if type_c != '' {
+							matches := if type_c.starts_with('?') {
+								signature.return_type == fastc_type_option
+									&& signature.option_type == flat.source_type_id(type_c[1..])
+							} else if type_c.starts_with('@') {
+								g.comptime_type_matches(signature.return_type, flat.source_type_id(type_c[1..]),
+									true)
+							} else {
+								signature.return_type == flat.source_type_id(type_c)
+							}
+							edits << FastcSourceEdit{
+								start:       var_pos
+								end:         type_end
+								replacement: if matches { 'true' } else { 'false' }
+							}
+							previous = if matches {
+								token.Token.key_true
+							} else {
+								token.Token.key_false
+							}
+							tok = next_after
+							continue
+						}
+					}
+					previous = is_tok
+					tok = is_tok
+					continue
+				}
+				previous = member
+				tok = s.scan()
+				continue
+			}
+			previous = after
+			tok = after
+			continue
+		}
+		previous = tok
+		tok = s.scan()
+	}
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }

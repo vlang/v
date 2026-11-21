@@ -263,6 +263,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			mut parameter_generic_values := []bool{}
 			mut receiver_type := u32(0)
 			mut receiver_key := ''
+			mut is_static_method := false
 			if tok == .lpar {
 				tok = scan.scan()
 				mut receiver_is_mut := false
@@ -327,6 +328,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				}
 				receiver_type = flat.source_type_id(fastc_c_declared_type_name(type_key))
 				receiver_key = type_key
+				is_static_method = true
 				tok = scan.scan()
 				if tok != .name && !tok.is_keyword() {
 					return error('fastc parser does not support static method declaration in ${path}')
@@ -563,6 +565,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				is_disabled:                   !next_declaration_is_enabled
 				is_c_extern:                   is_c_function && next_declaration_is_c_extern
 				is_markused:                   !is_c_function && next_declaration_is_markused
+				is_static_method:              is_static_method
 				export_name:                   if is_c_function { '' } else { next_export_name }
 				c_symbol:                      if is_c_function { next_c_symbol } else { '' }
 				module_name:                   header.module_name
@@ -843,6 +846,9 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			tok = scan.scan()
 			if fastc_is_void_return_boundary(tok) {
 				option_type = flat.source_type_void
+			} else if fastc_is_explicit_void_payload(tok, scan.lit) {
+				option_type = flat.source_type_void
+				tok = scan.scan()
 			} else if tok == .lpar {
 				return_types_source_ids_2_2, tok_scan_token_2_2_2_2_2_2_2_2_2 := fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				return_types = return_types_source_ids_2_2.clone()
@@ -1530,10 +1536,15 @@ fn fastc_peek_option_element(scan scanner.Scanner, path string, module_name stri
 // generic field type such as `Stack[Item]`. The scanner copy starts immediately
 // after `first`, so this does not advance declaration scanning.
 fn fastc_peek_generic_type_argument(first token.Token, scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) u32 {
-	if first != .name {
+	mut probe := scan
+	mut name_token := first
+	// `&Stack[Item]` keeps the argument of the generic struct it points to.
+	for (name_token in [.amp, .and]) {
+		name_token = probe.scan()
+	}
+	if name_token != .name {
 		return u32(0)
 	}
-	mut probe := scan
 	mut tok := probe.scan()
 	if tok == .dot {
 		if probe.scan() != .name {
@@ -1565,6 +1576,12 @@ struct FastcFunctionTypeInfo {
 
 fn fastc_is_void_return_boundary(tok token.Token) bool {
 	return tok in [.semicolon, .comma, .rpar, .lcbr, .assign, .attribute, .rcbr, .eof]
+}
+
+// fastc_is_explicit_void_payload reports the `void` in `!void` and `?void`, which
+// function types accept as an explicit spelling of the payload-free `!` and `?`.
+fn fastc_is_explicit_void_payload(tok token.Token, lit string) bool {
+	return tok == .name && lit == 'void'
 }
 
 // fastc_peek_function_type preserves the signature that fastc_scan_type erases to
@@ -1606,7 +1623,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 	if tok in [.not, .question] {
 		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		value_tok := look.scan()
-		if fastc_is_void_return_boundary(value_tok) {
+		if fastc_is_void_return_boundary(value_tok) || fastc_is_explicit_void_payload(value_tok, look.lit) {
 			option_value_type = flat.source_type_void
 		} else {
 			option_value_type, _ = fastc_scan_type(mut look, value_tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1675,6 +1692,11 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 		return inner_type + '*'.repeat(pointers), next_token
 	}
 	if optional && fastc_is_void_return_boundary(tok) {
+		return wrapper + '*'.repeat(pointers), tok
+	}
+	// `!void` and `?void` spell the payload-free `!` and `?` explicitly.
+	if optional && fastc_is_explicit_void_payload(tok, scan.lit) {
+		tok = scan.scan()
 		return wrapper + '*'.repeat(pointers), tok
 	}
 	if tok == .ellipsis {
@@ -2415,31 +2437,53 @@ fn fastc_collect_generated_template_references(source string, path string, prefs
 	}
 }
 
-fn fastc_collect_active_body_references(source string, source_file FastcSourceFile, function_name string, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]bool) {
+fn fastc_collect_active_body_references(source string, source_file FastcSourceFile, function_name string, prefs &pref.Preferences, available_names map[string]bool, outer_iterates_methods bool, mut references map[string]bool) {
 	file := token.File.unindexed(source_file.path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
+	mut previous := token.Token.unknown
+	mut iterates_methods := outer_iterates_methods
 	mut tok := scan.scan()
 	for tok != .eof {
 		if tok == .dollar {
 			mut lookahead := scan
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), source_file.path, prefs) or {
+					previous = tok
 					tok = scan.scan()
 					continue
 				}
 				if selected.source != '' {
-					fastc_collect_active_body_references(selected.source, source_file, function_name, prefs, available_names, mut references)
+					fastc_collect_active_body_references(selected.source, source_file, function_name, prefs, available_names, iterates_methods, mut references)
 				}
+				previous = .rcbr
 				tok = selected.tok
 				continue
 			}
 			fastc_collect_veb_template_references(source_file, function_name, scan, prefs, available_names, mut references)
 		}
-		if (tok == .name || tok.is_keyword()) && scan.lit in available_names {
-			references[scan.lit] = true
+		if tok == .name || tok.is_keyword() {
+			if scan.lit in available_names {
+				references[scan.lit] = true
+			}
+			if !iterates_methods && previous == .dot && scan.lit == 'methods' {
+				iterates_methods = true
+			}
+		} else if tok == .string && iterates_methods {
+			fastc_collect_method_name_reference(scan.lit, available_names, mut references)
 		}
+		previous = tok
 		tok = scan.scan()
+	}
+}
+
+// fastc_collect_method_name_reference records a string naming a function inside a
+// `$for m in T.methods` loop: such a loop calls the method that `$if m.name == 'name'`
+// selects through `x.$m()`.
+fn fastc_collect_method_name_reference(lit string, available_names map[string]bool, mut references map[string]bool) {
+	name := lit.trim('\'"')
+	if name in available_names {
+		references[name] = true
 	}
 }
 
@@ -2544,6 +2588,8 @@ fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Prefer
 			function_references = references[function_name].move()
 		}
 		mut depth := 1
+		mut body_previous := token.Token.lcbr
+		mut iterates_methods := false
 		tok = scan.scan()
 		for depth > 0 && tok != .eof {
 			if tok == .lcbr {
@@ -2554,19 +2600,29 @@ fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Prefer
 				mut lookahead := scan
 				if lookahead.scan() == .key_if {
 					selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), source_file.path, prefs) or {
+						body_previous = tok
 						tok = scan.scan()
 						continue
 					}
 					if selected.source != '' {
-						fastc_collect_active_body_references(selected.source, source_file, function_name, prefs, available_names, mut function_references)
+						fastc_collect_active_body_references(selected.source, source_file, function_name, prefs, available_names, iterates_methods, mut function_references)
 					}
+					body_previous = .rcbr
 					tok = selected.tok
 					continue
 				}
 				fastc_collect_veb_template_references(source_file, function_name, scan, prefs, available_names, mut function_references)
-			} else if (tok == .name || tok.is_keyword()) && scan.lit in available_names {
-				function_references[scan.lit] = true
+			} else if tok == .name || tok.is_keyword() {
+				if scan.lit in available_names {
+					function_references[scan.lit] = true
+				}
+				if !iterates_methods && body_previous == .dot && scan.lit == 'methods' {
+					iterates_methods = true
+				}
+			} else if tok == .string && iterates_methods {
+				fastc_collect_method_name_reference(scan.lit, available_names, mut function_references)
 			}
+			body_previous = tok
 			tok = scan.scan()
 		}
 		references[function_name] = function_references.move()
