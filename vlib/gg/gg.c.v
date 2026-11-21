@@ -257,6 +257,9 @@ fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 pub struct Context {
 mut:
 	render_text bool = true
+	// owned copy of the window title passed to sokol; freed in gg_cleanup_fn
+	// (sokol itself only copies the string into a fixed buffer)
+	window_title_c &char = unsafe { nil }
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache                 []Image
@@ -662,6 +665,10 @@ fn gg_cleanup_fn(user_data voidptr) {
 	}
 	gfx.shutdown()
 	gg_release_gfx_render_owner(.legacy_context, user_data)
+	if ctx.window_title_c != unsafe { nil } {
+		unsafe { C.free(ctx.window_title_c) }
+		ctx.window_title_c = unsafe { nil }
+	}
 }
 
 fn gg_fail_fn(msg &char, user_data voidptr) {
@@ -688,7 +695,9 @@ pub fn start(cfg Config) {
 
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
+	window_title_c := unsafe { C.strdup(&char(cfg.window_title.str)) }
 	mut ctx := &Context{
+		window_title_c:   window_title_c
 		user_data:        cfg.user_data
 		width:            cfg.width
 		height:           cfg.height
@@ -702,7 +711,7 @@ pub fn new_context(cfg Config) &Context {
 			event_userdata_cb:            gg_event_fn
 			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb:          gg_cleanup_fn
-			window_title:                 &char(cfg.window_title.str)
+			window_title:                 window_title_c
 			icon:                         cfg.icon
 			html5:                        sapp.Html5Desc{
 				canvas_selector: &char(cfg.html5_canvas_name.str)
@@ -1010,6 +1019,9 @@ pub fn (ctx &Context) show_fps() {
 		return
 	}
 	frame_duration := sapp.frame_duration()
+	if frame_duration <= 0 {
+		return
+	}
 	ctx.r.defaults()
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -1038,18 +1050,17 @@ fn (mut ctx Context) set_scale() {
 		h := ctx.config.height
 		dw := sapp.width()
 		dh := sapp.height()
-		if dw <= dh {
-			if w <= 0 {
-				s = 1.0
-			} else {
-				s = f32(dw) / w
-			}
-		} else {
-			if h <= 0 {
-				s = 1.0
-			} else {
-				s = f32(dh) / h
-			}
+		mut sx := sapp.dpi_scale()
+		mut sy := sapp.dpi_scale()
+		if w > 0 {
+			sx = f32(dw) / f32(w)
+		}
+		if h > 0 {
+			sy = f32(dh) / f32(h)
+		}
+		s = if sx < sy { sx } else { sy }
+		if s < 0.1 {
+			s = 1.0
 		}
 	}
 	// Note: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
@@ -1191,7 +1202,7 @@ fn (mut ctx Context) memory_trace_frame() {
 	frame_tag_size := 61 // uneven, and easy to spot in heaptrack histograms as well
 	unsafe {
 		frame_tag := &u8(vcalloc(frame_tag_size))
-		C.snprintf(frame_tag, frame_tag_size, c'@@ gg_memory_trace_frame: %06d ', ctx.frame)
+		C.snprintf(frame_tag, frame_tag_size, c'@@ gg_memory_trace_frame: %06llu ', u64(ctx.frame))
 		frame_tag[frame_tag_size - 2] = `@`
 		frame_tag[frame_tag_size - 1] = `@`
 		free(frame_tag)

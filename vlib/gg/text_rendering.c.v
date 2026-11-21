@@ -369,7 +369,17 @@ pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 		ctx.ft.fons.set_font(ctx.ft.font_normal)
 	}
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	size := if cfg.mono { cfg.size - 2 } else { cfg.size }
+	mut size := if cfg.mono {
+		if cfg.size > 2 { cfg.size - 2 } else { cfg.size }
+	} else {
+		cfg.size
+	}
+	// fons.set_size() expects a positive size. Clamp instead of skipping the
+	// call, so a non-positive size cannot silently leave the previous font
+	// size active while the rest of the partial TextCfg is still applied.
+	if size < 1 {
+		size = 1
+	}
 	ctx.ft.fons.set_size(scale * f32(size))
 	ctx.ft.fons.set_align(int(cfg.align) | int(cfg.vertical_align))
 	color := u32(cfg.color.r) | (u32(cfg.color.g) << 8) | (u32(cfg.color.b) << 16) | (u32(cfg.color.a) << 24)
