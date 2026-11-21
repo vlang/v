@@ -72,7 +72,8 @@ fn test_windows_icon_cli_builds_with_all_aliases() {
 		mut args := ['-new-compiler', '-nocache', '-os', 'windows']
 		args << if idx % 2 == 0 { '-g' } else { '-cg' }
 		if compiler != '' {
-			args << ['-cc', compiler]
+			// The x86_64 MinGW compiler needs an x86_64 target, also on an arm64 host.
+			args << ['-cc', compiler, '-arch', 'amd64']
 		}
 		if idx % 2 == 0 {
 			args << [flag, icon]
