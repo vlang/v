@@ -378,7 +378,12 @@ fn (mut g Parser) read_match_expression() !string {
 		return g.unsupported('non-exhaustive match expression without `else`')
 	}
 	if !has_else {
-		fallback = '(${flat.source_type_name(result_type)}){0}'
+		// Arms of C constants (`.both { C.SHUT_RDWR }`) leave the result type unknown.
+		fallback = if result_type in [u32(0), flat.source_type_void] {
+			'0'
+		} else {
+			'(${flat.source_type_name(result_type)}){0}'
+		}
 	}
 	mut expression := fallback
 	if conditions.len > 16 {
