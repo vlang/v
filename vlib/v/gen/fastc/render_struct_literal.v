@@ -167,7 +167,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if close != tokens.len - 1 {
 		return none
 	}
-	is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
+	mut is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
 	mut c_type := if open == 1 && tokens[0].typ != 0 {
 		tokens[0].typ
 	} else {
@@ -185,6 +185,20 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	mut layout_type := fastc_trim_pointer_type(c_type)
 	if flat.source_type_query(g.underlying_alias_type(layout_type)).has(.c_array_prefix) {
 		layout_type = flat.source_type_id('array')
+	} else if !is_c_struct_literal && c_type != 0 {
+		// `Alias{...}` of a struct uses the struct's fields; of a C struct, its C fields.
+		underlying := g.underlying_alias_type(layout_type)
+		if underlying != layout_type && !fastc_is_pointer_type(underlying) {
+			underlying_name := flat.source_type_name(underlying)
+			if underlying_name in g.struct_fields
+				|| g.declared_kinds[g.semantic_type_key(underlying)] in [.struct_, .union_] {
+				layout_type = underlying
+			} else if underlying_name.starts_with('struct ')
+				|| fastc_source_type_key_exists(g.declared_types, '#Cstruct#${underlying_name}')
+				|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${underlying_name}') {
+				is_c_struct_literal = true
+			}
+		}
 	}
 	// `Alias{}` where `Alias = u8` (a primitive alias, e.g. ast.EmptyExpr) has no fields, so
 	// the "struct literal" is really the primitive's zero value; C rejects the empty `{}`.
