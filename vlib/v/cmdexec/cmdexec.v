@@ -308,6 +308,11 @@ fn run_in_mode_with_env_timed(program string, args []string, work_folder string,
 		process.set_redirect_stdio()
 	}
 	process.run()
+	// A tool that is cancelled ends its bounded runs, which its own signal does not reach.
+	bounded_slot := if timeout_ms > 0 { track_bounded_run(process) } else { -1 }
+	defer {
+		untrack_bounded_run(bounded_slot)
+	}
 	mut output := strings.new_builder(1024)
 	mut timed_out := false
 	mut stdout_done := false
