@@ -5955,7 +5955,15 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 					length := fastc_fixed_array_length_id(array_type) or { return none }
 					marker := '{.init='
 					marker_index := rendered_expression.index(marker) or { return none }
-					value := rendered_expression[marker_index + marker.len..rendered_expression.len - 1]
+					mut value := rendered_expression[marker_index + marker.len..rendered_expression.len - 1]
+					if value.len > 1 && value[0] == `.` && value[1..].bytes().all(fastc_identifier_byte(it)) {
+						// `[N]Enum{init: .member}` names a member of the element enum.
+						if element := fastc_fixed_array_element_type(array_type) {
+							if g.underlying_enum_type_key(g.semantic_type_key(element)) != none {
+								value = '${flat.source_type_name(fastc_trim_pointer_type(element))}__${value[1..]}'
+							}
+						}
+					}
 					source := if !g.c_global_static_initializer
 						&& !g.global_initializer_is_constant(value, false) {
 						// Clang cannot emit C range designators with runtime values.
