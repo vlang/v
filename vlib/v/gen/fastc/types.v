@@ -1051,6 +1051,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if signature := g.functions[function_key] {
 			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
 		}
+		// A specialized generic method (`d.fill_mono_Reader(...)`) is registered on demand.
+		if signature := g.mono_functions[function_key] {
+			if signature.return_type != 0 {
+				return signature.return_type
+			}
+		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
 			if field.is_function && field.fn_return_type != 0 {
 				return field.fn_return_type
