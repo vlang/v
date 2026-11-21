@@ -5538,9 +5538,13 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				old_range_hi := t.item_range_hi
 				t.item_range_lo = range_lo
 				t.item_range_hi = i
-				scsw.restart()
+				if sc_profile {
+					scsw.restart()
+				}
 				t.transform_fn_body(i)
-				lit_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+				if sc_profile {
+					lit_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+				}
 				t.item_range_lo = old_range_lo
 				t.item_range_hi = old_range_hi
 			} else {
@@ -5606,13 +5610,21 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				}
 			}
 		} else if kind_id == 65 {
-			scsw.restart()
+			if sc_profile {
+				scsw.restart()
+			}
 			t.transform_const_decl(node)
-			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+			if sc_profile {
+				const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+			}
 		} else if kind_id == 64 {
-			scsw.restart()
+			if sc_profile {
+				scsw.restart()
+			}
 			t.transform_global_decl(node)
-			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+			if sc_profile {
+				const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+			}
 		}
 	}
 	$if prealloc {
@@ -7455,6 +7467,11 @@ fn (t &Transformer) should_transform_fn_in_module(node flat.Node, module_name st
 	if !t.has_used_fn_filter() {
 		return true
 	}
+	// Most declarations asked about are used: answer that from the used set
+	// before scanning the name for the spellings that are always lowered.
+	if t.used_fn_contains_in_module(node.value_text(), module_name) {
+		return true
+	}
 	if transform_is_generated_fn_after_markused(node.value_text()) {
 		return true
 	}
@@ -7467,7 +7484,7 @@ fn (t &Transformer) should_transform_fn_in_module(node flat.Node, module_name st
 			return true
 		}
 	}
-	return t.used_fn_contains_in_module(node.value_text(), module_name)
+	return false
 }
 
 @[direct_array_access]
