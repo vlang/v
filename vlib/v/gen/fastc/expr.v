@@ -2457,6 +2457,10 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 			g.consume_monomorphized_type_arguments()
 		}
 	}
+	if !monomorphized_name && g.selfhost && g.tok == .name && previous_token == .dot
+		&& g.specialized_method_drops_type_arguments(expression_tokens) {
+		g.consume_monomorphized_type_arguments()
+	}
 	if stored_tok == .name && previous_token != .dot && !offsetof_member {
 		// A name after `.` is a field or method: never substitute a local
 		// (a mut parameter's deref form) that happens to share its name.
@@ -2904,11 +2908,17 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			} else {
 				g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
 			}
+			mut specialized_call := false
 			if g.selfhost && g.lit in g.generic_method_names {
 				if mono := g.queue_expression_monomorphization(expression_tokens) {
 					piece = mono
 					expression_tokens[expression_tokens.len - 1].lit = mono
+					specialized_call = true
 				}
+			}
+			if !specialized_call && g.selfhost && previous_token == .dot
+				&& g.specialized_method_drops_type_arguments(expression_tokens) {
+				g.consume_monomorphized_type_arguments()
 			}
 			result.write_string(piece)
 			previous_token = .name
@@ -6963,6 +6973,44 @@ fn (g &Parser) name_starts_assignment_statement() bool {
 		return false
 	}
 	return false
+}
+
+// specialized_method_drops_type_arguments reports whether `receiver.method[...](` names a
+// method that an instance copy has already specialized (`fn (d Decoder[E]) decode[E]()` on
+// `Decoder_mono_BigEndian`), so the explicit type arguments repeat the receiver's and are dropped.
+fn (g &Parser) specialized_method_drops_type_arguments(tokens []FastcExpressionToken) bool {
+	mut look := g.s
+	if look.scan() != .lsbr || tokens.len < 3 || tokens[tokens.len - 2].tok != .dot {
+		return false
+	}
+	// Only a call (`x.m[T](...)`), not an index (`x.items[1]`).
+	mut depth := 1
+	for depth > 0 {
+		tok := look.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+		}
+	}
+	if look.scan() != .lpar {
+		return false
+	}
+	dot_index := tokens.len - 2
+	receiver_start := fastc_method_receiver_start(tokens, dot_index)
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or {
+		return false
+	}
+	receiver_base := flat.source_type_name(fastc_trim_pointer_type(g.underlying_alias_type(fastc_normalize_inferred_type(receiver_type))))
+	if !receiver_base.contains('_mono_') {
+		return false
+	}
+	key, _ := g.resolve_method(receiver_type, tokens.last().lit)
+	return key in g.functions && key !in g.generic_method_sources
+		&& '${receiver_base}.${tokens.last().lit}' !in g.generic_method_sources
 }
 
 // consume_monomorphized_type_arguments drops the already-specialized source type argument list.

@@ -6,16 +6,16 @@ import v.scanner
 import v.flat
 import v.token
 
-// Generic structs are monomorphized at the source level across every project module (and the
-// entry module, which may live in vlib): each concrete `Box[int]`, `ds.Queue[Message]` or
-// `Box[[]ds.Item]` gets a copy of the struct and of its methods in the defining module, named
-// `Box_mono_<arguments>`, and the reference is renamed to it. Arguments from other modules are
-// spelled in the defining module by their C names (`other__Item`); `main` types keep their
-// plain names, as builtin types do. Copies may reference further instances, so the pass
-// repeats until no concrete reference is left. References that still use a type parameter
-// stay generic: on-demand instances of generic functions map them to these copies through
-// fastc_struct_instance_for_arguments, and generic structs left without a copy keep FastC's
-// erased layout.
+// Generic structs and generic sum types are monomorphized at the source level across every project
+// module (and the entry module, which may live in vlib): each concrete `Box[int]`,
+// `ds.Queue[Message]` or `Box[[]ds.Item]` gets a copy of the struct and of its methods in the
+// defining module, named `Box_mono_<arguments>`, and the reference is renamed to it. Arguments from
+// other modules are spelled in the defining module by their C names (`other__Item`); `main` types
+// keep their plain names, as builtin types do. Copies may reference further instances, so the pass
+// repeats until no concrete reference is left. References that still use a type parameter stay
+// generic: on-demand instances of generic functions map them to these copies through
+// fastc_struct_instance_for_arguments, and generic structs left without a copy keep FastC's erased
+// layout.
 
 const fastc_struct_mono_max_rounds = 24
 
@@ -284,6 +284,40 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 				tok = s.scan()
 				continue
 			}
+			if kind == .key_type && tok == .lsbr {
+				// A generic sum type (`type Data[T] = Small[T] | Big[T]`) is copied like a
+				// generic struct; its variants become instances through the copy.
+				bracket_start := s.pos
+				params, next := fastc_struct_mono_read_params(mut s)
+				tok = next
+				if tok != .rsbr || params.len == 0 {
+					previous = tok
+					continue
+				}
+				bracket_end := s.offset
+				tok = s.scan()
+				if tok != .assign {
+					previous = tok
+					continue
+				}
+				decl_end, after := fastc_struct_mono_type_decl_end(mut s, source)
+				m.generics[fastc_struct_mono_key(module_name, name)] = FastcStructGeneric{
+					module_name:   module_name
+					name:          name
+					type_params:   params
+					source_index:  index
+					start:         decl_start
+					end:           decl_end
+					name_start:    name_start
+					name_end:      name_end
+					bracket_start: bracket_start
+					bracket_end:   bracket_end
+				}
+				previous = .name
+				previous_pos = s.pos
+				tok = after
+				continue
+			}
 			previous = .name
 			continue
 		}
@@ -313,6 +347,42 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 	for method in pending_methods {
 		m.methods[method.struct_key] << method
 	}
+}
+
+// fastc_struct_mono_type_decl_end reads the right side of a type declaration with the scanner
+// just after `=`, and returns the offset after its last token and the token that follows it. The
+// declaration ends at a line break that no `|` continues.
+fn fastc_struct_mono_type_decl_end(mut s scanner.Scanner, source string) (int, token.Token) {
+	mut depth := 0
+	mut end := s.offset
+	mut previous := token.Token.assign
+	mut tok := s.scan()
+	for tok != .eof {
+		if depth == 0 && tok != .pipe && previous !in [.pipe, .assign] {
+			if tok == .semicolon || source[end..s.pos].contains('\n') {
+				if tok == .semicolon {
+					mut look := s
+					if look.scan() == .pipe {
+						previous = tok
+						tok = s.scan()
+						continue
+					}
+				}
+				break
+			}
+		}
+		if tok in [.lsbr, .lpar, .lcbr] {
+			depth++
+		} else if tok in [.rsbr, .rpar, .rcbr] {
+			depth--
+		}
+		if tok != .semicolon {
+			end = s.offset
+		}
+		previous = tok
+		tok = s.scan()
+	}
+	return end, tok
 }
 
 // reindex_file refreshes the offsets of the generic declarations of an edited source.
@@ -887,11 +957,46 @@ fn (m &FastcStructMono) render_method(method FastcStructGenericMethod, instance 
 		replacement: instance.name
 	}
 	// A method that lists a receiver parameter among its own (`read_bits[E, T]` on
-	// `BitReader[E]`) keeps it generic; its calls pass the same type explicitly.
+	// `BitReader[E]`) keeps it generic; its calls pass the same type explicitly. One that only
+	// repeats the receiver's parameters (`fn (d Data[T]) slice[T]()`) means the same types, so
+	// the copy substitutes them and drops its own list.
 	own_params := fastc_struct_mono_method_own_params(source_file.source, method)
+	if own_params.len > 0 && own_params == method.type_params {
+		if own_start, own_end := fastc_struct_mono_method_own_params_span(source_file.source,
+			method)
+		{
+			edits << FastcSourceEdit{
+				start:       own_start - method.start
+				end:         own_end - method.start
+				replacement: ''
+			}
+			return m.render_copy(source_file, method.start, method.end, method.type_params,
+				instance, method.receiver_start, method.receiver_end, mut edits)
+		}
+	}
 	type_params := method.type_params.map(if it in own_params { '' } else { it })
 	return m.render_copy(source_file, method.start, method.end, type_params, instance,
 		method.receiver_start, method.receiver_end, mut edits)
+}
+
+// fastc_struct_mono_method_own_params_span returns the source offsets of the `[...]` a generic
+// struct's method declares after its name.
+fn fastc_struct_mono_method_own_params_span(source string, method FastcStructGenericMethod) ?(int, int) {
+	rest := source[method.receiver_end..method.end]
+	close := rest.index(')') or { return none }
+	mut i := close + 1
+	for i < rest.len && rest[i] in [` `, `\t`] {
+		i++
+	}
+	name_start := i
+	for i < rest.len && (rest[i].is_letter() || rest[i].is_digit() || rest[i] == `_`) {
+		i++
+	}
+	if i == name_start || i >= rest.len || rest[i] != `[` {
+		return none
+	}
+	end := rest.index_after(']', i) or { return none }
+	return method.receiver_end + i, method.receiver_end + end + 1
 }
 
 // fastc_struct_mono_method_own_params returns the type parameters a generic struct's method
@@ -926,10 +1031,13 @@ fn (m &FastcStructMono) render_copy(source_file FastcSourceFile, start int, end 
 	s.init(file, text)
 	low := skip_start - start
 	high := skip_end - start
+	// The caller's edits (the renamed header, a dropped parameter list) are not substituted.
+	preset := edits.clone()
 	mut previous := token.Token.unknown
 	mut tok := s.scan()
 	for tok != .eof {
-		if tok == .name && previous != .dot && !(s.pos >= low && s.pos < high) {
+		if tok == .name && previous != .dot && !(s.pos >= low && s.pos < high)
+			&& !preset.any(s.pos >= it.start && s.pos < it.end) {
 			if i := substitutions[s.lit] {
 				mut look := s
 				if look.scan() == .dot && look.scan() == .name && look.lit == 'name'
