@@ -5845,6 +5845,18 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 					if method_expression := g.render_method_call_expression(tokens, nested_array.source) {
 						nested_source = method_expression.source
 						nested_type = method_expression.typ
+					} else if method_expression := g.render_method_call_expression(tokens,
+						rendered_expression)
+					{
+						// A method call on an indexed receiver (`2.0 - a[i].edge.top()`) is
+						// found only in the raw spelling; lower it first, then its index.
+						nested_source = method_expression.source
+						nested_type = method_expression.typ
+						if array_expression := g.render_nested_array_access_expression(tokens,
+							method_expression.source)
+						{
+							nested_source = array_expression.source
+						}
 					}
 				}
 				if has_dot {
