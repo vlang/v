@@ -932,6 +932,25 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	mut previous_token := token.Token.name
 	mut previous_lit := ''
 	mut paren_depth := input_paren_depth
+	if expression_tokens.len == 1 && expression_tokens[0].tok == .name {
+		if local := g.locals[expression_tokens[0].lit] {
+			// An option local already narrowed to its value (`b := button or { return }` after
+			// `if button == none {...} else if ...`) cannot fail; its `or` block is dead.
+			if (local.smartcast_origin_type != 0 || local.c_name != '') && local.typ != 0
+				&& local.option_value_type == 0
+				&& local.typ !in [fastc_type_option, fastc_type_result]
+				&& fastc_typed_option_payload(local.typ) == none {
+				g.next()
+				g.skip_balanced(.lcbr, .rcbr)!
+				g.last_expression_type = local.typ
+				return FastcLoweredOrExpression{
+					previous_token: .name
+					previous_lit:   expression_tokens[0].lit
+					paren_depth:    paren_depth
+				}
+			}
+		}
+	}
 	or_expression_is_statement := g.expression_tokens_are_statement(expression_tokens)
 	or_return_types := g.multi_return_types_for_expression(expression_tokens)
 	mut wrapper_parens := 0
