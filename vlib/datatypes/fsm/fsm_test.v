@@ -66,6 +66,22 @@ fn test_simple_loop() {
 	assert receiver.data[10] == 'on_state_entry: B -> A'
 }
 
+fn test_run_rejects_unknown_destination() {
+	mut receiver := MyReceiver{}
+	mut s := fsm.new()
+	s.add_state('A', on_state_entry, on_state_run, on_state_exit)
+	s.add_transition('A', 'missing', condition_transition)
+
+	s.run(&receiver) or {
+		current := s.get_state()
+		assert err.msg() == 'unknown state: missing'
+		assert current == 'A'
+		assert receiver.data.len == 0
+		return
+	}
+	assert false, 'expected an error for the unknown destination'
+}
+
 // Helper functions
 
 fn on_state_entry(mut receiver MyReceiver, from string, to string) {

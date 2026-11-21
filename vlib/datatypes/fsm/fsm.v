@@ -78,13 +78,14 @@ pub fn (mut s StateMachine) add_transition(from string, to string, condition_han
 }
 
 // run runs the state machine. It takes a `receiver` argument that is passed to the event handlers.
+// A selected transition to an unknown state returns an error before running any state handlers.
 pub fn (mut s StateMachine) run(receiver voidptr) ! {
 	from_state := s.current_state
 	mut to_state := s.current_state
 	if transitions := s.transitions[s.current_state] {
 		for transition in transitions {
 			if transition.condition_handler(receiver, from_state, transition.to) {
-				s.change_state(receiver, transition.to)
+				s.change_state(receiver, transition.to)!
 				to_state = transition.to
 				break
 			}
@@ -96,7 +97,10 @@ pub fn (mut s StateMachine) run(receiver voidptr) ! {
 	s.states[s.current_state].run_handler(receiver, from_state, to_state)
 }
 
-fn (mut s StateMachine) change_state(receiver voidptr, newstate string) {
+fn (mut s StateMachine) change_state(receiver voidptr, newstate string) ! {
+	if newstate !in s.states {
+		return error('unknown state: ${newstate}')
+	}
 	s.states[s.current_state].exit_handler(receiver, s.current_state, newstate)
 	s.states[newstate].entry_handler(receiver, s.current_state, newstate)
 	s.current_state = newstate
