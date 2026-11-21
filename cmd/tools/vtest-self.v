@@ -378,6 +378,7 @@ const skip_on_ubuntu_musl = [
 const skip_dirs_on_ubuntu_musl = [
 	'vlib/sokol/audio', // requires musl-native ALSA headers
 	'vlib/sokol/gfx', // sokol_app.h requires musl-native OpenGL and X11 headers
+	'vlib/sokol/sapp', // the sapp module includes sokol_app.h, which needs X11/Xlib.h
 	'vlib/gg/canvas',
 ]
 
