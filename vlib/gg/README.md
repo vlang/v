@@ -647,7 +647,8 @@ backend does not expose `gg`'s drawing calls.
   side-by-side viewports. Headset tracking belongs to your XR runtime.
 
 Starter examples are `examples/gg/anim_base.v`, `procedural_base.v`,
-`game_base.v`, `advanced_base.v` and `tooling_base.v`. The interpolation math
+`game_base.v`, `advanced_base.v`, `tooling_base.v` and `extended_base.v`.
+The interpolation math
 used by the addons is in `vlib/math`: `interp`, `ema`, `gradient`, `linspace`,
 `arange` and `activation`. Custom GPU shader slots and full post-processing
 passes remain outside `gg`; use `gg/render` and `RenderTexture2D` directly.
