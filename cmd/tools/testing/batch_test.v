@@ -57,6 +57,8 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 		'g_test.c.v':    'module util\nfn test_g() {}\n'
 		'h_test.v':      'module util\nfn test_h() { os.setenv("X", "1", true) }\n'
 		'global_test.v': 'module util\nfn test_global() {}\n'
+		'i_test.v':      'module main\nfn test_i() {}\n'
+		'j_test.v':      '#flag -lm\nfn test_j() {}\n'
 	}
 	mut paths := []string{}
 	for name, source in files {
@@ -71,8 +73,12 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	}
 	units := ts.test_units(paths)
 	batch := '${paths[0]}\n${paths[1]}'
+	// `main` tests, with or without a module clause, share batches of their own; a
+	// file with C flags builds alone.
+	main_batch := '${paths[4]}\n${paths[9]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
-	assert units == [batch, paths[2], paths[3], paths[4], paths[5], paths[6], paths[7], paths[8]]
+	assert units == [batch, paths[2], paths[3], main_batch, paths[5], paths[6], paths[7], paths[8],
+		paths[10]]
 	ts.exec_mode = .compile
 	assert ts.test_units(paths) == paths
 	ts.exec_mode = .compile_and_run

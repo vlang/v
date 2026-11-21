@@ -8,14 +8,21 @@ import sync.pool
 import v.cmdexec
 
 // Most of the time of a module's internal test (a `_test.v` file that declares the
-// module it tests) is the compilation of the whole module. The runner builds up to
-// `VTEST_BATCH_SIZE` such files of one directory and module into one binary, and
-// runs it once. A batch that fails to compile or to run is run again file by file,
+// module it tests) is the compilation of the whole module, and a small `main` test
+// pays the fixed cost of a whole program (the runtime, the C compilation, the link).
+// The runner builds up to `VTEST_BATCH_SIZE` such files of one directory and module
+// into one binary, and runs it once. A batch that fails to compile or to run is run again file by file,
 // so a failure is reported exactly as without batching. `VTEST_NO_BATCH=1` turns
 // batching off.
 const test_batch_size_env = 'VTEST_BATCH_SIZE'
 const test_batch_disable_env = 'VTEST_NO_BATCH'
 const default_test_batch_size = 16
+// A batch compiles several programs as one, and a combination can need far more
+// memory than any of its files alone (several empty interfaces in one program grow
+// cgen's memory steeply). It gets a limit of its own, so such a batch fails early
+// and its files run one by one under the usual limit.
+const test_batch_memory_limit_env = 'VTEST_BATCH_MEMORY_LIMIT'
+const default_test_batch_memory_limit_mib = 4096
 
 // A file that uses one of these is run on its own: test directives configure one
 // file, suite hooks run once per binary, and the rest change or depend on state of
@@ -24,6 +31,12 @@ const default_test_batch_size = 16
 // files collides by name.
 const test_batch_excluded_markers = ['// vtest', '// v test', 'fn testsuite_begin', 'fn testsuite_end',
 	'os.executable(', 'os.setenv(', 'os.unsetenv(', 'os.chdir(', 'os.args', 'arguments()', 'exit(']
+
+// A `main` test is a program of its own. These change how all of a program is
+// compiled or linked (C flags and headers, exported or global symbols), so a file
+// with one of them is not built together with other programs.
+const test_batch_main_excluded_markers = ['#flag', '#include', '#pkgconfig', '@[export', '__global',
+	'@[noinit]', '@[console]', '@[windows_stdcall]']
 
 struct TestBatchCandidate {
 	key   string
@@ -35,6 +48,11 @@ struct TestBatch {
 mut:
 	files []string
 	names map[string]bool
+}
+
+fn test_batch_memory_limit_mib() int {
+	value := os.getenv(test_batch_memory_limit_env).int()
+	return if value > 0 { value } else { default_test_batch_memory_limit_mib }
 }
 
 fn test_batch_size() int {
@@ -142,9 +160,14 @@ fn test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidat
 			return none
 		}
 	}
-	module_name := test_file_module(source)
+	mut module_name := test_file_module(source)
 	if module_name in ['', 'main'] {
-		return none
+		for marker in test_batch_main_excluded_markers {
+			if source.contains(marker) {
+				return none
+			}
+		}
+		module_name = 'main'
 	}
 	return TestBatchCandidate{
 		key:   os.dir(real_file) + '\n' + module_name
@@ -238,6 +261,28 @@ fn test_leading_ident(text string) string {
 	return text[..end]
 }
 
+// test_batch_output_head returns the first lines of `output` that are not notices
+// or warnings, to name the failure of a batch.
+fn test_batch_output_head(output string) string {
+	mut lines := []string{}
+	mut skipping := false
+	for line in output.split_into_lines() {
+		if line.contains(': notice: ') || line.contains(': warning: ') {
+			skipping = true
+			continue
+		}
+		if skipping && (line.starts_with(' ') || line.trim_space() == '') {
+			continue
+		}
+		skipping = false
+		lines << line
+		if lines.len == 12 {
+			break
+		}
+	}
+	return lines.join('\n')
+}
+
 // test_label is how the result line of `file` names it.
 fn (ts &TestSession) test_label(file string) string {
 	mut relative_file := file
@@ -258,11 +303,18 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 	folder := os.join_path(ts.vtmp_dir, test_id)
 	binary := os.join_path(folder, 'test_batch' + $if windows { '.exe' } $else { '' })
 	mut passed := false
+	// What failed, for VTEST_SHOW_CMD=1: a batch that only fails together points to
+	// a compiler bug or to state that the tests share.
+	mut failure := 'its folder could not be created'
 	mut compile_duration := time.Duration(0)
 	mut run_duration := time.Duration(0)
 	if _ := os.mkdir_all(folder) {
 		mut argv := ['-skip-running']
-		argv << (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
+		vargs := (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
+		argv << vargs
+		if !vargs.any(it in ['-memory-limit', '-no-memory-limit']) {
+			argv << ['-memory-limit', test_batch_memory_limit_mib().str()]
+		}
 		argv << ['-o', binary]
 		argv << abs_files
 		ts.append_message(.compile_begin, cmdexec.display(ts.vexe, argv), mtc)
@@ -286,6 +338,9 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 			run_duration = run_sw.elapsed()
 			ts.append_message_with_duration(.cmd_end, run.output, run_duration, mtc)
 			passed = run.exit_code == 0
+			failure = 'it exited with ${run.exit_code}:\n${test_batch_output_head(run.output)}'
+		} else {
+			failure = 'it did not compile:\n${test_batch_output_head(compiled.output)}'
 		}
 		if ts.rm_binaries {
 			os.rmdir_all(folder) or {}
@@ -298,7 +353,8 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 	}
 	if !passed {
 		if show_cmd {
-			ts.append_message(.info, '> the batch of ${files.len} test files failed; running them one by one',
+			labels := abs_files.map(ts.test_label(it)).join(' ')
+			ts.append_message(.info, '> the batch of ${files.len} test files failed; running them one by one: ${labels}\n> ${failure}',
 				mtc)
 		}
 		for k, file in files {
