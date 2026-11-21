@@ -15,6 +15,19 @@ struct ParamPrescanBorrowSnapshot {
 }
 
 fn param_prescan_borrow_snapshot(path string, parallel bool) ParamPrescanBorrowSnapshot {
+	// The prescan runs on helper threads only with at least two jobs, and a test runner
+	// can set `VJOBS=1` (as the V3 unit test job does).
+	old_vjobs := os.getenv_opt('VJOBS')
+	if parallel && os.getenv('VJOBS').int() < 2 {
+		os.setenv('VJOBS', '2', true)
+	}
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
 	mut p := parser.Parser.new(pref.new_preferences())
 	mut a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
