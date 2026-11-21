@@ -785,6 +785,21 @@ struct InterfaceImplMapping {
 	target_id int
 }
 
+// interface_impl_is_open_generic reports whether the implementer `name_id` is a
+// generic struct or interface named without type arguments.
+fn (t &Transformer) interface_impl_is_open_generic(name_id u32) bool {
+	if flat.source_type_shape(name_id).has(.bracketed) {
+		return false
+	}
+	for candidate_id in [name_id, t.tc.qualify_type_name(name_id)] {
+		if (t.tc.struct_generic_params[candidate_id] or { []u32{} }).len > 0
+			|| (t.tc.interface_generic_params[candidate_id] or { []u32{} }).len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) interface_conversion_impl_mappings(source_iface_id u32, target_iface_id u32) []InterfaceImplMapping {
 	mut result := []InterfaceImplMapping{}
 	if source_iface_id == u32(0) || target_iface_id == u32(0) || isnil(t.tc) {
@@ -793,6 +808,11 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface_id u32, t
 	source_index := t.interface_impl_index_for_transform(source_iface_id)
 	target_index := t.interface_impl_index_for_transform(target_iface_id)
 	for impl in source_index.names.ids {
+		// A generic struct without its type arguments (`arrays.ReverseIterator`) has
+		// no values to convert, and no C type: only its instances implement interfaces.
+		if t.interface_impl_is_open_generic(impl) {
+			continue
+		}
 		source_id := source_index.ids[impl] or { continue }
 		target_id := target_index.ids[impl] or {
 			// Alias spellings can differ between equivalent interface snapshots.

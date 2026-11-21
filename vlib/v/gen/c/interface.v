@@ -357,7 +357,11 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 	for registry_name_id, variants in g.tc.sum_types.ids {
 		name_id := registry_name_id
 		short_id := flat.source_type_syntax(name_id).unqualified()
-		if short_id != 0 && !g.tc.sum_types.contains(short_id) {
+		// A type the program declares with the short name (`interface Any {}` besides
+		// `json2.Any`) is what the short name means.
+		if short_id != 0 && !g.tc.sum_types.contains(short_id) && short_id != name_id
+			&& short_id !in g.tc.structs && !g.tc.interface_names[short_id]
+			&& short_id !in g.tc.enum_names && !g.tc.type_aliases.contains(short_id) {
 			g.sum_name_lookup[short_id] = if short_id in g.sum_name_lookup {
 				u32(0)
 			} else {
