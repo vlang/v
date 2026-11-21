@@ -4913,7 +4913,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if callee.kind == .ident && callee.value !in tc.a.disabled_fns
-			&& tc.source_declares_bodyless_function(callee.value) {
+			&& tc.source_declares_bodyless_function(callee.value)
+			&& !tc.name_has_local_binding(callee.value) {
 			tc.record_error_at(.unknown_fn, 'cannot call a function that does not have a body', id, node.pos)
 			return
 		}
@@ -9682,6 +9683,18 @@ fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
 		return false
 	}
 	return tc.smartcast_type(tc.a.child(fn_node, 0)) != none
+}
+
+// name_has_local_binding reports whether `name` is bound in the current function's
+// scope: a local variable or parameter there shadows a function of that name.
+fn (tc &TypeChecker) name_has_local_binding(name string) bool {
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	if _ := tc.cur_scope.lookup(name) {
+		return true
+	}
+	return false
 }
 
 @[direct_array_access]

@@ -29,3 +29,14 @@ fn test_the_function_itself_stays_variadic() {
 	f := join_parts
 	assert f('x') == 'fn:x'
 }
+
+// A function declared without a body cannot be called, but a local of the same
+// name can.
+fn bodyless_target(x int) int
+
+fn test_local_closure_shadows_a_bodyless_function() {
+	bodyless_target := fn (x int) int {
+		return x * 2
+	}
+	assert bodyless_target(21) == 42
+}
