@@ -5575,6 +5575,14 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		}
 	}
+	$if prealloc {
+		// Nothing reads these per-node tables after the work items are made:
+		// drop their pages before the parallel phase instead of after it.
+		unsafe {
+			t.fn_scan_costs.free()
+			t.fn_escape_scan_flags.free()
+		}
+	}
 	t.fn_scan_costs = []i32{}
 	t.fn_escape_scan_flags = []u8{}
 	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, expansion est ${est_ms:.2f} ms')

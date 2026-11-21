@@ -4157,6 +4157,11 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 		|| !t.parallel_enabled || t.var_types.len > 0 || t.smartcast_stack.len > 0 {
 		return BorrowPrescan{}
 	}
+	t.tc.freeze_type_cache_for_forks()
+	// The result arrays, the queue and the helper forks are read until the fixed
+	// point has finished: they live in an arena that is released with the
+	// helpers' own (see BorrowPrescan.release), not in the caller's.
+	master_scope := transform_worker_scope_begin(true)
 	mut results := []BorrowBodyResult{len: candidates.len}
 	mut provenance := [][]bool{len: items.len}
 	n_blocks := (items.len + borrow_prescan_block_items - 1) / borrow_prescan_block_items
@@ -4165,7 +4170,6 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 		queue <- block
 	}
 	queue.close()
-	t.tc.freeze_type_cache_for_forks()
 	mut args := []BorrowPrescanArgs{cap: n_jobs}
 	for _ in 0 .. n_jobs {
 		wtc := t.tc.fork_for_parallel_transform(t.a)
@@ -4204,6 +4208,8 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 	for ci in first_helper .. n_jobs {
 		threads << spawn borrow_prescan_thread(unsafe { voidptr(&args[ci]) })
 	}
+	// What the caller builds from here on outlives the prescan.
+	transform_worker_scope_leave(master_scope)
 	if scan_closures {
 		sw := time.new_stopwatch()
 		t.exclusive_closure_return_fns = map[string]bool{}
@@ -4214,11 +4220,15 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 	}
 	threads.wait()
 	t.tc.unfreeze_type_cache_after_forks()
-	mut scopes := []voidptr{cap: n_jobs}
+	mut scopes := []voidptr{cap: n_jobs + 1}
 	for arg in args {
 		if arg.scope != unsafe { nil } {
 			scopes << arg.scope
 		}
+	}
+	// Last: the helpers' arenas are listed in an array of this one.
+	if master_scope != unsafe { nil } {
+		scopes << master_scope
 	}
 	return BorrowPrescan{
 		results:    results

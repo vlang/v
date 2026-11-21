@@ -237,6 +237,17 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	sw.restart()
 	t.prepare_call_provenance_borrow_params(summarised, items, prescanned.provenance)
 	prescanned.release()
+	$if prealloc {
+		// The work lists of a compiler build are megabytes that the transform
+		// stage would otherwise hold in the preparation arena until it ends.
+		unsafe {
+			candidates.free()
+			items.free()
+			dependents.free()
+			remaining.free()
+			decl_items.free()
+		}
+	}
 	t.prepare_times.provenance = f64(sw.elapsed().microseconds()) / 1000.0
 }
 
