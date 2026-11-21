@@ -119,6 +119,10 @@ fn test_parallel_c_generation_keeps_stateless_poll_interface() {
 	assert safe
 	assert header.contains('#include "${helper}"')
 	assert !header.contains('v_os_fd_poll_revents')
+	// A Windows path can separate its parts with `\`, as `D:\v\vlib\os/fd_poll.h`.
+	windows_spelling := prefix.replace(helper, helper.replace('/', '\\'))
+	_, windows_safe := v3_parallel_c_declaration_header(windows_spelling, @VEXEROOT)
+	assert windows_safe
 }
 
 fn test_parallel_c_generation_keeps_shipped_headers_opaque() {

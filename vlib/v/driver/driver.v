@@ -3221,7 +3221,9 @@ fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool) 
 			// Their contracts are explicit; their bodies are never inspected here.
 			guard := '"' + c_include_path(os.join_path(vroot, 'vlib', 'builtin', 'track_heap_checks.h')) + '"'
 			poll_interface := '"' + c_include_path(os.join_path(vroot, 'vlib', 'os', 'fd_poll.h')) + '"'
-			if !argument.starts_with('<') && argument != guard && argument != poll_interface {
+			// A Windows path can name them with `\` as well (`D:\v\vlib\os/fd_poll.h`).
+			normalized := argument.replace('\\', '/')
+			if !argument.starts_with('<') && normalized != guard && normalized != poll_interface {
 				safe = false
 			}
 		}
