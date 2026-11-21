@@ -297,6 +297,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	mut fixed_array_copies := []string{}
 	mut has_applied_defaults := false
 	mut update_source := ''
+	mut update_is_pointer := true
 	mut array_init_tokens := []FastcExpressionToken{}
 	mut has_array_init := false
 	mut index := open + 1
@@ -327,9 +328,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			if value_start == index {
 				return none
 			}
-			update_source = g.render_call_argument_expression(tokens[value_start..index], c_type) or {
-				return none
-			}
+			// `&Config{...c}` may update from a value as well as from a reference.
+			update_type := g.infer_expression_type(tokens[value_start..index]) or { u32(0) }
+			update_is_pointer = update_type == 0 || fastc_is_pointer_type(update_type)
+			update_source = g.render_call_argument_expression(tokens[value_start..index], if update_is_pointer {
+				c_type
+			} else {
+				fastc_trim_pointer_type(c_type)
+			}) or { return none }
 			continue
 		}
 		if tokens[index].tok != .name {
@@ -604,8 +610,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			base_type := flat.source_type_name(fastc_trim_pointer_type(c_type))
 			copy_statements := fixed_array_copies.join(' ')
+			update_value := if update_is_pointer {
+				'*(${update_source})'
+			} else {
+				'(${update_source})'
+			}
 			return FastcRenderedExpression{
-				source: '({ ${base_type} __vf_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${flat.source_type_name(c_type)})v_fastc_heap_copy(&__vf_struct_update, sizeof(${base_type})); })'
+				source: '({ ${base_type} __vf_struct_update = ${update_value}; ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${flat.source_type_name(c_type)})v_fastc_heap_copy(&__vf_struct_update, sizeof(${base_type})); })'
 				typ:    c_type
 			}
 		}
