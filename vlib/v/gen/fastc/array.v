@@ -342,6 +342,15 @@ fn (g &Parser) fixed_array_uses_raw_storage(tokens []FastcExpressionToken) bool 
 		if tokens.len == 3 && tokens[0].tok == .name && tokens[0].lit in g.imports {
 			return fastc_global_key(g.imports[tokens[0].lit], tokens[2].lit) in g.globals
 		}
+		// A field typed by an alias of a fixed array (`m Mat` with `type Mat = [16]f32`) is
+		// stored as the fixed-array struct.
+		if owner_type := g.infer_expression_type(tokens[..tokens.len - 2]) {
+			if field := g.struct_field_metadata(owner_type, tokens.last().lit) {
+				if g.declared_kinds[g.semantic_type_key(field.typ)] == .alias_ {
+					return false
+				}
+			}
+		}
 		return true
 	}
 	if tokens.len >= 4 && tokens.last().tok == .rsbr {
