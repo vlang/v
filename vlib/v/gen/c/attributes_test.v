@@ -125,7 +125,10 @@ fn remember_caller_environment() { C.puts(c'constructor') }
 fn release_caller_environment() { C.puts(c'destructor') }
 pub fn run() { C.puts(c'main') }
 ")!
-	generated := cmdexec.run(@VEXE, ['-new-compiler', '-gc', 'none', '-o', c_path, source_path])
+	// Name a GCC-style compiler: `-cc msvc`, which the MSVC CI jobs pass in VFLAGS,
+	// writes no lifecycle attributes.
+	generated := cmdexec.run(@VEXE, ['-new-compiler', '-gc', 'none', '-cc', 'gcc', '-o', c_path,
+		source_path])
 	assert generated.exit_code == 0, generated.output
 	source := os.read_file(c_path)!
 	assert source.contains('__attribute__((constructor)) void policyhost__remember_caller_environment(void) {')
