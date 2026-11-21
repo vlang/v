@@ -30,6 +30,9 @@ struct FastcStructGeneric {
 	name_end      int
 	bracket_start int // offset of `[`
 	bracket_end   int // offset just past `]`
+	// library: declared in a vlib module that keeps its erased layout and methods for its own
+	// code; only the instances project code names are copied.
+	library bool
 }
 
 struct FastcStructGenericMethod {
@@ -87,6 +90,12 @@ mut:
 	pending            []string                        // instances whose copies are not emitted yet
 	functions          map[string]FastcStructGenericFn // `module.name` -> generic function
 	function_instances map[string]bool                 // function key + `|` + arguments, already scanned
+	// vlib modules are indexed when project code first names one of their generics.
+	library_files   map[string][]int // module -> its sources outside the project
+	indexed_modules map[string]bool
+	// library_start is the length of a vlib source before copies were appended to it; only
+	// the copies are scanned for further instances.
+	library_start map[int]int
 }
 
 fn fastc_struct_mono_module(module_name string) string {
@@ -113,11 +122,18 @@ fn fastc_monomorphize_generic_structs(sources []FastcSourceFile, prefs &pref.Pre
 		sources: sources.clone()
 	}
 	mut any_generic := false
-	for source_file in sources {
+	for i, source_file in sources {
 		eligible := fastc_struct_mono_eligible(sources, source_file, prefs)
 		m.eligible << eligible
-		if eligible && source_file.source.contains(']') && source_file.source.contains('struct ') {
-			any_generic = true
+		module_name := fastc_struct_mono_module(source_file.header.module_name)
+		if eligible {
+			m.indexed_modules[module_name] = true
+			// A generic of the project or of a vlib module (`stdatomic.AtomicVal[u32]`).
+			if source_file.source.contains(']') {
+				any_generic = true
+			}
+		} else {
+			m.library_files[module_name] << i
 		}
 	}
 	if !any_generic {
@@ -127,9 +143,6 @@ fn fastc_monomorphize_generic_structs(sources []FastcSourceFile, prefs &pref.Pre
 		if m.eligible[i] {
 			m.index_file(i, source_file)
 		}
-	}
-	if m.generics.len == 0 {
-		return sources
 	}
 	mut dirty := []int{}
 	for i, eligible in m.eligible {
@@ -183,6 +196,18 @@ fn fastc_monomorphize_generic_structs(sources []FastcSourceFile, prefs &pref.Pre
 	return m.sources
 }
 
+// ensure_module_indexed indexes the generics of a vlib module that project code names.
+fn (mut m FastcStructMono) ensure_module_indexed(module_name string) {
+	if module_name in m.indexed_modules {
+		return
+	}
+	m.indexed_modules[module_name] = true
+	for index in m.library_files[module_name] or { []int{} } {
+		m.library_start[index] = m.sources[index].source.len
+		m.index_file(index, m.sources[index])
+	}
+}
+
 // remove_instantiated_generics blanks the generic methods of every struct with a copy, as
 // entry-module specialization always did: an erased method body such as `a.v += by` does not
 // compile once `T` is `voidptr`. The erased declaration stays for the placeholders of generic
@@ -193,8 +218,8 @@ fn (mut m FastcStructMono) remove_instantiated_generics() {
 		instantiated[instance.struct_key] = true
 	}
 	mut edits := map[int][]FastcSourceEdit{}
-	for key, _ in m.generics {
-		if key !in instantiated {
+	for key, generic in m.generics {
+		if key !in instantiated || generic.library {
 			continue
 		}
 		for method in m.methods[key] {
@@ -278,6 +303,7 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 					name_end:      name_end
 					bracket_start: bracket_start
 					bracket_end:   bracket_end
+					library:       !m.eligible[index]
 				}
 				previous = .rcbr
 				previous_pos = s.pos
@@ -312,6 +338,7 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 					name_end:      name_end
 					bracket_start: bracket_start
 					bracket_end:   bracket_end
+					library:       !m.eligible[index]
 				}
 				previous = .name
 				previous_pos = s.pos
@@ -509,12 +536,12 @@ fn (mut m FastcStructMono) scan_refs(index int) []FastcStructRef {
 	return m.scan_text(source_file.path, source_file.source, FastcStructMonoFile{
 		module_name: fastc_struct_mono_module(source_file.header.module_name)
 		imports:     source_file.header.imports
-	})
+	}, m.library_start[index] or { 0 })
 }
 
 // scan_text finds the concrete generic struct references in `source`, and follows explicit
 // instantiations of generic functions (`ds.make[Item](...)`) into their substituted bodies.
-fn (mut m FastcStructMono) scan_text(path string, source string, file_ctx FastcStructMonoFile) []FastcStructRef {
+fn (mut m FastcStructMono) scan_text(path string, source string, file_ctx FastcStructMonoFile, min_offset int) []FastcStructRef {
 	mut ctx := file_ctx
 	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(m.prefs, .normal)
@@ -550,12 +577,19 @@ fn (mut m FastcStructMono) scan_text(path string, source string, file_ctx FastcS
 			continue
 		}
 		name_start := s.pos
+		if name_start < min_offset {
+			// The original text of a vlib source keeps its erased generics.
+			previous = tok
+			tok = s.scan()
+			continue
+		}
 		mut struct_key := ''
 		mut look := s
 		mut next := look.scan()
 		mut name_pos := name_start
 		if next == .dot {
 			if module_name := ctx.imports[s.lit] {
+				m.ensure_module_indexed(module_name)
 				if look.scan() == .name {
 					key := fastc_struct_mono_key(module_name, look.lit)
 					if key in m.generics {
@@ -578,6 +612,7 @@ fn (mut m FastcStructMono) scan_text(path string, source string, file_ctx FastcS
 				mut call := look
 				m.discover_function_call(mut call, key, ctx)
 			} else if module_name := ctx.imports[fastc_selective_import_key(s.lit)] {
+				m.ensure_module_indexed(module_name)
 				selected := fastc_struct_mono_key(module_name, s.lit)
 				if selected in m.generics {
 					struct_key = selected
@@ -795,6 +830,7 @@ fn (mut m FastcStructMono) parse_type(mut s scanner.Scanner, first token.Token, 
 			type_module = 'C'
 		} else {
 			type_module = ctx.imports[name] or { return FastcTypeText{}, tok }
+			m.ensure_module_indexed(type_module)
 		}
 		type_name = s.lit
 		tok = s.scan()
@@ -1310,7 +1346,7 @@ fn (mut m FastcStructMono) discover_function(fn_key string, generic_fn FastcStru
 	m.scan_text(source_file.path, copy.source, FastcStructMonoFile{
 		module_name: generic_fn.module_name
 		imports:     source_file.header.imports
-	})
+	}, 0)
 }
 
 // mono_nested_instance_canonical names the copy of a nested generic struct argument
