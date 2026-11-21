@@ -190,8 +190,25 @@ fn fnt_attr(line string, key string) ?string {
 }
 
 // fnt_int extracts an integer attribute from one BMFont line, returning 0
-// when the attribute is absent or malformed.
+// when the attribute is absent or not a plain base-10 integer. A charset
+// guard is required because V's string.int() accepts trailing garbage
+// ("12x" -> 12), which would silently produce wrong glyph metrics.
 fn fnt_int(line string, key string) int {
 	val := fnt_attr(line, key) or { return 0 }
+	if val.len == 0 {
+		return 0
+	}
+	mut start := 0
+	if val[0] == `-` || val[0] == `+` {
+		start = 1
+	}
+	if start >= val.len {
+		return 0
+	}
+	for c in val[start..] {
+		if c < `0` || c > `9` {
+			return 0
+		}
+	}
 	return val.int()
 }

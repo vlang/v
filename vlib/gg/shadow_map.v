@@ -31,26 +31,6 @@ pub mut:
 	soft_samples int  = 0    // 0 = single tap, 1 = 9-tap (3x3) PCF
 	auto_update  bool = true // recompute view_proj inside capture_depth (legacy behaviour)
 	dirty        bool = true // set by set_transform/mark_dirty, cleared after a capture
-mut:
-	// Cached column-major view-projection coefficients. Sampling runs per vertex,
-	// so reading these scalars avoids rebuilding a [16]f32 array on every call.
-	m0         f32
-	m1         f32
-	m2         f32
-	m3         f32
-	m4         f32
-	m5         f32
-	m6         f32
-	m7         f32
-	m8         f32
-	m9         f32
-	m10        f32
-	m11        f32
-	m12        f32
-	m13        f32
-	m14        f32
-	m15        f32
-	has_matrix bool
 }
 
 // new_shadow_map3d creates an empty shadow map of size x size texels.
@@ -88,37 +68,12 @@ pub fn (s &ShadowMap3D) light_view_proj(target Vec3, extent f32, near f32, far f
 // call capture_if_dirty to skip captures when nothing has changed.
 pub fn (mut s ShadowMap3D) set_transform(target Vec3, extent f32, near f32, far f32) {
 	s.view_proj = s.light_view_proj(target, extent, near, far)
-	s.cache_matrix()
 	s.last_target = target
 	s.last_extent = extent
 	s.last_near = near
 	s.last_far = far
 	s.has_capture = true
 	s.dirty = true
-}
-
-// cache_matrix stores the current view_proj as sixteen scalar coefficients so
-// per-vertex sampling can read them without rebuilding the [16]f32 array each
-// time. Call this whenever view_proj is (re)assigned inside the shadow map.
-fn (mut s ShadowMap3D) cache_matrix() {
-	a := s.view_proj.to_array()
-	s.m0 = a[0]
-	s.m1 = a[1]
-	s.m2 = a[2]
-	s.m3 = a[3]
-	s.m4 = a[4]
-	s.m5 = a[5]
-	s.m6 = a[6]
-	s.m7 = a[7]
-	s.m8 = a[8]
-	s.m9 = a[9]
-	s.m10 = a[10]
-	s.m11 = a[11]
-	s.m12 = a[12]
-	s.m13 = a[13]
-	s.m14 = a[14]
-	s.m15 = a[15]
-	s.has_matrix = true
 }
 
 // mark_dirty forces the next capture_if_dirty call to recapture, for example
@@ -139,7 +94,6 @@ pub fn (mut s ShadowMap3D) capture_depth(ctx &Context, target Vec3, extent f32, 
 	if s.auto_update {
 		s.view_proj = s.light_view_proj(target, extent, near, far)
 	}
-	s.cache_matrix()
 	s.last_target = target
 	s.last_extent = extent
 	s.last_near = near
@@ -211,25 +165,13 @@ pub fn (s &ShadowMap3D) sample(world Vec3) f32 {
 	if s.depth.len != s.size * s.size || s.strength <= 0 {
 		return 1.0
 	}
-	// Prefer the cached scalar coefficients; they are identical to the
-	// column-major values returned by to_array(), but cost no array build.
-	mut x := f32(0)
-	mut y := f32(0)
-	mut z := f32(0)
-	mut w := f32(0)
-	if s.has_matrix {
-		x = s.m0 * world.x + s.m4 * world.y + s.m8 * world.z + s.m12
-		y = s.m1 * world.x + s.m5 * world.y + s.m9 * world.z + s.m13
-		z = s.m2 * world.x + s.m6 * world.y + s.m10 * world.z + s.m14
-		w = s.m3 * world.x + s.m7 * world.y + s.m11 * world.z + s.m15
-	} else {
-		// view_proj was assigned directly (no cache): build the array once.
-		a := s.view_proj.to_array()
-		x = a[0] * world.x + a[4] * world.y + a[8] * world.z + a[12]
-		y = a[1] * world.x + a[5] * world.y + a[9] * world.z + a[13]
-		z = a[2] * world.x + a[6] * world.y + a[10] * world.z + a[14]
-		w = a[3] * world.x + a[7] * world.y + a[11] * world.z + a[15]
-	}
+	// Read the matrix directly so any assignment to the public view_proj field
+	// is honoured immediately — a cached copy would go stale on direct writes.
+	m := s.view_proj.v
+	x := m[0][0] * world.x + m[1][0] * world.y + m[2][0] * world.z + m[3][0]
+	y := m[0][1] * world.x + m[1][1] * world.y + m[2][1] * world.z + m[3][1]
+	z := m[0][2] * world.x + m[1][2] * world.y + m[2][2] * world.z + m[3][2]
+	w := m[0][3] * world.x + m[1][3] * world.y + m[2][3] * world.z + m[3][3]
 	if w <= 0 {
 		return 1.0
 	}
@@ -267,23 +209,11 @@ pub fn (s &ShadowMap3D) sample_fast(world Vec3) f32 {
 	if s.strength <= 0 || s.depth.len != s.size * s.size {
 		return 1.0
 	}
-	mut x := f32(0)
-	mut y := f32(0)
-	mut z := f32(0)
-	mut w := f32(0)
-	if s.has_matrix {
-		x = s.m0 * world.x + s.m4 * world.y + s.m8 * world.z + s.m12
-		y = s.m1 * world.x + s.m5 * world.y + s.m9 * world.z + s.m13
-		z = s.m2 * world.x + s.m6 * world.y + s.m10 * world.z + s.m14
-		w = s.m3 * world.x + s.m7 * world.y + s.m11 * world.z + s.m15
-	} else {
-		// view_proj was assigned directly (no cache): build the array once.
-		a := s.view_proj.to_array()
-		x = a[0] * world.x + a[4] * world.y + a[8] * world.z + a[12]
-		y = a[1] * world.x + a[5] * world.y + a[9] * world.z + a[13]
-		z = a[2] * world.x + a[6] * world.y + a[10] * world.z + a[14]
-		w = a[3] * world.x + a[7] * world.y + a[11] * world.z + a[15]
-	}
+	m := s.view_proj.v
+	x := m[0][0] * world.x + m[1][0] * world.y + m[2][0] * world.z + m[3][0]
+	y := m[0][1] * world.x + m[1][1] * world.y + m[2][1] * world.z + m[3][1]
+	z := m[0][2] * world.x + m[1][2] * world.y + m[2][2] * world.z + m[3][2]
+	w := m[0][3] * world.x + m[1][3] * world.y + m[2][3] * world.z + m[3][3]
 	if w <= 0 {
 		return 1.0
 	}
@@ -321,9 +251,21 @@ fn (s &ShadowMap3D) tap(u f32, v f32, depth f32) f32 {
 	if u < 0 || u >= 1 || v < 0 || v >= 1 {
 		return 1.0
 	}
-	size_f := s.half_size * 2.0
+	// Derive the texel scale from size (not the public half_size field) and
+	// clamp, so a stale/inconsistent half_size cannot cause an OOB fetch.
+	size_f := f32(s.size)
 	mut px := int(u * size_f)
 	mut py := int(v * size_f)
+	if px < 0 {
+		px = 0
+	} else if px >= s.size {
+		px = s.size - 1
+	}
+	if py < 0 {
+		py = 0
+	} else if py >= s.size {
+		py = s.size - 1
+	}
 	stored := s.depth[py * s.size + px]
 	if depth - s.bias > stored {
 		return 1.0 - s.strength

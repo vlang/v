@@ -11,17 +11,18 @@ import math
 pub fn smooth_normals(mesh &Mesh3D, precision f32) []Vec3 {
 	p := if precision > 0 { precision } else { 1e-3 }
 	inv_p := 1.0 / p
-	// Pack the three quantized bucket coords into a single u64 key. Each coord
-	// is masked to 20 bits; this avoids the per-vertex string allocation of the
-	// old map[string][]int while keeping equal positions in the same group.
-	mut groups := map[u64][]int{}
+	// Use an exact string key: bit-packing into u64 aliases distinct bucket
+	// coordinates (negative values and values beyond the packed width), which
+	// averages normals of unrelated vertices. Correctness outweighs the small
+	// allocation saved by packing.
+	mut groups := map[string][]int{}
 	for i, v in mesh.vertices {
 		// Round to nearest bucket so positions just across a bucket edge
 		// still merge; truncation would split them by up to one precision.
 		x := int(v.x * inv_p + 0.5)
 		y := int(v.y * inv_p + 0.5)
 		z := int(v.z * inv_p + 0.5)
-		key := (u64(x & 0xfffff) << 40) | (u64(y & 0xfffff) << 20) | u64(z & 0xfffff)
+		key := '${x},${y},${z}'
 		groups[key] << i
 	}
 	mut out := []Vec3{len: mesh.vertices.len}

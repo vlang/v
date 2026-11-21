@@ -110,7 +110,9 @@ pub fn load_wav(path string) !Sound {
 	if data_len % frame_bytes != 0 {
 		return error('WAV: partial sample frame')
 	}
-	if data_offset + data_len > bytes.len {
+	// Compare in i64: data_offset + data_len can exceed i32 range even when
+	// each value individually passed the 0x7fffffff chunk-size guard above.
+	if i64(data_offset) + i64(data_len) > i64(bytes.len) {
 		return error('WAV: data chunk out of bounds')
 	}
 	mut samples := []i16{cap: data_len / 2}

@@ -127,9 +127,10 @@ pub fn (ctx &Context) render_cpu_depth_with_mvp(width int, height int, clear u32
 }
 
 // rasterize_depth_cmd dispatches one draw command's triangles into a depth
-// buffer. Backfaces are culled to match the GPU's depth pipeline and to skip
-// roughly half the triangles of closed meshes.
-fn rasterize_depth_cmd(mut frame Frame, verts []Vertex, uniforms []Uniform, cmd Command, mvp Mat4, vp Viewport, sc Scissor, ccw bool) {
+// buffer. Backfaces are culled when `cull` is true, matching the GPU depth
+// pipeline; callers that disable culling (e.g. for double-sided geometry) get
+// both windings rasterized.
+fn rasterize_depth_cmd(mut frame Frame, verts []Vertex, uniforms []Uniform, cmd Command, mvp Mat4, vp Viewport, sc Scissor, ccw bool, cull bool) {
 	mut uni := uniforms[cmd.uniform_index]
 	uni.mvp = mvp
 	// With a top-left origin the y-axis is flipped on screen, so a front face
@@ -139,23 +140,23 @@ fn rasterize_depth_cmd(mut frame Frame, verts []Vertex, uniforms []Uniform, cmd 
 	if cmd.primitive == .triangles {
 		mut i := 0
 		for i + 2 < cmd.num_vertices {
-			rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+			rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cull, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
 			i += 3
 		}
 	} else if cmd.primitive == .triangle_strip {
 		mut i := 0
 		for i + 2 < cmd.num_vertices {
 			if i % 2 == 0 {
-				rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+				rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cull, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
 			} else {
-				rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i + 1, cmd.base_vertex + i, cmd.base_vertex + i + 2)
+				rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cull, cmd.base_vertex + i + 1, cmd.base_vertex + i, cmd.base_vertex + i + 2)
 			}
 			i++
 		}
 	} else if cmd.primitive == .quads {
 		mut i := 0
 		for i + 2 < cmd.num_vertices {
-			rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
+			rasterize_tri_depth(mut frame, verts, uni, vp, sc, keep_positive, cull, cmd.base_vertex + i, cmd.base_vertex + i + 1, cmd.base_vertex + i + 2)
 			i += 3
 		}
 	}
@@ -196,7 +197,7 @@ pub fn (ctx &Context) render_depth_only(width int, height int, clear_depth f32, 
 		} else if cmd.kind == .draw {
 			if cmd.num_vertices <= 0 { continue }
 			if cmd.uniform_index < 0 || cmd.uniform_index >= st.uniforms_count { continue }
-			rasterize_depth_cmd(mut frame, st.verts, st.uniforms, cmd, mvp, vp, sc, st.face_winding == .ccw)
+			rasterize_depth_cmd(mut frame, st.verts, st.uniforms, cmd, mvp, vp, sc, st.face_winding == .ccw, st.cull_backfaces)
 			// .lines, .line_strip and .points are skipped (see doc comment).
 		}
 	}
@@ -711,7 +712,7 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 // interpolates NDC z and updates frame.depth; no colour, texture or blending
 // work is done and frame.pixels is never touched.
 fn rasterize_tri_depth(mut frame Frame, verts []Vertex, uni Uniform, vp Viewport, sc Scissor,
-	keep_positive bool, i0 int, i1 int, i2 int) {
+	keep_positive bool, cull bool, i0 int, i1 int, i2 int) {
 	v0 := verts[i0]
 	v1 := verts[i1]
 	v2 := verts[i2]
@@ -736,13 +737,14 @@ fn rasterize_tri_depth(mut frame Frame, verts []Vertex, uni Uniform, vp Viewport
 	if area == 0.0 {
 		return
 	}
-	// Backface culling: backfaces of closed meshes are always farther from the
-	// light and would lose the depth test anyway, so skipping them is a pure
-	// work saving that also matches the GPU depth pipeline.
-	if keep_positive {
-		if area < 0.0 { return }
-	} else {
-		if area > 0.0 { return }
+	// Backface culling is opt-out via Context.set_backface_culling(false), so
+	// callers recording double-sided geometry keep both windings.
+	if cull {
+		if keep_positive {
+			if area < 0.0 { return }
+		} else {
+			if area > 0.0 { return }
+		}
 	}
 
 	mut min_xf := if p0x < p1x { p0x } else { p1x }
