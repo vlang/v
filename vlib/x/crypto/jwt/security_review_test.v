@@ -12,8 +12,9 @@ fn signed_security_token(header string, payload string) string {
 
 fn test_security_rejects_invalid_claims_and_headers() {
 	for payload in ['{"exp":"200"}', '{"exp":true}', '{"exp":1.5}', 'null', '[]', '{"iss":123}',
-		'{"aud":["service"]}', '{"exp":null}', '{"nbf":null}', '{"aud":null}', '{"exp":1,"exp":200}',
-		r'{"exp":1,"\u0065xp":200}', '{"sub":"user"} {}', '{"sub":"user"} trailing'] {
+		'{"aud":[1]}', '{"aud":["service",null]}', '{"aud":{}}', '{"aud":123}', '{"exp":null}',
+		'{"nbf":null}', '{"aud":null}', '{"exp":1,"exp":200}', r'{"exp":1,"\u0065xp":200}',
+		'{"sub":"user"} {}', '{"sub":"user"} trailing'] {
 		token := signed_security_token('{"alg":"HS256"}', payload)
 		if _ := verify_raw(token, 'secret'.bytes(), VerifyOptions{ algorithm: .hs256, current_time: 100 }) {
 			assert false, 'accepted invalid claims: ${payload}'
@@ -27,6 +28,32 @@ fn test_security_rejects_invalid_claims_and_headers() {
 		if _ := verify_raw(token, 'secret'.bytes(), VerifyOptions{ algorithm: .hs256 }) {
 			assert false, 'accepted invalid header: ${header}'
 		}
+	}
+}
+
+// RFC 7519 §4.1.3 allows the audience as a string or an array of strings; an
+// expected audience must be one of them.
+fn test_security_audience_arrays() {
+	token := signed_security_token('{"alg":"HS256"}', '{"aud":["account","service"]}')
+	verify_raw(token, 'secret'.bytes(), VerifyOptions{ algorithm: .hs256 })!
+	verify_raw(token, 'secret'.bytes(), VerifyOptions{
+		algorithm:         .hs256
+		expected_audience: 'service'
+	})!
+	if _ := verify_raw(token, 'secret'.bytes(), VerifyOptions{
+		algorithm:         .hs256
+		expected_audience: 'other'
+	})
+	{
+		assert false, 'accepted a token for other audiences'
+	}
+	empty := signed_security_token('{"alg":"HS256"}', '{"aud":[]}')
+	if _ := verify_raw(empty, 'secret'.bytes(), VerifyOptions{
+		algorithm:         .hs256
+		expected_audience: 'service'
+	})
+	{
+		assert false, 'accepted an empty audience array'
 	}
 }
 
