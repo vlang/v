@@ -45,7 +45,9 @@ pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3
 		world_verts[i] = world
 		vertex_colors[i] = material_color(&shade, world, n, cam)
 		if sm := ctx.shadow_map {
-			vis := sm.sample(world)
+			// sample_fast is identical to the single-tap path of sample(); keep
+			// sample() when PCF is configured so soft_samples still works.
+			vis := if sm.soft_samples > 0 { sm.sample(world) } else { sm.sample_fast(world) }
 			if vis < 1.0 {
 				vertex_colors[i] = shadow_color(vertex_colors[i], vis)
 			}

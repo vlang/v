@@ -259,10 +259,9 @@ pub fn (s &ShadowMap3D) sample(world Vec3) f32 {
 	return s.tap(u, v, depth)
 }
 
-// sample_fast is a bounds-check-free, single-tap version of sample for the
-// common case. The caller must ensure the world point is in the light's
-// frustum (w > 0); out-of-range texel indices are clamped rather than
-// rejected, and no PCF filtering is performed.
+// sample_fast is a single-tap version of sample with no PCF filtering. It is
+// behaviourally identical to sample() when soft_samples == 0: points outside
+// the light frustum are unshadowed, and texel fetches use direct array access.
 @[direct_array_access]
 pub fn (s &ShadowMap3D) sample_fast(world Vec3) f32 {
 	if s.strength <= 0 || s.depth.len != s.size * s.size {
@@ -291,6 +290,12 @@ pub fn (s &ShadowMap3D) sample_fast(world Vec3) f32 {
 	inv_w := 1.0 / w
 	u := (x * inv_w + 1.0) * 0.5
 	v := (1.0 - y * inv_w) * 0.5
+	dep := z * inv_w
+	// Match sample()'s single-tap behaviour exactly: points outside the light
+	// frustum are unshadowed rather than clamped to the border texel.
+	if u < 0 || u >= 1 || v < 0 || v >= 1 || dep < -1 || dep > 1 {
+		return 1.0
+	}
 	size_f := s.half_size * 2.0
 	mut px := int(u * size_f)
 	mut py := int(v * size_f)
@@ -305,7 +310,7 @@ pub fn (s &ShadowMap3D) sample_fast(world Vec3) f32 {
 		py = s.size - 1
 	}
 	stored := s.depth[py * s.size + px]
-	if z * inv_w - s.bias > stored {
+	if dep - s.bias > stored {
 		return 1.0 - s.strength
 	}
 	return 1.0
