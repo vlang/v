@@ -1177,9 +1177,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		for i in interface_fixed_fields {
 			field := g.a.child_node(&node, i)
 			cfield := g.init_field_c_name(lookup_name, field.value)
-			g.write(' memcpy(${interface_fixed_tmp}.${cfield}, ')
-			g.gen_fixed_array_copy_source(g.a.child(field, 0), g.tc.parse_type(field.typ))
-			g.write(', sizeof(${interface_fixed_tmp}.${cfield}));')
+			g.write_fixed_field_copy('${interface_fixed_tmp}.${cfield}', g.a.child(field, 0), g.tc.parse_type(field.typ))
 		}
 		g.write(' ${interface_fixed_tmp};})')
 	}
@@ -1253,9 +1251,7 @@ fn (mut g FlatGen) gen_zeroed_union_init(node flat.Node, name string, lookup_nam
 		cfield := g.init_field_c_name(lookup_name_id, field_name)
 		value_id := g.a.child(field, 0)
 		if _ := array_fixed_type(field_type) {
-			g.write(' memcpy(${tmp}.${cfield}, ')
-			g.gen_fixed_array_copy_source(value_id, field_type)
-			g.write(', sizeof(${tmp}.${cfield}));')
+			g.write_fixed_field_copy('${tmp}.${cfield}', value_id, field_type)
 		} else {
 			g.write(' ${tmp}.${cfield} = ')
 			g.gen_struct_field_expr_for_field(value_id, lookup_name_id, field_name, field_type)
@@ -1707,9 +1703,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	g.write('};')
 	for i in 0 .. fixed_fields.len {
 		cfield := g.init_field_c_name(lookup_name, fixed_fields[i])
-		g.write(' memcpy(${tmp}.${cfield}, ')
-		g.gen_fixed_array_copy_source(fixed_values[i], fixed_field_types[i])
-		g.write(', sizeof(${tmp}.${cfield}));')
+		g.write_fixed_field_copy('${tmp}.${cfield}', fixed_values[i], fixed_field_types[i])
 	}
 	for d in deferred_fixed_defaults {
 		// The default expression was written in the struct's own module (and, for a
@@ -1717,9 +1711,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		// for the names it may mention.
 		old_ctx := g.enter_struct_default_source(d.source)
 		cfield := g.init_field_c_name(lookup_name, d.name)
-		g.write(' memcpy(${tmp}.${cfield}, ')
-		g.gen_fixed_array_copy_source(d.value, d.typ)
-		g.write(', sizeof(${tmp}.${cfield}));')
+		g.write_fixed_field_copy('${tmp}.${cfield}', d.value, d.typ)
 		g.restore_struct_default_context(old_ctx)
 	}
 	if fields := g.struct_fields_for_type(lookup_name) {
@@ -1759,6 +1751,27 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 // array. A raw array literal becomes a typed compound literal (a valid expression
 // that decays to a pointer); a dynamic array value copies from its `.data` buffer;
 // other fixed-array expressions (variables, fields, unwrapped calls) decay as-is.
+// write_fixed_field_copy copies `value_id` into the fixed array `dst` of a struct being
+// initialized. A string literal (`c'abc'` for a char array) can be shorter than the
+// array: copy its bytes, terminator included, like a C string initializer; the rest of
+// the zeroed array stays zero. Copying the whole array read past the literal.
+fn (mut g FlatGen) write_fixed_field_copy(dst string, value_id flat.NodeId, typ types.Type) {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	g.gen_fixed_array_copy_source(value_id, typ)
+	source := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	g.write(' memcpy(${dst}, ${source}, ')
+	if source.len >= 2 && source[0] == `"` && source[source.len - 1] == `"` {
+		g.write('sizeof(${source}) < sizeof(${dst}) ? sizeof(${source}) : sizeof(${dst}));')
+	} else {
+		g.write('sizeof(${dst}));')
+	}
+}
+
 fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type types.Type) {
 	val_node := g.a.node(value_id)
 	if val_node.kind in [.array_init, .array_literal, .struct_init] {
@@ -2200,9 +2213,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		for i in interface_fixed_fields {
 			field := g.a.child_node(&node, i)
 			cfield := g.init_field_c_name(lookup_name, field.value)
-			g.write(' memcpy(${interface_fixed_tmp}.${cfield}, ')
-			g.gen_fixed_array_copy_source(g.a.child(field, 0), g.tc.parse_type(field.typ))
-			g.write(', sizeof(${interface_fixed_tmp}.${cfield}));')
+			g.write_fixed_field_copy('${interface_fixed_tmp}.${cfield}', g.a.child(field, 0), g.tc.parse_type(field.typ))
 		}
 		if align_arg.len > 0 {
 			g.write(' (${name}*)v3_aligned_memdup(&${interface_fixed_tmp}, sizeof(${name}), ${align_arg});})')
