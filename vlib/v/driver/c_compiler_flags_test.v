@@ -1383,6 +1383,18 @@ fn test_v3_bundled_tcc_native_object_build_is_cwd_independent() {
 	assert build.exit_code == 0, build.output
 }
 
+// platform_cc_compiles_cpp reports whether the platform `cc` can compile C++, which the
+// driver uses for native C++ sources. gcc runs a separately installed C++ front end
+// (cc1plus), which an image may lack.
+fn platform_cc_compiles_cpp(root string) bool {
+	cc := os.find_abs_path_of_executable('cc') or { return false }
+	probe := os.join_path(root, 'cpp_probe.cpp')
+	os.write_file(probe, '#include <string>\nint probe_size() { return int(std::string("v").size()); }\n') or {
+		return false
+	}
+	return cmdexec.run(cc, ['-fsyntax-only', probe]).exit_code == 0
+}
+
 fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	$if windows {
 		return
@@ -1397,6 +1409,9 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or {}
+	}
+	if !platform_cc_compiles_cpp(root) {
+		return
 	}
 	cpp_source := os.join_path(root, 'native.cpp')
 	cpp_object := os.join_path(root, 'native.o')
