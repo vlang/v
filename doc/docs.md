@@ -6750,6 +6750,9 @@ Race builds:
   collector or an arena allocator hides from it;
 * typically run 2-20x slower and use 5-10x more memory, like in Go (with `-prod`, a function
   that was inlined into its caller is reported as the caller);
+* are not link-time optimized with `-prod` (no `-flto`): link time optimization runs after
+  the ThreadSanitizer instrumentation, and with clang 15 and older it turns copies of strings,
+  arrays and structs back into plain loads and stores, which the race detector does not see;
 * define `race`, so code can check for them with `$if race ? {}`, and `_d_race.v` files are
   compiled in them. That define is reserved: `-d race` without `-race` is an error.
 
