@@ -84,7 +84,8 @@ Supported:
   the predictor, color, color-index, and delta-palette transforms.
 - `VP8 ` lossy: keyframes with intra prediction and deblocking.
 - `ALPH` compressed alpha plane (spatial prediction + entropy coding).
-- `ICCP`, `EXIF`, `XMP` chunks are parsed and exposed.
+- `ICCP`, `EXIF`, `XMP` chunks: `decode_metadata` returns their raw bytes,
+  without decoding the pixels.
 - Output geometry through `Options`: crop and scale, using a port of the
   libwebp integer rescaler.
 - Animation: `ANIM`/`ANMF` with dispose-to-background, keep, alpha

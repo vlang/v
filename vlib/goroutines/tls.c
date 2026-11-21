@@ -148,50 +148,50 @@ void grt_spinlock_unlock(volatile int32_t *lock) {
 }
 
 #else
-// POSIX atomic operations using C11 stdatomic
-
-uint32_t goroutines_atomic_load_u32(volatile uint32_t *ptr) {
-    return atomic_load((_Atomic uint32_t *)ptr);
+// POSIX atomic operations using C11 stdatomic. TinyCC macros declare a local
+// named ptr, so their arguments must not use that name.
+uint32_t goroutines_atomic_load_u32(volatile uint32_t *address) {
+    return atomic_load((_Atomic uint32_t *)address);
 }
 
-void goroutines_atomic_store_u32(volatile uint32_t *ptr, uint32_t val) {
-    atomic_store((_Atomic uint32_t *)ptr, val);
+void goroutines_atomic_store_u32(volatile uint32_t *address, uint32_t val) {
+    atomic_store((_Atomic uint32_t *)address, val);
 }
 
-uint32_t goroutines_atomic_fetch_add_u32(volatile uint32_t *ptr, uint32_t val) {
-    return atomic_fetch_add((_Atomic uint32_t *)ptr, val);
+uint32_t goroutines_atomic_fetch_add_u32(volatile uint32_t *address, uint32_t val) {
+    return atomic_fetch_add((_Atomic uint32_t *)address, val);
 }
 
-int32_t goroutines_atomic_fetch_add_i32(volatile int32_t *ptr, int32_t val) {
-    return atomic_fetch_add((_Atomic int32_t *)ptr, val);
+int32_t goroutines_atomic_fetch_add_i32(volatile int32_t *address, int32_t val) {
+    return atomic_fetch_add((_Atomic int32_t *)address, val);
 }
 
-int32_t goroutines_atomic_fetch_sub_i32(volatile int32_t *ptr, int32_t val) {
-    return atomic_fetch_sub((_Atomic int32_t *)ptr, val);
+int32_t goroutines_atomic_fetch_sub_i32(volatile int32_t *address, int32_t val) {
+    return atomic_fetch_sub((_Atomic int32_t *)address, val);
 }
 
-uint64_t goroutines_atomic_fetch_add_u64(volatile uint64_t *ptr, uint64_t val) {
-    return atomic_fetch_add((_Atomic uint64_t *)ptr, val);
+uint64_t goroutines_atomic_fetch_add_u64(volatile uint64_t *address, uint64_t val) {
+    return atomic_fetch_add((_Atomic uint64_t *)address, val);
 }
 
-int goroutines_atomic_cas_u32(volatile uint32_t *ptr, uint32_t *expected, uint32_t desired) {
-    return atomic_compare_exchange_strong((_Atomic uint32_t *)ptr, expected, desired);
+int goroutines_atomic_cas_u32(volatile uint32_t *address, uint32_t *expected, uint32_t desired) {
+    return atomic_compare_exchange_strong((_Atomic uint32_t *)address, expected, desired);
 }
 
-void *goroutines_atomic_load_ptr(void *volatile *ptr) {
-    return atomic_load((_Atomic(void *) *)ptr);
+void *goroutines_atomic_load_ptr(void *volatile *address) {
+    return atomic_load((_Atomic(void *) *)address);
 }
 
-void goroutines_atomic_store_ptr(void *volatile *ptr, void *value) {
-    atomic_store((_Atomic(void *) *)ptr, value);
+void goroutines_atomic_store_ptr(void *volatile *address, void *value) {
+    atomic_store((_Atomic(void *) *)address, value);
 }
 
-void *goroutines_atomic_exchange_ptr(void *volatile *ptr, void *value) {
-    return atomic_exchange((_Atomic(void *) *)ptr, value);
+void *goroutines_atomic_exchange_ptr(void *volatile *address, void *value) {
+    return atomic_exchange((_Atomic(void *) *)address, value);
 }
 
-int goroutines_atomic_take_ptr(void *volatile *ptr, void *value) {
-    return atomic_compare_exchange_strong((_Atomic(void *) *)ptr, &value, NULL);
+int goroutines_atomic_take_ptr(void *volatile *address, void *value) {
+    return atomic_compare_exchange_strong((_Atomic(void *) *)address, &value, NULL);
 }
 
 void grt_spinlock_lock(volatile int32_t *lock) {

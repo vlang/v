@@ -1,17 +1,32 @@
-module c
+module main
 
 import os
+import v.cmdexec
 
 fn test_returned_pointer_sum_acquires_promoted_local_once() {
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_local_transfer_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	compiler := os.join_path(dir, 'v-ownership')
+	project := os.join_path(os.real_path(dir), 'compiler')
 	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
-		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
+	// Optimize the driver reused for hundreds of compilations, keeping its assertions.
+	// Export first to release V's frontend before native compilation.
+	generate := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-prealloc',
+		'-cflags', '-O1 -fno-inline-functions', '-d', 'ownership', '-path', vlib, '-generate-c-project',
+		project, os.join_path(vlib, 'v', 'v.v')])
+	assert generate.exit_code == 0, generate.output
+	build := $if windows {
+		cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
+	} $else {
+		cmdexec.run_in_merged('sh', [os.join_path(project, 'build.sh')], project)
+	}
 	assert build.exit_code == 0, build.output
+	compiler := if os.is_file(os.join_path(project, 'v')) {
+		os.join_path(project, 'v')
+	} else {
+		os.join_path(project, 'v.exe')
+	}
 	header := os.join_path(dir, 'drops.h')
 	os.write_file(header, 'static int transfer_drops[35];
 static void transfer_record(int code) { transfer_drops[code]++; }

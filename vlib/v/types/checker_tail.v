@@ -5509,6 +5509,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				tc.invalidate_body_resolved_type_chain(id)
 			}
 		}
+		tc.remember_smartcast_call_operands(node, info)
 		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
 			tc.check_valid_call_arg_types(id, node, info)
@@ -23515,7 +23516,7 @@ fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.N
 // the error it handles `err`: an `or {}` block, or the plain `else` block right
 // after an `if x := call() {` guard. It follows the tree rather than the scopes,
 // for the checks that keep no scope for such a block.
-fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
+pub fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
 	mut child := id
 	mut parent := tc.direct_parent_id(child)
 	for tc.valid_node_id(parent) {
@@ -24106,6 +24107,32 @@ fn (tc &TypeChecker) if_branch_error_has_result_context(a &Type, b &Type) bool {
 		return a !is Void && !is_ierror_type(a)
 	}
 	return false
+}
+
+// match_branch_error_value_mix reports whether unifying `expected` (from the
+// earlier match value tails) with `actual` mixes an `error(...)` IError tail
+// with a concrete value tail. The inference would adopt a Result type for the
+// mix, but codegen declares the lowered temp from the value branch, so the
+// mix cannot compile: reject it like v1 did instead of inferring a Result.
+fn (tc &TypeChecker) match_branch_error_value_mix(expected Type, actual Type) bool {
+	_ = tc
+	clean_expected := unalias_type(expected)
+	clean_actual := unalias_type(actual)
+	if is_ierror_type(clean_expected) {
+		return match_branch_tail_is_concrete_value(clean_actual)
+	}
+	if is_ierror_type(clean_actual) {
+		return match_branch_tail_is_concrete_value(clean_expected)
+	}
+	return false
+}
+
+// match_branch_tail_is_concrete_value reports whether a branch tail type is a
+// plain value (not void, none, error, option, or result), i.e. a type the
+// lowered match temp can actually be declared with.
+fn match_branch_tail_is_concrete_value(typ Type) bool {
+	return typ !is Void && typ !is Unknown && typ !is None && !is_ierror_type(typ)
+		&& typ !is OptionType && typ !is ResultType
 }
 
 fn (mut tc TypeChecker) if_branch_enum_shorthand_compatible(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId) bool {

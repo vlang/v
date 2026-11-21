@@ -18,7 +18,7 @@ pub fn flag(value int) TcFlag {
 	return int(value)
 }
 
-// invert is a platform dependant way to bitwise NOT (~) TcFlag, as its length varies across platforms.
+// invert is a platform dependant way to bitwise NOT (~) TcFlag as its length varies across platforms.
 // It is only implemented for Unix like OSes.
 pub fn invert(value TcFlag) TcFlag {
 	return ~int(value)

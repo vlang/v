@@ -2684,12 +2684,13 @@ pub fn native_include_input_files(a &flat.FlatAst, vroot string, target pref.Tar
 // user supplies. Headers under the V root's `vlib/`, `thirdparty/` and `cmd/` trees
 // are versioned with the compiler and system headers with the platform, so their
 // direct paths are only recorded, per owning module, next to `$embed_file`
-// resources. A user-supplied header is never opened: only the C compiler can
-// account for what it includes, so the first one found is reported instead.
+// resources and `$tmpl` files. A user-supplied header is never opened: only the
+// C compiler can account for what it includes, so the first one found is reported
+// instead.
 pub struct CacheNativeInputs {
 pub mut:
 	// module_inputs maps a module (`main` for program files) to the sorted paths of
-	// the V-shipped native files and embedded resources its directives name directly.
+	// the V-shipped native files, embedded resources and template files it names directly.
 	// Forced headers belong to __v3_c_flags__, which every cached object depends on.
 	module_inputs map[string][]string
 	// native_paths holds the paths in module_inputs that native directives name.
@@ -2767,6 +2768,11 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 			}
 			.struct_init {
 				if node.source_value_id() == flat.source_type_id('embed_file.EmbedFileData') {
+					relevant << node_idx
+				}
+			}
+			.veb_template {
+				if node.is_veb_template_input() {
 					relevant << node_idx
 				}
 			}
@@ -3717,6 +3723,9 @@ fn c_record_include_macro_value(name string, value string, mut include_macros ma
 }
 
 fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
+	if node.is_veb_template_input() && os.is_file(node.value) {
+		return os.real_path(node.value)
+	}
 	if node.kind != .struct_init || node.source_value_id() != flat.source_type_id('embed_file.EmbedFileData') {
 		return none
 	}
@@ -16638,6 +16647,15 @@ fn (mut g FlatGen) const_array_literal_storage_type_for_name(name string, val_id
 	})
 }
 
+// const_initializer_to_string emits aggregate braces where C already supplies the type.
+fn (mut g FlatGen) const_initializer_to_string(id flat.NodeId, seen []string) string {
+	old_static_initializer := g.static_c_initializer
+	g.static_c_initializer = true
+	result := g.const_expr_to_string(id, seen)
+	g.static_c_initializer = old_static_initializer
+	return result
+}
+
 // const_expr_to_string converts const expr to string data for c.
 fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
@@ -16655,6 +16673,20 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		// A cast to the struct representation plus a plain `<<` does not compile on
 		// the portable path, and it silently truncates on the native one.
 		return g.expr_to_string(id)
+	}
+	initializer := g.static_c_initializer
+	if initializer && node.kind == .paren && node.children_count == 1 {
+		return g.const_expr_to_string(g.a.child(&node, 0), seen)
+	}
+	if initializer && node.kind !in [.ident, .selector, .array_literal, .struct_init, .string_literal,
+		.postfix] {
+		// Operands of expressions, such as &Point{...}, still need typed literals.
+		g.static_c_initializer = false
+	}
+	defer {
+		if initializer {
+			g.static_c_initializer = true
+		}
 	}
 	return match node.kind {
 		.ident, .selector {
@@ -16904,10 +16936,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					parts << g.const_expr_to_string(g.a.child(&node, i), seen)
 				}
 			}
-			'(${ct}){${parts.join(', ')}}'
+			if g.static_c_initializer {
+				'{${parts.join(', ')}}'
+			} else {
+				'(${ct}){${parts.join(', ')}}'
+			}
 		}
 		.string_literal {
-			'(string){(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
+			prefix := if g.static_c_initializer { '' } else { '(string)' }
+			'${prefix}{(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
 		}
 		.typeof_expr {
 			type_name := g.typeof_type_name(node)
@@ -18079,6 +18116,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op == .amp && (node.flags & flat.node_flag_retained_reference) != 0 {
+				base_type := types.unwrap_pointer(g.parse_node_type(node))
+				ct := g.value_c_type(base_type)
+				g.write(g.heap_local_memdup_expr(g.expr_to_string(child_id), base_type, ct, false))
+				return
+			}
 			if node.op == .amp && child.kind == .selector && child.children_count > 0 {
 				base_id := g.a.child(&child, 0)
 				base_type := g.usable_expr_type(base_id)
@@ -21660,6 +21703,19 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#ifndef SEEK_END')
 	g.writeln('#define SEEK_END 2')
 	g.writeln('#endif')
+	// The Microsoft C runtimes (UCRT and msvcrt) use different values, see
+	// manual_stdlib_c_headers.h.
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('#ifndef _IOFBF')
+	g.writeln('#define _IOFBF 0x0000')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IOLBF')
+	g.writeln('#define _IOLBF 0x0040')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IONBF')
+	g.writeln('#define _IONBF 0x0004')
+	g.writeln('#endif')
+	g.writeln('#else')
 	g.writeln('#ifndef _IOFBF')
 	g.writeln('#define _IOFBF 0')
 	g.writeln('#endif')
@@ -21668,6 +21724,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('#ifndef _IONBF')
 	g.writeln('#define _IONBF 2')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	// This callback alias belongs to V, including when the target supplies libc headers.
 	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
@@ -25631,7 +25688,7 @@ fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId, expect
 			continue
 		}
 		constant := g.global_scalar_static_initializer(child_id, elem_type) or {
-			g.const_expr_to_string(child_id, []string{})
+			g.const_initializer_to_string(child_id, []string{})
 		}
 		if trimmed_space(constant).len > 0 {
 			g.write(constant)
@@ -27503,14 +27560,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		}
 		g.writeln('${linkage_attr}const ${ct} ${qname} = ${init_str};')
 	} else if unalias_type(v_type) is types.Struct {
-		// MSVC cannot initialize a file-scope object from a compound literal.
-		// C-backed structs may be declared in an external header, so the MSVC
-		// compatibility pass cannot discover their type from the generated C.
-		mut init_str := expr_str
-		cast_prefix := '(${ct})'
-		if init_str.starts_with('${cast_prefix}{') {
-			init_str = init_str[cast_prefix.len..]
-		}
+		// Nested compound literals are not constant initializers on GCC 12, and
+		// MSVC also requires bare braces for file-scope struct initializers.
+		init_str := g.const_initializer_to_string(val_id, []string{})
 		g.writeln('${linkage_attr}const ${ct} ${qname} = ${init_str};')
 	} else {
 		g.writeln('${linkage_attr}const ${ct} ${qname} = ${expr_str};')
@@ -27824,7 +27876,7 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		if unaliased_elem is types.Enum {
 			g.expected_enum = unaliased_elem.source_type_id()
 		}
-		const_val := g.const_expr_to_string(val_id, []string{})
+		const_val := g.const_initializer_to_string(val_id, []string{})
 		g.expected_enum = old_expected_enum
 		if trimmed_space(const_val).len > 0 {
 			builder.write_string(const_val)
@@ -28204,8 +28256,13 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 				if child.kind == .field_init {
 					if ftyp := g.struct_field_type(node.source_value_id(), child.value) {
 						// An interface field boxes its value, even without an explicit cast.
+						clean_field := cgen_unalias_type(ftyp)
 						if ftyp is types.Array || ftyp is types.Map
-							|| cgen_unalias_type(ftyp) is types.Interface {
+							|| clean_field is types.Interface
+							|| clean_field is types.OptionType
+							|| clean_field is types.ResultType {
+							// Nested option/result compound literals are not constant
+							// initializers on GCC 12. Materialize them in _vinit.
 							all_const = false
 							break
 						}

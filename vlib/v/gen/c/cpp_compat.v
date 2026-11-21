@@ -126,6 +126,7 @@ fn (mut g FlatGen) cpp_order_struct_initializer(start int, name string, owner u3
 	fields.sort(a.order < b.order)
 	capture_type := '__v3_internal_symbol_cpp_values<${capture_types.join(', ')}>'
 	mut ordered := strings.new_builder(source.len + 128)
+	defer { unsafe { ordered.free() } }
 	ordered.write_string(source[..marker_start])
 	if capture_values.len > 0 {
 		ordered.write_string('([](const ${capture_type}& ${capture_name}) { return ')
@@ -163,8 +164,9 @@ fn (mut g FlatGen) cpp_order_struct_initializer(start int, name string, owner u3
 		ordered.write_string(')')
 	}
 	ordered.write_string(source[close + 1..])
-	g.sb.cut_to(start)
-	g.write(ordered.str())
+	g.sb.go_back_to(start)
+	// write consumes the borrowed bytes synchronously and maintains indentation state.
+	g.write(unsafe { tos(ordered.data, ordered.len) })
 }
 
 fn (g &FlatGen) cpp_ierror_initializer(object string, tag int, boxed bool) string {

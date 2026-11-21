@@ -552,12 +552,14 @@ fn test_no_race_heap_reallocation() {
 fn test_race_and() {
 	c := chan bool{}
 	mut x := &Cell[int]{}
-	y := 0
+	// Keep the false right operand a runtime value. GCC folds a constant false
+	// before TSan instrumentation, removing the racing read on the left.
+	y := &Cell[int]{}
 	spawn fn [mut x, c] () {
 		x.v = 1
 		c <- true
 	}()
-	if x.v == 1 && y == 1 {
+	if x.v == 1 && y.v == 1 {
 	}
 	_ = <-c
 }

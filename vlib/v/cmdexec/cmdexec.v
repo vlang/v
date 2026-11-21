@@ -257,8 +257,13 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 // the deadline was hit. A caller that names the failure itself (`v test`) passes
 // `announce: false`, to keep this module from printing its own line about the kill.
 pub fn run_merged_timed(program string, args []string, timeout_ms i64, announce bool) (os.Result, bool) {
-	return run_in_mode_with_env_timed(program, args, '', true, timeout_ms, map[string]string{},
-		announce)
+	return run_merged_timed_with_env(program, args, timeout_ms, map[string]string{}, announce)
+}
+
+// run_merged_timed_with_env is run_merged_timed for a child that gets the variables of `env`
+// on top of the environment of this process.
+pub fn run_merged_timed_with_env(program string, args []string, timeout_ms i64, env map[string]string, announce bool) (os.Result, bool) {
+	return run_in_mode_with_env_timed(program, args, '', true, timeout_ms, env, announce)
 }
 
 fn run_in_mode_with_env_timed(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string, announce bool) (os.Result, bool) {

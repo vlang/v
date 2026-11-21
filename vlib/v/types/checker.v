@@ -1283,6 +1283,10 @@ pub mut:
 	enum_names                            map[u32]bool
 	enum_fields                           map[u32][]string
 	flag_enums                            map[u32]bool
+	non_exhaustive_enums                  map[u32]bool
+	non_exhaustive_sums                   map[u32]bool
+	enum_modules                          map[u32]string
+	sum_modules                           map[u32]string
 	interface_names                       map[u32]bool
 	interface_generic_params              map[u32][]u32
 	interface_fields                      map[u32][]StructField
@@ -1429,6 +1433,9 @@ pub mut:
 	check_range_hi             int = -1
 	sparse_resolved_call_names map[int]string
 	sparse_resolved_fn_values  map[int]string // the only fn-value name store: a few dozen entries, a node-indexed array cost ~12 MB
+	// The source spelling of the type that a smartcast narrowed a receiver or an
+	// argument of a generic call to, for a check (see remember_smartcast_call_operands).
+	smartcast_call_operands map[int]u32
 	// Only private transform/codegen snapshots enable this conservative filter.
 	// Mutable masters and storage probes keep supporting direct map writes.
 	sparse_fn_value_filter        [64]u64
@@ -1790,6 +1797,10 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		enum_names:                              map[u32]bool{}
 		enum_fields:                             map[u32][]string{}
 		flag_enums:                              map[u32]bool{}
+		non_exhaustive_enums:                    map[u32]bool{}
+		non_exhaustive_sums:                     map[u32]bool{}
+		enum_modules:                            map[u32]string{}
+		sum_modules:                             map[u32]string{}
 		interface_names:                         map[u32]bool{}
 		interface_generic_params:                map[u32][]u32{}
 		interface_fields:                        map[u32][]StructField{}
@@ -1964,6 +1975,10 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		enum_names:                            tc.enum_names
 		enum_fields:                           tc.enum_fields
 		flag_enums:                            tc.flag_enums
+		non_exhaustive_enums:                  tc.non_exhaustive_enums
+		non_exhaustive_sums:                   tc.non_exhaustive_sums
+		enum_modules:                          tc.enum_modules
+		sum_modules:                           tc.sum_modules
 		interface_names:                       tc.interface_names
 		interface_generic_params:              tc.interface_generic_params
 		interface_fields:                      tc.interface_fields
@@ -2389,6 +2404,10 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.enum_names = tc.enum_names.clone()
 	tc.enum_fields = clone_owned_source_type_string_list_map(tc.enum_fields)
 	tc.flag_enums = tc.flag_enums.clone()
+	tc.non_exhaustive_enums = tc.non_exhaustive_enums.clone()
+	tc.non_exhaustive_sums = tc.non_exhaustive_sums.clone()
+	tc.enum_modules = clone_owned_source_type_string_map(tc.enum_modules)
+	tc.sum_modules = clone_owned_source_type_string_map(tc.sum_modules)
 	tc.interface_names = tc.interface_names.clone()
 	tc.interface_generic_params = clone_owned_id_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_owned_source_type_struct_field_map(tc.interface_fields)
@@ -4424,6 +4443,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.v_fn_semantic_names.clear()
 	tc.checked_comptime_method_calls.clear()
 	tc.comptime_method_calls_by_decl.clear()
+	// Node ids of a previous AST name other nodes now.
+	tc.smartcast_call_operands.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.last_dependency_fn = -1
@@ -4829,7 +4850,7 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node, module_n
 		.fn_decl {
 			name := checker_qualified_fn_name(module_name, node.value)
 			tc.set_declaration_visibility(name, visibility)
-			if module_name == 'builtin' && visibility.is_pub {
+			if module_name == 'builtin' {
 				tc.set_declaration_visibility('builtin.${node.value}', visibility)
 			}
 		}
@@ -4998,6 +5019,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	tc.static_associated_signature_count = tc.fn_ret_types.len
 	tc.build_const_suffixes()
+	tc.fold_struct_fixed_array_lens()
 	tc.build_struct_embed_index()
 	if tc.building_v_fast {
 		tc.cache_direct_struct_field_types()
@@ -5047,6 +5069,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 				if node.typ_text() == 'flag' {
 					tc.flag_enums[qn_id] = true
 				}
+				tc.enum_modules[qn_id] = tc.cur_module
+				if tc.declaration_has_attribute(flat.NodeId(tl_idx), 'non_exhaustive') {
+					tc.non_exhaustive_enums[qn_id] = true
+				}
 			}
 			.struct_decl {
 				qname_id := tc.qualify_decl_name_id(node.source_value_id())
@@ -5090,6 +5116,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 					}
 					qname_id := tc.qualify_decl_name_id(node.source_value_id())
 					tc.sum_types.set_ids(qname_id, variants)
+					tc.sum_modules[qname_id] = tc.cur_module
+					if tc.declaration_has_attribute(flat.NodeId(tl_idx), 'non_exhaustive') {
+						tc.non_exhaustive_sums[qname_id] = true
+					}
 					if param_ids.len > 0 {
 						tc.sum_generic_params[qname_id] = param_ids
 						if qname_id != node.source_value_id() {
@@ -5105,6 +5135,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 						}
 						qname_id := tc.qualify_decl_name_id(node.source_value_id())
 						tc.sum_types.set_ids(qname_id, variants)
+						tc.sum_modules[qname_id] = tc.cur_module
+						if tc.declaration_has_attribute(flat.NodeId(tl_idx), 'non_exhaustive') {
+							tc.non_exhaustive_sums[qname_id] = true
+						}
 						if param_ids.len > 0 {
 							tc.sum_generic_params[qname_id] = param_ids
 							if qname_id != node.source_value_id() {
@@ -6531,6 +6565,72 @@ fn (tc &TypeChecker) const_key_for_suffix(name string) ?string {
 		}
 	}
 	return none
+}
+
+// fold_struct_fixed_array_lens evaluates the const lengths of fixed-array fields in their
+// struct's own module. A field is reached from other modules, where its bare `[n]u8` length
+// names that module's `n`, or nothing once two modules declare one; the field types were parsed
+// before the consts could be evaluated.
+fn (mut tc TypeChecker) fold_struct_fixed_array_lens() {
+	saved_module := tc.cur_module
+	saved_file := tc.cur_file
+	defer {
+		tc.cur_module = saved_module
+		tc.cur_file = saved_file
+	}
+	for name_id, fields in tc.structs {
+		module_name := tc.struct_modules[name_id] or { continue }
+		if module_name.len == 0 || module_name in ['main', 'builtin'] {
+			continue
+		}
+		// every evaluator branch reads the struct's own module and file, not only the first
+		tc.cur_module = module_name
+		tc.cur_file = tc.struct_files[name_id] or { '' }
+		base_id := flat.source_type_syntax(name_id).application_base()
+		if (tc.struct_generic_params[name_id] or { []u32{} }).len > 0
+			|| (tc.struct_generic_params[base_id] or { []u32{} }).len > 0 {
+			continue
+		}
+		mut folded := []StructField{}
+		for i, field in fields {
+			typ := tc.fixed_array_with_folded_len(field.typ, module_name) or { continue }
+			if folded.len == 0 {
+				folded = fields.clone()
+			}
+			folded[i] = StructField{
+				...field
+				typ: typ
+			}
+		}
+		if folded.len > 0 {
+			tc.structs[name_id] = folded
+		}
+	}
+}
+
+// fixed_array_with_folded_len is `t` with every const fixed-array length that resolves in
+// `module_name` evaluated, or none when nothing changes.
+fn (tc &TypeChecker) fixed_array_with_folded_len(t Type, module_name string) ?Type {
+	if t !is ArrayFixed {
+		return none
+	}
+	arr := t as ArrayFixed
+	elem := tc.fixed_array_with_folded_len(*arr.elem_type, module_name)
+	mut len := arr.len
+	if len == 0 && arr.len_expr.len > 0 {
+		value := tc.const_int_value_in_module(arr.len_expr, module_name, []string{}) or { 0 }
+		if value > 0 {
+			len = value
+		}
+	}
+	if elem == none && len == arr.len {
+		return none
+	}
+	return Type(ArrayFixed{
+		elem_type: if e := elem { tc.intern_type_reference(e) } else { arr.elem_type }
+		len:       len
+		len_expr:  if len != arr.len { '' } else { arr.len_expr }
+	})
 }
 
 // resolve_const_types resolves resolve const types information for types.
@@ -8150,7 +8250,8 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			continue
 		}
 		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
-			&& it.msg.starts_with('undefined variable')
+			&& (it.msg.starts_with('undefined variable')
+				|| it.msg == 'module `${it.node_value}` is not a value')
 			&& (it.node_value == node.typ_text()
 				|| (it.node_value.len > 1 && node.typ_text().starts_with(it.node_value)))) {
 			continue
@@ -19008,6 +19109,7 @@ const builtin_attribute_names = [
 	'implicit',
 	'ignore',
 	'ignore_overflow',
+	'immutable',
 	'index',
 	'inline',
 	'inner',
@@ -19015,6 +19117,7 @@ const builtin_attribute_names = [
 	'json_as_number',
 	'json_null',
 	'keep_args_alive',
+	'len_of',
 	'live',
 	'long',
 	'manualfree',
@@ -19026,8 +19129,11 @@ const builtin_attribute_names = [
 	'must_use',
 	'noalloc',
 	'nocopy',
+	'noescape',
 	'noinit',
 	'noinline',
+	'non_exhaustive',
+	'nonnull',
 	'noreturn',
 	'omitempty',
 	'only',
@@ -19044,6 +19150,8 @@ const builtin_attribute_names = [
 	'references',
 	'repeats',
 	'required',
+	'returns_borrowed',
+	'returns_owned',
 	'serial',
 	'serialize',
 	'short',
@@ -19051,7 +19159,6 @@ const builtin_attribute_names = [
 	'soa',
 	'spawn_stack',
 	'sql',
-	'sql_insert_only',
 	'sql_select',
 	'sql_type',
 	'str',
@@ -19411,12 +19518,12 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				cur_module = node.value
 				tc.enter_module(node.value)
 				lo, hi := attribute_use_window(node)
-				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+				tc.check_immutable_attribute_use(flat.NodeId(i), node,
 					tc.declaration_attributes[i], lo, hi)
 			}
 			.const_decl, .global_decl, .c_fn_decl {
 				lo, hi := attribute_use_window(node)
-				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+				tc.check_immutable_attribute_use(flat.NodeId(i), node,
 					tc.declaration_attributes[i], lo, hi)
 			}
 			.fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
@@ -19488,16 +19595,16 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 	}
 }
 
-fn (mut tc TypeChecker) check_sql_insert_only_attribute_use(node_id flat.NodeId, node flat.Node, pieces []string, lo int, hi int) {
+fn (mut tc TypeChecker) check_immutable_attribute_use(node_id flat.NodeId, node flat.Node, pieces []string, lo int, hi int) {
 	for piece in pieces {
-		if !attribute_name_is(piece, 'sql_insert_only') {
+		if !attribute_name_is(piece, 'immutable') {
 			continue
 		}
-		pos := tc.attribute_use_pos(node, 'sql_insert_only', lo, hi)
+		pos := tc.attribute_use_pos(node, 'immutable', lo, hi)
 		if node.kind != .field_decl {
-			tc.record_error_at(.assignment_mismatch, 'attribute `sql_insert_only` can only be applied to struct fields', node_id, pos)
-		} else if piece != 'sql_insert_only' {
-			tc.record_error_at(.assignment_mismatch, 'attribute `sql_insert_only` does not accept arguments', node_id, pos)
+			tc.record_error_at(.assignment_mismatch, 'attribute `immutable` can only be applied to struct fields', node_id, pos)
+		} else if piece != 'immutable' {
+			tc.record_error_at(.assignment_mismatch, 'attribute `immutable` does not accept arguments', node_id, pos)
 		}
 	}
 }
@@ -19506,7 +19613,7 @@ fn (mut tc TypeChecker) check_sql_insert_only_attribute_use(node_id flat.NodeId,
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
 fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
-	tc.check_sql_insert_only_attribute_use(node_id, node, pieces, lo, hi)
+	tc.check_immutable_attribute_use(node_id, node, pieces, lo, hi)
 	// Schema interpretation needs the parser's no-argument identity: the legacy
 	// strings alone make @['Schema'] indistinguishable from @[Schema].
 	mut kinds_id := node.attribute_kinds_id()

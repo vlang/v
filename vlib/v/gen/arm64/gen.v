@@ -57,8 +57,8 @@ mut:
 	// export_entries holds the C names whose C-convention entry
 	// gen_export_entries emitted (see export_abi.v).
 	export_entries map[string]bool
-	// prune_unused emits only the functions reachable from main (freestanding
-	// objects, whose runtime registers helpers the program may never call).
+	// prune_unused emits only the functions reachable from main and exports
+	// (freestanding objects register helpers the program may never call).
 pub mut:
 	prune_unused bool
 	// freestanding links the program's own runtime definitions of libc-named
@@ -382,13 +382,13 @@ fn arm64_max_int(a int, b int) int {
 	return if a > b { a } else { b }
 }
 
-// reachable_functions marks the functions reachable from main through function
-// references in the instructions of each reachable body.
+// reachable_functions starts from main and exported functions, which linked C
+// code can call, then follows function references in each reachable body.
 fn (g &Gen) reachable_functions() []bool {
 	mut reach := []bool{len: g.m.funcs.len}
 	mut work := []int{}
 	for i, f in g.m.funcs {
-		if f.name == 'main' {
+		if f.name == 'main' || f.name in g.m.export_aliases {
 			reach[i] = true
 			work << i
 		}
@@ -1143,8 +1143,30 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.gen_float_binop(fop, instr.operands[0], instr.operands[1], val_id)
 				return
 			}
+			mut check_shift_count := false
+			mut shift_width := 64
+			if instr.op in [.shl, .ashr, .lshr] {
+				narrow_width := g.narrow_int_width(val.typ)
+				if narrow_width != 0 {
+					shift_width = narrow_width
+				}
+				count := g.m.values[instr.operands[1]]
+				if count.kind == .constant {
+					if u64(parse_arm64_int(count.name)) >= u64(shift_width) {
+						g.emit_mov_imm(8, 0)
+						g.store_val(8, val_id)
+						return
+					}
+				} else {
+					check_shift_count = true
+				}
+			}
 			lhs_reg := g.load_val(instr.operands[0], 8)
 			rhs_reg := g.load_val(instr.operands[1], 9)
+			if check_shift_count {
+				// ARM64 masks the count. An unsigned comparison also rejects negative counts.
+				g.emit32(asm_cmp_imm(Reg(rhs_reg), u32(shift_width)))
+			}
 			match instr.op {
 				.add {
 					g.emit32(asm_add_reg(Reg(8), Reg(lhs_reg), Reg(rhs_reg)))
@@ -1189,6 +1211,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				else {}
 			}
+			if check_shift_count {
+				g.emit32(asm_csel_lo_or_zero(Reg(8), Reg(8)))
+			}
 			if instr.op in [.add, .sub, .mul, .shl] {
 				// The ops run on the full x register; a narrower integer has to
 				// wrap at its own width before a shift, compare or index reads
@@ -1224,10 +1249,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
 			lhs_typ := g.m.values[instr.operands[0]].typ
-			if g.is_float_type(lhs_typ) {
-				// Float comparison: FCMP sets NZCV; the same condition codes used
-				// for signed integers give the expected ordered results (matching
-				// the v2 backend). Comparing at the operands' own width avoids
+			is_float := g.is_float_type(lhs_typ)
+			if is_float {
+				// Comparing at the operands' own width avoids
 				// widening two f32 values to f64 just to throw the difference away.
 				lhs_reg, rhs_reg := float_operand_regs(instr.operands[0], instr.operands[1])
 				if g.is_f32_type(lhs_typ) {
@@ -1248,12 +1272,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 				rhs_reg := g.load_val(instr.operands[1], 9)
 				g.emit32(asm_cmp_reg(Reg(lhs_reg), Reg(rhs_reg)))
 			}
+			// FCMP sets C and V for unordered operands. LO and LS exclude
+			// that case, whereas the signed integer conditions LT and LE include it.
 			match instr.op {
 				.eq { g.emit32(asm_cset_eq(Reg(8))) }
 				.ne { g.emit32(asm_cset_ne(Reg(8))) }
-				.lt { g.emit32(asm_cset_lt(Reg(8))) }
+				.lt { g.emit32(if is_float { asm_cset_lo(Reg(8)) } else { asm_cset_lt(Reg(8)) }) }
 				.gt { g.emit32(asm_cset_gt(Reg(8))) }
-				.le { g.emit32(asm_cset_le(Reg(8))) }
+				.le { g.emit32(if is_float { asm_cset_ls(Reg(8)) } else { asm_cset_le(Reg(8)) }) }
 				.ge { g.emit32(asm_cset_ge(Reg(8))) }
 				.ult { g.emit32(asm_cset_lo(Reg(8))) }
 				.ugt { g.emit32(asm_cset_hi(Reg(8))) }
@@ -2124,6 +2150,11 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 }
 
 fn (g &Gen) c_variadic_start(instr ssa.Instruction) ?int {
+	// Darwin places unnamed arguments on the stack; Linux uses the usual
+	// AAPCS64 integer and floating-point argument registers first.
+	if g.m.target.is_linux() {
+		return none
+	}
 	if instr.operands.len == 0 {
 		return none
 	}

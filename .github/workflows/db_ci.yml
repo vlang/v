@@ -16,16 +16,27 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    name: ${{ matrix.name }} driver tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mysql-8.0
+            image: mysql:8.0
+            health_cmd: 'mysqladmin ping -h 127.0.0.1 -uroot -p12345678'
+          - name: mariadb-11
+            image: mariadb:11
+            health_cmd: 'healthcheck.sh --connect --innodb_initialized'
     services:
       mysql:
-        image: mysql:8.0
+        image: ${{ matrix.image }}
         env:
           MYSQL_ROOT_PASSWORD: 12345678
           MYSQL_ROOT_HOST: '%'
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p12345678"
+          --health-cmd="${{ matrix.health_cmd }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=24

@@ -212,6 +212,14 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 	ctx.res.header.set_custom(key, value)!
 }
 
+// response_sends_body reports whether a response with the given status code may
+// carry an auto-generated Content-Length header. RFC 9110, section 8.6 forbids
+// Content-Length in 1xx and 204 responses, and 304 responses carry no body.
+fn response_sends_body(status_code int) bool {
+	return status_code != int(http.Status.not_modified)
+		&& status_code != int(http.Status.no_content) && (status_code < 100 || status_code > 199)
+}
+
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
 // and the response body to `response`
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
@@ -242,7 +250,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if !ctx.res.header.contains(.content_length) && ctx.res.status_code != int(http.Status.not_modified) {
+	if !ctx.res.header.contains(.content_length) && response_sends_body(ctx.res.status_code) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers
@@ -346,7 +354,7 @@ pub fn (mut ctx Context) file(file_path string) Result {
 
 fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	mut file := os.open(file_path) or {
-		eprint('[veb] error while trying to open file: ${err.msg()}')
+		eprintln('[veb] error while trying to open file: ${err.msg()}')
 		ctx.res.set_status(.not_found)
 		return ctx.text('resource does not exist')
 	}
@@ -451,13 +459,20 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		ctx.res.header.set(.etag, etag)
 		ctx.res.header.set(.last_modified, last_modified)
 		ctx.res.header.set(.accept_ranges, 'bytes')
+		if ctx.req.method == .head {
+			// HEAD mirrors the full representation's headers with no body.
+			ctx.res.header.set(.content_length, data.len.str())
+			return ctx.send_response_to_client(content_type, '')
+		}
 		return ctx.send_response_to_client(content_type, data)
 	}
 	// Default: serve uncompressed file in streaming mode (zero-copy sendfile).
 	// Range requests fall through to the full 200 body here: the streaming
 	// transports have no offset support yet, and a full response is always legal.
-	ctx.return_type = .file
-	ctx.return_file = file_path
+	if ctx.req.method != .head {
+		ctx.return_type = .file
+		ctx.return_file = file_path
+	}
 	ctx.res.header.set(.content_length, file_size.str())
 	ctx.res.header.set(.etag, etag)
 	ctx.res.header.set(.last_modified, last_modified)
@@ -518,8 +533,10 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 		return true
 	}
 	// Serve existing compressed file in streaming mode (zero-copy)
-	ctx.return_type = .file
-	ctx.return_file = compressed_path
+	if ctx.req.method != .head {
+		ctx.return_type = .file
+		ctx.return_file = compressed_path
+	}
 	ctx.res.header.set(.content_encoding, encoding_name)
 	ctx.res.header.set(.vary, 'Accept-Encoding')
 	compressed_size := os.file_size(compressed_path)
@@ -578,8 +595,10 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 	ctx.already_compressed = true
 	if write_success {
 		// Serve the newly cached file in streaming mode (zero-copy)
-		ctx.return_type = .file
-		ctx.return_file = compressed_path
+		if ctx.req.method != .head {
+			ctx.return_type = .file
+			ctx.return_file = compressed_path
+		}
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
 		ctx.res.header.set(.content_length, compressed.len.str())
@@ -588,6 +607,10 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 		// Fallback: serve compressed content from memory (no caching)
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
+		if ctx.req.method == .head {
+			ctx.res.header.set(.content_length, compressed.len.str())
+			return ctx.send_response_to_client(content_type, '')
+		}
 		return ctx.send_response_to_client(content_type, compressed.bytestr())
 	}
 }
@@ -630,7 +653,7 @@ pub fn (mut ctx Context) server_error_with_status(s http.Status) Result {
 	return ctx.send_response_to_client('text/plain', 'Server error')
 }
 
-// send a 204 No Content response without body and content-type
+// send a 204 No Content response without body, content-type, or content-length
 pub fn (mut ctx Context) no_content() Result {
 	ctx.res.set_status(.no_content)
 	return ctx.send_response_to_client('', '')
@@ -716,14 +739,13 @@ pub fn (mut ctx Context) takeover_conn() {
 fn (mut ctx Context) prepare_takeover_conn() {
 	if ctx.conn == unsafe { nil } && ctx.client_fd >= 0 {
 		// For the fasthttp backend: create a TcpConn from the raw fd on demand.
-		// Set the fd to blocking mode. fasthttp uses non-blocking sockets,
-		// but TcpConn.write() expects blocking behavior for reliable writes.
-		$if !windows {
-			flags := C.fcntl(ctx.client_fd, C.F_GETFL, 0)
-			if flags != -1 {
-				C.fcntl(ctx.client_fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
-			}
-		}
+		// Keep the fd non-blocking: TcpConn.write() only applies the write
+		// timeout when send() reports it would block (vlang/v#32329), which
+		// never happens on a blocking socket, so a stalled client would keep
+		// the writer blocked indefinitely. The non-blocking write path waits
+		// for writability with the timeout and loops until every byte is sent,
+		// so writes stay reliable.
+		net.set_blocking(ctx.client_fd, false) or {}
 		ctx.conn = &net.TcpConn{
 			sock:          net.TcpSocket{
 				Socket: net.Socket{
@@ -731,21 +753,14 @@ fn (mut ctx Context) prepare_takeover_conn() {
 				}
 			}
 			handle:        ctx.client_fd
-			is_blocking:   true
+			is_blocking:   false
 			read_timeout:  30 * time.second
 			write_timeout: 30 * time.second
 		}
 	} else if ctx.conn != unsafe { nil } {
-		// The connection exists but uses non-blocking I/O.
-		// Switch to blocking mode for reliable SSE writes.
-		fd := ctx.conn.handle
-		$if !windows {
-			flags := C.fcntl(fd, C.F_GETFL, 0)
-			if flags != -1 {
-				C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
-			}
-		}
-		ctx.conn.is_blocking = true
+		// The connection exists: make sure it uses non-blocking I/O, so the
+		// write timeout below actually bounds TcpConn.write() (see above).
+		ctx.conn.set_blocking(false) or {}
 		ctx.conn.set_read_timeout(30 * time.second)
 		ctx.conn.set_write_timeout(30 * time.second)
 	}

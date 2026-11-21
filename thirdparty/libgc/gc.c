@@ -15431,6 +15431,19 @@ GC_get_allocd_bytes_per_finalizer(void)
   return GC_allocd_bytes_per_finalizer;
 }
 
+/* Maximum heap increment for the current heap size, in blocks.
+ * A fixed MAXHINCR forces a full collection for every few MiB of growth once
+ * the live heap is large, making a growing-heap program quadratic.  Grow in
+ * proportion to the heap instead (at least MAXHINCR, at most a quarter of the
+ * current heap), which keeps the number of collections logarithmic. */
+static word gc_max_heap_increment(void) {
+  word maxincr = MAXHINCR;
+  word proportional = GC_heapsize / HBLKSIZE / 4;
+  if (proportional > maxincr)
+    maxincr = proportional;
+  return maxincr;
+}
+
 GC_INNER GC_bool
 GC_collect_or_expand(word needed_blocks, unsigned flags, GC_bool retry)
 {
@@ -15438,6 +15451,7 @@ GC_collect_or_expand(word needed_blocks, unsigned flags, GC_bool retry)
 
   GC_bool gc_not_stopped = TRUE;
   word blocks_to_get;
+  word maxincr;
   IF_CANCEL(int cancel_state;)
 
   GC_ASSERT(I_HOLD_LOCK());
@@ -15472,20 +15486,21 @@ GC_collect_or_expand(word needed_blocks, unsigned flags, GC_bool retry)
     }
   }
 
+  maxincr = gc_max_heap_increment();
   blocks_to_get = (GC_heapsize - GC_heapsize_at_forced_unmap)
                       / (HBLKSIZE * GC_free_space_divisor)
                   + needed_blocks;
-  if (blocks_to_get > MAXHINCR) {
+  if (blocks_to_get > maxincr) {
 #ifdef NO_BLACK_LISTING
     UNUSED_ARG(flags);
-    blocks_to_get = needed_blocks > MAXHINCR ? needed_blocks : MAXHINCR;
+    blocks_to_get = needed_blocks > maxincr ? needed_blocks : maxincr;
 #else
     word slop;
 
     /*
      * Get the minimum required to make it likely that we can satisfy
      * the current request in the presence of black-listing.  This will
-     * probably be bigger than `MAXHINCR`.
+     * probably be bigger than the maximum increment.
      */
     if ((flags & IGNORE_OFF_PAGE) != 0) {
       slop = 4;
@@ -15494,10 +15509,10 @@ GC_collect_or_expand(word needed_blocks, unsigned flags, GC_bool retry)
       if (slop > needed_blocks)
         slop = needed_blocks;
     }
-    if (needed_blocks + slop > MAXHINCR) {
+    if (needed_blocks + slop > maxincr) {
       blocks_to_get = needed_blocks + slop;
     } else {
-      blocks_to_get = MAXHINCR;
+      blocks_to_get = maxincr;
     }
 #endif
     if (blocks_to_get > divHBLKSZ(GC_WORD_MAX))
@@ -41579,12 +41594,19 @@ GC_remove_all_threads_but_me(void)
     store_to_threads_table(hv, NULL);
   }
 
-#    if defined(CPPCHECK) || defined(LINT2)
-  if (NULL == me)
-    ABORT("Current thread is not found after fork");
-#    else
-  GC_ASSERT(me != NULL);
-#    endif
+  if (NULL == me) {
+    /*
+     * The thread that called `fork()` was never registered with the
+     * collector: a C library forked on a thread it created itself (for
+     * instance libdbus autolaunching the session bus on a libmpv thread).
+     * There is no entry to keep, so the table stays empty.  Writing
+     * through `me` here would crash the child while it still holds the
+     * allocator lock, and the child would then hang forever in any
+     * signal handler that allocates.  Such a child only gets as far as
+     * `exec` or `_exit`; one that wants to allocate must register itself.
+     */
+    return;
+  }
   /*
    * Update `pthreads` id as it is not guaranteed to be the same between
    * this (child) process and the parent one.

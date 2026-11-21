@@ -25,7 +25,9 @@ build flag:
 Both backends implement the same public API (`generate_key`,
 `new_key_from_seed`, `PrivateKey.new`, `.sign`, `.bytes`, `.public_key`,
 `.derive_shared_secret`, `.equal`, `.free`, `PublicKey.verify`, `.equal`,
-`.free`, `.uncompressed_bytes`, `PublicKey.from_uncompressed_bytes`), so
+`.free`, `.uncompressed_bytes`, `PublicKey.from_uncompressed_bytes`, and the
+PEM/DER loaders `pubkey_from_bytes`, `pubkey_from_string`,
+`privkey_from_string`), so
 calling code compiles unchanged regardless of which backend is selected.
 
 One documented difference: `new_key_from_seed` on the mbedTLS backend
@@ -34,9 +36,14 @@ rejects a seed whose big-endian value is outside `[1, curve_order-1]`
 OpenSSL backend performs no such check. Every seed that `PrivateKey.bytes()`
 produces is in range, so a key saved with either backend reloads with both.
 
+On the mbedTLS backend the PEM/DER loaders accept an unencrypted SEC1
+(`EC PRIVATE KEY`) or PKCS#8 (`PRIVATE KEY`) private key, and a
+SubjectPublicKeyInfo public key, on the curves `Nid` names; any other key
+type or curve is refused with an error.
+
 **The default mbedTLS backend does not (yet) implement everything the
-OpenSSL backend does** -- these return a clear, informative error instead of
-silently behaving differently, and are only available under
+OpenSSL backend does** -- this returns a clear, informative error instead of
+silently behaving differently, and is only available under
 `-d use_openssl` today:
 
 - `PrivateKey.sign()`/`sign_with_options()` with
@@ -46,9 +53,6 @@ silently behaving differently, and are only available under
   caller-supplied `hash.Hash` carries no such identifier. Verifying a
   signature with a custom hash is unaffected (mbedTLS's own verify call
   takes no digest-algorithm parameter at all).
-- `pubkey_from_bytes`, `pubkey_from_string`, `privkey_from_string` (PEM/DER
-  loading) -- format-parsing work not yet ported; no caller in this repo
-  currently needs them on the default backend.
 
 # Example
 ```v

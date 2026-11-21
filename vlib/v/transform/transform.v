@@ -236,6 +236,9 @@ mut:
 	// borrow_params_after_transform starts the summaries from the transform
 	// stage's (see prepare_fixed_array_borrow_params).
 	borrow_params_after_transform bool
+	// scans_parsed_tree marks a monomorphization of the tree as it was parsed, as
+	// a check does: its smartcasts are not lowered and live only in the checker.
+	scans_parsed_tree bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -2750,6 +2753,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.scope_parallel_workers = true
 	}
 	t.borrow_params_after_transform = after_transform
+	t.scans_parsed_tree = !after_transform
 	t.prepare()
 	if after_transform {
 		t.mark_used_fn_bodies_lowered()
@@ -8323,6 +8327,11 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	}
 	if typ == 0 {
 		typ = t.raw_alias_type_for_expr(expr_id)
+		if sc := t.find_smartcast_for_expr(expr_id) {
+			if t.smartcast_replaces_alias_str(expr_id, typ, sc) {
+				typ = 0
+			}
+		}
 	}
 	if typ == 0 && expr_node.kind == .ident {
 		raw_var_type_source_id := t.raw_var_type(expr_node.value_text())
@@ -24700,6 +24709,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		}
 	}
 	if node.op == .left_shift {
+		if lowered := t.lower_append_string_bytes(node) {
+			return lowered
+		}
 		lhs_id := t.a.children[node.children_start]
 		rhs_id := t.a.children[node.children_start + 1]
 		mut rhs_target_type := u32(0)
@@ -25350,6 +25362,11 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 			0
 		} else {
 			-1
+		}
+		if is_method && node.children_count > 1 && t.operand_writes_storage(recv_id) {
+			// Materialize a receiver that mutates storage before reading its arguments.
+			// The ordinary C call path otherwise leaves that order to the C compiler.
+			last_branch = 1
 		}
 		for i in 1 .. node.children_count {
 			// Array callback expressions bind `it` inside their lowering. Materializing

@@ -5,7 +5,7 @@ fn C.__builtin_ctzll(x u64) i32
 fn C.__builtin_clzll(x u64) i32
 
 // string_index_byte searches exactly size readable bytes, including embedded NULs.
-@[inline]
+@[ignore_overflow; inline]
 fn string_index_byte(data &u8, size int, needle u8) int {
 	if size <= 0 {
 		return -1
@@ -48,7 +48,7 @@ fn string_index_byte(data &u8, size int, needle u8) int {
 }
 
 // string_index_pair searches adjacent bytes without reading outside the span.
-@[inline]
+@[ignore_overflow; inline]
 fn string_index_pair(data &u8, size int, first u8, second u8) int {
 	$if prod && !tinyc && !msvc && !native && little_endian {
 		if size >= 8 && size <= 32 {
@@ -90,7 +90,7 @@ fn string_index_pair(data &u8, size int, first u8, second u8) int {
 }
 
 // string_contains_byte checks readable bytes without computing a match position.
-@[inline]
+@[ignore_overflow; inline]
 fn string_contains_byte(data &u8, size int, needle u8) bool {
 	if size <= 0 {
 		return false
@@ -145,7 +145,7 @@ fn string_contains_byte(data &u8, size int, needle u8) bool {
 }
 
 // string_last_index_byte searches complete words without reading outside the span.
-@[inline]
+@[ignore_overflow; inline]
 fn string_last_index_byte(data &u8, size int, needle u8) int {
 	mut end := size
 	$if prod && !tinyc && !msvc && !native {

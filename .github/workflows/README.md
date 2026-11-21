@@ -61,6 +61,13 @@ need only the Linux producer. Mixed-platform suites may fall back to a
 locally optimized compiler when an artifact has not yet been produced.
 A failing producer still marks the full master CI run as failed.
 
+The Windows producer creates a private tool cache before building V and verifies
+that two vet invocations reuse the same executable before running formatting checks.
+Hosted Windows runners can otherwise reject the default cache's ownership and rebuild
+vet for every input in `test-cleancode`, exhausting the bootstrap timeout. The cache
+helper also sets a short `VTMP` path for nested compiler objects. Bootstrap retains
+the full `test-cleancode` and `test-fmt` checks within a 40-minute job limit.
+
 Each producer uploads a seven-day artifact named `vprod-<platform>-<full-commit-sha>`.
 It contains `<full-commit-sha>-<platform>` and its `.sha256` checksum. The setup action
 uses these artifacts within the same master workflow run and verifies their checksum,

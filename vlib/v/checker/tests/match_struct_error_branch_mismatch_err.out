@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_struct_error_branch_mismatch_err.vv:8:10: error: return type mismatch, it should be `Foo`, but it is instead `IError`
+    6 |     ans := match n {
+    7 |         1 { Foo{1} }
+    8 |         else { error('bad') }
+      |                ~~~~~~~~~~~~
+    9 |     }
+   10 |     return ans

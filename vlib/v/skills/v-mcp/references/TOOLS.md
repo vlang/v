@@ -118,8 +118,8 @@ with a hint rather than an empty object.
 
 ### `v_check`
 
-Type-check and return the diagnostics as records with file, line, column, kind and
-message. This is the authoritative answer to "does it compile"; it compiles
+Type-check and return the diagnostics as records with file, span, kind, message
+and details. This is the authoritative answer to "does it compile"; it compiles
 nothing and writes nothing.
 
 ```json
@@ -130,16 +130,23 @@ The response carries `started`. When it is `false` the compiler could not be
 launched and the response has an `error` instead of a result — a sandbox failure
 that would otherwise read as a failed check.
 
+`error_count` counts every diagnostic of kind `error`, including the ones with a
+`label`: a `builder error`, or each declaration of a redefinition, labelled
+`conflicting declaration`. Read `output` when it is present: it is compiler output
+that no diagnostic accounts for.
+
 ### `v_test_run`
 
 Run the tests of a file or directory and report what passed, what failed and what
 the failures said.
 
 ```json
-{"path": "src", "only": "test_parse*", "silent": true}
+{"path": "src", "only": "parser"}
 ```
 
-`only` is the same glob `VTEST_ONLY_FN` takes. `env` passes extra variables.
+`only` is what `VTEST_ONLY` takes: comma-separated fragments, and a test file
+runs when its path contains one of them. It is not a glob, and it selects files,
+not test functions. The run is always silent, whatever `silent` says.
 
 ### `v_doctor`
 
@@ -187,12 +194,13 @@ behind the bundle. To add one: `v skills add <name>`.
 
 ## Resources
 
-The server also publishes two, readable without a tool call:
+The server also publishes these, readable without a tool call:
 
 | URI | What |
 | --- | --- |
 | `v://version` | the compiler version |
 | `v://help/<topic>` | a `v help` topic |
+| `v://docs/language` | the language reference, the whole `doc/docs.md` |
 
 And it publishes its model instructions at initialization, which describe the
 working order. The same text is what `v mcp serve --instructions` prints.

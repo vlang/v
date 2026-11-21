@@ -71,10 +71,141 @@ fn test_a_method_of_a_generic_struct_is_checked_for_each_instance() {
 	assert error_lines(res.output) == ['15:13: `int` has no property `name`'], res.output
 }
 
+// A method of a generic struct that declares a return type but returns
+// nothing is reported for the declaration itself: no instance returns either.
+fn test_a_generic_struct_method_without_a_return_is_reported() {
+	res := check_program('method_missing_return', 'struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n}\n\nfn main() {\n\tprintln(Box[int]{ v: 1 }.label())\n}\n')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['14:1: missing return at end of function `label`'], res.output
+}
+
+// Assigning through the immutable receiver of a method of a generic struct is
+// reported for the instance: the receiver is immutable whatever `T` is.
+fn test_a_generic_struct_method_assigning_through_an_immutable_receiver_is_reported() {
+	res := check_program('method_immutable_receiver', 'struct Box[T] {\nmut:\n\tv T\n}\n\nfn (b &Box[T]) set(v T) {\n\tb.v = v\n}\n\nfn main() {\n\tmut b := Box[int]{}\n\tb.set(1)\n\tprintln(b.v)\n}\n')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['16:2: `b` is immutable, declare it with `mut` to make it mutable'], res.output
+}
+
+// Calling a method of a generic struct with fewer arguments than it takes is
+// reported where the generic caller does so: the missing arguments are not
+// zeroes.
+fn test_a_generic_struct_method_called_with_fewer_arguments_is_reported() {
+	res := check_program('method_arg_count', 'struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) show(n int, rest []int) {\n\tprintln(n)\n\tprintln(rest.len)\n}\n\nfn call[T](b Box[T]) {\n\tb.show()\n}\n\nfn main() {\n\tcall(Box[int]{ v: 1 })\n}\n')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['20:4: expected 2 arguments, but got 0'], res.output
+}
+
+// Methods of a generic struct that return, mutate through a `mut` receiver,
+// and are called with the right number of arguments stay valid.
+fn test_valid_generic_struct_methods_stay_valid() {
+	res := check_program('methods_valid', 'struct Box[T] {\nmut:\n\tv T\n}\n\nfn (b &Box[T]) get() T {\n\treturn b.v\n}\n\nfn (mut b Box[T]) set(v T) {\n\tb.v = v\n}\n\nfn (b Box[T]) show(n int, rest []int) int {\n\tif rest.len > 0 {\n\t\treturn n + rest[0]\n\t}\n\treturn n\n}\n\nfn call[T](b Box[T]) int {\n\treturn b.show(1, [2])\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tv: 3\n\t}\n\tprintln(b.get())\n\tb.set(10)\n\tprintln(b.get())\n\tprintln(call(b))\n}\n')
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
+// A generic function or method that ends in a user-defined `@[noreturn]` call
+// does not fall through: no `return` is missing. The builtin `panic`/`exit`
+// and an infinite loop terminate the same way.
+fn test_generic_noreturn_terminated_functions_stay_valid() {
+	source := "@[noreturn]\nfn die() { panic('expected') }\n\nfn fail[T]() T { die() }\n\nstruct NBox[T] {\n\tv T\n}\n\nfn (b NBox[T]) fail() T { die() }\n\nfn panic_fail[T]() T { panic('boom') }\n\nfn exit_fail[T]() T { exit(1) }\n\nfn loop_fail[T]() T { for {} }\n\nfn main() {\n\tif false { _ = fail[int]() }\n\tif false { _ = NBox[int]{}.fail() }\n\tif false { _ = panic_fail[int]() }\n\tif false { _ = exit_fail[int]() }\n\tif false { _ = loop_fail[int]() }\n\tprintln('ok')\n}\n"
+	for res in [check_program('noreturn_valid_check', source),
+		build_program('noreturn_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// Calling a capturing closure through another local bound to it passes no
+// arguments either: the clone counts the captures as parameters for the alias
+// as it does for the original.
+fn test_generic_closure_alias_calls_stay_valid() {
+	source := 'fn apply[T](value T) {\n\tread := fn [value] [T]() { println(value) }\n\talias := read\n\talias()\n\tread()\n}\n\nfn main() {\n\tapply(3)\n}\n'
+	for res in [check_program('closure_alias_check', source),
+		build_program('closure_alias_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
 fn test_instances_that_have_what_the_body_uses_stay_valid() {
 	res := check_program('valid', "fn show[T](x T) string {\n\treturn x.name\n}\n\nfn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n\tprintln(call(User{ name: 'b' }))\n}\n")
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
+}
+
+const box_with_label = 'struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) label() string {
+	return b.v.name
+}
+
+type Sum = Box[int] | string
+
+struct Holder {
+	s Sum
+}
+
+'
+
+// A check monomorphizes the tree as it was parsed. There a smartcast receiver is
+// still the sum type or the option, which the method of the variant does not
+// belong to: only what the checker narrowed it to tells which instance it asks for.
+fn test_an_instance_asked_for_by_a_smartcast_receiver_is_reported() {
+	bodies := {
+		'match_arm':     "fn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { s.label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'mut_match_arm': "fn f(mut s Sum) string {\n\treturn match mut s {\n\t\tBox[int] { s.label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tmut s := Sum('a')\n\tprintln(f(mut s))\n}\n"
+		'if_is':         "fn f(s Sum) string {\n\tif s is Box[int] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'field':         "fn f(h Holder) string {\n\treturn match h.s {\n\t\tBox[int] { h.s.label() }\n\t\tstring { h.s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Holder{ s: Sum('a') }))\n}\n"
+		'paren':         "fn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { (s).label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'nested_paren':  "fn f(h Holder) string {\n\tif h.s is Box[int] {\n\t\treturn ((h.s)).label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Holder{ s: Sum('a') }))\n}\n"
+		'none_guard':    "fn f(b ?Box[int]) string {\n\tif b != none {\n\t\treturn b.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(none))\n}\n"
+		// The narrowing after a guard that returns, and that of a captured value,
+		// are not found from the enclosing blocks: the checker records them.
+		'not_is_guard':  "fn f(s Sum) string {\n\tif s !is Box[int] {\n\t\treturn ''\n\t}\n\treturn s.label()\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'closure':       "fn f(s Sum) string {\n\tif s is Box[int] {\n\t\tg := fn [s] () string {\n\t\t\treturn s.label()\n\t\t}\n\t\treturn g()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+	}
+	for name, body in bodies {
+		res := check_program('smartcast_${name}', box_with_label + body)
+		assert res.exit_code == 1, '${name}: ${res.output}'
+		assert error_lines(res.output) == ['15:13: `int` has no property `name`'], '${name}: ${res.output}'
+	}
+}
+
+fn test_a_method_with_its_own_parameter_on_a_smartcast_receiver_is_reported() {
+	res := check_program('smartcast_method_param', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label[U](u U) string {\n\treturn u.name + b.v.str()\n}\n\ntype Sum = Box[int] | string\n\nfn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { s.label(1) }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['15:11: `int` has no property `name`'], res.output
+}
+
+// Only the variant that the arm narrows to is asked for: `Box[int]` has no arm
+// that calls `label` here, and must not be reported.
+fn test_a_smartcast_receiver_asks_only_for_the_variant_of_its_arm() {
+	res := check_program('smartcast_variant', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\ntype Sum = Box[User] | Box[int] | string\n\nfn f(s Sum) string {\n\treturn match s {\n\t\tBox[User] { s.label() }\n\t\tBox[int] { 'int' }\n\t\tstring { s }\n\t}\n}\n\nfn g(s Sum) string {\n\tif s is Box[User] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn h(s Sum) string {\n\tif s !is Box[User] {\n\t\treturn ''\n\t}\n\treturn s.label()\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n\tprintln(g(Sum('a')))\n\tprintln(h(Sum('a')))\n}\n")
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
+// The shadowing is found in the clone of `m`, which has to exist in a check too.
+fn test_a_global_shadowed_in_an_instance_of_a_smartcast_receiver_is_reported() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_smartcast_global_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, "module main\n\n__global gv = 1\n\ntype Sum = Box[int] | string\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) m() T {\n\t\$if T is int {\n\t\tgv := 3\n\t\t_ = gv\n\t}\n\treturn b.v\n}\n\nfn wrap(s Sum) int {\n\treturn match s {\n\t\tBox[int] { s.m() }\n\t\tstring { 0 }\n\t}\n}\n\nfn main() {\n\tprintln(wrap(Sum('a')))\n}\n") or {
+		panic(err)
+	}
+	check := os.exec([@VEXE, '-new-compiler', '-enable-globals', '-check', '-nocolor', path])
+	build := os.exec([@VEXE, '-new-compiler', '-enable-globals', '-nocolor', '-o',
+		os.join_path(dir, 'program'), path])
+	for res in [check, build] {
+		assert res.exit_code == 1, res.output
+		assert error_lines(res.output) == ['13:3: variable `gv` shadows a global variable'], res.output
+	}
 }
 
 // A library module outside the program, where ~/.vmodules keeps them. A check

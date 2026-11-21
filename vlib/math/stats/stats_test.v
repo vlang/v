@@ -516,6 +516,19 @@ fn test_quantile() {
 	assert math.alike(o, 2.319999933242798)
 }
 
+fn test_quantile_rejects_invalid_fractions() {
+	data := [10.0, 20.0]
+	for f in [-0.1, 1.1, math.nan(), math.inf(-1), math.inf(1)] {
+		if value := stats.quantile(data, f) {
+			assert false, 'expected an error for fraction ${f}, got ${value}'
+		} else {
+			assert err.msg() == 'index out of range'
+		}
+	}
+	assert stats.quantile(data, 0.0)! == 10.0
+	assert stats.quantile(data, 1.0)! == 20.0
+}
+
 fn test_passing_empty() {
 	data := []f64{}
 	assert stats.freq(data, 0) == 0

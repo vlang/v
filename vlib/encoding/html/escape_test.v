@@ -21,6 +21,22 @@ fn test_escape_html() {
 	assert html.escape('<p>façade</p>') == '&lt;p&gt;façade&lt;/p&gt;'
 }
 
+fn test_escape_html_without_quotes() {
+	assert html.escape('"a" & \'b\' <c>', quote: false) == '"a" &amp; \'b\' &lt;c&gt;'
+	assert html.escape('it\'s "fine"', quote: false) == 'it\'s "fine"'
+	assert html.escape('', quote: false) == ''
+}
+
+fn test_escape_html_matches_sequential_replacements() {
+	inputs := ['', 'plain', '&', '<<>>', '&&amp;', '"\'"\'', 'a<b>c&d"e\'f', '&lt;already&gt;',
+		'café <€> & "日本"', 'trailing &', '< leading', 'nul\0byte<']
+	for input in inputs {
+		tags := input.replace_each(['&', '&amp;', '<', '&lt;', '>', '&gt;'])
+		assert html.escape(input) == tags.replace_each(['"', '&#34;', "'", '&#39;']), input
+		assert html.escape(input, quote: false) == tags, input
+	}
+}
+
 fn test_unescape_html() {
 	// Test different formats
 	assert html.unescape('&#39;&#x27;&apos;') == "'&#x27;&apos;"

@@ -1,49 +1,53 @@
 # Sum types in depth
 
-> The exhaustiveness rule is in the parent skill. This reference covers: shared
-> types, `match` as an expression, `is` and `as`, and payload types.
+> The exhaustiveness rule is in the parent skill. This reference covers: sum
+> types, `match` as an expression, `is` and `as`, and enums at a boundary.
 
 V's answer to "this is one of a fixed set, and I want the compiler to know" is a
-type alias over several types.
+sum type, or an enum when no variant carries data.
 
 ```v ignore
-// A shared type: a number, or the text that explains it.
+// A sum type: a number, or the text that explains it.
 type Id = int | string
 
 // An enum: a closed set with no payload.
 enum Status {
-    pending
-    running
-    done
+	pending
+	running
+	done
 }
 
-// A sum type with payloads. Each payload is its own type.
-type Node {
-    int
-    string
-    []int
-}
+// A sum type whose variants carry different data.
+type Node = int | string | []int
 ```
 
 ## match is an expression
 
-Every branch produces a value, so `match` can be returned directly. This is what
-makes the exhaustiveness check worth having: there is no way to write a `match`
-that quietly returns nothing.
+Every branch produces a value, so `match` can be returned directly. Inside each
+branch of a `match` over a sum type, the value is already narrowed to that
+branch's type:
 
-```v ignore
+```v
+type Id = int | string
+
 fn describe(id Id) string {
-    return match id {
-        int { 'numeric id ${id}' }
-        string { 'text id ${id}' }
-    }
+	return match id {
+		int { 'numeric id ${id + 1}' }
+		string { 'text id ${id.len}' }
+	}
+}
+
+fn main() {
+	println(describe(41))
 }
 ```
 
 ## Exhaustiveness
 
-The diagnostic is `non-exhaustive match expression without `else``. There are two
-responses, and which one is right depends on the intent:
+A `match` over a sum type must cover every variant. The diagnostic names what is
+missing: ``match must be exhaustive (add match branches for: `string` or `else {}`
+at the end)``. There are two responses, and which one is right depends on the
+intent:
 
 | Situation | Response |
 | --- | --- |
@@ -53,22 +57,52 @@ responses, and which one is right depends on the intent:
 An `else` branch is a decision to be open-ended, not a convenience. Reaching for
 it to silence the error turns a compile-time guarantee into a runtime `else`.
 
-## Narrowing with is and as
+Plain (non-flag) enum matches whose conditions name enum variants are checked
+for exhaustiveness too: cover every declared value or add `else`. This statement
+match is rejected because `.done` is missing:
 
-```v ignore
-func f(v Value) string {
-    if v is int {
-        return 'int ${v as int}'
-    }
-    if v is string {
-        return 'text ${v as s}'
-    }
-    return ''
+```v failcompile
+enum Status {
+	pending
+	running
+	done
+}
+
+fn main() {
+	status := Status.done
+	match status {
+		.pending { println('queued') }
+		.running { println('in progress') }
+	}
 }
 ```
 
-`is` tests a variant; `as` unwraps it. On an enum variant, `as` is not needed —
-`match` binds the payload directly.
+A `match` on a public enum marked `@[non_exhaustive]` requires an `else` branch
+outside the enum's defining module. The diagnostic asks for that fallback
+whether the match lists some or all of the known variants.
+
+## Narrowing with is and as
+
+```v
+type Value = int | string
+
+fn f(v Value) string {
+	if v is int {
+		return 'int ${v + 1}'
+	}
+	if v is string {
+		return 'text ${v.len}'
+	}
+	return ''
+}
+
+fn main() {
+	println(f(1))
+}
+```
+
+`is` tests a variant and narrows the value inside the branch, so `as` is rarely
+needed; `v as string` unwraps explicitly, and panics on the wrong variant.
 
 ## Enums are not strings
 
@@ -78,11 +112,22 @@ you to the closed set.
 
 Use an enum where the set is closed. Use a string only where the value crosses a
 boundary you do not control — a JSON field, a command line flag, an environment
-variable — and convert at that edge:
+variable — and convert at that edge. `from_string` returns an option:
 
-```v ignore
-status := Status.from_string(os.getenv('STATUS') or { 'pending' }) or {
-    return error('unknown status')
+```v
+import os
+
+enum Status {
+	pending
+	running
+}
+
+fn main() {
+	status := Status.from_string(os.getenv_opt('STATUS') or { 'pending' }) or {
+		eprintln('unknown status')
+		return
+	}
+	println(status)
 }
 ```
 
@@ -91,7 +136,7 @@ status := Status.from_string(os.getenv('STATUS') or { 'pending' }) or {
 | Need | Use |
 | --- | --- |
 | A closed set with no payload | `enum` |
-| A closed set where some carry data | sum type with payloads |
+| A closed set where some carry data | sum type |
 | A fixed set of named fields | `struct` |
 | An open set of string keys | `map[string]T` |
 
@@ -106,8 +151,9 @@ is where a sum type actually goes wrong:
 
 ```v ignore
 fn test_status_from_string_rejects_an_unknown_value() {
-    assert Status.from_string('running') or { false }
-    assert Status.from_string('sideways') == none
+	status := Status.from_string('running') or { panic('rejected a valid name') }
+	assert status == .running
+	assert Status.from_string('sideways') == none
 }
 ```
 

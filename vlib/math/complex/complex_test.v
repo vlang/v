@@ -318,6 +318,24 @@ fn test_complex_cpow() {
 	assert math.tolerance(result.im, c2.im, 1e-12)
 }
 
+fn test_complex_cpow_real_exponent() {
+	zero := cmplx.complex(0, 0)
+	squared := zero.cpow(cmplx.complex(2, 0))
+	assert squared.re == 0.0
+	assert squared.im == 0.0
+
+	zeroth_power := zero.cpow(zero)
+	assert zeroth_power.re == 1.0
+	assert zeroth_power.im == 0.0
+
+	for component in [1e-200, 1e200] {
+		base := cmplx.complex(component, 0)
+		result := base.cpow(cmplx.complex(1, 0))
+		assert result.re / component == 1.0
+		assert result.im == 0.0
+	}
+}
+
 fn test_complex_cpow_conjugate_small_components() {
 	c := cmplx.complex(-1, 2)
 	p := cmplx.complex(8, 9)

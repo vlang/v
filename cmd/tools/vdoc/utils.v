@@ -24,6 +24,10 @@ fn get_sym_name(dn doc.DocNode) string {
 }
 
 fn get_node_id(dn doc.DocNode) string {
+	// A group of constants has no name of its own, so it is named after its first constant.
+	if dn.kind == .const_group && dn.name == '' {
+		return slug(doc.child_key(dn))
+	}
 	tag := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
 		'${dn.parent_name}.${dn.name}'
 	} else {

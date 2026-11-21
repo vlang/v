@@ -1,0 +1,19 @@
+pub fn repeat[T](seq []T, n int) []T {
+	new_len := arr.len * n
+	mut new := []T{len: new_len}
+	mut i := 0
+	mut j := 0
+	for i < new_len {
+		for ; j < arr.len; j++ {
+			new[i] = arr[j]
+			i++
+		}
+		j = 0
+	}
+	return new
+}
+
+fn main() {
+	a := [1, 2, 3]
+	println(a.len)
+}

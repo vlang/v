@@ -52,6 +52,30 @@ static array builtin__array_slice(array values, i64 start, i64 end) {
 static u8 builtin__string_at(string value, i64 index) {
 	return (u8)value[builtin__v_fixed_index(index, (i64)strlen(value ? value : ""))];
 }
+static string v_fastc_copy_substring(string value, i64 start, i64 end) {
+	size_t count = (size_t)(end - start);
+	if (count == 0) return "";
+	char *copy = v_fastc_collection_alloc(count + 1);
+	memcpy(copy, value + start, count);
+	return copy;
+}
+static string builtin__string_substr(string value, i64 start, i64 end) {
+	i64 len = (i64)strlen(value ? value : "");
+	if (end == INT64_MAX || end == INT32_MAX) end = len;
+	if (start < 0 || end < start || end > len) {
+		fputs("string slice out of range\n", stderr); exit(1);
+	}
+	return v_fastc_copy_substring(value, start, end);
+}
+static string builtin__string_substr_ni(string value, i64 start, i64 end) {
+	i64 len = (i64)strlen(value ? value : "");
+	if (end == INT64_MAX || end == INT32_MAX) end = len;
+	if (start < 0) start = len + start < 0 ? 0 : len + start;
+	if (end < 0) end = len + end < 0 ? 0 : len + end;
+	if (end > len) end = len;
+	if (start > len || end < start) return "";
+	return v_fastc_copy_substring(value, start, end);
+}
 static bool v_fastc_string_contains(string value, string candidate) {
 	return strstr(value ? value : "", candidate ? candidate : "") != NULL;
 }

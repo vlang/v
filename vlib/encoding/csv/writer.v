@@ -30,6 +30,7 @@ pub fn new_writer(config WriterConfig) &Writer {
 }
 
 // write writes a single record, preserving bare carriage returns in quoted fields.
+// A record containing a single empty field is quoted so it isn't skipped as a blank line.
 // With use_crlf, newlines become CRLF while existing CRLF pairs are preserved.
 pub fn (mut w Writer) write(record []string) !bool {
 	if !valid_delim(w.delimiter) {
@@ -41,7 +42,8 @@ pub fn (mut w Writer) write(record []string) !bool {
 		if n > 0 {
 			w.sb.write_string(w.delimiter.ascii_str())
 		}
-		if !w.field_needs_quotes(field) {
+		single_empty_field := record.len == 1 && field == ''
+		if !single_empty_field && !w.field_needs_quotes(field) {
 			w.sb.write_string(field)
 			continue
 		}

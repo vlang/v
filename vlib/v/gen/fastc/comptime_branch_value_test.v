@@ -93,8 +93,9 @@ number', '0'))
 			program := os.join_path(root, 'program_${branch}_${backend}')
 			mut args := ['-b', backend, '-gc', 'none', '-nocache', '-o', program]
 			if backend == 'fastc' {
+				// FastC supports TCC and Clang, not an inherited GCC from VFLAGS.
 				// The C backend omits this compile-time branch defer.
-				args << ['-d', 'check_fastc_cleanup']
+				args << ['-cc', 'clang', '-d', 'check_fastc_cleanup']
 			}
 			args << root
 			build := cmdexec.run(@VEXE, args)

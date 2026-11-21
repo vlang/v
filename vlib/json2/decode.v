@@ -213,7 +213,7 @@ fn json_string_end(json string, start int) int {
 }
 
 // word_has_byte reports whether one of the 8 bytes of `word` is `b`.
-@[inline]
+@[ignore_overflow; inline]
 fn word_has_byte(word u64, b u8) bool {
 	// A byte of `diff` is zero where `word` has `b`. The subtraction sets the high bit
 	// of a zero byte, that `~diff` keeps, and without a zero byte no high bit is left.
@@ -1349,6 +1349,18 @@ fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 	}
 }
 
+// append_surrogate_wtf8 appends the WTF-8 3-byte encoding of the lone UTF-16
+// surrogate unit `unit` (0xD800..0xDFFF) to `buf`. A lone surrogate is not a
+// Unicode scalar value, so it has no UTF-8 encoding; WTF-8 preserves it as the
+// 3-byte sequence its value would have as CESU-8 (e.g. U+D800 as ED A0 80),
+// like JavaScript engines do. JSON written by JavaScript `JSON.stringify` can
+// contain such escapes, so decoding keeps them instead of erroring.
+fn append_surrogate_wtf8(mut buf []u8, unit u32) {
+	buf << u8(0xE0 | (unit >> 12))
+	buf << u8(0x80 | ((unit >> 6) & 0x3F))
+	buf << u8(0x80 | (unit & 0x3F))
+}
+
 // decode_string_value returns the unescaped content of the JSON string described by `string_info`.
 @[manualfree]
 fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
@@ -1409,31 +1421,36 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 
 					if unicode_point < 0xD800 || unicode_point > 0xDFFF { // normal utf-8
 						string_buffer << unicode_point.bytes()
-					} else if unicode_point >= 0xDC00 { // trail surrogate -> invalid
-						decoder.decode_error('Got trail surrogate: ${u32(unicode_point):04X} before head surrogate.')!
-					} else { // head surrogate -> treat as utf-16
-						if string_index > string_info.length - 6 {
-							decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
+					} else if unicode_point >= 0xDC00 {
+						// A trail surrogate without a head surrogate before it is kept
+						// in its WTF-8 3-byte form, like JavaScript engines do.
+						append_surrogate_wtf8(mut string_buffer, u32(unicode_point))
+					} else {
+						// A head surrogate directly followed by a trail surrogate
+						// escape is the UTF-16 form of one code point above U+FFFF
+						// (RFC 8259, section 7), so the two are joined. Without such
+						// a follower (at the end of the string, before other content,
+						// or before a non-trail escape) the head is kept in its
+						// WTF-8 3-byte form, and the follower is decoded on its own:
+						// it may itself start a pair (e.g. `"\ud83d\ud83d\ude00"` is
+						// a lone surrogate followed by 😀).
+						mut combined := false
+						if string_index + 6 <= string_info.length - 1
+							&& decoder.json[string_info.position + string_index..string_info.position +
+								string_index + 2] == '\\u' {
+							second := rune(strconv.parse_uint(decoder.json[string_info.position + string_index + 2..string_info.position +
+								string_index + 6], 16, 32)!)
+							if second >= 0xDC00 && second <= 0xDFFF {
+								string_index += 6
+								final_unicode_point := (second & 0x3FF) +
+									((unicode_point & 0x3FF) << 10) + 0x10000
+								string_buffer << final_unicode_point.bytes()
+								combined = true
+							}
 						}
-						if decoder.json[string_info.position + string_index..string_info.position +
-							string_index + 2] != '\\u' {
-							decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
+						if !combined {
+							append_surrogate_wtf8(mut string_buffer, u32(unicode_point))
 						}
-
-						string_index += 2
-
-						unicode_point2 := rune(strconv.parse_uint(decoder.json[string_info.position + string_index..string_info.position +
-							string_index + 4], 16, 32)!)
-
-						string_index += 4
-
-						if unicode_point2 < 0xDC00 {
-							decoder.decode_error('Expected a trail surrogate after a head surrogate, but got ${u32(unicode_point):04X}.')!
-						}
-
-						final_unicode_point := (unicode_point2 & 0x3FF) +
-							((unicode_point & 0x3FF) << 10) + 0x10000
-						string_buffer << final_unicode_point.bytes()
 					}
 				}
 				else {}

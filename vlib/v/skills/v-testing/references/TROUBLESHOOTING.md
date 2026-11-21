@@ -19,15 +19,16 @@ v -check -shared vlib/v/skills/
 
 **`unknown function`, `unknown module`**
 
-The test is beside the code but does not import it. A test file needs its own
-imports; it does not inherit the code file's.
+The test is beside the code but does not reach it. A test file needs its own
+imports; it does not inherit the code file's. Either import the module and
+qualify its names, or declare the same module to call them unqualified:
 
 ```v ignore
-// foo_test.v
+// foo_test.v, from outside the module
 import foo
 
 fn test_it_adds() {
-	assert add(2, 3) == 5
+	assert foo.add(2, 3) == 5
 }
 ```
 
@@ -56,9 +57,9 @@ VTEST_ONLY_FN='test_login' v -stats test dir/
 cause is a prefix where a glob was needed (`test_login` does not match
 `test_login_rejects_empty`; `test_login*` does).
 
-**A test function is skipped silently.** Its name must start with `test_`, and it
-must take no parameters. `fn my_test()` and `fn test_thing(t int)` are both skipped
-without complaint.
+**A test function is not a test.** Its name must start with `test_`: `fn my_test()`
+is an ordinary helper and never runs. A `test_` function that takes parameters is
+rejected with *"invalid test signature: test functions should take 0 parameters"*.
 
 **`// vtest build:` excludes the file.** A test file may carry a constraint that
 excludes it from a given build:
@@ -74,9 +75,9 @@ That is deliberate. Check the top of the file before assuming the runner is brok
 **The assertion never ran.** Look for a loop that never iterates, or a guard whose
 condition is always false.
 
-**The value compared is not the one that changed.** Mutate the caller's object,
-not a copy — `mut` on a value receiver mutates a copy and the caller sees nothing.
-See [MUTABILITY](../../v-lang/references/MUTABILITY.md).
+**The value compared is not the one that changed.** A closure capture is a copy:
+`fn [mut count] () { count++ }` never changes the caller's `count`. Capture a
+pointer, or return the value. See [MUTABILITY](../../v-lang/references/MUTABILITY.md).
 
 **The assertion is on a message.** Message text is free to change, so asserting on
 it makes the test pass for the wrong reason. Assert on presence instead.
@@ -105,29 +106,32 @@ Almost always one of:
 Filter it. Both filters take a comma-separated list:
 
 ```bash
-VTEST_ONLY='*http*,*json*' v test dir/
+VTEST_ONLY='http,json' v test dir/
 VTEST_ONLY_FN='test_parse*,test_read*' v -silent test dir/
 v -stats test dir/
 ```
 
-`VTEST_ONLY` matches file paths; `VTEST_ONLY_FN` matches test function names.
+`VTEST_ONLY` keeps the test files whose path contains one of the fragments; it is
+not a glob. `VTEST_ONLY_FN` matches test function names, with globs.
 Keeping the full run for the end, and a filtered run while you work, is the whole
 trick.
 
 ## Getting more out of a failure
 
 ```
-assertion failed
-src/lookup_test.v:14
+src/lookup_test.v:14: fn test_lookup
+   > assert got == expected
+     Left value (len: 5): `alice`
+    Right value (len: 3): `bob`
 ```
 
-That is all a bare `assert` gives you. The fix is in the test, not in how it is
-read:
+A failed comparison shows both values. What it does not show is the input that
+produced them, so put that in the message:
 
 ```v ignore
 got := lookup(users, id)
-assert got == expected, 'lookup(${id}) = ${got}, want ${expected}'
+assert got == expected, 'lookup(${id})'
 ```
 
-With that, the runner prints the inputs, the actual value and the expected one,
+With that, the runner prints the input next to the actual and expected values,
 which is usually enough to fix the bug without opening the file.

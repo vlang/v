@@ -148,6 +148,16 @@ fn test_static_preconditions_and_ranges_respect_request_method() {
 	assert !head.res.header.contains(.content_length)
 }
 
+fn test_static_takeover_head_has_no_body() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	ctx := conditional_send_file_method(path, {}, true, .head)
+	assert ctx.res.status_code == int(http.Status.ok)
+	assert ctx.res.body == ''
+	assert ctx.res.header.get(.content_length) or { '' } == '15'
+	assert ctx.res.header.contains(.etag)
+}
+
 fn test_static_if_none_match_combines_repeated_fields() {
 	path := conditional_fixture()
 	defer { os.rm(path) or {} }

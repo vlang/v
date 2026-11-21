@@ -156,3 +156,39 @@ fn test_a_stats_retry_is_under_the_limit_too() {
 		assert result.output.contains('timed out after 10 s'), '${route}:\n${result.output}'
 	}
 }
+
+// A test with a module cache of its own is told where it is through the environment of its
+// commands (`V3CACHE`, in the folder its executable is built in). The run under a limit is one
+// of those commands, with `-stats` and without.
+const own_cache_test_source = "import os
+
+fn test_the_cache_is_this_tests_own() {
+	cache := os.getenv('V3CACHE')
+	assert os.file_name(cache) == 'v3cache', cache
+	assert os.dir(cache) == os.dir(os.executable()), cache + ' / ' + os.executable()
+}
+"
+
+fn test_a_limited_run_gets_the_per_test_environment() {
+	$if windows {
+		return
+	}
+	for mode in ['', '-stats'] {
+		dir := os.join_path(timeout_root, 'own_env${mode}')
+		os.mkdir_all(dir)!
+		file := os.join_path(dir, 'own_cache_test.v')
+		os.write_file(file, own_cache_test_source)!
+		os.setenv('VCOLORS', 'never', true)
+		os.setenv('VJOBS', '1', true)
+		os.unsetenv('VTEST_ONLY_FN')
+		os.unsetenv('VTEST_TIMEOUT')
+		mut cmd_args := [vexe, '-new-compiler']
+		if mode != '' {
+			cmd_args << mode
+		}
+		cmd_args << ['-silent', 'test', '-timeout', '120', file]
+		result := os.exec(cmd_args)
+		assert result.exit_code == 0, 'mode `${mode}`:
+${result.output}'
+	}
+}

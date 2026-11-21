@@ -683,6 +683,141 @@ fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
+fn test_a_group_of_constants_is_named_after_its_first_constant() {
+	assert get_node_id(doc.DocNode{
+		kind:    .const_group
+		content: "@[markused]\nconst sep = '/'\nconst delim = ':'"
+	}) == 'sep'
+	assert get_node_id(doc.DocNode{
+		name: 'Constants'
+		kind: .const_group
+	}) == 'Constants'
+}
+
+fn test_a_heading_of_the_module_description_does_not_have_the_id_of_a_symbol() {
+	contents := [doc.DocNode{
+		name: 'scrypt'
+		kind: .function
+	}]
+	head := '<h1 id="scrypt">scrypt</h1>\n<h2 id="usage">Usage</h2>'
+	assert without_symbol_ids(head, contents) == '<h1 id="scrypt-heading">scrypt</h1>\n<h2 id="usage">Usage</h2>'
+}
+
+fn test_the_table_of_contents_groups_the_functions_and_the_types() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_grouped_toc_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\npub const c = 1\n\npub fn run() {}\n\npub enum Mode {\n\tread\n}\n\npub struct File {}\n\npub fn (f File) close() {}\n\npub fn File.open() File {\n\treturn File{}\n}\n')!
+	d := doc.generate(dir, true, true, .auto)!
+	toc := grouped_toc_html(d.head, d.contents.arr())
+	assert toc.contains('<li><a href="#Constants">Constants</a></li>')
+	// The name stands out from the rest of the label, which is dimmed.
+	assert toc.contains('<summary>Functions <span class="toc-count">(1)</span></summary><ul><li><a href="#run" title="run()">run<span class="toc-detail">()</span></a></li></ul>')
+	// The types are sorted by name, and a type lists its static functions and its methods.
+	assert toc.contains('<summary>Types <span class="toc-count">(2)</span></summary>')
+	assert (toc.index('struct File') or { -1 }) < (toc.index('enum Mode') or { -1 })
+	assert toc.contains('<summary><a href="#File">struct File</a></summary><ul><li><a href="#File.open" title="File.open()">File.open<span class="toc-detail">()</span></a></li><li><a href="#File.close" title="(f File) close()"><span class="toc-detail">(f File) </span>close<span class="toc-detail">()</span></a></li></ul>')
+	assert toc.contains('<li><a href="#Mode">enum Mode</a></li>') || toc.contains('<a href="#Mode">enum Mode</a></summary>')
+}
+
+fn test_the_table_of_contents_marks_the_deprecated_symbols() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_deprecated_toc_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), "module a\n\npub fn run() {}\n\n@[deprecated: 'use run() instead']\n@[deprecated_after: '2026-01-01']\npub fn old() {}\n\n@[deprecated]\npub struct Old {}\n")!
+	d := doc.generate(dir, true, true, .auto)!
+	toc := grouped_toc_html(d.head, d.contents.arr())
+	assert toc.contains('<li><a class="deprecated" href="#old" title="old(), deprecated: use run() instead"><span class="toc-label">old<span class="toc-detail">()</span></span><span class="toc-badge">deprecated</span></a></li>')
+	assert toc.contains('<li><a href="#run" title="run()">')
+	// Without a message, the tooltip only says that it is deprecated.
+	assert toc.contains('<a class="deprecated" href="#Old" title="struct Old"><span class="toc-label">struct Old</span><span class="toc-badge">deprecated</span></a>')
+}
+
+fn test_a_deprecation_is_found_among_the_attributes_of_a_group() {
+	message := fn (tags []string) string {
+		return deprecation_of(doc.DocNode{ tags: tags }) or { 'not deprecated' }
+	}
+	assert message(['@[deprecated; inline]']) == ''
+	assert message(["@[inline; deprecated: 'use c']"]) == 'use c'
+	assert message(["@[deprecated: 'use c'; deprecated_after: '2025-01-01']"]) == 'use c'
+	// A semicolon in the message does not end it.
+	assert message(["@[deprecated: 'use a; or b']"]) == 'use a; or b'
+	assert message(['@[inline; deprecated_after]']) == 'not deprecated'
+	assert message(['@[inline]']) == 'not deprecated'
+}
+
+fn test_the_table_of_contents_shows_how_a_function_is_called() {
+	assert toc_call_label('pub fn abs_path(path string) string', 'abs_path') == 'abs_path(path)'
+	// A receiver is shown as it is declared, so that it shows if it is mutable or a reference.
+	assert toc_call_label('@[manualfree]\nfn (mut f File) read(mut buf []u8) !int', 'read') == '(mut f File) read(buf)'
+	assert toc_call_label('pub fn (f &File) eof() bool', 'eof') == '(f &File) eof()'
+	assert toc_call_label('pub fn (shared m  Map[K, V]) len() int', 'len') == '(shared m Map[K, V]) len()'
+	assert toc_call_label('pub fn File.open(path string, mode int) !File', 'File.open') == 'File.open(path, mode)'
+	// A generic function shows its type parameters.
+	assert toc_call_label('pub fn map[T, U](a []T, f fn (T) U) []U', 'map') == 'map[T, U](a, f)'
+	assert toc_call_label('pub fn (c Cache[K,V]) get[R](key K) ?R', 'get') == '(c Cache[K, V]) get[R](key)'
+	assert toc_call_label('pub fn join(base string, elems ...string) string', 'join') == 'join(base, elems)'
+	// A long signature can continue on the next lines.
+	assert toc_call_label('pub fn f(a int,\n\tb int) int', 'f') == 'f(a, b)'
+	assert toc_call_label('pub struct Point {}', 'Point') == 'Point'
+}
+
+fn test_a_union_is_labelled_as_such() {
+	assert kind_label(doc.DocNode{ kind: .struct, content: 'pub union Value {\n\ti int\n}' }) == 'union'
+	assert kind_label(doc.DocNode{ kind: .struct, content: '@[typedef]\nunion C.XEvent {\n}' }) == 'union'
+	assert kind_label(doc.DocNode{ kind: .struct, content: 'pub struct Point {\n}' }) == 'struct'
+	assert kind_label(doc.DocNode{ kind: .function, content: 'pub fn f()' }) == 'fn'
+}
+
+fn test_the_platform_selector_is_only_for_symbols_of_some_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_selector_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\npub fn everywhere() {}\n')!
+	everywhere := doc.generate(dir, true, true, .cross)!
+	assert platform_selector_html(everywhere) == ''
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\npub fn on_windows() {}\n')!
+	cross := doc.generate(dir, true, true, .cross)!
+	selector := platform_selector_html(cross)
+	assert selector.starts_with('<select class="platform-select"')
+	assert selector.contains('<option value="">All platforms</option>')
+	assert selector.contains('<option value="windows">Windows</option>')
+	assert platforms_attr(cross.contents['on_windows']!.platforms) == ' data-platforms="windows"'
+	assert platforms_attr(cross.contents['everywhere']!.platforms) == ''
+	// Without `-os cross`, no symbol is limited to some platforms.
+	assert platform_selector_html(doc.generate(dir, true, true, .windows)!) == ''
+}
+
+fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_members_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	// The type is only declared on Windows, and its method in a file of all the platforms.
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), 'module a\n\n// win_value is a value.\npub const win_value = 1\n\n// Handle is a handle.\npub struct Handle {}\n')!
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\n// close closes it.\npub fn (h Handle) close() {}\n\n// Handle.new returns a handle.\npub fn Handle.new() Handle {\n\treturn Handle{}\n}\n')!
+	html_dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_members_html_${os.getpid()}')
+	defer { os.rmdir_all(html_dir) or {} }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-os', 'cross', '-o',
+		html_dir, dir]) or { panic(err) }
+	assert res.exit_code == 0
+	page := os.read_file(os.join_path(html_dir, 'a.html'))!
+	assert page.contains('<section id="Handle.close" class="doc-node" data-platforms="windows">')
+	assert page.contains('<section id="Handle.new" class="doc-node" data-platforms="windows">')
+	// The platform of the other pages is applied before the symbols, while the page loads.
+	assert page.contains('<select class="platform-select"')
+	assert page.contains('<script>${platform_early_js}</script></div>')
+	// The section of all the constants has no constant to show on the other platforms.
+	assert page.contains('<section id="Constants" class="doc-node const" data-platforms="windows">')
+	assert within_platforms([], [.windows]) == [doc.Platform.windows]
+	assert within_platforms([.linux, .windows], [.windows, .macos]) == [doc.Platform.windows]
+	assert within_platforms([.linux], []) == [doc.Platform.linux]
+	assert within_platforms([.linux], [.windows]) == [doc.Platform.linux]
+}
+
 fn test_markdown_renderer_supports_github_flavored_markdown() {
 	mut renderer := new_doc_markdown_renderer('')
 	// Bare URLs are links, without a `)` that closes no `(` of the URL.
@@ -1123,6 +1258,43 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 		'-html-only-contents', dir])!
 	assert !html.output.contains('<div class="attributes">'), html.output
 	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
+}
+
+fn test_the_platform_selector_hides_the_comments_and_the_examples_of_other_declarations() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_variant_docs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	// `sep` has another comment and example on each platform, and `home` only another example.
+	os.write_file(os.join_path(dir, 'a_nix.c.v'), "module a\n\n// sep is '/' on Unix.\n// Example: assert sep() == '/'\npub fn sep() string {\n\treturn '/'\n}\n\n// home returns the home folder.\n// Example: assert home() == '/home'\npub fn home() string {\n\treturn '/home'\n}\n")!
+	os.write_file(os.join_path(dir, 'a_windows.c.v'), "module a\n\n// sep is a backslash on Windows.\n// Example: assert sep(0) == 'win'\npub fn sep(i int) string {\n\treturn 'win'\n}\n\n// home returns the home folder.\n// Example: assert home(0) == 'C:'\npub fn home(i int) string {\n\treturn 'C:'\n}\n")!
+	res := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-', '-html-only-contents',
+		dir])!
+	assert res.exit_code == 0, res.output
+	for name, values in {
+		'sep':  ["'/'", "'win'"]
+		'home': ["'/home'", "'C:'"]
+	} {
+		section := res.output.all_after('<section id="${name}"').all_before('\t\t<section ')
+		// The comment and the example of each declaration are in its element, which the platform
+		// selector hides with it, and nothing of a declaration is outside of these elements.
+		chunks := section.split('<div class="declaration"')
+		assert chunks.len == 3, section
+		assert !chunks[0].contains('<p>') && !chunks[0].contains('Example'), section
+		assert section.trim_space().ends_with('</div>\n</section>'), section
+		unix := chunks.filter(it.starts_with(' data-platforms="linux '))
+		windows := chunks.filter(it.starts_with(' data-platforms="windows"'))
+		assert unix.len == 1 && windows.len == 1, section
+		assert unix[0].contains('Example') && unix[0].contains(values[0])
+			&& !unix[0].contains(values[1]), section
+		assert windows[0].contains('Example') && windows[0].contains(values[1])
+			&& !windows[0].contains(values[0]), section
+		if name == 'sep' {
+			assert unix[0].contains("sep is '/' on Unix.") && !unix[0].contains('backslash')
+			assert windows[0].contains('sep is a backslash on Windows.')
+				&& !windows[0].contains('on Unix')
+		}
+	}
 }
 
 fn test_readme_plaintext_preserves_unformatted_terminal_output() {

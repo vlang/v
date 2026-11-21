@@ -22,6 +22,8 @@ The local `./v` workflow and test requirements below take precedence over exampl
 - Update relevant README, module docs, `doc/`, or `tutorials/` for public API or behavior changes,
   including compiler flags, diagnostics, CLI output, and output ordering. Internal refactors need no
   doc changes. Ask if unsure whether behavior is public.
+- Update a bundled skill under `vlib/v/skills/` in the same change as behavior it describes. Search
+  the skills for the affected flag, command, diagnostic, API, or construct.
 - Edit `CHANGELOG.md` and `ROADMAP.md` only when explicitly requested.
 
 ## Build and format
@@ -36,6 +38,9 @@ The local `./v` workflow and test requirements below take precedence over exampl
 5. Format touched and new `.v`/`.vsh` files with `./v fmt -w file.v`. Check touched Markdown with
    `./v check-md file.md` before committing; keep lines at most 100 characters. Preserve existing
    formatting in other files.
+
+Back every factual claim added to a skill under `vlib/v/skills/` with a `v` example that `check-md`
+compiles, a `v failcompile` example for a rejected form, or a test under `vlib/v/skills/`.
 
 If the compiler becomes unusable, check `git status` before recovery. Only stash for recovery when
 the compiler is bricked or the user authorizes it; the recovery sequence is `git stash`, `make`,
@@ -72,11 +77,16 @@ Additional checks by scope:
 - Add regression tests for option/result changes in `vlib/v/tests/` and for new public APIs.
 - Run `./v -silent test-fmt` only when asked or validating the whole tree. Run `./v vet vlib/v` only
   when asked or changing more than three checker files in `vlib/v/types/`.
+  `test-fmt` checks that formatting eligible `.v` files under the current directory succeeds; use
+  `./v fmt -verify <files>` to check that files are already formatted.
 - Ask if test selection is unclear. When time-constrained, prioritize compiler error tests and
   focused regressions; report skipped coverage. Docs-only work still requires `check-md`.
-- Output tests match exactly, including whitespace (`.vv` + `.out`, or `.run.out`). Use
+- Output tests normalize line endings and trailing spaces before comparing `.vv` + `.out` or
+  `.run.out`; other whitespace changes still fail. `compiler_errors_test.v` checks the
+  `vlib/v/tests/skip_unused/` `.run.out` files on Linux; `./v test vlib/v/tests` does not. Use
   `VAUTOFIX=1` only for intended output changes; run the affected test twice when updating outputs.
-- `VTEST_ONLY=glob_pattern` filters tests; `VTEST_HIDE_OK=1` hides successful results.
+- `VTEST_ONLY=fragment[,fragment]` selects test file paths containing any fragment, not a glob.
+  `VTEST_HIDE_OK=1` hides successful results.
 
 ## Code conventions
 
@@ -86,6 +96,7 @@ Additional checks by scope:
   Do not wrap ordinary V logic in `unsafe`.
 - Avoid hidden or bidirectional Unicode in source and Markdown.
 - Module names match the directory name; imports follow the directory hierarchy (`import abc.def`).
+  A mismatch fails the import with "bad module definition", naming the imported and declared names.
 - Prefer platform/backend file suffixes when an entire file is specific to one environment:
   `.c.v`, `.js.v`, `.native.v`, `.wasm.v`, `_windows.c.v`, `_linux.c.v`, `_nix.c.v`, `_default.c.v`.
   Custom flags use `_d_flag.v` or `_notd_flag.v`. Do not combine flag and OS suffixes; use `$if`
@@ -105,7 +116,8 @@ Additional checks by scope:
 ## V pitfalls
 
 - Use `$if` for platform/compiler conditions; runtime `if` cannot exclude unavailable symbols.
-  Custom defines require the question mark: `$if myflag ? { ... }` with `-d myflag`.
+  Use `$if myflag ? { ... }` with `-d myflag` for custom defines. Without `?`, the branch works with
+  `-d myflag`, but a build without it fails with `undefined ident: myflag`.
 - Reflection uses `$for` over type metadata and is unrolled at compile time. Use `$if` for metadata
   type checks. Reflected method calls belong inside a compile-time method iteration.
 - `$embed_file` returns `EmbedFileData`; use `.to_string()` or `.to_bytes()`. `$env` reads at
@@ -120,9 +132,12 @@ Additional checks by scope:
 - Keep generated C with `./v -keepc -cg run file.v`; use `-g` for V lines, `-showcc` for the C
   command, and `-show-c-output` for C diagnostics. Use `-printfn main__main -o file.c` to isolate
   a function.
-- Compiler tracing uses `-d trace_scanner`, `trace_parser`, `trace_checker`, or `trace_gen`; stage
-  timing uses `-d time_parsing` or `time_checking`. Remove temporary debug tags before committing.
-- `VFLAGS` and `VEXE` can override invocations; `TMPDIR` controls temporary C output.
+- `-v` prints verbose stage profiling; `-show-timings` prints stage timings alone, and
+  `-show-instructions` adds retired CPU instructions per stage on macOS.
+  Remove temporary debug tags before committing.
+- `VFLAGS` and `VEXE` can override invocations. `VTMP` sets V's temporary directory for `.tmp.c`
+  files; it defaults to `<system temp dir>/v_<uid>`. The system temp directory uses `TMPDIR` when
+  set, except on macOS, where it is always `/tmp`.
   `SOURCE_DATE_EPOCH` fixes build timestamps for reproducibility.
 - Every compiler fix must preserve or improve efficiency. Read
   [vself_speed.md](vself_speed.md#measurement-instructions-for-agents) before compiler work.
@@ -136,10 +151,12 @@ Additional checks by scope:
 ## Repository map
 
 - Compiler entry: `cmd/v/v.v`; pipeline: `v.driver` orchestrates `scanner` -> `parser`/`flat` ->
-  `types` -> `transform` -> `markused` -> `gen/c`, under `vlib/v/`.
+  `types` -> `markused` -> `transform` -> monomorphization -> `gen/c`, with interactions between
+  these passes, under `vlib/v/`.
 - Other backends: `vlib/v/gen/fastc/`, `gen/arm64/`, and `gen/wasm/`, with SSA/MIR lowerings.
-- Diagnostics: token spans in `v.token.Pos`, type checking in `v.types.TypeChecker`, formatting in
-  `vlib/v/errors/`.
+- Diagnostics: the parser converts scanner byte offsets into `v.token.Pos` spans. Type checking
+  collects `v.types.TypeError` values in `v.types.TypeChecker`; shared formatting and JSON output
+  live in `vlib/v/errors/`.
 - Compiler feature tests: `vlib/v/tests/`; output and slow tests: `vlib/v/slow_tests/`.
 - Standard library: `vlib/`; tools: `cmd/tools/`; examples: `examples/`.
 

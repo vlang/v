@@ -1,0 +1,7 @@
+vlib/v/checker/tests/module_name_as_value.vv:8:7: error: module `os` is not a value
+    6 | 
+    7 | fn main() {
+    8 |     x := os
+      |          ~~
+    9 |     y := takes(os)
+   10 |     z := '${takes(os)}'

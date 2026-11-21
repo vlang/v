@@ -68,7 +68,8 @@ fn map_hash_half(p &u8) u64 {
 // The hash is only for the maps of a program: `hash.wyhash_c` does not change.
 // It stays a leaf call: inlined into `key_to_index` it would make the C
 // optimizer stop inlining the lookup helpers into the map operations instead.
-@[noinline; unsafe]
+// Its products and sums wrap by design, also under `-check-overflow`.
+@[ignore_overflow; noinline; unsafe]
 fn map_hash_bytes(key &u8, len int) u64 {
 	unsafe {
 		mut p := key

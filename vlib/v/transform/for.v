@@ -1056,26 +1056,24 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	}
 	range_type_source_id := t.range_loop_var_type_name(low_id)
 
-	// Route value `match`/`if` range bounds through value lowering (e.g.
-	// `for i in (match node { First { lower_first(node)! } ... }) .. 10`); otherwise a
-	// propagating branch tail is lowered in a value-less statement context and emits an
-	// empty expression. `transform_value_operand` materializes such a bound into a value
-	// temp (stable for reuse in the loop condition); non-branch bounds keep
-	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound: if the high
-	// bound hoists a value branch whose prelude can mutate a syntactically stable low bound
-	// (`for i in low .. (match node { First { change_low(mut low)! } ... })`), snapshot the
-	// low bound's source-order value so the loop initializer reads it before that prelude.
-	low := if t.is_value_match_or_if_operand(low_id) {
+	// Lower `match`/`if` bounds as values so propagating branch tails produce a value.
+	mut low := if t.is_value_match_or_if_operand(low_id) {
 		t.transform_value_operand(low_id)
-	} else if t.operand_hoists_value_branch(high_id) && t.operand_needs_ordering_snapshot(low_id) {
-		t.snapshot_expr_for_reuse(low_id)
 	} else {
 		t.stable_expr_for_reuse(low_id)
 	}
+	high_prelude_start := t.pending_stmts.len
 	high := if t.is_value_match_or_if_operand(high_id) {
 		t.transform_value_operand(high_id)
 	} else {
 		t.stable_expr_for_reuse(high_id)
+	}
+	// Hoisted upper-bound code can change the storage read by the lower bound.
+	if t.pending_stmts.len > high_prelude_start && t.operand_needs_ordering_snapshot(low) {
+		low_name := t.new_temp('range_low')
+		capture := t.make_decl_assign_typed(low_name, low, range_type_source_id)
+		t.pending_stmts.insert(high_prelude_start, capture)
+		low = t.make_ident(low_name)
 	}
 	escaping_value := t.guard_value_needs_heap_storage(key.value, range_type_source_id)
 	loop_name := if escaping_value {
@@ -1352,6 +1350,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	container_has_smartcast := t.expr_has_smartcast(container_id)
 	mut container := if int(fixed_range_container) >= 0 {
 		fixed_range_container
+	} else if t.is_range_index_expr(t.unwrap_parens(container_id)) {
+		// Capture the slice before the loop so the body cannot change its bounds.
+		slice := t.transform_expr(container_id)
+		tmp_name := t.new_temp('for_container')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, slice, iter_type_id)
+		t.make_ident(tmp_name)
 	} else if direct_map_index_container {
 		if flat.source_type_shape(flat.source_type_syntax(source_container_type_source_id_2).source_wrapper_base()).has(.array_type) {
 			t.stabilize_original_lvalue_receiver(container_id) or { container_id }

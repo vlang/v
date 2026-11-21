@@ -445,8 +445,13 @@ fn main() {
 			ch.push(&i)
 		}
 	}
-	t := spawn fn (mut c Cell, ch &sync.Channel, mode string) {
+	// Keep both access loops between the same start and finish handshakes. Neither
+	// loop happens before the other, even if one thread runs its entire loop first.
+	ready := chan bool{}
+	finish := chan bool{}
+	t := spawn fn (mut c Cell, ch &sync.Channel, mode string, ready chan bool, finish chan bool) {
 		mut ch_ := unsafe { ch }
+		ready <- true
 		for _ in 0 .. 1000 {
 			match mode {
 				"pop" {
@@ -465,7 +470,9 @@ fn main() {
 				}
 			}
 		}
-	}(mut c, ch, mode)
+		_ = <-finish
+	}(mut c, ch, mode, ready, finish)
+	_ = <-ready
 	mut s := 0
 	for i in 0 .. 1000 {
 		if mode == "push" {
@@ -474,6 +481,7 @@ fn main() {
 			s += c.v
 		}
 	}
+	finish <- true
 	t.wait()
 	// Consume the reads so optimizing C compilers must keep the racy accesses.
 	println("\${mode} done \${s}")

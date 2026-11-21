@@ -1,0 +1,12 @@
+fn new_node() int {
+	return 7
+}
+
+fn new_map(x int) int {
+	return x + 1
+}
+
+fn main() {
+	println(new_node())
+	println(new_map(41))
+}

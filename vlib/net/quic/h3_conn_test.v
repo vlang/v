@@ -213,6 +213,13 @@ fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u6
 	}
 }
 
+// h3_test_next_app_pn is a 1-RTT packet number the fake server has not used yet. The
+// client discards a repeated packet number as a duplicate (RFC 9000 §12.3).
+fn h3_test_next_app_pn(c &QuicConn) u64 {
+	largest := c.pn_spaces.application_data.largest_received or { return 0 }
+	return largest + 1
+}
+
 fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys, key_phase bool) !QuicDatagram {
 	pn_length := 2
 	header_prefix := encode_short_header(dcid, false, 0, key_phase, u8(pn_length - 1))!
@@ -388,7 +395,7 @@ fn test_h3_conn_peer_control_stream_requires_settings_first() {
 	mut header := encode_h3_control_stream_header()!
 	header << encode_goaway_frame(0)!
 	frame := server_uni_stream_frame(0, header)!
-	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), frame, read_keys(mut c), false)!
 	if _ := h.poll(datagram.bytes, now) {
 		assert false, 'missing SETTINGS as the first control-stream frame must be a connection error'
 	}
@@ -403,7 +410,7 @@ fn test_h3_conn_peer_control_stream_settings_then_second_settings_rejected() {
 	buf << encode_settings_frame([]H3Setting{})!
 	buf << encode_settings_frame([]H3Setting{})!
 	frame := server_uni_stream_frame(0, buf)!
-	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), frame, read_keys(mut c), false)!
 	if _ := h.poll(datagram.bytes, now) {
 		assert false, 'a second SETTINGS frame on the control stream must be a connection error'
 	}
@@ -417,7 +424,7 @@ fn test_h3_conn_peer_control_stream_settings_accepted_and_settings_received_even
 	mut buf := encode_h3_control_stream_header()!
 	buf << encode_settings_frame([]H3Setting{})!
 	frame := server_uni_stream_frame(0, buf)!
-	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), frame, read_keys(mut c), false)!
 	result := h.poll(datagram.bytes, now)!
 	assert result.events.any(it.kind == .settings_received)
 }
@@ -431,7 +438,7 @@ fn test_h3_conn_rejects_push_promise_on_control_stream() {
 	buf << encode_settings_frame([]H3Setting{})!
 	buf << encode_cancel_push_frame(0)!
 	frame := server_uni_stream_frame(0, buf)!
-	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), frame, read_keys(mut c), false)!
 	if _ := h.poll(datagram.bytes, now) {
 		assert false, 'CANCEL_PUSH must be rejected -- this client never authorizes push'
 	}
@@ -445,7 +452,7 @@ fn test_h3_conn_ignores_unknown_unidirectional_stream_type() {
 	mut buf := encode_varint(u64(0x40))!
 	buf << [u8(1), 2, 3, 4]
 	frame := server_uni_stream_frame(0, buf)!
-	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), frame, read_keys(mut c), false)!
 	result := h.poll(datagram.bytes, now)!
 	assert result.events.len == 0, result.events.str()
 }
@@ -468,12 +475,12 @@ fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 	enc_stream_buf << set_cap_instr
 	enc_stream_buf << encoded.encoder_instructions
 	enc_frame := server_uni_stream_frame(1, enc_stream_buf)!
-	enc_datagram := build_fake_one_rtt_packet(c.scid, 0, enc_frame, read_keys(mut c), false)!
+	enc_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), enc_frame, read_keys(mut c), false)!
 	h.poll(enc_datagram.bytes, now)!
 
 	dec_header := encode_qpack_decoder_stream_header()!
 	dec_frame := server_uni_stream_frame(2, dec_header)!
-	dec_datagram := build_fake_one_rtt_packet(c.scid, 1, dec_frame, read_keys(mut c), false)!
+	dec_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), dec_frame, read_keys(mut c), false)!
 	h.poll(dec_datagram.bytes, now)!
 
 	stream_id := h.open_request_stream()!
@@ -481,7 +488,7 @@ fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 
 	headers_frame := encode_headers_frame(encoded.field_section)!
 	req_stream_frame := encode_stream_frame(stream_id, 0, headers_frame, true, true)!
-	req_datagram := build_fake_one_rtt_packet(c.scid, 2, req_stream_frame, read_keys(mut c), false)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), req_stream_frame, read_keys(mut c), false)!
 	result := h.poll(req_datagram.bytes, now)!
 	headers_ev := result.events.filter(it.kind == .response_headers)
 	assert headers_ev.len == 1, result.events.str()
@@ -530,7 +537,7 @@ fn test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_t
 	mut body := encode_headers_frame(interim.field_section)!
 	body << encode_headers_frame(final.field_section)!
 	req_stream_frame := encode_stream_frame(stream_id, 0, body, false, true)!
-	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), req_stream_frame, read_keys(mut c), false)!
 	result := h.poll(req_datagram.bytes, now)!
 
 	trailers_ev := result.events.filter(it.kind == .response_trailers)
@@ -566,7 +573,7 @@ fn test_h3_conn_prunes_request_stream_state_once_finalized() {
 	])!
 	headers_frame := encode_headers_frame(final.field_section)!
 	req_stream_frame := encode_stream_frame(stream_id, 0, headers_frame, true, true)!
-	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), req_stream_frame, read_keys(mut c), false)!
 	result := h.poll(req_datagram.bytes, now)!
 	assert result.events.any(it.kind == .response_ended)
 
@@ -592,7 +599,7 @@ fn test_h3_conn_prunes_request_stream_state_on_failure_too() {
 	// state even on the failure path, not just on successful completion.
 	data_frame := encode_data_frame([u8(1), 2, 3])!
 	req_stream_frame := encode_stream_frame(stream_id, 0, data_frame, false, true)!
-	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), req_stream_frame, read_keys(mut c), false)!
 	result := h.poll(req_datagram.bytes, now)!
 	assert result.events.any(it.kind == .request_error)
 
@@ -627,7 +634,7 @@ fn test_h3_conn_prunes_dead_request_stream_once_peer_side_fully_terminal() {
 	// H3 layer while leaving the underlying QUIC stream open (no FIN yet).
 	data_frame := encode_data_frame([u8(1), 2, 3])!
 	req_stream_frame := encode_stream_frame(stream_id, 0, data_frame, false, true)!
-	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), req_stream_frame, read_keys(mut c), false)!
 	fail_result := h.poll(req_datagram.bytes, now)!
 	assert fail_result.events.any(it.kind == .request_error)
 	assert stream_id in h.dead_request_streams, 'must still be tracked immediately after failure -- the peer may legally keep sending on this ID'
@@ -636,7 +643,7 @@ fn test_h3_conn_prunes_dead_request_stream_once_peer_side_fully_terminal() {
 	// reaches a terminal QUIC-layer state, so no further frames for this ID
 	// can ever legally arrive.
 	fin_frame := encode_stream_frame(stream_id, u64(data_frame.len), []u8{}, true, true)!
-	fin_datagram := build_fake_one_rtt_packet(c.scid, 1, fin_frame, read_keys(mut c), false)!
+	fin_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), fin_frame, read_keys(mut c), false)!
 	h.poll(fin_datagram.bytes, now)!
 
 	assert stream_id !in h.dead_request_streams, 'dead_request_streams must not grow unboundedly for the lifetime of a long-lived pooled connection -- once the QUIC layer confirms the peer can never send more on this stream ID, this bookkeeping entry must be pruned too'
@@ -673,7 +680,7 @@ fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 	enc_header := encode_qpack_encoder_stream_header()!
 	cap_bytes := conn_test_concat_bytes(enc_header, set_cap_instr)
 	cap_frame := server_uni_stream_continuation_frame(1, 0, cap_bytes)!
-	cap_datagram := build_fake_one_rtt_packet(c.scid, 0, cap_frame, read_keys(mut c), false)!
+	cap_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), cap_frame, read_keys(mut c), false)!
 	h.poll(cap_datagram.bytes, now)!
 
 	stream_id := h.open_request_stream()!
@@ -681,14 +688,14 @@ fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 
 	headers_frame := encode_headers_frame(encoded.field_section)!
 	req_stream_frame := encode_stream_frame(stream_id, 0, headers_frame, false, true)!
-	req_datagram := build_fake_one_rtt_packet(c.scid, 1, req_stream_frame, read_keys(mut c), false)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), req_stream_frame, read_keys(mut c), false)!
 	blocked_result := h.poll(req_datagram.bytes, now)!
 	assert !blocked_result.events.any(it.kind == .response_headers), blocked_result.events.str()
 
 	// Deliver the previously-withheld insert instruction as a continuation
 	// of the SAME encoder stream, in a LATER poll() call.
 	insert_frame := server_uni_stream_continuation_frame(1, u64(cap_bytes.len), encoded.encoder_instructions)!
-	insert_datagram := build_fake_one_rtt_packet(c.scid, 2, insert_frame, read_keys(mut c), false)!
+	insert_datagram := build_fake_one_rtt_packet(c.scid, h3_test_next_app_pn(c), insert_frame, read_keys(mut c), false)!
 	unblocked_result := h.poll(insert_datagram.bytes, now)!
 	headers_ev := unblocked_result.events.filter(it.kind == .response_headers)
 	assert headers_ev.len == 1, unblocked_result.events.str()

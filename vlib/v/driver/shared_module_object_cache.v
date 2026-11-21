@@ -61,6 +61,7 @@ fn v3_restore_shared_module_object(pooled modulecache.Entry, entry modulecache.E
 	}
 	v3_link_cache_artifact(pooled.c_source, entry.c_source) or { return false }
 	v3_link_cache_artifact(pooled.object, entry.object) or { return false }
+	v3_record_shared_module_pool(pooled, entry)
 	return true
 }
 
@@ -77,7 +78,18 @@ fn v3_publish_shared_module_object(pooled modulecache.Entry, entry modulecache.E
 		os.rm(tmp) or {}
 		return
 	}
-	os.mv(tmp, pooled.object_stamp) or { os.rm(tmp) or {} }
+	os.mv(tmp, pooled.object_stamp) or {
+		os.rm(tmp) or {}
+		return
+	}
+	v3_record_shared_module_pool(pooled, entry)
+}
+
+// The per-configuration artifact can retire this optional copy once no other
+// configuration links to it.
+fn v3_record_shared_module_pool(pooled modulecache.Entry, entry modulecache.Entry) {
+	key := os.file_name(pooled.object).all_before_last('.o')
+	os.write_file(entry.object + '.pool', key) or {}
 }
 
 fn v3_link_cache_artifact(source string, destination string) ! {

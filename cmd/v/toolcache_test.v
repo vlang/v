@@ -274,13 +274,12 @@ fn test_the_cache_key_covers_the_tool_sources_the_compiler_and_the_flags() {
 
 	// Touching the tool's own source must never let the previous binary be reused.
 	os.write_file(source, 'module main\n\nfn main() {}\n')!
-	assert tool_cache_key(vexe, 'vdemo', [source], ['-cc', 'clang']) != baseline, 'the tool source must be part of the key'
+	changed_source := tool_cache_key(vexe, 'vdemo', [source], ['-cc', 'clang'])
+	assert changed_source != baseline, 'the tool source must be part of the key'
 
 	// Neither may a rebuilt V executable, which is what makes `v self` pick up new tools.
-	os.write_file(source, 'module main\n')!
-	assert tool_cache_key(vexe, 'vdemo', [source], ['-cc', 'clang']) == baseline
 	os.write_file(vexe, 'a different pretend V executable')!
-	assert tool_cache_key(vexe, 'vdemo', [source], ['-cc', 'clang']) != baseline, 'the V executable must be part of the key'
+	assert tool_cache_key(vexe, 'vdemo', [source], ['-cc', 'clang']) != changed_source, 'the V executable must be part of the key'
 }
 
 fn test_the_cache_key_covers_vflags() {

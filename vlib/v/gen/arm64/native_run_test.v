@@ -66,6 +66,22 @@ fn test_native_hot_fn_extracts_self_contained_function() {
 	}
 }
 
+fn test_native_hot_fn_extracts_linux_function() {
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_hot_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'counter.v')
+	output := os.join_path(root, 'next_value.bin')
+	// Keep the hot function reachable in the source program; -hot-fn builds only its body.
+	os.write_file(path, 'fn next_value() int { return 42 }\nfn main() { assert next_value() == 42 }\n')!
+	extract := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-nocache', '-b', 'arm64', '-os', 'linux', '-hot-fn', 'next_value', '-o', output, path])
+	assert extract.exit_code == 0, extract.output
+	code := os.read_bytes(output)!
+	assert code.len > 0, 'extracted Linux function must not be empty'
+	assert code.len % 4 == 0, 'extracted function must contain complete ARM64 instructions'
+}
+
 fn test_native_hot_fn_rejects_function_needing_fixups() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64_hot_reject_${os.getpid()}.v')
@@ -86,31 +102,174 @@ fn test_native_hot_fn_rejects_function_needing_fixups() {
 	}
 }
 
-fn test_native_linux_output_is_an_object_and_executable_requests_fail() {
-	$if macos && arm64 {
-		path := os.join_path(os.vtmp_dir(), 'arm64_linux_object_${os.getpid()}.v')
-		object := path.all_before_last('.') + '.o'
-		executable := path.all_before_last('.')
-		defer {
-			os.rm(path) or {}
-			os.rm(object) or {}
-			os.rm(executable) or {}
+fn test_native_linux_object_and_executable_output() {
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_link_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'hello_world.v')
+	object := os.join_path(root, 'hello_world.o')
+	executable := os.join_path(root, 'hello_world')
+	os.write_file(path, 'fn main() { println("hello world") }\n')!
+	command := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-nocache',
+		'-b', 'native', '-arch', 'arm64', '-os', 'linux']
+	mut object_args := command.clone()
+	object_args << ['-o', object, path]
+	built := exec_native(object_args)
+	assert built.exit_code == 0, built.output
+	bytes := os.read_bytes(object)!
+	assert bytes[..4] == [u8(0x7f), `E`, `L`, `F`]
+	assert bytes[16] == 1 // ET_REL
+	assert bytes[18] == 183 // EM_AARCH64
+	// Object emission must work even when a target linker is unavailable.
+	mut can_link := false
+	$if linux && arm64 {
+		can_link = true
+	}
+	for cc in ['aarch64-linux-gnu-gcc', 'aarch64-linux-musl-gcc'] {
+		if _ := os.find_abs_path_of_executable(cc) { can_link = true }
+	}
+	if !can_link { return }
+	mut executable_args := command.clone()
+	// Exercise the default output name as in `v -b native -arch arm64 hello_world.v`.
+	executable_args << path
+	linked := exec_native(executable_args)
+	assert linked.exit_code == 0, linked.output
+	elf := os.read_bytes(executable)!
+	assert elf[..4] == [u8(0x7f), `E`, `L`, `F`]
+	assert elf[16] == 2 // ET_EXEC
+	assert elf[18] == 183 // EM_AARCH64
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'hello world'
+	}
+}
+
+fn linux_arm64_test_c_compiler() ?string {
+	for candidate in ['aarch64-linux-gnu-gcc', 'aarch64-linux-musl-gcc'] {
+		if path := os.find_abs_path_of_executable(candidate) {
+			return path
 		}
-		os.write_file(path, 'fn main() {}\n')!
-		command := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-nocache',
-			'-b', 'arm64', '-os', 'linux']
-		mut object_args := command.clone()
-		object_args << ['-o', object, path]
-		built := exec_native(object_args)
-		assert built.exit_code == 0, built.output
-		bytes := os.read_bytes(object)!
-		assert bytes[..4] == [u8(0x7f), `E`, `L`, `F`]
-		mut executable_args := command.clone()
-		executable_args << ['-o', executable, path]
-		rejected := exec_native(executable_args)
-		assert rejected.exit_code != 0, rejected.output
-		assert rejected.output.contains('supports object output only'), rejected.output
-		assert !os.exists(executable)
+	}
+	$if linux && arm64 {
+		return 'cc'
+	}
+	return none
+}
+
+fn test_native_linux_links_source_library_directives() {
+	cc := linux_arm64_test_c_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_flags_${os.getpid()} with spaces')
+	dependency := os.join_path(root, 'native_dep')
+	os.mkdir_all(dependency)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'arm64_source_flags_test' }\n")!
+	c_source := os.join_path(root, 'dependency.c')
+	c_object := os.join_path(root, 'dependency.o')
+	library := os.join_path(dependency, 'libarm64_source_dependency.a')
+	os.write_file(c_source, 'int arm64_source_dependency(void) { return 42; }\n')!
+	compiled := os.exec([cc, '-c', c_source, '-o', c_object])
+	assert compiled.exit_code == 0, compiled.output
+	archiver := os.exec([cc, '-print-prog-name=ar'])
+	assert archiver.exit_code == 0, archiver.output
+	archived := os.exec([archiver.output.trim_space(), 'rcs', library, c_object])
+	assert archived.exit_code == 0, archived.output
+	os.write_file(os.join_path(dependency, 'dependency.c.v'), r'module native_dep
+#flag linux -L "@DIR"
+#flag linux -l arm64_source_dependency
+#flag darwin -l arm64_wrong_target
+fn C.arm64_source_dependency() int
+pub fn value() int { return C.arm64_source_dependency() }
+')!
+	path := os.join_path(root, 'program.v')
+	executable := os.join_path(root, 'program')
+	os.write_file(path, 'import native_dep\nfn main() { exit(native_dep.value() - 42) }\n')!
+	linked := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-nocache', '-b', 'arm64', '-os', 'linux', '-cc', cc, '-o', executable, path])
+	assert linked.exit_code == 0, linked.output
+	elf := os.read_bytes(executable)!
+	assert elf[..4] == [u8(0x7f), `E`, `L`, `F`]
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+	}
+}
+
+fn test_native_linux_keeps_exports_called_from_c_objects() {
+	cc := linux_arm64_test_c_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_export_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_source := os.join_path(root, 'callback.c')
+	c_object := os.join_path(root, 'callback.o')
+	os.write_file(c_source, 'extern int external_callback(void);\nint call_callback(void) { return external_callback(); }\n')!
+	compiled := os.exec([cc, '-c', c_source, '-o', c_object])
+	assert compiled.exit_code == 0, compiled.output
+	path := os.join_path(root, 'program.v')
+	executable := os.join_path(root, 'program')
+	os.write_file(path, r'#flag linux "@DIR/callback.o"
+fn C.call_callback() int
+fn helper() int { return 42 }
+@[export: "external_callback"]
+fn callback() int { return helper() }
+fn main() { exit(C.call_callback() - 42) }
+')!
+	linked := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-nocache', '-b', 'arm64', '-os', 'linux', '-cc', cc, '-o', executable, path])
+	assert linked.exit_code == 0, linked.output
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+	}
+}
+
+fn test_native_linux_links_environment_cflags_before_explicit_flags() {
+	cc := linux_arm64_test_c_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm64_linux_cflags_${os.getpid()} with spaces')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_source := os.join_path(root, 'dependency.c')
+	c_object := os.join_path(root, 'dependency.o')
+	os.write_file(c_source, 'int environment_dependency(void) { return 42; }\n')!
+	compiled := os.exec([cc, '-c', c_source, '-o', c_object])
+	assert compiled.exit_code == 0, compiled.output
+	os.write_file(os.join_path(root, 'order.c'), '#if V_ARM64_LINK_ORDER != 2\n#error explicit flags must follow environment flags\n#endif\n')!
+	path := os.join_path(root, 'program.v')
+	executable := os.join_path(root, 'program')
+	os.write_file(path, r'#flag linux "@DIR/order.c"
+fn C.environment_dependency() int
+fn main() { exit(C.environment_dependency() - 42) }
+')!
+	linked := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1',
+		'CFLAGS=${os.quoted_path(c_object)} -DV_ARM64_LINK_ORDER=1', @VEXE, '-gc', 'none', '-nocache',
+		'-b', 'arm64', '-os', 'linux', '-cc', cc, '-cflags', '-DV_ARM64_LINK_ORDER=2', '-o',
+		executable, path])
+	assert linked.exit_code == 0, linked.output
+	$if linux && arm64 {
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+	}
+}
+
+fn test_native_linux_run_variadic_calls_arguments_and_exit_status() {
+	$if linux && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_linux_run_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		path := os.join_path(root, 'program.v')
+		os.write_file(path, r'fn C.printf(format &u8, ...) int
+fn main() {
+	args := arguments()
+	if args.len != 2 || args[1] != "carried" { exit(23) }
+	C.printf(c"%d %.1f %d %d %d %d %d %d %d\n", 42, 3.5, 2, 3, 4, 5, 6, 7, 8)
+	exit(17)
+}
+')!
+		result := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-b', 'native',
+			'-arch', 'arm64', 'run', path, 'carried'])
+		assert result.exit_code == 17, result.output
+		assert result.output.contains('42 3.5 2 3 4 5 6 7 8'), result.output
+		assert !os.exists(path.all_before_last('.'))
 	}
 }
 

@@ -77,6 +77,20 @@ fn main() {
 Use `derive_credentials` instead when the salt and iteration count are
 imposed, for instance to reproduce a record another implementation wrote.
 
+A server that also accepts a clear-text password, as SASL PLAIN sends, checks
+it against the same record with `verify`, which derives the keys again and
+compares them in constant time. It runs PBKDF2, so keep it off an event loop:
+
+```v
+import crypto.scram
+
+fn main() {
+	credentials := scram.new_credentials(.sha256, 'pencil')!
+	assert credentials.verify('pencil')
+	assert !credentials.verify('crayon')
+}
+```
+
 `encode` and `parse_credentials` turn a record into this one-line format and
 back:
 
@@ -135,6 +149,47 @@ fn main() {
 When `final` returns an `AuthenticationFailed`, answer the client with
 `scram.server_error_message('invalid-proof')` rather than closing the
 connection, so it can tell a refusal from a network failure.
+
+### Unknown users
+
+Returning an error from `lookup` for a name that has no account tells the
+client that the name does not exist. Return `dummy_credentials` instead: the
+salt stays the same for each name across exchanges and restarts, as a real
+account's does. The secret must be random, at least 32 bytes long, persistent
+and private, and the iteration count the one real accounts use. Remember for
+this exchange that the name is unknown, and refuse the authentication even if
+`final` succeeds:
+
+```v
+import crypto.scram
+
+struct Lookup {
+mut:
+	unknown bool
+}
+
+fn main() {
+	secret := []u8{len: 32} // in practice, 32 random bytes kept across restarts
+	mut lookup := &Lookup{}
+	mut server := scram.new_server(
+		lookup: fn [secret, mut lookup] (username string) !scram.Credentials {
+			// No account has this name in your database.
+			lookup.unknown = true
+			return scram.dummy_credentials(.sha256, secret, username, scram.default_iterations)
+		}
+	)!
+	mut client := scram.new_client(username: 'nobody', password: 'pencil')!
+
+	server_first := server.first(client.first()!)!
+	server.final(client.final(server_first)!) or {
+		println('refused: ${err}')
+		return
+	}
+	if lookup.unknown {
+		println('refused: unknown user')
+	}
+}
+```
 
 ## Errors
 
@@ -203,11 +258,12 @@ with. Without it a stripped advertisement goes undetected.
 
 ## Security notes
 
-**Normalisation.** SCRAM-SHA-1 passes passwords through SASLprep (RFC 4013),
-while SCRAM-SHA-256 uses the PRECIS OpaqueString profile (RFC 8265). V implements
-neither profile, so this module hashes the password bytes it is given. Prepare
-and validate every password, including ASCII input, with the profile for the
-selected mechanism before calling. Preparation rejects prohibited characters
+**Normalisation.** RFC 5802 passes passwords through SASLprep (RFC 4013), and
+RFC 7677 defines SCRAM-SHA-256 the same way, apart from the hash; an
+application protocol or a peer may agree on another profile, such as PRECIS
+OpaqueString (RFC 8265). V implements neither, so this module hashes the
+password bytes it is given. Prepare and validate every password, including
+ASCII input, with the agreed profile before calling. Preparation rejects prohibited characters
 and ensures equivalent spellings do not disagree. User names use SASLprep
 (RFC 4013). On the server, supply `ServerConfig.prepare_username` to apply it
 before credential lookup. Without that callback the server accepts only
@@ -219,7 +275,7 @@ before `Server.authzid()` exposes it; without the callback, only printable ASCII
 authorization identities are accepted.
 
 **Iteration count.** A client refuses a server asking for fewer than
-`default_min_iterations` (4096, the floor in RFC 7677 §4), because a low
+`default_min_iterations` (4096, the minimum RFC 7677 recommends), because a low
 count makes an offline attack on a recorded exchange cheap. Lower it
 with `ClientConfig.min_iterations` only for a legacy server that leaves
 no choice. `new_credentials` writes `default_iterations` (32768).
@@ -233,10 +289,14 @@ for more.
 
 **User enumeration.** Returning an error from the `lookup` callback tells
 the caller — and through it, an attacker — that a user name does not
-exist. RFC 5802 §7 suggests answering unknown users with credentials
-derived from a server-side secret, so they are indistinguishable from a
-wrong password. That policy belongs to the application, which is why the
-module leaves it in the callback.
+exist. Answering with `dummy_credentials` instead keeps the exchange going
+with a salt that is stable per name, as PostgreSQL does for unknown roles,
+so the salt does not give the name away. It does not hide everything:
+accounts with another salt length or iteration count, or a slower lookup,
+still differ. And the exchange does not fail by itself: the application
+must remember that the name is unknown and refuse the authentication. That
+policy belongs to the application, which is why the module leaves it in the
+callback; see [Unknown users](#unknown-users).
 
 **Timing.** Proofs and signatures are compared with
 `crypto.subtle.constant_time_compare`.
