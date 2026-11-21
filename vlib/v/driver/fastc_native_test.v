@@ -638,3 +638,14 @@ fn test_fastc_native_bridge_keeps_every_declaration_when_clang_needs_an_unnamed_
 		assert libraries[0] == libraries[1]
 	}
 }
+
+fn test_fastc_native_owner_binds_only_called_bridges() {
+	used := v3_fastc_used_bridge_names([
+		'int f(void) { return v3_native_bridge_open(0) + 1; }',
+		'void g(void) { v3_native_bridge_args_draw(1, 2); }',
+		'int h; /* no bridge */',
+	])
+	assert 'open' in used
+	assert 'draw' in used
+	assert '__wasi_clock_time_get' !in used
+}

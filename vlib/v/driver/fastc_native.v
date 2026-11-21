@@ -258,10 +258,13 @@ $if !skip_fastc ? {
 			head << generation.units.native_exports
 			after << generation.units.native_exports
 		}
+		// Only the bridges the kept code calls: a C function V declares for another
+		// platform (`__wasi_*` on macOS) has no declaration here.
+		used_bridges := v3_fastc_used_bridge_names(generation.c_pieces)
 		mut functions := map[string]bool{}
 		for name, _ in generation.native_declarations {
 			if !name.starts_with('__builtin_') && !name.starts_with('__atomic_') && !name.starts_with('__sync_')
-				&& name !in ['va_arg', 'va_start', 'va_end', 'va_copy'] {
+				&& name !in ['va_arg', 'va_start', 'va_end', 'va_copy'] && name in used_bridges {
 				functions[name] = true
 			}
 		}
@@ -1097,4 +1100,31 @@ $if !skip_fastc ? {
 #define dispatch_get_context(value) ((void *(*)(void *))(dispatch_get_context))((void *)(value))
 #define dispatch_set_finalizer_f(value, callback) ((void (*)(void *, void (*)(void *)))(dispatch_set_finalizer_f))((void *)(value), (callback))
 '
+}
+
+// v3_fastc_used_bridge_names lists the C functions that generated pieces call through
+// `v3_native_bridge_<name>`.
+fn v3_fastc_used_bridge_names(pieces []string) map[string]bool {
+	prefix := 'v3_native_bridge_'
+	mut names := map[string]bool{}
+	for piece in pieces {
+		mut pos := 0
+		for {
+			index := piece.index_after_(prefix, pos)
+			if index < 0 {
+				break
+			}
+			mut end := index + prefix.len
+			for end < piece.len && (piece[end].is_letter() || piece[end].is_digit() || piece[end] == `_`) {
+				end++
+			}
+			name := piece[index + prefix.len..end]
+			if name.starts_with('args_') {
+				names[name['args_'.len..]] = true
+			}
+			names[name] = true
+			pos = end
+		}
+	}
+	return names
 }
