@@ -753,6 +753,11 @@ fn (mut m FastcStructMono) parse_type(mut s scanner.Scanner, first token.Token, 
 		}
 	}
 	name := s.lit
+	if name in ['usize', 'isize'] {
+		// FastC rejects these types, so a reference naming one is a compile-time pattern
+		// (`$if T is Box[usize]`) or inactive code, not an instance.
+		return FastcTypeText{}, s.scan()
+	}
 	if name == 'map' {
 		if s.scan() != .lsbr {
 			return FastcTypeText{}, tok
