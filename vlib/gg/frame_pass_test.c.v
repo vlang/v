@@ -43,6 +43,15 @@ fn test_context_frame_pass_refreshes_action_and_swapchain_in_retained_storage() 
 	assert ctx.frame_pass.action.colors[0].load_action == .clear
 	assert ctx.frame_pass.action.colors[0].clear_value.r == f32(0.75)
 	assert unsafe { voidptr(&ctx.frame_pass) } == address
+	// With depth enabled, clear passes must store depth so a following
+	// passthru pass can load it without reading discarded contents.
+	mut dctx := &Context{ config: Config{ depth: true } }
+	dctx.prepare_end_pass(EndOptions{}, first)
+	assert dctx.frame_pass.action.depth.load_action == .clear
+	assert dctx.frame_pass.action.depth.store_action == .store
+	dctx.prepare_end_pass(EndOptions{ how: .passthru }, first)
+	assert dctx.frame_pass.action.depth.load_action == .load
+	assert dctx.frame_pass.action.depth.store_action == .store
 	$if gcboehm ? {
 		before_bytes := C.GC_get_total_bytes()
 		before_collections := C.GC_get_gc_no()
