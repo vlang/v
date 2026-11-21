@@ -1636,7 +1636,9 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 				continue
 			}
 			if signature.parameter_types.ids.len > 0 {
-				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
+				// Only a parameterless `init`/`cleanup` is a lifecycle hook; a module API
+				// can still use the name for an ordinary function (`oniguruma.init(...)`).
+				continue
 			}
 			calls << if c_name := function_c_names[function_key] {
 				c_name

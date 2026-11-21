@@ -977,18 +977,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		&& name == 'main'
 	// A test build runs its tests from a main of its own; the program's is an ordinary function.
 	is_main := is_program_main && !g.prefs.is_test
-	is_module_init := !is_static_method && receiver_type == u32(0) && name == 'init'
-	is_module_cleanup := !is_static_method && receiver_type == u32(0) && name == 'cleanup'
 	if is_main {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
 		}
-	}
-	if is_module_init && params.len > 0 {
-		return g.unsupported('module `init` with parameters')
-	}
-	if is_module_cleanup && params.len > 0 {
-		return g.unsupported('module `cleanup` with parameters')
 	}
 	if g.tok == .semicolon {
 		g.next()
