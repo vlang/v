@@ -887,7 +887,8 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			if condition.trim_space() == '' {
 				return g.unsupported('`.sort` comparison')
 			}
-			cmp_name := 'v_fastc_sort_${fastc_c_identifier(flat.source_type_name(norm_element))}_${fastc_sort_compare_key(condition)}'
+			// A pointer element (`[]&Pin`) needs an identifier-safe spelling.
+			cmp_name := 'v_fastc_sort_${flat.source_type_name(fastc_composite_part_id(norm_element))}_${fastc_sort_compare_key(condition)}'
 			if cmp_name !in g.spawn_helpers {
 				// The same rendered comparison in two blocks with swapped element
 				// bindings yields the -1 / +1 / 0 ordering without re-rendering it.
