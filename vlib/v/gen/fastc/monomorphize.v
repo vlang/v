@@ -964,7 +964,8 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 }
 
 fn fastc_monomorphize_sources(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
-	after_functions := fastc_monomorphize_functions(sources, prefs)!
+	lowered := fastc_lower_generic_static_methods(sources, prefs)
+	after_functions := fastc_monomorphize_functions(lowered, prefs)!
 	return fastc_monomorphize_structs(after_functions, prefs)!
 }
 
