@@ -4,6 +4,7 @@ module main
 // PORT NOTE: gg's ray helpers cover sphere/box/triangle/mesh; quad picking is
 // expressed as two triangles, and barycentric coordinates are computed inline.
 import gg
+import gg.loaders
 import math
 
 const mp_raywhite = gg.Color{245, 245, 245, 255}
@@ -56,7 +57,7 @@ fn init(data voidptr) {
 		target:   gg.Vec3{0, 8, 0}
 		fovy:     45
 	}
-	app.model = gg.load_model('resources/models/obj/turret.obj') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/obj/turret.obj') or { gg.Model3D{} }
 	app.has_model = app.model.valid()
 	tex := app.ctx.create_image('resources/models/obj/turret_diffuse.png') or { gg.Image{} }
 	if app.has_model {

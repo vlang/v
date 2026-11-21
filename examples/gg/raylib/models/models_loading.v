@@ -5,6 +5,7 @@ module main
 // API. Loading at startup is kept; the drop-to-replace and drop-to-retexture
 // interactions are omitted. Picking uses gg's ray_box() against a computed AABB.
 import gg
+import gg.loaders
 import math
 
 const ld_raywhite = gg.Color{245, 245, 245, 255}
@@ -13,14 +14,14 @@ const ld_green = gg.Color{0, 255, 0, 255}
 
 struct App {
 mut:
-	ctx      &gg.Context = unsafe { nil }
-	cam      gg.Camera3D
-	model    gg.Model3D
-	texture  gg.Image
+	ctx       &gg.Context = unsafe { nil }
+	cam       gg.Camera3D
+	model     gg.Model3D
+	texture   gg.Image
 	has_model bool
-	selected bool
-	box_c    gg.Vec3
-	box_s    gg.Vec3
+	selected  bool
+	box_c     gg.Vec3
+	box_s     gg.Vec3
 }
 
 fn bounds(mesh &gg.Mesh3D) (gg.Vec3, gg.Vec3) {
@@ -47,7 +48,7 @@ fn init(data voidptr) {
 		fovy:     45
 	}
 	app.texture = app.ctx.create_image('resources/models/obj/castle_diffuse.png') or { gg.Image{} }
-	app.model = gg.load_model('resources/models/obj/castle.obj') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/obj/castle.obj') or { gg.Model3D{} }
 	if app.model.valid() {
 		app.has_model = true
 		app.model.material.texture = &app.texture
@@ -76,7 +77,9 @@ fn frame(data voidptr) {
 	}
 	app.ctx.end_3d()
 	app.ctx.draw_text(10, 430, 'Drag & drop model to load mesh/texture (unavailable in gg)',
-		size: 10, color: ld_gray)
+		size:  10
+		color: ld_gray
+	)
 	if app.selected {
 		app.ctx.draw_text(800 - 110, 10, 'MODEL SELECTED', size: 10, color: ld_green)
 	}

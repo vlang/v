@@ -4,6 +4,7 @@ module main
 // PORT NOTE: per-bone blending and CPU skinning require skeleton data that gg
 // does not load. The character and equipment are drawn as static models.
 import gg
+import gg.loaders
 
 const abc_raywhite = gg.Color{245, 245, 245, 255}
 const abc_gray = gg.Color{128, 128, 128, 255}
@@ -25,7 +26,7 @@ fn init(data voidptr) {
 		target:   gg.Vec3{0, 1, 0}
 		fovy:     45
 	}
-	app.model = gg.load_model('resources/models/gltf/greenman.glb') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/gltf/greenman.glb') or { gg.Model3D{} }
 	app.has_model = app.model.valid()
 }
 
@@ -42,10 +43,16 @@ fn frame(data voidptr) {
 	}
 	app.ctx.draw_grid(10, 1.0, gg.gray)
 	app.ctx.end_3d()
-	app.ctx.draw_text(10, 10, 'ANIM 0: walk (blending unavailable in gg)', size: 20, color: abc_gray)
+	app.ctx.draw_text(10, 10, 'ANIM 0: walk (blending unavailable in gg)',
+		size:  20
+		color: abc_gray
+	)
 	app.ctx.draw_text(10, 40, 'ANIM 1: attack', size: 20, color: abc_gray)
 	mode := if app.upper { 'Upper/Lower Body Blending' } else { 'Uniform Blending' }
-	app.ctx.draw_text(10, 420, '[SPACE] Toggle blending mode: ${mode}', size: 20, color: abc_darkgray)
+	app.ctx.draw_text(10, 420, '[SPACE] Toggle blending mode: ${mode}',
+		size:  20
+		color: abc_darkgray
+	)
 	app.ctx.end()
 }
 

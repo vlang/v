@@ -2,9 +2,9 @@ module main
 
 // Port of raylib models_yaw_pitch_roll.c
 import gg
+import gg.loaders
 
 const ypr_raywhite = gg.Color{245, 245, 245, 255}
-const ypr_green = gg.Color{0, 255, 0, 255}
 const ypr_darkgreen = gg.Color{0, 128, 0, 255}
 const ypr_darkgray = gg.Color{80, 80, 80, 255}
 
@@ -28,7 +28,7 @@ fn init(data voidptr) {
 		fovy:     30
 	}
 	app.texture = app.ctx.create_image('resources/models/obj/plane_diffuse.png') or { gg.Image{} }
-	app.model = gg.load_model('resources/models/obj/plane.obj') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/obj/plane.obj') or { gg.Model3D{} }
 	app.has_model = app.model.valid()
 	if app.has_model {
 		app.model.material.texture = &app.texture
@@ -77,10 +77,19 @@ fn frame(data voidptr) {
 	app.ctx.end_3d()
 	app.ctx.draw_rect_filled(30, 370, 260, 70, gg.Color{0, 255, 0, 128})
 	app.ctx.draw_rect_empty(30, 370, 260, 70, ypr_darkgreen)
-	app.ctx.draw_text(40, 380, 'Pitch controlled with: KEY_UP / KEY_DOWN', size: 10, color: ypr_darkgray)
-	app.ctx.draw_text(40, 400, 'Roll controlled with: KEY_LEFT / KEY_RIGHT', size: 10, color: ypr_darkgray)
+	app.ctx.draw_text(40, 380, 'Pitch controlled with: KEY_UP / KEY_DOWN',
+		size:  10
+		color: ypr_darkgray
+	)
+	app.ctx.draw_text(40, 400, 'Roll controlled with: KEY_LEFT / KEY_RIGHT',
+		size:  10
+		color: ypr_darkgray
+	)
 	app.ctx.draw_text(40, 420, 'Yaw controlled with: KEY_A / KEY_S', size: 10, color: ypr_darkgray)
-	app.ctx.draw_text(560, 430, '(c) WWI Plane Model created by GiaHanLam', size: 10, color: ypr_darkgray)
+	app.ctx.draw_text(560, 430, '(c) WWI Plane Model created by GiaHanLam',
+		size:  10
+		color: ypr_darkgray
+	)
 	app.ctx.end()
 }
 

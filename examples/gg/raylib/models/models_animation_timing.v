@@ -4,6 +4,7 @@ module main
 // PORT NOTE: raygui controls and animation poses are unavailable in gg; a
 // text HUD reports the play state and speed while the model stays static.
 import gg
+import gg.loaders
 
 const at_raywhite = gg.Color{245, 245, 245, 255}
 const at_gray = gg.Color{128, 128, 128, 255}
@@ -26,7 +27,7 @@ fn init(data voidptr) {
 		target:   gg.Vec3{0, 2, 0}
 		fovy:     45
 	}
-	app.model = gg.load_model('resources/models/gltf/robot.glb') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/gltf/robot.glb') or { gg.Model3D{} }
 	app.has_model = app.model.valid()
 }
 
@@ -44,9 +45,13 @@ fn frame(data voidptr) {
 	app.ctx.draw_grid(10, 1.0, gg.gray)
 	app.ctx.end_3d()
 	app.ctx.draw_text(10, 10, 'FRAME SPEED: ${app.speed:.1f} | P: pause (animation unavailable)',
-		size: 16, color: at_gray)
+		size:  16
+		color: at_gray
+	)
 	app.ctx.draw_text(10, 390, 'CURRENT FRAME: ${app.frame:.2f} / (no keyframes in gg)',
-		size: 16, color: at_gray)
+		size:  16
+		color: at_gray
+	)
 	app.ctx.end()
 }
 

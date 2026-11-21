@@ -5,6 +5,7 @@ module main
 // character and the three equipment models are drawn at fixed offsets around
 // a static character instead of being attached to animated socket bones.
 import gg
+import gg.loaders
 
 const bs_raywhite = gg.Color{245, 245, 245, 255}
 const bs_gray = gg.Color{128, 128, 128, 255}
@@ -12,11 +13,11 @@ const bs_darkgray = gg.Color{80, 80, 80, 255}
 
 struct App {
 mut:
-	ctx    &gg.Context = unsafe { nil }
-	cam    gg.Camera3D
-	model  gg.Model3D
-	equip  [3]gg.Model3D
-	show   [3]bool
+	ctx   &gg.Context = unsafe { nil }
+	cam   gg.Camera3D
+	model gg.Model3D
+	equip [3]gg.Model3D
+	show  [3]bool
 }
 
 fn init(data voidptr) {
@@ -26,10 +27,10 @@ fn init(data voidptr) {
 		target:   gg.Vec3{0, 2, 0}
 		fovy:     45
 	}
-	app.model = gg.load_model('resources/models/gltf/greenman.glb') or { gg.Model3D{} }
-	app.equip[0] = gg.load_model('resources/models/gltf/greenman_hat.glb') or { gg.Model3D{} }
-	app.equip[1] = gg.load_model('resources/models/gltf/greenman_sword.glb') or { gg.Model3D{} }
-	app.equip[2] = gg.load_model('resources/models/gltf/greenman_shield.glb') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/gltf/greenman.glb') or { gg.Model3D{} }
+	app.equip[0] = loaders.load_model('resources/models/gltf/greenman_hat.glb') or { gg.Model3D{} }
+	app.equip[1] = loaders.load_model('resources/models/gltf/greenman_sword.glb') or { gg.Model3D{} }
+	app.equip[2] = loaders.load_model('resources/models/gltf/greenman_shield.glb') or { gg.Model3D{} }
 	app.show = [true, true, true]!
 }
 
@@ -53,9 +54,15 @@ fn frame(data voidptr) {
 	}
 	app.ctx.draw_grid(10, 1.0, gg.gray)
 	app.ctx.end_3d()
-	app.ctx.draw_text(10, 10, 'Use the T/G to switch animation (unavailable)', size: 20, color: bs_gray)
+	app.ctx.draw_text(10, 10, 'Use the T/G to switch animation (unavailable)',
+		size:  20
+		color: bs_gray
+	)
 	app.ctx.draw_text(10, 35, 'Use F/H to rotate character (unavailable)', size: 20, color: bs_gray)
-	app.ctx.draw_text(10, 60, 'Use 1,2,3 to toggle hat, sword and shield', size: 20, color: bs_darkgray)
+	app.ctx.draw_text(10, 60, 'Use 1,2,3 to toggle hat, sword and shield',
+		size:  20
+		color: bs_darkgray
+	)
 	app.ctx.end()
 }
 

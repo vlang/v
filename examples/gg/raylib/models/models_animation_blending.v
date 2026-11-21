@@ -6,6 +6,7 @@ module main
 // is drawn statically while the state variables and key controls are kept to
 // show what the original blending UI did.
 import gg
+import gg.loaders
 
 const ab_raywhite = gg.Color{245, 245, 245, 255}
 const ab_gray = gg.Color{128, 128, 128, 255}
@@ -29,7 +30,7 @@ fn init(data voidptr) {
 		target:   gg.Vec3{0, 2, 0}
 		fovy:     45
 	}
-	app.model = gg.load_model('resources/models/gltf/robot.glb') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/gltf/robot.glb') or { gg.Model3D{} }
 	app.has_model = app.model.valid()
 }
 
@@ -50,7 +51,9 @@ fn frame(data voidptr) {
 		app.ctx.draw_text(170, 50, 'ANIM TRANSITION BLENDING!', size: 30, color: ab_blue)
 	}
 	app.ctx.draw_text(10, 10, 'SPACE: blend animations | P: pause (skinning unavailable in gg)',
-		size: 16, color: ab_gray)
+		size:  16
+		color: ab_gray
+	)
 	app.ctx.draw_text(180, 14, 'blend: ${app.blend:.2f}', size: 16, color: ab_gray)
 	app.ctx.draw_text(0, 350, 'PRESS SPACE to START BLENDING', size: 20, color: ab_gray)
 	app.ctx.end()

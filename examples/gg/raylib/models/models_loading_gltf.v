@@ -5,6 +5,7 @@ module main
 // skeleton/animation channels. The model is drawn statically; LEFT/RIGHT keys
 // still report the intended animation names but cannot drive a pose.
 import gg
+import gg.loaders
 
 const gltf_raywhite = gg.Color{245, 245, 245, 255}
 const gltf_gray = gg.Color{128, 128, 128, 255}
@@ -12,12 +13,12 @@ const gltf_maroon = gg.Color{128, 0, 0, 255}
 
 struct App {
 mut:
-	ctx      &gg.Context = unsafe { nil }
-	cam      gg.Camera3D
-	model    gg.Model3D
-	has_model bool
+	ctx        &gg.Context = unsafe { nil }
+	cam        gg.Camera3D
+	model      gg.Model3D
+	has_model  bool
 	anim_index int
-	names    []string
+	names      []string
 }
 
 fn init(data voidptr) {
@@ -27,7 +28,7 @@ fn init(data voidptr) {
 		target:   gg.Vec3{0, 2, 0}
 		fovy:     45
 	}
-	app.model = gg.load_model('resources/models/gltf/robot.glb') or { gg.Model3D{} }
+	app.model = loaders.load_model('resources/models/gltf/robot.glb') or { gg.Model3D{} }
 	app.has_model = app.model.valid()
 	app.names = ['idle', 'walk', 'run', 'attack']
 }
@@ -47,8 +48,13 @@ fn frame(data voidptr) {
 	app.ctx.end_3d()
 	name := if app.anim_index < app.names.len { app.names[app.anim_index] } else { 'unknown' }
 	app.ctx.draw_text(10, 40, 'Current animation: ${name} (static - no skinning)',
-		size: 20, color: gltf_maroon)
-	app.ctx.draw_text(10, 10, 'Use the LEFT/RIGHT keys to switch animation', size: 20, color: gltf_gray)
+		size:  20
+		color: gltf_maroon
+	)
+	app.ctx.draw_text(10, 10, 'Use the LEFT/RIGHT keys to switch animation',
+		size:  20
+		color: gltf_gray
+	)
 	app.ctx.end()
 }
 
