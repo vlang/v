@@ -764,7 +764,13 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 		}
 		type_key := function_key.all_before_last('.')
 		owner := fastc_c_declared_type_name(type_key)
-		method_c_name := g.c_function_name_or(function_key, fastc_method_c_name_for_key(type_key, tokens[i].lit))
+		// A main-module type key has no module qualifier, so name the method by its
+		// declaring module rather than the `builtin` default for undotted receiver keys.
+		method_c_name := g.c_function_name_or(function_key, if function_key in g.functions {
+			fastc_method_c_name(signature.module_name, owner, tokens[i].lit)
+		} else {
+			fastc_method_c_name_for_key(type_key, tokens[i].lit)
+		})
 		call_start := if i >= 4 && tokens[i - 4].tok == .name && tokens[i - 3].tok == .dot {
 			i - 4
 		} else {
