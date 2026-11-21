@@ -562,6 +562,12 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 			return_type = fastc_specialized_generic_result_type(return_type, result_concrete)
 			return_types = fastc_specialized_generic_result_types(return_types, result_concrete)
 			option_type = fastc_specialized_generic_result_type(option_type, result_concrete)
+			if specialized := g.mono_struct_instance_signature(source, concrete) {
+				// The result names a specialized generic struct (`!&Queue[T]`).
+				return_type = specialized.return_type
+				return_types = specialized.return_types.ids.clone()
+				option_type = specialized.option_type
+			}
 		}
 		g.type_memo.clear()
 		g.mono_functions[mono_key] = FastcFunctionSignature{
@@ -587,6 +593,29 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 		}
 	}
 	return mono
+}
+
+// mono_struct_instance_signature collects the signature of an on-demand instance whose return
+// type names a specialized generic struct.
+fn (g &Parser) mono_struct_instance_signature(source FastcGenericMethodSource, concrete u32) ?FastcFunctionSignature {
+	if !source.return_type_source_text().contains('[') {
+		return none
+	}
+	instance := g.render_mono_method(source, concrete)
+	header_end := instance.source.index('{') or { return none }
+	if !instance.source[..header_end].contains('_mono_') {
+		return none
+	}
+	mut signatures := map[string]FastcFunctionSignature{}
+	collect_function_signatures(instance.source, source.path, FastcSourceHeader{
+		module_name: source.module_name
+		imports:     source.imports
+	}, g.prefs, []int{}, g.declared_types, g.declared_type_c_names, map[string]bool{}, mut
+		signatures) or { return none }
+	for _, signature in signatures {
+		return signature
+	}
+	return none
 }
 
 fn (g &Parser) mono_parameter_types(source FastcGenericMethodSource, concrete u32, base FastcFunctionSignature) []u32 {
@@ -805,13 +834,14 @@ fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) Fa
 	if generics.len == 0 {
 		return FastcSourceFile{}
 	}
-	return fastc_render_mapped_generic_instance(FastcSourceFile{
+	instance := fastc_render_mapped_generic_instance(FastcSourceFile{
 		path:           src.path
 		source:         src.source
 		header:         src.header
 		source_offset:  src.source_offset
 		source_origins: src.source_origins
 	}, generics[0], flat.source_type_name(concrete), g.prefs, []FastcGenericCall{})
+	return g.map_mono_struct_instances(instance, src)
 }
 
 // erase_mono_generic_type_arguments removes type arguments from references to generic
@@ -924,28 +954,10 @@ struct FastcSourceEdit {
 	replacement  string
 }
 
-// FastcGenericMethod is a method whose receiver is a known generic struct, e.g.
-// `fn (mut s Stack[T]) push(x T)`. It is monomorphized once per struct
-// instantiation: the receiver reference `S[T]` becomes `S__mono_<C>` and the
-// type parameter is substituted elsewhere. Method calls resolve by receiver type
-// in C, so no call-site rewriting is needed.
-struct FastcGenericMethod {
-	struct_name        u32
-	type_param         string
-	source_index       int
-	fn_start           int // offset of `fn` (or a leading `pub`/`static`)
-	def_end            int // offset just past the body `}`
-	receiver_ref_start int // offset of `S` in the receiver type `S[T]`
-	receiver_ref_end   int // offset just past `]`
-	// self_refs holds start/end offset pairs of further `S[T]` references in the
-	// parameters, return type and body; they become `S_mono_<C>` like the receiver.
-	self_refs []int
-}
-
-// fastc_monomorphize_sources monomorphizes entry-module generic functions and
-// then generic structs. Structs run second so that a generic function body's
-// `S[T]` becomes a concrete `S[int]` (in the emitted instance) before the struct
-// pass looks for instantiations.
+// fastc_monomorphize_sources lowers generic static methods, monomorphizes entry-module generic
+// functions and then generic structs of all project modules (generic_struct_instances.v).
+// Structs run last so that a generic function body's `S[T]` becomes a concrete `S[int]` (in
+// the emitted instance) before the struct pass looks for instantiations.
 // fastc_is_entry_module reports whether `module_name` is the program's own module, whose
 // generics are monomorphized: `main`, or in a test build the module the _test.v file is in.
 fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &pref.Preferences) bool {
@@ -966,7 +978,7 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 fn fastc_monomorphize_sources(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	lowered := fastc_lower_generic_static_methods(sources, prefs)
 	after_functions := fastc_monomorphize_functions(lowered, prefs)!
-	return fastc_monomorphize_structs(after_functions, prefs)!
+	return fastc_monomorphize_generic_structs(after_functions, prefs)!
 }
 
 // fastc_monomorphize_functions repeatedly applies one monomorphization pass until
@@ -2133,264 +2145,6 @@ fn fastc_record_concrete(name string, concrete u32, mut pairs []FastcConcretePai
 	has_concrete[name] = true
 }
 
-// fastc_monomorphize_structs rewrites entry-module generic structs the same way
-// as functions: it emits a concrete copy per instantiation `S[Concrete]` and
-// rewrites every reference. A struct is left untouched unless every reference is
-// a concrete instantiation and its body has no nested generic type references.
-fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
-	mut structs := []FastcGenericFn{}
-	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
-		}
-		for generic in fastc_scan_generic_structs(source_file.source, source_file.path, prefs, i) {
-			structs << generic
-		}
-	}
-	if structs.len == 0 {
-		return sources
-	}
-	mut seen_once := map[string]bool{}
-	mut ambiguous := map[string]bool{}
-	for generic in structs {
-		if generic.name in seen_once {
-			ambiguous[generic.name] = true
-		}
-		seen_once[generic.name] = true
-	}
-	mut by_name := map[string]FastcGenericFn{}
-	for generic in structs {
-		if generic.name in ambiguous {
-			continue
-		}
-		by_name[generic.name] = generic
-	}
-	if by_name.len == 0 {
-		return sources
-	}
-	// Collect generic methods (`fn (recv S[T]) m(...)`) of the known generic
-	// structs, the positions of their receiver type references (skipped by the
-	// instance scan below), and any struct whose method cannot be monomorphized
-	// (which marks that struct unresolvable).
-	mut methods := []FastcGenericMethod{}
-	mut receiver_skip := map[string]bool{}
-	mut method_problematic := map[string]bool{}
-	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
-		}
-		fastc_scan_generic_methods(source_file.source, source_file.path, prefs, i, by_name, mut methods, mut receiver_skip, mut method_problematic)
-	}
-	mut refs := []FastcGenericCall{}
-	mut unresolvable := map[string]bool{}
-	mut pairs := []FastcConcretePair{}
-	mut seen_pair := map[string]bool{}
-	mut has_concrete := map[string]bool{}
-	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
-		}
-		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
-	}
-	for name in method_problematic.keys() {
-		unresolvable[name] = true
-	}
-	mut active := map[string]bool{}
-	for name in by_name.keys() {
-		if name in unresolvable {
-			continue
-		}
-		if name !in has_concrete {
-			continue
-		}
-		active[name] = true
-	}
-	if active.len == 0 {
-		return sources
-	}
-	mut edits := []FastcSourceEdit{}
-	mut copies := []FastcSourceFile{}
-	mut copy_indices := []int{}
-	for name in active.keys() {
-		generic := by_name[name] or { FastcGenericFn{} }
-		definition_file := sources[generic.source_index]
-		edits << FastcSourceEdit{
-			source_index: generic.source_index
-			start:        generic.fn_start
-			end:          generic.def_end
-			replacement:  ''
-		}
-		for pair in pairs {
-			if pair.name != name {
-				continue
-			}
-			copies << fastc_render_mapped_generic_instance(definition_file, generic, pair.concrete_text(), prefs, []FastcGenericCall{})
-			copy_indices << generic.source_index
-		}
-	}
-	// Emit each generic method once per instantiation of its struct and blank the
-	// original generic method definition.
-	for method in methods {
-		if method.struct_name_text() !in active {
-			continue
-		}
-		method_file := sources[method.source_index]
-		edits << FastcSourceEdit{
-			source_index: method.source_index
-			start:        method.fn_start
-			end:          method.def_end
-			replacement:  ''
-		}
-		for pair in pairs {
-			if pair.name != method.struct_name_text() {
-				continue
-			}
-			copies << fastc_render_mapped_generic_method(method_file, method, pair.concrete_text(), prefs)
-			copy_indices << method.source_index
-		}
-	}
-	for ref in refs {
-		if ref.name !in active {
-			continue
-		}
-		edits << FastcSourceEdit{
-			source_index: ref.source_index
-			start:        ref.start
-			end:          ref.end
-			replacement:  fastc_monomorphized_name(ref.name, ref.concrete_text())
-		}
-	}
-	mut result := []FastcSourceFile{cap: sources.len}
-	for i, source_file in sources {
-		mut file_edits := []FastcSourceEdit{}
-		for edit in edits {
-			if edit.source_index == i {
-				file_edits << edit
-			}
-		}
-		mut rewritten := fastc_apply_mapped_source_edits(source_file, file_edits)
-		for copy_index, copy in copies {
-			if copy_indices[copy_index] == i {
-				rewritten = fastc_append_mapped_source(rewritten, copy)
-			}
-		}
-		result << rewritten
-	}
-	return result
-}
-
-// fastc_scan_generic_structs finds `struct S[T] { ... }` definitions with a single
-// type parameter and no nested generic type reference in the body.
-fn fastc_scan_generic_structs(source string, path string, prefs &pref.Preferences, source_index int) []FastcGenericFn {
-	mut result := []FastcGenericFn{}
-	file := token.File.unindexed(path, source.len)
-	mut s := scanner.new_scanner(prefs, .normal)
-	s.init(file, source)
-	mut previous := token.Token.unknown
-	mut previous_pos := 0
-	mut tok := s.scan()
-	for tok != .eof {
-		if tok != .key_struct {
-			previous = tok
-			previous_pos = s.pos
-			tok = s.scan()
-			continue
-		}
-		mut struct_start := s.pos
-		if previous in [.key_pub, .key_static] {
-			struct_start = previous_pos
-		}
-		tok = s.scan()
-		if tok != .name {
-			continue
-		}
-		name := s.lit
-		tok = s.scan()
-		if tok != .lsbr {
-			continue
-		}
-		bracket_start := s.pos
-		tok = s.scan()
-		if tok != .name {
-			continue
-		}
-		type_param, bracket_next := fastc_read_bracket_names(mut s)
-		tok = bracket_next
-		if tok != .rsbr {
-			continue
-		}
-		bracket_end := s.offset
-		tok = s.scan()
-		if tok != .lcbr {
-			continue
-		}
-		body_open := s.pos
-		mut brace_depth := 0
-		mut ok := true
-		for {
-			if tok == .lcbr {
-				brace_depth++
-			} else if tok == .rcbr {
-				brace_depth--
-				if brace_depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				ok = false
-				break
-			}
-			tok = s.scan()
-		}
-		if !ok {
-			continue
-		}
-		def_end := s.offset
-		if !fastc_body_has_nested_generic(source[body_open..def_end], prefs) {
-			result << FastcGenericFn{
-				name:          name
-				type_param:    type_param
-				source_index:  source_index
-				fn_start:      struct_start
-				def_end:       def_end
-				bracket_start: bracket_start
-				bracket_end:   bracket_end
-			}
-		}
-		previous = .rcbr
-		previous_pos = def_end
-		tok = s.scan()
-	}
-	return result
-}
-
-// fastc_body_has_nested_generic reports whether a struct body contains a nested
-// generic type reference (`Foo[X]`). Plain arrays (`[]T`, `[N]T`) and maps
-// (`map[K]V`) are allowed; only a `Name[...]` with non-empty brackets counts.
-fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
-	file := token.File.unindexed('body', body.len)
-	mut s := scanner.new_scanner(prefs, .normal)
-	s.init(file, body)
-	mut previous := token.Token.unknown
-	mut previous_lit := ''
-	mut tok := s.scan()
-	for tok != .eof {
-		if tok == .lsbr && previous == .name && previous_lit != 'map' {
-			next_token := s.scan()
-			if next_token != .rsbr {
-				return true
-			}
-			previous = .rsbr
-			previous_lit = ''
-			tok = s.scan()
-			continue
-		}
-		previous = tok
-		previous_lit = s.lit
-		tok = s.scan()
-	}
-	return false
-}
-
 // fastc_source_type_arguments_use_removed_integer keeps legacy arguments out of
 // source-level specialization. The parser rejects active uses after selecting
 // compile-time branches, before their spellings can become internal C types.
@@ -2431,333 +2185,6 @@ fn fastc_is_concrete_type_arg_id(name_id u32) bool {
 	}
 	syntax := flat.source_type_syntax(name_id)
 	return syntax.byte_len() > 1 && syntax.first_capital()
-}
-
-// fastc_scan_generic_struct_instances records each `S[Concrete]` reference to a
-// known generic struct, or marks the struct unresolvable when a reference is not
-// a plain concrete instantiation (a type-parameter argument, a complex type
-// argument, or a bare reference).
-fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) ! {
-	file := token.File.unindexed(path, source.len)
-	mut s := scanner.new_scanner(prefs, .normal)
-	s.init(file, source)
-	mut previous := token.Token.unknown
-	mut tok := s.scan()
-	for tok != .eof {
-		if tok != .name || s.lit !in by_name || previous in [.dot, .key_struct] {
-			previous = tok
-			tok = s.scan()
-			continue
-		}
-		name := s.lit
-		name_pos := s.pos
-		// A `S[T]` that is a generic method receiver is handled by method
-		// monomorphization, not an instantiation; skip it.
-		if '${source_index}#${name_pos}' in receiver_skip {
-			previous = tok
-			tok = s.scan()
-			continue
-		}
-		tok = s.scan()
-		if tok != .lsbr {
-			unresolvable[name] = true
-			previous = tok
-			continue
-		}
-		tok = s.scan()
-		if tok != .name {
-			unresolvable[name] = true
-			previous = tok
-			continue
-		}
-		concrete, bracket_next := fastc_read_bracket_names(mut s)
-		tok = bracket_next
-		if tok != .rsbr {
-			unresolvable[name] = true
-			previous = tok
-			continue
-		}
-		if fastc_source_type_arguments_use_removed_integer(concrete) {
-			previous = .rsbr
-			tok = s.scan()
-			continue
-		}
-		after := s.offset
-		if !fastc_all_concrete_type_args(concrete) {
-			unresolvable[name] = true
-			previous = .rsbr
-			tok = s.scan()
-			continue
-		}
-		fastc_record_concrete(name, flat.source_type_id(concrete), mut pairs, mut seen_pair, mut has_concrete)
-		refs << FastcGenericCall{
-			name:         name
-			source_index: source_index
-			start:        name_pos
-			end:          after
-			concrete:     flat.source_type_id(concrete)
-		}
-		previous = .rsbr
-		tok = s.scan()
-	}
-}
-
-// fastc_scan_generic_methods finds methods whose receiver is a known generic
-// struct (`fn (recv S[T]) m(...)`). A method that references any generic struct
-// beyond its receiver, or carries its own type parameters, cannot be handled by
-// simple substitution and marks its struct problematic (later unresolvable).
-fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, mut methods []FastcGenericMethod, mut receiver_skip map[string]bool, mut method_problematic map[string]bool) {
-	file := token.File.unindexed(path, source.len)
-	mut s := scanner.new_scanner(prefs, .normal)
-	s.init(file, source)
-	mut previous := token.Token.unknown
-	mut previous_pos := 0
-	mut tok := s.scan()
-	for tok != .eof {
-		if tok != .key_fn {
-			previous = tok
-			previous_pos = s.pos
-			tok = s.scan()
-			continue
-		}
-		mut fn_start := s.pos
-		if previous in [.key_pub, .key_static] {
-			fn_start = previous_pos
-		}
-		tok = s.scan()
-		if tok != .lpar {
-			continue
-		}
-		tok = s.scan()
-		if tok in [.key_mut, .key_shared] {
-			tok = s.scan()
-		}
-		if tok != .name {
-			continue
-		}
-		tok = s.scan()
-		if tok != .name || s.lit !in by_name {
-			continue
-		}
-		struct_name := s.lit
-		receiver_ref_start := s.pos
-		tok = s.scan()
-		if tok != .lsbr {
-			continue
-		}
-		tok = s.scan()
-		if tok != .name {
-			continue
-		}
-		type_param, bracket_next := fastc_read_bracket_names(mut s)
-		tok = bracket_next
-		if tok != .rsbr {
-			continue
-		}
-		receiver_ref_end := s.offset
-		tok = s.scan()
-		if tok != .rpar {
-			continue
-		}
-		tok = s.scan()
-		// The method name, or the operator of an operator overload (`fn (a S[T]) + (b S[T])`).
-		if tok != .name && tok !in fastc_overloadable_operators {
-			continue
-		}
-		tok = s.scan()
-		if tok != .lpar {
-			// A method with its own type parameters (`m[U](...)`) is beyond this pass.
-			method_problematic[struct_name] = true
-			continue
-		}
-		mut has_nested := false
-		mut self_refs := []int{}
-		mut prev_body := token.Token.unknown
-		mut prev_lit := ''
-		mut prev_pos := 0
-		mut depth := 0
-		for {
-			if tok == .lpar {
-				depth++
-			} else if tok == .rpar {
-				depth--
-				if depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				break
-			} else if tok == .lsbr && prev_body == .name && prev_lit in by_name {
-				is_self, next := fastc_read_method_self_ref(mut s, prev_lit == struct_name, type_param)
-				tok = next
-				if !is_self {
-					has_nested = true
-					prev_body = .unknown
-					continue
-				}
-				self_refs << prev_pos
-				self_refs << s.offset
-			}
-			prev_body = tok
-			prev_lit = s.lit
-			prev_pos = s.pos
-			tok = s.scan()
-		}
-		tok = s.scan()
-		for tok !in [.lcbr, .eof] {
-			if tok == .lsbr && prev_body == .name && prev_lit in by_name {
-				is_self, next := fastc_read_method_self_ref(mut s, prev_lit == struct_name, type_param)
-				tok = next
-				if !is_self {
-					has_nested = true
-					prev_body = .unknown
-					continue
-				}
-				self_refs << prev_pos
-				self_refs << s.offset
-			}
-			prev_body = tok
-			prev_lit = s.lit
-			prev_pos = s.pos
-			tok = s.scan()
-		}
-		if tok != .lcbr {
-			continue
-		}
-		mut brace_depth := 0
-		mut ok := true
-		for {
-			if tok == .lcbr {
-				brace_depth++
-			} else if tok == .rcbr {
-				brace_depth--
-				if brace_depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				ok = false
-				break
-			} else if tok == .lsbr && prev_body == .name && prev_lit in by_name {
-				is_self, next := fastc_read_method_self_ref(mut s, prev_lit == struct_name, type_param)
-				tok = next
-				if !is_self {
-					has_nested = true
-					prev_body = .unknown
-					continue
-				}
-				self_refs << prev_pos
-				self_refs << s.offset
-			}
-			prev_body = tok
-			prev_lit = s.lit
-			prev_pos = s.pos
-			tok = s.scan()
-		}
-		if !ok {
-			continue
-		}
-		def_end := s.offset
-		if has_nested {
-			method_problematic[struct_name] = true
-		} else {
-			methods << FastcGenericMethod{
-				struct_name:        flat.source_type_id(struct_name)
-				type_param:         type_param
-				source_index:       source_index
-				fn_start:           fn_start
-				def_end:            def_end
-				receiver_ref_start: receiver_ref_start
-				receiver_ref_end:   receiver_ref_end
-				self_refs:          self_refs
-			}
-			receiver_skip['${source_index}#${receiver_ref_start}'] = true
-			for i := 0; i < self_refs.len; i += 2 {
-				receiver_skip['${source_index}#${self_refs[i]}'] = true
-			}
-		}
-		previous = .rcbr
-		previous_pos = def_end
-		tok = s.scan()
-	}
-}
-
-// fastc_overloadable_operators lists the operator tokens that can name an
-// operator overload method.
-const fastc_overloadable_operators = [token.Token.plus, .minus, .mul, .div, .mod, .eq, .ne, .lt,
-	.gt, .le, .ge, .xor, .pipe, .power]
-
-// fastc_read_method_self_ref reads the `[...]` type arguments that follow a
-// generic struct name inside a generic method (the current token is `[`). It
-// reports whether the reference is the method's own struct with its own type
-// parameters (`S[T]` in a method of `S[T]`), leaving the scanner on `]`;
-// otherwise it returns the token it stopped on.
-fn fastc_read_method_self_ref(mut s scanner.Scanner, is_own_struct bool, type_param string) (bool, token.Token) {
-	tok := s.scan()
-	if tok != .name {
-		return false, tok
-	}
-	names, next := fastc_read_bracket_names(mut s)
-	return is_own_struct && next == .rsbr && names == type_param, next
-}
-
-// fastc_render_mapped_generic_method produces the concrete source of one method
-// instance: the receiver reference `S[T]`, and every other `S[T]` in the method,
-// becomes `S_mono_<C>`, and the type parameter is substituted everywhere else
-// (parameters, return type, body).
-fn fastc_render_mapped_generic_method(source_file FastcSourceFile, method FastcGenericMethod, concrete string, prefs &pref.Preferences) FastcSourceFile {
-	definition := source_file.source[method.fn_start..method.def_end]
-	base := method.fn_start
-	mono_name := fastc_monomorphized_name(method.struct_name_text(), concrete)
-	// ranges holds start/end pairs, relative to `definition`, of the `S[T]` references.
-	mut ranges := [method.receiver_ref_start - base, method.receiver_ref_end - base]
-	for offset in method.self_refs {
-		ranges << offset - base
-	}
-	mut edits := []FastcSourceEdit{}
-	for i := 0; i < ranges.len; i += 2 {
-		edits << FastcSourceEdit{
-			start:       ranges[i]
-			end:         ranges[i + 1]
-			replacement: mono_name
-		}
-	}
-	file := token.File.unindexed('method', definition.len)
-	mut s := scanner.new_scanner(prefs, .normal)
-	s.init(file, definition)
-	substitutions := fastc_type_param_substitutions(method.type_param, concrete)
-	mut tok := s.scan()
-	for tok != .eof {
-		if tok == .name && !fastc_offset_in_ranges(ranges, s.pos) {
-			if replacement := substitutions[s.lit] {
-				edits << FastcSourceEdit{
-					start:       s.pos
-					end:         s.offset
-					replacement: replacement
-				}
-			}
-		}
-		tok = s.scan()
-	}
-	return fastc_apply_mapped_source_edits(FastcSourceFile{
-		...source_file
-		source:        definition
-		source_offset: source_file.source_offset + base
-	}, edits)
-}
-
-// fastc_offset_in_ranges reports whether `offset` lies in one of the start/end pairs.
-fn fastc_offset_in_ranges(ranges []int, offset int) bool {
-	for i := 0; i < ranges.len; i += 2 {
-		if offset >= ranges[i] && offset < ranges[i + 1] {
-			return true
-		}
-	}
-	return false
-}
-
-// struct_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcGenericMethod) struct_name_text() string {
-	return flat.source_type_name(value.struct_name)
 }
 
 // receiver_type_text resolves the indexed source type spelling.
