@@ -545,3 +545,93 @@ the calculations and drawing there in shaders.
 `color_from_string` accepts CSS hexadecimal colors in `#RGB`, `#RGBA`, `#RRGGBB`, and
 `#RRGGBBAA` forms. Short forms repeat each digit; alpha is the last component. Invalid
 hexadecimal digits or lengths return black, as do unknown color names.
+
+## Helper addons (animation, procedural, game)
+
+`gg` includes a set of small, opt-in helpers for common game, CGI and animation
+tasks. They are plain V with no new dependencies. The data and math helpers work
+on every backend. Drawing helpers follow the rest of `gg` and need a native
+backend: the current JavaScript compatibility backend does not expose `gg`'s
+drawing calls.
+
+### Animation and procedural helpers
+
+- `Easing` and `ease(t, kind)` provide the Robert Penner curve family: quad,
+  cubic, quart, quint, sine, expo, circ, back, elastic and bounce, with in,
+  out and in-out variants. Input is clamped to `[0, 1]`.
+- `Tween[T]` and `new_tween()` interpolate any type over time. Pass a blend
+  function: `lerp_f32`, `lerp_color`, `lerp_vec2`, `lerp_vec3`, or your own.
+  `looping`, `easing`, `progress()`, `value()` and `reset()` are available.
+- `Timeline` fires named cues once as time advances; `Spring` gives damped
+  motion for cameras and UI.
+- `Noise` is a seeded generator with `value2d()`, `perlin2d()` and `fbm2d()`.
+- Curves: `catmull_rom()`, `sample_catmull()`, `bezier2()`, `catmull_tangent()`
+  and `resample_polyline()`.
+- Colors: `color_to_hsl()`/`hsl_to_color()`, `color_to_hsv()`/`hsv_to_color()`,
+  `palette_gradient()` and the `sunset`, `ocean`, `forest` and `grayscale`
+  palettes.
+
+### Game helpers
+
+- Collision: `Rect`, `Circle` and `AABB` overlap tests, `point_in_polygon()`,
+  `rect_mtv()` separation, sphere/box tests and `ray_aabb()`.
+- `InputState` tracks held keys and buttons plus press/release edges and named
+  action bindings. Feed it from `event_fn`, then call `end_frame()` after
+  gameplay reads it.
+- `Gamepad` is a backend-neutral controller state container with button edges
+  and dead-zoned axes. Hardware polling is left to your platform layer.
+- `FixedStep`, `FrameStats` and `StateMachine` cover the main loop.
+- `TileMap` offers tile access, solid tests and rect/circle collision; its
+  `draw()` method is native only.
+- `GridPathfinder` and `grid_from_tilemap()` provide four-directional A* on a
+  grid where nonzero tiles are walls.
+
+Starter examples are `examples/gg/anim_base.v`, `examples/gg/procedural_base.v`
+and `examples/gg/game_base.v`. The lower-level interpolation math is in
+`vlib/math`: `interp`, `ema`, `gradient`, `linspace`, `arange` and `activation`
+are available there for general use.
+
+## Advanced helpers (particles, audio, animation, UI)
+
+These helpers are also opt-in and additive. Simulation and data code is pure V;
+anything that draws or opens an audio device is native only, as with the rest
+of `gg`.
+
+- `ParticleEmitter` simulates pooled particles with rate, lifetime, speed,
+  spread, gravity, drag and color fade. `burst()` emits immediately,
+  `update()` advances the simulation and `draw()` renders active particles.
+- CPU post-processing works on interleaved RGBA8 buffers: `post_grayscale`,
+  `post_brightness`, `post_contrast`, `post_saturate`, `post_invert`,
+  `post_vignette`, `post_box_blur`, `post_tonemap` and `post_bloom`. These are
+  pure V and useful for headless or web image work.
+- Audio: `dsp_gain`, `dsp_fade`, `dsp_normalize`, `dsp_generate_sine`,
+  `dsp_lowpass`, `dsp_mix_into` and `dsp_to_stereo` are pure-V DSP helpers.
+  `SoundVoice` adds volume, pan and looping on top of `Sound` for native
+  playback through `mix_voices`.
+- Skeletal playback: `Joint`, `AnimKey`, `AnimTrack`, `AnimClip` and
+  `AnimPlayer` provide step/linear keyframe sampling, looping and per-joint
+  poses. glTF skin import is intentionally outside `gg` (see issue #32523);
+  fill clips from your own asset pipeline.
+- UI and charts: `UITheme`, `ui_panel`, `ui_button`, `ui_slider`, `ui_toggle`
+  and `ui_hud` form a small immediate-mode layer. `draw_line_chart` and
+  `draw_bar_chart` plot value slices, with `chart_normalize` and
+  `chart_min_max` available as pure-V helpers.
+
+The starter example is `examples/gg/advanced_base.v`. Custom GPU shader slots
+and full post-processing passes remain outside `gg`; use `gg/render` and
+`RenderTexture2D` directly when you need your own pipelines.
+
+## Tooling helpers (geometry, generation, save, debug)
+
+- Geometry: `closest_point_on_segment`, `dist_point_segment`,
+  `segments_intersect`, `polygon_area`, `polygon_centroid` and `convex_hull`
+  cover common 2D computational-geometry tasks in pure V.
+- Procedural generation: `LSystem` with `expand()` and `turtle_segments()`,
+  `nearest_site`/`voronoi_cells`, `generate_maze()` and `cellular_step()`.
+- Save data: `SaveStore` offers typed string/int/float/bool and generic JSON
+  accessors, JSON serialization and `save()`/`load_save_store()` file helpers.
+- Debug: `DebugLog` is a bounded on-screen console, `FrameGraph` records frame
+  times, and `Gizmos` queues lines, circles, rectangles and crosses. Their
+  drawing methods are native only, like the rest of gg's draw API.
+
+The starter example is `examples/gg/tooling_base.v`.
