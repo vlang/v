@@ -729,6 +729,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 	}
+	if end - start in [3, 5] && tokens[end - 1].tok == .name
+		&& g.static_function_key_for_call(tokens[start..end], end - start - 1) != none {
+		// A static method used as a value (`Codec.new`) is a function address, as a
+		// function name is.
+		return flat.source_type_voidptr
+	}
 	for init_open in start + 1 .. end {
 		if tokens[init_open].tok == .lcbr {
 			if array_type_source_id := g.array_initializer_type(tokens[start..init_open]) {

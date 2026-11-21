@@ -6263,7 +6263,12 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 	if function_value := g.render_function_value_expression(tokens) {
 		return FastcRenderedExpression{
 			source: function_value
-			typ:    g.expected_expression_type
+			// Without a target type, a function value is an address.
+			typ:    if g.expected_expression_type != 0 {
+				g.expected_expression_type
+			} else {
+				flat.source_type_voidptr
+			}
 		}
 	}
 	if tokens.len > 0 && tokens[0].tok == .key_sizeof {

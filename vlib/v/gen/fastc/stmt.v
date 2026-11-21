@@ -3330,6 +3330,11 @@ fn (g &Parser) callable_signature_for_expression(expression []FastcExpressionTok
 			}
 		}
 	}
+	if tokens.len in [3, 5] && tokens.last().tok == .name {
+		if function_key := g.static_function_key_for_call(tokens, tokens.len - 1) {
+			return g.functions[function_key] or { return none }
+		}
+	}
 	if tokens.len >= 3 && tokens[tokens.len - 2].tok == .dot && tokens.last().tok == .name {
 		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return none }
 		field := g.struct_field_metadata(receiver_type, tokens.last().lit) or { return none }
