@@ -6899,12 +6899,13 @@ struct SelectedFnScanArgs {
 	decls  voidptr // &SelectedFnDecls
 	scan   voidptr // &SelectedFnScan
 	queue  chan int
-	chunk  int
+	// The declarations of the chunk `c` of the queue are
+	// order[bounds[c] .. bounds[c + 1]] (see selected_fn_scan_chunks).
+	order  voidptr // &[]i32
+	bounds voidptr // &[]i32
 mut:
 	scope voidptr
 }
-
-const selected_fn_scan_chunk = 64
 
 // SelectedFnScan is what the pool found in the bodies of the scanned declarations
 // (see SelectedFnDecls), and the declarations the selected files reach.
@@ -6928,10 +6929,12 @@ fn selected_fn_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &SelectedFnScan(a.scan) }
 	w.cur_scope = w.file_scope
 	mut smartcast_keys := &SmartcastKeyFilter{}
+	order := unsafe { &[]i32(a.order) }
+	bounds := unsafe { &[]i32(a.bounds) }
 	for {
-		start := <-a.queue or { break }
-		end := int_min(start + a.chunk, decls.list.len)
-		for i in start .. end {
+		chunk := <-a.queue or { break }
+		for pos in unsafe { bounds[chunk] } .. unsafe { bounds[chunk + 1] } {
+			i := int(unsafe { order[pos] })
 			w.selected_file_called_fns = map[string]bool{}
 			w.selected_file_worklist = []string{}
 			w.collect_selected_decl_called_fns(decls.list[i], mut smartcast_keys)
@@ -6986,12 +6989,12 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 	scan.names = decls.names
 	scan.callee_decls = [][]i32{len: n_decls}
 	scan.other_names = [][]string{len: n_decls}
-	chunk := selected_fn_scan_chunk
-	n_chunks := (n_decls + chunk - 1) / chunk
+	order, bounds := selected_fn_scan_chunks(decls, pool.size() + 1)
+	n_chunks := bounds.len - 1
 	n_jobs := int_max(1, int_min(pool.size() + 1, n_chunks))
 	queue := chan int{cap: int_max(1, n_chunks)}
-	for start := 0; start < n_decls; start += chunk {
-		queue <- start
+	for chunk in 0 .. n_chunks {
+		queue <- chunk
 	}
 	queue.close()
 	mut args := []SelectedFnScanArgs{cap: n_jobs}
@@ -7007,7 +7010,8 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 			decls:  voidptr(decls)
 			scan:   voidptr(scan)
 			queue:  queue
-			chunk:  chunk
+			order:  unsafe { voidptr(&order) }
+			bounds: unsafe { voidptr(&bounds) }
 		}
 	}
 	mut tasks := []workers.Task{cap: n_jobs}

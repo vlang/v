@@ -129,3 +129,43 @@ fn (mut tc TypeChecker) check_dynamic_batches(mut a CheckChunkArgs, chunks &[][]
 		master.promote_check_chunk(batch_items, mut a.promotion, a.scope)
 	}
 }
+
+// selected_fn_scan_chunks_per_job is the number of chunks of about equal cost
+// that the scan of a reachability walk queues for each of its jobs.
+const selected_fn_scan_chunks_per_job = 16
+
+// selected_fn_scan_chunks orders the declarations of a reachability walk for
+// its scan: `order[bounds[c] .. bounds[c + 1]]` are the declarations of chunk
+// `c`. A body that costs a chunk's worth is a chunk of its own, and those come
+// first, so that the scan does not end on one of them while the pool idles.
+fn selected_fn_scan_chunks(decls &SelectedFnDecls, n_jobs int) ([]i32, []i32) {
+	mut total := i64(0)
+	for decl in decls.list {
+		total += i64(decl.cost)
+	}
+	target := int_max(1, int(total / i64(int_max(1, n_jobs) * selected_fn_scan_chunks_per_job)))
+	mut order := []i32{cap: decls.list.len}
+	mut bounds := []i32{cap: n_jobs * selected_fn_scan_chunks_per_job * 2 + 2}
+	for i, decl in decls.list {
+		if decl.cost >= target {
+			bounds << i32(order.len)
+			order << i32(i)
+		}
+	}
+	mut cost := i64(0)
+	mut is_open := false
+	for i, decl in decls.list {
+		if decl.cost >= target {
+			continue
+		}
+		if !is_open || cost >= target {
+			bounds << i32(order.len)
+			cost = 0
+			is_open = true
+		}
+		order << i32(i)
+		cost += i64(decl.cost)
+	}
+	bounds << i32(order.len)
+	return order, bounds
+}
