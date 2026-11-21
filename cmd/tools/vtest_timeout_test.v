@@ -258,3 +258,88 @@ fn test_a_retry_that_times_out_is_not_retried_either() {
 		}
 	}
 }
+
+// A test that writes its own pid and the pid of a child that outlives it, and then hangs.
+const interrupted_test_source = "import os
+import time
+
+fn test_waits_to_be_interrupted() {
+	dir := os.dir(@FILE)
+	os.write_file(os.join_path(dir, 'test.pid'), os.getpid().str())!
+	mut child := os.new_process('/bin/sleep')
+	child.set_args(['600'])
+	child.run()
+	os.write_file(os.join_path(dir, 'child.pid'), child.pid.str())!
+	time.sleep(600 * time.second)
+}
+"
+
+// wait_for_file returns the text of `path` once it is there and not empty, or '' after `seconds`.
+fn wait_for_file(path string, seconds int) string {
+	for _ in 0 .. seconds * 10 {
+		text := os.read_file(path) or { '' }
+		if text.len > 0 {
+			return text
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	return ''
+}
+
+// A test under a limit runs in a process group of its own, so the Ctrl-C that ends `v test`
+// does not reach it: the runner has to end what it started. The runner here is in a group of its
+// own, as a command in a terminal is, and the interrupt goes to that group, as Ctrl-C does.
+fn test_interrupting_the_runner_ends_the_tests_it_started() {
+	$if windows {
+		return
+	}
+	dir := os.join_path(timeout_root, 'interrupted')
+	os.mkdir_all(dir)!
+	file := os.join_path(dir, 'interrupted_test.v')
+	os.write_file(file, interrupted_test_source)!
+	os.setenv('VCOLORS', 'never', true)
+	os.setenv('VJOBS', '1', true)
+	os.unsetenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_TIMEOUT')
+	os.unsetenv('VTEST_RETRY_TIMEOUT')
+	mut runner := os.new_process(vexe)
+	runner.set_args(['-new-compiler', '-silent', 'test', file])
+	runner.use_pgroup = true
+	runner.set_redirect_stdio()
+	runner.run()
+	child_pid := wait_for_file(os.join_path(dir, 'child.pid'), 180).int()
+	test_pid := wait_for_file(os.join_path(dir, 'test.pid'), 5).int()
+	defer {
+		// whatever a failing run left behind
+		for pid in [test_pid, child_pid] {
+			if pid > 0 {
+				os.exec(['/bin/kill', '-KILL', pid.str()])
+			}
+		}
+		runner.signal_pgkill()
+		runner.close()
+	}
+	assert child_pid > 0 && test_pid > 0, 'the test did not start: ${runner.stdout_slurp()}'
+	assert process_is_alive(test_pid) && process_is_alive(child_pid)
+	interrupt := os.exec(['/bin/kill', '-INT', '--', '-${runner.pid}'])
+	assert interrupt.exit_code == 0, interrupt.output
+	mut runner_gone := false
+	for _ in 0 .. 100 {
+		if !runner.is_alive() {
+			runner_gone = true
+			break
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert runner_gone, 'the runner was still there ten seconds after its interrupt'
+	// the runner is gone: nothing is left to enforce the limit, so nothing may be left running
+	mut left := [test_pid, child_pid]
+	for _ in 0 .. 30 {
+		left = left.filter(process_is_alive(it))
+		if left.len == 0 {
+			break
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert left.len == 0, 'still running after the runner was interrupted: ${left} (the test is ${test_pid}, its child ${child_pid})'
+}

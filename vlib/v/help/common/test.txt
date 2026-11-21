@@ -25,6 +25,8 @@ be; pass `-retry-timeouts`, or set VTEST_RETRY_TIMEOUT=1, to retry it. That
 holds for a retry too: when a test with `// vtest retry: N` fails, and one of
 its retries times out, the test fails there and the retries left are not run.
 The limit covers running the compiled test, not compiling it.
+Interrupting `v test` itself (Ctrl-C, or SIGTERM) ends the tests that are running under the
+limit, together with the processes they started, before `v test` exits.
 
 NB 1: very frequently, when you work on a module you can cd into its folder,
 and then you can perform:
