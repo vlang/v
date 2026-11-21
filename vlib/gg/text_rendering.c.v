@@ -480,12 +480,62 @@ pub fn (ctx &Context) text_width(s string) int {
 			return darwin_text_width(s)
 		}
 	}
-	// ctx.set_text_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
 	advance, _ := ctx.text_metrics(s)
 	return int(advance / ctx.scale)
+}
+
+// text_metrics_with_cfg measures `s` using cfg without leaving the shared
+// fontstash state changed. set_text_cfg mutates font/size/align/colour, which
+// would otherwise affect subsequent draw_text calls, so save and restore the
+// whole state stack around the measurement.
+fn (ctx &Context) text_metrics_with_cfg(s string, cfg TextCfg) (f32, [4]f32) {
+	ctx.ft.fons.push_state()
+	ctx.set_text_cfg(cfg)
+	advance, bounds := ctx.text_metrics(s)
+	ctx.ft.fons.pop_state()
+	return advance, bounds
+}
+
+// text_width_cfg returns the width of `s` using the supplied TextCfg.
+pub fn (ctx &Context) text_width_cfg(s string, cfg TextCfg) int {
+	if !ctx.font_inited {
+		return 0
+	}
+	$if macos {
+		if ctx.native_rendering {
+			return darwin_text_width_with_cfg(s, cfg)
+		}
+	}
+	advance, _ := ctx.text_metrics_with_cfg(s, cfg)
+	return int(advance / ctx.scale)
+}
+
+// text_height_cfg returns the height of `s` using the supplied TextCfg.
+pub fn (ctx &Context) text_height_cfg(s string, cfg TextCfg) int {
+	if !ctx.font_inited {
+		return 0
+	}
+	_, bounds := ctx.text_metrics_with_cfg(s, cfg)
+	return int((bounds[3] - bounds[1]) / ctx.scale)
+}
+
+// text_size_cfg returns the size of `s` using the supplied TextCfg.
+pub fn (ctx &Context) text_size_cfg(s string, cfg TextCfg) (int, int) {
+	if !ctx.font_inited {
+		return 0, 0
+	}
+	$if macos {
+		if ctx.native_rendering {
+			width := darwin_text_width_with_cfg(s, cfg)
+			_, bounds := ctx.text_metrics_with_cfg(s, cfg)
+			return width, int((bounds[3] - bounds[1]) / ctx.scale)
+		}
+	}
+	advance, bounds := ctx.text_metrics_with_cfg(s, cfg)
+	return int(advance / ctx.scale), int((bounds[3] - bounds[1]) / ctx.scale)
 }
 
 // text_height returns the height of the `string` `s` in pixels.
