@@ -1187,7 +1187,28 @@ mut:
 fn param_type_index_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ParamTypeIndexArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
-	a.param_types_by_short = cgen_param_types_by_short(a.g.fn_decl_param_types, a.tc.fn_param_types)
+	// Walking the two signature maps copies every key once; that scratch is as
+	// large as the index. Build in a disposable arena and keep a copy.
+	scratch := cgen_worker_scope_begin(true)
+	mut index := cgen_param_types_by_short(a.g.fn_decl_param_types, a.tc.fn_param_types)
+	cgen_worker_scope_leave(scratch)
+	if scratch == unsafe { nil } {
+		a.param_types_by_short = index.move()
+	} else {
+		mut owned := map[string][]types.Type{}
+		owned.reserve(u32(index.len))
+		for short, params in index {
+			// The insert copies the key; a list the scratch arena owns is copied
+			// too, its types are the signature maps' own.
+			owned[short] = if cgen_worker_scope_owns(scratch, params.data) {
+				params.clone()
+			} else {
+				params
+			}
+		}
+		a.param_types_by_short = owned.move()
+		cgen_worker_scope_free(scratch)
+	}
 	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -1670,13 +1691,17 @@ fn (mut g FlatGen) finish_fixed_array_ret_wrappers(mut wrapper_workers []&FlatGe
 	}
 	mut worker := wrapper_workers[0]
 	mut support_worker := wrapper_workers[1]
-	g.fixed_array_ret_wrappers = worker.fixed_array_ret_wrappers.move()
+	if worker.worker_scope != unsafe { nil } {
+		// The wrapper set is small, the scan's scratch is not: keep a copy and
+		// release the scan's arena before the body workers start.
+		g.fixed_array_ret_wrappers = clone_cgen_string_bool_map(worker.fixed_array_ret_wrappers)
+		cgen_worker_scope_free(worker.worker_scope)
+		worker.worker_scope = unsafe { nil }
+	} else {
+		g.fixed_array_ret_wrappers = worker.fixed_array_ret_wrappers.move()
+	}
 	g.recursive_drop_helpers = support_worker.recursive_drop_helpers.move()
 	g.fixed_array_map_key_types = support_worker.fixed_array_map_key_types.move()
-	if worker.worker_scope != unsafe { nil } {
-		g.parallel_worker_scopes << worker.worker_scope
-		worker.worker_scope = unsafe { nil }
-	}
 	if support_worker.worker_scope != unsafe { nil } {
 		g.parallel_worker_scopes << support_worker.worker_scope
 		support_worker.worker_scope = unsafe { nil }
