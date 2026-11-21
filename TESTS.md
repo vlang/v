@@ -71,6 +71,13 @@ cgroup memory limit, and the lower of the CPU count and the cgroup CPU quota.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+When at least two of the selected test files build the compiler from `vlib/v/v.v` themselves,
+`v test` builds it once at the start, and the `v` launcher serves their plain `-gc none`
+compiler builds with copies of it, as `vlib/v/test_all.vsh` does. Builds with other options
+still build their own. Set `VTEST_NO_SHARED_V3=1` to let every test build its own compiler.
+Each session also shares the cached C objects of thirdparty code (`v3_thirdparty_objs`) with
+the module cache root, unless `V3_TEST_ISOLATE_CACHE=1`.
+
 `cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
 including expected failures. It streams child output to stderr while retaining that output
 for its assertions, so a watchdog failure leaves the nested command's progress in the log.
