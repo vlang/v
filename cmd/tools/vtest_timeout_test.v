@@ -21,6 +21,19 @@ fn test_hangs_with_a_child_process() {
 }
 "
 
+// A test that would pass if it were left alone for forty seconds: with a limit shorter than that
+// it is a timeout, however often it is run again.
+const slow_test_source = "import os
+import time
+
+fn test_passes_after_forty_seconds() {
+	mut runs := os.open_append(os.join_path(os.dir(@FILE), 'runs.txt'))!
+	runs.write_string('x')!
+	runs.close()
+	time.sleep(40 * time.second)
+}
+"
+
 fn testsuite_end() {
 	os.rmdir_all(timeout_root) or {}
 }
@@ -103,4 +116,43 @@ fn test_a_timeout_is_retried_only_when_asked_for() {
 	assert result.output.contains('timed out after 2 s'), result.output
 	runs := os.read_file(os.join_path(os.dir(file), 'runs.txt'))!
 	assert runs.len > 1, 'with -retry-timeouts the test ran ${runs.len} time'
+}
+
+// With `-stats` the test is compiled and run by one command, and its retries are that command
+// again. They are under the limit as the first run is: a retry left to finish reported a test
+// that timed out as passed (exit code 0). Both ways of asking for the retry are held to it.
+fn test_a_stats_retry_is_under_the_limit_too() {
+	$if windows {
+		return
+	}
+	routes := {
+		'flags':       ['-timeout', '10', '-retry-timeouts']
+		'environment': []string{}
+	}
+	for route, flags in routes {
+		dir := os.join_path(timeout_root, 'stats_retry_${route}')
+		os.mkdir_all(dir)!
+		file := os.join_path(dir, 'slow_test.v')
+		os.write_file(file, slow_test_source)!
+		os.setenv('VCOLORS', 'never', true)
+		os.setenv('VJOBS', '1', true)
+		// the inner run is its own: not this file's function filter, not an outer limit
+		os.unsetenv('VTEST_ONLY_FN')
+		os.unsetenv('VTEST_TIMEOUT')
+		os.unsetenv('VTEST_RETRY_TIMEOUT')
+		if route == 'environment' {
+			os.setenv('VTEST_TIMEOUT', '10', true)
+			os.setenv('VTEST_RETRY_TIMEOUT', '1', true)
+		}
+		sw := time.new_stopwatch()
+		mut cmd_args := [vexe, '-new-compiler', '-stats', '-silent', 'test']
+		cmd_args << flags
+		cmd_args << file
+		result := os.exec(cmd_args)
+		seconds := sw.elapsed().seconds()
+		os.unsetenv('VTEST_TIMEOUT')
+		os.unsetenv('VTEST_RETRY_TIMEOUT')
+		assert result.exit_code == 1, '${route}, after ${seconds:.0f} s:\n${result.output}'
+		assert result.output.contains('timed out after 10 s'), '${route}:\n${result.output}'
+	}
 }
