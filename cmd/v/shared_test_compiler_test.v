@@ -47,10 +47,23 @@ fn test_builds_that_can_differ_from_the_shared_compiler_are_not_served() {
 fn test_a_served_build_gets_its_own_copy_of_the_shared_compiler() {
 	dir := os.join_path(os.vtmp_dir(), 'shared_test_compiler_${os.getpid()}')
 	os.mkdir_all(dir)!
+	// A test runner may share a compiler with this process; start without one.
+	old_compiler := os.getenv_opt(shared_test_compiler_env)
+	old_source := os.getenv_opt(shared_test_compiler_source_env)
+	os.unsetenv(shared_test_compiler_env)
+	os.unsetenv(shared_test_compiler_source_env)
 	defer {
 		os.rmdir_all(dir) or {}
-		os.unsetenv(shared_test_compiler_env)
-		os.unsetenv(shared_test_compiler_source_env)
+		if value := old_compiler {
+			os.setenv(shared_test_compiler_env, value, true)
+		} else {
+			os.unsetenv(shared_test_compiler_env)
+		}
+		if value := old_source {
+			os.setenv(shared_test_compiler_source_env, value, true)
+		} else {
+			os.unsetenv(shared_test_compiler_source_env)
+		}
 	}
 	shared_compiler := os.join_path(dir, 'shared_v3${shared_test_exe_ext}')
 	os.write_file(shared_compiler, 'shared compiler')!
