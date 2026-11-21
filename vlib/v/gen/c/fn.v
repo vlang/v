@@ -19783,7 +19783,10 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			return *rt
 		}
 	}
-	if !node.value.contains('.') {
+	// For a function of the program, the bare name in that table can be another
+	// module's alias (`json2.decode_T_Array_int` is also `decode_T_Array_int`) until
+	// the function's own registration claims it; the checker's table below is its own.
+	if !node.value.contains('.') && module_name !in ['', 'main', 'builtin'] {
 		full_name := qualify_name_in_module(module_name, node.value)
 		if rt := g.fn_decl_ret_types[full_name] {
 			return *rt

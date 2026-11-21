@@ -5835,14 +5835,18 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		}
 	}
 	qname := transform_qualified_fn_name(decl.module, clone_value)
-	t.set_fn_ret_type(clone_value, ret_name_source_id)
+	if !specialization_name_is_bare_module_spelling(decl.module, clone_value, qname) {
+		t.set_fn_ret_type(clone_value, ret_name_source_id)
+	}
 	t.set_fn_ret_type(qname, ret_name_source_id)
 	t.add_receiver_method_suffix_index(clone_value)
 	t.add_receiver_method_suffix_index(qname)
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
-		mut names := [clone_value, qname, c_name(clone_value), c_name(qname)]
-		names << specialized_generic_fn_signature_aliases(decl, concrete_args_source_ids)
+		mut all_names := [clone_value, qname, c_name(clone_value), c_name(qname)]
+		all_names << specialized_generic_fn_signature_aliases(decl, concrete_args_source_ids)
+		names := all_names.filter(!specialization_name_is_bare_module_spelling(decl.module, it,
+			qname))
 		t.record_generic_specialization_args_for_names(names, concrete_args_source_ids)
 		for name in names {
 			// The names and declaration strings can point into a worker scope
@@ -5866,6 +5870,16 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	t.clear_node_type_memo()
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
+}
+
+// specialization_name_is_bare_module_spelling reports whether `name`, a spelling of
+// a specialization of a function of `module`, is its bare name without the module.
+// A module's specialization does not register it: `json2.decode[[]int]` and
+// `main.decode[[]int]` are both `decode_T_Array_int` there, and the bare name is
+// the program's. Code of the module finds its own by the qualified name.
+fn specialization_name_is_bare_module_spelling(module string, name string, qname string) bool {
+	return module !in ['', 'main', 'builtin'] && name != qname && !name.contains('.')
+		&& !name.contains('__')
 }
 
 fn (mut t Transformer) specialized_fn_return_type_text(decl GenericFnDecl, args_ids []u32) u32 {
