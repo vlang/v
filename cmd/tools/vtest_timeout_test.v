@@ -196,3 +196,66 @@ fn test_a_limited_run_gets_the_per_test_environment() {
 ${result.output}'
 	}
 }
+
+// A test that may be retried twice: it fails an assertion, then hangs, then would pass. Each run
+// appends its number to `runs.txt`.
+const fail_hang_pass_test_source = "// vtest retry: 2
+import os
+import time
+
+fn test_fails_then_hangs_then_passes() {
+	file := os.join_path(os.dir(@FILE), 'runs.txt')
+	attempt := (os.read_file(file) or { '' }).len
+	mut runs := os.open_append(file)!
+	runs.write_string(attempt.str())!
+	runs.close()
+	if attempt == 0 {
+		assert false, 'an ordinary failure'
+	}
+	if attempt == 1 {
+		time.sleep(120 * time.second)
+	}
+}
+"
+
+// A timeout is a timeout on whichever run it happens: when a retry of an ordinary failure runs
+// past the limit, the test fails by name there, and the retries left do not get to turn it into
+// a pass. With `-retry-timeouts` they do.
+fn test_a_retry_that_times_out_is_not_retried_either() {
+	for mode in ['', '-stats'] {
+		// with `-stats` the limit covers the compilation too
+		limit := if mode == '' { '3' } else { '15' }
+		for opt_in in [false, true] {
+			dir := os.join_path(timeout_root, 'fail_hang_pass${mode}_${opt_in}')
+			os.mkdir_all(dir)!
+			file := os.join_path(dir, 'fail_hang_pass_test.v')
+			os.write_file(file, fail_hang_pass_test_source)!
+			os.setenv('VCOLORS', 'never', true)
+			os.setenv('VJOBS', '1', true)
+			os.unsetenv('VTEST_ONLY_FN')
+			os.unsetenv('VTEST_TIMEOUT')
+			os.unsetenv('VTEST_RETRY_TIMEOUT')
+			mut cmd_args := [vexe, '-new-compiler']
+			if mode != '' {
+				cmd_args << mode
+			}
+			cmd_args << ['-silent', 'test', '-timeout', limit]
+			if opt_in {
+				cmd_args << '-retry-timeouts'
+			}
+			cmd_args << file
+			result := os.exec(cmd_args)
+			runs := os.read_file(os.join_path(dir, 'runs.txt'))!
+			what := 'mode `${mode}`, -retry-timeouts ${opt_in}, runs `${runs}`:\n${result.output}'
+			if opt_in {
+				assert result.exit_code == 0, what
+				assert runs == '012', what
+			} else {
+				assert result.exit_code == 1, what
+				assert result.output.contains('timed out after ${limit} s'), what
+				assert runs == '01', what
+				assert !result.output.contains('retrying 2/2'), what
+			}
+		}
+	}
+}

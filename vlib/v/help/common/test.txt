@@ -21,7 +21,9 @@ many seconds is killed together with the processes it started, and is reported
 as FAIL with `timed out after N s`. The default is 300 seconds. `0` turns the
 limit off. The environment variable VTEST_TIMEOUT sets it too (the option wins).
 A test that timed out is not run again, as a failed test with no output would
-be; pass `-retry-timeouts`, or set VTEST_RETRY_TIMEOUT=1, to retry it.
+be; pass `-retry-timeouts`, or set VTEST_RETRY_TIMEOUT=1, to retry it. That
+holds for a retry too: when a test with `// vtest retry: N` fails, and one of
+its retries times out, the test fails there and the retries left are not run.
 The limit covers running the compiled test, not compiling it.
 On Windows the test and the processes it started share a job object, which is what ends them
 together; when Windows refuses the job (inside another job, on a system older than Windows 8),
