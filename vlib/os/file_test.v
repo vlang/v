@@ -550,3 +550,72 @@ fn test_read_from_closed_file() {
 	mut buf := []u8{len: 64}
 	assert f.read(mut buf) or { -1 } == -1
 }
+
+fn test_open_file_x_creates_a_new_file_with_the_given_permissions() {
+	path := os.join_path_single(tfolder, 'x_new')
+	os.rm(path) or {}
+	mut f := os.open_file(path, 'wx', 0o600)!
+	f.write_string('new')!
+	f.close()
+	assert os.read_file(path)! == 'new'
+	$if !windows {
+		// The umask may clear bits: compare with a file created by `open`
+		// with every permission requested, under the same umask.
+		reference := os.join_path_single(tfolder, 'x_reference')
+		os.rm(reference) or {}
+		mut r := os.open_file(reference, 'w', 0o777)!
+		r.close()
+		assert os.inode(path).bitmask() == 0o600 & os.inode(reference).bitmask()
+	}
+}
+
+fn test_open_file_x_refuses_an_existing_file() {
+	path := os.join_path_single(tfolder, 'x_existing')
+	os.write_file(path, 'old')!
+	for mode in ['wx', 'wx+', 'ax', 'wbx'] {
+		if mut f := os.open_file(path, mode, 0o600) {
+			f.close()
+			assert false, '`${mode}` must not open an existing file'
+		}
+	}
+	assert os.read_file(path)! == 'old'
+}
+
+fn test_open_file_x_plus_reads_back_what_it_wrote() {
+	path := os.join_path_single(tfolder, 'x_read_write')
+	os.rm(path) or {}
+	mut f := os.open_file(path, 'wx+')!
+	f.write_string('both ways')!
+	f.flush()
+	f.seek(0, .start)!
+	mut buf := []u8{len: 9}
+	assert f.read(mut buf)! == 9
+	f.close()
+	assert buf.bytestr() == 'both ways'
+}
+
+fn test_open_file_ax_creates_then_appends() {
+	path := os.join_path_single(tfolder, 'x_append')
+	os.rm(path) or {}
+	mut f := os.open_file(path, 'ax')!
+	f.write_string('first')!
+	f.close()
+	f = os.open_file(path, 'a')!
+	f.write_string(' second')!
+	f.close()
+	assert os.read_file(path)! == 'first second'
+}
+
+fn test_open_file_x_needs_w_or_a() {
+	path := os.join_path_single(tfolder, 'x_alone')
+	os.rm(path) or {}
+	for mode in ['x', 'rx', 'x+'] {
+		if mut f := os.open_file(path, mode) {
+			f.close()
+			assert false, '`${mode}` must be refused'
+		} else {
+			assert err.msg().contains('must be combined with `w` or `a`')
+		}
+	}
+	assert !os.exists(path)
+}
