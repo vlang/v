@@ -256,15 +256,13 @@ pub fn (mut bf BitField) clear_bits(a ...int) {
 	}
 }
 
-// has test if *at least one* of the bits is set.
+// has reports whether at least one of the requested bits is set.
+// Out-of-range indices are treated as zero.
 // Example: mut bf := bitfield.from_str('111111100000000'); assert bf.has(1,3,5,7)
 @[inline]
 pub fn (bf BitField) has(a ...int) bool {
 	for bitnr in a {
-		if bitnr < 0 || bitnr >= bf.size {
-			return false
-		}
-		if int((bf.field[bitslot(bitnr)] >> (bitnr % slot_size)) & u32(1)) == 1 {
+		if bf.get_bit(bitnr) == 1 {
 			return true
 		}
 	}
