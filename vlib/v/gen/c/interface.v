@@ -2875,6 +2875,13 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 		if g.interface_unaliased_type(concrete_type) is types.Interface {
 			continue
 		}
+		// The V declaration of a C struct names the fields that V code uses, not
+		// necessarily those of the platform's header (`C.dirent` has macOS's
+		// `d_seekoff`, which glibc lacks), so printing all of them may not compile.
+		// Such a value prints as the interface's fallback.
+		if flat.source_type_query(concrete_id).has(.c_prefix) {
+			continue
+		}
 		storage_ct := g.interface_concrete_storage_c_type(concrete_id)
 		inner := g.interface_implicit_str_expr(concrete_type, '*(${storage_ct}*)${tmp}._object',
 			false, mut stack) or { continue }
