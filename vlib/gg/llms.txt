@@ -26,7 +26,14 @@
   UITheme/ui_panel/ui_button/ui_hud, draw_line_chart/draw_bar_chart.
 - `import gg.debug`: DebugLog, FrameGraph, Gizmos, SaveStore.
 - `import gg.loaders`: load_mesh_obj/gltf/glb, load_model, LoadingManager.
-- `import gg.scene`: Node hierarchy, traverse/find, typed Signal[T].
+- `import gg.scene`: Node hierarchy, traverse/find, typed Signal[T], App systems.
+- `import gg.gpu`: ShaderSource, ShaderMaterial uniform slots, native
+  create_shader/destroy (requires an initialized sokol.gfx context).
+- `import gg.loaders`: load_gltf_skin and load_gltf_clips for skins and clips.
+- `import gg.physics`: sphere rigid bodies, gravity and collision resolution.
+- `import gg.splat`: Gaussian splat cloud, projection and CPU rasterizer.
+- `import gg.texture`: KTX2 header parsing, format mapping, DXT1 decode.
+- `import gg.xr`: stereo camera rig, viewports and convergence point.
 
 ## Conventions
 

@@ -629,6 +629,23 @@ backend does not expose `gg`'s drawing calls.
 - `load_mesh_obj`, `load_mesh_gltf`, `load_mesh_glb` and `load_model` load
   static meshes; skins and animation clips are intentionally not imported.
 
+### Extended opt-in modules
+
+- `gg.gpu` exposes `ShaderSource` and `ShaderMaterial` uniform slots, plus a
+  native `create_shader()` that builds a sokol shader from GLSL sources. It
+  requires an initialized `sokol.gfx` context.
+- `gg.loaders` can import glTF skins (`load_gltf_skin`) and animation clips
+  (`load_gltf_clips`) into the `gg.anim` clip model. Only FLOAT accessors and
+  data-URI/external buffers are supported.
+- `gg.physics` provides sphere rigid bodies, gravity and sphere/floor contact
+  resolution. Full rigid-body rotation and joint constraints are not included.
+- `gg.splat` stores 3D Gaussians, projects them with a perspective camera and
+  rasterizes small clouds on the CPU; large clouds need a GPU renderer.
+- `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1
+  blocks. Other compressed formats are identified but not decoded.
+- `gg.xr` derives left/right stereo cameras from a head camera and provides
+  side-by-side viewports. Headset tracking belongs to your XR runtime.
+
 Starter examples are `examples/gg/anim_base.v`, `procedural_base.v`,
 `game_base.v`, `advanced_base.v` and `tooling_base.v`. The interpolation math
 used by the addons is in `vlib/math`: `interp`, `ema`, `gradient`, `linspace`,
