@@ -116,46 +116,45 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	if summarised == 0 {
 		decl_items.reserve(u32(t.call_param_types_decl_cache.len))
 	}
-	for name, decl in t.call_param_types_decl_index {
-		if decl.idx < summarised || decl.idx in decl_items {
-			continue
-		}
-		// The parameter pre-scan has usually cached the declaration already.
-		params := t.call_param_types_decl_cache[decl.idx] or {
-			t.call_param_types_from_decl(name) or {
-				decl_items[decl.idx] = -1
-				continue
+	mut listed := summarised == 0 && t.borrow_decl_items_listed
+	if listed {
+		// A declaration the pre-scan could not resolve has no item. That is what
+		// the walk below finds too, unless this transformer resolves it.
+		for unresolved in t.unresolved_borrow_decls {
+			if _ := t.call_param_types_from_decl(unresolved.name) {
+				listed = false
+				break
 			}
-		}
-		fn_node := t.a.node(flat.NodeId(decl.idx))
-		cand_start := candidates.len
-		mut param_idx := 0
-		for i in 0 .. fn_node.children_count {
-			param := t.a.child_node(fn_node, i)
-			if param.kind != .param {
-				continue
-			}
-			index := param_idx
-			param_idx++
-			if index >= params.len || !escape_type_is_pointer(params[index]) {
-				continue
-			}
-			candidates << BorrowCandidate{
-				decl:    decl.idx
-				index:   index
-				nparams: params.len
-				name:    param.value
-			}
-		}
-		decl_items[decl.idx] = items.len
-		items << BorrowDeclItem{
-			name:       name
-			decl:       decl
-			nparams:    params.len
-			cand_start: cand_start
-			cand_end:   candidates.len
 		}
 	}
+	if listed {
+		// The parameter pre-scan walked the same declarations in the same order
+		// and listed them as it resolved their parameters.
+		candidates = t.listed_borrow_candidates
+		items = t.listed_borrow_decl_items
+		for i, item in items {
+			decl_items[item.decl.idx] = i
+		}
+	} else {
+		for name, decl in t.call_param_types_decl_index {
+			if decl.idx < summarised || decl.idx in decl_items {
+				continue
+			}
+			// The parameter pre-scan has usually cached the declaration already.
+			params := t.call_param_types_decl_cache[decl.idx] or {
+				t.call_param_types_from_decl(name) or {
+					decl_items[decl.idx] = -1
+					continue
+				}
+			}
+			decl_items[decl.idx] = items.len
+			t.list_borrow_decl_item(name, decl, params, mut candidates, mut items)
+		}
+	}
+	t.borrow_decl_items_listed = false
+	t.listed_borrow_candidates = []BorrowCandidate{}
+	t.listed_borrow_decl_items = []BorrowDeclItem{}
+	t.unresolved_borrow_decls = []BorrowDeclItem{}
 	// Inspect each body once, recording the callee parameters it requires to
 	// borrow. Propagating proven summaries through reverse edges computes the
 	// same least fixed point without revisiting escaping bodies on every round.
@@ -249,6 +248,38 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 		}
 	}
 	t.prepare_times.provenance = f64(sw.elapsed().microseconds()) / 1000.0
+}
+
+// list_borrow_decl_item appends the item of one declaration with known parameter
+// types, and a candidate for each of its pointer parameters.
+fn (t &Transformer) list_borrow_decl_item(name string, decl FnParamDeclRef, params []types.Type, mut candidates []BorrowCandidate, mut items []BorrowDeclItem) {
+	fn_node := t.a.node(flat.NodeId(decl.idx))
+	cand_start := candidates.len
+	mut param_idx := 0
+	for i in 0 .. fn_node.children_count {
+		param := t.a.child_node(fn_node, i)
+		if param.kind != .param {
+			continue
+		}
+		index := param_idx
+		param_idx++
+		if index >= params.len || !escape_type_is_pointer(params[index]) {
+			continue
+		}
+		candidates << BorrowCandidate{
+			decl:    decl.idx
+			index:   index
+			nparams: params.len
+			name:    param.value
+		}
+	}
+	items << BorrowDeclItem{
+		name:       name
+		decl:       decl
+		nparams:    params.len
+		cand_start: cand_start
+		cand_end:   candidates.len
+	}
 }
 
 // borrow_candidate_of_param is the candidate that decides `param`, or -1 when the

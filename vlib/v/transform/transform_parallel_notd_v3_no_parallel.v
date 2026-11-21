@@ -4514,6 +4514,7 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 			tc:                          param_tc
 			prefix_param_scan:           t.prefix_param_scan
 			retain_prescan_scopes:       t.retain_prescan_scopes
+			lists_borrow_decl_items:     true
 			call_param_types_decl_cache: map[int][]types.Type{}
 			call_param_types_decl_index: map[string]FnParamDeclRef{}
 		}
@@ -4537,6 +4538,10 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready
 		t.call_param_types_prepared = param_w.call_param_types_prepared
+		t.borrow_decl_items_listed = param_w.borrow_decl_items_listed
+		t.listed_borrow_candidates = param_w.listed_borrow_candidates
+		t.listed_borrow_decl_items = param_w.listed_borrow_decl_items
+		t.unresolved_borrow_decls = param_w.unresolved_borrow_decls
 		t.defer_fixed_array_borrow_prep = false
 		t.prepare_fixed_array_borrow_params()
 	} else {

@@ -241,6 +241,14 @@ mut:
 	fixed_array_borrow_prescanned int
 	// prepare_times are the wall times of the preparation steps, for `-v`.
 	prepare_times PrepareTimes
+	// lists_borrow_decl_items asks the parameter pre-scan to list the work items
+	// of the borrow summaries; the fields after it hold what it listed (see
+	// prepare_parallel_call_param_types).
+	lists_borrow_decl_items  bool
+	borrow_decl_items_listed bool
+	listed_borrow_candidates []BorrowCandidate
+	listed_borrow_decl_items []BorrowDeclItem
+	unresolved_borrow_decls  []BorrowDeclItem
 	// borrow_params_after_transform starts the summaries from the transform
 	// stage's (see prepare_fixed_array_borrow_params).
 	borrow_params_after_transform bool
