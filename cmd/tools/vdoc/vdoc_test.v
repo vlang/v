@@ -820,6 +820,18 @@ fn test_the_toc_has_the_label_of_each_declaration_of_a_function() {
 		}]
 	}
 	assert !toc_link_html('Semaphore.destroy', toc_call_label(same.content, same.name), same).contains('toc-variant')
+	// A deprecated function is marked once, and each of its labels has the deprecation in its
+	// tooltip.
+	deprecated := doc.DocNode{
+		...dn
+		tags: ["@[deprecated: 'use close']"]
+	}
+	deprecated_entry := toc_link_html('Semaphore.destroy', toc_call_label(deprecated.content,
+		deprecated.name), deprecated)
+	assert deprecated_entry.starts_with('<li><a class="deprecated" href="#Semaphore.destroy"><span class="toc-label"><span class="toc-variant"')
+	assert deprecated_entry.contains('title="(mut sem Semaphore) destroy(), deprecated: use close"')
+	assert deprecated_entry.contains('title="(s Semaphore) destroy(), deprecated: use close"')
+	assert deprecated_entry.ends_with('</span><span class="toc-badge">deprecated</span></a></li>')
 }
 
 fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_platforms() {
