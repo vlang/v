@@ -296,7 +296,7 @@ fn heightmap_normal(heights []f32, cols int, rows int, ix int, iz int, spacing f
 // between neighbours. A grid smaller than 2x2, a non-positive spacing or a
 // height array shorter than cols*rows produce an empty Mesh3D.
 pub fn gen_mesh_heightmap(heights []f32, cols int, rows int, spacing f32) Mesh3D {
-	if cols < 2 || rows < 2 || spacing <= 0 || heights.len < cols * rows {
+	if cols < 2 || rows < 2 || spacing <= 0 || i64(heights.len) < i64(cols) * i64(rows) {
 		return Mesh3D{}
 	}
 	mut vertices := []Vec3{cap: (cols - 1) * (rows - 1) * 6}
@@ -351,7 +351,7 @@ pub fn gen_mesh_heightmap(heights []f32, cols int, rows int, spacing f32) Mesh3D
 // is the edge length of each cube; the grid is centred on the origin. Invalid
 // dimensions, non-positive sizes or an empty grid produce an empty Mesh3D.
 pub fn gen_mesh_cubicmap(cells []u8, cols int, rows int, cube_size f32) Mesh3D {
-	if cols < 1 || rows < 1 || cube_size <= 0 || cells.len < cols * rows {
+	if cols < 1 || rows < 1 || cube_size <= 0 || i64(cells.len) < i64(cols) * i64(rows) {
 		return Mesh3D{}
 	}
 	mut vertices := []Vec3{}

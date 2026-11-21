@@ -37,6 +37,11 @@ pub mut:
 	// depth_test creates a second set of default pipelines with depth testing and
 	// backface culling enabled. Select them with Context.set_depth_test().
 	depth_test bool
+	// cull_backfaces makes the CPU rasterizer skip triangles whose screen winding
+	// is the opposite of the configured face_winding, matching the GPU depth
+	// pipeline. Disable it when feeding arbitrary-winding triangles (e.g. raw
+	// clip-space geometry) to the low-level render_cpu_depth API.
+	cull_backfaces bool = true
 }
 
 pub struct MatrixMode {
@@ -63,6 +68,7 @@ pub mut:
 	max_vertices      int
 	max_commands      int
 	face_winding      gfx.FaceWinding
+	cull_backfaces    bool
 	verts             []Vertex
 	commands          []Command
 	uniforms          []Uniform
@@ -118,6 +124,7 @@ pub fn new_context(desc Desc) &Context {
 	st.max_vertices = max_v
 	st.max_commands = max_c
 	st.face_winding = desc.face_winding
+	st.cull_backfaces = desc.cull_backfaces
 	st.sample_count = if desc.sample_count > 0 { desc.sample_count } else { 1 }
 	st.color_format = desc.color_format
 	st.depth_format = desc.depth_format

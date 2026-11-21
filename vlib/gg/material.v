@@ -60,11 +60,11 @@ pub fn mix_color(a Color, b Color, t f32) Color {
 	}
 }
 
-// material_color computes the final color of a world-space vertex.
-pub fn material_color(mat &Material3D, world Vec3, normal Vec3, cam Camera3D) Color {
+fn material_color_impl(mat &Material3D, world Vec3, normal Vec3, cam Camera3D, light_unit bool) Color {
 	mut c := mat.color
 	if light := mat.light {
-		mut ndl := -normal.normalized().dot(light.direction.normalized())
+		dir := if light_unit { light.direction } else { light.direction.normalized() }
+		mut ndl := -normal.normalized().dot(dir)
 		if ndl < 0 {
 			ndl = 0
 		}
@@ -75,9 +75,20 @@ pub fn material_color(mat &Material3D, world Vec3, normal Vec3, cam Camera3D) Co
 		dx := world.x - cam.position.x
 		dy := world.y - cam.position.y
 		dz := world.z - cam.position.z
-		distance := f32(math.sqrt(f64(dx * dx + dy * dy + dz * dz)))
+		distance := math.sqrtf(dx * dx + dy * dy + dz * dz)
 		t := (distance - mat.fog_near) / (mat.fog_far - mat.fog_near)
 		c = mix_color(c, mat.fog_color, t)
 	}
 	return c
+}
+
+// material_color computes the final color of a world-space vertex.
+pub fn material_color(mat &Material3D, world Vec3, normal Vec3, cam Camera3D) Color {
+	return material_color_impl(mat, world, normal, cam, false)
+}
+
+// material_color_unit_light is for callers that already normalised the light
+// direction, avoiding a redundant sqrt for every vertex of a mesh.
+fn material_color_unit_light(mat &Material3D, world Vec3, normal Vec3, cam Camera3D) Color {
+	return material_color_impl(mat, world, normal, cam, true)
 }

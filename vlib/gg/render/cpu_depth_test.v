@@ -51,6 +51,10 @@ fn test_cpu_depth_keeps_nearest_triangle() {
 fn test_cpu_depth_interpolates_ndc_depth_linearly() {
 	mut ctx := new_context(Desc{ max_vertices: 64, max_commands: 8 })
 	ctx.defaults()
+	// This test feeds raw clip-space triangles whose winding is chosen for
+	// barycentric coverage, not for face orientation. Disable the default
+	// backface culling so both triangles are rasterized.
+	ctx.set_backface_culling(false)
 	ctx.matrix_mode_projection()
 	ctx.load_identity()
 	ctx.matrix_mode_modelview()

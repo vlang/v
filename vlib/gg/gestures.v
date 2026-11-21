@@ -206,7 +206,9 @@ fn (mut t GestureTracker) finish(now i64) ?GestureEvent {
 	}
 
 	dist := gesture_distance(t.start_pos, t.last_pos)
-	if duration >= hold_min_ms {
+	// A long press with no significant travel is a hold; if the pointer
+	// moved far it must be classified as a drag/swipe instead.
+	if duration >= hold_min_ms && dist <= 10.0 {
 		return GestureEvent{
 			kind:      .hold
 			position:  pos
@@ -261,7 +263,7 @@ fn gesture_fabs(v f32) f32 {
 fn gesture_distance(a Vec2, b Vec2) f32 {
 	dx := a.x - b.x
 	dy := a.y - b.y
-	return f32(math.sqrt(dx * dx + dy * dy))
+	return math.sqrtf(dx * dx + dy * dy)
 }
 
 // touch_count returns the number of touches carried by `e`. The JS backend
@@ -310,6 +312,6 @@ fn touch_pair(e &Event) (f32, f32) {
 		b := e.touches[1]
 		dx := b.pos_x - a.pos_x
 		dy := b.pos_y - a.pos_y
-		return f32(math.sqrt(dx * dx + dy * dy)), f32(math.atan2(dy, dx))
+		return math.sqrtf(dx * dx + dy * dy), f32(math.atan2(dy, dx))
 	}
 }

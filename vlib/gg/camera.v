@@ -43,7 +43,7 @@ pub fn (a Vec3) cross(b Vec3) Vec3 {
 
 // normalized returns a unit-length copy, or a zero vector for a zero input.
 pub fn (a Vec3) normalized() Vec3 {
-	len := f32(math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z))
+	len := math.sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)
 	if len == 0 {
 		return Vec3{}
 	}
@@ -111,7 +111,7 @@ pub fn (mut cam Camera3D) orbit_by(dx f32, dy f32, zoom f32) {
 	// Recover the orbit angles from the current position so earlier movement
 	// or direct position edits are not discarded on the next orbit step.
 	d := cam.position - cam.target
-	dist := f32(math.sqrt(f64(d.x * d.x + d.y * d.y + d.z * d.z)))
+	dist := math.sqrtf(d.x * d.x + d.y * d.y + d.z * d.z)
 	if dist > 1e-4 {
 		mut sy := d.y / dist
 		if sy > 1 {

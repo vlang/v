@@ -2,6 +2,7 @@
 module gg
 
 import os
+import sync
 import sokol.audio
 
 // A small high-level audio wrapper around sokol.audio. It only handles raw
@@ -10,10 +11,10 @@ import sokol.audio
 
 // sound_playing records which Sound pointers currently have active playback.
 // The keys are the addresses of Sound values, so a Sound must stay alive (and
-// must not be copied or moved) while it is playing. This and all other state
-// here are intentionally unsynchronised: call play/stop from the main thread
-// only, and note that sokol callbacks run on their own audio thread.
+// must not be copied or moved) while it is playing. The map is shared with
+// sokol's audio thread, so every access is protected by sound_mutex.
 __global sound_playing = map[voidptr]bool{}
+__global sound_mutex = sync.Mutex{}
 
 // Sound holds decoded 16-bit PCM samples ready for playback. channels is 1 for
 // mono or 2 for interleaved stereo; pos is the next sample frame to play.
@@ -62,7 +63,11 @@ pub fn load_wav(path string) !Sound {
 			&& bytes[offset + 3] == ` `
 		is_data := bytes[offset] == `d` && bytes[offset + 1] == `a` && bytes[offset + 2] == `t`
 			&& bytes[offset + 3] == `a`
-		size := int(read_u32_le(bytes, offset + 4))
+		size32 := read_u32_le(bytes, offset + 4)
+		if size32 > 0x7fffffff {
+			return error('WAV: chunk too large')
+		}
+		size := int(size32)
 		offset += 8
 		if is_fmt {
 			if size < 16 || offset + 16 > bytes.len {
@@ -105,7 +110,9 @@ pub fn load_wav(path string) !Sound {
 	if data_len % frame_bytes != 0 {
 		return error('WAV: partial sample frame')
 	}
-	if data_offset + data_len > bytes.len {
+	// Compare in i64: data_offset + data_len can exceed i32 range even when
+	// each value individually passed the 0x7fffffff chunk-size guard above.
+	if i64(data_offset) + i64(data_len) > i64(bytes.len) {
 		return error('WAV: data chunk out of bounds')
 	}
 	mut samples := []i16{cap: data_len / 2}
@@ -121,20 +128,27 @@ pub fn load_wav(path string) !Sound {
 pub fn play_sound(s &Sound) {
 	mut sound := unsafe { &Sound(voidptr(s)) }
 	key := voidptr(s)
+	sound_mutex.lock()
 	sound.pos = 0
 	sound_playing[key] = true
+	sound_mutex.unlock()
 }
 
 // stop_sound stops playback of s and clears its active flag.
 pub fn stop_sound(s &Sound) {
 	key := voidptr(s)
+	sound_mutex.lock()
 	sound_playing[key] = false
+	sound_mutex.unlock()
 }
 
 // is_sound_playing reports whether s is currently marked as active.
 pub fn is_sound_playing(s &Sound) bool {
 	key := voidptr(s)
-	return sound_playing[key]
+	sound_mutex.lock()
+	playing := sound_playing[key]
+	sound_mutex.unlock()
+	return playing
 }
 
 // sound_samples returns the raw signed 16-bit PCM samples of s. It is useful
@@ -160,6 +174,7 @@ pub fn mix_sound_frames(buffer &f32, num_frames i32, num_channels i32) {
 		}
 	}
 	mut finished := []voidptr{}
+	sound_mutex.lock()
 	for key, active in sound_playing {
 		if !active {
 			continue
@@ -189,6 +204,7 @@ pub fn mix_sound_frames(buffer &f32, num_frames i32, num_channels i32) {
 	for key in finished {
 		sound_playing[key] = false
 	}
+	sound_mutex.unlock()
 }
 
 // push_sounds mixes all active sounds into a temporary buffer and forwards it

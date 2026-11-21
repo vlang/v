@@ -10,11 +10,19 @@ pub fn (ctx &Context) draw_material_mesh(mesh &Mesh3D, pos Vec3, rotation Vec3, 
 
 // draw_material_mesh_s draws a shaded mesh with per-axis scale.
 // It returns false when the mesh is invalid or the context has no depth buffer.
+// If a shadow map is attached to the context, its visibility is applied to
+// each vertex's colour.
 pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3, size Vec3, mat &Material3D, cam Camera3D) bool {
 	if !mesh.valid() || !ctx.config.depth {
 		return false
 	}
-	basis := rotation_basis(rotation)
+	// Most meshes are drawn unrotated. Skip building the trig-based basis and
+	// the per-vertex matrix multiply in that case.
+	has_rotation := rotation.x != 0 || rotation.y != 0 || rotation.z != 0
+	mut basis := RotationBasis{}
+	if has_rotation {
+		basis = rotation_basis(rotation)
+	}
 	mut shade := *mat
 	if l := shade.light {
 		mut normalized := l
@@ -28,14 +36,22 @@ pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3
 	mut world_verts := []Vec3{len: mesh.vertices.len}
 	mut vertex_colors := []Color{len: mesh.vertices.len}
 	for i, local in mesh.vertices {
-		v := apply_basis(local, basis)
+		v := if has_rotation { apply_basis(local, basis) } else { local }
 		world := Vec3{pos.x + v.x * size.x, pos.y + v.y * size.y, pos.z + v.z * size.z}
 		mut n := Vec3{0, 1, 0}
 		if mesh.normals.len == mesh.vertices.len {
-			n = apply_basis(mesh.normals[i], basis)
+			n = if has_rotation { apply_basis(mesh.normals[i], basis) } else { mesh.normals[i] }
 		}
 		world_verts[i] = world
-		vertex_colors[i] = material_color(&shade, world, n, cam)
+		vertex_colors[i] = material_color_unit_light(&shade, world, n, cam)
+		if sm := ctx.shadow_map {
+			// sample_fast is identical to the single-tap path of sample(); keep
+			// sample() when PCF is configured so soft_samples still works.
+			vis := if sm.soft_samples > 0 { sm.sample(world) } else { sm.sample_fast(world) }
+			if vis < 1.0 {
+				vertex_colors[i] = shadow_color(vertex_colors[i], vis)
+			}
+		}
 	}
 	mut verts := []Vec3{cap: mesh.indices.len}
 	mut colors := []Color{cap: mesh.indices.len}
