@@ -626,8 +626,9 @@ and full post-processing passes remain outside `gg`; use `gg/render` and
 - Geometry: `closest_point_on_segment`, `dist_point_segment`,
   `segments_intersect`, `polygon_area`, `polygon_centroid` and `convex_hull`
   cover common 2D computational-geometry tasks in pure V.
-- Procedural generation: `LSystem` with `expand()` and `turtle_segments()`,
-  `nearest_site`/`voronoi_cells`, `generate_maze()` and `cellular_step()`.
+- Procedural generation: `LSystem` with `expand()`, `turtle_segments()` and
+  `turtle_segments_with_turn()` for a custom turn angle, `nearest_site`/
+  `voronoi_cells`, `generate_maze()` and `cellular_step()`.
 - Save data: `SaveStore` offers typed string/int/float/bool and generic JSON
   accessors, JSON serialization and `save()`/`load_save_store()` file helpers.
 - Debug: `DebugLog` is a bounded on-screen console, `FrameGraph` records frame
