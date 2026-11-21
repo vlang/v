@@ -223,7 +223,10 @@ fn test_cached_tcc_main_command_refuses_production_mode() ! {
 			&& it.contains('src.c') && it.contains('tcc'))
 		assert commands.len == 1, result.output
 		command := cmdexec.split_args(commands[0].trim_space()[2..])!
-		assert command.any(it.contains('v3_module_cache_') && it.ends_with('.o')), commands[0]
+		// TinyCC builds use the module cache only on macOS and Linux hosts.
+		$if macos || linux {
+			assert command.any(it.contains('v3_module_cache_') && it.ends_with('.o')), commands[0]
+		}
 		assert ('-O3' in command) == ('-prod' in mode && '-no-prod-options' !in mode), commands[0]
 		assert '-flto' !in command, commands[0]
 	}
@@ -1762,7 +1765,9 @@ fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
 	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-showcc',
 		'-o', output, source])
 	assert build.exit_code == 0, build.output
-	assert build.output.contains('-mwindows'), build.output
+	// `-cc msvc` (as VFLAGS in the MSVC CI jobs) passes `-mwindows` to the linker as
+	// `/SUBSYSTEM:WINDOWS`.
+	assert build.output.contains('-mwindows') || build.output.contains('/SUBSYSTEM:WINDOWS'), build.output
 }
 
 fn test_add_v3_tcc_compat_defines() {

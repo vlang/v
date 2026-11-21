@@ -5,7 +5,11 @@ import time
 import v.cmdexec
 
 fn test_joined_cpp_hashflag_selects_language_and_links_runtime() {
-	compiler := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'v joined cpp flag ${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root)!
 	defer {
