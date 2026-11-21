@@ -24,7 +24,7 @@ v run main.v -- --verbose --input=x
 | Flag | Cost | Use |
 | --- | --- | --- |
 | `-g` | larger binary, V line numbers | whenever you will debug |
-| `-cg` | adds C line numbers too | when you need to step into the C |
+| `-cg` | adds C line numbers; keeps the C beside the output | when you need to step into the C |
 | `-prod` | slower build | release builds only |
 | `-showcc` | prints the C command | when a C compilation fails |
 | `-keepc` | keeps the generated `.c` | when debugging codegen |
