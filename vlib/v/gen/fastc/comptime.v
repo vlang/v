@@ -1208,20 +1208,37 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 
 fn (mut g Parser) parse_comptime_or() !bool {
 	mut value := g.parse_comptime_and()!
+	g.skip_comptime_condition_line_break()
 	for g.tok == .logical_or {
 		g.next()
 		right := g.parse_comptime_and()!
 		value = value || right
+		g.skip_comptime_condition_line_break()
 	}
 	return value
 }
 
+// skip_comptime_condition_line_break skips the `;` the scanner inserts at a line break inside
+// a condition that continues on the next line with `||` or `&&`.
+fn (mut g Parser) skip_comptime_condition_line_break() {
+	if g.tok != .semicolon {
+		return
+	}
+	mut look := g.s
+	next := look.scan()
+	if next in [.logical_or, .and] {
+		g.next()
+	}
+}
+
 fn (mut g Parser) parse_comptime_and() !bool {
 	mut value := g.parse_comptime_unary()!
+	g.skip_comptime_condition_line_break()
 	for g.tok == .and {
 		g.next()
 		right := g.parse_comptime_unary()!
 		value = value && right
+		g.skip_comptime_condition_line_break()
 	}
 	return value
 }
