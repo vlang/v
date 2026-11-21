@@ -28,3 +28,12 @@ fn test_full_compiler_dispatch_respects_argument_boundaries() {
 		}
 	}
 }
+
+fn test_full_compiler_build_args_follow_the_launcher_optimization() {
+	assert full_compiler_build_args(false, false) == ['-all-backends', '-gc', 'none', '-prealloc',
+		'-nocache']
+	assert full_compiler_build_args(false, true) == ['-all-backends', '-gc', 'none', '-prealloc',
+		'-nocache', '-prod']
+	assert full_compiler_build_args(true, true) == ['-all-backends', '-gc', 'none', '-prealloc',
+		'-nocache', '-prod', '-d', 'ownership']
+}
