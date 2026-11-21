@@ -79,7 +79,7 @@ fn test_inline_asm() {
 	l := 5
 	m := &l
 	asm amd64 {
-		movq [m], 7 // have to specify size with q
+		movl [m], 7 // l is i32; a 64-bit write corrupts adjacent stack storage
 		; ; r (m)
 		; memory
 	}
