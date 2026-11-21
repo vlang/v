@@ -26,6 +26,12 @@ fn (pre &MarkusedPrecollect) is_async() bool {
 	return false
 }
 
+fn (mut pre MarkusedPrecollect) pool_busy() bool {
+	return false
+}
+
+fn (mut pre MarkusedPrecollect) help() {}
+
 fn (mut pre MarkusedPrecollect) finish() []BodyCalls {
 	return pre.results
 }

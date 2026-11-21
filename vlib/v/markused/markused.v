@@ -1191,6 +1191,52 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut last_module_name := ''
 	mut last_module_calls := &ModuleCalls(unsafe { nil })
 	seeds_done_us := mu_sw.elapsed().microseconds()
+	// The calls of the constant initializers that reached bodies refer to, by the
+	// node of the initializer, where they were collected ahead of the walk.
+	mut const_ref_calls := map[int][]string{}
+	if precollect_async {
+		// The pool threads are still collecting bodies and this thread has
+		// nothing to seed any more. As long as pieces are waiting it does work the
+		// walk would otherwise do alone: it collects the calls of the constant
+		// initializers, numbers the checker dependencies of the bodies, and then
+		// takes pieces itself.
+		for _, info in const_decls {
+			if !precollect.pool_busy() {
+				break
+			}
+			expr := int(info.expr_id)
+			if expr in const_ref_calls {
+				continue
+			}
+			mut ref_calls := []string{cap: 8}
+			seed_collector.collect_calls(a.node(info.expr_id), info.module, seed_collector.imports(info.import_context),
+				'', u32(0), mut ref_calls)
+			const_ref_calls[expr] = ref_calls
+		}
+		if keyed_calls {
+			for body_pos, body_id in body_ids {
+				if body_pos & 63 == 0 && !precollect.pool_busy() {
+					break
+				}
+				// `tc` is only read here: the dependency graph and the symbol
+				// names are fixed, and a fork has neither.
+				for dependency in tc.direct_dependency_ids(body_id) {
+					symbol := int(dependency)
+					if symbol >= symbol_keys.len {
+						symbol_keys << []i32{len: symbol + 1 - symbol_keys.len + 4096}
+					}
+					if symbol_keys[symbol] == 0 {
+						symbol_keys[symbol] = if info := fn_decls[tc.frozen_symbol_name(dependency)] {
+							info.key_id + 1
+						} else {
+							i32(-1)
+						}
+					}
+				}
+			}
+		}
+		precollect.help()
+	}
 	if !isnil(precollect) {
 		body_results = precollect.finish()
 	}
@@ -1414,8 +1460,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				uses_generics = uses_generics || body.uses_generics
 			}
 			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref, mut
-					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
+				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref,
+					const_ref_calls, mut processed_initializer_refs, mut initializer_calls, mut
+					used, mut queue)
 			}
 			// Complete callee resolution depends only on its name and caller
 			// module. A short-name fallback suppressed by a qualified sibling
@@ -2318,12 +2365,22 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 	return uses_generics
 }
 
-fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
+// enqueue_initializer_ref_calls marks the functions that the initializer of the
+// constant or global `initializer_ref` calls, once per name. `ready` holds the
+// calls of the initializers that were already collected, by initializer node.
+fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, initializer_ref string, ready map[int][]string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
 	if initializer_ref in processed {
 		return
 	}
 	info := collector.const_decls[initializer_ref] or { return }
 	processed[initializer_ref] = true
+	if ready_calls := ready[int(info.expr_id)] {
+		for callee in ready_calls {
+			enqueue_initializer_callee(callee, info.module, fn_decls, fn_decl_lists, a, mut used, mut
+				queue)
+		}
+		return
+	}
 	calls.clear()
 	collector.collect_calls(a.node(info.expr_id), info.module, collector.imports(info.import_context), '', u32(0), mut calls)
 	for callee in calls {

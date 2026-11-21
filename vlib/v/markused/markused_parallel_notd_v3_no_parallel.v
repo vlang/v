@@ -50,10 +50,12 @@ struct MarkusedPrecollect {
 mut:
 	collector CallCollector
 	shared    &MarkusedPrecollectShared = unsafe { nil }
-	args      []MarkusedPieceTaskArgs
-	tasks     []workers.Task
-	threads   []thread
-	results   []BodyCalls
+	// One payload per task, then one for the caller (see `help`).
+	args    []MarkusedPieceTaskArgs
+	tasks   []workers.Task
+	threads []thread
+	queue   chan int
+	results []BodyCalls
 }
 
 // markused_piece_thread collects pieces of the body list until none is left.
@@ -300,10 +302,11 @@ fn start_precollect_body_calls(collector CallCollector, body_ids []int, body_mod
 		queue:           queue
 		results:         pre.results
 	}
+	pre.queue = queue
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-	pre.args = []MarkusedPieceTaskArgs{cap: n_jobs}
+	pre.args = []MarkusedPieceTaskArgs{cap: n_jobs + 1}
 	pre.tasks = []workers.Task{cap: n_jobs}
-	for _ in 0 .. n_jobs {
+	for _ in 0 .. n_jobs + 1 {
 		pre.args << MarkusedPieceTaskArgs{
 			shared: pre.shared
 		}
@@ -330,6 +333,20 @@ fn start_precollect_body_calls(collector CallCollector, body_ids []int, body_mod
 // is_async reports whether pool threads may still be collecting.
 fn (pre &MarkusedPrecollect) is_async() bool {
 	return pre.threads.len > 0
+}
+
+// pool_busy reports whether an asynchronous collection still has pieces that
+// no thread has taken. The caller's own work is free until then.
+fn (mut pre MarkusedPrecollect) pool_busy() bool {
+	return pre.threads.len > 0 && pre.queue.len > 0
+}
+
+// help makes the caller take pieces of an asynchronous collection, like the
+// pool threads, until none is left.
+fn (mut pre MarkusedPrecollect) help() {
+	if pre.threads.len > 0 {
+		markused_piece_thread(unsafe { voidptr(&pre.args[pre.args.len - 1]) })
+	}
 }
 
 // finish waits for the pool threads and returns the call lists of every body.
