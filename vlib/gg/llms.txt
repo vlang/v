@@ -34,6 +34,13 @@
 - `import gg.splat`: Gaussian splat cloud, projection and CPU rasterizer.
 - `import gg.texture`: KTX2 header parsing, format mapping, DXT1 decode.
 - `import gg.xr`: stereo camera rig, viewports and convergence point.
+- `import gg.ecs`: World, Entity, Storage[T] sparse-set components, Transform.
+- `import gg.netcode`: Packet bitstream, Snapshot interpolation, native UDP Peer.
+- `import gg.audio`: Bus gain/pan/filter graph, PositionalVoice, Stream.
+- `import gg.loaders`: load_scene_gltf for materials/nodes/cameras/lights.
+- `import gg.texture`: decode_etc1 and generate_mipmaps.
+- `import gg.gpu`: tonemap_source/blur_source/bloom_source, FullscreenPass,
+  ParticleGPU (native only).
 - `import gg.raytrace`: Scene with spheres/triangles/materials and a BVH, Ray/Hit
   with normals+UV, diffuse/metal/dielectric/emissive materials, Renderer path
   tracing into gg.hdr HDRImage, add_mesh for gg.Mesh3D, render_to_ldr.

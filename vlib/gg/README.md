@@ -645,6 +645,20 @@ backend does not expose `gg`'s drawing calls.
   blocks. Other compressed formats are identified but not decoded.
 - `gg.xr` derives left/right stereo cameras from a head camera and provides
   side-by-side viewports. Headset tracking belongs to your XR runtime.
+- `gg.ecs` provides generation-counted entities, sparse-set `Storage[T]`
+  components and `Transform`.
+- `gg.physics` now adds box/capsule colliders, X-axis sweep-and-prune
+  broadphase, distance/spring joints and a character controller.
+- `gg.netcode` offers a byte packet stream, snapshot interpolation and a
+  native UDP peer with sequence/ack headers. JS/WASM have no transport.
+- `gg.audio` adds gain/pan/filter buses, a positional voice with distance
+  attenuation, and looping streams. Compressed audio decoding is not included.
+- `gg.hdr` now has wide-gamut color-space conversion, 3D LUTs and auto-exposure;
+  `gg.raytrace` adds temporal accumulation and bilateral denoising.
+- `gg.gpu` exposes fullscreen tonemap/blur/bloom shaders and an instanced GPU
+  particle renderer (native only). `gg.texture` adds ETC1 decode and mipmaps.
+- `gg.loaders.load_scene_gltf` imports meshes, materials, nodes with TRS,
+  cameras, images and KHR punctual lights in one pass.
 - `gg.raytrace` is a pure-V CPU path tracer. `Scene` stores spheres,
   triangles, materials and a BVH; `Ray`/`Hit` carry normals and UVs; materials
   support diffuse, metal, dielectric and emissive responses. `Renderer` traces
