@@ -1174,6 +1174,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
+				if retry_timed_out && !ts.retry_timeouts {
+					// A timeout is one on whichever run it happens: fail the test by name here.
+					// The retries left would let a later run turn it into a pass.
+					ts.benchmark_fail()
+					tls_bench.fail()
+					ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+						'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}', cmd_duration),
+						cmd_duration, mtc)
+					ts.add_failed_cmd(reproduce_cmd)
+					return pool.no_result
+				}
 				if status == 0 {
 					unsafe {
 						goto test_passed_system
@@ -1286,6 +1297,22 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
+				if run_timed_out && !ts.retry_timeouts {
+					// A timeout is one on whichever run it happens: fail the test by name here.
+					// The retries left would let a later run turn it into a pass.
+					failure_output.write_string(separator)
+					failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${r.output.trim_space().len}')
+					failure_output.writeln(r.output.trim_space())
+					ts.benchmark_fail()
+					tls_bench.fail()
+					ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+						'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}\n${failure_output.str().trim_space()}',
+						cmd_duration,
+						preparation: compile_cmd_duration
+					), cmd_duration, mtc)
+					ts.add_failed_cmd(reproduce_cmd)
+					return pool.no_result
+				}
 				if r.exit_code == 0 {
 					unsafe {
 						goto test_passed_execute
