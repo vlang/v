@@ -69,7 +69,7 @@ fn test_file_metadata_helper_uses_generated_u64_abi() {
 			source := '#include <stdint.h>
 ${alias}
 // Match the bodyless V binding in a separate translation unit.
-extern int v3_modulecache_file_metadata(const char *, u64 *, u64 *, u64 *, u64 *,
+extern int v3_modulecache_file_metadata(const char *, int, u64 *, u64 *, u64 *, u64 *,
     u64 *, u64 *, u64 *);
 
 int main(void) {
@@ -80,7 +80,7 @@ int main(void) {
 	u64 mtime_nanoseconds = 0;
 	u64 ctime_seconds = 0;
 	u64 ctime_nanoseconds = 0;
-	int found = v3_modulecache_file_metadata(__FILE__, &device, &inode, &size,
+	int found = v3_modulecache_file_metadata(__FILE__, 0, &device, &inode, &size,
         &mtime_seconds, &mtime_nanoseconds, &ctime_seconds, &ctime_nanoseconds);
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
     return !(found == 1 && inode > 0 && size > 0);

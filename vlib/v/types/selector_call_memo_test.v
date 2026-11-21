@@ -31,7 +31,7 @@ fn probe(x First) { x.callback(1) }
 		tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 		first := *tc.parse_type(flat.source_type_id('First'))
 		second := *tc.parse_type(flat.source_type_id('Second'))
-		tc.cur_scope.insert('x', first)
+		tc.cur_scope.insert_id(flat.source_type_id('x'), 'x', first)
 		for typ in [first, second, first] {
 			tc.smartcasts['x'] = typ
 			assert tc.smartcasts.len == 1

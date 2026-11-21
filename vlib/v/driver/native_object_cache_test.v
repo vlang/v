@@ -131,7 +131,7 @@ fn test_native_object_file_signature_preserves_content_and_refreshes() ! {
 		assert c_object_file_signature(path, false, mut stats) == signature
 		assert stats.dependency_file_reads == previous_reads + 1
 	}
-	previous := stats.file_signatures[os.real_path(path)]
+	previous := stats.file_signatures[path]
 	// Same-sized edits must be detected by the post-compilation refresh.
 	os.write_file_array(path, []u8{len: 128 * 1024 + 1, init: u8((index + 1) % 251)})!
 	assert c_object_file_signature(path, false, mut stats) == previous

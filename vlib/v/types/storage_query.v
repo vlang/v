@@ -108,12 +108,12 @@ fn (tc &TypeChecker) storage_query_probe_facts_unchanged() bool {
 		return false
 	}
 	// Sibling forks can discard private annotations. Cache only the unchanged checked facts.
-	if tc.sparse_expr_type_values.len > 0 || tc.sparse_resolved_call_names.len > 0
+	if tc.sparse_expr_type_values.len > 0 || tc.sparse_resolved_calls.len > 0
 		|| tc.sparse_resolved_fn_values.len > 0 || tc.fork_fn_value_writes.len > 0
 		|| tc.sparse_statement_nodes.len > 0 {
 		return false
 	}
-	if !isnil(tc.fork_overlay) && (tc.fork_overlay.resolved_call_names.len > 0
+	if !isnil(tc.fork_overlay) && (tc.fork_overlay.resolved_calls.len > 0
 		|| tc.fork_overlay.resolved_fn_values.len > 0) {
 		return false
 	}
@@ -782,19 +782,18 @@ fn (tc &TypeChecker) fork_storage_query_view_with_annotations(copy_annotations b
 	view.transform_signature_maps_shared = true
 	view.transform_struct_maps_shared = true
 	view.type_interner = new_type_interner()
-	view.symbols = new_symbol_interner()
 	view.fork_overlay = &TransformForkOverlay{
 		base_node_count: -1
 	}
 	if copy_annotations {
 		if !isnil(tc.fork_overlay) {
-			view.fork_overlay.resolved_call_names = tc.fork_overlay.resolved_call_names.clone()
+			view.fork_overlay.resolved_calls = tc.fork_overlay.resolved_calls.clone()
 			view.fork_overlay.resolved_fn_values = tc.fork_overlay.resolved_fn_values.clone()
 		}
 		view.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
 		view.fork_fn_value_writes = tc.fork_fn_value_writes.clone()
 		view.sparse_expr_type_values = tc.sparse_expr_type_values.clone()
-		view.sparse_resolved_call_names = tc.sparse_resolved_call_names.clone()
+		view.sparse_resolved_calls = tc.sparse_resolved_calls.clone()
 	}
 	view.v_fn_semantic_names = tc.v_fn_semantic_names
 	view.verbose = tc.verbose
@@ -851,9 +850,9 @@ fn (tc &TypeChecker) fork_storage_observation_view() &TypeChecker {
 		// The base readers retain the caller's precedence and dense readable range.
 		// Only annotations made during observation belong in these private maps.
 		view.sparse_expr_type_values = map[int]Type{}
-		view.sparse_resolved_call_names = map[int]string{}
+		view.sparse_resolved_calls = map[int]SymbolId{}
 		view.sparse_statement_nodes = map[int]bool{}
-		view.fork_overlay.resolved_call_names = map[int]string{}
+		view.fork_overlay.resolved_calls = map[int]SymbolId{}
 		view.sparse_resolved_fn_values = map[int]string{}
 		view.fork_fn_value_writes = map[int]string{}
 		view.fork_overlay.resolved_fn_values = map[int]string{}

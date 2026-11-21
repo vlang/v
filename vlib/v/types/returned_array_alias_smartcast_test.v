@@ -49,7 +49,7 @@ fn test_return_alias_assertion_smartcast_stays_in_its_block() {
 		children_count: 1
 	})
 	mut tc := TypeChecker.new(&a)
-	tc.cur_scope.insert('helper', Type(int_))
+	tc.cur_scope.insert_id(flat.source_type_id('helper'), 'helper', Type(int_))
 	tc.smartcasts['outer'] = Type(string_)
 	mut visiting := map[int]bool{}
 	mut sources := []flat.NodeId{}
