@@ -158,7 +158,9 @@ fn test_call_function_value_signature_keeps_mut_and_empty_parameter_abi() {
 				g.tc = &tc
 				match mode {
 					'parameter' { g.cur_param_types['callback'] = fn_type }
-					'local' { tc.cur_scope.insert_id(flat.source_type_id('callback'), 'callback', *fn_type) }
+					'local' {
+						tc.cur_scope.insert_id(flat.source_type_id('callback'), 'callback', *fn_type)
+					}
 					else { g.global_types['callback'] = *fn_type }
 				}
 				g.gen_call(call, a.node(call))

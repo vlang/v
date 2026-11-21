@@ -2966,6 +2966,7 @@ pub fn native_path_is_shipped(path string, vroot string) bool {
 	return c_path_is_within_roots(os.real_path(path), c_shipped_native_roots(vroot))
 }
 
+// c_shipped_native_roots returns the resolved roots of native files shipped with V.
 pub fn c_shipped_native_roots(vroot string) []string {
 	if vroot.len == 0 {
 		return []string{}
@@ -2974,6 +2975,7 @@ pub fn c_shipped_native_roots(vroot string) []string {
 	return ['vlib', 'thirdparty', 'cmd'].map(os.join_path_single(real_vroot, it))
 }
 
+// c_path_is_within_roots reports whether path equals or is below one of roots.
 pub fn c_path_is_within_roots(path string, roots []string) bool {
 	for root in roots {
 		if path == root || (path.starts_with(root) && path.len > root.len

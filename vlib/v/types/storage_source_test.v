@@ -108,10 +108,10 @@ fn test_storage_observers_preserve_annotation_reads_and_private_nested_writes() 
 	tc.sparse_resolved_fn_values[int(id)] = 'main.original_value'
 	tc.fork_fn_value_writes[int(id)] = 'main.original_write'
 	tc.fork_overlay = &TransformForkOverlay{
-		resolved_calls:      {
+		resolved_calls:     {
 			int(id): SymbolId(flat.source_type_id('main.overlay_call'))
 		}
-		resolved_fn_values:  {
+		resolved_fn_values: {
 			int(id): 'main.overlay_value'
 		}
 	}

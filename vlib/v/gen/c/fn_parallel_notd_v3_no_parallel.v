@@ -3924,7 +3924,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		cur_module:                            g.tc.cur_module
 		cur_file:                              g.tc.cur_file
 		errors:                                g.tc.errors.clone()
-		resolved_calls:                   g.tc.resolved_calls
+		resolved_calls:                        g.tc.resolved_calls
 		resolved_call_set:                     g.tc.resolved_call_set
 		statement_nodes:                       g.tc.statement_nodes
 		expr_type_values:                      g.tc.expr_type_values
@@ -3933,7 +3933,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		parallel_check_sparse:                 g.tc.parallel_check_sparse
 		check_range_lo:                        g.tc.check_range_lo
 		check_range_hi:                        g.tc.check_range_hi
-		sparse_resolved_calls:            g.tc.sparse_resolved_calls
+		sparse_resolved_calls:                 g.tc.sparse_resolved_calls
 		sparse_resolved_fn_values:             g.tc.sparse_resolved_fn_values
 		sparse_statement_nodes:                g.tc.sparse_statement_nodes
 		sparse_expr_type_values:               g.tc.sparse_expr_type_values

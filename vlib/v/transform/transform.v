@@ -2723,6 +2723,13 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 	return result, errors
 }
 
+// only_collects_diagnostics reports whether this pass exists for the diagnostics
+// of generic instances, as `-check` and the instance check of a build do, and its
+// tree is discarded. Lowering for C generation has no diagnostics to give.
+fn (t &Transformer) only_collects_diagnostics() bool {
+	return !isnil(t.tc) && (t.tc.check_concrete_generic_bodies || t.tc.monomorphize_for_diagnostics)
+}
+
 // monomorphize_with_used_checked_config_scoped_cached restores concrete generic
 // signatures from `cached_specs` and returns the complete specialization set.
 // A restored signature rewrites current program calls normally, while its
@@ -2732,13 +2739,6 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 // body, or, in an incremental rebuild, left it to the cached build. Only the
 // functions that a specialization makes reachable are then lowered here. A
 // check monomorphizes the tree as it was parsed and passes false.
-// only_collects_diagnostics reports whether this pass exists for the diagnostics
-// of generic instances, as `-check` and the instance check of a build do, and its
-// tree is discarded. Lowering for C generation has no diagnostics to give.
-fn (t &Transformer) only_collects_diagnostics() bool {
-	return !isnil(t.tc) && (t.tc.check_concrete_generic_bodies || t.tc.monomorphize_for_diagnostics)
-}
-
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec, after_transform bool) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)

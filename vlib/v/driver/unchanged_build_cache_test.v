@@ -136,7 +136,9 @@ fn test_receipt_requires_the_contents_actually_parsed() {
 	digest := modulecache.file_signature(f.source)
 	receipt := UnchangedBuildReceipt{
 		...f.receipt()
-		source_reads: {f.source: V3SourceRead{signature: digest}}
+		source_reads: {
+			f.source: V3SourceRead{ signature: digest }
+		}
 	}
 	assert v3_unchanged_build_stamp(receipt, f.cache_dir, '').ok
 	aged_write(f.source, 'fn main() { println("different") }\n')!
@@ -255,13 +257,13 @@ fn aged_write(path string, content string) ! {
 // native_receipt_inputs is a receipt of a build of the fixture with `flags`.
 fn native_receipt_inputs(f ReceiptFixture, flags []string) UnchangedBuildInputs {
 	return UnchangedBuildInputs{
-		sources:       [f.source]
-		dirs:          [f.source_dir]
-		output_dir:    f.root
+		sources:        [f.source]
+		dirs:           [f.source_dir]
+		output_dir:     f.root
 		output_listing: v3_unchanged_build_listing_signature(f.root)
-		flags:         flags
-		cache_dir:     f.cache_dir
-		project_roots: [f.root]
+		flags:          flags
+		cache_dir:      f.cache_dir
+		project_roots:  [f.root]
 	}
 }
 
@@ -458,7 +460,7 @@ fn test_receipt_takes_every_form_of_a_library_from_the_link() {
 	aged_write(os.join_path(lib_dir, 'libnative.so'), '\x7fELF\x02\x01\x01\x00\x00')!
 	link := v3_program_link_inputs(['-o', 'out', 'src.c', '-L', earlier, '-L', lib_dir, '-Wl,-Bstatic',
 		'-lnative', '-Wl,-Bdynamic'], '', []string{}, root)
-	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{told: true, link_reason: link.reason()}, false, &CObjectCacheStats{},
+	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{ told: true, link_reason: link.reason() }, false, &CObjectCacheStats{},
 		[]string{})
 	assert found.unknown == ''
 	// Each is recorded by the path that the linker looks up, not by where it leads.
@@ -469,7 +471,7 @@ fn test_receipt_takes_every_form_of_a_library_from_the_link() {
 	assert os.join_path(earlier, 'libnative.so') in found.missing
 	unresolved := v3_program_link_inputs(['-o', 'out', 'src.c', '-L', lib_dir, '-lmissing_receipt_lib'],
 		'', []string{}, root)
-	missing := v3_unchanged_build_native_inputs(&unresolved, &V3ReceiptHeaders{told: true, link_reason: unresolved.reason()}, false,
+	missing := v3_unchanged_build_native_inputs(&unresolved, &V3ReceiptHeaders{ told: true, link_reason: unresolved.reason() }, false,
 		&CObjectCacheStats{}, []string{})
 	$if macos {
 		// On macOS it may live in the dyld shared cache: the system version stands for it.
@@ -500,7 +502,7 @@ fn test_receipt_native_inputs_are_not_recorded_when_a_part_was_not_told() {
 	fallback := CObjectCacheStats{
 		requests: 1
 	}
-	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{told: true}, false, &fallback,
+	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{ told: true }, false, &fallback,
 		[]string{}).unknown != ''
 	// The reason of the link is taken from before the headers were added.
 	blocked := V3ProgramLinkInputs{
@@ -522,14 +524,14 @@ fn test_receipt_native_inputs_track_linker_inputs_and_leave_out_what_the_build_m
 		taken: true
 		files: [object, os.join_path(root, 'libx.a')]
 	}
-	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{told: true}, false,
+	found := v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{ told: true }, false,
 		&CObjectCacheStats{}, [made])
 	assert found.files == [os.join_path(root, 'libx.a')]
 
 	mut objects := CObjectCacheStats{}
 	aged_write(header, '#define VALUE 1\n')!
 	objects.file_signatures[header] = modulecache.file_signature(header)
-	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{told: true}, false,
+	assert v3_unchanged_build_native_inputs(&link, &V3ReceiptHeaders{ told: true }, false,
 		&objects, [made]).unknown.contains('C object was built from source')
 }
 
@@ -551,7 +553,7 @@ fn test_receipt_sees_a_library_link_that_comes_to_point_elsewhere() {
 	os.symlink('one.a', link)!
 	inputs := v3_program_link_inputs(['-o', 'out', 'src.c', '-L', lib_dir, '-Wl,-Bstatic', '-lreceipt',
 		'-Wl,-Bdynamic'], '', []string{}, f.root)
-	found := v3_unchanged_build_native_inputs(&inputs, &V3ReceiptHeaders{told: true, link_reason: inputs.reason()}, false, &CObjectCacheStats{},
+	found := v3_unchanged_build_native_inputs(&inputs, &V3ReceiptHeaders{ told: true, link_reason: inputs.reason() }, false, &CObjectCacheStats{},
 		[]string{})
 	assert found.unknown == ''
 	// The linker opens the archive by the path that it looks up.
@@ -788,8 +790,8 @@ fn test_receipt_knows_an_output_directory_of_sources_through_a_link() {
 	age_unchanged_build_source(f.root)!
 	receipt := UnchangedBuildReceipt{
 		...f.receipt()
-		dirs:       [f.source_dir, link]
-		output_dir: os.real_path(f.root)
+		dirs:           [f.source_dir, link]
+		output_dir:     os.real_path(f.root)
 		output_listing: v3_unchanged_build_listing_signature(os.real_path(f.root))
 	}
 	stamp := v3_unchanged_build_stamp(receipt, f.cache_dir, '')
@@ -908,9 +910,9 @@ fn test_receipt_rechecks_a_direct_source_replaced_with_a_symlink() {
 	target := os.join_path(f.source_dir, 'target.txt')
 	aged_write(target, os.read_file(f.source)!)!
 	publish_receipt(f, 'direct_source', UnchangedBuildReceipt{
-		sources:    [f.source]
-		dirs:       [f.source_dir]
-		output_dir: f.source_dir
+		sources:        [f.source]
+		dirs:           [f.source_dir]
+		output_dir:     f.source_dir
 		output_listing: v3_unchanged_build_listing_signature(f.source_dir)
 	})
 	os.rm(f.source)!
@@ -924,7 +926,7 @@ fn test_receipt_checks_the_output_listing_from_before_source_selection() {
 	defer { os.rmdir_all(f.root) or {} }
 	receipt := UnchangedBuildReceipt{
 		...f.receipt()
-		output_dir: f.source_dir
+		output_dir:     f.source_dir
 		output_listing: v3_unchanged_build_listing_signature(f.source_dir)
 	}
 	os.mkdir(os.join_path(f.source_dir, '.app.v3cc.1.2.3'))!

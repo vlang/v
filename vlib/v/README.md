@@ -735,8 +735,9 @@ coverage, tests, and an implicit `run` on macOS, which has its own executable ca
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
 Set `V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable the experimental build receipt. With
-module caching enabled, a build with an explicit output then looks for a receipt before parsing. It matches the compiler, C compiler identity, command line, output
-and environment. The receipt lists the program's V sources, checked as a whole by their source signature (content
+module caching enabled, a build with an explicit output looks for a receipt before parsing.
+It matches the compiler, C compiler identity, command line, output and environment. The
+receipt lists the program's V sources, checked as a whole by their source signature (content
 digests, `$env` reads, `v.mod` hashes, pkg-config probes and the build-time pseudo variables
 when the program uses them), embedded resources, the listings of the source directories, and
 the linker's reported inputs. A C compiler must report a single, headerless translation

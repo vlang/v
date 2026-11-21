@@ -997,8 +997,6 @@ fn (m &Manager) source_signature_details(source_files []string) SourceSignatureD
 		m.build_pseudo_values, m.version_pseudo_values, m.pkg_probes)
 }
 
-// cached_source_signature returns a content signature while using precise file
-// metadata to avoid rereading unchanged inputs on subsequent compiler runs.
 // cached_source_signature_with_build_values is cached_source_signature for a
 // build whose build-time pseudo variables (@BUILD_DATE, @BUILD_TIME,
 // @BUILD_TIMESTAMP) are `build_values`: the signature covers them when a source
@@ -1008,6 +1006,8 @@ pub fn cached_source_signature_with_build_values(cache_dir string, namespace str
 		build_values, '').signature
 }
 
+// cached_source_signature returns a content signature using file metadata to
+// avoid rereading unchanged inputs on subsequent compiler runs.
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
 	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files, '', '').signature
 }

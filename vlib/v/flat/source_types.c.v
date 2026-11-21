@@ -511,7 +511,11 @@ const source_type_initial_index_capacity = u32(1) << 12
 // that shard's IDs.
 fn source_type_grow_index(table &SourceTypeTable, shard int) &SourceTypeIndex {
 	previous := source_type_index_load(shard)
-	capacity := if isnil(previous) { source_type_initial_index_capacity } else { previous.capacity * 2 }
+	capacity := if isnil(previous) {
+		source_type_initial_index_capacity
+	} else {
+		previous.capacity * 2
+	}
 	// The hash index holds integers only; its storage belongs to the process,
 	// independently of the calling worker's disposable allocation arena.
 	slots := unsafe { &u32(C.calloc(capacity, sizeof(u32))) }

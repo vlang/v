@@ -233,11 +233,11 @@ struct V3CachedObjectCompiler {
 }
 
 struct V3ModuleCacheState {
-	manager             modulecache.Manager
+	manager                  modulecache.Manager
 	record_source_selections bool
-	silent              bool
-	bundle_sources      []string
-	bundle_source_paths map[string]bool
+	silent                   bool
+	bundle_sources           []string
+	bundle_source_paths      map[string]bool
 mut:
 	c_build_dir               string
 	object_compiler           V3CachedObjectCompiler
@@ -276,7 +276,7 @@ mut:
 	objects                   map[string]string
 	headers                   map[string]string
 	import_resolutions        V3ImportResolutions
-	source_selections []V3SourceSelection
+	source_selections         []V3SourceSelection
 }
 
 struct V3ParseTiming {
@@ -5433,8 +5433,8 @@ struct UnchangedBuildReceipt {
 	// output_dir is the directory of the executable. Writing the executable
 	// changes its metadata, so we compare its entries with the listing taken
 	// before source selection.
-	output_dir         string
-	output_listing     string
+	output_dir     string
+	output_listing string
 }
 
 fn unchanged_build_trace(message string) {
@@ -5768,7 +5768,11 @@ fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, bui
 			}
 			signature := modulecache.file_signature(path)
 			if read := receipt.source_reads[path] {
-				current := if read.sha256 { modulecache.file_sha256(path) or { '' } } else { signature }
+				current := if read.sha256 {
+					modulecache.file_sha256(path) or { '' }
+				} else {
+					signature
+				}
 				if current == '' || read.signature != current {
 					unchanged_build_trace('cannot record: ${path} differs from what was read')
 					return UnchangedBuildStamp{}
@@ -5903,7 +5907,7 @@ struct UnchangedBuildInputs {
 	packages           []string
 	// A source outside these roots was found by walking up from its importer,
 	// where a nearer directory of the same name would take its place.
-	project_roots      []string
+	project_roots []string
 }
 
 // v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST:
@@ -5929,7 +5933,7 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 		sources:            sources
 		dirs:               dirs
 		source_lookups:     source_lookups
-		source_reads:  source_reads
+		source_reads:       source_reads
 		import_resolutions: import_resolutions
 		source_selections:  source_selections
 		output_dir:         os.real_path(os.dir(executable))
@@ -6032,7 +6036,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	return v3_unchanged_build_stamp(UnchangedBuildReceipt{
 		sources:            inputs.sources
 		source_lookups:     inputs.source_lookups
-		source_reads:  inputs.source_reads
+		source_reads:       inputs.source_reads
 		import_resolutions: inputs.import_resolutions
 		source_selections:  inputs.source_selections
 		files:              files
@@ -6102,7 +6106,7 @@ fn v3_unchanged_build_native_inputs(link &V3ProgramLinkInputs, headers &V3Receip
 		}
 	}
 	if headers.told && headers.unknown.len > 0 {
-		return UnchangedBuildNativeInputs{unknown: headers.unknown}
+		return UnchangedBuildNativeInputs{ unknown: headers.unknown }
 	}
 	if !headers.told || user_native {
 		return UnchangedBuildNativeInputs{
@@ -14143,7 +14147,7 @@ pub fn run(args []string) {
 						unchanged_build_source_reads[path] = V3SourceRead{}
 					}
 				} else {
-					unchanged_build_source_reads[path] = V3SourceRead{signature: digest}
+					unchanged_build_source_reads[path] = V3SourceRead{ signature: digest }
 				}
 			}
 		}
@@ -17985,9 +17989,9 @@ pub fn run(args []string) {
 			}
 			if used_tcc && tells_headers {
 				receipt_headers = V3ReceiptHeaders{
-					unknown: v3_receipt_unit_issue(tcc_args, cc_dir, os.base(tcc_main_file))
-					told:                       true
-					link_reason:                program_link_inputs.reason()
+					unknown:     v3_receipt_unit_issue(tcc_args, cc_dir, os.base(tcc_main_file))
+					told:        true
+					link_reason: program_link_inputs.reason()
 				}
 			}
 		}
@@ -18081,9 +18085,9 @@ pub fn run(args []string) {
 					search := v3_tcc_include_search(&cache_state.manager, tcc_path, v3_tcc_compile_input_args(tcc_args,
 						tcc_source), cc_dir)
 					receipt_headers = V3ReceiptHeaders{
-						unknown: v3_receipt_unit_issue(tcc_args, cc_dir, tcc_source)
-						told:                       true
-						link_reason:                program_link_inputs.reason()
+						unknown:     v3_receipt_unit_issue(tcc_args, cc_dir, tcc_source)
+						told:        true
+						link_reason: program_link_inputs.reason()
 					}
 					program_link_inputs.add_compiled_headers(&cache_state.manager, cc_dir,
 						unit, search, before_tcc)
@@ -18269,9 +18273,9 @@ pub fn run(args []string) {
 				if result.exit_code == 0 && cc_sources.len > 0
 					&& program_link_inputs.compiler_tells_its_headers(cc_sources) {
 					receipt_headers = V3ReceiptHeaders{
-						unknown: v3_receipt_unit_issue(cc_args, cc_dir, cc_sources[0])
-						told:                       true
-						link_reason:                program_link_inputs.reason()
+						unknown:     v3_receipt_unit_issue(cc_args, cc_dir, cc_sources[0])
+						told:        true
+						link_reason: program_link_inputs.reason()
 					}
 					if search := v3_include_search(&cache_state.manager, c_compiler, cc_args, cc_dir) {
 						program_link_inputs.add_compiled_headers(&cache_state.manager, cc_dir,
@@ -27549,7 +27553,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	p.discard_speculated_batch()
 	cache_state.import_resolutions = V3ImportResolutions{
 		project_root: project_root
-		root_sources: if cache_state.record_source_selections { initial_files.clone() } else { []string{} }
+		root_sources: if cache_state.record_source_selections {
+			initial_files.clone()
+		} else {
+			[]string{}
+		}
 		queries:      module_path_cache.clone()
 	}
 	if prepared.capturing {
@@ -28020,7 +28028,7 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 		}
 	} else {
 		global_path := resolve_global_module_path(prefs, mod_name, mod_path)
-		cache[global_key] = V3ImportResolution{dir: global_path}
+		cache[global_key] = V3ImportResolution{ dir: global_path }
 		if global_path.len > 0 {
 			return global_path
 		}
