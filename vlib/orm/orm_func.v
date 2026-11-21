@@ -33,6 +33,28 @@ pub mut:
 	config                SelectConfig
 	data                  QueryData
 	where                 QueryData
+	plan                  ?&SqlQuery
+}
+
+// v_sql_plan installs a full SQL plan. When set, query execution goes through
+// PlanConnection instead of the legacy SelectConfig/QueryData path.
+fn (qb_ &QueryBuilder[T]) v_sql_plan(p &SqlQuery) &QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	qb.plan = p
+	return qb
+}
+
+// select_rows runs the current query, preferring the full-SQL plan path when a
+// plan is installed and the connection supports it.
+fn (qb_ &QueryBuilder[T]) select_rows() ![][]Primitive {
+	qb := unsafe { qb_ }
+	if plan := qb.plan {
+		if qb.conn is PlanConnection {
+			pc := qb.conn as PlanConnection
+			return pc.select_plan(qb.config, plan)
+		}
+	}
+	return qb.conn.select(qb.config, qb.data, qb.where)
 }
 
 // include loads a direct relationship when query runs. Unrequested relationships remain unloaded.
@@ -1581,7 +1603,7 @@ pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 	}
 	qb.ensure_keys_for_includes()!
 	qb.prepare()!
-	rows := qb.conn.select(qb.config, qb.data, qb.where)!
+	rows := qb.select_rows()!
 	mut result := []T{cap: rows.len}
 	for row in rows {
 		result << qb.map_row[T](row)!

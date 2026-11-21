@@ -8,14 +8,27 @@ import time
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	where_with_tenant := orm.apply_tenant_filter(config.table, where)
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where_with_tenant)
+	return db.select_query(config, query, where_with_tenant, data)
+}
+
+// select_plan executes a full SQL plan with subqueries and set operations.
+pub fn (db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery) ![][]orm.Primitive {
+	query, bound := orm.orm_select_gen_plan(.mysql, '`', false, '?', 0, plan)
+	return db.select_query(config, query, bound, orm.QueryData{})
+}
+
+// select_query runs a rendered SELECT, binding the two QueryData groups and
+// converting rows. Shared by select() and select_plan() so both paths use the
+// same C-ABI result handling.
+fn (db DB) select_query(config orm.SelectConfig, query string, where orm.QueryData, data orm.QueryData) ![][]orm.Primitive {
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
 
-	mysql_stmt_bind_query_data(mut stmt, where_with_tenant)!
+	mysql_stmt_bind_query_data(mut stmt, where)!
 	mysql_stmt_bind_query_data(mut stmt, data)!
 
-	if data.data.len > 0 || where_with_tenant.data.len > 0 {
+	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params()!
 	}
 

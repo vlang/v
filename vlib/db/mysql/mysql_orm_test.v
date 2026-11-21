@@ -37,6 +37,11 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+struct FullSqlItem {
+	id    int @[primary; sql: serial]
+	title string
+}
+
 @[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
@@ -358,4 +363,40 @@ fn test_mysql_orm() {
 		},
 	]
 	assert information_schema_table_comment_sql == table_comment.maps()
+}
+
+fn test_mysql_full_sql_plan() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	mut db := mysql.connect(
+		host:     '127.0.0.1'
+		port:     3306
+		username: 'root'
+		password: '12345678'
+		dbname:   'mysql'
+	)!
+	defer {
+		db.close() or {}
+	}
+	db.drop(orm.Table{ name: 'FullSqlItem' }) or {}
+	sql db {
+		create table FullSqlItem
+	}!
+	for title in ['alpha', 'beta', 'gamma'] {
+		mut it := FullSqlItem{ title: title }
+		sql db {
+			insert it into FullSqlItem
+		}!
+	}
+	rows := sql db {
+		select title from FullSqlItem where id in (select from FullSqlItem order by random() limit 1)
+	}!
+	assert rows.len == 1, 'expected 1 row, got ${rows.len}'
+	assert rows[0].title in ['alpha', 'beta', 'gamma']
+	sql db {
+		drop table FullSqlItem
+	}!
 }

@@ -11,6 +11,25 @@ For `.vsql`, use `orm.orm_select_gen_with_dialect`, which spells a limit and an 
 and the comment before a `@[unique: 'group']` constraint. A `@[default]` must be a value vsql
 accepts as a column default, such as a literal or `CURRENT_TIMESTAMP`.
 
+## Full SQL queries
+
+`sql db { ... }` supports nested SQL constructs in addition to the flat CRUD forms.
+The compiler lowers these to an `orm.SqlQuery` plan, rendered by dialect-aware
+generators that keep bind parameters in SQL order:
+
+```v ignore
+rows := sql db {
+    select title from Item where id in (select from Item order by random() limit 1)
+}!
+```
+
+Supported: `IN`/`NOT IN` and `EXISTS` subqueries, scalar subqueries, no-arg functions
+in `ORDER BY` (e.g. `random()`), nested `LIMIT`/`OFFSET`, `GROUP BY`, `HAVING`,
+`UNION`/`UNION ALL`/`INTERSECT`/`EXCEPT`, and derived tables in `JOIN`. Subqueries can
+nest to any depth. Drivers opt in by implementing the optional `orm.PlanConnection`
+interface; `db.sqlite` and `db.pg` do so. The plan types live in `vlib/orm/sqlplan.v`,
+the renderer in `vlib/orm/sqlrender.v`.
+
 ## Deprecation notice: orm_fn
 
 > [!WARNING]
