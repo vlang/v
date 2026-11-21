@@ -4128,6 +4128,15 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 		return
 	}
 	t.ensure_call_param_types_decl_index()
+	// The borrow summaries walk the declarations of this index in the same order
+	// and need the same parameter types. The pre-scan helper whose caller makes
+	// them next lists their work items on the way, and the declarations whose
+	// parameter types it could not resolve, which have no item (see
+	// prepare_fixed_array_borrow_params).
+	lists_borrow_items := t.lists_borrow_decl_items && t.call_param_types_decl_cache.len == 0
+	mut candidates := []BorrowCandidate{}
+	mut items := []BorrowDeclItem{}
+	mut unresolved := []BorrowDeclItem{}
 	mut seen := map[int]bool{}
 	for name, decl in t.call_param_types_decl_index {
 		// A cached declaration needs no work: call_param_types_from_decl would only
@@ -4137,7 +4146,24 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 			continue
 		}
 		seen[decl.idx] = true
-		_ = t.call_param_types_from_decl(name) or { continue }
+		params := t.call_param_types_from_decl(name) or {
+			if lists_borrow_items {
+				unresolved << BorrowDeclItem{
+					name: name
+					decl: decl
+				}
+			}
+			continue
+		}
+		if lists_borrow_items {
+			t.list_borrow_decl_item(name, decl, params, mut candidates, mut items)
+		}
+	}
+	t.borrow_decl_items_listed = lists_borrow_items
+	if lists_borrow_items {
+		t.listed_borrow_candidates = candidates
+		t.listed_borrow_decl_items = items
+		t.unresolved_borrow_decls = unresolved
 	}
 	t.call_param_types_prepared = true
 	t.call_param_types_decl_shared = true

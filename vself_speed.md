@@ -4,6 +4,138 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Stages outside tcc and peak memory, 2026-11-21
+
+The request was for the self-host command, the second line of
+
+```sh
+cd vlib/v && ../../v -gc none -prealloc -prod -o v3 v.v
+./v3 -nocache -building-v -o v4 -v v.v
+```
+
+the stages other than `tcc` in at most 600 ms where a busy host measured 848 ms (about -30%), and
+20% less peak memory. **The memory limit is met. The time limit is not met on a host as busy as
+that one**: the stages are 18 to 20% faster at every load measured, which is about 690 ms there.
+Against master `ee5b0d6407`, ten alternating pairs each, the candidate faster in 10 of 10:
+
+| Stage wall time, median ms | Before | After | Before, 4 busy processes | After, 4 busy processes |
+| --- | ---: | ---: | ---: | ---: |
+| parse setup/cache | 11.8 | 3.5 | 14.0 | 4.5 |
+| parse .v | 46.7 | 42.0 | 59.3 | 55.3 |
+| resolve imports | 17.6 | 8.2 | 22.2 | 10.5 |
+| check | 146.8 | 116.9 | 194.9 | 155.2 |
+| markused | 80.7 | 31.1 | 101.5 | 37.5 |
+| transform | 91.3 | 97.2 | 122.9 | 130.8 |
+| cgen | 122.9 | 122.8 | 156.4 | 161.4 |
+| C object cache | 3.6 | 1.0 | 4.3 | 1.2 |
+| All stages except tcc | 524.9 | 425.5 | 680.7 | 556.9 |
+| tcc, for the state of the host | 355.4 | 363.2 | 495.3 | 507.5 |
+
+A third run of an earlier state of the branch, on a host that gave the baseline 819 ms outside tcc
+and 598 ms in it (the state of the request), measured 668 ms (-18.5%).
+
+| Median metric, quiet host, 10 pairs | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 44,332,709,333 | 42,963,030,204 |
+| Parsed physical source lines | 505,109 | 505,109 |
+| Retired instructions/parsed line | 87,768.60 | 85,056.95 |
+| Peak memory, `peak` column, MB | 1,068 | 852 |
+| Peak memory footprint, MiB | 1,046 | 842 |
+| Page faults | 100,168 | 109,897 |
+| Elapsed time, s | 0.90 | 0.80 |
+
+The median paired instruction difference is `-1.312 G` (-3.09%); no pair regresses. As in the two
+sections below the gain is in the critical path, not in the instruction count (sampled, six
+alternating pairs; the last commit of the branch, which moves 2.3 ms of unmapping off the main
+thread, came after this table):
+
+| Stage | Critical path before, G | After, G | Low-parallel before, G | After, G |
+| --- | ---: | ---: | ---: | ---: |
+| parse | 0.623 | 0.621 | 0.33 | 0.32 |
+| resolve imports | 0.272 | 0.116 | 0.27 | 0.13 |
+| check | 1.672 | 1.253 | 1.22 | 0.77 |
+| markused | 0.598 | 0.275 | 0.51 | 0.10 |
+| transform | 0.960 | 0.993 | 0.33 | 0.32 |
+| cgen | 0.889 | 0.874 | 0.39 | 0.25 |
+
+What changed, by stage:
+
+- Parse and imports. Module directories are listed once; the import resolution of a wave, the
+  implicit-import scan and the C directive scans run in the worker pool; the kept source texts
+  have one copy and the merge leaves no probe caches behind; the merge target is mapped while the
+  parse pool runs.
+- Check. Pass 2 of collection records its registrations and lanes replay them meanwhile; the
+  declaration indexes, the interface receivers and the indexes of the parallel check are built in
+  pool phases beside serial work; workers promote their node caches and mark the calls that the
+  scan for unhandled Results reads; the cheapest bodies are handed out last in small chunks.
+- Markused. The reachability walk keeps its state by declaration number instead of by name; body
+  collection runs in queued pieces, largest first, while the main thread seeds the roots; it no
+  longer interns the 34 thousand spellings it only probes.
+- Transform. The preparation that runs beside markused keeps every prescanned borrow summary,
+  builds its indexes on helper threads and no longer makes markused wait.
+- C generation. One scan of the tree in `collect_gen_info`; tables, interface implementer queries
+  and literal numbering move beside the signature registration; scratch work runs in disposable
+  arenas. The stage's instructions and wall time are unchanged: what it saved in preparation it
+  spends on copying results out of those arenas.
+
+### Memory
+
+The peak was reached in C generation (1,068 MB) and is now reached in the transform pool phase:
+
+- Arenas that only the transform reads (its preparation and pre-scan arenas, 100 MB) are released
+  when C generation starts instead of after it, once a scan has shown that no node names them.
+- Parse, check and C generation helpers work in disposable arenas and copy out their results;
+  tables are sized once, kept sparse, or kept as ranges (generic parameter letters, the
+  visible-mutation index, the merge tables of the transform).
+- From the transform stage on the allocator keeps at most 24 MiB of freed arena blocks for reuse
+  instead of 256 MiB (`prealloc_block_pool_set_limit`). At the peak 80 to 95 MB of the pool sat
+  unused. This is the one change that costs time, because unmapping and mapping in a pool phase
+  contends for the address space far beyond its instruction count:
+
+| Kept blocks from transform on, one binary | Peak MB | Page faults | Transform, fastest of 10, ms |
+| --- | ---: | ---: | ---: |
+| 256 MiB (as before) | 924 | 90.9 k | 91.3 |
+| 64 MiB | 886 | 101.9 k | 96.7 |
+| 24 MiB (chosen) | 848 | 111.4 k | 96.9 |
+
+  It is why the transform line is 6% slower than before while its critical path is not. Without
+  it the peak is 13% lower instead of 20%, and the stages about 1.5% faster.
+
+Generated C is identical to master's for the self-host build at 18, 4, 2 and 1 jobs (five runs at
+18) and for 114 example programs; `compiler_errors_test.v` (1882 cases) and the tests of
+`vlib/v/types`, `transform`, `gen/c`, `markused`, `parser`, `flat` and `workers` pass.
+Two checks found defects that identical C did not:
+
+- ThreadSanitizer reported the first version of the merge-target mapping (an atomic add of zero
+  racing with the caller's appends). It now asks the kernel to wire the pages and writes nothing.
+  The instrumented compiler reports nothing for the self-host build, `examples/2048` and
+  `examples/news_fetcher.v`. `cmd/tools/vdoc` shows, in 1 of 10 runs, the race master already
+  has: two transform workers transform one shared struct field default
+  (`add_missing_struct_defaults`).
+- A build without block recycling (`-d prealloc_no_recycle`: a released arena is unmapped at once)
+  crashed in `unused_import_nodes_by_file`: a header made in an arena that was released while the
+  checker still pointed to it. Recycling had hidden it. That build now passes for the self-host
+  (with identical C) and for `cmd/v`, `vdoc`, `vfmt` and four examples. Run it after any change
+  to arena lifetimes.
+
+### What is left after this round
+
+The pool phases of check, markused, transform and C generation are about 60% of the wall time
+outside tcc and run at 15 to 18 runnable threads: only fewer instructions shorten them. The rest,
+sampled low-parallel work on the main thread:
+
+- Check, 0.77 G: collection's lanes still run with fewer than four threads for 15 ms; constant
+  values, struct defaults and top-level statements are checked serially before the pool (0.10 G,
+  12 ms); the called-function closure (0.09 G); pool tails (0.16 G).
+- Transform, 0.32 G: constants are lowered serially before the pool (0.06 G, moving it changes
+  node numbering), the merge and compaction after it (9 ms) and the late bodies (10 ms).
+- Parse, 0.32 G: each wave waits for its largest file (14 ms); the serial part of the merge (14 ms).
+- C generation, 0.25 G: writing and closing the 37 MB file (7 to 12 ms on a busy host), pool
+  tails, the serial part of `collect_gen_info`.
+- Memory at the new peak: the transform's per-piece forks (51 MB, of which the fixed tables of
+  175 type interners are 23 MB), 47 MB of per-node checker arrays that could be narrower, and
+  `flat.Node` itself (64 bytes, 3.29 M nodes).
+
 ## Parse and check wall time, 2026-11-10
 
 Follow-up to the section below for the `parse .v`, `resolve imports` and `check` stages of the

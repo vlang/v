@@ -346,6 +346,30 @@ fn cgen_worker_scope_leave(scope voidptr) {
 	}
 }
 
+// cgen_worker_scope_owns reports whether `ptr` points into the arena `scope`.
+@[inline]
+fn cgen_worker_scope_owns(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
+// cgen_worker_scope_suspend makes the parent of the current nested arena
+// `scope` current until cgen_worker_scope_resume gets the returned state.
+fn cgen_worker_scope_suspend(scope voidptr) voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_suspend(scope) }
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_resume(scope voidptr, state voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_resume(scope, state) }
+	}
+}
+
 fn cgen_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -514,6 +538,18 @@ struct CStructRefsHandoff {
 mut:
 	ids   map[u32]bool
 	ready bool
+}
+
+// EarlyInterfaceImpls holds the checker's implementer queries that a helper
+// thread answered ahead of collect_interface_impls (see start_iface_impls_lane):
+// ierror_impl_names, and interface_impl_names and interface_type_ids by
+// interface.
+@[heap]
+struct EarlyInterfaceImpls {
+mut:
+	ierror   []u32
+	names    map[u32][]u32
+	type_ids map[u32]map[u32]int
 }
 
 // PreseedTypeSeen deduplicates type walks during C generation. It is part of
@@ -864,7 +900,8 @@ mut:
 	ast_string_literals_parsed     int  // how many leading ast_string_literals come from parsed nodes
 	referenced_c_struct_ids        map[u32]bool
 	referenced_c_struct_ids_ready  bool
-	c_struct_refs_handoff          &CStructRefsHandoff = unsafe { nil } // set on a parallel interface scan worker
+	c_struct_refs_handoff          &CStructRefsHandoff  = unsafe { nil } // set on a parallel interface scan worker
+	early_iface_impls              &EarlyInterfaceImpls = unsafe { nil } // the implementer lane's answers, for collect_interface_impls
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -1244,6 +1281,8 @@ mut:
 	import_type_cache               &ImportTypeCache              = unsafe { nil }
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
 	embedded_fields_lane            voidptr                     // helper thread building embedded_fields_by_type, see start_embedded_fields_lane
+	collect_overlap_done            bool                        // see apply_fn_signature_registrations: the post-collect tables and the literal numbering are built
+	iface_impls_lane                voidptr                     // helper thread answering the checker's implementer queries, see start_iface_impls_lane
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
@@ -3120,7 +3159,11 @@ fn native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_m
 	mut need_cpp := false
 	mut cur_file := ''
 	mut cur_module := 'main'
-	for node_idx in 0 .. a.nodes.len {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
 		// The scan only reads the AST; borrow each node instead of copying it.
 		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
@@ -4036,6 +4079,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_interned = false
+	g.collect_overlap_done = false
+	g.iface_impls_lane = unsafe { nil }
+	g.early_iface_impls = unsafe { nil }
 	g.ast_string_literals_parsed = 0
 	g.referenced_c_struct_ids = map[u32]bool{}
 	g.referenced_c_struct_ids_ready = false
@@ -4324,15 +4370,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
+	// The interface scan below is mostly the checker's implementer lists, which
+	// only depend on the checked declarations: start them now.
+	g.start_iface_impls_lane(effective_no_parallel)
 	g.collect_gen_info(effective_no_parallel)
 	if g.target_libc_headers {
 		g.precompute_thread_type_usage()
 	}
-	g.precompute_qualified_struct_c_types()
-	g.precompute_const_short_index()
-	g.precompute_local_global_suffix_names()
-	g.precompute_c_typedef_shadow_names()
-	g.precompute_local_name_exceptions()
+	if !g.collect_overlap_done {
+		g.precompute_post_collect_tables()
+	}
 	// Interface workers must share the same referenced C layouts as declaration emission.
 	// A parallel interface scan starts first and takes the set when the master has it.
 	mut defer_c_struct_refs := false
@@ -4378,8 +4425,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
 				// The scan's checker reads the master's type cache as its base while
-				// the master resolves the referenced C structs below.
-				g.tc.freeze_type_cache_for_forks()
+				// the master resolves the referenced C structs below. A started
+				// implementer lane froze the cache already.
+				if !g.finish_iface_impls_lane() {
+					g.tc.freeze_type_cache_for_forks()
+				}
 				mut c_struct_refs := &CStructRefsHandoff{
 					ch: chan bool{cap: 1}
 				}
@@ -4406,7 +4456,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Struct field defaults are emitted from their declarations when an otherwise
 		// unrelated function initializes the struct. Parallel function pre-scanning only
 		// visits that function body, so seed literals from defaults before workers fork.
-		g.preseed_struct_default_string_literals()
+		if !g.collect_overlap_done {
+			g.preseed_struct_default_string_literals()
+		}
 		g.precompute_shared_param_index()
 		if !g.skip_generics {
 			if !g.trace_calls {
@@ -4414,7 +4466,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			}
 			g.precompute_generic_fn_key_index()
 		}
-		if parallel_iface_scan {
+		if parallel_iface_scan && !g.ast_string_literals_interned {
 			$if !v3_no_parallel ? {
 				// The master would only wait for the interface scan now. Number the
 				// AST literals meanwhile: prepare_pre_dispatch_master does it next,
@@ -5534,6 +5586,10 @@ struct CollectGenFnPreps {
 mut:
 	ready bool
 	jobs  []CollectGenFnPrepJob
+	// The arenas of the jobs' lists and registration spellings. Nothing reads
+	// them once the signatures are registered; the registered parameter and
+	// return types live in other arenas, until cgen is done.
+	list_scopes []voidptr
 }
 
 // moved_collect_gen_fn_prep returns `prep`; pushing a call result does not
@@ -5544,14 +5600,15 @@ fn moved_collect_gen_fn_prep(prep CollectGenFnPrep) CollectGenFnPrep {
 }
 
 struct FnSignatureRegistration {
-	module_key    string
-	short_name    string
-	aliases       [6]string
-	alias_count   u8
+	module_key  string
+	short_name  string
+	aliases     [6]string
+	alias_count u8
+	is_variadic bool
+	is_mut      bool
+mut:
 	ptypes        []types.Type
 	shared_params []bool
-	is_variadic   bool
-	is_mut        bool
 	return_type   &types.Type = types.empty_type
 }
 
@@ -5764,6 +5821,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut cisub_sw := time.new_stopwatch()
 	g.finish_type_indexes(type_index_args, type_index_threads)
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
+	// The loop below changes the checker (globals enter its file scope): a
+	// started implementer lane, which reads the checker, has to be done by then.
+	g.join_iface_impls_lane()
 	has_parallel_fn_preps := fn_preps.ready
 	// The prepared declarations are consumed in top-level order.
 	mut prep_job := 0
@@ -6128,6 +6188,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.register_fn_decl_nodes(fn_node_regs, which)
 		}
 	}
+	// The prepared lists and the registration spellings are spent.
+	for scope in fn_preps.list_scopes {
+		cgen_worker_scope_free(scope)
+	}
 	if profile {
 		g.timing_profile('  [ttime]   ci apply sigs    ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cisub_sw.restart()
@@ -6160,12 +6224,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			}
 		}
 	}
-	g.modules['strings'] = 'strings'
-	g.restore_core_header_directives_for_system_libc()
-	g.materialize_objective_cpp_sources()
-	g.add_macos_shared_export_linker_flags()
 	ccio_sw := time.new_stopwatch()
-	g.collect_const_init_order_from_files()
+	if !g.collect_overlap_done {
+		g.finish_collect_gen_info_tail()
+	}
 	if profile {
 		ci_total_ms := f64(cisw.elapsed().microseconds()) / 1000.0
 		ci_fn_ms := f64(ci_fn_ns) / 1e6
@@ -6179,6 +6241,26 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.timing_profile('  [ttime]   ci fns total ${ci_total_ms:7.2f} ms, const order ${ccio_ms:7.2f} ms')
 		}
 	}
+}
+
+// finish_collect_gen_info_tail is the end of collect_gen_info that reads none of
+// the function signature maps.
+fn (mut g FlatGen) finish_collect_gen_info_tail() {
+	g.modules['strings'] = 'strings'
+	g.restore_core_header_directives_for_system_libc()
+	g.materialize_objective_cpp_sources()
+	g.add_macos_shared_export_linker_flags()
+	g.collect_const_init_order_from_files()
+}
+
+// precompute_post_collect_tables builds the lookup tables that only depend on
+// the type, const and global declarations collect_gen_info registered.
+fn (mut g FlatGen) precompute_post_collect_tables() {
+	g.precompute_qualified_struct_c_types()
+	g.precompute_const_short_index()
+	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
+	g.precompute_local_name_exceptions()
 }
 
 fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
@@ -6665,10 +6747,16 @@ pub fn cache_directive_flags_with_project(a &flat.FlatAst, vroot string, target 
 // parsing. Deferred type/metadata conditions are left for the checked, transformed AST.
 pub fn preflight_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
 	mut deferred := map[int]bool{}
-	for node in a.nodes {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind in [.comptime_if, .comptime_for] {
 			for i in 0 .. node.children_count {
-				mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+				mark_preflight_deferred_directives(a, a.child(node, i), mut deferred)
 			}
 		}
 	}
@@ -6694,7 +6782,13 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	for node_idx, node in a.nodes {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -15987,6 +16081,23 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 	return ''
 }
 
+// address_operand_may_be_const_ref reports whether
+// const_ref_name_from_node_cached_for_collect can name a const for the operand
+// of an address-of expression. It is that function's own early tests: every
+// operand rejected here gets the empty name there, before any other work.
+@[direct_array_access]
+fn (g &FlatGen) address_operand_may_be_const_ref(id flat.NodeId, unique_index map[string]string) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return true
+	}
+	node := unsafe { &g.a.nodes[int(id)] }
+	return match node.kind {
+		.paren { true }
+		.ident, .selector { cgen_name_may_be_const_ref(node.value, unique_index, g.const_vals) }
+		else { false }
+	}
+}
+
 fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
 	if dot := name.last_index('.') {
 		return unsafe { name.substr_unsafe(dot + 1, name.len) }
@@ -16041,6 +16152,8 @@ struct FixedStorageNodeScanArgs {
 	fixed_candidate_shorts map[string]bool
 	ident_filter           &FixedStorageCandidateNameFilter
 	short_filter           &FixedStorageCandidateNameFilter
+	// The frozen const short-name index, for address_operand_may_be_const_ref.
+	unique_const_ref_names map[string]string
 mut:
 	address_items    []FixedStorageConstRefItem
 	ref_items        []FixedStorageConstRefItem
@@ -16187,9 +16300,14 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 		match node.kind {
 			.prefix {
 				if node.op == .amp && node.children_count > 0 {
-					scan.address_items << FixedStorageConstRefItem{
-						id: g.a.child(node, 0)
-						at: idx
+					operand_id := g.a.child(node, 0)
+					// Nearly every operand is a local: keep the ones the replay can
+					// resolve to a const.
+					if g.address_operand_may_be_const_ref(operand_id, scan.unique_const_ref_names) {
+						scan.address_items << FixedStorageConstRefItem{
+							id: operand_id
+							at: idx
+						}
 					}
 				}
 			}
@@ -16328,6 +16446,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 			fixed_candidate_shorts: fixed_candidate_shorts
 			ident_filter:           &fixed_candidate_ident_filter
 			short_filter:           &fixed_candidate_short_filter
+			unique_const_ref_names: unique_const_ref_names
 			fixed_safe_refs:        map[int]bool{}
 		}
 	}

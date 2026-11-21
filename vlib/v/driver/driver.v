@@ -4742,6 +4742,21 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 	}
 }
 
+// late_stage_block_pool_bytes is the freed arena memory that stays mapped for
+// reuse from the transform stage on. Until then the stages hand each other up
+// to 256 MiB of blocks; the tree then grows to its final size and the build's
+// memory peaks, with most of the kept blocks unused at that point: 24 MiB keeps
+// the batch arenas of the transform and C generation workers circulating.
+// Self-host: peak 926 -> 844 MB for 21 thousand more page faults (+0.4% instructions).
+const late_stage_block_pool_bytes = i64(24) * 1024 * 1024
+
+// prealloc_block_pool_limit_for_v3 bounds the freed arena blocks kept for reuse.
+fn prealloc_block_pool_limit_for_v3(bytes i64) {
+	$if prealloc {
+		unsafe { prealloc_block_pool_set_limit(bytes) }
+	}
+}
+
 // free_retained_scopes releases the stage arenas kept alive
 // through code generation. Unmapping multi-gigabyte arenas is slow enough to be
 // worth overlapping with the C compiler, which reads only the generated file.
@@ -4765,6 +4780,17 @@ fn free_prealloc_scopes(scopes []voidptr) {
 	for scope in scopes {
 		prealloc_scope_free_for_v3(scope)
 	}
+}
+
+// release_unreferenced_transform_helper_scopes frees the transform helper arenas
+// when no node text or payload lives in them, and sends whether it did. It only
+// reads the tree, so it can run beside a stage that does not write it.
+fn release_unreferenced_transform_helper_scopes(a &flat.FlatAst, scopes []voidptr, released chan bool) {
+	referenced := transform.nodes_have_text_in_scopes(a, scopes)
+	if !referenced {
+		free_prealloc_scopes(scopes)
+	}
+	released <- !referenced
 }
 
 // join_stopped_worker_pool waits for the threads of a stopped worker pool.
@@ -12796,7 +12822,10 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	// The checks of the C directives below each scan the whole tree; they share
+	// one index of the nodes that such a scan reads, built when the first one runs.
 	if cache_state.manager.enabled && cache_with_tcc && target.os == 'macos' && !is_prod && !check_only && !only_check_syntax {
+		index_directive_scan_nodes(mut a)
 		mut bridge_flags := user_c_flags.clone()
 		bridge_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 		if v3_implicit_tcc_flags_incompatibility(bridge_flags, target.os, prefs.vroot) != none
@@ -12816,6 +12845,9 @@ pub fn run(args []string) {
 	// into a TinyCC interface. Even C-compatible .m files need the native ABI.
 	if retry_compilation && (explicit_tcc || use_implicit_tcc_semantics)
 		&& !check_only && !only_check_syntax && !c_only && !is_o {
+		if a.directive_scan_nodes == 0 {
+			index_directive_scan_nodes(mut a)
+		}
 		mut native_flags := environment_c_flags.clone()
 		native_flags << user_c_flags
 		native_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
@@ -12832,6 +12864,9 @@ pub fn run(args []string) {
 	}
 	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
 		&& !c_only && !is_o {
+		if a.directive_scan_nodes == 0 {
+			index_directive_scan_nodes(mut a)
+		}
 		mut preflight_flags := environment_c_flags.clone()
 		preflight_flags << user_c_flags
 		preflight_flags << link_ld_flags
@@ -12851,6 +12886,8 @@ pub fn run(args []string) {
 			return
 		}
 	}
+	// The stages from here on rewrite the tree.
+	a.drop_directive_scan_index()
 	if (verbose || show_timings) && !silent && !c_to_stdout && use_implicit_tcc_semantics {
 		println('=== V compiler benchmark ===')
 	}
@@ -13371,6 +13408,10 @@ pub fn run(args []string) {
 	// Helper arenas can back both checker caches and lowered AST text.
 	mut transform_helper_scopes := []voidptr{}
 	mut retain_transform_helper_texts := false
+	// A helper thread releases the retained helper arenas beside Cgen when no node
+	// text lives in them, and reports on this channel whether it did.
+	mut transform_helper_release := chan bool{cap: 1}
+	mut transform_helper_release_pending := false
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -13915,6 +13956,7 @@ pub fn run(args []string) {
 			markused_scope = prealloc_scope_begin_for_v3()
 			markused_tc = pre_tc.fork_for_parallel_transform(a)
 			markused_tc.share_direct_dependencies_from(&pre_tc)
+			markused_tc.share_ierror_impl_names_from(&pre_tc)
 			markused_tc.enable_scoped_parallel_workers()
 			markused_tc.verbose = prefs.verbose
 		}
@@ -14055,9 +14097,23 @@ pub fn run(args []string) {
 		}
 		if verbose {
 			eprintln('  [ttime] mu tf prepare wait ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			if prepare_transform_overlap {
+				eprintln('  [ttime] mu tf prepare      ${prepared_transform.timing_summary()}')
+			}
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
+		// Returning the blocks kept beyond the limit takes a couple of milliseconds
+		// (2.3 ms for the self-host): a parallel build does it beside the serial
+		// start of the transform stage. The thread touches only the allocator's pool.
+		mut pool_limit_threads := []thread{}
+		if scope_prealloc_stages {
+			if current_parallel_transform {
+				pool_limit_threads << spawn prealloc_block_pool_limit_for_v3(late_stage_block_pool_bytes)
+			} else {
+				prealloc_block_pool_limit_for_v3(late_stage_block_pool_bytes)
+			}
+		}
 		mut tfpre_sw := time.new_stopwatch()
 		// Formatting unused-declaration diagnostics allocates source excerpts and
 		// rendered messages that are dead before transform starts. Keep that scratch
@@ -14518,6 +14574,7 @@ pub fn run(args []string) {
 			// Worker views have joined and their live regions are now compacted.
 			unsafe { a.discard_unused_capacity() }
 		}
+		pool_limit_threads.wait()
 		if incremental_cache_hit {
 			b.step_parallel('transform (incremental)', transform_was_parallel)
 		} else {
@@ -15496,6 +15553,14 @@ pub fn run(args []string) {
 					track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
 				}
 				transform_helper_scopes = []voidptr{}
+			} else if transform_helper_scopes.len > 0 {
+				// Retained helpers back a node text only when lowering published one of
+				// their strings, which a compiler build does not do. Cgen only reads the
+				// tree, so a helper thread checks every node beside it and releases the
+				// arenas before the peak of Cgen instead of after it.
+				transform_helper_release_pending = true
+				track_release_thread(spawn release_unreferenced_transform_helper_scopes(a,
+					transform_helper_scopes, transform_helper_release))
 			}
 			pre_tc.freeze_type_cache_for_forks()
 			pre_tc.discard_type_cache_overlay_after_forks()
@@ -15737,6 +15802,11 @@ pub fn run(args []string) {
 			}
 		}
 		if !isnil(a.worker_pool) {
+			// The C object step below asks which language the native inputs of the
+			// generated unit need, which is a scan of the whole tree for its
+			// directives: list them across the pool before it stops. Nothing
+			// rewrites the tree between here and that scan.
+			index_directive_scan_nodes(mut a)
 			// Later stages create their own workers if they need any. Let the
 			// helper threads exit while those stages run instead of joining them here.
 			mut cgen_pool := a.worker_pool
@@ -15837,6 +15907,7 @@ pub fn run(args []string) {
 		all_compile_c_flags << generated_c_flags
 		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
 			|| cgen.generated_c_unit_needs_objective_c(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
+		a.drop_directive_scan_index()
 		large_prod_c_unit := !use_parallel_c_compilation && os.is_file(published_c_source)
 			&& v3_is_large_prod_c_unit(os.file_size(published_c_source))
 		limit_large_unit_inlining := large_prod_c_unit && effective_c_compiler == 'clang'
@@ -16124,6 +16195,12 @@ pub fn run(args []string) {
 			}
 			b.print_report()
 			wait_release_threads()
+			if transform_helper_release_pending {
+				if <-transform_helper_release {
+					transform_helper_scopes = []voidptr{}
+				}
+				transform_helper_release_pending = false
+			}
 			free_prealloc_scopes(transform_helper_scopes)
 			transform_helper_scopes = []voidptr{}
 			if retained_transform_scope != unsafe { nil }
@@ -16138,6 +16215,12 @@ pub fn run(args []string) {
 		// Nothing below reads the transformed AST or its checker payloads: the C
 		// compiler consumes the generated file. Release those arenas alongside it
 		// so their unmapping is not serial work after the compile.
+		if transform_helper_release_pending {
+			if <-transform_helper_release {
+				transform_helper_scopes = []voidptr{}
+			}
+			transform_helper_release_pending = false
+		}
 		if transform_helper_scopes.len > 0 {
 			track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
 			transform_helper_scopes = []voidptr{}
@@ -17236,6 +17319,12 @@ Please install the corresponding development package/libraries and make sure the
 		if retained_transform_prepare_scope != unsafe { nil } {
 			prealloc_scope_free_for_v3(retained_transform_prepare_scope)
 			retained_transform_prepare_scope = unsafe { nil }
+		}
+		if transform_helper_release_pending {
+			if <-transform_helper_release {
+				transform_helper_scopes = []voidptr{}
+			}
+			transform_helper_release_pending = false
 		}
 		for scope in transform_helper_scopes {
 			prealloc_scope_free_for_v3(scope)
@@ -20562,11 +20651,10 @@ fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Pr
 	// learn which of its entries are symbolic links from one more listing.
 	mut real_dir := ''
 	mut symlinks := flat.ListedSymlinks{}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
-		prefs.backend, prefs.target)) {
+	for file in module_dir_v_files(prefs, dir) {
 		if real_dir.len == 0 {
-			real_dir = os.real_path(dir)
-			symlinks = flat.scan_listed_symlinks(dir)
+			real_dir = import_dir_real_path(dir)
+			symlinks = module_dir_symlinks(dir)
 		}
 		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir, &symlinks)
 	}
@@ -20582,7 +20670,7 @@ fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Pr
 }
 
 fn v3_directory_source_root(dir string) string {
-	return v3_directory_source_root_of(dir, os.real_path(dir))
+	return v3_directory_source_root_of(dir, import_dir_real_path(dir))
 }
 
 // v3_directory_source_root_of is v3_directory_source_root for a directory whose
@@ -22855,6 +22943,81 @@ fn cache_bundle_import_file(builtin_dir string) string {
 	return os.join_path_single(builtin_dir, cache_bundle_import_file_name)
 }
 
+// The bits of implicit_import_file_flags: what scan_implicit_imports learns from
+// the nodes of one file by themselves.
+const implicit_file_needs_sync = u8(1)
+const implicit_file_needs_embed = u8(2)
+const implicit_file_needs_debugger = u8(4)
+const implicit_file_has_sync = u8(8)
+const implicit_file_has_embed_import = u8(16)
+const implicit_file_has_closure = u8(32)
+const implicit_file_has_debugger = u8(64)
+const implicit_file_has_overflow = u8(128)
+
+// implicit_import_file_flags answers, for the nodes [first, end) of one parsed
+// file, every question of scan_implicit_imports that a node answers by itself:
+// which compiler-provided modules the file imports, and whether it needs the
+// sync, embed_file or debugger runtime. Whether it needs the closure runtime
+// takes the fields of the whole program, and stays with the scan. The parser
+// calls it on the thread that parsed the file (Parser.file_scan_hook), which may
+// be a pool thread with a tree of its own: it only reads those nodes and the
+// process-wide table of type spellings. The conditions are those of the loop of
+// scan_implicit_imports, which they must follow.
+@[direct_array_access]
+fn implicit_import_file_flags(a &flat.FlatAst, first int, end int) u8 {
+	mut flags := u8(0)
+	for i in first .. end {
+		node := &a.nodes[i]
+		if node.kind == .import_decl {
+			if node.value == 'sync' {
+				flags |= implicit_file_has_sync
+			} else if node.value == 'v.embed_file' {
+				flags |= implicit_file_has_embed_import
+			} else if node.value == 'builtin.closure' {
+				flags |= implicit_file_has_closure
+			} else if node.value == 'v.debug' {
+				flags |= implicit_file_has_debugger
+			} else if node.value == 'builtin.overflow' {
+				flags |= implicit_file_has_overflow
+			}
+		}
+		if node.kind == .debugger_stmt {
+			flags |= implicit_file_needs_debugger
+		}
+		if flags & implicit_file_needs_sync == 0 {
+			if node.kind == .lock_expr
+				|| (node.kind in [.field_decl, .param, .array_init, .array_literal]
+					&& type_text_has_shared_modifier(node.typ))
+				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
+				|| (node.kind == .struct_init && flat.source_type_shape(node.source_value_id()).has(.channel_type))
+				|| (node.kind == .infix && node.op == .arrow)
+				|| (node.kind == .prefix && node.op == .arrow)
+				|| (node.typ != 0 && type_text_is_channel(node.typ)) {
+				flags |= implicit_file_needs_sync
+			}
+		}
+		if flags & implicit_file_needs_embed == 0 && node.kind == .struct_init
+			&& node.source_value_id() == implicit_source_type_embed_file_data {
+			flags |= implicit_file_needs_embed
+		}
+	}
+	return flags
+}
+
+// add_file_flags is scan_implicit_imports over the nodes of a file that
+// implicit_import_file_flags answered `flags` for, for a scan that needs the
+// closure runtime already: the nodes then change nothing else of it.
+fn (mut scan ImplicitImportScan) add_file_flags(flags u8) {
+	scan.needs_sync = scan.needs_sync || flags & implicit_file_needs_sync != 0
+	scan.needs_embed = scan.needs_embed || flags & implicit_file_needs_embed != 0
+	scan.needs_debugger = scan.needs_debugger || flags & implicit_file_needs_debugger != 0
+	scan.has_sync = scan.has_sync || flags & implicit_file_has_sync != 0
+	scan.has_embed_import = scan.has_embed_import || flags & implicit_file_has_embed_import != 0
+	scan.has_closure = scan.has_closure || flags & implicit_file_has_closure != 0
+	scan.has_debugger = scan.has_debugger || flags & implicit_file_has_debugger != 0
+	scan.has_overflow = scan.has_overflow || flags & implicit_file_has_overflow != 0
+}
+
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
 	// Once every requirement that a node can raise is raised, and the parser made
 	// no `$dbg` statement, only the import declarations of the range still change
@@ -24543,6 +24706,25 @@ fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, projec
 	return ''
 }
 
+// index_directive_scan_nodes builds the index that the scans for C directives
+// read (flat.FlatAst.index_directive_scan_nodes). With V3_VERIFY_DIRECTIVE_INDEX
+// set it also lists the nodes one by one and reports a difference.
+fn index_directive_scan_nodes(mut a flat.FlatAst) {
+	a.index_directive_scan_nodes()
+	if os.getenv('V3_VERIFY_DIRECTIVE_INDEX') == '' {
+		return
+	}
+	mut full := []i32{}
+	for i, node in a.nodes {
+		if node.kind in [.file, .module_decl, .directive, .comptime_if, .comptime_for] {
+			full << i32(i)
+		}
+	}
+	if full != a.directive_scan_ids {
+		eprintln('DIRECTIVE INDEX MISMATCH: ${a.directive_scan_ids.len} listed, ${full.len} in ${a.nodes.len} nodes')
+	}
+}
+
 // insert_synthetic_imports shifts a.nodes in place with each synthetic import spliced in
 // before its recorded original-array position, so the next resolver pass scans a
 // module's synthetic import right after that module's own region — in the same
@@ -24556,6 +24738,9 @@ fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, projec
 @[direct_array_access]
 fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion) {
 	if insertions.len == 0 {
+		return
+	}
+	if insert_synthetic_imports_pooled(mut a, insertions) {
 		return
 	}
 	old_len := a.nodes.len
@@ -24614,6 +24799,189 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		a.children[k] = flat.NodeId(cid + shift)
 	}
 	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+}
+
+// synthetic_splice_min_nodes is the size of the moved tail of the tree from
+// which the worker pool splices synthetic imports in: an import that a module of
+// a large wave raises moves every node parsed after that module.
+const synthetic_splice_min_nodes = 262144
+
+// SyntheticSpliceArgs is one task of insert_synthetic_imports_pooled.
+struct SyntheticSpliceArgs {
+	a          voidptr // &flat.FlatAst
+	insertions voidptr // &[]SyntheticInsertion
+	// The nodes [move_start, move_end) go `shift` slots up, as far as they stay
+	// inside these bounds: the caller moves the last `shift` of them.
+	move_start int
+	move_end   int
+	shift      int
+	// The nodes [scan_start, scan_end), which nothing moves, to look through.
+	scan_start int
+	scan_end   int
+	// The entries [child_start, child_end) of the children to renumber.
+	child_start int
+	child_end   int
+	first_pos   int
+	last_pos    int
+mut:
+	// The `@attributes:` directives found, in node order: first those that
+	// nothing moved, then those of the moved nodes at their new places.
+	fixed_attrs []int
+	moved_attrs []int
+}
+
+@[direct_array_access]
+fn synthetic_splice_thread(arg voidptr) voidptr {
+	mut task := unsafe { &SyntheticSpliceArgs(arg) }
+	mut a := unsafe { &flat.FlatAst(task.a) }
+	insertions := unsafe { &[]SyntheticInsertion(task.insertions) }
+	moved := task.move_end - task.move_start - task.shift
+	if moved > 0 {
+		unsafe {
+			vmemmove(&a.nodes[task.move_start + task.shift], &a.nodes[task.move_start],
+				moved * int(sizeof(flat.Node)))
+		}
+		for i in task.move_start + task.shift .. task.move_end {
+			if a.nodes[i].kind == .directive && a.nodes[i].value.starts_with('@attributes:') {
+				task.moved_attrs << i
+			}
+		}
+	}
+	for i in task.scan_start .. task.scan_end {
+		if a.nodes[i].kind == .directive && a.nodes[i].value.starts_with('@attributes:') {
+			task.fixed_attrs << i
+		}
+	}
+	for k in task.child_start .. task.child_end {
+		cid := int(a.children[k])
+		if cid < 0 || cid < task.first_pos {
+			continue
+		}
+		shift := if cid >= task.last_pos {
+			insertions.len
+		} else {
+			synthetic_index_shift(*insertions, cid)
+		}
+		a.children[k] = flat.NodeId(cid + shift)
+	}
+	return unsafe { nil }
+}
+
+// insert_synthetic_imports_pooled is insert_synthetic_imports across the worker
+// pool, for imports whose splice moves a large tail of the tree; it returns
+// false, with the tree untouched, when the caller has to do it. The nodes behind
+// the last import move the same number of slots. Each task moves one stretch of
+// them inside the stretch's own bounds, so the tasks write disjoint nodes: the
+// last nodes of a stretch, which land in the next one, are saved here before the
+// tasks start and written when they are done. The tasks also renumber disjoint
+// ranges of the children and list the `@attributes:` directives, whose texts this
+// thread rewrites afterwards in node order, as the serial splice interns them.
+// A directive whose target does not move keeps its text.
+@[direct_array_access]
+fn insert_synthetic_imports_pooled(mut a flat.FlatAst, insertions []SyntheticInsertion) bool {
+	old_len := a.nodes.len
+	count := insertions.len
+	first_pos := insertions[0].pos
+	last_pos := insertions[count - 1].pos
+	if isnil(a.worker_pool) || a.worker_pool.size() == 0
+		|| old_len - last_pos < synthetic_splice_min_nodes {
+		return false
+	}
+	jobs := a.worker_pool.size() + 1
+	stretch := (old_len - last_pos) / jobs
+	if stretch <= count * 2 {
+		return false
+	}
+	mut imports := []flat.Node{cap: count}
+	for insertion in insertions {
+		imports << canonical_node_texts(mut a, insertion.node)
+	}
+	unsafe { a.nodes.grow_len(count) }
+	mut tasks_args := []SyntheticSpliceArgs{cap: jobs}
+	// Raw copies: pushing a node would clone its text away from the canonical one.
+	mut saved := []flat.Node{len: jobs * count}
+	for job in 0 .. jobs {
+		move_start := last_pos + stretch * job
+		move_end := if job + 1 == jobs { old_len } else { move_start + stretch }
+		unsafe {
+			vmemcpy(&saved[job * count], &a.nodes[move_end - count], count * int(sizeof(flat.Node)))
+		}
+		tasks_args << SyntheticSpliceArgs{
+			a:           voidptr(a)
+			insertions:  unsafe { voidptr(&insertions) }
+			move_start:  move_start
+			move_end:    move_end
+			shift:       count
+			scan_start:  int(i64(first_pos) * job / jobs)
+			scan_end:    int(i64(first_pos) * (job + 1) / jobs)
+			child_start: int(i64(a.children.len) * job / jobs)
+			child_end:   int(i64(a.children.len) * (job + 1) / jobs)
+			first_pos:   first_pos
+			last_pos:    last_pos
+		}
+	}
+	mut tasks := []workers.Task{cap: jobs}
+	for job in 0 .. jobs {
+		tasks << workers.Task{
+			run:        synthetic_splice_thread
+			arg:        unsafe { voidptr(&tasks_args[job]) }
+			force_sync: job == 0
+		}
+	}
+	a.worker_pool.run(tasks)
+	// The `@attributes:` directives, in node order: those before the first import,
+	// those between the imports, and those of each moved stretch and of its tail.
+	mut attrs := []int{cap: 4096}
+	for job in 0 .. jobs {
+		attrs << tasks_args[job].fixed_attrs
+	}
+	// The regions between the imports move as the serial splice moves them.
+	a.nodes[last_pos + count - 1] = imports[count - 1]
+	mut end := last_pos
+	for i := count - 2; i >= 0; i-- {
+		insertion := insertions[i]
+		if end > insertion.pos {
+			unsafe {
+				vmemmove(&a.nodes[insertion.pos + i + 1], &a.nodes[insertion.pos], int(end - insertion.pos) * int(sizeof(flat.Node)))
+			}
+		}
+		a.nodes[insertion.pos + i] = imports[i]
+		end = insertion.pos
+	}
+	for i in first_pos .. last_pos + count {
+		if a.nodes[i].kind == .directive && a.nodes[i].value.starts_with('@attributes:') {
+			attrs << i
+		}
+	}
+	for job in 0 .. jobs {
+		attrs << tasks_args[job].moved_attrs
+		move_end := tasks_args[job].move_end
+		unsafe {
+			vmemcpy(&a.nodes[move_end], &saved[job * count], count * int(sizeof(flat.Node)))
+		}
+		for idx in move_end .. move_end + count {
+			if a.nodes[idx].kind == .directive && a.nodes[idx].value.starts_with('@attributes:') {
+				attrs << idx
+			}
+		}
+	}
+	for i in attrs {
+		mut node := a.nodes[i]
+		target_idx := node.value['@attributes:'.len..].int()
+		if target_idx >= 0 && target_idx < old_len {
+			shift := synthetic_index_shift(insertions, target_idx)
+			if shift == 0 {
+				continue
+			}
+			node.value = '@attributes:${target_idx + shift}'
+			a.nodes[i] = canonical_node_texts(mut a, node)
+		}
+	}
+	for i, idx in a.file_node_ids {
+		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
+	}
+	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+	return true
 }
 
 // synthetic_index_shift returns how far an original node index moves after the
@@ -25219,7 +25587,7 @@ fn source_header_imports(source string, defines []string) []string {
 // `pending_synthetic` are the ones that the resolver splices in behind the first module
 // of the wave. The resolver stays the authority: the parser takes the files parsed
 // ahead only for a wave of exactly these files (see Parser.speculate_next_batch).
-fn predict_next_wave_files(a &flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, wave_files []string, wave_module_file_ends []int, pending_synthetic []string, parsed_modules map[string]bool, parsed_module_identities map[string]string, project_root string, mut module_path_cache map[string]string) []string {
+fn predict_next_wave_files(a &flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, wave_files []string, wave_module_file_ends []int, pending_synthetic []string, parsed_modules map[string]bool, parsed_module_identities map[string]string, project_root string, mut module_path_cache map[string]string, mut module_identity_cache map[string]string) []string {
 	if isnil(a.worker_pool) || a.worker_pool.size() == 0 {
 		return []string{}
 	}
@@ -25242,6 +25610,46 @@ fn predict_next_wave_files(a &flat.FlatAst, mut p parser.Parser, prefs &pref.Pre
 	for scan in scans {
 		p.preload_batch_source(scan.path, scan.source)
 	}
+	// The modules that the loop below resolves, each for its first importer:
+	// the pool resolves them side by side, and the loop and the wave that
+	// parses them find the answers (see warm_import_resolutions).
+	mut warm_requests := []EagerSelfhostImport{}
+	mut warm_requested := map[string]bool{}
+	mut warm_module_start := 0
+	mut warm_synthetic_placed := false
+	for module_file_end in wave_module_file_ends {
+		if module_file_end == warm_module_start {
+			continue
+		}
+		for fi in warm_module_start .. module_file_end {
+			for mod_name in scans[fi].imports {
+				if mod_name !in warm_requested && mod_name !in parsed_modules
+					&& mod_name !in parsed_module_identities {
+					warm_requested[mod_name] = true
+					warm_requests << EagerSelfhostImport{
+						path:           mod_name
+						importing_file: wave_files[fi]
+					}
+				}
+			}
+		}
+		if !warm_synthetic_placed {
+			warm_synthetic_placed = true
+			for mod_name in pending_synthetic {
+				if mod_name !in warm_requested && mod_name !in parsed_modules
+					&& mod_name !in parsed_module_identities {
+					warm_requested[mod_name] = true
+					warm_requests << EagerSelfhostImport{
+						path:           mod_name
+						importing_file: wave_files[module_file_end - 1]
+					}
+				}
+			}
+		}
+		warm_module_start = module_file_end
+	}
+	warm_import_resolutions(a, prefs, warm_requests, project_root, mut module_path_cache, mut
+		module_identity_cache)
 	mut seen := map[string]bool{}
 	mut seen_dirs := map[string]bool{}
 	mut files := []string{}
@@ -25284,8 +25692,7 @@ fn predict_wave_module(prefs &pref.Preferences, mod_name string, importing_file 
 		return
 	}
 	seen_dirs[mod_dir] = true
-	files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(mod_dir, prefs.user_defines,
-		prefs.backend, prefs.target))
+	files << module_dir_v_files(prefs, mod_dir)
 }
 
 // discover_eager_selfhost_modules resolves the complete trusted compiler import
@@ -25621,13 +26028,27 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
+	mut ri_comptime_ns := u64(0)
+	mut ri_predict_ns := u64(0)
+	mut ri_canon_ns := u64(0)
+	mut ri_implicit_ns := u64(0)
+	mut ri_insert_ns := u64(0)
 	mut pair_cursor := 0
 	mut had_deferred_imports := initial_deferred_imports.len > 0
 	mut resolve_deferred_imports := false
+	// The waves below search the same directories over and over (see ImportDirMemo).
+	begin_import_dir_memo()
+	// The threads that parse a wave answer the per-file questions of its
+	// implicit-import scan (see implicit_import_file_flags).
+	verify_implicit_file_flags := os.getenv('V3_VERIFY_IMPLICIT_FLAGS') != ''
+	if !prepared.capturing && os.getenv('V3_NO_IMPLICIT_FILE_FLAGS') == '' {
+		p.file_scan_hook = implicit_import_file_flags
+	}
 	for {
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
 		deferred_imports := p.resolve_comptime_string_declarations()
+		ri_comptime_ns += time.sys_mono_now() - ri_t0
 		if had_deferred_imports {
 			// A parsed dependency can select imports in an earlier file's guard.
 			node_idx = 0
@@ -25664,6 +26085,42 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					}
 				}
 			}
+		}
+		if parse_waves_ahead {
+			// The modules that this wave resolves, each for its first importer:
+			// the pool resolves those that no wave prediction resolved already.
+			mut warm_requests := []EagerSelfhostImport{}
+			mut warm_requested := map[string]bool{}
+			mut warm_file := cur_file
+			for scan_idx in scan_ids {
+				scan_node := a.nodes[scan_idx]
+				if scan_node.kind == .file && scan_node.value.len > 0 {
+					warm_file = scan_node.value
+					continue
+				}
+				if scan_node.kind != .import_decl || scan_node.value.len == 0 {
+					continue
+				}
+				mod_name := scan_node.value
+				if mod_name in warm_requested || mod_name in parsed_modules
+					|| mod_name in parsed_module_identities {
+					continue
+				}
+				warm_requested[mod_name] = true
+				importing_file := a.cached_header_sources[warm_file] or {
+					if warm_file.len > 0 { warm_file } else { first_file }
+				}
+				importing_dir := if importing_file.len > 0 { os.dir(importing_file) } else { '' }
+				if '${importing_dir}\n${mod_name}' in module_path_cache {
+					continue
+				}
+				warm_requests << EagerSelfhostImport{
+					path:           mod_name
+					importing_file: importing_file
+				}
+			}
+			warm_import_resolutions(a, prefs, warm_requests, project_root, mut module_path_cache, mut
+				module_identity_cache)
 		}
 		// Decide short-name collisions for the whole visible import wave before
 		// mutating any import node or parsing either module. This qualifies both
@@ -26047,10 +26504,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				ri_coll_ms := f64(ri_collision_ns) / 1e6
 				ri_wave_ms := f64(ri_wave_ns) / 1e6
 				eprintln('  [ttime]   ri collision   ${ri_coll_ms:7.2f} ms, wave scan ${ri_wave_ms:.2f} ms (waves: ${ri_waves})')
+				eprintln('  [ttime]   ri comptime    ${f64(ri_comptime_ns) / 1e6:7.2f} ms, predict ${f64(ri_predict_ns) / 1e6:.2f} ms, canon ${f64(ri_canon_ns) / 1e6:.2f} ms, implicit scan ${f64(ri_implicit_ns) / 1e6:.2f} ms, insert ${f64(ri_insert_ns) / 1e6:.2f} ms')
 			}
 			break
 		}
 		if parse_waves_ahead && !parsed_wave_ahead && deferred_imports.len == 0 {
+			ri_t2 := time.sys_mono_now()
 			parsed_wave_ahead = true
 			mut pending := synthetic
 			mut pending_synthetic := []string{}
@@ -26064,12 +26523,15 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			p.speculate_next_batch(predict_next_wave_files(a, mut p, prefs, wave_files, wave_module_file_ends,
 				pending_synthetic, parsed_modules, parsed_module_identities, project_root, mut
-				module_path_cache))
+				module_path_cache, mut module_identity_cache))
+			ri_predict_ns += time.sys_mono_now() - ri_t2
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut parse_timing)
+		wave_file_flags := p.batch_file_scan_flags()
 		p.clear_preloaded_sources()
 		was_parallel = was_parallel || wave_parallel
 		wave_end_nodes := a.nodes.len
+		ri_t3 := time.sys_mono_now()
 		for i, canon in wave_canon {
 			if canon.len == 0 {
 				continue
@@ -26077,6 +26539,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			end_node := if i + 1 < starts.len { starts[i + 1] } else { wave_end_nodes }
 			canonicalize_imported_module_name(mut a, starts[i], end_node, canon)
 		}
+		ri_t4 := time.sys_mono_now()
+		ri_canon_ns += ri_t4 - ri_t3
 		// Re-check the implicit imports at each module boundary, in parse order,
 		// with each scan bounded to the nodes that existed at that boundary. This
 		// fires the seeds for exactly the module the serial loop's after-every-
@@ -26105,14 +26569,39 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				module_start = module_file_end
 				continue
 			}
-			scan_implicit_imports(a, region_end, mut implicit_imports)
+			if implicit_imports.needs_closure && wave_file_flags.len == wave_files.len
+				&& implicit_imports.node_idx == starts[module_start] {
+				// Only what each node raises by itself is left to find, and the
+				// threads that parsed the files of the module found that already.
+				mut verified := implicit_imports
+				for fi in module_start .. module_file_end {
+					implicit_imports.add_file_flags(wave_file_flags[fi])
+				}
+				implicit_imports.node_idx = region_end
+				if verify_implicit_file_flags {
+					scan_implicit_imports(a, region_end, mut verified)
+					if verified.flags() != implicit_imports.flags() {
+						eprintln('IMPLICIT FILE FLAGS MISMATCH in ${wave_modules[module_idx].path}: scan ${verified.flags()}, files ${implicit_imports.flags()}')
+					}
+				}
+			} else {
+				scan_implicit_imports(a, region_end, mut implicit_imports)
+			}
 			insertions << synthetic.insertions_at(implicit_imports, region_end, skip_closure_runtime)
 			module_start = module_file_end
 		}
+		ri_t5 := time.sys_mono_now()
+		ri_implicit_ns += ri_t5 - ri_t4
 		insert_synthetic_imports(mut a, insertions)
+		ri_insert_ns += time.sys_mono_now() - ri_t5
+		if prefs.verbose && insertions.len > 0 {
+			eprintln('  [ttime]   ri synthetic imports: ${insertions.len} (first at node ${insertions[0].pos} of ${a.nodes.len}: ${insertions[0].node.value})')
+		}
 		implicit_imports.node_idx += insertions.len
 		implicit_imports.field_index_node_idx += insertions.len
 	}
+	end_import_dir_memo()
+	p.file_scan_hook = unsafe { nil }
 	p.discard_speculated_batch()
 	cache_state.import_resolutions = V3ImportResolutions{
 		project_root: project_root
@@ -26387,6 +26876,11 @@ fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_nod
 	}
 	short_name := import_path.all_after_last('.')
 	_, canonical_path := a.intern_text(import_path)
+	if short_name.len == import_path.len {
+		// A path of one name is what the module declarations of its files say
+		// already, in the canonical text that the parse gave them.
+		return
+	}
 	for i in first_node .. end_node {
 		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
 			a.nodes[i].value = canonical_path
@@ -26486,8 +26980,8 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		module_root := module_root_for_import_dir(import_path, import_dir)
 		short_sibling_dir := os.join_path_single(module_root, short_name)
 		if short_sibling_dir != import_dir && os.is_dir(short_sibling_dir) {
-			real_import_dir = os.real_path(import_dir)
-			if os.real_path(short_sibling_dir) != real_import_dir {
+			real_import_dir = import_dir_real_path(import_dir)
+			if import_dir_real_path(short_sibling_dir) != real_import_dir {
 				return import_path
 			}
 		}
@@ -26496,9 +26990,9 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		short_project_dir := os.join_path_single(project_root, short_name)
 		if short_project_dir != import_dir && os.is_dir(short_project_dir) {
 			if real_import_dir.len == 0 {
-				real_import_dir = os.real_path(import_dir)
+				real_import_dir = import_dir_real_path(import_dir)
 			}
-			if os.real_path(short_project_dir) != real_import_dir {
+			if import_dir_real_path(short_project_dir) != real_import_dir {
 				return import_path
 			}
 		}
@@ -26506,9 +27000,9 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file, project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && short_dir != import_dir && os.is_dir(short_dir) {
 		if real_import_dir.len == 0 {
-			real_import_dir = os.real_path(import_dir)
+			real_import_dir = import_dir_real_path(import_dir)
 		}
-		if os.real_path(short_dir) != real_import_dir {
+		if import_dir_real_path(short_dir) != real_import_dir {
 			return import_path
 		}
 	}
@@ -26522,11 +27016,11 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	module_root := module_root_for_import_dir(import_path, import_dir)
 	requested_dir := os.join_path_single(module_root, import_path.replace('.', os.path_separator))
 	// One spelling names one directory: only two spellings need resolving.
-	if requested_dir == import_dir || os.real_path(requested_dir) == os.real_path(import_dir) {
+	if requested_dir == import_dir
+		|| import_dir_real_path(requested_dir) == import_dir_real_path(import_dir) {
 		return none
 	}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(import_dir,
-		prefs.user_defines, prefs.backend, prefs.target)) {
+	for file in module_dir_v_files(prefs, import_dir) {
 		module_name := declared_module_in_file(file)
 		if module_name.len > 0 {
 			return module_name
@@ -26908,12 +27402,25 @@ fn modules_layout_mkdir(dir string) string {
 }
 
 fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
+	if isnil(v3_import_dir_memo) {
+		return module_path_holds_v_sources(path, prefs)
+	}
+	if known := v3_import_dir_memo.has_sources[path] {
+		return known
+	}
+	has_sources := module_path_holds_v_sources(path, prefs)
+	v3_import_dir_memo.has_sources[path] = has_sources
+	return has_sources
+}
+
+// module_path_holds_v_sources is module_path_has_v_sources, read from the
+// directory.
+fn module_path_holds_v_sources(path string, prefs &pref.Preferences) bool {
 	if path.len == 0 || !os.is_dir(path) {
 		return false
 	}
 	source_root := v3_directory_source_root(path)
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(source_root, prefs.user_defines,
-		prefs.backend, prefs.target)).len > 0 {
+	if module_dir_v_files(prefs, source_root).len > 0 {
 		return true
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The

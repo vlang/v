@@ -307,10 +307,19 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			idx:    i
 		})
 	}
-	keys = g.sorted_fn_gen_item_keys(keys)
-	unsorted := items.clone()
-	for i, key in keys {
+	sorted_keys := g.sorted_fn_gen_item_keys(keys)
+	mut unsorted := items.clone()
+	for i, key in sorted_keys {
 		items[i] = unsorted[key.idx]
+	}
+	// The candidate list, the unsorted copy and the key lists are spent, but the
+	// arena they are in can stay until cgen is done: give their pages back.
+	unsafe {
+		candidates.free()
+		unsorted.free()
+		keys.free()
+		preferred_fns.free()
+		candidate_preferred.free()
 	}
 	return items
 }
