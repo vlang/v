@@ -645,6 +645,12 @@ backend does not expose `gg`'s drawing calls.
   blocks. Other compressed formats are identified but not decoded.
 - `gg.xr` derives left/right stereo cameras from a head camera and provides
   side-by-side viewports. Headset tracking belongs to your XR runtime.
+- `gg.raytrace` is a pure-V CPU path tracer. `Scene` stores spheres,
+  triangles, materials and a BVH; `Ray`/`Hit` carry normals and UVs; materials
+  support diffuse, metal, dielectric and emissive responses. `Renderer` traces
+  a `gg.Camera3D` into a `gg.hdr` HDRImage with multi-sample anti-aliasing and
+  recursive bounces, then tone maps through `gg.hdr`. `add_mesh` imports
+  `gg.Mesh3D` geometry. It is CPU-only; GPU RT needs raw platform backends.
 - `gg.hdr` adds linear-light HDR rendering helpers: `ColorHDR` (f32 components
   that may exceed 1), float RGBA buffers with exposure, ACES/Reinhard tone
   mapping and bloom, and Radiance RGBE `.hdr` read/write (`decode_rgbe`,
@@ -654,8 +660,8 @@ backend does not expose `gg`'s drawing calls.
   in this checkout, and native float targets need a live `sokol.gfx` context.
 
 Starter examples are `examples/gg/anim_base.v`, `procedural_base.v`,
-`game_base.v`, `advanced_base.v`, `tooling_base.v`, `extended_base.v` and
-`hdr_base.v`.
+`game_base.v`, `advanced_base.v`, `tooling_base.v`, `extended_base.v`,
+`hdr_base.v` and `raytrace_base.v`.
 The interpolation math
 used by the addons is in `vlib/math`: `interp`, `ema`, `gradient`, `linspace`,
 `arange` and `activation`. Custom GPU shader slots and full post-processing

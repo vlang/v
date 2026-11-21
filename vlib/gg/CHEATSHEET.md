@@ -11,6 +11,7 @@ import gg.debug
 import gg.loaders
 import gg.scene
 import gg.hdr
+import gg.raytrace as rt
 ```
 
 ## Core
@@ -116,4 +117,20 @@ loaded := hdr.load_rgbe('scene.hdr')!
 if hdr.float_targets_available() {
     // native only: rt := hdr.new_float_render_target(w, h, .rgba16f)!
 }
+```
+
+## Ray tracing (`gg.raytrace`)
+
+```v ignore
+mut scene := rt.new_scene()
+mat := scene.add_material(rt.diffuse_material(hdr.from_rgb(0.8, 0.8, 0.8)))
+scene.add_sphere(gg.Vec3{0, 0, -3}, 1.2, mat)
+scene.add_mesh(&mesh, mat)                // gg.Mesh3D -> triangles
+scene.build()                             // BVH (automatic when rendering)
+cfg := rt.RenderConfig{width: 320, height: 200, samples: 8, max_depth: 4}
+mut tracer := rt.new_renderer(scene, cam, cfg)
+img := tracer.render()!                   // gg.hdr.HDRImage
+img.save_rgbe('frame.hdr')!
+mut ldr := []u8{len: 320 * 200 * 4}
+tracer.render_to_ldr(mut ldr, 1, .aces)
 ```

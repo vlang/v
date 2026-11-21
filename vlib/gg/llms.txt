@@ -34,6 +34,9 @@
 - `import gg.splat`: Gaussian splat cloud, projection and CPU rasterizer.
 - `import gg.texture`: KTX2 header parsing, format mapping, DXT1 decode.
 - `import gg.xr`: stereo camera rig, viewports and convergence point.
+- `import gg.raytrace`: Scene with spheres/triangles/materials and a BVH, Ray/Hit
+  with normals+UV, diffuse/metal/dielectric/emissive materials, Renderer path
+  tracing into gg.hdr HDRImage, add_mesh for gg.Mesh3D, render_to_ldr.
 - `import gg.hdr`: ColorHDR (linear f32 RGBA above 1), from_ldr/to_ldr_color,
   tone_map with .none/.reinhard/.aces, HDRImage RGBA f32 buffers, exposure,
   bloom, to_ldr_into, Radiance RGBE decode_rgbe/load_rgbe/encode_rgbe/
