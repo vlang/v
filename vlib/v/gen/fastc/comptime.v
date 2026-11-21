@@ -669,6 +669,7 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					continue
 				}
 				if member == .name && s.lit == 'typ' {
+					is_tok_start := s.offset
 					is_tok := s.scan()
 					if is_tok == .key_is {
 						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
@@ -697,6 +698,14 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 						tok = next_after
 						continue
 					}
+					if body[..var_pos].trim_right(' \t').ends_with('sizeof(') {
+						// `sizeof(field.typ)` measures the field's type.
+						edits << FastcSourceEdit{
+							start:       var_pos
+							end:         is_tok_start
+							replacement: fastc_comptime_field_type_spelling(field)
+						}
+					}
 					previous = member
 					tok = is_tok
 					continue
@@ -713,6 +722,24 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 		tok = s.scan()
 	}
 	return fastc_apply_mapped_source_edits(source_file, edits)
+}
+
+// fastc_comptime_field_type_spelling spells the type of a `$for` field as a V type.
+fn fastc_comptime_field_type_spelling(field FastcStructField) string {
+	if field.option_value_type != 0 {
+		return '?' + fastc_comptime_type_spelling(field.option_value_type)
+	}
+	return fastc_comptime_type_spelling(field.typ)
+}
+
+fn fastc_comptime_type_spelling(typ u32) string {
+	display := fastc_c_type_display_name(typ)
+	// A qualified name needs its module's import; the C spelling resolves everywhere.
+	return if display.contains('.') && !display.contains('[') && !display.starts_with('&') {
+		flat.source_type_name(typ)
+	} else {
+		display
+	}
 }
 
 // substitute_comptime_enum_value rewrites one `$for x in Enum.values { ... }` body
