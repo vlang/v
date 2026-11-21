@@ -2570,6 +2570,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 		}
 		fastc_emit_source_type_declarations(type_source_file, prefs, declared_types, declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut thread_types, mut heap_structs, mut enum_infos, mut bodies)!
 	}
+	fastc_register_sum_type_aliases(alias_base_types, mut sum_types, mut sum_type_variants)
 	timer.mark('type_declarations.emit')
 	if '__v_result' in struct_fields {
 		out.writeln('typedef struct __v_result __v_result;')
@@ -4140,6 +4141,42 @@ fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcS
 	out.writeln('struct ${c_name} { void *_object; uintptr_t _typ; };')
 	out.writeln('')
 	return tok
+}
+
+// fastc_register_sum_type_aliases makes `type Buf = KBuf`, where `KBuf` is a sum type, a
+// sum type too: the C typedef shares the boxed layout, and `match`, smartcasts and variant
+// boxing need its variants. Aliases may be declared before their target, so this runs
+// after all type declarations.
+fn fastc_register_sum_type_aliases(alias_base_types flat.TypeTextBindings, mut sum_types map[string]bool, mut sum_type_variants map[u64]bool) {
+	if sum_types.len == 0 {
+		return
+	}
+	names := alias_base_types.keys()
+	mut changed := true
+	for changed {
+		changed = false
+		for name in names {
+			if name in sum_types {
+				continue
+			}
+			base := alias_base_types.type_id(name) or { continue }
+			if fastc_is_pointer_type(base) || flat.source_type_name(base) !in sum_types {
+				continue
+			}
+			sum_types[name] = true
+			alias_id := flat.source_type_id(name)
+			mut variants := []u32{}
+			for key, present in sum_type_variants {
+				if present && u32(key >> 32) == base {
+					variants << u32(key)
+				}
+			}
+			for variant in variants {
+				sum_type_variants[fastc_sum_type_variant_key(alias_id, variant)] = true
+			}
+			changed = true
+		}
+	}
 }
 
 fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, declared_types map[u32]bool, declared_kinds map[u32]FastcDeclaredTypeKind, allow_short_placeholders bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types flat.TypeTextBindings, mut fn_alias_return_types flat.TypeTextBindings, mut sum_types map[string]bool, mut sum_type_variants map[u64]bool, mut out strings.Builder) !token.Token {

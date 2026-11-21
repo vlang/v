@@ -1574,8 +1574,10 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_heap_copy(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
 	}
 	actual_layout := g.underlying_alias_type(actual_type_source_id)
-	if interface_type in g.sum_types && actual_layout == interface_type_source_id {
-		// A sum value already carries its concrete variant tag and payload.
+	if interface_type in g.sum_types && (actual_layout == interface_type_source_id
+		|| actual_layout == g.underlying_alias_type(interface_type_source_id)) {
+		// A sum value already carries its concrete variant tag and payload; an alias of a
+		// sum type (`type Alias = Type`) shares its layout.
 		return expression
 	}
 	actual_interface := fastc_trim_pointer_type(actual_layout)
@@ -2248,10 +2250,21 @@ fn (mut g Parser) capture_final_or_value(expression string) bool {
 // fallbacks (`or { .none }`, a variant literal, …) still type correctly.
 fn (mut g Parser) capture_or_value(expression string) {
 	mut value := expression
+	mut contextual_rendered := false
 	if g.or_value_expected_type != u32(0) && g.last_expression.len > 0 {
 		if contextual := g.render_call_argument_expression(g.last_expression, g.or_value_expected_type) {
 			value = contextual
+			contextual_rendered = true
 		}
+	}
+	// A compile-time `$if` wrapper's value cannot be re-rendered from its tokens; box a
+	// variant it selects (`or { $if windows { A{} } $else { B{} } }`) here.
+	value_type := g.last_expression_type
+	if !contextual_rendered && g.selfhost && g.or_value_expected_type != u32(0)
+		&& value_type !in [u32(0), fastc_type_option, fastc_type_result]
+		&& fastc_normalize_inferred_type(value_type) != fastc_normalize_inferred_type(g.or_value_expected_type)
+		&& g.should_box_variant(g.or_value_expected_type, value_type) {
+		value = g.interface_value_expression(g.or_value_expected_type, value_type, value)
 	}
 	g.or_value_captured = value
 }
