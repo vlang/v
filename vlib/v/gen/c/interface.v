@@ -2864,6 +2864,13 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 			continue
 		}
 		concrete_type := g.interface_concrete_type(concrete_id)
+		// An interface value is never boxed in another interface (the checker rejects
+		// it), so such an implementer has no case to print. Expanding its own
+		// implementers here, and theirs below, made the expression of a program with
+		// several empty interfaces grow factorially (megabytes per `${value}`).
+		if g.interface_unaliased_type(concrete_type) is types.Interface {
+			continue
+		}
 		storage_ct := g.interface_concrete_storage_c_type(concrete_id)
 		inner := g.interface_implicit_str_expr(concrete_type, '*(${storage_ct}*)${tmp}._object',
 			false, mut stack) or { continue }
