@@ -69,12 +69,16 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		// Only the collected names survive this scan; the declaration text is discarded.
 		unsafe { declarations.free() }
 	}
+	vlib_prefix := os.join_path_single(prefs.vroot, 'vlib') + os.path_separator
 	mut result := []FastcSourceFile{cap: sources.len}
 	for source in sources {
 		module_name := source.header.module_name
 		qualifier := module_name.all_after_last('.')
+		// Outside libc-header targets only project modules (witty's `terminal.x` in module
+		// `terminal`) qualify themselves; vlib keeps its locals such as `c` in `v.gen.c`.
 		mut shadowed := qualifier == '' || qualifier in source.header.imports
-			|| (!prefs.target_libc_headers && module_name in ['', 'main', 'builtin'])
+			|| (!prefs.target_libc_headers && (module_name in ['', 'main', 'builtin']
+				|| source.path.starts_with(vlib_prefix)))
 		if !shadowed {
 			for key, _ in globals {
 				if key == qualifier || key.ends_with('.${qualifier}') {
