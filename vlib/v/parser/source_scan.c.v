@@ -2,7 +2,12 @@ module parser
 
 import v.token
 
-fn C.atomic_fetch_add_u32(voidptr, u32) u32
+fn C.mlock(addr voidptr, len uint) int
+
+fn C.munlock(addr voidptr, len uint) int
+
+// merge_prefault_piece is the memory that merge_prefault_thread maps per request.
+const merge_prefault_piece = 1048576
 
 // source_index_u8 returns the index of the first byte `c` of `src` at or after
 // `start`, or -1 without one. The parser asks a few questions of a whole source
@@ -242,16 +247,33 @@ struct MergePrefaultArgs {
 // first write to a page then waits for the kernel to map it: those faults of
 // one mapping do not run side by side, so most of the copy was that wait. Here
 // one pool thread takes them while the others still parse.
-// The caller may append to the arrays meanwhile, so a page is touched with an
-// atomic add of zero, which changes no value whatever else writes that word.
+// The caller may append to the arrays meanwhile, so the task must not write to
+// them: it asks the kernel to wire the whole pages inside the range and lets
+// them go again at once, which maps them and leaves every byte as it is.
+// A system that refuses (a locked-memory limit) only loses the head start.
 fn merge_prefault_thread(arg voidptr) voidptr {
 	task := unsafe { &MergePrefaultArgs(arg) }
-	// Words are aligned, and no page is smaller than this stride.
-	mut addr := (u64(task.start) + 3) & ~u64(3)
-	end := u64(task.end)
-	for addr + 4 <= end {
-		C.atomic_fetch_add_u32(voidptr(addr), 0)
-		addr += 4096
+	$if macos || linux {
+		page_bytes := C.sysconf(C._SC_PAGESIZE)
+		if page_bytes <= 0 {
+			return unsafe { nil }
+		}
+		page := u64(page_bytes)
+		mut addr := (u64(task.start) + page - 1) / page * page
+		end := u64(task.end) / page * page
+		// A piece at a time: other threads map their own pages in between.
+		for addr < end {
+			piece := if end - addr > merge_prefault_piece {
+				u64(merge_prefault_piece)
+			} else {
+				end - addr
+			}
+			if C.mlock(voidptr(addr), uint(piece)) != 0 {
+				break
+			}
+			C.munlock(voidptr(addr), uint(piece))
+			addr += piece
+		}
 	}
 	return unsafe { nil }
 }
