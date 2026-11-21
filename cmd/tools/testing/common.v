@@ -880,9 +880,11 @@ pub fn (mut ts TestSession) test() {
 		}
 	}
 	if ts.shared_v3_env.len > 0 {
-		shared_v3 := os.join_path(ts.vtmp_dir, 'shared_v3' + $if windows { '.exe' } $else { '' })
-		os.rm(shared_v3) or {}
-		os.rm(shared_v3 + '.reused') or {}
+		for name in shared_v3_names {
+			shared_v3 := os.join_path(ts.vtmp_dir, name + $if windows { '.exe' } $else { '' })
+			os.rm(shared_v3) or {}
+			os.rm(shared_v3 + '.reused') or {}
+		}
 	}
 	// cleanup the session folder, if everything was ok:
 	if ts.benchmark.nfail == 0 {
@@ -1451,23 +1453,36 @@ pub fn h_divider() {
 }
 
 // The `v` launcher serves plain builds of the V3 source named by these variables with copies of
-// the compiler they name (cmd/v/shared_test_compiler.v); vlib/v/test_all.vsh sets them as well.
+// the compiler they name, and builds with `-d ownership` with copies of the ownership compiler
+// (cmd/v/shared_test_compiler.v); vlib/v/test_all.vsh sets the first two as well.
 const shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
 const shared_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+const shared_v3_ownership_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
+
+// shared_v3_names are the executables that prepare_shared_v3 builds in the session folder.
+const shared_v3_names = ['shared_v3', 'shared_v3_ownership']
 
 // prepare_shared_v3 builds the V3 compiler once, when at least two of `files` build it themselves
-// (as most compiler tests do), and lets the launcher serve their builds with copies of it. Each
-// build takes ~20 s of CPU. A failed build only leaves the tests to build their own.
+// (as most compiler tests do), and lets the launcher serve their builds with copies of it; the
+// same for the `-d ownership` compiler of the ownership tests. Each build takes ~20 s of CPU.
+// A failed build only leaves the tests to build their own.
 fn (mut ts TestSession) prepare_shared_v3(files []string) {
-	if !ts.will_compile || os.getenv(shared_v3_env) != '' || os.getenv('VTEST_NO_SHARED_V3') == '1' {
+	if !ts.will_compile || os.getenv('VTEST_NO_SHARED_V3') == '1' {
 		return
 	}
 	v3_src := os.join_path(ts.vroot, 'vlib', 'v', 'v.v')
 	if !os.is_file(v3_src) {
 		return
 	}
+	// A compiler shared by an outer runner must be of the same source.
+	if configured := os.getenv_opt(shared_v3_src_env) {
+		if os.real_path(configured) != os.real_path(v3_src) {
+			return
+		}
+	}
 	vroot := os.real_path(ts.vroot) + os.path_separator
 	mut builders := 0
+	mut ownership_builders := 0
 	for file in files {
 		path := os.real_path(file)
 		if !path.starts_with(vroot) {
@@ -1476,24 +1491,32 @@ fn (mut ts TestSession) prepare_shared_v3(files []string) {
 		source := os.read_file(path) or { continue }
 		if source.contains("'v.v'") {
 			builders++
-			if builders == 2 {
-				break
+			if source.contains("'-d', 'ownership'") {
+				ownership_builders++
 			}
 		}
 	}
-	if builders < 2 {
+	mut values := map[string]string{}
+	for i, env in [shared_v3_env, shared_v3_ownership_env] {
+		if os.getenv(env) != '' || (if i == 0 { builders } else { ownership_builders }) < 2 {
+			continue
+		}
+		shared_v3 := os.join_path(ts.vtmp_dir, shared_v3_names[i] + $if windows { '.exe' } $else { '' })
+		mut args := [ts.vexe, '-gc', 'none']
+		if i == 1 {
+			args << ['-d', 'ownership']
+		}
+		args << ['-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3, v3_src]
+		build := os.exec(args)
+		if build.exit_code == 0 && os.is_executable(shared_v3) {
+			values[env] = shared_v3
+		}
+	}
+	if values.len == 0 {
 		return
 	}
-	shared_v3 := os.join_path(ts.vtmp_dir, 'shared_v3' + $if windows { '.exe' } $else { '' })
-	build := os.exec([ts.vexe, '-gc', 'none', '-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3,
-		v3_src])
-	if build.exit_code != 0 || !os.is_executable(shared_v3) {
-		return
-	}
-	for name, value in {
-		shared_v3_env:     shared_v3
-		shared_v3_src_env: v3_src
-	} {
+	values[shared_v3_src_env] = v3_src
+	for name, value in values {
 		ts.shared_v3_env[name] = os.getenv_opt(name)
 		os.setenv(name, value, true)
 	}
