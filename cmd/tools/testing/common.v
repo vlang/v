@@ -1128,6 +1128,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			if stats_run_timed_out && details.retry == 0 {
 				details.retry = 1
 			}
+			// Every retry runs under the limit too: an unbounded one would turn a test that
+			// timed out into a pass, or hold this worker for as long as the test hangs.
+			mut last_run_timed_out := stats_run_timed_out
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -1136,7 +1139,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				retry_res := ts.exec(compile_argv, mtc)
+				retry_res, retry_timed_out := ts.exec_timed(compile_argv, mtc)
+				last_run_timed_out = retry_timed_out
 				status = retry_res.exit_code
 				if retry_res.output != '' {
 					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -1165,6 +1169,11 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark_fail()
 			tls_bench.fail()
+			if last_run_timed_out {
+				ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+					'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}', cmd_duration),
+					cmd_duration, mtc)
+			}
 			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
