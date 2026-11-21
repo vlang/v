@@ -1502,12 +1502,15 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 			left in [flat.source_type_f32, flat.source_type_f64]
 		}
 		'struct' {
-			// Builtin `string`, `array` and `map` are structs in FastC but not in V.
-			left !in [flat.source_type_string, fastc_type_array, fastc_type_map]
+			// Builtin `string`, `array` and `map` are structs in FastC but not in V. As in
+			// V, a pointer to a struct is not a struct.
+			!fastc_is_pointer_type(left)
+				&& left !in [flat.source_type_string, fastc_type_array, fastc_type_map]
 				&& left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
 		}
 		'enum' {
-			left_key in g.declared_kinds && g.declared_kinds[left_key] == .enum_
+			!fastc_is_pointer_type(left) && left_key in g.declared_kinds
+				&& g.declared_kinds[left_key] == .enum_
 		}
 		'interface' {
 			left_key in g.declared_kinds && g.declared_kinds[left_key] == .interface_
