@@ -13868,6 +13868,12 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_iteration(fn_name string
 
 // ownership_drop_entries_at_scope_exit returns destructors for locals declared
 // in one lexical block and still owned at its normal exit.
+// records_scope_drops reports whether the checker records destructor slots for lexical
+// scopes, which the C backend consumes in order for each block it emits.
+pub fn (tc &TypeChecker) records_scope_drops() bool {
+	return tc.ownership != unsafe { nil }
+}
+
 pub fn (tc &TypeChecker) ownership_drop_entries_at_scope_exit(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
