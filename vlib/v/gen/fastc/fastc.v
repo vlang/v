@@ -3047,17 +3047,24 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	units.native_decl_start = pieces.len
 	pieces << fastc_piece(constant_output.macros)
-	pieces << fastc_piece(type_output.declarations_head)
+	// An alias of a fixed array of structs (`type Table = [256]Row`) names a typedef that can
+	// only follow the struct bodies.
+	declarations_head, late_head_aliases := fastc_split_aggregate_fixed_array_aliases(type_output.declarations_head,
+		fixed_array_declarations)
+	body_declarations, late_body_aliases := fastc_split_aggregate_fixed_array_aliases(type_declarations,
+		fixed_array_declarations)
+	pieces << fastc_piece(declarations_head)
 	pieces << fastc_piece(composite_typedefs)
 	pieces << scalar_fixed_array_declarations
 	callable_typedefs := fastc_callable_typedefs(composite_types)
 	pieces << if callable_typedefs == '' {
-		fastc_piece(type_declarations)
+		fastc_piece(body_declarations)
 	} else {
-		fastc_hoist_c_type_aliases(callable_typedefs + type_declarations)
+		fastc_hoist_c_type_aliases(callable_typedefs + body_declarations)
 	}
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
+	pieces << late_head_aliases + late_body_aliases
 	// Function signatures can refer to aliases, composite types, and fixed arrays.
 	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
 	function_type_names.sort()
@@ -5562,4 +5569,26 @@ fn (value &FastcMonoRequest) concrete_text() string {
 @[inline]
 fn (info &FastcEnumInfo) name_text() string {
 	return flat.source_type_name(info.name)
+}
+
+// fastc_split_aggregate_fixed_array_aliases moves `typedef FixedArray_... Alias;` lines out of
+// `head` when `fixed_array_declarations`, emitted after the struct bodies, defines the fixed
+// array.
+fn fastc_split_aggregate_fixed_array_aliases(head string, fixed_array_declarations string) (string, string) {
+	if !head.contains('typedef FixedArray_') || fixed_array_declarations == '' {
+		return head, ''
+	}
+	mut kept := strings.new_builder(head.len)
+	mut moved := strings.new_builder(256)
+	for line in head.split_into_lines() {
+		if line.starts_with('typedef FixedArray_') && line.ends_with(';') {
+			fixed_array := line['typedef '.len..].all_before(' ')
+			if fixed_array_declarations.contains('} ${fixed_array};') {
+				moved.writeln(line)
+				continue
+			}
+		}
+		kept.writeln(line)
+	}
+	return kept.str(), moved.str()
 }
