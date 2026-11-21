@@ -2775,7 +2775,8 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	}
 	if promote_in_tasks && !bodies_only && isnil(tc.incremental) {
 		tc.release_check_tail()
-		tc.check_tail = tc.new_check_tail_prepared()
+		// The checker keeps the header after the setup arena is released below.
+		tc.check_tail = tc.new_check_tail_prepared_outside(setup_scope)
 		tail_scan_args.tail = tc.check_tail
 	}
 	if signatures_first {

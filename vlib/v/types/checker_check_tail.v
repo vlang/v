@@ -43,6 +43,26 @@ fn (tc &TypeChecker) new_check_tail_prepared() &CheckTailPrepared {
 	return tail
 }
 
+// new_check_tail_prepared_outside starts the preparation like
+// new_check_tail_prepared, with its header outside `scope`, the arena that is
+// current: the checker points to the header until the next check, long after
+// the caller has released that arena. It returns nil when the arena cannot be
+// left, and the scans after the check then work as they do without a pool.
+fn (tc &TypeChecker) new_check_tail_prepared_outside(scope voidptr) &CheckTailPrepared {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			state := unsafe { prealloc_scope_suspend(scope) }
+			if state == unsafe { nil } {
+				return unsafe { nil }
+			}
+			tail := tc.new_check_tail_prepared()
+			unsafe { prealloc_scope_resume(scope, state) }
+			return tail
+		}
+	}
+	return tc.new_check_tail_prepared()
+}
+
 // release_check_tail drops what a check prepared for the scans after it.
 fn (mut tc TypeChecker) release_check_tail() {
 	mut tail := tc.check_tail
