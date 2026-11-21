@@ -695,7 +695,12 @@ fn fastc_infer_generic_type_from_parameter(erased_id u32, actual_id u32) u32 {
 	erased := flat.source_type_syntax(erased_id)
 	if erased.c_pointer_raw_base() == flat.source_type_id('voidptr') {
 		mut concrete := actual_id
-		if flat.source_type_syntax(actual_id).c_pointer_depth() < erased.c_pointer_depth() {
+		actual_depth := flat.source_type_syntax(actual_id).c_pointer_depth()
+		if actual_depth < erased.c_pointer_depth() {
+			// A value passed to a `&T` parameter is referenced, as the C backend does.
+			if actual_depth == 0 && erased.c_pointer_depth() == 1 {
+				return actual_id
+			}
 			return u32(0)
 		}
 		for _ in 0 .. erased.c_pointer_depth() {
