@@ -33,12 +33,21 @@ pub mut:
 	error_code int
 }
 
+pub struct ApiField {
+pub:
+	name      string
+	type_name string
+}
+
 pub struct ApiType {
 pub:
 	name    string
 	kind    string // struct or enum
 	members []string
+	fields  []ApiField
 	doc     string
+pub mut:
+	c_name string
 }
 
 pub struct ApiConst {
@@ -141,10 +150,21 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 				if node.op != .arrow {
 					continue
 				}
+				mut fields := []ApiField{}
+				for ci in 0 .. node.children_count {
+					field := a.child_node(node, ci)
+					if field.kind == .field_decl {
+						fields << ApiField{
+							name:      field.value
+							type_name: flat.source_type_name(field.typ)
+						}
+					}
+				}
 				types << ApiType{
-					name: node.value
-					kind: 'struct'
-					doc:  docs['type:${node.value}']
+					name:   node.value
+					kind:   'struct'
+					fields: fields
+					doc:    docs['type:${node.value}']
 				}
 				continue
 			}
@@ -203,6 +223,9 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 	}
 	for i, c in model.consts {
 		model.consts[i].c_name = '${effective_prefix}_get_${sanitize(c.name)}'
+	}
+	for i, t in model.types {
+		model.types[i].c_name = '${effective_prefix}_${sanitize(t.name)}'
 	}
 	return model
 }

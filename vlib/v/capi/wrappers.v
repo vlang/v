@@ -165,7 +165,12 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 			call_args << '${name}_v'
 			continue
 		}
-		decl_params << '${name} ${ptype}'
+		v_type := if m.is_struct(unqualified(ptype)) && !ptype.starts_with('&') {
+			qname(f, ptype)
+		} else {
+			ptype
+		}
+		decl_params << '${name} ${v_type}'
 		cparam_type := c_decl_type(p.type_name, m) or {
 			warnings << 'skipped ${f.name}: unsupported parameter type ${p.type_name}'
 			return false
@@ -198,7 +203,13 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		}
 	}
 	mut ret_c := 'void'
-	mut ret_spelling := if ret_v == '' { '' } else { ' ${ret_v}' }
+	mut ret_spelling := if ret_v == '' {
+		''
+	} else if m.is_struct(unqualified(ret_v)) {
+		' ${qname(f, ret_v)}'
+	} else {
+		' ${ret_v}'
+	}
 	if returns_slice {
 		elem := c_prim(slice_elem(inner))
 		decl_params << 'out &&${elem}'

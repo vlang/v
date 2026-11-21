@@ -27,6 +27,34 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_plain_struct_by_value() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'structs')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	mut warnings := []string{}
+	code, infos := generate_wrappers(m, mut warnings)
+	assert warnings.len == 0, warnings.join('\n')
+	assert code.contains('fn capi_export_0(p0 Pair) f64 {')
+	assert infos[0].signature == 'double structs_sum(structs_Pair p0)'
+	res := emit_files(m, infos, EmitOptions{
+		out_dir:  os.join_path(os.vtmp_dir(), 'v-capi-struct-test')
+		lib_name: 'structs'
+	}) or {
+		assert false, 'emit_files failed: ${err.msg()}'
+		return
+	}
+	_ = res
+	h := os.read_file(os.join_path(os.vtmp_dir(), 'v-capi-struct-test', 'structs.h')) or {
+		assert false, 'header missing'
+		return
+	}
+	assert h.contains('typedef struct structs_Pair {')
+	assert h.contains('int64_t a;')
+	assert h.contains('bool c;')
+}
+
 fn test_custom_error_code() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'errno')
 	m := collect_model(dir, '') or {

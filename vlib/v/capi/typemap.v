@@ -124,6 +124,9 @@ pub fn v_wrapper_type(t string, m ApiModel) ?string {
 		return 'int'
 	}
 	if m.is_struct(base) {
+		if !t.starts_with('&') && is_plain_struct(m, base) {
+			return base
+		}
 		return none
 	}
 	if is_supported_scalar(t) {
@@ -133,6 +136,70 @@ pub fn v_wrapper_type(t string, m ApiModel) ?string {
 		return '&${c_prim(slice_elem(t))}'
 	}
 	return none
+}
+
+// struct_field_c_type mirrors the C type V uses for a struct field. V emits
+// `int` fields as 64-bit integers in generated C, unlike function parameters.
+pub fn struct_field_c_type(t string) ?string {
+	if t == 'bool' {
+		return 'bool'
+	}
+	if t == 'int' {
+		return 'int64_t'
+	}
+	if t == 'byte' || t == 'u8' {
+		return 'uint8_t'
+	}
+	if t == 'u16' {
+		return 'uint16_t'
+	}
+	if t == 'u32' {
+		return 'uint32_t'
+	}
+	if t == 'u64' || t == 'usize' {
+		return 'uint64_t'
+	}
+	if t == 'i8' {
+		return 'int8_t'
+	}
+	if t == 'i16' {
+		return 'int16_t'
+	}
+	if t == 'i32' || t == 'rune' {
+		return 'int32_t'
+	}
+	if t == 'i64' || t == 'isize' {
+		return 'int64_t'
+	}
+	if t == 'f32' {
+		return 'float'
+	}
+	if t == 'f64' {
+		return 'double'
+	}
+	return none
+}
+
+pub fn struct_c_name(m ApiModel, name string) string {
+	if t := m.type_by_name(unqualified(name)) {
+		return if t.c_name != '' { t.c_name } else { '${m.prefix}_${sanitize(t.name)}' }
+	}
+	return '${m.prefix}_${sanitize(unqualified(name))}'
+}
+
+// is_plain_struct reports whether a struct has only scalar fields, so its
+// layout can be mirrored exactly in the generated C header.
+pub fn is_plain_struct(m ApiModel, name string) bool {
+	t := m.type_by_name(name) or { return false }
+	if t.kind != 'struct' || t.fields.len == 0 {
+		return false
+	}
+	for f in t.fields {
+		if struct_field_c_type(f.type_name) == none {
+			return false
+		}
+	}
+	return true
 }
 
 // c_decl_type returns the C spelling for a V type. slices and results are
@@ -149,6 +216,9 @@ pub fn c_decl_type(t string, m ApiModel) ?string {
 		return 'int'
 	}
 	if m.is_struct(base) {
+		if !t.starts_with('&') && is_plain_struct(m, base) {
+			return struct_c_name(m, base)
+		}
 		return none
 	}
 	if is_supported_scalar(t) {

@@ -43,14 +43,20 @@ after the build. Pass `--keep-generated` to inspect them.
 | `!T` | `T *out` | `int` status (0 ok, -1 error) |
 | `?T` | `T *out` | `int` status (0 some, 1 none) |
 | `&PubStruct` | opaque struct pointer | same |
+| scalar-only `pub struct` by value | generated C struct passed by value | same |
 | `pub enum` | `int` / generated C enum | same |
 | `pub const` | generated `<prefix>_get_<name>()` getter | scalar or string |
 
 Methods with a pointer receiver on a public struct become
 `<prefix>_<Type>_<method>(<prefix>_Type *self, ...)`.
 
-Generics, maps, channels, closures and by-value public structs are skipped with
-a warning rather than exported with a V-internal ABI.
+Structs are emitted as opaque handles unless every field is a scalar (integer,
+float or bool); scalar-only structs get a C struct definition with the same
+layout and can be passed or returned by value. Structs containing strings,
+slices or nested structs are skipped with a warning.
+
+Generics, maps, channels and closures are skipped with a warning rather than
+exported with a V-internal ABI.
 
 ## Memory and errors
 

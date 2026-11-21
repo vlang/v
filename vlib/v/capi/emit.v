@@ -95,20 +95,32 @@ fn header_text(m ApiModel, name string, version string, all []ExportInfo) string
 	b.writeln('')
 	b.writeln('#include <stddef.h>')
 	b.writeln('#include <stdint.h>')
+	b.writeln('#include <stdbool.h>')
 	b.writeln('')
 	b.writeln('#define ${sanitize(name).to_upper()}_VERSION "${version}"')
 	for t in m.types {
-		if t.kind == 'struct' {
-			b.writeln('typedef struct ${m.prefix}_${t.name} ${m.prefix}_${t.name};')
+		if t.kind != 'struct' {
+			continue
+		}
+		cname := if t.c_name != '' { t.c_name } else { '${m.prefix}_${sanitize(t.name)}' }
+		if is_plain_struct(m, t.name) {
+			b.writeln('typedef struct ${cname} {')
+			for f in t.fields {
+				b.writeln('\t${struct_field_c_type(f.type_name) or { continue }} ${f.name};')
+			}
+			b.writeln('} ${cname};')
+		} else {
+			b.writeln('typedef struct ${cname} ${cname};')
 		}
 	}
 	for t in m.types {
 		if t.kind == 'enum' {
-			b.writeln('typedef enum ${m.prefix}_${t.name} {')
+			cname := if t.c_name != '' { t.c_name } else { '${m.prefix}_${sanitize(t.name)}' }
+			b.writeln('typedef enum ${cname} {')
 			for i, member in t.members {
-				b.writeln('\t${m.prefix}_${t.name}_${member} = ${i},')
+				b.writeln('\t${cname}_${member} = ${i},')
 			}
-			b.writeln('} ${m.prefix}_${t.name};')
+			b.writeln('} ${cname};')
 		}
 	}
 	b.writeln('')
