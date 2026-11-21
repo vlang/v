@@ -388,7 +388,10 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	mut member := g.lit
 	if member in ['fields', 'values', 'attributes', 'variants', 'methods'] {
 		type_key := g.resolve_declared_type_key(first) or {
-			return g.unsupported('`\$for` over unknown type `${first}`')
+			// A field type substituted by its C name (`cli__Options`).
+			flat.source_type_existing_id(first.replace('__', '.')) or {
+				return g.unsupported('`\$for` over unknown type `${first}`')
+			}
 		}
 		c_type = fastc_c_declared_type_name(flat.source_type_name(type_key))
 		g.next()
@@ -602,6 +605,23 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 						replacement: "'${field_name}'"
 					}
 					previous = .name
+					tok = s.scan()
+					continue
+				}
+				if member == .name && s.lit in ['methods', 'fields', 'values', 'variants']
+					&& previous == .key_in {
+					// `$for m in field.methods` iterates the members of the field's type.
+					value_type := if field.option_value_type != 0 {
+						field.option_value_type
+					} else {
+						field.typ
+					}
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         var_pos + loop_var.len
+						replacement: flat.source_type_name(fastc_trim_pointer_type(value_type))
+					}
+					previous = member
 					tok = s.scan()
 					continue
 				}
