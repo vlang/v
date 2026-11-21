@@ -4142,8 +4142,10 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 // The borrow-summary body analyses of a compiler-sized program take most of
 // the transform preparation. Below this many candidates a serial pass is cheap.
 const min_borrow_prescan_candidates = 512
-// Preparation overlaps markused, whose workers keep most cores busy.
-const max_borrow_prescan_jobs = 6
+// The preparation thread has to finish before markused does, and by the time
+// it gets here the pool phase of markused has ended: the helpers have most of
+// the cores to themselves, and they pull their work from one queue.
+const max_borrow_prescan_jobs = 12
 // The helper threads pull declarations in blocks of this many from one queue, so
 // no thread is left with a long share when the others have finished.
 const borrow_prescan_block_items = 32
