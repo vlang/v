@@ -65,6 +65,15 @@ fn build_parallel_prod_v3() string {
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
+	// The unit-test runner with V3_TEST_PROD_COMPILER=1 shares a production build of this
+	// compiler; a copy of it saves a second one.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('V3_TEST_PROD_COMPILER') == '1' && os.is_executable(shared_v3)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(parallel_v3_src) {
+		os.cp(shared_v3, v3_bin) or { panic(err) }
+		os.chmod(v3_bin, 0o755) or { panic(err) }
+		return v3_bin
+	}
 	build :=
 		os.exec([@VEXE, '-gc', 'none', '-prealloc', '-prod', '-path',
 			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
