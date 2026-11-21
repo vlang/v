@@ -386,7 +386,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	}
 	mut c_type := ''
 	mut member := g.lit
-	if member in ['fields', 'values', 'attributes', 'variants'] {
+	if member in ['fields', 'values', 'attributes', 'variants', 'methods'] {
 		type_key := g.resolve_declared_type_key(first) or {
 			return g.unsupported('`\$for` over unknown type `${first}`')
 		}
@@ -398,8 +398,8 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		c_type = fastc_c_declared_type_name(fastc_type_key(module_name, g.lit))
 		g.next()
 		g.expect(.dot)!
-		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes', 'variants'] {
-			return g.unsupported('`\$for` only supports `.fields`, `.values`, `.attributes` or `.variants`')
+		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes', 'variants', 'methods'] {
+			return g.unsupported('`\$for` only supports `.fields`, `.values`, `.attributes`, `.variants` or `.methods`')
 		}
 		member = g.lit
 		g.next()
@@ -470,6 +470,11 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 				[]string{}
 			}
 			substituted_bodies << g.substitute_comptime_enum_value(body_source, loop_var, c_type, value_name, attrs)
+		}
+	} else if member == 'methods' {
+		for name, signature in g.comptime_type_methods(c_type) {
+			substituted_bodies << g.substitute_comptime_method(body_source, loop_var, name,
+				signature)
 		}
 	} else {
 		for field in g.struct_field_info[c_type] {
@@ -2537,4 +2542,124 @@ fn (g &Parser) comptime_field_flag(field FastcStructField, flag string) bool {
 	}
 	kind := g.declared_kinds[g.semantic_type_key(core)] or { return false }
 	return (flag == 'is_struct' && kind == .struct_) || (flag == 'is_enum' && kind == .enum_)
+}
+
+// comptime_type_methods lists the methods with a receiver of the declared C type
+// `c_type`, in declaration order, for `$for method in T.methods`.
+fn (g &Parser) comptime_type_methods(c_type string) map[string]FastcFunctionSignature {
+	type_key := flat.source_type_name(g.semantic_type_key(flat.source_type_id(c_type)))
+	prefix := type_key + '.'
+	mut found := []FastcFunctionSignature{}
+	mut names := []string{}
+	for key, signature in g.functions {
+		if !key.starts_with(prefix) || signature.is_static_method || signature.is_disabled {
+			continue
+		}
+		name := key[prefix.len..]
+		if name.contains('.') {
+			continue
+		}
+		mut index := found.len
+		for index > 0 && (found[index - 1].path > signature.path
+			|| (found[index - 1].path == signature.path && found[index - 1].position > signature.position)) {
+			index--
+		}
+		found.insert(index, signature)
+		names.insert(index, name)
+	}
+	mut methods := map[string]FastcFunctionSignature{}
+	for index, name in names {
+		methods[name] = found[index]
+	}
+	return methods
+}
+
+// substitute_comptime_method rewrites one `$for method in T.methods` body: `<var>.name`
+// becomes the method name literal, `x.$<var>(...)` a direct call, and
+// `<var>.return_type is <Type>` a literal `true`/`false`.
+fn (g &Parser) substitute_comptime_method(source_file FastcSourceFile, loop_var string, method_name string, signature FastcFunctionSignature) FastcSourceFile {
+	body := source_file.source
+	file := token.File.unindexed('cm', body.len)
+	mut s := scanner.new_scanner(g.prefs, .normal)
+	s.init(file, body)
+	mut edits := []FastcSourceEdit{}
+	mut previous := token.Token.unknown
+	mut tok := s.scan()
+	for tok != .eof {
+		if tok == .dollar && previous == .dot {
+			dollar_pos := s.pos
+			name_tok := s.scan()
+			if fastc_comptime_loop_var_token(name_tok) && s.lit == loop_var {
+				edits << FastcSourceEdit{
+					start:       dollar_pos
+					end:         s.offset
+					replacement: method_name
+				}
+				previous = .name
+				tok = s.scan()
+				continue
+			}
+			previous = .dollar
+			tok = name_tok
+			continue
+		}
+		if fastc_comptime_loop_var_token(tok) && s.lit == loop_var && previous != .dot {
+			var_pos := s.pos
+			after := s.scan()
+			if after == .dot {
+				member := s.scan()
+				if member == .name && s.lit == 'name' {
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         s.offset
+						replacement: "'${method_name}'"
+					}
+					previous = .string
+					tok = s.scan()
+					continue
+				}
+				if member == .name && s.lit == 'return_type' {
+					is_tok := s.scan()
+					if is_tok == .key_is {
+						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
+						if type_c != '' {
+							matches := if type_c.starts_with('?') {
+								signature.return_type == fastc_type_option
+									&& signature.option_type == flat.source_type_id(type_c[1..])
+							} else if type_c.starts_with('@') {
+								g.comptime_type_matches(signature.return_type, flat.source_type_id(type_c[1..]),
+									true)
+							} else {
+								signature.return_type == flat.source_type_id(type_c)
+							}
+							edits << FastcSourceEdit{
+								start:       var_pos
+								end:         type_end
+								replacement: if matches { 'true' } else { 'false' }
+							}
+							previous = if matches {
+								token.Token.key_true
+							} else {
+								token.Token.key_false
+							}
+							tok = next_after
+							continue
+						}
+					}
+					previous = is_tok
+					tok = is_tok
+					continue
+				}
+				previous = member
+				tok = s.scan()
+				continue
+			}
+			previous = after
+			tok = after
+			continue
+		}
+		previous = tok
+		tok = s.scan()
+	}
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }

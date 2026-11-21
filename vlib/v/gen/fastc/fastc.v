@@ -952,6 +952,8 @@ struct FastcFunctionSignature {
 	is_c_extern                   bool
 	is_markused                   bool
 	is_global                     bool
+	// A static method (`fn Type.new()`) shares the method key format, but has no receiver.
+	is_static_method bool
 	// Leading array dimensions before a stored function value's signature.
 	callable_index_depth int
 	export_name          string
