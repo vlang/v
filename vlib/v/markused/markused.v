@@ -726,252 +726,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		contains2_total = scan.contains2_total
 	}
 
-	// BFS from main
-	mut used := map[string]bool{}
-	used.reserve(u32(fn_decls.len))
-	mut queue := []string{cap: fn_decls.len}
-	reachable_modules := if use_prepared {
-		map[string]bool{}
-	} else {
-		markused_reachable_modules(a, tc)
-	}
-	queue << 'main'
-	used['main'] = true
-	if cache_mode {
-		// Cached bodies can call an interface without exposing that call in their
-		// declaration header. Keep the program's implementations and their callees.
-		for iface_name_source_id in tc.interface_names.keys() {
-			iface_name := flat.source_type_name(iface_name_source_id)
-			iface_id := iface_name_source_id
-			for method in tc.interface_abstract_method_names(iface_id) {
-				key := tc.interface_method_signature_key(iface_id, method) or { continue }
-				if cache_modules[iface_name.all_before_last('.')]
-					|| (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
-					enqueue('${iface_name}.${method}', mut used, mut queue)
-				}
-			}
-		}
-		// Cached IError dispatchers name every implementer's methods, even when
-		// their callers have no body in the warm AST. Cgen emits these methods,
-		// so retain their transformations and the helpers their bodies call.
-		for impl_source_id in tc.ierror_impl_names() {
-			for method in ['msg', 'code'] {
-				for alias in interface_implementer_method_aliases(impl_source_id, method, tc) {
-					enqueue(alias, mut used, mut queue)
-				}
-			}
-		}
-	}
-	$if ownership ? {
-		// Ownership cleanup and clone lowering emits direct C references to these
-		// process-wide IError sentinels. They have no source-AST reference for the
-		// ordinary markused traversal to discover, so root their const declarations.
-		for seed in ['builtin.none__', 'builtin.error_sentinel'] {
-			enqueue(seed, mut used, mut queue)
-		}
-		// The `_result` destructor names every IError implementer's destructor, with no
-		// source-AST call site to follow. The branch below emits it too, so root them here.
-		ierror_destructor := if tc.autofree_mode { 'free' } else { 'drop' }
-		for impl_source_id_2 in tc.ierror_impl_names() {
-			for alias in interface_implementer_method_aliases(impl_source_id_2, ierror_destructor, tc) {
-				enqueue(alias, mut used, mut queue)
-			}
-		}
-	}
-	enqueue_main_module_roots(fn_decls, mut used, mut queue)
-	if use_prepared {
-		for root in prepared.auto_roots {
-			enqueue(root, mut used, mut queue)
-		}
-	} else {
-		enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
-	}
-	enqueue_implicit_global_container_roots(a, tc, fn_decls, fn_decl_lists, mut used, mut queue)
-	for root in marked_roots {
-		enqueue(root, mut used, mut queue)
-	}
-	// Overflow calls are introduced by C generation after reachability has been
-	// computed. The synthetic `builtin.overflow` import exists only for
-	// `-check-overflow` and `-check-casts`, so its declarations are the signal to retain the helper
-	// bodies that those generated calls need.
-	if 'builtin.overflow.add_i8' in fn_decls || 'overflow.add_i8' in fn_decls {
-		for op in ['add', 'sub', 'mul', 'shl', 'shr'] {
-			for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
-				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
-				enqueue('overflow.${op}_${typ}', mut used, mut queue)
-			}
-		}
-		for op in ['neg', 'div', 'mod'] {
-			for typ in ['i8', 'i16', 'i32', 'i64'] {
-				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
-				enqueue('overflow.${op}_${typ}', mut used, mut queue)
-			}
-		}
-		for name in ['cast_overflow_signed', 'cast_overflow_unsigned'] {
-			enqueue('builtin.overflow.${name}', mut used, mut queue)
-			enqueue('overflow.${name}', mut used, mut queue)
-		}
-	}
-	// Interface dispatchers are generated after reachability has been computed.
-	// When the program can load V shared libraries, they forward type tags they do
-	// not implement to the libraries' dispatchers through this lookup.
-	if 'dl.interface_export_find' in fn_decls {
-		enqueue('dl.interface_export_find', mut used, mut queue)
-	}
-	// Exported functions are externally reachable even when the input has no V
-	// entry point (for example `-is_o` modules called from C).
-	enqueue_export_roots(a, tc, mut used, mut queue)
-	if trivial_literal_output {
-		// Bounds-checking helpers are part of the generated C prelude even when the
-		// user program only prints a literal. Their diagnostics stringify indexes
-		// and release intermediate concatenations after markused has run.
-		for seed in ['strconv.format_int', 'string.free', 'string__free'] {
-			enqueue(seed, mut used, mut queue)
-		}
-		// Linux backtraces add strings.Builder to the otherwise minimal runtime.
-		// Its C bodies and map diagnostics contain calls lowered after markused.
-		if 'strings.Builder.str' in fn_decls || 'Builder.str' in fn_decls {
-			for seed in ['strconv.format_uint', 'u8.ascii_str', 'byteptr.vstring_with_len', 'array.push',
-				'array__push', 'array.free', 'array__free', 'int.str'] {
-				enqueue(seed, mut used, mut queue)
-			}
-		}
-	}
-	if !trivial_literal_output {
-		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
-		enqueue_test_file_roots(a, test_files, mut used, mut queue)
-		for seed in library_seeds {
-			queue << seed
-			used[seed] = true
-		}
-		// Parallel compiler callbacks and channel runtime helpers contain calls that
-		// are only selected after markused (by prealloc/worker lowering). Keep their
-		// concrete callees available for self-hosted compiler builds.
-		for seed in parallel_callback_seeds {
-			queue << seed
-			used[seed] = true
-		}
-		for seed in core_runtime_seeds {
-			if reachable_runtime_helpers && markused_is_map_runtime_seed(seed) {
-				continue
-			}
-			queue << seed
-			used[seed] = true
-		}
-		mut runtime_seeds := lowered_runtime_seeds.clone()
-		if !tc.nofloat && !reachable_runtime_helpers {
-			runtime_seeds << float_runtime_seeds
-		}
-		for seed in runtime_seeds {
-			if reachable_runtime_helpers && markused_is_map_runtime_seed(seed) {
-				continue
-			}
-			// Array mutation/reversal methods are reached from explicit source calls.
-			// Reached selectors retain their helpers below, including batch lowering.
-			if reachable_runtime_helpers && seed in ['array.insert', 'array.insert_many',
-				'array.prepend', 'array.reverse', 'array.pop_left', 'array.delete'] {
-				continue
-			}
-			// These utilities have source callers; they are never synthesized by lowering.
-			if reachable_runtime_helpers && seed in ['string.all_before', 'string.all_before_last',
-				'string.all_after', 'string.all_after_last', 'u8.is_letter', 'u8.is_capital',
-				'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower'] {
-				continue
-			}
-			// Conversions need their bodies only when a reached selector names them.
-			if reachable_runtime_helpers && seed in ['[]rune.string', 'Array_u8__bytestr',
-				'Array_u8__hex', 'data_to_hex_string'] {
-				continue
-			}
-			// Float conversion methods have source callers. Ordinary reachability
-			// keeps them when a reached expression actually needs float formatting.
-			if reachable_runtime_helpers
-				&& seed in ['strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64'] {
-				continue
-			}
-			queue << seed
-			used[seed] = true
-		}
-		if !reachable_runtime_helpers {
-			queue << 'array.delete_last'
-			used['array.delete_last'] = true
-		}
-		// Ownership cleanup is synthesized after markused. Its array/map destructors
-		// therefore have no AST call sites for the collector to follow. This also
-		// applies to drop-before-reassignment, which is not part of the exit snapshots.
-		for helper in ownership_runtime_seeds {
-			if reachable_runtime_helpers && markused_is_map_runtime_seed(helper) {
-				continue
-			}
-			enqueue(helper, mut used, mut queue)
-		}
-		for type_name_id in tc.ownership_drop_type_names() {
-			type_name := flat.source_type_name(type_name_id)
-			method := if tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
-			enqueue(method, mut used, mut queue)
-			lowered := markused_c_name(method)
-			if lowered != method {
-				enqueue(lowered, mut used, mut queue)
-			}
-		}
-		for seed in int_str_runtime_seeds {
-			queue << seed
-			used[seed] = true
-		}
-	}
-	// Cached module objects can call generated enum stringifiers from bodies that
-	// are intentionally absent from their public headers. Keep those program-level
-	// helpers even when no visible caller remains in the warm-cache AST. Their enums
-	// can belong to dependencies reloaded from source, not just cached headers.
-	for type_name in cached_header_enum_str_roots {
-		enqueue_enum_str_method(type_name, '', tc, mut used, mut queue)
-	}
-	for name in cache_roots {
-		enqueue(name, mut used, mut queue)
-	}
-	// Only the parser makes debugger statements before this pass, and it counts
-	// them: without one there is no need to read the kind of every node.
-	if a.debugger_stmts > 0 && markused_has_node_kind(a, .debugger_stmt) {
-		enqueue('debug.Debugger.interact', mut used, mut queue)
-		enqueue_debugger_custom_str_methods(tc, mut used, mut queue)
-	}
-	// Trace calls are injected by Cgen after AST reachability has been computed,
-	// so retain their two runtime entry points whenever the debug module exists.
-	enqueue('debug.before_call_hook', mut used, mut queue)
-	enqueue('debug.after_call_hook', mut used, mut queue)
-	if all_functions {
-		for index, node_idx in body_ids {
-			node := a.nodes[node_idx]
-			if node.kind != .fn_decl || markused_fn_decl_is_generic_template(node, a) {
-				continue
-			}
-			enqueue(qualify_fn(body_modules[index], node.value), mut used, mut queue)
-		}
-	}
-
-	if trace_markused {
-		eprintln('markused: fn_count:')
-		eprintln(fn_count.str())
-		eprintln('fn_with_dot:')
-		eprintln(fn_with_dot.str())
-		eprintln('contains2_total:')
-		eprintln(contains2_total.str())
-		eprintln('markused: main in fn_decls: ${'main' in fn_decls}')
-		eprintln('markused: fn_decls count: ${fn_decls.len}')
-		eprintln('markused: suffix_map count: ${suffix_map.len}')
-		mut total_suffix_entries := 0
-		for _, vals in suffix_map {
-			total_suffix_entries += vals.len
-		}
-		eprintln('total suffix_map entries (sum of array lens):')
-		eprintln(total_suffix_entries.str())
-	}
-
-	mut suffix_hits := 0
-	// mut suffix_misses := 0
-	mut in_cg := 0
-	mut not_in_cg := 0
-	mut total_callees := 0
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
 	auto_str_skipped_fields := if reachable_runtime_helpers || !has_entry_main {
 		markused_auto_str_skipped_fields(a)
@@ -1080,6 +834,254 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		seed_tc.share_ierror_impl_names_from(tc)
 		seed_collector = collector.fork_with_tc(seed_tc)
 	}
+	// The roots below are seeded while the pool collects bodies (see above), so
+	// they query `seed_tc` like the roots that follow them.
+	// BFS from main
+	mut used := map[string]bool{}
+	used.reserve(u32(fn_decls.len))
+	mut queue := []string{cap: fn_decls.len}
+	reachable_modules := if use_prepared {
+		map[string]bool{}
+	} else {
+		markused_reachable_modules(a, seed_tc)
+	}
+	queue << 'main'
+	used['main'] = true
+	if cache_mode {
+		// Cached bodies can call an interface without exposing that call in their
+		// declaration header. Keep the program's implementations and their callees.
+		for iface_name_source_id in seed_tc.interface_names.keys() {
+			iface_name := flat.source_type_name(iface_name_source_id)
+			iface_id := iface_name_source_id
+			for method in seed_tc.interface_abstract_method_names(iface_id) {
+				key := seed_tc.interface_method_signature_key(iface_id, method) or { continue }
+				if cache_modules[iface_name.all_before_last('.')]
+					|| (seed_tc.fn_type_files[key] or { '' }).ends_with('.vh') {
+					enqueue('${iface_name}.${method}', mut used, mut queue)
+				}
+			}
+		}
+		// Cached IError dispatchers name every implementer's methods, even when
+		// their callers have no body in the warm AST. Cgen emits these methods,
+		// so retain their transformations and the helpers their bodies call.
+		for impl_source_id in seed_tc.ierror_impl_names() {
+			for method in ['msg', 'code'] {
+				for alias in interface_implementer_method_aliases(impl_source_id, method, seed_tc) {
+					enqueue(alias, mut used, mut queue)
+				}
+			}
+		}
+	}
+	$if ownership ? {
+		// Ownership cleanup and clone lowering emits direct C references to these
+		// process-wide IError sentinels. They have no source-AST reference for the
+		// ordinary markused traversal to discover, so root their const declarations.
+		for seed in ['builtin.none__', 'builtin.error_sentinel'] {
+			enqueue(seed, mut used, mut queue)
+		}
+		// The `_result` destructor names every IError implementer's destructor, with no
+		// source-AST call site to follow. The branch below emits it too, so root them here.
+		ierror_destructor := if seed_tc.autofree_mode { 'free' } else { 'drop' }
+		for impl_source_id_2 in seed_tc.ierror_impl_names() {
+			for alias in interface_implementer_method_aliases(impl_source_id_2, ierror_destructor, seed_tc) {
+				enqueue(alias, mut used, mut queue)
+			}
+		}
+	}
+	enqueue_main_module_roots(fn_decls, mut used, mut queue)
+	if use_prepared {
+		for root in prepared.auto_roots {
+			enqueue(root, mut used, mut queue)
+		}
+	} else {
+		enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
+	}
+	enqueue_implicit_global_container_roots(a, seed_tc, fn_decls, fn_decl_lists, mut used, mut queue)
+	for root in marked_roots {
+		enqueue(root, mut used, mut queue)
+	}
+	// Overflow calls are introduced by C generation after reachability has been
+	// computed. The synthetic `builtin.overflow` import exists only for
+	// `-check-overflow` and `-check-casts`, so its declarations are the signal to retain the helper
+	// bodies that those generated calls need.
+	if 'builtin.overflow.add_i8' in fn_decls || 'overflow.add_i8' in fn_decls {
+		for op in ['add', 'sub', 'mul', 'shl', 'shr'] {
+			for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
+		for op in ['neg', 'div', 'mod'] {
+			for typ in ['i8', 'i16', 'i32', 'i64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
+		for name in ['cast_overflow_signed', 'cast_overflow_unsigned'] {
+			enqueue('builtin.overflow.${name}', mut used, mut queue)
+			enqueue('overflow.${name}', mut used, mut queue)
+		}
+	}
+	// Interface dispatchers are generated after reachability has been computed.
+	// When the program can load V shared libraries, they forward type tags they do
+	// not implement to the libraries' dispatchers through this lookup.
+	if 'dl.interface_export_find' in fn_decls {
+		enqueue('dl.interface_export_find', mut used, mut queue)
+	}
+	// Exported functions are externally reachable even when the input has no V
+	// entry point (for example `-is_o` modules called from C).
+	enqueue_export_roots(a, seed_tc, mut used, mut queue)
+	if trivial_literal_output {
+		// Bounds-checking helpers are part of the generated C prelude even when the
+		// user program only prints a literal. Their diagnostics stringify indexes
+		// and release intermediate concatenations after markused has run.
+		for seed in ['strconv.format_int', 'string.free', 'string__free'] {
+			enqueue(seed, mut used, mut queue)
+		}
+		// Linux backtraces add strings.Builder to the otherwise minimal runtime.
+		// Its C bodies and map diagnostics contain calls lowered after markused.
+		if 'strings.Builder.str' in fn_decls || 'Builder.str' in fn_decls {
+			for seed in ['strconv.format_uint', 'u8.ascii_str', 'byteptr.vstring_with_len', 'array.push',
+				'array__push', 'array.free', 'array__free', 'int.str'] {
+				enqueue(seed, mut used, mut queue)
+			}
+		}
+	}
+	if !trivial_literal_output {
+		enqueue_veb_handler_roots(a, seed_tc, mut used, mut queue)
+		enqueue_test_file_roots(a, test_files, mut used, mut queue)
+		for seed in library_seeds {
+			queue << seed
+			used[seed] = true
+		}
+		// Parallel compiler callbacks and channel runtime helpers contain calls that
+		// are only selected after markused (by prealloc/worker lowering). Keep their
+		// concrete callees available for self-hosted compiler builds.
+		for seed in parallel_callback_seeds {
+			queue << seed
+			used[seed] = true
+		}
+		for seed in core_runtime_seeds {
+			if reachable_runtime_helpers && markused_is_map_runtime_seed(seed) {
+				continue
+			}
+			queue << seed
+			used[seed] = true
+		}
+		mut runtime_seeds := lowered_runtime_seeds.clone()
+		if !seed_tc.nofloat && !reachable_runtime_helpers {
+			runtime_seeds << float_runtime_seeds
+		}
+		for seed in runtime_seeds {
+			if reachable_runtime_helpers && markused_is_map_runtime_seed(seed) {
+				continue
+			}
+			// Array mutation/reversal methods are reached from explicit source calls.
+			// Reached selectors retain their helpers below, including batch lowering.
+			if reachable_runtime_helpers && seed in ['array.insert', 'array.insert_many',
+				'array.prepend', 'array.reverse', 'array.pop_left', 'array.delete'] {
+				continue
+			}
+			// These utilities have source callers; they are never synthesized by lowering.
+			if reachable_runtime_helpers && seed in ['string.all_before', 'string.all_before_last',
+				'string.all_after', 'string.all_after_last', 'u8.is_letter', 'u8.is_capital',
+				'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower'] {
+				continue
+			}
+			// Conversions need their bodies only when a reached selector names them.
+			if reachable_runtime_helpers && seed in ['[]rune.string', 'Array_u8__bytestr',
+				'Array_u8__hex', 'data_to_hex_string'] {
+				continue
+			}
+			// Float conversion methods have source callers. Ordinary reachability
+			// keeps them when a reached expression actually needs float formatting.
+			if reachable_runtime_helpers
+				&& seed in ['strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64'] {
+				continue
+			}
+			queue << seed
+			used[seed] = true
+		}
+		if !reachable_runtime_helpers {
+			queue << 'array.delete_last'
+			used['array.delete_last'] = true
+		}
+		// Ownership cleanup is synthesized after markused. Its array/map destructors
+		// therefore have no AST call sites for the collector to follow. This also
+		// applies to drop-before-reassignment, which is not part of the exit snapshots.
+		for helper in ownership_runtime_seeds {
+			if reachable_runtime_helpers && markused_is_map_runtime_seed(helper) {
+				continue
+			}
+			enqueue(helper, mut used, mut queue)
+		}
+		for type_name_id in seed_tc.ownership_drop_type_names() {
+			type_name := flat.source_type_name(type_name_id)
+			method := if seed_tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
+			enqueue(method, mut used, mut queue)
+			lowered := markused_c_name(method)
+			if lowered != method {
+				enqueue(lowered, mut used, mut queue)
+			}
+		}
+		for seed in int_str_runtime_seeds {
+			queue << seed
+			used[seed] = true
+		}
+	}
+	// Cached module objects can call generated enum stringifiers from bodies that
+	// are intentionally absent from their public headers. Keep those program-level
+	// helpers even when no visible caller remains in the warm-cache AST. Their enums
+	// can belong to dependencies reloaded from source, not just cached headers.
+	for type_name in cached_header_enum_str_roots {
+		enqueue_enum_str_method(type_name, '', seed_tc, mut used, mut queue)
+	}
+	for name in cache_roots {
+		enqueue(name, mut used, mut queue)
+	}
+	// Only the parser makes debugger statements before this pass, and it counts
+	// them: without one there is no need to read the kind of every node.
+	if a.debugger_stmts > 0 && markused_has_node_kind(a, .debugger_stmt) {
+		enqueue('debug.Debugger.interact', mut used, mut queue)
+		enqueue_debugger_custom_str_methods(seed_tc, mut used, mut queue)
+	}
+	// Trace calls are injected by Cgen after AST reachability has been computed,
+	// so retain their two runtime entry points whenever the debug module exists.
+	enqueue('debug.before_call_hook', mut used, mut queue)
+	enqueue('debug.after_call_hook', mut used, mut queue)
+	if all_functions {
+		for index, node_idx in body_ids {
+			node := a.nodes[node_idx]
+			if node.kind != .fn_decl || markused_fn_decl_is_generic_template(node, a) {
+				continue
+			}
+			enqueue(qualify_fn(body_modules[index], node.value), mut used, mut queue)
+		}
+	}
+
+	if trace_markused {
+		eprintln('markused: fn_count:')
+		eprintln(fn_count.str())
+		eprintln('fn_with_dot:')
+		eprintln(fn_with_dot.str())
+		eprintln('contains2_total:')
+		eprintln(contains2_total.str())
+		eprintln('markused: main in fn_decls: ${'main' in fn_decls}')
+		eprintln('markused: fn_decls count: ${fn_decls.len}')
+		eprintln('markused: suffix_map count: ${suffix_map.len}')
+		mut total_suffix_entries := 0
+		for _, vals in suffix_map {
+			total_suffix_entries += vals.len
+		}
+		eprintln('total suffix_map entries (sum of array lens):')
+		eprintln(total_suffix_entries.str())
+	}
+
+	mut suffix_hits := 0
+	// mut suffix_misses := 0
+	mut in_cg := 0
+	mut not_in_cg := 0
+	mut total_callees := 0
 	needs_closure_runtime := if reachable_runtime_helpers {
 		markused_has_closure_runtime_import(a)
 	} else if use_prepared && prepared.needs_closure_runtime {
