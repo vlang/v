@@ -3275,7 +3275,9 @@ fn (g &Parser) struct_equality_is_supported_visit(typ u32, mut visited map[u32]b
 	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
 		return true
 	}
-	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_ || flat.source_type_name(layout_type) !in g.struct_field_info {
+	if (type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_
+		|| flat.source_type_name(layout_type) !in g.struct_field_info)
+		&& !g.is_c_struct_with_fields(layout_type) {
 		return false
 	}
 	for field in g.struct_field_info[flat.source_type_name(layout_type)] {
@@ -3285,6 +3287,18 @@ fn (g &Parser) struct_equality_is_supported_visit(typ u32, mut visited map[u32]b
 		}
 	}
 	return true
+}
+
+// is_c_struct_with_fields reports whether `layout_type` is a C struct whose fields V declares
+// (`struct C.rect { x f64 }`); V compares such structs field by field, like its own structs.
+fn (g &Parser) is_c_struct_with_fields(layout_type u32) bool {
+	name := flat.source_type_name(layout_type)
+	if name !in g.struct_field_info || g.struct_field_info[name].len == 0 {
+		return false
+	}
+	bare := name.trim_string_left('struct ')
+	return fastc_source_type_key_exists(g.declared_types, '#Cstruct#${bare}')
+		|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${bare}')
 }
 
 // stored_equality_source compares two values held as an array holds its elements: a fixed
@@ -3392,7 +3406,8 @@ fn (g &Parser) struct_equality_source(left string, right string, typ u32, seen [
 	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
 		return '((${left}) == (${right}))'
 	}
-	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_ || layout_type in seen {
+	if (type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_
+		|| layout_type in seen) && !(layout_type !in seen && g.is_c_struct_with_fields(layout_type)) {
 		return '((${left}) == (${right}))'
 	}
 	mut nested_seen := seen.clone()
@@ -3557,7 +3572,9 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 				}
 			}
 			left_key := g.semantic_type_key(left_layout_id)
-			if left_layout != right_layout || left_key !in g.declared_kinds || g.declared_kinds[left_key] != .struct_ || !g.struct_equality_is_supported(left_type, []u32{}) {
+			is_v_struct := left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
+			if left_layout != right_layout || !(is_v_struct || g.is_c_struct_with_fields(left_layout_id))
+				|| !g.struct_equality_is_supported(left_type, []u32{}) {
 				return none
 			}
 			mut left := g.render_comparison_operand(left_tokens, left_type) or { return none }
