@@ -83,27 +83,38 @@ fn add_windows_long_path_manifest(exe_path string) !bool {
 	return true
 }
 
-fn ensure_windows_long_path_manifest(exe_path string, is_msvc bool, report_failure bool) {
+// ensure_windows_long_path_manifest gives the executable its manifest sidecar (or removes
+// one of an earlier build, for MSVC). With `trace` the step that was done is printed.
+fn ensure_windows_long_path_manifest(exe_path string, is_msvc bool, report_failure bool, trace bool) {
 	if is_msvc {
 		// An earlier build of the same output may have generated a sidecar. Keep
 		// user manifests, but do not opt MSVC's dbghelp startup into long paths.
-		remove_generated_windows_long_path_manifest(exe_path)
+		if remove_generated_windows_long_path_manifest(exe_path) {
+			print_post_link_step(trace, windows_manifest_step(exe_path, true))
+		}
 		return
 	}
-	add_windows_long_path_manifest(exe_path) or {
+	wrote := add_windows_long_path_manifest(exe_path) or {
 		if report_failure {
 			eprintln('warning: ${exe_path} is not longPathAware: ${err.msg()}')
 		}
 		false
 	}
+	if wrote {
+		print_post_link_step(trace, windows_manifest_step(exe_path, false))
+	}
 }
 
-fn remove_generated_windows_long_path_manifest(exe_path string) {
+// remove_generated_windows_long_path_manifest removes the sidecar that a build of V wrote,
+// and reports whether it did.
+fn remove_generated_windows_long_path_manifest(exe_path string) bool {
 	if contents := os.read_file('${exe_path}.manifest') {
 		if contents == windows_long_path_manifest {
-			os.rm('${exe_path}.manifest') or {}
+			os.rm('${exe_path}.manifest') or { return false }
+			return true
 		}
 	}
+	return false
 }
 
 fn windows_resource_id(id int) voidptr {

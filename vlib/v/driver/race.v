@@ -122,15 +122,17 @@ fn v3_race_c_compiler_hint(output string) string {
 // to the final binary. On macOS they stay in the object files, and `clang -g` writes a
 // `.dSYM` bundle beside its temporary output only when it compiles and links in one step.
 // Without them debuggers and the TSan symbolizer (atos) cannot recover file:line positions.
-fn v3_keep_macos_debug_symbols(staged_binary string, bin_file string) {
+fn v3_keep_macos_debug_symbols(staged_binary string, bin_file string, trace bool) {
 	target_dsym := bin_file + '.dSYM'
 	os.rmdir_all(target_dsym) or {}
 	staged_dsym := staged_binary + '.dSYM'
 	if os.is_dir(staged_dsym) {
+		print_post_link_step(trace, macos_dsym_move_step(staged_dsym, target_dsym))
 		os.mv(staged_dsym, target_dsym) or {}
 		return
 	}
 	dsymutil := os.find_abs_path_of_executable('dsymutil') or { return }
+	print_post_link_step(trace, macos_dsym_step(dsymutil, bin_file, target_dsym))
 	os.exec(['${dsymutil}', bin_file, '-o', '${target_dsym}'])
 }
 
