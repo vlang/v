@@ -1192,6 +1192,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut call_symbols := []types.SymbolId{cap: 128}
 	mut last_module_name := ''
 	mut last_module_calls := &ModuleCalls(unsafe { nil })
+	// The last dot segment of every interface and alias name. A call can only
+	// dispatch through an interface when its receiver ends in one of them (see
+	// the interface tail of the walk). Trusted while both tables keep their size.
+	mut iface_receiver_segments := map[string]bool{}
+	for iface_id, _ in tc.interface_names {
+		iface_receiver_segments[flat.source_type_name(iface_id).all_after_last('.')] = true
+	}
+	for alias_id, _ in tc.type_aliases.ids {
+		iface_receiver_segments[flat.source_type_name(alias_id).all_after_last('.')] = true
+	}
+	iface_receiver_tables_len := tc.interface_names.len + tc.type_aliases.ids.len
 	seeds_done_us := mu_sw.elapsed().microseconds()
 	// The calls of the constant initializers that reached bodies refer to, by the
 	// node of the initializer, where they were collected ahead of the walk.
@@ -1703,6 +1714,16 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						iface_tail_pending = true
 					}
 				}
+				if iface_tail_pending && callee_last_dot >= 0
+					&& iface_receiver_tables_len == tc.interface_names.len + tc.type_aliases.ids.len
+					&& !markused_receiver_segment_in(callee, callee_last_dot, iface_receiver_segments) {
+					// The receiver of a dotted callee is an interface, an alias of
+					// one, or either of those once qualified by the calling module,
+					// only when such a name ends in its last segment. For any other
+					// receiver the tail below finds no interface and no implementer
+					// list, in whatever module the call is.
+					iface_tail_pending = false
+				}
 				if iface_tail_pending {
 					mut iface_callee := callee
 					if normalized := interface_dispatch_dotted_name(callee, tc) {
@@ -2196,6 +2217,18 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 	}
 	lowered := markused_c_name(qname)
 	return lowered != qname && name == lowered
+}
+
+// markused_receiver_segment_in reports whether `segments` has the last dot
+// segment of the receiver of the dotted name `name`, whose last dot is at
+// `last_dot`: `Type` for `mod.Type.method`.
+@[direct_array_access]
+fn markused_receiver_segment_in(name string, last_dot int, segments map[string]bool) bool {
+	mut start := last_dot
+	for start > 0 && name[start - 1] != `.` {
+		start--
+	}
+	return unsafe { name.substr_unsafe(start, last_dot) } in segments
 }
 
 // markused_fn_decl_key_is_exact is fn_decl_key_is_exact_for_info for a
