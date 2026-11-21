@@ -1,6 +1,7 @@
 module picohttpparser
 
 $if windows {
+	#flag -lws2_32
 	// Declares `send`; a cached module object does not get it from another module.
 	#include <winsock2.h>
 	// winsock2.h declares `send` as an import (`__imp_send`), which ws2_32 provides.
