@@ -5,23 +5,23 @@ import time
 
 struct InsertOnlyAudit {
 mut:
-	creator string @[sql_insert_only; sql: 'created_by']
+	creator string @[immutable; sql: 'created_by']
 }
 
 struct InsertOnlyRecord {
 	InsertOnlyAudit
 mut:
-	id         int       @[primary; sql_insert_only]
-	created_at time.Time @[sql_insert_only]
-	note       ?string   @[sql_insert_only]
-	status     string    @[sql_insert_only; default: '`new`']
+	id         int       @[primary; immutable]
+	created_at time.Time @[immutable]
+	note       ?string   @[immutable]
+	status     string    @[immutable; default: '`new`']
 	name       string
 }
 
 struct InsertOnlyKey {
 mut:
-	id    int     @[primary; sql_insert_only]
-	value ?string @[sql_insert_only]
+	id    int     @[primary; immutable]
+	value ?string @[immutable]
 }
 
 fn test_insert_only_fields_allow_inserts_reads_filters_and_memory_mutation() {
@@ -205,8 +205,8 @@ fn test_upsert_inserts_protected_values_and_preserves_them_on_conflict() {
 
 struct InsertOnlyUpsertRecord {
 mut:
-	id      int    @[primary; sql_insert_only]
-	creator string @[sql_insert_only; sql: 'created_by']
+	id      int    @[primary; immutable]
+	creator string @[immutable; sql: 'created_by']
 	name    string
 }
 
@@ -242,7 +242,7 @@ fn test_empty_save_and_bulk_update_return_errors() {
 }
 
 struct InsertOnlySerialRecord {
-	id   int @[primary; sql: serial; sql_insert_only]
+	id   int @[primary; sql: serial; immutable]
 	name string
 }
 
@@ -263,7 +263,7 @@ fn test_insert_only_serial_primary_keys_are_generated() {
 struct InsertOnlyRenamedRecord {
 mut:
 	id      int    @[primary]
-	creator string @[sql_insert_only; sql: 'created_by']
+	creator string @[immutable; sql: 'created_by']
 	name    string @[sql: 'creator']
 }
 
