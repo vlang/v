@@ -111,6 +111,36 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 	}
 }
 
+// erased_generic_struct_literal_type resolves `Box[int]` and `mod.Box[int]` in a struct
+// literal to the generic struct's erased layout, as field and parameter types already
+// are, when the generic struct was not monomorphized (outside the entry module).
+fn (g &Parser) erased_generic_struct_literal_type(tokens []FastcExpressionToken) ?u32 {
+	if tokens.len < 4 || tokens.last().tok != .rsbr {
+		return none
+	}
+	name_end := if tokens[1].tok == .lsbr {
+		1
+	} else if tokens.len >= 6 && tokens[1].tok == .dot && tokens[2].tok == .name
+		&& tokens[3].tok == .lsbr {
+		3
+	} else {
+		return none
+	}
+	if tokens[0].tok != .name || tokens[name_end - 1].lit.len == 0
+		|| !tokens[name_end - 1].lit[0].is_capital() {
+		return none
+	}
+	close := fastc_matching_delimiter(tokens, name_end, .lsbr, .rsbr) or { return none }
+	if close != tokens.len - 1 || close == name_end + 1 {
+		return none
+	}
+	base := g.type_from_expression_tokens(tokens[..name_end]) or { return none }
+	if g.declared_kinds[g.semantic_type_key(base)] !in [.struct_, .union_] {
+		return none
+	}
+	return base
+}
+
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	mut open := -1
 	mut delimiter_depth := 0
@@ -135,7 +165,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	mut c_type := if open == 1 && tokens[0].typ != 0 {
 		tokens[0].typ
 	} else {
-		g.type_from_expression_tokens(tokens[..open]) or { u32(0) }
+		g.type_from_expression_tokens(tokens[..open]) or {
+			g.erased_generic_struct_literal_type(tokens[..open]) or { u32(0) }
+		}
 	}
 	if c_type == 0 && is_c_struct_literal {
 		c_type = flat.source_type_id(if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${tokens[2].lit}') {

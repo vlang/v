@@ -1805,7 +1805,10 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 			}
 		}
 	}
-	if !is_struct_literal && brace_depth > 0 {
+	if !is_struct_literal && (brace_depth > 0 || (previous_token == .rsbr
+		&& g.erased_generic_struct_literal_type(fastc_generic_type_suffix(expression_tokens[..end])) != none)) {
+		// A top-level `Box[int]{` opens a literal of an erased generic struct; keep its
+		// lines together, as for nested literals. It is rendered once complete.
 		brace_depth++
 		piece = '{'
 	}
@@ -1813,6 +1816,34 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 		piece:       piece
 		brace_depth: brace_depth
 	}
+}
+
+// fastc_generic_type_suffix returns the trailing `Name[...]` or `mod.Name[...]` tokens.
+fn fastc_generic_type_suffix(tokens []FastcExpressionToken) []FastcExpressionToken {
+	if tokens.len < 4 || tokens.last().tok != .rsbr {
+		return []FastcExpressionToken{}
+	}
+	mut depth := 0
+	mut open := tokens.len - 1
+	for open >= 0 {
+		if tokens[open].tok == .rsbr {
+			depth++
+		} else if tokens[open].tok == .lsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		open--
+	}
+	if open < 1 || tokens[open - 1].tok != .name {
+		return []FastcExpressionToken{}
+	}
+	mut start := open - 1
+	if start >= 2 && tokens[start - 1].tok == .dot && tokens[start - 2].tok == .name {
+		start -= 2
+	}
+	return tokens[start..]
 }
 
 struct FastcEnumShorthandRewrite {
