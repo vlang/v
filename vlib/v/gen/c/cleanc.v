@@ -3909,9 +3909,16 @@ fn (mut g FlatGen) flush_and_restart_scoped_output(path string, append bool, sco
 fn (mut g FlatGen) release_scoped_fn_items() {
 	if g.object_file_mode {
 		// Export wrappers are emitted after the object-local linkage pragma is
-		// popped, so retain their function metadata until final output.
+		// popped, so retain their function metadata until final output, which
+		// frees it with free_scoped_fn_items once the wrappers are written.
 		return
 	}
+	g.free_scoped_fn_items()
+}
+
+// free_scoped_fn_items frees the arena of the function items selected for the
+// parallel generation, once nothing reads them any more.
+fn (mut g FlatGen) free_scoped_fn_items() {
 	if g.scoped_fn_items_scope == unsafe { nil } {
 		return
 	}
@@ -4864,6 +4871,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.object_file_mode {
 		g.emit_object_file_internal_linkage(false)
 		g.emit_object_file_export_wrappers()
+		g.free_scoped_fn_items()
 	}
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_END */')
