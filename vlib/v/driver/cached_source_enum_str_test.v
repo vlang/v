@@ -3,7 +3,9 @@ module driver
 import os
 
 fn test_cached_body_keeps_builtin_enum_stringifier_after_source_refresh() ! {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// The module cache needs clang or gcc. A Windows `clang` usually targets the MSVC
+	// ABI, which V cannot build Windows programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	root := os.join_path(os.vtmp_dir(), 'cached_source_enum_str_${os.getpid()}')
 	app := os.join_path(root, 'app')
 	modules := os.join_path(root, 'modules')
