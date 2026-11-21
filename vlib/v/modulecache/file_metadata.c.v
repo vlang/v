@@ -5,12 +5,20 @@ import time
 
 #flag @VMODROOT/vlib/v/modulecache/file_metadata.o
 
-fn C.v3_modulecache_file_metadata(&char, &u64, &u64, &u64, &u64, &u64, &u64, &u64) int
+fn C.v3_modulecache_file_metadata(&char, int, &u64, &u64, &u64, &u64, &u64, &u64, &u64) int
 
 // coarse_mtime_recent_seconds bounds how long a whole-second modification time
 // counts as too recent to identify the file. FAT and exFAT keep modification
 // times in 2 second steps and HFS+ in 1 second steps.
 const coarse_mtime_recent_seconds = 3
+
+fn C.atomic_load_u32(voidptr) u32
+
+fn C.atomic_store_u32(voidptr, u32)
+
+fn C.atomic_compare_exchange_strong_u32(voidptr, voidptr, u32) bool
+
+fn C.cpu_relax()
 
 // file_metadata_signature returns a precise identity for an unchanged cache input.
 // Include the running compiler build so a memoized source signature cannot survive
@@ -21,25 +29,73 @@ const coarse_mtime_recent_seconds = 3
 // same-size edit could still leave identical metadata. Callers must then compare
 // the file contents instead, see file_change_signature.
 pub fn file_metadata_signature(path string) string {
-	if file_metadata_disabled_for(path) {
+	m := file_metadata_of(path) or { return '' }
+	if coarse_mtime_is_recent(m.mtime_seconds, m.mtime_nanoseconds, time.utc().unix()) {
 		return ''
 	}
-	mut device := u64(0)
-	mut inode := u64(0)
-	mut size := u64(0)
-	mut mtime_seconds := u64(0)
-	mut mtime_nanoseconds := u64(0)
-	mut ctime_seconds := u64(0)
-	mut ctime_nanoseconds := u64(0)
-	result := C.v3_modulecache_file_metadata(&char(path.str), &device, &inode, &size,
-		&mtime_seconds, &mtime_nanoseconds, &ctime_seconds, &ctime_nanoseconds)
-	if result == 0 {
-		return ''
+	return m.signature()
+}
+
+fn (m FileMetadata) signature() string {
+	return '${@VCURRENTHASH}:${m.device}:${m.inode}:${m.size}:${m.mtime_seconds}:${m.mtime_nanoseconds}:${m.ctime_seconds}:${m.ctime_nanoseconds}'
+}
+
+// native_file_signatures_since identifies dependencies reported after a compile.
+// The compiler may have opened an earlier target at any step of a path lookup.
+// Check the change time of the directory entries and symlinks as well as the
+// resolved file, then let the caller carry these identities through publication.
+pub fn native_file_signatures_since(paths []string, started time.Time) ?map[string]string {
+	mut signatures := map[string]string{}
+	cutoff := started.unix_nano()
+	for path in paths {
+		m := file_metadata_of(path) or { return none }
+		if m.changed_since(cutoff)
+			|| coarse_mtime_is_recent(m.mtime_seconds, m.mtime_nanoseconds, started.unix()) {
+			return none
+		}
+		signatures[path] = m.signature()
 	}
-	if coarse_mtime_is_recent(mtime_seconds, mtime_nanoseconds, time.utc().unix()) {
-		return ''
+	// Capture all the file identities first. If a directory was changed before
+	// one of those reads, its later validation must see the change.
+	mut checked := map[string]bool{}
+	for path in paths {
+		if !native_path_unchanged(path, cutoff, 0, mut checked) {
+			return none
+		}
 	}
-	return '${@VCURRENTHASH}:${device}:${inode}:${size}:${mtime_seconds}:${mtime_nanoseconds}:${ctime_seconds}:${ctime_nanoseconds}'
+	return signatures
+}
+
+fn (m FileMetadata) changed_since(cutoff i64) bool {
+	// With whole-second metadata, a change in the same tick is ambiguous.
+	precision := if m.ctime_nanoseconds == 0 { i64(999_999_999) } else { i64(0) }
+	return i64(m.ctime_seconds) * 1_000_000_000 + i64(m.ctime_nanoseconds) + precision >= cutoff
+}
+
+fn native_path_unchanged(path string, cutoff i64, depth int, mut checked map[string]bool) bool {
+	if path in checked {
+		return true
+	}
+	if depth >= 40 {
+		return false
+	}
+	parent := os.dir(path)
+	if parent != path && !native_path_unchanged(parent, cutoff, depth, mut checked) {
+		return false
+	}
+	m := file_metadata_at(path, true) or { return false }
+	if m.changed_since(cutoff) {
+		return false
+	}
+	if m.is_link {
+		link := os.readlink(path) or { return false }
+		target := if os.is_abs_path(link) { link } else { '${parent}${os.path_separator}${link}' }
+		if !native_path_unchanged(target, cutoff, depth + 1, mut checked) {
+			return false
+		}
+	}
+	checked[path] = true
+	return true
 }
 
 // coarse_mtime_is_recent reports whether a modification time without a

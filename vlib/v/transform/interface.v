@@ -1221,12 +1221,12 @@ fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name
 	if t.cur_module.len > 0 {
 		qname := '${t.cur_module}.${name}'
 		if qname != name {
-			if typ := t.tc.file_scope.lookup(qname) {
+			if typ := t.tc.file_scope.lookup_id(flat.source_type_id(qname)) {
 				return t.type_is_pointer_to_interface(typ, iface_name_id)
 			}
 		}
 	}
-	if typ := t.tc.file_scope.lookup(name) {
+	if typ := t.tc.file_scope.lookup_id(flat.source_type_id(name)) {
 		if t.type_is_pointer_to_interface(typ, iface_name_id) {
 			return true
 		}

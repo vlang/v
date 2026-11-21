@@ -3,11 +3,11 @@
 #if defined(__APPLE__) || defined(__linux__)
 #include <sys/stat.h>
 
-int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *inode,
+int v3_modulecache_file_metadata(const char *path, int nofollow, uint64_t *device, uint64_t *inode,
 	uint64_t *size, uint64_t *mtime_seconds, uint64_t *mtime_nanoseconds,
 	uint64_t *ctime_seconds, uint64_t *ctime_nanoseconds) {
 	struct stat info;
-	if (stat(path, &info) != 0) {
+	if ((nofollow ? lstat(path, &info) : stat(path, &info)) != 0) {
 		return 0;
 	}
 	*device = (uint64_t)info.st_dev;
@@ -24,7 +24,7 @@ int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *i
 	*ctime_seconds = (uint64_t)info.st_ctim.tv_sec;
 	*ctime_nanoseconds = (uint64_t)info.st_ctim.tv_nsec;
 #endif
-	return 1;
+	return nofollow && S_ISLNK(info.st_mode) ? 2 : 1;
 }
 #elif defined(_WIN32)
 #include <stdlib.h>
@@ -86,7 +86,7 @@ static uint64_t v3_modulecache_change_time(HANDLE handle) {
 // would make every file on the volume share one identity. Go to the file handle
 // instead: the volume serial number and the 64 bit file index are the real
 // device/inode pair, and they come from the same call as the size and times.
-int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *inode,
+int v3_modulecache_file_metadata(const char *path, int nofollow, uint64_t *device, uint64_t *inode,
 	uint64_t *size, uint64_t *mtime_seconds, uint64_t *mtime_nanoseconds,
 	uint64_t *ctime_seconds, uint64_t *ctime_nanoseconds) {
 	int wide_length = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
@@ -106,13 +106,14 @@ int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *i
 	// same call describe a directory.
 	HANDLE handle = CreateFileW(wide_path, 0,
 		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
-		FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		FILE_FLAG_BACKUP_SEMANTICS | (nofollow ? FILE_FLAG_OPEN_REPARSE_POINT : 0), NULL);
 	free(wide_path);
 	if (handle == INVALID_HANDLE_VALUE) {
 		return 0;
 	}
 	BY_HANDLE_FILE_INFORMATION info;
-	if (!GetFileInformationByHandle(handle, &info)) {
+	if (!GetFileInformationByHandle(handle, &info) ||
+		(nofollow && (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))) {
 		CloseHandle(handle);
 		return 0;
 	}
@@ -135,10 +136,11 @@ int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *i
 	return 1;
 }
 #else
-int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *inode,
+int v3_modulecache_file_metadata(const char *path, int nofollow, uint64_t *device, uint64_t *inode,
 	uint64_t *size, uint64_t *mtime_seconds, uint64_t *mtime_nanoseconds,
 	uint64_t *ctime_seconds, uint64_t *ctime_nanoseconds) {
 	(void)path;
+	(void)nofollow;
 	(void)device;
 	(void)inode;
 	(void)size;

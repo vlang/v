@@ -2,6 +2,19 @@ module flat
 
 import hash
 
+// shard_index returns the current index of the shard that holds `text`.
+fn shard_index(text string) &SourceTypeIndex {
+	return source_type_index_load(source_type_shard_of(u32(hash.sum64_string(text, 0))))
+}
+
+// grow_shard_index doubles the index of the shard that holds `text`.
+fn grow_shard_index(table &SourceTypeTable, text string) {
+	shard := source_type_shard_of(u32(hash.sum64_string(text, 0)))
+	source_type_shard_lock(shard)
+	source_type_grow_index(table, shard)
+	source_type_shard_unlock(shard)
+}
+
 fn test_source_type_recent_cache_checks_borrowed_spelling_after_mutation() {
 	mut bytes := 'source_types.MutableBorrowedInput'.bytes()
 	text := unsafe { tos(bytes.data, bytes.len) }
@@ -18,8 +31,13 @@ fn test_source_type_recent_cache_checks_borrowed_spelling_after_mutation() {
 fn test_existing_source_type_does_not_take_the_insertion_lock() {
 	text := 'source_types.Existing'
 	id := source_type_id(text)
+	shard := source_type_shard_of(u32(hash.sum64_string(text, 0)))
 	source_type_lock()
-	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
+	source_type_shard_lock(shard)
+	defer {
+		source_type_shard_unlock(shard)
+		C.atomic_store_u32(&g_source_types_lock, 0)
+	}
 	assert source_type_id(text.clone()) == id
 	assert source_type_name(id) == text
 }
@@ -27,12 +45,10 @@ fn test_existing_source_type_does_not_take_the_insertion_lock() {
 fn test_source_type_readers_can_finish_on_an_old_index_after_growth() {
 	text := 'source_types.Snapshot'
 	id := source_type_id(text)
-	mut table := source_type_table_load()
-	previous := source_type_index_load()
-	source_type_lock()
-	table.grow()
-	C.atomic_store_u32(&g_source_types_lock, 0)
-	assert previous != source_type_index_load()
+	table := source_type_table_load()
+	previous := shard_index(text)
+	grow_shard_index(table, text)
+	assert previous != shard_index(text)
 	assert source_type_find(table, previous, text, u32(hash.sum64_string(text, 0))) == id
 	assert source_type_id(text) == id
 	new_text := 'source_types.AfterGrowth'
@@ -56,14 +72,12 @@ fn test_source_type_hash_fingerprint_collision_checks_complete_spellings() {
 	assert source_type_id_uncached(right_text) == right
 	assert source_type_name(left) == left_text
 	assert source_type_name(right) == right_text
-	mut table := source_type_table_load()
-	previous := source_type_index_load()
+	table := source_type_table_load()
+	previous := shard_index(left_text)
 	assert source_type_find(table, previous, left_text, u32(left_hash)) == left
 	assert source_type_find(table, previous, right_text, u32(right_hash)) == right
-	source_type_lock()
-	table.grow()
-	C.atomic_store_u32(&g_source_types_lock, 0)
-	current := source_type_index_load()
+	grow_shard_index(table, left_text)
+	current := shard_index(left_text)
 	assert current != previous
 	assert source_type_find(table, current, left_text, u32(left_hash)) == left
 	assert source_type_find(table, current, right_text, u32(right_hash)) == right
@@ -111,10 +125,8 @@ fn intern_source_type_in_disposable_scope() u32 {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
 		id := source_type_id('source_types.Disposable'.clone())
-		mut table := source_type_table_load()
-		source_type_lock()
-		table.grow()
-		C.atomic_store_u32(&g_source_types_lock, 0)
+		table := source_type_table_load()
+		grow_shard_index(table, 'source_types.Disposable')
 		// The process-wide table and its spelling must survive the caller's arena.
 		unsafe {
 			prealloc_scope_leave(scope)
@@ -137,14 +149,12 @@ fn test_source_type_index_and_spelling_outlive_the_inserting_worker() {
 fn test_source_type_growth_retains_all_index_generations() {
 	text := 'source_types.RetainedGeneration'
 	id := source_type_id(text)
-	mut table := source_type_table_load()
-	previous := source_type_index_load()
-	source_type_lock()
+	table := source_type_table_load()
+	previous := shard_index(text)
 	for _ in 0 .. 3 {
-		table.grow()
+		grow_shard_index(table, text)
 	}
-	C.atomic_store_u32(&g_source_types_lock, 0)
-	mut index := source_type_index_load()
+	mut index := shard_index(text)
 	// Reach every replaced generation through the owner, as a reader holding
 	// any of those snapshots may still be probing its slots after publication.
 	for _ in 0 .. 3 {

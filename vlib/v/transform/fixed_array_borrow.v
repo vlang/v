@@ -76,7 +76,7 @@ fn (r &BorrowBodyResult) matches_proven_summaries(t &Transformer) bool {
 // summarises only the declarations appended since; a call into an earlier declaration borrows
 // as its summary says.
 fn (mut t Transformer) prepare_fixed_array_borrow_params() {
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.only_collects_diagnostics() {
 		return
 	}
 	t.borrow_param_mentions = &BorrowParamMentions{}

@@ -688,7 +688,7 @@ fn (mut g FlatGen) gen_loop_control_cleanup(label string, defer_end int) {
 		current_defer_end = range_start
 		mut remaining := []types.OwnershipDropEntry{cap: entries.len}
 		for entry in entries {
-			owner := g.tc.cur_scope.lookup_owner(entry.name) or {
+			owner := g.tc.cur_scope.lookup_owner_id(flat.source_type_id(entry.name)) or {
 				remaining << entry
 				continue
 			}
@@ -2520,7 +2520,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 						g.writeln(' = ${temps[i]};')
 					}
 					if lhs.kind == .ident {
-						owner := g.tc.cur_scope.insert_with_owner(lhs.value, elem_types[i])
+						owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, elem_types[i])
 						g.track_local_pointer_storage_decl(lhs, owner, elem_types[i], ct)
 					}
 				} else {
@@ -5766,7 +5766,7 @@ fn (g &FlatGen) local_ident_type(name string) ?types.Type {
 	}
 	// The nearest binding below the file scope is the one a full lookup finds
 	// once such a local exists; search that part of the chain only once.
-	if typ := g.tc.cur_scope.lookup_before(name, g.tc.file_scope) {
+	if typ := g.tc.cur_scope.lookup_before_id(flat.source_type_id(name), g.tc.file_scope) {
 		if typ !is types.Void {
 			return typ
 		}
@@ -6455,7 +6455,7 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 			return ret
 		}
 	}
-	if typ := g.tc.cur_scope.lookup(fn_node.value) {
+	if typ := g.tc.cur_scope.lookup_id(fn_node.name_id()) {
 		return fn_type_return_type(typ)
 	}
 	typ := g.tc.resolve_type(g.a.child(&call_node, 0))
@@ -6729,7 +6729,7 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 	// has no value type, so resolve it the same way gen_call does and read the declared return
 	// type. Without this a fixed-array such call's `_v_ret_*` wrapper is never unwrapped.
 	if base_node.kind == .ident && base_node.value.len > 0 {
-		base_is_local := g.tc.cur_scope.lookup(base_node.value) or { types.Type(types.void_) } !is types.Void
+		base_is_local := g.tc.cur_scope.lookup_id(base_node.name_id()) or { types.Type(types.void_) } !is types.Void
 		if !base_is_local {
 			if static_fn := g.static_method_fn_name(base_node.source_value_id(), fn_node.value) {
 				if ret := g.tc.fn_ret_types[static_fn] {
@@ -7363,7 +7363,7 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 			}
 			// The checker's current scope can contain a same-named local from a
 			// different function (`batch := []Request` versus `batch := []Response`).
-			if typ := g.tc.cur_scope.lookup(node.value) {
+			if typ := g.tc.cur_scope.lookup_id(node.name_id()) {
 				if typ !is types.Void {
 					return g.tc.intern_type_reference(typ)
 				}
@@ -7494,7 +7494,7 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 				return g.tc.intern_type_reference(arr_return_type)
 			}
 			if fn_node.kind == .ident {
-				if typ := g.tc.cur_scope.lookup(fn_node.value) {
+				if typ := g.tc.cur_scope.lookup_id(fn_node.name_id()) {
 					ret := fn_type_return_type(typ)
 					if ret !is types.Unknown && ret !is types.Void {
 						return g.tc.intern_type_reference(ret)
@@ -7982,7 +7982,7 @@ fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.No
 	// reads/writes of a static local shadowing a global still target the global.
 	lhs := g.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident && lhs.value.len > 0 {
-		owner := g.tc.cur_scope.insert_with_owner(lhs.value, var_type)
+		owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, var_type)
 		g.track_local_pointer_storage_decl(lhs, owner, var_type, ct)
 	}
 	guard := '${name}_v3_static_inited'
@@ -8096,7 +8096,7 @@ fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.No
 		}
 		g.restore_struct_default_context(old_ctx)
 	}
-	owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+	owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, v_type)
 	g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)
 	g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
 	g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
@@ -8123,7 +8123,7 @@ fn (mut g FlatGen) gen_staging_value_decl(node flat.Node) {
 	typ := g.tc.parse_resolution_type(node.typ)
 	ct := g.value_c_type(typ)
 	name := g.decl_lhs_str(lhs_id)
-	owner := g.tc.cur_scope.insert_with_owner(lhs.value, typ)
+	owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, typ)
 	g.declare_local_raw_type(owner, node.typ)
 	if alignment := g.tinyc_stack_value_alignment(typ, ct) {
 		align := g.tmp_name()
@@ -8247,7 +8247,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			g.gen_decl_lhs(lhs_id)
 			g.writeln(';')
 			va_type := g.tc.parse_type(flat.source_type_id('C.va_list'))
-			owner := g.tc.cur_scope.insert_with_owner(lhs.value, va_type)
+			owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, va_type)
 			g.track_local_pointer_storage_decl(lhs, owner, va_type, 'va_list')
 			g.declare_local_raw_type(owner, flat.source_type_id('C.va_list'))
 			i += 2
@@ -8272,7 +8272,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 				g.gen_fixed_array_copy_from_node(lhs_str, g.a.child(&rhs, 0), fixed)
 				if lhs.kind == .ident {
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, target_type)
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, target_type)
 					g.track_local_pointer_storage_decl(lhs, owner, target_type, '')
 				}
 				i += 2
@@ -8334,7 +8334,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 				g.gen_fixed_array_copy_from_node(lhs_str, rhs_id, fixed)
 				if lhs.kind == .ident {
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, rhs_v_type)
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, rhs_v_type)
 					g.track_local_pointer_storage_decl(lhs, owner, rhs_v_type, '')
 				}
 				i += 2
@@ -8358,7 +8358,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				arr_type := types.Type(types.Array{
 					elem_type: types.new_type_reference(types.Type(elem_type))
 				})
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, arr_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, arr_type)
 				g.track_local_pointer_storage_decl(lhs, owner, arr_type, 'Array')
 			}
 		} else if rhs.kind == .or_expr {
@@ -8396,7 +8396,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.gen_fixed_array_copy_from_node(lhs_str, rhs_id, init_type)
 				}
 				if lhs.kind == .ident {
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, raw_init_type)
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, raw_init_type)
 					g.track_local_pointer_storage_decl(lhs, owner, raw_init_type, '')
 				}
 			} else {
@@ -8446,7 +8446,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					if resolved_init_type is types.Array {
 						arr_type = resolved_init_type
 					}
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, arr_type)
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, arr_type)
 					g.track_local_pointer_storage_decl(lhs, owner, arr_type, 'Array')
 					g.declare_local_raw_type(owner, raw_decl_type)
 				}
@@ -8454,7 +8454,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		} else if init_type := g.fixed_array_zero_init_block_type(rhs) {
 			g.gen_fixed_array_zero_init_decl(lhs_id, init_type, decl_prefix, lhs_is_defer_capture)
 			if lhs.kind == .ident {
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, init_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, init_type)
 				g.track_local_pointer_storage_decl(lhs, owner, init_type, '')
 			}
 		} else if init_type := g.fixed_array_init_block_type(rhs) {
@@ -8465,7 +8465,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			g.gen_fixed_array_copy_from_node(lhs_str, rhs_id, init_type)
 			if lhs.kind == .ident {
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, init_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, init_type)
 				g.track_local_pointer_storage_decl(lhs, owner, init_type, '')
 			}
 		} else if rhs.kind == .map_init {
@@ -8482,7 +8482,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			g.gen_expr_with_expected_type(rhs_id, v_type)
 			g.writeln(';')
 			if lhs.kind == .ident {
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, v_type)
 				g.track_local_pointer_storage_decl(lhs, owner, v_type, c_typ)
 			}
 		} else {
@@ -8740,7 +8740,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 				g.gen_fixed_array_copy_from_node(lhs_str, rhs_id, fixed)
 				if lhs.kind == .ident {
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, v_type)
 					g.track_local_pointer_storage_decl(lhs, owner, v_type, '')
 				}
 				i += 2
@@ -8793,7 +8793,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.write('*${value_tmp} = ')
 					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true, boxed_optional)
 					g.writeln('; ${value_tmp}; });')
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, v_type)
 					g.track_local_pointer_storage_decl(lhs, owner, v_type, '${ct}*')
 					g.declare_local_indirect_value_type(owner, v_type)
 					g.declare_local_implicit_deref(owner, true)
@@ -8819,7 +8819,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					}
 					g.gen_fixed_array_copy_from_node(lhs_str, rhs_id, ret_fixed)
 					if lhs.kind == .ident {
-						owner := g.tc.cur_scope.insert_with_owner(lhs.value, types.Type(ret_fixed))
+						owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, types.Type(ret_fixed))
 						g.track_local_pointer_storage_decl(lhs, owner, types.Type(ret_fixed), '')
 					}
 					i += 2
@@ -8847,7 +8847,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			g.writeln(';')
 			if lhs.kind == .ident {
-				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+				owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, v_type)
 				g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)
 				g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
 				g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
@@ -8903,7 +8903,7 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 		g.gen_decl_lhs(lhs_id)
 		g.writeln(' = ${storage_expr};')
 		if lhs.kind == .ident {
-			owner := g.tc.cur_scope.insert_with_owner(lhs.value, value_type)
+			owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, value_type)
 			g.track_local_pointer_storage_decl(lhs, owner, value_type, '${wrapper}*')
 			g.declare_local_shared_storage(owner, true)
 		}
@@ -8919,7 +8919,7 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 		src := g.fixed_array_copy_source_string(rhs_id, types.Type(fixed))
 		g.writeln('memmove(${lhs_str}->val, ${src}, sizeof(${lhs_str}->val));')
 		if lhs.kind == .ident {
-			owner := g.tc.cur_scope.insert_with_owner(lhs.value, value_type)
+			owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, value_type)
 			g.track_local_pointer_storage_decl(lhs, owner, value_type, '${wrapper}*')
 			g.declare_local_shared_storage(owner, true)
 		}
@@ -8941,7 +8941,7 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 	}
 	g.writeln('}, sizeof(${wrapper}));')
 	if lhs.kind == .ident {
-		owner := g.tc.cur_scope.insert_with_owner(lhs.value, value_type)
+		owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, value_type)
 		g.track_local_pointer_storage_decl(lhs, owner, value_type, '${wrapper}*')
 		g.declare_local_shared_storage(owner, true)
 	}
@@ -8966,7 +8966,7 @@ fn (mut g FlatGen) gen_shared_local_alias_decl(lhs_id flat.NodeId, rhs_id flat.N
 	}
 	g.writeln(';')
 	if lhs.kind == .ident {
-		owner := g.tc.cur_scope.insert_with_owner(lhs.value, value_type)
+		owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, value_type)
 		g.track_local_pointer_storage_decl(lhs, owner, value_type, '${wrapper}*')
 		g.declare_local_shared_storage(owner, true)
 	}
@@ -9695,7 +9695,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 				g.writeln('${c_elem} ${lhs_name}${dims};')
 				g.writeln('memmove(${lhs_name}, ${tmp}.arg${j}, sizeof(${lhs_name}));')
 				if lhs.kind == .ident {
-					owner := g.tc.cur_scope.insert_with_owner(lhs.value, multi_types[j])
+					owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, multi_types[j])
 					g.track_local_pointer_storage_decl(lhs, owner, multi_types[j], '')
 				}
 				continue
@@ -9708,7 +9708,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 			} else {
 				types.Type(types.int_)
 			}
-			owner := g.tc.cur_scope.insert_with_owner(lhs.value, inner)
+			owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, inner)
 			g.track_local_pointer_storage_decl(lhs, owner, inner, field_type)
 		}
 	}
@@ -11030,7 +11030,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	if !type_is_optional_result(expr_type) {
 		lhs_name := g.local_decl_cname(lhs.value)
 		val_ct := g.value_c_type(expr_type)
-		owner := g.tc.cur_scope.insert_with_owner(lhs.value, expr_type)
+		owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, expr_type)
 		g.track_local_pointer_storage_decl(lhs, owner, expr_type, val_ct)
 		g.write('${val_ct} ${lhs_name} = ')
 		g.gen_expr_with_expected_type(expr_id, expr_type)
@@ -11040,7 +11040,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	opt_ct := g.optional_type_name_for_expr(expr_id, expr_type)
 	val_ct, val_type := g.optional_value_info(expr_type, opt_ct)
 	lhs_name := g.local_decl_cname(lhs.value)
-	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
+	owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, val_type)
 	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
 	g.write('${opt_ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(expr_id, expr_type)
@@ -11088,7 +11088,7 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 	c_val := g.tc.c_type(m.value_type)
 	c_key := g.map_key_temp_c_type(m.key_type)
 	lhs_name := g.local_decl_cname(lhs.value)
-	owner := g.tc.cur_scope.insert_with_owner(lhs.value, m.value_type)
+	owner := g.tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, m.value_type)
 	g.track_local_pointer_storage_decl(lhs, owner, m.value_type, c_val)
 	g.write('void* ${tmp} = map__get_check(&')
 	g.gen_map_value_expr(g.a.child(&expr_node, 0))
@@ -11171,7 +11171,7 @@ fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	if call.children_count > 0 {
 		fn_node := g.a.child_node(&call, 0)
 		if fn_node.kind == .ident && fn_node.value in ['panic', 'exit'] {
-			local_type := g.tc.cur_scope.lookup(fn_node.value) or { types.Type(types.void_) }
+			local_type := g.tc.cur_scope.lookup_id(fn_node.name_id()) or { types.Type(types.void_) }
 			return local_type is types.Void
 		}
 	}
@@ -11305,7 +11305,7 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 	}
 	g.write('; if (sync__Channel__try_push_priv(${channel_tmp}, &${value_tmp}, false) == 2) { IError err = sync__Channel__closed_error(${channel_tmp}); (void)err; ')
 	g.push_scope()
-	g.tc.cur_scope.insert('err', g.tc.parse_type(flat.source_type_id('IError')))
+	g.tc.cur_scope.insert_id(flat.source_type_id('err'), 'err', g.tc.parse_type(flat.source_type_id('IError')))
 	if or_node.value in ['!', '?'] {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
@@ -11640,7 +11640,7 @@ fn (mut g FlatGen) gen_or_error_binding(typ types.Type, source string) {
 	if unalias_type(typ) !is types.ResultType {
 		return
 	}
-	g.tc.cur_scope.insert('err', g.tc.parse_type(flat.source_type_id('IError')))
+	g.tc.cur_scope.insert_id(flat.source_type_id('err'), 'err', g.tc.parse_type(flat.source_type_id('IError')))
 	g.writeln('IError err = ${source}.err; (void)err;')
 }
 

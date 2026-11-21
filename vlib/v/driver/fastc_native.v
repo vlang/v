@@ -30,7 +30,7 @@ $if !skip_fastc ? {
 	// v3_fastc_native_compiler_version asks the native compiler for its version, the
 	// identity in every native manifest key. The driver asks while it generates C.
 	fn v3_fastc_native_compiler_version() string {
-		return c_object_compiler_version(v3_fastc_native_compiler, v3_fastc_native_compiler)
+		return c_object_compiler_version(v3_fastc_native_compiler)
 	}
 
 	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {

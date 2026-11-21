@@ -382,7 +382,7 @@ fn test_link_plan_tracks_objects_not_object_named_option_operands() {
 	// A file used only as an option operand must not become a required object.
 	os.rm(operand)!
 	assert valid_c_link_plan(manifest, mut read_stats) != none
-	os.write_file(manifest, payload.replace('v3-c-link-plan-v5', 'v3-c-link-plan-v4'))!
+	os.write_file(manifest, payload.replace('v3-c-link-plan-v7', 'v3-c-link-plan-v6'))!
 	assert valid_c_link_plan(manifest, mut read_stats) == none
 	os.write_file(manifest, payload)!
 	os.rm(object)!
@@ -397,15 +397,12 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 	}
 	object := os.join_path(root, 'real.o')
 	os.write_file(object, 'existing object input')!
-	compiler := os.join_path(root, 'nonexistent-compiler')
+	compiler := os.find_abs_path_of_executable('cc') or { 'missing-compiler' }
 	flags := ['-D', 'VALUE=not_an_object.o', '-include', 'not_a_source.mm', '-Xlinker', '-x',
 		'-Iinclude.mm', object, '-L', 'not_an_object.obj']
-	// Seed the identity so this existing-object test needs no external compiler.
-	mut stats := CObjectCacheStats{
-		compiler_versions: {
-			compiler: 'fixture compiler identity'
-		}
-	}
+	assert !v3_c_link_plan_has_overrides(flags)
+	assert v3_c_link_plan_has_overrides(['-x', 'c++', object])
+	mut stats := CObjectCacheStats{}
 	target := pref.host_target()
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	object_flags := CObjectFlagPlan{
@@ -424,9 +421,13 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 	assert stats.direct_objects == 1
 	assert stats.dependency_scans == 0
 	assert stats.temporary_objects.len == 0
-	plan := valid_c_link_plan(manifest, mut stats) or { panic('invalid mixed-input manifest') }
-	assert plan.flags == flags
-	assert plan.requests == 1
+	if v3_native_compiler_cacheable(compiler) {
+		plan := valid_c_link_plan(manifest, mut stats) or { panic('invalid mixed-input manifest') }
+		assert plan.flags == flags
+		assert plan.requests == 1
+	} else {
+		assert !os.exists(manifest)
+	}
 }
 
 fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() {

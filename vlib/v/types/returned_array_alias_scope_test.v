@@ -27,14 +27,14 @@ fn test_cached_guard_binding_does_not_escape_alias_analysis_scope() {
 	mut tc := TypeChecker.new(&a)
 	outer_type := Type(tc.fn_type([]Type{}, &Type(string_), []bool{}))
 	guard_type := Type(tc.fn_type([]Type{}, &Type(int_), []bool{}))
-	tc.cur_scope.insert('helper', outer_type)
+	tc.cur_scope.insert_id(flat.source_type_id('helper'), 'helper', outer_type)
 	tc.register_synth_type(lhs, guard_type)
 	tc.register_synth_type(rhs, Type(OptionType{ base_type: &Type(guard_type) }))
 	mut visiting := map[int]bool{}
 	mut sources := []flat.NodeId{}
 	tc.collect_returned_alias_sources_in_scope(if_expr, map[string]flat.NodeId{}, mut visiting,
 		mut sources)
-	assert tc.cur_scope.lookup('helper') or { panic('missing outer helper') } == outer_type
+	assert tc.cur_scope.lookup_id(flat.source_type_id('helper')) or { panic('missing outer helper') } == outer_type
 }
 
 fn test_returned_array_still_borrows_immutable_argument() {
