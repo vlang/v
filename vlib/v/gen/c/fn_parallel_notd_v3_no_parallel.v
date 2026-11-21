@@ -508,6 +508,8 @@ struct ForwardDeclLaneArgs {
 	items_ptr voidptr
 	start     int
 	end       int
+	// The arena that holds `worker`; the lane releases it when it is done.
+	scope voidptr
 mut:
 	output string
 }
@@ -517,14 +519,25 @@ fn forward_decl_lane_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(a.worker) }
 	items := unsafe { &[]FlatFnGenItem(a.items_ptr) }
 	fdsw := time.new_stopwatch()
+	// The lane's scratch (names and types resolved for the prototypes) goes with
+	// a disposable arena; only the text is kept, in this pool thread's arena.
+	scratch := cgen_worker_scope_begin(true)
 	w.sb = strings.new_builder((a.end - a.start) * 96)
 	w.line_start = true
 	w.forward_decl_batches(*items, a.start, a.end)
-	// Hand the builder storage over instead of copying every prototype once more
-	// into this pool thread's arena.
-	a.output = cgen_take_builder_text(mut w.sb)
+	cgen_worker_scope_leave(scratch)
+	if scratch == unsafe { nil } {
+		// Hand the builder storage over instead of copying every prototype.
+		a.output = cgen_take_builder_text(mut w.sb)
+	} else {
+		a.output = w.sb.str()
+	}
 	w.sb = strings.new_builder(0)
 	w.timing_profile('  [ttime]     cg fwd decls   ${f64(fdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task, items: ${a.end - a.start})')
+	cgen_worker_scope_free(scratch)
+	// Nothing reads the lane's generator after this: release it now instead of
+	// with the body workers, whose pool phase is the memory peak.
+	cgen_worker_scope_free(a.scope)
 	return unsafe { nil }
 }
 
@@ -2754,18 +2767,20 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			shared_items := items[..]
 			fwd_bounds := forward_decl_lane_bounds(g.a, items)
 			mut fwd_args := []ForwardDeclLaneArgs{cap: fwd_bounds.len - 1}
-			fwd_scope := cgen_worker_scope_begin(true)
 			for lane in 0 .. fwd_bounds.len - 1 {
+				// One arena per lane, which the lane releases itself.
+				lane_scope := cgen_worker_scope_begin(true)
 				mut fwd_worker := g.new_parallel_worker(max_flat_cgen_jobs + 3 + lane)
 				fwd_worker.tc.verbose = g.tc.verbose
+				cgen_worker_scope_leave(lane_scope)
 				fwd_args << ForwardDeclLaneArgs{
 					worker:    voidptr(fwd_worker)
 					items_ptr: unsafe { voidptr(&shared_items) }
 					start:     fwd_bounds[lane]
 					end:       fwd_bounds[lane + 1]
+					scope:     lane_scope
 				}
 			}
-			cgen_worker_scope_leave(fwd_scope)
 			g.parallel_forward_decl_lanes = true
 			mut args := []FlatCgenDynamicArgs{cap: worker_count}
 			mut tasks := []workers.Task{cap: worker_count + 1 + fwd_args.len}
@@ -2798,7 +2813,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				// The lane text lives in its pool thread's arena for the rest of the run.
 				g.parallel_forward_decl_parts << moved_segment(fwd_arg.output)
 			}
-			cgen_worker_scope_free(fwd_scope)
 		}
 		// The declaration thread disables the master's caches while body
 		// workers use their private copies. Restore them for synthetic output.
