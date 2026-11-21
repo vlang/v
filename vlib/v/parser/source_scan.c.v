@@ -254,7 +254,8 @@ struct MergePrefaultArgs {
 fn merge_prefault_thread(arg voidptr) voidptr {
 	task := unsafe { &MergePrefaultArgs(arg) }
 	$if macos || linux {
-		page_bytes := C.sysconf(C._SC_PAGESIZE)
+		// sysconf only reads a constant of the system.
+		page_bytes := unsafe { C.sysconf(C._SC_PAGESIZE) }
 		if page_bytes <= 0 {
 			return unsafe { nil }
 		}
