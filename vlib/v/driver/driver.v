@@ -4736,6 +4736,21 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 	}
 }
 
+// late_stage_block_pool_bytes is the freed arena memory that stays mapped for
+// reuse from the transform stage on. Until then the stages hand each other up
+// to 256 MiB of blocks; the tree then grows to its final size and the build's
+// memory peaks, with most of the kept blocks unused at that point: 24 MiB keeps
+// the batch arenas of the transform and C generation workers circulating.
+// Self-host: peak 926 -> 844 MB for 21 thousand more page faults (+0.4% instructions).
+const late_stage_block_pool_bytes = i64(24) * 1024 * 1024
+
+// prealloc_block_pool_limit_for_v3 bounds the freed arena blocks kept for reuse.
+fn prealloc_block_pool_limit_for_v3(bytes i64) {
+	$if prealloc {
+		unsafe { prealloc_block_pool_set_limit(bytes) }
+	}
+}
+
 // free_retained_scopes releases the stage arenas kept alive
 // through code generation. Unmapping multi-gigabyte arenas is slow enough to be
 // worth overlapping with the C compiler, which reads only the generated file.
@@ -14082,6 +14097,9 @@ pub fn run(args []string) {
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
+		if scope_prealloc_stages {
+			prealloc_block_pool_limit_for_v3(late_stage_block_pool_bytes)
+		}
 		mut tfpre_sw := time.new_stopwatch()
 		// Formatting unused-declaration diagnostics allocates source excerpts and
 		// rendered messages that are dead before transform starts. Keep that scratch
