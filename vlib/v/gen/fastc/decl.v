@@ -3455,7 +3455,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			mut default_source_offset := 0
 			if tok == .assign {
 				first_default_token := scan.scan()
-				default_start := scan.pos
+				default_start := fastc_literal_prefix_start(source_file.source, scan.pos)
 				default_source_offset = source_file.source_offset + default_start
 				tok = fastc_skip_field_default_from_token(mut scan, first_default_token)!
 				default_source = source_file.source[default_start..scan.pos].trim_space().trim_right(';').trim_space()
@@ -3545,7 +3545,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		mut default_source_offset := 0
 		if tok == .assign {
 			first_default_token := scan.scan()
-			default_start := scan.pos
+			default_start := fastc_literal_prefix_start(source_file.source, scan.pos)
 			default_source_offset = source_file.source_offset + default_start
 			tok = fastc_skip_field_default_from_token(mut scan, first_default_token)!
 			default_source = source_file.source[default_start..scan.pos].trim_space().trim_right(';').trim_space()
@@ -4141,6 +4141,22 @@ fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcS
 	out.writeln('struct ${c_name} { void *_object; uintptr_t _typ; };')
 	out.writeln('')
 	return tok
+}
+
+// fastc_literal_prefix_start widens a string literal token's start to its `c`/`r` prefix:
+// the scanner reports `c'text'` at the quote, so a default sliced from there would lose
+// the prefix and become a V string.
+fn fastc_literal_prefix_start(source string, pos int) int {
+	if pos < 1 || pos >= source.len || source[pos] !in [`'`, `"`] || source[pos - 1] !in [
+		`c`,
+		`r`,
+	] {
+		return pos
+	}
+	if pos >= 2 && (source[pos - 2].is_letter() || source[pos - 2].is_digit() || source[pos - 2] == `_`) {
+		return pos
+	}
+	return pos - 1
 }
 
 // fastc_register_sum_type_aliases makes `type Buf = KBuf`, where `KBuf` is a sum type, a
