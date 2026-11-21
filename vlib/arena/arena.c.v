@@ -32,9 +32,6 @@ mut:
 // new creates an arena. It does not allocate any arena memory before its
 // first use. Release it with `free` when it is no longer needed.
 pub fn new(config Config) Arena {
-	$if prealloc {
-		$compile_error('module `arena` does not support `-prealloc`; use `prealloc_scope_begin()` instead')
-	}
 	$if vgc ? {
 		$compile_error('module `arena` supports `-gc none` and the default Boehm GC, not `-gc vgc`')
 	}
