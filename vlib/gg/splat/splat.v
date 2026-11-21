@@ -38,9 +38,22 @@ pub mut:
 	depth   f32
 }
 
-// project maps one Gaussian to screen space using a perspective camera.
-// Splats behind the camera or outside the depth range are skipped.
-pub fn project(g &Gaussian, cam gg.Camera3D, width f32, height f32) ?ProjectedSplat {
+// SplatBasis holds the camera frame and projection constants that are shared
+// by every splat in one rasterization pass.
+struct SplatBasis {
+	cam      gg.Camera3D
+	forward  gg.Vec3
+	right    gg.Vec3
+	up       gg.Vec3
+	tan_half f32
+	aspect   f32
+	width    f32
+	height   f32
+}
+
+// make_splat_basis computes the per-frame camera frame once. Splitting it out
+// of project() avoids three vector normalizations and a tan() per splat.
+fn make_splat_basis(cam gg.Camera3D, width f32, height f32) ?SplatBasis {
 	if width <= 0 || height <= 0 || cam.projection == .orthographic {
 		return none
 	}
@@ -49,20 +62,30 @@ pub fn project(g &Gaussian, cam gg.Camera3D, width f32, height f32) ?ProjectedSp
 	if right.x == 0 && right.y == 0 && right.z == 0 {
 		right = gg.Vec3{1, 0, 0}
 	}
-	up := right.cross(forward).normalized()
-	rel := g.position - cam.position
-	depth := rel.dot(forward)
-	if depth <= cam.near || depth >= cam.far {
+	return SplatBasis{
+		cam:      cam
+		forward:  forward
+		right:    right
+		up:       right.cross(forward).normalized()
+		tan_half: f32(math.tan(f64(cam.fovy * math.pi / 360)))
+		aspect:   width / height
+		width:    width
+		height:   height
+	}
+}
+
+fn project_with_basis(g &Gaussian, b SplatBasis) ?ProjectedSplat {
+	rel := g.position - b.cam.position
+	depth := rel.dot(b.forward)
+	if depth <= b.cam.near || depth >= b.cam.far {
 		return none
 	}
-	tan_half := f32(math.tan(f64(cam.fovy * math.pi / 360)))
-	aspect := width / height
-	ndc_x := rel.dot(right) / (depth * tan_half * aspect)
-	ndc_y := rel.dot(up) / (depth * tan_half)
-	sx := (ndc_x * 0.5 + 0.5) * width
-	sy := (0.5 - ndc_y * 0.5) * height
-	rx := g.scale.x / (depth * tan_half) * width / 2
-	ry := g.scale.y / (depth * tan_half) * height / 2
+	ndc_x := rel.dot(b.right) / (depth * b.tan_half * b.aspect)
+	ndc_y := rel.dot(b.up) / (depth * b.tan_half)
+	sx := (ndc_x * 0.5 + 0.5) * b.width
+	sy := (0.5 - ndc_y * 0.5) * b.height
+	rx := g.scale.x / (depth * b.tan_half) * b.width / 2
+	ry := g.scale.y / (depth * b.tan_half) * b.height / 2
 	if rx <= 0 || ry <= 0 {
 		return none
 	}
@@ -75,6 +98,15 @@ pub fn project(g &Gaussian, cam gg.Camera3D, width f32, height f32) ?ProjectedSp
 		opacity: math.clip(g.opacity, 0, 1)
 		depth:   depth
 	}
+}
+
+// project maps one Gaussian to screen space using a perspective camera.
+// Splats behind the camera or outside the depth range are skipped.
+pub fn project(g &Gaussian, cam gg.Camera3D, width f32, height f32) ?ProjectedSplat {
+	if basis := make_splat_basis(cam, width, height) {
+		return project_with_basis(g, basis)
+	}
+	return none
 }
 
 fn splat_heap_push(mut heap []ProjectedSplat, item ProjectedSplat) {
@@ -123,30 +155,50 @@ fn splat_heap_pop(mut heap []ProjectedSplat) ProjectedSplat {
 }
 
 fn blend(mut pixels []u8, width int, height int, s ProjectedSplat) {
-	min_x := int(s.x - s.rx * 2)
-	max_x := int(s.x + s.rx * 2)
-	min_y := int(s.y - s.ry * 2)
-	max_y := int(s.y + s.ry * 2)
+	// Clip once instead of bounds-checking every pixel in the ellipse.
+	mut min_x := int(s.x - s.rx * 2)
+	mut max_x := int(s.x + s.rx * 2)
+	mut min_y := int(s.y - s.ry * 2)
+	mut max_y := int(s.y + s.ry * 2)
+	if min_x < 0 {
+		min_x = 0
+	}
+	if min_y < 0 {
+		min_y = 0
+	}
+	if max_x >= width {
+		max_x = width - 1
+	}
+	if max_y >= height {
+		max_y = height - 1
+	}
+	if min_x > max_x || min_y > max_y {
+		return
+	}
+	// Hoist the two divisions and the color components out of the pixel loop.
+	inv_rx := 1 / s.rx
+	inv_ry := 1 / s.ry
+	cr := f32(s.color.r)
+	cg := f32(s.color.g)
+	cb := f32(s.color.b)
 	for y in min_y .. max_y + 1 {
+		dy := (f32(y) - s.y) * inv_ry
+		dy2 := dy * dy
+		row := y * width
 		for x in min_x .. max_x + 1 {
-			if x < 0 || y < 0 || x >= width || y >= height {
-				continue
-			}
-			dx := (f32(x) - s.x) / s.rx
-			dy := (f32(y) - s.y) / s.ry
-			d2 := dx * dx + dy * dy
+			dx := (f32(x) - s.x) * inv_rx
+			d2 := dx * dx + dy2
 			if d2 > 4 {
 				continue
 			}
 			alpha := s.opacity * f32(math.exp(f64(-2 * d2)))
-			at := (y * width + x) * 4
+			at := (row + x) * 4
 			if at + 3 >= pixels.len {
 				continue
 			}
-			mut channels := [s.color.r, s.color.g, s.color.b]
-			for c in 0 .. 3 {
-				pixels[at + c] = u8(f32(pixels[at + c]) * (1 - alpha) + f32(channels[c]) * alpha)
-			}
+			pixels[at] = u8(f32(pixels[at]) * (1 - alpha) + cr * alpha)
+			pixels[at + 1] = u8(f32(pixels[at + 1]) * (1 - alpha) + cg * alpha)
+			pixels[at + 2] = u8(f32(pixels[at + 2]) * (1 - alpha) + cb * alpha)
 		}
 	}
 }
@@ -158,9 +210,10 @@ pub fn rasterize(cloud &SplatCloud, cam gg.Camera3D, width int, height int, mut 
 	if width <= 0 || height <= 0 || pixels.len < width * height * 4 {
 		return
 	}
+	basis := make_splat_basis(cam, f32(width), f32(height)) or { return }
 	mut heap := []ProjectedSplat{}
 	for g in cloud.points {
-		if p := project(g, cam, f32(width), f32(height)) {
+		if p := project_with_basis(g, basis) {
 			splat_heap_push(mut heap, p)
 		}
 	}
