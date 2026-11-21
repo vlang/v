@@ -2429,6 +2429,21 @@ fn test_v3_production_object_flag_plan_retains_machine_code() {
 	assert '-flto' in program.before_inputs
 }
 
+// Link time optimization would run after clang's ThreadSanitizer pass, and clang 15 and
+// older lose the instrumentation of struct copies there.
+fn test_v3_production_race_build_is_not_link_time_optimized() {
+	for large in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_prod:      true
+			race:         true
+			c_compiler:   'clang'
+			large_c_unit: large
+		})
+		assert '-flto' !in plan.before_inputs
+		assert (if large { '-O2' } else { '-O3' }) in plan.before_inputs
+	}
+}
+
 fn test_v3_production_object_links_with_independent_c_main() {
 	$if windows {
 		return

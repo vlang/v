@@ -3023,6 +3023,8 @@ struct V3CCompilerFlagOptions {
 	is_liveshared       bool
 	// is_freestanding marks a `-freestanding` build: no libc, crt or default libraries.
 	is_freestanding bool
+	// race marks a `-race` build, which ThreadSanitizer instruments.
+	race bool
 }
 
 struct V3CCompilerFlagPlan {
@@ -4116,7 +4118,11 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	// Standalone objects must contain machine code for a later independent link.
 	// A freestanding `_start` calls `main` from a top-level asm block, which the
 	// LTO symbol table does not see, so gcc would drop `main` from the link.
-	before_inputs << if options.is_o || options.is_freestanding {
+	// A race build must not be optimized again after clang's ThreadSanitizer pass:
+	// clang 15 and older instrument struct copies as calls of the C library's `memcpy`,
+	// which link time optimization turns back into plain loads and stores, so the race
+	// detector would miss every race on a string, array or struct value.
+	before_inputs << if options.is_o || options.is_freestanding || options.race {
 		optimization_flags.filter(it != '-flto')
 	} else {
 		optimization_flags
@@ -16026,6 +16032,7 @@ pub fn run(args []string) {
 			is_o:                is_o
 			is_liveshared:       is_liveshared
 			is_freestanding:     'freestanding' in prefs.user_defines
+			race:                race
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(c_flag_options)
 		large_c_flag_options := V3CCompilerFlagOptions{
