@@ -688,18 +688,37 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					tok = s.scan()
 					continue
 				}
-				if member == .name && s.lit == 'typ' {
+				if member == .name && s.lit in ['typ', 'unaliased_typ'] {
+					// `field.unaliased_typ is X` tests the field type with aliases resolved.
+					unaliased := s.lit == 'unaliased_typ'
+					field_type := if unaliased {
+						g.underlying_alias_type(field.typ)
+					} else {
+						field.typ
+					}
+					option_value_type := if unaliased && field.option_value_type != 0 {
+						g.underlying_alias_type(field.option_value_type)
+					} else {
+						field.option_value_type
+					}
 					is_tok_start := s.offset
 					is_tok := s.scan()
 					if is_tok == .key_is {
 						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
 						if type_c != '' {
 							matches := if type_c.starts_with('?') {
-								field.option_value_type == flat.source_type_id(type_c[1..])
+								option_value_type == flat.source_type_id(type_c[1..])
 							} else if type_c.starts_with('@') {
-								g.comptime_type_matches(field.typ, flat.source_type_id(type_c[1..]), true)
+								// An option field is only in the `$option` group.
+								if option_value_type != 0 || field_type == fastc_type_option
+									|| fastc_typed_option_payload(field_type) != none {
+									type_c == '@option'
+								} else {
+									g.comptime_type_matches(field_type, flat.source_type_id(type_c[1..]),
+										true)
+								}
 							} else {
-								fastc_trim_pointer_type(field.typ) == flat.source_type_id(type_c)
+								fastc_trim_pointer_type(field_type) == flat.source_type_id(type_c)
 							}
 							edits << FastcSourceEdit{
 								start:       var_pos
