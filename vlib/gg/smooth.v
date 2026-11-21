@@ -38,7 +38,7 @@ pub fn smooth_normals(mesh &Mesh3D, precision f32) []Vec3 {
 		len_sq := sum.x * sum.x + sum.y * sum.y + sum.z * sum.z
 		mut n := Vec3{}
 		if len_sq != 0 {
-			inv_len := 1.0 / f32(math.sqrt(len_sq))
+			inv_len := 1.0 / math.sqrtf(len_sq)
 			n = Vec3{sum.x * inv_len, sum.y * inv_len, sum.z * inv_len}
 		}
 		for i in ids {

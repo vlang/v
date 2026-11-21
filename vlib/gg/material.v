@@ -75,7 +75,7 @@ fn material_color_impl(mat &Material3D, world Vec3, normal Vec3, cam Camera3D, l
 		dx := world.x - cam.position.x
 		dy := world.y - cam.position.y
 		dz := world.z - cam.position.z
-		distance := f32(math.sqrt(f64(dx * dx + dy * dy + dz * dz)))
+		distance := math.sqrtf(dx * dx + dy * dy + dz * dz)
 		t := (distance - mat.fog_near) / (mat.fog_far - mat.fog_near)
 		c = mix_color(c, mat.fog_color, t)
 	}
