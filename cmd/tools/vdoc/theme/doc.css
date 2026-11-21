@@ -526,8 +526,13 @@ while it scrolls. It takes no space, so that it is next to the name of the modul
 .doc-content [hidden] {
 	display: none !important;
 }
-.doc-toc li[hidden],
+.doc-toc [hidden],
 .doc-nav .content li[hidden] {
+	display: none;
+}
+/* With all the platforms, a function that is declared differently on some of them has the label
+of its first declaration. */
+html:not([data-platform]) .doc-toc .toc-variant ~ .toc-variant {
 	display: none;
 }
 .doc-content > .doc-node > .title > .link {

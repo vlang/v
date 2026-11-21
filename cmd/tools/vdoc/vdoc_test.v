@@ -791,6 +791,49 @@ fn test_the_platform_selector_is_only_for_symbols_of_some_platforms() {
 	assert platform_selector_html(doc.generate(dir, true, true, .windows)!) == ''
 }
 
+fn test_the_toc_has_the_label_of_each_declaration_of_a_function() {
+	dn := doc.DocNode{
+		name:      'destroy'
+		kind:      .method
+		content:   'pub fn (mut sem Semaphore) destroy()'
+		platforms: [.linux, .macos]
+		variants:  [
+			doc.DocNode{
+				name:      'destroy'
+				kind:      .method
+				content:   'pub fn (s Semaphore) destroy()'
+				platforms: [.windows]
+			},
+		]
+	}
+	entry := toc_link_html('Semaphore.destroy', toc_call_label(dn.content, dn.name), dn)
+	assert entry.contains('<span class="toc-variant" data-platforms="linux macos" title="(mut sem Semaphore) destroy()"><span class="toc-detail">(mut sem Semaphore) </span>destroy')
+	assert entry.contains('<span class="toc-variant" data-platforms="windows" title="(s Semaphore) destroy()"><span class="toc-detail">(s Semaphore) </span>destroy')
+	// Each label has its own tooltip, so that the one of the selected platform is shown.
+	assert entry.starts_with('<li><a href="#Semaphore.destroy"><span')
+	// Declarations that are called the same way have one label.
+	same := doc.DocNode{
+		...dn
+		variants: [doc.DocNode{
+			...dn.variants[0]
+			content: 'pub fn (mut sem Semaphore) destroy() ?'
+		}]
+	}
+	assert !toc_link_html('Semaphore.destroy', toc_call_label(same.content, same.name), same).contains('toc-variant')
+	// A deprecated function is marked once, and each of its labels has the deprecation in its
+	// tooltip.
+	deprecated := doc.DocNode{
+		...dn
+		tags: ["@[deprecated: 'use close']"]
+	}
+	deprecated_entry := toc_link_html('Semaphore.destroy', toc_call_label(deprecated.content,
+		deprecated.name), deprecated)
+	assert deprecated_entry.starts_with('<li><a class="deprecated" href="#Semaphore.destroy"><span class="toc-label"><span class="toc-variant"')
+	assert deprecated_entry.contains('title="(mut sem Semaphore) destroy(), deprecated: use close"')
+	assert deprecated_entry.contains('title="(s Semaphore) destroy(), deprecated: use close"')
+	assert deprecated_entry.ends_with('</span><span class="toc-badge">deprecated</span></a></li>')
+}
+
 fn test_the_platform_selector_hides_the_members_and_the_constants_of_hidden_platforms() {
 	dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_members_${os.getpid()}')
 	os.rmdir_all(dir) or {}
