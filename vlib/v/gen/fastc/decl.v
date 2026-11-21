@@ -4474,10 +4474,10 @@ fn fastc_alias_generic_argument_key(c_name string) string {
 	return '${c_name}#generic_argument'
 }
 
-// fastc_c_struct_name_is_typedef applies the C backend's rule for a plain `struct C.X`: only a
-// lowercase name that does not end in `_t` is spelled `struct X`; `pthread_t`, `FILE` and
-// `_IO_FILE` name typedefs.
+// fastc_c_struct_name_is_typedef reports whether a plain `struct C.X` names a C typedef rather
+// than a struct tag: `pthread_t` is one, while `struct C.RawNode` stays `struct RawNode`. The C
+// backend also adds `typedef struct X X;` for other uppercase names, which needs header
+// knowledge FastC does not have; their headers usually define the tag too.
 fn fastc_c_struct_name_is_typedef(name string) bool {
-	return name.starts_with('_') || name.len == 0 || name[0] < `a` || name[0] > `z`
-		|| name.ends_with('_t')
+	return name.ends_with('_t')
 }
