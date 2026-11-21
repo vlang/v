@@ -34,7 +34,7 @@ pub fn (mut c AesCipher) free() {
 	}
 }
 
-// new_cipher creates and returns a new [[AesCipher](#AesCipher)].
+// new_cipher creates and returns a new `AesCipher`.
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.

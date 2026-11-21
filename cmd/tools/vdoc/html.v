@@ -1075,33 +1075,77 @@ fn toc_title(label string, deprecation string) string {
 
 // toc_link_html returns an entry of the table of contents, which links to the symbol `dn` named
 // `name`. In a label like `(mut f File) read[T](buf)`, the name stands out from the rest, which
-// is dimmed. A deprecated symbol is marked as such.
+// is dimmed. A deprecated symbol is marked as such. A function that is declared differently on
+// some platforms has the label of each declaration, for the platform selector.
 fn toc_link_html(name string, label string, dn doc.DocNode) string {
-	mut receiver := ''
-	mut rest := label
-	if label.starts_with('(') {
-		receiver = label.all_before(') ') + ') '
-		rest = label.all_after(') ')
-	}
-	mut name_end := rest.len
-	for i, c in rest {
-		if c in [`[`, `(`] {
-			name_end = i
-			break
+	deprecation := deprecation_of(dn)
+	mut parts := toc_label_parts(label)
+	// The tooltip is the one of the label that is shown.
+	mut title := ' title="${html.escape(toc_title(label, deprecation or { '' }))}"'
+	if dn.variants.len > 0 {
+		short_name := toc_label_name(label)
+		mut labels := []string{}
+		mut platforms := [][]doc.Platform{}
+		for declaration in [dn, ...dn.variants] {
+			declaration_label := toc_call_label(declaration.content, short_name)
+			i := labels.index(declaration_label)
+			if i < 0 {
+				labels << declaration_label
+				platforms << declaration.platforms
+			} else {
+				platforms[i] = doc.cross_platforms.filter(it in platforms[i]
+					|| it in declaration.platforms)
+			}
+		}
+		if labels.len > 1 {
+			parts = ''
+			title = ''
+			for i, l in labels {
+				parts += '<span class="toc-variant"${platforms_attr(platforms[i])} title="${html.escape(toc_title(l, deprecation or { '' }))}">${toc_label_parts(l)}</span>'
+			}
 		}
 	}
+	if _ := deprecation {
+		return '<li><a class="deprecated" href="#${slug(name)}"${title}><span class="toc-label">${parts}</span>${toc_deprecated_badge}</a></li>'
+	}
+	return '<li><a href="#${slug(name)}"${title}>${parts}</a></li>'
+}
+
+// toc_label_parts returns the html of the label of an entry of the table of contents, like
+// `(mut f File) read[T](buf)`, where everything but the name is dimmed.
+fn toc_label_parts(label string) string {
+	receiver, rest := toc_split_receiver(label)
+	name := toc_label_name(rest)
 	mut parts := ''
 	if receiver != '' {
 		parts += '<span class="toc-detail">${html.escape(receiver)}</span>'
 	}
-	parts += html.escape(rest[..name_end])
-	if name_end < rest.len {
-		parts += '<span class="toc-detail">${html.escape(rest[name_end..])}</span>'
+	parts += html.escape(name)
+	if name.len < rest.len {
+		parts += '<span class="toc-detail">${html.escape(rest[name.len..])}</span>'
 	}
-	if deprecation := deprecation_of(dn) {
-		return '<li><a class="deprecated" href="#${slug(name)}" title="${html.escape(toc_title(label, deprecation))}"><span class="toc-label">${parts}</span>${toc_deprecated_badge}</a></li>'
+	return parts
+}
+
+// toc_split_receiver returns the receiver of the method in `label`, like `(mut f File) `, and
+// the rest of it.
+fn toc_split_receiver(label string) (string, string) {
+	if label.starts_with('(') {
+		return label.all_before(') ') + ') ', label.all_after(') ')
 	}
-	return '<li><a href="#${slug(name)}" title="${html.escape(label)}">${parts}</a></li>'
+	return '', label
+}
+
+// toc_label_name returns the name of the symbol in the label `label`, without its receiver, its
+// generic parameters and its parameters.
+fn toc_label_name(label string) string {
+	_, rest := toc_split_receiver(label)
+	for i, c in rest {
+		if c in [`[`, `(`] {
+			return rest[..i]
+		}
+	}
+	return rest
 }
 
 // toc_call_label returns how the function or the method declared by `content` is called, with
