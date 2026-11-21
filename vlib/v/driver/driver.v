@@ -17042,8 +17042,8 @@ fn v3_cache_artifact_roots() []string {
 fn v3_cache_artifact_directories() []string {
 	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
 	mut directories := []string{}
-	for raw_root in v3_cache_artifact_roots() {
-		root := os.real_path(os.abs_path(raw_root))
+	roots := v3_cache_artifact_roots().map(os.real_path(os.abs_path(it)))
+	for root in roots {
 		if !os.is_dir(root) {
 			continue
 		}
@@ -17055,8 +17055,11 @@ fn v3_cache_artifact_directories() []string {
 			if !os.is_dir(candidate) {
 				continue
 			}
+			// A test session links its fixed caches to the shared ones in the
+			// configured cache root, which is the only place outside the root a
+			// cache folder may resolve to.
 			canonical := os.real_path(candidate)
-			if canonical != root && v3_path_is_within(canonical, root)
+			if roots.any(canonical != it && v3_path_is_within(canonical, it))
 				&& canonical !in directories {
 				directories << canonical
 			}

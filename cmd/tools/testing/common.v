@@ -876,6 +876,10 @@ pub fn (mut ts TestSession) test() {
 		}
 	}
 	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
+	shared_objects := os.join_path(ts.vtmp_dir, session_shared_object_cache)
+	if os.is_link(shared_objects) {
+		os.rm(shared_objects) or {}
+	}
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
@@ -1431,17 +1435,32 @@ pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
+// session_shared_object_cache is the VTMP folder of cached native objects that a test session
+// shares with its parent VTMP.
+const session_shared_object_cache = 'v3_thirdparty_objs'
+
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
 	// The V3 module cache defaults to VTMP. Keep it in the shared VTMP, so that each
 	// session does not rebuild every cached module, unless isolation was requested.
-	if os.getenv('V3CACHE') == '' && os.getenv('V3_TEST_ISOLATE_CACHE') != '1' {
+	isolate_cache := os.getenv('V3_TEST_ISOLATE_CACHE') == '1'
+	if os.getenv('V3CACHE') == '' && !isolate_cache {
 		os.setenv('V3CACHE', os.vtmp_dir(), true)
 	}
-	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
+	parent_vtmp_dir := os.vtmp_dir()
+	new_vtmp_dir := os.join_path(parent_vtmp_dir, 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// The C objects of thirdparty code and native helpers are cached in VTMP too. Link the
+	// session's cache folder to one in the module cache root, which the driver accepts, so
+	// that each session does not compile them again (mbedtls alone is ~100 objects). Where
+	// links cannot be made, the session keeps its own folder, as before.
+	if !isolate_cache {
+		shared_objects := os.join_path(os.getenv('V3CACHE'), session_shared_object_cache)
+		os.mkdir_all(shared_objects) or {}
+		os.symlink(shared_objects, os.join_path(new_vtmp_dir, session_shared_object_cache)) or {}
+	}
 	// A test session must not inherit an unrelated `v.mod` from the shared temp
 	// directory, or from whatever contains it. The explicit project-boundary
 	// marker ends the upward search there.
