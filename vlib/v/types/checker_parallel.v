@@ -156,8 +156,12 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	// fork shares: index them once here instead of once per job. The same goes
 	// for the sorted candidates that every interface tests.
 	tc.timing_step(mut step_sw, '  if forks')
-	mut shared_memo := &InterfaceImplMemo{}
-	tc.memo_index_method_receivers(mut shared_memo)
+	// A lane may have indexed the receivers beside the end of collection.
+	mut shared_memo := tc.valid_collected_interface_memo()
+	if isnil(shared_memo) {
+		shared_memo = &InterfaceImplMemo{}
+		tc.memo_index_method_receivers(mut shared_memo)
+	}
 	tc.timing_step(mut step_sw, '  if receivers')
 	// A caller's own memo stays as it is: the candidates go to the shared one.
 	caller_memo := tc.interface_impl_memo
@@ -216,6 +220,107 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 		}
 	}
 	return true
+}
+
+struct InterfaceReceiverMemoArgs {
+	tc voidptr
+	a  &flat.FlatAst = unsafe { nil }
+mut:
+	memo  &InterfaceImplMemo = unsafe { nil }
+	scope voidptr
+}
+
+fn interface_receiver_memo_thread(arg voidptr) voidptr {
+	mut a := unsafe { &InterfaceReceiverMemoArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	// The index only serves the interface indexes, which release its arena
+	// (release_collected_interface_memo).
+	a.scope = check_worker_scope_begin(tc.scope_parallel_check_workers)
+	mut memo := a.memo
+	tc.memo_index_method_receiver_keys(mut memo)
+	memo.method_keys_ready = true
+	check_worker_scope_leave(a.scope)
+	tc.timing_step(mut sw, '  rs iface memo')
+	return unsafe { nil }
+}
+
+fn collect_resolution_tail_thread(arg voidptr) voidptr {
+	a := unsafe { &InterfaceReceiverMemoArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.collect_resolution_tail(a.a)
+	return unsafe { nil }
+}
+
+// collect_resolution_tail_beside_interface_memo is collect_resolution_tail
+// with a pool lane that meanwhile builds the method receiver index of the
+// interface indexes (memo_index_method_receivers), which
+// prepare_interface_query_indexes built on the collecting thread right after
+// collection. It returns false, and does nothing, when it does not apply.
+//
+// The lane reads the keys of fn_param_types, fn_ret_types and
+// receiver_method_suffix_index and writes its own index. Only the function
+// registrations of pass 2 and of the transformer write those tables: the
+// resolution tail reads them (an ownership build registers function literals
+// while it resolves, so it keeps the index where it was). The index is used
+// only if the tables still have the sizes they had when it was built.
+fn (mut tc TypeChecker) collect_resolution_tail_beside_interface_memo(a &flat.FlatAst) bool {
+	$if ownership ? {
+		return false
+	}
+	pool := checker_worker_pool(a)
+	if !tc.building_v_fast || isnil(pool) || pool.size() < 2 || tc.interface_names.len < 8
+		|| os.getenv('V3_NO_PAR_IFACE_MEMO') != '' {
+		return false
+	}
+	tc.release_collected_interface_memo()
+	mut memo := &InterfaceImplMemo{}
+	tc.memo_index_required_methods(mut memo)
+	mut args := InterfaceReceiverMemoArgs{
+		tc:   voidptr(tc)
+		a:    a
+		memo: memo
+	}
+	tasks := [
+		workers.Task{
+			run: interface_receiver_memo_thread
+			arg: unsafe { voidptr(&args) }
+		},
+		workers.Task{
+			run:        collect_resolution_tail_thread
+			arg:        unsafe { voidptr(&args) }
+			force_sync: true
+		},
+	]
+	pool.run(tasks)
+	tc.collected_interface_memo = memo
+	tc.collected_interface_memo_scope = args.scope
+	tc.collected_interface_memo_keys = [tc.fn_param_types.len, tc.fn_ret_types.len,
+		tc.receiver_method_suffix_index.len]!
+	return true
+}
+
+// valid_collected_interface_memo returns the method receiver index that a
+// lane built beside the end of collection, or nil when there is none or a
+// table it indexed has changed since.
+fn (tc &TypeChecker) valid_collected_interface_memo() &InterfaceImplMemo {
+	if isnil(tc.collected_interface_memo)
+		|| tc.collected_interface_memo_keys[0] != tc.fn_param_types.len
+		|| tc.collected_interface_memo_keys[1] != tc.fn_ret_types.len
+		|| tc.collected_interface_memo_keys[2] != tc.receiver_method_suffix_index.len {
+		return unsafe { nil }
+	}
+	return tc.collected_interface_memo
+}
+
+// release_collected_interface_memo drops that index and its arena, once the
+// interface indexes are built.
+fn (mut tc TypeChecker) release_collected_interface_memo() {
+	tc.collected_interface_memo = unsafe { nil }
+	if tc.collected_interface_memo_scope != unsafe { nil } {
+		check_worker_scope_free(tc.collected_interface_memo_scope)
+		tc.collected_interface_memo_scope = unsafe { nil }
+	}
 }
 
 struct UnusedFnVarCandidate {

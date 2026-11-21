@@ -1205,7 +1205,10 @@ pub mut:
 	defer_fn_ancillary               bool
 	defer_fn_params                  bool // pass 2 also leaves fn_param_types to a lane; until that ran, fn_type_modules tells which names are registered
 	defer_fn_names                   bool // lanes record the C names and visible-mutation declarations of functions from their prepared names (pass2_names_from_preps)
-	pass2_stream                     &Pass2Stream = unsafe { nil } // while lanes replay the registrations of pass 2 as it records them
+	pass2_stream                     &Pass2Stream       = unsafe { nil } // while lanes replay the registrations of pass 2 as it records them
+	collected_interface_memo         &InterfaceImplMemo = unsafe { nil } // the method receiver index that a lane built beside the end of collection, for the interface indexes
+	collected_interface_memo_scope   voidptr                     // its arena
+	collected_interface_memo_keys    [3]int                      // the sizes of the tables it indexed
 	pass2_streamed                   bool                        // such lanes ran, and also did what takes no registration list
 	pass2_replayed                   [pass2_ancillary_groups]int // the registrations of its list that each group has replayed
 	fn_ancillary_registrations       []FnAncillaryRegistration
@@ -5109,7 +5112,25 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	tc.timing_profile('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
-	step_sw.restart()
+	// A lane indexes the method receivers for the interface indexes meanwhile,
+	// when there is one.
+	if !tc.collect_resolution_tail_beside_interface_memo(a) {
+		tc.collect_resolution_tail(a)
+	}
+	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	if !isnil(tc.visible_mutation_cache) {
+		mut visible_mutation_cache := tc.visible_mutation_cache
+		visible_mutation_cache.decl_index_ready = true
+	}
+	$if ownership ? {
+		tc.ownership_after_collect()
+	}
+}
+
+// collect_resolution_tail resolves what pass 2 left pending and builds the
+// indexes that read the collected tables. It registers no function.
+fn (mut tc TypeChecker) collect_resolution_tail(a &flat.FlatAst) {
+	mut step_sw := time.new_stopwatch()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
 	// Globals may depend on constants whose initializer types were still pending.
@@ -5130,14 +5151,6 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.cache_direct_struct_field_types()
 	}
 	tc.timing_step(mut step_sw, 'rs field types')
-	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if !isnil(tc.visible_mutation_cache) {
-		mut visible_mutation_cache := tc.visible_mutation_cache
-		visible_mutation_cache.decl_index_ready = true
-	}
-	$if ownership ? {
-		tc.ownership_after_collect()
-	}
 }
 
 // collect_pass1 collects the type-level names (aliases, enums, sum types) of

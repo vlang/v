@@ -14308,6 +14308,15 @@ fn (tc &TypeChecker) memo_interface_metadata_name(name_id u32) u32 {
 // memo_index_method_receivers records, for every method that an interface
 // requires, the last components of the receivers of the keys that declare it.
 fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
+	tc.memo_index_required_methods(mut memo)
+	tc.memo_index_method_receiver_keys(mut memo)
+	memo.method_keys_ready = true
+}
+
+// memo_index_required_methods records the methods that an interface requires.
+// A method that is missing here is only never proven absent
+// (memo_proves_no_receiver_method).
+fn (tc &TypeChecker) memo_index_required_methods(mut memo InterfaceImplMemo) {
 	for iface_name, _ in tc.interface_names {
 		for method in tc.interface_abstract_method_names(iface_name) {
 			// A key is split at its last dot: a dotted name is never indexed, and
@@ -14322,6 +14331,12 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 			}
 		}
 	}
+}
+
+// memo_index_method_receiver_keys records the receivers of the keys of the
+// signature tables that declare a required method. It reads the keys of
+// those tables and writes `memo` alone.
+fn (tc &TypeChecker) memo_index_method_receiver_keys(mut memo InterfaceImplMemo) {
 	for key, _ in tc.fn_param_types {
 		memo.index_method_receiver_key(key)
 	}
@@ -14331,7 +14346,6 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 	for key, _ in tc.receiver_method_suffix_index {
 		memo.index_method_receiver_key(key)
 	}
-	memo.method_keys_ready = true
 }
 
 // required_method_bit spreads method names over the bits of
@@ -15743,6 +15757,7 @@ pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 		}
 		tc.interface_impl_memo = unsafe { nil }
 	}
+	tc.release_collected_interface_memo()
 	tc.timing_step(mut step_sw, 'if impls')
 	// The immutable transform indexes above preserve the pre-monomorphization
 	// order. Do not leave the same lists in the mutable query cache: generic
