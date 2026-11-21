@@ -531,8 +531,8 @@ fn (mut g Parser) queue_explicit_mono_function(tokens []FastcExpressionToken) ?s
 		}
 		next = look.scan()
 	}
-	if next != .rsbr || look.scan() != .lpar
-		|| arguments.len != source.type_param.split(',').len {
+	// A call, or the instance as a function value (`voidptr(entry[T])`).
+	if next != .rsbr || arguments.len != source.type_param.split(',').len {
 		return none
 	}
 	return g.queue_mono_function(function_key, flat.source_type_id(arguments.join(',')))
