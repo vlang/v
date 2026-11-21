@@ -31713,8 +31713,15 @@ fn (t &Transformer) resolve_ident_expr_type(name string) u32 {
 				}
 			}
 		}
-		if name_source_id := t.const_type_name(name) {
-			return name_source_id
+		// Only a const this module can name bare: an unbound local `q` of `main` must
+		// not take the type of `crc32.q` through the unique-suffix table.
+		if key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) {
+			owner := if key.contains('.') { key.all_before_last('.') } else { '' }
+			if owner in ['', 'builtin', t.cur_module] {
+				if name_source_id := t.const_type_name(key) {
+					return name_source_id
+				}
+			}
 		}
 	}
 	return u32(0)
