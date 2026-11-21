@@ -273,6 +273,14 @@ fn (mut g Parser) read_match_expression() !string {
 			// fixed-array struct value, as in an `if` expression.
 			value = g.render_call_argument_expression(g.last_expression, value_type) or { value }
 		}
+		branch_expected := g.expected_expression_type
+		if value_type == flat.source_type_void && branch_expected !in [u32(0), flat.source_type_void,
+			fastc_type_option, fastc_type_result] {
+			// Only a `@[noreturn]` call is a void branch value (`.x { unreachable() }`); give
+			// the conditional a value of the branch type after it.
+			value = '({ ${value}; (${fastc_output_c_type(flat.source_type_name(branch_expected))}){0}; })'
+			value_type = branch_expected
+		}
 		if member_smartcast_active && !fastc_is_pointer_type(smartcast_type)
 			&& fastc_is_pointer_type(value_type) && fastc_trim_pointer_type(value_type) == smartcast_type
 			&& !fastc_is_pointer_type(outer_expected_type_source_id) {
