@@ -211,6 +211,20 @@ fn malloc_string_buffer(n int) &u8 {
 	return unsafe { malloc_noscan(n) }
 }
 
+// For string builders that overwrite every byte (including the terminator) of
+// the n-byte buffer. Under VGC the buffer lives on a noscan span, so leftover
+// bytes are never traced; other backends keep the zeroing allocator.
+@[inline; unsafe]
+fn malloc_string_buffer_uninit(n int) &u8 {
+	$if prealloc && !builtin_arena ?&& !trace_malloc ? {
+		if n < 0 {
+			_memory_panic('malloc_noscan_uninit', n)
+		}
+		return unsafe { vmemory_block_malloc_aligned(n, 1) }
+	}
+	return unsafe { malloc_noscan_uninit(n) }
+}
+
 @[inline; unsafe]
 fn malloc_uninit(n int) &u8 {
 	if n < 0 {

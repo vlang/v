@@ -15,6 +15,19 @@ fn C.vgc_current_fake_stack() voidptr
 fn C.vgc_real_stack_address(fake_stack voidptr, address uint) uint
 fn C.vgc_fake_frame_range(fake_stack voidptr, address uint, begin &uint, end &uint) uint
 
+// GC statistics are diagnostic only: no collection decision reads them. The
+// default marker has a single writer, so a plain owner counter is enough and
+// avoids a locked read-modify-write per grey object. Parallel mark keeps the
+// atomic add for its multiple workers.
+@[inline]
+fn vgc_gc_stat_add(ptr &u64) {
+	$if vgc_parallel_mark ? {
+		C.vgc_counter_add_atomic(ptr, u64(1))
+	} $else {
+		C.vgc_counter_add(ptr, u64(1))
+	}
+}
+
 // ============================================================
 // GC Orchestration (translated from Go's runtime.gcStart, gcMarkDone, gcMarkTermination)
 // ============================================================
@@ -397,7 +410,7 @@ fn vgc_mark_worker() {
 			continue
 		}
 		round = 0
-		C.vgc_counter_add_atomic(&vgc_heap.gc_work_gets, u64(1))
+		vgc_gc_stat_add(&vgc_heap.gc_work_gets)
 		vgc_scan_work_obj(obj_addr)
 	}
 	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
@@ -445,8 +458,8 @@ fn vgc_scan_work_obj(obj_addr uint) {
 	if span == unsafe { nil } || span.noscan {
 		return
 	}
-	C.vgc_counter_add_atomic(&vgc_heap.gc_spans_visited, u64(1))
-	C.vgc_counter_add_atomic(&vgc_heap.gc_objs_scanned, u64(1))
+	vgc_gc_stat_add(&vgc_heap.gc_spans_visited)
+	vgc_gc_stat_add(&vgc_heap.gc_objs_scanned)
 	if span.has_ptrmap {
 		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
 	} else {
@@ -467,7 +480,7 @@ fn vgc_drain_mark_work() {
 		if obj_addr == 0 {
 			break
 		}
-		C.vgc_counter_add_atomic(&vgc_heap.gc_work_gets, u64(1))
+		vgc_gc_stat_add(&vgc_heap.gc_work_gets)
 		vgc_scan_work_obj(obj_addr)
 	}
 }
@@ -516,7 +529,7 @@ fn vgc_spanq_add(span &VGC_Span, obj_addr uint) {
 	if obj_idx >= span.nelems {
 		return
 	}
-	C.vgc_counter_add_atomic(&vgc_heap.gc_work_puts, u64(1))
+	vgc_gc_stat_add(&vgc_heap.gc_work_puts)
 	mut mspan := unsafe { &VGC_Span(span) }
 	if span.queued {
 		// A second object was seen while the span waited. Go's `hit` flag:
@@ -537,7 +550,7 @@ fn vgc_spanq_add(span &VGC_Span, obj_addr uint) {
 		span.next = unsafe { nil }
 	}
 	vgc_heap.spanq_len++
-	C.vgc_counter_add_atomic(&vgc_heap.gc_span_enqueues, u64(1))
+	vgc_gc_stat_add(&vgc_heap.gc_span_enqueues)
 }
 
 // vgc_spanq_take dequeues the oldest span (FIFO).
@@ -555,7 +568,7 @@ fn vgc_spanq_take() &VGC_Span {
 		span.next = unsafe { nil }
 	}
 	vgc_heap.spanq_len--
-	C.vgc_counter_add_atomic(&vgc_heap.gc_span_dequeues, u64(1))
+	vgc_gc_stat_add(&vgc_heap.gc_span_dequeues)
 	return span
 }
 
@@ -564,8 +577,8 @@ fn vgc_scan_obj(span &VGC_Span, obj_addr uint) {
 	if span.noscan {
 		return
 	}
-	C.vgc_counter_add_atomic(&vgc_heap.gc_spans_visited, u64(1))
-	C.vgc_counter_add_atomic(&vgc_heap.gc_objs_scanned, u64(1))
+	vgc_gc_stat_add(&vgc_heap.gc_spans_visited)
+	vgc_gc_stat_add(&vgc_heap.gc_objs_scanned)
 	if span.has_ptrmap {
 		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
 	} else {
@@ -582,7 +595,7 @@ fn vgc_drain_spanq() {
 		if span == unsafe { nil } {
 			break
 		}
-		C.vgc_counter_add_atomic(&vgc_heap.gc_work_gets, u64(1))
+		vgc_gc_stat_add(&vgc_heap.gc_work_gets)
 		scanned := unsafe { span.scanned_bits }
 		if scanned == unsafe { nil } {
 			continue
@@ -599,7 +612,7 @@ fn vgc_drain_spanq() {
 				C.vgc_bitmap_set(scanned, orig_idx)
 			}
 			vgc_scan_obj(span, orig)
-			C.vgc_counter_add_atomic(&vgc_heap.gc_single_obj_spans, u64(1))
+			vgc_gc_stat_add(&vgc_heap.gc_single_obj_spans)
 			continue
 		}
 		seen := unsafe { span.mark_bits }
@@ -615,9 +628,9 @@ fn vgc_drain_spanq() {
 			vgc_scan_obj(span, span.base + uint(idx) * uint(span.elem_size))
 		}
 		if nobjs_scanned > 1 {
-			C.vgc_counter_add_atomic(&vgc_heap.gc_multi_obj_spans, u64(1))
+			vgc_gc_stat_add(&vgc_heap.gc_multi_obj_spans)
 		} else if nobjs_scanned == 1 {
-			C.vgc_counter_add_atomic(&vgc_heap.gc_single_obj_spans, u64(1))
+			vgc_gc_stat_add(&vgc_heap.gc_single_obj_spans)
 		}
 	}
 }
@@ -656,7 +669,7 @@ fn vgc_work_put_locked(addr uint) {
 		buf.obj[buf.nobj] = addr
 		buf.nobj++
 	}
-	C.vgc_counter_add_atomic(&vgc_heap.gc_work_puts, u64(1))
+	vgc_gc_stat_add(&vgc_heap.gc_work_puts)
 }
 
 // Add a pointer to the mark work queue
@@ -686,7 +699,7 @@ fn vgc_work_put(addr uint) {
 			buf.obj[buf.nobj] = addr
 			buf.nobj++
 		}
-		C.vgc_counter_add_atomic(&vgc_heap.gc_work_puts, u64(1))
+		vgc_gc_stat_add(&vgc_heap.gc_work_puts)
 		return
 	}
 

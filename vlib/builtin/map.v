@@ -141,15 +141,16 @@ fn (mut d DenseArray) trim_deleted_tail() {
 	}
 }
 
-// realloc_data_noscan grows a pointer-free buffer on a noscan span: allocate
-// zeroed noscan storage, copy the old contents, release the old block.
+// realloc_data_noscan grows a pointer-free buffer on a noscan span: copy the
+// old contents into a new block, release the old one. Callers zero the new tail
+// when they read it, so the copied region needs no extra zeroing pass.
 @[unsafe]
 fn realloc_data_noscan(old_data &u8, old_size int, new_size int) &u8 {
 	if old_data == unsafe { nil } {
 		return unsafe { malloc_noscan(new_size) }
 	}
 	unsafe {
-		new_data := malloc_noscan(new_size)
+		new_data := malloc_noscan_uninit(new_size)
 		min_size := if old_size < new_size { old_size } else { new_size }
 		vmemcpy(new_data, old_data, min_size)
 		free(old_data)

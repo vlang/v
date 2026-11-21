@@ -105,7 +105,7 @@ fn (nn int) str_l(max int) string {
 			is_neg = true
 		}
 		mut index := max
-		mut buf := malloc_noscan(max + 1)
+		mut buf := malloc_noscan_uninit(max + 1)
 		buf[index] = 0
 		index--
 
@@ -188,7 +188,7 @@ pub fn (nn u32) str() string {
 			return '0'
 		}
 		max := 10
-		mut buf := malloc_noscan(max + 1)
+		mut buf := malloc_noscan_uninit(max + 1)
 		mut index := max
 		buf[index] = 0
 		index--
@@ -237,7 +237,7 @@ fn impl_i64_to_string(nn i64) string {
 			return '-9223372036854775808'
 		}
 		max := 20
-		mut buf := malloc_noscan(max + 1)
+		mut buf := malloc_noscan_uninit(max + 1)
 		mut is_neg := false
 		if n < 0 {
 			n = -n
@@ -283,7 +283,7 @@ pub fn (nn u64) str() string {
 			return '0'
 		}
 		max := 20
-		mut buf := malloc_noscan(max + 1)
+		mut buf := malloc_noscan_uninit(max + 1)
 		mut index := max
 		buf[index] = 0
 		index--
