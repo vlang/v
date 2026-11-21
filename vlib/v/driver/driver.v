@@ -9826,6 +9826,9 @@ pub fn run(args []string) {
 		return
 	}
 	mut input_file := ''
+	// Further `_test.v` files of the input's directory: the test runner builds the
+	// tests of one module into one binary (see v_test_batch_input_allowed).
+	mut extra_test_inputs := []string{}
 	mut stdin_input_index := -1
 	mut output_file := ''
 	mut explicit_output := false
@@ -10552,13 +10555,17 @@ pub fn run(args []string) {
 			exit(1)
 		} else {
 			if input_file.len > 0 {
-				eprintln('multiple input paths are not supported: `${input_file}` and `${args[i]}`')
-				exit(1)
-			}
-			input_file = args[i]
-			if input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != '' {
-				is_direct_vsh = !should_run
-				should_run = true
+				if !v_test_batch_input_allowed(input_file, extra_test_inputs, args[i]) {
+					eprintln('multiple input paths are not supported: `${input_file}` and `${args[i]}`')
+					exit(1)
+				}
+				extra_test_inputs << args[i]
+			} else {
+				input_file = args[i]
+				if input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != '' {
+					is_direct_vsh = !should_run
+					should_run = true
+				}
 			}
 			i++
 		}
@@ -12166,6 +12173,7 @@ pub fn run(args []string) {
 	mut user_files := []string{}
 	if input_file.ends_with('.v') || input_file.ends_with('.vv') {
 		user_files << input_file
+		user_files << extra_test_inputs
 		user_files = expand_single_test_file_inputs(mut a, user_files, prefs)
 	} else if os.is_dir(input_file) {
 		user_files = v3_directory_user_files(mut a, input_file, prefs, is_test_command, false) or {
@@ -20216,6 +20224,24 @@ Please move the sources up from `src/` into ${dir}:
 If you want to split one module across subdirectories after moving the root files, add `subdirs` to v.mod, for example:
 	subdirs: [\'admin\', \'repo\', \'commit\', \'ci\', \'security\', \'ssh\', \'user\']')
 	return true
+}
+
+// v_test_batch_input_allowed reports whether `path` may join the inputs `input_file`
+// and `extra` of one compilation. Only distinct `_test.v` files of a single
+// directory can: their module sources are added once, and the test harness runs
+// the tests of every file.
+fn v_test_batch_input_allowed(input_file string, extra []string, path string) bool {
+	if !input_file.ends_with('_test.v') || !path.ends_with('_test.v') {
+		return false
+	}
+	if !os.is_file(input_file) || !os.is_file(path) {
+		return false
+	}
+	real_path := os.real_path(path)
+	if real_path == os.real_path(input_file) || extra.any(os.real_path(it) == real_path) {
+		return false
+	}
+	return os.real_path(os.dir(path)) == os.real_path(os.dir(input_file))
 }
 
 fn expand_single_test_file_inputs(mut a flat.FlatAst, user_files []string, prefs &pref.Preferences) []string {
