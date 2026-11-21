@@ -43,7 +43,7 @@ pub fn (ctx &Context) draw_material_mesh_s(mesh &Mesh3D, pos Vec3, rotation Vec3
 			n = if has_rotation { apply_basis(mesh.normals[i], basis) } else { mesh.normals[i] }
 		}
 		world_verts[i] = world
-		vertex_colors[i] = material_color(&shade, world, n, cam)
+		vertex_colors[i] = material_color_unit_light(&shade, world, n, cam)
 		if sm := ctx.shadow_map {
 			// sample_fast is identical to the single-tap path of sample(); keep
 			// sample() when PCF is configured so soft_samples still works.
