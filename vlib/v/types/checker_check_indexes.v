@@ -189,6 +189,141 @@ fn (tc &TypeChecker) prewarm_import_fs_memo() &CheckerFsMemo {
 	return memo
 }
 
+// PreparedCheckItems is the work list of a parallel check (see
+// collect_parallel_check_items) and its split for the dynamic dispatch, made
+// ahead by a pool task of prepare_check_indexes_parallel for the AST as it was
+// then. Both only read the AST and what collection and the driver set.
+@[heap]
+struct PreparedCheckItems {
+	tc            voidptr // &TypeChecker, which the task only reads
+	top_level_len int
+	nodes_len     int
+	costs_len     int
+	pool_size     int
+mut:
+	scope voidptr
+	// valid is false when listing the items would have completed the module
+	// table, which only the check itself may do.
+	valid        bool
+	items        []CheckWorkItem
+	final_file   string
+	final_module string
+	// The chunks of the dynamic dispatch for `target` chunks, or none.
+	target int
+	chunks [][]CheckWorkItem
+}
+
+fn check_items_thread(arg voidptr) voidptr {
+	mut a := unsafe { &PreparedCheckItems(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	a.scope = check_worker_scope_begin(true)
+	tc.list_parallel_check_items(mut a)
+	if a.valid {
+		a.target = tc.planned_dynamic_check_target(a.items, a.pool_size)
+		if a.target > 0 {
+			a.chunks = split_dynamic_check_items(a.items, a.target, dynamic_check_small_pct,
+				dynamic_check_small_div)
+		}
+	}
+	check_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// list_parallel_check_items lists what collect_parallel_check_items lists,
+// without entering the files on the checker: it tracks the file and the module
+// itself, and gives up where entering a module would have written its table.
+fn (tc &TypeChecker) list_parallel_check_items(mut p PreparedCheckItems) {
+	blocking_import_files := tc.blocking_import_error_files()
+	library_bodies_trusted := tc.selected_files_only()
+	mut cur_file := ''
+	mut cur_module := ''
+	mut items := []CheckWorkItem{}
+	mut prev_tl := -1
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = tc.file_modules[node.value] or { '' }
+			}
+			.module_decl {
+				cur_module = node.value
+				if cur_file.len > 0 && cur_file !in tc.file_modules {
+					return
+				}
+			}
+			.fn_decl {
+				if blocking_import_files[cur_file] {
+					prev_tl = i
+					continue
+				}
+				if library_bodies_trusted && !tc.diagnostic_files[cur_file] {
+					prev_tl = i
+					continue
+				}
+				span := i - prev_tl
+				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
+					tc.fn_check_costs[i]
+				} else {
+					span
+				}
+				items << CheckWorkItem{
+					fn_idx:   i
+					range_lo: prev_tl + 1
+					file:     cur_file
+					module:   cur_module
+					cost:     cost
+					rank:     i64(cost) * 1_000_000_000 - i64(i)
+				}
+			}
+			else {}
+		}
+		prev_tl = i
+	}
+	p.items = items
+	p.final_file = cur_file
+	p.final_module = cur_module
+	p.valid = true
+}
+
+// planned_dynamic_check_target returns the number of chunks that
+// run_parallel_check splits `items` into for its dynamic dispatch with a pool of
+// `pool_size` workers, or 0 when it does not dispatch dynamically.
+fn (tc &TypeChecker) planned_dynamic_check_target(items []CheckWorkItem, pool_size int) int {
+	if !tc.scope_parallel_check_workers || !tc.building_v_fast
+		|| os.getenv('V3_TEST_PTHREAD_CREATE_FAIL').len > 0 {
+		return 0
+	}
+	mut n_jobs := check_job_count(pool_size + 1, items.len)
+	if n_jobs > max_scoped_check_jobs {
+		n_jobs = max_scoped_check_jobs
+	}
+	n_jobs = parallel_check_jobs_for_cost(n_jobs, items)
+	if items.len < tc.parallel_check_min_items || n_jobs <= 1 {
+		return 0
+	}
+	chunk_count := int_min(n_jobs * check_chunk_oversubscribe, items.len)
+	return int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
+}
+
+// take_prepared_check_items returns the work list that
+// prepare_check_indexes_parallel listed when it did for the AST as it is now,
+// or nil. The caller owns its arena.
+fn (mut tc TypeChecker) take_prepared_check_items() &PreparedCheckItems {
+	prepared := tc.prepared_check_items
+	if isnil(prepared) {
+		return unsafe { nil }
+	}
+	tc.prepared_check_items = unsafe { nil }
+	if !prepared.valid || prepared.top_level_len != tc.top_level_idx.len
+		|| prepared.nodes_len != tc.a.nodes.len || prepared.costs_len != tc.fn_check_costs.len
+		|| tc.skips_library_bodies {
+		check_worker_scope_free(prepared.scope)
+		return unsafe { nil }
+	}
+	return prepared
+}
+
 // PreparedWalkFnNames is what arm_walk_fn_short_names_listing_decls takes from
 // the pool, taken ahead by prepare_check_indexes_parallel for the tables as
 // they were then.
@@ -252,7 +387,21 @@ fn (mut tc TypeChecker) prepare_check_indexes_parallel(pool &workers.Pool) {
 	mut fs_memo := &CheckFsMemoArgs{
 		tc: voidptr(tc)
 	}
-	mut tasks := []workers.Task{cap: n_scans + 6}
+	mut check_items := &PreparedCheckItems{
+		tc:            voidptr(tc)
+		top_level_len: tc.top_level_idx.len
+		nodes_len:     n_nodes
+		costs_len:     tc.fn_check_costs.len
+		pool_size:     pool.size()
+	}
+	mut tasks := []workers.Task{cap: n_scans + 7}
+	// Deciding whether a library body is skipped can fill a memo of the checker.
+	if !tc.skips_library_bodies {
+		tasks << workers.Task{
+			run: check_items_thread
+			arg: voidptr(check_items)
+		}
+	}
 	tasks << workers.Task{
 		run:        check_index_master_thread
 		arg:        voidptr(tc)
@@ -311,6 +460,7 @@ fn (mut tc TypeChecker) prepare_check_indexes_parallel(pool &workers.Pool) {
 	tc.prepared_walk_fn_names = walk
 	tc.prepared_fn_groups = fn_groups
 	tc.prepared_fs_memo = fs_memo.memo
+	tc.prepared_check_items = check_items
 }
 
 // take_prepared_walk_fn_names returns the names and declarations of a
@@ -354,4 +504,9 @@ fn (mut tc TypeChecker) release_prepared_check_inputs() {
 		check_worker_scope_free(groups.scope)
 	}
 	tc.prepared_fs_memo = unsafe { nil }
+	items := tc.prepared_check_items
+	if !isnil(items) {
+		tc.prepared_check_items = unsafe { nil }
+		check_worker_scope_free(items.scope)
+	}
 }

@@ -1553,6 +1553,9 @@ pub mut:
 	prepared_walk_fn_names &PreparedWalkFnNames = unsafe { nil }
 	prepared_fn_groups     &PreparedFnGroups    = unsafe { nil }
 	prepared_fs_memo       &CheckerFsMemo       = unsafe { nil }
+	prepared_check_items   &PreparedCheckItems  = unsafe { nil }
+	// The work list taken from prepared_check_items, while its check runs.
+	listed_check_items &PreparedCheckItems = unsafe { nil }
 	// During a scoped check, sites that would gate on the called-fns closure park
 	// their candidate error here. Successful builds skip the closure entirely;
 	// the master computes it after checking only when a candidate needs filtering.

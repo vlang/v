@@ -2202,8 +2202,19 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// The work list only drives the dispatch below; keep it and its
 	// collection scratch out of the persistent arena.
 	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-	all_items := tc.collect_parallel_check_items()
+	// The pool may have listed it with the indexes of the check already.
+	mut listed := tc.take_prepared_check_items()
+	all_items := if isnil(listed) {
+		tc.collect_parallel_check_items()
+	} else {
+		unsafe { listed.items }
+	}
+	if !isnil(listed) {
+		tc.cur_file = listed.final_file
+		tc.cur_module = listed.final_module
+	}
 	check_worker_scope_leave(items_scope)
+	tc.listed_check_items = listed
 	// What an incremental check keeps outlives the work list.
 	items := tc.incremental_select(all_items)
 	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
@@ -2219,6 +2230,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.capture_items = false
 	mut tailsw := time.new_stopwatch()
 	check_worker_scope_free(items_scope)
+	tc.listed_check_items = unsafe { nil }
+	if !isnil(listed) {
+		check_worker_scope_free(listed.scope)
+	}
 	// Per-function check costs only schedule the parallel batches above.
 	unsafe { tc.fn_check_costs.free() }
 	tc.fn_check_costs = []i32{}
@@ -2657,8 +2672,15 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	mut batch_quota := i64(0)
 	if dynamic_dispatch {
 		dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
-		dynamic_chunks = split_dynamic_check_items(items, dynamic_target, dynamic_check_small_pct,
-			dynamic_check_small_div)
+		// The split may have been made with the work list (see PreparedCheckItems).
+		listed := tc.listed_check_items
+		if !isnil(listed) && listed.target == dynamic_target && listed.chunks.len > 0
+			&& listed.items.data == items.data && listed.items.len == items.len {
+			dynamic_chunks = unsafe { listed.chunks }
+		} else {
+			dynamic_chunks = split_dynamic_check_items(items, dynamic_target, dynamic_check_small_pct,
+				dynamic_check_small_div)
+		}
 		if dynamic_chunks.len > dynamic_target {
 			// The small chunks at the end of the queue are checked a batch's worth
 			// at a time.
