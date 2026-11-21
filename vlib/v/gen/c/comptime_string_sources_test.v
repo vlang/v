@@ -39,9 +39,12 @@ const following = 'yes'
 		os.write_file(os.join_path(root, '${i}.v'), source + '\n'.repeat(40000 - source.len))!
 	}
 	expected := ['direct: yes', 'chained: yes', 'else_if: yes', 'match: yes']
+	// Native Visual Studio clang has the MSVC ABI; the Windows runtime
+	// invocation needs the MinGW-compatible GCC already used by CI.
+	compiler := $if windows { 'gcc' } $else { 'clang' }
 	for serial in [false, true] {
 		binary := os.join_path(root, 'selected_${serial}${exe_suffix}')
-		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang', '-gc',
+		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', compiler, '-gc',
 			'none', '-o', binary]
 		if serial { args << '-no-parallel' }
 		args << root
