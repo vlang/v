@@ -253,6 +253,7 @@ pub:
 
 // window returns fixed-size windows over `array`.
 // Each window starts `attr.step` positions after the previous window.
+// If a window fits and step exceeds array.len - attr.size, only one window is returned.
 // It returns an empty array when the input or attributes cannot produce a window.
 //
 // Example: arrays.window([1, 2, 3, 4], size: 2) // => [[1, 2], [2, 3], [3, 4]]
@@ -261,17 +262,12 @@ pub fn window[T](array []T, attr WindowAttribute) [][]T {
 	if array.len == 0 || attr.size <= 0 || attr.step <= 0 || attr.size > array.len {
 		return [][]T{}
 	}
-	// allocate snapshot array
-	mut windows := [][]T{cap: array.len - attr.size + 1}
-
-	for i := 0; true; {
-		// check remaining elements size is less than snapshot size
-		if array.len < i + attr.size {
-			break
-		}
-
-		windows << array[i..i + attr.size]
-		i += attr.step
+	last_start := array.len - attr.size
+	count := last_start / attr.step + 1
+	mut windows := [][]T{cap: count}
+	for n in 0 .. count {
+		start := n * attr.step
+		windows << array[start..start + attr.size]
 	}
 
 	return windows
