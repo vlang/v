@@ -454,7 +454,9 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part in [
+		// `-ffp-contract=` only changes floating point code generation; TinyCC never
+		// contracts, and Clang honors it.
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part.starts_with('-ffp-contract=') || part in [
 			'-pthread',
 			'-fobjc-arc',
 			'-fno-objc-arc',
