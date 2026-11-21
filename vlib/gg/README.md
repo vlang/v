@@ -645,9 +645,17 @@ backend does not expose `gg`'s drawing calls.
   blocks. Other compressed formats are identified but not decoded.
 - `gg.xr` derives left/right stereo cameras from a head camera and provides
   side-by-side viewports. Headset tracking belongs to your XR runtime.
+- `gg.hdr` adds linear-light HDR rendering helpers: `ColorHDR` (f32 components
+  that may exceed 1), float RGBA buffers with exposure, ACES/Reinhard tone
+  mapping and bloom, and Radiance RGBE `.hdr` read/write (`decode_rgbe`,
+  `load_rgbe`, `encode_rgbe`, `save_rgbe`). Native builds also get
+  `FloatRenderTarget` for `.rgba16f`/`.rgba32f` offscreen passes. The CPU API
+  is pure V; file I/O uses `os`, which currently has WASM backend limitations
+  in this checkout, and native float targets need a live `sokol.gfx` context.
 
 Starter examples are `examples/gg/anim_base.v`, `procedural_base.v`,
-`game_base.v`, `advanced_base.v`, `tooling_base.v` and `extended_base.v`.
+`game_base.v`, `advanced_base.v`, `tooling_base.v`, `extended_base.v` and
+`hdr_base.v`.
 The interpolation math
 used by the addons is in `vlib/math`: `interp`, `ema`, `gradient`, `linspace`,
 `arange` and `activation`. Custom GPU shader slots and full post-processing

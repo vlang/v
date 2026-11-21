@@ -10,6 +10,7 @@ import gg.fx
 import gg.debug
 import gg.loaders
 import gg.scene
+import gg.hdr
 ```
 
 ## Core
@@ -96,4 +97,23 @@ root.add(mut child)
 mut sig := scene.new_signal[string]()
 sig.listen(fn (s string) {})
 sig.emit('event')
+```
+
+## HDR (`gg.hdr`)
+
+```v ignore
+sun := hdr.from_rgb(8, 6, 3)
+display := sun.tone_map(0.5, .aces)      // gg.Color in display range
+linear := hdr.from_ldr(pixels)            // RGBA8 -> linear f32
+hdr.apply_exposure(mut linear, 1.5)
+mut bloomed := []f32{len: linear.len}
+hdr.bloom_into(mut bloomed, linear, w, h, 1.0, 0.3, 1)
+mut out := []u8{len: pixels.len}
+hdr.to_ldr_into(mut out, bloomed, 1, .aces)
+mut img := hdr.new_image(w, h)!
+img.save_rgbe('scene.hdr')!
+loaded := hdr.load_rgbe('scene.hdr')!
+if hdr.float_targets_available() {
+    // native only: rt := hdr.new_float_render_target(w, h, .rgba16f)!
+}
 ```
