@@ -89,6 +89,8 @@ environment, working directory, arguments or exit), is run on its own. When a ba
 compile or to run, its files run again one by one, so failures are reported as without batching.
 `VTEST_BATCH_SIZE` sets the largest batch; `VTEST_NO_BATCH=1` runs every file on its own.
 Batching applies only to plain `v test` runs, without `-stats`, `-b` or `VTEST_RESUME_DIR`.
+`vlib/v/test_all.vsh` passes neighbouring internal tests of one directory to one `v test`, and
+runs the files of a failing group again one by one to name the failures.
 
 `cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
 including expected failures. It streams child output to stderr while retaining that output
