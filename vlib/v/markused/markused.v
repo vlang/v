@@ -1163,7 +1163,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// (fixed during the BFS) and the interface-dispatch tail only on
 	// (module, callee), so each needs to run once. enqueue() is idempotent, so
 	// skipping a repeat performs no fewer markings.
-	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
 	// Qualified callees whose whole processing above is independent of the
 	// calling module, once it ran for one caller: a declared function marked
