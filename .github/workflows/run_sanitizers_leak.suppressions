@@ -24,3 +24,10 @@ leak:_vinit
 # or scope, which stays reported when that arena or scope is lost.
 leak:vmemory_block_init_thread
 leak:vmemory_block_grow
+
+# A parallel parse reads each source into memory of the C allocator, and the
+# buffer of a source whose text the compiler keeps goes to the table of kept
+# source texts (flat.FlatAst.source_texts), which keeps it until the process
+# exits. That table is in -prealloc arena memory, which is mapped with mmap and
+# not scanned by LeakSanitizer, so each kept buffer is reported as a direct leak.
+leak:parser__read_batch_source
