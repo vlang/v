@@ -1542,6 +1542,11 @@ pub mut:
 	// The last path segment of every function signature key, armed for the
 	// duration of a reachability walk (see walk_fn_value_decl_key).
 	walk_fn_short_names &WalkFnShortNames = unsafe { nil }
+	// What the pool took ahead for the next reachability walk of a parallel
+	// check (see prepare_check_indexes_parallel), or nil.
+	prepared_walk_fn_names &PreparedWalkFnNames = unsafe { nil }
+	prepared_fn_groups     &PreparedFnGroups    = unsafe { nil }
+	prepared_fs_memo       &CheckerFsMemo       = unsafe { nil }
 	// During a scoped check, sites that would gate on the called-fns closure park
 	// their candidate error here. Successful builds skip the closure entirely;
 	// the master computes it after checking only when a candidate needs filtering.
@@ -6397,6 +6402,13 @@ fn (mut tc TypeChecker) build_const_suffixes() {
 // before the semantic check, on the checker whose forks check the bodies.
 // A filter is only consulted while its table still has the counted entries.
 fn (mut tc TypeChecker) prepare_check_name_filters() {
+	tc.prepare_check_name_filters_opt(true)
+}
+
+// prepare_check_name_filters_opt is prepare_check_name_filters; without
+// `scan_nodes` the caller looks for a required struct field itself (see
+// prepare_check_indexes_parallel).
+fn (mut tc TypeChecker) prepare_check_name_filters_opt(scan_nodes bool) {
 	mut const_names := map[string]bool{}
 	for name, _ in tc.const_exprs {
 		const_names[short_name_view(name)] = true
@@ -6405,10 +6417,12 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 	tc.const_expr_short_names_count = tc.const_exprs.len
 	if !isnil(tc.a) {
 		tc.has_required_fields = false
-		for field in tc.a.nodes {
-			if field.kind == .field_decl && struct_field_has_attr(field, 'required') {
-				tc.has_required_fields = true
-				break
+		if scan_nodes {
+			for field in tc.a.nodes {
+				if field.kind == .field_decl && struct_field_has_attr(field, 'required') {
+					tc.has_required_fields = true
+					break
+				}
 			}
 		}
 		tc.required_fields_ast_nodes = tc.a.nodes.len
@@ -7906,7 +7920,8 @@ fn removed_json_module_message(file string) string {
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	// The module identity of each file asks the file system the same questions
 	// about the same few directories; remember the answers for this pass.
-	tc.fs_memo = &CheckerFsMemo{}
+	tc.fs_memo = if isnil(tc.prepared_fs_memo) { &CheckerFsMemo{} } else { tc.prepared_fs_memo }
+	tc.prepared_fs_memo = unsafe { nil }
 	defer {
 		tc.fs_memo = unsafe { nil }
 	}
@@ -13243,7 +13258,10 @@ fn (tc &TypeChecker) generic_declaration_head_pos(id flat.NodeId) token.Pos {
 	return token.new_span(pos.id, pos.offset, pos.offset + bracket)
 }
 
-fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
+// repeated_fn_declaration_groups returns, by qualified name, the declarations of
+// every function that is declared more than once, in declaration order. It only
+// reads the AST and the modules of the files.
+fn (tc &TypeChecker) repeated_fn_declaration_groups() map[string][]int {
 	// Only names declared more than once can be reported. Record each name's first
 	// declaration and materialize an index list only for a repeated name, instead
 	// of allocating and sorting a group for every function.
@@ -13273,6 +13291,23 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 		indexes << index
 		groups[key] = indexes
 	}
+	return groups
+}
+
+fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
+	// A parallel check of a large program has the pool find the repeated names
+	// ahead; their arena is released once they are reported.
+	prepared := tc.take_prepared_fn_groups()
+	groups := if isnil(prepared) {
+		tc.repeated_fn_declaration_groups()
+	} else {
+		unsafe { prepared.groups }
+	}
+	defer {
+		if !isnil(prepared) {
+			check_worker_scope_free(prepared.scope)
+		}
+	}
 	mut keys := groups.keys()
 	keys.sort()
 	for key in keys {
@@ -13299,7 +13334,8 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			msg:        'redefinition of function `${display_name}`'
 			kind:       .duplicate_decl
 			node:       flat.empty_node
-			node_value: key
+			// The reported name outlives the arena of prepared groups.
+			node_value: if isnil(prepared) { key } else { key.clone() }
 			severity:   'builder error:'
 		}
 		for index in indexes {

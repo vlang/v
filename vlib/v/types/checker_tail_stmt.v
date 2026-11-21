@@ -5830,8 +5830,11 @@ mut:
 	// enum_decls_complete is false when the qualified spelling of an enum was not
 	// interned yet: the scan that enum_decls replaces interns each one it passes.
 	enum_decls_complete bool
-	// decl_assign_names holds every identifier that a `decl_assign` declares.
-	decl_assign_names map[string]bool
+	// decl_assign_bloom is a filter of every identifier that a `decl_assign`
+	// among `nodes_len` nodes declares: no `decl_assign` declares a name that it
+	// excludes. Its storage is in `bloom_scope` when that is set.
+	decl_assign_bloom &ConstSelectorBloom = unsafe { nil }
+	bloom_scope       voidptr
 	// struct_decls maps the name, and the name qualified by the module declared
 	// before it, of each top-level `struct_decl` to those declarations, in
 	// top_level_idx order (see source_struct_field_decls).
@@ -5860,6 +5863,13 @@ struct CheckStructDeclRef {
 
 // new_check_decl_indexes builds the declaration indexes of the current AST.
 fn (tc &TypeChecker) new_check_decl_indexes() &CheckDeclIndexes {
+	return tc.new_check_decl_indexes_opt(true)
+}
+
+// new_check_decl_indexes_opt is new_check_decl_indexes; without `scan_nodes`,
+// it leaves out the index that reads every node (see
+// prepare_check_indexes_parallel).
+fn (tc &TypeChecker) new_check_decl_indexes_opt(scan_nodes bool) &CheckDeclIndexes {
 	mut indexes := &CheckDeclIndexes{
 		live:                true
 		top_level_len:       tc.top_level_idx.len
@@ -5955,16 +5965,14 @@ fn (tc &TypeChecker) new_check_decl_indexes() &CheckDeclIndexes {
 			names: names
 		}
 	}
-	for i in 0 .. tc.a.nodes.len {
-		node := tc.a.node(flat.NodeId(i))
-		if node.kind != .decl_assign {
-			continue
-		}
-		for child_idx := 0; child_idx < node.children_count; child_idx += 2 {
-			lhs := tc.a.node(tc.a.child(node, child_idx))
-			if lhs.kind == .ident && lhs.value !in indexes.decl_assign_names {
-				indexes.decl_assign_names[lhs.value] = true
-			}
+	if scan_nodes {
+		mask := decl_assign_bloom_mask(tc.a.nodes.len)
+		mut bits := []u64{len: int((mask + 1) >> 6)}
+		tc.scan_check_index_range(0, tc.a.nodes.len, mut bits, mask)
+		indexes.decl_assign_bloom = &ConstSelectorBloom{
+			count: tc.a.nodes.len
+			mask:  mask
+			bits:  bits
 		}
 	}
 	return indexes
@@ -5997,7 +6005,11 @@ fn (mut tc TypeChecker) retire_check_decl_indexes() {
 	mut indexes := tc.check_decl_indexes
 	if !isnil(indexes) {
 		indexes.live = false
+		indexes.decl_assign_bloom = unsafe { nil }
+		check_worker_scope_free(indexes.bloom_scope)
+		indexes.bloom_scope = unsafe { nil }
 	}
+	tc.release_prepared_check_inputs()
 	tc.check_decl_indexes = unsafe { nil }
 	tc.source_type_keyword_memo = unsafe { nil }
 }
@@ -9955,7 +9967,7 @@ fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat
 	// Only an identifier that some `decl_assign` declares can be found below.
 	indexes := tc.check_decl_indexes
 	if !isnil(indexes) && indexes.live && indexes.nodes_len == tc.a.nodes.len
-		&& name !in indexes.decl_assign_names {
+		&& indexes.decl_assign_bloom.excludes(name, indexes.nodes_len) {
 		return none
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)

@@ -1645,14 +1645,27 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
 	tc.release_check_tail()
-	if !isnil(tc.a) {
+	// A parallel check of a large program builds its indexes on the pool.
+	index_pool := if want_parallel && !isnil(tc.a)
+		&& tc.a.nodes.len >= min_parallel_check_index_nodes {
+		checker_worker_pool(tc.a)
+	} else {
+		&workers.Pool(unsafe { nil })
+	}
+	indexes_on_pool := !isnil(index_pool) && index_pool.size() > 0
+	if indexes_on_pool {
+		tc.prepare_check_indexes_parallel(index_pool)
+		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	} else if !isnil(tc.a) {
 		tc.check_decl_indexes = tc.new_check_decl_indexes()
 		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
 	}
 	defer {
 		tc.retire_check_decl_indexes()
 	}
-	tc.prepare_check_name_filters()
+	if !indexes_on_pool {
+		tc.prepare_check_name_filters()
+	}
 	// Later stages write the flag tables without going through registration.
 	defer {
 		tc.disable_call_flag_bloom()
@@ -6808,44 +6821,50 @@ fn (mut tc TypeChecker) arm_walk_fn_short_names_listing_decls(mut scopes []voidp
 		return unsafe { nil }
 	}
 	mask := walk_fn_short_names_mask(count)
-	mut args := []WalkFnNamesArgs{cap: 3}
-	for job in 0 .. 3 {
-		args << WalkFnNamesArgs{
-			tc:          voidptr(tc)
-			list_decls:  job == 2
-			param_table: job == 1
-			mask:        mask
+	// The pool may have taken them with the indexes of the check already.
+	mut taken := tc.take_prepared_walk_fn_names(mask)
+	if isnil(taken) {
+		taken = &PreparedWalkFnNames{
+			args: []WalkFnNamesArgs{cap: 3}
 		}
-	}
-	mut tasks := []workers.Task{cap: 3}
-	for job in 0 .. 3 {
-		tasks << workers.Task{
-			run:        walk_fn_names_thread
-			arg:        unsafe { voidptr(&args[job]) }
-			force_sync: job == 0
+		for job in 0 .. 3 {
+			taken.args << WalkFnNamesArgs{
+				tc:          voidptr(tc)
+				list_decls:  job == 2
+				param_table: job == 1
+				mask:        mask
+			}
 		}
+		mut tasks := []workers.Task{cap: 3}
+		for job in 0 .. 3 {
+			tasks << workers.Task{
+				run:        walk_fn_names_thread
+				arg:        unsafe { voidptr(&taken.args[job]) }
+				force_sync: job == 0
+			}
+		}
+		pool.run(tasks)
 	}
-	pool.run(tasks)
-	for arg in args {
+	for arg in taken.args {
 		if arg.scope != unsafe { nil } {
 			scopes << arg.scope
 		}
 	}
-	mut bits := unsafe { args[0].bits }
-	param_bits := args[1].bits
+	mut bits := unsafe { taken.args[0].bits }
+	param_bits := taken.args[1].bits
 	for i in 0 .. bits.len {
 		bits[i] |= param_bits[i]
 	}
 	tc.walk_fn_short_names = &WalkFnShortNames{
-		ret:   args[0].names
-		param: args[1].names
+		ret:   taken.args[0].names
+		param: taken.args[1].names
 		bloom: &ConstSelectorBloom{
 			count: count
 			mask:  mask
 			bits:  bits
 		}
 	}
-	return args[2].decls
+	return taken.args[2].decls
 }
 
 // SelectedFnScanArgs is one pool task of collect_selected_file_called_fns_walk_parallel.
