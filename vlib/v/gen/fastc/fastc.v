@@ -1810,6 +1810,10 @@ mut:
 	generated_mono   map[string]bool
 	mono_functions   map[string]FastcFunctionSignature
 	mono_definitions map[string]string
+	// The prototypes of hoisted function literals. They follow the file's functions rather
+	// than the enclosing function's prototype, which the reachability prune may drop while
+	// the hoisted definition is always emitted.
+	anon_prototypes []string
 	// True while the drain re-parses a mono instance, so parse_function skips the
 	// reachability prune (the instance is used by definition — that is why it was queued).
 	in_mono_drain          bool

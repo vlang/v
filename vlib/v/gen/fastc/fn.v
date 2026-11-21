@@ -14,6 +14,9 @@ fn (mut g Parser) run() !string {
 	g.parse_top_level_items(false)!
 	generated := fastc_take_string(mut g.out)
 	g.drain_pending_mono()!
+	for prototype in g.anon_prototypes {
+		g.protos.write_string(prototype)
+	}
 	return generated
 }
 
