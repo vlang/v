@@ -60,7 +60,6 @@ fn test_web_imports_retain_the_module_cache() ! {
 	cache := os.join_path(root, 'cache')
 	environment := {
 		'VFLAGS':         ''
-		'VTMP':           os.join_path(root, 'tmp')
 		'V3CACHE':        cache
 		'V3_CACHE_TRACE': '1'
 	}
@@ -112,7 +111,6 @@ fn test_brotli_unpoison_helper_survives_module_cache() ! {
 	os.write_file(source, program_source)!
 	environment := {
 		'VFLAGS':         ''
-		'VTMP':           os.join_path(root, 'tmp')
 		'V3CACHE':        cache
 		'V3_CACHE_TRACE': '1'
 	}
