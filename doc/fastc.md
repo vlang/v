@@ -122,6 +122,13 @@ Ordinary programs support the following constructs:
 - Static methods and constant arrays of functions used as function values.
 - `init` and `cleanup` functions with parameters, which are ordinary functions rather than
   module lifecycle hooks.
+- Generic structs and generic sum types of every project module, copied per concrete instance
+  with their methods. A vlib generic struct that project code names with concrete arguments,
+  such as `stdatomic.AtomicVal[u32]` or `sync.ThreadLocalStorage[voidptr]`, gets a copy too.
+- `$if T in [i8, int, $float]` and `$if T !in [...]`, `field.unaliased_typ is T` in
+  `$for field in T.fields`, and `$array` matching fixed-size arrays as well.
+- Constant initializers that call imported generic functions, such as
+  `sync.new_tls[voidptr](nil)`.
 
 For example:
 
