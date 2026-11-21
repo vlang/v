@@ -87,6 +87,13 @@ const shared_piece_batch_cost = 40_000
 const shared_piece_discard_bytes = 8 * 1024 * 1024
 // The lookup caches of the helper a thread is running stay mapped for its next one.
 const shared_piece_cache_keep_bytes = 2 * 1024 * 1024
+// Lowering resolves about one call per twelve source nodes on appended nodes
+// (159 thousand for the 1.93 million nodes of a compiler build); the sparse
+// call-name map is sized for one per ten.
+const shared_sparse_call_names_per_base_nodes = 10
+// The helpers of a compiler build log 710 thousand rewritten base nodes, a bit
+// more than one in three; the master's log is sized for one in two.
+const shared_owned_base_log_per_base_nodes = 2
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
 // Every non-empty batch uses the memory-bounded scoped path; see
@@ -3717,6 +3724,19 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		return false
 	}
 	t.tc.freeze_type_cache_for_forks()
+	// Worker call resolutions for appended nodes land in the master's sparse
+	// call-name map as each helper is merged, most of them while the pool is
+	// still running. Size it before the first merge: grown through every
+	// doubling, it left several times its final size behind in the stage arena.
+	if t.tc.parallel_check_sparse {
+		t.tc.sparse_resolved_call_names.reserve(u32(t.tc.sparse_resolved_call_names.len +
+			base_nodes / shared_sparse_call_names_per_base_nodes))
+	}
+	// The same holds for the log of rewritten base nodes that every merge extends.
+	if t.scope_parallel_workers && t.retain_worker_results {
+		t.scoped_owned_base_log.ensure_cap(t.scoped_owned_base_log.len +
+			base_nodes / shared_owned_base_log_per_base_nodes)
+	}
 	// The chunk partition, its cost tables and the helper forks below are
 	// only read until the join; keep them out of the retained stage arena.
 	setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
@@ -4051,10 +4071,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.used_fns_helper_snapshot = unsafe { nil }
 	t.flush_deferred_base_writes()
 	if t.ignored_comptime_for_log.len > 0 {
-		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
-			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
-			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
-		}
+		t.grow_ignored_comptime_for_nodes()
 		for idx in t.ignored_comptime_for_log {
 			if idx >= 0 && idx < t.ignored_comptime_for_nodes.len {
 				t.ignored_comptime_for_nodes[idx] = true

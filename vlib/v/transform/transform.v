@@ -3682,10 +3682,7 @@ fn (mut t Transformer) ignore_comptime_for_subtree(id flat.NodeId) {
 		}
 		return
 	}
-	if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
-		t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
-		t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
-	}
+	t.grow_ignored_comptime_for_nodes()
 	if t.ignored_comptime_for_nodes[idx] {
 		return
 	}
@@ -3693,6 +3690,20 @@ fn (mut t Transformer) ignore_comptime_for_subtree(id flat.NodeId) {
 	node := t.a.nodes[idx]
 	for i in 0 .. node.children_count {
 		t.ignore_comptime_for_subtree(t.a.child(&node, i))
+	}
+}
+
+// grow_ignored_comptime_for_nodes extends the flags over every node in place,
+// without a zero-filled temporary of the same size.
+fn (mut t Transformer) grow_ignored_comptime_for_nodes() {
+	old_len := t.ignored_comptime_for_nodes.len
+	if old_len >= t.a.nodes.len {
+		return
+	}
+	t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
+	unsafe {
+		t.ignored_comptime_for_nodes.grow_len(t.a.nodes.len - old_len)
+		vmemset(&t.ignored_comptime_for_nodes[old_len], 0, t.a.nodes.len - old_len)
 	}
 }
 
@@ -3711,6 +3722,10 @@ fn (mut t Transformer) apply_ignored_comptime_for_nodes() {
 		}
 		t.clear_ignored_comptime_for_node(idx)
 		idx++
+	}
+	$if prealloc {
+		// One byte per node for a handful of flags: drop the pages with the array.
+		unsafe { t.ignored_comptime_for_nodes.free() }
 	}
 	t.ignored_comptime_for_nodes = []bool{}
 }
@@ -7004,10 +7019,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		t.record_refined_node_type(shifted, typ)
 	}
 	if w.ignored_comptime_for_nodes.len > 0 {
-		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
-			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
-			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
-		}
+		t.grow_ignored_comptime_for_nodes()
 		// The worker's flags cover the whole AST but only a few are set; jump
 		// between them as apply_ignored_comptime_for_nodes does.
 		flags := w.ignored_comptime_for_nodes
@@ -7036,10 +7048,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 		}
 	} else if w.ignored_comptime_for_log.len > 0 {
-		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
-			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
-			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
-		}
+		t.grow_ignored_comptime_for_nodes()
 		for idx in w.ignored_comptime_for_log {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
 			if shifted >= 0 && shifted < t.ignored_comptime_for_nodes.len {
