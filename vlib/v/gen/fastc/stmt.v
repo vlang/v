@@ -1695,9 +1695,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 					local.smartcast_origin_source
 				}
 			} else if local.is_reference {
-				'(*${fastc_c_value_identifier(name)})'
+				'(*${g.local_c_name(name)})'
 			} else {
-				fastc_c_value_identifier(name)
+				g.local_c_name(name)
 			}
 		} else {
 			fastc_c_value_identifier(name)
@@ -2645,9 +2645,9 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: if local.is_reference {
-					'(*${fastc_c_value_identifier(name)})'
+					'(*${g.local_c_name(name)})'
 				} else {
-					fastc_c_value_identifier(name)
+					g.local_c_name(name)
 				}
 				typ:    (if local.is_reference {
 					fastc_trim_pointer_type(local.typ)
@@ -3463,7 +3463,14 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	// direct path preserve V's `:=` without running any inference or type checker.
 	// A self-host has already inferred the C type, so spelling that type directly
 	// avoids duplicating large statement expressions in the generated source.
-	c_name := fastc_c_value_identifier(name)
+	// A local named like a C function it calls (`read := C.read(...)`) would shadow that
+	// function in its own initializer.
+	c_name := if 'C.${name}' in g.functions {
+		'_v_local_${name}'
+	} else {
+		fastc_c_value_identifier(name)
+	}
+	local_c_name := if c_name.starts_with('_v_local_') { c_name } else { '' }
 	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
 	local_type_id := if g.selfhost && g.last_expression_type == u32(0) {
 		flat.source_type_int
@@ -3526,6 +3533,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 			is_reference:  true
 			is_heap_value: true
 			typ:           pointer_type
+			c_name:        local_c_name
 		})
 		return
 	}
@@ -3561,6 +3569,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	}
 	g.set_scoped_local(name, FastcLocal{
 		is_mut:               is_mut
+		c_name:               local_c_name
 		typ:                  local_type_id
 		option_value_type:    option_value_type
 		fn_return_type:       if function_alias.callable_index_depth == 0 {
