@@ -21,6 +21,7 @@ fn C.vgc_atomic_add_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_cas_u32(ptr &u32, expected &u32, desired u32) bool
 fn C.vgc_atomic_exchange_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_fence()
+fn C.v_zero_if_needed(ptr voidptr, n uint, zero_until voidptr)
 fn C.vgc_counter_load(ptr &u64) u64
 fn C.vgc_counter_add(ptr &u64, val u64)
 fn C.vgc_counter_add_atomic(ptr &u64, val u64)
@@ -1224,7 +1225,9 @@ fn vgc_alloc_large(n uint, noscan bool, zero_fill bool, cache_idx int) voidptr {
 
 	ptr := unsafe { voidptr(span.base) }
 	if zero_fill {
-		unsafe { C.memset(ptr, 0, n) }
+		// Reused spans may be dirty, so VGC has no guaranteed-zero region:
+		// passing ptr as zero_until zeroes the whole requested range.
+		C.v_zero_if_needed(ptr, n, ptr)
 	}
 	return ptr
 }

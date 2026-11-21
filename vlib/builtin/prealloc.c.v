@@ -2,6 +2,11 @@
 module builtin
 
 #insert "@VEXEROOT/vlib/builtin/prealloc_atomics.h"
+#insert "@VEXEROOT/vlib/builtin/alloc_fastpaths.h"
+
+fn C.v_zero_if_needed(ptr voidptr, n uint, zero_until voidptr)
+
+fn C.v_os_hugepage_hint(ptr voidptr, size uint)
 
 fn C.v_prealloc_atomic_add_i32(ptr &i32, delta int) int
 
@@ -627,10 +632,10 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 						v.mmap_allocated = true
 						fresh_mmap = true
 						$if linux {
-							// MADV_HUGEPAGE (14) cuts TLB misses on large arenas.
+							// MADV_HUGEPAGE cuts TLB misses on large arenas.
 							// The hint is advisory; failure is harmless.
 							if block_size >= 2 * 1024 * 1024 {
-								C.madvise(v.start, uint(block_size), 14)
+								C.v_os_hugepage_hint(v.start, uint(block_size))
 							}
 						}
 					}
@@ -1546,10 +1551,8 @@ fn prealloc_calloc(n int) &u8 {
 	unsafe {
 		mb := g_memory_block
 		// Fresh mmap pages are already zero; only recycled or rewound storage
-		// needs a memset.
-		if i64(new_ptr) + i64(n) > i64(mb.zero_until) {
-			C.memset(new_ptr, 0, n)
-		}
+		// past mb.zero_until needs a memset.
+		C.v_zero_if_needed(new_ptr, uint(n), voidptr(mb.zero_until))
 	}
 	return new_ptr
 }
@@ -1613,9 +1616,7 @@ pub fn prealloc_try_calloc(n int) ?&u8 {
 	ptr := unsafe { prealloc_try_malloc(n) } or { return none }
 	unsafe {
 		mb := g_memory_block
-		if i64(ptr) + i64(n) > i64(mb.zero_until) {
-			C.memset(ptr, 0, n)
-		}
+		C.v_zero_if_needed(ptr, uint(n), voidptr(mb.zero_until))
 	}
 	return ptr
 }
