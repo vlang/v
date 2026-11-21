@@ -52,7 +52,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 // select_plan executes a full SQL plan, including subqueries, CTEs and set
 // operations. Bind parameters are rendered in SQL order by the ORM renderer.
-pub fn (db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery, data orm.QueryData) ![][]orm.Primitive {
+pub fn (db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery) ![][]orm.Primitive {
 	query, bound := orm.orm_select_gen_plan(.sqlite, '`', false, '?', 1, plan)
 	$if trace_sqlite ? {
 		eprintln('> select_plan query: "${query}"')
@@ -63,7 +63,6 @@ pub fn (db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery, data orm
 	}
 	mut c := StmtBindCounter{ position: 1 }
 	sqlite_stmt_binder(stmt, bound, query, mut c)!
-	_ = data
 
 	mut ret := [][]orm.Primitive{}
 	for {

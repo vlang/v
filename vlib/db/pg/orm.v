@@ -29,11 +29,10 @@ pub fn (mut c Conn) select(config orm.SelectConfig, data orm.QueryData, where or
 }
 
 // select_plan executes a full SQL plan with subqueries and set operations.
-pub fn (mut c Conn) select_plan(config orm.SelectConfig, plan &orm.SqlQuery, data orm.QueryData) ![][]orm.Primitive {
+pub fn (mut c Conn) select_plan(config orm.SelectConfig, plan &orm.SqlQuery) ![][]orm.Primitive {
 	c.ensure_active()!
 	query, bound := orm.orm_select_gen_plan(.pg, '"', true, '$', 1, plan)
 	rows := pg_stmt_worker(mut c, query, bound, orm.QueryData{})!
-	_ = data
 	mut ret := [][]orm.Primitive{}
 	for row in rows {
 		mut row_data := []orm.Primitive{}

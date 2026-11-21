@@ -153,7 +153,7 @@ fn test_group_by_having_and_union_plan() {
 		table: orm.Table{ name: 'FullSqlItem' }
 		types: [orm.type_idx['string']]
 	}
-	rows := db.select_plan(cfg, plan, orm.QueryData{})!
+	rows := db.select_plan(cfg, plan)!
 	assert rows.len == 3, 'expected 3 groups, got ${rows.len}'
 }
 
@@ -173,6 +173,6 @@ fn test_union_plan() {
 		table: orm.Table{ name: 'FullSqlItem' }
 		types: [orm.type_idx['string']]
 	}
-	rows := db.select_plan(cfg, plan, orm.QueryData{})!
+	rows := db.select_plan(cfg, plan)!
 	assert rows.len == 3, 'expected 3 distinct rows, got ${rows.len}'
 }

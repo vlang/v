@@ -51,7 +51,7 @@ fn (qb_ &QueryBuilder[T]) select_rows() ![][]Primitive {
 	if plan := qb.plan {
 		if qb.conn is PlanConnection {
 			pc := qb.conn as PlanConnection
-			return pc.select_plan(qb.config, plan, qb.data)
+			return pc.select_plan(qb.config, plan)
 		}
 	}
 	return qb.conn.select(qb.config, qb.data, qb.where)

@@ -12,9 +12,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 }
 
 // select_plan executes a full SQL plan with subqueries and set operations.
-pub fn (db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery, data orm.QueryData) ![][]orm.Primitive {
+pub fn (db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery) ![][]orm.Primitive {
 	query, bound := orm.orm_select_gen_plan(.mysql, '`', false, '?', 0, plan)
-	_ = data
 	return db.select_query(config, query, bound, orm.QueryData{})
 }
 

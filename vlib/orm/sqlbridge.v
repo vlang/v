@@ -4,7 +4,7 @@ module orm
 // execute a full SqlQuery plan (subqueries, CTEs, set operations, grouping).
 // Connection itself is unchanged, so third-party drivers keep compiling.
 pub interface PlanConnection {
-	select_plan(config SelectConfig, plan &SqlQuery, data QueryData) ![][]Primitive
+	select_plan(config SelectConfig, plan &SqlQuery) ![][]Primitive
 }
 
 // orm_select_gen_plan renders a plan and returns the bind parameters in SQL
