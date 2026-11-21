@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v.cmdexec
 
 // The steps the driver takes after the link are shown with `-showcc` and `-v`, with the same
 // `  > ` prefix as the compiler command line.
@@ -25,6 +26,27 @@ fn test_windows_manifest_step_names_the_sidecar_and_the_action() {
 	assert windows_manifest_step('C:/t/p.exe', true).starts_with('rm C:/t/p.exe.manifest')
 }
 
+// shown_path is `path` the way a step line shows it: every argument of a step goes through
+// cmdexec.display, which quotes one that has a space or another character a shell reads.
+fn shown_path(path string) string {
+	return cmdexec.display('mv', [path]).all_after('mv ')
+}
+
+// move_lines_to returns the lines of a build's output that show a move to `target`.
+fn move_lines_to(output string, target string) []string {
+	return output.split_into_lines().filter(it.starts_with('  > mv ')
+		&& it.ends_with(' ' + shown_path(target)))
+}
+
+fn test_a_path_is_matched_the_way_it_is_shown() {
+	assert shown_path('/t/p') == '/t/p'
+	spaced := shown_path('/t dir/p')
+	assert spaced != '/t dir/p' && spaced.contains('/t dir/p'), spaced
+	output := '  > cc -o out src.c\n  > mv ${shown_path('/t dir/.p.tmp')} ${spaced}\n'
+	assert move_lines_to(output, '/t dir/p').len == 1
+	assert move_lines_to(output, '/t dir/other').len == 0
+}
+
 // fastc_unavailable says why this compiler or this host cannot build with FastC, or '' when the
 // failure is something else. A compiler built with `-d skip_fastc` has no FastC, and the TinyCC
 // path needs the bundled TinyCC.
@@ -41,7 +63,9 @@ fn fastc_unavailable(output string) string {
 // Every path that puts the output in place reports its move: the C backend, FastC with TinyCC and
 // FastC with Clang each return their own result, and the Clang one used to leave the step out.
 fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
-	root := os.join_path(os.vtmp_dir(), 'post_link_steps_${os.getpid()}')
+	// The directory has a space in its name, so the move is shown with quoted paths; a plain
+	// path is checked at the end. The temporary directory itself may have a space as well.
+	root := os.join_path(os.vtmp_dir(), 'post link steps ${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -50,6 +74,7 @@ fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
 	$if windows {
 		executable += '.exe'
 	}
+	assert shown_path(executable) != executable, 'the path has nothing to quote: ${executable}'
 	mut toolchains := [[]string{}]
 	$if !windows {
 		toolchains << ['-b', 'fastc']
@@ -75,11 +100,10 @@ fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
 			}
 			assert result.exit_code == 0, '${name} ${flag}:\n${result.output}'
 			lines := result.output.split_into_lines()
-			mv_lines := lines.filter(it.starts_with('  > ') && it.contains(' ${executable}')
-				&& it.contains('mv '))
+			mv_lines := move_lines_to(result.output, executable)
 			assert mv_lines.len == 1, '${name} ${flag}: expected one move line, got ${mv_lines}\n${result.output}'
 			// It comes after the line of the compiler that made the file.
-			compile_at := lines.index(lines.filter(it.starts_with('  > ') && !it.contains('mv '))[0])
+			compile_at := lines.index(lines.filter(it.starts_with('  > ') && !it.starts_with('  > mv '))[0])
 			assert lines.index(mv_lines[0]) > compile_at, '${name} ${flag}'
 			ran << '${name} ${flag}'
 		}
@@ -87,6 +111,21 @@ fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
 	// The C backend is never passed over, so a run in which nothing was checked cannot pass.
 	assert 'the C backend -showcc' in ran && 'the C backend -v' in ran, ran.str()
 	println('checked: ${ran.join(', ')}')
+	// A path with nothing to quote is shown as it is.
+	plain_root := os.join_path(root, 'plain')
+	os.mkdir_all(plain_root)!
+	plain_source := os.join_path(plain_root, 'main.v')
+	os.write_file(plain_source, 'fn main() { println("linked") }')!
+	working_dir := os.getwd()
+	os.chdir(plain_root)!
+	plain_name := $if windows { 'plain_program.exe' } $else { 'plain_program' }
+	plain := os.exec([@VEXE, '-new-compiler', '-showcc', '-gc', 'none', '-nocache', '-o', plain_name,
+		'main.v'])
+	os.chdir(working_dir)!
+	assert plain.exit_code == 0, plain.output
+	plain_moves := plain.output.split_into_lines().filter(it.starts_with('  > mv ')
+		&& it.ends_with(' ${plain_name}'))
+	assert plain_moves.len == 1, plain.output
 	// Without the flags the build says nothing of it.
 	os.rm(executable) or {}
 	quiet := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-o', executable, source])
