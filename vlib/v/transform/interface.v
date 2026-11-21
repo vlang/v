@@ -974,13 +974,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	fields := t.interface_runtime_field_list(iface_name_id)
 	mut source_id := id
 	mut source_type := t.node_type(id)
-	if t.expr_has_option_unwrap_smartcast(id) {
-		if smartcast := t.find_smartcast_for_expr(id) {
-			unwrapped_type_source_id_2 := t.smartcast_target_type(smartcast)
-			unwrapped_type_source_id_4 := unwrapped_type_source_id_2
-
-			if unwrapped_type_source_id_2 != 0 {
-				source_type = unwrapped_type_source_id_4
+	if smartcast := t.find_smartcast_for_expr(id) {
+		// A sum value narrowed by `is` or `match` lowers to its variant payload
+		// (`s.Cat`), but its node type can still be the declared sum type. Box the
+		// variant, so the `_typ` id, the `_object` type and the copied size match it.
+		if t.expr_has_option_unwrap_smartcast(id) || t.is_sum_type_name(smartcast.sum_type_name) {
+			target_type := t.smartcast_target_type(smartcast)
+			if target_type != 0 {
+				source_type = target_type
 			}
 		}
 	}
