@@ -522,6 +522,9 @@ pub fn fastc_run_command(program string, args []string) os.Result {
 
 // fastc_start_capture starts the program of the argument vector with its
 // stdout and stderr merged into a pipe, and reports whether it started.
+// The C side writes C `int`s, so it gets `i32` slots (the declaration says `&int`, as in
+// `os`, and a pointer to an `i32` is what C expects) and the results are widened into
+// `pid` and `read_fd`, which an 8-byte V `int` would only half overwrite.
 fn fastc_start_capture(argv []string, pid &int, read_fd &int) bool {
 	mut cargs := []&char{cap: argv.len + 1}
 	for arg in argv {
