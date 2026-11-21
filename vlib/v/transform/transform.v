@@ -561,6 +561,10 @@ mut:
 	// parameter that can retain an inline fixed array as a dynamic view. Promote the root
 	// before any aliases form, including when a containing struct is forwarded by reference.
 	escaping_fixed_array_view_sources map[string]bool
+	// outer_scope_stored_sources holds the block locals whose explicit address an outer
+	// variable keeps (`outer = &inner`). Like escaping_amp_sources, but it also moves a
+	// dynamic array: `&inner` addresses its header, which lives in the block's storage.
+	outer_scope_stored_sources map[string]bool
 	// Cache complete walks of nominal inline storage. Sum variants can contain fixed
 	// arrays too; repeated reference arguments must not walk the same variants again.
 	escape_fixed_array_nominal_cache map[u32]bool
@@ -1655,6 +1659,7 @@ struct FunctionLocalState {
 	escape_decl_depths                map[string]int
 	escape_scope_depth                int
 	escaping_fixed_array_view_sources map[string]bool
+	outer_scope_stored_sources        map[string]bool
 	escaping_interface_box_locals     map[string]bool
 	mut_fixed_array_capture_sources   map[string]bool
 	heaped_amp_locals                 map[string]bool
@@ -3985,6 +3990,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 		escape_decl_depths:                t.escape_decl_depths
 		escape_scope_depth:                t.escape_scope_depth
 		escaping_fixed_array_view_sources: t.escaping_fixed_array_view_sources
+		outer_scope_stored_sources:        t.outer_scope_stored_sources
 		escaping_interface_box_locals:     t.escaping_interface_box_locals
 		mut_fixed_array_capture_sources:   t.mut_fixed_array_capture_sources
 		heaped_amp_locals:                 t.heaped_amp_locals
@@ -4011,6 +4017,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	t.escape_decl_depths = map[string]int{}
 	t.escape_scope_depth = 0
 	t.escaping_fixed_array_view_sources = map[string]bool{}
+	t.outer_scope_stored_sources = map[string]bool{}
 	t.escaping_interface_box_locals = map[string]bool{}
 	t.mut_fixed_array_capture_sources = map[string]bool{}
 	t.heaped_amp_locals = map[string]bool{}
@@ -4040,6 +4047,7 @@ fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
 	t.escape_decl_depths = state.escape_decl_depths
 	t.escape_scope_depth = state.escape_scope_depth
 	t.escaping_fixed_array_view_sources = state.escaping_fixed_array_view_sources
+	t.outer_scope_stored_sources = state.outer_scope_stored_sources
 	t.escaping_interface_box_locals = state.escaping_interface_box_locals
 	t.mut_fixed_array_capture_sources = state.mut_fixed_array_capture_sources
 	t.heaped_amp_locals = state.heaped_amp_locals
@@ -5926,6 +5934,7 @@ fn (t &Transformer) fork_worker_with_caches(ast &flat.FlatAst, wtc &types.TypeCh
 	w.escaping_amp_sources = map[string]bool{}
 	w.escape_decl_depths = map[string]int{}
 	w.escaping_fixed_array_view_sources = map[string]bool{}
+	w.outer_scope_stored_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
 	w.generic_fn_specs_in_progress = GenericFnSpecBoolMap{}
@@ -6145,6 +6154,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.escaping_amp_sources = map[string]bool{}
 	w.escape_decl_depths = map[string]int{}
 	w.escaping_fixed_array_view_sources = map[string]bool{}
+	w.outer_scope_stored_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
 	w.generic_fn_specs_in_progress = GenericFnSpecBoolMap{}
@@ -6360,6 +6370,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escaping_amp_sources:                   map[string]bool{}
 		escape_decl_depths:                     map[string]int{}
 		escaping_fixed_array_view_sources:      map[string]bool{}
+		outer_scope_stored_sources:             map[string]bool{}
 		heaped_amp_locals:                      map[string]bool{}
 		local_closure_cleanup_decls:            map[int]string{}
 		local_closure_cleanup_values:           map[int]string{}
@@ -8791,6 +8802,14 @@ fn (t &Transformer) heapable_value_type(typ_id u32) bool {
 	return isnil(t.tc) || unalias_type(t.tc.parse_type(typ_id)) !is types.FnType
 }
 
+// is_container_header_type reports whether a local of this type is a dynamic array or a
+// map. heapable_value_type leaves them out, yet the local holds the container's header:
+// `&v` addresses the header, and the header dies with the block that declares `v`.
+fn (t &Transformer) is_container_header_type(typ_id u32) bool {
+	shape := flat.source_type_shape(t.normalize_type_alias(typ_id))
+	return shape.has(.array_type) || shape.has(.map_type)
+}
+
 // heap_attr_struct_type reports whether `typ` is a plain (non-pointer) struct type
 // declared `@[heap]`. Such structs must always be heap-allocated at construction, not
 // only when escape analysis detects an address later leaving the stack frame.
@@ -10035,6 +10054,7 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 	t.escape_decl_depths.clear()
 	t.escape_scope_depth = 0
 	t.escaping_fixed_array_view_sources.clear()
+	t.outer_scope_stored_sources.clear()
 	t.heaped_amp_locals.clear()
 	t.escaping_interface_box_locals.clear()
 	t.mut_fixed_array_capture_sources.clear()
@@ -12993,10 +13013,26 @@ fn (mut t Transformer) mark_outer_scope_address_store(lhs_id flat.NodeId, rhs_id
 			}
 		}
 	}
+	mut stores_inner_address := false
 	for source_name in t.escape_stored_address_sources(rhs_id, amp_sources, ptr_aliases) {
 		if source_depth := t.escape_decl_depths[source_name] {
 			if source_depth > lhs_depth {
 				t.escaping_amp_sources[source_name] = true
+				stores_inner_address = true
+			}
+		}
+	}
+	if !stores_inner_address {
+		return
+	}
+	// Without the alias maps, only addresses that the value takes explicitly remain.
+	// Call provenance also links a `.clone()` result to its implicit `&receiver`, which
+	// is not kept, and container locals have such receivers everywhere.
+	for source_name in t.escape_stored_address_sources(rhs_id, map[string][]string{},
+		map[string]string{}) {
+		if source_depth := t.escape_decl_depths[source_name] {
+			if source_depth > lhs_depth {
+				t.outer_scope_stored_sources[source_name] = true
 			}
 		}
 	}
@@ -20862,9 +20898,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		// scopes (the branches of a `match`) can each declare it. A declaration already
 		// moved has a pointer type, which is not heapable. Fixed arrays use the same
 		// whole-value heap copy so retained element addresses still share later writes.
+		// A dynamic array or a map moves only when an outer variable keeps `&v`.
 		if src.kind == .ident && src.value_text() in t.escaping_amp_sources
 			&& (source_single_decl || src.value_text() !in t.heaped_amp_locals)
-			&& (t.heapable_value_type(inferred_typ) || t.is_fixed_array_type(inferred_typ)) {
+			&& (t.heapable_value_type(inferred_typ) || t.is_fixed_array_type(inferred_typ)
+				|| (src.value_text() in t.outer_scope_stored_sources
+					&& t.is_container_header_type(inferred_typ))) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
 			return t.heap_escaping_source_decl(node, src.value_text(), inferred_typ, inferred_raw_typ)
 		}
@@ -28122,6 +28161,13 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				flat.source_type_composition_one(.pointer, child_type)
 			}
 			return t.make_call_typed('v3_heap_array', [value], result_type)
+		}
+		if (child.kind == .array_init || t.expr_can_be_fixed_array_literal(child_id))
+			&& t.is_fixed_array_type(t.normalize_type_alias(child_type)) {
+			// Like `&[1, 2]` and `&T{}`, `&[1, 2]!` allocates on the heap. A stack temporary
+			// dies with the block that evaluates it, while an outer variable, a field or an
+			// array can keep the pointer.
+			return t.heap_value(t.transform_expr(child_id), child_type)
 		}
 		if t.is_range_index_expr(t.unwrap_parens(child_id)) && t.normalize_type_alias(child_type) == flat.source_type_string {
 			// Addressed string ranges also retain a header independently of the loop
