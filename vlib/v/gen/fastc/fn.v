@@ -609,6 +609,7 @@ fn (mut g Parser) skip_attribute() !bool {
 fn (mut g Parser) skip_top_level_declaration() ! {
 	body_declaration := g.tok in [.key_struct, .key_union, .key_enum, .key_interface]
 	type_declaration := g.tok == .key_type
+	global_declaration := g.tok == .key_global
 	mut brace_depth := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
@@ -618,7 +619,9 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 			&& bracket_depth == 0 && previous in [.name, .number, .string, .char, .rpar, .rsbr,
 			.rcbr, .not, .question, .key_true, .key_false, .key_none]
 			&& g.tok in [.key_fn, .key_pub, .key_const, .key_global, .key_struct, .key_union,
-				.key_enum, .key_interface, .key_type] {
+				.key_enum, .key_interface, .key_type]
+			&& !(global_declaration && previous == .name && g.tok == .key_fn) {
+			// A `fn` right after a global's name is its function type.
 			return
 		}
 		previous = g.tok
