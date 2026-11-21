@@ -10,7 +10,7 @@ next to the test that uses it, and name the fields so a failure identifies its o
 row without printing an index.
 
 ```v ignore
-struct add_case {
+struct AddCase {
 	a    int
 	b    int
 	want int
@@ -18,9 +18,9 @@ struct add_case {
 
 fn test_add() {
 	cases := [
-		add_case{2, 3, 5},
-		add_case{0, 0, 0},
-		add_case{-1, 1, 0},
+		AddCase{2, 3, 5},
+		AddCase{0, 0, 0},
+		AddCase{-1, 1, 0},
 	]
 	for c in cases {
 		assert add(c.a, c.b) == c.want, 'add(${c.a}, ${c.b}) should be ${c.want}'
@@ -118,24 +118,22 @@ if text := read_file(path) {
 }
 ```
 
-The third is the one to reach for by default. `if x := f() { ... }` is a single
-expression, it cannot be forgotten, and it fails loudly if the value is absent.
+The third reads well, but a guard whose value is absent skips its body and the
+test passes without asserting anything. When the value must be there, say so:
+
+```v ignore
+if text := read_file(path) {
+	assert text.len > 0
+} else {
+	assert false, '${path} should be readable'
+}
+```
 
 ## Testing a panic
 
-`assert` is not the only tool. When the code is supposed to panic, wrap it:
-
-```v ignore
-fn test_it_rejects_an_empty_path() {
-	mut sum := 0
-	mut panicked := false
-	f := fn () {
-		sum++
-		panic('should not get here')
-	}
-	...
-}
-```
+V cannot catch a panic inside the test process: a panic ends the whole test
+file. To check that code panics, run it as a separate program, for example with
+`os.execute`, and assert on the exit code and the output.
 
 Better: test the guard itself rather than the panic. If a function panics on bad
 input, it should usually return an error instead — see
@@ -143,13 +141,15 @@ input, it should usually return an error instead — see
 
 ## Testing the standard library
 
-Tests for `vlib` live beside the code and need no module declaration:
+Tests for `vlib` live beside the code. Most declare the module they test, so
+they can reach its private functions:
 
 ```bash
 ./v -silent test vlib/v/skills/
 ./v -silent vlib/v/compiler_errors_test.v   # output tests, compared exactly
 ```
 
-A `.out` file is compared byte for byte. After changing one, run twice: the first
-run rewrites, the second verifies. See
+A `.out` file is compared byte for byte, and a mismatch fails the test. When the
+output change is intended, run with `VAUTOFIX=1` to rewrite the expectations, then
+run again without it to verify. See
 [v-workflow](../../v-workflow/references/COMPILER-WORKFLOW.md).

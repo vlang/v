@@ -32,6 +32,16 @@ pub mut:
 	status_code  int
 	status_msg   string
 	http_version string
+	// stream, when a `Handler` sets it, keeps the connection for the response's
+	// body (HTTP/1.1): the server writes the status line and the headers, without
+	// `Content-Length` and with `Connection: close`, calls `stream` on the worker
+	// thread, and closes the connection when it returns. `body` is not sent. A
+	// stream holds its worker while it runs, so size `worker_num` for them. Its
+	// use is server-sent events (`StreamWriter.write_event`). A response that has
+	// no body (to HEAD, or with status 1xx, 204 or 304) is its head alone, and
+	// `stream` is not called. The HTTP/2 path does not stream: it sends the
+	// response without a body.
+	stream StreamFn = unsafe { nil }
 }
 
 fn (mut resp Response) free() {
@@ -479,7 +489,10 @@ pub fn new_response(conf ResponseConfig) Response {
 // (HTTP/1.1 200 OK).
 fn find_headers_range(data string) !(int, int) {
 	start_idx := data.index('\n') or { return error('no start index found') } + 1
-	mut count := 0
+	// The `\n` ending the status line already counts as the first line
+	// ending, so a response without header fields (`Status\r\n\r\n`)
+	// still terminates at the next empty line.
+	mut count := 1
 	for i := start_idx; i < data.len; i++ {
 		if data[i] == `\n` {
 			count++

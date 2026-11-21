@@ -273,7 +273,7 @@ pub fn ios_get_window() voidptr {
 // Win32: get the HWND window handle
 @[inline]
 pub fn win32_get_hwnd() voidptr {
-	return voidptr(C.sapp_win32_get_hwnd())
+	return C.v_sapp_win32_get_hwnd()
 }
 
 // GL: get framebuffer object

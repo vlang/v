@@ -295,10 +295,10 @@ fn test_remove_rejects_traversal_names_and_preserves_other_directories() {
 
 // `--force` over a symlink used to delete the *target's* contents.
 //
-// `os.is_dir` follows a link and `os.rmdir_all` follows its own argument, so
-// `os.rmdir_all(dest)` on a link lists and removes what the link points at. The
-// install reported success, then failed partway with "Not a directory", by which
-// point the unrelated directory was already empty.
+// os.is_dir follows a link. Older os.rmdir_all also followed its root, so
+// forced installation could empty the unrelated target before failing with
+// "Not a directory". Installation must still reject the link itself and leave
+// both it and its target intact.
 fn test_forced_install_refuses_a_symlink_target_and_preserves_it() {
 	root := fixture_root(['alpha'])!
 	dir := skills.target_dir(.project_root, root)

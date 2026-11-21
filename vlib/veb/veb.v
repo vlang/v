@@ -231,6 +231,9 @@ struct RequestBodyLimitError {
 	Error
 }
 
+// Keep framing values from controlling temporary allocation sizes.
+const request_body_read_buffer_size = 4096
+
 // msg returns the description of the error.
 fn (err RequestBodyLimitError) msg() string {
 	return 'the request body is too large'
@@ -272,9 +275,10 @@ fn read_request_body_from_buffered_reader(mut reader io.BufferedReader, mut req 
 	if max_request_body_size > 0 && content_length_i > max_request_body_size {
 		return RequestBodyLimitError{}
 	}
-	mut body := []u8{len: content_length_i}
-	read_exact_bytes(mut reader, mut body)!
-	req.data = body.bytestr()
+	mut body := strings.new_builder(0)
+	mut read_buffer := []u8{}
+	read_request_body_bytes(mut reader, content_length_i, mut body, mut read_buffer)!
+	req.data = body.str()
 	return req
 }
 
@@ -309,6 +313,7 @@ fn transfer_encoding_is_chunked(header http.Header) bool {
 
 fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size int) !string {
 	mut sb := strings.new_builder(1024)
+	mut read_buffer := []u8{}
 	for {
 		mut chunk_size_line := reader.read_line()!
 		if semicolon_idx := chunk_size_line.index(';') {
@@ -339,12 +344,18 @@ fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size
 				}
 			}
 		}
-		if max_request_body_size > 0 && chunk_size > max_request_body_size - sb.len {
-			return RequestBodyLimitError{}
+		if max_request_body_size > 0 {
+			if sb.len > max_request_body_size {
+				return RequestBodyLimitError{}
+			}
+			if chunk_size > max_request_body_size - sb.len {
+				return RequestBodyLimitError{}
+			}
 		}
-		mut chunk := []u8{len: chunk_size}
-		read_exact_bytes(mut reader, mut chunk)!
-		sb.write(chunk)!
+		if chunk_size > max_int - sb.len {
+			return error('chunked request body is too large')
+		}
+		read_request_body_bytes(mut reader, chunk_size, mut sb, mut read_buffer)!
 		mut delimiter := []u8{len: 2}
 		read_exact_bytes(mut reader, mut delimiter)!
 		if delimiter[0] != `\r` || delimiter[1] != `\n` {
@@ -354,7 +365,28 @@ fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size
 	return error('invalid chunked body')
 }
 
-fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
+fn read_request_body_bytes(mut reader io.Reader, body_length int, mut body strings.Builder, mut buffer []u8) ! {
+	if body_length <= 0 {
+		return
+	}
+	buffer_length := if body_length < request_body_read_buffer_size {
+		body_length
+	} else {
+		request_body_read_buffer_size
+	}
+	if buffer.len < buffer_length {
+		buffer = []u8{len: buffer_length}
+	}
+	mut remaining := body_length
+	for remaining > 0 {
+		read_length := if remaining < buffer.len { remaining } else { buffer.len }
+		read_exact_bytes(mut reader, mut buffer[..read_length])!
+		body.write(buffer[..read_length])!
+		remaining -= read_length
+	}
+}
+
+fn read_exact_bytes(mut reader io.Reader, mut buf []u8) ! {
 	mut offset := 0
 	for offset < buf.len {
 		n := reader.read(mut buf[offset..]) or {
@@ -1095,6 +1127,14 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 		return false
 	}
 
+	// Static files are only served for retrieval methods. RFC 9110 section
+	// 13.2.1 gives the method check precedence over conditional evaluation,
+	// so conditional headers never admit a non-retrieval method.
+	if user_context.req.method != .get && user_context.req.method != .head {
+		user_context.method_not_allowed([http.Method.get, http.Method.head])
+		return true
+	}
+
 	// Configure static file compression settings
 	user_context.set_static_compression_config(static_handler.enable_static_gzip,
 		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
@@ -1113,7 +1153,10 @@ fn (sh StaticHandler) may_contain_static_path(path string) bool {
 	}
 	for prefix in sh.static_prefixes {
 		if prefix.ends_with('/') {
-			if path.starts_with(prefix) {
+			// Also accept the prefix without its trailing slash: the
+			// slash-appending logic in serve_if_static resolves it to
+			// the directory index (e.g. `/sub` serves `/sub/index.html`).
+			if path.starts_with(prefix) || path == prefix.trim_right('/') {
 				return true
 			}
 		} else if path == prefix {
@@ -1160,6 +1203,7 @@ pub fn (mut ctx Context) error(s string) {
 
 fn fast_send_resp_header(mut conn net.TcpConn, resp http.Response) ! {
 	mut sb := strings.new_builder(resp.body.len + 200)
+	defer { unsafe { sb.free() } }
 	sb.write_string('HTTP/')
 	sb.write_string(resp.http_version)
 	sb.write_string(' ')
@@ -1172,7 +1216,8 @@ fn fast_send_resp_header(mut conn net.TcpConn, resp http.Response) ! {
 		version: resp.version()
 	)
 	sb.write_string('\r\n')
-	send_string(mut conn, sb.str())!
+	// send_string finishes writing and tracing before the builder is freed.
+	send_string(mut conn, unsafe { tos(sb.data, sb.len) })!
 }
 
 // Formats resp to a string suitable for HTTP response transmission

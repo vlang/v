@@ -1590,6 +1590,7 @@ fn (mut t Transformer) make_propagation_panic_stmts(mode string, err_expr flat.N
 	err_addr := t.make_prefix(.amp, err_expr)
 	err_message := t.make_call_typed('IError__msg', [err_addr], flat.source_type_string)
 	if mode != '?' {
+		t.a.nodes[int(err_message)].flags |= flat.node_flag_result_error_message
 		return [t.make_panic_expr_stmt_at(err_message, source_id)]
 	}
 	message_name := t.new_temp('propagation_message')
@@ -2330,7 +2331,13 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 	if int(err_expr) < 0 || !t.has_ierror_interface() {
 		return
 	}
-	stmts << t.make_guard_value_decls('err', err_expr, flat.source_type_id('IError'))
+	decls := t.make_guard_value_decls('err', err_expr, flat.source_type_id('IError'))
+	if t.a.node(err_expr).kind == .selector {
+		for decl in decls {
+			t.a.nodes[int(decl)].flags |= flat.node_flag_implicit_result_error_decl
+		}
+	}
+	stmts << decls
 	i := t.var_type_index('err')
 	t.clear_node_type_memo()
 	t.var_types[i] = VarTypeBinding{

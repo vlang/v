@@ -164,16 +164,20 @@ mut:
 	stateless_reset         StatelessResetTracker
 	ecn                     EcnState
 
-	initial_received_pns   map[u64]bool
-	handshake_received_pns map[u64]bool
-	app_received_pns       map[u64]bool
+	// *_received hold, per space, the packet numbers this endpoint still
+	// acknowledges and the floor below which packets are duplicates (RFC
+	// 9000 §12.3, §13.2.3). Ranges stay until an ACK carrying them is
+	// itself acknowledged (§13.2.4), not just until one ACK is sent.
+	initial_received   ReceivedPacketSet
+	handshake_received ReceivedPacketSet
+	app_received       ReceivedPacketSet
 
-	// *_ack_eliciting_pending track whether ANY frame in the packets
-	// currently accumulated in the sibling *_received_pns map above was
-	// ack-eliciting (RFC 9000 §13.2.1: all frames except ACK, PADDING, and
-	// CONNECTION_CLOSE). drain_outgoing's auto-ACK gates on this, not just
-	// on *_received_pns being non-empty -- see frame_is_ack_eliciting's own
-	// doc comment for why the two must be tracked separately.
+	// *_ack_eliciting_pending track whether ANY packet received since this
+	// space's last ACK was ack-eliciting (RFC 9000 §13.2.1: all frames
+	// except ACK, PADDING, and CONNECTION_CLOSE). drain_outgoing's auto-ACK
+	// gates on this, not just on *_received being non-empty -- see
+	// frame_is_ack_eliciting's own doc comment for why the two must be
+	// tracked separately.
 	initial_ack_eliciting_pending   bool
 	handshake_ack_eliciting_pending bool
 	app_ack_eliciting_pending       bool
@@ -653,15 +657,19 @@ fn (mut c QuicConn) process_retry(raw []u8) ! {
 	c.peer_scid = retry.scid.clone()
 	c.token = retry.retry_token.clone()
 
-	// RFC 9001 §5.2: Initial secrets change to key off the new DCID. The
-	// ClientHello must be resent under the new keys, restarting Initial-space
-	// packet numbers and loss-detection tracking cleanly against them.
+	// RFC 9001 §5.2: Initial secrets change to key off the new DCID, and the
+	// ClientHello is resent under the new keys. Its packet number keeps
+	// counting: "A client MUST NOT reset the packet number for any packet
+	// number space after processing a Retry packet" (RFC 9000 §17.2.5.3).
 	new_secrets := derive_initial_secrets(c.dcid)!
 	c.initial_keys_client = derive_packet_protection_keys(new_secrets.client)!
 	c.initial_keys_server = derive_packet_protection_keys(new_secrets.server)!
-	c.pn_spaces.initial = PacketNumberSpaceState{}
-	c.loss_detection.initial = LossDetectionSpaceState{}
-	c.initial_received_pns = map[u64]bool{}
+	c.initial_received = ReceivedPacketSet{}
+	// RFC 9002 §6.3: "Clients that receive a Retry packet reset congestion
+	// control and loss recovery state, including resetting any pending
+	// timers." Only Initial packets can have been sent before a Retry.
+	c.loss_detection.discard_space(.initial)
+	c.congestion_control = new_newreno_congestion_control()
 	c.pending_initial_crypto = c.client_hello
 }
 
@@ -728,6 +736,15 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 		c.pn_spaces.handshake.largest_received
 	}
 	unprotected := unprotect_packet(mut packet, offset, .long, keys, largest_pn) or { return }
+	// RFC 9000 §12.3: duplicates are discarded, after removing protection.
+	already_received := if space == .initial {
+		c.initial_received.contains(unprotected.packet_number)
+	} else {
+		c.handshake_received.contains(unprotected.packet_number)
+	}
+	if already_received {
+		return
+	}
 
 	c.processed_first_server_packet = true
 	// RFC 9000 §10.1: receiving and successfully processing ANY packet
@@ -758,11 +775,11 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 
 	if space == .initial {
 		c.pn_spaces.initial.note_received(unprotected.packet_number)
-		c.initial_received_pns[unprotected.packet_number] = true
+		c.initial_received.insert(unprotected.packet_number)
 		c.initial_ack_eliciting_pending = c.initial_ack_eliciting_pending || ack_eliciting
 	} else {
 		c.pn_spaces.handshake.note_received(unprotected.packet_number)
-		c.handshake_received_pns[unprotected.packet_number] = true
+		c.handshake_received.insert(unprotected.packet_number)
 		c.handshake_ack_eliciting_pending = c.handshake_ack_eliciting_pending || ack_eliciting
 	}
 
@@ -860,6 +877,12 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 		c.note_one_rtt_processing_failed(raw, now, mut result)
 		return
 	}
+	// RFC 9000 §12.3: a duplicate is discarded, and only after removing
+	// packet protection, so it neither restarts the idle timer nor counts
+	// toward a key update.
+	if c.app_received.contains(full_pn) {
+		return
+	}
 	read_keys.note_successful_decrypt(resolution, full_pn)!
 	// RFC 9001 §6.2: "Sending keys MUST be updated before sending an
 	// acknowledgment for the packet that was received with updated keys."
@@ -873,7 +896,7 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 	// idle_timeout.v's own doc comment.
 	c.idle_timeout.note_packet_received(now)
 	c.pn_spaces.application_data.note_received(full_pn)
-	c.app_received_pns[full_pn] = true
+	c.app_received.insert(full_pn)
 
 	frames := parse_frames(payload)!
 	// RFC 9000 §13.2.1: see frame_is_ack_eliciting's own doc comment and
@@ -933,7 +956,7 @@ fn (mut c QuicConn) sync_write_keys_to_peer_update() ! {
 // frame_is_ack_eliciting reports whether `frame` is one of the frame types
 // RFC 9000 §13.2.1 requires be acknowledged: "all frames other than ACK,
 // PADDING, and CONNECTION_CLOSE are ack-eliciting." This is distinct from
-// (and NOT interchangeable with) the *_received_pns bookkeeping used to
+// (and NOT interchangeable with) the *_received bookkeeping used to
 // build ACK RANGES -- every successfully-processed packet's number belongs
 // in an ACK once one is sent, ack-eliciting or not, but whether a packet
 // being non-ack-eliciting-only should by ITSELF trigger sending an ACK at
@@ -1225,6 +1248,22 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 	}
 
 	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, now)
+	// RFC 9000 §13.2.4: "When a packet containing an ACK frame is
+	// acknowledged, the receiver can stop acknowledging packets less than or
+	// equal to the Largest Acknowledged field in the sent ACK frame."
+	mut acked_ack := false
+	mut forget_through := u64(0)
+	for info in result.newly_acked {
+		if largest := info.largest_acked_in_ack {
+			if !acked_ack || largest > forget_through {
+				forget_through = largest
+			}
+			acked_ack = true
+		}
+	}
+	if acked_ack {
+		c.received_set(space).forget_through(forget_through)
+	}
 	c.congestion_control.on_packets_acked(result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
@@ -1339,28 +1378,26 @@ fn (mut c QuicConn) on_handshake_confirmed(mut result PollResult) {
 // Key discard (RFC 9001 §4.9)
 // -------------------------------------------------------------------------
 
-// discard_initial_keys implements RFC 9001 §4.9.1. v1 scope simplification:
-// only clears this connection's own per-space bookkeeping; the precise RFC
-// 9002 §6.4 interaction with bytes_in_flight/congestion accounting for
-// packets that were still outstanding in the discarded space is not
-// separately modeled (a documented follow-up, not a Phase 9a blocker --
-// affects retransmission-timing precision, not handshake correctness).
+// discard_initial_keys implements RFC 9001 §4.9.1. Packets still outstanding
+// in the space stop counting toward bytes in flight (RFC 9002 §6.4: "The
+// sender MUST discard all recovery state associated with those packets and
+// MUST remove them from the count of bytes in flight").
 fn (mut c QuicConn) discard_initial_keys() {
 	c.initial_keys_discarded = true
 	c.pn_spaces.initial = PacketNumberSpaceState{}
-	c.loss_detection.initial = LossDetectionSpaceState{}
-	c.initial_received_pns = map[u64]bool{}
+	c.congestion_control.discard_packets(c.loss_detection.discard_space(.initial))
+	c.initial_received = ReceivedPacketSet{}
 	c.initial_ack_eliciting_pending = false
 	c.pending_initial_crypto = none
 }
 
-// discard_handshake_keys implements RFC 9001 §4.9.2 -- same v1 scope note
-// as discard_initial_keys above.
+// discard_handshake_keys implements RFC 9001 §4.9.2, with the same RFC 9002
+// §6.4 accounting as discard_initial_keys above.
 fn (mut c QuicConn) discard_handshake_keys() {
 	c.handshake_keys_discarded = true
 	c.pn_spaces.handshake = PacketNumberSpaceState{}
-	c.loss_detection.handshake = LossDetectionSpaceState{}
-	c.handshake_received_pns = map[u64]bool{}
+	c.congestion_control.discard_packets(c.loss_detection.discard_space(.handshake))
+	c.handshake_received = ReceivedPacketSet{}
 	c.handshake_ack_eliciting_pending = false
 	c.pending_handshake_crypto = none
 }
@@ -1377,17 +1414,18 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		c.pending_initial_crypto = none
 	}
 	// RFC 9000 §13.2.1: gated on *_ack_eliciting_pending, not just
-	// *_received_pns.len > 0 -- see frame_is_ack_eliciting's own doc
+	// *_received being non-empty -- see frame_is_ack_eliciting's own doc
 	// comment. A packet whose only frames were ACK/PADDING/CONNECTION_CLOSE
 	// must not itself trigger sending this ACK-only (non-ack-eliciting)
-	// reply; its packet number stays in *_received_pns to be included
-	// once an ack-eliciting packet DOES trigger one.
-	if !c.initial_keys_discarded && c.initial_received_pns.len > 0
+	// reply; its packet number stays in *_received to be included once an
+	// ack-eliciting packet DOES trigger one. Sending an ACK does not empty
+	// *_received: see handle_ack_frame.
+	if !c.initial_keys_discarded && !c.initial_received.is_empty()
 		&& c.initial_ack_eliciting_pending {
 		ack_frame := c.build_ack_frame_for(.initial)!
 		datagram := c.build_initial_packet(ack_frame, false, now)!
+		c.note_ack_sent(.initial)
 		result.outgoing << datagram
-		c.initial_received_pns = map[u64]bool{}
 		c.initial_ack_eliciting_pending = false
 	}
 
@@ -1401,22 +1439,22 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	}
 	if hs_keys := c.handshake_keys_client {
 		_ := hs_keys
-		if !c.handshake_keys_discarded && c.handshake_received_pns.len > 0
+		if !c.handshake_keys_discarded && !c.handshake_received.is_empty()
 			&& c.handshake_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.handshake)!
 			datagram := c.build_handshake_packet(ack_frame, false, now)!
+			c.note_ack_sent(.handshake)
 			result.outgoing << datagram
-			c.handshake_received_pns = map[u64]bool{}
 			c.handshake_ack_eliciting_pending = false
 		}
 	}
 
 	if _ := c.app_write_keys {
-		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending {
+		if !c.app_received.is_empty() && c.app_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.application_data)!
 			datagram := c.build_one_rtt_packet(ack_frame, false, now)!
+			c.note_ack_sent(.application_data)
 			result.outgoing << datagram
-			c.app_received_pns = map[u64]bool{}
 			c.app_ack_eliciting_pending = false
 		}
 		c.drain_pending_stream_writes(now, mut result)!
@@ -1515,40 +1553,32 @@ fn (mut c QuicConn) drain_flow_control_raises(now u64, mut result PollResult) ! 
 }
 
 fn (mut c QuicConn) build_ack_frame_for(space QuicPacketNumberSpace) ![]u8 {
-	pns := match space {
-		.initial { c.initial_received_pns.keys() }
-		.handshake { c.handshake_received_pns.keys() }
-		.application_data { c.app_received_pns.keys() }
-	}
-	ranges := ranges_from_received_pns(pns)
-	return encode_ack_frame(ranges, 0, none)
+	return encode_ack_frame(c.received_set(space).ranges, 0, none)
 }
 
-// ranges_from_received_pns builds RFC 9000 §19.3.1-shaped, largest-first,
-// non-overlapping ACK ranges from an unordered set of received packet
-// numbers.
-fn ranges_from_received_pns(pns []u64) []AckRange {
-	if pns.len == 0 {
-		return []AckRange{}
+fn (mut c QuicConn) received_set(space QuicPacketNumberSpace) &ReceivedPacketSet {
+	match space {
+		.initial { return &c.initial_received }
+		.handshake { return &c.handshake_received }
+		.application_data { return &c.app_received }
 	}
-	mut sorted := pns.clone()
-	sorted.sort()
-	mut ranges := []AckRange{}
-	mut i := sorted.len - 1
-	for i >= 0 {
-		largest := sorted[i]
-		mut smallest := sorted[i]
-		for i > 0 && sorted[i - 1] == smallest - 1 {
-			i--
-			smallest = sorted[i]
-		}
-		ranges << AckRange{
-			smallest: smallest
-			largest:  largest
-		}
-		i--
+}
+
+// note_ack_sent records, on the packet just built in `space`, the Largest
+// Acknowledged of the ACK frame it carried, so handle_ack_frame can stop
+// acknowledging up to it once the peer acknowledges that packet (RFC 9000
+// §13.2.4).
+fn (mut c QuicConn) note_ack_sent(space QuicPacketNumberSpace) {
+	ranges := c.received_set(space).ranges
+	if ranges.len == 0 {
+		return
 	}
-	return ranges
+	pn := match space {
+		.initial { c.pn_spaces.initial.next_send_pn - 1 }
+		.handshake { c.pn_spaces.handshake.next_send_pn - 1 }
+		.application_data { c.pn_spaces.application_data.next_send_pn - 1 }
+	}
+	c.loss_detection.note_ack_frame_sent(space, pn, ranges[0].largest)
 }
 
 // build_initial_packet builds one Initial-space packet, always padded to

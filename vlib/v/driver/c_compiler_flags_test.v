@@ -59,6 +59,57 @@ fn test_v3_platform_c_compiler() {
 	assert v3_platform_c_compiler('macos') == 'cc'
 }
 
+fn test_clang_lifetime_workaround_recognizes_the_compiler_banner() {
+	for banner in ['clang version 14.0.6', 'Ubuntu clang version 14.0.0-1ubuntu1.1',
+		'Debian clang version 14.0.6', 'Apple clang version 14.0.3 (clang-1403.0.22.14.1)'] {
+		assert v3_clang_lifetime_flags(banner) == ['-Xclang', '-disable-lifetime-markers']
+	}
+	for banner in ['clang version 19.1.7\nInstalledDir: /opt/clang version 14.0.6/bin',
+		'clang version 15.0.7', 'gcc version 14.0.0', ''] {
+		assert v3_clang_lifetime_flags(banner) == [], banner
+	}
+}
+
+fn test_clang_lifetime_workaround_reaches_native_builds_and_c_projects() {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_clang_lifetime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	wrapper := os.join_path(root, 'clang-wrapper')
+	source := os.join_path(root, 'main.v')
+	program := os.join_path(root, 'program')
+	os.write_file(source, "fn main() { assert ' hello '.trim_space() == 'hello' }\n")!
+	for version in ['14.0.6', '19.1.7'] {
+		os.write_file(wrapper, '#!/bin/sh\nif [ "$1" = "--version" ]; then\n  echo "clang version ${version}"\n  exit 0\nfi\nexec ${os.quoted_path(clang)} "$@"\n')!
+		os.chmod(wrapper, 0o700)!
+		args := ['-new-compiler', '-nocache', '-gc', 'none', '-cc', wrapper, '-cflags', '-O2',
+			'-showcc']
+		mut build_args := args.clone()
+		build_args << ['-o', program, source]
+		built := cmdexec.run_in(v3_driver_test_executable(), build_args, root)
+		assert built.exit_code == 0, built.output
+		assert built.output.contains('-disable-lifetime-markers') == (version == '14.0.6'), built.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		project := os.join_path(root, 'project_${version}')
+		mut export_args := args.clone()
+		export_args << [
+			'-generate-c-project',
+			project,
+			'-o',
+			os.join_path(root, 'program.c'),
+			source,
+		]
+		exported := cmdexec.run_in(v3_driver_test_executable(), export_args, root)
+		assert exported.exit_code == 0, exported.output
+		makefile := os.read_file(os.join_path(project, 'Makefile'))!
+		assert makefile.contains('-disable-lifetime-markers') == (version == '14.0.6'), makefile
+	}
+}
+
 fn test_v3_cache_accepts_default_cc_alias() {
 	assert v3_c_compiler_matches_default_cc('cc')
 	assert !v3_c_compiler_matches_default_cc('v3-definitely-missing-c-compiler')
@@ -2403,4 +2454,86 @@ fn test_v3_production_object_links_with_independent_c_main() {
 	assert linked.exit_code == 0, linked.output
 	ran := cmdexec.run(exe, [])
 	assert ran.exit_code == 0, ran.output
+}
+
+fn test_v3_explicit_opt_level_reaches_plan_verbatim() {
+	// An explicit -O level is honored verbatim without -prod, and -flto stays
+	// a -prod feature: -O alone must never turn the link into an LTO link.
+	for level in ['0', '1', '2', '3', 's', 'z'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:   'linux'
+			target_arch: 'amd64'
+			c_compiler:  'cc'
+			c_opt_level: level
+		})
+		assert ('-O' + level) in plan.before_inputs, plan.before_inputs.str()
+		assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
+	}
+}
+
+fn test_v3_explicit_opt_level_overrides_prod_default() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:     true
+		target_os:   'linux'
+		target_arch: 'amd64'
+		c_compiler:  'cc'
+		c_opt_level: '1'
+	})
+	assert '-O1' in plan.before_inputs, plan.before_inputs.str()
+	assert '-O3' !in plan.before_inputs, plan.before_inputs.str()
+	assert '-O2' !in plan.before_inputs, plan.before_inputs.str()
+	assert '-flto' in plan.before_inputs, plan.before_inputs.str()
+}
+
+fn test_v3_explicit_opt_level_survives_no_prod_options() {
+	// -no-prod-options drops the automatic -O3/-flto, but an explicit level
+	// is user intent, not an automatic option, so it stays (without -flto).
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:         true
+		no_prod_options: true
+		target_os:       'linux'
+		target_arch:     'amd64'
+		c_compiler:      'cc'
+		c_opt_level:     's'
+	})
+	assert '-Os' in plan.before_inputs, plan.before_inputs.str()
+	assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
+}
+
+fn test_v3_explicit_opt_level_skips_flto_where_prod_does() {
+	// The -flto exclusions (shared objects, tcc) apply to explicit levels too:
+	// -O selects the level, it does not re-enable what -prod disables.
+	shared := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:     true
+		is_shared:   true
+		target_os:   'linux'
+		target_arch: 'amd64'
+		c_compiler:  'cc'
+		c_opt_level: '2'
+	})
+	assert '-O2' in shared.before_inputs, shared.before_inputs.str()
+	assert '-flto' !in shared.before_inputs, shared.before_inputs.str()
+}
+
+fn test_v3_no_opt_level_by_default_without_prod() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:   'linux'
+		target_arch: 'amd64'
+		c_compiler:  'cc'
+	})
+	for unwanted in ['-O0', '-O1', '-O2', '-O3', '-Os', '-Oz'] {
+		assert unwanted !in plan.before_inputs, plan.before_inputs.str()
+	}
+	assert '-flto' !in plan.before_inputs, plan.before_inputs.str()
+}
+
+fn test_v3_program_executable_link_covers_opt_level() {
+	base := ['strict=false', 'no_std=false']
+	same_a := v3_program_executable_link_signature([], false, base, '0')
+	same_b := v3_program_executable_link_signature([], false, base, '0')
+	assert same_a == same_b
+	other := v3_program_executable_link_signature([], false, base, '3')
+	assert other != same_a, 'changing -O0 to -O3 must change the executable identity'
+	empty := v3_program_executable_link_signature([], false, base, '')
+	assert empty != same_a, 'an explicit level must differ from no level'
 }

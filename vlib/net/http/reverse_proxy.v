@@ -176,6 +176,17 @@ pub fn (rp &ReverseProxy) proxy(mut req Request) !Response {
 	// Forward request to upstream
 	mut resp := req.do()!
 
+	// V's response parser always decodes a chunked upstream body, so the body
+	// forwarded below is the *decoded* one. A Content-Length the upstream sent
+	// alongside `Transfer-Encoding: chunked` describes the encoded body, and
+	// re-framing the decoded body with it makes the downstream framing claim a
+	// length the body does not have (RFC 7230 §3.3.2: when both are present,
+	// the Transfer-Encoding overrides the Content-Length and the received
+	// Content-Length must be removed; Go's transport deletes the header the
+	// same way before an httputil.ReverseProxy ever sees it).
+	if has_header_token(resp.header.get(.transfer_encoding) or { '' }, 'chunked') {
+		resp.header.delete(.content_length)
+	}
 	// Strip hop-by-hop headers from upstream response
 	clean_hop_by_hop_headers(mut resp.header)
 	// The upstream protocol does not determine the downstream status line.

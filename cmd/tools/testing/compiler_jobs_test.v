@@ -78,7 +78,7 @@ fn test_environment() {
 	mut session := TestSession{
 		compiler_jobs: 1
 	}
-	result := session.exec_compiler([@VEXE, os.join_path(root, 'budget_true_test.v')],
+	result := session.exec_compiler([@VEXE, os.join_path(root, 'budget_true_test.v')], {},
 		MessageThreadContext{})
 	assert result.exit_code == 0, result.output
 	assert os.getenv('VJOBS') == '3'

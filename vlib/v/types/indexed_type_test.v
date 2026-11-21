@@ -1,6 +1,49 @@
 module types
 
+import os
 import v.flat
+
+fn test_deep_function_type_alias_uses_bounded_parse_stack() {
+	path := os.join_path(os.vtmp_dir(), 'interner_owner_deep_fn_${os.getpid()}.v')
+	os.write_file(path, 'type Deep = ' + 'fn () '.repeat(256) + 'int
+fn accept(value Deep) {}
+fn main() {}
+')!
+	defer { os.rm(path) or {} }
+	result := os.exec([@VEXE, '-new-compiler', '-no-parallel', '-check', path])
+	assert result.exit_code == 0, result.output
+}
+
+fn test_type_caches_require_the_same_interner_even_when_contents_match() {
+	mut a := flat.FlatAst.new()
+	node := a.add_val(.ident, 'value')
+	mut tc := TypeChecker.new(&a)
+	tc.set_fresh_type_cache(true)
+	tc.register_synth_type(node, Type(int_))
+	id := tc.checked_expr_type_id(node) or { panic('missing checked type') }
+	reference := tc.parse_type(flat.source_type_int)
+	indexed := tc.type_cache.indexed_types
+	scalars := tc.type_cache.parsed_scalars
+	assert indexed.set[int(node) & 4095]
+	assert tc.parsed_scalar_type(flat.source_type_int) != none
+
+	// Matching contents do not make two identity tables the same owner.
+	other := &TypeInterner{ ...tc.type_interner }
+	assert voidptr(other) != voidptr(tc.type_interner)
+	assert *other == *tc.type_interner
+	tc.type_interner = other
+	assert tc.parsed_scalar_type(flat.source_type_int) == none
+	replacement := tc.indexed_type_cache()
+	assert voidptr(replacement) != voidptr(indexed)
+	assert voidptr(replacement.owner) == voidptr(other)
+	assert !replacement.set[int(node) & 4095]
+	assert tc.checked_expr_type_id(node) or { panic('missing replacement checked type') } == id
+	assert tc.parse_type_id(flat.source_type_int) or { panic('missing replacement parsed type') } == id
+	tc.remember_parsed_scalar_type(flat.source_type_int, id, reference)
+	assert voidptr(tc.type_cache.parsed_scalars) != voidptr(scalars)
+	assert voidptr(tc.type_cache.parsed_scalars.owner) == voidptr(other)
+	assert tc.parsed_scalar_type(flat.source_type_int) != none
+}
 
 fn test_checked_type_ids_follow_retyping_rewrites_and_cache_collisions() {
 	mut a := flat.FlatAst.new()

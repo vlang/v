@@ -25,7 +25,7 @@ longer reachable. Every question below only arises when you leave that default.
 | A compiler or batch tool | `-prealloc` |
 | You want use-after-move caught at compile time | `-ownership` |
 | Talking to a C library | `unsafe`, and keep it in one place |
-| Tuning, before guessing | `-stats run` |
+| Tuning, before guessing | measure peak memory and time per mode |
 
 **Default**: leave the GC alone. `-gc none` and `-prealloc` are not performance
 switches; they remove the collector and move the responsibility to you.
@@ -51,23 +51,22 @@ trade is usually worth it.
 `-prealloc` is documented as suitable only for short-lived, single-threaded,
 batch-like programs. Do not reach for it in a server.
 
-**Race builds are the exception to all of it.** `-race` does not work with `-gc
-none` or `-prealloc`: ThreadSanitizer has to see every allocation and free, which
-a collector or an arena hides. So a program you want to race-test is a program you
-must run under the default GC. It also needs `clang` or `gcc` with the
+**Race builds are the exception to all of it.** `-race` uses the C allocator
+and no collector, like `-gc none`: ThreadSanitizer has to see every allocation and
+free, which Boehm and an arena hide. So `-race` rejects `-gc boehm` and
+`-prealloc`, and a race build of a program that relies on the GC will leak; that
+is fine for a test run. It also needs `clang` or `gcc` with the
 ThreadSanitizer runtime, and prefers `clang`, because gcc does not instrument
 copies of whole struct values such as strings and arrays, so it misses races on
 them.
 
 ## Check before you optimise
 
-```bash
-v -stats run main.v
-```
-
-That reports allocations. `-gc none` on a program that allocates heavily and
-exits quickly can be a large win; on a long-running one it is a leak generator.
-Measure first.
+Measure the peak memory and the time of the real workload under each mode, for
+example with `/usr/bin/time -l` on macOS or `/usr/bin/time -v` on Linux. Under the
+GC, `gc_heap_usage()` and `gc_memory_use()` report the collector's view from inside
+the program. `-gc none` on a program that allocates heavily and exits quickly can
+be a large win; on a long-running one it is a leak generator. Measure first.
 
 ## Ownership: catching a move at compile time
 
@@ -103,16 +102,23 @@ The rule: one `unsafe` block, as small as possible, with a comment saying why it
 sound. If a function needs two, split it so each has one.
 
 ```v ignore
-import unsafe
-
-// Fixed-size stack buffer; the size must be a compile-time constant.
-pub fn (b &Buf) fill(c byte) {
-	unsafe {
-		b.data = char(c)
-		b.len = b.size
+// sum adds `n` ints starting at `p`. The C caller guarantees that `p` points to
+// at least `n` of them, which the type cannot express.
+fn sum(p &int, n int) int {
+	mut total := 0
+	for i in 0 .. n {
+		total += unsafe { p[i] }
 	}
+	return total
+}
+
+fn main() {
+	values := [1, 2, 3]
+	assert sum(values.data, values.len) == 6
 }
 ```
+
+`unsafe` is a block in the language, not a module: there is nothing to import.
 
 See `references/UNSAFE.md` for what it does not check and what that costs.
 
@@ -140,7 +146,7 @@ must not retain it after the V object goes out of scope. See `references/UNSAFE.
 
 ```bash
 v -ownership file.v            # catch a move at compile time
-v -stats run main.v            # measure before changing the mode
+/usr/bin/time -l ./main        # macOS; `-v` on Linux: measure before changing the mode
 v -check main.v                # plain, portable V
 ```
 
@@ -150,7 +156,7 @@ For library code add `-shared`. See [v-workflow](../v-workflow/SKILL.md).
 
 - **The language rules**: see [v-lang](../v-lang/SKILL.md) for `mut` and for when
   to reach for a struct rather than a map, which changes how much is allocated.
-- **The build loop**: see [v-workflow](../v-workflow/SKILL.md) for `-prod`,
-  `-stats` and the other flags this skill uses.
+- **The build loop**: see [v-workflow](../v-workflow/SKILL.md) for `-prod` and
+  the other flags this skill uses.
 - **Concurrency**: see [v-concurrency](../v-concurrency/SKILL.md) for the shared
   state whose lifetime a lock has to protect.

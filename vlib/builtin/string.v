@@ -2858,6 +2858,7 @@ pub fn (s string) limit(max int) string {
 }
 
 // hash returns an integer hash of the string.
+@[ignore_overflow]
 pub fn (s string) hash() int {
 	mut h := u32(0)
 	if h == 0 && s.len > 0 {

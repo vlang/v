@@ -11,7 +11,7 @@ module blake2b
 import math.bits
 
 // mixing function g
-@[direct_array_access; inline]
+@[direct_array_access; ignore_overflow; inline]
 fn g(mut v [16]u64, a u8, b u8, c u8, d u8, x u64, y u64) {
 	v[a] = v[a] + v[b] + x
 	v[d] = bits.rotate_left_64((v[d] ^ v[a]), nr1)

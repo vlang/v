@@ -2614,7 +2614,7 @@ fn fastc_hoist_c_type_aliases(source string) string {
 	}
 	defines.write_string(fastc_order_function_typedefs(aliases.str() + function_aliases.str()))
 	defines.writeln('')
-	defines.write_string(bodies.str())
+	bodies.transfer_to(mut defines)
 	return defines.str()
 }
 
@@ -3315,13 +3315,23 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 	mut embedded_id := 0
 	mut fields_are_public := is_c_struct
 	mut fields_are_mutable := false
+	// Attributes written before a field name apply to the next field: whether there were any, and
+	// the flags they set.
+	mut has_leading_attributes := false
+	mut leading_is_required := false
+	mut leading_is_skip := false
 	for tok != .rcbr && tok != .eof {
 		if tok in [.semicolon, .comma] {
 			tok = scan.scan()
 			continue
 		}
 		if tok == .attribute {
-			tok = fastc_skip_attribute(mut scan)!
+			mut leading_attribute_required := false
+			mut leading_attribute_skip := false
+			tok, leading_attribute_required, leading_attribute_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+			has_leading_attributes = true
+			leading_is_required = leading_is_required || leading_attribute_required
+			leading_is_skip = leading_is_skip || leading_attribute_skip
 			continue
 		}
 		// `pub string` names a field `pub`; only `pub:` / `pub mut:` start a section.
@@ -3388,6 +3398,16 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			tok = scan.scan()
 		}
 		if tok in [.semicolon, .rcbr, .assign] {
+			// Without a default V refuses any attribute before an embedded field ("cannot use
+			// attributes on embedded structs"), so fastc does too. With a default V accepts them and
+			// lists them in the field's `attrs`; fastc records no flags on an embedded field, so its
+			// compile-time `attrs` do not show them. Either way the pending attributes end here.
+			if has_leading_attributes && tok != .assign {
+				return error('fastc parser does not support attributes on embedded field `${field_names[0]}` in ${source_file.path}')
+			}
+			has_leading_attributes = false
+			leading_is_required = false
+			leading_is_skip = false
 			embedded_key := if qualified_embed_key != 0 {
 				qualified_embed_key
 			} else {
@@ -3480,8 +3500,12 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		// Attributes may come before or after the default: `T @[a] = v` and `T = v @[a]`.
 		mut attribute_is_required := false
 		mut attribute_is_skip := false
-		mut is_required := false
-		mut is_skip := false
+		// Flags of leading attributes apply to this field; the pending copies are consumed here.
+		mut is_required := leading_is_required
+		mut is_skip := leading_is_skip
+		has_leading_attributes = false
+		leading_is_required = false
+		leading_is_skip = false
 		tok, attribute_is_required, attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
 		is_required = is_required || attribute_is_required
 		is_skip = is_skip || attribute_is_skip

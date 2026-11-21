@@ -1,13 +1,15 @@
 // Running the compiler and turning its output into records an agent can act on.
 //
-// The type checker collects its diagnostics internally and exposes them only as
-// printed text, so `v_check` runs the compiler as a child process and reads that
-// text back. The parser is deliberately strict about the `path:line:column: kind:
-// message` shape `v.errors.format` produces, and keeps everything it does not
-// recognise in a `raw` field rather than dropping it: a diagnostic that failed
-// to parse must still reach the agent, even unparsed.
+// The compiler runs as a child process. `v_check` asks it for `-json-errors`,
+// one JSON object per diagnostic, which carries the whole span, the details and
+// the call sites. Everything else the compiler prints is read as text: the parser
+// is deliberately strict about the `path:line:column: kind: message` shape
+// `v.errors.format` produces, folds the source context into a `raw` field, and
+// hands back the lines it does not recognise rather than dropping them: a message
+// that failed to parse must still reach the agent, even unparsed.
 module main
 
+import json2 as json
 import os
 import v.astjson
 
@@ -20,12 +22,33 @@ pub mut:
 	// both at zero.
 	line   int
 	column int
+	// end_line and end_column close the span, exclusive, when the compiler gave
+	// one; both are zero otherwise.
+	end_line   int
+	end_column int
 	// kind is `error`, `warning` or `notice`.
 	kind string
+	// label is the compiler's own name for the diagnostic when it says more than
+	// `kind`, like `builder error`, or `conflicting declaration` for each side of
+	// a redefinition.
+	label string
 	// message is the text after the kind, with the source context stripped.
 	message string
-	// raw is the original line, for a diagnostic that could not be parsed.
+	// details is the explanation the compiler adds below the message.
+	details string
+	// called_from lists the call sites the compiler reports for the diagnostic,
+	// like the `$tmpl` calls that lead to a line of a template.
+	called_from []CallSite
+	// raw is the source context printed after a text diagnostic.
 	raw string
+}
+
+// CallSite is one entry of `called_from`.
+pub struct CallSite {
+pub:
+	path   string
+	line   int
+	column int
 }
 
 // parsed reports whether the diagnostic carries a usable position.
@@ -43,10 +66,40 @@ pub fn (d Diagnostic) to_json() string {
 	w.number(d.line)
 	w.key('column')
 	w.number(d.column)
+	if d.end_line > 0 {
+		w.key('end_line')
+		w.number(d.end_line)
+		w.key('end_column')
+		w.number(d.end_column)
+	}
 	w.key('kind')
 	w.string(d.kind)
+	if d.label != '' {
+		w.key('label')
+		w.string(d.label)
+	}
 	w.key('message')
 	w.string(d.message)
+	if d.details != '' {
+		w.key('details')
+		w.string(d.details)
+	}
+	if d.called_from.len > 0 {
+		w.key('called_from')
+		w.begin_array()
+		for site in d.called_from {
+			w.array_item()
+			w.begin_object()
+			w.key('path')
+			w.string(site.path)
+			w.key('line')
+			w.number(site.line)
+			w.key('column')
+			w.number(site.column)
+			w.end_object()
+		}
+		w.end_array()
+	}
 	if d.raw != '' {
 		w.key('raw')
 		w.string(d.raw)
@@ -82,24 +135,120 @@ fn page_diagnostics(items []Diagnostic, max int) ([]Diagnostic, int) {
 	return items[..limit], items.len - limit
 }
 
-// parse_diagnostics reads the compiler's output into records.
+// read_check_output reads the output of `v -json-errors` into records, in the
+// order the compiler printed them, and returns the text no record claimed.
+//
+// Most diagnostics arrive as one JSON object per line, but not every message goes
+// through that path: one about a missing file, or a crash of the compiler, is
+// printed as text. Those lines are read as text diagnostics, and whatever is left
+// is returned for the response to show as it is.
+pub fn read_check_output(output string) ([]Diagnostic, string) {
+	mut items := []Diagnostic{}
+	mut unclaimed := []string{}
+	mut text := []string{}
+	for line in output.split_into_lines() {
+		if diagnostic := decode_json_diagnostic(line) {
+			text_items, rest := parse_text_diagnostics(text)
+			items << text_items
+			unclaimed << rest
+			text.clear()
+			items << diagnostic
+		} else {
+			text << line
+		}
+	}
+	text_items, rest := parse_text_diagnostics(text)
+	items << text_items
+	unclaimed << rest
+	return items, unclaimed.join('\n')
+}
+
+// JsonDiagnostic is one line of `-json-errors` output, as `v.errors` writes it.
+struct JsonDiagnostic {
+	file        string
+	line        int
+	col         int
+	end_line    int
+	end_col     int
+	severity    string
+	label       string
+	message     string
+	details     string
+	called_from []JsonCallSite
+}
+
+// JsonCallSite is one entry of `called_from` in `-json-errors` output.
+struct JsonCallSite {
+	file string
+	line int
+	col  int
+}
+
+// decode_json_diagnostic reads one `-json-errors` line, or returns none for a
+// line that is not one. A JSON object without a known `severity` is not a
+// diagnostic.
+fn decode_json_diagnostic(line string) ?Diagnostic {
+	text := line.trim_space()
+	if !text.starts_with('{') || !text.ends_with('}') {
+		return none
+	}
+	decoded := json.decode[JsonDiagnostic](text) or { return none }
+	if decoded.severity !in diagnostic_kinds {
+		return none
+	}
+	mut called_from := []CallSite{cap: decoded.called_from.len}
+	for site in decoded.called_from {
+		called_from << CallSite{
+			path:   site.file
+			line:   site.line
+			column: site.col
+		}
+	}
+	return Diagnostic{
+		path:        decoded.file
+		line:        decoded.line
+		column:      decoded.col
+		end_line:    decoded.end_line
+		end_column:  decoded.end_col
+		kind:        decoded.severity
+		label:       decoded.label
+		message:     decoded.message
+		details:     decoded.details
+		called_from: called_from
+	}
+}
+
+// parse_diagnostics reads the compiler's text output into records.
 //
 // Each diagnostic starts a new record; every following line up to the next one is
 // that diagnostic's source context, which is folded into `raw` instead of being
 // reported as a separate message.
 pub fn parse_diagnostics(output string) []Diagnostic {
+	items, _ := parse_text_diagnostics(output.split_into_lines())
+	return items
+}
+
+// parse_text_diagnostics reads text diagnostics like `parse_diagnostics`, and
+// also returns the non-blank lines before the first diagnostic, which belong to
+// no record.
+fn parse_text_diagnostics(lines []string) ([]Diagnostic, []string) {
 	mut out := []Diagnostic{}
-	for line in output.split_into_lines() {
+	mut unclaimed := []string{}
+	for line in lines {
 		if diagnostic := parse_diagnostic_line(line) {
 			out << diagnostic
-		} else if out.len > 0 && line.trim_space() != '' {
+		} else if line.trim_space() != '' {
+			if out.len == 0 {
+				unclaimed << line
+				continue
+			}
 			// Source context for the diagnostic above; keep it verbatim.
 			mut previous := out[out.len - 1]
 			previous.raw += '\n' + line
 			out[out.len - 1] = previous
 		}
 	}
-	return out
+	return out, unclaimed
 }
 
 // parse_diagnostic_line reads one `<path>:<line>:<column>: <kind>: <message>`

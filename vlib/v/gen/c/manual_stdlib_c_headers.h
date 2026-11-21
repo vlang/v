@@ -406,6 +406,21 @@ V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);
 #endif
 #endif
+// The Microsoft C runtimes (UCRT and msvcrt) use different values from glibc
+// and the BSDs. setvbuf rejects any others as an invalid parameter, which ends
+// the program unless an invalid parameter handler is installed (a MinGW
+// executable has one, a DLL doesn't).
+#if defined(_WIN32)
+#ifndef _IOFBF
+	#define _IOFBF 0x0000
+#endif
+#ifndef _IOLBF
+	#define _IOLBF 0x0040
+#endif
+#ifndef _IONBF
+	#define _IONBF 0x0004
+#endif
+#else
 #ifndef _IOFBF
 	#define _IOFBF 0
 #endif
@@ -414,6 +429,7 @@ V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t coun
 #endif
 #ifndef _IONBF
 	#define _IONBF 2
+#endif
 #endif
 #ifndef EOF
 	#define EOF (-1)

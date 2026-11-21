@@ -11,7 +11,7 @@ import v.astjson
 fn spec_check() ToolSpec {
 	return read_only_spec('v_check',
 		'Type-check V code and return the compiler diagnostics as records with file,
-line, column, kind and message. Points at one file or one directory. It compiles
+span, kind, message and details. Points at one file or one directory. It compiles
 nothing and writes nothing.',
 		input_schema(['path'], {
 			'path':            SchemaProperty{
@@ -39,14 +39,16 @@ fn tool_check(ws &Workspace, arguments string) string {
 	// Flags go before the subcommand, as `v` documents, and are handed over raw
 	// because `run_compiler` owns the quoting.
 	mut compiler_args := args.list('flags')
-	compiler_args << ['-check', path]
+	compiler_args << ['-json-errors', '-check', path]
 	run := run_compiler(ws, compiler_args)
-	items := parse_diagnostics(run.output)
-	return check_json(ws, path, run, items, args.int('max_diagnostics', max_diagnostics_default))
+	items, unclaimed := read_check_output(run.output)
+	return check_json(ws, path, run, items, unclaimed, args.int('max_diagnostics', max_diagnostics_default))
 }
 
-// check_json renders the outcome of a check.
-fn check_json(ws &Workspace, path string, run CompilerRun, items []Diagnostic, max_diagnostics int) string {
+// check_json renders the outcome of a check. `unclaimed` is compiler output that
+// no diagnostic accounts for; the response carries it as `output` when it is not
+// empty.
+fn check_json(ws &Workspace, path string, run CompilerRun, items []Diagnostic, unclaimed string, max_diagnostics int) string {
 	mut w := astjson.Writer{}
 	w.begin_object()
 	w.key('path')
@@ -80,10 +82,11 @@ fn check_json(ws &Workspace, path string, run CompilerRun, items []Diagnostic, m
 		w.key('hint')
 		w.string('Only the first ${kept.len} diagnostics are shown; narrow the path or raise `max_diagnostics`.')
 	}
-	if items.len == 0 && run.exit_code != 0 {
-		// The compiler failed without saying why, which is worth showing raw.
+	if unclaimed.trim_space() != '' {
+		// Output that is not a diagnostic, like a crash or a message about the
+		// project as a whole, is worth showing raw.
 		w.key('output')
-		w.string(trim_output(run.output, 60))
+		w.string(trim_output(unclaimed, 60))
 	}
 	w.end_object()
 	return w.str()
@@ -152,5 +155,9 @@ fn tool_test_run(ws &Workspace, arguments string) string {
 		os.setenv('VTEST_ONLY', saved, true)
 	}
 	items := parse_diagnostics(run.output)
-	return check_json(ws, path, run, items, args.int('max_diagnostics', max_diagnostics_default))
+	// The test runner prints a report of its own, so its output is only shown
+	// when no diagnostic explains a failure.
+	unclaimed := if items.len == 0 && run.exit_code != 0 { run.output } else { '' }
+	return check_json(ws, path, run, items, unclaimed, args.int('max_diagnostics',
+		max_diagnostics_default))
 }

@@ -1283,10 +1283,16 @@ f2 := 456e+2 // 45600
 
 #### Checked integer arithmetic
 
-Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
+At runtime, integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
 and a cast to a smaller integer type keeps the low bits.
 String interpolation preserves that integer width before formatting a wrapped result.
-Two opt-in flags turn these into runtime panics:
+
+Known excessive literal counts for `<<` and `>>` are rejected at compile time. For a direct
+integer-literal left operand, these operators reject literal counts of 64 or more. Use a wider left
+operand, such as `u128(1) << 100`, when a 128-bit shift is intended. These compile-time checks are
+separate from the runtime behavior of shifts whose counts are not known until the program runs.
+
+Two opt-in flags turn the runtime behaviors into panics:
 
 * `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
   (with their compound forms like `-=`, `/=`). In code outside the standard library, it also
@@ -1729,6 +1735,7 @@ users.sort_with_compare(custom_sort_fn)
 
 Iteration over an array slice keeps the array's element type: iterating `[]string` yields
 strings, including when the containing function is reached through generic calls.
+The slice bounds in a `for ... in` loop are evaluated once, before the first iteration.
 
 A slice is a part of a parent array. Initially it refers to the elements
 between two indices separated by a `..` operator. The right-side index must
@@ -1863,6 +1870,10 @@ files := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
 filtered := files.filter(it#[-4..].to_lower() == '.jpg').map(it.to_upper())
 // ['PIPPO.JPG', 'IMG_02.JPG', 'IMG_01.JPG']
 ```
+
+Each method in a chain receives the element type produced by the preceding
+method. For example, in `values.map(it.str()).filter(it != '')`, the filter
+receives strings even when `values` is a generic array.
 
 ### Fixed size arrays
 
@@ -2915,6 +2926,7 @@ for i in 0 .. 5 {
 
 `low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
+The loop captures the initial value of `low` before evaluating `high`.
 
 > [!NOTE]
 > This exclusive range notation and zero-based indexing follow principles of
@@ -4762,6 +4774,12 @@ An importing module's same-named enum does not change that default, including in
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
+
+A public enum or sum type marked `@[non_exhaustive]` opts into an open
+contract: external modules must include an `else` branch even when all
+currently known variants are listed, so adding a variant is non-breaking
+for fallback consumers. The defining module keeps exhaustive matching
+without a fallback.
 
 Enum fields can re-use reserved keywords:
 
@@ -6647,6 +6665,33 @@ rlock m {
 }
 ```
 
+### Structured Concurrency with TaskGroup
+
+`sync.TaskGroup` runs a set of closures concurrently and joins them all.
+`wait` returns the results in submission order, regardless of completion
+order. The first child error cancels the group; `wait` reports that error
+after every child has finished:
+
+```v
+import sync
+
+fn main() {
+	mut group := sync.new_task_group[int]()
+	for i in 0 .. 4 {
+		id := i
+		group.spawn(fn [id] () !int {
+			return id * 10
+		})!
+	}
+	println(group.wait()!) // [0, 10, 20, 30]
+}
+```
+
+A group is single-use: spawning after `wait` has started and waiting twice
+both return errors. Tasks observe cancellation through the group's
+`TaskContext` (`ctx := group.context()`, then `ctx.check_cancelled()!`),
+which is also cancelled automatically on the first child error.
+
 ### Difference Between Channels and Shared Objects
 
 **Purpose**:
@@ -8495,6 +8540,11 @@ V has several attributes that modify the behavior of functions and structs.
 `@[noalloc]` checks that a function's reachable code does not allocate, with an exception for
 growing an existing mutable array parameter. `@[noalloc: strict]` also forbids that growth.
 See [Allocation contracts](noalloc.md) for conservative checks and foreign function contracts.
+
+FFI lifetime contracts (`@[nonnull]`, `@[noescape]`, `@[len_of]`, `@[returns_owned]`,
+`@[returns_borrowed]`) declare pointer, length, and ownership expectations for foreign
+and V functions. Schemas are validated and call sites are checked where arguments are
+statically known. See [FFI lifetime contracts](ffi_lifetime.md).
 
 An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
@@ -10846,9 +10896,14 @@ architecture. Without `-arch`, the target defaults to the compiler's host archit
 Pass `-arch amd64` to select `-b amd64` (`-b x64`), or `-arch arm64` to select `-b arm64`.
 The architecture option can appear before or after the native backend option.
 Explicit backend selection remains available, with the same platform requirements: macOS
-ARM64 and Linux AMD64 support executables. Linux ARM64 currently supports object output only;
-for example, `v -b native -arch arm64 -o hello_world.o hello_world.v` on Linux emits an ARM64
-ELF object, including from an AMD64 host. It does not link a Linux ARM64 executable.
+ARM64, Linux AMD64, and Linux ARM64 support executables. For example,
+`v -b native -arch arm64 hello_world.v` on Linux emits an ARM64 ELF executable.
+Cross linking uses `aarch64-linux-gnu-gcc` or `aarch64-linux-musl-gcc` when available;
+use `-cc` to select another Linux ARM64 toolchain, including its startup files and libc.
+Linux ARM64 linking honors libraries and objects declared through source `#flag` directives.
+Environment `CFLAGS` are applied before explicit `-cflags` options.
+Exported V functions and their dependencies remain available to linked C code.
+Object output (`-o hello_world.o`) works without a target linker, including from an AMD64 host.
 For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.
 
 The native backends do not link a garbage collector yet, so they always build as if `-gc none`
@@ -10856,6 +10911,8 @@ was passed. For AMD64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large AMD64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
+ARM64 floating-point comparisons with NaN return false for `==`, `<`, `<=`, `>` and `>=`,
+and true for `!=`.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
 `#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
 ARM64 resolves a fixed set of platform C constants. Other C constants produce an error;
@@ -10897,9 +10954,17 @@ Integer literals must fit in a single 64-bit limb; construct larger values with 
 bitwise operations.
 Use the C backend for the full set of 128-bit operations.
 
+ARM64 variable shifts return zero for negative counts or counts at or above the operand width.
+
 Currently there is no debugging support for binaries created by the native backends.
 
 ### Javascript Backend
+
+The V3 compatibility generator emits direct literal `println` and `JS.eval` statements in
+source order inside `main` or at script top level. It reports unsupported control flow
+before generating JavaScript. Constant and global initializers are limited to scalar and
+function literals. Calls in initializers and aggregate defaults produce a diagnostic.
+String literals in these calls use V escape sequences and must decode to valid UTF-8.
 
 To debug the generated Javascript output you can activate source maps:
 `v -b js -sourcemap hello.v -o hello.js`
@@ -12048,9 +12113,9 @@ extract time instead of emitting silently broken machine code.
 path (its live function calls other functions and prints strings); it
 remains an example for the C shared-library workflow.
 
-Linux ARM64 output is experimental and currently supports relocatable objects
-only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
-native live reloading on Linux are not yet supported.
+Linux ARM64 output is experimental and supports executable linking with a Linux ARM64
+toolchain, as well as relocatable objects (`v -b arm64 -os linux -o program.o program.v`).
+Native live reloading on Linux is not yet supported.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).

@@ -829,6 +829,67 @@ fn test_joint_precise_update_does_not_force_a_distinct_same_leaf_repository() {
 	joint_cli(['install', '--locked'])
 }
 
+fn test_joint_latest_rewrites_member_manifests_in_workspaces() {
+	case := 'ws_latest'
+	shared := joint_repo(case, 'shared')!
+	joint_tag(shared, 'shared', 'v1.0.0', [])!
+	root := os.join_path(joint_root, case, 'app')
+	member := os.join_path(root, 'members', 'svc')
+	os.mkdir_all(member)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'wsapp' workspaces: ['members/*'] }\n")!
+	os.write_file(os.join_path(member, 'v.mod'),
+		"Module { name: 'svc' dependencies: ['${shared}@^1'] }\n")!
+	test_utils.set_test_env(os.join_path(joint_root, case, 'store'))
+	os.chdir(root)!
+	joint_cli(['install'])
+	joint_tag(shared, 'shared', 'v2.0.0', [])!
+	joint_cli(['update', '--latest'])
+	assert os.read_file(os.join_path(member, 'v.mod'))!.contains(shared + '@^2.0.0')
+	assert os.read_file(os.join_path(root, 'v.mod'))!.contains('@^') == false
+	assert read_lockfile(root)!.modules[shared].requested == shared + '@^2.0.0'
+	// The same run from the member directory anchors to the workspace root.
+	joint_tag(shared, 'shared', 'v3.0.0', [])!
+	os.chdir(member)!
+	joint_cli(['update', '--latest'])
+	assert os.read_file(os.join_path(member, 'v.mod'))!.contains(shared + '@^3.0.0')
+	assert !os.exists(os.join_path(member, 'v.mod.lock'))
+	assert read_lockfile(root)!.modules[shared].requested == shared + '@^3.0.0'
+	os.chdir(root)!
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_targeted_latest_widens_relative_member_dependency_from_both_dirs() {
+	case := 'ws_latest_relative_targeted'
+	dep := os.join_path(joint_root, case, 'app', 'deps', 'review_dep')
+	os.mkdir_all(dep)!
+	joint_git(dep, ['init', '-b', 'main'])
+	joint_tag(dep, 'review_dep', 'v1.0.0', [])!
+	root := os.join_path(joint_root, case, 'app')
+	member := os.join_path(root, 'members', 'svc')
+	os.mkdir_all(member)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'wsapp' workspaces: ['members/*'] }\n")!
+	os.write_file(os.join_path(member, 'v.mod'),
+		"Module { name: 'svc' dependencies: ['file://../../deps/review_dep@^1'] }\n")!
+	test_utils.set_test_env(os.join_path(joint_root, case, 'store'))
+	os.chdir(root)!
+	joint_cli(['install'])
+	assert joint_head(case, 'review_dep') == joint_git(dep, ['rev-parse', 'v1.0.0'])
+	joint_tag(dep, 'review_dep', 'v2.0.0', [])!
+	joint_cli(['update', '-p', 'review_dep', '--latest'])
+	assert joint_head(case, 'review_dep') == joint_git(dep, ['rev-parse', 'v2.0.0'])
+	assert os.read_file(os.join_path(member, 'v.mod'))!.contains('file://../../deps/review_dep@^2.0.0')
+	assert read_lockfile(root)!.modules.values().any(it.requested.contains('@^2.0.0'))
+	joint_tag(dep, 'review_dep', 'v3.0.0', [])!
+	os.chdir(member)!
+	joint_cli(['update', '-p', 'review_dep', '--latest'])
+	assert joint_head(case, 'review_dep') == joint_git(dep, ['rev-parse', 'v3.0.0'])
+	assert os.read_file(os.join_path(member, 'v.mod'))!.contains('file://../../deps/review_dep@^3.0.0')
+	assert !os.exists(os.join_path(member, 'v.mod.lock'))
+	assert read_lockfile(root)!.modules.values().any(it.requested.contains('@^3.0.0'))
+	os.chdir(root)!
+	joint_cli(['install', '--locked'])
+}
+
 fn test_joint_removed_dev_dependencies_are_pruned_from_the_lockfile() {
 	runtime := joint_repo('dev_prune', 'runtime')!
 	joint_tag(runtime, 'runtime', 'v1.0.0', [])!

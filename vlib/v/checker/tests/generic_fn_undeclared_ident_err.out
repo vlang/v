@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generic_fn_undeclared_ident_err.vv:2:13: error: undefined variable: `arr`
+    1 | pub fn repeat[T](seq []T, n int) []T {
+    2 |     new_len := arr.len * n
+      |                ~~~
+    3 |     mut new := []T{len: new_len}
+    4 |     mut i := 0

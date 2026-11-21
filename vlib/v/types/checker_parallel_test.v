@@ -258,6 +258,7 @@ fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
 	a.add_val(.file, 'two.v')
 	a.add_val(.module_decl, 'builtin')
 	a.add_node(flat.Node{ kind: .fn_decl, value: 'helper', op: .arrow })
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'secret' })
 	mut tc := TypeChecker.new(&a)
 	for i in 0 .. a.nodes.len {
 		tc.top_level_idx << i
@@ -269,6 +270,9 @@ fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
 	assert tc.declaration_visibility['alpha.trailing'].module_name == 'alpha'
 	assert tc.declaration_visibility['helper'].is_pub
 	assert tc.declaration_visibility['builtin.helper'].is_pub
+	assert tc.declaration_visibility['secret'].module_name == 'builtin'
+	assert !tc.declaration_visibility['secret'].is_pub
+	assert tc.declaration_visibility['builtin.secret'].module_name == 'builtin'
 	assert tc.cur_module == 'original'
 	assert tc.cur_file == 'original.v'
 	assert tc.file_modules.len == 0

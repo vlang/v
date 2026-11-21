@@ -1,4 +1,6 @@
+import hash
 import os
+import v.cmdexec
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -81,6 +83,152 @@ fn run_wasi_expect(wasm string, expected []string) {
 	}
 }
 
+fn test_wasm_result_values_pass_cli_validation() {
+	src := "fn parse(text string) !int {
+	if text.len == 0 {
+		return error('empty')
+	}
+	return text.len
+}
+fn fallback(err int) int { return err }
+fn main() {
+	println(parse('ok') or { -1 })
+	println(parse('') or { -1 })
+	println(parse('') or { fallback(-2) })
+}
+"
+	wasm := compile_to_wasm(v3_binary(), src, 'wasm_result_cli')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['2', '-1', '-2'])
+}
+
+fn test_wasm_result_panic_propagation_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_result_panic_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.wasm')
+	os.write_file(source, "fn parse() !int {
+	return error('empty')
+}
+fn main() {
+	value := parse()!
+	println(value)
+}
+")!
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, source]
+		if production {
+			args.insert(1, '-prod')
+		}
+		res := os.exec(args)
+		assert res.exit_code != 0, res.output
+		assert res.output.contains('main.v:'), res.output
+		assert res.output.contains('the V wasm backend does not support using `!` to panic with a Result error value yet'), res.output
+		assert !os.exists(output)
+	}
+}
+
+fn test_wasm_result_error_value_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_result_error_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.wasm')
+	os.write_file(source, "fn read_value(ok bool) !int {
+	if !ok { return error('empty') }
+	return 42
+}
+fn main() {
+	value := read_value(false) or {
+		println(err.msg())
+		-7
+	}
+	println(value)
+}
+")!
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, source]
+		if production {
+			args.insert(1, '-prod')
+		}
+		res := os.exec(args)
+		assert res.exit_code != 0, res.output
+		assert res.output.contains('the V wasm backend does not support reading the Result error value yet'), res.output
+		assert !os.exists(output)
+	}
+}
+
+fn test_wasm_result_error_value_in_external_module_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_result_dependency_${os.getpid()}')
+	modules := os.join_path(root, 'modules')
+	program := os.join_path(root, 'program')
+	helper := os.join_path(modules, 'helper', 'helper.v')
+	os.mkdir_all(os.dir(helper))!
+	os.mkdir_all(program)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(helper, "module helper
+fn inner() !int { return error('empty') }
+pub fn read() !int {
+	value := inner() or {
+		println(err.msg())
+		-7
+	}
+	return value
+}
+pub fn read_generic[T](fallback T) !T {
+	if value := inner() {
+		println(value)
+	} else {
+		println(err.msg())
+	}
+	return fallback
+}
+pub fn fallback() !int {
+	value := inner() or { -7 }
+	return value
+}
+")!
+	source := os.join_path(program, 'main.v')
+	output := os.join_path(program, 'main.wasm')
+	mut env := os.environ()
+	env['VMODULES'] = modules
+	env['V_MACOS_V3_NO_FALLBACK'] = '1'
+	for call in ['read()', 'read_generic[int](-7)', 'fallback()'] {
+		os.write_file(source, 'import helper
+fn wrapped() !int {
+	value := helper.${call}!
+	return value + 1
+}
+fn main() { println(wrapped() or { -9 }) }
+')!
+		for production in [false, true] {
+			mut args := ['-nocolor', '-b', 'wasm', '-o', output, source]
+			if production {
+				args.prepend('-prod')
+			}
+			res := cmdexec.run_in_merged_with_env(v3_binary(), args, program, env)
+			if call != 'fallback()' {
+				assert res.exit_code != 0, res.output
+				assert res.output.contains('${helper}:'), res.output
+				assert res.output.contains('the V wasm backend does not support reading the Result error value yet'), res.output
+				assert !os.exists(output)
+			} else {
+				assert res.exit_code == 0, res.output
+				assert_valid_wasm(output)
+				run_wasi_expect(output, ['-6'])
+				os.rm(output)!
+			}
+		}
+	}
+}
+
 fn test_wasm_block_scoping_preserves_outer_locals() {
 	v3_bin := v3_binary()
 	// A for-initializer and a loop-body declaration must not alter outer locals:
@@ -97,6 +245,25 @@ fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_narrow')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['-128', '0', '0', '-32768', '4', '-128', '44'])
+}
+
+fn test_wasm_narrow_runtime_shift_uses_operand_width() {
+	src := 'fn report(count i64) {
+	value := i8(-8)
+	println(int(value >> count))
+	println(int(value >>> count))
+	println(int(i16(-8) >> count))
+}
+fn main() {
+	report(7)
+	report(8)
+	report(16)
+	report(-1)
+}
+'
+	wasm := compile_to_wasm(v3_binary(), src, 'wasm_narrow_shift_width')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['-1', '1', '-1', '0', '0', '-1', '0', '0', '0', '0', '0', '0'])
 }
 
 fn test_wasm_runtime_oversized_shift_is_zero() {
@@ -348,6 +515,7 @@ assert.equal(e.sum(), 1368n);
 }
 
 fn test_wasm_user_functions_keep_other_runtime_names() {
+	native_hash := hash.wyhash64_c(3, 4)
 	assert_wasm_source_before_and_after_optimization('other_runtime_names', '
 import hash
 fn wyhash64(a u64, b u64) u64 { return a + b }
@@ -372,7 +540,7 @@ assert.equal(e.prealloc_malloc(5), 24);
 assert.equal(e.join_path(5), 28);
 assert.equal(e.name_list(5), 34);
 assert.equal(e.call_hash(), 7n);
-assert.equal(e.runtime_control(), 725283166682890696n);
+assert.equal(e.runtime_control(), ${native_hash}n);
 ')
 }
 
@@ -1016,12 +1184,12 @@ fn test_wasm_float_cast_of_large_literal() {
 
 fn test_wasm_shift_over_width_semantics() {
 	v3_bin := v3_binary()
-	// V promotes narrow types to int for shifts, so i8(-1) >> 8 stays -1 (the
-	// computation width is 32), while full-width over-width shifts zero out.
+	// Runtime shifts return zero when the count reaches the left operand's width,
+	// even when WASM represents the operand in a wider register.
 	src := 'fn rc(n int) int {\n\treturn n\n}\n\nfn main() {\n\tprintln(int(i8(-1) >> rc(8)))\n\tprintln(u32(1) << rc(32))\n\ta := u64(1)\n\tprintln(a << rc(64))\n\tprintln(int(i8(-5) >>> rc(1)))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftsem')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['-1', '0', '0', '125'])
+	run_wasi_expect(wasm, ['0', '0', '0', '125'])
 }
 
 fn test_wasm_mixed_signed_unsigned_comparison() {

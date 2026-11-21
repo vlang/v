@@ -579,6 +579,7 @@ pub fn (mut r Element) sqrt_ratio(u Element, v Element) (Element, int) {
 }
 
 // mask_64_bits returns 0xffffffff if cond is 1, and 0 otherwise.
+@[ignore_overflow]
 fn mask_64_bits(cond int) u64 {
 	// in go, `^` operates on bit mean NOT, flip bit
 	// in v, its a ~    bitwise NOT

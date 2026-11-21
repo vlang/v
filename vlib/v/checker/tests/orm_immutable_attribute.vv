@@ -1,0 +1,13 @@
+@[immutable]
+module main
+@[immutable]
+struct InvalidModel {
+	id int
+}
+struct InvalidArgument {
+	id int @[immutable: true]
+}
+@[immutable]
+const invalid_constant = 1
+@[immutable]
+fn main() { println(invalid_constant) }

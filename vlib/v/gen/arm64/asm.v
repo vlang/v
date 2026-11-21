@@ -266,6 +266,11 @@ fn asm_cset_lo(rd Reg) u32 {
 	return 0x9A9F27E0 | u32(rd)
 }
 
+// csel rd, rn, xzr, lo selects zero when the unsigned comparison is out of range.
+fn asm_csel_lo_or_zero(rd Reg, rn Reg) u32 {
+	return 0x9A9F3000 | (u32(rn) << 5) | u32(rd)
+}
+
 // cset rd, ls (unsigned less or equal)
 fn asm_cset_ls(rd Reg) u32 {
 	return 0x9A9F87E0 | u32(rd)

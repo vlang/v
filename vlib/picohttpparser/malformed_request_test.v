@@ -97,6 +97,22 @@ const malformed_cases = [
 		input: 'GET / HTTP/1.1\r\nHost: a\x7fb\r\n\r\n'
 		err:   'error parsing request: expecting "\r\n" after header'
 	},
+	// a head that stops after an empty header value is incomplete
+	MalformedCase{
+		input:       'GET / HTTP/1.1\r\nHost:\r\n'
+		ret:         -2
+		num_headers: 1
+	},
+	MalformedCase{
+		input:       'GET / HTTP/1.1\r\nHost: \n'
+		ret:         -2
+		num_headers: 1
+	},
+	// what follows an empty header value is a header line, and is checked as one
+	MalformedCase{
+		input: 'GET / HTTP/1.1\r\nHost:\r\n: v\r\n\r\n'
+		err:   'error parsing request: invalid header name'
+	},
 ]
 
 fn test_parse_request_malformed_table() {
@@ -158,10 +174,75 @@ fn test_parse_request_allows_an_empty_header_value() {
 		assert false, 'unexpected error: ${err}'
 		0
 	}
-	assert n == 23, 'ret ${n}'
+	assert n == 25, 'ret ${n}'
 	assert r.num_headers == 1, 'num_headers ${r.num_headers}'
 	assert r.headers[0].name == 'Host'
 	assert r.headers[0].value == '', 'value "${r.headers[0].value}"'
+}
+
+fn test_parse_request_reads_the_headers_after_an_empty_value() {
+	for empty in ['Accept:', 'Accept: ', 'Accept: \t '] {
+		for line_end in ['\r\n', '\n'] {
+			head := ['POST / HTTP/1.1', empty, 'Host: example', 'Content-Length: 4', '', ''].join(line_end)
+			mut r := Request{}
+			n := r.parse_request(head + 'body') or {
+				assert false, 'unexpected error: ${err}'
+				0
+			}
+			assert n == head.len, 'ret ${n} for "${empty}"'
+			assert r.num_headers == 3, 'num_headers ${r.num_headers} for "${empty}"'
+			assert r.headers[0].name == 'Accept'
+			assert r.headers[0].value == ''
+			assert r.headers[1].name == 'Host'
+			assert r.headers[1].value == 'example'
+			assert r.headers[2].value == '4'
+			assert r.body == 'body', 'body "${r.body}"'
+		}
+	}
+}
+
+fn test_parse_request_reads_consecutive_empty_values() {
+	head := 'GET / HTTP/1.1\r\nA:\r\nB: \r\nC:\r\n\r\n'
+	mut r := Request{}
+	n := r.parse_request(head) or {
+		assert false, 'unexpected error: ${err}'
+		0
+	}
+	assert n == head.len, 'ret ${n}'
+	assert r.num_headers == 3, 'num_headers ${r.num_headers}'
+	for i, name in ['A', 'B', 'C'] {
+		assert r.headers[i].name == name
+		assert r.headers[i].value == '', 'value "${r.headers[i].value}"'
+	}
+}
+
+fn test_parse_request_reads_an_obs_fold_after_an_empty_value() {
+	head := 'GET / HTTP/1.1\r\nA:\r\n y\r\nB: x\r\n\r\n'
+	mut r := Request{}
+	n := r.parse_request(head) or {
+		assert false, 'unexpected error: ${err}'
+		0
+	}
+	assert n == head.len, 'ret ${n}'
+	assert r.num_headers == 3, 'num_headers ${r.num_headers}'
+	assert r.headers[0].name == 'A'
+	assert r.headers[0].value == ''
+	assert r.headers[1].name == ''
+	assert r.headers[1].value == ' y', 'value "${r.headers[1].value}"'
+	assert r.headers[2].name == 'B'
+	assert r.headers[2].value == 'x'
+}
+
+fn test_parse_request_reads_the_body_after_a_last_empty_value() {
+	head := 'POST / HTTP/1.1\r\nContent-Length: 4\r\nAccept: \r\n\r\n'
+	mut r := Request{}
+	n := r.parse_request(head + 'body') or {
+		assert false, 'unexpected error: ${err}'
+		0
+	}
+	assert n == head.len, 'ret ${n}'
+	assert r.num_headers == 2, 'num_headers ${r.num_headers}'
+	assert r.body == 'body', 'body "${r.body}"'
 }
 
 fn test_parse_request_stores_obs_fold_as_a_nameless_header() {

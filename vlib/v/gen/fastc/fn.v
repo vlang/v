@@ -550,6 +550,7 @@ fn (mut g Parser) skip_attribute() !bool {
 	mut condition_value := true
 	mut at_item_start := true
 	mut has_noalloc := false
+	mut has_ffi := false
 	for depth > 0 {
 		if g.tok == .eof {
 			return g.unsupported('unfinished attribute')
@@ -571,6 +572,10 @@ fn (mut g Parser) skip_attribute() !bool {
 		}
 		if depth == 1 && at_item_start && g.tok == .name && g.lit == 'noalloc' {
 			has_noalloc = true
+		}
+		if depth == 1 && at_item_start && g.tok == .name
+			&& g.lit in ['nonnull', 'noescape', 'len_of', 'returns_owned', 'returns_borrowed'] {
+			has_ffi = true
 		}
 		if depth == 1 && at_item_start && g.tok == .key_unsafe {
 			// `@[unsafe]` marks the whole function body as an unsafe region.
@@ -601,6 +606,21 @@ fn (mut g Parser) skip_attribute() !bool {
 		}
 		if next != .key_fn || look.scan() != .name || look.lit != 'C' || look.scan() != .dot {
 			return g.unsupported('@[noalloc] contracts; use the C backend')
+		}
+	}
+	if has_ffi {
+		// FastC emits C without the FFI lifetime checker. Only foreign
+		// declarations may carry trusted contracts on this backend.
+		mut look := g.s
+		mut next := g.tok
+		for next == .semicolon || next == .attribute {
+			next = if next == .attribute { fastc_skip_attribute(mut look)! } else { look.scan() }
+		}
+		if next in [.key_pub, .key_static] {
+			next = look.scan()
+		}
+		if next != .key_fn || look.scan() != .name || look.lit != 'C' || look.scan() != .dot {
+			return g.unsupported('@[ffi] contracts; use the C backend')
 		}
 	}
 	return if has_condition { condition_value } else { true }

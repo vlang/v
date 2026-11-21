@@ -87,7 +87,7 @@ pub fn expand_key_with_salt(key []u8, salt []u8, mut bf Blowfish) {
 }
 
 // setup_tables sets up the Blowfish cipher's pi and substitution tables.
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 fn setup_tables(l u32, r u32, mut bf Blowfish) (u32, u32) {
 	mut xl := l
 	mut xr := r

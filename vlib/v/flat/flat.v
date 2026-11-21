@@ -139,7 +139,8 @@ pub enum NodeKind as u8 {
 	sql_expr
 	// A `$veb.html(...)` / `$tmpl(...)` comptime-template placeholder. It is produced
 	// by parse_comptime_expr and fully expanded (into builder statements) by
-	// parse_block_body at parse time, so it never reaches later phases.
+	// parse_block_body at parse time, so it never reaches later phases. A node of this
+	// kind outside the tree records a file that a template read (see is_veb_template_input).
 	veb_template
 	// A `$res()` / `$res(index)` expression. This must remain distinct from
 	// `.ident` so user-spellable names cannot be reinterpreted as defer results.
@@ -401,12 +402,19 @@ pub const node_flag_borrowed_map_key = u8(8)
 // node_flag_in_range_index marks an `.index` read the transform proved in range
 // (see Node.is_in_range_index()). The bit is shared with the flags above.
 pub const node_flag_in_range_index = u8(8)
+// node_flag_retained_reference marks an implicit `&temporary` retained by a field.
+// It uses the same bit on prefix nodes; the C backend must copy its backing value.
+pub const node_flag_retained_reference = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
 // node_flag_literal_interpolation_text marks a string literal whose source token
 // contained `${...}` as literal text (for example, `\${name}` or a raw string).
 pub const node_flag_literal_interpolation_text = u8(32)
+// node_flag_implicit_result_error_decl marks a synthesized Result error declaration.
+pub const node_flag_implicit_result_error_decl = u8(32)
+// node_flag_result_error_message marks a generated call that reads a panic message from a Result.
+pub const node_flag_result_error_message = u8(32)
 // node_flag_detached_spawn marks a `spawn` whose thread handle is discarded, so the
 // backend starts its thread detached (see Node.is_detached_spawn()).
 pub const node_flag_detached_spawn = u8(64)
@@ -580,6 +588,27 @@ pub fn (n &Node) is_static_type_method() bool {
 @[inline]
 pub fn (n &Node) is_embed_payload() bool {
 	return (n.flags & node_flag_embed_payload) != 0
+}
+
+const veb_template_input_type = 'template_input'
+
+// veb_template_input_node records that a template read the file at `path`. A template
+// is expanded into statements at parse time, and they do not say which files they came
+// from. This node stays out of the tree, among the nodes of the file that owns the
+// template, where the caches look for the non-V inputs of each module.
+pub fn veb_template_input_node(path string) Node {
+	return Node{
+		kind:  .veb_template
+		value: path
+		typ:   source_type_id(veb_template_input_type)
+	}
+}
+
+// is_veb_template_input reports whether this node holds, in `value`, the path of a file
+// that a template read, rather than a template to expand.
+@[inline]
+pub fn (n &Node) is_veb_template_input() bool {
+	return n.kind == .veb_template && n.typ_text() == veb_template_input_type
 }
 
 // is_freed_assignment reports whether an assignment has the `@[freed]` attribute.

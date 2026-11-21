@@ -81,3 +81,24 @@ jobs:
           # Match the four-worker limit used by the Windows MSVC job.
           VJOBS: ${{ runner.os == 'Windows' && '4' || '' }}
         run: ./v -d network -silent test-self vlib/net
+
+  # `v test` shares a module cache between the test builds of a session, so the
+  # tests of the compiler's own modules read most of those modules from the cache.
+  # This is the one place that also compiles all of them from scratch.
+  periodic-compiler-modules-from-scratch:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
+    timeout-minutes: 90
+    env:
+      VTEST_NOCACHE: '1'
+      V_CI_PERIODIC: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
+      - name: Test the compiler's own modules without the module cache
+        run: ./v -silent test vlib/v/types/ vlib/v/transform/ vlib/v/gen/c/

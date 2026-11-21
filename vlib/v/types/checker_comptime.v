@@ -4674,7 +4674,8 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 	}
 	mut letters := []u8{}
 	mut paren_depth := 0
-	for ch in fmt {
+	mut invalid_idx := -1
+	for i, ch in fmt {
 		if ch == `(` {
 			paren_depth++
 			continue
@@ -4682,12 +4683,34 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 		if ch == `)` {
 			if paren_depth > 0 {
 				paren_depth--
+				continue
 			}
+			invalid_idx = i
+			break
+		}
+		if paren_depth > 0 {
 			continue
 		}
-		if paren_depth == 0 && ((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)) {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) {
 			letters << ch
+		} else if ch != `-` && ch != `+` && ch != `.` && !(ch >= `0` && ch <= `9`) {
+			// Flags outside parentheses are limited to `-`, `0`/`+` padding and
+			// the `+` sign flag; anything else (e.g. `>`, `<`, `^`, fill
+			// characters) was silently ignored by the backends.
+			invalid_idx = i
+			break
 		}
+	}
+	if invalid_idx >= 0 {
+		bad := fmt[invalid_idx]
+		bad_pos := token.new_span(node.pos.id, node.pos.offset + invalid_idx, node.pos.offset +
+			invalid_idx + 1)
+		tc.record_error_at(.call_arg_mismatch, 'unknown character `${bad.ascii_str()}` in the format of a string interpolation', id, bad_pos)
+		return
+	}
+	if paren_depth > 0 {
+		tc.record_error_at(.call_arg_mismatch, 'unclosed `(` in the format of a string interpolation', id, node.pos)
+		return
 	}
 	if letters.len > 1 {
 		tc.record_error_at(.call_arg_mismatch, 'format specifier may only be one letter', id, node.pos)
@@ -7638,8 +7661,8 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 	value_id := tc.a.child(&node, 0)
 	container_id := tc.a.child(&node, 1)
 	tc.check_node(value_id)
-	value_type_raw := tc.resolve_type(value_id)
-	value_type := unalias_type(value_type_raw)
+	mut value_type_raw := tc.resolve_type(value_id)
+	mut value_type := unalias_type(value_type_raw)
 	container := tc.a.node(container_id)
 	if value_sum_type := in_expr_sum_subject_type(value_type) {
 		if container.kind == .array_literal {
@@ -7687,6 +7710,10 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 			if first_type is SumType
 				&& tc.direct_sum_assignment_variant_matches(value_type_raw, first_type) {
 				expected_elem_type = first_type
+			} else if tc.a.node(value_id).kind == .enum_val && first_type is Enum {
+				// Like `==`, an enum shorthand on the left takes its type from
+				// the literal's element type: `.a in [Kind.a]`.
+				expected_elem_type = first_type
 			}
 		}
 		expected_container := if fixed_literal {
@@ -7715,6 +7742,27 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 			container_type = pointed
 		}
 	}
+	// Like `==` (see `check_infix`), an enum shorthand on the left takes its
+	// type from the right operand. Without this the shorthand keeps the `int`
+	// it synthesizes to without context and always mismatches an enum element.
+	if tc.a.node(value_id).kind == .enum_val {
+		if container_type is Array || container_type is ArrayFixed {
+			element_type := if container_type is Array {
+				container_type.elem_type
+			} else {
+				(container_type as ArrayFixed).elem_type
+			}
+			if unalias_type(element_type) is Enum {
+				value_type_raw = tc.resolve_expr(value_id, element_type)
+				value_type = unalias_type(value_type_raw)
+			}
+		} else if container_type is Map {
+			if unalias_type(container_type.key_type) is Enum {
+				value_type_raw = tc.resolve_expr(value_id, container_type.key_type)
+				value_type = unalias_type(value_type_raw)
+			}
+		}
+	}
 	op := tc.in_operator_name(value_id, container_id)
 	if value_type is MultiReturn || container_type is MultiReturn {
 		tc.record_error_at(.condition_mismatch, 'invalid number of operand for `${op}`. Only one allowed on each side.', id, node.pos)
@@ -7740,6 +7788,12 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 			container_type.elem_type
 		} else {
 			(container_type as ArrayFixed).elem_type
+		}
+		// Like `==`, an enum shorthand on the left takes its type from the
+		// element type of the right operand: `.a in kinds`.
+		if tc.a.node(value_id).kind == .enum_val && unalias_type(element_type) is Enum {
+			value_type_raw = tc.resolve_expr(value_id, element_type)
+			value_type = unalias_type(value_type_raw)
 		}
 		pointer_element_compatible := value_type is Pointer
 			&& tc.type_compatible(value_type.base_type, element_type)
@@ -9642,11 +9696,16 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		} else {
 			tc.integer_shift_bit_size(lhs_type)
 		}
+		// Direct integer-literal operands use at most 64 bits. Write an explicit i128 or u128
+		// left operand when a wider shift is intended; typed operands use their own width.
+		lhs_is_literal := lhs_node.kind == .int_literal
+		checked_bit_size := if lhs_is_literal { 64 } else { bit_size }
 		if !skip_inactive_compact_else && node.op != .right_shift_unsigned && bit_size > 0
-			&& lhs_node.kind != .int_literal && rhs_node.kind == .int_literal {
+			&& rhs_node.kind == .int_literal {
 			if shift_count := v_int_literal_value(rhs_node.value) {
-				if shift_count >= bit_size {
-					tc.record_error_at(.assignment_mismatch, 'shift count for type `${lhs_type.name()}` too large (maximum: ${bit_size - 1} bits)', rhs_id, rhs_node.pos)
+				if shift_count >= checked_bit_size {
+					lhs_name := if lhs_is_literal { 'int literal' } else { lhs_type.name() }
+					tc.record_error_at(.assignment_mismatch, 'shift count for type `${lhs_name}` too large (maximum: ${checked_bit_size - 1} bits)', rhs_id, rhs_node.pos)
 				}
 			}
 		}
@@ -13276,8 +13335,8 @@ fn (mut tc TypeChecker) check_sql_update_fields(id flat.NodeId, node flat.Node, 
 		}
 		for name in sql_update_assignment_fields(assignments) {
 			field := tc.sql_orm_update_source_field(table_name, name) or { continue }
-			if struct_field_has_attr(field, 'sql_insert_only') {
-				tc.record_sql_error_at(.assignment_mismatch, 'ORM: cannot update insert-only field `${table_name}.${field.value}` (@[sql_insert_only])', id,
+			if struct_field_has_attr(field, 'immutable') {
+				tc.record_sql_error_at(.assignment_mismatch, 'ORM: cannot update insert-only field `${table_name}.${field.value}` (@[immutable])', id,
 					tc.sql_expr_text_pos(source_node, name, 0, name.len))
 			} else if struct_field_has_attr(field, 'fkey') {
 				tc.record_sql_error_at(.assignment_mismatch, "ORM: `${field.value}` is a foreign column of `${table_name}`, it can't update here", id, tc.sql_expr_text_pos(node, 'update ${table_name}', 'update '.len, table_name.len))

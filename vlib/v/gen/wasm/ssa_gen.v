@@ -781,7 +781,7 @@ fn (mut g SSAGen) emit_instruction(id int) ! {
 			g.cur.raw(ssa_wasm_binary(instr.op, w)!)
 			init_push_zero(w, mut g.cur)
 			g.cur.local_get(count)
-			width := if w == .i64 { 64 } else { 32 }
+			width := g.m.type_store.types[instr.typ].width
 			if count_w == .i64 {
 				g.cur.i64_const(width)
 				g.cur.raw(0x54)

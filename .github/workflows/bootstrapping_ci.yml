@@ -39,7 +39,7 @@ jobs:
           ) }}
       fail-fast: true
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.platform == 'windows-x64' && 70 || 40 }}
+    timeout-minutes: 40
     env:
       VFLAGS: ${{ matrix.vflags }}
       B_LFLAGS: -lm -lpthread
@@ -267,6 +267,10 @@ jobs:
           cp v "vprod-artifacts/$asset"
           cd vprod-artifacts
           shasum -a 256 "$asset" > "$asset.sha256"
+      - name: Prepare private Windows tool cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build the Windows bootstrap compiler
         if: runner.os == 'Windows'
         shell: cmd
@@ -285,9 +289,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./vprod-selfcheck.exe run examples/hello_world.v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Release the vet runner's GC heap before starting the formatting session.
+      - name: Check code vetting on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VTEST_CLEANCODE_STAGE: vet
+        run: |
+          # Fail early if vet would rebuild for every input in test-cleancode.
+          .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          ./v.exe -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check code formatting on Windows
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          VTEST_CLEANCODE_STAGE: fmt
         run: |
           ./v.exe -silent test-cleancode
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

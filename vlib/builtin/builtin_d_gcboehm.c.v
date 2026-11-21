@@ -217,6 +217,12 @@ $if dynamic_boehm ? {
 	} $else $if windows {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
+		// TinyCC's `-municode` only selects the `wmain` entry point and, unlike
+		// MinGW GCC, does not define `UNICODE`, so the collector built from
+		// source would call the ANSI Win32 API. Define it explicitly to keep
+		// `GetModuleFileName`, `CreateFile` and friends on their wide variants.
+		#flag -DUNICODE=1
+		#flag -D_UNICODE=1
 		// For the libgc built from source: report like on other platforms, on
 		// stderr, instead of in a modal message box and an `<exe>.gc.log` file.
 		#flag -DNO_MSGBOX_ON_ERROR=1

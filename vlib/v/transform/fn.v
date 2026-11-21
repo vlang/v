@@ -3830,18 +3830,25 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 	if params := t.implicit_veb_call_param_types(call_name) {
 		return params
 	}
-	if params := t.call_param_types_from_decl(call_name) {
-		return params
-	}
 	if node.children_count > 0 {
 		fn_id := t.a.child(&node, 0)
 		fn_node := t.a.node(t.a.child(&node, 0))
+		// A local variable holding a closure shadows any same-named function,
+		// including a private function of another module that is not callable
+		// unqualified: resolve the callee from the local scope first.
 		if fn_node.kind == .ident && (t.var_type(fn_node.value)) != 0 {
 			if fn_type := t.call_callee_fn_type(fn_id) {
 				return fn_type.params.map(*it.typ)
 			}
 			return []types.Type{}
 		}
+	}
+	if params := t.call_param_types_from_decl(call_name) {
+		return params
+	}
+	if node.children_count > 0 {
+		fn_id := t.a.child(&node, 0)
+		fn_node := t.a.node(t.a.child(&node, 0))
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			base_id := t.a.child(fn_node, 0)
 			method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
@@ -6299,6 +6306,36 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ_id u32
 	})
 }
 
+// smartcast_replaces_alias_str only selects scalar payloads of value sum aliases.
+// Keep pointer-backed and shared bindings and aggregate payloads on their existing path,
+// even when that path still fails, and preserve every applicable str method.
+fn (mut t Transformer) smartcast_replaces_alias_str(expr_id flat.NodeId, alias_id u32, sc SmartcastContext) bool {
+	node := t.a.nodes[int(expr_id)]
+	if node.kind != .ident || node.value == t.cur_fn_receiver_name_text()
+		|| flat.source_type_shape(t.var_type(node.value)).has(.pointer) {
+		return false
+	}
+	// Shared interpolation reads the wrapper's whole value, even in a smartcast branch.
+	if flat.source_type_shape(t.trimmed_type_id(t.raw_var_type(node.value))).has(.shared_type) {
+		return false
+	}
+	base := t.alias_str_resolved_base_type(alias_id)
+	variant := t.normalize_type_alias(t.smartcast_target_type(sc))
+	if variant !in stringify_narrow_integer_types
+		&& variant !in [flat.source_type_bool, flat.source_type_f32, flat.source_type_f64,
+			flat.source_type_string] {
+		return false
+	}
+	if _, _ := t.alias_custom_str_method_in_chain(alias_id) {
+		return false
+	}
+	if _, _, _ := t.generic_receiver_str_method(base) {
+		return false
+	}
+	aggregate := t.stringify_aggregate_type_name(base) or { return false }
+	return t.aggregate_str_method_name(aggregate) == none
+}
+
 // stringify_expr converts an expression to text, using voidptr.str() for print arguments.
 fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.NodeId {
 	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep
@@ -6370,7 +6407,14 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.
 		}
 	}
 	if raw_alias_type_source_id_4 != 0 {
-		typ = raw_alias_type_source_id_7
+		narrowed := if sc := smartcast {
+			t.smartcast_replaces_alias_str(expr_id, raw_alias_type_source_id_4, sc)
+		} else {
+			false
+		}
+		if !narrowed {
+			typ = raw_alias_type_source_id_7
+		}
 	}
 	// `transform_expr` above already auto-dereferenced a `pointer_value_rvalues`
 	// ident (mutable for-in bindings, `@[heap]`-promoted locals, ...) to its value,
@@ -10917,6 +10961,15 @@ fn left_zero_padded_decimal_width(format string) ?int {
 }
 
 fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ_id u32) ?flat.NodeId {
+	method_name, concrete_args_source_ids, decl_key := t.generic_receiver_str_method(typ_id) or {
+		return none
+	}
+	t.mark_generic_str_method_specialization(method_name, concrete_args_source_ids)
+	return t.make_generic_str_method_call(method_name, decl_key, [expr])
+}
+
+// Resolve without emitting a call so smartcast stringification uses the same method selection.
+fn (mut t Transformer) generic_receiver_str_method(typ_id u32) ?(string, []u32, string) {
 	shape := flat.source_type_shape(typ_id)
 	if isnil(t.tc) || !shape.has(.bracketed) {
 		return none
@@ -10938,11 +10991,7 @@ fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ_id u32) ?
 	// String interpolation synthesizes this call after the source-context maps
 	// have been built. Encode the exact receiver specialization in the callee and
 	// call metadata so a later monomorphizer instance can materialize its body.
-	method_name, concrete_args_source_ids, decl_key := t.generic_str_method_specialization(info.name,
-		clean_typ, u32(0)) or { return none }
-
-	t.mark_generic_str_method_specialization(method_name, concrete_args_source_ids)
-	return t.make_generic_str_method_call(method_name, decl_key, [expr])
+	return t.generic_str_method_specialization(info.name, clean_typ, u32(0))
 }
 
 // generic_str_method_specialization infers the generic declaration arguments from the exact
@@ -12713,11 +12762,30 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.lower_map_str(new_base, new_base_type)
 		}
 	}
-	clean_base_type := (if flat.source_type_shape(base_type).has(.pointer) {
+	mut clean_base_type := (if flat.source_type_shape(base_type).has(.pointer) {
 		flat.source_type_syntax(base_type).raw_base()
 	} else {
 		base_type
 	})
+	mut lowered_base := flat.empty_node
+	if node.children_count >= 2 && (t.validating_generic_spec || t.active_specialization_args.ids.len > 0)
+		&& fn_node.value in ['filter', 'map', 'any', 'all', 'count']
+		&& (flat.source_type_shape(clean_base_type).has(.array_type) || t.is_fixed_array_type(clean_base_type)) {
+		receiver := t.a.nodes[int(t.unwrap_parens(base_id))]
+		if receiver.kind == .call && receiver.children_count > 0 {
+			producer := t.a.child_node(&receiver, 0)
+			if producer.kind == .selector && producer.value in ['map', 'filter']
+				&& t.checker_selected_receiver_method_name(call_id, array_builtin_method) == none {
+				// A generic map obtains its concrete element type during lowering.
+				// A filter later in the chain must propagate that type as well.
+				lowered_base = t.transform_expr(base_id)
+				lowered_type := t.normalized_node_type(lowered_base)
+				if flat.source_type_shape(lowered_type).has(.array_type) || t.is_fixed_array_type(lowered_type) {
+					clean_base_type = lowered_type
+				}
+			}
+		}
+	}
 	if fn_node.value == 'str' && t.is_builder_receiver(base_id, base_type) {
 		return none
 	}
@@ -12774,13 +12842,15 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return exact_call
 		}
 		if fn_node.value == 'map' {
-			return t.lower_array_map_call(node, fn_node, clean_base_type)
+			return t.lower_array_map_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := flat.source_type_composition_one(.array, elem_type)
 		tmp_name := t.new_temp('fixed_arr')
 		array_value := if fn_node.value in ['reverse_in_place', 'sort', 'sort_with_compare'] {
 			t.fixed_array_value_to_array_no_alloc(base_id, clean_base_type, array_type)
+		} else if lowered_base != flat.empty_node {
+			t.fixed_array_data_to_array(lowered_base, clean_base_type, array_type)
 		} else {
 			t.fixed_array_value_to_array(base_id, clean_base_type, array_type)
 		}
@@ -12866,10 +12936,10 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	match fn_node.value {
 		'filter' {
-			return t.lower_array_filter_call(node, fn_node, clean_base_type)
+			return t.lower_array_filter_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		'map' {
-			return t.lower_array_map_call(node, fn_node, clean_base_type)
+			return t.lower_array_map_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		'sort' {
 			return t.lower_array_sort_call(node, fn_node, base_type)
@@ -12884,10 +12954,10 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.lower_array_sorted_with_compare_call(node, fn_node, clean_base_type)
 		}
 		'any', 'all' {
-			return t.lower_array_any_all_call(node, fn_node, clean_base_type, fn_node.value)
+			return t.lower_array_any_all_call(node, fn_node, clean_base_type, fn_node.value, lowered_base)
 		}
 		'count' {
-			return t.lower_array_count_call(node, fn_node, clean_base_type)
+			return t.lower_array_count_call(node, fn_node, clean_base_type, lowered_base)
 		}
 		'str' {
 			receiver := if smartcast_container {

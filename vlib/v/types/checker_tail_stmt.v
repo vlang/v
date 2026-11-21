@@ -2046,6 +2046,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	}
 	tc.check_match_sumtype_exhaustiveness(id, node, subject_type)
 	tc.check_match_flag_enum_exhaustiveness(id, node, subject_type)
+	tc.check_match_enum_exhaustiveness(id, node, subject_type)
 	tc.check_match_bool_exhaustiveness(id, node, subject_type)
 	if value_context {
 		tc.check_match_branch_tail_type_diagnostics(id, node)
@@ -2189,6 +2190,86 @@ fn (mut tc TypeChecker) check_match_flag_enum_exhaustiveness(id flat.NodeId, nod
 	tc.record_error_at(.condition_mismatch, 'match must be exhaustive (add `else {}` at the end)', id, tc.match_header_pos(node))
 }
 
+// check_match_enum_exhaustiveness checks coverage for plain enums and requires
+// an `else` branch for non-exhaustive enums declared in another module.
+fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
+	clean_subject := unalias_type(subject_type)
+	if clean_subject !is Enum || !tc.should_diagnose(id) {
+		return
+	}
+	enum_subject := clean_subject as Enum
+	enum_name := tc.resolve_enum_name(enum_subject.source_type_id()) or {
+		enum_subject.source_type_id()
+	}
+	if enum_subject.is_flag || enum_name in tc.flag_enums
+		|| enum_subject.source_type_id() in tc.flag_enums {
+		return
+	}
+	is_open, display_name, decl_module := tc.non_exhaustive_enum_info(enum_subject.source_type_id(),
+		enum_name)
+	if is_open && tc.non_exhaustive_decl_is_external(decl_module) {
+		for i in 1 .. node.children_count {
+			branch := tc.a.child_node(&node, i)
+			if branch.kind == .match_branch && branch.value == 'else' {
+				return
+			}
+		}
+		tc.record_error_at(.condition_mismatch, 'match on non-exhaustive `${display_name}` from module `${decl_module}` must include `else {}`',
+			id, tc.match_header_pos(node))
+		return
+	}
+	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if cases.len == 0 {
+		return
+	}
+	mut covered := map[string]bool{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			continue
+		}
+		if branch.value == 'else' {
+			return
+		}
+		n_conds := branch.value.int()
+		if n_conds <= 0 || n_conds > branch.children_count {
+			return
+		}
+		for j in 0 .. n_conds {
+			// Ranges and other expressions can cover a set of unknown fields.
+			field := tc.match_enum_condition_field(tc.a.child_node(branch, j), enum_name) or {
+				return
+			}
+			covered[field] = true
+		}
+	}
+	// Under @[_allow_multiple_values] two fields may share a value, and naming
+	// one of them covers the other.
+	mut covered_values := map[i64]bool{}
+	for c in cases {
+		if c.name in covered && c.has_value && !c.value_from_c {
+			covered_values[c.value] = true
+		}
+	}
+	mut missing := []string{}
+	for c in cases {
+		if c.name in covered || (c.has_value && !c.value_from_c && c.value in covered_values) {
+			continue
+		}
+		missing << '`.${c.name}`'
+	}
+	if missing.len == 0 {
+		return
+	}
+	// At most ten fields are named, as the original checker did.
+	listed := if missing.len <= 10 {
+		missing.join(', ')
+	} else {
+		missing[..10].join(', ') + ', and ${missing.len - 10} others ...'
+	}
+	tc.record_error_at(.condition_mismatch, 'match must be exhaustive (add match branches for: ${listed} or `else {}` at the end)', id, tc.match_header_pos(node))
+}
+
 fn (mut tc TypeChecker) check_match_bool_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
 	if unalias_type(subject_type).source_type_id() != flat.source_type_bool || !tc.should_diagnose(id) {
 		return
@@ -2225,6 +2306,89 @@ fn (mut tc TypeChecker) check_match_bool_exhaustiveness(id flat.NodeId, node fla
 	if missing.len > 0 && node.children_count > 1 {
 		tc.record_error_at(.condition_mismatch, 'match must be exhaustive (add match branches for: ${missing.join(', ')} or `else {}` at the end)', id, tc.match_header_pos(node))
 	}
+}
+
+// non_exhaustive_decl_is_external reports whether a declaration from
+// decl_module is used from another module. Empty and `main` are the same
+// module for this check, mirroring the private-visibility rule.
+fn (tc &TypeChecker) non_exhaustive_decl_is_external(decl_module string) bool {
+	if decl_module == tc.cur_module {
+		return false
+	}
+	if decl_module in ['', 'main'] && tc.cur_module in ['', 'main'] {
+		return false
+	}
+	return true
+}
+
+// non_exhaustive_enum_info resolves a non-exhaustive enum to its display
+// name and declaring module. Returns false when the type is closed.
+fn (tc &TypeChecker) non_exhaustive_enum_info(enum_id u32, resolved u32) (bool, string, string) {
+	mut is_open := false
+	mut decl_module := ''
+	q1 := tc.qualify_type_name(enum_id)
+	if enum_id in tc.non_exhaustive_enums || resolved in tc.non_exhaustive_enums
+		|| q1 in tc.non_exhaustive_enums {
+		is_open = true
+	}
+	if !is_open {
+		return false, '', ''
+	}
+	if mod := tc.enum_modules[resolved] {
+		decl_module = mod
+	} else if mod := tc.enum_modules[enum_id] {
+		decl_module = mod
+	} else if mod := tc.enum_modules[q1] {
+		decl_module = mod
+	} else {
+		decl_name := flat.source_type_name(resolved)
+		if vis := tc.declaration_visibility[decl_name] {
+			decl_module = vis.module_name
+		} else if vis := tc.declaration_visibility[flat.source_type_name(enum_id)] {
+			decl_module = vis.module_name
+		}
+	}
+	display_name := short_type_name(flat.source_type_name(resolved))
+	return true, display_name, decl_module
+}
+
+// non_exhaustive_sum_info resolves a non-exhaustive sum type to its display
+// name and declaring module. Returns false when the type is closed.
+fn (tc &TypeChecker) non_exhaustive_sum_info(subject_type Type) (bool, string, string) {
+	clean_subject := unalias_type(subject_type)
+	if clean_subject !is SumType {
+		return false, '', ''
+	}
+	sum_subject := clean_subject as SumType
+	base := tc.sum_base_name(sum_subject.source_type_id())
+	qbase := tc.qualify_type_name(base)
+	mut is_open := false
+	if base in tc.non_exhaustive_sums || qbase in tc.non_exhaustive_sums {
+		is_open = true
+	} else {
+		for k in tc.non_exhaustive_sums.keys() {
+			if tc.sum_base_name(k) == base || tc.sum_base_name(k) == qbase {
+				is_open = true
+				break
+			}
+		}
+	}
+	if !is_open {
+		return false, '', ''
+	}
+	mut decl_module := ''
+	if mod := tc.sum_modules[base] {
+		decl_module = mod
+	} else if mod := tc.sum_modules[qbase] {
+		decl_module = mod
+	} else {
+		decl_name := flat.source_type_name(base)
+		if vis := tc.declaration_visibility[decl_name] {
+			decl_module = vis.module_name
+		}
+	}
+	display_name := short_type_name(flat.source_type_name(base))
+	return true, display_name, decl_module
 }
 
 fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node flat.Node, subject_type Type) {
@@ -2314,6 +2478,16 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 		if variant !in covered {
 			missing << variant
 		}
+	}
+	is_open, display_name, decl_module := tc.non_exhaustive_sum_info(subject_type)
+	is_external_open := is_open && tc.non_exhaustive_decl_is_external(decl_module)
+	if is_external_open {
+		if else_ids.len == 0 {
+			tc.record_error_at(.condition_mismatch, 'match on non-exhaustive `${display_name}` from module `${decl_module}` must include `else {}`',
+				id, tc.match_header_pos(node))
+			return
+		}
+		return
 	}
 	if missing.len > 0 && else_ids.len == 0 {
 		quoted_missing := missing.map('`${short_type_name(flat.source_type_name(it))}`')
@@ -2606,6 +2780,10 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 			}
 		}
 		if inferred := inferred_contextual_if_type(expected, actual) {
+			if tc.match_branch_error_value_mix(expected, actual) {
+				tc.record_match_branch_return_type_mismatch(tail_id, expected, actual)
+				return
+			}
 			expected = inferred
 			continue
 		}
@@ -7763,6 +7941,37 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	mut base_type := tc.smartcast_type(base_id) or {
 		tc.lexical_match_smartcast_type(base_id) or { tc.resolve_type(base_id) }
 	}
+	// `type_contains_unknown` and `generic_semantic_type_has_placeholder` both
+	// return false for `Struct` (the semantic payload is only a name id), so an
+	// unresolved generic struct application such as `Box[T]` would skip the
+	// resolution below if we only checked the semantic type. Trigger also on any
+	// textual generic placeholder, on the struct-specific placeholder application,
+	// and on a generic call base itself (covers a cached type that already lost
+	// its placeholder spelling).
+	mut is_open_generic_base := type_contains_unknown(base_type)
+		|| generic_semantic_type_has_placeholder(base_type)
+		|| tc.type_text_has_generic_placeholder(base_type.source_type_id())
+		|| tc.type_text_has_generic_struct_placeholder_application(base_type.source_type_id())
+	if base.kind == .call && !is_open_generic_base {
+		if info := tc.resolve_call_info(base_id, base) {
+			is_open_generic_base = tc.call_generic_params(info.name).len > 0
+		}
+	}
+	if base.kind == .call && is_open_generic_base {
+		// A generic call used directly as a selector base can keep an open
+		// return type in the expression cache. Resolve its signature from the
+		// call arguments before looking up the selected field. The cached base
+		// can be an unresolved generic struct application (e.g. `Box[T]`),
+		// for which `type_contains_unknown` is false, so also trigger on any
+		// semantic or textual generic placeholder.
+		resolved_base_type := tc.resolve_generic_call_arg_type(base_id)
+		if !type_contains_unknown(resolved_base_type)
+			&& !generic_semantic_type_has_placeholder(resolved_base_type)
+			&& !tc.type_text_has_generic_placeholder(resolved_base_type.source_type_id())
+			&& !tc.type_text_has_generic_struct_placeholder_application(resolved_base_type.source_type_id()) {
+			base_type = resolved_base_type
+		}
+	}
 	if base.kind == .ident {
 		if mut_base := tc.mut_param_base_for_current_ident(base.value, base_type) {
 			base_type = mut_base
@@ -9847,6 +10056,13 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if tc.has_active_import(name) {
+		// A module name is only meaningful before a selector (`os.args`).
+		// Any other use treats the module as a value, which cgen cannot
+		// emit: it names the module as a C identifier and fails there.
+		if !tc.ident_is_module_selector_base(id) {
+			tc.record_error_at(.unknown_ident, 'module `${name}` is not a value', id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, unresolved_name_type())
+		}
 		return
 	}
 	// `qname` also keys the scope and const lookups above; probe the type tables once.
@@ -9889,6 +10105,22 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			tc.checker_fixture_template_ident_pos(id, node.pos))
 		tc.register_synth_type(id, unresolved_name_type())
 	}
+}
+
+// ident_is_module_selector_base reports whether the ident is the base of a
+// selector (`os` in `os.args`), the only position where a module name is
+// meaningful. Parentheses around the base are skipped, as in `(os).args`.
+fn (tc &TypeChecker) ident_is_module_selector_base(id flat.NodeId) bool {
+	mut current_id := id
+	mut parent_id := tc.direct_parent_id(current_id)
+	for tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .paren {
+		current_id = parent_id
+		parent_id = tc.direct_parent_id(current_id)
+	}
+	if !tc.valid_node_id(parent_id) || tc.a.node(parent_id).kind != .selector {
+		return false
+	}
+	return tc.a.child(tc.a.node(parent_id), 0) == current_id
 }
 
 fn (tc &TypeChecker) ident_uses_forbidden_closure_capture(name string) bool {
@@ -21689,6 +21921,21 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer())
 				&& !(tc.node_is_in_translated_file(id) && translated_integer_type(lt)
 					&& translated_integer_type(rt)) {
+				// An operand that is still an open generic (e.g. `Box[T]` from an
+				// inferred call) is not definitively non-integer yet. Return an
+				// unknown instead of void so the result is not memoized as void
+				// before `check_selector` resolves the generic call base.
+				// `Struct` carries no semantic placeholder payload, so also check
+				// the struct-specific textual application.
+				if type_contains_unknown(lt) || type_contains_unknown(rt)
+					|| generic_semantic_type_has_placeholder(lt)
+					|| generic_semantic_type_has_placeholder(rt)
+					|| tc.type_text_has_generic_placeholder(lt.source_type_id())
+					|| tc.type_text_has_generic_placeholder(rt.source_type_id())
+					|| tc.type_text_has_generic_struct_placeholder_application(lt.source_type_id())
+					|| tc.type_text_has_generic_struct_placeholder_application(rt.source_type_id()) {
+					return unknown_type('open generic shift operand')
+				}
 				return builtin_void_type
 			}
 			if node.op == .left_shift && array_type_from_receiver(lt) != none {

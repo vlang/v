@@ -121,6 +121,7 @@ fn json_string_array(values []string) string {
 // VS Code: https://code.visualstudio.com/docs/agent-customization/mcp-servers
 // Zed: https://zed.dev/docs/ai/mcp and its paths::config_dir implementation
 // Gemini CLI: https://geminicli.com/docs/tools/mcp-server/
+// Antigravity: https://antigravity.google/docs/mcp
 // Custom profiles and client-specific path overrides may use other files.
 fn harnesses() []Harness {
 	home := os.home_dir()
@@ -185,6 +186,13 @@ fn harnesses() []Harness {
 			label:   'Gemini CLI'
 			user:    os.join_path(home, '.gemini', 'settings.json')
 			project: os.join_path('.gemini', 'settings.json')
+			key:     'mcpServers'
+		},
+		Harness{
+			name:    'antigravity'
+			label:   'Antigravity'
+			user:    os.join_path(home, '.gemini', 'config', 'mcp_config.json')
+			project: os.join_path('.agents', 'mcp_config.json')
 			key:     'mcpServers'
 		},
 	]

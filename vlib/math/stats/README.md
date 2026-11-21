@@ -5,6 +5,9 @@ Lengths must match; empty or constant input returns NaN. `linear_regression` ret
 `LinearRegression[T]` with `f64` coefficients and predictions, including for integer samples.
 It needs at least two paired samples with distinct x values.
 
+`quantile(sorted_data, f)` takes a fraction from zero through one and rejects values outside that
+range, including NaN. The samples must be sorted in ascending order.
+
 `quantiles(sorted_data, n)` returns `n - 1` cut points as `[]f64`, using inclusive linear
 interpolation between ascending sorted samples. At least two samples and `n >= 1` are required.
 `multimode` groups values by equality and returns all modes in first-seen order.

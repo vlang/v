@@ -6,8 +6,10 @@
 // inlines its body at cgen time — v3 has no closures and no block-expressions, so
 // the generated statements are spliced directly into the handler body at parse
 // time (see `expand_veb_template_stmt`). To avoid needing an `import strings` in
-// the user's file, the builder is a plain `string` accumulated with `+=` rather
-// than a `strings.Builder`.
+// the user's file, the builder is a plain `[]string` of output pieces, joined once
+// at the end, rather than a `strings.Builder`. Appending to a `string` with `+=`
+// copied everything rendered so far on every write, which made rendering
+// quadratic in the size of the output (for example a long `@for` table).
 module parser
 
 import os
@@ -307,7 +309,7 @@ fn escape_bare_tmpl_dollar_interpolations(line string) string {
 }
 
 // escape_tmpl_comment_line prepares an HTML-comment template line for literal emission into a
-// generated `bname += '...'` write. Like a normal text line it escapes bare `$name`
+// generated `<bname>_parts << '...'` write. Like a normal text line it escapes bare `$name`
 // interpolations (via escape_bare_tmpl_dollar_interpolations) so the generated V source does not
 // treat them as string interpolation — `<!-- $schema -->` must render literally, not resolve a
 // variable — then escapes backslashes and single quotes for the string literal. `@{...}`/`${...}`
@@ -409,7 +411,7 @@ fn tmpl_write_escaped_interpolation(mut sb strings.Builder, content string) {
 }
 
 // tmpl_line_content transforms one template line into the CONTENT of a single
-// `bname += '<content>'` write (escaping quotes/backslashes and turning `@{expr}`
+// `<bname>_parts << '<content>'` write (escaping quotes/backslashes and turning `@{expr}`
 // / `@ident` into `${expr}` interpolation). It does not include the wrapper. When
 // `escape` is set (a `$veb.html()` template), each interpolation is routed through
 // `veb.filter_html` so string values are HTML-escaped against injection.
@@ -795,7 +797,7 @@ fn (mut p Parser) process_tmpl_includes(source_line TemplateSourceLine, mut seen
 	if file_ext == '' {
 		file_ext = '.html'
 	}
-	file_name = file_name.replace(file_ext, '')
+	file_name = file_name.trim_string_right(file_ext)
 	mut file_path := os.join_path_single(dir, '${file_name}${file_ext}')
 	if os.exists(file_path) {
 		file_path = os.real_path(file_path)
@@ -832,6 +834,7 @@ fn (mut p Parser) process_tmpl_includes(source_line TemplateSourceLine, mut seen
 		}
 		return []
 	}
+	p.add_node(flat.veb_template_input_node(file_path))
 	// Mark this file as on the current recursion stack while its own includes are
 	// resolved, then pop it so a later sibling include of the same file still expands.
 	seen[file_path] = true
@@ -910,7 +913,8 @@ fn expand_veb_tr_shorthand(line string, ctx_name string) string {
 }
 
 // compile_template_file compiles the template at `template_file` into V source
-// that accumulates the rendered string into `bname` (declared here as `mut bname := ''`).
+// that collects the rendered pieces in `<bname>_parts` and then declares
+// `bname := <bname>_parts.join('')`.
 // After the returned source runs, `bname` holds the rendered output. When `escape` is
 // set (a `$veb.html()` template), interpolated values are HTML-escaped via
 // `veb.filter_html`.
@@ -921,6 +925,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		return "mut ${bname} := ''\n", []TemplateSourceLine{}
 	}
 	root_path := os.real_path(template_file)
+	p.add_node(flat.veb_template_input_node(root_path))
 	mut lines := []TemplateSourceLine{cap: raw_lines.len}
 	for line_index, line in raw_lines {
 		lines << TemplateSourceLine{
@@ -929,10 +934,11 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			line: line_index + 1
 		}
 	}
-	tmpl_str_start := "\t${bname} += '"
+	parts_name := '${bname}_parts'
+	tmpl_str_start := "\t${parts_name} << '"
 	tmpl_str_end := "'\n"
 	mut source := strings.new_builder(1024)
-	source.writeln("mut ${bname} := ''")
+	source.writeln('mut ${parts_name} := []string{}')
 	source.write_string(tmpl_str_start)
 
 	mut state := TmplState.simple
@@ -1120,6 +1126,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		source.writeln(tmpl_line_content(expand_veb_tr_shorthand(line, p.veb_context_name()), escape))
 	}
 	source.writeln(tmpl_str_end)
+	source.writeln("${bname} := ${parts_name}.join('')")
 	return source.str(), lines
 }
 
@@ -1707,8 +1714,8 @@ fn template_interpolation_expr_span(line string, at int) ?(int, int) {
 
 // expand_veb_template_stmt lowers a statement whose value is a `.veb_template`
 // placeholder into inline builder statements: `return $veb.html()` becomes
-// `mut <b> := ''; <writes>; return <context>.html(<b>)`, and `x := $tmpl(p)` becomes
-// `mut <b> := ''; <writes>; x := <b>`. Returns none for any other statement.
+// `<writes>; <b> := <b>_parts.join(''); return <context>.html(<b>)`, and `x := $tmpl(p)`
+// becomes `<writes>; <b> := <b>_parts.join(''); x := <b>`. Returns none for any other statement.
 fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 	if !p.has_veb_template {
 		return none
