@@ -1822,6 +1822,51 @@ fn fastc_string_literal_content(literal string) string {
 	return raw
 }
 
+// comptime_if_ends_block reports whether the `$if` chain at the current `$` is the last
+// thing in its block, which makes it the block's value. Otherwise, as in
+// `{ $if !macos { return error('x') } value }`, it is a statement.
+fn (g &Parser) comptime_if_ends_block() bool {
+	mut look := g.s
+	mut tok := look.scan()
+	for tok == .key_if {
+		mut depth := 0
+		for {
+			tok = look.scan()
+			if tok == .eof {
+				return false
+			}
+			if tok in [.lpar, .lsbr] {
+				depth++
+			} else if tok in [.rpar, .rsbr] {
+				depth--
+			} else if tok == .lcbr && depth == 0 {
+				break
+			}
+		}
+		tok = fastc_skip_balanced_tokens(mut look, tok, .lcbr, .rcbr) or { return false }
+		for tok == .semicolon {
+			tok = look.scan()
+		}
+		if tok != .dollar || look.scan() != .key_else {
+			break
+		}
+		tok = look.scan()
+		if tok == .dollar {
+			tok = look.scan()
+			continue
+		}
+		if tok != .lcbr {
+			return false
+		}
+		tok = fastc_skip_balanced_tokens(mut look, tok, .lcbr, .rcbr) or { return false }
+		break
+	}
+	for tok == .semicolon {
+		tok = look.scan()
+	}
+	return tok == .rcbr
+}
+
 fn (g &Parser) dollar_keyword_is(keyword string) bool {
 	mut offset := g.s.offset
 	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`] {
