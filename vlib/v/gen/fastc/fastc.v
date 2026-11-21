@@ -3528,7 +3528,7 @@ fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
 fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []string, context FastcNativeSourceContext, vroot string) bool {
 	if !(name.starts_with('v3_') || name.starts_with('v_runtime_') || name.starts_with('v_time_')
 		|| name.starts_with('v_builtin_') || name.starts_with('v_set_')
-		|| name.starts_with('v__gc_')) {
+		|| name.starts_with('v__gc_') || name.starts_with('v_sync_')) {
 		return false
 	}
 	root := vroot.replace('\\', '/').trim_right('/')
