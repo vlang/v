@@ -1137,6 +1137,16 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		// without raising an error, so detect a type-parameter token right after `[`
 		// and force the body to be stubbed.
 		mut force_stub := false
+		// A parameter typed by a type parameter (`config &T`) is erased to `voidptr`; its
+		// members (`config.field`) have no C spelling until the function is specialized.
+		mut erased_params := []string{}
+		for param in params {
+			param_type := param.all_before_last(' ').trim_space()
+			if param_type in ['voidptr', 'voidptr*', 'voidptr *'] {
+				erased_params << param.all_after_last(' ').trim_left('*')
+			}
+		}
+		mut prev_was_erased_param := false
 		mut prev_was_lsbr := false
 		mut prev_was_type_param := false
 		mut prev_was_sizeof := false
@@ -1180,6 +1190,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			if sizeof_depth > 0 && body_tok == .name && body_end.lit in type_params {
 				force_stub = true
 			}
+			if prev_was_erased_param && body_tok == .dot {
+				force_stub = true
+			}
+			prev_was_erased_param = body_tok == .name && body_end.lit in erased_params
 			prev_was_lsbr = body_tok == .lsbr
 			prev_was_type_param = body_tok == .name && body_end.lit in type_params
 			prev_was_sizeof = body_tok == .key_sizeof
