@@ -5731,6 +5731,21 @@ fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 	return false
 }
 
+// array_types_share_elements reports whether two array types hold the same elements, also when
+// one spells the element through an alias (`[]Diagnostic` with `type Diagnostic = d.Diagnostic`).
+fn (g &Parser) array_types_share_elements(a u32, b u32) bool {
+	if a == b {
+		return true
+	}
+	if a == 0 || b == 0 || !flat.source_type_query(a).has(.c_array_prefix)
+		|| !flat.source_type_query(b).has(.c_array_prefix) {
+		return false
+	}
+	a_element := g.array_element_type(a) or { return false }
+	b_element := g.array_element_type(b) or { return false }
+	return g.underlying_alias_type(fastc_normalize_inferred_type(a_element)) == g.underlying_alias_type(fastc_normalize_inferred_type(b_element))
+}
+
 // render_map_index_inc_dec_expression lowers `m[k]++` / `m[k]--`. A map value is not a C
 // lvalue, so the entry is fetched (inserting a zero default when absent, matching V) and the
 // increment applied through the returned pointer.
@@ -6221,7 +6236,7 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	// before selecting push-many (see vlib/v/gen/c/infix.v).
 	propagated_array := right_tokens.len > 1 && right_tokens.last().tok in [.not, .question]
 		&& !fastc_trailing_not_marks_fixed_array_literal(right_tokens)
-	is_array_append := normalized_right == left_array_type
+	is_array_append := g.array_types_share_elements(normalized_right, left_array_type)
 		&& (!g.sumtype_has_variant(element_type, normalized_right) || propagated_array)
 	separator := rendered_expression.index('<<') or { return none }
 	left_tokens := tokens[..operator_index]

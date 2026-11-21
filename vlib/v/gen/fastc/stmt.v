@@ -1799,9 +1799,10 @@ fn (mut g Parser) parse_simple_statement() ! {
 				&& !fastc_trailing_not_marks_fixed_array_literal(g.last_expression))
 				|| (g.last_expression.len == 1 && g.last_expression[0].has_source()
 					&& g.last_expression[0].lit == '__vf_propagated')
-			boxes_array_variant := value_array_type == target_array_type
+			same_elements := g.array_types_share_elements(value_array_type, target_array_type)
+			boxes_array_variant := same_elements
 				&& g.sumtype_has_variant(element_type, value_array_type) && !propagated_array
-			is_array_append := value_array_type == target_array_type && !boxes_array_variant
+			is_array_append := same_elements && !boxes_array_variant
 			g.consume_statement_end()
 			array_target := if flat.source_type_query(target_type).has(.c_pointer_suffix) {
 				'(array *)${c_name}'
