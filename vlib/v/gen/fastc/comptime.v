@@ -1436,6 +1436,41 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		matches := g.comptime_type_matches(left_type, target_type, target_is_group)
 		return if operator == .key_is { matches } else { !matches }
 	}
+	if g.tok in [.key_in, .not_in] && !unaliased && !pointee_type {
+		// `$if T in [i8, int, $pointer]`: true when `T` matches any listed type or group.
+		operator := g.tok
+		g.next()
+		g.expect(.lsbr)!
+		mut left_type := g.comptime_named_type(name)
+		if subject_pointer_depth > 0 {
+			left_type = fastc_with_pointer_depth(left_type, subject_pointer_depth)
+		}
+		mut found := false
+		for g.tok != .rsbr {
+			if g.tok == .eof {
+				return g.unsupported('unfinished compile-time type list')
+			}
+			mut target_is_group := false
+			mut target_type := u32(0)
+			if g.tok == .dollar {
+				target_is_group = true
+				g.next()
+				if g.tok != .name && !g.tok.is_keyword() {
+					return g.unsupported('compile-time type group `${g.token_source()}`')
+				}
+				target_type = flat.source_type_id(g.lit)
+				g.next()
+			} else {
+				target_type = g.parse_comptime_type_pattern()!
+			}
+			found = found || g.comptime_type_matches(left_type, target_type, target_is_group)
+			if g.tok == .comma {
+				g.next()
+			}
+		}
+		g.next()
+		return if operator == .key_in { found } else { !found }
+	}
 	if g.tok in [.eq, .ne] {
 		// `$if @BACKEND == 'arm64'` etc.: compare a compile-time pseudo variable to a
 		// string literal.
