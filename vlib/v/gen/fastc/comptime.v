@@ -1580,7 +1580,9 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 	original_key := g.semantic_type_key(left_type)
 	return match flat.source_type_name(target_type) {
 		'array' {
+			// Both dynamic and fixed-size arrays.
 			flat.source_type_query(left).has(.c_array_prefix) || left == fastc_type_array
+				|| flat.source_type_query(left).has(.c_fixed_array_prefix)
 		}
 		'array_fixed' {
 			flat.source_type_query(left).has(.c_fixed_array_prefix)
