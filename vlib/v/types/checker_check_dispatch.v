@@ -122,12 +122,89 @@ fn (mut tc TypeChecker) check_dynamic_batches(mut a CheckChunkArgs, chunks &[][]
 		for pulled_idx in pulled {
 			batch_items << unsafe { chunks[pulled_idx] }
 		}
-		tc.clone_parallel_worker_node_caches(batch_items)
+		// The node caches go from the batch's arena to their final storage in one
+		// pass, while that arena is still alive.
+		if !master.promote_batch_node_caches(batch_items, mut a.promotion, tc, a.scope) {
+			// Their names are in this worker's arena for now: the task promotes
+			// them at its end.
+			a.processed << batch_items
+		} else {
+			a.checked += batch_items.len
+		}
 		tc.merge_parallel_check_worker_scoped(batch, true)
 		tc.end_check_batch_scope(scratch_scope)
-		a.checked += batch_items.len
-		master.promote_check_chunk(batch_items, mut a.promotion, a.scope)
 	}
+}
+
+// promote_batch_node_caches promotes the node caches of the bodies `items`,
+// which a batch fork of the calling worker has just checked, out of the batch's
+// arena: as clone_parallel_worker_node_caches into the accumulator `acc`
+// followed by promote_check_chunk to `tc`, the master, in one pass over the
+// nodes. An expression type that the master's frozen interner holds is rebound
+// to it directly; another is promoted into the accumulator's interner, which
+// outlives the batch, and listed in `p` for the master. `scope` is the worker's
+// arena, current at the call. It returns false when the call names could not be
+// given persistent storage: they are in the worker's arena then.
+@[direct_array_access]
+fn (mut tc TypeChecker) promote_batch_node_caches(items []CheckWorkItem, mut p CheckChunkPromotion, acc &TypeChecker, scope voidptr) bool {
+	// The types of the previous batch are gone with its arena, and their
+	// addresses are in use again.
+	unsafe { vmemset(&p.cache.ptrs[0], 0, int(sizeof(p.cache.ptrs))) }
+	user_code_start := tc.a.user_code_start
+	for item in items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				typ := tc.expr_type_values[idx]
+				key := u64(voidptr(typ))
+				slot := int((key * u64(0x9e3779b97f4a7c15)) >> 50)
+				if p.cache.ptrs[slot] != voidptr(typ) {
+					mut value := unsafe { nil }
+					mut miss := i32(-1)
+					if canonical := tc.type_interner.probe_frozen_quiet(typ) {
+						value = voidptr(canonical)
+					} else {
+						owned := acc.promote_check_type(*typ)
+						owned_key := u64(voidptr(owned))
+						if known := p.missing[owned_key] {
+							miss = known
+						} else {
+							miss = i32(p.types.len)
+							p.missing[owned_key] = miss
+							p.types << owned
+						}
+						value = voidptr(owned)
+					}
+					p.cache.ptrs[slot] = voidptr(typ)
+					p.cache.values[slot] = value
+					p.cache.misses[slot] = miss
+				}
+				tc.expr_type_values[idx] = unsafe { &Type(p.cache.values[slot]) }
+				if p.cache.misses[slot] >= 0 {
+					p.nodes << i32(idx)
+					p.type_of << p.cache.misses[slot]
+				}
+			}
+			if idx >= user_code_start && tc.a.nodes[idx].kind == .call
+				&& tc.call_may_return_result(idx) {
+				p.result_calls << i32(idx)
+			}
+		}
+	}
+	$if prealloc {
+		if scope != unsafe { nil } {
+			state := unsafe { prealloc_scope_suspend(scope) }
+			if state == unsafe { nil } {
+				p.names_pending = true
+				tc.promote_check_chunk_call_names(items)
+				return false
+			}
+			tc.promote_check_chunk_call_names(items)
+			unsafe { prealloc_scope_resume(scope, state) }
+			return true
+		}
+	}
+	tc.promote_check_chunk_call_names(items)
+	return true
 }
 
 // selected_fn_scan_chunks_per_job is the number of chunks of about equal cost

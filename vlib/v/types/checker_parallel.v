@@ -6579,12 +6579,14 @@ mut:
 // the master's interner found: its canonical type, or else the position of the
 // type among those the master does not hold. A worker's interner keeps one
 // instance of a type, alive until the worker's arena is released, so the
-// pointer identifies it.
+// pointer identifies it. It has several slots for each type of a large program:
+// a type that loses its slot is probed for again, in tables that every worker
+// reads.
 struct CheckChunkPromotionCache {
 mut:
-	ptrs   [4096]voidptr
-	values [4096]voidptr
-	misses [4096]i32
+	ptrs   [16384]voidptr
+	values [16384]voidptr
+	misses [16384]i32
 }
 
 // promote_check_chunk promotes the node caches of the bodies `items`, which the
@@ -6627,13 +6629,13 @@ fn (mut tc TypeChecker) promote_check_chunk_types(items []CheckWorkItem, mut p C
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				typ := tc.expr_type_values[idx]
 				key := u64(voidptr(typ))
-				slot := int((key >> 4) & 4095)
+				slot := int((key * u64(0x9e3779b97f4a7c15)) >> 50)
 				if p.cache.ptrs[slot] != voidptr(typ) {
 					mut value := unsafe { nil }
 					mut miss := i32(0)
 					if known := p.missing[key] {
 						miss = known
-					} else if canonical := tc.type_interner.probe_frozen(typ) {
+					} else if canonical := tc.type_interner.probe_frozen_quiet(typ) {
 						value = voidptr(canonical)
 					} else {
 						miss = i32(p.types.len)
