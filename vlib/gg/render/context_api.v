@@ -2,6 +2,13 @@ module render
 
 import sokol.gfx
 
+// set_backface_culling controls whether the CPU rasterizer skips triangles
+// whose screen winding is the opposite of the configured face_winding.
+pub fn (ctx &Context) set_backface_culling(enabled bool) {
+	mut st := ctx.st
+	st.cull_backfaces = enabled
+}
+
 pub fn (ctx &Context) defaults() {
 	mut st := ctx.st
 	st.u = 0.0
@@ -479,7 +486,7 @@ pub fn (ctx &Context) texture(img gfx.Image, smp gfx.Sampler) {
 // It is used by the headless CPU renderer, where images have no sokol handle.
 pub fn (ctx &Context) set_image_id(id u32) {
 	mut st := ctx.st
-	st.cur_img = gfx.Image{id: id}
+	st.cur_img = gfx.Image{ id: id }
 	st.texturing_enabled = true
 }
 

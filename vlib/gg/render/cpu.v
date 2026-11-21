@@ -311,6 +311,61 @@ fn project_vertex(v Vertex, mvp Mat4, vp Viewport) Proj {
 	return Proj{ x: px, y: py, z: cz / cw, w: cw, valid: true }
 }
 
+struct ClipVert {
+	x f32
+	y f32
+	z f32
+	w f32
+}
+
+@[inline]
+fn clip_vertex(v Vertex, mvp Mat4) ClipVert {
+	return ClipVert{
+		x: mvp.v[0][0] * v.x + mvp.v[1][0] * v.y + mvp.v[2][0] * v.z + mvp.v[3][0]
+		y: mvp.v[0][1] * v.x + mvp.v[1][1] * v.y + mvp.v[2][1] * v.z + mvp.v[3][1]
+		z: mvp.v[0][2] * v.x + mvp.v[1][2] * v.y + mvp.v[2][2] * v.z + mvp.v[3][2]
+		w: mvp.v[0][3] * v.x + mvp.v[1][3] * v.y + mvp.v[2][3] * v.z + mvp.v[3][3]
+	}
+}
+
+@[inline]
+fn project_clip(c ClipVert, vp Viewport) Proj {
+	if c.w <= 1.0e-6 {
+		return Proj{}
+	}
+	ndc_x := c.x / c.w
+	ndc_y := c.y / c.w
+	px := (ndc_x + 1.0) * 0.5 * f32(vp.w) + f32(vp.x)
+	py := if vp.origin_top_left {
+		(1.0 - ndc_y) * 0.5 * f32(vp.h) + f32(vp.y)
+	} else {
+		(ndc_y + 1.0) * 0.5 * f32(vp.h) + f32(vp.y)
+	}
+	return Proj{ x: px, y: py, z: c.z / c.w, w: c.w, valid: true }
+}
+
+// project_tri projects all three vertices with a single MVP evaluation each
+// and rejects triangles lying entirely beyond any clip plane before the
+// perspective divides. Off-screen geometry is common in shadow captures, so
+// this avoids 9 divisions and most of the bounding-box work per rejected tri.
+fn project_tri(v0 Vertex, v1 Vertex, v2 Vertex, mvp Mat4, vp Viewport) (Proj, Proj, Proj, bool) {
+	c0 := clip_vertex(v0, mvp)
+	c1 := clip_vertex(v1, mvp)
+	c2 := clip_vertex(v2, mvp)
+	if c0.w <= 1.0e-6 || c1.w <= 1.0e-6 || c2.w <= 1.0e-6 {
+		return Proj{}, Proj{}, Proj{}, false
+	}
+	if (c0.x < -c0.w && c1.x < -c1.w && c2.x < -c2.w)
+		|| (c0.x > c0.w && c1.x > c1.w && c2.x > c2.w)
+		|| (c0.y < -c0.w && c1.y < -c1.w && c2.y < -c2.w)
+		|| (c0.y > c0.w && c1.y > c1.w && c2.y > c2.w)
+		|| (c0.z < -c0.w && c1.z < -c1.w && c2.z < -c2.w)
+		|| (c0.z > c0.w && c1.z > c1.w && c2.z > c2.w) {
+		return Proj{}, Proj{}, Proj{}, false
+	}
+	return project_clip(c0, vp), project_clip(c1, vp), project_clip(c2, vp), true
+}
+
 fn transform_vertex(v Vertex, mvp Mat4, vp Viewport) (f32, f32) {
 	p := project_vertex(v, mvp, vp)
 	return p.x, p.y
@@ -399,10 +454,8 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 	v0 := st.verts[i0]
 	v1 := st.verts[i1]
 	v2 := st.verts[i2]
-	q0 := project_vertex(v0, uni.mvp, vp)
-	q1 := project_vertex(v1, uni.mvp, vp)
-	q2 := project_vertex(v2, uni.mvp, vp)
-	if !q0.valid || !q1.valid || !q2.valid {
+	q0, q1, q2, ok := project_tri(v0, v1, v2, uni.mvp, vp)
+	if !ok {
 		return
 	}
 	w := frame.width
@@ -426,6 +479,20 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 	area := (p1x - p0x) * (p2y - p0y) - (p2x - p0x) * (p1y - p0y)
 	if area == 0.0 {
 		return
+	}
+	// Depth-tested 3D uses backface culling by default, matching the GPU depth
+	// pipeline. The 2D painter path and explicit opt-outs keep both windings.
+	if use_depth && st.cull_backfaces {
+		keep_positive := if st.face_winding == .ccw {
+			!vp.origin_top_left
+		} else {
+			vp.origin_top_left
+		}
+		if keep_positive {
+			if area < 0.0 { return }
+		} else {
+			if area > 0.0 { return }
+		}
 	}
 
 	// Inline min/max: avoid math.min/math.max calls in the bounding-box path.
@@ -648,10 +715,8 @@ fn rasterize_tri_depth(mut frame Frame, verts []Vertex, uni Uniform, vp Viewport
 	v0 := verts[i0]
 	v1 := verts[i1]
 	v2 := verts[i2]
-	q0 := project_vertex(v0, uni.mvp, vp)
-	q1 := project_vertex(v1, uni.mvp, vp)
-	q2 := project_vertex(v2, uni.mvp, vp)
-	if !q0.valid || !q1.valid || !q2.valid {
+	q0, q1, q2, ok := project_tri(v0, v1, v2, uni.mvp, vp)
+	if !ok {
 		return
 	}
 	// Every fragment depth is a convex combination of the three vertex depths,
