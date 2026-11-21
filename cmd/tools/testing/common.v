@@ -842,9 +842,11 @@ pub fn (mut ts TestSession) test() {
 	ts.files = remaining_files
 	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
+	// The pool works on units: a single file, or a batch of the tests of one module.
+	units := ts.test_units(remaining_files)
 	mut njobs := test_runner_jobs(ts.will_compile)
-	if remaining_files.len < njobs {
-		njobs = remaining_files.len
+	if units.len < njobs {
+		njobs = units.len
 	}
 	ts.compiler_jobs = test_compiler_jobs(test_runner_cpus(runtime.nr_cpus()), njobs,
 		runtime.nr_jobs())
@@ -863,7 +865,7 @@ pub fn (mut ts TestSession) test() {
 	ts.setup_build_environment(remaining_files)
 
 	// all the testing happens here:
-	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
+	pool_of_test_runners.work_on_pointers(unsafe { units.pointers() })
 
 	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
@@ -922,7 +924,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	tls_bench.njobs = ts.benchmark.njobs
-	abs_path := os.real_path(p.get_item[string](idx))
+	item := p.get_item[string](idx)
+	if item.contains('\n') {
+		return ts.run_test_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
+			tls_bench)
+	}
+	return ts.run_test_file(item, '${idx}_${thread_id}', thread_id, mut tls_bench)
+}
+
+// run_test_file compiles and runs one test file, in the folder `test_id` of the session.
+fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int, mut tls_bench benchmark.Benchmark) voidptr {
+	abs_path := os.real_path(item)
 	mut relative_file := abs_path
 	mut cmd_options := os.split_args(ts.vargs) or { panic(err) }
 	mut run_js := false
@@ -967,7 +979,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// where an executable is not writable, if it is running).
 	// Note, that the common session temporary folder ts.vtmp_dir,
 	// will be removed after all tests are done.
-	test_id := '${idx}_${thread_id}'
 	mut test_folder_path := os.join_path(ts.vtmp_dir, test_id)
 	if ts.build_tools {
 		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:

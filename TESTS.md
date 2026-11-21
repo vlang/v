@@ -79,6 +79,17 @@ their own. Set `VTEST_NO_SHARED_V3=1` to let every test build its own compiler.
 Each session also shares the cached C objects of thirdparty code (`v3_thirdparty_objs`) with
 the module cache root, unless `V3_TEST_ISOLATE_CACHE=1`.
 
+A module's internal tests (`_test.v` files that declare the module of their directory) spend most
+of their time compiling that module. `v test` builds up to 16 of them, of one directory and
+module, into one binary and runs it once: the compiler accepts several distinct `_test.v` files
+of one directory as its inputs, `v -skip-running -o bin a_test.v b_test.v`, and adds the
+module's other sources once. Files whose top-level names collide go to different batches. A file
+with `// vtest` directives or suite hooks, or one that changes or reads process state (its
+environment, working directory, arguments or exit), is run on its own. When a batch fails to
+compile or to run, its files run again one by one, so failures are reported as without batching.
+`VTEST_BATCH_SIZE` sets the largest batch; `VTEST_NO_BATCH=1` runs every file on its own.
+Batching applies only to plain `v test` runs, without `-stats`, `-b` or `VTEST_RESUME_DIR`.
+
 `cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
 including expected failures. It streams child output to stderr while retaining that output
 for its assertions, so a watchdog failure leaves the nested command's progress in the log.
