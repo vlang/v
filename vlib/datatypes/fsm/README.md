@@ -10,7 +10,9 @@ Have a look at `fsm_test.v` for usage examples.
 
 On each `run()`, all the possible transitions from the current state are evaluated.
 The first transition for the current state, whose condition evaluates to true is
-taken (the condition is specified by a transition callback function). 
+taken (the condition is specified by a transition callback function).
+If the selected destination is unknown, `run()` returns an error before invoking any state
+handlers or changing the current state.
 
 In a successful transition, the current state changes to the new one.
 When that happens:
