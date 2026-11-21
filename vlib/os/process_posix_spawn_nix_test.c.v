@@ -1,3 +1,4 @@
+// vtest build: linux
 module os
 
 // posix_spawn_pipes returns a pipe set laid out like the one of unix_spawn_process.
@@ -96,4 +97,26 @@ fn test_run_returns_before_a_fifo_stdin_has_a_writer() {
 	p.close()
 	assert p.code == 0
 	assert output == 'fifo payload\n'
+}
+
+// The object with `v_os_posix_spawn` is linked on hosted Linux only. A target without it must
+// not refer to the function at all, also when something there calls unix_try_posix_spawn, as
+// this file does: the C that V generates for macOS from this file has the helper and no call
+// of the wrapper.
+fn test_other_targets_do_not_refer_to_the_linux_only_wrapper() {
+	$if !linux {
+		return
+	}
+	generated := join_path(vtmp_dir(), 'posix_spawn_macos_${getpid()}.c')
+	defer {
+		rm(generated) or {}
+	}
+	result := execute('${quoted_path(@VEXE)} -os macos -o ${quoted_path(generated)} ${quoted_path(@FILE)}')
+	assert result.exit_code == 0, result.output
+	c := read_file(generated)!
+	assert c.contains('unix_try_posix_spawn'), 'the helper is not in the generated C: the check below would prove nothing'
+	// Joined when the test runs: as one literal, or as two that the compiler folds into one,
+	// the name would be in the generated C as this very string.
+	wrapper_call := ['v_os_posix', 'spawn('].join('_')
+	assert !c.contains(wrapper_call), 'C generated for macOS refers to the Linux-only wrapper'
 }

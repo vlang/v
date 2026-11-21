@@ -195,9 +195,30 @@ fn (p &Process) unix_try_posix_spawn(plan UnixSpawnPlan, pipeset [6]i32) int {
 	}
 	stdin_path := if p.has_stdin_path { &char(p.stdin_path.str) } else { &char(unsafe { nil }) }
 	err_fd := if p.merge_stdio { pipeset[3] } else { pipeset[5] }
-	child := C.v_os_posix_spawn(&char(plan.exe.str), plan.argv.data, plan.envp.data,
-		if p.use_pgroup { 1 } else { 0 }, stdin_path, if p.use_stdio_ctl { 1 } else { 0 },
-		pipeset[0], pipeset[3], err_fd, &close_fds[0], n_close)
+	// The call exists only where the object with v_os_posix_spawn is linked: hosted Linux,
+	// not a cross-generated C snapshot (the gate of unix_process_pipe). Anywhere else this
+	// function compiles to "leave it to fork", so nothing refers to a function that no
+	// object of that target provides.
+	mut child := i32(-1)
+	$if linux {
+		$if !freestanding && !syscalls {
+			$if !vlibc ? {
+				$if !cross ? {
+					child = C.v_os_posix_spawn(&char(plan.exe.str), plan.argv.data, plan.envp.data,
+						if p.use_pgroup { 1 } else { 0 }, stdin_path, if p.use_stdio_ctl {
+							1
+						} else {
+							0
+						},
+						pipeset[0], pipeset[3], err_fd, &close_fds[0], n_close)
+				}
+			}
+		}
+	}
+	// Where the call is compiled out, these have no other reader.
+	_ = stdin_path
+	_ = err_fd
+	_ = n_close
 	return int(child)
 }
 
@@ -242,15 +263,9 @@ fn (mut p Process) unix_spawn_process() int {
 	plan := p.unix_prepare_spawn()
 	mut pid := -1
 	$if linux {
-		// The same hosted-Linux gate as unix_process_pipe: a cross-generated C snapshot
-		// cannot link the native posix_spawn object, so it keeps the fork path.
-		$if !freestanding && !syscalls {
-			$if !vlibc ? {
-				$if !cross ? {
-					pid = p.unix_try_posix_spawn(plan, pipeset)
-				}
-			}
-		}
+		// Only hosted Linux has the posix_spawn object (see unix_try_posix_spawn, which
+		// is -1 everywhere else); other targets do not make the call at all.
+		pid = p.unix_try_posix_spawn(plan, pipeset)
 	}
 	if pid < 0 {
 		pid = fork()
