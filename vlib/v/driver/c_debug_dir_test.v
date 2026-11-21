@@ -133,3 +133,20 @@ fn test_the_exit_hook_of_another_process_touches_nothing() {
 	assert v3_watched_c_debug_dir() == dir
 	v3_unwatch_c_debug_dir()
 }
+
+// An interrupted build leaves what it had written as `<dir>.interrupted` (its signal handler
+// can do no more than rename). The next build of the output removes it.
+fn test_the_next_build_removes_what_an_interrupted_one_left() {
+	root := c_debug_dir_fixture('interrupted_left')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	write_c_debug_dir(v3_c_debug_dir_interrupted(dir), 'unfinished')
+	v3_set_aside_c_debug_dir(dir)
+	assert !os.exists(v3_c_debug_dir_interrupted(dir))
+	assert read_c_debug_dir(v3_c_debug_dir_set_aside(dir)) == 'old'
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'old'
+	// giving the directory back also ends the watch on it
+	assert v3_watched_c_debug_dir() == ''
+}

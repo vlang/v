@@ -2655,6 +2655,12 @@ fn cleanup_c_build_dir(dir string) {
 		set_aside := v3_c_debug_dir_set_aside(dir)
 		if os.is_dir(set_aside) {
 			os.rename(set_aside, dir) or {}
+			// Nothing is set aside for this process any more. A build it starts next (the
+			// restart paths) sets the directory aside for itself, and an interrupt that
+			// reaches both must find one of them giving it back, not two.
+			if dir == v3_watched_c_debug_dir() {
+				v3_unwatch_c_debug_dir()
+			}
 		}
 	}
 }
@@ -6404,6 +6410,8 @@ fn v3_c_debug_dir_set_aside(cc_dir string) string {
 // a build that was interrupted; it is the one to keep, and `cc_dir` holds what that build left.
 // From here on the exit hook looks after `cc_dir`, for the failures that do not clean up.
 fn v3_set_aside_c_debug_dir(cc_dir string) {
+	// what an interrupted build of this output left (see c_debug_dir_signal.c.v)
+	os.rmdir_all(v3_c_debug_dir_interrupted(cc_dir)) or {}
 	v3_watch_c_debug_dir(cc_dir)
 	set_aside := v3_c_debug_dir_set_aside(cc_dir)
 	if os.is_dir(set_aside) {

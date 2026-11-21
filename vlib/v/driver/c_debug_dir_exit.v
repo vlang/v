@@ -21,8 +21,11 @@ __global v3_c_debug_dir_hook_registered bool
 fn v3_watch_c_debug_dir(cc_dir string) {
 	if cc_dir.len == 0 || cc_dir.len >= max_c_debug_dir_path {
 		v3_c_debug_dir_watched_len = 0
+		v3_disarm_c_debug_dir_signals()
 		return
 	}
+	// An interrupt does not run the exit hook: see c_debug_dir_signal.c.v.
+	v3_arm_c_debug_dir_signals(cc_dir)
 	for i in 0 .. cc_dir.len {
 		v3_c_debug_dir_watched[i] = cc_dir[i]
 	}
@@ -37,6 +40,7 @@ fn v3_watch_c_debug_dir(cc_dir string) {
 // v3_unwatch_c_debug_dir is called when nothing is set aside any more.
 fn v3_unwatch_c_debug_dir() {
 	v3_c_debug_dir_watched_len = 0
+	v3_disarm_c_debug_dir_signals()
 }
 
 // v3_watched_c_debug_dir returns the directory the exit hook looks after, or '' for none.
@@ -61,7 +65,7 @@ fn v3_give_back_c_debug_dir_at_exit() {
 		return
 	}
 	cc_dir := v3_watched_c_debug_dir()
-	v3_c_debug_dir_watched_len = 0
+	v3_unwatch_c_debug_dir()
 	if cc_dir.len > 0 && os.is_dir(v3_c_debug_dir_set_aside(cc_dir)) {
 		cleanup_c_build_dir(cc_dir)
 	}

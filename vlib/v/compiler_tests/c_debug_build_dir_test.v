@@ -1,4 +1,5 @@
 import os
+import time
 
 // build_with_c_debug builds `source` into `executable` with `-cg` and returns the build output.
 fn build_with_c_debug(source string, executable string) string {
@@ -117,4 +118,117 @@ fn test_a_rebuild_that_fails_a_generic_instance_check_keeps_the_sources_too() {
 	assert os.exists(c_source), 'the failed build removed ${c_source}:\n${failed.output}'
 	assert os.read_file(c_source)! == first_c, 'the sources are no longer the ones of the executable in place'
 	assert os.exec([executable]).output.trim_space() == 'first build'
+}
+
+// A C compiler that stops when it is run in the build directory of a `-cg` build (the compiler
+// runs it there, on `src.c`), and says so: the build is then interrupted at a known place,
+// after the old directory was set aside.
+const pausing_gcc_script = '#!/bin/sh
+if [ -f "\$C_DEBUG_DIR_TEST_PAUSE" ]; then
+	case "\$PWD" in
+	*.v3cc.cg)
+		echo paused > "\$C_DEBUG_DIR_TEST_PAUSE.started"
+		sleep 600
+		;;
+	esac
+fi
+exec "\$C_DEBUG_DIR_TEST_GCC" "\$@"
+'
+
+// Ctrl-C during a rebuild ends the compiler without running its exit handlers. The executable
+// in place is the old one then, so its C sources must be the old ones too, at the same path,
+// as soon as the compiler is gone. The build runs in a process group of its own, as a command
+// in a terminal does, and the interrupt goes to that group, as Ctrl-C does.
+fn test_an_interrupted_rebuild_keeps_the_sources_of_the_executable_in_place() {
+	$if windows {
+		return
+	}
+	real_gcc := os.find_abs_path_of_executable('gcc') or {
+		eprintln('skipping: no gcc')
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'c_debug_dir_interrupted_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'cc'))!
+	defer { os.rmdir_all(root) or {} }
+	gcc := os.join_path(root, 'cc', 'gcc')
+	os.write_file(gcc, pausing_gcc_script)!
+	os.chmod(gcc, 0o755)!
+	pause := os.join_path(root, 'pause')
+	os.setenv('C_DEBUG_DIR_TEST_PAUSE', pause, true)
+	os.setenv('C_DEBUG_DIR_TEST_GCC', real_gcc, true)
+	defer {
+		os.unsetenv('C_DEBUG_DIR_TEST_PAUSE')
+		os.unsetenv('C_DEBUG_DIR_TEST_GCC')
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { println("first build") }')!
+	executable := os.join_path(root, 'program')
+	build_args := ['-new-compiler', '-cg', '-cc', gcc, '-gc', 'none', '-nocache', '-o', executable,
+		source]
+	mut first_args := [@VEXE]
+	first_args << build_args
+	first := os.exec(first_args)
+	assert first.exit_code == 0, first.output
+	dir_prefix := '.${os.base(executable)}.v3cc.'
+	first_dirs := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert first_dirs.len == 1, first_dirs.str()
+	c_source := os.join_path(root, first_dirs[0], 'src.c')
+	first_c := os.read_file(c_source)!
+	first_executable := os.read_bytes(executable)!
+	assert first_c.contains('first build')
+	// The second build stops in the C compiler.
+	os.write_file(source, 'fn main() { println("second build") }')!
+	os.write_file(pause, 'pause')!
+	mut build := os.new_process(@VEXE)
+	build.set_args(build_args)
+	build.use_pgroup = true
+	build.set_redirect_stdio()
+	build.run()
+	defer {
+		build.signal_pgkill()
+		build.close()
+	}
+	mut paused := false
+	for _ in 0 .. 1800 {
+		if os.exists(pause + '.started') {
+			paused = true
+			break
+		}
+		if !build.is_alive() {
+			break
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert paused, 'the second build did not reach the C compiler: ${build.stdout_slurp()} ${build.stderr_slurp()}'
+	// the build is past the point where it sets the old directory aside, and writes a new one
+	assert os.is_dir(os.join_path(root, first_dirs[0] + '.prev'))
+	interrupt := os.exec(['/bin/kill', '-INT', '--', '-${build.pid}'])
+	assert interrupt.exit_code == 0, interrupt.output
+	mut gone := false
+	for _ in 0 .. 100 {
+		if !build.is_alive() {
+			gone = true
+			break
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert gone, 'the compiler was still there ten seconds after its interrupt'
+	// immediately after the compiler is gone
+	assert os.read_bytes(executable)! == first_executable, 'an interrupted build changed the executable'
+	assert os.exists(c_source), 'the interrupted build left no ${c_source}'
+	assert os.read_file(c_source)! == first_c, 'the sources are no longer the ones of the executable in place'
+	assert os.exec([executable]).output.trim_space() == 'first build'
+	// Nothing is set aside any more. What the interrupted build had written may be beside the
+	// directory, under a name of its own: a signal handler can rename, and no more.
+	interrupted_dir := first_dirs[0] + '.interrupted'
+	after_interrupt := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert after_interrupt.filter(it != interrupted_dir) == first_dirs, 'after the interrupted build: ${after_interrupt}'
+	// The next build removes it, and leaves one directory again.
+	os.rm(pause)!
+	second := os.exec(first_args)
+	assert second.exit_code == 0, second.output
+	after_success := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert after_success == first_dirs, 'after the build that succeeded: ${after_success}'
+	assert os.read_file(c_source)!.contains('second build')
+	assert os.exec([executable]).output.trim_space() == 'second build'
 }
