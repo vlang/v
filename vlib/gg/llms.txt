@@ -20,7 +20,8 @@
   palettes, AnimClip/AnimPlayer, Quat/quat_slerp, AnimMixer.
 - `import gg.game`: Rect/Circle/AABB collision, InputState, Gamepad, FixedStep,
   FrameStats, StateMachine, TileMap, GridPathfinder, geometry (convex_hull,
-  polygon_area), procedural (LSystem, voronoi_cells, generate_maze).
+  polygon_area), procedural (LSystem, voronoi_cells, generate_maze), 3D math
+  (Sphere, Plane, Triangle, OBB, Frustum, Octree) and mesh generators.
 - `import gg.fx`: ParticleEmitter, CPU post_* filters, audio DSP and SoundVoice,
   UITheme/ui_panel/ui_button/ui_hud, draw_line_chart/draw_bar_chart.
 - `import gg.debug`: DebugLog, FrameGraph, Gizmos, SaveStore.

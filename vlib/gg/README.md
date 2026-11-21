@@ -597,6 +597,8 @@ backend does not expose `gg`'s drawing calls.
 - Geometry: `closest_point_on_segment`, `segments_intersect`, `polygon_area`,
   `polygon_centroid` and `convex_hull`. Mesh generators `gen_mesh_lathe`,
   `gen_mesh_extrude` and `gen_mesh_tube` build indexed `gg.Mesh3D` values.
+- 3D math: `Sphere`, `Plane`, `Triangle`, `OBB` with separating-axis overlap,
+  `Frustum` built from a perspective camera, and an `Octree` broadphase.
 - Procedural generation: `LSystem`, `turtle_segments()`, `voronoi_cells()`,
   `generate_maze()` and `cellular_step()`.
 
