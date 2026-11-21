@@ -1239,6 +1239,22 @@ fn create_tool_cache_stage_dir(parent string) !string {
 	return error('cannot create a private temporary directory for the tool cache')
 }
 
+// remove_tool_stage_dir removes a private build folder of the launcher. On Windows an
+// executable that has just exited can stay locked for a moment, for example while a virus
+// scanner still reads the new file, so the removal is retried for up to about 2 seconds.
+fn remove_tool_stage_dir(path string) {
+	for _ in 0 .. 20 {
+		os.rmdir_all(path) or {}
+		$if !windows {
+			return
+		}
+		if !os.exists(path) {
+			return
+		}
+		time.sleep(100 * time.millisecond)
+	}
+}
+
 fn unique_cache_path_token(attempt int) string {
 	return '${os.getpid()}-${time.now().unix_nano()}-${attempt}'
 }
@@ -1270,7 +1286,7 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	stage_entry := open_tool_cache_entry_dir(stage_dir)!
 	defer {
 		stage_entry.close()
-		os.rmdir_all(stage_dir) or {}
+		remove_tool_stage_dir(stage_dir)
 	}
 	staged := staged_tool_binary_path(stage_dir, entry.binary)
 	dumped := os.join_path(stage_dir, 'sources')

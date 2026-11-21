@@ -469,7 +469,7 @@ fn run_uncached_optional_compiler(vexe string, compiler_source string, name stri
 	build_code := build.code
 	build.close()
 	if build_code != 0 || !os.is_file(binary) {
-		os.rmdir_all(stage_dir) or {}
+		remove_tool_stage_dir(stage_dir)
 		eprintln('cannot build the ${description} compiler')
 		exit(1)
 	}
@@ -478,7 +478,7 @@ fn run_uncached_optional_compiler(vexe string, compiler_source string, name stri
 	compiler.wait()
 	code := compiler.code
 	compiler.close()
-	os.rmdir_all(stage_dir) or {}
+	remove_tool_stage_dir(stage_dir)
 	exit(code)
 }
 
@@ -696,7 +696,7 @@ fn run_uncached_external_tool(vexe string, tool_name string, tool_source string,
 		eprintln('cannot build `${tool_name}`: ${err.msg()}')
 		return 1
 	}
-	defer { os.rmdir_all(stage_dir) or {} }
+	defer { remove_tool_stage_dir(stage_dir) }
 	binary := os.join_path(stage_dir, '${tool_name}${tool_exe_suffix()}')
 	mut build_args := compiler_build_args.clone()
 	build_args << ['-o', binary, tool_source]
