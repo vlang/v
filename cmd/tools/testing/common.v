@@ -431,6 +431,8 @@ mut:
 	benchmark_mu  &sync.Mutex = sync.new_mutex()
 	resume_dir    string
 	compiler_jobs int
+	// shared_v3_env holds the values that prepare_shared_v3 replaced.
+	shared_v3_env map[string]?string
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -838,6 +840,7 @@ pub fn (mut ts TestSession) test() {
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
+	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 	mut njobs := test_runner_jobs(ts.will_compile)
 	if remaining_files.len < njobs {
@@ -869,6 +872,18 @@ pub fn (mut ts TestSession) test() {
 	ts.reporter.divider()
 	ts.show_list_of_failed_tests()
 
+	for name, value in ts.shared_v3_env {
+		if previous := value {
+			os.setenv(name, previous, true)
+		} else {
+			os.unsetenv(name)
+		}
+	}
+	if ts.shared_v3_env.len > 0 {
+		shared_v3 := os.join_path(ts.vtmp_dir, 'shared_v3' + $if windows { '.exe' } $else { '' })
+		os.rm(shared_v3) or {}
+		os.rm(shared_v3 + '.reused') or {}
+	}
 	// cleanup the session folder, if everything was ok:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
@@ -1433,6 +1448,55 @@ pub fn building_any_v_binaries_failed() bool {
 
 pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
+}
+
+// The `v` launcher serves plain builds of the V3 source named by these variables with copies of
+// the compiler they name (cmd/v/shared_test_compiler.v); vlib/v/test_all.vsh sets them as well.
+const shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
+const shared_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+
+// prepare_shared_v3 builds the V3 compiler once, when at least two of `files` build it themselves
+// (as most compiler tests do), and lets the launcher serve their builds with copies of it. Each
+// build takes ~20 s of CPU. A failed build only leaves the tests to build their own.
+fn (mut ts TestSession) prepare_shared_v3(files []string) {
+	if !ts.will_compile || os.getenv(shared_v3_env) != '' || os.getenv('VTEST_NO_SHARED_V3') == '1' {
+		return
+	}
+	v3_src := os.join_path(ts.vroot, 'vlib', 'v', 'v.v')
+	if !os.is_file(v3_src) {
+		return
+	}
+	vroot := os.real_path(ts.vroot) + os.path_separator
+	mut builders := 0
+	for file in files {
+		path := os.real_path(file)
+		if !path.starts_with(vroot) {
+			continue
+		}
+		source := os.read_file(path) or { continue }
+		if source.contains("'v.v'") {
+			builders++
+			if builders == 2 {
+				break
+			}
+		}
+	}
+	if builders < 2 {
+		return
+	}
+	shared_v3 := os.join_path(ts.vtmp_dir, 'shared_v3' + $if windows { '.exe' } $else { '' })
+	build := os.exec([ts.vexe, '-gc', 'none', '-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3,
+		v3_src])
+	if build.exit_code != 0 || !os.is_executable(shared_v3) {
+		return
+	}
+	for name, value in {
+		shared_v3_env:     shared_v3
+		shared_v3_src_env: v3_src
+	} {
+		ts.shared_v3_env[name] = os.getenv_opt(name)
+		os.setenv(name, value, true)
+	}
 }
 
 // session_shared_object_cache is the VTMP folder of cached native objects that a test session
