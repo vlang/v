@@ -748,9 +748,13 @@ fn (mut g Parser) parse_defer() ! {
 		return
 	}
 	g.deferred_block_starts << g.deferred_lines.len
+	// Locals of the deferred block (`defer { result := ... }`) get their own C scope where
+	// the block is inlined, next to locals of the same name.
+	g.deferred_lines << '{'
 	for line in block {
 		g.deferred_lines << line
 	}
+	g.deferred_lines << '}'
 }
 
 fn (g &Parser) function_defer_referenced_locals() []string {
