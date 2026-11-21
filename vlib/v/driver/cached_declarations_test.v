@@ -388,7 +388,8 @@ fn library_plain_functions() []V3LibraryFunctions {
 	}
 	mut modules := []V3LibraryFunctions{}
 	for dir, _ in dirs {
-		relative := dir[vlib.len + 1..]
+		// Module directories are compared and turned into module names with `/`.
+		relative := dir[vlib.len + 1..].replace(os.path_separator, '/')
 		if relative.contains('tests') || relative.contains('testdata')
 			|| (relative == 'v' || relative.starts_with('v/'))
 				&& !runtime_modules_of_the_compiler.any(relative == it || relative.starts_with(it + '/')) {

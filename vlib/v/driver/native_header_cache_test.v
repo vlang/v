@@ -27,8 +27,11 @@ fn test_tcc_dependency_scan_tracks_native_helper_headers() {
 	os.write_file(source, '#include "helper.h"\nint helper(void) { return HELPER_VALUE; }\n')!
 	deps := c_object_dependencies(tcc, [], source)
 	assert !deps.used_fallback
-	assert source in deps.files
-	assert header in deps.files
+	// TinyCC on Windows names a quoted include by the directory of its includer
+	// with `/` separators (`D:/dir/helper.h`), so compare real paths.
+	files := deps.files.map(os.real_path(it))
+	assert os.real_path(source) in files, deps.files.str()
+	assert os.real_path(header) in files, deps.files.str()
 }
 
 fn test_macos_tcc_accepts_generated_c_objects_but_rejects_foreign_objects() {
