@@ -172,7 +172,9 @@ fn test_coverage_function_hits_are_written_with_a_reader_of_their_own() {
 	os.write_file(path, source)!
 	program := os.join_path(dir, 'program.v')
 	os.write_file(program, 'fn main() {\n\tassert answer() == 42\n}\n')!
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	ran := os.exec([@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
 		'-no-skip-unused', '-coverage', dir, 'run', dir])
 	assert ran.exit_code == 0, ran.output
@@ -215,7 +217,9 @@ fn test_windows_statistics_and_coverage_clock_avoids_direct_tick_count_import() 
 }
 
 fn test_headerless_coverage_and_profile_write_reports_without_imports() ! {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	root := os.join_path(os.vtmp_dir(), 'v3_instrumented_stdio_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }

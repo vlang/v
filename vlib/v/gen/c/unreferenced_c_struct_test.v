@@ -5,6 +5,10 @@ import v.cmdexec
 
 const auxiliary_c_struct_root = os.join_path(os.vtmp_dir(), 'auxiliary_c_struct_${os.getpid()}')
 
+// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+// programs with, so the fixtures use the MinGW gcc there.
+const c_struct_fixture_cc = $if windows { 'gcc' } $else { 'clang' }
+
 fn testsuite_begin() {
 	if os.exists(auxiliary_c_struct_root) {
 		os.rmdir_all(auxiliary_c_struct_root)!
@@ -101,7 +105,7 @@ __global C.items [1]C.GlobalItem
 
 fn main() {}
 ')!
-	output := run_c_struct_fixture(source, ['-enable-globals', '-cc', 'clang'])!
+	output := run_c_struct_fixture(source, ['-enable-globals', '-cc', c_struct_fixture_cc])!
 	// Share the C only after the fixture has also linked and run.
 	os.mv(output, checked)!
 	return os.read_file(checked)
@@ -153,7 +157,7 @@ fn main() {
 	assert "\${boxed}".contains("BoxedInterfaceLayout")
 	assert boxed is C.BoxedInterfaceLayout
 }')!
-	output := run_c_struct_fixture(source, ['-cc', 'clang'])!
+	output := run_c_struct_fixture(source, ['-cc', c_struct_fixture_cc])!
 	generated := os.read_file(output)!
 	assert !generated.contains('UnusedInterfaceLayout')
 	assert generated.contains('struct BoxedInterfaceLayout {')

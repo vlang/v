@@ -4,7 +4,9 @@ import os
 import v.cmdexec
 
 fn test_sum_storage_acquires_only_active_literal_and_shares_cleanup() {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_storage_cleanup_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
@@ -90,12 +92,19 @@ fn main() {
 	assert (unknown(Choice("text")) as string) == "text"
 }')!
 	binary := os.join_path(dir, 'program')
+	// Older gcc has no `-fsanitize-trap=`, and without trap mode gcc links
+	// libubsan, which MinGW does not ship.
+	sanitize := $if windows {
+		'-fsanitize=alignment -fsanitize-undefined-trap-on-error'
+	} $else {
+		'-fsanitize=alignment -fsanitize-trap=alignment'
+	}
 	for jobs in ['1', '2'] {
 		for mode in ['-ownership', '-autofree'] {
 			// The explicit C backend retains the translation unit used for the alignment check.
 			run := cmdexec.run_in_merged_with_env(compiler, ['-new-compiler', '-nocache', '-b',
-				'c', '-gc', 'none', '-cc', cc, '-cflags',
-				'-fsanitize=alignment -fsanitize-trap=alignment', mode, '-o', binary, 'run', source], dir, {
+				'c', '-gc', 'none', '-cc', cc, '-cflags', sanitize, mode, '-o', binary, 'run',
+				source], dir, {
 				'VJOBS': jobs
 			})
 			assert run.exit_code == 0, 'VJOBS=${jobs} ${mode}: ${run.output}'
