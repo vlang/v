@@ -1584,6 +1584,11 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSig
 		}
 		g.ast_string_literals_interned = true
 		g.collect_overlap_done = true
+		// Every AST literal is numbered now, so a later
+		// preintern_ast_string_literals has nothing to add: drop the list.
+		unsafe { g.ast_string_literals.free() }
+		g.ast_string_literals = []string{}
+		g.ast_string_literals_parsed = 0
 	}
 }
 
