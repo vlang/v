@@ -1205,6 +1205,9 @@ pub mut:
 	defer_fn_ancillary               bool
 	defer_fn_params                  bool // pass 2 also leaves fn_param_types to a lane; until that ran, fn_type_modules tells which names are registered
 	defer_fn_names                   bool // lanes record the C names and visible-mutation declarations of functions from their prepared names (pass2_names_from_preps)
+	pass2_stream                     &Pass2Stream = unsafe { nil } // while lanes replay the registrations of pass 2 as it records them
+	pass2_streamed                   bool                        // such lanes ran, and also did what takes no registration list
+	pass2_replayed                   [pass2_ancillary_groups]int // the registrations of its list that each group has replayed
 	fn_ancillary_registrations       []FnAncillaryRegistration
 	fn_c_variadic_registrations      []FnNamePairRegistration
 	fn_mut_receiver_registrations    []FnNamePairRegistration
@@ -4709,7 +4712,10 @@ fn (mut tc TypeChecker) reserve_collect_signature_maps() {
 			if os.getenv('V3_NO_EXTENDED_COLLECT_RESERVES') == '' {
 				tc.fn_type_files.reserve(u32(tc.fn_type_files.len) + decl_estimate * 3)
 				tc.fn_type_modules.reserve(u32(tc.fn_type_modules.len) + decl_estimate * 3)
-				tc.type_cache.c_name_entries.reserve(u32(tc.type_cache.c_name_entries.len) + decl_estimate * 3)
+				if !tc.building_v_fast {
+					// A compiler build sizes it after pass 1 clears it (pass2_c_names_from_preps).
+					tc.type_cache.c_name_entries.reserve(u32(tc.type_cache.c_name_entries.len) + decl_estimate * 3)
+				}
 			}
 		}
 	}
@@ -5050,10 +5056,21 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		// lanes take its names from there.
 		tc.defer_fn_names = pass2_preps.len == tc.top_level_idx.len && tc.pass2_lanes_promote()
 			&& os.getenv('V3_NO_PAR_PASS2_NAMES') == ''
-		tc.fn_ancillary_registrations = []FnAncillaryRegistration{cap: tc.top_level_idx.len * 2}
-		tc.fn_c_variadic_registrations = []FnNamePairRegistration{cap: 64}
-		tc.fn_mut_receiver_registrations = []FnNamePairRegistration{cap: tc.top_level_idx.len / 2}
-		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 2}
+		// Room to spare: lanes that follow pass 2 stop when a list would grow
+		// (V3_TEST_PASS2_LIST_ROOM makes one grow, for a test of that path).
+		test_room := os.getenv('V3_TEST_PASS2_LIST_ROOM').int()
+		tc.fn_ancillary_registrations = []FnAncillaryRegistration{cap: if test_room > 0 {
+			test_room
+		} else {
+			tc.top_level_idx.len * 3
+		}}
+		tc.fn_c_variadic_registrations = []FnNamePairRegistration{cap: 256 + tc.top_level_idx.len / 16}
+		tc.fn_mut_receiver_registrations = []FnNamePairRegistration{cap: tc.top_level_idx.len}
+		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 3}
+		tc.pass2_streamed = false
+		for group in 0 .. pass2_ancillary_groups {
+			tc.pass2_replayed[group] = 0
+		}
 		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: if tc.defer_fn_names {
 			0
 		} else {
@@ -5061,8 +5078,12 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		}}
 	}
 	mut public_c_structs := map[u32]bool{}
-	p2_fn_ns, p2_struct_ns := tc.collect_pass2(a, tc.top_level_idx, pass2_preps, fast_pass2_registration, mut
-		public_c_structs)
+	p2_fn_ns, p2_struct_ns := if parallel_pass2_ancillary && tc.pass2_stream_usable(pass2_preps) {
+		tc.collect_pass2_streamed(a, pass2_preps, fast_pass2_registration, &public_c_structs)
+	} else {
+		tc.collect_pass2(a, tc.top_level_idx, pass2_preps, fast_pass2_registration, mut
+			public_c_structs)
+	}
 	if !isnil(tc.prepared_collect) {
 		mut prepared := tc.prepared_collect
 		prepared.public_c_structs = public_c_structs.clone()
@@ -5070,7 +5091,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.timing_step(mut step_sw, 'p2 serial')
 	if parallel_pass2_ancillary {
 		tc.defer_fn_ancillary = false
-		// Also collects the deprecated symbols, beside the lanes.
+		// Also collects the deprecated symbols, beside the lanes, unless lanes
+		// that followed pass 2 did all of it.
 		tc.finish_pass2_ancillary_registrations(pass2_preps)
 		tc.defer_fn_params = false
 		tc.defer_fn_names = false
@@ -5309,6 +5331,9 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 		if p2_profile {
 			p2_t0 = time.sys_mono_now()
 		}
+		if !isnil(tc.pass2_stream) {
+			tc.pass2_stream_step(node_ref)
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -5448,7 +5473,16 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 							continue
 						}
 						tc.fn_param_type_texts.set_ids(name, param_texts)
-						tc.fn_type_files[name] = tc.cur_file
+						if isnil(tc.pass2_stream) {
+							tc.fn_type_files[name] = tc.cur_file
+						} else {
+							// A lane owns the table: it notes the file in its turn.
+							tc.fn_ancillary_registrations << FnAncillaryRegistration{
+								name:      name
+								file:      tc.cur_file
+								file_only: true
+							}
+						}
 						tc.fn_type_modules[name] = tc.cur_module
 						if node.generic_params().len > 0
 							&& (name == qname || tc.cur_module in ['', 'main', 'builtin']) {
@@ -5700,6 +5734,10 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					} else if f.value.len > 0 {
 						mut ft := *tc.parse_type(f.typ)
 						if ft is Void && f.children_count > 0 {
+							if !isnil(tc.pass2_stream) && !pass2_init_reads_no_fn_table(a, a.child(f, 0), 0) {
+								// The initializer may call a function registered above.
+								tc.pass2_stream_sync()
+							}
 							ft = tc.resolve_type(a.child(f, 0))
 						}
 						qname := tc.qualify_name(f.value)
@@ -9418,6 +9456,7 @@ struct FnAncillaryRegistration {
 	implicit_veb_ctx bool
 	file             string
 	write_file       bool
+	file_only        bool // names the file of `name` and registers nothing else
 }
 
 struct FnNamePairRegistration {
@@ -9452,6 +9491,10 @@ fn (mut tc TypeChecker) register_mut_receiver_method_with_lowered(name string, l
 		}
 		return
 	}
+	tc.set_mut_receiver_method(name, lowered_name)
+}
+
+fn (mut tc TypeChecker) set_mut_receiver_method(name string, lowered_name string) {
 	tc.mut_receiver_methods[name] = true
 	if lowered_name != name {
 		tc.mut_receiver_methods[lowered_name] = true
@@ -9649,7 +9692,12 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 		if name !in indexed {
 			indexed << name
 			tc.generic_receiver_method_index[method] = indexed
-			tc.clear_generic_receiver_pattern_cache()
+			if isnil(tc.pass2_stream) {
+				tc.clear_generic_receiver_pattern_cache()
+			} else {
+				// A lane beside pass 2 leaves the type cache to the collecting thread.
+				tc.pass2_stream_note_generic_receiver()
+			}
 		}
 	}
 	tc.set_receiver_method_suffix_index(name, name)
@@ -9707,6 +9755,12 @@ fn (mut tc TypeChecker) register_c_variadic_fn_with_lowered(name string, lowered
 		return
 	}
 	tc.disable_call_flag_bloom()
+	tc.set_c_variadic_fn(name, lowered_name)
+}
+
+// set_c_variadic_fn records `name` as C-variadic; the caller disabled
+// call_flag_bloom.
+fn (mut tc TypeChecker) set_c_variadic_fn(name string, lowered_name string) {
 	tc.c_variadic_fns[name] = true
 	if lowered_name != name {
 		tc.c_variadic_fns[lowered_name] = true

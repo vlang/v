@@ -12832,6 +12832,16 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 // names. The first declaration of a name owns its module-less key; a later one
 // of another module is kept under its module-qualified key.
 fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
+	if isnil(tc.visible_mutation_cache) {
+		return
+	}
+	mut cache := tc.visible_mutation_cache
+	cache.register_fn_decl_keys(idx, module_name, qname, source_name, c_qname, c_source_name)
+}
+
+// register_fn_decl_keys is register_visible_mutation_fn_decl_keys for the
+// index `cache`.
+fn (mut cache VisibleMutationCache) register_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
 	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
@@ -12847,10 +12857,6 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		candidates << c_qname
 		candidates << c_source_name
 	}
-	if isnil(tc.visible_mutation_cache) {
-		return
-	}
-	mut cache := tc.visible_mutation_cache
 	// An insert copies its key, so a short key is spelled in a stack buffer.
 	mut key_buf := [192]u8{}
 	for i, candidate in candidates {

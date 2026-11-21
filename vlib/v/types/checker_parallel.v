@@ -799,16 +799,29 @@ fn (tc &TypeChecker) pass2_lanes_promote() bool {
 // reads none of the tables the lanes fill.
 fn (mut tc TypeChecker) finish_pass2_ancillary_registrations(preps []Pass2FnPrep) {
 	if tc.fn_ancillary_registrations.len == 0 {
-		tc.collect_deprecated_symbols()
+		if !tc.pass2_streamed {
+			tc.collect_deprecated_symbols()
+		}
 		return
 	}
 	tc.disable_call_flag_bloom()
 	pool := checker_worker_pool(tc.a)
-	if isnil(pool) || pool.size() < 2 {
+	mut replayed := tc.pass2_streamed
+	for group in 0 .. pass2_ancillary_groups {
+		list := pass2_group_list(group)
+		if list >= 0 && tc.pass2_replayed[group] < tc.pass2_list_len(list) {
+			replayed = false
+		}
+	}
+	if replayed {
+		// Lanes that followed pass 2 left nothing to do.
+	} else if isnil(pool) || pool.size() < 2 {
 		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group, preps)
 		}
-		tc.collect_deprecated_symbols()
+		if !tc.pass2_streamed {
+			tc.collect_deprecated_symbols()
+		}
 	} else {
 		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups + 1}
 		mut tasks := []workers.Task{cap: pass2_ancillary_groups + 1}
@@ -844,54 +857,16 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations(preps []Pass2FnPrep
 }
 
 fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int, preps []Pass2FnPrep) {
-	// A lane sizes the tables that collection did not reserve: a table that
-	// grows entry by entry leaves every outgrown copy behind in the lane's arena.
-	if group == 0 {
-		tc.fn_shared_params.reserve(u32(tc.fn_shared_params.len + tc.fn_ancillary_registrations.len))
-	} else if group == 2 {
-		tc.receiver_method_short_names.reserve(u32(tc.receiver_method_short_names.len +
-			tc.fn_ancillary_registrations.len / 2))
-	} else if group == 4 {
-		tc.mut_receiver_methods.reserve(u32(tc.mut_receiver_methods.len +
-			tc.fn_mut_receiver_registrations.len * 2))
+	if (group == 6 || group == 10) && tc.pass2_streamed {
+		// Lanes beside pass 2 took the names from the preparations.
+		return
 	}
-	if group < 3 {
-		for registration in tc.fn_ancillary_registrations {
-			match group {
-				0 {
-					if registration.shared_params.len > 0 {
-						tc.fn_shared_params[registration.name] = registration.shared_params
-					} else if tc.fn_shared_params.len > 0 {
-						tc.fn_shared_params.delete(registration.name)
-					}
-				}
-				1 {
-					tc.fn_variadic[registration.name] = registration.is_variadic
-					if registration.implicit_veb_ctx || tc.fn_implicit_veb_ctx.len > 0 {
-						tc.fn_implicit_veb_ctx[registration.name] = registration.implicit_veb_ctx
-					}
-				}
-				else {
-					tc.add_receiver_method_suffix_index(registration.name)
-				}
-			}
-		}
-	}
-	if group == 3 {
-		for registration in tc.fn_c_variadic_registrations {
-			tc.register_c_variadic_fn_with_lowered(registration.name, registration.lowered_name)
-		}
-	} else if group == 4 {
-		for registration in tc.fn_mut_receiver_registrations {
-			tc.register_mut_receiver_method_with_lowered(registration.name, registration.lowered_name)
-		}
-	} else if group == 5 {
-		for registration in tc.fn_ret_text_registrations {
-			tc.fn_ret_type_texts.set_id(registration.name, registration.text)
-		}
-	} else if group == 6 {
+	if group == 6 {
 		if tc.defer_fn_names {
-			tc.pass2_names_from_preps(preps, pass2_names_visible_mutations)
+			if !isnil(tc.visible_mutation_cache) {
+				mut cache := tc.visible_mutation_cache
+				tc.pass2_visible_mutations_from_preps(preps, mut cache)
+			}
 		} else {
 			if !isnil(tc.visible_mutation_cache) {
 				// A declaration registers up to four spellings; size the lane's map
@@ -906,41 +881,194 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int, preps []Pass2FnPr
 					registration.c_source_name)
 			}
 		}
-	} else if group == 7 {
-		for registration in tc.fn_ancillary_registrations {
-			tc.register_generated_fn_return_type(registration.name, registration.ret_type)
-		}
-	} else if group == 8 {
-		for registration in tc.fn_ancillary_registrations {
-			if registration.write_file {
-				tc.fn_type_files[registration.name] = registration.file
+		return
+	}
+	if group == 10 {
+		if tc.defer_fn_names && !isnil(tc.type_cache) {
+			mut names := tc.pass2_c_names_from_preps(preps)
+			// The names that pass 2 lowered itself.
+			for name, c_name in tc.type_cache.c_name_entries {
+				names[name] = c_name
 			}
+			tc.type_cache.c_name_entries = names.move()
 		}
-	} else if group == 9 {
-		if tc.defer_fn_params {
-			for registration in tc.fn_ancillary_registrations {
-				tc.fn_param_types[registration.name] = registration.params
-			}
-		}
-	} else if group == 10 {
-		if tc.defer_fn_names {
-			tc.pass2_names_from_preps(preps, pass2_names_c_names)
-		}
+		return
+	}
+	list := pass2_group_list(group)
+	// Lanes that followed pass 2 until a list ran out of room replayed a part.
+	start := tc.pass2_replayed[group]
+	tc.begin_pass2_ancillary_group(group, tc.pass2_list_len(list) - start)
+	tc.replay_pass2_registrations(group, tc.pass2_list_data(list), start, tc.pass2_list_len(list))
+}
+
+// The registration lists of pass 2, which the groups of
+// apply_pass2_ancillary_group replay.
+const pass2_list_ancillary = 0 // fn_ancillary_registrations
+
+const pass2_list_c_variadic = 1 // fn_c_variadic_registrations
+
+const pass2_list_mut_receiver = 2 // fn_mut_receiver_registrations
+
+const pass2_list_ret_text = 3 // fn_ret_text_registrations
+
+const pass2_lists = 4
+
+// pass2_group_list is the registration list that a group replays, or -1 for a
+// group that takes the names from the preparations instead.
+fn pass2_group_list(group int) int {
+	return match group {
+		0, 1, 2, 7, 8, 9 { pass2_list_ancillary }
+		3 { pass2_list_c_variadic }
+		4 { pass2_list_mut_receiver }
+		5 { pass2_list_ret_text }
+		else { -1 }
 	}
 }
 
-// The tables of pass2_names_from_preps.
-const pass2_names_visible_mutations = 1 // the visible-mutation declaration index
+fn (tc &TypeChecker) pass2_list_len(list int) int {
+	return match list {
+		pass2_list_ancillary { tc.fn_ancillary_registrations.len }
+		pass2_list_c_variadic { tc.fn_c_variadic_registrations.len }
+		pass2_list_mut_receiver { tc.fn_mut_receiver_registrations.len }
+		pass2_list_ret_text { tc.fn_ret_text_registrations.len }
+		else { 0 }
+	}
+}
 
-const pass2_names_c_names = 2 // the C name cache
+fn (tc &TypeChecker) pass2_list_data(list int) voidptr {
+	return match list {
+		pass2_list_ancillary { tc.fn_ancillary_registrations.data }
+		pass2_list_c_variadic { tc.fn_c_variadic_registrations.data }
+		pass2_list_mut_receiver { tc.fn_mut_receiver_registrations.data }
+		pass2_list_ret_text { tc.fn_ret_text_registrations.data }
+		else { unsafe { nil } }
+	}
+}
 
-// pass2_names_from_preps records what pass 2 registers for a function under
-// its names alone, from the names the preparation lanes computed: its
-// declaration in the visible-mutation index, or the C names of its names in
-// the name cache. Neither depends on a table of pass 2, so a lane does it in
-// declaration order while or after the collecting thread registers the
+// begin_pass2_ancillary_group sizes the tables of `group` that collection did
+// not reserve, for `expected` registrations of its list: a table that grows
+// entry by entry leaves every outgrown copy behind in the lane's arena.
+fn (mut tc TypeChecker) begin_pass2_ancillary_group(group int, expected int) {
+	if group == 0 {
+		tc.fn_shared_params.reserve(u32(tc.fn_shared_params.len + expected))
+	} else if group == 2 {
+		tc.receiver_method_short_names.reserve(u32(tc.receiver_method_short_names.len +
+			expected / 2))
+	} else if group == 4 {
+		tc.mut_receiver_methods.reserve(u32(tc.mut_receiver_methods.len + expected * 2))
+	}
+}
+
+// replay_pass2_registrations fills the tables of `group` from the entries
+// [start, end) of the registration list it replays, which is at `data`. A group
+// writes no table of another group and reads none that pass 2 writes, so the
+// groups run on lanes of their own, after pass 2 or while it still records
+// later entries (see Pass2Stream).
+@[direct_array_access]
+fn (mut tc TypeChecker) replay_pass2_registrations(group int, data voidptr, start int, end int) {
+	match group {
+		0, 1, 2, 7, 8, 9 {
+			registrations := unsafe { &FnAncillaryRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				if registration.file_only {
+					// Only names the file of a signature that is registered already.
+					if group == 8 {
+						tc.fn_type_files[registration.name] = registration.file
+					}
+					continue
+				}
+				match group {
+					0 {
+						if registration.shared_params.len > 0 {
+							tc.fn_shared_params[registration.name] = registration.shared_params
+						} else if tc.fn_shared_params.len > 0 {
+							tc.fn_shared_params.delete(registration.name)
+						}
+					}
+					1 {
+						tc.fn_variadic[registration.name] = registration.is_variadic
+						if registration.implicit_veb_ctx || tc.fn_implicit_veb_ctx.len > 0 {
+							tc.fn_implicit_veb_ctx[registration.name] = registration.implicit_veb_ctx
+						}
+					}
+					2 {
+						tc.add_receiver_method_suffix_index(registration.name)
+					}
+					7 {
+						tc.register_generated_fn_return_type(registration.name, registration.ret_type)
+					}
+					8 {
+						if registration.write_file {
+							tc.fn_type_files[registration.name] = registration.file
+						}
+					}
+					else {
+						if tc.defer_fn_params {
+							tc.fn_param_types[registration.name] = registration.params
+						}
+					}
+				}
+			}
+		}
+		3 {
+			registrations := unsafe { &FnNamePairRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				tc.set_c_variadic_fn(registration.name, registration.lowered_name)
+			}
+		}
+		4 {
+			registrations := unsafe { &FnNamePairRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				tc.set_mut_receiver_method(registration.name, registration.lowered_name)
+			}
+		}
+		5 {
+			registrations := unsafe { &FnTextRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				tc.fn_ret_type_texts.set_id(registration.name, registration.text)
+			}
+		}
+		else {}
+	}
+}
+
+// pass2_c_names_from_preps returns the C names of the names of every function
+// declaration, as the preparation lanes of pass 2 computed them: the entries
+// that pass 2 adds to the C name cache. They depend on no table of pass 2, so
+// a lane builds the table while or after the collecting thread registers the
 // signatures. `preps` has the prepared names of every function declaration.
-fn (mut tc TypeChecker) pass2_names_from_preps(preps []Pass2FnPrep, table int) {
+fn (tc &TypeChecker) pass2_c_names_from_preps(preps []Pass2FnPrep) map[string]string {
+	mut fn_decls := 0
+	for tl_idx in tc.top_level_idx {
+		if tc.a.nodes[tl_idx].kind == .fn_decl {
+			fn_decls++
+		}
+	}
+	mut names := map[string]string{}
+	names.reserve(u32(fn_decls * 2 + 1024))
+	for pi, tl_idx in tc.top_level_idx {
+		node := tc.a.nodes[tl_idx]
+		if node.kind != .fn_decl {
+			continue
+		}
+		prep := &preps[pi]
+		names[prep.qname] = prep.lowered_qname
+		if node.value != prep.qname {
+			names[node.value] = prep.lowered_source_name
+		}
+	}
+	return names
+}
+
+// pass2_visible_mutations_from_preps registers every function declaration in
+// the visible-mutation index `cache` under its names, from the names that the
+// preparation lanes of pass 2 computed, in declaration order. Like the C
+// names, they depend on no table of pass 2.
+fn (tc &TypeChecker) pass2_visible_mutations_from_preps(preps []Pass2FnPrep, mut cache VisibleMutationCache) {
 	mut fn_decls := 0
 	mut c_fn_decls := 0
 	for tl_idx in tc.top_level_idx {
@@ -951,31 +1079,8 @@ fn (mut tc TypeChecker) pass2_names_from_preps(preps []Pass2FnPrep, table int) {
 			c_fn_decls++
 		}
 	}
-	if table == pass2_names_c_names {
-		if isnil(tc.type_cache) {
-			return
-		}
-		// Clearing the cache after pass 1 gave its reserved index up.
-		tc.type_cache.c_name_entries.reserve(u32(tc.type_cache.c_name_entries.len + fn_decls * 2))
-		for pi, tl_idx in tc.top_level_idx {
-			node := tc.a.nodes[tl_idx]
-			if node.kind != .fn_decl {
-				continue
-			}
-			prep := &preps[pi]
-			tc.store_c_name(prep.qname, prep.lowered_qname)
-			if node.value != prep.qname {
-				tc.store_c_name(node.value, prep.lowered_source_name)
-			}
-		}
-		return
-	}
-	if isnil(tc.visible_mutation_cache) {
-		return
-	}
-	// A declaration registers up to four spellings; size the lane's map once,
-	// so that it never grows and leaves no outgrown table behind.
-	mut cache := tc.visible_mutation_cache
+	// A declaration registers up to four spellings; size the map once, so
+	// that it never grows and leaves no outgrown table behind.
 	cache.global_decls.reserve(u32(cache.global_decls.len + fn_decls * 4 + c_fn_decls))
 	// The module of pass 2 at each declaration (see collect_pass2_fn_range).
 	mut cur_module := ''
@@ -990,7 +1095,7 @@ fn (mut tc TypeChecker) pass2_names_from_preps(preps []Pass2FnPrep, table int) {
 			}
 			.fn_decl {
 				prep := &preps[pi]
-				tc.register_visible_mutation_fn_decl_keys(tl_idx, cur_module, prep.qname, node.value,
+				cache.register_fn_decl_keys(tl_idx, cur_module, prep.qname, node.value,
 					prep.lowered_qname, prep.lowered_source_name)
 			}
 			.c_fn_decl {
@@ -999,8 +1104,7 @@ fn (mut tc TypeChecker) pass2_names_from_preps(preps []Pass2FnPrep, table int) {
 					continue
 				}
 				// The C names of a `C.` declaration are no keys of the index.
-				tc.register_visible_mutation_fn_decl_keys(tl_idx, cur_module, c_name, c_name,
-					'', '')
+				cache.register_fn_decl_keys(tl_idx, cur_module, c_name, c_name, '', '')
 			}
 			else {}
 		}
@@ -1026,7 +1130,9 @@ fn pass2_ancillary_thread(arg voidptr) voidptr {
 	}
 	if a.group == pass2_ancillary_groups {
 		// The collecting thread's own task (finish_pass2_ancillary_registrations).
-		tc.collect_deprecated_symbols()
+		if !tc.pass2_streamed {
+			tc.collect_deprecated_symbols()
+		}
 	} else {
 		tc.apply_pass2_ancillary_group(a.group, a.preps)
 	}
