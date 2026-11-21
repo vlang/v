@@ -267,6 +267,12 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		mut value := g.read_match_block_expression_value()!
 		mut value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		if fastc_fixed_array_element_type(value_type) != none
+			&& g.fixed_array_uses_raw_storage(g.last_expression) {
+			// A struct field's fixed array is raw C storage; the branches share the
+			// fixed-array struct value, as in an `if` expression.
+			value = g.render_call_argument_expression(g.last_expression, value_type) or { value }
+		}
 		if member_smartcast_active && !fastc_is_pointer_type(smartcast_type)
 			&& fastc_is_pointer_type(value_type) && fastc_trim_pointer_type(value_type) == smartcast_type
 			&& !fastc_is_pointer_type(outer_expected_type_source_id) {
