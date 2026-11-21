@@ -897,7 +897,11 @@ pub fn (mut ts TestSession) test() {
 	if os.is_link(shared_objects) {
 		os.rm(shared_objects) or {}
 	}
-	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
+	// A session left after failures is for the test artifacts in it. The compiler's own `v3_*`
+	// caches and probe results are not; unless VTEST_KEEP_SESSION=1 asked to keep the session,
+	// one holding only them goes as well.
+	entries := os.ls(ts.vtmp_dir) or { [] }
+	if entries.len == 0 || (ts.rm_binaries && entries.all(it.starts_with('v3_'))) {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
 }
