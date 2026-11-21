@@ -2105,7 +2105,10 @@ fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?s
 // A waiter cannot reuse dependency digests collected before the other build ran.
 fn valid_c_object_manifest_refreshed(manifest_path string, refresh bool, mut stats CObjectCacheStats) ?string {
 	content := os.read_file(manifest_path) or { return none }
-	lines := content.split_into_lines()
+	return valid_c_object_manifest_contents(content.split_into_lines(), refresh, mut stats)
+}
+
+fn valid_c_object_manifest_contents(lines []string, refresh bool, mut stats CObjectCacheStats) ?string {
 	if lines.len < 3 || lines[0] != 'format=v3-c-object-manifest-v3'
 		|| !lines[1].starts_with('object=') {
 		return none
@@ -5342,6 +5345,19 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 
 const v3_unchanged_build_cache_version = 'v3-unchanged-build-7'
 
+// v3_compiler_runs_background_c_work reports whether this compiler can do the
+// receipt's signing and the link inputs on a thread and trust file metadata. A
+// compiler built by a native backend has no file metadata (ssa's
+// register_modulecache_stubs), so it cannot tell an unchanged file from an edited
+// one, and signing the sources on a thread beside its parser corrupted its heap
+// in a stage 2 build.
+fn v3_compiler_runs_background_c_work() bool {
+	$if native ? {
+		return false
+	}
+	return true
+}
+
 // v3_unchanged_build_cache_opted_in reports whether a build may restore the
 // executable of an earlier build of the same program before parsing it. A
 // `-nocache` that the user wrote turns the receipt off, as does
@@ -5879,6 +5895,32 @@ fn v3_publish_unchanged_build(cache_dir string, key string, executable string, s
 	}
 	published = true
 	return true
+}
+
+// v3_record_unchanged_build waits for the prepared receipt of a successful build
+// and records its executable, with the inputs of the C side of an arm64 build.
+fn v3_record_unchanged_build(cache_dir string, key string, executable string, mut preparation []thread UnchangedBuildStamp, native UnchangedBuildNativeInputs) {
+	// A restored executable prints nothing, so a build that has something to say
+	// about the program runs again. Go replays the output of a cached action
+	// instead (work/buildid.go, showStdout).
+	stamp := if preparation.len == 1 && !v3_build_printed_diagnostics() {
+		v3_unchanged_build_with_native_inputs(preparation[0].wait(), native)
+	} else {
+		UnchangedBuildStamp{}
+	}
+	mut published := v3_publish_unchanged_build(cache_dir, key, executable, stamp)
+	// A build that the compiler restarted in another configuration (without the
+	// module cache, or with the native bridge) also answers the key of the
+	// build that the user started, which restarts into this one.
+	entry_key := v3_unchanged_build_entry_key()
+	if published && entry_key.len > 0 && entry_key != key {
+		published = v3_publish_unchanged_build(cache_dir, entry_key, executable, stamp)
+	}
+	if published {
+		unchanged_build_trace('recorded ${key[..12]} (entry ${entry_key#[..12]})')
+	} else {
+		unchanged_build_trace('publish failed')
+	}
 }
 
 // UnchangedBuildInputs are what the receipt of a build takes from its AST, read
@@ -13302,14 +13344,20 @@ pub fn run(args []string) {
 	mut unchanged_build_source_lookups := map[string]string{}
 	mut unchanged_build_source_reads := map[string]V3SourceRead{}
 	mut unchanged_build_output_listing := ''
-	unchanged_build_cache_enabled := native_compiler_cacheable && backend == 'c' && explicit_output && !should_run
-		&& !c_only && !is_o && !is_shared && !is_test_command && !is_debug && !race
+	unchanged_build_cache_enabled := native_compiler_cacheable && backend in ['c', 'arm64']
+		&& v3_compiler_runs_background_c_work() && explicit_output && !should_run
+		&& prefs.hot_fn.len == 0 && !c_only && !is_o && !is_shared && !is_test_command && !is_debug && !race
 		&& !is_v3_test_file(input_file, backend, target)
 		&& !show_cc && !show_c_output && !keep_c && dump_files == ''
 		&& v3_unchanged_build_cache_opted_in(os.args, os.getenv(v3_internal_restart_env) == '1')
+	unchanged_build_c_compiler := if backend == 'arm64' {
+		arm64_c_compiler(c_compiler)
+	} else {
+		c_compiler
+	}
 	if unchanged_build_cache_enabled {
 		unchanged_build_cache_dir = v3_unchanged_build_cache_root(prefs.vroot)
-		unchanged_build_cache_key = v3_unchanged_build_key(prefs, c_compiler, bin_file)
+		unchanged_build_cache_key = v3_unchanged_build_key(prefs, unchanged_build_c_compiler, bin_file)
 		v3_note_unchanged_build_entry_key(unchanged_build_cache_key)
 		if v3_restore_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key,
 			bin_file, v3_unchanged_build_build_time(prefs), prefs) {
@@ -16372,7 +16420,9 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			if arm64_link_mode == .external {
-				arm64_link_preparation << spawn arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
+				if v3_compiler_runs_background_c_work() {
+					arm64_link_preparation << spawn arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
+				}
 			}
 			arm64_c_probes = arm64_probe_c_side(Arm64CProbeRequest{
 				functions: if arm64_link_mode == .external {
@@ -16483,6 +16533,11 @@ pub fn run(args []string) {
 				return
 			}
 
+			mut arm64_native_inputs := arm64_build_c_inputs()
+			mut receipt_executable := ''
+			if target.os == 'linux' || arm64_link_mode == .external || g.text_exceeds_branch_range() {
+				arm64_native_inputs.fail('the external ARM64 linker did not report a complete input manifest')
+			}
 			if target.os == 'linux' {
 				obj_file := if is_o {
 					bin_file
@@ -16539,7 +16594,9 @@ pub fn run(args []string) {
 				} else {
 					arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
 				}
+				arm64_native_inputs.merge(&prepared_link.inputs)
 				if prepared_link.error.len > 0 {
+					arm64_native_inputs.cleanup()
 					os.rm(obj_file) or {}
 					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 					eprintln(prepared_link.error)
@@ -16553,16 +16610,35 @@ pub fn run(args []string) {
 					target:        prefs.target
 					show_cc:       show_cc
 				}) or {
+					arm64_native_inputs.cleanup()
 					os.rm(obj_file) or {}
 					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 					eprintln(err.msg())
 					exit(1)
 				}
 				os.rm(obj_file) or {}
+			} else if unchanged_build_cache_enabled {
+				// The receipt must refer to this build even when another build shares its output.
+				receipt_executable = '${bin_file}.${tempname.unique_token()}.tmp'
+				g.write_and_link(receipt_executable)
 			} else {
 				g.write_and_link(bin_file)
 			}
 			b.step('link')
+			arm64_native_inputs.cleanup()
+			if unchanged_build_cache_enabled {
+				v3_record_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key,
+					receipt_executable, mut unchanged_build_preparation,
+					UnchangedBuildNativeInputs{unknown: arm64_native_inputs.unknown})
+				if receipt_executable != '' {
+					os.mv(receipt_executable, bin_file) or {
+						os.rm(receipt_executable) or {}
+						eprintln('failed to finalize ${bin_file}: ${err}')
+						exit(1)
+					}
+				}
+				b.step('unchanged build receipt')
+			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if should_run {
 				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
@@ -18404,34 +18480,11 @@ Please install the corresponding development package/libraries and make sure the
 				})
 		}
 		if unchanged_build_cache_enabled {
-			// A restored executable prints nothing, so a build that has something to
-			// say about the program runs again. Go replays the output of a cached
-			// action instead (work/buildid.go, showStdout).
-			stamp := if unchanged_build_preparation.len == 1 && !v3_build_printed_diagnostics() {
-				v3_unchanged_build_with_native_inputs(unchanged_build_preparation[0].wait(),
-					v3_unchanged_build_native_inputs(&program_link_inputs, &receipt_headers,
-						!cache_state.manager.enabled || native_inputs.user_supplied.len > 0,
-						&c_object_cache_stats, [cc_dir, cache_state.manager.dir,
-							os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'),
-							unchanged_build_cache_dir]))
-			} else {
-				UnchangedBuildStamp{}
-			}
-			mut published := v3_publish_unchanged_build(unchanged_build_cache_dir,
-				unchanged_build_cache_key, staged_binary, stamp)
-			// A build that the compiler restarted in another configuration (without the
-			// module cache, or with the native bridge) also answers the key of the
-			// build that the user started, which restarts into this one.
-			entry_key := v3_unchanged_build_entry_key()
-			if published && entry_key.len > 0 && entry_key != unchanged_build_cache_key {
-				published = v3_publish_unchanged_build(unchanged_build_cache_dir, entry_key,
-					staged_binary, stamp)
-			}
-			if published {
-				unchanged_build_trace('recorded ${unchanged_build_cache_key[..12]} (entry ${entry_key#[..12]})')
-			} else {
-				unchanged_build_trace('publish failed')
-			}
+			v3_record_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key, staged_binary, mut
+				unchanged_build_preparation, v3_unchanged_build_native_inputs(&program_link_inputs,
+					&receipt_headers, !cache_state.manager.enabled || native_inputs.user_supplied.len > 0,
+					&c_object_cache_stats, [cc_dir, cache_state.manager.dir,
+						os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'), unchanged_build_cache_dir]))
 		}
 		print_post_link_step(verbose || show_cc, post_link_move_step(staged_binary, bin_file))
 		os.mv(staged_binary, bin_file) or {

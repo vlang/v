@@ -6,7 +6,6 @@ import v.flat
 import v.gen.c as cgen
 import v.pref
 import v.tempname
-import time
 
 // External linking for the native arm64 backend on macOS.
 //
@@ -368,12 +367,7 @@ fn arm64_c_side(opts Arm64CSideOptions) !Arm64CSide {
 	}
 }
 
-// Caching the C side. The compiler parses the program's headers (sokol, AppKit)
-// for every probe and for the support object, which is most of a rebuild. Like
-// Go's action cache (cmd/go/internal/work/exec.go, buildActionID) and Zig's
-// manifests (lib/std/Build/Cache.zig), a result is keyed by compiler, arguments,
-// text and the signatures of every header the unit includes. The bookkeeping is
-// the driver's cache for C objects; only the unit's name and text are ours.
+// Cache standalone C units when the compiler manifests a headerless build.
 const arm64_c_cache_directory = 'v3_thirdparty_objs'
 const arm64_c_object_cache_stats = &CObjectCacheStats{}
 
@@ -410,82 +404,72 @@ fn arm64_cached_unit_paths(text string) !(string, string) {
 	return source, os.join_path(dir, '${name}.o')
 }
 
-// arm64_cached_object returns the object of a unit when the manifest of its last
-// compile still matches every header, without running the compiler.
+// Arm64CInputs owns temporary objects from the C side of this build.
+// A preparation worker keeps its own record until the driver joins it.
+struct Arm64CInputs {
+mut:
+	temporary_objects []string
+	unknown           string
+}
+
+const arm64_c_build_inputs = &Arm64CInputs{}
+
+fn arm64_build_c_inputs() &Arm64CInputs {
+	return arm64_c_build_inputs
+}
+
+fn (mut inputs Arm64CInputs) fail(reason string) {
+	if inputs.unknown.len == 0 {
+		inputs.unknown = reason
+	}
+}
+
+fn (mut inputs Arm64CInputs) merge(other &Arm64CInputs) {
+	inputs.temporary_objects << other.temporary_objects
+	if other.unknown.len > 0 {
+		inputs.fail(other.unknown)
+	}
+}
+
+fn (mut inputs Arm64CInputs) cleanup() {
+	for path in inputs.temporary_objects {
+		os.rm(path) or {}
+	}
+	inputs.temporary_objects.clear()
+}
+
+const arm64_c_object_cache_version = 'arm64-c-object-v3'
+
+// arm64_cached_object accepts only manifests issued for standalone units by
+// this cache version.
 fn arm64_cached_object(compiler string, args []string, text string, target pref.Target) ?string {
 	mut stats := arm64_cache_stats()
 	return arm64_cached_object_with(compiler, args, text, target, mut stats)
 }
 
 fn arm64_cached_object_with(compiler string, args []string, text string, target pref.Target, mut stats CObjectCacheStats) ?string {
-	_, object := arm64_cached_unit_paths(text) or { return none }
-	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, args, target, mut stats)
-	sheet := manifest + '.stat'
-	if cached := arm64_stat_sheet_object(sheet) {
-		return cached
-	}
-	cached := valid_c_object_manifest(manifest, mut stats)?
-	arm64_write_stat_sheet(sheet, cached, manifest)
-	return cached
-}
-
-// arm64_stat_sheet_object returns the object of a sheet whose dependencies all
-// keep the size and time they had when their contents were last checked. Like
-// Zig's manifests (lib/std/Build/Cache.zig), stat first and hash only what moved:
-// the probes of a Cocoa program depend on 1500 headers.
-fn arm64_stat_sheet_object(sheet string) ?string {
-	lines := os.read_lines(sheet) or { return none }
-	if lines.len < 2 || !os.is_file(lines[0]) {
+	if !v3_native_compiler_cacheable(compiler) || !v3_native_compiler_args_cacheable(compiler, args) {
 		return none
 	}
-	for line in lines[1..] {
-		fields := line.split('\t')
-		if fields.len != 3 {
-			return none
-		}
-		attr := os.stat(fields[0]) or { return none }
-		if attr.size.str() != fields[1] || attr.mtime.str() != fields[2] {
-			return none
-		}
-	}
-	return lines[0]
+	_, object := arm64_cached_unit_paths(text) or { return none }
+	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, [
+		arm64_c_object_cache_version,
+		...args,
+	], target, mut stats)
+	return valid_c_object_manifest(manifest, mut stats)
 }
 
-// arm64_write_stat_sheet records the dependencies of a validated manifest. A
-// file modified within the last two seconds is not recorded, so a later edit in
-// the same timestamp tick is seen (Zig's isProblematicTimestamp).
-fn arm64_write_stat_sheet(sheet string, object string, manifest string) {
-	content := os.read_lines(manifest) or { return }
-	now := time.now().unix()
-	mut out := [object]
-	for line in content {
-		if !line.starts_with('dependency=') {
-			continue
-		}
-		path := line.all_after('dependency=').all_before_last('\t')
-		attr := os.stat(path) or { return }
-		if attr.mtime >= now - 2 {
-			return
-		}
-		out << '${path}\t${attr.size}\t${attr.mtime}'
-	}
-	os.write_lines(sheet, out) or {}
-}
-
-// arm64_compile_unit compiles a C unit and returns its object, from the cache
-// when nothing changed. A failed compile returns the compiler's output. As in
-// Zig's updateCObject (src/Compilation.zig: `-MD -MV -MF`, then addDepFilePost),
-// the compiler writes the dependency list during the compile, so a miss parses
-// the headers once instead of once for `-M` and once for `-c`. A unit compiled
-// with `-fsyntax-only` has no object; an empty file stands for its success.
 fn arm64_compile_unit(compiler string, args []string, text string, target pref.Target, no_cache bool) !string {
 	mut stats := arm64_cache_stats()
-	return arm64_compile_unit_with(compiler, args, text, target, no_cache, mut stats)
+	mut inputs := arm64_build_c_inputs()
+	return arm64_compile_unit_with(compiler, args, text, target, no_cache, mut stats, mut
+		inputs)
 }
 
-// arm64_compile_unit_with is arm64_compile_unit with the record of a thread: the
-// shared one remembers signatures in maps that only the main thread may touch.
-fn arm64_compile_unit_with(compiler string, args []string, text string, target pref.Target, no_cache bool, mut stats CObjectCacheStats) !string {
+// arm64_compile_unit_with is arm64_compile_unit with the records of a thread: the
+// shared ones remember signatures and inputs in maps and arrays that only the
+// main thread may touch.
+fn arm64_compile_unit_with(compiler string, args []string, text string, target pref.Target, no_cache bool, mut stats CObjectCacheStats, mut inputs Arm64CInputs) !string {
 	if !no_cache {
 		if object := arm64_cached_object_with(compiler, args, text, target, mut stats) {
 			return object
@@ -514,20 +498,26 @@ fn arm64_compile_unit_with(compiler string, args []string, text string, target p
 	if syntax_only {
 		os.write_file(staged, '')!
 	}
-	dependencies := c_object_dependencies_from_output(os.read_file(depfile) or { '' }, source)
-	if dependencies.used_fallback {
+	depfile_text := os.read_file(depfile) or { '' }
+	issue := v3_headerless_c_cache_issue(args, source, os.getwd(), depfile_text, text)
+	if no_cache || issue.len > 0 || !v3_native_compiler_cacheable(compiler)
+		|| !v3_native_compiler_args_cacheable(compiler, args) {
+		if issue.len > 0 {
+			inputs.fail(issue)
+		}
+		inputs.temporary_objects << staged
 		return staged
 	}
-	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, args, target, mut stats)
-	// A probe's `#line "__v_cprobe__"` is not a file, but `-M` can list it.
-	files := dependencies.files.filter(os.is_file(it))
-	key := c_object_cache_name(object, compiler, args, files, target, false, mut stats)
+	dependencies := CObjectDependencies{files: [source]}
+
+	manifest := c_object_manifest_path(arm64_cache_dir(), object, compiler, [
+		arm64_c_object_cache_version,
+		...args,
+	], target, mut stats)
+	key := c_object_cache_name(object, compiler, [arm64_c_object_cache_version, ...args], dependencies.files, target, false, mut stats)
 	published := os.join_path(arm64_cache_dir(), key)
 	publish_native_c_object(staged, published)!
-	write_c_object_manifest(manifest, published, &CObjectDependencies{
-		...dependencies
-		files: files
-	}, mut stats) or {}
+	write_c_object_manifest(manifest, published, &dependencies, mut stats) or {}
 	return published
 }
 
@@ -582,10 +572,12 @@ struct Arm64LinkInputs {
 	no_std             bool
 }
 
-// Arm64PreparedLink is the result of preparing the link inputs on a thread.
+// Arm64PreparedLink is the result of preparing the link inputs on a thread,
+// with what its C compiles read.
 struct Arm64PreparedLink {
-	flags []string
-	error string
+	flags  []string
+	error  string
+	inputs Arm64CInputs
 }
 
 // arm64_prepare_link_inputs builds what the link needs and that does not depend
@@ -601,6 +593,7 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 	// Objects named by `#flag` (Boehm's gc.o, ...) are built from their adjacent
 	// sources with the program's compile flags.
 	mut stats := CObjectCacheStats{}
+	mut c_inputs := Arm64CInputs{}
 	link_flags = prepare_c_flags_for_link(link_flags, inputs.environment_cflags, []string{},
 		inputs.optimization_flags, inputs.c99, inputs.no_std, '', side.target_args, inputs.target,
 		side.compiler, false, os.vtmp_dir(), mut stats) or {
@@ -608,8 +601,11 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 			error: err.msg()
 		}
 	}
+	c_inputs.temporary_objects << stats.temporary_objects
+	flags := arm64_compile_link_sources(link_flags, side, inputs, mut c_inputs)
 	return Arm64PreparedLink{
-		flags: arm64_compile_link_sources(link_flags, side, inputs)
+		flags:  flags
+		inputs: c_inputs
 	}
 }
 
@@ -617,7 +613,7 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 // (`-x c file.c -x none`, fontstash_impl.c) by its cached object, compiled with
 // the program's flags. A source that does not compile stays in the command, whose
 // compiler reports the error.
-fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkInputs) []string {
+fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkInputs, mut c_inputs Arm64CInputs) []string {
 	mut result := []string{cap: flags.len}
 	mut args := side.target_args.clone()
 	args << ['-w', '-fwrapv', '-fno-common']
@@ -631,11 +627,13 @@ fn arm64_compile_link_sources(flags []string, side Arm64CSide, inputs Arm64LinkI
 			&& flags[i + 4] == 'none' {
 			source := flags[i + 2].trim_space()
 			if object := arm64_compile_unit_with(side.compiler, args, '#include "${source}"\n',
-				side.target, side.no_cache, mut stats) {
+				side.target, side.no_cache, mut stats, mut c_inputs)
+			{
 				result << object
 				i += 5
 				continue
 			}
+			c_inputs.fail('${source} did not compile on its own')
 		}
 		result << flags[i]
 		i++
@@ -828,8 +826,8 @@ fn (source Arm64ProbeLineSource) render(keep []bool) string {
 // is an error (a name or field the headers do not have) is dropped and the probe
 // is compiled again, as cgo does. The loop ends because every round removes at
 // least one line; when none can be blamed, the C side itself does not compile
-// and the real compile reports it. A later build with the same lines reuses the
-// surviving set, and its object, while the headers are unchanged.
+// and the real compile reports it. A later build can reuse a standalone probe
+// object when the C compiler has certified the unit as headerless.
 fn arm64_run_probe(mut keep []bool, source Arm64ProbeLineSource, prefix string, side Arm64CSide) ?string {
 	mut args := side.compile_args.clone()
 	args << arm64_probe_compile_flags(side.compiler)
