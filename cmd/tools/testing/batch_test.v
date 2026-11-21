@@ -40,6 +40,13 @@ fn test_one() {}
 	assert 'a' !in names
 	assert test_file_module('// comment\n\nmodule util\n') == 'util'
 	assert test_file_module('fn main() {}\n') == ''
+	assert test_file_const_names('const a = 1\npub const (\n\tb = 2\n)\n\$if x {\n\tconst c = 3\n}\n') == [
+		'a',
+		'b',
+		'c',
+	]
+	assert source_mentions_word('x := it + 1', 'it')
+	assert !source_mentions_word('item := 1', 'it')
 }
 
 fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
@@ -59,6 +66,8 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 		'global_test.v': 'module util\nfn test_global() {}\n'
 		'i_test.v':      'module main\nfn test_i() {}\n'
 		'j_test.v':      '#flag -lm\nfn test_j() {}\n'
+		'k_test.v':      'module util\n\$if linux {\n\tconst it = 1\n}\nfn test_k() {}\n'
+		'l_test.v':      'module util\nfn test_l() {\n\tit := 2\n\tassert it == 2\n}\n'
 	}
 	mut paths := []string{}
 	for name, source in files {
@@ -72,13 +81,14 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 		exec_mode:    .compile_and_run
 	}
 	units := ts.test_units(paths)
-	batch := '${paths[0]}\n${paths[1]}'
+	// `k_test.v` declares a constant `it`, which `l_test.v` uses as a local.
+	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}'
 	// `main` tests, with or without a module clause, share batches of their own; a
 	// file with C flags builds alone.
 	main_batch := '${paths[4]}\n${paths[9]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
-	assert units == [batch, paths[2], paths[3], main_batch, paths[5], paths[6], paths[7], paths[8],
-		paths[10]]
+	assert units == [batch, '${paths[2]}\n${paths[12]}', paths[3], main_batch, paths[5], paths[6],
+		paths[7], paths[8], paths[10]]
 	ts.exec_mode = .compile
 	assert ts.test_units(paths) == paths
 	ts.exec_mode = .compile_and_run

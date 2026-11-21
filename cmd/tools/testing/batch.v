@@ -39,15 +39,41 @@ const test_batch_main_excluded_markers = ['#flag', '#include', '#pkgconfig', '@[
 	'@[noinit]', '@[console]', '@[windows_stdcall]']
 
 struct TestBatchCandidate {
-	key   string
-	names []string
+	key    string
+	names  []string
+	consts []string
+	source string
 }
 
 struct TestBatch {
 	key string
 mut:
-	files []string
-	names map[string]bool
+	files   []string
+	names   map[string]bool
+	consts  []string
+	sources []string
+}
+
+// fits reports whether `candidate` can join the batch: no top-level name of one
+// file is declared by another, and no constant of one is a word of another's
+// source. A constant of the module conflicts with a local or an import alias of
+// the same name in another file (`const it`, `const os`), which only shows up as
+// a word there.
+fn (batch &TestBatch) fits(candidate TestBatchCandidate) bool {
+	if candidate.names.any(it in batch.names) {
+		return false
+	}
+	for name in candidate.consts {
+		if batch.sources.any(source_mentions_word(it, name)) {
+			return false
+		}
+	}
+	for name in batch.consts {
+		if source_mentions_word(candidate.source, name) {
+			return false
+		}
+	}
+	return true
 }
 
 fn test_batch_memory_limit_mib() int {
@@ -108,7 +134,7 @@ fn (ts &TestSession) test_units(files []string) []string {
 		mut target := -1
 		for bi in open_batches[candidate.key] {
 			batch := batches[bi]
-			if batch.files.len < max_size && !candidate.names.any(it in batch.names) {
+			if batch.files.len < max_size && batch.fits(candidate) {
 				target = bi
 				break
 			}
@@ -128,6 +154,8 @@ fn (ts &TestSession) test_units(files []string) []string {
 		for name in candidate.names {
 			batches[target].names[name] = true
 		}
+		batches[target].consts << candidate.consts
+		batches[target].sources << candidate.source
 	}
 	mut units := []string{cap: unit_files.len}
 	for i, file in unit_files {
@@ -169,10 +197,76 @@ fn test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidat
 		}
 		module_name = 'main'
 	}
+	names := test_file_top_level_names(source)
+	mut words := test_file_const_names(source)
+	// A type named with one capital letter is spelled like a generic parameter of
+	// another file (`struct T` and `fn f[T]()`), which then names the type.
+	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
-		key:   os.dir(real_file) + '\n' + module_name
-		names: test_file_top_level_names(source)
+		key:    os.dir(real_file) + '\n' + module_name
+		names:  names
+		consts: words
+		source: source
 	}
+}
+
+// test_file_const_names lists the constants that `source` declares, also those of
+// compile-time branches (`$if`, `$match`), which are indented.
+fn test_file_const_names(source string) []string {
+	mut names := []string{}
+	mut in_block := false
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if in_block {
+			if trimmed.starts_with(')') {
+				in_block = false
+			} else if trimmed != '' && !trimmed.starts_with('//') {
+				name := test_leading_ident(trimmed)
+				if name != '' {
+					names << name
+				}
+			}
+			continue
+		}
+		mut rest := trimmed
+		if rest.starts_with('pub ') {
+			rest = rest[4..].trim_space()
+		}
+		if !rest.starts_with('const ') && !rest.starts_with('const(') {
+			continue
+		}
+		rest = rest[5..].trim_space()
+		if rest.starts_with('(') {
+			in_block = true
+			continue
+		}
+		name := test_leading_ident(rest)
+		if name != '' {
+			names << name
+		}
+	}
+	return names
+}
+
+// source_mentions_word reports whether `word` occurs in `source` as a whole
+// identifier.
+fn source_mentions_word(source string, word string) bool {
+	mut start := 0
+	for {
+		idx := source.index_after(word, start) or { return false }
+		before_ok := idx == 0 || !is_test_ident_char(source[idx - 1])
+		end := idx + word.len
+		after_ok := end >= source.len || !is_test_ident_char(source[end])
+		if before_ok && after_ok {
+			return true
+		}
+		start = idx + 1
+	}
+	return false
+}
+
+fn is_test_ident_char(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_`
 }
 
 // test_file_module returns the module that `source` declares, or ''.
