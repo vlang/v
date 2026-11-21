@@ -21,8 +21,10 @@ fn C.vgc_atomic_add_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_cas_u32(ptr &u32, expected &u32, desired u32) bool
 fn C.vgc_atomic_exchange_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_fence()
+fn C.v_zero_if_needed(ptr voidptr, n uint, zero_until voidptr)
 fn C.vgc_counter_load(ptr &u64) u64
 fn C.vgc_counter_add(ptr &u64, val u64)
+fn C.vgc_counter_add_atomic(ptr &u64, val u64)
 fn C.vgc_count_alloc(live &u64, allocated &u64, size u64, n u64)
 fn C.vgc_os_alloc(size uint) voidptr
 fn C.vgc_os_alloc_heap(size uint) voidptr
@@ -35,6 +37,7 @@ fn C.vgc_bitmap_get(bits &u8, idx u32) int
 fn C.vgc_bitmap_set(bits &u8, idx u32)
 fn C.vgc_bitmap_clear(bits &u8, idx u32)
 fn C.vgc_bitmap_test_and_set(bits &u8, idx u32) int
+fn C.vgc_bitmap_atomic_test_set(bits &u8, idx u32) int
 fn C.vgc_popcount8(x u8) int
 fn C.vgc_size_class(size u32) u8
 fn C.vgc_get_class_size(cls int) u32
@@ -50,7 +53,7 @@ fn C.vgc_now_ns() u64
 fn C.vgc_set_thread_exit_hook(f fn (voidptr))
 fn C.vgc_watch_thread_exit(idx int)
 fn C.vgc_call_with_registers_spilled(f fn (voidptr, voidptr), arg voidptr)
-fn C.vgc_start_thread(f voidptr)
+fn C.vgc_start_thread(f fn ())
 fn C.vgc_num_cpus() int
 
 // ============================================================
@@ -124,11 +127,24 @@ mut:
 	// 0 when no thread does. Only that thread changes the span's alloc bits, and the sweep
 	// skips the span.
 	cached_by int
-	// Linked list pointers for central free lists
+	// Linked list pointers for central free lists. In vgc_greentea mode,
+	// `next` doubles as the span work-queue link while `queued` is set.
 	next &VGC_Span = unsafe { nil }
 	prev &VGC_Span = unsafe { nil }
-	// Storage for alloc_bits (the first half) and mark_bits (the second half).
-	bits [256]u8
+	// GreenTea span-queue state (only used behind -d vgc_greentea):
+	// mark_bits is the "seen" bitmap. A second bitmap holds the "scanned"
+	// bits, so pending objects are seen & ~scanned; we need no third bitmap.
+	// The span is on the FIFO work queue at most once at a time (queued
+	// flag), so pointers found while it waits accumulate into a single
+	// locality-friendly pass. `hit` means two objects were seen while the
+	// span was queued; without it the representative is scanned directly.
+	scanned_bits &u8 = unsafe { nil }
+	queued       bool
+	hit          bool
+	rep_addr     uint // representative object address when the span was enqueued
+	// Storage for alloc/mark (first 256 bytes) and scanned (last 128 bytes)
+	// in greentea mode. Kept unconditional so the struct layout is simple for C.
+	bits [384]u8
 }
 
 // VGC_Cache is a per-thread allocation cache.
@@ -256,13 +272,33 @@ mut:
 	work_full  &VGC_WorkBuf = unsafe { nil }
 	work_empty &VGC_WorkBuf = unsafe { nil }
 	work_lock  u32
+	// GreenTea span work queue (only used behind -d vgc_greentea).
+	// The work_full/work_empty object queues above stay for the default
+	// object-centric path and as the fallback when the span bitmap is
+	// unavailable (large objects).
+	spanq_head &VGC_Span = unsafe { nil }
+	spanq_tail &VGC_Span = unsafe { nil }
+	spanq_len  u64
+	// GreenTea counters: density measured at dequeue.
+	gc_span_enqueues    u64
+	gc_span_dequeues    u64
+	gc_multi_obj_spans  u64
+	gc_single_obj_spans u64
 	// GC worker coordination
 	gc_workers_done u32 // atomic
 	gc_nworkers     int
+	gc_mark_done    u32 // atomic: main drained its queue; workers may exit when empty
 	gc_stop_flag    u32 // atomic: tells threads to stop for GC
 	gc_stop_epoch   u32 // atomic: numbers the stop-the-world requests, skipping 0
 	// Sweep state
 	sweep_done u32 // atomic
+	// GreenTea baseline metrics (P0): object-queue density proxy.
+	// Counted with vgc_counter_add (cheap volatile add on 64-bit, atomic
+	// on 32-bit), read with vgc_counter_load. No behavior change.
+	gc_work_puts     u64 // objects enqueued for scanning
+	gc_work_gets     u64 // objects dequeued for scanning
+	gc_spans_visited u64 // dequeued objects whose span was scanable
+	gc_objs_scanned  u64 // objects actually scanned (precise or conservative)
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
 	gc_percent int // like Go's GOGC, default 100
 }
@@ -433,21 +469,24 @@ fn vgc_total_alloc() u64 {
 	return sum
 }
 
-fn vgc_ensure_registered() {
-	if C.vgc_get_cache_idx() < 0 {
+fn vgc_ensure_registered() int {
+	idx := C.vgc_get_cache_idx()
+	if idx < 0 {
 		vgc_register_thread()
+		return C.vgc_get_cache_idx()
 	}
+	return idx
 }
 
 // vgc_enter starts an allocator operation: it registers the thread, and stops it while a
 // collection runs, before it touches its cache or a span. Returns the thread's cache index.
 @[inline]
 fn vgc_enter() int {
-	vgc_ensure_registered()
+	idx := vgc_ensure_registered()
 	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
 		vgc_safepoint()
 	}
-	return C.vgc_get_cache_idx()
+	return idx
 }
 
 fn vgc_refresh_stack_range_for_sp(cache_idx int, sp uint) {
@@ -560,6 +599,10 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	span.has_ptrmap = false
 	span.ptrmap = 0
 	span.ptr_words = 0
+	// A recycled span must not inherit span-queue state from an aborted cycle.
+	span.queued = false
+	span.hit = false
+	span.rep_addr = 0
 	// Decommit pages to return physical memory to OS
 	page_bytes := uint(npages) * vgc_page_size
 	C.vgc_os_decommit(voidptr(span.base), page_bytes)
@@ -787,6 +830,9 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 fn vgc_span_set_bitmaps(mut span VGC_Span) {
 	span.alloc_bits = unsafe { &u8(&span.bits[0]) }
 	span.mark_bits = unsafe { &u8(&span.bits[vgc_bitmap_bytes]) }
+	$if vgc_greentea ? {
+		span.scanned_bits = unsafe { &u8(&span.bits[vgc_bitmap_bytes * 2]) }
+	}
 }
 
 // Find a free slot in a span and allocate it
@@ -822,6 +868,12 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 					}
 					span.alloc_count++
 					span.free_index = i + 1
+					$if vgc_greentea ? {
+						scanned := unsafe { span.scanned_bits }
+						if scanned != unsafe { nil } {
+							C.vgc_bitmap_clear(scanned, i)
+						}
+					}
 					addr := span.base + uint(i) * uint(span.elem_size)
 					return unsafe { voidptr(addr) }
 				}
@@ -928,6 +980,7 @@ fn vgc_central_file_span(span_class int, mut span VGC_Span) {
 // Cache operations (translated from Go's mcache)
 // ============================================================
 
+@[inline]
 fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 	span := unsafe { vgc_heap.caches[cache_idx].alloc[span_class] }
 	if span != unsafe { nil } {
@@ -991,8 +1044,19 @@ fn vgc_malloc_typed_opts(n uint, ptrmap u64, ptr_words u8, zero_fill bool) voidp
 		return unsafe { nil }
 	}
 
-	// Set precise pointer map on span (first typed allocation wins)
-	if ptrmap != 0 && !span.has_ptrmap {
+	// Precise maps are per-span: equal-sized structs with different pointer
+	// offsets share a size class and span. If a new allocation disagrees with
+	// the installed map (or is untyped), revert the whole span to conservative
+	// scanning so no live pointer is missed. Only install a map on a fresh span.
+	if span.has_ptrmap {
+		if ptrmap == 0 || ptrmap != span.ptrmap || ptr_words != span.ptr_words {
+			unsafe {
+				(&VGC_Span(span)).has_ptrmap = false
+				(&VGC_Span(span)).ptrmap = 0
+				(&VGC_Span(span)).ptr_words = 0
+			}
+		}
+	} else if ptrmap != 0 && span.alloc_count == 0 {
 		unsafe {
 			(&VGC_Span(span)).has_ptrmap = true
 			(&VGC_Span(span)).ptrmap = ptrmap
@@ -1161,7 +1225,9 @@ fn vgc_alloc_large(n uint, noscan bool, zero_fill bool, cache_idx int) voidptr {
 
 	ptr := unsafe { voidptr(span.base) }
 	if zero_fill {
-		unsafe { C.memset(ptr, 0, n) }
+		// Reused spans may be dirty, so VGC has no guaranteed-zero region:
+		// passing ptr as zero_until zeroes the whole requested range.
+		C.v_zero_if_needed(ptr, n, ptr)
 	}
 	return ptr
 }
@@ -1263,6 +1329,12 @@ fn vgc_free_obj(span &VGC_Span, ptr voidptr, cache_idx int) {
 // Calloc (zero-initialized allocation)
 fn vgc_calloc(n uint) voidptr {
 	return vgc_malloc(n) // vgc_malloc already zeroes memory
+}
+
+// vgc_calloc_noscan zeroes pointer-free storage on a noscan span, so the
+// marker never scans it. Backs vcalloc_noscan under -gc vgc.
+fn vgc_calloc_noscan(n uint) voidptr {
+	return vgc_malloc_noscan_opts(n, true)
 }
 
 // Typed memdup: allocate with pointer map and copy source data.

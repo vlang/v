@@ -11295,6 +11295,14 @@ pub fn run(args []string) {
 		eprintln(err.msg())
 		exit(1)
 	}
+	// Most allocations under -prealloc live in arenas that are never collected,
+	// while typed/memdup allocations and all GC accounting still route to VGC.
+	// That split state is inconsistent (VGC can free arena pointers), so reject
+	// the combination rather than letting one flag silently win.
+	if 'vgc' in user_defines && user_defines.any(it.all_before('=').trim_space() == 'prealloc') {
+		eprintln('`-gc vgc` cannot be combined with `-prealloc`: -prealloc bypasses the collector; rebuild with `-gc none` or drop `-prealloc`')
+		exit(1)
+	}
 	if ownership_mode && backend != 'fastc' && !ownership_checker_compiled() {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)

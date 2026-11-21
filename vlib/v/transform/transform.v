@@ -257,14 +257,17 @@ mut:
 	merge_absorbed_child_shift i32
 	// const_array_fixed_storage_cache avoids rescanning the complete AST for
 	// repeated uses of the same array constant in one transform worker.
-	const_array_fixed_storage_cache     map[string]i8
-	enum_selector_filter                &EnumSelectorNameFilter = unsafe { nil }
-	enum_unqualified_index              &EnumUnqualifiedIndex   = unsafe { nil }
-	enum_types                          map[u32][]string
-	enum_explicit_first_values          map[u32]bool // the first member has a value, maybe not 0
-	enum_backing_types                  flat.SourceTypeBindings
-	cur_file                            string
-	cur_module                          string
+	const_array_fixed_storage_cache map[string]i8
+	enum_selector_filter            &EnumSelectorNameFilter = unsafe { nil }
+	enum_unqualified_index          &EnumUnqualifiedIndex   = unsafe { nil }
+	enum_types                      map[u32][]string
+	enum_explicit_first_values      map[u32]bool // the first member has a value, maybe not 0
+	enum_backing_types              flat.SourceTypeBindings
+	cur_file                        string
+	cur_module                      string
+	// fresh_array_vars tracks locals initialized with a brand-new array buffer,
+	// so append/index lowering can skip slice-detach runtime checks for them.
+	fresh_array_vars                    map[string]bool
 	cur_fn_name                         string
 	cur_fn_source_file                  string
 	cur_fn_source_module                string
@@ -6247,6 +6250,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escape_decl_depths:                     map[string]int{}
 		escaping_fixed_array_view_sources:      map[string]bool{}
 		heaped_amp_locals:                      map[string]bool{}
+		fresh_array_vars:                       map[string]bool{}
 		local_closure_cleanup_decls:            map[int]string{}
 		local_closure_cleanup_values:           map[int]string{}
 		local_closure_cleanup_assigns:          map[int]string{}
@@ -13421,6 +13425,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	outer_locals_in_scope := t.fn_body_locals_in_scope
 	t.fn_body_locals_in_scope = false
 	defer { t.fn_body_locals_in_scope = outer_locals_in_scope }
+	outer_fresh_arrays := t.fresh_array_vars
+	t.fresh_array_vars = map[string]bool{}
+	defer { t.fresh_array_vars = outer_fresh_arrays }
 	outer_comptime_locals := t.comptime_scalar_locals
 	outer_comptime_arrays := t.comptime_array_locals
 	outer_comptime_arrays_shared := t.comptime_array_locals_shared
@@ -16811,6 +16818,10 @@ fn qualified_const_key_matches(key string, qualifier string, name string) bool {
 fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return [id]
+	}
+	assign_lhs_id := t.a.child(node, 0)
+	if t.valid_node_id(assign_lhs_id) && t.a.node(assign_lhs_id).kind == .ident {
+		t.fresh_array_vars.delete(t.a.node(assign_lhs_id).value)
 	}
 	if expanded := t.try_expand_multi_return_assign(node) {
 		return expanded
@@ -20404,6 +20415,17 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ_text()} value=${node.value_text()} children=${parts.join('|')}')
 	}
 	source_lhs := t.a.node(t.a.child(&node, 0))
+	if source_lhs.kind == .ident && t.valid_node_id(source_rhs_id) {
+		rhs_node := t.a.node(source_rhs_id)
+		if rhs_node.kind == .array_init || rhs_node.kind == .array_literal {
+			t.fresh_array_vars[source_lhs.value] = true
+		} else if rhs_node.kind == .call {
+			callee := t.a.node(t.a.child(rhs_node, 0))
+			if callee.value in ['array_new', '__new_array_noscan', '__new_array_aligned'] {
+				t.fresh_array_vars[source_lhs.value] = true
+			}
+		}
+	}
 	shadows_pointer_storage := source_single_decl && source_lhs.kind == .ident
 		&& (t.heaped_amp_locals[source_lhs.value_text()] || t.pointer_value_rvalues[source_lhs.value_text()]
 			|| t.pointer_value_lvalues[source_lhs.value_text()])
@@ -30686,6 +30708,23 @@ fn (mut t Transformer) make_block_skip_scope_drops(stmts []flat.NodeId) flat.Nod
 	return id
 }
 
+// collect_decl_names gathers declaration names inside a lowered branch body.
+fn (t &Transformer) collect_decl_names(id flat.NodeId, mut out []string, depth int) {
+	if depth > 64 || !t.valid_node_id(id) {
+		return
+	}
+	node := t.a.node(id)
+	if node.kind == .decl_assign && node.children_count > 0 {
+		name_node := t.a.node(t.a.child(node, 0))
+		if name_node.kind == .ident && name_node.value.len > 0 && name_node.value !in out {
+			out << name_node.value
+		}
+	}
+	for child in t.a.children_of(node) {
+		t.collect_decl_names(child, mut out, depth + 1)
+	}
+}
+
 fn (mut t Transformer) make_block_prefix_scope_drops(stmts []flat.NodeId) flat.NodeId {
 	id := t.make_block(stmts)
 	t.a.nodes[int(id)].value = prefix_scope_drops_block_value
@@ -33073,6 +33112,13 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 	t.inplace_rewrite_holds++
 	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.if_value_branch_block(raw_body, target_name, target_type_id)
+	if n_conds > 1 {
+		mut declared := []string{}
+		for body_id in body_ids {
+			t.collect_decl_names(body_id, mut declared, 0)
+		}
+		t.a.nodes[int(body_block)].value = '__v3_drop_names:' + declared.join(',')
+	}
 	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
@@ -33149,6 +33195,16 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	t.inplace_rewrite_holds++
 	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.make_block(t.transform_scope_stmts(body_ids))
+	// A duplicated variant body can receive drop entries that belong to a
+	// different branch because cgen consumes one slot per lowered arm. Mark the
+	// names actually declared here so cgen can discard foreign cleanup entries.
+	if cond_idx >= 0 && n_conds > 1 {
+		mut declared := []string{}
+		for body_id in body_ids {
+			t.collect_decl_names(body_id, mut declared, 0)
+		}
+		t.a.nodes[int(body_block)].value = '__v3_drop_names:' + declared.join(',')
+	}
 	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {

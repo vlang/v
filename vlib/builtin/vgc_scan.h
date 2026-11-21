@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -50,6 +53,55 @@ static inline uintptr_t vgc_read_candidate(const void* address) {
     uintptr_t candidate;
     memcpy(&candidate, address, sizeof(candidate));
     return candidate;
+}
+
+static inline unsigned vgc_ctz64(uint64_t x) {
+#if defined(_MSC_VER) && defined(_M_X64)
+    unsigned long index = 0;
+    _BitScanForward64(&index, x);
+    return (unsigned)index;
+#elif defined(__GNUC__) || defined(__clang__)
+    return (unsigned)__builtin_ctzll(x);
+#else
+    unsigned n = 0;
+    while ((x & 1u) == 0) {
+        x >>= 1;
+        ++n;
+    }
+    return n;
+#endif
+}
+
+// The atomic mark-bit update goes through the platform CAS abstraction in
+// thirdparty/vgc/vgc_platform.h, whose TinyCC declaration takes five
+// arguments. It must not be redeclared here: a six-argument redeclaration
+// breaks the TinyCC build of every TU that includes both headers, and the V
+// driver then silently falls back to another C compiler.
+#include "vgc_platform.h"
+
+// Bit position within the 32-bit CAS word that holds the same object as the
+// byte-bit layout of vgc_bitmap_get/set (byte index>>3, bit index&7). On
+// little-endian the word's first byte holds its low bits, so the bit is
+// index&31; on big-endian it holds the high bits, so the bit is (index&31)^24.
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#define VGC_BITMAP_WORD_BIT(i) (((i) & 31u) ^ 24u)
+#else
+#define VGC_BITMAP_WORD_BIT(i) ((i) & 31u)
+#endif
+
+static inline int vgc_bitmap_atomic_test_set(uint8_t* bits, uint32_t index) {
+    // The mark bitmaps live in span metadata, whose `bits` array is 8-byte
+    // aligned, so 32-bit words are safe to compare-and-swap on all targets.
+    uint32_t* word = &((uint32_t*)bits)[index >> 5];
+    const uint32_t mask = 1u << VGC_BITMAP_WORD_BIT(index);
+    for (;;) {
+        uint32_t current = vgc_atomic_load_u32(word);
+        if (current & mask) return 1;
+        uint32_t expected = current;
+        // vgc_atomic_cas_u32 updates nothing on failure on some targets (MSVC),
+        // so the current value is reloaded above on every attempt.
+        if (vgc_atomic_cas_u32(word, &expected, current | mask)) return 0;
+    }
 }
 
 static inline void* vgc_current_fake_stack(void) {
