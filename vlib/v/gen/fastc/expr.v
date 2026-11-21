@@ -1279,7 +1279,13 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		g.or_value_captured = ''
 		g.or_value_expected_type = option_value_type
 		_ = g.parse_block_body()!
-		fallback_value := g.or_value_captured
+		mut fallback_value := g.or_value_captured
+		if fallback_value.trim_space() == '(Option){.state=2}' && g.return_type == fastc_type_option
+			&& option_value_type !in [0, flat.source_type_void, fastc_type_option] {
+			// `return f() or { none }` in a `?T` function: a `none` value makes the
+			// function return none, as in V; it is not a value of the payload type.
+			fallback_value = '({ return (Option){.state=2}; (${fastc_output_c_type(flat.source_type_name(option_value_type))}){0}; })'
+		}
 		g.or_value_capture = previous_or_capture
 		g.or_value_scope_depth = previous_or_scope_depth
 		g.or_value_captured = previous_or_captured
