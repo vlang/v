@@ -1179,7 +1179,14 @@ fn strip_comments(line string) string {
 }
 
 fn fold_block_scalar(lines []string) string {
-	mut out := ''
+	// Build the folded body in one buffer. Repeated string concatenation here
+	// allocated a fresh, ever-growing string for every line, making a folded
+	// scalar with many lines quadratic in both time and allocated bytes.
+	mut size := 0
+	for line in lines {
+		size += line.len + 1
+	}
+	mut out := strings.new_builder(size)
 	mut pending_newlines := 0
 	mut started := false
 	for line in lines {
@@ -1187,20 +1194,27 @@ fn fold_block_scalar(lines []string) string {
 			pending_newlines++
 			continue
 		}
-		if !started {
-			out = '\n'.repeat(pending_newlines) + line
-			started = true
-		} else if pending_newlines > 0 {
-			out += '\n'.repeat(pending_newlines) + line
+		if started {
+			if pending_newlines > 0 {
+				for _ in 0 .. pending_newlines {
+					out.write_u8(`\n`)
+				}
+			} else {
+				out.write_u8(` `)
+			}
 		} else {
-			out += ' ' + line
+			for _ in 0 .. pending_newlines {
+				out.write_u8(`\n`)
+			}
+			started = true
 		}
+		out.write_string(line)
 		pending_newlines = 0
 	}
-	if pending_newlines > 0 {
-		out += '\n'.repeat(pending_newlines)
+	for _ in 0 .. pending_newlines {
+		out.write_u8(`\n`)
 	}
-	return out
+	return out.str()
 }
 
 fn is_block_scalar(value string) bool {
