@@ -1062,6 +1062,12 @@ fn (g &Parser) mono_canonical_type_argument(argument string, src FastcGenericMet
 	if argument.starts_with('[]') {
 		return '[]' + g.mono_canonical_type_argument(argument[2..], src)
 	}
+	if argument.ends_with(']') && argument.contains('[') && !argument.starts_with('[') {
+		// A nested specialized struct (`AutoHashContext[u32]`) is named by its copy.
+		if nested := g.mono_nested_instance_canonical(argument, src) {
+			return nested
+		}
+	}
 	if argument.contains('__') || argument.starts_with('Array_') || argument.starts_with('Map_')
 		|| argument.ends_with('*') {
 		return fastc_c_type_display_name(flat.source_type_id(argument))
@@ -1192,4 +1198,37 @@ fn (mut m FastcStructMono) discover_function(fn_key string, generic_fn FastcStru
 		module_name: generic_fn.module_name
 		imports:     source_file.header.imports
 	})
+}
+
+// mono_nested_instance_canonical names the copy of a nested generic struct argument
+// (`AutoHashContext[u32]`, `ds.Box[int]`) as `module.Copy`, when the copy exists.
+fn (g &Parser) mono_nested_instance_canonical(argument string, src FastcGenericMethodSource) ?string {
+	open := argument.index('[') or { return none }
+	mut struct_name := argument[..open]
+	mut struct_module := fastc_struct_mono_module(src.module_name)
+	if struct_name.contains('.') {
+		struct_module = src.imports[struct_name.all_before('.')] or { return none }
+		struct_name = struct_name.all_after('.')
+	}
+	inner := argument[open + 1..argument.len - 1]
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 0
+	for i, c in inner {
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+		} else if c == `,` && depth == 0 {
+			parts << inner[start..i]
+			start = i + 1
+		}
+	}
+	parts << inner[start..]
+	canonical := parts.map(g.mono_canonical_type_argument(it.trim_space(), src))
+	instance := fastc_struct_instance_name(struct_name, canonical)
+	if !fastc_source_type_key_exists(g.declared_types, fastc_type_key(struct_module, instance)) {
+		return none
+	}
+	return if struct_module == 'main' { instance } else { '${struct_module}.${instance}' }
 }
