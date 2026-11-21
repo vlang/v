@@ -3670,7 +3670,10 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 			continue
 		}
 		paths := context.declaration_paths[name] or { [signature.path] }
-		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
+		// The C backend gets the Boehm GC API from `gc.h`, which FastC does not include; its
+		// preamble declares only GC_malloc and GC_free.
+		is_gc_api := name.starts_with('GC_') && name !in ['GC_malloc', 'GC_free']
+		if !signature.is_c_extern && !is_gc_api && !paths.any(!context.files_with_headers[it]
 			&& fastc_c_declaration_has_native_input(it, inputs))
 			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
 			continue
