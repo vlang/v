@@ -7,7 +7,7 @@ import v.pref
 
 fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_state() {
 	mut scope := new_scope(unsafe { nil })
-	owner := scope.insert_with_owner('value', builtin_int_type)
+	owner := scope.insert_with_owner_id(flat.source_type_id('value'), 'value', builtin_int_type)
 	params := generic_param_ids(['T', 'U'])
 	unsafe_states := [[{
 		'value': true
@@ -93,7 +93,7 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 }
 
 fn context_reuse_seed_outer(mut tc TypeChecker) string {
-	owner := tc.cur_scope.insert_with_owner('outer', builtin_int_type)
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('outer'), 'outer', builtin_int_type)
 	tc.fn_context.node_id = -1
 	tc.fn_context.generic_params = generic_param_ids(['Outer'])
 	tc.fn_context.return_type = builtin_string_type
@@ -239,7 +239,7 @@ fn main() { _ = choose(Value(1)); _ = guarded(1); _ = closure(2); _ = loop(Value
 			assert actual.expr_type_set == reference.expr_type_set
 			for index, set in reference.resolved_call_set {
 				if set {
-					assert actual.cached_resolved_call(flat.NodeId(index)) == reference.cached_resolved_call(flat.NodeId(index))
+					assert actual.resolved_call_name(flat.NodeId(index)) == reference.resolved_call_name(flat.NodeId(index))
 				}
 			}
 			for index, set in reference.expr_type_set {

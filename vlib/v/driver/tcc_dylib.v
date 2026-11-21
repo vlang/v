@@ -31,8 +31,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	flags = v3_tcc_dylib_native_flags(flags)
 	for flag in flags {
-		clean := flag.trim_space()
-		if clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs') || clean.starts_with('--specs') || clean.starts_with('-include-pch') || clean.starts_with('-Wp,') {
+		if v3_native_flag_is_opaque(flag) {
 			return V3NativeInputClosure{ unassignable: 'opaque native compiler options' }
 		}
 	}
@@ -140,16 +139,27 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 }
 
+// v3_native_flag_is_opaque reports whether a C compiler option makes the compiler
+// read options or inputs that the command line does not show.
+fn v3_native_flag_is_opaque(flag string) bool {
+	clean := flag.trim_space()
+	return clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs')
+		|| clean.starts_with('--specs') || clean.starts_with('-include-pch')
+		|| clean.starts_with('-Wp,') || clean.starts_with('-fplugin')
+		|| clean.starts_with('-fpass-plugin') || clean.starts_with('--gcc-toolchain')
+		|| clean.starts_with('-wrapper')
+}
+
 // Objective-C imports have the same header dependencies as C includes.
 fn v3_tcc_dylib_include_argument(line string) ?string {
 	if arg := v3_include_directive_argument(line) { return arg }
 	clean := line.trim_space()
 	if !clean.starts_with('#') { return none }
-	directive := clean[1..].trim_left(' \t')
-	if !directive.starts_with('import') || (directive.len > 6 && (directive[6].is_letter() || directive[6] == `_`)) {
+	directive_text := clean[1..].trim_left(' \t')
+	if !directive_text.starts_with('import') || (directive_text.len > 6 && (directive_text[6].is_letter() || directive_text[6] == `_`)) {
 		return none
 	}
-	return directive[6..].trim_left(' \t')
+	return directive_text[6..].trim_left(' \t')
 }
 
 fn v3_tcc_dylib_native_flags(flags []string) []string {

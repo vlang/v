@@ -45,7 +45,7 @@ fn test_ident_emission_keeps_scoped_and_parameter_value_precedence() {
 		tc.cur_module = 'main'
 		tc.cur_scope = types.new_scope(tc.file_scope)
 		if scoped {
-			tc.cur_scope.insert('value', types.Type(types.int_))
+			tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 		}
 		mut g := FlatGen.new()
 		g.a = &a
@@ -68,7 +68,7 @@ fn test_ident_emission_uses_nearest_binding_storage_flags() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.cur_module = 'main'
 		tc.cur_scope = types.new_scope(tc.file_scope)
-		outer := tc.cur_scope.insert_with_owner('value', types.Type(types.int_))
+		outer := tc.cur_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 		mut g := FlatGen.new()
 		g.a = &a
 		g.tc = &tc
@@ -80,7 +80,7 @@ fn test_ident_emission_uses_nearest_binding_storage_flags() {
 		g.gen_nonliteral_expr(id, a.node(id))
 		assert g.sb.str() == if shared_storage { 'value->val' } else { '(*value)' }
 		tc.cur_scope = types.new_scope(tc.cur_scope)
-		tc.cur_scope.insert('value', types.Type(types.int_))
+		tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 		g.gen_nonliteral_expr(id, a.node(id))
 		assert g.sb.str() == 'value'
 	}
@@ -147,7 +147,7 @@ fn test_call_function_value_signature_keeps_mut_and_empty_parameter_abi() {
 				mut tc := types.TypeChecker.new(&a)
 				tc.cur_module = 'main'
 				tc.cur_scope = types.new_scope(tc.file_scope)
-				tc.cur_scope.insert('value', types.Type(types.int_))
+				tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', types.Type(types.int_))
 				mut params := []types.FnParam{}
 				if param_count > 0 {
 					params << types.FnParam{ typ: tc.intern_type_reference(types.Type(types.int_)), is_mut: is_mut }
@@ -158,7 +158,7 @@ fn test_call_function_value_signature_keeps_mut_and_empty_parameter_abi() {
 				g.tc = &tc
 				match mode {
 					'parameter' { g.cur_param_types['callback'] = fn_type }
-					'local' { tc.cur_scope.insert('callback', *fn_type) }
+					'local' { tc.cur_scope.insert_id(flat.source_type_id('callback'), 'callback', *fn_type) }
 					else { g.global_types['callback'] = *fn_type }
 				}
 				g.gen_call(call, a.node(call))

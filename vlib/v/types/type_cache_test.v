@@ -67,12 +67,12 @@ fn test_node_cache_reset_clears_string_slots_and_set_bits() {
 	mut tc := TypeChecker.new(&a)
 	for n in [0, 1, 257, 33] {
 		tc.reset_node_caches(n)
-		assert tc.resolved_call_names.len == n
+		assert tc.resolved_calls.len == n
 		assert tc.resolved_call_set.len == n
 		for i in 0 .. n {
-			assert isnil(tc.resolved_call_names[i])
+			assert tc.resolved_calls[i] == 0
 			assert !tc.resolved_call_set[i]
-			tc.resolved_call_names[i] = cached_name('previous.call')
+			tc.resolved_calls[i] = flat.source_type_id('previous.call')
 			tc.resolved_call_set[i] = true
 		}
 	}
@@ -728,7 +728,9 @@ fn test_resolved_symbols_have_stable_ids_and_storage() {
 	second := tc.canonical_symbol('sample.' + 'run')
 	assert first == second
 	assert first.str == second.str
-	assert tc.symbol_count() == 1
+	id, canonical := tc.intern_symbol('sample.run')
+	assert canonical.str == first.str
+	assert tc.symbol_name(id) == first
 }
 
 fn test_node_cache_reset_drops_stale_fn_values() {

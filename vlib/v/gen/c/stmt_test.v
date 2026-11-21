@@ -272,7 +272,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 		base_type: &types.Type(types.u8_)
 	})
 	tc.push_scope()
-	tc.cur_scope.insert('buf', fixed_type)
+	tc.cur_scope.insert_id(flat.source_type_id('buf'), 'buf', fixed_type)
 	buf_id := stmt_test_node(mut a, .ident, 'buf', [])
 	rhs_id := stmt_test_prefix(mut a, .amp, buf_id)
 	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true, '')
@@ -290,7 +290,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 		elem_type: &types.Type(types.i32_)
 		len:       2
 	})
-	tc.cur_scope.insert('int_buf', int_fixed_type)
+	tc.cur_scope.insert_id(flat.source_type_id('int_buf'), 'int_buf', int_fixed_type)
 	int_buf_id := stmt_test_node(mut a, .ident, 'int_buf', [])
 	int_rhs_id := stmt_test_prefix(mut a, .amp, int_buf_id)
 	int_fixed_pointer := types.Type(types.Pointer{
@@ -316,7 +316,7 @@ fn test_mut_parameter_power_assign_uses_scalar_result_type() {
 	})
 
 	tc.push_scope()
-	arg_owner := tc.cur_scope.insert_with_owner('arg', ptr_type)
+	arg_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('arg'), 'arg', ptr_type)
 	g.cur_param_types['arg'] = tc.intern_type_reference(ptr_type)
 	g.cur_mut_params['arg'] = true
 	g.cur_mut_param_owners['arg'] = arg_owner
@@ -347,7 +347,7 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	})
 
 	tc.push_scope()
-	outer_owner := tc.cur_scope.insert_with_owner('p', ptr_type)
+	outer_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', ptr_type)
 	g.declare_local_pointer_alias_source(outer_owner, 'x')
 	assert g.local_pointer_alias_assignment_can_clear(outer_owner)
 
@@ -355,13 +355,13 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	g.enter_conditional_branch(true)
 	assert !g.local_pointer_alias_assignment_can_clear(outer_owner)
 
-	branch_owner := tc.cur_scope.insert_with_owner('q', ptr_type)
+	branch_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('q'), 'q', ptr_type)
 	g.declare_local_pointer_alias_source(branch_owner, 'y')
 	assert g.local_pointer_alias_assignment_can_clear(branch_owner)
 
 	tc.push_scope()
 	assert g.local_pointer_alias_assignment_can_clear(branch_owner)
-	nested_owner := tc.cur_scope.insert_with_owner('r', ptr_type)
+	nested_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('r'), 'r', ptr_type)
 	g.declare_local_pointer_alias_source(nested_owner, 'z')
 	assert g.local_pointer_alias_assignment_can_clear(nested_owner)
 	tc.pop_scope()
@@ -482,11 +482,11 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	})
 
 	tc.push_scope()
-	tc.cur_scope.insert_with_owner('x', int_type)
-	arg_owner := tc.cur_scope.insert_with_owner('arg', int_type)
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('x'), 'x', int_type)
+	arg_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('arg'), 'arg', int_type)
 	g.cur_mut_params['arg'] = true
 	g.cur_mut_param_owners['arg'] = arg_owner
-	p_owner := tc.cur_scope.insert_with_owner('p', ptr_type)
+	p_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', ptr_type)
 	g.declare_local_pointer_alias_source(p_owner, 'x')
 
 	tc.push_scope()
@@ -502,7 +502,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	g.leave_conditional_branch()
 	tc.pop_scope()
 
-	maybe_owner := tc.cur_scope.insert_with_owner('maybe', ptr_type)
+	maybe_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('maybe'), 'maybe', ptr_type)
 	tc.push_scope()
 	g.enter_conditional_branch(true)
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
@@ -542,8 +542,8 @@ fn test_local_pointer_alias_branch_assignment_without_outer_marker_stays_conditi
 	})
 
 	tc.push_scope()
-	tc.cur_scope.insert_with_owner('x', int_type)
-	tc.cur_scope.insert_with_owner('p', ptr_type)
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('x'), 'x', int_type)
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', ptr_type)
 	tc.push_scope()
 	g.enter_conditional_branch(true)
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
@@ -571,8 +571,8 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	})
 
 	tc.push_scope()
-	tc.cur_scope.insert_with_owner('x', int_type)
-	p_owner := tc.cur_scope.insert_with_owner('p', ptr_type)
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('x'), 'x', int_type)
+	p_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', ptr_type)
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_source(flat.Node{
@@ -582,7 +582,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	assert g.local_pointer_alias_source('p') or { '' } == 'x'
 	assert !g.local_pointer_alias_source_is_mut_param('p')
 
-	q_owner := tc.cur_scope.insert_with_owner('q', ptr_type)
+	q_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('q'), 'q', ptr_type)
 	p_id := stmt_test_node(mut a, .ident, 'p', [])
 	g.track_local_pointer_alias_source(flat.Node{
 		kind:  .ident
@@ -591,7 +591,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	assert g.local_pointer_alias_source('q') or { '' } == 'x'
 	assert !g.local_pointer_alias_source_is_mut_param('q')
 
-	assigned_owner := tc.cur_scope.insert_with_owner('assigned', ptr_type)
+	assigned_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('assigned'), 'assigned', ptr_type)
 	g.declare_local_pointer_alias_source(assigned_owner, '')
 	g.track_local_pointer_alias_assign(flat.Node{
 		kind:  .ident
@@ -599,10 +599,10 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	}, p_id)
 	assert g.local_pointer_alias_source('assigned') or { '' } == 'x'
 
-	mut_owner := tc.cur_scope.insert_with_owner('mut_alias', ptr_type)
+	mut_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('mut_alias'), 'mut_alias', ptr_type)
 	g.declare_local_pointer_alias_source_kind(mut_owner, 'x', true)
 	mut_id := stmt_test_node(mut a, .ident, 'mut_alias', [])
-	mut_copy_owner := tc.cur_scope.insert_with_owner('mut_copy', ptr_type)
+	mut_copy_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('mut_copy'), 'mut_copy', ptr_type)
 	g.track_local_pointer_alias_source(flat.Node{
 		kind:  .ident
 		value: 'mut_copy'
@@ -657,7 +657,7 @@ fn test_heap_local_address_expr_copies_pointer_local_slot() {
 		base_type: &types.Type(int_ptr)
 	})
 	tc.push_scope()
-	tc.cur_scope.insert_with_owner('p', int_ptr)
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', int_ptr)
 	p_id := stmt_test_node(mut a, .ident, 'p', [])
 	amp_p_id := stmt_test_prefix(mut a, .amp, p_id)
 	heap_expr := g.heap_local_address_expr(amp_p_id, int_ptr_ptr) or {
@@ -689,8 +689,8 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 		typ:  int_type
 	}]
 	tc.push_scope()
-	tc.cur_scope.insert_with_owner('s', struct_type)
-	p_owner := tc.cur_scope.insert_with_owner('p', struct_ptr)
+	tc.cur_scope.insert_with_owner_id(flat.source_type_id('s'), 's', struct_type)
+	p_owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('p'), 'p', struct_ptr)
 	g.declare_local_pointer_alias_source(p_owner, 's')
 	p_id := stmt_test_node(mut a, .ident, 'p', [])
 	selector_id := stmt_test_node(mut a, .selector, 'x', [p_id])
@@ -845,7 +845,7 @@ fn test_unsafe_value_block_scopes_direct_array_access() {
 	values := stmt_test_node(mut a, .ident, 'values', [])
 	index := stmt_test_node(mut a, .int_literal, '1', [])
 	element := stmt_test_node(mut a, .index, '', [values, index])
-	tc.cur_scope.insert('values', array_type)
+	tc.cur_scope.insert_id(flat.source_type_id('values'), 'values', array_type)
 	tc.register_synth_type(values, array_type)
 	tc.register_synth_type(element, types.Type(types.int_))
 	expression := stmt_test_node(mut a, .expr_stmt, '', [element])
@@ -867,7 +867,7 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	tc.cur_scope.insert('err', types.Type(types.String{}))
+	tc.cur_scope.insert_id(flat.source_type_id('err'), 'err', types.Type(types.String{}))
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
@@ -953,7 +953,7 @@ fn test_qualified_mut_parameter_copy_preserves_value_staging_storage() {
 		g.tc = &tc
 		g.cur_param_types['source'] = types.new_type_reference(pointer_type)
 		g.cur_mut_params['source'] = true
-		g.cur_mut_param_owners['source'] = tc.cur_scope.insert_with_owner('source', pointer_type)
+		g.cur_mut_param_owners['source'] = tc.cur_scope.insert_with_owner_id(flat.source_type_id('source'), 'source', pointer_type)
 		decl_type := if pointer_decl { '&snapshot.State' } else { 'snapshot.State' }
 		lhs := a.add_node(flat.Node{
 			kind:  .ident

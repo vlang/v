@@ -502,10 +502,11 @@ created by lowering. V1 and V2 do not need a separate step because their checker
 updates the typed AST/table that later stages keep using directly; v3's flat AST
 keeps those per-node caches outside the nodes.
 
-Resolved call and function-value caches use `types.CachedName` pointers, allocating a string
-header only for occupied slots. The existing set bits guard reads. `types.cached_name()` creates
-an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
-when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
+The resolved-call cache holds one `types.SymbolId` per node, like `Info.Uses` in Go's
+types2: the id of the callee's name in the global spelling interner (`flat.source_type_id`).
+The existing set bits guard reads. Symbol ids are shared by every checker, fork and worker
+and their spellings are owned by the process, so worker results merge and arenas are
+released without translating or copying them. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
 Callback validation retains declared variadic modes when matching a lowered array parameter,
 including callbacks nested in parameters and return types.
@@ -635,6 +636,11 @@ module object (until one of those headers changes, or one of their includes woul
 file, be it through a symbolic link that points elsewhere now), and that the bundled TinyCC runs
 and links the libraries of the program.
 `CFLAGS` and `LDFLAGS` turn the module cache off for all C compilers: no object records them.
+Native artifacts can be reused when V invokes its bundled TinyCC or a supported
+platform compiler. A custom compiler command can change its compilation options
+without changing its version output, so V builds its objects and executable locally
+for each invocation. The same fallback applies to overrides that delegate to an
+external toolchain. `V3_CACHE_TRACE=1` reports the decision.
 Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
@@ -728,12 +734,18 @@ full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, obje
 coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
-The experimental unchanged-build receipt is disabled by default. Set
-`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable its early executable restore for explicit binary
-outputs. Its key does not yet cover all compile-time environment, module-search, and linker
-inputs, so it can reuse stale output when those inputs change. `-nocache` and
-`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
-prevents publishing or restoring a receipt.
+Set `V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable the experimental build receipt. With
+module caching enabled, a build with an explicit output then looks for a receipt before parsing. It matches the compiler, C compiler identity, command line, output
+and environment. The receipt lists the program's V sources, checked as a whole by their source signature (content
+digests, `$env` reads, `v.mod` hashes, pkg-config probes and the build-time pseudo variables
+when the program uses them), embedded resources, the listings of the source directories, and
+the linker's reported inputs. A C compiler must report a single, headerless translation
+unit for the receipt. A depfile cannot account for unreported header lookups or volatile
+macros inside headers. Builds that compile native sources, use unverified C objects, or
+skip the C compiler's report run through the normal build path. When all recorded inputs
+are unchanged, the build restores the recorded executable before parsing. Use `-nocache`
+or `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` to disable receipts. `V3_CACHE_TRACE=1` reports why
+a receipt was not used or recorded.
 Large programs are not denied the cache because of their size: an existing module or executable
 cache hit is reused regardless of AST size. Only cold module-cache population is bounded.
 Ordinary programs may publish up to 5,000,000 AST nodes and 100 MB of module sources. Compiler
