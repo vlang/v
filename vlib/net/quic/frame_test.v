@@ -258,19 +258,18 @@ fn test_scaled_ack_delay_micros_saturates_at_exponent_ge_64() {
 	assert scaled_ack_delay_micros(0, 64) == 0
 }
 
-fn test_parse_frame_rejects_unimplemented_frame_type() {
-	// 0x18 (NEW_CONNECTION_ID) is a real, valid QUIC frame type this module
-	// simply doesn't implement yet -- connection ID rotation/migration is
-	// explicitly out of v1 scope (see stateless_reset.v's own doc comment)
-	// -- must be a clear "not implemented" error, not a wire-format error
-	// or a panic. (0x08 STREAM and 0x1e HANDSHAKE_DONE, both used here
-	// before their respective phases implemented them, would no longer
-	// demonstrate this.)
-	parse_frame([u8(0x18)]) or {
-		assert err.msg().contains('not yet implemented')
-		return
+fn test_parse_frame_rejects_unknown_frame_type() {
+	// RFC 9000 §12.4: an unknown frame type is FRAME_ENCODING_ERROR. Every
+	// type RFC 9000 defines (0x00-0x1e) is now parsed, so 0x1f and an
+	// extension-range type stand in for "unknown".
+	for typ in [u8(0x1f), u8(0x30)] {
+		parse_frame([typ]) or {
+			assert err.code() == int(quic_error_frame_encoding), err.msg()
+			assert err.msg().contains('unknown frame type')
+			continue
+		}
+		assert false, 'expected frame type 0x${typ.hex()} to be rejected'
 	}
-	assert false, 'expected an unimplemented frame type to be rejected'
 }
 
 fn test_parse_frames_rejects_empty_payload() {
@@ -734,5 +733,115 @@ fn test_streams_blocked_frame_round_trip_both_directions() {
 		else {
 			assert false, 'expected a StreamsBlockedFrame'
 		}
+	}
+}
+
+fn frame_test_expect_encoding_error(buf []u8, what string) {
+	if _, _ := parse_frame(buf) {
+		assert false, '${what}: expected FRAME_ENCODING_ERROR, frame parsed'
+	} else {
+		assert err.code() == int(quic_error_frame_encoding), '${what}: got code ${err.code()} (${err.msg()})'
+	}
+}
+
+fn test_new_token_frame_round_trip_and_rejections() {
+	token := [u8(0xaa), 0xbb, 0xcc]
+	encoded := encode_new_token_frame(token)!
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	assert (frame as NewTokenFrame).token == token
+	// Every truncation point, and an empty token (RFC 9000 §19.7).
+	for cut in 1 .. encoded.len {
+		frame_test_expect_encoding_error(encoded[..cut], 'NEW_TOKEN truncated to ${cut}')
+	}
+	frame_test_expect_encoding_error([u8(0x07), 0x00], 'NEW_TOKEN empty token')
+	if _ := encode_new_token_frame([]u8{}) {
+		assert false, 'encoder accepted an empty token'
+	}
+}
+
+fn test_new_connection_id_frame_round_trip_and_rejections() {
+	cid := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	token := []u8{len: 16, init: u8(index + 0x40)}
+	encoded := encode_new_connection_id_frame(5, 3, cid, token)!
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	f := frame as NewConnectionIdFrame
+	assert f.sequence_number == 5 && f.retire_prior_to == 3
+	assert f.connection_id == cid && f.stateless_reset_token == token
+	for cut in 1 .. encoded.len {
+		frame_test_expect_encoding_error(encoded[..cut], 'NEW_CONNECTION_ID truncated to ${cut}')
+	}
+	// retire_prior_to > sequence_number, and connection ID lengths 0 and 21.
+	mut rpt := [u8(0x18), 0x01, 0x02, 0x04, 1, 2, 3, 4]
+	rpt << token
+	frame_test_expect_encoding_error(rpt, 'NEW_CONNECTION_ID retire_prior_to > sequence_number')
+	mut zero_len := [u8(0x18), 0x01, 0x00, 0x00]
+	zero_len << token
+	frame_test_expect_encoding_error(zero_len, 'NEW_CONNECTION_ID zero-length connection ID')
+	mut long := [u8(0x18), 0x01, 0x00, 21]
+	long << []u8{len: 21}
+	long << token
+	frame_test_expect_encoding_error(long, 'NEW_CONNECTION_ID 21-byte connection ID')
+	// The encoder enforces the same rules.
+	if _ := encode_new_connection_id_frame(1, 2, cid, token) {
+		assert false, 'encoder accepted retire_prior_to > sequence_number'
+	}
+	if _ := encode_new_connection_id_frame(1, 0, []u8{}, token) {
+		assert false, 'encoder accepted an empty connection ID'
+	}
+	if _ := encode_new_connection_id_frame(1, 0, cid, token[..15]) {
+		assert false, 'encoder accepted a 15-byte reset token'
+	}
+}
+
+fn test_retire_connection_id_frame_round_trip_and_rejections() {
+	encoded := encode_retire_connection_id_frame(300)!
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	assert (frame as RetireConnectionIdFrame).sequence_number == 300
+	for cut in 1 .. encoded.len {
+		frame_test_expect_encoding_error(encoded[..cut], 'RETIRE_CONNECTION_ID truncated to ${cut}')
+	}
+}
+
+fn test_path_frames_round_trip_and_rejections() {
+	data := [u8(9), 8, 7, 6, 5, 4, 3, 2]
+	challenge := encode_path_challenge_frame(data)!
+	response := encode_path_response_frame(data)!
+	cf, cn := parse_frame(challenge)!
+	rf, rn := parse_frame(response)!
+	assert cn == 9 && rn == 9
+	assert (cf as PathChallengeFrame).data == data
+	assert (rf as PathResponseFrame).data == data
+	for cut in 1 .. 9 {
+		frame_test_expect_encoding_error(challenge[..cut], 'PATH_CHALLENGE truncated to ${cut}')
+		frame_test_expect_encoding_error(response[..cut], 'PATH_RESPONSE truncated to ${cut}')
+	}
+	if _ := encode_path_challenge_frame(data[..7]) {
+		assert false, 'encoder accepted 7 bytes of path data'
+	}
+}
+
+// All five frame types are ack-eliciting (RFC 9000 §13.2: only ACK, PADDING
+// and CONNECTION_CLOSE are not).
+fn test_new_frame_types_are_ack_eliciting() {
+	for f in [QuicFrame(NewTokenFrame{
+		token: [u8(1)]
+	}), QuicFrame(RetireConnectionIdFrame{}), QuicFrame(PathChallengeFrame{}),
+		QuicFrame(PathResponseFrame{}), QuicFrame(NewConnectionIdFrame{})] {
+		assert frame_is_ack_eliciting(f)
+	}
+}
+
+// The connection ID length bounds are inclusive: 1 and 20 bytes are valid.
+fn test_new_connection_id_frame_accepts_length_bounds() {
+	token := []u8{len: 16, init: u8(index)}
+	for n in [1, 20] {
+		cid := []u8{len: n, init: u8(index + 1)}
+		encoded := encode_new_connection_id_frame(7, 0, cid, token)!
+		frame, used := parse_frame(encoded)!
+		assert used == encoded.len
+		assert (frame as NewConnectionIdFrame).connection_id == cid, 'length ${n}'
 	}
 }
