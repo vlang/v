@@ -627,14 +627,16 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			typ:    c_type
 		}
 	}
+	// `{0}` also initializes a C typedef of a pointer (`C.pthread_t{}`).
+	fields_source := if rendered_fields.len == 0 { '0' } else { rendered_fields.join(',') }
 	literal_source := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 		if g.c_global_static_initializer {
-			'&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${rendered_fields.join(',')}}'
+			'&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${fields_source}}'
 		} else {
-			'(${flat.source_type_name(c_type)})v_fastc_heap_copy(&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${rendered_fields.join(',')}}, sizeof(${flat.source_type_name(fastc_trim_pointer_type(c_type))}))'
+			'(${flat.source_type_name(c_type)})v_fastc_heap_copy(&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${fields_source}}, sizeof(${flat.source_type_name(fastc_trim_pointer_type(c_type))}))'
 		}
 	} else {
-		'(${flat.source_type_name(c_type)}){${rendered_fields.join(',')}}'
+		'(${flat.source_type_name(c_type)}){${fields_source}}'
 	}
 	if fixed_array_copies.len > 0 {
 		base_type := flat.source_type_name(fastc_trim_pointer_type(c_type))

@@ -115,7 +115,8 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					if tok == .name {
 						// `type C.X = ...` names a C typedef (`DWORD`), spelled bare like
 						// `@[typedef] struct C.X`; only a plain `struct C.X` is `struct X`.
-						key := flat.source_type_id(if next_c_struct_is_typedef || kind == .alias_ {
+						key := flat.source_type_id(if next_c_struct_is_typedef || kind == .alias_
+							|| fastc_c_struct_name_is_typedef(scan.lit) {
 							'#Ctypedef#${scan.lit}'
 						} else {
 							'#Cstruct#${scan.lit}'
@@ -4398,4 +4399,12 @@ fn fastc_order_function_typedefs(source string) string {
 // of an alias of an erased generic struct.
 fn fastc_alias_generic_argument_key(c_name string) string {
 	return '${c_name}#generic_argument'
+}
+
+// fastc_c_struct_name_is_typedef applies the C backend's rule for a plain `struct C.X`: only a
+// lowercase name that does not end in `_t` is spelled `struct X`; `pthread_t`, `FILE` and
+// `_IO_FILE` name typedefs.
+fn fastc_c_struct_name_is_typedef(name string) bool {
+	return name.starts_with('_') || name.len == 0 || name[0] < `a` || name[0] > `z`
+		|| name.ends_with('_t')
 }
