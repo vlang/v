@@ -621,7 +621,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 	}
-	if end - start >= 4 && tokens[start].tok == .key_sizeof && tokens[start + 1].tok == .lpar && tokens[end - 1].tok == .rpar {
+	if end - start >= 4 && tokens[start].tok == .key_sizeof && tokens[start + 1].tok == .lpar
+		&& tokens[end - 1].tok == .rpar
+		&& (fastc_matching_rpar(tokens, start + 1) or { -1 }) == end - 1 {
+		// Only a whole `sizeof(...)`; `sizeof(a) == sizeof(b)` is a comparison.
 		return flat.source_type_int
 	}
 	if end - start >= 8 && tokens[start].lit == 'typeof' {
