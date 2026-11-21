@@ -2044,6 +2044,9 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	if g.tok == .name && g.lit == 'zero' {
 		return g.read_comptime_zero_expression()!
 	}
+	if g.tok == .name && g.lit == 'new' {
+		return g.read_comptime_new_expression()!
+	}
 	if g.tok == .name && g.lit == 'd' {
 		return g.read_comptime_d_expression()!
 	}
@@ -2116,6 +2119,27 @@ fn (mut g Parser) read_comptime_zero_expression() !string {
 	g.expect(.lpar)!
 	typ := g.parse_type()!
 	g.expect(.rpar)!
+	value := g.comptime_zero_value(typ)!
+	g.last_expression_type = typ
+	g.last_expression = []FastcExpressionToken{}
+	return value
+}
+
+// read_comptime_new_expression lowers `$new(T)`, a heap-allocated zero value of `T`.
+fn (mut g Parser) read_comptime_new_expression() !string {
+	g.expect(.name)!
+	g.expect(.lpar)!
+	typ := g.parse_type()!
+	g.expect(.rpar)!
+	value := g.comptime_zero_value(typ)!
+	c_type := fastc_output_c_type(flat.source_type_name(typ))
+	g.last_expression_type = flat.source_type_composition_two(.concat, typ, flat.source_type_id('*'))
+	g.last_expression = []FastcExpressionToken{}
+	return '((${c_type} *)${fastc_heap_copy_expression(flat.source_type_name(typ), value)})'
+}
+
+// comptime_zero_value renders the zero value of `typ` for `$zero` and `$new`.
+fn (mut g Parser) comptime_zero_value(typ u32) !string {
 	layout := g.underlying_alias_type(typ)
 	fastc_register_composite_type(typ, mut g.composite_types)
 	value := if fastc_is_pointer_type(layout) || fastc_is_numeric_expression_type(layout)
@@ -2142,8 +2166,6 @@ fn (mut g Parser) read_comptime_zero_expression() !string {
 	} else {
 		return g.unsupported('`\$zero` for `${flat.source_type_name(typ)}`')
 	}
-	g.last_expression_type = typ
-	g.last_expression = []FastcExpressionToken{}
 	return value
 }
 
