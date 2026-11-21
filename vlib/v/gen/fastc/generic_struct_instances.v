@@ -19,6 +19,9 @@ import v.token
 
 const fastc_struct_mono_max_rounds = 24
 
+const fastc_struct_mono_declaration_keywords = ['struct ', 'union ', 'enum ', 'interface ', 'type ',
+	'fn ']
+
 struct FastcStructGeneric {
 	module_name   string
 	name          string
@@ -96,6 +99,12 @@ mut:
 	// library_start is the length of a vlib source before copies were appended to it; only
 	// the copies are scanned for further instances.
 	library_start map[int]int
+	// scan_from is where the text not yet scanned for instances starts in each source: copies
+	// appended in a round are scanned in the next one, the text before them already was.
+	scan_from map[int]int
+	// generic_files are the sources that declare generics, generic methods or functions; only
+	// their offsets need refreshing after an edit.
+	generic_files map[int]bool
 }
 
 fn fastc_struct_mono_module(module_name string) string {
@@ -139,14 +148,27 @@ fn fastc_monomorphize_generic_structs(sources []FastcSourceFile, prefs &pref.Pre
 	if !any_generic {
 		return sources
 	}
+	mut timer := fastc_new_phase_timer()
 	for i, source_file in m.sources {
 		if m.eligible[i] {
-			m.index_file(i, source_file)
+			if fastc_struct_mono_has_generic_declaration(source_file.source) {
+				m.index_file(i, source_file)
+			} else {
+				m.index_type_names(source_file)
+			}
 		}
+	}
+	timer.mark('monomorphize.structs.index')
+	mut names := map[string]bool{}
+	for _, generic in m.generics {
+		names[generic.name] = true
+	}
+	for key, _ in m.functions {
+		names[key.all_after_last('.')] = true
 	}
 	mut dirty := []int{}
 	for i, eligible in m.eligible {
-		if eligible {
+		if eligible && fastc_struct_mono_may_reference_generics(m.sources[i].source, names) {
 			dirty << i
 		}
 	}
@@ -184,14 +206,18 @@ fn fastc_monomorphize_generic_structs(sources []FastcSourceFile, prefs &pref.Pre
 				continue
 			}
 			mut rewritten := fastc_apply_mapped_source_edits(m.sources[i], file_edits)
+			m.scan_from[i] = rewritten.source.len
 			for copy in file_copies {
 				rewritten = fastc_append_mapped_source(rewritten, copy)
 			}
 			m.sources[i] = rewritten
 			m.reindex_file(i)
-			dirty << i
+			if file_copies.len > 0 {
+				dirty << i
+			}
 		}
 	}
+	timer.mark('monomorphize.structs.rounds')
 	m.remove_instantiated_generics()
 	return m.sources
 }
@@ -227,6 +253,36 @@ fn fastc_struct_mono_names_generic(mut s scanner.Scanner) bool {
 		tok = s.scan()
 	}
 	return tok == .rsbr && s.scan() == .lpar
+}
+
+// fastc_struct_mono_may_reference_generics reports whether `source` may name a generic struct
+// or function with arguments: a byte check before the token scan. A candidate is `Name[` with a
+// capitalized or known generic name, or a qualified `mod.fn[...](` call.
+fn fastc_struct_mono_may_reference_generics(source string, names map[string]bool) bool {
+	mut open := 0
+	for {
+		open = source.index_after_('[', open)
+		if open < 0 {
+			return false
+		}
+		mut start := open
+		for start > 0 && fastc_identifier_byte(source[start - 1]) {
+			start--
+		}
+		if start < open {
+			if source[start].is_capital() || source[start..open] in names {
+				return true
+			}
+			if start > 0 && source[start - 1] == `.` {
+				close := source.index_after_(']', open)
+				if close > 0 && close + 1 < source.len && source[close + 1] == `(` {
+					return true
+				}
+			}
+		}
+		open++
+	}
+	return false
 }
 
 // ensure_module_indexed indexes the generics of a vlib module that project code names.
@@ -325,6 +381,7 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 				if tok == .eof {
 					break
 				}
+				m.generic_files[index] = true
 				m.generics[fastc_struct_mono_key(module_name, name)] = FastcStructGeneric{
 					module_name:   module_name
 					name:          name
@@ -360,6 +417,7 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 					continue
 				}
 				decl_end, after := fastc_struct_mono_type_decl_end(mut s, source)
+				m.generic_files[index] = true
 				m.generics[fastc_struct_mono_key(module_name, name)] = FastcStructGeneric{
 					module_name:   module_name
 					name:          name
@@ -387,10 +445,12 @@ fn (mut m FastcStructMono) index_file(index int, source_file FastcSourceFile) {
 			if name, generic_fn := fastc_struct_mono_read_generic_fn(mut fn_look, module_name, index,
 				fn_start)
 			{
+				m.generic_files[index] = true
 				m.functions[fastc_struct_mono_key(module_name, name)] = generic_fn
 			}
 			mut look := s
 			if method := fastc_struct_mono_read_method(mut look, module_name, index, fn_start) {
+				m.generic_files[index] = true
 				pending_methods << method
 				s = look
 				previous = .rcbr
@@ -445,8 +505,105 @@ fn fastc_struct_mono_type_decl_end(mut s scanner.Scanner, source string) (int, t
 	return end, tok
 }
 
+// fastc_struct_mono_declaration_rest returns where the text after a declaration keyword starts
+// on the line at `start` (after indentation and `pub`), and which keyword it was: 1 struct,
+// 2 union, 3 enum, 4 interface, 5 type, 6 fn; 0 for another line.
+fn fastc_struct_mono_declaration_rest(source string, start int, end int) (int, int) {
+	mut i := start
+	for i < end && source[i] in [` `, `\t`] {
+		i++
+	}
+	if end - i > 4 && source[i] == `p` && source[i + 1] == `u` && source[i + 2] == `b`
+		&& source[i + 3] == ` ` {
+		i += 4
+		for i < end && source[i] in [` `, `\t`] {
+			i++
+		}
+	}
+	for k, keyword in fastc_struct_mono_declaration_keywords {
+		if end - i > keyword.len && unsafe { vmemcmp(source.str + i, keyword.str, keyword.len) } == 0 {
+			mut rest := i + keyword.len
+			for rest < end && source[rest] in [` `, `\t`] {
+				rest++
+			}
+			return rest, k + 1
+		}
+	}
+	return end, 0
+}
+
+// index_type_names records the type names a source without generic declarations declares,
+// which parse_type needs to resolve unqualified names; it reads declaration lines only.
+fn (mut m FastcStructMono) index_type_names(source_file FastcSourceFile) {
+	module_name := fastc_struct_mono_module(source_file.header.module_name)
+	if module_name !in m.module_types {
+		m.module_types[module_name] = map[string]bool{}
+	}
+	source := source_file.source
+	mut start := 0
+	for start < source.len {
+		mut end := source.index_after_('\n', start)
+		if end < 0 {
+			end = source.len
+		}
+		rest, kind := fastc_struct_mono_declaration_rest(source, start, end)
+		if kind in [1, 2, 3, 4, 5] {
+			mut name_end := rest
+			for name_end < end && fastc_identifier_byte(source[name_end]) {
+				name_end++
+			}
+			is_c := name_end == rest + 1 && source[rest] == `C` && name_end < end
+				&& source[name_end] == `.`
+			if name_end > rest && !is_c {
+				m.module_types[module_name][source[rest..name_end]] = true
+			}
+		}
+		start = end + 1
+	}
+}
+
+// fastc_struct_mono_has_generic_declaration reports whether a source may declare a generic
+// struct, sum type or function, or a method of a generic struct, by reading declaration lines.
+fn fastc_struct_mono_has_generic_declaration(source string) bool {
+	mut start := 0
+	for start < source.len {
+		mut end := source.index_after_('\n', start)
+		if end < 0 {
+			end = source.len
+		}
+		rest, kind := fastc_struct_mono_declaration_rest(source, start, end)
+		if kind in [1, 2, 5, 6] && rest < end {
+			if source[rest] == `(` {
+				// A receiver: `fn (mut r Box[T]) m()`.
+				for i in rest .. end {
+					if source[i] == `)` {
+						break
+					}
+					if source[i] == `[` {
+						return true
+					}
+				}
+			} else {
+				mut name_end := rest
+				for name_end < end && (fastc_identifier_byte(source[name_end]) || source[name_end] == `.`) {
+					name_end++
+				}
+				if name_end > rest && name_end < end && source[name_end] == `[` {
+					return true
+				}
+			}
+		}
+		start = end + 1
+	}
+	return false
+}
+
 // reindex_file refreshes the offsets of the generic declarations of an edited source.
 fn (mut m FastcStructMono) reindex_file(index int) {
+	if index !in m.generic_files {
+		return
+	}
+	m.generic_files.delete(index)
 	for key, generic in m.generics {
 		if generic.source_index == index {
 			m.generics.delete(key)
@@ -569,7 +726,7 @@ fn (mut m FastcStructMono) scan_refs(index int) []FastcStructRef {
 	return m.scan_text(source_file.path, source_file.source, FastcStructMonoFile{
 		module_name: fastc_struct_mono_module(source_file.header.module_name)
 		imports:     source_file.header.imports
-	}, m.library_start[index] or { 0 })
+	}, int_max(m.library_start[index] or { 0 }, m.scan_from[index] or { 0 }))
 }
 
 // scan_text finds the concrete generic struct references in `source`, and follows explicit
