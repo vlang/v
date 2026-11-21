@@ -16,6 +16,9 @@ fn test_turtle() {
 	assert segments[1].from.x == 10
 	pushed := turtle_segments('F[+F]F', Vec2{0, 0}, 0, 1)
 	assert pushed.len == 3
+	wide := turtle_segments_with_turn('F+F', Vec2{0, 0}, 0, 10, 90)
+	assert wide.len == 2
+	assert wide[1].to.y == 10
 }
 
 fn test_voronoi() {

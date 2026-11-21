@@ -44,9 +44,15 @@ pub mut:
 	to   Vec2
 }
 
-// turtle_segments interprets F/f as forward moves, + and - as turns, and
-// brackets as a position/heading stack. Other symbols are ignored.
+// turtle_segments interprets F/f as forward moves, + and - as turns of 25
+// degrees, and brackets as a position/heading stack. Other symbols are ignored.
 pub fn turtle_segments(path string, start Vec2, heading f32, step f32) []TurtleSegment {
+	return turtle_segments_with_turn(path, start, heading, step, 25)
+}
+
+// turtle_segments_with_turn is turtle_segments with an explicit turn angle
+// in degrees, normally taken from LSystem.angle.
+pub fn turtle_segments_with_turn(path string, start Vec2, heading f32, step f32, turn f32) []TurtleSegment {
 	mut segments := []TurtleSegment{}
 	mut pos := start
 	mut angle := heading
@@ -66,10 +72,10 @@ pub fn turtle_segments(path string, start Vec2, heading f32, step f32) []TurtleS
 				pos = Vec2{pos.x + f32(math.cos(rad)) * step, pos.y + f32(math.sin(rad)) * step}
 			}
 			`+` {
-				angle += 25
+				angle += turn
 			}
 			`-` {
-				angle -= 25
+				angle -= turn
 			}
 			`[` {
 				stack << pos

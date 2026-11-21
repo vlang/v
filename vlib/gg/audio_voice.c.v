@@ -43,7 +43,8 @@ pub fn (mut v SoundVoice) set_pan(value f32) {
 
 // mix adds this voice's next frames into an interleaved float buffer.
 pub fn (mut v SoundVoice) mix(mut buffer []f32, frames int, channels int) {
-	if !v.playing || frames <= 0 || channels <= 0 || v.sound.samples.len == 0 {
+	if !v.playing || frames <= 0 || channels <= 0 || v.sound.samples.len == 0
+		|| v.sound.channels < 1 {
 		return
 	}
 	left_gain := f32(math.sqrt(f64((1 - v.pan) / 2))) * 1.41421356 * v.volume

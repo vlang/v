@@ -40,6 +40,16 @@ fn test_voice_loop_and_pan() {
 	assert v.pos == 0
 }
 
+fn test_voice_zero_channels_is_safe() {
+	sound := &Sound{ samples: [i16(1000), 1000] }
+	mut v := new_voice(sound)
+	v.sound.channels = 0
+	v.play()
+	mut buffer := [f32(0), 0]
+	v.mix(mut buffer, 1, 2)
+	assert buffer[0] == 0
+}
+
 fn test_mix_voices() {
 	sound := &Sound{ samples: [i16(1000), 1000, 1000, 1000] }
 	a := new_voice(sound)
