@@ -2575,7 +2575,14 @@ fn (mut g Parser) read_return_expression_branch() !string {
 	// an `Option`, and a bare value is wrapped into the success state — rather than emitting a raw
 	// `return <IError>` that TinyCC rejects.
 	mut return_value := value
-	if g.selfhost && g.return_type == fastc_type_result && fastc_trim_pointer_type(value_type) == fastc_type_ierror {
+	if value.trim_space() == '' && g.return_type in [fastc_type_option, fastc_type_result] {
+		// A bare `return` from a `!`/`?` function is its success state.
+		return_value = if g.return_type == fastc_type_result {
+			'(__v_result){0}'
+		} else {
+			'(Option){0}'
+		}
+	} else if g.selfhost && g.return_type == fastc_type_result && fastc_trim_pointer_type(value_type) == fastc_type_ierror {
 		return_value = '(__v_result){.err=${value}, .state=1}'
 	} else if g.selfhost && g.return_type in [fastc_type_option, fastc_type_result] && value_type !in [
 		u32(0),
