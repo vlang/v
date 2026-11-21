@@ -3228,7 +3228,7 @@ fn (mut tc TypeChecker) index_declaration_param_mutability(a &flat.FlatAst, entr
 // build_fn_name_indexes records the short names, per-file bare names and
 // static/associated keys of V and interop function declarations.
 fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
-	tc.build_fn_name_index_parts(a, fn_name_index_all)
+	tc.build_fn_name_index_parts(a, fn_name_index_all, tc.file_modules)
 }
 
 // The tables of index_fn_names_parts, by the part that owns them: each part
@@ -3242,7 +3242,9 @@ const fn_name_index_static = 4 // static_associated_fn_keys
 const fn_name_index_all = fn_name_index_short | fn_name_index_recursive_str | fn_name_index_static
 
 // build_fn_name_index_parts resets and fills the tables of `parts`.
-fn (mut tc TypeChecker) build_fn_name_index_parts(a &flat.FlatAst, parts int) {
+// `file_modules` is the files' modules as known before pass 1: the checker's
+// own table, or a copy of it when pass 1 runs meanwhile and adds to that.
+fn (mut tc TypeChecker) build_fn_name_index_parts(a &flat.FlatAst, parts int, file_modules map[string]string) {
 	// Every function declaration adds a key to each table (three to the
 	// recursive-str index); sized once, they are not rehashed at each doubling.
 	fn_decls := count_fn_decls(a, tc.top_level_idx)
@@ -3261,7 +3263,7 @@ fn (mut tc TypeChecker) build_fn_name_index_parts(a &flat.FlatAst, parts int) {
 		tc.recursive_str_fn_decl_index_complete = true
 		tc.recursive_str_fn_decl_ids.reserve(u32(fn_decls * 3))
 	}
-	tc.index_fn_names_parts(a, tc.top_level_idx, '', parts)
+	tc.index_fn_names_parts(a, tc.top_level_idx, '', parts, file_modules)
 }
 
 // count_fn_decls counts the fn_decl nodes among the top-level `entries`.
@@ -3276,12 +3278,12 @@ fn count_fn_decls(a &flat.FlatAst, entries []i32) int {
 }
 
 fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_module string) {
-	tc.index_fn_names_parts(a, entries, start_module, fn_name_index_all)
+	tc.index_fn_names_parts(a, entries, start_module, fn_name_index_all, tc.file_modules)
 }
 
 // index_fn_names_parts adds the function declarations of `entries` to the
 // tables of `parts` (fn_name_index_*).
-fn (mut tc TypeChecker) index_fn_names_parts(a &flat.FlatAst, entries []i32, start_module string, parts int) {
+fn (mut tc TypeChecker) index_fn_names_parts(a &flat.FlatAst, entries []i32, start_module string, parts int, file_modules map[string]string) {
 	mut module_name := start_module
 	mut recursive_str_module := start_module
 	mut recursive_str_file := ''
@@ -3290,8 +3292,8 @@ fn (mut tc TypeChecker) index_fn_names_parts(a &flat.FlatAst, entries []i32, sta
 		node := a.nodes[index]
 		if node.kind == .file {
 			recursive_str_file = node.value
-			recursive_str_module_known = node.value in tc.file_modules
-			recursive_str_module = tc.file_modules[node.value] or { '' }
+			recursive_str_module_known = node.value in file_modules
+			recursive_str_module = file_modules[node.value] or { '' }
 		}
 		if node.kind == .module_decl {
 			module_name = node.value
@@ -4992,43 +4994,13 @@ fn (mut tc TypeChecker) collect_declaration_visibility() {
 // and the full-scan fallback in collect()).
 fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
-	mut step_sw := time.new_stopwatch()
-	parallel_declaration_indexes := tc.prepare_collect_declaration_indexes_parallel(a)
-	if !parallel_declaration_indexes {
-		tc.build_enclosing_generic_param_index(a)
-		tc.build_type_declaration_index(a)
-		tc.build_fn_declaration_indexes(a)
+	// Lanes may build the indexes that nothing reads before pass 2 meanwhile.
+	if !tc.collect_pass1_stage_beside_late_indexes(a) {
+		tc.collect_pass1_stage(a, false)
 	}
-	tc.timing_step(mut step_sw, 'p1 decl idx')
-	if !tc.valid_diagnostic_fast {
-		tc.index_multiple_module_import_lines(a)
-	}
-	// Scans prepared for a line index that was not built must not outlive this AST.
-	tc.import_line_prescans = []ImportLineScan{}
-	tc.timing_step(mut step_sw, 'p1 import lines')
-	// Pass 1: collect type-level names (aliases, enums, sum types)
-	tc.collect_pass1(a, tc.top_level_idx, parallel_declaration_indexes)
-	tc.timing_step(mut step_sw, 'p1 loop')
-	tc.check_alias_declaration_cycles()
-	tc.cache_fn_generic_params(a)
-	tc.timing_step(mut step_sw, 'p1 generics')
-	// Pass 1 can parse callback aliases before later modules with same-named
-	// types have been indexed. Rebuild name-derived caches from the complete
-	// declaration table before collecting concrete signatures in pass 2.
-	tc.type_cache.clear_c_type_entries()
-	tc.invalidate_short_type_name_index()
-	if isnil(tc.prepared_collect) {
-		tc.check_c_struct_redeclarations(a)
-		tc.check_c_fn_redeclarations(a)
-	} else {
-		// A preparation keeps what the checks saw, for the code collected after it.
-		mut prepared := tc.prepared_collect
-		tc.check_c_struct_redeclarations_of(a, tc.top_level_idx, mut prepared.c_structs)
-		tc.check_c_fn_redeclarations_of(a, tc.top_level_idx, mut prepared.c_fns)
-	}
-	tc.timing_step(mut step_sw, 'p1 c redecl')
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ck_c_sw.restart()
+	mut step_sw := time.new_stopwatch()
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	// The native backend does not yet preserve large aggregate arguments reliably
 	// through the parse-cache helpers. Parsing uncached keeps native self-hosts
@@ -5128,6 +5100,48 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+// collect_pass1_stage builds the declaration indexes and runs pass 1 and the
+// checks that follow it. With `late_indexes_elsewhere`, the caller builds
+// the indexes of collect_late_declaration_index_tasks on lanes of its own.
+fn (mut tc TypeChecker) collect_pass1_stage(a &flat.FlatAst, late_indexes_elsewhere bool) {
+	mut step_sw := time.new_stopwatch()
+	parallel_declaration_indexes := tc.prepare_collect_declaration_indexes_parallel(a,
+		late_indexes_elsewhere)
+	if !parallel_declaration_indexes {
+		tc.build_enclosing_generic_param_index(a)
+		tc.build_type_declaration_index(a)
+		tc.build_fn_declaration_indexes(a)
+	}
+	tc.timing_step(mut step_sw, 'p1 decl idx')
+	if !tc.valid_diagnostic_fast {
+		tc.index_multiple_module_import_lines(a)
+	}
+	// Scans prepared for a line index that was not built must not outlive this AST.
+	tc.import_line_prescans = []ImportLineScan{}
+	tc.timing_step(mut step_sw, 'p1 import lines')
+	// Pass 1: collect type-level names (aliases, enums, sum types)
+	tc.collect_pass1(a, tc.top_level_idx, parallel_declaration_indexes)
+	tc.timing_step(mut step_sw, 'p1 loop')
+	tc.check_alias_declaration_cycles()
+	tc.cache_fn_generic_params(a)
+	tc.timing_step(mut step_sw, 'p1 generics')
+	// Pass 1 can parse callback aliases before later modules with same-named
+	// types have been indexed. Rebuild name-derived caches from the complete
+	// declaration table before collecting concrete signatures in pass 2.
+	tc.type_cache.clear_c_type_entries()
+	tc.invalidate_short_type_name_index()
+	if isnil(tc.prepared_collect) {
+		tc.check_c_struct_redeclarations(a)
+		tc.check_c_fn_redeclarations(a)
+	} else {
+		// A preparation keeps what the checks saw, for the code collected after it.
+		mut prepared := tc.prepared_collect
+		tc.check_c_struct_redeclarations_of(a, tc.top_level_idx, mut prepared.c_structs)
+		tc.check_c_fn_redeclarations_of(a, tc.top_level_idx, mut prepared.c_fns)
+	}
+	tc.timing_step(mut step_sw, 'p1 c redecl')
 }
 
 // collect_resolution_tail resolves what pass 2 left pending and builds the

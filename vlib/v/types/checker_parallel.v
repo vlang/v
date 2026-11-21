@@ -345,6 +345,8 @@ struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
 	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function short names, 5 = file declarations, 6 = recursive str names, 7 = static keys, 8 = signature table reserves
+	// The files' modules as they were before pass 1 (see build_fn_name_index_parts).
+	file_modules map[string]string
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
@@ -384,10 +386,10 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 		1 { tc.build_type_declaration_index(a.a) }
 		2 { tc.build_declaration_param_mutability_index(a.a) }
 		3 { tc.collect_declaration_visibility() }
-		4 { tc.build_fn_name_index_parts(a.a, fn_name_index_short) }
+		4 { tc.build_fn_name_index_parts(a.a, fn_name_index_short, a.file_modules) }
 		5 { tc.build_file_declaration_indexes(a.a) }
-		6 { tc.build_fn_name_index_parts(a.a, fn_name_index_recursive_str) }
-		7 { tc.build_fn_name_index_parts(a.a, fn_name_index_static) }
+		6 { tc.build_fn_name_index_parts(a.a, fn_name_index_recursive_str, a.file_modules) }
+		7 { tc.build_fn_name_index_parts(a.a, fn_name_index_static, a.file_modules) }
 		else { tc.reserve_collect_signature_maps() }
 	}
 	return unsafe { nil }
@@ -501,7 +503,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
-fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
+fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst, late_indexes_elsewhere bool) bool {
 	if !tc.collect_declaration_indexes_in_parallel(a) {
 		return false
 	}
@@ -510,10 +512,14 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 	// the tables of the collection passes meanwhile, which no index task uses.
 	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
 	for kind in 0 .. collect_declaration_index_tasks {
+		if late_indexes_elsewhere && u8(kind) in collect_late_declaration_index_tasks {
+			continue
+		}
 		args << CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: u8(kind)
+			tc:           voidptr(tc)
+			a:            a
+			kind:         u8(kind)
+			file_modules: tc.file_modules
 		}
 	}
 	mut tasks := []workers.Task{cap: args.len}
@@ -540,6 +546,69 @@ fn (tc &TypeChecker) collect_declaration_indexes_in_parallel(a &flat.FlatAst) bo
 // collect_declaration_index_tasks is the number of independent tasks
 // collect_declaration_index_thread dispatches on.
 const collect_declaration_index_tasks = 9
+
+// collect_late_declaration_index_tasks are the index tasks whose tables
+// nothing reads or writes before pass 2 prepares the function declarations:
+// the parameter mutability of the declarations and the three function name
+// indexes. They read the AST and the top-level index alone.
+const collect_late_declaration_index_tasks = [u8(2), 4, 6, 7]
+
+struct CollectPass1StageArgs {
+	tc voidptr
+	a  &flat.FlatAst
+}
+
+fn collect_pass1_stage_thread(arg voidptr) voidptr {
+	a := unsafe { &CollectPass1StageArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.collect_pass1_stage(a.a, true)
+	return unsafe { nil }
+}
+
+// collect_pass1_stage_beside_late_indexes is collect_pass1_stage with the
+// late declaration indexes built on pool lanes meanwhile, which were the
+// slowest lanes of the batch that pass 1 waited for. It returns false, and
+// does nothing, when the indexes are not built on lanes at all.
+//
+// The lanes read the AST, the top-level index and a copy of file_modules
+// taken before pass 1, which adds the files' modules to the table itself;
+// each fills tables of its own, which pass 1 and its checks neither read nor
+// write. They are joined before pass 2 prepares the declarations.
+fn (mut tc TypeChecker) collect_pass1_stage_beside_late_indexes(a &flat.FlatAst) bool {
+	if !tc.collect_declaration_indexes_in_parallel(a)
+		|| os.getenv('V3_NO_LATE_CHECK_DECL_INDEXES') != '' {
+		return false
+	}
+	pool := checker_worker_pool(a)
+	file_modules := tc.file_modules.clone()
+	mut args := []CollectDeclarationIndexArgs{cap: collect_late_declaration_index_tasks.len}
+	for kind in collect_late_declaration_index_tasks {
+		args << CollectDeclarationIndexArgs{
+			tc:           voidptr(tc)
+			a:            a
+			kind:         kind
+			file_modules: file_modules
+		}
+	}
+	stage := CollectPass1StageArgs{
+		tc: voidptr(tc)
+		a:  a
+	}
+	mut tasks := []workers.Task{cap: args.len + 1}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run: collect_declaration_index_thread
+			arg: unsafe { voidptr(&args[i]) }
+		}
+	}
+	tasks << workers.Task{
+		run:        collect_pass1_stage_thread
+		arg:        unsafe { voidptr(&stage) }
+		force_sync: true
+	}
+	pool.run(tasks)
+	return true
+}
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the
