@@ -1165,8 +1165,18 @@ fn (mut g Parser) parse_match_statement() !bool {
 				}
 				tag_source:     '${subject_name}${boxed_access}_typ'
 				object_source:  '${subject_name}${boxed_access}_object'
-				subject_source: subject_member_source
-				subject_type:   subject_member_type
+				// A grouped arm keeps a plain local boxed: an `is` test inside it
+				// inspects the local itself, not the first variant's view.
+				subject_source: if subject_member_source == '' && struct_multi_variant && subject_local != '' {
+					g.local_c_name(subject_local)
+				} else {
+					subject_member_source
+				}
+				subject_type:   if subject_member_source == '' && struct_multi_variant && subject_local != '' {
+					fastc_normalize_inferred_type(subject_type)
+				} else {
+					subject_member_type
+				}
 			}
 			member_smartcast_active = true
 		}
