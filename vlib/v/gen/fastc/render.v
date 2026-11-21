@@ -4907,6 +4907,21 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			return '*(${pointer})'
 		}
 	}
+	if expected_type_source_id != 0 && !fastc_is_pointer_type(expected_type_source_id)
+		&& g.declared_kinds[g.semantic_type_key(expected_type_source_id)] in [
+			.struct_,
+			.union_,
+		] {
+		actual := g.infer_expression_type(tokens) or { u32(0) }
+		// A reference passed to a struct parameter is dereferenced, as the C backend does
+		// (`select_word(pin, ...)` with `pin &Pin`).
+		if fastc_is_pointer_type(actual) && flat.source_type_syntax(actual).c_pointer_depth() == 1
+			&& (g.semantic_type_key(fastc_trim_pointer_type(actual)) == g.semantic_type_key(expected_type_source_id)
+				|| g.underlying_alias_type(fastc_trim_pointer_type(actual)) == g.underlying_alias_type(expected_type_source_id)) {
+			pointer := g.render_call_argument_expression(tokens, actual) or { return none }
+			return '(*(${pointer}))'
+		}
+	}
 	if g.declared_kinds[g.semantic_type_key(expected_type_source_id)] == .alias_ {
 		if enum_key := g.underlying_enum_type_key(g.semantic_type_key(expected_type_source_id)) {
 			base := flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_key)))
