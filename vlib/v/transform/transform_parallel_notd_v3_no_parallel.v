@@ -935,6 +935,70 @@ fn scopes_address_range(scopes []voidptr) (uint, uint) {
 	return lo, hi
 }
 
+// A whole-tree text scan streams every node once: it is bound by memory, so a
+// few threads share a large tree.
+const node_text_scan_threads = 4
+const node_text_scan_min_nodes = 262144
+
+// NodeTextScanArgs is one thread's node range of nodes_have_text_in_scopes.
+struct NodeTextScanArgs {
+	a      &flat.FlatAst = unsafe { nil }
+	scopes []voidptr
+	lo     uint
+	hi     uint
+	start  int
+	end    int
+}
+
+// node_text_scan_range reports whether a node of the range has a text or payload
+// in one of the arenas. It only reads the tree and allocates nothing.
+fn node_text_scan_range(args NodeTextScanArgs) bool {
+	for idx in args.start .. args.end {
+		node := unsafe { &args.a.nodes[idx] }
+		if node_has_any_scoped_text(node, args.scopes, args.lo, args.hi) {
+			return true
+		}
+	}
+	return false
+}
+
+// nodes_have_text_in_scopes reports whether any node text or payload lives in
+// one of `scopes`. It only reads the tree, on the calling thread and a few
+// threads of its own, so it can run beside a stage that does not write the tree.
+pub fn nodes_have_text_in_scopes(a &flat.FlatAst, scopes []voidptr) bool {
+	lo, hi := scopes_address_range(scopes)
+	if hi <= lo {
+		return false
+	}
+	n := a.nodes.len
+	jobs := int_max(1, int_min(node_text_scan_threads, n / node_text_scan_min_nodes))
+	mut threads := []thread bool{cap: jobs - 1}
+	for ji in 1 .. jobs {
+		threads << spawn node_text_scan_range(NodeTextScanArgs{
+			a:      a
+			scopes: scopes
+			lo:     lo
+			hi:     hi
+			start:  int(i64(n) * ji / jobs)
+			end:    int(i64(n) * (ji + 1) / jobs)
+		})
+	}
+	mut found := node_text_scan_range(NodeTextScanArgs{
+		a:      a
+		scopes: scopes
+		lo:     lo
+		hi:     hi
+		start:  0
+		end:    n / jobs
+	})
+	for th in threads {
+		if th.wait() {
+			found = true
+		}
+	}
+	return found
+}
+
 // scoped_text_scan_thread flags this worker's node range. Pure reads plus
 // byte writes into a disjoint flag range: no allocations, so it is safe to
 // run on pool threads regardless of their arena state.

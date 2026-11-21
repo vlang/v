@@ -4761,6 +4761,17 @@ fn free_prealloc_scopes(scopes []voidptr) {
 	}
 }
 
+// release_unreferenced_transform_helper_scopes frees the transform helper arenas
+// when no node text or payload lives in them, and sends whether it did. It only
+// reads the tree, so it can run beside a stage that does not write it.
+fn release_unreferenced_transform_helper_scopes(a &flat.FlatAst, scopes []voidptr, released chan bool) {
+	referenced := transform.nodes_have_text_in_scopes(a, scopes)
+	if !referenced {
+		free_prealloc_scopes(scopes)
+	}
+	released <- !referenced
+}
+
 // join_stopped_worker_pool waits for the threads of a stopped worker pool.
 fn join_stopped_worker_pool(pool &workers.Pool) {
 	mut p := unsafe { pool }
@@ -13376,6 +13387,10 @@ pub fn run(args []string) {
 	// Helper arenas can back both checker caches and lowered AST text.
 	mut transform_helper_scopes := []voidptr{}
 	mut retain_transform_helper_texts := false
+	// A helper thread releases the retained helper arenas beside Cgen when no node
+	// text lives in them, and reports on this channel whether it did.
+	mut transform_helper_release := chan bool{cap: 1}
+	mut transform_helper_release_pending := false
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -15505,6 +15520,14 @@ pub fn run(args []string) {
 					track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
 				}
 				transform_helper_scopes = []voidptr{}
+			} else if transform_helper_scopes.len > 0 {
+				// Retained helpers back a node text only when lowering published one of
+				// their strings, which a compiler build does not do. Cgen only reads the
+				// tree, so a helper thread checks every node beside it and releases the
+				// arenas before the peak of Cgen instead of after it.
+				transform_helper_release_pending = true
+				track_release_thread(spawn release_unreferenced_transform_helper_scopes(a,
+					transform_helper_scopes, transform_helper_release))
 			}
 			pre_tc.freeze_type_cache_for_forks()
 			pre_tc.discard_type_cache_overlay_after_forks()
@@ -16138,6 +16161,12 @@ pub fn run(args []string) {
 			}
 			b.print_report()
 			wait_release_threads()
+			if transform_helper_release_pending {
+				if <-transform_helper_release {
+					transform_helper_scopes = []voidptr{}
+				}
+				transform_helper_release_pending = false
+			}
 			free_prealloc_scopes(transform_helper_scopes)
 			transform_helper_scopes = []voidptr{}
 			if retained_transform_scope != unsafe { nil }
@@ -16152,6 +16181,12 @@ pub fn run(args []string) {
 		// Nothing below reads the transformed AST or its checker payloads: the C
 		// compiler consumes the generated file. Release those arenas alongside it
 		// so their unmapping is not serial work after the compile.
+		if transform_helper_release_pending {
+			if <-transform_helper_release {
+				transform_helper_scopes = []voidptr{}
+			}
+			transform_helper_release_pending = false
+		}
 		if transform_helper_scopes.len > 0 {
 			track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
 			transform_helper_scopes = []voidptr{}
@@ -17250,6 +17285,12 @@ Please install the corresponding development package/libraries and make sure the
 		if retained_transform_prepare_scope != unsafe { nil } {
 			prealloc_scope_free_for_v3(retained_transform_prepare_scope)
 			retained_transform_prepare_scope = unsafe { nil }
+		}
+		if transform_helper_release_pending {
+			if <-transform_helper_release {
+				transform_helper_scopes = []voidptr{}
+			}
+			transform_helper_release_pending = false
 		}
 		for scope in transform_helper_scopes {
 			prealloc_scope_free_for_v3(scope)

@@ -67,6 +67,12 @@ pub fn scan_scoped_text_flags_parallel_multi(_ &flat.FlatAst, _ []voidptr, mut _
 	return false
 }
 
+// nodes_have_text_in_scopes leaves the helper arenas alone in no-parallel builds:
+// they are released after code generation.
+pub fn nodes_have_text_in_scopes(_ &flat.FlatAst, _ []voidptr) bool {
+	return true
+}
+
 fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 	return false
 }
