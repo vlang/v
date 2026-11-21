@@ -16,9 +16,26 @@ fn scoped_monomorph_v3_bin_path() string {
 	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test_${os.getpid()}${scoped_monomorph_bin_suffix}')
 }
 
+fn scoped_monomorph_cc_candidates() []string {
+	$if windows {
+		// LLVM's clang.exe uses the MSVC ABI; a native MinGW GCC is needed here.
+		return ['gcc']
+	} $else {
+		return ['clang', 'gcc']
+	}
+}
+
+fn test_scoped_monomorph_cc_candidates() {
+	$if windows {
+		assert scoped_monomorph_cc_candidates() == ['gcc']
+	} $else {
+		assert scoped_monomorph_cc_candidates() == ['clang', 'gcc']
+	}
+}
+
 fn scoped_monomorph_cc() string {
 	// TinyCC-built compilers disable parallel specialization even when opted in.
-	for cc in ['clang', 'gcc'] {
+	for cc in scoped_monomorph_cc_candidates() {
 		if path := os.find_abs_path_of_executable(cc) {
 			return path
 		}
