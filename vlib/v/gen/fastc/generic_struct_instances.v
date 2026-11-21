@@ -886,8 +886,29 @@ fn (m &FastcStructMono) render_method(method FastcStructGenericMethod, instance 
 		end:         method.receiver_end - method.start
 		replacement: instance.name
 	}
-	return m.render_copy(source_file, method.start, method.end, method.type_params, instance,
+	// A method that lists a receiver parameter among its own (`read_bits[E, T]` on
+	// `BitReader[E]`) keeps it generic; its calls pass the same type explicitly.
+	own_params := fastc_struct_mono_method_own_params(source_file.source, method)
+	type_params := method.type_params.map(if it in own_params { '' } else { it })
+	return m.render_copy(source_file, method.start, method.end, type_params, instance,
 		method.receiver_start, method.receiver_end, mut edits)
+}
+
+// fastc_struct_mono_method_own_params returns the type parameters a generic struct's method
+// declares after its name.
+fn fastc_struct_mono_method_own_params(source string, method FastcStructGenericMethod) []string {
+	rest := source[method.receiver_end..method.end]
+	close := rest.index(')') or { return []string{} }
+	after := rest[close + 1..].trim_left(' \t')
+	mut i := 0
+	for i < after.len && (after[i].is_letter() || after[i].is_digit() || after[i] == `_`) {
+		i++
+	}
+	if i == 0 || i >= after.len || after[i] != `[` {
+		return []string{}
+	}
+	end := after.index_after(']', i) or { return []string{} }
+	return after[i + 1..end].split(',').map(it.trim_space())
 }
 
 // render_copy substitutes the type parameters in `[start, end)` outside the already edited

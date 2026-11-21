@@ -366,6 +366,11 @@ fn (mut g Parser) queue_mono_method(receiver_type u32, method string, concrete u
 			return_types = fastc_specialized_generic_result_types(return_types, result_concrete)
 			option_type = fastc_specialized_generic_result_type(option_type, result_concrete)
 		}
+		if specialized := g.mono_struct_instance_signature(source, concrete) {
+			return_type = specialized.return_type
+			return_types = specialized.return_types.ids.clone()
+			option_type = specialized.option_type
+		}
 		if return_source_id == 0 {
 			return_type = flat.source_type_void
 		}
@@ -436,15 +441,25 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	if look.scan() != .lsbr {
 		return none
 	}
-	first := look.scan()
-	concrete_source_id, next := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return none }
-	concrete := concrete_source_id
-
-	after := look.scan()
-	if next != .rsbr || after != .lpar {
+	source := g.generic_method_sources['${receiver_base}.${method}'] or { return none }
+	// One argument per type parameter (`read_bits[BigEndian, u16](...)`), joined with `,`.
+	mut arguments := []string{}
+	mut next := look.scan()
+	for {
+		argument, after := fastc_scan_type(mut look, next, g.path, g.module_name, g.imports,
+			g.declared_types, g.selfhost) or { return none }
+		arguments << flat.source_type_name(argument)
+		if after != .comma {
+			next = after
+			break
+		}
+		next = look.scan()
+	}
+	if next != .rsbr || look.scan() != .lpar
+		|| arguments.len != source.type_param.split(',').len {
 		return none
 	}
-	return g.queue_mono_method(receiver_base_id, method, concrete)
+	return g.queue_mono_method(receiver_base_id, method, flat.source_type_id(arguments.join(',')))
 }
 
 // queue_implicit_mono_method recognizes `receiver.method(arg)` for generic methods and
@@ -606,14 +621,19 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 }
 
 // mono_struct_instance_signature collects the signature of an on-demand instance whose return
-// type names a specialized generic struct.
+// type names a specialized generic struct, or uses one of several type parameters.
 fn (g &Parser) mono_struct_instance_signature(source FastcGenericMethodSource, concrete u32) ?FastcFunctionSignature {
-	if !source.return_type_source_text().contains('[') {
+	result_source := source.return_type_source_text()
+	// Several type parameters cannot be substituted into the erased result spelling, so the
+	// instance's own declaration gives its result, as it does for specialized structs.
+	several := source.type_param.contains(',') && fastc_generic_type_source_uses_parameter(result_source,
+		source.type_param, g.prefs)
+	if !result_source.contains('[') && !several {
 		return none
 	}
 	instance := g.render_mono_method(source, concrete)
 	header_end := instance.source.index('{') or { return none }
-	if !instance.source[..header_end].contains('_mono_') {
+	if !several && !instance.source[..header_end].contains('_mono_') {
 		return none
 	}
 	mut signatures := map[string]FastcFunctionSignature{}
