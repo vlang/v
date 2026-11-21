@@ -7129,7 +7129,7 @@ Replace the generated `assert true` with a meaningful assertion before using the
 V avoids doing unnecessary allocations in the first place by using value types,
 string buffers, promoting a simple abstraction-free code style.
 
-There are 4 ways to manage memory in V.
+V has four main memory-management approaches, with additional allocator backends and scoped arenas that compose with some of them.
 
 The default is a minimal and a well performing tracing GC.
 
@@ -7145,10 +7145,13 @@ per 8 MiB of growth, at the cost of using up to about twice the live heap.
 With `-gc vgc`, `-d vgc_parallel_mark` enables helper threads for the mark phase (up to four).
 Mark bits are updated with 32-bit atomic compare-and-swap; only the shared work queue is locked,
 so this is opt-in because queue contention can cost more than it saves on small heaps. The
-GreenTea span queue (`-d vgc_greentea`) remains single-threaded.
+GreenTea span queue (`-d vgc_greentea`) remains single-threaded. Pointer-free backing
+storage, such as arrays and maps whose elements contain no pointers, is allocated in noscan
+spans, so the marker does not trace it. VGC remains opt-in; Boehm stays the default.
 
-The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
-(~90-100%): the compiler inserts necessary free calls automatically during compilation.
+The second way is autofree, enabled with `-autofree`. For values whose lifetime the compiler
+can prove, it inserts the necessary `free()` calls at compile time; the exact share of
+allocations handled this way is workload-dependent and is not measured here.
 Remaining small percentage of objects is freed via GC. The developer doesn't need to change
 anything in their code. "It just works", like in Python, Go, or Java, except there's no
 heavy GC tracing everything or expensive RC for each object.
@@ -7188,6 +7191,15 @@ for i in 0 .. 3 {
 a.free()
 println(results)
 ```
+
+### Incompatible flag combinations
+
+`-gc vgc` and `-prealloc` cannot be combined. The driver rejects the pair with a
+diagnostic because the two allocator states are internally inconsistent: most
+allocations under `-prealloc` live in arenas that are never collected, while typed
+and `memdup` allocations and all GC accounting still route to VGC. The `arena`
+module is also a compile-time error under `-gc vgc`; it is supported with
+`-gc none`, the default GC, and `-prealloc`.
 
 ### Control
 

@@ -36,8 +36,18 @@ at the end of the owning value's lexical scope, on every exit path.
 A borrow ends at its **last use**, not necessarily at scope end. When a borrower
 is no longer read before a conflicting write or move, its loan is dead and the
 write/move is accepted. Ambiguous control flow (branches, loops, escaping
-closures, deferred or spawned code, raw pointer aliases) keeps the loan alive
-and the conservative diagnostic.
+closures, deferred or spawned code, raw pointer aliases, and implicit reads
+performed by a destructor (`Observer__drop`)) keeps the loan alive and the
+conservative diagnostic.
+
+These strict-ownership shapes are rejected deliberately:
+
+* A call that passes both `&s` and an owned copy `s` to the same callee
+  (`foo(&s, s)`) is rejected: the by-value argument conflicts with the
+  outstanding loan, which stays alive until the call completes.
+* A `consume(conn)` on a value whose destructor implicitly reads it is rejected
+  in straight-line code and inside an `if` branch, even when the last explicit
+  read precedes the consume.
 
 Borrows to array elements, map values and string slices keep their root owner.
 `lent`-style accessors do not create owners. A `cursor` mark makes an edge
@@ -50,10 +60,10 @@ lexical scope. They run on normal exit, `return`, `break`, `continue`, and on
 failed `?`/`!` propagation. A failed propagation destroys only locals that were
 already initialized inside the scope where the failure occurred.
 
-Nested blocks in deferred code keep their own cleanup scopes. A duplicated
-lowerings of one source arm (a multi-type `match` branch) share the source
-cleanup entries: each lowered variant frees the same locals, without adding new
-cleanup sites.
+Nested blocks in deferred code keep their own cleanup scopes. Nested multi-type
+`match` arms are lowered with `__v3_drop_names` tagging: cleanup is filtered per
+lowered variant so each variant frees only the locals declared in its source arm,
+without adding new cleanup sites.
 
 ## Interop and opt-outs
 
@@ -71,4 +81,5 @@ Full CFG-based liveness is not implemented; the current analysis is block-local
 plus a conservative global check. Sum-type and interface payloads, closures,
 and cycles need explicit `trace`-style handling. The strict per-implementer
 `clone()` requirement for `IError` does not apply in autofree mode because error
-values are shared.
+values are shared. The rejected examples above are deliberate soundness rules,
+not unimplemented features.
