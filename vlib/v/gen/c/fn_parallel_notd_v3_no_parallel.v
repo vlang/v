@@ -153,13 +153,65 @@ fn fn_signature_registration_thread(arg voidptr) voidptr {
 
 fn flat_cgen_select_thread(arg voidptr) voidptr {
 	mut a := unsafe { &FlatCgenSelectArgs(arg) }
+	// `scope` holds the candidates and their names until cgen is done. The
+	// selection's scratch (the view's checker fork and name caches) is several
+	// times that and goes with a disposable arena.
 	a.scope = cgen_worker_scope_begin(true)
+	scratch := cgen_worker_scope_begin(true)
 	master := unsafe { &FlatGen(a.g) }
 	mut view := master.new_collect_gen_info_view()
 	nodes := unsafe { &[]i32(a.nodes_ptr) }
-	a.candidates = view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file, a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.program_modules)
+	candidates := view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file, a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.program_modules)
+	cgen_worker_scope_leave(scratch)
+	if scratch == unsafe { nil } {
+		a.candidates = moved_fn_gen_candidates(candidates)
+	} else {
+		a.candidates = own_fn_gen_candidates(scratch, candidates)
+		cgen_worker_scope_free(scratch)
+	}
 	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
+}
+
+// moved_fn_gen_candidates returns its argument: a call result is stored
+// without the deep copy of an addressable array.
+@[inline]
+fn moved_fn_gen_candidates(candidates []FlatFnGenCandidate) []FlatFnGenCandidate {
+	return candidates
+}
+
+// own_fn_gen_candidates copies the candidates of a selection task out of its
+// scratch arena, with the names that the arena owns. A candidate's C name is
+// its preferred name.
+@[direct_array_access]
+fn own_fn_gen_candidates(scratch voidptr, candidates []FlatFnGenCandidate) []FlatFnGenCandidate {
+	mut owned := []FlatFnGenCandidate{cap: candidates.len}
+	for i in 0 .. candidates.len {
+		candidate := unsafe { &candidates[i] }
+		preferred_name := own_cgen_string(scratch, candidate.preferred_name)
+		c_name := if candidate.item.c_name.str == candidate.preferred_name.str
+			&& candidate.item.c_name.len == candidate.preferred_name.len {
+			preferred_name
+		} else {
+			own_cgen_string(scratch, candidate.item.c_name)
+		}
+		owned << moved_flat_fn_gen_candidate(FlatFnGenCandidate{
+			preferred_name: preferred_name
+			item:           FlatFnGenItem{
+				node_id:                   candidate.item.node_id
+				file:                      own_cgen_string(scratch, candidate.item.file)
+				module:                    own_cgen_string(scratch, candidate.item.module)
+				c_name:                    c_name
+				is_program_specialization: candidate.item.is_program_specialization
+				is_program:                candidate.item.is_program
+				direct_array_access:       candidate.item.direct_array_access
+				ignore_overflow:           candidate.item.ignore_overflow
+				cost:                      candidate.item.cost
+				skip_prelude_scan:         candidate.item.skip_prelude_scan
+			}
+		})
+	}
+	return owned
 }
 
 fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
