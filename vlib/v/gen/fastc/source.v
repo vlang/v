@@ -48,36 +48,10 @@ fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 }
 
 // fastc_sources_with_self_module_qualifiers adds the current module's short
-// qualifier after source resolution, without loading it as a new import.
-// fastc_sources_with_self_imports lets a module name its own declarations with its own name,
-// as in `terminal.tabstop_interval` inside `module terminal`, by importing itself under that
-// name unless an import already uses it.
-fn fastc_sources_with_self_imports(sources []FastcSourceFile) []FastcSourceFile {
-	mut result := []FastcSourceFile{cap: sources.len}
-	for source in sources {
-		module_name := source.header.module_name
-		qualifier := module_name.all_after_last('.')
-		if module_name in ['', 'main', 'builtin'] || qualifier in source.header.imports {
-			result << source
-			continue
-		}
-		mut imports := source.header.imports.clone()
-		imports[qualifier] = module_name
-		result << FastcSourceFile{
-			...source
-			header: FastcSourceHeader{
-				...source.header
-				imports: imports
-			}
-		}
-	}
-	return result
-}
-
+// qualifier after source resolution, without loading it as a new import, so a module can
+// name its own declarations (`terminal.tabstop_interval` inside `module terminal`). An
+// import or a global (`__global storage`) of that name keeps it.
 fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
-	if !prefs.target_libc_headers {
-		return sources
-	}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut global_paths := map[string]string{}
@@ -100,6 +74,7 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		module_name := source.header.module_name
 		qualifier := module_name.all_after_last('.')
 		mut shadowed := qualifier == '' || qualifier in source.header.imports
+			|| (!prefs.target_libc_headers && module_name in ['', 'main', 'builtin'])
 		if !shadowed {
 			for key, _ in globals {
 				if key == qualifier || key.ends_with('.${qualifier}') {

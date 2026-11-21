@@ -2254,8 +2254,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// Source-level generic monomorphization runs first; it is a no-op when the
 	// program has no generic function definitions (so the self-host is untouched).
 	mut timer := fastc_new_phase_timer()
-	qualified_sources := fastc_sources_with_self_module_qualifiers(fastc_sources_with_self_imports(input_sources),
-		prefs)!
+	qualified_sources := fastc_sources_with_self_module_qualifiers(input_sources, prefs)!
 	mut sources := fastc_monomorphize_sources(qualified_sources, prefs)!
 	timer.mark('monomorphize')
 	mut declared_types := map[u32]bool{}
