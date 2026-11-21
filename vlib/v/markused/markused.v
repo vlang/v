@@ -1029,6 +1029,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// The slot of each declaration of `body_ids` in `body_results`, or -1.
 	mut body_slots := []i32{}
 	mut body_results := []BodyCalls{}
+	mut precollect := &MarkusedPrecollect(unsafe { nil })
 	// Frontier checking discovers bodies on demand; eagerly collecting checked bodies
 	// repeats work and retains call lists for declarations the queue never reaches.
 	if library_body_checker == unsafe { nil } && body_ids.len >= min_eager_markused_bodies
@@ -1063,18 +1064,28 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		} else {
 			body_import_contexts
 		}
-		body_results = precollect_body_calls(collector, collect_ids, collect_modules, collect_import_contexts)
+		precollect = start_precollect_body_calls(collector, collect_ids, collect_modules,
+			collect_import_contexts, true)
 	}
-	if tc.verbose {
-		eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
-		mu_sw.restart()
+	// With scoped pool workers the collection is still running here. The roots
+	// below do not read its results, so they are seeded meanwhile; the pieces
+	// fork `tc` on the pool threads, so this thread queries a fork of its own
+	// until they are done. A fork answers every query as `tc` does.
+	precollect_async := !isnil(precollect) && precollect.is_async()
+	precollect_started_us := mu_sw.elapsed().microseconds()
+	mut seed_tc := unsafe { tc }
+	mut seed_collector := collector
+	if precollect_async {
+		seed_tc = tc.fork_for_parallel_transform(a)
+		seed_tc.share_ierror_impl_names_from(tc)
+		seed_collector = collector.fork_with_tc(seed_tc)
 	}
 	needs_closure_runtime := if reachable_runtime_helpers {
 		markused_has_closure_runtime_import(a)
 	} else if use_prepared && prepared.needs_closure_runtime {
 		true
 	} else {
-		markused_program_needs_closure_runtime(a, tc)
+		markused_program_needs_closure_runtime(a, seed_tc)
 	}
 	mut reachable_helper_scan := RuntimeHelpersScan{}
 	mut runtime_helper_seen := []bool{}
@@ -1090,7 +1101,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			reachable_helper_scan.deferred_closure_mask = []bool{len: a.nodes.len}
 			for idx in tc.top_level_idx {
 				node := a.nodes[idx]
-				if markused_is_builtin_closure_global(a, tc, node) {
+				if markused_is_builtin_closure_global(a, seed_tc, node) {
 					runtime_helper_subtree(a, flat.NodeId(idx), mut reachable_helper_scan.deferred_closure_mask,
 						mut runtime_helper_stack, mut runtime_helper_nodes)
 					reachable_helper_scan.deferred_closure_nodes << runtime_helper_nodes.nodes[..runtime_helper_nodes.size]
@@ -1098,10 +1109,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 		}
 		body_nodes := runtime_helper_body_mask(a, body_ids)
-		reachable_helper_scan.enqueue_nodes(a, tc, []int{}, body_nodes, '', map[string]string{}, mut used, mut queue)
+		reachable_helper_scan.enqueue_nodes(a, seed_tc, []int{}, body_nodes, '', map[string]string{}, mut used, mut queue)
 		runtime_helper_seen = []bool{len: a.nodes.len}
 	} else if !rt_scan_parallel && !trivial_literal_output {
-		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
+		enqueue_detected_runtime_helpers(a, seed_tc, mut used, mut queue)
 	}
 	if !trivial_literal_output && needs_closure_runtime {
 		enqueue('closure.closure_init', mut used, mut queue)
@@ -1109,21 +1120,21 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
 	if !trivial_literal_output {
-		enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
+		enqueue_function_value_selectors(a, seed_collector, fn_decls, has_entry_main, mut used, mut queue)
 	}
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
 	// through a wrapper cgen generates later. The checker records them per enclosing
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
-	mut uses_generics := enqueue_initializer_calls(a, collector, fn_decls, fn_decl_lists, mut used, mut
+	mut uses_generics := enqueue_initializer_calls(a, seed_collector, fn_decls, fn_decl_lists, mut used, mut
 		queue, false)
-	uses_generics = enqueue_top_level_calls(a, collector, fn_decls, fn_decl_lists, has_entry_main, mut
+	uses_generics = enqueue_top_level_calls(a, seed_collector, fn_decls, fn_decl_lists, has_entry_main, mut
 		used, mut queue, uses_generics)
 	// Interface method values and other roots can enter the queue as abstract
 	// dispatch keys that have no function declaration of their own. Seed their
 	// concrete implementations before the declaration-driven BFS skips those keys.
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch)
+	enqueue_used_interface_dispatch_implementers(seed_tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
 	// concrete methods are only referenced from the generated dispatch switch, so
@@ -1179,8 +1190,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut call_symbols := []types.SymbolId{cap: 128}
 	mut last_module_name := ''
 	mut last_module_calls := &ModuleCalls(unsafe { nil })
+	seeds_done_us := mu_sw.elapsed().microseconds()
+	if !isnil(precollect) {
+		body_results = precollect.finish()
+	}
 	if tc.verbose {
-		eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		precollect_us := if precollect_async {
+			mu_sw.elapsed().microseconds()
+		} else {
+			precollect_started_us
+		}
+		overlapped := if precollect_async { ' (overlapped)' } else { '' }
+		eprintln('  [ttime] mu precollect      ${f64(precollect_us) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
+		eprintln('  [ttime] mu seeds           ${f64(seeds_done_us - precollect_started_us) / 1000.0:7.2f} ms${overlapped}')
 		mu_sw.restart()
 	}
 	mut qi := 0
@@ -1689,6 +1711,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('markused: suffix_hits:')
 		eprintln(suffix_hits.str())
 		eprintln('markused: total used: ${used.len}')
+	}
+	if !isnil(precollect) {
+		// `used` owns its keys; nothing else that outlives this pass names the
+		// collected call lists.
+		precollect.release()
 	}
 	if tc.verbose {
 		eprintln('  [ttime] mu bfs+tail        ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
