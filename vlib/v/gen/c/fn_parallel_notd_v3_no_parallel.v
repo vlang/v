@@ -83,6 +83,11 @@ mut:
 	preps     []CollectGenFnPrep
 	// Their alias registrations, when `registrations` is set.
 	signature_regs []FnSignatureRegistration
+	// `scope` holds the parameter and return types that the lists reference,
+	// until cgen is done; `list_scope` the lists and the registration
+	// spellings, until the signatures are registered.
+	scope      voidptr
+	list_scope voidptr
 }
 
 struct CollectGenInfoScanArgs {
@@ -160,6 +165,12 @@ fn flat_cgen_select_thread(arg voidptr) voidptr {
 fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectGenInfoFnPrepArgs(arg) }
 	master := unsafe { &FlatGen(a.g) }
+	// Resolving the signatures leaves several times their size in scratch (the
+	// view's checker and name caches, intermediate spellings). Work in a
+	// disposable arena and keep only what the lists reference.
+	a.scope = cgen_worker_scope_begin(true)
+	a.list_scope = cgen_worker_scope_begin(true)
+	scratch := cgen_worker_scope_begin(true)
 	mut view := master.new_collect_gen_info_view()
 	view.tc.cur_file = a.file
 	view.tc.cur_module = a.module_name
@@ -172,11 +183,9 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 			n_fns++
 		}
 	}
-	a.positions = []i32{cap: n_fns}
-	a.preps = []CollectGenFnPrep{cap: n_fns}
-	if a.registrations {
-		a.signature_regs = []FnSignatureRegistration{cap: n_fns}
-	}
+	mut positions := []i32{cap: n_fns}
+	mut preps := []CollectGenFnPrep{cap: n_fns}
+	mut signature_regs := []FnSignatureRegistration{cap: if a.registrations { n_fns } else { 0 }}
 	mut cur_file := a.file
 	mut cur_module := a.module_name
 	for pos in a.start .. a.end {
@@ -192,16 +201,117 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 			mut prep := view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
 			if a.registrations {
 				full_name := qualify_name_in_module(cur_module, node.value)
-				a.signature_regs << view.fn_signature_registration_in_module(cur_module, node.value,
+				signature_regs << view.fn_signature_registration_in_module(cur_module, node.value,
 					full_name, prep.ptypes, prep.shared_params, prep.decl_is_variadic, prep.first_param_is_mut,
 					prep.return_type)
 				prep.has_registration = true
 			}
-			a.positions << i32(pos)
-			a.preps << moved_collect_gen_fn_prep(prep)
+			positions << i32(pos)
+			preps << moved_collect_gen_fn_prep(prep)
 		}
 	}
+	cgen_worker_scope_leave(scratch)
+	if scratch == unsafe { nil } {
+		a.positions = moved_fn_prep_positions(positions)
+		a.preps = moved_fn_preps(preps)
+		a.signature_regs = moved_fn_signature_registrations(signature_regs)
+	} else {
+		a.positions = positions.clone()
+		a.preps, a.signature_regs = own_collect_gen_fn_preps(scratch, a.list_scope, preps,
+			signature_regs)
+		cgen_worker_scope_free(scratch)
+	}
+	cgen_worker_scope_leave(a.list_scope)
+	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
+}
+
+// own_collect_gen_fn_preps copies what a signature prep task resolved out of
+// its scratch arena. The lists and the registration spellings go to the current
+// arena `list_scope`; the parameter types, shared flags and return types, which
+// stay registered, to its parent. Only what the scratch arena owns is copied:
+// AST text, checker tables and interned types of other arenas are kept as they
+// are. A prep and its registration share their types and flags.
+@[direct_array_access]
+fn own_collect_gen_fn_preps(scratch voidptr, list_scope voidptr, preps []CollectGenFnPrep, regs []FnSignatureRegistration) ([]CollectGenFnPrep, []FnSignatureRegistration) {
+	mut owned_preps := []CollectGenFnPrep{cap: preps.len}
+	mut owned_regs := []FnSignatureRegistration{cap: regs.len}
+	for i in 0 .. preps.len {
+		// Still with the scratch arena's types: replaced below.
+		owned_preps << moved_collect_gen_fn_prep(preps[i])
+		if i >= regs.len {
+			continue
+		}
+		reg := unsafe { &regs[i] }
+		mut aliases := [6]string{}
+		for alias_idx in 0 .. reg.alias_count {
+			aliases[alias_idx] = own_cgen_string(scratch, reg.aliases[alias_idx])
+		}
+		owned_regs << moved_fn_signature_registration(FnSignatureRegistration{
+			module_key:    own_cgen_string(scratch, reg.module_key)
+			short_name:    own_cgen_string(scratch, reg.short_name)
+			aliases:       aliases
+			alias_count:   reg.alias_count
+			is_variadic:   reg.is_variadic
+			is_mut:        reg.is_mut
+			ptypes:        reg.ptypes
+			shared_params: reg.shared_params
+			return_type:   reg.return_type
+		})
+	}
+	mut owned_return_types := map[voidptr]&types.Type{}
+	// The types outlive the lists: allocate them in the parent arena.
+	state := cgen_worker_scope_suspend(list_scope)
+	// Stable storage for the copied return types: never grown past its capacity.
+	mut return_types := []types.Type{cap: preps.len + regs.len}
+	for i in 0 .. owned_preps.len {
+		mut prep := unsafe { &owned_preps[i] }
+		if cgen_worker_scope_owns(scratch, prep.ptypes.data) {
+			prep.ptypes = types.clone_owned_types(prep.ptypes)
+		}
+		if cgen_worker_scope_owns(scratch, prep.shared_params.data) {
+			prep.shared_params = prep.shared_params.clone()
+		}
+		if cgen_worker_scope_owns(scratch, prep.return_type) {
+			prep.return_type = own_cgen_type_reference(prep.return_type, mut return_types)
+		}
+		if i >= owned_regs.len {
+			continue
+		}
+		mut reg := unsafe { &owned_regs[i] }
+		reg.ptypes = prep.ptypes
+		reg.shared_params = prep.shared_params
+		if cgen_worker_scope_owns(scratch, reg.return_type) {
+			// Nearly always the prep's own return type.
+			key := voidptr(reg.return_type)
+			reg.return_type = owned_return_types[key] or {
+				copied := own_cgen_type_reference(reg.return_type, mut return_types)
+				owned_return_types[key] = copied
+				copied
+			}
+		}
+	}
+	cgen_worker_scope_resume(list_scope, state)
+	return owned_preps, owned_regs
+}
+
+// own_cgen_string returns `s`, copied when the scratch arena owns its text.
+@[inline]
+fn own_cgen_string(scratch voidptr, s string) string {
+	if cgen_worker_scope_owns(scratch, s.str) {
+		return s.clone()
+	}
+	return s
+}
+
+// own_cgen_type_reference deep-copies `typ` into `storage`, which must have
+// room left: the references to earlier copies have to stay valid.
+fn own_cgen_type_reference(typ &types.Type, mut storage []types.Type) &types.Type {
+	if storage.len >= storage.cap {
+		return typ
+	}
+	storage << types.clone_owned_type(typ)
+	return unsafe { &storage[storage.len - 1] }
 }
 
 // collect_gen_info_scan_thread classifies the nodes of one slice of the AST:
@@ -1574,6 +1684,12 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, w
 			positions:     moved_fn_prep_positions(args[i].positions)
 			preps:         moved_fn_preps(args[i].preps)
 			registrations: moved_fn_signature_registrations(args[i].signature_regs)
+		}
+		if args[i].scope != unsafe { nil } {
+			g.parallel_worker_scopes << args[i].scope
+		}
+		if args[i].list_scope != unsafe { nil } {
+			preps.list_scopes << args[i].list_scope
 		}
 	}
 	return preps

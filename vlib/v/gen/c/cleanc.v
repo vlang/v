@@ -346,6 +346,30 @@ fn cgen_worker_scope_leave(scope voidptr) {
 	}
 }
 
+// cgen_worker_scope_owns reports whether `ptr` points into the arena `scope`.
+@[inline]
+fn cgen_worker_scope_owns(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
+// cgen_worker_scope_suspend makes the parent of the current nested arena
+// `scope` current until cgen_worker_scope_resume gets the returned state.
+fn cgen_worker_scope_suspend(scope voidptr) voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_suspend(scope) }
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_resume(scope voidptr, state voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_resume(scope, state) }
+	}
+}
+
 fn cgen_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -5562,6 +5586,10 @@ struct CollectGenFnPreps {
 mut:
 	ready bool
 	jobs  []CollectGenFnPrepJob
+	// The arenas of the jobs' lists and registration spellings. Nothing reads
+	// them once the signatures are registered; the registered parameter and
+	// return types live in other arenas, until cgen is done.
+	list_scopes []voidptr
 }
 
 // moved_collect_gen_fn_prep returns `prep`; pushing a call result does not
@@ -5572,14 +5600,15 @@ fn moved_collect_gen_fn_prep(prep CollectGenFnPrep) CollectGenFnPrep {
 }
 
 struct FnSignatureRegistration {
-	module_key    string
-	short_name    string
-	aliases       [6]string
-	alias_count   u8
+	module_key  string
+	short_name  string
+	aliases     [6]string
+	alias_count u8
+	is_variadic bool
+	is_mut      bool
+mut:
 	ptypes        []types.Type
 	shared_params []bool
-	is_variadic   bool
-	is_mut        bool
 	return_type   &types.Type = types.empty_type
 }
 
@@ -6158,6 +6187,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		for which in 0 .. 3 {
 			g.register_fn_decl_nodes(fn_node_regs, which)
 		}
+	}
+	// The prepared lists and the registration spellings are spent.
+	for scope in fn_preps.list_scopes {
+		cgen_worker_scope_free(scope)
 	}
 	if profile {
 		g.timing_profile('  [ttime]   ci apply sigs    ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
