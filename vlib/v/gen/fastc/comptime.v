@@ -615,6 +615,17 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					tok = s.scan()
 					continue
 				}
+				if member == .name && s.lit in fastc_comptime_field_flags {
+					matches := g.comptime_field_flag(field, s.lit)
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         s.offset
+						replacement: if matches { 'true' } else { 'false' }
+					}
+					previous = if matches { token.Token.key_true } else { token.Token.key_false }
+					tok = s.scan()
+					continue
+				}
 				if member == .name && s.lit == 'attrs' {
 					attrs_end := s.offset
 					attrs_scan := s
@@ -2493,4 +2504,37 @@ fn (mut g Parser) parse_selected_comptime_block() !bool {
 	g.indent--
 	g.write_line('}')
 	return terminates
+}
+
+const fastc_comptime_field_flags = ['is_option', 'is_array', 'is_map', 'is_chan', 'is_struct',
+	'is_enum', 'is_pub', 'is_mut']
+
+// comptime_field_flag answers `field.is_map` and the other kind tests of a `$for` field on
+// its type without option, pointer and alias wrappers, as the regular compiler does.
+fn (g &Parser) comptime_field_flag(field FastcStructField, flag string) bool {
+	match flag {
+		'is_option' { return field.option_value_type != 0 || field.typ == fastc_type_option }
+		'is_pub' { return field.is_public }
+		'is_mut' { return field.is_mutable }
+		else {}
+	}
+	value_type := if field.option_value_type != 0 { field.option_value_type } else { field.typ }
+	core := fastc_trim_pointer_type(g.underlying_alias_type(fastc_trim_pointer_type(value_type)))
+	query := flat.source_type_query(core)
+	if flag == 'is_array' {
+		return query.has(.c_array_prefix) || query.has(.c_fixed_array_prefix)
+	}
+	if flag == 'is_map' {
+		return query.has(.c_map_prefix)
+	}
+	if flag == 'is_chan' {
+		return field.chan_element_type != 0 || core == fastc_type_chan
+	}
+	// Primitives, strings, arrays and maps are builtin structs in C, but not V structs.
+	if fastc_primitive_c_type_id(core) != none || query.has(.c_array_prefix)
+		|| query.has(.c_fixed_array_prefix) || query.has(.c_map_prefix) {
+		return false
+	}
+	kind := g.declared_kinds[g.semantic_type_key(core)] or { return false }
+	return (flag == 'is_struct' && kind == .struct_) || (flag == 'is_enum' && kind == .enum_)
 }
