@@ -1,0 +1,6 @@
+vlib/v/checker/tests/asm_raw_clobber_declared.vv:526:10: error: undefined ident: `undefined_total`
+  524 |     println(raw_numeric_clobber_stops_the_check())
+  525 |     println(raw_fixed_input_may_be_restored(1))
+  526 |     println(undefined_total)
+      |             ~~~~~~~~~~~~~~~
+  527 | }

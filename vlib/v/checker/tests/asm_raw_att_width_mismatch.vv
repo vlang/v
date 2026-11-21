@@ -3,6 +3,8 @@
 // the suffix, the `movzwl` source that is 8-bit, a 32-bit suffix on a 64-bit `int`, `orq` on a
 // 32-bit register, and `movl` on a 64-bit control register. On i386, `int` and the printed
 // view of a 64-bit operand are 32 bits wide.
+const answer = 5
+
 @[noinline]
 fn widths(len u64, small u32, count int) u64 {
 	mut out := len
@@ -41,7 +43,37 @@ fn narrow_widths(wide u64, count int) u32 {
 	return out + u32(total)
 }
 
+// A local that shadows a constant is a variable, so its V type is the operand's width. The
+// duplicate-name warning is the price of exercising that lookup order.
+@[noinline]
+fn shadowed_const_is_a_variable() u32 {
+	answer := u64(5)
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %1, %0"
+		; "=r" (out)
+		; "r" (answer)
+		;
+	}
+	return out
+}
+
+@[noinline]
+fn inert_directive_keeps_the_width_check(wide u64) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		".p2align 4\n\t"
+		"movl %[wide], %[out]"
+		; [out] "=r" (out)
+		; [wide] "r" (wide)
+		;
+	}
+	return out
+}
+
 fn main() {
 	println(widths(1, 2, 3))
 	println(narrow_widths(4, 5))
+	println(shadowed_const_is_a_variable())
+	println(inert_directive_keeps_the_width_check(6))
 }

@@ -1,0 +1,115 @@
+// Raw x86 templates bound through the `A` constraint that still leave a write undeclared: a
+// single-word operand fills only one register of the pair, and `A` says nothing about the
+// other registers, the flags, or an input.
+fn raw_single_word_pair_output(x u32, y u32) u32 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_single_word_pair_output_on_amd64(x u64, y u64) u64 {
+	mut r := x
+	asm amd64 raw {
+		"mulq %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_pair_output_leaves_rcx_undeclared(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"movl %[y], %%ecx\n\t"
+		"mull %%ecx"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_pair_output_leaves_flags_undeclared(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+	}
+	return r
+}
+
+fn raw_pair_input_declares_no_write(x u64, y u32) u32 {
+	mut out := u32(0)
+	asm x86 raw {
+		"mull %[y]\n\t"
+		"movl %%edx, %[out]"
+		; [out] "=r" (out)
+		; "A" (x)
+		  [y] "r" (y)
+		; cc
+	}
+	return out
+}
+
+struct Halves {
+mut:
+	lo u32
+}
+
+fn raw_single_word_pair_output_field(mut h Halves, y u32) u32 {
+	// A field is typed like a variable: `h.lo` is 32 bits wide, half the pair.
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (h.lo)
+		; [y] "r" (y)
+		; cc
+	}
+	return h.lo
+}
+
+fn raw_single_word_pair_output_is_reported_once(x u32) u32 {
+	mut r := x
+	asm x86 raw {
+		"movl $1, %%eax\n\t"
+		"movl $2, %%edx"
+		; "+A" (r)
+		;
+		;
+	}
+	return r
+}
+
+fn raw_pair_operand_reference_is_width_checked(x u64, y u32) u64 {
+	mut r := x
+	mut low := u64(0)
+	asm x86 raw {
+		"mull %[y]\n\t"
+		"movq %[r], %[low]"
+		; [r] "+A" (r)
+		  [low] "=r" (low)
+		; [y] "r" (y)
+		; cc
+	}
+	return low
+}
+
+fn main() {
+	println(raw_single_word_pair_output(6, 7))
+	println(raw_single_word_pair_output_on_amd64(6, 7))
+	println(raw_pair_output_leaves_rcx_undeclared(6, 7))
+	println(raw_pair_output_leaves_flags_undeclared(6, 7))
+	println(raw_pair_input_declares_no_write(6, 7))
+	mut h := Halves{
+		lo: 6
+	}
+	println(raw_single_word_pair_output_field(mut h, 7))
+	println(raw_single_word_pair_output_is_reported_once(6))
+	println(raw_pair_operand_reference_is_width_checked(6, 7))
+}
