@@ -1460,6 +1460,13 @@ fn check_chunk_thread(arg voidptr) voidptr {
 	check_worker_scope_free(w.check_batch_scope)
 	w.check_batch_scope = unsafe { nil }
 	w.reuse_check_batch_scope = false
+	if a.promote_to != unsafe { nil } && !isnil(w.symbols) {
+		mut hashes := []u32{cap: w.symbols.names.len}
+		for name in w.symbols.names {
+			hashes << const_selector_hash(name)
+		}
+		a.promotion.symbol_hashes = hashes
+	}
 	check_worker_scope_leave(a.scope)
 	if a.promote_to != unsafe { nil } {
 		if a.promotion.names_pending {
@@ -2598,6 +2605,19 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	mut mg_merge_ns := u64(0)
 	mut mg_left_types := 0
 	mut mg_left_nodes := 0
+	// The table that spares the merges most of their symbol lookups is scratch.
+	dedupe_scope := check_worker_scope_begin(promote_in_tasks)
+	mut symbol_dedupe := &CheckSymbolDedupe(unsafe { nil })
+	if promote_in_tasks {
+		mut n_symbols := 0
+		for arg in args {
+			if !isnil(arg.promotion) {
+				n_symbols += arg.promotion.symbol_hashes.len
+			}
+		}
+		symbol_dedupe = new_check_symbol_dedupe(n_symbols)
+	}
+	check_worker_scope_leave(dedupe_scope)
 	mut mg_result_calls := 0
 	if par_clone && !promote_in_tasks {
 		mg_t0 := time.sys_mono_now()
@@ -2647,7 +2667,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			mg_clone_ns += time.sys_mono_now() - mg_t0
 		}
 		mg_t1 := time.sys_mono_now()
-		tc.merge_parallel_check_worker_scoped(w, scoped)
+		if promoted {
+			tc.merge_parallel_check_worker_hashed(w, scoped, args[ci].promotion.symbol_hashes, mut
+				symbol_dedupe)
+		} else {
+			tc.merge_parallel_check_worker_scoped(w, scoped)
+		}
 		mg_merge_ns += time.sys_mono_now() - mg_t1
 		if scoped {
 			check_worker_scope_free(args[ci].scope)
@@ -2659,6 +2684,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	mg_merge_ms := f64(mg_merge_ns) / 1e6
 	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms (left types: ${mg_left_types} of ${mg_left_nodes} nodes, result calls: ${mg_result_calls})')
 	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+	check_worker_scope_free(dedupe_scope)
 	check_worker_scope_free(setup_scope)
 	if bodies_only {
 		return any_started
@@ -6306,6 +6332,8 @@ mut:
 	// The calls of the bodies that may return a Result (see
 	// call_may_return_result), in node order within each chunk.
 	result_calls []i32
+	// The hashes of the names of the worker's symbols (see CheckSymbolDedupe).
+	symbol_hashes []u32
 	// names_pending is set when a chunk's call names could not be given
 	// persistent storage right after the chunk: the task then promotes those of
 	// all its chunks at its end.
@@ -6526,6 +6554,74 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	mut no_dedupe := &CheckSymbolDedupe(unsafe { nil })
+	tc.merge_parallel_check_worker_hashed(w, scoped, []u32{}, mut no_dedupe)
+}
+
+// CheckSymbolDedupe finds the id that the merge of an earlier worker of a
+// parallel check gave a symbol, by a hash of the name that the workers compute
+// for their own symbols before the pool joins. The workers intern into private
+// tables, so nearly every symbol reaches the master once per worker: a lookup
+// here replaces a locked interner probe that hashes the name again.
+@[heap]
+struct CheckSymbolDedupe {
+mut:
+	// (hash << 32) | id by open addressing; 0 is an empty slot.
+	slots []u64
+	used  int
+}
+
+// new_check_symbol_dedupe sizes the table for workers that bring `n_symbols`
+// symbols in all, most of them several times; it stops taking symbols when it
+// is half full.
+fn new_check_symbol_dedupe(n_symbols int) &CheckSymbolDedupe {
+	mut n_slots := 1024
+	for n_slots < n_symbols && n_slots < (1 << 22) {
+		n_slots <<= 1
+	}
+	return &CheckSymbolDedupe{
+		slots: []u64{len: n_slots}
+	}
+}
+
+@[direct_array_access; inline]
+fn (d &CheckSymbolDedupe) find(hash u32, name string, symbols &SymbolInterner) SymbolId {
+	mask := u32(d.slots.len - 1)
+	mut slot := hash & mask
+	for {
+		entry := d.slots[slot]
+		if entry == 0 {
+			return SymbolId(0)
+		}
+		if u32(entry >> 32) == hash {
+			id := u32(entry)
+			if symbols.names[int(id) - 1] == name {
+				return SymbolId(id)
+			}
+		}
+		slot = (slot + 1) & mask
+	}
+	return SymbolId(0)
+}
+
+@[direct_array_access; inline]
+fn (mut d CheckSymbolDedupe) add(hash u32, id SymbolId) {
+	if id == 0 || d.used * 2 >= d.slots.len {
+		return
+	}
+	mask := u32(d.slots.len - 1)
+	mut slot := hash & mask
+	for d.slots[slot] != 0 {
+		slot = (slot + 1) & mask
+	}
+	d.slots[slot] = (u64(hash) << 32) | u64(id)
+	d.used++
+}
+
+// merge_parallel_check_worker_hashed is merge_parallel_check_worker_scoped for a
+// worker whose symbols come with the hashes of their names, `hashes[i]` for the
+// worker's symbol `i` (see CheckSymbolDedupe).
+fn (mut tc TypeChecker) merge_parallel_check_worker_hashed(w &TypeChecker, scoped bool, hashes []u32, mut dedupe CheckSymbolDedupe) {
 	if w.item_marks.len > 0 {
 		if !isnil(tc.incremental) {
 			tc.incremental_capture(w, scoped)
@@ -6551,9 +6647,22 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	if scoped && !isnil(w.symbols) {
 		worker_symbols := unsafe { w.symbols }
 		symbol_remap = []SymbolId{len: worker_symbols.names.len + 1}
-		for index, name in worker_symbols.names {
-			id, _ := tc.intern_scoped_symbol(name)
-			symbol_remap[index + 1] = id
+		if !isnil(dedupe) && !isnil(tc.symbols) && hashes.len == worker_symbols.names.len {
+			// A symbol that an earlier worker brought has its id already; the others
+			// are interned in the order in which interning all of them adds them.
+			for index, name in worker_symbols.names {
+				mut id := dedupe.find(hashes[index], name, tc.symbols)
+				if id == 0 {
+					id, _ = tc.intern_scoped_symbol(name)
+					dedupe.add(hashes[index], id)
+				}
+				symbol_remap[index + 1] = id
+			}
+		} else {
+			for index, name in worker_symbols.names {
+				id, _ := tc.intern_scoped_symbol(name)
+				symbol_remap[index + 1] = id
+			}
 		}
 	}
 	for err in w.errors {
