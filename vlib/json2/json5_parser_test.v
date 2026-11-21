@@ -184,7 +184,7 @@ fn test_parse_bom_is_skipped() {
 }
 
 fn parse_json5_test(text string) !Any {
-	return decode[Any](text, json5: true)
+	return decode_json5[Any](text)!
 }
 
 fn parse_json5_doc_test(text string) !Doc {

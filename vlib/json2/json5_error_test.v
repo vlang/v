@@ -8,7 +8,7 @@ struct Json5ErrorFields {
 }
 
 fn assert_json5_decode_error[T](input string, line int, character int, highlighted string) {
-	decode[T](input, json5: true, strict: true) or {
+	decode_json5[T](input, strict: true) or {
 		if err is JsonDecodeError {
 			assert err.line == line
 			assert err.character == character
@@ -22,7 +22,7 @@ fn assert_json5_decode_error[T](input string, line int, character int, highlight
 }
 
 fn assert_json5_decode_error_context[T](input string, line int, character int, context string) {
-	decode[T](input, json5: true, strict: true) or {
+	decode_json5[T](input, strict: true) or {
 		if err is JsonDecodeError {
 			assert err.line == line
 			assert err.character == character
@@ -111,7 +111,7 @@ fn test_json5_typed_error_preview_stays_on_source_line() {
 
 fn test_json5_typed_error_after_comments_uses_source_line_and_context() {
 	input := "// heading\n{\n  name: 'V',\n  count: /* note */ false,\n}"
-	decode[Json5ErrorFields](input, json5: true) or {
+	decode_json5[Json5ErrorFields](input) or {
 		if err is JsonDecodeError {
 			assert err.line == 4
 			assert err.character == 21
@@ -187,7 +187,7 @@ fn test_json5_typed_error_counts_each_line_terminator_and_limits_context() {
 	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
 		input := '// heading' + separator + '/* another line */' + separator +
 			'\tfalse' + separator + '/* following line */'
-		decode[int](input, json5: true) or {
+		decode_json5[int](input) or {
 			if err is JsonDecodeError {
 				assert err.line == 3
 				assert err.character == 9
