@@ -1395,9 +1395,14 @@ struct CheckChunkArgs {
 	// promote_to is the checker whose node caches the task promotes out of its
 	// arena after each chunk of bodies (see CheckChunkPromotion), or nil.
 	promote_to voidptr
+	// batch_quota is the cost of the bodies that a dynamic task checks on one
+	// checker fork, in chunks from the queue (see check_dynamic_batches), or 0
+	// when every chunk is a batch.
+	batch_quota i64
 mut:
 	scope     voidptr
 	processed []CheckWorkItem
+	checked   int
 	promotion &CheckChunkPromotion = unsafe { nil }
 }
 
@@ -1421,7 +1426,12 @@ fn check_chunk_thread(arg voidptr) voidptr {
 		// What is left to the master is listed in this task's arena.
 		a.promotion = &CheckChunkPromotion{}
 	}
-	if a.dynamic_items != unsafe { nil } {
+	if a.dynamic_items != unsafe { nil } && a.batch_quota > 0 && a.scope_enabled
+		&& a.promote_to != unsafe { nil }
+		&& batch_limit / dynamic_check_chunks_per_job <= 1 {
+		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
+		w.check_dynamic_batches(mut a, chunks, a.batch_quota, mut master)
+	} else if a.dynamic_items != unsafe { nil } {
 		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
 		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
 		for {
@@ -1462,7 +1472,11 @@ fn check_chunk_thread(arg voidptr) voidptr {
 		}
 		a.promotion.done = true
 	}
-	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
+	item_count := if a.dynamic_items == unsafe { nil } {
+		items.len
+	} else {
+		a.processed.len + a.checked
+	}
 	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
 	return unsafe { nil }
 }
@@ -2422,9 +2436,20 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	chunk_count := chunks.len
 	mut dynamic_chunks := [][]CheckWorkItem{}
 	mut chunk_queue := chan int{cap: 1}
+	mut batch_quota := i64(0)
 	if dynamic_dispatch {
 		dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
-		dynamic_chunks = split_check_items(items, dynamic_target)
+		dynamic_chunks = split_dynamic_check_items(items, dynamic_target, dynamic_check_small_pct,
+			dynamic_check_small_div)
+		if dynamic_chunks.len > dynamic_target {
+			// The small chunks at the end of the queue are checked a batch's worth
+			// at a time.
+			mut total_cost := i64(0)
+			for item in items {
+				total_cost += i64(item.cost) + 1
+			}
+			batch_quota = int_max(1, int(total_cost / dynamic_target))
+		}
 		chunk_queue = chan int{cap: dynamic_chunks.len}
 		for ci in 0 .. dynamic_chunks.len {
 			chunk_queue <- ci
@@ -2468,6 +2493,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			scope_enabled: tc.scope_parallel_check_workers
 			index:         ci
 			promote_to:    if promote_in_tasks { voidptr(tc) } else { unsafe { nil } }
+			batch_quota:   batch_quota
 		}
 	}
 	// The master checks its own chunk under the same range discipline as the
