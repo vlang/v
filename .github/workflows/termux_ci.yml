@@ -213,6 +213,12 @@ jobs:
             export LD_LIBRARY_PATH="$HOME/tcc-install/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
             tcc="$HOME/tcc-install/bin/tcc"
             "$tcc" -v
+            # Regression check for the __builtin_bswap and __builtin_object_size
+            # definitions the patch adds: once with the definitions this tcc
+            # predefines, and once with the patch text compiled by clang.
+            builtins_check=~/vproject/thirdparty/build_scripts/patches/tests/check_tcc_termux_builtins.sh
+            CFLAGS="-D__ANDROID_MIN_SDK_VERSION__=24" USE_COMPILER_DEFS=1 sh "$builtins_check" "$tcc"
+            sh "$builtins_check" clang
             cd ~/vproject
             # Bootstrap V with the tcc under test, not the Termux clang the
             # ANDROID block would otherwise force (V_ANDROID_TCC=1 opts out).
