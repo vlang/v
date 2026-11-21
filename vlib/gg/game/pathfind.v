@@ -65,6 +65,51 @@ fn path_heuristic(a_x int, a_y int, b_x int, b_y int) int {
 	return dx + dy
 }
 
+fn path_heap_push(mut heap []int, item int, scores []f32) {
+	heap << item
+	mut i := heap.len - 1
+	for i > 0 {
+		parent := (i - 1) / 2
+		if scores[heap[parent]] <= scores[heap[i]] {
+			break
+		}
+		swap := heap[parent]
+		heap[parent] = heap[i]
+		heap[i] = swap
+		i = parent
+	}
+}
+
+fn path_heap_pop(mut heap []int, scores []f32) int {
+	top := heap[0]
+	last := heap[heap.len - 1]
+	heap = heap[..heap.len - 1]
+	if heap.len == 0 {
+		return top
+	}
+	heap[0] = last
+	mut i := 0
+	for {
+		left := 2 * i + 1
+		right := left + 1
+		mut smallest := i
+		if left < heap.len && scores[heap[left]] < scores[heap[smallest]] {
+			smallest = left
+		}
+		if right < heap.len && scores[heap[right]] < scores[heap[smallest]] {
+			smallest = right
+		}
+		if smallest == i {
+			break
+		}
+		swap := heap[i]
+		heap[i] = heap[smallest]
+		heap[smallest] = swap
+		i = smallest
+	}
+	return top
+}
+
 // find_path returns the cells from start to goal inclusive, or an empty slice
 // when either endpoint is blocked or no route exists.
 pub fn (p &GridPathfinder) find_path(start Cell, goal Cell) []Cell {
@@ -78,23 +123,18 @@ pub fn (p &GridPathfinder) find_path(start Cell, goal Cell) []Cell {
 	mut f := []f32{len: n, init: 999999.0}
 	mut came := []int{len: n, init: -1}
 	mut closed := []bool{len: n}
-	mut open := [start_idx]
+	mut open := []int{}
+	mut queued := []bool{len: n}
+	path_heap_push(mut open, start_idx, f)
+	queued[start_idx] = true
 	g[start_idx] = 0
 	f[start_idx] = f32(path_heuristic(start.x, start.y, goal.x, goal.y))
 
 	dxs := [1, -1, 0, 0]
 	dys := [0, 0, 1, -1]
 	for open.len > 0 {
-		mut best_k := 0
-		mut best_f := f[open[0]]
-		for k in 1 .. open.len {
-			if f[open[k]] < best_f {
-				best_f = f[open[k]]
-				best_k = k
-			}
-		}
-		current := open[best_k]
-		open.delete(best_k)
+		current := path_heap_pop(mut open, f)
+		queued[current] = false
 		if current == goal_idx {
 			mut path := []Cell{}
 			mut cur := current
@@ -129,8 +169,9 @@ pub fn (p &GridPathfinder) find_path(start Cell, goal Cell) []Cell {
 				came[next] = current
 				g[next] = tentative
 				f[next] = tentative + f32(path_heuristic(nx, ny, goal.x, goal.y))
-				if next !in open {
-					open << next
+				if !queued[next] {
+					path_heap_push(mut open, next, f)
+					queued[next] = true
 				}
 			}
 		}

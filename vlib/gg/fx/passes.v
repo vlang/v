@@ -46,21 +46,34 @@ pub fn (mut c PassChain) clear() {
 // apply runs every operation over pixels, returning a new buffer. The input
 // is never modified.
 pub fn (c &PassChain) apply(pixels []u8, width int, height int) []u8 {
-	mut current := pixels.clone()
+	if c.ops.len == 0 {
+		return pixels.clone()
+	}
+	// Two reusable buffers avoid one allocation per pass.
+	mut a := pixels.clone()
+	mut b := []u8{len: pixels.len}
 	for op in c.ops {
-		current = match op {
-			.grayscale { post_grayscale(current, width, height) }
-			.invert { post_invert(current, width, height) }
-			.brightness { post_brightness(current, width, height, c.brightness) }
-			.contrast { post_contrast(current, width, height, c.contrast) }
-			.saturate { post_saturate(current, width, height, c.saturate) }
-			.vignette { post_vignette(current, width, height, c.vignette) }
-			.blur { post_box_blur(current, width, height, c.blur_radius) }
-			.tonemap { post_tonemap(current, width, height) }
+		match op {
+			.grayscale { post_grayscale_into(mut b, a, width, height) }
+			.invert { post_invert_into(mut b, a, width, height) }
+			.brightness { post_brightness_into(mut b, a, width, height, c.brightness) }
+			.contrast { post_contrast_into(mut b, a, width, height, c.contrast) }
+			.saturate { post_saturate_into(mut b, a, width, height, c.saturate) }
+			.vignette { post_vignette_into(mut b, a, width, height, c.vignette) }
+			.blur { post_box_blur_into(mut b, a, width, height, c.blur_radius) }
+			.tonemap { post_tonemap_into(mut b, a, width, height) }
 			.bloom {
-				post_bloom(current, width, height, c.bloom_threshold, c.bloom_strength, c.blur_radius)
+				post_bloom_into(mut b, a, width, height, c.bloom_threshold, c.bloom_strength,
+					c.blur_radius)
 			}
 		}
+		// Swap ownership of the two caller-owned buffers; no aliasing remains.
+		mut tmp := []u8{}
+		unsafe {
+			tmp = a
+			a = b
+			b = tmp
+		}
 	}
-	return current
+	return a
 }

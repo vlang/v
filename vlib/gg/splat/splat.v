@@ -77,6 +77,51 @@ pub fn project(g &Gaussian, cam gg.Camera3D, width f32, height f32) ?ProjectedSp
 	}
 }
 
+fn splat_heap_push(mut heap []ProjectedSplat, item ProjectedSplat) {
+	heap << item
+	mut i := heap.len - 1
+	for i > 0 {
+		parent := (i - 1) / 2
+		if heap[parent].depth >= heap[i].depth {
+			break
+		}
+		swap := heap[parent]
+		heap[parent] = heap[i]
+		heap[i] = swap
+		i = parent
+	}
+}
+
+fn splat_heap_pop(mut heap []ProjectedSplat) ProjectedSplat {
+	top := heap[0]
+	last := heap[heap.len - 1]
+	heap = heap[..heap.len - 1]
+	if heap.len == 0 {
+		return top
+	}
+	heap[0] = last
+	mut i := 0
+	for {
+		left := 2 * i + 1
+		right := left + 1
+		mut largest := i
+		if left < heap.len && heap[left].depth > heap[largest].depth {
+			largest = left
+		}
+		if right < heap.len && heap[right].depth > heap[largest].depth {
+			largest = right
+		}
+		if largest == i {
+			break
+		}
+		swap := heap[i]
+		heap[i] = heap[largest]
+		heap[largest] = swap
+		i = largest
+	}
+	return top
+}
+
 fn blend(mut pixels []u8, width int, height int, s ProjectedSplat) {
 	min_x := int(s.x - s.rx * 2)
 	max_x := int(s.x + s.rx * 2)
@@ -113,22 +158,13 @@ pub fn rasterize(cloud &SplatCloud, cam gg.Camera3D, width int, height int, mut 
 	if width <= 0 || height <= 0 || pixels.len < width * height * 4 {
 		return
 	}
-	mut projected := []ProjectedSplat{}
+	mut heap := []ProjectedSplat{}
 	for g in cloud.points {
 		if p := project(g, cam, f32(width), f32(height)) {
-			projected << p
+			splat_heap_push(mut heap, p)
 		}
 	}
-	for i := 1; i < projected.len; i++ {
-		key := projected[i]
-		mut j := i - 1
-		for j >= 0 && projected[j].depth < key.depth {
-			projected[j + 1] = projected[j]
-			j--
-		}
-		projected[j + 1] = key
-	}
-	for p in projected {
-		blend(mut pixels, width, height, p)
+	for heap.len > 0 {
+		blend(mut pixels, width, height, splat_heap_pop(mut heap))
 	}
 }
