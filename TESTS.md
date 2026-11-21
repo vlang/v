@@ -73,8 +73,9 @@ workload and machine capacity are known.
 
 When at least two of the selected test files build the compiler from `vlib/v/v.v` themselves,
 `v test` builds it once at the start, and the `v` launcher serves their plain `-gc none`
-compiler builds with copies of it, as `vlib/v/test_all.vsh` does. Builds with other options
-still build their own. Set `VTEST_NO_SHARED_V3=1` to let every test build its own compiler.
+compiler builds with copies of it, as `vlib/v/test_all.vsh` does. It does the same for the
+`-gc none -d ownership` compiler of the ownership tests. Builds with other options still build
+their own. Set `VTEST_NO_SHARED_V3=1` to let every test build its own compiler.
 Each session also shares the cached C objects of thirdparty code (`v3_thirdparty_objs`) with
 the module cache root, unless `V3_TEST_ISOLATE_CACHE=1`.
 
