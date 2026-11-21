@@ -424,6 +424,55 @@ fn transform_pre_scan_index_thread(arg voidptr) voidptr {
 	return scope
 }
 
+// ReceiverSuffixIndexBuild is the receiver-method suffix index a helper thread
+// builds while prepare() goes on.
+@[heap]
+struct ReceiverSuffixIndexBuild {
+	t voidptr // &Transformer, whose signature tables are only read
+mut:
+	index  map[string]string
+	scope  voidptr
+	handle thread
+}
+
+// receiver_suffix_index_thread builds the index in an arena of its own, which is
+// kept with the pre-scan arenas: the index and the names in it are read until
+// the transform has finished.
+fn receiver_suffix_index_thread(mut build ReceiverSuffixIndexBuild) {
+	t := unsafe { &Transformer(build.t) }
+	scope := transform_worker_scope_begin(t.retain_prescan_scopes)
+	build.index = t.receiver_method_suffix_index_of_signatures()
+	transform_worker_scope_leave(scope)
+	build.scope = scope
+}
+
+// start_receiver_suffix_index builds the receiver-method suffix index: at once,
+// or for a compiler build on a helper thread that only reads the signature
+// tables, which the caller must not change before finish_receiver_suffix_index.
+fn (mut t Transformer) start_receiver_suffix_index() &ReceiverSuffixIndexBuild {
+	if !t.receiver_suffix_index_beside_prepare {
+		t.rebuild_receiver_method_suffix_index()
+		return unsafe { nil }
+	}
+	t.ensure_private_signature_maps()
+	mut build := &ReceiverSuffixIndexBuild{
+		t: voidptr(t)
+	}
+	build.handle = spawn receiver_suffix_index_thread(mut build)
+	return build
+}
+
+// finish_receiver_suffix_index installs the index a helper thread built.
+fn (mut t Transformer) finish_receiver_suffix_index(started &ReceiverSuffixIndexBuild) {
+	if isnil(started) {
+		return
+	}
+	mut build := unsafe { started }
+	build.handle.wait()
+	t.receiver_method_suffix_index = build.index.move()
+	t.add_prescan_scope(build.scope)
+}
+
 // transform_const_fixed_scan_thread classifies array-literal constants on a
 // helper thread while the master builds its lookup indexes in prepare().
 // The scan worker only reads the immutable AST and post-check tc tables,
@@ -4469,9 +4518,11 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 		t.defer_pre_scan_indexes = true
 		t.defer_fixed_array_borrow_prep = true
+		t.receiver_suffix_index_beside_prepare = t.building_v
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
 		mut sw := time.new_stopwatch()
 		t.prepare()
+		t.receiver_suffix_index_beside_prepare = false
 		t.prepare_times.indexes = f64(sw.elapsed().microseconds()) / 1000.0
 		sw.restart()
 		t.add_prescan_scope(param_thread.wait())

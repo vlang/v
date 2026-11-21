@@ -83,6 +83,19 @@ fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate, _ 
 	return BorrowPrescan{}
 }
 
+// ReceiverSuffixIndexBuild has no helper thread in no-parallel builds.
+struct ReceiverSuffixIndexBuild {}
+
+// start_receiver_suffix_index builds the receiver-method suffix index at once
+// when v3 is built with the internal `v3_no_parallel` define.
+fn (mut t Transformer) start_receiver_suffix_index() &ReceiverSuffixIndexBuild {
+	t.rebuild_receiver_method_suffix_index()
+	return unsafe { nil }
+}
+
+// finish_receiver_suffix_index has nothing to install in no-parallel builds.
+fn (mut _ Transformer) finish_receiver_suffix_index(_ &ReceiverSuffixIndexBuild) {}
+
 // prepare_with_pre_scans keeps preparation serial when v3 is built with the
 // internal `v3_no_parallel` define.
 fn (mut t Transformer) prepare_with_pre_scans() {

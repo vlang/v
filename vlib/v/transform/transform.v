@@ -231,6 +231,9 @@ mut:
 	defer_pre_scan_indexes bool
 	// Fixed-array summaries can reuse the completed parameter pre-scan cache.
 	defer_fixed_array_borrow_prep bool
+	// receiver_suffix_index_beside_prepare lets prepare() build the receiver-method
+	// suffix index on a helper thread (see start_receiver_suffix_index).
+	receiver_suffix_index_beside_prepare bool
 	// fixed_array_borrow_node_count is the node count the summaries cover.
 	fixed_array_borrow_node_count int
 	// fixed_array_borrow_prescanned counts the candidate parameters whose body
@@ -3122,7 +3125,10 @@ fn (mut t Transformer) prepare() {
 	// AST/tc-only indexes, it is not safe to overlap with type-map construction
 	// on a shared Transformer.
 	t.collect_alias_methods()
-	t.rebuild_receiver_method_suffix_index()
+	// The four index builders below read neither the receiver-method suffix
+	// index nor anything a signature change would touch, so a compiler build
+	// makes that index beside them (see start_receiver_suffix_index).
+	suffix_index_build := t.start_receiver_suffix_index()
 	if !t.defer_pre_scan_indexes {
 		t.rebuild_variadic_suffix_index()
 	}
@@ -3130,6 +3136,7 @@ fn (mut t Transformer) prepare() {
 	t.build_type_alias_suffix_index()
 	t.build_static_method_names()
 	t.build_struct_field_decl_metas_cache()
+	t.finish_receiver_suffix_index(suffix_index_build)
 	t.timing_profile('  [ttime]   prep suffix+decl   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	psw.restart()
 	// Enable the alias cache only now that the type maps are fully populated.
@@ -3826,27 +3833,60 @@ const pending_loop_label_marker = '__v_pending_loop_label:'
 
 fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
 	t.ensure_private_signature_maps()
-	t.receiver_method_suffix_index.clear()
-	// A name is indexed under itself and under each of its dotted suffixes, about
-	// two keys per name. Sized once, the table is not rehashed through every
+	t.receiver_method_suffix_index = t.receiver_method_suffix_index_of_signatures()
+}
+
+// receiver_method_suffix_index_of_signatures indexes every function name of the
+// transformer's and the checker's signature tables under itself and under each
+// of its dotted suffixes. It only reads those tables.
+fn (t &Transformer) receiver_method_suffix_index_of_signatures() map[string]string {
+	mut index := map[string]string{}
+	// About two keys per name. Sized once, the table is not rehashed through every
 	// doubling and the outgrown tables are not left behind in the arena.
 	mut names := t.fn_ret_types.ids.len
 	if !isnil(t.tc) && t.tc.fn_ret_types.len > names {
 		names = t.tc.fn_ret_types.len
 	}
-	t.receiver_method_suffix_index.reserve(u32(names * 2))
+	index.reserve(u32(names * 2))
 	for name, _ in t.fn_ret_types.ids {
-		t.add_receiver_method_suffix_index(name)
+		add_receiver_method_suffix_keys(mut index, name)
 	}
 	if isnil(t.tc) {
-		return
+		return index
 	}
 	for name, _ in t.tc.fn_ret_types {
 		if name in t.fn_ret_types.ids {
 			continue
 		}
-		t.add_receiver_method_suffix_index(name)
+		add_receiver_method_suffix_keys(mut index, name)
 	}
+	return index
+}
+
+// add_receiver_method_suffix_keys is add_receiver_method_suffix_index for an
+// index that no transformer owns yet.
+fn add_receiver_method_suffix_keys(mut index map[string]string, name string) {
+	if name == '' {
+		return
+	}
+	set_receiver_method_suffix_key(mut index, name, name)
+	for i in 0 .. name.len {
+		if name[i] == `.` && i + 1 < name.len {
+			// Zero-copy suffix view (see add_receiver_method_suffix_index).
+			suffix := unsafe { tos(name.str + i + 1, name.len - i - 1) }
+			set_receiver_method_suffix_key(mut index, suffix, name)
+		}
+	}
+}
+
+fn set_receiver_method_suffix_key(mut index map[string]string, key string, name string) {
+	if existing := index[key] {
+		if existing != name {
+			index[key] = receiver_method_suffix_ambiguous
+		}
+		return
+	}
+	index[key] = name
 }
 
 fn (mut t Transformer) add_receiver_method_suffix_index(name string) {
