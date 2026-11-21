@@ -2779,6 +2779,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			// Copying them to C would instead emit comma operators.
 			return g.unsupported('parallel assignments')
 		}
+		if g.tok == .dollar && g.dollar_keyword_is('sizeof') {
+			// `$sizeof(T)` is `sizeof(T)`.
+			g.next()
+			continue
+		}
 		if g.tok == .dollar {
 			inline_comptime := g.read_inline_comptime_expression(mut result, mut expression_tokens)!
 			if inline_comptime.found {
