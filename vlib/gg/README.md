@@ -595,7 +595,8 @@ backend does not expose `gg`'s drawing calls.
 - `TileMap` offers tile access, solid tests and rect/circle collision; `draw()`
   is native only. `GridPathfinder` and `grid_from_tilemap()` provide A*.
 - Geometry: `closest_point_on_segment`, `segments_intersect`, `polygon_area`,
-  `polygon_centroid` and `convex_hull`.
+  `polygon_centroid` and `convex_hull`. Mesh generators `gen_mesh_lathe`,
+  `gen_mesh_extrude` and `gen_mesh_tube` build indexed `gg.Mesh3D` values.
 - Procedural generation: `LSystem`, `turtle_segments()`, `voronoi_cells()`,
   `generate_maze()` and `cellular_step()`.
 
@@ -611,6 +612,8 @@ backend does not expose `gg`'s drawing calls.
   pan and looping for native playback through `mix_voices`.
 - UI/charts: `UITheme`, `ui_panel`, `ui_button`, `ui_slider`, `ui_toggle`,
   `ui_hud`, `draw_line_chart` and `draw_bar_chart`.
+- `PassChain` applies named CPU post-processing passes in order, like a small
+  EffectComposer for RGBA8 buffers.
 
 ### Tooling (`gg.debug`, `gg.loaders`)
 
@@ -618,6 +621,9 @@ backend does not expose `gg`'s drawing calls.
   and `Gizmos` queues lines, circles, rectangles and crosses.
 - `SaveStore` offers typed accessors, generic JSON values, JSON serialization
   and `save()`/`load_save_store()` file helpers.
+- `gg.scene` adds an opt-in `Node` hierarchy with `find`/`traverse`, a typed
+  `Signal[T]` observer bus, and an `App` container for composable systems with
+  init/frame/cleanup hooks.
 - `load_mesh_obj`, `load_mesh_gltf`, `load_mesh_glb` and `load_model` load
   static meshes; skins and animation clips are intentionally not imported.
 
