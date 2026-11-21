@@ -39,10 +39,13 @@ const following = 'yes'
 		os.write_file(os.join_path(root, '${i}.v'), source + '\n'.repeat(40000 - source.len))!
 	}
 	expected := ['direct: yes', 'chained: yes', 'else_if: yes', 'match: yes']
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
 	for serial in [false, true] {
 		binary := os.join_path(root, 'selected_${serial}${exe_suffix}')
-		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang', '-gc',
-			'none', '-o', binary]
+		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc, '-gc', 'none',
+			'-o', binary]
 		if serial { args << '-no-parallel' }
 		args << root
 		mut child := os.new_process(@VEXE)
