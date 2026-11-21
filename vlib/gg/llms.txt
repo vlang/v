@@ -1,0 +1,38 @@
+# gg addon modules
+
+> gg is V's graphics module. A small core owns windows, drawing, cameras,
+> math and 3D; larger helpers are opt-in submodules imported explicitly.
+
+## Core
+
+- `import gg`: Context, Config, new_context, run, begin/end, drawing primitives,
+  Color, Rect, Vec2, Vec3, Camera2D, Camera3D, Image, text, audio/WAV basics.
+- `gg.backend_caps()`: backend name and draw/audio capability flags.
+- `gg.Info`: opt-in draw-call and triangle counters.
+- `gg/render`: low-level pure-V renderer and CPU rasterizer.
+- `gg/m4`: matrix and vector math.
+- `gg/canvas`: retained-mode 2D canvas.
+
+## Addons (import only what you use)
+
+- `import gg.anim`: Easing/ease, Tween[T], Timeline, Spring, Noise, curves
+  (catmull_rom, sample_catmull, bezier2, resample_polyline), color conversions,
+  palettes, AnimClip/AnimPlayer, Quat/quat_slerp, AnimMixer.
+- `import gg.game`: Rect/Circle/AABB collision, InputState, Gamepad, FixedStep,
+  FrameStats, StateMachine, TileMap, GridPathfinder, geometry (convex_hull,
+  polygon_area), procedural (LSystem, voronoi_cells, generate_maze).
+- `import gg.fx`: ParticleEmitter, CPU post_* filters, audio DSP and SoundVoice,
+  UITheme/ui_panel/ui_button/ui_hud, draw_line_chart/draw_bar_chart.
+- `import gg.debug`: DebugLog, FrameGraph, Gizmos, SaveStore.
+- `import gg.loaders`: load_mesh_obj/gltf/glb, load_model, LoadingManager.
+- `import gg.scene`: Node hierarchy, traverse/find, typed Signal[T].
+
+## Conventions
+
+- Data and simulation helpers are pure V and work on every backend.
+- Drawing and audio-device helpers are native only; the JS compatibility
+  backend does not expose gg drawing calls.
+- Core gg compiles on wasm. Addons that use slices of structs do not yet.
+- Public functions have doc comments starting with the function name.
+- Tests are `_test.v` files next to the source; run with `v test <dir>/`.
+- Format every file with `v fmt -w` and check with `v fmt -l` before committing.
