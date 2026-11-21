@@ -5845,17 +5845,19 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 					if method_expression := g.render_method_call_expression(tokens, nested_array.source) {
 						nested_source = method_expression.source
 						nested_type = method_expression.typ
-					} else if method_expression := g.render_method_call_expression(tokens,
-						rendered_expression)
-					{
+					} else if fastc_has_method_call_on_indexed_receiver(tokens) {
 						// A method call on an indexed receiver (`2.0 - a[i].edge.top()`) is
 						// found only in the raw spelling; lower it first, then its index.
-						nested_source = method_expression.source
-						nested_type = method_expression.typ
-						if array_expression := g.render_nested_array_access_expression(tokens,
-							method_expression.source)
+						if method_expression := g.render_method_call_expression(tokens,
+							rendered_expression)
 						{
-							nested_source = array_expression.source
+							nested_source = method_expression.source
+							nested_type = method_expression.typ
+							if array_expression := g.render_nested_array_access_expression(tokens,
+								method_expression.source)
+							{
+								nested_source = array_expression.source
+							}
 						}
 					}
 				}
@@ -6987,10 +6989,33 @@ fn (g &Parser) name_starts_assignment_statement() bool {
 	return false
 }
 
+// fastc_has_method_call_on_indexed_receiver reports whether `tokens` call a method on a
+// receiver that is indexed (`a[i].edge.top()`).
+fn fastc_has_method_call_on_indexed_receiver(tokens []FastcExpressionToken) bool {
+	mut seen_index := false
+	for i, token in tokens {
+		if token.tok == .rsbr {
+			seen_index = true
+		} else if seen_index && token.tok == .name && i > 0 && tokens[i - 1].tok == .dot
+			&& i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+			return true
+		}
+	}
+	return false
+}
+
 // specialized_method_drops_type_arguments reports whether `receiver.method[...](` names a
 // method that an instance copy has already specialized (`fn (d Decoder[E]) decode[E]()` on
 // `Decoder_mono_BigEndian`), so the explicit type arguments repeat the receiver's and are dropped.
 fn (g &Parser) specialized_method_drops_type_arguments(tokens []FastcExpressionToken) bool {
+	// Most member names are not followed by `[`; check the next source byte before scanning.
+	mut next := g.s.offset
+	for next < g.s.src.len && g.s.src[next] in [` `, `\t`] {
+		next++
+	}
+	if next >= g.s.src.len || g.s.src[next] != `[` {
+		return false
+	}
 	mut look := g.s
 	if look.scan() != .lsbr || tokens.len < 3 || tokens[tokens.len - 2].tok != .dot {
 		return false

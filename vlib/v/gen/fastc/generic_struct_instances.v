@@ -196,6 +196,39 @@ fn fastc_monomorphize_generic_structs(sources []FastcSourceFile, prefs &pref.Pre
 	return m.sources
 }
 
+// fastc_struct_mono_names_generic reports whether the scanner, just after `mod.`, reads a
+// generic reference: a type `Name[...]`, or a call `name[T](...)`. An index such as
+// `os.args[1]` is neither, so it does not make the module's generics load.
+fn fastc_struct_mono_names_generic(mut s scanner.Scanner) bool {
+	if s.scan() != .name {
+		return false
+	}
+	is_type := s.lit.len > 0 && s.lit[0].is_capital()
+	if s.scan() != .lsbr {
+		return false
+	}
+	if is_type {
+		return true
+	}
+	mut depth := 1
+	mut tok := s.scan()
+	if tok == .number {
+		return false
+	}
+	for depth > 0 && tok != .eof {
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		tok = s.scan()
+	}
+	return tok == .rsbr && s.scan() == .lpar
+}
+
 // ensure_module_indexed indexes the generics of a vlib module that project code names.
 fn (mut m FastcStructMono) ensure_module_indexed(module_name string) {
 	if module_name in m.indexed_modules {
@@ -589,7 +622,12 @@ fn (mut m FastcStructMono) scan_text(path string, source string, file_ctx FastcS
 		mut name_pos := name_start
 		if next == .dot {
 			if module_name := ctx.imports[s.lit] {
-				m.ensure_module_indexed(module_name)
+				if module_name !in m.indexed_modules {
+					mut generic_look := look
+					if fastc_struct_mono_names_generic(mut generic_look) {
+						m.ensure_module_indexed(module_name)
+					}
+				}
 				if look.scan() == .name {
 					key := fastc_struct_mono_key(module_name, look.lit)
 					if key in m.generics {
@@ -830,7 +868,13 @@ fn (mut m FastcStructMono) parse_type(mut s scanner.Scanner, first token.Token, 
 			type_module = 'C'
 		} else {
 			type_module = ctx.imports[name] or { return FastcTypeText{}, tok }
-			m.ensure_module_indexed(type_module)
+			if type_module !in m.indexed_modules {
+				// The scanner is on the type name; only `mod.Name[...]` needs the generics.
+				mut generic_look := s
+				if generic_look.scan() == .lsbr {
+					m.ensure_module_indexed(type_module)
+				}
+			}
 		}
 		type_name = s.lit
 		tok = s.scan()

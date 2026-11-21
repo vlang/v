@@ -1810,6 +1810,9 @@ mut:
 	generated_mono   map[string]bool
 	mono_functions   map[string]FastcFunctionSignature
 	mono_definitions map[string]string
+	// fixed_array_alias_state caches whether any alias names a fixed array: 0 unknown, 1 no,
+	// 2 yes (see has_fixed_array_alias).
+	fixed_array_alias_state u8
 	// The prototypes of hoisted function literals. They follow the file's functions rather
 	// than the enclosing function's prototype, which the reachability prune may drop while
 	// the hoisted definition is always emitted.

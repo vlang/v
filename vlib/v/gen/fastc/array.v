@@ -328,6 +328,26 @@ fn fastc_is_empty_fixed_array_literal(tokens []FastcExpressionToken) bool {
 	return false
 }
 
+// has_fixed_array_alias reports whether any type alias names a fixed array, computed once.
+fn (g &Parser) has_fixed_array_alias() bool {
+	if g.fixed_array_alias_state == 0 {
+		mut found := false
+		mut bindings := &g.alias_base_types
+		for !found && bindings != unsafe { nil } {
+			for _, base in bindings.ids {
+				if flat.source_type_query(base).has(.c_fixed_array_prefix) {
+					found = true
+					break
+				}
+			}
+			bindings = bindings.base
+		}
+		mut w := unsafe { &Parser(g) }
+		w.fixed_array_alias_state = if found { u8(2) } else { u8(1) }
+	}
+	return g.fixed_array_alias_state == 2
+}
+
 fn (g &Parser) fixed_array_uses_raw_storage(tokens []FastcExpressionToken) bool {
 	if tokens.len == 1 {
 		if tokens[0].lit in g.locals {
@@ -345,6 +365,9 @@ fn (g &Parser) fixed_array_uses_raw_storage(tokens []FastcExpressionToken) bool 
 		}
 		// A field typed by an alias of a fixed array (`m Mat` with `type Mat = [16]f32`) is
 		// stored as the fixed-array struct.
+		if !g.has_fixed_array_alias() {
+			return true
+		}
 		if owner_type := g.infer_expression_type(tokens[..tokens.len - 2]) {
 			if field := g.struct_field_metadata(owner_type, tokens.last().lit) {
 				if !flat.source_type_query(field.typ).has(.c_fixed_array_prefix)

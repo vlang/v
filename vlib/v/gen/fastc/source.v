@@ -52,6 +52,7 @@ fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 // name its own declarations (`terminal.tabstop_interval` inside `module terminal`). An
 // import or a global (`__global storage`) of that name keeps it.
 fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
+	vlib_prefix := os.join_path_single(prefs.vroot, 'vlib') + os.path_separator
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut global_paths := map[string]string{}
@@ -59,6 +60,11 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		// Declaration flags are filled by the next collection phase, so use a
 		// cheap superset check before scanning globals at this earlier point.
 		if !source.source.contains('__global') {
+			continue
+		}
+		// Outside libc-header targets only project modules qualify themselves, so only their
+		// own globals can shadow the qualifier.
+		if !prefs.target_libc_headers && source.path.starts_with(vlib_prefix) {
 			continue
 		}
 		mut declarations := strings.new_builder(64)
@@ -69,7 +75,6 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		// Only the collected names survive this scan; the declaration text is discarded.
 		unsafe { declarations.free() }
 	}
-	vlib_prefix := os.join_path_single(prefs.vroot, 'vlib') + os.path_separator
 	mut result := []FastcSourceFile{cap: sources.len}
 	for source in sources {
 		module_name := source.header.module_name
