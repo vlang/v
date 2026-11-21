@@ -9,7 +9,10 @@ import strconv
 
 fn sql_has_full_feature(tokens []string) bool {
 	for i, tok in tokens {
-		if tok == 'select' && i > 0 {
+		// A `select` after index 0 normally marks a subquery. `dynamic select`
+		// is legacy DSL syntax where `select` is a keyword, not a nested query;
+		// lowering it would make the legacy parser treat `select` as a field.
+		if tok == 'select' && i > 0 && tokens[i - 1] != 'dynamic' {
 			return true
 		}
 		if tok == 'with' && i == 0 {

@@ -107,7 +107,7 @@ pub fn sql_query_from_select(cfg SelectConfig, where QueryData, data QueryData) 
 	mut q := new_sql_query(cfg.table.name)
 	q.distinct = cfg.has_distinct
 	for i, field in cfg.fields {
-		item := SqlSelectItem{ field: field }
+		mut item := SqlSelectItem{ field: field }
 		if i < cfg.select_exprs.len && cfg.select_exprs[i] != '' && cfg.select_exprs[i] != field {
 			item.expr = sql_raw(cfg.select_exprs[i])
 			item.field = ''
