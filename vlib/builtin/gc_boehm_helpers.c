@@ -15,6 +15,7 @@
 #else
 #include <gc.h>
 #endif
+#include "v_atomics.h"
 
 #ifdef V_GC_PROPORTIONAL_GROWTH
 //libgc grows the heap by at most MAXHINCR (8 MiB without LARGE_CONFIG, 16 MiB with
@@ -30,43 +31,10 @@
 
 // The throttle and expansion counters below are touched from allocator entry
 // points on every thread, outside any shared lock. `volatile` does not make
-// the read-modify-write atomic, so all updates and the reporting read go
-// through these atomic helpers (same approach as prealloc_atomics.h).
-#if defined(_MSC_VER)
-#include <intrin.h>
-static unsigned v_gc_atomic_add_u32(volatile unsigned *ptr, unsigned val) {
-	return (unsigned)_InterlockedExchangeAdd((volatile long *)ptr, (long)val) + (long)val;
-}
-static unsigned long long v_gc_atomic_add_u64(volatile unsigned long long *ptr, unsigned long long val) {
-	return (unsigned long long)_InterlockedExchangeAdd64((volatile long long *)ptr, (long long)val)
-		+ val;
-}
-static unsigned long long v_gc_atomic_load_u64(volatile unsigned long long *ptr) {
-	return (unsigned long long)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
-}
-#elif defined(__TINYC__)
-// TinyCC lowers these __atomic builtins to fixed-width libtcc1.a helpers.
-static unsigned v_gc_atomic_add_u32(volatile unsigned *ptr, unsigned val) {
-	return __atomic_add_fetch(ptr, val, 5);
-}
-static unsigned long long v_gc_atomic_add_u64(volatile unsigned long long *ptr, unsigned long long val) {
-	return __atomic_add_fetch(ptr, val, 5);
-}
-extern unsigned long long __atomic_load_8(unsigned long long *ptr, int order);
-static unsigned long long v_gc_atomic_load_u64(volatile unsigned long long *ptr) {
-	return __atomic_load_8((unsigned long long *)ptr, 5);
-}
-#else
-static unsigned v_gc_atomic_add_u32(volatile unsigned *ptr, unsigned val) {
-	return __atomic_add_fetch(ptr, val, __ATOMIC_ACQ_REL);
-}
-static unsigned long long v_gc_atomic_add_u64(volatile unsigned long long *ptr, unsigned long long val) {
-	return __atomic_add_fetch(ptr, val, __ATOMIC_ACQ_REL);
-}
-static unsigned long long v_gc_atomic_load_u64(volatile unsigned long long *ptr) {
-	return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
-}
-#endif
+// the read-modify-write atomic, so updates and the reporting read go through
+// the canonical helpers in v_atomics.h: the 32-bit growth check uses the
+// atomic add directly, the 64-bit expansion counters use the shared-counter
+// layer. No local cross-compiler atomic implementation is needed.
 
 static volatile unsigned v_gc_growth_checks = 0;
 static volatile unsigned long long v_gc_expansions = 0;
@@ -75,7 +43,7 @@ static void v_gc_maybe_expand_heap(size_t allocation_bytes) {
 	// Small allocations check occasionally; a large one checks every time, before
 	// it can push the heap past the next collection threshold.
 	if (allocation_bytes < V_GC_GROWTH_CHECK_BYTES) {
-		if (v_gc_atomic_add_u32(&v_gc_growth_checks, 1) & V_GC_GROWTH_CHECK_MASK) {
+		if (v_atomic_add_u32((volatile uint32_t*)&v_gc_growth_checks, 1) & V_GC_GROWTH_CHECK_MASK) {
 			return;
 		}
 	}
@@ -96,11 +64,13 @@ static void v_gc_maybe_expand_heap(size_t allocation_bytes) {
 		step = V_GC_GROWTH_MAX_STEP;
 	}
 	if (GC_expand_hp(step) != 0) {
-		v_gc_atomic_add_u64(&v_gc_expansions, 1);
+		v_counter_add_shared((volatile uint64_t*)&v_gc_expansions, 1);
 	}
 }
 
-unsigned long long v_gc_expansion_count(void) { return v_gc_atomic_load_u64(&v_gc_expansions); }
+unsigned long long v_gc_expansion_count(void) {
+	return v_counter_load_shared((volatile uint64_t*)&v_gc_expansions);
+}
 #else
 #define v_gc_maybe_expand_heap(size) ((void)0)
 #endif
