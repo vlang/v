@@ -8,6 +8,10 @@ import sync.pool
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+// On macOS a V3 compile error is retried with the compatibility compiler, which adds a
+// diagnostics header the expected outputs do not have; the REPL files test V3.
+@[markused]
+const turn_off_macos_fallback = os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 const is_silent = $if silent ? { true } $else { false }
 
 fn test_the_v_compiler_can_be_invoked() {
