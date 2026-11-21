@@ -16298,26 +16298,28 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name_id u32, field_name stri
 	}
 	fields := tc.structs[lookup_id] or { []StructField{} }
 	// The struct's own fields shadow promoted/embedded ones regardless of
-	// declaration order, so scan all direct fields before any embed.
-	for field in fields {
-		if field.name == field_name {
+	// declaration order, so scan all direct fields before any embed. Index the
+	// fields instead of copying each into a loop variable: structs such as the
+	// compiler's own have hundreds of fields, and this scan runs for each lookup.
+	for i in 0 .. fields.len {
+		if fields[i].name == field_name {
 			if is_generic {
-				return tc.substitute_generic_type(field.typ, generic_args, tc.struct_generic_params[base_name] or {
+				return tc.substitute_generic_type(fields[i].typ, generic_args, tc.struct_generic_params[base_name] or {
 					[]u32{}
 				})
 			}
-			return field.typ
+			return fields[i].typ
 		}
 	}
 	mut marked := false
 	embeds_indexed := tc.struct_embed_receivers.contains(lookup_id)
-	for field in fields {
+	for i in 0 .. fields.len {
+		if embeds_indexed && !fields[i].is_embed {
+			continue
+		}
+		field := fields[i]
 		mut embedded_type := field.typ
-		if embeds_indexed {
-			if !field.is_embed {
-				continue
-			}
-		} else {
+		if !embeds_indexed {
 			embedded_type = embedded_field_type(field) or { continue }
 		}
 		embedded_type = if is_generic {
