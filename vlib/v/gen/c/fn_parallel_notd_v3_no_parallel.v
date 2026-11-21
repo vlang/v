@@ -324,7 +324,7 @@ fn own_collect_gen_fn_preps(scratch voidptr, list_scope voidptr, preps []Collect
 		if cgen_worker_scope_owns(scratch, prep.shared_params.data) {
 			prep.shared_params = prep.shared_params.clone()
 		}
-		if cgen_worker_scope_owns(scratch, prep.return_type) {
+		if cgen_type_refers_to_scope(scratch, prep.return_type) {
 			prep.return_type = own_cgen_type_reference(prep.return_type, mut return_types)
 		}
 		if i >= owned_regs.len {
@@ -333,7 +333,7 @@ fn own_collect_gen_fn_preps(scratch voidptr, list_scope voidptr, preps []Collect
 		mut reg := unsafe { &owned_regs[i] }
 		reg.ptypes = prep.ptypes
 		reg.shared_params = prep.shared_params
-		if cgen_worker_scope_owns(scratch, reg.return_type) {
+		if cgen_type_refers_to_scope(scratch, reg.return_type) {
 			// Nearly always the prep's own return type.
 			key := voidptr(reg.return_type)
 			reg.return_type = owned_return_types[key] or {
@@ -354,6 +354,73 @@ fn own_cgen_string(scratch voidptr, s string) string {
 		return s.clone()
 	}
 	return s
+}
+
+// cgen_type_refers_to_scope reports whether `typ` or anything it references
+// lives in the arena `scope`: its reference, child types, lists or strings. A
+// FastC-built compiler allocates type references and their payloads outside
+// V's arenas, while their lists and strings still come from the current arena,
+// so a reference outside `scope` can still hold a list that `scope` owns.
+fn cgen_type_refers_to_scope(scope voidptr, typ &types.Type) bool {
+	if cgen_worker_scope_owns(scope, typ) {
+		return true
+	}
+	match typ {
+		types.Unknown {
+			return typ.reason.len > 0 && cgen_worker_scope_owns(scope, typ.reason.str)
+		}
+		types.Array {
+			return cgen_type_refers_to_scope(scope, typ.elem_type)
+		}
+		types.ArrayFixed {
+			return (typ.len_expr.len > 0 && cgen_worker_scope_owns(scope, typ.len_expr.str))
+				|| cgen_type_refers_to_scope(scope, typ.elem_type)
+		}
+		types.Channel {
+			return cgen_type_refers_to_scope(scope, typ.elem_type)
+		}
+		types.Map {
+			return cgen_type_refers_to_scope(scope, typ.key_type)
+				|| cgen_type_refers_to_scope(scope, typ.value_type)
+		}
+		types.Pointer {
+			return cgen_type_refers_to_scope(scope, typ.base_type)
+		}
+		types.OptionType {
+			return cgen_type_refers_to_scope(scope, typ.base_type)
+		}
+		types.ResultType {
+			return cgen_type_refers_to_scope(scope, typ.base_type)
+		}
+		types.Alias {
+			return cgen_type_refers_to_scope(scope, typ.base_type)
+		}
+		types.FnType {
+			if typ.params.len > 0 && cgen_worker_scope_owns(scope, typ.params.data) {
+				return true
+			}
+			for param in typ.params {
+				if cgen_type_refers_to_scope(scope, param.typ) {
+					return true
+				}
+			}
+			return cgen_type_refers_to_scope(scope, typ.return_type)
+		}
+		types.MultiReturn {
+			if typ.types.len > 0 && cgen_worker_scope_owns(scope, typ.types.data) {
+				return true
+			}
+			for i in 0 .. typ.types.len {
+				if cgen_type_refers_to_scope(scope, &typ.types[i]) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // own_cgen_type_reference deep-copies `typ` into `storage`, which must have
