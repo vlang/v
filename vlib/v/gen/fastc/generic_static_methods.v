@@ -37,9 +37,17 @@ fn fastc_lower_generic_static_methods(sources []FastcSourceFile, prefs &pref.Pre
 	if statics.len == 0 {
 		return sources
 	}
+	mut pairs := map[string]bool{}
+	for _, owners in statics {
+		for owner, methods in owners {
+			for method in methods {
+				pairs['${owner}.${method}'] = true
+			}
+		}
+	}
 	mut lowered := []FastcSourceFile{cap: sources.len}
 	for source_file in sources {
-		if !fastc_source_mentions_generic_static(source_file, statics) {
+		if !fastc_source_mentions_generic_static(source_file.source, pairs) {
 			lowered << source_file
 			continue
 		}
@@ -96,15 +104,29 @@ fn fastc_find_generic_static_declarations(source string) []FastcGenericStaticDec
 	return found
 }
 
-fn fastc_source_mentions_generic_static(source_file FastcSourceFile, statics map[string]map[string][]string) bool {
-	for _, owners in statics {
-		for owner, methods in owners {
-			for method in methods {
-				if source_file.source.contains('${owner}.${method}') {
-					return true
-				}
+// fastc_source_mentions_generic_static reports whether `source` contains one of the
+// `Owner.method` spellings in `pairs`, in one pass over its dots.
+fn fastc_source_mentions_generic_static(source string, pairs map[string]bool) bool {
+	mut dot := 0
+	for {
+		dot = source.index_after_('.', dot)
+		if dot < 0 {
+			return false
+		}
+		mut start := dot
+		for start > 0 && fastc_identifier_byte(source[start - 1]) {
+			start--
+		}
+		mut end := dot + 1
+		if start < dot && source[start].is_capital() {
+			for end < source.len && fastc_identifier_byte(source[end]) {
+				end++
+			}
+			if end > dot + 1 && source[start..end] in pairs {
+				return true
 			}
 		}
+		dot = end
 	}
 	return false
 }

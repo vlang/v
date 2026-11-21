@@ -1011,9 +1011,14 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 }
 
 fn fastc_monomorphize_sources(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
+	mut timer := fastc_new_phase_timer()
 	lowered := fastc_lower_generic_static_methods(sources, prefs)
+	timer.mark('monomorphize.static_methods')
 	after_functions := fastc_monomorphize_functions(lowered, prefs)!
-	return fastc_monomorphize_generic_structs(after_functions, prefs)!
+	timer.mark('monomorphize.functions')
+	result := fastc_monomorphize_generic_structs(after_functions, prefs)!
+	timer.mark('monomorphize.structs')
+	return result
 }
 
 // fastc_monomorphize_functions repeatedly applies one monomorphization pass until
