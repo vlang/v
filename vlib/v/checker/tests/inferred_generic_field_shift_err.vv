@@ -3,7 +3,7 @@ struct ShiftOperand[T] {
 }
 
 fn shift_operand[T](value T) ShiftOperand[T] {
-	return ShiftOperand[T]{value: value}
+	return ShiftOperand[T]{ value: value }
 }
 
 fn main() {

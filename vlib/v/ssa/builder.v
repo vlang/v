@@ -149,6 +149,7 @@ mut:
 	label_blocks             map[string]BlockID
 	defer_body_ids           []flat.NodeId
 	defer_active_slots       map[flat.NodeId]ValueID
+	defer_body_enabled       map[flat.NodeId]bool
 	pending_loop_label       string
 	loop_targets             []LoopTargets
 	top_level_main           bool
@@ -327,6 +328,8 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		c_fn_types:               map[string]TypeID{}
 		label_blocks:             map[string]BlockID{}
 		defer_body_ids:           []flat.NodeId{}
+		defer_active_slots:       map[flat.NodeId]ValueID{}
+		defer_body_enabled:       map[flat.NodeId]bool{}
 		loop_targets:             []LoopTargets{}
 		skip_modules:             map[string]bool{}
 		type_aliases:             map[u32]TypeID{}
@@ -9124,9 +9127,9 @@ fn (b &Builder) c_variant_function_names() map[string]bool {
 fn (mut b Builder) build_functions() {
 	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
-	mut jobs := []FunctionJob{}
-	mut job_for_function := []bool{len: b.m.funcs.len}
-	for node_index, node in b.a.nodes {
+	mut built_functions := 0
+	mut built_for_function := []bool{len: b.m.funcs.len}
+	for node in b.a.nodes {
 		if node.kind == .file {
 			cur_module = ''
 			continue
@@ -9181,20 +9184,19 @@ fn (mut b Builder) build_functions() {
 				continue
 			}
 			func_id := b.fn_ids[fn_name]
-			// Same-named declarations (a generic fallback and an arch-specific
-			// body): the first in source order is the one that runs.
-			if func_id < job_for_function.len && job_for_function[func_id] {
+			if func_id < built_for_function.len && built_for_function[func_id] {
 				continue
 			}
-			job_for_function[func_id] = true
-			jobs << FunctionJob{
-				node_index:  node_index
-				module_name: cur_module
-				func_id:     func_id
+			built_for_function[func_id] = true
+			b.build_function(node, cur_module)
+			built_functions++
+			if built_functions % 100 == 0 {
+				$if !prealloc ? {
+					gc_collect()
+				}
 			}
 		}
 	}
-	b.run_function_jobs(mut jobs)
 	if b.top_level_main && !b.skip_fn_bodies && b.hot_fn.len == 0 {
 		b.build_top_level_main()
 	}
@@ -9637,6 +9639,7 @@ fn (mut b Builder) reset_function_state() {
 	b.pending_loop_label = ''
 	b.defer_body_ids.clear()
 	b.defer_active_slots.clear()
+	b.defer_body_enabled.clear()
 	b.pending_loop_label = ''
 	b.loop_targets.clear()
 	template := b.module_var_template()
@@ -13298,6 +13301,12 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 				if node.op == .mul {
 					return b.wide_integer_mul(b.wide_integer_operand(lhs_id), b.wide_integer_operand(rhs_id))
 				}
+				if !signed {
+					lhs := b.wide_integer_operand(lhs_id)
+					rhs := b.wide_integer_operand(rhs_id)
+					quotient, remainder := b.build_wide_unsigned_divrem(lhs, rhs)
+					return if node.op == .div { quotient } else { remainder }
+				}
 				helper := match node.op {
 					.div {
 						if signed { '__divti3' } else { '__udivti3' }
@@ -13352,6 +13361,147 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 			return none
 		}
 	}
+}
+
+fn (mut b Builder) build_wide_unsigned_divrem(lhs ValueID, rhs ValueID) (ValueID, ValueID) {
+	entry := b.cur_block
+	ptr_u64 := b.m.type_store.get_ptr(b.u64_type)
+	zero := b.m.get_or_add_const(b.u64_type, '0')
+	one := b.m.get_or_add_const(b.u64_type, '1')
+	zero_i64 := b.m.get_or_add_const(b.i64_type, '0')
+	one_i64 := b.m.get_or_add_const(b.i64_type, '1')
+	sign_bit := b.m.get_or_add_const(b.u64_type, '63')
+
+	lhs_low, lhs_high := b.wide_integer_limbs(entry, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(entry, rhs)
+	q_low_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	q_high_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	r_low_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	r_high_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	bit_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	index_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.i64_type))
+	b.block_instr2(.store, entry, b.void_type, zero, q_low_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, q_high_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, r_low_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, r_high_slot)
+	b.block_instr2(.store, entry, b.void_type,
+		b.m.get_or_add_const(b.i64_type, '128'), index_slot)
+
+	zero_block := b.m.add_block(b.cur_func, 'wide_div_zero')
+	check_block := b.m.add_block(b.cur_func, 'wide_div_check')
+	body_block := b.m.add_block(b.cur_func, 'wide_div_body')
+	low_bit_block := b.m.add_block(b.cur_func, 'wide_div_low_bit')
+	high_bit_block := b.m.add_block(b.cur_func, 'wide_div_high_bit')
+	shift_block := b.m.add_block(b.cur_func, 'wide_div_shift')
+	subtract_block := b.m.add_block(b.cur_func, 'wide_div_subtract')
+	low_quotient_block := b.m.add_block(b.cur_func, 'wide_div_low_quotient')
+	high_quotient_block := b.m.add_block(b.cur_func, 'wide_div_high_quotient')
+	done_block := b.m.add_block(b.cur_func, 'wide_div_done')
+
+	low_zero := b.block_instr2(.eq, entry, b.i1_type, rhs_low, zero)
+	high_zero := b.block_instr2(.eq, entry, b.i1_type, rhs_high, zero)
+	divisor_zero := b.block_instr2(.and_, entry, b.i1_type, low_zero, high_zero)
+	b.block_instr3(.br, entry, b.void_type, divisor_zero, ValueID(zero_block),
+		ValueID(check_block))
+
+	if panic_id := b.fn_ids['panic'] {
+		message := b.m.add_value(.string_literal, b.str_type, 'division by zero', 0)
+		panic_ref := b.m.add_value(.func_ref, b.void_type, 'panic', panic_id)
+		b.block_instr2(.call, zero_block, b.void_type, panic_ref, message)
+	} else {
+		b.block_instr2(.udiv, zero_block, b.u64_type, lhs_low, zero)
+	}
+	b.block_instr0(.unreachable, zero_block, b.void_type)
+
+	index := b.block_instr1(.load, check_block, b.i64_type, index_slot)
+	active := b.block_instr2(.gt, check_block, b.i1_type, index, zero_i64)
+	b.block_instr3(.br, check_block, b.void_type, active, ValueID(body_block),
+		ValueID(done_block))
+
+	next_index := b.block_instr2(.sub, body_block, b.i64_type, index, one_i64)
+	b.block_instr2(.store, body_block, b.void_type, next_index, index_slot)
+	high_half := b.block_instr2(.ge, body_block, b.i1_type, next_index,
+		b.m.get_or_add_const(b.i64_type, '64'))
+	b.block_instr3(.br, body_block, b.void_type, high_half, ValueID(high_bit_block),
+		ValueID(low_bit_block))
+
+	low_shifted := b.block_instr2(.lshr, low_bit_block, b.u64_type, lhs_low, next_index)
+	low_bit := b.block_instr2(.and_, low_bit_block, b.u64_type, low_shifted, one)
+	b.block_instr2(.store, low_bit_block, b.void_type, low_bit, bit_slot)
+	b.block_instr1(.jmp, low_bit_block, b.void_type, ValueID(shift_block))
+
+	high_index := b.block_instr2(.sub, high_bit_block, b.i64_type, next_index,
+		b.m.get_or_add_const(b.i64_type, '64'))
+	high_shifted := b.block_instr2(.lshr, high_bit_block, b.u64_type, lhs_high, high_index)
+	high_bit := b.block_instr2(.and_, high_bit_block, b.u64_type, high_shifted, one)
+	b.block_instr2(.store, high_bit_block, b.void_type, high_bit, bit_slot)
+	b.block_instr1(.jmp, high_bit_block, b.void_type, ValueID(shift_block))
+
+	remainder_low := b.block_instr1(.load, shift_block, b.u64_type, r_low_slot)
+	remainder_high := b.block_instr1(.load, shift_block, b.u64_type, r_high_slot)
+	bit := b.block_instr1(.load, shift_block, b.u64_type, bit_slot)
+	shifted_low := b.block_instr2(.shl, shift_block, b.u64_type, remainder_low, one)
+	shift_carry := b.block_instr2(.lshr, shift_block, b.u64_type, remainder_low, sign_bit)
+	shifted_high_base := b.block_instr2(.shl, shift_block, b.u64_type, remainder_high, one)
+	shifted_high := b.block_instr2(.or_, shift_block, b.u64_type, shifted_high_base,
+		shift_carry)
+	shifted_low_with_bit := b.block_instr2(.or_, shift_block, b.u64_type, shifted_low, bit)
+	b.block_instr2(.store, shift_block, b.void_type, shifted_low_with_bit, r_low_slot)
+	b.block_instr2(.store, shift_block, b.void_type, shifted_high, r_high_slot)
+
+	overflow := b.block_instr2(.lshr, shift_block, b.u64_type, remainder_high, sign_bit)
+	high_equal := b.block_instr2(.eq, shift_block, b.i1_type, shifted_high, rhs_high)
+	high_greater := b.block_instr2(.ugt, shift_block, b.i1_type, shifted_high, rhs_high)
+	low_greater_equal := b.block_instr2(.uge, shift_block, b.i1_type, shifted_low_with_bit,
+		rhs_low)
+	equal_and_low := b.block_instr2(.and_, shift_block, b.i1_type, high_equal,
+		low_greater_equal)
+	wide_greater_equal := b.block_instr2(.or_, shift_block, b.i1_type, high_greater,
+		equal_and_low)
+	overflowed := b.block_instr2(.ne, shift_block, b.i1_type, overflow, zero)
+	subtract := b.block_instr2(.or_, shift_block, b.i1_type, overflowed,
+		wide_greater_equal)
+	b.block_instr3(.br, shift_block, b.void_type, subtract, ValueID(subtract_block),
+		ValueID(check_block))
+
+	candidate_low := b.block_instr2(.sub, subtract_block, b.u64_type, shifted_low_with_bit,
+		rhs_low)
+	borrow := b.block_instr2(.ult, subtract_block, b.i1_type, shifted_low_with_bit,
+		rhs_low)
+	candidate_high_base := b.block_instr2(.sub, subtract_block, b.u64_type, shifted_high,
+		rhs_high)
+	borrow64 := b.block_instr1(.zext, subtract_block, b.u64_type, borrow)
+	candidate_high := b.block_instr2(.sub, subtract_block, b.u64_type, candidate_high_base,
+		borrow64)
+	b.block_instr2(.store, subtract_block, b.void_type, candidate_low, r_low_slot)
+	b.block_instr2(.store, subtract_block, b.void_type, candidate_high, r_high_slot)
+	b.block_instr3(.br, subtract_block, b.void_type, high_half,
+		ValueID(high_quotient_block), ValueID(low_quotient_block))
+
+	low_quotient := b.block_instr1(.load, low_quotient_block, b.u64_type, q_low_slot)
+	low_mask := b.block_instr2(.shl, low_quotient_block, b.u64_type, one, next_index)
+	next_low_quotient := b.block_instr2(.or_, low_quotient_block, b.u64_type,
+		low_quotient, low_mask)
+	b.block_instr2(.store, low_quotient_block, b.void_type, next_low_quotient,
+		q_low_slot)
+	b.block_instr1(.jmp, low_quotient_block, b.void_type, ValueID(check_block))
+
+	high_quotient := b.block_instr1(.load, high_quotient_block, b.u64_type, q_high_slot)
+	high_mask := b.block_instr2(.shl, high_quotient_block, b.u64_type, one, high_index)
+	next_high_quotient := b.block_instr2(.or_, high_quotient_block, b.u64_type,
+		high_quotient, high_mask)
+	b.block_instr2(.store, high_quotient_block, b.void_type, next_high_quotient,
+		q_high_slot)
+	b.block_instr1(.jmp, high_quotient_block, b.void_type, ValueID(check_block))
+
+	final_q_low := b.block_instr1(.load, done_block, b.u64_type, q_low_slot)
+	final_q_high := b.block_instr1(.load, done_block, b.u64_type, q_high_slot)
+	final_r_low := b.block_instr1(.load, done_block, b.u64_type, r_low_slot)
+	final_r_high := b.block_instr1(.load, done_block, b.u64_type, r_high_slot)
+	quotient := b.make_wide_integer(done_block, final_q_low, final_q_high)
+	remainder := b.make_wide_integer(done_block, final_r_low, final_r_high)
+	b.cur_block = done_block
+	return quotient, remainder
 }
 
 // Compare the high limb first, then the unsigned low limb on a tie.
@@ -15392,6 +15542,14 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		fn_idx = b.runtime_fn_ids[resolved_name]
 	} else if idx := b.fn_ids[resolved_name] {
 		fn_idx = idx
+		if b.m.funcs[idx].is_prototype || b.m.funcs[idx].blocks.len == 0 {
+			if stub_id := b.register_interface_method_stub(resolved_name, base_id,
+				fn_node.value) {
+				resolved_name = b.m.funcs[stub_id].name
+				fn_idx = stub_id
+				is_method = true
+			}
+		}
 	} else {
 		mut callee_var_names := [actual_name, fn_node.value]
 		if b.cur_module.len > 0 {
@@ -15789,9 +15947,6 @@ fn (mut b Builder) register_interface_method_stub(name string, base_id flat.Node
 
 fn (mut b Builder) generate_interface_method_dispatch(func_id int, interface_id u32, func_name string, method string, param_types []TypeID, ret_type TypeID) {
 	impl_ids := b.tc.interface_impl_names(interface_id)
-	if impl_ids.len == 0 {
-		return
-	}
 	old_func := b.cur_func
 	old_block := b.cur_block
 	old_ret_type := b.cur_func_ret_type
@@ -15949,6 +16104,9 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 		return none
 	}
 	if existing := b.fn_ids[name] {
+		if b.m.funcs[existing].blocks.len == 0 {
+			b.generate_empty_function_body(existing)
+		}
 		return existing
 	}
 	mut params := []TypeID{cap: node.children_count}
@@ -15963,7 +16121,28 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 		}
 	}
 	ret_type := b.call_expr_result_type(call_id, node)
-	return b.register_synthetic_function(name, ret_type, params)
+	stub_id := b.register_synthetic_function(name, ret_type, params)
+	b.generate_empty_function_body(stub_id)
+	return stub_id
+}
+
+fn (mut b Builder) generate_empty_function_body(func_id int) {
+	old_func := b.cur_func
+	old_block := b.cur_block
+	old_ret_type := b.cur_func_ret_type
+	b.cur_func = func_id
+	b.cur_func_ret_type = u32(0)
+	entry := b.m.add_block(func_id, 'synthetic_stub')
+	b.cur_block = entry
+	ret_type := b.m.funcs[func_id].typ
+	if ret_type == b.void_type {
+		b.block_instr0(.ret, entry, b.void_type)
+	} else {
+		b.block_instr1(.ret, entry, b.void_type, b.default_value_for_type(ret_type))
+	}
+	b.cur_func = old_func
+	b.cur_block = old_block
+	b.cur_func_ret_type = old_ret_type
 }
 
 // register_missing_call_stub materializes a checker-validated call whose native
