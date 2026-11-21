@@ -238,52 +238,56 @@ mut:
 	ownership_fn_literal_ret_types   map[string]Type
 	ownership_fn_literal_param_types map[string][]Type
 	ownership_fn_param_mut           map[string][]bool
-	ownership_fn_param_descs         map[string][]OwnershipParamDescendant
-	ownership_fn_param_desc_count    int
-	owned_structs                    map[u32]bool
-	copy_structs                     map[u32]bool
-	drop_structs                     map[u32]bool
-	drop_requirements                map[string]map[u64]bool
-	drop_at_fn_exit                  map[string][]OwnershipDropEntry
-	drop_at_returns                  map[string][]OwnershipDropEntry
-	drop_at_return_nodes             map[string][]OwnershipDropEntry
-	sum_return_local_sources         map[string][]OwnershipDropEntry
-	sum_value_transfer_sources       map[int]string
-	sum_move_reads                   map[int]bool
-	sum_outer_store_local_sources    map[string][]OwnershipDropEntry
-	sum_local_heap_sources           map[string][]OwnershipDropEntry
-	sum_promoted_local_bindings      map[string]bool
-	drop_at_propagations             map[string][]OwnershipDropEntry
-	drop_at_loop_controls            map[string][]OwnershipDropEntry
-	drop_at_loop_iterations          map[string][]OwnershipDropEntry
-	drop_at_scope_exit               map[string][]OwnershipDropEntry
-	drop_return_counts               map[string]int
-	drop_propagation_counts          map[string]int
-	drop_loop_control_counts         map[string]int
-	drop_loop_iteration_counts       map[string]int
-	drop_scope_counts                map[string]int
-	drop_type_names                  map[u32]bool
-	value_receiver_methods           map[string]bool
-	owned_globals                    flat.TypeTextBindings
-	array_lengths                    map[string]int
-	ownership_fn_value_vars          map[string]string
-	cur_fn                           string
-	frames                           []OwnershipFrame
-	branch_groups                    []OwnershipBranchGroup
-	pending_value_branch_groups      []OwnershipBranchGroup
-	pending_loop_label               string
-	deferred_aggregate_consumption   map[int]int
-	index_move_reads                 map[int]bool
-	owned_sum_drop_reads             map[int]bool
-	receiver_alias_clone_reads       map[int]bool
-	borrowed_projection_actions      map[int]OwnershipBorrowedProjectionAction
-	pointer_index_aliases            map[string]string
-	borrowed_storage_clone_reads     map[int]bool
-	guard_move_reads                 map[int]bool
-	skip_drop_before_assign          map[int]bool
-	scope_frames                     []OwnershipScopeFrame
-	suppressed_checks                int
-	path_active                      bool
+	// ownership_fn_param_mut_base holds the entries of ownership_fn_param_mut that an
+	// observation state reads from the state it observes, instead of copying one list
+	// per function on every observation. Observations are discarded, never merged.
+	ownership_fn_param_mut_base    &OwnershipState = unsafe { nil }
+	ownership_fn_param_descs       map[string][]OwnershipParamDescendant
+	ownership_fn_param_desc_count  int
+	owned_structs                  map[u32]bool
+	copy_structs                   map[u32]bool
+	drop_structs                   map[u32]bool
+	drop_requirements              map[string]map[u64]bool
+	drop_at_fn_exit                map[string][]OwnershipDropEntry
+	drop_at_returns                map[string][]OwnershipDropEntry
+	drop_at_return_nodes           map[string][]OwnershipDropEntry
+	sum_return_local_sources       map[string][]OwnershipDropEntry
+	sum_value_transfer_sources     map[int]string
+	sum_move_reads                 map[int]bool
+	sum_outer_store_local_sources  map[string][]OwnershipDropEntry
+	sum_local_heap_sources         map[string][]OwnershipDropEntry
+	sum_promoted_local_bindings    map[string]bool
+	drop_at_propagations           map[string][]OwnershipDropEntry
+	drop_at_loop_controls          map[string][]OwnershipDropEntry
+	drop_at_loop_iterations        map[string][]OwnershipDropEntry
+	drop_at_scope_exit             map[string][]OwnershipDropEntry
+	drop_return_counts             map[string]int
+	drop_propagation_counts        map[string]int
+	drop_loop_control_counts       map[string]int
+	drop_loop_iteration_counts     map[string]int
+	drop_scope_counts              map[string]int
+	drop_type_names                map[u32]bool
+	value_receiver_methods         map[string]bool
+	owned_globals                  flat.TypeTextBindings
+	array_lengths                  map[string]int
+	ownership_fn_value_vars        map[string]string
+	cur_fn                         string
+	frames                         []OwnershipFrame
+	branch_groups                  []OwnershipBranchGroup
+	pending_value_branch_groups    []OwnershipBranchGroup
+	pending_loop_label             string
+	deferred_aggregate_consumption map[int]int
+	index_move_reads               map[int]bool
+	owned_sum_drop_reads           map[int]bool
+	receiver_alias_clone_reads     map[int]bool
+	borrowed_projection_actions    map[int]OwnershipBorrowedProjectionAction
+	pointer_index_aliases          map[string]string
+	borrowed_storage_clone_reads   map[int]bool
+	guard_move_reads               map[int]bool
+	skip_drop_before_assign        map[int]bool
+	scope_frames                   []OwnershipScopeFrame
+	suppressed_checks              int
+	path_active                    bool
 	// library_body_depth counts the function bodies being checked inside a standard library
 	// function, which keeps V's value semantics (see ownership_file_keeps_value_semantics).
 	library_body_depth int
@@ -453,6 +457,12 @@ fn ownership_clone_bool_lists(src map[string][]bool) map[string][]bool {
 }
 
 fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
+	return ownership_clone_state_sharing(src, false)
+}
+
+// ownership_clone_state_sharing copies `src` for a parallel worker, or, with `observe`,
+// for an observation that only reads the per-function parameter table of `src`.
+fn ownership_clone_state_sharing(src &OwnershipState, observe bool) &OwnershipState {
 	return &OwnershipState{
 		owned_vars:                       map[string]flat.NodeId{}
 		owned_var_types:                  flat.TypeTextBindings{}
@@ -469,7 +479,16 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		ownership_fn_return_fn_values:    src.ownership_fn_return_fn_values.clone()
 		ownership_fn_literal_ret_types:   map[string]Type{}
 		ownership_fn_literal_param_types: map[string][]Type{}
-		ownership_fn_param_mut:           ownership_clone_bool_lists(src.ownership_fn_param_mut)
+		ownership_fn_param_mut:           if observe {
+			map[string][]bool{}
+		} else {
+			ownership_clone_bool_lists(src.ownership_fn_param_mut)
+		}
+		ownership_fn_param_mut_base:      if observe {
+			src
+		} else {
+			src.ownership_fn_param_mut_base
+		}
 		ownership_fn_param_descs:         ownership_clone_param_descs(src.ownership_fn_param_descs)
 		ownership_fn_param_desc_count:    src.ownership_fn_param_desc_count
 		owned_structs:                    src.owned_structs.clone()
@@ -574,7 +593,7 @@ fn ownership_clone_branch_groups(groups []OwnershipBranchGroup) []OwnershipBranc
 // Ownership observation may resolve a chained call and recheck its receiver. Retain the
 // complete current context while isolating every mutable payload from speculative effects.
 fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
-	mut result := ownership_clone_state_for_parallel(src)
+	mut result := ownership_clone_state_sharing(src, true)
 	result.owned_vars = src.owned_vars.clone()
 	result.owned_var_types = src.owned_var_types.clone()
 	result.moved_vars = src.moved_vars.clone()
@@ -10613,11 +10632,24 @@ fn (mut tc TypeChecker) ownership_call_param_is_mut(fn_name string, param_idx in
 	if param_idx < 0 {
 		return false
 	}
-	params := tc.ownership_state().ownership_fn_param_mut[fn_name] or { return false }
+	params := tc.ownership_state().fn_param_mut(fn_name) or { return false }
 	if param_idx >= params.len {
 		return false
 	}
 	return params[param_idx]
+}
+
+// fn_param_mut returns the parameter mutability flags of `fn_name` that this state or one
+// that it observes registered.
+fn (st &OwnershipState) fn_param_mut(fn_name string) ?[]bool {
+	mut state := unsafe { st }
+	for !isnil(state) {
+		if params := state.ownership_fn_param_mut[fn_name] {
+			return params
+		}
+		state = state.ownership_fn_param_mut_base
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
