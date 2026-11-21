@@ -48,13 +48,25 @@ pub fn (mut v SoundVoice) mix(mut buffer []f32, frames int, channels int) {
 		|| v.sound.channels < 1 {
 		return
 	}
+	sound_channels := v.sound.channels
+	total_frames := v.sound.samples.len / sound_channels
+	if total_frames == 0 {
+		return
+	}
 	left_gain := f32(math.sqrt(f64((1 - v.pan) / 2))) * 1.41421356 * v.volume
 	right_gain := f32(math.sqrt(f64((1 + v.pan) / 2))) * 1.41421356 * v.volume
+	start_frame := v.pos / sound_channels
 	unsafe {
 		for frame in 0 .. frames {
+			mut fi := start_frame + frame
+			if v.looping {
+				fi = fi % total_frames
+			} else if fi >= total_frames {
+				continue
+			}
 			for ch in 0 .. channels {
-				source := ch % v.sound.channels
-				idx := v.pos + frame * v.sound.channels + source
+				source := ch % sound_channels
+				idx := fi * sound_channels + source
 				if idx >= v.sound.samples.len {
 					continue
 				}
@@ -66,10 +78,11 @@ pub fn (mut v SoundVoice) mix(mut buffer []f32, frames int, channels int) {
 			}
 		}
 	}
-	v.pos += frames * v.sound.channels
+	v.pos += frames * sound_channels
 	if v.pos >= v.sound.samples.len {
 		if v.looping {
-			v.pos = v.pos % v.sound.samples.len
+			// Stay on a frame boundary so the next mix starts at a whole frame.
+			v.pos = (v.pos % v.sound.samples.len) / sound_channels * sound_channels
 		} else {
 			v.playing = false
 		}

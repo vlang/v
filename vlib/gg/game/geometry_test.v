@@ -26,6 +26,9 @@ fn test_polygon_area_centroid() {
 	c := polygon_centroid(square)
 	assert c.x == 5 && c.y == 5
 	assert polygon_area([gg.Vec2{0, 0}, gg.Vec2{1, 1}]) == 0
+	// Winding must not change the promised absolute area.
+	cw := [gg.Vec2{0, 0}, gg.Vec2{0, 2}, gg.Vec2{2, 2}, gg.Vec2{2, 0}]
+	assert polygon_area(cw) == 4
 }
 
 fn test_convex_hull() {

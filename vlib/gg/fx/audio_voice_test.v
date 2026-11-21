@@ -42,6 +42,20 @@ fn test_voice_loop_and_pan() {
 	assert v.pos == 0
 }
 
+fn test_voice_loop_wraps_partial_frame() {
+	sound := &gg.Sound{ samples: [i16(1000), 2000, 3000, 4000] }
+	mut v := new_voice(sound)
+	v.looping = true
+	v.play()
+	mut buffer := [f32(0), 0, 0, 0, 0, 0]
+	v.mix(mut buffer, 3, 2)
+	// The third frame wraps to the start instead of going silent.
+	assert buffer[0] > 0 && buffer[1] > 0
+	assert buffer[2] > 0 && buffer[3] > 0
+	assert buffer[4] > 0 && buffer[5] > 0
+	assert v.playing
+}
+
 fn test_voice_zero_channels_is_safe() {
 	sound := &gg.Sound{ samples: [i16(1000), 1000] }
 	mut v := new_voice(sound)

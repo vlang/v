@@ -42,3 +42,38 @@ fn test_gltf_skin_and_clips() {
 	assert clips[0].tracks.len == 1
 	assert clips[0].tracks[0].keys.len == 2
 }
+
+fn test_skin_rejects_unsafe_gltf() {
+	dir := os.join_path(os.temp_dir(), 'gg_skin_unsafe_${time.now().unix_nano()}')
+	os.mkdir_all(dir) or { panic('mkdir failed') }
+	defer { os.rmdir_all(dir) or {} }
+
+	// A parent-directory buffer URI must not escape the asset directory.
+	escape_json := '{
+		"buffers":[{"uri":"../secret.bin"}],
+		"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":64}],
+		"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":1,"type":"MAT4"}],
+		"nodes":[{"name":"j"}],
+		"skins":[{"joints":[0],"inverseBindMatrices":0}]
+	}'
+	escape_path := os.join_path(dir, 'escape.gltf')
+	os.write_file(escape_path, escape_json) or { panic('write failed') }
+	if _ := load_gltf_skin(escape_path) {
+		assert false, 'path traversal was accepted'
+	}
+
+	// A huge untrusted count must be rejected before allocating count*16 floats.
+	uri := 'data:application/octet-stream;base64,' + base64.encode([u8(0), 0, 0, 0])
+	huge_json := '{
+		"buffers":[{"uri":"${uri}"}],
+		"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":4}],
+		"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":100000000,"type":"MAT4"}],
+		"nodes":[{"name":"j"}],
+		"skins":[{"joints":[0],"inverseBindMatrices":0}]
+	}'
+	huge_path := os.join_path(dir, 'huge.gltf')
+	os.write_file(huge_path, huge_json) or { panic('write failed') }
+	if _ := load_gltf_skin(huge_path) {
+		assert false, 'huge accessor count was accepted'
+	}
+}

@@ -57,7 +57,8 @@ pub fn polygon_area(points []gg.Vec2) f32 {
 		b := points[(i + 1) % points.len]
 		sum += a.x * b.y - b.x * a.y
 	}
-	return sum / 2
+	area := sum / 2
+	return if area < 0 { -area } else { area }
 }
 
 // polygon_centroid returns the area-weighted center of a simple polygon.

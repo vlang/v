@@ -39,3 +39,10 @@ fn test_post_tonemap_bloom() {
 	assert bl[0] >= px[0]
 	assert bl[3] == 255
 }
+
+fn test_post_box_blur_into_nonpositive_radius_is_noop() {
+	src := [u8(200), 100, 50, 255]
+	mut dst := [u8(0), 0, 0, 0]
+	post_box_blur_into(mut dst, src, 1, 1, -1)
+	assert dst == src
+}

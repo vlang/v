@@ -86,6 +86,11 @@ fn anim_buffer_data(doc &AnimDoc, dir string, index int) ![]u8 {
 		comma := uri.index(',') or { return error('gg: malformed glTF data URI') }
 		return base64.decode(uri[comma + 1..])
 	}
+	// A glTF buffer URI must stay inside the asset's directory: reject
+	// absolute paths and parent-directory traversal, as mesh_loader.v does.
+	if uri.starts_with('/') || uri.contains('..') || uri.contains('\\') {
+		return error('gg: glTF buffer URI escapes the asset directory')
+	}
 	return os.read_bytes(os.join_path(dir, uri))
 }
 
@@ -97,14 +102,35 @@ fn read_float_accessor(doc &AnimDoc, dir string, index int, components int) ![]f
 	if acc.component_type != 5126 {
 		return error('gg: only FLOAT animation accessors are supported')
 	}
+	if acc.count < 0 || components < 0 {
+		return error('gg: glTF accessor has a negative count')
+	}
 	if acc.buffer_view < 0 || acc.buffer_view >= doc.buffer_views.len {
 		return error('gg: glTF bufferView index out of range')
 	}
 	view := doc.buffer_views[acc.buffer_view]
+	if view.byte_offset < 0 || view.byte_length < 0 || acc.byte_offset < 0 {
+		return error('gg: glTF accessor has a negative byte offset or length')
+	}
+	start := i64(view.byte_offset) + i64(acc.byte_offset)
+	// `count` comes from untrusted JSON. Bound the whole accessor before
+	// allocating so a huge count cannot drive an enormous allocation first.
+	needed := i64(acc.count) * i64(components) * 4
+	if view.byte_length > 0 {
+		if i64(acc.byte_offset) >= i64(view.byte_length) {
+			return error('gg: glTF accessor starts outside its bufferView')
+		}
+		if needed > i64(view.byte_length) - i64(acc.byte_offset) {
+			return error('gg: glTF accessor extends outside its bufferView')
+		}
+	}
 	data := anim_buffer_data(doc, dir, view.buffer)!
+	if start < 0 || start + needed > i64(data.len) {
+		return error('gg: glTF accessor data out of bounds')
+	}
 	mut out := []f32{len: acc.count * components}
 	for i in 0 .. out.len {
-		at := view.byte_offset + acc.byte_offset + i * 4
+		at := int(start) + i * 4
 		if at + 4 > data.len {
 			return error('gg: glTF accessor data out of bounds')
 		}

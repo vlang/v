@@ -111,6 +111,14 @@ pub fn post_vignette_into(mut dst []u8, src []u8, width int, height int, strengt
 }
 
 pub fn post_box_blur_into(mut dst []u8, src []u8, width int, height int, radius int) {
+	if radius <= 0 {
+		// Match post_box_blur's no-op behaviour instead of leaving dst zeroed.
+		n := if src.len < dst.len { src.len } else { dst.len }
+		for i in 0 .. n {
+			dst[i] = src[i]
+		}
+		return
+	}
 	for y in 0 .. height {
 		for x in 0 .. width {
 			at := (y * width + x) * 4
