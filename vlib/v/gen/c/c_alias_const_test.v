@@ -67,8 +67,21 @@ fn main() {
 	assert compatible.contains('const my_ctx_t minmod__empty = {0};')
 	assert compatible.contains('my_ctx_t local = (my_ctx_t){.id = 0x00020002};')
 	// Native runtime coverage also checks that the brace form keeps aggregate values intact.
-	compiler := os.find_abs_path_of_executable('clang') or {
-		os.find_abs_path_of_executable('gcc') or { return }
+	// Visual Studio's clang targets the MSVC ABI, which V's MinGW-style
+	// Windows executable flags cannot use. Keep the native aggregate assertions.
+	mut candidates := ['clang', 'gcc']
+	$if windows {
+		candidates = ['gcc']
+	}
+	mut compiler := ''
+	for candidate in candidates {
+		if path := os.find_abs_path_of_executable(candidate) {
+			compiler = path
+			break
+		}
+	}
+	if compiler == '' {
+		return
 	}
 	executed := cmdexec.run(@VEXE, ['-gc', 'none', '-cc', compiler, 'run', v_file])
 	assert executed.exit_code == 0, executed.output
