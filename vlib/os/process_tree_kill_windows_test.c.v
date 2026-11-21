@@ -3,8 +3,13 @@ module os
 import time
 
 // signal_pgkill of a child started with use_pgroup ends the whole tree on Windows: the
-// child (`cmd.exe`) and the process it started (`PING.EXE`, which waits 10 minutes), neither
-// of which shares anything with this test but the job object the child was put in.
+// child (`cmd.exe`) and the process it started (a copy of `PING.EXE`, which waits 10 minutes),
+// neither of which shares anything with this test but the job object the child was put in.
+//
+// The grandchild runs under a name of this test's own. Found by the name `PING.EXE`, it was
+// sometimes another program's: a service that pings now and then starts one in the same
+// half second, the test took that for its grandchild, failed, and left the real one running
+// for ten minutes with the test's output pipe open.
 //
 // The control, test_the_console_event_and_terminateprocess_leave_the_grandchild, is the two
 // calls that signal_pgkill made before: they end the child, and the grandchild lives on.
@@ -12,7 +17,9 @@ import time
 fn C.OpenProcess(desired_access u32, inherit_handle bool, process_id u32) voidptr
 
 const process_query_limited_information = u32(0x1000)
-const ping_exe = r'C:\Windows\System32\PING.EXE'
+const system_ping_exe = r'C:\Windows\System32\PING.EXE'
+const ping_name = 'vtreekill${getpid()}.exe'
+const ping_exe = join_path(vtmp_dir(), ping_name)
 const cmd_exe = r'C:\Windows\System32\cmd.exe'
 
 // process_alive reports whether the process `pid` exists and has not ended.
@@ -31,21 +38,44 @@ fn process_alive(pid int) bool {
 	return code == u32(C.STILL_ACTIVE)
 }
 
-// ping_pids lists the processes of PING.EXE that exist now.
+fn testsuite_begin() {
+	cp(system_ping_exe, ping_exe) or { panic(err) }
+}
+
+fn testsuite_end() {
+	end_all_pings()
+	for _ in 0 .. 20 {
+		rm(ping_exe) or {
+			time.sleep(50 * time.millisecond)
+			continue
+		}
+		break
+	}
+}
+
+// end_all_pings ends every process of this test's copy of PING.EXE, whichever of them a test
+// took for its grandchild: none may outlive the test.
+fn end_all_pings() {
+	if ping_pids().len > 0 {
+		exec(['taskkill', '/f', '/im', ping_name])
+	}
+}
+
+// ping_pids lists the processes of this test's copy of PING.EXE that exist now.
 fn ping_pids() []int {
-	result := exec(['tasklist', '/fo', 'csv', '/nh', '/fi', 'IMAGENAME eq PING.EXE'])
+	result := exec(['tasklist', '/fo', 'csv', '/nh', '/fi', 'IMAGENAME eq ${ping_name}'])
 	mut pids := []int{}
 	for line in result.output.split_into_lines() {
 		fields := line.split('","')
-		if fields.len >= 2 && fields[0].trim('"').to_upper() == 'PING.EXE' {
+		if fields.len >= 2 && fields[0].trim('"').to_lower() == ping_name.to_lower() {
 			pids << fields[1].trim('"').int()
 		}
 	}
 	return pids
 }
 
-// start_ping_tree starts `cmd /c PING.EXE -n 600 127.0.0.1`: a child that starts a process
-// and waits for it. It returns the child and the pid of the PING.EXE it started.
+// start_ping_tree starts `cmd /c <the copy of PING.EXE> -n 600 127.0.0.1`: a child that starts
+// a process and waits for it. It returns the child and the pid of the process it started.
 fn start_ping_tree(use_pgroup bool) (&Process, int) {
 	before := ping_pids()
 	mut p := new_process(cmd_exe)
@@ -83,6 +113,7 @@ fn cleanup_tree(mut p Process, grandchild int) {
 	if grandchild != 0 && process_alive(grandchild) {
 		exec(['taskkill', '/f', '/pid', grandchild.str()])
 	}
+	end_all_pings()
 	p.signal_kill()
 	p.wait()
 	p.close()
