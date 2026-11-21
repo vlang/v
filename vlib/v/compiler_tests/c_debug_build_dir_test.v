@@ -83,3 +83,38 @@ fn test_a_failed_rebuild_keeps_the_sources_of_the_executable_in_place() {
 	assert os.read_file(c_source)!.contains('second build')
 	assert os.exec([executable]).output.trim_space() == 'second build'
 }
+
+// A rebuild can fail after the new directory is made and before any C is compiled: an instance
+// of a generic function that does not check ends the build there. The executable in place and
+// its sources must be the same files after that failure too, at the same paths.
+fn test_a_rebuild_that_fails_a_generic_instance_check_keeps_the_sources_too() {
+	root := os.join_path(os.vtmp_dir(), 'c_debug_dir_instance_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { println("first build") }')!
+	mut executable := os.join_path(root, 'program')
+	$if windows {
+		executable += '.exe'
+	}
+	build_with_c_debug(source, executable)
+	dir_prefix := '.${os.base(executable)}.v3cc.'
+	first_dirs := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert first_dirs.len == 1, first_dirs.str()
+	c_source := os.join_path(root, first_dirs[0], 'src.c')
+	first_c := os.read_file(c_source)!
+	first_executable := os.read_bytes(executable)!
+	// `is_set[int]` returns an int as a bool: its instance is refused.
+	os.write_file(source, 'fn is_set[T](x T) bool {\n\treturn x\n}\n\nfn main() {\n\tprintln(is_set(1))\n}\n')!
+	failed := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
+		source])
+	assert failed.exit_code != 0, 'the build of a generic instance that does not check succeeded:\n${failed.output}'
+	// the build got as far as its new directory: it said where it keeps the C sources
+	assert failed.output.contains(first_dirs[0]), failed.output
+	assert os.read_bytes(executable)! == first_executable, 'a failed build changed the executable'
+	after_failure := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert after_failure == first_dirs, 'after the failed build: ${after_failure}'
+	assert os.exists(c_source), 'the failed build removed ${c_source}:\n${failed.output}'
+	assert os.read_file(c_source)! == first_c, 'the sources are no longer the ones of the executable in place'
+	assert os.exec([executable]).output.trim_space() == 'first build'
+}

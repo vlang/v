@@ -2645,9 +2645,10 @@ fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explic
 	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
 }
 
-// cleanup_c_build_dir removes the C build directory of a build that is over. Every failure of
-// a build ends here, so this is also where a `-cg` build that did not finish gives back the
-// directory it had set aside (see v3_set_aside_c_debug_dir).
+// cleanup_c_build_dir removes the C build directory of a build that is over, and it is where
+// a `-cg` build that did not finish gives back the directory it had set aside (see
+// v3_set_aside_c_debug_dir). A failure that ends the process without coming here leaves that
+// to the exit hook, which calls this (see v3_give_back_c_debug_dir_at_exit).
 fn cleanup_c_build_dir(dir string) {
 	if dir.len > 0 {
 		os.rmdir_all(dir) or {}
@@ -6401,7 +6402,9 @@ fn v3_c_debug_dir_set_aside(cc_dir string) string {
 // removed: cleanup_c_build_dir moves them back, and v3_keep_new_c_debug_dir removes them once
 // a new executable has replaced the old one. A directory that is already set aside was left by
 // a build that was interrupted; it is the one to keep, and `cc_dir` holds what that build left.
+// From here on the exit hook looks after `cc_dir`, for the failures that do not clean up.
 fn v3_set_aside_c_debug_dir(cc_dir string) {
+	v3_watch_c_debug_dir(cc_dir)
 	set_aside := v3_c_debug_dir_set_aside(cc_dir)
 	if os.is_dir(set_aside) {
 		os.rmdir_all(cc_dir) or {}
@@ -6416,6 +6419,7 @@ fn v3_set_aside_c_debug_dir(cc_dir string) {
 // one it replaced are no longer named by anything.
 fn v3_keep_new_c_debug_dir(cc_dir string) {
 	os.rmdir_all(v3_c_debug_dir_set_aside(cc_dir)) or {}
+	v3_unwatch_c_debug_dir()
 }
 
 // v3_c_debug_dir_note is the one line a `-cg` build prints to say where it keeps its C sources.
@@ -16624,6 +16628,7 @@ pub fn run(args []string) {
 			// The output directory may not exist yet, and mkdir would fail on it.
 			v3_mkdir_all_shared(cc_dir) or {
 				eprintln('failed to create C build directory ${cc_dir}: ${err}')
+				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
 			if is_c_debug {
@@ -16686,6 +16691,7 @@ pub fn run(args []string) {
 		// stops the build here, before C generation takes it to the C compiler
 		// (see start_program_instance_check).
 		if program_instance_check.finish() == 1 {
+			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
 		// A compiler switch does not add diagnostics to an invalid program. Wait
