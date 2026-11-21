@@ -503,14 +503,24 @@ fn (mut g Parser) queue_explicit_mono_function(tokens []FastcExpressionToken) ?s
 	if look.scan() != .lsbr {
 		return none
 	}
-	first := look.scan()
-	concrete_source_id_2, next := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return none }
-	concrete := concrete_source_id_2
-
-	if next != .rsbr || look.scan() != .lpar {
+	// One argument per type parameter (`view[K, V, X](...)`), joined with `,`.
+	mut arguments := []string{}
+	mut next := look.scan()
+	for {
+		argument, after := fastc_scan_type(mut look, next, g.path, g.module_name, g.imports,
+			g.declared_types, g.selfhost) or { return none }
+		arguments << flat.source_type_name(argument)
+		if after != .comma {
+			next = after
+			break
+		}
+		next = look.scan()
+	}
+	if next != .rsbr || look.scan() != .lpar
+		|| arguments.len != source.type_param.split(',').len {
 		return none
 	}
-	return g.queue_mono_function(function_key, concrete)
+	return g.queue_mono_function(function_key, flat.source_type_id(arguments.join(',')))
 }
 
 // queue_implicit_mono_function specializes a single-parameter generic free function whose
@@ -562,12 +572,12 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 			return_type = fastc_specialized_generic_result_type(return_type, result_concrete)
 			return_types = fastc_specialized_generic_result_types(return_types, result_concrete)
 			option_type = fastc_specialized_generic_result_type(option_type, result_concrete)
-			if specialized := g.mono_struct_instance_signature(source, concrete) {
-				// The result names a specialized generic struct (`!&Queue[T]`).
-				return_type = specialized.return_type
-				return_types = specialized.return_types.ids.clone()
-				option_type = specialized.option_type
-			}
+		}
+		if specialized := g.mono_struct_instance_signature(source, concrete) {
+			// The result names a specialized generic struct (`!&Queue[T]`).
+			return_type = specialized.return_type
+			return_types = specialized.return_types.ids.clone()
+			option_type = specialized.option_type
 		}
 		g.type_memo.clear()
 		g.mono_functions[mono_key] = FastcFunctionSignature{

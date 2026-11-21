@@ -835,9 +835,12 @@ fn (mut m FastcStructMono) instance(struct_key string, arguments []FastcTypeText
 		return key
 	}
 	generic := m.generics[struct_key] or { FastcStructGeneric{} }
+	instance_name := fastc_struct_instance_name(generic.name, canonical)
+	// Copies spell the instance by its plain name in its own module.
+	m.module_types[generic.module_name][instance_name] = true
 	m.instances[key] = FastcStructInstance{
 		struct_key: struct_key
-		name:       fastc_struct_instance_name(generic.name, canonical)
+		name:       instance_name
 		canonical:  canonical
 		spellings:  arguments.map(it.spelling)
 	}
