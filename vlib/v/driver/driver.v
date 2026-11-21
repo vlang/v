@@ -14097,8 +14097,16 @@ pub fn run(args []string) {
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
+		// Returning the blocks kept beyond the limit takes a couple of milliseconds
+		// (2.3 ms for the self-host): a parallel build does it beside the serial
+		// start of the transform stage. The thread touches only the allocator's pool.
+		mut pool_limit_threads := []thread{}
 		if scope_prealloc_stages {
-			prealloc_block_pool_limit_for_v3(late_stage_block_pool_bytes)
+			if current_parallel_transform {
+				pool_limit_threads << spawn prealloc_block_pool_limit_for_v3(late_stage_block_pool_bytes)
+			} else {
+				prealloc_block_pool_limit_for_v3(late_stage_block_pool_bytes)
+			}
 		}
 		mut tfpre_sw := time.new_stopwatch()
 		// Formatting unused-declaration diagnostics allocates source excerpts and
@@ -14560,6 +14568,7 @@ pub fn run(args []string) {
 			// Worker views have joined and their live regions are now compacted.
 			unsafe { a.discard_unused_capacity() }
 		}
+		pool_limit_threads.wait()
 		if incremental_cache_hit {
 			b.step_parallel('transform (incremental)', transform_was_parallel)
 		} else {
