@@ -321,7 +321,9 @@ fn test_incremental_program_keeps_one_owner_for_cached_and_new_literals() ! {
 		source := os.join_path(root, 'main.c')
 		binary := os.join_path(root, 'main')
 		os.write_file(source, combined)!
-		compiled := cmdexec.run('cc', ['-std=c11', '-Werror', '-o', binary, source])
+		// A Windows host has no `cc`; its C compiler is the MinGW gcc.
+		compiled := cmdexec.run($if windows { 'gcc' } $else { 'cc' }, ['-std=c11', '-Werror', '-o',
+			binary, source])
 		assert compiled.exit_code == 0, compiled.output
 		assert cmdexec.run(binary, []string{}).exit_code == 0
 	}
