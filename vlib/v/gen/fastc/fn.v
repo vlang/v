@@ -1690,7 +1690,7 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 	if tok in [.not, .question] {
 		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		value_tok := look.scan()
-		if fastc_is_void_return_boundary(value_tok) {
+		if fastc_is_void_return_boundary(value_tok) || fastc_is_explicit_void_payload(value_tok, look.lit) {
 			g.pending_fn_option_value_type = flat.source_type_void
 		} else {
 			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)

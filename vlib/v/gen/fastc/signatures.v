@@ -843,6 +843,9 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			tok = scan.scan()
 			if fastc_is_void_return_boundary(tok) {
 				option_type = flat.source_type_void
+			} else if fastc_is_explicit_void_payload(tok, scan.lit) {
+				option_type = flat.source_type_void
+				tok = scan.scan()
 			} else if tok == .lpar {
 				return_types_source_ids_2_2, tok_scan_token_2_2_2_2_2_2_2_2_2 := fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				return_types = return_types_source_ids_2_2.clone()
@@ -1567,6 +1570,12 @@ fn fastc_is_void_return_boundary(tok token.Token) bool {
 	return tok in [.semicolon, .comma, .rpar, .lcbr, .assign, .attribute, .rcbr, .eof]
 }
 
+// fastc_is_explicit_void_payload reports the `void` in `!void` and `?void`, which
+// function types accept as an explicit spelling of the payload-free `!` and `?`.
+fn fastc_is_explicit_void_payload(tok token.Token, lit string) bool {
+	return tok == .name && lit == 'void'
+}
+
 // fastc_peek_function_type preserves the signature that fastc_scan_type erases to
 // `voidptr`. The scanner copy is positioned immediately after the leading `fn`.
 fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) !FastcFunctionTypeInfo {
@@ -1606,7 +1615,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 	if tok in [.not, .question] {
 		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		value_tok := look.scan()
-		if fastc_is_void_return_boundary(value_tok) {
+		if fastc_is_void_return_boundary(value_tok) || fastc_is_explicit_void_payload(value_tok, look.lit) {
 			option_value_type = flat.source_type_void
 		} else {
 			option_value_type, _ = fastc_scan_type(mut look, value_tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1675,6 +1684,11 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 		return inner_type + '*'.repeat(pointers), next_token
 	}
 	if optional && fastc_is_void_return_boundary(tok) {
+		return wrapper + '*'.repeat(pointers), tok
+	}
+	// `!void` and `?void` spell the payload-free `!` and `?` explicitly.
+	if optional && fastc_is_explicit_void_payload(tok, scan.lit) {
+		tok = scan.scan()
 		return wrapper + '*'.repeat(pointers), tok
 	}
 	if tok == .ellipsis {

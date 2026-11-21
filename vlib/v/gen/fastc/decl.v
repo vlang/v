@@ -4256,7 +4256,9 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 		// fixed `Option` value; consume any concrete value type after it.
 		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		tok = scan.scan()
-		if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
+		if fastc_is_explicit_void_payload(tok, scan.lit) {
+			tok = scan.scan()
+		} else if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
 			_, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 		}
 	} else if tok !in [.semicolon, .eof] {
