@@ -3,7 +3,8 @@ module fastc
 import os
 import v.cmdexec
 
-// sync's native TLS helpers (`v_sync_tls_*`, from thread_helper.o) get prototypes, so an\ninstance of `sync.new_tls[voidptr]` compiles.
+// sync's native TLS helpers (`v_sync_tls_*`, from thread_helper.o) get prototypes, so an
+// instance of `sync.new_tls[voidptr]` compiles.
 fn test_fastc_sync_tls_helpers_are_declared() {
 	$if !macos && !linux {
 		return
