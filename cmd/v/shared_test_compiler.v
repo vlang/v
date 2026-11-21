@@ -10,6 +10,8 @@ import os
 // executable before the test compiler reads it.
 const shared_test_compiler_env = 'V3_TEST_UNIT_SHARED_V3'
 const shared_test_compiler_source_env = 'V3_TEST_UNIT_V3_SRC'
+// A runner may also share a build made with `-d ownership`, which ownership tests build.
+const shared_test_ownership_compiler_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
 
 // reuse_shared_test_compiler serves a build of the unit-test runner's shared V3 compiler with a
 // copy of the runner-selected driver for a plain compiler build. The runner may optimize that
@@ -18,12 +20,17 @@ const shared_test_compiler_source_env = 'V3_TEST_UNIT_V3_SRC'
 // A copy, unlike a hard link, gives the output its own file identity. The module cache keys
 // on it, and a test that rebuilds its compiler expects a different one.
 fn reuse_shared_test_compiler(args []string) bool {
-	shared_compiler := os.getenv(shared_test_compiler_env)
+	plain_args, ownership := shared_test_compiler_variant(args)
+	shared_compiler := os.getenv(if ownership {
+		shared_test_ownership_compiler_env
+	} else {
+		shared_test_compiler_env
+	})
 	source := os.getenv(shared_test_compiler_source_env)
 	if shared_compiler == '' || source == '' || !os.is_executable(shared_compiler) {
 		return false
 	}
-	output := shared_test_compiler_output(args, source) or { return false }
+	output := shared_test_compiler_output(plain_args, source) or { return false }
 	if os.real_path(output) == os.real_path(shared_compiler) {
 		return false
 	}
@@ -38,6 +45,26 @@ fn reuse_shared_test_compiler(args []string) bool {
 	log.writeln(output) or {}
 	log.close()
 	return true
+}
+
+// shared_test_compiler_variant returns `args` without the one `-d ownership` they may contain, and
+// whether they contained it. Other defines, or a second one, keep the request outside the contract.
+fn shared_test_compiler_variant(args []string) ([]string, bool) {
+	mut found := -1
+	for i in 0 .. args.len - 1 {
+		if args[i] == '-d' && args[i + 1] == 'ownership' {
+			if found >= 0 {
+				return args, false
+			}
+			found = i
+		}
+	}
+	if found < 0 {
+		return args, false
+	}
+	mut plain := args[..found].clone()
+	plain << args[found + 2..]
+	return plain, true
 }
 
 // shared_test_compiler_output returns the `-o` path of `args` when they build `source` with the
