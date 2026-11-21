@@ -3,16 +3,17 @@ module main
 // A procedural/CGI starter: seeded fbm noise, a palette-colored height field
 // and a Catmull-Rom curve. Run with: v run examples/gg/procedural_base.v
 import gg
+import gg.anim
 
 struct App {
 mut:
 	ctx   &gg.Context = unsafe { nil }
-	noise gg.Noise
+	noise anim.Noise
 }
 
 fn main() {
 	mut app := &App{
-		noise: gg.new_noise(1337)
+		noise: anim.new_noise(1337)
 	}
 	app.ctx = gg.new_context(
 		width:        560
@@ -33,7 +34,7 @@ fn frame(mut app App) {
 	for i in 0 .. 58 {
 		n := app.noise.fbm2d(f32(i) * 0.11, 3.2, 4, 2.0, 0.5)
 		h := (n + 1) * 55
-		c := gg.palette_gradient(gg.palette('forest'), (n + 1) / 2)
+		c := anim.palette_gradient(anim.palette('forest'), (n + 1) / 2)
 		app.ctx.draw_rect_filled(x, 190 - h, 8, h, c)
 		x += 9
 	}
@@ -45,10 +46,10 @@ fn frame(mut app App) {
 		gg.Vec2{360, 315},
 		gg.Vec2{520, 250},
 	]
-	mut prev := gg.sample_catmull(pts, 0)
+	mut prev := anim.sample_catmull(pts, 0)
 	for k in 1 .. 80 {
 		t := f32(k) / 79
-		p := gg.sample_catmull(pts, t)
+		p := anim.sample_catmull(pts, t)
 		app.ctx.draw_line(prev.x, prev.y, p.x, p.y, gg.cyan)
 		prev = p
 	}

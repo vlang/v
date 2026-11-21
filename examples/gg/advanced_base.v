@@ -3,14 +3,17 @@ module main
 // Advanced helper starter: pooled particles, immediate-mode UI and charts.
 // Run with: v run examples/gg/advanced_base.v
 import gg
+import gg.anim
+import gg.fx
+import gg.game
 import time
 
 struct App {
 mut:
 	ctx       &gg.Context = unsafe { nil }
-	emitter   gg.ParticleEmitter
-	theme     gg.UITheme
-	input     gg.InputState
+	emitter   fx.ParticleEmitter
+	theme     fx.UITheme
+	input     game.InputState
 	last      time.Time
 	values    []f32
 	sample_at f32
@@ -18,7 +21,7 @@ mut:
 
 fn main() {
 	mut app := &App{
-		emitter: gg.new_emitter(gg.ParticleConfig{
+		emitter: fx.new_emitter(fx.ParticleConfig{
 			rate:           60
 			life:           1.2
 			life_variance:  0.4
@@ -31,7 +34,7 @@ fn main() {
 			start_color:    gg.rgb(255, 210, 120)
 			end_color:      gg.rgba(255, 80, 60, 0)
 		})
-		theme:   gg.default_ui_theme()
+		theme:   fx.default_ui_theme()
 		values:  [f32(2), 5, 3, 8, 6, 9, 4]
 	}
 	app.emitter.seed(99)
@@ -87,17 +90,17 @@ fn frame(mut app App) {
 	app.emitter.draw(app.ctx)
 
 	panel := gg.Rect{20, 20, 220, 150}
-	gg.ui_panel(app.ctx, panel, app.theme)
-	gg.draw_line_chart(app.ctx, app.values, gg.Rect{32, 32, 196, 90}, app.theme.accent)
-	gg.draw_bar_chart(app.ctx, app.values, gg.Rect{32, 130, 196, 28}, gg.palette('ocean'))
+	fx.ui_panel(app.ctx, panel, app.theme)
+	fx.draw_line_chart(app.ctx, app.values, gg.Rect{32, 32, 196, 90}, app.theme.accent)
+	fx.draw_bar_chart(app.ctx, app.values, gg.Rect{32, 130, 196, 28}, anim.palette('ocean'))
 	clicked := app.input.mouse_just_pressed(.left)
-	if gg.ui_button(app.ctx, gg.Rect{20, 185, 120, 30}, 'Burst', app.input.mouse_pos(), clicked,
+	if fx.ui_button(app.ctx, gg.Rect{20, 185, 120, 30}, 'Burst', app.input.mouse_pos(), clicked,
 		app.theme) {
 		app.emitter.burst(30, gg.Vec2{300, 230})
 	}
 
 	lines := ['advanced helpers', 'particles: ${app.emitter.active_count()}', 'click Burst to emit']
-	gg.ui_hud(app.ctx, lines, gg.Rect{360, 20, 210, 72}, app.theme)
+	fx.ui_hud(app.ctx, lines, gg.Rect{360, 20, 210, 72}, app.theme)
 	app.ctx.end()
 
 	app.input.end_frame()

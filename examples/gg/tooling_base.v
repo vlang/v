@@ -3,32 +3,35 @@ module main
 // Tooling starter: procedural maze, geometry helpers, debug overlay and save.
 // Run with: v run examples/gg/tooling_base.v
 import gg
+import gg.game
+import gg.fx
+import gg.debug
 import time
 
 struct App {
 mut:
 	ctx    &gg.Context = unsafe { nil }
 	maze   []bool
-	gizmos gg.Gizmos
-	graph  gg.FrameGraph
-	log    gg.DebugLog
-	save   gg.SaveStore
-	input  gg.InputState
-	theme  gg.UITheme
+	gizmos debug.Gizmos
+	graph  debug.FrameGraph
+	log    debug.DebugLog
+	save   debug.SaveStore
+	input  game.InputState
+	theme  fx.UITheme
 	last   time.Time
 	hull   []gg.Vec2
 }
 
 fn main() {
 	mut app := &App{
-		maze:  gg.generate_maze(21, 13, 1234)
-		theme: gg.default_ui_theme()
-		save:  gg.new_save_store()
+		maze:  game.generate_maze(21, 13, 1234)
+		theme: fx.default_ui_theme()
+		save:  debug.new_save_store()
 	}
 	app.log.add('tooling base ready')
 	app.save.set_int('visits', app.save.get_int('visits', 0) + 1)
 	app.last = time.now()
-	app.hull = gg.convex_hull([
+	app.hull = game.convex_hull([
 		gg.Vec2{300, 60},
 		gg.Vec2{360, 100},
 		gg.Vec2{340, 160},
