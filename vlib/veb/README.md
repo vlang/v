@@ -668,7 +668,7 @@ We can now access `main.css` directly at http://localhost:8080/css/main.css.
 If a request is made to the root of a static folder, veb will look for an
 `index.html` or `ìndex.htm` file and serve it if available.
 Thus, it's also a good way to host a complete website.
-An example is available [here](/examples/veb/static_website).
+An example is available [here](../../examples/veb/static_website).
 
 It is also possible to mount the `static` folder at a custom path.
 
