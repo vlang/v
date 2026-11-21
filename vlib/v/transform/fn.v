@@ -3830,6 +3830,10 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 	if params := t.implicit_veb_call_param_types(call_name) {
 		return params
 	}
+	// A local function value shadows a function of the same name.
+	if fn_type := t.local_fn_value_callee_type(node) {
+		return fn_type.params.map(*it.typ)
+	}
 	if params := t.call_param_types_from_decl(call_name) {
 		return params
 	}
@@ -3886,6 +3890,27 @@ fn (t &Transformer) implicit_veb_call_param_types(call_name string) ?[]types.Typ
 			if params := t.tc.fn_param_types[name] {
 				return params
 			}
+		}
+	}
+	return none
+}
+
+// local_fn_value_callee_type returns the function type of the local variable or
+// parameter that the call `node` calls by its bare name.
+fn (t &Transformer) local_fn_value_callee_type(node flat.Node) ?types.FnType {
+	if node.children_count == 0 || isnil(t.tc) {
+		return none
+	}
+	fn_node := t.a.node(t.a.child(&node, 0))
+	if fn_node.kind != .ident || fn_node.value.contains('.') {
+		return none
+	}
+	for local_type in [t.raw_var_type(fn_node.value), t.var_type(fn_node.value)] {
+		if local_type == 0 {
+			continue
+		}
+		if fn_type := transform_fn_type(t.tc.parse_type(local_type)) {
+			return fn_type
 		}
 	}
 	return none
@@ -4330,6 +4355,11 @@ fn (t &Transformer) decl_fn_type_param_in_scope(param u32, module_name string, f
 fn (t &Transformer) call_is_variadic_for_node(call_name string, node flat.Node) bool {
 	if (node.flags & flat.node_flag_variadic_call) != 0 {
 		return true
+	}
+	// Only the type of a local function value says whether a call of it is
+	// variadic, not a function declared with the same name.
+	if fn_type := t.local_fn_value_callee_type(node) {
+		return fn_type.is_variadic
 	}
 	if t.call_is_variadic(call_name) {
 		return true

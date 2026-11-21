@@ -9756,8 +9756,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		fn_id := tc.a.child(&node, 0)
 		mut binding_type := builtin_void_type
+		mut is_local_binding := false
 		if typ := tc.cur_scope.lookup(fn_node.value) {
 			binding_type = typ
+			is_local_binding = true
 		} else if typ := tc.file_scope.lookup(fn_node.value) {
 			binding_type = typ
 		} else if typ := tc.const_type_for_name(fn_node.value) {
@@ -9778,11 +9780,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			} else {
 				fn_typ
 			}
+			// A local function value shadows the functions of its name: only its own
+			// type says whether it is variadic, not a declaration found by the name.
+			is_variadic := if is_local_binding && !is_smartcasted {
+				selected.is_variadic || tc.current_binding_is_variadic_fn_value_local(fn_node.value)
+			} else {
+				tc.expr_is_variadic_fn_value(fn_id)
+			}
 			return CallInfo{
 				name:         ''
 				params:       selected.params.map(*it.typ)
 				return_type:  selected.return_type
-				is_variadic:  tc.expr_is_variadic_fn_value(fn_id)
+				is_variadic:  is_variadic
 				params_known: true
 			}
 		}
