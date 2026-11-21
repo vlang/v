@@ -376,7 +376,7 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 		return ''
 	}
 	wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	signature := modulecache.file_signature(atomic_s)
 	if signature.len == 0 {
 		return atomic_s
@@ -663,7 +663,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		primary_compiler_flags: primary_compiler_flags
 		common_flags:           common_compile_flags
 	}
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	ensure_native_object_cache_dir(cache_dir)!
 	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
 		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
@@ -1525,7 +1525,7 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 	for flag in link_flags {
 		clean := flag.trim(' \t\r\n"\'')
 		if (clean.ends_with('.a') || (c_flag_is_object_file(clean)
-			&& !clean.contains('/v3_thirdparty_objs/'))) && os.is_file(clean) {
+			&& !v3_is_object_cache_path(clean))) && os.is_file(clean) {
 			hash = c_hash_bytes(hash, os.real_path(clean).bytes())
 			hash = c_hash_bytes(hash, c_object_file_signature(clean, true, mut stats).bytes())
 		}
@@ -1775,7 +1775,7 @@ fn acquire_native_object_cache_lock(manifest_path string) (filelock.FileLock, bo
 }
 
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	ensure_native_object_cache_dir(cache_dir)!
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
@@ -2040,7 +2040,7 @@ fn c_object_compiler_version(compiler string, compiler_path string) string {
 	if metadata.len == 0 {
 		return cmdexec.run(compiler, ['--version']).output
 	}
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	path_hash := c_hash_bytes(u64(1469598103934665603), compiler_path.bytes()).hex()
 	memo_path := os.join_path(cache_dir, 'compiler_${path_hash}.version')
 	if content := os.read_file(memo_path) {
@@ -17459,6 +17459,46 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 	return false
 }
 
+// v3_object_cache_prefix names the driver-owned object cache. The hex suffix
+// tells driver artifacts apart from user files in an explicit V3CACHE root, the
+// same way v3_module_cache_<hex> roots are recognised.
+const v3_object_cache_prefix = 'v3_thirdparty_objs_'
+
+fn v3_is_owned_object_cache_name(name string) bool {
+	if !name.starts_with(v3_object_cache_prefix) {
+		return false
+	}
+	suffix := name[v3_object_cache_prefix.len..]
+	return suffix.len > 0 && suffix.bytes().all(it.is_hex_digit())
+}
+
+fn v3_is_object_cache_name(name string) bool {
+	return name == 'v3_thirdparty_objs' || v3_is_owned_object_cache_name(name)
+}
+
+fn v3_is_object_cache_path(path string) bool {
+	for part in path.replace('\\', '/').split('/') {
+		if v3_is_object_cache_name(part) {
+			return true
+		}
+	}
+	return false
+}
+
+// v3_object_cache_dir returns the root for cached third-party C objects.
+// Test sessions share V3CACHE, so keeping the object cache under it lets later
+// sessions reuse those objects instead of recompiling them. Without an explicit
+// V3CACHE the cache stays in VTMP, as before.
+fn v3_object_cache_dir() string {
+	if configured := os.getenv_opt('V3CACHE') {
+		if configured.len > 0 {
+			key := sha256.hexhash('v3_thirdparty_objs_v1')[..16]
+			return os.join_path(os.abs_path(configured), '${v3_object_cache_prefix}${key}')
+		}
+	}
+	return os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+}
+
 // v3_cache_artifact_dir_names are the fixed-name persistent caches a build links
 // artifacts out of. Module caches have a hexadecimal root key suffix.
 const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache', 'v3_fastc_link_cache',
@@ -17480,6 +17520,9 @@ const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
 
 fn v3_cache_artifact_dir_name(name string, include_fixed_caches bool) bool {
 	if include_fixed_caches && name in v3_cache_artifact_dir_names {
+		return true
+	}
+	if v3_is_owned_object_cache_name(name) {
 		return true
 	}
 	if !name.starts_with('v3_module_cache_') {

@@ -353,16 +353,32 @@ fn shared_flag_library_postfix() string {
 	}
 }
 
-fn shared_flag_cached_objects(obj_path string) []string {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	if !os.exists(cache_dir) {
-		return []
+fn shared_flag_object_cache_dirs() []string {
+	mut roots := [os.vtmp_dir()]
+	if cache := os.getenv_opt('V3CACHE') {
+		if cache.len > 0 {
+			roots << cache
+		}
 	}
+	mut dirs := []string{}
+	for root in roots {
+		for name in os.ls(root) or { []string{} } {
+			if name == 'v3_thirdparty_objs' || name.starts_with('v3_thirdparty_objs_') {
+				dirs << os.join_path(root, name)
+			}
+		}
+	}
+	return dirs
+}
+
+fn shared_flag_cached_objects(obj_path string) []string {
 	prefix := shared_flag_object_cache_prefix(obj_path)
 	mut found := []string{}
-	for path in os.walk_ext(cache_dir, '.o') {
-		if os.file_name(path).starts_with(prefix) {
-			found << path
+	for cache_dir in shared_flag_object_cache_dirs() {
+		for path in os.walk_ext(cache_dir, '.o') {
+			if os.file_name(path).starts_with(prefix) {
+				found << path
+			}
 		}
 	}
 	return found

@@ -1895,7 +1895,7 @@ fn test_add_c_language_runtime_link_flags() {
 }
 
 fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	os.mkdir_all(cache_dir)!
 	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
 	rejected := 'tcc: error: ${object}: unrecognized file type'
@@ -2021,6 +2021,45 @@ fn test_v3_cache_artifact_detection_rejects_paths_outside_owned_directories() {
 		assert v3_discard_cache_artifacts([user_object]) == 0
 		assert os.read_file(user_object)! == 'keep'
 	}
+}
+
+fn test_v3_object_cache_is_shared_across_sessions_and_owned() {
+	root := os.join_path(os.vtmp_dir(), 'v3_object_cache_test_${os.getpid()}')
+	os.mkdir_all(root)!
+	previous_cache := os.getenv_opt('V3CACHE')
+	previous_vtmp := os.getenv_opt('VTMP')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		if value := previous_vtmp {
+			os.setenv('VTMP', value, true)
+		} else {
+			os.unsetenv('VTMP')
+		}
+		os.rmdir_all(root) or {}
+	}
+	first := v3_object_cache_dir()
+	os.mkdir_all(first)!
+	assert os.base(first).starts_with(v3_object_cache_prefix)
+	assert v3_is_owned_object_cache_name(os.base(first))
+	// A new test session replaces VTMP but keeps V3CACHE, so the object cache
+	// must resolve to the same root and reuse the objects already there.
+	session := os.join_path(root, 'tsession_a')
+	os.mkdir_all(session)!
+	os.setenv('VTMP', session, true)
+	assert v3_object_cache_dir() == first
+	// The driver may discard its own poisoned object, while fixed-name
+	// directories in the same V3CACHE root remain user-owned.
+	object := os.join_path(first, 'owned.o')
+	os.write_file(object, 'broken')!
+	canonical := os.real_path(object)
+	assert v3_cache_failure_artifacts('ld: ${object}: file format not recognized') == [canonical]
+	assert v3_discard_cache_artifacts([object]) >= 1
+	assert !os.exists(object)
 }
 
 fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
@@ -2175,7 +2214,7 @@ fn test_v3_cache_artifact_detection_includes_isolated_test_modules() {
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	os.mkdir_all(cache_dir)!
 	token := 'v3_discard_test_${os.getpid()}'
 	object := os.join_path(cache_dir, '${token}.o')

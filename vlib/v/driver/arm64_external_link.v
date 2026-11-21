@@ -374,7 +374,6 @@ fn arm64_c_side(opts Arm64CSideOptions) !Arm64CSide {
 // manifests (lib/std/Build/Cache.zig), a result is keyed by compiler, arguments,
 // text and the signatures of every header the unit includes. The bookkeeping is
 // the driver's cache for C objects; only the unit's name and text are ours.
-const arm64_c_cache_directory = 'v3_thirdparty_objs'
 const arm64_c_object_cache_stats = &CObjectCacheStats{}
 
 // One record per process: it remembers `cc --version` and file signatures.
@@ -383,7 +382,7 @@ fn arm64_cache_stats() &CObjectCacheStats {
 }
 
 fn arm64_cache_dir() string {
-	return os.join_path(os.vtmp_dir(), arm64_c_cache_directory)
+	return v3_object_cache_dir()
 }
 
 fn arm64_text_hash(parts ...string) string {

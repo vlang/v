@@ -9,7 +9,7 @@ fn test_c_object_compiler_version_is_kept_for_an_unchanged_tcc() {
 	root := os.join_path(os.vtmp_dir(), 'v3_compiler_version_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
-	os.mkdir_all(os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'))!
+	os.mkdir_all(v3_object_cache_dir())!
 	defer {
 		os.rmdir_all(root) or {}
 	}
