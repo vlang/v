@@ -1590,6 +1590,9 @@ struct FastcConstantGenContext {
 	public_constants          map[string]bool
 	globals                   map[string]string
 	public_globals            map[string]bool
+	// Imported generic functions an initializer instantiates (`sync.new_tls[voidptr](...)`).
+	generic_method_sources map[string]FastcGenericMethodSource
+	generic_method_names   map[string]bool
 }
 
 // FastcConstantFileResult is one file's parsed constant initializers.
@@ -1603,8 +1606,10 @@ mut:
 	constant_types    flat.TypeTextBindings
 	composite_types   map[string]bool
 	fixed_array_types flat.TypeTextBindings
-	failed            bool
-	error_message     string
+	// The generic instances the initializers call; a function file generates them.
+	mono_requests []FastcMonoRequest
+	failed        bool
+	error_message string
 }
 
 struct FastcIndexedConstantFileResult {
@@ -1649,6 +1654,10 @@ fn fastc_clone_constant_file_result(result FastcConstantFileResult) FastcConstan
 		constant_types:    result.constant_types.clone_owned()
 		composite_types:   fastc_clone_output_bool_map(result.composite_types)
 		fixed_array_types: result.fixed_array_types.clone_owned()
+		mono_requests:     result.mono_requests.map(FastcMonoRequest{
+			source_key: it.source_key.clone()
+			concrete:   it.concrete
+		})
 		error_message:     result.error_message.clone()
 	}
 }
@@ -1696,6 +1705,8 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 		public_constants:             ctx.public_constants
 		globals:                      ctx.globals
 		public_globals:               ctx.public_globals
+		generic_method_sources:       ctx.generic_method_sources
+		generic_method_names:         ctx.generic_method_names
 		selfhost:                     prefs.building_v
 		s:                            scanner.new_scanner(prefs, .normal)
 		out:                          strings.new_builder(256)
@@ -1732,6 +1743,7 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 		constant_types:      added_types
 		composite_types:     gen.composite_types
 		fixed_array_types:   gen.fixed_array_types
+		mono_requests:       gen.pending_mono
 	}
 }
 
@@ -1936,10 +1948,11 @@ fn fastc_v_string_end(source string, quote int, raw bool) int {
 	return source.len
 }
 
-fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[u32]FastcDeclaredTypeKind, enum_flags map[u32]bool, enum_field_types flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[u64]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, seeded []FastcSeededConstantFile, mut constant_types flat.TypeTextBindings) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[u32]FastcDeclaredTypeKind, enum_flags map[u32]bool, enum_field_types flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[u64]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, seeded []FastcSeededConstantFile, mut constant_types flat.TypeTextBindings, generic_method_sources map[string]FastcGenericMethodSource) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
+	mut mono_requests := []FastcMonoRequest{}
 	ctx := FastcConstantGenContext{
 		prefs:                     unsafe { prefs }
 		declared_types:            declared_types
@@ -1961,6 +1974,8 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 		public_constants:          public_constants
 		globals:                   globals
 		public_globals:            public_globals
+		generic_method_sources:    generic_method_sources
+		generic_method_names:      fastc_generic_method_names(generic_method_sources)
 	}
 	sw := time.new_stopwatch()
 	parallel_results := if initial_parallel_results.len > 0 {
@@ -1993,6 +2008,8 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 		public_constants:          public_constants
 		globals:                   globals
 		public_globals:            public_globals
+		generic_method_sources:    generic_method_sources
+		generic_method_names:      fastc_generic_method_names(generic_method_sources)
 	}
 	mut serial_count := 0
 	for index, candidate in candidates {
@@ -2004,6 +2021,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 					fastc_set_constant_types(mut constant_types, value)
 				}
 				values << result.values
+				mono_requests << result.mono_requests
 				for name, _ in result.composite_types {
 					composite_types[name] = true
 				}
@@ -2028,6 +2046,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			constant_types.set_id(key, typ)
 		}
 		values << serial.values
+		mono_requests << serial.mono_requests
 		for name, _ in serial.composite_types {
 			composite_types[name] = true
 		}
@@ -2133,6 +2152,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 		fixed_array_types:   fixed_array_types
 		struct_field_info:   defaults.struct_field_info
 		struct_field_lookup: defaults.lookup
+		mono_requests:       mono_requests
 	}
 }
 

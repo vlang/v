@@ -1407,6 +1407,8 @@ struct FastcConstantDeclarations {
 	compile_time_values map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   flat.TypeTextBindings
+	// Generic instances called by runtime initializers (see FastcConstantFileResult).
+	mono_requests []FastcMonoRequest
 
 mut:
 	// The struct fields with their defaults rendered, and their by-name index:
@@ -1984,6 +1986,9 @@ struct FastcFileGenContext {
 	prune_unreachable    bool
 	generic_method_names map[string]bool
 	module_aliases       map[string]string
+	// The generic instances that runtime constant initializers call, by the path of the
+	// file declaring the generic: that file's parser generates them.
+	constant_mono_requests map[string][]FastcMonoRequest
 }
 
 // FastcFileGenOutput is one source file's generation result. The sequential
@@ -2043,6 +2048,23 @@ mut:
 	c_flags           []string
 	failed            bool
 	error_message     string
+}
+
+// fastc_constant_mono_requests_by_path groups the generic instances that constant
+// initializers call by the file that declares each generic.
+fn fastc_constant_mono_requests_by_path(requests []FastcMonoRequest, generic_method_sources map[string]FastcGenericMethodSource) map[string][]FastcMonoRequest {
+	mut by_path := map[string][]FastcMonoRequest{}
+	mut seen := map[string]bool{}
+	for request in requests {
+		source := generic_method_sources[request.source_key] or { continue }
+		key := '${request.source_key}|${request.concrete}'
+		if key in seen {
+			continue
+		}
+		seen[key] = true
+		by_path[source.path] << request
+	}
+	return by_path
 }
 
 fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceFile) FastcFileGenOutput {
@@ -2150,6 +2172,9 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	gen.declared_type_key_memo.reserve(128)
 	gen.comparison_memo.reserve(64)
 	gen.s.init(file, source_file.source)
+	for request in ctx.constant_mono_requests[source_file.path] {
+		gen.queue_mono_function(request.source_key, request.concrete)
+	}
 	generated := gen.run() or {
 		return FastcFileGenOutput{
 			failed:        true
@@ -2474,6 +2499,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			public_constants:          public_constants
 			globals:                   globals
 			public_globals:            public_globals
+			generic_method_sources:    generic_method_sources
+			generic_method_names:      fastc_generic_method_names(generic_method_sources)
 		}
 		parallel_constant_results = fastc_parse_constant_files_parallel(&seed_ctx, constant_candidates, constant_types)
 		seeded_constant_files = fastc_seed_constant_types(&seed_ctx, constant_candidates,
@@ -2482,7 +2509,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// The struct field defaults render on a worker while the constants are
 	// pre-parsed; a constant file that consulted them is re-parsed after.
 	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.enum_field_names, type_output.alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
-	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, seeded_constant_files, mut constant_types)!
+	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, seeded_constant_files, mut constant_types, generic_method_sources)!
 	struct_field_info = constant_output.struct_field_info.move()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
@@ -2586,6 +2613,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		generic_method_sources:    generic_method_sources
 		generic_method_names:      fastc_generic_method_names(generic_method_sources)
 		module_aliases:            module_aliases
+		constant_mono_requests:    fastc_constant_mono_requests_by_path(constant_output.mono_requests,
+			generic_method_sources)
 		interface_fields:          interface_fields
 		interface_method_names:    fastc_interface_method_names(functions, declared_kinds)
 		constants:                 constants
