@@ -10,6 +10,15 @@ fn test_half() {
 	assert fract_val == fractions.fraction(1, 2)
 }
 
+fn test_approximate_with_zero_tolerance() {
+	assert fractions.approximate_with_eps(0.5, 0.0) == fractions.fraction(1, 2)
+	assert fractions.approximate_with_eps(-0.75, 0.0) == fractions.fraction(-3, 4)
+}
+
+fn test_approximate_at_the_tolerance_boundary() {
+	assert fractions.approximate_with_eps(0.75, 0.25) == fractions.fraction(1, 1)
+}
+
 fn test_third() {
 	float_val := 1.0 / 3.0
 	fract_val := fractions.approximate(float_val)

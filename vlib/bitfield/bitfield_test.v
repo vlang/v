@@ -289,6 +289,14 @@ fn test_bf_resize() {
 	assert input.get_bit(input.get_size() - 1) == 1
 }
 
+fn test_has_skips_out_of_range_indices() {
+	bf := bitfield.from_str('00100')
+	assert bf.has(-1, 2)
+	assert bf.has(5, 2)
+	assert bf.has(2, -1, 5)
+	assert !bf.has(-1, 5, 0)
+}
+
 fn test_bf_pos() {
 	/*
 	*

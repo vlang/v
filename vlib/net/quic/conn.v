@@ -24,10 +24,13 @@ import crypto.rand
 // poll()/process_timeouts() to advance it. Nothing happens off the
 // caller's own call stack -- no locks, no background threads.
 //
-// Connection ID rotation/migration is explicitly out of v1 scope (not
-// deferred -- stateless_reset.v/pmtu.v both already say so independently):
-// exactly one local `scid` and one tracked peer `dcid`, no active CID set,
-// no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID.
+// Connection migration is out of v1 scope (stateless_reset.v/pmtu.v say so
+// too): this endpoint issues exactly one connection ID of its own (`scid`,
+// sequence 0) and never sends NEW_CONNECTION_ID or PATH_CHALLENGE. It does
+// follow the peer's connection IDs (RFC 9000 §5.1): NEW_CONNECTION_ID frames
+// fill `peer_cids`, an increased Retire Prior To retires connection IDs with
+// RETIRE_CONNECTION_ID and can move `dcid`, and PATH_CHALLENGE is answered
+// with PATH_RESPONSE (§8.2.2).
 
 // local_cid_len is this client's own chosen connection-ID length -- within
 // RFC 9000 §17.2's 20-byte v1 limit, matching common real-world practice
@@ -43,6 +46,31 @@ const aead_tag_len = 16
 // the fallback CONNECTION_CLOSE error code for an internal failure that
 // carries no more specific QUIC error code of its own (see close_with_error).
 const quic_error_protocol_violation = u64(0x0a)
+
+// quic_error_connection_id_limit is RFC 9000 §20.1's
+// CONNECTION_ID_LIMIT_ERROR.
+const quic_error_connection_id_limit = u64(0x09)
+
+// max_pending_path_responses bounds how many PATH_CHALLENGE echoes are held
+// for the next send: the first this many challenges since the last send are
+// answered and any further ones are dropped, so a burst of tiny frames cannot
+// grow this connection's send queue (each answer is a padded 1200-byte
+// datagram's worth of work).
+const max_pending_path_responses = 16
+
+// max_control_frame_payload bounds one packet's worth of queued
+// RETIRE_CONNECTION_ID / PATH_RESPONSE frames, leaving room for the short
+// header and AEAD tag inside the 1200-byte minimum datagram.
+const max_control_frame_payload = 1000
+
+// PeerConnectionId is one connection ID the peer issued for this endpoint to
+// send to, with the stateless reset token that came with it (empty when it
+// was not provided, e.g. the handshake connection ID without the transport
+// parameter).
+struct PeerConnectionId {
+	cid   []u8
+	token []u8
+}
 
 // default_max_ack_delay is RFC 9000 §18.2's stated default for the
 // max_ack_delay transport parameter, used until the peer's own value (if
@@ -111,9 +139,30 @@ mut:
 	role  QuicRole
 	state ConnectionState
 
-	original_dcid                 []u8
-	dcid                          []u8
-	scid                          []u8
+	original_dcid []u8
+	dcid          []u8
+	scid          []u8
+	// dcid_sequence is the peer-assigned sequence number of `dcid` (0 for
+	// the connection ID the peer chose during the handshake).
+	dcid_sequence u64
+	// peer_cids holds the peer's active (not retired) connection IDs by
+	// sequence number, including the one in use; seeded lazily by
+	// track_current_dcid on the first NEW_CONNECTION_ID frame.
+	peer_cids        map[u64]PeerConnectionId
+	peer_cids_seeded bool
+	// largest_retire_prior_to is the highest Retire Prior To received
+	// (RFC 9000 §19.15).
+	largest_retire_prior_to u64
+	// pending_retire_cids and pending_path_responses are control frames
+	// owed to the peer, sent by drain_pending_cid_and_path_frames.
+	pending_retire_cids    []u64
+	pending_path_responses [][]u8
+	// retire_cids_in_flight maps a sent 1-RTT packet number to the
+	// RETIRE_CONNECTION_ID sequence numbers it carried. An entry is dropped
+	// when the packet is acknowledged, and its sequence numbers are queued
+	// again when the packet is declared lost (RFC 9000 §13.3). It holds only
+	// packets still awaiting an acknowledgment.
+	retire_cids_in_flight         map[u64][]u64
 	peer_scid                     []u8
 	token                         []u8
 	retry_accepted                bool
@@ -568,6 +617,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 			}
 		} else if timeout_result.lost.len > 0 {
 			c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
+			c.requeue_lost_retire_cids(timeout_result.loss_space, timeout_result.lost)
 		}
 
 		if c.state == .handshaking || c.state == .established {
@@ -804,7 +854,10 @@ fn (mut c QuicConn) note_one_rtt_processing_failed(raw []u8, now u64, mut result
 	if c.state == .draining {
 		return
 	}
-	if c.stateless_reset.is_stateless_reset(c.peer_scid, raw) {
+	// The token that matters is the one for the connection ID this endpoint
+	// is currently sending to (RFC 9000 §10.3.1), which NEW_CONNECTION_ID
+	// retirement can move away from the handshake's peer_scid.
+	if c.stateless_reset.is_stateless_reset(c.dcid, raw) {
 		c.enter_draining(now)
 		result.events << QuicEvent{
 			kind:   .connection_closed
@@ -1054,6 +1107,40 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 				}
 			}
 		}
+		NewConnectionIdFrame {
+			c.handle_new_connection_id_frame(frame)!
+		}
+		RetireConnectionIdFrame {
+			// RFC 9000 §19.16: this endpoint never sends NEW_CONNECTION_ID,
+			// so sequence 0 (the connection ID carried by this very packet)
+			// is the only one it ever issued. Retiring anything greater is a
+			// MUST-close; retiring the carrying packet's own DCID MAY be one,
+			// and with no other connection ID left there is nothing to keep
+			// using, so both close the connection.
+			return error_with_code('quic: PROTOCOL_VIOLATION: peer retired connection ID sequence ${frame.sequence_number}, but this endpoint only issued sequence 0, the destination of this packet (RFC 9000 §19.16)',
+				int(quic_error_protocol_violation))
+		}
+		PathChallengeFrame {
+			// RFC 9000 §8.2.2: MUST echo the data in a PATH_RESPONSE.
+			if c.pending_path_responses.len < max_pending_path_responses {
+				c.pending_path_responses << frame.data.clone()
+			}
+		}
+		PathResponseFrame {
+			// This endpoint never sends PATH_CHALLENGE, so any PATH_RESPONSE
+			// is unsolicited; RFC 9000 §19.18 allows (MAY) a
+			// PROTOCOL_VIOLATION but ignoring it is also correct.
+		}
+		NewTokenFrame {
+			// RFC 9000 §19.7: "Servers MUST treat receipt of a NEW_TOKEN
+			// frame as a connection error of type PROTOCOL_VIOLATION." A
+			// client may keep the token for a future connection (§8.1.3);
+			// this one has no token cache, so it is accepted and ignored.
+			if c.role == .server {
+				return error_with_code('quic: PROTOCOL_VIOLATION: server received NEW_TOKEN (RFC 9000 §19.7)',
+					int(quic_error_protocol_violation))
+			}
+		}
 		else {
 			// DATA_BLOCKED/STREAM_DATA_BLOCKED/STREAMS_BLOCKED: purely
 			// informational hints (RFC 9000 §19.12-§19.14 impose no MUST
@@ -1265,8 +1352,10 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 		c.received_set(space).forget_through(forget_through)
 	}
 	c.congestion_control.on_packets_acked(result.newly_acked)
+	c.note_retire_cids_acked(space, result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
+		c.requeue_lost_retire_cids(space, result.lost)
 	}
 	if counts := frame.ecn_counts {
 		c.ecn.note_ack_ecn_counts(counts)
@@ -1457,6 +1546,7 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 			result.outgoing << datagram
 			c.app_ack_eliciting_pending = false
 		}
+		c.drain_pending_cid_and_path_frames(now, mut result)!
 		c.drain_pending_stream_writes(now, mut result)!
 		c.drain_pending_stream_resets(now, mut result)!
 		c.drain_pending_streams_blocked(now, mut result)!
@@ -1510,6 +1600,223 @@ fn (mut c QuicConn) drain_pending_stream_resets(now u64, mut result PollResult) 
 		datagram := c.build_one_rtt_packet(reset_frame, true, now)!
 		result.outgoing << datagram
 		c.pending_stream_reset.delete(stream_id)
+	}
+}
+
+// handle_new_connection_id_frame applies RFC 9000 §5.1 and §19.15 to a
+// NEW_CONNECTION_ID frame from the peer: it records the new connection ID,
+// retires every connection ID below an increased Retire Prior To (switching
+// `dcid` when the one in use is retired), retires a connection ID that
+// arrives already below the retirement point, and enforces this endpoint's
+// active_connection_id_limit.
+fn (mut c QuicConn) handle_new_connection_id_frame(f NewConnectionIdFrame) ! {
+	// RFC 9000 §19.15: "An endpoint that is sending packets with a
+	// zero-length Destination Connection ID MUST treat receipt of a
+	// NEW_CONNECTION_ID frame as a connection error of type
+	// PROTOCOL_VIOLATION."
+	if c.dcid.len == 0 {
+		return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID received while using a zero-length destination connection ID (RFC 9000 §19.15)',
+			int(quic_error_protocol_violation))
+	}
+	c.track_current_dcid()
+	// RFC 9000 §19.15: a sequence number already below Retire Prior To is
+	// retired straight away and never added to the peer's connection IDs.
+	// Its retirement is held only until it is sent, and then in
+	// retire_cids_in_flight until that packet is acknowledged or lost, so a
+	// peer cannot grow this connection's memory beyond its packets in flight.
+	if f.sequence_number < c.largest_retire_prior_to {
+		c.pending_retire_cids << f.sequence_number
+		return
+	}
+	// A repeat of a known sequence, connection ID and token adds nothing, but
+	// its Retire Prior To is still applied below: only a value that does not
+	// increase the retirement point is ignored (RFC 9000 §19.15).
+	mut already_known := false
+	if existing := c.peer_cids[f.sequence_number] {
+		if existing.cid != f.connection_id
+			|| (existing.token.len != 0 && existing.token != f.stateless_reset_token) {
+			return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID reuses sequence number ${f.sequence_number} for a different connection ID or token (RFC 9000 §19.15)',
+				int(quic_error_protocol_violation))
+		}
+		already_known = true
+	}
+	if !already_known {
+		for seq, known in c.peer_cids {
+			if known.cid == f.connection_id {
+				return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID repeats the connection ID of sequence ${seq} under sequence ${f.sequence_number} (RFC 9000 §19.15)',
+					int(quic_error_protocol_violation))
+			}
+		}
+	}
+	// RFC 9000 §19.15: retire everything below an increased Retire Prior To
+	// BEFORE adding the new connection ID.
+	if f.retire_prior_to > c.largest_retire_prior_to {
+		c.largest_retire_prior_to = f.retire_prior_to
+		mut retired := []u64{}
+		for seq, _ in c.peer_cids {
+			if seq < f.retire_prior_to {
+				retired << seq
+			}
+		}
+		retired.sort()
+		for seq in retired {
+			c.peer_cids.delete(seq)
+			c.pending_retire_cids << seq
+		}
+	}
+	if !already_known {
+		c.peer_cids[f.sequence_number] = PeerConnectionId{
+			cid:   f.connection_id.clone()
+			token: f.stateless_reset_token.clone()
+		}
+	}
+	// RFC 9000 §5.1.1: the connection ID in use counts toward the limit.
+	limit := c.own_transport_parameters.active_connection_id_limit or {
+		min_active_connection_id_limit
+	}
+	if u64(c.peer_cids.len) > limit {
+		return error_with_code("quic: CONNECTION_ID_LIMIT_ERROR: peer has ${c.peer_cids.len} active connection IDs, above this endpoint's limit of ${limit} (RFC 9000 §5.1.1)",
+			int(quic_error_connection_id_limit))
+	}
+	if c.dcid_sequence < c.largest_retire_prior_to {
+		c.switch_to_lowest_peer_cid()!
+	}
+}
+
+// track_current_dcid seeds peer_cids, once, with the connection ID in use
+// and the server's preferred_address connection ID, so both count toward the
+// active limit and can be retired.
+fn (mut c QuicConn) track_current_dcid() {
+	if c.peer_cids_seeded {
+		return
+	}
+	c.peer_cids_seeded = true
+	c.peer_cids[c.dcid_sequence] = PeerConnectionId{
+		cid:   c.dcid.clone()
+		token: c.stateless_reset.known_tokens[c.dcid.hex()] or { []u8{} }
+	}
+	// RFC 9000 §5.1.1: a connection ID in the server's preferred_address
+	// transport parameter has sequence number 1; it counts toward
+	// active_connection_id_limit and is retired like any other, even though
+	// this endpoint never migrates to that address.
+	if pa := c.handshake.peer_transport_parameters.preferred_address {
+		if pa.connection_id.len > 0 && 1 !in c.peer_cids {
+			c.peer_cids[1] = PeerConnectionId{
+				cid:   pa.connection_id.clone()
+				token: pa.stateless_reset_token.clone()
+			}
+		}
+	}
+}
+
+// switch_to_lowest_peer_cid moves `dcid` to the lowest-numbered active peer
+// connection ID after the one in use was retired, and arms stateless reset
+// detection with its token.
+fn (mut c QuicConn) switch_to_lowest_peer_cid() ! {
+	mut seqs := c.peer_cids.keys()
+	if seqs.len == 0 {
+		return error_with_code('quic: PROTOCOL_VIOLATION: peer retired every connection ID this endpoint could send to (RFC 9000 §5.1.2)',
+			int(quic_error_protocol_violation))
+	}
+	seqs.sort()
+	next := c.peer_cids[seqs[0]] or { return }
+	// The connection ID being replaced was just retired; its reset token
+	// goes with it, so rotation cannot grow the tracker.
+	c.stateless_reset.forget_token(c.dcid)
+	c.dcid = next.cid.clone()
+	c.dcid_sequence = seqs[0]
+	if next.token.len == stateless_reset_token_length {
+		c.stateless_reset.record_token(c.dcid, next.token)!
+	}
+}
+
+// drain_pending_cid_and_path_frames sends queued RETIRE_CONNECTION_ID and
+// PATH_RESPONSE frames, packed together into as few 1-RTT packets as fit.
+// RFC 9000 §13.3: the retired sequence numbers each packet carries are kept
+// in retire_cids_in_flight until it is acknowledged, and sent again if it is
+// lost (requeue_lost_retire_cids); a PATH_RESPONSE is never sent again.
+fn (mut c QuicConn) drain_pending_cid_and_path_frames(now u64, mut result PollResult) ! {
+	if c.pending_retire_cids.len == 0 && c.pending_path_responses.len == 0 {
+		return
+	}
+	// RETIRE_CONNECTION_ID frames first, then PATH_RESPONSE frames from
+	// index first_path_response on.
+	retiring := c.pending_retire_cids.clone()
+	first_path_response := retiring.len
+	mut frames := [][]u8{}
+	for seq in retiring {
+		frames << encode_retire_connection_id_frame(seq)!
+	}
+	for data in c.pending_path_responses {
+		frames << encode_path_response_frame(data)!
+	}
+	c.pending_retire_cids = []u64{}
+	c.pending_path_responses = [][]u8{}
+	// RFC 9000 §8.2.2: "An endpoint MUST expand datagrams that contain a
+	// PATH_RESPONSE frame to at least the smallest allowed maximum datagram
+	// size of 1200 bytes" (a client has no anti-amplification limit).
+	mut payload := []u8{}
+	mut has_path_response := false
+	mut packet_retires := []u64{}
+	for i, frame in frames {
+		if payload.len > 0 && payload.len + frame.len > max_control_frame_payload {
+			c.send_cid_and_path_packet(payload, has_path_response, packet_retires, now, mut
+				result)!
+			payload = []u8{}
+			has_path_response = false
+			packet_retires = []u64{}
+		}
+		payload << frame
+		if i >= first_path_response {
+			has_path_response = true
+		} else {
+			packet_retires << retiring[i]
+		}
+	}
+	if payload.len > 0 {
+		c.send_cid_and_path_packet(payload, has_path_response, packet_retires, now, mut
+			result)!
+	}
+}
+
+// send_cid_and_path_packet builds one 1-RTT packet of drain_pending_cid_and_path_frames
+// and records the retired sequence numbers it carries under its packet number.
+fn (mut c QuicConn) send_cid_and_path_packet(payload []u8, has_path_response bool, retires []u64, now u64, mut result PollResult) ! {
+	result.outgoing << c.build_one_rtt_packet_padded(payload, true, if has_path_response {
+		min_initial_datagram_size
+	} else {
+		0
+	}, now)!
+	if retires.len > 0 {
+		c.retire_cids_in_flight[c.pn_spaces.application_data.next_send_pn - 1] = retires.clone()
+	}
+}
+
+// note_retire_cids_acked forgets the retirements carried by acknowledged
+// 1-RTT packets: the peer has them.
+fn (mut c QuicConn) note_retire_cids_acked(space QuicPacketNumberSpace, acked []SentPacketInfo) {
+	if space != .application_data || c.retire_cids_in_flight.len == 0 {
+		return
+	}
+	for info in acked {
+		c.retire_cids_in_flight.delete(info.packet_number)
+	}
+}
+
+// requeue_lost_retire_cids queues again the retirements carried by lost
+// 1-RTT packets (RFC 9000 §13.3), skipping any already queued.
+fn (mut c QuicConn) requeue_lost_retire_cids(space QuicPacketNumberSpace, lost []SentPacketInfo) {
+	if space != .application_data || c.retire_cids_in_flight.len == 0 {
+		return
+	}
+	for info in lost {
+		seqs := c.retire_cids_in_flight[info.packet_number] or { continue }
+		c.retire_cids_in_flight.delete(info.packet_number)
+		for seq in seqs {
+			if seq !in c.pending_retire_cids {
+				c.pending_retire_cids << seq
+			}
+		}
 	}
 }
 
@@ -1663,6 +1970,14 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 }
 
 fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, now u64) !QuicDatagram {
+	return c.build_one_rtt_packet_padded(payload, is_ack_eliciting, 0, now)
+}
+
+// build_one_rtt_packet_padded is build_one_rtt_packet that appends PADDING
+// frames until the protected datagram is at least `min_datagram_len` bytes
+// (0 for no minimum), computed once the packet number length is known. It
+// always pads enough for the header protection sample (RFC 9001 §5.4.2).
+fn (mut c QuicConn) build_one_rtt_packet_padded(payload []u8, is_ack_eliciting bool, min_datagram_len int, now u64) !QuicDatagram {
 	write_keys := c.app_write_keys or {
 		return error('quic: internal error: no 1-RTT write keys available yet')
 	}
@@ -1681,7 +1996,23 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	mut header := header_prefix.clone()
 	header << pn_bytes
 
-	protected := protect_packet(header, .short, pn, pn_length, payload, write_keys)!
+	// RFC 9001 §5.4.2: header protection samples 16 bytes starting 4 bytes
+	// past the start of the packet number, so packet number plus payload must
+	// be at least 4 bytes; a tiny payload with a short packet number (e.g. a
+	// lone RETIRE_CONNECTION_ID) would otherwise be unprotectable.
+	mut pad := pn_max_length - (pn_length + payload.len)
+	if min_datagram_len > 0 {
+		short_of := min_datagram_len - (header.len + payload.len + aead_tag_len)
+		if short_of > pad {
+			pad = short_of
+		}
+	}
+	mut body := payload
+	if pad > 0 {
+		body = payload.clone()
+		body << []u8{len: pad} // PADDING frames are single 0x00 bytes
+	}
+	protected := protect_packet(header, .short, pn, pn_length, body, write_keys)!
 
 	in_flight := is_ack_eliciting
 	c.loss_detection.on_packet_sent(.application_data, pn, u64(protected.len), is_ack_eliciting, in_flight, now)

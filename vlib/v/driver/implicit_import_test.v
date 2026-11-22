@@ -88,6 +88,36 @@ fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
 	return scan
 }
 
+fn test_continued_implicit_scan_reads_its_seeded_imports() {
+	path := os.join_path(os.temp_dir(), 'v3_implicit_import_continue_${os.getpid()}.v')
+	os.write_file(path, '
+fn run(f fn () int) int {
+	return f()
+}
+
+fn use(x int) int {
+	return run(fn [x] () int {
+		return x
+	})
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(path)
+	mut scan := seed_implicit_imports(mut a, false, false)
+	assert scan.needs_closure && scan.has_closure
+	seeded := a.nodes.len
+	// Continuing reads the import the seed added instead of adding it again,
+	// and leaves the scan at the end of the tree for the next wave.
+	continue_implicit_imports(mut a, mut scan, false, false)
+	assert a.nodes.len == seeded
+	assert scan.node_idx == a.nodes.len
+	assert a.nodes.filter(it.kind == .import_decl && it.value == 'builtin.closure').len == 1
+}
+
 fn test_builtin_len_fields_do_not_require_closure_runtime() {
 	scan := scan_implicit_import_source('builtin_len', '
 fn lengths(s string, values []int, lookup map[string]int, fixed [4]int) int {

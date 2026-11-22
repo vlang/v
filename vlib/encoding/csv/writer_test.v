@@ -43,6 +43,17 @@ fn test_writer_single_empty_field() {
 	}
 }
 
+fn test_writer_leading_comment_marker() {
+	mut writer := csv.new_writer(delimiter: `;`)
+	writer.write(['# value', 'tail'])!
+	writer.write(['head', '# value'])!
+	data := writer.str()
+	assert data == '"# value";tail\nhead;# value\n'
+	mut reader := csv.new_reader(data, delimiter: `;`)
+	assert reader.read()! == ['# value', 'tail']
+	assert reader.read()! == ['head', '# value']
+}
+
 fn test_writer_embedded_line_endings() {
 	for use_crlf in [false, true] {
 		for field in ['a\rb', 'a\nb', 'a\r\nb', 'a\r\r\nb', 'a"\rb'] {

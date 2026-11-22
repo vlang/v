@@ -396,12 +396,12 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	}, flat.Node{
 		kind: .ident
 	}]
-	tc.resolved_call_names = [types.cached_name('source_call')]
+	tc.resolved_calls = [flat.source_type_id('source_call')]
 	tc.resolved_call_set = [true]
 	tc.expr_type_values = [tc.intern_type_reference(types.Type(types.int_))]
 	tc.expr_type_set = [true]
 	tc.begin_sparse_transform_node_caches(1)
-	tc.sparse_resolved_call_names[1] = 'transformed_call'
+	tc.sparse_resolved_calls[1] = flat.source_type_id('transformed_call')
 	tc.sparse_expr_type_values[1] = types.Type(types.String{})
 
 	w := g.clone_parallel_type_checker()
@@ -418,13 +418,13 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 
 fn test_parallel_checker_clone_keeps_checked_file_scope_identity() {
 	g, mut tc := parallel_worker_test_gen(true)
-	tc.file_scope.insert('file_value', types.Type(types.int_))
+	tc.file_scope.insert_id(flat.source_type_id('file_value'), 'file_value', types.Type(types.int_))
 	tc.resolution_type_mode = true
 	w := g.clone_parallel_type_checker()
 	assert w.file_scope == tc.file_scope
 	assert w.cur_scope != w.file_scope
 	assert w.resolution_type_mode
-	owner := w.cur_scope.lookup_owner('file_value') or { panic('missing file binding') }
+	owner := w.cur_scope.lookup_owner_id(flat.source_type_id('file_value')) or { panic('missing file binding') }
 	assert owner.belongs_to_scope(w.file_scope)
 }
 

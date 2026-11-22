@@ -78,7 +78,7 @@ fn (mut tc TypeChecker) vls_add_skipped_branches(file_id int) bool {
 		}
 		a.nodes << added
 	}
-	tc.index_rewritten_parents_after(start)
+	tc.invalidate_lexical_parent_memo()
 	return true
 }
 

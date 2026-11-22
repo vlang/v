@@ -12,7 +12,8 @@ The writer quotes fields that contain the delimiter, double quotes, carriage ret
 It also quotes fields that begin with Unicode whitespace, including spaces and tabs, preserving
 them when read by CSV readers that trim unquoted leading whitespace.
 A record containing a single empty field is written as `""` so it survives readers that skip blank
-lines.
+lines. The writer quotes a leading `#` in the first field to preserve the record when read with
+the default comment marker.
 
 ## Reader example
 

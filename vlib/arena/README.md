@@ -70,7 +70,6 @@ fn main() {
   handoff and explicit retention, which `arena` does not expose.
 * `-gc vgc` is not supported; using `arena` with it is a compile time error.
 
-Programs that do not import `arena` are not affected: V compiles the allocator hooks into
-builtin (with `-d builtin_arena`) only for programs that import the module. Until such a
-program creates its first arena, the hooks cost one atomic check per allocation and `free()`.
+The allocator hooks are part of builtin in every program. Until a program creates its first
+arena, they cost one atomic check per allocation and `free()`.
 The first arena publishes all allocator hooks together, including when another thread is allocating.

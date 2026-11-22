@@ -148,11 +148,11 @@ source-file metadata while reusing eligible cached objects.
 Retries that reparse cached module sources preserve caller values for `V3_CACHE_FORCE_SOURCE`
 at compile time and when running the program.
 
-The experimental unchanged-build receipt cache is disabled by default. Set
-`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to opt in; `-nocache` and
-`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` disable it. Its early executable restore does
-not yet track all compile-time environment, module-search, or native linker inputs.
-Keep it disabled when those inputs can change between builds.
+Set `V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable the experimental build receipt.
+An eligible build with an explicit output can restore an executable when its recorded
+inputs are unchanged. The C compiler must report a single translation unit without headers;
+builds with headers or incomplete native input evidence use the normal build path.
+`-nocache` and `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` disable the receipt.
 Parallel monomorphization also remains opt-in through `V3_PARALLEL_MONOMORPHIZE=1`
 while nested generic-interface dispatch is being validated.
 
@@ -6572,6 +6572,10 @@ Data can be exchanged between a thread and the calling thread via a shared varia
 Such variables should be created as `shared` and passed to the thread as such, too.
 The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
 using `rlock` for read-only and `lock` for read/write access.
+
+With Boehm GC and without `-prealloc`, shared storage and its referenced data remain reachable
+through shared aliases and running threads. Once no references remain, the storage is eligible
+for collection.
 
 Note: Shared variables must be structs, arrays or maps.
 

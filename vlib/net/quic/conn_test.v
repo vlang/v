@@ -1737,3 +1737,669 @@ fn test_duplicate_handshake_packet_is_discarded() {
 	assert replay.outgoing.len == 0, 'a duplicate Handshake packet was processed again'
 	assert c.idle_timeout.last_reset? == 20, 'a duplicate restarted the idle timer'
 }
+
+// --- NEW_CONNECTION_ID / RETIRE_CONNECTION_ID / PATH_* / NEW_TOKEN (client role) ---
+// Frames are built from raw bytes so these tests do not depend on the
+// encoders under test.
+
+fn cid_test_varint(v u64) []u8 {
+	return encode_varint(v) or { panic(err) }
+}
+
+fn cid_test_new_connection_id(seq u64, retire_prior_to u64, cid []u8, token []u8) []u8 {
+	mut b := cid_test_varint(0x18)
+	b << cid_test_varint(seq)
+	b << cid_test_varint(retire_prior_to)
+	b << u8(cid.len)
+	b << cid
+	b << token
+	return b
+}
+
+fn cid_test_token(seed u8) []u8 {
+	return []u8{len: 16, init: u8(index) ^ seed}
+}
+
+// cid_test_send delivers `payload` (one or more frames) to `c` in a 1-RTT
+// packet from the fake server.
+// cid_test_send delivers `payload` in the next unused 1-RTT packet number;
+// a reused one would be discarded as a duplicate (RFC 9000 §12.3).
+fn cid_test_send(mut c QuicConn, payload []u8, now u64) !PollResult {
+	keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	dg := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), payload, keys.current_keys,
+		false)!
+	return c.poll(dg.bytes, now)!
+}
+
+fn cid_test_close_code(result PollResult) ?u64 {
+	for ev in result.events {
+		if ev.kind == .connection_closed {
+			return ev.error_code
+		}
+	}
+	return none
+}
+
+// cid_test_sent_frames decrypts everything the client sent in `result`.
+fn cid_test_sent_frames(mut c QuicConn, result PollResult) ![]QuicFrame {
+	keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	mut frames := []QuicFrame{}
+	for dg in result.outgoing {
+		frames << conn_test_decrypt_one_rtt(dg.bytes, c.dcid.len, keys)!
+	}
+	return frames
+}
+
+// A server offering an extra connection ID right after the handshake is
+// routine (RFC 9000 §5.1.1); it must not close the connection.
+fn test_new_connection_id_from_server_is_accepted() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	old_dcid := c.dcid.clone()
+	result := cid_test_send(mut c, cid_test_new_connection_id(1, 0, [u8(9), 9, 9, 9, 9, 9, 9, 9],
+		cid_test_token(1)), now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert c.state == .established
+	assert c.dcid == old_dcid
+}
+
+// RFC 9000 §19.15: an increased Retire Prior To retires the connection ID in
+// use, so the client switches to the new one and sends RETIRE_CONNECTION_ID.
+fn test_new_connection_id_retire_prior_to_switches_dcid_and_retires_old() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	new_cid := [u8(7), 7, 7, 7, 7, 7, 7, 7]
+	result := cid_test_send(mut c, cid_test_new_connection_id(1, 1, new_cid, cid_test_token(2)),
+		now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert c.dcid == new_cid
+	frames := cid_test_sent_frames(mut c, result)!
+	assert frames.any(it is RetireConnectionIdFrame
+		&& (it as RetireConnectionIdFrame).sequence_number == 0), frames.str()
+}
+
+// RFC 9000 §5.1.1: more active connection IDs than this endpoint's
+// active_connection_id_limit (default 2, counting the one in use) is
+// CONNECTION_ID_LIMIT_ERROR (0x09).
+fn test_new_connection_id_over_limit_is_connection_id_limit_error() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut payload := cid_test_new_connection_id(1, 0, [u8(1), 1, 1, 1], cid_test_token(3))
+	payload << cid_test_new_connection_id(2, 0, [u8(2), 2, 2, 2], cid_test_token(4))
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result)? == 0x09
+}
+
+// The limit is the one this endpoint advertised, not the default of 2: with 4
+// advertised, four active connection IDs are fine and a fifth is not.
+fn test_new_connection_id_honours_advertised_limit_above_default() {
+	mut own := generous_transport_params()
+	own.active_connection_id_limit = 4
+	mut c, _, now := drive_to_established(own, generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut payload := cid_test_new_connection_id(1, 0, [u8(1), 1, 1, 1], cid_test_token(3))
+	payload << cid_test_new_connection_id(2, 0, [u8(2), 2, 2, 2], cid_test_token(4))
+	payload << cid_test_new_connection_id(3, 0, [u8(3), 3, 3, 3], cid_test_token(5))
+	r1 := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(r1) == none, 'four active connection IDs are within a limit of 4'
+	assert c.peer_cids.len == 4
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(4, 0, [u8(4), 4, 4, 4],
+		cid_test_token(6)), now)!
+	assert cid_test_close_code(r2)? == 0x09
+}
+
+// The same sequence number naming a different connection ID is a
+// PROTOCOL_VIOLATION; an identical repeat is a retransmission and is fine.
+fn test_new_connection_id_sequence_reuse_and_retransmission() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	first := cid_test_new_connection_id(1, 0, [u8(5), 5, 5, 5], cid_test_token(5))
+	r1 := cid_test_send(mut c, first, now)!
+	r2 := cid_test_send(mut c, first, now)!
+	assert cid_test_close_code(r1) == none
+	assert cid_test_close_code(r2) == none, 'identical retransmission must be accepted'
+	r3 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, [u8(6), 6, 6, 6], cid_test_token(5)),
+		now)!
+	assert cid_test_close_code(r3)? == 0x0a
+}
+
+// The same sequence and connection ID with a different stateless reset token
+// is not a retransmission either (RFC 9000 §19.15).
+fn test_new_connection_id_same_sequence_different_token_is_protocol_violation() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	cid := [u8(5), 5, 5, 5]
+	r1 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, cid, cid_test_token(5)), now)!
+	assert cid_test_close_code(r1) == none
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, cid, cid_test_token(6)), now)!
+	assert cid_test_close_code(r2)? == 0x0a
+}
+
+// A known connection ID repeated under a new sequence number is refused
+// (RFC 9000 §19.15).
+fn test_new_connection_id_known_cid_under_new_sequence_is_protocol_violation() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	cid := [u8(5), 5, 5, 5]
+	r1 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, cid, cid_test_token(5)), now)!
+	assert cid_test_close_code(r1) == none
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(2, 0, cid, cid_test_token(6)), now)!
+	assert cid_test_close_code(r2)? == 0x0a
+}
+
+// A repeat of a known sequence, connection ID and token that raises Retire
+// Prior To is not just a retransmission: the increase still applies (RFC 9000
+// §5.1.2, §19.15), so sequence 0 is retired and the DCID moves to sequence 1.
+// Found by maintainer review on vlang/v#31596.
+fn test_repeated_sequence_with_increased_retire_prior_to_retires_old_ids() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	a := [u8(0xa1), 0xa1, 0xa1, 0xa1]
+	r1 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, a, cid_test_token(0x31)),
+		now)!
+	assert cid_test_close_code(r1) == none, r1.events.str()
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(1, 1, a, cid_test_token(0x31)),
+		now)!
+	assert cid_test_close_code(r2) == none, r2.events.str()
+	assert c.largest_retire_prior_to == 1
+	assert c.dcid == a, 'still sending to the retired sequence 0'
+	frames := cid_test_sent_frames(mut c, r2)!
+	assert frames.any(it is RetireConnectionIdFrame
+		&& (it as RetireConnectionIdFrame).sequence_number == 0), 'no RETIRE_CONNECTION_ID(0) in ${frames}'
+}
+
+// RFC 9000 §19.15: a connection ID whose sequence number is below a
+// previously received Retire Prior To is retired straight away.
+fn test_new_connection_id_below_retire_prior_to_is_retired_immediately() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	current := [u8(8), 8, 8, 8, 8, 8]
+	cid_test_send(mut c, cid_test_new_connection_id(2, 2, current, cid_test_token(6)), now)!
+	result := cid_test_send(mut c, cid_test_new_connection_id(1, 0, [u8(4), 4, 4, 4], cid_test_token(7)),
+		now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert c.dcid == current
+	assert 1 !in c.peer_cids, 'an already-retired connection ID was added'
+	frames := cid_test_sent_frames(mut c, result)!
+	assert frames.any(it is RetireConnectionIdFrame
+		&& (it as RetireConnectionIdFrame).sequence_number == 1), frames.str()
+}
+
+// RFC 9000 §8.2.2: a PATH_CHALLENGE MUST be answered with a PATH_RESPONSE
+// carrying the same 8 bytes; an unsolicited PATH_RESPONSE is ignored.
+fn test_path_challenge_is_answered_and_path_response_ignored() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	data := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	mut payload := cid_test_varint(0x1a)
+	payload << data
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	frames := cid_test_sent_frames(mut c, result)!
+	assert frames.any(it is PathResponseFrame && (it as PathResponseFrame).data == data), frames.str()
+
+	mut unsolicited := cid_test_varint(0x1b)
+	unsolicited << data
+	r2 := cid_test_send(mut c, unsolicited, now)!
+	assert cid_test_close_code(r2) == none
+	assert c.state == .established
+}
+
+// RFC 9000 §19.16: this endpoint only ever issued connection ID sequence 0
+// (and it is the DCID of the carrying packet), so any RETIRE_CONNECTION_ID
+// from the peer is a PROTOCOL_VIOLATION.
+fn test_retire_connection_id_from_peer_is_protocol_violation() {
+	for seq in [u64(0), 5] {
+		mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+		mut payload := cid_test_varint(0x19)
+		payload << cid_test_varint(seq)
+		result := cid_test_send(mut c, payload, now)!
+		c.handshake.free()
+		assert cid_test_close_code(result)? == 0x0a, 'sequence ${seq}'
+	}
+}
+
+// RFC 9000 §19.7: a client may ignore NEW_TOKEN, but an empty token is a
+// FRAME_ENCODING_ERROR.
+fn test_new_token_is_ignored_and_empty_token_rejected() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut payload := cid_test_varint(0x07)
+	payload << cid_test_varint(4)
+	payload << [u8(1), 2, 3, 4]
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert c.state == .established
+
+	mut empty := cid_test_varint(0x07)
+	empty << cid_test_varint(0)
+	r2 := cid_test_send(mut c, empty, now)!
+	assert cid_test_close_code(r2)? == 0x07
+}
+
+// After switching to a connection ID that came with its own stateless reset
+// token, a stateless reset carrying that token must be recognized.
+fn test_stateless_reset_token_of_new_dcid_is_recognized() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	token := cid_test_token(9)
+	cid_test_send(mut c, cid_test_new_connection_id(1, 1, [u8(3), 3, 3, 3, 3, 3, 3, 3], token),
+		now)!
+	mut reset := [u8(0x40)]
+	reset << []u8{len: 30, init: u8(index * 13 + 1)}
+	reset << token
+	result := c.poll(reset, now)!
+	assert result.events.any(it.kind == .connection_closed), 'stateless reset with the new token was not recognized'
+	assert c.state == .draining
+}
+
+// A peer that keeps rotating connection IDs must not grow this connection's
+// stateless reset tokens: a retired connection ID's token is dropped (RFC 9000
+// §10.3.1 only checks tokens of active connection IDs).
+fn test_connection_id_rotation_does_not_accumulate_reset_tokens() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	for i in 1 .. 40 {
+		cid := []u8{len: 8, init: u8(i)}
+		result := cid_test_send(mut c, cid_test_new_connection_id(u64(i), u64(i), cid, cid_test_token(u8(i))),
+			now)!
+		assert cid_test_close_code(result) == none, 'rotation ${i}: ${result.events}'
+		assert c.dcid == cid
+	}
+	assert c.stateless_reset.known_tokens.len <= 2, 'kept ${c.stateless_reset.known_tokens.len} tokens after 39 rotations'
+	assert c.peer_cids.len == 1
+}
+
+fn cid_test_params_with_preferred_address(cid []u8, token []u8) QuicTransportParameters {
+	mut p := generous_transport_params()
+	p.preferred_address = PreferredAddress{
+		connection_id:         cid
+		stateless_reset_token: token
+	}
+	return p
+}
+
+// RFC 9000 §5.1.1: the server's preferred_address connection ID has sequence
+// number 1 and counts toward active_connection_id_limit, so with the default
+// limit of 2 a NEW_CONNECTION_ID sequence 2 is one too many.
+fn test_preferred_address_cid_counts_toward_limit() {
+	peer := cid_test_params_with_preferred_address([u8(0xaa), 0xaa, 0xaa, 0xaa], cid_test_token(0x10))
+	mut c, _, now := drive_to_established(generous_transport_params(), peer)!
+	defer {
+		c.handshake.free()
+	}
+	result := cid_test_send(mut c, cid_test_new_connection_id(2, 0, [u8(2), 2, 2, 2], cid_test_token(0x11)),
+		now)!
+	assert (cid_test_close_code(result) or { u64(0) }) == 0x09
+}
+
+// RFC 9000 §19.15: Retire Prior To above 1 retires the preferred_address
+// connection ID (sequence 1) too.
+fn test_retire_prior_to_retires_preferred_address_cid() {
+	peer := cid_test_params_with_preferred_address([u8(0xbb), 0xbb, 0xbb, 0xbb], cid_test_token(0x12))
+	mut own := generous_transport_params()
+	own.active_connection_id_limit = 4
+	mut c, _, now := drive_to_established(own, peer)!
+	defer {
+		c.handshake.free()
+	}
+	next := [u8(3), 3, 3, 3]
+	result := cid_test_send(mut c, cid_test_new_connection_id(2, 2, next, cid_test_token(0x13)),
+		now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert c.dcid == next
+	frames := cid_test_sent_frames(mut c, result)!
+	for seq in [u64(0), 1] {
+		assert frames.any(it is RetireConnectionIdFrame
+			&& (it as RetireConnectionIdFrame).sequence_number == seq), 'no RETIRE_CONNECTION_ID(${seq}) in ${frames}'
+	}
+	// A later NEW_CONNECTION_ID must not bring the retired preferred_address
+	// connection ID back: the seeding runs once.
+	later := cid_test_send(mut c, cid_test_new_connection_id(3, 2, [u8(4), 4, 4, 4], cid_test_token(0x14)),
+		now)!
+	assert cid_test_close_code(later) == none, later.events.str()
+	assert 1 !in c.peer_cids, 'the retired preferred_address connection ID came back'
+}
+
+// A zero-length preferred_address connection ID is not recorded as sequence 1.
+fn test_zero_length_preferred_address_cid_is_not_tracked() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.handshake.peer_transport_parameters.preferred_address = PreferredAddress{
+		connection_id:         []u8{}
+		stateless_reset_token: cid_test_token(0x15)
+	}
+	result := cid_test_send(mut c, cid_test_new_connection_id(2, 0, [u8(6), 6, 6, 6], cid_test_token(0x16)),
+		now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert 1 !in c.peer_cids, 'a zero-length preferred_address connection ID was tracked'
+}
+
+// RFC 9000 §8.2.2: a datagram carrying PATH_RESPONSE MUST be expanded to at
+// least 1200 bytes, and a queued response is sent exactly once.
+fn test_path_response_datagram_is_padded_and_sent_once() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	data := [u8(8), 7, 6, 5, 4, 3, 2, 1]
+	mut payload := cid_test_varint(0x1a)
+	payload << data
+	result := cid_test_send(mut c, payload, now)!
+	keys := c.app_write_keys or { panic('unreachable') }
+	mut found := false
+	for dg in result.outgoing {
+		frames := conn_test_decrypt_one_rtt(dg.bytes, c.dcid.len, keys)!
+		if frames.any(it is PathResponseFrame) {
+			found = true
+			assert dg.bytes.len >= 1200, 'PATH_RESPONSE datagram is only ${dg.bytes.len} bytes'
+		}
+	}
+	assert found
+	ping := cid_test_send(mut c, [u8(frame_type_ping), 0, 0, 0, 0], now)!
+	again := cid_test_sent_frames(mut c, ping)!
+	assert !again.any(it is PathResponseFrame), 'PATH_RESPONSE sent twice'
+}
+
+// RFC 9000 §19.15: with the active set full, an increased Retire Prior To
+// retires first and only then adds, so it stays within the limit; the new
+// DCID is the lowest remaining one.
+fn test_retire_prior_to_retires_before_counting_toward_limit() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	one := [u8(1), 1, 1, 1]
+	cid_test_send(mut c, cid_test_new_connection_id(1, 0, one, cid_test_token(0x20)), now)!
+	result := cid_test_send(mut c, cid_test_new_connection_id(2, 1, [u8(2), 2, 2, 2], cid_test_token(0x21)),
+		now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert c.dcid == one
+	frames := cid_test_sent_frames(mut c, result)!
+	assert frames.any(it is RetireConnectionIdFrame
+		&& (it as RetireConnectionIdFrame).sequence_number == 0), frames.str()
+	ping := cid_test_send(mut c, [u8(frame_type_ping), 0, 0, 0, 0], now)!
+	again := cid_test_sent_frames(mut c, ping)!
+	assert !again.any(it is RetireConnectionIdFrame), 'RETIRE_CONNECTION_ID sent twice'
+}
+
+// RFC 9000 §19.15: NEW_CONNECTION_ID while sending with a zero-length DCID is
+// PROTOCOL_VIOLATION.
+fn test_new_connection_id_with_zero_length_dcid_is_protocol_violation() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.dcid = []u8{}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(NewConnectionIdFrame{
+		sequence_number:       1
+		connection_id:         [u8(1), 2, 3, 4]
+		stateless_reset_token: cid_test_token(0x30)
+	}, now, mut result) or {
+		assert err.code() == 0x0a, err.msg()
+		return
+	}
+	assert false, 'expected PROTOCOL_VIOLATION'
+}
+
+// RFC 9001 §5.4.2: every packet needs at least 4 bytes of packet number plus
+// payload for the header protection sample. With a 1-byte packet number
+// (the peer has acked recent packets) a lone 2-byte RETIRE_CONNECTION_ID
+// must still be sendable.
+fn test_tiny_control_packet_with_short_packet_number_is_sendable() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.pn_spaces.application_data.largest_acked_by_peer = c.pn_spaces.application_data.next_send_pn
+	result := cid_test_send(mut c, cid_test_new_connection_id(1, 1, [u8(7), 7, 7, 7, 7, 7, 7, 7], cid_test_token(0x40)), now) or {
+		assert false, 'poll failed: ${err}'
+		return
+	}
+	frames := cid_test_sent_frames(mut c, result)!
+	assert frames.any(it is RetireConnectionIdFrame), frames.str()
+}
+
+// RFC 9000 §19.7: "Servers MUST treat receipt of a NEW_TOKEN frame as a
+// connection error of type PROTOCOL_VIOLATION."
+fn test_new_token_rejected_when_role_is_server() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.role = .server
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(NewTokenFrame{
+		token: [u8(1), 2, 3]
+	}, now, mut result) or {
+		assert err.code() == 0x0a, err.msg()
+		return
+	}
+	assert false, 'expected PROTOCOL_VIOLATION'
+}
+
+// retire_test_seqs returns the sequence numbers of the RETIRE_CONNECTION_ID
+// frames the client sent in `result`, in order.
+fn retire_test_seqs(mut c QuicConn, result PollResult) ![]u64 {
+	mut seqs := []u64{}
+	for f in cid_test_sent_frames(mut c, result)! {
+		if f is RetireConnectionIdFrame {
+			seqs << f.sequence_number
+		}
+	}
+	return seqs
+}
+
+// retire_test_ack delivers a peer ACK of the client's packets
+// `smallest`..`largest`.
+fn retire_test_ack(mut c QuicConn, smallest u64, largest u64, now u64) !PollResult {
+	return cid_test_send(mut c, encode_ack_frame([
+		AckRange{
+			smallest: smallest
+			largest:  largest
+		},
+	], 0, none)!, now)!
+}
+
+// retire_test_retire_sequence_zero has the peer raise Retire Prior To to 1
+// with a PATH_CHALLENGE in the same packet, so the client sends
+// RETIRE_CONNECTION_ID(0) and a PATH_RESPONSE together. It returns the
+// packet number that carried them.
+fn retire_test_retire_sequence_zero(mut c QuicConn, now u64) !u64 {
+	mut payload := cid_test_new_connection_id(1, 1, [u8(0xb1), 0xb1, 0xb1, 0xb1], cid_test_token(0x51))
+	payload << cid_test_varint(0x1a)
+	payload << [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert retire_test_seqs(mut c, result)! == [u64(0)]
+	assert cid_test_sent_frames(mut c, result)!.any(it is PathResponseFrame)
+	return ack_test_largest_sent_pn(c)
+}
+
+// RFC 9000 §13.3: "Information about the connection IDs retired by a
+// RETIRE_CONNECTION_ID frame is sent in a new RETIRE_CONNECTION_ID frame if
+// the packet containing it is lost", while PATH_RESPONSE is never resent.
+// Here the loss is found by packet threshold (RFC 9002 §6.1.1) when the peer
+// acknowledges three later packets. Found by maintainer review on
+// vlang/v#31596.
+fn test_lost_retire_connection_id_is_resent_until_acknowledged() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	carrier := retire_test_retire_sequence_zero(mut c, now)!
+	// Three ACK-only packets from the client, after the carrier.
+	for _ in 0 .. 3 {
+		cid_test_send(mut c, ack_test_ping, now)!
+	}
+	after := ack_test_largest_sent_pn(c)
+	assert after >= carrier + 3
+	lost := retire_test_ack(mut c, carrier + 1, after, now)!
+	assert retire_test_seqs(mut c, lost)! == [u64(0)], 'the lost retirement was not sent again'
+	assert !cid_test_sent_frames(mut c, lost)!.any(it is PathResponseFrame), 'PATH_RESPONSE was sent again'
+	resend := ack_test_largest_sent_pn(c)
+	assert resend > after
+
+	// The copy is acknowledged: nothing more is sent for sequence 0, on the
+	// next packet or after any timer.
+	acked := retire_test_ack(mut c, resend, resend, now)!
+	assert retire_test_seqs(mut c, acked)!.len == 0
+	assert c.retire_cids_in_flight.len == 0, 'an acknowledged retirement is still tracked'
+	quiet := cid_test_send(mut c, ack_test_ping, now)!
+	assert retire_test_seqs(mut c, quiet)!.len == 0
+	timed := c.process_timeouts(now + 5 * u64(time.second))!
+	assert retire_test_seqs(mut c, timed)!.len == 0
+}
+
+// Two retirements and two PATH_RESPONSEs owed at once go out in one packet,
+// and that packet records exactly the two retired sequence numbers.
+fn test_two_retirements_and_two_path_responses_share_one_packet() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	// Sequence 1 arrives below Retire Prior To 2, so sequences 0 and 1 are
+	// both retired.
+	mut payload := cid_test_new_connection_id(1, 0, [u8(0xc1), 0xc1, 0xc1, 0xc1], cid_test_token(0x61))
+	payload << cid_test_new_connection_id(2, 2, [u8(0xc2), 0xc2, 0xc2, 0xc2], cid_test_token(0x62))
+	for d in [u8(1), 2] {
+		payload << cid_test_varint(0x1a)
+		payload << []u8{len: 8, init: d}
+	}
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	carrier := ack_test_largest_sent_pn(c)
+	keys := c.app_write_keys or { panic('unreachable') }
+	carrier_frames := conn_test_decrypt_one_rtt(result.outgoing.last().bytes, c.dcid.len,
+		keys)!
+	mut retired := []u64{}
+	mut responses := 0
+	for f in carrier_frames {
+		if f is RetireConnectionIdFrame {
+			retired << f.sequence_number
+		} else if f is PathResponseFrame {
+			responses++
+		}
+	}
+	assert retired == [u64(0), 1], 'both retirements belong in the last datagram'
+	assert responses == 2, 'one PATH_RESPONSE per PATH_CHALLENGE'
+	recorded := c.retire_cids_in_flight[carrier] or { []u64{} }
+	assert recorded == [u64(0), 1]
+}
+
+// note_retire_cids_acked and requeue_lost_retire_cids act only on 1-RTT
+// packets, on every packet of the list, and on every sequence a packet
+// carried; a sequence already queued is not queued twice.
+fn test_retire_cid_tracking_follows_each_listed_packet() {
+	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	three := [SentPacketInfo{
+		packet_number: 1
+	}, SentPacketInfo{
+		packet_number: 2
+	}, SentPacketInfo{
+		packet_number: 3
+	}]
+	c.retire_cids_in_flight[2] = [u64(5), 6]
+	// A Handshake or Initial packet 2 is another packet.
+	c.note_retire_cids_acked(.handshake, three)
+	c.requeue_lost_retire_cids(.initial, three)
+	assert c.retire_cids_in_flight.len == 1
+	assert c.pending_retire_cids.len == 0
+	c.note_retire_cids_acked(.application_data, three)
+	assert c.retire_cids_in_flight.len == 0, 'the middle packet of an ACK was not forgotten'
+
+	c.retire_cids_in_flight[2] = [u64(5), 6]
+	c.pending_retire_cids = [u64(7)]
+	c.requeue_lost_retire_cids(.application_data, three)
+	assert c.pending_retire_cids == [u64(7), 5, 6], 'the middle lost packet, both of its sequences'
+	assert c.retire_cids_in_flight.len == 0
+	c.retire_cids_in_flight[3] = [u64(6)]
+	c.requeue_lost_retire_cids(.application_data, three)
+	assert c.pending_retire_cids == [u64(7), 5, 6], 'a sequence already queued was queued twice'
+}
+
+// A drain too large for one packet records under each packet number only the
+// retirements that packet carries.
+fn test_retire_cids_split_over_packets_are_recorded_per_packet() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	seqs := []u64{len: 600, init: u64(100 + index)}
+	c.pending_retire_cids = seqs.clone()
+	c.pending_path_responses = [[u8(1), 2, 3, 4, 5, 6, 7, 8]]
+	before := c.pn_spaces.application_data.next_send_pn
+	mut result := PollResult{}
+	c.drain_pending_cid_and_path_frames(now, mut result)!
+	sent := int(c.pn_spaces.application_data.next_send_pn - before)
+	assert sent >= 2, 'the drain did not split'
+	assert result.outgoing.len == sent
+	mut fit := 0
+	mut size := 0
+	for seq in seqs {
+		frame := encode_retire_connection_id_frame(seq)!
+		if size > 0 && size + frame.len > max_control_frame_payload {
+			break
+		}
+		size += frame.len
+		fit++
+	}
+	first := c.retire_cids_in_flight[before] or { []u64{} }
+	assert first == seqs[..fit], 'the first packet recorded other retirements than it carries'
+	mut all := []u64{}
+	for i in 0 .. sent {
+		all << c.retire_cids_in_flight[before + u64(i)] or { []u64{} }
+	}
+	assert all == seqs, 'the packets together did not record each retirement once'
+}
+
+// The same retirement lost by time threshold (RFC 9002 §6.1.2): one later
+// packet is acknowledged, too few for packet threshold, and the loss timer
+// declares the carrier lost.
+fn test_retire_connection_id_lost_by_timer_is_resent() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	carrier := retire_test_retire_sequence_zero(mut c, now)!
+	cid_test_send(mut c, ack_test_ping, now)!
+	next := ack_test_largest_sent_pn(c)
+	assert next > carrier
+	early := retire_test_ack(mut c, next, next, now)!
+	assert retire_test_seqs(mut c, early)!.len == 0, 'resent before it was lost'
+	timed := c.process_timeouts(now + 2 * u64(time.second))!
+	assert retire_test_seqs(mut c, timed)! == [u64(0)], 'the lost retirement was not sent again'
+	assert !cid_test_sent_frames(mut c, timed)!.any(it is PathResponseFrame), 'PATH_RESPONSE was sent again'
+}

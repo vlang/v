@@ -248,11 +248,30 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 // run_in_mode_with_env is run_in_mode for a child that gets the variables of `env`
 // on top of the environment of this process.
 fn run_in_mode_with_env(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string) os.Result {
+	result, _ := run_in_mode_with_env_timed(program, args, work_folder, merge_output, timeout_ms,
+		env, true)
+	return result
+}
+
+// run_merged_timed is run_in_merged, bounded like run_with_timeout, that also reports whether
+// the deadline was hit. A caller that names the failure itself (`v test`) passes
+// `announce: false`, to keep this module from printing its own line about the kill.
+pub fn run_merged_timed(program string, args []string, timeout_ms i64, announce bool) (os.Result, bool) {
+	return run_merged_timed_with_env(program, args, timeout_ms, map[string]string{}, announce)
+}
+
+// run_merged_timed_with_env is run_merged_timed for a child that gets the variables of `env`
+// on top of the environment of this process.
+pub fn run_merged_timed_with_env(program string, args []string, timeout_ms i64, env map[string]string, announce bool) (os.Result, bool) {
+	return run_in_mode_with_env_timed(program, args, '', true, timeout_ms, env, announce)
+}
+
+fn run_in_mode_with_env_timed(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string, announce bool) (os.Result, bool) {
 	executable := resolve_program(program) or {
 		return os.Result{
 			exit_code: 1
 			output:    'os: failed to find executable `${program}`\n'
-		}
+		}, false
 	}
 	mut process := os.new_process(executable)
 	process.set_args(args)
@@ -288,9 +307,30 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 	} else {
 		process.set_redirect_stdio()
 	}
+	// A tool that is cancelled ends its bounded runs, which its own signal does not reach
+	// (see bounded_runs.v). The run counts as this thread's from before the fork until it has
+	// been waited for and closed, so that a cancellation at any moment of that waits for it,
+	// and only this thread touches its process.
+	bounded := timeout_ms > 0
+	if bounded {
+		begin_bounded_run()
+		if bounded_runs_cancelled() != 0 {
+			end_bounded_run()
+			return os.Result{
+				exit_code: 1
+				output:    'V: `${display(program, args)}` was not started: the run was cancelled\n'
+			}, false
+		}
+	}
+	defer {
+		if bounded {
+			end_bounded_run()
+		}
+	}
 	process.run()
 	mut output := strings.new_builder(1024)
 	mut timed_out := false
+	mut cancelled := false
 	mut stdout_done := false
 	mut stderr_done := merge_output
 	sw := time.new_stopwatch()
@@ -313,8 +353,39 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 		// draining both: slurping stdout first can deadlock on a full stderr
 		// pipe, even for an unbounded run. For bounded runs, deferring the reap
 		// also reserves the leader PID until a possible process-group kill.
-		if stdout_done && stderr_done && !process.is_alive() {
-			break
+		if stdout_done && stderr_done {
+			if !bounded {
+				if !process.is_alive() {
+					break
+				}
+			} else {
+				// How a bounded run ends is decided here, in this order: the leader is seen to
+				// have ended WITHOUT being reaped, and the cancellation is read after that. A
+				// cancellation recorded before the leader ended is therefore always seen, and
+				// the group is ended while the leader's pid is still its own: a descendant that
+				// holds neither pipe (so the output is at its end) does not outlive a tool that
+				// was cancelled. is_alive() reaps on POSIX, and the pid of a reaped leader must
+				// not be signalled, so it is not asked on this path. A cancellation recorded
+				// after the read below finds a run that had ended by itself before it.
+				ended := leader_has_ended(mut process)
+				if ended != 0 && bounded_runs_cancelled() != 0 {
+					cancelled = true
+					process.signal_pgkill()
+					process.signal_kill()
+					if process.status == .aborted {
+						process.status = .running
+					}
+					break
+				}
+				if ended == 1 {
+					break
+				}
+				// -1: it cannot be told without reaping (no waitid/WNOWAIT here); the
+				// cancellation was read first, and the leader is asked as before
+				if ended == -1 && !process.is_alive() {
+					break
+				}
+			}
 		}
 		// The deadline is checked on every iteration, not only when nothing was
 		// read: a child that keeps writing must hit the bound just the same.
@@ -335,13 +406,26 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 			}
 			break
 		}
+		if bounded && bounded_runs_cancelled() != 0 {
+			// The tool is being cancelled: end the run as at the deadline. What it had
+			// written is not waited for.
+			cancelled = true
+			process.signal_pgkill()
+			process.signal_kill()
+			if process.status == .aborted {
+				process.status = .running
+			}
+			break
+		}
 		if stdout.len == 0 && stderr.len == 0 {
 			time.sleep(time.millisecond)
 		}
 	}
 	process.wait()
 	if timed_out {
-		eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
+		if announce {
+			eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
+		}
 		// Never wait for EOF after the deadline: a descendant that escaped
 		// the group kill may still own a writer. Collect what is already
 		// buffered instead.
@@ -361,7 +445,7 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 		output.write_string(': ')
 		output.writeln(program)
 	}
-	exit_code := if timed_out {
+	exit_code := if timed_out || cancelled {
 		if process.code > 0 { process.code } else { 1 }
 	} else if process.code >= 0 {
 		process.code
@@ -377,7 +461,7 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 	return os.Result{
 		exit_code: exit_code
 		output:    output_text
-	}
+	}, timed_out
 }
 
 // run_in_merged executes a command with an exact argument vector and captures

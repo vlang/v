@@ -31,6 +31,7 @@ $if $pkgconfig('openssl') {
 		#flag -lssl -lcrypto
 	}
 	#flag linux -ldl -lpthread
+	#flag termux -ldl -lpthread
 	// Prefer a single matching macOS OpenSSL prefix to avoid mixing Intel and arm64 installs.
 	$if arm64 {
 		#flag darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include','/opt/procursus/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include')

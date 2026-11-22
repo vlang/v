@@ -32,3 +32,29 @@ fn test_run_in_merged_with_env_gives_the_child_the_variables_on_top_of_its_own()
 		})
 	assert missing.exit_code != 0
 }
+
+fn test_run_merged_timed_with_env_gives_the_child_the_variables_and_keeps_the_limit() {
+	$if windows {
+		return
+	}
+	shell := os.find_abs_path_of_executable('sh') or { return }
+	os.setenv('V_CMDEXEC_ENV_TEST_KEPT', 'kept', true)
+	defer {
+		os.unsetenv('V_CMDEXEC_ENV_TEST_KEPT')
+	}
+	env := {
+		'V_CMDEXEC_ENV_TEST_ADDED': 'added'
+	}
+	result, timed_out := run_merged_timed_with_env(shell, ['-c',
+		'echo "$V_CMDEXEC_ENV_TEST_KEPT $V_CMDEXEC_ENV_TEST_ADDED"'], 10_000, env, false)
+	assert !timed_out
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('kept added'), result.output
+	// With the variables given, a run past the limit is still killed and reported as such.
+	slow, slow_timed_out := run_merged_timed_with_env(shell, ['-c',
+		'echo "$V_CMDEXEC_ENV_TEST_ADDED"; sleep 30'], 500, env, false)
+	assert slow_timed_out
+	assert slow.exit_code != 0
+	assert slow.output.contains('added'), slow.output
+	assert os.getenv_opt('V_CMDEXEC_ENV_TEST_ADDED') == none
+}

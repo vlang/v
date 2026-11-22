@@ -60,10 +60,10 @@ fn test_msvc_removes_only_the_generated_sidecar() ! {
 	defer { os.rmdir_all(root) or {} }
 	exe := os.join_path(root, 'main.exe')
 	os.write_file('${exe}.manifest', windows_long_path_manifest)!
-	ensure_windows_long_path_manifest(exe, true, true)
+	ensure_windows_long_path_manifest(exe, true, true, false)
 	assert !os.exists('${exe}.manifest')
 	os.write_file('${exe}.manifest', 'user manifest')!
-	ensure_windows_long_path_manifest(exe, true, true)
+	ensure_windows_long_path_manifest(exe, true, true, false)
 	assert os.read_file('${exe}.manifest')! == 'user manifest'
 }
 

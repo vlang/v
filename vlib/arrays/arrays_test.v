@@ -178,6 +178,11 @@ fn test_chunk_while() {
 	}).str() == '[{`a`: 4}, {`b`: 3}, {`c`: 2}, {`a`: 1}]'
 }
 
+fn test_window_with_large_step() {
+	assert window([1, 2, 3], size: 2, step: max_int) == [[1, 2]]
+	assert window([1, 2, 3, 4, 5, 6], size: 2, step: 4) == [[1, 2], [5, 6]]
+}
+
 fn test_window() {
 	x := [1, 2, 3, 4, 5, 6]
 

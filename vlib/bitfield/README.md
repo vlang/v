@@ -11,3 +11,6 @@ accessing and modifying bit arrays.
 
 `BitField.slice(start, end)` clamps a negative start to zero. An end beyond the bitfield
 size is clamped to the size, and reversed bounds produce an empty bitfield.
+
+`BitField.has(indices...)` reports whether any requested bit is set. Out-of-range indices
+are treated as zero, as in `get_bit`.
