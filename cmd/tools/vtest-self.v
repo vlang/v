@@ -300,7 +300,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/quic/version_negotiation_test.v',
 	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
-	'vlib/v/gen/c/cached_interface_dispatch_test.v', // builds orm/row_mapping_conversion_test.v with clang, against the musl-only static sqlite
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
