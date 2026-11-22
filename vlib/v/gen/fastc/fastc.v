@@ -3729,6 +3729,10 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 		// Keep explicit declarations available when that header is absent.
 		if name in ['v3_pthread_zero', 'v3_pthread_create', 'v3_pthread_is_current'] {
 			out.writeln('#if !defined(${name}) && !defined(V3_PTHREAD_HELPER_H)')
+		} else if is_gc_api {
+			// Native code that includes `gc.h` gets the collector's own declarations, whose
+			// types (`struct GC_stack_base *`) differ from V's `voidptr` spelling.
+			out.writeln('#if !defined(${name}) && !defined(GC_H)')
 		} else {
 			out.writeln('#ifndef ${name}')
 		}
