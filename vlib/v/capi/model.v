@@ -25,6 +25,7 @@ pub:
 	is_method   bool
 	receiver    string
 pub mut:
+	is_unsafe   bool
 	c_name      string
 	custom_name string
 	// qualifier is the V import alias used when wrappers live outside the
@@ -54,7 +55,8 @@ pub:
 	fields       []ApiField
 	doc          string
 pub mut:
-	c_name string
+	c_name    string
+	qualifier string
 }
 
 pub struct ApiConst {
@@ -126,6 +128,12 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.ends_with('.c.v') {
 			continue
 		}
+		// Backend-specific files (`x.js.v`, `x.wasm.v`, `x.native.v`) are not
+		// compiled by the C backend; their symbols must not enter the surface.
+		if entry.split('.').len > 2 || (entry.contains('_d_') && !entry.contains('_notd_')) {
+			// `_d_flag.v` files are compiled only with `-d flag`.
+			continue
+		}
 		path := os.join_path(dir, entry)
 		text := os.read_file(path) or { continue }
 		collect_docs(text, mut docs)
@@ -145,17 +153,26 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 				continue
 			}
 			if node.kind == .fn_decl {
+				if node.generic_params().len > 0 {
+					// Generic functions have no single C ABI signature.
+					continue
+				}
 				attrs := attrs_by_node[ni] or { []string{} }
 				is_pub := node.op == .arrow
 				explicit := has_attr(attrs, 'c_api_export', 'CApiExport')
 				if !is_pub && !explicit {
 					continue
 				}
-				if has_attr(attrs, 'c_api_skip', 'CApiSkip') {
+				if has_attr(attrs, 'c_api_skip', 'CApiSkip') || is_deprecated(attrs) {
 					continue
 				}
 				mut func := func_from_node(a, node, docs, effective_prefix, custom_name_of(attrs), qualifier)
+				if is_operator_name(func.name.all_after_last('.')) {
+					// Operator methods (`+`, `-`, ...) have no C-ABI spelling.
+					continue
+				}
 				func.error_code = error_code_of(attrs)
+				func.is_unsafe = 'unsafe' in attrs
 				funcs << func
 				continue
 			}
@@ -174,10 +191,11 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 					}
 				}
 				types << ApiType{
-					name:   node.value
-					kind:   'struct'
-					fields: fields
-					doc:    docs['type:${node.value}']
+					name:      node.value
+					kind:      'struct'
+					fields:    fields
+					qualifier: qualifier
+					doc:       docs['type:${node.value}']
 				}
 				continue
 			}
@@ -212,6 +230,7 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 					kind:         'enum'
 					members:      members
 					enum_members: enum_members
+					qualifier:    qualifier
 					doc:          docs['type:${node.value}']
 				}
 				continue
@@ -275,6 +294,23 @@ fn attribute_map(a &flat.FlatAst) map[int][]string {
 		out[idx] = node.generic_params()
 	}
 	return out
+}
+
+fn is_deprecated(attrs []string) bool {
+	for attr in attrs {
+		if attr.starts_with('deprecated') {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_operator_name(name string) bool {
+	if name.len == 0 {
+		return true
+	}
+	c := name[0]
+	return !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`)
 }
 
 fn has_attr(attrs []string, bare string, qualified string) bool {

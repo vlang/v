@@ -88,15 +88,22 @@ fn capi_rt_init() int {
 pub fn generate_wrappers(m ApiModel, mut warnings []string) (string, []ExportInfo) {
 	mut b := strings.Builder{}
 	mut infos := []ExportInfo{}
+	mut used := map[string]bool{}
 	b.writeln('module ${if qualified_model(m) { 'main' } else { m.module_name }}')
 	b.writeln('')
-	for fi, f in m.funcs {
+	for fi, f0 in m.funcs {
+		mut f := f0
+		f.c_name = unique_export_name(used, f.c_name)
 		if wrapper_for_func(m, fi, f, mut b, mut warnings, mut infos) {
+			used[infos.last().c_name] = true
 			b.writeln('')
 		}
 	}
-	for ci, c in m.consts {
+	for ci, c0 in m.consts {
+		mut c := c0
+		c.c_name = unique_export_name(used, c.c_name)
 		if wrapper_for_const(m, ci, c, mut b, mut warnings, mut infos) {
+			used[infos.last().c_name] = true
 			b.writeln('')
 		}
 	}
@@ -111,6 +118,25 @@ fn qualified_model(m ApiModel) bool {
 // outside the declaring module.
 fn qname(f ApiFunc, name string) string {
 	return if f.qualifier == '' { name } else { '${f.qualifier}.${name}' }
+}
+
+fn is_local_enum(m ApiModel, type_name string, qualifier string) bool {
+	t := type_by_name_for(m, unqualified(strip_ref(type_name)), qualifier) or { return false }
+	return t.kind == 'enum' && t.qualifier == qualifier
+}
+
+fn unique_export_name(used map[string]bool, name string) string {
+	if !used[name] {
+		return name
+	}
+	mut n := 2
+	for {
+		candidate := '${name}_${n}'
+		if !used[candidate] {
+			return candidate
+		}
+		n++
+	}
 }
 
 fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut warnings []string, mut infos []ExportInfo) bool {
@@ -136,17 +162,31 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	mut setup := []string{}
 	if f.is_method {
 		base := unqualified(strip_ref(f.receiver))
-		if !m.is_struct(base) || !f.receiver.starts_with('&') {
-			warnings << 'skipped ${f.name}: only pointer receivers on public structs are supported'
+		t := type_by_name_for(m, base, f.qualifier) or {
+			warnings << 'skipped ${f.name}: receiver type is not a public struct in its module'
+			return false
+		}
+		if t.kind != 'struct' || t.qualifier != f.qualifier {
+			warnings << 'skipped ${f.name}: receiver type belongs to another module'
 			return false
 		}
 		decl_params << 'self voidptr'
 		c_params << 'void *self'
-		setup << '\trecv := unsafe { &${qname(f, base)}(self) }'
+		if f.receiver.starts_with('&') {
+			setup << '\trecv := unsafe { &${type_qname(m, base, f.qualifier)}(self) }'
+		} else {
+			// A value receiver needs a value copy of the pointed-to object.
+			setup << '\tmut recv := unsafe { *(&${type_qname(m, base, f.qualifier)}(self)) }'
+		}
 	}
 	for i, p in f.params {
 		if p.is_receiver {
 			continue
+		}
+		pt := type_by_name_for(m, unqualified(strip_ref(p.type_name)), f.qualifier) or { ApiType{} }
+		if pt.name != '' && pt.qualifier != f.qualifier {
+			warnings << 'skipped ${f.name}: parameter type belongs to another module'
+			return false
 		}
 		ptype := v_wrapper_type(p.type_name, m) or {
 			warnings << 'skipped ${f.name}: unsupported parameter type ${p.type_name}'
@@ -166,7 +206,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 			continue
 		}
 		v_type := if m.is_struct(unqualified(ptype)) && !ptype.starts_with('&') {
-			qname(f, ptype)
+			type_qname(m, ptype, f.qualifier)
 		} else {
 			ptype
 		}
@@ -181,18 +221,18 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 			call_args << '${name}_v'
 		} else if p.type_name == 'bool' {
 			call_args << '${name} != 0'
-		} else if m.is_enum(unqualified(strip_ref(p.type_name))) {
+		} else if is_local_enum(m, p.type_name, f.qualifier) {
 			etype := unqualified(strip_ref(p.type_name))
-			call_args << 'unsafe { ${qname(f, etype)}(${name}) }'
+			call_args << 'unsafe { ${type_qname(m, etype, f.qualifier)}(${name}) }'
 		} else if p.type_name.starts_with('&') && m.is_struct(unqualified(strip_ref(p.type_name))) {
 			stype := unqualified(strip_ref(p.type_name))
 			if p.is_mut {
 				// `mut c T` is encoded as `&T` with the mut flag; pass a mutable
 				// copy of the pointed-to value rather than the pointer itself.
-				setup << '\tmut ${name}_v := unsafe { *(&${qname(f, stype)}(${name})) }'
+				setup << '\tmut ${name}_v := unsafe { *(&${type_qname(m, stype, f.qualifier)}(${name})) }'
 				call_args << 'mut ${name}_v'
 			} else {
-				setup << '\t${name}_v := unsafe { &${qname(f, stype)}(${name}) }'
+				setup << '\t${name}_v := unsafe { &${type_qname(m, stype, f.qualifier)}(${name}) }'
 				call_args << '${name}_v'
 			}
 		} else {
@@ -206,7 +246,7 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	mut ret_spelling := if ret_v == '' {
 		''
 	} else if m.is_struct(unqualified(ret_v)) {
-		' ${qname(f, ret_v)}'
+		' ${type_qname(m, ret_v, f.qualifier)}'
 	} else {
 		' ${ret_v}'
 	}
@@ -219,7 +259,11 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		ret_c = 'int'
 		ret_spelling = ' int'
 	} else if has_result {
-		out_v := if m.is_struct(unqualified(ret_v)) { qname(f, ret_v) } else { ret_v }
+		out_v := if m.is_struct(unqualified(ret_v)) {
+			type_qname(m, ret_v, f.qualifier)
+		} else {
+			ret_v
+		}
 		decl_params << 'out &${out_v}'
 		mut out_c := c_decl_type(inner, m) or {
 			warnings << 'skipped ${f.name}: unsupported result type ${inner}'
@@ -237,10 +281,13 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 	for line in setup {
 		b.writeln(line)
 	}
-	call := if f.is_method {
+	mut call := if f.is_method {
 		'recv.${f.name.all_after_last('.')}(${call_args.join(', ')})'
 	} else {
 		'${qname(f, f.name)}(${call_args.join(', ')})'
+	}
+	if f.is_unsafe {
+		call = 'unsafe { ${call} }'
 	}
 	if returns_slice {
 		if has_result {
@@ -331,12 +378,16 @@ fn wrapper_for_const(m ApiModel, idx int, c ApiConst, mut b strings.Builder, mut
 		return false
 	}
 	cname := if c.c_name != '' { c.c_name } else { '${m.prefix}_get_${sanitize(c.name)}' }
-	t := if value.starts_with("'") || value.starts_with('"') {
+	mut t := if value.starts_with("'") || value.starts_with('"') {
 		'string'
 	} else if value == 'true' || value == 'false' {
 		'bool'
 	} else {
 		'int'
+	}
+	// Large hex literals (e.g. 0xB5026F5AA96619E9) are u64 in V, not int.
+	if t == 'int' && (value.starts_with('0x') || value.starts_with('0X')) && value.len > 10 {
+		t = 'u64'
 	}
 	rt := v_wrapper_type(t, m) or { return false }
 	b.writeln("@[export: '${cname}']")
@@ -345,6 +396,8 @@ fn wrapper_for_const(m ApiModel, idx int, c ApiConst, mut b strings.Builder, mut
 		b.writeln('\treturn &char(capi_rt_strdup(${value}))')
 	} else if t == 'bool' {
 		b.writeln('\treturn if ${value} { 1 } else { 0 }')
+	} else if t == 'u64' {
+		b.writeln('\treturn u64(${value})')
 	} else {
 		b.writeln('\treturn ${value}')
 	}
@@ -352,6 +405,8 @@ fn wrapper_for_const(m ApiModel, idx int, c ApiConst, mut b strings.Builder, mut
 	mut sig_type := 'int'
 	if t == 'string' {
 		sig_type = 'char *'
+	} else if t == 'u64' {
+		sig_type = 'uint64_t'
 	}
 	infos << ExportInfo{
 		c_name:    cname

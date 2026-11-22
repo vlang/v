@@ -186,6 +186,27 @@ pub fn struct_field_c_type(t string) ?string {
 	return none
 }
 
+// type_by_name_for prefers the type declared in the same module as the
+// function being wrapped: two modules can declare a struct with the same name.
+pub fn type_by_name_for(m ApiModel, name string, qualifier string) ?ApiType {
+	for t in m.types {
+		if t.name == name && t.qualifier == qualifier {
+			return t
+		}
+	}
+	return m.type_by_name(name)
+}
+
+// type_qname spells a type with the import alias of the module that declared
+// it, not the alias of the function that happens to use it.
+pub fn type_qname(m ApiModel, name string, fallback string) string {
+	n := unqualified(name)
+	if t := type_by_name_for(m, n, fallback) {
+		return if t.qualifier == '' { n } else { '${t.qualifier}.${n}' }
+	}
+	return if fallback == '' { n } else { '${fallback}.${n}' }
+}
+
 pub fn struct_c_name(m ApiModel, name string) string {
 	if t := m.type_by_name(unqualified(name)) {
 		return if t.c_name != '' { t.c_name } else { '${m.prefix}_${sanitize(t.name)}' }
@@ -242,11 +263,7 @@ pub fn c_elem_type(t string) string {
 }
 
 fn c_prim(v string) string {
-	if v == 'u8' || v == 'byte' {
-		return 'u8'
-	}
-	if v == 'int' || v == 'i32' || v == 'rune' {
-		return 'int'
-	}
-	return v
+	// Keep V type spellings intact: `int` and `i32` are distinct types and a
+	// wrapper's slice element must use the exact type the callee declares.
+	return if v == 'byte' { 'u8' } else { v }
 }

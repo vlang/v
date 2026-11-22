@@ -27,6 +27,20 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_vlib_api_shapes() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'vlibshapes')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	mut warnings := []string{}
+	code, infos := generate_wrappers(m, mut warnings)
+	assert infos.len == 3, 'expected value/size/sizes exports, got ${infos.len}'
+	assert code.contains('mut recv := unsafe { *(&Box(self)) }')
+	assert code.contains('mut p0_v := []i32{len: p0_len}')
+	assert code.contains('sizeof(i32)')
+}
+
 fn test_bool_const_getter() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'boolconst')
 	m := collect_model(dir, '') or {

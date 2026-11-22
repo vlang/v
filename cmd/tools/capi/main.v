@@ -114,7 +114,9 @@ fn lib_file_name(name string) string {
 fn module_name_of(dir string) string {
 	entries := os.ls(dir) or { return '' }
 	for entry in entries {
-		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.ends_with('.c.v') {
+		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.ends_with('.c.v')
+			|| is_foreign_backend_file(entry)
+			|| (entry.contains('_d_') && !entry.contains('_notd_')) {
 			continue
 		}
 		text := os.read_file(os.join_path(dir, entry)) or { continue }
@@ -178,10 +180,55 @@ fn import_path_of(rel string, base string) string {
 	return if base == '' { rel } else { '${base}.${rel}' }
 }
 
+// is_foreign_backend_file filters platform/backend variants V will never
+// select for the current C build; copying all of them creates duplicate
+// declarations (e.g. a wasm and a Windows `read` in the same package).
+fn is_foreign_backend_file(name string) bool {
+	for suffix in ['.js.v', '.wasm.v', '.native.v'] {
+		if name.ends_with(suffix) {
+			return true
+		}
+	}
+	host := os.user_os()
+	foreign := if host == 'windows' {
+		['_linux.v', '_linux.c.v', '_macos.v', '_macos.c.v', '_unix.v', '_unix.c.v', '_android.v',
+			'_freebsd.v', '_openbsd.v']
+	} else if host == 'linux' {
+		['_windows.v', '_windows.c.v', '_macos.v', '_macos.c.v']
+	} else {
+		['_windows.v', '_windows.c.v', '_linux.v', '_linux.c.v']
+	}
+	for suffix in foreign {
+		if name.ends_with(suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+fn copy_asset_tree(src string, dst string) {
+	os.mkdir_all(dst) or { return }
+	for entry in os.ls(src) or { return } {
+		if entry.starts_with('.') || entry.ends_with('_test.v') || entry.starts_with('capi_generated') {
+			continue
+		}
+		src_path := os.join_path(src, entry)
+		dst_path := os.join_path(dst, entry)
+		if os.is_dir(src_path) {
+			copy_asset_tree(src_path, dst_path)
+		} else if !entry.ends_with('.v') {
+			os.copy_file(src_path, dst_path) or {}
+		}
+	}
+}
+
 fn copy_module_files(src string, dst string) ! {
 	os.mkdir_all(dst) or { return error('cannot create ${dst}: ${err}') }
 	for entry in os.ls(src) or { return error('cannot list ${src}: ${err}') } {
 		if entry.ends_with('_test.v') || entry.starts_with('capi_generated') || entry.starts_with('.') {
+			continue
+		}
+		if is_foreign_backend_file(entry) {
 			continue
 		}
 		if os.is_dir(os.join_path(src, entry)) {
@@ -278,11 +325,26 @@ fn build_plan(opts Options) !BuildPlan {
 		// Use the full import path as the alias: two submodules in different
 		// packages can share a last segment (`a.tls` and `b.tls`).
 		qualifier := capi.sanitize(imp.replace('.', '_'))
-		imports << 'import ${imp} as ${qualifier}'
 		short := capi.sanitize(if rel == '' { 'root' } else { rel.replace('.', '_') })
 		module_prefix := '${opts.lib_name}_${short}'
 		m := capi.collect_model_qualified(mdir, module_prefix, qualifier) or { return err }
+		if m.funcs.len + m.types.len + m.consts.len == 0 {
+			// Nothing exportable here; importing an empty module only forces V
+			// to compile code the library does not use.
+			continue
+		}
+		if qualifier == imp.all_after_last('.') {
+			// V rejects `import strings as strings`.
+			imports << 'import ${imp}'
+		} else {
+			imports << 'import ${imp} as ${qualifier}'
+		}
 		copy_module_files(mdir, os.join_path(base_dir, ...rel.split('.'))) or { return err }
+		// C interop headers are included as `vlib/<module>/...`; mirror assets
+		// there so those includes resolve inside the temporary build tree.
+		asset_dst := os.join_path(base_dir, 'vlib', base.replace('.', os.path_separator),
+			rel.replace('.', os.path_separator))
+		copy_asset_tree(mdir, asset_dst)
 		if first {
 			combined = capi.ApiModel{
 				module_name: 'main'
@@ -422,9 +484,16 @@ fn main() {
 	if opts.prod {
 		build_args << '-prod'
 	}
+	mut cflags := ''
 	if os.user_os() == 'windows' {
+		cflags = '-Wl,--export-all-symbols'
+	}
+	if plan.vmodules != '' {
+		cflags += ' -I${plan.vmodules}'
+	}
+	if cflags.trim_space() != '' {
 		build_args << '-cflags'
-		build_args << '-Wl,--export-all-symbols'
+		build_args << cflags.trim_space()
 	}
 	build_args << '-o'
 	build_args << lib_path
