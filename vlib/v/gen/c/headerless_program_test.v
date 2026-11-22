@@ -295,7 +295,7 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	assert_self_c_directory_bindings(native)
 	// Windows host C is not headerless: builtin_windows.c.v and other Windows modules
 	// include CRT and SDK headers (io.h, fcntl.h, windows.h, ...), even with
-	// `-d no_segfault_handler`. The portable snapshot below is checked on every host.
+	// `-d no_segfault_handler`.
 	$if !windows {
 		assert_self_c_compiler_owned_includes(native)
 	}
@@ -316,7 +316,12 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	assert headerless.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap')
 	assert !headers.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap')
 	assert headers.contains('\n#include <stdint.h>\n')
-	assert_self_c_compiler_owned_includes(headerless)
+	// On a Windows host the portable snapshot targets Windows. Windows snapshots embed
+	// SDK-backed helpers (see `headerless_snapshot` in the driver), so they keep system
+	// `#include`s, each preceded by the TinyCC glibc feature probe.
+	$if !windows {
+		assert_self_c_compiler_owned_includes(headerless)
+	}
 }
 
 // vc/v.c is generated on Linux (gen_vc_ci.yml), and every non-Windows `make` compiles
