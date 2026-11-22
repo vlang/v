@@ -462,6 +462,13 @@ extern char **environ;
 #if defined(__linux__) && defined(__GLIBC__)
 #include <sys/syscall.h>
 #endif
+#else
+/* The C backend preamble includes these CRT headers on Windows too: builtin and os
+ * declare `errno` codes, `signal` and wide calls such as `_wgetcwd` with `fn C.` and
+ * no header. */
+#include <errno.h>
+#include <signal.h>
+#include <wchar.h>
 #endif
 
 /* `C.__V_architecture` (pref.get_host_arch) resolves the host arch at C-compile time;
@@ -687,6 +694,13 @@ extern char **environ;
 #if defined(__linux__) && defined(__GLIBC__)
 #include <sys/syscall.h>
 #endif
+#else
+/* The C backend preamble includes these CRT headers on Windows too: builtin and os
+ * declare `errno` codes, `signal` and wide calls such as `_wgetcwd` with `fn C.` and
+ * no header. */
+#include <errno.h>
+#include <signal.h>
+#include <wchar.h>
 #endif
 '
 

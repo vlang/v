@@ -296,3 +296,59 @@ int architecture_hook(const void *value) { return 42; }
 	os.rm(header_path) or { panic(err) }
 	assert generate_files([path], prefs) or { panic(err) } == c_source
 }
+
+// fastc_windows_preamble_includes returns the `#include` lines of the Windows
+// (`#else`) branch of the preamble's first `#ifndef _WIN32` block.
+fn fastc_windows_preamble_includes(c_source string) []string {
+	mut includes := []string{}
+	mut depth := 0
+	mut in_windows_branch := false
+	for line in c_source.all_after('#ifndef _WIN32\n').split_into_lines() {
+		if line.starts_with('#if') {
+			depth++
+		} else if line.starts_with('#else') && depth == 0 {
+			in_windows_branch = true
+		} else if line.starts_with('#endif') {
+			if depth == 0 {
+				break
+			}
+			depth--
+		} else if in_windows_branch && depth == 0 && line.starts_with('#include ') {
+			includes << line
+		}
+	}
+	return includes
+}
+
+fn test_fastc_windows_preamble_includes_the_crt_headers_of_headerless_bindings() {
+	// builtin/cfns.c.v declares `_wgetcwd` and `_wchdir` without a header, and os uses
+	// `EINTR`, `ENOENT` and `signal` the same way: the C backend's preamble includes
+	// <wchar.h>, <errno.h> and <signal.h> for every target. FastC's preamble included
+	// them only outside Windows, so TinyCC stopped every Windows program that reaches
+	// os.getwd with "implicit declaration of function '_wgetcwd'".
+	root := os.join_path(os.vtmp_dir(), 'fastc_windows_crt_headers_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'import os\n\nfn main() {\n\tos.chdir(os.getwd()) or {}\n}\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	prefs.building_v = true
+	prefs.backend = 'fastc'
+	prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	c_source := generate_files([root], prefs) or { panic(err) }
+	assert c_source.contains('_wgetcwd('), c_source
+	assert c_source.contains('_wchdir('), c_source
+	includes := fastc_windows_preamble_includes(c_source)
+	for header in ['<errno.h>', '<signal.h>', '<wchar.h>'] {
+		assert '#include ${header}' in includes, includes.str()
+	}
+	// The target-libc preamble replaces this header block by its text, so the
+	// separate copy must keep matching the preamble.
+	assert c_selfhost_preamble.contains(c_selfhost_preamble_includes)
+	assert fastc_windows_preamble_includes(c_selfhost_preamble_includes) == includes
+}
