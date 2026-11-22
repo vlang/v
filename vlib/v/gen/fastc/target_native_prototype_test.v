@@ -166,6 +166,8 @@ fn test_fastc_vlib_native_helper_prototypes_follow_cgen_prefix_rule() {
 	mut functions := map[string]FastcFunctionSignature{}
 	for name, path in {
 		'v__gc_debugger_present_linux': '/root/vlib/builtin/builtin_d_gcboehm.c.v'
+		'v_gc_get_abort_func':          '/root/vlib/builtin/builtin_d_gcboehm.c.v'
+		'v_gc_pthread_create':          '/root/vlib/builtin/builtin_d_gcboehm.c.v'
 		'v3_linux_name_worker':         '/root/vlib/v/workers/thread_nix.c.v'
 		'unrelated_hook':               '/root/vlib/builtin/builtin_d_gcboehm.c.v'
 		'v_runtime_project_hook':       '/project/bindings.c.v'
@@ -193,6 +195,10 @@ fn test_fastc_vlib_native_helper_prototypes_follow_cgen_prefix_rule() {
 	prototypes := fastc_c_extern_prototypes_for_source_inputs(functions, inputs, context,
 		'/root')
 	assert prototypes.contains('extern int v__gc_debugger_present_linux(voidptr);'), prototypes
+	// The Windows GC startup calls the abort handler helpers of the same object.
+	assert prototypes.contains('extern int v_gc_get_abort_func(voidptr);'), prototypes
+	// fastc_gc_thread_redirects declares the thread helpers with their pthread types.
+	assert !prototypes.contains('v_gc_pthread_create('), prototypes
 	assert prototypes.contains('extern int v3_linux_name_worker(voidptr);'), prototypes
 	assert !prototypes.contains('unrelated_hook('), prototypes
 	assert !prototypes.contains('v_runtime_project_hook('), prototypes
