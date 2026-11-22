@@ -139,6 +139,15 @@ fn (mut a App) collect_info() {
 	a.line_env('VFLAGS')
 	a.line_env('CFLAGS')
 	a.line_env('LDFLAGS')
+	// Toolchain selection is part of the compiler configuration a bug report
+	// needs; the V executable path alone does not say which pin was active.
+	a.line_env('V_TOOLCHAIN')
+	a.line_env('V_TOOLCHAINS_DIR')
+	a.line_env('V_TOOLCHAIN_SETTINGS')
+	a.line_env('V_TOOLCHAIN_PROJECT')
+	a.line_env('V_TOOLCHAIN_MANIFEST')
+	a.line_env('V_TOOLCHAIN_CACHE_DIR')
+	a.line_env('V_TOOLCHAIN_DEBUG')
 
 	a.line('Git version', a.cmd(command: ['git', '--version']))
 	a.line('V git status', a.git_info())

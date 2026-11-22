@@ -2,6 +2,7 @@ module main
 
 import os
 import v.pref
+import v.toolchain
 
 fn test_compiler_selection_flags_are_not_forwarded() {
 	assert clean_compiler_selection_flags(['-silent', '-new-compiler', 'main.v']) == [
@@ -1241,4 +1242,76 @@ fn test_host_tool_filters_preserve_other_option_operands() {
 	prefix := ['-cc', 'clang', '-cflags', '-arch', '-cflags', 'arm64', '-arch', 'amd64']
 	assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-cflags', '-arch',
 		'-cflags', 'arm64']
+}
+
+fn test_toolchain_dispatch_command_gating() {
+	assert toolchain_dispatch_allowed('')
+	assert toolchain_dispatch_allowed('version')
+	assert toolchain_dispatch_allowed('run')
+	assert !toolchain_dispatch_allowed('toolchain')
+	assert !toolchain_dispatch_allowed('up')
+}
+
+fn test_toolchain_update_active_needs_explicit_selection() {
+	root := os.join_path(os.vtmp_dir(), 'v_launcher_toolchain_up_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.setenv(toolchain.root_env, root, true)
+	os.setenv(toolchain.version_env, '', true)
+	os.setenv(toolchain.project_env, root, true)
+	os.setenv(toolchain.settings_env, os.join_path(root, 'settings.toml'), true)
+	defer {
+		os.setenv(toolchain.root_env, '', true)
+		os.setenv(toolchain.version_env, '', true)
+		os.setenv(toolchain.project_env, '', true)
+		os.setenv(toolchain.settings_env, '', true)
+	}
+	// An implicit `stable` fallback never redirects `v up`.
+	assert !toolchain_update_active()
+	// An explicit selection without a built toolchain keeps the old behavior.
+	os.setenv(toolchain.version_env, '1.2.3', true)
+	assert !toolchain_update_active()
+	// An explicit, built toolchain takes over `v up`.
+	dir := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(dir)!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.cp(@VEXE, os.join_path(dir, exe_name))!
+	assert toolchain_update_active()
+}
+
+fn test_toolchain_dispatch_skips_without_toolchains_dir() {
+	missing := os.join_path(os.vtmp_dir(), 'v_launcher_no_toolchains_${os.getpid()}')
+	os.rmdir_all(missing) or {}
+	os.setenv(toolchain.root_env, missing, true)
+	defer {
+		os.setenv(toolchain.root_env, '', true)
+	}
+	assert !dispatch_to_toolchain()
+}
+
+fn test_toolchain_dispatch_uses_selected_compiler() {
+	// The test binary is built by the compiler on PATH. A bootstrap compiler
+	// from before launcher dispatch cannot exercise this path.
+	binary := os.read_file(@VEXE) or {
+		return
+	}
+	if !binary.contains('V_TOOLCHAIN_DISPATCHED') {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_launcher_toolchain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, 'v1.2.3')
+	os.mkdir_all(dir)!
+	exe_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	os.cp(@VEXE, os.join_path(dir, exe_name))!
+	result := os.exec(['env', 'V_TOOLCHAINS_DIR=${root}', 'V_TOOLCHAIN=1.2.3', 'V_TOOLCHAIN_DEBUG=1',
+		@VEXE, 'version'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('dispatching to'), result.output
+	assert result.output.contains('V 0.5.2'), result.output
 }
