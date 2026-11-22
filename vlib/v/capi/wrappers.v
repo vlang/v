@@ -219,7 +219,8 @@ fn wrapper_for_func(m ApiModel, idx int, f ApiFunc, mut b strings.Builder, mut w
 		ret_c = 'int'
 		ret_spelling = ' int'
 	} else if has_result {
-		decl_params << 'out &${ret_v}'
+		out_v := if m.is_struct(unqualified(ret_v)) { qname(f, ret_v) } else { ret_v }
+		decl_params << 'out &${out_v}'
 		mut out_c := c_decl_type(inner, m) or {
 			warnings << 'skipped ${f.name}: unsupported result type ${inner}'
 			return false
