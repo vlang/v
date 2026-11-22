@@ -179,8 +179,11 @@ mut:
 	handshake_keys_client    ?QuicPacketProtectionKeys
 	handshake_keys_server    ?QuicPacketProtectionKeys
 	handshake_keys_discarded bool
-	app_write_keys           ?QuicPacketProtectionKeys
-	app_read_keys            ?&KeyUpdateState
+	// handshake_ack_received records that the peer acknowledged one of this
+	// endpoint's Handshake packets (RFC 9002 §6.2.2.1, unvalidated_probe_space).
+	handshake_ack_received bool
+	app_write_keys         ?QuicPacketProtectionKeys
+	app_read_keys          ?&KeyUpdateState
 
 	// app_write_secret/app_write_generation track this endpoint's OWN 1-RTT
 	// send-key generation, independently of app_read_keys' read-side
@@ -605,7 +608,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 	if c.state == .handshaking || c.state == .established {
 		handshake_confirmed := c.handshake_completion.is_confirmed()
 		max_ack_delay := c.effective_max_ack_delay()
-		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed, max_ack_delay)
+		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed, max_ack_delay, c.unvalidated_probe_space())
 		if timeout_result.pto_fired {
 			c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
 				code := if err.code() != 0 {
@@ -1334,7 +1337,12 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 		default_ack_delay_exponent
 	}
 
-	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, now)
+	// Checked before on_ack_received, which drops the packets it acknowledges,
+	// so this ACK's own pto_count decision already sees the validation.
+	if space == .handshake && !c.handshake_ack_received {
+		c.handshake_ack_received = c.loss_detection.acks_a_sent_packet(.handshake, frame)
+	}
+	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, c.unvalidated_probe_space(), now)
 	// RFC 9000 §13.2.4: "When a packet containing an ACK frame is
 	// acknowledged, the receiver can stop acknowledging packets less than or
 	// equal to the Largest Acknowledged field in the sent ACK frame."
@@ -2206,12 +2214,36 @@ fn (c &QuicConn) idle_timeout_deadline() ?u64 {
 	return baseline + u64(timeout)
 }
 
+// unvalidated_probe_space is none once the server has validated this
+// client's address -- a Handshake packet was acknowledged or the handshake
+// is confirmed (RFC 9002 Appendix A.8's PeerCompletedAddressValidation) --
+// and otherwise the space of the anti-deadlock probe: Handshake once this
+// client has Handshake keys, Initial before (RFC 9002 §6.2.2.1).
+fn (c &QuicConn) unvalidated_probe_space() ?QuicPacketNumberSpace {
+	if c.role == .server || c.handshake_ack_received || c.handshake_completion.is_confirmed() {
+		return none
+	}
+	if _ := c.handshake_keys_client {
+		if !c.handshake_keys_discarded {
+			return .handshake
+		}
+	}
+	return .initial
+}
+
 fn (mut c QuicConn) compute_next_timeout() ?u64 {
 	handshake_confirmed := c.handshake_completion.is_confirmed()
 	max_ack_delay := c.effective_max_ack_delay()
 	mut deadline := ?u64(none)
-	if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay, c.congestion_control.bytes_in_flight) {
-		deadline = t
+	// Only the states in which process_timeouts runs loss detection: a
+	// closing or draining endpoint sends no probes (RFC 9000 §10.2), so a
+	// PTO deadline there would come back unchanged on every call.
+	if c.state == .handshaking || c.state == .established {
+		if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay,
+			c.unvalidated_probe_space())
+		{
+			deadline = t
+		}
 	}
 	if idle_deadline := c.idle_timeout_deadline() {
 		if d := deadline {

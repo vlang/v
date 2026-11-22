@@ -84,6 +84,11 @@ pub mut:
 	// packets bounding the congestion period -- this is what
 	// is_persistent_congestion checks that against.
 	first_rtt_sample_time ?u64
+	// timer_set_at is when RFC 9002 Appendix A's SetLossDetectionTimer last
+	// ran: an in-flight packet sent, an ACK that acknowledged something, or
+	// the timer firing. The anti-deadlock PTO, armed with nothing in flight,
+	// counts from it (GetPtoTimeAndSpace's "now()").
+	timer_set_at u64
 }
 
 // new_quic_loss_detection_timer constructs empty per-space loss-detection
@@ -148,6 +153,9 @@ pub fn (mut ld QuicLossDetectionTimer) on_packet_sent(space QuicPacketNumberSpac
 	if is_ack_eliciting {
 		st.time_of_last_ack_eliciting_packet = now
 	}
+	if in_flight {
+		ld.timer_set_at = now
+	}
 }
 
 // note_ack_frame_sent records that packet `packet_number`, already passed to
@@ -199,8 +207,11 @@ pub:
 // frame.v's default_ack_delay_exponent), used to scale the ACK frame's raw
 // ack_delay field before RTT sampling. `max_ack_delay` is the peer's
 // max_ack_delay transport parameter, applied per RttEstimator.update's own
-// handshake-confirmed-gated clamp.
-pub fn (mut ld QuicLossDetectionTimer) on_ack_received(space QuicPacketNumberSpace, ack AckFrame, ack_delay_exponent u64, max_ack_delay time.Duration, handshake_confirmed bool, now u64) AckProcessingResult {
+// handshake-confirmed-gated clamp. `unvalidated_probe_space` is set while
+// the peer has not yet validated this client's address (see next_timeout);
+// until then an acknowledgment leaves pto_count alone (RFC 9002 §6.2.1 and
+// Appendix A.7).
+pub fn (mut ld QuicLossDetectionTimer) on_ack_received(space QuicPacketNumberSpace, ack AckFrame, ack_delay_exponent u64, max_ack_delay time.Duration, handshake_confirmed bool, unvalidated_probe_space ?QuicPacketNumberSpace, now u64) AckProcessingResult {
 	mut st := ld.space_state(space)
 
 	if existing := st.largest_acked_packet {
@@ -279,8 +290,13 @@ pub fn (mut ld QuicLossDetectionTimer) on_ack_received(space QuicPacketNumberSpa
 		// -- deliberately NOT reset when something WAS lost; only an actual
 		// PTO firing (on_loss_detection_timeout) increments it, so an
 		// ordinary ack-triggered loss must leave it untouched, not reset it.
-		ld.pto_count = 0
+		// RFC 9002 Appendix A.7 also keeps it while the client is unsure the
+		// server has validated its address.
+		if unvalidated_probe_space == none {
+			ld.pto_count = 0
+		}
 	}
+	ld.timer_set_at = now
 
 	return AckProcessingResult{
 		newly_acked:           newly_acked
@@ -376,8 +392,10 @@ pub fn (mut ld QuicLossDetectionTimer) loss_time_and_space() ?(u64, QuicPacketNu
 // once that space is actually in use for anything the peer must respond
 // to), at which point its own contribution also adds max_ack_delay (scaled
 // by the same 2^pto_count backoff) since a 1-RTT ACK may legitimately be
-// delayed by up to that much.
-pub fn (mut ld QuicLossDetectionTimer) pto_time_and_space(handshake_confirmed bool, max_ack_delay time.Duration) (u64, QuicPacketNumberSpace) {
+// delayed by up to that much. Returns none, the RFC's infinite timeout,
+// when no space contributes a deadline: nothing ack-eliciting is in flight,
+// or only 1-RTT packets are while the handshake is not confirmed.
+pub fn (mut ld QuicLossDetectionTimer) pto_time_and_space(handshake_confirmed bool, max_ack_delay time.Duration) ?(u64, QuicPacketNumberSpace) {
 	backoff := u64(1) << u32(ld.pto_count)
 	base_duration := i64(ld.rtt.pto_period()) * i64(backoff)
 
@@ -408,25 +426,58 @@ pub fn (mut ld QuicLossDetectionTimer) pto_time_and_space(handshake_confirmed bo
 			have_timeout = true
 		}
 	}
+	if !have_timeout {
+		return none
+	}
 	return pto_timeout, pto_space
 }
 
 // next_timeout is RFC 9002 Appendix A.7's SetLossDetectionTimer, scoped to
 // v1's client-only reality: the anti-amplification-limited branch in the
 // spec's pseudocode is server-only (it concerns how much a SERVER may send
-// before validating the client's address) and never applies here. Returns
-// none when the loss-detection timer should be cancelled entirely --
-// nothing ack-eliciting is outstanding anywhere, so there is nothing to
-// time out.
-pub fn (mut ld QuicLossDetectionTimer) next_timeout(handshake_confirmed bool, max_ack_delay time.Duration, bytes_in_flight u64) ?(u64, QuicPacketNumberSpace) {
+// before validating the client's address) and never applies here.
+//
+// `unvalidated_probe_space` is none once the peer has validated this
+// client's address: a Handshake packet was acknowledged or the handshake is
+// confirmed. Before that it names the space of the anti-deadlock probe
+// (Handshake with Handshake keys, otherwise Initial): RFC 9002 §6.2.2.1
+// says "the client MUST set the PTO timer if the client has not received an
+// acknowledgment for any of its Handshake packets and the handshake is not
+// confirmed ..., even if there are no packets in flight". That timer counts
+// from timer_set_at. Returns none when the timer is cancelled: nothing
+// ack-eliciting is in flight and the address is validated. Like the RFC,
+// this keys on ack-eliciting packets, not bytes in flight: a padded
+// ACK-only packet is in flight but gives the PTO nothing to probe for.
+pub fn (mut ld QuicLossDetectionTimer) next_timeout(handshake_confirmed bool, max_ack_delay time.Duration, unvalidated_probe_space ?QuicPacketNumberSpace) ?(u64, QuicPacketNumberSpace) {
 	if loss_time, loss_space := ld.loss_time_and_space() {
 		return loss_time, loss_space
 	}
-	if bytes_in_flight == 0 {
-		return none
+	if !ld.has_ack_eliciting_in_flight() {
+		probe_space := unvalidated_probe_space or { return none }
+		backoff := u64(1) << u32(ld.pto_count)
+		return ld.timer_set_at + u64(ld.rtt.pto_period()) * backoff, probe_space
 	}
-	t, sp := ld.pto_time_and_space(handshake_confirmed, max_ack_delay)
+	t, sp := ld.pto_time_and_space(handshake_confirmed, max_ack_delay) or { return none }
 	return t, sp
+}
+
+// acks_a_sent_packet reports whether `ack` covers a packet of `space` that
+// this endpoint sent and has not yet seen acknowledged or declared lost.
+fn (mut ld QuicLossDetectionTimer) acks_a_sent_packet(space QuicPacketNumberSpace, ack AckFrame) bool {
+	for pn, _ in ld.space_state(space).sent_packets {
+		if ack_ranges_cover(ack.ranges, pn) {
+			return true
+		}
+	}
+	return false
+}
+
+// has_ack_eliciting_in_flight reports whether any space has an
+// ack-eliciting packet in flight.
+fn (mut ld QuicLossDetectionTimer) has_ack_eliciting_in_flight() bool {
+	return has_in_flight_ack_eliciting(ld.space_state(.initial))
+		|| has_in_flight_ack_eliciting(ld.space_state(.handshake))
+		|| has_in_flight_ack_eliciting(ld.space_state(.application_data))
 }
 
 // LossTimeoutResult reports what firing the loss-detection timer found:
@@ -454,8 +505,11 @@ pub:
 // on_loss_detection_timeout is RFC 9002 Appendix A.9's OnLossDetectionTimeout:
 // the single connection-wide loss-detection/PTO timer has fired. See
 // LossTimeoutResult's own doc comment for which of its two outcomes this
-// produces.
-pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handshake_confirmed bool, max_ack_delay time.Duration) LossTimeoutResult {
+// produces. With no ack-eliciting packet in flight and the address not yet
+// validated, the probe goes in `unvalidated_probe_space` (RFC 9002 §6.2.2.1,
+// see next_timeout).
+pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handshake_confirmed bool, max_ack_delay time.Duration, unvalidated_probe_space ?QuicPacketNumberSpace) LossTimeoutResult {
+	ld.timer_set_at = now
 	if _, loss_space := ld.loss_time_and_space() {
 		lost := ld.detect_and_remove_lost_packets(loss_space, now)
 		return LossTimeoutResult{
@@ -464,7 +518,17 @@ pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handsh
 		}
 	}
 
-	_, pto_space := ld.pto_time_and_space(handshake_confirmed, max_ack_delay)
+	mut pto_space := QuicPacketNumberSpace.initial
+	if !ld.has_ack_eliciting_in_flight() {
+		// A.9 probes only before address validation here; after it, A.7
+		// set no timer, so this firing has nothing to probe.
+		pto_space = unvalidated_probe_space or { return LossTimeoutResult{} }
+	} else {
+		// none is the RFC's infinite timeout: no timer was armed.
+		_, pto_space = ld.pto_time_and_space(handshake_confirmed, max_ack_delay) or {
+			return LossTimeoutResult{}
+		}
+	}
 	ld.pto_count++
 	return LossTimeoutResult{
 		pto_fired: true

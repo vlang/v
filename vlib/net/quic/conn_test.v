@@ -1252,9 +1252,9 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 // loss-detection/idle-timeout noise: a fixture driven through the full
 // fake-transport flow always has SOME packet outstanding (the fixture never
 // constructs ACK frames back to the client), which happens to keep a PTO
-// timer armed and masks this exact gap -- force `bytes_in_flight` to 0 to
-// reproduce the precise "nothing else armed" scenario the finding
-// describes.
+// timer armed and masks this exact gap -- acknowledge the client's Initial
+// so nothing is in flight, reproducing the precise "nothing else armed"
+// scenario the finding describes.
 fn test_compute_next_timeout_includes_closing_deadline() {
 	mut c, _ := dial(DialParams{
 		server_name:          'example.com'
@@ -1265,7 +1265,10 @@ fn test_compute_next_timeout_includes_closing_deadline() {
 	defer {
 		c.handshake.free()
 	}
-	c.congestion_control.bytes_in_flight = 0
+	anti_deadlock_test_ack(mut c, .initial)
+	// Before the server validates the address the anti-deadlock PTO stays
+	// armed (RFC 9002 §6.2.2.1); a Handshake ACK ends that.
+	c.handshake_ack_received = true
 	assert c.idle_timeout_deadline() == none
 	assert c.compute_next_timeout() == none
 
@@ -2402,4 +2405,226 @@ fn test_retire_connection_id_lost_by_timer_is_resent() {
 	timed := c.process_timeouts(now + 2 * u64(time.second))!
 	assert retire_test_seqs(mut c, timed)! == [u64(0)], 'the lost retirement was not sent again'
 	assert !cid_test_sent_frames(mut c, timed)!.any(it is PathResponseFrame), 'PATH_RESPONSE was sent again'
+}
+
+fn anti_deadlock_test_dial() !&QuicConn {
+	mut c, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	return c
+}
+
+// anti_deadlock_test_ack acknowledges packet 0 of `space` at time 1000.
+fn anti_deadlock_test_ack(mut c QuicConn, space QuicPacketNumberSpace) {
+	c.handle_ack_frame(space, AckFrame{
+		largest_acknowledged: 0
+		ranges:               [AckRange{
+			smallest: 0
+			largest:  0
+		}]
+	}, u64(1000))
+}
+
+// RFC 9002 §6.2.2.1: until a Handshake packet is acknowledged or the
+// handshake is confirmed, the client keeps the PTO timer armed with nothing
+// in flight, and without Handshake keys it sends an Initial packet in a
+// datagram of at least 1200 bytes.
+fn test_client_arms_anti_deadlock_pto_with_nothing_in_flight() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	anti_deadlock_test_ack(mut c, .initial)
+	assert c.congestion_control.bytes_in_flight == 0, 'the Initial packet is still in flight'
+	deadline := c.compute_next_timeout() or {
+		assert false, 'no timer is armed before the server validated the address'
+		return
+	}
+	// The anti-deadlock PTO counts from the ACK, the timer's last reset.
+	assert deadline == 1000 + u64(c.loss_detection.rtt.pto_period()), 'the timer does not count from the ACK'
+	result := c.process_timeouts(deadline)!
+	assert result.outgoing.len == 1, 'the anti-deadlock timer sent nothing'
+	probe := result.outgoing[0].bytes
+	assert probe[0] & 0xf0 == 0xc0, 'the anti-deadlock probe is not an Initial packet'
+	assert probe.len >= 1200, 'the Initial probe datagram has ${probe.len} bytes'
+}
+
+// With Handshake keys the anti-deadlock probe is a Handshake packet, and the
+// Handshake ACK of that probe validates the address and resets the PTO
+// backoff (RFC 9002 §6.2.2.1 and Appendix A.7).
+fn test_anti_deadlock_probe_is_handshake_packet_and_its_ack_resets_backoff() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	anti_deadlock_test_ack(mut c, .initial)
+	c.handshake_keys_client = c.initial_keys_client
+	c.initial_keys_discarded = true
+	deadline := c.compute_next_timeout() or {
+		assert false, 'no timer is armed before the server validated the address'
+		return
+	}
+	result := c.process_timeouts(deadline)!
+	assert result.outgoing.len == 1, 'the anti-deadlock timer sent no Handshake probe'
+	assert result.outgoing[0].bytes[0] & 0xf0 == 0xe0, 'the anti-deadlock probe is not a Handshake packet'
+	assert c.loss_detection.pto_count == 1
+	// An Initial ACK of the same packet number is not a Handshake ACK.
+	anti_deadlock_test_ack(mut c, .initial)
+	still := c.unvalidated_probe_space() or {
+		assert false, 'an Initial ACK validated the address'
+		return
+	}
+	assert still == .handshake
+	anti_deadlock_test_ack(mut c, .handshake)
+	assert c.unvalidated_probe_space() == none, 'a Handshake ACK did not end the anti-deadlock timer'
+	assert c.loss_detection.pto_count == 0, 'the Handshake ACK that validated the address did not reset the PTO backoff'
+	// A repeat of that ACK covers nothing still in flight; validation stays.
+	anti_deadlock_test_ack(mut c, .handshake)
+	assert c.unvalidated_probe_space() == none, 'a repeated Handshake ACK undid the address validation'
+}
+
+// RFC 9002 Appendix A.7: an acknowledgment resets the PTO backoff only once
+// the peer has validated the client's address.
+fn test_initial_ack_keeps_pto_backoff_before_address_validation() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	c.loss_detection.pto_count = 2
+	anti_deadlock_test_ack(mut c, .initial)
+	assert c.loss_detection.pto_count == 2, 'an Initial ACK reset the PTO backoff'
+}
+
+// RFC 9002 Appendix A.8: the probe space is Handshake once Handshake keys
+// exist, and a server never arms the anti-deadlock timer.
+fn test_unvalidated_probe_space_follows_role_and_keys() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	assert c.unvalidated_probe_space()? == .initial
+	// A server never waits for its own address to be validated.
+	c.role = .server
+	assert c.unvalidated_probe_space() == none, 'a server armed the anti-deadlock timer'
+	c.role = .client
+	c.handshake_keys_client = c.initial_keys_client
+	assert c.unvalidated_probe_space()? == .handshake
+}
+
+// A confirmed handshake also ends it, with no Handshake ACK seen.
+fn test_confirmed_handshake_ends_anti_deadlock_timer() {
+	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	assert c.handshake_completion.is_confirmed()
+	c.handshake_ack_received = false
+	assert c.unvalidated_probe_space() == none
+}
+
+// RFC 9002 §6.2.2.1 counts "an acknowledgment for any of its Handshake
+// packets": a Handshake ACK that covers no packet this client sent does not
+// validate the address.
+fn test_handshake_ack_of_unsent_packet_keeps_anti_deadlock_timer() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	c.handshake_keys_client = c.initial_keys_client
+	anti_deadlock_test_ack(mut c, .handshake)
+	space := c.unvalidated_probe_space() or {
+		assert false, 'an ACK of a packet never sent validated the address'
+		return
+	}
+	assert space == .handshake
+}
+
+// HANDSHAKE_DONE lost, Handshake ACK received: the client has a 1-RTT
+// packet in flight and an unconfirmed handshake. RFC 9002 Appendix A.8 gives
+// that state no PTO timer; the timer must not fire again at once with a
+// probe for a space that has nothing to probe.
+fn test_one_rtt_only_in_flight_before_confirmation_does_not_spin_pto() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	c.handshake_ack_received = true
+	c.loss_detection.discard_space(.initial)
+	c.loss_detection.on_packet_sent(.application_data, 0, 1200, true, true, 1000)
+	if deadline := c.compute_next_timeout() {
+		assert false, 'a timer is armed at ${deadline} with only 1-RTT packets in flight before confirmation'
+	}
+	result := c.process_timeouts(5000)!
+	assert c.loss_detection.pto_count == 0, 'the PTO fired with no timer armed'
+	assert result.outgoing.len == 0, 'a probe was sent with no timer armed'
+	assert result.next_timeout == none, 'process_timeouts armed a timer'
+}
+
+// A closing or draining endpoint sends no probes (RFC 9000 §10.2), and
+// process_timeouts runs loss detection only while handshaking or
+// established, so the only deadline left is the end of that period.
+fn test_draining_connection_returns_only_closing_deadline() {
+	// Nothing in flight and no Handshake ACK yet: the anti-deadlock case.
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	anti_deadlock_test_ack(mut c, .initial)
+	c.enter_draining(u64(2000))
+	closing := c.closing_deadline or {
+		assert false, 'draining set no closing deadline'
+		return
+	}
+	got := c.compute_next_timeout() or {
+		assert false, 'no deadline while draining'
+		return
+	}
+	assert got == closing, 'draining with nothing in flight returned ${got}, not the closing deadline ${closing}'
+	// The ClientHello still in flight: the ordinary PTO case.
+	mut d := anti_deadlock_test_dial()!
+	defer {
+		d.handshake.free()
+	}
+	d.enter_draining(u64(2000))
+	d_closing := d.closing_deadline or {
+		assert false, 'draining set no closing deadline'
+		return
+	}
+	d_got := d.compute_next_timeout() or {
+		assert false, 'no deadline while draining'
+		return
+	}
+	assert d_got == d_closing, 'draining with a packet in flight returned ${d_got}, not the closing deadline ${d_closing}'
+	result := d.process_timeouts(d_got)!
+	assert d.state == .closed, 'the deadline returned while draining did not end the connection'
+	assert result.outgoing.len == 0
+}
+
+// An established connection with a 1-RTT packet in flight returns that
+// packet's PTO deadline: the gate on loss detection keeps .established.
+fn test_established_connection_returns_pto_deadline() {
+	mut c := anti_deadlock_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	c.loss_detection.discard_space(.initial)
+	c.handshake_completion.mark_own_finished_sent()
+	c.handshake_completion.mark_peer_finished_verified()
+	c.handshake_completion.mark_handshake_done_received()
+	assert c.handshake_completion.is_confirmed()
+	c.state = .established
+	c.loss_detection.on_packet_sent(.application_data, 0, 1200, true, true, 1000)
+	want, sp := c.loss_detection.next_timeout(true, c.effective_max_ack_delay(), none) or {
+		assert false, 'no PTO for the 1-RTT packet'
+		return
+	}
+	assert sp == .application_data
+	got := c.compute_next_timeout() or {
+		assert false, 'an established connection with a packet in flight returned no deadline'
+		return
+	}
+	assert got == want, 'got ${got}, want the PTO deadline ${want}'
 }

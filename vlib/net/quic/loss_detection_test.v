@@ -32,7 +32,7 @@ fn test_on_ack_received_tolerates_astronomically_large_ack_range() {
 			largest:  u64(1) << 62
 		}]
 	}
-	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, 2000)
+	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, none, 2000)
 
 	// Both actually-sent packets fall inside the huge range and are
 	// correctly newly-acked; nothing else is fabricated.
@@ -54,7 +54,7 @@ fn test_on_ack_received_marks_newly_acked_and_removes_from_sent_packets() {
 			largest:  2
 		}]
 	}
-	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, 2000)
+	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, none, 2000)
 
 	assert result.newly_acked.len == 3
 	assert result.lost.len == 0
@@ -87,7 +87,7 @@ fn test_packet_threshold_only_loss_detection() {
 	// Only 1us after send -- far below any possible loss_delay (floored at
 	// 1ms), so the time threshold cannot be what triggers this.
 	now := base + 1000
-	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, now)
+	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, none, now)
 
 	assert result.newly_acked.len == 1
 	assert result.newly_acked[0].packet_number == 4
@@ -124,7 +124,7 @@ fn test_time_threshold_only_loss_detection() {
 			largest:  1
 		}]
 	}
-	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, now)
+	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, none, now)
 
 	// RTT sample = now - t1 = 100ms (first sample) -> loss_delay = 9/8*100ms
 	// = 112.5ms; pn0's age (200ms) exceeds that, so it's declared lost.
@@ -168,7 +168,10 @@ fn test_pto_time_and_space_single_timer_sourced_from_earliest_expiring_space() {
 	ld.on_packet_sent(.handshake, 0, 1200, true, true, 5000)
 
 	// Fresh estimator: pto_period() = 999ms; pto_count=0 -> backoff=1.
-	timeout, space := ld.pto_time_and_space(false, time.Duration(0))
+	timeout, space := ld.pto_time_and_space(false, time.Duration(0)) or {
+		assert false, 'no PTO timer is armed'
+		return
+	}
 	assert space == .initial
 	assert timeout == 1000 + 999_000_000
 }
@@ -180,7 +183,10 @@ fn test_pto_time_and_space_excludes_application_data_before_handshake_confirmed(
 	// entirely while the handshake is not yet confirmed.
 	ld.on_packet_sent(.application_data, 0, 1200, true, true, 500)
 
-	timeout, space := ld.pto_time_and_space(false, time.Duration(0))
+	timeout, space := ld.pto_time_and_space(false, time.Duration(0)) or {
+		assert false, 'no PTO timer is armed'
+		return
+	}
 	assert space == .initial
 	assert timeout == 1000 + 999_000_000
 }
@@ -190,7 +196,10 @@ fn test_pto_time_and_space_includes_application_data_once_handshake_confirmed() 
 	ld.on_packet_sent(.initial, 0, 1200, true, true, 1000)
 	ld.on_packet_sent(.application_data, 0, 1200, true, true, 500)
 
-	timeout, space := ld.pto_time_and_space(true, time.Duration(0))
+	timeout, space := ld.pto_time_and_space(true, time.Duration(0)) or {
+		assert false, 'no PTO timer is armed'
+		return
+	}
 	assert space == .application_data
 	assert timeout == 500 + 999_000_000
 }
@@ -201,7 +210,10 @@ fn test_pto_time_and_space_ignores_spaces_with_no_in_flight_ack_eliciting_packet
 	ld.on_packet_sent(.initial, 0, 1200, false, false, 1000)
 	ld.on_packet_sent(.handshake, 0, 1200, true, true, 5000)
 
-	timeout, space := ld.pto_time_and_space(false, time.Duration(0))
+	timeout, space := ld.pto_time_and_space(false, time.Duration(0)) or {
+		assert false, 'no PTO timer is armed'
+		return
+	}
 	assert space == .handshake
 	assert timeout == 5000 + 999_000_000
 }
@@ -219,7 +231,7 @@ fn test_on_ack_received_resets_pto_count_only_when_nothing_lost() {
 			largest:  0
 		}]
 	}
-	ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, 2000)
+	ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, none, 2000)
 	assert ld.pto_count == 0
 }
 
@@ -239,7 +251,7 @@ fn test_on_ack_received_leaves_pto_count_untouched_when_something_lost() {
 			largest:  4
 		}]
 	}
-	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, base + 1000)
+	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, none, base + 1000)
 	assert result.lost.len > 0
 	assert ld.pto_count == 3
 }
@@ -249,7 +261,7 @@ fn test_on_loss_detection_timeout_fires_pto_when_no_loss_time_pending() {
 	ld.on_packet_sent(.initial, 0, 1200, true, true, 1000)
 	assert ld.pto_count == 0
 
-	result := ld.on_loss_detection_timeout(999_001_000, false, time.Duration(0))
+	result := ld.on_loss_detection_timeout(999_001_000, false, time.Duration(0), none)
 	assert result.pto_fired
 	assert result.pto_space == .initial
 	assert result.lost.len == 0
@@ -268,7 +280,7 @@ fn test_on_loss_detection_timeout_reports_loss_when_a_loss_time_is_pending() {
 		in_flight:        true
 	}
 
-	result := ld.on_loss_detection_timeout(1_000_000, false, time.Duration(0))
+	result := ld.on_loss_detection_timeout(1_000_000, false, time.Duration(0), none)
 	assert !result.pto_fired
 	assert result.lost.len == 1
 	assert result.lost[0].packet_number == 3
@@ -401,7 +413,7 @@ fn test_on_ack_received_persistent_congestion_includes_max_ack_delay_for_initial
 			largest:  10
 		}]
 	}
-	result := ld.on_ack_received(.initial, ack, default_ack_delay_exponent, max_ack_delay, false, 4_000_000_000)
+	result := ld.on_ack_received(.initial, ack, default_ack_delay_exponent, max_ack_delay, false, none, 4_000_000_000)
 	// pn3, pn4 both satisfy the packet threshold (largest_acked=10 >=
 	// pn+3), so both are lost regardless of `now`.
 	assert result.lost.len == 2
@@ -486,4 +498,165 @@ fn test_is_persistent_congestion_requires_at_least_two_ack_eliciting_packets() {
 		},
 	]
 	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
+}
+
+// RFC 9002 §6.2.2.1 and Appendix A.8: with nothing in flight the timer stays
+// armed only while the address is unvalidated, counts from timer_set_at,
+// and fires a probe in the space it names.
+fn test_anti_deadlock_timer_with_nothing_in_flight() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.timer_set_at = 5000
+	ld.pto_count = 1
+	if _, _ := ld.next_timeout(false, time.Duration(0), none) {
+		assert false, 'a timer is armed with nothing in flight after validation'
+	}
+	t, sp := ld.next_timeout(false, time.Duration(0), QuicPacketNumberSpace.handshake) or {
+		assert false, 'no anti-deadlock timer before validation'
+		return
+	}
+	assert t == 5000 + 2 * u64(ld.rtt.pto_period())
+	assert sp == .handshake
+	result := ld.on_loss_detection_timeout(9000, false, time.Duration(0), QuicPacketNumberSpace.handshake)
+	assert result.pto_fired
+	assert result.pto_space == .handshake
+	assert ld.timer_set_at == 9000
+	assert ld.pto_count == 2
+}
+
+// With an ack-eliciting packet in flight, the PTO probes that packet's space,
+// not the anti-deadlock one.
+fn test_pto_with_packet_in_flight_ignores_unvalidated_probe_space() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.on_packet_sent(.initial, 0, 1200, true, true, 1000)
+	assert ld.timer_set_at == 1000
+	result := ld.on_loss_detection_timeout(1_000_000_000, false, time.Duration(0), QuicPacketNumberSpace.handshake)
+	assert result.pto_fired
+	assert result.pto_space == .initial
+
+	mut hs := new_quic_loss_detection_timer()
+	hs.on_packet_sent(.handshake, 0, 100, true, true, 1000)
+	hs_result := hs.on_loss_detection_timeout(1_000_000_000, false, time.Duration(0), QuicPacketNumberSpace.initial)
+	assert hs_result.pto_space == .handshake, 'a Handshake packet in flight was probed in the anti-deadlock space'
+
+	mut app := new_quic_loss_detection_timer()
+	app.on_packet_sent(.application_data, 0, 100, true, true, 1000)
+	app_result := app.on_loss_detection_timeout(1_000_000_000, true, time.Duration(0), QuicPacketNumberSpace.handshake)
+	assert app_result.pto_space == .application_data, 'a 1-RTT packet in flight was probed in the anti-deadlock space'
+}
+
+// RFC 9002 Appendix A.7 and A.8 key the timer on ack-eliciting packets in
+// flight, not on bytes in flight: a padded ACK-only Initial is in flight but
+// not ack-eliciting, and must not arm a PTO at time 0.
+fn test_ack_only_packet_in_flight_uses_anti_deadlock_timer() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.on_packet_sent(.initial, 0, 1200, false, true, 1000)
+	t, sp := ld.next_timeout(false, time.Duration(0), QuicPacketNumberSpace.handshake) or {
+		assert false, 'no anti-deadlock timer with only an ACK-only packet in flight'
+		return
+	}
+	assert t == 1000 + u64(ld.rtt.pto_period()), 'the timer was armed at ${t}'
+	assert sp == .handshake
+	if _, _ := ld.next_timeout(false, time.Duration(0), none) {
+		assert false, 'a validated client armed a PTO with nothing ack-eliciting in flight'
+	}
+}
+
+// RFC 9002 Appendix A.8 skips Application Data until the handshake is
+// confirmed and then returns an infinite timeout: with only 1-RTT packets in
+// flight and the address validated, no PTO timer is armed and a firing of
+// the timer sends no probe.
+fn test_only_application_data_in_flight_before_confirmation_arms_no_pto() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.on_packet_sent(.application_data, 0, 1200, true, true, 1000)
+	if t, sp := ld.next_timeout(false, time.Duration(0), none) {
+		assert false, 'a PTO timer is armed at ${t} for ${sp} with only 1-RTT packets in flight before confirmation'
+	}
+	result := ld.on_loss_detection_timeout(2000, false, time.Duration(0), none)
+	assert !result.pto_fired, 'the timer fired a PTO for the ${result.pto_space} space'
+	assert ld.pto_count == 0, 'the PTO backoff grew with no timer armed'
+	// Once confirmed, the 1-RTT packet gets its timer again.
+	t, sp := ld.next_timeout(true, time.Duration(0), none) or {
+		assert false, 'no PTO timer is armed for the 1-RTT packet after confirmation'
+		return
+	}
+	assert sp == .application_data
+	assert t == 1000 + u64(ld.rtt.pto_period())
+}
+
+// With nothing ack-eliciting in flight and the address validated, a firing
+// of the timer sends no probe (RFC 9002 Appendix A.9 only sends one when
+// GetPtoTimeAndSpace has a space to probe).
+fn test_timeout_with_nothing_in_flight_after_validation_fires_no_pto() {
+	mut ld := new_quic_loss_detection_timer()
+	result := ld.on_loss_detection_timeout(2000, false, time.Duration(0), none)
+	assert !result.pto_fired, 'the timer fired a PTO for the ${result.pto_space} space'
+	assert ld.pto_count == 0
+}
+
+// A space whose ack-eliciting packets were all acknowledged contributes no
+// PTO deadline, even though it remembers when it last sent one.
+fn test_pto_time_and_space_skips_space_whose_packets_were_acknowledged() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.on_packet_sent(.initial, 0, 1200, true, true, 1000)
+	ld.on_ack_received(.initial, AckFrame{
+		largest_acknowledged: 0
+		ranges:               [AckRange{
+			smallest: 0
+			largest:  0
+		}]
+	}, default_ack_delay_exponent, time.Duration(0), false, none, 2000)
+	if t, sp := ld.pto_time_and_space(false, time.Duration(0)) {
+		assert false, 'an acknowledged Initial space contributes a PTO deadline ${t} for ${sp}'
+	}
+	ld.on_packet_sent(.handshake, 0, 1200, true, true, 5000)
+	timeout, space := ld.pto_time_and_space(false, time.Duration(0)) or {
+		assert false, 'no PTO timer is armed'
+		return
+	}
+	assert space == .handshake, 'the acknowledged Initial space set the PTO deadline'
+	assert timeout == 5000 + u64(ld.rtt.pto_period())
+}
+
+// RFC 9002 Appendix A.5 sets the loss-detection timer again only for a
+// packet in flight: an ACK-only packet leaves the anti-deadlock timer's
+// start where it was.
+fn test_packet_not_in_flight_keeps_anti_deadlock_timer_start() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.on_packet_sent(.initial, 0, 1200, true, true, 1000)
+	ld.on_ack_received(.initial, AckFrame{
+		largest_acknowledged: 0
+		ranges:               [AckRange{
+			smallest: 0
+			largest:  0
+		}]
+	}, default_ack_delay_exponent, time.Duration(0), false, QuicPacketNumberSpace.handshake,
+		2000)
+	ld.on_packet_sent(.handshake, 0, 50, false, false, 3000)
+	t, sp := ld.next_timeout(false, time.Duration(0), QuicPacketNumberSpace.handshake) or {
+		assert false, 'no anti-deadlock timer is armed'
+		return
+	}
+	assert sp == .handshake
+	assert t == 2000 + u64(ld.rtt.pto_period()), 'an ACK-only packet moved the anti-deadlock timer start'
+}
+
+// acks_a_sent_packet counts only a packet the ACK covers: another packet of
+// the space still in flight does not make an ACK of an unsent number count.
+fn test_acks_a_sent_packet_needs_the_ack_to_cover_a_sent_packet() {
+	mut ld := new_quic_loss_detection_timer()
+	ld.on_packet_sent(.handshake, 0, 1200, true, true, 1000)
+	assert !ld.acks_a_sent_packet(.handshake, AckFrame{
+		largest_acknowledged: 5
+		ranges:               [AckRange{
+			smallest: 5
+			largest:  5
+		}]
+	}), 'an ACK of packet 5 counted while only packet 0 was sent'
+	assert ld.acks_a_sent_packet(.handshake, AckFrame{
+		largest_acknowledged: 0
+		ranges:               [AckRange{
+			smallest: 0
+			largest:  0
+		}]
+	})
 }
