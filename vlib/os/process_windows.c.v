@@ -6,6 +6,7 @@ fn C.GenerateConsoleCtrlEvent(event u32, pgid u32) bool
 fn C.GetModuleHandleA(name &char) HMODULE
 fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
+fn C.ResumeThread(thread HANDLE) u32
 fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr,
 	lpBytesLeftThisMessage voidptr) bool
 fn C.CreateFileW(lpFileName &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
@@ -13,6 +14,48 @@ fn C.GetSystemDirectoryW(lpBuffer &u16, uSize u32) u32
 fn C.GetWindowsDirectoryW(lpBuffer &u16, uSize u32) u32
 
 type FN_NTSuspendResume = fn (voidptr) u64
+
+// The job object functions are looked up in kernel32 when they are used, as the ntdll
+// ones are: the import lists of V's bundled tcc do not carry all of them, and a program
+// that links without one must not stop linking because of a function that only
+// `use_pgroup` children need.
+// They are Win32 API functions, stdcall on 32-bit x86, where the callee takes its arguments
+// off the stack. The C that V writes for a function pointer type names no calling
+// convention (a `callconv` attribute on the type does not reach it), so a call through one
+// would be a cdecl call, and the caller would take the arguments off a second time. Each
+// address is called through a C pointer type that carries the SDK's convention instead.
+// HANDLE CreateJobObjectW(LPSECURITY_ATTRIBUTES, LPCWSTR): unnamed, the default security.
+#define v_os_job_create(address) (((HANDLE (WINAPI *)(void*, const void*))(address))(0, 0))
+// BOOL SetInformationJobObject(HANDLE, JOBOBJECTINFOCLASS, LPVOID, DWORD)
+#define v_os_job_set_information(address, job, info_class, info, size) (((BOOL (WINAPI *)(HANDLE, int, void*, DWORD))(address))((job), (info_class), (info), (size)))
+// BOOL AssignProcessToJobObject(HANDLE, HANDLE)
+#define v_os_job_assign(address, job, process) (((BOOL (WINAPI *)(HANDLE, HANDLE))(address))((job), (process)))
+// BOOL TerminateJobObject(HANDLE, UINT)
+#define v_os_job_terminate(address, job, exit_code) (((BOOL (WINAPI *)(HANDLE, unsigned int))(address))((job), (exit_code)))
+
+fn C.v_os_job_create(address voidptr) voidptr
+fn C.v_os_job_set_information(address voidptr, job voidptr, info_class i32, info voidptr, size u32) i32
+fn C.v_os_job_assign(address voidptr, job voidptr, process voidptr) i32
+fn C.v_os_job_terminate(address voidptr, job voidptr, exit_code u32) i32
+
+// JobObjectExtendedLimitInformation, the information class of SetInformationJobObject
+// that takes JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
+const win_job_object_extended_limit_information = 9
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: closing the last handle of the job ends every
+// process in it, so the tree does not outlive a V that dies without waiting for it.
+const win_job_object_limit_kill_on_job_close = u32(0x00002000)
+// CREATE_SUSPENDED: the child starts with its primary thread suspended, so that it can
+// be put in its job before it runs a single instruction, and cannot start a process of
+// its own outside of it.
+const win_create_suspended = 0x00000004
+
+fn kernel32_fn(name &char) voidptr {
+	kernel32 := C.GetModuleHandleA(c'KERNEL32')
+	if kernel32 == 0 {
+		return unsafe { nil }
+	}
+	return C.GetProcAddress(kernel32, voidptr(name))
+}
 
 fn ntdll_fn(name &char) FN_NTSuspendResume {
 	ntdll := C.GetModuleHandleA(c'NTDLL')
@@ -143,6 +186,50 @@ pub mut:
 
 	child_stderr_read  &u32 = unsafe { nil }
 	child_stderr_write &u32 = unsafe { nil }
+
+	// job is the job object of a `use_pgroup` child (nil for every other child, and when the
+	// child could not be put in one): win_kill_pgroup ends it, and with it the whole tree.
+	job &u32 = unsafe { nil }
+}
+
+// win_assign_job puts the child of `wdata` in a new job object that kills what is in it when
+// its last handle closes and does not let a process break away from it. It reports whether
+// that worked; a job that was made but could not take the child is closed again. A process
+// that is already in a job (a child of a CI runner is) can be put in a nested job on Windows
+// 8 and later; on an older system the assignment is refused and the caller falls back.
+fn win_assign_job(mut wdata WProcess) bool {
+	create_job := kernel32_fn(c'CreateJobObjectW')
+	set_information := kernel32_fn(c'SetInformationJobObject')
+	assign := kernel32_fn(c'AssignProcessToJobObject')
+	if create_job == 0 || set_information == 0 || assign == 0 {
+		return false
+	}
+	job := C.v_os_job_create(create_job)
+	if job == 0 {
+		return false
+	}
+	// JOBOBJECT_EXTENDED_LIMIT_INFORMATION is 144 bytes on x64 and 112 on x86; its
+	// LimitFlags sit at offset 16 (the basic information starts with two 8 byte
+	// LARGE_INTEGERs) in both. Zero everything else: no limit but the flag.
+	mut info := [256]u8{}
+	unsafe {
+		mut flags := &u32(&info[16])
+		*flags = win_job_object_limit_kill_on_job_close
+	}
+	mut size := u32(112)
+	$if x64 {
+		size = u32(144)
+	}
+	if C.v_os_job_set_information(set_information, job, win_job_object_extended_limit_information,
+		voidptr(&info[0]), size) == 0
+		|| C.v_os_job_assign(assign, job, wdata.proc_info.h_process) == 0 {
+		C.CloseHandle(job)
+		return false
+	}
+	unsafe {
+		wdata.job = &u32(job)
+	}
+	return true
 }
 
 @[manualfree]
@@ -258,7 +345,9 @@ fn (mut p Process) win_spawn_process() int {
 		int(C.NORMAL_PRIORITY_CLASS)
 	}
 	if p.use_pgroup {
-		creation_flags |= C.CREATE_NEW_PROCESS_GROUP
+		// A new group, so that the console event of win_kill_pgroup reaches the child, and
+		// a suspended start, so that the child is in its job before it runs.
+		creation_flags |= C.CREATE_NEW_PROCESS_GROUP | win_create_suspended
 	}
 
 	mut application_name_ptr := &u16(unsafe { nil })
@@ -315,6 +404,14 @@ fn (mut p Process) win_spawn_process() int {
 			voidptr(0)
 		}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	win_spawn_failed(create_process_ok, 'CreateProcess `${p.filename}`', mut wdata)
+	if p.use_pgroup {
+		if !win_assign_job(mut wdata) {
+			// Nothing is lost compared with before, and the caller can tell: signal_pgkill
+			// then only reaches the direct child and what shares its console group.
+			p.pgroup_fallback = true
+		}
+		C.ResumeThread(wdata.proc_info.h_thread)
+	}
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
@@ -356,9 +453,38 @@ fn (mut p Process) win_term_process() {
 
 fn (mut p Process) win_kill_pgroup() {
 	wdata := unsafe { &WProcess(p.wdata) }
+	// A child that handles CTRL_BREAK gets 20 ms to end itself, as before.
 	C.GenerateConsoleCtrlEvent(C.CTRL_BREAK_EVENT, wdata.proc_info.dw_process_id)
 	C.Sleep(20)
+	if !isnil(wdata.job) {
+		// Every process of the job, whatever console it has or whether it has a window.
+		terminate := kernel32_fn(c'TerminateJobObject')
+		if terminate != 0 {
+			C.v_os_job_terminate(terminate, voidptr(wdata.job), 3)
+		}
+	}
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
+}
+
+// win_release_job closes the job handle of a child that has been waited for. What is still
+// running in the job is left running, as on Linux (a `use_pgroup` child that exits normally
+// does not take its descendants with it): the kill-on-close flag is cleared first. It stays
+// set for as long as the job is open, which is the net for a V that dies first.
+fn win_release_job(mut wdata WProcess) {
+	if isnil(wdata.job) {
+		return
+	}
+	set_information := kernel32_fn(c'SetInformationJobObject')
+	if set_information != 0 {
+		mut info := [256]u8{}
+		mut size := u32(112)
+		$if x64 {
+			size = u32(144)
+		}
+		C.v_os_job_set_information(set_information, voidptr(wdata.job), win_job_object_extended_limit_information,
+			voidptr(&info[0]), size)
+	}
+	close_valid_handle(&wdata.job)
 }
 
 fn (mut p Process) win_wait() {
@@ -373,6 +499,7 @@ fn (mut p Process) win_wait() {
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
+		win_release_job(mut wdata)
 		close_valid_handle(&wdata.proc_info.h_process)
 		close_valid_handle(&wdata.proc_info.h_thread)
 	}
