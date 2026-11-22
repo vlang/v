@@ -85,3 +85,48 @@ The built-in `time`, `level`, and `msg` keys precede user fields sorted by key.
 Fields with those reserved names are ignored, and all string keys and values are JSON escaped.
 The plain logging methods retain their text format. `fatal_with` panics like `fatal`.
 Use `ThreadSafeLog` when multiple threads share a logger.
+
+## Structured logging with RecordLogger
+
+`RecordLogger` is a richer, slog-style API. It keeps the typed attributes,
+pluggable handlers, derived loggers and context aware logging separate from the
+legacy `Log` type, while preserving the exact text format of the plain methods.
+
+```v
+import log
+import os
+
+fn main() {
+	// A handler decides both the format and the destination.
+	h := log.new_text_handler(os.stderr(), log.HandlerOptions{})
+
+	// Derived loggers share the handler, so they stay thread safe.
+	req_log := log.new_logger(h).with(log.str('service', 'api'))
+
+	req_log.info('request started', log.int('port', 8080))
+	req_log.warn('slow response', log.float('seconds', 1.5))
+
+	// log.json returns newline delimited JSON with stable field order.
+	jh := log.new_json_handler(os.stderr(), log.HandlerOptions{})
+	log.new_logger(jh).info('done', log.bool('ok', true))
+}
+```
+
+Package level calls accept attributes too, using the global JSON logger:
+
+```v
+import log
+
+fn main() {
+	log.info('user signed in', log.str('user', 'alice'))
+}
+```
+
+Available attribute constructors: `str`, `int`, `float`, `bool`, `time_attr`,
+`group` and `err`. For hot paths where an intermediate slice must be avoided,
+use the stack allocated `Attrs` builder with `log_attrs`.
+
+Built-in handlers: `TextHandler`, `JSONHandler`, `MultiHandler` and
+`DiscardHandler`. `HandlerOptions` supports a fixed or runtime adjustable level,
+`replace_attr` for redaction, time format, local time and source capture (when
+compiled with call site support).

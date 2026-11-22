@@ -4,7 +4,10 @@
 @[has_globals]
 module log
 
+import os
+
 __global default_logger &Logger
+__global default_record_logger &RecordLogger
 
 // TODO: remove this hack, when the language has a way to access the raw pointer to an interface value directly:
 @[typedef]
@@ -16,6 +19,7 @@ mut:
 // init will be called before the user's main program starts, to initialize the default logger
 fn init() {
 	default_logger = new_thread_safe_log()
+	default_record_logger = new_logger(new_json_handler(os.stderr(), HandlerOptions{}))
 	at_exit(deinit) or {}
 }
 
