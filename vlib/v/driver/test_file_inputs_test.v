@@ -46,8 +46,7 @@ fn test_internal_tests_of_one_module_build_into_one_binary() ! {
 	os.write_file(second, 'module util\n\nfn test_second() {\n\tassert twice(2) == 4\n}\n')!
 	os.write_file(failing, 'module util\n\nfn test_failing() {\n\tassert twice(3) == 7\n}\n')!
 	env := {
-		'V_MACOS_V3_NO_FALLBACK': '1'
-		'VFLAGS':                 ''
+		'VFLAGS': ''
 	}
 	binary := os.join_path(root, 'batch')
 	built := cmdexec.run_in_merged_with_env(@VEXE, ['-skip-running', '-o', binary, first, second],
@@ -83,8 +82,7 @@ fn test_test_functions_of_one_name_in_several_files_all_run() ! {
 	os.write_file(first, 'module main\n\nfn test_main() {\n\tprintln("first main ran")\n}\n')!
 	os.write_file(second, 'fn test_main() {\n\tprintln("second main ran")\n\tassert 1 + 1 == 2\n}\n')!
 	env := {
-		'V_MACOS_V3_NO_FALLBACK': '1'
-		'VFLAGS':                 ''
+		'VFLAGS': ''
 	}
 	binary := os.join_path(root, 'batch')
 	built := cmdexec.run_in_merged_with_env(@VEXE, ['-skip-running', '-o', binary, first, second],

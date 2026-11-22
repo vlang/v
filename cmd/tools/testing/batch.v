@@ -550,11 +550,7 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		argv << ['-o', binary]
 		argv << abs_files
 		ts.append_message(.compile_begin, cmdexec.display(ts.vexe, argv), mtc)
-		// A batch that fails is run again file by file: the compatibility compiler of
-		// macOS must not retry it, and its diagnostics are not reported anyway.
-		mut env := {
-			'V_MACOS_V3_NO_FALLBACK': '1'
-		}
+		mut env := map[string]string{}
 		if ts.compiler_jobs > 0 && ts.compiler_jobs != runtime.nr_jobs() {
 			env['VJOBS'] = ts.compiler_jobs.str()
 		}
