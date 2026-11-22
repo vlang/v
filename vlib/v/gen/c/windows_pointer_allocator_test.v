@@ -2,6 +2,15 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The mock runtimes compile generated Windows functions with clang and expect the
+	// GCC-style C, not the `__declspec` spellings that `-cc msvc`, the VFLAGS of the
+	// MSVC CI jobs, writes; let these generations use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn allocator_test_c_function(generated string, signature string) string {
 	assert generated.contains(signature), signature
 	return signature + generated.all_after(signature).all_before('\n}') + '\n}\n'
