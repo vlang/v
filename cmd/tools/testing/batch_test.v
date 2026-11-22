@@ -49,6 +49,19 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_code_text_blanks_string_literals_but_keeps_code() {
+	source := 'fn a() {\n\tprogram := \'\nfn main() {\n\texit(1)\n}\n\'\n\tb := "x\${it.name}y"\n\tr := r\'\\\'\n\tq := `\'`\n\t// it\'s a comment\n}\nfn c() {}\n'
+	code := test_code_text(source)
+	assert code.len == source.len
+	assert code.count('\n') == source.count('\n')
+	assert !code.contains('main') && !code.contains('exit(')
+	// Interpolations, comments and rune literals stay; the code after them too.
+	assert code.contains('\${it.name}')
+	assert code.contains("// it's a comment")
+	assert code.contains("`'`")
+	assert test_file_top_level_names(code) == ['a', 'c']
+}
+
 fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	root := batch_test_root('units')!
 	defer {
@@ -68,6 +81,9 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 		'j_test.v':      '#flag -lm\nfn test_j() {}\n'
 		'k_test.v':      'module util\n\$if linux {\n\tconst it = 1\n}\nfn test_k() {}\n'
 		'l_test.v':      'module util\nfn test_l() {\n\tit := 2\n\tassert it == 2\n}\n'
+		// Programs in string literals declare and call what they like.
+		'm_test.v':      "fn test_m() {\n\tp := '\nfn main() {\n\texit(1)\n}\n'\n\tassert p != ''\n}\n"
+		'n_test.v':      "fn test_n() {\n\tp := '\nfn main() {\n\texit(2)\n}\n'\n\tassert p != ''\n}\n"
 	}
 	mut paths := []string{}
 	for name, source in files {
@@ -85,7 +101,7 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}'
 	// `main` tests, with or without a module clause, share batches of their own; a
 	// file with C flags builds alone.
-	main_batch := '${paths[4]}\n${paths[9]}'
+	main_batch := '${paths[4]}\n${paths[9]}\n${paths[13]}\n${paths[14]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
 	assert units == [batch, '${paths[2]}\n${paths[12]}', paths[3], main_batch, paths[5], paths[6],
 		paths[7], paths[8], paths[10]]

@@ -182,7 +182,9 @@ fn test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidat
 	if real_file in skipped {
 		return none
 	}
-	source := os.read_file(real_file) or { return none }
+	// Programs that a test writes out or compiles are string literals: what they
+	// declare or call is not part of the test binary.
+	source := test_code_text(os.read_file(real_file) or { return none })
 	for marker in test_batch_excluded_markers {
 		if source.contains(marker) {
 			return none
@@ -265,6 +267,108 @@ fn source_mentions_word(source string, word string) bool {
 	return false
 }
 
+// test_code_text returns `source` with the contents of its string literals
+// replaced by spaces, keeping newlines, comments and the expressions of string
+// interpolations. A misread literal only makes a batch fail to compile, after
+// which its files run one by one.
+fn test_code_text(source string) string {
+	mut out := source.bytes()
+	// Each open interpolation (`${`) is the brace depth inside it, and the string
+	// that it continues, quote and all.
+	mut interp_depths := []int{}
+	mut interp_quotes := []u8{}
+	mut quote := u8(0)
+	mut raw := false
+	mut i := 0
+	for i < out.len {
+		c := out[i]
+		if quote != 0 {
+			if !raw && c == `\\` && i + 1 < out.len {
+				blank_test_text_byte(mut out, i)
+				blank_test_text_byte(mut out, i + 1)
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+				i++
+				continue
+			}
+			if !raw && c == `$` && i + 1 < out.len && out[i + 1] == `{` {
+				interp_depths << 0
+				interp_quotes << quote
+				quote = 0
+				i += 2
+				continue
+			}
+			blank_test_text_byte(mut out, i)
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < out.len && out[i + 1] == `/` {
+			for i < out.len && out[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < out.len && out[i + 1] == `*` {
+			mut depth := 1
+			i += 2
+			for i < out.len && depth > 0 {
+				if out[i] == `/` && i + 1 < out.len && out[i + 1] == `*` {
+					depth++
+					i += 2
+				} else if out[i] == `*` && i + 1 < out.len && out[i + 1] == `/` {
+					depth--
+					i += 2
+				} else {
+					i++
+				}
+			}
+			continue
+		}
+		if c == `\`` {
+			// A rune literal, which can hold a quote.
+			i++
+			for i < out.len && out[i] != `\`` && out[i] != `\n` {
+				if out[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` {
+			raw = i > 0 && out[i - 1] == `r` && (i == 1 || !is_test_ident_char(out[i - 2]))
+			quote = c
+			i++
+			continue
+		}
+		if interp_depths.len > 0 {
+			if c == `{` {
+				interp_depths[interp_depths.len - 1]++
+			} else if c == `}` {
+				if interp_depths.last() == 0 {
+					interp_depths.delete_last()
+					quote = interp_quotes.pop()
+					raw = false
+				} else {
+					interp_depths[interp_depths.len - 1]--
+				}
+			}
+		}
+		i++
+	}
+	return out.bytestr()
+}
+
+fn blank_test_text_byte(mut text []u8, i int) {
+	if text[i] != `\n` {
+		text[i] = ` `
+	}
+}
+
 fn is_test_ident_char(c u8) bool {
 	return c.is_letter() || c.is_digit() || c == `_`
 }
@@ -287,8 +391,8 @@ fn test_file_module(source string) string {
 // test_file_top_level_names lists the declarations of `source` that would collide
 // with a declaration of the same name in another file of the module: functions
 // (methods as `Receiver.name`), constants, types and globals. Only declarations
-// that start a line count; text in multi-line strings that looks like one only
-// makes two files less likely to share a batch.
+// that start a line count; give it the text of test_code_text, so that the
+// programs in a test's string literals do not count.
 fn test_file_top_level_names(source string) []string {
 	mut names := []string{}
 	mut in_block := ''
