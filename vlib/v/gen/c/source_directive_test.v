@@ -5,6 +5,14 @@ import v.flat
 import v.pref
 import v.types
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
 	mut a := flat.FlatAst.new()
 	header := '/cache/builtin.vh'
