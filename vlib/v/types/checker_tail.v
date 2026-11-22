@@ -11315,6 +11315,16 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
+	// `callback[T]()` calls a local closure with explicit type arguments; the local
+	// shadows a function `callback` of the module, as it does for `callback()`.
+	local_base := tc.a.nodes[int(base_id)]
+	if local_base.kind == .ident && !local_base.value.contains('.') {
+		if local_type := tc.cur_scope.lookup(local_base.value) {
+			if _ := fn_type_from_type(local_type) {
+				return none
+			}
+		}
+	}
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	if type_args_source_ids.len == 0 {
 		return none
