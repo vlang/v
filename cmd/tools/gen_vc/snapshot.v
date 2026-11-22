@@ -1,6 +1,7 @@
 module main
 
 import os
+import strings
 
 // A generated file shorter than this means that generation went wrong.
 const snapshot_min_lines = 5000
@@ -12,6 +13,89 @@ const snapshot_min_lines = 5000
 const snapshot_files = {
 	'v.c':     ['-cross']
 	'v_win.c': ['-cross', '-os', 'windows', '-cc', 'msvc']
+}
+
+// These fragments travel with the two published C files. The C consumer still
+// preprocesses their guards and resolves the platform and SDK includes.
+const snapshot_include_files = [
+	'thirdparty/stdatomic/win/atomic.h',
+	'vlib/builtin/core_windows.h',
+	'vlib/os/fd_poll.h',
+	'vlib/sync/sync_windows_tcc.h',
+	'vlib/time/ticks_windows_api.h',
+	'vlib/time/zoneinfo_windows.h',
+	'vlib/v/cmdexec/cmdexec_poll.h',
+	'vlib/v/driver/native_object_cache.h',
+	'vlib/v/pthread_helper.h',
+]
+
+struct SnapshotInclude {
+	path  string
+	start int
+	end   int
+}
+
+fn snapshot_quoted_include(line string) ?string {
+	directive := line[1..].trim_space()
+	if !directive.starts_with('include') {
+		return none
+	}
+	arg := directive['include'.len..].trim_space()
+	if !arg.starts_with('"') {
+		return none
+	}
+	end := arg.index_after('"', 1) or { return none }
+	return arg[1..end]
+}
+
+fn next_snapshot_include(content string, offset int) ?SnapshotInclude {
+	mut start := offset
+	for start < content.len {
+		end := content.index_after('\n', start) or { content.len }
+		mut directive := start
+		for directive < end && content[directive] in [` `, `\t`] {
+			directive++
+		}
+		if directive < end && content[directive] == `#` {
+			if path := snapshot_quoted_include(content[directive..end]) {
+				return SnapshotInclude{
+					path:  path
+					start: start
+					end:   if end < content.len { end + 1 } else { end }
+				}
+			}
+		}
+		start = end + 1
+	}
+	return none
+}
+
+fn bundle_snapshot_includes(root string, name string, content string) !string {
+	root_prefix := root.replace('\\', '/').trim_right('/') + '/'
+	mut bundled := strings.new_builder(0)
+	mut copied := 0
+	for {
+		include := next_snapshot_include(content, copied) or { break }
+		path := include.path.replace('\\', '/')
+		relative := path.trim_string_left(root_prefix)
+		if relative == path || relative !in snapshot_include_files {
+			return error('${name} has an unbundled include: ${include.path}')
+		}
+		mut fragment := os.read_file(os.join_path(root, relative))!
+		if relative == 'vlib/v/driver/native_object_cache.h' {
+			// Place the implementation inside the header's existing guard.
+			impl := os.read_file(os.join_path(root, 'vlib', 'v', 'driver', 'native_object_cache_impl.c'))!
+			fragment = fragment.replace_once('#include "native_object_cache_impl.c"', impl.trim_right('\n'))
+		}
+		bundled.write_string(content[copied..include.start])
+		bundled.writeln(fragment.trim_right('\n'))
+		copied = include.end
+	}
+	if copied == 0 {
+		return content
+	}
+	bundled.write_string(content[copied..])
+	return bundled.str()
 }
 
 fn commit_hash_line(commit string) string {
@@ -30,8 +114,7 @@ fn in_dir(dir string, args []string) []string {
 
 // generate_snapshot writes v.c and v_win.c of the already built V checkout `v_root` into `out_dir`.
 // The first line of both is `#define V_COMMIT_HASH "<commit>"`, and both must pass check_snapshot.
-// Generation runs at `v_root` with a relative `cmd/v`, as gen_vc_ci.yml always did: the checkout
-// path is embedded in the snapshot, the output path is not.
+// Generation runs at `v_root` with a relative `cmd/v`, as gen_vc_ci.yml always did.
 fn generate_snapshot(mut log Log, v_root string, commit string, out_dir string, timeout_minutes int) ! {
 	root := os.real_path(v_root)
 	os.mkdir_all(out_dir)!
@@ -45,7 +128,8 @@ fn generate_snapshot(mut log Log, v_root string, commit string, out_dir string, 
 		args << flags
 		args << 'cmd/v'
 		log.run_limited(in_dir(root, args), timeout_minutes, 'generating ${name} failed')!
-		content := commit_hash_line(commit) + os.read_file(out)!
+		bundled := bundle_snapshot_includes(root, name, os.read_file(out)!)!
+		content := commit_hash_line(commit) + bundled
 		os.write_file(out, content)!
 		contents[name] = content
 	}
@@ -71,6 +155,9 @@ fn check_snapshot(commit string, v_c string, v_win_c string) ! {
 		// cmd/v natively, which keeps FastC.
 		if content.contains('fastc__') {
 			return error('${name} contains the FastC backend')
+		}
+		if include := next_snapshot_include(content, 0) {
+			return error('${name} has an unbundled include: ${include.path}')
 		}
 		lines := content.count('\n')
 		if lines <= snapshot_min_lines {

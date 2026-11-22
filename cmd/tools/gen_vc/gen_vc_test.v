@@ -34,6 +34,10 @@ fn test_check_snapshot_accepts_a_good_snapshot_and_names_each_defect() {
 			v_win_c.replace_once('no_backtrace,cross', 'no_backtrace'),
 		]
 		'v_win.c contains the FastC backend':           [v_c, v_win_c + 'void fastc__gen(void);\n']
+		'v_win.c has an unbundled include:':            [
+			v_c,
+			v_win_c + '#include "/runner/v/thirdparty/stdatomic/win/atomic.h"\n',
+		]
 		'v.c has only':                                 [
 			v_c.replace('// filler\n', ''),
 			v_win_c,
@@ -75,11 +79,26 @@ fn test_lock_and_unrelated_paths_never_trigger_a_snapshot() {
 		'vlib/builtin/array.v',
 		'vlib/v/gen/c/cleanc.v',
 		'cmd/tools/builders/c_builder.v',
+		'cmd/tools/gen_vc/snapshot.v',
 		'thirdparty/tccbin_automation/bootstrap/bootstrap.sh',
 		'GNUmakefile',
 	] {
 		assert !path_is_ignored(path), path
 	}
+}
+
+fn test_bundle_snapshot_includes_preserves_sdk_includes_and_guards() ! {
+	root := os.real_path(@VEXEROOT).replace('\\', '/')
+	poll := '${root}/vlib/os/fd_poll.h'
+	cache := '${root}/vlib/v/driver/native_object_cache.h'
+	generated := '#if defined(__linux__)\n  # include "${poll}"\n#endif\n#include "${cache}"\n'
+	bundled := bundle_snapshot_includes(root, 'v.c', generated)!
+	assert bundled.starts_with('#if defined(__linux__)\n#ifndef V_OS_FD_POLL_H\n')
+	assert bundled.contains('#include <poll.h>\n')
+	assert bundled.contains('static inline short v_os_fd_poll_revents(')
+	assert bundled.contains('static inline int v_native_object_cache_publish(')
+	assert !bundled.contains(root)
+	assert next_snapshot_include(bundled, 0) == none
 }
 
 fn test_snapshot_messages_name_their_source_commit() {
