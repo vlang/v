@@ -232,3 +232,105 @@ fn test_an_unbounded_run_is_not_counted() {
 	assert result.exit_code == 0 && result.output.trim_space() == 'done'
 	assert bounded_runs_in_progress() == 0
 }
+
+// cancels_then_tells waits until the shell has said who it and its descendant are, records
+// the cancellation, and only then tells the shell to go: the leader ends AFTER the
+// cancellation was recorded. The FIFO is opened for both ends, so this never waits for a
+// reader, and what it writes is kept until the shell reads it.
+fn cancels_then_tells(pid_file string, ack string) {
+	for _ in 0 .. 2000 {
+		if (os.read_file(pid_file) or { '' }).fields().len == 2 {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	fd := C.open(&char(ack.str), C.O_RDWR)
+	cancel_bounded_runs(2)
+	if fd >= 0 {
+		os.fd_write(fd, 'go\n')
+		// long enough for the shell to take the line; the shell is ended by its owner if not
+		time.sleep(20 * time.millisecond)
+		os.fd_close(fd)
+	}
+}
+
+// A leader that ends by itself after the cancellation was recorded, with a descendant in its
+// group that holds neither pipe: the output is at its end and the leader has ended, which is
+// exactly how a run that was not cancelled ends. The owner must still take the cancellation:
+// the leader is looked at without being reaped, the cancellation is read after that, and the
+// group is ended while its leader's pid is still its own. (Before, the owner reaped the
+// leader on that path and left the loop without looking at the cancellation: the descendant
+// lived on, with nobody left to end it.) The owner looks every millisecond and the shell goes
+// within a fraction of one, so one attempt can pass by luck without the rule; twenty do not.
+fn test_a_cancellation_recorded_before_the_leader_ends_reaches_a_descendant_that_holds_no_pipe() {
+	dir := os.join_path(os.vtmp_dir(), 'bounded_eof_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut left := []string{}
+	for attempt in 0 .. 20 {
+		forget_the_cancellation()
+		pid_file := os.join_path(dir, 'pids_${attempt}')
+		ack := os.join_path(dir, 'ack_${attempt}')
+		assert os.exec(['mkfifo', ack]).exit_code == 0
+		teller := spawn cancels_then_tells(pid_file, ack)
+		result, timed_out := run_merged_timed('/bin/sh', ['-c',
+			'sleep 600 > /dev/null 2>&1 & echo \$\$ \$! > ${pid_file}; read line < ${ack}'],
+			600_000, false)
+		teller.wait()
+		pids := (os.read_file(pid_file) or { '' }).fields()
+		assert pids.len == 2, 'attempt ${attempt}: the shell said who it is'
+		assert !timed_out
+		assert bounded_runs_in_progress() == 0
+		if !wait_until_group_is_gone(pids[0].int()) {
+			left << 'attempt ${attempt}: the descendant ${pids[1]} lives on (the run returned ${result.exit_code})'
+			C.kill(pids[1].int(), C.SIGKILL)
+		} else {
+			assert result.exit_code != 0, 'attempt ${attempt}: a run that was cancelled does not report success'
+		}
+	}
+	forget_the_cancellation()
+	assert left.len == 0, left.join('\n')
+}
+
+// The decision above rests on one thing: a leader can be seen to have ended without being
+// reaped. Asked twice, an ended leader is still there to be asked, and to be waited for with
+// its own exit code afterwards; a running one is said to be running.
+fn test_a_leader_that_ended_is_seen_without_being_reaped() {
+	mut ended := os.new_process('/bin/sh')
+	ended.set_args(['-c', 'exit 7'])
+	ended.run()
+	mut seen := 0
+	for _ in 0 .. 2000 {
+		seen = leader_has_ended(mut ended)
+		if seen != 0 {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	$if linux || macos {
+		assert seen == 1, 'waitid with WNOWAIT is there on this system'
+	}
+	if seen == -1 {
+		eprintln('> leader_has_ended cannot tell on this system: a bounded run falls back to reading the cancellation before it asks (and reaps) the leader')
+		ended.wait()
+		ended.close()
+		return
+	}
+	assert seen == 1
+	assert leader_has_ended(mut ended) == 1, 'asked again, it is still there: the first answer did not reap it'
+	// and it is still there to be waited for, with its own exit code (a leader that had been
+	// reaped has none left to give: wait() would report -1)
+	ended.wait()
+	assert ended.code == 7
+	ended.close()
+
+	mut running := os.new_process('/bin/sleep')
+	running.set_args(['600'])
+	running.run()
+	assert leader_has_ended(mut running) == 0
+	running.signal_kill()
+	running.wait()
+	running.close()
+}
