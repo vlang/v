@@ -77,6 +77,17 @@ fn parse_args(args []string) !Options {
 			opts.prod = true
 		} else if arg == '--keep-generated' {
 			opts.keep_generated = true
+		} else if arg in ['-cc', '-cflags', '-ldflags', '-cc-options', '-memory-limit', '-target',
+			'-os', '-arch'] {
+			// Accepted for compatibility with `v -c-api ...` invocations; the
+			// shared library is built with the tool's own flag set.
+			i++
+		} else if arg in ['-g', '-silent', '-v', '-no-parallel', '-stats'] {
+			// no-op compiler flags
+		} else if arg.starts_with('-cc=') || arg.starts_with('-cflags=') || arg.starts_with('-ldflags=')
+			|| arg.starts_with('-memory-limit=') || arg.starts_with('-target=') || arg.starts_with('-os=')
+			|| arg.starts_with('-arch=') {
+			// same no-op flags in `=` form
 		} else if arg.starts_with('-') {
 			return error('unknown option ${arg}')
 		} else if opts.dir == '.' {
@@ -193,7 +204,7 @@ fn combine_main_source(wrappers string, runtime string, imports []string) string
 	mut b := strings.Builder{}
 	b.writeln('module main')
 	for imp in imports {
-		b.writeln('import ${imp}')
+		b.writeln(imp)
 	}
 	b.writeln('')
 	b.writeln(body_after_module(runtime))
@@ -264,8 +275,10 @@ fn build_plan(opts Options) !BuildPlan {
 	for mdir in modules {
 		rel := rel_dir(opts.dir, mdir)
 		imp := import_path_of(rel, base)
-		qualifier := imp.all_after_last('.')
-		imports << imp
+		// Use the full import path as the alias: two submodules in different
+		// packages can share a last segment (`a.tls` and `b.tls`).
+		qualifier := capi.sanitize(imp.replace('.', '_'))
+		imports << 'import ${imp} as ${qualifier}'
 		short := capi.sanitize(if rel == '' { 'root' } else { rel.replace('.', '_') })
 		module_prefix := '${opts.lib_name}_${short}'
 		m := capi.collect_model_qualified(mdir, module_prefix, qualifier) or { return err }
@@ -280,6 +293,7 @@ fn build_plan(opts Options) !BuildPlan {
 		combined.funcs << m.funcs
 		combined.types << m.types
 		combined.consts << m.consts
+		combined.warnings << m.warnings
 	}
 	wrappers, infos := capi.generate_wrappers(combined, mut warnings)
 	for w in warnings {
@@ -313,7 +327,18 @@ fn make_import_libraries(name string, lib_path string, def_path string, out_dir 
 		eprintln('c-api: warning: dlltool unavailable; build ${gcc_lib} from ${def_path} manually')
 	}
 	msvc_lib := os.join_path(out_dir, '${name}.lib')
-	lib := os.exec(['lib', '/def:${def_path}', '/out:${msvc_lib}', '/machine:x64'])
+	mut arch := os.getenv('VSCMD_ARG_TGT_ARCH')
+	if arch == '' {
+		arch = os.getenv('PROCESSOR_ARCHITECTURE')
+	}
+	machine := if arch == 'ARM64' || arch == 'arm64' {
+		'arm64'
+	} else if arch == 'x86' || arch == 'X86' {
+		'x86'
+	} else {
+		'x64'
+	}
+	lib := os.exec(['lib', '/def:${def_path}', '/out:${msvc_lib}', '/machine:${machine}'])
 	if lib.exit_code == 0 {
 		println('c-api: importlib ${msvc_lib}')
 	}
@@ -348,6 +373,9 @@ fn main() {
 		eprintln('c-api: ${err}')
 		exit(1)
 	}
+	for w in plan.model.warnings {
+		eprintln('c-api: parse error: ${w}')
+	}
 	if plan.temp_dir == '' {
 		wrapper_path := os.join_path(opts.dir, 'capi_generated.v')
 		runtime_path := os.join_path(opts.dir, 'capi_generated.c.v')
@@ -379,6 +407,9 @@ fn main() {
 		println('c-api: generated ${result.header}, ${result.def}, ${result.pc}, ${result.demo}, ${result.readme}')
 		if !opts.keep_generated {
 			cleanup_generated(generated_files)
+			if plan.temp_dir != '' {
+				os.rmdir_all(plan.temp_dir) or {}
+			}
 		}
 		return
 	}

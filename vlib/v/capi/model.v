@@ -70,11 +70,11 @@ pub struct ApiModel {
 pub:
 	module_name string
 	prefix      string
-	warnings    []string
 pub mut:
-	funcs  []ApiFunc
-	types  []ApiType
-	consts []ApiConst
+	warnings []string
+	funcs    []ApiFunc
+	types    []ApiType
+	consts   []ApiConst
 }
 
 pub fn (m ApiModel) is_enum(name string) bool {
@@ -121,6 +121,7 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 	mut types := []ApiType{}
 	mut consts := []ApiConst{}
 	mut docs := map[string]string{}
+	mut parse_warnings := []string{}
 	for entry in entries {
 		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.ends_with('.c.v') {
 			continue
@@ -130,6 +131,11 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 		collect_docs(text, mut docs)
 		mut p := parser.Parser.new(pref.new_preferences())
 		a := p.parse_text(path, text)
+		for d in p.diagnostics {
+			if d.severity == 'error' {
+				parse_warnings << '${d.file}:${d.line}: ${d.message}'
+			}
+		}
 		attrs_by_node := attribute_map(a)
 		for ni, node in a.nodes {
 			if node.kind == .module_decl {
@@ -197,7 +203,9 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 						}
 					}
 					enum_members << ApiEnumMember{ name: child.value, value: value }
-					next_value = value.int() + 1
+					if parsed := parse_int_strict(value) {
+						next_value = parsed + 1
+					}
 				}
 				types << ApiType{
 					name:         node.value
@@ -234,6 +242,7 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 		funcs:       funcs
 		types:       types
 		consts:      consts
+		warnings:    parse_warnings
 	}
 	for i, f in model.funcs {
 		model.funcs[i].c_name = if f.custom_name != '' {
@@ -259,7 +268,7 @@ fn attribute_map(a &flat.FlatAst) map[int][]string {
 		if node.kind != .directive || !node.value.starts_with('@attributes:') {
 			continue
 		}
-		idx := node.value[12..].int()
+		idx := parse_int_strict(node.value[12..]) or { continue }
 		if idx < 0 {
 			continue
 		}
@@ -295,6 +304,48 @@ fn custom_name_of(attrs []string) string {
 	return ''
 }
 
+// parse_int_strict accepts only decimal/hex integer text, unlike V's lenient
+// `.int()` which returns the leading digits of arbitrary text.
+fn parse_int_strict(value string) ?int {
+	s := value.trim_space()
+	if s.len == 0 {
+		return none
+	}
+	mut neg := false
+	mut i := 0
+	if s[0] == `-` {
+		neg = true
+		i = 1
+	} else if s[0] == `+` {
+		i = 1
+	}
+	if i >= s.len {
+		return none
+	}
+	mut base := 10
+	if s.len > i + 2 && s[i] == `0` && (s[i + 1] == `x` || s[i + 1] == `X`) {
+		base = 16
+		i += 2
+	}
+	if i >= s.len {
+		return none
+	}
+	mut n := 0
+	for c in s[i..] {
+		d := if c >= `0` && c <= `9` {
+			int(c - `0`)
+		} else if base == 16 && c >= `a` && c <= `f` {
+			int(c - `a`) + 10
+		} else if base == 16 && c >= `A` && c <= `F` {
+			int(c - `A`) + 10
+		} else {
+			return none
+		}
+		n = n * base + d
+	}
+	return if neg { -n } else { n }
+}
+
 fn error_code_of(attrs []string) int {
 	for attr in attrs {
 		mut marker := 'c_api_errno:'
@@ -302,7 +353,7 @@ fn error_code_of(attrs []string) int {
 			marker = '.CApiErrno:'
 		}
 		if idx := attr.index(marker) {
-			return attr[idx + marker.len..].trim_space().int()
+			return parse_int_strict(attr[idx + marker.len..]) or { 0 }
 		}
 	}
 	return 0
@@ -333,6 +384,9 @@ fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, pref
 		ret = flat.source_type_name(node.typ)
 	}
 	cname := if prefix == '' { sanitize(node.value) } else { '${prefix}_${sanitize(node.value)}' }
+	// Method declarations are keyed by short name in collect_docs, while the
+	// AST node value is qualified (`Type.method`).
+	doc_name := if node.value.contains('.') { node.value.all_after_last('.') } else { node.value }
 	return ApiFunc{
 		name:        node.value
 		c_name:      cname
@@ -340,7 +394,7 @@ fn func_from_node(a &flat.FlatAst, node &flat.Node, docs map[string]string, pref
 		qualifier:   qualifier
 		params:      params
 		return_type: ret
-		doc:         docs['fn:${node.value}']
+		doc:         docs['fn:${doc_name}']
 		is_method:   receiver != ''
 		receiver:    receiver
 	}
@@ -410,10 +464,15 @@ fn const_value_of(text string, name string) string {
 	lines := text.split('\n')
 	for li, line in lines {
 		t := line.trim_space()
-		if !t.starts_with('pub const ${name} ') || !t.contains('=') {
+		prefix := 'pub const ${name}'
+		if !t.starts_with(prefix) {
 			continue
 		}
-		mut out := t.all_after('=').trim_space()
+		rest := t[prefix.len..].trim_space()
+		if !rest.starts_with('=') {
+			continue
+		}
+		mut out := rest[1..].trim_space()
 		mut depth := bracket_depth(out)
 		if depth <= 0 {
 			return out
