@@ -3199,7 +3199,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			piece = initializer.piece
 			brace_depth = initializer.brace_depth
 		} else if g.tok == .rcbr && brace_depth > 0 {
+			mut closes_literal := false
 			if struct_depths.len > 0 && struct_depths.last() == brace_depth {
+				closes_literal = true
 				struct_depths.delete_last()
 				if struct_types.len > 0 {
 					struct_types.delete_last()
@@ -3210,7 +3212,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				expected_struct_field_type = u32(0)
 			}
 			brace_depth--
-			piece = '}'
+			// An empty literal (`T{}` of an enum in a generic instance) must not leave `(T){}`:
+			// TinyCC rejects an empty initializer for a scalar.
+			piece = if closes_literal && previous_token == .lcbr { '0}' } else { '}' }
 		} else if g.selfhost && g.tok == .colon && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() {
 			piece = '='
 		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .semicolon {
