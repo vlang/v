@@ -66,7 +66,7 @@ jobs:
 
   windows:
     name: Windows regressions (${{ matrix.cc }})
-    runs-on: windows-2025
+    runs-on: ${{ matrix.cc == 'tcc' && 'windows-2022' || 'windows-2025' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -115,6 +115,9 @@ jobs:
           } finally {
             Pop-Location
           }
+      - name: Check Windows TCC bootstrap path argument contract
+        if: matrix.cc == 'tcc'
+        run: python cmd/tools/makev_test.py
       - name: Prepare optimized V compiler
         id: build
         uses: ./.github/actions/setup-v
