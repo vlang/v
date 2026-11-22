@@ -32,6 +32,19 @@ fn test_rasterize_circle() {
 	assert img.pix[3] == 0
 }
 
+fn test_stroke_only() {
+	mut d := new(40, 40)
+	d.rect(10, 10, 20, 20, fill('none'), stroke('#000000'), stroke_width(2))
+	img := d.rasterize(RasterOptions{ width: 40, height: 40 }) or {
+		assert false
+		return
+	}
+	edge := 20 * img.stride + 10 * 4 + 3
+	center := 20 * img.stride + 20 * 4 + 3
+	assert img.pix[edge] > 0
+	assert img.pix[center] == 0
+}
+
 fn test_gradient_sampling() {
 	mut g := Gradient{
 		id:    'g'

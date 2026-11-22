@@ -20,7 +20,10 @@ pub mut:
 
 // elem creates an element with the given tag name.
 pub fn elem(tag string) Element {
-	return Element{ tag: tag }
+	return Element{
+		tag:   tag
+		attrs: []Attr{cap: 4}
+	}
 }
 
 // get_attr returns an attribute value or '' when absent.

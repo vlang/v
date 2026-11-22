@@ -60,12 +60,11 @@ pub fn (scene Scene) rasterize(opts RasterOptions) !image.RGBA {
 				polys[i][j] = item.transform.apply(polys[i][j])
 			}
 		}
-		clear_region(mut coverage, w, fill_prev)
 		fill_prev = coverage_bounds(polys, w, h)
-		add_path_polys(polys, item.fill_rule, w, h, samples, mut coverage, mut scan)
-		apply_clips(mut coverage, item.clip_ids, clip_masks)
-
 		if item.fill.kind != .none {
+			clear_region(mut coverage, w, fill_prev)
+			add_path_polys(polys, item.fill_rule, w, h, samples, mut coverage, mut scan)
+			apply_clips(mut coverage, item.clip_ids, clip_masks)
 			composite_paint(mut img, scene, item, polys, coverage, w, h, fill_prev, item.opacity * item.fill_opacity, false)
 		}
 		if item.stroke.kind != .none && item.stroke_width > 0 {

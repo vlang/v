@@ -138,8 +138,9 @@ In paired local measurements against the initial implementation, parsing
 2000 documents dropped from about 1160 ms to 360 ms, rasterizing 10 frames
 of the benchmark scene dropped from about 1195 ms to 150 ms, and parsing
 50000 compact paths dropped from about 180 ms to 35 ms. The number scanner,
-single-declaration style fast path and reusable flatten buffers account for
-the latest gains.
+single-declaration style fast path, preallocated attribute slices and
+reusable flatten buffers account for the gains. Stroke-only shapes skip fill
+coverage entirely, cutting their rasterization time by about a quarter.
 
 ## Design notes
 
