@@ -3,7 +3,7 @@ import encoding.txtar
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
-const tpath = os.join_path(os.vtmp_dir(), 'vtest_folder')
+const tpath = os.join_path(os.abs_path(os.vtmp_dir()), 'vtest_folder')
 const tpath_passing = os.join_path(tpath, 'passing')
 const tpath_impure = os.join_path(tpath, 'impure')
 const tpath_js_runtime_error = os.join_path(tpath, 'js_runtime_error')
@@ -29,6 +29,9 @@ fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VJOBS', '2', true)
 	os.setenv('VTEST_HIDE_OK', '0', true)
+	// The outer test selector has already selected the cases in this executable.
+	os.unsetenv('VTEST_ONLY_FN')
+	os.chdir(vroot)!
 	os.rmdir_all(tpath) or {}
 	os.mkdir_all(tpath)!
 
@@ -85,6 +88,14 @@ fn test_global() {
 	assert os.exists(os.join_path(tpath, 'strict_v3/backend_test.js.v'))
 }
 
+fn vtest_fixture_executable() string {
+	if !os.is_file(mytest_exe) {
+		source := os.join_path(vroot, 'cmd', 'tools', 'vtest.v')
+		os.exec_or_exit([vexe, '-nocache', '-o', mytest_exe, source])
+	}
+	return mytest_exe
+}
+
 fn test_vflags_target_musl_detection() {
 	assert vflags_target_musl('-cc musl-gcc -gc none')
 	assert vflags_target_musl('-cc=/opt/cross/bin/x86_64-linux-musl-gcc')
@@ -94,15 +105,14 @@ fn test_vflags_target_musl_detection() {
 }
 
 fn test_vtest_executable_compiles() {
-	os.chdir(vroot)!
-	os.exec_or_exit([vexe, '-nocache', '-o', '${tpath}' + '/mytest.exe', 'cmd/tools/vtest.v'])
-	assert os.exists(mytest_exe), 'executable file: `${mytest_exe}` should exist'
+	tool := vtest_fixture_executable()
+	assert os.is_file(tool), 'executable file: `${tool}` should exist'
 }
 
 fn test_vtest_accepts_windows_path_separators() {
 	$if windows {
 		windows_path := tpath_passing.replace('/', '\\')
-		res := os.exec([mytest_exe, 'test', windows_path])
+		res := os.exec([vtest_fixture_executable(), 'test', windows_path])
 		assert res.exit_code == 0, res.output
 		assert res.output.contains('2 passed, 2 total'), res.output
 	}
@@ -113,28 +123,21 @@ fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 		// The embedded V3 compiler is currently available only on macOS, Linux, and BSD.
 		return
 	}
-	os.exec_or_exit([vexe, '-nocache', '-o', mytest_exe, 'cmd/tools/vtest.v'])
+	tool := vtest_fixture_executable()
 	old_vflags := os.getenv_opt('VFLAGS')
-	old_test_only := os.getenv_opt('VTEST_ONLY_FN')
 	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang', true)
-	os.unsetenv('VTEST_ONLY_FN')
-	res := os.exec([mytest_exe, 'test', tpath_strict_v3])
+	res := os.exec([tool, 'test', tpath_strict_v3])
 	if value := old_vflags {
 		os.setenv('VFLAGS', value, true)
 	} else {
 		os.unsetenv('VFLAGS')
-	}
-	if value := old_test_only {
-		os.setenv('VTEST_ONLY_FN', value, true)
-	} else {
-		os.unsetenv('VTEST_ONLY_FN')
 	}
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('1 passed, 1 skipped, 2 total'), res.output
 }
 
 fn test_with_several_test_files() {
-	res := os.exec_or_exit([mytest_exe, 'test', tpath_passing])
+	res := os.exec_or_exit([vtest_fixture_executable(), 'test', tpath_passing])
 	assert !res.output.contains('1 assert'), res.output
 	assert !res.output.contains('3 asserts'), res.output
 	assert res.output.contains('2 passed, 2 total'), res.output
@@ -145,7 +148,7 @@ fn test_with_several_test_files() {
 fn test_with_stats_and_several_test_files() {
 	// There should be more OKs here, since the output will have the inner OKs for each individual test fn:
 	res :=
-		os.exec_or_exit([mytest_exe, '-stats', 'test', tpath_passing])
+		os.exec_or_exit([vtest_fixture_executable(), '-stats', 'test', tpath_passing])
 	assert res.output.contains('1 assert'), res.output
 	assert res.output.contains('3 asserts'), res.output
 	assert res.output.contains('2 passed, 2 total'), res.output
@@ -168,7 +171,7 @@ fn test_with_stats_and_several_test_files() {
 }
 
 fn test_partial_failure() {
-	res := os.exec([mytest_exe, 'test', tpath_partial])
+	res := os.exec([vtest_fixture_executable(), 'test', tpath_partial])
 	assert res.exit_code == 1
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
@@ -178,7 +181,7 @@ fn test_partial_failure() {
 fn test_run_only_reports_filtered_failures() {
 	failing_test_path := os.join_path(tpath_partial, 'failing_test.v')
 	res :=
-		os.exec([mytest_exe, 'test', '-run-only', 'test_xyz', failing_test_path])
+		os.exec([vtest_fixture_executable(), 'test', '-run-only', 'test_xyz', failing_test_path])
 	assert res.exit_code == 1
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 total'), res.output
@@ -186,13 +189,14 @@ fn test_run_only_reports_filtered_failures() {
 
 fn test_wimpure_v_warnings_are_shown_for_test_files() {
 	res :=
-		os.exec_or_exit([mytest_exe, '-Wimpure-v', 'test', tpath_impure])
+		os.exec_or_exit([vtest_fixture_executable(), '-Wimpure-v', 'test', tpath_impure])
 	assert res.output.contains('warning_test.v'), res.output
 	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }
 
 fn test_js_tests_are_skipped_without_strict_mode() {
 	// Exercise the ordinary runner, not its -new-compiler-only skip list.
+	tool := vtest_fixture_executable()
 	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'VTEST_HIDE_SKIP']
 	mut old_values := map[string]string{}
 	for key in keys {
@@ -214,8 +218,7 @@ fn test_js_tests_are_skipped_without_strict_mode() {
 	js_test := os.join_path(tpath_js_runtime_error, 'runtime_error_test.js.v')
 	for options in ['', '-stats', '-b js', '-stats -b js'] {
 		for target in [js_test, tpath_js_runtime_error] {
-			res := os.exec([mytest_exe, ...(os.split_args(options) or { panic(err) }), 'test',
-				'${target}'])
+			res := os.exec([tool, ...(os.split_args(options) or { panic(err) }), 'test', '${target}'])
 			assert res.exit_code == 0, res.output
 			assert res.output.contains('1 skipped, 1 total'), res.output
 			assert res.output.contains('SKIP'), res.output
@@ -228,13 +231,13 @@ fn test_js_tests_are_skipped_without_strict_mode() {
 	os.mkdir_all(mixed)!
 	os.write_file(os.join_path(mixed, 'native_test.v'), 'fn test_native() { assert true }\n')!
 	os.write_file(os.join_path(mixed, 'invalid_test.js.v'), 'deliberately invalid V source\n')!
-	res := os.exec([mytest_exe, 'test', '${mixed}'])
+	res := os.exec([tool, 'test', '${mixed}'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('1 passed, 1 skipped, 2 total'), res.output
 }
 
 fn test_with_stats_and_partial_failure() {
-	res := os.exec([mytest_exe, '-stats', 'test', tpath_partial])
+	res := os.exec([vtest_fixture_executable(), '-stats', 'test', tpath_partial])
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
@@ -269,6 +272,7 @@ fn test_standalone_strict_vflags_preserves_repeated_option_values() {
 	$if !macos && !linux && !bsd {
 		return
 	}
+	tool := vtest_fixture_executable()
 	old_vflags := os.getenv_opt('VFLAGS')
 	defer {
 		if value := old_vflags {
@@ -285,7 +289,7 @@ fn test_both_defines() {
 }
 ')!
 	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -d vtest_environment_define', true)
-	result := os.exec([mytest_exe, '-d', 'vtest_command_define', 'test', path])
+	result := os.exec([tool, '-d', 'vtest_command_define', 'test', path])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('1 passed, 1 total'), result.output
 }

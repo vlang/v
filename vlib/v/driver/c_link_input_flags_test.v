@@ -135,6 +135,16 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	assert ran.exit_code == 0, ran.output
 }
 
+// link_test_compiles_cpp reports whether `compiler` can compile C++. A C compiler driver
+// such as gcc runs a separately installed C++ front end (cc1plus), which an image may lack.
+fn link_test_compiles_cpp(compiler string, root string) bool {
+	probe := os.join_path(root, 'cpp_probe.cpp')
+	os.write_file(probe, 'template<int N> int probe() { return N; }\nint value() { return probe<0>(); }\n') or {
+		return false
+	}
+	return cmdexec.run(compiler, ['-fsyntax-only', '-x', 'c++', probe]).exit_code == 0
+}
+
 fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'cc' }) or {
 		return
@@ -143,6 +153,9 @@ fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
+	}
+	if !link_test_compiles_cpp(compiler, root) {
+		return
 	}
 	cpp_source := os.join_path(root, 'template.c')
 	c_source := os.join_path(root, 'plain.c')
@@ -220,6 +233,9 @@ fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
+	}
+	if !link_test_compiles_cpp(compiler, root) {
+		return
 	}
 	source := os.join_path(root, 'main.v')
 	cpp_source := os.join_path(root, 'template.c')

@@ -18,17 +18,15 @@ const markused_source_type_closure_runtime = flat.source_type_id('__v3_builtin_c
 const markused_source_type_veb_result = flat.source_type_id('veb.Result')
 
 // library_seeds are the functions that every program keeps, whatever it calls.
-const library_seeds = ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign',
-	'c.gen_assign']
+// Compiler helpers, including interface generators, follow ordinary call edges.
+// Unconditional roots retain the code generator in tests that only use a small
+// part of a compiler module.
+const library_seeds = ['time.Time.new', 'Time.new']
 
 // parallel_callback_seeds are the callbacks that the compiler hands to its workers.
-const parallel_callback_seeds = ['c.FlatGen.gen_fn_items_scoped_batches',
-	'markused.CallCollector.collect_bodies_scoped_batches',
-	'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches',
-	'driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe', 'v.pref.detect_vroot',
-	'v.pref.detect_vexe', 'types.compare_type_errors', 'types.compare_type_notices',
-	'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
-	'sync.Semaphore.destroy']
+const parallel_callback_seeds = ['driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe',
+	'v.pref.detect_vroot', 'v.pref.detect_vexe', 'types.compare_type_errors',
+	'types.compare_type_notices', 'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy']
 
 // core_runtime_seeds and lowered_runtime_seeds are the runtime functions that the
 // code generator calls for the constructs of the language. No call in a program
@@ -236,6 +234,16 @@ pub fn mark_used_checking_library_bodies(a &flat.FlatAst, mut tc types.TypeCheck
 		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil }, false)
 }
 
+// mark_used_checking_library_bodies_full_runtime is mark_used_checking_library_bodies
+// for a build that emits the whole runtime even for a program that only prints
+// literals, such as a debug build, whose backtrace printers call helpers that the
+// transform introduces after markused.
+pub fn mark_used_checking_library_bodies_full_runtime(a &flat.FlatAst, mut tc types.TypeChecker, parallel bool) (map[string]bool, bool) {
+	tc.library_body_convergence_complete = false
+	return mark_used_with_test_files(a, &tc, map[string]bool{}, map[string]bool{}, false, true,
+		false, false, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil }, false)
+}
+
 // reachable_const_exprs returns const initializer expressions referenced by the supplied
 // post-transform AST roots, including transitive const-to-const references.
 pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []flat.NodeId, root_modules []string, root_files []string) []flat.NodeId {
@@ -324,7 +332,6 @@ mut:
 	body_import_contexts         []int
 	cache_roots                  []string
 	cached_header_enum_str_roots []u32
-	c_interface_roots            []string
 	marked_roots                 []string
 	convergence_index_complete   bool
 	fn_count                     int
@@ -336,6 +343,7 @@ mut:
 // function of the AST, `tc.top_level_idx`, and the checker's file, module and
 // function-file tables only.
 fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool) MarkusedDeclScan {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := MarkusedDeclScan{
 		fn_decls:                   map[string]FnDeclInfo{}
 		fn_decl_lists:              map[string][]FnDeclInfo{}
@@ -394,7 +402,7 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -464,19 +472,23 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 				module:            fn_decl_module
 				import_context:    fn_decl_import_context
 				positional_params: markused_positional_param_count(a, &node)
+				body_idx:          i32(result.body_ids.len - 1)
 			}
-			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
+			qname := qualify_fn(fn_decl_module, node.value)
+			lowered_name := markused_c_name(node.value)
+			lowered_qname := if qname != node.value { markused_c_name(qname) } else { lowered_name }
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info,
+				markused_fn_decl_key_is_exact(node.value, qname, lowered_qname))
 			if can_suffix_match {
 				add_candidate_suffix(mut result.fn_name_suffixes, node.value)
 			}
-			lowered_name := markused_c_name(node.value)
 			if lowered_name != node.value {
-				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info)
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info,
+					markused_fn_decl_key_is_exact(lowered_name, qname, lowered_qname))
 				if can_suffix_match {
 					add_candidate_suffix(mut result.fn_name_suffixes, lowered_name)
 				}
 			}
-			qname := qualify_fn(fn_decl_module, node.value)
 			if markused_fn_has_attribute(a, node_idx, 'markused') {
 				result.marked_roots << qname
 			}
@@ -490,13 +502,13 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 				result.cache_roots << qname
 			}
 			if qname != node.value {
-				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info)
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info, true)
 				if can_suffix_match {
 					add_candidate_suffix(mut result.fn_name_suffixes, qname)
 				}
-				lowered_qname := markused_c_name(qname)
 				if lowered_qname != qname {
-					add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info)
+					add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info,
+						true)
 					if can_suffix_match {
 						add_candidate_suffix(mut result.fn_name_suffixes, lowered_qname)
 					}
@@ -516,16 +528,6 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 			if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
 				short := qname.all_after_last('.')
 				add_suffix_candidate(mut result.suffix_map, short, qname)
-			}
-			if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
-				result.c_interface_roots << node.value
-				if qname != node.value {
-					result.c_interface_roots << qname
-				}
-				lowered_qname := markused_c_name(qname)
-				if lowered_qname != qname {
-					result.c_interface_roots << lowered_qname
-				}
 			}
 		}
 	}
@@ -648,6 +650,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		a:  a
 		tc: if rt_scan_parallel { tc.fork_for_parallel_transform(a) } else { tc }
 	}
+	if rt_scan_parallel {
+		// The list is in the caller's cache when the caller derived it; it
+		// outlives the scan thread, which is joined before this pass returns.
+		rt_scan.tc.share_ierror_impl_names_from(tc)
+	}
 	rt_scan.enabled = rt_scan_parallel
 	mut rt_scan_threads := []thread{cap: 1}
 	if rt_scan_parallel {
@@ -681,7 +688,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_import_contexts := []int{}
 	mut cache_roots := []string{}
 	mut cached_header_enum_str_roots := []u32{}
-	mut c_interface_roots := []string{}
 	mut marked_roots := []string{}
 	if use_prepared {
 		// These indexes remain owned by the retained helper arena until the
@@ -697,7 +703,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			import_contexts = prepared.import_contexts
 			marked_roots = prepared.marked_roots
 			cached_header_enum_str_roots = prepared.cached_header_enum_str_roots
-			c_interface_roots = prepared.c_interface_roots
 			body_ids = prepared.body_ids
 			body_modules = prepared.body_modules
 			body_import_contexts = prepared.body_import_contexts
@@ -727,7 +732,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			body_import_contexts = scan.body_import_contexts
 			cache_roots = scan.cache_roots
 			cached_header_enum_str_roots = scan.cached_header_enum_str_roots
-			c_interface_roots = scan.c_interface_roots
 			marked_roots = scan.marked_roots
 		}
 		convergence_index_complete = scan.convergence_index_complete
@@ -736,6 +740,116 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		contains2_total = scan.contains2_total
 	}
 
+	has_entry_main := markused_has_entry_main_indexed(a, tc)
+	auto_str_skipped_fields := if reachable_runtime_helpers || !has_entry_main {
+		markused_auto_str_skipped_fields(a)
+	} else {
+		map[u32]&MarkusedSkippedFields{}
+	}
+	collector := CallCollector{
+		a:                     a
+		tc:                    tc
+		receiver_method_cache: &MarkusedMethodCache{}
+		local_walk_scratch:    &MarkusedLocalWalkScratch{}
+		decl_name_cache:       &DeclNameCache{}
+
+		source_type_cache:                &SourceTypeCache{}
+		default_calls:                    &StructDefaultCalls{}
+		fn_decls:                         fn_decls
+		fn_suffixes:                      fn_name_suffixes
+		struct_decls:                     struct_decls
+		const_decls:                      const_decls
+		const_suffixes:                   const_name_suffixes
+		const_suffixes_complete:          true
+		import_contexts:                  import_contexts
+		selective_alias_targets:          if detect_reachable_generics {
+			markused_selective_alias_targets(tc)
+		} else {
+			map[u32][]u32{}
+		}
+		iface_param_gate:                 if detect_reachable_generics {
+			markused_interface_param_gate(tc)
+		} else {
+			map[string]bool{}
+		}
+		generic_type_bases:               generic_type_bases
+		generic_calls:                    if detect_reachable_generics {
+			markused_generic_calls(a, tc, fn_decls)
+		} else {
+			unsafe { nil }
+		}
+		auto_str_skipped_fields:          auto_str_skipped_fields
+		detect_generics:                  detect_reachable_generics
+		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
+		alias_suffixes:                   markused_alias_name_suffixes(tc)
+		alias_suffix_count:               tc.type_aliases.ids.len
+		alias_suffixes_built:             true
+	}
+	// Precollect every body's call/initializer-ref lists up front (across
+	// threads when available): the BFS below then only does the cheap
+	// name-resolution work. Collecting inline used to serialize ~80% of
+	// markused's time inside the BFS loop. Keep skipped library bodies out of
+	// the eager pass, and collect reached bodies inline when there are no workers.
+	if tc.verbose {
+		eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		mu_sw.restart()
+	}
+	// The slot of each declaration of `body_ids` in `body_results`, or -1.
+	mut body_slots := []i32{}
+	mut body_results := []BodyCalls{}
+	mut precollect := &MarkusedPrecollect(unsafe { nil })
+	// Frontier checking discovers bodies on demand; eagerly collecting checked bodies
+	// repeats work and retains call lists for declarations the queue never reaches.
+	if library_body_checker == unsafe { nil } && body_ids.len >= min_eager_markused_bodies
+		&& (!use_prepared || markused_can_parallel_precollect(&collector))
+		&& (!tc.skips_library_bodies || a.worker_count() > 0) {
+		mut checked_ids := []int{}
+		mut checked_modules := []string{}
+		mut checked_import_contexts := []int{}
+		body_slots = []i32{len: body_ids.len}
+		if tc.skips_library_bodies {
+			for i, id in body_ids {
+				node := a.node(flat.NodeId(id))
+				file := if source := a.source_files[node.pos.id] { source.name } else { '' }
+				if tc.skips_library_body_in_file(*node, file, body_modules[i]) {
+					body_slots[i] = -1
+					continue
+				}
+				body_slots[i] = i32(checked_ids.len)
+				checked_ids << id
+				checked_modules << body_modules[i]
+				checked_import_contexts << body_import_contexts[i]
+			}
+		} else {
+			for i in 0 .. body_ids.len {
+				body_slots[i] = i32(i)
+			}
+		}
+		collect_ids := if tc.skips_library_bodies { checked_ids } else { body_ids }
+		collect_modules := if tc.skips_library_bodies { checked_modules } else { body_modules }
+		collect_import_contexts := if tc.skips_library_bodies {
+			checked_import_contexts
+		} else {
+			body_import_contexts
+		}
+		precollect = start_precollect_body_calls(collector, collect_ids, collect_modules,
+			collect_import_contexts, true)
+	}
+	// With scoped pool workers the collection is still running here. The roots
+	// below do not read its results, so they are seeded meanwhile; the pieces
+	// fork `tc` on the pool threads, so this thread queries a fork of its own
+	// until they are done. A fork answers every query as `tc` does.
+	precollect_async := !isnil(precollect) && precollect.is_async()
+	precollect_started_us := mu_sw.elapsed().microseconds()
+	mut seed_tc := unsafe { tc }
+	mut seed_collector := collector
+	if precollect_async {
+		seed_tc = tc.fork_for_parallel_transform(a)
+		seed_tc.share_ierror_impl_names_from(tc)
+		seed_collector = collector.fork_with_tc(seed_tc)
+	}
+	// The roots below are seeded while the pool collects bodies (see above), so
+	// they query `seed_tc` like the roots that follow them.
 	// BFS from main
 	mut used := map[string]bool{}
 	used.reserve(u32(fn_decls.len))
@@ -743,19 +857,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	reachable_modules := if use_prepared {
 		map[string]bool{}
 	} else {
-		markused_reachable_modules(a, tc)
+		markused_reachable_modules(a, seed_tc)
 	}
 	queue << 'main'
 	used['main'] = true
 	if cache_mode {
 		// Cached bodies can call an interface without exposing that call in their
 		// declaration header. Keep the program's implementations and their callees.
-		for iface_name_source_id in tc.interface_names.keys() {
+		for iface_name_source_id in seed_tc.interface_names.keys() {
 			iface_name := flat.source_type_name(iface_name_source_id)
 			iface_id := iface_name_source_id
-			for method in tc.interface_abstract_method_names(iface_id) {
-				key := tc.interface_method_signature_key(iface_id, method) or { continue }
-				if (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
+			for method in seed_tc.interface_abstract_method_names(iface_id) {
+				key := seed_tc.interface_method_signature_key(iface_id, method) or { continue }
+				if cache_modules[iface_name.all_before_last('.')]
+					|| (seed_tc.fn_type_files[key] or { '' }).ends_with('.vh') {
 					enqueue('${iface_name}.${method}', mut used, mut queue)
 				}
 			}
@@ -763,9 +878,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// Cached IError dispatchers name every implementer's methods, even when
 		// their callers have no body in the warm AST. Cgen emits these methods,
 		// so retain their transformations and the helpers their bodies call.
-		for impl_source_id in tc.ierror_impl_names() {
+		for impl_source_id in seed_tc.ierror_impl_names() {
 			for method in ['msg', 'code'] {
-				for alias in interface_implementer_method_aliases(impl_source_id, method, tc) {
+				for alias in interface_implementer_method_aliases(impl_source_id, method, seed_tc) {
 					enqueue(alias, mut used, mut queue)
 				}
 			}
@@ -780,9 +895,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		// The `_result` destructor names every IError implementer's destructor, with no
 		// source-AST call site to follow. The branch below emits it too, so root them here.
-		ierror_destructor := if tc.autofree_mode { 'free' } else { 'drop' }
-		for impl_source_id_2 in tc.ierror_impl_names() {
-			for alias in interface_implementer_method_aliases(impl_source_id_2, ierror_destructor, tc) {
+		ierror_destructor := if seed_tc.autofree_mode { 'free' } else { 'drop' }
+		for impl_source_id_2 in seed_tc.ierror_impl_names() {
+			for alias in interface_implementer_method_aliases(impl_source_id_2, ierror_destructor, seed_tc) {
 				enqueue(alias, mut used, mut queue)
 			}
 		}
@@ -795,7 +910,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	} else {
 		enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
 	}
-	enqueue_implicit_global_container_roots(a, tc, fn_decls, fn_decl_lists, mut used, mut queue)
+	enqueue_implicit_global_container_roots(a, seed_tc, fn_decls, fn_decl_lists, mut used, mut queue)
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
@@ -829,7 +944,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	// Exported functions are externally reachable even when the input has no V
 	// entry point (for example `-is_o` modules called from C).
-	enqueue_export_roots(a, tc, mut used, mut queue)
+	enqueue_export_roots(a, seed_tc, mut used, mut queue)
 	if trivial_literal_output {
 		// Bounds-checking helpers are part of the generated C prelude even when the
 		// user program only prints a literal. Their diagnostics stringify indexes
@@ -847,7 +962,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 	}
 	if !trivial_literal_output {
-		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
+		enqueue_veb_handler_roots(a, seed_tc, mut used, mut queue)
 		enqueue_test_file_roots(a, test_files, mut used, mut queue)
 		for seed in library_seeds {
 			queue << seed
@@ -868,7 +983,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			used[seed] = true
 		}
 		mut runtime_seeds := lowered_runtime_seeds.clone()
-		if !tc.nofloat && !reachable_runtime_helpers {
+		if !seed_tc.nofloat && !reachable_runtime_helpers {
 			runtime_seeds << float_runtime_seeds
 		}
 		for seed in runtime_seeds {
@@ -914,9 +1029,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			enqueue(helper, mut used, mut queue)
 		}
-		for type_name_id in tc.ownership_drop_type_names() {
+		for type_name_id in seed_tc.ownership_drop_type_names() {
 			type_name := flat.source_type_name(type_name_id)
-			method := if tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
+			method := if seed_tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
 			enqueue(method, mut used, mut queue)
 			lowered := markused_c_name(method)
 			if lowered != method {
@@ -930,19 +1045,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	// Cached module objects can call generated enum stringifiers from bodies that
 	// are intentionally absent from their public headers. Keep those program-level
-	// helpers even when no visible caller remains in the warm-cache AST.
+	// helpers even when no visible caller remains in the warm-cache AST. Their enums
+	// can belong to dependencies reloaded from source, not just cached headers.
 	for type_name in cached_header_enum_str_roots {
-		enqueue_enum_str_method(type_name, '', tc, mut used, mut queue)
+		enqueue_enum_str_method(type_name, '', seed_tc, mut used, mut queue)
 	}
 	for name in cache_roots {
 		enqueue(name, mut used, mut queue)
 	}
-	for name in c_interface_roots {
-		enqueue(name, mut used, mut queue)
-	}
-	if markused_has_node_kind(a, .debugger_stmt) {
+	// Only the parser makes debugger statements before this pass, and it counts
+	// them: without one there is no need to read the kind of every node.
+	if a.debugger_stmts > 0 && markused_has_node_kind(a, .debugger_stmt) {
 		enqueue('debug.Debugger.interact', mut used, mut queue)
-		enqueue_debugger_custom_str_methods(tc, mut used, mut queue)
+		enqueue_debugger_custom_str_methods(seed_tc, mut used, mut queue)
 	}
 	// Trace calls are injected by Cgen after AST reachability has been computed,
 	// so retain their two runtime entry points whenever the debug module exists.
@@ -981,101 +1096,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut in_cg := 0
 	mut not_in_cg := 0
 	mut total_callees := 0
-	has_entry_main := markused_has_entry_main_indexed(a, tc)
-	auto_str_skipped_fields := if reachable_runtime_helpers || !has_entry_main {
-		markused_auto_str_skipped_fields(a)
-	} else {
-		map[u32]&MarkusedSkippedFields{}
-	}
-	collector := CallCollector{
-		a:                     a
-		tc:                    tc
-		receiver_method_cache: &MarkusedMethodCache{}
-		local_walk_scratch:    &MarkusedLocalWalkScratch{}
-		decl_name_cache:       &DeclNameCache{}
-
-		source_type_cache:                &SourceTypeCache{}
-		default_calls:                    &StructDefaultCalls{}
-		fn_decls:                         fn_decls
-		fn_suffixes:                      fn_name_suffixes
-		struct_decls:                     struct_decls
-		const_decls:                      const_decls
-		const_suffixes:                   const_name_suffixes
-		const_suffixes_complete:          true
-		import_contexts:                  import_contexts
-		selective_alias_targets:          if detect_reachable_generics {
-			markused_selective_alias_targets(tc)
-		} else {
-			map[u32][]u32{}
-		}
-		iface_param_gate:                 if detect_reachable_generics {
-			markused_interface_param_gate(tc)
-		} else {
-			map[string]bool{}
-		}
-		generic_type_bases:               generic_type_bases
-		generic_calls:                    if detect_reachable_generics {
-			markused_generic_calls(a, tc, fn_decls)
-		} else {
-			unsafe { nil }
-		}
-		auto_str_skipped_fields:          auto_str_skipped_fields
-		detect_generics:                  detect_reachable_generics
-		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
-	}
-	// Precollect every body's call/initializer-ref lists up front (across
-	// threads when available): the BFS below then only does the cheap
-	// name-resolution work. Collecting inline used to serialize ~80% of
-	// markused's time inside the BFS loop. Keep skipped library bodies out of
-	// the eager pass, and collect reached bodies inline when there are no workers.
-	if tc.verbose {
-		eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		mu_sw.restart()
-	}
-	mut body_index := map[int]int{}
-	mut body_results := []BodyCalls{}
-	// Frontier checking discovers bodies on demand; eagerly collecting checked bodies
-	// repeats work and retains call lists for declarations the queue never reaches.
-	if library_body_checker == unsafe { nil } && body_ids.len >= min_eager_markused_bodies
-		&& (!use_prepared || markused_can_parallel_precollect(&collector))
-		&& (!tc.skips_library_bodies || a.worker_count() > 0) {
-		mut checked_ids := []int{}
-		mut checked_modules := []string{}
-		mut checked_import_contexts := []int{}
-		if tc.skips_library_bodies {
-			for i, id in body_ids {
-				node := a.node(flat.NodeId(id))
-				file := if source := a.source_files[node.pos.id] { source.name } else { '' }
-				if tc.skips_library_body_in_file(*node, file, body_modules[i]) {
-					continue
-				}
-				checked_ids << id
-				checked_modules << body_modules[i]
-				checked_import_contexts << body_import_contexts[i]
-			}
-		}
-		collect_ids := if tc.skips_library_bodies { checked_ids } else { body_ids }
-		collect_modules := if tc.skips_library_bodies { checked_modules } else { body_modules }
-		collect_import_contexts := if tc.skips_library_bodies {
-			checked_import_contexts
-		} else {
-			body_import_contexts
-		}
-		for i, id in collect_ids {
-			body_index[id] = i
-		}
-		body_results = precollect_body_calls(collector, collect_ids, collect_modules, collect_import_contexts)
-	}
-	if tc.verbose {
-		eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
-		mu_sw.restart()
-	}
 	needs_closure_runtime := if reachable_runtime_helpers {
 		markused_has_closure_runtime_import(a)
 	} else if use_prepared && prepared.needs_closure_runtime {
 		true
 	} else {
-		markused_program_needs_closure_runtime(a, tc)
+		markused_program_needs_closure_runtime(a, seed_tc)
 	}
 	mut reachable_helper_scan := RuntimeHelpersScan{}
 	mut runtime_helper_seen := []bool{}
@@ -1091,7 +1117,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			reachable_helper_scan.deferred_closure_mask = []bool{len: a.nodes.len}
 			for idx in tc.top_level_idx {
 				node := a.nodes[idx]
-				if markused_is_builtin_closure_global(a, tc, node) {
+				if markused_is_builtin_closure_global(a, seed_tc, node) {
 					runtime_helper_subtree(a, flat.NodeId(idx), mut reachable_helper_scan.deferred_closure_mask,
 						mut runtime_helper_stack, mut runtime_helper_nodes)
 					reachable_helper_scan.deferred_closure_nodes << runtime_helper_nodes.nodes[..runtime_helper_nodes.size]
@@ -1099,10 +1125,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 		}
 		body_nodes := runtime_helper_body_mask(a, body_ids)
-		reachable_helper_scan.enqueue_nodes(a, tc, []int{}, body_nodes, '', map[string]string{}, mut used, mut queue)
+		reachable_helper_scan.enqueue_nodes(a, seed_tc, []int{}, body_nodes, '', map[string]string{}, mut used, mut queue)
 		runtime_helper_seen = []bool{len: a.nodes.len}
 	} else if !rt_scan_parallel && !trivial_literal_output {
-		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
+		enqueue_detected_runtime_helpers(a, seed_tc, mut used, mut queue)
 	}
 	if !trivial_literal_output && needs_closure_runtime {
 		enqueue('closure.closure_init', mut used, mut queue)
@@ -1110,21 +1136,21 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
 	if !trivial_literal_output {
-		enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
+		enqueue_function_value_selectors(a, seed_collector, fn_decls, has_entry_main, mut used, mut queue)
 	}
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
 	// through a wrapper cgen generates later. The checker records them per enclosing
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
-	mut uses_generics := enqueue_initializer_calls(a, collector, fn_decls, fn_decl_lists, mut used, mut
+	mut uses_generics := enqueue_initializer_calls(a, seed_collector, fn_decls, fn_decl_lists, mut used, mut
 		queue, false)
-	uses_generics = enqueue_top_level_calls(a, collector, fn_decls, fn_decl_lists, has_entry_main, mut
+	uses_generics = enqueue_top_level_calls(a, seed_collector, fn_decls, fn_decl_lists, has_entry_main, mut
 		used, mut queue, uses_generics)
 	// Interface method values and other roots can enter the queue as abstract
 	// dispatch keys that have no function declaration of their own. Seed their
 	// concrete implementations before the declaration-driven BFS skips those keys.
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch)
+	enqueue_used_interface_dispatch_implementers(seed_tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
 	// concrete methods are only referenced from the generated dispatch switch, so
@@ -1151,7 +1177,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// (fixed during the BFS) and the interface-dispatch tail only on
 	// (module, callee), so each needs to run once. enqueue() is idempotent, so
 	// skipping a repeat performs no fewer markings.
-	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
 	// Qualified callees whose whole processing above is independent of the
 	// calling module, once it ran for one caller: a declared function marked
@@ -1162,10 +1187,94 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	settle_callees := !collector.detect_generics && !detect_reachable_generics
 	mut processed_module_calls := map[string]&ModuleCalls{}
 	mut call_signature_count := tc.fn_ret_types.len
-	safe_alias_done.reserve(u32(fn_decls.len))
-	iface_tail_done.reserve(u32(fn_decls.len))
+	// A declared callee keeps the three states above, and its per-module mark, in
+	// arrays indexed by its key number instead (see add_fn_decl_info): nearly every
+	// callee is one, and hashing its name for each of them dominated this walk.
+	// The maps hold the names that are not declaration keys.
+	key_count := fn_decls.len
+	key_words := (key_count + 63) >> 6
+	mut key_flags := []u8{len: key_count}
+	// Without generic detection the calls of a body arrive with their key numbers:
+	// a checker dependency through `symbol_keys`, indexed by its symbol id (0 = not
+	// looked up yet), a collected call through BodyCalls.call_keys. A dependency
+	// that is settled, or already resolved for the calling module, is dropped by
+	// number before its name is even read.
+	keyed_calls := settle_callees
+	mut symbol_keys := []i32{len: if keyed_calls { 65_536 } else { 0 }}
+	mut call_keys := []i32{cap: 128}
+	mut call_symbols := []types.SymbolId{cap: 128}
+	mut last_module_name := ''
+	mut last_module_calls := &ModuleCalls(unsafe { nil })
+	// The last dot segment of every interface and alias name. A call can only
+	// dispatch through an interface when its receiver ends in one of them (see
+	// the interface tail of the walk). Trusted while both tables keep their size.
+	mut iface_receiver_segments := map[string]bool{}
+	for iface_id, _ in tc.interface_names {
+		iface_receiver_segments[flat.source_type_name(iface_id).all_after_last('.')] = true
+	}
+	for alias_id, _ in tc.type_aliases.ids {
+		iface_receiver_segments[flat.source_type_name(alias_id).all_after_last('.')] = true
+	}
+	iface_receiver_tables_len := tc.interface_names.len + tc.type_aliases.ids.len
+	seeds_done_us := mu_sw.elapsed().microseconds()
+	// The calls of the constant initializers that reached bodies refer to, by the
+	// node of the initializer, where they were collected ahead of the walk.
+	mut const_ref_calls := map[int][]string{}
+	if precollect_async {
+		// The pool threads are still collecting bodies and this thread has
+		// nothing to seed any more. As long as pieces are waiting it does work the
+		// walk would otherwise do alone: it collects the calls of the constant
+		// initializers, numbers the checker dependencies of the bodies, and then
+		// takes pieces itself.
+		for _, info in const_decls {
+			if !precollect.pool_busy() {
+				break
+			}
+			expr := int(info.expr_id)
+			if expr in const_ref_calls {
+				continue
+			}
+			mut ref_calls := []string{cap: 8}
+			seed_collector.collect_calls(a.node(info.expr_id), info.module, seed_collector.imports(info.import_context),
+				'', u32(0), mut ref_calls)
+			const_ref_calls[expr] = ref_calls
+		}
+		if keyed_calls {
+			for body_pos, body_id in body_ids {
+				if body_pos & 63 == 0 && !precollect.pool_busy() {
+					break
+				}
+				// `tc` is only read here: the dependency graph and the symbol
+				// names are fixed, and a fork has neither.
+				for dependency in tc.direct_dependency_ids(body_id) {
+					symbol := int(dependency)
+					if symbol >= symbol_keys.len {
+						symbol_keys << []i32{len: symbol + 1 - symbol_keys.len + 4096}
+					}
+					if symbol_keys[symbol] == 0 {
+						symbol_keys[symbol] = if info := fn_decls[tc.frozen_symbol_name(dependency)] {
+							info.key_id + 1
+						} else {
+							i32(-1)
+						}
+					}
+				}
+			}
+		}
+		precollect.help()
+	}
+	if !isnil(precollect) {
+		body_results = precollect.finish()
+	}
 	if tc.verbose {
-		eprintln('  [ttime] mu seeds           ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		precollect_us := if precollect_async {
+			mu_sw.elapsed().microseconds()
+		} else {
+			precollect_started_us
+		}
+		overlapped := if precollect_async { ' (overlapped)' } else { '' }
+		eprintln('  [ttime] mu precollect      ${f64(precollect_us) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
+		eprintln('  [ttime] mu seeds           ${f64(seeds_done_us - precollect_started_us) / 1000.0:7.2f} ms${overlapped}')
 		mu_sw.restart()
 	}
 	mut qi := 0
@@ -1350,36 +1459,92 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			calls.clear()
+			call_keys.clear()
+			call_symbols.clear()
 			initializer_refs.clear()
-			// Direct source-level call and function-value edges are authoritative:
-			// the checker recorded them with the exact file/import/type context.
-			// The body collector below remains responsible for implicit helpers
-			// introduced by lowering and for unresolved compatibility fallbacks.
-			for dependency in tc.direct_dependency_ids(node_key) {
-				calls << tc.frozen_symbol_name(dependency)
-			}
 			// The checker's dependency edges only cover source-level calls. Implicit
 			// helpers introduced by lowering (array bounds checks, `array__get`,
 			// `v_ni_index`, ...) are discovered solely by the body collector, so it must
 			// run for correctness regardless of generics detection; only the generics
 			// bookkeeping below is gated.
-			if body_i := body_index[node_key] {
-				body := body_results[body_i]
-				calls << body.calls
-				initializer_refs << body.refs
-				if detect_reachable_generics {
-					uses_generics = uses_generics || body.uses_generics
-				}
+			mut body := BodyCalls{}
+			body_slot := if fn_info.body_idx >= 0 && fn_info.body_idx < body_slots.len {
+				body_slots[fn_info.body_idx]
+			} else {
+				i32(-1)
+			}
+			if body_slot >= 0 {
+				body = body_results[body_slot]
 			} else {
 				// Not precollected (no eager pass, or not part of that decl set) —
 				// collect inline.
 				node := a.node(fn_info.node_id)
-				body := collector.collect_body_with_generic_detection(node, fn_info.module, collector.imports(fn_info.import_context), detect_reachable_generics && !uses_generics)
-				calls << body.calls
-				initializer_refs << body.refs
-				if detect_reachable_generics {
-					uses_generics = uses_generics || body.uses_generics
+				body = collector.collect_body_with_generic_detection(node, fn_info.module, collector.imports(fn_info.import_context), detect_reachable_generics && !uses_generics)
+			}
+			initializer_refs << body.refs
+			if detect_reachable_generics {
+				uses_generics = uses_generics || body.uses_generics
+			}
+			for initializer_ref in initializer_refs {
+				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref,
+					const_ref_calls, mut processed_initializer_refs, mut initializer_calls, mut
+					used, mut queue)
+			}
+			// Complete callee resolution depends only on its name and caller
+			// module. A short-name fallback suppressed by a qualified sibling
+			// remains uncached: another body may need its broader candidate set.
+			if call_signature_count != tc.fn_ret_types.len {
+				processed_module_calls.clear()
+				call_signature_count = tc.fn_ret_types.len
+				last_module_calls = unsafe { nil }
+			}
+			// Bodies of one module mostly follow each other; their module names are
+			// then the same string.
+			if isnil(last_module_calls) || last_module_name.len != fn_info.module.len
+				|| last_module_name.str != fn_info.module.str {
+				last_module_calls = processed_module_calls[fn_info.module] or {
+					fresh := &ModuleCalls{
+						key_bits: []u64{len: key_words}
+					}
+					processed_module_calls[fn_info.module] = fresh
+					fresh
 				}
+				last_module_name = fn_info.module
+			}
+			mut module_calls := last_module_calls
+			// Direct source-level call and function-value edges are authoritative:
+			// the checker recorded them with the exact file/import/type context.
+			// The body collector above remains responsible for implicit helpers
+			// introduced by lowering and for unresolved compatibility fallbacks.
+			if keyed_calls {
+				for dependency in tc.direct_dependency_ids(node_key) {
+					symbol_key := if int(dependency) < symbol_keys.len {
+						symbol_keys[int(dependency)]
+					} else {
+						i32(0)
+					}
+					if symbol_key > 0 && (key_flags[symbol_key - 1] & markused_key_settled != 0
+						|| module_calls.has_key(symbol_key - 1)) {
+						// What the loop below would skip first.
+						continue
+					}
+					calls << tc.frozen_symbol_name(dependency)
+					call_keys << symbol_key
+					call_symbols << dependency
+				}
+				calls << body.calls
+				if body.call_keys.len == body.calls.len {
+					call_keys << body.call_keys
+				} else {
+					for _ in 0 .. body.calls.len {
+						call_keys << i32(0)
+					}
+				}
+			} else {
+				for dependency in tc.direct_dependency_ids(node_key) {
+					calls << tc.frozen_symbol_name(dependency)
+				}
+				calls << body.calls
 			}
 			mut unique_call_count := calls.len
 			if detect_reachable_generics {
@@ -1397,38 +1562,60 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					unique_call_count++
 				}
 			}
-			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref, mut
-					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
-			}
 			total_callees += unique_call_count
-			// Complete callee resolution depends only on its name and caller
-			// module. A short-name fallback suppressed by a qualified sibling
-			// remains uncached: another body may need its broader candidate set.
-			if call_signature_count != tc.fn_ret_types.len {
-				processed_module_calls.clear()
-				call_signature_count = tc.fn_ret_types.len
-			}
-			mut module_calls := processed_module_calls[fn_info.module] or {
-				fresh := &ModuleCalls{}
-				processed_module_calls[fn_info.module] = fresh
-				fresh
-			}
 			for call_idx in 0 .. unique_call_count {
 				callee := calls[call_idx]
-				if settle_callees && settled_callees[callee] {
-					continue
+				// The key number + 1 of a declared callee, or -1.
+				mut callee_key := if keyed_calls { call_keys[call_idx] } else { i32(0) }
+				mut callee_info := FnDeclInfo{}
+				mut has_callee_info := false
+				if callee_key == 0 {
+					if info := fn_decls[callee] {
+						callee_info = info
+						has_callee_info = true
+						callee_key = info.key_id + 1
+					} else {
+						callee_key = -1
+					}
+					if call_idx < call_symbols.len {
+						symbol := int(call_symbols[call_idx])
+						if symbol >= symbol_keys.len {
+							symbol_keys << []i32{len: symbol + 1 - symbol_keys.len + 4096}
+						}
+						symbol_keys[symbol] = callee_key
+					}
 				}
-				if module_calls.names[callee] {
-					continue
+				key_idx := int(callee_key) - 1
+				if key_idx >= 0 {
+					if settle_callees && key_flags[key_idx] & markused_key_settled != 0 {
+						continue
+					}
+					if module_calls.has_key(key_idx) {
+						continue
+					}
+				} else {
+					if settle_callees && settled_callees[callee] {
+						continue
+					}
+					if module_calls.names[callee] {
+						continue
+					}
 				}
 				if !valid_symbol_name(callee) {
-					module_calls.names[callee] = true
+					if key_idx >= 0 {
+						module_calls.add_key(key_idx)
+					} else {
+						module_calls.names[callee] = true
+					}
 					continue
 				}
 				if collector.detect_generics
 					&& collector.is_generic_index_overload_call(callee, fn_info.module) {
-					module_calls.names[callee] = true
+					if key_idx >= 0 {
+						module_calls.add_key(key_idx)
+					} else {
+						module_calls.names[callee] = true
+					}
 					enqueue(callee, mut used, mut queue)
 					lowered := markused_c_name(callee)
 					if lowered != callee {
@@ -1438,7 +1625,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					continue
 				}
 				if markused_generated_c_helper_name(callee) {
-					module_calls.names[callee] = true
+					if key_idx >= 0 {
+						module_calls.add_key(key_idx)
+					} else {
+						module_calls.names[callee] = true
+					}
 					for alias in markused_generated_c_helper_aliases(callee) {
 						enqueue(alias, mut used, mut queue)
 					}
@@ -1447,7 +1638,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				mut found_direct := false
 				// Marked as a declared function, independently of the caller.
 				mut found_declared := false
-				if callee_info := fn_decls[callee] {
+				if key_idx >= 0 {
 					found_direct = true
 					found_declared = true
 					if enqueue(callee, mut used, mut queue) {
@@ -1455,10 +1646,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: all_fns hit: "${callee}"')
 						}
 					}
-					if !safe_alias_done[callee] {
-						safe_alias_done[callee] = true
-						add_safe_decl_alias(callee, callee_info, fn_info.module, fn_decl_lists, a, mut
-							used, mut queue)
+					if key_flags[key_idx] & markused_key_alias_done == 0 {
+						key_flags[key_idx] |= markused_key_alias_done
+						if !has_callee_info {
+							callee_info = fn_decls[callee] or { FnDeclInfo{} }
+						}
+						// A key that is the own name of its only declaration has no
+						// alias to add (see add_safe_decl_alias).
+						if callee_info.key_multi || !callee_info.key_exact {
+							add_safe_decl_alias(callee, callee_info, fn_info.module, fn_decl_lists, a, mut
+								used, mut queue)
+						}
 					}
 				} else if callee in tc.fn_ret_types {
 					found_direct = true
@@ -1494,25 +1692,52 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							}
 						}
 					}
+				} else if key_idx >= 0 {
+					module_calls.add_key(key_idx)
 				} else {
 					module_calls.names[callee] = true
 				}
-				if !detect_reachable_generics {
+				if !detect_reachable_generics && key_idx < 0 {
 					module_calls.names[callee] = true
 				}
 				// Qualified call names resolve independently of the caller's module.
 				// Reuse the call itself as the cache key and avoid allocating the
 				// composite module key on the overwhelmingly common exact path.
-				iface_tail_key := if callee.index_u8(`.`) >= 0 {
-					callee
+				callee_last_dot := callee.last_index_u8(`.`)
+				mut iface_tail_pending := false
+				if key_idx >= 0 && callee_last_dot >= 0 {
+					if settle_callees {
+						key_flags[key_idx] |= markused_key_settled
+					}
+					if key_flags[key_idx] & markused_key_iface_tail_done == 0 {
+						key_flags[key_idx] |= markused_key_iface_tail_done
+						iface_tail_pending = true
+					}
 				} else {
-					'${fn_info.module}\x01${callee}'
+					iface_tail_key := if callee_last_dot >= 0 {
+						callee
+					} else {
+						'${fn_info.module}\x01${callee}'
+					}
+					if settle_callees && found_declared && callee_last_dot >= 0 {
+						settled_callees[callee] = true
+					}
+					if !iface_tail_done[iface_tail_key] {
+						iface_tail_done[iface_tail_key] = true
+						iface_tail_pending = true
+					}
 				}
-				if settle_callees && found_declared && iface_tail_key == callee {
-					settled_callees[callee] = true
+				if iface_tail_pending && callee_last_dot >= 0
+					&& iface_receiver_tables_len == tc.interface_names.len + tc.type_aliases.ids.len
+					&& !markused_receiver_segment_in(callee, callee_last_dot, iface_receiver_segments) {
+					// The receiver of a dotted callee is an interface, an alias of
+					// one, or either of those once qualified by the calling module,
+					// only when such a name ends in its last segment. For any other
+					// receiver the tail below finds no interface and no implementer
+					// list, in whatever module the call is.
+					iface_tail_pending = false
 				}
-				if !iface_tail_done[iface_tail_key] {
-					iface_tail_done[iface_tail_key] = true
+				if iface_tail_pending {
 					mut iface_callee := callee
 					if normalized := interface_dispatch_dotted_name(callee, tc) {
 						iface_callee = normalized
@@ -1569,6 +1794,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('markused: suffix_hits:')
 		eprintln(suffix_hits.str())
 		eprintln('markused: total used: ${used.len}')
+	}
+	if !isnil(precollect) {
+		// `used` owns its keys; nothing else that outlives this pass names the
+		// collected call lists.
+		precollect.release()
 	}
 	if tc.verbose {
 		eprintln('  [ttime] mu bfs+tail        ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -1887,10 +2117,20 @@ fn markused_fn_decl_is_generic_template(node flat.Node, a &flat.FlatAst) bool {
 	return false
 }
 
-fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[string][]FnDeclInfo, name string, info FnDeclInfo) {
-	fn_decls[name] = info
+// add_fn_decl_info registers `info` under the key `name`. Every key gets a dense
+// number in registration order, shared by the records registered under it; the
+// reachability walk keeps its per-name state in arrays indexed by that number.
+// `key_exact` is fn_decl_key_is_exact_for_info for this key and declaration.
+fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[string][]FnDeclInfo, name string, info FnDeclInfo, key_exact bool) {
 	mut infos := fn_decl_lists[name] or { []FnDeclInfo{} }
-	infos << info
+	keyed := FnDeclInfo{
+		...info
+		key_id:    if infos.len == 0 { i32(fn_decls.len) } else { infos[0].key_id }
+		key_exact: key_exact
+		key_multi: infos.len > 0
+	}
+	fn_decls[name] = keyed
+	infos << keyed
 	fn_decl_lists[name] = infos
 }
 
@@ -1990,6 +2230,24 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 	}
 	lowered := markused_c_name(qname)
 	return lowered != qname && name == lowered
+}
+
+// markused_receiver_segment_in reports whether `segments` has the last dot
+// segment of the receiver of the dotted name `name`, whose last dot is at
+// `last_dot`: `Type` for `mod.Type.method`.
+@[direct_array_access]
+fn markused_receiver_segment_in(name string, last_dot int, segments map[string]bool) bool {
+	mut start := last_dot
+	for start > 0 && name[start - 1] != `.` {
+		start--
+	}
+	return unsafe { name.substr_unsafe(start, last_dot) } in segments
+}
+
+// markused_fn_decl_key_is_exact is fn_decl_key_is_exact_for_info for a
+// declaration whose qualified name and its C name are already at hand.
+fn markused_fn_decl_key_is_exact(name string, qname string, lowered_qname string) bool {
+	return name == qname || (lowered_qname != qname && name == lowered_qname)
 }
 
 // add_safe_decl_alias enqueues the qualified and C names of the declaration that
@@ -2155,12 +2413,22 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 	return uses_generics
 }
 
-fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
+// enqueue_initializer_ref_calls marks the functions that the initializer of the
+// constant or global `initializer_ref` calls, once per name. `ready` holds the
+// calls of the initializers that were already collected, by initializer node.
+fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, initializer_ref string, ready map[int][]string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
 	if initializer_ref in processed {
 		return
 	}
 	info := collector.const_decls[initializer_ref] or { return }
 	processed[initializer_ref] = true
+	if ready_calls := ready[int(info.expr_id)] {
+		for callee in ready_calls {
+			enqueue_initializer_callee(callee, info.module, fn_decls, fn_decl_lists, a, mut used, mut
+				queue)
+		}
+		return
+	}
 	calls.clear()
 	collector.collect_calls(a.node(info.expr_id), info.module, collector.imports(info.import_context), '', u32(0), mut calls)
 	for callee in calls {
@@ -2506,6 +2774,16 @@ struct FnDeclInfo {
 	// positional_params counts the declared params a call passes positionally;
 	// -1 when it was not computed with the declaration.
 	positional_params int = -1
+	// body_idx is the position of the declaration in the scan's body list, or -1
+	// for a record that no declaration scan built.
+	body_idx i32 = -1
+	// The fields below describe the key a declaration scan registered this record
+	// under (see add_fn_decl_info): the dense number of that key among the scan's
+	// keys, whether the key is the declaration's own qualified or C name, and
+	// whether an earlier declaration was registered under the same key.
+	key_id    i32
+	key_exact bool
+	key_multi bool
 }
 
 // StructDeclInfo stores struct decl info metadata used by markused.
@@ -2538,7 +2816,6 @@ mut:
 	import_contexts              []map[string]string
 	marked_roots                 []string
 	cached_header_enum_str_roots []u32
-	c_interface_roots            []string
 	auto_roots                   []string
 	body_ids                     []int
 	body_modules                 []string
@@ -2578,6 +2855,7 @@ pub fn (mut prepared PreparedMarkusedDecls) release() {
 }
 
 fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) &PreparedMarkusedDecls {
+	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
 	mut result := &PreparedMarkusedDecls{
 		fn_decls:             map[string]FnDeclInfo{}
 		fn_decl_lists:        map[string][]FnDeclInfo{}
@@ -2630,7 +2908,7 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+		if node.kind == .enum_decl && has_cached_headers {
 			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
@@ -2686,30 +2964,34 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 			module:            fn_decl_module
 			import_context:    fn_decl_import_context
 			positional_params: markused_positional_param_count(a, &node)
+			body_idx:          i32(result.body_ids.len - 1)
 		}
-		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
+		qname := qualify_fn(fn_decl_module, node.value)
+		lowered_name := markused_c_name(node.value)
+		lowered_qname := if qname != node.value { markused_c_name(qname) } else { lowered_name }
+		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info,
+			markused_fn_decl_key_is_exact(node.value, qname, lowered_qname))
 		if can_suffix_match {
 			add_candidate_suffix(mut result.fn_name_suffixes, node.value)
 		}
-		lowered_name := markused_c_name(node.value)
 		if lowered_name != node.value {
-			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info)
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info,
+				markused_fn_decl_key_is_exact(lowered_name, qname, lowered_qname))
 			if can_suffix_match {
 				add_candidate_suffix(mut result.fn_name_suffixes, lowered_name)
 			}
 		}
-		qname := qualify_fn(fn_decl_module, node.value)
 		if markused_fn_has_attribute(a, node_idx, 'markused') {
 			result.marked_roots << qname
 		}
 		if qname != node.value {
-			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info)
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info, true)
 			if can_suffix_match {
 				add_candidate_suffix(mut result.fn_name_suffixes, qname)
 			}
-			lowered_qname := markused_c_name(qname)
 			if lowered_qname != qname {
-				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info)
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info,
+					true)
 				if can_suffix_match {
 					add_candidate_suffix(mut result.fn_name_suffixes, lowered_qname)
 				}
@@ -2724,16 +3006,6 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
 			add_suffix_candidate(mut result.suffix_map, qname.all_after_last('.'), qname)
-		}
-		if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
-			result.c_interface_roots << node.value
-			if qname != node.value {
-				result.c_interface_roots << qname
-			}
-			lowered_qname := markused_c_name(qname)
-			if lowered_qname != qname {
-				result.c_interface_roots << lowered_qname
-			}
 		}
 	}
 	reachable_modules := markused_reachable_modules(a, tc)
@@ -2800,6 +3072,11 @@ struct CallCollector {
 	has_local_ident_visibility       bool
 	detect_generics                  bool
 	body_checker_edges_authoritative bool
+	// The last dot segment of every type alias name, for the collector that
+	// markused builds over a checked program (see markused_alias_name_suffixes).
+	alias_suffixes       map[string]bool
+	alias_suffix_count   int
+	alias_suffixes_built bool
 }
 
 fn (c &CallCollector) imports(context int) map[string]string {
@@ -5278,25 +5555,62 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 }
 
 fn enqueue_function_value_selectors_with_entry_main(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
-	for file_idx in 0 .. a.nodes.len {
-		// Only file nodes matter; read the others in place instead of copying them.
-		file_node := unsafe { &a.nodes[file_idx] }
-		if file_node.kind != .file {
+	// The parser's index lists the file nodes it made, the only ones with
+	// children. It replaces the scan of every node up to the last of them when
+	// it names them in the order that scan finds them; later stages append theirs.
+	mut scan_start := 0
+	if markused_file_index_is_ascending(a) {
+		for file_idx in a.file_node_ids {
+			enqueue_function_value_selectors_in_file(a, collector, fn_decls, int(file_idx), mut
+				used, mut queue)
+		}
+		scan_start = int(a.file_node_ids.last()) + 1
+	}
+	for file_idx in scan_start .. a.nodes.len {
+		enqueue_function_value_selectors_in_file(a, collector, fn_decls, file_idx, mut used, mut
+			queue)
+	}
+}
+
+// enqueue_function_value_selectors_in_file roots the function values that the
+// declarations of the file node `file_idx` name outside function bodies. Any
+// other node is ignored.
+@[direct_array_access]
+fn enqueue_function_value_selectors_in_file(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, file_idx int, mut used map[string]bool, mut queue []string) {
+	// Only file nodes matter; read the others in place instead of copying them.
+	file_node := unsafe { &a.nodes[file_idx] }
+	if file_node.kind != .file {
+		return
+	}
+	for i in 0 .. file_node.children_count {
+		child_id := a.child(file_node, i)
+		child := a.node(child_id)
+		if child.kind == .fn_decl {
 			continue
 		}
-		for i in 0 .. file_node.children_count {
-			child_id := a.child(file_node, i)
-			child := a.node(child_id)
-			if child.kind == .fn_decl {
-				continue
-			}
-			if file_idx >= a.user_code_start && int(child_id) >= a.user_code_start
-				&& markused_is_top_level_stmt(child) {
-				continue
-			}
-			enqueue_function_value_selectors_in_node(a, collector, fn_decls, child_id, mut used, mut queue)
+		if file_idx >= a.user_code_start && int(child_id) >= a.user_code_start
+			&& markused_is_top_level_stmt(child) {
+			continue
 		}
+		enqueue_function_value_selectors_in_node(a, collector, fn_decls, child_id, mut used, mut queue)
 	}
+}
+
+// markused_file_index_is_ascending reports whether a.file_node_ids is complete
+// and lists valid node indexes in strictly increasing order.
+@[direct_array_access]
+fn markused_file_index_is_ascending(a &flat.FlatAst) bool {
+	if a.file_node_ids.len == 0 || a.file_index_incomplete {
+		return false
+	}
+	mut previous := -1
+	for id in a.file_node_ids {
+		if int(id) <= previous || int(id) >= a.nodes.len {
+			return false
+		}
+		previous = int(id)
+	}
+	return true
 }
 
 fn enqueue_function_value_selectors_in_node(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, id flat.NodeId, mut used map[string]bool, mut queue []string) {
@@ -5554,11 +5868,121 @@ fn markused_qualify_source_type(mod string, name_id u32) u32 {
 	return flat.source_type_composition_two(.qualified, flat.source_type_id(mod), name_id)
 }
 
+// markused_name_shape_last_dot classifies a spelling the way the source type
+// syntax parser does before it reads a name: it returns the index of the last dot
+// of a dotted name whose segments all start with a letter or an underscore, -1 for
+// an identifier without a dot, -3 for one that starts with a digit, and -2 for any
+// other spelling, which only the general parser can split.
+@[direct_array_access]
+fn markused_name_shape_last_dot(raw string) int {
+	if raw.len == 0 {
+		return -2
+	}
+	mut segment_start := true
+	mut digit_start := false
+	mut last_dot := -1
+	for i in 0 .. raw.len {
+		ch := raw[i]
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_` {
+			segment_start = false
+		} else if ch >= `0` && ch <= `9` {
+			if segment_start {
+				digit_start = true
+			}
+			segment_start = false
+		} else if ch == `.` {
+			if segment_start {
+				return -2
+			}
+			last_dot = i
+			segment_start = true
+		} else {
+			return -2
+		}
+	}
+	if last_dot < 0 {
+		return if digit_start { -3 } else { -1 }
+	}
+	if segment_start || digit_start {
+		return -2
+	}
+	return last_dot
+}
+
+// markused_alias_name_suffixes returns the text after the last dot of every type
+// alias name. A spelling names an alias, bare or qualified by a module, only when
+// it ends in one of them.
+fn markused_alias_name_suffixes(tc &types.TypeChecker) map[string]bool {
+	mut suffixes := map[string]bool{}
+	for alias_id, _ in tc.type_aliases.ids {
+		suffixes[flat.source_type_name(alias_id).all_after_last('.')] = true
+	}
+	return suffixes
+}
+
+// alias_suffix_filter_ready reports whether alias_suffixes covers the checker's
+// alias table as it is now.
+@[inline]
+fn (c &CallCollector) alias_suffix_filter_ready() bool {
+	return c.alias_suffixes_built && c.alias_suffix_count == c.tc.type_aliases.ids.len
+}
+
+// spelling_ends_like_alias reports whether the spelling `id`, or any spelling
+// that ends in it after a dot, can be an alias name.
+fn (c &CallCollector) spelling_ends_like_alias(id u32) bool {
+	text := flat.source_type_name(id)
+	dot := text.last_index_u8(`.`)
+	if dot < 0 {
+		return text in c.alias_suffixes
+	}
+	return unsafe { text.substr_unsafe(dot + 1, text.len) } in c.alias_suffixes
+}
+
+// callee_may_name_alias reports whether one of the spellings that
+// alias_type_from_callee probes for a call's callee can be an alias name. Each of
+// them is the callee's name, bare or behind its base, an imported module or the
+// current module; they all end in the last segment of that name.
+fn (c &CallCollector) callee_may_name_alias(callee &flat.Node, imports map[string]string) bool {
+	name := callee.value
+	last_dot := markused_name_shape_last_dot(name)
+	if last_dot == -2 {
+		return true
+	}
+	if callee.kind == .selector {
+		// `base.name` and `module.name` are split by the name parser only when
+		// the base and the module are names themselves.
+		if last_dot == -3 || callee.children_count == 0 {
+			return true
+		}
+		base := c.a.child_node(callee, 0)
+		if base.kind != .ident || markused_name_shape_last_dot(base.value) in [-2, -3] {
+			return true
+		}
+		if imported := imports[base.value] {
+			if markused_name_shape_last_dot(imported) in [-2, -3] {
+				return true
+			}
+		}
+	}
+	if last_dot < 0 {
+		return name in c.alias_suffixes
+	}
+	return unsafe { name.substr_unsafe(last_dot + 1, name.len) } in c.alias_suffixes
+}
+
 // receiver_info supports receiver info handling for markused.
 fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, u32) {
 	mut receiver_struct := u32(0)
 	if node.value.contains('.') {
-		receiver_struct = flat.source_type_syntax(node.source_value_id()).qualifier()
+		// The qualifier of a dotted name is the spelling before its last dot.
+		// Interning it directly keeps every `Type.method` name, and the syntax
+		// record of each, out of the process-wide spelling table.
+		last_dot := markused_name_shape_last_dot(node.value)
+		receiver_struct = if last_dot > 0 {
+			flat.source_type_id(unsafe { node.value.substr_unsafe(0, last_dot) })
+		} else {
+			flat.source_type_syntax(node.source_value_id()).qualifier()
+		}
 	}
 	for pi in 0 .. node.children_count {
 		pc := a.child_node(node, pi)
@@ -5752,10 +6176,28 @@ fn (c &CallCollector) collect_interface_boxed_return_methods(node &flat.Node, mu
 	}
 }
 
+// ModuleCalls is the set of callee names already resolved for one calling module:
+// a declared name by its key number (see add_fn_decl_info), any other by its text.
 struct ModuleCalls {
 mut:
-	names map[string]bool
+	names    map[string]bool
+	key_bits []u64
 }
+
+@[direct_array_access; inline]
+fn (calls &ModuleCalls) has_key(key_idx int) bool {
+	return calls.key_bits[key_idx >> 6] & (u64(1) << u32(key_idx & 63)) != 0
+}
+
+@[direct_array_access; inline]
+fn (mut calls ModuleCalls) add_key(key_idx int) {
+	calls.key_bits[key_idx >> 6] |= u64(1) << u32(key_idx & 63)
+}
+
+// Per-key state of the reachability walk (see mark_used_with_test_files).
+const markused_key_settled = u8(1)
+const markused_key_alias_done = u8(2)
+const markused_key_iface_tail_done = u8(4)
 
 // The declaration scan already indexes the raw, qualified and C spellings
 // accepted by library-body convergence. Probe reached names instead of
@@ -5784,7 +6226,10 @@ fn unchecked_used_library_nodes(a &flat.FlatAst, tc &types.TypeChecker, declarat
 // fn_decl body (see precollect_body_calls).
 struct BodyCalls {
 mut:
-	calls         []string
+	calls []string
+	// call_keys[i] is the key number + 1 of calls[i] when it names a declaration
+	// (see add_fn_decl_info) and -1 when it does not. Empty when not computed.
+	call_keys     []i32
 	refs          []string
 	uses_generics bool
 }
@@ -5845,6 +6290,14 @@ fn (c &CallCollector) collect_body_with_generic_detection(node &flat.Node, cur_m
 	}
 	result.uses_generics = scoped.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, c.body_checker_edges_authoritative, detect_generics, result.uses_generics, mut result.calls, mut result.refs, true)
 	c.collect_interface_boxed_return_methods(node, mut result.calls)
+	if !c.detect_generics {
+		// The walk without generic detection keeps its per-name state by key
+		// number. Resolve the names here, where bodies are collected in parallel.
+		result.call_keys = []i32{cap: result.calls.len}
+		for call in result.calls {
+			result.call_keys << if info := c.fn_decls[call] { info.key_id + 1 } else { i32(-1) }
+		}
+	}
 	return result
 }
 
@@ -5884,6 +6337,9 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		auto_str_skipped_fields:          c.auto_str_skipped_fields
 		detect_generics:                  c.detect_generics
 		body_checker_edges_authoritative: c.body_checker_edges_authoritative
+		alias_suffixes:                   c.alias_suffixes
+		alias_suffix_count:               c.alias_suffix_count
+		alias_suffixes_built:             c.alias_suffixes_built
 	}
 }
 
@@ -6109,6 +6565,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 									if !has_exact_selector_call && base.kind == .ident
 										&& base.value_text() in local_values && !(receiver_name.len > 0
 										&& base.value_text() == receiver_name) {
+										has_exact_selector_call = true
+									}
+									if !has_exact_selector_call
+										&& c.selector_is_function_field(callee, cur_module, imports, local_values, local_types) {
 										has_exact_selector_call = true
 									}
 									if !has_exact_selector_call {
@@ -8218,6 +8678,12 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 
 fn (c &CallCollector) alias_type_from_callee(callee &flat.Node, cur_module string, imports map[string]string) ?types.Type {
 	if c.tc.type_aliases.ids.len == 0 { return none }
+	// Nearly every callee is a function, not an alias used as a conversion. Rule
+	// those out by their text: probing the candidates below interns each of them.
+	if callee.kind in [.ident, .selector] && c.alias_suffix_filter_ready()
+		&& !c.callee_may_name_alias(callee, imports) {
+		return none
+	}
 	if callee.kind == .ident && callee.source_value_id() != 0 {
 		return c.alias_type_from_name(callee.source_value_id(), cur_module, imports)
 	}
@@ -8253,10 +8719,20 @@ fn (c &CallCollector) alias_type_name_from_id(name u32, cur_module string, impor
 		return name
 	}
 	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
+		// `module.spelling` ends in the last segment of the spelling. Compose it,
+		// which interns it, only when an alias name ends that way.
+		filter := c.alias_suffix_filter_ready()
+		resolved_possible := !filter || c.spelling_ends_like_alias(resolved)
+		name_possible := name != resolved && (!filter || c.spelling_ends_like_alias(name))
+		if !resolved_possible && !name_possible {
+			return none
+		}
 		module_id := flat.source_type_id(cur_module)
-		qualified := flat.source_type_composition_two(.qualified, module_id, resolved)
-		if c.tc.type_aliases.contains(qualified) { return qualified }
-		if name != resolved {
+		if resolved_possible {
+			qualified := flat.source_type_composition_two(.qualified, module_id, resolved)
+			if c.tc.type_aliases.contains(qualified) { return qualified }
+		}
+		if name_possible {
 			qualified_name := flat.source_type_composition_two(.qualified, module_id, name)
 			if c.tc.type_aliases.contains(qualified_name) {
 				return qualified_name
@@ -9875,6 +10351,28 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 		c.add_fn_value_candidates(name, cur_module, imports, mut calls)
 		c.add_const_alias_candidates(name, cur_module, imports, mut calls)
 	}
+}
+
+// A callable field is an indirect call, not a same-named global or method.
+// Its possible targets are retained where function values are assigned.
+fn (c &CallCollector) selector_is_function_field(node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) bool {
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	base_id := c.a.child(node, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	receiver := c.receiver_type_name(base_id, cur_module, imports, local_values, local_types)
+	info := c.struct_decl_info_with_imports(receiver, cur_module, imports) or { return false }
+	decl := c.a.node(info.node_id)
+	name := markused_qualify_source_type(info.module, decl.source_value_id())
+	for field in c.tc.structs[name] or { []types.StructField{} } {
+		if field.name == node.value {
+			return types.unalias_type(field.typ) is types.FnType
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) selector_is_enum_value(node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool) bool {

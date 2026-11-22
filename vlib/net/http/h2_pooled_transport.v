@@ -62,7 +62,9 @@ const h2_pooled_write_stall_limit = 30 * time.second
 // model with both backends.
 //
 // All actual TLS-library calls (read()/write() on the wrapped conn) are
-// serialized behind io_mu. On the write side, waiting for socket readiness
+// serialized behind io_mu. io_admission reserves the next turn for a waiting
+// writer or closer before the reader can start another timed read.
+// On the write side, waiting for socket readiness
 // (wait_for_write — a raw select() on the socket handle that never touches
 // the TLS context) stays OUTSIDE the lock, so a writer blocked on backpressure
 // never holds up the reader. The read side has no equivalent outer wait (see
@@ -87,9 +89,10 @@ const h2_pooled_write_stall_limit = 30 * time.second
 @[heap]
 struct H2PooledTransport {
 mut:
-	conn   &ssl.SSLConn = unsafe { nil }
-	io_mu  &sync.Mutex  = sync.new_mutex()
-	closed bool
+	conn         &ssl.SSLConn = unsafe { nil }
+	io_mu        &sync.Mutex  = sync.new_mutex()
+	io_admission &sync.Mutex  = sync.new_mutex()
+	closed       bool
 }
 
 // new_h2_pooled_transport wraps an already-dialled, ALPN-negotiated (`h2`)
@@ -112,6 +115,17 @@ fn new_h2_pooled_transport(mut conn ssl.SSLConn) &H2PooledTransport {
 	return &H2PooledTransport{
 		conn: conn
 	}
+}
+
+// lock_io lets a waiting writer or closer acquire io_mu before the reader
+// starts another timed read. Holding only io_mu would let an unfair mutex
+// repeatedly admit the reader, starving the first request until the peer's
+// preface read timeout. Admission is released before touching TLS, so another
+// caller can reserve the next turn while the current operation is blocked.
+fn (mut t H2PooledTransport) lock_io() {
+	t.io_admission.lock()
+	t.io_mu.lock()
+	t.io_admission.unlock()
 }
 
 // read implements H2Transport. Called only by H2MuxConn's single background
@@ -137,7 +151,7 @@ fn new_h2_pooled_transport(mut conn ssl.SSLConn) &H2PooledTransport {
 // WANT_READ wait (h2_pooled_io_timeout) when there is genuinely nothing
 // buffered.
 fn (mut t H2PooledTransport) read(mut buf []u8) !int {
-	t.io_mu.lock()
+	t.lock_io()
 	if t.closed {
 		t.io_mu.unlock()
 		return error('h2 pooled transport: closed')
@@ -182,7 +196,7 @@ fn (mut t H2PooledTransport) write(buf []u8) !int {
 				// Socket not writable yet; nothing has been handed to the TLS
 				// stack, so keep waiting (bounded) unless the transport was
 				// closed under us.
-				t.io_mu.lock()
+				t.lock_io()
 				is_closed := t.closed
 				t.io_mu.unlock()
 				if is_closed {
@@ -195,7 +209,7 @@ fn (mut t H2PooledTransport) write(buf []u8) !int {
 			}
 			return err
 		}
-		t.io_mu.lock()
+		t.lock_io()
 		if t.closed {
 			t.io_mu.unlock()
 			return error('h2 pooled transport: closed')
@@ -227,7 +241,7 @@ fn (mut t H2PooledTransport) write(buf []u8) !int {
 // wait_for_write select() (net.shutdown alone does not wake select() on
 // Windows; closing the handle does).
 fn (mut t H2PooledTransport) close() {
-	t.io_mu.lock()
+	t.lock_io()
 	if t.closed {
 		t.io_mu.unlock()
 		return

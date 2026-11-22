@@ -1,11 +1,21 @@
-// This test uses the script cmd/tools/check_retry.vsh
 import os
 import log
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
+const retry_exe = os.executable()
+const retry_probe = 'vretry-argv-probe'
+const failing_args = ['too', 'many', 'arguments']
 
 const is_ci = os.getenv('CI') != ''
+
+fn testsuite_begin() {
+	if os.args.len > 1 && os.args[1] == retry_probe {
+		args := os.args[2..]
+		println(args)
+		exit(if args == failing_args { 1 } else { 0 })
+	}
+}
 
 fn dump_on_ci[T](x T) {
 	if is_ci {
@@ -27,35 +37,30 @@ fn test_retry() {
 	defer {
 		log.warn('... done')
 	}
-	tpath := os.join_path(os.vtmp_dir(), 'vretry_test')
-	os.rmdir_all(tpath) or {}
-	os.mkdir_all(tpath)!
-	defer {
-		os.rmdir_all(tpath) or {}
-	}
-	os.chdir(vroot)!
-	fail_cmd := '${vexe} run cmd/tools/check_retry.vsh too many arguments'
-	if is_ci {
-		// Skip longer running test on local runs.
-		res := run('${vexe} retry ${fail_cmd}')
-		assert res.exit_code != 0
-		assert res.output.contains('error: exceeded maximum number of retries')
-	}
+	fail_args := [retry_exe, retry_probe, ...failing_args]
+	failure_output := failing_args.str()
+	// Leave the retry limit at its default while removing the wait between attempts.
+	default_limit := os.exec([vexe, 'retry', '-d', '0', '--', ...fail_args])
+	assert default_limit.exit_code == 1, default_limit.output
+	assert default_limit.output.contains('error: exceeded maximum number of retries (10)!'), default_limit.output
+	assert default_limit.output.count(failure_output) == 10, default_limit.output
 
-	mut res := run('${vexe} retry -d 0.2 -r 3 ${fail_cmd}')
+	mut res := os.exec([vexe, 'retry', '-d', '0.2', '-r', '3', '--', ...fail_args])
 	dump_on_ci(res)
-	assert res.exit_code != 0
-	assert res.output.contains('error: exceeded maximum number of retries (3)!')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('error: exceeded maximum number of retries (3)!'), res.output
+	assert res.output.count(failure_output) == 3, res.output
 
-	pass_cmd := '${vexe} run cmd/tools/check_retry.vsh'
-	res = run('${vexe} retry ${pass_cmd}')
+	// Without `--`; the command is passed as separate arguments. One pre-quoted
+	// string would be quoted again on Windows and reach the shell as `\"path\"`.
+	res = os.exec([vexe, 'retry', retry_exe, retry_probe])
 	dump_on_ci(res)
-	assert res.exit_code == 0
-	assert res.output == run(pass_cmd).output
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '[]', res.output
 
 	// Include flags on the cmd as well.
-	pass_cmd_with_flags := '${vexe} run cmd/tools/check_retry.vsh --list -x -- -b js arguments'
-	res = run('${vexe} retry -r 3 -- ${pass_cmd_with_flags}')
+	res = os.exec([vexe, 'retry', '-r', '3', '--', retry_exe, retry_probe, '--list', '-x', '--',
+		'-b', 'js', 'arguments'])
 	dump_on_ci(res)
 	assert res.exit_code == 0
 	output_trimmed := res.output.trim_space()
@@ -90,15 +95,11 @@ fn test_retry_keeps_arguments_that_contain_spaces_together() {
 // the single-quoted form has to keep the backslash literal for the same reason.
 fn test_retry_keeps_a_trailing_backslash_argument_separate() {
 	log.use_stdout()
-	os.chdir(vroot)!
-	script := os.join_path('cmd', 'tools', 'check_retry.vsh')
-	trailing := 'a\\'
-	res := run('${os.quoted_path(vexe)} retry -r 1 -- ${os.quoted_path(vexe)} run ${os.quoted_path(script)} ${os.quoted_path(trailing)} b')
+	trailing := 'with space\\'
+	res := os.exec([vexe, 'retry', '-r', '1', '--', retry_exe, retry_probe, trailing, 'b'])
 	dump_on_ci(res)
 	assert res.exit_code == 0, res.output
-	// `check_retry.vsh` prints its arguments, so `b` staying the last element is what
-	// says it was not merged into the argument before it.
-	assert res.output.trim_space().ends_with("'b']"), res.output
+	assert res.output.trim_space() == [trailing, 'b'].str(), res.output
 }
 
 // A command can also be given as shell syntax in one argument, which is the form the
@@ -165,7 +166,7 @@ fn test_retry_binary_run_directly_keeps_its_first_argument() {
 	dump_on_ci(first_dashdash)
 	assert first_dashdash.exit_code == 0, first_dashdash.output
 
-	limit := os.exec([binary, '-r', '2', '--', 'vretry-command-that-does-not-exist'])
+	limit := os.exec([binary, '-r', '2', '-d', '0', '--', 'vretry-command-that-does-not-exist'])
 	dump_on_ci(limit)
 	assert limit.exit_code != 0
 	assert limit.output.contains('exceeded maximum number of retries (2)!'), limit.output

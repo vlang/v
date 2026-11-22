@@ -10,14 +10,7 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 // intermittently fail with "no v.mod found" for a file that was demonstrably there.
 const test_path = os.join_path(os.temp_dir(), 'vpm_why_test_${rand.ulid()}')
 
-// Not `vexe`: that name is already declared by the other test files in this
-// directory, and a file that only works when compiled alongside them is a file that
-// stops working when someone runs it on its own.
-//
-// Not `os.quoted_path(@VEXE)` either. cmd_ok_args passes its array straight to
-// os.exec, so a path carrying quotes reaches CreateProcess with the quotes still
-// attached and comes back as "Access is denied".
-const why_exe = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
+const why_exe = os.executable()
 
 // The fixtures are plain directories holding a v.mod. Nothing installs them and
 // nothing runs git, because `v why` only reads v.mod files. VMODULES is redirected
@@ -119,13 +112,14 @@ fn tree(lines ...string) string {
 }
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.setenv('VEXE', @VEXE, true)
-	// Compile once: VMODULES changes between fixtures, so using the launcher
-	// would build another identical tool for each isolated module store.
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', why_exe,
-		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 	// With CI set, vpm logs to stderr instead of to its log file, and os.exec
 	// returns stderr together with stdout, which the exact comparisons below cannot
 	// tell apart from the tree.

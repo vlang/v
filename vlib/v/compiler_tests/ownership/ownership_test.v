@@ -2915,13 +2915,11 @@ fn main() {
 	assert arr.len == 0
 }
 '
-		cloned := run_ownership_check_c_only(v3_bin, name, code)
-		assert cloned.exit_code == 0, cloned.output
+		compiled := run_ownership_check(v3_bin, name, code)
+		assert compiled.exit_code == 0, compiled.output
 		cloned_c_path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
 		cloned_c := os.read_file(cloned_c_path) or { panic(err) }
 		assert cloned_c.contains('sink(string__clone(')
-		compiled := run_ownership_check(v3_bin, name, code)
-		assert compiled.exit_code == 0, compiled.output
 		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
 		run := os.exec([binary])
 		assert run.exit_code == 0, run.output

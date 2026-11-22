@@ -2,6 +2,22 @@ import os
 import v.cmdexec
 import v.pref
 
+const build_compiler_name = 'v compiler'
+
+fn testsuite_begin() {
+	capture := os.getenv('VBUILD_CAPTURE')
+	if capture == '' || os.file_name(os.executable()) != build_compiler_name {
+		return
+	}
+	args := os.args[1..]
+	if '-prod' in args && os.getenv('VFLAGS') == '-cc tcc' && '-cc' !in args {
+		exit(88)
+	}
+	name := args[args.index('-o') + 1]
+	os.write_file(capture + name, args.join('\n')) or { panic(err) }
+	exit(0)
+}
+
 fn test_build_vbinaries_selects_a_production_compiler_and_keeps_literal_paths() ! {
 	$if windows {
 		return
@@ -13,17 +29,8 @@ fn test_build_vbinaries_selects_a_production_compiler_and_keeps_literal_paths() 
 	built := cmdexec.run(@VEXE, ['-o', tool,
 		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vbuild-vbinaries.v')])
 	assert built.exit_code == 0, built.output
-	source := os.join_path(root, 'compiler.v')
-	os.write_file(source, "import os
-fn main() {
-	args := os.args[1..]
-	if '-prod' in args && os.getenv('VFLAGS') == '-cc tcc' && '-cc' !in args { exit(88) }
-	name := args[args.index('-o') + 1]
-	os.write_file(os.getenv('VBUILD_CAPTURE') + name, args.join('\\n')) or { panic(err) }
-}")!
-	compiler := os.join_path(root, 'v compiler')
-	compiled := cmdexec.run(@VEXE, ['-o', compiler, source])
-	assert compiled.exit_code == 0, compiled.output
+	compiler := os.join_path(root, build_compiler_name)
+	os.cp(os.executable(), compiler)!
 	for index, flags in ['-cc tcc', '-cc gcc', '-cc tcc -cc gcc'] {
 		capture := os.join_path(root, 'capture_${index}_')
 		mut environment := os.environ()

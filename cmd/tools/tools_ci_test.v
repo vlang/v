@@ -119,7 +119,7 @@ fn tools_ci_expected_commands(job string, compiler string, suite string, shard i
 	if job == 'tools-openbsd' {
 		commands << 'ulimit -d 6291456'
 	}
-	commands << ['gmake', 'v -showcc -o v cmd/v', 'v symlink', 'v doctor']
+	commands << ['gmake', 'v self -prod -cc clang -parallel-cc -showcc', 'v symlink', 'v doctor']
 	if suite == 'default' && shard == 0 {
 		commands << ['v fmt -verify cmd/', 'v -silent -N -W -check build-tools']
 	}
@@ -146,7 +146,9 @@ fn tools_ci_create_fixtures(root string, sh string) ! {
 	tools_ci_write_executable(os.join_path(root, 'probe'), shebang + tools_ci_probe)!
 	for command in ['pkg', 'pkg_add', 'hostname', 'uname', 'git', 'gmake', 'v'] {
 		path := os.join_path(if command == 'v' { root } else { bin_dir }, command)
-		tools_ci_write_executable(path, shebang + 'exec "$CI_TEST_PROBE" ${command} "$@"\n')!
+		// The probe is inlined rather than exec'd, so each command starts one
+		// shell instead of two; over a thousand workloads add up.
+		tools_ci_write_executable(path, shebang + 'set -- ${command} "$@"\n' + tools_ci_probe)!
 	}
 	tools_ci_write_executable(os.join_path(bin_dir, 'sudo'), shebang + 'exec "$@"\n')!
 }

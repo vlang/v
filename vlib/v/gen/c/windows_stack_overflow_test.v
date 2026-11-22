@@ -4,6 +4,15 @@ import os
 import v.modulecache
 import v.pref
 
+fn testsuite_begin() {
+	// This file checks Windows C with the MinGW gcc, which rejects the MSVC flavor
+	// (intrinsics, CRT linkage) that `-cc msvc`, the VFLAGS of the MSVC CI jobs,
+	// writes; let these generations use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 const mock_windows_stack_overflow_api = r'
 #define WINAPI
 #define CALLBACK

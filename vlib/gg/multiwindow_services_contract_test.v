@@ -22,32 +22,32 @@ fn test_multiwindow_service_public_types_are_available_without_opt_in() {
 
 fn test_multiwindow_service_enabled_and_disabled_facades_compile_same_consumer() {
 	fixture := os.join_path(@DIR, 'testdata', 'multiwindow_service_consumer.v')
-	vlib_dir := os.dir(@DIR)
+	vlib_path := os.dir(@DIR) + '|@vlib|@vmodules'
+	dir := os.join_path(os.vtmp_dir(), 'gg_service_contract_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
 	for enabled in [false, true] {
 		mode := if enabled { 'enabled' } else { 'disabled' }
-		c_output := os.join_path(os.temp_dir(), 'gg_multiwindow_service_${mode}.c')
-		binary := os.join_path(os.temp_dir(), 'gg_multiwindow_service_${mode}')
-		defer {
-			os.rm(c_output) or {}
-			os.rm(binary) or {}
-		}
-		define := if enabled { ' -d gg_multiwindow' } else { '' }
-		c_cmd := '${os.quoted_path(@VEXE)} -gc none${define} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_output)} ${os.quoted_path(fixture)}'
-		c_result := os.exec([@VEXE, '-gc', 'none', ...(os.split_args(define) or { panic(err) }),
-			'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_output, '${fixture}'])
-		assert c_result.exit_code == 0, '${mode} service facade failed structural compilation:\n${c_result.output}'
+		output := os.join_path(dir, mode)
+		options := if enabled { ['-d', 'gg_multiwindow'] } else { ['-b', 'c'] }
+		compiler := [@VEXE, '-gc', 'none', '-path', vlib_path, ...options]
+		link_result := os.exec([...compiler, '-o', output, fixture])
+		assert link_result.exit_code == 0, '${mode} service facade failed link:\n${link_result.output}'
 		if !enabled {
-			generated := os.read_file(c_output) or { panic(err) }
+			c_output := output + '.c'
+			if !os.is_file(c_output) {
+				// Older compilers need an explicit C output path to retain the source.
+				c_result := os.exec([...compiler, '-o', c_output, fixture])
+				assert c_result.exit_code == 0, 'disabled service facade failed structural compilation:\n${c_result.output}'
+			}
+			generated := os.read_file(c_output)!
 			for forbidden in ['x.multiwindow', 'multiwindow__App', 'multiwindow__Backend',
 				'v_multiwindow_', 'x11_backend.c.v', 'wayland_backend.c.v', 'appkit_backend.c.v',
 				'win32_backend.c.v'] {
 				assert !generated.contains(forbidden), 'disabled service facade leaked `${forbidden}` into generated C'
 			}
 		}
-		link_cmd := '${os.quoted_path(@VEXE)} -gc none${define} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(binary)} ${os.quoted_path(fixture)}'
-		link_result := os.exec([@VEXE, '-gc', 'none', ...(os.split_args(define) or { panic(err) }),
-			'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', binary, '${fixture}'])
-		assert link_result.exit_code == 0, '${mode} service facade failed link:\n${link_result.output}'
+		binary := output + $if windows { '.exe' } $else { '' }
 		run_result := os.exec([binary])
 		assert run_result.exit_code == 0, '${mode} service facade failed run:\n${run_result.output}'
 	}

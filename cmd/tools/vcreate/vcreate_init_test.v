@@ -20,12 +20,6 @@ fn testsuite_end() {
 }
 
 fn init_and_check() ! {
-	os.chdir(test_path)!
-
-	// Keep track of the last modified time of the main file to ensure it is not modified if it already exists.
-	main_exists := os.exists('main.v')
-	main_last_modified := if main_exists { os.file_last_mod_unix('main.v') } else { 0 }
-
 	// Initialize project.
 	os.exec_or_exit([os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
@@ -35,20 +29,13 @@ fn init_and_check() ! {
 	// Without `--agents-md`, no `AGENTS.md` is written.
 	assert !os.exists('AGENTS.md')
 
-	x := os.exec_or_exit([@VEXE, 'run', '.'])
-	assert x.output.trim_space() == 'Hello World!'
-
-	if main_exists {
-		assert main_last_modified == os.file_last_mod_unix('main.v')
-	} else {
-		assert os.read_file('main.v')! == [
-			'module main\n',
-			'fn main() {',
-			"	println('Hello World!')",
-			'}',
-			'',
-		].join_lines()
-	}
+	assert os.read_file('main.v')! == [
+		'module main\n',
+		'fn main() {',
+		"	println('Hello World!')",
+		'}',
+		'',
+	].join_lines()
 
 	assert os.read_file('v.mod')! == [
 		'Module {',
@@ -143,6 +130,9 @@ fn prepare_test_path() ! {
 fn test_v_init() {
 	prepare_test_path()!
 	init_and_check()!
+	// Both init variants check the same generated source. Run it once.
+	result := os.exec_or_exit([@VEXE, 'run', '.'])
+	assert result.output.trim_space() == 'Hello World!'
 }
 
 fn test_v_init_in_git_dir() {

@@ -84,10 +84,16 @@ fn test_mmap_header_ownership_holds_for_a_cached_header_of_the_whole_module() {
 	]
 	assert g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
 	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '<poll.h>')
+	os_poll_h := '"/vroot/vlib/os/fd_poll.h"'
+	a.cached_header_module_sources['/cache/os.vh'] << '/vroot/vlib/os/fd.c.v'
+	assert g.core_native_header_is_redeclared('/cache/os.vh', os_poll_h)
+	assert !g.core_native_header_is_redeclared('/cache/other.vh', os_poll_h)
+	assert !g.core_native_header_is_redeclared('/project/os/fd.c.v', os_poll_h)
 	// The SDK modes keep every include of a cached header too.
 	g.no_builtin = true
 	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
 	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', os_poll_h)
 	g.no_builtin = false
 	g.output_cross_c = true
 	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')

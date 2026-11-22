@@ -23,6 +23,8 @@ pub mut:
 	closed             bool
 	close_type         CloseTagType = .in_name
 mut:
+	is_element_node       bool
+	is_text_node          bool
 	text_content          string
 	content_is_inner_html bool
 }
@@ -37,10 +39,73 @@ fn (mut tag Tag) add_child(t &Tag) int {
 	return tag.children.len
 }
 
+fn (tag &Tag) is_synthetic_text() bool {
+	return tag.is_text_node || (tag.name == 'text' && !tag.is_element_node)
+}
+
+struct TagWalkFrame {
+	tag &Tag
+mut:
+	next_child int
+}
+
+struct TagWalker {
+mut:
+	frames []TagWalkFrame
+	active map[&Tag]bool
+}
+
+fn new_tag_walker(root &Tag) TagWalker {
+	mut active := map[&Tag]bool{}
+	active[root] = true
+	return TagWalker{
+		frames: [TagWalkFrame{
+			tag: root
+		}]
+		active: active
+	}
+}
+
+fn (mut walker TagWalker) next() ?&Tag {
+	for walker.frames.len > 0 {
+		frame_index := walker.frames.len - 1
+		if walker.frames[frame_index].next_child >= walker.frames[frame_index].tag.children.len {
+			finished := walker.frames[frame_index].tag
+			walker.active.delete(finished)
+			_ = walker.frames.pop()
+			continue
+		}
+		child := walker.frames[frame_index].tag.children[walker.frames[frame_index].next_child]
+		walker.frames[frame_index].next_child++
+		if child in walker.active {
+			continue
+		}
+		walker.active[child] = true
+		walker.frames << TagWalkFrame{
+			tag: child
+		}
+		return child
+	}
+	return none
+}
+
+fn (mut walker TagWalker) skip_current_children() {
+	if walker.frames.len == 0 {
+		return
+	}
+	frame_index := walker.frames.len - 1
+	walker.frames[frame_index].next_child = walker.frames[frame_index].tag.children.len
+}
+
+struct TagSerializationEvent {
+	tag        &Tag
+	is_closing bool
+}
+
 // text returns the text contents of the tag and its children.
 // A br element (including the parser's br/ form) contributes a newline.
 pub fn (tag &Tag) text() string {
-	if tag.name == 'text' {
+	if tag.is_synthetic_text() {
 		return tag.leading_text()
 	}
 	// Only the line-break element maps to a newline: a prefix match would
@@ -52,8 +117,20 @@ pub fn (tag &Tag) text() string {
 	}
 	mut text_str := strings.new_builder(200)
 	text_str.write_string(tag.leading_text())
-	for child in tag.children {
-		text_str.write_string(child.text())
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
+		if child.is_synthetic_text() {
+			text_str.write_string(child.leading_text())
+			walker.skip_current_children()
+			continue
+		}
+		if child.name == 'br' || child.name == 'br/' {
+			text_str.write_string('\n')
+			walker.skip_current_children()
+			continue
+		}
+		text_str.write_string(child.leading_text())
 	}
 	return text_str.str()
 }
@@ -62,17 +139,71 @@ fn (tag &Tag) leading_text() string {
 	if tag.text_content.len > 0 {
 		return tag.text_content
 	}
-	if !tag.content_is_inner_html || tag.children.len == 0 || tag.name == 'text' {
+	if !tag.content_is_inner_html || tag.children.len == 0 || tag.is_synthetic_text() {
 		return tag.content
 	}
 	return ''
 }
 
+// str serializes the tag and its children without recursive calls.
 pub fn (tag &Tag) str() string {
-	if tag.name == 'text' {
-		return tag.leading_text()
-	}
 	mut html_str := strings.new_builder(200)
+	tag.write_str(mut html_str)
+	return html_str.str()
+}
+
+fn (tag &Tag) write_str(mut html_str strings.Builder) {
+	if tag.is_synthetic_text() {
+		html_str.write_string(tag.leading_text())
+		return
+	}
+	if tag.content_is_inner_html || tag.children.len == 0 {
+		tag.write_opening(mut html_str)
+		tag.write_closing(mut html_str)
+		return
+	}
+	mut events := [TagSerializationEvent{
+		tag: tag
+	}]
+	mut active := map[&Tag]bool{}
+	for events.len > 0 {
+		event := events.pop()
+		if event.is_closing {
+			event.tag.write_closing(mut html_str)
+			active.delete(event.tag)
+			continue
+		}
+		current := event.tag
+		if current in active {
+			continue
+		}
+		if current.is_synthetic_text() {
+			html_str.write_string(current.leading_text())
+			continue
+		}
+		active[current] = true
+		current.write_opening(mut html_str)
+		if !current.content_is_inner_html && current.children.len > 0 {
+			events << TagSerializationEvent{
+				tag:        current
+				is_closing: true
+			}
+			for index := current.children.len - 1; index >= 0; index-- {
+				child := current.children[index]
+				if child !in active {
+					events << TagSerializationEvent{
+						tag: child
+					}
+				}
+			}
+		} else {
+			current.write_closing(mut html_str)
+			active.delete(current)
+		}
+	}
+}
+
+fn (tag &Tag) write_opening(mut html_str strings.Builder) {
 	html_str.write_string('<${tag.name}')
 	for key, value in tag.attributes {
 		html_str.write_string(' ${key}')
@@ -82,25 +213,21 @@ pub fn (tag &Tag) str() string {
 	}
 	html_str.write_string(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })
 	html_str.write_string(tag.content)
-	if !tag.content_is_inner_html && tag.children.len > 0 {
-		for child in tag.children {
-			html_str.write_string(child.str())
-		}
-	}
+}
+
+fn (tag &Tag) write_closing(mut html_str strings.Builder) {
 	if !tag.closed || tag.close_type == .new_tag {
 		html_str.write_string('</${tag.name}>')
 	}
-	return html_str.str()
 }
 
 // get_tag retrieves the first found child tag in the tag that has the given tag name.
 pub fn (tag &Tag) get_tag(name string) ?&Tag {
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		if child.name == name {
 			return child
-		}
-		if c := child.get_tag(name) {
-			return c
 		}
 	}
 	return none
@@ -109,23 +236,23 @@ pub fn (tag &Tag) get_tag(name string) ?&Tag {
 // get_tags retrieves all child tags recursively in the tag that have the given tag name.
 pub fn (tag &Tag) get_tags(name string) []&Tag {
 	mut res := []&Tag{}
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		if child.name == name {
 			res << child
 		}
-		res << child.get_tags(name)
 	}
 	return res
 }
 
 // get_tag_by_attribute retrieves the first found child tag in the tag that has the given attribute name.
 pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		if name in child.attributes {
 			return child
-		}
-		if c := child.get_tag_by_attribute(name) {
-			return c
 		}
 	}
 	return none
@@ -134,23 +261,23 @@ pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
 // get_tags_by_attribute retrieves all child tags recursively in the tag that have the given attribute name.
 pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 	mut res := []&Tag{}
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		if name in child.attributes {
 			res << child
 		}
-		res << child.get_tags_by_attribute(name)
 	}
 	return res
 }
 
 // get_tag_by_attribute_value retrieves the first found child tag in the tag that has the given attribute name and value.
 pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		if name in child.attributes && child.attributes[name] == value {
 			return child
-		}
-		if c := child.get_tag_by_attribute_value(name, value) {
-			return c
 		}
 	}
 	return none
@@ -159,11 +286,12 @@ pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
 // get_tags_by_attribute_value retrieves all child tags recursively in the tag that have the given attribute name and value.
 pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
 	mut res := []&Tag{}
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		if name in child.attributes && child.attributes[name] == value {
 			res << child
 		}
-		res << child.get_tags_by_attribute_value(name, value)
 	}
 	return res
 }
@@ -174,7 +302,9 @@ pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
 		// no class name to match, no tag can match it
 		return none
 	}
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		mut matched := true
 		for name in names {
 			matched = child.class_set.exists(name)
@@ -184,9 +314,6 @@ pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
 		}
 		if matched {
 			return child
-		}
-		if c := child.get_tag_by_class_name(...names) {
-			return c
 		}
 	}
 	return none
@@ -199,7 +326,9 @@ pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
 		return []&Tag{}
 	}
 	mut res := []&Tag{}
-	for child in tag.children {
+	mut walker := new_tag_walker(tag)
+	for {
+		child := walker.next() or { break }
 		mut matched := true
 		for name in names {
 			matched = child.class_set.exists(name)
@@ -210,7 +339,6 @@ pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
 		if matched {
 			res << child
 		}
-		res << child.get_tags_by_class_name(...names)
 	}
 	return res
 }

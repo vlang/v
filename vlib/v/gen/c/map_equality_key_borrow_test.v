@@ -1,14 +1,21 @@
-module c
+module main
 
 import os
-import v.markused
-import v.parser
-import v.pref
-import v.transform
-import v.types
+
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
 
 fn test_map_equality_borrows_keys_but_authored_iteration_keeps_clones() {
-	path := os.join_path(os.vtmp_dir(), 'map_equality_key_borrow_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'map_equality_key_borrow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'input.v')
+	c_path := os.join_path(root, 'output.c')
 	os.write_file(path, 'fn compare_maps(left map[string]f64, right map[string]f64) bool {
 	return left == right
 }
@@ -31,19 +38,13 @@ fn main() {
 	assert compare_entries({"one": [Entry{1}]}, {"one": [Entry{1}]})
 }
 ')!
-	defer { os.rm(path) or {} }
-	mut p := parser.Parser.new(pref.new_preferences())
-	mut a := p.parse_file(path)
-	mut tc := types.TypeChecker.new(a)
-	tc.collect(a)
-	tc.check_semantics()
-	assert tc.errors.len == 0, tc.errors.str()
-	transform.transform(mut a, &tc)
-	tc.annotate_types()
-	used := markused.mark_used(a, tc)
-	mut g := FlatGen.new()
-	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
-	generated := g.gen_with_used_options(a, used, &tc, true)
+	// V1-hosted unit tests get a shared V3 compiler from their runner.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-o', c_path, path]
+	compiled := os.exec(args)
+	assert compiled.exit_code == 0, compiled.output
+	generated := os.read_file(c_path)!
 	equality := generated.all_after_last('bool compare_maps(').all_after('{').all_before('\n}')
 	assert equality.contains('map__exists'), equality
 	assert !equality.contains('string__clone'), equality

@@ -127,7 +127,10 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
 	print(r.prompt)
 	for {
 		flush_stdout()
-		c := r.read_char() or { return err }
+		c := r.read_char() or {
+			r.disable_raw_mode()
+			return err
+		}
 		a := r.analyse(c)
 		if r.execute(a, c) {
 			break

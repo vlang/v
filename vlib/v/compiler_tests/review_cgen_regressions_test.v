@@ -1,13 +1,26 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const review_cgen_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_review_cgen_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(review_cgen_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(review_cgen_fixture_dir) or {}
+}
 
 fn build_v3_review_cgen() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_cgen_regressions_test')
+	v3_bin := os.join_path(review_cgen_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
@@ -22,9 +35,9 @@ fn review_cgen_write_project_file(root string, rel string, src string) {
 }
 
 fn review_cgen_run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	good_src := os.join_path(review_cgen_fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
 	compile := os.exec([v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
@@ -34,7 +47,7 @@ fn review_cgen_run_good(v3_bin string, name string, src string) string {
 }
 
 fn review_cgen_run_good_project(v3_bin string, name string, files map[string]string, input string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -43,7 +56,7 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 		review_cgen_write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
 	compile := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
@@ -53,7 +66,7 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 }
 
 fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -62,7 +75,7 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 		review_cgen_write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bad_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
 	result := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
@@ -98,7 +111,7 @@ fn main() {
 }
 ')
 	assert out == '8\n8\n9\n3.0\n8\n4'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_power_const_runtime_init.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_power_const_runtime_init.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('u8 main__byte_power;'), c_code
@@ -140,7 +153,7 @@ fn main() {
 }
 ')
 	assert out == 'true'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_const_sum_type_runtime_init.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_struct_const_sum_type_runtime_init.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('main__Holder main__holder;'), c_code
@@ -170,7 +183,7 @@ fn main() {
 }
 ")
 	assert out == '6'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_c_int_array_data_abi.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_c_int_array_data_abi.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('int* _cabi_out_values_'), c_code
@@ -243,7 +256,7 @@ fn main() {
 }
 ')
 	assert out == '8\n45\n9\n23'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), c_code
 	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){__v3_internal_symbol_op_Exponent__pow(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
@@ -283,7 +296,7 @@ fn main() {
 }
 ')
 	assert out == '23'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_field_power_assign.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_struct_field_power_assign.c')) or {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -310,7 +323,7 @@ fn main() {
 }
 ')
 	assert out == '9'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_mut_parameter_power_assign.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_mut_parameter_power_assign.c')) or {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -333,7 +346,7 @@ fn main() {
 }
 ')
 	assert out == '7'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_addressed_inferred_array_const.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_addressed_inferred_array_const.c')) or {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -357,7 +370,7 @@ fn main() {
 }
 ')
 	assert out == 'local:field'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_numbered_string_identifier_collision.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_numbered_string_identifier_collision.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('string v__str_1 = '), c_code

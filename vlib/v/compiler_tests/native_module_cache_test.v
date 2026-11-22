@@ -1,17 +1,17 @@
 import os
 import v.cmdexec
 
-// Modules shipped with V that compile a C source or the implementation section of a
-// single-header library into the program have no owner object in the V caches. Their
-// cold and warm `-cc cc` builds must not give every cached module object a copy of
-// those definitions (duplicate symbols) or drop them (undeclared functions).
+// Cold and warm `-cc cc` builds exercise linkage of bundled C implementations.
+// The owned native interfaces also have to reuse their cached V module objects.
 
 const native_cache_vexe = os.join_path(@VMODROOT, 'v' + $if windows { '.exe' } $else { '' })
 
-fn build_native_cache_program_twice(name string, source string, expected_output string) {
-	os.find_abs_path_of_executable('cc') or {
-		eprintln('skipping native module cache test: cc is unavailable')
-		return
+fn build_native_cache_program_twice(name string, source string, expected_output string, verify_reuse bool) {
+	if !verify_reuse {
+		os.find_abs_path_of_executable('cc') or {
+			eprintln('skipping native module cache test: cc is unavailable')
+			return
+		}
 	}
 	root := os.join_path(os.vtmp_dir(), 'v3_native_module_cache_${name}_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -32,16 +32,34 @@ fn build_native_cache_program_twice(name string, source string, expected_output 
 			}
 		}
 	}
-	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	cache := os.join_path(root, 'cache')
+	os.setenv('V3CACHE', cache, true)
 	os.setenv('V3_CACHE_TRACE', '1', true)
 	for env_name in env_names[2..] {
 		os.unsetenv(env_name)
 	}
+	mut flags := ['-new-compiler', '-no-retry-compilation', '-cc', 'cc']
+	if verify_reuse {
+		flags << '-show-timings'
+	}
+	mut objects := map[string]string{}
 	for attempt in ['cold', 'warm'] {
 		output := os.join_path(root, '${name}_${attempt}')
-		build := cmdexec.run_with_timeout(native_cache_vexe, ['-new-compiler', '-no-retry-compilation',
-			'-cc', 'cc', '-o', output, source_path], 600_000)
+		build := cmdexec.run_with_timeout(native_cache_vexe, [...flags, '-o', output, source_path],
+			600_000)
 		assert build.exit_code == 0, '${attempt} ${name} build:\n${build.output}'
+		if verify_reuse {
+			assert !build.output.contains('V3 module cache fallback'), build.output
+			identities := native_cache_module_object_identities(cache) or { panic(err) }
+			if attempt == 'cold' {
+				assert identities.len > 1, '${name}: no module objects were cached'
+				assert identities.keys().any(os.file_name(it).starts_with('${name}_')), '${name}: imported module was not cached'
+				objects = identities.clone()
+			} else {
+				assert build.output.contains('monomorphize (cached)'), build.output
+				assert identities == objects, '${name}: cached object identities changed'
+			}
+		}
 		if expected_output.len == 0 {
 			continue
 		}
@@ -49,6 +67,21 @@ fn build_native_cache_program_twice(name string, source string, expected_output 
 		assert run.exit_code == 0, '${attempt} ${name} run:\n${run.output}'
 		assert run.output.trim_space() == expected_output, '${attempt} ${name} run:\n${run.output}'
 	}
+}
+
+fn native_cache_module_object_identities(cache string) !map[string]string {
+	mut identities := map[string]string{}
+	for object in os.walk_ext(cache, '.o') {
+		// macOS can regenerate program units on a warm build while still reusing
+		// every imported module object.
+		name := os.file_name(object)
+		if name.starts_with('program_main_') || name.starts_with('program_prefix_') {
+			continue
+		}
+		info := os.stat(object)!
+		identities[object] = '${info.dev}:${info.inode}:${info.size}:${info.mtime}:${info.ctime}'
+	}
+	return identities
 }
 
 fn test_szip_program_builds_cold_and_warm_with_the_module_cache() {
@@ -65,7 +98,7 @@ fn main() {
 	println(os.file_size(path) > 0)
 }
 ",
-		'true')
+		'true', false)
 }
 
 fn test_zstd_program_builds_cold_and_warm_with_the_module_cache() {
@@ -76,7 +109,21 @@ fn main() {
 	println(zstd.decompress(packed) or { panic(err) }.bytestr())
 }
 ",
-		'zstd ok')
+		'zstd ok', $if windows { false } $else { true })
+}
+
+fn test_veb_native_interfaces_reuse_the_module_cache() {
+	$if windows {
+		return
+	}
+	build_native_cache_program_twice('veb', 'import veb
+struct App { veb.Middleware[Context] }
+struct Context { veb.Context }
+pub fn (mut app App) index(mut ctx Context) veb.Result { return ctx.text("hello") }
+fn main() {
+ mut app := &App{}
+ veb.run[App, Context](mut app, 18099)
+}', '', true)
 }
 
 fn test_gg_program_builds_cold_and_warm_with_the_module_cache() {
@@ -97,5 +144,5 @@ fn main() {
 	context.run()
 }
 ",
-		'')
+		'', false)
 }

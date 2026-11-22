@@ -1,4 +1,4 @@
-// vtest build: !msvc
+// vtest build: !msvc && !musl? && !self_ubuntu_musl_ci? // needs X11/GL
 module gg
 
 import fontstash

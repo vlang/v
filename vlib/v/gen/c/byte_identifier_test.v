@@ -11,6 +11,16 @@ fn test_byte_global_object_and_callback_compile_and_run() {
 	}
 	// V's own Windows clang command passes -municode, which the generated `wmain` entry needs.
 	municode := $if windows { ['-municode'] } $else { []string{} }
+	// A Windows `clang` usually targets the MSVC ABI, which has neither -municode
+	// nor libm and libpthread, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	// The Windows builtin calls helpers of its native object (`#flag .../core_windows.o`),
+	// which a direct C compile has to link as well.
+	native_sources := $if windows {
+		[os.join_path(@VEXEROOT, 'vlib', 'builtin', 'core_windows.c')]
+	} $else {
+		[]string{}
+	}
 	for fixture, source in {
 		'scalar':   'module main
 __global byte int
@@ -38,10 +48,10 @@ fn main() { byte = increment; println(byte(8)) }
 		// This fixture links C directly and tests global initializers, independently
 		// of the native signal helper that ordinary V builds link automatically.
 		generated := cmdexec.run(@VEXE, ['-new-compiler', '-d', 'no_segfault_handler', '-gc', 'none',
-			'-enable-globals', '-cc', 'clang', '-o', c_file, v_file])
+			'-enable-globals', '-cc', cc, '-o', c_file, v_file])
 		assert generated.exit_code == 0, generated.output
-		compiled := cmdexec.run('clang', ['-std=gnu11', ...municode, '-o', bin_file, c_file, '-lm',
-			'-lpthread'])
+		compiled := cmdexec.run(cc, ['-std=gnu11', ...municode, '-o', bin_file, c_file,
+			...native_sources, '-lm', '-lpthread'])
 		assert compiled.exit_code == 0, compiled.output
 		executed := cmdexec.run(bin_file, [])
 		assert executed.exit_code == 0, executed.output

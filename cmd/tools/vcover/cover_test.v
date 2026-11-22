@@ -1,18 +1,16 @@
 // vtest retry: 2
 import os
+import v.cmdexec
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
-const tfolder = os.join_path(os.vtmp_dir(), 'cover_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'cover_test_${os.getpid()}')
 
 const t1 = np(os.join_path(tfolder, 't1'))
 const t2 = np(os.join_path(tfolder, 't2'))
-const t3 = np(os.join_path(tfolder, 't3'))
-const gen_folder = np(os.join_path(tfolder, 'gen'))
-
-// fresh_testdata is the example1 fixture copied to a writable directory, so
-// `--write-tests` can be tested without touching the fixture itself.
-const fresh_testdata = 'vcover/testdata/../fresh/example1/'
+const example1_workspace = 'cmd/tools/vcover/testdata/generated_${os.getpid()}'
+const example1_fixture = '${example1_workspace}/example1'
+const example1_coverage_dir = np(os.join_path(tfolder, 'example1'))
 
 fn np(path string) string {
 	return path.replace('\\', '/')
@@ -22,21 +20,21 @@ fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
 	os.rmdir_all(tfolder) or {}
-	os.mkdir(tfolder) or {}
-	// The fixture copy is made once per test process, so a retry of this file
-	// starts from exactly the state the first attempt started from.
-	copy_example1()
+	os.mkdir(tfolder)!
 }
 
 fn testsuite_end() {
-	os.rmdir_all(np(os.join_path(vroot, 'cmd/tools/vcover/testdata/generated'))) or {}
+	os.rmdir_all(os.join_path(vroot, example1_workspace)) or {}
 	os.rmdir_all(tfolder) or {}
 }
 
-fn copy_example1() {
+fn example1_coverage() string {
+	if os.is_dir(example1_coverage_dir) {
+		return example1_coverage_dir
+	}
 	// The copy lives inside the tree, because `--write-tests` writes a test file
 	// beside its source and refuses to reach outside the working directory.
-	target := np(os.join_path(vroot, 'cmd/tools/vcover/testdata/generated', 'example1'))
+	target := np(os.join_path(vroot, example1_fixture))
 	os.rmdir_all(target) or {}
 	os.mkdir_all(target) or { panic(err) }
 	os.cp('cmd/tools/vcover/testdata/example1/abc.v', np(os.join_path(target, 'abc.v'))) or {
@@ -53,12 +51,15 @@ fn copy_example1() {
 	}
 	// The compiler needs a v.mod in the directory to resolve the tests.
 	os.write_file(np(os.join_path(target, 'v.mod')), '') or { panic(err) }
-}
 
-// filter_fresh is the --filter value that selects only the copied fixture. Paths
-// are normalized to `/` before being matched, so the filter uses that too.
-fn filter_fresh() string {
-	return 'testdata/generated/example1'
+	// Collect the same three test runs once for the reports and test generation.
+	source := execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(example1_coverage_dir)} test ${os.quoted_path(target)}')
+	if source.exit_code != 0 {
+		os.rmdir_all(example1_coverage_dir) or {}
+	}
+	assert source.exit_code == 0, source.str()
+	assert os.is_dir(example1_coverage_dir), example1_coverage_dir
+	return example1_coverage_dir
 }
 
 fn test_help() {
@@ -79,7 +80,6 @@ fn test_help() {
 fn test_simple() {
 	assert !os.exists(t1), t1
 	assert !os.exists(t2), t2
-	assert !os.exists(t3), t3
 
 	r1 :=
 		execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t1)} cmd/tools/vcover/testdata/simple/t1_test.v')
@@ -93,9 +93,9 @@ fn test_simple() {
 	assert filter1.output.trim_space().ends_with('|      4 |      9 |  44.44%'), filter1.output
 	lcov_file := np(os.join_path(tfolder, 'coverage', 'simple.lcov'))
 	os.rm(lcov_file) or {}
-	lcov :=
-		execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ --lcov ${os.quoted_path(lcov_file)} -P false')
-	assert lcov.exit_code == 0, lcov.str()
+	hfilter1 :=
+		execute('${cmd} --lcov ${os.quoted_path(lcov_file)} -H -P false')
+	assert hfilter1.exit_code == 0, hfilter1.output
 	assert os.exists(lcov_file), lcov_file
 	lcov_content := os.read_file(lcov_file) or { panic(err) }
 	assert lcov_content.contains('SF:${np(os.join_path(vroot, 'cmd/tools/vcover/testdata/simple/simple.v'))}')
@@ -104,9 +104,6 @@ fn test_simple() {
 	assert lcov_content.contains('LF:9')
 	assert lcov_content.contains('LH:4')
 	assert lcov_content.contains('end_of_record')
-	hfilter1 :=
-		execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ -H -P false')
-	assert hfilter1.exit_code == 0, hfilter1.output
 	assert !hfilter1.output.contains('%'), hfilter1.output
 	houtput1 := hfilter1.output.trim_space().split_into_lines()
 	zeros1 := houtput1.filter(it.starts_with('0 '))
@@ -150,13 +147,8 @@ fn test_simple() {
 	assert nzeros2.any(it.contains('simple.v:19')), nzeros2.str()
 	assert nzeros2.any(it.contains('simple.v:25')), nzeros2.str()
 
-	// Run both tests. The coverage should be combined and == 100%
-	r3 :=
-		execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t3)} test cmd/tools/vcover/testdata/simple/')
-	assert r3.exit_code == 0, r3.str()
-	assert r3.output.trim_space().contains('Summary for all V _test.v files: '), r3.str()
-	assert os.exists(t3), t3
-	filter3 := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t3)} --filter simple/')
+	// Reuse both runs to check that v cover merges coverage across directories.
+	filter3 := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} ${os.quoted_path(t2)} --filter simple/')
 	assert filter3.exit_code == 0, filter3.str()
 	assert filter3.output.contains('cmd/tools/vcover/testdata/simple/simple.v'), filter3.str()
 	assert filter3.output.trim_space().match_glob('*cmd/tools/vcover/testdata/simple/simple.v *|      9 |      9 | 100.00%'), filter3.str()
@@ -190,23 +182,20 @@ const called_functions = [
 ]
 
 fn test_functions_and_uncovered_report_the_functions_no_run_entered() {
-	ex := np(os.join_path(tfolder, 'example1'))
-	assert !os.exists(ex), ex
-	source := execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(ex)} test cmd/tools/vcover/testdata/example1/')
-	assert source.exit_code == 0, source.str()
-	assert os.exists(ex), ex
+	cov := example1_coverage()
+	expected_path := '${example1_fixture}/abc.v'
 
-	functions := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(ex)} --filter example1 -F -P false')
+	functions := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} --filter ${example1_fixture} -F -P false')
 	assert functions.exit_code == 0, functions.str()
 	// The fixture has 39 functions of abc.v, 22 of which a test calls.
-	assert functions.output.contains('abc.v                                         |     22 |     39 |  56.41%'), functions.output
+	assert functions.output.contains('${expected_path:-80s} |     22 |     39 |  56.41%'), functions.output
 	assert functions.output.contains('    covered  abc01'), functions.output
 	assert functions.output.contains('    MISSING  abc02'), functions.output
 	// A function called by only one of the three test files is covered once and
 	// reported once, not once per meta file that recorded it.
 	assert functions.output.split('abc01').len == 2, functions.output
 
-	uncovered := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(ex)} --filter example1 -U -P false')
+	uncovered := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} --filter ${example1_fixture} -U -P false')
 	assert uncovered.exit_code == 0, uncovered.str()
 	lines := uncovered.output.trim_space().split_into_lines()
 	// `--uncovered` prints only the list, so the number of lines is the number
@@ -214,19 +203,18 @@ fn test_functions_and_uncovered_report_the_functions_no_run_entered() {
 	assert lines.len == 17, lines.str()
 	for line in lines {
 		location, name := line.all_before_last(' '), line.all_after_last(' ')
-		assert location.starts_with('cmd/tools/vcover/testdata/example1/abc.v:'), location
+		assert location.starts_with('${expected_path}:'), location
 		assert !called_functions.contains(name), '${name} was reported but a test calls it'
 	}
 	// The line numbers point at the declarations, in source order.
-	assert lines[0].starts_with('cmd/tools/vcover/testdata/example1/abc.v:11 '), lines[0]
+	assert lines[0].starts_with('${expected_path}:11 '), lines[0]
 }
 
 fn test_json_report_carries_both_lines_and_functions() {
-	ex := np(os.join_path(tfolder, 'example1'))
-	assert os.exists(ex), ex
+	cov := example1_coverage()
 	report_path := np(os.join_path(tfolder, 'report.json'))
 	os.rm(report_path) or {}
-	report := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(ex)} --filter example1 --json ${os.quoted_path(report_path)} -P false')
+	report := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} --filter ${example1_fixture} --json ${os.quoted_path(report_path)} -P false')
 	assert report.exit_code == 0, report.str()
 	assert os.exists(report_path), report_path
 	content := os.read_file(report_path) or { panic(err) }
@@ -241,26 +229,11 @@ fn test_json_report_carries_both_lines_and_functions() {
 }
 
 fn test_write_tests_generates_only_for_untested_code() {
-	ex := np(os.join_path(tfolder, 'example1'))
-	assert os.exists(ex), ex
-	// The copy of the fixture, made by `testsuite_begin`, is where the generated
-	// file is written: `--write-tests` puts a test file beside its source, and
-	// that has to be a file the tool was allowed to reach.
-	fresh := np(os.join_path(vroot, 'cmd/tools/vcover/testdata/generated/example1'))
-	assert os.is_dir(fresh), fresh
-	test_path := np(os.join_path(fresh, 'abc_test.v'))
+	cov := example1_coverage()
+	test_path := np(os.join_path(vroot, example1_fixture, 'abc_test.v'))
 	assert !os.exists(test_path), test_path
 
-	// The copy is compiled rather than filtered, because a coverage directory
-	// only holds what a run recorded. The filter then names the copy, so a
-	// generated test is written beside it rather than beside a fixture.
-	fresh_cov := np(os.join_path(tfolder, 'fresh_cov_${os.getpid()}'))
-	os.rmdir_all(fresh_cov) or {}
-	r4 := execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(fresh_cov)} test ${os.quoted_path(fresh)}')
-	assert r4.exit_code == 0, r4.str()
-	assert os.exists(fresh_cov), fresh_cov
-
-	dry := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(fresh_cov)} --filter ${filter_fresh()} -U -P false --write-tests --dry-run')
+	dry := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} --filter ${example1_fixture} -U -P false --write-tests --dry-run')
 	assert dry.exit_code == 0, dry.str()
 	// The dry run prints the file it would write with a `---` header.
 	assert dry.output.contains('--- '), dry.output
@@ -277,7 +250,7 @@ fn test_write_tests_generates_only_for_untested_code() {
 	// A dry run writes nothing.
 	assert !os.exists(test_path), test_path
 
-	written := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(fresh_cov)} --filter ${filter_fresh()} -U -P false --write-tests')
+	written := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} --filter ${example1_fixture} -U -P false --write-tests')
 	assert written.exit_code == 0, written.str()
 	assert os.exists(test_path), test_path
 	content := os.read_file(test_path) or { panic(err) }
@@ -291,7 +264,7 @@ fn test_write_tests_generates_only_for_untested_code() {
 	// A second run changes nothing: the functions are still reported uncovered,
 	// because the coverage data still says so, but every one of them already has
 	// a test function in the file, so nothing is written a second time.
-	again := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(fresh_cov)} --filter ${filter_fresh()} -U -P false --write-tests')
+	again := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} --filter ${example1_fixture} -U -P false --write-tests')
 	assert again.exit_code == 0, again.str()
 	assert again.output.contains('abc02'), again.output
 	unchanged := os.read_file(test_path) or { panic(err) }
@@ -299,7 +272,7 @@ fn test_write_tests_generates_only_for_untested_code() {
 
 	// Without a filter the tool refuses, rather than writing a test beside every
 	// file the run happened to reach.
-	unfiltered := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(fresh_cov)} -U -P false --write-tests')
+	unfiltered := execute('${os.quoted_path(vexe)} cover ${os.quoted_path(cov)} -U -P false --write-tests')
 	assert unfiltered.exit_code == 0, unfiltered.str()
 	assert unfiltered.output.contains('--write-tests needs --filter'), unfiltered.output
 	assert os.read_file(test_path) or { panic(err) } == content, 'a run without a filter changed the generated file'
@@ -335,5 +308,10 @@ fn test_the_generated_tests_leave_a_comment_where_no_call_can_be_built() {
 
 fn execute(cmd string) os.Result {
 	eprintln('Executing: ${cmd}')
-	return os.exec(os.split_args(cmd) or { panic(err) })
+	args := os.split_args(cmd) or { panic(err) }
+	// Suite selection applies to this test file; fixtures need to run in full.
+	return cmdexec.run_in_merged_with_env(args[0], args[1..], vroot, {
+		'VTEST_ONLY':    ''
+		'VTEST_ONLY_FN': ''
+	})
 }

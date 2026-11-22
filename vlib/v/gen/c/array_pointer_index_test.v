@@ -1,11 +1,6 @@
-module c
+module main
 
 import os
-import v.markused
-import v.parser
-import v.pref
-import v.transform
-import v.types
 
 fn array_pointer_index_test_body(generated string, name string) string {
 	for line in generated.split_into_lines() {
@@ -17,7 +12,11 @@ fn array_pointer_index_test_body(generated string, name string) string {
 }
 
 fn test_fixed_array_pointer_indexing_preserves_alias_indirection_and_nested_rows() {
-	path := os.join_path(os.vtmp_dir(), 'array_pointer_index_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'array_pointer_index_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	c_path := os.join_path(root, 'main.c')
 	os.write_file(path, 'type Row = [4]int
 type Values = Row
 type Matrix = [2]Row
@@ -32,19 +31,13 @@ fn main() {
 	_ = nested(&Matrix{})
 }
 ')!
-	defer { os.rm(path) or {} }
-	mut prefs := pref.new_preferences()
-	mut p := parser.Parser.new(prefs)
-	mut a := p.parse_file(path)
-	mut tc := types.TypeChecker.new(a)
-	tc.collect(a)
-	tc.check_semantics()
-	assert tc.errors.len == 0, tc.errors.str()
-	transform.transform(mut a, &tc)
-	tc.annotate_types()
-	used := markused.mark_used(a, tc)
-	mut g := FlatGen.new()
-	generated := g.gen_with_used_options(a, used, &tc, true)
+	// V1-hosted unit tests get a shared V3 compiler from their runner.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	args << ['-gc', 'none', '-o', c_path, path]
+	compiled := os.exec(args)
+	assert compiled.exit_code == 0, compiled.output
+	generated := os.read_file(c_path)!
 	direct := array_pointer_index_test_body(generated, 'direct')
 	assert direct.contains('return (*value)[3];'), direct
 	aliased := array_pointer_index_test_body(generated, 'aliased')

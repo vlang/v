@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.tempname
 
 fn fixed_array_borrow_body(source string, function string) string {
 	for line in source.split_into_lines() {
@@ -9,6 +10,30 @@ fn fixed_array_borrow_body(source string, function string) string {
 		}
 	}
 	panic('missing generated function ${function}')
+}
+
+fn build_fixed_array_borrow_fixture(root string, flags []string) !(string, string) {
+	source_path := os.join_path(root, 'main.v')
+	binary := os.join_path(root, 'fixed_array_borrow_${tempname.unique_token()}') + $if windows { '.exe' } $else { '' }
+	compiled := os.exec([@VEXE, '-new-compiler', '-gc', 'none', ...flags, '-keepc', '-o', binary,
+		source_path])
+	tmp := os.vtmp_dir()
+	prefix := os.file_name(binary) + '.'
+	retained := os.ls(tmp)!.filter(it.starts_with(prefix) && it.ends_with('.tmp.c'))
+	defer {
+		for name in retained {
+			os.rm(os.join_path(tmp, name)) or {}
+		}
+	}
+	assert compiled.exit_code == 0, compiled.output
+	assert retained.len == 1, 'expected one retained C file for ${binary}, got ${retained}'
+	return os.read_file(os.join_path(tmp, retained[0]))!, binary
+}
+
+fn run_fixed_array_borrow_fixture(binary string) {
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK', run.output
 }
 
 fn test_fixed_array_scalar_read_write_callees_borrow_stack_storage() {
@@ -58,9 +83,7 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-o', c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	source, binary := build_fixed_array_borrow_fixture(root, [])!
 	for name in ['params_by_mut', 'params_by_ref', 'params_by_unsafe_ref', 'params_by_method'] {
 		body := fixed_array_borrow_body(source, name)
 		assert body.len > 0, name
@@ -70,9 +93,7 @@ fn main() {
 		body := fixed_array_borrow_body(source, name)
 		assert body.contains('memdup('), body
 	}
-	run := os.exec([@VEXE, '-new-compiler', '-gc', 'none', 'run', source_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK', run.output
+	run_fixed_array_borrow_fixture(binary)
 	warnings := os.exec([@VEXE, '-new-compiler', '-warn-about-allocs', '-o', c_path, source_path])
 	assert warnings.exit_code == 0, warnings.output
 	assert warnings.output.contains('local moved to the heap: its fixed array storage may escape'), warnings.output
@@ -84,7 +105,6 @@ fn test_fixed_array_borrow_summary_does_not_follow_shadowed_function_names() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	c_path := os.join_path(root, 'main.c')
 	os.write_file(source_path, 'struct Payload {
 mut:
  n int
@@ -132,25 +152,14 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', '-o', c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	source, binary := build_fixed_array_borrow_fixture(root, ['-no-retry-compilation', '-enable-globals',
+		'-cc', @CCOMPILER])!
 	for name in ['shadowed_local', 'shadowed_nested', 'shadowed_parameter'] {
 		body := fixed_array_borrow_body(source, name)
 		assert body.contains('memdup('), body
 	}
 	assert !fixed_array_borrow_body(source, 'after_sibling_shadow').contains('memdup(')
-	mut binary_path := os.join_path(root, 'main')
-	$if windows {
-		binary_path += '.exe'
-	}
-	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-cc',
-		'clang', '-gc', 'none', '-o', binary_path, source_path])
-	assert compiled.exit_code == 0, compiled.output
-	run := os.exec([binary_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK', run.output
+	run_fixed_array_borrow_fixture(binary)
 }
 
 @[unsafe]
@@ -159,7 +168,6 @@ fn test_element_addresses_handed_to_borrowing_pointer_params_stay_on_the_stack()
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	c_path := os.join_path(root, 'main.c')
 	os.write_file(source_path, 'struct Slice { start int; len int }
 struct Params {
 mut:
@@ -203,10 +211,7 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', '-o', c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	source, binary := build_fixed_array_borrow_fixture(root, ['-no-retry-compilation', '-enable-globals'])!
 	// the element address reaches only callees that read through it, two calls deep
 	assert !fixed_array_borrow_body(source, 'elem_borrowed').contains('memdup(')
 	// stored, returned, forwarded to a retainer, or through a recursion not yet known to borrow
@@ -214,10 +219,7 @@ fn main() {
 		body := fixed_array_borrow_body(source, name)
 		assert body.contains('memdup('), body
 	}
-	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', 'run', source_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK', run.output
+	run_fixed_array_borrow_fixture(binary)
 }
 
 fn test_a_generic_caller_uses_the_summary_of_a_callee_it_reaches_first() {
@@ -225,7 +227,6 @@ fn test_a_generic_caller_uses_the_summary_of_a_callee_it_reaches_first() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	c_path := os.join_path(root, 'main.c')
 	os.write_file(source_path, 'struct Frame {
 mut:
  id u32
@@ -241,16 +242,11 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-o',
-		c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	source, binary := build_fixed_array_borrow_fixture(root, ['-no-retry-compilation'])!
 	// specialized during monomorphization, before the callee's body is transformed
 	assert !fixed_array_borrow_body(source, 'generic_borrowed_T_v_int').contains('memdup(')
 	assert fixed_array_borrow_body(source, 'generic_retained_T_v_int').contains('memdup(')
-	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', 'run', source_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK', run.output
+	run_fixed_array_borrow_fixture(binary)
 }
 
 @[unsafe]
@@ -259,7 +255,6 @@ fn test_elements_passed_by_mut_or_copied_by_value_stay_on_the_stack() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	c_path := os.join_path(root, 'main.c')
 	os.write_file(source_path, 'type Gf = [4]i64
 interface Sizer { size() int }
 struct Box { g Gf }
@@ -292,10 +287,7 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', '-o', c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	source, binary := build_fixed_array_borrow_fixture(root, ['-no-retry-compilation', '-enable-globals'])!
 	// an element handed by mut to a borrowing callee, and elements copied into value parameters
 	assert !fixed_array_borrow_body(source, 'by_elem_and_copy').contains('memdup(')
 	// kept by the callee, or passed where the parameter takes the address (voidptr, interface)
@@ -303,10 +295,7 @@ fn main() {
 		body := fixed_array_borrow_body(source, name)
 		assert body.contains('memdup('), body
 	}
-	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', 'run', source_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK', run.output
+	run_fixed_array_borrow_fixture(binary)
 }
 
 @[unsafe]
@@ -315,7 +304,6 @@ fn test_an_index_through_a_method_is_a_call_that_receives_the_storage() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	c_path := os.join_path(root, 'main.c')
 	os.write_file(source_path, 'type Gf = [4]i64
 __global kept_gf = &Gf(unsafe { nil })
 fn (g &Gf) [] (_ int) i64 { kept_gf = unsafe { g }; return 7 }
@@ -330,17 +318,11 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', '-o', c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	source, binary := build_fixed_array_borrow_fixture(root, ['-no-retry-compilation', '-enable-globals'])!
 	// `p[1]` calls the method, which keeps its receiver: the caller's array must outlive the frame
 	for name in ['copy_retained', 'scalar_retained'] {
 		body := fixed_array_borrow_body(source, name)
 		assert body.contains('memdup('), body
 	}
-	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
-		'none', 'run', source_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK', run.output
+	run_fixed_array_borrow_fixture(binary)
 }

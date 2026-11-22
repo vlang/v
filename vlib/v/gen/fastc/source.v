@@ -141,7 +141,6 @@ fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]FastcEnt
 
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
 	mut result := raw
-	origin_file := if source_file.len > 0 { os.real_path(source_file) } else { source_file }
 	if result.contains('@VEXEROOT') && vroot.len > 0 {
 		result = result.replace('@VEXEROOT', vroot)
 	}
@@ -151,29 +150,55 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 	if result.contains('@VMODROOT') {
 		result = result.replace('@VMODROOT', fastc_vmod_root_for_file(source_file))
 	}
-	if result.contains('@DIR') {
-		dir := if origin_file.len > 0 { os.dir(origin_file) } else { os.getwd() }
-		result = result.replace('@DIR', os.real_path(dir))
-	}
 	// A quoted C include is relative to the V file that declared it. FastC hoists
 	// directives into one generated C file, so preserve that original include base
 	// by making the path absolute before hoisting.
-	if result.starts_with('include "') || result.starts_with('insert "')
-		|| result.starts_with('preinclude "') {
+	if result.starts_with('include ') || result.starts_with('insert ')
+		|| result.starts_with('preinclude ') {
 		quote_start := result.index_u8(`"`)
 		quote_end := result.last_index_u8(`"`)
 		if quote_start >= 0 && quote_end > quote_start {
 			include_path := result[quote_start + 1..quote_end]
-			if !os.is_abs_path(include_path) {
-				dir := if origin_file.len > 0 { os.dir(origin_file) } else { os.getwd() }
-				resolved := os.join_path(os.real_path(dir), include_path)
-				if os.exists(resolved) {
-					result = result[..quote_start + 1] + resolved + result[quote_end..]
+			if include_path != '' && !os.is_abs_path(include_path) {
+				resolved := fastc_local_c_include_path(include_path, source_file)
+				if include_path.starts_with('@DIR/') || os.exists(resolved) {
+					return result[..quote_start + 1] + resolved + result[quote_end..]
 				}
 			}
 		}
 	}
+	if result.contains('@DIR') {
+		dir := if source_file.len > 0 { os.dir(os.real_path(source_file)) } else { os.getwd() }
+		result = result.replace('@DIR', os.real_path(dir))
+	}
 	return result
+}
+
+// fastc_local_c_include_path prefers companion headers staged beside a symlinked
+// V source, while still finding headers beside its original file.
+fn fastc_local_c_include_path(path string, source_file string) string {
+	if os.is_abs_path(path) {
+		return path
+	}
+	name := path.trim_string_left('@DIR/')
+	if source_file == '' {
+		return os.join_path(os.getwd(), name)
+	}
+	source := if os.is_abs_path(source_file) { source_file } else { os.abs_path(source_file) }
+	source_dir := os.dir(source)
+	origin_file := os.real_path(source)
+	if source == origin_file {
+		// The single-source API also accepts paths to files that do not exist.
+		return os.join_path(os.real_path(source_dir), name)
+	}
+	origin_dir := os.dir(origin_file)
+	if source_dir != origin_dir {
+		staged := os.join_path(os.real_path(source_dir), name)
+		if os.exists(staged) {
+			return staged
+		}
+	}
+	return os.join_path(origin_dir, name)
 }
 
 fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
@@ -676,7 +701,7 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 	}
 	mut hash := u64(14695981039346656037)
 	// The resolver version separates memo layouts and implicit dependencies.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-5')
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-6')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -1322,12 +1347,44 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 		}
 	} else {
 		module_dir = prefs.get_module_path(imported_module, source_path)
+		if project_dir := fastc_project_module_shadowing_vlib(module_dir, imported_module, source_path, prefs) {
+			module_dir = project_dir
+		}
 	}
 	if prefs.building_v && !canonical && !prefs.target_libc_headers {
 		module_dir = os.real_path(module_dir)
 	}
 	module_path_cache[module_cache_key] = module_dir
 	return module_dir
+}
+
+// fastc_project_module_shadowing_vlib returns the project module that shadows the vlib
+// module `module_dir` for an import from a source of the project: a project module named
+// like a vlib module (Vox's `clipboard`) is preferred to vlib, as by the C backend's
+// resolver, from every project directory. Explicit `-path` search roots keep their order,
+// and imports from sources outside the project keep their own resolution.
+fn fastc_project_module_shadowing_vlib(module_dir string, imported_module string, source_path string, prefs &pref.Preferences) ?string {
+	root := prefs.module_resolution_root
+	if root == '' || prefs.module_search_paths.len > 0
+		|| !module_dir.starts_with(os.join_path_single(prefs.vroot, 'vlib') + os.path_separator) {
+		return none
+	}
+	top_name := imported_module.all_before('.')
+	if !os.is_dir(os.join_path_single(root, top_name))
+		|| !os.real_path(source_path).starts_with(root + os.path_separator) {
+		return none
+	}
+	if alias_path := pref.resolve_module_alias_path(root, imported_module) {
+		return alias_path
+	}
+	path := os.join_path_single(root, imported_module.replace('.', os.path_separator))
+	entries := os.ls(path) or { return none }
+	for entry in entries {
+		if entry.ends_with('.v') {
+			return path
+		}
+	}
+	return none
 }
 
 fn fastc_target_module_from_root(root string, module_name string) string {
@@ -2017,7 +2074,7 @@ fn fastc_source_contains_word(source string, word string) bool {
 	if word.len == 0 { return false }
 	mut start := 0
 	for {
-		index := source.index_after_(word, start)
+		index := fastc_source_text_index(source, word, start)
 		if index < 0 { return false }
 		if fastc_source_word_at(source, index, word) { return true }
 		start = index + word.len
@@ -2030,10 +2087,15 @@ fn fastc_source_contains_word(source string, word string) bool {
 @[direct_array_access]
 fn fastc_source_last_word_index(source string, word string) int {
 	if word.len == 0 { return -1 }
-	for i := source.len - word.len; i >= 0; i-- {
-		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	mut last := -1
+	mut start := 0
+	for {
+		index := fastc_source_text_index(source, word, start)
+		if index < 0 { break }
+		if fastc_source_word_at(source, index, word) { last = index }
+		start = index + word.len
 	}
-	return -1
+	return last
 }
 
 @[direct_array_access]

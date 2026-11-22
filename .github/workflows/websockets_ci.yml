@@ -1,18 +1,10 @@
 name: Websockets CI
 
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/websockets_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+  workflow_call:
 
 concurrency:
-  group: websockets-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: websockets-websockets_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -30,11 +22,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
+        uses: ./.github/actions/setup-v
+      - name: Expose the bundled TCC
         run: |
           echo "$VFLAGS"
           sudo ln -s "$PWD/thirdparty/tcc/tcc.exe" /usr/local/bin/tcc ## TODO: remove
-          make -j4 && ./v symlink
-          ./v -g -o v cmd/v
       - name: Install dependencies
         run: v retry -- sudo apt install --quiet -y libssl-dev
       - name: v doctor

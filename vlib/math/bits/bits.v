@@ -42,7 +42,7 @@ pub fn leading_zeros_16(x u16) int {
 
 @[inline]
 fn leading_zeros_16_default(x u16) int {
-	return 16 - len_16(x)
+	return 16 - len_16_default(x)
 }
 
 // leading_zeros_32 returns the number of leading zero bits in x; the result is 32 for x == 0.
@@ -53,7 +53,7 @@ pub fn leading_zeros_32(x u32) int {
 
 @[inline]
 fn leading_zeros_32_default(x u32) int {
-	return 32 - len_32(x)
+	return 32 - len_32_default(x)
 }
 
 // leading_zeros_64 returns the number of leading zero bits in x; the result is 64 for x == 0.
@@ -64,7 +64,7 @@ pub fn leading_zeros_64(x u64) int {
 
 @[inline]
 fn leading_zeros_64_default(x u64) int {
-	return 64 - len_64(x)
+	return 64 - len_64_default(x)
 }
 
 // --- TrailingZeros ---
@@ -313,8 +313,13 @@ pub fn len_8(x u8) int {
 }
 
 // len_16 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-@[direct_array_access; ignore_overflow]
+@[inline]
 pub fn len_16(x u16) int {
+	return len_16_default(x)
+}
+
+@[direct_array_access; ignore_overflow]
+fn len_16_default(x u16) int {
 	mut y := x
 	mut n := 0
 	if y >= 1 << 8 {
@@ -325,8 +330,13 @@ pub fn len_16(x u16) int {
 }
 
 // len_32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-@[direct_array_access; ignore_overflow]
+@[inline]
 pub fn len_32(x u32) int {
+	return len_32_default(x)
+}
+
+@[direct_array_access; ignore_overflow]
+fn len_32_default(x u32) int {
 	mut y := x
 	mut n := 0
 	if y >= (1 << 16) {
@@ -341,8 +351,13 @@ pub fn len_32(x u32) int {
 }
 
 // len_64 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-@[direct_array_access]
+@[inline]
 pub fn len_64(x u64) int {
+	return len_64_default(x)
+}
+
+@[direct_array_access]
+fn len_64_default(x u64) int {
 	mut y := x
 	mut n := 0
 	if y >= u64(1) << u64(32) {

@@ -1,3 +1,4 @@
+// vtest build: !musl? && !self_ubuntu_musl_ci? // render imports Sokol, which needs X11/GL headers
 module render
 
 fn rewind_test_quad(ctx &Context) {

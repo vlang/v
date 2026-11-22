@@ -1,15 +1,26 @@
 import os
+import v.tempname
 
 const gct_vexe = @VEXE
 const gct_tests_dir = os.dir(@FILE)
 const gct_v3_dir = os.dir(gct_tests_dir)
 const gct_vlib_dir = os.dir(gct_v3_dir)
 const gct_v3_src = os.join_path(gct_v3_dir, 'v.v')
+const gct_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_gct_fixtures_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(gct_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(gct_fixture_dir) or {}
+}
 
 fn gct_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_chan_thread_param_test_${pid}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(gct_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([gct_vexe, '-gc', 'none', '-path', '${gct_vlib_dir}' + '|@vlib|@vmodules', '-o',
 			v3_bin, '${gct_v3_src}'])
@@ -25,14 +36,14 @@ fn gct_write_file(root string, rel string, source string) {
 
 fn gct_run_project(v3_bin string, name string, files map[string]string) string {
 	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${pid}_project')
+	root := os.join_path(gct_fixture_dir, 'v3_${name}_${pid}_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${name}' }\n") or { panic(err) }
 	for rel, source in files {
 		gct_write_file(root, rel, source)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${pid}')
+	bin := os.join_path(gct_fixture_dir, 'v3_${name}_${pid}')
 	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output

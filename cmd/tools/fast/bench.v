@@ -7,6 +7,7 @@ import os
 import time
 import arrays
 import db.sqlite
+import stagetimes
 
 // history_ref_for_head returns the history (branch) that the current HEAD belongs
 // to. On a normal checkout that is the branch name; on a detached HEAD (common in
@@ -187,7 +188,7 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	hello := measure(hello_cmd, 'v hello.v')!
 	vc_size := int(os.file_size('v.c') / 1000)
 	stages := measure_steps_minimal(vprod, stage_v)!
-	mut vlines := parse_vlines(probe.output)
+	mut vlines := stagetimes.parse_vlines(probe.output)
 	if vlines == 0 {
 		vlines = stages.vlines
 	}
@@ -369,22 +370,9 @@ fn measure(cmd string, description string) !int {
 	return int(f64(arrays.sum(runs) or { 0 }) / runs.len)
 }
 
-struct StageMeasurements {
-mut:
-	scan_ms      int
-	parse_ms     int
-	check_ms     int
-	cgen_ms      int
-	scan_rss_kb  int
-	parse_rss_kb int
-	check_rss_kb int
-	cgen_rss_kb  int
-	vlines       int
-}
-
 // measure_steps_minimal runs the compiler several times, capturing the minimum
 // time and RSS reported for each compiler stage.
-fn measure_steps_minimal(vprod string, stage_v string) !StageMeasurements {
+fn measure_steps_minimal(vprod string, stage_v string) !stagetimes.StageMeasurements {
 	mut scans, mut parses, mut checks, mut cgens := []int{}, []int{}, []int{}, []int{}
 	mut scan_rss, mut parse_rss, mut check_rss, mut cgen_rss := []int{}, []int{}, []int{}, []int{}
 	mut vliness := []int{}
@@ -400,7 +388,7 @@ fn measure_steps_minimal(vprod string, stage_v string) !StageMeasurements {
 		cgen_rss << sample.cgen_rss_kb
 		vliness << sample.vlines
 	}
-	return StageMeasurements{
+	return stagetimes.StageMeasurements{
 		scan_ms:      arrays.min(scans) or { 0 }
 		parse_ms:     arrays.min(parses) or { 0 }
 		check_ms:     arrays.min(checks) or { 0 }
@@ -413,7 +401,7 @@ fn measure_steps_minimal(vprod string, stage_v string) !StageMeasurements {
 	}
 }
 
-fn measure_steps_one_sample(vprod string, stage_v string) !StageMeasurements {
+fn measure_steps_one_sample(vprod string, stage_v string) !stagetimes.StageMeasurements {
 	cmd := if stage_v == '' {
 		'${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
 	} else {
@@ -423,104 +411,5 @@ fn measure_steps_one_sample(vprod string, stage_v string) !StageMeasurements {
 	if resp.exit_code != 0 {
 		return error('stage-timing run failed (exit ${resp.exit_code}): `${cmd}`\n${resp.output}')
 	}
-	return parse_stage_measurements(resp.output)
-}
-
-fn parse_stage_measurements(output string) !StageMeasurements {
-	if output.contains(' MB RSS') {
-		return parse_v3_stage_measurements(output)
-	}
-
-	mut result := StageMeasurements{
-		vlines: parse_vlines(output)
-	}
-	lines := output.split_into_lines()
-	if lines.len == 3 {
-		result.parse_ms = lines[0].before('.').int()
-		result.check_ms = lines[1].before('.').int()
-		result.cgen_ms = lines[2].before('.').int()
-	} else {
-		ms_lines := lines.map(it.split('  ms '))
-		for line in ms_lines {
-			if line.len == 2 {
-				match line[1] {
-					'SCAN' { result.scan_ms = line[0].int() }
-					'PARSE' { result.parse_ms = line[0].int() }
-					'CHECK' { result.check_ms = line[0].int() }
-					'C GEN' { result.cgen_ms = line[0].int() }
-					else {}
-				}
-			}
-		}
-	}
-	// Both output formats set parse/check/cgen on success; if none parsed, the
-	// output was unusable (e.g. a crash that still exited 0), so reject it rather
-	// than letting arrays.min pick these zeroes into the stored row.
-	if result.parse_ms == 0 && result.check_ms == 0 && result.cgen_ms == 0 {
-		return error('could not parse stage timings from output:\n${output}')
-	}
-	return result
-}
-
-fn parse_v3_stage_measurements(output string) !StageMeasurements {
-	mut result := StageMeasurements{
-		vlines: parse_vlines(output)
-	}
-	for raw_line in output.split_into_lines() {
-		line := raw_line.trim_space()
-		ms_pos := line.index(' ms') or { continue }
-		left := line[..ms_pos].trim_space()
-		parts := left.fields()
-		if parts.len < 2 {
-			continue
-		}
-		label := parts[..parts.len - 1].join(' ')
-		ms := int(parts.last().f64())
-		rss_mb := rss_mb_from_v3_line(line)
-		match true {
-			label == 'parse setup/cache' {
-				// v3 scans while setting up its parse pipeline, so this is the
-				// closest equivalent to the old compiler's standalone SCAN stage.
-				result.scan_ms = ms
-				result.scan_rss_kb = rss_mb * 1024
-			}
-			label == 'parse .vh' || label.starts_with('parse .v') || label == 'resolve imports' {
-				result.parse_ms += ms
-				result.parse_rss_kb = rss_mb * 1024
-			}
-			label == 'check' || label.starts_with('check (') {
-				result.check_ms = ms
-				result.check_rss_kb = rss_mb * 1024
-			}
-			label == 'cgen' || label.starts_with('cgen (') {
-				result.cgen_ms = ms
-				result.cgen_rss_kb = rss_mb * 1024
-			}
-			else {}
-		}
-	}
-	if result.parse_ms == 0 && result.check_ms == 0 && result.cgen_ms == 0 {
-		return error('could not parse v3 stage timings from output:\n${output}')
-	}
-	return result
-}
-
-fn rss_mb_from_v3_line(line string) int {
-	rss_end := line.index(' MB RSS') or { return 0 }
-	return line[..rss_end].trim_space().all_after_last(' ').int()
-}
-
-fn parse_vlines(output string) int {
-	for raw_line in output.split_into_lines() {
-		line := raw_line.trim_space()
-		if line.starts_with('parsed .v lines') {
-			return line.trim_string_left('parsed .v lines').trim_space().all_before(' ').int()
-		}
-		if line.contains('V') && line.contains('source') && line.contains('size:') {
-			start := line.index(':') or { continue }
-			end := line.index('lines,') or { continue }
-			return line[start + 1..end].trim_space().int()
-		}
-	}
-	return 0
+	return stagetimes.parse_stage_measurements(resp.output)
 }

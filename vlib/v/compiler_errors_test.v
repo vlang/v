@@ -96,14 +96,34 @@ fn test_all() {
 	run_dir := '${checker_dir}/run'
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
+	// Fixtures that compile write their executables (and, with -g on macOS, debug symbol
+	// bundles) next to their sources. Remove what this run added once every task is done.
+	output_dirs := [checker_dir, checker_with_check_option_dir, parser_dir, scanner_dir, module_dir,
+		global_dir, global_run_dir, run_dir, su_dir, no_closures_dir]
+	outputs_before := fixture_outputs(output_dirs)
+	defer {
+		for output in fixture_outputs(output_dirs) {
+			if output !in outputs_before {
+				if os.is_dir(output) {
+					os.rmdir_all(output) or {}
+				} else {
+					os.rm(output) or {}
+				}
+			}
+		}
+	}
 	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
 		'js_number_requires_explicit_cast.vv']
 	raw_asm_checker_tests := ['asm_raw_label_ok.vv']
 	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
+	fixture_import_tests := ['import_mod_as_import_alias_duplicate_err.vv',
+		'import_mod_as_import_duplicate_err.vv', 'import_mod_sub_as_duplicate_err.vv',
+		'import_mod_sub_duplicate_as_mod.vv', 'import_mod_sub_duplicate_err.vv',
+		'veb_context_param_mutability.vv', 'veb_ctx_on_fn_err.vv', 'veb_handler_param_type_err.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
 		&& it !in js_checker_tests && it !in raw_asm_checker_tests
-		&& it !in disable_explicit_mutability_tests)
+		&& it !in disable_explicit_mutability_tests && it !in fixture_import_tests)
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
@@ -181,6 +201,10 @@ fn test_all() {
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '', '.out', checker_tests, false)
+	// Import and route diagnostics need the module names and declarations.
+	// Resolve those imports to the small fixture modules for these cases.
+	tasks.add('', checker_dir, '-path "@vroot/${checker_dir}/testdata/import_modules|@vlib|@vmodules"',
+		'.out', fixture_import_tests, false)
 	tasks.add('', checker_dir, '-b js', '.js.out', js_checker_tests, false)
 	// Keep raw assembly on the compiler selected for this test and its skip rules.
 	tasks.add('', checker_dir, '-cc ${@CCOMPILER}', '.out', raw_asm_checker_tests, false)
@@ -423,6 +447,26 @@ fn (mut task TaskDescription) execute() {
 			os.write_file(expected_out_path, res.output) or { panic(err) }
 		}
 	}
+}
+
+// fixture_outputs lists the executables and macOS debug symbol bundles that exist next to
+// the `.vv` fixtures of `dirs`, which is where compiling a fixture writes them.
+fn fixture_outputs(dirs []string) []string {
+	mut outputs := []string{}
+	for dir in dirs {
+		for entry in os.ls(dir) or { continue } {
+			if !entry.ends_with('.vv') {
+				continue
+			}
+			base := os.join_path(dir, entry.all_before_last('.vv'))
+			for candidate in [base, base + '.exe', base + '.dSYM'] {
+				if os.exists(candidate) {
+					outputs << candidate
+				}
+			}
+		}
+	}
+	return outputs
 }
 
 fn clean_line_endings(s string) string {

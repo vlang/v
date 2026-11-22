@@ -3,6 +3,7 @@ module zstd
 import os
 
 const samples_folder = os.join_path(os.dir(@FILE), 'samples')
+const roundtrip_input = 'Hello world!'.repeat(10000).bytes()
 
 fn s(fname string) string {
 	return os.join_path(samples_folder, fname)
@@ -11,10 +12,8 @@ fn s(fname string) string {
 fn test_zstd() {
 	assert version_number() >= 10505
 
-	uncompressed := 'Hello world!'.repeat(10000)
-	compressed := compress(uncompressed.bytes())!
-	decompressed := decompress(compressed)!
-	assert decompressed == uncompressed.bytes()
+	compressed := compress(roundtrip_input)!
+	assert decompress(compressed)! == roundtrip_input
 }
 
 fn test_zstd_builds_with_cstrict_on_linux() {
@@ -35,95 +34,32 @@ fn test_zstd_builds_with_cstrict_on_linux() {
 }
 
 fn test_zstd_deferent_compression_level() {
-	uncompressed := 'Hello world!'.repeat(10000)
-
-	compressed_1000 := compress(uncompressed.bytes(), compression_level: 1000)!
-	decompressed_1000 := decompress(compressed_1000)!
-	assert decompressed_1000 == uncompressed.bytes()
-
-	compressed_0 := compress(uncompressed.bytes(), compression_level: 0)!
-	decompressed_0 := decompress(compressed_0)!
-	assert decompressed_0 == uncompressed.bytes()
-
-	compressed_1 := compress(uncompressed.bytes(), compression_level: 1)!
-	decompressed_1 := decompress(compressed_1)!
-	assert decompressed_1 == uncompressed.bytes()
-
-	compressed_15 := compress(uncompressed.bytes(), compression_level: 15)!
-	decompressed_15 := decompress(compressed_15)!
-	assert decompressed_15 == uncompressed.bytes()
+	for level in [1000, 0, 1, 15] {
+		compressed := compress(roundtrip_input, compression_level: level)!
+		assert decompress(compressed)! == roundtrip_input, 'compression level ${level}'
+	}
 }
 
 fn test_zstd_nb_threads() {
-	uncompressed := 'Hello world!'.repeat(10000)
-
-	compressed_0 := compress(uncompressed.bytes(), nb_threads: 0)!
-	decompressed_0 := decompress(compressed_0)!
-	assert decompressed_0 == uncompressed.bytes()
-
-	compressed_1 := compress(uncompressed.bytes(), nb_threads: 1)!
-	decompressed_1 := decompress(compressed_1)!
-	assert decompressed_1 == uncompressed.bytes()
-
-	compressed_15 := compress(uncompressed.bytes(), nb_threads: 15)!
-	decompressed_15 := decompress(compressed_15)!
-	assert decompressed_15 == uncompressed.bytes()
+	for threads in [0, 1, 15] {
+		compressed := compress(roundtrip_input, nb_threads: threads)!
+		assert decompress(compressed)! == roundtrip_input, 'thread count ${threads}'
+	}
 }
 
 fn test_zstd_checksum_flag() {
-	uncompressed := 'Hello world!'.repeat(10000)
-
-	compressed_true := compress(uncompressed.bytes(), checksum_flag: true)!
-	decompressed_true := decompress(compressed_true)!
-	assert decompressed_true == uncompressed.bytes()
-
-	compressed_false := compress(uncompressed.bytes(), checksum_flag: false)!
-	decompressed_false := decompress(compressed_false)!
-	assert decompressed_false == uncompressed.bytes()
+	for checksum in [true, false] {
+		compressed := compress(roundtrip_input, checksum_flag: checksum)!
+		assert decompress(compressed)! == roundtrip_input, 'checksum flag ${checksum}'
+	}
 }
 
 fn test_zstd_deferent_strategy() {
-	uncompressed := 'Hello world!'.repeat(10000)
-
-	compressed_default := compress(uncompressed.bytes(), strategy: .default)!
-	decompressed_default := decompress(compressed_default)!
-	assert decompressed_default == uncompressed.bytes()
-
-	compressed_fast := compress(uncompressed.bytes(), strategy: .fast)!
-	decompressed_fast := decompress(compressed_fast)!
-	assert decompressed_fast == uncompressed.bytes()
-
-	compressed_dfast := compress(uncompressed.bytes(), strategy: .dfast)!
-	decompressed_dfast := decompress(compressed_dfast)!
-	assert decompressed_dfast == uncompressed.bytes()
-
-	compressed_greedy := compress(uncompressed.bytes(), strategy: .greedy)!
-	decompressed_greedy := decompress(compressed_greedy)!
-	assert decompressed_greedy == uncompressed.bytes()
-
-	compressed_lazy := compress(uncompressed.bytes(), strategy: .lazy)!
-	decompressed_lazy := decompress(compressed_lazy)!
-	assert decompressed_lazy == uncompressed.bytes()
-
-	compressed_lazy2 := compress(uncompressed.bytes(), strategy: .lazy2)!
-	decompressed_lazy2 := decompress(compressed_lazy2)!
-	assert decompressed_lazy2 == uncompressed.bytes()
-
-	compressed_btlazy2 := compress(uncompressed.bytes(), strategy: .btlazy2)!
-	decompressed_btlazy2 := decompress(compressed_btlazy2)!
-	assert decompressed_btlazy2 == uncompressed.bytes()
-
-	compressed_btopt := compress(uncompressed.bytes(), strategy: .btopt)!
-	decompressed_btopt := decompress(compressed_btopt)!
-	assert decompressed_btopt == uncompressed.bytes()
-
-	compressed_btultra := compress(uncompressed.bytes(), strategy: .btultra)!
-	decompressed_btultra := decompress(compressed_btultra)!
-	assert decompressed_btultra == uncompressed.bytes()
-
-	compressed_btultra2 := compress(uncompressed.bytes(), strategy: .btultra2)!
-	decompressed_btultra2 := decompress(compressed_btultra2)!
-	assert decompressed_btultra2 == uncompressed.bytes()
+	for strategy in [Strategy.default, .fast, .dfast, .greedy, .lazy, .lazy2, .btlazy2, .btopt,
+		.btultra, .btultra2] {
+		compressed := compress(roundtrip_input, strategy: strategy)!
+		assert decompress(compressed)! == roundtrip_input, 'strategy ${strategy}'
+	}
 }
 
 fn compress_file(fname string, oname string, params CompressParams) ! {
@@ -277,32 +213,19 @@ struct MemoryTrace {
 	size      u64
 }
 
-fn store_array_test(fname string) ! {
-	// Create a big array
-	mut store_memory_trace := []MemoryTrace{cap: 1000}
+fn test_zstd_store_load_array() {
+	fname := os.join_path(os.vtmp_dir(), 'zstd_mem_trace_${os.getpid()}.zst')
+	defer { os.rm(fname) or {} }
+	mut traces := []MemoryTrace{cap: 1000}
 	for i in 0 .. 1000 {
-		store_memory_trace << MemoryTrace{
+		traces << MemoryTrace{
 			operation: u64(`L`)
 			address:   u64(i)
 			size:      u8(i % 8)
 		}
 	}
-	store_array[MemoryTrace](fname, store_memory_trace, compression_level: 8)!
-}
-
-fn load_array_test(fname string) ! {
-	load_memory_trace := load_array[MemoryTrace](fname)!
-	for i in 0 .. 1000 {
-		assert load_memory_trace[i].operation == `L`
-		assert load_memory_trace[i].address == i
-		assert load_memory_trace[i].size == u8(i % 8)
-	}
-}
-
-fn test_zstd_store_load_array() {
-	store_array_test(s('mem_trace.zstd'))!
-	load_array_test(s('mem_trace.zstd'))!
-	os.rm(s('mem_trace.zstd'))!
+	store_array[MemoryTrace](fname, traces, compression_level: 8)!
+	assert load_array[MemoryTrace](fname)! == traces
 }
 
 fn assert_decompress_error(data []u8, reason string) ! {
@@ -331,51 +254,16 @@ fn test_zstd_invalid_compression() {
 		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
-fn test_zstd_with_corruption1() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
-	compressed[5] = u8(0x7A)
-	assert_decompress_error(compressed, 'Data corruption detected')!
-}
-
-fn test_zstd_with_corruption2() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
-	compressed[6] = u8(0x7A)
-	assert_decompress_error(compressed, 'Destination buffer is too small')!
-}
-
-fn test_zstd_with_corruption3() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
-	compressed[7] = u8(0x7A)
-	assert_decompress_error(compressed, 'Src size is incorrect')!
-}
-
-fn test_zstd_with_corruption4() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
-	compressed[8] = u8(0x7A)
-	assert_decompress_error(compressed, 'Src size is incorrect')!
-}
-
-fn test_zstd_with_corruption5() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
-	compressed[9] = u8(0x7A)
-	assert_decompress_error(compressed, "Restored data doesn't match checksum")!
-}
-
-fn test_zstd_with_corruption6() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
-	compressed[10] = u8(0x7A)
-	assert_decompress_error(compressed, "Restored data doesn't match checksum")!
-}
-
-fn test_zstd_with_corruption7() {
-	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+fn test_zstd_with_corruption() {
+	original := compress('Hello world!'.bytes())!
+	checksum_error := "Restored data doesn't match checksum"
+	for i, reason in ['Data corruption detected', 'Destination buffer is too small',
+		'Src size is incorrect', 'Src size is incorrect', checksum_error, checksum_error] {
+		mut compressed := original.clone()
+		compressed[5 + i] = u8(0x7A)
+		assert_decompress_error(compressed, reason)!
+	}
+	mut compressed := original.clone()
 	compressed[compressed.len - 1] += 1
-	assert_decompress_error(compressed, "Restored data doesn't match checksum")!
+	assert_decompress_error(compressed, checksum_error)!
 }

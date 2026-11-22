@@ -111,8 +111,8 @@ fn test_long_string_literal_table_entries_split_without_changing_bytes() {
 	}
 }
 
-fn test_string_literal_macro_keeps_c_function_and_macro_names() {
-	root := os.join_path(os.vtmp_dir(), 'string_literal_c_function_${os.getpid()}')
+fn test_string_literal_macros_preserve_c_names() {
+	root := os.join_path(os.vtmp_dir(), 'string_literal_c_names_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.c.v')
@@ -123,33 +123,8 @@ fn test_string_literal_macro_keeps_c_function_and_macro_names() {
 	os.write_file(header, 'static inline int _SL(void) { return 40; }\n#define _SL() (_SL() + 2)\n')!
 	os.write_file(source, 'module main
 #include "${header.replace('\\', '/')}"
-fn C._SL() int
-fn main() {
-	result := C._SL()
-	println("binding: \${result}")
-}
-')!
-	for mode in [([]string{}), ['-no-parallel']] {
-		mut args := ['-new-compiler', '-nocache', '-gc', 'none', '-cc', 'clang', '-no-retry-compilation',
-			'-o', binary]
-		args << mode
-		args << source
-		compiled := cmdexec.run(@VEXE, args)
-		assert compiled.exit_code == 0, '${mode}: ${compiled.output}'
-		run := cmdexec.run(binary, [])
-		assert run.exit_code == 0, run.output
-		assert run.output == 'binding: 42\n', run.output
-	}
-}
-
-fn test_string_literal_ids_do_not_expand_c_struct_members() {
-	root := os.join_path(os.vtmp_dir(), 'string_literal_members_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.c.v')
-	binary := os.join_path(root, 'main')
-	os.write_file(source, 'module main
 #include "@VEXEROOT/vlib/v/gen/c/testdata/string_literal_members.h"
+fn C._SL() int
 @[typedef]
 struct C.LiteralMembers {
 mut:
@@ -160,14 +135,19 @@ fn main() {
 	mut value := C.LiteralMembers{_str_0: 7, _str_1: 11}
 	value._str_0 += 1
 	println("member \${value._str_0}, \${value._str_1}")
+	result := C._SL()
+	println("binding: \${result}")
 }
 ')!
 	mut modes := [['-keepc'], ['-nocache'], ['-nocache', '-no-parallel']]
 	$if bsd || linux {
 		modes << ['-nocache', '-parallel-cc']
 	}
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
 	for mode in modes {
-		mut args := ['-new-compiler', '-gc', 'none', '-cc', 'clang', '-no-retry-compilation', '-showcc',
+		mut args := ['-new-compiler', '-gc', 'none', '-cc', cc, '-no-retry-compilation', '-showcc',
 			'-o', binary]
 		args << mode
 		args << source
@@ -181,7 +161,7 @@ fn main() {
 		}
 		run := cmdexec.run(binary, [])
 		assert run.exit_code == 0, run.output
-		assert run.output == 'member 8, 11\n', run.output
+		assert run.output == 'member 8, 11\nbinding: 42\n', run.output
 	}
 }
 

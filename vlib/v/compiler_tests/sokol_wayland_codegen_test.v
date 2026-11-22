@@ -1,6 +1,14 @@
 import os
 import v.cmdexec
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_linux_gg_wayland_uses_the_new_compiler_and_32_bit_pipe_descriptors() {
 	root := os.join_path(os.vtmp_dir(), 'sokol_wayland_codegen_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -19,17 +27,23 @@ fn main() {
  window.run()
 }
 ')!
+	// `-dump-c-flags` also builds the target's module objects, and a Windows host has
+	// no C compiler for Linux objects; there only the generated C is checked.
+	dump_flags := $if windows { false } $else { true }
 	for enabled in [false, true] {
 		c_file := os.join_path(root, 'gg_${enabled}.c')
-		mut args := ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-dump-c-flags', '-']
+		mut args := ['-gc', 'none', '-os', 'linux', '-arch', 'amd64']
+		if dump_flags { args << ['-dump-c-flags', '-'] }
 		if enabled { args << ['-d', 'sokol_wayland'] }
 		args << ['-o', c_file, source]
 		result := cmdexec.run(@VEXE, args)
 		assert result.exit_code == 0, result.output
 		code := os.read_file(c_file)!
 		if enabled {
-			for library in ['-lwayland-client', '-lwayland-egl', '-lxkbcommon'] {
-				assert library in result.output.split_into_lines(), result.output
+			if dump_flags {
+				for library in ['-lwayland-client', '-lwayland-egl', '-lxkbcommon'] {
+					assert library in result.output.split_into_lines(), result.output
+				}
 			}
 			assert code.contains('#define SOKOL_WAYLAND'), code[..1000]
 			assert !code.contains('#define SOKOL_DISABLE_WAYLAND')

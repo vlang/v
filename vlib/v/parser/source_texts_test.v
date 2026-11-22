@@ -1,7 +1,6 @@
 module parser
 
 import os
-import strings
 import v.pref
 import v.workers
 
@@ -154,21 +153,17 @@ fn test_parallel_parse_keeps_each_text_under_the_id_of_its_file() {
 	os.write_file(os.join_path(root, 'worker.txt'), 'first\nsecond\n')!
 	mut files := []string{cap: 4}
 	mut texts := map[string]string{}
+	// Keep four files above the parallel parse byte threshold.
+	padding := '/*' + ' '.repeat(40 * 1024) + '*/\n'
 	for file_index in 0 .. 4 {
-		mut src := strings.new_builder(48_000)
-		src.writeln('module main')
-		src.writeln('')
-		if file_index == 0 {
-			src.writeln('fn templated_action() string {')
-			src.writeln("\treturn \$tmpl('worker.txt')")
-			src.writeln('}')
-			src.writeln('')
-		}
-		for i in 0 .. 800 {
-			src.writeln('fn kept_text_padding_${file_index}_${i}() int { return ${i} }')
+		template := if file_index == 0 {
+			"fn templated_action() string {\n\treturn \$tmpl('worker.txt')\n}\n\n"
+		} else {
+			''
 		}
 		path := os.join_path(root, '${file_index}.v')
-		text := src.str()
+		text := 'module main\n\n' + template + padding +
+			'fn kept_text_${file_index}() int { return ${file_index} }\n'
 		os.write_file(path, text)!
 		files << path
 		texts[path] = text
@@ -188,6 +183,12 @@ fn test_parallel_parse_keeps_each_text_under_the_id_of_its_file() {
 	}
 	kept.sort()
 	assert kept == files
+	p.release_source_storage()
+	assert p.batch_source_buffers.len == 0
+	for file_id, text in p.a.source_texts {
+		file := p.a.source_files[file_id] or { panic('missing retained source ${file_id}') }
+		assert text == texts[file.name], file.name
+	}
 }
 
 // The parallel const prepasses scan the sources before the workers parse them.

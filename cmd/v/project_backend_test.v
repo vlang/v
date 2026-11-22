@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.driver
 import v.pref
 
 fn project_backend_fixture(name string, manifest string) string {
@@ -36,8 +37,10 @@ fn test_backend_option_given_reads_every_spelling() {
 	assert backend_option_given(['-b', 'c', 'main.v'])
 	assert backend_option_given(['-backend', 'fastc', 'main.v'])
 	assert backend_option_given(['-b=c', 'main.v'])
+	assert backend_option_given(['-native', 'main.v'])
 	assert !backend_option_given(['-compile-backend', 'fastc', 'main.v'])
 	assert !backend_option_given(['-o', '-b', 'main.v'])
+	assert !backend_option_given(['-o', '-native', 'main.v'])
 	assert !backend_option_given(['main.v'])
 }
 
@@ -45,16 +48,37 @@ fn test_project_backend_is_the_default_for_the_project() {
 	root := project_backend_fixture('fastc', "Module {\n\tname: 'app'\n\tbackend: 'fastc'\n}\n")
 	main_file := os.join_path(root, 'main.v')
 	test_dir := os.join_path(root, 'sub')
-	assert with_project_backend([root]) == ['-b', 'fastc', root]
-	assert with_project_backend(['-g', 'run', main_file, 'x']) == ['-b', 'fastc', '-g', 'run',
-		main_file, 'x']
-	assert with_project_backend(['test', test_dir]) == ['-b', 'fastc', 'test', test_dir]
-	assert with_project_backend([os.join_path(test_dir, 'a_test.v')])[..2] == ['-b', 'fastc']
+	assert with_project_backend([root]) == [driver.project_backend_flag, '-b', 'fastc', root]
+	assert with_project_backend(['-g', 'run', main_file, 'x']) == [
+		driver.project_backend_flag,
+		'-b',
+		'fastc',
+		'-g',
+		'run',
+		main_file,
+		'x',
+	]
+	assert with_project_backend(['test', test_dir]) == [driver.project_backend_flag, '-b', 'fastc',
+		'test', test_dir]
+	assert with_project_backend([os.join_path(test_dir, 'a_test.v')])[..3] == [
+		driver.project_backend_flag,
+		'-b',
+		'fastc',
+	]
 	// The command line wins over v.mod.
 	assert with_project_backend(['-b', 'c', root]) == ['-b', 'c', root]
+	native_args := ['-native', root]
+	assert with_project_backend(native_args) == native_args
 	// Arguments of the program that `run` starts are not compiler options.
-	assert with_project_backend(['run', main_file, '-b', 'c']) == ['-b', 'fastc', 'run', main_file,
-		'-b', 'c']
+	assert with_project_backend(['run', main_file, '-b', 'c']) == [
+		driver.project_backend_flag,
+		'-b',
+		'fastc',
+		'run',
+		main_file,
+		'-b',
+		'c',
+	]
 	// Inline source and stdin have no project.
 	assert with_project_backend(['-e', 'println(1)']) == ['-e', 'println(1)']
 	assert with_project_backend(['run', '-']) == ['run', '-']
@@ -71,7 +95,8 @@ fn test_generated_sources_belong_to_no_project() {
 	// Only the compiler's own names are exempt.
 	other := os.join_path(root, 'v3_inline_1_abc.vsh')
 	os.write_file(other, 'println(1)\n')!
-	assert with_project_backend(['run', other]) == ['-b', 'fastc', 'run', other]
+	assert with_project_backend(['run', other]) == [driver.project_backend_flag, '-b', 'fastc',
+		'run', other]
 }
 
 fn test_test_targets_are_run_with_their_own_project_backends() {
@@ -110,7 +135,7 @@ fn test_unknown_project_backend_is_reported_with_its_manifest() {
 	res := os.exec([@VEXE, root])
 	assert res.exit_code == 1
 	assert res.output.contains(os.join_path(os.real_path(root), 'v.mod'))
-	assert res.output.contains('unknown backend `pascal`; expected c, fastc, arm64, x64, wasm')
+	assert res.output.contains('unknown backend `pascal`; expected c, fastc, arm64, amd64, wasm')
 	// An explicit backend does not read the manifest's choice.
 	assert with_project_backend(['-b', 'c', root]) == ['-b', 'c', root]
 }
@@ -154,6 +179,18 @@ fn test_inline_source_and_stdin_belong_to_no_project() {
 	project := run_launcher_in(root, ['run', '.'], '')
 	assert project.exit_code == 1, project.output
 	assert project.output.contains('unknown backend `pascal`'), project.output
+}
+
+fn test_project_backend_does_not_keep_the_generated_c() {
+	// Only a `-b` on the command line asks for `<output>.c` next to the executable.
+	root := project_backend_fixture('retained_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
+	output := os.join_path(root, 'app_output')
+	project := run_launcher_in(root, ['-o', output, '.'], '')
+	assert project.exit_code == 0, project.output
+	assert !os.exists(output + '.c')
+	explicit := run_launcher_in(root, ['-b', 'c', '-o', output, '.'], '')
+	assert explicit.exit_code == 0, explicit.output
+	assert os.is_file(output + '.c')
 }
 
 fn test_test_command_hands_the_project_backend_to_the_test_runner() {
@@ -216,6 +253,17 @@ fn test_generated_sources_reach_a_pinned_compiler_unchanged() {
 }
 
 fn test_fail_fast_stops_before_the_next_project_backend() {
+	// The hosted test runner may itself enable fail-fast. Start with an unset flag
+	// so the first invocation tests the default behavior, then enable it below.
+	previous_fail_fast := os.getenv_opt('VTEST_FAIL_FAST')
+	os.unsetenv('VTEST_FAIL_FAST')
+	defer {
+		if value := previous_fail_fast {
+			os.setenv('VTEST_FAIL_FAST', value, true)
+		} else {
+			os.unsetenv('VTEST_FAIL_FAST')
+		}
+	}
 	plain := project_backend_fixture('fail_fast_plain', '')
 	c_project := project_backend_fixture('fail_fast_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
 	for root in [plain, c_project] {
@@ -230,9 +278,6 @@ fn test_fail_fast_stops_before_the_next_project_backend() {
 	assert flag.output.count('Summary for all V _test.v files') == 1, flag.output
 	// The test runner also reads fail-fast from the environment.
 	os.setenv('VTEST_FAIL_FAST', '1', true)
-	defer {
-		os.unsetenv('VTEST_FAIL_FAST')
-	}
 	env := run_launcher_in(os.dir(plain), ['test', plain, c_project], '')
 	assert env.exit_code == 1, env.output
 	assert env.output.count('Summary for all V _test.v files') == 1, env.output

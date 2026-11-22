@@ -102,6 +102,25 @@ struct FlatFnGenCandidate {
 	item           FlatFnGenItem
 }
 
+// The moved_flat_fn_gen_* helpers return their argument: pushing a call result
+// does not deep-copy its strings. Selection passes every function through three
+// lists; the names stay owned by the AST and by the selection's arenas, which
+// outlive the lists.
+@[inline]
+fn moved_flat_fn_gen_candidate(candidate FlatFnGenCandidate) FlatFnGenCandidate {
+	return candidate
+}
+
+@[inline]
+fn moved_flat_fn_gen_item(item FlatFnGenItem) FlatFnGenItem {
+	return item
+}
+
+@[inline]
+fn moved_flat_fn_gen_sort_key(key FlatFnGenItemSortKey) FlatFnGenItemSortKey {
+	return key
+}
+
 struct PreferredFlatFnCandidate {
 mut:
 	node_id                     int = -1
@@ -266,7 +285,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		} else {
 			flat_fn_gen_item_cost(g.a, item.node_id)
 		}
-		items << FlatFnGenItem{
+		items << moved_flat_fn_gen_item(FlatFnGenItem{
 			node_id:                   item.node_id
 			file:                      item.file
 			module:                    item.module
@@ -276,22 +295,31 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			is_program:                item.is_program
 			direct_array_access:       item.direct_array_access
 			ignore_overflow:           item.ignore_overflow
-		}
+		})
 	}
 	// Sort compact (name, index) keys instead of moving whole items through every
 	// merge pass, then permute the items once, in place. The sort is stable, so
 	// equal names keep their selection order exactly as when sorting the items.
 	mut keys := []FlatFnGenItemSortKey{cap: items.len}
 	for i, item in items {
-		keys << FlatFnGenItemSortKey{
+		keys << moved_flat_fn_gen_sort_key(FlatFnGenItemSortKey{
 			c_name: item.c_name
 			idx:    i
-		}
+		})
 	}
-	keys = g.sorted_fn_gen_item_keys(keys)
-	unsorted := items.clone()
-	for i, key in keys {
+	sorted_keys := g.sorted_fn_gen_item_keys(keys)
+	mut unsorted := items.clone()
+	for i, key in sorted_keys {
 		items[i] = unsorted[key.idx]
+	}
+	// The candidate list, the unsorted copy and the key lists are spent, but the
+	// arena they are in can stay until cgen is done: give their pages back.
+	unsafe {
+		candidates.free()
+		unsorted.free()
+		keys.free()
+		preferred_fns.free()
+		candidate_preferred.free()
 	}
 	return items
 }
@@ -356,7 +384,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 			continue
 		}
 		preferred_name := g.fn_c_name_in_module_known(item_module, node.value, qfn)
-		candidates << FlatFnGenCandidate{
+		candidates << moved_flat_fn_gen_candidate(FlatFnGenCandidate{
 			preferred_name: preferred_name
 			item:           FlatFnGenItem{
 				node_id:                   flat.NodeId(i)
@@ -370,7 +398,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 				ignore_overflow:           ignore_overflow_fns.contains(i, node)
 					|| item_module == 'builtin.overflow'
 			}
-		}
+		})
 	}
 	return candidates
 }
@@ -571,6 +599,7 @@ fn cache_fn_marker_key(file string, module_name string, name string) string {
 
 // gen_fn_items emits fn items output for c.
 fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
+	g.reset_body_name_memo()
 	for item in items {
 		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
 			continue
@@ -973,10 +1002,11 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 fn (mut g FlatGen) gen_top_level_asm() {
 	mut program_files := map[string]bool{}
 	for file_idx in g.top_level_nodes() {
-		file_node := g.a.nodes[file_idx]
-		if file_node.kind != .file {
+		// Nearly every top-level node is no file: test the kind before copying it.
+		if g.a.nodes[file_idx].kind != .file {
 			continue
 		}
+		file_node := g.a.nodes[file_idx]
 		if g.cache_split {
 			if !g.has_top_level_asm(flat.NodeId(file_idx)) {
 				continue
@@ -1017,6 +1047,11 @@ fn (g &FlatGen) has_top_level_asm(id flat.NodeId) bool {
 
 fn (mut g FlatGen) gen_top_level_asm_node(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	// Nearly every child of a file is a declaration: test the kind before
+	// copying the node.
+	if g.a.nodes[int(id)].kind !in [.asm_stmt, .block, .comptime_if] {
 		return
 	}
 	node := g.a.nodes[int(id)]
@@ -1109,16 +1144,6 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, node_inde
 	// raw helper would duplicate the ABI under a misleading `u8__vbytes` name.
 	if module_name == 'builtin' && node.value == 'u8.vbytes' {
 		return false
-	}
-	if module_name == 'c' && file_name.ends_with('/gen/c/interface.v') {
-		return true
-	}
-	if module_name == 'c'
-		&& (node.value in ['sum_type_index', 'sum_type_index_resolved', 'FlatGen.sum_type_index',
-			'FlatGen.sum_type_index_resolved']
-			|| qfn.ends_with('__FlatGen__sum_type_index')
-			|| qfn.ends_with('__FlatGen__sum_type_index_resolved')) {
-		return true
 	}
 	is_anon_fn := node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_')
 	if is_anon_fn {
@@ -1850,7 +1875,92 @@ fn (g &FlatGen) selected_specialized_method_c_name(name string) ?string {
 }
 
 // direct_call_name supports direct call name handling for FlatGen.
+// direct_call_name is direct_call_name_uncached memoized per callee name. The C
+// name depends on the name, the current module and file, and tables that are
+// fixed while bodies are generated. `C.` names stay uncached: they can register a
+// libc compatibility helper. So do the entry point names, whose answer can scan
+// for a free symbol.
+@[direct_array_access]
 fn (mut g FlatGen) direct_call_name(name string) string {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.call_names.len == 0 || !call_name_is_memoizable(name) {
+		return g.direct_call_name_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_call_name_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	mut entry := unsafe { &memo.call_names[slot] }
+	if entry.generation == memo.name_generation && entry.has_direct && entry.name == name {
+		return entry.value
+	}
+	result := g.direct_call_name_uncached(name)
+	// The uncached lookup can replace this slot with another name's entry.
+	if entry.generation == memo.name_generation && entry.name == name {
+		entry.has_direct = true
+		entry.value = result
+	} else {
+		memo.call_names[slot] = BodyCallNameQuery{
+			name:       name
+			generation: memo.name_generation
+			has_direct: true
+			value:      result
+		}
+	}
+	return result
+}
+
+@[direct_array_access; inline]
+fn call_name_is_memoizable(name string) bool {
+	if name.len < 2 || (name[0] == `C` && name[1] == `.`) {
+		return false
+	}
+	return !(name.len == 4 && name == 'main') && !(name.len == 9 && name == 'main.main')
+}
+
+// call_node_name_takes_declared_rule reports whether direct_call_name_for_call_node
+// answers `name` with direct_call_name(name) through its rule for a declared,
+// non-generic function: no bracketed exact specialization, no specialized generic
+// of that name, and a registered signature. The answer depends on the name, the
+// current module and tables that are fixed while bodies are generated.
+@[direct_array_access]
+fn (mut g FlatGen) call_node_name_takes_declared_rule(name string) bool {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.call_names.len == 0 {
+		return g.call_node_name_takes_declared_rule_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_call_name_slots - 1)
+	mut entry := unsafe { &memo.call_names[slot] }
+	if entry.generation == memo.name_generation && entry.node_rule != 0 && entry.name == name {
+		return entry.node_rule == 1
+	}
+	takes := g.call_node_name_takes_declared_rule_uncached(name)
+	rule := if takes { u8(1) } else { u8(2) }
+	// The uncached lookup can replace this slot with another name's entry.
+	if entry.generation == memo.name_generation && entry.name == name {
+		entry.node_rule = rule
+	} else {
+		memo.call_names[slot] = BodyCallNameQuery{
+			name:       name
+			generation: memo.name_generation
+			node_rule:  rule
+		}
+	}
+	return takes
+}
+
+fn (mut g FlatGen) call_node_name_takes_declared_rule_uncached(name string) bool {
+	if name.contains('[') && name.contains(']') && (name in g.tc.fn_ret_types
+		|| name in g.tc.fn_param_types
+		|| g.cname(name) in g.tc.specialized_generic_fns) {
+		return false
+	}
+	if _ := g.exact_specialized_generic_call_name(name) {
+		return false
+	}
+	return (name in g.tc.fn_ret_types || name in g.tc.fn_param_types)
+		&& name !in g.tc.fn_generic_params
+}
+
+fn (mut g FlatGen) direct_call_name_uncached(name string) string {
 	if selected := g.selected_specialized_method_c_name(name) {
 		return selected
 	}
@@ -2081,6 +2191,11 @@ fn (mut g FlatGen) direct_call_name_for_call_node(id flat.NodeId, node &flat.Nod
 		if shadow_name := g.main_runtime_shadow_call_c_name(node, fn_node) {
 			return shadow_name
 		}
+	}
+	// Most callees are declared, non-generic functions: the rules below reach
+	// direct_call_name(name) for them, and that outcome is remembered per name.
+	if g.call_node_name_takes_declared_rule(name) {
+		return g.direct_call_name(name)
 	}
 	// A bracketed callee is the exact specialization selected by monomorphization.
 	// Its runtime arguments may expose only the alias target (`string` for a
@@ -2488,6 +2603,7 @@ fn qualify_name_in_module(module_name string, name string) string {
 
 // gen_fn emits fn output for c.
 fn (mut g FlatGen) gen_fn(node flat.Node) {
+	g.reset_body_name_memo()
 	g.gen_fn_in_module(flat.empty_node, node, g.tc.cur_module, false)
 }
 
@@ -7940,16 +8056,30 @@ fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int,
 	return is_native_variadic
 }
 
-fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+// panic_call_reports_position reports whether a `panic()` call passes its V source
+// position to the runtime. `-g` builds report every call. Other non-prod builds report
+// calls outside the compiler's vlib (and vlib's own `_test.v` files), so that a panic
+// names the user's .v line without debug info; `-prod` binaries keep no source paths.
+fn (g &FlatGen) panic_call_reports_position(filename string) bool {
 	if g.is_debug {
+		return true
+	}
+	return filename.ends_with('_test.v') || !g.c_source_file_is_in_vlib(filename)
+}
+
+fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+	mut reported := false
+	if g.is_debug || !g.is_prod {
 		if position := g.a.source_position(node.pos) {
-			module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-			fn_name := g.cur_fn_name.all_after_last('.')
-			g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
-		} else {
-			g.write('v_panic(')
+			if g.panic_call_reports_position(position.filename) {
+				module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+				fn_name := g.cur_fn_name.all_after_last('.')
+				g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
+				reported = true
+			}
 		}
-	} else {
+	}
+	if !reported {
 		g.write('v_panic(')
 	}
 	if node.children_count > 1 {
@@ -8027,6 +8157,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	callee_fn_value_params := g.fn_value_call_param_types(g.a.child(node, 0))
 	callee_is_fn_value := callee_fn_value_params != none
+	if node.children_count == 2 && target_name.len in [12, 13] && !callee_is_fn_value
+		&& target_name in ['string.bytes', 'string__bytes']
+		&& g.gen_temporary_bytes_chain(node, resolved_target_name) {
+		return
+	}
+	if !callee_is_fn_value && g.gen_builder_interpolation_call(node, target_name, resolved_target_name) {
+		return
+	}
 	// An unqualified panic() in a module that declares its own panic (such as
 	// a log.panic() Logger) resolves to that function, not to the builtin.
 	calls_module_panic := fn_name == 'panic' && ((resolved_target_name.contains('.')
@@ -10752,9 +10890,13 @@ fn const_call_name_suffix(name string) string {
 	return name.substr_unsafe(start, name.len)
 }
 
+@[direct_array_access]
 fn (mut idx ConstShortIndex) mark_call_name(name string) {
-	slot := global_name_filter_slot(const_call_name_suffix(name))
+	suffix := const_call_name_suffix(name)
+	slot := global_name_filter_slot(suffix)
 	idx.call_names[slot >> 6] |= u64(1) << u32(slot & 63)
+	bit := const_call_name_bit(suffix)
+	idx.call_name_bits[bit >> 6] |= u64(1) << (bit & 63)
 }
 
 // Normal generation freezes the const tables before sharing this index with workers.
@@ -10778,7 +10920,9 @@ fn (g &FlatGen) const_call_name_is_absent(node &flat.Node) bool {
 	}
 	slot := global_name_filter_slot(suffix)
 	if idx.call_names[slot >> 6] & (u64(1) << u32(slot & 63)) != 0 {
-		return false
+		// Marked names set both filters, so a clear bit here proves a miss too.
+		bit := const_call_name_bit(suffix)
+		return idx.call_name_bits[bit >> 6] & (u64(1) << (bit & 63)) == 0
 	}
 	return true
 }
@@ -12281,7 +12425,32 @@ fn (g &FlatGen) selective_import_call_key_in_file(name string, file string) ?str
 // fn_decl_is_variadic resolves the variadic flag for a call target using the
 // same key candidates as param_types_for, so import-alias and C-name call
 // sites (e.g. `http.new_header` for module `net.http`) resolve consistently.
+// fn_decl_is_variadic is fn_decl_is_variadic_uncached memoized per name and
+// fallback. The answer depends on those, the current module and file, and the
+// declaration tables that are fixed while bodies are generated.
+@[direct_array_access]
 fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.variadic_queries.len == 0 {
+		return g.fn_decl_is_variadic_uncached(name, fallback)
+	}
+	slot := (c_name_recent_slot(name) ^ (fallback.len * 131)) & (body_variadic_query_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	entry := unsafe { &memo.variadic_queries[slot] }
+	if entry.generation == memo.name_generation && entry.name == name && entry.fallback == fallback {
+		return entry.value
+	}
+	value := g.fn_decl_is_variadic_uncached(name, fallback)
+	memo.variadic_queries[slot] = BodyVariadicQuery{
+		name:       name
+		fallback:   fallback
+		generation: memo.name_generation
+		value:      value
+	}
+	return value
+}
+
+fn (g &FlatGen) fn_decl_is_variadic_uncached(name string, fallback string) bool {
 	if name.contains('__') {
 		dotted_name := name.replace('__', '.')
 		if v := g.fn_decl_variadic_entry(dotted_name) {
@@ -12463,7 +12632,32 @@ fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
 	return none
 }
 
+// param_types_for answers from the body memo before the module-keyed cache:
+// a body asks for the same few callees again and again, and the memo probe
+// needs neither the joined key nor its hash.
+@[direct_array_access]
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.param_queries.len == 0 {
+		return g.param_types_for_module_cached(name, fallback)
+	}
+	slot := (c_name_recent_slot(name) ^ (fallback.len * 131)) & (body_param_types_query_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	entry := unsafe { &memo.param_queries[slot] }
+	if entry.generation == memo.name_generation && entry.name == name && entry.fallback == fallback {
+		return entry.value
+	}
+	result := g.param_types_for_module_cached(name, fallback)
+	memo.param_queries[slot] = BodyParamTypesQuery{
+		name:       name
+		fallback:   fallback
+		generation: memo.name_generation
+		value:      result
+	}
+	return result
+}
+
+fn (mut g FlatGen) param_types_for_module_cached(name string, fallback string) []types.Type {
 	// The cache key is `module\x01name[\x01fallback]`. Join it on the stack: the
 	// lookup does not keep it and an insert clones it.
 	has_fallback := name != fallback
@@ -12948,6 +13142,9 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 			g.write(wrapper)
 			return true
 		}
+	} else if expected_c_abi.len == 0
+		&& g.gen_callback_closure_abi_adapter(arg_id, expected, false, true) {
+		return true
 	}
 	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
 	if g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
@@ -13048,15 +13245,24 @@ fn (g &FlatGen) callback_closure_target(id flat.NodeId) ?CallbackClosureTarget {
 // while replacing its generated target with a C-ABI adapter. The executable closure
 // still carries the original context; only its jump target changes.
 fn (mut g FlatGen) gen_c_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, emit_cast bool) bool {
+	return g.gen_callback_closure_abi_adapter(arg_id, expected, true, emit_cast)
+}
+
+// gen_callback_closure_abi_adapter is gen_c_callback_closure_abi_adapter for a V
+// callback type when `c_abi` is false: a capturing literal that returns nothing,
+// passed where `fn (...) !` is expected, must be called through an adapter that
+// returns the result. A bare cast lets the caller read a result the literal never
+// wrote, and on x86-64 the caller's hidden result pointer becomes the first argument.
+fn (mut g FlatGen) gen_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, c_abi bool, emit_cast bool) bool {
 	expected_fn := fn_type_from(expected) or { return false }
 	target := g.callback_closure_target(arg_id) or { return false }
 	actual_fn := g.callback_fn_value_type(target.name) or { return false }
-	encoded := g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn)
+	encoded := if c_abi { g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn) } else { '' }
 	wrapper := g.ensure_callback_userdata_wrapper(target.name, actual_fn, expected_fn, encoded) or {
 		return false
 	}
 	if emit_cast {
-		mut expected_ct := encoded
+		mut expected_ct := if c_abi { encoded } else { g.tc.c_type(expected) }
 		if expected_ct.starts_with('fn_ptr:') {
 			expected_ct = g.resolve_fn_ptr_type(expected_ct)
 		}
@@ -17862,14 +18068,14 @@ const c_cache_macro_sensitive_extern_symbols = {
 	'tanf':  true
 }
 
-// c_macro_safe_extern_decl parenthesizes the name of a math extern that <tgmath.h>
-// turns into a function-like macro (`double exp(double);` -> `double (exp)(double);`).
+// c_macro_safe_extern_decl protects function prototypes from same-named
+// function-like macros, including tgmath and the Linux cross-bootstrap pipe2 adapter.
 // Any program that includes a header pulling in <tgmath.h> hits this, not just
 // cache-split builds — notably gg's `gg_darwin.m` (Objective-C/Metal) brings it in,
 // so the parenthesized form must be emitted unconditionally. `(exp)(x)` is plain C
 // that calls the function and is inert when no such macro is present.
 fn c_macro_safe_extern_decl(cfn string, declaration string) string {
-	if cfn !in c_cache_macro_sensitive_extern_symbols {
+	if cfn !in c_cache_macro_sensitive_extern_symbols && cfn != 'v_os_process_pipe_cloexec_cross' {
 		return declaration
 	}
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
@@ -18232,11 +18438,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		}
 	}
 	if g.target.os == 'vinix' {
-		normalized_file := source_file.replace('\\', '/')
 		normalized_root := g.compiler_vroot.replace('\\', '/').trim_right('/')
-		is_vlib_file := normalized_root.len > 0
-			&& normalized_file.starts_with('${normalized_root}/vlib/')
-		if !is_vlib_file {
+		if vlib_relative_source_path(normalized_root, source_file) == none {
 			if cfn.starts_with('__builtin_') {
 				return false
 			}
@@ -18260,8 +18463,9 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		return true
 	}
 	// These stdlib bindings remain necessary when unrelated modules use headers.
+	// In particular, some Linux headers hide pipe2 unless GNU feature macros are enabled.
 	if g.c_source_file_is_in_vlib(source_file)
-		&& cfn in ['_Exit', 'flock', 'v_os_fd_write_all', 'v_os_execute_capture_start',
+		&& cfn in ['_Exit', 'flock', 'pipe2', 'v_os_fd_write_all', 'v_os_execute_capture_start',
 			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
 		return true
 	}
@@ -18769,6 +18973,9 @@ fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
 // includes it into the same unit, as fontstash does under `-gc boehm`.
 const c_extern_exact_decls = {
 	'GC_noop1_ptr': 'void GC_noop1_ptr(volatile void*);'
+	// The SDK declares pipe2's first argument as an int[2], not int*.
+	// Match it to avoid GCC -Warray-parameter errors when both declarations appear.
+	'pipe2':        'i32 pipe2(i32 fds[2], i32 flags);'
 }
 
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {

@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 
@@ -18,10 +18,15 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 			binary := os.join_path(root, phase)
 			// Compiler test builds can force source mode internally. Exercise the
 			// actual module cache here, including warm declaration headers.
-			compiled := os.exec(['env', '-u', 'V3_INTERNAL_CACHE_FORCE_SOURCE', '-u',
-				'V3_CACHE_FORCE_SOURCE', 'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1',
-				@VEXE, '-cc', 'clang', '-show-timings', '-o', binary,
-				os.join_path(@VMODROOT, 'vlib', test_file)])
+			mut command := ['env', '-u', 'V3_INTERNAL_CACHE_FORCE_SOURCE', '-u', 'V3_CACHE_FORCE_SOURCE',
+				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', 'clang',
+				'-show-timings']
+			// Instrumented SQLite needs the same MemorySanitizer runtime at the final link.
+			if os.getenv('SANITIZER_GITHUB_JOB') == 'sanitize-memory-clang' {
+				command << ['-cflags', '-fsanitize=memory']
+			}
+			command << ['-o', binary, os.join_path(@VMODROOT, 'vlib', test_file)]
+			compiled := os.exec(command)
 			assert compiled.exit_code == 0, '${test_file} ${phase}: ${compiled.output}'
 			if phase == 'warm' {
 				assert compiled.output.contains('parsed .vh files'), compiled.output

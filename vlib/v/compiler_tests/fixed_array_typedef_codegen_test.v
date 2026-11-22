@@ -1,14 +1,23 @@
 import os
+import v.tempname
 
 const fixed_array_vexe = @VEXE
 const fixed_array_tests_dir = os.dir(@FILE)
 const fixed_array_v3_dir = os.dir(fixed_array_tests_dir)
 const fixed_array_vlib_dir = os.dir(fixed_array_v3_dir)
 const fixed_array_v3_src = os.join_path(fixed_array_v3_dir, 'v.v')
+const fixed_array_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fixed_array_typedef_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(fixed_array_compiler_dir) or {}
+}
 
 fn fixed_array_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_typedef_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(fixed_array_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(fixed_array_compiler_dir) or { panic(err) }
 	build :=
 		os.exec([fixed_array_vexe, '-gc', 'none', '-path',
 			'${fixed_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${fixed_array_v3_src}'])
@@ -418,7 +427,6 @@ pub enum Mode as i32 {
 }
 ', '')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rmdir_all(root) or {}
 	}
 	header := os.join_path(root, 'callbacks.h')
@@ -548,7 +556,6 @@ fn main() {
 }
 ")
 	defer {
-		os.rm(v3_bin) or {}
 		os.rmdir_all(root) or {}
 	}
 	exe_suffix := $if windows { '.exe' } $else { '' }

@@ -4,6 +4,8 @@ module gg
 import os
 import time
 
+const legacy_host_gg_headers_available = check_legacy_host_gg_headers()
+
 fn test_multiwindow_enabled_and_disabled_renderer_capability_signatures_match() {
 	signature := 'pub fn capabilities_for_backend_with_renderer(backend MultiWindowBackend) !Capabilities'
 	enabled_source := os.read_file(os.join_path(@DIR, 'multiwindow_d_gg_multiwindow.v')) or {
@@ -157,7 +159,7 @@ fn main() {
 	assert_legacy_import_has_no_multiwindow_markers(vlib_dir, source_path, '${unique}_darwin',
 		'-os macos -cc clang')
 
-	if legacy_host_gg_import_available() {
+	if legacy_host_gg_headers_available {
 		compile_cmd := '${os.quoted_path(@VEXE)} ${legacy_child_host_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
 		compile_result := os.exec([@VEXE,
 			...(os.split_args(legacy_child_host_v_flags()) or { panic(err) }), '-path',
@@ -172,66 +174,6 @@ ${compile_result.output}'
 		assert run_result.exit_code == 0, 'legacy callbacks smoke run failed
 command: ${bin_path}
 exit_code: ${run_result.exit_code}
-output:
-${run_result.output}'
-	} else {
-		legacy_skip_host_gg_import_probe('${unique}_host_smoke')
-	}
-}
-
-fn test_missing_gg_multiwindow_flag_reports_clear_error_without_native_deps() {
-	vlib_dir := os.dir(@DIR)
-	unique := 'gg_missing_multiwindow_flag_${os.getpid()}_${time.now().unix_nano()}'
-	source_path := os.join_path(os.temp_dir(), '${unique}.v')
-	mut bin_path := os.join_path(os.temp_dir(), '${unique}_bin')
-	$if windows {
-		bin_path += '.exe'
-	}
-	source := 'import gg
-
-fn main() {
-	gg.new_app() or {
-		assert err.msg() == "gg.multiwindow: compile with `-d gg_multiwindow` to enable gg.App"
-		println(err.msg())
-		return
-	}
-	assert false, "gg.new_app unexpectedly succeeded without -d gg_multiwindow"
-}
-'
-	os.write_file(source_path, source) or { panic(err) }
-	defer {
-		os.rm(source_path) or {}
-		os.rm(bin_path) or {}
-	}
-
-	assert_legacy_host_import_has_no_multiwindow_markers(vlib_dir, source_path, '${unique}_host')
-	assert_legacy_import_has_no_multiwindow_markers(vlib_dir, source_path, '${unique}_windows_tcc',
-		'-os windows -cc tcc')
-	assert_legacy_import_has_no_multiwindow_markers(vlib_dir, source_path, '${unique}_darwin',
-		'-os macos -cc clang')
-
-	if legacy_host_gg_import_available() {
-		compile_cmd := '${os.quoted_path(@VEXE)} ${legacy_child_host_v_flags()} -subsystem console -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-		compile_result := os.exec([@VEXE,
-			...(os.split_args(legacy_child_host_v_flags()) or { panic(err) }), '-subsystem', 'console',
-			'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
-		assert compile_result.exit_code == 0, 'missing gg_multiwindow flag smoke compile failed
-command: ${compile_cmd}
-exit_code: ${compile_result.exit_code}
-output:
-${compile_result.output}'
-
-		run_result := os.exec([bin_path])
-		assert run_result.exit_code == 0, 'missing gg_multiwindow flag smoke run failed
-command: ${bin_path}
-exit_code: ${run_result.exit_code}
-output:
-${run_result.output}'
-
-		assert run_result.output.contains('compile with `-d gg_multiwindow`'), 'missing gg_multiwindow flag smoke run did not report the expected opt-in hint
-command: ${bin_path}
-exit_code: ${run_result.exit_code}
-expected output to contain: compile with `-d gg_multiwindow`
 output:
 ${run_result.output}'
 	} else {
@@ -255,10 +197,19 @@ fn expect_opt_in_error(err IError) {
 	assert err.msg() == expected
 }
 
+fn expect_new_app_requires_opt_in() {
+	gg.new_app() or {
+		expect_opt_in_error(err)
+		println(err.msg())
+		return
+	}
+	assert false, 'gg.new_app unexpectedly succeeded without -d gg_multiwindow'
+}
+
 fn main() {
+	expect_new_app_requires_opt_in()
 	gg.capabilities_for_backend(.auto) or { expect_opt_in_error(err) }
 	gg.capabilities_for_backend_with_renderer(.auto) or { expect_opt_in_error(err) }
-	gg.new_app() or { expect_opt_in_error(err) }
 	gg.new_app(require_renderer: true) or { expect_opt_in_error(err) }
 	mut app := gg.App{}
 	app.create_window(gg.WindowConfig{ title: 'disabled' }) or { expect_opt_in_error(err) }
@@ -292,10 +243,11 @@ fn main() {
 	assert_source_has_no_multiwindow_markers(vlib_dir, source_path, '${unique}_darwin',
 		'-os macos -cc clang')
 
-	if legacy_host_gg_import_available() {
-		cmd := '${os.quoted_path(@VEXE)} ${legacy_child_host_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
+	if legacy_host_gg_headers_available {
+		cmd := '${os.quoted_path(@VEXE)} ${legacy_child_host_v_flags()} -subsystem console -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
 		result := os.exec([@VEXE, ...(os.split_args(legacy_child_host_v_flags()) or { panic(err) }),
-			'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
+			'-subsystem', 'console', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path,
+			source_path])
 		assert result.exit_code == 0, 'disabled gg multiwindow API smoke failed
 command: ${cmd}
 exit_code: ${result.exit_code}
@@ -308,6 +260,7 @@ command: ${bin_path}
 exit_code: ${run_result.exit_code}
 output:
 ${run_result.output}'
+		assert run_result.output.contains('compile with `-d gg_multiwindow`'), run_result.output
 	} else {
 		legacy_skip_host_gg_import_probe('${unique}_host_smoke')
 	}
@@ -332,7 +285,7 @@ fn assert_legacy_import_has_no_multiwindow_markers(vlib_dir string, source_path 
 }
 
 fn assert_legacy_host_import_has_no_multiwindow_markers(vlib_dir string, source_path string, label string) {
-	if !legacy_host_gg_import_available() {
+	if !legacy_host_gg_headers_available {
 		legacy_skip_host_gg_import_probe(label)
 		return
 	}
@@ -388,33 +341,22 @@ fn legacy_child_host_v_flags() string {
 	return flags
 }
 
-fn legacy_host_gg_import_available() bool {
+fn check_legacy_host_gg_headers() bool {
 	$if linux {
-		for header in [
-			'X11/Xlib.h',
-			'X11/extensions/Xrandr.h',
-			'X11/extensions/XInput2.h',
-			'X11/Xcursor/Xcursor.h',
-			'GL/gl.h',
-		] {
-			if !legacy_c_header_available(header) {
-				return false
-			}
-		}
+		source_path := os.join_path(os.temp_dir(), 'gg_legacy_headers_${os.getpid()}.c')
+		os.write_file(source_path, '#include <X11/Xlib.h>
+#include <X11/extensions/Xrandr.h>
+#include <X11/extensions/XInput2.h>
+#include <X11/Xcursor/Xcursor.h>
+#include <GL/gl.h>
+') or { return false }
+		defer { os.rm(source_path) or {} }
+		cc := if os.getenv('CC') == '' { 'cc' } else { os.getenv('CC') }
+		result := os.exec([cc, '-fsyntax-only', source_path])
+		return result.exit_code == 0
+	} $else {
+		return true
 	}
-	return true
-}
-
-fn legacy_c_header_available(header string) bool {
-	header_label := header.replace('/', '_').replace('.', '_')
-	source_path := os.join_path(os.temp_dir(), 'gg_legacy_header_${os.getpid()}_${header_label}.c')
-	os.write_file(source_path, '#include <${header}>\n') or { return false }
-	defer {
-		os.rm(source_path) or {}
-	}
-	cc := if os.getenv('CC') == '' { 'cc' } else { os.getenv('CC') }
-	result := os.exec([cc, '-fsyntax-only', source_path])
-	return result.exit_code == 0
 }
 
 fn legacy_skip_host_gg_import_probe(label string) {

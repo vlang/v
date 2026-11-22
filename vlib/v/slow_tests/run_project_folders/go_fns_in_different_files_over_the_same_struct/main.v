@@ -1,7 +1,5 @@
 module main
 
-import time
-
 struct Abc {
 	x int
 }
@@ -11,8 +9,9 @@ fn f(x Abc) {
 }
 
 fn main() {
-	f1()
-	f2()
-	time.sleep(1 * time.second)
+	first := f1()
+	second := f2()
+	first.wait()
+	second.wait()
 	println('OK')
 }

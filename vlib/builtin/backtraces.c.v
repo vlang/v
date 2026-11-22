@@ -10,9 +10,10 @@ pub fn print_backtrace() {
 	$if !no_backtrace ? {
 		$if freestanding {
 			println(bare_backtrace())
-		} $else $if tinyc {
+		} $else $if tinyc && !macos {
 			C.tcc_backtrace(c'Backtrace')
-		} $else $if use_libbacktrace ? {
+		} $else $if use_libbacktrace ?&& !tinyc {
+			// TinyCC has no unwind library, so its print_libbacktrace is an empty stub.
 			$if openbsd {
 				print_backtrace_skipping_top_frames(2)
 			} $else {
@@ -20,7 +21,13 @@ pub fn print_backtrace() {
 				print_libbacktrace(1)
 			}
 		} $else {
-			print_backtrace_skipping_top_frames(2)
+			$if windows {
+				print_backtrace_skipping_top_frames(2)
+			} $else {
+				// The nix implementations already skip their own two frames, so only
+				// print_backtrace itself is left; the caller of print_backtrace stays.
+				print_backtrace_skipping_top_frames(1)
+			}
 		}
 	}
 }
@@ -91,19 +98,69 @@ fn split_generic_params(s string) []string {
 	return params
 }
 
-// demangle_backtrace_sym demangles a V symbol within a Linux-style backtrace fragment.
-// Linux format: `./executable(symbol_name+0x1a4) `
-fn demangle_backtrace_sym(s string) string {
-	paren_start := s.index('(') or { return s }
-	plus_pos := s.index_after_('+', paren_start)
-	if plus_pos < 0 {
-		return s
+// eprint_backtrace_frame prints one stack frame the way Go does: the demangled
+// V function on one line, then its .v `file:line`, when known, indented below it.
+// It demangles like demangle_v_symbol, but into a stack buffer, so that printing
+// a backtrace does not allocate.
+@[direct_array_access]
+fn eprint_backtrace_frame(symbol string, file_line string) {
+	mut buf := [256]u8{}
+	mut n := 0
+	mut i := if symbol.starts_with('builtin__') { 9 } else { 0 }
+	mut in_generic_params := false
+	for i < symbol.len && n < buf.len - 4 {
+		c := symbol[i]
+		if c == `_` && backtrace_symbol_has_at(symbol, i, '__ptr__') {
+			buf[n] = `&`
+			n++
+			i += 7
+		} else if c == `_` && backtrace_symbol_has_at(symbol, i, '__') {
+			buf[n] = `.`
+			n++
+			i += 2
+		} else if c == `_` && !in_generic_params && backtrace_symbol_has_at(symbol, i, '_T_') {
+			// `base_T_type1_type2` => `base[type1, type2]`
+			buf[n] = `[`
+			n++
+			i += 3
+			in_generic_params = true
+		} else if c == `_` && in_generic_params {
+			buf[n] = `,`
+			buf[n + 1] = ` `
+			n += 2
+			i++
+		} else {
+			buf[n] = c
+			n++
+			i++
+		}
 	}
-	symbol := s[paren_start + 1..plus_pos]
-	if symbol.len == 0 {
-		return s
+	if in_generic_params {
+		buf[n] = `]`
+		n++
 	}
-	return s[..paren_start + 1] + demangle_v_symbol(symbol) + s[plus_pos..]
+	buf[n] = `(`
+	buf[n + 1] = `)`
+	n += 2
+	// buf holds n initialized bytes of the demangled name.
+	eprintln(unsafe { tos(&buf[0], n) })
+	if file_line.len > 0 {
+		eprint('\t')
+		eprintln(file_line)
+	}
+}
+
+@[direct_array_access]
+fn backtrace_symbol_has_at(symbol string, pos int, part string) bool {
+	if pos + part.len > symbol.len {
+		return false
+	}
+	for j in 0 .. part.len {
+		if symbol[pos + j] != part[j] {
+			return false
+		}
+	}
+	return true
 }
 
 fn eprint_space_padding(output string, max_len int) {

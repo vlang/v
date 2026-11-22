@@ -1,9 +1,20 @@
 // vtest build: present_openssl? && !(windows && tinyc)
 module smtp
 
+import net
+import net.smtp.testdata.tls_server
 import os
 import rand
 import time
+
+const smtp_server_probe = '--vtest-smtp-tls-server'
+
+fn testsuite_begin() {
+	if os.args.len > 1 && os.args[1] == smtp_server_probe {
+		tls_server.run(os.args[2..])
+		exit(0)
+	}
+}
 
 fn test_tls_server_exits_when_no_client_connects() ! {
 	scratch := os.join_path(os.vtmp_dir(), 'smtp_tls_server_${rand.uuid_v4()}')
@@ -11,22 +22,14 @@ fn test_tls_server_exits_when_no_client_connects() ! {
 	defer {
 		os.rmdir_all(scratch) or {}
 	}
-	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'testdata', 'smtp_tls_test_server.v')
-	executable := os.join_path(scratch, 'smtp_tls_test_server') + $if windows { '.exe' } $else { '' }
-	mut build := os.new_process(@VEXE)
-	build.set_args(['-o', executable, helper])
-	build.set_redirect_stdio()
-	build.wait()
-	build_error := build.stderr_slurp()
-	build.close()
-	assert build.code == 0, build_error
-
 	ready_path := os.join_path(scratch, 'ready')
 	result_path := os.join_path(scratch, 'result')
 	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
-	mut server := os.new_process(executable)
-	server.set_args(['starttls', '127.0.0.1', os.join_path(cert_dir, 'server.crt'),
-		os.join_path(cert_dir, 'server.key'), ready_path, result_path])
+	mut server := os.new_process(os.executable())
+	// No client will connect, so this probe can exercise the accept timeout
+	// without the longer startup budget used by the TLS client tests.
+	server.set_args([smtp_server_probe, 'starttls', '127.0.0.1', os.join_path(cert_dir, 'server.crt'),
+		os.join_path(cert_dir, 'server.key'), ready_path, result_path, '250'])
 	server.set_redirect_stdio()
 	server.run()
 	defer {
@@ -45,12 +48,14 @@ fn test_tls_server_exits_when_no_client_connects() ! {
 	port := os.read_file(ready_path)!.int()
 	assert port > 0 && port <= 65535
 	assert !os.exists('${ready_path}.tmp')
-	for server.is_alive() && time.since(started) < 15 * time.second {
+	exit_deadline := time.now().add(5 * time.second)
+	for server.is_alive() && time.now() < exit_deadline {
 		time.sleep(20 * time.millisecond)
 	}
 	assert !server.is_alive(), 'SMTP TLS test server waited indefinitely without a client'
 	server.wait()
 	assert server.code != 0
-	assert server.stderr_slurp().contains('accept failed:')
+	stderr := server.stderr_slurp()
+	assert stderr.contains('accept failed: ${net.err_timed_out.msg()}'), stderr
 	assert !os.exists(result_path)
 }

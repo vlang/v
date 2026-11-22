@@ -4,12 +4,30 @@ import os
 import time
 import v.cmdexec
 
+// source_language_test_compiles_cpp reports whether `compiler` can compile C++. A C
+// compiler driver such as gcc runs a separately installed C++ front end (cc1plus),
+// which an image may lack.
+fn source_language_test_compiles_cpp(compiler string, root string) bool {
+	probe := os.join_path(root, 'cpp_probe.cpp')
+	os.write_file(probe, 'template<int N> int probe() { return N; }\nint value() { return probe<0>(); }\n') or {
+		return false
+	}
+	return cmdexec.run(compiler, ['-fsyntax-only', '-x', 'c++', probe]).exit_code == 0
+}
+
 fn test_joined_cpp_hashflag_selects_language_and_links_runtime() {
-	compiler := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'v joined cpp flag ${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
+	}
+	if !source_language_test_compiles_cpp(compiler, root) {
+		return
 	}
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'joined_cpp_flag' }\n")!
 	os.write_file(os.join_path(root, 'shim.c'), '#include <string>\nextern "C" int cpp_probe(void) { std::string value(128, \'v\'); return int(value.size()); }\n')!
@@ -34,6 +52,9 @@ fn test_joined_explicit_cpp_language_compiles_c_named_source() {
 	defer {
 		os.rmdir_all(root) or { panic(err) }
 	}
+	if !source_language_test_compiles_cpp(compiler, root) {
+		return
+	}
 	source := os.join_path(root, 'template.c')
 	os.write_file(source, 'template<typename T> T identity(T value) { return value; }\nint main() { return identity(0); }\n')!
 	for flags in [['-xc++', source], ['-x', 'c++', source]] {
@@ -52,6 +73,9 @@ fn test_flag_c_sources_keep_c_language_beside_cpp_sources() {
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
+	}
+	if !source_language_test_compiles_cpp(compiler, root) {
+		return
 	}
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_language_probe' }\n")!
 	os.write_file(os.join_path(root, 'my_test_cshim.c'), '#ifdef __cplusplus\n#error expected C language\n#endif\nint probe_is_c_mode(void) { return _Generic(0, int: 101, default: 0); }\n')!

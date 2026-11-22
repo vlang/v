@@ -2,11 +2,22 @@ import os
 import strings
 import v.parser
 import v.pref
+import v.tempname
 
 const pp_tests_dir = os.dir(@FILE)
 const pp_v3_dir = os.dir(pp_tests_dir)
 const pp_vlib_dir = os.dir(pp_v3_dir)
 const pp_v3_src = os.join_path(pp_v3_dir, 'v.v')
+const pp_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_parallel_parser_fixtures_${tempname.unique_token()}')
+const pp_module_padding = '/*' + ' '.repeat(48 * 1024) + '*/\n'
+
+fn testsuite_begin() {
+	os.mkdir_all(pp_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(pp_fixture_dir) or {}
+}
 
 // parallel_parse_input_files gathers enough real compiler sources to cross the
 // parallel-parse thresholds (min file count and total byte size).
@@ -67,7 +78,6 @@ fn test_parallel_parse_matches_serial() {
 	for i in 0 .. ps.a.nodes.len {
 		s := ps.a.nodes[i]
 		q := pp.a.nodes[i]
-		assert q.kind == s.kind, 'node ${i} kind differs'
 		assert q.kind == s.kind, 'node ${i} kind differs'
 		assert q.value == s.value, 'node ${i} value differs'
 		assert q.typ == s.typ, 'node ${i} typ differs'
@@ -130,9 +140,7 @@ fn test_parallel_parser_preserves_template_metadata_and_warning_severity() {
 			src.writeln('}')
 			src.writeln('')
 		}
-		for i in 0 .. 1000 {
-			src.writeln('fn template_padding_${file_index}_${i}() int { return ${i} }')
-		}
+		src.write_string(pp_module_padding)
 		path := os.join_path(dir, '${file_index}.v')
 		os.write_file(path, src.str()) or { panic(err) }
 		files << path
@@ -352,9 +360,7 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 			src.writeln('}')
 			src.writeln('')
 		}
-		for i in 0 .. 1000 {
-			src.writeln('fn padding_${file_index}_${i}() int { return ${i} }')
-		}
+		src.write_string(pp_module_padding)
 		path := os.join_path(dir, '${file_index}.v')
 		os.write_file(path, src.str()) or { panic(err) }
 		files << path
@@ -389,41 +395,45 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'match_fallback_const_enabled')
 }
 
-// build_parallel_parser_v3 builds parallel parser v3 data for v3 tests.
+// build_parallel_parser_v3 supplies the same driver to all the parser integration cases.
 fn build_parallel_parser_v3() string {
-	vexe := @VEXE
-	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_parser_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(pp_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${pp_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		os.exec([@VEXE, '-gc', 'none', '-path', '${pp_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${pp_v3_src}'])
+	if build.exit_code != 0 {
+		os.rm(v3_bin) or {}
+	}
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
 
-// write_parallel_parser_project writes a multi-module project large enough for
-// the user-file and import waves to be split across parse workers.
-fn write_parallel_parser_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
-	os.rmdir_all(project_dir) or {}
-	mut mod_totals := []int{}
+fn write_parallel_parser_module(project_dir string, name string, body string) {
+	// Three padded modules exceed the import wave's 128 KiB parallel parse threshold.
+	module_dir := os.join_path(project_dir, name)
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${name}\n\n' + body +
+		pp_module_padding) or { panic(err) }
+}
+
+fn write_parallel_parser_padding_modules(project_dir string, value int) {
+	for m in 0 .. 3 {
+		write_parallel_parser_module(project_dir, 'pad${m}', 'pub fn pad_value_${value}() int { return ${value + m} }\n')
+	}
+}
+
+// parallel_parser_project shares the source files between the parallel and serial cases.
+fn parallel_parser_project() string {
+	project_dir := os.join_path(pp_fixture_dir, 'parallel_parser_project')
+	main_path := os.join_path(project_dir, 'main.v')
+	if os.is_file(main_path) {
+		return main_path
+	}
 	for m in 0 .. 4 {
-		os.mkdir_all(os.join_path(project_dir, 'mod${m}')) or { panic(err) }
-		mut mod_src := strings.new_builder(64_000)
-		mod_src.writeln('module mod${m}')
-		mod_src.writeln('')
-		mut total := 0
-		for i in 0 .. 900 {
-			mod_src.writeln('pub fn value_${i}() int {')
-			mod_src.writeln('\treturn ${i + m}')
-			mod_src.writeln('}')
-			mod_src.writeln('')
-			total += i + m
-		}
-		mod_totals << total
-		os.write_file(os.join_path(project_dir, 'mod${m}', 'mod${m}.v'), mod_src.str()) or {
-			panic(err)
-		}
+		write_parallel_parser_module(project_dir, 'mod${m}', 'pub fn value_899() int { return ${899 + m} }\n')
 	}
 	mut main_src := strings.new_builder(16_000)
 	main_src.writeln('module main')
@@ -439,10 +449,10 @@ fn write_parallel_parser_project(name string) string {
 	}
 	main_src.writeln('\tprintln(int_str(total))')
 	main_src.writeln('}')
-	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
 	expected := 899 * 4 + 0 + 1 + 2 + 3
 	os.write_file(os.join_path(project_dir, 'expected.txt'), '${expected}') or { panic(err) }
-	return os.join_path(project_dir, 'main.v')
+	os.write_file(main_path, main_src.str()) or { panic(err) }
+	return main_path
 }
 
 // test_parallel_parser_compiles_multi_module_project validates that a build
@@ -450,8 +460,8 @@ fn write_parallel_parser_project(name string) string {
 // and that the bench output reports the parse phase as parallel.
 fn test_parallel_parser_compiles_multi_module_project() {
 	v3_bin := build_parallel_parser_v3()
-	main_path := write_parallel_parser_project('parallel_parser_project')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_project_out_${os.getpid()}')
+	main_path := parallel_parser_project()
+	bin_out := os.join_path(pp_fixture_dir, 'parallel_parser_project_out')
 	old_vjobs := os.getenv_opt('VJOBS')
 	os.setenv('VJOBS', '4', true)
 	defer {
@@ -477,25 +487,9 @@ fn test_parallel_parser_compiles_multi_module_project() {
 // explicit import anywhere), so the seed fires for a module parsed inside a
 // parallel import wave and `sync` must resolve with that module's context.
 fn write_parallel_parser_implicit_sync_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
-	os.rmdir_all(project_dir) or {}
+	project_dir := os.join_path(pp_fixture_dir, name)
 	os.mkdir_all(os.join_path(project_dir, 'locker')) or { panic(err) }
-	// Padding modules keep the import wave above the parallel-parse thresholds.
-	for m in 0 .. 3 {
-		os.mkdir_all(os.join_path(project_dir, 'pad${m}')) or { panic(err) }
-		mut pad_src := strings.new_builder(64_000)
-		pad_src.writeln('module pad${m}')
-		pad_src.writeln('')
-		for i in 0 .. 1200 {
-			pad_src.writeln('pub fn pad_value_${i}() int {')
-			pad_src.writeln('\treturn ${i + m}')
-			pad_src.writeln('}')
-			pad_src.writeln('')
-		}
-		os.write_file(os.join_path(project_dir, 'pad${m}', 'pad${m}.v'), pad_src.str()) or {
-			panic(err)
-		}
-	}
+	write_parallel_parser_padding_modules(project_dir, 1199)
 	os.write_file(os.join_path(project_dir, 'locker', 'locker.v'), 'module locker
 
 pub struct Counter {
@@ -543,7 +537,7 @@ pub fn bump(mut c Counter) int {
 fn test_parallel_parser_seeds_implicit_sync_import_mid_wave() {
 	v3_bin := build_parallel_parser_v3()
 	main_path := write_parallel_parser_implicit_sync_project('parallel_parser_implicit_sync')
-	c_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_implicit_sync_${os.getpid()}.c')
+	c_out := os.join_path(pp_fixture_dir, 'parallel_parser_implicit_sync.c')
 	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
@@ -565,26 +559,10 @@ fn test_parallel_parser_seeds_implicit_sync_import_mid_wave() {
 // existed. The seed's already-imported scan is bounded to the module's serial
 // boundary to keep the earlier module resolving its own `sync` usage.
 fn write_parallel_parser_implicit_before_explicit_sync_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
-	os.rmdir_all(project_dir) or {}
+	project_dir := os.join_path(pp_fixture_dir, name)
 	os.mkdir_all(os.join_path(project_dir, 'implock')) or { panic(err) }
 	os.mkdir_all(os.join_path(project_dir, 'explsync')) or { panic(err) }
-	// Padding modules keep the import wave above the parallel-parse thresholds.
-	for m in 0 .. 3 {
-		os.mkdir_all(os.join_path(project_dir, 'pad${m}')) or { panic(err) }
-		mut pad_src := strings.new_builder(64_000)
-		pad_src.writeln('module pad${m}')
-		pad_src.writeln('')
-		for i in 0 .. 1200 {
-			pad_src.writeln('pub fn pad_value_${i}() int {')
-			pad_src.writeln('\treturn ${i + m}')
-			pad_src.writeln('}')
-			pad_src.writeln('')
-		}
-		os.write_file(os.join_path(project_dir, 'pad${m}', 'pad${m}.v'), pad_src.str()) or {
-			panic(err)
-		}
-	}
+	write_parallel_parser_padding_modules(project_dir, 1199)
 	os.write_file(os.join_path(project_dir, 'implock', 'implock.v'), 'module implock
 
 pub struct Counter {
@@ -650,8 +628,7 @@ fn test_parallel_parser_seeds_implicit_sync_before_explicit_import() {
 	v3_bin := build_parallel_parser_v3()
 	main_path :=
 		write_parallel_parser_implicit_before_explicit_sync_project('parallel_parser_implicit_before_explicit_sync')
-	c_out := os.join_path(os.temp_dir(),
-		'v3_parallel_parser_implicit_before_explicit_sync_${os.getpid()}.c')
+	c_out := os.join_path(pp_fixture_dir, 'parallel_parser_implicit_before_explicit_sync.c')
 	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
@@ -670,8 +647,7 @@ fn test_parallel_parser_seeds_implicit_sync_before_explicit_import() {
 // splice shifts every node after aembed's region and remaps the children table,
 // so a working run of the program is what proves the remap kept the AST intact.
 fn write_parallel_parser_splice_project(name string) (string, string) {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
-	os.rmdir_all(project_dir) or {}
+	project_dir := os.join_path(pp_fixture_dir, name)
 	os.mkdir_all(os.join_path(project_dir, 'aembed')) or { panic(err) }
 	os.mkdir_all(os.join_path(project_dir, 'zsync')) or { panic(err) }
 	os.write_file(os.join_path(project_dir, 'aembed', 'payload.txt'), 'embedded-payload') or {
@@ -698,22 +674,7 @@ pub fn wg_count() int {
 ') or {
 		panic(err)
 	}
-	// Padding modules keep the import wave above the parallel-parse thresholds.
-	for m in 0 .. 3 {
-		os.mkdir_all(os.join_path(project_dir, 'pad${m}')) or { panic(err) }
-		mut pad_src := strings.new_builder(64_000)
-		pad_src.writeln('module pad${m}')
-		pad_src.writeln('')
-		for i in 0 .. 1200 {
-			pad_src.writeln('pub fn pad_value_${i}() int {')
-			pad_src.writeln('\treturn ${i + m}')
-			pad_src.writeln('}')
-			pad_src.writeln('')
-		}
-		os.write_file(os.join_path(project_dir, 'pad${m}', 'pad${m}.v'), pad_src.str()) or {
-			panic(err)
-		}
-	}
+	write_parallel_parser_padding_modules(project_dir, 5)
 	mut main_src := strings.new_builder(4_000)
 	main_src.writeln('module main')
 	main_src.writeln('')
@@ -745,7 +706,7 @@ pub fn wg_count() int {
 fn test_parallel_parser_splices_synthetic_import_in_serial_order() {
 	v3_bin := build_parallel_parser_v3()
 	main_path, expected := write_parallel_parser_splice_project('parallel_parser_splice')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_splice_out_${os.getpid()}')
+	bin_out := os.join_path(pp_fixture_dir, 'parallel_parser_splice_out')
 	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_out])
@@ -757,8 +718,8 @@ fn test_parallel_parser_splices_synthetic_import_in_serial_order() {
 // `--no-parallel` must keep the parse phase off the worker threads.
 fn test_no_parallel_parser_keeps_parse_serial() {
 	v3_bin := build_parallel_parser_v3()
-	main_path := write_parallel_parser_project('parallel_parser_serial_project')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_serial_out_${os.getpid()}')
+	main_path := parallel_parser_project()
+	bin_out := os.join_path(pp_fixture_dir, 'parallel_parser_serial_out')
 	compile := os.exec(['env', 'VJOBS=4', v3_bin, '--no-parallel', main_path, '-b', 'c', '-o',
 		bin_out])
 	assert compile.exit_code == 0, compile.output

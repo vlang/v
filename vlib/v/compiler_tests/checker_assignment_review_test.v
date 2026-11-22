@@ -1,14 +1,26 @@
 import os
+import v.tempname
 
 const checker_assignment_vexe = @VEXE
 const checker_assignment_tests_dir = os.dir(@FILE)
 const checker_assignment_v3_dir = os.dir(checker_assignment_tests_dir)
 const checker_assignment_vlib_dir = os.dir(checker_assignment_v3_dir)
 const checker_assignment_v3_src = os.join_path(checker_assignment_v3_dir, 'v.v')
+const checker_assignment_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_checker_assignment_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(checker_assignment_compiler_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(checker_assignment_compiler_dir) or {}
+}
 
 fn checker_assignment_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_assignment_review_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(checker_assignment_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([checker_assignment_vexe, '-gc', 'none', '-path',
 			'${checker_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,

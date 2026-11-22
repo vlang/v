@@ -1,18 +1,10 @@
 name: vab CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/vab_ci.yml'
-      - '!**.md'
+  workflow_call:
 
 concurrency:
-  group: vab-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vab-vab_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -34,7 +26,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install vab
         run: |
@@ -71,7 +63,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make -j4 && ./v symlink
+        uses: ./.github/actions/setup-v
 
       - name: Install vab
         run: |

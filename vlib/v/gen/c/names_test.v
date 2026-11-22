@@ -697,7 +697,7 @@ fn test_sum_name_lookup_preserves_qualified_type_identity() {
 	assert g.resolve_variant(flat.source_type_id('extra.left__Value'), flat.source_type_id('Raw__Name')) == flat.source_type_id('Raw__Name')
 }
 
-fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
+fn test_compiler_interface_helpers_follow_reachability() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut used := {
@@ -707,10 +707,20 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	g.a = &a
 	g.tc = &tc
 	g.used_fns = &used
-	assert g.should_emit_fn_node_in_module_known(flat.Node{
-		kind:  .fn_decl
-		value: 'FlatGen.sum_type_index'
-	}, -1, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
+	for method in ['sum_type_index', 'sum_type_index_resolved', 'interface_tmp'] {
+		node := flat.Node{
+			kind:  .fn_decl
+			value: 'FlatGen.${method}'
+		}
+		qfn := g.cname('c.FlatGen.${method}')
+		for file in ['interface.v', '/compiler/vlib/v/gen/c/interface.v'] {
+			assert !g.should_emit_fn_node_in_module_known(node, -1, 'c', file, qfn, false)
+		}
+		used['c.FlatGen.${method}'] = true
+		for file in ['interface.v', '/compiler/vlib/v/gen/c/interface.v'] {
+			assert g.should_emit_fn_node_in_module_known(node, -1, 'c', file, qfn, false)
+		}
+	}
 	assert !g.should_emit_fn_node_in_module_known(flat.Node{
 		kind:  .fn_decl
 		value: 'Transformer.sum_type_index'

@@ -24,8 +24,9 @@ fn test_header_alias_cycles_are_left_to_the_c_preprocessor() ! {
 		generated := cmdexec.run(@VEXE, args)
 		assert generated.exit_code == 0, generated.output
 		text := os.read_file(c_output)!
-		assert text.contains('#include "${header.replace('\\', '/')}"')
-			|| text.contains('#include "${os.real_path(header).replace('\\', '/')}"')
+		include_text := text.replace(r'\\', '/').replace('\\', '/')
+		assert include_text.contains('#include "${header.replace('\\', '/')}"')
+			|| include_text.contains('#include "${os.real_path(header).replace('\\', '/')}"')
 		assert !text.contains('HEADER_POLICY_SENTINEL')
 		assert !text.contains(recursive_include)
 	}

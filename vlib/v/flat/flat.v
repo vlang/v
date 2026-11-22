@@ -399,6 +399,12 @@ pub const node_flag_freed_assignment = u8(8)
 // node_flag_borrowed_map_key marks a generated read-only map iteration whose
 // key cannot escape. The bit is shared with the assignment-only flag above.
 pub const node_flag_borrowed_map_key = u8(8)
+// node_flag_in_range_index marks an `.index` read the transform proved in range
+// (see Node.is_in_range_index()). The bit is shared with the flags above.
+pub const node_flag_in_range_index = u8(8)
+// node_flag_retained_reference marks an implicit `&temporary` retained by a field.
+// It uses the same bit on prefix nodes; the C backend must copy its backing value.
+pub const node_flag_retained_reference = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -591,6 +597,13 @@ pub fn (n &Node) is_freed_assignment() bool {
 @[inline]
 pub fn (n &Node) has_literal_interpolation_text() bool {
 	return (n.flags & node_flag_literal_interpolation_text) != 0
+}
+
+// is_in_range_index reports whether this array or string index read needs no
+// bounds check: its loop proves the index is in range for the indexed value.
+@[inline]
+pub fn (n &Node) is_in_range_index() bool {
+	return n.kind == .index && (n.flags & node_flag_in_range_index) != 0
 }
 
 // is_mut_builtin_pointer_param reports whether this parameter was declared as
@@ -863,6 +876,10 @@ pub fn (mut n Node) set_generic_params_and_constraint_ids(params []string, const
 @[heap]
 pub struct FlatAst {
 pub mut:
+	// guard_exhaustive_match makes the transformer stop on a value that no branch
+	// of an exhaustive value `match` names. Set for the native backend.
+	guard_exhaustive_match bool
+
 	nodes           []Node
 	children        []NodeId
 	user_code_start int
@@ -944,6 +961,11 @@ pub mut:
 	// or file_index_incomplete is set (a source file failed to read).
 	file_node_ids         []i32
 	file_index_incomplete bool
+	// directive_scan_ids lists, in node order, the nodes that the scans for C
+	// directives read (see index_directive_scan_nodes), and directive_scan_nodes
+	// is the node count that it was built for: 0 without an index.
+	directive_scan_ids   []i32
+	directive_scan_nodes int
 	// debugger_stmts counts the `$dbg` statements the parser created, so that
 	// a scan for them can stop once it knows there is none.
 	debugger_stmts int
@@ -1360,7 +1382,7 @@ pub fn (mut a FlatAst) intern_node_texts_range_cached(start int, end int, mut va
 	value_cache.reset()
 	type_cache.reset()
 	for idx in first .. end {
-		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
+		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values)
 	}
 }
 
@@ -1373,16 +1395,23 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 		return
 	}
 	mut value_cache := new_text_probe_cache()
-	mut type_cache := new_text_probe_cache()
+	a.intern_node_texts_at_cached(indexes, mut value_cache)
+}
+
+// intern_node_texts_at_cached is intern_node_texts_at with the probe cache of
+// the caller, which is not emptied: a merge passes the lists of all of its
+// chunks through one cache, whose pointer keys stay valid until the chunks'
+// arenas are released, instead of allocating one for every list.
+pub fn (mut a FlatAst) intern_node_texts_at_cached(indexes []int, mut value_cache TextProbeCache) {
 	for idx in indexes {
-		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
+		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values)
 	}
 }
 
 // The callers index live nodes (a parsed range, or recorded merge misses), so
 // the slot needs no bounds check; the param loop is indexed for the same reason.
 @[direct_array_access]
-fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut type_cache_ptrs [4096]voidptr, mut type_cache_vals [4096]string, mut type_cache_ids [4096]u16) {
+fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string) {
 	// Interning grows the text tables, never the node array, so this slot stays valid.
 	mut node := &a.nodes[idx]
 	node.canonicalize_source_value()

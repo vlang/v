@@ -33,7 +33,7 @@ Cross-compilation can check generated assembly but does not validate the target 
 ## Without `-d vlibc`
 
 Plain `-freestanding` Linux builds (amd64 and arm64) get their runtime from
-`builtin/linux_bare` on the C backend. Non-C backends (`-b x64`, `-b arm64`, the SSA
+`builtin/linux_bare` on the C backend. Non-C backends (`-b amd64`, `-b arm64`, the SSA
 pipeline) skip that directory, because the driver adds it only for `backend == 'c'`;
 there, `builtin/freestanding_d_freestanding.c.v` supplies the same surface under
 `$if freestanding && native && linux`: the `bare_*` print/input/panic/backtrace hooks,
@@ -42,10 +42,10 @@ exports, and the process `exit` route, all on raw syscalls with mmap-per-block m
 Its allocator is intentionally simpler than linux_bare's dlmalloc arrangement;
 `exit` goes through `exit_group`, matching `linux_bare` behavior.
 
-Inline assembly on the native lanes: the x64 backend (`-b x64`, also spelled `-b amd64`)
+Inline assembly on the native lanes: the amd64 backend (`-b amd64`, also spelled `-b x64`)
 lowers the structured template shapes the runtime uses (`syscall`, `mov` between
 registers and named operands, `mulq`/`divq` and the add/sub/xor/or/and family, with
-one or two outputs), so `-b x64 -freestanding` programs run their syscalls. The
+one or two outputs), so `-b amd64 -freestanding` programs run their syscalls. The
 freestanding runtime also exports its libc-shaped functions (`malloc`, `memcpy`,
 `strlen`, ...) under the C names, and the native link resolves calls to them
 inside the binary. The arm64 backend (`-b arm64 -arch arm64`) lowers the same

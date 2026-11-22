@@ -52,19 +52,18 @@ fn test_fn_with_error() {
 	assert bench.benchmark_result.n == 1
 }
 
-fn test_n_must_be_over_1() {
+fn test_n_must_be_over_1() ! {
+	duration := 100 * time.millisecond
 	f := fn () ! {
 		mut i := 0
 		i++
 	}
-	mut bench := setup(f) or {
-		eprintln('Error creating benchmark: ${err}')
-		return
-	}
+	mut bench := setup(f, duration: duration)!
 
 	bench.run()
 
 	assert bench.benchmark_result.n > 1
+	assert bench.benchmark_result.t >= duration
 }
 
 fn test_n() {
@@ -84,39 +83,27 @@ fn test_n() {
 	assert bench.benchmark_result.n == 1000
 }
 
-fn test_max_bench_time() {
-	f := fn () ! {
-		time.sleep(500 * time.millisecond)
-	}
-	mut bench := setup(f) or {
-		eprintln('Error creating benchmark: ${err}')
-		return
+fn test_max_bench_time() ! {
+	mut state := setup(fn () ! {})!
+	mut bench := &state
+	bench.bench_func = fn [mut bench] () ! {
+		// Simulate a slow iteration while exercising the real timer and predictor.
+		bench.start_time = bench.start_time.add(-500 * time.millisecond)
 	}
 
 	bench.run()
 
 	assert bench.benchmark_result.n == 3
-	assert bench.benchmark_result.t >= time.second
+	assert bench.benchmark_result.t >= 1500 * time.millisecond
 }
 
 fn test_performance() {
-	scheduler := [func_1, func_2, func_3]
-	expected := [false, false, false]
-	mut actual := []bool{}
-
-	for i in scheduler {
-		mut bench := setup(i) or {
-			eprintln('Error creating benchmark: ${err}')
-			return
-		}
-
+	iterations := 100
+	for workload in [func_1, func_2, func_3] {
+		mut bench := setup(workload, n: iterations)!
 		bench.run()
-		actual << bench.failed
-	}
-
-	assert expected.len == actual.len
-	for i := 0; i < expected.len; i++ {
-		assert expected[i] == actual[i]
+		assert !bench.failed
+		assert bench.benchmark_result.n == iterations
 	}
 }
 

@@ -17,8 +17,8 @@ pub fn powf(a f32, b f32) f32 {
 // pow10 returns 10**n, the base-10 exponential of n.
 //
 // special cases are:
-// pow10(n) =    0 for n < -323
-// pow10(n) = +inf for n > 308
+// - `pow10(n) =    0 for n < -323`
+// - `pow10(n) = +inf for n > 308`
 pub fn pow10(n int) f64 {
 	if 0 <= n && n <= 308 {
 		return pow10postab32[u32(n) / 32] * pow10tab[u32(n) % 32]

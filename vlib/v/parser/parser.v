@@ -167,7 +167,21 @@ mut:
 	prepass_lines PrepassLineFile
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
-	batch_sources                     &BatchSources = unsafe { nil }
+	batch_sources &BatchSources = unsafe { nil }
+	// C-allocated batch texts retained by unscoped parse chunks until source
+	// storage can be released after parsing and comptime declaration resolution.
+	batch_source_buffers []string
+	// The files that the caller expects in the batch after the next one, and the
+	// parse of such files that the batch before this one did ahead of time (see
+	// speculate_next_batch).
+	next_batch_paths []string
+	speculated_batch voidptr // &SpeculatedBatch
+	// Set for a worker that parses files of the batch after the current one.
+	parses_ahead bool
+	// Texts that the caller read for the next parallel parse batch, which owns
+	// them from then on (see preload_batch_source), and the index of each by path.
+	batch_preloads                    []string
+	batch_preload_index               map[string]int
 	local_binding_undos               []LocalBindingUndo
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -219,6 +233,12 @@ mut:
 	// intern_parsed_node_texts): nil outside of a batch.
 	text_value_cache &flat.TextProbeCache = unsafe { nil }
 	text_type_cache  &flat.TextProbeCache = unsafe { nil }
+	// The probe cache that rebinds node texts when a parallel parse is merged: a
+	// scoped worker's lives in its arena and dies with it, the caller's serves
+	// every merge (see parse_merge_copy_thread, merge_parsed_workers_parallel).
+	merge_text_cache &flat.TextProbeCache = unsafe { nil }
+	// What file_scan_hook answered for each file of the last parse batch.
+	batch_scan_flags []u8
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
 	// no_source_digests leaves the SHA-256 of each parsed source out (see
@@ -233,7 +253,12 @@ pub mut:
 	keep_source_texts bool
 	// preloaded_sources holds the text of files that the caller read already and
 	// is about to parse (see preload_source).
-	preloaded_sources          map[string]string
+	preloaded_sources map[string]string
+	// file_scan_hook, when set, is called for every parsed file with the tree that
+	// holds its nodes and their range, on the thread that parsed it; it may only
+	// read those nodes. batch_file_scan_flags returns what it answered for the
+	// files of the last batch.
+	file_scan_hook             fn (&flat.FlatAst, int, int) u8 = unsafe { nil }
 	parsed_v_files             int
 	parsed_v_file_paths        []string
 	parsed_v_header_files      int
@@ -260,10 +285,13 @@ pub fn (mut p Parser) reserve_selfhost_ast() {
 	// reserve_parallel_transform_ast's targets (9/4 of the nodes, 8/3 of the
 	// children) with room for the compiler to grow: once the self-host AST
 	// outgrows them, transform copies the whole ~115 MB node slab. These fit
-	// 2.09M parsed nodes and 2.06M parsed children; the compiler had 1.78M of
-	// each in 2026-10. Untouched capacity costs no physical memory.
-	selfhost_node_capacity := 4_718_592
-	selfhost_child_capacity := 5_505_024
+	// 2.79M parsed nodes and 2.75M parsed children; the compiler had 1.89M of
+	// each in 2026-11. The parallel transform cuts its work into many small
+	// pieces, whose append regions need more slack than whole chunks do, so the
+	// slabs are also a third larger than those targets alone would make them.
+	// Untouched capacity costs no physical memory.
+	selfhost_node_capacity := 6_291_456
+	selfhost_child_capacity := 7_340_032
 	if p.a.nodes.cap < selfhost_node_capacity {
 		old_nodes := p.a.nodes
 		p.a.nodes = []flat.Node{cap: selfhost_node_capacity}
@@ -413,6 +441,22 @@ pub fn (mut p Parser) release_source_storage() {
 	p.export_records = []ExportRecord{}
 	p.s.src = ''
 	p.s.lit = ''
+	// A kept file text is the whole buffer that the file was parsed from: such a
+	// C-allocated buffer stays, owned by the table of kept texts from here on,
+	// instead of being copied and freed. Ordinary node/metadata text has been
+	// interned, so nothing refers to the other buffers.
+	mut kept_buffers := map[u64]bool{}
+	if p.batch_source_buffers.len > 0 && p.keep_source_texts {
+		for _, text in p.a.source_texts {
+			kept_buffers[u64(voidptr(text.str))] = true
+		}
+	}
+	for src in p.batch_source_buffers {
+		if u64(voidptr(src.str)) !in kept_buffers {
+			unsafe { C.free(src.str) }
+		}
+	}
+	p.batch_source_buffers = []string{}
 	p.a.source_buffers = []string{}
 }
 
@@ -426,13 +470,24 @@ pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
 	p.reset_translated_sizeof_declarations()
 	defer { p.parse_batch_paths = previous_paths }
 	mut starts := []int{cap: paths.len}
+	p.batch_scan_flags = []u8{}
 	p.begin_text_cache_batch(paths.len)
 	for path in paths {
 		starts << p.a.nodes.len
 		p.parse_into(path)
+		if !isnil(p.file_scan_hook) {
+			p.batch_scan_flags << p.file_scan_hook(p.a, starts.last(), p.a.nodes.len)
+		}
 	}
 	p.end_text_cache_batch()
 	return starts
+}
+
+// batch_file_scan_flags returns what file_scan_hook answered for each file of
+// the batch that parse_files_dispatch or parse_files_with_starts parsed last,
+// in the order of its paths: an empty list without a hook.
+pub fn (p &Parser) batch_file_scan_flags() []u8 {
+	return p.batch_scan_flags
 }
 
 // begin_text_cache_batch gives the files of a batch one pair of probe caches to
@@ -11732,6 +11787,10 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	}
 	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
+	if !p.prefs.is_fmt && normalized_asm_arch == 'ppc' && !is_raw
+		&& (p.prefs.backend != 'c' || has_unsupported_content) {
+		p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
+	}
 	// An empty template with only a memory clobber is architecture independent;
 	// it lowers to a compiler barrier even when the block names another ISA.
 	can_lower := (!has_unsupported_content && has_memory_clobber)
@@ -11759,7 +11818,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 // inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
 // lowers to GNU `asm()`.
-const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64', 'ppc']
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
 	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
@@ -11769,7 +11828,7 @@ fn (p &Parser) supports_c_inline_asm_lowering() bool {
 // an inline assembly block for its own target architecture. A block for another
 // architecture is declined, which keeps a `$if` guard for it effective.
 fn (p &Parser) supports_native_inline_asm_lowering() bool {
-	return (p.prefs.backend == 'x64' && p.prefs.target.arch == 'amd64')
+	return (p.prefs.backend in ['amd64', 'x64'] && p.prefs.target.arch == 'amd64')
 		|| (p.prefs.backend == 'arm64' && p.prefs.target.arch == 'arm64')
 }
 

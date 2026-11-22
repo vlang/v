@@ -489,7 +489,7 @@ fn (mut p Process) win_slurp(idx int) string {
 
 //
 // these are here to make v_win.c/v.c generation work in all cases:
-fn (mut p Process) unix_spawn_process() int {
+fn (mut p Process) unix_spawn_process(_ bool) int {
 	return 0
 }
 

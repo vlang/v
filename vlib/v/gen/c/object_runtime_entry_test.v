@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 
@@ -9,10 +9,19 @@ fn test_object_exports_initialize_with_or_without_a_v_main() {
 	root := os.join_path(os.vtmp_dir(), 'object_runtime_entry_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	mut previous_cc := ''
+	mut previous_version := ''
 	for compiler in ['clang', 'gcc'] {
 		cc := os.find_abs_path_of_executable(compiler) or { continue }
 		version := os.exec([cc, '--version'])
 		assert version.exit_code == 0, version.output
+		// Apple Clang can be installed under both names.
+		if previous_cc != '' && version.output == previous_version
+			&& (os.same_file(cc, previous_cc) or { false }) {
+			continue
+		}
+		previous_cc = cc
+		previous_version = version.output
 		is_clang := version.output.to_lower().contains('clang')
 		for has_main in [false, true] {
 			dir := os.join_path(root, '${compiler}_${has_main}')

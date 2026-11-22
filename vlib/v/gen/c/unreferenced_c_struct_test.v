@@ -1,14 +1,40 @@
-module c
+module main
 
 import os
 import v.cmdexec
+
+const auxiliary_c_struct_root = os.join_path(os.vtmp_dir(), 'auxiliary_c_struct_${os.getpid()}')
+
+// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+// programs with, so the fixtures use the MinGW gcc there.
+const c_struct_fixture_cc = $if windows { 'gcc' } $else { 'clang' }
+
+fn testsuite_begin() {
+	if os.exists(auxiliary_c_struct_root) {
+		os.rmdir_all(auxiliary_c_struct_root)!
+	}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(auxiliary_c_struct_root) or {}
+}
+
+fn run_c_struct_fixture(source string, flags []string) !string {
+	binary := os.join_path(os.dir(source), 'main')
+	// An explicit C backend keeps the translation unit used for the executable.
+	result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'c', ...flags, '-o', binary,
+		'run', source])
+	if result.exit_code != 0 {
+		return error(result.output)
+	}
+	return '${binary}.c'
+}
 
 fn test_unreferenced_c_struct_binding_does_not_redefine_header_type() ! {
 	root := os.join_path(os.vtmp_dir(), 'unreferenced_c_struct_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
 	os.write_file(source, 'import net as _
 struct C.pollfd {
 mut:
@@ -37,8 +63,7 @@ fn main() {
  holder := Holder{}
  assert holder.items[0].value == 0
 }')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-o', output, source])
-	assert generated_result.exit_code == 0, generated_result.output
+	output := run_c_struct_fixture(source, [])!
 	generated := os.read_file(output)!
 	assert !generated.contains('struct pollfd {')
 	assert !generated.contains('UnusedInner')
@@ -50,63 +75,67 @@ fn main() {
 	assert generated.contains('struct DirectLayout {')
 	assert generated.contains('struct SizeOnlyLayout {')
 	assert generated.contains('struct OffsetOnlyLayout {')
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', source])
-	assert run_result.exit_code == 0, run_result.output
 }
 
-fn check_auxiliary_c_struct_declarations(name string, declarations string, retained []string, omitted []string) ! {
-	root := os.join_path(os.vtmp_dir(), 'auxiliary_c_struct_${name}_${os.getpid()}')
+fn auxiliary_c_struct_declarations() !string {
+	root := auxiliary_c_struct_root
+	checked := os.join_path(root, 'checked.c')
+	if os.is_file(checked) {
+		return os.read_file(checked)
+	}
 	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
-	os.write_file(source, declarations + '\nfn main() {}\n')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-enable-globals', '-o',
-		output, source])
-	assert generated_result.exit_code == 0, generated_result.output
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-enable-globals', '-cc', 'clang',
-		'run', source])
-	assert run_result.exit_code == 0, run_result.output
-	generated := os.read_file(output)!
-	for name_to_keep in retained {
-		assert generated.contains('struct ${name_to_keep} {')
-	}
-	for name_to_omit in omitted {
-		assert !generated.contains(name_to_omit)
-	}
-}
-
-fn test_unused_optional_aliases_keep_c_payloads() ! {
-	check_auxiliary_c_struct_declarations('aliases', '
+	os.write_file(source, '
 struct C.OptionalItem { value int }
 struct C.UnusedAliasItem { value int }
 type MaybeItem = ?C.OptionalItem
 type UnusedAlias = C.UnusedAliasItem
-', ['OptionalItem'], ['UnusedAliasItem'])!
-}
 
-fn test_unused_c_struct_callbacks_do_not_emit_signatures() ! {
-	check_auxiliary_c_struct_declarations('callbacks', '
 struct C.CallbackItem { value int }
 struct C.UnusedCallbacks { cb fn (&C.CallbackItem) }
-', [], ['CallbackItem', 'UnusedCallbacks'])!
-}
 
-fn test_unused_c_struct_optional_fields_do_not_emit_payloads() ! {
-	check_auxiliary_c_struct_declarations('optional_fields', '
 struct C.UnusedOptionalFieldItem { value int }
 struct C.UnusedOptionalFields { item ?C.UnusedOptionalFieldItem }
 struct C.UsedOptionalFieldItem { value int }
 struct C.UsedOptionalFields { item ?C.UsedOptionalFieldItem }
 struct OptionalFieldHolder { item C.UsedOptionalFields }
-', ['UsedOptionalFieldItem', 'UsedOptionalFields'], ['UnusedOptionalFieldItem', 'UnusedOptionalFields'])!
+
+struct C.GlobalItem { value int }
+__global C.items [1]C.GlobalItem
+
+fn main() {}
+')!
+	output := run_c_struct_fixture(source, ['-enable-globals', '-cc', c_struct_fixture_cc])!
+	// Share the C only after the fixture has also linked and run.
+	os.mv(output, checked)!
+	return os.read_file(checked)
+}
+
+fn check_auxiliary_c_struct_declarations(retained []string, omitted []string) ! {
+	generated := auxiliary_c_struct_declarations()!
+	for name_to_keep in retained {
+		assert generated.contains('struct ${name_to_keep} {'), name_to_keep
+	}
+	for name_to_omit in omitted {
+		assert !generated.contains(name_to_omit), name_to_omit
+	}
+}
+
+fn test_unused_optional_aliases_keep_c_payloads() ! {
+	check_auxiliary_c_struct_declarations(['OptionalItem'], ['UnusedAliasItem'])!
+}
+
+fn test_unused_c_struct_callbacks_do_not_emit_signatures() ! {
+	check_auxiliary_c_struct_declarations([], ['CallbackItem', 'UnusedCallbacks'])!
+}
+
+fn test_unused_c_struct_optional_fields_do_not_emit_payloads() ! {
+	check_auxiliary_c_struct_declarations(['UsedOptionalFieldItem', 'UsedOptionalFields'],
+		['UnusedOptionalFieldItem', 'UnusedOptionalFields'])!
 }
 
 fn test_unused_c_global_fixed_array_keeps_element_layout() ! {
-	check_auxiliary_c_struct_declarations('globals', '
-struct C.GlobalItem { value int }
-__global C.items [1]C.GlobalItem
-', ['GlobalItem'], [])!
+	check_auxiliary_c_struct_declarations(['GlobalItem'], [])!
 }
 
 fn test_empty_interface_stringification_omits_unused_c_layouts() ! {
@@ -116,7 +145,6 @@ fn test_empty_interface_stringification_omits_unused_c_layouts() ! {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
 	os.write_file(source, 'struct C.UnusedInterfaceLayout { value int }
 struct C.BoxedInterfaceLayout { value int }
 interface Empty {}
@@ -129,11 +157,8 @@ fn main() {
 	assert "\${boxed}".contains("BoxedInterfaceLayout")
 	assert boxed is C.BoxedInterfaceLayout
 }')!
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-o', output, source])
-	assert generated_result.exit_code == 0, generated_result.output
+	output := run_c_struct_fixture(source, ['-cc', c_struct_fixture_cc])!
 	generated := os.read_file(output)!
 	assert !generated.contains('UnusedInterfaceLayout')
 	assert generated.contains('struct BoxedInterfaceLayout {')
-	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-cc', 'clang', 'run', source])
-	assert run_result.exit_code == 0, run_result.output
 }

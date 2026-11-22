@@ -3816,6 +3816,17 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 		t.collect_generic_struct_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		return
 	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		// A concrete callback field can be the only use of its parameter and
+		// return specializations, including a result hidden behind a generic alias.
+		if syntax.function_closed() {
+			for param in syntax.function_params() {
+				t.collect_generic_struct_spec_from_type(flat.source_type_syntax(param).legacy_parameter_mut_type(), module_name, file_name, decls, mut specs)
+			}
+			t.collect_generic_struct_spec_from_type(syntax.function_result(), module_name, file_name, decls, mut specs)
+		}
+		return
+	}
 	if shape.has(.map_type) {
 		if syntax.bracket_closed() {
 			t.collect_generic_struct_spec_from_type(syntax.bracket_raw_inner(), module_name, file_name, decls, mut specs)

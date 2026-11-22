@@ -24,22 +24,27 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	}
 	function_key := g.function_key_for_call(tokens, name_index)
 
-	signature := if function_key in g.functions {
-		g.functions[function_key]
-	} else if name_index == 0 && tokens[0].lit in g.locals
-		&& g.locals[tokens[0].lit].fn_signature_key in g.mono_functions {
-		g.mono_functions[g.locals[tokens[0].lit].fn_signature_key]
-	} else if name_index == 0 && tokens[0].lit in g.locals {
-		g.callable_signature_for_expression(tokens[..1]) or { return none }
-	} else {
-		g.mono_functions[function_key] or { return none }
+	signature := g.functions[function_key] or {
+		if name_index == 0 {
+			if local := g.locals[tokens[0].lit] {
+				if mono := g.mono_functions[local.fn_signature_key] {
+					mono
+				} else {
+					g.callable_signature_for_expression(tokens[..1]) or { return none }
+				}
+			} else {
+				g.mono_functions[function_key] or { return none }
+			}
+		} else {
+			g.mono_functions[function_key] or { return none }
+		}
 	}
 	call_name := if signature.is_global && !(name_index == 0 && tokens[0].lit in g.locals) {
 		g.globals[function_key]
 	} else if function_key.starts_with('C.') {
 		g.c_function_name_for_key(function_key)
 	} else if name_index == 0 && tokens[0].lit in g.locals {
-		local := g.locals[tokens[0].lit]
+		local := g.locals[tokens[0].lit] or { return none }
 		local_name := g.local_c_name(tokens[0].lit)
 		if local.typ == flat.source_type_voidptr && local.fn_return_type != 0 {
 			parameters := fastc_c_prototype_parameters(signature.parameter_types.ids)
@@ -380,7 +385,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 						origin_key, _ := g.resolve_method(local.smartcast_origin_type, tokens[i].lit)
 						if origin_key in g.functions || origin_key in g.mono_functions {
 							receiver_type = local.smartcast_origin_type
-							unnarrowed_receiver = fastc_c_identifier(receiver_tokens[0].lit)
+							unnarrowed_receiver = fastc_c_value_identifier(receiver_tokens[0].lit)
 						}
 					}
 				}
@@ -419,11 +424,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			} else {
 				'.'
 			}
-			comparison := if fastc_trim_pointer_type(g.underlying_alias_type(element_type)) == flat.source_type_string {
-				'builtin__string_eq(__vf_contains_item, ((${flat.source_type_name(element_type)} *)__vf_contains_collection${access}data)[__vf_contains_index])'
-			} else {
-				'(__vf_contains_item == ((${element_storage_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
-			}
+			candidate := '((${element_storage_type} *)__vf_contains_collection${access}data)[__vf_contains_index]'
+			comparison := g.stored_equality_source('__vf_contains_item', candidate, element_type, [],
+				0)
 			receiver_decl_type := g.declaration_c_type(receiver_type, receiver.source)
 			call_source := '({ ${element_storage_type} __vf_contains_item = (${argument}); ${receiver_decl_type} __vf_contains_collection = (${receiver.source}); bool __vf_contains_found = false; for (${fastc_output_c_type('int')} __vf_contains_index = 0; __vf_contains_index < __vf_contains_collection${access}len; __vf_contains_index++) { if (${comparison}) { __vf_contains_found = true; break; } } __vf_contains_found; })'
 			if receiver_start == 0 && call_end == tokens.len - 1 {
@@ -869,10 +872,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			continue
 		}
-		signature := if method_key in g.functions {
-			g.functions[method_key]
-		} else {
-			g.mono_functions[method_key]
+		signature := g.functions[method_key] or {
+			g.mono_functions[method_key] or { continue }
 		}
 		if signature.parameter_types.ids.len == 0 {
 			continue
@@ -905,7 +906,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			g.render_method_receiver_expression(receiver_tokens) or { continue }
 		}
 		mut receiver_source := receiver.source
-		mut separator := if receiver_tokens.len == 1 && flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+		mut separator := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			'->'
 		} else {
 			'.'

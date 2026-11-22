@@ -2,6 +2,19 @@ module pref
 
 import os
 
+fn test_native_backend_selection_uses_normalized_target_architecture() {
+	for arch in ['amd64', 'x64', 'x86_64', ' AMD64 '] {
+		assert native_backend_for_arch(arch) == 'amd64', arch
+	}
+	for arch in ['arm64', 'aarch64', ' ARM64 '] {
+		assert native_backend_for_arch(arch) == 'arm64', arch
+	}
+	for arch in ['x86', 'arm32', 'riscv64', 'unknown'] {
+		assert native_backend_for_arch(arch) == 'native', arch
+	}
+	assert native_backend() == native_backend_for_arch(host_arch())
+}
+
 fn test_target_from_normalizes_and_derives_platform_properties() {
 	target := target_from('darwin', 'x86_64') or { panic(err) }
 	assert target.os == 'macos'
@@ -390,7 +403,7 @@ fn test_architecture_suffixes_are_still_c_backend_tests() {
 fn test_native_backend_tests_answer_to_both_spellings() {
 	assert is_test_file_for_backend('foo_test.native.v', 'native')
 	assert is_test_file_for_backend('foo_test.native.v', 'arm64')
-	assert is_test_file_for_backend('foo_test.native.v', 'x64')
+	assert is_test_file_for_backend('foo_test.native.v', 'amd64')
 	assert !is_test_file_for_backend('foo_test.native.v', 'c')
 	assert !is_test_file_for_backend('foo_test.native.v', 'fastc')
 	assert !is_test_file_for_backend('foo_test.native.v', 'js')
@@ -398,7 +411,7 @@ fn test_native_backend_tests_answer_to_both_spellings() {
 	for arch in ['amd64', 'arm64'] {
 		target := target_from('linux', arch) or { panic(err) }
 		assert is_test_file_for_platform('foo_test.native.v', 'arm64', target), 'native test on ${arch}'
-		assert is_test_file_for_platform('foo_test.native.v', 'x64', target), 'native test on ${arch}'
+		assert is_test_file_for_platform('foo_test.native.v', 'amd64', target), 'native test on ${arch}'
 		assert !is_test_file_for_platform('foo_test.native.v', 'c', target), 'native test on ${arch}'
 	}
 	// The other spelling still names the architecture, so it stays a C-backend test and never

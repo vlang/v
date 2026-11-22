@@ -3,6 +3,20 @@ module mcp
 import os
 import time
 
+const stdio_listen_probe = '--vtest-mcp-stdio-listen'
+
+fn testsuite_begin() {
+	if os.args.len != 3 || os.args[1] != stdio_listen_probe {
+		return
+	}
+	match os.args[2] {
+		'server' { serve_stdio_listen_probe() or { panic(err) } }
+		'client' { run_stdio_listen_probe() or { panic(err) } }
+		else { panic('expected server or client mode') }
+	}
+	exit(0)
+}
+
 struct MockTransport {
 mut:
 	incoming []string
@@ -510,21 +524,8 @@ fn test_client_listen_rechecks_protocol_after_discovery_downgrade() {
 }
 
 fn test_external_stdio_client_returns_after_acknowledgment() {
-	root := os.join_path(os.vtmp_dir(), 'mcp_listen_consumer_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	server := os.join_path(root, 'server' + $if windows { '.exe' } $else { '' })
-	consumer := os.join_path(root, 'consumer' + $if windows { '.exe' } $else { '' })
-	for source, binary in {
-		'listen_server.v':   server
-		'listen_consumer.v': consumer
-	} {
-		path := os.join_path(@VEXEROOT, 'vlib/mcp/testdata', source)
-		built := os.exec([@VEXE, '-o', binary, path])
-		assert built.exit_code == 0, built.output
-	}
-	mut process := os.new_process(consumer)
-	process.set_args([server])
+	mut process := os.new_process(os.executable())
+	process.set_args([stdio_listen_probe, 'client'])
 	process.set_redirect_stdio()
 	process.run()
 	deadline := time.now().add(30 * time.second)
@@ -543,6 +544,38 @@ fn test_external_stdio_client_returns_after_acknowledgment() {
 	process.close()
 	assert !timed_out, 'stdio listen did not return after acknowledgment: ${output}'
 	assert code == 0, output
+}
+
+fn serve_stdio_listen_probe() ! {
+	mut server := new_server(name: 'listen-regression', version: '1')
+	server.add_tool(Tool{ name: 'ping' }, fn (_ Context, _ string) !ToolResult {
+		return tool_text_result('pong')
+	})!
+	server.serve_stdio()!
+}
+
+fn run_stdio_listen_probe() ! {
+	mut client := connect_stdio(os.executable(), [stdio_listen_probe, 'server'], ClientConfig{
+		protocol_version: protocol_version_2026_07_28
+	})!
+	defer { client.close() }
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{ tools_list_changed: true }
+	})!
+	if !filter.tools_list_changed {
+		return error('the acknowledgment did not include the requested tools filter')
+	}
+	notifications := client.take_notifications()
+	if notifications.len != 1 {
+		return error('expected one notification after the acknowledgment, got ${notifications.len}')
+	}
+	if subscription_id_of(notifications[0]) or { '' } != '2' {
+		return error('the notification did not carry subscription ID 2')
+	}
+	response := client.request_message('tools/list', empty_object)!
+	if response.error.code != 0 || !response.result.contains('ping') {
+		return error('the follow-up tools/list request did not return the ping tool: ${response}')
+	}
 }
 
 fn test_subscription_id_accepts_strings_and_numbers_only() {

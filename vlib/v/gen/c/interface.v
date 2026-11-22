@@ -465,16 +465,32 @@ fn (mut g FlatGen) collect_interface_impls() {
 	iface_names.sort_with_compare(compare_interface_source_type_ids)
 	// The implementer queries of this loop share one checker context.
 	memo_opened := g.tc.begin_interface_impl_queries()
+	if !isnil(g.c_struct_refs_handoff) {
+		// The IError implementer list is most of this scan and does not depend
+		// on the referenced C structs, which the loop below filters with:
+		// memoize it while the master still collects those.
+		for iface_id in iface_names {
+			if g.is_ierror_type_name(iface_id) {
+				_ = g.ierror_impl_names_for_dispatch()
+				break
+			}
+		}
+		mut handoff := g.c_struct_refs_handoff
+		_ = <-handoff.ch
+		g.referenced_c_struct_ids = handoff.ids
+		g.referenced_c_struct_ids_ready = handoff.ready
+		g.c_struct_refs_handoff = unsafe { nil }
+	}
 	for iface_id in iface_names {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
 		if g.is_ierror_type_name(iface_id) {
-			impls = g.tc.ierror_impl_names()
+			impls = g.ierror_impl_names_for_dispatch()
 		} else {
 			// Structs plus type aliases with their own implementing methods; ids
 			// must come from tc.interface_impl_names so the transform's `is`
 			// checks agree with the dispatch ids assigned here.
-			impls = g.tc.interface_impl_names(iface_id)
+			impls = g.interface_impl_names_for_dispatch(iface_id)
 			base_impls = impls.clone()
 			mut concrete_types := boxed_concrete_types[iface_id] or { []u32{} }
 			concrete_types.sort_with_compare(compare_interface_source_type_ids)
@@ -490,7 +506,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 		} else if impls.len > base_impls.len {
 			types.stable_interface_type_ids_preserving_prefix(base_impls, impls)
 		} else {
-			g.tc.interface_type_ids(iface_id)
+			g.interface_type_ids_for_dispatch(iface_id)
 		}
 		// Keep checker-assigned IDs stable while omitting unused C dispatch layouts.
 		impls = impls.filter(!flat.source_type_query(it).has(.c_prefix)
@@ -504,6 +520,37 @@ fn (mut g FlatGen) collect_interface_impls() {
 		}
 	}
 	g.tc.end_interface_impl_queries(memo_opened)
+}
+
+// ierror_impl_names_for_dispatch is the checker's ierror_impl_names, from the
+// implementer lane when it ran (see start_iface_impls_lane).
+fn (g &FlatGen) ierror_impl_names_for_dispatch() []u32 {
+	if !isnil(g.early_iface_impls) {
+		return g.early_iface_impls.ierror.clone()
+	}
+	return g.tc.ierror_impl_names()
+}
+
+// interface_impl_names_for_dispatch is the checker's interface_impl_names, from
+// the implementer lane when it ran.
+fn (g &FlatGen) interface_impl_names_for_dispatch(iface_id u32) []u32 {
+	if !isnil(g.early_iface_impls) {
+		if names := g.early_iface_impls.names[iface_id] {
+			return names.clone()
+		}
+	}
+	return g.tc.interface_impl_names(iface_id)
+}
+
+// interface_type_ids_for_dispatch is the checker's interface_type_ids, from the
+// implementer lane when it ran.
+fn (g &FlatGen) interface_type_ids_for_dispatch(iface_id u32) map[u32]int {
+	if !isnil(g.early_iface_impls) {
+		if type_ids := g.early_iface_impls.type_ids[iface_id] {
+			return type_ids.clone()
+		}
+	}
+	return g.tc.interface_type_ids(iface_id)
 }
 
 fn compare_interface_source_type_ids(a &u32, b &u32) int {
@@ -1620,6 +1667,11 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name_id u32, method string)
 		return false
 	}
 	if g.cache_split {
+		// Cached callers can refer to methods of a module rebuilt from source.
+		// Keep its dispatchers even when those callers' bodies are unavailable.
+		if g.cache_const_modules[iface_name.all_before_last('.')] {
+			return true
+		}
 		decl_key := g.interface_method_signature_key(iface_name_id, method) or { '' }
 		if source_file := g.tc.fn_type_files[decl_key] {
 			// A cached object can call an interface dispatch from a function body that
@@ -2351,6 +2403,13 @@ fn (g &FlatGen) interface_concrete_storage_c_type(concrete_id u32) string {
 }
 
 fn (g &FlatGen) interface_storage_c_type(typ &types.Type) string {
+	// A backed enum (`enum E as u8`), or an alias of one, is boxed in the enum's
+	// emitted typedef, while `TypeChecker.c_type` spells every enum `int`. Reading
+	// the box as an `int` reads past a 1 byte box, or truncates an `as i64` value.
+	clean := cgen_unalias_type(typ)
+	if clean is types.Enum {
+		return g.enum_value_c_type(clean)
+	}
 	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)

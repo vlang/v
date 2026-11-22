@@ -526,6 +526,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			if c2 >= `0` && c2 <= `9` {
 				s.number()
 				s.lit = s.source_lit(s.pos, s.offset)
+				s.insert_semi = true
 				return .number
 			} else if c2 == `.` {
 				s.offset++

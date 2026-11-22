@@ -1,6 +1,15 @@
-module c
+module main
 
 import os
+
+fn testsuite_begin() {
+	// The mock runtimes compile generated Windows functions with clang and expect the
+	// GCC-style C, not the `__declspec` spellings that `-cc msvc`, the VFLAGS of the
+	// MSVC CI jobs, writes; let these generations use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
 
 fn allocator_test_c_function(generated string, signature string) string {
 	assert generated.contains(signature), signature
@@ -192,11 +201,6 @@ fn test_windows_implicit_pointer_sum_drops_keep_the_v_allocator_family() {
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.v')
 	c_source := os.join_path(dir, 'main.c')
-	ownership_compiler := os.join_path(dir, 'v-ownership')
-	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build_compiler := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d',
-		'ownership', '-path', vlib, '-o', ownership_compiler, os.join_path(vlib, 'v', 'v.v')])
-	assert build_compiler.exit_code == 0, build_compiler.output
 	os.write_file(source, '@[aligned: 64]
 struct AlignedCell { value int }
 struct NaturalCell { value int }
@@ -244,8 +248,9 @@ fn main() { implicit_aligned()
  implicit_generic_nested_aligned()
  implicit_generic_borrowed_wrapper(&seed) }
 ')!
-	result := os.exec([ownership_compiler, '-new-compiler', '-nocache', '-os', 'windows', '-gc',
-		'none', '-autofree', '-no-closures', '-o', c_source, source])
+	// The launcher resolves -autofree through its shared ownership compiler.
+	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none', '-autofree',
+		'-no-closures', '-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
 	root_helpers := ['AlignedValue', 'NaturalValue', 'AlignedValue', 'GenericAlignedValue_AlignedCell',

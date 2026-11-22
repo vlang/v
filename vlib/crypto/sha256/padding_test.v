@@ -1,28 +1,29 @@
 module sha256
 
+import encoding.binary
+
 fn test_checksum_into_with_large_cumulative_length() {
+	input := []u8{len: chunk, init: u8(index * 7 + 1)}
 	// Seed the cumulative counter to exercise large streams without hashing gigabytes.
 	for base in [(u64(1) << 31) - u64(chunk), u64(1) << 31, u64(1) << 32, u64(1) << 40] {
 		for remainder in 0 .. chunk {
-			data := []u8{len: remainder, init: u8(index * 7 + 1)}
+			data := input[..remainder]
+			message_len := base + u64(remainder)
+
+			// Build the reference message without using the digest's padding code or state.
+			padded_len := if remainder + 1 + 8 <= chunk { chunk } else { 2 * chunk }
+			mut padded := []u8{len: padded_len}
+			copy(mut padded, data)
+			padded[remainder] = 0x80
+			binary.big_endian_put_u64_end(mut padded, message_len << 3)
+
 			for is224 in [false, true] {
 				mut digest := if is224 { new224() } else { new() }
 				digest.write(data)!
-				digest.len = base + u64(remainder)
-				message_bits := digest.len << 3
+				digest.len = message_len
 
-				// Build reference padding one byte at a time, independently of pad().
 				mut reference := if is224 { new224() } else { new() }
-				reference.write(data)!
-				reference.write([u8(0x80)])!
-				for reference.nx != chunk - 8 {
-					reference.write([u8(0)])!
-				}
-				mut length_bytes := []u8{len: 8}
-				for i in 0 .. 8 {
-					length_bytes[i] = u8(message_bits >> (56 - 8 * i))
-				}
-				reference.write(length_bytes)!
+				reference.write(padded)!
 
 				mut out := []u8{len: digest.size() + 3, init: 0xaa}
 				digest.checksum_into(mut out)

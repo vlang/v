@@ -1,56 +1,37 @@
 import os
 
-const vexe_path = @VEXE
-const vexe = os.quoted_path(vexe_path)
-const vroot = os.dir(vexe_path)
-
 fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
-	os.chdir(vroot)!
+	os.chdir(@VEXEROOT)!
 }
 
-fn test_check_examples_good() {
-	cmd := '${vexe} doc -comments -check-examples cmd/tools/vdoc/testdata/run_examples_good/main.v'
-	println('${@METHOD:30} running ${cmd} ...')
-	res := os.exec([vexe_path, 'doc', '-comments', '-check-examples',
-		'cmd/tools/vdoc/testdata/run_examples_good/main.v'])
-	assert res.exit_code == 0
-	assert res.output.contains('module main'), res.output
-	assert res.output.contains('fn abc()'), res.output
-	assert res.output.contains("abc just prints 'xyz'"), res.output
-	assert res.output.contains('and should succeed'), res.output
-	assert res.output.contains('Example: assert 5 * 5 == 25'), res.output
+fn run_example_docs(flag string, example string) os.Result {
+	path := os.join_path('cmd', 'tools', 'vdoc', 'testdata', 'run_examples_${example}', 'main.v')
+	return os.exec([@VEXE, 'doc', '-comments', flag, path])
 }
 
-fn test_check_examples_bad() {
-	cmd := '${vexe} doc -comments -check-examples cmd/tools/vdoc/testdata/run_examples_bad/main.v'
-	println('${@METHOD:30} running ${cmd} ...')
-	res := os.exec([vexe_path, 'doc', '-comments', '-check-examples',
-		'cmd/tools/vdoc/testdata/run_examples_bad/main.v'])
-	assert res.exit_code == 0
+fn test_check_examples_does_not_execute_failing_assertion() {
+	res := run_example_docs('-check-examples', 'bad')
+	assert res.exit_code == 0, res.output
 	assert res.output.contains('module main'), res.output
 	assert res.output.contains('Example: assert 5 * 5 == 77'), res.output
+	assert res.output.contains('Found 1 ok examples.'), res.output
 }
 
 fn test_run_examples_good() {
-	cmd := '${vexe} doc -comments -unsafe-run-examples cmd/tools/vdoc/testdata/run_examples_good/main.v'
-	println('${@METHOD:30} running ${cmd} ...')
-	res := os.exec([vexe_path, 'doc', '-comments', '-unsafe-run-examples',
-		'cmd/tools/vdoc/testdata/run_examples_good/main.v'])
-	assert res.exit_code == 0
+	res := run_example_docs('-unsafe-run-examples', 'good')
+	assert res.exit_code == 0, res.output
 	assert res.output.contains('module main'), res.output
 	assert res.output.contains('fn abc()'), res.output
 	assert res.output.contains("abc just prints 'xyz'"), res.output
 	assert res.output.contains('and should succeed'), res.output
 	assert res.output.contains('Example: assert 5 * 5 == 25'), res.output
+	assert res.output.contains('Found 1 ok examples.'), res.output
 }
 
 fn test_run_examples_bad() {
-	cmd := '${vexe} doc -comments -unsafe-run-examples cmd/tools/vdoc/testdata/run_examples_bad/main.v'
-	println('${@METHOD:30} running ${cmd} ...')
-	res := os.exec([vexe_path, 'doc', '-comments', '-unsafe-run-examples',
-		'cmd/tools/vdoc/testdata/run_examples_bad/main.v'])
-	assert res.exit_code != 0
+	res := run_example_docs('-unsafe-run-examples', 'bad')
+	assert res.exit_code != 0, res.output
 	assert res.output.contains('error in documentation example'), res.output
 	// V1 includes the evaluated value here; V3 currently reports the expression only.
 	assert res.output.contains(' left value: 5 * 5'), res.output
@@ -58,4 +39,5 @@ fn test_run_examples_bad() {
 	assert res.output.contains('V panic: Assertion failed...'), res.output
 	assert res.output.contains('module main'), res.output
 	assert res.output.contains('Example: assert 5 * 5 == 77'), res.output
+	assert res.output.contains('Found 1 failing examples.'), res.output
 }

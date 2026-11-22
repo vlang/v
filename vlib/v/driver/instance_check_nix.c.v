@@ -17,8 +17,14 @@ fn C.waitpid(pid int, status &int, options int) int
 // a compiler process with the arguments `args` of the build instead, as on
 // Windows (see start_program_instance_check_process).
 fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, args []string, is_checker_fixture bool, fatal_errors bool, message_limit int, skip_notices bool) ProgramInstanceCheck {
+	$if musl ? {
+		// Before musl 1.2.2, a multithreaded fork can inherit libc locks held
+		// by the compiler's memory sampler, even while its worker pool is idle.
+		// Start a fresh process while preserving this build's library checks.
+		return start_program_instance_check_process(args, program_instance_check_includes_library_instances())
+	}
 	if os.getenv('V_CHECK_INSTANCES_IN_BUILD') == 'process' {
-		return start_program_instance_check_process(args)
+		return start_program_instance_check_process(args, false)
 	}
 	mut fds := [2]i32{}
 	if C.pipe(&fds[0]) != 0 {
@@ -58,11 +64,10 @@ fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, ar
 	}
 }
 
-// program_instance_check_forks reports whether a build checks the instances of
-// the program's generics in a fork of itself, which costs little more than the
-// check: then it also checks the instances of library generics that the
-// program's own code asks for (see types.TypeChecker.check_program_lib_instances).
-fn program_instance_check_forks() bool {
+// program_instance_check_includes_library_instances reports whether the build
+// also checks the library generics its own code asks for. The musl process
+// path preserves these checks; the explicit process override keeps its policy.
+fn program_instance_check_includes_library_instances() bool {
 	return os.getenv('V_CHECK_INSTANCES_IN_BUILD') != 'process'
 }
 

@@ -11,16 +11,12 @@ struct CatchallRouteOrderContext {
 
 struct CatchallRouteOrderApp {
 mut:
-	server  &veb.Server = unsafe { nil }
-	started chan bool
+	server_ready chan &veb.Server = chan &veb.Server{cap: 1}
 }
 
+// init_server publishes the lifecycle handle before the server starts listening.
 pub fn (mut app CatchallRouteOrderApp) init_server(server &veb.Server) {
-	app.server = server
-}
-
-pub fn (mut app CatchallRouteOrderApp) before_accept_loop() {
-	app.started <- true
+	app.server_ready <- server
 }
 
 @['/:path...']
@@ -34,18 +30,30 @@ fn (mut app CatchallRouteOrderApp) get_user(mut ctx CatchallRouteOrderContext, i
 	return ctx.text('user ${id}')
 }
 
+fn wait_for_catchall_server(ready chan &veb.Server) !&veb.Server {
+	select {
+		server := <-ready {
+			server.wait_till_running(max_retries: 10_000, retry_period_ms: 1)!
+			return server
+		}
+		10 * time.second {
+		}
+	}
+	return error('veb server was not initialized')
+}
+
 fn test_variadic_routes_do_not_override_more_specific_handlers() {
 	mut app := &CatchallRouteOrderApp{}
-	spawn veb.run_at[CatchallRouteOrderApp, CatchallRouteOrderContext](mut app,
+	server_thread := spawn veb.run_at[CatchallRouteOrderApp, CatchallRouteOrderContext](mut app,
 		port:                 catchall_route_order_port
 		show_startup_message: false
 		timeout_in_seconds:   1
 		family:               .ip
 	)
-	_ := <-app.started
-	app.server.wait_till_running(max_retries: 1000, retry_period_ms: 10)!
+	server := wait_for_catchall_server(app.server_ready)!
 	defer {
-		app.server.shutdown(timeout: 5 * time.second) or {}
+		server.shutdown(timeout: 5 * time.second, retry_period_ms: 1) or { panic(err) }
+		server_thread.wait() or { panic(err) }
 	}
 
 	user := http.get('http://127.0.0.1:${catchall_route_order_port}/api/user/42')!

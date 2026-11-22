@@ -1,13 +1,16 @@
-module c
+module main
 
 import os
-import v.markused
-import v.parser
-import v.pref
-import v.transform
-import v.types
 
-fn scalar_array_program(compile_defines []string) !string {
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
+fn scalar_array_program(flags []string) !string {
 	return scalar_array_generate('
 type Scalar = i64
 
@@ -44,28 +47,28 @@ fn main() {
 	append_string(mut []string{}, "a")
 	checked_compound(mut a, 0, 1)
 }
-', compile_defines)!
+', flags)!
 }
 
-fn scalar_array_generate(source string, compile_defines []string) !string {
-	path := os.join_path(os.vtmp_dir(), 'scalar_array_store_${os.getpid()}.v')
-	os.write_file(path, source)!
+fn scalar_array_generate(source string, flags []string) !string {
+	root := os.join_path(os.vtmp_dir(), 'scalar_array_store_${os.getpid()}')
+	os.mkdir_all(root)!
 	defer {
-		os.rm(path) or {}
+		os.rmdir_all(root) or {}
 	}
-	mut p := parser.Parser.new(pref.new_preferences())
-	mut a := p.parse_file(path)
-	mut tc := types.TypeChecker.new(a)
-	tc.collect(a)
-	tc.check_semantics()
-	assert tc.errors.len == 0, tc.errors.str()
-	transform.transform(mut a, &tc)
-	tc.annotate_types()
-	used, _ := markused.mark_all_used_with_generic_usage(a, tc, [])
-	mut g := FlatGen.new()
-	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
-	g.set_compile_defines(compile_defines)
-	return g.gen_with_used_options(a, used, &tc, true)
+	path := os.join_path(root, 'input.v')
+	c_path := os.join_path(root, 'output.c')
+	os.write_file(path, source)!
+
+	// V1-hosted unit tests get a shared V3 compiler from their runner.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-no-skip-unused']
+	args << flags
+	args << ['-o', c_path, path]
+	compiled := os.exec(args)
+	assert compiled.exit_code == 0, compiled.output
+	return os.read_file(c_path)!
 }
 
 fn test_checked_scalar_store_has_a_typed_success_path() {
@@ -95,7 +98,7 @@ fn test_scalar_append_has_a_typed_spare_capacity_path() {
 }
 
 fn test_scalar_store_respects_disabled_bounds_checking() {
-	generated := scalar_array_program(['no_bounds_checking'])!
+	generated := scalar_array_program(['-d', 'no_bounds_checking'])!
 	store := scalar_array_body(generated, 'checked_store')
 	assert store.contains('->data'), store
 	assert !store.contains('->len'), store
@@ -115,7 +118,7 @@ pub fn check() {
 	value := i64(42)
 	array_push(mut values, &value)
 }
-', [])!
+', ['-shared'])!
 	body := scalar_array_body(generated, 'scalar_callback__check')
 	assert body.contains('scalar_callback__array_push('), body
 	assert !body.contains('scalar_push_base'), body
@@ -128,7 +131,7 @@ module scalar_library
 pub fn append(mut values []i64, value i64) {
 	values << value
 }
-', [])!
+', ['-shared'])!
 	body := scalar_array_body(generated, 'scalar_library__append')
 	assert body.contains('scalar_push_base'), body
 	assert body.contains('->len <'), body
@@ -150,7 +153,7 @@ pub fn check() {
 	value := i64(42)
 	array_push(mut values, &value)
 }
-', [])!
+', ['-shared'])!
 	body := scalar_array_body(generated, 'scalar_generic__check')
 	assert !body.contains('scalar_push_base'), body
 }
@@ -173,7 +176,7 @@ pub fn check() {
 pub fn append(mut values []i64, value i64) {
 	values << value
 }
-', [])!
+', ['-shared'])!
 	body := scalar_array_body(generated, 'scalar_global__check')
 	assert body.contains('scalar_global__array_push('), body
 	assert !body.contains('scalar_push_base'), body

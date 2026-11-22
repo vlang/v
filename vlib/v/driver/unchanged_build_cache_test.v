@@ -165,6 +165,9 @@ fn test_default_build_rechecks_compile_time_environment() {
 	source := os.join_path(root, 'main.v')
 	executable := os.join_path(root, 'app')
 	os.write_file(source, "fn main() { println(\$env('V3_RECEIPT_ENV_REGRESSION')) }\n")!
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	c_compiler := $if windows { 'gcc' } $else { 'clang' }
 	for expected in ['first', 'second'] {
 		mut environment := os.environ()
 		environment.delete('VFLAGS')
@@ -174,7 +177,7 @@ fn test_default_build_rechecks_compile_time_environment() {
 		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 		mut compiler := os.new_process(@VEXE)
 		compiler.set_environment(environment)
-		compiler.set_args(['-cc', 'clang', '-o', executable, source])
+		compiler.set_args(['-cc', c_compiler, '-o', executable, source])
 		compiler.set_redirect_stdio_merged()
 		compiler.run()
 		output := compiler.stdout_slurp()

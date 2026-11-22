@@ -2,62 +2,48 @@ import time
 import benchmark
 import term
 
+fn set_step_elapsed(mut b benchmark.Benchmark, elapsed time.Duration) {
+	// Preserve the known duration when recording the step stops its timer.
+	b.step_timer.end = b.step_timer.start + u64(elapsed.nanoseconds())
+	b.step_timer.pause()
+}
+
 fn test_measure() {
 	mut b := benchmark.start()
-	time.sleep(200 * time.millisecond)
-	x := b.measure('sleeping') // returns microseconds
-	flush_stdout()
-	assert x > 150_000
-	// assert x < 800_000 // this can be much longer on a slow CI runner
+	set_step_elapsed(mut b, 200 * time.millisecond)
+	assert b.measure('work') == 200_000
 }
 
 fn test_record_measure() {
 	mut b := benchmark.start()
-	println('step 1')
-	flush_stdout()
-	time.sleep(100 * time.millisecond)
-	x := b.record_measure('sleeping 1')
-	assert x > 50_000
-	// assert x < 200_000
-	flush_stdout()
+	set_step_elapsed(mut b, 100 * time.millisecond)
+	assert b.record_measure('step 1') == 100_000
+	assert b.step_timer.end == 0
 
-	println('step 2')
-	flush_stdout()
-	time.sleep(150 * time.millisecond)
-	y := b.record_measure('sleeping 2')
-	assert y > 100_000
-	// assert y < 200_000
-	flush_stdout()
+	set_step_elapsed(mut b, 150 * time.millisecond)
+	assert b.record_measure('step 2') == 150_000
 
 	res := b.all_recorded_measures()
-	println('All recorded measurements:')
-	println(res)
-	flush_stdout()
-	assert res.contains('ms in sleeping 1')
-	assert res.contains('ms in sleeping 1')
+	assert res.contains('100.000 ms in step 1')
+	assert res.contains('150.000 ms in step 2')
 	assert res.contains('SPENT')
 }
 
 fn test_total_message() {
 	mut b := benchmark.start()
-	for _ in 0 .. 100 {
-		time.sleep(time.millisecond)
-		x := b.record_measure('sleeping 1')
-		assert x > 1_000
+	for ms in 1 .. 101 {
+		set_step_elapsed(mut b, ms * time.millisecond)
+		assert b.record_measure('repeated') == ms * 1_000
 	}
 
-	res := b.total_message('sleeping 1')
-	println(res)
+	res := b.total_message('repeated')
+	assert res.contains(' Min: 1.000 ms.')
+	assert res.contains(' Max: 100.000 ms.')
+	assert res.contains(' Avg: 50.500 ms')
 
-	assert res.contains(' Min: ')
-	assert res.contains(' Max: ')
-	assert res.contains(' Avg: ')
-
-	time.sleep(time.millisecond)
-	y := b.record_measure('sleeping 2')
-	assert y > 1_000
-	// Should not contain min max avg, insufficient information
-	res2 := b.total_message('sleeping 2')
+	set_step_elapsed(mut b, time.millisecond)
+	assert b.record_measure('single') == 1_000
+	res2 := b.total_message('single')
 
 	assert !res2.contains(' Min: ')
 	assert !res2.contains(' Max: ')

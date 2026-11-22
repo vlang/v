@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // A function value, spelled `fn (...)` or through an alias, is already a pointer. Where a
 // `voidptr` is expected (`isnil`, a fn-typed parameter) it is passed as it is, not boxed
 // into fresh storage, which would make `isnil` false for a nil hook.

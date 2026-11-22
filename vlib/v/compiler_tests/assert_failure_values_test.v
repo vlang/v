@@ -371,3 +371,39 @@ fn test_failed_assert_reports_f32_operands_with_f32_digits_in_test_files() {
 	assert output.contains('     Left value (len: 3): `2.2`\n'), output
 	assert !output.contains('2.200000047683716'), output
 }
+
+// test_failed_assert_reports_borrowed_slice_operands checks that optimized comparisons
+// retain their operand values and evaluate the slice bounds only once.
+fn test_failed_assert_reports_borrowed_slice_operands() {
+	result := run_assert_failure_source('slice_values_test.v', "fn start(mut calls []int) int {
+	calls[0]++
+	return 1
+}
+
+fn test_slice_equal() {
+	mut calls := [0]
+	value := 'This is an example string'
+	assert value[start(mut calls)..4] == 'abcdef', 'calls: \${calls[0]}'
+}
+
+fn test_slice_equal_reversed() {
+	value := 'This is an example string'
+	assert 'abcdef' == (value[1..4])
+}
+
+fn test_slice_unequal() {
+	value := 'This is an example string'
+	assert value[1..4] != 'his'
+}
+
+fn test_slice_unequal_reversed() {
+	value := 'This is an example string'
+	assert 'his' != value[1..4]
+}
+")
+	assert result.exit_code == 1, result.output
+	output := result.output
+	assert output.contains('     Left value (len: 3): `his`\n    Right value (len: 6): `abcdef`\n        Message: calls: 1\n'), output
+	assert output.contains('     Left value (len: 6): `abcdef`\n    Right value (len: 3): `his`\n'), output
+	assert output.count('     Left value (len: 3): `his`\n    Right value (len: 3): `his`\n') == 2, output
+}

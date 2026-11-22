@@ -18,3 +18,7 @@ Invalid programs retain their existing error diagnostics. `-silent` suppresses t
 An explicit `-cc tcc` bypasses early preflight and retains the existing
 retry behavior for recognized TinyCC failures. `-no-retry-compilation` disables these retries.
 Passing `-cc clang`, `-cc gcc`, or `-cc cc` selects that compiler directly.
+
+For Clang 14, V disables lifetime markers to avoid an optimizer bug that reads struct
+arguments from expired temporary storage. Optimization remains enabled. This also applies
+when optimization is requested through C flags, and the generated C project records the workaround.

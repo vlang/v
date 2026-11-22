@@ -56,6 +56,8 @@ fn test_parallel_unresolved_match_guards_do_not_publish_arm_constants() {
 		p.resolve_comptime_string_declarations()
 		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'"
 		assert p.a.nodes.filter(it.kind == .fn_decl && it.value == 'selected').len == 1
+		p.release_source_storage()
+		assert p.batch_source_buffers.len == 0
 	}
 }
 
@@ -81,10 +83,15 @@ fn test_parallel_computed_constant_guards_preserve_chained_declarations() {
 		if parallel { p.a.worker_pool = workers.new(3) }
 		_, used_parallel := p.parse_files_dispatch(paths, parallel)
 		assert used_parallel == parallel
+		if parallel {
+			assert p.batch_source_buffers.len > 0
+		}
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		p.resolve_comptime_string_declarations()
 		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'", p.comptime_const_values.str()
 		assert p.a.nodes.filter(it.kind == .fn_decl && it.value == 'selected').len == 1
+		p.release_source_storage()
+		assert p.batch_source_buffers.len == 0
 	}
 }
 
@@ -110,12 +117,17 @@ fn test_parallel_unresolved_else_if_guards_preserve_following_declarations() {
 		if parallel { p.a.worker_pool = workers.new(3) }
 		_, used_parallel := p.parse_files_dispatch(paths, parallel)
 		assert used_parallel == parallel
+		if parallel {
+			assert p.batch_source_buffers.len > 0
+		}
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		p.resolve_comptime_string_declarations()
 		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'"
 		assert p.comptime_const_values[comptime_const_value_key('main', 'following')] == "'yes'"
 		assert !p.comptime_string_consts[comptime_const_value_key('main', 'inactive')]
 		assert !p.comptime_string_consts[comptime_const_value_key('main', 'dead')]
+		p.release_source_storage()
+		assert p.batch_source_buffers.len == 0
 	}
 }
 
@@ -139,6 +151,7 @@ fn test_parallel_workers_preserve_unresolved_constant_names_for_later_batches() 
 	p.a.worker_pool = workers.new(3)
 	_, used_parallel := p.parse_files_dispatch(paths, true)
 	assert used_parallel
+	assert p.batch_source_buffers.len > 0
 	assert p.comptime_string_consts[comptime_const_value_key('main', 'route_has_get_method')], p.comptime_string_consts.str()
 	consumer := os.join_path(root, 'consumer.v')
 	os.write_file(consumer, "module main\n\$if route_has_get_method { const chosen = 'yes' } \$else { const chosen = 'no' }\n")!
@@ -150,6 +163,8 @@ fn test_parallel_workers_preserve_unresolved_constant_names_for_later_batches() 
 	p.parse_file(config)
 	p.resolve_comptime_string_declarations()
 	assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'", p.comptime_const_values.str()
+	p.release_source_storage()
+	assert p.batch_source_buffers.len == 0
 }
 
 fn test_parallel_guard_names_survive_prepass_scopes_and_thread_fallback() {
@@ -178,6 +193,9 @@ fn test_parallel_guard_names_survive_prepass_scopes_and_thread_fallback() {
 		p.a.worker_pool = workers.new(3)
 		defer { p.a.worker_pool.close() }
 		p.parse_files_dispatch(paths, fail != 'serial')
+		if fail != 'serial' {
+			assert p.batch_source_buffers.len > 0
+		}
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		assert p.resolve_comptime_string_declarations().len == 0
 		for i in 0 .. 4 {
@@ -185,6 +203,8 @@ fn test_parallel_guard_names_survive_prepass_scopes_and_thread_fallback() {
 			expected := if i == 3 { "'yes'" } else { "'no'" }
 			assert p.comptime_const_values[comptime_const_value_key('main', 'chosen_${i}')] == expected, '${fail}: ${i}: ${p.comptime_const_values}'
 		}
+		p.release_source_storage()
+		assert p.batch_source_buffers.len == 0
 	}
 }
 

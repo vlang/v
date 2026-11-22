@@ -51,7 +51,10 @@ fn test_windows_tinyc_builds_bundled_collector_with_and_without_thread_local_all
 	for thread_local in [false, true] {
 		flags := windows_tinyc_gc_flags(true, thread_local)
 		objects := flags.filter(it.ends_with('gc_tinyc_windows.o'))
-		assert objects == [os.join_path(@VEXEROOT, 'vlib', 'builtin', 'gc_tinyc_windows.o')], flags.str()
+		// The `#flag @VEXEROOT/vlib/...` path keeps its `/` after a Windows root, like `D:\v/vlib`.
+		assert objects.map(os.norm_path(it)) == [
+			os.join_path(@VEXEROOT, 'vlib', 'builtin', 'gc_tinyc_windows.o'),
+		], flags.str()
 		assert !flags.any(it.replace('\\', '/').ends_with('/thirdparty/libgc/gc.o')), flags.str()
 		assert !flags.any(it.contains('GC_BUILTIN_ATOMIC')), flags.str()
 		assert !flags.any(it.contains('libgc.a')), flags.str()

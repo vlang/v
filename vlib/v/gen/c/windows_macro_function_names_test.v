@@ -3,7 +3,9 @@ module c
 import os
 
 fn test_main_functions_compile_with_windows_header_macros() {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	dir := os.join_path(os.vtmp_dir(), 'windows_macro_functions_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }

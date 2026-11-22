@@ -53,27 +53,37 @@ struct CheckWorkItem {
 	rank     i64
 }
 
-struct InterfaceImplChunkArgs {
+struct InterfaceImplSliceArgs {
 	checker     voidptr
-	iface_names voidptr
-	results     voidptr
-	queue       chan int
-	scoped      bool
-	// The master's method-receiver index (see memo_index_method_receivers),
-	// shared read-only by every job's memo.
+	iface_names voidptr // &[]u32
+	// The implementers a slice found for an interface, by
+	// `interface * n_slices + slice`; the job after the last slice fills, by
+	// interface, those among the candidates that depend on the interface.
+	results  voidptr // &[][]u32
+	slice    int
+	n_slices int
+	scoped   bool
+	// The master's method-receiver index (see memo_index_method_receivers) and
+	// sorted base candidates, shared read-only by every job's memo.
 	shared_memo voidptr
+	// This job's slice of the shared memo's sorted base candidates and of the
+	// sorted candidates of the builtin `IError` (ierror_impl_candidates). The
+	// master cuts them before the pool starts: slicing an array marks its buffer,
+	// which the jobs must not do to a buffer they share.
+	base_candidates   []u32
+	ierror_candidates []u32
 mut:
 	scope voidptr
 }
 
-struct InterfaceImplResults {
-mut:
-	items []&InterfaceImplIndex
-}
-
-@[unsafe]
-fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
-	mut a := unsafe { &InterfaceImplChunkArgs(arg) }
+// interface_impl_slice_thread tests one slice of the candidate types against
+// every interface. A type is looked up by the same receivers whatever the
+// interface (memo_receiver_method_lookup), and working that out is most of a
+// test: a job that owns a range of types does it once per type, where a job
+// that owned a set of interfaces did it again for every type of the program.
+// Equal slices also leave no single long task, as the `IError` scan was.
+fn interface_impl_slice_thread(arg voidptr) voidptr {
+	mut a := unsafe { &InterfaceImplSliceArgs(arg) }
 	if a.scoped {
 		// A forked checker only writes its private caches, so the whole index
 		// scratch can live in a disposable arena; the master publishes copies of
@@ -81,27 +91,39 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 		a.scope = check_worker_scope_begin(true)
 	}
 	tc := unsafe { &TypeChecker(a.checker) }
-	// Declarations and context stay fixed while this worker drains the queue.
-	// Match the serial preparation path: reuse receiver and candidate queries
-	// across interfaces, with one private memo per checker.
+	// Declarations and context stay fixed while this job runs. Match the serial
+	// preparation path: reuse receiver and candidate queries across interfaces,
+	// with one private memo per checker.
 	shared_memo := unsafe { &InterfaceImplMemo(a.shared_memo) }
 	opened := tc.begin_interface_impl_queries_sharing(shared_memo)
 	defer { tc.end_interface_impl_queries(opened) }
-	iface_names := unsafe { &[]u32(a.iface_names) }
-	mut results := unsafe { &InterfaceImplResults(a.results) }
-	// Implementer scans differ widely in cost (IError checks every type), so
-	// each job pulls the next interface instead of taking a fixed slice.
-	for {
-		i := <-a.queue or { break }
-		iface_name := unsafe { iface_names[i] }
-		impls := if is_builtin_ierror_name(iface_name) {
-			tc.ierror_impl_names()
-		} else {
-			tc.interface_impl_names_uncached(iface_name)
+	iface_names := unsafe { *(&[]u32(a.iface_names)) }
+	mut results := unsafe { &[][]u32(a.results) }
+	if a.slice == a.n_slices {
+		for i, iface_name in iface_names {
+			if is_builtin_ierror_name(iface_name) {
+				continue
+			}
+			extra_set := tc.memo_interface_impl_extra_candidates(iface_name)
+			if extra_set.len == 0 {
+				continue
+			}
+			mut extras := extra_set.keys()
+			extras.sort_with_compare(compare_interface_impl_spelling_ids)
+			unsafe {
+				results[iface_names.len * a.n_slices + i] = tc.interface_impls_among(iface_name, extras)
+			}
 		}
-		results.items[i] = &InterfaceImplIndex{
-			names: flat.TypeTextList{ ids: impls }
-			ids:   stable_interface_type_ids(impls)
+	} else {
+		for i, iface_name in iface_names {
+			impls := if is_builtin_ierror_name(iface_name) {
+				tc.ierror_impls_among(a.ierror_candidates)
+			} else {
+				tc.interface_impls_among(iface_name, a.base_candidates)
+			}
+			unsafe {
+				results[i * a.n_slices + a.slice] = impls
+			}
 		}
 	}
 	if a.scoped {
@@ -116,62 +138,81 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 	if iface_names.len < 8 || isnil(pool) {
 		return false
 	}
-	n_jobs := int_min(pool.size() + 1, iface_names.len)
-	if n_jobs <= 1 {
+	// One job per slice and one for the candidates that depend on the
+	// interface: as many jobs as the pool and the caller run side by side.
+	n_slices := pool.size()
+	if n_slices < 1 {
 		return false
 	}
+	mut step_sw := time.new_stopwatch()
 	tc.install_type_cache_overlay()
-	mut checkers := []&TypeChecker{cap: n_jobs}
+	tc.timing_step(mut step_sw, '  if overlay')
+	// The last checker tests the candidates that depend on the interface.
+	mut checkers := []&TypeChecker{cap: n_slices + 1}
 	checkers << tc
-	for _ in 1 .. n_jobs {
+	for _ in 0 .. n_slices {
 		checkers << tc.fork_for_parallel_transform(tc.a)
 	}
-	mut results := &InterfaceImplResults{
-		items: []&InterfaceImplIndex{cap: iface_names.len}
-	}
-	for _ in iface_names {
-		results.items << &InterfaceImplIndex(unsafe { nil })
-	}
-	queue := chan int{cap: iface_names.len}
-	for i in 0 .. iface_names.len {
-		queue <- i
-	}
-	queue.close()
 	// The method-receiver index reads only the declared signatures, which every
-	// fork shares: index them once here instead of once per job.
-	mut shared_memo := &InterfaceImplMemo{}
-	tc.memo_index_method_receivers(mut shared_memo)
-	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
-	mut tasks := []workers.Task{cap: n_jobs}
-	for job in 0 .. n_jobs {
-		args << InterfaceImplChunkArgs{
-			checker:     voidptr(checkers[job])
-			iface_names: unsafe { voidptr(&iface_names) }
-			results:     voidptr(results)
-			queue:       queue
+	// fork shares: index them once here instead of once per job. The same goes
+	// for the sorted candidates that every interface tests.
+	tc.timing_step(mut step_sw, '  if forks')
+	// A lane may have indexed the receivers beside the end of collection.
+	mut shared_memo := tc.valid_collected_interface_memo()
+	if isnil(shared_memo) {
+		shared_memo = &InterfaceImplMemo{}
+		tc.memo_index_method_receivers(mut shared_memo)
+	}
+	tc.timing_step(mut step_sw, '  if receivers')
+	// A caller's own memo stays as it is: the candidates go to the shared one.
+	caller_memo := tc.interface_impl_memo
+	tc.interface_impl_memo = shared_memo
+	tc.memo_interface_impl_base_candidates()
+	tc.interface_impl_memo = caller_memo
+	ierror_candidates := tc.ierror_impl_candidates()
+	mut results := [][]u32{len: iface_names.len * (n_slices + 1)}
+	mut args := []InterfaceImplSliceArgs{cap: n_slices + 1}
+	mut tasks := []workers.Task{cap: n_slices + 1}
+	base_candidates := shared_memo.base_candidates
+	for job in 0 .. n_slices + 1 {
+		// The job after the last slice takes no slice of the shared candidates.
+		slice := if job < n_slices { job } else { 0 }
+		slice_end := if job < n_slices { job + 1 } else { 0 }
+		args << InterfaceImplSliceArgs{
+			checker:           voidptr(checkers[job])
+			iface_names:       unsafe { voidptr(&iface_names) }
+			results:           unsafe { voidptr(&results) }
+			slice:             job
+			n_slices:          n_slices
 			// Job 0 runs on the master checker, whose overlay is folded back
 			// into the shared cache below; only forks may use scratch arenas.
-			scoped:      job > 0
-			shared_memo: voidptr(shared_memo)
+			scoped:            job > 0
+			shared_memo:       voidptr(shared_memo)
+			base_candidates:   base_candidates[base_candidates.len * slice / n_slices..base_candidates.len * slice_end / n_slices]
+			ierror_candidates: ierror_candidates[ierror_candidates.len * slice / n_slices..ierror_candidates.len * slice_end / n_slices]
 		}
 		tasks << workers.Task{
-			run:        interface_impl_index_chunk_thread
+			run:        interface_impl_slice_thread
 			arg:        unsafe { voidptr(&args[job]) }
 			force_sync: job == 0
 		}
 	}
+	tc.timing_step(mut step_sw, '  if setup')
 	pool.run(tasks)
+	tc.timing_step(mut step_sw, '  if pool')
 	tc.restore_type_cache_base()
 	for i, iface_name in iface_names {
-		if !isnil(results.items[i]) {
-			// Worker indexes are backed by disposable worker arenas. Publish a
-			// parent-owned copy before those arenas are released.
-			worker_index := results.items[i]
-			names := worker_index.names.ids.clone()
-			tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
-				names: flat.TypeTextList{ ids: names }
-				ids:   stable_interface_type_ids(names)
-			}
+		// The slices are consecutive ranges of the sorted candidates, so their
+		// implementers follow each other in spelling order. Worker lists are
+		// backed by disposable worker arenas: this is the parent-owned copy.
+		mut names := []u32{}
+		for slice in 0 .. n_slices {
+			names << results[i * n_slices + slice]
+		}
+		names = merge_interface_impls(names, results[iface_names.len * n_slices + i])
+		tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+			names: flat.TypeTextList{ ids: names }
+			ids:   stable_interface_type_ids(names)
 		}
 	}
 	for arg in args {
@@ -180,6 +221,107 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 		}
 	}
 	return true
+}
+
+struct InterfaceReceiverMemoArgs {
+	tc voidptr
+	a  &flat.FlatAst = unsafe { nil }
+mut:
+	memo  &InterfaceImplMemo = unsafe { nil }
+	scope voidptr
+}
+
+fn interface_receiver_memo_thread(arg voidptr) voidptr {
+	mut a := unsafe { &InterfaceReceiverMemoArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	// The index only serves the interface indexes, which release its arena
+	// (release_collected_interface_memo).
+	a.scope = check_worker_scope_begin(tc.scope_parallel_check_workers)
+	mut memo := a.memo
+	tc.memo_index_method_receiver_keys(mut memo)
+	memo.method_keys_ready = true
+	check_worker_scope_leave(a.scope)
+	tc.timing_step(mut sw, '  rs iface memo')
+	return unsafe { nil }
+}
+
+fn collect_resolution_tail_thread(arg voidptr) voidptr {
+	a := unsafe { &InterfaceReceiverMemoArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.collect_resolution_tail(a.a)
+	return unsafe { nil }
+}
+
+// collect_resolution_tail_beside_interface_memo is collect_resolution_tail
+// with a pool lane that meanwhile builds the method receiver index of the
+// interface indexes (memo_index_method_receivers), which
+// prepare_interface_query_indexes built on the collecting thread right after
+// collection. It returns false, and does nothing, when it does not apply.
+//
+// The lane reads the keys of fn_param_types, fn_ret_types and
+// receiver_method_suffix_index and writes its own index. Only the function
+// registrations of pass 2 and of the transformer write those tables: the
+// resolution tail reads them (an ownership build registers function literals
+// while it resolves, so it keeps the index where it was). The index is used
+// only if the tables still have the sizes they had when it was built.
+fn (mut tc TypeChecker) collect_resolution_tail_beside_interface_memo(a &flat.FlatAst) bool {
+	$if ownership ? {
+		return false
+	}
+	pool := checker_worker_pool(a)
+	if !tc.building_v_fast || isnil(pool) || pool.size() < 2 || tc.interface_names.len < 8
+		|| os.getenv('V3_NO_PAR_IFACE_MEMO') != '' {
+		return false
+	}
+	tc.release_collected_interface_memo()
+	mut memo := &InterfaceImplMemo{}
+	tc.memo_index_required_methods(mut memo)
+	mut args := InterfaceReceiverMemoArgs{
+		tc:   voidptr(tc)
+		a:    a
+		memo: memo
+	}
+	tasks := [
+		workers.Task{
+			run: interface_receiver_memo_thread
+			arg: unsafe { voidptr(&args) }
+		},
+		workers.Task{
+			run:        collect_resolution_tail_thread
+			arg:        unsafe { voidptr(&args) }
+			force_sync: true
+		},
+	]
+	pool.run(tasks)
+	tc.collected_interface_memo = memo
+	tc.collected_interface_memo_scope = args.scope
+	tc.collected_interface_memo_keys = [tc.fn_param_types.len, tc.fn_ret_types.len,
+		tc.receiver_method_suffix_index.len]!
+	return true
+}
+
+// valid_collected_interface_memo returns the method receiver index that a
+// lane built beside the end of collection, or nil when there is none or a
+// table it indexed has changed since.
+fn (tc &TypeChecker) valid_collected_interface_memo() &InterfaceImplMemo {
+	if isnil(tc.collected_interface_memo)
+		|| tc.collected_interface_memo_keys[0] != tc.fn_param_types.len
+		|| tc.collected_interface_memo_keys[1] != tc.fn_ret_types.len
+		|| tc.collected_interface_memo_keys[2] != tc.receiver_method_suffix_index.len {
+		return unsafe { nil }
+	}
+	return tc.collected_interface_memo
+}
+
+// release_collected_interface_memo drops that index and its arena, once the
+// interface indexes are built.
+fn (mut tc TypeChecker) release_collected_interface_memo() {
+	tc.collected_interface_memo = unsafe { nil }
+	if tc.collected_interface_memo_scope != unsafe { nil } {
+		check_worker_scope_free(tc.collected_interface_memo_scope)
+		tc.collected_interface_memo_scope = unsafe { nil }
+	}
 }
 
 struct UnusedFnVarCandidate {
@@ -203,15 +345,22 @@ mut:
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function short names, 5 = file declarations, 6 = recursive str names, 7 = static keys, 8 = signature table reserves
+	// The files' modules as they were before pass 1 (see build_fn_name_index_parts).
+	file_modules map[string]string
 }
 
 @[unsafe]
 fn collect_index_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectIndexPrepArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	defer {
+		tc.timing_step(mut sw, '  idx task ${a.kind}')
+	}
 	match a.kind {
 		0 {
+			tc.init_direct_parent_range(a.start, a.end)
 			a.parent_chunk = tc.fill_direct_parent_edges_range(a.a, a.start, a.end)
 		}
 		1 {
@@ -231,13 +380,20 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 fn collect_declaration_index_thread(arg voidptr) voidptr {
 	a := unsafe { &CollectDeclarationIndexArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
+	mut sw := time.new_stopwatch()
+	defer {
+		tc.timing_step(mut sw, '  decl task ${a.kind}')
+	}
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
 		2 { tc.build_declaration_param_mutability_index(a.a) }
 		3 { tc.collect_declaration_visibility() }
-		4 { tc.build_fn_name_indexes(a.a) }
-		else { tc.build_file_declaration_indexes(a.a) }
+		4 { tc.build_fn_name_index_parts(a.a, fn_name_index_short, a.file_modules) }
+		5 { tc.build_file_declaration_indexes(a.a) }
+		6 { tc.build_fn_name_index_parts(a.a, fn_name_index_recursive_str, a.file_modules) }
+		7 { tc.build_fn_name_index_parts(a.a, fn_name_index_static, a.file_modules) }
+		else { tc.reserve_collect_signature_maps() }
 	}
 	return unsafe { nil }
 }
@@ -253,7 +409,8 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
-	tc.init_direct_parent_index(a)
+	// Each parent lane initializes its own node range of the index arrays.
+	tc.init_direct_parent_index_arrays(a, false)
 	parent_jobs := int_min(16, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
@@ -278,15 +435,57 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: 0, start: start, end: end }
 		start = end
 	}
+	// The collecting thread takes the last parent range: the cache groups are
+	// bound by page faults and would keep it busy after every lane is done.
+	sync_task := args.len - 1
 	for kind in [u8(1), 2, 3] {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: kind, n: a.nodes.len }
 	}
-	mut tasks := []workers.Task{cap: args.len}
+	mut tasks := []workers.Task{cap: args.len + pool.size() + 1}
 	for i in 0 .. args.len {
 		tasks << workers.Task{
 			run:        collect_index_prep_thread
 			arg:        unsafe { voidptr(&args[i]) }
-			force_sync: i == args.len - 1
+			force_sync: i == sync_task
+		}
+	}
+	// Scanning the source texts for import lines reads nothing of the checker,
+	// so it shares this batch instead of a later one with idle lanes; pass 1
+	// picks the results up (index_module_import_lines_of_new_files).
+	mut import_scan_args := ImportLineScanArgs{}
+	if !tc.valid_diagnostic_fast {
+		tc.import_line_prescans = new_import_line_prescans(a)
+		if tc.import_line_prescans.len > 1 {
+			queue := chan int{cap: tc.import_line_prescans.len}
+			// The longest texts first, so that none of them starts last and
+			// then decides when the batch ends.
+			for tier in 0 .. 3 {
+				for i, scan in tc.import_line_prescans {
+					scan_tier := if scan.source.len >= 512 * 1024 {
+						0
+					} else if scan.source.len >= 96 * 1024 {
+						1
+					} else {
+						2
+					}
+					if scan_tier == tier {
+						queue <- i
+					}
+				}
+			}
+			queue.close()
+			import_scan_args = ImportLineScanArgs{
+				scans: unsafe { voidptr(&tc.import_line_prescans) }
+				queue: queue
+			}
+			for _ in 0 .. int_min(pool.size(), tc.import_line_prescans.len) {
+				tasks << workers.Task{
+					run: import_line_scan_thread
+					arg: unsafe { voidptr(&import_scan_args) }
+				}
+			}
+		} else {
+			tc.import_line_prescans = []ImportLineScan{}
 		}
 	}
 	pool.run(tasks)
@@ -307,20 +506,23 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
-fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
-	pool := checker_worker_pool(a)
-	if !tc.building_v_fast || !tc.scope_parallel_check_workers
-		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(pool)
-		|| pool.size() < 2 || tc.top_level_idx.len < 2048 {
+fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst, late_indexes_elsewhere bool) bool {
+	if !tc.collect_declaration_indexes_in_parallel(a) {
 		return false
 	}
-	// Each index task owns its maps; the caller builds one of them itself.
+	pool := checker_worker_pool(a)
+	// Each index task owns its maps. The caller's task, the last one, reserves
+	// the tables of the collection passes meanwhile, which no index task uses.
 	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
 	for kind in 0 .. collect_declaration_index_tasks {
+		if late_indexes_elsewhere && u8(kind) in collect_late_declaration_index_tasks {
+			continue
+		}
 		args << CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: u8(kind)
+			tc:           voidptr(tc)
+			a:            a
+			kind:         u8(kind)
+			file_modules: tc.file_modules
 		}
 	}
 	mut tasks := []workers.Task{cap: args.len}
@@ -335,9 +537,81 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 	return true
 }
 
-// collect_declaration_index_tasks is the number of independent declaration
-// index builders collect_declaration_index_thread dispatches on.
-const collect_declaration_index_tasks = 6
+// collect_declaration_indexes_in_parallel reports whether collection builds
+// the declaration indexes on pool lanes (prepare_collect_declaration_indexes_parallel).
+fn (tc &TypeChecker) collect_declaration_indexes_in_parallel(a &flat.FlatAst) bool {
+	pool := checker_worker_pool(a)
+	return tc.building_v_fast && tc.scope_parallel_check_workers
+		&& os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') == '' && !isnil(pool) && pool.size() >= 2
+		&& tc.top_level_idx.len >= 2048
+}
+
+// collect_declaration_index_tasks is the number of independent tasks
+// collect_declaration_index_thread dispatches on.
+const collect_declaration_index_tasks = 9
+
+// collect_late_declaration_index_tasks are the index tasks whose tables
+// nothing reads or writes before pass 2 prepares the function declarations:
+// the parameter mutability of the declarations and the three function name
+// indexes. They read the AST and the top-level index alone.
+const collect_late_declaration_index_tasks = [u8(2), 4, 6, 7]
+
+struct CollectPass1StageArgs {
+	tc voidptr
+	a  &flat.FlatAst
+}
+
+fn collect_pass1_stage_thread(arg voidptr) voidptr {
+	a := unsafe { &CollectPass1StageArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.collect_pass1_stage(a.a, true)
+	return unsafe { nil }
+}
+
+// collect_pass1_stage_beside_late_indexes is collect_pass1_stage with the
+// late declaration indexes built on pool lanes meanwhile, which were the
+// slowest lanes of the batch that pass 1 waited for. It returns false, and
+// does nothing, when the indexes are not built on lanes at all.
+//
+// The lanes read the AST, the top-level index and a copy of file_modules
+// taken before pass 1, which adds the files' modules to the table itself;
+// each fills tables of its own, which pass 1 and its checks neither read nor
+// write. They are joined before pass 2 prepares the declarations.
+fn (mut tc TypeChecker) collect_pass1_stage_beside_late_indexes(a &flat.FlatAst) bool {
+	if !tc.collect_declaration_indexes_in_parallel(a)
+		|| os.getenv('V3_NO_LATE_CHECK_DECL_INDEXES') != '' {
+		return false
+	}
+	pool := checker_worker_pool(a)
+	file_modules := tc.file_modules.clone()
+	mut args := []CollectDeclarationIndexArgs{cap: collect_late_declaration_index_tasks.len}
+	for kind in collect_late_declaration_index_tasks {
+		args << CollectDeclarationIndexArgs{
+			tc:           voidptr(tc)
+			a:            a
+			kind:         kind
+			file_modules: file_modules
+		}
+	}
+	stage := CollectPass1StageArgs{
+		tc: voidptr(tc)
+		a:  a
+	}
+	mut tasks := []workers.Task{cap: args.len + 1}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run: collect_declaration_index_thread
+			arg: unsafe { voidptr(&args[i]) }
+		}
+	}
+	tasks << workers.Task{
+		run:        collect_pass1_stage_thread
+		arg:        unsafe { voidptr(&stage) }
+		force_sync: true
+	}
+	pool.run(tasks)
+	return true
+}
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the
@@ -365,6 +639,14 @@ mut:
 	// The lists are a private copy in the collecting thread's arena, which
 	// pass 2 can keep as they are.
 	owned_lists bool
+	// Which types refer to the lane's arena and need a copy: bit 0 is the
+	// return type, bit i + 1 parameter i (see pass2_fn_prep_promote_mask).
+	promote_mask u64
+	// For a struct declaration, when fields_ready: bit i is set if child i is
+	// a field whose type has no C ABI function-pointer encoding and needs no
+	// type parsed to tell (see c_abi_fn_ptr_type_trivially_none).
+	fields_ready      bool
+	field_no_c_abi_fn u64
 }
 
 // compute_pass2_fn_prep performs the context-dependent but table-write-free
@@ -461,8 +743,145 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 				prep.names_ready = true
 				preps[pi] = prep
 			}
+			.struct_decl {
+				preps[pi].field_no_c_abi_fn = tc.warm_pass2_struct_decl(node)
+				preps[pi].fields_ready = true
+			}
+			.const_decl, .c_fn_decl, .interface_decl, .global_decl {
+				tc.warm_pass2_decl(node)
+			}
 			else {}
 		}
+	}
+}
+
+// warm_pass2_struct_decl parses the field types of a struct declaration on a
+// lane's fork, as pass 2 will on the collecting thread. The types themselves
+// are dropped: pass 2 keeps parsing them into the master's own cache, in
+// declaration order. What stays are the process-wide spelling and syntax
+// tables this fills, which pass 2 then finds warm, and the returned mask of
+// fields that c_abi_fn_ptr_type_trivially_none holds for.
+fn (mut tc TypeChecker) warm_pass2_struct_decl(node flat.Node) u64 {
+	mut no_c_abi_fn := u64(0)
+	generic := node.generic_params().len > 0
+	old_generic_params := tc.fn_context.generic_params
+	tc.fn_context.generic_params = generic_param_ids(node.generic_params())
+	for i in 0 .. node.children_count {
+		f := tc.a.child_node(&node, i)
+		if f.kind != .field_decl {
+			continue
+		}
+		field_typ_id := if f.typ != 0 { f.typ } else { f.source_value_id() }
+		if generic {
+			tc.parse_scope_param_type(field_typ_id)
+		} else {
+			tc.parse_type(field_typ_id)
+		}
+		if i < 64 {
+			mut seen := map[u32]bool{}
+			if tc.c_abi_fn_ptr_type_trivially_none(trimmed_source_type_id(field_typ_id), mut
+				seen)
+			{
+				no_c_abi_fn |= u64(1) << i
+			}
+		}
+	}
+	tc.fn_context.generic_params = old_generic_params
+	tc.qualify_decl_name_id(node.source_value_id())
+	return no_c_abi_fn
+}
+
+// c_abi_fn_ptr_type_trivially_none reports whether
+// c_abi_fn_ptr_type_for_type_text_inner(typ_id) is none on a path that parses
+// no type: neither `typ_id` nor an alias target it reaches is a function type
+// or an alias with a recorded C ABI encoding. It reads the alias tables of
+// pass 1 only, which pass 2 does not change.
+fn (tc &TypeChecker) c_abi_fn_ptr_type_trivially_none(typ_id u32, mut seen map[u32]bool) bool {
+	if typ_id == 0 || seen[typ_id] {
+		return true
+	}
+	seen[typ_id] = true
+	shape := flat.source_type_shape(trimmed_source_type_id(typ_id))
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		return false
+	}
+	for name_id in [tc.qualify_type_name(typ_id), typ_id] {
+		if name_id == 0 {
+			continue
+		}
+		if name_id in tc.type_alias_c_abi_fns {
+			return false
+		}
+		if target_source_id := tc.type_aliases.type_id(name_id) {
+			if !tc.c_abi_fn_ptr_type_trivially_none(target_source_id, mut seen) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// warm_pass2_decl resolves the names and types of a constant, C function,
+// interface or global declaration on a lane's fork and drops the results, for
+// the process-wide spelling and syntax tables alone (see warm_pass2_struct_decl).
+fn (mut tc TypeChecker) warm_pass2_decl(node flat.Node) {
+	match node.kind {
+		.const_decl {
+			for i in 0 .. node.children_count {
+				f := tc.a.child_node(&node, i)
+				if f.kind != .const_field {
+					continue
+				}
+				tc.qualify_name(f.value)
+				if f.children_count == 0 && f.typ != 0 {
+					tc.parse_type(f.typ)
+				}
+			}
+		}
+		.c_fn_decl {
+			tc.parse_type(node.typ)
+			for i in 0 .. node.children_count {
+				child := tc.a.child_node(&node, i)
+				if child.kind == .param {
+					tc.parse_type(child.typ)
+				}
+			}
+		}
+		.interface_decl {
+			tc.qualify_decl_name_id(node.source_value_id())
+			if node.generic_params().len > 0 {
+				return
+			}
+			for i in 0 .. node.children_count {
+				f := tc.a.child_node(&node, i)
+				if f.kind != .interface_field || f.typ == 0 {
+					continue
+				}
+				tc.parse_type(f.typ)
+				if f.op != .dot {
+					continue
+				}
+				for j in 0 .. f.children_count {
+					child := tc.a.child_node(f, j)
+					if child.kind == .param {
+						tc.parse_type(child.typ)
+					}
+				}
+			}
+		}
+		.global_decl {
+			for i in 0 .. node.children_count {
+				f := tc.a.child_node(&node, i)
+				if f.value.len == 0 {
+					continue
+				}
+				tc.parse_type(f.typ)
+				if !f.value.starts_with('C.') {
+					tc.qualify_name(f.value)
+				}
+			}
+		}
+		else {}
 	}
 }
 
@@ -520,6 +939,7 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() ([]Pass2FnPrep, []void
 			file:        ctx_files[ji]
 			module_name: ctx_modules[ji]
 			preps:       unsafe { voidptr(&preps) }
+			promote:     tc.pass2_lanes_promote()
 		}
 	}
 	mut tasks := []workers.Task{cap: n_jobs}
@@ -540,36 +960,72 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() ([]Pass2FnPrep, []void
 	return preps, scopes
 }
 
+// pass2_lanes_promote reports whether a preparation lane of pass 2 copies its
+// results into its own thread's arena (see pass2_fn_prep_thread), which a
+// compiler build keeps until it exits.
+fn (tc &TypeChecker) pass2_lanes_promote() bool {
+	return tc.building_v_fast && tc.scope_parallel_check_workers
+		&& os.getenv('V3_NO_PAR_PASS2_PROMOTE') == ''
+}
+
 // finish_pass2_ancillary_registrations replays independent signature tables on
 // separate pool lanes. Each lane preserves source order within its own map, so
 // duplicate declarations retain the serial checker's last-write semantics.
-fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
+// The collecting thread collects the deprecated symbols meanwhile, which
+// collection does right after pass 2: that walk reads the AST and fills the
+// deprecation and unsafe-function tables, none of which a lane touches, and
+// reads none of the tables the lanes fill.
+fn (mut tc TypeChecker) finish_pass2_ancillary_registrations(preps []Pass2FnPrep) {
 	if tc.fn_ancillary_registrations.len == 0 {
+		if !tc.pass2_streamed {
+			tc.collect_deprecated_symbols()
+		}
 		return
 	}
 	tc.disable_call_flag_bloom()
 	pool := checker_worker_pool(tc.a)
-	if isnil(pool) || pool.size() < 2 {
+	mut replayed := tc.pass2_streamed
+	for group in 0 .. pass2_ancillary_groups {
+		list := pass2_group_list(group)
+		if list >= 0 && tc.pass2_replayed[group] < tc.pass2_list_len(list) {
+			replayed = false
+		}
+	}
+	if replayed {
+		// Lanes that followed pass 2 left nothing to do.
+	} else if isnil(pool) || pool.size() < 2 {
 		for group in 0 .. pass2_ancillary_groups {
-			tc.apply_pass2_ancillary_group(group)
+			tc.apply_pass2_ancillary_group(group, preps)
+		}
+		if !tc.pass2_streamed {
+			tc.collect_deprecated_symbols()
 		}
 	} else {
-		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups}
-		mut tasks := []workers.Task{cap: pass2_ancillary_groups}
-		for group in 0 .. pass2_ancillary_groups {
+		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups + 1}
+		mut tasks := []workers.Task{cap: pass2_ancillary_groups + 1}
+		for group in 0 .. pass2_ancillary_groups + 1 {
 			args << Pass2AncillaryArgs{
 				tc:    voidptr(tc)
 				group: group
+				preps: preps
 			}
 		}
-		for group in 0 .. pass2_ancillary_groups {
+		for group in 0 .. pass2_ancillary_groups + 1 {
 			tasks << workers.Task{
 				run:        pass2_ancillary_thread
 				arg:        unsafe { voidptr(&args[group]) }
-				force_sync: group == 0
+				force_sync: group == pass2_ancillary_groups
 			}
 		}
 		pool.run(tasks)
+	}
+	// The tables hold their own copies: give the pages of the replayed lists back.
+	unsafe {
+		tc.fn_ancillary_registrations.free()
+		tc.fn_c_variadic_registrations.free()
+		tc.fn_mut_receiver_registrations.free()
+		tc.fn_ret_text_registrations.free()
+		tc.visible_mutation_registrations.free()
 	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
@@ -578,85 +1034,287 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	tc.visible_mutation_registrations = []VisibleMutationRegistration{}
 }
 
-fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
-	if group < 3 {
-		for registration in tc.fn_ancillary_registrations {
-			match group {
-				0 {
-					if registration.shared_params.len > 0 {
-						tc.fn_shared_params[registration.name] = registration.shared_params
-					} else if tc.fn_shared_params.len > 0 {
-						tc.fn_shared_params.delete(registration.name)
+fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int, preps []Pass2FnPrep) {
+	if (group == 6 || group == 10) && tc.pass2_streamed {
+		// Lanes beside pass 2 took the names from the preparations.
+		return
+	}
+	if group == 6 {
+		if tc.defer_fn_names {
+			if !isnil(tc.visible_mutation_cache) {
+				mut cache := tc.visible_mutation_cache
+				tc.pass2_visible_mutations_from_preps(preps, mut cache)
+			}
+		} else {
+			if !isnil(tc.visible_mutation_cache) {
+				// A declaration registers up to four spellings; size the lane's map
+				// once, so that it never grows and leaves no outgrown table behind.
+				mut cache := tc.visible_mutation_cache
+				cache.global_decls.reserve(u32(cache.global_decls.len +
+					tc.visible_mutation_registrations.len * 4))
+			}
+			for registration in tc.visible_mutation_registrations {
+				tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
+					registration.qname, registration.source_name, registration.c_qname,
+					registration.c_source_name)
+			}
+		}
+		return
+	}
+	if group == 10 {
+		if tc.defer_fn_names && !isnil(tc.type_cache) {
+			mut names := tc.pass2_c_names_from_preps(preps)
+			// The names that pass 2 lowered itself.
+			for name, c_name in tc.type_cache.c_name_entries {
+				names[name] = c_name
+			}
+			tc.type_cache.c_name_entries = names.move()
+		}
+		return
+	}
+	list := pass2_group_list(group)
+	// Lanes that followed pass 2 until a list ran out of room replayed a part.
+	start := tc.pass2_replayed[group]
+	tc.begin_pass2_ancillary_group(group, tc.pass2_list_len(list) - start)
+	tc.replay_pass2_registrations(group, tc.pass2_list_data(list), start, tc.pass2_list_len(list))
+}
+
+// The registration lists of pass 2, which the groups of
+// apply_pass2_ancillary_group replay.
+const pass2_list_ancillary = 0 // fn_ancillary_registrations
+
+const pass2_list_c_variadic = 1 // fn_c_variadic_registrations
+
+const pass2_list_mut_receiver = 2 // fn_mut_receiver_registrations
+
+const pass2_list_ret_text = 3 // fn_ret_text_registrations
+
+const pass2_lists = 4
+
+// pass2_group_list is the registration list that a group replays, or -1 for a
+// group that takes the names from the preparations instead.
+fn pass2_group_list(group int) int {
+	return match group {
+		0, 1, 2, 7, 8, 9 { pass2_list_ancillary }
+		3 { pass2_list_c_variadic }
+		4 { pass2_list_mut_receiver }
+		5 { pass2_list_ret_text }
+		else { -1 }
+	}
+}
+
+fn (tc &TypeChecker) pass2_list_len(list int) int {
+	return match list {
+		pass2_list_ancillary { tc.fn_ancillary_registrations.len }
+		pass2_list_c_variadic { tc.fn_c_variadic_registrations.len }
+		pass2_list_mut_receiver { tc.fn_mut_receiver_registrations.len }
+		pass2_list_ret_text { tc.fn_ret_text_registrations.len }
+		else { 0 }
+	}
+}
+
+fn (tc &TypeChecker) pass2_list_data(list int) voidptr {
+	return match list {
+		pass2_list_ancillary { tc.fn_ancillary_registrations.data }
+		pass2_list_c_variadic { tc.fn_c_variadic_registrations.data }
+		pass2_list_mut_receiver { tc.fn_mut_receiver_registrations.data }
+		pass2_list_ret_text { tc.fn_ret_text_registrations.data }
+		else { unsafe { nil } }
+	}
+}
+
+// begin_pass2_ancillary_group sizes the tables of `group` that collection did
+// not reserve, for `expected` registrations of its list: a table that grows
+// entry by entry leaves every outgrown copy behind in the lane's arena.
+fn (mut tc TypeChecker) begin_pass2_ancillary_group(group int, expected int) {
+	if group == 0 {
+		tc.fn_shared_params.reserve(u32(tc.fn_shared_params.len + expected))
+	} else if group == 2 {
+		tc.receiver_method_short_names.reserve(u32(tc.receiver_method_short_names.len +
+			expected / 2))
+	} else if group == 4 {
+		tc.mut_receiver_methods.reserve(u32(tc.mut_receiver_methods.len + expected * 2))
+	}
+}
+
+// replay_pass2_registrations fills the tables of `group` from the entries
+// [start, end) of the registration list it replays, which is at `data`. A group
+// writes no table of another group and reads none that pass 2 writes, so the
+// groups run on lanes of their own, after pass 2 or while it still records
+// later entries (see Pass2Stream).
+@[direct_array_access]
+fn (mut tc TypeChecker) replay_pass2_registrations(group int, data voidptr, start int, end int) {
+	match group {
+		0, 1, 2, 7, 8, 9 {
+			registrations := unsafe { &FnAncillaryRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				if registration.file_only {
+					// Only names the file of a signature that is registered already.
+					if group == 8 {
+						tc.fn_type_files[registration.name] = registration.file
 					}
+					continue
 				}
-				1 {
-					tc.fn_variadic[registration.name] = registration.is_variadic
-					if registration.implicit_veb_ctx || tc.fn_implicit_veb_ctx.len > 0 {
-						tc.fn_implicit_veb_ctx[registration.name] = registration.implicit_veb_ctx
+				match group {
+					0 {
+						if registration.shared_params.len > 0 {
+							tc.fn_shared_params[registration.name] = registration.shared_params
+						} else if tc.fn_shared_params.len > 0 {
+							tc.fn_shared_params.delete(registration.name)
+						}
 					}
-				}
-				else {
-					tc.add_receiver_method_suffix_index(registration.name)
+					1 {
+						tc.fn_variadic[registration.name] = registration.is_variadic
+						if registration.implicit_veb_ctx || tc.fn_implicit_veb_ctx.len > 0 {
+							tc.fn_implicit_veb_ctx[registration.name] = registration.implicit_veb_ctx
+						}
+					}
+					2 {
+						tc.add_receiver_method_suffix_index(registration.name)
+					}
+					7 {
+						tc.register_generated_fn_return_type(registration.name, registration.ret_type)
+					}
+					8 {
+						if registration.write_file {
+							tc.fn_type_files[registration.name] = registration.file
+						}
+					}
+					else {
+						if tc.defer_fn_params {
+							tc.fn_param_types[registration.name] = registration.params
+						}
+					}
 				}
 			}
+		}
+		3 {
+			registrations := unsafe { &FnNamePairRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				tc.set_c_variadic_fn(registration.name, registration.lowered_name)
+			}
+		}
+		4 {
+			registrations := unsafe { &FnNamePairRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				tc.set_mut_receiver_method(registration.name, registration.lowered_name)
+			}
+		}
+		5 {
+			registrations := unsafe { &FnTextRegistration(data) }
+			for i in start .. end {
+				registration := unsafe { &registrations[i] }
+				tc.fn_ret_type_texts.set_id(registration.name, registration.text)
+			}
+		}
+		else {}
+	}
+}
+
+// pass2_c_names_from_preps returns the C names of the names of every function
+// declaration, as the preparation lanes of pass 2 computed them: the entries
+// that pass 2 adds to the C name cache. They depend on no table of pass 2, so
+// a lane builds the table while or after the collecting thread registers the
+// signatures. `preps` has the prepared names of every function declaration.
+fn (tc &TypeChecker) pass2_c_names_from_preps(preps []Pass2FnPrep) map[string]string {
+	mut fn_decls := 0
+	for tl_idx in tc.top_level_idx {
+		if tc.a.nodes[tl_idx].kind == .fn_decl {
+			fn_decls++
 		}
 	}
-	if group == 3 {
-		for registration in tc.fn_c_variadic_registrations {
-			tc.register_c_variadic_fn_with_lowered(registration.name, registration.lowered_name)
+	mut names := map[string]string{}
+	names.reserve(u32(fn_decls * 2 + 1024))
+	for pi, tl_idx in tc.top_level_idx {
+		node := tc.a.nodes[tl_idx]
+		if node.kind != .fn_decl {
+			continue
 		}
-	} else if group == 4 {
-		for registration in tc.fn_mut_receiver_registrations {
-			tc.register_mut_receiver_method_with_lowered(registration.name, registration.lowered_name)
+		prep := &preps[pi]
+		names[prep.qname] = prep.lowered_qname
+		if node.value != prep.qname {
+			names[node.value] = prep.lowered_source_name
 		}
-	} else if group == 5 {
-		for registration in tc.fn_ret_text_registrations {
-			tc.fn_ret_type_texts.set_id(registration.name, registration.text)
+	}
+	return names
+}
+
+// pass2_visible_mutations_from_preps registers every function declaration in
+// the visible-mutation index `cache` under its names, from the names that the
+// preparation lanes of pass 2 computed, in declaration order. Like the C
+// names, they depend on no table of pass 2.
+fn (tc &TypeChecker) pass2_visible_mutations_from_preps(preps []Pass2FnPrep, mut cache VisibleMutationCache) {
+	mut fn_decls := 0
+	mut c_fn_decls := 0
+	for tl_idx in tc.top_level_idx {
+		kind := tc.a.nodes[tl_idx].kind
+		if kind == .fn_decl {
+			fn_decls++
+		} else if kind == .c_fn_decl {
+			c_fn_decls++
 		}
-	} else if group == 6 || group == 9 {
-		// The module-qualified and module-less keys land in separate maps, so the
-		// largest registration set is split over two lanes.
-		if !isnil(tc.visible_mutation_cache) {
-			// A declaration registers up to four spellings; size the lane's map once.
-			mut cache := tc.visible_mutation_cache
-			if group == 9 {
-				cache.global_decls.reserve(u32(tc.visible_mutation_registrations.len * 3))
-			} else {
-				cache.decls.reserve(u32(tc.visible_mutation_registrations.len * 3))
+	}
+	// A declaration registers up to four spellings; size the map once, so
+	// that it never grows and leaves no outgrown table behind.
+	cache.global_decls.reserve(u32(cache.global_decls.len + fn_decls * 4 + c_fn_decls))
+	// The module of pass 2 at each declaration (see collect_pass2_fn_range).
+	mut cur_module := ''
+	for pi, tl_idx in tc.top_level_idx {
+		node := tc.a.nodes[tl_idx]
+		match node.kind {
+			.file {
+				cur_module = tc.file_modules[node.value] or { '' }
 			}
-		}
-		for registration in tc.visible_mutation_registrations {
-			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
-				registration.qname, registration.source_name, registration.c_qname,
-				registration.c_source_name, group == 9)
-		}
-	} else if group == 7 {
-		for registration in tc.fn_ancillary_registrations {
-			tc.register_generated_fn_return_type(registration.name, registration.ret_type)
-		}
-	} else if group == 8 {
-		for registration in tc.fn_ancillary_registrations {
-			if registration.write_file {
-				tc.fn_type_files[registration.name] = registration.file
+			.module_decl {
+				cur_module = node.value
 			}
+			.fn_decl {
+				prep := &preps[pi]
+				cache.register_fn_decl_keys(tl_idx, cur_module, prep.qname, node.value,
+					prep.lowered_qname, prep.lowered_source_name)
+			}
+			.c_fn_decl {
+				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				if c_name == 'C.va_arg' {
+					continue
+				}
+				// The C names of a `C.` declaration are no keys of the index.
+				cache.register_fn_decl_keys(tl_idx, cur_module, c_name, c_name, '', '')
+			}
+			else {}
 		}
 	}
 }
 
 // pass2_ancillary_groups is the number of independent table groups filled by
 // apply_pass2_ancillary_group.
-const pass2_ancillary_groups = 10
+const pass2_ancillary_groups = 11
 
 struct Pass2AncillaryArgs {
 	tc    voidptr
 	group int
+	preps []Pass2FnPrep
 }
 
 @[unsafe]
 fn pass2_ancillary_thread(arg voidptr) voidptr {
 	a := unsafe { &Pass2AncillaryArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
-	tc.apply_pass2_ancillary_group(a.group)
+	mut sw := time.new_stopwatch()
+	defer {
+		tc.timing_step(mut sw, '  p2 group ${a.group}')
+	}
+	if a.group == pass2_ancillary_groups {
+		// The collecting thread's own task (finish_pass2_ancillary_registrations).
+		if !tc.pass2_streamed {
+			tc.collect_deprecated_symbols()
+		}
+	} else {
+		tc.apply_pass2_ancillary_group(a.group, a.preps)
+	}
 	return unsafe { nil }
 }
 
@@ -667,6 +1325,8 @@ struct Pass2PrepArgs {
 	file        string
 	module_name string
 	preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
+	// The lane copies its results out of its arena itself.
+	promote bool
 mut:
 	scope voidptr // the lane's arena, left for the collecting thread to release
 }
@@ -683,11 +1343,28 @@ fn pass2_fn_prep_thread(arg voidptr) voidptr {
 	view.cur_file = a.file
 	view.cur_module = a.module_name
 	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
+	mut sw := time.new_stopwatch()
 	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
+	master.timing_step(mut sw, '  p2 prep ${a.start}')
 	if scope != unsafe { nil } {
 		mark_pass2_fn_prep_scope(mut *preps, a.start, a.end, scope)
+		// The copies are shared through a table that dies with the arena.
+		mut promoted_types := if a.promote {
+			&Pass2TypePromotion{}
+		} else {
+			&Pass2TypePromotion(unsafe { nil })
+		}
 		check_worker_scope_leave(scope)
-		a.scope = scope
+		if a.promote {
+			// A compiler build keeps its pool, and so this thread's own arena,
+			// until it exits: the lane copies what pass 2 keeps there itself,
+			// side by side with the other lanes, and gives its arena back.
+			promote_pass2_fn_prep_range(mut *preps, a.start, a.end, mut promoted_types)
+			check_worker_scope_free(scope)
+			master.timing_step(mut sw, '  p2 promote ${a.start}')
+		} else {
+			a.scope = scope
+		}
 	}
 	return unsafe { nil }
 }
@@ -696,8 +1373,37 @@ fn mark_pass2_fn_prep_scope(mut preps []Pass2FnPrep, start int, end int, scope v
 	for pi in start .. end {
 		if preps[pi].prepared {
 			preps[pi].scope = scope
+			preps[pi].promote_mask = pass2_fn_prep_promote_mask(unsafe { &preps[pi] }, scope)
 		}
 	}
+}
+
+// pass2_promote_unclassified marks a preparation with more types than a mask
+// holds: pass 2 then classifies them itself.
+const pass2_promote_unclassified = u64(1) << 63
+
+// pass2_fn_prep_promote_mask finds, on the lane, which signature types of
+// `prep` refer to the lane's arena `scope`. The walk of each type graph is
+// most of the cost of promoting a preparation, and reads only what the lane
+// itself allocated or the frozen tables it parsed from.
+fn pass2_fn_prep_promote_mask(prep &Pass2FnPrep, scope voidptr) u64 {
+	if prep.ptypes.len >= 63 {
+		return pass2_promote_unclassified
+	}
+	mut mask := u64(0)
+	// A local copy, like the argument of Pass2TypePromotion.promote: the slot
+	// in the lane's own list would always count as lane storage.
+	ret_type := prep.ret_type
+	if type_refers_to_scope(scope, ret_type) {
+		mask |= 1
+	}
+	for i in 0 .. prep.ptypes.len {
+		ptype := prep.ptypes[i]
+		if type_refers_to_scope(scope, ptype) {
+			mask |= u64(1) << (i + 1)
+		}
+	}
+	return mask
 }
 
 // Pass2TypePromotion copies lane-dependent type graphs into the enclosing arena.
@@ -723,6 +1429,25 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	if !type_refers_to_scope(scope, typ) {
 		return typ
 	}
+	return p.promote_scoped(typ)
+}
+
+// promote_classified is promote for the type at `bit` of a preparation whose
+// lane recorded in `mask` which types refer to its arena.
+@[inline]
+fn (mut p Pass2TypePromotion) promote_classified(scope voidptr, typ Type, mask u64, bit int) Type {
+	if mask & pass2_promote_unclassified != 0 {
+		return p.promote(scope, typ)
+	}
+	if mask & (u64(1) << bit) == 0 {
+		return typ
+	}
+	return p.promote_scoped(typ)
+}
+
+// promote_scoped returns a copy of `typ`, which refers to a lane's arena, in
+// the current arena, sharing one copy between equal types.
+fn (mut p Pass2TypePromotion) promote_scoped(typ Type) Type {
 	hash := semantic_type_hash(typ)
 	slot := int(hash & u64(p.set.len - 1))
 	if p.set[slot] && p.hashes[slot] == hash && semantic_types_equal(&p.values[slot], typ) {
@@ -886,10 +1611,11 @@ fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pa
 	}
 	mut prep := lane_prep
 	prep.scope = unsafe { nil }
-	prep.ret_type = types.promote(scope, lane_prep.ret_type)
+	mask := lane_prep.promote_mask
+	prep.ret_type = types.promote_classified(scope, lane_prep.ret_type, mask, 0)
 	mut ptypes := []Type{cap: lane_prep.ptypes.len}
-	for typ in lane_prep.ptypes {
-		ptypes << types.promote(scope, typ)
+	for i, typ in lane_prep.ptypes {
+		ptypes << types.promote_classified(scope, typ, mask, i + 1)
 	}
 	prep.ptypes = ptypes
 	prep.param_type_ids = lane_prep.param_type_ids.clone()
@@ -916,6 +1642,16 @@ fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pa
 	prep.lowered_qname = lowered_qname
 	prep.owned_lists = true
 	return prep
+}
+
+// promote_pass2_fn_prep_range is promote_pass2_fn_prep for the preparations
+// of the top-level entries [start, end), in place.
+fn promote_pass2_fn_prep_range(mut preps []Pass2FnPrep, start int, end int, mut types Pass2TypePromotion) {
+	for pi in start .. end {
+		if preps[pi].prepared {
+			preps[pi] = promote_pass2_fn_prep(preps[pi], mut types)
+		}
+	}
 }
 
 // UnusedAliveScanArgs shards the unused-declaration reference scan: each
@@ -946,9 +1682,18 @@ struct CheckChunkArgs {
 	chunk_queue   chan int
 	scope_enabled bool
 	index         int
+	// promote_to is the checker whose node caches the task promotes out of its
+	// arena after each chunk of bodies (see CheckChunkPromotion), or nil.
+	promote_to voidptr
+	// batch_quota is the cost of the bodies that a dynamic task checks on one
+	// checker fork, in chunks from the queue (see check_dynamic_batches), or 0
+	// when every chunk is a batch.
+	batch_quota i64
 mut:
 	scope     voidptr
 	processed []CheckWorkItem
+	checked   int
+	promotion &CheckChunkPromotion = unsafe { nil }
 }
 
 @[unsafe]
@@ -967,7 +1712,17 @@ fn check_chunk_thread(arg voidptr) voidptr {
 		scoped_check_worker_batches / 12
 	}
 	w.reuse_check_batch_scope = a.scope_enabled
-	if a.dynamic_items != unsafe { nil } {
+	mut master := unsafe { &TypeChecker(a.promote_to) }
+	if a.promote_to != unsafe { nil } {
+		// What is left to the master is listed in this task's arena.
+		a.promotion = &CheckChunkPromotion{}
+	}
+	if a.dynamic_items != unsafe { nil } && a.batch_quota > 0 && a.scope_enabled
+		&& a.promote_to != unsafe { nil }
+		&& batch_limit / dynamic_check_chunks_per_job <= 1 {
+		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
+		w.check_dynamic_batches(mut a, chunks, a.batch_quota, mut master)
+	} else if a.dynamic_items != unsafe { nil } {
 		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
 		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
 		for {
@@ -979,17 +1734,47 @@ fn check_chunk_thread(arg voidptr) voidptr {
 				w.check_fn_items_serial(chunk)
 			}
 			a.processed << chunk
+			if a.promote_to != unsafe { nil } {
+				// The bodies are merged into this worker's accumulator, and no later
+				// chunk writes their nodes: promote them while their nodes are at hand.
+				master.promote_check_chunk(chunk, mut a.promotion, a.scope)
+			}
 		}
 	} else if a.scope_enabled {
 		w.check_scoped_batches(*items, batch_limit)
+		if a.promote_to != unsafe { nil } {
+			master.promote_check_chunk(*items, mut a.promotion, a.scope)
+		}
 	} else {
 		w.check_fn_items_serial(*items)
 	}
 	check_worker_scope_free(w.check_batch_scope)
 	w.check_batch_scope = unsafe { nil }
 	w.reuse_check_batch_scope = false
+	if a.promote_to != unsafe { nil } && !isnil(w.symbols) {
+		mut hashes := []u32{cap: w.symbols.names.len}
+		for name in w.symbols.names {
+			hashes << const_selector_hash(name)
+		}
+		a.promotion.symbol_hashes = hashes
+	}
 	check_worker_scope_leave(a.scope)
-	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
+	if a.promote_to != unsafe { nil } {
+		if a.promotion.names_pending {
+			// The names outlive the arena: they go to this thread's persistent one.
+			if a.dynamic_items == unsafe { nil } {
+				master.promote_check_chunk_call_names(*items)
+			} else {
+				master.promote_check_chunk_call_names(a.processed)
+			}
+		}
+		a.promotion.done = true
+	}
+	item_count := if a.dynamic_items == unsafe { nil } {
+		items.len
+	} else {
+		a.processed.len + a.checked
+	}
 	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
 	return unsafe { nil }
 }
@@ -1180,14 +1965,28 @@ fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
-	if !isnil(tc.a) {
+	tc.release_check_tail()
+	// A parallel check of a large program builds its indexes on the pool.
+	index_pool := if want_parallel && !isnil(tc.a)
+		&& tc.a.nodes.len >= min_parallel_check_index_nodes {
+		checker_worker_pool(tc.a)
+	} else {
+		&workers.Pool(unsafe { nil })
+	}
+	indexes_on_pool := !isnil(index_pool) && index_pool.size() > 0
+	if indexes_on_pool {
+		tc.prepare_check_indexes_parallel(index_pool)
+		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	} else if !isnil(tc.a) {
 		tc.check_decl_indexes = tc.new_check_decl_indexes()
 		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
 	}
 	defer {
 		tc.retire_check_decl_indexes()
 	}
-	tc.prepare_check_name_filters()
+	if !indexes_on_pool {
+		tc.prepare_check_name_filters()
+	}
 	// Later stages write the flag tables without going through registration.
 	defer {
 		tc.disable_call_flag_bloom()
@@ -1492,8 +2291,19 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// The work list only drives the dispatch below; keep it and its
 	// collection scratch out of the persistent arena.
 	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-	all_items := tc.collect_parallel_check_items()
+	// The pool may have listed it with the indexes of the check already.
+	mut listed := tc.take_prepared_check_items()
+	all_items := if isnil(listed) {
+		tc.collect_parallel_check_items()
+	} else {
+		unsafe { listed.items }
+	}
+	if !isnil(listed) {
+		tc.cur_file = listed.final_file
+		tc.cur_module = listed.final_module
+	}
 	check_worker_scope_leave(items_scope)
+	tc.listed_check_items = listed
 	// What an incremental check keeps outlives the work list.
 	items := tc.incremental_select(all_items)
 	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
@@ -1509,6 +2319,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.capture_items = false
 	mut tailsw := time.new_stopwatch()
 	check_worker_scope_free(items_scope)
+	tc.listed_check_items = unsafe { nil }
+	if !isnil(listed) {
+		check_worker_scope_free(listed.scope)
+	}
 	// Per-function check costs only schedule the parallel batches above.
 	unsafe { tc.fn_check_costs.free() }
 	tc.fn_check_costs = []i32{}
@@ -1922,6 +2736,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 		tc.check_top_level_declaration_values()
 	}
 	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	// Answer this once here: every fork inherits it instead of scanning the
+	// top-level declarations of the whole program for itself.
+	tc.program_declares_constraints()
 	split_sw := time.new_stopwatch()
 	mut chunk_target := n_jobs
 	if tc.scope_parallel_check_workers {
@@ -1945,9 +2762,27 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	chunk_count := chunks.len
 	mut dynamic_chunks := [][]CheckWorkItem{}
 	mut chunk_queue := chan int{cap: 1}
+	mut batch_quota := i64(0)
 	if dynamic_dispatch {
 		dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
-		dynamic_chunks = split_check_items(items, dynamic_target)
+		// The split may have been made with the work list (see PreparedCheckItems).
+		listed := tc.listed_check_items
+		if !isnil(listed) && listed.target == dynamic_target && listed.chunks.len > 0
+			&& listed.items.data == items.data && listed.items.len == items.len {
+			dynamic_chunks = unsafe { listed.chunks }
+		} else {
+			dynamic_chunks = split_dynamic_check_items(items, dynamic_target, dynamic_check_small_pct,
+				dynamic_check_small_div)
+		}
+		if dynamic_chunks.len > dynamic_target {
+			// The small chunks at the end of the queue are checked a batch's worth
+			// at a time.
+			mut total_cost := i64(0)
+			for item in items {
+				total_cost += i64(item.cost) + 1
+			}
+			batch_quota = int_max(1, int(total_cost / dynamic_target))
+		}
 		chunk_queue = chan int{cap: dynamic_chunks.len}
 		for ci in 0 .. dynamic_chunks.len {
 			chunk_queue <- ci
@@ -1970,6 +2805,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	if dynamic_dispatch {
 		dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
 	}
+	// A scoped worker promotes the node caches of its bodies out of its arena as
+	// its last step, while the others still check theirs, instead of in a pool
+	// phase after all of them: the interners of this checker, which the promotion
+	// probes, are not written before the pool joins (forks intern into their own).
+	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+	promote_in_tasks := par_clone && !isnil(tc.type_interner)
 	for ci in 0 .. chunk_count {
 		mut worker := voidptr(tc)
 		if tc.scope_parallel_check_workers {
@@ -1984,6 +2825,8 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			chunk_queue:   chunk_queue
 			scope_enabled: tc.scope_parallel_check_workers
 			index:         ci
+			promote_to:    if promote_in_tasks { voidptr(tc) } else { unsafe { nil } }
+			batch_quota:   batch_quota
 		}
 	}
 	// The master checks its own chunk under the same range discipline as the
@@ -1996,7 +2839,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	// cache writes out of the worker-owned shared array ranges. The mutating
 	// value checks already ran before any chunk was created.
 	tc.parallel_check_sparse = true
-	mut tasks := []workers.Task{cap: chunk_count + 1}
+	mut tasks := []workers.Task{cap: chunk_count + 2}
 	// Synchronous tasks run on the master in order. With dynamic dispatch its body
 	// chunks are checked by a fork pulling from the shared queue, so run the
 	// signature checks first: the helpers then take over the bodies the master
@@ -2017,11 +2860,30 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	} else {
 		voidptr(tc)
 	}
+	// The scans that follow the check on this thread are prepared beside the
+	// pool as well, as far as they read only the AST (see CheckTailPrepared).
+	mut tail_scan_args := &CheckTailScanArgs{
+		tc:    voidptr(tc)
+		items: unsafe { voidptr(&items) }
+	}
+	if promote_in_tasks && !bodies_only && isnil(tc.incremental) {
+		tc.release_check_tail()
+		// The checker keeps the header after the setup arena is released below.
+		tc.check_tail = tc.new_check_tail_prepared_outside(setup_scope)
+		tail_scan_args.tail = tc.check_tail
+	}
 	if signatures_first {
 		tasks << workers.Task{
 			run:        signature_run
 			arg:        signature_arg
 			force_sync: true
+		}
+		if !isnil(tail_scan_args.tail) {
+			tasks << workers.Task{
+				run:        check_tail_scan_thread
+				arg:        voidptr(tail_scan_args)
+				force_sync: true
+			}
 		}
 	}
 	for ci in 0 .. chunk_count {
@@ -2037,6 +2899,13 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			run:        signature_run
 			arg:        signature_arg
 			force_sync: true
+		}
+		if !isnil(tail_scan_args.tail) {
+			tasks << workers.Task{
+				run:        check_tail_scan_thread
+				arg:        voidptr(tail_scan_args)
+				force_sync: true
+			}
 		}
 	}
 	check_worker_scope_leave(setup_scope)
@@ -2058,11 +2927,26 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	// worker scope is still alive; only unknown-type interning stays serial.
 	// All checking has joined and sparse-cache promotion has finished. The
 	// master interner stays frozen until these clone tasks have also joined.
-	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
 	mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
 	mut mg_clone_ns := u64(0)
 	mut mg_merge_ns := u64(0)
-	if par_clone {
+	mut mg_left_types := 0
+	mut mg_left_nodes := 0
+	// The table that spares the merges most of their symbol lookups is scratch.
+	dedupe_scope := check_worker_scope_begin(promote_in_tasks)
+	mut symbol_dedupe := &CheckSymbolDedupe(unsafe { nil })
+	if promote_in_tasks {
+		mut n_symbols := 0
+		for arg in args {
+			if !isnil(arg.promotion) {
+				n_symbols += arg.promotion.symbol_hashes.len
+			}
+		}
+		symbol_dedupe = new_check_symbol_dedupe(n_symbols)
+	}
+	check_worker_scope_leave(dedupe_scope)
+	mut mg_result_calls := 0
+	if par_clone && !promote_in_tasks {
 		mg_t0 := time.sys_mono_now()
 		for ci in 0 .. chunk_count {
 			clone_args << CheckCloneChunkArgs{
@@ -2088,9 +2972,21 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 		// Scoped-mode forks always own private interners, even when this compiler
 		// was built without the prealloc allocator and therefore has no arena.
 		scoped := tc.scope_parallel_check_workers
+		promoted := scoped && !isnil(args[ci].promotion) && args[ci].promotion.done
 		if scoped {
 			mg_t0 := time.sys_mono_now()
-			if par_clone {
+			if promoted {
+				mut tail := tc.check_tail
+				if !isnil(tail) {
+					for idx in args[ci].promotion.result_calls {
+						tail.mark_result_call(int(idx))
+					}
+				}
+				mg_left_types += args[ci].promotion.types.len
+				mg_left_nodes += args[ci].promotion.nodes.len
+				mg_result_calls += args[ci].promotion.result_calls.len
+				tc.intern_promoted_expr_types(args[ci].promotion)
+			} else if par_clone && !promote_in_tasks {
 				tc.intern_expr_type_misses(clone_args[ci].miss)
 			} else {
 				tc.clone_parallel_worker_node_caches(chunks[ci])
@@ -2098,7 +2994,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			mg_clone_ns += time.sys_mono_now() - mg_t0
 		}
 		mg_t1 := time.sys_mono_now()
-		tc.merge_parallel_check_worker_scoped(w, scoped)
+		if promoted {
+			tc.merge_parallel_check_worker_hashed(w, scoped, args[ci].promotion.symbol_hashes, mut
+				symbol_dedupe)
+		} else {
+			tc.merge_parallel_check_worker_scoped(w, scoped)
+		}
 		mg_merge_ns += time.sys_mono_now() - mg_t1
 		if scoped {
 			check_worker_scope_free(args[ci].scope)
@@ -2108,8 +3009,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	}
 	mg_clone_ms := f64(mg_clone_ns) / 1e6
 	mg_merge_ms := f64(mg_merge_ns) / 1e6
-	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms (left types: ${mg_left_types} of ${mg_left_nodes} nodes, result calls: ${mg_result_calls})')
 	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+	check_worker_scope_free(dedupe_scope)
 	check_worker_scope_free(setup_scope)
 	if bodies_only {
 		return any_started
@@ -3215,6 +4117,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 	for idx, name in tc.sparse_resolved_call_names {
 		tc.resolved_call_names[idx] = cached_name(name)
 		tc.resolved_call_set[idx] = true
+		tc.note_check_tail_write(idx)
 	}
 	for idx, _ in tc.sparse_statement_nodes {
 		tc.statement_nodes[idx] = true
@@ -3223,6 +4126,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.invalidate_checked_type_id(idx)
 		tc.expr_type_values[idx] = tc.intern_type_reference(typ)
 		tc.expr_type_set[idx] = true
+		tc.note_check_tail_write(idx)
 	}
 	tc.sparse_resolved_call_names.clear()
 	tc.sparse_statement_nodes.clear()
@@ -5740,6 +6644,165 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// CheckChunkPromotion is what a worker of a scoped parallel check leaves to the
+// master when it promotes the node caches of its bodies out of its arena itself,
+// chunk by chunk, while the other workers still check theirs. The master's
+// type interner is frozen until the pool joins, so the worker only probes it,
+// and lists the types it does not hold for the master to intern, in the order
+// in which a promotion after the join would have.
+@[heap]
+struct CheckChunkPromotion {
+mut:
+	done bool
+	// The expression types that the master's interner does not hold: the node
+	// `nodes[i]` has the type `types[type_of[i]]`, and `types` lists each of the
+	// worker's canonical types once, in the order of its first node.
+	nodes   []i32
+	type_of []i32
+	types   []&Type
+	// The calls of the bodies that may return a Result (see
+	// call_may_return_result), in node order within each chunk.
+	result_calls []i32
+	// The hashes of the names of the worker's symbols (see CheckSymbolDedupe).
+	symbol_hashes []u32
+	// names_pending is set when a chunk's call names could not be given
+	// persistent storage right after the chunk: the task then promotes those of
+	// all its chunks at its end.
+	names_pending bool
+	missing       map[u64]i32
+	cache         CheckChunkPromotionCache
+}
+
+// CheckChunkPromotionCache maps the worker's canonical types to what a probe of
+// the master's interner found: its canonical type, or else the position of the
+// type among those the master does not hold. A worker's interner keeps one
+// instance of a type, alive until the worker's arena is released, so the
+// pointer identifies it. It has several slots for each type of a large program:
+// a type that loses its slot is probed for again, in tables that every worker
+// reads.
+struct CheckChunkPromotionCache {
+mut:
+	ptrs   [16384]voidptr
+	values [16384]voidptr
+	misses [16384]i32
+}
+
+// promote_check_chunk promotes the node caches of the bodies `items`, which the
+// calling worker of a parallel check has checked and merged into its
+// accumulator, to `tc`, the master, which the worker may only read. `scope` is
+// the worker's arena, current at the call: what is left to the master is listed
+// in it, and the names go to the thread's persistent arena under it.
+fn (mut tc TypeChecker) promote_check_chunk(items []CheckWorkItem, mut p CheckChunkPromotion, scope voidptr) {
+	tc.promote_check_chunk_types(items, mut p)
+	if p.names_pending {
+		return
+	}
+	$if prealloc {
+		if scope != unsafe { nil } {
+			state := unsafe { prealloc_scope_suspend(scope) }
+			if state == unsafe { nil } {
+				p.names_pending = true
+				return
+			}
+			tc.promote_check_chunk_call_names(items)
+			unsafe { prealloc_scope_resume(scope, state) }
+			return
+		}
+	}
+	tc.promote_check_chunk_call_names(items)
+}
+
+// promote_check_chunk_types rebinds the expression types of the nodes of `items`
+// to the canonical ones of `tc`, the master, whose interner the caller, a worker
+// of a parallel check, may only read. The types it does not hold are left as
+// they are, and listed in `p`, as are the calls that may return a Result.
+@[direct_array_access]
+fn (mut tc TypeChecker) promote_check_chunk_types(items []CheckWorkItem, mut p CheckChunkPromotion) {
+	if isnil(tc.type_interner) {
+		return
+	}
+	user_code_start := tc.a.user_code_start
+	for item in items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+				typ := tc.expr_type_values[idx]
+				key := u64(voidptr(typ))
+				slot := int((key * u64(0x9e3779b97f4a7c15)) >> 50)
+				if p.cache.ptrs[slot] != voidptr(typ) {
+					mut value := unsafe { nil }
+					mut miss := i32(0)
+					if known := p.missing[key] {
+						miss = known
+					} else if canonical := tc.type_interner.probe_frozen_quiet(typ) {
+						value = voidptr(canonical)
+					} else {
+						miss = i32(p.types.len)
+						p.missing[key] = miss
+						p.types << typ
+					}
+					p.cache.ptrs[slot] = voidptr(typ)
+					p.cache.values[slot] = value
+					p.cache.misses[slot] = miss
+				}
+				if p.cache.values[slot] != unsafe { nil } {
+					tc.expr_type_values[idx] = unsafe { &Type(p.cache.values[slot]) }
+				} else {
+					p.nodes << i32(idx)
+					p.type_of << p.cache.misses[slot]
+				}
+			}
+			if idx >= user_code_start && tc.a.nodes[idx].kind == .call
+				&& tc.call_may_return_result(idx) {
+				p.result_calls << i32(idx)
+			}
+		}
+	}
+}
+
+// promote_check_chunk_call_names gives the resolved call names of the nodes of
+// `items` storage in the current arena, as check_clone_chunk_thread does.
+@[direct_array_access]
+fn (mut tc TypeChecker) promote_check_chunk_call_names(items []CheckWorkItem) {
+	mut names := CheckNamePromotionCache{}
+	for item in items {
+		for idx in item.range_lo .. item.fn_idx + 1 {
+			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut
+					names)
+			}
+		}
+	}
+}
+
+// intern_promoted_expr_types interns the expression types that a worker's
+// promotion left to the master (see CheckChunkPromotion), each when its first
+// node comes up, and rebinds their nodes. A node that a merge has written since
+// holds a canonical type already.
+@[direct_array_access]
+fn (mut tc TypeChecker) intern_promoted_expr_types(p &CheckChunkPromotion) {
+	if p.nodes.len == 0 {
+		return
+	}
+	mut cache := CheckTypePromotionCache{}
+	// Every slot starts nil and is filled below; nothing reads one before that.
+	mut canonical := unsafe { []voidptr{len: p.types.len} }
+	for i, node in p.nodes {
+		idx := int(node)
+		slot := p.type_of[i]
+		typ := p.types[slot]
+		if voidptr(tc.expr_type_values[idx]) != voidptr(typ) {
+			continue
+		}
+		if canonical[slot] == unsafe { nil } {
+			promoted := tc.cached_check_type_promotion(typ, mut cache, true, false) or {
+				tc.promote_check_type(*typ)
+			}
+			canonical[slot] = voidptr(promoted)
+		}
+		tc.expr_type_values[idx] = unsafe { &Type(canonical[slot]) }
+	}
+}
+
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 	mut cache := CheckTypePromotionCache{}
 	for idx in indexes {
@@ -5825,6 +6888,74 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	mut no_dedupe := &CheckSymbolDedupe(unsafe { nil })
+	tc.merge_parallel_check_worker_hashed(w, scoped, []u32{}, mut no_dedupe)
+}
+
+// CheckSymbolDedupe finds the id that the merge of an earlier worker of a
+// parallel check gave a symbol, by a hash of the name that the workers compute
+// for their own symbols before the pool joins. The workers intern into private
+// tables, so nearly every symbol reaches the master once per worker: a lookup
+// here replaces a locked interner probe that hashes the name again.
+@[heap]
+struct CheckSymbolDedupe {
+mut:
+	// (hash << 32) | id by open addressing; 0 is an empty slot.
+	slots []u64
+	used  int
+}
+
+// new_check_symbol_dedupe sizes the table for workers that bring `n_symbols`
+// symbols in all, most of them several times; it stops taking symbols when it
+// is half full.
+fn new_check_symbol_dedupe(n_symbols int) &CheckSymbolDedupe {
+	mut n_slots := 1024
+	for n_slots < n_symbols && n_slots < (1 << 22) {
+		n_slots <<= 1
+	}
+	return &CheckSymbolDedupe{
+		slots: []u64{len: n_slots}
+	}
+}
+
+@[direct_array_access; inline]
+fn (d &CheckSymbolDedupe) find(hash u32, name string, symbols &SymbolInterner) SymbolId {
+	mask := u32(d.slots.len - 1)
+	mut slot := hash & mask
+	for {
+		entry := d.slots[slot]
+		if entry == 0 {
+			return SymbolId(0)
+		}
+		if u32(entry >> 32) == hash {
+			id := u32(entry)
+			if symbols.names[int(id) - 1] == name {
+				return SymbolId(id)
+			}
+		}
+		slot = (slot + 1) & mask
+	}
+	return SymbolId(0)
+}
+
+@[direct_array_access; inline]
+fn (mut d CheckSymbolDedupe) add(hash u32, id SymbolId) {
+	if id == 0 || d.used * 2 >= d.slots.len {
+		return
+	}
+	mask := u32(d.slots.len - 1)
+	mut slot := hash & mask
+	for d.slots[slot] != 0 {
+		slot = (slot + 1) & mask
+	}
+	d.slots[slot] = (u64(hash) << 32) | u64(id)
+	d.used++
+}
+
+// merge_parallel_check_worker_hashed is merge_parallel_check_worker_scoped for a
+// worker whose symbols come with the hashes of their names, `hashes[i]` for the
+// worker's symbol `i` (see CheckSymbolDedupe).
+fn (mut tc TypeChecker) merge_parallel_check_worker_hashed(w &TypeChecker, scoped bool, hashes []u32, mut dedupe CheckSymbolDedupe) {
 	if w.item_marks.len > 0 {
 		if !isnil(tc.incremental) {
 			tc.incremental_capture(w, scoped)
@@ -5850,9 +6981,22 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	if scoped && !isnil(w.symbols) {
 		worker_symbols := unsafe { w.symbols }
 		symbol_remap = []SymbolId{len: worker_symbols.names.len + 1}
-		for index, name in worker_symbols.names {
-			id, _ := tc.intern_scoped_symbol(name)
-			symbol_remap[index + 1] = id
+		if !isnil(dedupe) && !isnil(tc.symbols) && hashes.len == worker_symbols.names.len {
+			// A symbol that an earlier worker brought has its id already; the others
+			// are interned in the order in which interning all of them adds them.
+			for index, name in worker_symbols.names {
+				mut id := dedupe.find(hashes[index], name, tc.symbols)
+				if id == 0 {
+					id, _ = tc.intern_scoped_symbol(name)
+					dedupe.add(hashes[index], id)
+				}
+				symbol_remap[index + 1] = id
+			}
+		} else {
+			for index, name in worker_symbols.names {
+				id, _ := tc.intern_scoped_symbol(name)
+				symbol_remap[index + 1] = id
+			}
 		}
 	}
 	for err in w.errors {
@@ -5888,6 +7032,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		} else {
 			tc.resolved_call_names[idx] = cached_name(owned_name)
 			tc.resolved_call_set[idx] = true
+			tc.note_check_tail_write(idx)
 		}
 	}
 	for idx, name in w.sparse_resolved_fn_values {
@@ -5914,6 +7059,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		} else {
 			tc.expr_type_values[idx] = tc.intern_type_reference(owned_type)
 			tc.expr_type_set[idx] = true
+			tc.note_check_tail_write(idx)
 		}
 	}
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
@@ -6093,25 +7239,130 @@ fn (tc &TypeChecker) tail_decl_ids_for(start int, end int) ([]i32, bool) {
 	return cache.tail_decl_ids, true
 }
 
+// min_parallel_walk_fn_names is the number of function signature keys from which
+// the pool takes their short names (see arm_walk_fn_short_names_listing_decls):
+// reading every key costs a few ms in a large program, and nothing in a small one.
+const min_parallel_walk_fn_names = 16_384
+
+// WalkFnNamesArgs is one pool task of arm_walk_fn_short_names_listing_decls: the
+// short names of one signature table, or the declarations of the walk.
+struct WalkFnNamesArgs {
+	tc          voidptr // &TypeChecker, which the tasks only read
+	list_decls  bool
+	param_table bool
+	mask        u32
+mut:
+	scope voidptr
+	names map[string]bool
+	bits  []u64
+	decls &SelectedFnDecls = unsafe { nil }
+}
+
+fn walk_fn_names_thread(arg voidptr) voidptr {
+	mut a := unsafe { &WalkFnNamesArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	a.scope = check_worker_scope_begin(true)
+	if a.list_decls {
+		a.decls = tc.selected_file_fn_decl_list()
+	} else {
+		mut names := map[string]bool{}
+		names.reserve(u32(if a.param_table { tc.fn_param_types.len } else { tc.fn_ret_types.len }))
+		mut bits := []u64{len: int((a.mask + 1) >> 6)}
+		tc.collect_walk_fn_short_names(a.param_table, mut names, mut bits, a.mask)
+		a.names = names.move()
+		a.bits = bits
+	}
+	check_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// arm_walk_fn_short_names_listing_decls is arm_walk_fn_short_names for a walk
+// that scans the bodies on the pool. Reading every signature key takes a while
+// in a large program, so the pool takes the two tables side by side there, and
+// lists the declarations to scan (see selected_file_fn_decl_list) meanwhile:
+// those are returned, or nil when the walk is to list them itself. The tasks
+// only read the checker, which does nothing else until they join. Their arenas
+// are appended to `scopes` for the caller to free after the walk.
+fn (mut tc TypeChecker) arm_walk_fn_short_names_listing_decls(mut scopes []voidptr) &SelectedFnDecls {
+	pool := checker_worker_pool(tc.a)
+	count := tc.fn_ret_types.len + tc.fn_param_types.len
+	if isnil(pool) || pool.size() == 0 || count < min_parallel_walk_fn_names {
+		tc.arm_walk_fn_short_names()
+		return unsafe { nil }
+	}
+	mask := walk_fn_short_names_mask(count)
+	// The pool may have taken them with the indexes of the check already.
+	mut taken := tc.take_prepared_walk_fn_names(mask)
+	if isnil(taken) {
+		taken = &PreparedWalkFnNames{
+			args: []WalkFnNamesArgs{cap: 3}
+		}
+		for job in 0 .. 3 {
+			taken.args << WalkFnNamesArgs{
+				tc:          voidptr(tc)
+				list_decls:  job == 2
+				param_table: job == 1
+				mask:        mask
+			}
+		}
+		mut tasks := []workers.Task{cap: 3}
+		for job in 0 .. 3 {
+			tasks << workers.Task{
+				run:        walk_fn_names_thread
+				arg:        unsafe { voidptr(&taken.args[job]) }
+				force_sync: job == 0
+			}
+		}
+		pool.run(tasks)
+	}
+	for arg in taken.args {
+		if arg.scope != unsafe { nil } {
+			scopes << arg.scope
+		}
+	}
+	mut bits := unsafe { taken.args[0].bits }
+	param_bits := taken.args[1].bits
+	for i in 0 .. bits.len {
+		bits[i] |= param_bits[i]
+	}
+	tc.walk_fn_short_names = &WalkFnShortNames{
+		ret:   taken.args[0].names
+		param: taken.args[1].names
+		bloom: &ConstSelectorBloom{
+			count: count
+			mask:  mask
+			bits:  bits
+		}
+	}
+	return taken.args[2].decls
+}
+
 // SelectedFnScanArgs is one pool task of collect_selected_file_called_fns_walk_parallel.
 struct SelectedFnScanArgs {
-	worker       voidptr // &TypeChecker fork used only by this task
-	decls        voidptr // &[]SelectedFnDecl
-	decl_index   voidptr // &SelectedFnDeclIndex
-	lists        voidptr // &[][]string, the called names per declaration
-	callee_decls voidptr // &[][]int, the index in `decls` of each called name, or -1
-	queue        chan int
-	chunk        int
+	worker voidptr // &TypeChecker fork used only by this task
+	decls  voidptr // &SelectedFnDecls
+	scan   voidptr // &SelectedFnScan
+	queue  chan int
+	// The declarations of the chunk `c` of the queue are
+	// order[bounds[c] .. bounds[c + 1]] (see selected_fn_scan_chunks).
+	order  voidptr // &[]i32
+	bounds voidptr // &[]i32
 mut:
 	scope voidptr
 }
 
-const selected_fn_scan_chunk = 64
-
-// SelectedFnDeclIndex maps a function name to its index in the scanned declarations.
-struct SelectedFnDeclIndex {
+// SelectedFnScan is what the pool found in the bodies of the scanned declarations
+// (see SelectedFnDecls), and the declarations the selected files reach.
+struct SelectedFnScan {
 mut:
-	names map[string]int
+	names []string // the qualified name of each declaration
+	// The functions each declaration's body calls: the indexes of those that are
+	// declarations themselves, and the names of the others.
+	callee_decls [][]i32
+	other_names  [][]string
+	reached      []bool
+	// The reached declarations and the names they call that are not declarations.
+	reached_count int
 }
 
 @[unsafe]
@@ -6119,32 +7370,32 @@ fn selected_fn_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SelectedFnScanArgs(arg) }
 	a.scope = check_worker_scope_begin(true)
 	mut w := unsafe { &TypeChecker(a.worker) }
-	decls := unsafe { &[]SelectedFnDecl(a.decls) }
-	decl_index := unsafe { &SelectedFnDeclIndex(a.decl_index) }
-	mut lists := unsafe { &[][]string(a.lists) }
-	mut callee_decls := unsafe { &[][]int(a.callee_decls) }
+	decls := unsafe { &SelectedFnDecls(a.decls) }
+	mut scan := unsafe { &SelectedFnScan(a.scan) }
 	w.cur_scope = w.file_scope
+	mut smartcast_keys := &SmartcastKeyFilter{}
+	order := unsafe { &[]i32(a.order) }
+	bounds := unsafe { &[]i32(a.bounds) }
 	for {
-		start := <-a.queue or { break }
-		end := int_min(start + a.chunk, decls.len)
-		for i in start .. end {
-			decl := unsafe { decls[i] }
-			w.cur_file = decl.file
-			w.cur_module = decl.mod
+		chunk := <-a.queue or { break }
+		for pos in unsafe { bounds[chunk] } .. unsafe { bounds[chunk + 1] } {
+			i := int(unsafe { order[pos] })
 			w.selected_file_called_fns = map[string]bool{}
 			w.selected_file_worklist = []string{}
-			w.arm_body_resolve_memo(decl.idx - decl.cost + 1, decl.idx)
-			w.collect_selected_file_fn_body_called_fns(w.a.nodes[decl.idx])
-			w.disarm_body_resolve_memo()
-			// The worklist holds each name the body reaches once, in discovery order.
-			mut callees := []int{cap: w.selected_file_worklist.len}
+			w.collect_selected_decl_called_fns(decls.list[i], mut smartcast_keys)
+			// The worklist holds each name the body reaches once.
+			mut callees := []i32{cap: w.selected_file_worklist.len}
+			mut others := []string{}
 			for name in w.selected_file_worklist {
-				di := decl_index.names[name] or { -1 }
-				callees << di
+				if di := decls.index[name] {
+					callees << i32(di)
+				} else {
+					others << name
+				}
 			}
 			unsafe {
-				lists[i] = w.selected_file_worklist
-				callee_decls[i] = callees
+				scan.callee_decls[i] = callees
+				scan.other_names[i] = others
 			}
 		}
 	}
@@ -6152,14 +7403,17 @@ fn selected_fn_scan_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-// collect_selected_file_called_fns_walk_parallel computes the same called set as
-// collect_selected_file_called_fns_walk. Scanning a body depends only on its
+// collect_selected_file_called_fns_walk_parallel finds what
+// collect_selected_file_called_fns_walk does. Scanning a body depends only on its
 // declaration's file and module, so the pool scans every candidate body once,
-// each task on its own fork of `master`, and the walk then follows those lists.
-// The arenas backing the lists are appended to `body_scopes` for the caller to
-// free once it no longer needs the names. It returns false without a pool.
-@[unsafe]
-fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, mut body_scopes []voidptr) bool {
+// each task on its own fork of `master`, and the walk then follows the calls from
+// the roots by declaration index. The candidates are `listed_decls`, or those of
+// selected_file_fn_decl_list when it is nil. It leaves the names the roots call
+// in the called set, and in `scan` the declarations reached from them, whose
+// names and calls complete the set. The arenas backing `scan` are appended to `body_scopes`
+// for the caller to free once it no longer needs the names. It returns false
+// without a pool.
+fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, listed_decls &SelectedFnDecls, mut body_scopes []voidptr, mut scan SelectedFnScan) bool {
 	pool := checker_worker_pool(tc.a)
 	if isnil(pool) || pool.size() == 0 {
 		return false
@@ -6171,35 +7425,38 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 	saved_memo := tc.body_resolve_memo
 	tc.body_resolve_memo = unsafe { nil }
 	defer { tc.body_resolve_memo = saved_memo }
+	mut cfsw := time.new_stopwatch()
 	tc.collect_selected_file_root_called_fns()
-	decls := tc.selected_file_fn_decls()
-	mut decl_list := []SelectedFnDecl{cap: decls.len}
-	mut decl_index := SelectedFnDeclIndex{}
-	decl_index.names.reserve(u32(decls.len))
-	for name, decl in decls {
-		decl_index.names[name] = decl_list.len
-		decl_list << decl
-	}
-	mut lists := [][]string{len: decl_list.len}
-	mut callee_decls := [][]int{len: decl_list.len}
-	chunk := selected_fn_scan_chunk
-	n_chunks := (decl_list.len + chunk - 1) / chunk
+	roots_us := cfsw.elapsed().microseconds()
+	decls := if isnil(listed_decls) { tc.selected_file_fn_decl_list() } else { listed_decls }
+	decls_us := cfsw.elapsed().microseconds()
+	n_decls := decls.list.len
+	scan.names = decls.names
+	scan.callee_decls = [][]i32{len: n_decls}
+	scan.other_names = [][]string{len: n_decls}
+	order, bounds := selected_fn_scan_chunks(decls, pool.size() + 1)
+	n_chunks := bounds.len - 1
 	n_jobs := int_max(1, int_min(pool.size() + 1, n_chunks))
 	queue := chan int{cap: int_max(1, n_chunks)}
-	for start := 0; start < decl_list.len; start += chunk {
-		queue <- start
+	for chunk in 0 .. n_chunks {
+		queue <- chunk
 	}
 	queue.close()
 	mut args := []SelectedFnScanArgs{cap: n_jobs}
 	for _ in 0 .. n_jobs {
+		mut worker := master.fork_for_parallel_check()
+		if tc.building_v_fast {
+			// As the walk of a compiler build always did: resolving a receiver reads
+			// the diagnostics reported so far. The master is idle until the scans join.
+			worker.errors = master.errors
+		}
 		args << SelectedFnScanArgs{
-			worker:       voidptr(master.fork_for_parallel_check())
-			decls:        unsafe { voidptr(&decl_list) }
-			decl_index:   unsafe { voidptr(&decl_index) }
-			lists:        unsafe { voidptr(&lists) }
-			callee_decls: unsafe { voidptr(&callee_decls) }
-			queue:        queue
-			chunk:        chunk
+			worker: voidptr(worker)
+			decls:  voidptr(decls)
+			scan:   voidptr(scan)
+			queue:  queue
+			order:  unsafe { voidptr(&order) }
+			bounds: unsafe { voidptr(&bounds) }
 		}
 	}
 	mut tasks := []workers.Task{cap: n_jobs}
@@ -6211,40 +7468,39 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 		}
 	}
 	pool.run(tasks)
+	scan_us := cfsw.elapsed().microseconds()
 	for arg in args {
 		if arg.scope != unsafe { nil } {
 			body_scopes << arg.scope
 		}
 	}
-	// Follow the lists from the roots by declaration index, then add the names
-	// each reached body calls: the set a walk by name builds, in another order.
-	mut reached := []bool{len: decl_list.len}
+	// Follow the calls from the roots by declaration index: a walk by name
+	// reaches the same declarations, in another order.
+	mut reached := []bool{len: n_decls}
 	mut stack := []int{cap: 1024}
 	for name in tc.selected_file_worklist {
-		if di := decl_index.names[name] {
+		if di := decls.index[name] {
 			stack << di
 		}
 	}
 	tc.selected_file_worklist.clear()
+	mut reached_count := 0
 	for stack.len > 0 {
 		di := stack.pop()
 		if reached[di] {
 			continue
 		}
 		reached[di] = true
-		for callee in callee_decls[di] {
-			if callee >= 0 && !reached[callee] {
-				stack << callee
+		reached_count += 1 + scan.other_names[di].len
+		for callee in scan.callee_decls[di] {
+			if !reached[callee] {
+				stack << int(callee)
 			}
 		}
 	}
-	for di, is_reached in reached {
-		if is_reached {
-			for name in lists[di] {
-				tc.selected_file_called_fns[name] = true
-			}
-		}
-	}
+	scan.reached = reached
+	scan.reached_count = reached_count
+	master.timing_profile('  [ttime]     ck cf roots    ${f64(roots_us) / 1000.0:7.2f} ms, decls ${f64(decls_us - roots_us) / 1000.0:.2f} ms (${n_decls}), scan ${f64(scan_us - decls_us) / 1000.0:.2f} ms, closure ${f64(cfsw.elapsed().microseconds() - scan_us) / 1000.0:.2f} ms')
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	tc.cur_scope = saved_scope

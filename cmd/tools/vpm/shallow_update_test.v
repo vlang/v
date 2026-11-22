@@ -6,17 +6,17 @@ import test_utils { cmd_ok_args }
 
 const shallow_root = os.join_path(os.vtmp_dir(), 'vpu_${rand.hex(12)}')
 const shallow_original_dir = os.getwd()
-const shallow_tool = os.join_path(shallow_root, if os.user_os() == 'windows' {
-	'vpm.exe'
-} else {
-	'vpm'
-})
+const shallow_tool = os.executable()
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	os.mkdir_all(shallow_root)!
 	test_utils.set_test_env(os.join_path(shallow_root, 'build'))
 	os.setenv('VEXE', @VEXE, true)
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', shallow_tool, os.dir(@FILE)])
 }
 
 fn testsuite_end() {
@@ -32,7 +32,9 @@ fn shallow_git(path string, args []string) string {
 fn shallow_repo(case string) !string {
 	path := os.join_path(shallow_root, case, 'remote')
 	os.mkdir_all(path)!
-	shallow_git(path, ['init', '-b', 'main'])
+	shallow_git(path, ['init', '-q'])
+	shallow_git(path, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert shallow_git(path, ['symbolic-ref', '--short', 'HEAD']) == 'main'
 	os.write_file(os.join_path(path, 'v.mod'), "Module { name: 'update_pkg' version: '1.0.0' }\n")!
 	shallow_commit(path, 'initial')!
 	app := os.join_path(shallow_root, case, 'app')

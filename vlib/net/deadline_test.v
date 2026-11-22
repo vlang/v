@@ -1,14 +1,24 @@
 import net
 import time
 
-fn tcp_write_after_deadline_delay(addr string) {
-	time.sleep(100 * time.millisecond)
-	mut client := net.dial_tcp(addr) or { panic(err) }
+const deadline_fallback_timeout = 20 * time.millisecond
+const deadline_delay_margin = 20 * time.millisecond
+
+fn tcp_write_after_deadline_delay(addr string, read_ready chan bool) ! {
+	time.sleep(deadline_fallback_timeout + deadline_delay_margin)
+	mut client := net.dial_tcp(addr)!
 	defer {
 		client.close() or {}
 	}
-	time.sleep(100 * time.millisecond)
-	client.write_string('future') or { panic(err) }
+	select {
+		_ := <-read_ready {
+		}
+		2 * time.second {
+			return error('TCP reader did not become ready')
+		}
+	}
+	time.sleep(deadline_fallback_timeout + deadline_delay_margin)
+	client.write_string('future')!
 }
 
 fn test_far_future_tcp_deadlines_allow_delayed_readiness() ! {
@@ -20,30 +30,32 @@ fn test_far_future_tcp_deadlines_allow_delayed_readiness() ! {
 	defer {
 		listener.close() or {}
 	}
-	listener.set_accept_timeout(20 * time.millisecond)
+	listener.set_accept_timeout(deadline_fallback_timeout)
 	listener.set_accept_deadline(deadline)
-	writer := spawn tcp_write_after_deadline_delay(listener.addr()!.str())
+	read_ready := chan bool{cap: 1}
+	writer := spawn tcp_write_after_deadline_delay(listener.addr()!.str(), read_ready)
 	mut server := listener.accept()!
 	defer {
 		server.close() or {}
 	}
-	server.set_read_timeout(20 * time.millisecond)
+	server.set_read_timeout(deadline_fallback_timeout)
 	server.set_read_deadline(deadline)
 	mut buf := []u8{len: 16}
+	read_ready <- true
 	read := server.read(mut buf)!
-	writer.wait()
+	writer.wait()!
 	assert buf[..read].bytestr() == 'future'
 	assert listener.accept_deadline()! == deadline
 	assert server.read_deadline()! == deadline
 }
 
-fn udp_write_after_deadline_delay(addr string, payload string) {
-	time.sleep(200 * time.millisecond)
-	mut sender := net.dial_udp(addr) or { panic(err) }
+fn udp_write_after_deadline_delay(addr string, payload string, delay time.Duration) ! {
+	time.sleep(delay)
+	mut sender := net.dial_udp(addr)!
 	defer {
 		sender.close() or {}
 	}
-	sender.write_string(payload) or { panic(err) }
+	sender.write_string(payload)!
 }
 
 fn test_far_future_udp_deadlines_allow_delayed_readiness() ! {
@@ -54,14 +66,16 @@ fn test_far_future_udp_deadlines_allow_delayed_readiness() ! {
 			listener.close() or {}
 		}
 		if !use_default_timeout {
-			listener.set_read_timeout(20 * time.millisecond)
+			listener.set_read_timeout(deadline_fallback_timeout)
 		}
 		listener.set_read_deadline(deadline)
 		payload := 'future udp packet'
-		writer := spawn udp_write_after_deadline_delay(listener.sock.address()!.str(), payload)
 		mut buf := []u8{len: payload.len}
+		// Deliver the packet after the configured timeout would have expired.
+		delay := listener.read_timeout() + deadline_delay_margin
+		writer := spawn udp_write_after_deadline_delay(listener.sock.address()!.str(), payload, delay)
 		read, _ := listener.read(mut buf)!
-		writer.wait()
+		writer.wait()!
 		assert buf[..read].bytestr() == payload
 		assert listener.read_deadline()! == deadline
 	}

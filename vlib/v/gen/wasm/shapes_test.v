@@ -27,15 +27,21 @@ import v.ssa.optimize
 import v.transform
 import v.types
 
-// The suite owns a private build directory: this machine runs several V
-// sessions at once and they all share %TEMP%\v_<uid>, so a nested build in the
-// shared directory is a coin toss.
+// Keep the default stable after shape_enter_workspace changes TMPDIR.
+const shape_default_scratch = os.join_path(os.vtmp_dir(), 'wasm_shapes_${os.getpid()}')
+
 fn shape_scratch() string {
 	custom := os.getenv('SHAPE_SCRATCH')
 	if custom.len > 0 {
 		return custom
 	}
-	return os.join_path(os.home_dir(), 'AppData', 'Local', 'Temp', 'opencode', 'wasmshapes')
+	return shape_default_scratch
+}
+
+fn testsuite_end() {
+	if os.getenv('SHAPE_SCRATCH') == '' {
+		os.rmdir_all(shape_default_scratch) or {}
+	}
 }
 
 fn shape_enter_workspace() {

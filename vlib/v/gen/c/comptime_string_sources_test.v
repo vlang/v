@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 
@@ -9,61 +9,60 @@ fn test_parallel_computed_constant_guards_select_the_same_runtime_branch() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_guards_codegen_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	for case in ['direct', 'chained', 'else_if', 'match'] {
-		guard := if case == 'else_if' {
-			"chosen == 'yes' && following == 'yes'"
-		} else if case == 'chained' {
-			"chosen == 'yes'"
-		} else {
-			'route_has_get_method'
-		}
-		contents := [
-			if case == 'else_if' {
-				"const route_has_get_method = 'GET /users'.starts_with('POST')\n"
-			} else {
-				"const route_has_get_method = 'GET /users'.starts_with('GET')\n"
-			},
-			if case == 'else_if' {
-				"\$if route_has_get_method { const chosen = 'wrong' } \$else \$if false { const inactive = 'unused' } \$else \$if true { const chosen = 'yes' } \$else { const dead = 'unused' }\nconst following = 'yes'\n"
-			} else if case == 'match' {
-				"\$match route_has_get_method { true { const chosen = 'yes' } \$else { const chosen = 'no' } }\n\$if chosen == 'yes' { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n"
-			} else if case == 'chained' {
-				"\$if route_has_get_method { const chosen = 'yes' } \$else { const chosen = 'no' }\n"
-			} else {
-				'fn padding() {}\n'
-			},
-			if case == 'match' {
-				'fn padding() {}\n'
-			} else {
-				"\$if ${guard} { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n"
-			},
-			'fn main() { println(selected()) }\n',
-		]
-		for i, content in contents {
-			os.write_file(os.join_path(root, '${i}.v'), content + '\n'.repeat(40000 - content.len))!
-		}
-		for serial in [false, true] {
-			binary := os.join_path(root, 'selected_${case}_${serial}${exe_suffix}')
-			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang',
-				'-gc', 'none', '-o', binary]
-			if serial { args << '-no-parallel' }
-			args << root
-			mut child := os.new_process(@VEXE)
-			child.set_args(args)
-			mut environment := os.environ()
-			environment['VJOBS'] = '4'
-			child.set_environment(environment)
-			child.set_redirect_stdio_merged()
-			child.run()
-			output := child.stdout_slurp()
-			child.wait()
-			code := child.code
-			child.close()
-			assert code == 0, output
-			result := os.exec([binary])
-			assert result.exit_code == 0, result.output
-			assert result.output.trim_space() == 'yes', '${case} ${serial}: ${result.output}'
-		}
+	// Keep the constants, guards and callers in separate padded files so the
+	// same project exercises cross-file evaluation with both worker settings.
+	sources := [
+		"const direct_has_get = 'GET /users'.starts_with('GET')
+const chained_has_get = 'GET /users'.starts_with('GET')
+const else_if_has_get = 'GET /users'.starts_with('POST')
+const match_has_get = 'GET /users'.starts_with('GET')
+",
+		"\$if chained_has_get { const chained_chosen = 'yes' } \$else { const chained_chosen = 'no' }
+\$if else_if_has_get { const else_if_chosen = 'wrong' } \$else \$if false { const inactive = 'unused' } \$else \$if true { const else_if_chosen = 'yes' } \$else { const dead = 'unused' }
+const following = 'yes'
+\$match match_has_get { true { const match_chosen = 'yes' } \$else { const match_chosen = 'no' } }
+\$if match_chosen == 'yes' { fn match_selected() string { return 'yes' } } \$else { fn match_selected() string { return 'no' } }
+",
+		"\$if direct_has_get { fn direct_selected() string { return 'yes' } } \$else { fn direct_selected() string { return 'no' } }
+\$if chained_chosen == 'yes' { fn chained_selected() string { return 'yes' } } \$else { fn chained_selected() string { return 'no' } }
+\$if else_if_chosen == 'yes' && following == 'yes' { fn else_if_selected() string { return 'yes' } } \$else { fn else_if_selected() string { return 'no' } }
+",
+		"fn main() {
+	println('direct: ' + direct_selected())
+	println('chained: ' + chained_selected())
+	println('else_if: ' + else_if_selected())
+	println('match: ' + match_selected())
+}
+",
+	]
+	for i, source in sources {
+		os.write_file(os.join_path(root, '${i}.v'), source + '\n'.repeat(40000 - source.len))!
+	}
+	expected := ['direct: yes', 'chained: yes', 'else_if: yes', 'match: yes']
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	for serial in [false, true] {
+		binary := os.join_path(root, 'selected_${serial}${exe_suffix}')
+		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc, '-gc', 'none',
+			'-o', binary]
+		if serial { args << '-no-parallel' }
+		args << root
+		mut child := os.new_process(@VEXE)
+		child.set_args(args)
+		mut environment := os.environ()
+		environment['VJOBS'] = '4'
+		child.set_environment(environment)
+		child.set_redirect_stdio_merged()
+		child.run()
+		output := child.stdout_slurp()
+		child.wait()
+		code := child.code
+		child.close()
+		assert code == 0, output
+		result := os.exec([binary])
+		assert result.exit_code == 0, result.output
+		assert result.output.split_into_lines() == expected, 'serial=${serial}: ${result.output}'
 	}
 }
 
@@ -165,34 +164,43 @@ fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
 	}
 }
 
+fn check_comptime_string_diagnostics(root string, name string, source string, expected []string) ! {
+	path := os.join_path(root, '${name}.v')
+	os.write_file(path, source)!
+	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-nocolor',
+		'-o', os.join_path(root, '${name}.c'), path])
+	assert result.exit_code != 0, result.output
+	path_prefix := os.real_path(path).replace('\\', '/')
+	errors := result.output.replace('\\', '/').split_into_lines().filter(it.starts_with(path_prefix + ':')
+		&& it.contains(': error: '))
+	assert errors.len == expected.len, result.output
+	// Each invalid function is on a separate line so its own error must be present.
+	for index, message in expected {
+		location := '${path_prefix}:${index + 1}:'
+		assert errors.any(it.starts_with(location) && it.contains(message)), result.output
+	}
+}
+
 fn test_comptime_string_sources_reject_runtime_or_unsupported_operands() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_string_sources_invalid_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	cases := {
-		'mutable_source':        "fn main() { mut path := 'a/b'; path = 'c/d'; \$for part in path.split('/') { println(part) } }"
-		'runtime_source':        "fn walk(path string) { \$for part in path.split('/') { println(part) } }\nfn main() { walk('a/b') }"
-		'unsupported_source':    "fn main() { \$for part in 'abc'.bytes() { println(part) } }"
-		'mutable_condition':     "fn main() { mut path := 'a'; path = 'b'; \$if path.starts_with('a') { println('bad') } }"
-		'overflow_slice':        "fn main() { \$for part in 'abc'[4294967296..].fields() { println(part) } }"
-		'overflow_high_slice':   "fn main() { \$for part in 'abc'[..4294967296].fields() { println(part) } }"
-		'overflow_condition':    "fn main() { \$if 'abc'[4294967296..].starts_with('a') { println('bad') } }"
-		'unsupported_condition': "fn main() { \$if 'abc'.repeat(1) == 'abc' { println('bad') } }"
-	}
-	for name, source in cases {
-		path := os.join_path(root, '${name}.v')
-		os.write_file(path, source)!
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o',
-			os.join_path(root, '${name}.c'), path])
-		assert result.exit_code != 0, '${name}: ${result.output}'
-		if name == 'mutable_condition' {
-			assert result.output.contains('`path` is mut and may have changed since its definition'), result.output
-		} else if name in ['unsupported_condition', 'overflow_condition'] {
-			assert result.output.contains('cannot evaluate `\$if` condition'), result.output
-		} else {
-			assert result.output.contains('on a compile-time-known string'), result.output
-		}
-	}
+	loop_error := 'on a compile-time-known string'
+	condition_error := 'cannot evaluate `\$if` condition'
+	// Checker errors stop the build before the transformer can report its errors.
+	check_comptime_string_diagnostics(root, 'checker', r"fn mutable_source() { mut path := 'a/b'; path = 'c/d'; $for part in path.split('/') { println(part) } }
+fn runtime_source(path string) { $for part in path.split('/') { println(part) } }
+fn unsupported_source() { $for part in 'abc'.bytes() { println(part) } }
+fn mutable_condition() { mut path := 'a'; path = 'b'; $if path.starts_with('a') { println('bad') } }
+fn overflow_high_slice() { $for part in 'abc'[..4294967296].fields() { println(part) } }
+fn main() { mutable_source(); runtime_source('a/b'); unsupported_source(); mutable_condition(); overflow_high_slice() }
+", [loop_error, loop_error, loop_error, '`path` is mut and may have changed since its definition',
+		loop_error])!
+	check_comptime_string_diagnostics(root, 'transform', r"fn overflow_slice() { $for part in 'abc'[4294967296..].fields() { println(part) } }
+fn overflow_condition() { $if 'abc'[4294967296..].starts_with('a') { println('bad') } }
+fn unsupported_condition() { $if 'abc'.repeat(1) == 'abc' { println('bad') } }
+fn main() { overflow_slice(); overflow_condition(); unsupported_condition() }
+", [loop_error, condition_error, condition_error])!
 }
 
 fn test_comptime_string_constant_operands_keep_their_module_scope() {
@@ -296,41 +304,83 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "import_waves" }')!
 	data_source := 'module route_data\npub const yes = true\npub const value = 3\n'
+	broken_path := os.join_path(root, 'broken/broken.v')
+	invalid_function := 'fn unused() { missing() }\n'
+	invalid_syntax := 'fn unused( { }\n'
+	// Distinct imports let the direct and nested guards exercise separate modules.
+	for name, body in {
+		'broken_syntax':        invalid_syntax
+		'nested_broken':        invalid_function
+		'nested_broken_syntax': invalid_syntax
+		'nested_data':          'pub const yes = true\npub const value = 2\n'
+	} {
+		module_dir := os.join_path(root, name)
+		os.mkdir_all(module_dir)!
+		os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${name}\n${body}')!
+	}
 	path := os.join_path(root, 'main.v')
+	executable := os.join_path(root, 'selected${exe_suffix}')
 	saved_no_file_index := os.getenv('V3_NO_FILE_IDX')
 	defer { os.setenv('V3_NO_FILE_IDX', saved_no_file_index, true) }
 	for mode in ['parallel', 'serial', 'full_scan'] {
 		os.setenv('V3_NO_FILE_IDX', if mode == 'full_scan' { '1' } else { '' }, true)
 		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
 		if mode == 'serial' { args << '-no-parallel' }
-		args << ['-o', os.join_path(root, 'selected${exe_suffix}'), path]
+		args << ['-o', executable, path]
 		os.write_file(os.join_path(root, 'route_data/route_data.v'), data_source)!
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = false\n')!
-		for nested in [false, true] {
-			body := '\$if cfg.enabled {\n import broken\n}\n'
-			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
-			os.write_file(path, "import config as cfg\n${guarded}fn main() { println('ok') }\n")!
-			for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
-				os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
-				result := os.exec(args)
-				assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
-				run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
-				assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
-			}
-		}
+		os.write_file(broken_path, 'module broken\n' + invalid_function)!
+		os.write_file(path, r"import config as cfg
+$if cfg.enabled {
+ import broken
+ import broken_syntax
+}
+$if string is string {
+ $if cfg.enabled {
+  import nested_broken
+  import nested_broken_syntax
+ }
+}
+fn main() { println('ok') }
+")!
+		disabled := os.exec(args)
+		assert disabled.exit_code == 0, '${mode}: ${disabled.output}'
+		disabled_run := os.exec([executable])
+		assert disabled_run.exit_code == 0 && disabled_run.output.trim_space() == 'ok', disabled_run.output
+
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = true\n')!
-		for nested in [false, true] {
-			body := '\$if cfg.enabled {\n import route_data as rd\n}\n\$if rd.yes {\n fn chosen() int { return 1 }\n} \$else {\n fn chosen() Unavailable { return missing() }\n}\n'
-			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
-			os.write_file(path, 'import config as cfg\n${guarded}fn main() { assert chosen() == 1 }\n')!
-			result := os.exec(args)
-			assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
-			run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
-			assert run.exit_code == 0, run.output
-		}
+		os.write_file(path, r'import config as cfg
+$if cfg.enabled {
+ import route_data as rd
+}
+$if string is string {
+ $if cfg.enabled {
+  import nested_data as nd
+ }
+ $if nd.yes {
+  fn chosen_nested() int { return nd.value }
+ } $else {
+  fn chosen_nested() Unavailable { return missing() }
+ }
+}
+$if rd.yes {
+ fn chosen() int { return 1 }
+} $else {
+ fn chosen() Unavailable { return missing() }
+}
+fn main() {
+ assert chosen() == 1
+ assert chosen_nested() == 2
+}
+')!
+		enabled := os.exec(args)
+		assert enabled.exit_code == 0, '${mode}: ${enabled.output}'
+		enabled_run := os.exec([executable])
+		assert enabled_run.exit_code == 0, enabled_run.output
+
 		os.write_file(path, 'import config as cfg\n\$if string is string {\n \$if cfg.enabled {\n  import broken\n }\n}\nfn main() {}\n')!
-		for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
-			os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
+		for body in [invalid_function, invalid_syntax] {
+			os.write_file(broken_path, 'module broken\n' + body)!
 			result := os.exec(args)
 			assert result.exit_code != 0, '${mode}: ${result.output}'
 			assert result.output.contains('broken.v'), result.output
@@ -340,7 +390,7 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 		os.write_file(path, "\$if selected.starts_with('y') {\n import route_data\n}\n\$if int is int { const selected = 'yes' }\nfn main() { assert route_data.value == 3 }\n")!
 		result := os.exec(args)
 		assert result.exit_code == 0, '${mode}: ${result.output}'
-		run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
+		run := os.exec([executable])
 		assert run.exit_code == 0, run.output
 	}
 }

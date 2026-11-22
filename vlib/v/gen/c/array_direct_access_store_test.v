@@ -1,11 +1,14 @@
-module c
+module main
 
 import os
-import v.markused
-import v.parser
-import v.pref
-import v.transform
-import v.types
+
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
 
 // An element store in a function marked @[direct_array_access] has to go through
 // the array data pointer, the same way an element load does. When it did not, a
@@ -14,7 +17,13 @@ import v.types
 // write-heavy loops. The load below the store is direct in both functions, so
 // only the store is different.
 fn test_direct_array_access_makes_element_stores_direct() {
-	path := os.join_path(os.vtmp_dir(), 'direct_array_store_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'direct_array_store_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'main.v')
+	c_path := os.join_path(root, 'main.c')
 	os.write_file(path, "@[direct_array_access]
 fn direct_store(mut a []u64, n int) {
 	for i in 0 .. n {
@@ -57,7 +66,7 @@ fn direct_str(mut a []string) {
 
 @[direct_array_access]
 fn direct_fixed_elem(mut a [][2]int) {
-	a[0] = [2]int{3, 4}
+	a[0] = [3, 4]!
 }
 
 @[direct_array_access]
@@ -98,22 +107,13 @@ fn main() {
 	checked_add(mut a, 2)
 }
 ")!
-	defer {
-		os.rm(path) or {}
-	}
-	mut prefs := pref.new_preferences()
-	mut p := parser.Parser.new(prefs)
-	mut a := p.parse_file(path)
-	mut tc := types.TypeChecker.new(a)
-	tc.collect(a)
-	tc.check_semantics()
-	assert tc.errors.len == 0, tc.errors.str()
-	transform.transform(mut a, &tc)
-	tc.annotate_types()
-	used := markused.mark_used(a, tc)
-	mut g := FlatGen.new()
-	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
-	generated := g.gen_with_used_options(a, used, &tc, true)
+	// V1-hosted unit tests get a shared V3 compiler from their runner.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-o', c_path, path]
+	compiled := os.exec(args)
+	assert compiled.exit_code == 0, compiled.output
+	generated := os.read_file(c_path)!
 
 	direct_store := direct_store_body(generated, 'direct_store')
 	assert direct_store.contains('(*((u64*)((__v3_internal_symbol_array_store_base_0)->data) + (__v3_internal_symbol_array_store_index_0))) = '), direct_store

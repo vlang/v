@@ -1687,9 +1687,7 @@ fn test_pr_review_codegen_batch_eight() {
 	// value where a `Box_int*` is required), so it is rejected rather than silently typed
 	// as `&Box[int]`.
 	run_bad(v3_bin, 'bad_value_literal_pointer_expectation', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n', 'fn `make` expects you to return a reference type `&Box[int]`, but you are returning `Box[int]` instead')
-	// The pointer form `&Box{...}` still adopts the `&Box[int]` expectation and round-trips.
-	heap := run_good(v3_bin, 'good_amp_generic_literal_pointer', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
-	assert heap == '7'
+	// The pointer-form success is covered by test_bare_generic_literal_adopts_expected_instance.
 	// A method value passed through a function-type *alias* parameter (`type Cb = fn ()`)
 	// must be cast to the generated `_fn_ptr_*` typedef, not `(void*)` (which strict C
 	// rejects for a function pointer). `fn_type_from` unwraps the alias.

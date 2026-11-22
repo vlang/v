@@ -4,6 +4,11 @@ By default, `v doc` documents a module for the platform that it runs on, and `-o
 another one, like `v doc -os windows os`. With `-os cross` (or `-os all`), it documents the
 symbols of all platforms together, like `v doc -os cross os`.
 
+For the standard library, `v doc -m -os cross vlib/` uses `vlib/.vdocignore` to exclude
+alternative builtin runtimes, including the bare targets. These sources also declare
+`module builtin` and would otherwise overwrite the main `builtin` documentation page.
+Public submodules such as `builtin.wchar` remain included.
+
 The files of each platform are the ones that the compiler builds for it, so `_nix.c.v` files
 are for all platforms but Windows, `_darwin.c.v` files are for macOS, and a `_default.c.v` file
 is for the platforms without their own file. A symbol that is only available on some

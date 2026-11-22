@@ -151,27 +151,39 @@ fn main() {
 		generated := os.read_file(output)!
 		assert generated.contains('void* _ptr__2Node;')
 		assert generated.contains('__attribute__((may_alias))')
-		for autofree in [false, true] {
-			mut args := [@VEXE, '-new-compiler', '-nocache', '-prod', '-cc', 'clang']
-			if autofree { args << ['-gc', 'none', '-autofree'] }
-			args << ['run', path]
-			result := os.exec(args)
-			assert result.exit_code == 0, 'autofree=${autofree}: ${result.output}'
-			assert result.output.contains('fixed-array pointer sums ok'), result.output
-		}
+	}
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	for autofree in [false, true] {
+		mut args := [@VEXE, '-new-compiler', '-nocache', '-prod', '-cc', cc]
+		if autofree { args << ['-gc', 'none', '-autofree'] }
+		args << ['run', path]
+		result := os.exec(args)
+		assert result.exit_code == 0, 'autofree=${autofree}: ${result.output}'
+		assert result.output.contains('fixed-array pointer sums ok'), result.output
 	}
 }
 
 fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_fixed_pointer_owner_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	compiler := os.join_path(dir, 'v-ownership')
-	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
-		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
-	assert build.exit_code == 0, build.output
+	compiler := if os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() in ['1', 'true', 'yes',
+		'on'] {
+		// Build one private compiler for the suite when tool caching is disabled.
+		private_compiler := os.join_path(dir, 'v-ownership' + $if windows { '.exe' } $else { '' })
+		vlib := os.join_path(@VEXEROOT, 'vlib')
+		build := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
+			'-path', vlib, '-o', private_compiler, os.join_path(vlib, 'v', 'v.v')])
+		assert build.exit_code == 0, build.output
+		private_compiler
+	} else {
+		@VEXE
+	}
 	source_dir := os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'testdata', 'sumtype_fixed_array_pointer')
 	for prealloc in [false, true] {
 		for source_name in ['aligned_owner.c.v', 'borrowed_slot_rebind.c.v', 'owning_sum_replace.c.v'] {

@@ -1,10 +1,290 @@
+// vtest vflags: -compile-backend fastc
 module driver
 
 // vfmt off
 $if !skip_fastc ? {
 	import os
+	import v.pref
+	import v.gen.fastc
 }
 // vfmt on
+
+fn test_fastc_native_backend_is_enabled() {
+	$if skip_fastc ? {
+		assert false, 'native-cache tests require -compile-backend fastc'
+	}
+}
+
+fn test_fastc_native_parallel_cc_selects_more_units_without_overriding_serial_mode() {
+	$if !skip_fastc ? {
+		previous_jobs := os.getenv_opt('VJOBS')
+		previous_serial := os.getenv_opt('V3_FASTC_NO_PARALLEL')
+		defer {
+			if value := previous_jobs {
+				os.setenv('VJOBS', value, true)
+			} else {
+				os.unsetenv('VJOBS')
+			}
+			if value := previous_serial {
+				os.setenv('V3_FASTC_NO_PARALLEL', value, true)
+			} else {
+				os.unsetenv('V3_FASTC_NO_PARALLEL')
+			}
+		}
+		os.unsetenv('VJOBS')
+		os.unsetenv('V3_FASTC_NO_PARALLEL')
+		mut prefs := pref.new_preferences()
+		available := fastc.fastc_tcc_job_count(prefs)
+		assert v3_fastc_native_compile_jobs(prefs, false) == int_min(available, 6)
+		assert v3_fastc_native_compile_jobs(prefs, true) == available
+		os.setenv('VJOBS', '8', true)
+		assert v3_fastc_native_compile_jobs(prefs, false) == 8
+		assert v3_fastc_native_compile_jobs(prefs, true) == 8
+		prefs.no_parallel = true
+		assert v3_fastc_native_compile_jobs(prefs, true) == 1
+		prefs.no_parallel = false
+		os.setenv('V3_FASTC_NO_PARALLEL', '1', true)
+		assert v3_fastc_native_compile_jobs(prefs, true) == 1
+	}
+}
+
+fn test_fastc_native_preprocessing_rejects_dependency_changes() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc native preprocessing race ${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		for mutation in ['contents', 'dependencies'] {
+			dir := os.join_path(root, mutation)
+			os.mkdir(dir)!
+			header := os.join_path(dir, 'native.h')
+			first := os.join_path(dir, 'first.h')
+			second := os.join_path(dir, 'second.h')
+			os.write_file(first, 'int native_value = 7;\n')!
+			os.write_file(second, 'int native_value = 8;\n')!
+			original := if mutation == 'contents' {
+				'int native_value = 7;\n'
+			} else {
+				'#include "${first}"\n'
+			}
+			os.write_file(header, original)!
+			source := os.join_path(dir, 'owner.m')
+			os.write_file(source, '#include "${header}"\n')!
+			// Wrap real Clang so the mutation is deterministic, without timing sleeps.
+			mut script := '#!/bin/sh\npreprocess=0\nfor arg in "$@"; do\n  if [ "$arg" = "-E" ]; then preprocess=1; fi\ndone\n'
+			if mutation == 'dependencies' {
+				script += 'if [ "$preprocess" = 1 ]; then\n  printf %s ' + os.quoted_path('#include "${second}"\n') + ' > ' + os.quoted_path(header) + '\nfi\n'
+			}
+			script += '/usr/bin/clang "$@"\nstatus=$?\nif [ "$preprocess" = 1 ]; then\n  printf %s ' + os.quoted_path(if mutation == 'contents' {
+				'int native_value = 8;\n'
+			} else {
+				original
+			}) + ' > ' + os.quoted_path(header) + '\nfi\nexit "$status"\n'
+			compiler := os.join_path(dir, 'clang')
+			os.write_file(compiler, script)!
+			os.chmod(compiler, 0o755)!
+			mut stats := CObjectCacheStats{}
+			if _ := v3_fastc_native_preprocessed_source(dir, source, ['-x', 'objective-c'], [], compiler, mut stats) {
+				assert false, 'changed preprocessing inputs must be rejected'
+			} else {
+				assert err.msg().contains('changed during preprocessing'), err.msg()
+			}
+			assert os.ls(dir)!.filter(it.ends_with('.mi')).len == 0
+		}
+	}
+}
+
+fn test_fastc_native_publication_preserves_preprocessing_signatures() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_publication_race_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'int native_value = 7;\n')!
+		source := os.join_path(root, 'owner.m')
+		os.write_file(source, '#include "${header}"\n')!
+		mut stats := CObjectCacheStats{}
+		preprocessed := v3_fastc_native_preprocessed_source(root, source, ['-x', 'objective-c'], [], '/usr/bin/clang', mut stats)!
+		// A later signature collection sees the new contents, while the captured
+		// preprocessed text still contains 7. It must never be certified as 8.
+		os.write_file(header, 'int native_value = 8;\n')!
+		assert c_object_file_signature(header, true, mut stats) != ''
+		staged := os.join_path(root, 'staged.dylib')
+		library := os.join_path(root, 'native.dylib')
+		manifests := [os.join_path(root, 'exact.manifest'),
+			os.join_path(root, 'preprocessed.manifest')]
+		os.write_file(staged, 'native cache fixture')!
+		mut rejected := false
+		v3_fastc_native_publish_library(staged, library, manifests, preprocessed.dependencies, preprocessed.signatures, mut stats) or {
+			assert err.msg().contains('changed during compilation'), err.msg()
+			rejected = true
+		}
+		assert rejected
+		assert !os.exists(library)
+		for manifest in manifests {
+			assert !os.exists(manifest)
+		}
+		// The same captured snapshot can be published when its inputs match again.
+		os.write_file(header, 'int native_value = 7;\n')!
+		v3_fastc_native_publish_library(staged, library, manifests, preprocessed.dependencies, preprocessed.signatures, mut stats)!
+		for manifest in manifests {
+			assert v3_fastc_native_cached_library(manifest, 1) != none
+		}
+		// An existing library must not skip validation when a manifest is rebuilt.
+		os.write_file(header, 'int native_value = 8;\n')!
+		rebuilt_manifest := os.join_path(root, 'rebuilt.manifest')
+		rejected = false
+		v3_fastc_native_publish_library(staged, library, [rebuilt_manifest], preprocessed.dependencies, preprocessed.signatures, mut stats) or {
+			assert err.msg().contains('changed during compilation'), err.msg()
+			rejected = true
+		}
+		assert rejected
+		assert !os.exists(rebuilt_manifest)
+	}
+}
+
+fn test_fastc_native_bridge_reuses_a_compiled_owner_after_an_unused_macro_changes() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_macros_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		mut libraries := []string{}
+		for stamp in [100, 200] {
+			generation := fastc.GenerationResult{
+				c_pieces:            ['#define build_time ${stamp}\n#include "${header}"\n']
+				units:               fastc.FastcUnitLayout{ head_end: 1 }
+				native_declarations: {
+					'native_value': 'int native_value(void);'
+				}
+			}
+			mut validation := V3FastcNativeValidation{}
+			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '', mut validation)!
+			assert os.is_file(bridge.library)
+			libraries << bridge.library
+		}
+		assert libraries[0] == libraries[1]
+	}
+}
+
+fn test_fastc_native_bridge_overlapped_validation_reports_changed_inputs() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_overlap_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		generation := fastc.GenerationResult{
+			c_pieces:            ['#include "${header}"\n']
+			units:               fastc.FastcUnitLayout{ head_end: 1 }
+			native_declarations: {
+				'native_value': 'int native_value(void);'
+			}
+		}
+		mut serial := V3FastcNativeValidation{}
+		built := v3_fastc_native_bridge(&generation, &prefs, [], '', mut serial)!
+		assert serial.pending.len == 0
+		// A reused manifest is hashed beside the compilation and joined before the link.
+		mut overlapped := V3FastcNativeValidation{
+			overlap: true
+		}
+		reused := v3_fastc_native_bridge(&generation, &prefs, [], '', mut overlapped)!
+		assert reused.library == built.library
+		assert overlapped.pending.len == 1
+		assert overlapped.wait()
+		// An input that changes after the manifest was written fails the join, so the
+		// driver builds again without the overlap instead of linking the old library.
+		os.write_file(header, 'static int native_value(void) { return 8; }\n')!
+		mut changed := V3FastcNativeValidation{
+			overlap: true
+		}
+		stale := v3_fastc_native_bridge(&generation, &prefs, [], '', mut changed)!
+		assert stale.library == built.library
+		assert !changed.wait()
+		mut rebuilt_validation := V3FastcNativeValidation{}
+		rebuilt := v3_fastc_native_bridge(&generation, &prefs, [], '', mut rebuilt_validation)!
+		assert rebuilt.library != built.library
+	}
+}
+
+fn test_fastc_native_failed_build_with_changed_inputs_runs_again() ! {
+	$if !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_checked_result_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, '#include <stdio.h>\n')!
+		signature := v3_fastc_native_read_signature(header)
+		failed := V3FastCCompileResult{
+			command: 'tcc'
+			output:  'native.h:1: error: include file not found'
+		}
+		// A failure with unchanged native inputs is the program's own.
+		mut unchanged := V3FastcNativeValidation{
+			overlap: true
+		}
+		assert unchanged.add([header], [signature], [], 1)
+		kept := v3_fastc_native_checked_result(failed, mut unchanged)
+		assert !kept.native_inputs_changed
+		assert kept.output == failed.output
+		// A header that changed under its reused manifest can name a framework the
+		// recorded dependencies lack: the build runs again as a cache miss.
+		os.write_file(header, '#include <Cocoa/Cocoa.h>\n')!
+		mut changed := V3FastcNativeValidation{
+			overlap: true
+		}
+		assert changed.add([header], [signature], [], 1)
+		retried := v3_fastc_native_checked_result(failed, mut changed)
+		assert retried.native_inputs_changed
+		assert !retried.success
+	}
+}
+
+fn test_fastc_native_preprocessed_cache_ignores_only_unused_macros() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_preprocessed_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'int native_value(void) { return 7; }\n')!
+		first := os.join_path(root, 'first.m')
+		second := os.join_path(root, 'second.m')
+		os.write_file(first, '#define build_time 100\n#include "${header}"\n')!
+		os.write_file(second, '#define build_time 200\n#include "${header}"\n')!
+		args := ['-std=gnu11', '-x', 'objective-c']
+		target := pref.host_target()
+		mut stats := CObjectCacheStats{}
+		preprocessed := v3_fastc_native_preprocessed_source(root, first, args, [], '/usr/bin/clang', mut stats)!
+		manifest := c_object_manifest_path(root, preprocessed.path, '/usr/bin/clang', [], target, mut stats)
+		second_preprocessed := v3_fastc_native_preprocessed_source(root, second, args, [], '/usr/bin/clang', mut stats)!
+		assert preprocessed.path == second_preprocessed.path
+		library := os.join_path(root, 'native.dylib')
+		os.write_file(library, 'native cache fixture')!
+		fastc_write_test_native_manifest(manifest, library, [first, header], mut stats)!
+		assert v3_fastc_native_cached_library(manifest, 1) != none
+		// A header can consume the generated macro. Clang must then distinguish it.
+		os.write_file(header, 'int native_value(void) { return build_time; }\n')!
+		assert v3_fastc_native_cached_library(manifest, 1) == none
+		used_first := v3_fastc_native_preprocessed_source(root, first, args, [], '/usr/bin/clang', mut stats)!
+		used_second := v3_fastc_native_preprocessed_source(root, second, args, [], '/usr/bin/clang', mut stats)!
+		assert used_first.path != used_second.path
+		// Include selection is significant even when both headers expand identically.
+		other := os.join_path(root, 'other.h')
+		os.write_file(other, 'int native_value(void) { return build_time; }\n')!
+		os.write_file(second, '#define build_time 100\n#include "${other}"\n')!
+		other_preprocessed := v3_fastc_native_preprocessed_source(root, second, args, [], '/usr/bin/clang', mut stats)!
+		assert used_first.path != other_preprocessed.path
+		archive_preprocessed := v3_fastc_native_preprocessed_source(root, first, args, [library], '/usr/bin/clang', mut stats)!
+		assert used_first.path != archive_preprocessed.path
+		// Preprocessor failures cannot authorize reuse.
+		os.rm(other)!
+		if _ := v3_fastc_native_preprocessed_source(root, second, args, [], '/usr/bin/clang', mut stats) {
+			assert false, 'a missing native header must reject preprocessing'
+		}
+	}
+}
 
 fn test_fastc_native_cache_hashes_every_dependency_before_reuse() ! {
 	$if !skip_fastc ? {
@@ -22,6 +302,8 @@ fn test_fastc_native_cache_hashes_every_dependency_before_reuse() ! {
 		manifest := os.join_path(root, 'native.manifest')
 		mut stats := CObjectCacheStats{}
 		write_c_object_manifest(manifest, library, dependencies, mut stats)!
+		assert v3_fastc_native_cached_library(manifest, 8) == none
+		fastc_write_test_native_manifest(manifest, library, dependencies, mut stats)!
 		for jobs in [1, 8] {
 			cached := v3_fastc_native_cached_library(manifest, jobs) or { panic('valid native manifest rejected') }
 			assert cached.library == library
@@ -101,9 +383,258 @@ fn test_fastc_program_dependency_key_ignores_only_declarations() {
 		assert v3_fastc_preprocessor_lines(declarations) == '#include <stdio.h>\n'
 		assert v3_fastc_preprocessor_lines(declarations.replace('void a', 'int b')) == v3_fastc_preprocessor_lines(declarations)
 		// Comments, digraphs and continued lines can change which headers are opened.
-		assert v3_fastc_preprocessor_lines('/* x\n#include <a.h>\n*/\n') == '/* x\n#include <a.h>\n*/\n'
+		assert v3_fastc_preprocessor_lines('/* x\n#include <a.h>\n*/\n#include <b.h>\n') == '/* x\n#include <a.h>\n*/\n#include <b.h>\n'
 		assert v3_fastc_preprocessor_lines('%:include <a.h>\nint x;\n') == '%:include <a.h>\n'
 		assert v3_fastc_preprocessor_lines('// note \\\n#include <a.h>\n') == '// note \\\n#include <a.h>\n'
 		assert v3_fastc_preprocessor_lines('int a = 1 \\\r\n+ 2;\n') == 'int a = 1 \\\r\n+ 2;\n'
+		assert v3_fastc_preprocessor_lines('#inc\\\nlude <a.h>\nint x;\n') == '#inc\\\nlude <a.h>\n'
+		assert v3_fastc_preprocessor_lines('# /* note */ include <a.h>\nint x;\n') == '# /* note */ include <a.h>\n'
+		// Nothing is opened after the last line that can include a file: the
+		// constants of the program are macros that follow the headers.
+		assert v3_fastc_preprocessor_lines('#define A 1\n#include <a.h>\n#define main__limit 4\nint x;\n#pragma pack(push, 1)\n/* note */\n') == '#define A 1\n#include <a.h>\n'
+		assert v3_fastc_preprocessor_lines('#define main__limit 4\n') == ''
+		// The `#include` of a macro body is text, unless a comment hides the macro.
+		assert v3_fastc_preprocessor_lines('#include <a.h>\n#define main__shader (_S("#include <metal_stdlib>"))\n') == '#include <a.h>\n'
+		assert v3_fastc_preprocessor_lines('/*\n#define A 1 */ #include <a.h>\nint x;\n') == '/*\n#define A 1 */ #include <a.h>\n'
+		assert v3_fastc_preprocessor_lines('int x; /* note */ #include <a.h>\n') == 'int x; /* note */ #include <a.h>\n'
+	}
+}
+
+fn fastc_write_test_native_manifest(manifest string, library string, dependencies []string, mut stats CObjectCacheStats) ! {
+	$if !skip_fastc ? {
+		mut signatures := []string{}
+		for dependency in dependencies {
+			signatures << v3_fastc_native_file_signature(dependency, false, mut stats)
+		}
+		v3_fastc_native_publish_library('', library, [manifest], dependencies, signatures, mut stats)!
+	}
+}
+
+fn test_fastc_native_signatures_cover_block_boundaries_and_refresh() ! {
+	$if !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_signatures_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		path := os.join_path(root, 'input.h')
+		mut stats := CObjectCacheStats{}
+		assert v3_fastc_native_file_signature(path, false, mut stats) == ''
+		mut signatures := []string{}
+		for size in [0, 1, 65535, 65536, 65537, 131073] {
+			os.write_file_array(path, []u8{len: size, init: u8(index % 251)})!
+			signature := v3_fastc_native_file_signature(path, true, mut stats)
+			assert signature.starts_with('word-v1:')
+			assert v3_fastc_native_read_signature(path) == signature
+			assert signature !in signatures
+			signatures << signature
+		}
+		original := signatures.last()
+		for offset in [0, 65535, 65536, 131072] {
+			mut bytes := []u8{len: 131073, init: u8(index % 251)}
+			bytes[offset] ^= 1
+			os.write_file_array(path, bytes)!
+			assert v3_fastc_native_file_signature(path, false, mut stats) == original
+			assert !v3_fastc_native_dependencies_match([path], [original], [])
+			assert v3_fastc_native_file_signature(path, true, mut stats) != original
+			os.write_file_array(path, []u8{len: 131073, init: u8(index % 251)})!
+			assert v3_fastc_native_file_signature(path, true, mut stats) == original
+		}
+	}
+}
+
+fn test_fastc_native_declarations_split_by_name() {
+	$if !skip_fastc ? {
+		text := '#define main__limit (((int)(4)))\n' + 'typedef struct main__Point main__Point;\n' +
+			'typedef int main__Kind;\n' + 'typedef void (*main__Callback)(voidptr, main__Kind);\n' +
+			'typedef enum {\n\tmain__Color__red, // 0\n\tmain__Color__green = 3,\n} main__Color;\n' +
+			'#pragma pack(push, 1)\n' +
+			'struct main__Point {\n\tint x; /* { not a brace } */\n\tmain__Kind kind;\n};\n' +
+			'#pragma pack(pop)\n' + 'typedef u8 main__Bytes[16];\n' +
+			'extern main__Point main__origin;\n' +
+			'static inline int main__twice(int n) {\n\treturn n * 2; // "}"\n}\n' +
+			'int main__run(main__Point* point, char* text);\n'
+		declarations := v3_fastc_native_split_declarations(text)
+		names := declarations.map(it.names)
+		assert names == [
+			['main__limit'],
+			['main__Point'],
+			['main__Kind'],
+			['main__Callback'],
+			['main__Color__red', 'main__Color__green', 'main__Color'],
+			[]string{},
+			['main__Point'],
+			[]string{},
+			['main__Bytes'],
+			['main__origin'],
+			['main__twice'],
+			['main__run'],
+		]
+		mut joined := ''
+		for declaration in declarations {
+			joined += text[declaration.start..declaration.end]
+		}
+		assert joined == text
+	}
+}
+
+fn test_fastc_native_lean_declarations_keep_what_the_seeds_mention() {
+	$if !skip_fastc ? {
+		macros := '#define main__limit (((main__Kind)(4)))\n' + '#define main__unused (((int)(5)))\n'
+		text := macros + 'typedef struct main__Point main__Point;\n' +
+			'typedef struct main__Other main__Other;\n' + 'typedef int main__Kind;\n' +
+			'typedef int main__Unused;\n' + '#pragma pack(push, 1)\n' +
+			'struct main__Point {\n\tint x;\n\tmain__Kind kind;\n};\n' + '#pragma pack(pop)\n' +
+			'struct main__Other {\n\tmain__Point point;\n};\n'
+		// Every macro stays, and names nothing: a native source can test one with `#ifdef`.
+		assert v3_fastc_native_lean_declarations(text, [], []) == macros + '#pragma pack(push, 1)\n' +
+			'#pragma pack(pop)\n'
+		// A binding mentions the struct; its field type and the pragmas come with it.
+		point := v3_fastc_native_lean_declarations(text, ['int native(main__Point* point);'], [])
+		assert point == macros + 'typedef struct main__Point main__Point;\n' + 'typedef int main__Kind;\n' +
+			'#pragma pack(push, 1)\n' + 'struct main__Point {\n\tint x;\n\tmain__Kind kind;\n};\n' +
+			'#pragma pack(pop)\n'
+		// A name reported by Clang is a seed like any other: here the type that an
+		// expanded macro mentions.
+		kind := v3_fastc_native_lean_declarations(text, [], ['main__Kind'])
+		assert kind == macros + 'typedef int main__Kind;\n' + '#pragma pack(push, 1)\n' +
+			'#pragma pack(pop)\n'
+		assert v3_fastc_native_lean_declarations(text, ['main__Other value;'], []) == text.replace('typedef int main__Unused;\n',
+			'')
+		message := "native.m:3:9: error: unknown type name 'main__Other'; did you mean 'main__Point'?\n" +
+			"native.m:4:2: error: use of undeclared identifier 'native_only'\n" +
+			"native.m:5:2: note: expanded from macro 'main__limit'\n"
+		assert v3_fastc_native_missing_declarations(message, text, ['main__Point']) == [
+			'main__Other',
+		]
+	}
+}
+
+fn test_fastc_native_bridge_owner_ignores_declarations_its_native_code_cannot_name() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_lean_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		// The native source names a V type that no binding mentions: Clang reports it.
+		source := os.join_path(root, 'native.m')
+		os.write_file(source, 'int native_size(void) { return (int)sizeof(main__Used); }\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		mut libraries := []string{}
+		for variant in [
+			['\tint a;\n', '\tint b;\n', 'int v_f1(void);\n'],
+			// Another struct, another constant and other prototypes leave the owner alone.
+			['\tint a;\n', '\tint b;\n\tint c;\n', 'int v_f1(void);\nint v_f2(int n);\n'],
+			// The struct that the native source names does not.
+			['\tint a;\n\tint d;\n', '\tint b;\n', 'int v_f1(void);\n'],
+		] {
+			generation := fastc.GenerationResult{
+				c_pieces:            ['#include "${header}"\n', 'typedef struct main__Used main__Used;\ntypedef struct main__Unused main__Unused;\n' +
+					'#define main__unused_limit ${variant[1].len}\n' +
+					'struct main__Used {\n${variant[0]}};\nstruct main__Unused {\n${variant[1]}};\n',
+					'#include "${source}"\n', variant[2]]
+				units:               fastc.FastcUnitLayout{
+					head_end:          4
+					native_decl_start: 1
+					native_decl_end:   2
+					native_owner_end:  3
+				}
+				native_declarations: {
+					'native_value': 'int native_value(void);'
+					'native_size':  'int native_size(void);'
+				}
+			}
+			mut validation := V3FastcNativeValidation{}
+			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '', mut validation)!
+			assert validation.wait()
+			assert os.is_file(bridge.library)
+			libraries << bridge.library
+		}
+		assert libraries[0] == libraries[1]
+		assert libraries[0] != libraries[2]
+	}
+}
+
+fn test_fastc_native_bridge_owner_keeps_the_constants_its_native_code_can_test() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_macros_tested_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		// No binding mentions the constant, and the source compiles without it.
+		source := os.join_path(root, 'native.m')
+		os.write_file(source, 'int native_limit(void) {\n#ifdef main__limit\n\treturn main__limit;\n#else\n\treturn -1;\n#endif\n}\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		mut libraries := []string{}
+		mut owners := []string{}
+		for constants in ['#define main__limit (((int)(4)))\n', '#define main__limit (((int)(5)))\n',
+			'#define main__other (((int)(4)))\n',
+			'#define main__limit (((int)(4)))\n#define main__other (((int)(6)))\n'] {
+			generation := fastc.GenerationResult{
+				c_pieces:            ['#include "${header}"\n',
+					constants + 'typedef int main__Unused;\n', '#include "${source}"\n',
+					'int v_f1(void);\n']
+				units:               fastc.FastcUnitLayout{
+					head_end:          4
+					native_decl_start: 1
+					native_decl_end:   2
+					native_owner_end:  3
+				}
+				native_declarations: {
+					'native_value': 'int native_value(void);'
+					'native_limit': 'int native_limit(void);'
+				}
+			}
+			mut validation := V3FastcNativeValidation{}
+			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '', mut validation)!
+			assert validation.wait()
+			assert os.is_file(bridge.library)
+			libraries << bridge.library
+			owners << constants
+		}
+		// The value and the presence of the constant both reach the native source.
+		assert libraries[0] != libraries[1]
+		assert libraries[0] != libraries[2]
+		assert libraries[1] != libraries[2]
+		// A constant that the native source neither tests nor expands does not.
+		assert libraries[0] == libraries[3]
+	}
+}
+
+fn test_fastc_native_bridge_keeps_every_declaration_when_clang_needs_an_unnamed_one() ! {
+	$if macos && !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_bridge_full_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, 'static int native_value(void) { return 7; }\n')!
+		// Both names come from one declaration, which is known by its last name only.
+		source := os.join_path(root, 'native.m')
+		os.write_file(source, 'int native_size(void) { return (int)sizeof(main__First); }\n')!
+		prefs := pref.Preferences{ vroot: @VEXEROOT, target: pref.host_target() }
+		mut libraries := []string{}
+		for _ in 0 .. 2 {
+			generation := fastc.GenerationResult{
+				c_pieces:            ['#include "${header}"\n',
+					'typedef struct { int a; } main__First, main__Second;\ntypedef int main__Unused;\n',
+					'#include "${source}"\n', 'int v_f1(void);\n']
+				units:               fastc.FastcUnitLayout{
+					head_end:          4
+					native_decl_start: 1
+					native_decl_end:   2
+					native_owner_end:  3
+				}
+				native_declarations: {
+					'native_value': 'int native_value(void);'
+					'native_size':  'int native_size(void);'
+				}
+			}
+			mut validation := V3FastcNativeValidation{}
+			bridge := v3_fastc_native_bridge(&generation, &prefs, [], '', mut validation)!
+			assert validation.wait()
+			assert os.is_file(bridge.library)
+			libraries << bridge.library
+		}
+		assert libraries[0] == libraries[1]
 	}
 }
