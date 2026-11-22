@@ -639,8 +639,9 @@ backend does not expose `gg`'s drawing calls.
   data-URI/external buffers are supported.
 - `gg.physics` provides sphere rigid bodies, gravity and sphere/floor contact
   resolution. Full rigid-body rotation and joint constraints are not included.
-- `gg.splat` stores 3D Gaussians, projects them with a perspective camera and
-  rasterizes small clouds on the CPU; large clouds need a GPU renderer.
+- `gg.splat` has both paths: `rasterize` is a pure-V CPU renderer for headless
+  and web targets, while `GpuSplatRenderer` projects clouds into instanced
+  Gaussian quads drawn with sokol on native targets.
 - `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1,
   ETC1 (full individual/differential modes with intensity modifiers), all
   eight BC7 modes and ASTC void-extent (LDR and HDR) plus 4x4 LDR blocks.
@@ -660,7 +661,12 @@ backend does not expose `gg`'s drawing calls.
 - `gg.hdr` now has wide-gamut color-space conversion, 3D LUTs and auto-exposure;
   `gg.raytrace` adds temporal accumulation and bilateral denoising.
 - `gg.gpu` exposes fullscreen tonemap/blur/bloom shaders and an instanced GPU
-  particle renderer (native only). `gg.texture` adds ETC1 decode and mipmaps.
+  particle renderer (native only). `gg.texture` adds ETC1, BC7 and ASTC decode
+  plus mipmaps.
+- CPU/GPU parity: `gg.fx` CPU filters pair with `gg.gpu` fullscreen passes;
+  `gg.splat` has CPU and sokol GPU renderers; `gg.hdr` float render targets
+  feed GPU post chains; `gg.raytrace` remains CPU-only because sokol.gfx has
+  no ray-tracing or compute API.
 - `gg.loaders.load_scene_gltf` imports meshes, materials, nodes with TRS,
   cameras, images and KHR punctual lights in one pass.
 - `gg.raytrace` is a pure-V CPU path tracer. `Scene` stores spheres,

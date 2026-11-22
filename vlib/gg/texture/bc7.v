@@ -91,19 +91,33 @@ pub fn decode_bc7(block []u8) ![]gg.Color {
 	}
 	info := bc7_mode_info(mode)
 	mut br := BitReader{ data: block, pos: mode + 1 }
+	mut cem := 0
 	if info.cem_bits > 0 {
-		_ = br.read(info.cem_bits)! // endpoint mode; use RGBA layout
+		cem = int(br.read(info.cem_bits)!)
 	}
 	mut partition := 0
 	if info.partition_bits > 0 {
 		partition = int(br.read(info.partition_bits)!)
 	}
 	mut endpoints := []u8{len: info.subsets * 2 * 4, init: 0}
+	// CEM selects how many endpoint components are stored. Missing channels
+	// take their defaults: A=255, others=0.
+	components := match cem {
+		0 { 4 }
+		1 { 3 }
+		2 { 2 }
+		3 { 1 }
+		else { 4 }
+	}
 	mut index := 0
-	for subset in 0 .. info.subsets {
-		for endpoint in 0 .. 2 {
+	for _ in 0 .. info.subsets {
+		for _ in 0 .. 2 {
+			mut values := [u8(0), 0, 0, 255]
+			for c in 0 .. components {
+				values[c] = bc7_expand(int(br.read(info.endpoint_bits)!), info.endpoint_bits)
+			}
 			for c in 0 .. 4 {
-				endpoints[index] = bc7_expand(int(br.read(info.endpoint_bits)!), info.endpoint_bits)
+				endpoints[index] = values[c]
 				index++
 			}
 		}
