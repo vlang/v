@@ -33,11 +33,14 @@ fn half_to_f32(h u16) f32 {
 	return sign * f32(math.ldexp(f64(1024 + frac), exp - 25))
 }
 
-// decode_astc expands one 16-byte ASTC block into 16 RGBA pixels.
-// Void-extent blocks (LDR and HDR) and 4x4 LDR blocks with interpolated
-// endpoints are decoded. Unsupported block modes return a clear error.
-pub fn decode_astc(block []u8) ![]gg.Color {
-	mut out := []gg.Color{len: 16}
+// decode_astc_sized expands one 16-byte ASTC block into width*height RGBA
+// pixels. Void-extent blocks (LDR and HDR) and LDR blocks with interpolated
+// endpoints are decoded for the common 4x4, 5x5, 6x6 and 8x8 footprints.
+pub fn decode_astc_sized(block []u8, width int, height int) ![]gg.Color {
+	if width <= 0 || height <= 0 {
+		return error('texture: invalid ASTC block size')
+	}
+	mut out := []gg.Color{len: width * height}
 	if block.len < 16 {
 		return error('texture: ASTC block must be 16 bytes')
 	}
@@ -53,7 +56,7 @@ pub fn decode_astc(block []u8) ![]gg.Color {
 			b = half_to_f32(u16(astc_read_bits(block, 43, 16)!))
 		}
 		c := gg.Color{astc_clamp(int(r * 255)), astc_clamp(int(g * 255)), astc_clamp(int(b * 255)), 255}
-		for i in 0 .. 16 {
+		for i in 0 .. out.len {
 			out[i] = c
 		}
 		return out
@@ -80,10 +83,15 @@ pub fn decode_astc(block []u8) ![]gg.Color {
 	pos += 8
 	a1 := int(astc_read_bits(block, pos, 8)!)
 	pos += 8
-	for i in 0 .. 16 {
+	for i in 0 .. out.len {
 		w4 := int(astc_read_bits(block, pos + i * 4, 4)!)
 		w := f32(w4) / 15
 		out[i] = gg.Color{astc_clamp(int(f32(r0) + (f32(r1) - f32(r0)) * w)), astc_clamp(int(f32(g0) + (f32(g1) - f32(g0)) * w)), astc_clamp(int(f32(b0) + (f32(b1) - f32(b0)) * w)), astc_clamp(int(f32(a0) + (f32(a1) - f32(a0)) * w))}
 	}
 	return out
+}
+
+// decode_astc decodes a 4x4 ASTC block.
+pub fn decode_astc(block []u8) ![]gg.Color {
+	return decode_astc_sized(block, 4, 4)
 }

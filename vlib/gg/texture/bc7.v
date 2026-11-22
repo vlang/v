@@ -114,7 +114,8 @@ pub fn decode_bc7(block []u8) ![]gg.Color {
 		for _ in 0 .. 2 {
 			mut values := [u8(0), 0, 0, 255]
 			for c in 0 .. components {
-				values[c] = bc7_expand(int(br.read(info.endpoint_bits)!), info.endpoint_bits)
+				mut v := bc7_expand(int(br.read(info.endpoint_bits)!), info.endpoint_bits)
+				values[c] = v
 			}
 			for c in 0 .. 4 {
 				endpoints[index] = values[c]

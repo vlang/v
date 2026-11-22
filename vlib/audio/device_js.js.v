@@ -43,6 +43,10 @@ pub fn js_audio_context() JS.AudioContext {
 __global web_ctx JS.AudioContext = unsafe { nil }
 __global web_channels int = 2
 __global web_volume f32 = 1
+// next_start is the headline time for the next queued buffer. Scheduling at
+// max(currentTime, next_start) gives a continuous queue instead of overlapping
+// one-shot sources on every push.
+__global web_next_start f32 = 0
 
 fn web_setup(cfg DeviceConfig) !bool {
 	web_ctx = js_audio_context()
@@ -70,7 +74,10 @@ fn web_push(samples []f32) !int {
 	source := web_ctx.createBufferSource()
 	source.buffer = buf
 	source.connect(web_ctx.destination)
-	source.start(web_ctx.currentTime)
+	now := web_ctx.currentTime
+	start := if web_next_start > now { web_next_start } else { now }
+	source.start(start)
+	web_next_start = start + f32(frames) / f32(web_ctx.sampleRate)
 	return frames
 }
 

@@ -644,10 +644,9 @@ backend does not expose `gg`'s drawing calls.
   Gaussian quads drawn with sokol on native targets.
 - `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1,
   ETC1 (full individual/differential modes with intensity modifiers), all
-  eight BC7 modes and ASTC void-extent (LDR and HDR) plus 4x4 LDR blocks.
-  It also generates RGBA mipmaps. BC7 CEM channel swizzles use the canonical
-  RGBA layout, and ASTC endpoint layouts outside the 4x4 LDR subset still
-  return an explicit error.
+  eight BC7 modes (including CEM endpoint component counts) and ASTC void
+  extents (LDR/HDR) plus 4x4, 5x5, 6x6 and 8x8 LDR blocks via
+  `decode_astc_sized`. It also generates RGBA mipmaps.
 - `gg.xr` derives left/right stereo cameras from a head camera and provides
   side-by-side viewports. Headset tracking belongs to your XR runtime.
 - `gg.ecs` provides generation-counted entities, sparse-set `Storage[T]`
@@ -665,8 +664,8 @@ backend does not expose `gg`'s drawing calls.
   plus mipmaps.
 - CPU/GPU parity: `gg.fx` CPU filters pair with `gg.gpu` fullscreen passes;
   `gg.splat` has CPU and sokol GPU renderers; `gg.hdr` float render targets
-  feed GPU post chains; `gg.raytrace` remains CPU-only because sokol.gfx has
-  no ray-tracing or compute API.
+  feed GPU post chains; `gg.raytrace` has both a general CPU path tracer and
+  a sokol `GpuTracer` that ray marches small sphere scenes on the GPU.
 - `gg.loaders.load_scene_gltf` imports meshes, materials, nodes with TRS,
   cameras, images and KHR punctual lights in one pass.
 - `gg.raytrace` is a pure-V CPU path tracer. `Scene` stores spheres,
@@ -674,7 +673,8 @@ backend does not expose `gg`'s drawing calls.
   support diffuse, metal, dielectric and emissive responses. `Renderer` traces
   a `gg.Camera3D` into a `gg.hdr` HDRImage with multi-sample anti-aliasing and
   recursive bounces, then tone maps through `gg.hdr`. `add_mesh` imports
-  `gg.Mesh3D` geometry. It is CPU-only; GPU RT needs raw platform backends.
+  `gg.Mesh3D` geometry. `GpuTracer` provides a sokol GPU path for simple
+  sphere scenes; the CPU tracer remains the general implementation.
 - `gg.hdr` adds linear-light HDR rendering helpers: `ColorHDR` (f32 components
   that may exceed 1), float RGBA buffers with exposure, ACES/Reinhard tone
   mapping and bloom, and Radiance RGBE `.hdr` read/write (`decode_rgbe`,
