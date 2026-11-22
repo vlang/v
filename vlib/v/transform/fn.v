@@ -11991,8 +11991,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	}
 	// A borrowed error, such as a module-level `IError` constant, is copied with the
 	// dynamic error clone: whoever receives the copy may free it, never the shared original.
+	// In autofree mode IError copies share the error value (V value-copy aliasing):
+	// the field owner frees, copies are borrowed, so no per-implementer clone is needed.
 	if clean_id in [transform_identity_ierror, transform_identity_builtin_ierror] && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_id)) {
+		if t.tc.autofree_mode {
+			return source
+		}
 		return t.clone_owned_ierror(source)
 	}
 	if clean_shape.has(.array_type) {
@@ -20787,7 +20792,11 @@ fn (mut t Transformer) clone_result_error(source flat.NodeId) flat.NodeId {
 }
 
 // clone_owned_ierror gives `err` an independent error object, preserving its concrete type.
+// In autofree mode the error value is shared (borrowed copy, field owner frees).
 fn (mut t Transformer) clone_owned_ierror(err flat.NodeId) flat.NodeId {
+	if !isnil(t.tc) && t.tc.autofree_mode {
+		return err
+	}
 	t.mark_fn_used('string__clone')
 	cloned := t.make_call_typed('__v3_clone_owned_ierror', [err], flat.source_type_id('IError'))
 	if isnil(t.tc) {

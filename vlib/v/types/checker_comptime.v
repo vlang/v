@@ -16509,7 +16509,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
 		if node.op != .amp {
-			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val, node, header)
 		} else {
 			tc.ownership_bind_mut_for_in_var(key_id, val_id, container_id, has_val)
 		}

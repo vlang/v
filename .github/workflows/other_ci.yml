@@ -120,9 +120,11 @@ jobs:
       - name: V self compilation with g++ and -std=c++20
         run: ./v -cc g++-10 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-10 -no-std -cflags -std=c++20 -o v3 cmd/v
 
-      # TODO: re-enable once autofree is fixed; see https://github.com/vlang/v/issues/27116
-      # - name: Ensure V can be compiled with -autofree
-      #   run: ./v -autofree cmd/v
+      # Re-enabled as a non-blocking lane; see #27116 and parent tracker #32531.
+      # Build to a separate output so the compiler under test is not overwritten.
+      - name: Ensure V can be compiled with -autofree
+        continue-on-error: true
+        run: ./v -autofree -o v_autofree cmd/v
 
       - name: Ensure V can be compiled with -no-closures
         run: ./v -no-closures cmd/v

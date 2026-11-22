@@ -1833,6 +1833,14 @@ fn (mut t Transformer) array_lvalue_value(value flat.NodeId, typ_id u32) flat.No
 // an operation detaches its buffer. Plain borrowing and element writes keep sharing
 // the original slots and do not invoke user clones.
 fn (mut t Transformer) detach_owned_array_slice_for_mutation(array_value flat.NodeId, array_type_id u32, changes flat.NodeId) {
+	if t.valid_node_id(array_value) {
+		value_node := t.a.node(array_value)
+		// A local bound to a brand-new array buffer cannot be a slice view, so
+		// no detach/clone is needed when an operation grows or detaches it.
+		if value_node.kind == .ident && value_node.value in t.fresh_array_vars {
+			return
+		}
+	}
 	elem_type := flat.source_type_syntax(array_type_id).raw_base()
 	if !t.owned_array_slice_detach_needed(elem_type) {
 		return
