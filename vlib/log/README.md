@@ -130,3 +130,22 @@ Built-in handlers: `TextHandler`, `JSONHandler`, `MultiHandler` and
 `DiscardHandler`. `HandlerOptions` supports a fixed or runtime adjustable level,
 `replace_attr` for redaction, time format, local time and source capture (when
 compiled with call site support).
+
+### Wrapping handlers
+
+`SampledHandler` forwards one record in every N (deterministic) or with
+probability 1/N (random). `AsyncHandler` moves formatting and I/O to a worker
+thread. Because it buffers records, it is lossy on abrupt exit: call `close()`
+to drain the queue before shutting down.
+
+```v
+import log
+import os
+
+fn main() {
+	h := log.new_json_handler(os.stderr(), log.HandlerOptions{})
+	async_h := log.new_async_handler(log.new_sampled_handler(h, 10), 1024)
+	defer { async_h.close() }
+	log.new_logger(async_h).info('sampled and asynchronous')
+}
+```
