@@ -575,7 +575,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	ctx.scroll_y = int(e.scroll_y)
 	ctx.key_modifiers = unsafe { Modifier(e.modifiers) }
 	ctx.key_repeat = e.key_repeat
-	if e.typ in [.key_down, .key_up] {
+	if e.typ == .key_down || e.typ == .key_up {
 		key_idx := int(e.key_code) % key_code_max
 		prev := ctx.pressed_keys[key_idx]
 		next := e.typ == .key_down
