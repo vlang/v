@@ -3575,10 +3575,10 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 	if staged_rhs_is_owned && t.a.nodes[int(append)].value != 'push_many' {
 		array_type := t.clean_array_append_lhs_type(info.value_type)
 		if flat.source_type_shape(array_type).has(.array_type) {
+			// A single-element append that does not clone moves the staged value
+			// into the destination, which then owns its storage.
 			elem_type := flat.source_type_syntax(array_type).raw_base()
-			staged_scalar_was_cloned = t.expr_can_take_address(append_rhs)
-				&& !t.tc.ownership_expr_moves_storage(append_rhs, append_rhs)
-				&& t.compiler_default_clone_type_needs_work(elem_type)
+			staged_scalar_was_cloned = t.array_append_clones_borrowed_value(append_rhs, elem_type)
 		}
 	}
 	if lowered := t.try_lower_array_append_stmt(append) {
