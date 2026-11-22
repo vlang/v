@@ -14,6 +14,7 @@ struct Abc {
 
 fn (a Abc) xyz() {}
 
+@[unsafe]
 fn resource__null() &IAbc {
 	return unsafe { nil }
 }

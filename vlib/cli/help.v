@@ -27,6 +27,7 @@ fn help_cmd() Command {
 }
 
 // print_help_for_command outputs the help message of `help_cmd`.
+@[unsafe]
 pub fn print_help_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {

@@ -795,6 +795,7 @@ fn get_value_from_optional[T](val ?T) T {
 	return val or { T{} }
 }
 
+@[unsafe]
 fn check_not_empty[T](val T) ?bool {
 	$if val is ?string {
 		opt := ?string(val)
@@ -916,6 +917,7 @@ fn struct_field_is_none[T](val T) bool {
 	return false
 }
 
+@[unsafe]
 fn struct_field_is_nil[T](val T) bool {
 	$if T.indirections != 0 {
 		return val == unsafe { nil }

@@ -24,7 +24,7 @@ fn deinit() {
 	free_logger(default_logger)
 }
 
-@[manualfree]
+@[manualfree; unsafe]
 fn free_logger(logger &Logger) {
 	if voidptr(logger) == unsafe { nil } {
 		return

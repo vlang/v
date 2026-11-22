@@ -12,6 +12,7 @@ struct MultiPointerFields {
 	m ?&&int
 }
 
+@[unsafe]
 fn test_multi_pointer_fields() {
 	decoded := json2.decode[MultiPointerFields]('{"d": 7, "e": "x", "n": null, "m": null}')!
 	assert **decoded.d == 7

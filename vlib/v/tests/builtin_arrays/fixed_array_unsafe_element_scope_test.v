@@ -1,5 +1,6 @@
 module main
 
+@[unsafe]
 fn test_fixed_array_unsafe_elements_keep_prior_temporaries() {
 	mut pointers := unsafe { [3]&u8{} }
 	pointers = [c'first', unsafe { nil }, unsafe { nil }]!

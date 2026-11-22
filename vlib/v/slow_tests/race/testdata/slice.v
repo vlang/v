@@ -651,6 +651,7 @@ fn test_race_pointer_slice_append_slice() {
 	_ = <-c
 }
 
+@[unsafe]
 fn test_race_pointer_slice_append_slice2() {
 	c := chan bool{cap: 1}
 	s := &Cell[[]&int]{

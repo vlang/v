@@ -85,6 +85,7 @@ mut:
 }
 
 // new_server creates and initializes a new Server instance.
+@[unsafe]
 pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
@@ -135,6 +136,7 @@ fn close_socket(fd C.SOCKET) {
 	}
 }
 
+@[unsafe]
 fn get_transmit_file_fn(fd C.SOCKET) ?IocpTransmitFileFn {
 	mut transmit_file_guid := C.GUID{
 		Data1: 0xb5367df0
@@ -155,6 +157,7 @@ fn wsa_error_message(label string) string {
 	return '${label} failed with WSA error ${C.WSAGetLastError()}'
 }
 
+@[unsafe]
 fn create_server_socket(server &Server) !C.SOCKET {
 	// Resolve the bind address first: the socket family must match the address
 	// family, and a configured host may resolve to a different family than
@@ -186,6 +189,7 @@ fn create_server_socket(server &Server) !C.SOCKET {
 	return server_fd
 }
 
+@[unsafe]
 fn associate_socket_with_iocp(iocp voidptr, fd C.SOCKET) bool {
 	return C.CreateIoCompletionPort(socket_handle(fd), iocp, C.ULONG_PTR(fd), 0) != unsafe { nil }
 }
@@ -200,6 +204,7 @@ fn (conn &IocpConn) is_closing() bool {
 	return closing.load()
 }
 
+@[unsafe]
 fn (mut conn IocpConn) register_op(op &IocpOperation) {
 	mut pending_op := conn.pending_op
 	if !pending_op.compare_and_swap(voidptr(unsafe { nil }), voidptr(op)) {
@@ -207,6 +212,7 @@ fn (mut conn IocpConn) register_op(op &IocpOperation) {
 	}
 }
 
+@[unsafe]
 fn (mut conn IocpConn) unregister_op(op &IocpOperation) {
 	mut pending_op := conn.pending_op
 	if !pending_op.compare_and_swap(voidptr(op), voidptr(unsafe { nil })) {
@@ -214,6 +220,7 @@ fn (mut conn IocpConn) unregister_op(op &IocpOperation) {
 	}
 }
 
+@[unsafe]
 fn (mut conn IocpConn) take_op(overlapped &C.OVERLAPPED) bool {
 	mut pending_op := conn.pending_op
 	raw_op := voidptr(overlapped)
@@ -292,6 +299,7 @@ fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns u64) {
 	registry.mutex.unlock()
 }
 
+@[unsafe]
 fn (mut conn IocpConn) close_response_file() {
 	if conn.has_file {
 		C.CloseHandle(conn.file_handle)
@@ -302,6 +310,7 @@ fn (mut conn IocpConn) close_response_file() {
 	}
 }
 
+@[unsafe]
 fn (mut conn IocpConn) open_response_file(path string) bool {
 	conn.close_response_file()
 	st := os.stat(path) or { return false }
@@ -325,6 +334,7 @@ fn (mut op IocpOperation) free() {
 	unsafe { free(op) }
 }
 
+@[unsafe]
 fn (mut conn IocpConn) free_request_arena() {
 	$if prealloc {
 		if conn.request_arena != unsafe { nil } {
@@ -348,6 +358,7 @@ fn (mut conn IocpConn) begin_active_request() {
 	}
 }
 
+@[unsafe]
 fn free_conn_storage(mut conn IocpConn) {
 	if conn.request_buf.cap > 0 {
 		unsafe { conn.request_buf.free() }
@@ -411,6 +422,7 @@ fn reset_conn_for_next_request(mut conn IocpConn) {
 	conn.should_close = false
 }
 
+@[unsafe]
 fn post_recv(mut conn IocpConn) bool {
 	mut op := &IocpOperation{
 		kind: .read
@@ -436,6 +448,7 @@ fn post_recv(mut conn IocpConn) bool {
 	return true
 }
 
+@[unsafe]
 fn post_write_op(mut op IocpOperation) bool {
 	if op.pos >= op.buf.len {
 		return true
@@ -460,6 +473,7 @@ fn post_write_op(mut op IocpOperation) bool {
 	return true
 }
 
+@[unsafe]
 fn post_transmit_file(mut conn IocpConn) bool {
 	if !conn.has_file {
 		return true
@@ -556,6 +570,7 @@ fn send_terminal_response(mut conn IocpConn, response []u8, worker_state voidptr
 	send_response(mut conn, response.clone(), true, worker_state)
 }
 
+@[unsafe]
 fn process_request(mut conn IocpConn, frame_total int, worker_state voidptr) {
 	conn.begin_active_request()
 	conn.request_len = frame_total
@@ -756,6 +771,7 @@ fn run_iocp_housekeeping(server &Server) bool {
 	return false
 }
 
+@[unsafe]
 fn process_iocp_events(server &Server) {
 	mut worker_state := voidptr(unsafe { nil })
 	if server.make_state != unsafe { nil } {
@@ -804,6 +820,7 @@ fn process_iocp_events(server &Server) {
 	}
 }
 
+@[unsafe]
 fn accept_loop(server &Server) {
 	for !server.is_shutting_down() {
 		client_fd := C.v_fasthttp_accept(server.listen_fd)
@@ -836,6 +853,7 @@ fn accept_loop(server &Server) {
 	}
 }
 
+@[unsafe]
 fn (mut server Server) stop_accepting() {
 	if server.listen_fd != iocp_invalid_socket {
 		C.v_fasthttp_shutdown(server.listen_fd, C.SD_BOTH)
@@ -850,6 +868,7 @@ fn (mut server Server) stop_accepting() {
 }
 
 // run starts the server and begins listening for incoming connections.
+@[unsafe]
 pub fn (mut server Server) run() ! {
 	server.listen_fd = create_server_socket(server)!
 	server.iocp = C.CreateIoCompletionPort(C.INVALID_HANDLE_VALUE, unsafe { nil }, 0, C.DWORD(max_thread_pool_size))

@@ -253,6 +253,7 @@ $if !i386 {
 	}
 
 	// vlibc_sys_mmap maps memory using native protection and mapping flags.
+	@[unsafe]
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
 		rc, er := sys_call6(mac_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
 		if er != 0 {
@@ -350,6 +351,7 @@ $if !i386 {
 
 	// ---- time (gettimeofday + select; macOS has no clock_gettime/nanosleep syscalls) ----
 	// vlibc_now_realtime_ns returns the wall-clock timestamp in nanoseconds since the Unix epoch.
+	@[unsafe]
 	pub fn vlibc_now_realtime_ns() i64 {
 		mut tv := MacTimeval{}
 		vlibc_sys_gettimeofday(&tv, unsafe { nil })
@@ -364,6 +366,7 @@ $if !i386 {
 	}
 
 	// vlibc_sleep_ns requests a sleep duration in nanoseconds; signals may interrupt it.
+	@[unsafe]
 	pub fn vlibc_sleep_ns(nsec u64) {
 		mut tv := MacTimeval{
 			sec:  i64(nsec / 1_000_000_000)
@@ -372,6 +375,7 @@ $if !i386 {
 		vlibc_sys_select(0, unsafe { nil }, unsafe { nil }, unsafe { nil }, &tv)
 	}
 
+	@[unsafe]
 	fn vlibc_sysctl_string(mib0 int, mib1 int) string {
 		mut mib := [2]i32{}
 		mib[0] = i32(mib0)
@@ -697,6 +701,7 @@ $if !i386 {
 	}
 
 	// vlibc_execve replaces the process image using string argument and environment arrays.
+	@[unsafe]
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		mut a := []&u8{cap: argv.len + 1}
 		for s in argv {
@@ -713,6 +718,7 @@ $if !i386 {
 	}
 
 	// vlibc_waitpid blocks until the child exits and returns the reaped process ID.
+	@[unsafe]
 	pub fn vlibc_waitpid(pid i64) (i64, VlibcErrno) {
 		mut status := i32(0)
 		return vlibc_sys_wait4(pid, &status, 0, unsafe { nil })
@@ -818,6 +824,7 @@ $if !i386 {
 	}
 
 	// vlibc_accept accepts a connection and returns its descriptor.
+	@[unsafe]
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept(fd, unsafe { nil }, unsafe { nil })
 	}
@@ -833,6 +840,7 @@ $if !i386 {
 	}
 
 	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
+	@[unsafe]
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -841,6 +849,7 @@ $if !i386 {
 	}
 
 	// vlibc_recv receives bytes into buf and returns the number read and any error.
+	@[unsafe]
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -986,6 +995,7 @@ $if !i386 {
 		done   u32
 	}
 
+	@[unsafe]
 	fn macos_thread_entry(raw voidptr) voidptr {
 		s := &MacThreadStart(raw)
 		s.fn_ptr(s.arg)
@@ -1004,6 +1014,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_spawn starts a worker with its own argument and stack state.
+	@[unsafe]
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
 		mut t := VlibcThread{}
 		t.fn_ptr = fn_ptr
@@ -1026,6 +1037,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_join waits for kernel thread exit before releasing its stack.
+	@[unsafe]
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
 		rc := C.pthread_join(t.thread, unsafe { nil })
 		if rc != 0 { return unsafe { VlibcErrno(rc) } }
@@ -1041,6 +1053,7 @@ $if !i386 {
 	}
 
 	// vlibc_mutex_init creates an unlocked mutex.
+	@[unsafe]
 	pub fn vlibc_mutex_init() VlibcMutex {
 		mut m := VlibcMutex{}
 		C.pthread_mutex_init(&m.opaque[0], unsafe { nil })
@@ -1063,6 +1076,7 @@ $if !i386 {
 	}
 
 	// vlibc_cond_init creates an initialized condition variable.
+	@[unsafe]
 	pub fn vlibc_cond_init() VlibcCond {
 		mut c := VlibcCond{}
 		C.pthread_cond_init(&c.opaque[0], unsafe { nil })

@@ -2,6 +2,7 @@ module os
 
 #include <sys/mman.h>
 
+@[unsafe]
 fn C.msync(addr voidptr, len uint, flags i32) i32
 
 // mmap_map_nix opens path, maps len bytes and closes the fd again (the

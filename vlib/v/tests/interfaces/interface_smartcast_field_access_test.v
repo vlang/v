@@ -106,6 +106,7 @@ fn (mut c Counter) wire(mut bus eventbus.EventBus[string]) {
 	c.got_self = unsafe { int(i64(voidptr(c)) & 0xffffffff) }
 }
 
+@[unsafe]
 fn test_voidptr_mut_receiver_in_generic_method() {
 	mut c := &Counter{}
 	mut bus := eventbus.new[string]()

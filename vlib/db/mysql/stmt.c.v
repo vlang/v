@@ -50,6 +50,7 @@ const mysql_type_geometry = C.MYSQL_TYPE_GEOMETRY
 const mysql_no_data = C.MYSQL_NO_DATA
 const mysql_data_truncated = C.MYSQL_DATA_TRUNCATED
 
+@[unsafe]
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
 fn C.mysql_stmt_prepare(&C.MYSQL_STMT, const_query charptr, u32) i32
 fn C.mysql_stmt_param_count(&C.MYSQL_STMT) u64
@@ -304,6 +305,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 }
 
 // bind_res will store one result in the statement `stmt`
+@[unsafe]
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
 	count := if num_fields > 0 { num_fields } else { 0 }
 	stmt.auto_res_lengths = []C.v_mysql_ulong{len: count}
@@ -319,6 +321,7 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []
 		num_fields)
 }
 
+@[unsafe]
 fn (mut stmt Stmt) bind_res_abi(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
 	stmt.auto_res_lengths = []C.v_mysql_ulong{}
 	stmt.auto_res_is_null = []C.v_mysql_bool{}

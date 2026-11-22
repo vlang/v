@@ -69,6 +69,7 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 }
 
 // bytes gets the bytes of public key.
+@[unsafe]
 pub fn (pbk PublicKey) bytes() ![]u8 {
 	mut ppub := &u8(unsafe { nil })
 	n := C.EVP_PKEY_get1_encoded_public_key(pbk.evpkey, &ppub)

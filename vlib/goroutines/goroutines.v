@@ -178,6 +178,7 @@ pub mut:
 	count i32
 }
 
+@[unsafe]
 fn (mut q GoroutineQueue) push_back(gp &Goroutine) {
 	mut g := unsafe { gp }
 	g.sched_link = unsafe { nil }
@@ -190,6 +191,7 @@ fn (mut q GoroutineQueue) push_back(gp &Goroutine) {
 	q.size++
 }
 
+@[unsafe]
 fn (mut q GoroutineQueue) push(gp &Goroutine) {
 	mut g := unsafe { gp }
 	g.sched_link = q.head
@@ -200,6 +202,7 @@ fn (mut q GoroutineQueue) push(gp &Goroutine) {
 	q.size++
 }
 
+@[unsafe]
 fn (mut q GoroutineQueue) pop() &Goroutine {
 	if q.head == unsafe { nil } {
 		return unsafe { nil }
@@ -213,6 +216,7 @@ fn (mut q GoroutineQueue) pop() &Goroutine {
 	return gp
 }
 
+@[unsafe]
 fn (q &GoroutineQueue) empty() bool {
 	return q.head == unsafe { nil }
 }
@@ -224,6 +228,7 @@ fn (mut l GoroutineList) push(gp &Goroutine) {
 	l.count++
 }
 
+@[unsafe]
 fn (mut l GoroutineList) pop() &Goroutine {
 	if l.head == unsafe { nil } {
 		return unsafe { nil }
@@ -234,6 +239,7 @@ fn (mut l GoroutineList) pop() &Goroutine {
 	return gp
 }
 
+@[unsafe]
 fn (l &GoroutineList) empty() bool {
 	return l.head == unsafe { nil }
 }

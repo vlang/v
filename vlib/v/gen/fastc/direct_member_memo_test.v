@@ -4,6 +4,7 @@ import v.flat
 import v.pref
 import v.scanner
 
+@[unsafe]
 fn direct_member40_parser(finalized bool) Parser {
 	prefs := pref.new_preferences()
 	mut record := flat.TypeTextBindings{}

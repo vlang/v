@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_cyclic_modules_keep_cross_calls_and_order_lifecycle_once() {
 	$if !macos && !linux {
 		return

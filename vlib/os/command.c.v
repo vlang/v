@@ -105,6 +105,7 @@ pub fn (mut c Command) read_line() string {
 
 // close will close the pipe to the command, and wait for the command to finish,
 // then set .exit_code according to how its final process status.
+@[unsafe]
 pub fn (mut c Command) close() ! {
 	c.exit_code = vpclose(c.f)
 	c.f = unsafe { nil }

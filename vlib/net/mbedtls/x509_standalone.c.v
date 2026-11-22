@@ -142,6 +142,7 @@ pub fn public_key_curve_is_secp256r1(pk &C.mbedtls_pk_context) bool {
 // MBEDTLS_PK_ECDSA) -- confirmed against pk_wrap.c's eckey_can_do(), which
 // explicitly accepts MBEDTLS_PK_ECDSA verification requests against an
 // MBEDTLS_PK_ECKEY-typed key, not assumed from the type names alone.
+@[unsafe]
 pub fn verify_ecdsa_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
 	ret := C.mbedtls_pk_verify_ext(pk_type_ecdsa, unsafe { nil }, pk, i32(md_alg), hash.data,
 		uint(hash.len), signature.data, uint(signature.len))
@@ -198,6 +199,7 @@ pub fn verify_rsa_pss_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, 
 // mbedTLS): it is passed through as an empty C string, which cannot match
 // any real certificate's SAN/CN, so a caller that forgets to supply a real
 // hostname fails closed instead of silently disabling verification.
+@[unsafe]
 pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string, hostname string) ! {
 	mut ca_chain := C.mbedtls_x509_crt{}
 	C.mbedtls_x509_crt_init(&ca_chain)

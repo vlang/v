@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_checked_division_preserves_platform_int_width() {
 	$if !macos && !linux {
 		return
@@ -105,6 +106,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_fastc_translated_target_checked_division_matches_ordinary_c() {
 	$if !macos && !linux {
 		return

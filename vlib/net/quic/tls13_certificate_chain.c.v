@@ -20,6 +20,7 @@ mut:
 // free) is a harmless no-op rather than a double-free — same discipline
 // as net.mbedtls.SSLConn.shutdown()'s own documented guard for the
 // identical class of repeated-cleanup-call bug.
+@[unsafe]
 pub fn (mut c VerifiedCertificateChain) free() {
 	if c.chain != unsafe { nil } {
 		mbedtls.free_certificate_chain(c.chain)
@@ -83,6 +84,7 @@ pub fn verify_server_certificate_chain(parsed ParsedCertificate, ca_bundle_pem s
 // multiple calls (trust check, then this), making the free-then-use
 // ordering an easy mistake to introduce later -- same defensive rationale
 // as free()'s own idempotency guard, just checked from the other side.
+@[unsafe]
 pub fn (c &VerifiedCertificateChain) verify_certificate_verify_signature(cv ParsedCertificateVerify, role CertificateVerifyRole, transcript_hash []u8) ! {
 	if c.chain == unsafe { nil } {
 		return error('quic: verify_certificate_verify_signature called on a freed VerifiedCertificateChain')

@@ -18,6 +18,7 @@ mut:
 	cb Callback = unsafe { nil }
 }
 
+@[unsafe]
 fn make_native(raw bool, behaviour NativeFn) &NativeFunction {
 	return &NativeFunction{
 		name:      'f'
@@ -33,6 +34,7 @@ fn double(x int) int {
 	return x * 2
 }
 
+@[unsafe]
 fn pick(kind int) Callback {
 	mut cb := Callback(double)
 	cb = match kind {
@@ -42,6 +44,7 @@ fn pick(kind int) Callback {
 	return cb
 }
 
+@[unsafe]
 fn test_if_expr_with_unsafe_nil_in_fn_field() {
 	native := make_native(false, answer)
 	mut m := Machine{
@@ -57,6 +60,7 @@ fn test_if_expr_with_unsafe_nil_in_fn_field() {
 	assert h.cb(5) == 10
 }
 
+@[unsafe]
 fn test_if_and_match_expr_with_unsafe_nil_in_fn_assignment() {
 	on := true
 	mut h := Holder{}
@@ -71,6 +75,7 @@ fn test_if_and_match_expr_with_unsafe_nil_in_fn_assignment() {
 
 type CallbackChoice = int | string
 
+@[unsafe]
 fn callback_with_branch_local(choice CallbackChoice, off bool) Callback {
 	if choice is int {
 		holder := Holder{
@@ -86,6 +91,7 @@ fn callback_with_branch_local(choice CallbackChoice, off bool) Callback {
 	return Callback(double)
 }
 
+@[unsafe]
 fn test_branch_local_function_type_survives_outer_smartcast() {
 	assert callback_with_branch_local(CallbackChoice(1), false)(6) == 12
 	assert callback_with_branch_local(CallbackChoice(1), true) == unsafe { nil }

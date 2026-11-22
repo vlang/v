@@ -560,6 +560,7 @@ fn (record &WaylandPortalExport) listener_data() voidptr {
 	return unsafe { voidptr(record) }
 }
 
+@[unsafe]
 fn (mut record WaylandOutputRecord) publish_output_if_ready() {
 	if !record.available || !record.ready || !record.dirty || record.owner == unsafe { nil } {
 		return
@@ -577,11 +578,13 @@ fn (mut backend WaylandBackend) refresh_windows_for_output_scale(slot int) {
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) transport_can_marshal() bool {
 	return backend.display != unsafe { nil } && !backend.wayland_display_unavailable
 		&& backend.wayland_display_error == 0
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) transport_plan_authority_ready(attempt_count int) bool {
 	if !backend.transport_can_marshal() || backend.native_operations == unsafe { nil }
 		|| attempt_count <= 0 {
@@ -606,6 +609,7 @@ fn (backend &WaylandBackend) cleanup_transport_usable(attempt_count int) bool {
 	return backend.transport_plan_authority_ready(attempt_count)
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) retains_native_ownership_except_display() bool {
 	mut live_tickets := false
 	if backend.native_operations != unsafe { nil } {
@@ -642,6 +646,7 @@ fn (backend &WaylandBackend) retains_native_ownership_except_display() bool {
 		|| render_live || ticket_live || backend.windows.len != 0 || backend.has_live_outputs()
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) has_live_outputs() bool {
 	for output in backend.outputs {
 		if output.proxy != unsafe { nil } {
@@ -651,6 +656,7 @@ fn (backend &WaylandBackend) has_live_outputs() bool {
 	return false
 }
 
+@[unsafe]
 fn wayland_copy_cstring(value &char) string {
 	if value == unsafe { nil } {
 		return ''
@@ -676,6 +682,7 @@ fn (backend &WaylandBackend) output_record_index_for_proxy(proxy voidptr) ?int {
 	return none
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) service_app_instance() u64 {
 	return if backend.native_operations == unsafe { nil } {
 		u64(0)
@@ -725,6 +732,7 @@ fn (mut backend WaylandBackend) enqueue_window_metrics_event(index int) {
 	}
 }
 
+@[unsafe]
 fn (record &WaylandWindowRecord) uses_fractional_scale() bool {
 	return record.high_dpi && record.fractional_scale != unsafe { nil }
 		&& record.viewport != unsafe { nil }
@@ -801,6 +809,7 @@ fn (mut record WaylandWindowRecord) apply_fractional_scale_preference(numerator 
 	return true
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) refresh_window_output_scale(index int) bool {
 	if index < 0 || index >= backend.windows.len {
 		return false
@@ -866,6 +875,7 @@ fn (mut backend WaylandBackend) remove_output_from_windows(slot int) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_output_record(index int) {
 	if index < 0 || index >= backend.outputs.len {
 		return
@@ -897,10 +907,12 @@ fn (mut backend WaylandBackend) destroy_all_outputs() {
 	backend.outputs.clear()
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) retains_native_ownership() bool {
 	return backend.display != unsafe { nil } || backend.retains_native_ownership_except_display()
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) destroy_proxy_locally(proxy voidptr) {
 	$if linux && sokol_wayland ? {
 		if proxy != unsafe { nil } {
@@ -911,6 +923,7 @@ fn (backend &WaylandBackend) destroy_proxy_locally(proxy voidptr) {
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) destroy_proxy_locally_if_needed(proxy voidptr) bool {
 	if proxy == unsafe { nil } {
 		return true
@@ -1006,6 +1019,7 @@ $if linux && sokol_wayland ? {
 
 	struct C.xkb_state {}
 
+	@[unsafe]
 	fn C.poll(fds &C.pollfd, nfds u64, timeout int) int
 	fn C.strcmp(a &char, b &char) int
 	fn C.close(fd int) int
@@ -1313,7 +1327,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_registry_handle_global_remove']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_registry_handle_global_remove(data voidptr, registry &C.wl_registry, name u32) {
 		_ = registry
 		if data == unsafe { nil } {
@@ -1390,7 +1404,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_exported_handle']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_exported_handle(data voidptr, exported voidptr, handle &char) {
 		if data == unsafe { nil } || exported == unsafe { nil } || handle == unsafe { nil } {
 			return
@@ -1424,7 +1438,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_fractional_scale_preferred']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_fractional_scale_preferred(data voidptr, fractional_scale voidptr, numerator u32) {
 		if data == unsafe { nil } || fractional_scale == unsafe { nil } || numerator == 0 {
 			return
@@ -1445,7 +1459,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_output_geometry']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_output_geometry(data voidptr, output voidptr, x int, y int, physical_width int, physical_height int, subpixel int, make &char, model &char, transform int) {
 		_ = physical_width
 		_ = physical_height
@@ -1471,7 +1485,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_output_mode']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_output_mode(data voidptr, output voidptr, flags u32, width int, height int, refresh int) {
 		_ = refresh
 		if data == unsafe { nil } || (flags & wayland_output_mode_current) == 0 {
@@ -1492,7 +1506,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_output_done']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_output_done(data voidptr, output voidptr) {
 		if data == unsafe { nil } {
 			return
@@ -1517,7 +1531,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_output_scale']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_output_scale(data voidptr, output voidptr, factor int) {
 		if data == unsafe { nil } {
 			return
@@ -1532,7 +1546,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_output_name']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_output_name(data voidptr, output voidptr, name &char) {
 		if data == unsafe { nil } {
 			return
@@ -1545,7 +1559,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_output_description']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_output_description(data voidptr, output voidptr, description &char) {
 		if data == unsafe { nil } {
 			return
@@ -1558,7 +1572,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_surface_enter']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_surface_enter(data voidptr, surface voidptr, output voidptr) {
 		if data == unsafe { nil } || surface == unsafe { nil } || output == unsafe { nil } {
 			return
@@ -1581,7 +1595,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_surface_leave']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_surface_leave(data voidptr, surface voidptr, output voidptr) {
 		if data == unsafe { nil } || surface == unsafe { nil } || output == unsafe { nil } {
 			return
@@ -1610,7 +1624,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_locked_pointer_locked']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_locked_pointer_locked(data voidptr, locked_pointer voidptr) {
 		if data == unsafe { nil } || locked_pointer == unsafe { nil } {
 			return
@@ -1626,7 +1640,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_locked_pointer_unlocked']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_locked_pointer_unlocked(data voidptr, locked_pointer voidptr) {
 		if data == unsafe { nil } || locked_pointer == unsafe { nil } {
 			return
@@ -1642,7 +1656,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_relative_pointer_motion']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_relative_pointer_motion(data voidptr, relative_pointer voidptr, time_hi u32, time_lo u32, dx f64, dy f64, dx_unaccelerated f64, dy_unaccelerated f64) {
 		_ = time_hi
 		_ = time_lo
@@ -1663,7 +1677,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_xdg_wm_base_ping']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_xdg_wm_base_ping(data voidptr, wm_base voidptr, serial u32) {
 		if data == unsafe { nil } {
 			return
@@ -1676,7 +1690,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_xdg_surface_configure']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_xdg_surface_configure(data voidptr, xdg_surface voidptr, serial u32) {
 		if data == unsafe { nil } {
 			return
@@ -1788,7 +1802,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_xdg_toplevel_configure']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_xdg_toplevel_configure(data voidptr, toplevel voidptr, width int, height int, states &C.wl_array) {
 		_ = toplevel
 		if data == unsafe { nil } {
@@ -1841,7 +1855,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_xdg_toplevel_close']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_xdg_toplevel_close(data voidptr, toplevel voidptr) {
 		_ = toplevel
 		if data == unsafe { nil } {
@@ -1855,7 +1869,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_frame_done']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_frame_done(data voidptr, callback voidptr, time u32) int {
 		_ = time
 		if data == unsafe { nil } {
@@ -1878,7 +1892,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_frame_destroyed']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_frame_destroyed(data voidptr, callback voidptr) {
 		if data == unsafe { nil } {
 			return
@@ -1902,7 +1916,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_xdg_toplevel_decoration_configure']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_xdg_toplevel_decoration_configure(data voidptr, decoration voidptr, mode u32) {
 		_ = decoration
 		if data == unsafe { nil } {
@@ -1922,7 +1936,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_seat_capabilities']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_seat_capabilities(data voidptr, seat voidptr, caps u32) {
 		if data == unsafe { nil } || seat == unsafe { nil } {
 			return
@@ -1999,7 +2013,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_buffer_release']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_buffer_release(data voidptr, buffer voidptr) {
 		if data == unsafe { nil } || buffer == unsafe { nil } {
 			return
@@ -2009,7 +2023,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_pointer_enter']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_pointer_enter(data voidptr, pointer voidptr, serial u32, surface voidptr, x f64, y f64) {
 		_ = pointer
 		if data == unsafe { nil } || surface == unsafe { nil } {
@@ -2028,7 +2042,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_pointer_leave']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_pointer_leave(data voidptr, pointer voidptr, serial u32, surface voidptr) {
 		_ = pointer
 		_ = serial
@@ -2048,7 +2062,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_pointer_motion']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_pointer_motion(data voidptr, pointer voidptr, time u32, x f64, y f64) {
 		_ = pointer
 		_ = time
@@ -2064,7 +2078,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_pointer_button']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_pointer_button(data voidptr, pointer voidptr, serial u32, time u32, button u32, state u32) {
 		_ = pointer
 		_ = time
@@ -2100,7 +2114,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_pointer_axis']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_pointer_axis(data voidptr, pointer voidptr, time u32, axis u32, value f64) {
 		_ = pointer
 		_ = time
@@ -2126,7 +2140,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_keyboard_enter']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_keyboard_enter(data voidptr, keyboard voidptr, serial u32, surface voidptr) {
 		_ = keyboard
 		_ = serial
@@ -2143,7 +2157,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_keyboard_leave']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_keyboard_leave(data voidptr, keyboard voidptr, serial u32, surface voidptr) {
 		_ = keyboard
 		_ = serial
@@ -2164,7 +2178,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_keyboard_keymap']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_keyboard_keymap(data voidptr, keyboard voidptr, format u32, fd int, size u32) {
 		_ = keyboard
 		if fd < 0 {
@@ -2205,7 +2219,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_keyboard_repeat_info']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_keyboard_repeat_info(data voidptr, keyboard voidptr, rate int, delay int) {
 		_ = keyboard
 		if data == unsafe { nil } {
@@ -2220,7 +2234,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_keyboard_key']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_keyboard_key(data voidptr, keyboard voidptr, serial u32, time u32, key u32, state u32) {
 		_ = keyboard
 		_ = time
@@ -2284,7 +2298,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_keyboard_modifiers']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_keyboard_modifiers(data voidptr, keyboard voidptr, serial u32, mods_depressed u32, mods_latched u32, mods_locked u32, group u32) {
 		_ = keyboard
 		_ = serial
@@ -2301,7 +2315,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_touch_down']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_touch_down(data voidptr, touch voidptr, serial u32, time u32, surface voidptr, id int, x f64, y f64) {
 		_ = touch
 		_ = time
@@ -2325,7 +2339,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_touch_up']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_touch_up(data voidptr, touch voidptr, serial u32, time u32, id int) {
 		_ = touch
 		_ = serial
@@ -2346,7 +2360,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_touch_motion']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_touch_motion(data voidptr, touch voidptr, time u32, id int, x f64, y f64) {
 		_ = touch
 		_ = time
@@ -2364,7 +2378,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_touch_cancel']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_touch_cancel(data voidptr, touch voidptr) {
 		_ = touch
 		if data == unsafe { nil } {
@@ -2381,7 +2395,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_offer_offer']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_offer_offer(data voidptr, offer voidptr, mime_type &char) {
 		if data == unsafe { nil } || offer == unsafe { nil } || mime_type == unsafe { nil } {
 			return
@@ -2407,7 +2421,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_offer_source_actions']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_offer_source_actions(data voidptr, offer voidptr, source_actions u32) {
 		if data == unsafe { nil } || offer == unsafe { nil } {
 			return
@@ -2422,7 +2436,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_offer_action']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_offer_action(data voidptr, offer voidptr, dnd_action u32) {
 		if data == unsafe { nil } || offer == unsafe { nil } {
 			return
@@ -2439,7 +2453,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_device_data_offer']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_device_data_offer(data voidptr, device voidptr, offer voidptr) {
 		_ = device
 		if data == unsafe { nil } || offer == unsafe { nil } {
@@ -2457,7 +2471,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_device_enter']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_device_enter(data voidptr, device voidptr, serial u32, surface voidptr, x f64, y f64, offer voidptr) {
 		_ = device
 		if data == unsafe { nil } || surface == unsafe { nil } || offer == unsafe { nil } {
@@ -2481,7 +2495,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_device_leave']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_device_leave(data voidptr, device voidptr) {
 		_ = device
 		if data == unsafe { nil } {
@@ -2492,7 +2506,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_device_motion']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_device_motion(data voidptr, device voidptr, time u32, x f64, y f64) {
 		_ = device
 		_ = time
@@ -2509,7 +2523,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_device_drop']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_device_drop(data voidptr, device voidptr) {
 		_ = device
 		if data == unsafe { nil } {
@@ -2531,7 +2545,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_device_selection']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_device_selection(data voidptr, device voidptr, offer voidptr) {
 		_ = device
 		if data == unsafe { nil } {
@@ -2550,7 +2564,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_source_send']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_source_send(data voidptr, source voidptr, mime_type &char, fd int) {
 		if fd < 0 {
 			return
@@ -2588,7 +2602,7 @@ $if linux && sokol_wayland ? {
 	}
 
 	@[export: 'v_multiwindow_wayland_data_source_cancelled']
-	@[markused]
+	@[markused; unsafe]
 	fn wayland_data_source_cancelled(data voidptr, source voidptr) {
 		if data == unsafe { nil } || source == unsafe { nil } {
 			return
@@ -2620,6 +2634,7 @@ fn (backend &WaylandBackend) native_app_id() string {
 	return if backend.app_id == '' { 'v.x.multiwindow' } else { backend.app_id }
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) mapped_owner_toplevel(owner_id ?WindowId) voidptr {
 	owner := owner_id or { return unsafe { nil } }
 	owner_index := backend.window_record_index(owner) or { return unsafe { nil } }
@@ -2630,6 +2645,7 @@ fn (backend &WaylandBackend) mapped_owner_toplevel(owner_id ?WindowId) voidptr {
 	return owner_record.xdg_toplevel
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) replay_window_toplevel_attributes(index int) {
 	$if linux && sokol_wayland ? {
 		if index < 0 || index >= backend.windows.len {
@@ -2695,6 +2711,7 @@ fn (mut backend WaylandBackend) replay_window_toplevel_attributes(index int) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) request_window_show_probe(index int, axis WaylandShowProbeAxis, enabled bool) {
 	$if linux && sokol_wayland ? {
 		if index < 0 || index >= backend.windows.len {
@@ -2738,6 +2755,7 @@ fn (mut backend WaylandBackend) request_window_show_probe(index int, axis Waylan
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) request_window_show_final_intents(index int, maximized bool, fullscreen bool) {
 	$if linux && sokol_wayland ? {
 		if index < 0 || index >= backend.windows.len {
@@ -2776,6 +2794,7 @@ fn (mut backend WaylandBackend) request_window_show_final_intents(index int, max
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) commit_window_show_handshake(index int) {
 	$if linux && sokol_wayland ? {
 		$if test {
@@ -2883,6 +2902,7 @@ fn (mut backend WaylandBackend) run_window_show_handshake_boundary(index int, mu
 		&& record.show_configure_state_valid
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) ack_window_show_configure(index int, cleanup bool) {
 	if index < 0 || index >= backend.windows.len {
 		return
@@ -2976,6 +2996,7 @@ fn (mut backend WaylandBackend) flush_window_show_ack(attempt WaylandPreparedTra
 	_ = backend.execute_prepared_service_transport(attempt)!
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) finish_window_show_handshake(index int, mut transport WaylandServiceTransportPlan, maximized bool, fullscreen bool) ! {
 	mut record := backend.windows[index]
 	mut flush_attempt := WaylandPreparedTransportAttempt{}
@@ -3089,6 +3110,7 @@ fn (mut backend WaylandBackend) prepare_window_show_handshake(index int, mut tra
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) reapply_parent_to_live_children(parent WindowId) {
 	$if linux && sokol_wayland ? {
 		parent_index := backend.window_record_index(parent) or { return }
@@ -3185,6 +3207,7 @@ fn (mut backend WaylandBackend) close_start_attempt() string {
 	return close_error
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) probe_renderer_capabilities() !Capabilities {
 	$if linux && sokol_wayland ? {
 		if !backend.start_attempt_closed() {
@@ -3222,6 +3245,7 @@ fn (mut backend WaylandBackend) probe_renderer_capabilities() !Capabilities {
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) can_deliver_drop_events() bool {
 	if !backend.started {
 		return true
@@ -3230,6 +3254,7 @@ fn (backend &WaylandBackend) can_deliver_drop_events() bool {
 		&& backend.data_device != unsafe { nil }
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) can_deliver_touch_events() bool {
 	if !backend.started {
 		return true
@@ -3237,6 +3262,7 @@ fn (backend &WaylandBackend) can_deliver_touch_events() bool {
 	return backend.seat != unsafe { nil } && backend.touch != unsafe { nil }
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) can_begin_interactive_move_resize() bool {
 	if !backend.started {
 		return true
@@ -3244,6 +3270,7 @@ fn (backend &WaylandBackend) can_begin_interactive_move_resize() bool {
 	return backend.seat != unsafe { nil } && backend.wm_base != unsafe { nil }
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) can_set_cursor_shapes() bool {
 	return backend.pointer != unsafe { nil } && backend.cursor_shape_manager != unsafe { nil }
 		&& backend.cursor_shape_device != unsafe { nil }
@@ -3270,17 +3297,20 @@ fn (backend &WaylandBackend) window_native_decorations(id WindowId) !bool {
 	return backend.windows[index].has_server_side_decoration()
 }
 
+@[unsafe]
 fn (record &WaylandWindowRecord) has_server_side_decoration() bool {
 	return record.toplevel_decoration != unsafe { nil } && record.toplevel_decoration_configured
 		&& record.toplevel_decoration_mode == wayland_xdg_toplevel_decoration_mode_server_side
 }
 
+@[unsafe]
 fn (record &WaylandWindowRecord) has_client_side_decoration() bool {
 	return record.toplevel_decoration == unsafe { nil }
 		|| (record.toplevel_decoration_configured
 			&& record.toplevel_decoration_mode == wayland_xdg_toplevel_decoration_mode_client_side)
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) start(require_renderer bool) ! {
 	$if linux && sokol_wayland ? {
 		if backend.started {
@@ -3371,6 +3401,7 @@ fn (mut backend WaylandBackend) start(require_renderer bool) ! {
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) renderer_ready() bool {
 	return backend.egl_display != unsafe { nil } && backend.egl_config != unsafe { nil }
 		&& backend.egl_context != unsafe { nil } && backend.egl_display_ticket != 0
@@ -3378,6 +3409,7 @@ fn (backend &WaylandBackend) renderer_ready() bool {
 		&& backend.render_health == .ready
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) init_renderer() ! {
 	$if linux && sokol_wayland ? {
 		if backend.renderer_ready() {
@@ -3583,6 +3615,7 @@ fn (mut backend WaylandBackend) accept_egl_binding_query(context NativeOperation
 }
 
 $if linux && sokol_wayland ? {
+	@[unsafe]
 	fn (mut backend WaylandBackend) release_egl_surface_ticket(ticket_id u64, surface voidptr) NativeLifetimeReleaseAttempt {
 		if ticket_id == 0 || surface == unsafe { nil }
 			|| backend.native_operations == unsafe { nil } {
@@ -3668,6 +3701,7 @@ $if linux && sokol_wayland ? {
 			seed.without_target_identity())
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) destroy_wl_egl_window_lifetime(mut record &WaylandWindowRecord) NativeRenderResult {
 		if record.wl_egl_window == unsafe { nil } {
 			return native_render_ok(.wayland, .surface_destroy, .window_target)
@@ -3698,6 +3732,7 @@ $if linux && sokol_wayland ? {
 		return result
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) destroy_anchor_wl_egl_window_lifetime() NativeRenderResult {
 		if backend.anchor_wl_egl_window == unsafe { nil } {
 			return native_render_ok(.wayland, .surface_destroy, .anchor)
@@ -3728,6 +3763,7 @@ $if linux && sokol_wayland ? {
 		return result
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) destroy_anchor_wl_surface_lifetime() NativeRenderResult {
 		if backend.anchor_wl_surface == unsafe { nil } {
 			return native_render_ok(.wayland, .surface_destroy, .anchor)
@@ -3766,6 +3802,7 @@ $if linux && sokol_wayland ? {
 		return result
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) release_renderer_anchor_lifetime() bool {
 		if backend.anchor_surface != unsafe { nil } {
 			release := backend.release_egl_surface_ticket(backend.anchor_surface_ticket,
@@ -3806,6 +3843,7 @@ $if linux && sokol_wayland ? {
 		return true
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) destroy_frame_callback_lifetime(mut record &WaylandWindowRecord) NativeRenderResult {
 		if record.frame_callback == unsafe { nil } {
 			return native_render_ok(.wayland, .surface_destroy, .window_target)
@@ -4020,6 +4058,7 @@ fn (mut backend WaylandBackend) execute_prepared_wayland_transport(attempt Wayla
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) attempt_wayland_flush(boundary_seed NativeOperationSeed) NativeRenderResult {
 	$if linux && sokol_wayland ? {
 		if backend.wayland_display_unavailable || backend.render_health.blocks_graphics() {
@@ -4055,6 +4094,7 @@ fn (mut backend WaylandBackend) attempt_wayland_flush(boundary_seed NativeOperat
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) attempt_wayland_roundtrip(boundary_seed NativeOperationSeed) NativeRenderResult {
 	$if linux && sokol_wayland ? {
 		if backend.wayland_display_unavailable || backend.render_health.blocks_graphics() {
@@ -4107,6 +4147,7 @@ fn (mut backend WaylandBackend) abandon_renderer_ownership() {
 	backend.render_health = .abandoned
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) release_egl_lifetime() {
 	if backend.native_operations == unsafe { nil } {
 		return
@@ -4202,6 +4243,7 @@ fn (mut backend WaylandBackend) accept_native_render_window_loss(id WindowId) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) create_window(id WindowId, config WindowConfig) !WindowSize {
 	$if linux && sokol_wayland ? {
 		if !backend.started || backend.display == unsafe { nil } {
@@ -4379,6 +4421,7 @@ fn (mut backend WaylandBackend) destroy_window(id WindowId) ! {
 	backend.finish_window_teardown(id)!
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) finish_window_teardown(id WindowId) ! {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -4401,6 +4444,7 @@ fn (mut backend WaylandBackend) finish_window_teardown(id WindowId) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) set_window_title(id WindowId, title string) ! {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -4444,6 +4488,7 @@ fn (mut backend WaylandBackend) resize_window(id WindowId, width int, height int
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) set_window_cursor(id WindowId, shape CursorShape) ! {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -4505,6 +4550,7 @@ fn wayland_cursor_shape_for_shape(shape CursorShape) u32 {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) begin_window_move(id WindowId) ! {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -4546,6 +4592,7 @@ fn (mut backend WaylandBackend) begin_window_move(id WindowId) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) begin_window_resize(id WindowId, edge WindowResizeEdge) ! {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -4645,6 +4692,7 @@ fn (mut backend WaylandBackend) cleanup_after_fatal_dispatch(dispatch NativeRend
 	return message
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) poll_queued_events() ![]QueuedEvent {
 	mut native_events := []WaylandNativeQueuedEvent{}
 	$if linux && sokol_wayland ? {
@@ -5086,6 +5134,7 @@ fn wayland_is_clipboard_paste(key_code int, modifiers u32) bool {
 	return key_code == wayland_key_v && modifiers == wayland_modifier_ctrl
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) key_repeats(raw_key u32) bool {
 	$if linux && sokol_wayland ? {
 		if backend.xkb_keymap == unsafe { nil } {
@@ -5097,6 +5146,7 @@ fn (backend &WaylandBackend) key_repeats(raw_key u32) bool {
 	return false
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) char_code_for_key(key u32) u32 {
 	$if linux && sokol_wayland ? {
 		if backend.xkb_state == unsafe { nil } {
@@ -5116,6 +5166,7 @@ fn (backend &WaylandBackend) char_code_for_key(key u32) u32 {
 	return 0
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) xkb_modifiers() u32 {
 	$if linux && sokol_wayland ? {
 		if backend.xkb_state == unsafe { nil } {
@@ -5371,6 +5422,7 @@ fn (mut backend WaylandBackend) stop() ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) dispatch_pending_nonblocking() NativeRenderResult {
 	$if linux && sokol_wayland ? {
 		if backend.display == unsafe { nil } || backend.render_health.blocks_graphics()
@@ -5706,6 +5758,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) end_render(frame RenderFrame) BackendFinalizeAttempt {
 		$if linux && sokol_wayland ? {
 			index := backend.window_record_index(frame.window_id) or {
@@ -5962,6 +6015,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) ensure_configured(index int, seed NativeOperationSeed) NativeRenderResult {
 		$if linux && sokol_wayland ? {
 			mut record := backend.windows[index]
@@ -5999,6 +6053,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) apply_pending_configure(index int, boundary_seed NativeOperationSeed) NativeRenderResult {
 		$if linux && sokol_wayland ? {
 			mut record := backend.windows[index]
@@ -6050,6 +6105,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) ensure_window_render_target(index int, boundary_seed NativeOperationSeed) NativeRenderResult {
 		$if linux && sokol_wayland ? {
 			mut record := backend.windows[index]
@@ -6181,6 +6237,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) make_current(index int, scope NativeRenderScope, seed NativeOperationSeed) NativeRenderResult {
 		$if linux && sokol_wayland ? {
 			if backend.render_health.blocks_graphics() {
@@ -6215,6 +6272,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) invalidate_window_egl_target(index int, expected_surface voidptr, expected_generation u64, native_destroyed bool) {
 		if index < 0 || index >= backend.windows.len {
 			return
@@ -6292,6 +6350,7 @@ fn (mut backend WaylandBackend) ensure_lifecycle_buffers() ! {
 	return error(err_backend_unsupported)
 }
 
+@[unsafe]
 fn (record &WaylandWindowRecord) fallback_buffer_for_extent(width int, height int) voidptr {
 	if record.fallback_current_buffer == unsafe { nil } || record.fallback_buffer_width != width
 		|| record.fallback_buffer_height != height {
@@ -6308,6 +6367,7 @@ fn (mut backend WaylandBackend) ensure_lifecycle_buffer_with_prepared_transport(
 	backend.ensure_lifecycle_buffer_with_transport(index, flush_attempt, true)!
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) ensure_lifecycle_buffer_with_transport(index int, prepared_flush_attempt WaylandPreparedTransportAttempt, transport_prepared bool) ! {
 	$if linux && sokol_wayland ? {
 		if backend.render_health.blocks_graphics() || backend.wayland_display_unavailable {
@@ -6382,6 +6442,7 @@ fn (mut backend WaylandBackend) ensure_lifecycle_buffer_with_transport(index int
 	return error(err_backend_unsupported)
 }
 
+@[unsafe]
 fn (mut record WaylandWindowRecord) release_fallback_buffer(buffer voidptr) {
 	$if linux && sokol_wayland ? {
 		for i, fallback_buffer in record.fallback_buffers {
@@ -6404,6 +6465,7 @@ fn (mut record WaylandWindowRecord) release_fallback_buffer(buffer voidptr) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) close_connection() string {
 	$if linux && sokol_wayland ? {
 		mut cleanup_error := ''
@@ -6492,6 +6554,7 @@ fn (mut backend WaylandBackend) close_connection() string {
 	return err_backend_unsupported
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) init_xkb() ! {
 	$if linux && sokol_wayland ? {
 		if backend.xkb_context != unsafe { nil } {
@@ -6507,6 +6570,7 @@ fn (mut backend WaylandBackend) init_xkb() ! {
 	return error(err_backend_unsupported)
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_xkb_keymap_state() {
 	$if linux && sokol_wayland ? {
 		if backend.xkb_state != unsafe { nil } {
@@ -6520,6 +6584,7 @@ fn (mut backend WaylandBackend) destroy_xkb_keymap_state() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_xkb() {
 	$if linux && sokol_wayland ? {
 		backend.destroy_xkb_keymap_state()
@@ -6530,6 +6595,7 @@ fn (mut backend WaylandBackend) destroy_xkb() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_xdg_decoration_manager() {
 	$if linux && sokol_wayland ? {
 		if backend.decoration_manager != unsafe { nil } {
@@ -6544,6 +6610,7 @@ fn (mut backend WaylandBackend) destroy_xdg_decoration_manager() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) attach_fractional_scale_to_record(mut record &WaylandWindowRecord) bool {
 	$if linux && sokol_wayland ? {
 		if !record.high_dpi || record.surface == unsafe { nil }
@@ -6594,6 +6661,7 @@ fn (mut backend WaylandBackend) attach_fractional_scale_to_windows() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_fractional_scale_globals() {
 	$if linux && sokol_wayland ? {
 		if backend.fractional_scale_manager != unsafe { nil } {
@@ -6617,6 +6685,7 @@ fn (mut backend WaylandBackend) destroy_fractional_scale_globals() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) ensure_cursor_shape_device() {
 	$if linux && sokol_wayland ? {
 		if backend.cursor_shape_device != unsafe { nil }
@@ -6633,6 +6702,7 @@ fn (mut backend WaylandBackend) ensure_cursor_shape_device() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_cursor_shape_device() {
 	$if linux && sokol_wayland ? {
 		if backend.cursor_shape_device != unsafe { nil } {
@@ -6646,6 +6716,7 @@ fn (mut backend WaylandBackend) destroy_cursor_shape_device() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_cursor_shape_manager() {
 	$if linux && sokol_wayland ? {
 		backend.destroy_cursor_shape_device()
@@ -6661,6 +6732,7 @@ fn (mut backend WaylandBackend) destroy_cursor_shape_manager() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) release_record_mouse_lock(mut record &WaylandWindowRecord, publish bool, local_only bool) {
 	$if linux && sokol_wayland ? {
 		was_locked := record.mouse_locked || record.mouse_lock_requested
@@ -6709,6 +6781,7 @@ fn (mut backend WaylandBackend) release_all_mouse_locks(publish bool) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_relative_pointer_manager() {
 	$if linux && sokol_wayland ? {
 		backend.release_all_mouse_locks(true)
@@ -6724,6 +6797,7 @@ fn (mut backend WaylandBackend) destroy_relative_pointer_manager() {
 	backend.relative_pointer_manager_name = 0
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_pointer_constraints() {
 	$if linux && sokol_wayland ? {
 		backend.release_all_mouse_locks(true)
@@ -6739,6 +6813,7 @@ fn (mut backend WaylandBackend) destroy_pointer_constraints() {
 	backend.pointer_constraints_name = 0
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_removed_wm_base_if_unused() bool {
 	$if linux && sokol_wayland ? {
 		if backend.wm_base_name != 0 || backend.wm_base == unsafe { nil }
@@ -6754,6 +6829,7 @@ fn (mut backend WaylandBackend) destroy_removed_wm_base_if_unused() bool {
 	return false
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_seat_devices(publish_mouse_lock bool) {
 	$if linux && sokol_wayland ? {
 		backend.release_all_mouse_locks(publish_mouse_lock)
@@ -6789,6 +6865,7 @@ fn (mut backend WaylandBackend) destroy_seat_devices(publish_mouse_lock bool) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_window_record(mut record &WaylandWindowRecord) bool {
 	$if linux && sokol_wayland ? {
 		backend.cancel_clipboard_read_for_window(record.id)
@@ -6914,6 +6991,7 @@ fn (mut backend WaylandBackend) destroy_window_slot(index int) bool {
 	return true
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) ensure_data_device(data voidptr) {
 	$if linux && sokol_wayland ? {
 		if backend.data_device != unsafe { nil } || backend.data_device_manager == unsafe { nil }
@@ -6933,6 +7011,7 @@ fn (mut backend WaylandBackend) ensure_data_device(data voidptr) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) clear_incoming_offer(destroy bool) {
 	$if linux && sokol_wayland ? {
 		if destroy && backend.incoming_offer != unsafe { nil } {
@@ -6949,6 +7028,7 @@ fn (mut backend WaylandBackend) clear_incoming_offer(destroy bool) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) promote_incoming_offer_to_dnd(offer voidptr) bool {
 	if offer == unsafe { nil } {
 		return false
@@ -6972,6 +7052,7 @@ fn (mut backend WaylandBackend) promote_incoming_offer_to_dnd(offer voidptr) boo
 	return true
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) clear_selection_offer(destroy bool) {
 	$if linux && sokol_wayland ? {
 		if destroy && backend.selection_offer != unsafe { nil } {
@@ -6987,6 +7068,7 @@ fn (mut backend WaylandBackend) clear_selection_offer(destroy bool) {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) set_selection_offer(offer voidptr) {
 	if offer == backend.selection_offer {
 		return
@@ -7043,6 +7125,7 @@ fn (mut backend WaylandBackend) close_all_clipboard_sends() {
 	backend.clipboard_send_snapshot_bytes = 0
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_clipboard_source(local_only bool) {
 	$if linux && sokol_wayland ? {
 		backend.destroy_clipboard_source_handle(backend.clipboard_source, local_only)
@@ -7055,6 +7138,7 @@ fn (mut backend WaylandBackend) destroy_all_clipboard_sources(local_only bool) {
 	backend.destroy_clipboard_source(local_only)
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_clipboard_source_handle(source voidptr, local_only bool) {
 	$if linux && sokol_wayland ? {
 		if source == unsafe { nil } {
@@ -7078,6 +7162,7 @@ fn (mut backend WaylandBackend) destroy_clipboard_source_handle(source voidptr, 
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) create_clipboard_source() voidptr {
 	$if linux && sokol_wayland ? {
 		$if test {
@@ -7335,6 +7420,7 @@ fn (mut backend WaylandBackend) drain_clipboard_read() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) clear_data_offer(destroy bool) {
 	$if linux && sokol_wayland ? {
 		mut pending_offer := voidptr(unsafe { nil })
@@ -7379,6 +7465,7 @@ fn (backend &WaylandBackend) pending_drop_allows_finish() bool {
 		backend.pending_drop_action_received, backend.pending_drop_selected_action)
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) begin_pending_data_offer_drop() bool {
 	$if linux && sokol_wayland ? {
 		if backend.render_health.blocks_graphics() || !backend.transport_can_marshal() {
@@ -7420,6 +7507,7 @@ fn (mut backend WaylandBackend) begin_pending_data_offer_drop() bool {
 	return false
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) clear_pending_data_offer_drop(destroy bool) {
 	$if linux && sokol_wayland ? {
 		if backend.pending_drop_fd >= 0 {
@@ -7482,6 +7570,7 @@ fn (mut backend WaylandBackend) pending_drop_read_once(fd int, buffer voidptr, s
 	return -1
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) drain_pending_data_offer_drop() {
 	$if linux && sokol_wayland ? {
 		if backend.pending_drop_offer == unsafe { nil } || backend.pending_drop_fd < 0 {
@@ -7578,6 +7667,7 @@ fn (mut backend WaylandBackend) drain_pending_data_offer_drop() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) finish_pending_data_offer_drop() {
 	$if linux && sokol_wayland ? {
 		if backend.pending_drop_offer == unsafe { nil } {
@@ -7614,6 +7704,7 @@ fn (mut backend WaylandBackend) finish_pending_data_offer_drop() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_data_device() {
 	$if linux && sokol_wayland ? {
 		backend.cancel_clipboard_read()
@@ -7632,6 +7723,7 @@ fn (mut backend WaylandBackend) destroy_data_device() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_data_device_manager() {
 	$if linux && sokol_wayland ? {
 		backend.destroy_data_device()
@@ -7647,6 +7739,7 @@ fn (mut backend WaylandBackend) destroy_data_device_manager() {
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) service_operation_capability(operation ServiceOperation) ServiceOperationCapability {
 	return match operation {
 		.show {
@@ -7754,6 +7847,7 @@ fn (backend &WaylandBackend) service_operation_capability(operation ServiceOpera
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_show_window(id WindowId) !ServiceWindowState {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -7806,6 +7900,7 @@ fn (mut backend WaylandBackend) service_show_window(id WindowId) !ServiceWindowS
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) release_window_render_target_for_hide(index int) ! {
 	$if linux && sokol_wayland ? {
 		if index < 0 || index >= backend.windows.len {
@@ -7894,6 +7989,7 @@ fn (mut backend WaylandBackend) release_window_render_target_for_hide(index int)
 	return error(err_backend_unsupported)
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_hide_window(id WindowId) !ServiceWindowState {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -8029,6 +8125,7 @@ fn (mut backend WaylandBackend) service_restore_window(id WindowId) !ServiceWind
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_set_fullscreen(id WindowId, enabled bool) !ServiceWindowState {
 	$if linux && sokol_wayland ? {
 		mut record := backend.service_window_record(id)!
@@ -8054,6 +8151,7 @@ fn (mut backend WaylandBackend) service_set_fullscreen(id WindowId, enabled bool
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) can_release_mouse_lock_after_capability_loss(id WindowId) bool {
 	index := backend.window_record_index(id) or { return false }
 	record := backend.windows[index]
@@ -8062,6 +8160,7 @@ fn (backend &WaylandBackend) can_release_mouse_lock_after_capability_loss(id Win
 	return has_lock
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_set_mouse_lock(id WindowId, enabled bool) !ServiceWindowState {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -8146,6 +8245,7 @@ fn (mut backend WaylandBackend) service_set_mouse_lock(id WindowId, enabled bool
 	}
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) service_native_window_borrow(id WindowId) !BackendNativeWindowBorrow {
 	index := backend.window_record_index(id) or { return error(err_window_not_found) }
 	record := backend.windows[index]
@@ -8172,6 +8272,7 @@ fn (record &WaylandWindowRecord) service_metrics_snapshot() RenderMetricsSnapsho
 	}
 }
 
+@[unsafe]
 fn (record &WaylandWindowRecord) service_window_state() ServiceWindowState {
 	mut monitor_ids := []ServiceMonitorId{}
 	if record.owner != unsafe { nil } {
@@ -8291,6 +8392,7 @@ fn (backend &WaylandBackend) service_window_state(id WindowId) !ServiceWindowSta
 	return backend.windows[index].service_window_state()
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) service_monitor_snapshot(app_instance u64) ![]ServiceMonitorInfo {
 	if !backend.started && backend.display == unsafe { nil } {
 		return error(err_wayland_connect_failed)
@@ -8361,6 +8463,7 @@ fn (backend &WaylandBackend) portal_export_index(lease ServicePortalLeaseId) ?in
 	return none
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_portal_export_at(index int, local_only bool) {
 	if index < 0 || index >= backend.portal_exports.len {
 		return
@@ -8402,6 +8505,7 @@ fn (mut backend WaylandBackend) destroy_all_portal_exports() {
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) destroy_foreign_exporter() {
 	$if linux && sokol_wayland ? {
 		backend.destroy_all_portal_exports()
@@ -8417,6 +8521,7 @@ fn (mut backend WaylandBackend) destroy_foreign_exporter() {
 	backend.foreign_exporter_name = 0
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_start_portal_parent(id WindowId, request ServiceRequestId, lease ServicePortalLeaseId) !BackendPortalStart {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -8466,6 +8571,7 @@ fn (mut backend WaylandBackend) service_start_portal_parent(id WindowId, request
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_release_portal_parent(lease ServicePortalLeaseId) ! {
 	index := backend.portal_export_index(lease) or { return error(err_service_request_stale) }
 	if backend.portal_exports[index].exported == unsafe { nil } {
@@ -8489,6 +8595,7 @@ fn (mut backend WaylandBackend) service_release_portal_parent(lease ServicePorta
 	backend.finish_prepared_service_request(flush_attempt) or { return }
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_set_clipboard_text(id WindowId, request ServiceRequestId, text string) !BackendClipboardStart {
 	$if linux && sokol_wayland ? {
 		_ = request
@@ -8607,6 +8714,7 @@ fn (mut backend WaylandBackend) service_set_clipboard_text(id WindowId, request 
 	}
 }
 
+@[unsafe]
 fn (mut backend WaylandBackend) service_request_clipboard_text(id WindowId, request ServiceRequestId) !BackendClipboardStart {
 	$if linux && sokol_wayland ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -8672,6 +8780,7 @@ fn (backend &WaylandBackend) service_window_readback(id WindowId, x int, y int, 
 	return error(err_capability_unsupported)
 }
 
+@[unsafe]
 fn (backend &WaylandBackend) service_window_record(id WindowId) !&WaylandWindowRecord {
 	index := backend.window_record_index(id) or { return error(err_window_not_found) }
 	record := backend.windows[index]

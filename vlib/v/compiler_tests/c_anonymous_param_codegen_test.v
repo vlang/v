@@ -16,6 +16,7 @@ fn c_anon_param_build_v3() string {
 	return v3_bin
 }
 
+@[unsafe]
 fn test_c_anonymous_params_keep_pointer_call_shape() {
 	v3_bin := c_anon_param_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_c_anon_param_${os.getpid()}.v')

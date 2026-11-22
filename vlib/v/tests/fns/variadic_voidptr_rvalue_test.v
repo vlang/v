@@ -28,6 +28,7 @@ fn verify_variadic_voidptr_storage(args ...voidptr) {
 	}
 }
 
+@[unsafe]
 fn test_variadic_voidptr_values_use_one_promoted_storage_slot() {
 	value := VariadicVoidptrValue{
 		x: 1

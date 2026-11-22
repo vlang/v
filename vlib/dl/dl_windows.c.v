@@ -7,6 +7,7 @@ pub const rtld_local = 0
 pub const rtld_nodelete = 0
 pub const rtld_noload = 0
 
+@[unsafe]
 fn C.LoadLibrary(libfilename &u16) voidptr
 
 fn C.GetProcAddress(handle voidptr, procname &u8) voidptr

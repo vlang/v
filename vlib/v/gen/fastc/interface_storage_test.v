@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_interface_fields_mutate_concrete_storage_and_preserve_pointer_carriers() {
 	$if !macos && !linux {
 		return

@@ -198,6 +198,7 @@ fn (mut r HTMLRenderer) render_list_item(node &Node) {
 	r.sb.write_string('</li>\n')
 }
 
+@[unsafe]
 fn (mut r HTMLRenderer) render_code_block(node &Node) {
 	r.cr()
 	r.sb.write_string('<pre><code>')
@@ -209,6 +210,7 @@ fn (mut r HTMLRenderer) render_code_block(node &Node) {
 	r.sb.write_string('</code></pre>\n')
 }
 
+@[unsafe]
 fn (mut r HTMLRenderer) render_fenced_code(node &Node) {
 	r.cr()
 	// Use only the first word of the info string as the language class.
@@ -368,6 +370,7 @@ fn (mut r HTMLRenderer) render_code_span(node &Node) {
 	r.sb.write_string('</code>')
 }
 
+@[unsafe]
 fn (mut r HTMLRenderer) render_link(node &Node) {
 	mut dest := node.dest
 	if r.link_resolver != unsafe { nil } {
@@ -382,6 +385,7 @@ fn (mut r HTMLRenderer) render_link(node &Node) {
 	r.sb.write_string('</a>')
 }
 
+@[unsafe]
 fn (mut r HTMLRenderer) render_image(node &Node) {
 	alt := node.image_alt_text()
 	mut dest := node.dest

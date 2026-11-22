@@ -201,6 +201,7 @@ fn native_child_snapshot(parent &NativeDirectoryHandle, name string) !NativeFile
 	return native_snapshot_from_posix(snapshot)
 }
 
+@[unsafe]
 fn native_directory_entries_bounded(directory &NativeDirectoryHandle,
 	maximum int) ![]string {
 	if !directory.opened || directory.fd < 0 || maximum < 0

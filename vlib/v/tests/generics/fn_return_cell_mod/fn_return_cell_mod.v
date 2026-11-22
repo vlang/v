@@ -6,6 +6,7 @@ pub mut:
 }
 
 // empty reports whether a new callback cell contains nil.
+@[unsafe]
 pub fn empty[T]() bool {
 	cell := Cell[fn () T]{}
 	return cell.value == unsafe { nil }

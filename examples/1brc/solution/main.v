@@ -15,6 +15,7 @@ mut:
 	file os.File
 }
 
+@[unsafe]
 fn mmap_file(path string) MemoryMappedFile {
 	mut mf := MemoryMappedFile{
 		file: os.open_file(path, 'r', 0) or { panic('fail') }

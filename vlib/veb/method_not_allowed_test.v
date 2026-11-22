@@ -156,6 +156,7 @@ fn test_405_combines_only_handlers_for_the_request_host() {
 	assert unknown.res.header.get_custom('Allow') or { '' } == ''
 }
 
+@[unsafe]
 fn test_405_keeps_first_matching_resource_and_host_fallbacks() {
 	mut routes := map[string]Route{}
 	insert_route_metadata(mut routes, 'parameter', ['/items/:id', 'get', 'host: example.test'], [], [], unsafe { nil }) or { panic(err) }
@@ -174,6 +175,7 @@ fn test_405_keeps_first_matching_resource_and_host_fallbacks() {
 	assert allowed_methods_for_route(&routes, other, '/items/fixed', 'other.test') == [http.Method.put]
 }
 
+@[unsafe]
 fn test_405_keeps_variadic_specificity_and_non_variadic_precedence() {
 	mut routes := map[string]Route{}
 	insert_route_metadata(mut routes, 'catch_all', ['/:path...', 'delete'], [], [], unsafe { nil }) or { panic(err) }

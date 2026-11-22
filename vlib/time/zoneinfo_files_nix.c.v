@@ -28,6 +28,7 @@ fn zoneinfo_loaders_unlock() {
 }
 
 // zoneinfo_getenv returns the value of the environment variable `name`, when it is set.
+@[unsafe]
 fn zoneinfo_getenv(name string) ?string {
 	value := unsafe { C.getenv(&char(name.str)) }
 	if value == unsafe { nil } {
@@ -76,6 +77,7 @@ fn zoneinfo_readlink(path string) ?string {
 }
 
 // zoneinfo_read_file returns the contents of the file `path`.
+@[unsafe]
 fn zoneinfo_read_file(path string) ![]u8 {
 	if zoneinfo_is_dir(path) {
 		return error('"${path}" is a directory')

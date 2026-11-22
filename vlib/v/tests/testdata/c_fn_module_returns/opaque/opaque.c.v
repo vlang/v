@@ -1,5 +1,6 @@
 module opaque
 
+@[unsafe]
 fn C.memchr(buf voidptr, c int, n uint) voidptr
 
 // contains_b uses this module's opaque C return.

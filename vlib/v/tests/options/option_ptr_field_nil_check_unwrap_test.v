@@ -7,6 +7,7 @@ struct SessionNode {
 	parent ?&SessionNode
 }
 
+@[unsafe]
 fn parent_id_nil_check(node &SessionNode) string {
 	return unsafe {
 		if node.parent == nil {

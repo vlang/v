@@ -59,6 +59,7 @@ mut:
 	inited      bool
 }
 
+@[unsafe]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
 		load_action: .clear

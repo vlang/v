@@ -119,6 +119,7 @@ fn test_fastc_argument_fallback_preserves_complex_dispatch_and_narrowing() {
 	assert !translated.can_reuse_special_expression_miss(plain)
 }
 
+@[unsafe]
 fn test_fastc_argument_fallback_member_and_scalar_values_execute() {
 	$if !macos && !linux {
 		return

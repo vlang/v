@@ -28,9 +28,8 @@ mut:
 
 // new_spin_lock creates and returns a new SpinLock instance initialized to unlocked state.
 pub fn new_spin_lock() &SpinLock {
-	mut the_lock := &SpinLock{
-		locked: 0
-	}
+	mut the_lock := &SpinLock(unsafe { malloc(int(sizeof(SpinLock))) })
+	unsafe { the_lock.locked = 0 }
 	// Ensure initialization visibility across threads
 	C.atomic_thread_fence(C.memory_order_release)
 	$if valgrind ? {

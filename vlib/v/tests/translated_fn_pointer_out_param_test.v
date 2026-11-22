@@ -20,6 +20,7 @@ fn find_impl(n int, px_func &voidptr, pp_arg &voidptr) int {
 	return n
 }
 
+@[unsafe]
 fn test_a_callee_stores_a_function_through_the_address_of_a_local() {
 	m := Module{
 		find: find_impl

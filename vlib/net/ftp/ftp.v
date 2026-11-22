@@ -53,6 +53,7 @@ fn (mut dtp DTP) read() ![]u8 {
 	return data
 }
 
+@[unsafe]
 fn (mut dtp DTP) close() {
 	if dtp.conn != unsafe { nil } {
 		dtp.conn.close() or { panic(err) }
@@ -67,6 +68,7 @@ mut:
 }
 
 // new returns an `FTP` instance.
+@[unsafe]
 pub fn new() FTP {
 	mut f := FTP{
 		conn:   unsafe { nil }
@@ -148,6 +150,7 @@ pub fn (mut zftp FTP) login(user string, passwd string) !bool {
 }
 
 // close closes the FTP connection.
+@[unsafe]
 pub fn (mut zftp FTP) close() ! {
 	if zftp.conn != unsafe { nil } {
 		zftp.write('QUIT')!
@@ -187,6 +190,7 @@ pub fn (mut zftp FTP) cd(dir string) ! {
 	}
 }
 
+@[unsafe]
 fn new_dtp(msg string) !&DTP {
 	if !is_dtp_message_valid(msg) {
 		return error('Bad message')

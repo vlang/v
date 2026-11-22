@@ -339,6 +339,10 @@ fn test_driver_fails_a_second_concurrent_pending_request_too() ! {
 	check_h3_driver_fails_pending_requests(2)!
 }
 
+fn test_driver_fails_a_second_concurrent_pending_request_too() ! {
+	check_h3_driver_fails_pending_requests(2)!
+}
+
 // --- dispatch_h3_event: GOAWAY draining (RFC 9114 section 5.2) -----------
 
 fn test_dispatch_goaway_fails_streams_at_or_above_the_boundary_retryable() {

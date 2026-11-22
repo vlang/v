@@ -173,7 +173,7 @@ struct MarkusedChunkArgs {
 }
 
 // markused_chunk_thread runs one worker's range of bodies.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn markused_chunk_thread(arg voidptr) voidptr {
 	args := unsafe { &MarkusedChunkArgs(arg) }
 	c := unsafe { &CallCollector(args.collector) }
@@ -192,6 +192,7 @@ const markused_batch_arena_keep_bytes = int(8) * 1024 * 1024
 
 // markused_worker_scope_reenter makes a left batch arena current again, rewound.
 // False means the caller needs a new arena.
+@[unsafe]
 fn markused_worker_scope_reenter(scope voidptr) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -201,6 +202,7 @@ fn markused_worker_scope_reenter(scope voidptr) bool {
 	return false
 }
 
+@[unsafe]
 fn markused_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -210,6 +212,7 @@ fn markused_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn markused_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -218,6 +221,7 @@ fn markused_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn markused_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {

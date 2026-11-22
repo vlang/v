@@ -71,6 +71,7 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 // compiles as an independent unit and does not share symbols with sibling
 // test files (established convention, documented in conn_test.v's own
 // header).
+@[unsafe]
 fn new_test_h3_mux_conn_for_pool_test() &H3MuxConn {
 	return &H3MuxConn{
 		transport:  H3UdpTransport(unsafe { nil })
@@ -85,6 +86,7 @@ fn new_test_h3_mux_conn_for_pool_test() &H3MuxConn {
 // idle_conns already consumed by one busy h2-shaped budget slot (simulated
 // here by simply setting max_idle_conns below the h3 count), the oldest
 // idle h3 entry must be the one evicted.
+@[unsafe]
 fn test_evict_oldest_idle_locked_evicts_the_oldest_idle_h3_conn() {
 	mut t := new_transport()
 	t.max_idle_conns = 1
@@ -111,6 +113,7 @@ fn test_evict_oldest_idle_locked_evicts_the_oldest_idle_h3_conn() {
 // (Codex P1, vlang/v#27643 pullrequestreview-4628439062): a fresh dial's
 // own entry has active_streams == 0 (do_h3 hasn't run yet), making it look
 // idle enough to be picked as its own victim if not excluded.
+@[unsafe]
 fn test_evict_oldest_idle_locked_excludes_just_registered_h3_key() {
 	mut t := new_transport()
 	t.max_idle_conns = 0 // force eviction to trigger regardless of count
@@ -130,6 +133,7 @@ fn test_evict_oldest_idle_locked_excludes_just_registered_h3_key() {
 // A busy h3 connection (active_streams > 0) must never be evicted to make
 // room -- mirrors the identical h2 guarantee (Codex P3, vlang/v#27643
 // pullrequestreview-4631763931).
+@[unsafe]
 fn test_evict_oldest_idle_locked_never_evicts_a_busy_h3_conn() {
 	mut t := new_transport()
 	t.max_idle_conns = 0

@@ -282,6 +282,7 @@ fn arena_owner(ptr voidptr) (&VArena, uint) {
 
 // arena_owns_ptr reports whether `ptr` is memory of a live arena, which free()
 // must leave alone.
+@[unsafe]
 fn arena_owns_ptr(ptr voidptr) bool {
 	owner, _ := unsafe { arena_owner(ptr) }
 	return owner != unsafe { nil }
@@ -361,6 +362,7 @@ fn arena_alloc(mut a VArena, n int, align int) &u8 {
 
 // arena_alloc_current returns `n` bytes from the current thread's arena, or
 // nil when no arena is active.
+@[unsafe]
 fn arena_alloc_current(n int, align int) &u8 {
 	mut a := g_arena_top
 	if a == unsafe { nil } {
@@ -456,6 +458,7 @@ fn arena_release_chunks(mut a VArena, keep_one bool) {
 	}
 }
 
+@[unsafe]
 fn arena_checked(handle voidptr) &VArena {
 	if handle == unsafe { nil } {
 		panic('arena: the arena was freed, or was not created with arena.new()')
@@ -553,6 +556,7 @@ pub fn v_arena_free(handle voidptr) {
 }
 
 // v_arena_current returns the innermost arena of the current thread, or nil.
+@[unsafe]
 pub fn v_arena_current() voidptr {
 	if C.atomic_load_u32(&g_arena_hooks_ready) == 0 {
 		return unsafe { nil }
@@ -562,6 +566,7 @@ pub fn v_arena_current() voidptr {
 
 // v_arena_stats returns the bytes handed out by an arena since its last
 // reset, and the bytes of its chunks.
+@[unsafe]
 pub fn v_arena_stats(handle voidptr) (int, int) {
 	a := arena_checked(handle)
 	mut used := i64(0)
@@ -576,6 +581,7 @@ pub fn v_arena_stats(handle voidptr) (int, int) {
 }
 
 // v_arena_owns reports whether `ptr` points into the memory of an arena.
+@[unsafe]
 pub fn v_arena_owns(handle voidptr, ptr voidptr) bool {
 	a := arena_checked(handle)
 	addr := uint(ptr)

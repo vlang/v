@@ -54,6 +54,7 @@ pub fn (mut ctx Context) after(ms int, cb AfterCallback, arg u64) Result {
 // socket counts: fds 0-2 are stdio, never a client connection. A wrong answer
 // here only costs performance, never correctness: the inline fallback answers
 // with the same response and timing, on the caller's thread.
+@[unsafe]
 fn (ctx &Context) has_live_transport() bool {
 	if ctx.conn != unsafe { nil } {
 		return true
@@ -64,6 +65,7 @@ fn (ctx &Context) has_live_transport() bool {
 // spawn_after_timer_if_armed starts the timer thread when `after` armed a
 // deferred response. Call it once the handled context is preserved on the
 // heap, so the timer owns that context instead of a stack-local copy.
+@[unsafe]
 fn (mut ctx Context) spawn_after_timer_if_armed() {
 	if ctx.deferred {
 		spawn after_timer(mut ctx, unsafe { nil })
@@ -74,6 +76,7 @@ fn (mut ctx Context) spawn_after_timer_if_armed() {
 // the callback's single response, and closes the connection once the callback
 // stops re-arming with `after`. The accept-loop worker has been free since
 // `after` returned; only this short-lived thread waits.
+@[unsafe]
 fn after_timer(mut ctx Context, arena voidptr) {
 	defer {
 		if msg := recover() {

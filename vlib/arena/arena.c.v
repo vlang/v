@@ -69,6 +69,7 @@ pub fn (mut a Arena) reset() {
 // free releases `a` and all memory allocated in it. It panics, when `a` is
 // still pushed. Using `a` after `free` panics, while calling `free` again does
 // nothing.
+@[unsafe]
 pub fn (mut a Arena) free() {
 	if a.handle == unsafe { nil } {
 		return
@@ -97,11 +98,13 @@ pub fn (a &Arena) owns(ptr voidptr) bool {
 
 // is_current reports whether `a` is the innermost active arena of the current
 // thread, i.e. whether it serves the allocations of the thread right now.
+@[unsafe]
 pub fn (a &Arena) is_current() bool {
 	return a.handle != unsafe { nil } && v_arena_current() == a.handle
 }
 
 // active reports whether the current thread allocates from an arena.
+@[unsafe]
 pub fn active() bool {
 	return v_arena_current() != unsafe { nil }
 }

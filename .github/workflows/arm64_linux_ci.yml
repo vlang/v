@@ -1,0 +1,46 @@
+name: ARM64 Linux CI
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: arm64-arm64_linux_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  arm64_linux:
+    if: github.ref == 'refs/heads/master'
+    # Native ARM64 runner (no QEMU), so this lane is fast and accurate for aarch64.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    name: Build on ubuntu-24.04 arm64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: |
+          uname -a
+          make --version
+          gcc --version
+          make
+          file ./v
+          ./v version
+      - name: Run smoke tests
+        env:
+          V_MACOS_V3_NO_FALLBACK: '1'
+        run: |
+          ./v test vlib/builtin vlib/os vlib/encoding/binary
+          ./v test vlib/v/tests/fns/closure_test.v
+      - name: fastc backend smoke
+        run: |
+          ./v -b fastc -o /tmp/hello_fastc examples/hello_world.v
+          test "$(/tmp/hello_fastc)" = "Hello, World!"
+      - name: arm64 native backend smoke
+        run: |
+          ./v -b arm64 -gc none -o /tmp/hello_arm64 examples/hello_world.v
+          /tmp/hello_arm64

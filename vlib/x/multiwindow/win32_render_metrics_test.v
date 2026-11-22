@@ -3,6 +3,7 @@ module multiwindow
 $if windows {
 	#flag windows -DV_MULTIWINDOW_WIN32_RENDER_METRICS_TEST
 
+	@[unsafe]
 	fn C.v_multiwindow_test_win32_configure_render_fixture(client_width int, client_height int, visible int, minimized int, dpi u32, conversion_mode int)
 	fn C.v_multiwindow_test_win32_reset_render_fixture()
 }
@@ -106,6 +107,7 @@ fn test_win32_render_readiness_does_not_depend_on_coordinate_conversion() {
 	}
 }
 
+@[unsafe]
 fn test_win32_observed_framebuffer_change_resizes_target_once() {
 	$if windows && sokol_d3d11 ?&& (gg_multiwindow ?|| x_multiwindow_render ?) && (multiwindow_d3d11_warp ?|| gg_multiwindow_d3d11_warp ?) {
 		mut app := new_app(

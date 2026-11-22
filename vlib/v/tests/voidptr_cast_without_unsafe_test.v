@@ -13,10 +13,12 @@ fn voidptr_cast_alloc() voidptr {
 	return unsafe { malloc(16) }
 }
 
+@[unsafe]
 fn voidptr_cast_count(p charptr, n int) int {
 	return if p == unsafe { nil } { 0 } else { n }
 }
 
+@[unsafe]
 fn test_voidptr_casts_that_v1_accepts_outside_unsafe() {
 	holder := VoidptrCastHolder{
 		data: voidptr_cast_alloc()

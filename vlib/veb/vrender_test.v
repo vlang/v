@@ -64,6 +64,7 @@ fn test_render_request_of_an_unknown_path_is_a_404() {
 	assert ctx.res.body != ''
 }
 
+@[unsafe]
 fn test_render_request_does_not_open_a_connection() {
 	// The load-bearing assertion of this file. `Context.conn` stays nil and
 	// `takeover_mode` stays `.none`, so `send_response_to_client` has nothing to
@@ -122,6 +123,7 @@ fn (app &VrenderController) index(mut ctx VrenderExtendedContext) Result {
 	return ctx.text(ctx.message)
 }
 
+@[unsafe]
 fn test_render_request_dispatches_registered_controllers() {
 	mut app := VrenderControllerApp{}
 	mut ctrl := VrenderController{}

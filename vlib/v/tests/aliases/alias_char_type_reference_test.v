@@ -1,5 +1,6 @@
 type ALchar = char
 
+@[unsafe]
 fn test_alias_char_type_reference() {
 	c1 := &char(unsafe { nil })
 	c2 := &ALchar(unsafe { nil })

@@ -5,6 +5,7 @@ import macos
 #flag -framework UIKit
 
 // UIApplicationMain is a C function in UIKit.
+@[unsafe]
 fn C.UIApplicationMain(argc int, argv &&char, principal_class_name voidptr, delegate_class_name voidptr) int
 
 // Start the UIKit application run loop.

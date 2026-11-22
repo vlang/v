@@ -61,6 +61,7 @@ fn fons_render_create(uptr voidptr, width i32, height i32) i32 {
 	return 1
 }
 
+@[unsafe]
 fn (mut rt FonsRenderTarget) create_atlas(width int, height int) {
 	if width <= 0 || height <= 0 {
 		return
@@ -100,6 +101,7 @@ fn fons_render_resize(uptr voidptr, width i32, height i32) i32 {
 	return 1
 }
 
+@[unsafe]
 fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
 	mut rt := unsafe { &FonsRenderTarget(uptr) }
 	if rt.atlas_img.id == 0 || rt.atlas_w <= 0 || rt.atlas_h <= 0 {
@@ -126,6 +128,7 @@ fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
 	}
 }
 
+@[unsafe]
 fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts i32) {
 	mut rt := unsafe { &FonsRenderTarget(uptr) }
 	if rt.ctx == unsafe { nil } || rt.ctx.r == unsafe { nil } {
@@ -332,6 +335,7 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 // text_atlas_pending_upload reports whether fontstash rasterized glyphs that
 // are not on the GPU yet. Context.end uploads them before drawing the current
 // frame, so callers do not need to request an extra frame for new glyphs.
+@[unsafe]
 pub fn (ctx &Context) text_atlas_pending_upload() bool {
 	if !ctx.font_inited || ctx.ft == unsafe { nil } {
 		return false
@@ -448,6 +452,7 @@ pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 }
 
 // flush uploads pending glyphs before drawing the font atlas.
+@[unsafe]
 pub fn (ft &FT) flush() {
 	// Upload the atlas once for everything fontstash rasterized since the last
 	// flush. Context.end calls this after text has been queued and before the

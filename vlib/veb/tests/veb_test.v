@@ -353,6 +353,7 @@ struct SimpleTcpClientConfig {
 	method_str string = 'GET'
 }
 
+@[unsafe]
 fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 	mut client := &net.TcpConn(unsafe { nil })
 	mut tries := 0

@@ -61,6 +61,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_cast_fixed_array_borrow_can_be_passed_to_a_call() {
 	root := os.join_path(os.vtmp_dir(), 'cast_borrow_call_${os.getpid()}')
 	os.mkdir_all(root)!

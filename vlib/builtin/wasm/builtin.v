@@ -1,6 +1,7 @@
 module builtin
 
 // vwasm_heap_base returns the base address of the heap.
+@[unsafe]
 pub fn vwasm_heap_base() voidptr {
 	mut rval := unsafe { nil }
 	asm wasm {

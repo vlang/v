@@ -12,6 +12,7 @@ mut:
 	work u64
 }
 
+@[unsafe]
 fn pool_test_task(arg voidptr) voidptr {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
@@ -168,6 +169,7 @@ mut:
 	args []&PoolTestArg
 }
 
+@[unsafe]
 fn concurrent_pool_run_thread(arg voidptr) voidptr {
 	mut run := unsafe { &ConcurrentPoolRun(arg) }
 	mut tasks := []Task{cap: run.args.len}
@@ -219,6 +221,7 @@ fn test_concurrent_batches_account_only_their_own_tasks() {
 	pool.close()
 }
 
+@[unsafe]
 fn tiny_pool_test_task(arg voidptr) voidptr {
 	mut a := unsafe { &PoolTestArg(arg) }
 	a.value++
@@ -229,6 +232,7 @@ struct PushOrderArg {
 	ran chan bool
 }
 
+@[unsafe]
 fn push_order_task(arg voidptr) voidptr {
 	a := unsafe { &PushOrderArg(arg) }
 	a.ran <- true
@@ -261,6 +265,7 @@ fn test_queued_task_releases_its_batch_only_after_the_completion_push() {
 	assert pushes_in_flight == 0
 }
 
+@[unsafe]
 fn batch_scope_begin() voidptr {
 	$if prealloc {
 		return unsafe { prealloc_scope_begin() }
@@ -336,6 +341,7 @@ mut:
 	matches int
 }
 
+@[unsafe]
 fn current_worker_probe_task(arg voidptr) voidptr {
 	mut probe := unsafe { &CurrentWorkerProbe(arg) }
 	// Hold each task long enough that the caller cannot steal the whole batch.

@@ -75,6 +75,7 @@ fn test_arbitrary_parser_equality_support_observes_descriptor_updates() {
 	assert !g.struct_equality_is_supported(typ, []u32{})
 }
 
+@[unsafe]
 fn fastc_descriptor_memo_test_parser(names flat.TypeTextBindings, aliases flat.TypeTextBindings, finalized bool) Parser {
 	prefs := pref.new_preferences()
 	return Parser{

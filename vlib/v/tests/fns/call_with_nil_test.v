@@ -8,6 +8,7 @@ struct SomeStruct {
 	something string
 }
 
+@[unsafe]
 fn test(s &ISomeStruct) {
 	assert '${s}' == '&nil'
 	if s == unsafe { nil } {
@@ -17,6 +18,7 @@ fn test(s &ISomeStruct) {
 	}
 }
 
+@[unsafe]
 fn test_main() {
 	y := unsafe { nil }
 	test(y)

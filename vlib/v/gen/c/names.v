@@ -553,6 +553,7 @@ fn (mut g FlatGen) restore_scratch_lookup_caches(saved ScratchLookupCaches) {
 	}
 }
 
+@[unsafe]
 fn scratch_alias_method_lookup_cache(cache &AliasMethodLookupCache) &AliasMethodLookupCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -560,11 +561,13 @@ fn scratch_alias_method_lookup_cache(cache &AliasMethodLookupCache) &AliasMethod
 	return &AliasMethodLookupCache{}
 }
 
+@[unsafe]
 fn scratch_context_source_type_lookup_cache(cache &ContextSourceTypeLookupCache) &ContextSourceTypeLookupCache {
 	if isnil(cache) { return unsafe { nil } }
 	return &ContextSourceTypeLookupCache{}
 }
 
+@[unsafe]
 fn scratch_context_string_lookup_cache(cache &ContextStringLookupCache) &ContextStringLookupCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -575,6 +578,7 @@ fn scratch_context_string_lookup_cache(cache &ContextStringLookupCache) &Context
 // scratch_import_type_cache also drops the per-file child caches: `for_file`
 // allocates an ImportFileTypeCache on first use, so a batch's entry would keep
 // both the file key and that child alive past the arena that made them.
+@[unsafe]
 fn scratch_import_type_cache(cache &ImportTypeCache) &ImportTypeCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -582,6 +586,7 @@ fn scratch_import_type_cache(cache &ImportTypeCache) &ImportTypeCache {
 	return &ImportTypeCache{}
 }
 
+@[unsafe]
 fn scratch_fn_name_fact_cache(cache &FnNameFactCache) &FnNameFactCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -589,6 +594,7 @@ fn scratch_fn_name_fact_cache(cache &FnNameFactCache) &FnNameFactCache {
 	return &FnNameFactCache{}
 }
 
+@[unsafe]
 fn scratch_context_name_fact_cache(cache &ContextNameFactCache) &ContextNameFactCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -596,6 +602,7 @@ fn scratch_context_name_fact_cache(cache &ContextNameFactCache) &ContextNameFact
 	return &ContextNameFactCache{}
 }
 
+@[unsafe]
 fn scratch_struct_decl_pref_cache(cache &StructDeclPrefCache) &StructDeclPrefCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -603,6 +610,7 @@ fn scratch_struct_decl_pref_cache(cache &StructDeclPrefCache) &StructDeclPrefCac
 	return &StructDeclPrefCache{}
 }
 
+@[unsafe]
 fn scratch_sum_variant_actual_cache(cache &SumVariantActualCache) &SumVariantActualCache {
 	if isnil(cache) {
 		return unsafe { nil }
@@ -613,6 +621,7 @@ fn scratch_sum_variant_actual_cache(cache &SumVariantActualCache) &SumVariantAct
 // scratch_generic_app_cache keeps reading the enclosing arena's entries through
 // `base`, and keeps that overlay chain one level deep, exactly like the
 // per-worker caches built by new_parallel_worker_config.
+@[unsafe]
 fn scratch_generic_app_cache(cache &GenericAppCache) &GenericAppCache {
 	if isnil(cache) {
 		return unsafe { nil }

@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_unsafe_for_assignment_uses_existing_pointer_binding() {
 	$if !macos && !linux {
 		return

@@ -6,6 +6,7 @@ mut:
 	next &Node[T] = unsafe { nil }
 }
 
+@[unsafe]
 fn (mut node Node[T]) tail_data() T {
 	mut current_node := node
 	for current_node.next != unsafe { nil } {
