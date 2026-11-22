@@ -1,17 +1,23 @@
 module svg
 
 import encoding.xml
+import os
 
-// parse_svg parses an SVG document from a string.
+// parse_svg parses an SVG document from a string. Well-formed SVG is scanned
+// directly into the element tree; the general XML parser handles anything the
+// fast scanner cannot.
 pub fn parse_svg(input string) !Document {
+	if root := fast_parse_svg(input) {
+		return document_from_root(root)
+	}
 	doc := xml.XMLDocument.from_string(input) or { return error('invalid XML: ${err.msg()}') }
-	return document_from_xml(doc)
+	return document_from_root(from_xml_node(doc.root))
 }
 
 // parse_svg_file parses an SVG document from a file.
 pub fn parse_svg_file(path string) !Document {
-	doc := xml.XMLDocument.from_file(path) or { return error('cannot read SVG file: ${err.msg()}') }
-	return document_from_xml(doc)
+	contents := os.read_file(path) or { return error('cannot read SVG file: ${err.msg()}') }
+	return parse_svg(contents)
 }
 
 // Document.from_string parses SVG markup into a document.
@@ -24,8 +30,7 @@ pub fn Document.from_file(path string) !Document {
 	return parse_svg_file(path)
 }
 
-fn document_from_xml(doc xml.XMLDocument) !Document {
-	root := from_xml_node(doc.root)
+fn document_from_root(root Element) !Document {
 	mut result := Document{ root: root }
 	result.width = root.get_attr('width')
 	if result.width == '' {

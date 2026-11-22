@@ -124,13 +124,19 @@ instead of producing silently wrong pixels.
 `examples/svg/bench.v` measures the three main stages on a 400x400 scene with
 240 shapes. Run it with `v -prod run examples/svg/bench.v`.
 
+Parsing uses a purpose-built scanner that reads SVG markup directly into the
+element tree (with `encoding.xml` as a fallback for documents it cannot
+handle), avoiding the intermediate generic XML tree.
+
 The rasterizer avoids per-shape allocation: flattening is done once per item,
 coverage buffers and scanline scratch slices are reused, only a shape's
-bounded pixel region is cleared and composited, and gradient transforms and
-solid colors are hoisted out of the pixel loop. In paired local measurements
-this reduced rasterization of the benchmark scene from about 1195 ms to
-663 ms for 10 frames. Parsing is dominated by `encoding.xml`, so the value
-layer adds comparatively little overhead.
+bounded pixel region is cleared and composited, scanline traversal is limited
+to each polygon's vertical extent, and gradient transforms and solid colors
+are hoisted out of the pixel loop.
+
+In paired local measurements against the initial implementation, parsing
+2000 documents dropped from about 1160 ms to 380 ms, and rasterizing 10
+frames of the benchmark scene dropped from about 1195 ms to 165 ms.
 
 ## Design notes
 

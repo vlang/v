@@ -289,8 +289,24 @@ fn add_path_polys(polys [][]Vec2, rule FillRule, w int, h int, samples int, mut 
 }
 
 fn fill_polygon_edges(edges []Edge, rule FillRule, w int, h int, samples int, mut cov []f32, mut scan ScanBuffers) {
+	if edges.len == 0 {
+		return
+	}
+	// Only visit subrows the polygon can actually cover. Most SVG shapes are
+	// much smaller than the viewport, so this removes the bulk of the work.
+	mut ymin := math.min(edges[0].y0, edges[0].y1)
+	mut ymax := math.max(edges[0].y0, edges[0].y1)
+	for e in edges {
+		ymin = math.min(ymin, math.min(e.y0, e.y1))
+		ymax = math.max(ymax, math.max(e.y0, e.y1))
+	}
+	start_sy := math.max(0, int(ymin * f32(samples)))
+	end_sy := math.min(h * samples - 1, int(ymax * f32(samples)))
+	if end_sy < start_sy {
+		return
+	}
 	step := 1.0 / f32(samples)
-	for sy in 0 .. h * samples {
+	for sy in start_sy .. end_sy + 1 {
 		y := (f32(sy) + 0.5) * step
 		scan.crossings.clear()
 		for e in edges {
