@@ -428,6 +428,175 @@ pub fn ls(path string) ![]string {
 	return dir_files
 }
 
+fn C.GetFileInformationByHandleEx(hFile voidptr, file_information_class int, lpFileInformation voidptr, dwBufferSize u32) i32
+
+// FILE_LIST_DIRECTORY: the right to list a directory.
+const walk_access_list = u32(1)
+// FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE: nobody is kept from using, renaming
+// or removing the directory while it is open here.
+const walk_share_all = u32(7)
+// FILE_FLAG_BACKUP_SEMANTICS is what opens a directory. FILE_FLAG_OPEN_REPARSE_POINT opens a
+// link itself, where it would otherwise open what the link leads to.
+const walk_open_flags = u32(0x02000000 | 0x00200000)
+// FileIdBothDirectoryRestartInfo starts a listing, FileIdBothDirectoryInfo continues it.
+const walk_info_first = 11
+const walk_info_next = 10
+// Where FILE_ID_BOTH_DIR_INFO, one entry of such a listing, keeps what a walk reads.
+const walk_entry_attributes = 56
+const walk_entry_name_bytes = 60
+const walk_entry_name = 104
+
+// WalkPending is a path that walk or walk_with_context still has to visit.
+struct WalkPending {
+	path string
+	// listed_as_dir is what the listing of its folder said: a directory that is not a link.
+	// It can be out of date by the time the path is visited, see walk_list.
+	listed_as_dir bool
+}
+
+// WalkKind is what walk_list found a pending path to be.
+enum WalkKind {
+	// other is anything that a walk does not enter and that was not found to be a link: a
+	// file, a path that is gone, one that could not be looked at, and one that was not listed
+	// as a directory, which is not looked at again and may be a link.
+	other
+	// link is a link that the system reports as a directory: a junction or a link to a
+	// directory. A walk reports it and never enters it.
+	link
+	// entered is a directory that is not a link. Its entries were added, unless it may not
+	// be listed.
+	entered
+}
+
+// walk_root returns the starting entry for a walk of `path`: the path with `/` written as `\`
+// and without the separators at its end. Nothing is left of the empty path and of one that is
+// only separators, and walk_list does not open what is left then.
+// It does not look at what the path names: walk_list finds that out, as it does for an entry.
+fn walk_root(path string) WalkPending {
+	return WalkPending{
+		path:          path.replace('/', '\\').trim_right(path_separator)
+		listed_as_dir: true
+	}
+}
+
+// walk_list appends the entries of the directory `pending` to `remaining`, in reverse listing
+// order, so that popping them visits them in the order that `ls` reports. It returns what
+// `pending` is: `.entered` for a directory that is not a link, also when it may not be listed
+// and nothing was added for it, `.link` for a link to a directory, and `.other` for the rest.
+// The directory is opened once, without following a link. What was opened is then asked what
+// it is, and it is listed through that same handle. So what is listed is always what was
+// looked at, also when the callback or another process replaces the directory by a link in
+// between, and whatever way Windows reads the name.
+// The path is opened with a separator at its end, which is how Windows reads it in the paths
+// of the entries that the walk reports: `C:` is then the root of the drive and not its current
+// directory, and a space at the end of the name stays a part of it.
+// The listing says what kind each entry is, so a file needs no lookup of its own, which is
+// where a walk used to spend most of its time. That is also why an entry that was not listed
+// as a directory is not opened here.
+fn walk_list(pending WalkPending, mut remaining []WalkPending) WalkKind {
+	if !pending.listed_as_dir || pending.path == '' {
+		// The empty path with a separator after it would be the root of the current drive.
+		// It is what is left of a root that was empty or only separators, which is not walked.
+		return .other
+	}
+	wpath := (pending.path + path_separator).to_wide()
+	handle := C.CreateFileW(wpath, walk_access_list, walk_share_all, unsafe { nil }, u32(C.OPEN_EXISTING),
+		walk_open_flags, unsafe { nil })
+	if handle == invalid_handle_value {
+		// Nothing is listed, so nothing depends on this second look by name: it only tells a
+		// directory that may not be listed, which is passed over, from a link that may not be,
+		// and from a path that is gone or is no directory.
+		attr := C.GetFileAttributesW(wpath)
+		unsafe { free(wpath) }
+		if attr == u32(C.INVALID_FILE_ATTRIBUTES) || (attr & u32(C.FILE_ATTRIBUTE_DIRECTORY)) == 0 {
+			return .other
+		}
+		if (attr & windows_file_attribute_reparse_point) != 0 {
+			return .link
+		}
+		return .entered
+	}
+	unsafe { free(wpath) }
+	// A look that fails leaves `info` empty, which is no directory.
+	// What is no directory is no link to one either: through a share, a link to a file and a
+	// FIFO open under a path that ends in a separator, and are neither entered nor a root.
+	mut info := WindowsFileInformation{}
+	C.GetFileInformationByHandle(handle, voidptr(&info))
+	if (info.file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY)) == 0 {
+		C.CloseHandle(handle)
+		return .other
+	}
+	if (info.file_attributes & windows_file_attribute_reparse_point) != 0 {
+		C.CloseHandle(handle)
+		return .link
+	}
+	first := remaining.len
+	// 32 KiB of entries per call into the kernel, aligned as the entries need it.
+	buffer := [4096]u64{}
+	mut info_class := walk_info_first
+	for C.GetFileInformationByHandleEx(handle, info_class, voidptr(&buffer[0]), u32(sizeof(buffer))) != 0 {
+		info_class = walk_info_next
+		mut entry := unsafe { &u8(&buffer[0]) }
+		for {
+			// Each entry starts with the distance to the next one, which is 0 for the last.
+			next := unsafe { *(&u32(entry)) }
+			attr := unsafe { *(&u32(entry + walk_entry_attributes)) }
+			name_bytes := unsafe { *(&u32(entry + walk_entry_name_bytes)) }
+			name := unsafe { string_from_wide2(&u16(entry + walk_entry_name), int(name_bytes / 2)) }
+			if name != '.' && name != '..' {
+				remaining << WalkPending{
+					path:          pending.path + path_separator + name
+					listed_as_dir: (attr & u32(C.FILE_ATTRIBUTE_DIRECTORY)) != 0
+						&& (attr & windows_file_attribute_reparse_point) == 0
+				}
+			}
+			if next == 0 {
+				break
+			}
+			entry = unsafe { entry + next }
+		}
+	}
+	C.CloseHandle(handle)
+	mut lo := first
+	mut hi := remaining.len - 1
+	for lo < hi {
+		remaining[lo], remaining[hi] = remaining[hi], remaining[lo]
+		lo++
+		hi--
+	}
+	return .entered
+}
+
+// walk_windows is the implementation of `walk` on Windows.
+fn walk_windows(path string, f fn (string)) {
+	root := walk_root(path)
+	mut remaining := []WalkPending{cap: 1000}
+	// A root that is a link is the one entry of its walk. A root that is anything else than a
+	// directory is not walked, and is no entry either.
+	if walk_list(root, mut remaining) == .link {
+		f(root.path)
+	}
+	for remaining.len > 0 {
+		cur := remaining.pop()
+		if walk_list(cur, mut remaining) != .entered {
+			f(cur.path)
+		}
+	}
+}
+
+// walk_with_context_windows is the implementation of `walk_with_context` on Windows.
+fn walk_with_context_windows(path string, context voidptr, fcb FnWalkContextCB) {
+	root := walk_root(path)
+	mut remaining := []WalkPending{cap: 1000}
+	// `fcb` is called for everything but the root.
+	walk_list(root, mut remaining)
+	for remaining.len > 0 {
+		cur := remaining.pop()
+		fcb(context, cur.path)
+		walk_list(cur, mut remaining)
+	}
+}
+
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
