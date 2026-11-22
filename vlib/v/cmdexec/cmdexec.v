@@ -307,14 +307,31 @@ fn run_in_mode_with_env_timed(program string, args []string, work_folder string,
 	} else {
 		process.set_redirect_stdio()
 	}
+	// A tool that is cancelled ends its bounded runs, which its own signal does not reach
+	// (see bounded_runs.v). From before the fork until the run is in the table it counts as
+	// being started, so that a cancellation at any moment in between waits for it.
+	bounded := timeout_ms > 0
+	if bounded {
+		begin_bounded_start()
+		if bounded_runs_cancelled() != 0 {
+			end_bounded_start()
+			return os.Result{
+				exit_code: 1
+				output:    'V: `${display(program, args)}` was not started: the run was cancelled\n'
+			}, false
+		}
+	}
 	process.run()
-	// A tool that is cancelled ends its bounded runs, which its own signal does not reach.
-	bounded_slot := if timeout_ms > 0 { track_bounded_run(process) } else { -1 }
+	bounded_slot := if bounded { track_bounded_run(process) } else { -1 }
+	if bounded {
+		end_bounded_start()
+	}
 	defer {
 		untrack_bounded_run(bounded_slot)
 	}
 	mut output := strings.new_builder(1024)
 	mut timed_out := false
+	mut cancelled := false
 	mut stdout_done := false
 	mut stderr_done := merge_output
 	sw := time.new_stopwatch()
@@ -359,6 +376,17 @@ fn run_in_mode_with_env_timed(program string, args []string, work_folder string,
 			}
 			break
 		}
+		if bounded && bounded_runs_cancelled() != 0 {
+			// The tool is being cancelled: end the run as at the deadline. What it had
+			// written is not waited for.
+			cancelled = true
+			process.signal_pgkill()
+			process.signal_kill()
+			if process.status == .aborted {
+				process.status = .running
+			}
+			break
+		}
 		if stdout.len == 0 && stderr.len == 0 {
 			time.sleep(time.millisecond)
 		}
@@ -387,7 +415,7 @@ fn run_in_mode_with_env_timed(program string, args []string, work_folder string,
 		output.write_string(': ')
 		output.writeln(program)
 	}
-	exit_code := if timed_out {
+	exit_code := if timed_out || cancelled {
 		if process.code > 0 { process.code } else { 1 }
 	} else if process.code >= 0 {
 		process.code

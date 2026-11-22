@@ -866,20 +866,32 @@ fn test_file_is_target_of(this_os string, file string) bool {
 }
 
 // test processes the selected files, matching exclusions by their resolved paths.
-// end_tests_and_exit is the runner's handler of SIGINT and SIGTERM. A test under a limit is in
-// a process group of its own, so the signal that ends the runner (Ctrl-C in a terminal goes to
+// cancel_tests is the runner's handler of SIGINT and SIGTERM. A test under a limit is in a
+// process group of its own, so the signal that ends the runner (Ctrl-C in a terminal goes to
 // the runner's group) does not reach it: left alone, the test and what it started would go on
-// with nobody to enforce the limit. They are killed first, and then the runner goes.
-fn end_tests_and_exit(sig os.Signal) {
-	cmdexec.kill_bounded_runs()
-	exit(128 + int(sig))
+// with nobody to enforce the limit. The handler only says that the runs are cancelled; a test
+// can be between its fork and the runner's note of it at that moment, on another thread, and
+// nothing that is safe in a signal handler could wait for that.
+fn cancel_tests(sig os.Signal) {
+	cmdexec.cancel_bounded_runs(int(sig))
+}
+
+// exit_when_tests_are_cancelled is the thread that ends the runner after cancel_tests: every
+// test that was running, or was being started, is ended first.
+fn exit_when_tests_are_cancelled() {
+	for cmdexec.bounded_runs_cancelled() == 0 {
+		time.sleep(20 * time.millisecond)
+	}
+	cmdexec.end_cancelled_bounded_runs(10 * time.second)
+	exit(128 + cmdexec.bounded_runs_cancelled())
 }
 
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
 	if ts.timeout_s > 0 {
-		os.signal_opt(.int, end_tests_and_exit) or {}
-		os.signal_opt(.term, end_tests_and_exit) or {}
+		os.signal_opt(.int, cancel_tests) or {}
+		os.signal_opt(.term, cancel_tests) or {}
+		spawn exit_when_tests_are_cancelled()
 	}
 	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
