@@ -54,27 +54,33 @@ pub fn err(key string, msg string) Attr {
 	return Attr{ key: key, value: msg }
 }
 
-// Attrs is a small stack allocated builder for the zero allocation logging
-// path. Unlike the variadic methods, building an Attrs never allocates an
-// intermediate slice.
+// Attrs is a reusable builder for the low allocation logging path. Its buffer
+// is allocated once; reusing the same builder avoids the per-call attribute
+// slice that the variadic methods allocate.
 @[heap]
 pub struct Attrs {
 mut:
-	buf [8]Attr
+	buf []Attr = []Attr{cap: 8}
 	len int
 }
 
 // add appends an attribute to the builder.
 pub fn (mut a Attrs) add(attr Attr) &Attrs {
-	if a.len < a.buf.len {
-		a.buf[a.len] = attr
+	if a.len < 8 {
+		a.buf << attr
 		a.len++
 	}
 	return a
 }
 
-// values returns the attributes added so far. The returned slice points into
-// the builder's stack storage and is valid only while `a` is alive.
+// clear resets the builder so it can be reused for the next record.
+pub fn (mut a Attrs) clear() {
+	a.buf.clear()
+	a.len = 0
+}
+
+// values returns a slice over the builder's buffer. It does not allocate, but
+// the slice is only valid until the builder is cleared or modified.
 pub fn (a &Attrs) values() []Attr {
 	return a.buf[0..a.len]
 }

@@ -42,11 +42,7 @@ pub fn (h &TextHandler) handle(ctx context.Context, mut r Record) ! {
 	append_str(mut s.buf, ts)
 	append_byte(mut s.buf, ' ')
 	append_byte(mut s.buf, '[')
-	if opts.color {
-		append_str(mut s.buf, tag_to_console(r.level, opts.short_tags))
-	} else {
-		append_str(mut s.buf, tag_to_file(r.level, opts.short_tags))
-	}
+	append_str(mut s.buf, s.tags[int(r.level)])
 	append_byte(mut s.buf, ']')
 	append_byte(mut s.buf, ' ')
 	append_str(mut s.buf, r.msg)
