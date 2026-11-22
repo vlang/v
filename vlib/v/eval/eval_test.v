@@ -4180,9 +4180,11 @@ fn main() {
 
 fn test_eval_os_exec_accepts_literal_argument_arrays() {
 	mut e := create()
+	// The evaluator parses this generated V code again; escape Windows path separators.
+	escaped_exe := vexe.replace('\\', '\\\\')
 	e.run_text('import os
 fn main() {
- result := os.exec(["${vexe}", "version"])
+ result := os.exec(["${escaped_exe}", "version"])
  println(result.exit_code)
  println(result.output.starts_with("V "))
 }
