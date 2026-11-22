@@ -32,7 +32,7 @@ fn (mut b Builder) channel_operand(id flat.NodeId) ?(ValueID, TypeID) {
 	for _ in 0 .. depth {
 		value = b.emit1(.load, channel_type, value)
 	}
-	return value, b.resolve_type(flat.source_type_syntax(type_id).raw_base())
+	return value, b.resolve_struct_storage_type(flat.source_type_syntax(type_id).raw_base(), b.cur_module)
 }
 
 // build_channel_property lowers `channel.closed`, `.len` and `.cap`.
@@ -70,7 +70,7 @@ fn (mut b Builder) as_byte_pointer(value ValueID) ValueID {
 // build_channel_init lowers `chan T{cap: n}`.
 fn (mut b Builder) build_channel_init(node flat.Node) ?ValueID {
 	create := b.channel_function_ref('sync.new_channel_st')?
-	element := b.resolve_type(flat.source_type_syntax(node.source_value_id()).raw_base())
+	element := b.resolve_struct_storage_type(flat.source_type_syntax(node.source_value_id()).raw_base(), b.cur_module)
 	mut capacity := b.m.get_or_add_const(b.u32_type, '0')
 	for i in 0 .. node.children_count {
 		field := b.a.child_node(&node, i)
@@ -97,7 +97,7 @@ fn (mut b Builder) build_channel_receive(channel_id flat.NodeId) ?ValueID {
 fn (mut b Builder) build_channel_send(channel_id flat.NodeId, value_id flat.NodeId) bool {
 	push := b.channel_function_ref('sync.Channel.push') or { return false }
 	channel, element := b.channel_operand(channel_id) or { return false }
-	value := b.coerce_value_for_type(b.build_expr(value_id), element)
+	value := b.coerce_store_value(b.build_expr(value_id), element)
 	b.emit3(.call, b.void_type, push, channel, b.as_byte_pointer(b.channel_slot(element, value)))
 	return true
 }
@@ -232,7 +232,7 @@ fn (mut b Builder) build_channel_select(node flat.Node, is_expr bool) ?ValueID {
 	for select_case in cases {
 		channel, element := b.channel_operand(select_case.channel_id)?
 		value := if select_case.is_push {
-			b.coerce_value_for_type(b.build_expr(select_case.value_id), element)
+			b.coerce_store_value(b.build_expr(select_case.value_id), element)
 		} else {
 			b.default_value_for_type(element)
 		}

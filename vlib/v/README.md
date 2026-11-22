@@ -54,6 +54,8 @@ A compiler built without the backend reports that for `-b arm64` and exits with 
 The native runtime initializes globals, runtime constants, and module state before `main`.
 Native channel `try_push` and `try_pop` call the same nonblocking runtime as the C backend,
 including full, empty, and closed states. A successful `try_pop` writes to its `mut` destination.
+Fixed-array channel elements retain their inline size and contents during sends, receives,
+and `select`, including the nonblocking methods.
 Assignments to mutable native function parameters update the caller's storage, including
 generic sum-type parameters whose active variant changes during JSON decoding.
 On macOS ARM64, the C compiler probes numeric constants and absolute pointer sentinels such as

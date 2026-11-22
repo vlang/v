@@ -139,6 +139,21 @@ fn main() {
 	mut text := ''
 	assert texts.try_pop(mut text) == .success
 	println(text)
+	pairs := chan [2]int{cap: 1}
+	pair := [4, 7]!
+	assert pairs.try_push(&pair) == .success
+	mut received_pair := [0, 0]!
+	assert pairs.try_pop(mut received_pair) == .success
+	assert received_pair == pair
+	pairs <- pair
+	blocking_pair := <-pairs
+	assert blocking_pair == pair
+	select {
+		pairs <- pair {}
+	}
+	select {
+		selected_pair := <-pairs { assert selected_pair == pair }
+	}
 
 	mut values := [3, 1, 2]
 	sort_with(mut values, less)
