@@ -18,21 +18,44 @@ pub mut:
 // parse_style parses a CSS declaration list such as "fill:red; stroke: black".
 pub fn parse_style(input string) !Style {
 	mut s := Style{}
-	if input.trim_space() == '' {
+	text := input.trim_space()
+	if text == '' {
 		return s
 	}
-	for raw in input.split(';') {
+	// Most SVG styles have a single declaration; avoid the split allocations.
+	if !text.contains_u8(`;`) {
+		idx := text.index_u8(`:`)
+		if idx > 0 {
+			name := lower_css_name(text[0..idx].trim_space())
+			value := text[idx + 1..].trim_space()
+			if name != '' && value != '' {
+				s.set(name, value)
+				return s
+			}
+		}
+	}
+	for raw in text.split(';') {
 		decl := raw.trim_space()
 		if decl == '' {
 			continue
 		}
 		idx := decl.index(':') or { return error('invalid style declaration: ${decl}') }
-		name := decl[0..idx].trim_space().to_lower()
+		name := lower_css_name(decl[0..idx].trim_space())
 		value := decl[idx + 1..].trim_space()
 		if name == '' || value == '' {
 			return error('invalid style declaration: ${decl}')
 		}
 		s.set(name, value)
+	}
+	return s
+}
+
+fn lower_css_name(s string) string {
+	for i in 0 .. s.len {
+		c := s[i]
+		if c >= `A` && c <= `Z` {
+			return s.to_lower()
+		}
 	}
 	return s
 }

@@ -1,7 +1,6 @@
 module svg
 
 import math
-import strconv
 
 // NumberScan holds a parsed leading number and how many bytes it consumed.
 pub struct NumberScan {
@@ -17,17 +16,25 @@ pub fn scan_number(s string, start int) ?NumberScan {
 	if i >= s.len {
 		return none
 	}
+	mut negative := false
 	if s[i] == `+` || s[i] == `-` {
+		negative = s[i] == `-`
 		i++
 	}
+	mut whole := 0.0
 	mut digits := 0
 	for i < s.len && s[i] >= `0` && s[i] <= `9` {
+		whole = whole * 10 + f64(s[i] - `0`)
 		i++
 		digits++
 	}
+	mut frac := 0.0
+	mut scale := 1.0
 	if i < s.len && s[i] == `.` {
 		i++
 		for i < s.len && s[i] >= `0` && s[i] <= `9` {
+			frac = frac * 10 + f64(s[i] - `0`)
+			scale *= 10
 			i++
 			digits++
 		}
@@ -35,21 +42,33 @@ pub fn scan_number(s string, start int) ?NumberScan {
 	if digits == 0 {
 		return none
 	}
+	mut value := whole + frac / scale
 	if i < s.len && (s[i] == `e` || s[i] == `E`) {
 		mut j := i + 1
+		mut exp_negative := false
 		if j < s.len && (s[j] == `+` || s[j] == `-`) {
+			exp_negative = s[j] == `-`
 			j++
 		}
 		mut exp_digits := 0
+		mut exp := 0
 		for j < s.len && s[j] >= `0` && s[j] <= `9` {
+			exp = exp * 10 + int(s[j] - `0`)
 			j++
 			exp_digits++
 		}
 		if exp_digits > 0 {
+			if exp_negative {
+				value /= math.pow(10, f64(exp))
+			} else {
+				value *= math.pow(10, f64(exp))
+			}
 			i = j
 		}
 	}
-	value := strconv.atof64(s[start..i]) or { return none }
+	if negative {
+		value = -value
+	}
 	return NumberScan{
 		value:    value
 		consumed: i - start

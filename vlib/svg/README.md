@@ -135,8 +135,11 @@ to each polygon's vertical extent, and gradient transforms and solid colors
 are hoisted out of the pixel loop.
 
 In paired local measurements against the initial implementation, parsing
-2000 documents dropped from about 1160 ms to 380 ms, and rasterizing 10
-frames of the benchmark scene dropped from about 1195 ms to 165 ms.
+2000 documents dropped from about 1160 ms to 360 ms, rasterizing 10 frames
+of the benchmark scene dropped from about 1195 ms to 150 ms, and parsing
+50000 compact paths dropped from about 180 ms to 35 ms. The number scanner,
+single-declaration style fast path and reusable flatten buffers account for
+the latest gains.
 
 ## Design notes
 

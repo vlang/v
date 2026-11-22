@@ -33,6 +33,8 @@ pub fn (scene Scene) rasterize(opts RasterOptions) !image.RGBA {
 	fill_image(mut img, opts.background)
 
 	mut scan := ScanBuffers{}
+	mut poly_scratch := [][]Vec2{}
+	mut seg_scratch := []AbsSegment{}
 	mut fill_prev := CoverBounds{}
 	mut stroke_prev := CoverBounds{}
 	mut clip_masks := map[string][]f32{}
@@ -48,9 +50,11 @@ pub fn (scene Scene) rasterize(opts RasterOptions) !image.RGBA {
 	mut coverage := new_coverage(w, h)
 	mut stroke_cov := new_coverage(w, h)
 	for item in scene.items {
-		// Flatten once per item and transform the points in place, instead of
-		// building a transformed Path and flattening it twice.
-		mut polys := item.path.flatten(0.25)
+		// Flatten once per item into reusable buffers and transform the points
+		// in place, instead of building a transformed Path and flattening twice.
+		npolys := item.path.flatten_into(0.25, mut poly_scratch, mut seg_scratch)
+		poly_scratch.trim(npolys)
+		mut polys := poly_scratch
 		for i in 0 .. polys.len {
 			for j in 0 .. polys[i].len {
 				polys[i][j] = item.transform.apply(polys[i][j])

@@ -244,6 +244,13 @@ pub fn (p Path) str() string {
 // segments converts raw commands into absolute segments.
 pub fn (p Path) segments() []AbsSegment {
 	mut out := []AbsSegment{cap: p.cmds.len}
+	p.segments_into(mut out)
+	return out
+}
+
+// segments_into fills a reusable buffer with absolute segments.
+pub fn (p Path) segments_into(mut out []AbsSegment) {
+	out.clear()
 	mut cur := Vec2{}
 	mut start := Vec2{}
 	mut prev_ctrl := Vec2{}
@@ -338,7 +345,6 @@ pub fn (p Path) segments() []AbsSegment {
 		}
 		prev_kind = cm.kind
 	}
-	return out
 }
 
 // quad_to_cubic converts a quadratic Bezier to a cubic one.
@@ -536,38 +542,57 @@ fn flatten_cubic(c Cubic, tol f32, mut out []Vec2, depth int) {
 // flatten converts the path into subpaths of points. Closed subpaths repeat
 // their first point at the end.
 pub fn (p Path) flatten(tol f32) [][]Vec2 {
-	mut out := [][]Vec2{}
-	mut current := []Vec2{}
+	mut scratch := [][]Vec2{}
+	mut segs := []AbsSegment{cap: p.cmds.len}
+	n := p.flatten_into(tol, mut scratch, mut segs)
+	scratch.trim(n)
+	return scratch
+}
+
+// flatten_into appends flattened subpaths into reusable buffers and returns
+// the number of valid subpaths in scratch.
+pub fn (p Path) flatten_into(tol f32, mut scratch [][]Vec2, mut segs []AbsSegment) int {
+	p.segments_into(mut segs)
+	mut count := 0
 	mut have := false
-	for s in p.segments() {
+	for s in segs {
 		match s.kind {
 			.move_to {
 				if have {
-					out << current
+					count++
 				}
-				current = [s.p1]
+				if count >= scratch.len {
+					scratch << []Vec2{}
+				}
+				scratch[count].clear()
+				scratch[count] << s.p1
 				have = true
 			}
 			.close {
-				if current.len > 0 {
-					current << current[0]
+				if count < scratch.len && scratch[count].len > 0 {
+					scratch[count] << scratch[count][0]
 				}
 			}
 			else {
 				if !have {
-					current = [s.p0]
+					count = 0
+					if scratch.len == 0 {
+						scratch << []Vec2{}
+					}
+					scratch[0].clear()
+					scratch[0] << s.p0
 					have = true
 				}
 				for c in segment_cubics(s) {
-					flatten_cubic(c, tol, mut current, 0)
+					flatten_cubic(c, tol, mut scratch[count], 0)
 				}
 			}
 		}
 	}
 	if have {
-		out << current
+		count++
 	}
-	return out
+	return count
 }
 
 // bounds returns the axis-aligned bounds of the path (including control points).
