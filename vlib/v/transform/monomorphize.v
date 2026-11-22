@@ -8517,7 +8517,11 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 	if callee.kind == .ident {
 		direct_key := generic_fn_decl_base_value(callee.value_text())
 		if decl := decls[direct_key] {
-			if t.generic_call_arg_count_matches_decl(node, decl) {
+			// The program's own functions are keyed by their bare names. A bare call
+			// in a module names that module's function (`os.create` in os), not one
+			// of the program's generics with the same name.
+			if !(decl.module == 'main' && module_name !in ['', 'main'])
+				&& t.generic_call_arg_count_matches_decl(node, decl) {
 				return direct_key
 			}
 		}
