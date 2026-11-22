@@ -112,6 +112,10 @@ fn main() {
 }
 ```
 
+`set_level` controls both the legacy logger and the structured package-level
+calls; `set_record_level`/`set_record_logger` are available when the two need
+different configuration.
+
 Package level calls accept attributes too, using the global JSON logger:
 
 ```v
@@ -123,10 +127,13 @@ fn main() {
 ```
 
 Available attribute constructors: `str`, `int`, `float`, `bool`, `time_attr`,
-`group` and `err`. For hot paths there are two slice-free options: reuse an
-`Attrs` builder with `log_attrs`, or pass a stack allocated `FixedAttrs` list
-(`fixed1` .. `fixed4`) to `log_fixed`. Built-in handlers render into a reused
-scratch buffer and write it with a single call.
+`group` and `err`. User fields named `time`, `level` or `msg` are ignored so a
+record cannot spoof its metadata. Non-finite floats (NaN, infinity) are written
+as JSON `null`. For hot paths there are two slice-free options: reuse an `Attrs`
+builder with `log_attrs` (it starts with room for eight fields and grows if
+needed), or pass a stack allocated `FixedAttrs` list (`fixed1` .. `fixed4`) to
+`log_fixed`. Built-in handlers render into a reused scratch buffer and write it
+with a single call.
 
 Built-in handlers: `TextHandler`, `JSONHandler`, `MultiHandler` and
 `DiscardHandler`. `HandlerOptions` supports a fixed or runtime adjustable level,

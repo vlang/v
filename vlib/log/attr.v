@@ -64,12 +64,11 @@ mut:
 	len int
 }
 
-// add appends an attribute to the builder.
+// add appends an attribute to the builder. The buffer starts with room for
+// eight attributes and grows if more are added; no attribute is dropped.
 pub fn (mut a Attrs) add(attr Attr) &Attrs {
-	if a.len < 8 {
-		a.buf << attr
-		a.len++
-	}
+	a.buf << attr
+	a.len++
 	return a
 }
 

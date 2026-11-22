@@ -3,6 +3,7 @@ module log
 
 import context
 import io
+import math
 import time
 
 // JSONHandler renders records as newline delimited JSON objects.
@@ -62,16 +63,25 @@ pub fn (h &JSONHandler) handle(ctx context.Context, r Record) ! {
 	}
 
 	for a in h.cfg.attrs {
+		if is_reserved_key(a.key) {
+			continue
+		}
 		append_byte(mut s.buf, ',')
 		append_json_attr(mut s.buf, a.key, a.value)
 	}
 	for i in 0 .. r.fixed.len {
-		append_byte(mut s.buf, ',')
 		a := r.fixed.items[i]
+		if is_reserved_key(a.key) {
+			continue
+		}
+		append_byte(mut s.buf, ',')
 		append_json_attr(mut s.buf, a.key, a.value)
 	}
 	fields := h.cfg.apply_replace(r.groups, r.attrs)
 	for a in fields {
+		if is_reserved_key(a.key) {
+			continue
+		}
 		append_byte(mut s.buf, ',')
 		append_json_attr(mut s.buf, a.key, a.value)
 	}
@@ -82,7 +92,12 @@ pub fn (h &JSONHandler) handle(ctx context.Context, r Record) ! {
 
 pub fn (h &JSONHandler) set_level(level Level) {
 	mut s := h.cfg.st
+	s.mu.lock()
+	defer { s.mu.unlock() }
 	s.level = level
+	if v := s.level_var {
+		v.set(level)
+	}
 }
 
 pub fn (h &JSONHandler) with_attrs(attrs []Attr) Handler {
@@ -164,7 +179,12 @@ fn append_json_attr(mut buf []u8, key string, v Value) {
 			append_str(mut buf, v.str())
 		}
 		f64 {
-			append_str(mut buf, v.str())
+			// JSON has no representation for NaN or infinity.
+			if !math.is_finite(v) {
+				append_str(mut buf, 'null')
+			} else {
+				append_str(mut buf, v.str())
+			}
 		}
 		bool {
 			append_str(mut buf, if v { 'true' } else { 'false' })

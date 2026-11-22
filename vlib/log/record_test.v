@@ -3,6 +3,7 @@ module log
 import context
 import io
 import json2
+import math
 import sync
 import time
 
@@ -136,6 +137,44 @@ fn test_fixed_attrs_no_slice() {
 	assert out.contains('"k":"v"')
 	assert out.contains('"n":7')
 	assert out.contains('"msg":"fixed"')
+}
+
+fn test_reserved_keys_are_ignored() {
+	mut cap := &Capture{}
+	h := new_json_handler(io.Writer(cap), HandlerOptions{})
+	l := new_logger(h)
+	l.info('m', sattr('time', 'SPOOFED'), sattr('msg', 'SPOOFED'), sattr('level', 'SPOOFED'))
+	out := cap.text()
+	assert !out.contains('SPOOFED')
+	decoded := json2.decode[map[string]string](out) or { panic('bad json: ${out}') }
+	assert decoded['msg'] == 'm'
+	assert decoded['level'] == 'info'
+}
+
+fn test_non_finite_float_is_null() {
+	mut cap := &Capture{}
+	h := new_json_handler(io.Writer(cap), HandlerOptions{})
+	l := new_logger(h)
+	l.info('nan', Attr{ key: 'x', value: math.nan() })
+	out := cap.text()
+	assert out.contains('"x":null')
+	assert json2.decode[map[string]string](out.split('\n')[0]) != none
+}
+
+fn test_attrs_grows_past_eight() {
+	mut a := Attrs{}
+	for i in 0 .. 12 {
+		a.add(iattr('k${i}', i))
+	}
+	assert a.values().len == 12
+}
+
+fn test_set_level_updates_level_var() {
+	mut cap := &Capture{}
+	lv := new_level_var(.warn)
+	h := new_json_handler_var(io.Writer(cap), HandlerOptions{}, lv)
+	set_handler_level(h, .debug)
+	assert h.enabled(.debug)
 }
 
 fn test_direct_timestamp_matches_formatter() {
