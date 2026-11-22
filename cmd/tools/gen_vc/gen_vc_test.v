@@ -34,7 +34,7 @@ fn test_check_snapshot_accepts_a_good_snapshot_and_names_each_defect() {
 			v_win_c.replace_once('no_backtrace,cross', 'no_backtrace'),
 		]
 		'v_win.c contains the FastC backend':           [v_c, v_win_c + 'void fastc__gen(void);\n']
-		'v_win.c has an unbundled include:':            [
+		'v_win.c has a non-portable include:':          [
 			v_c,
 			v_win_c + '#include "/runner/v/thirdparty/stdatomic/win/atomic.h"\n',
 		]
@@ -87,18 +87,21 @@ fn test_lock_and_unrelated_paths_never_trigger_a_snapshot() {
 	}
 }
 
-fn test_bundle_snapshot_includes_preserves_sdk_includes_and_guards() ! {
-	root := os.real_path(@VEXEROOT).replace('\\', '/')
-	poll := '${root}/vlib/os/fd_poll.h'
-	cache := '${root}/vlib/v/driver/native_object_cache.h'
-	generated := '#if defined(__linux__)\n  # include "${poll}"\n#endif\n#include "${cache}"\n'
-	bundled := bundle_snapshot_includes(root, 'v.c', generated)!
-	assert bundled.starts_with('#if defined(__linux__)\n#ifndef V_OS_FD_POLL_H\n')
-	assert bundled.contains('#include <poll.h>\n')
-	assert bundled.contains('static inline short v_os_fd_poll_revents(')
-	assert bundled.contains('static inline int v_native_object_cache_publish(')
-	assert !bundled.contains(root)
-	assert next_snapshot_include(bundled, 0) == none
+fn test_relocate_snapshot_includes_preserves_directives_and_leaves_nested_includes_to_cc() ! {
+	path := 'vlib/v/driver/native_object_cache.h'
+	root := '/runner/v with spaces'
+	generated := '#include <stddef.h>\n#ifndef _WIN32\n  # include "${root}/${path}" // helper\n#endif\n'
+	relocated := relocate_snapshot_includes(root, 'v.c', generated)!
+	assert relocated == generated.replace_once('"${root}/${path}"', '"${path}"')
+	temp := os.join_path(os.vtmp_dir(), 'gen_vc_native_includes_${os.getpid()}')
+	os.mkdir_all(temp)!
+	defer { os.rmdir_all(temp) or {} }
+	source := os.join_path(temp, 'snapshot.c')
+	os.write_file(source,
+		relocated + 'int publish(const char *src, const char *dst) { return v_native_object_cache_publish(src, dst); }\n')!
+	cc := os.getenv_opt('CC') or { 'cc' }
+	result := os.exec([cc, '-std=gnu99', '-Werror', '-fsyntax-only', '-I', @VEXEROOT, source])
+	assert result.exit_code == 0, result.output
 }
 
 fn test_snapshot_messages_name_their_source_commit() {

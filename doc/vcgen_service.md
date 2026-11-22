@@ -28,7 +28,7 @@ webhook for master. Requests that arrive while a run is pending coalesce into it
 3. Refuses to build while MemAvailable plus SwapFree is below `--min-available-mib` (2048).
 4. Checks out vlang/v master at `--v-dir`, cleans it, and runs `make`.
 5. Generates `v.c` (`-cross`) and `v_win.c` (`-cross -os windows -cc msvc`) at the checkout root,
-   bundles the required checkout headers and prepends `#define V_COMMIT_HASH "<sha>"`.
+   makes checkout-owned include paths relative and prepends `#define V_COMMIT_HASH "<sha>"`.
    It runs the snapshot checks in `cmd/tools/gen_vc/snapshot.v`, which `gen_vc_ci.yml` uses too.
 6. Commits the snapshot on top of vlang/vc master as `[v:master] <sha> - <subject>` by
    `vlang-bot`, in a bare blobless clone (no checkout of the old snapshot).
@@ -42,9 +42,10 @@ byte-identical to the published one, `differs` names the file that is not.
 The checkout path appears in generated string literals. GitHub's runners build at
 `/home/runner/work/v/v`, so the service uses the same `--v-dir` to produce the same bytes.
 
-Each published C file contains the V-owned native code it needs. The receiving C compiler
-resolves system and SDK includes and evaluates the preprocessor guards. For older snapshots,
-the bootstrap compatibility helpers relocate V-owned include directives to the current checkout.
+When compiling a downloaded C snapshot directly, pass `-I /path/to/v` with a checkout matching
+its `V_COMMIT_HASH`. The C compiler resolves nested includes and evaluates preprocessor guards.
+The bootstrap compatibility helpers already resolve V-owned include paths against the local
+checkout for both current and older snapshots.
 
 ## Endpoints
 

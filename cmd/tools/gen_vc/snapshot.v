@@ -15,20 +15,6 @@ const snapshot_files = {
 	'v_win.c': ['-cross', '-os', 'windows', '-cc', 'msvc']
 }
 
-// These fragments travel with the two published C files. The C consumer still
-// preprocesses their guards and resolves the platform and SDK includes.
-const snapshot_include_files = [
-	'thirdparty/stdatomic/win/atomic.h',
-	'vlib/builtin/core_windows.h',
-	'vlib/os/fd_poll.h',
-	'vlib/sync/sync_windows_tcc.h',
-	'vlib/time/ticks_windows_api.h',
-	'vlib/time/zoneinfo_windows.h',
-	'vlib/v/cmdexec/cmdexec_poll.h',
-	'vlib/v/driver/native_object_cache.h',
-	'vlib/v/pthread_helper.h',
-]
-
 struct SnapshotInclude {
 	path  string
 	start int
@@ -70,32 +56,34 @@ fn next_snapshot_include(content string, offset int) ?SnapshotInclude {
 	return none
 }
 
-fn bundle_snapshot_includes(root string, name string, content string) !string {
+fn snapshot_include_is_checkout_relative(path string) bool {
+	return path.all_before('/') in ['vlib', 'thirdparty', 'cmd'] && path.contains('/')
+		&& !path.split('/').any(it in ['', '.', '..'])
+}
+
+// relocate_snapshot_includes rewrites paths in generated C. The receiving C
+// compiler opens the headers from a matching checkout and processes their includes.
+fn relocate_snapshot_includes(root string, name string, content string) !string {
 	root_prefix := root.replace('\\', '/').trim_right('/') + '/'
-	mut bundled := strings.new_builder(0)
+	mut relocated := strings.new_builder(0)
 	mut copied := 0
 	for {
 		include := next_snapshot_include(content, copied) or { break }
 		path := include.path.replace('\\', '/')
 		relative := path.trim_string_left(root_prefix)
-		if relative == path || relative !in snapshot_include_files {
-			return error('${name} has an unbundled include: ${include.path}')
+		if !snapshot_include_is_checkout_relative(relative) {
+			return error('${name} has a non-portable include: ${include.path}')
 		}
-		mut fragment := os.read_file(os.join_path(root, relative))!
-		if relative == 'vlib/v/driver/native_object_cache.h' {
-			// Place the implementation inside the header's existing guard.
-			impl := os.read_file(os.join_path(root, 'vlib', 'v', 'driver', 'native_object_cache_impl.c'))!
-			fragment = fragment.replace_once('#include "native_object_cache_impl.c"', impl.trim_right('\n'))
-		}
-		bundled.write_string(content[copied..include.start])
-		bundled.writeln(fragment.trim_right('\n'))
+		relocated.write_string(content[copied..include.start])
+		relocated.write_string(content[include.start..include.end].replace_once('"${include.path}"',
+			'"${relative}"'))
 		copied = include.end
 	}
 	if copied == 0 {
 		return content
 	}
-	bundled.write_string(content[copied..])
-	return bundled.str()
+	relocated.write_string(content[copied..])
+	return relocated.str()
 }
 
 fn commit_hash_line(commit string) string {
@@ -128,8 +116,8 @@ fn generate_snapshot(mut log Log, v_root string, commit string, out_dir string, 
 		args << flags
 		args << 'cmd/v'
 		log.run_limited(in_dir(root, args), timeout_minutes, 'generating ${name} failed')!
-		bundled := bundle_snapshot_includes(root, name, os.read_file(out)!)!
-		content := commit_hash_line(commit) + bundled
+		relocated := relocate_snapshot_includes(root, name, os.read_file(out)!)!
+		content := commit_hash_line(commit) + relocated
 		os.write_file(out, content)!
 		contents[name] = content
 	}
@@ -156,8 +144,13 @@ fn check_snapshot(commit string, v_c string, v_win_c string) ! {
 		if content.contains('fastc__') {
 			return error('${name} contains the FastC backend')
 		}
-		if include := next_snapshot_include(content, 0) {
-			return error('${name} has an unbundled include: ${include.path}')
+		mut offset := 0
+		for {
+			include := next_snapshot_include(content, offset) or { break }
+			if !snapshot_include_is_checkout_relative(include.path) {
+				return error('${name} has a non-portable include: ${include.path}')
+			}
+			offset = include.end
 		}
 		lines := content.count('\n')
 		if lines <= snapshot_min_lines {
