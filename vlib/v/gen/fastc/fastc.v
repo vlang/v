@@ -4630,11 +4630,13 @@ fn fastc_c_main_parameters(prefs &pref.Preferences) string {
 
 // fastc_c_main_binary_stdio_lines returns the entry statements that switch stdout and
 // stderr out of the CRT's text mode on Windows, so a FastC program prints `\n` like the
-// same source built with cgen instead of `\r\n`. Selfhost builds get this from
-// builtin (`set_stream_binary_mode` in builtin_windows.c.v); header-targeted builds
-// emit no stdio setup at all, matching the `setvbuf` call they also skip.
+// same source built with cgen instead of `\r\n`. Selfhost builds need it too: cgen
+// does this in `builtin_init` (`set_stream_binary_mode` in builtin_windows.c.v), which
+// FastC's own startup sequence does not call; builtin_windows.c.v includes the
+// headers. Header-targeted builds emit no stdio setup at all, matching the `setvbuf`
+// call they also skip.
 fn fastc_c_main_binary_stdio_lines(prefs &pref.Preferences) []string {
-	if prefs.building_v || prefs.target_libc_headers || prefs.normalized_target_os() != 'windows' {
+	if prefs.target_libc_headers || prefs.normalized_target_os() != 'windows' {
 		return []
 	}
 	return ['_setmode(1, _O_BINARY);', '_setmode(2, _O_BINARY);']

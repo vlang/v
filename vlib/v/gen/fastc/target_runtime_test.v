@@ -218,10 +218,11 @@ fn test_fastc_windows_target_entry_switches_stdio_to_binary_mode() {
 	linux_c := generate(source, 'binary_stdio.v', linux_prefs) or { panic(err) }
 	assert !linux_c.contains('_setmode('), linux_c
 
-	// Selfhost builds get binary streams from builtin's own startup instead.
+	// Selfhost builds (every program that compiles the real builtin) need the same
+	// switch: FastC's startup does not run builtin_init, which does it for cgen.
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
 	selfhost_prefs.building_v = true
 	selfhost_c := generate(source, 'binary_stdio.v', selfhost_prefs) or { panic(err) }
-	assert !selfhost_c.contains('_setmode(1, _O_BINARY);'), selfhost_c
+	assert selfhost_c.contains('_setmode(1, _O_BINARY);\n\t_setmode(2, _O_BINARY);\n\tsetvbuf(stdout, NULL, _IONBF, 0);'), selfhost_c
 }
