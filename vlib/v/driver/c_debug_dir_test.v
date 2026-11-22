@@ -745,3 +745,73 @@ fn test_the_setup_ends_idle_when_refused_and_armed_when_the_directory_was_moved(
 	cleanup_c_build_dir(dir)
 	assert read_c_debug_dir(dir) == 'sources 1'
 }
+
+// A second thread that looks at the word and at a directory for as long as it is told to, and
+// counts what it saw. The word is read first: `armed` read before the directory is looked at
+// cannot turn into a directory that came back afterwards.
+struct CDebugDirSetupWatch {
+mut:
+	stop                  u64
+	samples               u64
+	saw_setting_aside     u64
+	saw_armed_while_there u64
+}
+
+fn watches_the_c_debug_dir_setup(mut watch CDebugDirSetupWatch, dir string) {
+	for stdatomic.load_u64(&watch.stop) == 0 {
+		state := v3_c_debug_dir_load() & c_debug_dir_state_mask
+		there := os.is_dir(dir)
+		if state == c_debug_dir_setting_aside {
+			stdatomic.add_u64(&watch.saw_setting_aside, 1)
+		}
+		if state == c_debug_dir_armed && there {
+			stdatomic.add_u64(&watch.saw_armed_while_there, 1)
+		}
+		stdatomic.add_u64(&watch.samples, 1)
+	}
+}
+
+// A build that was interrupted left its unfinished directory in place and the sources of the
+// executable set aside. The next build removes what was left, and only then is the watch
+// armed: while it removes, a signal waits. Armed during the removal, a handler on another
+// thread could give the set-aside directory back, and the removal would go on and take it
+// (which is what the build did before: it armed first). Watched here from a second thread,
+// through the build's own function, with enough left in place that removing it takes a while.
+fn test_what_an_interrupted_build_left_is_removed_before_the_watch_is_armed() {
+	root := c_debug_dir_fixture('setup_recovery')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(set_aside, 'old')
+	write_c_debug_dir(dir, 'new, unfinished')
+	for i in 0 .. 1500 {
+		os.write_file(os.join_path(dir, 'left_${i}.o'), 'x')!
+	}
+	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
+	mut watch := &CDebugDirSetupWatch{}
+	watcher := spawn watches_the_c_debug_dir_setup(mut watch, dir)
+	for stdatomic.load_u64(&watch.samples) == 0 {
+		time.sleep(time.millisecond)
+	}
+	assert v3_set_aside_c_debug_dir(dir) == ''
+	stdatomic.store_u64(&watch.stop, 1)
+	watcher.wait()
+	assert stdatomic.load_u64(&watch.saw_armed_while_there) == 0, 'the watch was armed while what was left was still being removed, ${stdatomic.load_u64(&watch.saw_armed_while_there)} times of ${stdatomic.load_u64(&watch.samples)}'
+	assert stdatomic.load_u64(&watch.saw_setting_aside) > 0, 'the watcher saw the setup while it ran (else it judged nothing)'
+	assert v3_c_debug_dir_state_is(c_debug_dir_armed)
+	assert !os.exists(dir)
+	assert read_c_debug_dir(set_aside) == 'old'
+	// and a signal now, with the build past its setup, gives the old sources back
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.int)) == .give_back
+	$if windows {
+		v3_give_back_c_debug_dir_as_owner()
+	} $else {
+		v3_give_back_c_debug_dir_in_a_handler()
+	}
+	assert read_c_debug_dir(dir) == 'old'
+	// (the process ends here; the test puts the word back instead)
+	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
+	v3_unwatch_c_debug_dir()
+}

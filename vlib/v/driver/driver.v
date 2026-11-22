@@ -6469,17 +6469,20 @@ fn v3_set_aside_c_debug_dir(cc_dir string) string {
 		v3_watch_c_debug_dir(cc_dir)
 		return ''
 	}
+	// From here to the end of this function the directories are being changed, and a signal
+	// waits (`setting aside`): the watch is set, so that nothing done here is left without
+	// someone to give it back, and it is armed only when the directories are at rest. Armed
+	// earlier, a handler on another thread acts in the middle of what follows: it gives back
+	// what is set aside while this function goes on to remove or move what is in place.
+	v3_watch_c_debug_dir_as(cc_dir, c_debug_dir_setting_aside)
 	if os.is_dir(set_aside) {
-		v3_watch_c_debug_dir(cc_dir)
+		// A build that was interrupted left this set aside: it is the one to keep, and what
+		// is in place is what that build left.
 		os.rmdir_all(cc_dir) or {}
+		v3_end_c_debug_dir_setup(c_debug_dir_armed)
 		return ''
 	}
 	if os.exists(cc_dir) {
-		// The watch first: a signal between the move and the watch would find the old
-		// sources set aside and nothing to give them back. But not armed yet: until the
-		// move is known to have worked, a signal waits (`setting aside`). Armed, it would
-		// act on whatever has the set-aside name while the sources are still in place.
-		v3_watch_c_debug_dir_as(cc_dir, c_debug_dir_setting_aside)
 		os.rename(cc_dir, set_aside) or {}
 		if os.exists(cc_dir) || !os.is_dir(set_aside) {
 			// It could not be moved (a file in it is open, or the name it would take is
@@ -6494,7 +6497,7 @@ fn v3_set_aside_c_debug_dir(cc_dir string) string {
 		v3_end_c_debug_dir_setup(c_debug_dir_armed)
 		return ''
 	}
-	v3_watch_c_debug_dir(cc_dir)
+	v3_end_c_debug_dir_setup(c_debug_dir_armed)
 	return ''
 }
 
