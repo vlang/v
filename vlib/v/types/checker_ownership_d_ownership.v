@@ -13431,16 +13431,30 @@ fn (mut tc TypeChecker) ownership_report_moved(name string, info MovedVar, id fl
 }
 
 fn (mut tc TypeChecker) ownership_check_reassign(name string, pos flat.NodeId) {
-	conflict := tc.ownership_borrow_conflict(name) or { return }
-	if tc.ownership_release_borrow_if_dead(conflict, pos) {
-		return
+	// Releasing one dead loan can expose another conflict: ownership_borrow_conflict
+	// only returns borrows[0], so keep releasing dead loans until none remain or a
+	// live borrower is found. Without this loop a second live borrower would still
+	// allow the write (see the recheck finding on #32474 / fix in #32566).
+	for _ in 0 .. 128 {
+		conflict := tc.ownership_borrow_conflict(name) or { return }
+		if !tc.ownership_release_borrow_if_dead(conflict, pos) {
+			msg := if conflict.name == name {
+				'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+			} else {
+				'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+			}
+			tc.record_error(.assignment_mismatch, msg, pos)
+			return
+		}
 	}
-	msg := if conflict.name == name {
-		'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
-	} else {
-		'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+	if conflict := tc.ownership_borrow_conflict(name) {
+		msg := if conflict.name == name {
+			'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+		} else {
+			'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+		}
+		tc.record_error(.assignment_mismatch, msg, pos)
 	}
-	tc.record_error(.assignment_mismatch, msg, pos)
 }
 
 // ownership_borrower_base returns the root identifier of a borrower storage key
