@@ -842,6 +842,8 @@ pub fn (mut ts TestSession) test() {
 	ts.files = remaining_files
 	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
+	// Batching evaluates the `// vtest build:` constraints of the files.
+	ts.setup_build_environment(remaining_files)
 	// The pool works on units: a single file, or a batch of the tests of one module.
 	units := ts.test_units(remaining_files)
 	mut njobs := test_runner_jobs(ts.will_compile)
@@ -861,8 +863,6 @@ pub fn (mut ts TestSession) test() {
 	printing_thread := spawn ts.print_messages()
 	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
-
-	ts.setup_build_environment(remaining_files)
 
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { units.pointers() })

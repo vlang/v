@@ -25,11 +25,11 @@ const test_batch_memory_limit_env = 'VTEST_BATCH_MEMORY_LIMIT'
 const default_test_batch_memory_limit_mib = 4096
 
 // A file that uses one of these is run on its own: test directives configure one
-// file, suite hooks run once per binary, and the rest change or depend on state of
-// the whole process, which the other tests of a batch would share. A `fn main` of
-// a module's internal test is an ordinary function of the module; one in two
-// files collides by name.
-const test_batch_excluded_markers = ['// vtest', '// v test', 'fn testsuite_begin', 'fn testsuite_end',
+// file (but see test_batch_directives_allow), suite hooks run once per binary, and
+// the rest change or depend on state of the whole process, which the other tests of
+// a batch would share. A `fn main` of a module's internal test is an ordinary
+// function of the module; one in two files collides by name.
+const test_batch_excluded_markers = ['// v test', 'fn testsuite_begin', 'fn testsuite_end',
 	'os.executable(', 'os.setenv(', 'os.unsetenv(', 'os.chdir(', 'os.args', 'arguments()', 'exit(']
 
 // A `main` test is a program of its own. These change how all of a program is
@@ -126,7 +126,7 @@ fn (ts &TestSession) test_units(files []string) []string {
 	mut unit_files := []string{cap: files.len}
 	mut unit_batches := []int{cap: files.len}
 	for file in files {
-		candidate := test_batch_candidate(file, skipped) or {
+		candidate := ts.test_batch_candidate(file, skipped) or {
 			unit_files << file
 			unit_batches << -1
 			continue
@@ -171,7 +171,7 @@ fn (ts &TestSession) test_units(files []string) []string {
 
 // test_batch_candidate returns the batch key (directory and module) and the
 // top-level names of `file`, when it can share a binary with other tests.
-fn test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidate {
+fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidate {
 	name := os.file_name(file)
 	// `.c.v`/`.js.v` tests select a backend, and `global` in a name enables globals.
 	if !name.ends_with('_test.v') || name.all_before_last('_test.v').contains('.')
@@ -189,6 +189,9 @@ fn test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidat
 		if source.contains(marker) {
 			return none
 		}
+	}
+	if !ts.test_batch_directives_allow(source) {
+		return none
 	}
 	mut module_name := test_file_module(source)
 	if module_name in ['', 'main'] {
@@ -210,6 +213,30 @@ fn test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidat
 		consts: words
 		source: source
 	}
+}
+
+// test_batch_directives_allow reports whether the `// vtest` directives of `source`
+// let it share a binary. Only `// vtest build:` does, when its constraint holds: it
+// decides whether the file runs, not how. One that does not hold leaves the file to
+// run, and be skipped, on its own. `retry:` and `flaky:` mark tests that fail now and
+// then, which would send their whole batch back to running file by file.
+fn (ts &TestSession) test_batch_directives_allow(source string) bool {
+	if !source.contains('// vtest') {
+		return true
+	}
+	for line in source.split_into_lines() {
+		if !line.contains('// vtest') {
+			continue
+		}
+		if !line.starts_with('// vtest build:') {
+			return false
+		}
+		holds := ts.build_environment.eval(line.all_after(':').trim_space()) or { false }
+		if !holds {
+			return false
+		}
+	}
+	return true
 }
 
 // test_file_const_names lists the constants that `source` declares, also those of
