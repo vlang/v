@@ -2403,6 +2403,13 @@ fn (g &FlatGen) interface_concrete_storage_c_type(concrete_id u32) string {
 }
 
 fn (g &FlatGen) interface_storage_c_type(typ &types.Type) string {
+	// A backed enum (`enum E as u8`), or an alias of one, is boxed in the enum's
+	// emitted typedef, while `TypeChecker.c_type` spells every enum `int`. Reading
+	// the box as an `int` reads past a 1 byte box, or truncates an `as i64` value.
+	clean := cgen_unalias_type(typ)
+	if clean is types.Enum {
+		return g.enum_value_c_type(clean)
+	}
 	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)

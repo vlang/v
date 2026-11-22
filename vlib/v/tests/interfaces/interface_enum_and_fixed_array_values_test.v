@@ -33,6 +33,26 @@ fn (s Small) name() string {
 	return 'small:${s}'
 }
 
+type SmallAlias = Small
+
+fn (s SmallAlias) name() string {
+	return 'small-alias:${u8(s)}'
+}
+
+enum Wide as i64 {
+	low  = 1
+	high = 0x100000002
+}
+
+fn (w Wide) name() string {
+	return 'wide:${i64(w)}'
+}
+
+fn (mut w Wide) step() int {
+	w = .high
+	return int(i64(w) >> 32)
+}
+
 @[flag]
 enum Perm {
 	read
@@ -104,6 +124,23 @@ fn test_enum_method_dispatch() {
 		names << n.name()
 	}
 	assert names == ['color:red', 'small:a', 'dog']
+}
+
+// test_backed_enum_method_dispatch_reads_the_boxed_storage checks that dispatch reads a
+// backed enum box in its backing type: an `int` read truncated a 64 bit value, and read
+// past the 1 byte box of an `as u8` enum.
+fn test_backed_enum_method_dispatch_reads_the_boxed_storage() {
+	assert Namer(Wide.high).name() == 'wide:4294967298'
+	assert Namer(Wide.low).name() == 'wide:1'
+	assert Namer(SmallAlias(Small.b)).name() == 'small-alias:200'
+	mut names := []string{}
+	for n in [Namer(Small.b), Wide.high, SmallAlias(Small.a)] {
+		names << n.name()
+	}
+	assert names == ['small:b', 'wide:4294967298', 'small-alias:3']
+	mut s := Stepper(Wide.low)
+	assert s.step() == 1
+	assert s as Wide == .high
 }
 
 fn test_enum_mut_method_dispatch() {
