@@ -2172,16 +2172,22 @@ fn test_a_prepared_server_scans_the_prepared_modules_anew_for_a_program_that_cha
 	assert trace.contains('scanning the prepared modules anew: the program writes `r:levenshtein_distance`'), trace
 }
 
+// generic_heavy_fns is how many generic functions generic_heavy_program declares. Their
+// instances keep the grandchild of a shared check busy for longer than the server waits
+// before it sends a partial answer (partial_answer_ms, 3 ms); with 40 a fast runner
+// finished in time and sent none.
+const generic_heavy_fns = 160
+
 // generic_heavy_program has many instances of generic functions, which the end
 // of a check checks after the rest, and an error the rest finds.
 fn generic_heavy_program() string {
 	mut source := 'module main\n\nstruct Box[T] {\n\tvalue T\n}\n'
-	for i in 0 .. 40 {
+	for i in 0 .. generic_heavy_fns {
 		source += '\nfn wrap_${i}[T](x T) Box[T] {\n\treturn Box[T]{\n\t\tvalue: x\n\t}\n}\n'
 		source += '\nfn unwrap_${i}[T](b Box[T]) T {\n\treturn b.value\n}\n'
 	}
 	source += "\nfn main() {\n\tbroken := 1 + 'a'\n\tprintln(broken)\n"
-	for i in 0 .. 40 {
+	for i in 0 .. generic_heavy_fns {
 		for typ in ['1', "'s'", '1.5', 'true', 'u8(1)'] {
 			source += '\tprintln(unwrap_${i}(wrap_${i}(${typ})))\n'
 		}
