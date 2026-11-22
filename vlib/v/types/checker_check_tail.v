@@ -1,7 +1,5 @@
 module types
 
-import v.flat
-
 // CheckTailPrepared holds what a parallel check works out, while its pool checks
 // the bodies, for the scans of every node that follow the check on one thread:
 // warn_unhandled_result_calls and check_unused_import_diagnostics. Each scan
