@@ -1,9 +1,11 @@
 import os
+import time
 
 const child_source = r'
 module main
 
 import os
+import time
 
 struct Item {
 	value int
@@ -281,4 +283,64 @@ fn main() {
 	assert persistent.exit_code == 0, persistent.output
 	assert persistent.output.count('previous SIGBUS handler') == 2, persistent.output
 	assert persistent.output.contains('survived'), persistent.output
+}
+
+// The SIGABRT handler of the TCC `-bt` runtime walks the frame pointer chain from inside
+// libc. With glibc 2.35 that register holds the thread id there, and once thread ids
+// pass 0x1000 the walk faults and the fault handler waits forever for the runtime's lock.
+// V restores the default action, so abort() ends a TCC-built program like any other.
+fn test_tcc_program_aborts_with_the_default_action() ! {
+	$if !(linux && (amd64 || arm64)) {
+		return
+	}
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_tcc_abort_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	os.write_file(os.join_path(work_dir, 'abort_action.h'), r'
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int v_test_abort_action_is_default(void) {
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	return sigaction(SIGABRT, NULL, &sa) == 0 && sa.sa_handler == SIG_DFL;
+}
+static void v_test_abort(void) { abort(); }
+')!
+	source := os.join_path(work_dir, 'child.c.v')
+	binary := os.join_path(work_dir, 'child')
+	os.write_file(source, r'
+module main
+#include "@DIR/abort_action.h"
+fn C.v_test_abort_action_is_default() int
+fn C.v_test_abort()
+fn main() {
+	println("default abort action: ${C.v_test_abort_action_is_default()}")
+	C.v_test_abort()
+	println("not reached")
+}
+')!
+	compile := os.exec([@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', binary, source])
+	assert compile.exit_code == 0, compile.output
+	mut child := os.new_process(binary)
+	child.set_redirect_stdio()
+	child.run()
+	started := time.now()
+	for child.is_alive() {
+		if time.since(started) > 60 * time.second {
+			child.signal_kill()
+			child.wait()
+			assert false, 'abort() did not end the TCC-built program'
+		}
+		time.sleep(50 * time.millisecond)
+	}
+	child.wait()
+	output := child.stdout_slurp()
+	child.close()
+	assert child.code != 0, output
+	assert output.contains('default abort action: 1'), output
+	assert !output.contains('not reached'), output
 }
