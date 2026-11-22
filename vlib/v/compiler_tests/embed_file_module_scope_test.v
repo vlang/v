@@ -53,8 +53,18 @@ fn main() {
 ') or { panic(err) }
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
 	for mode in ['-g', '-prod'] {
+		// The outer TCC self-test job selects TCC through VFLAGS; it cannot build -prod.
+		// Keep -g on TCC, but use the default C compiler for the positive -prod build.
+		original_vflags := os.getenv('VFLAGS')
+		tcc_prod := mode == '-prod' && original_vflags.contains('tcc')
+		if tcc_prod {
+			os.unsetenv('VFLAGS')
+		}
 		build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', mode, '-o', binary,
 			root])
+		if tcc_prod {
+			os.setenv('VFLAGS', original_vflags, true)
+		}
 		assert build.exit_code == 0, '${mode}: ${build.output}'
 		run := os.exec([binary])
 		assert run.exit_code == 0, run.output
