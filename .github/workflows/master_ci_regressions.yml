@@ -92,6 +92,29 @@ jobs:
         run: |
           .\makev.bat "-$env:V_CI_CCOMPILER"
           if ($LASTEXITCODE -ne 0) { throw "V bootstrap failed (exit $LASTEXITCODE)" }
+      # Check the original Windows path regression with an actual TCC/V
+      # bootstrap, rather than relying on a makev.bat string contract.
+      - name: Bootstrap TCC in a checkout with punctuation and spaces
+        if: matrix.cc == 'tcc'
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $caseDir = Join-Path $env:RUNNER_TEMP 'path with some $punctuation, and some spaces'
+          git clone --local . "$caseDir"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to clone into space-path fixture" }
+          Push-Location -LiteralPath $caseDir
+          try {
+            # Match paths_ci.yml: its native bootstrap does not set VFLAGS.
+            Remove-Item Env:VFLAGS -ErrorAction SilentlyContinue
+            .\makev.bat -tcc
+            if ($LASTEXITCODE -ne 0) { throw "Space-path TCC bootstrap failed (exit $LASTEXITCODE)" }
+            .\v.exe -prod -cc gcc self
+            if ($LASTEXITCODE -ne 0) { throw "Space-path V self build failed (exit $LASTEXITCODE)" }
+            .\v.exe test vlib/builtin vlib/os
+            if ($LASTEXITCODE -ne 0) { throw "Space-path V tests failed (exit $LASTEXITCODE)" }
+          } finally {
+            Pop-Location
+          }
       - name: Prepare optimized V compiler
         id: build
         uses: ./.github/actions/setup-v
