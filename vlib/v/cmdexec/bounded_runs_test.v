@@ -54,41 +54,25 @@ fn start_a_long_bounded_command(marker string) (thread os.Result, int) {
 // forget_the_cancellation puts the module back as a fresh process has it.
 fn forget_the_cancellation() {
 	stdatomic.store_u64(&cmdexec_bounded_runs_cancelled, 0)
+	begin_cancellable_work()
 }
 
 fn waits_for_the_end(done chan bool) {
 	done <- end_cancelled_bounded_runs(20 * time.second)
 }
 
-// A tool that is cancelled ends its bounded runs: each is in a process group of its own, which
-// the tool's own signal does not reach.
-fn test_kill_bounded_runs_ends_a_run_in_progress_and_what_it_started() {
-	marker := os.join_path(os.vtmp_dir(), 'cmdexec_bounded_${os.getpid()}.pid')
-	defer {
-		os.rm(marker) or {}
-	}
-	assert bounded_runs_in_progress() == 0
-	run, leader := start_a_long_bounded_command(marker)
-	defer {
-		// a failed assertion must not leave the command running
-		kill_bounded_runs()
-	}
-	assert leader > 0, 'the command did not start'
-	assert bounded_runs_in_progress() == 1
-	assert !process_group_is_gone(leader)
-	assert kill_bounded_runs() == 1
-	// Asked before the run is waited for: a run whose group outlived it holds its pipes, and
-	// the wait would not return.
-	assert wait_until_group_is_gone(leader), 'the group of ${leader} is still there'
-	result := run.wait()
-	assert result.exit_code != 0, result.output
-	assert bounded_runs_in_progress() == 0
-	// with nothing in progress it kills nothing
-	assert kill_bounded_runs() == 0
+fn finishes_the_work(done chan int) {
+	done <- finish_bounded_runs()
 }
 
-// The cancellation itself is a flag (a signal handler sets it): the thread that owns a run
-// sees it and ends the run, and a run is not started any more.
+fn runs_a_short_bounded_command(milliseconds int) os.Result {
+	result, _ := run_merged_timed('/bin/sleep', ['0.${milliseconds:03}'], 600_000, false)
+	return result
+}
+
+// The cancellation is a flag (a signal handler sets it): the thread that owns a run sees it
+// and ends the run with everything it started, and a run is not started any more. Nothing
+// but the flag is touched from outside that thread.
 fn test_a_cancelled_run_is_ended_by_its_own_thread_and_none_is_started_after() {
 	marker := os.join_path(os.vtmp_dir(), 'cmdexec_cancelled_${os.getpid()}.pid')
 	defer {
@@ -96,14 +80,19 @@ fn test_a_cancelled_run_is_ended_by_its_own_thread_and_none_is_started_after() {
 		forget_the_cancellation()
 	}
 	assert bounded_runs_cancelled() == 0
+	assert bounded_runs_in_progress() == 0
 	run, leader := start_a_long_bounded_command(marker)
 	defer {
-		kill_bounded_runs()
+		// a failed assertion must not leave the command running
+		cancel_bounded_runs(1)
 	}
 	assert leader > 0, 'the command did not start'
+	assert bounded_runs_in_progress() == 1
+	assert !process_group_is_gone(leader)
 	cancel_bounded_runs(int(os.Signal.int))
 	assert bounded_runs_cancelled() == int(os.Signal.int)
-	// nothing but the flag was touched here: the run's own thread ends it
+	// Asked before the run is waited for: a run whose group outlived it holds its pipes, and
+	// the wait would not return.
 	assert wait_until_group_is_gone(leader), 'the group of ${leader} is still there'
 	result := run.wait()
 	assert result.exit_code != 0, result.output
@@ -116,19 +105,20 @@ fn test_a_cancelled_run_is_ended_by_its_own_thread_and_none_is_started_after() {
 	assert refused.exit_code != 0 && !timed_out
 	assert refused.output.contains('was not started'), refused.output
 	assert !os.exists(marker)
+	assert bounded_runs_in_progress() == 0
 	// a run without a limit is no part of this
 	unbounded := run_in_merged('/bin/sh', ['-c', 'echo done'], '')
 	assert unbounded.exit_code == 0 && unbounded.output.trim_space() == 'done'
 }
 
-// A run can be cancelled between its fork and the moment its thread has put it in the table.
-// The thread counts as starting a run from before the fork, and the tool does not go while
-// one is being started: here the count is held as that thread would hold it.
-fn test_the_end_of_a_cancellation_waits_for_a_run_that_is_being_started() {
+// A run can be cancelled at any moment between before its fork and after its close. The
+// thread counts as owning a run for all of that, and the tool does not go while a run has an
+// owner: here the count is held as a thread between its fork and its first read holds it.
+fn test_the_end_of_a_cancellation_waits_for_a_run_that_has_an_owner() {
 	defer {
 		forget_the_cancellation()
 	}
-	begin_bounded_start()
+	begin_bounded_run()
 	cancel_bounded_runs(int(os.Signal.term))
 	done := chan bool{cap: 1}
 	spawn waits_for_the_end(done)
@@ -141,9 +131,9 @@ fn test_the_end_of_a_cancellation_waits_for_a_run_that_is_being_started() {
 		else {
 		}
 	}
-	assert !returned_early, 'the tool was let go while a run was being started'
-	// the run is in the table now (here: it is over), and the thread says so
-	end_bounded_start()
+	assert !returned_early, 'the tool was let go while a run had an owner'
+	// the owner has ended the run, collected it and closed it
+	end_bounded_run()
 	mut finished := false
 	select {
 		ok := <-done {
@@ -152,25 +142,92 @@ fn test_the_end_of_a_cancellation_waits_for_a_run_that_is_being_started() {
 		2 * time.second {
 		}
 	}
-	assert finished, 'the tool was not let go when nothing was being started any more'
+	assert finished, 'the tool was not let go when no run had an owner any more'
 }
 
-// The wait has a limit: a run that is never noted does not hold the tool for ever.
+// The wait has a limit: a run whose owner never lets go does not hold the tool for ever.
 fn test_the_end_of_a_cancellation_gives_up_after_its_limit() {
 	defer {
-		end_bounded_start()
+		end_bounded_run()
 		forget_the_cancellation()
 	}
-	begin_bounded_start()
+	begin_bounded_run()
 	cancel_bounded_runs(1)
 	waited := time.new_stopwatch()
 	assert !end_cancelled_bounded_runs(200 * time.millisecond)
 	assert waited.elapsed() < 5 * time.second
 }
 
+// How the tool ends is decided once. Finished first: a cancellation that was accepted before
+// is handed to the thread that finished, and one that comes after ends the process at once.
+fn test_work_that_is_finished_takes_an_earlier_cancellation_and_ends_at_a_later_one() {
+	defer {
+		forget_the_cancellation()
+	}
+	begin_cancellable_work()
+	// accepted before the work was finished: not the moment to end the process
+	assert !note_cancellation(int(os.Signal.int))
+	assert finish_bounded_runs() == int(os.Signal.int)
+	// the other thread stands back
+	assert !begin_cancelled_exit()
+	// accepted after: the process is to end here (cancel_bounded_runs does)
+	assert note_cancellation(int(os.Signal.term))
+	// finished without a cancellation
+	forget_the_cancellation()
+	assert finish_bounded_runs() == 0
+	assert !begin_cancelled_exit()
+}
+
+// Cancelled first: the thread that ends the tool has it, and the thread that finishes the
+// work at that moment does not go on to an ordinary end.
+fn test_a_tool_that_is_being_cancelled_is_not_finished_by_another_thread() {
+	defer {
+		forget_the_cancellation()
+	}
+	begin_cancellable_work()
+	assert !note_cancellation(int(os.Signal.int))
+	assert begin_cancelled_exit()
+	assert !begin_cancelled_exit()
+	done := chan int{cap: 1}
+	spawn finishes_the_work(done)
+	mut returned := false
+	select {
+		_ := <-done {
+			returned = true
+		}
+		300 * time.millisecond {
+		}
+	}
+	assert !returned, 'the work was finished in the ordinary way while the tool was being cancelled'
+	// (the tool exits here; this test lets the waiting thread go instead)
+	begin_cancellable_work()
+	_ := <-done
+}
+
+// Runs end by themselves while the cancellation arrives: each is collected by its own thread
+// and by nothing else, whichever came first, and none is left with an owner.
+fn test_a_cancellation_while_runs_end_by_themselves_leaves_none() {
+	defer {
+		forget_the_cancellation()
+	}
+	for round in 0 .. 8 {
+		forget_the_cancellation()
+		mut runs := []thread os.Result{}
+		for i in 0 .. 16 {
+			runs << spawn runs_a_short_bounded_command(5 + ((i * 7 + round * 3) % 60))
+		}
+		time.sleep((10 + round * 6) * time.millisecond)
+		cancel_bounded_runs(int(os.Signal.int))
+		assert end_cancelled_bounded_runs(10 * time.second), 'round ${round}: ${bounded_runs_in_progress()} runs still have an owner'
+		results := runs.wait()
+		assert results.len == 16
+		assert bounded_runs_in_progress() == 0
+	}
+}
+
 // A run without a limit shares this process's group and is reached by its signals: it is not
-// tracked, and not killed.
-fn test_an_unbounded_run_is_not_tracked() {
+// counted.
+fn test_an_unbounded_run_is_not_counted() {
 	result := run_in_merged('/bin/sh', ['-c', 'echo done'], '')
 	assert result.exit_code == 0 && result.output.trim_space() == 'done'
 	assert bounded_runs_in_progress() == 0
