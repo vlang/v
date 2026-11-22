@@ -27,6 +27,31 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_enum_explicit_values() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'enumvals')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	mut warnings := []string{}
+	_, infos := generate_wrappers(m, mut warnings)
+	res := emit_files(m, infos, EmitOptions{
+		out_dir:  os.join_path(os.vtmp_dir(), 'v-capi-enum-test')
+		lib_name: 'enumvals'
+	}) or {
+		assert false, 'emit_files failed: ${err.msg()}'
+		return
+	}
+	_ = res
+	h := os.read_file(os.join_path(os.vtmp_dir(), 'v-capi-enum-test', 'enumvals.h')) or {
+		assert false, 'header missing'
+		return
+	}
+	assert h.contains('enumvals_Mode_fast = 1,')
+	assert h.contains('enumvals_Mode_slow = 5,')
+	assert h.contains('enumvals_Mode_medium = 6,')
+}
+
 fn test_plain_struct_by_value() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'structs')
 	m := collect_model(dir, '') or {

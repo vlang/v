@@ -117,8 +117,8 @@ fn header_text(m ApiModel, name string, version string, all []ExportInfo) string
 		if t.kind == 'enum' {
 			cname := if t.c_name != '' { t.c_name } else { '${m.prefix}_${sanitize(t.name)}' }
 			b.writeln('typedef enum ${cname} {')
-			for i, member in t.members {
-				b.writeln('\t${cname}_${member} = ${i},')
+			for member in t.enum_members {
+				b.writeln('\t${cname}_${member.name} = ${member.value},')
 			}
 			b.writeln('} ${cname};')
 		}

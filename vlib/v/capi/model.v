@@ -39,13 +39,20 @@ pub:
 	type_name string
 }
 
+pub struct ApiEnumMember {
+pub:
+	name  string
+	value string
+}
+
 pub struct ApiType {
 pub:
-	name    string
-	kind    string // struct or enum
-	members []string
-	fields  []ApiField
-	doc     string
+	name         string
+	kind         string // struct or enum
+	members      []string
+	enum_members []ApiEnumMember
+	fields       []ApiField
+	doc          string
 pub mut:
 	c_name string
 }
@@ -173,17 +180,31 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 					continue
 				}
 				mut members := []string{}
+				mut enum_members := []ApiEnumMember{}
+				mut next_value := 0
 				for i in 0 .. node.children_count {
 					child := a.child_node(node, i)
-					if child.kind == .enum_field {
-						members << child.value
+					if child.kind != .enum_field {
+						continue
 					}
+					members << child.value
+					mut value := next_value.str()
+					for ci in 0 .. child.children_count {
+						val_child := a.child_node(child, ci)
+						if val_child.kind == .int_literal {
+							value = val_child.value
+							break
+						}
+					}
+					enum_members << ApiEnumMember{ name: child.value, value: value }
+					next_value = value.int() + 1
 				}
 				types << ApiType{
-					name:    node.value
-					kind:    'enum'
-					members: members
-					doc:     docs['type:${node.value}']
+					name:         node.value
+					kind:         'enum'
+					members:      members
+					enum_members: enum_members
+					doc:          docs['type:${node.value}']
 				}
 				continue
 			}
