@@ -641,8 +641,11 @@ backend does not expose `gg`'s drawing calls.
   resolution. Full rigid-body rotation and joint constraints are not included.
 - `gg.splat` stores 3D Gaussians, projects them with a perspective camera and
   rasterizes small clouds on the CPU; large clouds need a GPU renderer.
-- `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1
-  blocks. Other compressed formats are identified but not decoded.
+- `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1,
+  ETC1 (full individual/differential modes with intensity modifiers), BC7
+  modes 0/1/3 and ASTC void-extent plus 4x4 LDR blocks. BC7 modes 4-7 and
+  ASTC HDR/unsupported block modes return explicit errors rather than wrong
+  colors. It also generates RGBA mipmaps.
 - `gg.xr` derives left/right stereo cameras from a head camera and provides
   side-by-side viewports. Headset tracking belongs to your XR runtime.
 - `gg.ecs` provides generation-counted entities, sparse-set `Storage[T]`

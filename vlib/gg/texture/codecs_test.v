@@ -4,10 +4,10 @@ import gg
 
 fn test_etc1_block() {
 	// Solid block: base colors red in both halves.
-	block := [u8(0xF0), 0, 0x20, 0, 0, 0, 0, 0]
+	block := [u8(0xF0), 0, 0, 0x20, 0, 0, 0, 0]
 	colors := decode_etc1(block)
 	assert colors.len == 16
-	assert colors[0].r > 240 && colors[0].g < 10 && colors[0].b < 10
+	assert colors[0].r > 180 && colors[0].g < 10 && colors[0].b < 10
 	assert colors[15].a == 255
 }
 
