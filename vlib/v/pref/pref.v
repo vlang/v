@@ -231,6 +231,15 @@ pub fn is_supported_arch(arch string) bool {
 		's390x', 'loongarch64', 'mips64le', 'sparc64', 'wasm32']
 }
 
+// target_supports_capturing_closures reports whether the target has executable thunk
+// bytes for runtime closures that carry a capture context. MIPS64LE does not yet: the
+// closure runtime's architecture negation guards select PowerPC32 instructions for it,
+// so a captured closure would jump to PPC bytes on MIPS. Keep this policy here so every
+// frontend that asks about the target gets the same answer.
+pub fn target_supports_capturing_closures(target Target) bool {
+	return target.arch != 'mips64le'
+}
+
 // target_from validates and canonicalizes an OS/architecture pair.
 pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())

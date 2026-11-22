@@ -53,4 +53,5 @@ jobs:
             # then make ordinary test compilation fail instead of silently retrying V1.
             export V_MACOS_V3_NO_FALLBACK=1
             ./v test vlib/builtin vlib/os vlib/encoding/binary
-            ./v test vlib/v/tests/fns/closure_test.v
+            # Capturing closures are rejected on mips64le until MIPS thunk bytes exist.
+            ./v test vlib/v/compiler_tests/mips64le_closure_target_test.v
