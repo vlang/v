@@ -6756,7 +6756,7 @@ fn (mut tc TypeChecker) intern_promoted_expr_types(p &CheckChunkPromotion) {
 		return
 	}
 	mut cache := CheckTypePromotionCache{}
-	mut canonical := []voidptr{len: p.types.len}
+	mut canonical := []voidptr{len: p.types.len, init: voidptr(0)}
 	for i, node in p.nodes {
 		idx := int(node)
 		slot := p.type_of[i]
