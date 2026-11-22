@@ -10376,13 +10376,18 @@ fn (mut b Builder) build_assign(node flat.Node) {
 		if lhs.kind == .ident {
 			if addr := b.vars.get(lhs.value_text()) {
 				if node.op == .assign {
+					target_addr := if lhs.value_text() in b.mut_param_names {
+						b.build_lvalue_addr(lhs_id)
+					} else {
+						addr
+					}
 					rhs_val := if parallel_values.len > 0 {
 						parallel_values[i / 2]
 					} else {
 						b.build_assign_rhs(lhs, rhs_id)
 					}
-					b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(addr)),
-						addr)
+					b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(target_addr)),
+						target_addr)
 				} else {
 					flag_pointer := node.op in [.amp_assign, .pipe_assign, .xor_assign]
 						&& b.is_pointer_type(b.deref_type(addr)) && b.is_flag_enum_expr(lhs_id)
