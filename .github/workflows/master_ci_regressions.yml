@@ -54,6 +54,10 @@ jobs:
         uses: ./.github/actions/setup-v
         with:
           symlink: 'false'
+      - name: Check TCC Phase-A validator workflow contract
+        run: |
+          ./v fmt -verify thirdparty/tccbin_automation/tests/workflow_contract_test.v
+          ./v -silent thirdparty/tccbin_automation/tests/workflow_contract_test.v
       - name: Check Linux task checkpoint and resume behavior
         run: sh ci/linux_ci_resume_test.sh
       - name: Check hosted apt dependencies
