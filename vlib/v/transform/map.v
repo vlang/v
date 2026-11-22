@@ -3579,6 +3579,12 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 			staged_scalar_was_cloned = t.expr_can_take_address(append_rhs)
 				&& !t.tc.ownership_expr_moves_storage(append_rhs, append_rhs)
 				&& t.compiler_default_clone_type_needs_work(elem_type)
+			$if !ownership ? {
+				// Without autofree, scalar array append copies the staged array header
+				// into the destination without cloning its buffer. The destination
+				// owns that buffer, so dropping the staged value would free it.
+				staged_scalar_was_cloned = staged_scalar_was_cloned && t.tc.autofree_enabled()
+			}
 		}
 	}
 	if lowered := t.try_lower_array_append_stmt(append) {
