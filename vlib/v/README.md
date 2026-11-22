@@ -137,9 +137,12 @@ compiled by the default compiler.
 compiler implementation is no longer kept in this repository. External tools are first compiled
 with the default compiler, and `test` is handled by the default compiler directly.
 
-`-vls-mode` uses the current compiler's mini-VLS protocol. Completion queries require parseable
-source. An editor requesting completion immediately after a dot can insert a placeholder
-identifier before sending the query.
+`-vls-mode` uses the current compiler's mini-VLS protocol. The file a query asks about may be
+incomplete where it is being written: as V1 did, the compiler parses it with a placeholder name
+after a dot that has none (`os.` at the end of a line, `println(p.)`), and with a call that is left
+open closed before the next statement or the end of its block. An editor may also insert a
+placeholder identifier itself. Completion after a module name lists only modules the file imports:
+their public functions, then types, then consts, in V1's order.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

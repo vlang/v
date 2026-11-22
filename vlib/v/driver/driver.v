@@ -12220,7 +12220,15 @@ pub fn run(args []string) {
 	} else {
 		[]string{}
 	}
+	// A question of the mini-VLS protocol is about code being written: its file
+	// is parsed as completed where it is incomplete (see types.vls_complete_source).
+	// A diagnostics server's child checks the files as they are.
+	completed_vls_files := served.question == '' && vls_queries.len > 0
+		&& preload_completed_vls_files(mut p, user_files, vls_queries)
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
+	if completed_vls_files {
+		p.clear_preloaded_sources()
+	}
 	$if !skip_arm64 ? {
 		if backend == 'arm64' {
 			live_reload_source := v3_live_reload_source(p.a, input_file, prefs.vexe, v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
@@ -20004,6 +20012,29 @@ fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery, prefs &
 	for i, query in queries {
 		println('${i}\t${tc.vls_answer(query)}')
 	}
+}
+
+// preload_completed_vls_files hands the parser each of `user_files` that one of
+// `queries` asks about as completed where it is being written, when it is
+// incomplete there, and reports whether it handed it one.
+fn preload_completed_vls_files(mut p parser.Parser, user_files []string, queries []types.VlsQuery) bool {
+	mut asked := map[string]bool{}
+	for query in queries {
+		asked[os.real_path(query.path)] = true
+	}
+	mut preloaded := false
+	for file in user_files {
+		if os.real_path(file) !in asked {
+			continue
+		}
+		source := os.read_file(file) or { continue }
+		completed := types.vls_complete_source(source)
+		if completed != source {
+			p.preload_source(file, completed)
+			preloaded = true
+		}
+	}
+	return preloaded
 }
 
 // v3_input_digests returns the SHA-256 of what this compilation read in each V
