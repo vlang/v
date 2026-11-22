@@ -44,7 +44,7 @@ fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
 	previous := os.environ()
 	variables := ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE', 'VFLAGS',
 		'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
-		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC']
 	defer {
 		for variable in variables {
 			if variable in previous {
@@ -64,7 +64,6 @@ fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
 	// and its ownership helper must retain that replacement after exec.
 	os.setenv('V3_PRIMARY_VEXE', os.join_path(root, 'stale-parent'), true)
 	os.setenv('V_SKIP_VVMRC', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
 		'V3_CACHE_REFRESH_PROJECT_FLAGS'] {
 		os.unsetenv(variable)

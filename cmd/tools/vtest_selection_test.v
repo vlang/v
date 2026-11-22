@@ -28,8 +28,6 @@ fn testsuite_begin() {
 	os.setenv('VTEST_HIDE_SKIP', '0', true)
 	// The runner counts compilation attempts, so use one to disable retries.
 	os.setenv('VTEST_MAX_COMPILATION_RETRIES', '1', true)
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o',
 		selection_tool, os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest.v')], 180_000)
 	assert build.exit_code == 0, build.output

@@ -54,7 +54,7 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 	}
 	source := os.join_path(root, 'int_test.js.v')
 	os.write_file(source, 'this is deliberately invalid V source\n')!
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED']
+	keys := ['VFLAGS', 'VOSARGS']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -72,13 +72,7 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 	}
 	os.unsetenv('VFLAGS')
 	os.unsetenv('VOSARGS')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	cc := $if windows { 'gcc' } $else { 'cc' }
 	for backend in ['c', 'js'] {
 		// The explicit JS backend returns before the normal backend test filter.

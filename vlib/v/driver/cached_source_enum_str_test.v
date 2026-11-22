@@ -30,7 +30,6 @@ pub fn touch() {}
 	}
 	environment['V3CACHE'] = cache
 	environment['VMODULES'] = modules
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	for warm in [false, true] {
 		body := if warm { 'cached.touch()' } else { 'println(cached.describe(.string))' }
 		os.write_file(source, 'import cached\nfn main() { ${body} }\n')!

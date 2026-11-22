@@ -156,35 +156,11 @@ Keep it disabled when those inputs can change between builds.
 Parallel monomorphization also remains opt-in through `V3_PARALLEL_MONOMORPHIZE=1`
 while nested generic-interface dispatch is being validated.
 
-The standard bootstrap does not build the sibling `v1_fallback` executable
-(`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
-sibling is missing, it reports that it is running `make v1`. That target reuses
-or downloads the complete 0.5.2 release under the user cache. If no release
-binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
-builds the fallback there. You can run `make v1` explicitly to prepare it ahead
-of time. Automatic provisioning keeps its launcher metadata in the user cache,
-so an older read-only sibling installation can remain untouched. `-old-compiler`
-launches the fallback explicitly, and ordinary user builds and external tools
-retry through it after a compiler or C compilation failure. Explicit
-`-new-compiler` builds remain strict default-compiler operations.
-`-new-compiler` remains accepted for command-line compatibility and otherwise
-selects the same embedded driver.
+`-new-compiler` remains accepted as a no-op for existing command lines.
 
 `oldv --command` runs a shell command in the checked-out repository, using `sh -c`
 on Unix and `cmd /c` on Windows. Commands can use shell operators such as `&&`,
 pipes, and redirection; `oldv` returns the command's exit status.
-
-The installer supplements the cached fallback vlib with modules whose public
-paths moved after 0.5.2. Fallback roots missing these compatibility modules are
-not used. The fallback identity check also rejects a current launcher copied into the
-fallback slot, including older launchers that report the same compiler version, so
-compatibility commands cannot recursively launch it.
-If a fallback command exits unsuccessfully, V notes where the default
-compiler stopped and how to show its suppressed diagnostics. For a command
-that may have run user code, the note preserves the child's status without
-mislabeling it as a compiler failure, including JavaScript tests run by the compatibility compiler.
-Re-run the command with `-new-compiler`
-to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -6945,8 +6921,7 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
 ```
 
 > [!NOTE]
-> V also supports a command line flag `-assert continues`, which will change the
-> behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
+
 
 ### Test files
 

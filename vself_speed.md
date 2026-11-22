@@ -909,7 +909,7 @@ worker for the instruction comparison; validate default parallelism separately.
    outside measured runs with the same production command and C toolchain:
 
    ```sh
-   env -u VFLAGS -u VEXE SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+   env -u VFLAGS -u VEXE SOURCE_DATE_EPOCH=0 \
      ./v -prod -cc clang self
    ```
 
@@ -923,7 +923,6 @@ worker for the instruction comparison; validate default parallelism separately.
    ```sh
    benchmark_out=$(mktemp -d "${TMPDIR:-/tmp}/vself-speed.XXXXXX")
    env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
-     V_MACOS_V3_NO_FALLBACK=1 \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v -v \
        -o "$benchmark_out/self.c" cmd/v \
      > "$benchmark_out/inventory.stdout" 2> "$benchmark_out/inventory.stderr"
@@ -937,7 +936,6 @@ worker for the instruction comparison; validate default parallelism separately.
 
    ```sh
    env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
-     V_MACOS_V3_NO_FALLBACK=1 \
      /usr/bin/time -l -o "$benchmark_out/time.txt" \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
        -o "$benchmark_out/self.c" cmd/v \
@@ -949,7 +947,6 @@ worker for the instruction comparison; validate default parallelism separately.
 
    The measured input is a normal compiler build; `-prod` optimizes the compiler running the
    benchmark, not the input workload. `-nocache` disables V caches, not filesystem caches.
-   `V_MACOS_V3_NO_FALLBACK=1` prevents silent fallback to the legacy compiler.
    Reuse one output C path across all paired runs and keep distinct timing/stdout/stderr logs.
 5. Run one warmup per role, then ten measured pairs, alternating AB, BA, AB, BA, and so on.
    Run only one benchmark at a time. Do not wait for an idle host or pause unrelated work.

@@ -29,11 +29,7 @@ fn implicit_output_compile(args []string) os.Result {
 			os.unsetenv('VOSARGS')
 		}
 	}
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	// Use the host C compiler, not a bundled TinyCC or a compatibility retry.
 	cc := $if windows { 'gcc' } $else { 'cc' }
 	mut command := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc]

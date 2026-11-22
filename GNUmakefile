@@ -6,7 +6,6 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
-V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
 # Portable VC snapshots do not embed the default compiler. Keep their v1 executable on the full
 # compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
@@ -148,7 +147,7 @@ GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 TCCBUILDSCRIPT = $(VROOT)/thirdparty/build_scripts/thirdparty-$(TCCOS)-$(TCCARCH)_tcc.sh
 
-.PHONY: all v1 cache-basic-modules clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
+.PHONY: all cache-basic-modules clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
@@ -185,10 +184,6 @@ ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
 endif
 endif
 endif
-# A vc snapshot may use the lean compiler dispatcher when its generated C is built
-# on a Unix-like host. Keep the temporary v1 on the full compatibility path so
-# it can create v2 before either the compiler driver or v1_fallback exists.
-BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
 BOOTSTRAP_VC_EXTRA_SOURCES :=
 # Portable vc snapshots generated before the OpenBSD entropy and semaphore guards
 # still reference two libc symbols that OpenBSD does not provide. Supply the small
@@ -307,25 +302,6 @@ cache-basic-modules:
 	fi; \
 	VFLAGS= $(CACHE_VEXE)$(EXE_EXT) $$cache_gcflags $(CACHE_VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/cache_basic_modules.v; \
 	VFLAGS= $(CACHE_VEXE)$(EXE_EXT) $$cache_gcflags $(CACHE_VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
-
-v1:
-ifdef LEGACY
-	@set -e; \
-	if [ ! -f "$(LEGACYLIBS)/lib/libMacportsLegacySupport.a" ]; then \
-		'$(MAKE)' latest_legacy; \
-		'$(MAKE)' -C "$(TMPLEGACY)" CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'; \
-		'$(MAKE)' -C "$(TMPLEGACY)" PREFIX="$(abspath $(LEGACYLIBS))" CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install; \
-		rm -rf "$(TMPLEGACY)"; \
-	fi
-endif
-	@set -e; \
-	CC='$(CC)' OLDV_CCOPTIONS='$(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS)' \
-		OLDV_LDFLAGS='$(BOOTSTRAP_LDFLAGS)' \
-		cmd/tools/install_v1_fallback.sh '$(VEXE)$(EXE_EXT)' '$(V1_FALLBACK_EXE)'
-ifdef NETBSD
-	paxctl +m "$${V1_FALLBACK_OUTPUT:-$(V1_FALLBACK_EXE)}"
-endif
-	@echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
 
 clean:
 	rm -rf $(TMPTCC)

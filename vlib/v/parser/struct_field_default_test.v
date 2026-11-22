@@ -111,7 +111,6 @@ fn test_nested_struct_field_defaults_compile_and_run() {
 	mut environment := os.environ()
 	environment.delete('VFLAGS')
 	environment.delete('VOSARGS')
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	child.set_environment(environment)
 	child.set_redirect_stdio_merged()
 	child.run()

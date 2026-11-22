@@ -93,11 +93,7 @@ fn test_failed_implicit_tcc_build_reports_the_fallback() {
 	$if !windows {
 		return
 	}
-	vexe := if os.base(@VEXE) == 'v1_fallback.exe' {
-		os.join_path(os.dir(@VEXE), 'v.exe')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	vroot := os.dir(vexe)
 	kernel32_def := os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'kernel32.def')
 	if !os.is_file(kernel32_def) {
@@ -153,11 +149,7 @@ fn test_failed_implicit_tcc_build_reports_the_fallback() {
 // toolchain update can never make this one skip, so it stays as coverage of
 // the driver's own call site (and the -silent guard on it) on every platform.
 fn test_forced_implicit_tcc_failure_reports_the_fallback() {
-	vexe := if os.base(@VEXE) == 'v1_fallback.exe' {
-		os.join_path(os.dir(@VEXE), 'v.exe')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	vroot := os.dir(vexe)
 	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	mut has_tcc := os.is_file(bundled_tcc)

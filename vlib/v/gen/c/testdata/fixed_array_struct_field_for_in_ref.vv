@@ -1,4 +1,3 @@
-// vtest vflags: -old-compiler
 struct Item {
 mut:
 	val int

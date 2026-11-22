@@ -15,37 +15,31 @@ const vroot = os.dir(vexe_path)
 
 const vexe = os.quoted_path(vexe_path)
 
-const args_string = os.args[1..].join(' ')
-
-const vargs = args_string.all_before('test-all')
-
 const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
 const clang_path = os.find_abs_path_of_executable('clang') or { '' }
 
 fn main() {
 	unbuffer_stdout()
-	raw_vflags := os.getenv('VFLAGS')
-	mut requested_args := vflags.tokenize_to_args(raw_vflags)
-	requested_args << vflags.tokenize_to_args(vargs)
-	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
-	strict_flags := requested_args.map(os.quoted_path(it)).join(' ')
-	if strict_v3 {
-		os.unsetenv('VFLAGS')
+	requested_args := vflags.tokenize_to_args(os.getenv('VFLAGS'))
+	args_index := os.args.index('test-all')
+	prefix := os.args[1..if args_index < 0 { 1 } else { args_index }]
+	mut compiler_args := prefix.clone()
+	if prefix.len < requested_args.len || prefix[..requested_args.len] != requested_args {
+		compiler_args = requested_args.clone()
+		compiler_args << prefix
 	}
-	mut all_commands := get_all_commands()
+	os.unsetenv('VFLAGS')
+	compiler_flags := compiler_args.map(os.quoted_path(it)).join(' ')
 	mut commands := []Command{}
-	for mut cmd in all_commands {
-		if strict_v3 {
-			if !cmd.v3_compatible {
-				eprintln('> strict V3: skipping unsupported check: ${cmd.line}')
-				continue
-			}
-			if cmd.v3_line.len > 0 {
-				cmd.line = cmd.v3_line
-			}
-			cmd.line = cmd.line.replace_once(vexe, '${vexe} ${strict_flags}')
-			if cmd.arguments.len > 0 { cmd.arguments << requested_args }
+	for mut cmd in get_all_commands() {
+		if !cmd.v3_compatible {
+			eprintln('> skipping unsupported check: ${cmd.line}')
+			continue
+		}
+		cmd.line = cmd.line.replace_once(vexe, '${vexe} ${compiler_flags}')
+		if cmd.arguments.len > 0 {
+			cmd.arguments << compiler_args
 		}
 		commands << cmd
 	}
@@ -96,7 +90,6 @@ mut:
 	before_cb     FnCheck = unsafe { nil }
 	after_cb      FnCheck = unsafe { nil }
 	v3_compatible bool    = true
-	v3_line       string
 }
 
 fn get_all_commands() []Command {
@@ -227,10 +220,9 @@ fn get_all_commands() []Command {
 			v3_compatible: false
 		}
 		res << Command{
-			line:          '${vexe} -b js -o hw.js examples/hello_world.v'
-			okmsg:         'V compiles hello_world.v on the JS backend'
-			rmfile:        'hw.js'
-			v3_compatible: false
+			line:   '${vexe} -b js -o hw.js examples/hello_world.v'
+			okmsg:  'V compiles hello_world.v on the JS backend'
+			rmfile: 'hw.js'
 		}
 		res << Command{
 			line:   '${vexe} examples/2048'
@@ -336,27 +328,25 @@ fn get_all_commands() []Command {
 	}
 	////////////////////////////////////////////////////////////////////////
 	res << Command{
-		line:          '${vexe} ${vargs} -progress test-cleancode'
+		line:          '${vexe} -progress test-cleancode'
 		okmsg:         'All .v files are invariant when processed with `v fmt`'
 		v3_compatible: false
 	}
 	res << Command{
-		line:  '${vexe} ${vargs} -progress test-fmt'
+		line:  '${vexe} -progress test-fmt'
 		okmsg: 'All .v files can be processed with `v fmt`. Note: the result may not always be compilable, but `v fmt` should not crash.'
 	}
 	res << Command{
-		line:  '${vexe} ${vargs} -progress test-self'
+		line:  '${vexe} -progress test-self'
 		okmsg: 'There are no _test.v file regressions.'
 	}
 	res << Command{
-		line:    '${vexe} ${vargs} -progress -N -W build-tools'
-		okmsg:   'All tools can be compiled.'
-		v3_line: '${vexe} ${vargs} -progress build-tools'
+		line:  '${vexe} -progress build-tools'
+		okmsg: 'All tools can be compiled.'
 	}
 	res << Command{
-		line:    '${vexe} ${vargs} -progress -N -W build-examples'
-		okmsg:   'All examples can be compiled.'
-		v3_line: '${vexe} ${vargs} -progress build-examples'
+		line:  '${vexe} -progress build-examples'
+		okmsg: 'All examples can be compiled.'
 	}
 	res << Command{
 		line:  '${vexe} check-md -hide-warnings .'

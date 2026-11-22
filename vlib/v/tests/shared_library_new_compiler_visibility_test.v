@@ -6,13 +6,7 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 	if os.user_os() != 'linux' {
 		return
 	}
-	// The test runner can be the legacy fallback, but the library under test
-	// must be built by the new compiler whose flag handling regressed in #28749.
-	vexe := if os.base(@VEXE) == 'v1_fallback' {
-		os.join_path(os.dir(@VEXE), 'v')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
 	defer {

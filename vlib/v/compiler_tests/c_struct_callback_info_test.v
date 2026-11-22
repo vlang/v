@@ -102,8 +102,7 @@ fn main() {
 	for flags in [[]string{}, ['-no-parallel', '-nocache']] {
 		result := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-no-retry-compilation',
 			'-gc', 'none', '-cc', @CCOMPILER, ...flags, 'run', root], '', {
-			'VFLAGS':                 ''
-			'V_MACOS_V3_NO_FALLBACK': '1'
+			'VFLAGS': ''
 		})
 		assert result.exit_code == 0, '${flags}: ${result.output}'
 	}

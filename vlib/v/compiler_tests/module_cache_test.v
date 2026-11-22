@@ -1225,9 +1225,8 @@ fn main() {
 		output := os.join_path(root, phase)
 		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
 			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
-			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
-			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
-			source])
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-new-compiler', '-no-retry-compilation',
+			'-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output, source])
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		object := module_cache_artifact(cache_dir, 'callbackprobe_', '.o')
 		assert object.len > 0, '${phase}: no cached callback module'
@@ -1287,9 +1286,8 @@ fn main() {
 		output := os.join_path(project, phase)
 		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
 			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
-			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
-			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
-			source])
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-new-compiler', '-no-retry-compilation',
+			'-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output, source])
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		object := module_cache_artifact(cache_dir, 'symlinkprobe_', '.o')
 		assert object.len > 0, '${phase}: no cached module object'
@@ -2940,9 +2938,9 @@ fn main() {
 	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 }
 
-fn test_module_cache_restart_preserves_macos_fallback_transport() {
+fn test_module_cache_restart_propagates_run_exit_code() {
 	v3_bin := module_cache_compiler()
-	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_fallback_${os.getpid()}')
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
@@ -2970,7 +2968,7 @@ fn main() {
 	// Adding a C flag changes the cached compile signature and restarts V3 after parsing.
 	write_module_cache_file(root, 'main.v', "module main
 
-#flag -DV3_CACHE_RESTART_FALLBACK_PROBE
+#flag -DV3_CACHE_RESTART_PROBE
 
 import os
 import wrapper
@@ -2983,17 +2981,10 @@ fn main() {
 	exit(23)
 }
 ")
-	fallback_file := os.join_path(root, 'fallback')
-	report_dir := os.join_path(root, 'c_error')
 	side_effect_file := os.join_path(root, 'side_effects')
 	mut environment := os.environ()
 	environment['V3CACHE'] = cache_dir
-	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
-	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
-	// The manifest costs a digest of every parsed source: a caller asks for it.
-	environment['V_MACOS_V3_SOURCE_MANIFEST'] = '1'
 	mut process := os.new_process(v3_bin)
-	// Keep the caller's transport paths instead of letting the launcher replace them.
 	process.set_args(['-new-compiler', '-silent', '-no-memory-limit', 'run', main_file,
 		side_effect_file])
 	process.set_environment(environment)
@@ -3006,12 +2997,6 @@ fn main() {
 	assert exit_code == 23, output
 	assert output == '41\n', output
 	assert os.read_lines(side_effect_file)! == ['run']
-	assert !os.exists(fallback_file), 'cache restart left a stale fallback marker'
-	// A standalone V3 process retains the parser digest manifest for its caller to
-	// consume. A successful restart must not turn that manifest into an error report.
-	mut staged_files := os.ls(report_dir)!
-	staged_files.sort()
-	assert staged_files == ['v_source_digests', 'v_sources'], staged_files.str()
 }
 
 fn test_forced_include_flags_bypass_object_cache() {

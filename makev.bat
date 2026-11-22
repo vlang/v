@@ -768,15 +768,13 @@ if !smoke_error! NEQ 0 (
 exit /b 0
 
 :smoke_log_is_clean
-REM Exit 1 when the compile log shows that the compiler fell back to another compiler.
+REM Exit 1 when the compile log shows a retry with another C compiler.
 if not exist "%~1" exit /b 0
-findstr /i /c:"falling back" /c:"could not build" /c:"retrying with" "%~1" >nul
+findstr /i /c:"falling back" "%~1" >nul
 if !ERRORLEVEL! EQU 0 exit /b 1
 exit /b 0
 
 :move_updated_to_v
-REM The V1 compatibility compiler is installed on demand by `make v1`.
-REM Compiling cmd/v again would only produce another copy of the new driver.
 if not exist "%V_UPDATED%" exit /b 1
 call :smoke_test_updated
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!

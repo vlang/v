@@ -20,7 +20,7 @@ fn new_test_c_environment() !TestCEnvironment {
 	os.mkdir_all(root)!
 	mut previous := map[string]string{}
 	for name in ['VFLAGS', 'VOSARGS', 'VTMP', 'V3CACHE', 'VTEST_KEEP_SESSION', 'VTEST_ONLY_FN',
-		'VTEST_ONLY', 'V_MACOS_V3_NO_FALLBACK'] {
+		'VTEST_ONLY'] {
 		if value := os.getenv_opt(name) {
 			previous[name] = value
 		}
@@ -29,13 +29,12 @@ fn new_test_c_environment() !TestCEnvironment {
 	os.setenv('VTMP', os.join_path(root, 'tmp'), true)
 	os.setenv('V3CACHE', test_c_module_cache, true)
 	os.setenv('VTEST_KEEP_SESSION', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	return TestCEnvironment{root, previous}
 }
 
 fn (e TestCEnvironment) restore() {
 	for name in ['VFLAGS', 'VOSARGS', 'VTMP', 'V3CACHE', 'VTEST_KEEP_SESSION', 'VTEST_ONLY_FN',
-		'VTEST_ONLY', 'V_MACOS_V3_NO_FALLBACK'] {
+		'VTEST_ONLY'] {
 		if value := e.previous[name] {
 			os.setenv(name, value, true)
 		} else {

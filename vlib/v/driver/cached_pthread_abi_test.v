@@ -23,7 +23,6 @@ fn test_layout() {
 ')!
 	mut environment := os.environ()
 	environment['VTMP'] = os.join_path(root, 'tmp')
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	environment.delete('VFLAGS')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 	mut layouts := []string{}
