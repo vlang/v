@@ -138,6 +138,21 @@ fn test_derived_join_dsl() {
 	assert rows.len == 3, 'expected 3 rows, got ${rows.len}'
 }
 
+fn test_derived_join_then_where() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	setup_full_sql_items(mut db)
+
+	// A clause after the JOIN must not be dropped by the full-SQL lowering.
+	rows := sql db {
+		select title from FullSqlItem join (select from FullSqlItem) as d on FullSqlItem.id == d.id where title == 'beta'
+	}!
+	assert rows.len == 1, 'JOIN followed by WHERE should yield 1 row, got ${rows.len}'
+	assert rows[0].title == 'beta'
+}
+
 fn test_group_by_having_and_union_plan() {
 	mut db := sqlite.connect(':memory:')!
 	defer {

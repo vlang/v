@@ -113,21 +113,33 @@ fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, c
 				close := sql_matching_pair(tokens, i + 1, '(', ')') or { return none }
 				sub := sql_full_parse_select(mut t, tokens[i + 3..close], true) or { return none }
 				mut alias := ''
-				mut on_expr := flat.NodeId(0)
 				mut j := close + 1
 				if j + 1 < tokens.len && tokens[j] == 'as' {
 					alias = tokens[j + 1]
 					j += 2
 				}
-				if j + 1 < tokens.len && tokens[j] == 'on' {
-					on_expr = sql_full_parse_expr(mut t, tokens[j + 1..]) or { return none }
+				mut on_expr := flat.NodeId(0)
+				if j < tokens.len && tokens[j] == 'on' {
+					// Stop the ON expression at the next clause boundary so any
+					// following WHERE/ORDER/GROUP/LIMIT keeps being parsed.
+					on_end := sql_full_clause_end(tokens, j + 1)
+					if on_end <= j + 1 {
+						return none
+					}
+					on_expr = sql_full_parse_expr(mut t, tokens[j + 1..on_end]) or { return none }
+					j = on_end
+				}
+				if on_expr == 0 {
+					return none
 				}
 				from_args := [sub, t.make_string_literal(alias)]
 				from_call := sql_full_static_call(mut t, 'sql_from_query', from_args)
 				kind_id := t.make_ident('orm.SqlJoinKind.inner')
 				args := [kind_id, from_call, on_expr]
 				plan = sql_full_method(mut t, plan, 'join_from', args)
-				i = tokens.len
+				// Resume at the clause after the ON expression instead of ending
+				// the loop, which would drop later WHERE/ORDER/GROUP clauses.
+				i = j
 				continue
 			}
 			'where' {
