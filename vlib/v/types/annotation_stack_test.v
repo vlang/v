@@ -22,8 +22,10 @@ fn test_annotation_walk_handles_deep_single_child_ast_iteratively() {
 	tc.extend_node_caches(a.nodes.len)
 	mut memo := &BodyResolveMemo{}
 	memo.begin(0, a.nodes.len - 1)
+	// The memo retains &Type values; keep this descriptor alive through annotation.
+	int_type := Type(int_)
 	for i in 0 .. a.nodes.len {
-		memo.types[i] = Type(int_)
+		memo.types[i] = &int_type
 		memo.filled[i] = 1
 	}
 	tc.body_resolve_memo = memo
@@ -53,8 +55,10 @@ fn test_annotation_walk_preserves_pending_siblings_after_call() {
 	tc.extend_node_caches(a.nodes.len)
 	mut memo := &BodyResolveMemo{}
 	memo.begin(0, a.nodes.len - 1)
+	// The memo retains &Type values; keep this descriptor alive through annotation.
+	int_type := Type(int_)
 	for i in 0 .. a.nodes.len {
-		memo.types[i] = Type(int_)
+		memo.types[i] = &int_type
 		memo.filled[i] = 1
 	}
 	tc.body_resolve_memo = memo
