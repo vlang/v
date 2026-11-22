@@ -19229,6 +19229,15 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 		return id
 	}
 	target_shape := flat.source_type_shape(target_type_id)
+	// An alias of an option (`type MaybeNamed = ?Named`) takes its values as the
+	// option does: `&Record{}` is boxed in a `Named` before it is wrapped.
+	if int(id) >= 0 && target_type_id != u32(0) && !target_shape.has(.optional)
+		&& !target_shape.has(.result_type) {
+		normalized := t.normalize_type_alias(target_type_id)
+		if normalized != target_type_id && flat.source_type_shape(normalized).has(.optional) {
+			return t.transform_expr_for_type(id, normalized)
+		}
+	}
 	if t.assert_watch.active {
 		if result := t.transform_watched_assert_operand(id, target_type_id) {
 			return result
