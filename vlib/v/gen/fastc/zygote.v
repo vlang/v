@@ -151,6 +151,10 @@ fn fastc_zygote_definitions(pieces []string, units &FastcUnitLayout) string {
 	return out.str()
 }
 
+// fastc_startup_initializer_cost is how many bytes of ordinary code one byte of a startup
+// initializer part costs TinyCC: the parts are long runs of constant table literals.
+const fastc_startup_initializer_cost = 4
+
 // fastc_zygote_solo_pieces splits the definitions that follow the head into
 // items of complete definitions, and appends their sizes to `sizes`.
 fn fastc_zygote_solo_pieces(pieces []string, units &FastcUnitLayout, mut sizes []int) []int {
@@ -177,7 +181,11 @@ fn fastc_zygote_solo_pieces(pieces []string, units &FastcUnitLayout, mut sizes [
 			item_size = 0
 		}
 		for k in start .. end {
-			item_size += pieces[k].len
+			if k >= units.startup_parts_start && k < units.startup_parts_end {
+				item_size += pieces[k].len * fastc_startup_initializer_cost
+			} else {
+				item_size += pieces[k].len
+			}
 		}
 	}
 	solo_pieces << item_start

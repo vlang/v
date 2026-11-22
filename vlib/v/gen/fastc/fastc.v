@@ -1333,6 +1333,11 @@ pub mut:
 	// binds only native_reachable_bridges, the C functions kept code calls through a bridge.
 	native_bridges_reachable bool
 	native_reachable_bridges []string
+	// The pieces from startup_parts_start up to startup_parts_end define the parts of a split
+	// startup initializer. A unit planner weighs them: constant tables cost TinyCC more per
+	// byte than ordinary code.
+	startup_parts_start int
+	startup_parts_end   int
 }
 
 // c_source joins the generated C pieces into one string.
@@ -1886,6 +1891,90 @@ mut:
 	enabled bool
 	sw      time.StopWatch
 	last_us i64
+}
+
+const fastc_startup_initializer_part_bytes = 96 * 1024
+
+// fastc_split_startup_initializers splits the body of v_fastc_init_globals into parts of about
+// `part_bytes` at its top-level statement lines, keeping their order. It returns the body
+// whole when a line is not a lone statement it can move: a preprocessor line, a local
+// declaration a later line could use, or a line that leaves a brace or parenthesis open.
+fn fastc_split_startup_initializers(body string, part_bytes int) []string {
+	if body.len <= part_bytes {
+		return [body]
+	}
+	mut parts := []string{}
+	mut part_start := 0
+	mut line_start := 0
+	for line_start < body.len {
+		mut line_end := body.index_after_('\n', line_start)
+		if line_end < 0 {
+			line_end = body.len
+		}
+		line := body[line_start..line_end]
+		if line.trim_space() != '' && !fastc_startup_line_is_movable(line) {
+			return [body]
+		}
+		next := line_end + 1
+		if next - part_start >= part_bytes && next < body.len {
+			parts << body[part_start..next]
+			part_start = next
+		}
+		line_start = next
+	}
+	if part_start < body.len {
+		parts << body[part_start..]
+	}
+	return parts
+}
+
+// fastc_startup_line_is_movable reports whether one initializer line is a complete statement
+// (`name = ...;` or a call) that declares nothing.
+fn fastc_startup_line_is_movable(line string) bool {
+	text := line.trim_space()
+	if text.starts_with('#') || !text.ends_with(';') {
+		return false
+	}
+	mut depth := 0
+	mut in_string := false
+	mut in_char := false
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if in_string || in_char {
+			if c == `\\` {
+				i += 2
+				continue
+			}
+			if (in_string && c == `"`) || (in_char && c == `'`) {
+				in_string = false
+				in_char = false
+			}
+			i++
+			continue
+		}
+		match c {
+			`"` { in_string = true }
+			`'` { in_char = true }
+			`(`, `{`, `[` { depth++ }
+			`)`, `}`, `]` { depth-- }
+			else {}
+		}
+		i++
+	}
+	if depth != 0 {
+		return false
+	}
+	// A declaration starts with a type and a name: `T name = ...;`, `T *name;`.
+	mut j := 0
+	for j < text.len && fastc_identifier_byte(text[j]) {
+		j++
+	}
+	mut k := j
+	for k < text.len && text[k] in [` `, `*`] {
+		k++
+	}
+	return !(j > 0 && k > j && k < text.len && fastc_identifier_byte(text[k]))
 }
 
 fn fastc_new_phase_timer() FastcPhaseTimer {
@@ -3191,9 +3280,18 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	prototype_start := pieces.len
 	fastc_collect_c_piece_ranges(mut pieces, prototype_pieces, kept_proto_ranges)
 	prototype_end := pieces.len
+	// The initializer of a program with large constant tables is split into parts, so
+	// that the units compile it in parallel; one function capped TinyCC's critical path.
+	startup_parts := fastc_split_startup_initializers(startup_initializers,
+		fastc_startup_initializer_part_bytes)
 	if startup_initializers.len > 0 {
 		pieces << 'void v_fastc_init_globals(void);'
 		pieces << '\n'
+		if startup_parts.len > 1 {
+			for i in 0 .. startup_parts.len {
+				pieces << 'void v_fastc_init_globals_part${i}(void);\n'
+			}
+		}
 	}
 	if module_cleanup_calls.len > 0 {
 		pieces << 'void v_fastc_cleanup_modules(void);'
@@ -3226,7 +3324,22 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_piece(interface_dispatches)
 	// The initializer, the cleanup hook and the entry are one function each.
 	solo_starts << pieces.len
-	if startup_initializers.len > 0 {
+	startup_parts_start := pieces.len
+	mut startup_parts_end := pieces.len
+	if startup_parts.len > 1 {
+		mut calls := strings.new_builder(startup_parts.len * 40)
+		for i, part in startup_parts {
+			pieces << 'void v_fastc_init_globals_part${i}(void) {\n'
+			pieces << part
+			pieces << '}\n\n'
+			solo_starts << pieces.len
+			calls.writeln('\tv_fastc_init_globals_part${i}();')
+		}
+		startup_parts_end = pieces.len
+		pieces << 'void v_fastc_init_globals(void) {\n'
+		pieces << calls.str()
+		pieces << '}\n\n'
+	} else if startup_initializers.len > 0 {
 		pieces << 'void v_fastc_init_globals(void) {'
 		pieces << '\n'
 		pieces << fastc_piece(startup_initializers)
@@ -3304,6 +3417,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	units.extern_texts = extern_texts
 	units.define_texts = define_texts
 	units.solo_starts = solo_starts
+	units.startup_parts_start = startup_parts_start
+	units.startup_parts_end = startup_parts_end
 	if prune_unreachable {
 		units.prototype_start = prototype_start
 		units.prototype_end = prototype_end
