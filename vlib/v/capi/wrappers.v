@@ -331,19 +331,31 @@ fn wrapper_for_const(m ApiModel, idx int, c ApiConst, mut b strings.Builder, mut
 		return false
 	}
 	cname := if c.c_name != '' { c.c_name } else { '${m.prefix}_get_${sanitize(c.name)}' }
-	t := if value.starts_with("'") || value.starts_with('"') { 'string' } else { 'int' }
+	t := if value.starts_with("'") || value.starts_with('"') {
+		'string'
+	} else if value == 'true' || value == 'false' {
+		'bool'
+	} else {
+		'int'
+	}
 	rt := v_wrapper_type(t, m) or { return false }
 	b.writeln("@[export: '${cname}']")
 	b.writeln('fn capi_const_${idx}() ${rt} {')
 	if t == 'string' {
 		b.writeln('\treturn &char(capi_rt_strdup(${value}))')
+	} else if t == 'bool' {
+		b.writeln('\treturn if ${value} { 1 } else { 0 }')
 	} else {
 		b.writeln('\treturn ${value}')
 	}
 	b.writeln('}')
+	mut sig_type := 'int'
+	if t == 'string' {
+		sig_type = 'char *'
+	}
 	infos << ExportInfo{
 		c_name:    cname
-		signature: '${if t == 'string' { 'char *' } else { 'int' }} ${cname}(void)'
+		signature: '${sig_type} ${cname}(void)'
 		doc:       c.doc
 	}
 	return true

@@ -58,12 +58,6 @@ fn scalar_v_type(t string) string {
 	if t == 'byte' {
 		return 'u8'
 	}
-	if t == 'usize' {
-		return 'u64'
-	}
-	if t == 'isize' {
-		return 'i64'
-	}
 	if t == 'rune' {
 		return 'int'
 	}
@@ -86,8 +80,11 @@ fn scalar_c_type(t string) string {
 	if t == 'u32' {
 		return 'uint32_t'
 	}
-	if t == 'u64' || t == 'usize' {
+	if t == 'u64' {
 		return 'uint64_t'
+	}
+	if t == 'usize' {
+		return 'size_t'
 	}
 	if t == 'i8' {
 		return 'int8_t'
@@ -98,8 +95,11 @@ fn scalar_c_type(t string) string {
 	if t == 'int' || t == 'i32' || t == 'rune' {
 		return 'int'
 	}
-	if t == 'i64' || t == 'isize' {
+	if t == 'i64' {
 		return 'int64_t'
+	}
+	if t == 'isize' {
+		return 'ptrdiff_t'
 	}
 	if t == 'f32' {
 		return 'float'
@@ -156,8 +156,11 @@ pub fn struct_field_c_type(t string) ?string {
 	if t == 'u32' {
 		return 'uint32_t'
 	}
-	if t == 'u64' || t == 'usize' {
+	if t == 'u64' {
 		return 'uint64_t'
+	}
+	if t == 'usize' {
+		return 'size_t'
 	}
 	if t == 'i8' {
 		return 'int8_t'
@@ -168,8 +171,11 @@ pub fn struct_field_c_type(t string) ?string {
 	if t == 'i32' || t == 'rune' {
 		return 'int32_t'
 	}
-	if t == 'i64' || t == 'isize' {
+	if t == 'i64' {
 		return 'int64_t'
+	}
+	if t == 'isize' {
+		return 'ptrdiff_t'
 	}
 	if t == 'f32' {
 		return 'float'

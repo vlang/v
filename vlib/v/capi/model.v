@@ -380,7 +380,13 @@ fn decl_key(line string) ?string {
 		if !line.starts_with(kind) {
 			continue
 		}
-		rest := line[kind.len..]
+		mut rest := line[kind.len..]
+		// Methods spell the receiver first: `pub fn (c &T) name(...)`.
+		if kind == 'pub fn ' && rest.starts_with('(') {
+			if close := rest.index(')') {
+				rest = rest[close + 1..].trim_space()
+			}
+		}
 		idx := rest.index(' ') or { rest.len }
 		mut name := rest[..idx]
 		if name.contains('(') {

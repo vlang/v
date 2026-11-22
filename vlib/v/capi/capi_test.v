@@ -27,6 +27,19 @@ fn test_collect_model() {
 	assert m.is_enum('Mode')
 }
 
+fn test_bool_const_getter() {
+	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'boolconst')
+	m := collect_model(dir, '') or {
+		assert false, 'collect_model failed: ${err.msg()}'
+		return
+	}
+	mut warnings := []string{}
+	code, infos := generate_wrappers(m, mut warnings)
+	assert code.contains('fn capi_const_0() int {')
+	assert code.contains('return if true { 1 } else { 0 }')
+	assert infos[0].signature == 'int boolconst_get_flag(void)'
+}
+
 fn test_enum_explicit_values() {
 	dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'capi', 'testdata', 'enumvals')
 	m := collect_model(dir, '') or {

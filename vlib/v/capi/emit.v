@@ -220,7 +220,8 @@ fn readme_text(m ApiModel, name string, version string, all []ExportInfo) string
 	}
 	b.writeln('')
 	b.writeln('Returned strings and buffers are owned by the caller; release them with')
-	b.writeln('`${m.prefix}_free()`. `!T` results return 0 on success and -1 on error,')
+	b.writeln('`${m.prefix}_free()`. `!T` results return 0 on success and a non-zero error')
+	b.writeln('status (-1 by default, or a value set with `@[capi.CApiErrno(N)]`) on error,')
 	b.writeln('with the message available from `${m.prefix}_last_error()`; `?T` results')
 	b.writeln('return 0 for a value and 1 for none.')
 	return b.str()

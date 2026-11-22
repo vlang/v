@@ -273,7 +273,7 @@ fn build_plan(opts Options) !BuildPlan {
 		if first {
 			combined = capi.ApiModel{
 				module_name: 'main'
-				prefix:      opts.lib_name
+				prefix:      capi.sanitize(opts.lib_name)
 			}
 			first = false
 		}
@@ -285,7 +285,7 @@ fn build_plan(opts Options) !BuildPlan {
 	for w in warnings {
 		eprintln('c-api: warning: ${w}')
 	}
-	runtime := capi.generate_runtime_for(combined, 'main', opts.lib_name)
+	runtime := capi.generate_runtime_for(combined, 'main', capi.sanitize(opts.lib_name))
 	// One .c.v file holds both the wrappers and the runtime: V only compiles
 	// the file passed as input, so a separate companion would be omitted.
 	source_path := os.join_path(temp_dir, 'capi_generated.c.v')
