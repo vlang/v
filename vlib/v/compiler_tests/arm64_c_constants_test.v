@@ -100,11 +100,13 @@ fn main() {
 		run := cmdexec.run(output, []string{})
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == 'pointer and arithmetic constants', run.output
-		os.write_file(source, '#define RELOCATED_POINTER (&puts)
+		for address in ['(&puts)', '"text"'] {
+			os.write_file(source, '#define RELOCATED_POINTER ${address}
 fn main() { println(u64(C.RELOCATED_POINTER)) }
 ')!
-		unresolved := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, source])
-		assert unresolved.exit_code == 1, unresolved.output
-		assert unresolved.output.contains('cannot resolve C constant `C.RELOCATED_POINTER`'), unresolved.output
+			unresolved := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, source])
+			assert unresolved.exit_code == 1, unresolved.output
+			assert unresolved.output.contains('cannot resolve C constant `C.RELOCATED_POINTER`'), unresolved.output
+		}
 	}
 }

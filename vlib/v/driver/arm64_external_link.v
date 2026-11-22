@@ -771,7 +771,7 @@ fn arm64_c_constant_probe_lines(names []string, keep []bool, base int) string {
 			continue
 		}
 		out << '#line ${base + i + 1} "${arm64_c_probe_file}"'
-		out << 'V_CCONST_KEEP const double __v_cconst_f_${i} = (double)_Generic((${name}), float: (${name}), double: (${name}), long double: (${name}), default: 0); V_CCONST_KEEP const int __v_cconst_k_${i} = _Generic((${name}), float: 1, double: 1, long double: 1, unsigned long: 2, unsigned long long: 2, default: 0); V_CCONST_KEEP const long long __v_cconst_i_${i} = (long long)(${name}); _Static_assert(__builtin_constant_p(${name}), "C constant requires relocation");'
+		out << 'V_CCONST_KEEP const double __v_cconst_f_${i} = (double)_Generic((${name}), float: (${name}), double: (${name}), long double: (${name}), default: 0); V_CCONST_KEEP const int __v_cconst_k_${i} = _Generic((${name}), float: 1, double: 1, long double: 1, unsigned long: 2, unsigned long long: 2, default: 0); V_CCONST_KEEP const long long __v_cconst_i_${i} = (long long)(${name}); enum { __v_cconst_absolute_${i} = _Generic((${name}), float: 0, double: 0, long double: 0, default: (long long)(${name})) };'
 	}
 	return out.join('\n') + '\n'
 }
