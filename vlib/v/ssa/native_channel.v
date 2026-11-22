@@ -102,6 +102,38 @@ fn (mut b Builder) build_channel_send(channel_id flat.NodeId, value_id flat.Node
 	return true
 }
 
+// build_channel_try_call lowers nonblocking channel methods to the sync runtime,
+// passing element storage rather than a value through its opaque pointer argument.
+fn (mut b Builder) build_channel_try_call(node flat.Node, callee flat.Node) ?ValueID {
+	if callee.children_count == 0 || node.children_count != 2 {
+		return none
+	}
+	channel, element := b.channel_operand(b.a.child(&callee, 0))?
+	method := b.channel_function_ref('sync.Channel.${callee.value_text()}') or {
+		panic('ssa: missing channel runtime method `${callee.value_text()}`')
+	}
+	mut arg_id := b.a.child(&node, 1)
+	arg := b.a.nodes[int(arg_id)]
+	if arg.kind == .cast_expr && arg.children_count > 0 && !arg.pos.is_valid()
+		&& arg.source_value_id() == flat.source_type_voidptr {
+		address := b.a.child_node(&arg, 0)
+		if address.kind == .prefix && address.op == .amp && address.children_count > 0 {
+			// Transform may have adapted a value to the runtime's voidptr parameter.
+			// Recover that value before selecting its channel element storage.
+			arg_id = b.a.child(address, 0)
+		}
+	}
+	storage := if callee.value_text() == 'try_push' {
+		value := b.coerce_store_value(b.build_expr(arg_id), element)
+		b.channel_slot(element, value)
+	} else if flat.source_type_shape(b.checked_expr_type_name(arg_id)).has(.pointer) {
+		b.build_expr(arg_id)
+	} else {
+		b.build_lvalue_addr(arg_id)
+	}
+	return b.emit3(.call, b.i32_type, method, channel, b.as_byte_pointer(storage))
+}
+
 struct NativeSelectCase {
 	branch     flat.Node
 	channel_id flat.NodeId

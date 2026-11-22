@@ -122,6 +122,24 @@ fn main() {
 	numbers.close()
 	println('closed \${numbers.closed}')
 
+	queue := chan Job{cap: 1}
+	mut popped := Job{value: -1}
+	assert queue.try_pop(mut popped) != .success
+	assert popped.value == -1
+	assert queue.try_push(Job{value: 23, stop: true}) == .success
+	assert queue.try_push(Job{value: 99}) != .success
+	assert queue.try_pop(mut popped) == .success
+	assert popped.value == 23 && popped.stop
+	assert queue.try_pop(mut popped) != .success
+	queue.close()
+	assert queue.try_pop(mut popped) == .closed
+	assert queue.try_push(Job{}) == .closed
+
+	texts.try_push('nonblocking')
+	mut text := ''
+	assert texts.try_pop(mut text) == .success
+	println(text)
+
 	mut values := [3, 1, 2]
 	sort_with(mut values, less)
 	println(values)
@@ -138,6 +156,7 @@ timeout
 len 0 cap 1 closed false
 len 1
 closed true
+nonblocking
 [1, 2, 3]'
 
 fn test_channels_and_select_work_on_arm64() {

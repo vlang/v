@@ -14996,6 +14996,11 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	fn_node_id := b.a.child(&node, 0)
 	fn_node := b.a.nodes[int(fn_node_id)]
 	fn_name := fn_node.value_text()
+	if fn_node.kind == .selector && fn_name in ['try_push', 'try_pop'] {
+		if value := b.build_channel_try_call(node, fn_node) {
+			return value
+		}
+	}
 	if fn_node.kind == .ident && fn_name == '__v3_closure_current_data' {
 		for global_name in ['closure.g_closure', 'g_closure'] {
 			if closure_addr := b.global_vars[global_name] {
@@ -15418,10 +15423,6 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			return b.build_indirect_call(id, node, fn_node_id)
 		}
 		if stub_id := b.register_interface_method_stub(actual_name, base_id, fn_node.value) {
-			resolved_name = actual_name
-			fn_idx = stub_id
-			is_method = true
-		} else if stub_id := b.register_builtin_method_stub(actual_name, id, node) {
 			resolved_name = actual_name
 			fn_idx = stub_id
 			is_method = true
@@ -15942,35 +15943,6 @@ fn (b &Builder) interface_concrete_method_id(impl_id u32, method string) ?int {
 		}
 	}
 	return none
-}
-
-// register_builtin_method_stub registers checker-known runtime methods that the
-// SSA backend does not lower yet, notably channel try_push/try_pop. The stub
-// keeps the call ABI and result type so native code generation can complete.
-fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId, node flat.Node) ?int {
-	if !name.contains('.') {
-		return none
-	}
-	receiver_name := name.all_before_last('.')
-	if !receiver_name.starts_with('chan ') {
-		return none
-	}
-	if existing := b.fn_ids[name] {
-		return existing
-	}
-	mut params := []TypeID{cap: node.children_count}
-	params << b.resolve_type(flat.source_type_id(receiver_name))
-	for i in 1 .. node.children_count {
-		arg_id := b.a.child(&node, i)
-		arg_type_name := b.checked_expr_type_name(arg_id)
-		params << if arg_type_name != 0 {
-			b.resolve_type(arg_type_name)
-		} else {
-			b.i64_type
-		}
-	}
-	ret_type := b.call_expr_result_type(call_id, node)
-	return b.register_synthetic_function(name, ret_type, params)
 }
 
 // register_missing_call_stub materializes a checker-validated call whose native
