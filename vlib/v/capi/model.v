@@ -117,6 +117,16 @@ pub fn collect_model(dir string, prefix string) !ApiModel {
 // non-empty, marks functions for calls through an imported module alias.
 pub fn collect_model_qualified(dir string, prefix string, qualifier string) !ApiModel {
 	entries := os.ls(dir) or { return error('cannot list ${dir}: ${err}') }
+	for entry in entries {
+		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.starts_with('test_') {
+			continue
+		}
+		text := os.read_file(os.join_path(dir, entry)) or { continue }
+		if text.contains('$compile_error(') {
+			name := sanitize(prefix)
+			return ApiModel{ prefix: name, module_name: name }
+		}
+	}
 	mut effective_prefix := if prefix == '' { '' } else { sanitize(prefix) }
 	mut module_name := ''
 	mut funcs := []ApiFunc{}
@@ -250,7 +260,13 @@ pub fn collect_model_qualified(dir string, prefix string, qualifier string) !Api
 		}
 	}
 	if module_name == '' {
-		return error('no V module declaration found in ${dir}')
+		// A directory holding only submodules/assets has no surface of its own.
+		// Keep a usable module name so generated sources remain syntactically
+		// valid even when there is nothing to export.
+		return ApiModel{
+			prefix:      effective_prefix
+			module_name: effective_prefix
+		}
 	}
 	if effective_prefix == '' {
 		effective_prefix = sanitize(module_name.all_after_last('.'))

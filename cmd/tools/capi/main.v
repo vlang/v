@@ -111,8 +111,24 @@ fn lib_file_name(name string) string {
 	return 'lib${name}.so'
 }
 
+fn has_compile_error(dir string) bool {
+	for entry in os.ls(dir) or { return false } {
+		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.starts_with('test_') {
+			continue
+		}
+		text := os.read_file(os.join_path(dir, entry)) or { continue }
+		if text.contains('$compile_error(') {
+			return true
+		}
+	}
+	return false
+}
+
 fn module_name_of(dir string) string {
 	entries := os.ls(dir) or { return '' }
+	if has_compile_error(dir) {
+		return ''
+	}
 	for entry in entries {
 		if !entry.ends_with('.v') || entry.ends_with('_test.v') || entry.ends_with('.c.v')
 			|| is_foreign_backend_file(entry)
@@ -120,6 +136,9 @@ fn module_name_of(dir string) string {
 			continue
 		}
 		text := os.read_file(os.join_path(dir, entry)) or { continue }
+		if text.contains('$compile_error(') || text.contains('@[deprecated') {
+			return ''
+		}
 		for line in text.split('\n') {
 			t := line.trim_space()
 			if t.starts_with('module ') {
@@ -209,7 +228,8 @@ fn is_foreign_backend_file(name string) bool {
 fn copy_asset_tree(src string, dst string) {
 	os.mkdir_all(dst) or { return }
 	for entry in os.ls(src) or { return } {
-		if entry.starts_with('.') || entry.ends_with('_test.v') || entry.starts_with('capi_generated') {
+		if entry.starts_with('.') || entry.ends_with('_test.v') || entry.starts_with('test_')
+			|| entry.starts_with('capi_generated') {
 			continue
 		}
 		src_path := os.join_path(src, entry)
@@ -225,16 +245,24 @@ fn copy_asset_tree(src string, dst string) {
 fn copy_module_files(src string, dst string) ! {
 	os.mkdir_all(dst) or { return error('cannot create ${dst}: ${err}') }
 	for entry in os.ls(src) or { return error('cannot list ${src}: ${err}') } {
-		if entry.ends_with('_test.v') || entry.starts_with('capi_generated') || entry.starts_with('.') {
+		if entry.ends_with('_test.v') || entry.starts_with('test_') || entry.starts_with('capi_generated')
+			|| entry.starts_with('.') {
 			continue
 		}
 		if is_foreign_backend_file(entry) {
 			continue
 		}
-		if os.is_dir(os.join_path(src, entry)) {
+		src_path := os.join_path(src, entry)
+		if os.is_dir(src_path) {
 			continue
 		}
-		os.copy_file(os.join_path(src, entry), os.join_path(dst, entry)) or {
+		if entry.ends_with('.v') {
+			src_text := os.read_file(src_path) or { '' }
+			if src_text.contains('$compile_error(') {
+				continue
+			}
+		}
+		os.copy_file(src_path, os.join_path(dst, entry)) or {
 			return error('cannot copy ${entry}: ${err}')
 		}
 	}
@@ -259,6 +287,25 @@ fn combine_main_source(wrappers string, runtime string, imports []string) string
 	return b.str()
 }
 
+// stage_single_module builds a cleaned copy of a single module so V never
+// sees test helpers or backend-specific files the tool cannot release.
+fn stage_single_module(opts Options, model capi.ApiModel, infos []capi.ExportInfo, wrappers string, runtime string) !BuildPlan {
+	temp_dir := os.join_path(os.vtmp_dir(), 'capi_build_${rand.ulid()}')
+	stage := os.join_path(temp_dir, 'module')
+	os.mkdir_all(stage) or { return error('cannot create ${stage}: ${err}') }
+	copy_module_files(opts.dir, stage) or { return err }
+	os.write_file(os.join_path(stage, 'capi_generated.v'), wrappers) or { return err }
+	os.write_file(os.join_path(stage, 'capi_generated.c.v'), runtime) or { return err }
+	return BuildPlan{
+		model:       model
+		infos:       infos
+		wrappers:    wrappers
+		runtime:     runtime
+		build_input: stage
+		temp_dir:    temp_dir
+	}
+}
+
 struct BuildPlan {
 	model       capi.ApiModel
 	infos       []capi.ExportInfo
@@ -277,15 +324,7 @@ fn build_plan(opts Options) !BuildPlan {
 		for w in warnings {
 			eprintln('c-api: warning: ${w}')
 		}
-		return BuildPlan{
-			model:       m
-			infos:       infos
-			wrappers:    wrappers
-			runtime:     capi.generate_runtime(m)
-			build_input: ''
-			vmodules:    ''
-			temp_dir:    ''
-		}
+		return stage_single_module(opts, m, infos, wrappers, capi.generate_runtime(m)) or { return err }
 	}
 	mut modules := []string{}
 	discover_modules(opts.dir, mut modules)
@@ -295,15 +334,7 @@ fn build_plan(opts Options) !BuildPlan {
 		for w in warnings {
 			eprintln('c-api: warning: ${w}')
 		}
-		return BuildPlan{
-			model:       m
-			infos:       infos
-			wrappers:    wrappers
-			runtime:     capi.generate_runtime(m)
-			build_input: ''
-			vmodules:    ''
-			temp_dir:    ''
-		}
+		return stage_single_module(opts, m, infos, wrappers, capi.generate_runtime(m)) or { return err }
 	}
 	base := base_import_path(opts.dir, opts)
 	if base == '' {
@@ -438,23 +469,11 @@ fn main() {
 	for w in plan.model.warnings {
 		eprintln('c-api: parse error: ${w}')
 	}
-	if plan.temp_dir == '' {
+	if opts.keep_generated {
 		wrapper_path := os.join_path(opts.dir, 'capi_generated.v')
 		runtime_path := os.join_path(opts.dir, 'capi_generated.c.v')
-		if os.exists(wrapper_path) || os.exists(runtime_path) {
-			eprintln('c-api: generated files already exist in ${opts.dir}; remove them first')
-			exit(1)
-		}
-		os.write_file(wrapper_path, plan.wrappers) or {
-			eprintln('c-api: cannot write ${wrapper_path}: ${err}')
-			exit(1)
-		}
-		os.write_file(runtime_path, plan.runtime) or {
-			os.rm(wrapper_path) or {}
-			eprintln('c-api: cannot write ${runtime_path}: ${err}')
-			exit(1)
-		}
-		generated_files << [wrapper_path, runtime_path]
+		os.write_file(wrapper_path, plan.wrappers) or {}
+		os.write_file(runtime_path, plan.runtime) or {}
 	}
 	result := capi.emit_files(plan.model, plan.infos, capi.EmitOptions{
 		out_dir:     opts.out_dir
