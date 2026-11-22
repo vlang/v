@@ -10382,7 +10382,6 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 					rhs_type = declared_storage_type
 				}
 			}
-			}
 		}
 		if int(rhs_id) >= 0 && b.a.nodes[int(rhs_id)].kind == .nil_literal && lhs.typ != 0 {
 			declared_type := b.resolve_type(lhs.typ)

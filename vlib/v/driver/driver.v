@@ -15152,27 +15152,6 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 			}
-			b.step('x64 object')
-			// Object-only mode: skip linking for cross-compilation (host != target)
-			x64_cross_compile := is_o && (pref.host_target().os != target.os || pref.host_target().arch != target.arch)
-			if x64_cross_compile {
-				os.mv(obj_file, bin_file) or {
-					eprintln(err.msg())
-					exit(1)
-				}
-				b.step('link')
-				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			}
-			if !x64_cross_compile {
-				x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
-					no_prod_options, false, parallel_cc, false)
-				native_support := x64_native_support_object(a, prefs, user_c_flags,
-					x64_object_optimization_flags, c_compiler) or {
-					os.rm(obj_file) or {}
-					eprintln(err.msg())
-					exit(1)
-				}
-
 			mut linker_args := ['-no-pie', obj_file, '-o', bin_file]
 			if native_support.object.len > 0 {
 				linker_args << native_support.object
