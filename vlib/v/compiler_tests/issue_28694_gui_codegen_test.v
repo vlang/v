@@ -25,7 +25,7 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 		'probe'
 	})
 	os.write_file(source_path, source) or { panic(err) }
-	build := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output_path, source_path])
+	build := os.exec([@VEXE, '-nocache', '-o', output_path, source_path])
 	assert build.exit_code == 0, '${name}: ${build.output}'
 	run := os.exec([output_path])
 	assert run.exit_code == 0, '${name}: ${run.output}'

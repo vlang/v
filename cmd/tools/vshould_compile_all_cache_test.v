@@ -41,7 +41,7 @@ fn test_should_compile_all_reuses_native_module_cache() ! {
 	// Use make's native warmup, independently of the tool's os/log imports and
 	// their different C flags and interface set.
 	warmup := os.join_path(@VEXEROOT, 'cmd', 'tools', 'cache_basic_modules.v')
-	warmed := run_should_compile_cache_command(@VEXE, ['-new-compiler', 'run', warmup], environment)
+	warmed := run_should_compile_cache_command(@VEXE, ['run', warmup], environment)
 	assert warmed.exit_code == 0, warmed.output
 	builtin_objects := os.walk_ext(cache, '.o').filter(os.file_name(it).starts_with('builtin_'))
 	assert builtin_objects.len > 0, warmed.output

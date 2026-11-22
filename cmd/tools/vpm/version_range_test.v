@@ -1,4 +1,4 @@
-// vtest vflags: -new-compiler -no-retry-compilation
+// vtest vflags: -no-retry-compilation
 module main
 
 import os

@@ -18,7 +18,7 @@ fn test_orm_monomorphization_with_many_fields_finishes() {
 	output := os.join_path(root, 'main.c')
 	os.write_file(input, source.str())!
 	mut child := os.new_process(@VEXE)
-	child.set_args(['-new-compiler', '-no-retry-compilation', '-nocache', '-o', output, input])
+	child.set_args(['-no-retry-compilation', '-nocache', '-o', output, input])
 	mut environment := os.environ()
 	environment.delete('VFLAGS')
 	environment.delete('VOSARGS')

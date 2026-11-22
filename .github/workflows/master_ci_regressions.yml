@@ -127,7 +127,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 5
         run: |
-          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
+          .\v.exe -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
           if ($LASTEXITCODE -ne 0) { throw "Complex identifier regression failed (exit $LASTEXITCODE)" }
       - name: Check synthesized entry points and cleanup
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -138,5 +138,5 @@ jobs:
             'vlib/v/compiler_tests/executable_cleanup_test.v'
             'vlib/v/compiler_tests/mixed_lock_codegen_test.v'
           )
-          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
+          .\v.exe -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
           if ($LASTEXITCODE -ne 0) { throw "Entry point regressions failed (exit $LASTEXITCODE)" }

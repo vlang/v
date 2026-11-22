@@ -691,14 +691,14 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 	for cc in ['msvc', 'gcc', 'tcc'] {
 		c_file := os.join_path(test_root, 'vup_${cc}.c')
 		// Generating C exercises the Windows checker without needing a Windows SDK.
-		result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os', 'windows',
-			'-arch', 'amd64', '-cc', cc, '-o', c_file, source])
+		result := os.exec([compiler, '-g', '-gc', 'none', '-nocache', '-os', 'windows', '-arch',
+			'amd64', '-cc', cc, '-o', c_file, source])
 		assert result.exit_code == 0, result.output
 		assert os.is_file(c_file)
 	}
 	arm64 := os.join_path(test_root, 'vup_arm64.c')
-	arm64_result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os',
-		'windows', '-arch', 'arm64', '-cc', 'msvc', '-o', arm64, source])
+	arm64_result := os.exec([compiler, '-g', '-gc', 'none', '-nocache', '-os', 'windows', '-arch',
+		'arm64', '-cc', 'msvc', '-o', arm64, source])
 	assert arm64_result.exit_code == 0, arm64_result.output
 	assert os.is_file(arm64)
 }

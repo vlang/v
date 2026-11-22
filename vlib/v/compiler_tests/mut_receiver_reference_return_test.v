@@ -12,7 +12,7 @@ fn run_mut_receiver_reference_return(name string, source string, ownership bool)
 	out := os.join_path(root, 'out')
 	os.write_file(path, source) or { panic(err) }
 	flags := if ownership { '-d ownership -ownership' } else { '' }
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache ${flags} -o ${os.quoted_path(out)} run ${os.quoted_path(path)}')
+	return os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache ${flags} -o ${os.quoted_path(out)} run ${os.quoted_path(path)}')
 }
 
 fn test_mut_receiver_reference_return_is_borrowed_in_ownership_mode() {

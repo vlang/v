@@ -1225,8 +1225,8 @@ fn main() {
 		output := os.join_path(root, phase)
 		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
 			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
-			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-new-compiler', '-no-retry-compilation',
-			'-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output, source])
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-no-retry-compilation', '-cc', 'cc',
+			'-gc', 'none', '-show-timings', '-o', output, source])
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		object := module_cache_artifact(cache_dir, 'callbackprobe_', '.o')
 		assert object.len > 0, '${phase}: no cached callback module'
@@ -1286,8 +1286,8 @@ fn main() {
 		output := os.join_path(project, phase)
 		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
 			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
-			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-new-compiler', '-no-retry-compilation',
-			'-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output, source])
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-no-retry-compilation', '-cc', 'cc',
+			'-gc', 'none', '-show-timings', '-o', output, source])
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		object := module_cache_artifact(cache_dir, 'symlinkprobe_', '.o')
 		assert object.len > 0, '${phase}: no cached module object'
@@ -2925,8 +2925,8 @@ fn main() {
 	stderr_file := os.join_path(root, 'stderr.txt')
 	// Exercise the current driver's stderr without the launcher's compatibility retry.
 	result :=
-		cache_capture_files([v3_bin, '-new-compiler', '-cc', 'cc', '-show-timings', '-enable-globals',
-			'-o', second_output, main_file], stdout_file, stderr_file, {
+		cache_capture_files([v3_bin, '-cc', 'cc', '-show-timings', '-enable-globals', '-o',
+			second_output, main_file], stdout_file, stderr_file, {
 			'V3CACHE': cache_dir
 		})
 	assert result.exit_code != 0
@@ -2985,8 +2985,7 @@ fn main() {
 	mut environment := os.environ()
 	environment['V3CACHE'] = cache_dir
 	mut process := os.new_process(v3_bin)
-	process.set_args(['-new-compiler', '-silent', '-no-memory-limit', 'run', main_file,
-		side_effect_file])
+	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -6467,7 +6466,7 @@ fn main() {
 		reject := word == 'second'
 		compiled := os.exec(['env', 'VFLAGS=', 'V3CACHE=${cache_dir}', 'V3_CACHE_TRACE=1',
 			'V3_CACHE_DISABLE_INCREMENTAL=', 'V3_TEST_REJECT_RESTORED_BODY=${int(reject)}', v3_bin,
-			'-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc', cc_wrapper, '-show-timings',
+			'-no-retry-compilation', '-gc', 'none', '-cc', cc_wrapper, '-show-timings',
 			'-enable-globals', '-o', output, main_file])
 		assert compiled.exit_code == 0, compiled.output
 		assert compiled.output.count('the C compiler rejected the program main restored by the incremental cache') == int(reject), compiled.output

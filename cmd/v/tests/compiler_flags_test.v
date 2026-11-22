@@ -17,7 +17,7 @@ fn test_obsolete_skip_unused_is_notice_only_and_preserves_no_skip_unused() {
 	for flags in [['-skip-unused'], ['-skip-unused', '-no-skip-unused'],
 		['-no-skip-unused', '-skip-unused']] {
 		mut args := flags.clone()
-		args << ['-new-compiler', '-w', '-o', c_path, source]
+		args << ['-w', '-o', c_path, source]
 		result := cmdexec.run(@VEXE, args)
 		assert result.exit_code == 0, result.output
 		assert result.output.contains('notice: `-skip-unused` is no longer needed'), result.output
@@ -34,7 +34,7 @@ fn test_obsolete_skip_unused_preserves_program_and_tool_arguments() {
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import os\nfn main() { println(os.args[1]) }\n')!
-	result := cmdexec.run(@VEXE, ['-new-compiler', '-silent', 'run', source, '-skip-unused'])
+	result := cmdexec.run(@VEXE, ['-silent', 'run', source, '-skip-unused'])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == '-skip-unused', result.output
 
@@ -53,7 +53,7 @@ fn test_obsolete_skip_unused_preserves_arguments_after_command_named_input_direc
 		folder := os.join_path(root, input)
 		os.mkdir_all(folder)!
 		os.write_file(os.join_path(folder, 'main.v'), 'import os\nfn main() { println(os.args[1]) }\n')!
-		result := cmdexec.run_in(@VEXE, ['-new-compiler', '-silent', 'run', input, '-skip-unused'], root)
+		result := cmdexec.run_in(@VEXE, ['-silent', 'run', input, '-skip-unused'], root)
 		assert result.exit_code == 0, result.output
 		assert result.output.trim_space() == '-skip-unused', result.output
 	}

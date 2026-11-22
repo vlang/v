@@ -25,7 +25,7 @@ fn check_seconds(source string, n int) !f64 {
 	mut best := f64(1e9)
 	for _ in 0 .. 2 {
 		sw := time.new_stopwatch()
-		res := cmdexec.run(@VEXE, ['-new-compiler', '-check', '-memory-limit', '1024', source])
+		res := cmdexec.run(@VEXE, ['-check', '-memory-limit', '1024', source])
 		elapsed := f64(sw.elapsed().microseconds()) / 1e6
 		assert res.exit_code == 0, res.output
 		// the notices are what this test is about: make sure they were still produced

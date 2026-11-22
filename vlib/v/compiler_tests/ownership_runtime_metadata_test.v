@@ -13,8 +13,8 @@ fn test_ownership_checker_runtime_metadata_survives_arena_release() {
 	bootstrap := os.join_path(root, 'bootstrap${suffix}')
 	// Compile the optional ownership helpers with normal value semantics. The
 	// bare frontend permits this bootstrap for either compiler entry point.
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
-		'-path', '${ownership_runtime_vlib_dir}|@vlib|@vmodules', '-o', bootstrap,
+	build := os.exec([@VEXE, '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', '-path',
+		'${ownership_runtime_vlib_dir}|@vlib|@vmodules', '-o', bootstrap,
 		os.join_path(ownership_runtime_compiler_dir, 'v.v')])
 	assert build.exit_code == 0, build.output
 

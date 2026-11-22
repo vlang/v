@@ -324,7 +324,7 @@ fn main() {
 	defer {
 		os.rm(source_path) or {}
 	}
-	res := vrun_ok('-new-compiler -gc none -no-builtin run', source_path)
+	res := vrun_ok('-gc none -no-builtin run', source_path)
 	assert res.trim_space() == '7 0 80 4 9 10 8 -1 81 -1 -1 7 -1 11'
 }
 
@@ -351,7 +351,7 @@ fn test_implicit_err_is_undefined_with_no_builtin() {
 		os.rm(output_path) or {}
 	}
 	res :=
-		os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-no-builtin', '-o', output_path, source_path])
+		os.exec([@VEXE, '-gc', 'none', '-no-builtin', '-o', output_path, source_path])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('undefined ident: `err`'), res.output
 }

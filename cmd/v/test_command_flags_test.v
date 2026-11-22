@@ -10,7 +10,6 @@ fn test_external_test_tool_receives_enable_globals() {
 
 fn test_external_test_tool_preserves_prefix_options_and_test_arguments() {
 	args := [
-		'-new-compiler',
 		'-enable-globals',
 		'-d',
 		'custom_flag',
@@ -23,7 +22,7 @@ fn test_external_test_tool_preserves_prefix_options_and_test_arguments() {
 		'other_test.v',
 	]
 	index, command := find_command(args)
-	assert index == 6
+	assert index == 5
 	assert command == 'test'
 	assert external_tool_runtime_args(command, args[..index], args[index..]) == args
 }

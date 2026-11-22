@@ -31,7 +31,7 @@ jobs:
         with:
           symlink: false
       - name: Check BSD tool job failure propagation
-        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+        run: ./v cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v fmt -verify cmd/tools/tools_ci_test.v

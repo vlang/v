@@ -53,8 +53,7 @@ fn main() {
 ') or { panic(err) }
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
 	for mode in ['-g', '-prod'] {
-		build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', mode, '-o', binary,
-			root])
+		build := os.exec([@VEXE, '-no-retry-compilation', mode, '-o', binary, root])
 		assert build.exit_code == 0, '${mode}: ${build.output}'
 		run := os.exec([binary])
 		assert run.exit_code == 0, run.output
@@ -71,7 +70,7 @@ fn main() {
 	assert embedded_text == "hello"
 }
 ') or { panic(err) }
-	checked := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', root])
+	checked := os.exec([@VEXE, '-no-retry-compilation', '-check', root])
 	assert checked.exit_code != 0, checked.output
 	assert checked.output.contains('unknown module `embed_file`'), checked.output
 }
@@ -89,7 +88,7 @@ fn main() {
 }
 ') or { panic(err) }
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o', binary, root])
+	build := os.exec([@VEXE, '-no-retry-compilation', '-o', binary, root])
 	assert build.exit_code == 0, build.output
 	run := os.exec([binary])
 	assert run.exit_code == 0, run.output

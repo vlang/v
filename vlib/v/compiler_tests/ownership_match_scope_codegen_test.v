@@ -30,8 +30,8 @@ fn main() {
 ")!
 	for mode in ['', '-no-parallel'] {
 		output := os.join_path(root, 'app')
-		mut args := [@VEXE, '-new-compiler', '-nocache', '-ownership', '-d', 'ownership', '-autofree',
-			'-gc', 'vgc', '-no-prealloc', '-o', output]
+		mut args := [@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-autofree', '-gc', 'vgc',
+			'-no-prealloc', '-o', output]
 		if mode != '' {
 			args << mode
 		}
@@ -50,8 +50,8 @@ fn test_ownership_match_scope_runtime_with_simple_and_staged_subjects() {
 	for mode in ['', '-no-parallel'] {
 		for gc_mode in ['none', 'vgc'] {
 			output := os.join_path(root, 'app')
-			mut args := [@VEXE, '-new-compiler', '-nocache', '-ownership', '-d', 'ownership',
-				'-autofree', '-gc', gc_mode, '-no-prealloc', '-o', output]
+			mut args := [@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-autofree', '-gc',
+				gc_mode, '-no-prealloc', '-o', output]
 			if mode != '' { args << mode }
 			args << source
 			build := os.exec(args)

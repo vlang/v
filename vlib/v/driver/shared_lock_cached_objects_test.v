@@ -50,7 +50,7 @@ fn test_lock_on_a_shared_parameter_in_a_spawned_fn_with_cached_module_objects() 
 		source := os.join_path(root, '${name}.v')
 		program := os.join_path(root, name)
 		os.write_file(source, shared_lock_program)!
-		build := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-o', program, source],
+		build := cmdexec.run_in_merged_with_env(@VEXE, ['-o', program, source],
 			root, env)
 		assert build.exit_code == 0, build.output
 		outcome := cmdexec.run_with_timeout(program, [], 10_000)

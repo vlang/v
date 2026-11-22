@@ -39,7 +39,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert result.exit_code == 0, result.output
 		assert result.output.trim_space() == 'ok', result.output
 	}
@@ -52,7 +52,7 @@ fn test_ownership_marker_names_do_not_hide_declared_noninterfaces() {
 	source := os.join_path(root, 'main.v')
 	for marker in ['Owned', 'Copy', 'Drop'] {
 		os.write_file(source, 'struct ${marker} {}\nstruct Resource implements ${marker} {}\nfn main() { _ = Resource{} }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('`${marker}` is not an interface type'), result.output
 	}

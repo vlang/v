@@ -138,8 +138,8 @@ fn main() {
 	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
 	// Run V3 directly without C-compiler retries, so a failed scoped merge
 	// cannot be hidden by a successful retry with another compiler.
-	compile := os.exec([v3_bin, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		scoped_monomorph_cc(), '-nocache', '-o', '${out}', dir])
+	compile := os.exec([v3_bin, '-no-retry-compilation', '-gc', 'none', '-cc', scoped_monomorph_cc(),
+		'-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.is_file(out), 'the compile produced no binary'

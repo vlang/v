@@ -12,7 +12,7 @@ jobs:
     if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
-        # V3 (vlib/v, `-new-compiler`) is the default compiler on macOS, so
+        # V3 (vlib/v) is the default compiler on macOS, so
         # exercise it on every arm64 (Apple-silicon) runner image, not just one.
         os: [macos-15, macos-26]
       fail-fast: false

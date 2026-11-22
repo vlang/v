@@ -44,8 +44,7 @@ const following = 'yes'
 	cc := $if windows { 'gcc' } $else { 'clang' }
 	for serial in [false, true] {
 		binary := os.join_path(root, 'selected_${serial}${exe_suffix}')
-		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc, '-gc', 'none',
-			'-o', binary]
+		mut args := ['-no-retry-compilation', '-nocache', '-cc', cc, '-gc', 'none', '-o', binary]
 		if serial { args << '-no-parallel' }
 		args << root
 		mut child := os.new_process(@VEXE)
@@ -130,8 +129,7 @@ fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
 	mut first_body := ''
 	for flags in [([]string{}), ['-no-parallel']] {
 		c_path := os.join_path(root, if flags.len == 0 { 'parallel.c' } else { 'serial.c' })
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-			'-o', c_path]
+		mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o', c_path]
 		args << flags
 		args << source_path
 		result := os.exec(args)
@@ -167,8 +165,8 @@ fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
 fn check_comptime_string_diagnostics(root string, name string, source string, expected []string) ! {
 	path := os.join_path(root, '${name}.v')
 	os.write_file(path, source)!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-nocolor',
-		'-o', os.join_path(root, '${name}.c'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-nocolor', '-o',
+		os.join_path(root, '${name}.c'), path])
 	assert result.exit_code != 0, result.output
 	path_prefix := os.real_path(path).replace('\\', '/')
 	errors := result.output.replace('\\', '/').split_into_lines().filter(it.starts_with(path_prefix + ':')
@@ -211,15 +209,15 @@ fn test_comptime_string_constant_operands_keep_their_module_scope() {
 	os.write_file(os.join_path(root, 'route_data/route_data.v'), "module route_data\nconst private_prefix = 'GET /module'\npub const route = private_prefix.all_after(' ').trim_left('/')\npub const yes = route.starts_with('mod')\n")!
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, "import route_data\nconst prefix = 'POST /main'\nconst enabled = route_data.yes\n\$if route_data.yes { const direct = true } \$else { const direct = false }\n\$if enabled { const selected = 'yes' } \$else { const selected = 'no' }\nfn main() {\n prefix := 'DELETE /local'\n assert prefix.all_after(' ') == '/local'\n assert route_data.route == 'module'\n assert selected == 'yes'\n assert direct\n \$if selected == 'yes' { assert true } \$else { assert false }\n \$if route_data.route == 'module' { assert true } \$else { assert false }\n \$for word in route_data.route.fields() { assert word == 'module' }\n}")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-o', os.join_path(root, 'scope${exe_suffix}'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'scope${exe_suffix}'), path])
 	assert result.exit_code == 0, result.output
 	run := os.exec([os.join_path(root, 'scope${exe_suffix}')])
 	assert run.exit_code == 0, run.output
 	alias_source := os.read_file(path)!.replace('import route_data', 'import route_data as rd').replace('route_data.', 'rd.')
 	os.write_file(path, alias_source)!
-	alias_result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc',
-		'none', '-o', os.join_path(root, 'alias_scope${exe_suffix}'), path])
+	alias_result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'alias_scope${exe_suffix}'), path])
 	assert alias_result.exit_code == 0, alias_result.output
 	alias_run := os.exec([os.join_path(root, 'alias_scope${exe_suffix}')])
 	assert alias_run.exit_code == 0, alias_run.output
@@ -231,8 +229,8 @@ fn test_static_string_conditions_discard_unavailable_top_level_declarations() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, "const route = 'GET /users'.all_after(' ').trim_left('/')\n\$if route.starts_with('users') {\n fn selected() int { return 1 }\n} \$else {\n fn selected() Unavailable { return unavailable() }\n}\n\$if 'ABC'.to_lower().starts_with('z') {\n fn fallback() Unavailable { return unavailable() }\n} \$else {\n fn fallback() int { return 2 }\n}\nfn main() { assert selected() == 1; assert fallback() == 2 }\n")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-o', os.join_path(root, 'selected${exe_suffix}'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'selected${exe_suffix}'), path])
 	assert result.exit_code == 0, result.output
 	run := os.exec([os.join_path(root, 'selected${exe_suffix}')])
 	assert run.exit_code == 0, run.output
@@ -248,8 +246,8 @@ fn test_imported_guarded_constants_resolve_before_consumer_declarations() {
 	os.write_file(os.join_path(root, 'route_data/route_data.v'), "module route_data\nimport config as cfg\n\$if cfg.enabled { pub const selected = 'yes' } \$else { pub const selected = 'no' }\n")!
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, "import route_data as rd\n\$if rd.selected == 'yes' {\n const chosen = 'yes'\n fn selected() int { return 1 }\n} \$else {\n const chosen = 'no'\n fn selected() Unavailable { return unavailable() }\n}\nfn main() { assert chosen == 'yes'; assert selected() == 1 }\n")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-o', os.join_path(root, 'guard_order${exe_suffix}'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'guard_order${exe_suffix}'), path])
 	assert result.exit_code == 0, result.output
 	run := os.exec([os.join_path(root, 'guard_order${exe_suffix}')])
 	assert run.exit_code == 0, run.output
@@ -261,8 +259,8 @@ fn test_immutable_local_string_sources_in_normal_function_blocks() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, "fn main() {\n path := 'GET /users/:id/posts'.all_after(' ').trim_left('/')\n \$for segment in path.split('/') {\n \$if !segment.starts_with(':') { println(segment) }\n }\n}\n")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-o', os.join_path(root, 'local${exe_suffix}'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'local${exe_suffix}'), path])
 	assert result.exit_code == 0, result.output
 	run := os.exec([os.join_path(root, 'local${exe_suffix}')])
 	assert run.exit_code == 0, run.output
@@ -280,8 +278,8 @@ fn test_static_string_conditions_reject_runtime_shadows_of_constants() {
 	] {
 		path := os.join_path(root, 'main.v')
 		os.write_file(path, "const route = 'constant'\n${body}\n")!
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc',
-			'none', '-o', os.join_path(root, 'shadow.c'), path])
+		result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+			os.join_path(root, 'shadow.c'), path])
 		assert result.exit_code != 0, result.output
 		assert !result.output.contains('C compilation error'), result.output
 		assert result.output.contains('cannot evaluate `\$if` condition')
@@ -289,8 +287,8 @@ fn test_static_string_conditions_reject_runtime_shadows_of_constants() {
 	}
 	path := os.join_path(root, 'restored.v')
 	os.write_file(path, "fn main() {\n route := 'constant'\n check := fn(route string) { assert route == 'runtime' }\n check('runtime')\n \$if route.starts_with('con') { assert true } \$else { assert false }\n}\n")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-o', os.join_path(root, 'restored${exe_suffix}'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'restored${exe_suffix}'), path])
 	assert result.exit_code == 0, result.output
 	run := os.exec([os.join_path(root, 'restored${exe_suffix}')])
 	assert run.exit_code == 0, run.output
@@ -324,7 +322,7 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 	defer { os.setenv('V3_NO_FILE_IDX', saved_no_file_index, true) }
 	for mode in ['parallel', 'serial', 'full_scan'] {
 		os.setenv('V3_NO_FILE_IDX', if mode == 'full_scan' { '1' } else { '' }, true)
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+		mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none']
 		if mode == 'serial' { args << '-no-parallel' }
 		args << ['-o', executable, path]
 		os.write_file(os.join_path(root, 'route_data/route_data.v'), data_source)!
@@ -401,8 +399,8 @@ fn test_comptime_string_loop_bindings_restore_outer_values_after_unrolling() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, "fn main() {\n route := 'constant'\n \$for route in 'runtime'.fields() {\n  \$if route.starts_with('con') { panic('wrong') } \$else { assert route == 'runtime' }\n }\n \$if route.starts_with('con') { assert true } \$else { assert false }\n}\n")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-o', os.join_path(root, 'restored${exe_suffix}'), path])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-o',
+		os.join_path(root, 'restored${exe_suffix}'), path])
 	assert result.exit_code == 0, result.output
 	run := os.exec([os.join_path(root, 'restored${exe_suffix}')])
 	assert run.exit_code == 0, run.output

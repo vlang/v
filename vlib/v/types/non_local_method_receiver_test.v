@@ -46,7 +46,7 @@ fn check_non_local_receiver(name string, source string, flags []string) os.Resul
 		panic(err)
 	}
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', ...flags, '-check', root])
+	return os.exec([@VEXE, ...flags, '-check', root])
 }
 
 fn test_methods_on_imported_named_types_are_rejected() {
@@ -229,7 +229,7 @@ fn main() {
 }
 ') or { panic(err) }
 		for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
-			result := os.exec([@VEXE, '-new-compiler', ...flags, '-check', root])
+			result := os.exec([@VEXE, ...flags, '-check', root])
 			assert result.exit_code == 0, result.output
 		}
 	}

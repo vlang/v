@@ -32,7 +32,7 @@ fn implicit_output_compile(args []string) os.Result {
 	vexe := @VEXE
 	// Use the host C compiler, not a bundled TinyCC or a compatibility retry.
 	cc := $if windows { 'gcc' } $else { 'cc' }
-	mut command := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc]
+	mut command := ['-no-retry-compilation', '-nocache', '-cc', cc]
 	command << args
 	return cmdexec.run_with_timeout(vexe, command, 120_000)
 }

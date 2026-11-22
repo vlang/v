@@ -195,8 +195,8 @@ class PrepareVTests(unittest.TestCase):
         ])
         compiler_args = [event["args"] for event in self.events("compiler")]
         self.assertFalse(any("self" in args for args in compiler_args))
-        self.assertIn(["-new-compiler", "-gc", "none", "run", "cmd/tools/detect_tcc.v"], compiler_args)
-        self.assertIn(["-new-compiler", "-gc", "none", "run", ".github/problem-matchers/register_all.vsh"], compiler_args)
+        self.assertIn(["-gc", "none", "run", "cmd/tools/detect_tcc.v"], compiler_args)
+        self.assertIn(["-gc", "none", "run", ".github/problem-matchers/register_all.vsh"], compiler_args)
 
     def test_artifact_reuse_does_not_bootstrap_a_missing_compiler(self):
         (self.repo / "v").unlink()

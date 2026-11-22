@@ -169,7 +169,7 @@ fn test_windows_stack_overflow_header_and_spawned_program_compile() ! {
 fn main() { worker := spawn recurse(10000000); println(worker.wait()) }
 ')!
 	for enabled in [true, false] {
-		mut flags := [@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none']
+		mut flags := [@VEXE, '-nocache', '-os', 'windows', '-gc', 'none']
 		if !enabled {
 			flags << ['-d', 'no_segfault_handler']
 		}

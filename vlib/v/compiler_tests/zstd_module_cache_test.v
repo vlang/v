@@ -19,7 +19,7 @@ fn test_cached_module_embedded_resources_refresh_after_changes_and_deletion() ! 
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import ${name}\nfn main() { println(${name}.value()) }\n')!
 	binary := os.join_path(root, 'program')
-	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-new-compiler', '-cc', 'cc',
+	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-cc', 'cc',
 		'-no-retry-compilation', '-show-timings', '-o', binary, source]
 	cold := os.exec(args)
 	assert cold.exit_code == 0, cold.output
@@ -66,8 +66,8 @@ fn test_unowned_native_state_uses_conservative_cache_fallback() ! {
 	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, 'module main\nimport ${name}\n#include "${header}"\nfn C.unowned_native_value() int\nfn main() { println(${name}.value()); println(C.unowned_native_value()) }\n')!
 	binary := os.join_path(root, 'program')
-	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', 'V3_CACHE_TRACE=1', @VEXE, '-new-compiler',
-		'-cc', 'cc', '-no-retry-compilation', '-show-timings', '-o', binary, source]
+	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', 'V3_CACHE_TRACE=1', @VEXE, '-cc',
+		'cc', '-no-retry-compilation', '-show-timings', '-o', binary, source]
 	for _ in 0 .. 2 {
 		build := os.exec(args)
 		assert build.exit_code == 0, build.output

@@ -120,7 +120,7 @@ fn test_the_rejection_waits_for_the_c_build_and_honours_cflags() {
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() {\n\tprintln('hi')\n}\n")!
 	output := os.join_path(root, 'hello.exe')
-	common := [compiler, '-new-compiler', '-os', 'windows', '-cc', clang]
+	common := [compiler, '-os', 'windows', '-cc', clang]
 	with_cflags('', fn [common, source, output] () {
 		// Source listings build nothing, so the compiler's ABI is irrelevant to them.
 		for listing in ['-print-v-files', '-print-watched-files'] {

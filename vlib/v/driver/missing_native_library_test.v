@@ -42,8 +42,8 @@ fn test_missing_native_library_reports_the_required_file() {
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	os.write_file(source, 'module main\n#flag "@DIR/libmissing.a"\nfn main() {}\n')!
 	compiler := $if windows { 'gcc' } $else { 'cc' }
-	result := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none',
-		'-cc', compiler, '-o', output, source], root, {
+	result := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-cc', compiler,
+		'-o', output, source], root, {
 		'VFLAGS':  ''
 		'VOSARGS': ''
 	})
@@ -53,19 +53,18 @@ fn test_missing_native_library_reports_the_required_file() {
 	assert result.output.contains('Build or restore this native library'), result.output
 	assert !os.exists(output)
 	generated_c := os.join_path(root, 'main.c')
-	generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o', generated_c,
-		source])
+	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-o', generated_c, source])
 	assert generated.exit_code == 0, generated.output
 	assert os.is_file(generated_c)
 	generated_object := os.join_path(root, 'main.o')
-	object := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler,
-		'-o', generated_object, source])
+	object := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', compiler, '-o', generated_object,
+		source])
 	assert object.exit_code == 0, object.output
 	assert os.is_file(generated_object)
 	os.write_file(source, 'module main\nfn main() {}\n')!
 	missing := os.join_path(root, 'another missing.a')
 	for option in ['-cflags', '-ldflags', 'CFLAGS'] {
-		mut args := ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-o', output]
+		mut args := ['-nocache', '-gc', 'none', '-cc', compiler, '-o', output]
 		mut environment := {
 			'VFLAGS':  ''
 			'VOSARGS': ''

@@ -147,8 +147,7 @@ fn main() {
 	// programs with, so use the MinGW gcc there.
 	cc := $if windows { 'gcc' } $else { 'clang' }
 	for mode in modes {
-		mut args := ['-new-compiler', '-gc', 'none', '-cc', cc, '-no-retry-compilation', '-showcc',
-			'-o', binary]
+		mut args := ['-gc', 'none', '-cc', cc, '-no-retry-compilation', '-showcc', '-o', binary]
 		args << mode
 		args << source
 		compiled := cmdexec.run(@VEXE, args)

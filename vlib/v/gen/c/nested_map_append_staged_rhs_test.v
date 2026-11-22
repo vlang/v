@@ -69,7 +69,7 @@ fn test_nested_map_append_keeps_staged_rhs_pushed_as_one_element() {
 	os.write_file(path, nested_map_append_staged_rhs_source)!
 	// V1-hosted unit tests get a shared V3 compiler from their runner.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
-	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE] }
 	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-o', c_path, path]
 	compiled := os.exec(args)
 	assert compiled.exit_code == 0, compiled.output

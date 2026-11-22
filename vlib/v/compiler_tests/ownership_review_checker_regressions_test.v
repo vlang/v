@@ -31,7 +31,7 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${return_type}: ${out.output}'
 		assert out.output.contains('cannot return a reference to local storage `local`'), '${return_type}: ${out.output}'
 	}
@@ -97,7 +97,7 @@ fn main() {
 	assert forwarded_owned_value().value == 42
 }
 ')!
-	out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
+	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
 	assert out.exit_code == 0, out.output
 }
 
@@ -129,7 +129,7 @@ fn main() {
 	println(view)
 }
 ')!
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${view}: ${out.output}'
 			assert out.output.contains(expected), '${view}: ${out.output}'
 		}
@@ -142,7 +142,7 @@ fn main() {
 	assert unsafe { view.str == owner.str }
 }
 ')!
-	out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
+	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
 	assert out.exit_code == 0, out.output
 }
 
@@ -162,7 +162,7 @@ fn main() {
 	println(value)
 }
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${method}: ${out.output}'
 		assert out.output.contains('use of moved value: `value`'), '${method}: ${out.output}'
 	}
@@ -208,7 +208,7 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${name}: ${out.output}'
 		assert out.output.contains('cannot return a reference to local storage `local`'), '${name}: ${out.output}'
 	}
@@ -239,10 +239,10 @@ fn main() {
 	${action}
 }
 ')!
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
 			if expected.len == 0 {
 				assert out.exit_code == 0, out.output
-				completed := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
+				completed := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
 				assert completed.exit_code == 0, completed.output
 			} else {
 				assert out.exit_code != 0, out.output

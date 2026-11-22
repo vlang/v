@@ -151,7 +151,7 @@ fn main() {
 	println("ok")
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', 'run', source])
+	result := os.exec([@VEXE, 'run', source])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output
 }

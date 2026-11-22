@@ -36,8 +36,8 @@ fn test_joined_cpp_hashflag_selects_language_and_links_runtime() {
 		for input in ['shim.c', 'shim.o'] {
 			source := os.join_path(root, 'main.c.v')
 			os.write_file(source, 'module main\n#flag ${form} "@VMODROOT/${input}" -xnone\n#include "@VMODROOT/probe.h"\nfn C.cpp_probe() int\nfn main() { assert C.cpp_probe() == 128 }\n')!
-			result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-new-compiler', '-gc', 'none',
-				'-nocache', '-no-retry-compilation', '-cc', compiler, 'run', source])
+			result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-gc', 'none', '-nocache',
+				'-no-retry-compilation', '-cc', compiler, 'run', source])
 			assert result.exit_code == 0, '${form} ${input}: ${result.output}'
 		}
 	}
@@ -83,7 +83,7 @@ fn test_flag_c_sources_keep_c_language_beside_cpp_sources() {
 	os.write_file(os.join_path(root, 'probe.h'), 'int probe_is_c_mode(void);\nint probe_is_cpp_mode(void);\n')!
 	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, 'module main\n#flag "@VMODROOT/my_test_cshim.c"\n#flag "@VMODROOT/my_test_cppshim.C"\n#include "@VMODROOT/probe.h"\nfn C.probe_is_c_mode() int\nfn C.probe_is_cpp_mode() int\nfn main() {\n\tassert C.probe_is_c_mode() == 101\n\tassert C.probe_is_cpp_mode() == 202\n}\n')!
-	result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-new-compiler', '-gc', 'none', '-nocache',
+	result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-gc', 'none', '-nocache',
 		'-no-retry-compilation', '-cc', compiler, 'run', source])
 	assert result.exit_code == 0, result.output
 	// Simulate a Windows 8.3 alias changing the extension to .C after language

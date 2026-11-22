@@ -18,7 +18,7 @@ fn main() {
  assert empty_value is Empty
  assert (payload_value as Payload).value == 42
 }')!
-	run := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'c', '-o', binary, 'run', source])
+	run := cmdexec.run(@VEXE, ['-nocache', '-b', 'c', '-o', binary, 'run', source])
 	assert run.exit_code == 0, run.output
 	generated := os.read_file('${binary}.c')!
 	assert generated.contains('Value main__empty_value;')

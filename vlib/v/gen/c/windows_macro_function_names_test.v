@@ -44,7 +44,7 @@ fn main() {
 	println("ok")
 }
 ')!
-	compiled := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', '-cc', cc, '-cflags',
+	compiled := os.exec([@VEXE, '-nocache', '-gc', 'none', '-cc', cc, '-cflags',
 		'-Dnear= -Dfar= -Dpascal=__stdcall -Dcdecl=', '-o', binary, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([binary])

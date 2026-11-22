@@ -125,7 +125,7 @@ fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 	}
 	tool := vtest_fixture_executable()
 	old_vflags := os.getenv_opt('VFLAGS')
-	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang', true)
+	os.setenv('VFLAGS', '-gc none -cc clang', true)
 	res := os.exec([tool, 'test', tpath_strict_v3])
 	if value := old_vflags {
 		os.setenv('VFLAGS', value, true)
@@ -287,7 +287,7 @@ fn test_both_defines() {
 	\$if vtest_command_define ? {} \$else { assert false, "missing command define" }
 }
 ')!
-	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -d vtest_environment_define', true)
+	os.setenv('VFLAGS', '-gc none -cc clang -d vtest_environment_define', true)
 	result := os.exec([tool, '-d', 'vtest_command_define', 'test', path])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('1 passed, 1 total'), result.output
@@ -319,7 +319,7 @@ fn test_compilation_completed() {
 }
 ')!
 	cflags := '-I"${include_dir}"'
-	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -g -cflags ${os.quoted_path(cflags)}', true)
+	os.setenv('VFLAGS', '-gc none -cc clang -g -cflags ${os.quoted_path(cflags)}', true)
 	for stats in [false, true] {
 		args := if stats { [vexe, '-stats', 'test', path] } else { [vexe, 'test', path] }
 		result := os.exec(args)

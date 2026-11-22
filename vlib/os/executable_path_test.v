@@ -18,8 +18,8 @@ fn test_executable_can_generate_c_for_hosted_targets() {
 		c_source := os.join_path(root, '${target}.c')
 		// These frontend-only checks do not require a target SDK or C compiler.
 		// Override an inherited MSVC selection when generating Unix or portable C.
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-no-parallel', '-nocache',
-			'-gc', 'none', '-cc', 'clang', '-os', target]
+		mut args := [@VEXE, '-no-retry-compilation', '-no-parallel', '-nocache', '-gc', 'none',
+			'-cc', 'clang', '-os', target]
 		if target != 'cross' {
 			args << ['-arch', 'arm64']
 		}

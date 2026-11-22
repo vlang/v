@@ -146,6 +146,6 @@ fi
   ./vprod -version
 )
 mv -f ./vprod ./v
-./v -new-compiler -gc none run cmd/tools/detect_tcc.v
-./v -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+./v -gc none run cmd/tools/detect_tcc.v
+./v -gc none run .github/problem-matchers/register_all.vsh
 make "$@" cache-basic-modules

@@ -26,7 +26,7 @@ fn main() {
 ')!
 	// V1-hosted unit tests get a shared V3 compiler from their runner.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
-	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE] }
 	args << ['-gc', 'none', '-os', 'windows', '-arch', 'amd64', '-o', c_path, path]
 	compiled := os.exec(args)
 	assert compiled.exit_code == 0, compiled.output

@@ -117,8 +117,8 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	os.write_file(source, 'import archive\nimport consumer\nfn main() {\n assert archive.marker() == 41\n assert consumer.answer() == 42\n}\n')!
 	vexe := @VEXE
-	built := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-showcc',
-		'-o', output, source])
+	built := cmdexec.run(vexe, ['-nocache', '-gc', 'none', '-cc', compiler, '-showcc', '-o', output,
+		source])
 	assert built.exit_code == 0, built.output
 	// Native inputs use canonical paths, including through macOS /tmp symlinks.
 	// Normalize Windows separators too, since #flag joins @DIR with `/`.
@@ -243,9 +243,8 @@ fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
 	vexe := @VEXE
 	for flags in [['-x c++', cpp_source], ['-xc++', cpp_source], ['-x c++ -x none', c_source],
 		['-xc++ -xnone', c_source]] {
-		built := cmdexec.run(vexe, ['-new-compiler', '-no-std', '-nocache', '-gc', 'none', '-cc',
-			compiler, '-cflags', flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output,
-			source])
+		built := cmdexec.run(vexe, ['-no-std', '-nocache', '-gc', 'none', '-cc', compiler, '-cflags',
+			flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output, source])
 		assert built.exit_code == 0, built.output
 		ran := cmdexec.run(output, [])
 		assert ran.exit_code == 0, ran.output

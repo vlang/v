@@ -169,8 +169,7 @@ fn test_handler_builds_with_tcc() {
 	source := os.join_path(work_dir, 'child.v')
 	binary := os.join_path(work_dir, 'child')
 	os.write_file(source, child_source)!
-	compile := os.exec([@VEXE, '-new-compiler', '-cc', 'tcc', '-no-retry-compilation', '-o', binary,
-		source])
+	compile := os.exec([@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	// The fault is reported once: by the one-shot handler of the TCC `-bt` runtime, that
 	// V forwards it to, or by V, when there is no such handler (macOS).

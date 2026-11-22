@@ -41,7 +41,7 @@ fn test_veb_run_at_requires_an_explicit_context_type() {
 		root := veb_run_at_project('inference_${module_name}', source)!
 		defer { os.rmdir_all(root) or {} }
 		for flags in [[]string{}, ['-no-parallel']] {
-			result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', ...flags, '-o',
+			result := os.exec([@VEXE, '-nocache', '-nocolor', ...flags, '-o',
 				os.join_path(root, 'app.c'), root])
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('could not infer generic type `X` in call to `veb.run_at`'), result.output
@@ -56,7 +56,7 @@ fn test_veb_run_at_with_explicit_app_and_context_compiles() {
 	root := veb_run_at_project('explicit', source)!
 	defer { os.rmdir_all(root) or {} }
 	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', program, root])
+	result := os.exec([@VEXE, '-nocache', '-o', program, root])
 	assert result.exit_code == 0, result.output
 	assert os.is_file(program), result.output
 }
@@ -75,7 +75,7 @@ fn test_veb_run_at_checks_explicit_type_argument_count() {
 		root := veb_run_at_project('count_${module_name}', source)!
 		defer { os.rmdir_all(root) or {} }
 		for flags in [[]string{}, ['-no-parallel']] {
-			result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', ...flags, '-o',
+			result := os.exec([@VEXE, '-nocache', '-nocolor', ...flags, '-o',
 				os.join_path(root, 'app.c'), root])
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('expected 2 generic parameters, got 1'), result.output
@@ -90,8 +90,7 @@ fn test_veb_run_at_checks_explicit_app_type() {
 		'veb.run_at[int, Context](mut p, port: 8080)!')
 	root := veb_run_at_project('wrong_app_type', source)!
 	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-o',
-		os.join_path(root, 'app.c'), root])
+	result := os.exec([@VEXE, '-nocache', '-nocolor', '-o', os.join_path(root, 'app.c'), root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot use `&Program` as `&int` in argument 1 to `veb.run_at`'), result.output
 	assert !result.output.contains('C compilation error'), result.output
@@ -115,7 +114,7 @@ fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
 	root := veb_run_at_project('response', source)!
 	defer { os.rmdir_all(root) or {} }
 	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
-	compile := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', program, root])
+	compile := os.exec([@VEXE, '-nocache', '-o', program, root])
 	assert compile.exit_code == 0, compile.output
 	result := os.exec([program])
 	assert result.exit_code == 0, result.output
@@ -131,8 +130,7 @@ fn main() {
 }
 ')!
 	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-o',
-		os.join_path(root, 'app.c'), root])
+	result := os.exec([@VEXE, '-nocache', '-nocolor', '-o', os.join_path(root, 'app.c'), root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('could not infer generic type `X` in call to `use_type`'), result.output
 }
@@ -170,7 +168,7 @@ fn main() {
 }
 ')!
 	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', 'run', root])
+	result := os.exec([@VEXE, '-nocache', 'run', root])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output
 }

@@ -145,16 +145,16 @@ v:
 	set -- "$$@" cmd/v; \
 	"$$@"; \
 	rm -rf v1 v2; \
-	./v -new-compiler run ./cmd/tools/detect_tcc.v; \
+	./v run ./cmd/tools/detect_tcc.v; \
 	echo "V has been successfully built"; \
 	./v version; \
-	./v -new-compiler run .github/problem-matchers/register_all.vsh; \
+	./v run .github/problem-matchers/register_all.vsh; \
 	cache_gcflags=; \
 	if [ ! -f thirdparty/tcc/lib/libgc.a ] && [ ! -f thirdparty/tcc/lib/libgc.dylib ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
-	./v $$cache_gcflags $(VFLAGS) -new-compiler run cmd/tools/cache_basic_modules.v; \
-	./v $$cache_gcflags $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
+	./v $$cache_gcflags $(VFLAGS) run cmd/tools/cache_basic_modules.v; \
+	./v $$cache_gcflags $(VFLAGS) cmd/tools/cache_basic_modules_test.v
 
 check:
 	./v test-all

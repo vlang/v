@@ -15,8 +15,8 @@ fn test_sum_storage_acquires_only_active_literal_and_shares_cleanup() {
 		project := os.join_path(os.real_path(dir), 'compiler')
 		vlib := os.join_path(@VEXEROOT, 'vlib')
 		// Release V's frontend before Clang compiles the private driver.
-		generate := os.exec([@VEXE, '-new-compiler', '-cc', cc, '-gc', 'none', '-d', 'ownership',
-			'-path', vlib, '-generate-c-project', project, os.join_path(vlib, 'v', 'v.v')])
+		generate := os.exec([@VEXE, '-cc', cc, '-gc', 'none', '-d', 'ownership', '-path', vlib,
+			'-generate-c-project', project, os.join_path(vlib, 'v', 'v.v')])
 		assert generate.exit_code == 0, generate.output
 		build := $if windows {
 			cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
@@ -102,9 +102,8 @@ fn main() {
 	for jobs in ['1', '2'] {
 		for mode in ['-ownership', '-autofree'] {
 			// The explicit C backend retains the translation unit used for the alignment check.
-			run := cmdexec.run_in_merged_with_env(compiler, ['-new-compiler', '-nocache', '-b',
-				'c', '-gc', 'none', '-cc', cc, '-cflags', sanitize, mode, '-o', binary, 'run',
-				source], dir, {
+			run := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-b', 'c', '-gc', 'none',
+				'-cc', cc, '-cflags', sanitize, mode, '-o', binary, 'run', source], dir, {
 				'VJOBS': jobs
 			})
 			assert run.exit_code == 0, 'VJOBS=${jobs} ${mode}: ${run.output}'

@@ -68,8 +68,7 @@ fn test_unqualified_c_variadic_call_without_args_needs_no_array_runtime() {
 	].join_lines())!
 	output := os.join_path(root, 'generated.c')
 	res :=
-		os.exec([vexe, '-new-compiler', '-gc', 'none', '-no-builtin', '-o', output,
-			os.join_path(root, 'main.v')])
+		os.exec([vexe, '-gc', 'none', '-no-builtin', '-o', output, os.join_path(root, 'main.v')])
 	assert res.exit_code == 0, res.output
 	generated := os.read_file(output)!
 	calls := c_call_lines(generated, 'foo__')
