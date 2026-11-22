@@ -121,6 +121,14 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	if dn.kind == .const_group {
 		return
 	}
+	// A type without a declaration, like `u8` with the methods of `builtin`, has no section to
+	// link to, unlike its methods.
+	if dn.content == '' {
+		for child in dn.children {
+			vd.create_search_results(mod, child, out)
+		}
+		return
+	}
 	comments := if cfg.include_examples {
 		dn.merge_comments()
 	} else {

@@ -5,6 +5,7 @@ module main
 import os
 import arrays
 import document as doc
+import encoding.utf8
 import x.markdown
 import term
 
@@ -45,6 +46,36 @@ It also assists with composing and testing baz.'
 It also assists with composing and testing baz.'
 	res2 := trim_doc_node_description(mod, readme).trim_space()
 	assert res2 == res
+	// A description is cut after 80 characters, not in the middle of a multi-byte character.
+	long := 'This module implements a FNV-1a hash. (see https://en.wikipedia.org/wiki/Fowler–Noll–Vo)'
+	cut := trim_doc_node_description(mod, long)
+	assert cut.runes().len == 80
+	assert cut.ends_with('Fowler–')
+	assert utf8.validate_str(cut)
+	// It is in a JS string, so its quotes and backslashes are escaped.
+	assert trim_doc_node_description(mod, 'sep is "/" or "\\" on Windows') == 'sep is \\"/\\" or \\"\\\\\\" on Windows'
+}
+
+fn test_the_search_has_no_results_without_a_section() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_search_links_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'src', 'a'))!
+	defer { os.rmdir_all(dir) or {} }
+	// The private type has no section, unlike its public method.
+	os.write_file(os.join_path(dir, 'src', 'a', 'a.v'), 'module a\n\nstruct priv {}\n\n// run runs.\npub fn (p priv) run() {}\n\n// Pub is public.\npub struct Pub {}\n')!
+	out := os.join_path(dir, 'html')
+	res := os.exec_opt([vexe_path, 'doc', '-f', 'html', '-m', '-o', out, os.join_path(dir, 'src')])!
+	assert res.exit_code == 0, res.output
+	index := os.read_file(os.join_path(out, 'search_index.js'))!
+	assert !index.contains('"priv"'), index
+	assert index.contains('.html#priv.run"'), index
+	// Each result links to a section of its page.
+	links := index.all_after('var searchData').split('","').filter(it.contains('.html#'))
+	assert links.len == 2, index
+	for link in links {
+		page := os.read_file(os.join_path(out, link.all_before('#')))!
+		assert page.contains('id="${link.all_after('#')}"'), link
+	}
 }
 
 fn test_ignore_rules() {
