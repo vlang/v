@@ -19,6 +19,14 @@ fn choose_translated_chars(kind int, text &i8) &i8 {
 		0 { text }
 		else { C.strdup(c'match') }
 	}
+	// Both branches allocate in the translated fixture; release the unused result.
+	defer {
+		if kind == 1 {
+			unsafe { C.free(matched) }
+		} else if kind != 0 {
+			unsafe { C.free(chosen) }
+		}
+	}
 	return if kind == 1 { chosen } else { matched }
 }
 
@@ -47,7 +55,15 @@ fn test_translated_character_pointer_values() {
 	assert *values[1] == 104
 	assert *appended[0] == 104
 	assert *mapped == 104
+	chosen_if := choose_translated_chars(1, text)
+	chosen_match := choose_translated_chars(2, text)
+	defer {
+		unsafe {
+			C.free(chosen_if)
+			C.free(chosen_match)
+		}
+	}
 	assert *choose_translated_chars(0, text) == 104
-	assert *choose_translated_chars(1, text) == 105
-	assert *choose_translated_chars(2, text) == 109
+	assert *chosen_if == 105
+	assert *chosen_match == 109
 }
