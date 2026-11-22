@@ -27,6 +27,7 @@ fn write_c_fn_redecl_v3_project(name string, files map[string]string) !string {
 	return root
 }
 
+@[unsafe]
 fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	v3_bin := build_c_fn_redecl_v3()
 	root := write_c_fn_redecl_v3_project('c_fn_conflict', {

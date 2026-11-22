@@ -11,6 +11,7 @@ import runtime
 // init initializes the goroutine scheduler.
 // Creates P's (one per CPU core by default) and the initial M.
 // Translated from Go's schedinit() + procresize().
+@[unsafe]
 fn init() {
 	// Determine number of processors
 	n := runtime.nr_cpus()
@@ -99,6 +100,7 @@ pub fn num_goroutine() int {
 }
 
 // shutdown gracefully shuts down the goroutine scheduler.
+@[unsafe]
 pub fn shutdown() {
 	gsched.stopped = true
 	// Wake all idle M's so they can exit

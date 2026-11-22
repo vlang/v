@@ -62,6 +62,7 @@ fn run_ordering(mut once sync.Once, s &OrderingState) {
 	once.do_with_param(gated_init, s)
 }
 
+@[unsafe]
 fn test_once_with_param_ordering() {
 	s := &OrderingState{
 		ready:   chan bool{}

@@ -2034,6 +2034,7 @@ mut:
 	error_message     string
 }
 
+@[unsafe]
 fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceFile) FastcFileGenOutput {
 	file := token.File.unindexed(source_file.path, source_file.source.len)
 	prefs := ctx.prefs

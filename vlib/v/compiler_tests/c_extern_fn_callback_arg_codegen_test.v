@@ -20,6 +20,7 @@ fn extern_cb_build_v3() string {
 // is handed to `mbedtls_ssl_set_bio`, whose callback slot takes a
 // `const unsigned char *` buffer. A `fn C.` line cannot spell that `const`, so
 // casting the argument to the V-declared signature is what breaks the call.
+@[unsafe]
 fn extern_cb_write_source() string {
 	src := os.join_path(os.temp_dir(), 'v3_extern_callback_arg_${os.getpid()}.v')
 	header := src + '.h'

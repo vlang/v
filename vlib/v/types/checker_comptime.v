@@ -1193,6 +1193,7 @@ fn (tc &TypeChecker) comptime_static_for_value_source_type(raw_id u32) ?u32 {
 	return typ
 }
 
+@[unsafe]
 fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?u32 {
 	if tc.cur_scope != unsafe { nil } {
 		if typ := tc.cur_scope.lookup(name) {
@@ -2504,6 +2505,7 @@ fn (mut tc TypeChecker) check_string_literal_node(id flat.NodeId, node flat.Node
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	idx := int(id)
 	if tc.parallel_check_sparse {
@@ -4871,6 +4873,14 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
 			return
 		}
+		if tc.null_constant_expr_text(child_id) != '' || tc.is_unsafe_null_pointer_expr(child_id) {
+			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
+			return
+		}
+		if child.kind == .cast_expr && child.children_count == 1 && tc.cast_operand_is_zero(tc.a.child(child, 0)) {
+			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
+			return
+		}
 		if unalias_type(child_type.base_type) is Void {
 			tc.record_error_at(.assignment_mismatch, 'cannot dereference to void', id, tc.prefix_operator_pos(id, '*'))
 			return
@@ -5016,6 +5026,7 @@ fn (tc &TypeChecker) voidptr_cast_needs_unsafe(child_id flat.NodeId, target_name
 	return tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.ident, .cast_expr]
 }
 
+@[unsafe]
 fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 64 {
@@ -5325,6 +5336,7 @@ fn (tc &TypeChecker) translated_pointer_cast_node(id flat.NodeId, node flat.Node
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -7956,6 +7968,7 @@ fn (tc &TypeChecker) interface_pointer_source_root_is_local(id flat.NodeId) bool
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	metadata := node.generic_params()
 	if metadata.len > 0 && metadata[0] == '__v3_comptime_match' {
@@ -8724,6 +8737,7 @@ fn (tc &TypeChecker) sizeof_is_comptime_reflection_var(id flat.NodeId, name stri
 	return false
 }
 
+@[unsafe]
 fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond)
 	if clean == 'threads' {
@@ -12947,6 +12961,7 @@ fn (tc &TypeChecker) sql_orm_current_shared_lock_mode(name string) u8 {
 	return 0
 }
 
+@[unsafe]
 fn sql_orm_compact_storage_key(source string) string {
 	mut s := scanner.new_scanner(&pref.Preferences{}, .skip_interpolation)
 	s.init(unsafe { nil }, source)
@@ -14667,6 +14682,7 @@ fn (mut tc TypeChecker) root_scope_global_name_prefix(scope &Scope) int {
 }
 
 // check_fn_literal validates check fn literal state for types.
+@[unsafe]
 fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	if node.value == 'missing_body' && !tc.is_top_level_discarded_fn_signature(id) {
 		tc.record_error(.return_mismatch, 'anonymous function must declare a body', id)
@@ -15192,6 +15208,7 @@ fn (mut tc TypeChecker) record_malformed_fn_literal_call_mismatch(literal flat.N
 }
 
 // check_lambda_expr validates check lambda expr state for types.
+@[unsafe]
 fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -16659,6 +16676,7 @@ fn (tc &TypeChecker) bare_const_belongs_to_module(name string, module_name strin
 	return normalized_owner == normalized_module
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_for_in_binding_name(id flat.NodeId, role string) {
 	if !tc.valid_node_id(id) || !tc.should_check_source_name(id) {
 		return
@@ -18730,6 +18748,7 @@ fn (mut tc TypeChecker) check_const_reference_assignment(lhs_id flat.NodeId, rhs
 	}
 }
 
+@[unsafe]
 fn (tc &TypeChecker) addressed_const_ident(id flat.NodeId) ?flat.NodeId {
 	ident_id := tc.addressed_ident(id) or { return none }
 	name := tc.a.node(ident_id).value
@@ -18817,6 +18836,7 @@ fn (tc &TypeChecker) decl_non_name_lhs_pos(id flat.NodeId) token.Pos {
 
 // cur_scope_depth returns the number of enclosing scopes (the current scope's parent-chain
 // length), used to tell a dominating top-level reassignment from one nested in a branch/loop.
+@[unsafe]
 fn (tc &TypeChecker) cur_scope_depth() int {
 	mut d := 0
 	mut s := tc.cur_scope
@@ -18870,6 +18890,7 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) mark_method_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -18889,6 +18910,7 @@ fn (mut tc TypeChecker) mark_method_value_local_owner(name string) {
 	tc.fn_context.method_value_local_owners[name] = owners
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) unmark_current_method_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -18916,6 +18938,7 @@ fn (mut tc TypeChecker) unmark_current_method_value_local_owner(name string) {
 	}
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
 	if name == '' || name !in tc.fn_context.method_value_locals {
 		return false
@@ -18940,6 +18963,7 @@ fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
 	return false
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_method_value_local_has_stack_mut_receiver(name string) bool {
 	if name == '' {
 		return false
@@ -18984,6 +19008,7 @@ fn (mut tc TypeChecker) track_variadic_fn_value_local(lhs_id flat.NodeId, rhs_id
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) mark_variadic_fn_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -19003,6 +19028,7 @@ fn (mut tc TypeChecker) mark_variadic_fn_value_local_owner(name string) {
 	tc.fn_context.fn_value_variadic_local_owners[name] = owners
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) unmark_current_variadic_fn_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -19028,6 +19054,7 @@ fn (mut tc TypeChecker) unmark_current_variadic_fn_value_local_owner(name string
 	}
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_binding_is_variadic_fn_value_local(name string) bool {
 	if name == '' || name !in tc.fn_context.fn_value_variadic_locals {
 		return false
@@ -19044,6 +19071,7 @@ fn (tc &TypeChecker) current_binding_is_variadic_fn_value_local(name string) boo
 	return false
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) mark_capturing_fn_literal_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -19063,6 +19091,7 @@ fn (mut tc TypeChecker) mark_capturing_fn_literal_local_owner(name string) {
 	tc.fn_context.capturing_fn_literal_local_owners[name] = owners
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) unmark_current_capturing_fn_literal_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -19088,6 +19117,7 @@ fn (mut tc TypeChecker) unmark_current_capturing_fn_literal_local_owner(name str
 	}
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_binding_is_capturing_fn_literal_local(name string) bool {
 	if name == '' || name !in tc.fn_context.capturing_fn_literal_locals {
 		return false
@@ -19134,6 +19164,7 @@ fn (mut tc TypeChecker) mark_shared_array_binding_owner(name string, owner Scope
 	tc.fn_context.shared_array_owners[name] = owners
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
@@ -19163,6 +19194,7 @@ fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
 	return false
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_binding_is_shared_array(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
@@ -19177,6 +19209,7 @@ fn (tc &TypeChecker) current_binding_is_shared_array(name string) bool {
 	return unalias_and_unwrap_pointer_type(typ) is Array
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_binding_has_shared_elements(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
@@ -20660,6 +20693,7 @@ fn (tc &TypeChecker) decl_shadows_implicit_or_err(lhs_id flat.NodeId, name strin
 	return false
 }
 
+@[unsafe]
 fn (tc &TypeChecker) current_local_scope_owns_name(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
@@ -20724,6 +20758,7 @@ fn (tc &TypeChecker) visible_mut_param_binding_owns_name(name string) bool {
 		&& owner.generation == param_owner.generation
 }
 
+@[unsafe]
 fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false

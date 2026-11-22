@@ -385,6 +385,7 @@ fn publish_native_live_edit(path string, source string, mtime i64) ! {
 	os.rename(staged, path)!
 }
 
+@[unsafe]
 fn test_native_live_reload_installs_new_code_after_an_edit() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64 \$ live reload ${os.getpid()}.v')
@@ -465,6 +466,7 @@ fn test_native_live_reload_installs_new_code_after_an_edit() {
 	}
 }
 
+@[unsafe]
 fn test_native_live_reload_watches_each_source_file() {
 	$if macos && arm64 {
 		root := os.join_path(os.vtmp_dir(), 'arm64_live_files_${os.getpid()}')

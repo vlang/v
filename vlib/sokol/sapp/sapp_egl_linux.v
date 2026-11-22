@@ -69,6 +69,7 @@ fn sapp_egl_choose_config() EGLConfig {
 	return config
 }
 
+@[unsafe]
 fn sapp_egl_create_context(config EGLConfig) {
 	gl_major := if g_sapp_state.desc.gl.major_version != 0 {
 		g_sapp_state.desc.gl.major_version
@@ -98,6 +99,7 @@ fn sapp_egl_create_context(config EGLConfig) {
 	}
 }
 
+@[unsafe]
 fn sapp_egl_create_surface(native_window voidptr) {
 	config := sapp_egl_choose_config()
 	g_sapp_state.egl.config = config
@@ -123,6 +125,7 @@ fn sapp_egl_make_current() {
 }
 
 $if sokol_wayland ? {
+	@[unsafe]
 	fn sapp_egl_init_wayland() {
 		if C.eglBindAPI(egl_opengl_api) == 0 {
 			eprintln('sokol_app: EGL: failed to bind OpenGL API')
@@ -143,6 +146,7 @@ $if sokol_wayland ? {
 	}
 }
 
+@[unsafe]
 fn sapp_egl_init_x11() {
 	if C.eglBindAPI(egl_opengl_api) == 0 {
 		eprintln('sokol_app: EGL: failed to bind OpenGL API')
@@ -191,6 +195,7 @@ fn sapp_egl_init_x11() {
 	sapp_egl_make_current()
 }
 
+@[unsafe]
 fn sapp_egl_destroy() {
 	if g_sapp_state.egl.display != unsafe { nil } {
 		C.eglMakeCurrent(g_sapp_state.egl.display, unsafe { nil }, unsafe { nil }, unsafe { nil })

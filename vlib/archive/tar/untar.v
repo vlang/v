@@ -104,6 +104,7 @@ pub fn (mut u Untar) read_single_block(block []u8) !ReadResult {
 	}
 }
 
+@[unsafe]
 fn (mut u Untar) read_header() ! {
 	u.size = int(u.extract_octal(124, 12))
 	header := u.buffer[156] // pos 0x9c
@@ -168,6 +169,7 @@ fn (mut u Untar) read_header() ! {
 }
 
 // reader_data calls Reader.data_block for implementor to collect data parts as file content
+@[unsafe]
 fn (mut u Untar) read_data() {
 	if u.size > 0 {
 		part := if u.size > 512 { 512 } else { u.size }
@@ -184,6 +186,7 @@ fn (mut u Untar) read_data() {
 	}
 }
 
+@[unsafe]
 fn (mut u Untar) read_long_path() {
 	if u.size > 0 {
 		part := if u.size > 512 { 512 } else { u.size }

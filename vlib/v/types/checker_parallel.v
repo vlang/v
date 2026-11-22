@@ -82,6 +82,7 @@ mut:
 // test: a job that owns a range of types does it once per type, where a job
 // that owned a set of interfaces did it again for every type of the program.
 // Equal slices also leave no single long task, as the `IError` scan was.
+@[unsafe]
 fn interface_impl_slice_thread(arg voidptr) voidptr {
 	mut a := unsafe { &InterfaceImplSliceArgs(arg) }
 	if a.scoped {
@@ -349,6 +350,7 @@ struct CollectDeclarationIndexArgs {
 	file_modules map[string]string
 }
 
+@[unsafe]
 fn collect_index_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectIndexPrepArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -374,6 +376,7 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn collect_declaration_index_thread(arg voidptr) voidptr {
 	a := unsafe { &CollectDeclarationIndexArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -1295,6 +1298,7 @@ struct Pass2AncillaryArgs {
 	preps []Pass2FnPrep
 }
 
+@[unsafe]
 fn pass2_ancillary_thread(arg voidptr) voidptr {
 	a := unsafe { &Pass2AncillaryArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -1326,6 +1330,7 @@ mut:
 	scope voidptr // the lane's arena, left for the collecting thread to release
 }
 
+@[unsafe]
 fn pass2_fn_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &Pass2PrepArgs(arg) }
 	master := unsafe { &TypeChecker(a.tc) }
@@ -1457,6 +1462,7 @@ fn (mut p Pass2TypePromotion) promote_scoped(typ Type) Type {
 // Bootstrap compilers can still box Type variants. Taking the address after
 // narrowing finds that box as well as the payload of an inline tagged union.
 // Large immutable variants keep their payload behind an embedded reference.
+@[unsafe]
 fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
 	if scope == unsafe { nil } {
 		return false
@@ -1506,6 +1512,7 @@ fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
 
 // type_refers_to_scope inspects actual descriptor references and their metadata storage.
 // A descriptor outside the lane can still refer to its lists, strings or child types.
+@[unsafe]
 fn type_refers_to_scope(scope voidptr, typ &Type) bool {
 	if scope == unsafe { nil } {
 		return false
@@ -1595,6 +1602,7 @@ fn pass2_owned_string(scope voidptr, s string) string {
 
 // promote_pass2_fn_prep copies what a pass-2 lane computed for one function
 // out of the lane's arena, which is still mapped, into the current one.
+@[unsafe]
 fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pass2FnPrep {
 	scope := lane_prep.scope
 	if scope == unsafe { nil } {
@@ -1658,6 +1666,7 @@ mut:
 	alive []bool
 }
 
+@[unsafe]
 fn unused_alive_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &UnusedAliveScanArgs(arg) }
 	tc := unsafe { &TypeChecker(a.tc) }
@@ -1686,6 +1695,7 @@ mut:
 	promotion &CheckChunkPromotion = unsafe { nil }
 }
 
+@[unsafe]
 fn check_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CheckChunkArgs(arg) }
 	cksw := time.new_stopwatch()
@@ -1856,6 +1866,7 @@ fn scoped_check_batch_count(n_items int, total_cost i64, batch_limit int) int {
 	return int_max(n, 1)
 }
 
+@[unsafe]
 fn check_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -1865,6 +1876,7 @@ fn check_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn check_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1873,6 +1885,7 @@ fn check_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn check_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1901,6 +1914,7 @@ fn free_check_worker_scopes(pool &workers.Pool, scopes []voidptr) {
 	pool.run(tasks)
 }
 
+@[unsafe]
 fn check_worker_scope_free_thread(scope voidptr) voidptr {
 	check_worker_scope_free(scope)
 	return unsafe { nil }
@@ -1920,6 +1934,7 @@ fn checker_serial_only() bool {
 // checker_worker_pool returns the pool a checker pass may fan work out to. It is
 // nil when there is none, and in `v3_no_parallel` builds even when the driver
 // started one, so the pass takes its serial fallback.
+@[unsafe]
 fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
 	if isnil(a) || checker_serial_only() {
 		return unsafe { nil }
@@ -1930,6 +1945,7 @@ fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
 // ensure_checker_worker_pool returns the pool for the parallel semantic check,
 // starting one sized from VJOBS when the driver did not. It returns nil, and
 // starts nothing, in `v3_no_parallel` builds.
+@[unsafe]
 fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
 	if checker_serial_only() {
 		return unsafe { nil }
@@ -2607,6 +2623,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 	}
 }
 
+@[unsafe]
 fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(arg) }
 	tc.check_top_level_declaration_signatures()
@@ -2624,6 +2641,7 @@ mut:
 	notices int
 }
 
+@[unsafe]
 fn check_top_level_decl_signatures_scoped_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SignatureCheckArgs(arg) }
 	master := unsafe { &TypeChecker(a.master) }
@@ -6593,6 +6611,7 @@ fn (tc &TypeChecker) probe_check_type_promotion(typ &Type, frozen_interner bool)
 // persistent arena, and expr types are rebound via a read-only interner probe.
 // Types the interner does not know yet are recorded and interned serially in
 // chunk order afterwards, so interner ids match the serial merge exactly.
+@[unsafe]
 fn check_clone_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CheckCloneChunkArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -7189,6 +7208,7 @@ fn (mut tc TypeChecker) prepare_tail_decl_ids() {
 	cache.tail_decl_end = end
 }
 
+@[unsafe]
 fn tail_decl_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &TailDeclScanArgs(arg) }
 	for i in a.start .. a.end {
@@ -7336,6 +7356,7 @@ mut:
 	reached_count int
 }
 
+@[unsafe]
 fn selected_fn_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SelectedFnScanArgs(arg) }
 	a.scope = check_worker_scope_begin(true)

@@ -279,7 +279,7 @@ fn (mut ctx Context) handle_veb_livereload_script() {
 
 // handle_veb_livereload_events takes over the connection and keeps it open as
 // a Server-Sent Events stream; the hub writes to it from then on.
-@[if veb_livereload ?]
+@[if veb_livereload ?; unsafe]
 fn (mut ctx Context) handle_veb_livereload_events() {
 	mut hub := unsafe { veb_livereload_hub }
 	ctx.takeover_conn()

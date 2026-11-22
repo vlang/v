@@ -11,6 +11,7 @@ fn testsuite_begin() {
 	os.unsetenv('VOSARGS')
 }
 
+@[unsafe]
 fn test_fastc_directory_entry_with_toml_and_function_literals() {
 	$if !macos && !linux {
 		return

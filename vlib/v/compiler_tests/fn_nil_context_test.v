@@ -37,6 +37,7 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	assert !result.output.contains('C compilation failed')
 }
 
+@[unsafe]
 fn test_unsafe_nil_contextually_matches_fn_fields() {
 	v3_bin := build_v3()
 	default_out := run_good(v3_bin, 'fn_nil_default', 'struct S {

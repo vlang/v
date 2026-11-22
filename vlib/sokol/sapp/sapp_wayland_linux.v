@@ -231,6 +231,7 @@ $if sokol_wayland ? {
 
 	// === Modifier helpers ===
 
+	@[unsafe]
 	fn wl_get_modifiers() u32 {
 		mut mods := u32(0)
 		if g_sapp_state.wl.xkb_state != unsafe { nil } {
@@ -254,6 +255,7 @@ $if sokol_wayland ? {
 		return mods
 	}
 
+	@[unsafe]
 	fn wl_app_event(etype EventType) {
 		if g_sapp_state.desc.event_cb != unsafe { nil }
 			|| g_sapp_state.desc.event_userdata_cb != unsafe { nil } {
@@ -291,6 +293,7 @@ $if sokol_wayland ? {
 			tfd_cloexec | tfd_nonblock)
 	}
 
+	@[unsafe]
 	fn wl_start_key_repeat(scancode u32) {
 		if g_sapp_state.wl.key_repeat_timer_fd < 0 || g_sapp_state.wl.key_repeat_rate <= 0 {
 			return
@@ -314,6 +317,7 @@ $if sokol_wayland ? {
 		C.timerfd_settime(g_sapp_state.wl.key_repeat_timer_fd, 0, &timer, unsafe { nil })
 	}
 
+	@[unsafe]
 	fn wl_stop_key_repeat() {
 		if g_sapp_state.wl.key_repeat_timer_fd < 0 {
 			return
@@ -323,6 +327,7 @@ $if sokol_wayland ? {
 		g_sapp_state.wl.key_repeat_keycode = 0
 	}
 
+	@[unsafe]
 	fn wl_handle_key_repeat() {
 		if g_sapp_state.wl.key_repeat_timer_fd < 0 || g_sapp_state.wl.key_repeat_keycode == 0 {
 			return
@@ -363,6 +368,7 @@ $if sokol_wayland ? {
 
 	// === Keyboard listener callbacks ===
 
+	@[unsafe]
 	fn wl_keyboard_handle_keymap(data voidptr, keyboard &C.wl_keyboard, format u32, fd int, size u32) {
 		if format != wl_keyboard_keymap_format_xkb_v1 {
 			C.close(fd)
@@ -400,6 +406,7 @@ $if sokol_wayland ? {
 		wl_app_event(.unfocused)
 	}
 
+	@[unsafe]
 	fn wl_keyboard_handle_key(data voidptr, keyboard &C.wl_keyboard, serial u32, time u32, key u32, state u32) {
 		if g_sapp_state.wl.xkb_state == unsafe { nil } {
 			return
@@ -448,6 +455,7 @@ $if sokol_wayland ? {
 		}
 	}
 
+	@[unsafe]
 	fn wl_keyboard_handle_modifiers(data voidptr, keyboard &C.wl_keyboard, serial u32, mods_depressed u32, mods_latched u32, mods_locked u32, group u32) {
 		if g_sapp_state.wl.xkb_state != unsafe { nil } {
 			C.xkb_state_update_mask(g_sapp_state.wl.xkb_state, mods_depressed, mods_latched,
@@ -462,6 +470,7 @@ $if sokol_wayland ? {
 
 	// === Pointer listener callbacks ===
 
+	@[unsafe]
 	fn wl_pointer_handle_enter(data voidptr, pointer &C.wl_pointer, serial u32, surface &C.wl_surface, sx i32, sy i32) {
 		mut x := f32(C.wl_fixed_to_double(sx))
 		mut y := f32(C.wl_fixed_to_double(sy))
@@ -484,6 +493,7 @@ $if sokol_wayland ? {
 		call_sapp_event(&g_sapp_state.event)
 	}
 
+	@[unsafe]
 	fn wl_pointer_handle_motion(data voidptr, pointer &C.wl_pointer, time u32, sx i32, sy i32) {
 		mut new_x := f32(C.wl_fixed_to_double(sx))
 		mut new_y := f32(C.wl_fixed_to_double(sy))
@@ -551,6 +561,7 @@ $if sokol_wayland ? {
 
 	// === Seat listener callbacks ===
 
+	@[unsafe]
 	fn wl_seat_handle_capabilities(data voidptr, seat &C.wl_seat, caps u32) {
 		// Keyboard
 		if (caps & wl_seat_capability_keyboard) != 0 && g_sapp_state.wl.keyboard == unsafe { nil } {
@@ -666,6 +677,7 @@ $if sokol_wayland ? {
 		C.xdg_surface_ack_configure(xdg_surface, serial)
 	}
 
+	@[unsafe]
 	fn wl_xdg_toplevel_configure(data voidptr, xdg_toplevel &C.xdg_toplevel, width int, height int, states &C.wl_array) {
 		// Iterate wl_array of uint32_t states
 		mut fullscreen := false
@@ -729,6 +741,7 @@ $if sokol_wayland ? {
 
 	// === Fractional scale callback ===
 
+	@[unsafe]
 	fn wl_fractional_scale_preferred_scale(data voidptr, fractional_scale &C.wp_fractional_scale_v1, scale u32) {
 		g_sapp_state.wl.scale_numerator = scale
 
@@ -773,10 +786,12 @@ $if sokol_wayland ? {
 	fn wl_data_offer_action(data voidptr, offer &C.wl_data_offer, dnd_action u32) {
 	}
 
+	@[unsafe]
 	fn wl_data_device_data_offer(data voidptr, device &C.wl_data_device, offer &C.wl_data_offer) {
 		C.wl_data_offer_add_listener(offer, &wl_data_offer_listener, unsafe { nil })
 	}
 
+	@[unsafe]
 	fn wl_data_device_enter(data voidptr, device &C.wl_data_device, serial u32, surface &C.wl_surface, x i32, y i32, offer &C.wl_data_offer) {
 		if offer != unsafe { nil } && g_sapp_state.wl.data_offer == offer {
 			C.wl_data_offer_accept(offer, serial, c'text/uri-list')
@@ -785,6 +800,7 @@ $if sokol_wayland ? {
 		}
 	}
 
+	@[unsafe]
 	fn wl_data_device_leave(data voidptr, device &C.wl_data_device) {
 		if g_sapp_state.wl.data_offer != unsafe { nil } {
 			C.wl_data_offer_destroy(g_sapp_state.wl.data_offer)
@@ -804,6 +820,7 @@ $if sokol_wayland ? {
 		return fds
 	}
 
+	@[unsafe]
 	fn wl_data_device_drop(data voidptr, device &C.wl_data_device) {
 		if g_sapp_state.wl.data_offer == unsafe { nil } {
 			return
@@ -964,6 +981,7 @@ $if sokol_wayland ? {
 	]!
 	// === Main Wayland run function ===
 
+	@[unsafe]
 	fn wl_set_resizable(resizable bool) {
 		if g_sapp_state.wl.xdg_toplevel == unsafe { nil }
 			|| g_sapp_state.wl.surface == unsafe { nil } {
@@ -996,6 +1014,7 @@ $if sokol_wayland ? {
 		}
 	}
 
+	@[unsafe]
 	pub fn wl_run(desc &Desc) {
 		sapp_init_state(desc)
 

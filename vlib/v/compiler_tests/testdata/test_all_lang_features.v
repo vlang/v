@@ -2253,6 +2253,7 @@ fn c_atomic_wymix119() int {
 }
 
 // c_atomic_channel_helpers119 supports c atomic channel helpers119 handling for v3 tests.
+@[unsafe]
 fn c_atomic_channel_helpers119() int {
 	mut score119 := 0
 	mut flag119 := u16(0)
@@ -2333,6 +2334,7 @@ fn prealloc_atomic_helpers119() int {
 }
 
 // signal_handler_cast119 supports signal handler cast119 handling for v3 tests.
+@[unsafe]
 fn signal_handler_cast119() int {
 	prev119 := C.v_signal_with_handler_cast(0, os.SignalHandler(unsafe { nil }))
 	if isnil(prev119) {

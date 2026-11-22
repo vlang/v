@@ -1,5 +1,6 @@
 module types
 
+@[unsafe]
 fn test_scope_owner_bound_type_tracks_updates_and_reuse() {
 	mut scope := new_scope(unsafe { nil })
 	assert ScopeBindingOwner{}.bound_type() == none

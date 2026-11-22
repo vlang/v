@@ -196,6 +196,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_native_flat_payload_header_helpers_preserve_pointer_identity() {
 	$if linux && amd64 {
 		run_native_runtime_fixture('payload_pointer', 'module main
@@ -265,6 +266,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_native_startup_preserves_the_process_arguments() {
 	$if linux && amd64 {
 		run_native_runtime_fixture('arguments', 'module main

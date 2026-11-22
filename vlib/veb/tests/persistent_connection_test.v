@@ -151,6 +151,7 @@ fn assert_keep_alive_response(mut conn net.TcpConn, expected_body string) ! {
 	assert response.body + remaining.bytestr() == expected_body
 }
 
+@[unsafe]
 fn simple_tcp_client() !&net.TcpConn {
 	mut client := &net.TcpConn(unsafe { nil })
 	mut tries := 0

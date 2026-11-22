@@ -65,6 +65,7 @@ fn test_identifier_keeps_the_type_of_its_first_use() {
 	assert half(C.v_undeclared_ratio) == 0.75
 }
 
+@[unsafe]
 fn test_identifier_in_other_typed_contexts() {
 	holder := Holder{
 		text:  C.v_undeclared_text

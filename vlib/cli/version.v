@@ -18,6 +18,7 @@ fn version_cmd() Command {
 	}
 }
 
+@[unsafe]
 fn print_version_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {

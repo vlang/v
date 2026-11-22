@@ -535,6 +535,7 @@ fn (t &Transformer) scan_comptime_param_ranges(ranges []ComptimeParamScanRange) 
 	return scans
 }
 
+@[unsafe]
 fn comptime_param_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &ComptimeParamScan(arg) }
 	t := unsafe { &Transformer(scan.t) }
@@ -1379,6 +1380,7 @@ fn (mut t Transformer) comptime_node_raw_attributes(node_id int) []string {
 // Each worker owns its indexes and metadata; scoped workers must not retain another
 // worker's scratch allocations. Generic signatures are finalized before body
 // reflection, and source attribute directives are immutable during lowering.
+@[unsafe]
 fn (mut t Transformer) ensure_comptime_method_index() {
 	if t.comptime_method_index_nodes > t.a.nodes.len {
 		t.comptime_method_decls.clear()
@@ -2475,6 +2477,7 @@ fn (t &Transformer) comptime_method_source_type(raw_id u32) u32 {
 	return raw_id
 }
 
+@[unsafe]
 fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 	requested_source_id := t.comptime_method_source_type(base_type_id)
 	normalized_id := t.comptime_normalize_type_alias_chain(requested_source_id)

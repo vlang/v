@@ -19,6 +19,7 @@ pub struct C.wkhtmltopdf_object_settings {}
 
 pub struct C.wkhtmltopdf_converter {}
 
+@[unsafe]
 fn C.wkhtmltopdf_init(use_graphics i32) i32
 
 fn C.wkhtmltopdf_deinit() i32

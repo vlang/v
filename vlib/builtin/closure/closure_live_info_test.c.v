@@ -9,6 +9,7 @@ fn test_closure_live_info_has_no_gc_scanned_padding() {
 	assert __offsetof(ClosureLiveInfo, generation) == 2 * sizeof(voidptr) + sizeof(u64)
 }
 
+@[unsafe]
 fn test_closure_live_info_preserves_ownership_flags() {
 	closure_ensure_initialized()
 	closure_mtx_lock_platform()

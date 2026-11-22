@@ -223,6 +223,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 }
 
 // decompress decompresses a Brotli stream and returns the decompressed bytes.
+@[unsafe]
 pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 	mut buffer := DecompressedBuffer{}
 	mut keep_data := false

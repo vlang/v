@@ -9,6 +9,7 @@ fn retain_promoted_handle_slot(mut handle PromotedHandle) {
 	promoted_handle_slot = unsafe { &handle }
 }
 
+@[unsafe]
 fn (mut handle PromotedHandle) clear() {
 	handle = PromotedHandle(unsafe { nil })
 }
@@ -17,7 +18,7 @@ fn read_promoted_handle(_handle &PromotedHandle) !bool {
 	return true
 }
 
-@[noinline]
+@[noinline; unsafe]
 fn promote_handle_slot() {
 	mut handle := PromotedHandle(voidptr(u64(0x1234)))
 	retain_promoted_handle_slot(mut handle)

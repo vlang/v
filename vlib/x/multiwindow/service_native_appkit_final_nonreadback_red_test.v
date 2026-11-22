@@ -434,6 +434,7 @@ fn test_appkit_native_screen_and_backing_dimension_change_publish_one_metrics_sn
 	}
 }
 
+@[unsafe]
 fn test_appkit_native_two_window_close_retains_services_until_finish_and_releases_once() {
 	$if darwin {
 		if !appkit_final_runtime_probes_required() {

@@ -331,10 +331,12 @@ fn check_h3_driver_fails_pending_requests(request_count int) ! {
 	}
 }
 
+@[unsafe]
 fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() ! {
 	check_h3_driver_fails_pending_requests(1)!
 }
 
+@[unsafe]
 fn test_driver_fails_a_second_concurrent_pending_request_too() ! {
 	check_h3_driver_fails_pending_requests(2)!
 }

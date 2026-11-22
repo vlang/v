@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_compound_calls_preserve_generic_types_and_borrowed_pointer_storage() {
 	$if !macos && !linux {
 		return

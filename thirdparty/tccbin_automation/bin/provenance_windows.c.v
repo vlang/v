@@ -28,6 +28,7 @@ struct WindowsFileBasicInformation {
 	file_attributes  u32
 }
 
+@[unsafe]
 fn C._get_osfhandle(fd int) voidptr
 fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
 fn C.GetFileInformationByHandleEx(handle voidptr, information_class int, information voidptr,
@@ -106,6 +107,7 @@ fn windows_path_file_identity(path string) !NativeFileIdentity {
 	return windows_path_file_snapshot(path)!.identity
 }
 
+@[unsafe]
 fn windows_path_file_snapshot(path string) !NativeFileSnapshot {
 	wide_path := path.to_wide()
 	defer {
@@ -123,6 +125,7 @@ fn windows_path_file_snapshot(path string) !NativeFileSnapshot {
 	return windows_snapshot_from_handle(handle)!
 }
 
+@[unsafe]
 fn native_open_toolchain_document(path string) !(NativeToolchainDocument, NativeFileSnapshot) {
 	wide_path := path.to_wide()
 	defer {
@@ -150,6 +153,7 @@ fn native_open_toolchain_document(path string) !(NativeToolchainDocument, Native
 	}, snapshot
 }
 
+@[unsafe]
 fn native_toolchain_document_snapshot(document &NativeToolchainDocument) !NativeFileSnapshot {
 	if !document.opened || document.handle == voidptr(-1) || document.handle == unsafe { nil } {
 		return error('native toolchain document handle is closed')
@@ -157,6 +161,7 @@ fn native_toolchain_document_snapshot(document &NativeToolchainDocument) !Native
 	return windows_snapshot_from_handle(document.handle)!
 }
 
+@[unsafe]
 fn native_read_toolchain_document(document &NativeToolchainDocument, mut buffer []u8) !int {
 	if !document.opened || document.handle == voidptr(-1) || document.handle == unsafe { nil } {
 		return error('native toolchain document handle is closed')
@@ -169,6 +174,7 @@ fn native_read_toolchain_document(document &NativeToolchainDocument, mut buffer 
 	return int(bytes_read)
 }
 
+@[unsafe]
 fn native_close_toolchain_document(mut document NativeToolchainDocument) {
 	if document.opened && document.handle != voidptr(-1) && document.handle != unsafe { nil } {
 		C.CloseHandle(document.handle)
@@ -177,6 +183,7 @@ fn native_close_toolchain_document(mut document NativeToolchainDocument) {
 	document.opened = false
 }
 
+@[unsafe]
 fn native_open_directory(path string) !(NativeDirectoryHandle, NativeFileSnapshot) {
 	wide_path := path.to_wide()
 	defer {
@@ -201,6 +208,7 @@ fn native_open_directory(path string) !(NativeDirectoryHandle, NativeFileSnapsho
 	}, snapshot
 }
 
+@[unsafe]
 fn native_directory_path_snapshot(path string) !NativeFileSnapshot {
 	wide_path := path.to_wide()
 	defer {
@@ -220,6 +228,7 @@ fn native_directory_path_snapshot(path string) !NativeFileSnapshot {
 	return snapshot
 }
 
+@[unsafe]
 fn native_open_child_directory(parent &NativeDirectoryHandle,
 	name string) !(NativeDirectoryHandle, NativeFileSnapshot) {
 	if !parent.opened || parent.handle == voidptr(-1) || parent.handle == unsafe { nil } {
@@ -248,6 +257,7 @@ fn native_open_child_directory(parent &NativeDirectoryHandle,
 	}, snapshot
 }
 
+@[unsafe]
 fn native_open_child_document(parent &NativeDirectoryHandle,
 	name string) !(NativeToolchainDocument, NativeFileSnapshot) {
 	if !parent.opened || parent.handle == voidptr(-1) || parent.handle == unsafe { nil } {
@@ -276,6 +286,7 @@ fn native_open_child_document(parent &NativeDirectoryHandle,
 	}, snapshot
 }
 
+@[unsafe]
 fn native_directory_snapshot(directory &NativeDirectoryHandle) !NativeFileSnapshot {
 	if !directory.opened || directory.handle == voidptr(-1) || directory.handle == unsafe { nil } {
 		return error('native directory handle is closed')
@@ -283,6 +294,7 @@ fn native_directory_snapshot(directory &NativeDirectoryHandle) !NativeFileSnapsh
 	return windows_snapshot_from_handle(directory.handle)!
 }
 
+@[unsafe]
 fn native_child_snapshot(parent &NativeDirectoryHandle, name string) !NativeFileSnapshot {
 	if !parent.opened || parent.handle == voidptr(-1) || parent.handle == unsafe { nil } {
 		return error('native parent directory handle is closed')
@@ -301,6 +313,7 @@ fn native_child_snapshot(parent &NativeDirectoryHandle, name string) !NativeFile
 	return windows_snapshot_from_handle(handle)!
 }
 
+@[unsafe]
 fn native_directory_entries_bounded(directory &NativeDirectoryHandle,
 	maximum int) ![]string {
 	if !directory.opened || directory.handle == voidptr(-1) || directory.handle == unsafe { nil }
@@ -332,6 +345,7 @@ fn native_directory_entries_bounded(directory &NativeDirectoryHandle,
 	return entries
 }
 
+@[unsafe]
 fn native_close_directory(mut directory NativeDirectoryHandle) {
 	if directory.opened && directory.handle != voidptr(-1) && directory.handle != unsafe { nil } {
 		C.CloseHandle(directory.handle)

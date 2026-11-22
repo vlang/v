@@ -358,6 +358,7 @@ fn test_wayland_shm_layout_rejects_stride_and_size_narrowing_before_protocol_use
 	}
 }
 
+@[unsafe]
 fn test_wayland_hide_barrier_and_hidden_state_ignore_configure_without_publishing() {
 	$if linux && sokol_wayland ? {
 		mut hidden := &WaylandWindowRecord{
@@ -830,6 +831,7 @@ fn test_wayland_show_handshake_callback_keeps_latest_configure_without_ack_or_ev
 	}
 }
 
+@[unsafe]
 fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_once() {
 	$if linux && sokol_wayland ? {
 		window := WindowId{
@@ -939,6 +941,7 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 	}
 }
 
+@[unsafe]
 fn test_wayland_fallback_buffer_is_reused_only_for_the_exact_remap_extent() {
 	$if linux && sokol_wayland ? {
 		buffer := voidptr(uint(0xf1))
@@ -980,6 +983,7 @@ fn test_wayland_fractional_scale_requires_both_protocol_objects() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_xdg_configure_states_are_published_after_surface_configure() {
 	$if linux && sokol_wayland ? {
 		mut record := &WaylandWindowRecord{
@@ -1023,6 +1027,7 @@ fn test_wayland_xdg_configure_states_are_published_after_surface_configure() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_state_operations_are_deferred_by_capability_until_observation() {
 	$if linux && sokol_wayland ? {
 		mut native_operations := &NativeOperationAuthority{}
@@ -1101,6 +1106,7 @@ fn test_wayland_state_operations_are_deferred_by_capability_until_observation() 
 	}
 }
 
+@[unsafe]
 fn test_wayland_existing_mouse_lock_can_be_released_after_capability_loss() {
 	$if linux && sokol_wayland ? {
 		mut app := new_app()!
@@ -1239,6 +1245,7 @@ fn test_wayland_relative_pointer_callbacks_publish_observed_state_and_motion() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_seat_loss_releases_active_mouse_lock_and_publishes_off() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {
@@ -1296,6 +1303,7 @@ fn wayland_capability_events_for(record &WaylandWindowRecord, operation ServiceO
 		&& it.event.service.kind == .capability && it.event.service.operation == operation)
 }
 
+@[unsafe]
 fn test_wayland_data_device_manager_remove_and_readd_publish_idempotent_capabilities() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {
@@ -1344,6 +1352,7 @@ fn test_wayland_data_device_manager_remove_and_readd_publish_idempotent_capabili
 	}
 }
 
+@[unsafe]
 fn test_wayland_relative_pointer_manager_remove_and_readd_publish_idempotent_capability() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {
@@ -1390,6 +1399,7 @@ fn test_wayland_relative_pointer_manager_remove_and_readd_publish_idempotent_cap
 	}
 }
 
+@[unsafe]
 fn test_wayland_exporter_remove_and_readd_publish_idempotent_capability() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {
@@ -1436,6 +1446,7 @@ fn test_wayland_exporter_remove_and_readd_publish_idempotent_capability() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_xdg_foreign_callback_retains_and_releases_exact_lease() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -1539,6 +1550,7 @@ fn test_wayland_xdg_foreign_runtime_capability_and_public_completion() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_service_capabilities_follow_runtime_authority() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {
@@ -1595,6 +1607,7 @@ fn test_wayland_service_capabilities_follow_runtime_authority() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_surface_output_membership_updates_public_metrics() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {
@@ -1873,6 +1886,7 @@ fn test_wayland_fatal_dispatch_terminalizes_active_clipboard_read_exactly_once()
 	}
 }
 
+@[unsafe]
 fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_ready_portals() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
@@ -2170,6 +2184,7 @@ fn test_wayland_clipboard_read_progress_refreshes_inactivity_deadline_before_eag
 	}
 }
 
+@[unsafe]
 fn wayland_assert_clipboard_replacement_preflight_failure(fail_listener bool) {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
@@ -2246,6 +2261,7 @@ fn test_wayland_clipboard_replacement_listener_failure_preserves_previous_source
 	wayland_assert_clipboard_replacement_preflight_failure(true)
 }
 
+@[unsafe]
 fn test_wayland_clipboard_transport_plan_exhaustion_has_no_ghost_and_flush_failure_is_terminal() {
 	$if linux && sokol_wayland ? {
 		mut native_operations := &NativeOperationAuthority{}
@@ -2508,6 +2524,7 @@ fn test_wayland_live_cleanup_plan_exhaustion_preserves_mouse_and_portal_handles(
 	}
 }
 
+@[unsafe]
 fn test_wayland_clipboard_selection_replacement_cancels_read_exactly_once() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -2590,6 +2607,7 @@ fn wayland_assert_clipboard_failure(record &WaylandWindowRecord, request Service
 	assert result.error == message
 }
 
+@[unsafe]
 fn test_wayland_seat_removal_finishes_pending_clipboard_read_exactly_once() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -2610,6 +2628,7 @@ fn test_wayland_seat_removal_finishes_pending_clipboard_read_exactly_once() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_data_device_manager_removal_finishes_pending_clipboard_read_exactly_once() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -2694,6 +2713,7 @@ fn test_wayland_clipboard_exact_capacity_waits_on_eagain_then_succeeds_at_eof() 
 	}
 }
 
+@[unsafe]
 fn test_wayland_file_drop_poll_and_read_eintr_preserve_transaction_until_exact_terminal() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
@@ -2751,6 +2771,7 @@ fn test_wayland_file_drop_poll_and_read_eintr_preserve_transaction_until_exact_t
 	}
 }
 
+@[unsafe]
 fn test_wayland_file_drop_empty_open_pipe_expires_without_terminal_event() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
@@ -2790,6 +2811,7 @@ fn test_wayland_file_drop_empty_open_pipe_expires_without_terminal_event() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_file_drop_exact_capacity_requires_eof_and_rejects_one_extra_byte() {
 	$if linux && sokol_wayland ? {
 		for extra in 0 .. 2 {
@@ -2860,6 +2882,7 @@ fn wayland_read_exact_pipe_payload(fd int, expected_len int) string {
 	return payload.bytestr()
 }
 
+@[unsafe]
 fn test_wayland_clipboard_send_is_fair_when_first_consumer_is_backpressured() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -2937,6 +2960,7 @@ fn test_wayland_clipboard_send_progress_refreshes_inactivity_deadline_before_eag
 	}
 }
 
+@[unsafe]
 fn test_wayland_clipboard_send_snapshots_survive_replacement_and_cancel() {
 	$if linux && sokol_wayland ? {
 		old_source := voidptr(uint(0x71))
@@ -2998,6 +3022,7 @@ fn test_wayland_clipboard_send_snapshots_survive_replacement_and_cancel() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_independent() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -3030,6 +3055,7 @@ fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_indepe
 	}
 }
 
+@[unsafe]
 fn test_wayland_clipboard_send_expired_backpressure_closes_only_that_transfer() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -3069,6 +3095,7 @@ fn test_wayland_clipboard_safe_write_contains_sigpipe_in_child_process() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_clipboard_send_rejects_invalid_and_bounded_admissions_only() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
@@ -3104,6 +3131,7 @@ fn test_wayland_clipboard_send_rejects_invalid_and_bounded_admissions_only() {
 	}
 }
 
+@[unsafe]
 fn test_wayland_native_borrow_copy_is_stale_after_callback() {
 	$if linux && sokol_wayland ? {
 		if !wayland_runtime_probe_available() {

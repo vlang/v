@@ -256,6 +256,7 @@ fn test_after_live_transport_supports_rearming() {
 	after_chain_probe.check_delay()
 }
 
+@[unsafe]
 fn test_after_append_handler_zero_delay_rearming_owns_request_arena() {
 	mut app := &AfterApp{}
 	routes := generate_routes[AfterApp, AfterContext](app)!

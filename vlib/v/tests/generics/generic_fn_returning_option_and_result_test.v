@@ -6,6 +6,7 @@ fn get_value_result[T]() !T {
 	return error('no result')
 }
 
+@[unsafe]
 fn test_generic_function_that_returns_an_option() {
 	value := get_value[&int]() or { unsafe { &int(0) } }
 	assert value == unsafe { nil }

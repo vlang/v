@@ -147,6 +147,7 @@ fn (pr &HttpProxy) connect_tcp(host string) !&net.TcpConn {
 	}
 }
 
+@[unsafe]
 fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Request, data string, header Header) !Response {
 	host_name := host.hostname()
 	mut port := host.port().int()

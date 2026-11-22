@@ -83,6 +83,7 @@ pub fn new_reverse_proxy(config ReverseProxyConfig) !&ReverseProxy {
 
 // handle satisfies the http.Handler interface so ReverseProxy can be used
 // directly as an http.Server handler.
+@[unsafe]
 pub fn (mut rp ReverseProxy) handle(req Request) Response {
 	mut out_req := req
 	return rp.proxy(mut out_req) or {
@@ -96,6 +97,7 @@ pub fn (mut rp ReverseProxy) handle(req Request) Response {
 }
 
 // proxy forwards `req` to the upstream server and returns the response.
+@[unsafe]
 pub fn (rp &ReverseProxy) proxy(mut req Request) !Response {
 	target := rp.config.target
 	target_query := target.raw_query

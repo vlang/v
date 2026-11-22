@@ -2208,6 +2208,7 @@ fn test_fmt_preserves_declaration_list_layout_with_v3() {
 	assert formatted_twice == formatted
 }
 
+@[unsafe]
 fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 	source := "fn local_types() {
 	struct Tick {

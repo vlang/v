@@ -1,7 +1,9 @@
+@[unsafe]
 fn multi_voidptr_ret() (voidptr, bool) {
 	return unsafe { nil }, true
 }
 
+@[unsafe]
 fn multi_byteptr_ret() (&u8, bool) {
 	return &u8(unsafe { nil }), true
 }

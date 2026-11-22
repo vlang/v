@@ -1149,6 +1149,7 @@ fn test_h2_pool_dial_failure_preserves_error_code() {
 // stream is still active) rather than inferred indirectly through the
 // in-flight fetch's eventual outcome, which depends on unrelated timing
 // between the teardown and the reader thread noticing it.
+@[unsafe]
 fn test_h2_pool_close_idle_release_is_idempotent() ! {
 	gate := &H2ResponseGate{
 		stream_id: 1

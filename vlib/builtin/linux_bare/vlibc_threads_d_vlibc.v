@@ -212,6 +212,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_spawn starts fn_ptr(arg) with per-thread state and a 1 MiB stack.
+	@[unsafe]
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
 		mut t := VlibcThread{ fn_ptr: fn_ptr, arg: arg, stack_size: 1 << 20 }
 		mem, e := vlibc_sys_mmap(unsafe { nil }, t.stack_size, 3, 0x22, -1, 0)
@@ -238,6 +239,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_join waits for kernel-confirmed exit before releasing the stack.
+	@[unsafe]
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
 		if t.stack == unsafe { nil } {
 			return .enoerror
@@ -269,6 +271,7 @@ $if !i386 {
 	}
 
 	// vlibc_mutex_lock waits until the mutex is acquired.
+	@[unsafe]
 	pub fn vlibc_mutex_lock(mut m VlibcMutex) {
 		for {
 			if vlibc_cas_u32(&m.state, 0, 1) {
@@ -280,6 +283,7 @@ $if !i386 {
 	}
 
 	// vlibc_mutex_unlock releases the mutex.
+	@[unsafe]
 	pub fn vlibc_mutex_unlock(mut m VlibcMutex) {
 		vlibc_store_u32(&m.state, 0)
 		vlibc_sys_futex(&m.state, 1, 1, unsafe { nil }, unsafe { nil }, 0) // FUTEX_WAKE
@@ -297,6 +301,7 @@ $if !i386 {
 	}
 
 	// vlibc_cond_wait releases the mutex while waiting, then locks it again before returning.
+	@[unsafe]
 	pub fn vlibc_cond_wait(mut c VlibcCond, mut m VlibcMutex) {
 		v := vlibc_load_u32(&c.seq)
 		vlibc_mutex_unlock(mut m)
@@ -305,12 +310,14 @@ $if !i386 {
 	}
 
 	// vlibc_cond_signal increments the sequence atomically and wakes one waiter.
+	@[unsafe]
 	pub fn vlibc_cond_signal(mut c VlibcCond) {
 		vlibc_increment_u32(&c.seq)
 		vlibc_sys_futex(&c.seq, 1, 1, unsafe { nil }, unsafe { nil }, 0)
 	}
 
 	// vlibc_cond_broadcast increments the sequence atomically and wakes all waiters.
+	@[unsafe]
 	pub fn vlibc_cond_broadcast(mut c VlibcCond) {
 		vlibc_increment_u32(&c.seq)
 		vlibc_sys_futex(&c.seq, 1, 0x7fffffff, unsafe { nil }, unsafe { nil }, 0)

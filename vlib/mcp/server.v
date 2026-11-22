@@ -1081,6 +1081,7 @@ fn (mut s Server) allocate_server_request_id(session_id string) ?string {
 	return request_id
 }
 
+@[unsafe]
 fn (mut s Server) deliver_response(session_id string, response Response) {
 	key := pending_signal_key(session_id, response.id)
 	mut signal := unsafe { &sync.Semaphore(nil) }
@@ -1101,6 +1102,7 @@ fn (mut s Server) deliver_response(session_id string, response Response) {
 	}
 }
 
+@[unsafe]
 fn (mut s Server) wait_for_response(session_id string, request_id string, timeout time.Duration) !Response {
 	key := pending_signal_key(session_id, request_id)
 	mut signal := unsafe { &sync.Semaphore(nil) }
@@ -1643,6 +1645,7 @@ fn encode_prompt_message(message PromptMessage) string {
 	return '{"role":${json.encode(message.role)},"content":${message.content}}'
 }
 
+@[unsafe]
 fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writer, session_id string, transport SessionTransport) ! {
 	mut output := &StdioOutput{
 		writer: writer

@@ -4,6 +4,7 @@ struct RefArrayItem {
 	a int
 }
 
+@[unsafe]
 fn ref_array_item(value int, is_nil bool) &RefArrayItem {
 	return if is_nil {
 		unsafe { nil }

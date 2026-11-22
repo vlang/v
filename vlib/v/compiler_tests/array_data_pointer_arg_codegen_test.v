@@ -1,5 +1,6 @@
 import os
 
+@[unsafe]
 fn test_dynamic_array_data_passes_its_buffer_to_pointer_param() {
 	vexe := @VEXE
 	vlib := os.dir(os.dir(os.dir(@FILE)))

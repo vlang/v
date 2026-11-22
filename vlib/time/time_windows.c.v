@@ -120,6 +120,7 @@ fn local_as_unix_time() i64 {
 }
 
 // local - return the time `t`, converted to the currently active local timezone.
+@[unsafe]
 pub fn (t Time) local() Time {
 	if t.is_local {
 		return t
@@ -156,6 +157,7 @@ pub fn (t Time) local() Time {
 // win_now calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
 // down to millisecond. Other more precise methods can be implemented in the future
+@[unsafe]
 fn win_now() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)

@@ -68,6 +68,7 @@ fn test_dump_of_type_that_has_no_custom_str_method() {
 	assert dump(ps).x == 456
 }
 
+@[unsafe]
 fn test_nil_values_and_voidptr_values_can_be_dumped_in_the_same_program() {
 	// Note, that nil is its own type in the main v repo,
 	// while dump() generates `_v_dump_expr_voidptr` for *both* `nil` and `voidptr` values.

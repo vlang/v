@@ -17,6 +17,7 @@ __global addr_manager_ptr = &addr_manager
 __global addr_inner_ptr = &addr_manager.inner
 __global addr_slot_ptr = &addr_manager.slots[2]
 
+@[unsafe]
 fn test_global_initialized_by_the_address_of_a_global() {
 	assert addr_manager_ptr != unsafe { nil }
 	addr_manager.n = 5

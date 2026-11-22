@@ -14,6 +14,7 @@ mut:
 	xs []u8 = []u8{len: 12, init: 0}
 }
 
+@[unsafe]
 fn test_codegen_for_unsafe_pointers_to_map_values() {
 	mut inst := Abc{}
 	inst.mymap['abc'] = MyObject{123, 'abc'}
@@ -45,6 +46,7 @@ fn test_codegen_for_unsafe_pointers_to_map_values() {
 	assert inst.mymap['abc'].s == 'xyz'
 }
 
+@[unsafe]
 fn test_codegen_for_unsafe_pointers_to_map_values_with_array_defaults() {
 	mut values := map[string]ArrayDefaultObject{}
 	mut missing := unsafe { &values['missing'] or { nil } }

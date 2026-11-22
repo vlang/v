@@ -17,6 +17,7 @@ $if windows {
 	#include "@VMODROOT/vlib/x/multiwindow/testdata/win32_monitor_enumeration_test_storage.h"
 	#include "@VMODROOT/vlib/x/multiwindow/testdata/win32_nonreadback_test_oracle.h"
 
+	@[unsafe]
 	fn C.v_multiwindow_win32_service_test_set_focus_refused(refused int)
 	fn C.v_multiwindow_win32_service_test_set_show_failure(fail int)
 	fn C.v_multiwindow_win32_service_test_set_fullscreen_exit_failure(failure int)
@@ -543,6 +544,7 @@ fn test_win32_w3_late_exact_name_reserves_unavailable_slot_and_stales_old_ids_re
 	assert stale_b_rejected
 }
 
+@[unsafe]
 fn test_win32_w1_native_authority_show_focus_and_fullscreen_contract() {
 	$if windows {
 		mut app := new_app(backend: .win32)!
@@ -816,6 +818,7 @@ fn test_win32_w1_native_authority_show_focus_and_fullscreen_contract() {
 	}
 }
 
+@[unsafe]
 fn test_win32_w1_native_borrow_is_bounded_and_epoch_checked() {
 	$if windows {
 		mut app := new_app(backend: .win32)!
@@ -1033,6 +1036,7 @@ fn test_win32_native_controls_state_and_independent_window_oracles_red() {
 	}
 }
 
+@[unsafe]
 fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 	$if windows {
 		mut create_app := new_app(backend: .win32)!
@@ -1211,6 +1215,7 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 	}
 }
 
+@[unsafe]
 fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 	$if windows {
 		eprintln('PACKAGE2_RED_TEST=test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red')
@@ -1453,6 +1458,7 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 	}
 }
 
+@[unsafe]
 fn win32_red_dpi_creation_fallback_case(context_mode int) ! {
 	$if windows {
 		C.v_multiwindow_win32_test_dpi_creation_configure(context_mode, 37, 29)
@@ -1519,6 +1525,7 @@ fn win32_red_dpi_creation_fallback_case(context_mode int) ! {
 	}
 }
 
+@[unsafe]
 fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 	$if windows {
 		eprintln('PACKAGE2_RED_TEST=test_win32_native_monitor_dpi_display_change_and_generation_red')

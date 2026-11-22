@@ -225,6 +225,7 @@ fn wrap_getaddrinfo_error(code int) ! {
 
 // resolve_ipaddrs converts the given `addr`, `family` and `typ` to a list of addresses.
 // An empty address returns an error; `:port` selects the wildcard address.
+@[unsafe]
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	if addr.len == 0 {
 		return error('net: expected a host, got an empty string')

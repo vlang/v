@@ -108,6 +108,7 @@ fn (p &Process) win_resolve_filename() !string {
 	return find_abs_path_of_executable_in_path_env(p.filename, path)
 }
 
+@[unsafe]
 fn close_valid_handle(p voidptr) {
 	h := &&u32(p)
 	if *h != &u32(unsafe { nil }) {
@@ -132,7 +133,7 @@ pub mut:
 	child_stderr_write &u32 = unsafe { nil }
 }
 
-@[manualfree]
+@[manualfree; unsafe]
 fn (mut p Process) win_spawn_process() int {
 	mut to_be_freed := []voidptr{cap: 5}
 	defer {
@@ -389,6 +390,7 @@ fn (mut p Process) win_write_string(idx int, _s string) {
 	}
 }
 
+@[unsafe]
 fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
@@ -421,6 +423,7 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 	return decode_windows_captured_output(buf[..bytes_read].bytestr()), bytes_read
 }
 
+@[unsafe]
 fn (mut p Process) win_is_pending(idx int) bool {
 	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
@@ -444,6 +447,7 @@ fn (mut p Process) win_is_pending(idx int) bool {
 	return false
 }
 
+@[unsafe]
 fn (mut p Process) win_slurp(idx int) string {
 	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {

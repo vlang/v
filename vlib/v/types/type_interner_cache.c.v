@@ -3,7 +3,7 @@ module types
 // Cache misses return nil without constructing an Option. Entries are immutable
 // after atomic publication. Their storage follows the
 // canonical table; promotion clears the cache before releasing a stage arena.
-@[direct_array_access; inline]
+@[direct_array_access; inline; unsafe]
 fn (i &TypeInterner) recent_canonical_type(t &Type) &CanonicalTypeEntry {
 	if t is Primitive && u32(t.props) < 32 {
 		// Properties and size are the complete primitive identity. Each slot
@@ -151,7 +151,7 @@ fn canonical_intern_child_key(t &Type) u64 {
 
 // Only canonical owned pointers are published here. Borrowed values still need
 // structural verification, even when their address has appeared before.
-@[direct_array_access; inline]
+@[direct_array_access; inline; unsafe]
 fn (i &TypeInterner) canonical_identity(t &Type) &CanonicalTypeEntry {
 	// Primitive identity is already an exact, collision-free content lookup.
 	// Most callers hold a temporary wrapper, which cannot hit a pointer slot.

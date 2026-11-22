@@ -92,6 +92,7 @@ pub:
 }
 
 // get_statistics returns current profiler statistics
+@[unsafe]
 pub fn get_statistics() Statistics {
 	if profiler_state.mu == unsafe { nil } {
 		return Statistics{}

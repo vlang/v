@@ -79,6 +79,7 @@ fn test_fastc_direct_field_metadata_owns_stable_shared_records() {
 	assert voidptr(shared) == voidptr(first)
 }
 
+@[unsafe]
 fn test_fastc_promoted_field_metadata_preserves_paths_and_memo_pointers() {
 	fields := fastc_metadata_test_fields()
 	mut g := fastc_metadata_test_parser(fields, fastc_build_struct_field_lookup(fields))
@@ -127,6 +128,7 @@ fn test_fastc_promoted_field_metadata_preserves_paths_and_memo_pointers() {
 	assert middle.storage_path == ['__embedded_0']
 }
 
+@[unsafe]
 fn test_fastc_shared_field_metadata_survives_parser_scope_release() {
 	$if prealloc {
 		fields := fastc_metadata_test_fields()

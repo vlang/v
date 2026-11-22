@@ -1241,6 +1241,7 @@ fn (mut g Parser) read_final_block_wrapper_value() !string {
 	return g.read_comptime_if_expression()!
 }
 
+@[unsafe]
 fn (g &Parser) if_starts_final_block_expression() bool {
 	// Interpolation braces belong to the string, not the condition's branch block.
 	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)

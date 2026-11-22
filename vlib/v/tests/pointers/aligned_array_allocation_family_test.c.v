@@ -18,6 +18,7 @@ fn release_v_aligned_cells(value &AllocatorAlignedCells) {
 	unsafe { free(value) }
 }
 
+@[unsafe]
 fn test_aligned_array_cast_keeps_the_c_allocation_family() {
 	// The requested alignment is within malloc's guarantee on the supported targets.
 	mut cells := unsafe { &AllocatorAlignedCells(C.malloc(sizeof(AllocatorAlignedCells))) }
@@ -30,6 +31,7 @@ fn test_aligned_array_cast_keeps_the_c_allocation_family() {
 	release_c_aligned_cells(cells)
 }
 
+@[unsafe]
 fn test_aligned_array_cast_and_literal_share_the_v_allocation_family() {
 	mut cells := unsafe { &AllocatorAlignedCells(malloc(int(sizeof(AllocatorAlignedCells)))) }
 	assert cells != unsafe { nil }
