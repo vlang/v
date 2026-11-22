@@ -32,7 +32,9 @@ fn main() {
 	// V1-hosted unit tests get a shared V3 compiler from their runner.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
 	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
-	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-o', c_path, path]
+	// MSVC can emit Windows C only; the generated-body assertions are target-independent.
+	target_os := $if windows { 'windows' } $else { 'linux' }
+	args << ['-gc', 'none', '-os', target_os, '-arch', 'amd64', '-o', c_path, path]
 	compiled := os.exec(args)
 	assert compiled.exit_code == 0, compiled.output
 	generated := os.read_file(c_path)!
