@@ -1897,6 +1897,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 			}
 			if concrete_id in g.tc.interface_names {
 				decl := g.interface_method_signature_key(concrete_id, method) or { continue }
+				// A method found through an embedded interface has a dispatcher of this
+				// interface only when it is one of its abstract methods. `IError.str` is
+				// a method of IError itself: `ESpeaker { IError }` has no `ESpeaker__str`.
+				if decl != '${concrete}.${method}'
+					&& method !in g.tc.interface_abstract_method_names(concrete_id) {
+					continue
+				}
 				if !g.interface_dispatch_target_is_emitted('${concrete}.${method}')
 					&& !g.interface_dispatch_target_is_emitted(decl) {
 					continue
@@ -2882,7 +2889,14 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 		if flat.source_type_query(concrete_id).has(.c_prefix) {
 			continue
 		}
-		storage_ct := g.interface_concrete_storage_c_type(concrete_id)
+		// The checker spells every option and result `__v_option`/`__v_result`, whose
+		// `value` is a placeholder; a boxed `?Named` is a `__v_option_Named`.
+		clean_concrete := g.interface_unaliased_type(concrete_type)
+		storage_ct := if clean_concrete is types.OptionType || clean_concrete is types.ResultType {
+			g.optional_type_name(clean_concrete)
+		} else {
+			g.interface_concrete_storage_c_type(concrete_id)
+		}
 		inner := g.interface_implicit_str_expr(concrete_type, '*(${storage_ct}*)${tmp}._object',
 			false, mut stack) or { continue }
 		body += ' case ${id}: ${out} = ${inner}; break;'
