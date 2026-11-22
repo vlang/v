@@ -119,6 +119,19 @@ Use `svg.supported_filters()` and `svg.filter_is_supported(f)` to query which
 filter primitives can be rasterized. Unsupported primitives are reported
 instead of producing silently wrong pixels.
 
+## Performance
+
+`examples/svg/bench.v` measures the three main stages on a 400x400 scene with
+240 shapes. Run it with `v -prod run examples/svg/bench.v`.
+
+The rasterizer avoids per-shape allocation: flattening is done once per item,
+coverage buffers and scanline scratch slices are reused, only a shape's
+bounded pixel region is cleared and composited, and gradient transforms and
+solid colors are hoisted out of the pixel loop. In paired local measurements
+this reduced rasterization of the benchmark scene from about 1195 ms to
+663 ms for 10 frames. Parsing is dominated by `encoding.xml`, so the value
+layer adds comparatively little overhead.
+
 ## Design notes
 
 The parsing and rendering stages are deliberately separate, following the

@@ -121,6 +121,13 @@ pub fn specificity(selector string) (int, int, int) {
 // More specific rules win; later rules win ties.
 pub fn cascade_style(e &Element, rules []CssRule) Style {
 	mut result := Style{}
+	cascade_style_into(e, rules, mut result)
+	return result
+}
+
+// cascade_style_into merges matching rules into an existing style, avoiding
+// an extra allocation when the caller already has a style buffer.
+pub fn cascade_style_into(e &Element, rules []CssRule, mut out Style) {
 	mut best_ids := -1
 	mut best_classes := -1
 	mut best_types := -1
@@ -134,12 +141,13 @@ pub fn cascade_style(e &Element, rules []CssRule) Style {
 			best_ids = ids
 			best_classes = classes
 			best_types = types
-			result = r.style
+			for p in r.style.props {
+				out.set(p.name, p.value)
+			}
 		}
 	}
 	// Inline style wins over stylesheet rules.
 	for p in e.style.props {
-		result.set(p.name, p.value)
+		out.set(p.name, p.value)
 	}
-	return result
 }

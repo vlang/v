@@ -71,7 +71,9 @@ pub:
 // flatten_document resolves CSS, transforms, defs and shapes into a Scene.
 pub fn flatten_document(doc &Document, opts FlattenOptions) !Scene {
 	mut scene := Scene{ viewport: document_viewport(doc, opts) }
-	scene.resources = index_defs(&doc.root, doc.css)
+	mut resources := Resources{}
+	index_defs(&doc.root, doc.css, mut resources)
+	scene.resources = resources
 	root_transform := if doc.has_view_box {
 		doc.view_box.matrix_for(scene.viewport, doc.preserve)
 	} else {
@@ -109,8 +111,7 @@ fn length_px(s string, dpi f64, fallback f64) f64 {
 	return l.to_px(dpi, 16, fallback)
 }
 
-fn index_defs(e &Element, rules []CssRule) Resources {
-	mut res := Resources{}
+fn index_defs(e &Element, rules []CssRule, mut res Resources) {
 	for child in e.children {
 		match child.tag {
 			'linearGradient', 'radialGradient' {
@@ -136,24 +137,8 @@ fn index_defs(e &Element, rules []CssRule) Resources {
 			}
 			else {}
 		}
-		sub := index_defs(&child, rules)
-		for id, g in sub.gradients {
-			res.gradients[id] = g
-		}
-		for id, p in sub.patterns {
-			res.patterns[id] = p
-		}
-		for id, c in sub.clips {
-			res.clips[id] = c
-		}
-		for id, m in sub.masks {
-			res.masks[id] = m
-		}
-		for id, f in sub.filters {
-			res.filters[id] = f
-		}
+		index_defs(&child, rules, mut res)
 	}
-	return res
 }
 
 fn clip_paths(e &Element, rules []CssRule) []Path {
@@ -180,7 +165,7 @@ pub fn computed_style(e &Element, rules []CssRule) Style {
 			s.set(a.name, a.value)
 		}
 	}
-	s.merge(cascade_style(e, rules))
+	cascade_style_into(e, rules, mut s)
 	return s
 }
 
