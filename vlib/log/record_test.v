@@ -126,6 +126,24 @@ fn test_concurrent_logging() {
 	assert cap.text().split('\n').len >= 50
 }
 
+fn test_direct_timestamp_matches_formatter() {
+	t := time.utc()
+	formats := [
+		TimeFormat.tf_rfc3339_micro,
+		TimeFormat.tf_ss_micro,
+		TimeFormat.tf_ss_milli,
+		TimeFormat.tf_ss,
+		TimeFormat.tf_default,
+		TimeFormat.tf_ymmdd,
+		TimeFormat.tf_hhmmss,
+	]
+	for f in formats {
+		mut buf := []u8{}
+		assert append_timestamp(mut buf, t, f, false), 'format ${f} should be direct'
+		assert buf.bytestr() == format_time(t, f, ''), 'format ${f} differs'
+	}
+}
+
 fn test_global_structured_logger() {
 	old := get_record_logger()
 	defer { set_record_logger(old) }
