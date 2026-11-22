@@ -8,8 +8,21 @@ $if windows {
 	fn C.PeekNamedPipe(handle voidptr, buffer voidptr, size i32, bytes_read voidptr, bytes_available voidptr, bytes_left voidptr) bool
 } $else {
 	#include "@VMODROOT/vlib/v/cmdexec/cmdexec_poll.h"
+	#include "@VMODROOT/vlib/v/cmdexec/cmdexec_wait.h"
 
 	fn C.v_cmdexec_poll_revents(fd int, events i16) i16
+	fn C.v_cmdexec_child_has_exited(pid int) int
+}
+
+// leader_has_ended tells whether the process of a run has ended, without reaping it: 1 when
+// it has, 0 when it is running, -1 when that cannot be told without reaping (see
+// cmdexec_wait.h). On Windows a process is not reaped by being asked: its handle keeps it.
+fn leader_has_ended(mut process os.Process) int {
+	$if windows {
+		return if process.is_alive() { 0 } else { 1 }
+	} $else {
+		return C.v_cmdexec_child_has_exited(process.pid)
+	}
 }
 
 // read_process_pipe reads without waiting and distinguishes EOF from an empty

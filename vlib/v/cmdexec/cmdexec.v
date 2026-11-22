@@ -353,8 +353,39 @@ fn run_in_mode_with_env_timed(program string, args []string, work_folder string,
 		// draining both: slurping stdout first can deadlock on a full stderr
 		// pipe, even for an unbounded run. For bounded runs, deferring the reap
 		// also reserves the leader PID until a possible process-group kill.
-		if stdout_done && stderr_done && !process.is_alive() {
-			break
+		if stdout_done && stderr_done {
+			if !bounded {
+				if !process.is_alive() {
+					break
+				}
+			} else {
+				// How a bounded run ends is decided here, in this order: the leader is seen to
+				// have ended WITHOUT being reaped, and the cancellation is read after that. A
+				// cancellation recorded before the leader ended is therefore always seen, and
+				// the group is ended while the leader's pid is still its own: a descendant that
+				// holds neither pipe (so the output is at its end) does not outlive a tool that
+				// was cancelled. is_alive() reaps on POSIX, and the pid of a reaped leader must
+				// not be signalled, so it is not asked on this path. A cancellation recorded
+				// after the read below finds a run that had ended by itself before it.
+				ended := leader_has_ended(mut process)
+				if ended != 0 && bounded_runs_cancelled() != 0 {
+					cancelled = true
+					process.signal_pgkill()
+					process.signal_kill()
+					if process.status == .aborted {
+						process.status = .running
+					}
+					break
+				}
+				if ended == 1 {
+					break
+				}
+				// -1: it cannot be told without reaping (no waitid/WNOWAIT here); the
+				// cancellation was read first, and the leader is asked as before
+				if ended == -1 && !process.is_alive() {
+					break
+				}
+			}
 		}
 		// The deadline is checked on every iteration, not only when nothing was
 		// read: a child that keeps writing must hit the bound just the same.
