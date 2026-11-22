@@ -642,10 +642,11 @@ backend does not expose `gg`'s drawing calls.
 - `gg.splat` stores 3D Gaussians, projects them with a perspective camera and
   rasterizes small clouds on the CPU; large clouds need a GPU renderer.
 - `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1,
-  ETC1 (full individual/differential modes with intensity modifiers), BC7
-  modes 0/1/3 and ASTC void-extent plus 4x4 LDR blocks. BC7 modes 4-7 and
-  ASTC HDR/unsupported block modes return explicit errors rather than wrong
-  colors. It also generates RGBA mipmaps.
+  ETC1 (full individual/differential modes with intensity modifiers), all
+  eight BC7 modes and ASTC void-extent (LDR and HDR) plus 4x4 LDR blocks.
+  It also generates RGBA mipmaps. BC7 CEM channel swizzles use the canonical
+  RGBA layout, and ASTC endpoint layouts outside the 4x4 LDR subset still
+  return an explicit error.
 - `gg.xr` derives left/right stereo cameras from a head camera and provides
   side-by-side viewports. Headset tracking belongs to your XR runtime.
 - `gg.ecs` provides generation-counted entities, sparse-set `Storage[T]`

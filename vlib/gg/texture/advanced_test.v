@@ -38,13 +38,12 @@ fn test_bc7_mode3() {
 	assert colors.len == 16
 }
 
-fn test_bc7_unsupported_mode() {
+fn test_bc7_mode4() {
 	mut block := []u8{len: 16, init: 0}
-	// Mode 4: 4 leading ones.
+	// Mode 4: 4 leading ones, uses a CEM field and 5-bit endpoints.
 	block[0] = 0x0F
-	if _ := decode_bc7(block) {
-		assert false, 'expected unsupported-mode error'
-	}
+	colors := decode_bc7(block) or { panic('mode 4 should decode') }
+	assert colors.len == 16
 }
 
 fn test_astc_void_extent() {
