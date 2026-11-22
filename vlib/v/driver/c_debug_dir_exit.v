@@ -53,13 +53,20 @@ fn v3_untouched_c_debug_dir() string {
 // v3_watch_c_debug_dir records `cc_dir` as the `-cg` directory of this build: if the process
 // ends while a directory is still set aside for it, the exit hook gives that one back.
 fn v3_watch_c_debug_dir(cc_dir string) {
+	v3_watch_c_debug_dir_as(cc_dir, c_debug_dir_armed)
+}
+
+// v3_watch_c_debug_dir_as is v3_watch_c_debug_dir with the state the signal word is left at:
+// `setting aside` for a build that is about to move the directory and does not know yet
+// whether it can.
+fn v3_watch_c_debug_dir_as(cc_dir string, state u64) {
 	if cc_dir.len == 0 || cc_dir.len >= max_c_debug_dir_path {
 		v3_c_debug_dir_watched_len = 0
 		v3_disarm_c_debug_dir_signals()
 		return
 	}
 	// An interrupt does not run the exit hook: see c_debug_dir_signal.c.v.
-	v3_arm_c_debug_dir_signals(cc_dir)
+	v3_arm_c_debug_dir_signals(cc_dir, state)
 	for i in 0 .. cc_dir.len {
 		v3_c_debug_dir_watched[i] = cc_dir[i]
 	}

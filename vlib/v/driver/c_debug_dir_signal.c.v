@@ -27,8 +27,10 @@ fn C.raise(sig i32) i32
 //   rolling back the build is giving the directory back (a failure, or the exit hook); a
 //                signal waits until that is done
 //   publishing   the build is putting its executable in place; a signal waits until it knows
+//   setting aside the build is moving the directory in place aside and does not know yet
+//                whether that worked; a signal waits until it does
 //   idle         nothing is set aside for this process: a signal only ends it
-// and, while the state is `publishing` or `rolling back`, the bits above it are the signal
+// and, while the state is `publishing`, `rolling back` or `setting aside`, the bits above it are the signal
 // that waits. A signal is noted and the state is left in ONE step: either the handler's swap
 // puts its signal into the word before the build's swap takes the word out of that state, and
 // the build finds it there, or the handler's swap fails, and it looks at the word again. A
@@ -43,6 +45,7 @@ const c_debug_dir_armed = u64(1)
 const c_debug_dir_giving_back = u64(2)
 const c_debug_dir_publishing = u64(3)
 const c_debug_dir_rolling_back = u64(4)
+const c_debug_dir_setting_aside = u64(5)
 const c_debug_dir_state_mask = u64(0xff)
 const c_debug_dir_signal_shift = 8
 
@@ -59,6 +62,7 @@ __global v3_c_debug_dir_path [4200]u8
 __global v3_c_debug_dir_path_set_aside [4200]u8
 __global v3_c_debug_dir_path_interrupted [4200]u8
 __global v3_c_debug_dir_path_retired [4200]u8
+__global v3_c_debug_dir_path_set_aside_dir [4200]u8
 __global v3_c_debug_dir_word u64
 __global v3_c_debug_dir_signals_pid int
 __global v3_c_debug_dir_signals_installed bool
@@ -135,13 +139,18 @@ fn v3_write_c_debug_dir_path(buffer &u8, path string) {
 }
 
 // v3_arm_c_debug_dir_signals makes an interrupt of this build give `cc_dir` back. Called when
-// the directory is set aside; `cc_dir` is shorter than max_c_debug_dir_path.
-fn v3_arm_c_debug_dir_signals(cc_dir string) {
+// the directory is set aside; `cc_dir` is shorter than max_c_debug_dir_path. `state` is what
+// the word is left at: `armed`, or `setting aside` while the build does not know yet whether
+// its move of the directory worked (v3_end_c_debug_dir_setup follows then).
+fn v3_arm_c_debug_dir_signals(cc_dir string, state u64) {
 	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
 	v3_write_c_debug_dir_path(&v3_c_debug_dir_path[0], cc_dir)
 	v3_write_c_debug_dir_path(&v3_c_debug_dir_path_set_aside[0], v3_c_debug_dir_set_aside(cc_dir))
 	v3_write_c_debug_dir_path(&v3_c_debug_dir_path_interrupted[0], v3_c_debug_dir_interrupted(cc_dir))
 	v3_write_c_debug_dir_path(&v3_c_debug_dir_path_retired[0], v3_c_debug_dir_retired(cc_dir))
+	// `<set aside>/.` is there exactly when the name is a directory's
+	v3_write_c_debug_dir_path(&v3_c_debug_dir_path_set_aside_dir[0], v3_c_debug_dir_set_aside(cc_dir) +
+		'/.')
 	v3_c_debug_dir_signals_pid = os.getpid()
 	if !v3_c_debug_dir_signals_installed {
 		v3_c_debug_dir_signals_installed = true
@@ -151,7 +160,19 @@ fn v3_arm_c_debug_dir_signals(cc_dir string) {
 			v3_c_debug_dir_previous_hup = v3_install_c_debug_dir_signal(.hup)
 		}
 	}
-	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_armed)
+	stdatomic.store_u64(&v3_c_debug_dir_word, state)
+}
+
+// v3_end_c_debug_dir_setup is called when the build knows whether the directory in place was
+// moved aside: the word goes to `next` (armed when it was, idle when the build is refused),
+// and a signal that waited meanwhile is raised. It then finds what it can act on: a directory
+// that is set aside, or nothing set aside at all. During the move itself it would have found
+// neither, or, with the name taken by something else, the wrong thing.
+fn v3_end_c_debug_dir_setup(next u64) {
+	waiting := v3_take_c_debug_dir_word(c_debug_dir_setting_aside, next)
+	if waiting > 0 {
+		C.raise(i32(waiting))
+	}
 }
 
 // v3_disarm_c_debug_dir_signals is called when nothing is set aside any more: an interrupt
@@ -220,7 +241,7 @@ fn v3_c_debug_dir_rollback_step(word u64) CDebugDirRollbackStep {
 		c_debug_dir_giving_back {
 			return .theirs
 		}
-		c_debug_dir_rolling_back, c_debug_dir_publishing {
+		c_debug_dir_rolling_back, c_debug_dir_publishing, c_debug_dir_setting_aside {
 			return .busy
 		}
 		else {
@@ -345,11 +366,11 @@ fn v3_c_debug_dir_signal_step(word u64, sig int) CDebugDirSignalStep {
 			}
 			return .again
 		}
-		c_debug_dir_publishing, c_debug_dir_rolling_back {
+		c_debug_dir_publishing, c_debug_dir_rolling_back, c_debug_dir_setting_aside {
 			// The build is moving its executable into place and does not know yet which
 			// sources belong to the one that will be there; or it is giving the directory
-			// back itself, and the directories are in between. It takes this signal out of
-			// the word when it is done, and raises it.
+			// back itself, or moving it aside, and the directories are in between. It takes
+			// this signal out of the word when it is done, and raises it.
 			state := word & c_debug_dir_state_mask
 			if v3_c_debug_dir_swap(word, state | (u64(sig) << c_debug_dir_signal_shift)) {
 				return .wait
@@ -370,10 +391,12 @@ fn v3_c_debug_dir_signal_step(word u64, sig int) CDebugDirSignalStep {
 // the directory was set aside, and nothing else. Only when something is set aside does the
 // first rename have a second to follow: rename() of a directory that is not there fails and
 // changes nothing. And only when it was not retired: a directory with the mark beside it is
-// the sources of an executable that was replaced.
+// the sources of an executable that was replaced. What is asked for is a DIRECTORY under the
+// set-aside name (`<name>/.`), as the Windows handler asks: something else that has taken the
+// name is nothing to give back, and moving it into the place of the sources would lose them.
 fn v3_give_back_c_debug_dir_in_a_handler() {
 	$if !windows {
-		if C.access(&char(&v3_c_debug_dir_path_set_aside[0]), 0) == 0
+		if C.access(&char(&v3_c_debug_dir_path_set_aside_dir[0]), 0) == 0
 			&& C.access(&char(&v3_c_debug_dir_path_retired[0]), 0) != 0 {
 			C.rename(&char(&v3_c_debug_dir_path[0]), &char(&v3_c_debug_dir_path_interrupted[0]))
 			C.rename(&char(&v3_c_debug_dir_path_set_aside[0]), &char(&v3_c_debug_dir_path[0]))

@@ -659,3 +659,89 @@ fn test_a_directory_that_cannot_be_removed_does_not_swallow_the_one_set_aside() 
 	assert read_c_debug_dir(dir) == 'old'
 	assert os.ls(root)! == ['.program.v3cc.cg']
 }
+
+// The name of the set-aside directory is taken by something that is no directory, the
+// directory in place is watched, and a signal comes: the schedule in which a build had armed
+// the watch and had not yet found that its move failed. A handler gives back a DIRECTORY that
+// was set aside, and nothing that merely has its name. (Before, the Unix handler asked only
+// whether the name existed: it moved the sources in place to `.interrupted`, where the next
+// build removes them, and put the thing in the way in their place.)
+fn test_a_handler_gives_back_a_directory_and_not_whatever_has_its_name() {
+	$if windows {
+		// the Windows handler asks for a directory already (v3_c_debug_dir_is_set_aside)
+		return
+	}
+	root := c_debug_dir_fixture('name_taken_signal')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	os.write_file(set_aside, 'in the way')!
+	v3_watch_c_debug_dir(dir)
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.int)) == .give_back
+	v3_give_back_c_debug_dir_in_a_handler()
+	assert read_c_debug_dir(dir) == 'sources 1', 'the sources in place are where they were'
+	assert os.read_file(set_aside)! == 'in the way'
+	assert !os.exists(v3_c_debug_dir_interrupted(dir))
+	// (the process ends here; the test puts the word back instead)
+	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
+	v3_unwatch_c_debug_dir()
+}
+
+// A signal while the build is moving the directory in place aside: it waits, as during a
+// publication, and touches nothing. The build raises it when it knows the outcome. Played by
+// hand: the state the build is in between its watch and its move, then the handler.
+fn test_a_signal_during_the_setup_waits_until_the_move_is_known() {
+	root := c_debug_dir_fixture('setup_signal')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	os.write_file(set_aside, 'in the way')!
+	v3_watch_c_debug_dir_as(dir, c_debug_dir_setting_aside)
+	assert v3_c_debug_dir_state_is(c_debug_dir_setting_aside)
+	// the signal, as the handler is called: it gives nothing back and ends nothing
+	v3_c_debug_dir_signal(.term)
+	assert v3_c_debug_dir_state_is(c_debug_dir_setting_aside)
+	assert read_c_debug_dir(dir) == 'sources 1'
+	assert os.read_file(set_aside)! == 'in the way'
+	assert !os.exists(v3_c_debug_dir_interrupted(dir))
+	// a cleanup on another thread of the build stays out as well
+	assert v3_c_debug_dir_rollback_step(v3_c_debug_dir_load()) == .busy
+	// the build finds its move failed, and lets the word go: the signal is in it
+	assert v3_take_c_debug_dir_word(c_debug_dir_setting_aside, c_debug_dir_idle) == int(os.Signal.term)
+	// raised now, it only ends the process
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.term)) == .end
+	v3_unwatch_c_debug_dir()
+}
+
+// The whole of it through the build's own function: with the name taken, the build is refused,
+// the word was never `armed` on the way (it ends idle, with nothing watched), and the sources
+// in place and the thing in the way are as they were. And a move that works leaves the word
+// armed with a directory set aside.
+fn test_the_setup_ends_idle_when_refused_and_armed_when_the_directory_was_moved() {
+	root := c_debug_dir_fixture('setup_outcomes')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	os.write_file(set_aside, 'in the way')!
+	assert v3_set_aside_c_debug_dir(dir).contains('did not start')
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+	assert v3_watched_c_debug_dir() == ''
+	assert read_c_debug_dir(dir) == 'sources 1'
+	assert os.read_file(set_aside)! == 'in the way'
+	os.rm(set_aside)!
+	assert v3_set_aside_c_debug_dir(dir) == ''
+	assert v3_c_debug_dir_state_is(c_debug_dir_armed)
+	assert v3_watched_c_debug_dir() == dir
+	assert read_c_debug_dir(set_aside) == 'sources 1'
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'sources 1'
+}

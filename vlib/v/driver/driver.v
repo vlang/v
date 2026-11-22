@@ -6476,15 +6476,22 @@ fn v3_set_aside_c_debug_dir(cc_dir string) string {
 	}
 	if os.exists(cc_dir) {
 		// The watch first: a signal between the move and the watch would find the old
-		// sources set aside and nothing to give them back.
-		v3_watch_c_debug_dir(cc_dir)
+		// sources set aside and nothing to give them back. But not armed yet: until the
+		// move is known to have worked, a signal waits (`setting aside`). Armed, it would
+		// act on whatever has the set-aside name while the sources are still in place.
+		v3_watch_c_debug_dir_as(cc_dir, c_debug_dir_setting_aside)
 		os.rename(cc_dir, set_aside) or {}
 		if os.exists(cc_dir) || !os.is_dir(set_aside) {
 			// It could not be moved (a file in it is open, or the name it would take is
 			// taken). Removing it instead would lose what a failure has to give back.
-			v3_unwatch_c_debug_dir()
-			return v3_refuse_c_debug_build(cc_dir, 'it cannot be moved to ${set_aside}')
+			// The directory is out of every cleanup before the word is let go: a signal
+			// that waited is raised by that, and ends the process.
+			message := v3_refuse_c_debug_build(cc_dir, 'it cannot be moved to ${set_aside}')
+			v3_c_debug_dir_watched_len = 0
+			v3_end_c_debug_dir_setup(c_debug_dir_idle)
+			return message
 		}
+		v3_end_c_debug_dir_setup(c_debug_dir_armed)
 		return ''
 	}
 	v3_watch_c_debug_dir(cc_dir)
