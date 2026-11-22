@@ -364,6 +364,11 @@ When migrating a workflow, keep the job's explicit install step until CI proves 
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
 
+The action refreshes the apt package lists before the cache lookup. On a miss, the
+underlying cache action installs from whatever lists the runner has, and with a stale
+image it saved entries without packages; every later job then restored nothing and
+installed the whole profile from apt. If that ever recurs, bump `version` in the action.
+
 ## MemorySanitizer dependencies
 
 MemorySanitizer jobs use `ubuntu-24.04` and its default Clang 18 toolchain for
