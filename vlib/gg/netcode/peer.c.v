@@ -33,10 +33,8 @@ pub fn (mut p Peer) send(payload Packet) ! {
 	wire.write_u16(p.last_ack)
 	wire.write_u32(p.ack_bits)
 	body := payload.bytes()
-	for b in body {
-		wire.write_u8(b)
-	}
-	p.conn.write(wire.bytes())!
+	wire.data << body
+	p.conn.write(wire.data)!
 }
 
 // decode_header splits an 8-byte datagram header and returns seq, last_ack,

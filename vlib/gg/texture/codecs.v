@@ -122,7 +122,9 @@ pub fn generate_mipmaps(src []u8, width int, height int) [][]u8 {
 			}
 		}
 		levels << next
-		prev = next.clone()
+		// `next` is allocated fresh each level and never mutated after this
+		// point, so transferring ownership avoids a full buffer copy.
+		unsafe { prev = next }
 		w = nw
 		h = nh
 	}

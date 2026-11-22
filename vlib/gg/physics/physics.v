@@ -99,10 +99,35 @@ pub fn (mut w World) step(dt f32) {
 			}
 		}
 	}
+	// Sweep-and-prune on X: bodies are sorted once, then each body only tests
+	// later bodies until their X intervals can no longer overlap. Spread-out
+	// scenes avoid the quadratic all-pairs scan while dense scenes keep the
+	// same result (every potentially overlapping pair is still tested).
+	mut order := []int{len: w.bodies.len}
+	for i in 0 .. order.len {
+		order[i] = i
+	}
+	for i := 1; i < order.len; i++ {
+		key := order[i]
+		key_x := w.bodies[key].position.x
+		mut j := i - 1
+		for j >= 0 && w.bodies[order[j]].position.x > key_x {
+			order[j + 1] = order[j]
+			j--
+		}
+		order[j + 1] = key
+	}
 	for _ in 0 .. 3 {
-		for i in 0 .. w.bodies.len {
-			for j in i + 1 .. w.bodies.len {
-				resolve_pair(mut w.bodies[i], mut w.bodies[j])
+		for i in 0 .. order.len {
+			ai := order[i]
+			a := w.bodies[ai]
+			for j in i + 1 .. order.len {
+				bi := order[j]
+				b := w.bodies[bi]
+				if b.position.x - a.position.x > a.radius + b.radius {
+					break
+				}
+				resolve_pair(mut w.bodies[ai], mut w.bodies[bi])
 			}
 		}
 	}
