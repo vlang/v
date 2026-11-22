@@ -139,6 +139,10 @@ with the default compiler, and `test` is handled by the default compiler directl
 
 `-new-compiler` remains accepted as a no-op for existing command lines.
 
+`-vls-mode` uses the current compiler's mini-VLS protocol. Completion queries require parseable
+source. An editor requesting completion immediately after a dot can insert a placeholder
+identifier before sending the query.
+
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
 
