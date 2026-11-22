@@ -331,7 +331,7 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	clang := os.find_abs_path_of_executable('clang') or { return }
 	c_file := headerless_linux_bootstrap_c()!
 	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
-		'arm64-apple-macos13', 'x86_64-apple-macos12', 'x86_64-unknown-freebsd14',
+		'arm64-apple-macosx13', 'x86_64-apple-macosx12', 'x86_64-unknown-freebsd14',
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
 		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
 			'-Werror=implicit-function-declaration', '-DCUSTOM_DEFINE_v1_fallback', c_file])
