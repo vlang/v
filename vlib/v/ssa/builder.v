@@ -17620,7 +17620,7 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 				field_ptr := b.get_field_ptr(addr, field_name)
 				return b.emit1(.load, b.deref_type(field_ptr), field_ptr)
 			}
-			if field_name == 'len' && b.deref_type(addr) == b.map_type {
+			if field_name == 'len' && b.is_map_related_type(b.deref_type(addr)) {
 				return b.load_map_len(addr)
 			}
 			if field := b.load_smartcast_sum_selector(addr, base_id, field_name) {
@@ -17633,7 +17633,7 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	if base.kind == .selector && b.selector_has_addressable_root(&base) {
 		if field_name == 'len' {
 			base_addr := b.build_selector_addr(base)
-			if b.deref_type(base_addr) == b.map_type {
+			if b.is_map_related_type(b.deref_type(base_addr)) {
 				return b.load_map_len(base_addr)
 			}
 		}
@@ -17648,7 +17648,10 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	}
 	base_val := b.build_expr(base_id)
 	base_typ := b.value_type(base_val)
-	if field_name == 'len' && base_typ == b.map_type {
+	if field_name == 'len' && b.is_map_related_type(base_typ) {
+		if b.is_pointer_type(base_typ) {
+			return b.load_map_len(base_val)
+		}
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(base_typ))
 		b.emit2(.store, b.void_type, base_val, alloca)
 		return b.load_map_len(alloca)
@@ -17802,11 +17805,24 @@ fn (b &Builder) selector_qualified_name(node flat.Node) string {
 	return out
 }
 
+// is_map_related_type reports whether typ is a map or pointers around a map.
+fn (b &Builder) is_map_related_type(typ TypeID) bool {
+	mut base := typ
+	for b.is_pointer_type(base) {
+		base = b.m.type_store.types[base].elem_type
+	}
+	return base == b.map_type
+}
+
 fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
+	mut address := map_ptr
+	for b.is_pointer_type(b.deref_type(address)) {
+		address = b.emit1(.load, b.deref_type(address), address)
+	}
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
 	result_slot := b.emit0(.alloca, ptr_i64)
-	state := b.map_state_ptr(b.cur_block, map_ptr)
+	state := b.map_state_ptr(b.cur_block, address)
 	zero_state := b.m.get_or_add_const(ptr_state, '0')
 	has_state := b.emit2(.ne, b.i1_type, state, zero_state)
 	blk_load := b.m.add_block(b.cur_func, 'map_len_state')

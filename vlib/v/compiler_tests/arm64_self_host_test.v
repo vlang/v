@@ -66,7 +66,10 @@ fn main() {
 fn test_json_dynamic_values_update_mutable_sum_parameters() {
 	$if macos && arm64 {
 		output := run_arm64('json_mutable_sum', 'import json2
-struct Payload { input map[string]json2.Any }
+struct Payload {
+	content ?json2.Any
+	input map[string]json2.Any
+}
 fn main() {
 	item := json2.decode[Payload](\'{"input":{"file_path":"parser.c"}}\') or { panic(err) }
 	value := item.input["file_path"] or { panic("missing key") }

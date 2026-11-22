@@ -58,6 +58,8 @@ Fixed-array channel elements retain their inline size and contents during sends,
 and `select`, including the nonblocking methods.
 Assignments to mutable native function parameters update the caller's storage, including
 generic sum-type parameters whose active variant changes during JSON decoding.
+Map lengths read through references, mutable parameters, and pointer-valued struct fields
+use the map's element count.
 On macOS ARM64, the C compiler probes numeric constants and absolute pointer sentinels such as
 `C.SIG_ERR`. Constants that require a linker relocation are rejected by the raw-value probe.
 Native macOS executables use a 64 MiB main stack, matching the C backend's linker setting
