@@ -14,10 +14,21 @@ device output behind a small function-pointer interface.
 - `Listener`, `PositionalVoice` — distance attenuation and stereo panning.
 - `Stream` — chunked playback with optional looping.
 
+## Codecs
+
+- `adpcm_encode`/`adpcm_decode` — pure-V IMA ADPCM, 4 bits per sample (4:1).
+- `encode_wav` — writes a 16-bit PCM WAV container.
+- `load_ogg`/`decode_ogg_memory` — OGG/Vorbis decode via the bundled
+  `encoding.vorbis` (stb_vorbis, native only).
+- `load_compressed` — dispatches by extension between WAV and OGG.
+
+MP3 and compressed encoding are not bundled in this checkout.
+
 ## Devices
 
 - `null_device()` — headless, always available, no output.
 - `sokol_device(cfg)` — native output through `sokol.audio` (`.c.v`).
+- `webaudio_device(cfg)` — browser output through WebAudio (`.js.v`).
 - `audio.Device` exposes `setup`, `push`, `set_volume`, `close`.
 
 ## gg integration
