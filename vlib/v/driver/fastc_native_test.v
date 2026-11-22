@@ -649,3 +649,12 @@ fn test_fastc_native_owner_binds_only_called_bridges() {
 	assert 'draw' in used
 	assert '__wasi_clock_time_get' !in used
 }
+
+fn test_fastc_native_owner_takes_the_link_inputs_of_ldflags() {
+	owner, program := v3_fastc_split_native_link_flags(['-Xlinker', '/w/libsimd.a', '-lc++',
+		'-framework', 'Metal', '-Wl,/w/libgc.a', '-Wl,-dead_strip_dylibs', '-Wl,-rpath,/w/lib',
+		'/w/extra.o'])
+	assert owner == ['-Xlinker', '/w/libsimd.a', '-lc++', '-framework', 'Metal', '-Wl,/w/libgc.a',
+		'/w/extra.o']
+	assert program == ['-Wl,-rpath,/w/lib']
+}
