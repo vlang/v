@@ -97,7 +97,10 @@ fn test_shared_map_reads_in_range_bounds_and_select_cases_are_locked() {
 	source := os.join_path(root, 'program.v')
 	os.write_file(source, shared_map_autolock_program)!
 	csource := os.join_path(root, 'program.c')
-	gen := os.exec([@VEXE, '-o', csource, source])
+	// Name a GCC-style compiler: the line scan below needs the statement expressions
+	// of GCC-style C. With `-cc msvc` (VFLAGS of the MSVC CI jobs) a locked read is
+	// hoisted into one line with its lock and unlock.
+	gen := os.exec([@VEXE, '-cc', 'gcc', '-o', csource, source])
 	assert gen.exit_code == 0, gen.output
 	csrc := os.read_file(csource)!
 	range_unlocked, range_accesses := shared_map_accesses_outside_locks(csrc, 'range_bounds')

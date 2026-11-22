@@ -40,7 +40,9 @@ fn test_nested_fixed_array_literal_storage_outlives_its_statement_expression() {
 		os.rm(output) or {}
 	}
 	os.write_file(path, nested_fixed_literal_source)!
-	result := os.exec([@VEXE, '-o', output, path])
+	// Name a GCC-style compiler: the statement expressions checked below are not
+	// written for `-cc msvc`, which the MSVC CI jobs pass in VFLAGS.
+	result := os.exec([@VEXE, '-cc', 'gcc', '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	mut body := generated
