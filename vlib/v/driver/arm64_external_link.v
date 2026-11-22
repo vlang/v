@@ -761,7 +761,8 @@ fn arm64_is_c_identifier(name string) bool {
 
 // arm64_c_constant_probe_lines writes one probe line per name; each line
 // defines the integer value, the floating point value and whether the
-// constant has a floating point type.
+// constant has a floating point type. Pointer sentinels use the integer value;
+// addresses needing relocation cannot be read from the probe's raw bytes.
 fn arm64_c_constant_probe_lines(names []string, keep []bool, base int) string {
 	mut out := []string{}
 	out << '#define V_CCONST_KEEP __attribute__((used, visibility("hidden")))'
@@ -770,7 +771,7 @@ fn arm64_c_constant_probe_lines(names []string, keep []bool, base int) string {
 			continue
 		}
 		out << '#line ${base + i + 1} "${arm64_c_probe_file}"'
-		out << 'V_CCONST_KEEP const double __v_cconst_f_${i} = (double)(${name}); V_CCONST_KEEP const int __v_cconst_k_${i} = _Generic((${name}), float: 1, double: 1, long double: 1, unsigned long: 2, unsigned long long: 2, default: 0); V_CCONST_KEEP const long long __v_cconst_i_${i} = (long long)(${name});'
+		out << 'V_CCONST_KEEP const double __v_cconst_f_${i} = (double)_Generic((${name}), float: (${name}), double: (${name}), long double: (${name}), default: 0); V_CCONST_KEEP const int __v_cconst_k_${i} = _Generic((${name}), float: 1, double: 1, long double: 1, unsigned long: 2, unsigned long long: 2, default: 0); V_CCONST_KEEP const long long __v_cconst_i_${i} = (long long)(${name}); _Static_assert(__builtin_constant_p(${name}), "C constant requires relocation");'
 	}
 	return out.join('\n') + '\n'
 }
@@ -879,8 +880,8 @@ fn arm64_probe_symbol_i64(symbols map[string][]u8, name string) ?i64 {
 	return unsafe { *(&i64(&u8(bits.data))) }
 }
 
-// arm64_read_c_constants reads the values of the arithmetic C constants of the
-// probe, whose lines for `names` start at `base`.
+// arm64_read_c_constants reads arithmetic constants and absolute pointer sentinels
+// from the probe, whose lines for `names` start at `base`.
 fn arm64_read_c_constants(names []string, keep []bool, base int, symbols map[string][]u8, mut result map[string]Arm64CConstant) {
 	for i, name in names {
 		if !keep[base + i] {
