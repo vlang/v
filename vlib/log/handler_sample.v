@@ -37,7 +37,7 @@ pub fn (h &SampledHandler) enabled(level Level) bool {
 	return h.inner.enabled(level)
 }
 
-pub fn (h &SampledHandler) handle(ctx context.Context, mut r Record) ! {
+pub fn (h &SampledHandler) handle(ctx context.Context, r Record) ! {
 	mut self := unsafe { h }
 	self.mu.lock()
 	defer { self.mu.unlock() }
@@ -50,7 +50,7 @@ pub fn (h &SampledHandler) handle(ctx context.Context, mut r Record) ! {
 		keep = self.counter % self.every == 0
 	}
 	if keep {
-		h.inner.handle(ctx, mut r) or {}
+		h.inner.handle(ctx, r) or {}
 	}
 }
 

@@ -42,14 +42,14 @@ fn async_worker(h &AsyncHandler) {
 		select {
 			r := <-h.queue {
 				mut rr := r
-				h.inner.handle(h.ctx, mut rr) or {}
+				h.inner.handle(h.ctx, rr) or {}
 			}
 			_ := <-h.stop {
 				for {
 					select {
 						last := <-h.queue {
 							mut rr := last
-							h.inner.handle(h.ctx, mut rr) or {}
+							h.inner.handle(h.ctx, rr) or {}
 						}
 						else {
 							return
@@ -65,7 +65,7 @@ pub fn (h &AsyncHandler) enabled(level Level) bool {
 	return h.inner.enabled(level)
 }
 
-pub fn (h &AsyncHandler) handle(_ context.Context, mut r Record) ! {
+pub fn (h &AsyncHandler) handle(_ context.Context, r Record) ! {
 	mut self := unsafe { h }
 	self.mu.lock()
 	closed := self.closed

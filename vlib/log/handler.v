@@ -53,7 +53,7 @@ pub fn (l &LevelVar) get() Level {
 // Handler receives records from a RecordLogger.
 pub interface Handler {
 	enabled(level Level) bool
-	handle(ctx context.Context, mut r Record) !
+	handle(ctx context.Context, r Record) !
 	with_attrs(attrs []Attr) Handler
 	with_group(name string) Handler
 	set_level(level Level)
@@ -164,7 +164,7 @@ pub fn (h &DiscardHandler) enabled(level Level) bool {
 	return false
 }
 
-pub fn (h &DiscardHandler) handle(ctx context.Context, mut r Record) ! {}
+pub fn (h &DiscardHandler) handle(ctx context.Context, r Record) ! {}
 
 pub fn (h &DiscardHandler) set_level(level Level) {}
 
@@ -197,10 +197,10 @@ pub fn (h &MultiHandler) enabled(level Level) bool {
 	return false
 }
 
-pub fn (h &MultiHandler) handle(ctx context.Context, mut r Record) ! {
+pub fn (h &MultiHandler) handle(ctx context.Context, r Record) ! {
 	for sub in h.handlers {
 		if sub.enabled(r.level) {
-			sub.handle(ctx, mut r) or {}
+			sub.handle(ctx, r) or {}
 		}
 	}
 }

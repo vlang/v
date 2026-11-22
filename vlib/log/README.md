@@ -123,10 +123,10 @@ fn main() {
 ```
 
 Available attribute constructors: `str`, `int`, `float`, `bool`, `time_attr`,
-`group` and `err`. For hot paths where the per-call attribute slice matters,
-allocate one `Attrs` builder up front, call `clear()` between records, and log
-with `log_attrs`. Built-in handlers render into a reused scratch buffer with a
-single write per record.
+`group` and `err`. For hot paths there are two slice-free options: reuse an
+`Attrs` builder with `log_attrs`, or pass a stack allocated `FixedAttrs` list
+(`fixed1` .. `fixed4`) to `log_fixed`. Built-in handlers render into a reused
+scratch buffer and write it with a single call.
 
 Built-in handlers: `TextHandler`, `JSONHandler`, `MultiHandler` and
 `DiscardHandler`. `HandlerOptions` supports a fixed or runtime adjustable level,
