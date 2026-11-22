@@ -10,6 +10,9 @@ import context
 import io
 import sync
 
+// level_mu guards LevelVar.level so runtime level changes are safe when
+// several threads call enabled() at the same time.
+
 // ReplaceAttr can rewrite, filter (by returning Attr{}), or reorder an
 // attribute before it is rendered. `groups` is the active group path.
 pub type ReplaceAttr = fn (groups []string, attr Attr) Attr
@@ -32,7 +35,8 @@ pub:
 // it can be changed while the application is running.
 pub struct LevelVar {
 mut:
-	level Level = .info
+	level Level       = .info
+	mu    &sync.Mutex = sync.new_mutex()
 }
 
 // new_level_var returns a LevelVar initialised at `level`.
@@ -40,14 +44,22 @@ pub fn new_level_var(level Level) &LevelVar {
 	return &LevelVar{ level: level }
 }
 
-// set changes the minimum level.
-pub fn (mut l LevelVar) set(level Level) {
-	l.level = level
+// set changes the minimum level. LevelVar is always heap allocated; the
+// mutable pointer is taken inside this guarded method so callers need no
+// unsafe block.
+pub fn (l &LevelVar) set(level Level) {
+	mut self := unsafe { l }
+	self.mu.lock()
+	defer { self.mu.unlock() }
+	self.level = level
 }
 
 // get returns the current minimum level.
 pub fn (l &LevelVar) get() Level {
-	return l.level
+	mut self := unsafe { l }
+	self.mu.lock()
+	defer { self.mu.unlock() }
+	return self.level
 }
 
 // Handler receives records from a RecordLogger.
@@ -110,6 +122,12 @@ fn (c HandlerConfig) all_attrs() []Attr {
 	return c.attrs
 }
 
+// is_reserved_key reports whether `key` would collide with a built-in record
+// field. Such user fields are ignored so a record cannot spoof its metadata.
+fn is_reserved_key(key string) bool {
+	return key in ['time', 'level', 'msg']
+}
+
 fn make_config(st &HandlerShared, attrs []Attr, groups []string) HandlerConfig {
 	return HandlerConfig{ st: st, attrs: attrs, groups: groups }
 }
@@ -122,15 +140,20 @@ fn concat_attrs(a []Attr, b []Attr) []Attr {
 }
 
 fn (c HandlerConfig) enabled(level Level) bool {
+	mut s := c.st
+	s.mu.lock()
+	defer { s.mu.unlock() }
 	// The Level enum is ordered from least to most verbose, so a message is
 	// enabled when the configured threshold is at least as verbose as it.
-	if v := c.st.level_var {
+	if v := s.level_var {
 		return int(v.get()) >= int(level)
 	}
-	return int(c.st.level) >= int(level)
+	return int(s.level) >= int(level)
 }
 
 // apply_replace runs the configured ReplaceAttr over a list of attributes.
+// Returning an Attr with an empty key drops the attribute, so a caller that
+// legitimately uses an empty key must not rely on it being rendered.
 fn (c HandlerConfig) apply_replace(groups []string, attrs []Attr) []Attr {
 	replace := c.st.opts.replace_attr or { return attrs }
 	mut out := []Attr{cap: attrs.len}

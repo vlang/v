@@ -52,13 +52,20 @@ pub fn (h &TextHandler) handle(ctx context.Context, r Record) ! {
 
 	all := h.cfg.apply_replace(r.groups, r.attrs)
 	for a in h.cfg.attrs {
-		append_attr(mut s.buf, h.cfg.groups, a)
+		if !is_reserved_key(a.key) {
+			append_attr(mut s.buf, h.cfg.groups, a)
+		}
 	}
 	for i in 0 .. r.fixed.len {
-		append_attr(mut s.buf, r.groups, r.fixed.items[i])
+		a := r.fixed.items[i]
+		if !is_reserved_key(a.key) {
+			append_attr(mut s.buf, r.groups, a)
+		}
 	}
 	for a in all {
-		append_attr(mut s.buf, r.groups, a)
+		if !is_reserved_key(a.key) {
+			append_attr(mut s.buf, r.groups, a)
+		}
 	}
 	append_byte(mut s.buf, '\n')
 
@@ -67,7 +74,12 @@ pub fn (h &TextHandler) handle(ctx context.Context, r Record) ! {
 
 pub fn (h &TextHandler) set_level(level Level) {
 	mut s := h.cfg.st
+	s.mu.lock()
+	defer { s.mu.unlock() }
 	s.level = level
+	if v := s.level_var {
+		v.set(level)
+	}
 }
 
 pub fn (h &TextHandler) with_attrs(attrs []Attr) Handler {
