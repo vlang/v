@@ -36,10 +36,14 @@ pub fn (h &JSONHandler) handle(ctx context.Context, mut r Record) ! {
 	s.buf.clear()
 	opts := s.opts
 	now := if opts.local_time { time.now() } else { time.utc() }
-	ts := format_time(now, opts.time_format, opts.custom_time_format)
 	append_byte(mut s.buf, '{')
-	append_str(mut s.buf, '"time":')
-	append_json_string(mut s.buf, ts)
+	append_str(mut s.buf, '"time":"')
+	if timestamp_direct_supported(opts.time_format) {
+		append_timestamp(mut s.buf, now, opts.time_format, opts.local_time)
+	} else {
+		append_escaped(mut s.buf, format_time(now, opts.time_format, opts.custom_time_format))
+	}
+	append_byte(mut s.buf, '"')
 	append_str(mut s.buf, ',"level":')
 	append_json_string(mut s.buf, r.level.str())
 	append_str(mut s.buf, ',"msg":')
@@ -92,6 +96,12 @@ pub fn (h &JSONHandler) with_group(name string) Handler {
 // scratch buffer. It avoids the intermediate allocation made by json_escape.
 fn append_json_string(mut buf []u8, s string) {
 	buf << u8(34)
+	append_escaped(mut buf, s)
+	buf << u8(34)
+}
+
+// append_escaped writes the escaped content of a JSON string without quotes.
+fn append_escaped(mut buf []u8, s string) {
 	for c in s.bytes() {
 		match c {
 			u8(34) {
@@ -136,7 +146,6 @@ fn append_json_string(mut buf []u8, s string) {
 			}
 		}
 	}
-	buf << u8(34)
 }
 
 fn append_json_attr(mut buf []u8, key string, v Value) {

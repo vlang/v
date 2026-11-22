@@ -38,8 +38,11 @@ pub fn (h &TextHandler) handle(ctx context.Context, mut r Record) ! {
 	s.buf.clear()
 	opts := s.opts
 	now := if opts.local_time { time.now() } else { time.utc() }
-	ts := format_time(now, opts.time_format, opts.custom_time_format)
-	append_str(mut s.buf, ts)
+	if timestamp_direct_supported(opts.time_format) {
+		append_timestamp(mut s.buf, now, opts.time_format, opts.local_time)
+	} else {
+		append_str(mut s.buf, format_time(now, opts.time_format, opts.custom_time_format))
+	}
 	append_byte(mut s.buf, ' ')
 	append_byte(mut s.buf, '[')
 	append_str(mut s.buf, s.tags[int(r.level)])
