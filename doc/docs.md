@@ -156,8 +156,6 @@ Keep it disabled when those inputs can change between builds.
 Parallel monomorphization also remains opt-in through `V3_PARALLEL_MONOMORPHIZE=1`
 while nested generic-interface dispatch is being validated.
 
-`-new-compiler` remains accepted as a no-op for existing command lines.
-
 `oldv --command` runs a shell command in the checked-out repository, using `sh -c`
 on Unix and `cmd /c` on Windows. Commands can use shell operators such as `&&`,
 pipes, and redirection; `oldv` returns the command's exit status.

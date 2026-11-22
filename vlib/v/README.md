@@ -137,8 +137,6 @@ compiled by the default compiler.
 compiler implementation is no longer kept in this repository. External tools are first compiled
 with the default compiler, and `test` is handled by the default compiler directly.
 
-`-new-compiler` remains accepted as a no-op for existing command lines.
-
 `-vls-mode` uses the current compiler's mini-VLS protocol. Completion queries require parseable
 source. An editor requesting completion immediately after a dot can insert a placeholder
 identifier before sending the query.
