@@ -12251,6 +12251,9 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	test_files := test_input_files(user_files, backend, prefs.target)
+	if extra_test_inputs.len > 0 {
+		rename_colliding_batch_test_fns(mut a, test_files)
+	}
 	if should_run && test_files.len > 0 {
 		remove_binary_after_run = true
 	}
@@ -21644,6 +21647,47 @@ fn collect_test_harness_decl_ids(a &flat.FlatAst, node &flat.Node, mut ids []fla
 			ids << child_id
 		} else if child.kind == .block {
 			collect_test_harness_decl_ids(a, child, mut ids)
+		}
+	}
+}
+
+// rename_colliding_batch_test_fns gives the test functions of a batch of test files
+// (`v test` builds several files of one directory as one binary) names of their
+// own: files of one module may each declare `fn test_main()`. A later file's test
+// function of a name that an earlier file of its module already declared is
+// renamed. A batch that fails runs again file by file, under the original names.
+fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
+	mut selected := map[string]bool{}
+	for file in test_files {
+		selected[file] = true
+	}
+	mut seen := map[string]bool{}
+	mut file_number := 0
+	for file_idx in a.user_code_start .. a.nodes.len {
+		file_node := a.nodes[file_idx]
+		if !is_user_test_file_node(a, file_idx, file_node, selected) {
+			continue
+		}
+		file_number++
+		// A file without a module clause is in `main`, as one with `module main` is.
+		mut module_name := test_file_module_name(a, file_node)
+		if module_name == '' {
+			module_name = 'main'
+		}
+		mut decl_ids := []flat.NodeId{}
+		collect_test_harness_decl_ids(a, &file_node, mut decl_ids)
+		for id in decl_ids {
+			name := a.nodes[int(id)].value
+			if !name.starts_with('test_') || name.contains('.')
+				|| test_harness_fn_param_count(a, &a.nodes[int(id)]) != 0 {
+				continue
+			}
+			key := '${module_name}.${name}'
+			if key in seen {
+				a.nodes[int(id)].value = '${name}__batch_file_${file_number}'
+			} else {
+				seen[key] = true
+			}
 		}
 	}
 }

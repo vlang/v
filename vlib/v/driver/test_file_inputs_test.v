@@ -71,3 +71,27 @@ fn test_internal_tests_of_one_module_build_into_one_binary() ! {
 		assert rejected.output.contains('multiple input paths are not supported'), rejected.output
 	}
 }
+
+fn test_test_functions_of_one_name_in_several_files_all_run() ! {
+	root := batched_inputs_root()!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path(root, 'first_test.v')
+	second := os.join_path(root, 'second_test.v')
+	// One file names its module, the other one does not: both are `main`.
+	os.write_file(first, 'module main\n\nfn test_main() {\n\tprintln("first main ran")\n}\n')!
+	os.write_file(second, 'fn test_main() {\n\tprintln("second main ran")\n\tassert 1 + 1 == 2\n}\n')!
+	env := {
+		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS':                 ''
+	}
+	binary := os.join_path(root, 'batch')
+	built := cmdexec.run_in_merged_with_env(@VEXE, ['-skip-running', '-o', binary, first, second],
+		root, env)
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(binary, [])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.contains('first main ran'), ran.output
+	assert ran.output.contains('second main ran'), ran.output
+}
