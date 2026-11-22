@@ -865,30 +865,37 @@ fn test_file_is_target_of(this_os string, file string) bool {
 	return pref.os_is_target_of(this_os, os_target)
 }
 
-// test processes the selected files, matching exclusions by their resolved paths.
 // cancel_tests is the runner's handler of SIGINT and SIGTERM. A test under a limit is in a
 // process group of its own, so the signal that ends the runner (Ctrl-C in a terminal goes to
 // the runner's group) does not reach it: left alone, the test and what it started would go on
 // with nobody to enforce the limit. The handler only says that the runs are cancelled; a test
-// can be between its fork and the runner's note of it at that moment, on another thread, and
-// nothing that is safe in a signal handler could wait for that.
+// can be between its fork and its first read at that moment, on another thread, and nothing
+// that is safe in a signal handler could wait for that. Once the tests are over, the same
+// call ends the runner at once, with the signal's status (see cmdexec.cancel_bounded_runs).
 fn cancel_tests(sig os.Signal) {
 	cmdexec.cancel_bounded_runs(int(sig))
 }
 
-// exit_when_tests_are_cancelled is the thread that ends the runner after cancel_tests: every
-// test that was running, or was being started, is ended first.
+// exit_when_tests_are_cancelled is the thread that ends the runner after cancel_tests, while
+// tests are running: every test that has an owner is ended by that owner first. When the
+// tests were over before the signal was seen here, the thread that finished them ends the
+// runner (see the end of the testing in TestSession.test), and this one stands back.
 fn exit_when_tests_are_cancelled() {
 	for cmdexec.bounded_runs_cancelled() == 0 {
 		time.sleep(20 * time.millisecond)
+	}
+	if !cmdexec.begin_cancelled_exit() {
+		return
 	}
 	cmdexec.end_cancelled_bounded_runs(10 * time.second)
 	exit(128 + cmdexec.bounded_runs_cancelled())
 }
 
+// test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
 	if ts.timeout_s > 0 {
+		cmdexec.begin_cancellable_work()
 		os.signal_opt(.int, cancel_tests) or {}
 		os.signal_opt(.term, cancel_tests) or {}
 		spawn exit_when_tests_are_cancelled()
@@ -942,6 +949,15 @@ pub fn (mut ts TestSession) test() {
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 
+	if ts.timeout_s > 0 {
+		// The tests are over. A signal that was accepted before this moment decides how the
+		// runner ends, whichever thread saw it and however near the last test's end it came;
+		// one that arrives from here on ends the runner by itself.
+		cancelled_by := cmdexec.finish_bounded_runs()
+		if cancelled_by != 0 {
+			exit(128 + cancelled_by)
+		}
+	}
 	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()

@@ -308,27 +308,26 @@ fn run_in_mode_with_env_timed(program string, args []string, work_folder string,
 		process.set_redirect_stdio()
 	}
 	// A tool that is cancelled ends its bounded runs, which its own signal does not reach
-	// (see bounded_runs.v). From before the fork until the run is in the table it counts as
-	// being started, so that a cancellation at any moment in between waits for it.
+	// (see bounded_runs.v). The run counts as this thread's from before the fork until it has
+	// been waited for and closed, so that a cancellation at any moment of that waits for it,
+	// and only this thread touches its process.
 	bounded := timeout_ms > 0
 	if bounded {
-		begin_bounded_start()
+		begin_bounded_run()
 		if bounded_runs_cancelled() != 0 {
-			end_bounded_start()
+			end_bounded_run()
 			return os.Result{
 				exit_code: 1
 				output:    'V: `${display(program, args)}` was not started: the run was cancelled\n'
 			}, false
 		}
 	}
-	process.run()
-	bounded_slot := if bounded { track_bounded_run(process) } else { -1 }
-	if bounded {
-		end_bounded_start()
-	}
 	defer {
-		untrack_bounded_run(bounded_slot)
+		if bounded {
+			end_bounded_run()
+		}
 	}
+	process.run()
 	mut output := strings.new_builder(1024)
 	mut timed_out := false
 	mut cancelled := false
