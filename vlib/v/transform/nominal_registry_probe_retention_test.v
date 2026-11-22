@@ -122,11 +122,12 @@ fn test_nominal_resolved_function_probes_do_not_retain_cast_or_alias_candidates(
 	call := t.make_call_expr_typed(t.make_ident('__nominal_probe_call'), [t.make_int_literal(1)],
 		flat.source_type_int)
 	target := '__nominal_probe_call_namespace.run'
-	tc.sparse_resolved_call_names[int(call)] = target
-	assert flat.source_type_existing_id(target) == none
-	assert t.try_lower_resolved_named_cast_call(call, a.nodes[int(call)]) == none
-	assert flat.source_type_existing_id(target) == none
+	// A resolved call is stored as the interned callee name; the probes must not
+	// intern the candidates they derive from it.
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(target)
 	receiver := target.all_before_last('.')
+	assert t.try_lower_resolved_named_cast_call(call, a.nodes[int(call)]) == none
+	assert flat.source_type_existing_id(receiver) == none
 	assert t.try_lower_checker_selected_alias_method(call, a.nodes[int(call)], call) == none
 	assert flat.source_type_existing_id(receiver) == none
 }

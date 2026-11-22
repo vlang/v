@@ -91,7 +91,7 @@ struct ImportWarm {
 mut:
 	// What resolving the module and its identity looked up, as the resolver's
 	// path cache holds it.
-	lookups    map[string]string
+	lookups    map[string]V3ImportResolution
 	dir        string
 	found      bool
 	real_dir   string
@@ -145,7 +145,7 @@ const import_warm_min_requests = 4
 // run. Only a build of the compiler's own tree asks for this: nothing there
 // reads the path cache afterwards (a diagnostics server would), so the lookups
 // that a task adds to it ahead of the loop are never seen.
-fn warm_import_resolutions(a &flat.FlatAst, prefs &pref.Preferences, requests []EagerSelfhostImport, project_root string, mut module_path_cache map[string]string, mut module_identity_cache map[string]string) {
+fn warm_import_resolutions(a &flat.FlatAst, prefs &pref.Preferences, requests []EagerSelfhostImport, project_root string, mut module_path_cache map[string]V3ImportResolution, mut module_identity_cache map[string]string) {
 	if requests.len < import_warm_min_requests || isnil(v3_import_dir_memo)
 		|| isnil(a.worker_pool) || a.worker_pool.size() == 0 {
 		return
@@ -180,7 +180,11 @@ fn warm_import_resolutions(a &flat.FlatAst, prefs &pref.Preferences, requests []
 		importing_dir := if warm.importing_file.len > 0 { os.dir(warm.importing_file) } else { '' }
 		path_key := '${importing_dir}\n${warm.path}'
 		if path_key !in module_path_cache {
-			module_path_cache[path_key] = warm.dir
+			module_path_cache[path_key] = V3ImportResolution{
+				module_name:    warm.path
+				importing_file: warm.importing_file
+				dir:            warm.dir
+			}
 		}
 		if !warm.found {
 			continue

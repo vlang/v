@@ -1252,7 +1252,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						symbol_keys << []i32{len: symbol + 1 - symbol_keys.len + 4096}
 					}
 					if symbol_keys[symbol] == 0 {
-						symbol_keys[symbol] = if info := fn_decls[tc.frozen_symbol_name(dependency)] {
+						symbol_keys[symbol] = if info := fn_decls[tc.symbol_name(dependency)] {
 							info.key_id + 1
 						} else {
 							i32(-1)
@@ -1531,7 +1531,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						// What the loop below would skip first.
 						continue
 					}
-					calls << tc.frozen_symbol_name(dependency)
+					calls << tc.symbol_name(dependency)
 					call_keys << symbol_key
 					call_symbols << dependency
 				}
@@ -1545,7 +1545,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			} else {
 				for dependency in tc.direct_dependency_ids(node_key) {
-					calls << tc.frozen_symbol_name(dependency)
+					calls << tc.symbol_name(dependency)
 				}
 				calls << body.calls
 			}
@@ -3751,7 +3751,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 				global_type := if field.value.starts_with('C.') {
 					tc.c_globals[field.value] or { *tc.parse_type(field.typ) }
 				} else {
-					tc.file_scope.lookup(global_name) or { *tc.parse_type(field.typ) }
+					tc.file_scope.lookup_id(flat.source_type_id(global_name)) or { *tc.parse_type(field.typ) }
 				}
 				if scan.type_needs_map_runtime(global_type, tc) {
 					scan.needs_map_runtime = true
@@ -11261,7 +11261,7 @@ fn (c &CallCollector) cached_c_name(name string) string {
 
 fn (c &CallCollector) value_type_name(name string, cur_module string, imports map[string]string) u32 {
 	for candidate in c.value_name_candidates(name, cur_module, imports) {
-		if typ := c.tc.file_scope.lookup(candidate) {
+		if typ := c.tc.file_scope.lookup_id(flat.source_type_id(candidate)) {
 			type_name_source_id_32 := resolve_type_name(typ)
 			if type_name_source_id_32 != 0 {
 				return type_name_source_id_32

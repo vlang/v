@@ -9305,7 +9305,7 @@ fn (mut tc TypeChecker) ownership_alias_storage(lhs_name string, rhs_name string
 	mut has_direct_alias := false
 	root := rhs_name.all_before('.').all_before('[')
 	mut source_type := Type(Unknown{})
-	if root_type := tc.cur_scope.lookup(root) {
+	if root_type := tc.cur_scope.lookup_id(flat.source_type_id(root)) {
 		source_type = tc.returned_receiver_projection_type(root_type, rhs_name[root.len..]) or { Type(Unknown{}) }
 	}
 	for var_name, borrows in st.borrowed_vars {
@@ -10094,7 +10094,7 @@ fn (mut tc TypeChecker) ownership_consume_named_sum_drop_arg(call flat.Node, cal
 	callee_id := tc.ownership_unwrap_expr(tc.a.child(&call, 0))
 	callee := tc.a.node(callee_id)
 	if callee.kind == .ident {
-		if _ := tc.cur_scope.lookup(callee.value) {
+		if _ := tc.cur_scope.lookup_id(callee.name_id()) {
 			return false
 		}
 	}
@@ -11929,7 +11929,7 @@ fn (tc &TypeChecker) ownership_call_name_in_module(id flat.NodeId, module_name s
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-		return tc.resolved_call_names[idx].value
+		return flat.source_type_name(tc.resolved_calls[idx])
 	}
 	if !tc.valid_node_id(call_id) {
 		return ''
@@ -12410,7 +12410,7 @@ fn (tc &TypeChecker) ownership_expr_ident_name(id flat.NodeId) string {
 				base_id := tc.a.child(&node, 0)
 				base_node := tc.a.nodes[int(base_id)]
 				base := if base_node.kind == .ident {
-					if _ := tc.cur_scope.lookup(base_node.value) {
+					if _ := tc.cur_scope.lookup_id(base_node.name_id()) {
 						tc.ownership_expr_ident_name(base_id)
 					} else {
 						tc.resolve_import_alias(base_node.value) or {
@@ -12663,7 +12663,7 @@ fn (tc &TypeChecker) ownership_call_receiver_id(node flat.Node) ?flat.NodeId {
 fn (tc &TypeChecker) ownership_call_name(id flat.NodeId) string {
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
-	if name := tc.cached_resolved_call(call_id) {
+	if name := tc.resolved_call_name(call_id) {
 		return name
 	}
 	if !tc.valid_node_id(call_id) {

@@ -244,7 +244,7 @@ fn test_body_resolve_reference_retains_memo_identity_and_resets_context() {
 	mut tc := types.TypeChecker.new(&a)
 	first := tc.parse_type(flat.source_type_id('[]int'))
 	second := tc.parse_type(flat.source_type_id('[]string'))
-	tc.cur_scope.insert('rows', *first)
+	tc.cur_scope.insert_id(flat.source_type_id('rows'), 'rows', *first)
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -254,7 +254,7 @@ fn test_body_resolve_reference_retains_memo_identity_and_resets_context() {
 	assert g.body_resolve_type(id) == *first
 	before := g.body_resolve_type_reference(id)
 	assert voidptr(before) == voidptr(g.usable_expr_type_memo.resolve_values[int(id)])
-	tc.cur_scope.insert('rows', *second)
+	tc.cur_scope.insert_id(flat.source_type_id('rows'), 'rows', *second)
 	assert voidptr(g.body_resolve_type_reference(id)) == voidptr(before)
 	g.const_init_depth = 1
 	assert *g.body_resolve_type_reference(id) == *second
@@ -278,7 +278,7 @@ fn test_body_resolve_reference_does_not_freeze_unknown_results() {
 	g.begin_usable_expr_type_memo()
 	assert g.body_resolve_type_reference(id) is types.Unknown
 	assert g.usable_expr_type_memo.resolve_gens[int(id)] == 0
-	tc.cur_scope.insert('later', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('later'), 'later', types.Type(types.int_))
 	assert *g.body_resolve_type_reference(id) == types.Type(types.int_)
 	assert g.usable_expr_type_memo.resolve_gens[int(id)] == g.usable_expr_type_memo.generation
 }
@@ -371,7 +371,7 @@ fn test_usable_expr_type_shared_parameter_keeps_owned_value_reference() {
 	g.tc = &tc
 	g.cur_param_types['value'] = parameter
 	g.push_scope()
-	owner := tc.cur_scope.insert_with_owner('value', *parameter)
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('value'), 'value', *parameter)
 	g.declare_local_shared_storage(owner, true)
 	g.memo_usable_expr_types = true
 	g.begin_usable_expr_type_memo()

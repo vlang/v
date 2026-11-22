@@ -131,3 +131,9 @@ pub fn (a &FlatAst) real_source_path(path string) string {
 	}
 	return os.real_path(path)
 }
+
+// recorded_source_paths returns the resolutions collected during discovery.
+// Read it once the table has been frozen.
+pub fn (a &FlatAst) recorded_source_paths() map[string]string {
+	return a.resolved_source_paths
+}

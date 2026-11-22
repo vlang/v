@@ -301,7 +301,9 @@ fn test_fastc_native_cache_hashes_every_dependency_before_reuse() ! {
 		}
 		manifest := os.join_path(root, 'native.manifest')
 		mut stats := CObjectCacheStats{}
-		write_c_object_manifest(manifest, library, dependencies, mut stats)!
+		write_c_object_manifest(manifest, library, &CObjectDependencies{
+			files: dependencies
+		}, mut stats)!
 		assert v3_fastc_native_cached_library(manifest, 8) == none
 		fastc_write_test_native_manifest(manifest, library, dependencies, mut stats)!
 		for jobs in [1, 8] {

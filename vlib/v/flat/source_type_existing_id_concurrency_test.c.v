@@ -1,6 +1,6 @@
 module flat
 
-fn C.atomic_fetch_add_u32(voidptr, u32) u32
+import hash
 
 const lookup_race_readers = u32(4)
 const lookup_race_writers = 4
@@ -94,13 +94,25 @@ fn test_source_type_existing_id_while_the_shared_table_grows() {
 		known_ids << source_type_id(text)
 	}
 	absent := []string{len: 64, init: 'existing_concurrency.Absent_${index}'}
+	// Every writer's spellings hash to one shard, so its index grows several
+	// times while the readers probe it.
+	grow_shard := 0
 	mut growing := [][]string{}
+	mut candidate := 0
 	for writer in 0 .. lookup_race_writers {
-		growing << []string{len: lookup_race_spellings_per_writer, init: 'existing_concurrency.Grow_${writer}_${index}'}
+		mut spellings := []string{cap: lookup_race_spellings_per_writer}
+		for spellings.len < lookup_race_spellings_per_writer {
+			text := 'existing_concurrency.Grow_${writer}_${candidate}'
+			candidate++
+			if source_type_shard_of(u32(hash.sum64_string(text, 0))) == grow_shard {
+				spellings << text
+			}
+		}
+		growing << spellings
 	}
 	table := source_type_table_load()
 	count := C.atomic_load_u32(&table.count)
-	capacity := source_type_index_load().capacity
+	capacity := source_type_index_load(grow_shard).capacity
 	race := &SourceTypeLookupRace{}
 	mut readers := []thread string{}
 	for reader in 0 .. int(lookup_race_readers) {
@@ -124,7 +136,7 @@ fn test_source_type_existing_id_while_the_shared_table_grows() {
 	// spread over new chunks and several index generations during the reads.
 	added := u32(lookup_race_writers * lookup_race_spellings_per_writer)
 	assert C.atomic_load_u32(&table.count) == count + added
-	assert source_type_index_load().capacity >= capacity * 8
+	assert source_type_index_load(grow_shard).capacity >= capacity * 8
 	for spellings in growing {
 		for text in spellings {
 			id := source_type_existing_id(text) or { panic('${text} missing') }

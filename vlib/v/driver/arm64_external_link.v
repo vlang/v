@@ -524,7 +524,10 @@ fn arm64_compile_unit_with(compiler string, args []string, text string, target p
 	key := c_object_cache_name(object, compiler, args, files, target, false, mut stats)
 	published := os.join_path(arm64_cache_dir(), key)
 	publish_native_c_object(staged, published)!
-	write_c_object_manifest(manifest, published, files, mut stats) or {}
+	write_c_object_manifest(manifest, published, &CObjectDependencies{
+		...dependencies
+		files: files
+	}, mut stats) or {}
 	return published
 }
 

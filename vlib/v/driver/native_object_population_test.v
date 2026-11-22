@@ -26,10 +26,10 @@ fn run_native_object_population_helper(root string) {
 		exit(2)
 	}
 	mut stats := CObjectCacheStats{}
-	flags := CObjectFlagPlan{}
-	object := compile_cached_c_source_object(os.join_path(root, 'probe.o'), os.join_path(root,
-		'probe.c'), 'c', &flags, false, false, '', [], pref.host_target(), os.join_path(root,
-		'cc'), false, root, mut stats) or {
+	// Exercise the cache's lock and publication protocol with an instrumented compiler.
+	object := compile_c_object_with_manifest(os.join_path(root, 'probe.o'), os.join_path(root,
+		'probe.c'), os.join_path(root, 'cc'), ['-std=c11', '-w', '-x', 'c'], pref.host_target(),
+		root, '', mut stats) or {
 		eprintln(err)
 		exit(1)
 	}
@@ -148,7 +148,7 @@ fn test_native_manifest_waiter_refreshes_dependency_digests() ! {
 	os.write_file(object, 'object')!
 	os.write_file(header, '#define VALUE 1\n')!
 	mut writer := CObjectCacheStats{}
-	write_c_object_manifest(manifest, object, [header], mut writer)!
+	write_c_object_manifest(manifest, object, &CObjectDependencies{ files: [header] }, mut writer)!
 	mut waiter := CObjectCacheStats{}
 	assert valid_c_object_manifest(manifest, mut waiter) != none
 	os.write_file(header, '#define VALUE 2\n')!
