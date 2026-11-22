@@ -18,6 +18,32 @@ fn test_mat4_identity() {
 	}
 }
 
+fn test_mat4_from_short_array_is_identity() {
+	m := mat4_from_array([]f32{len: 4})
+	for i in 0 .. 4 {
+		for j in 0 .. 4 {
+			if i == j {
+				assert m.v[i][j] == 1.0
+			} else {
+				assert m.v[i][j] == 0.0
+			}
+		}
+	}
+}
+
+fn test_short_matrix_input_is_rejected() {
+	mut ctx := new_context(Desc{ max_vertices: 64, max_commands: 16 })
+	ctx.load_matrix([]f32{len: 4})
+	assert ctx.st.error == .invalid_matrix
+}
+
+fn test_register_image_bad_size_is_rejected() {
+	ctx := new_context(Desc{ max_vertices: 64, max_commands: 16 })
+	ctx.register_image(99, unsafe { nil }, 65536, 65536, 4, 0)
+	assert ctx.st.error == .invalid_image_size
+	assert !ctx.is_image_registered(99)
+}
+
 fn test_cpu_backend_frame_size() {
 	mut ctx := new_context(Desc{ max_vertices: 1024, max_commands: 64 })
 	ctx.defaults()

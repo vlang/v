@@ -110,7 +110,8 @@ pub fn decode_dxt1(block []u8) []gg.Color {
 		d = mix_color(b, a)
 	} else {
 		c = mix_color(a, b)
-		d = gg.Color{}
+		// 3-color DXT1 mode: the fourth color is transparent black.
+		d = gg.Color{ a: 0 }
 	}
 	colors := [a, b, c, d]
 	for i in 0 .. 16 {

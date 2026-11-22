@@ -133,6 +133,10 @@ pub fn gen_mesh_plane(width f32, depth f32, segments int) Mesh3D {
 
 // gen_mesh_sphere creates a UV sphere centred at the origin.
 pub fn gen_mesh_sphere(radius f32, rings int, slices int) Mesh3D {
+	if radius <= 0 {
+		// A non-positive radius would divide by zero when computing UVs.
+		return Mesh3D{}
+	}
 	verts := sphere_triangles(Vec3{}, radius, rings, slices)
 	mut normals := []Vec3{cap: verts.len}
 	mut uvs := []f32{cap: verts.len * 2}

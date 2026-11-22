@@ -115,6 +115,14 @@ fn lut_sample(l LUT3D, r f32, g f32, b f32) ColorHDR {
 
 // apply maps a display-referred color through the LUT.
 pub fn (l &LUT3D) apply(c ColorHDR) ColorHDR {
+	if l.size < 2 || l.size > 4096 {
+		return ColorHDR{}
+	}
+	// Guard the data length before lut_sample indexes into it.
+	needed := i64(l.size) * i64(l.size) * i64(l.size) * 3
+	if i64(l.data.len) < needed {
+		return ColorHDR{}
+	}
 	return lut_sample(l, c.r, c.g, c.b)
 }
 

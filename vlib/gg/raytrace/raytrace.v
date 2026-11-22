@@ -249,7 +249,9 @@ pub fn (mut s Scene) add_triangle(a gg.Vec3, b gg.Vec3, c gg.Vec3, material int)
 
 // add_mesh appends every triangle of a gg.Mesh3D to the scene.
 pub fn (mut s Scene) add_mesh(mesh &gg.Mesh3D, material int) {
-	if mesh.indices.len % 3 != 0 {
+	// Validate the mesh first: an out-of-range index would index past
+	// mesh.vertices below.
+	if !mesh.valid() {
 		return
 	}
 	for i in 0 .. mesh.indices.len / 3 {

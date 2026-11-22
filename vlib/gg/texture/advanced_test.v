@@ -83,6 +83,14 @@ fn test_unaligned_bit_fields() {
 	}
 }
 
+fn test_astc_short_block_rejected() {
+	decode_astc_sized([u8(0), 1, 2], 4, 4) or {
+		assert err.msg().contains('16 bytes')
+		return
+	}
+	assert false, 'short ASTC block should be rejected'
+}
+
 fn test_astc_void_extent() {
 	mut block := []u8{len: 16, init: 0}
 	// Void extent: low 9 bits set, LDR bit clear.

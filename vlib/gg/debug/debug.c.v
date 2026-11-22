@@ -46,6 +46,9 @@ pub fn (g &FrameGraph) draw(ctx &gg.Context, r gg.Rect, color gg.Color) {
 		return
 	}
 	step := r.width / f32(g.samples.len)
+	if step < 1 {
+		return
+	}
 	for i, sample in g.samples {
 		h := sample / peak * r.height
 		ctx.draw_rect_filled(r.x + step * f32(i), r.y + r.height - h, step - 1, h, color)

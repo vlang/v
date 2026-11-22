@@ -33,3 +33,19 @@ fn test_rasterize() {
 	assert pixels[center] > 0
 	assert pixels[center + 3] == 0
 }
+
+fn test_rasterize_rejects_overflowing_dimensions() {
+	mut cam := gg.Camera3D{}
+	cam.position = gg.Vec3{0, 0, 5}
+	cam.target = gg.Vec3{0, 0, 0}
+	cam.fovy = 60
+	cam.near = 0.1
+	cam.far = 100
+	mut cloud := new_cloud()
+	cloud.points << Gaussian{gg.Vec3{0, 0, 0}, gg.Vec3{1, 1, 1}, gg.red, 1}
+	mut pixels := []u8{len: 16}
+	// width*height*4 overflows a 32-bit int to a negative value here; the
+	// i64 guard must reject the call before any pixel is touched.
+	rasterize(cloud, cam, 2147483647, 1, mut pixels)
+	assert pixels.len == 16
+}

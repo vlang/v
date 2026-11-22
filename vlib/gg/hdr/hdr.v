@@ -358,6 +358,13 @@ pub fn decode_rgbe(data []u8) !HDRImage {
 	if width <= 0 || height <= 0 {
 		return error('hdr: missing or invalid RGBE resolution line')
 	}
+	// The dimensions come from an untrusted header and drive an allocation.
+	// Compute the pixel count in i64 and reject anything unreasonable before
+	// calling new_image, so a crafted header cannot overflow or exhaust memory.
+	pixels := i64(width) * i64(height)
+	if pixels <= 0 || pixels > i64(1) << 28 {
+		return error('hdr: RGBE image dimensions too large')
+	}
 	mut img := new_image(width, height)!
 	for y in 0 .. height {
 		if pos + 4 <= data.len && data[pos] == 2 && data[pos + 1] == 2

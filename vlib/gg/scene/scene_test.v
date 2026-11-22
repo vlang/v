@@ -27,6 +27,20 @@ fn test_world_position() {
 	assert p.x == 12 && p.y == 3 && p.z == 0
 }
 
+fn test_add_rejects_ancestor_cycle() {
+	mut a := new_node('a')
+	mut b := new_node('b')
+	a.add(mut b)
+	// b.add(a) would close the cycle a -> b -> a. It must be rejected.
+	b.add(mut a)
+	assert isnil(a.parent)
+	assert a.children.len == 1
+	assert b.children.len == 0
+	// These would hang forever if the cycle had been created.
+	assert a.find('a') != none
+	assert a.find('b') != none
+}
+
 fn test_visibility() {
 	mut root := new_node('root')
 	mut child := new_node('child')

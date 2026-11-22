@@ -5,6 +5,8 @@ module gg
 // where sokol uploads are always sized 4 * width * height), so all offsets
 // below use a fixed stride of 4 even when nr_channels is smaller.
 
+const max_image_bytes = 2_147_483_647 // largest length a V slice (i32) can hold
+
 // image_valid reports whether img has pixel data that can be addressed.
 fn image_valid(img &Image) bool {
 	return img != unsafe { nil } && img.data != unsafe { nil } && img.width > 0 && img.height > 0
@@ -23,7 +25,7 @@ fn write_rgba(d &u8, i int, c Color) {
 // image_draw_pixel sets the pixel at (x, y) to c. Out-of-bounds coordinates,
 // empty images and nil pixel data are ignored.
 pub fn image_draw_pixel(img &Image, x int, y int, c Color) {
-	if !image_valid(img) || x < 0 || y < 0 || x >= img.width || y >= img.height {
+	if !image_valid(img) || img.nr_channels != 4 || x < 0 || y < 0 || x >= img.width || y >= img.height {
 		return
 	}
 	d := unsafe { &u8(img.data) }
@@ -33,7 +35,7 @@ pub fn image_draw_pixel(img &Image, x int, y int, c Color) {
 // image_fill replaces every pixel of img with c. It does nothing for empty
 // images or nil pixel data.
 pub fn image_fill(img &Image, c Color) {
-	if !image_valid(img) {
+	if !image_valid(img) || img.nr_channels != 4 {
 		return
 	}
 	d := unsafe { &u8(img.data) }
@@ -47,7 +49,7 @@ pub fn image_fill(img &Image, c Color) {
 // image_draw_rect fills the rectangle (x, y, w, h) with c. The rectangle is
 // clipped to the image bounds; a fully outside or empty rectangle is a no-op.
 pub fn image_draw_rect(img &Image, x int, y int, w int, h int, c Color) {
-	if !image_valid(img) || w <= 0 || h <= 0 {
+	if !image_valid(img) || img.nr_channels != 4 || w <= 0 || h <= 0 {
 		return
 	}
 	// Compute clip bounds in i64 so x+w/y+h cannot overflow an int.
@@ -81,7 +83,7 @@ pub fn image_draw_rect(img &Image, x int, y int, w int, h int, c Color) {
 
 // image_flip_horizontal mirrors img left-to-right in place.
 pub fn image_flip_horizontal(img &Image) {
-	if !image_valid(img) {
+	if !image_valid(img) || img.nr_channels != 4 {
 		return
 	}
 	d := unsafe { &u8(img.data) }
@@ -103,7 +105,7 @@ pub fn image_flip_horizontal(img &Image) {
 
 // image_flip_vertical mirrors img top-to-bottom in place.
 pub fn image_flip_vertical(img &Image) {
-	if !image_valid(img) {
+	if !image_valid(img) || img.nr_channels != 4 {
 		return
 	}
 	d := unsafe { &u8(img.data) }
@@ -127,7 +129,7 @@ pub fn image_flip_vertical(img &Image) {
 // are exchanged, a new RGBA buffer is installed on img (the previous buffer
 // is owned by the original loader and is intentionally not freed here).
 pub fn image_rotate_90(mut img &Image) {
-	if !image_valid(img) {
+	if !image_valid(img) || img.nr_channels != 4 {
 		return
 	}
 	src := unsafe { &u8(img.data) }
@@ -156,6 +158,9 @@ pub fn image_crop(img &Image, x int, y int, w int, h int) !Image {
 	if !image_valid(img) {
 		return error('gg.image_crop: invalid source image')
 	}
+	if img.nr_channels != 4 {
+		return error('gg.image_crop: expected 4-channel RGBA data')
+	}
 	if w <= 0 || h <= 0 {
 		return error('gg.image_crop: empty crop size ${w}x${h}')
 	}
@@ -180,7 +185,11 @@ pub fn image_crop(img &Image, x int, y int, w int, h int) !Image {
 	}
 	cw := int(x1 - x0)
 	ch := int(y1 - y0)
-	mut out := []u8{len: cw * ch * 4}
+	nbytes := i64(cw) * i64(ch) * 4
+	if nbytes > max_image_bytes {
+		return error('gg.image_crop: resulting image is too large')
+	}
+	mut out := []u8{len: int(nbytes)}
 	src := unsafe { &u8(img.data) }
 	for yy := 0; yy < ch; yy++ {
 		src_row := (y0 + i64(yy)) * i64(img.width)
@@ -210,10 +219,17 @@ pub fn image_resize(img &Image, w int, h int) !Image {
 	if !image_valid(img) {
 		return error('gg.image_resize: invalid source image')
 	}
+	if img.nr_channels != 4 {
+		return error('gg.image_resize: expected 4-channel RGBA data')
+	}
 	if w <= 0 || h <= 0 {
 		return error('gg.image_resize: empty target size ${w}x${h}')
 	}
-	mut out := []u8{len: w * h * 4}
+	nbytes := i64(w) * i64(h) * 4
+	if nbytes > max_image_bytes {
+		return error('gg.image_resize: resulting image is too large')
+	}
+	mut out := []u8{len: int(nbytes)}
 	src := unsafe { &u8(img.data) }
 	for dy in 0 .. h {
 		mut sy := int(i64(dy) * i64(img.height) / i64(h))

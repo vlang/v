@@ -66,20 +66,17 @@ pub fn decode_etc1(block []u8) []gg.Color {
 		}
 		index := sy * 4 + sx
 		selector := int((pixel_bits >> u32(index)) & 1)
-		modifier := int((pixel_bits >> u32(16 + index)) & 1)
+		// The intensity modifier indexes an 8-entry table, so read all
+		// three bits of the field instead of a single bit.
+		modifier := int((pixel_bits >> u32(16 + index)) & 0x7)
 		base := if selector == 0 { base1 } else { base2 }
 		table := if selector == 0 { table1 } else { table2 }
-		mag := etc1_tables[table][modifier]
-		sign := if (pixel_bits >> u32(16 + index)) & 2 != 0 { -1 } else { 1 }
-		// Modifier sign is encoded in the high bit of the modifier nibble in
-		// the spec; our 1-bit field uses the selector's companion sign bit.
-		_ = sign
+		mag := etc1_tables[table][modifier & 0x7]
 		mut color := [u8(0), 0, 0]
 		for c in 0 .. 3 {
-			// Symmetric modifier: +mag for modifier 1, -mag for modifier 0 is
-			// not representable with a single bit, so use a signed table by
-			// adding for modifier 1 and subtracting for modifier 0.
-			adjust := if modifier == 1 { mag * 8 } else { -mag * 8 }
+			// The low bit keeps the original on/off sign convention while the
+			// full 3-bit index selects the magnitude from the 8-entry table.
+			adjust := if (modifier & 1) != 0 { mag * 8 } else { -mag * 8 }
 			color[c] = etc1_clamp(int(base[c]) + adjust)
 		}
 		out[i] = gg.Color{color[0], color[1], color[2], 255}
@@ -90,7 +87,13 @@ pub fn decode_etc1(block []u8) []gg.Color {
 // generate_mipmaps builds a chain of box-filtered RGBA levels.
 pub fn generate_mipmaps(src []u8, width int, height int) [][]u8 {
 	mut levels := [][]u8{}
-	if width <= 0 || height <= 0 || src.len < width * height * 4 {
+	if width <= 0 || height <= 0 {
+		return levels
+	}
+	// Guard the byte count in i64 so huge dimensions cannot overflow the
+	// multiplication before it is compared with the source length.
+	pixels := i64(width) * i64(height)
+	if pixels <= 0 || pixels > i64(src.len) / 4 {
 		return levels
 	}
 	levels << src.clone()

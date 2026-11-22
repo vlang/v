@@ -3,6 +3,9 @@
 module anim
 
 import gg
+import math
+
+const max_wrap_cycles = 1_000_000_000.0
 
 // AnimInterp selects how a track interpolates between its keyframes.
 pub enum AnimInterp {
@@ -97,9 +100,22 @@ pub fn (mut p AnimPlayer) update(dt f32) bool {
 	if p.time < p.clip.duration {
 		return false
 	}
-	if p.looping && p.clip.duration > 0 {
-		cycles := f32(int(p.time / p.clip.duration))
-		p.time -= cycles * p.clip.duration
+	if p.looping {
+		duration := p.clip.duration
+		if duration <= 0 {
+			// No meaningful wrap period; keep the time instead of dividing by zero.
+			return false
+		}
+		// Compute in f64 so a large time cannot overflow the int conversion.
+		mut cycles_f := math.floor(f64(p.time) / f64(duration))
+		if cycles_f < 0 {
+			cycles_f = 0
+		}
+		if cycles_f > max_wrap_cycles {
+			cycles_f = max_wrap_cycles
+		}
+		cycles := f32(int(cycles_f))
+		p.time -= cycles * duration
 		return false
 	}
 	p.time = p.clip.duration

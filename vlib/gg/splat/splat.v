@@ -184,7 +184,7 @@ fn blend(mut pixels []u8, width int, height int, s ProjectedSplat) {
 	for y in min_y .. max_y + 1 {
 		dy := (f32(y) - s.y) * inv_ry
 		dy2 := dy * dy
-		row := y * width
+		row := i64(y) * i64(width)
 		for x in min_x .. max_x + 1 {
 			dx := (f32(x) - s.x) * inv_rx
 			d2 := dx * dx + dy2
@@ -192,13 +192,14 @@ fn blend(mut pixels []u8, width int, height int, s ProjectedSplat) {
 				continue
 			}
 			alpha := s.opacity * f32(math.exp(f64(-2 * d2)))
-			at := (row + x) * 4
-			if at + 3 >= pixels.len {
+			at := (row + i64(x)) * 4
+			if at < 0 || at + 3 >= i64(pixels.len) {
 				continue
 			}
-			pixels[at] = u8(f32(pixels[at]) * (1 - alpha) + cr * alpha)
-			pixels[at + 1] = u8(f32(pixels[at + 1]) * (1 - alpha) + cg * alpha)
-			pixels[at + 2] = u8(f32(pixels[at + 2]) * (1 - alpha) + cb * alpha)
+			pos := int(at)
+			pixels[pos] = u8(f32(pixels[pos]) * (1 - alpha) + cr * alpha)
+			pixels[pos + 1] = u8(f32(pixels[pos + 1]) * (1 - alpha) + cg * alpha)
+			pixels[pos + 2] = u8(f32(pixels[pos + 2]) * (1 - alpha) + cb * alpha)
 		}
 	}
 }
@@ -207,7 +208,16 @@ fn blend(mut pixels []u8, width int, height int, s ProjectedSplat) {
 // back-to-front order. It is pure V but intended for small previews; real-time
 // clouds need a GPU renderer.
 pub fn rasterize(cloud &SplatCloud, cam gg.Camera3D, width int, height int, mut pixels []u8) {
-	if width <= 0 || height <= 0 || pixels.len < width * height * 4 {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	// Widen before multiplying: width*height*4 can overflow a 32-bit int.
+	area := i64(width) * i64(height)
+	if area > i64(pixels.len) {
+		return
+	}
+	needed := area * 4
+	if i64(pixels.len) < needed {
 		return
 	}
 	basis := make_splat_basis(cam, f32(width), f32(height)) or { return }

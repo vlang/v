@@ -11,10 +11,12 @@ pub fn (ctx &Context) draw_ray(ray Ray, length f32, color Color) {
 }
 
 // ray_from_mouse builds a world-space ray from a gg mouse event using the
-// camera stored with set_camera() and the current framebuffer size.
+// camera stored with set_camera() and the current logical window size.
 pub fn (ctx &Context) ray_from_mouse(e &Event) Ray {
-	w, h := ctx.view_size()
-	return screen_to_world_ray(e.mouse_x, e.mouse_y, ctx.camera, f32(w), f32(h))
+	// Mouse coordinates are in logical pixels (gg divides them by ctx.scale),
+	// so use the logical window size rather than physical framebuffer pixels.
+	sz := ctx.window_size()
+	return screen_to_world_ray(e.mouse_x, e.mouse_y, ctx.camera, f32(sz.width), f32(sz.height))
 }
 
 // pick_at returns the id of the nearest collider under the mouse cursor.
@@ -65,8 +67,10 @@ pub fn world_to_screen(p Vec3, cam Camera3D, width int, height int) ScreenPoint 
 // point to screen coordinates and uses gg's regular 2D text renderer, so the
 // label is always readable and drawn on top of the 3D scene.
 pub fn (ctx &Context) draw_text_3d(text string, pos Vec3, cam Camera3D, cfg TextCfg) {
-	w, h := ctx.view_size()
-	sp := world_to_screen(pos, cam, w, h)
+	// draw_text() takes logical pixel coordinates, matching the mouse event
+	// coordinates, so project into the logical window size here too.
+	sz := ctx.window_size()
+	sp := world_to_screen(pos, cam, sz.width, sz.height)
 	if !sp.visible {
 		return
 	}

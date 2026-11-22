@@ -262,7 +262,7 @@ fn gltf_buffer_data(doc &GltfDoc, dir string, index int) ![]u8 {
 	return data.bytes()
 }
 
-fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, int, int) {
+fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, i64, i64) {
 	if accessor_index < 0 || accessor_index >= doc.accessors.len {
 		return error('gg: glTF accessor index out of range')
 	}
@@ -277,12 +277,14 @@ fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, int, int) {
 	if view.buffer < 0 || view.buffer >= doc.buffers.len {
 		return error('gg: glTF buffer index out of range')
 	}
-	if view.byte_offset < 0 || acc.byte_offset < 0 || view.byte_stride < 0 {
-		return error('gg: glTF accessor has a negative byte offset or stride')
+	if view.byte_offset < 0 || view.byte_length < 0 || acc.byte_offset < 0 || view.byte_stride < 0 {
+		return error('gg: glTF accessor has a negative byte offset, length or stride')
 	}
-	offset := view.byte_offset + acc.byte_offset
+	// Offsets and sizes come from untrusted JSON. Widen to i64 before adding
+	// so a value near INT32_MAX cannot wrap past the bounds checks below.
+	offset := i64(view.byte_offset) + i64(acc.byte_offset)
 	// byteLength is relative to the view's own byteOffset, not the buffer.
-	if view.byte_length > 0 && acc.byte_offset >= view.byte_length {
+	if view.byte_length > 0 && i64(acc.byte_offset) >= i64(view.byte_length) {
 		return error('gg: glTF accessor starts outside its bufferView')
 	}
 	components := match acc.typ {
@@ -298,13 +300,13 @@ fn accessor_offset(doc &GltfDoc, accessor_index int) !(int, int, int) {
 		5126 { 4 }
 		else { return error('gg: unsupported glTF component type') }
 	}
-	stride := if view.byte_stride > 0 { view.byte_stride } else { components * component_size }
+	stride := i64(if view.byte_stride > 0 { view.byte_stride } else { components * component_size })
 	// The whole accessor must fit inside its bufferView, not just its start.
 	// This also bounds count, which prevents a huge count from driving an
 	// enormous allocation before the per-element data check runs.
 	if acc.count > 0 && view.byte_length > 0 {
-		last := acc.byte_offset + (acc.count - 1) * stride + components * component_size
-		if last > view.byte_length {
+		needed := (i64(acc.count) - 1) * stride + i64(components * component_size)
+		if needed > i64(view.byte_length) - i64(acc.byte_offset) {
 			return error('gg: glTF accessor extends outside its bufferView')
 		}
 	}
@@ -326,11 +328,12 @@ fn accessor_vec3(doc &GltfDoc, buffers [][]u8, index int) ![]gg.Vec3 {
 	}
 	mut out := []gg.Vec3{cap: acc.count}
 	for i in 0 .. acc.count {
-		at := offset + i * stride
-		if at < 0 || at + 12 > data.len {
+		at := offset + i64(i) * stride
+		if at < 0 || at + 12 > i64(data.len) {
 			return error('gg: glTF accessor data truncated')
 		}
-		out << gg.Vec3{binary.little_endian_f32_at(data, at), binary.little_endian_f32_at(data, at + 4), binary.little_endian_f32_at(data, at + 8)}
+		pos := int(at)
+		out << gg.Vec3{binary.little_endian_f32_at(data, pos), binary.little_endian_f32_at(data, pos + 4), binary.little_endian_f32_at(data, pos + 8)}
 	}
 	return out
 }
@@ -350,12 +353,13 @@ fn accessor_uvs(doc &GltfDoc, buffers [][]u8, index int) ![]f32 {
 	}
 	mut out := []f32{cap: acc.count * 2}
 	for i in 0 .. acc.count {
-		at := offset + i * stride
-		if at < 0 || at + 8 > data.len {
+		at := offset + i64(i) * stride
+		if at < 0 || at + 8 > i64(data.len) {
 			return error('gg: glTF accessor data truncated')
 		}
-		out << binary.little_endian_f32_at(data, at)
-		out << binary.little_endian_f32_at(data, at + 4)
+		pos := int(at)
+		out << binary.little_endian_f32_at(data, pos)
+		out << binary.little_endian_f32_at(data, pos + 4)
 	}
 	return out
 }
@@ -375,28 +379,28 @@ fn accessor_indices(doc &GltfDoc, buffers [][]u8, index int) ![]u32 {
 	}
 	mut out := []u32{cap: acc.count}
 	for i in 0 .. acc.count {
-		at := offset + i * stride
+		at := offset + i64(i) * stride
 		if at < 0 {
 			return error('gg: glTF index data has a negative offset')
 		}
 		match acc.component_type {
 			5121 {
-				if at >= data.len {
+				if at + 1 > i64(data.len) {
 					return error('gg: glTF index data truncated')
 				}
-				out << u32(data[at])
+				out << u32(data[int(at)])
 			}
 			5123 {
-				if at + 2 > data.len {
+				if at + 2 > i64(data.len) {
 					return error('gg: glTF index data truncated')
 				}
-				out << u32(binary.little_endian_u16_at(data, at))
+				out << u32(binary.little_endian_u16_at(data, int(at)))
 			}
 			5125 {
-				if at + 4 > data.len {
+				if at + 4 > i64(data.len) {
 					return error('gg: glTF index data truncated')
 				}
-				out << binary.little_endian_u32_at(data, at)
+				out << binary.little_endian_u32_at(data, int(at))
 			}
 			else { return error('gg: unsupported glTF index component type') }
 		}

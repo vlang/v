@@ -137,11 +137,11 @@ pub fn sphere_aabb_overlap(center gg.Vec3, radius f32, box AABB) bool {
 }
 
 fn ray_slab(o f32, d f32, lo f32, hi f32) ?gg.Vec2 {
-	if d == 0 {
+	if math.abs(d) < 1e-6 {
 		if o < lo || o > hi {
 			return none
 		}
-		return gg.Vec2{-999999, 999999}
+		return gg.Vec2{-f32(math.inf(1)), f32(math.inf(1))}
 	}
 	t1 := (lo - o) / d
 	t2 := (hi - o) / d
@@ -160,8 +160,8 @@ pub fn ray_aabb(ray gg.Ray, box AABB) gg.RayHit {
 	sz := ray_slab(ray.origin.z, ray.direction.z, box.min.z, box.max.z) or {
 		return gg.RayHit{}
 	}
-	mut t_min := f32(-999999)
-	mut t_max := f32(999999)
+	mut t_min := f32(-math.inf(1))
+	mut t_max := f32(math.inf(1))
 	for s in [sx, sy, sz] {
 		if s.x > t_min {
 			t_min = s.x

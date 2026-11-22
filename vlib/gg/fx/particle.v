@@ -104,15 +104,22 @@ fn (mut e ParticleEmitter) spawn_at(at gg.Vec2) {
 }
 
 // update advances the simulation by dt, spawning new particles from rate and
-// integrating all active ones. Large dt values are not subdivided.
+// integrating all active ones. Spawns per update are capped so a large dt
+// cannot freeze the frame; any excess accumulator is dropped.
 pub fn (mut e ParticleEmitter) update(dt f32) {
 	if dt <= 0 {
 		return
 	}
 	e.accumulator += dt * e.config.rate
-	for e.accumulator >= 1 {
+	max_spawns := 128
+	mut spawned := 0
+	for e.accumulator >= 1 && spawned < max_spawns {
 		e.accumulator -= 1
 		e.spawn_at(e.position)
+		spawned++
+	}
+	if spawned == max_spawns && e.accumulator >= 1 {
+		e.accumulator = 0
 	}
 	c := e.config
 	for i in 0 .. e.particles.len {

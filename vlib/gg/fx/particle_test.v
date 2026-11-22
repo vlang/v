@@ -68,3 +68,18 @@ fn test_particle_gravity_and_drag() {
 	assert after_mag < before_mag
 	assert e.particles[0].velocity.y > before_y
 }
+
+// Regression: a huge dt must not loop spawning particles until the frame
+// freezes. Spawns are capped and the excess accumulator is discarded.
+fn test_particle_large_dt_is_capped() {
+	mut e := new_emitter(ParticleConfig{
+		rate:          20
+		life:          2_000_000
+		speed:         0
+		max_particles: 100_000
+	})
+	e.seed(1)
+	e.update(1e6)
+	assert e.active_count() == 128
+	assert e.accumulator == 0
+}

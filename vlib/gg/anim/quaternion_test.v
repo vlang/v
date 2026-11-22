@@ -1,6 +1,7 @@
 module anim
 
 import gg
+import math
 
 fn test_quat_identity_and_axis() {
 	q := quat_identity()
@@ -26,6 +27,14 @@ fn test_quat_normalize_and_mul() {
 	assert q.w == 1
 	id := quat_mul(quat_identity(), quat_identity())
 	assert id.w == 1
+}
+
+fn test_quat_euler_roundtrip() {
+	e := gg.Vec3{30, 20, 10}
+	back := quat_to_euler(quat_from_euler(e))
+	assert math.abs(back.x - e.x) < 0.01
+	assert math.abs(back.y - e.y) < 0.01
+	assert math.abs(back.z - e.z) < 0.01
 }
 
 fn test_mixer() {

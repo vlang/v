@@ -226,7 +226,9 @@ pub fn (s &ShadowMap3D) sample_fast(world Vec3) f32 {
 	if u < 0 || u >= 1 || v < 0 || v >= 1 || dep < -1 || dep > 1 {
 		return 1.0
 	}
-	size_f := s.half_size * 2.0
+	// Derive the texel scale from size (not the public half_size field), so a
+	// stale/inconsistent half_size cannot cause an incorrect fetch.
+	size_f := f32(s.size)
 	mut px := int(u * size_f)
 	mut py := int(v * size_f)
 	if px < 0 {

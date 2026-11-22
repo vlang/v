@@ -93,13 +93,17 @@ fn on_frame(data voidptr) {
 	mut wave := false
 	mut xpos := f32(160)
 	mut k := 0
-	for i := 0; i < app.text.len; i++ {
-		ch := app.text[i..i + 1]
-		if ch == '~' && i + 1 < app.text.len && app.text[i + 1] == `~` {
+	// Iterate by rune so multi-byte UTF-8 characters are drawn as whole glyphs.
+	runes := app.text.runes()
+	mut i := 0
+	for i < runes.len {
+		r := runes[i]
+		if r == `~` && i + 1 < runes.len && runes[i + 1] == `~` {
 			wave = !wave
-			i++
+			i += 2
 			continue
 		}
+		ch := r.str()
 		mut dx := f32(0)
 		mut dy := f32(0)
 		if wave && app.spin {
@@ -115,6 +119,7 @@ fn on_frame(data voidptr) {
 		}
 		xpos += f32(ctx.text_width(ch)) + app.spacing
 		k++
+		i++
 	}
 	ctx.draw_text(10, 35,
 		'Drag & drop a font file to change the font!\nType something, see what happens!\n\nPress [F3] to toggle the camera',
@@ -144,6 +149,14 @@ fn on_frame(data voidptr) {
 
 fn on_event(e &gg.Event, data voidptr) {
 	mut app := unsafe { &App(data) }
+	// Character events must be handled before the key_down guard, otherwise
+	// typed characters are filtered out and text editing never works.
+	if e.typ == .char {
+		if app.text.len < 60 {
+			app.text += '${rune(e.char_code)}'
+		}
+		return
+	}
 	if e.typ != .key_down { return }
 	match e.key_code {
 		.f1 { app.show_letter = !app.show_letter }
@@ -169,9 +182,6 @@ fn on_event(e &gg.Event, data voidptr) {
 		else {}
 	}
 	if app.font_size < 6 { app.font_size = 6 }
-	if e.typ == .char && app.text.len < 60 {
-		app.text += '${rune(e.char_code)}'
-	}
 }
 
 fn on_update(dt f32, data voidptr) {

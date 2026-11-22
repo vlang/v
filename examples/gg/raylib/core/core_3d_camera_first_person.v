@@ -67,23 +67,23 @@ fn on_event(e &gg.Event, data voidptr) {
 	match e.key_code {
 		._1 {
 			app.mode = .free
-			app.mode_key = 1
+			app.mode_key = 0
 			app.cam.up = gg.Vec3{0, 1, 0}
 		}
 		._2 {
 			app.mode = .first_person
-			app.mode_key = 2
+			app.mode_key = 1
 			app.cam.up = gg.Vec3{0, 1, 0}
 		}
 		._3 {
 			// PORT NOTE: gg has no third-person camera mode.
 			app.mode = .first_person
-			app.mode_key = 3
+			app.mode_key = 2
 			app.cam.up = gg.Vec3{0, 1, 0}
 		}
 		._4 {
 			app.mode = .orbital
-			app.mode_key = 4
+			app.mode_key = 3
 			app.cam.up = gg.Vec3{0, 1, 0}
 		}
 		.p {
@@ -123,7 +123,7 @@ fn frame(data voidptr) {
 		ctx.draw_cube(app.positions[i], size, app.colors[i])
 		ctx.draw_cube_wires(app.positions[i], size, maroon)
 	}
-	if app.mode_key == 3 {
+	if app.mode_key == 2 {
 		ctx.draw_cube(app.cam.target, gg.Vec3{0.5, 0.5, 0.5}, purple)
 		ctx.draw_cube_wires(app.cam.target, gg.Vec3{0.5, 0.5, 0.5}, dark_purple)
 	}
@@ -146,12 +146,11 @@ fn frame(data voidptr) {
 	names := ['FREE', 'FIRST_PERSON', 'THIRD_PERSON', 'ORBITAL']
 	ctx.draw_text(610, 15, 'Camera status:', size: 10, color: black)
 	ctx.draw_text(610, 30, '- Mode: ${names[app.mode_key]}', size: 10, color: black)
-	ctx.draw_text(610, 45,
-		'- Projection: ${if app.cam.projection == .perspective {
-			'PERSPECTIVE'
-		} else {
-			'ORTHOGRAPHIC'
-		}}',
+	ctx.draw_text(610, 45, '- Projection: ${if app.cam.projection == .perspective {
+		'PERSPECTIVE'
+	} else {
+		'ORTHOGRAPHIC'
+	}}',
 		size:  10
 		color: black
 	)

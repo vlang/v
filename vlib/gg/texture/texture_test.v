@@ -36,3 +36,12 @@ fn test_dxt1_block() {
 	w, h := block_dimensions(8, 9)
 	assert w == 2 && h == 3
 }
+
+fn test_dxt1_three_color_transparent() {
+	// c0 <= c1 selects 3-color mode; index 3 must be transparent black.
+	block := [u8(0x00), 0x00, 0x00, 0xF8, 0x03, 0x00, 0x00, 0x00]
+	pixels := decode_dxt1(block)
+	assert pixels[0].a == 0
+	assert pixels[0].r == 0 && pixels[0].g == 0 && pixels[0].b == 0
+	assert pixels[1].a == 255
+}

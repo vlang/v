@@ -63,3 +63,59 @@ fn test_octree() {
 	assert hits.len > 0
 	assert !tree.insert(99, AABB{ min: gg.Vec3{50, 0, 0}, max: gg.Vec3{51, 1, 1} })
 }
+
+fn subtree_count(o &Octree) int {
+	mut n := o.items.len
+	for c in o.children {
+		n += subtree_count(c)
+	}
+	return n
+}
+
+fn tree_max_depth(o &Octree) int {
+	mut d := o.depth
+	for c in o.children {
+		child_d := tree_max_depth(c)
+		if child_d > d {
+			d = child_d
+		}
+	}
+	return d
+}
+
+// Regression: a tight cluster must be partitioned into real octants instead of
+// piling up at the root. Broken child AABBs are degenerate/inverted, so no box
+// fits a child and every item stays at the root.
+fn test_octree_clustered_boxes() {
+	root := AABB{ min: gg.Vec3{-10, -10, -10}, max: gg.Vec3{10, 10, 10} }
+	mut tree := new_octree(root, 8)
+	for i in 0 .. 30 {
+		x := 9 + f32(i % 3) * 0.1
+		y := 9 + f32((i / 3) % 3) * 0.1
+		z := 9 + f32(i / 9) * 0.1
+		tree.insert(i, AABB{ min: gg.Vec3{x, y, z}, max: gg.Vec3{x + 0.05, y + 0.05, z + 0.05} })
+	}
+	assert tree.items.len < 20
+	assert subtree_count(tree) == 30
+	mut child_total := 0
+	for c in tree.children {
+		child_total += subtree_count(c)
+	}
+	assert child_total > 0
+}
+
+// Regression: every child inherits its parent's depth, so a deep cluster
+// stops splitting at the depth cap instead of recursing without bound.
+fn test_octree_depth_cap() {
+	root := AABB{ min: gg.Vec3{-10, -10, -10}, max: gg.Vec3{10, 10, 10} }
+	mut tree := new_octree(root, 4)
+	for i in 0 .. 40 {
+		d := f32(i) * 0.001
+		x := 9.9 + d
+		y := 9.9 + d
+		z := 9.9 + d
+		tree.insert(i, AABB{ min: gg.Vec3{x, y, z}, max: gg.Vec3{x + 0.0005, y + 0.0005, z + 0.0005} })
+	}
+	assert subtree_count(tree) == 40
+	assert tree_max_depth(tree) <= 6
+}

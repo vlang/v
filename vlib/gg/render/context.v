@@ -10,6 +10,8 @@ pub enum Error {
 	stack_overflow
 	stack_underflow
 	no_context
+	invalid_matrix
+	invalid_image_size
 }
 
 pub enum Primitive {
@@ -273,7 +275,18 @@ fn pack_rgba_f(r f32, g f32, b f32, a f32) u32 {
 pub fn (ctx &Context) register_image(id int, data voidptr, width int, height int, channels int, filter int) {
 	mut st := ctx.st
 	ch := if channels > 0 { channels } else { 4 }
-	size := width * height * ch
+	// Compute the byte count in i64: these values come from untrusted callers
+	// and the result is used as a memcpy length below.
+	if width <= 0 || height <= 0 || ch <= 0 {
+		st.error = .invalid_image_size
+		return
+	}
+	elements := i64(width) * i64(height) * i64(ch)
+	if elements <= 0 || elements > i64(1) << 28 {
+		st.error = .invalid_image_size
+		return
+	}
+	size := int(elements)
 	mut pixels := []u8{len: size}
 	if data != unsafe { nil } && size > 0 {
 		unsafe { C.memcpy(&pixels[0], data, size) }

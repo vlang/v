@@ -12,10 +12,12 @@ pub mut:
 }
 
 pub fn new_snapshot(time f32, count int) Snapshot {
+	// A negative count would make the slice allocation panic.
+	n := if count < 0 { 0 } else { count }
 	return Snapshot{
 		time:       time
-		positions:  []gg.Vec3{len: count}
-		velocities: []gg.Vec3{len: count}
+		positions:  []gg.Vec3{len: n}
+		velocities: []gg.Vec3{len: n}
 	}
 }
 
@@ -46,6 +48,17 @@ pub fn new_snapshot_buffer(capacity int) SnapshotBuffer {
 
 pub fn (mut b SnapshotBuffer) push(s Snapshot) {
 	b.items << s
+	// Keep the history ordered by time so sample() can rely on adjacent
+	// snapshots even when they arrive out of order over the network.
+	for i := 1; i < b.items.len; i++ {
+		key := b.items[i]
+		mut j := i - 1
+		for j >= 0 && b.items[j].time > key.time {
+			b.items[j + 1] = b.items[j]
+			j--
+		}
+		b.items[j + 1] = key
+	}
 	for b.items.len > b.capacity {
 		b.items = b.items[1..]
 	}

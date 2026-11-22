@@ -87,6 +87,8 @@ void main() {
 	sd.set_frag_uniform_block_size(0, u32(sizeof(TracerParams)))
 	shader := gfx.make_shader(&sd)
 	if gfx.query_shader_state(shader) != .valid {
+		// make_shader succeeded, so release the failed handle before returning.
+		gfx.destroy_shader(shader)
 		return error('raytrace: could not compile GPU tracer shader')
 	}
 	mut pd := gfx.PipelineDesc{
@@ -96,7 +98,12 @@ void main() {
 		sample_count:   1
 	}
 	pd.colors[0].write_mask = .rgba
-	return &GpuTracer{ shader: shader, pipeline: gfx.make_pipeline(&pd), ready: true }
+	pipeline := gfx.make_pipeline(&pd)
+	if gfx.query_pipeline_state(pipeline) != .valid {
+		gfx.destroy_shader(shader)
+		return error('raytrace: could not create GPU tracer pipeline')
+	}
+	return &GpuTracer{ shader: shader, pipeline: pipeline, ready: true }
 }
 
 // set_scene uploads camera, viewport and up to eight spheres.

@@ -59,3 +59,15 @@ fn test_ray_aabb() {
 	miss := ray_aabb(gg.Ray{gg.Vec3{-5, 5, 0}, gg.Vec3{1, 0, 0}}, box)
 	assert !miss.hit
 }
+
+// Regression: a distant box must still be reachable. Hardcoded slab bounds of
+// +/-999999 made the slab intersection clamp below the true hit distance.
+fn test_ray_aabb_distant_box() {
+	box := aabb_from_center(gg.Vec3{2_000_000, 0, 0}, gg.Vec3{2, 2, 2})
+	hit := ray_aabb(gg.Ray{gg.Vec3{0, 0, 0}, gg.Vec3{1, 0, 0}}, box)
+	assert hit.hit
+	assert (hit.distance - 1_999_999) < 0.001
+	assert hit.point.x > 1_999_998 && hit.point.x < 2_000_000
+	miss := ray_aabb(gg.Ray{gg.Vec3{0, 5, 0}, gg.Vec3{1, 0, 0}}, box)
+	assert !miss.hit
+}

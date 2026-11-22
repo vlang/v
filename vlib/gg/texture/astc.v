@@ -46,10 +46,10 @@ pub fn decode_astc_sized(block []u8, width int, height int) ![]gg.Color {
 	if width <= 0 || height <= 0 {
 		return error('texture: invalid ASTC block size')
 	}
-	mut out := []gg.Color{len: width * height}
 	if block.len < 16 {
 		return error('texture: ASTC block must be 16 bytes')
 	}
+	mut out := []gg.Color{len: width * height}
 	first := int(astc_read_bits(block, 0, 11)!)
 	if first & 0x1ff == 0x1ff {
 		mut r := f32(math.ldexp(f64(int(astc_read_bits(block, 11, 16)!)), 0)) / 65535

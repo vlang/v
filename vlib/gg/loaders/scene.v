@@ -122,12 +122,21 @@ struct DocLight {
 	type_     string @[json: 'type']
 }
 
+// KHR_lights_punctual stores its lights under extensions, never at the root.
+struct DocLightExt {
+	lights []DocLight
+}
+
+struct SceneDocExtensions {
+	khr_lights_punctual DocLightExt @[json: 'KHR_lights_punctual']
+}
+
 struct SceneDoc {
-	materials []DocMaterial
-	nodes     []DocNode
-	cameras   []DocCamera
-	images    []GltfBuffer
-	lights    []DocLight @[json: 'KHR_lights_punctual']
+	materials  []DocMaterial
+	nodes      []DocNode
+	cameras    []DocCamera
+	images     []GltfBuffer
+	extensions SceneDocExtensions
 }
 
 fn color_from_factors(v []f32, fallback f32) gg.Color {
@@ -158,17 +167,16 @@ pub fn load_scene_gltf(path string) !SceneAsset {
 	mut materials := []SceneMaterial{}
 	for m in doc.materials {
 		idx := m.pbr_metallic_roughness.base_color_texture.index
+		candidate := if m.base_color_texture.index >= 0 { m.base_color_texture.index } else { idx }
 		materials << SceneMaterial{
 			name:       m.name
 			base_color: color_from_factors(m.pbr_metallic_roughness.base_color_factor, 1)
 			emissive:   color_from_factors(m.emissive_factor, 0)
 			metallic:   m.pbr_metallic_roughness.metallic_factor
 			roughness:  m.pbr_metallic_roughness.roughness_factor
-			texture:    if m.base_color_texture.index >= 0 {
-				m.base_color_texture.index
-			} else {
-				idx
-			}
+			// An out-of-range image index is reported as "no texture" (-1) so
+			// consumers cannot index past doc.images.
+			texture:    if candidate >= 0 && candidate < doc.images.len { candidate } else { -1 }
 		}
 	}
 	mut nodes := []SceneNode{}
@@ -213,7 +221,7 @@ pub fn load_scene_gltf(path string) !SceneAsset {
 		}
 	}
 	mut lights := []SceneLight{}
-	for l in doc.lights {
+	for l in doc.extensions.khr_lights_punctual.lights {
 		lights << SceneLight{
 			name:      l.name
 			color:     color_from_factors(l.color, 1)

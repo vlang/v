@@ -52,8 +52,10 @@ fn resolve_pair(mut a &Body, mut b &Body) bool {
 	dist := f32(math.sqrt(f64(dist2)))
 	normal := delta.scale(1.0 / dist)
 	overlap := minimum - dist
-	inv_a := if a.is_static { 0 } else { 1.0 / a.mass }
-	inv_b := if b.is_static { 0 } else { 1.0 / b.mass }
+	// A non-positive mass is treated as immovable: 1/mass would be Inf or NaN
+	// and would poison positions and velocities with no useful physical meaning.
+	inv_a := if a.is_static || a.mass <= 0 { 0 } else { 1.0 / a.mass }
+	inv_b := if b.is_static || b.mass <= 0 { 0 } else { 1.0 / b.mass }
 	total := inv_a + inv_b
 	if total == 0 {
 		return false
@@ -117,6 +119,18 @@ pub fn (mut w World) step(dt f32) {
 		}
 		order[j + 1] = key
 	}
+	// A large body later in the sorted order can still overlap `a` even when
+	// the immediate neighbour cannot, so the break must use the largest radius
+	// in the remaining suffix instead of the current body's radius.
+	mut max_radius_from := []f32{len: order.len}
+	mut suffix_max := f32(0)
+	for i := order.len - 1; i >= 0; i-- {
+		r := w.bodies[order[i]].radius
+		if r > suffix_max {
+			suffix_max = r
+		}
+		max_radius_from[i] = suffix_max
+	}
 	for _ in 0 .. 3 {
 		for i in 0 .. order.len {
 			ai := order[i]
@@ -124,7 +138,7 @@ pub fn (mut w World) step(dt f32) {
 			for j in i + 1 .. order.len {
 				bi := order[j]
 				b := w.bodies[bi]
-				if b.position.x - a.position.x > a.radius + b.radius {
+				if b.position.x - a.position.x > a.radius + max_radius_from[j] {
 					break
 				}
 				resolve_pair(mut w.bodies[ai], mut w.bodies[bi])

@@ -104,7 +104,17 @@ fn on_update(dt f32, data voidptr) {
 }
 
 fn main() {
-	mut app := &App{ ax: 200, ay: 225, bx: 600, by: 225 }
+	// Radii must be non-zero: point_ellipse() and ellipses_collide() divide by them.
+	mut app := &App{
+		ax:  200
+		ay:  225
+		arx: 120
+		ary: 70
+		bx:  600
+		by:  225
+		brx: 90
+		bry: 90
+	}
 	app.ctx = gg.new_context(
 		width:        800
 		height:       450

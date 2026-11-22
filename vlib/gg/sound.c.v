@@ -15,23 +15,34 @@ pub mut:
 }
 
 __global sound_playing = map[voidptr]bool{}
+// The audio callback runs on another thread and must not dereference the
+// caller's Sound (which may be a short-lived local returned by load_wav).
+// Keep an owned deep copy alongside the playing flag, under the same mutex.
+__global sound_copies = map[voidptr]&Sound{}
 __global sound_mutex = sync.Mutex{}
 
-// play_sound starts (or restarts) playback of s.
+// play_sound starts (or restarts) playback of s. The samples are copied so the
+// streaming callback stays valid after the caller's Sound goes out of scope.
 pub fn play_sound(s &Sound) {
-	mut sound := unsafe { &Sound(voidptr(s)) }
 	key := voidptr(s)
+	owned := &Sound{
+		samples:     s.samples.clone()
+		channels:    s.channels
+		sample_rate: s.sample_rate
+		pos:         0
+	}
 	sound_mutex.lock()
-	sound.pos = 0
+	sound_copies[key] = owned
 	sound_playing[key] = true
 	sound_mutex.unlock()
 }
 
-// stop_sound stops playback of s.
+// stop_sound stops playback of s and releases the owned copy.
 pub fn stop_sound(s &Sound) {
 	key := voidptr(s)
 	sound_mutex.lock()
-	sound_playing[key] = false
+	sound_playing.delete(key)
+	sound_copies.delete(key)
 	sound_mutex.unlock()
 }
 
@@ -68,8 +79,11 @@ pub fn mix_sound_frames(buffer &f32, num_frames i32, num_channels i32) {
 		if !active {
 			continue
 		}
-		mut sound := unsafe { &Sound(key) }
-		if sound.samples.len == 0 || sound.channels < 1 {
+		mut sound := sound_copies[key] or {
+			finished << key
+			continue
+		}
+		if isnil(sound) || sound.samples.len == 0 || sound.channels < 1 {
 			finished << key
 			continue
 		}
@@ -91,7 +105,10 @@ pub fn mix_sound_frames(buffer &f32, num_frames i32, num_channels i32) {
 		}
 	}
 	for key in finished {
-		sound_playing[key] = false
+		// Drop both entries so replaying with a new pointer cannot grow the
+		// maps without bound.
+		sound_playing.delete(key)
+		sound_copies.delete(key)
 	}
 	sound_mutex.unlock()
 }

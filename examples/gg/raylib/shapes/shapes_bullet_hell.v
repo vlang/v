@@ -143,6 +143,9 @@ fn on_event(e &gg.Event, data voidptr) {
 		.c {
 			app.bullet_count = 0
 			app.disabled_count = 0
+			// Drop stale bullets too, otherwise the old entries at indices
+			// 0..bullet_count keep being drawn instead of newly spawned ones.
+			app.bullets.clear()
 		}
 		else {}
 	}
@@ -154,6 +157,7 @@ fn on_update(dt f32, data voidptr) {
 	if app.bullet_count >= max_bullets {
 		app.bullet_count = 0
 		app.disabled_count = 0
+		app.bullets.clear()
 	}
 	app.spawn_timer--
 	if app.spawn_timer < 0 {

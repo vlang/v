@@ -13,7 +13,10 @@ pub mut:
 	gain   f32 = 1
 	pan    f32
 	cutoff f32 = 1
-	state  f32
+	// Each channel needs its own low-pass memory; sharing one state lets a
+	// loud left channel bleed into the right (and vice versa).
+	state_l f32
+	state_r f32
 }
 
 pub fn new_bus(name string) Bus {
@@ -36,10 +39,10 @@ pub fn (mut b Bus) process(mut samples []f32) {
 	for i in 0 .. samples.len / 2 {
 		left := samples[i * 2] * lg
 		right := samples[i * 2 + 1] * rg
-		b.state += a * (left - b.state)
-		samples[i * 2] = b.state
-		b.state += a * (right - b.state)
-		samples[i * 2 + 1] = b.state
+		b.state_l += a * (left - b.state_l)
+		samples[i * 2] = b.state_l
+		b.state_r += a * (right - b.state_r)
+		samples[i * 2 + 1] = b.state_r
 	}
 }
 
@@ -96,7 +99,7 @@ pub fn (mut v PositionalVoice) mix(mut buffer []f32, frames int, listener &Liste
 			source := ch % v.sound.channels
 			idx := v.pos + frame * v.sound.channels + source
 			at := frame * 2 + ch
-			if idx < v.sound.samples.len && at + 1 < buffer.len {
+			if idx < v.sound.samples.len && at + 1 <= buffer.len {
 				gain := if ch == 0 { lg } else { rg }
 				buffer[at] += f32(v.sound.samples[idx]) / 32768.0 * gain
 			}

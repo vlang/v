@@ -70,7 +70,8 @@ pub fn (w &World) count() int {
 // over dense storage is cache friendly.
 pub struct Storage[T] {
 mut:
-	sparse   []int
+	sparse   []int // entity id -> dense slot, -1 when absent
+	gens     []u32 // entity id -> generation recorded when the slot was filled
 	dense    []T
 	entities []Entity
 }
@@ -83,13 +84,20 @@ pub fn new_storage[T]() Storage[T] {
 pub fn (mut s Storage[T]) add(e Entity, value T) {
 	for s.sparse.len <= int(e.id) {
 		s.sparse << -1
+		s.gens << 0
 	}
 	slot := s.sparse[e.id]
 	if slot >= 0 {
+		// A component for a different generation lives here; ignore the stale
+		// handle instead of overwriting it.
+		if s.gens[e.id] != e.gen {
+			return
+		}
 		s.dense[slot] = value
 		return
 	}
 	s.sparse[e.id] = s.dense.len
+	s.gens[e.id] = e.gen
 	s.dense << value
 	s.entities << e
 }
@@ -100,7 +108,7 @@ pub fn (s &Storage[T]) get(e Entity) ?&T {
 		return none
 	}
 	slot := s.sparse[e.id]
-	if slot < 0 || slot >= s.dense.len {
+	if slot < 0 || slot >= s.dense.len || s.gens[e.id] != e.gen {
 		return none
 	}
 	return &s.dense[slot]
@@ -117,15 +125,16 @@ pub fn (mut s Storage[T]) remove(e Entity) {
 		return
 	}
 	slot := s.sparse[e.id]
-	if slot < 0 {
+	if slot < 0 || s.gens[e.id] != e.gen {
 		return
 	}
 	last := s.dense.len - 1
 	if slot != last {
 		s.dense[slot] = s.dense[last]
-		s.entities[slot] = s.entities[last]
-		moved := s.entities[slot]
+		moved := s.entities[last]
+		s.entities[slot] = moved
 		s.sparse[moved.id] = slot
+		s.gens[moved.id] = moved.gen
 	}
 	s.dense = s.dense[..last]
 	s.entities = s.entities[..last]

@@ -48,17 +48,19 @@ pub:
 // event delivered to the application.
 pub struct GestureTracker {
 pub mut:
-	active       bool // true while a press/touch is in progress
-	start_ms     i64  // unix time in ms when the current press began
-	last_tap_ms  i64  // unix time in ms of the most recent tap (for double tap)
-	start_pos    Vec2 // position where the current press began
-	last_pos     Vec2 // most recent position of the pointer
-	max_touches  int  // largest number of simultaneous touches in this press
-	hold_emitted bool // a hold has already been reported for this press
-	start_dist   f32  // initial distance between the first two touches
-	last_dist    f32  // latest distance between the first two touches
-	start_angle  f32  // initial angle between the first two touches (radians)
-	last_angle   f32  // latest angle between the first two touches (radians)
+	active        bool // true while a press/touch is in progress
+	start_ms      i64  // unix time in ms when the current press began
+	last_tap_ms   i64  // unix time in ms of the most recent tap (for double tap)
+	start_pos     Vec2 // position where the current press began
+	last_pos      Vec2 // most recent position of the pointer
+	max_touches   int  // largest number of simultaneous touches in this press
+	hold_emitted  bool // a hold has already been reported for this press
+	start_dist    f32  // initial distance between the first two touches
+	last_dist     f32  // latest distance between the first two touches
+	start_angle   f32  // initial angle between the first two touches (radians)
+	last_angle    f32  // latest angle between the first two touches (radians)
+	begin_dist_ok bool // a valid 2-touch distance was recorded on begin
+	move_dist_ok  bool // a valid 2-touch distance was recorded on move
 }
 
 const tap_max_ms = 250 // a tap must be released within this time
@@ -86,6 +88,7 @@ pub fn (mut t GestureTracker) update(e &Event) ?GestureEvent {
 			$if !js {
 				if n >= 2 {
 					t.start_dist, t.start_angle = touch_pair(e)
+					t.begin_dist_ok = t.start_dist > 0
 					t.last_dist = t.start_dist
 					t.last_angle = t.start_angle
 				}
@@ -107,6 +110,7 @@ pub fn (mut t GestureTracker) update(e &Event) ?GestureEvent {
 			$if !js {
 				if touch_count(e) >= 2 {
 					t.last_dist, t.last_angle = touch_pair(e)
+					t.move_dist_ok = t.last_dist > 0
 				}
 			}
 			return t.maybe_hold(now)
@@ -135,6 +139,8 @@ pub fn (mut t GestureTracker) reset() {
 	t.active = false
 	t.last_tap_ms = 0
 	t.hold_emitted = false
+	t.begin_dist_ok = false
+	t.move_dist_ok = false
 }
 
 fn (mut t GestureTracker) begin(x f32, y f32, touches int, now i64) {
@@ -148,6 +154,8 @@ fn (mut t GestureTracker) begin(x f32, y f32, touches int, now i64) {
 	t.last_dist = 0
 	t.start_angle = 0
 	t.last_angle = 0
+	t.begin_dist_ok = false
+	t.move_dist_ok = false
 }
 
 // maybe_hold reports a hold early, as soon as a stationary press has lasted
@@ -184,7 +192,9 @@ fn (mut t GestureTracker) finish(now i64) ?GestureEvent {
 	}
 
 	// Two finger gestures are decided from the change in separation and angle.
-	if t.max_touches >= 2 {
+	// Both the begin and move paths must have recorded a valid 2-touch
+	// distance; otherwise start_dist is a stale 0 and dist_delta is bogus.
+	if t.max_touches >= 2 && t.begin_dist_ok && t.move_dist_ok {
 		dist_delta := t.last_dist - t.start_dist
 		angle_delta := t.last_angle - t.start_angle
 		if gesture_fabs(dist_delta) > 10.0 {

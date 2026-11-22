@@ -174,6 +174,9 @@ pub fn load_gltf_skin(path string) !Skin {
 	} else {
 		[]f32{}
 	}
+	if bind.len % 16 != 0 {
+		return error('gg: glTF inverse bind matrices must contain 16 floats per matrix')
+	}
 	return Skin{ joints: joints, inverse_bind: bind }
 }
 
@@ -191,7 +194,8 @@ pub fn load_gltf_clips(path string) ![]&anim.AnimClip {
 				continue
 			}
 			sampler := source.samplers[channel.sampler]
-			times := read_float_accessor(&doc, dir, sampler.input, 1)!
+			// One malformed accessor must not abort every clip in the file.
+			times := read_float_accessor(&doc, dir, sampler.input, 1) or { continue }
 			if times.len > 0 && times[times.len - 1] > duration {
 				duration = times[times.len - 1]
 			}
@@ -201,10 +205,14 @@ pub fn load_gltf_clips(path string) ![]&anim.AnimClip {
 			if channel.sampler < 0 || channel.sampler >= source.samplers.len {
 				continue
 			}
+			// A track pointing at a missing node cannot be animated.
+			if channel.target.node < 0 || channel.target.node >= doc.nodes.len {
+				continue
+			}
 			sampler := source.samplers[channel.sampler]
-			times := read_float_accessor(&doc, dir, sampler.input, 1)!
+			times := read_float_accessor(&doc, dir, sampler.input, 1) or { continue }
 			components := if channel.target.path == 'rotation' { 4 } else { 3 }
-			values := read_float_accessor(&doc, dir, sampler.output, components)!
+			values := read_float_accessor(&doc, dir, sampler.output, components) or { continue }
 			if times.len == 0 || values.len < times.len * components {
 				continue
 			}

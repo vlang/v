@@ -78,10 +78,15 @@ pub struct FullscreenPass {
 pub mut:
 	shader   &ShaderHandle
 	pipeline gfx.Pipeline
+	sampler  gfx.Sampler
+	// two_textures is true when the fragment shader samples two textures.
+	two_textures bool
 }
 
 pub fn new_fullscreen_pass(source ShaderSource) !&FullscreenPass {
-	shader := create_shader(source)!
+	two_textures := source.fs.count('uniform sampler2D') > 1
+	image_names := if two_textures { ['src_tex', 'bloom_tex'] } else { ['src_tex'] }
+	shader := create_shader_with_images(source, image_names)!
 	mut desc := gfx.PipelineDesc{
 		shader:         shader.shader
 		primitive_type: .triangles
@@ -90,19 +95,48 @@ pub fn new_fullscreen_pass(source ShaderSource) !&FullscreenPass {
 	}
 	desc.colors[0].write_mask = .rgba
 	pipeline := gfx.make_pipeline(&desc)
-	return &FullscreenPass{ shader: shader, pipeline: pipeline }
+	if gfx.query_pipeline_state(pipeline) != .valid {
+		// make_pipeline succeeded, so release the shader before returning.
+		shader.destroy()
+		return error('gg.gpu: could not create fullscreen pipeline')
+	}
+	// The shaders sample textures through sampler2D uniforms, so the sampler
+	// slots must be bound alongside the images or sokol rejects the bindings.
+	sampler := gfx.make_sampler(&gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+	})
+	if gfx.query_sampler_state(sampler) != .valid {
+		gfx.destroy_pipeline(pipeline)
+		shader.destroy()
+		return error('gg.gpu: could not create fullscreen sampler')
+	}
+	return &FullscreenPass{
+		shader:       shader
+		pipeline:     pipeline
+		sampler:      sampler
+		two_textures: two_textures
+	}
 }
 
 pub fn (p &FullscreenPass) draw(image gfx.Image) {
 	gfx.apply_pipeline(p.pipeline)
 	mut bindings := gfx.Bindings{}
 	bindings.set_frag_image(0, image)
+	bindings.fs.samplers[0] = p.sampler
+	if p.two_textures {
+		// The bloom shader declares two textures; keep both slots bound so
+		// sokol does not report a missing image/sampler binding.
+		bindings.set_frag_image(1, image)
+		bindings.fs.samplers[1] = p.sampler
+	}
 	gfx.apply_bindings(&bindings)
 	gfx.draw(0, 3, 1)
 }
 
 pub fn (p &FullscreenPass) destroy() {
 	if gfx.is_valid() {
+		gfx.destroy_sampler(p.sampler)
 		gfx.destroy_pipeline(p.pipeline)
 	}
 	p.shader.destroy()

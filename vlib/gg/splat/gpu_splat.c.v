@@ -21,12 +21,14 @@ pub:
 @[heap]
 pub struct GpuSplatRenderer {
 pub mut:
-	vertices   []SplatVertex
-	buffer     gfx.Buffer
-	shader     gfx.Shader
-	pipeline   gfx.Pipeline
-	has_buffer bool
-	has_pipe   bool
+	vertices    []SplatVertex
+	buffer      gfx.Buffer
+	shader      gfx.Shader
+	pipeline    gfx.Pipeline
+	has_buffer  bool
+	has_pipe    bool
+	has_shader  bool
+	buffer_size int
 }
 
 pub fn new_gpu_splat_renderer() !&GpuSplatRenderer {
@@ -36,6 +38,7 @@ pub fn new_gpu_splat_renderer() !&GpuSplatRenderer {
 	shader_source := shader_desc()
 	shader := gfx.make_shader(&shader_source)
 	if gfx.query_shader_state(shader) != .valid {
+		gfx.destroy_shader(shader)
 		return error('splat: could not compile Gaussian shader')
 	}
 	mut pdesc := gfx.PipelineDesc{
@@ -55,9 +58,10 @@ pub fn new_gpu_splat_renderer() !&GpuSplatRenderer {
 	pdesc.layout.attrs[1] = gfx.VertexAttrDesc{ buffer_index: 0, offset: 8, format: .float2 }
 	pdesc.layout.attrs[2] = gfx.VertexAttrDesc{ buffer_index: 0, offset: 16, format: .float4 }
 	return &GpuSplatRenderer{
-		shader:   shader
-		pipeline: gfx.make_pipeline(&pdesc)
-		has_pipe: true
+		shader:     shader
+		pipeline:   gfx.make_pipeline(&pdesc)
+		has_pipe:   true
+		has_shader: true
 	}
 }
 
@@ -108,15 +112,22 @@ pub fn (mut r GpuSplatRenderer) upload() {
 	if r.vertices.len == 0 {
 		return
 	}
+	size := r.vertices.len * int(sizeof(SplatVertex))
+	// The instance count changes every frame; recreate the buffer when the
+	// existing one is too small instead of overflowing it on update_buffer.
+	if r.has_buffer && size > r.buffer_size {
+		gfx.destroy_buffer(r.buffer)
+		r.has_buffer = false
+	}
 	if !r.has_buffer {
 		r.buffer = gfx.make_buffer(&gfx.BufferDesc{
-			size:  r.vertices.len * int(sizeof(SplatVertex))
+			size:  size
 			type:  .vertexbuffer
 			usage: .stream
 		})
 		r.has_buffer = true
+		r.buffer_size = size
 	}
-	size := r.vertices.len * int(sizeof(SplatVertex))
 	gfx.update_buffer(r.buffer, &gfx.Range{ ptr: r.vertices.data, size: u32(size) })
 }
 
@@ -138,10 +149,14 @@ pub fn (mut r GpuSplatRenderer) destroy() {
 	if r.has_buffer {
 		gfx.destroy_buffer(r.buffer)
 		r.has_buffer = false
+		r.buffer_size = 0
 	}
 	if r.has_pipe {
 		gfx.destroy_pipeline(r.pipeline)
 		r.has_pipe = false
 	}
-	gfx.destroy_shader(r.shader)
+	if r.has_shader {
+		gfx.destroy_shader(r.shader)
+		r.has_shader = false
+	}
 }

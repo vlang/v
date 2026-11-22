@@ -34,7 +34,9 @@ pub fn quat_from_euler(euler gg.Vec3) Quat {
 	rx := quat_from_axis_angle(gg.Vec3{1, 0, 0}, euler.x)
 	ry := quat_from_axis_angle(gg.Vec3{0, 1, 0}, euler.y)
 	rz := quat_from_axis_angle(gg.Vec3{0, 0, 1}, euler.z)
-	return quat_mul(quat_mul(ry, rx), rz)
+	// quat_to_euler extracts the extrinsic XYZ (intrinsic ZYX) convention, so
+	// compose in reverse: the x rotation is applied first, then y, then z.
+	return quat_mul(quat_mul(rz, ry), rx)
 }
 
 // quat_mul composes two rotations.

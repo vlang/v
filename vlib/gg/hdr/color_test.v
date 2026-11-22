@@ -29,6 +29,13 @@ fn test_lut() {
 	assert math.abs(flat.r - 0.5) < 0.001
 }
 
+fn test_lut_truncated_data_is_safe() {
+	mut lut := identity_lut(4)!
+	lut.data = lut.data[..8]
+	c := lut.apply(white())
+	assert c.r == 0 && c.g == 0 && c.b == 0
+}
+
 fn test_auto_exposure() {
 	mut auto := AutoExposure{}
 	auto.update(1, 0.1)

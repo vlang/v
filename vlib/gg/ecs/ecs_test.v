@@ -40,6 +40,27 @@ fn test_storage_crud() {
 	assert s.len() == 1
 }
 
+fn test_storage_rejects_stale_generation() {
+	mut w := new_world()
+	e := w.spawn()
+	mut s := new_storage[int]()
+	s.add(e, 42)
+	assert s.has(e)
+	w.despawn(e)
+	// A handle for the same id but a different generation must not see,
+	// overwrite or remove the component stored under the original generation.
+	newer := Entity{e.id, e.gen + 1}
+	assert !s.has(newer)
+	assert s.get(newer) == none
+	s.remove(newer)
+	assert s.len() == 1
+	s.add(newer, 99)
+	v := s.get(e) or { panic('missing') }
+	assert *v == 42
+	assert s.len() == 1
+	assert s.has(e)
+}
+
 fn test_storage_each_and_transform() {
 	mut w := new_world()
 	e := w.spawn()

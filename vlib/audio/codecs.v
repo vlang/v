@@ -154,8 +154,11 @@ pub fn adpcm_encode(pcm []i16) []u8 {
 // adpcm_decode expands a stream produced by adpcm_encode. sample_count is the
 // number of 16-bit samples to produce.
 pub fn adpcm_decode(data []u8, sample_count int) []i16 {
+	if sample_count <= 0 {
+		return []i16{}
+	}
 	mut out := []i16{len: sample_count, init: 0}
-	if data.len < 4 || sample_count <= 0 {
+	if data.len < 4 {
 		return out
 	}
 	mut predictor := int(u16(data[0]) | u16(data[1]) << 8)

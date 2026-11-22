@@ -336,6 +336,10 @@ pub fn (ctx &Context) load_identity() {
 
 pub fn (ctx &Context) load_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	st.matrix_stack[st.cur_matrix_mode.value][st.matrix_tos[st.cur_matrix_mode.value]] = mat4_from_array(m)
 	st.matrix_dirty = true
 }
@@ -358,6 +362,10 @@ pub fn (ctx &Context) mult_mat4(m Mat4) {
 
 pub fn (ctx &Context) load_transpose_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	mm := mat4_from_array(m)
 	mut t := Mat4{}
 	for c in 0 .. 4 {
@@ -369,6 +377,10 @@ pub fn (ctx &Context) load_transpose_matrix(m []f32) {
 
 pub fn (ctx &Context) mult_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	mm := mat4_from_array(m)
 	cur := &st.matrix_stack[st.cur_matrix_mode.value][st.matrix_tos[st.cur_matrix_mode.value]]
 	tmp := mat4_mul(*cur, mm)
@@ -378,6 +390,10 @@ pub fn (ctx &Context) mult_matrix(m []f32) {
 
 pub fn (ctx &Context) mult_transpose_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	mm := mat4_from_array(m)
 	mut t := Mat4{}
 	for c in 0 .. 4 {

@@ -29,6 +29,15 @@ pub fn (mut n Node) add(mut child &Node) {
 	if child == n {
 		return
 	}
+	// Reject cycles formed through n's ancestors: attaching child here would
+	// make n (and everything above it) a descendant of child.
+	mut ancestor := n.parent
+	for !isnil(ancestor) {
+		if ancestor == child {
+			return
+		}
+		ancestor = ancestor.parent
+	}
 	if !isnil(child.parent) {
 		child.parent.remove(mut child)
 	}

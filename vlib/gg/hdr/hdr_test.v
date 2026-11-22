@@ -93,6 +93,19 @@ fn test_rgbe_rle_decode() {
 	assert img.pixels[3] == 1
 }
 
+fn test_rgbe_oversized_header_is_rejected() {
+	mut data := []u8{}
+	data << '#?RADIANCE\n'.bytes()
+	data << 'FORMAT=32-bit_rle_rgbe\n\n'.bytes()
+	data << '-Y 65536 +X 65536\n'.bytes()
+	data << [u8(0), 0, 0, 0]
+	img := decode_rgbe(data) or {
+		assert err.msg().contains('dimensions too large')
+		return
+	}
+	assert false, 'decode_rgbe accepted oversized dimensions ${img.width}x${img.height}'
+}
+
 fn test_rgbe_file_io() {
 	mut img := new_image(1, 1)!
 	img.pixels[0] = 3

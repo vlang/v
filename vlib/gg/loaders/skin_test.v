@@ -43,6 +43,45 @@ fn test_gltf_skin_and_clips() {
 	assert clips[0].tracks[0].keys.len == 2
 }
 
+fn test_clips_skip_bad_channels_without_dropping_clip() {
+	mut bytes := []u8{}
+	bytes << [u8(0), 0, 0, 0]
+	bytes << [u8(0), 0, 0x80, 0x3F]
+	bytes << [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	bytes << [u8(0), 0, 0x80, 0x3F, 0, 0, 0, 0, 0, 0, 0, 0]
+	uri := 'data:application/octet-stream;base64,' + base64.encode(bytes)
+	json := '{
+		"buffers":[{"uri":"${uri}"}],
+		"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":32}],
+		"accessors":[
+			{"bufferView":0,"byteOffset":0,"componentType":5126,"count":2,"type":"SCALAR"},
+			{"bufferView":0,"byteOffset":8,"componentType":5126,"count":2,"type":"VEC3"}
+		],
+		"nodes":[{"name":"root"}],
+		"animations":[{
+			"name":"mostly_valid",
+			"samplers":[
+				{"input":0,"output":1,"interpolation":"LINEAR"},
+				{"input":99,"output":99}
+			],
+			"channels":[
+				{"sampler":1,"target":{"node":0,"path":"translation"}},
+				{"sampler":0,"target":{"node":0,"path":"translation"}},
+				{"sampler":0,"target":{"node":99,"path":"translation"}}
+			]
+		}]
+	}'
+	path := os.join_path(os.temp_dir(), 'gg_skin_skip_${time.now().unix_nano()}.gltf')
+	os.write_file(path, json) or { panic('write failed') }
+	defer { os.rm(path) or {} }
+	clips := load_gltf_clips(path) or { panic('clips failed') }
+	assert clips.len == 1
+	assert clips[0].name == 'mostly_valid'
+	// The bad sampler and the out-of-range target node are both skipped.
+	assert clips[0].tracks.len == 1
+	assert clips[0].tracks[0].keys.len == 2
+}
+
 fn test_skin_rejects_unsafe_gltf() {
 	dir := os.join_path(os.temp_dir(), 'gg_skin_unsafe_${time.now().unix_nano()}')
 	os.mkdir_all(dir) or { panic('mkdir failed') }

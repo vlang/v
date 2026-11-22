@@ -73,8 +73,9 @@ pub fn (mut j DistanceJoint) solve(dt f32) {
 	}
 	error := dist - j.rest
 	impulse := delta.scale(error * j.stiffness * dt / dist)
-	inv_a := if j.a.is_static { 0 } else { 1 / j.a.mass }
-	inv_b := if j.b.is_static { 0 } else { 1 / j.b.mass }
+	// Non-positive masses are immovable rather than producing Inf/NaN impulses.
+	inv_a := if j.a.is_static || j.a.mass <= 0 { 0 } else { 1 / j.a.mass }
+	inv_b := if j.b.is_static || j.b.mass <= 0 { 0 } else { 1 / j.b.mass }
 	j.a.velocity = j.a.velocity + impulse.scale(inv_a)
 	j.b.velocity = j.b.velocity - impulse.scale(inv_b)
 }

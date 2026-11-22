@@ -209,3 +209,41 @@ fn test_load_mesh_gltf_rejects_accessor_past_view() {
 	assert false
 	_ = meshes
 }
+
+fn test_load_mesh_gltf_rejects_offset_integer_overflow() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	uri := base64.encode([u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+	// byteOffset near INT32_MAX makes `at + 12` wrap negative in 32-bit math,
+	// bypassing the old truncation check and panicking on the first read.
+	json_text := '{"buffers":[{"uri":"data:application/octet-stream;base64,${uri}","byteLength":12}],' +
+		'"bufferViews":[{"buffer":0,"byteOffset":2147483640,"byteLength":28,"byteStride":16}],' +
+		'"accessors":[{"bufferView":0,"componentType":5126,"count":2,"type":"VEC3"}],' +
+		'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}'
+	path := os.join_path(dir, 'overflow.gltf')
+	os.write_file(path, json_text)!
+	meshes := load_mesh_gltf(path) or {
+		assert err.msg().contains('truncated') || err.msg().contains('out of bounds')
+		return
+	}
+	assert false
+	_ = meshes
+}
+
+fn test_load_mesh_gltf_rejects_negative_view_length() {
+	dir := os.vtmp_dir()
+	defer { os.rmdir(dir) or {} }
+	uri := base64.encode([u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+	json_text := '{"buffers":[{"uri":"data:application/octet-stream;base64,${uri}","byteLength":12}],' +
+		'"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":-1}],' +
+		'"accessors":[{"bufferView":0,"componentType":5126,"count":1,"type":"VEC3"}],' +
+		'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}'
+	path := os.join_path(dir, 'negative_length.gltf')
+	os.write_file(path, json_text)!
+	meshes := load_mesh_gltf(path) or {
+		assert err.msg().contains('negative byte')
+		return
+	}
+	assert false
+	_ = meshes
+}

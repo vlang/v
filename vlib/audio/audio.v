@@ -107,7 +107,11 @@ pub fn decode_wav(bytes []u8) !Buffer {
 			data_len = size
 			break
 		}
-		offset += size + size % 2
+		next_offset := i64(offset) + i64(size) + i64(size % 2)
+		if next_offset > i64(bytes.len) {
+			return error('audio: chunk size out of range')
+		}
+		offset = int(next_offset)
 	}
 	if data_at < 0 || i64(data_at) + i64(data_len) > i64(bytes.len) {
 		return error('audio: no valid data chunk')
@@ -131,7 +135,7 @@ pub fn load_wav(path string) !Buffer {
 
 // resample linearly interpolates a buffer to target_rate.
 pub fn resample(buf &Buffer, target_rate int) !Buffer {
-	if target_rate < 1 || buf.channels < 1 {
+	if target_rate <= 0 || buf.sample_rate <= 0 || buf.channels < 1 {
 		return error('audio: invalid resample parameters')
 	}
 	if target_rate == buf.sample_rate {

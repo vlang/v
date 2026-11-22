@@ -227,6 +227,9 @@ pub fn (mut m Mat4) lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center
 
 @[direct_array_access]
 pub fn mat4_from_array(arr []f32) Mat4 {
+	if arr.len < 16 {
+		return mat4_identity()
+	}
 	mut m := Mat4{}
 	for i in 0 .. 16 {
 		m.v[i / 4][i % 4] = arr[i]

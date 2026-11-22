@@ -32,6 +32,7 @@ pub interface JS.AudioContext {
 	destination JS.AudioDestinationNode
 	createBuffer(channels int, length int, sampleRate int) JS.AudioBuffer
 	createBufferSource() JS.AudioBufferSourceNode
+	close()
 }
 
 pub fn js_audio_context() JS.AudioContext {
@@ -51,6 +52,8 @@ __global web_next_start f32 = 0
 fn web_setup(cfg DeviceConfig) !bool {
 	web_ctx = js_audio_context()
 	web_channels = if cfg.channels > 0 { cfg.channels } else { 2 }
+	web_next_start = 0
+	web_volume = 1
 	return true
 }
 
@@ -86,6 +89,9 @@ fn web_set_volume(value f32) {
 }
 
 fn web_close() {
+	if !isnil(web_ctx) {
+		web_ctx.close()
+	}
 	web_ctx = unsafe { nil }
 }
 

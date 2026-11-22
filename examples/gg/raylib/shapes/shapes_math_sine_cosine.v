@@ -91,7 +91,9 @@ fn on_frame(data voidptr) {
 	ctx.draw_text(640, 190, 'Sine ${sr:.2f}', size: 12, color: red_c)
 	ctx.draw_text(640, 210, 'Cosine ${cr:.2f}', size: 12, color: blue_c)
 	ctx.draw_text(640, 230, 'Tangent ${tangent:.2f}', size: 12, color: purple)
-	ctx.draw_text(640, 250, 'Cotangent ${1 / tangent:.2f}', size: 12, color: orange_c)
+	// tan() is 0 at the starting angle, so guard the reciprocal to avoid a div by zero.
+	cotangent := if math.abs(tangent) < 0.001 { f32(0) } else { 1 / tangent }
+	ctx.draw_text(640, 250, 'Cotangent ${cotangent:.2f}', size: 12, color: orange_c)
 	ctx.end()
 }
 

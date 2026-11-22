@@ -18,11 +18,12 @@ pub:
 @[heap]
 pub struct ParticleGPU {
 pub mut:
-	vertices   []ParticleVertex
-	buffer     gfx.Buffer
-	shader     &ShaderHandle
-	pipeline   gfx.Pipeline
-	has_buffer bool
+	vertices    []ParticleVertex
+	buffer      gfx.Buffer
+	buffer_size int
+	shader      &ShaderHandle
+	pipeline    gfx.Pipeline
+	has_buffer  bool
 }
 
 pub fn new_particle_gpu() !&ParticleGPU {
@@ -63,21 +64,31 @@ pub fn (mut p ParticleGPU) set(vertices []ParticleVertex) {
 	p.vertices = vertices.clone()
 }
 
-// upload creates or updates the GPU buffer.
+// upload creates or updates the GPU buffer, growing it when needed.
 pub fn (mut p ParticleGPU) upload() {
 	if p.vertices.len == 0 {
 		return
 	}
-	if !p.has_buffer {
+	// Guard the byte count in i64: a later set() may supply many more
+	// vertices than the buffer was originally sized for.
+	required64 := i64(p.vertices.len) * i64(sizeof(ParticleVertex))
+	if required64 <= 0 || required64 > i64(1) << 31 {
+		return
+	}
+	required := int(required64)
+	if !p.has_buffer || required > p.buffer_size {
+		if p.has_buffer && gfx.is_valid() {
+			gfx.destroy_buffer(p.buffer)
+		}
 		p.buffer = gfx.make_buffer(&gfx.BufferDesc{
-			size:  p.vertices.len * int(sizeof(ParticleVertex))
+			size:  required
 			type:  .vertexbuffer
 			usage: .stream
 		})
 		p.has_buffer = true
+		p.buffer_size = required
 	}
-	size := p.vertices.len * int(sizeof(ParticleVertex))
-	gfx.update_buffer(p.buffer, &gfx.Range{ ptr: p.vertices.data, size: u32(size) })
+	gfx.update_buffer(p.buffer, &gfx.Range{ ptr: p.vertices.data, size: u32(required) })
 }
 
 // draw renders the uploaded particles as quads.
@@ -97,6 +108,7 @@ pub fn (mut p ParticleGPU) destroy() {
 		if p.has_buffer {
 			gfx.destroy_buffer(p.buffer)
 			p.has_buffer = false
+			p.buffer_size = 0
 		}
 		gfx.destroy_pipeline(p.pipeline)
 	}

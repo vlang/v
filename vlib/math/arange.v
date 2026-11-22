@@ -11,13 +11,23 @@ pub fn arange(start f64, stop f64, step f64) []f64 {
 		mut v := start
 		for v < stop {
 			out << v
-			v += step
+			next := v + step
+			// With large v and small step, v + step may round back to v.
+			// Stop instead of looping forever on the same value.
+			if next == v {
+				return out
+			}
+			v = next
 		}
 	} else {
 		mut v := start
 		for v > stop {
 			out << v
-			v += step
+			next := v + step
+			if next == v {
+				return out
+			}
+			v = next
 		}
 	}
 	return out

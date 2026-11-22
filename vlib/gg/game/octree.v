@@ -22,27 +22,23 @@ pub fn new_octree(bounds AABB, capacity int) &Octree {
 }
 
 fn child_bounds(b AABB, index int) AABB {
-	half := (b.max - b.min).scale(0.5)
-	center := (b.min + b.max).scale(0.5)
-	mut lo := center
-	mut hi := center
+	mid := (b.min + b.max).scale(0.5)
+	mut lo := b.min
+	mut hi := b.max
 	if index & 1 != 0 {
-		lo.x += half.x
-		hi.x += half.x
+		lo.x = mid.x
 	} else {
-		hi.x -= half.x
+		hi.x = mid.x
 	}
 	if index & 2 != 0 {
-		lo.y += half.y
-		hi.y += half.y
+		lo.y = mid.y
 	} else {
-		hi.y -= half.y
+		hi.y = mid.y
 	}
 	if index & 4 != 0 {
-		lo.z += half.z
-		hi.z += half.z
+		lo.z = mid.z
 	} else {
-		hi.z -= half.z
+		hi.z = mid.z
 	}
 	return AABB{ min: lo, max: hi }
 }
@@ -59,9 +55,10 @@ fn split_octree(mut o Octree) {
 	}
 	o.children = []&Octree{cap: 8}
 	for i in 0 .. 8 {
-		o.children << new_octree(child_bounds(o.bounds, i), o.capacity)
+		mut child := new_octree(child_bounds(o.bounds, i), o.capacity)
+		child.depth = o.depth + 1
+		o.children << child
 	}
-	o.children[0].depth = o.depth + 1
 }
 
 // insert adds an id with its bounding box. It returns false when the box
