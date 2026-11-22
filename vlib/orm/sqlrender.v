@@ -12,6 +12,11 @@ mut:
 }
 
 fn render_qname(name string, q string) string {
+	// The common case is a plain identifier with no qualification; avoid the
+	// split + join allocations (same output as the dotted path for one part).
+	if !name.contains('.') {
+		return '${q}${name}${q}'
+	}
 	mut parts := name.split('.')
 	for i, part in parts {
 		parts[i] = '${q}${part}${q}'
