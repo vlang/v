@@ -36,7 +36,7 @@
 - `import gg.xr`: stereo camera rig, viewports and convergence point.
 - `import gg.ecs`: World, Entity, Storage[T] sparse-set components, Transform.
 - `import gg.netcode`: Packet bitstream, Snapshot interpolation, native UDP Peer.
-- `import gg.audio`: Bus gain/pan/filter graph, PositionalVoice, Stream.
+- `import gg.spatial`: Bus gain/pan/filter graph, PositionalVoice, Stream.
 - `import gg.loaders`: load_scene_gltf for materials/nodes/cameras/lights.
 - `import gg.texture`: decode_etc1 and generate_mipmaps.
 - `import gg.gpu`: tonemap_source/blur_source/bloom_source, FullscreenPass,

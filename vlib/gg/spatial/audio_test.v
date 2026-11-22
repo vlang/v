@@ -1,4 +1,4 @@
-module audio
+module spatial
 
 import gg
 import math

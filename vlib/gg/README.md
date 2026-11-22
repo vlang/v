@@ -655,7 +655,7 @@ backend does not expose `gg`'s drawing calls.
   broadphase, distance/spring joints and a character controller.
 - `gg.netcode` offers a byte packet stream, snapshot interpolation and a
   native UDP peer with sequence/ack headers. JS/WASM have no transport.
-- `gg.audio` adds gain/pan/filter buses, a positional voice with distance
+- `gg.spatial` adds gain/pan/filter buses, a positional voice with distance
   attenuation, and looping streams. Compressed audio decoding is not included.
 - `gg.hdr` now has wide-gamut color-space conversion, 3D LUTs and auto-exposure;
   `gg.raytrace` adds temporal accumulation and bilateral denoising.
