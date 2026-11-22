@@ -458,7 +458,10 @@ see also `v help build`.
       build that fails leaves the directory, and the executable it belongs to, as they
       were. So does a build that is interrupted (Ctrl-C): what it had written is left
       beside the directory as `.<output>.v3cc.cg.interrupted`, and the next `-cg` build
-      of that output removes it. Delete the directory when you no longer debug that binary.
+      of that output removes it. A directory that a build replaced and could not take
+      away (a file in it was open) stays as `.<output>.v3cc.cg.prev` with an empty file
+      `.<output>.v3cc.cg.prev.retired` beside it, and the next `-cg` build of that output
+      removes both. Delete the directory when you no longer debug that binary.
 
    -keepc
       Do not remove the temporary .tmp.c and .tmp.c.rsp files.

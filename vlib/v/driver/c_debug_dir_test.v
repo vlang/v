@@ -2,6 +2,7 @@ module driver
 
 import os
 import sync.stdatomic
+import time
 
 // The directory a `-cg` build keeps is replaced by the next build of the same output only when
 // that build succeeds. These are the three steps of that, on plain directories.
@@ -267,4 +268,317 @@ fn test_a_publication_that_failed_is_armed_again() {
 	cleanup_c_build_dir(dir)
 	assert read_c_debug_dir(dir) == 'old'
 	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+}
+
+// ── rollback: the build and a handler both want the directories ──────────────────────────
+
+fn cleans_up_c_debug_dir(dir string, done chan bool) {
+	cleanup_c_build_dir(dir)
+	done <- true
+}
+
+// A handler has taken the directory and given it back, and is about to end the process. A
+// cleanup of the build, on its own thread, must not touch the directories any more: the
+// sources it would remove are the ones the handler has just put back, and nothing is set
+// aside to replace them. (Before, the cleanup did not ask whose the directories were: it
+// removed the old sources, for good.) It waits, as the publication does, for the end of the
+// process.
+fn test_a_cleanup_after_a_handler_took_the_directory_touches_nothing() {
+	root := c_debug_dir_fixture('rollback_handler_first')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'new, unfinished')
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.int)) == .give_back
+	// what the handler does with the directory it has
+	$if windows {
+		v3_give_back_c_debug_dir_as_owner()
+	} $else {
+		v3_give_back_c_debug_dir_in_a_handler()
+	}
+	assert read_c_debug_dir(dir) == 'old'
+	done := chan bool{cap: 1}
+	spawn cleans_up_c_debug_dir(dir, done)
+	mut finished := false
+	select {
+		_ := <-done {
+			finished = true
+		}
+		300 * time.millisecond {
+		}
+	}
+	assert read_c_debug_dir(dir) == 'old', 'the sources the handler gave back are still there'
+	assert !finished, 'the cleanup waits for the process to end'
+	// (the process ends here; the test lets the waiting thread go on a directory of no use)
+	os.rename(dir, dir + '.kept')!
+	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
+	_ := <-done
+	assert read_c_debug_dir(dir + '.kept') == 'old'
+}
+
+// ── a directory that was replaced and could not be taken away ─────────────────────────────
+
+struct CDebugDirBlock {
+mut:
+	file   os.File
+	locked string
+}
+
+// block_c_debug_dir makes `set_aside` impossible to rename to `interrupted` and impossible
+// to remove, the way a file that another program holds open does on Windows. On Unix: the
+// name it would be renamed to is taken by a file (a directory there would take it IN:
+// os.rename moves into a directory that exists), and it has a directory in it that
+// nothing can be removed from.
+fn block_c_debug_dir(set_aside string, interrupted string) CDebugDirBlock {
+	mut block := CDebugDirBlock{}
+	$if windows {
+		block.file = os.open(os.join_path(set_aside, 'src.c')) or { panic(err) }
+	} $else {
+		os.write_file(interrupted, 'in the way') or { panic(err) }
+		block.locked = os.join_path(set_aside, 'locked')
+		write_c_debug_dir(block.locked, 'held')
+		os.chmod(block.locked, 0o555) or { panic(err) }
+	}
+	return block
+}
+
+fn (mut block CDebugDirBlock) release() {
+	$if windows {
+		block.file.close()
+	} $else {
+		os.chmod(block.locked, 0o755) or {}
+	}
+}
+
+// can_block_c_debug_dir is false where the block above does not hold: for root, on Unix.
+fn can_block_c_debug_dir() bool {
+	$if windows {
+		return true
+	} $else {
+		return os.getuid() != 0
+	}
+}
+
+// A build succeeded, and the directory it had set aside could be neither renamed nor
+// removed. It is still there under the name of something to give back, beside a NEWER
+// executable. The next build must not take it for the sources of the executable in place:
+// it would remove the right ones, and give the wrong ones back when it fails.
+fn test_a_replaced_directory_that_could_not_be_taken_away_is_not_given_back_later() {
+	if !can_block_c_debug_dir() {
+		eprintln('> skipped: a directory cannot be made impossible to remove for root')
+		return
+	}
+	root := c_debug_dir_fixture('retired_released')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	// build 1 replaces the executable of sources 0 by the executable of sources 1
+	write_c_debug_dir(dir, 'sources 0')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	v3_begin_c_debug_dir_publication()
+	mut block := block_c_debug_dir(set_aside, v3_c_debug_dir_interrupted(dir))
+	v3_keep_new_c_debug_dir(dir)
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+	assert os.is_dir(set_aside), 'the fixture: what was replaced could not be taken away'
+	assert os.exists(v3_c_debug_dir_retired(dir)), 'it has the mark of a directory that was retired'
+	assert !v3_c_debug_dir_is_set_aside(dir)
+	block.release()
+	// build 2 starts, writes, and fails
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'sources 2, unfinished')
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'sources 1', 'the executable in place is the one of sources 1'
+	assert !os.exists(set_aside) && !os.exists(v3_c_debug_dir_retired(dir))
+}
+
+// The same, with the directory still impossible to remove when the next build runs. The
+// right sources cannot be set aside under the taken name then, and are lost to a build that
+// fails; what must not happen is that the wrong ones come back in their place.
+fn test_a_replaced_directory_that_still_cannot_be_taken_away_is_not_given_back_either() {
+	if !can_block_c_debug_dir() {
+		eprintln('> skipped: a directory cannot be made impossible to remove for root')
+		return
+	}
+	root := c_debug_dir_fixture('retired_held')
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'sources 0')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	v3_begin_c_debug_dir_publication()
+	mut block := block_c_debug_dir(set_aside, v3_c_debug_dir_interrupted(dir))
+	defer {
+		block.release()
+		os.rmdir_all(root) or {}
+	}
+	v3_keep_new_c_debug_dir(dir)
+	assert os.is_dir(set_aside), 'the fixture: what was replaced could not be taken away'
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'sources 2, unfinished')
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) != 'sources 0', 'the sources of an executable that was replaced do not come back'
+	assert !os.exists(dir), 'and nothing else of that directory does (it was half removed: its locked part is what a give-back would bring)'
+	assert os.exists(v3_c_debug_dir_retired(dir)), 'the mark stays for as long as the directory does'
+}
+
+// The other way round: the build has the directories, and a signal arrives in the middle of
+// its giving back. The handler must not touch them (the unfinished directory may be half
+// removed, the one set aside not yet moved): it leaves its signal in the word and returns,
+// and the build raises it when the directory is back. Played by hand, as the schedules above.
+fn test_a_signal_during_a_rollback_of_the_build_waits_until_the_directory_is_back() {
+	root := c_debug_dir_fixture('rollback_build_first')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'new, unfinished')
+	assert v3_c_debug_dir_rollback_step(v3_c_debug_dir_load()) == .mine
+	assert v3_c_debug_dir_state_is(c_debug_dir_rolling_back)
+	// a second thread of the build stays out too
+	assert v3_c_debug_dir_rollback_step(v3_c_debug_dir_load()) == .busy
+	// the signal, as the handler is called: it gives nothing back and ends nothing
+	v3_c_debug_dir_signal(.term)
+	assert v3_c_debug_dir_state_is(c_debug_dir_rolling_back)
+	assert read_c_debug_dir(dir) == 'new, unfinished'
+	assert read_c_debug_dir(v3_c_debug_dir_set_aside(dir)) == 'old'
+	// the build gives back, and finds the signal in the word in the step that lets go of it
+	assert v3_give_back_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'old'
+	assert v3_take_c_debug_dir_word(c_debug_dir_rolling_back, c_debug_dir_idle) == int(os.Signal.term)
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+	// raised now, it only ends the process: nothing is set aside
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.term)) == .end
+}
+
+// The handler read `armed`; the build then took the directories for a rollback. The
+// handler's swap fails: it looks again, and waits. And the build that read `armed` while a
+// handler took the directory fails its swap the same way, and finds them the handler's.
+fn test_a_rollback_and_a_handler_that_both_read_armed_do_not_both_get_the_directory() {
+	root := c_debug_dir_fixture('rollback_both')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	read_by_both := v3_c_debug_dir_load()
+	assert read_by_both == c_debug_dir_armed
+	assert v3_c_debug_dir_rollback_step(read_by_both) == .mine
+	assert v3_c_debug_dir_signal_step(read_by_both, int(os.Signal.int)) == .again
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.int)) == .wait
+	assert v3_take_c_debug_dir_word(c_debug_dir_rolling_back, c_debug_dir_armed) == int(os.Signal.int)
+	// and the other order, from the same stale reading
+	assert v3_c_debug_dir_signal_step(read_by_both, int(os.Signal.int)) == .give_back
+	assert v3_c_debug_dir_rollback_step(read_by_both) == .again
+	assert v3_c_debug_dir_rollback_step(v3_c_debug_dir_load()) == .theirs
+	// (the process ends here; the test puts the word back instead)
+	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
+}
+
+// A cleanup of a directory that is not the watched one, or with nothing armed, asks nobody:
+// no handler would touch those directories.
+fn test_a_rollback_with_nothing_armed_is_nobodys_to_coordinate() {
+	stdatomic.store_u64(&v3_c_debug_dir_word, c_debug_dir_idle)
+	assert v3_c_debug_dir_rollback_step(v3_c_debug_dir_load()) == .nobodys
+	assert !v3_begin_c_debug_dir_rollback()
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+}
+
+// The mark by itself: a set-aside directory with the mark beside it is not set aside for
+// anything. It is not given back, by a failure, by the exit hook or by the Unix handler's
+// test of it; the next build removes it with its mark and sets aside the right one.
+fn test_a_retired_directory_is_given_back_by_nothing() {
+	root := c_debug_dir_fixture('retired_mark')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	write_c_debug_dir(set_aside, 'sources 0, replaced')
+	os.write_file(v3_c_debug_dir_retired(dir), '')!
+	assert !v3_c_debug_dir_is_set_aside(dir)
+	// a failure of a build that had not set anything aside itself
+	assert !v3_give_back_c_build_dir(dir + '.other')
+	// the exit hook of a process that watches the directory
+	v3_watch_c_debug_dir(dir)
+	v3_give_back_c_debug_dir_at_exit()
+	assert read_c_debug_dir(dir) == 'sources 1'
+	// the giving back of the Unix handler, with the directory its own
+	$if !windows {
+		v3_give_back_c_debug_dir_in_a_handler()
+		assert read_c_debug_dir(dir) == 'sources 1'
+		assert read_c_debug_dir(set_aside) == 'sources 0, replaced'
+		assert !os.exists(v3_c_debug_dir_interrupted(dir))
+	}
+	// the next build: the retired one goes, with its mark, and the right one is set aside
+	v3_set_aside_c_debug_dir(dir)
+	assert !os.exists(v3_c_debug_dir_retired(dir))
+	assert read_c_debug_dir(set_aside) == 'sources 1'
+	write_c_debug_dir(dir, 'sources 2, unfinished')
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'sources 1'
+	assert os.ls(root)! == ['.program.v3cc.cg']
+}
+
+// A build that succeeds and can rename what it had set aside leaves no mark.
+fn test_a_build_that_succeeds_leaves_no_mark() {
+	root := c_debug_dir_fixture('retired_none')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'new')
+	v3_begin_c_debug_dir_publication()
+	v3_keep_new_c_debug_dir(dir)
+	assert os.ls(root)! == ['.program.v3cc.cg']
+}
+
+// hold_c_debug_dir makes `dir` impossible to remove: an open file in it on Windows, a
+// directory in it that nothing can be removed from on Unix (not for root).
+fn hold_c_debug_dir(dir string) CDebugDirBlock {
+	mut block := CDebugDirBlock{}
+	$if windows {
+		block.file = os.open(os.join_path(dir, 'src.c')) or { panic(err) }
+	} $else {
+		block.locked = os.join_path(dir, 'locked')
+		write_c_debug_dir(block.locked, 'held')
+		os.chmod(block.locked, 0o555) or { panic(err) }
+	}
+	return block
+}
+
+// What a build had written cannot always be removed (a file in it is open). The directory
+// that was set aside is then not moved back: os.rename moves INTO a directory that exists,
+// and the old sources would end up inside what is left of the unfinished ones, found by
+// nothing. It stays set aside, which is where the next build of the output looks for the
+// sources of the executable in place.
+fn test_a_directory_that_cannot_be_removed_does_not_swallow_the_one_set_aside() {
+	if !can_block_c_debug_dir() {
+		eprintln('> skipped: a directory cannot be made impossible to remove for root')
+		return
+	}
+	root := c_debug_dir_fixture('not_removed')
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'new, unfinished')
+	mut block := hold_c_debug_dir(dir)
+	defer {
+		block.release()
+		os.rmdir_all(root) or {}
+	}
+	cleanup_c_build_dir(dir)
+	assert os.is_dir(dir), 'the fixture: what the build had written could not be removed'
+	assert read_c_debug_dir(set_aside) == 'old', 'the old sources are still set aside'
+	assert !os.exists(os.join_path(dir, os.file_name(set_aside))), 'and not inside what is left'
+	// the watch goes on: the exit hook, or a signal, tries again
+	assert v3_watched_c_debug_dir() == dir
+	assert v3_c_debug_dir_state_is(c_debug_dir_armed)
+	block.release()
+	// the next build of the output keeps what is set aside, and a failure gives it back
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'newer, unfinished')
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'old'
+	assert os.ls(root)! == ['.program.v3cc.cg']
 }

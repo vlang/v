@@ -2650,19 +2650,50 @@ fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explic
 // v3_set_aside_c_debug_dir). A failure that ends the process without coming here leaves that
 // to the exit hook, which calls this (see v3_give_back_c_debug_dir_at_exit).
 fn cleanup_c_build_dir(dir string) {
-	if dir.len > 0 {
-		os.rmdir_all(dir) or {}
-		set_aside := v3_c_debug_dir_set_aside(dir)
-		if os.is_dir(set_aside) {
-			os.rename(set_aside, dir) or {}
-			// Nothing is set aside for this process any more. A build it starts next (the
-			// restart paths) sets the directory aside for itself, and an interrupt that
-			// reaches both must find one of them giving it back, not two.
-			if dir == v3_watched_c_debug_dir() {
-				v3_unwatch_c_debug_dir()
-			}
-		}
+	if dir.len == 0 {
+		return
 	}
+	// The watched directory is also what a signal handler gives back, on a thread of its
+	// own on Windows: the build takes the directories before it touches them, and a handler
+	// that has them keeps them (see v3_begin_c_debug_dir_rollback).
+	watched := dir == v3_watched_c_debug_dir()
+	owned := watched && v3_begin_c_debug_dir_rollback()
+	gave_back := v3_give_back_c_build_dir(dir)
+	if watched && gave_back {
+		// Nothing is set aside for this process any more. A build it starts next (the
+		// restart paths) sets the directory aside for itself, and an interrupt that
+		// reaches both must find one of them giving it back, not two.
+		v3_c_debug_dir_watched_len = 0
+	}
+	if owned {
+		v3_end_c_debug_dir_rollback(if gave_back { c_debug_dir_idle } else { c_debug_dir_armed })
+	} else if watched && gave_back {
+		v3_disarm_c_debug_dir_signals()
+	}
+}
+
+// v3_give_back_c_build_dir removes `dir` and moves back what was set aside for it, and says
+// whether that was done. Whoever calls it has the directories. A set-aside directory that
+// was retired is the sources of an executable that was replaced: it is not given back, and
+// is removed when it can be.
+fn v3_give_back_c_build_dir(dir string) bool {
+	os.rmdir_all(dir) or {}
+	if !os.is_dir(v3_c_debug_dir_set_aside(dir)) {
+		return false
+	}
+	if !v3_c_debug_dir_is_set_aside(dir) {
+		v3_drop_retired_c_debug_dir(dir)
+		return false
+	}
+	if os.exists(dir) {
+		// What the build had written could not be removed (a file in it is open). The
+		// directory that was set aside stays where it is: os.rename moves INTO a directory
+		// that exists, and the old sources would be inside what is left of the new ones,
+		// found by nothing. Set aside, they are what the next build of this output keeps.
+		return false
+	}
+	os.rename(v3_c_debug_dir_set_aside(dir), dir) or {}
+	return true
 }
 
 fn run_test_binary(bin_file string) int {
@@ -6414,6 +6445,15 @@ fn v3_set_aside_c_debug_dir(cc_dir string) {
 	os.rmdir_all(v3_c_debug_dir_interrupted(cc_dir)) or {}
 	v3_watch_c_debug_dir(cc_dir)
 	set_aside := v3_c_debug_dir_set_aside(cc_dir)
+	// A set-aside directory with the retired mark is what a build that SUCCEEDED could not
+	// take away: the sources of an executable that was replaced, not of the one in place.
+	// It goes now. While it cannot, its name is taken: the sources of the executable in
+	// place cannot be set aside for this build (a failure leaves the executable without
+	// them), and what is there is still not given back (the mark stays).
+	if !v3_drop_retired_c_debug_dir(cc_dir) {
+		os.rmdir_all(cc_dir) or {}
+		return
+	}
 	if os.is_dir(set_aside) {
 		os.rmdir_all(cc_dir) or {}
 		return
