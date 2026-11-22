@@ -232,3 +232,130 @@ fn test_an_interrupted_rebuild_keeps_the_sources_of_the_executable_in_place() {
 	assert os.read_file(c_source)!.contains('second build')
 	assert os.exec([executable]).output.trim_space() == 'second build'
 }
+
+// A rename() that, when it has put the new executable in place, says so and waits until it is
+// released: the build is then interrupted at a known place, between its executable and what
+// it does next with the directory it had set aside. It changes no result.
+const holding_rename_source = '#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+int rename(const char *from, const char *to) {
+	int (*real_rename)(const char *, const char *) = dlsym(RTLD_NEXT, "rename");
+	int result = real_rename(from, to);
+	const char *published = getenv("C_DEBUG_DIR_TEST_PUBLISHED");
+	const char *hold = getenv("C_DEBUG_DIR_TEST_HOLD");
+	if (result == 0 && published && hold && strcmp(to, published) == 0) {
+		char path[4096];
+		snprintf(path, sizeof(path), "%s.started", hold);
+		FILE *started = fopen(path, "w");
+		if (started) {
+			fputs("held", started);
+			fclose(started);
+		}
+		snprintf(path, sizeof(path), "%s.release", hold);
+		for (int i = 0; i < 30000 && access(path, F_OK) != 0; i++) {
+			struct timespec pause = {0, 20000000};
+			nanosleep(&pause, 0);
+		}
+	}
+	return result;
+}
+'
+
+// Ctrl-C can also arrive when the new executable is in place and the build has not yet let go
+// of the directory it set aside. The executable is the new one then, so the sources at its
+// path must be the new ones: nothing may be given back any more.
+fn test_an_interrupt_after_the_executable_is_in_place_keeps_the_new_sources() {
+	$if !linux {
+		return
+	}
+	real_gcc := os.find_abs_path_of_executable('gcc') or {
+		eprintln('skipping: no gcc')
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'c_debug_dir_published_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	shim_source := os.join_path(root, 'holding_rename.c')
+	shim := os.join_path(root, 'holding_rename.so')
+	os.write_file(shim_source, holding_rename_source)!
+	shim_build := os.exec([real_gcc, '-shared', '-fPIC', '-o', shim, shim_source, '-ldl'])
+	assert shim_build.exit_code == 0, shim_build.output
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { println("first build") }')!
+	executable := os.join_path(root, 'program')
+	build_args := ['-new-compiler', '-cg', '-cc', real_gcc, '-gc', 'none', '-nocache', '-o',
+		executable, source]
+	mut first_args := [@VEXE]
+	first_args << build_args
+	first := os.exec(first_args)
+	assert first.exit_code == 0, first.output
+	dir_prefix := '.${os.base(executable)}.v3cc.'
+	first_dirs := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert first_dirs.len == 1, first_dirs.str()
+	c_source := os.join_path(root, first_dirs[0], 'src.c')
+	assert os.read_file(c_source)!.contains('first build')
+	// The second build is held when its executable is in place.
+	os.write_file(source, 'fn main() { println("second build") }')!
+	hold := os.join_path(root, 'hold')
+	os.setenv('C_DEBUG_DIR_TEST_PUBLISHED', executable, true)
+	os.setenv('C_DEBUG_DIR_TEST_HOLD', hold, true)
+	os.setenv('LD_PRELOAD', shim, true)
+	mut build := os.new_process(@VEXE)
+	build.set_args(build_args)
+	build.use_pgroup = true
+	build.set_redirect_stdio()
+	build.run()
+	os.unsetenv('LD_PRELOAD')
+	os.unsetenv('C_DEBUG_DIR_TEST_PUBLISHED')
+	os.unsetenv('C_DEBUG_DIR_TEST_HOLD')
+	defer {
+		os.write_file(hold + '.release', 'go') or {}
+		build.signal_pgkill()
+		build.close()
+	}
+	mut held := false
+	for _ in 0 .. 1800 {
+		if os.exists(hold + '.started') {
+			held = true
+			break
+		}
+		if !build.is_alive() {
+			break
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert held, 'the second build did not put its executable in place: ${build.stdout_slurp()} ${build.stderr_slurp()}'
+	assert os.exec([executable]).output.trim_space() == 'second build'
+	interrupt := os.exec(['/bin/kill', '-INT', '--', '-${build.pid}'])
+	assert interrupt.exit_code == 0, interrupt.output
+	// the interrupt has arrived while the build is held; now the build goes on
+	time.sleep(300 * time.millisecond)
+	os.write_file(hold + '.release', 'go')!
+	mut gone := false
+	for _ in 0 .. 100 {
+		if !build.is_alive() {
+			gone = true
+			break
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert gone, 'the compiler was still there ten seconds after its interrupt'
+	// immediately after the compiler is gone: the new executable, and its own sources
+	assert os.exec([executable]).output.trim_space() == 'second build'
+	assert os.exists(c_source), 'the interrupted build left no ${c_source}'
+	assert os.read_file(c_source)!.contains('second build'), 'the sources at the path of the new executable are not its own'
+	interrupted_dir := first_dirs[0] + '.interrupted'
+	after_interrupt := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert after_interrupt.filter(it != interrupted_dir) == first_dirs, 'after the interrupted build: ${after_interrupt}'
+	// The next build leaves one directory again.
+	third := os.exec(first_args)
+	assert third.exit_code == 0, third.output
+	after_success := os.ls(root)!.filter(it.starts_with(dir_prefix))
+	assert after_success == first_dirs, 'after the build that succeeded: ${after_success}'
+}

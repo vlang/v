@@ -6426,7 +6426,7 @@ fn v3_set_aside_c_debug_dir(cc_dir string) {
 // v3_keep_new_c_debug_dir is called when the new executable is in place: the sources of the
 // one it replaced are no longer named by anything.
 fn v3_keep_new_c_debug_dir(cc_dir string) {
-	os.rmdir_all(v3_c_debug_dir_set_aside(cc_dir)) or {}
+	v3_end_c_debug_dir_publication(cc_dir, true)
 	v3_unwatch_c_debug_dir()
 }
 
@@ -18386,8 +18386,16 @@ Please install the corresponding development package/libraries and make sure the
 						os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'), unchanged_build_cache_dir]))
 		}
 		print_post_link_step(verbose || show_cc, post_link_move_step(staged_binary, bin_file))
+		if is_c_debug {
+			// From here until the directory that was set aside is let go, a signal waits:
+			// which sources belong to the executable in place changes with this move.
+			v3_begin_c_debug_dir_publication()
+		}
 		os.mv(staged_binary, bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
+			if is_c_debug {
+				v3_end_c_debug_dir_publication(cc_dir, false)
+			}
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}

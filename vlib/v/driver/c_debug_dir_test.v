@@ -150,3 +150,46 @@ fn test_the_next_build_removes_what_an_interrupted_one_left() {
 	// giving the directory back also ends the watch on it
 	assert v3_watched_c_debug_dir() == ''
 }
+
+// While the build moves its executable into place, a signal neither gives the directory back
+// nor ends the process: the handler only notes it. Called here as the signal would call it.
+fn test_a_signal_during_publication_waits_and_gives_nothing_back() {
+	root := c_debug_dir_fixture('publishing')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'new')
+	assert v3_c_debug_dir_state_is(c_debug_dir_armed)
+	v3_begin_c_debug_dir_publication()
+	assert v3_c_debug_dir_state_is(c_debug_dir_publishing)
+	v3_c_debug_dir_signal(.int)
+	assert v3_c_debug_dir_signal_waiting == int(os.Signal.int)
+	assert read_c_debug_dir(dir) == 'new'
+	assert read_c_debug_dir(v3_c_debug_dir_set_aside(dir)) == 'old'
+	// the test goes on: the signal is taken back before the publication ends, which would
+	// raise it
+	v3_c_debug_dir_signal_waiting = 0
+	v3_keep_new_c_debug_dir(dir)
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+	assert read_c_debug_dir(dir) == 'new'
+	assert os.ls(root)! == ['.program.v3cc.cg']
+}
+
+// A move that failed leaves the old executable in place: the directory is to be given back
+// again, by a signal as by a failure.
+fn test_a_publication_that_failed_is_armed_again() {
+	root := c_debug_dir_fixture('publication_failed')
+	defer { os.rmdir_all(root) or {} }
+	dir := os.join_path(root, '.program.v3cc.cg')
+	write_c_debug_dir(dir, 'old')
+	v3_set_aside_c_debug_dir(dir)
+	write_c_debug_dir(dir, 'new, never linked')
+	v3_begin_c_debug_dir_publication()
+	v3_end_c_debug_dir_publication(dir, false)
+	assert v3_c_debug_dir_state_is(c_debug_dir_armed)
+	assert read_c_debug_dir(v3_c_debug_dir_set_aside(dir)) == 'old'
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'old'
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+}
