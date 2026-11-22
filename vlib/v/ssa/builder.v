@@ -248,6 +248,7 @@ pub:
 	exact_used_fns         bool                         // materialize only source functions listed in used_fns
 	allow_missing_fn_stubs bool                         // native compile-only fallback for checker-validated calls
 	use_native_c_sources   bool                         // link V-shipped C implementations instead of SSA replacements
+	literal_output         bool                         // driver-proved literal printing; requires a checker
 	// c_constants holds values of `C.NAME` constants that the driver read from
 	// the program's C headers with the C compiler (see the arm64 driver's
 	// arm64_probe_c_constants): name -> value text.
@@ -290,6 +291,9 @@ pub fn build_with_used(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.Typ
 
 // build_with_options builds with options data for ssa.
 pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, opts BuildOptions) &Module {
+	if opts.literal_output {
+		return build_literal_output(a_, tc.diagnostic_files, opts.target, opts.track_uses)
+	}
 	mut b := Builder{
 		m:                        Module.new()
 		a:                        unsafe { a_ }
