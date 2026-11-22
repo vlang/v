@@ -530,7 +530,7 @@ if not exist "!tcc_exe!" (
 )
 call :select_tcc_openlibm
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
-"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% %TCC_OPENLIBM% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -I "%~dp0." -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% %TCC_OPENLIBM% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_msvc
