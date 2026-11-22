@@ -7,7 +7,7 @@ import v.ssa
 import v.gen.elf
 
 pub struct Gen {
-	m   &ssa.Module
+	m &ssa.Module
 mut:
 	elf &elf.ElfObject
 }
