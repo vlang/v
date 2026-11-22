@@ -17,6 +17,11 @@ fn headerless_linux_bootstrap_path() string {
 
 fn testsuite_begin() {
 	os.rm(headerless_linux_bootstrap_path()) or {}
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux or
+	// FreeBSD, which some of these builds do; let them use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
 }
 
 fn testsuite_end() {
@@ -288,7 +293,12 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	generate_headerless_self_c(c_file, ['-gc', 'none', '-prealloc', '-compile-backend', 'fastc'])!
 	native := os.read_file(c_file)!
 	assert_self_c_directory_bindings(native)
-	assert_self_c_compiler_owned_includes(native)
+	// Windows host C is not headerless: builtin_windows.c.v and other Windows modules
+	// include CRT and SDK headers (io.h, fcntl.h, windows.h, ...), even with
+	// `-d no_segfault_handler`. The portable snapshot below is checked on every host.
+	$if !windows {
+		assert_self_c_compiler_owned_includes(native)
+	}
 
 	// The literal-output suite already exercises both spellings of portable C.
 	// On Linux the compiler snapshot is also used by the target syntax checks.
