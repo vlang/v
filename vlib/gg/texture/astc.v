@@ -8,16 +8,22 @@ fn astc_clamp(v int) u8 {
 }
 
 fn astc_read_bits(data []u8, bit_pos int, count int) !u64 {
-	mut value := u64(0)
-	for i in 0 .. count {
-		at := bit_pos + i
-		byte_at := at / 8
-		if byte_at >= data.len {
-			return error('texture: ASTC block truncated')
-		}
-		value |= u64((data[byte_at] >> u8(at % 8)) & 1) << u32(i)
+	if count == 0 {
+		return u64(0)
 	}
-	return value
+	// Read the field as a small byte load rather than one bit per iteration.
+	// The widest field is 16 bits, so at most three bytes are touched.
+	start_byte := bit_pos >> 3
+	offset := bit_pos & 7
+	nbytes := (offset + count + 7) >> 3
+	if start_byte + nbytes > data.len {
+		return error('texture: ASTC block truncated')
+	}
+	mut raw := u64(0)
+	for i in 0 .. nbytes {
+		raw |= u64(data[start_byte + i]) << u32(i * 8)
+	}
+	return (raw >> u32(offset)) & ((u64(1) << u32(count)) - 1)
 }
 
 fn half_to_f32(h u16) f32 {

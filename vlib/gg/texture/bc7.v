@@ -14,17 +14,21 @@ fn (mut r BitReader) read(count int) !u64 {
 	if count == 0 {
 		return 0
 	}
-	mut value := u64(0)
-	for i in 0 .. count {
-		byte_at := r.pos / 8
-		if byte_at >= r.data.len {
-			return error('texture: BC7 block truncated')
-		}
-		bit := (r.data[byte_at] >> u8(r.pos % 8)) & 1
-		value |= u64(bit) << u32(i)
-		r.pos++
+	// Assemble the whole field from the (at most two) bytes it spans instead
+	// of extracting one bit at a time. BC7 fields are <= 6 bits, so this is
+	// always a single short load plus a shift and mask.
+	start_byte := r.pos >> 3
+	offset := r.pos & 7
+	nbytes := (offset + count + 7) >> 3
+	if start_byte + nbytes > r.data.len {
+		return error('texture: BC7 block truncated')
 	}
-	return value
+	mut raw := u64(0)
+	for i in 0 .. nbytes {
+		raw |= u64(r.data[start_byte + i]) << u32(i * 8)
+	}
+	r.pos += count
+	return (raw >> u32(offset)) & ((u64(1) << u32(count)) - 1)
 }
 
 fn bc7_expand(v int, bits int) u8 {

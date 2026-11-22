@@ -58,6 +58,31 @@ fn test_astc_nonvoid() {
 	assert big.len == 64
 }
 
+fn test_unaligned_bit_fields() {
+	// The bulk byte readers must agree with bit-by-bit extraction for fields
+	// that straddle byte boundaries.
+	// 0b10110011, 0b01011010, 0b11110000 followed by zero padding.
+	data := [u8(179), 90, 240, 0, 0, 0, 0, 0]
+	positions := [0, 1, 3, 5, 7, 9, 11, 15]
+	widths := [1, 2, 4, 3, 8, 6, 16, 9]
+	mut br := BitReader{ data: data, pos: 0 }
+	for k in 0 .. positions.len {
+		at_pos := positions[k]
+		width := widths[k]
+		mut want := u64(0)
+		for i in 0 .. width {
+			bit_at := at_pos + i
+			bit := (data[bit_at / 8] >> u8(bit_at % 8)) & 1
+			want |= u64(bit) << u32(i)
+		}
+		got_astc := astc_read_bits(data, at_pos, width) or { panic('astc read failed') }
+		assert got_astc == want
+		br.pos = at_pos
+		got_bc7 := br.read(width) or { panic('bc7 read failed') }
+		assert got_bc7 == want
+	}
+}
+
 fn test_astc_void_extent() {
 	mut block := []u8{len: 16, init: 0}
 	// Void extent: low 9 bits set, LDR bit clear.
