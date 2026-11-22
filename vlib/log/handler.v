@@ -69,6 +69,7 @@ mut:
 	opts      HandlerOptions
 	level     Level = .info
 	level_var ?&LevelVar
+	tags      [6]string
 }
 
 // config is per-handler immutable state (attributes and group path).
@@ -79,18 +80,34 @@ struct HandlerConfig {
 }
 
 fn make_shared(writer io.Writer, opts HandlerOptions, level Level) &HandlerShared {
-	return &HandlerShared{
+	mut s := &HandlerShared{
 		writer: writer
 		opts:   opts
 		level:  level
 	}
+	// Rendering tags once avoids building colour escape strings per record.
+	levels := [
+		Level.disabled,
+		Level.fatal,
+		Level.error,
+		Level.warn,
+		Level.info,
+		Level.debug,
+	]
+	for i, lvl in levels {
+		s.tags[i] = if opts.color {
+			tag_to_console(lvl, opts.short_tags)
+		} else {
+			tag_to_file(lvl, opts.short_tags)
+		}
+	}
+	return s
 }
 
 fn (c HandlerConfig) all_attrs() []Attr {
-	if c.attrs.len == 0 {
-		return []Attr{}
-	}
-	return c.attrs.clone()
+	// Handlers only read these attributes, so sharing the slice is safe and
+	// avoids allocating a clone for every record.
+	return c.attrs
 }
 
 fn make_config(st &HandlerShared, attrs []Attr, groups []string) HandlerConfig {

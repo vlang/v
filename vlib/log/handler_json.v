@@ -38,23 +38,22 @@ pub fn (h &JSONHandler) handle(ctx context.Context, mut r Record) ! {
 	now := if opts.local_time { time.now() } else { time.utc() }
 	ts := format_time(now, opts.time_format, opts.custom_time_format)
 	append_byte(mut s.buf, '{')
-	append_str(mut s.buf, '"time":"')
-	append_str(mut s.buf, json_escape(ts))
-	append_str(mut s.buf, '","level":"')
-	append_str(mut s.buf, json_escape(r.level.str()))
-	append_str(mut s.buf, '","msg":"')
-	append_str(mut s.buf, json_escape(r.msg))
-	append_byte(mut s.buf, '"')
+	append_str(mut s.buf, '"time":')
+	append_json_string(mut s.buf, ts)
+	append_str(mut s.buf, ',"level":')
+	append_json_string(mut s.buf, r.level.str())
+	append_str(mut s.buf, ',"msg":')
+	append_json_string(mut s.buf, r.msg)
 
 	if opts.add_source {
 		if src := r.source {
-			append_str(mut s.buf, ',"source":{"file":"')
-			append_str(mut s.buf, json_escape(src.file))
-			append_str(mut s.buf, '","line":')
+			append_str(mut s.buf, ',"source":{"file":')
+			append_json_string(mut s.buf, src.file)
+			append_str(mut s.buf, ',"line":')
 			append_str(mut s.buf, src.line.str())
-			append_str(mut s.buf, ',"func":"')
-			append_str(mut s.buf, json_escape(src.func))
-			append_str(mut s.buf, '"}')
+			append_str(mut s.buf, ',"func":')
+			append_json_string(mut s.buf, src.func)
+			append_byte(mut s.buf, '}')
 		}
 	}
 
@@ -89,15 +88,63 @@ pub fn (h &JSONHandler) with_group(name string) Handler {
 	return &JSONHandler{ cfg: c }
 }
 
+// append_json_string writes a quoted, JSON escaped string directly into the
+// scratch buffer. It avoids the intermediate allocation made by json_escape.
+fn append_json_string(mut buf []u8, s string) {
+	buf << u8(34)
+	for c in s.bytes() {
+		match c {
+			u8(34) {
+				buf << u8(92)
+				buf << u8(34)
+			}
+			u8(92) {
+				buf << u8(92)
+				buf << u8(92)
+			}
+			8 {
+				buf << u8(92)
+				buf << u8(98)
+			}
+			9 {
+				buf << u8(92)
+				buf << u8(116)
+			}
+			10 {
+				buf << u8(92)
+				buf << u8(110)
+			}
+			12 {
+				buf << u8(92)
+				buf << u8(102)
+			}
+			13 {
+				buf << u8(92)
+				buf << u8(114)
+			}
+			else {
+				if c < 0x20 {
+					buf << u8(92)
+					buf << u8(117)
+					buf << u8(48)
+					buf << u8(48)
+					buf << hex_digit(c >> 4)
+					buf << hex_digit(c & 0x0f)
+				} else {
+					buf << c
+				}
+			}
+		}
+	}
+	buf << u8(34)
+}
+
 fn append_json_attr(mut buf []u8, key string, v Value) {
-	append_byte(mut buf, '"')
-	append_str(mut buf, json_escape(key))
-	append_str(mut buf, '":')
+	append_json_string(mut buf, key)
+	append_byte(mut buf, ':')
 	match v {
 		string {
-			append_byte(mut buf, '"')
-			append_str(mut buf, json_escape(v))
-			append_byte(mut buf, '"')
+			append_json_string(mut buf, v)
 		}
 		i64 {
 			append_str(mut buf, v.str())
@@ -109,9 +156,7 @@ fn append_json_attr(mut buf []u8, key string, v Value) {
 			append_str(mut buf, if v { 'true' } else { 'false' })
 		}
 		time.Time {
-			append_byte(mut buf, '"')
-			append_str(mut buf, json_escape(v.format_rfc3339_micro()))
-			append_byte(mut buf, '"')
+			append_json_string(mut buf, v.format_rfc3339_micro())
 		}
 		[]Attr {
 			append_byte(mut buf, '{')
