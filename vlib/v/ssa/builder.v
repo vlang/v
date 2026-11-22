@@ -10352,6 +10352,18 @@ fn (mut b Builder) build_assign_rhs(lhs flat.Node, rhs_id flat.NodeId) ValueID {
 	return b.build_expr(rhs_id)
 }
 
+fn (b &Builder) mut_value_param_pointer_rebind(name string, param_type TypeID, rhs_id flat.NodeId, rhs_value ValueID) bool {
+	if b.value_type(rhs_value) != param_type || !b.is_pointer_type(param_type)
+		|| name in b.mut_pointer_params || b.is_pointer_type(b.m.type_store.types[param_type].elem_type) {
+		return false
+	}
+	// An implicit mut value parameter has a local ABI pointer. A matching
+	// pointer RHS rebinds it, while a value RHS updates the caller's object.
+	rhs_type := b.checked_expr_type_name(rhs_id)
+	return flat.source_type_shape(rhs_type).has(.pointer)
+		|| flat.source_type_shape(b.type_alias_target(rhs_type) or { rhs_type }).has(.pointer)
+}
+
 fn (mut b Builder) build_assign(node flat.Node) {
 	mut parallel_values := []ValueID{}
 	if b.m.target.ptr_size == 4 && node.op == .assign && node.children_count > 2 {
@@ -10376,15 +10388,16 @@ fn (mut b Builder) build_assign(node flat.Node) {
 		if lhs.kind == .ident {
 			if addr := b.vars.get(lhs.value_text()) {
 				if node.op == .assign {
-					target_addr := if lhs.value_text() in b.mut_param_names {
-						b.build_lvalue_addr(lhs_id)
-					} else {
-						addr
-					}
 					rhs_val := if parallel_values.len > 0 {
 						parallel_values[i / 2]
 					} else {
 						b.build_assign_rhs(lhs, rhs_id)
+					}
+					target_addr := if lhs.value_text() in b.mut_param_names
+						&& !b.mut_value_param_pointer_rebind(lhs.value_text(), b.deref_type(addr), rhs_id, rhs_val) {
+						b.build_lvalue_addr(lhs_id)
+					} else {
+						addr
 					}
 					b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(target_addr)),
 						target_addr)
