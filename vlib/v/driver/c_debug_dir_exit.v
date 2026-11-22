@@ -65,8 +65,12 @@ fn v3_give_back_c_debug_dir_at_exit() {
 		return
 	}
 	cc_dir := v3_watched_c_debug_dir()
-	v3_unwatch_c_debug_dir()
 	if cc_dir.len > 0 && os.is_dir(v3_c_debug_dir_set_aside(cc_dir)) {
+		// The watch stays on while the directory is given back: a signal in the middle of
+		// that finds the word armed and finishes the giving back, where a word that was
+		// already idle would let it end the process between the removal and the rename.
+		// cleanup_c_build_dir ends the watch itself once the directory is back.
 		cleanup_c_build_dir(cc_dir)
 	}
+	v3_unwatch_c_debug_dir()
 }
