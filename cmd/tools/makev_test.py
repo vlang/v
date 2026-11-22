@@ -52,6 +52,19 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 self.assertEqual(len(commands), 1)
                 self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
 
+    def test_tcc_bootstrap_searches_checkout_root_with_spaces(self):
+        # The vc snapshot lives under vc/ and can include
+        # thirdparty/stdatomic/win/atomic.h relative to the checkout root.
+        # -B selects TCC's runtime, not the snapshot's V header search root.
+        command = next(
+            line for line in routine("build_bootstrap_with_tcc").splitlines()
+            if line.lstrip().startswith('"!tcc_exe!" ') and '"%V_C_FILE%"' in line
+        )
+        self.assertIn(' -I "%~dp0." ', command)
+        # An unescaped trailing backslash before a closing Windows quote is
+        # ambiguous to some argument parsers when the root contains spaces.
+        self.assertNotIn(' -I "%~dp0\\" ', command)
+
     def test_msvc_bootstrap_selects_v1(self):
         # MSVC's cl.exe is invoked directly (there is no "!msvc_exe!" variable
         # the way the other three bootstraps have), so this needs its own
