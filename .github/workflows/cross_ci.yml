@@ -7,7 +7,6 @@ concurrency:
   group: cross-cross_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
-
 permissions:
   contents: read
 
