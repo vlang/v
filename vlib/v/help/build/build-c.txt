@@ -461,7 +461,10 @@ see also `v help build`.
       of that output removes it. A directory that a build replaced and could not take
       away (a file in it was open) stays as `.<output>.v3cc.cg.prev` with an empty file
       `.<output>.v3cc.cg.prev.retired` beside it, and the next `-cg` build of that output
-      removes both. Delete the directory when you no longer debug that binary.
+      removes both. While it still cannot be removed, or when the directory in place
+      cannot be moved aside, a `-cg` build of that output is not started: it says which
+      directory is in the way and changes nothing, since a failure could not give the
+      sources back. Delete the directory when you no longer debug that binary.
 
    -keepc
       Do not remove the temporary .tmp.c and .tmp.c.rsp files.

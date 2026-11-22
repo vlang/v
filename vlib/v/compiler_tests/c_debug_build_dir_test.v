@@ -45,6 +45,43 @@ fn test_a_build_without_c_debug_names_no_directory_and_leaves_none() {
 	assert os.ls(root)!.filter(it.contains('.v3cc.')).len == 0
 }
 
+// A `-cg` rebuild that could not give the sources back is not started. Here the name the
+// directory would be set aside under is taken by a file, so the directory cannot be moved: the
+// build ends with an error that names both, and neither the sources nor the executable in
+// place are touched. With the name free again the same rebuild goes through.
+fn test_a_rebuild_that_could_not_give_the_sources_back_is_not_started_and_changes_nothing() {
+	root := os.join_path(os.vtmp_dir(), 'c_debug_dir_refused_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { println("first build") }')!
+	mut executable := os.join_path(root, 'program')
+	$if windows {
+		executable += '.exe'
+	}
+	build_with_c_debug(source, executable)
+	kept := os.join_path(root, '.${os.base(executable)}.v3cc.cg')
+	c_before := os.read_file(os.join_path(kept, 'src.c'))!
+	assert c_before.contains('first build')
+	executable_before := os.read_bytes(executable)!
+	in_the_way := kept + '.prev'
+	os.write_file(in_the_way, 'in the way')!
+	os.write_file(source, 'fn main() { println("second build") }')!
+	result := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
+		source])
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('did not start this build'), result.output
+	assert result.output.contains(kept) && result.output.contains(in_the_way), result.output
+	assert os.read_file(os.join_path(kept, 'src.c'))! == c_before, 'the C sources in place are unchanged'
+	assert os.read_bytes(executable)! == executable_before, 'the executable in place is unchanged'
+	assert os.read_file(in_the_way)! == 'in the way'
+	assert os.ls(root)!.filter(it.contains('.v3cc.')).len == 2, os.ls(root)!.str()
+	os.rm(in_the_way)!
+	build_with_c_debug(source, executable)
+	assert os.read_file(os.join_path(kept, 'src.c'))!.contains('second build')
+	assert os.ls(root)!.filter(it.contains('.v3cc.')) == [os.base(kept)]
+}
+
 // The executable that is in place names its C sources in its debug information. A rebuild that
 // fails in the C compiler or the linker leaves that executable where it is, so it must leave
 // those sources too: the same files, not the ones of the build that failed.

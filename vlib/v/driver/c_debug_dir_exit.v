@@ -15,6 +15,40 @@ __global v3_c_debug_dir_watched [4096]u8
 __global v3_c_debug_dir_watched_len int
 __global v3_c_debug_dir_watched_pid int
 __global v3_c_debug_dir_hook_registered bool
+__global v3_c_debug_dir_untouched [4096]u8
+__global v3_c_debug_dir_untouched_len int
+
+// v3_keep_c_debug_dir_untouched records `cc_dir` as a directory this process must not change:
+// a `-cg` build was refused there, and what it holds belongs to the executable in place. A
+// path too long for the storage cannot be recorded; it is not watched either, and the build
+// ends where it was refused.
+fn v3_keep_c_debug_dir_untouched(cc_dir string) {
+	v3_c_debug_dir_untouched_len = 0
+	if cc_dir.len == 0 || cc_dir.len >= max_c_debug_dir_path {
+		return
+	}
+	for i in 0 .. cc_dir.len {
+		v3_c_debug_dir_untouched[i] = cc_dir[i]
+	}
+	v3_c_debug_dir_untouched_len = cc_dir.len
+}
+
+// v3_forget_untouched_c_debug_dir is called when a `-cg` build is tried again.
+fn v3_forget_untouched_c_debug_dir() {
+	v3_c_debug_dir_untouched_len = 0
+}
+
+// v3_untouched_c_debug_dir returns the directory a refused build left alone, or '' for none.
+fn v3_untouched_c_debug_dir() string {
+	if v3_c_debug_dir_untouched_len == 0 {
+		return ''
+	}
+	mut path := []u8{cap: v3_c_debug_dir_untouched_len}
+	for i in 0 .. v3_c_debug_dir_untouched_len {
+		path << v3_c_debug_dir_untouched[i]
+	}
+	return path.bytestr()
+}
 
 // v3_watch_c_debug_dir records `cc_dir` as the `-cg` directory of this build: if the process
 // ends while a directory is still set aside for it, the exit hook gives that one back.

@@ -393,10 +393,13 @@ fn test_a_replaced_directory_that_could_not_be_taken_away_is_not_given_back_late
 	assert !os.exists(set_aside) && !os.exists(v3_c_debug_dir_retired(dir))
 }
 
-// The same, with the directory still impossible to remove when the next build runs. The
-// right sources cannot be set aside under the taken name then, and are lost to a build that
-// fails; what must not happen is that the wrong ones come back in their place.
-fn test_a_replaced_directory_that_still_cannot_be_taken_away_is_not_given_back_either() {
+// The same, with the directory still impossible to remove when the next build runs. The name
+// a set-aside directory needs is taken, so the sources of the executable in place could not be
+// given back by a build that fails: that build is not started. It changes nothing, and nothing
+// that ends this process changes anything either: not a cleanup, not the exit hook, not a
+// signal. (Before, the build removed the sources in place and went on; a failure then left
+// the executable without them.)
+fn test_a_build_that_could_not_give_the_sources_back_is_not_started() {
 	if !can_block_c_debug_dir() {
 		eprintln('> skipped: a directory cannot be made impossible to remove for root')
 		return
@@ -405,7 +408,7 @@ fn test_a_replaced_directory_that_still_cannot_be_taken_away_is_not_given_back_e
 	dir := os.join_path(root, '.program.v3cc.cg')
 	set_aside := v3_c_debug_dir_set_aside(dir)
 	write_c_debug_dir(dir, 'sources 0')
-	v3_set_aside_c_debug_dir(dir)
+	assert v3_set_aside_c_debug_dir(dir) == ''
 	write_c_debug_dir(dir, 'sources 1')
 	v3_begin_c_debug_dir_publication()
 	mut block := block_c_debug_dir(set_aside, v3_c_debug_dir_interrupted(dir))
@@ -415,12 +418,86 @@ fn test_a_replaced_directory_that_still_cannot_be_taken_away_is_not_given_back_e
 	}
 	v3_keep_new_c_debug_dir(dir)
 	assert os.is_dir(set_aside), 'the fixture: what was replaced could not be taken away'
-	v3_set_aside_c_debug_dir(dir)
+	// build 2
+	refusal := v3_set_aside_c_debug_dir(dir)
+	assert refusal.contains('did not start'), refusal
+	assert refusal.contains(dir) && refusal.contains(set_aside), 'it names the directory in place and the one in the way'
+	assert read_c_debug_dir(dir) == 'sources 1', 'the sources of the executable in place are where they were'
+	assert v3_watched_c_debug_dir() == ''
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+	// every way this process can end
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'sources 1', 'a cleanup of the refused build leaves them'
+	v3_give_back_c_debug_dir_at_exit()
+	assert read_c_debug_dir(dir) == 'sources 1', 'the exit hook leaves them'
+	assert v3_c_debug_dir_signal_step(v3_c_debug_dir_load(), int(os.Signal.int)) == .end, 'a signal only ends the process'
+	$if !windows {
+		v3_give_back_c_debug_dir_in_a_handler()
+		assert read_c_debug_dir(dir) == 'sources 1', 'and the giving back of a handler, were it reached, leaves them'
+	}
+	assert read_c_debug_dir(set_aside) != 'sources 1'
+	assert os.exists(v3_c_debug_dir_retired(dir)), 'the mark stays for as long as the directory does'
+	// once what was in the way can go, the next build starts, and a failure gives back
+	block.release()
+	assert v3_set_aside_c_debug_dir(dir) == ''
+	assert !os.exists(v3_c_debug_dir_retired(dir))
 	write_c_debug_dir(dir, 'sources 2, unfinished')
 	cleanup_c_build_dir(dir)
-	assert read_c_debug_dir(dir) != 'sources 0', 'the sources of an executable that was replaced do not come back'
-	assert !os.exists(dir), 'and nothing else of that directory does (it was half removed: its locked part is what a give-back would bring)'
-	assert os.exists(v3_c_debug_dir_retired(dir)), 'the mark stays for as long as the directory does'
+	assert read_c_debug_dir(dir) == 'sources 1'
+}
+
+// The directory in place cannot be moved aside (the name it would take is taken by something
+// that is no directory; on Windows a file open in it does the same). Removing it instead is
+// what the build did before. It is not started.
+fn test_a_directory_that_cannot_be_moved_aside_is_not_removed_instead() {
+	root := c_debug_dir_fixture('not_moved')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(dir, 'sources 1')
+	os.write_file(set_aside, 'in the way')!
+	refusal := v3_set_aside_c_debug_dir(dir)
+	assert refusal.contains('did not start') && refusal.contains('cannot be moved'), refusal
+	assert read_c_debug_dir(dir) == 'sources 1'
+	assert v3_watched_c_debug_dir() == ''
+	assert v3_c_debug_dir_state_is(c_debug_dir_idle)
+	cleanup_c_build_dir(dir)
+	v3_give_back_c_debug_dir_at_exit()
+	assert read_c_debug_dir(dir) == 'sources 1'
+	// with the name free again the build starts
+	os.rm(set_aside)!
+	assert v3_set_aside_c_debug_dir(dir) == ''
+	assert read_c_debug_dir(set_aside) == 'sources 1'
+	cleanup_c_build_dir(dir)
+	assert read_c_debug_dir(dir) == 'sources 1'
+}
+
+// With a retired directory that cannot go and NOTHING in place, there is nothing to lose: the
+// build goes on, sets nothing aside, and a failure gives nothing back, least of all the
+// retired directory.
+fn test_a_build_with_nothing_in_place_goes_on_beside_a_retired_directory() {
+	if !can_block_c_debug_dir() {
+		eprintln('> skipped: a directory cannot be made impossible to remove for root')
+		return
+	}
+	root := c_debug_dir_fixture('retired_nothing_in_place')
+	dir := os.join_path(root, '.program.v3cc.cg')
+	set_aside := v3_c_debug_dir_set_aside(dir)
+	write_c_debug_dir(set_aside, 'sources 0, replaced')
+	os.write_file(v3_c_debug_dir_retired(dir), '')!
+	mut block := hold_c_debug_dir(set_aside)
+	defer {
+		block.release()
+		os.rmdir_all(root) or {}
+	}
+	assert v3_set_aside_c_debug_dir(dir) == ''
+	assert v3_watched_c_debug_dir() == dir
+	write_c_debug_dir(dir, 'sources 1, unfinished')
+	cleanup_c_build_dir(dir)
+	assert !os.exists(dir), 'nothing was set aside, and the retired directory did not come back'
+	assert os.exists(v3_c_debug_dir_retired(dir))
 }
 
 // The other way round: the build has the directories, and a signal arrives in the middle of
