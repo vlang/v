@@ -66,7 +66,9 @@ pub:
 // fastc_payload_object returns the object of a payload unit, from the unit cache when
 // `use_cache` is set and the same TinyCC and arguments already compiled that text.
 // Without a payload there is no object. The text is joined only to compile it.
-pub fn fastc_payload_object(tcc string, base_args []string, pieces []string, build_dir string, use_cache bool) FastcPayloadObject {
+// The cache keeps one payload object per `output`: tens of megabytes of embedded files
+// change with the program's assets, and a new object replaces the previous one.
+pub fn fastc_payload_object(tcc string, base_args []string, pieces []string, build_dir string, use_cache bool, output string) FastcPayloadObject {
 	if pieces.len == 0 {
 		return FastcPayloadObject{}
 	}
@@ -76,7 +78,8 @@ pub fn fastc_payload_object(tcc string, base_args []string, pieces []string, bui
 		key = fastc_unit_cache_hash(piece, key)
 	}
 	cache_dir := os.join_path_single(os.vtmp_dir(), 'v3_fastc_unit_cache')
-	cached := os.join_path_single(cache_dir, 'payload_${key.hex()}.o')
+	owner_prefix := fastc_payload_cache_prefix(output)
+	cached := os.join_path_single(cache_dir, '${owner_prefix}${key.hex()}.o')
 	if use_cache && os.is_file(cached) && os.file_size(cached) > 0 {
 		return FastcPayloadObject{
 			path: cached
@@ -107,8 +110,29 @@ pub fn fastc_payload_object(tcc string, base_args []string, pieces []string, bui
 			object:       object
 			cache_object: cached
 		})
+		fastc_remove_stale_payload_objects(cache_dir, owner_prefix, cached)
 	}
 	return FastcPayloadObject{
 		path: object
+	}
+}
+
+// fastc_payload_cache_prefix names the cached payload objects of one output.
+fn fastc_payload_cache_prefix(output string) string {
+	owner := fastc_unit_cache_hash(os.abs_path(output), u64(0x3c6ef372fe94f82b))
+	return 'payload_${owner.hex()}_'
+}
+
+// fastc_remove_stale_payload_objects removes the payload objects of the same output other
+// than `keep`. Concurrent builds of one output race on the output itself as well.
+fn fastc_remove_stale_payload_objects(cache_dir string, prefix string, keep string) {
+	if !os.is_file(keep) {
+		return
+	}
+	keep_name := os.file_name(keep)
+	for name in os.ls(cache_dir) or { return } {
+		if name != keep_name && name.starts_with(prefix) && name.ends_with('.o') {
+			os.rm(os.join_path_single(cache_dir, name)) or {}
+		}
 	}
 }

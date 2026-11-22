@@ -11,6 +11,7 @@ includes a header, which can select the header's definitions. Such blocks and ot
 blocks outside functions keep the program in one unit. Generic instances form units of about 1 MiB.
 In a split build, embedded files totalling at least 1 MiB form a separate object that names no
 header. It is reused while its text, TinyCC and flags are unchanged; `-nocache` rebuilds it.
+The cache keeps the latest such object of each output executable.
 On macOS, Objective-C interop uses a cached native library built by the platform compiler.
 Generated V code and the executable link remain on TinyCC, including with
 `-no-retry-compilation`. Native bindings come from explicit V declarations; V never infers

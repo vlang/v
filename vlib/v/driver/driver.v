@@ -9771,7 +9771,7 @@ $if !skip_fastc ? {
 		}
 		uses_zygote := zygote_plan.paths.len > 0
 		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.pieces,
-			build_dir, payload_cache_enabled)
+			build_dir, payload_cache_enabled, bin_file)
 		// The program's translation units are compiled by concurrent TinyCC
 		// processes and linked; a program that does not split is compiled as
 		// one file.
@@ -11964,7 +11964,7 @@ pub fn run(args []string) {
 			fastc_result := if c_compiler_explicit && effective_c_compiler == 'clang' {
 				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
 			} else {
-				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, parallel_cc, native_compiler_version, mut prestarted_fastc_units)
+				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, !no_cache && !fastc_bench, keep_c, parallel_cc, native_compiler_version, mut prestarted_fastc_units)
 			}
 
 			if os.getenv('FASTC_BENCH_PHASES') != '' {

@@ -33,8 +33,8 @@ $if !skip_fastc ? {
 		return c_object_compiler_version(v3_fastc_native_compiler, v3_fastc_native_compiler)
 	}
 
-	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
-		result := compile_v3_fastc_tcc_generation_mode(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, native_compiler_version, true, mut prestarted)
+	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, payload_cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+		result := compile_v3_fastc_tcc_generation_mode(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, payload_cache_enabled, keep_c, parallel_cc, native_compiler_version, true, mut prestarted)
 		if !result.native_inputs_changed {
 			return result
 		}
@@ -44,21 +44,21 @@ $if !skip_fastc ? {
 			eprintln('fastc-phase native.retry 0us')
 		}
 		mut no_prestarted := fastc.FastcPrestartedCUnits{}
-		return compile_v3_fastc_tcc_generation_mode(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, native_compiler_version, false, mut no_prestarted)
+		return compile_v3_fastc_tcc_generation_mode(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, payload_cache_enabled, keep_c, parallel_cc, native_compiler_version, false, mut no_prestarted)
 	}
 
 	// compile_v3_fastc_tcc_generation_mode compiles and links a generation. With
 	// `overlap_validation`, reused native manifests are hashed while TinyCC compiles
 	// the program; the link waits for that and reports `native_inputs_changed` when
 	// an input no longer matches, before anything is linked or published.
-	fn compile_v3_fastc_tcc_generation_mode(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, overlap_validation bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn compile_v3_fastc_tcc_generation_mode(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, payload_cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, overlap_validation bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		mut validation := V3FastcNativeValidation{
 			overlap: overlap_validation
 		}
 		if native_compiler_version != '' {
 			validation.stats.compiler_versions[v3_fastc_native_compiler] = native_compiler_version
 		}
-		result := compile_v3_fastc_tcc_generation_attempt(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, mut prestarted, mut validation)
+		result := compile_v3_fastc_tcc_generation_attempt(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, payload_cache_enabled, keep_c, parallel_cc, mut prestarted, mut validation)
 		return v3_fastc_native_checked_result(result, mut validation)
 	}
 
@@ -77,7 +77,7 @@ $if !skip_fastc ? {
 		return result
 	}
 
-	fn compile_v3_fastc_tcc_generation_attempt(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, mut prestarted fastc.FastcPrestartedCUnits, mut validation V3FastcNativeValidation) V3FastCCompileResult {
+	fn compile_v3_fastc_tcc_generation_attempt(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, payload_cache_enabled bool, keep_c bool, parallel_cc bool, mut prestarted fastc.FastcPrestartedCUnits, mut validation V3FastcNativeValidation) V3FastCCompileResult {
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
@@ -116,9 +116,9 @@ $if !skip_fastc ? {
 
 			// Native inputs rule out executable caching; the payload object names none of them.
 			jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], program_link, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted, mut validation)
+			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], program_link, sdk, is_debug, generation.uses_threads, false, payload_cache_enabled, jobs, mut prestarted, mut validation)
 		}
-		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted, mut validation)
+		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, payload_cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted, mut validation)
 	}
 
 	// V3FastcNativeValidation hashes the inputs of reused native manifests beside
