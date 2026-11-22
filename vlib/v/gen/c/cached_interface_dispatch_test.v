@@ -6,6 +6,9 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 	$if !macos && !linux {
 		return
 	}
+	// The musl CI bundles a musl-linked static SQLite library. Nested cache tests
+	// must use its matching C toolchain rather than host Clang (glibc).
+	cc := if os.getenv('V_CI_UBUNTU_MUSL') != '' { 'musl-gcc' } else { 'clang' }
 	root := os.join_path(os.vtmp_dir(), 'v_cached_dispatch_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -19,7 +22,7 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 			// Compiler test builds can force source mode internally. Exercise the
 			// actual module cache here, including warm declaration headers.
 			mut command := ['env', '-u', 'V3_INTERNAL_CACHE_FORCE_SOURCE', '-u', 'V3_CACHE_FORCE_SOURCE',
-				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', 'clang',
+				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', cc,
 				'-show-timings']
 			// Instrumented SQLite needs the same MemorySanitizer runtime at the final link.
 			if os.getenv('SANITIZER_GITHUB_JOB') == 'sanitize-memory-clang' {
