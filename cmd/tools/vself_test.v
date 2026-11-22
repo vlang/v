@@ -332,7 +332,7 @@ fn test_self_build_defaults_to_c_backend() {
 	assert default_result.exit_code == 0, default_result.output
 	assert default_result.output.contains('-nocache'), default_result.output
 	assert !default_result.output.contains('-compile-backend'), default_result.output
-	for backend in ['fastc', 'arm64', 'amd64', 'x64', 'wasm', 'eval', 'ssa'] {
+	for backend in ['fastc', 'arm64', 'amd64', 'x64', 'riscv64', 's390x', 'wasm', 'eval', 'ssa'] {
 		assert default_result.output.contains('-d skip_${backend}'), default_result.output
 	}
 	assert_vself_preserves_full_cli(default_result.output)
@@ -342,7 +342,7 @@ fn test_self_build_defaults_to_c_backend() {
 	assert prod_result.exit_code == 0, prod_result.output
 	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
 	assert !prod_result.output.contains('-d skip_fastc'), prod_result.output
-	for backend in ['arm64', 'amd64', 'x64', 'wasm', 'eval', 'ssa'] {
+	for backend in ['arm64', 'amd64', 'x64', 'riscv64', 's390x', 'wasm', 'eval', 'ssa'] {
 		assert prod_result.output.contains('-d skip_${backend}'), prod_result.output
 	}
 	assert_vself_preserves_full_cli(prod_result.output)
