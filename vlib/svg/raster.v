@@ -139,10 +139,10 @@ fn blend_pixel(mut img image.RGBA, x int, y int, c Color, coverage f32) {
 	r := f64(c.r) * src_a + f64(img.pix[i]) * weight
 	g := f64(c.g) * src_a + f64(img.pix[i + 1]) * weight
 	b := f64(c.b) * src_a + f64(img.pix[i + 2]) * weight
-	img.pix[i] = u8(math.round(r * inv))
-	img.pix[i + 1] = u8(math.round(g * inv))
-	img.pix[i + 2] = u8(math.round(b * inv))
-	img.pix[i + 3] = u8(math.round(255 * out_a))
+	img.pix[i] = u8(math.min(255, r * inv + 0.5))
+	img.pix[i + 1] = u8(math.min(255, g * inv + 0.5))
+	img.pix[i + 2] = u8(math.min(255, b * inv + 0.5))
+	img.pix[i + 3] = u8(math.min(255, 255 * out_a + 0.5))
 }
 
 fn new_coverage(w int, h int) []f32 {
