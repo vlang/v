@@ -88,6 +88,10 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 		// A build constraint that holds lets a file share a binary; `retry:` does not.
 		'o_test.v':      'module util\n// vtest build: macos || linux\nfn test_o() {}\n'
 		'p_test.v':      'module util\n// vtest retry: 2\nfn test_p() {}\n'
+		// Test functions of one name share a batch, unless a file calls its own.
+		'q_test.v':      'module util\nfn test_shared() {}\n'
+		'r_test.v':      'module util\nfn test_shared() {}\n'
+		's_test.v':      'module util\nfn test_shared() {}\nfn run() {\n\ttest_shared()\n}\n'
 	}
 	mut paths := []string{}
 	for name, source in files {
@@ -103,13 +107,14 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	}
 	units := ts.test_units(paths)
 	// `k_test.v` declares a constant `it`, which `l_test.v` uses as a local.
-	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}\n${paths[15]}'
-	// `main` tests, with or without a module clause, share batches of their own; a
-	// file with C flags builds alone.
-	main_batch := '${paths[4]}\n${paths[9]}\n${paths[13]}\n${paths[14]}'
+	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
+	// `main` tests share batches of their own; one with a `module main` clause is
+	// compiled with its directory's other `main` sources, so it does not join those
+	// without a clause. A file with C flags builds alone.
+	main_batch := '${paths[4]}\n${paths[13]}\n${paths[14]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
-	assert units == [batch, '${paths[2]}\n${paths[12]}', paths[3], main_batch, paths[5], paths[6],
-		paths[7], paths[8], paths[10], paths[16]]
+	assert units == [batch, '${paths[2]}\n${paths[12]}\n${paths[19]}', paths[3], main_batch, paths[5],
+		paths[6], paths[7], paths[8], paths[9], paths[10], paths[16]]
 	ts.exec_mode = .compile
 	assert ts.test_units(paths) == paths
 	ts.exec_mode = .compile_and_run

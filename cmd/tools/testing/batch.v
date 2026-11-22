@@ -58,10 +58,15 @@ mut:
 // file is declared by another, and no constant of one is a word of another's
 // source. A constant of the module conflicts with a local or an import alias of
 // the same name in another file (`const it`, `const os`), which only shows up as
-// a word there.
+// a word there. A test function may share its name: the compiler renames that of
+// a later file of a batch (`fn test_main()` in many files), as long as nothing in
+// that file but its declaration names it.
 fn (batch &TestBatch) fits(candidate TestBatchCandidate) bool {
-	if candidate.names.any(it in batch.names) {
-		return false
+	for name in candidate.names {
+		if name in batch.names && !(name.starts_with('test_')
+			&& candidate.source.count(name) == 1 && source_mentions_word(candidate.source, name)) {
+			return false
+		}
 	}
 	for name in candidate.consts {
 		if batch.sources.any(source_mentions_word(it, name)) {
@@ -200,7 +205,9 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 				return none
 			}
 		}
-		module_name = 'main'
+		// A test that says `module main` is compiled with the other `main` sources of
+		// its directory, one without a module clause is not; their batches differ.
+		module_name = if module_name == 'main' { 'main with its directory' } else { 'main' }
 	}
 	names := test_file_top_level_names(source)
 	mut words := test_file_const_names(source)
