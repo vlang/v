@@ -1968,6 +1968,24 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	init_module := g.tc.cur_module
 	parsed_init_type := g.tc.parse_type(node.source_value_id())
 	clean_init_type := unalias_type(types.unwrap_all_pointers(parsed_init_type))
+	// A heap sum literal (a generic `T{}` with `T = &Sum` lowers to the sum's tag and
+	// variant fields) is written with the sum's own C type. Looked up by name as a
+	// struct, it took another module's struct of that name, v.reflection's `SumType`
+	// for the program's own, and dropped the tag and variant as unknown fields.
+	if clean_init_type is types.SumType {
+		sum_ct := g.value_c_type(clean_init_type)
+		g.write('(${sum_ct}*)memdup(&(${sum_ct}){')
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('.${c_field_name(field.value)} = ')
+			g.gen_expr(g.a.child(field, 0))
+		}
+		g.write('}, sizeof(${sum_ct}))')
+		return
+	}
 	mut name := if clean_init_type is types.Struct {
 		g.struct_init_value_c_type(clean_init_type)
 	} else {
