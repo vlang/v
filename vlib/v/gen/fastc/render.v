@@ -3417,10 +3417,10 @@ fn (g &Parser) render_struct_comparison_expression(tokens []FastcExpressionToken
 	memo_key := fastc_comparison_memo_key(tokens, 0)
 	if memo_key != 0 {
 		if cached := g.comparison_memo[memo_key] {
-			if cached.source == '' {
+			if cached.result.source == '' {
 				return none
 			}
-			return cached
+			return cached.result
 		}
 	}
 	mut result := FastcRenderedExpression{}
@@ -3429,7 +3429,10 @@ fn (g &Parser) render_struct_comparison_expression(tokens []FastcExpressionToken
 	}
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.comparison_memo[memo_key] = result
+		w.comparison_memo[memo_key] = FastcComparisonMemoEntry{
+			tokens: tokens.data
+			result: result
+		}
 	}
 	if result.source == '' {
 		return none
@@ -4318,10 +4321,10 @@ fn (g &Parser) render_mixed_integer_comparison_expression(tokens []FastcExpressi
 	memo_key := fastc_comparison_memo_key(tokens, 1)
 	if memo_key != 0 {
 		if cached := g.comparison_memo[memo_key] {
-			if cached.source == '' {
+			if cached.result.source == '' {
 				return none
 			}
-			return cached
+			return cached.result
 		}
 	}
 	mut result := FastcRenderedExpression{}
@@ -4330,7 +4333,10 @@ fn (g &Parser) render_mixed_integer_comparison_expression(tokens []FastcExpressi
 	}
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.comparison_memo[memo_key] = result
+		w.comparison_memo[memo_key] = FastcComparisonMemoEntry{
+			tokens: tokens.data
+			result: result
+		}
 	}
 	if result.source == '' {
 		return none
