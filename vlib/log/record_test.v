@@ -126,6 +126,18 @@ fn test_concurrent_logging() {
 	assert cap.text().split('\n').len >= 50
 }
 
+fn test_fixed_attrs_no_slice() {
+	mut cap := &Capture{}
+	h := new_json_handler(io.Writer(cap), HandlerOptions{})
+	l := new_logger(h)
+	f := fixed2(sattr('k', 'v'), iattr('n', 7))
+	l.log_fixed(.info, 'fixed', &f)
+	out := cap.text()
+	assert out.contains('"k":"v"')
+	assert out.contains('"n":7')
+	assert out.contains('"msg":"fixed"')
+}
+
 fn test_direct_timestamp_matches_formatter() {
 	t := time.utc()
 	formats := [

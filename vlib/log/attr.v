@@ -85,6 +85,45 @@ pub fn (a &Attrs) values() []Attr {
 	return a.buf[0..a.len]
 }
 
+// FixedAttrs is a stack only attribute list for the lowest allocation logging
+// path. Pass it to RecordLogger.log_fixed; no slice is built at the call site.
+pub struct FixedAttrs {
+pub mut:
+	items [4]Attr
+	len   int
+}
+
+// fixed1 returns a fixed attribute list holding one attribute.
+pub fn fixed1(a Attr) FixedAttrs {
+	mut f := FixedAttrs{ len: 1 }
+	f.items[0] = a
+	return f
+}
+
+// fixed2 returns a fixed attribute list holding two attributes.
+pub fn fixed2(a Attr, b Attr) FixedAttrs {
+	mut f := fixed1(a)
+	f.items[1] = b
+	f.len = 2
+	return f
+}
+
+// fixed3 returns a fixed attribute list holding three attributes.
+pub fn fixed3(a Attr, b Attr, c Attr) FixedAttrs {
+	mut f := fixed2(a, b)
+	f.items[2] = c
+	f.len = 3
+	return f
+}
+
+// fixed4 returns a fixed attribute list holding four attributes.
+pub fn fixed4(a Attr, b Attr, c Attr, d Attr) FixedAttrs {
+	mut f := fixed3(a, b, c)
+	f.items[3] = d
+	f.len = 4
+	return f
+}
+
 // attrs returns a builder preloaded with one attribute.
 pub fn attrs(first Attr) Attrs {
 	mut a := Attrs{}

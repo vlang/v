@@ -26,6 +26,7 @@ pub mut:
 	level  Level
 	msg    string
 	attrs  []Attr
+	fixed  FixedAttrs
 	groups []string
 	source ?SourceLocation
 	logger string
@@ -39,6 +40,7 @@ pub fn (r &Record) clone() Record {
 		level:  r.level
 		msg:    r.msg
 		attrs:  r.attrs.clone()
+		fixed:  r.fixed
 		groups: r.groups.clone()
 		source: r.source
 		logger: r.logger

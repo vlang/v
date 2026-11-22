@@ -28,7 +28,7 @@ pub fn (h &JSONHandler) enabled(level Level) bool {
 	return h.cfg.enabled(level)
 }
 
-pub fn (h &JSONHandler) handle(ctx context.Context, mut r Record) ! {
+pub fn (h &JSONHandler) handle(ctx context.Context, r Record) ! {
 	mut s := h.cfg.st
 	s.mu.lock()
 	defer { s.mu.unlock() }
@@ -63,6 +63,11 @@ pub fn (h &JSONHandler) handle(ctx context.Context, mut r Record) ! {
 
 	for a in h.cfg.attrs {
 		append_byte(mut s.buf, ',')
+		append_json_attr(mut s.buf, a.key, a.value)
+	}
+	for i in 0 .. r.fixed.len {
+		append_byte(mut s.buf, ',')
+		a := r.fixed.items[i]
 		append_json_attr(mut s.buf, a.key, a.value)
 	}
 	fields := h.cfg.apply_replace(r.groups, r.attrs)

@@ -15,6 +15,7 @@ pub:
 mut:
 	handler Handler
 	attrs   []Attr
+	empty   []Attr
 	groups  []string
 	ctx     context.Context
 }
@@ -23,6 +24,7 @@ mut:
 pub fn new_logger(handler Handler) &RecordLogger {
 	return &RecordLogger{
 		handler: handler
+		empty:   []Attr{}
 		ctx:     context.background()
 	}
 }
@@ -32,6 +34,7 @@ pub fn new_named_logger(name string, handler Handler) &RecordLogger {
 	return &RecordLogger{
 		name:    name
 		handler: handler
+		empty:   []Attr{}
 		ctx:     context.background()
 	}
 }
@@ -42,6 +45,7 @@ pub fn (l &RecordLogger) with(attrs ...Attr) &RecordLogger {
 		name:    l.name
 		handler: l.handler.with_attrs(attrs)
 		attrs:   concat_attrs(l.attrs, attrs)
+		empty:   l.empty
 		groups:  l.groups
 		ctx:     l.ctx
 	}
@@ -53,6 +57,7 @@ pub fn (l &RecordLogger) with_attrs(attrs []Attr) &RecordLogger {
 		name:    l.name
 		handler: l.handler.with_attrs(attrs)
 		attrs:   concat_attrs(l.attrs, attrs)
+		empty:   l.empty
 		groups:  l.groups
 		ctx:     l.ctx
 	}
@@ -67,6 +72,7 @@ pub fn (l &RecordLogger) with_group(name string) &RecordLogger {
 		name:    l.name
 		handler: l.handler.with_group(name)
 		attrs:   l.attrs
+		empty:   l.empty
 		groups:  groups
 		ctx:     l.ctx
 	}
@@ -78,6 +84,7 @@ pub fn (l &RecordLogger) with_context(ctx context.Context) &RecordLogger {
 		name:    l.name
 		handler: l.handler
 		attrs:   l.attrs
+		empty:   l.empty
 		groups:  l.groups
 		ctx:     ctx
 	}
@@ -116,11 +123,28 @@ fn (l &RecordLogger) send(level Level, msg string, attrs []Attr) {
 		groups: l.groups
 		logger: l.name
 	}
-	l.handler.handle(l.ctx, mut r) or {}
+	l.handler.handle(l.ctx, r) or {}
 }
 
 fn (l &RecordLogger) send_built(level Level, msg string, attrs []Attr) {
 	l.send(level, msg, attrs)
+}
+
+// log_fixed emits a record using a stack only fixed attribute list. Unlike the
+// variadic methods this builds no slice at the call site.
+pub fn (l &RecordLogger) log_fixed(level Level, msg string, attrs &FixedAttrs) {
+	if !l.handler.enabled(level) {
+		return
+	}
+	mut r := Record{
+		level:  level
+		msg:    msg
+		attrs:  l.empty
+		fixed:  attrs
+		groups: l.groups
+		logger: l.name
+	}
+	l.handler.handle(l.ctx, r) or {}
 }
 
 // debug logs a debug record.
@@ -192,5 +216,5 @@ fn (l &RecordLogger) send_context(ctx context.Context, level Level, msg string, 
 		groups: l.groups
 		logger: l.name
 	}
-	l.handler.handle(ctx, mut r) or {}
+	l.handler.handle(ctx, r) or {}
 }

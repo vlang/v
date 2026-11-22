@@ -30,7 +30,7 @@ pub fn (h &TextHandler) enabled(level Level) bool {
 	return h.cfg.enabled(level)
 }
 
-pub fn (h &TextHandler) handle(ctx context.Context, mut r Record) ! {
+pub fn (h &TextHandler) handle(ctx context.Context, r Record) ! {
 	mut s := h.cfg.st
 	s.mu.lock()
 	defer { s.mu.unlock() }
@@ -53,6 +53,9 @@ pub fn (h &TextHandler) handle(ctx context.Context, mut r Record) ! {
 	all := h.cfg.apply_replace(r.groups, r.attrs)
 	for a in h.cfg.attrs {
 		append_attr(mut s.buf, h.cfg.groups, a)
+	}
+	for i in 0 .. r.fixed.len {
+		append_attr(mut s.buf, r.groups, r.fixed.items[i])
 	}
 	for a in all {
 		append_attr(mut s.buf, r.groups, a)
