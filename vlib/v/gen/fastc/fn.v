@@ -14,6 +14,9 @@ fn (mut g Parser) run() !string {
 	g.parse_top_level_items(false)!
 	generated := fastc_take_string(mut g.out)
 	g.drain_pending_mono()!
+	for prototype in g.anon_prototypes {
+		g.protos.write_string(prototype)
+	}
 	return generated
 }
 
@@ -454,7 +457,9 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part in [
+		// `-ffp-contract=` only changes floating point code generation; TinyCC never
+		// contracts, and Clang honors it.
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part.starts_with('-ffp-contract=') || part in [
 			'-pthread',
 			'-fobjc-arc',
 			'-fno-objc-arc',
@@ -609,6 +614,7 @@ fn (mut g Parser) skip_attribute() !bool {
 fn (mut g Parser) skip_top_level_declaration() ! {
 	body_declaration := g.tok in [.key_struct, .key_union, .key_enum, .key_interface]
 	type_declaration := g.tok == .key_type
+	global_declaration := g.tok == .key_global
 	mut brace_depth := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
@@ -618,7 +624,9 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 			&& bracket_depth == 0 && previous in [.name, .number, .string, .char, .rpar, .rsbr,
 			.rcbr, .not, .question, .key_true, .key_false, .key_none]
 			&& g.tok in [.key_fn, .key_pub, .key_const, .key_global, .key_struct, .key_union,
-				.key_enum, .key_interface, .key_type] {
+				.key_enum, .key_interface, .key_type]
+			&& !(global_declaration && previous == .name && g.tok == .key_fn) {
+			// A `fn` right after a global's name is its function type.
 			return
 		}
 		previous = g.tok
@@ -977,18 +985,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		&& name == 'main'
 	// A test build runs its tests from a main of its own; the program's is an ordinary function.
 	is_main := is_program_main && !g.prefs.is_test
-	is_module_init := !is_static_method && receiver_type == u32(0) && name == 'init'
-	is_module_cleanup := !is_static_method && receiver_type == u32(0) && name == 'cleanup'
 	if is_main {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
 		}
-	}
-	if is_module_init && params.len > 0 {
-		return g.unsupported('module `init` with parameters')
-	}
-	if is_module_cleanup && params.len > 0 {
-		return g.unsupported('module `cleanup` with parameters')
 	}
 	if g.tok == .semicolon {
 		g.next()
@@ -1140,6 +1140,16 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		// without raising an error, so detect a type-parameter token right after `[`
 		// and force the body to be stubbed.
 		mut force_stub := false
+		// A parameter typed by a type parameter (`config &T`) is erased to `voidptr`; its
+		// members (`config.field`) have no C spelling until the function is specialized.
+		mut erased_params := []string{}
+		for param in params {
+			param_type := param.all_before_last(' ').trim_space()
+			if param_type in ['voidptr', 'voidptr*', 'voidptr *'] {
+				erased_params << param.all_after_last(' ').trim_left('*')
+			}
+		}
+		mut prev_was_erased_param := false
 		mut prev_was_lsbr := false
 		mut prev_was_type_param := false
 		mut prev_was_sizeof := false
@@ -1183,6 +1193,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			if sizeof_depth > 0 && body_tok == .name && body_end.lit in type_params {
 				force_stub = true
 			}
+			if prev_was_erased_param && body_tok == .dot {
+				force_stub = true
+			}
+			prev_was_erased_param = body_tok == .name && body_end.lit in erased_params
 			prev_was_lsbr = body_tok == .lsbr
 			prev_was_type_param = body_tok == .name && body_end.lit in type_params
 			prev_was_sizeof = body_tok == .key_sizeof
@@ -1698,7 +1712,7 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 	if tok in [.not, .question] {
 		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		value_tok := look.scan()
-		if fastc_is_void_return_boundary(value_tok) {
+		if fastc_is_void_return_boundary(value_tok) || fastc_is_explicit_void_payload(value_tok, look.lit) {
 			g.pending_fn_option_value_type = flat.source_type_void
 		} else {
 			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)

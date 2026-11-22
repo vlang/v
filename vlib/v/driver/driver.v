@@ -9590,6 +9590,24 @@ $if !skip_fastc ? {
 		return aggregate_args
 	}
 
+	// fastc_pieces_have_native_includes reports a quoted `#include` in generated FastC C other
+	// than the builtin helper headers.
+	fn fastc_pieces_have_native_includes(pieces []string, vroot string) bool {
+		for piece in pieces {
+			mut start := 0
+			for {
+				index := piece.index_after('#include "', start) or { break }
+				line_end := piece.index_after('\n', index) or { piece.len }
+				include_arg := piece[index + '#include '.len..line_end].trim_space()
+				if !cgen.include_arg_is_builtin_abi_helper(include_arg, vroot) {
+					return true
+				}
+				start = line_end
+			}
+		}
+		return false
+	}
+
 	// compile_v3_fastc_clang_source keeps FastC generation and uses Clang for native interop.
 	fn compile_v3_fastc_clang_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_flags []string, source_flags []string, user_flags []string, link_flags []string, sdk_root string, compiler string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 		build_dir := os.join_path_single(os.dir(os.abs_path(bin_file)), '.fastc-clang-${tempname.unique_token()}')
@@ -9615,10 +9633,15 @@ $if !skip_fastc ? {
 		if sdk_root != '' { compile_flags << ['-isysroot', sdk_root] }
 		if is_debug { compile_flags << '-g' }
 		compile_flags << c_object_compile_flags(flags)
-		if c_flags_need_objective_c(flags) { compile_flags << ['-x', 'objective-c'] }
+		// As cgen does for Darwin and a compiler other than TinyCC, a native include makes
+		// the program Objective-C without opening the header: Apple headers expose
+		// Objective-C declarations based on `__OBJC__`.
+		needs_objective_c := c_flags_need_objective_c(flags)
+			|| (prefs.normalized_target_os() in ['macos', 'ios'] && fastc_pieces_have_native_includes(pieces, prefs.vroot))
+		if needs_objective_c { compile_flags << ['-x', 'objective-c'] }
 		// Objective-C includes can define private helpers used throughout the V program.
 		// Keep their declarations and definitions in the same translation unit.
-		mut paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, if c_flags_need_objective_c(flags) {
+		mut paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, if needs_objective_c {
 			1
 		} else {
 			fastc.fastc_tcc_job_count(prefs)

@@ -782,11 +782,7 @@ fn (mut g Parser) parse_if() !bool {
 			if flat.source_type_query(guard_type).has(.c_pointer_suffix) {
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
-				value := if g.prefs.target_libc_headers {
-					'*(${g.option_value_expression(flat.source_type_composition_two(.concat, guard_type, flat.source_type_id('*')), guard_option)})'
-				} else {
-					'**((${fastc_output_c_type(flat.source_type_name(guard_type))} **)${guard_option}.data)'
-				}
+				value := g.option_payload_expression(guard_type, guard_option, true)
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${value};')
 			}
 			g.locals[guard_name] = FastcLocal{
@@ -1867,6 +1863,18 @@ fn (g &Parser) option_value_expression(value_type u32, option string) string {
 	return '*((${storage_type} *)${option}.data)'
 }
 
+// option_payload_expression reads an option's value. The value of an erased generic
+// method (`erased`) is a boxed `T` that the option boxes again; a pointer `T` is not boxed.
+fn (g &Parser) option_payload_expression(value_type u32, option string, erased bool) string {
+	if !erased || flat.source_type_query(value_type).has(.c_pointer_suffix) {
+		return g.option_value_expression(value_type, option)
+	}
+	if g.prefs.target_libc_headers {
+		return '*(${g.option_value_expression(flat.source_type_composition_two(.concat, value_type, flat.source_type_id('*')), option)})'
+	}
+	return '**((${fastc_output_c_type(flat.source_type_name(value_type))} **)${option}.data)'
+}
+
 fn fastc_box_expression(value_type string, expression string) string {
 	storage_type := fastc_output_c_type(value_type)
 	return '({ ${storage_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${storage_type})); })'
@@ -2567,7 +2575,14 @@ fn (mut g Parser) read_return_expression_branch() !string {
 	// an `Option`, and a bare value is wrapped into the success state — rather than emitting a raw
 	// `return <IError>` that TinyCC rejects.
 	mut return_value := value
-	if g.selfhost && g.return_type == fastc_type_result && fastc_trim_pointer_type(value_type) == fastc_type_ierror {
+	if value.trim_space() == '' && g.return_type in [fastc_type_option, fastc_type_result] {
+		// A bare `return` from a `!`/`?` function is its success state.
+		return_value = if g.return_type == fastc_type_result {
+			'(__v_result){0}'
+		} else {
+			'(Option){0}'
+		}
+	} else if g.selfhost && g.return_type == fastc_type_result && fastc_trim_pointer_type(value_type) == fastc_type_ierror {
 		return_value = '(__v_result){.err=${value}, .state=1}'
 	} else if g.selfhost && g.return_type in [fastc_type_option, fastc_type_result] && value_type !in [
 		u32(0),

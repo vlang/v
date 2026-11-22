@@ -621,7 +621,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 	}
-	if end - start >= 4 && tokens[start].tok == .key_sizeof && tokens[start + 1].tok == .lpar && tokens[end - 1].tok == .rpar {
+	if end - start >= 4 && tokens[start].tok == .key_sizeof && tokens[start + 1].tok == .lpar
+		&& tokens[end - 1].tok == .rpar
+		&& (fastc_matching_rpar(tokens, start + 1) or { -1 }) == end - 1 {
+		// Only a whole `sizeof(...)`; `sizeof(a) == sizeof(b)` is a comparison.
 		return flat.source_type_int
 	}
 	if end - start >= 8 && tokens[start].lit == 'typeof' {
@@ -728,6 +731,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				return global_type
 			}
 		}
+	}
+	if end - start in [3, 5] && tokens[end - 1].tok == .name
+		&& g.static_function_key_for_call(tokens[start..end], end - start - 1) != none {
+		// A static method used as a value (`Codec.new`) is a function address, as a
+		// function name is.
+		return flat.source_type_voidptr
 	}
 	for init_open in start + 1 .. end {
 		if tokens[init_open].tok == .lcbr {
@@ -896,6 +905,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 							return ret
 						}
 					}
+					if callable := g.constant_callable_signature(g.module_name, name) {
+						if callable.callable_index_depth == 0 && callable.return_type != 0 {
+							return callable.return_type
+						}
+					}
 					if primitive := fastc_primitive_c_type(name) {
 						return flat.source_type_id(primitive)
 					}
@@ -905,6 +919,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				}
 				if call_name_index == start + 2 && tokens[start].lit in g.imports {
 					module_name := g.imports[tokens[start].lit]
+					if callable := g.constant_callable_signature(module_name, name) {
+						if callable.callable_index_depth == 0 && callable.return_type != 0 {
+							return callable.return_type
+						}
+					}
 					type_key := fastc_type_key(module_name, name)
 					if fastc_source_type_key_exists(g.declared_types, type_key) {
 						return flat.source_type_id(fastc_c_declared_type_name(type_key))
@@ -1031,6 +1050,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if signature := g.functions[function_key] {
 			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
+		}
+		// A specialized generic method (`d.fill_mono_Reader(...)`) is registered on demand.
+		if signature := g.mono_functions[function_key] {
+			if signature.return_type != 0 {
+				return signature.return_type
+			}
 		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
 			if field.is_function && field.fn_return_type != 0 {

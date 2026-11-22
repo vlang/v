@@ -48,11 +48,11 @@ fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 }
 
 // fastc_sources_with_self_module_qualifiers adds the current module's short
-// qualifier after source resolution, without loading it as a new import.
+// qualifier after source resolution, without loading it as a new import, so a module can
+// name its own declarations (`terminal.tabstop_interval` inside `module terminal`). An
+// import or a global (`__global storage`) of that name keeps it.
 fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
-	if !prefs.target_libc_headers {
-		return sources
-	}
+	vlib_prefix := os.join_path_single(prefs.vroot, 'vlib') + os.path_separator
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut global_paths := map[string]string{}
@@ -60,6 +60,11 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		// Declaration flags are filled by the next collection phase, so use a
 		// cheap superset check before scanning globals at this earlier point.
 		if !source.source.contains('__global') {
+			continue
+		}
+		// Outside libc-header targets only project modules qualify themselves, so only their
+		// own globals can shadow the qualifier.
+		if !prefs.target_libc_headers && source.path.starts_with(vlib_prefix) {
 			continue
 		}
 		mut declarations := strings.new_builder(64)
@@ -74,7 +79,11 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 	for source in sources {
 		module_name := source.header.module_name
 		qualifier := module_name.all_after_last('.')
+		// Outside libc-header targets only project modules (witty's `terminal.x` in module
+		// `terminal`) qualify themselves; vlib keeps its locals such as `c` in `v.gen.c`.
 		mut shadowed := qualifier == '' || qualifier in source.header.imports
+			|| (!prefs.target_libc_headers && (module_name in ['', 'main', 'builtin']
+				|| source.path.starts_with(vlib_prefix)))
 		if !shadowed {
 			for key, _ in globals {
 				if key == qualifier || key.ends_with('.${qualifier}') {
@@ -1636,7 +1645,9 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 				continue
 			}
 			if signature.parameter_types.ids.len > 0 {
-				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
+				// Only a parameterless `init`/`cleanup` is a lifecycle hook; a module API
+				// can still use the name for an ordinary function (`oniguruma.init(...)`).
+				continue
 			}
 			calls << if c_name := function_c_names[function_key] {
 				c_name

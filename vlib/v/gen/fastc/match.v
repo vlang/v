@@ -251,12 +251,36 @@ fn (mut g Parser) read_match_expression() !string {
 				}
 				tag_source:     '${temporary}${boxed_access}_typ'
 				object_source:  '${temporary}${boxed_access}_object'
-				subject_source: subject_member_source
-				subject_type:   subject_member_type
+				// A grouped arm keeps a plain local boxed: an `is` test inside it
+				// inspects the local itself, not the first variant's view.
+				subject_source: if subject_member_source == '' && multi_struct_smartcast && subject_local != '' {
+					g.local_c_name(subject_local)
+				} else {
+					subject_member_source
+				}
+				subject_type:   if subject_member_source == '' && multi_struct_smartcast && subject_local != '' {
+					fastc_normalize_inferred_type(subject_type)
+				} else {
+					subject_member_type
+				}
 			}
 		}
 		mut value := g.read_match_block_expression_value()!
 		mut value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		if fastc_fixed_array_element_type(value_type) != none
+			&& g.fixed_array_uses_raw_storage(g.last_expression) {
+			// A struct field's fixed array is raw C storage; the branches share the
+			// fixed-array struct value, as in an `if` expression.
+			value = g.render_call_argument_expression(g.last_expression, value_type) or { value }
+		}
+		branch_expected := g.expected_expression_type
+		if value_type == flat.source_type_void && branch_expected !in [u32(0), flat.source_type_void,
+			fastc_type_option, fastc_type_result] {
+			// Only a `@[noreturn]` call is a void branch value (`.x { unreachable() }`); give
+			// the conditional a value of the branch type after it.
+			value = '({ ${value}; (${fastc_output_c_type(flat.source_type_name(branch_expected))}){0}; })'
+			value_type = branch_expected
+		}
 		if member_smartcast_active && !fastc_is_pointer_type(smartcast_type)
 			&& fastc_is_pointer_type(value_type) && fastc_trim_pointer_type(value_type) == smartcast_type
 			&& !fastc_is_pointer_type(outer_expected_type_source_id) {
@@ -378,7 +402,12 @@ fn (mut g Parser) read_match_expression() !string {
 		return g.unsupported('non-exhaustive match expression without `else`')
 	}
 	if !has_else {
-		fallback = '(${flat.source_type_name(result_type)}){0}'
+		// Arms of C constants (`.both { C.SHUT_RDWR }`) leave the result type unknown.
+		fallback = if result_type in [u32(0), flat.source_type_void] {
+			'0'
+		} else {
+			'(${flat.source_type_name(result_type)}){0}'
+		}
 	}
 	mut expression := fallback
 	if conditions.len > 16 {
@@ -440,7 +469,7 @@ fn (g &Parser) normalized_match_case_key(tokens []FastcExpressionToken, rendered
 }
 
 fn (mut g Parser) read_match_block_expression_value() !string {
-	if g.tok == .dollar && g.dollar_keyword_is('if') {
+	if g.tok == .dollar && g.dollar_keyword_is('if') && g.comptime_if_ends_block() {
 		// A `$if … { value } $else { value }` arm is a compile-time expression: select
 		// the taken branch's value rather than executing it as a statement.
 		return g.read_comptime_if_expression()!
@@ -477,7 +506,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	if g.wrapper_starts_final_block_expression() {
 		return g.read_final_block_wrapper_value()!
 	}
-	if g.tok == .dollar && g.dollar_keyword_is('if') {
+	if g.tok == .dollar && g.dollar_keyword_is('if') && g.comptime_if_ends_block() {
 		// `$if … { value } $else { value }` as the block's value: select the taken
 		// branch's value rather than executing it as a statement.
 		return g.read_comptime_if_expression()!
@@ -543,7 +572,16 @@ fn (mut g Parser) read_block_expression_value() !string {
 		if !terminates { g.write_deferred_blocks_from(deferred_block_start) }
 		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
-		return '({ ${g.captured_defer_lines.join(' ')} 0; })'
+		// A branch that only returns still needs a value of the branch's type, so the
+		// conditional around it type-checks (`x := f() or { match e { 'a' { return } } }`).
+		expected := g.expected_expression_type
+		unreachable_value := if terminates && expected !in [u32(0), flat.source_type_void,
+			fastc_type_option, fastc_type_result] {
+			'(${fastc_output_c_type(flat.source_type_name(expected))}){0}'
+		} else {
+			'0'
+		}
+		return '({ ${g.captured_defer_lines.join(' ')} ${unreachable_value}; })'
 	}
 	g.skip_semicolons()
 	mut value := if g.tok == .name {

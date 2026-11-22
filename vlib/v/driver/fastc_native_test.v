@@ -638,3 +638,23 @@ fn test_fastc_native_bridge_keeps_every_declaration_when_clang_needs_an_unnamed_
 		assert libraries[0] == libraries[1]
 	}
 }
+
+fn test_fastc_native_owner_binds_only_called_bridges() {
+	used := v3_fastc_used_bridge_names([
+		'int f(void) { return v3_native_bridge_open(0) + 1; }',
+		'void g(void) { v3_native_bridge_args_draw(1, 2); }',
+		'int h; /* no bridge */',
+	])
+	assert 'open' in used
+	assert 'draw' in used
+	assert '__wasi_clock_time_get' !in used
+}
+
+fn test_fastc_native_owner_takes_the_link_inputs_of_ldflags() {
+	owner, program := v3_fastc_split_native_link_flags(['-Xlinker', '/w/libsimd.a', '-lc++',
+		'-framework', 'Metal', '-Wl,/w/libgc.a', '-Wl,-dead_strip_dylibs', '-Wl,-rpath,/w/lib',
+		'/w/extra.o'])
+	assert owner == ['-Xlinker', '/w/libsimd.a', '-lc++', '-framework', 'Metal', '-Wl,/w/libgc.a',
+		'/w/extra.o']
+	assert program == ['-Wl,-rpath,/w/lib']
+}

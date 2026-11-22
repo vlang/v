@@ -81,13 +81,15 @@ $if !skip_fastc ? {
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
-		// Executable linker options must not affect the native owner or its cache key.
+		// Executable linker options must not affect the native owner or its cache key; only the
+		// link inputs of -ldflags (libraries, frameworks, archives) are linked into the owner.
 		if prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc'
 			&& (c_flags_need_objective_c(flags) || '-framework' in flags
 				|| generation.c_pieces[..generation.units.head_end].any(it.starts_with('#include ') && (it.contains('.m"') || it.contains('.mm"')))) {
 			bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 			bridge_sw := time.new_stopwatch()
-			bridge := v3_fastc_native_bridge(generation, prefs, flags, sdk, mut validation) or {
+			owner_link, program_link := v3_fastc_split_native_link_flags(link_flags)
+			bridge := v3_fastc_native_bridge_linking(generation, prefs, flags, owner_link, sdk, mut validation) or {
 				return V3FastCCompileResult{ command: 'FastC native bridge', output: err.msg() }
 			}
 			if bench_phases {
@@ -114,7 +116,7 @@ $if !skip_fastc ? {
 
 			// Native inputs rule out executable caching; the payload object names none of them.
 			jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted, mut validation)
+			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], program_link, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted, mut validation)
 		}
 		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted, mut validation)
 	}
@@ -188,6 +190,11 @@ $if !skip_fastc ? {
 	}
 
 	fn v3_fastc_native_bridge(generation &fastc.GenerationResult, prefs &pref.Preferences, flags []string, sdk string, mut validation V3FastcNativeValidation) !V3FastcNativeBridge {
+		return v3_fastc_native_bridge_linking(generation, prefs, flags, [], sdk, mut validation)
+	}
+
+	// v3_fastc_native_bridge_linking builds the native owner, linking `link_inputs` into it.
+	fn v3_fastc_native_bridge_linking(generation &fastc.GenerationResult, prefs &pref.Preferences, flags []string, link_inputs []string, sdk string, mut validation V3FastcNativeValidation) !V3FastcNativeBridge {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		sw := time.new_stopwatch()
 		mut head := []string{cap: generation.units.head_end}
@@ -258,10 +265,13 @@ $if !skip_fastc ? {
 			head << generation.units.native_exports
 			after << generation.units.native_exports
 		}
+		// Only the bridges the kept code calls: a C function V declares for another
+		// platform (`__wasi_*` on macOS) has no declaration here.
+		used_bridges := v3_fastc_used_bridge_names(generation.c_pieces)
 		mut functions := map[string]bool{}
 		for name, _ in generation.native_declarations {
 			if !name.starts_with('__builtin_') && !name.starts_with('__atomic_') && !name.starts_with('__sync_')
-				&& name !in ['va_arg', 'va_start', 'va_end', 'va_copy'] {
+				&& name !in ['va_arg', 'va_start', 'va_end', 'va_copy'] && name in used_bridges {
 				functions[name] = true
 			}
 		}
@@ -283,6 +293,7 @@ $if !skip_fastc ? {
 			sources:      sources
 			bindings:     bindings
 			adapter_text: adapter_text
+			link_inputs:  link_inputs
 		}
 		if bench_phases {
 			eprintln('fastc-phase native.parts ${sw.elapsed().microseconds()}us')
@@ -313,6 +324,9 @@ $if !skip_fastc ? {
 		sources      []string
 		bindings     string
 		adapter_text string
+		// link_inputs are the libraries and archives of the program's -ldflags: the native
+		// code that needs them lives in the owner, which Clang links.
+		link_inputs []string
 	}
 
 	struct V3FastcNativeLeanResult {
@@ -437,7 +451,8 @@ $if !skip_fastc ? {
 		mut native_flags := v3_tcc_dylib_native_flags(flags)
 		if sdk != '' { native_flags << ['-isysroot', sdk] }
 		prepared := prepare_c_flags_for_link(native_flags, [], [], ['-O0'], true, false, '', [], prefs.target, '/usr/bin/clang', true, dir, mut validation.stats)!
-		link_flags := c_dylib_link_flags(prepared)
+		mut link_flags := c_dylib_link_flags(prepared)
+		link_flags << parts.link_inputs
 		mut archives := c_dylib_named_static_archive_inputs(link_flags)
 		for archive in c_dylib_force_loaded_static_archive_inputs(link_flags) {
 			if archive !in archives { archives << archive }
@@ -447,6 +462,7 @@ $if !skip_fastc ? {
 		mut hash := owner_hash
 		hash = c_hash_bytes(hash, prepared.join('\x00').bytes())
 		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
+		hash = c_hash_bytes(hash, parts.link_inputs.join('\x00').bytes())
 		key := hash.hex()
 		path := os.join_path(dir, key + '.m')
 		if !os.is_file(path) {
@@ -543,6 +559,12 @@ $if !skip_fastc ? {
 			hash = c_hash_bytes(hash, (dependency + '\x00' + signature).bytes())
 		}
 		hash = c_hash_bytes(hash, v3_shared_c_compiler_identity('/usr/bin/clang').bytes())
+		// A rebuilt archive of the program's -ldflags must relink the owner.
+		for input in parts.link_inputs {
+			if input.ends_with('.a') || input.ends_with('.o') || input.ends_with('.dylib') {
+				hash = c_hash_bytes(hash, (input + '\x00' + v3_fastc_native_file_signature(input, false, mut validation.stats)).bytes())
+			}
+		}
 		if bench_phases {
 			eprintln('fastc-phase native.signed ${sw.elapsed().microseconds()}us dependencies=${dependencies.len}')
 		}
@@ -1097,4 +1119,76 @@ $if !skip_fastc ? {
 #define dispatch_get_context(value) ((void *(*)(void *))(dispatch_get_context))((void *)(value))
 #define dispatch_set_finalizer_f(value, callback) ((void (*)(void *, void (*)(void *)))(dispatch_set_finalizer_f))((void *)(value), (callback))
 '
+}
+
+// v3_fastc_used_bridge_names lists the C functions that generated pieces call through
+// `v3_native_bridge_<name>`.
+fn v3_fastc_used_bridge_names(pieces []string) map[string]bool {
+	prefix := 'v3_native_bridge_'
+	mut names := map[string]bool{}
+	for piece in pieces {
+		mut pos := 0
+		for {
+			index := piece.index_after_(prefix, pos)
+			if index < 0 {
+				break
+			}
+			mut end := index + prefix.len
+			for end < piece.len && (piece[end].is_letter() || piece[end].is_digit() || piece[end] == `_`) {
+				end++
+			}
+			name := piece[index + prefix.len..end]
+			if name.starts_with('args_') {
+				names[name['args_'.len..]] = true
+			}
+			names[name] = true
+			pos = end
+		}
+	}
+	return names
+}
+
+// v3_fastc_split_native_link_flags splits a TinyCC program's -ldflags into the link inputs
+// the native owner needs (libraries, frameworks, archives and objects, also passed as
+// `-Xlinker <path>` or `-Wl,<path>`) and the executable's own linker options.
+fn v3_fastc_split_native_link_flags(flags []string) ([]string, []string) {
+	mut owner := []string{}
+	mut program := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i].trim_space()
+		if flag in ['-framework', '-weak_framework', '-L', '-l'] && i + 1 < flags.len {
+			owner << [flags[i], flags[i + 1]]
+			i += 2
+			continue
+		}
+		if flag == '-Xlinker' && i + 1 < flags.len {
+			value := flags[i + 1].trim_space()
+			if v3_fastc_is_link_input_path(value) {
+				owner << [flags[i], flags[i + 1]]
+			} else {
+				program << [flags[i], flags[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		if flag in ['-Wl,-dead_strip_dylibs', '-Wl,-dead_strip'] {
+			// Size optimizations of Apple's linker, which TinyCC does not implement.
+			i++
+			continue
+		}
+		if (flag.starts_with('-l') || flag.starts_with('-L') || v3_fastc_is_link_input_path(flag))
+			|| (flag.starts_with('-Wl,') && v3_fastc_is_link_input_path(flag['-Wl,'.len..])) {
+			owner << flags[i]
+		} else {
+			program << flags[i]
+		}
+		i++
+	}
+	return owner, program
+}
+
+fn v3_fastc_is_link_input_path(value string) bool {
+	return !value.starts_with('-') && (value.ends_with('.a') || value.ends_with('.o')
+		|| value.ends_with('.dylib') || value.ends_with('.tbd'))
 }

@@ -952,6 +952,8 @@ struct FastcFunctionSignature {
 	is_c_extern                   bool
 	is_markused                   bool
 	is_global                     bool
+	// A static method (`fn Type.new()`) shares the method key format, but has no receiver.
+	is_static_method bool
 	// Leading array dimensions before a stored function value's signature.
 	callable_index_depth int
 	export_name          string
@@ -1405,6 +1407,8 @@ struct FastcConstantDeclarations {
 	compile_time_values map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   flat.TypeTextBindings
+	// Generic instances called by runtime initializers (see FastcConstantFileResult).
+	mono_requests []FastcMonoRequest
 
 mut:
 	// The struct fields with their defaults rendered, and their by-name index:
@@ -1431,6 +1435,10 @@ struct FastcConstantValue {
 	// fastc_constant_call_dependencies).
 	call_dependencies []string
 	is_runtime        bool
+	// callable_type keeps the signature of a function value stored in the constant
+	// (directly or in arrays), which the constant's C type erases to voidptr.
+	callable_type        u32
+	callable_index_depth int
 }
 
 struct FastcComptimeCondition {
@@ -1726,9 +1734,14 @@ mut:
 	last_expression             []FastcExpressionToken
 	// Conditional expressions have no flat token list after their branches are
 	// parsed. Preserve an Option payload type for their consuming declaration.
-	last_option_value_type  u32
-	last_multi_return_types flat.TypeTextList
-	member_smartcasts       map[string]FastcMemberSmartcast
+	last_option_value_type u32
+	// option_value_from_erased_generic is set when option_value_type_for_expression found the
+	// value type of an erased generic method, whose value is boxed twice.
+	option_value_from_erased_generic bool
+	constant_callables_checked       bool
+	constant_callables_present       bool
+	last_multi_return_types          flat.TypeTextList
+	member_smartcasts                map[string]FastcMemberSmartcast
 	// Set by `parse_type` to the wrapped value type when it parses an option type
 	// (`?T`), so the caller can record it on the declared local.
 	pending_option_value_type u32
@@ -1797,6 +1810,13 @@ mut:
 	generated_mono   map[string]bool
 	mono_functions   map[string]FastcFunctionSignature
 	mono_definitions map[string]string
+	// fixed_array_alias_state caches whether any alias names a fixed array: 0 unknown, 1 no,
+	// 2 yes (see has_fixed_array_alias).
+	fixed_array_alias_state u8
+	// The prototypes of hoisted function literals. They follow the file's functions rather
+	// than the enclosing function's prototype, which the reachability prune may drop while
+	// the hoisted definition is always emitted.
+	anon_prototypes []string
 	// True while the drain re-parses a mono instance, so parse_function skips the
 	// reachability prune (the instance is used by definition — that is why it was queued).
 	in_mono_drain          bool
@@ -1973,6 +1993,9 @@ struct FastcFileGenContext {
 	prune_unreachable    bool
 	generic_method_names map[string]bool
 	module_aliases       map[string]string
+	// The generic instances that runtime constant initializers call, by the path of the
+	// file declaring the generic: that file's parser generates them.
+	constant_mono_requests map[string][]FastcMonoRequest
 }
 
 // FastcFileGenOutput is one source file's generation result. The sequential
@@ -2032,6 +2055,23 @@ mut:
 	c_flags           []string
 	failed            bool
 	error_message     string
+}
+
+// fastc_constant_mono_requests_by_path groups the generic instances that constant
+// initializers call by the file that declares each generic.
+fn fastc_constant_mono_requests_by_path(requests []FastcMonoRequest, generic_method_sources map[string]FastcGenericMethodSource) map[string][]FastcMonoRequest {
+	mut by_path := map[string][]FastcMonoRequest{}
+	mut seen := map[string]bool{}
+	for request in requests {
+		source := generic_method_sources[request.source_key] or { continue }
+		key := '${request.source_key}|${request.concrete}'
+		if key in seen {
+			continue
+		}
+		seen[key] = true
+		by_path[source.path] << request
+	}
+	return by_path
 }
 
 fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceFile) FastcFileGenOutput {
@@ -2139,6 +2179,9 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	gen.declared_type_key_memo.reserve(128)
 	gen.comparison_memo.reserve(64)
 	gen.s.init(file, source_file.source)
+	for request in ctx.constant_mono_requests[source_file.path] {
+		gen.queue_mono_function(request.source_key, request.concrete)
+	}
 	generated := gen.run() or {
 		return FastcFileGenOutput{
 			failed:        true
@@ -2462,6 +2505,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			public_constants:          public_constants
 			globals:                   globals
 			public_globals:            public_globals
+			generic_method_sources:    generic_method_sources
+			generic_method_names:      fastc_generic_method_names(generic_method_sources)
 		}
 		parallel_constant_results = fastc_parse_constant_files_parallel(&seed_ctx, constant_candidates, constant_types)
 		seeded_constant_files = fastc_seed_constant_types(&seed_ctx, constant_candidates,
@@ -2470,7 +2515,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// The struct field defaults render on a worker while the constants are
 	// pre-parsed; a constant file that consulted them is re-parsed after.
 	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.enum_field_names, type_output.alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
-	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, seeded_constant_files, mut constant_types)!
+	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, seeded_constant_files, mut constant_types, generic_method_sources)!
 	struct_field_info = constant_output.struct_field_info.move()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
@@ -2574,6 +2619,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		generic_method_sources:    generic_method_sources
 		generic_method_names:      fastc_generic_method_names(generic_method_sources)
 		module_aliases:            module_aliases
+		constant_mono_requests:    fastc_constant_mono_requests_by_path(constant_output.mono_requests,
+			generic_method_sources)
 		interface_fields:          interface_fields
 		interface_method_names:    fastc_interface_method_names(functions, declared_kinds)
 		constants:                 constants
@@ -3035,17 +3082,24 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	units.native_decl_start = pieces.len
 	pieces << fastc_piece(constant_output.macros)
-	pieces << fastc_piece(type_output.declarations_head)
+	// An alias of a fixed array of structs (`type Table = [256]Row`) names a typedef that can
+	// only follow the struct bodies.
+	declarations_head, late_head_aliases := fastc_split_aggregate_fixed_array_aliases(type_output.declarations_head,
+		fixed_array_declarations)
+	body_declarations, late_body_aliases := fastc_split_aggregate_fixed_array_aliases(type_declarations,
+		fixed_array_declarations)
+	pieces << fastc_piece(declarations_head)
 	pieces << fastc_piece(composite_typedefs)
 	pieces << scalar_fixed_array_declarations
 	callable_typedefs := fastc_callable_typedefs(composite_types)
 	pieces << if callable_typedefs == '' {
-		fastc_piece(type_declarations)
+		fastc_piece(body_declarations)
 	} else {
-		fastc_hoist_c_type_aliases(callable_typedefs + type_declarations)
+		fastc_hoist_c_type_aliases(callable_typedefs + body_declarations)
 	}
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
+	pieces << late_head_aliases + late_body_aliases
 	// Function signatures can refer to aliases, composite types, and fixed arrays.
 	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
 	function_type_names.sort()
@@ -3509,7 +3563,7 @@ fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
 fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []string, context FastcNativeSourceContext, vroot string) bool {
 	if !(name.starts_with('v3_') || name.starts_with('v_runtime_') || name.starts_with('v_time_')
 		|| name.starts_with('v_builtin_') || name.starts_with('v_set_')
-		|| name.starts_with('v__gc_')) {
+		|| name.starts_with('v__gc_') || name.starts_with('v_sync_')) {
 		return false
 	}
 	root := vroot.replace('\\', '/').trim_right('/')
@@ -3651,7 +3705,10 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 			continue
 		}
 		paths := context.declaration_paths[name] or { [signature.path] }
-		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
+		// The C backend gets the Boehm GC API from `gc.h`, which FastC does not include; its
+		// preamble declares only GC_malloc and GC_free.
+		is_gc_api := name.starts_with('GC_') && name !in ['GC_malloc', 'GC_free']
+		if !signature.is_c_extern && !is_gc_api && !paths.any(!context.files_with_headers[it]
 			&& fastc_c_declaration_has_native_input(it, inputs))
 			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
 			continue
@@ -5550,4 +5607,26 @@ fn (value &FastcMonoRequest) concrete_text() string {
 @[inline]
 fn (info &FastcEnumInfo) name_text() string {
 	return flat.source_type_name(info.name)
+}
+
+// fastc_split_aggregate_fixed_array_aliases moves `typedef FixedArray_... Alias;` lines out of
+// `head` when `fixed_array_declarations`, emitted after the struct bodies, defines the fixed
+// array.
+fn fastc_split_aggregate_fixed_array_aliases(head string, fixed_array_declarations string) (string, string) {
+	if !head.contains('typedef FixedArray_') || fixed_array_declarations == '' {
+		return head, ''
+	}
+	mut kept := strings.new_builder(head.len)
+	mut moved := strings.new_builder(256)
+	for line in head.split_into_lines() {
+		if line.starts_with('typedef FixedArray_') && line.ends_with(';') {
+			fixed_array := line['typedef '.len..].all_before(' ')
+			if fixed_array_declarations.contains('} ${fixed_array};') {
+				moved.writeln(line)
+				continue
+			}
+		}
+		kept.writeln(line)
+	}
+	return kept.str(), moved.str()
 }

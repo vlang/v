@@ -202,6 +202,12 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		g.captured_defer_lines = saved_capture_lines.clone()
 	}
 	start := g.out.len
+	proto_start := g.protos.len
+	// The enclosing function's C name identifies its span for the reachability prune.
+	saved_last_function_c_name := g.last_function_c_name
+	defer {
+		g.last_function_c_name = saved_last_function_c_name
+	}
 	g.indent = 0
 	// Emit the hoisted function even though its synthetic name is not in the reachable
 	// set, exactly as the mono drain does for on-demand instances.
@@ -239,6 +245,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	if definition != '' {
 		g.generated_mono[c_name] = true
 		g.mono_definitions[c_name] = definition
+	}
+	if g.protos.len > proto_start {
+		g.anon_prototypes << g.protos.after(proto_start)
+		g.protos.go_back(g.protos.len - proto_start)
 	}
 
 	// Restore the enclosing parse and resume just past the literal.

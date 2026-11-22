@@ -111,6 +111,42 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 	}
 }
 
+// erased_generic_struct_literal_type resolves `Box[int]` and `mod.Box[int]` in a struct
+// literal to the generic struct's erased layout, as field and parameter types already
+// are, when the generic struct was not monomorphized (outside the entry module).
+fn (g &Parser) erased_generic_struct_literal_type(tokens []FastcExpressionToken) ?u32 {
+	if tokens.len > 0 && tokens[0].tok in [.amp, .and] {
+		// `&Box[int]{}` allocates the erased layout.
+		pointee := g.erased_generic_struct_literal_type(tokens[1..]) or { return none }
+		depth := if tokens[0].tok == .and { 2 } else { 1 }
+		return fastc_with_pointer_depth(pointee, flat.source_type_syntax(pointee).c_pointer_depth() + depth)
+	}
+	if tokens.len < 4 || tokens.last().tok != .rsbr {
+		return none
+	}
+	name_end := if tokens[1].tok == .lsbr {
+		1
+	} else if tokens.len >= 6 && tokens[1].tok == .dot && tokens[2].tok == .name
+		&& tokens[3].tok == .lsbr {
+		3
+	} else {
+		return none
+	}
+	if tokens[0].tok != .name || tokens[name_end - 1].lit.len == 0
+		|| !tokens[name_end - 1].lit[0].is_capital() {
+		return none
+	}
+	close := fastc_matching_delimiter(tokens, name_end, .lsbr, .rsbr) or { return none }
+	if close != tokens.len - 1 || close == name_end + 1 {
+		return none
+	}
+	base := g.type_from_expression_tokens(tokens[..name_end]) or { return none }
+	if g.declared_kinds[g.semantic_type_key(base)] !in [.struct_, .union_] {
+		return none
+	}
+	return base
+}
+
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	mut open := -1
 	mut delimiter_depth := 0
@@ -131,11 +167,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if close != tokens.len - 1 {
 		return none
 	}
-	is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
+	mut is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
 	mut c_type := if open == 1 && tokens[0].typ != 0 {
 		tokens[0].typ
 	} else {
-		g.type_from_expression_tokens(tokens[..open]) or { u32(0) }
+		g.type_from_expression_tokens(tokens[..open]) or {
+			g.erased_generic_struct_literal_type(tokens[..open]) or { u32(0) }
+		}
 	}
 	if c_type == 0 && is_c_struct_literal {
 		c_type = flat.source_type_id(if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${tokens[2].lit}') {
@@ -147,6 +185,20 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	mut layout_type := fastc_trim_pointer_type(c_type)
 	if flat.source_type_query(g.underlying_alias_type(layout_type)).has(.c_array_prefix) {
 		layout_type = flat.source_type_id('array')
+	} else if !is_c_struct_literal && c_type != 0 {
+		// `Alias{...}` of a struct uses the struct's fields; of a C struct, its C fields.
+		underlying := g.underlying_alias_type(layout_type)
+		if underlying != layout_type && !fastc_is_pointer_type(underlying) {
+			underlying_name := flat.source_type_name(underlying)
+			if underlying_name in g.struct_fields
+				|| g.declared_kinds[g.semantic_type_key(underlying)] in [.struct_, .union_] {
+				layout_type = underlying
+			} else if underlying_name.starts_with('struct ')
+				|| fastc_source_type_key_exists(g.declared_types, '#Cstruct#${underlying_name}')
+				|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${underlying_name}') {
+				is_c_struct_literal = true
+			}
+		}
 	}
 	// `Alias{}` where `Alias = u8` (a primitive alias, e.g. ast.EmptyExpr) has no fields, so
 	// the "struct literal" is really the primitive's zero value; C rejects the empty `{}`.
@@ -245,6 +297,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	mut fixed_array_copies := []string{}
 	mut has_applied_defaults := false
 	mut update_source := ''
+	mut update_is_pointer := true
 	mut array_init_tokens := []FastcExpressionToken{}
 	mut has_array_init := false
 	mut index := open + 1
@@ -275,9 +328,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			if value_start == index {
 				return none
 			}
-			update_source = g.render_call_argument_expression(tokens[value_start..index], c_type) or {
-				return none
-			}
+			// `&Config{...c}` may update from a value as well as from a reference.
+			update_type := g.infer_expression_type(tokens[value_start..index]) or { u32(0) }
+			update_is_pointer = update_type == 0 || fastc_is_pointer_type(update_type)
+			update_source = g.render_call_argument_expression(tokens[value_start..index], if update_is_pointer {
+				c_type
+			} else {
+				fastc_trim_pointer_type(c_type)
+			}) or { return none }
 			continue
 		}
 		if tokens[index].tok != .name {
@@ -552,8 +610,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			base_type := flat.source_type_name(fastc_trim_pointer_type(c_type))
 			copy_statements := fixed_array_copies.join(' ')
+			update_value := if update_is_pointer {
+				'*(${update_source})'
+			} else {
+				'(${update_source})'
+			}
 			return FastcRenderedExpression{
-				source: '({ ${base_type} __vf_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${flat.source_type_name(c_type)})v_fastc_heap_copy(&__vf_struct_update, sizeof(${base_type})); })'
+				source: '({ ${base_type} __vf_struct_update = ${update_value}; ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${flat.source_type_name(c_type)})v_fastc_heap_copy(&__vf_struct_update, sizeof(${base_type})); })'
 				typ:    c_type
 			}
 		}
@@ -575,14 +638,16 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			typ:    c_type
 		}
 	}
+	// `{0}` also initializes a C typedef of a pointer (`C.pthread_t{}`).
+	fields_source := if rendered_fields.len == 0 { '0' } else { rendered_fields.join(',') }
 	literal_source := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 		if g.c_global_static_initializer {
-			'&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${rendered_fields.join(',')}}'
+			'&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${fields_source}}'
 		} else {
-			'(${flat.source_type_name(c_type)})v_fastc_heap_copy(&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${rendered_fields.join(',')}}, sizeof(${flat.source_type_name(fastc_trim_pointer_type(c_type))}))'
+			'(${flat.source_type_name(c_type)})v_fastc_heap_copy(&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${fields_source}}, sizeof(${flat.source_type_name(fastc_trim_pointer_type(c_type))}))'
 		}
 	} else {
-		'(${flat.source_type_name(c_type)}){${rendered_fields.join(',')}}'
+		'(${flat.source_type_name(c_type)}){${fields_source}}'
 	}
 	if fixed_array_copies.len > 0 {
 		base_type := flat.source_type_name(fastc_trim_pointer_type(c_type))

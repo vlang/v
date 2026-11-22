@@ -3275,7 +3275,9 @@ fn (g &Parser) struct_equality_is_supported_visit(typ u32, mut visited map[u32]b
 	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
 		return true
 	}
-	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_ || flat.source_type_name(layout_type) !in g.struct_field_info {
+	if (type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_
+		|| flat.source_type_name(layout_type) !in g.struct_field_info)
+		&& !g.is_c_struct_with_fields(layout_type) {
 		return false
 	}
 	for field in g.struct_field_info[flat.source_type_name(layout_type)] {
@@ -3285,6 +3287,18 @@ fn (g &Parser) struct_equality_is_supported_visit(typ u32, mut visited map[u32]b
 		}
 	}
 	return true
+}
+
+// is_c_struct_with_fields reports whether `layout_type` is a C struct whose fields V declares
+// (`struct C.rect { x f64 }`); V compares such structs field by field, like its own structs.
+fn (g &Parser) is_c_struct_with_fields(layout_type u32) bool {
+	name := flat.source_type_name(layout_type)
+	if name !in g.struct_field_info || g.struct_field_info[name].len == 0 {
+		return false
+	}
+	bare := name.trim_string_left('struct ')
+	return fastc_source_type_key_exists(g.declared_types, '#Cstruct#${bare}')
+		|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${bare}')
 }
 
 // stored_equality_source compares two values held as an array holds its elements: a fixed
@@ -3392,7 +3406,8 @@ fn (g &Parser) struct_equality_source(left string, right string, typ u32, seen [
 	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
 		return '((${left}) == (${right}))'
 	}
-	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_ || layout_type in seen {
+	if (type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_
+		|| layout_type in seen) && !(layout_type !in seen && g.is_c_struct_with_fields(layout_type)) {
 		return '((${left}) == (${right}))'
 	}
 	mut nested_seen := seen.clone()
@@ -3557,7 +3572,9 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 				}
 			}
 			left_key := g.semantic_type_key(left_layout_id)
-			if left_layout != right_layout || left_key !in g.declared_kinds || g.declared_kinds[left_key] != .struct_ || !g.struct_equality_is_supported(left_type, []u32{}) {
+			is_v_struct := left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
+			if left_layout != right_layout || !(is_v_struct || g.is_c_struct_with_fields(left_layout_id))
+				|| !g.struct_equality_is_supported(left_type, []u32{}) {
 				return none
 			}
 			mut left := g.render_comparison_operand(left_tokens, left_type) or { return none }
@@ -4907,6 +4924,21 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			return '*(${pointer})'
 		}
 	}
+	if expected_type_source_id != 0 && !fastc_is_pointer_type(expected_type_source_id)
+		&& g.declared_kinds[g.semantic_type_key(expected_type_source_id)] in [
+			.struct_,
+			.union_,
+		] {
+		actual := g.infer_expression_type(tokens) or { u32(0) }
+		// A reference passed to a struct parameter is dereferenced, as the C backend does
+		// (`select_word(pin, ...)` with `pin &Pin`).
+		if fastc_is_pointer_type(actual) && flat.source_type_syntax(actual).c_pointer_depth() == 1
+			&& (g.semantic_type_key(fastc_trim_pointer_type(actual)) == g.semantic_type_key(expected_type_source_id)
+				|| g.underlying_alias_type(fastc_trim_pointer_type(actual)) == g.underlying_alias_type(expected_type_source_id)) {
+			pointer := g.render_call_argument_expression(tokens, actual) or { return none }
+			return '(*(${pointer}))'
+		}
+	}
 	if g.declared_kinds[g.semantic_type_key(expected_type_source_id)] == .alias_ {
 		if enum_key := g.underlying_enum_type_key(g.semantic_type_key(expected_type_source_id)) {
 			base := flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_key)))
@@ -5716,6 +5748,21 @@ fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 	return false
 }
 
+// array_types_share_elements reports whether two array types hold the same elements, also when
+// one spells the element through an alias (`[]Diagnostic` with `type Diagnostic = d.Diagnostic`).
+fn (g &Parser) array_types_share_elements(a u32, b u32) bool {
+	if a == b {
+		return true
+	}
+	if a == 0 || b == 0 || !flat.source_type_query(a).has(.c_array_prefix)
+		|| !flat.source_type_query(b).has(.c_array_prefix) {
+		return false
+	}
+	a_element := g.array_element_type(a) or { return false }
+	b_element := g.array_element_type(b) or { return false }
+	return g.underlying_alias_type(fastc_normalize_inferred_type(a_element)) == g.underlying_alias_type(fastc_normalize_inferred_type(b_element))
+}
+
 // render_map_index_inc_dec_expression lowers `m[k]++` / `m[k]--`. A map value is not a C
 // lvalue, so the entry is fetched (inserting a zero default when absent, matching V) and the
 // increment applied through the returned pointer.
@@ -6206,7 +6253,7 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	// before selecting push-many (see vlib/v/gen/c/infix.v).
 	propagated_array := right_tokens.len > 1 && right_tokens.last().tok in [.not, .question]
 		&& !fastc_trailing_not_marks_fixed_array_literal(right_tokens)
-	is_array_append := normalized_right == left_array_type
+	is_array_append := g.array_types_share_elements(normalized_right, left_array_type)
 		&& (!g.sumtype_has_variant(element_type, normalized_right) || propagated_array)
 	separator := rendered_expression.index('<<') or { return none }
 	left_tokens := tokens[..operator_index]
